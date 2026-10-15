@@ -9,6 +9,7 @@
 - M1 已验收并经用户确认（2026-10-15）
 - M2 已细化（M2-00）并经用户确认，设计见 docs/design/M2.md；M2-01 至 M2-07 已完成
 - 下一个任务：**M2-08**（Opus 5.5，推理强度 xhigh）
+- 试用 GPT-6.1 Sol（2026-10-15 用户同意）：M2-13 交给 GPT-6.1 Sol 试做，做完由 Opus 专门评审（规则 11），再由用户决定后续分工
 - 上次 Opus 评审到的提交：3a46fe3（M2-01 至 M2-06 已在 M2-07 开工前评审，无阻塞问题；两处小问题见 M2-07 完成报告）
 
 ## 一、模型分工与推理强度
@@ -18,6 +19,7 @@
 | Opus 5.5 | 每个里程碑开工前细化任务（Mx-00）；安全核心（加密、会话、权限、脱敏核心、出口复检、模型网关、追问脱敏、备份恢复）；算法难点（DOCX 自动编号、模型输出校验、分段合并）；评审 Sonnet 和 Haiku 的提交；里程碑验收 |
 | Sonnet 5.5 | 规格写得清楚的常规实现：接口、页面、解析器、本地校验、报告、部署脚本 |
 | Haiku 5.5 | 机械性、照抄型、低风险的任务：资源文件、占位页面、样本文件、简单的扫描测试 |
+| GPT-6.1 Sol（试用） | 只做“模型”列标为“GPT-6.1 Sol（试用）”的任务（目前只有 M2-13），在 Codex 中执行，规则见仓库根目录的 AGENTS.md。安全核心、Mx-00 细化、评审和里程碑验收不交给它。试用通过后，由用户决定是否让它接手 Sonnet 档的任务 |
 
 **推理强度**（“强度”列）：
 
@@ -50,7 +52,8 @@
    - **下一个任务是 Mx-00（里程碑细化）或里程碑验收**：停下来，等用户安排。
    - **下一个任务的模型和本会话相同**：直接继续执行，不必等用户。如果推理强度和本会话不同，在报告中提示用户调整。同一个会话连续执行超过 4 个任务，或已经跨了里程碑，就建议用户开新会话，避免上下文过长、浪费 token。
    - **下一个任务的模型不同**：停下来，请用户用对应的模型开新会话。
-10. **Opus 的评审**：Opus 会话开始一个任务前，先评审“上次 Opus 评审到的提交”之后，Sonnet 和 Haiku 的全部提交（用 `git log` 和 `git diff` 查看）。有问题的，先修复，或在报告中列出交给用户决定。评审完更新“上次 Opus 评审到的提交”。
+10. **Opus 的评审**：Opus 会话开始一个任务前，先评审“上次 Opus 评审到的提交”之后，Sonnet、Haiku 和 GPT-6.1 Sol 的全部提交（用 `git log` 和 `git diff` 查看）。有问题的，先修复，或在报告中列出交给用户决定。评审完更新“上次 Opus 评审到的提交”。
+11. **GPT-6.1 Sol 试用任务的评审**：试用任务完成后停下，不论下一个任务是谁做。用户开一个 Opus 会话专门评审该任务的提交，逐条检查：只改了文件范围内的文件；未改 SPEC、CLAUDE.md 和设计文档；完成标准逐条有测试覆盖；SPEC 没写明的细节记入了 open\_questions；日志和错误消息不含原文、名称、金额、密钥；所有任务接口校验 owner\_id（他人返回 404）；Docker 中全部测试通过；代码风格与周围一致。评审结论和建议的后续分工汇报给用户，由用户决定。
 
 ## 三、状态说明
 
@@ -91,7 +94,7 @@
 | M2-10 | 模型网关、设置读取、用量统计、模拟模型服务、开发用 set-model 命令 | Opus | high | M2-09 | 5、7.5、11.1、11.7、15.2、17.4、Q-12；设计七 | app/llm/gateway.py、app/llm/usage.py、app/admin/settings\_store.py、app/cli.py（set-model 部分）、tests/mock\_llm.py、tests/test\_gateway.py、tools/mock\_llm\_server.py、deploy/docker-compose.mock.yml | 执行顺序为上限检查 → 出口复检 → 发送 → 记录；T-07 的网关部分通过（blocked 记录不含真实值）；达到上限不发送；重试次数和间隔正确；附加请求参数原样合并；API 密钥不出现在日志和 llm\_calls 中 | 待执行 |
 | M2-11 | 审核核心：拼接提示词、输出结构、结果校验（11.4 全部 9 条）、解析失败重试 1 次 | Opus | xhigh | M2-10 | 11.2–11.4、A-07；设计八 | app/review/prompt.py、schema.py、validate.py、tests/test\_review\_validate.py、tests/test\_review\_prompt.py | T-10、T-11 通过；要求结论数 = 发送的要求数（A-07）；document 标签被转义；类别、严重程度映射与兜底正确；重复问题合并 | 待执行 |
 | M2-12 | review 处理函数与轮次接口：确认发送（含预检）、轮次列表、轮次详情（还原真实名称）、修改问题处理状态 | Sonnet | high | M2-11 | 7.1–7.3、19.5、A-04；设计八 | app/review/router.py、service.py、job.py、app/main.py（只加 include\_router 一行）、tests/test\_runs\_api.py、tests/test\_review\_job.py | 设计八的每个 409 错误码都有测试；local\_only 任务模型调用次数为 0（A-04）；网关拦截时 run=blocked 且任务回到 awaiting\_confirm（T-07）；返回给前端的文字已还原；对真实接口重跑 A-06 | 待执行 |
-| M2-13 | 脱敏确认接口：签约方查询与修改、脱敏摘要、外发文本预览、修改文件类型 | Sonnet | medium | M2-12 | 6.2 第二步、19.3、19.4；设计九 | app/redaction/router.py、app/tasks/router.py（只加 PATCH 文件类型）、app/main.py（只加 include\_router 一行）、tests/test\_redaction\_api.py | 必须恰好一方为我方；非 awaiting\_confirm 时修改返回 409；外发文本预览是代号版本；对真实接口重跑 A-06 | 待执行 |
+| M2-13 | 脱敏确认接口：签约方查询与修改、脱敏摘要、外发文本预览、修改文件类型 | GPT-6.1 Sol（试用） | medium | M2-12 | 6.2 第二步、19.3、19.4；设计九 | app/redaction/router.py、app/tasks/router.py（只加 PATCH 文件类型）、app/main.py（只加 include\_router 一行）、tests/test\_redaction\_api.py | 必须恰好一方为我方；非 awaiting\_confirm 时修改返回 409；外发文本预览是代号版本；对真实接口重跑 A-06 | 待执行 |
 | M2-14 | 前端：新建审核第一步（上传与设置）、第三步（审核中轮询）、枚举翻译、multipart 请求 | Sonnet | medium | M2-13 | 6.2；设计十 | src/api/http.ts（加 postForm）、src/api/tasks.ts、src/utils/labels.ts、src/views/ReviewNew.vue | 上传前在前端检查数量、大小、扩展名；立场和来源默认为该用户上次的选择；轮询每 3 秒，离开页面停止；`npm run build` 通过 | 待执行 |
 | M2-15 | 前端：第二步基础版（文件信息与类型修改、签约方确认、脱敏摘要、查看将发送的文本、确认发送） | Sonnet | medium | M2-14 | 6.2 第二步；设计九、十 | src/views/ReviewNew.vue、src/api/redaction.ts、src/api/runs.ts、src/components/ 下新增的第二步子组件 | 未选我方不能提交；409 错误按错误码给出中文提示；外发文本纯文本显示；`npm run build` 通过 | 待执行 |
 | M2-16 | 前端：结果页基础版（顶部信息栏、问题清单 FindingCard、审核要求逐条结论标签页）、审核历史页 | Sonnet | medium | M2-15 | 6.3、6.4；设计八、十 | src/views/ReviewResult.vue、src/views/History.vue、src/components/FindingCard.vue | 问题卡片字段与 6.3 一致，可直接替换的措辞带复制按钮，处理状态和备注可保存；历史页搜索、日期筛选、分页、删除（二次确认）可用；界面不出现“审核通过”“无风险”；`npm run build` 通过 | 待执行 |
