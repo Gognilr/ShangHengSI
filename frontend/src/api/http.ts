@@ -92,7 +92,8 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
 }
 
 export const http = {
-  get: <T>(path: string, query?: RequestOptions['query']) => request<T>('GET', path, { query }),
+  get: <T>(path: string, query?: RequestOptions['query'], opts?: Pick<RequestOptions, 'silent401'>) =>
+    request<T>('GET', path, { query, ...opts }),
   post: <T>(path: string, body?: unknown, opts?: Pick<RequestOptions, 'silent401'>) =>
     request<T>('POST', path, { body, ...opts }),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),

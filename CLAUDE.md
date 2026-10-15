@@ -67,6 +67,16 @@ docker compose -f deploy/docker-compose.yml logs -f app worker
 docker compose -f deploy/docker-compose.yml down        # 停止（保留数据卷）
 ```
 
+**前端开发与检查**（本机 Node 24）：
+
+```powershell
+npm --prefix frontend ci --include=dev
+npm --prefix frontend run build      # vue-tsc 类型检查 + 构建
+npm --prefix frontend run dev        # http://localhost:5173，/api 代理到 https://localhost:8443（需先启动整套系统）
+```
+
+浏览器面板不接受 Caddy 内部 CA 的证书，用浏览器检查界面时走 http://localhost:5173（.claude/launch.json 中的 frontend-dev）。
+
 主密钥不能覆盖：`gen-key` 发现目标文件已存在会拒绝执行。deploy/.env、deploy/secrets/、deploy/backup/ 都不进仓库。
 
 **数据库迁移**：新增迁移只能写在 backend/app/db/alembic/versions/ 下，并保证 tests/test\_migrations.py 中“模型与迁移一致”的测试通过。

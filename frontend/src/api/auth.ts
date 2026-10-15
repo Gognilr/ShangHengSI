@@ -28,7 +28,8 @@ export const authApi = {
   login: (username: string, password: string) =>
     http.post<LoginResult>('/auth/login', { username, password }, { silent401: true }),
   logout: () => http.post<void>('/auth/logout'),
-  me: () => http.get<MeResult>('/auth/me'),
+  // 探测登录状态：未登录是正常情况，由调用方（路由守卫）决定去向，不触发全局 401 跳转
+  me: () => http.get<MeResult>('/auth/me', undefined, { silent401: true }),
   changePassword: (oldPassword: string, newPassword: string) =>
     http.post<void>('/auth/password', { old_password: oldPassword, new_password: newPassword }),
 }
