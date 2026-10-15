@@ -7,8 +7,8 @@
 ## 当前进度
 
 - M1 已验收并经用户确认（2026-10-15）
-- M2 已细化（M2-00）并经用户确认，设计见 docs/design/M2.md；M2-01 至 M2-09 已完成
-- 下一个任务：**M2-10**（Opus 5.5，推理强度 high）
+- M2 已细化（M2-00）并经用户确认，设计见 docs/design/M2.md；M2-01 至 M2-10 已完成
+- 下一个任务：**M2-11**（Opus 5.5，推理强度 xhigh）
 - 试用 GPT-6.1 Sol（2026-10-15 用户同意）：M2-13 交给 GPT-6.1 Sol 试做，做完由 Opus 专门评审（规则 11），再由用户决定后续分工
 - 上次 Opus 评审到的提交：3a46fe3（M2-01 至 M2-06 已在 M2-07 开工前评审，无阻塞问题；两处小问题见 M2-07 完成报告）
 
@@ -91,7 +91,7 @@
 | M2-07 | 统一文档模型与 DOCX 解析：修订、自动编号、clause\_no、合并单元格、页眉页脚、批注、文本框、嵌套表格、位置编号、警告 | Opus | xhigh | M2-06 | 8.1–8.3、Q-15；设计四 | app/parsing/model.py、app/parsing/docx.py、tests/test\_parse\_docx.py | T-01、T-02 通过（用 M2-03 的样本）；manifest.yaml 中的预期事实全部满足；损坏文件抛出 ParseError 且消息不含原文 | 已完成 |
 | M2-08 | 脱敏核心与 parse 流水线：9.3 第 1–5 步、代号分配、对照表加密、替换记录、外发文本构建、主体说明、转义 document 标签；parse 处理函数（含不外发分支） | Opus | xhigh | M2-07 | 7.1、9.1–9.3、9.7、9.9、17.5；设计一、六 | app/redaction/engine.py、detect.py、parties.py、placeholders.py、outbound.py、app/tasks/pipeline.py、tests/test\_redaction\_engine.py、tests/test\_pipeline.py | 样本中的名称、简称、电话、邮箱、账号、SWIFT、证件号、编号、金额全部替换，同一对象同一代号；保留项不被替换；外发文本格式符合 9.7；不外发的任务直接 completed\_local 且不产生任何脱敏数据 | 已完成 |
 | M2-09 | 出口复检与还原 | Opus | high | M2-08 | 9.8、9.9、Q-19；设计六 | app/redaction/recheck.py、app/redaction/restore.py、tests/test\_recheck.py、tests/test\_restore.py | 混入任一真实值、已记住名称、自定义敏感词或未替换的电话 / 邮箱 / 账号 / 证件号 / 带币种金额时拦截；拦截原因只含类别和位置；短数字不误拦；还原长代号优先 | 已完成 |
-| M2-10 | 模型网关、设置读取、用量统计、模拟模型服务、开发用 set-model 命令 | Opus | high | M2-09 | 5、7.5、11.1、11.7、15.2、17.4、Q-12；设计七 | app/llm/gateway.py、app/llm/usage.py、app/admin/settings\_store.py、app/cli.py（set-model 部分）、tests/mock\_llm.py、tests/test\_gateway.py、tools/mock\_llm\_server.py、deploy/docker-compose.mock.yml | 执行顺序为上限检查 → 出口复检 → 发送 → 记录；T-07 的网关部分通过（blocked 记录不含真实值）；达到上限不发送；重试次数和间隔正确；附加请求参数原样合并；API 密钥不出现在日志和 llm\_calls 中 | 待执行 |
+| M2-10 | 模型网关、设置读取、用量统计、模拟模型服务、开发用 set-model 命令 | Opus | high | M2-09 | 5、7.5、11.1、11.7、15.2、17.4、Q-12；设计七 | app/llm/gateway.py、app/llm/usage.py、app/admin/settings\_store.py、app/cli.py（set-model 部分）、tests/mock\_llm.py、tests/test\_gateway.py、tools/mock\_llm\_server.py、deploy/docker-compose.mock.yml | 执行顺序为上限检查 → 出口复检 → 发送 → 记录；T-07 的网关部分通过（blocked 记录不含真实值）；达到上限不发送；重试次数和间隔正确；附加请求参数原样合并；API 密钥不出现在日志和 llm\_calls 中 | 已完成 |
 | M2-11 | 审核核心：拼接提示词、输出结构、结果校验（11.4 全部 9 条）、解析失败重试 1 次 | Opus | xhigh | M2-10 | 11.2–11.4、A-07；设计八 | app/review/prompt.py、schema.py、validate.py、tests/test\_review\_validate.py、tests/test\_review\_prompt.py | T-10、T-11 通过；要求结论数 = 发送的要求数（A-07）；document 标签被转义；类别、严重程度映射与兜底正确；重复问题合并 | 待执行 |
 | M2-12 | review 处理函数与轮次接口：确认发送（含预检）、轮次列表、轮次详情（还原真实名称）、修改问题处理状态 | Sonnet | high | M2-11 | 7.1–7.3、19.5、A-04；设计八 | app/review/router.py、service.py、job.py、app/main.py（只加 include\_router 一行）、tests/test\_runs\_api.py、tests/test\_review\_job.py | 设计八的每个 409 错误码都有测试；local\_only 任务模型调用次数为 0（A-04）；网关拦截时 run=blocked 且任务回到 awaiting\_confirm（T-07）；返回给前端的文字已还原；对真实接口重跑 A-06 | 待执行 |
 | M2-13 | 脱敏确认接口：签约方查询与修改、脱敏摘要、外发文本预览、修改文件类型 | GPT-6.1 Sol（试用） | medium | M2-12 | 6.2 第二步、19.3、19.4；设计九 | app/redaction/router.py、app/tasks/router.py（只加 PATCH 文件类型）、app/main.py（只加 include\_router 一行）、tests/test\_redaction\_api.py | 必须恰好一方为我方；非 awaiting\_confirm 时修改返回 409；外发文本预览是代号版本；对真实接口重跑 A-06 | 待执行 |
