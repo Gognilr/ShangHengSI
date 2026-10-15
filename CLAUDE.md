@@ -37,5 +37,39 @@
 
 ## 常用命令
 
-（M1 完成后补充：本地启动、运行测试、数据库迁移、构建与导出镜像的命令）
+在仓库根目录执行。以下为 PowerShell 写法；bash 中把 `${PWD}` 换成 `$(pwd)`。本机 Python 是 3.11，后端的运行、测试、迁移一律在 Docker 中进行。
+
+**运行后端测试**（改了代码不用重建镜像，代码通过挂载进入容器；只有改了依赖才需要重建）：
+
+```powershell
+# 构建测试镜像（首次，或 requirements*.txt / Dockerfile 变更后）
+docker build -t aireview-backend-test --target test backend
+
+# 启动测试用的 PostgreSQL（首次创建；之后用 docker start aireview-test-db）
+docker network create aireview-test
+docker run -d --name aireview-test-db --network aireview-test -e POSTGRES_PASSWORD=test postgres:16.15
+
+# 运行全部测试（数据库测试会自建、自删独立的临时库）
+docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgres:test@aireview-test-db:5432/postgres -v "${PWD}/backend:/srv/backend" aireview-backend-test pytest -q
+```
+
+**本地启动整套系统**（app 启动时自动执行 `alembic upgrade head`）：
+
+```powershell
+# 首次：构建运行镜像、生成开发用主密钥、准备 .env
+docker build -t aireview-backend:dev --target runtime backend
+docker run --rm -v "${PWD}/deploy/secrets:/out" aireview-backend:dev python -m app.cli gen-key --out /out/master_key
+copy deploy\.env.example deploy\.env   # 然后填写 POSTGRES_PASSWORD；本机 80/443 被占用时把 HTTP_PORT/HTTPS_PORT 改为 8080/8443
+
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml ps
+docker compose -f deploy/docker-compose.yml logs -f app worker
+docker compose -f deploy/docker-compose.yml down        # 停止（保留数据卷）
+```
+
+主密钥不能覆盖：`gen-key` 发现目标文件已存在会拒绝执行。deploy/.env、deploy/secrets/、deploy/backup/ 都不进仓库。
+
+**数据库迁移**：新增迁移只能写在 backend/app/db/alembic/versions/ 下，并保证 tests/test\_migrations.py 中“模型与迁移一致”的测试通过。
+
+（构建与导出离线镜像的命令在 M8 补充。）
 

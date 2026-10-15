@@ -8,6 +8,7 @@ import signal
 import threading
 
 from app.config import get_settings, setup_logging
+from app.security.crypto import check_master_key
 
 logger = logging.getLogger("app.worker")
 
@@ -23,6 +24,8 @@ def _handle_signal(signum: int, _frame: object) -> None:
 
 def main() -> None:
     setup_logging()
+    # 主密钥缺失或不是 32 字节时拒绝启动（SPEC 17.3、open_questions Q-08）
+    check_master_key()
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     settings = get_settings()

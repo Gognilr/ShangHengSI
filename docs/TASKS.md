@@ -6,8 +6,8 @@
 
 ## 当前进度
 
-- 下一个任务：**M1-04**（Opus 5.5，推理强度 high）
-- 上次 Opus 评审到的提交：（尚无）
+- 下一个任务：**M1-05**（Opus 5.5，推理强度 high）
+- 上次 Opus 评审到的提交：f0e6784（M1-01 至 M1-03 已评审，通过）
 
 ## 一、模型分工与推理强度
 
@@ -63,7 +63,7 @@
 | M1-01 | 后端基础：锁定依赖版本；读取环境变量和密钥文件的 config；FastAPI 入口，统一挂载 /api/v1；统一错误格式；日志配置（只输出到标准输出，不记录请求体）；pytest 配置；后端 Dockerfile | Sonnet | medium | — | 3、5、19.1、20.3、17.7 | backend/requirements.txt、requirements-dev.txt、Dockerfile、pytest.ini、app/main.py、app/config.py、app/security/errors.py、app/\_\_init\_\_.py 及各模块空的 \_\_init\_\_.py、tests/conftest.py（基础部分） | Docker 镜像能构建；用 python:3.12-slim 固定版本，镜像内含 postgresql-client 16；依赖全部锁定精确版本，不含 SPEC 禁用的库；错误返回 {"code","message"} 格式；有一个冒烟测试通过；报告中给出构建和测试命令 | 已完成 |
 | M1-02 | 数据库模型与初始迁移：按 SPEC 18 节定义全部 22 张表、CHECK 约束、索引和级联删除；初始迁移启用 pgcrypto | Sonnet | high | M1-01 | 18、open\_questions Q-04、Q-07 | backend/alembic.ini、app/db/base.py、app/db/session.py、app/db/models.py、app/db/alembic/env.py、app/db/alembic/versions/0001\_initial.py、tests/test\_migrations.py | 升级后正好 22 张表，字段、类型、非空、默认值、CHECK、唯一约束、索引与 SPEC 一致；回滚后数据库为空；测试使用独立的测试库 | 已完成 |
 | M1-03 | 部署编排：docker-compose 定义 4 个服务（db 带健康检查；app 启动时执行 alembic upgrade head；worker 先用空循环）；Caddyfile（开发环境用 tls internal，/api 转发到 app:8000，上传上限 320 MB）；.env.example；worker 空循环 | Sonnet | medium | M1-02 | 4、20.2、20.3 | deploy/docker-compose.yml、deploy/Caddyfile、deploy/.env.example、backend/app/worker.py | `docker compose up -d` 后 4 个容器都正常运行（web 容器在前端完成前可先提供一个占位页）；db 不对外暴露端口；所有镜像使用固定版本标签 | 已完成 |
-| M1-04 | 加密与密码工具：AES-256-GCM 加解密（密文格式：版本 1 字节 + 随机数 12 字节 + 密文 + 标签 16 字节）；主密钥加载；argon2id 哈希；密码强度规则；生成主密钥的命令。开工时先把 M1-01 报告中的命令写进 CLAUDE.md 的“常用命令” | Opus | high | M1-03 | 17.1、17.3、Q-08 | app/security/crypto.py、app/security/passwords.py、app/cli.py（gen-key 部分）、tests/test\_crypto.py、tests/test\_passwords.py、CLAUDE.md（常用命令） | 往返加解密正确；篡改任一字节都解密失败；每次的随机数不同；密钥文件不是 32 字节时拒绝启动；密码规则符合 6.6 | 待执行 |
+| M1-04 | 加密与密码工具：AES-256-GCM 加解密（密文格式：版本 1 字节 + 随机数 12 字节 + 密文 + 标签 16 字节）；主密钥加载；argon2id 哈希；密码强度规则；生成主密钥的命令。开工时先把 M1-01 报告中的命令写进 CLAUDE.md 的“常用命令” | Opus | high | M1-03 | 17.1、17.3、Q-08 | app/security/crypto.py、app/security/passwords.py、app/cli.py（gen-key 部分）、tests/test\_crypto.py、tests/test\_passwords.py、CLAUDE.md（常用命令） | 往返加解密正确；篡改任一字节都解密失败；每次的随机数不同；密钥文件不是 32 字节时拒绝启动；密码规则符合 6.6 | 已完成 |
 | M1-05 | 认证：会话令牌（库中只存 SHA-256，空闲 8 小时过期，Cookie 为 HttpOnly、Secure、SameSite=Lax）；CSRF 校验；登录、退出、/auth/me、改密；连续 5 次失败锁定 15 分钟；停用账号时删除其会话；登录写审计日志；创建管理员的命令 | Opus | high | M1-04 | 6.1、6.6、17.1、17.7、19.2、Q-05、Q-11 | app/security/sessions.py、app/security/csrf.py、app/auth/\*、app/audit/service.py、app/cli.py（create-admin 部分）、tests/test\_auth.py | 上述行为都有测试覆盖；不带 CSRF 令牌的修改类请求返回 403 CSRF\_FAILED；日志中不出现密码和令牌 | 待执行 |
 | M1-06 | 权限依赖与安全测试：current\_user、require\_admin（返回 403）、get\_owned\_task / run / finding（非本人返回 404，管理员也一样）；A-06 测试（用只在测试中挂载的路由）；T-20 静态扫描测试 | Opus | high | M1-05 | 17.2、23（A-06、T-20）、Q-03、Q-09 | app/security/deps.py、tests/test\_permissions.py、tests/test\_no\_network\_imports.py | A-06、T-20 测试通过 | 待执行 |
 | M1-07 | 前端框架：Vue 3 + TS + Vite + Element Plus + Pinia + Router；请求封装（自动带 X-CSRF-Token，401 时跳转登录页）；登录状态存储；路由守卫（未登录、强制改密、非管理员）；主布局（顶部只有“智能审核”“审核历史”，右上角用户下拉含修改密码和退出，“设置”只对管理员显示）；登录页；改密对话框；按 Asia/Shanghai 显示时间的工具函数；前端 Dockerfile（node 构建后放进 caddy 镜像） | Sonnet | high | M1-06 | 1.6、6.1、6.6、6.7（只留位置）、21、Q-06 | frontend/ 下的工程文件、src/main.ts、App.vue、router/、stores/、api/、utils/、layouts/MainLayout.vue、components/ChangePasswordDialog.vue、views/Login.vue、frontend/Dockerfile、deploy/docker-compose.yml 中 web 服务部分 | 能登录和退出；强制改密时对话框无法关闭；普通用户看不到“设置”，直接访问设置页会被拦截；package-lock.json 锁定版本；`vue-tsc` 类型检查通过 | 待执行 |

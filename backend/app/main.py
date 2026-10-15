@@ -1,13 +1,24 @@
 """FastAPI 入口。所有路由统一挂载在 /api/v1 下（SPEC 19.1）。"""
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import APIRouter, FastAPI
 
 from app.config import get_settings, setup_logging
+from app.security.crypto import check_master_key
 from app.security.errors import register_error_handlers
 
 API_PREFIX = "/api/v1"
 
 # 各模块的路由在后续任务中 include 到这个总路由
 api_router = APIRouter(prefix=API_PREFIX)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # 主密钥缺失或不是 32 字节时拒绝启动（SPEC 17.3、open_questions Q-08）
+    check_master_key()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -19,6 +30,7 @@ def create_app() -> FastAPI:
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
+        lifespan=lifespan,
     )
     register_error_handlers(app)
     app.include_router(api_router)

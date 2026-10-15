@@ -12,7 +12,7 @@
 		reverse_proxy app:8000
 	}
 
-	# 前端静态文件在 M6 前端构建完成后接入（root * /srv/frontend + try_files + file_server）；
+	# 前端静态文件在 M1-07 前端构建完成后接入（root * /srv/frontend + try_files + file_server）；
 	# 在此之前先返回占位页。
 	handle {
 		header Content-Type "text/plain; charset=utf-8"
