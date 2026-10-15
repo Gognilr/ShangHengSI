@@ -2,16 +2,25 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 
+from app.auth.router import router as auth_router
 from app.config import get_settings, setup_logging
 from app.security.crypto import check_master_key
+from app.security.csrf import csrf_guard
 from app.security.errors import register_error_handlers
 
 API_PREFIX = "/api/v1"
 
-# 各模块的路由在后续任务中 include 到这个总路由
-api_router = APIRouter(prefix=API_PREFIX)
+
+def build_api_router() -> APIRouter:
+    """/api/v1 总路由。CSRF 校验挂在这里，对其下所有修改类接口生效（SPEC 17.1）。
+
+    各模块的路由在后续任务中 include 到这里。
+    """
+    router = APIRouter(prefix=API_PREFIX, dependencies=[Depends(csrf_guard)])
+    router.include_router(auth_router)
+    return router
 
 
 @asynccontextmanager
@@ -33,7 +42,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     register_error_handlers(app)
-    app.include_router(api_router)
+    app.include_router(build_api_router())
     return app
 
 

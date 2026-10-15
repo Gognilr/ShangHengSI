@@ -38,6 +38,12 @@
 | Q-25 | SPEC 第 18 节未写时间戳默认值、uuid 主键默认值，也未写部分 id 字段是否加外键 | 业务表 uuid 主键在数据库侧默认 gen_random_uuid()；created_at / updated_at 由应用写入（不设数据库默认值，只有 jobs.run_after 按 SPEC 默认 now()）；SPEC 没写“外键”的 uuid 字段（local_findings.file_id、decided_by、updated_by、company_requirements.created_by 等）不加外键，sessions.user_id 加外键且不级联；audit_logs.action 不加 CHECK（SPEC 只给了示例） | 18 |
 | Q-27 | SPEC 6.6 只规定密码至少 8 位、同时含字母和数字，没有上限，也没说中文算不算字母 | 上限 128 位，防止超长输入拖慢 argon2 哈希；“字母”只认英文字母 A–Z、a–z | 6.6、17.1 |
 | Q-28 | SPEC 要求主密钥文件不对时拒绝启动，但没说在哪里检查 | app 在启动（lifespan）时、worker 在进入主循环前各检查一次，不符合即退出 | 17.3 |
+| Q-29 | 登录失败的各种情况返回什么 | 用户名不存在和密码错误返回同样的 401 INVALID_CREDENTIALS，并做同样耗时的哈希；锁定中返回 401 ACCOUNT_LOCKED（会暴露该用户名存在且被锁，内网工具可接受）；已停用账号只有在密码正确时才返回 401 ACCOUNT_DISABLED。登录失败的审计不记录尝试的用户名 | 6.1、17.1、17.7 |
+| Q-30 | 改密的细节 | 原密码错误返回 422 WRONG_OLD_PASSWORD（不计入登录锁定次数）；新密码不能与原密码相同（422 PASSWORD_UNCHANGED）；改密成功后，本人的其他会话全部失效，当前会话保留；审计动作记为 password_change | 6.6、19.2 |
+| Q-31 | 会话 Cookie 的有效期、过期会话的清理 | Cookie 不设 Max-Age，浏览器关闭即失效；服务端空闲 8 小时过期，过期会话在下次被访问时删除。定期清理在 M2-01 的 worker 中补上 | 17.1 |
+| Q-32 | 首次登录须改密期间能访问哪些接口 | 只能访问 /auth/me、/auth/password、/auth/logout，其余接口返回 403 PASSWORD_CHANGE_REQUIRED | 6.1 |
+| Q-33 | SPEC 18.24 的审计动作只给了示例 | 新增 password_change（改密）、user_create（新建账号，含 cli 创建管理员） | 17.7 |
+| Q-34 | 本机 Docker Desktop 下，会话记录的 IP 是 Docker 网关地址而不是浏览器的真实地址 | 只影响本机开发环境。生产环境（Linux 上的 Docker，端口映射用 iptables 转发）能拿到真实客户端地址，M8 部署时验证 | 18.4、Q-11 |
 | Q-26 | 测试需要 PostgreSQL，M1-01 的测试镜像里没有数据库 | 数据库测试读取环境变量 TEST_DATABASE_URL，每次新建独立的临时库并在结束后删除；未设置则跳过。测试命令见 M1-02 完成报告 | 开发流程 |
 
 ## 四、后续里程碑处理（先记录）
