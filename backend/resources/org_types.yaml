@@ -1,0 +1,9 @@
+# 企业类型词典（M2-05，SPEC 9.4）
+# 按名称中的关键词判断，英文不区分大小写、按单词匹配；
+# types 按顺序检查，先命中先定；都不命中时为 default。
+# 开发方起草，待业务人员审阅（Q-22）。
+types:
+  - {name: "贸易商", keywords: ["Trading", "贸易"]}
+  - {name: "货代", keywords: ["Logistics", "Shipping", "Freight", "物流", "货运"]}
+  - {name: "银行", keywords: ["Bank", "银行"]}
+default: "类型未知"

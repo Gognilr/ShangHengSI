@@ -1,0 +1,228 @@
+# 常见合同用语（M2-05，Q-22）。每行一个，# 开头为注释。
+# 用于疑似遗漏排除（SPEC 9.5）：首字母大写的常见用语不算疑似遗漏。
+# 开发方起草，待业务人员审阅。
+Force Majeure
+Letter of Credit
+Governing Law
+Dispute Resolution
+Entire Agreement
+Confidential Information
+Intellectual Property
+Limitation of Liability
+Liquidated Damages
+Payment Terms
+Payment Method
+Terms and Conditions
+General Terms
+Special Terms
+Delivery Terms
+Delivery Date
+Delivery Time
+Delivery Place
+Place of Delivery
+Date of Delivery
+Shipping Terms
+Shipping Marks
+Shipping Documents
+Shipment Date
+Date of Shipment
+Port of Loading
+Port of Discharge
+Port of Destination
+Place of Destination
+Bill of Lading
+Commercial Invoice
+Packing List
+Certificate of Origin
+Certificate of Quality
+Certificate of Inspection
+Certificate of Analysis
+Inspection Certificate
+Quality Certificate
+Quantity Certificate
+Insurance Policy
+Insurance Certificate
+Air Waybill
+Sea Waybill
+Letter of Guarantee
+Bank Guarantee
+Performance Bond
+Advance Payment
+Down Payment
+Final Payment
+Retention Money
+Credit Period
+Credit Limit
+Net Weight
+Gross Weight
+Measurement
+Unit Price
+Total Price
+Total Amount
+Contract Value
+Contract Price
+Contract Number
+Contract Date
+Effective Date
+Expiry Date
+Validity Period
+Notice Period
+Notice of Termination
+Termination Clause
+Warranty Period
+Defect Liability
+Quality Assurance
+Quality Standard
+Technical Specification
+Technical Requirements
+Product Specification
+Acceptance Test
+Acceptance Criteria
+Inspection Standard
+Packing Requirements
+Packaging Requirements
+Marking Requirements
+Penalty Clause
+Late Delivery
+Delay in Delivery
+Time of the Essence
+Force Majeure Event
+Governing Language
+Counterparts
+Severability
+Waiver Clause
+Assignment Clause
+Subcontracting
+Notices Clause
+Set-off
+Joint Venture
+Sole Agency
+Exclusive Distributor
+Non-Exclusive
+Non-Compete
+Non-Disclosure Agreement
+Business Hours
+Working Days
+Calendar Days
+Public Holiday
+Chamber of Commerce
+Arbitration Commission
+Arbitral Tribunal
+Arbitration Clause
+Court of Competent Jurisdiction
+Applicable Law
+International Chamber of Commerce
+Incoterms
+Ex Works
+Free On Board
+Cost and Freight
+Cost Insurance and Freight
+Delivered at Place
+Delivered Duty Paid
+Delivered Duty Unpaid
+Free Carrier
+Carriage Paid To
+Carriage and Insurance Paid To
+Free Alongside Ship
+Delivered at Terminal
+Delivered Ex Ship
+Delivered Ex Quay
+Free Into Store
+Exclusive of VAT
+Inclusive of VAT
+Value Added Tax
+Customs Duty
+Customs Clearance
+Import License
+Export License
+Country of Origin
+Country of Destination
+Place of Origin
+Trade Terms
+Trade Mark
+Trade Name
+Sample Approval
+Pre-shipment Inspection
+Final Inspection
+Initial Inspection
+Routine Test
+Type Test
+Factory Acceptance Test
+Site Acceptance Test
+Commissioning Date
+Operation and Maintenance
+Spare Parts
+Training Program
+Technical Support
+After Sales Service
+Customer Service
+Service Level
+Service Fee
+Commission Fee
+Handling Fee
+Storage Fee
+Demurrage Charges
+Detention Charges
+Freight Charges
+Freight Forwarding
+Ocean Freight
+Air Freight
+Land Freight
+Express Delivery
+Dangerous Goods
+Hazardous Materials
+Heavy Lift
+Other Terms
+Ministry of Commerce
+Quality Control
+Export Control
+Sanctions Clause
+Anti-Corruption
+Anti-Bribery
+Data Protection
+Personal Data
+Privacy Policy
+Force Majeure Clause
+Hardship Clause
+Entire Contract
+Supplementary Agreement
+Annex A
+Annex B
+Schedule A
+Schedule B
+Appendix A
+Appendix B
+Exhibit A
+Exhibit B
+Party A
+Party B
+Buyer
+Seller
+Consignee
+Shipper
+Consignor
+Applicant
+Beneficiary
+Issuing Bank
+Advising Bank
+Confirming Bank
+Negotiating Bank
+Paying Bank
+Notify Party
+Freight Collect
+Freight Prepaid
+Letter of Intent
+Memorandum of Understanding
+Purchase Order
+Sales Contract
+Supply Agreement
+Framework Agreement
+Distribution Agreement
+Agency Agreement
+Service Agreement
+Maintenance Agreement
+Non-Binding
+Binding Offer
+Validity of Offer
+Offer Validity
+Firm Offer

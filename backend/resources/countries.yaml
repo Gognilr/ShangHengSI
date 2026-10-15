@@ -1,0 +1,193 @@
+# 国家与地区词典（M2-05，SPEC 9.4）
+# 开发方起草，待业务人员审阅（Q-22）。
+#
+# 每条：name 为国家或地区的中文名（脱敏后的国家以此为准）；
+# aliases 为别名（中英文均可）；places 为主要港口和城市。
+# 所有名称与别名在全表中都不能重复（不区分大小写），测试会检查。
+# 有歧义的英文名（如 Georgia、Congo、Valencia）未收录，避免误判。
+countries:
+  # ---------- 亚洲 ----------
+  - {name: "中国", aliases: ["中华人民共和国", "China", "PRC", "People's Republic of China"], places: ["上海", "Shanghai", "宁波", "Ningbo", "深圳", "Shenzhen", "青岛", "Qingdao", "天津", "Tianjin", "广州", "Guangzhou", "大连", "Dalian", "厦门", "Xiamen"]}
+  - {name: "中国香港", aliases: ["香港", "Hong Kong", "HK"], places: ["九龙", "Kowloon"]}
+  - {name: "中国澳门", aliases: ["澳门", "Macau", "Macao"], places: []}
+  - {name: "中国台湾", aliases: ["台湾", "Taiwan"], places: ["基隆", "Keelung", "高雄", "Kaohsiung"]}
+  - {name: "日本", aliases: ["Japan"], places: ["东京", "Tokyo", "大阪", "Osaka", "横滨", "Yokohama", "神户", "Kobe", "名古屋", "Nagoya"]}
+  - {name: "韩国", aliases: ["大韩民国", "South Korea", "Republic of Korea", "Korea"], places: ["釜山", "Busan", "Pusan", "仁川", "Incheon"]}
+  - {name: "朝鲜", aliases: ["朝鲜民主主义人民共和国", "North Korea", "DPRK"], places: []}
+  - {name: "蒙古", aliases: ["Mongolia"], places: []}
+  - {name: "越南", aliases: ["Vietnam", "Viet Nam"], places: ["胡志明市", "Ho Chi Minh City", "海防", "Haiphong"]}
+  - {name: "泰国", aliases: ["Thailand"], places: ["曼谷", "Bangkok", "廉差邦", "Laem Chabang"]}
+  - {name: "缅甸", aliases: ["Myanmar", "Burma"], places: ["仰光", "Yangon", "Rangoon"]}
+  - {name: "老挝", aliases: ["Laos"], places: ["万象", "Vientiane"]}
+  - {name: "柬埔寨", aliases: ["Cambodia"], places: ["金边", "Phnom Penh", "西哈努克", "Sihanoukville"]}
+  - {name: "马来西亚", aliases: ["Malaysia"], places: ["吉隆坡", "Kuala Lumpur", "巴生", "Port Klang", "Klang", "丹戎帕拉帕斯", "Tanjung Pelepas"]}
+  - {name: "新加坡", aliases: ["Singapore"], places: ["裕廊", "Jurong"]}
+  - {name: "印度尼西亚", aliases: ["印尼", "Indonesia"], places: ["雅加达", "Jakarta", "泗水", "Surabaya", "三宝垄", "Semarang"]}
+  - {name: "菲律宾", aliases: ["Philippines"], places: ["马尼拉", "Manila", "宿务", "Cebu"]}
+  - {name: "文莱", aliases: ["Brunei"], places: ["斯里巴加湾", "Bandar Seri Begawan"]}
+  - {name: "东帝汶", aliases: ["East Timor", "Timor-Leste"], places: []}
+  - {name: "印度", aliases: ["India"], places: ["孟买", "Mumbai", "Bombay", "钦奈", "Chennai", "Madras", "加尔各答", "Kolkata", "Calcutta", "新德里", "New Delhi", "Nhava Sheva"]}
+  - {name: "巴基斯坦", aliases: ["Pakistan"], places: ["卡拉奇", "Karachi"]}
+  - {name: "孟加拉国", aliases: ["Bangladesh"], places: ["吉大港", "Chittagong", "Chattogram", "达卡", "Dhaka"]}
+  - {name: "斯里兰卡", aliases: ["Sri Lanka"], places: ["科伦坡", "Colombo"]}
+  - {name: "尼泊尔", aliases: ["Nepal"], places: ["加德满都", "Kathmandu"]}
+  - {name: "不丹", aliases: ["Bhutan"], places: []}
+  - {name: "马尔代夫", aliases: ["Maldives"], places: []}
+  - {name: "阿富汗", aliases: ["Afghanistan"], places: []}
+  - {name: "伊朗", aliases: ["Iran", "Islamic Republic of Iran"], places: ["阿巴斯港", "Bandar Abbas", "德黑兰", "Tehran"]}
+  - {name: "伊拉克", aliases: ["Iraq"], places: ["巴士拉", "Basra", "乌姆盖斯尔", "Umm Qasr"]}
+  - {name: "科威特", aliases: ["Kuwait"], places: ["舒韦赫", "Shuwaikh"]}
+  - {name: "沙特阿拉伯", aliases: ["沙特", "Saudi Arabia", "KSA"], places: ["利雅得", "Riyadh", "吉达", "Jeddah", "Jiddah", "达曼", "Dammam"]}
+  - {name: "阿联酋", aliases: ["阿拉伯联合酋长国", "UAE", "United Arab Emirates"], places: ["迪拜", "Dubai", "阿布扎比", "Abu Dhabi", "杰贝阿里", "Jebel Ali", "沙迦", "Sharjah"]}
+  - {name: "卡塔尔", aliases: ["Qatar"], places: ["多哈", "Doha", "哈马德港", "Hamad Port"]}
+  - {name: "阿曼", aliases: ["Oman"], places: ["苏哈尔", "Sohar", "萨拉拉", "Salalah", "马斯喀特", "Muscat"]}
+  - {name: "巴林", aliases: ["Bahrain"], places: []}
+  - {name: "也门", aliases: ["Yemen"], places: ["亚丁", "Aden"]}
+  - {name: "约旦", aliases: ["Jordan"], places: ["亚喀巴", "Aqaba"]}
+  - {name: "以色列", aliases: ["Israel"], places: ["海法", "Haifa", "阿什杜德", "Ashdod", "特拉维夫", "Tel Aviv"]}
+  - {name: "黎巴嫩", aliases: ["Lebanon"], places: ["贝鲁特", "Beirut"]}
+  - {name: "叙利亚", aliases: ["Syria"], places: []}
+  - {name: "土耳其", aliases: ["Turkey", "Türkiye", "Turkiye"], places: ["伊斯坦布尔", "Istanbul", "梅尔辛", "Mersin", "伊兹密尔", "Izmir", "伊斯肯德伦", "Iskenderun"]}
+  - {name: "亚美尼亚", aliases: ["Armenia"], places: []}
+  - {name: "阿塞拜疆", aliases: ["Azerbaijan"], places: ["巴库", "Baku"]}
+  - {name: "哈萨克斯坦", aliases: ["Kazakhstan"], places: ["阿拉木图", "Almaty"]}
+  - {name: "乌兹别克斯坦", aliases: ["Uzbekistan"], places: ["塔什干", "Tashkent"]}
+  - {name: "土库曼斯坦", aliases: ["Turkmenistan"], places: []}
+  - {name: "吉尔吉斯斯坦", aliases: ["Kyrgyzstan"], places: []}
+  - {name: "塔吉克斯坦", aliases: ["Tajikistan"], places: []}
+  # ---------- 欧洲 ----------
+  - {name: "俄罗斯", aliases: ["俄国", "Russia", "Russian Federation"], places: ["莫斯科", "Moscow", "圣彼得堡", "St. Petersburg", "Saint Petersburg", "符拉迪沃斯托克", "Vladivostok", "新罗西斯克", "Novorossiysk"]}
+  - {name: "白俄罗斯", aliases: ["Belarus"], places: []}
+  - {name: "乌克兰", aliases: ["Ukraine"], places: ["敖德萨", "Odesa", "Odessa", "尼古拉耶夫", "Mykolaiv"]}
+  - {name: "摩尔多瓦", aliases: ["Moldova"], places: []}
+  - {name: "英国", aliases: ["UK", "United Kingdom", "Great Britain", "England"], places: ["伦敦", "London", "费利克斯托", "Felixstowe", "南安普顿", "Southampton"]}
+  - {name: "爱尔兰", aliases: ["Ireland"], places: ["都柏林", "Dublin", "科克", "Cork"]}
+  - {name: "法国", aliases: ["France"], places: ["巴黎", "Paris", "马赛", "Marseille", "Marseilles", "勒阿弗尔", "Le Havre"]}
+  - {name: "德国", aliases: ["Germany", "Deutschland"], places: ["汉堡", "Hamburg", "不来梅", "Bremen", "不莱梅港", "Bremerhaven", "法兰克福", "Frankfurt"]}
+  - {name: "荷兰", aliases: ["Netherlands", "Holland"], places: ["鹿特丹", "Rotterdam", "阿姆斯特丹", "Amsterdam"]}
+  - {name: "比利时", aliases: ["Belgium"], places: ["安特卫普", "Antwerp", "Antwerpen"]}
+  - {name: "卢森堡", aliases: ["Luxembourg"], places: []}
+  - {name: "西班牙", aliases: ["Spain"], places: ["马德里", "Madrid", "巴塞罗那", "Barcelona", "毕尔巴鄂", "Bilbao"]}
+  - {name: "葡萄牙", aliases: ["Portugal"], places: ["里斯本", "Lisbon", "锡尼什", "Sines"]}
+  - {name: "意大利", aliases: ["Italy"], places: ["罗马", "Rome", "热那亚", "Genoa", "Genova", "那不勒斯", "Naples", "Napoli", "威尼斯", "Venice", "Venezia", "拉斯佩齐亚", "La Spezia"]}
+  - {name: "瑞士", aliases: ["Switzerland"], places: ["苏黎世", "Zurich", "日内瓦", "Geneva"]}
+  - {name: "奥地利", aliases: ["Austria"], places: ["维也纳", "Vienna"]}
+  - {name: "波兰", aliases: ["Poland"], places: ["格但斯克", "Gdansk", "格丁尼亚", "Gdynia"]}
+  - {name: "捷克", aliases: ["捷克共和国", "Czech Republic", "Czechia"], places: ["布拉格", "Prague"]}
+  - {name: "斯洛伐克", aliases: ["Slovakia"], places: []}
+  - {name: "匈牙利", aliases: ["Hungary"], places: ["布达佩斯", "Budapest"]}
+  - {name: "罗马尼亚", aliases: ["Romania"], places: ["康斯坦察", "Constanta"]}
+  - {name: "保加利亚", aliases: ["Bulgaria"], places: ["瓦尔纳", "Varna"]}
+  - {name: "希腊", aliases: ["Greece"], places: ["比雷埃夫斯", "Piraeus", "雅典", "Athens"]}
+  - {name: "塞浦路斯", aliases: ["Cyprus"], places: ["利马索尔", "Limassol"]}
+  - {name: "马耳他", aliases: ["Malta"], places: []}
+  - {name: "斯洛文尼亚", aliases: ["Slovenia"], places: ["科佩尔", "Koper"]}
+  - {name: "克罗地亚", aliases: ["Croatia"], places: ["里耶卡", "Rijeka"]}
+  - {name: "塞尔维亚", aliases: ["Serbia"], places: ["贝尔格莱德", "Belgrade"]}
+  - {name: "黑山", aliases: ["Montenegro"], places: []}
+  - {name: "波黑", aliases: ["Bosnia and Herzegovina", "Bosnia"], places: []}
+  - {name: "北马其顿", aliases: ["North Macedonia", "Macedonia"], places: []}
+  - {name: "阿尔巴尼亚", aliases: ["Albania"], places: ["地拉那", "Tirana", "都拉斯", "Durres"]}
+  - {name: "冰岛", aliases: ["Iceland"], places: []}
+  - {name: "挪威", aliases: ["Norway"], places: ["奥斯陆", "Oslo"]}
+  - {name: "瑞典", aliases: ["Sweden"], places: ["哥德堡", "Gothenburg", "Goteborg", "Göteborg"]}
+  - {name: "丹麦", aliases: ["Denmark"], places: ["哥本哈根", "Copenhagen", "奥胡斯", "Aarhus"]}
+  - {name: "芬兰", aliases: ["Finland"], places: ["赫尔辛基", "Helsinki"]}
+  - {name: "爱沙尼亚", aliases: ["Estonia"], places: []}
+  - {name: "拉脱维亚", aliases: ["Latvia"], places: ["里加", "Riga"]}
+  - {name: "立陶宛", aliases: ["Lithuania"], places: ["克莱佩达", "Klaipeda"]}
+  - {name: "列支敦士登", aliases: ["Liechtenstein"], places: []}
+  - {name: "摩纳哥", aliases: ["Monaco"], places: []}
+  - {name: "安道尔", aliases: ["Andorra"], places: []}
+  # ---------- 非洲 ----------
+  - {name: "埃及", aliases: ["Egypt"], places: ["开罗", "Cairo", "亚历山大港", "Alexandria", "塞得港", "Port Said"]}
+  - {name: "利比亚", aliases: ["Libya"], places: []}
+  - {name: "突尼斯", aliases: ["Tunisia"], places: []}
+  - {name: "阿尔及利亚", aliases: ["Algeria"], places: ["阿尔及尔", "Algiers"]}
+  - {name: "摩洛哥", aliases: ["Morocco"], places: ["卡萨布兰卡", "Casablanca", "丹吉尔", "Tangier", "Tanger Med"]}
+  - {name: "苏丹", aliases: ["Sudan"], places: []}
+  - {name: "南苏丹", aliases: ["South Sudan"], places: []}
+  - {name: "埃塞俄比亚", aliases: ["Ethiopia"], places: ["亚的斯亚贝巴", "Addis Ababa"]}
+  - {name: "吉布提", aliases: ["Djibouti"], places: ["吉布提港"]}
+  - {name: "厄立特里亚", aliases: ["Eritrea"], places: []}
+  - {name: "索马里", aliases: ["Somalia"], places: ["摩加迪沙", "Mogadishu"]}
+  - {name: "肯尼亚", aliases: ["Kenya"], places: ["内罗毕", "Nairobi", "蒙巴萨", "Mombasa"]}
+  - {name: "坦桑尼亚", aliases: ["Tanzania"], places: ["达累斯萨拉姆", "Dar es Salaam"]}
+  - {name: "乌干达", aliases: ["Uganda"], places: ["坎帕拉", "Kampala"]}
+  - {name: "卢旺达", aliases: ["Rwanda"], places: []}
+  - {name: "布隆迪", aliases: ["Burundi"], places: []}
+  - {name: "刚果（金）", aliases: ["刚果民主共和国", "Democratic Republic of the Congo", "DR Congo", "DRC"], places: ["金沙萨", "Kinshasa"]}
+  - {name: "刚果（布）", aliases: ["刚果共和国", "Republic of the Congo", "Congo-Brazzaville"], places: ["布拉柴维尔", "Brazzaville", "黑角", "Pointe-Noire"]}
+  - {name: "加蓬", aliases: ["Gabon"], places: ["利伯维尔", "Libreville"]}
+  - {name: "喀麦隆", aliases: ["Cameroon"], places: ["杜阿拉", "Douala"]}
+  - {name: "尼日利亚", aliases: ["Nigeria"], places: ["拉各斯", "Lagos", "阿帕帕", "Apapa", "哈科特港", "Port Harcourt"]}
+  - {name: "尼日尔", aliases: ["Niger"], places: []}
+  - {name: "乍得", aliases: ["Chad"], places: []}
+  - {name: "中非", aliases: ["中非共和国", "Central African Republic"], places: []}
+  - {name: "赤道几内亚", aliases: ["Equatorial Guinea"], places: []}
+  - {name: "几内亚", aliases: ["Guinea"], places: ["科纳克里", "Conakry"]}
+  - {name: "几内亚比绍", aliases: ["Guinea-Bissau"], places: []}
+  - {name: "塞内加尔", aliases: ["Senegal"], places: ["达喀尔", "Dakar"]}
+  - {name: "冈比亚", aliases: ["Gambia", "The Gambia"], places: []}
+  - {name: "马里", aliases: ["Mali"], places: []}
+  - {name: "布基纳法索", aliases: ["Burkina Faso"], places: []}
+  - {name: "毛里塔尼亚", aliases: ["Mauritania"], places: ["努瓦克肖特", "Nouakchott"]}
+  - {name: "科特迪瓦", aliases: ["Côte d'Ivoire", "Cote d'Ivoire", "Ivory Coast"], places: ["阿比让", "Abidjan"]}
+  - {name: "利比里亚", aliases: ["Liberia"], places: ["蒙罗维亚", "Monrovia"]}
+  - {name: "塞拉利昂", aliases: ["Sierra Leone"], places: ["弗里敦", "Freetown"]}
+  - {name: "加纳", aliases: ["Ghana"], places: ["特马", "Tema", "阿克拉", "Accra"]}
+  - {name: "多哥", aliases: ["Togo"], places: ["洛美", "Lome"]}
+  - {name: "贝宁", aliases: ["Benin"], places: ["科托努", "Cotonou"]}
+  - {name: "佛得角", aliases: ["Cape Verde"], places: []}
+  - {name: "安哥拉", aliases: ["Angola"], places: ["罗安达", "Luanda"]}
+  - {name: "纳米比亚", aliases: ["Namibia"], places: ["瓦尔维斯湾", "Walvis Bay"]}
+  - {name: "博茨瓦纳", aliases: ["Botswana"], places: []}
+  - {name: "赞比亚", aliases: ["Zambia"], places: []}
+  - {name: "津巴布韦", aliases: ["Zimbabwe"], places: []}
+  - {name: "马拉维", aliases: ["Malawi"], places: []}
+  - {name: "莫桑比克", aliases: ["Mozambique"], places: ["马普托", "Maputo", "贝拉", "Beira"]}
+  - {name: "南非", aliases: ["South Africa", "RSA"], places: ["开普敦", "Cape Town", "德班", "Durban", "约翰内斯堡", "Johannesburg", "伊丽莎白港", "Port Elizabeth"]}
+  - {name: "莱索托", aliases: ["Lesotho"], places: []}
+  - {name: "斯威士兰", aliases: ["Eswatini", "Swaziland"], places: []}
+  - {name: "马达加斯加", aliases: ["Madagascar"], places: ["塔马塔夫", "Toamasina"]}
+  - {name: "毛里求斯", aliases: ["Mauritius"], places: []}
+  - {name: "塞舌尔", aliases: ["Seychelles"], places: []}
+  - {name: "科摩罗", aliases: ["Comoros"], places: []}
+  # ---------- 美洲 ----------
+  - {name: "美国", aliases: ["USA", "U.S.A.", "United States", "United States of America"], places: ["纽约", "New York", "洛杉矶", "Los Angeles", "长滩", "Long Beach", "休斯顿", "Houston", "奥克兰港", "Oakland", "西雅图", "Seattle", "迈阿密", "Miami", "萨凡纳", "Savannah", "芝加哥", "Chicago"]}
+  - {name: "加拿大", aliases: ["Canada"], places: ["温哥华", "Vancouver", "蒙特利尔", "Montreal", "多伦多", "Toronto", "哈利法克斯", "Halifax"]}
+  - {name: "墨西哥", aliases: ["Mexico"], places: ["墨西哥城", "Mexico City", "曼萨尼约", "Manzanillo", "韦拉克鲁斯", "Veracruz"]}
+  - {name: "危地马拉", aliases: ["Guatemala"], places: []}
+  - {name: "伯利兹", aliases: ["Belize"], places: []}
+  - {name: "萨尔瓦多", aliases: ["El Salvador"], places: []}
+  - {name: "洪都拉斯", aliases: ["Honduras"], places: []}
+  - {name: "尼加拉瓜", aliases: ["Nicaragua"], places: []}
+  - {name: "哥斯达黎加", aliases: ["Costa Rica"], places: ["利蒙", "Limon"]}
+  - {name: "巴拿马", aliases: ["Panama"], places: ["巴拿马城", "Panama City", "巴尔博亚", "Balboa"]}
+  - {name: "古巴", aliases: ["Cuba"], places: []}
+  - {name: "海地", aliases: ["Haiti"], places: []}
+  - {name: "多米尼加共和国", aliases: ["Dominican Republic"], places: []}
+  - {name: "牙买加", aliases: ["Jamaica"], places: ["金斯敦", "Kingston"]}
+  - {name: "巴哈马", aliases: ["Bahamas"], places: []}
+  - {name: "特立尼达和多巴哥", aliases: ["Trinidad and Tobago"], places: []}
+  - {name: "巴巴多斯", aliases: ["Barbados"], places: []}
+  - {name: "圣卢西亚", aliases: ["Saint Lucia", "St. Lucia"], places: []}
+  - {name: "哥伦比亚", aliases: ["Colombia"], places: ["卡塔赫纳", "Cartagena"]}
+  - {name: "委内瑞拉", aliases: ["Venezuela"], places: ["拉瓜伊拉", "La Guaira"]}
+  - {name: "厄瓜多尔", aliases: ["Ecuador"], places: ["瓜亚基尔", "Guayaquil"]}
+  - {name: "秘鲁", aliases: ["Peru"], places: ["卡亚俄", "Callao"]}
+  - {name: "玻利维亚", aliases: ["Bolivia"], places: []}
+  - {name: "智利", aliases: ["Chile"], places: ["瓦尔帕莱索", "Valparaiso"]}
+  - {name: "阿根廷", aliases: ["Argentina"], places: ["布宜诺斯艾利斯", "Buenos Aires", "罗萨里奥", "Rosario"]}
+  - {name: "乌拉圭", aliases: ["Uruguay"], places: ["蒙得维的亚", "Montevideo"]}
+  - {name: "巴拉圭", aliases: ["Paraguay"], places: []}
+  - {name: "巴西", aliases: ["Brazil"], places: ["桑托斯", "Santos", "里约热内卢", "Rio de Janeiro", "巴拉那瓜", "Paranagua"]}
+  # ---------- 大洋洲 ----------
+  - {name: "澳大利亚", aliases: ["Australia"], places: ["悉尼", "Sydney", "墨尔本", "Melbourne", "布里斯班", "Brisbane", "弗里曼特尔", "Fremantle"]}
+  - {name: "新西兰", aliases: ["New Zealand"], places: ["奥克兰", "Auckland", "惠灵顿", "Wellington"]}
+  - {name: "巴布亚新几内亚", aliases: ["Papua New Guinea"], places: ["莫尔兹比港", "Port Moresby"]}
+  - {name: "斐济", aliases: ["Fiji"], places: []}
+  - {name: "萨摩亚", aliases: ["Samoa"], places: []}
+  - {name: "汤加", aliases: ["Tonga"], places: []}
+  - {name: "瓦努阿图", aliases: ["Vanuatu"], places: []}
+  - {name: "所罗门群岛", aliases: ["Solomon Islands"], places: []}
