@@ -4,6 +4,7 @@
 每个测试会话新建一个独立的临时库并迁移到最新版本，结束后删除；每个测试开始前清空全部表。
 未设置 TEST_DATABASE_URL 时，这些测试自动跳过。
 """
+import functools
 import os
 import uuid
 from pathlib import Path
@@ -105,12 +106,19 @@ def api(new_client):
     return new_client()
 
 
+@functools.lru_cache
+def _cached_hash(password: str) -> str:
+    """argon2 哈希很慢；测试中同一密码的哈希复用一次计算结果。"""
+    from app.security.passwords import hash_password
+
+    return hash_password(password)
+
+
 @pytest.fixture
 def make_user(db_sessionmaker):
     """创建用户：make_user("alice", role="admin", must_change_password=True, status="disabled")。"""
     from app.db.base import utcnow
     from app.db.models import User
-    from app.security.passwords import hash_password
 
     def _make(
         username: str,
@@ -124,7 +132,7 @@ def make_user(db_sessionmaker):
         user = User(
             username=username,
             display_name=username,
-            password_hash=hash_password(password),
+            password_hash=_cached_hash(password),
             role=role,
             status=status,
             must_change_password=must_change_password,

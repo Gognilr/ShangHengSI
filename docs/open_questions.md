@@ -44,6 +44,8 @@
 | Q-32 | 首次登录须改密期间能访问哪些接口 | 只能访问 /auth/me、/auth/password、/auth/logout，其余接口返回 403 PASSWORD_CHANGE_REQUIRED | 6.1 |
 | Q-33 | SPEC 18.24 的审计动作只给了示例 | 新增 password_change（改密）、user_create（新建账号，含 cli 创建管理员） | 17.7 |
 | Q-34 | 本机 Docker Desktop 下，会话记录的 IP 是 Docker 网关地址而不是浏览器的真实地址 | 只影响本机开发环境。生产环境（Linux 上的 Docker，端口映射用 iptables 转发）能拿到真实客户端地址，M8 部署时验证 | 18.4、Q-11 |
+| Q-35 | 路径中的 id 不是合法 UUID 时返回什么 | 与“不存在”“不是本人的”一样返回 404，不返回 422，避免暴露任何信息 | 17.2、19.1 |
+| Q-36 | T-20 只列了 httpx、requests、urllib.request | 扫描更严：socket、ssl、http.client、urllib3、aiohttp、smtplib、ftplib、websockets 等能直接联网的库都禁止，并检查 importlib 动态导入 | 5、T-20 |
 | Q-26 | 测试需要 PostgreSQL，M1-01 的测试镜像里没有数据库 | 数据库测试读取环境变量 TEST_DATABASE_URL，每次新建独立的临时库并在结束后删除；未设置则跳过。测试命令见 M1-02 完成报告 | 开发流程 |
 
 ## 四、后续里程碑处理（先记录）
