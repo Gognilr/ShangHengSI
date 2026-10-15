@@ -6,8 +6,9 @@
 
 ## 当前进度
 
-- M1 已验收（2026-10-15），等待用户确认后进入 M2
-- 下一个任务：**M2-00 里程碑细化**（Opus 5.5，推理强度 high），需用户确认 M1 验收结果后开始
+- M1 已验收并经用户确认（2026-10-15）
+- M2 已细化（M2-00），设计见 docs/design/M2.md；**用户确认后**才能开始执行 M2-01
+- 下一个任务：**M2-01**（Sonnet 5.5，推理强度 high）
 - 上次 Opus 评审到的提交：8ece34b（M1-07、M1-08 已评审，通过；修正了启动时登录探测触发全局 401 跳转的问题）
 
 ## 一、模型分工与推理强度
@@ -35,7 +36,7 @@
 2. **开工前必读**：CLAUDE.md、本任务所在行、“SPEC”列列出的章节、docs/open\_questions.md。不需要通读整份 SPEC。
 3. **在 main 分支上直接开发**，按小步骤提交。提交说明以任务编号开头，例如“M1-01 后端基础：锁定依赖版本”。
 4. **文件范围**：只创建或修改“文件范围”列中的文件，以及它们对应的测试文件。需要改动范围外的文件（尤其是数据库模型、迁移、公共接口）时，停下来报告，不要自行修改。
-5. **不得修改** docs/SPEC.md 和 CLAUDE.md。
+5. **不得修改** docs/SPEC.md、CLAUDE.md 和 docs/design/ 下的设计文档（设计文档由 Opus 在 Mx-00 中制定，是任务之间的接口契约）。
 6. **遇到 SPEC 没写明的细节**：按“最简单、最安全”的做法实现，在代码注释里写明，并在 docs/open\_questions.md 第三节追加一条，状态写“待确认”。
 7. **完成标准**：
    - “完成标准”列的要求全部满足；
@@ -73,28 +74,30 @@
 
 ### M2 最小闭环：只支持 DOCX 的完整链路（验收：A-04、T-01、T-02、T-07、T-09、T-10、T-11）
 
-| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC | 状态 |
-|-|-|-|-|-|-|-|
-| M2-00 | 里程碑细化：确定各任务的文件范围、接口约定（包括 doctype 和词典的函数接口）、模拟模型服务的约定，经用户确认后把任务改为“待执行” | Opus | high | M1-09 | 22 | 待细化 |
-| M2-01 | jobs 队列与 worker 框架：用 FOR UPDATE SKIP LOCKED 取任务、心跳、超时重新入队、最多尝试 3 次、并发数配置、OCR 单并发锁的位置 | Sonnet | high | M2-00 | 7.5、18.19、21 | 待细化 |
-| M2-02 | 任务接口：新建任务（multipart 上传，按扩展名和文件头双重校验，拒绝宏文件，防压缩炸弹，原件加密存储）、任务详情、任务列表、删除任务 | Sonnet | high | M2-01 | 6.2 第一步、7.1、17.6、17.8、19.3 | 待细化 |
-| M2-03 | DOCX 虚构样本生成脚本：带修订痕迹、“第%1条”自动编号、签约方、简称、电话、邮箱、账号、SWIFT、地址、金额，以及提示词注入文字 | Sonnet | medium | M2-02 | 23（T-01、T-02、T-06、T-09） | 待细化 |
-| M2-04 | 文件类型识别 doctype.py | Haiku | low | M2-03 | 8.6 | 待细化 |
-| M2-05 | 资源词典起草：countries.yaml（国家中英文名称，主要港口和城市到国家的映射）、org\_types.yaml、common\_terms.txt | Haiku | medium | M2-04 | 9.4、9.5、Q-22 | 待细化 |
-| M2-06 | 内置审核要求和提示词：按 SPEC 原文转写 builtin\_requirements.yaml 和 prompts/system.md；实现按文件类型、立场、来源筛选要求的加载器 | Haiku | low | M2-05 | 11.2、12 | 待细化 |
-| M2-07 | 统一文档模型与 DOCX 解析：修订（计入 w:ins，不计入 w:del）、自动编号、clause\_no、合并单元格、页眉页脚、批注、文本框、位置编号 | Opus | xhigh | M2-06 | 8.1–8.3、Q-15 | 待细化 |
-| M2-08 | 脱敏核心：识别顺序 9.3 第 1–5 步、代号分配、对照表加密、替换记录、外发文本构建（含【主体说明】）、转义 document 标签 | Opus | xhigh | M2-07 | 9.1–9.3、9.7、9.9、17.5 | 待细化 |
-| M2-09 | 出口复检 recheck.py 与还原 restore.py | Opus | high | M2-08 | 9.8、9.9、Q-19 | 待细化 |
-| M2-10 | 模型网关与用量统计：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls；失败重试；测试连接；测试用的模拟模型服务 | Opus | high | M2-09 | 5、7.5、11.1、11.7、17.4、Q-12 | 待细化 |
-| M2-11 | 审核核心：拼接提示词、定义输出结构、结果校验（11.4 全部 9 条） | Opus | xhigh | M2-10 | 11.2–11.4 | 待细化 |
-| M2-12 | 审核任务执行与轮次接口：review 任务写入结果；确认发送、轮次列表、轮次详情、修改问题处理状态 | Sonnet | high | M2-11 | 7.1–7.3、19.5 | 待细化 |
-| M2-13 | 脱敏确认接口：签约方查询与修改、脱敏摘要、外发文本预览、修改文件类型；外发策略为“不外发”的分支（直接 completed\_local） | Sonnet | medium | M2-12 | 6.2 第二步、7.1、19.3、19.4 | 待细化 |
-| M2-14 | 前端：新建审核第一步（上传与设置）和第三步（审核中，每 3 秒轮询） | Sonnet | medium | M2-13 | 6.2 | 待细化 |
-| M2-15 | 前端：第二步基础版（文件信息、签约方确认、脱敏摘要、查看将发送的文本、确认发送） | Sonnet | medium | M2-14 | 6.2 第二步 | 待细化 |
-| M2-16 | 前端：结果页基础版（问题清单 FindingCard、审核要求逐条结论标签页）和审核历史页 | Sonnet | medium | M2-15 | 6.3、6.4 | 待细化 |
-| M2-17 | 脱敏回归测试集：虚构样本、标注文件和自动化测试 | Sonnet | high | M2-16 | 23.3 | 待细化 |
-| M2-18 | 审核效果评测脚本 tools/eval\_review.py | Sonnet | medium | M2-17 | 23.3 | 待细化 |
-| M2-19 | M2 联调与验收；用虚构样本调用真实 DeepSeek 试跑（需要用户提供测试密钥），对比思考模式和非思考模式的效果 | Opus | high | M2-18 | 22、23、Q-12 | 待细化 |
+**开工前必读 [docs/design/M2.md](design/M2.md)**：模块划分、函数签名、接口形状都以它为准。下表“文件范围”中的路径相对于 `backend/`（前端任务相对于 `frontend/`），“设计”列指向 M2.md 的章节。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| M2-00 | 里程碑细化：模块划分、接口约定、模拟模型服务约定 | Opus | high | M1-09 | 22 | docs/design/M2.md、docs/TASKS.md | 用户确认 | 已完成 |
+| M2-01 | jobs 队列与 worker 框架：取任务、心跳、超时重新入队、最多尝试 3 次、并发线程、处理函数注册、OCR 单并发锁、定时工作（含清理过期会话） | Sonnet | high | M2-00 | 7.5、18.19、21；设计二 | app/db/jobs.py、app/worker.py、tests/test\_jobs.py、tests/test\_worker.py | 两个并发取任务不会取到同一条（用两个连接验证 SKIP LOCKED）；心跳超时的任务按次数重新入队或置 failed；处理函数异常和未注册类型都置 failed 且 last\_error 不含消息内容；过期会话被清理；worker 能响应停止信号 | 待执行 |
+| M2-02 | 上传与任务接口：上传检查、原件加密存储、新建任务并入队 parse、任务列表、任务详情、删除任务 | Sonnet | high | M2-01 | 6.2 第一步、6.4、7.1、17.6、17.8、19.3；设计三 | app/tasks/router.py、service.py、schemas.py、storage.py、app/main.py（只加 include\_router 一行）、tests/test\_tasks\_api.py、tests/test\_upload\_checks.py | 设计三的每个错误码都有测试；落盘文件是密文且不含明文片段；删除任务后原件文件、节点、轮次全部消失而 llm\_calls 保留；列表只返回本人任务，搜索、日期筛选、分页正确；对真实接口重跑 A-06（他人和管理员 404） | 待执行 |
+| M2-03 | DOCX 虚构样本生成脚本与样本：修订痕迹、“第%1条”和“%1.%2”自动编号（含 chineseCounting）、签约方与简称、电话、邮箱、账号、SWIFT、地址、金额与大写金额、页眉页脚、批注、文本框、合并单元格、提示词注入文字（T-09） | Sonnet | medium | M2-02 | 8.3、9.3、23；设计十一 | tests/fixtures/docx/make\_docx\_fixtures.py、tests/fixtures/docx/\*.docx、tests/fixtures/docx/manifest.yaml | 脚本可重复生成；每个样本的预期事实写入 manifest.yaml；内容全部虚构；用 Word 兼容的 XML（w:ins、w:del、numbering.xml） | 待执行 |
+| M2-04 | 文件类型识别 | Haiku | low | M2-03 | 8.6；设计五 | app/parsing/doctype.py、tests/test\_doctype.py | 按 SPEC 8.6 的顺序和关键词匹配，只看文件名和正文前 1000 字；英文不区分大小写；每种类型及“都不命中→letter”都有测试 | 待执行 |
+| M2-05 | 资源词典起草与加载：countries.yaml（约 200 个国家和地区，中英文名称及别名，主要港口和城市）、org\_types.yaml、common\_terms.txt（常见合同用语，至少 150 条） | Haiku | medium | M2-04 | 9.4、9.5、Q-22；设计五 | resources/countries.yaml、resources/org\_types.yaml、resources/common\_terms.txt、app/redaction/dictionaries.py、tests/test\_dictionaries.py | YAML 能加载且无重复别名；“Jebel Ali”“迪拜”→阿联酋、“Mersin”→土耳其、“Hamburg”→德国 等有测试；英文按单词边界匹配（“Iran”不命中“Irani”）；企业类型按 9.4 判断 | 待执行 |
+| M2-06 | 内置审核要求与系统提示词：按 SPEC 原文转写 builtin\_requirements.yaml（第 12 节全部条目）和 prompts/system.md（11.2 不联网版）；要求加载与筛选 | Haiku | low | M2-05 | 11.2、12；设计五 | resources/builtin\_requirements.yaml、resources/prompts/system.md、app/review/requirements.py、tests/test\_requirements.py | 条目数与 SPEC 一致（G 12 条、C 14 条、Q 6 条、O 4 条、I 4 条、LT 4 条）；文字与 SPEC 逐字一致；筛选测试覆盖立场和来源限制（如 C-13 只在销售、G-11 只在我方发出）；提示词版本号可读出 | 待执行 |
+| M2-07 | 统一文档模型与 DOCX 解析：修订、自动编号、clause\_no、合并单元格、页眉页脚、批注、文本框、嵌套表格、位置编号、警告 | Opus | xhigh | M2-06 | 8.1–8.3、Q-15；设计四 | app/parsing/model.py、app/parsing/docx.py、tests/test\_parse\_docx.py | T-01、T-02 通过（用 M2-03 的样本）；manifest.yaml 中的预期事实全部满足；损坏文件抛出 ParseError 且消息不含原文 | 待执行 |
+| M2-08 | 脱敏核心与 parse 流水线：9.3 第 1–5 步、代号分配、对照表加密、替换记录、外发文本构建、主体说明、转义 document 标签；parse 处理函数（含不外发分支） | Opus | xhigh | M2-07 | 7.1、9.1–9.3、9.7、9.9、17.5；设计一、六 | app/redaction/engine.py、detect.py、parties.py、placeholders.py、outbound.py、app/tasks/pipeline.py、tests/test\_redaction\_engine.py、tests/test\_pipeline.py | 样本中的名称、简称、电话、邮箱、账号、SWIFT、证件号、编号、金额全部替换，同一对象同一代号；保留项不被替换；外发文本格式符合 9.7；不外发的任务直接 completed\_local 且不产生任何脱敏数据 | 待执行 |
+| M2-09 | 出口复检与还原 | Opus | high | M2-08 | 9.8、9.9、Q-19；设计六 | app/redaction/recheck.py、app/redaction/restore.py、tests/test\_recheck.py、tests/test\_restore.py | 混入任一真实值、已记住名称、自定义敏感词或未替换的电话 / 邮箱 / 账号 / 证件号 / 带币种金额时拦截；拦截原因只含类别和位置；短数字不误拦；还原长代号优先 | 待执行 |
+| M2-10 | 模型网关、设置读取、用量统计、模拟模型服务、开发用 set-model 命令 | Opus | high | M2-09 | 5、7.5、11.1、11.7、15.2、17.4、Q-12；设计七 | app/llm/gateway.py、app/llm/usage.py、app/admin/settings\_store.py、app/cli.py（set-model 部分）、tests/mock\_llm.py、tests/test\_gateway.py、tools/mock\_llm\_server.py、deploy/docker-compose.mock.yml | 执行顺序为上限检查 → 出口复检 → 发送 → 记录；T-07 的网关部分通过（blocked 记录不含真实值）；达到上限不发送；重试次数和间隔正确；附加请求参数原样合并；API 密钥不出现在日志和 llm\_calls 中 | 待执行 |
+| M2-11 | 审核核心：拼接提示词、输出结构、结果校验（11.4 全部 9 条）、解析失败重试 1 次 | Opus | xhigh | M2-10 | 11.2–11.4、A-07；设计八 | app/review/prompt.py、schema.py、validate.py、tests/test\_review\_validate.py、tests/test\_review\_prompt.py | T-10、T-11 通过；要求结论数 = 发送的要求数（A-07）；document 标签被转义；类别、严重程度映射与兜底正确；重复问题合并 | 待执行 |
+| M2-12 | review 处理函数与轮次接口：确认发送（含预检）、轮次列表、轮次详情（还原真实名称）、修改问题处理状态 | Sonnet | high | M2-11 | 7.1–7.3、19.5、A-04；设计八 | app/review/router.py、service.py、job.py、app/main.py（只加 include\_router 一行）、tests/test\_runs\_api.py、tests/test\_review\_job.py | 设计八的每个 409 错误码都有测试；local\_only 任务模型调用次数为 0（A-04）；网关拦截时 run=blocked 且任务回到 awaiting\_confirm（T-07）；返回给前端的文字已还原；对真实接口重跑 A-06 | 待执行 |
+| M2-13 | 脱敏确认接口：签约方查询与修改、脱敏摘要、外发文本预览、修改文件类型 | Sonnet | medium | M2-12 | 6.2 第二步、19.3、19.4；设计九 | app/redaction/router.py、app/tasks/router.py（只加 PATCH 文件类型）、app/main.py（只加 include\_router 一行）、tests/test\_redaction\_api.py | 必须恰好一方为我方；非 awaiting\_confirm 时修改返回 409；外发文本预览是代号版本；对真实接口重跑 A-06 | 待执行 |
+| M2-14 | 前端：新建审核第一步（上传与设置）、第三步（审核中轮询）、枚举翻译、multipart 请求 | Sonnet | medium | M2-13 | 6.2；设计十 | src/api/http.ts（加 postForm）、src/api/tasks.ts、src/utils/labels.ts、src/views/ReviewNew.vue | 上传前在前端检查数量、大小、扩展名；立场和来源默认为该用户上次的选择；轮询每 3 秒，离开页面停止；`npm run build` 通过 | 待执行 |
+| M2-15 | 前端：第二步基础版（文件信息与类型修改、签约方确认、脱敏摘要、查看将发送的文本、确认发送） | Sonnet | medium | M2-14 | 6.2 第二步；设计九、十 | src/views/ReviewNew.vue、src/api/redaction.ts、src/api/runs.ts、src/components/ 下新增的第二步子组件 | 未选我方不能提交；409 错误按错误码给出中文提示；外发文本纯文本显示；`npm run build` 通过 | 待执行 |
+| M2-16 | 前端：结果页基础版（顶部信息栏、问题清单 FindingCard、审核要求逐条结论标签页）、审核历史页 | Sonnet | medium | M2-15 | 6.3、6.4；设计八、十 | src/views/ReviewResult.vue、src/views/History.vue、src/components/FindingCard.vue | 问题卡片字段与 6.3 一致，可直接替换的措辞带复制按钮，处理状态和备注可保存；历史页搜索、日期筛选、分页、删除（二次确认）可用；界面不出现“审核通过”“无风险”；`npm run build` 通过 | 待执行 |
+| M2-17 | 脱敏回归测试集：至少 5 份虚构样本（合同、报价单、订单、询价函、函件各一，中英文混合）、标注文件、自动化测试 | Sonnet | high | M2-16 | 23.3；设计十一 | tests/fixtures/redaction\_golden/\*、tests/test\_redaction\_golden.py | must\_replace 全部不在外发文本中（召回率 100%）；must\_keep 全部仍在；M2 范围内只标注第 1–5 步的类别（人名、地址留到 M4） | 待执行 |
+| M2-18 | 审核效果评测脚本 | Sonnet | medium | M2-17 | 23.3；设计七、八 | tools/eval\_review.py、tools/README.md | 对指定目录下的样本走完 parse → 脱敏 → 审核（经网关），输出每个样本的要求结论统计和问题清单到 Markdown 文件；可用 `--extra-params` 临时覆盖附加请求参数（对比思考模式）；只能在开发环境运行 | 待执行 |
+| M2-19 | M2 联调与验收：用模拟模型服务走通全流程；用户提供 DeepSeek 测试密钥后，用虚构样本调用真实模型试跑，对比思考与非思考模式 | Opus | high | M2-18 | 22、23、Q-12 | 按需 | A-04、T-01、T-02、T-07、T-09、T-10、T-11 通过；评测结果汇报给用户 | 待执行 |
 
 ### M3 解析补全与预览（验收：T-03）
 
