@@ -49,6 +49,7 @@
 | Q-35 | 路径中的 id 不是合法 UUID 时返回什么 | 与“不存在”“不是本人的”一样返回 404，不返回 422，避免暴露任何信息 | 17.2、19.1 |
 | Q-36 | T-20 只列了 httpx、requests、urllib.request | 扫描更严：socket、ssl、http.client、urllib3、aiohttp、smtplib、ftplib、websockets 等能直接联网的库都禁止，并检查 importlib 动态导入 | 5、T-20 |
 | Q-37 | SPEC 第 5 节有审核结果页面，但第 6.3 节没有给出路由路径 | 路由定为 /review/:taskId（任务 id），不在菜单中，只能由后续流程进入；设置页子路由为 /settings/users、model、requirements、redaction、data | 前端路由 |
+| Q-38 | worker 的细节：处理函数异常后是否重试；停止时如何处理在途任务；定时工作何时首次执行 | 处理函数异常直接置 failed，不自动重试（只有心跳超时才重新入队，最多 3 次）；收到停止信号后等待在途任务最多 30 秒，超时则任务保持 running，由心跳超时机制重新入队；定时工作在 worker 启动后立即执行一次，之后每分钟一次。状态：待确认 | 7.5、M2-01 |
 | Q-26 | 测试需要 PostgreSQL，M1-01 的测试镜像里没有数据库 | 数据库测试读取环境变量 TEST_DATABASE_URL，每次新建独立的临时库并在结束后删除；未设置则跳过。测试命令见 M1-02 完成报告 | 开发流程 |
 
 ## 四、后续里程碑处理（先记录）
