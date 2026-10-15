@@ -29,7 +29,8 @@ COPY requirements.txt requirements-dev.txt ./
 
 FROM base AS runtime
 RUN pip install -r requirements.txt && pip check \
-    && useradd --system --uid 10001 --no-create-home appuser
+    && useradd --system --uid 10001 --no-create-home appuser \
+    && mkdir -p /data/files /backup && chown appuser /data/files /backup
 COPY app ./app
 COPY alembic.ini ./
 COPY resources ./resources

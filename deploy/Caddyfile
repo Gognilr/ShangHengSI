@@ -1,0 +1,21 @@
+# 站点地址来自 SITE_ADDRESS（内网域名，如 review.公司域名）；开发环境默认 localhost。
+# tls internal：用 Caddy 内部 CA 签发证书。有公司证书时改为
+#   tls /etc/caddy/certs/server.crt /etc/caddy/certs/server.key
+{$SITE_ADDRESS:localhost} {
+	tls internal
+
+	# /api 转发给 app；上传大小限制 320 MB（SPEC 20.2）
+	handle /api/* {
+		request_body {
+			max_size 320MB
+		}
+		reverse_proxy app:8000
+	}
+
+	# 前端静态文件在 M6 前端构建完成后接入（root * /srv/frontend + try_files + file_server）；
+	# 在此之前先返回占位页。
+	handle {
+		header Content-Type "text/plain; charset=utf-8"
+		respond "企业商务文件AI智能审查助手：前端尚未部署。" 200
+	}
+}
