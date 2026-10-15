@@ -35,6 +35,8 @@
 | Q-14 | DeepSeek 模型名称会随版本变化（当前官方为 deepseek-flash、deepseek-v4-pro，旧名称已退役） | 代码不写死模型名，由管理员在设置中填写；运维说明给出当前推荐值 | 15.2、运维说明 |
 | Q-23 | python:3.12 镜像基于 Debian trixie，仓库里的 postgresql-client 是 17，SPEC 要求 16 | Dockerfile 构建时从 PostgreSQL 官方 apt 源安装 postgresql-client-16（构建在可联网机器上完成，运行时不联网）；基础镜像固定为 python:3.12.15-slim-trixie | 20.2、Dockerfile |
 | Q-24 | 当前 starlette TestClient 提示建议改用 httpx2 | 暂不引入新库，保持 httpx 0.28.1；测试只有一条弃用警告，不影响结果 | 测试依赖 |
+| Q-25 | SPEC 第 18 节未写时间戳默认值、uuid 主键默认值，也未写部分 id 字段是否加外键 | 业务表 uuid 主键在数据库侧默认 gen_random_uuid()；created_at / updated_at 由应用写入（不设数据库默认值，只有 jobs.run_after 按 SPEC 默认 now()）；SPEC 没写“外键”的 uuid 字段（local_findings.file_id、decided_by、updated_by、company_requirements.created_by 等）不加外键，sessions.user_id 加外键且不级联；audit_logs.action 不加 CHECK（SPEC 只给了示例） | 18 |
+| Q-26 | 测试需要 PostgreSQL，M1-01 的测试镜像里没有数据库 | 数据库测试读取环境变量 TEST_DATABASE_URL，每次新建独立的临时库并在结束后删除；未设置则跳过。测试命令见 M1-02 完成报告 | 开发流程 |
 
 ## 四、后续里程碑处理（先记录）
 

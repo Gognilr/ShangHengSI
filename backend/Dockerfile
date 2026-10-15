@@ -31,6 +31,7 @@ FROM base AS runtime
 RUN pip install -r requirements.txt && pip check \
     && useradd --system --uid 10001 --no-create-home appuser
 COPY app ./app
+COPY alembic.ini ./
 COPY resources ./resources
 USER appuser
 EXPOSE 8000
@@ -39,6 +40,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--worker
 FROM base AS test
 RUN pip install -r requirements-dev.txt && pip check
 COPY app ./app
+COPY alembic.ini ./
 COPY resources ./resources
 COPY tests ./tests
 COPY pytest.ini ./
