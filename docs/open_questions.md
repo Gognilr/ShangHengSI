@@ -33,6 +33,8 @@
 | Q-12 | DeepSeek 默认开启思考模式，思考模式下 temperature 不生效 | 设置项不变。审核默认用非思考模式：附加请求参数默认值建议 {"thinking": {"type": "disabled"}}；是否改用思考模式，在 M2 用评测脚本对比效果后再定 | 11.1、15.2 |
 | Q-13 | DeepSeek 按高峰和非高峰时段分两档计价，SPEC 的设置页只有一组输入 / 输出单价 | 保持一组单价，按高峰价填写，用量页只显示估算上限 | 15.2 |
 | Q-14 | DeepSeek 模型名称会随版本变化（当前官方为 deepseek-flash、deepseek-v4-pro，旧名称已退役） | 代码不写死模型名，由管理员在设置中填写；运维说明给出当前推荐值 | 15.2、运维说明 |
+| Q-23 | python:3.12 镜像基于 Debian trixie，仓库里的 postgresql-client 是 17，SPEC 要求 16 | Dockerfile 构建时从 PostgreSQL 官方 apt 源安装 postgresql-client-16（构建在可联网机器上完成，运行时不联网）；基础镜像固定为 python:3.12.15-slim-trixie | 20.2、Dockerfile |
+| Q-24 | 当前 starlette TestClient 提示建议改用 httpx2 | 暂不引入新库，保持 httpx 0.28.1；测试只有一条弃用警告，不影响结果 | 测试依赖 |
 
 ## 四、后续里程碑处理（先记录）
 
