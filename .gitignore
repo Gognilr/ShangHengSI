@@ -1,0 +1,28 @@
+# 密钥与环境配置（不得进仓库）
+deploy/secrets/
+.env
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 前端
+node_modules/
+frontend/dist/
+
+# 备份与本地数据
+*.bak
+*.bak.tmp
+*.sha256
+data/
+
+# 编辑器与系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
