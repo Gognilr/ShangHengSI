@@ -71,7 +71,9 @@ services:
         condition: service_healthy
 
   web:
-    image: caddy:2.11.7
+    image: aireview-web:${APP_VERSION:-dev}
+    build:
+      context: ../frontend
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
