@@ -1,17 +1,17 @@
 import { ElMessage } from 'element-plus'
-import { defineComponent, h } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { useAuthStore } from '@/stores/auth'
+import History from '@/views/History.vue'
 import Login from '@/views/Login.vue'
-
-// M1-08 会用正式的占位页面（ReviewNew.vue 等）替换这里的临时组件
-function placeholder(title: string) {
-  return defineComponent({
-    name: 'PlaceholderView',
-    render: () => h('div', { class: 'placeholder' }, `${title}：建设中`),
-  })
-}
+import ReviewNew from '@/views/ReviewNew.vue'
+import ReviewResult from '@/views/ReviewResult.vue'
+import Data from '@/views/settings/Data.vue'
+import Model from '@/views/settings/Model.vue'
+import Redaction from '@/views/settings/Redaction.vue'
+import Requirements from '@/views/settings/Requirements.vue'
+import SettingsLayout from '@/views/settings/SettingsLayout.vue'
+import Users from '@/views/settings/Users.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -33,9 +33,22 @@ export const router = createRouter({
       component: MainLayout,
       children: [
         { path: '', redirect: HOME_PATH },
-        { path: 'review/new', name: 'review-new', component: placeholder('智能审核') },
-        { path: 'history', name: 'history', component: placeholder('审核历史') },
-        { path: 'settings', name: 'settings', component: placeholder('设置'), meta: { admin: true } },
+        { path: 'review/new', name: 'review-new', component: ReviewNew },
+        { path: 'review/:taskId', name: 'review-result', component: ReviewResult },
+        { path: 'history', name: 'history', component: History },
+        {
+          path: 'settings',
+          component: SettingsLayout,
+          meta: { admin: true },
+          children: [
+            { path: '', redirect: '/settings/users' },
+            { path: 'users', name: 'settings-users', component: Users },
+            { path: 'model', name: 'settings-model', component: Model },
+            { path: 'requirements', name: 'settings-requirements', component: Requirements },
+            { path: 'redaction', name: 'settings-redaction', component: Redaction },
+            { path: 'data', name: 'settings-data', component: Data },
+          ],
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: HOME_PATH },

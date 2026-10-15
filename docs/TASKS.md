@@ -6,7 +6,7 @@
 
 ## 当前进度
 
-- 下一个任务：**M1-08**（Haiku 5.5，推理强度 low）
+- 下一个任务：**M1-09**（Opus 5.5，推理强度 medium）
 - 前端开发（M1-07 起）：`frontend/` 下 `npm install --include=dev`；`npm run dev` 默认代理到 `https://localhost:8443`，可用环境变量 `VITE_DEV_PROXY` 改；类型检查与构建 `npm run build`
 - 上次 Opus 评审到的提交：f0e6784（M1-01 至 M1-03 已评审，通过）
 
@@ -68,7 +68,7 @@
 | M1-05 | 认证：会话令牌（库中只存 SHA-256，空闲 8 小时过期，Cookie 为 HttpOnly、Secure、SameSite=Lax）；CSRF 校验；登录、退出、/auth/me、改密；连续 5 次失败锁定 15 分钟；停用账号时删除其会话；登录写审计日志；创建管理员的命令 | Opus | high | M1-04 | 6.1、6.6、17.1、17.7、19.2、Q-05、Q-11 | app/security/sessions.py、app/security/csrf.py、app/auth/\*、app/audit/service.py、app/cli.py（create-admin 部分）、tests/test\_auth.py | 上述行为都有测试覆盖；不带 CSRF 令牌的修改类请求返回 403 CSRF\_FAILED；日志中不出现密码和令牌 | 已完成 |
 | M1-06 | 权限依赖与安全测试：current\_user、require\_admin（返回 403）、get\_owned\_task / run / finding（非本人返回 404，管理员也一样）；A-06 测试（用只在测试中挂载的路由）；T-20 静态扫描测试 | Opus | high | M1-05 | 17.2、23（A-06、T-20）、Q-03、Q-09 | app/security/deps.py、tests/test\_permissions.py、tests/test\_no\_network\_imports.py | A-06、T-20 测试通过 | 已完成 |
 | M1-07 | 前端框架：Vue 3 + TS + Vite + Element Plus + Pinia + Router；请求封装（自动带 X-CSRF-Token，401 时跳转登录页）；登录状态存储；路由守卫（未登录、强制改密、非管理员）；主布局（顶部只有“智能审核”“审核历史”，右上角用户下拉含修改密码和退出，“设置”只对管理员显示）；登录页；改密对话框；按 Asia/Shanghai 显示时间的工具函数；前端 Dockerfile（node 构建后放进 caddy 镜像） | Sonnet | high | M1-06 | 1.6、6.1、6.6、6.7（只留位置）、21、Q-06 | frontend/ 下的工程文件、src/main.ts、App.vue、router/、stores/、api/、utils/、layouts/MainLayout.vue、components/ChangePasswordDialog.vue、views/Login.vue、frontend/Dockerfile、deploy/docker-compose.yml 中 web 服务部分 | 能登录和退出；强制改密时对话框无法关闭；普通用户看不到“设置”，直接访问设置页会被拦截；package-lock.json 锁定版本；`vue-tsc` 类型检查通过 | 已完成 |
-| M1-08 | 前端占位页面：新建审核、审核结果、审核历史，设置页 5 个标签页（账号、模型、审核要求、脱敏、数据），每页只显示标题和“建设中” | Haiku | low | M1-07 | 1.6、5、15 | src/views/ReviewNew.vue、ReviewResult.vue、History.vue、views/settings/\*.vue（含 SettingsLayout.vue）、路由中对应的条目 | 菜单点击都能进入对应页面；设置页的标签页能切换 | 待执行 |
+| M1-08 | 前端占位页面：新建审核、审核结果、审核历史，设置页 5 个标签页（账号、模型、审核要求、脱敏、数据），每页只显示标题和“建设中” | Haiku | low | M1-07 | 1.6、5、15 | src/views/ReviewNew.vue、ReviewResult.vue、History.vue、views/settings/\*.vue（含 SettingsLayout.vue）、路由中对应的条目 | 菜单点击都能进入对应页面；设置页的标签页能切换 | 已完成 |
 | M1-09 | M1 联调与验收：完整跑一遍，浏览器手动检查，向用户汇报 | Opus | medium | M1-08 | 22、23 | CLAUDE.md、docs/ | A-06、T-20 通过；验收结果已汇报给用户 | 待执行 |
 
 ### M2 最小闭环：只支持 DOCX 的完整链路（验收：A-04、T-01、T-02、T-07、T-09、T-10、T-11）
