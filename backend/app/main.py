@@ -9,6 +9,7 @@ from app.config import get_settings, setup_logging
 from app.security.crypto import check_master_key
 from app.security.csrf import csrf_guard
 from app.security.errors import register_error_handlers
+from app.tasks.router import router as tasks_router
 
 API_PREFIX = "/api/v1"
 
@@ -20,6 +21,7 @@ def build_api_router() -> APIRouter:
     """
     router = APIRouter(prefix=API_PREFIX, dependencies=[Depends(csrf_guard)])
     router.include_router(auth_router)
+    router.include_router(tasks_router)
     return router
 
 

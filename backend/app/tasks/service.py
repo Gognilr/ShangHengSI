@@ -1,0 +1,338 @@
+"""任务业务逻辑：上传检查、新建、列表、详情、删除（SPEC 6.2、6.4、7.1、17.6、17.8）。
+
+日志与审计只写数量、策略等非敏感信息，不写文件名和内容。
+"""
+import re
+import zipfile
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
+from typing import BinaryIO
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import delete, distinct, exists, func, select
+from sqlalchemy.orm import Session as DbSession
+
+from app.audit import service as audit
+from app.config import get_settings
+from app.db import jobs
+from app.db.models import DocNode, Job, ReviewRun, Task, TaskFile, User
+from app.security.errors import AppError
+from app.tasks import storage
+from app.tasks.schemas import LatestRun, TaskDetail, TaskFileOut, TaskListItem, TaskPage
+
+MAX_FILES = 10
+PAGE_SIZE = 20
+MAX_ARCHIVE_BYTES = 200 * 1024 * 1024  # DOCX、XLSX 解压后总大小上限（17.6）
+MAX_ARCHIVE_ENTRIES = 10000
+MAX_CONTENT_TYPES_BYTES = 5 * 1024 * 1024
+MAX_NAME_LENGTH = 255
+
+# 扩展名 → 存储用扩展名（jpeg 存为 jpg）
+EXT_MAP = {"docx": "docx", "pdf": "pdf", "xlsx": "xlsx", "jpg": "jpg", "jpeg": "jpg", "png": "png"}
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+@dataclass
+class CheckedUpload:
+    name: str  # 已清理的原文件名（只取最后一段，不超过 255 字符）
+    ext: str  # 存储用扩展名
+    size: int
+    file: BinaryIO
+
+
+def _bad(code: str, message: str) -> AppError:
+    return AppError(422, code, message)
+
+
+def clean_filename(raw: str | None) -> str:
+    """只取最后一段（去掉路径），去掉控制字符，截断到 255 字符（截断时保留扩展名）。"""
+    name = _CONTROL_CHARS.sub("", (raw or "").replace("\\", "/").rsplit("/", 1)[-1]).strip()
+    if len(name) <= MAX_NAME_LENGTH:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if dot and 0 < len(ext) <= 10:
+        return stem[: MAX_NAME_LENGTH - len(ext) - 1] + "." + ext
+    return name[:MAX_NAME_LENGTH]
+
+
+def _inspect_zip(f: BinaryIO, ext: str, name: str) -> None:
+    mismatch = _bad("FILE_CONTENT_MISMATCH", f"文件内容与扩展名不符：{name}")
+    try:
+        zf = zipfile.ZipFile(f)
+    except Exception:  # noqa: BLE001  不是合法 ZIP（含各种损坏情形）
+        raise mismatch from None
+    with zf:
+        infos = zf.infolist()
+        # 声明大小取自 ZIP 目录；zipfile 读取时不会超出声明大小，后续解析仍须按声明大小限制读取
+        if len(infos) > MAX_ARCHIVE_ENTRIES or sum(i.file_size for i in infos) > MAX_ARCHIVE_BYTES:
+            raise _bad("ARCHIVE_TOO_LARGE", f"文件解压后过大：{name}")
+        names = {i.filename for i in infos}
+        required = "word/document.xml" if ext == "docx" else "xl/workbook.xml"
+        if "[Content_Types].xml" not in names or required not in names:
+            raise mismatch
+        if any(n.lower().endswith("vbaproject.bin") for n in names):
+            raise _bad("MACRO_NOT_ALLOWED", f"不允许上传含宏的文件：{name}")
+        try:
+            with zf.open("[Content_Types].xml") as c:
+                content_types = c.read(MAX_CONTENT_TYPES_BYTES + 1)
+        except Exception:  # noqa: BLE001  条目损坏、加密或压缩方式不支持
+            raise mismatch from None
+        if len(content_types) > MAX_CONTENT_TYPES_BYTES:
+            raise mismatch
+        if b"macroenabled" in content_types.lower():
+            raise _bad("MACRO_NOT_ALLOWED", f"不允许上传含宏的文件：{name}")
+
+
+def inspect_upload(raw_name: str | None, f: BinaryIO, max_bytes: int) -> CheckedUpload:
+    """对单个文件做 17.6 的全部检查（顺序同设计文档第三节的表），不通过时抛出 422。"""
+    name = clean_filename(raw_name)
+    f.seek(0, 2)
+    size = f.tell()
+    f.seek(0)
+    if size > max_bytes:
+        raise _bad("FILE_TOO_LARGE", f"文件超过大小限制：{name}")
+    ext_raw = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    ext = EXT_MAP.get(ext_raw)
+    if ext is None:
+        raise _bad("UNSUPPORTED_FILE_TYPE", f"不支持的文件格式：{name}（支持 docx、pdf、xlsx、jpg、png）")
+    head = f.read(8)
+    f.seek(0)
+    if ext == "pdf":
+        ok = head.startswith(b"%PDF-")
+    elif ext == "jpg":
+        ok = head.startswith(b"\xff\xd8\xff")
+    elif ext == "png":
+        ok = head.startswith(b"\x89PNG")
+    else:
+        ok = True
+        _inspect_zip(f, ext, name)
+        f.seek(0)
+    if not ok:
+        raise _bad("FILE_CONTENT_MISMATCH", f"文件内容与扩展名不符：{name}")
+    return CheckedUpload(name=name, ext=ext, size=size, file=f)
+
+
+def check_uploads(
+    raw_files: list[tuple[str | None, BinaryIO]], main_index: int, max_bytes: int
+) -> list[CheckedUpload]:
+    """检查数量、主文件序号和每个文件。"""
+    if not raw_files:
+        raise _bad("NO_FILES", "请至少选择一个文件")
+    if len(raw_files) > MAX_FILES:
+        raise _bad("TOO_MANY_FILES", f"每个任务最多上传 {MAX_FILES} 个文件")
+    if not 0 <= main_index < len(raw_files):
+        raise _bad("VALIDATION_ERROR", "主文件序号不正确")
+    return [inspect_upload(name, f, max_bytes) for name, f in raw_files]
+
+
+def create_task(
+    db: DbSession,
+    user: User,
+    uploads: list[CheckedUpload],
+    *,
+    main_index: int,
+    stance: str,
+    source: str,
+    policy: str,
+    user_note: str | None,
+    ip: str | None,
+) -> Task:
+    """加密保存原件，建任务（parsing）和文件记录，入队 parse，记住本次立场与来源。"""
+    saved: list[str] = []
+    try:
+        rows = []
+        for seq, up in enumerate(uploads, start=1):
+            data = up.file.read()  # 一次只在内存中保留一个文件
+            key, sha = storage.save_original(data)
+            saved.append(key)
+            rows.append(
+                TaskFile(
+                    seq=seq,
+                    is_main=(seq - 1 == main_index),
+                    original_name=up.name,
+                    ext=up.ext,
+                    size_bytes=len(data),
+                    sha256=sha,
+                    storage_key=key,
+                )
+            )
+        task = Task(
+            owner_id=user.id,
+            title=uploads[main_index].name,
+            stance=stance,
+            source=source,
+            policy=policy,
+            user_note=user_note,
+            status="parsing",
+        )
+        db.add(task)
+        db.flush()
+        for r in rows:
+            r.task_id = task.id
+        db.add_all(rows)
+        owner = db.merge(user)  # 保证 user 属于当前会话
+        owner.last_stance = stance
+        owner.last_source = source
+        jobs.enqueue(db, "parse", {"task_id": str(task.id)})
+        audit.record(
+            db,
+            "task_create",
+            user_id=user.id,
+            target_type="task",
+            target_id=str(task.id),
+            detail={"files": len(rows), "policy": policy},
+            ip=ip,
+        )
+        db.commit()
+        return task
+    except BaseException:
+        db.rollback()
+        for key in saved:
+            storage.delete_original(key)
+        raise
+
+
+# ---------------------------------------------------------------- 列表
+
+
+def _tz() -> ZoneInfo:
+    return ZoneInfo(get_settings().tz or "Asia/Shanghai")
+
+
+def _like_pattern(q: str) -> str:
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def list_tasks(
+    db: DbSession,
+    user: User,
+    *,
+    page: int,
+    q: str | None,
+    date_from: date | None,
+    date_to: date | None,
+) -> TaskPage:
+    conds = [Task.owner_id == user.id]
+    if q and q.strip():
+        pattern = _like_pattern(q.strip())
+        conds.append(
+            exists().where(TaskFile.task_id == Task.id, TaskFile.original_name.ilike(pattern, escape="\\"))
+        )
+    tz = _tz()
+    if date_from is not None:
+        conds.append(Task.created_at >= datetime.combine(date_from, time.min, tz))
+    if date_to is not None:
+        conds.append(Task.created_at < datetime.combine(date_to + timedelta(days=1), time.min, tz))
+    main_doc_type = (
+        select(TaskFile.doc_type).where(TaskFile.task_id == Task.id, TaskFile.is_main).scalar_subquery()
+    )
+    total = db.scalar(select(func.count()).select_from(Task).where(*conds)) or 0
+    rows = db.execute(
+        select(Task, main_doc_type.label("doc_type"))
+        .where(*conds)
+        .order_by(Task.created_at.desc(), Task.id.desc())
+        .offset((page - 1) * PAGE_SIZE)
+        .limit(PAGE_SIZE)
+    ).all()
+    items = [
+        TaskListItem(
+            id=t.id,
+            title=t.title,
+            doc_type=doc_type,
+            stance=t.stance,
+            status=t.status,
+            high_count=t.high_count,
+            created_at=t.created_at,
+        )
+        for t, doc_type in rows
+    ]
+    return TaskPage(items=items, total=total, page=page, page_size=PAGE_SIZE)
+
+
+# ---------------------------------------------------------------- 详情
+
+
+def task_detail(db: DbSession, task: Task) -> TaskDetail:
+    files = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)).all()
+    paragraphs = dict(
+        db.execute(
+            select(DocNode.file_id, func.count())
+            .where(DocNode.task_id == task.id, DocNode.part == "body", DocNode.kind != "table_cell")
+            .group_by(DocNode.file_id)
+        ).all()
+    )
+    # 表格单元格 loc 形如 F1-T2-R3-C4 / F3-PG2-T1-R2-C3：去掉末尾的 -R行-C列 即得表格标识
+    table_id = func.regexp_replace(DocNode.loc, "-R[0-9]+-C[0-9]+$", "")
+    tables = dict(
+        db.execute(
+            select(DocNode.file_id, func.count(distinct(table_id)))
+            .where(DocNode.task_id == task.id, DocNode.part == "body", DocNode.kind == "table_cell")
+            .group_by(DocNode.file_id)
+        ).all()
+    )
+    latest_run = None
+    queue_position = None
+    if task.latest_run_id is not None:
+        run = db.get(ReviewRun, task.latest_run_id)
+        if run is not None:
+            latest_run = LatestRun(id=run.id, run_no=run.run_no, status=run.status)
+            job_id = db.scalar(
+                select(Job.id).where(Job.type == "review", Job.payload["run_id"].astext == str(run.id))
+            )
+            if job_id is not None:
+                queue_position = jobs.queue_position(db, job_id)
+    return TaskDetail(
+        id=task.id,
+        title=task.title,
+        status=task.status,
+        error_message=task.error_message,
+        stance=task.stance,
+        source=task.source,
+        policy=task.policy,
+        user_note=task.user_note,
+        created_at=task.created_at,
+        files=[
+            TaskFileOut(
+                id=f.id,
+                seq=f.seq,
+                is_main=f.is_main,
+                original_name=f.original_name,
+                ext=f.ext,
+                size_bytes=f.size_bytes,
+                doc_type=f.doc_type,
+                doc_type_source=f.doc_type_source,
+                page_count=f.page_count,
+                paragraph_count=paragraphs.get(f.id, 0),
+                table_count=tables.get(f.id, 0),
+                has_revisions=f.has_revisions,
+                warnings=[str(w) for w in (f.warnings or [])],
+            )
+            for f in files
+        ],
+        latest_run=latest_run,
+        queue_position=queue_position,
+    )
+
+
+# ---------------------------------------------------------------- 删除
+
+
+def delete_task(db: DbSession, task: Task, user: User, ip: str | None) -> None:
+    """彻底删除（17.8）：先删原件文件，再删任务行（子表级联删除；llm_calls 无外键，记录保留）。"""
+    keys = db.scalars(select(TaskFile.storage_key).where(TaskFile.task_id == task.id)).all()
+    for key in keys:
+        storage.delete_original(key)
+    # 还在排队的 parse / review 任务没有意义了；正在运行的由处理函数发现任务已删除后自行结束
+    db.execute(delete(Job).where(Job.status == "queued", Job.payload["task_id"].astext == str(task.id)))
+    audit.record(
+        db,
+        "task_delete",
+        user_id=user.id,
+        target_type="task",
+        target_id=str(task.id),
+        detail={"files": len(keys)},
+        ip=ip,
+    )
+    db.delete(task)
+    db.commit()

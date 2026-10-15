@@ -1,0 +1,590 @@
+"""任务接口（M2-02）：新建、列表、详情、删除，以及对真实接口重跑 A-06。需要 TEST_DATABASE_URL。"""
+import hashlib
+import io
+import os
+import uuid
+import zipfile
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import func, select
+
+from app.config import get_settings
+from app.db.base import utcnow
+from app.db.models import (
+    AuditLog,
+    DocNode,
+    Finding,
+    Job,
+    LlmCall,
+    Party,
+    RedactionMap,
+    ReviewRun,
+    Task,
+    TaskFile,
+    User,
+)
+from app.main import API_PREFIX
+from app.security import crypto
+from app.tasks import storage
+
+CONTENT_TYPES = b'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'
+SECRET = "虚构甲公司专属内容ABC123"
+PDF = b"%PDF-1.7\n" + SECRET.encode() + b"\n"
+
+
+def docx_bytes(text: str = SECRET) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", CONTENT_TYPES)
+        zf.writestr("word/document.xml", f"<w:document>{text}</w:document>".encode())
+    return buf.getvalue()
+
+
+@pytest.fixture
+def files_dir(tmp_path, monkeypatch):
+    """隔离的主密钥和原件目录。"""
+    key = tmp_path / "master_key"
+    key.write_bytes(os.urandom(32))
+    d = tmp_path / "files"
+    monkeypatch.setenv("APP_MASTER_KEY_FILE", str(key))
+    monkeypatch.setenv("FILES_DIR", str(d))
+    monkeypatch.setenv("MAX_UPLOAD_MB", "1")
+    get_settings.cache_clear()
+    crypto.get_master_key.cache_clear()
+    yield d
+    get_settings.cache_clear()
+    crypto.get_master_key.cache_clear()
+
+
+def stored_files(d) -> list[str]:
+    return sorted(p.name for p in d.iterdir()) if d.exists() else []
+
+
+def form(**kw):
+    data = {"stance": "sales", "source": "outgoing", "policy": "ai"}
+    data.update(kw)
+    return {k: str(v) for k, v in data.items() if v is not None}
+
+
+def upload(client, csrf, files, **kw):
+    """files: [(文件名, 内容)]"""
+    parts = [("files", (name, data, "application/octet-stream")) for name, data in files]
+    return client.post(f"{API_PREFIX}/tasks", data=form(**kw), files=parts, headers={"X-CSRF-Token": csrf})
+
+
+@pytest.fixture
+def alice(make_user, login):
+    make_user("alice")
+    return login("alice")
+
+
+# ---------------------------------------------------------------- 新建
+
+
+def test_create_task_success(files_dir, alice, db_sessionmaker, make_user):
+    c, csrf = alice
+    r = upload(c, csrf, [("合同.docx", docx_bytes()), ("附件.pdf", PDF)], main_index=1, stance="purchase",
+               source="incoming", user_note="  请重点看付款条款  ")
+    assert r.status_code == 201, r.text
+    tid = r.json()["id"]
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        assert (task.status, task.stance, task.source, task.policy) == ("parsing", "purchase", "incoming", "ai")
+        assert task.title == "附件.pdf" and task.user_note == "请重点看付款条款"
+        files = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)).all()
+        assert [(f.seq, f.is_main, f.original_name, f.ext) for f in files] == [
+            (1, False, "合同.docx", "docx"),
+            (2, True, "附件.pdf", "pdf"),
+        ]
+        assert files[1].size_bytes == len(PDF) and len(files[1].sha256) == 64
+        assert files[0].doc_type is None and files[0].doc_type_source is None
+        # 入队 parse
+        job = db.scalars(select(Job)).one()
+        assert (job.type, job.status, job.payload) == ("parse", "queued", {"task_id": tid})
+        # 记住本次选择
+        user = db.scalars(select(User).where(User.username == "alice")).one()
+        assert (user.last_stance, user.last_source) == ("purchase", "incoming")
+        # 审计：只含文件数和策略，不含文件名
+        log = db.scalars(select(AuditLog).where(AuditLog.action == "task_create")).one()
+        assert log.target_id == tid and log.detail == {"files": 2, "policy": "ai"}
+        assert "合同" not in str(log.detail) and log.user_id == user.id
+    # 落盘
+    assert len(stored_files(files_dir)) == 2
+
+
+def test_policy_defaults_to_ai_and_local_only_accepted(files_dir, alice, db_sessionmaker):
+    c, csrf = alice
+    r = c.post(
+        f"{API_PREFIX}/tasks",
+        data={"stance": "other", "source": "outgoing"},
+        files=[("files", ("a.pdf", PDF, "application/pdf"))],
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r.status_code == 201
+    r2 = upload(c, csrf, [("b.pdf", PDF)], policy="local_only")
+    assert r2.status_code == 201
+    with db_sessionmaker() as db:
+        policies = {t.title: t.policy for t in db.scalars(select(Task))}
+    assert policies == {"a.pdf": "ai", "b.pdf": "local_only"}
+
+
+def test_stored_original_is_ciphertext_named_by_uuid(files_dir, alice, db_sessionmaker):
+    c, csrf = alice
+    data = docx_bytes()
+    r = upload(c, csrf, [("绝密合同.docx", data)])
+    assert r.status_code == 201
+    names = stored_files(files_dir)
+    assert len(names) == 1 and len(names[0]) == 32 and uuid.UUID(names[0]).hex == names[0]
+    assert "绝密" not in names[0] and not names[0].endswith(".docx")
+    blob = (files_dir / names[0]).read_bytes()
+    assert SECRET.encode() not in blob and data not in blob  # 不含明文片段
+    assert blob[0] == 1 and len(blob) == 1 + 12 + len(data) + 16  # 版本 + 随机数 + 密文 + 标签
+    with db_sessionmaker() as db:
+        f = db.scalars(select(TaskFile)).one()
+        assert f.storage_key == names[0]
+    assert storage.load_original(f.storage_key) == data
+    assert f.sha256 == hashlib.sha256(data).hexdigest()
+
+
+def test_filename_path_stripped_and_jpeg_stored_as_jpg(files_dir, alice, db_sessionmaker):
+    c, csrf = alice
+    jpg = b"\xff\xd8\xff\xe0" + b"\x00" * 8
+    r = upload(c, csrf, [("C:\\Users\\张三\\桌面\\照片.JPEG", jpg)])
+    assert r.status_code == 201
+    with db_sessionmaker() as db:
+        f = db.scalars(select(TaskFile)).one()
+        assert (f.original_name, f.ext) == ("照片.JPEG", "jpg")
+
+
+@pytest.mark.parametrize(
+    "files,extra,code",
+    [
+        ([], {}, "NO_FILES"),
+        ([(f"f{i}.pdf", PDF) for i in range(11)], {}, "TOO_MANY_FILES"),
+        ([("big.pdf", PDF + b"x" * (1024 * 1024))], {}, "FILE_TOO_LARGE"),
+        ([("a.doc", PDF)], {}, "UNSUPPORTED_FILE_TYPE"),
+        ([("a.docm", docx_bytes())], {}, "UNSUPPORTED_FILE_TYPE"),
+        ([("a.pdf", b"hello")], {}, "FILE_CONTENT_MISMATCH"),
+        ([("a.docx", b"hello")], {}, "FILE_CONTENT_MISMATCH"),
+        ([("ok.pdf", PDF), ("a.png", b"\xff\xd8\xff\xe0")], {}, "FILE_CONTENT_MISMATCH"),
+        ([("a.pdf", PDF)], {"main_index": 1}, "VALIDATION_ERROR"),
+        ([("a.pdf", PDF)], {"main_index": -1}, "VALIDATION_ERROR"),
+        ([("a.pdf", PDF)], {"stance": "boss"}, "VALIDATION_ERROR"),
+        ([("a.pdf", PDF)], {"source": "x"}, "VALIDATION_ERROR"),
+        ([("a.pdf", PDF)], {"policy": "cloud"}, "VALIDATION_ERROR"),
+        ([("a.pdf", PDF)], {"user_note": "字" * 501}, "VALIDATION_ERROR"),
+        ([("a.pdf", PDF)], {"main_index": "abc"}, "VALIDATION_ERROR"),
+    ],
+)
+def test_upload_errors_return_422_and_leave_nothing(files_dir, alice, db_sessionmaker, files, extra, code):
+    c, csrf = alice
+    r = upload(c, csrf, files, **extra)
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == code
+    assert SECRET not in r.text
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(Task)) == 0
+        assert db.scalar(select(func.count()).select_from(TaskFile)) == 0
+        assert db.scalar(select(func.count()).select_from(Job)) == 0
+    assert stored_files(files_dir) == []
+
+
+def test_note_of_exactly_500_chars_accepted(files_dir, alice):
+    c, csrf = alice
+    assert upload(c, csrf, [("a.pdf", PDF)], user_note="字" * 500).status_code == 201
+
+
+def test_missing_required_fields_rejected(files_dir, alice):
+    c, csrf = alice
+    r = c.post(f"{API_PREFIX}/tasks", data={}, files=[("files", ("a.pdf", PDF, "x"))], headers={"X-CSRF-Token": csrf})
+    assert r.status_code == 422 and r.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_macro_code_via_api(files_dir, alice):
+    c, csrf = alice
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("[Content_Types].xml", CONTENT_TYPES)
+        zf.writestr("word/document.xml", b"<w:document/>")
+        zf.writestr("word/vbaProject.bin", b"\x00")
+    r = upload(c, csrf, [("a.docx", buf.getvalue())])
+    assert (r.status_code, r.json()["code"]) == (422, "MACRO_NOT_ALLOWED")
+
+
+def test_archive_too_large_code_via_api(files_dir, alice, monkeypatch):
+    monkeypatch.setenv("MAX_UPLOAD_MB", "30")
+    get_settings.cache_clear()
+    c, csrf = alice
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", CONTENT_TYPES)
+        zf.writestr("word/document.xml", b"<w:document/>")
+        with zf.open("word/media/big.bin", "w", force_zip64=True) as w:
+            for _ in range(201):
+                w.write(b"\x00" * 1024 * 1024)
+    r = upload(c, csrf, [("a.docx", buf.getvalue())])
+    assert (r.status_code, r.json()["code"]) == (422, "ARCHIVE_TOO_LARGE")
+
+
+def test_failure_while_saving_cleans_up_written_files(files_dir, alice, db_sessionmaker, monkeypatch):
+    c, csrf = alice
+    real = storage.save_original
+    calls = {"n": 0}
+
+    def flaky(data):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("磁盘已满")
+        return real(data)
+
+    monkeypatch.setattr(storage, "save_original", flaky)
+    with pytest.raises(OSError):  # 测试客户端会把未处理异常重新抛出；真实服务返回 500
+        upload(c, csrf, [("a.pdf", PDF), ("b.pdf", PDF)])
+    assert stored_files(files_dir) == []
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(Task)) == 0
+        assert db.scalar(select(func.count()).select_from(Job)) == 0
+
+
+def test_create_requires_csrf_and_login(files_dir, alice, api):
+    c, _ = alice
+    r = c.post(f"{API_PREFIX}/tasks", data=form(), files=[("files", ("a.pdf", PDF, "x"))])
+    assert r.status_code == 403 and r.json()["code"] == "CSRF_FAILED"
+    r = api.post(f"{API_PREFIX}/tasks", data=form(), files=[("files", ("a.pdf", PDF, "x"))])
+    assert r.status_code == 401
+
+
+def test_upload_error_does_not_leak_into_logs(files_dir, alice, caplog):
+    c, csrf = alice
+    with caplog.at_level("DEBUG"):
+        upload(c, csrf, [("a.pdf", PDF)], main_index=5)
+        upload(c, csrf, [("a.pdf", PDF)])
+    assert SECRET not in caplog.text
+
+
+# ---------------------------------------------------------------- 列表
+
+
+def add_task(sm, owner, title, *, created_at=None, status="reviewed", stance="sales", high=0, doc_type=None,
+             extra_names=(), files_dir=None) -> uuid.UUID:
+    now = created_at or utcnow()
+    with sm() as db:
+        t = Task(owner_id=owner.id, title=title, stance=stance, source="outgoing", policy="ai", status=status,
+                 high_count=high, created_at=now, updated_at=now)
+        db.add(t)
+        db.flush()
+        names = [title, *extra_names]
+        for i, n in enumerate(names, start=1):
+            db.add(TaskFile(task_id=t.id, seq=i, is_main=(i == 1), original_name=n, ext="docx", size_bytes=1,
+                            sha256="0" * 64, storage_key=uuid.uuid4().hex, created_at=now,
+                            doc_type=doc_type if i == 1 else None))
+        db.commit()
+        return t.id
+
+
+def test_list_only_own_tasks_newest_first(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    bob = make_user("bob")
+    base = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+    a1 = add_task(db_sessionmaker, alice, "第一份.docx", created_at=base, high=2, doc_type="contract")
+    a2 = add_task(db_sessionmaker, alice, "第二份.docx", created_at=base + timedelta(hours=1), stance="purchase")
+    add_task(db_sessionmaker, bob, "别人的.docx", created_at=base + timedelta(hours=2))
+    c, _ = login("alice")
+    r = c.get(f"{API_PREFIX}/tasks")
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["total"], body["page"], body["page_size"]) == (2, 1, 20)
+    assert [i["id"] for i in body["items"]] == [str(a2), str(a1)]
+    assert body["items"][1] == {
+        "id": str(a1), "title": "第一份.docx", "doc_type": "contract", "stance": "sales",
+        "status": "reviewed", "high_count": 2, "created_at": "2026-05-01T08:00:00Z",
+    }
+    assert body["items"][0]["doc_type"] is None and body["items"][0]["stance"] == "purchase"
+    # 管理员也只看到自己的
+    make_user("carl", role="admin")
+    cc, _ = login("carl")
+    assert cc.get(f"{API_PREFIX}/tasks").json() == {"items": [], "total": 0, "page": 1, "page_size": 20}
+
+
+def test_list_pagination(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    base = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    for i in range(25):
+        add_task(db_sessionmaker, alice, f"文件{i:02d}.docx", created_at=base + timedelta(minutes=i))
+    c, _ = login("alice")
+    p1 = c.get(f"{API_PREFIX}/tasks").json()
+    p2 = c.get(f"{API_PREFIX}/tasks", params={"page": 2}).json()
+    p3 = c.get(f"{API_PREFIX}/tasks", params={"page": 3}).json()
+    assert (p1["total"], len(p1["items"]), len(p2["items"]), p3["items"]) == (25, 20, 5, [])
+    assert p1["items"][0]["title"] == "文件24.docx" and p2["items"][-1]["title"] == "文件00.docx"
+    assert len({i["id"] for i in p1["items"]} | {i["id"] for i in p2["items"]}) == 25
+    assert c.get(f"{API_PREFIX}/tasks", params={"page": 0}).status_code == 422
+
+
+def test_list_search_by_filename(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    bob = make_user("bob")
+    t1 = add_task(db_sessionmaker, alice, "Sales Contract.docx")
+    t2 = add_task(db_sessionmaker, alice, "报价单.xlsx", extra_names=["附件-CONTRACT-v2.pdf"])
+    add_task(db_sessionmaker, alice, "100%_折扣.docx")
+    add_task(db_sessionmaker, alice, "1000x折扣.docx")
+    add_task(db_sessionmaker, bob, "contract-bob.docx")
+    c, _ = login("alice")
+
+    def ids(q):
+        return {i["id"] for i in c.get(f"{API_PREFIX}/tasks", params={"q": q}).json()["items"]}
+
+    assert ids("contract") == {str(t1), str(t2)}  # 不区分大小写；附件名也能搜到；不含他人
+    assert ids("报价") == {str(t2)}
+    assert len(ids("100%")) == 1  # % 按字面匹配，不当作通配符
+    assert len(ids("%_折")) == 1  # _ 同理
+    assert ids("不存在的名字") == set()
+    assert len(ids("   ")) == 4  # 空白等于不筛选（只含本人 4 个）
+
+
+def test_list_date_filter_uses_shanghai_day_boundaries(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    # UTC 16:00 == 上海次日 00:00
+    t_before = add_task(db_sessionmaker, alice, "三月一日深夜.docx",
+                        created_at=datetime(2026, 3, 1, 15, 59, 59, tzinfo=timezone.utc))
+    t_start = add_task(db_sessionmaker, alice, "三月二日零点.docx",
+                       created_at=datetime(2026, 3, 1, 16, 0, 0, tzinfo=timezone.utc))
+    t_end = add_task(db_sessionmaker, alice, "三月二日深夜.docx",
+                     created_at=datetime(2026, 3, 2, 15, 59, 59, tzinfo=timezone.utc))
+    t_next = add_task(db_sessionmaker, alice, "三月三日零点.docx",
+                      created_at=datetime(2026, 3, 2, 16, 0, 0, tzinfo=timezone.utc))
+    c, _ = login("alice")
+
+    def ids(**params):
+        r = c.get(f"{API_PREFIX}/tasks", params=params)
+        assert r.status_code == 200, r.text
+        return {i["id"] for i in r.json()["items"]}
+
+    assert ids(**{"from": "2026-03-02", "to": "2026-03-02"}) == {str(t_start), str(t_end)}
+    assert ids(**{"from": "2026-03-02"}) == {str(t_start), str(t_end), str(t_next)}
+    assert ids(to="2026-03-02") == {str(t_before), str(t_start), str(t_end)}
+    assert ids(**{"from": "2026-03-03", "to": "2026-03-01"}) == set()
+    assert c.get(f"{API_PREFIX}/tasks", params={"from": "不是日期"}).status_code == 422
+
+
+# ---------------------------------------------------------------- 详情
+
+
+def test_detail_contents(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    tid = add_task(db_sessionmaker, alice, "主合同.docx", extra_names=["附件.docx"], status="awaiting_confirm",
+                   doc_type="contract")
+    now = utcnow()
+    with db_sessionmaker() as db:
+        task = db.get(Task, tid)
+        task.user_note = "补充说明"
+        f1, f2 = db.scalars(select(TaskFile).where(TaskFile.task_id == tid).order_by(TaskFile.seq)).all()
+        f1.doc_type_source = "auto"
+        f1.has_revisions = True
+        f1.warnings = ["检测到修订痕迹，按接受修订后的文本审核"]
+        n = 0
+
+        def node(f, loc, kind, part="body"):
+            nonlocal n
+            n += 1
+            db.add(DocNode(task_id=tid, file_id=f.id, loc=loc, ord=n, kind=kind, part=part))
+
+        node(f1, "F1-P1", "heading")
+        node(f1, "F1-P2", "paragraph")
+        node(f1, "F1-T1-R1-C1", "table_cell")
+        node(f1, "F1-T1-R1-C2", "table_cell")
+        node(f1, "F1-T1-R2-C1", "table_cell")
+        node(f1, "F1-T2-R1-C1", "table_cell")
+        node(f1, "F1-T2-R1-C1-T1-R1-C1", "table_cell")  # 嵌套表格算另一张表
+        node(f1, "F1-H1", "paragraph", part="header")  # 页眉不计入
+        node(f2, "F2-P1", "paragraph")
+        db.commit()
+    c, _ = login("alice")
+    r = c.get(f"{API_PREFIX}/tasks/{tid}")
+    assert r.status_code == 200
+    d = r.json()
+    assert (d["id"], d["title"], d["status"], d["stance"], d["source"], d["policy"], d["user_note"]) == (
+        str(tid), "主合同.docx", "awaiting_confirm", "sales", "outgoing", "ai", "补充说明")
+    assert d["error_message"] is None and d["latest_run"] is None and d["queue_position"] is None
+    assert d["created_at"].endswith("Z")
+    first, second = d["files"]
+    assert first["seq"] == 1 and first["is_main"] and first["original_name"] == "主合同.docx"
+    assert (first["ext"], first["size_bytes"], first["doc_type"], first["doc_type_source"]) == ("docx", 1, "contract", "auto")
+    assert (first["paragraph_count"], first["table_count"], first["page_count"]) == (2, 3, None)
+    assert first["has_revisions"] is True and first["warnings"] == ["检测到修订痕迹，按接受修订后的文本审核"]
+    assert (second["seq"], second["is_main"], second["paragraph_count"], second["table_count"]) == (2, False, 1, 0)
+    assert second["warnings"] == [] and second["doc_type"] is None
+    assert "storage_key" not in first and "sha256" not in first  # 不暴露存储信息
+
+
+def test_detail_latest_run_and_queue_position(files_dir, make_user, login, db_sessionmaker):
+    from app.db import jobs
+
+    alice = make_user("alice")
+    tid = add_task(db_sessionmaker, alice, "合同.docx", status="reviewing")
+    other = add_task(db_sessionmaker, alice, "另一份.docx", status="reviewing")
+    now = utcnow()
+    run_ids = {}
+    with db_sessionmaker() as db:
+        for t in (other, tid):  # other 的 review 任务排在前面
+            run = ReviewRun(task_id=t, run_no=1, status="queued", stance="sales", source="outgoing",
+                            main_doc_type="contract", created_by=alice.id, queued_at=now)
+            db.add(run)
+            db.flush()
+            run_ids[t] = run.id
+            db.get(Task, t).latest_run_id = run.id
+            jobs.enqueue(db, "review", {"task_id": str(t), "run_id": str(run.id)})
+        db.commit()
+    c, _ = login("alice")
+    d = c.get(f"{API_PREFIX}/tasks/{tid}").json()
+    assert d["latest_run"] == {"id": str(run_ids[tid]), "run_no": 1, "status": "queued"}
+    assert d["queue_position"] == 2
+    # 开始处理后不再排队
+    with db_sessionmaker() as db:
+        jobs.claim(db, "w")
+        jobs.claim(db, "w")
+    assert c.get(f"{API_PREFIX}/tasks/{tid}").json()["queue_position"] is None
+
+
+# ---------------------------------------------------------------- 删除
+
+
+def make_full_task(sm, owner, files_dir, title="待删.docx"):
+    """一个带原件文件、节点、签约方、对照表、轮次、问题、待处理 job 和 llm_calls 的任务。"""
+    now = utcnow()
+    with sm() as db:
+        t = Task(owner_id=owner.id, title=title, stance="sales", source="outgoing", policy="ai", status="reviewed",
+                 created_at=now, updated_at=now)
+        db.add(t)
+        db.flush()
+        keys = []
+        for seq in (1, 2):
+            key, sha = storage.save_original(docx_bytes(f"文件{seq}"))
+            keys.append(key)
+            db.add(TaskFile(task_id=t.id, seq=seq, is_main=seq == 1, original_name=f"f{seq}.docx", ext="docx",
+                            size_bytes=1, sha256=sha, storage_key=key, created_at=now))
+        db.flush()
+        fid = db.scalars(select(TaskFile.id).where(TaskFile.task_id == t.id)).first()
+        db.add(DocNode(task_id=t.id, file_id=fid, loc="F1-P1", ord=1, kind="paragraph", part="body"))
+        db.add(Party(task_id=t.id, code="客户_A", role_label="买方"))
+        db.add(RedactionMap(task_id=t.id, map_enc=b"x" * 40))
+        run = ReviewRun(task_id=t.id, run_no=1, status="completed", stance="sales", source="outgoing",
+                        main_doc_type="contract", created_by=owner.id, queued_at=now)
+        db.add(run)
+        db.flush()
+        db.add(Finding(run_id=run.id, task_id=t.id, seq=1, title="问题", category="legal", severity="high",
+                       cite_status="verified", problem="说明"))
+        db.add(LlmCall(user_id=owner.id, task_id=t.id, task_title="脱敏标题", run_id=run.id, purpose="review",
+                       model_name="mock", status="sent", request_text="脱敏后的外发文本"))
+        db.add(Job(type="parse", payload={"task_id": str(t.id)}))
+        db.add(Job(type="parse", payload={"task_id": str(uuid.uuid4())}))  # 别的任务的 job 不受影响
+        db.commit()
+        return t.id, keys
+
+
+def count(sm, model, *where):
+    with sm() as db:
+        return db.scalar(select(func.count()).select_from(model).where(*where))
+
+
+def test_delete_removes_everything_but_keeps_llm_calls(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    tid, keys = make_full_task(db_sessionmaker, alice, files_dir)
+    other_tid, other_keys = make_full_task(db_sessionmaker, alice, files_dir, title="保留.docx")
+    assert len(stored_files(files_dir)) == 4
+    c, csrf = login("alice")
+    r = c.delete(f"{API_PREFIX}/tasks/{tid}", headers={"X-CSRF-Token": csrf})
+    assert r.status_code == 204 and r.content == b""
+    # 原件文件、节点、轮次、问题、签约方、对照表全部消失
+    assert sorted(stored_files(files_dir)) == sorted(other_keys)
+    assert count(db_sessionmaker, Task, Task.id == tid) == 0
+    for model in (TaskFile, DocNode, Party, RedactionMap, ReviewRun, Finding):
+        assert count(db_sessionmaker, model, model.task_id == tid) == 0, model
+    # llm_calls 保留
+    assert count(db_sessionmaker, LlmCall, LlmCall.task_id == tid) == 1
+    # 排队中的 job 被清掉，别的任务的不受影响
+    with db_sessionmaker() as db:
+        payloads = [j.payload["task_id"] for j in db.scalars(select(Job))]
+    assert str(tid) not in payloads and str(other_tid) in payloads and len(payloads) == 3
+    # 审计
+    with db_sessionmaker() as db:
+        log = db.scalars(select(AuditLog).where(AuditLog.action == "task_delete")).one()
+        assert (log.target_id, log.detail, log.user_id) == (str(tid), {"files": 2}, alice.id)
+    # 其他任务完好
+    assert count(db_sessionmaker, TaskFile, TaskFile.task_id == other_tid) == 2
+    # 再删一次：已不存在
+    assert c.delete(f"{API_PREFIX}/tasks/{tid}", headers={"X-CSRF-Token": csrf}).status_code == 404
+    assert c.get(f"{API_PREFIX}/tasks/{tid}").status_code == 404
+
+
+@pytest.mark.parametrize("status", ["parsing", "parse_failed", "awaiting_confirm", "reviewing", "reviewed", "completed_local"])
+def test_delete_allowed_in_any_status(files_dir, make_user, login, db_sessionmaker, status):
+    alice = make_user("alice")
+    tid = add_task(db_sessionmaker, alice, "x.docx", status=status)
+    c, csrf = login("alice")
+    assert c.delete(f"{API_PREFIX}/tasks/{tid}", headers={"X-CSRF-Token": csrf}).status_code == 204
+
+
+def test_delete_when_original_file_already_missing(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    tid, keys = make_full_task(db_sessionmaker, alice, files_dir)
+    (files_dir / keys[0]).unlink()  # 例如保留期清理已删除
+    c, csrf = login("alice")
+    assert c.delete(f"{API_PREFIX}/tasks/{tid}", headers={"X-CSRF-Token": csrf}).status_code == 204
+    assert stored_files(files_dir) == []
+
+
+def test_delete_requires_csrf(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    tid = add_task(db_sessionmaker, alice, "x.docx")
+    c, _ = login("alice")
+    r = c.delete(f"{API_PREFIX}/tasks/{tid}")
+    assert r.status_code == 403 and r.json()["code"] == "CSRF_FAILED"
+    assert count(db_sessionmaker, Task, Task.id == tid) == 1
+
+
+def test_delete_via_storage_key_traversal_rejected():
+    for bad in ("../x", "a/b", "", "ZZ" * 16, "0" * 31):
+        with pytest.raises(ValueError):
+            storage.delete_original(bad)
+        with pytest.raises(ValueError):
+            storage.load_original(bad)
+
+
+# ---------------------------------------------------------------- A-06 重跑：真实接口
+
+
+def test_a06_others_and_admin_get_404_on_real_endpoints(files_dir, make_user, login, db_sessionmaker):
+    alice = make_user("alice")
+    make_user("bob")
+    make_user("carl", role="admin")
+    tid, keys = make_full_task(db_sessionmaker, alice, files_dir)
+    missing = uuid.uuid4()
+    for who in ("bob", "carl"):
+        c, csrf = login(who)
+        h = {"X-CSRF-Token": csrf}
+        for method, tail in (("GET", ""), ("DELETE", "")):
+            r = c.request(method, f"{API_PREFIX}/tasks/{tid}{tail}", headers=h)
+            ghost = c.request(method, f"{API_PREFIX}/tasks/{missing}{tail}", headers=h)
+            assert r.status_code == 404, (who, method)
+            assert r.json() == ghost.json()  # 与“不存在”完全相同
+        assert c.request("GET", f"{API_PREFIX}/tasks/不是uuid", headers=h).status_code == 404
+        # 列表里看不到
+        assert c.get(f"{API_PREFIX}/tasks").json()["total"] == 0
+        # 按文件名搜索也搜不到
+        assert c.get(f"{API_PREFIX}/tasks", params={"q": "待删"}).json()["total"] == 0
+    # 越权删除没有产生任何副作用
+    assert count(db_sessionmaker, Task, Task.id == tid) == 1
+    assert sorted(stored_files(files_dir)) == sorted(keys)
+    assert count(db_sessionmaker, AuditLog, AuditLog.action == "task_delete") == 0
+    # 本人仍然可以访问
+    c, _ = login("alice")
+    assert c.get(f"{API_PREFIX}/tasks/{tid}").status_code == 200
+
+
+def test_unauthenticated_gets_401(files_dir, make_user, db_sessionmaker, api):
+    alice = make_user("alice")
+    tid = add_task(db_sessionmaker, alice, "x.docx")
+    assert api.get(f"{API_PREFIX}/tasks").status_code == 401
+    assert api.get(f"{API_PREFIX}/tasks/{tid}").status_code == 401
