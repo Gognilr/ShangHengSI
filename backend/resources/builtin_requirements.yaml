@@ -1,0 +1,54 @@
+# 内置审核要求（M2-06，SPEC 第 12 节）。文字与 SPEC 逐字一致。
+# text 既是界面显示的文字，也是发给模型的文字。修改内置要求须更新 version。
+version: "2026.10-1"
+requirements:
+  # ---------- 12.1 通用（全部文件类型） ----------
+  - {id: "G-01", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "表述", text: "错别字、标点和用词错误；同一概念前后用词不一致；中英文版本内容不一致"}
+  - {id: "G-02", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "表述", text: "含糊或可作多种理解的表述，如“尽快”“合理期限”“相关费用”等未量化的用语"}
+  - {id: "G-03", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "逻辑", text: "条款之间相互矛盾；同一事项的数值、日期、单位、币种前后不一致"}
+  - {id: "G-04", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "逻辑", text: "引用的条款编号、附件、定义是否存在且一致"}
+  - {id: "G-05", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "法律", text: "签署主体、履约主体、收付款主体是否一致（按代号判断）；授权与签署要求是否明确"}
+  - {id: "G-06", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "合规与制裁", text: "交易对象性质（如军方、军工单位、受限政府机构）、目的地及转运迹象（如买方与收货人不在同一国家、由货代收货）、最终用途描述，是否存在制裁或出口管制风险"}
+  - {id: "G-07", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "合规与制裁", text: "是否出现可能被视为规避制裁或出口管制的表述，如安排第三国转运、品名或原产地描述不实、拆分发货、要求特殊标识"}
+  - {id: "G-08", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "合规与制裁", text: "付款路径与币种风险，如由第三方付款、经受限银行付款"}
+  - {id: "G-09", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "合规与制裁", text: "产品是否可能属于中国出口管制物项、是否需要出口许可（结合公司说明；最新规定以合规人员确认为准）"}
+  - {id: "G-10", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "合规与制裁", text: "是否要求我方承诺遵守外国制裁法律或配合外国制裁措施，可能与中国反外国制裁相关规定冲突"}
+  - {id: "G-11", doc_types: ["all"], stances: ["all"], sources: ["outgoing"], dimension: "商务", text: "是否作出超出我方能力或无条件的承诺"}
+  - {id: "G-12", doc_types: ["all"], stances: ["all"], sources: ["incoming"], dimension: "商务", text: "对我方不利或异常的条款与要求"}
+  # ---------- 12.2 合同（contract） ----------
+  - {id: "C-01", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "价格条款是否明确：是否含税、贸易术语、币种、价格调整机制"}
+  - {id: "C-02", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "付款方式、节点、比例、期限是否明确，对我方是否安全"}
+  - {id: "C-03", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "交货时间、地点、方式，风险转移时点，运输与保险责任"}
+  - {id: "C-04", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "数量、溢短装比例、包装与标识要求"}
+  - {id: "C-05", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "质量标准与指标、检验方法、检验机构、异议期限与复检安排"}
+  - {id: "C-06", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "违约责任是否对等；违约金比例和上限是否合理；是否存在无限责任或明显过重的赔偿责任"}
+  - {id: "C-07", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "解除与终止条件；是否存在对方单方解除权"}
+  - {id: "C-08", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "不可抗力条款是否完整合理"}
+  - {id: "C-09", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "争议解决方式和适用法律是否明确；仲裁机构或管辖法院是否明确有效"}
+  - {id: "C-10", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "保密与知识产权条款"}
+  - {id: "C-11", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "生效条件、份数、语言版本冲突时以何为准"}
+  - {id: "C-12", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "合规与制裁", text: "是否有出口管制与制裁合规条款、最终用户声明、禁止转售条款；相关条款对我方是否过苛"}
+  - {id: "C-13", doc_types: ["contract"], stances: ["sales"], sources: ["all"], dimension: "商务", text: "回款保障；对方单方扣款或抵扣权；过高的质量保证或赔偿责任；验收条件是否不合理"}
+  - {id: "C-14", doc_types: ["contract"], stances: ["purchase"], sources: ["all"], dimension: "商务", text: "供应商质量保证与退换货；延迟交付违约金；预付款风险；供应商免责条款"}
+  # ---------- 12.3 报价单（quotation） ----------
+  - {id: "Q-01", doc_types: ["quotation"], stances: ["all"], sources: ["all"], dimension: "商务", text: "报价有效期是否明确"}
+  - {id: "Q-02", doc_types: ["quotation"], stances: ["all"], sources: ["all"], dimension: "商务", text: "价格条款：是否含税、贸易术语、币种是否明确"}
+  - {id: "Q-03", doc_types: ["quotation"], stances: ["all"], sources: ["all"], dimension: "商务", text: "付款方式与条件"}
+  - {id: "Q-04", doc_types: ["quotation"], stances: ["all"], sources: ["all"], dimension: "商务", text: "交货期承诺是否附条件（如以收到预付款或确认订单为前提）"}
+  - {id: "Q-05", doc_types: ["quotation"], stances: ["all"], sources: ["all"], dimension: "商务", text: "规格与质量指标描述是否清楚、可检验"}
+  - {id: "Q-06", doc_types: ["quotation"], stances: ["all"], sources: ["all"], dimension: "法律", text: "是否有“以最终确认为准”等保留条款；是否存在可能被视为无条件承诺的表述"}
+  # ---------- 12.4 订单/供货单（order） ----------
+  - {id: "O-01", doc_types: ["order"], stances: ["all"], sources: ["all"], dimension: "逻辑", text: "与报价单或合同在规格、数量、价格条款、交期上是否一致"}
+  - {id: "O-02", doc_types: ["order"], stances: ["all"], sources: ["all"], dimension: "商务", text: "交货地点、收货人是否明确"}
+  - {id: "O-03", doc_types: ["order"], stances: ["all"], sources: ["all"], dimension: "法律", text: "是否附带新的条款或格式条款（如背面条款），与已签合同是否冲突"}
+  - {id: "O-04", doc_types: ["order"], stances: ["all"], sources: ["all"], dimension: "法律", text: "签发主体、签字或盖章要求"}
+  # ---------- 12.5 询价函（inquiry） ----------
+  - {id: "I-01", doc_types: ["inquiry"], stances: ["all"], sources: ["outgoing"], dimension: "商务", text: "需求描述是否清楚：规格、数量、交期、贸易术语"}
+  - {id: "I-02", doc_types: ["inquiry"], stances: ["all"], sources: ["all"], dimension: "法律", text: "措辞是否可能被理解为订单或承诺"}
+  - {id: "I-03", doc_types: ["inquiry"], stances: ["all"], sources: ["outgoing"], dimension: "商务", text: "是否透露不应透露的信息，如我方目标价、库存、其他供应商报价"}
+  - {id: "I-04", doc_types: ["inquiry"], stances: ["all"], sources: ["incoming"], dimension: "合规与制裁", text: "对方询价的最终用途、目的地、交易方式是否存在疑点"}
+  # ---------- 12.6 函件（letter） ----------
+  - {id: "LT-01", doc_types: ["letter"], stances: ["all"], sources: ["all"], dimension: "法律", text: "承诺是否过度或无条件"}
+  - {id: "LT-02", doc_types: ["letter"], stances: ["all"], sources: ["all"], dimension: "法律", text: "是否变更已签合同或与之矛盾；变更是否需要双方书面确认"}
+  - {id: "LT-03", doc_types: ["letter"], stances: ["all"], sources: ["all"], dimension: "法律", text: "表述是否可能被视为认可对方主张或放弃我方权利"}
+  - {id: "LT-04", doc_types: ["letter"], stances: ["all"], sources: ["all"], dimension: "逻辑", text: "期限与时效表述（索赔期限、答复期限）是否明确"}
