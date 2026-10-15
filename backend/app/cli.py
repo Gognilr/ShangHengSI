@@ -2,6 +2,8 @@
 
   gen-key --out PATH            生成主密钥文件（32 字节随机值，权限 600）。目标文件已存在时拒绝覆盖。
   create-admin --username NAME  创建管理员，随机初始密码只显示一次，首次登录强制修改（SPEC 20.5）。
+  set-model --base-url URL --model NAME [--extra-params JSON] [--api-key-stdin]
+                                开发用：写入模型设置；API 密钥只从标准输入读取，不出现在命令行和输出中。
 """
 import argparse
 import os
@@ -68,6 +70,22 @@ def create_admin(username: str, display_name: str) -> str:
     return password
 
 
+def set_model(base_url: str, model: str, extra_params: dict | None, api_key: str | None) -> None:
+    """写入模型接口地址、模型名称、附加请求参数和 API 密钥（加密）。参数为 None 的项不改。需要 DATABASE_URL。"""
+    from app.admin.settings_store import set_setting
+    from app.db.session import get_sessionmaker
+    from app.security import crypto
+
+    with get_sessionmaker()() as db:
+        set_setting(db, "model.base_url", base_url, None)
+        set_setting(db, "model.name", model, None)
+        if extra_params is not None:
+            set_setting(db, "model.extra_params", extra_params, None)
+        if api_key is not None:
+            set_setting(db, "model.api_key_enc", crypto.encrypt_to_b64(api_key), None)
+        db.commit()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="企业商务文件AI智能审查助手 运维命令")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -78,6 +96,12 @@ def main(argv: list[str] | None = None) -> int:
     p_admin = sub.add_parser("create-admin", help="创建管理员（随机初始密码只显示一次）")
     p_admin.add_argument("--username", required=True, help="用户名，最多 50 个字符")
     p_admin.add_argument("--display-name", default="管理员", help="显示名，默认“管理员”")
+
+    p_model = sub.add_parser("set-model", help="开发用：设置模型接口地址、模型名称和 API 密钥")
+    p_model.add_argument("--base-url", required=True, help="接口地址，如 https://api.example.com/v1")
+    p_model.add_argument("--model", required=True, help="模型名称")
+    p_model.add_argument("--extra-params", help="附加请求参数，JSON 对象，原样合并进请求体")
+    p_model.add_argument("--api-key-stdin", action="store_true", help="从标准输入读取 API 密钥（一行）")
 
     args = parser.parse_args(argv)
 
@@ -101,6 +125,32 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"已创建管理员 {args.username}。")
         print(f"初始密码（只显示这一次，首次登录须修改）：{password}")
+        return 0
+
+    if args.command == "set-model":
+        import json
+
+        if not args.base_url.startswith(("http://", "https://")) or not args.model.strip():
+            print("错误：接口地址须以 http:// 或 https:// 开头，模型名称不能为空。", file=sys.stderr)
+            return 1
+        extra = None
+        if args.extra_params is not None:
+            try:
+                extra = json.loads(args.extra_params)
+            except json.JSONDecodeError:
+                extra = None
+            if not isinstance(extra, dict):
+                print("错误：--extra-params 须为 JSON 对象。", file=sys.stderr)
+                return 1
+        api_key = None
+        if args.api_key_stdin:
+            api_key = sys.stdin.readline().strip()
+            if not api_key:
+                print("错误：没有从标准输入读到 API 密钥。", file=sys.stderr)
+                return 1
+        set_model(args.base_url.strip(), args.model.strip(), extra, api_key)
+        tail = f"，API 密钥末 4 位 {api_key[-4:]}" if api_key and len(api_key) >= 8 else ""
+        print(f"已设置模型：{args.base_url.strip()}，{args.model.strip()}{tail}。")
         return 0
     return 2
 
