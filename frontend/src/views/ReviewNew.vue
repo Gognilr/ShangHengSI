@@ -16,6 +16,7 @@ import {
   type Stance,
   type TaskDetail,
 } from '@/api/tasks'
+import ConfirmStep from '@/components/ConfirmStep.vue'
 import { useAuthStore } from '@/stores/auth'
 import {
   POLICY_OPTIONS,
@@ -324,9 +325,9 @@ const runText = computed(() => {
       </el-form>
     </el-card>
 
-    <!-- 第二步：确认脱敏（M2-15） -->
+    <!-- 第二步：确认脱敏 -->
     <el-card v-else-if="step === 1 && task" shadow="never">
-      <p>确认脱敏</p>
+      <ConfirmStep :key="task.id" :task="task" @confirmed="refreshTask" @stale="refreshTask" />
     </el-card>
 
     <!-- 第三步：审核中 -->
