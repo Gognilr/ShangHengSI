@@ -1,22 +1,48 @@
-"""任务接口：/api/v1/tasks（SPEC 19.3，设计 docs/design/M2.md 第三节）。
-
-PATCH /tasks/{id}/files/{fid} 在 M2-13 实现。
-"""
+"""任务接口：/api/v1/tasks（SPEC 19.3，设计 docs/design/M2.md 第三节）。"""
 from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from app.config import get_settings
-from app.db.models import Task, User
+from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
-from app.security.deps import current_user, owned_task
+from app.security.deps import current_user, owned_task, owned_task_file
+from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service
-from app.tasks.schemas import TaskCreated, TaskDetail, TaskPage
+from app.tasks.schemas import TaskCreated, TaskDetail, TaskFileOut, TaskPage
 
 router = APIRouter(prefix="/tasks")
+
+
+class FileTypePatch(BaseModel):
+    doc_type: Literal["contract", "quotation", "order", "inquiry", "letter"]
+
+
+@router.patch("/{id}/files/{fid}", response_model=TaskFileOut)
+def patch_file_type(
+    patch: FileTypePatch,
+    file: TaskFile = Depends(owned_task_file),
+    task: Task = Depends(owned_task),
+    db: DbSession = Depends(get_db),
+) -> TaskFileOut:
+    # Q-50：与确认发送共用任务行锁，等待锁后刷新状态。
+    locked = db.scalar(select(Task).where(Task.id == task.id).with_for_update()
+                       .execution_options(populate_existing=True))
+    if locked is None:
+        raise NotFoundError("TASK_NOT_FOUND", "任务不存在")
+    if locked.status != "awaiting_confirm":
+        raise AppError(409, "TASK_STATE_CONFLICT", "当前任务状态不允许修改")
+    file.doc_type = patch.doc_type
+    file.doc_type_source = "user"
+    db.flush()
+    result = next(f for f in service.task_detail(db, locked).files if f.id == file.id)
+    db.commit()
+    return result
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=TaskCreated)
