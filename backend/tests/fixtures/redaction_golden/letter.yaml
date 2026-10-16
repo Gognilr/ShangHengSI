@@ -3,15 +3,15 @@ stance: other
 must_replace:
   - {text: 卓越虚构实业有限公司, category: ORG}
   - {text: 卓越公司, category: ORG}
+  - {text: "Aurora Fictive Energy Co., Ltd.", category: ORG}
+  - {text: Cedar Fictive Trading Inc., category: ORG}
+  - {text: Delta Example Marine Ltd, category: ORG}
   - {text: HT-2026-0102, category: REFNO}
   - {text: "1,360,000.00", category: AMOUNT}
   - {text: "52,300.50", category: AMOUNT}
   - {text: 6217 0000 1234 5678 901, category: ACCOUNT}
   - {text: "13700002222", category: PHONE}
   - {text: finance@zhuoyue-example.com, category: EMAIL}
-# 已知缺口（Q-52）：识别规则尚未覆盖的写法。修好后测试会失败，届时把条目移入 must_replace。
-known_gaps:
-  - {text: "Aurora", category: ORG, reason: 英文名称紧跟中文冒号（“收函方：Aurora …”）时，名称开头的单词被连同冒号一起当作非名称而漏掉}
 must_keep:
   - 2026年2月3日
   - 2026年7月31日

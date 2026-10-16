@@ -190,6 +190,32 @@ def test_other_org_names_in_text():
     assert run(nodes_of("本公司与贵公司、该厂均同意。"))[0].items == []
 
 
+def test_english_org_name_after_chinese_punctuation():
+    # Q-52：英文名称紧跟中文标点、无空格时，在标点处断开，完整名称一起识别
+    def names(text):
+        return [text[s:e] for s, e in find_other_org_names(text)]
+
+    assert names("收函方：Aurora Fictive Energy Co., Ltd.") == ["Aurora Fictive Energy Co., Ltd."]
+    assert names("致：Cedar Fictive Trading Inc.") == ["Cedar Fictive Trading Inc."]
+    assert names("致:Cedar Fictive Trading Inc.") == ["Cedar Fictive Trading Inc."]
+    assert names("抄送：Delta Example Marine Ltd，请知悉") == ["Delta Example Marine Ltd"]
+    assert names("经“Eastern Demo Logistics GmbH”承运") == ["Eastern Demo Logistics GmbH"]
+    assert names("货物交予（Foo Bar Ltd.）") == ["Foo Bar Ltd."]
+    assert names("本合同由Aurora Energy Ltd签订") == ["Aurora Energy Ltd"]
+    # 英文标点不使名称断开的情况不变；噪声词、角色词仍不并入名称
+    assert names("To: Acme Inc.") == ["Acme Inc."]
+    assert names("To:Acme Inc.") == ["Acme Inc."]
+    assert names("Dear Acme Inc.") == ["Acme Inc."]
+    assert names("Buyer：Acme Ltd") == ["Acme Ltd"]
+    assert names("ABC Trading, Inc.") == ["ABC Trading, Inc."]
+    # 标点之前的英文词不并入后面的名称
+    assert names("Hello World：Acme Inc.") == ["Acme Inc."]
+    # 完整流程：外发文本不再含名称的任何一部分
+    r, text = run(nodes_of("收函方：Aurora Fictive Energy Co., Ltd.\n致：Cedar Fictive Trading Inc."), stance="other")
+    for word in ("Aurora", "Fictive", "Energy", "Cedar", "Trading"):
+        assert word not in text
+
+
 def test_letters():
     assert [letters(i) for i in (0, 1, 25, 26, 27)] == ["A", "B", "Z", "AA", "AB"]
 
