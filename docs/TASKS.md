@@ -7,9 +7,9 @@
 ## 当前进度
 
 - M1 已验收并经用户确认（2026-10-15）
-- M2 已细化（M2-00）并经用户确认，设计见 docs/design/M2.md；M2-01 至 M2-16 已完成
-- 当前交接：M2-13 的 Opus 专门评审（规则 11）仍待用户安排；M2-14 至 M2-16 已完成（`npm run build` 通过，未在浏览器联调）；实现提交 51e8627，Docker 全部测试 620 passed、1 warning（2026-10-16），专项测试 31 passed；待确认决定见 Q-50
-- 下一个开发任务：**M2-17**（Sonnet 5.5，推理强度 high）
+- M2 已细化（M2-00）并经用户确认，设计见 docs/design/M2.md；M2-01 至 M2-17 已完成
+- 当前交接：M2-17 已完成（Docker 全部测试 641 passed、1 warning，2026-10-16）；M2-13 的 Opus 专门评审（规则 11）仍待用户安排；M2-14 至 M2-16 未在浏览器联调；回归集发现脱敏漏替换缺口，见 Q-52
+- 下一步：M2 里程碑验收（SPEC 第 23 节，Opus），等用户安排；验收前建议先修 Q-52
 - 试用 GPT-6.1 Sol（2026-10-15 用户同意）：M2-13 交给 GPT-6.1 Sol 试做，做完由 Opus 专门评审（规则 11），再由用户决定后续分工
 - 上次 Opus 评审到的提交：3a46fe3（M2-01 至 M2-06 已在 M2-07 开工前评审，无阻塞问题；两处小问题见 M2-07 完成报告）
 
@@ -99,7 +99,7 @@
 | M2-14 | 前端：新建审核第一步（上传与设置）、第三步（审核中轮询）、枚举翻译、multipart 请求 | Sonnet | medium | M2-13 | 6.2；设计十 | src/api/http.ts（加 postForm）、src/api/tasks.ts、src/utils/labels.ts、src/views/ReviewNew.vue | 上传前在前端检查数量、大小、扩展名；立场和来源默认为该用户上次的选择；轮询每 3 秒，离开页面停止；`npm run build` 通过 | 已完成 |
 | M2-15 | 前端：第二步基础版（文件信息与类型修改、签约方确认、脱敏摘要、查看将发送的文本、确认发送） | Sonnet | medium | M2-14 | 6.2 第二步；设计九、十 | src/views/ReviewNew.vue、src/api/redaction.ts、src/api/runs.ts、src/components/ 下新增的第二步子组件 | 未选我方不能提交；国家、类型用可输入的下拉框（Q-50 ②）；409 错误按错误码给出中文提示；外发文本纯文本显示；`npm run build` 通过 | 已完成 |
 | M2-16 | 前端：结果页基础版（顶部信息栏、问题清单 FindingCard、审核要求逐条结论标签页）、审核历史页 | Sonnet | medium | M2-15 | 6.3、6.4；设计八、十 | src/views/ReviewResult.vue、src/views/History.vue、src/components/FindingCard.vue | 问题卡片字段与 6.3 一致，可直接替换的措辞带复制按钮，处理状态和备注可保存；历史页搜索、日期筛选、分页、删除（二次确认）可用；界面不出现“审核通过”“无风险”；`npm run build` 通过 | 已完成 |
-| M2-17 | 脱敏回归测试集：至少 5 份虚构样本（合同、报价单、订单、询价函、函件各一，中英文混合）、标注文件、自动化测试 | Sonnet | high | M2-16 | 23.3；设计十一 | tests/fixtures/redaction\_golden/\*、tests/test\_redaction\_golden.py | must\_replace 全部不在外发文本中（召回率 100%）；must\_keep 全部仍在；M2 范围内只标注第 1–5 步的类别（人名、地址留到 M4） | 待执行 |
+| M2-17 | 脱敏回归测试集：至少 5 份虚构样本（合同、报价单、订单、询价函、函件各一，中英文混合）、标注文件、自动化测试 | Sonnet | high | M2-16 | 23.3；设计十一 | tests/fixtures/redaction\_golden/\*、tests/test\_redaction\_golden.py | must\_replace 全部不在外发文本中（召回率 100%）；must\_keep 全部仍在；M2 范围内只标注第 1–5 步的类别（人名、地址留到 M4） | 已完成 |
 | M2-18 | 审核效果评测脚本 | Sonnet | medium | M2-17 | 23.3；设计七、八 | tools/eval\_review.py、tools/README.md | 对指定目录下的样本走完 parse → 脱敏 → 审核（经网关），输出每个样本的要求结论统计和问题清单到 Markdown 文件；可用 `--extra-params` 临时覆盖附加请求参数（对比思考模式）；只能在开发环境运行 | 待执行 |
 | M2-19 | M2 联调与验收：用模拟模型服务走通全流程；用户提供 DeepSeek 测试密钥后，用虚构样本调用真实模型试跑，对比思考与非思考模式 | Opus | high | M2-18 | 22、23、Q-12 | 按需 | A-04、T-01、T-02、T-07、T-09、T-10、T-11 通过；评测结果汇报给用户 | 待执行 |
 

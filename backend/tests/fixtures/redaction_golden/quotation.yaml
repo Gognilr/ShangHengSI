@@ -1,0 +1,30 @@
+description: 英文为主的报价单：PI 号、电话、邮箱、网址、IBAN、账号、SWIFT、单价与总额
+stance: sales
+must_replace:
+  - {text: "Haiyue Fictive Carbon Co., Ltd.", category: ORG}
+  - {text: Delta Mock Industries GmbH, category: ORG}
+  - {text: PI-2026-0233, category: REFNO}
+  - {text: +86 532 8888 0000, category: PHONE}
+  - {text: "18600001111", category: PHONE}
+  - {text: export@haiyue-example.com, category: EMAIL}
+  - {text: www.haiyue-example.com, category: URL}
+  - {text: 4400 1122 3344 5566, category: ACCOUNT}
+  - {text: DE89 3704 0044 0532 0130 00, category: ACCOUNT}
+  - {text: HYFCDEFF, category: SWIFT}
+  - {text: "880.00", category: PRICE}
+  - {text: "176,000.00", category: AMOUNT}
+must_keep:
+  - Calcined Petroleum Coke
+  - HS 27131200
+  - Sulfur ≤0.5%
+  - Ash ≤0.3%
+  - Real density ≥2.07 g/cm3
+  - Size 1-5mm
+  - 200 MT
+  - USD
+  - CIF Hamburg
+  - Germany
+  - "2026-05-08"
+  - 15 days
+  - 100% T/T in advance
+  - 25 天

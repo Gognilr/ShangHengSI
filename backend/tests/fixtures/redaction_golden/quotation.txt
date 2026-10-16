@@ -1,0 +1,21 @@
+QUOTATION / 报价单
+PI No.: PI-2026-0233
+Date: 2026-05-08
+Seller: Haiyue Fictive Carbon Co., Ltd.
+Tel: +86 532 8888 0000
+Email: export@haiyue-example.com
+Website: www.haiyue-example.com
+Buyer: Delta Mock Industries GmbH
+Country: Germany
+Product: Calcined Petroleum Coke, HS 27131200
+Specification: Sulfur ≤0.5%, Ash ≤0.3%, Real density ≥2.07 g/cm3, Size 1-5mm
+Quantity: 200 MT
+Unit price: USD 880.00/MT CIF Hamburg
+Total amount: USD 176,000.00
+Validity: 15 days from the date of this quotation.
+Payment: 100% T/T in advance to the following account.
+Account No.: 4400 1122 3344 5566
+IBAN: DE89 3704 0044 0532 0130 00
+SWIFT Code: HYFCDEFF
+报价人联系电话：18600001111
+备注：以上价格不含港口杂费，装期为收到预付款后 25 天内。

@@ -1,0 +1,14 @@
+询价函 / Request for Quotation
+买方：万象虚构贸易有限公司
+Supplier: Lumen Placeholder Chemicals Inc.
+我司拟采购下列产品，诚邀贵司报价。We would like to request your best offer for the following:
+Item: 煅后石油焦 (Calcined Petroleum Coke)
+Specification: Sulfur ≤0.7%, Volatile matter ≤0.5%, Size 0-3mm
+Quantity: 1,000 MT per month, 12 months
+目标价格：不高于 USD 700/MT CFR Mumbai
+Delivery: Shipment in August 2026, Port of discharge: Mumbai, India
+请在 2026年7月20日前回复，报价有效期不少于 30 天。
+Contact Tel: +86 21 6000 1234
+Email: purchase@wanxiang-example.com
+Order No.: RFQ-2026-0715
+本询价函不构成订单，亦不构成对任何一方的约束。

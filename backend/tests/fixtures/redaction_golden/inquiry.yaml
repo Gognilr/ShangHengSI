@@ -1,0 +1,23 @@
+description: 中英文混合询价函：买方与供应商、目标单价、联系方式、询价编号
+stance: purchase
+must_replace:
+  - {text: 万象虚构贸易有限公司, category: ORG}
+  - {text: Lumen Placeholder Chemicals Inc., category: ORG}
+  - {text: "700", category: PRICE}
+  - {text: +86 21 6000 1234, category: PHONE}
+  - {text: purchase@wanxiang-example.com, category: EMAIL}
+  - {text: RFQ-2026-0715, category: REFNO}
+must_keep:
+  - 煅后石油焦
+  - Calcined Petroleum Coke
+  - Sulfur ≤0.7%
+  - Volatile matter ≤0.5%
+  - Size 0-3mm
+  - 1,000 MT per month
+  - 12 months
+  - USD
+  - CFR Mumbai
+  - Mumbai, India
+  - August 2026
+  - 2026年7月20日
+  - 不少于 30 天

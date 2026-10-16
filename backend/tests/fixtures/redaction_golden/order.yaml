@@ -1,0 +1,31 @@
+description: 中文采购订单（采购立场）：多方标签、订单号、发票号、证件号、单价与金额、大写金额
+stance: purchase
+must_replace:
+  - {text: 远航虚构化工有限公司, category: ORG}
+  - {text: "Sunrise Mock Materials Co., Ltd.", category: ORG}
+  - {text: Greenfield Imaginary Logistics Pte. Ltd., category: ORG}
+  - {text: 宏达虚构国际货运代理有限公司, category: ORG}
+  - {text: PO-2026-0925, category: REFNO}
+  - {text: INV-2026-7788, category: REFNO}
+  - {text: 91310115MA1H8XQ4TB, category: IDNO}
+  - {text: 021-65432100, category: PHONE}
+  - {text: 1234 5678 9012 3456 78, category: ACCOUNT}
+  - {text: "12,800.00", category: PRICE}
+  - {text: "2,380.00", category: PRICE}
+  - {text: "512,000.00", category: AMOUNT}
+  - {text: "190,400.00", category: AMOUNT}
+  - {text: "702,400.00", category: AMOUNT}
+  - {text: 柒拾万贰仟肆佰元整, category: AMOUNT}
+must_keep:
+  - 石墨电极 UHP 600mm
+  - 数量 40 件
+  - 数量 80 件
+  - 4TPI
+  - 人民币
+  - 45 天
+  - 天津港
+  - 2026年11月30日
+  - 2026年9月25日
+  - 电阻率≤5.8 μΩ·m
+  - 体积密度≥1.70 g/cm3
+  - 0.1%
