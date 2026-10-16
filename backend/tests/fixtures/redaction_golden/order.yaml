@@ -16,6 +16,7 @@ must_replace:
   - {text: "190,400.00", category: AMOUNT}
   - {text: "702,400.00", category: AMOUNT}
   - {text: 柒拾万贰仟肆佰元整, category: AMOUNT}
+  - {text: Seabridge Fictive Shipping (Hong Kong) Limited, category: ORG}
 must_keep:
   - 石墨电极 UHP 600mm
   - 数量 40 件

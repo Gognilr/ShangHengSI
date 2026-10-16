@@ -4,7 +4,8 @@
 - 签约方：在“甲方、买方、Buyer、Consignee”等标签后的冒号之后，取以企业后缀结尾的名称。
 - 简称：紧跟在已识别名称之后的“（以下简称“X”）”“(the "X")”等结构；通用角色词不作为简称。
 - 其他企业名称：正文中带“有限公司”等明确后缀的中文名称，以及以英文企业后缀结尾的连续大写开头单词。
-  英文名称切词时，汉字与中文标点同空白一样是分隔符（“收函方：Aurora Fictive Energy Co., Ltd.”整体识别）。
+  英文名称切词时，汉字与中文标点同空白一样是分隔符（“收函方：Aurora Fictive Energy Co., Ltd.”整体识别）；
+  名称中间可以有一组括号括起的地区名（“Northwind Fictive (Hong Kong) Limited”整体识别）。
   “公司、厂、集团”等宽泛后缀只在签约方标签后使用，正文中不据此自动替换（留给 9.5 疑似遗漏，M4）。
 """
 import re
@@ -57,7 +58,10 @@ _CN_CHAR = re.compile(r"[一-鿿]")
 _EN_WORD_OK = re.compile(r"^(?:[A-Z0-9][A-Za-z0-9&'.\-]*|&|of|and|de|du|la|for)$")
 # 英文名称切词：空白、汉字、中文标点（含全角形式）和下列半角标点都是分隔符，使“收函方：Aurora Energy Co., Ltd.”中的
 # 冒号前不会把“Aurora”并进无效单词；撇号、句点、逗号、连字符、&留在单词内
-_EN_TOKEN_RE = re.compile(r"[^\s一-鿿　-〿＀-￯：:；;\"“”‘「」『』()（）]+")
+# 名称中间可以有一组括号括起的 1–3 个大写开头的单词（“Northwind (Hong Kong) Limited”“Example (HK) Co., Ltd.”），整体算一个单词
+_EN_PAREN_GROUP = r"\([A-Z][A-Za-z.&\-]*(?: [A-Z][A-Za-z.&\-]*){0,2}\)"
+_EN_TOKEN_RE = re.compile(rf"{_EN_PAREN_GROUP}|[^\s一-鿿　-〿＀-￯：:；;\"“”‘「」『』()（）]+")
+_EN_PAREN_OK = re.compile(rf"^{_EN_PAREN_GROUP}$")
 _EN_CONNECTORS = frozenset({"&", "of", "and", "de", "du", "la", "for"})
 _EN_LEADING_NOISE = frozenset(w.casefold() for w in (
     "The", "To", "From", "By", "With", "Messrs", "Messrs.", "Dear", "Attn", "Seller", "Buyer", "Supplier",
@@ -191,12 +195,17 @@ def find_other_org_names(text: str) -> list[tuple[int, int]]:
         gap_end = len(head)  # 单词之间只能隔空白；隔着汉字或标点（“收函方：Aurora”）说明名称在此处起头
         for i, tok in enumerate(reversed(tokens)):
             word = tok.group().rstrip(",") if i == 0 else tok.group()  # “ABC, Inc.”
-            if head[tok.end():gap_end].strip() or len(kept) >= 8 or not _EN_WORD_OK.match(word):
+            if (head[tok.end():gap_end].strip() or len(kept) >= 8
+                    or not (_EN_WORD_OK.match(word) or _EN_PAREN_OK.match(word))):
+                break
+            # 括号组后面紧跟连接词时是正文里的说明（“the Contract (Annex A) and XX LLC”），不是名称的一部分
+            if word.startswith("(") and kept and kept[-1].group() in _EN_CONNECTORS:
                 break
             kept.append(tok)
             gap_end = tok.start()
         kept.reverse()
-        while kept and (kept[0].group() in _EN_CONNECTORS or kept[0].group().casefold() in _EN_LEADING_NOISE):
+        while kept and (kept[0].group() in _EN_CONNECTORS or kept[0].group().casefold() in _EN_LEADING_NOISE
+                        or kept[0].group().startswith("(")):
             kept.pop(0)
         if kept and any(c.isupper() for c in kept[0].group()):
             out.append((offset + kept[0].start(), m.end()))

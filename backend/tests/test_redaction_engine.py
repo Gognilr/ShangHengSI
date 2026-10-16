@@ -216,6 +216,24 @@ def test_english_org_name_after_chinese_punctuation():
         assert word not in text
 
 
+def test_english_org_name_with_parenthesized_region():
+    # M2 验收评审：正文中带括号地区名的英文名称（不在签约方标签后）曾整个漏替换
+    def names(text):
+        return [text[s:e] for s, e in find_other_org_names(text)]
+
+    assert names("货物由 Northwind Fictive (Hong Kong) Limited 代为装运。") == ["Northwind Fictive (Hong Kong) Limited"]
+    assert names("抄送：Bluefin Example Shipping (HK) Co., Ltd.") == ["Bluefin Example Shipping (HK) Co., Ltd."]
+    assert names("Example Steel (Shanghai) Co., Ltd.") == ["Example Steel (Shanghai) Co., Ltd."]
+    # 括号组后紧跟连接词、括号组在开头、括号内是小写说明：括号不并入名称
+    assert names("according to the Contract (Annex A) and Sample Trading LLC agreed.") == ["Sample Trading LLC"]
+    assert names("付款至 (HK) Co., Ltd. 账户") == []
+    assert names('Fictional Steel Works Co., Ltd. (the "Seller")') == ["Fictional Steel Works Co., Ltd."]
+    r, text = run(nodes_of("货物由 Northwind Fictive (Hong Kong) Limited 代为装运。"), stance="other")
+    for word in ("Northwind", "Fictive"):
+        assert word not in text
+    assert "货物由" in text and "代为装运" in text
+
+
 def test_letters():
     assert [letters(i) for i in (0, 1, 25, 26, 27)] == ["A", "B", "Z", "AA", "AB"]
 
