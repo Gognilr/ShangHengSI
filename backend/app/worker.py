@@ -249,4 +249,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # 以 python -m app.worker 启动时，本文件作为 __main__ 运行，而处理函数模块导入的是 app.worker，
+    # 两者是不同的模块对象。转交给 app.worker 的 main，保证 HANDLERS 和停止信号是同一份。
+    from app.worker import main as _main
+
+    _main()

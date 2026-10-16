@@ -144,9 +144,13 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         api_key = None
         if args.api_key_stdin:
-            api_key = sys.stdin.readline().strip()
+            # Windows PowerShell 管道会在开头加 BOM，去掉；密钥要放进 HTTP 头，只接受可见 ASCII 字符
+            api_key = sys.stdin.readline().lstrip("﻿").strip()
             if not api_key:
                 print("错误：没有从标准输入读到 API 密钥。", file=sys.stderr)
+                return 1
+            if not all("!" <= c <= "~" for c in api_key):
+                print("错误：API 密钥只能包含可见的 ASCII 字符。", file=sys.stderr)
                 return 1
         set_model(args.base_url.strip(), args.model.strip(), extra, api_key)
         tail = f"，API 密钥末 4 位 {api_key[-4:]}" if api_key and len(api_key) >= 8 else ""

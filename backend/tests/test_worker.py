@@ -284,3 +284,23 @@ def test_ocr_slot_is_exclusive():
     for t in threads:
         t.join()
     assert peak == 1
+
+
+def test_module_entry_delegates_to_app_worker(monkeypatch):
+    """python -m app.worker：入口必须调用 app.worker.main，处理函数才注册在同一个 HANDLERS 中。"""
+    import runpy
+    import warnings
+
+    called = []
+    monkeypatch.setattr(worker, "main", lambda: called.append(True))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # app.worker 已导入时 runpy 的提示
+        runpy.run_module("app.worker", run_name="__main__")
+    assert called == [True]
+
+
+def test_parse_and_review_handlers_registered_after_import():
+    import app.review.job  # noqa: F401
+    import app.tasks.pipeline  # noqa: F401
+
+    assert {"parse", "review"} <= set(worker.HANDLERS)

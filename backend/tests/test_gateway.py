@@ -303,3 +303,17 @@ def test_set_model_command(gw, db_sessionmaker, monkeypatch, capsys):
         assert crypto.decrypt_from_b64(settings_store.get_setting(db, "model.api_key_enc")) == "sk-new-key-ABCD9876"
     assert cli.main(["set-model", "--base-url", "ftp://x", "--model", "m"]) == 1
     assert cli.main(["set-model", "--base-url", "https://x", "--model", "m", "--extra-params", "[1]"]) == 1
+
+
+def test_set_model_strips_bom_and_rejects_non_ascii_key(gw, db_sessionmaker, monkeypatch):
+    # PowerShell 管道传入的密钥开头带 BOM：去掉后保存
+    monkeypatch.setattr("sys.stdin", io.StringIO("﻿sk-bom-key-1234\r\n"))
+    assert cli.main(["set-model", "--base-url", "http://mock-llm:9000/v1", "--model", "m", "--api-key-stdin"]) == 0
+    with db_sessionmaker() as db:
+        assert crypto.decrypt_from_b64(settings_store.get_setting(db, "model.api_key_enc")) == "sk-bom-key-1234"
+    # 其他非 ASCII 或空白字符无法放进 HTTP 头：拒绝，原密钥不变
+    for bad in ("sk-全角-1234\n", "sk bad key 12\n"):
+        monkeypatch.setattr("sys.stdin", io.StringIO(bad))
+        assert cli.main(["set-model", "--base-url", "http://mock-llm:9000/v1", "--model", "m", "--api-key-stdin"]) == 1
+    with db_sessionmaker() as db:
+        assert crypto.decrypt_from_b64(settings_store.get_setting(db, "model.api_key_enc")) == "sk-bom-key-1234"
