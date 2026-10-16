@@ -58,11 +58,24 @@ async function loadSummary() {
   summary.value = (await redactionApi.redaction(props.task.id)).summary
 }
 
+// 上次提交被出口复检拦截时显示拦截原因（只有类别和位置，不含真实值），用户处理后可重新提交
+const blockedReason = ref('')
+
+async function loadBlocked() {
+  const run = props.task.latest_run
+  if (run?.status !== 'blocked') return
+  try {
+    blockedReason.value = (await runsApi.get(run.id)).error_message ?? '出口复检发现未脱敏的信息，已拦截，未发送'
+  } catch {
+    blockedReason.value = '出口复检发现未脱敏的信息，已拦截，未发送'
+  }
+}
+
 async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [p] = await Promise.all([redactionApi.parties(props.task.id), loadSummary()])
+    const [p] = await Promise.all([redactionApi.parties(props.task.id), loadSummary(), loadBlocked()])
     parties.value = p.items
   } catch (e) {
     loadError.value = e instanceof ApiError ? e.message : '加载失败，请刷新页面'
@@ -197,6 +210,15 @@ onMounted(loadAll)
     <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" />
 
     <template v-else>
+      <el-alert
+        v-if="blockedReason"
+        type="warning"
+        show-icon
+        :closable="false"
+        title="上次提交被拦截，未发送给模型"
+        :description="`${blockedReason}。请检查签约方和外发文本后重新提交。`"
+        class="gap"
+      />
       <h3>1. 文件信息</h3>
       <el-table :data="files" border size="small">
         <el-table-column label="文件名" min-width="200">
@@ -282,6 +304,14 @@ onMounted(loadAll)
           </template>
         </el-table-column>
       </el-table>
+      <el-alert
+        v-if="!loading && !parties.length"
+        type="warning"
+        show-icon
+        :closable="false"
+        title="未识别到签约方，暂时不能提交 AI 审核"
+        class="gap"
+      />
       <el-alert
         v-if="parties.length && ourCount !== 1"
         type="warning"
