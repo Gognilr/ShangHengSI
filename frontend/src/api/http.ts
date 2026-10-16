@@ -39,6 +39,8 @@ export function setHttpHooks(next: Hooks): void {
 
 interface RequestOptions {
   body?: unknown
+  /** multipart 表单；浏览器自动生成 Content-Type 和分隔符，不能手动设置。 */
+  form?: FormData
   query?: Record<string, string | number | undefined>
   /** 为 true 时 401 不触发全局跳转（用于登录请求和启动时探测登录状态）。 */
   silent401?: boolean
@@ -56,7 +58,7 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
   }
 
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
+  if (opts.body !== undefined && !opts.form) headers['Content-Type'] = 'application/json'
   if (method !== 'GET' && csrfToken) headers['X-CSRF-Token'] = csrfToken
 
   let res: Response
@@ -65,7 +67,7 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
       method,
       headers,
       credentials: 'same-origin',
-      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
     })
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', '无法连接服务器，请检查网络后重试')
@@ -96,6 +98,7 @@ export const http = {
     request<T>('GET', path, { query, ...opts }),
   post: <T>(path: string, body?: unknown, opts?: Pick<RequestOptions, 'silent401'>) =>
     request<T>('POST', path, { body, ...opts }),
+  postForm: <T>(path: string, form: FormData) => request<T>('POST', path, { form }),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, { body }),
   delete: <T>(path: string) => request<T>('DELETE', path),
