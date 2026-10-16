@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_setting
+from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import Finding, RequirementResult, ReviewRun, Task
 from app.llm.gateway import GatewayError, format_reasons
@@ -26,7 +27,7 @@ logger = logging.getLogger("app.review.job")
 
 MSG_LOCAL_ONLY = "该任务的外发策略为不外发，未调用模型"
 MSG_BAD_OUTPUT = "模型返回的内容不符合要求，请稍后重新审核"
-MSG_INTERNAL = "审核时发生内部错误，请重新审核；仍然失败请联系管理员"
+MSG_INTERNAL = jobs.REVIEW_INTERNAL_MSG
 
 
 def _reload(db: Session, run_id: uuid.UUID) -> tuple[ReviewRun, Task] | None:

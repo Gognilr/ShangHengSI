@@ -304,3 +304,21 @@ def test_parse_and_review_handlers_registered_after_import():
     import app.tasks.pipeline  # noqa: F401
 
     assert {"parse", "review"} <= set(worker.HANDLERS)
+
+
+def test_unregistered_handler_does_not_leave_task_parsing(handlers, db_sessionmaker, make_user):
+    """M2 验收发现的问题（Q-53）：未注册处理函数时，任务不能一直停在“解析中”。"""
+    from app.db.models import Task
+
+    owner = make_user("alice")
+    with db_sessionmaker() as db:
+        task = Task(owner_id=owner.id, title="样本.docx", stance="sales", source="outgoing", policy="ai",
+                    status="parsing")
+        db.add(task)
+        db.commit()
+        tid = task.id
+    jid = _enqueue(db_sessionmaker, "parse", {"task_id": str(tid)})
+    with _Running(db_sessionmaker):
+        assert _wait(lambda: _statuses(db_sessionmaker)[jid] == "failed")
+    with db_sessionmaker() as db:
+        assert db.get(Task, tid).status == "parse_failed"

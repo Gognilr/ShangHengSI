@@ -9,7 +9,6 @@
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
 | Q-02 | DeepSeek 企业使用的数据条款：是否承诺不用于训练、不留存 | 由产品负责人查阅 DeepSeek 开放平台的用户协议与隐私政策，或与厂商签订补充协议后确认 | 上线前提 | M8 上线前 |
-| Q-53 | M2 验收发现：job 在处理函数之外失败（未注册处理函数 NO_HANDLER、心跳超时用完 3 次）时，只把 jobs 置 failed，任务停在“解析中”或“审核中”、轮次停在 queued / running，界面一直轮询，用户只能删除任务 | jobs 最终置 failed 时按 job 类型收尾：parse → 任务 parse_failed（error_message 用通用文字“解析时发生内部错误，请重新上传”）；review → 轮次 failed、任务回到 awaiting_confirm，与处理函数内部失败的结果一致；只写类别，不写原文 | app/db/jobs.py、app/worker.py、tests/test_jobs.py、tests/test_worker.py | M3 开工前 |
 
 ## 二、已决定
 
@@ -67,6 +66,7 @@
 | Q-50 | 脱敏确认接口中 SPEC 6.2、19.3–19.4 未写明的细节 | ① PUT /parties 按完整列表提交，id 不得重复、遗漏或属于其他任务，不符合统一返回 422 VALIDATION_ERROR；空列表、零个或多个我方返回 422 OUR_PARTY_REQUIRED（列表本身无效时优先报列表错误）。② is_our_party 只接受 JSON 布尔值；国家、类型为非空字符串，去掉两端空白，长度分别不超过数据库的 50、20 字符，不额外限制为词典枚举（已决定，前端做法见第二节 Q-50 ②）。③ PUT 签约方和 PATCH 文件类型均与确认发送共用任务行锁，取得锁后重新读取状态，防止审核开始后继续修改。④ PATCH 返回与任务详情中相同的文件对象；列表按代号、替换项按 loc 和字符位置排序。出参模型就近定义在允许范围内的 router.py。状态：待确认 | 6.2、19.3、19.4、M2-13 |
 | Q-51 | 6.2 要求立场、来源默认为该用户上次的选择，但 /auth/me 和任务接口没有返回 users.last_stance / last_source | 前端在浏览器本地存储里按用户 ID 记住上次提交时的立场和来源（M2-14），不新增接口；换浏览器后回到默认值（销售、我方发出）。如需跨浏览器一致，后续让 /auth/me 返回这两个字段。状态：待确认 | 6.2、M2-14 |
 | Q-52 | M2-17 回归测试发现脱敏漏替换：英文公司名称紧跟中文冒号且无空格（如“收函方：Aurora Fictive Energy Co., Ltd.”），parties.find_other_org_names 按空格切词，“收函方：Aurora”不合格，名称开头的“Aurora”被留在外发文本中 | 回归集用 known_gaps 记录（letter.yaml），测试保持通过；已修复（2026-10-16）：parties.find_other_org_names 向前取英文单词时改用 _EN_TOKEN_RE 切词，空白、汉字、中文标点（含全角形式）及半角冒号、分号、引号、圆括号都是分隔符，且单词之间只能隔空白，隔着标点即视为名称起点；噪声词（To、Dear、Name 等）、角色词、连接词的处理不变。回归集 letter.yaml 已把 Aurora 条目移入 must_replace（整名 Aurora Fictive Energy Co., Ltd.），并补“致：Cedar Fictive Trading Inc.”“抄送：Delta Example Marine Ltd”两行；known_gaps 机制保留。状态：已处理 | 9.3、M2-08、M2-17 |
+| Q-53 | M2 验收发现：job 在处理函数之外失败（未注册处理函数 NO_HANDLER、心跳超时用完 3 次）时，只把 jobs 置 failed，任务停在“解析中”或“审核中”、轮次停在 queued / running，界面一直轮询 | 已修复（2026-10-16）：jobs.fail 和 requeue_stale 最终置 failed 时调用 jobs.finalize_failed 收尾，结果与处理函数内部失败一致：parse → 任务 parse_failed，error_message 为通用文字“解析时发生内部错误，请重新上传；仍然失败请联系管理员”；review → 轮次 failed（“审核时发生内部错误，请重新审核；仍然失败请联系管理员”），审核中的任务置 reviewed。只在状态仍为进行中时改动，处理函数已收尾的不覆盖；收尾逻辑放在 jobs.py，不依赖处理函数是否注册。状态：待确认 | app/db/jobs.py、tests/test_jobs.py、tests/test_worker.py |
 
 ## 四、后续里程碑处理（先记录）
 

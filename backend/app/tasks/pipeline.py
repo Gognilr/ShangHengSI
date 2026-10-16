@@ -11,6 +11,7 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.db import jobs
 from app.db.models import DocNode, Task, TaskFile
 from app.parsing.docx import PARSER_VERSION, parse_docx
 from app.parsing.doctype import detect_doc_type
@@ -23,7 +24,7 @@ from app.worker import job_handler
 logger = logging.getLogger("app.tasks.pipeline")
 
 MSG_UNSUPPORTED = "该格式的解析将在后续版本提供"
-MSG_INTERNAL = "解析时发生内部错误，请重新上传；仍然失败请联系管理员"
+MSG_INTERNAL = jobs.PARSE_INTERNAL_MSG
 _HEAD_CHARS = 1000  # 文件类型识别只看正文前 1000 字（SPEC 8.6）
 
 

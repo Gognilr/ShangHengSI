@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, text
 
 from app.db import jobs
-from app.db.models import Job
+from app.db.models import Job, ReviewRun, Task
 
 
 def _add(sm, type="parse", payload=None, **kw) -> int:
@@ -160,3 +160,91 @@ def test_queue_position(db_sessionmaker):
         assert jobs.queue_position(db, p1) is None  # 不在排队
         assert jobs.queue_position(db, p2) == 1
         assert jobs.queue_position(db, r1) == 1
+
+
+# ---------------------------------------------------------------- 最终失败时收尾业务状态（Q-53）
+
+
+def _task(sm, owner, status="parsing"):
+    with sm() as db:
+        task = Task(owner_id=owner.id, title="样本.docx", stance="sales", source="outgoing", policy="ai", status=status)
+        db.add(task)
+        db.commit()
+        return task.id
+
+
+def _run(sm, owner, task_id, status="queued"):
+    with sm() as db:
+        run = ReviewRun(task_id=task_id, run_no=1, status=status, stance="sales", source="outgoing",
+                        main_doc_type="contract", created_by=owner.id)
+        db.add(run)
+        db.commit()
+        return run.id
+
+
+def test_fail_finalizes_parsing_task(db_sessionmaker, make_user):
+    tid = _task(db_sessionmaker, make_user("alice"))
+    jid = _add(db_sessionmaker, "parse", {"task_id": str(tid)})
+    with db_sessionmaker() as db:
+        jobs.fail(db, jid, "NO_HANDLER")
+    with db_sessionmaker() as db:
+        task = db.get(Task, tid)
+        assert (task.status, task.error_message) == ("parse_failed", jobs.PARSE_INTERNAL_MSG)
+
+
+def test_fail_finalizes_review_run_and_task(db_sessionmaker, make_user):
+    owner = make_user("alice")
+    tid = _task(db_sessionmaker, owner, status="reviewing")
+    rid = _run(db_sessionmaker, owner, tid, status="running")
+    jid = _add(db_sessionmaker, "review", {"run_id": str(rid)})
+    with db_sessionmaker() as db:
+        jobs.fail(db, jid, "NO_HANDLER")
+    with db_sessionmaker() as db:
+        run, task = db.get(ReviewRun, rid), db.get(Task, tid)
+        assert (run.status, run.error_message) == ("failed", jobs.REVIEW_INTERNAL_MSG)
+        assert run.finished_at is not None
+        assert task.status == "reviewed"
+
+
+def test_fail_keeps_state_already_set_by_handler(db_sessionmaker, make_user):
+    """处理函数已经收尾（如解析失败写了具体原因、轮次 blocked）时不覆盖。"""
+    owner = make_user("alice")
+    tid = _task(db_sessionmaker, owner, status="parse_failed")
+    with db_sessionmaker() as db:
+        db.get(Task, tid).error_message = "样本.docx：具体原因"
+        db.commit()
+    tid2 = _task(db_sessionmaker, owner, status="awaiting_confirm")
+    rid = _run(db_sessionmaker, owner, tid2, status="blocked")
+    for type, payload in (("parse", {"task_id": str(tid)}), ("review", {"run_id": str(rid)})):
+        jid = _add(db_sessionmaker, type, payload)
+        with db_sessionmaker() as db:
+            jobs.fail(db, jid, "RuntimeError")
+    with db_sessionmaker() as db:
+        assert db.get(Task, tid).error_message == "样本.docx：具体原因"
+        assert db.get(ReviewRun, rid).status == "blocked"
+        assert db.get(Task, tid2).status == "awaiting_confirm"
+
+
+def test_fail_tolerates_missing_or_bad_payload(db_sessionmaker):
+    """任务已删除、payload 不合法时只置 job failed。"""
+    ids = [_add(db_sessionmaker, "parse", {"task_id": "00000000-0000-0000-0000-000000000000"}),
+           _add(db_sessionmaker, "parse", {"task_id": "not-a-uuid"}),
+           _add(db_sessionmaker, "review", {})]
+    for jid in ids:
+        with db_sessionmaker() as db:
+            jobs.fail(db, jid, "NO_HANDLER")
+        assert _get(db_sessionmaker, jid).status == "failed"
+
+
+def test_requeue_stale_finalizes_after_max_attempts(db_sessionmaker, make_user):
+    tid = _task(db_sessionmaker, make_user("alice"))
+    jid = _add(db_sessionmaker, "parse", {"task_id": str(tid)})
+    for attempt in (1, 2, 3):
+        with db_sessionmaker() as db:
+            jobs.claim(db, "w")
+        _age(db_sessionmaker, jid, 16)
+        with db_sessionmaker() as db:
+            jobs.requeue_stale(db)
+        with db_sessionmaker() as db:
+            expected = "parsing" if attempt < 3 else "parse_failed"
+            assert db.get(Task, tid).status == expected
