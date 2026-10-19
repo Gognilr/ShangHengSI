@@ -18,9 +18,10 @@
 - M3-02 已完成（2026-10-19）：XLSX 解析、model.py 常量与 ocr_pages，Docker 全部测试通过
 - M3-03 已完成（2026-10-19）：PDF 文字页解析（扫描页暂抛占位 ParseError，M3-04 替换）
 - M3-04 已完成（2026-10-19）：OCR 引擎封装、图片解析、PDF 扫描页；Docker 全部测试通过，OCR 测试在 --network none 容器中通过
-- 下一个任务：**M3-05**（pipeline 接入与脱敏适配，Opus 档，xhigh）
+- M3-05 已完成（2026-10-19）：pipeline 按格式分派、OCR 预算与 ocr_slot；表格列提示支持 XLSX 和非首行表头；问题位置显示页码和单元格；脱敏回归集增加 XLSX 报价单；Docker 全部测试 749 passed；新增 Q-68（待确认）
+- 下一个任务：**M3-06**（预览接口，Sonnet 档，medium）
 - GPT-6.1 Sol 分工（2026-10-16 用户决定）：试用任务 M2-13 评审通过，以后可以接手 Sonnet 档的任务，含前端任务；它做的第一个前端任务由 Opus 重点评审（见第一节）。前端界面规范见 docs/design/frontend.md
-- 上次 Opus 评审到的提交：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
+- 上次 Opus 评审到的提交：e43e63f（2026-10-19 M3-05 开工前评审 M3-01 至 M3-04（Sonnet）：只改了文件范围内的文件（M3-04 按规则 6 追加 Q-67），解析失败消息不含原文，日志只写页数、块数和耗时，onnxruntime 遥测在建引擎前关闭，无阻塞问题。更早：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
 
 ## 一、模型分工与推理强度
 
@@ -124,7 +125,7 @@
 | M3-02 | XLSX 解析：两次读取、单元格文字格式化（数字、百分比、货币、日期）、合并单元格、隐藏工作表、未缓存公式与隐藏行列的警告、单元格数上限 | Sonnet | high | M3-01 | 8.1、8.2、8.4、8.7；设计二、三 | app/parsing/model.py（只加第二节的常量和 ocr\_pages 字段）、app/parsing/xlsx.py、tests/test\_parse\_xlsx.py | manifest 的预期事实全部满足；数字不出现科学计数法和浮点误差；损坏、加密、超限文件抛出 ParseError 且消息不含原文 | 已完成 |
 | M3-03 | PDF 文字页解析：inspect\_pdf、文字页与扫描页判定、文本行合并为块、表格单元格、表格区域内的文字不重复（Q-16）、bbox 与旋转页换算、页数上限 | Sonnet | high | M3-02 | 8.1、8.2、8.5、8.7、Q-16；设计二、四 | app/parsing/pdf.py（文字页部分；扫描页先抛出 ParseError 占位）、tests/test\_parse\_pdf.py | 文字版和旋转页样本的预期事实全部满足；表格内文字只出现在单元格节点中；超过 200 页、加密、损坏时抛出 ParseError | 已完成 |
 | M3-04 | OCR 与图片：ocr.py（RapidOCR 引擎复用、禁用 onnxruntime 遥测、行合并）、PDF 扫描页（pypdfium2 200 DPI 渲染、坐标换算）、parse\_image（EXIF 方向、缩放、像素上限）、低置信与未识别到文字的警告 | Sonnet | high | M3-03 | 8.5、8.7、21、Q-64；设计四、五 | app/parsing/ocr.py、app/parsing/image.py、app/parsing/pdf.py（扫描页部分）、tests/test\_ocr.py、tests/test\_parse\_image.py、tests/test\_parse\_pdf.py | 扫描、混合、图片样本的预期事实满足（关键词出现、低置信页有警告）；坐标换算有测试；完成报告给出在 `--network none` 容器中运行 OCR 测试的命令和结果；T-20 仍通过 | 已完成 |
-| M3-05 | pipeline 接入与脱敏适配：按格式分派、OCR 预算与 ocr\_slot、删除“后续版本提供”分支；表格列提示支持 XLSX 和非首行表头；问题位置显示页码和单元格 | Opus | xhigh | M3-04 | 7.1、8.7、9.3 第 5 步、Q-65；设计一、六 | app/tasks/pipeline.py、app/redaction/engine.py（只改 \_table\_hints 及其辅助函数）、app/review/service.py（只改 \_View.locations）、tests/test\_pipeline.py、tests/test\_redaction\_engine.py、tests/test\_runs\_api.py、tests/fixtures/redaction\_golden/\*（增加 XLSX 报价单样本）、tests/test\_redaction\_golden.py | 五种格式都能从上传走到 awaiting\_confirm 或 completed\_local；OCR 超预算在 OCR 前失败；XLSX 报价单的单价和金额全部替换；回归测试集通过；对真实接口重跑 T-07 的预检拦截 | 待执行 |
+| M3-05 | pipeline 接入与脱敏适配：按格式分派、OCR 预算与 ocr\_slot、删除“后续版本提供”分支；表格列提示支持 XLSX 和非首行表头；问题位置显示页码和单元格 | Opus | xhigh | M3-04 | 7.1、8.7、9.3 第 5 步、Q-65；设计一、六 | app/tasks/pipeline.py、app/redaction/engine.py（只改 \_table\_hints 及其辅助函数）、app/review/service.py（只改 \_View.locations）、tests/test\_pipeline.py、tests/test\_redaction\_engine.py、tests/test\_runs\_api.py、tests/fixtures/redaction\_golden/\*（增加 XLSX 报价单样本）、tests/test\_redaction\_golden.py | 五种格式都能从上传走到 awaiting\_confirm 或 completed\_local；OCR 超预算在 OCR 前失败；XLSX 报价单的单价和金额全部替换；回归测试集通过；对真实接口重跑 T-07 的预检拦截 | 已完成 |
 | M3-06 | 预览接口：节点接口、原件接口（错误码、响应头、保留期清理后的表现） | Sonnet | medium | M3-05 | 6.3、17.2、19.3、Q-63；设计七 | app/tasks/router.py、app/tasks/service.py、app/tasks/schemas.py、tests/test\_preview\_api.py | 每个错误码都有测试；raw 字节与原件一致且响应头齐全；text\_available 在清理后为 false；对真实接口重跑 A-06（他人和管理员 404） | 待执行 |
 | M3-07 | 前端：DocPreview 组件（DOCX、XLSX 按节点渲染，PDF 用 pdfjs-dist 逐页渲染，图片用 img，高亮层与滚动定位）、getBlob 与 preview 接口封装 | Sonnet | high | M3-06 | 6.3 右栏、Q-17；设计八 8.1、8.2 | src/api/http.ts（只加 getBlob）、src/api/preview.ts、src/components/DocPreview.vue、package.json、package-lock.json（只加 pdfjs-dist） | 四种格式都能显示；传入 loc 后高亮并在预览区内滚动；PDF 只渲染可视页；原件不经 URL 直接加载；`npm run build` 通过；按 frontend.md 第十一节自检 | 待执行 |
 | M3-08 | 前端：结果页双栏与点击定位；公共样式整理（common.css，标签颜色移到 labels.ts） | Sonnet | medium | M3-07 | 6.3；设计八 8.3；frontend.md 第二节、第十节 | src/views/ReviewResult.vue、src/components/FindingCard.vue、src/styles/common.css、src/main.ts（只加引入 common.css）、src/utils/labels.ts、src/views/ReviewNew.vue、src/views/History.vue、src/components/ConfirmStep.vue（后三个只改为使用公共样式） | 点击问题高亮对应位置，缺失型问题不可点；整理后各页面截图与整理前一致；`npm run build` 通过；按 frontend.md 第十一节自检 | 待执行 |
