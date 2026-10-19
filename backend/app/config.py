@@ -66,11 +66,19 @@ def read_secret_file(path: str) -> bytes:
     return p.read_bytes()
 
 
+# 可能在日志中带出文档内容的第三方库
+_CONTENT_LOGGERS = ("pdfminer", "pdfplumber", "pypdfium2", "PIL", "openpyxl", "docx", "python_multipart", "multipart")
+
+
 def setup_logging() -> None:
     """日志只输出到标准输出（SPEC 17.7）。
 
     只记录事件和标识，不记录请求体、原文、金额、密钥。
+    解析库在 DEBUG 级别会输出文档内容（如 pdfminer 逐个记录内容流中的文字），这些日志器固定为 WARNING，
+    即使 root 级别被调低也不输出（M4-07 日志安全测试发现）。
     """
+    for name in _CONTENT_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
     root = logging.getLogger()
     if any(getattr(h, "_aireview", False) for h in root.handlers):
         return
