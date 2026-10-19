@@ -24,8 +24,9 @@
 - M3-08 已完成（2026-10-19）：结果页双栏与点击定位，common.css 与标签颜色常量整理；浏览器核对了 PDF、XLSX 的预览与高亮、1280 / 1440 宽度、审核历史页；DOCX、图片未在浏览器核对（留到 M3-09）；联调时重建了 app / worker 镜像
 - M3-09 已完成（2026-10-19）：Docker 全部测试 764 passed；OCR 与 T-20 在 --network none 容器中 52 passed，运行镜像断网 OCR 可用；经真实接口 + 模拟模型走通 DOCX、PDF（文字 / 扫描 / 混合）、XLSX、PNG、JPG；T-03 通过（第二步显示低置信页提示，结果页点击问题后第 2 页扫描图高亮对齐并滚动）；浏览器补核 DOCX、图片预览与定位、completed_local 右栏；M2 验收用例回归通过；修复 DocPreview 手写编号重复显示；新增 Q-69（扫描页账号标签被 OCR 识别错时账号漏替换，M4 疑似遗漏须覆盖）
 - M3 已验收并经用户确认（2026-10-19）；Q-69 交 M4 处理；下一个任务：**M4-00**（里程碑细化，Opus 档，high）
+- M4 已细化（M4-00，2026-10-19），设计见 docs/design/M4.md，新增 Q-70～Q-74，**待用户确认**；Q-59 需用户决定（影响 M4-04、M4-05）；确认后下一个任务：**M4-01**（Sonnet 档，high）
 - GPT-6.1 Sol 分工（2026-10-16 用户决定）：试用任务 M2-13 评审通过，以后可以接手 Sonnet 档的任务，含前端任务；它做的第一个前端任务由 Opus 重点评审（见第一节）。前端界面规范见 docs/design/frontend.md
-- 上次 Opus 评审到的提交：f227c08（2026-10-19 M3-09 开工前评审 M3-06 至 M3-08（Sonnet）：只改了文件范围内的文件；预览接口经 owned_task_file 校验归属，raw 响应头符合 Q-63；前端原件先取 Blob，无 v-html，滚动只在预览容器内；发现 DocPreview 手写编号重复显示，已在 M3-09 修复；无阻塞问题）。更早：e43e63f（2026-10-19 M3-05 开工前评审 M3-01 至 M3-04（Sonnet）：只改了文件范围内的文件（M3-04 按规则 6 追加 Q-67），解析失败消息不含原文，日志只写页数、块数和耗时，onnxruntime 遥测在建引擎前关闭，无阻塞问题。更早：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
+- 上次 Opus 评审到的提交：aaa2af7（2026-10-19 M4-00 开工前检查：f227c08 之后只有 M3-09 的 Opus 提交，无需评审的提交）。更早：f227c08（2026-10-19 M3-09 开工前评审 M3-06 至 M3-08（Sonnet）：只改了文件范围内的文件；预览接口经 owned_task_file 校验归属，raw 响应头符合 Q-63；前端原件先取 Blob，无 v-html，滚动只在预览容器内；发现 DocPreview 手写编号重复显示，已在 M3-09 修复；无阻塞问题）。更早：e43e63f（2026-10-19 M3-05 开工前评审 M3-01 至 M3-04（Sonnet）：只改了文件范围内的文件（M3-04 按规则 6 追加 Q-67），解析失败消息不含原文，日志只写页数、块数和耗时，onnxruntime 遥测在建引擎前关闭，无阻塞问题。更早：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
 
 ## 一、模型分工与推理强度
 
@@ -137,16 +138,18 @@
 
 ### M4 脱敏完善（验收：A-03、T-06、T-08）
 
-| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC | 状态 |
-|-|-|-|-|-|-|-|
-| M4-00 | 里程碑细化 | Opus | high | M3-09 | 22 | 待细化 |
-| M4-01 | 手动补充：同一文字全文替换，重新生成外发文本，保持代号一致 | Opus | high | M4-00 | 6.2 第 5 项、19.4 | 待细化 |
-| M4-02 | 人名与地址识别（9.3 第 6、7 步）；国家和企业类型判断 | Sonnet | high | M4-01 | 9.3、9.4 | 待细化 |
-| M4-03 | 疑似遗漏：识别规则和处理接口 | Sonnet | medium | M4-02 | 9.5、19.4 | 待细化 |
-| M4-04 | 金额比例和报价明细表汇总（用 Decimal 计算） | Sonnet | high | M4-03 | 9.6、9.7、Q-18 | 待细化 |
-| M4-05 | 已记住的名称：写入、匹配、命中计数 | Sonnet | medium | M4-04 | 9.10、18.12 | 待细化 |
-| M4-06 | 前端第二步完整版：处理疑似遗漏、在原文中选中文字设为敏感信息 | Sonnet | medium | M4-05 | 6.2 第二步 | 待细化 |
-| M4-07 | 扩充脱敏回归测试集；验证 A-03；增加日志安全测试（日志中不出现原文、名称、金额、密钥）；M4 验收 | Opus | high | M4-06 | 17.7、23 | 待细化 |
+**开工前必读 [docs/design/M4.md](design/M4.md)**：模块划分、函数签名、接口形状都以它为准；前端任务同时遵守 [docs/design/frontend.md](design/frontend.md)。下表“文件范围”中的路径相对于 `backend/`（前端任务相对于 `frontend/`），“设计”列指向 M4.md 的章节。M4-01 至 M4-03 是不碰数据库的纯函数，由 M4-04 接入 engine。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| M4-00 | 里程碑细化：模块划分、接口约定、任务拆分 | Opus | high | M3-09 | 22；— | docs/design/M4.md、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 已完成 |
+| M4-01 | 识别规则一：人名、地址、数量（find\_persons、find\_addresses、find\_quantities）；正文企业名称的起点边界（Q-56） | Sonnet | high | M4-00 | 9.2、9.3 第 6、7 步、9.4、Q-56；设计 2.1、2.2 | app/redaction/detect.py（只加三个函数及其常量）、app/redaction/parties.py（只改 find\_other\_org\_names 及其辅助常量）、tests/test\_detect\_persons\_addresses.py、tests/test\_redaction\_engine.py（只加起点边界的测试）、tests/fixtures/redaction\_golden/\*（只加 Q-56 样本） | 设计 2.1 的每个标签、称谓、停止条件、单位都有正例和反例；“货物由……有限公司代为装运”只替换公司名；回归测试集通过 | 待执行 |
+| M4-02 | 识别规则二：疑似遗漏 find\_suspects（四条规则、优先级、排除项、Q-69 的分组数字） | Sonnet | high | M4-01 | 9.5、Q-69；设计 2.3 | app/redaction/suspects.py、resources/common\_terms.txt（只增补词条）、tests/test\_suspects.py | 四条规则及每个排除项都有正例和反例；`6222 0000 1111 2222 333` 和 OCR 标签识别错的账号行被列为 long\_digits；日期、HS 编码、数量不列；候选不跨越已替换区间；回归集各样本的 must\_keep 不被列为疑似遗漏（用 find\_suspects 直接检查原文中未替换的部分） | 待执行 |
+| M4-03 | 识别规则三：表格工具移入 tables.py（含 QTY 表头）；金额比例 ratio.py；报价明细表 quotes.py；Hit 增加 currency、value | Sonnet | high | M4-02 | 9.6、9.7、Q-18；设计 2.4–2.6 | app/redaction/tables.py、ratio.py、quotes.py、app/redaction/detect.py（只给 Hit 加字段并在 find\_amounts 中填写）、app/redaction/engine.py（只把表格辅助函数改为从 tables.py 导入，行为不变）、tests/test\_tables.py、tests/test\_ratio.py、tests/test\_quotes.py | 比例全部用 Decimal、ROUND\_HALF\_UP，有标签、无标签同币种、多币种不加比例、总价为 0 各有测试；报价明细表在 DOCX、PDF、XLSX 三种 loc 下各有测试，少于 3 个数据行时不汇总；汇总文字格式与设计 2.6 一致；原有测试和回归集全部通过 | 待执行 |
+| M4-04 | engine 整合：第 6、7 步与数量脱敏接入 compute、ADDR 代号、用户词条（保存与重算保留、不留半个名称）、疑似遗漏写入与决定保留、金额比例、报价明细表汇总进外发文本、命中计数；add\_user\_term、decide\_suspect、suspect\_views、learn\_confirmed\_names；回归集补标 | Opus | xhigh | M4-03 | 9.2–9.10、18.10–18.12；设计三、四 | app/redaction/engine.py、outbound.py、placeholders.py、tests/test\_redaction\_engine.py、tests/test\_pipeline.py、tests/test\_redaction\_golden.py、tests/fixtures/redaction\_golden/\*（补标 PERSON、ADDR、must\_suspect，新增 Q-69 样本） | 设计第七节 engine 整合的各项都有测试；回归测试集召回率 100%、must\_keep 全部保留且不被列为疑似遗漏；出口复检对新增的地址、人名真实值生效 | 待执行 |
+| M4-05 | 接口：疑似遗漏决定、手动补充、GET /redaction 返回疑似遗漏；确认发送时写入已记住的名称；（Q-59 采用建议时）系统提示词补充并升版本 | Opus | high | M4-04 | 6.2 第 4、5、8 项、9.10、19.4、Q-54；设计五 | app/redaction/router.py、app/review/service.py（只改 create\_run）、resources/prompts/system.md（视 Q-59）、tests/test\_redaction\_api.py、tests/test\_runs\_api.py、tests/test\_review\_prompt.py（视 Q-59） | 设计第五节每个错误码都有测试；手动补充公司名后可设为我方并确认发送（Q-54）；确认发送后 redaction\_terms 写入且第二个任务自动替换（T-08 接口部分）；预检拦截时不写入；对新接口重跑 A-06 | 待执行 |
+| M4-06 | 前端第二步完整版：疑似遗漏列表、在原文中选择文字设为敏感信息、确认按钮的不可用说明、Q-54 提示 | Sonnet | high | M4-05 | 6.2 第二步；设计六；frontend.md | src/components/ConfirmStep.vue、src/components/SuspectList.vue、src/components/ManualRedactDialog.vue、src/api/redaction.ts、src/utils/labels.ts | 字符位置与后端一致（含中英文混排、表格单元格、OCR 文字）；跨节点和已替换的选择有提示；上下文按纯文本显示；`npm run build` 通过；按 frontend.md 第十一节自检并在浏览器中对 DOCX、XLSX、扫描 PDF 各做一次手动补充 | 待执行 |
+| M4-07 | M4 联调与验收：A-03 自动化测试、日志安全测试、T-06、T-08；回归 M2、M3 验收用例；浏览器检查第二步 | Opus | high | M4-06 | 17.7、22、23；设计第七节 | tests/test\_a03\_outbound.py、tests/test\_log\_safety.py；其余按需 | A-03、T-06、T-08 通过，M2、M3 的验收用例回归通过；验收结果汇报给用户 | 待执行 |
 
 ### M5 AI 审核完善（验收：A-02、A-05、A-07、A-08、T-12、T-13）
 
@@ -206,8 +209,8 @@
 
 | 模型 | 任务数 | 说明 |
 |-|-|-|
-| Opus 5.5 | 28 | 15 个是里程碑细化和验收，13 个是安全核心和难点 |
-| Sonnet 5.5 | 43 | 大部分编码工作 |
+| Opus 5.5 | 29 | 15 个是里程碑细化和验收，14 个是安全核心和难点 |
+| Sonnet 5.5 | 42 | 大部分编码工作 |
 | Haiku 5.5 | 7 | 资源文件、占位页、样本、简单测试 |
 
 按顺序执行，整个项目大约要换 23 次模型，平均每个里程碑约 3 次。每个 Mx-00 和验收任务都会停下来等用户确认。
