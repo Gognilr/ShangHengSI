@@ -249,7 +249,11 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     d = r.json()
     assert d["task_id"] == str(task.id) and d["status"] == "completed" and d["run_no"] == 1
     assert (d["stance"], d["source"], d["main_doc_type"], d["model_name"]) == ("sales", "outgoing", "contract", "mock-model")
-    assert d["coverage"] is None and d["queue_position"] is None and d["error_message"] is None
+    assert d["coverage"] is not None and d["queue_position"] is None and d["error_message"] is None
+    assert set(d["coverage"]) == {"summary", "notes"}
+    assert d["coverage"]["summary"].startswith("本次按 ")
+    assert isinstance(d["coverage"]["notes"], list)
+    assert "requirements" not in d["coverage"] and "星河虚构进出口有限公司" not in str(d["coverage"])
     assert d["prompt_version"] == "2026.10-2" and d["builtin_req_version"] == "2026.10-1"
     assert d["queued_at"].endswith("Z") or "+00:00" in d["queued_at"]
     assert d["doc_summary"] == f"{REAL_OUR_NAME}向{REAL_BUYER_NAME}销售金属制品"

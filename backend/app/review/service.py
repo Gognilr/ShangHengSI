@@ -35,6 +35,7 @@ from app.llm.gateway import format_reasons
 from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import restore
+from app.review.coverage import describe
 from app.review.prompt import ReviewContext, build_messages, note_requirement
 from app.review.requirements import Requirement, builtin_version, load_system_template, select_builtin
 from app.security import crypto
@@ -127,7 +128,7 @@ class RunDetail(BaseModel):
     queue_position: int | None
     chunk_count: int
     progress: Progress | None  # 审核中时的分段进度，其他状态为 null
-    coverage: dict | None  # 轮次结束后的覆盖说明；处理中为 null
+    coverage: dict | None  # 轮次结束后的 summary 与 notes；处理中和 blocked 为 null
     doc_summary: str | None
     sanctions: Sanctions
     requirement_results: list[RequirementResultOut]
@@ -329,10 +330,28 @@ def _progress(run: ReviewRun) -> Progress | None:
     return Progress(done=int(p.get("done", 0)), total=int(p.get("total", run.chunk_count)))
 
 
-def _coverage(run: ReviewRun) -> dict | None:
-    if run.status in ("queued", "running") or not isinstance(run.coverage, dict) or "progress" in run.coverage:
+def _coverage(db: DbSession, run: ReviewRun) -> dict | None:
+    if (run.status in ("queued", "running", "blocked") or not isinstance(run.coverage, dict)
+            or "progress" in run.coverage):
         return None
-    return run.coverage
+    raw = run.coverage
+    requirements = raw.get("requirements")
+    if not isinstance(requirements, dict):
+        return None
+    total = int(requirements.get("total", 0))
+    issue = int(requirements.get("issue", 0))
+    ok = int(requirements.get("ok", 0))
+    na = int(requirements.get("na", 0))
+    unable = int(requirements.get("unable", 0))
+    file_names = {
+        row.seq: row.original_name
+        for row in db.scalars(select(TaskFile).where(TaskFile.task_id == run.task_id).order_by(TaskFile.seq))
+    }
+    return {
+        "summary": (f"本次按 {total} 条审核要求审核：有问题 {issue} 条，未发现问题 {ok} 条，"
+                    f"不适用 {na} 条，无法判断 {unable} 条"),
+        "notes": describe(raw, file_names),
+    }
 
 
 def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
@@ -352,7 +371,7 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
         model_name=run.model_name, prompt_version=run.prompt_version, builtin_req_version=run.builtin_req_version,
         company_req_version=run.company_req_version, queued_at=run.queued_at, started_at=run.started_at,
         finished_at=run.finished_at, queue_position=queue_position,
-        chunk_count=run.chunk_count, progress=_progress(run), coverage=_coverage(run),
+        chunk_count=run.chunk_count, progress=_progress(run), coverage=_coverage(db, run),
         doc_summary=view.text(run.doc_summary),
         sanctions=Sanctions(level=run.sanctions_level,
                             reasons=[view.text(str(r)) or "" for r in (run.sanctions_reasons or [])]),

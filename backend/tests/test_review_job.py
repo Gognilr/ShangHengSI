@@ -83,6 +83,9 @@ def test_review_success_writes_results(db_sessionmaker, owner, ready_task, llm):
         assert r.started_at is not None and r.finished_at is not None
         assert r.doc_summary.startswith("模拟摘要") and r.sanctions_level == "none"
         assert r.tokens_in > 0 and r.tokens_out > 0
+        assert r.coverage["requirements"]["total"] > 10
+        assert r.coverage["requirements"]["issue"] == 1
+        assert r.coverage["sanctions_offline"] is True
         assert (t.status, t.high_count) == ("reviewed", 0) and t.last_completed_at is not None and t.latest_run_id == r.id
         # A-07：结论数 = 发送的要求数
         results = list(db.scalars(select(RequirementResult).where(RequirementResult.run_id == r.id)
@@ -121,6 +124,8 @@ def test_high_count_and_partial(db_sessionmaker, owner, ready_task, llm):
     with db_sessionmaker() as db:
         r = db.get(ReviewRun, run.id)
         assert r.status == "partial" and db.get(Task, task.id).high_count == 2
+        assert r.coverage["requirements"]["unable"] == 1
+        assert any(item["req_id"] == "NOTE" for item in r.coverage["unable"])
         last = db.scalars(select(RequirementResult).where(RequirementResult.run_id == r.id)
                           .order_by(RequirementResult.id.desc())).first()
         assert (last.req_id, last.req_source, last.verdict, last.note) == ("NOTE", "note", "unable", "模型未返回结论")
@@ -436,7 +441,12 @@ def test_t12_chunked_review_success(db_sessionmaker, owner, ready_task, llm):
     r = get_run(db_sessionmaker, run.id)
     n = r.chunk_count
     assert n >= 3 and [chunk_of(q) for q in requests] == list(range(1, n + 1))
-    assert r.status in ("completed", "partial") and r.failed_chunks == [] and r.coverage is None
+    assert r.status in ("completed", "partial") and r.failed_chunks == []
+    assert r.coverage["chunked"] is True and r.coverage["no_cross_chunk_check"] is True
+    with db_sessionmaker() as db:
+        detail = service.run_detail(db, db.get(ReviewRun, run.id))
+        assert detail.coverage["summary"].startswith("本次按 ")
+        assert f"分 {n} 段审核，未做跨分段的一致性检查" in "\n".join(detail.coverage["notes"])
     with db_sessionmaker() as db:
         results = db.scalars(select(RequirementResult).where(RequirementResult.run_id == run.id)).all()
         sent = service.collect_requirements(db, doc_type="contract", stance="sales", source="outgoing", user_note=None)
@@ -487,7 +497,14 @@ def test_all_chunks_fail(db_sessionmaker, owner, ready_task, llm):
     r = get_run(db_sessionmaker, run.id)
     assert (r.status, r.error_message) == ("failed", "模型服务调用失败（HTTP 500）")
     assert [f["index"] for f in r.failed_chunks] == list(range(1, r.chunk_count + 1))
+    assert r.coverage["requirements"]["total"] > 0
+    assert (r.coverage["requirements"]["issue"], r.coverage["requirements"]["ok"],
+            r.coverage["requirements"]["na"], r.coverage["requirements"]["unable"]) == (0, 0, 0, 0)
+    assert len(r.coverage["failed_chunks"]) == r.chunk_count
     with db_sessionmaker() as db:
+        detail = service.run_detail(db, db.get(ReviewRun, run.id))
+        assert "有问题 0 条" in detail.coverage["summary"]
+        assert any("审核失败" in note for note in detail.coverage["notes"])
         assert db.scalar(select(func.count()).select_from(RequirementResult)) == 0
 
 
@@ -513,6 +530,7 @@ def test_block_in_second_chunk_stops_run(db_sessionmaker, owner, ready_task, llm
         assert db.get(Task, task.id).status == "awaiting_confirm"
         assert db.scalar(select(func.count()).select_from(Finding)) == 0
         assert db.get(ReviewRun, run.id).coverage is None
+        assert service.run_detail(db, db.get(ReviewRun, run.id)).coverage is None
 
 
 def test_cap_reached_mid_run(db_sessionmaker, owner, ready_task, llm):
@@ -584,3 +602,7 @@ def test_q72_finding_on_quote_summary_line(db_sessionmaker, owner, ready_task, l
         tables = engine.build_outbound(db, db.get(Task, task.id)).quote_tables
         assert len(tables) == 1 and f.locs == [tables[0].first_loc]
         assert f.cite_status == "verified" and crypto.decrypt_text(f.quote_snapshot_enc).startswith("【报价明细表")
+        stored_run = db.get(ReviewRun, run.id)
+        assert stored_run.coverage["quote_tables"] == [{"file": 1, "loc": tables[0].loc, "rows": tables[0].rows}]
+        detail = service.run_detail(db, stored_run)
+        assert any("报价明细表共 3 行，只把汇总信息发给 AI" in note for note in detail.coverage["notes"])

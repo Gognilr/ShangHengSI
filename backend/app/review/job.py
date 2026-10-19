@@ -21,6 +21,7 @@ from app.db.base import utcnow
 from app.db.models import Finding, RequirementResult, ReviewRun, Task
 from app.llm.gateway import GatewayError, format_reasons
 from app.review.chunking import Chunk, effective_limit, outbound_lines, split_chunks
+from app.review.coverage import build_coverage
 from app.review.prompt import ReviewContext, split_outbound
 from app.review.service import build_context
 from app.review.validate import (
@@ -52,7 +53,7 @@ def _reload(db: Session, run_id: uuid.UUID) -> tuple[ReviewRun, Task] | None:
 
 def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_status: str,
             tokens_in: int = 0, tokens_out: int = 0, chunk_count: int | None = None,
-            failed: list[dict] | None = None) -> None:
+            failed: list[dict] | None = None, coverage: dict | None = None) -> None:
     """把轮次置为 blocked / failed，并让任务进入 task_status。"""
     found = _reload(db, run_id)
     if found is None:
@@ -65,7 +66,7 @@ def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_s
         run.chunk_count = chunk_count
     if failed is not None:
         run.failed_chunks = failed
-    run.coverage = None  # 去掉处理中的进度
+    run.coverage = None if status == "blocked" else coverage  # blocked 未发送；其他带结果的终态写入覆盖说明
     task.status = task_status
     db.commit()
     logger.info("run %s 结束 状态=%s", run_id, status)
@@ -80,7 +81,7 @@ def _partial_message(failed: list[dict]) -> str:
     return f"第 {'、'.join(str(f['index']) for f in failed)} 段审核失败，结果不完整"
 
 
-def _save(db: Session, run_id: uuid.UUID, review: ValidatedReview, *, chunk_count: int = 1,
+def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedReview, *, chunk_count: int = 1,
           failed: list[dict] | None = None) -> None:
     failed = failed or []
     found = _reload(db, run_id)
@@ -107,7 +108,7 @@ def _save(db: Session, run_id: uuid.UUID, review: ValidatedReview, *, chunk_coun
     run.tokens_out += review.tokens_out
     run.chunk_count = chunk_count
     run.failed_chunks = failed
-    run.coverage = None  # 去掉处理中的进度（覆盖说明在 M5-03 写入）
+    run.coverage = build_coverage(db, task, ctx, review, chunk_count, failed)
     unable = any(r.verdict == "unable" for r in review.requirement_results)
     run.status = "partial" if failed or unable else "completed"
     run.error_message = _partial_message(failed) if failed else None
@@ -140,6 +141,7 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
     db.commit()
     logger.info("run %s 开始", run_id)
 
+    ctx: ReviewContext | None = None
     try:
         ctx = build_context(db, task, stance=run.stance, source=run.source, user_note=run.user_note,
                             main_doc_type=run.main_doc_type)
@@ -163,12 +165,13 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
         raise  # job 记为 failed，last_error 只有异常类名
     failed = _failed_chunks(outcomes)
     if len(failed) == total:
+        coverage = build_coverage(db, task, ctx, None, total, failed)
         _finish(db, run_id, status="failed", message=outcomes[0].error or MSG_INTERNAL, task_status="reviewed",
                 tokens_in=sum(o.tokens_in for o in outcomes), tokens_out=sum(o.tokens_out for o in outcomes),
-                chunk_count=total, failed=failed if total > 1 else [])
+                chunk_count=total, failed=failed if total > 1 else [], coverage=coverage)
         return
     review = outcomes[0].review if total == 1 else merge_reviews(ctx, outcomes)
-    _save(db, run_id, review, chunk_count=total, failed=failed)
+    _save(db, run_id, ctx, review, chunk_count=total, failed=failed)
 
 
 def _set_progress(db: Session, run_id: uuid.UUID, done: int, total: int) -> bool:
