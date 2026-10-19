@@ -29,6 +29,14 @@ class ParsedFile:
     page_count: int | None
     has_revisions: bool
     warnings: list[str]
+    ocr_pages: int = 0  # 本文件实际做了 OCR 的页数（图片记 1）
+
+
+# 解析限制与阈值（SPEC 8.5、8.7）
+MAX_PDF_PAGES = 200  # 单个 PDF 的页数上限
+MAX_OCR_PAGES_PER_TASK = 100  # 整个任务合计的 OCR 页数上限
+MAX_XLSX_CELLS = 20000  # 单个 XLSX 的非空单元格上限
+LOW_OCR_CONF = 0.80  # 块平均置信度低于此值为低置信
 
 
 class ParseError(Exception):
