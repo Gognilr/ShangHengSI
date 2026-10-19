@@ -16,6 +16,7 @@ from app.audit import service as audit
 from app.config import get_settings
 from app.db import jobs
 from app.db.models import DocNode, Job, ReviewRun, Task, TaskFile, User
+from app.redaction import engine
 from app.security import crypto
 from app.security.errors import AppError
 from app.tasks import storage
@@ -27,6 +28,7 @@ from app.tasks.schemas import (
     TaskFileOut,
     TaskListItem,
     TaskPage,
+    TaskPatch,
 )
 
 MAX_FILES = 10
@@ -322,6 +324,40 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
         latest_run=latest_run,
         queue_position=queue_position,
     )
+
+
+# ---------------------------------------------------------------- 重新审核（M5-04）
+
+
+def patch_task(db: DbSession, task: Task, patch: TaskPatch) -> TaskDetail:
+    """PATCH /tasks/{id}：修改立场、来源、本次补充说明后整体重算，任务回到 awaiting_confirm（SPEC 7.4）。
+
+    不重新解析，不删旧轮次，latest_run_id 与 high_count 不变；不写审计。我方选择、国家类型修改、用户词条、
+    “忽略”决定在重算中保留。
+    """
+    fields = patch.model_fields_set
+    if not fields & {"stance", "source", "user_note"} or ("stance" in fields and patch.stance is None) or (
+            "source" in fields and patch.source is None):
+        raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
+    # 与确认发送共用任务行锁，等待锁后刷新状态
+    task = db.execute(select(Task).where(Task.id == task.id).with_for_update()
+                      .execution_options(populate_existing=True)).scalar_one()
+    if task.policy == "local_only":
+        raise AppError(409, "LOCAL_ONLY", "该任务的外发策略为不外发，不能提交 AI 审核")
+    if task.status not in ("reviewed", "awaiting_confirm"):
+        raise AppError(409, "TASK_STATE_CONFLICT", "当前状态不能重新审核")
+    if "stance" in fields:
+        task.stance = patch.stance
+    if "source" in fields:
+        task.source = patch.source
+    if "user_note" in fields:
+        task.user_note = (patch.user_note or "").strip() or None
+    engine.apply_party_changes(db, task, [])
+    task.status = "awaiting_confirm"
+    db.flush()
+    result = task_detail(db, task)
+    db.commit()
+    return result
 
 
 # ---------------------------------------------------------------- 预览（M3-06）

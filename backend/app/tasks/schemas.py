@@ -1,12 +1,19 @@
 """任务接口的出参（SPEC 19.3，设计 docs/design/M2.md 第三节）。"""
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel
+from pydantic import AfterValidator, BaseModel, Field
 
 # 接口时间一律为 ISO 8601 UTC（SPEC 19.1）；数据库连接的时区设置不同也不影响输出
 UtcDatetime = Annotated[datetime, AfterValidator(lambda d: d.astimezone(timezone.utc))]
+
+
+class TaskPatch(BaseModel):
+    """重新审核（设计 docs/design/M5.md 第七节）：至少一项；user_note 出现且为空表示清除。"""
+    stance: Literal["sales", "purchase", "other"] | None = None
+    source: Literal["outgoing", "incoming"] | None = None
+    user_note: str | None = Field(None, max_length=500)
 
 
 class TaskCreated(BaseModel):

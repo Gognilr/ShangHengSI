@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DocPreview from '@/components/DocPreview.vue'
 import FindingCard from '@/components/FindingCard.vue'
+import ReRunDialog from '@/components/ReRunDialog.vue'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type RunDetail } from '@/api/runs'
 import { tasksApi, type TaskDetail } from '@/api/tasks'
@@ -32,6 +33,7 @@ const error = ref('')
 const task = ref<TaskDetail | null>(null)
 const run = ref<RunDetail | null>(null)
 const tab = ref('findings')
+const rerunOpen = ref(false)
 
 // 筛选：等级、类别、处理状态
 const fSeverity = ref('')
@@ -208,6 +210,12 @@ const reqVersion = computed(() => {
             </el-tab-pane>
           </el-tabs>
         </template>
+
+        <!-- 底部操作 -->
+        <div v-if="task.status === 'reviewed' && task.policy === 'ai'" class="actions">
+          <el-button @click="rerunOpen = true">重新审核</el-button>
+        </div>
+        <ReRunDialog v-model="rerunOpen" :task="task" />
       </div>
       <div class="right">
         <DocPreview :task-id="task.id" :files="task.files" :highlight="highlight" />

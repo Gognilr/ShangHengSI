@@ -93,6 +93,13 @@ export function checkFiles(files: File[]): string | null {
   return null
 }
 
+/** 重新审核时可修改的字段（PATCH /tasks/{id}，至少一项；userNote 为空字符串表示清除）。 */
+export interface TaskPatch {
+  stance?: Stance
+  source?: Source
+  user_note?: string
+}
+
 export const tasksApi = {
   create(input: CreateTaskInput) {
     const form = new FormData()
@@ -108,6 +115,8 @@ export const tasksApi = {
   list: (query: { page?: number; q?: string; from?: string; to?: string }) =>
     http.get<TaskPage>('/tasks', query),
   remove: (id: string) => http.delete<void>(`/tasks/${id}`),
+  /** 重新审核：修改立场、来源、本次补充说明，任务回到待确认（SPEC 7.4）。 */
+  patch: (id: string, body: TaskPatch) => http.patch<TaskDetail>(`/tasks/${id}`, body),
   setFileDocType: (taskId: string, fileId: string, docType: string) =>
     http.patch<TaskFile>(`/tasks/${taskId}/files/${fileId}`, { doc_type: docType }),
 }

@@ -15,7 +15,7 @@ from app.security.deps import current_user, owned_task, owned_task_file
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service
-from app.tasks.schemas import PreviewNodes, TaskCreated, TaskDetail, TaskFileOut, TaskPage
+from app.tasks.schemas import PreviewNodes, TaskCreated, TaskDetail, TaskFileOut, TaskPage, TaskPatch
 
 router = APIRouter(prefix="/tasks")
 
@@ -116,6 +116,11 @@ def get_file_raw(file: TaskFile = Depends(owned_task_file)) -> Response:
 @router.get("/{id}", response_model=TaskDetail)
 def get_task(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> TaskDetail:
     return service.task_detail(db, task)
+
+
+@router.patch("/{id}", response_model=TaskDetail)
+def patch_task(patch: TaskPatch, task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> TaskDetail:
+    return service.patch_task(db, task, patch)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)

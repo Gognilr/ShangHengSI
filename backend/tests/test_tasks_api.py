@@ -588,3 +588,176 @@ def test_unauthenticated_gets_401(files_dir, make_user, db_sessionmaker, api):
     tid = add_task(db_sessionmaker, alice, "x.docx")
     assert api.get(f"{API_PREFIX}/tasks").status_code == 401
     assert api.get(f"{API_PREFIX}/tasks/{tid}").status_code == 401
+
+
+# ---------------------------------------------------------------- 重新审核（M5-04）
+
+from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: E402,F401
+
+
+@pytest.fixture
+def rerun_user(make_user, login):
+    user = make_user("alice")
+    client, csrf = login("alice")
+    return user, client, {"X-CSRF-Token": csrf}
+
+
+def patch_task(client, headers, task_id, body):
+    return client.patch(f"{API_PREFIX}/tasks/{task_id}", json=body, headers=headers)
+
+
+def parties_of(client, task_id) -> dict:
+    return {p["name"]: p for p in client.get(f"{API_PREFIX}/tasks/{task_id}/parties").json()["items"]}
+
+
+def set_our_party(client, headers, task_id, name):
+    items = list(parties_of(client, task_id).values())
+    our_id = next(p["id"] for p in items if p["name"] == name)
+    body = {"items": [{"id": p["id"], "is_our_party": p["id"] == our_id, "country": p["country"],
+                       "org_type": p["org_type"]} for p in items]}
+    r = client.put(f"{API_PREFIX}/tasks/{task_id}/parties", json=body, headers=headers)
+    assert r.status_code == 200, r.text
+
+
+def review_once(db_sessionmaker, client, headers, task_id) -> str:
+    """确认发送并代替 worker 执行，任务进入 reviewed。"""
+    from app.review import job
+
+    r = client.post(f"{API_PREFIX}/tasks/{task_id}/runs", headers=headers)
+    assert r.status_code == 201, r.text
+    rid = r.json()["id"]
+    with db_sessionmaker() as db:
+        job.run_review(db, uuid.UUID(rid))
+        db.commit()
+    return rid
+
+
+def test_rerun_recomputes_roles_and_keeps_old_runs(db_sessionmaker, rerun_user, ready_task, llm):
+    user, c, h = rerun_user
+    task = ready_task(user, user_note="旧的补充说明")
+    set_our_party(c, h, task.id, REAL_BUYER_NAME)  # 我方实际是买方，立场却选成了销售
+    assert parties_of(c, task.id)[REAL_OUR_NAME]["code"] == "卖方_A"
+    llm("normal")
+    first = review_once(db_sessionmaker, c, h, task.id)
+    with db_sessionmaker() as db:
+        db.get(Task, task.id).high_count = 3
+        db.commit()
+    audits = count(db_sessionmaker, AuditLog)
+
+    r = patch_task(c, h, task.id, {"stance": "purchase", "source": "incoming", "user_note": "  请重点看交货期  "})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert (d["status"], d["stance"], d["source"], d["user_note"]) == (
+        "awaiting_confirm", "purchase", "incoming", "请重点看交货期")
+    assert d["latest_run"]["id"] == first and d["latest_run"]["run_no"] == 1
+    assert d == c.get(f"{API_PREFIX}/tasks/{task.id}").json()
+    # 我方选择保留，对方的代号按新立场生成：卖方 → 供应商
+    ps = parties_of(c, task.id)
+    assert ps[REAL_BUYER_NAME]["is_our_party"] and ps[REAL_BUYER_NAME]["code"] == "我方"
+    assert ps[REAL_OUR_NAME]["code"] == "供应商_A"
+    outbound = c.get(f"{API_PREFIX}/tasks/{task.id}/redaction/outbound").json()["text"]
+    assert "供应商_A" in outbound and "卖方_A" not in outbound
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        assert t.high_count == 3 and t.latest_run_id == uuid.UUID(first)
+    assert count(db_sessionmaker, AuditLog) == audits  # 不写审计
+
+    second = review_once(db_sessionmaker, c, h, task.id)
+    runs = c.get(f"{API_PREFIX}/tasks/{task.id}/runs").json()["items"]
+    assert [(x["id"], x["run_no"]) for x in runs] == [(second, 2), (first, 1)]
+    with db_sessionmaker() as db:
+        new, old = db.get(ReviewRun, uuid.UUID(second)), db.get(ReviewRun, uuid.UUID(first))
+        assert (new.stance, new.source, new.user_note) == ("purchase", "incoming", "请重点看交货期")
+        assert (old.stance, old.source, old.user_note) == ("sales", "outgoing", "旧的补充说明")
+    assert count(db_sessionmaker, Finding, Finding.run_id == uuid.UUID(first)) > 0
+
+
+def test_rerun_keeps_user_terms_and_ignore_decisions(rerun_user, ready_task):
+    import docx
+
+    doc = docx.Document()
+    for text in ("销售确认书", f"卖方：{REAL_OUR_NAME}", f"买方：{REAL_BUYER_NAME}",
+                 "货物由 Northwind Fictive Holdings 承运。", "品名：虚构煅后焦。"):
+        doc.add_paragraph(text)
+    buf = io.BytesIO()
+    doc.save(buf)
+    user, c, h = rerun_user
+    task = ready_task(user, [("确认书.docx", buf.getvalue())])
+    base = f"{API_PREFIX}/tasks/{task.id}"
+    (suspect,) = c.get(f"{base}/redaction").json()["suspects"]
+    r = c.post(f"{base}/redaction/suspects/{suspect['id']}", json={"decision": "ignore"}, headers=h)
+    assert r.status_code == 200, r.text
+    nodes = c.get(f"{base}/files/{c.get(base).json()['files'][0]['id']}/nodes").json()["items"]
+    node = next(n for n in nodes if "虚构煅后焦" in (n["text"] or ""))
+    start = node["text"].index("虚构煅后焦")
+    r = c.post(f"{base}/redaction/manual", headers=h, json={"loc": node["loc"], "char_start": start,
+                                                            "char_end": start + 5, "category": "CUSTOM"})
+    assert r.status_code == 200, r.text
+
+    assert patch_task(c, h, task.id, {"stance": "other"}).status_code == 200
+    red = c.get(f"{base}/redaction").json()
+    assert [(v["text"], v["decision"]) for v in red["suspects"]] == [("Northwind Fictive Holdings", "ignore")]
+    outbound = c.get(f"{base}/redaction/outbound").json()["text"]
+    assert "虚构煅后焦" not in outbound and "[敏感词_1]" in outbound
+
+
+def test_rerun_clears_note_in_awaiting_confirm(rerun_user, ready_task):
+    user, c, h = rerun_user
+    task = ready_task(user, user_note="旧说明")
+    r = patch_task(c, h, task.id, {"user_note": ""})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert (d["user_note"], d["status"], d["stance"], d["source"]) == (None, "awaiting_confirm", "sales", "outgoing")
+
+
+def test_rerun_validation_errors(db_sessionmaker, rerun_user, ready_task):
+    user, c, h = rerun_user
+    task = ready_task(user)
+    for body in ({}, {"stance": None}, {"source": None}, {"stance": "buy"}, {"source": "both"},
+                 {"user_note": "x" * 501}, {"stance": 1}):
+        r = patch_task(c, h, task.id, body)
+        assert (r.status_code, r.json()["code"]) == (422, "VALIDATION_ERROR"), body
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).user_note is None
+    assert patch_task(c, h, task.id, {"user_note": "x" * 500}).status_code == 200
+    assert c.patch(f"{API_PREFIX}/tasks/{task.id}", json={"stance": "purchase"}).status_code == 403  # 缺 CSRF
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).stance == "sales"
+
+
+@pytest.mark.parametrize("state", ["parsing", "parse_failed", "reviewing", "completed_local"])
+def test_rerun_state_conflict(db_sessionmaker, rerun_user, ready_task, state):
+    user, c, h = rerun_user
+    task = ready_task(user)
+    with db_sessionmaker() as db:
+        db.get(Task, task.id).status = state
+        db.commit()
+    r = patch_task(c, h, task.id, {"stance": "purchase"})
+    assert (r.status_code, r.json()["code"]) == (409, "TASK_STATE_CONFLICT")
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).stance == "sales"
+
+
+def test_rerun_local_only(db_sessionmaker, rerun_user, ready_task):
+    user, c, h = rerun_user
+    task = ready_task(user, policy="local_only")
+    r = patch_task(c, h, task.id, {"stance": "purchase"})
+    assert (r.status_code, r.json()["code"]) == (409, "LOCAL_ONLY")
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).stance == "sales"
+
+
+def test_rerun_a06_others_and_admin_get_404(db_sessionmaker, rerun_user, ready_task, make_user, login):
+    user, _, _ = rerun_user
+    task = ready_task(user)
+    make_user("bob")
+    make_user("carl", role="admin")
+    for who in ("bob", "carl"):
+        c, csrf = login(who)
+        h = {"X-CSRF-Token": csrf}
+        r = patch_task(c, h, task.id, {"stance": "purchase"})
+        ghost = patch_task(c, h, uuid.uuid4(), {"stance": "purchase"})
+        assert r.status_code == 404 and r.json() == ghost.json(), who
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        assert (t.stance, t.status) == ("sales", "awaiting_confirm")
