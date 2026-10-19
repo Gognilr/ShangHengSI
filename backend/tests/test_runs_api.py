@@ -535,3 +535,26 @@ def test_t12_chunked_review_through_api(db_sessionmaker, alice, llm):
     sent = json.loads(requests[0].content)["messages"][1]["content"].split("【审核要求】\n")[1].split("\n【")[0]
     assert len(run["requirement_results"]) == len(sent.splitlines())
     assert len({f["locs"][0] for f in run["findings"] if f["locs"]}) == run["chunk_count"]
+
+
+def test_t13_monthly_cap_reached_through_api(db_sessionmaker, alice, ready_task, llm):
+    """T-13：上限为 1 且本月已有 1 次 sent。确认发送不提前拦截；轮次 failed、提示文字，没有新的 sent 记录。"""
+    from app.admin import settings_store
+
+    user, c, h = alice
+    task = ready_task(user)
+    requests = llm("normal")
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "model.monthly_call_cap", 1, None)
+        db.add(LlmCall(purpose="review", model_name="mock-model", status="sent"))
+        db.commit()
+    r = post_run(c, h, task.id)
+    assert r.status_code == 201, r.text
+    run_id = r.json()["id"]
+    execute(db_sessionmaker, run_id)
+    detail = c.get(f"{API_PREFIX}/runs/{run_id}").json()
+    assert (detail["status"], detail["error_message"]) == ("failed", "已达本月调用上限，请联系管理员")
+    assert detail["findings"] == [] and requests == []
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(LlmCall).where(LlmCall.status == "sent")) == 1
+        assert db.get(Task, task.id).status == "reviewed"

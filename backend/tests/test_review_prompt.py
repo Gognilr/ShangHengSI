@@ -139,3 +139,25 @@ def test_chunk_message_has_note_full_context_and_only_its_lines():
         assert doc == "\n".join(c.lines) + "\n</document>"
     # 各段文档部分拼起来就是完整正文
     assert "\n".join(t.split("<document>\n")[1][: -len("\n</document>")] for t in texts) == body
+
+
+def test_fixed_prompt_text_covers_all_fixed_parts(db_sessionmaker):
+    """Q-77 ③：system 全文、全部内置要求（不按类型筛选）、启用的公司补充要求、公司说明、审核背景用词。"""
+    from app.admin import settings_store
+    from app.db.models import CompanyRequirement
+    from app.review.prompt import fixed_prompt_text
+    from app.review.requirements import _builtin_data
+
+    with db_sessionmaker() as db:
+        db.add_all([CompanyRequirement(code="CO-1", text="虚构启用的公司要求", doc_types=["quotation"], stances=["purchase"]),
+                    CompanyRequirement(code="CO-2", text="虚构停用的公司要求", enabled=False)])
+        settings_store.set_setting(db, "review.company_profile", "本公司主营虚构钛白粉出口", None)
+        db.commit()
+        text = fixed_prompt_text(db)
+    assert system_prompt()[1] in text
+    assert all(item["text"] in text for item in _builtin_data()["requirements"])
+    assert "虚构启用的公司要求" in text and "虚构停用的公司要求" not in text
+    assert "本公司主营虚构钛白粉出口" in text
+    for word in ("销售", "采购", "我方发出", "对方发来", "报价单", "订单/供货单", "询价函", "函件", "【审核背景】",
+                 "主文件类型", "分段审核"):
+        assert word in text, word

@@ -35,6 +35,7 @@ from app.redaction.dictionaries import _country_index
 from app.redaction.placeholders import (
     ADDR, BUYER, FIXED, OTHER, OUR_CODE, SELLER, Allocator, address_code, code_role,
 )
+from app.redaction.recheck import recheck
 from app.security import crypto
 
 COUNTRY_UNKNOWN = "国家未知"
@@ -800,8 +801,15 @@ def _strip_span(text: str, start: int, end: int) -> tuple[int, int]:
 
 
 def _add_term(db: Session, task: Task, text: str, loc: str, start: int, end: int, category: str) -> None:
-    """把 text[start:end] 作为用户词条加入并整体重算；重算后该位置必须已被替换。"""
+    """把 text[start:end] 作为用户词条加入并整体重算；重算后该位置必须已被替换。
+
+    所选文字若按出口复检规则出现在固定提示文字中（Q-77 ③），设为敏感信息后将无法发送，先拒绝。
+    """
     term = text[start:end]
+    from app.review.prompt import fixed_prompt_text  # 避免循环导入
+    if any(r.category == "MAP" for r in recheck(fixed_prompt_text(db), real_values=[term], terms=[])):
+        raise RedactionInputError(422, "TERM_IN_PROMPT",
+                                  "所选文字在审核提示中也会出现，设为敏感信息后将无法发送，请只选择具体的名称或编号")
     m = _user_pattern(term).match(text, start)
     if m is None or m.end() != end:  # 选在单词中间（“ora Fic”）时全文匹配不到这里
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确，请选择完整的词")

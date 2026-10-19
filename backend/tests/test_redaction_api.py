@@ -373,6 +373,61 @@ def test_manual_errors(alice, ready_task):
     assert "煅后石油焦" not in c.get(url(task, "redaction/outbound")).json()["text"]
 
 
+TERM_IN_PROMPT = (422, "TERM_IN_PROMPT")
+
+
+def test_manual_rejects_text_in_fixed_prompt(db_sessionmaker, alice, ready_task):
+    """Q-77 ③：手动补充的文字出现在审核提示中（公司说明、内置要求）时拒绝，具体名称不受影响。"""
+    from app.admin import settings_store
+
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "review.company_profile", "本公司主营虚构钛白粉出口", None)
+        db.commit()
+    user, c, h = alice
+    task = suspect_task(ready_task, user, "销售确认书", f"卖方：{REAL_OUR_NAME}", f"买方：{REAL_BUYER_NAME}",
+                        "货物：虚构钛白粉 20 吨，经 Lumen Fictive Forwarding 代为装运。", "违约金及交货期见附件。")
+    before = redaction(c, task)
+    for needle in ("虚构钛白粉", "违约金", "交货期"):
+        loc, start, end = node_loc(c, task, needle)
+        r = c.post(url(task, "redaction/manual"), json={"loc": loc, "char_start": start, "char_end": end,
+                                                        "category": "CUSTOM"}, headers=h)
+        assert (r.status_code, r.json()["code"]) == TERM_IN_PROMPT, needle
+        assert r.json()["message"] == "所选文字在审核提示中也会出现，设为敏感信息后将无法发送，请只选择具体的名称或编号"
+        assert needle not in r.text
+    assert redaction(c, task) == before
+    loc, start, end = node_loc(c, task, "Lumen Fictive Forwarding")
+    r = c.post(url(task, "redaction/manual"), json={"loc": loc, "char_start": start, "char_end": end,
+                                                    "category": "ORG"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert "Lumen" not in c.get(url(task, "redaction/outbound")).json()["text"]
+
+
+def test_suspect_replace_rejects_text_in_fixed_prompt(db_sessionmaker, alice, ready_task):
+    """Q-77 ③：疑似遗漏选“替换”时同样拦截（文字出现在启用的公司补充要求中）；忽略不受影响，停用的要求不算。"""
+    from app.db.models import CompanyRequirement
+
+    with db_sessionmaker() as db:
+        db.add_all([CompanyRequirement(code="CO-1", text="与 Northwind Fictive Holdings 的往来须经法务确认"),
+                    CompanyRequirement(code="CO-2", text="6222 0000 1111 2222 333", enabled=False)])
+        db.commit()
+    user, c, h = alice
+    task = suspect_task(ready_task, user)
+    before = redaction(c, task)
+    views = before["suspects"]
+    r = c.post(url(task, f"redaction/suspects/{views[0]['id']}"), json={"decision": "replace", "category": "ORG"},
+               headers=h)
+    assert (r.status_code, r.json()["code"]) == TERM_IN_PROMPT
+    assert "Northwind" not in r.text
+    assert redaction(c, task) == before  # 决定未写入
+    r = c.post(url(task, f"redaction/suspects/{views[2]['id']}"), json={"decision": "replace", "category": "CUSTOM"},
+               headers=h)
+    assert r.status_code == 200, r.text
+    sid = next(v["id"] for v in r.json()["suspects"] if v["text"] == "Northwind Fictive Holdings")
+    r = c.post(url(task, f"redaction/suspects/{sid}"), json={"decision": "ignore"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert [v["decision"] for v in r.json()["suspects"]] == ["ignore", "ignore"]
+
+
 def test_manual_selection_length_upper_bound(alice, ready_task):
     user, c, h = alice
     task = suspect_task(ready_task, user, "x" * 150, f"卖方：{REAL_OUR_NAME}")

@@ -9,11 +9,15 @@ user 消息：【审核背景】【审核要求】【主体说明】【本地校
 """
 from dataclasses import dataclass, field
 
-from app.db.models import Task
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.admin.settings_store import get_setting
+from app.db.models import CompanyRequirement, Task
 from app.redaction.quotes import QuoteTable
 from app.review.chunking import Chunk
 from app.redaction.outbound import escape_document_tags
-from app.review.requirements import Requirement, load_system_template
+from app.review.requirements import Requirement, _builtin_data, load_system_template
 
 STANCE_LABELS = {"sales": "销售", "purchase": "采购", "other": "其他"}
 SOURCE_LABELS = {"outgoing": "我方发出", "incoming": "对方发来"}
@@ -114,3 +118,20 @@ def build_messages(ctx: ReviewContext, chunk: Chunk | None = None) -> list[dict]
     version, system = system_prompt()
     ctx.prompt_version = version
     return [{"role": "system", "content": system}, {"role": "user", "content": build_user_message(ctx, chunk)}]
+
+
+def fixed_prompt_text(db: Session) -> str:
+    """每次发送都会出现在提示词中的固定文字（设计 docs/design/M5.md 第六节，Q-77 ③）。只读，不调用模型。
+
+    system 消息全文 + 全部内置要求文字（不按类型筛选）+ 启用的公司补充要求文字 + 公司说明 + 【审核背景】等固定用词。
+    手动补充和疑似遗漏“替换”的文字若出现在其中，设为敏感信息后出口复检必然拦截，须在写入前拒绝。
+    """
+    _, system = system_prompt()
+    parts = [system, *(item["text"] for item in _builtin_data()["requirements"])]
+    parts += db.scalars(select(CompanyRequirement.text).where(CompanyRequirement.enabled.is_(True)))
+    parts.append(str(get_setting(db, "review.company_profile") or ""))
+    parts += [*STANCE_LABELS.values(), *SOURCE_LABELS.values(), *DOC_TYPE_LABELS.values()]
+    parts += ["【审核背景】立场：；来源：；主文件类型：；附件：；公司说明：", "【审核要求】（公司补充）（本次补充说明）",
+              "【主体说明】【本地校验摘要】【待审核文件】<document></document>",
+              chunk_note(Chunk(index=1, total=2, lines=[], first_loc="", last_loc="", locs=frozenset()))]
+    return "\n".join(parts)
