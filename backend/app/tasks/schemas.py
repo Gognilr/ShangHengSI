@@ -46,6 +46,27 @@ class TaskFileOut(BaseModel):
     warnings: list[str]
 
 
+class PreviewNode(BaseModel):
+    """预览节点（设计 M3 第七节）；text 为解密后的原文，保留期清理后为 None。"""
+
+    loc: str
+    kind: str
+    part: str
+    text: str | None
+    clause_no: str | None
+    page: int | None
+    bbox: list[float] | None
+    sheet: str | None
+    cell_ref: str | None
+    ocr_conf: float | None
+    parent_loc: str | None
+
+
+class PreviewNodes(BaseModel):
+    text_available: bool
+    items: list[PreviewNode]
+
+
 class LatestRun(BaseModel):
     id: uuid.UUID
     run_no: int

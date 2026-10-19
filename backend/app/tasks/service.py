@@ -16,9 +16,18 @@ from app.audit import service as audit
 from app.config import get_settings
 from app.db import jobs
 from app.db.models import DocNode, Job, ReviewRun, Task, TaskFile, User
+from app.security import crypto
 from app.security.errors import AppError
 from app.tasks import storage
-from app.tasks.schemas import LatestRun, TaskDetail, TaskFileOut, TaskListItem, TaskPage
+from app.tasks.schemas import (
+    LatestRun,
+    PreviewNode,
+    PreviewNodes,
+    TaskDetail,
+    TaskFileOut,
+    TaskListItem,
+    TaskPage,
+)
 
 MAX_FILES = 10
 PAGE_SIZE = 20
@@ -313,6 +322,52 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
         latest_run=latest_run,
         queue_position=queue_position,
     )
+
+
+# ---------------------------------------------------------------- 预览（M3-06）
+
+RAW_MEDIA_TYPES = {"pdf": "application/pdf", "jpg": "image/jpeg", "png": "image/png"}
+
+
+def preview_nodes(db: DbSession, task: Task, file: TaskFile) -> PreviewNodes:
+    """该文件全部 part 的节点，按 ord 排序，原文解密后返回。
+
+    解析中或解析失败时返回空列表。保留期清理后 text_enc 为空：text 为 None，text_available=false。
+    """
+    if task.status in ("parsing", "parse_failed"):
+        return PreviewNodes(text_available=True, items=[])
+    rows = db.scalars(select(DocNode).where(DocNode.file_id == file.id).order_by(DocNode.ord)).all()
+    items = [
+        PreviewNode(
+            loc=r.loc,
+            kind=r.kind,
+            part=r.part,
+            text=crypto.decrypt_text(r.text_enc) if r.text_enc is not None else None,
+            clause_no=r.clause_no,
+            page=r.page,
+            bbox=[float(v) for v in r.bbox] if r.bbox else None,
+            sheet=r.sheet,
+            cell_ref=r.cell_ref,
+            ocr_conf=r.ocr_conf,
+            parent_loc=r.parent_loc,
+        )
+        for r in rows
+    ]
+    available = file.original_deleted_at is None and all(i.text is not None for i in items)
+    return PreviewNodes(text_available=available, items=items)
+
+
+def load_raw(file: TaskFile) -> tuple[bytes, str]:
+    """PDF / 图片原件的明文字节和媒体类型（Q-63）。"""
+    media_type = RAW_MEDIA_TYPES.get(file.ext)
+    if media_type is None:
+        raise AppError(404, "RAW_NOT_AVAILABLE", "该格式不提供原件预览")
+    if file.original_deleted_at is not None:
+        raise AppError(404, "ORIGINAL_DELETED", "原件已按保留期限删除")
+    try:
+        return storage.load_original(file.storage_key), media_type
+    except FileNotFoundError:
+        raise AppError(404, "ORIGINAL_DELETED", "原件已按保留期限删除") from None
 
 
 # ---------------------------------------------------------------- 删除

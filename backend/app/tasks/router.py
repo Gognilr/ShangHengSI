@@ -1,6 +1,7 @@
 """任务接口：/api/v1/tasks（SPEC 19.3，设计 docs/design/M2.md 第三节）。"""
 from datetime import date
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel
@@ -14,7 +15,7 @@ from app.security.deps import current_user, owned_task, owned_task_file
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service
-from app.tasks.schemas import TaskCreated, TaskDetail, TaskFileOut, TaskPage
+from app.tasks.schemas import PreviewNodes, TaskCreated, TaskDetail, TaskFileOut, TaskPage
 
 router = APIRouter(prefix="/tasks")
 
@@ -85,6 +86,31 @@ def list_tasks(
     db: DbSession = Depends(get_db),
 ) -> TaskPage:
     return service.list_tasks(db, user, page=page, q=q, date_from=date_from, date_to=date_to)
+
+
+@router.get("/{id}/files/{fid}/nodes", response_model=PreviewNodes)
+def get_file_nodes(
+    file: TaskFile = Depends(owned_task_file),
+    task: Task = Depends(owned_task),
+    db: DbSession = Depends(get_db),
+) -> PreviewNodes:
+    return service.preview_nodes(db, task, file)
+
+
+@router.get("/{id}/files/{fid}/raw")
+def get_file_raw(file: TaskFile = Depends(owned_task_file)) -> Response:
+    # Q-63：只读预览，不写审计；日志不写文件名
+    data, media_type = service.load_raw(file)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(file.original_name, safe='')}",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
 
 
 @router.get("/{id}", response_model=TaskDetail)
