@@ -1,0 +1,30 @@
+description: XLSX 形式的报价单（每行“loc 单元格文字”）：标题行和签约方在表头（第 7 行）上方，单价与金额列有带币种和不带币种的数字，含百分比、合计行和人民币折算；第 2 个工作表没有表头
+stance: sales
+loc_prefixed: true
+must_replace:
+  - {text: 星河虚构进出口有限公司, category: ORG}
+  - {text: Fictional Metals Trading FZE, category: ORG}
+  - {text: "13800138000", category: PHONE}
+  - {text: zhou.example@example.com, category: EMAIL}
+  - {text: "1250", category: PRICE}
+  - {text: "2150", category: PRICE}
+  - {text: "400000", category: AMOUNT}
+  - {text: "258000", category: AMOUNT}
+  - {text: "658000", category: AMOUNT}
+  - {text: "4671800", category: AMOUNT}
+must_keep:
+  - 报价单 Quotation
+  - "2026-03-10"
+  - "2026-04-30"
+  - 煅后石油焦
+  - 针状焦
+  - 低硫 0-3mm
+  - 超低硫 1-5mm
+  - "320"
+  - "120"
+  - 30%
+  - 合计 Total
+  - "7.1"
+  - 1.25%
+  - CIF Hamburg
+  - USD

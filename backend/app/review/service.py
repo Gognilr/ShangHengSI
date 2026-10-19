@@ -250,15 +250,30 @@ class _View:
         return restore(value, self.mapping) if value else value
 
     def locations(self, findings: list[Finding]) -> dict[str, str]:
-        """第一个位置 → “原文件名 + 空格 + (clause_no 或 loc)”。节点已被清理时只显示 loc。"""
+        """第一个位置 → “原文件名 + 空格 + 可读位置”（设计 docs/design/M3.md 6.3）。
+
+        可读位置：有 clause_no 时为 clause_no；否则 PDF、图片节点为“第 N 页”，XLSX 节点为“工作表!单元格”，
+        其他为 loc。节点已被删除时只显示 loc。
+        """
         firsts = {f.locs[0] for f in findings if f.locs}
         if not firsts:
             return {}
-        clause = dict(self.db.execute(select(DocNode.loc, DocNode.clause_no)
-                                      .where(DocNode.task_id == self.task_id, DocNode.loc.in_(firsts))).all())
+        rows = {r.loc: r for r in self.db.execute(
+            select(DocNode.loc, DocNode.clause_no, DocNode.page, DocNode.sheet, DocNode.cell_ref)
+            .where(DocNode.task_id == self.task_id, DocNode.loc.in_(firsts)))}
         out = {}
         for loc in firsts:
-            shown = clause.get(loc) or loc
+            r = rows.get(loc)
+            if r is None:
+                shown = loc
+            elif r.clause_no:
+                shown = r.clause_no
+            elif r.sheet and r.cell_ref:
+                shown = f"{r.sheet}!{r.cell_ref}"
+            elif r.page:
+                shown = f"第 {r.page} 页"
+            else:
+                shown = loc
             m = _LOC_FILE_SEQ.match(loc)
             name = self.file_names.get(int(m.group(1))) if m else None
             out[loc] = f"{name} {shown}" if name else shown

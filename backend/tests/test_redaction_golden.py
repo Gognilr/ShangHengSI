@@ -1,6 +1,8 @@
 """脱敏回归测试集（SPEC 23.3，M2-17）。
 
 tests/fixtures/redaction_golden/ 下每份虚构样本（.txt，每行一个正文节点）配一份同名 .yaml 标注：
+  loc_prefixed —— 为 true 时每行写成“loc 文字”（如 XLSX 单元格“F1-S1-E8 USD 1250”），按该 loc 构造节点，
+                  用于检验表格列提示；否则节点依次编为 F1-P1、F1-P2……
   must_replace —— 必须被替换的文字和类别，召回率要求 100%；
   known_gaps   —— 已知尚未识别的写法（记入 open_questions）；仍漏替换时测试通过，修好后测试失败，提醒移入 must_replace；
   must_keep    —— 必须保留的内容（国家、港口、贸易术语、百分比、日期、HS 编码、产品名、规格指标等），
@@ -23,8 +25,11 @@ COMPATIBLE = {"ORG": {"ORG", "OUR"}}
 
 def load(name: str):
     lines = (GOLDEN / f"{name}.txt").read_text(encoding="utf-8").splitlines()
-    nodes = [NodeIn(f"F1-P{i}", line) for i, line in enumerate(lines, start=1) if line.strip()]
     ann = yaml.safe_load((GOLDEN / f"{name}.yaml").read_text(encoding="utf-8"))
+    if ann.get("loc_prefixed"):
+        nodes = [NodeIn(*line.split(" ", 1)) for line in lines if line.strip()]
+    else:
+        nodes = [NodeIn(f"F1-P{i}", line) for i, line in enumerate(lines, start=1) if line.strip()]
     result = compute(nodes, ann["stance"])
     text = outbound.build(
         [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in result.parties],
@@ -43,7 +48,7 @@ def occurrences(nodes: list[NodeIn], needle: str):
 
 def test_golden_set_covers_all_doc_types():
     assert len(SAMPLES) >= 5
-    assert {"contract", "quotation", "order", "inquiry", "letter"} <= set(SAMPLES)
+    assert {"contract", "quotation", "order", "inquiry", "letter", "quotation_xlsx"} <= set(SAMPLES)
 
 
 @pytest.mark.parametrize("name", SAMPLES)

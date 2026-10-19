@@ -2,6 +2,8 @@
 以及对真实接口重跑 A-06。需要 TEST_DATABASE_URL。"""
 import json
 import uuid
+from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -17,11 +19,14 @@ from app.db.models import (
     RedactionSuspect,
     ReviewRun,
     Task,
+    TaskFile,
 )
 from app.main import API_PREFIX
 from app.review import job
+from app.review.service import _View
+from app.tasks import pipeline
 from tests.mock_llm import build_reply
-from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: F401
+from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task, sample  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
 
@@ -407,3 +412,82 @@ def test_requires_login(api, ready_task, make_user):
     task = ready_task(user)
     assert api.get(f"{API_PREFIX}/tasks/{task.id}/runs").status_code == 401
     assert api.get(f"{API_PREFIX}/runs/{uuid.uuid4()}").status_code == 401
+
+
+# ---------------------------------------------------------------- M3：其他格式
+
+
+FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
+
+
+def fixture_bytes(path: str) -> bytes:
+    return (FIXTURE_ROOT / path).read_bytes()
+
+
+def test_upload_five_formats_to_awaiting_confirm(db_sessionmaker, alice):
+    """经真实接口上传五种格式，parse 后到 awaiting_confirm；不外发时到 completed_local。"""
+    user, c, h = alice
+    files = [("销售合同.docx", sample("contract_basic")), ("报价单.xlsx", fixture_bytes("xlsx/quotation.xlsx")),
+             ("合同.pdf", fixture_bytes("pdf/text_contract.pdf")),
+             ("报价函.png", fixture_bytes("images/quotation_clear.png")),
+             ("扫描件.jpeg", fixture_bytes("images/quotation_lowq.jpg"))]
+    for policy, expected in (("ai", "awaiting_confirm"), ("local_only", "completed_local")):
+        parts = [("files", (name, data, "application/octet-stream")) for name, data in files]
+        r = c.post(f"{API_PREFIX}/tasks", data={"stance": "sales", "source": "outgoing", "policy": policy},
+                   files=parts, headers=h)
+        assert r.status_code == 201, r.text
+        tid = r.json()["id"]
+        with db_sessionmaker() as db:
+            pipeline.parse_task(db, uuid.UUID(tid))
+        d = c.get(f"{API_PREFIX}/tasks/{tid}").json()
+        assert d["status"] == expected, d.get("error_message")
+        with db_sessionmaker() as db:
+            exts = db.scalars(select(TaskFile.ext).where(TaskFile.task_id == uuid.UUID(tid)).order_by(TaskFile.seq))
+            assert list(exts) == ["docx", "xlsx", "pdf", "png", "jpg"]
+
+
+def test_location_shows_page_and_cell(db_sessionmaker, alice, ready_task):
+    """问题位置：PDF、图片为“第 N 页”，XLSX 为“工作表!单元格”，有 clause_no 时仍显示编号，DOCX 无编号时为 loc。"""
+    user, c, h = alice
+    task = ready_task(user, [("销售合同.docx", sample("contract_basic")), ("报价单.xlsx", fixture_bytes("xlsx/quotation.xlsx")),
+                             ("合同.pdf", fixture_bytes("pdf/text_contract.pdf"))])
+    with db_sessionmaker() as db:
+        pdf_plain = db.scalar(select(DocNode).where(DocNode.task_id == task.id, DocNode.loc.like("F3-PG2-%"),
+                                                    DocNode.clause_no.is_(None)))
+        pdf_clause = db.scalar(select(DocNode).where(DocNode.task_id == task.id, DocNode.loc.like("F3-%"),
+                                                     DocNode.clause_no.is_not(None)))
+        db.add(DocNode(task_id=task.id, file_id=pdf_plain.file_id, loc="F9-PG1-B1", ord=999, kind="ocr_block",
+                       part="body", page=1))  # 文件号不存在：只显示位置
+        db.commit()
+        view = _View(db, task.id)
+        findings = [SimpleNamespace(locs=[loc]) for loc in
+                    ("F2-S1-E8", "F2-S2-B3", pdf_plain.loc, pdf_clause.loc, "F1-P1", "F3-PG1-B99", "F9-PG1-B1")]
+        findings.append(SimpleNamespace(locs=[]))
+        shown = view.locations(findings)
+    assert shown == {
+        "F2-S1-E8": "报价单.xlsx 报价!E8",
+        "F2-S2-B3": "报价单.xlsx 备注!B3",
+        pdf_plain.loc: "合同.pdf 第 2 页",
+        pdf_clause.loc: f"合同.pdf {pdf_clause.clause_no}",
+        "F1-P1": "销售合同.docx F1-P1",
+        "F3-PG1-B99": "合同.pdf F3-PG1-B99",  # 节点不存在
+        "F9-PG1-B1": "第 1 页",
+    }
+
+
+def test_t07_precheck_blocks_real_name_in_xlsx(db_sessionmaker, alice, ready_task, llm):
+    """T-07（M3 重跑）：XLSX 单元格的外发文本中混入真实名称，确认发送时预检拦截，不调用模型。"""
+    user, c, h = alice
+    task = ready_task(user, [("报价单.xlsx", fixture_bytes("xlsx/quotation.xlsx"))])
+    requests = llm("normal")
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).status == "awaiting_confirm"
+        node = db.scalar(select(DocNode).where(DocNode.task_id == task.id, DocNode.loc == "F1-S1-B8"))
+        node.redacted_text = f"煅后石油焦（{REAL_BUYER_NAME}）"
+        db.commit()
+    r = post_run(c, h, task.id)
+    assert (r.status_code, r.json()["code"]) == (409, "OUTBOUND_BLOCKED")
+    assert "MAP@" in r.json()["message"] and REAL_BUYER_NAME not in r.json()["message"]
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).status == "awaiting_confirm"
+    assert requests == [] and count(db_sessionmaker, LlmCall) == 0 and count(db_sessionmaker, ReviewRun) == 0

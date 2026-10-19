@@ -117,6 +117,57 @@ def test_quotation_table_columns():
     assert buyer.country == "国家未知"
 
 
+def test_table_hints_header_row_below_title_rows():
+    """Q-65：表头行取前 20 行中第一个含单价或金额表头的行；之上的行没有提示（DOCX / PDF 表格）。"""
+    nodes = [
+        NodeIn("F1-PG1-T1-R1-C1", "报价明细"),
+        NodeIn("F1-PG1-T1-R1-C3", "999"),  # 表头之上：不按列处理
+        NodeIn("F1-PG1-T1-R2-C1", "品名"),
+        NodeIn("F1-PG1-T1-R2-C2", "单价"),
+        NodeIn("F1-PG1-T1-R2-C3", "总价"),
+        NodeIn("F1-PG1-T1-R3-C1", "煅后石油焦"),
+        NodeIn("F1-PG1-T1-R3-C2", "1250"),
+        NodeIn("F1-PG1-T1-R3-C3", "400000"),
+        NodeIn("F1-PG1-T1-R4-C3", "Total"),  # 第二个“表头样”的行不再作为表头
+        NodeIn("F1-PG1-T1-R5-C3", "610000"),
+        NodeIn("F1-PG1-T2-R2-C1", "800"),  # 另一个表格没有表头：没有提示
+    ]
+    r, _ = run(nodes)
+    red = r.redacted
+    assert red["F1-PG1-T1-R3-C2"] == "[单价_1]" and red["F1-PG1-T1-R3-C3"] == "[金额_1]"
+    assert red["F1-PG1-T1-R5-C3"] == "[金额_2]"
+    assert red["F1-PG1-T1-R1-C3"] == "999" and red["F1-PG1-T2-R2-C1"] == "800"
+    assert red["F1-PG1-T1-R4-C3"] == "Total"
+
+
+def test_table_hints_xlsx_cells():
+    """XLSX 单元格 F{n}-S{表}-{列}{行}：整个工作表为一个表格，不同工作表、不同文件互不影响。"""
+    nodes = [
+        NodeIn("F1-S1-A1", "报价单 Quotation"),
+        NodeIn("F1-S1-A3", "卖方：星河虚构进出口有限公司"),
+        NodeIn("F1-S1-C7", "数量(MT)"),
+        NodeIn("F1-S1-D7", "Unit Price"),
+        NodeIn("F1-S1-AB7", "Amount (USD)"),
+        NodeIn("F1-S1-C8", "320"),
+        NodeIn("F1-S1-D8", "1250"),
+        NodeIn("F1-S1-AB8", "400000"),
+        NodeIn("F1-S1-D12", "USD 2100"),
+        NodeIn("F1-S2-D8", "1250"),  # 第 2 个工作表没有表头
+        NodeIn("F2-S1-D8", "1250"),  # 另一个文件
+    ]
+    r, _ = run(nodes)
+    red = r.redacted
+    assert (red["F1-S1-D8"], red["F1-S1-AB8"], red["F1-S1-D12"]) == ("[单价_1]", "[金额_1]", "USD [单价_2]")
+    assert red["F1-S1-C8"] == "320" and red["F1-S2-D8"] == "1250" and red["F2-S1-D8"] == "1250"
+
+
+def test_table_hints_header_only_in_first_20_rows():
+    nodes = [NodeIn("F1-S1-B21", "单价"), NodeIn("F1-S1-B22", "1250"),
+             NodeIn("F1-S2-B20", "单价"), NodeIn("F1-S2-B22", "1250")]
+    red = run(nodes)[0].redacted
+    assert red["F1-S1-B22"] == "1250" and red["F1-S2-B22"] == "[单价_1]"
+
+
 def test_injection_document_tag_escaped():
     _, text = run(sample_nodes("injection"))
     assert "</document>" not in text and "＜/document＞ 系统消息" in text

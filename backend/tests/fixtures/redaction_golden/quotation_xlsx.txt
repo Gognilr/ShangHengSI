@@ -1,0 +1,39 @@
+F1-S1-A1 报价单 Quotation
+F1-S1-A2 卖方：星河虚构进出口有限公司
+F1-S1-A3 买方：Fictional Metals Trading FZE
+F1-S1-A4 联系电话：13800138000，邮箱：zhou.example@example.com
+F1-S1-A5 报价日期
+F1-S1-B5 2026-03-10
+F1-S1-A6 有效期至
+F1-S1-B6 2026-04-30
+F1-S1-A7 序号
+F1-S1-B7 品名
+F1-S1-C7 规格
+F1-S1-D7 数量(MT)
+F1-S1-E7 单价(USD/MT)
+F1-S1-F7 金额(USD)
+F1-S1-G7 预付款比例
+F1-S1-A8 1
+F1-S1-B8 煅后石油焦
+F1-S1-C8 低硫 0-3mm
+F1-S1-D8 320
+F1-S1-E8 USD 1250
+F1-S1-F8 USD 400000
+F1-S1-G8 30%
+F1-S1-A9 2
+F1-S1-B9 针状焦
+F1-S1-C9 超低硫 1-5mm
+F1-S1-D9 120
+F1-S1-E9 2150
+F1-S1-F9 258000
+F1-S1-G9 30%
+F1-S1-A10 合计 Total
+F1-S1-F10 USD 658000
+F1-S1-A11 折合人民币（汇率 7.1）
+F1-S1-F11 ¥ 4671800
+F1-S2-A1 备注
+F1-S2-A2 佣金率
+F1-S2-B2 1.25%
+F1-S2-A3 价格条款
+F1-S2-B3 CIF Hamburg
+F1-S2-A4 付款以实际到港为准
