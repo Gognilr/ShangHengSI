@@ -2,9 +2,18 @@
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/http'
-import { redactionApi, type Party } from '@/api/redaction'
+import {
+  REDACTION_ERROR_MESSAGES,
+  redactionApi,
+  type Party,
+  type RedactionInfo,
+  type Suspect,
+  type UserCategory,
+} from '@/api/redaction'
 import { RUN_ERROR_MESSAGES, runsApi } from '@/api/runs'
 import { tasksApi, type TaskDetail } from '@/api/tasks'
+import ManualRedactDialog from './ManualRedactDialog.vue'
+import SuspectList from './SuspectList.vue'
 import { DOC_TYPE_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, toOptions } from '@/utils/labels'
 
 const props = defineProps<{ task: TaskDetail }>()
@@ -23,6 +32,10 @@ const UNKNOWN_COUNTRY = '国家未知'
 const files = ref(props.task.files)
 const parties = ref<Party[]>([])
 const summary = ref<Record<string, number>>({})
+const suspects = ref<Suspect[]>([])
+const redactedItems = ref<RedactionInfo['items']>([])
+const deciding = ref(false)
+const manualOpen = ref(false)
 const loading = ref(true)
 const loadError = ref('')
 const savingParties = ref(false)
@@ -54,8 +67,51 @@ const summaryText = computed(() => {
   return parts.length ? `替换了 ${parts.join('、')}` : '没有需要替换的内容'
 })
 
+function applyRedaction(info: RedactionInfo) {
+  summary.value = info.summary
+  suspects.value = info.suspects
+  redactedItems.value = info.items
+}
+
 async function loadSummary() {
-  summary.value = (await redactionApi.redaction(props.task.id)).summary
+  applyRedaction(await redactionApi.redaction(props.task.id))
+}
+
+const pendingCount = computed(() => suspects.value.filter((s) => s.decision === 'pending').length)
+
+/** 替换、忽略、手动补充成功后：以返回值刷新疑似遗漏和摘要，并重新读取签约方（可能出现新的方）和外发文本。 */
+async function afterChange(info: RedactionInfo) {
+  applyRedaction(info)
+  try {
+    const [p] = await Promise.all([redactionApi.parties(props.task.id), reloadOutbound()])
+    parties.value = p.items
+  } catch (e) {
+    handleError(e)
+  }
+}
+
+async function decideSuspect(id: number, decision: 'replace' | 'ignore', category: UserCategory | null) {
+  if (deciding.value) return
+  deciding.value = true
+  submitError.value = ''
+  try {
+    await afterChange(await redactionApi.decideSuspect(props.task.id, id, decision, category))
+  } catch (e) {
+    handleError(e)
+    try {
+      await loadSummary()
+    } catch {
+      // 保持当前显示
+    }
+  } finally {
+    deciding.value = false
+  }
+}
+
+function onManualDone(info: RedactionInfo) {
+  submitError.value = ''
+  ElMessage.success('已设为敏感信息')
+  void afterChange(info)
 }
 
 // 上次提交被出口复检拦截时显示拦截原因（只有类别和位置，不含真实值），用户处理后可重新提交
@@ -177,9 +233,18 @@ function onPanelChange(names: string[] | string) {
 }
 
 // ---- 确认发送 ----
+const canConfirm = computed(
+  () => ourCount.value === 1 && pendingCount.value === 0 && !savingParties.value && !deciding.value && !loading.value,
+)
+const disabledReason = computed(() => {
+  if (ourCount.value !== 1) return '请先在签约方中选择我方'
+  if (pendingCount.value > 0) return `还有 ${pendingCount.value} 条疑似遗漏未处理`
+  return ''
+})
+
 function handleError(e: unknown) {
   if (e instanceof ApiError) {
-    const base = RUN_ERROR_MESSAGES[e.code] ?? e.message
+    const base = RUN_ERROR_MESSAGES[e.code] ?? REDACTION_ERROR_MESSAGES[e.code] ?? e.message
     // OUTBOUND_BLOCKED 的 message 带类别和位置，不含真实值，可以一并显示
     submitError.value = e.code === 'OUTBOUND_BLOCKED' && e.message ? `${base}：${e.message}` : base
     if (e.code === 'TASK_STATE_CONFLICT') emit('stale')
@@ -189,7 +254,7 @@ function handleError(e: unknown) {
 }
 
 async function confirmSend() {
-  if (ourCount.value !== 1 || savingParties.value) return
+  if (!canConfirm.value) return
   submitError.value = ''
   submitting.value = true
   try {
@@ -310,6 +375,7 @@ onMounted(loadAll)
         show-icon
         :closable="false"
         title="未识别到签约方，暂时不能提交 AI 审核"
+        description="可在“5. 手动补充”中选中我方名称、类别选“公司”，再在签约方列表中设为我方"
         class="gap"
       />
       <el-alert
@@ -324,8 +390,25 @@ onMounted(loadAll)
       <h3>3. 脱敏摘要</h3>
       <p class="summary">{{ summaryText }}</p>
 
+      <h3>
+        4. 疑似遗漏<span v-if="pendingCount" class="pending">还有 {{ pendingCount }} 条未处理</span>
+      </h3>
+      <SuspectList :suspects="suspects" :files="files" :busy="deciding" @decide="decideSuspect" />
+
+      <h3>5. 手动补充</h3>
+      <p class="hint">识别遗漏的名称等信息，可以在原文中选中后设为敏感信息，相同的文字会在全文一并替换。</p>
+      <el-button :disabled="loading" @click="manualOpen = true">在原文中选择</el-button>
+      <ManualRedactDialog
+        v-model="manualOpen"
+        :task-id="task.id"
+        :files="files"
+        :items="redactedItems"
+        @done="onManualDone"
+        @stale="emit('stale')"
+      />
+
       <el-collapse :model-value="openPanels" class="gap" @change="onPanelChange">
-        <el-collapse-item title="查看将发送的文本（只读，已用代号替换）" name="outbound">
+        <el-collapse-item title="6. 查看将发送的文本（只读，已用代号替换）" name="outbound">
           <div v-loading="outboundLoading">
             <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
             <pre v-else class="outbound">{{ outboundText }}</pre>
@@ -336,9 +419,10 @@ onMounted(loadAll)
       <el-alert v-if="submitError" type="error" show-icon :closable="false" :title="submitError" class="gap" />
 
       <div class="actions">
+        <span v-if="disabledReason" class="hint reason">{{ disabledReason }}</span>
         <el-button
           type="primary"
-          :disabled="ourCount !== 1 || savingParties || loading"
+          :disabled="!canConfirm"
           :loading="submitting"
           @click="confirmSend"
         >
@@ -360,6 +444,15 @@ h3 {
 .warning {
   color: var(--el-color-warning);
   font-size: 13px;
+}
+.pending {
+  margin-left: 12px;
+  font-size: 13px;
+  font-weight: normal;
+  color: var(--el-color-warning);
+}
+.reason {
+  margin-right: 12px;
 }
 .tag {
   margin-left: 8px;

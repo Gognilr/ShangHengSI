@@ -97,6 +97,18 @@ export const REDACTION_CATEGORY: Dict = {
 }
 export const redactionCategoryLabel = pick(REDACTION_CATEGORY)
 
+/** 疑似遗漏的原因（设计 M4 第六节）。 */
+export const SUSPECT_REASON: Dict = {
+  org_suffix: '带企业后缀的名称',
+  capitalized: '连续大写的英文单词',
+  long_digits: '长串数字',
+  before_company: '“公司”“厂”前的文字',
+}
+export const suspectReasonLabel = pick(SUSPECT_REASON)
+
+/** 用户可选的替换类别（疑似遗漏、手动补充）。 */
+export const USER_CATEGORY_OPTIONS: Dict = { ORG: '公司', PERSON: '人名', CUSTOM: '其他' }
+
 /** 把 options 对象转成下拉框用的数组。 */
 export function toOptions(dict: Dict): { value: string; label: string }[] {
   return Object.entries(dict).map(([value, label]) => ({ value, label }))

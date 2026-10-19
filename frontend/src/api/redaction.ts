@@ -17,11 +17,45 @@ export interface PartyUpdate {
   org_type: string
 }
 
+/** 疑似遗漏（text、before、after 是本人原文，只能按纯文本显示）。 */
+export interface Suspect {
+  id: number
+  loc: string
+  reason: string
+  /** pending / replace / ignore */
+  decision: string
+  category: string | null
+  text: string
+  before: string
+  after: string
+}
+
+/** 已替换的片段；char_start / char_end 按 Unicode 字符（码点）计，与后端一致。 */
+export interface RedactionItemPos {
+  loc: string
+  char_start: number
+  char_end: number
+  category: string
+  placeholder: string
+}
+
 export interface RedactionInfo {
   /** {类别代码: 替换次数} */
   summary: Record<string, number>
-  /** M2 恒为空，疑似遗漏在 M4 提供 */
-  suspects: unknown[]
+  suspects: Suspect[]
+  items: RedactionItemPos[]
+}
+
+/** 用户可选的替换类别（后端只接受这三种）。 */
+export type UserCategory = 'ORG' | 'PERSON' | 'CUSTOM'
+
+/** 手动补充、疑似遗漏决定的错误提示（按错误码，其余用接口返回的 message）。 */
+export const REDACTION_ERROR_MESSAGES: Record<string, string> = {
+  TASK_STATE_CONFLICT: '任务状态已变化，请刷新后再试',
+  SUSPECT_NOT_FOUND: '该条疑似遗漏已不存在，请刷新后再试',
+  INVALID_SELECTION: '所选位置不正确',
+  ALREADY_REDACTED: '所选文字已被替换，请选择未替换的文字',
+  SELECTION_LENGTH: '请选择 2–100 个字符',
 }
 
 export const redactionApi = {
@@ -29,6 +63,10 @@ export const redactionApi = {
   saveParties: (taskId: string, items: PartyUpdate[]) =>
     http.put<{ items: Party[] }>(`/tasks/${taskId}/parties`, { items }),
   redaction: (taskId: string) => http.get<RedactionInfo>(`/tasks/${taskId}/redaction`),
+  decideSuspect: (taskId: string, suspectId: number, decision: 'replace' | 'ignore', category: UserCategory | null) =>
+    http.post<RedactionInfo>(`/tasks/${taskId}/redaction/suspects/${suspectId}`, { decision, category }),
+  manual: (taskId: string, body: { loc: string; char_start: number; char_end: number; category: UserCategory }) =>
+    http.post<RedactionInfo>(`/tasks/${taskId}/redaction/manual`, body),
   /** 外发文本预览（代号版本），只能按纯文本显示。 */
   outbound: (taskId: string) => http.get<{ text: string }>(`/tasks/${taskId}/redaction/outbound`),
 }
