@@ -21,16 +21,11 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import DocNode, Party, RedactionItem, RedactionMap, RedactionTerm, Task, TaskFile
-from app.redaction import detect, outbound, parties as P
+from app.redaction import detect, outbound, parties as P, tables
 from app.redaction.placeholders import FIXED, OTHER, OUR_CODE, SELLER, BUYER, Allocator, code_role
 from app.security import crypto
 
 COUNTRY_UNKNOWN = "国家未知"
-_TABLE_LOC = re.compile(r"^(?P<table>.+-T\d+)-R(?P<row>\d+)-C(?P<col>\d+)$")  # DOCX、PDF 表格单元格
-_SHEET_LOC = re.compile(r"^(?P<table>F\d+-S\d+)-(?P<col>[A-Z]+)(?P<row>\d+)$")  # XLSX 单元格，整个工作表为一个表格
-_HEADER_SCAN_ROWS = 20  # 表头行只在每个表格的前 20 行中找（open_questions Q-65）
-_PRICE_HEADER = re.compile(r"单价|unit\s*price|price", re.IGNORECASE)
-_AMOUNT_HEADER = re.compile(r"金额|总价|总额|amount|total", re.IGNORECASE)
 _BLOCK_MAX_LINES = 6  # 签约方所在行之后，最多再看几行找国家（9.4）
 _INFO_LINE = re.compile(
     r"^\s*(注册地址|通讯地址|办公地址|地址|国家|国别|电话|手机|传真|邮箱|电子邮件|联系人|统一社会信用代码|税号|"
@@ -153,45 +148,6 @@ def _alias_pattern(alias: str) -> re.Pattern:
     return P.name_pattern(alias, case_sensitive=short_caps)
 
 
-def _table_cell(loc: str) -> tuple[str, str, int] | None:
-    """表格单元格的 (表格标识, 列, 行号)；不是表格单元格时 None。"""
-    m = _TABLE_LOC.match(loc) or _SHEET_LOC.match(loc)
-    return (m["table"], m["col"], int(m["row"])) if m else None
-
-
-def _header_kind(text: str) -> str | None:
-    if _PRICE_HEADER.search(text):
-        return "PRICE"
-    if _AMOUNT_HEADER.search(text):
-        return "AMOUNT"
-    return None
-
-
-def _table_hints(nodes: list[NodeIn]) -> dict[int, str]:
-    """表格列提示（9.3 第 5 步，Q-65）：表头含“单价、Unit Price”的列为 PRICE，含“金额、总价、Amount”的列为 AMOUNT。
-
-    表头行是每个表格前 20 行中第一个含单价或金额表头的行（XLSX 报价单的表头上方常有标题行）；
-    只有表头行之下的单元格得到提示。没有这样的行时该表格没有列提示。
-    """
-    cells: list[tuple[int, str, str, int]] = []
-    header_row: dict[str, int] = {}
-    for i, n in enumerate(nodes):
-        cell = _table_cell(n.loc)
-        if cell is None:
-            continue
-        table, col, row = cell
-        cells.append((i, table, col, row))
-        if row <= _HEADER_SCAN_ROWS and _header_kind(n.text) and row < header_row.get(table, row + 1):
-            header_row[table] = row
-    headers: dict[tuple[str, str], str] = {}
-    for i, table, col, row in cells:
-        if header_row.get(table) == row:
-            kind = _header_kind(nodes[i].text)
-            if kind:
-                headers[(table, col)] = kind
-    return {i: headers[(t, c)] for i, t, c, r in cells if r > header_row.get(t, r) and (t, c) in headers}
-
-
 def compute(
     nodes: list[NodeIn],
     stance: str,
@@ -267,7 +223,7 @@ def compute(
     _apply_ours(entities, stance, overrides)
 
     # 逐节点按 9.3 的顺序取替换位置
-    hints = _table_hints(nodes)
+    hints = tables.table_hints(nodes)
     term_pats = [(ent, P.name_pattern(s)) for ent in entities.values() if ent.from_term for s in ent.surfaces]
     party_pats = [(ent, P.name_pattern(s)) for ent in entities.values()
                   if ent.category == "ORG" and not ent.from_term for s in ent.surfaces]

@@ -17,6 +17,8 @@ class Hit:
     end: int
     category: str  # 9.2 代码
     key: str  # 同一对象的标识：key 相同的命中使用同一代号（编号、金额、单价）
+    currency: str | None = None  # 规范币种代码（CNY、USD…），未知为 None；只有 find_amounts 填写
+    value: Decimal | None = None  # 换算后的数值（“万元”已乘 10000），无法解析为 None；只有 find_amounts 填写
 
 
 # ---------------------------------------------------------------- 第 4 步：格式化信息
@@ -201,7 +203,7 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
                 value *= _MULTIPLIER[tail.group(1)]
             end_for_unit = tail.end()
         cat = category(end_for_unit)
-        hits.append(Hit(m.start(1), m.end(1), cat, _amount_key(cat, currency, value, m.group(1))))
+        hits.append(Hit(m.start(1), m.end(1), cat, _amount_key(cat, currency, value, m.group(1)), currency, value))
     for m in _SUFFIX.finditer(text):
         suffix = m.group(2)
         if _FOLLOWED_BY_NUMBER.match(text, m.end()):  # “3.1 USD 100”：USD 是后一个数字的前置币种
@@ -210,16 +212,18 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
         if value is not None and suffix in _MULTIPLIER:
             value *= _MULTIPLIER[suffix]
         cat = category(m.end())
-        hits.append(Hit(m.start(1), m.end(1), cat, _amount_key(cat, _CURRENCY.get(suffix), value, m.group(1))))
+        currency = _CURRENCY.get(suffix)
+        hits.append(Hit(m.start(1), m.end(1), cat, _amount_key(cat, currency, value, m.group(1)), currency, value))
     for m in _CN_UPPER.finditer(text):
         cat = category(m.end())
         value = chinese_upper_value(m.group())
-        hits.append(Hit(m.start(), m.end(), cat, _amount_key(cat, "CNY", value, m.group())))
+        hits.append(Hit(m.start(), m.end(), cat, _amount_key(cat, "CNY", value, m.group()), "CNY", value))
     if column in ("PRICE", "AMOUNT"):
         bare = _BARE_NUMBER.match(text)
         if bare:
-            hits.append(Hit(bare.start(1), bare.end(1), column,
-                            _amount_key(column, None, _decimal(bare.group(1)), bare.group(1))))
+            value = _decimal(bare.group(1))
+            hits.append(Hit(bare.start(1), bare.end(1), column, _amount_key(column, None, value, bare.group(1)),
+                            None, value))
     return hits
 
 
