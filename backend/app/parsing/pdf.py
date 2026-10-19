@@ -2,17 +2,21 @@
 
 文字页用 pdfplumber：表格单元格出 table_cell 节点，表格区域内的文字行不再重复出段落节点（Q-16），
 其余文字行按纵向间距合并为文本块。bbox 为 [x0, top, x1, bottom]，PDF 点，页面显示方向，原点在左上角
-（pdfplumber 的字符坐标已按 /Rotate 换算）。扫描页的 OCR 在 M3-04 实现，这里先抛出 ParseError 占位。
+（pdfplumber 的字符坐标已按 /Rotate 换算）。扫描页（M3-04）用 pypdfium2 以 200 DPI 渲染（渲染结果已含 /Rotate），
+交给 ocr.recognize，行坐标除以渲染比例换算回 PDF 点，再按相同规则合并为块。
 解析失败只抛出 ParseError，消息是固定的中文原因，不含原文和异常消息。
 """
 import io
+import logging
 import re
+import time
 from dataclasses import dataclass
 
 import pdfplumber
 
+from app.parsing import ocr
 from app.parsing.docx import manual_clause_no
-from app.parsing.model import MAX_PDF_PAGES, ParsedFile, ParsedNode, ParseError
+from app.parsing.model import LOW_OCR_CONF, MAX_PDF_PAGES, ParsedFile, ParsedNode, ParseError
 
 PARSER_VERSION = "pdf-1"
 TEXT_PAGE_MIN_CHARS = 20  # SPEC 8.5，去掉空白后的字符数
@@ -20,9 +24,13 @@ TEXT_PAGE_MIN_CHARS = 20  # SPEC 8.5，去掉空白后的字符数
 MSG_CORRUPT = "PDF 文件无法读取，可能已损坏或已加密"
 MSG_TOO_MANY_PAGES = "PDF 超过 200 页"
 MSG_NO_TEXT = "未能从文件中识别出文字"
-MSG_SCAN_PENDING = "扫描页的文字识别尚未启用"  # M3-04 实现 OCR 后删除
 
-_CJK_END = re.compile(r"[一-鿿，。；：、？！（）“”‘’《》]")
+OCR_DPI = 200
+MAX_OCR_SIDE = 4000  # 渲染后长边上限（像素），超大页面降低渲染比例
+MAX_LOW_CONF_PAGES = 10  # 低置信警告最多逐页列出的页数
+
+log = logging.getLogger(__name__)
+
 _WS = re.compile(r"\s+")
 
 
@@ -70,12 +78,7 @@ def inspect_pdf(data: bytes) -> PdfInfo:
         return PdfInfo(page_count=len(pdf.pages), scanned_pages=scanned)
 
 
-def _join(lines: list[str]) -> str:
-    """两侧都是汉字或中文标点时直接相连，否则以一个空格相连。"""
-    out = lines[0]
-    for nxt in lines[1:]:
-        out += ("" if _CJK_END.match(out[-1]) and _CJK_END.match(nxt[0]) else " ") + nxt
-    return out
+_join = ocr.join_text
 
 
 def _in_bbox(line: dict, bbox) -> bool:
@@ -147,20 +150,80 @@ def _parse_text_page(page, page_no: int, file_seq: int, nodes: list[ParsedNode])
                     )
 
 
+def _render_page(pdfium_doc, page_no: int):
+    """渲染第 page_no 页，返回 (PIL 图片, 渲染比例)。pdfium 渲染结果已按 /Rotate 旋转到显示方向。"""
+    page = pdfium_doc[page_no - 1]
+    try:
+        w, h = page.get_size()  # 显示方向的 PDF 点
+        scale = min(OCR_DPI / 72, MAX_OCR_SIDE / max(w, h, 1.0))
+        return page.render(scale=scale).to_pil().convert("RGB"), scale
+    finally:
+        page.close()
+
+
+def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[ParsedNode]) -> list[float]:
+    """OCR 一页，追加 ocr_block 节点，返回各块的置信度。"""
+    img, scale = _render_page(pdfium_doc, page_no)
+    lines = ocr.recognize(img)
+    for ln in lines:  # 像素 → PDF 点
+        ln.bbox = [v / scale for v in ln.bbox]
+    confs: list[float] = []
+    for no, block in enumerate(ocr.merge_lines(lines), start=1):
+        text, bbox, conf = ocr.block_of(block)
+        confs.append(conf)
+        nodes.append(
+            ParsedNode(
+                loc=f"F{file_seq}-PG{page_no}-B{no}", ord=len(nodes) + 1, kind="ocr_block", part="body", text=text,
+                clause_no=manual_clause_no(text), page=page_no, bbox=bbox, ocr_conf=conf,
+            )
+        )
+    return confs
+
+
 def parse_pdf(data: bytes, file_seq: int) -> ParsedFile:
     nodes: list[ParsedNode] = []
+    scanned: list[int] = []
+    low_conf: list[int] = []
+    empty: list[int] = []
+    started = time.monotonic()
     with _open(data) as pdf:
         page_count = len(pdf.pages)
+        pdfium_doc = None
         try:
             for page_no, raw in enumerate(pdf.pages, start=1):
                 page = _dedupe(raw)
-                if _is_scanned(page):
-                    raise ParseError(MSG_SCAN_PENDING)
-                _parse_text_page(page, page_no, file_seq, nodes)
+                if not _is_scanned(page):
+                    _parse_text_page(page, page_no, file_seq, nodes)
+                    continue
+                if pdfium_doc is None:
+                    import pypdfium2
+
+                    pdfium_doc = pypdfium2.PdfDocument(data)
+                scanned.append(page_no)
+                confs = _parse_scanned_page(pdfium_doc, page_no, file_seq, nodes)
+                if not confs:
+                    empty.append(page_no)
+                elif any(c < LOW_OCR_CONF for c in confs):
+                    low_conf.append(page_no)
         except ParseError:
             raise
         except Exception:  # noqa: BLE001
             raise ParseError(MSG_CORRUPT) from None
+        finally:
+            if pdfium_doc is not None:
+                pdfium_doc.close()
+    if scanned:
+        log.info("pdf ocr: pages=%d blocks=%d elapsed=%.1fs", len(scanned), len(nodes), time.monotonic() - started)
     if not nodes:
         raise ParseError(MSG_NO_TEXT)
-    return ParsedFile(nodes=nodes, page_count=page_count, has_revisions=False, warnings=[])
+
+    warnings: list[str] = []
+    if scanned:
+        warnings.append(f"第 {'、'.join(str(p) for p in scanned)} 页为扫描页，已用 OCR 识别")
+    for p in low_conf[:MAX_LOW_CONF_PAGES]:
+        warnings.append(f"第 {p} 页 OCR 识别置信度低，请核对原件")
+    if len(low_conf) > MAX_LOW_CONF_PAGES:
+        warnings.append(f"等 {len(low_conf) - MAX_LOW_CONF_PAGES} 页 OCR 识别置信度低，请核对原件")
+    for p in empty:
+        warnings.append(f"第 {p} 页未识别到文字")
+    return ParsedFile(nodes=nodes, page_count=page_count, has_revisions=False, warnings=warnings, ocr_pages=len(scanned))

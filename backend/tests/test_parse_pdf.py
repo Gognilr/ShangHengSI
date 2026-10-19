@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from app.parsing.model import ParseError
-from app.parsing.pdf import MSG_CORRUPT, MSG_SCAN_PENDING, MSG_TOO_MANY_PAGES, inspect_pdf, parse_pdf
+from app.parsing.pdf import MSG_CORRUPT, MSG_TOO_MANY_PAGES, inspect_pdf, parse_pdf
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "pdf"
 MANIFEST = yaml.safe_load((FIXTURES / "manifest.yaml").read_text(encoding="utf-8"))["samples"]
@@ -112,12 +112,120 @@ def test_inspect_pdf(name, scanned):
     assert info.scanned_pages == scanned
 
 
-@pytest.mark.parametrize("name", ["scanned_contract", "mixed"])
-def test_scanned_pages_placeholder(name):
-    """M3-04 实现 OCR 前，含扫描页的文件抛出占位 ParseError。"""
+def _page_text(parsed, page):
+    return norm("".join(n.text for n in parsed.nodes if n.page == page))
+
+
+def test_scanned_contract_ocr():
+    sample = MANIFEST["scanned_contract"]
+    parsed = parse_pdf(data_of("scanned_contract"), 1)
+    assert parsed.page_count == 2 and parsed.ocr_pages == 2
+    assert parsed.warnings == sample["warnings"]
+    assert all(n.kind == "ocr_block" and n.part == "body" and n.ocr_conf is not None for n in parsed.nodes)
+    for kw in sample["pages"][0]["ocr_keywords"]:
+        assert norm(kw) in _page_text(parsed, 1), kw
+    assert all(n.ocr_conf >= 0.80 for n in parsed.nodes if n.page == 1)  # 第 1 页清晰
+    assert any(n.ocr_conf < 0.80 for n in parsed.nodes if n.page == 2)  # 第 2 页故意模糊
+    assert [n.ord for n in parsed.nodes] == list(range(1, len(parsed.nodes) + 1))
+    assert all(re.fullmatch(r"F1-PG[12]-B\d+", n.loc) for n in parsed.nodes)
+
+
+def test_scanned_bbox_converted_to_pdf_points():
+    """200 DPI 渲染的像素坐标除以 200/72 换算回 PDF 点：bbox 落在 A4 页面（595 x 842）之内。"""
+    parsed = parse_pdf(data_of("scanned_contract"), 1)
+    for n in parsed.nodes:
+        x0, top, x1, bottom = n.bbox
+        assert 0 <= x0 < x1 <= 595.3 and 0 <= top < bottom <= 841.9
+    assert max(n.bbox[3] for n in parsed.nodes) > 100  # 不是缩得过小
+
+
+def test_mixed_pdf_text_and_scanned():
+    sample = MANIFEST["mixed"]
+    parsed = parse_pdf(data_of("mixed"), 1)
+    assert parsed.page_count == 3 and parsed.ocr_pages == 1
+    assert parsed.warnings == sample["warnings"]
+    pages = [n.page for n in parsed.nodes]
+    assert pages == sorted(pages)
+    assert {n.kind for n in parsed.nodes if n.page == 2} == {"ocr_block"}
+    assert {n.kind for n in parsed.nodes if n.page != 2} == {"paragraph"}
+    assert all(n.ocr_conf is None for n in parsed.nodes if n.page != 2)
+    for kw in sample["pages"][1]["ocr_keywords"]:
+        assert norm(kw) in _page_text(parsed, 2), kw
+
+
+def test_scanned_coordinates_and_empty_page_warning(monkeypatch):
+    from app.parsing import ocr as ocr_mod
+
+    sizes = []
+
+    def fake(img):
+        sizes.append(img.size)
+        return [] if len(sizes) == 1 else [ocr_mod.OcrLine("销售合同 HT-1", [100, 100, 600, 160], 0.95)]
+
+    monkeypatch.setattr(ocr_mod, "recognize", fake)
+    parsed = parse_pdf(data_of("scanned_contract"), 1)
+    assert "第 1 页未识别到文字" in parsed.warnings
+    assert [n.page for n in parsed.nodes] == [2]
+    assert abs(sizes[0][0] - 1654) <= 2 and abs(sizes[0][1] - 2339) <= 2  # A4 @ 200 DPI
+    bbox = parsed.nodes[0].bbox
+    assert abs(bbox[0] - 100 * 72 / 200) < 0.1 and abs(bbox[3] - 160 * 72 / 200) < 0.1
+
+
+def test_low_conf_pages_listed_up_to_ten(monkeypatch):
+    from app.parsing import ocr as ocr_mod
+
+    monkeypatch.setattr(ocr_mod, "recognize", lambda img: [ocr_mod.OcrLine("测试文字行内容", [10, 10, 300, 40], 0.5)])
+    parsed = parse_pdf(_scan_like_pdf(12), 1)
+    low = [w for w in parsed.warnings if "置信度低" in w]
+    assert low[:10] == [f"第 {p} 页 OCR 识别置信度低，请核对原件" for p in range(1, 11)]
+    assert low[10] == "等 2 页 OCR 识别置信度低，请核对原件" and len(low) == 11
+
+
+def test_rotated_scanned_page_rendered_in_display_orientation(monkeypatch):
+    """MediaBox 纵向（595 x 842）、/Rotate 90 的扫描页：显示方向为横向，渲染图与换算后的 bbox 都按显示方向。"""
+    from app.parsing import ocr as ocr_mod
+
+    reportlab = pytest.importorskip("reportlab.pdfgen.canvas")
+    buf = io.BytesIO()
+    c = reportlab.Canvas(buf, pagesize=(841.89, 595.28), invariant=1)  # 设置旋转后 reportlab 把 MediaBox 写成纵向
+    c.rect(50, 50, 100, 100)
+    c.setPageRotation(90)
+    c.showPage()
+    c.save()
+
+    sizes = []
+
+    def fake(img):
+        sizes.append(img.size)
+        return [ocr_mod.OcrLine("旋转页文字", [100, 1000, 2200, 1100], 0.95)]
+
+    monkeypatch.setattr(ocr_mod, "recognize", fake)
+    parsed = parse_pdf(buf.getvalue(), 1)
+    assert b"/MediaBox [ 0 0 595.28 841.89 ]" in buf.getvalue()
+    assert sizes[0][0] > sizes[0][1]  # 显示方向为横向（不是 MediaBox 的纵向）
+    bbox = parsed.nodes[0].bbox
+    assert abs(bbox[2] - 2200 * 72 / 200) < 0.1 and bbox[2] <= 841.9 and bbox[3] <= 595.3
+
+
+def test_scanned_pdf_without_any_text_fails(monkeypatch):
+    from app.parsing import ocr as ocr_mod
+
+    monkeypatch.setattr(ocr_mod, "recognize", lambda img: [])
     with pytest.raises(ParseError) as e:
-        parse_pdf(data_of(name), 1)
-    assert str(e.value) == MSG_SCAN_PENDING
+        parse_pdf(data_of("scanned_contract"), 1)
+    assert str(e.value) == "未能从文件中识别出文字"
+
+
+def _scan_like_pdf(n: int) -> bytes:
+    """n 页空白页（没有文字对象，按扫描页处理）。"""
+    reportlab = pytest.importorskip("reportlab.pdfgen.canvas")
+    buf = io.BytesIO()
+    c = reportlab.Canvas(buf, invariant=1)
+    for _ in range(n):
+        c.rect(50, 50, 100, 100)
+        c.showPage()
+    c.save()
+    return buf.getvalue()
 
 
 @pytest.mark.parametrize("fn", [inspect_pdf, lambda d: parse_pdf(d, 1)])
