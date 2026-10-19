@@ -22,9 +22,10 @@
 - M3-06 已完成（2026-10-19）：节点接口与原件接口（Q-63 的错误码和响应头），A-06 重跑通过；Docker 全部测试 764 passed
 - M3-07 已完成（2026-10-19）：DocPreview 组件、getBlob 与 preview 接口封装，pdfjs-dist 6.4.299；`npm run build` 通过，尚未在浏览器联调（组件未挂载，留到 M3-08）
 - M3-08 已完成（2026-10-19）：结果页双栏与点击定位，common.css 与标签颜色常量整理；浏览器核对了 PDF、XLSX 的预览与高亮、1280 / 1440 宽度、审核历史页；DOCX、图片未在浏览器核对（留到 M3-09）；联调时重建了 app / worker 镜像
-- 下一个任务：**M3-09**（M3 联调与验收，Opus 档，medium）
+- M3-09 已完成（2026-10-19）：Docker 全部测试 764 passed；OCR 与 T-20 在 --network none 容器中 52 passed，运行镜像断网 OCR 可用；经真实接口 + 模拟模型走通 DOCX、PDF（文字 / 扫描 / 混合）、XLSX、PNG、JPG；T-03 通过（第二步显示低置信页提示，结果页点击问题后第 2 页扫描图高亮对齐并滚动）；浏览器补核 DOCX、图片预览与定位、completed_local 右栏；M2 验收用例回归通过；修复 DocPreview 手写编号重复显示；新增 Q-69（扫描页账号标签被 OCR 识别错时账号漏替换，M4 疑似遗漏须覆盖）
+- M3 验收结果已汇报，**等待用户确认**；下一个任务：**M4-00**（里程碑细化，Opus 档，high）
 - GPT-6.1 Sol 分工（2026-10-16 用户决定）：试用任务 M2-13 评审通过，以后可以接手 Sonnet 档的任务，含前端任务；它做的第一个前端任务由 Opus 重点评审（见第一节）。前端界面规范见 docs/design/frontend.md
-- 上次 Opus 评审到的提交：e43e63f（2026-10-19 M3-05 开工前评审 M3-01 至 M3-04（Sonnet）：只改了文件范围内的文件（M3-04 按规则 6 追加 Q-67），解析失败消息不含原文，日志只写页数、块数和耗时，onnxruntime 遥测在建引擎前关闭，无阻塞问题。更早：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
+- 上次 Opus 评审到的提交：f227c08（2026-10-19 M3-09 开工前评审 M3-06 至 M3-08（Sonnet）：只改了文件范围内的文件；预览接口经 owned_task_file 校验归属，raw 响应头符合 Q-63；前端原件先取 Blob，无 v-html，滚动只在预览容器内；发现 DocPreview 手写编号重复显示，已在 M3-09 修复；无阻塞问题）。更早：e43e63f（2026-10-19 M3-05 开工前评审 M3-01 至 M3-04（Sonnet）：只改了文件范围内的文件（M3-04 按规则 6 追加 Q-67），解析失败消息不含原文，日志只写页数、块数和耗时，onnxruntime 遥测在建引擎前关闭，无阻塞问题。更早：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
 
 ## 一、模型分工与推理强度
 
@@ -132,7 +133,7 @@
 | M3-06 | 预览接口：节点接口、原件接口（错误码、响应头、保留期清理后的表现） | Sonnet | medium | M3-05 | 6.3、17.2、19.3、Q-63；设计七 | app/tasks/router.py、app/tasks/service.py、app/tasks/schemas.py、tests/test\_preview\_api.py | 每个错误码都有测试；raw 字节与原件一致且响应头齐全；text\_available 在清理后为 false；对真实接口重跑 A-06（他人和管理员 404） | 已完成 |
 | M3-07 | 前端：DocPreview 组件（DOCX、XLSX 按节点渲染，PDF 用 pdfjs-dist 逐页渲染，图片用 img，高亮层与滚动定位）、getBlob 与 preview 接口封装 | Sonnet | high | M3-06 | 6.3 右栏、Q-17；设计八 8.1、8.2 | src/api/http.ts（只加 getBlob）、src/api/preview.ts、src/components/DocPreview.vue、package.json、package-lock.json（只加 pdfjs-dist） | 四种格式都能显示；传入 loc 后高亮并在预览区内滚动；PDF 只渲染可视页；原件不经 URL 直接加载；`npm run build` 通过；按 frontend.md 第十一节自检 | 已完成 |
 | M3-08 | 前端：结果页双栏与点击定位；公共样式整理（common.css，标签颜色移到 labels.ts） | Sonnet | medium | M3-07 | 6.3；设计八 8.3；frontend.md 第二节、第十节 | src/views/ReviewResult.vue、src/components/FindingCard.vue、src/styles/common.css、src/main.ts（只加引入 common.css）、src/utils/labels.ts、src/views/ReviewNew.vue、src/views/History.vue、src/components/ConfirmStep.vue（后三个只改为使用公共样式） | 点击问题高亮对应位置，缺失型问题不可点；整理后各页面截图与整理前一致；`npm run build` 通过；按 frontend.md 第十一节自检 | 已完成 |
-| M3-09 | M3 联调与验收：五种格式走通全流程；T-03；回归 M2 验收用例；浏览器检查预览与定位 | Opus | medium | M3-08 | 22、23 | 按需 | T-03 通过，M2 的验收用例回归通过；验收结果汇报给用户 | 待执行 |
+| M3-09 | M3 联调与验收：五种格式走通全流程；T-03；回归 M2 验收用例；浏览器检查预览与定位 | Opus | medium | M3-08 | 22、23 | 按需 | T-03 通过，M2 的验收用例回归通过；验收结果汇报给用户 | 已完成 |
 
 ### M4 脱敏完善（验收：A-03、T-06、T-08）
 
