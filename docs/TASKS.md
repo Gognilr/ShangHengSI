@@ -32,6 +32,7 @@
 - M4-06 已完成（2026-10-19，Sonnet 5.5）：第二步完整版（疑似遗漏列表、在原文中选择文字设为敏感信息、确认按钮不可用说明、Q-54 提示）；`npm run build` 通过；浏览器中 DOCX、XLSX、扫描 PDF 各完成一次手动补充，疑似遗漏忽略后可确认发送；下一个任务：**M4-07**（Opus 档，high），模型不同，须换会话
 - M4-07 已完成（2026-10-19，Opus 5.5）：新增 A-03（回归集与 fixtures 共 26 份样本经真实接口 + 模拟模型，逐条检查 llm_calls 与实际请求）、日志安全（DEBUG 级别覆盖解析、第二步、确认发送、审核及拦截 / 出错分支）、T-06、T-08 测试，全部通过；M2、M3 验收用例随全部测试回归通过，Docker 全部测试 1063 passed；日志安全测试发现 pdfminer 在 DEBUG 级别输出 PDF 内容，config.setup_logging 把解析库日志器固定为 WARNING；浏览器中 DOCX 走通疑似遗漏替换、手动补充、确认发送到结果页，检查了 XLSX、扫描 PDF（Q-69 账号列为疑似遗漏）的第二步，T-08 两个任务在界面上验证；新增 Q-77（待确认）。M4 验收结果待用户确认；下一个任务：**M5-00**（Opus 档，high）
 - M4 已验收并经用户确认（2026-10-19）；Q-77 按建议处理（② 维持 SPEC，报价单号不加入 REFNO；③ 交 M5 细化）；下一个任务：**M5-00**（Opus 档，high）
+- M5 已细化（M5-00，2026-10-19，Opus 5.5），设计见 docs/design/M5.md，待用户确认；新增 Q-78（待确认）；Q-58 须在 M5-07 开工前决定；确认后下一个任务：**M5-01**（Opus 档，xhigh）
 - 上次 Opus 评审到的提交：fd99eaf（2026-10-19 M4-07 开工前评审 M4-06（Sonnet）：只改了文件范围内的文件；上下文与原文按纯文本插值，无 v-html；选择位置按码点计算、跨节点和已替换的选择有提示；未发现问题）。更早：2d09adc（2026-10-19 M4-04 开工前评审 M4-01 至 M4-03（Sonnet）：M4-02 改了范围外的 parties.py（只给 _name_start_after_boundary 加 min_han 参数，行为不变，可接受）；疑似遗漏、比例、报价汇总均为纯函数且不写日志；发现并在 M4-04 中修复：“法定代表人（签字）：”后的人名漏识别、“Order No”“Account No”等英文标签被列为疑似遗漏（Q-76 ⑥）；Q-75 ③ 的已知代价（名称含单个边界字时前半留在原文且不会被列为疑似遗漏）交用户决定）。更早：aaa2af7（2026-10-19 M4-00 开工前检查：f227c08 之后只有 M3-09 的 Opus 提交，无需评审的提交）。更早：f227c08（2026-10-19 M3-09 开工前评审 M3-06 至 M3-08（Sonnet）：只改了文件范围内的文件；预览接口经 owned_task_file 校验归属，raw 响应头符合 Q-63；前端原件先取 Blob，无 v-html，滚动只在预览容器内；发现 DocPreview 手写编号重复显示，已在 M3-09 修复；无阻塞问题）。更早：e43e63f（2026-10-19 M3-05 开工前评审 M3-01 至 M3-04（Sonnet）：只改了文件范围内的文件（M3-04 按规则 6 追加 Q-67），解析失败消息不含原文，日志只写页数、块数和耗时，onnxruntime 遥测在建引擎前关闭，无阻塞问题。更早：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
 
 ## 一、模型分工与推理强度
@@ -159,17 +160,19 @@
 
 ### M5 AI 审核完善（验收：A-02、A-05、A-07、A-08、T-12、T-13）
 
-| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC | 状态 |
-|-|-|-|-|-|-|-|
-| M5-00 | 里程碑细化 | Opus | high | M4-07 | 22 | 待细化 |
-| M5-01 | 分段审核与结论合并 | Opus | xhigh | M5-00 | 11.5 | 待细化 |
-| M5-02 | 覆盖说明 coverage.py | Sonnet | medium | M5-01 | 11.6 | 待细化 |
-| M5-03 | 重新审核：修改立场、来源和补充说明，接口和前端弹窗 | Sonnet | medium | M5-02 | 7.4、19.3 | 待细化 |
-| M5-04 | 调用上限和失败提示：前端显示各种失败原因 | Sonnet | low | M5-03 | 7.3、7.5 | 待细化 |
-| M5-05 | 结果页完整版：顶部信息栏、轮次切换、覆盖说明卡片、筛选、处理状态和备注、点击问题定位 | Sonnet | high | M5-04 | 6.3 | 待细化 |
-| M5-06 | 审核要求抽屉和 GET /requirements 接口 | Haiku | medium | M5-05 | 6.5、19.5 | 待细化 |
-| M5-07 | 禁用词扫描测试：界面和报告模板中不出现“审核通过”“无风险” | Haiku | low | M5-06 | A-08 | 待细化 |
-| M5-08 | M5 联调与验收 | Opus | medium | M5-07 | 23 | 待细化 |
+**开工前必读 [docs/design/M5.md](design/M5.md)**：模块划分、函数签名、接口形状都以它为准；前端任务同时遵守 [docs/design/frontend.md](design/frontend.md)。下表“文件范围”中的路径相对于 `backend/`（前端任务相对于 `frontend/`），“设计”列指向 M5.md 的章节。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| M5-00 | 里程碑细化：模块划分、接口约定、任务拆分 | Opus | high | M4-07 | 22；— | docs/design/M5.md、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 已完成 |
+| M5-01 | 分段审核与结论合并：chunking.py、按段拼消息、逐段调用与失败处理、合并、进度、build\_outbound（engine）、汇总行位置映射（Q-72 ⑥） | Opus | xhigh | M5-00 | 7.3、7.5、11.4、11.5、Q-72；设计一、二、三、五 | app/review/chunking.py、prompt.py、validate.py、job.py、service.py（只改 build\_context、RunDetail 的 chunk\_count 与 progress）、app/redaction/engine.py（只加 build\_outbound 并让 build\_outbound\_text 调用它）、tests/test\_chunking.py、test\_review\_prompt.py、test\_review\_validate.py、test\_review\_job.py、test\_runs\_api.py | 设计第十一节分段部分的每一项都有测试；N=1 时发送的消息与 M2 逐字相同，原有测试全部通过；T-12 的接口流程通过；分段轮次的结论数 = 发送的要求数（A-07） | 待执行 |
+| M5-02 | 调用上限 T-13；手动补充与疑似遗漏替换拒绝提示词中的词（Q-77 ③，TERM\_IN\_PROMPT） | Opus | high | M5-01 | 7.5、9.8、19.4、Q-77；设计六 | app/review/prompt.py（只加 fixed\_prompt\_text）、app/redaction/engine.py（只改 \_add\_term、decide\_suspect 的替换分支）、tests/test\_runs\_api.py、tests/test\_redaction\_api.py、tests/test\_review\_prompt.py | T-13 通过（run=failed、提示文字、无新的 sent 记录）；两条路径都拦截提示词中的词，具体名称不受影响；回归集与 A-03 测试仍通过 | 待执行 |
+| M5-03 | 覆盖说明：coverage.py（build\_coverage、describe）、处理函数写入、RunDetail 返回 summary 与 notes | Sonnet | medium | M5-02 | 11.5、11.6、A-05、Q-60；设计四 | app/review/coverage.py、app/review/job.py（只加写入覆盖说明）、app/review/service.py（只改 RunDetail 的 coverage）、tests/test\_coverage.py、tests/test\_review\_job.py、tests/test\_runs\_api.py | 设计第四节每一项都有测试；A-05 的样本（页眉页脚批注文本框、隐藏工作表、低置信扫描页、报价明细表、解析警告）全部出现在覆盖说明中；describe 的句子不含原文；T-12 断言覆盖说明注明分段 | 待执行 |
+| M5-04 | 重新审核：PATCH /tasks/{id}、整体重算、ReRunDialog 弹窗与结果页按钮 | Sonnet | medium | M5-03 | 6.3、7.4、19.3；设计七 | app/tasks/router.py、app/tasks/service.py、app/tasks/schemas.py、tests/test\_tasks\_api.py；前端 src/components/ReRunDialog.vue、src/api/tasks.ts、src/views/ReviewResult.vue（只加按钮和弹窗挂载） | 设计第十一节重新审核部分各项有测试；对新接口重跑 A-06；`npm run build` 通过；浏览器中改立场后重新审核产生第 2 轮 | 待执行 |
+| M5-05 | 结果页完整版：顶部信息栏、轮次下拉、覆盖说明卡片、失败与部分完成提示、删除；第三步分段进度；TERM\_IN\_PROMPT 提示 | Sonnet | high | M5-04 | 6.2 第三步、6.3、7.3、Q-60；设计八；frontend.md | src/views/ReviewResult.vue、src/views/ReviewNew.vue（只改第三步进度）、src/components/CoverageCard.vue、src/api/runs.ts、src/api/redaction.ts（只加错误码文字）、src/utils/labels.ts | `npm run build` 通过；按 frontend.md 第十一节自检；浏览器中检查轮次切换、覆盖说明、failed / partial 显示、分段进度；界面不出现“审核通过”“无风险” | 待执行 |
+| M5-06 | 审核要求抽屉与 GET /requirements | Sonnet | medium | M5-05 | 6.2、6.5、19.5；设计九；frontend.md | app/review/requirements.py、app/review/router.py、tests/test\_requirements.py、tests/test\_runs\_api.py；前端 src/components/RequirementsDrawer.vue、src/api/requirements.ts、src/views/ReviewNew.vue（只加入口链接）、src/components/ConfirmStep.vue（只加入口链接） | 接口参数校验、类型为空、公司补充要求筛选各有测试；`npm run build` 通过；浏览器中第一步、第二步打开抽屉内容正确 | 待执行 |
+| M5-07 | 禁用词检查测试（A-08） | Haiku | low | M5-06 | A-08、Q-58；设计十 | tests/test\_forbidden\_words.py | 测试通过；扫描范围与排除规则与设计第十节一致 | 待执行 |
+| M5-08 | M5 联调与验收：A-02、A-05、A-07、A-08、T-12、T-13；回归 M2～M4 验收用例；浏览器检查结果页 | Opus | medium | M5-07 | 22、23；设计十一 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 待执行 |
 
 ### M6 本地校验、报告与追问（验收：A-01、T-04、T-05、T-15、T-19）
 
