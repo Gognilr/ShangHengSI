@@ -498,3 +498,40 @@ def test_t07_precheck_blocks_real_name_in_xlsx(db_sessionmaker, alice, ready_tas
     with db_sessionmaker() as db:
         assert db.get(Task, task.id).status == "awaiting_confirm"
     assert requests == [] and count(db_sessionmaker, LlmCall) == 0 and count(db_sessionmaker, ReviewRun) == 0
+
+
+# ---------------------------------------------------------------- T-12 分段审核（M5-01）
+
+
+def test_t12_chunked_review_through_api(db_sessionmaker, alice, llm):
+    """回归集的合同经真实接口上传，分段长度设为 1000：分段审核成功，结论数 = 发送的要求数（A-07）。"""
+    from app.admin import settings_store
+    from tests.acceptance_support import (
+        GOLDEN,
+        Sample,
+        _docx_bytes,
+        confirm_and_review,
+        golden_samples,
+        settle_suspects,
+        upload_and_parse,
+    )
+
+    _, c, h = alice
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "model.chunk_chars", 1000, None)
+        db.commit()
+    requests = llm("normal")
+    golden = next(s for s in golden_samples() if s.name == "contract.docx")
+    lines = [x for x in (GOLDEN / "contract.txt").read_text(encoding="utf-8").splitlines() if x.strip()]
+    lines += [f"第{i}条 补充约定{i}：双方应按附件{i}的约定履行各自义务，附件与本合同具有同等效力。" for i in range(6, 30)]
+    contract = Sample("长合同.docx", _docx_bytes(lines), "sales", golden.must_replace, golden.must_suspect)
+    tid = upload_and_parse(c, h, db_sessionmaker, contract)
+    settle_suspects(c, h, tid, contract.must_suspect)
+    run = confirm_and_review(c, h, db_sessionmaker, tid)
+    assert run["chunk_count"] >= 2 and len(requests) == run["chunk_count"]
+    assert run["status"] in ("completed", "partial") and run["progress"] is None
+    assert all(f"分段：第 {i}/{run['chunk_count']} 段" in json.loads(q.content)["messages"][1]["content"]
+               for i, q in enumerate(requests, start=1))
+    sent = json.loads(requests[0].content)["messages"][1]["content"].split("【审核要求】\n")[1].split("\n【")[0]
+    assert len(run["requirement_results"]) == len(sent.splitlines())
+    assert len({f["locs"][0] for f in run["findings"] if f["locs"]}) == run["chunk_count"]

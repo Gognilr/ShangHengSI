@@ -941,17 +941,30 @@ def learn_confirmed_names(db: Session, task: Task, user_id: uuid.UUID | None) ->
 # ---------------------------------------------------------------- 外发文本与查询
 
 
-def build_outbound_text(db: Session, task: Task) -> str:
+@dataclass
+class OutboundBuild:
+    text: str  # 与 build_outbound_text 相同
+    quote_tables: list[quotes.QuoteTable]  # 本次识别出的报价明细表（M5：分段、覆盖说明、汇总行位置映射）
+
+
+def build_outbound(db: Session, task: Task) -> OutboundBuild:
     """9.7 外发文本：【主体说明】+ 各正文节点一行；报价明细表整表换成一行汇总（需要解密原文识别表格）。"""
     parties = list(db.scalars(select(Party).where(Party.task_id == task.id)))
     rows = _body_rows(db, task.id)
     texts = _node_texts(rows)
     nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no) for r in rows]
-    return outbound_text(
-        nodes,
+    redacted = {r.loc: r.redacted_text or "" for r in rows}
+    tables = quotes.find_quote_tables(nodes, redacted)
+    text = outbound.build(
         [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in parties],
-        {r.loc: r.redacted_text or "" for r in rows},
+        [(n.loc, n.clause_no, redacted.get(n.loc, "")) for n in nodes],
+        tables,
     )
+    return OutboundBuild(text, tables)
+
+
+def build_outbound_text(db: Session, task: Task) -> str:
+    return build_outbound(db, task).text
 
 
 def redaction_summary(db: Session, task: Task) -> dict[str, int]:

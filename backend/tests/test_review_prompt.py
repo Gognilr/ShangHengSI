@@ -105,3 +105,37 @@ def test_all_selected_requirements_are_sent():
     user = build_messages(make_ctx(requirements=reqs, outbound_text=outbound_of("contract_basic")))[1]["content"]
     section = user.split("【审核要求】\n", 1)[1].split("\n【", 1)[0]
     assert [line.split("]")[0][1:] for line in section.splitlines()] == [r.id for r in reqs]
+
+
+# ---------------------------------------------------------------- 分段（M5-01）
+
+
+def test_single_chunk_message_identical_to_unchunked():
+    from app.review.chunking import outbound_lines, split_chunks
+    from app.review.prompt import split_outbound
+
+    ctx = make_ctx(outbound_text=outbound_of("contract_basic"), user_note="请看付款")
+    _, body = split_outbound(ctx.outbound_text)
+    (only,) = split_chunks(outbound_lines(body, set()), 60000)
+    assert build_messages(ctx, only) == build_messages(ctx) == build_messages(ctx, None)
+    assert "分段" not in build_messages(ctx)[1]["content"]
+
+
+def test_chunk_message_has_note_full_context_and_only_its_lines():
+    from app.review.chunking import outbound_lines, split_chunks
+    from app.review.prompt import chunk_note, split_outbound
+
+    ctx = make_ctx(outbound_text=outbound_of("contract_basic"), company_profile="主营石油焦")
+    parties, body = split_outbound(ctx.outbound_text)
+    chunks = split_chunks(outbound_lines(body, set()), 400)
+    assert len(chunks) >= 2
+    texts = [build_messages(ctx, c)[1]["content"] for c in chunks]
+    for c, text in zip(chunks, texts):
+        head, doc = text.split("<document>\n")
+        assert head.startswith("【审核背景】") and chunk_note(c) in head.splitlines()[0]
+        assert f"分段：第 {c.index}/{c.total} 段" in head
+        assert "[G-01] 要求一" in head and "[CO-3] （公司补充）公司要求" in head and parties in head
+        assert "公司说明：主营石油焦" in head
+        assert doc == "\n".join(c.lines) + "\n</document>"
+    # 各段文档部分拼起来就是完整正文
+    assert "\n".join(t.split("<document>\n")[1][: -len("\n</document>")] for t in texts) == body

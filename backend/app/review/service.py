@@ -32,7 +32,7 @@ from app.db.models import (
     User,
 )
 from app.llm.gateway import format_reasons
-from app.redaction.engine import build_outbound_text, learn_confirmed_names, load_redaction_map
+from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import restore
 from app.review.prompt import ReviewContext, build_messages, note_requirement
@@ -102,6 +102,11 @@ class FindingOut(BaseModel):
     handling_note: str | None
 
 
+class Progress(BaseModel):
+    done: int
+    total: int
+
+
 class RunDetail(BaseModel):
     id: uuid.UUID
     task_id: uuid.UUID
@@ -120,7 +125,9 @@ class RunDetail(BaseModel):
     started_at: UtcDatetime | None
     finished_at: UtcDatetime | None
     queue_position: int | None
-    coverage: dict | None  # M5 才有覆盖说明
+    chunk_count: int
+    progress: Progress | None  # 审核中时的分段进度，其他状态为 null
+    coverage: dict | None  # 轮次结束后的覆盖说明；处理中为 null
     doc_summary: str | None
     sanctions: Sanctions
     requirement_results: list[RequirementResultOut]
@@ -159,14 +166,32 @@ def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_n
     attachments = list(db.scalars(
         select(TaskFile.doc_type).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(False))
         .order_by(TaskFile.seq)))
+    built = build_outbound(db, task)
     return ReviewContext(
         task=task, stance=stance, source=source, user_note=user_note, main_doc_type=main_doc_type,
         attachment_types=[t for t in attachments if t],
         requirements=collect_requirements(db, doc_type=main_doc_type, stance=stance, source=source,
                                           user_note=user_note),
         company_profile=str(get_setting(db, "review.company_profile") or ""),
-        outbound_text=build_outbound_text(db, task),
+        outbound_text=built.text,
+        boundary_locs=chunk_boundaries(db, task.id),
+        quote_tables=built.quote_tables,
     )
+
+
+def chunk_boundaries(db: DbSession, task_id: uuid.UUID) -> set[str]:
+    """分段的首选切分点（设计 docs/design/M5.md 第二节）：每个文件的第一个正文节点、标题、一级条款（clause_no 不含“.”）。"""
+    rows = db.execute(
+        select(DocNode.loc, DocNode.kind, DocNode.clause_no, TaskFile.seq)
+        .join(TaskFile, TaskFile.id == DocNode.file_id)
+        .where(DocNode.task_id == task_id, DocNode.part == "body").order_by(TaskFile.seq, DocNode.ord))
+    out: set[str] = set()
+    seen_files: set[int] = set()
+    for loc, kind, clause_no, seq in rows:
+        if seq not in seen_files or kind == "heading" or (clause_no and "." not in clause_no):
+            out.add(loc)
+        seen_files.add(seq)
+    return out
 
 
 # ---------------------------------------------------------------- 确认发送
@@ -294,6 +319,22 @@ class _View:
         )
 
 
+def _progress(run: ReviewRun) -> Progress | None:
+    """处理中的进度暂存在 coverage.progress（Q-78 ③）。"""
+    if run.status != "running" or not isinstance(run.coverage, dict):
+        return None
+    p = run.coverage.get("progress")
+    if not isinstance(p, dict):
+        return None
+    return Progress(done=int(p.get("done", 0)), total=int(p.get("total", run.chunk_count)))
+
+
+def _coverage(run: ReviewRun) -> dict | None:
+    if run.status in ("queued", "running") or not isinstance(run.coverage, dict) or "progress" in run.coverage:
+        return None
+    return run.coverage
+
+
 def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
     view = _View(db, run.task_id)
     findings = sorted(db.scalars(select(Finding).where(Finding.run_id == run.id)),
@@ -310,7 +351,8 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
         stance=run.stance, source=run.source, user_note=run.user_note, main_doc_type=run.main_doc_type,
         model_name=run.model_name, prompt_version=run.prompt_version, builtin_req_version=run.builtin_req_version,
         company_req_version=run.company_req_version, queued_at=run.queued_at, started_at=run.started_at,
-        finished_at=run.finished_at, queue_position=queue_position, coverage=run.coverage,
+        finished_at=run.finished_at, queue_position=queue_position,
+        chunk_count=run.chunk_count, progress=_progress(run), coverage=_coverage(run),
         doc_summary=view.text(run.doc_summary),
         sanctions=Sanctions(level=run.sanctions_level,
                             reasons=[view.text(str(r)) or "" for r in (run.sanctions_reasons or [])]),

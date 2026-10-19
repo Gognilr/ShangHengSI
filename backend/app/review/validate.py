@@ -3,6 +3,8 @@
 validate_output() 是纯函数：输入模型原文、审核上下文和本任务正文节点，输出可直接入库的 ValidatedReview
 （类别、严重程度、结论已映射为数据库代码，文字仍为代号形式）。结构不对时抛出 OutputError。
 review_once() 调用模型网关；输出无法解析或不符合结构时，把错误说明加入消息重试 1 次（11.4 第 1 条）。
+分段审核（M5，设计 docs/design/M5.md 第三、五节）：validate_output 传入分段时只保留本段内的位置；
+merge_reviews 按 11.5 合并各段结果；报价明细表汇总行的位置映射到表头行第一个单元格（Q-72 ⑥）。
 """
 import difflib
 import json
@@ -18,6 +20,9 @@ from sqlalchemy.orm import Session
 from app.db.models import DocNode, ReviewRun, TaskFile
 from app.llm.gateway import call_model
 from app.parsing.model import with_clause_no
+from app.redaction.quotes import QuoteTable, summary_text
+from app.redaction.restore import restore
+from app.review.chunking import Chunk
 from app.review.prompt import ReviewContext, build_messages
 from app.review.schema import FindingOut, ModelOutput
 from app.security import crypto
@@ -56,6 +61,10 @@ class DocNodeView:
     redacted_text: str
     text: str  # 原文（解密后）
     clause_no: str | None = None
+    target_loc: str | None = None  # 报价明细表汇总行：入库时换成的位置（表头行第一个单元格）
+
+
+_SANCTIONS_RANK = {"high": 2, "attention": 1, "none": 0}
 
 
 @dataclass
@@ -66,6 +75,7 @@ class RequirementResultView:
     dimension: str | None
     verdict: str
     note: str | None
+    returned: bool = True  # False：模型没有给出、按第 6 条补记的 unable
 
 
 @dataclass
@@ -222,8 +232,13 @@ def _merge_duplicates(findings: list[FindingView]) -> list[FindingView]:
     return out
 
 
-def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView]) -> ValidatedReview:
-    """按 11.4 校验并整理模型输出。nodes 为本任务的正文节点（loc → 视图）。"""
+def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
+                    chunk: Chunk | None = None) -> ValidatedReview:
+    """按 11.4 校验并整理模型输出。nodes 为本任务的正文节点（loc → 视图，含报价明细表汇总行）。
+
+    chunk 不为 None 时，第 3 条只保留本段内的位置编号。
+    """
+    allowed = nodes if chunk is None else {loc: v for loc, v in nodes.items() if loc in chunk.locs}
     out = parse_output(raw)
     sent = {r.id: r for r in ctx.requirements}
 
@@ -239,17 +254,19 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView])
             verdicts[req_id] = (verdict, rr.note)
     results = []
     for req in ctx.requirements:
+        returned = req.id in verdicts
         verdict, note = verdicts.get(req.id, ("unable", MISSING_NOTE))
-        results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, verdict, note))
+        results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, verdict, note, returned))
 
     findings = []
     for f in out.findings:
-        locs = list(dict.fromkeys(loc.strip() for loc in f.locs if loc.strip() in nodes))  # 第 3 条
+        locs = list(dict.fromkeys(loc.strip() for loc in f.locs if loc.strip() in allowed))  # 第 3 条
         status = _cite_status(f, locs, nodes)  # 第 4 条
         snapshot = None
         if status == "verified":  # 第 5 条：按第一个 loc 取原文快照
             first = nodes[locs[0]]
             snapshot = with_clause_no(first.text, first.clause_no)
+        locs = list(dict.fromkeys(nodes[loc].target_loc or loc for loc in locs))  # 汇总行 → 表头行（Q-72 ⑥）
         findings.append(FindingView(
             title=f.title.strip()[:TITLE_MAX] or "未命名问题",
             category=map_category(f.category), severity=map_severity(f.severity),  # 第 2 条
@@ -268,27 +285,92 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView])
     )
 
 
+# ---------------------------------------------------------------- 分段合并（11.5）
+
+
+@dataclass
+class ChunkOutcome:
+    chunk: Chunk
+    review: ValidatedReview | None  # 失败时为 None
+    error: str | None = None  # 失败原因（给用户看的中文，不含原文）
+    tokens_in: int = 0  # 失败分段已消耗的 token（成功分段的在 review 中）
+    tokens_out: int = 0
+
+
+def merge_reviews(ctx: ReviewContext, outcomes: list[ChunkOutcome]) -> ValidatedReview:
+    """合并各段结果：结论 issue > unable > ok > na（只看模型给出的结论，都没给出记 unable）；问题按段拼接后再合并重复；
+    制裁取最高等级、原因去重；摘要取第一个成功分段。至少要有一个成功分段。"""
+    reviews = [o.review for o in outcomes if o.review is not None]
+    if not reviews:
+        raise ValueError("没有成功的分段")
+    results = []
+    for req in ctx.requirements:
+        best: RequirementResultView | None = None
+        for r in reviews:
+            rr = next((x for x in r.requirement_results if x.req_id == req.id), None)
+            if rr is None or not rr.returned:
+                continue
+            if best is None or _VERDICT_RANK[rr.verdict] > _VERDICT_RANK[best.verdict]:
+                best = rr
+        if best is None:
+            results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, "unable", MISSING_NOTE,
+                                                 False))
+        else:
+            results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, best.verdict, best.note))
+    levels = [r.sanctions_level for r in reviews if r.sanctions_level is not None]
+    level = max(levels, key=lambda v: _SANCTIONS_RANK.get(v, -1)) if levels else None
+    reasons = list(dict.fromkeys(x for r in reviews for x in r.sanctions_reasons))
+    merged = ValidatedReview(
+        doc_summary=reviews[0].doc_summary,
+        requirement_results=results,
+        findings=_merge_duplicates([f for r in reviews for f in r.findings]),
+        sanctions_level=level,
+        sanctions_reasons=reasons,
+    )
+    merged.tokens_in = sum(r.tokens_in for r in reviews) + sum(o.tokens_in for o in outcomes if o.review is None)
+    merged.tokens_out = sum(r.tokens_out for r in reviews) + sum(o.tokens_out for o in outcomes if o.review is None)
+    merged.llm_call_ids = [i for r in reviews for i in r.llm_call_ids]
+    return merged
+
+
 # ---------------------------------------------------------------- 与数据库、网关的衔接
 
 
-def load_node_views(db: Session, task_id: uuid.UUID) -> dict[str, DocNodeView]:
-    """本任务正文节点（part=body），按文档顺序。"""
+def load_node_views(db: Session, task_id: uuid.UUID,
+                    quote_tables: list[QuoteTable] | tuple = ()) -> dict[str, DocNodeView]:
+    """本任务正文节点（part=body），按文档顺序；另加报价明细表的汇总行（Q-72 ⑥）：
+
+    汇总行按外发时的文字校验引用，原文快照为汇总行文字按对照表还原的结果，入库位置换成表头行第一个单元格。
+    """
+    from app.redaction.engine import load_redaction_map  # 避免循环导入（engine 不依赖 review）
+
     rows = db.scalars(
         select(DocNode).join(TaskFile, TaskFile.id == DocNode.file_id)
         .where(DocNode.task_id == task_id, DocNode.part == "body").order_by(TaskFile.seq, DocNode.ord)
     )
-    return {r.loc: DocNodeView(r.loc, r.redacted_text or "", crypto.decrypt_text(r.text_enc) if r.text_enc else "",
-                               r.clause_no) for r in rows}
+    views = {r.loc: DocNodeView(r.loc, r.redacted_text or "", crypto.decrypt_text(r.text_enc) if r.text_enc else "",
+                                r.clause_no) for r in rows}
+    if quote_tables:
+        mapping = load_redaction_map(db, task_id)
+        for t in quote_tables:
+            line = summary_text(t)
+            views[t.loc] = DocNodeView(t.loc, line, restore(line, mapping), None, target_loc=t.first_loc)
+    return views
 
 
 def retry_message(error: OutputError) -> str:
     return f"你上一次的输出有问题：{error}。请重新输出，只输出一个符合规定结构的 JSON 对象，不要输出任何其他文字。"
 
 
-def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uuid.UUID) -> ValidatedReview:
-    """调用模型并校验；输出无法解析或不符合结构时重试 1 次，仍失败抛出 OutputError。网关错误（GatewayError）原样抛出。"""
-    messages = build_messages(ctx)
-    nodes = load_node_views(db, ctx.task.id)
+def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uuid.UUID,
+                chunk: Chunk | None = None, nodes: dict[str, DocNodeView] | None = None) -> ValidatedReview:
+    """调用模型并校验；输出无法解析或不符合结构时重试 1 次，仍失败抛出 OutputError。网关错误（GatewayError）原样抛出。
+
+    chunk 为分段审核的一段（只有 1 段时传 None，消息与 M2 相同）；nodes 可由调用方预先加载，分段时各段共用。
+    """
+    messages = build_messages(ctx, chunk)
+    if nodes is None:
+        nodes = load_node_views(db, ctx.task.id, ctx.quote_tables)
     tokens_in = tokens_out = 0
     call_ids: list[int] = []
     for attempt in range(2):
@@ -298,7 +380,7 @@ def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uui
         tokens_out += result.tokens_out
         call_ids.append(result.llm_call_id)
         try:
-            review = validate_output(result.content, ctx, nodes)
+            review = validate_output(result.content, ctx, nodes, chunk)
         except OutputError as exc:
             if attempt == 1:
                 exc.tokens_in, exc.tokens_out, exc.llm_call_ids = tokens_in, tokens_out, call_ids

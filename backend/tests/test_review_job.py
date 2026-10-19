@@ -379,3 +379,208 @@ def test_restore_is_not_stored(db_sessionmaker, owner, ready_task, llm):
     assert detail.doc_summary == f"{REAL_OUR_NAME}与{REAL_BUYER_NAME}签订销售合同"
     assert detail.sanctions.level == "attention" and detail.sanctions.reasons == [f"{REAL_BUYER_NAME}所在地区需关注"]
     assert detail.findings[0].problem == f"{REAL_BUYER_NAME}的付款方式对{REAL_OUR_NAME}不利"
+
+
+# ---------------------------------------------------------------- 分段审核（M5-01，SPEC 11.5）
+
+
+def long_contract() -> bytes:
+    """约 4000 字的虚构合同：签约方 + 20 条条款，分段长度 1000 时约 5 段。"""
+    import io
+
+    import docx
+
+    d = docx.Document()
+    d.add_paragraph("国际销售合同")
+    d.add_paragraph(f"卖方：{REAL_OUR_NAME}")
+    d.add_paragraph(f"买方：{REAL_BUYER_NAME}")
+    for i in range(1, 21):
+        d.add_paragraph(f"第{i}条 条款{i}")
+        d.add_paragraph(f"{i}.1 本条约定双方在履行合同过程中的第{i}项义务，" + "具体内容按双方确认的附件执行，" * 5)
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+def chunked_task(db_sessionmaker, owner, ready_task):
+    task = ready_task(owner, [("长合同.docx", long_contract())])
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "model.chunk_chars", 1000, None)
+        db.commit()
+    return task
+
+
+def chunk_of(request: httpx.Request) -> int:
+    import re
+
+    text = json.loads(request.content)["messages"][1]["content"]
+    m = re.search(r"分段：第 (\d+)/(\d+) 段", text)
+    return int(m.group(1)) if m else 0
+
+
+def by_chunk(modes: dict[int, str]):
+    """按分段号选择模拟服务的回复模式，没有列出的分段正常回复。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        status, payload = build_reply(json.loads(request.content), modes.get(chunk_of(request), "normal"))
+        return httpx.Response(status, json=payload)
+
+    return handler
+
+
+def test_t12_chunked_review_success(db_sessionmaker, owner, ready_task, llm):
+    task = chunked_task(db_sessionmaker, owner, ready_task)
+    requests = llm("normal")
+    run = new_run(db_sessionmaker, task, owner)
+    run_job(db_sessionmaker, run.id)
+    r = get_run(db_sessionmaker, run.id)
+    n = r.chunk_count
+    assert n >= 3 and [chunk_of(q) for q in requests] == list(range(1, n + 1))
+    assert r.status in ("completed", "partial") and r.failed_chunks == [] and r.coverage is None
+    with db_sessionmaker() as db:
+        results = db.scalars(select(RequirementResult).where(RequirementResult.run_id == run.id)).all()
+        sent = service.collect_requirements(db, doc_type="contract", stance="sales", source="outgoing", user_note=None)
+        assert sorted(x.req_id for x in results) == sorted(x.id for x in sent)  # A-07
+        findings = db.scalars(select(Finding).where(Finding.run_id == run.id)).all()
+        assert len(findings) == n  # 模拟服务对每段的第一行给一个问题，位置互不相同
+        assert db.get(Task, task.id).status == "reviewed"
+    # 每段的正文互不重叠，拼起来就是完整外发文本的正文
+    docs = [json.loads(q.content)["messages"][1]["content"].split("<document>\n")[1].split("\n</document>")[0]
+            for q in requests]
+    with db_sessionmaker() as db:
+        full = engine.build_outbound_text(db, db.get(Task, task.id))
+    assert "\n".join(docs) == full.split("\n", 1)[1]
+    assert all(len(d) <= 1000 for d in docs)
+
+
+def test_chunk_failure_gives_partial(db_sessionmaker, owner, ready_task, llm):
+    task = chunked_task(db_sessionmaker, owner, ready_task)
+    requests = llm(handler=by_chunk({2: "http_500"}))
+    run = new_run(db_sessionmaker, task, owner)
+    run_job(db_sessionmaker, run.id)
+    r = get_run(db_sessionmaker, run.id)
+    assert r.status == "partial" and r.error_message == "第 2 段审核失败，结果不完整"
+    (f,) = r.failed_chunks
+    assert f["index"] == 2 and f["reason"] == "模型服务调用失败（HTTP 500）" and f["first_loc"] and f["last_loc"]
+    assert [chunk_of(q) for q in requests].count(2) == 3  # 首次 + 重试 2 次，之后继续第 3 段
+    assert max(chunk_of(q) for q in requests) == r.chunk_count
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).status == "reviewed"
+
+
+def test_bad_output_chunk_counts_tokens(db_sessionmaker, owner, ready_task, llm):
+    task = chunked_task(db_sessionmaker, owner, ready_task)
+    llm(handler=by_chunk({1: "non_json"}))
+    run = new_run(db_sessionmaker, task, owner)
+    run_job(db_sessionmaker, run.id)
+    r = get_run(db_sessionmaker, run.id)
+    assert r.status == "partial" and r.failed_chunks[0]["reason"] == job.MSG_BAD_OUTPUT
+    calls = llm_calls(db_sessionmaker)
+    assert r.tokens_in == sum(c.tokens_in for c in calls) and r.tokens_out == sum(c.tokens_out for c in calls)
+
+
+def test_all_chunks_fail(db_sessionmaker, owner, ready_task, llm):
+    task = chunked_task(db_sessionmaker, owner, ready_task)
+    llm("http_500")
+    run = new_run(db_sessionmaker, task, owner)
+    run_job(db_sessionmaker, run.id)
+    r = get_run(db_sessionmaker, run.id)
+    assert (r.status, r.error_message) == ("failed", "模型服务调用失败（HTTP 500）")
+    assert [f["index"] for f in r.failed_chunks] == list(range(1, r.chunk_count + 1))
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(RequirementResult)) == 0
+
+
+def test_block_in_second_chunk_stops_run(db_sessionmaker, owner, ready_task, llm):
+    from app.review.chunking import outbound_lines, split_chunks
+    from app.review.prompt import split_outbound
+
+    task = chunked_task(db_sessionmaker, owner, ready_task)
+    requests = llm("normal")
+    run = new_run(db_sessionmaker, task, owner)
+    with db_sessionmaker() as db:
+        boundaries = service.chunk_boundaries(db, task.id)
+        body = split_outbound(engine.build_outbound_text(db, db.get(Task, task.id)))[1]
+    chunks = split_chunks(outbound_lines(body, boundaries), 1000)
+    # 第 2 段中的某个节点混入真实名称（预检之后改动，只有网关能拦住）
+    tamper(db_sessionmaker, task, chunks[1].last_loc, f"合同由{REAL_OUR_NAME}签署")
+    run_job(db_sessionmaker, run.id)
+    r = get_run(db_sessionmaker, run.id)
+    assert r.status == "blocked" and r.error_message.startswith("出口复检发现未脱敏的信息")
+    assert [chunk_of(q) for q in requests] == [1]  # 第 3 段及以后没有发送
+    assert [c.status for c in llm_calls(db_sessionmaker)] == ["sent", "blocked"]
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).status == "awaiting_confirm"
+        assert db.scalar(select(func.count()).select_from(Finding)) == 0
+        assert db.get(ReviewRun, run.id).coverage is None
+
+
+def test_cap_reached_mid_run(db_sessionmaker, owner, ready_task, llm):
+    task = chunked_task(db_sessionmaker, owner, ready_task)
+    requests = llm("normal")
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "model.monthly_call_cap", 2, None)
+        db.commit()
+    run = new_run(db_sessionmaker, task, owner)
+    run_job(db_sessionmaker, run.id)
+    r = get_run(db_sessionmaker, run.id)
+    assert len(requests) == 2 and r.status == "partial"
+    assert [f["index"] for f in r.failed_chunks] == list(range(3, r.chunk_count + 1))
+    assert {f["reason"] for f in r.failed_chunks} == {"已达本月调用上限，请联系管理员"}
+
+
+def test_progress_visible_while_running(db_sessionmaker, owner, ready_task, llm):
+    task = chunked_task(db_sessionmaker, owner, ready_task)
+    seen = []
+    holder = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        with db_sessionmaker() as db:
+            d = service.run_detail(db, db.get(ReviewRun, holder["run_id"]))
+            seen.append((chunk_of(request), d.progress.done, d.progress.total, d.chunk_count, d.coverage))
+        status, payload = build_reply(json.loads(request.content))
+        return httpx.Response(status, json=payload)
+
+    llm(handler=handler)
+    run = new_run(db_sessionmaker, task, owner)
+    holder["run_id"] = run.id
+    run_job(db_sessionmaker, run.id)
+    n = get_run(db_sessionmaker, run.id).chunk_count
+    assert seen == [(i, i - 1, n, n, None) for i in range(1, n + 1)]
+    with db_sessionmaker() as db:
+        d = service.run_detail(db, db.get(ReviewRun, run.id))
+        assert d.progress is None and d.chunk_count == n
+
+
+def test_q72_finding_on_quote_summary_line(db_sessionmaker, owner, ready_task, llm):
+    import io
+
+    import docx
+
+    d = docx.Document()
+    d.add_paragraph("报价单")
+    d.add_paragraph(f"卖方：{REAL_OUR_NAME}")
+    d.add_paragraph(f"买方：{REAL_BUYER_NAME}")
+    rows = [("品名", "数量(MT)", "单价(USD/MT)", "金额(USD)"), ("煅后石油焦", "100", "1250", "125000"),
+            ("针状焦", "50", "2100", "105000"), ("石墨电极", "20", "3000", "60000")]
+    table = d.add_table(rows=len(rows), cols=4)
+    for r, values in enumerate(rows):
+        for c, v in enumerate(values):
+            table.cell(r, c).text = v
+    buf = io.BytesIO()
+    d.save(buf)
+    task = ready_task(owner, [("报价单.docx", buf.getvalue())])
+
+    def mutate(output, messages):
+        line = next(x for x in messages[1]["content"].splitlines() if "【报价明细表" in x)
+        loc, text = line[1:].split("] ", 1)
+        output["findings"] = [dict(output["findings"][0], locs=[loc], quote=text[:15])]
+
+    llm(handler=custom_reply(mutate))
+    run = new_run(db_sessionmaker, task, owner)
+    run_job(db_sessionmaker, run.id)
+    with db_sessionmaker() as db:
+        (f,) = db.scalars(select(Finding).where(Finding.run_id == run.id)).all()
+        tables = engine.build_outbound(db, db.get(Task, task.id)).quote_tables
+        assert len(tables) == 1 and f.locs == [tables[0].first_loc]
+        assert f.cite_status == "verified" and crypto.decrypt_text(f.quote_snapshot_enc).startswith("【报价明细表")

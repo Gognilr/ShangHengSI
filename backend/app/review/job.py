@@ -6,6 +6,8 @@ worker 取到 review 任务后：run=running → 拼接上下文 → review_once
 - 其他网关错误、输出无法解析：run=failed；task=reviewed。其他异常：同样置 failed 后再抛出，job 记为 failed。
 - 外发策略不是 ai 的任务一律不调用模型（A-04）；任务或轮次已被删除时直接结束。
 - 模型返回的文字以代号形式入库，原文引用快照加密存储。日志只写轮次 id、状态、数量，不写任何文本。
+- 分段审核（M5，设计 docs/design/M5.md 第一至三节）：外发文本超过分段长度时逐段调用；任一段被拦截立即整轮 blocked；
+  其他失败的分段跳过并记入 failed_chunks，全部失败为 failed，部分失败为 partial；每段结束后更新进度。
 """
 import logging
 import uuid
@@ -18,8 +20,18 @@ from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import Finding, RequirementResult, ReviewRun, Task
 from app.llm.gateway import GatewayError, format_reasons
+from app.review.chunking import Chunk, effective_limit, outbound_lines, split_chunks
+from app.review.prompt import ReviewContext, split_outbound
 from app.review.service import build_context
-from app.review.validate import OutputError, ValidatedReview, review_once
+from app.review.validate import (
+    ChunkOutcome,
+    DocNodeView,
+    OutputError,
+    ValidatedReview,
+    load_node_views,
+    merge_reviews,
+    review_once,
+)
 from app.security import crypto
 from app.worker import job_handler
 
@@ -39,7 +51,8 @@ def _reload(db: Session, run_id: uuid.UUID) -> tuple[ReviewRun, Task] | None:
 
 
 def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_status: str,
-            tokens_in: int = 0, tokens_out: int = 0) -> None:
+            tokens_in: int = 0, tokens_out: int = 0, chunk_count: int | None = None,
+            failed: list[dict] | None = None) -> None:
     """把轮次置为 blocked / failed，并让任务进入 task_status。"""
     found = _reload(db, run_id)
     if found is None:
@@ -48,12 +61,28 @@ def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_s
     run.status, run.error_message, run.finished_at = status, message, utcnow()
     run.tokens_in += tokens_in
     run.tokens_out += tokens_out
+    if chunk_count is not None:
+        run.chunk_count = chunk_count
+    if failed is not None:
+        run.failed_chunks = failed
+    run.coverage = None  # 去掉处理中的进度
     task.status = task_status
     db.commit()
     logger.info("run %s 结束 状态=%s", run_id, status)
 
 
-def _save(db: Session, run_id: uuid.UUID, review: ValidatedReview) -> None:
+def _failed_chunks(outcomes: list[ChunkOutcome]) -> list[dict]:
+    return [{"index": o.chunk.index, "first_loc": o.chunk.first_loc, "last_loc": o.chunk.last_loc, "reason": o.error}
+            for o in outcomes if o.review is None]
+
+
+def _partial_message(failed: list[dict]) -> str:
+    return f"第 {'、'.join(str(f['index']) for f in failed)} 段审核失败，结果不完整"
+
+
+def _save(db: Session, run_id: uuid.UUID, review: ValidatedReview, *, chunk_count: int = 1,
+          failed: list[dict] | None = None) -> None:
+    failed = failed or []
     found = _reload(db, run_id)
     if found is None:
         return
@@ -76,8 +105,12 @@ def _save(db: Session, run_id: uuid.UUID, review: ValidatedReview) -> None:
     run.sanctions_reasons = review.sanctions_reasons
     run.tokens_in += review.tokens_in
     run.tokens_out += review.tokens_out
-    run.status = "partial" if any(r.verdict == "unable" for r in review.requirement_results) else "completed"
-    run.error_message = None
+    run.chunk_count = chunk_count
+    run.failed_chunks = failed
+    run.coverage = None  # 去掉处理中的进度（覆盖说明在 M5-03 写入）
+    unable = any(r.verdict == "unable" for r in review.requirement_results)
+    run.status = "partial" if failed or unable else "completed"
+    run.error_message = _partial_message(failed) if failed else None
     run.finished_at = now
     task.status = "reviewed"
     task.high_count = high
@@ -110,22 +143,62 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
     try:
         ctx = build_context(db, task, stance=run.stance, source=run.source, user_note=run.user_note,
                             main_doc_type=run.main_doc_type)
-        review = review_once(db, ctx, run=run, user_id=run.created_by)
+        _, body = split_outbound(ctx.outbound_text)
+        chunks = split_chunks(outbound_lines(body, ctx.boundary_locs),
+                              effective_limit(get_setting(db, "model.chunk_chars")))
+        total = len(chunks)
+        nodes = load_node_views(db, task.id, ctx.quote_tables)
+        if not _set_progress(db, run_id, 0, total):
+            return
+        outcomes: list[ChunkOutcome] = []
+        for chunk in chunks:
+            outcome = _review_chunk(db, ctx, run_id, chunk, nodes)
+            if outcome is None:  # 出口复检拦截：整轮 blocked，剩余分段不发送（_review_chunk 已处理）
+                return
+            outcomes.append(outcome)
+            if not _set_progress(db, run_id, chunk.index, total):
+                return  # 轮次或任务已被删除
+    except Exception:
+        _finish(db, run_id, status="failed", message=MSG_INTERNAL, task_status="reviewed")
+        raise  # job 记为 failed，last_error 只有异常类名
+    failed = _failed_chunks(outcomes)
+    if len(failed) == total:
+        _finish(db, run_id, status="failed", message=outcomes[0].error or MSG_INTERNAL, task_status="reviewed",
+                tokens_in=sum(o.tokens_in for o in outcomes), tokens_out=sum(o.tokens_out for o in outcomes),
+                chunk_count=total, failed=failed if total > 1 else [])
+        return
+    review = outcomes[0].review if total == 1 else merge_reviews(ctx, outcomes)
+    _save(db, run_id, review, chunk_count=total, failed=failed)
+
+
+def _set_progress(db: Session, run_id: uuid.UUID, done: int, total: int) -> bool:
+    """处理中的分段进度暂存在 coverage.progress（Q-78 ③），轮次结束时清除。轮次或任务已删除时返回 False。"""
+    found = _reload(db, run_id)
+    if found is None:
+        return False
+    run, _ = found
+    run.chunk_count = total
+    run.coverage = {"progress": {"done": done, "total": total}}
+    db.commit()
+    return True
+
+
+def _review_chunk(db: Session, ctx: ReviewContext, run_id: uuid.UUID, chunk: Chunk,
+                  nodes: dict[str, DocNodeView]) -> ChunkOutcome | None:
+    """审核一段（只有 1 段时消息与不分段相同）。网关拦截时把整轮置为 blocked 并返回 None；其他失败返回失败的结果。"""
+    run = db.get(ReviewRun, run_id)
+    try:
+        review = review_once(db, ctx, run=run, user_id=run.created_by, chunk=chunk if chunk.total > 1 else None,
+                             nodes=nodes)
     except GatewayError as exc:
         if exc.code == "BLOCKED":
             message = f"出口复检发现未脱敏的信息，已拦截，未发送（{format_reasons(exc.reasons)}）"
             _finish(db, run_id, status="blocked", message=message, task_status="awaiting_confirm")
-        else:
-            _finish(db, run_id, status="failed", message=str(exc), task_status="reviewed")
-        return
+            return None
+        return ChunkOutcome(chunk, None, str(exc))
     except OutputError as exc:
-        _finish(db, run_id, status="failed", message=MSG_BAD_OUTPUT, task_status="reviewed",
-                tokens_in=exc.tokens_in, tokens_out=exc.tokens_out)
-        return
-    except Exception:
-        _finish(db, run_id, status="failed", message=MSG_INTERNAL, task_status="reviewed")
-        raise  # job 记为 failed，last_error 只有异常类名
-    _save(db, run_id, review)
+        return ChunkOutcome(chunk, None, MSG_BAD_OUTPUT, exc.tokens_in, exc.tokens_out)
+    return ChunkOutcome(chunk, review)
 
 
 @job_handler("review")

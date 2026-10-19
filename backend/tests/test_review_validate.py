@@ -269,3 +269,84 @@ def test_review_once_fails_after_second_bad_output(configured, db_sessionmaker, 
             review_once(db, ctx, run=SimpleNamespace(id=uuid.uuid4()), user_id=user.id)
         assert db.scalar(select(func.count()).select_from(LlmCall)) == 2
     assert len(exc.value.llm_call_ids) == 2 and exc.value.tokens_in > 0
+
+
+# ---------------------------------------------------------------- 分段与合并（M5-01）
+
+
+def _chunk(index, total, locs):
+    from app.review.chunking import Chunk
+
+    return Chunk(index=index, total=total, lines=[], first_loc=locs[0], last_loc=locs[-1], locs=frozenset(locs))
+
+
+def test_chunk_keeps_only_its_own_locs():
+    ctx, nodes = sample("contract_basic")
+    quote = nodes["F1-P23"].redacted_text[:12]
+    raw = make(findings=[finding(locs=["F1-P23", "F1-P2"], quote=quote)])
+    whole = validate_output(raw, ctx, nodes)
+    assert whole.findings[0].locs == ["F1-P23", "F1-P2"]
+    part = validate_output(raw, ctx, nodes, _chunk(2, 2, ["F1-P20", "F1-P23", "F1-P26"]))
+    assert part.findings[0].locs == ["F1-P23"] and part.findings[0].cite_status == "verified"
+    other = validate_output(raw, ctx, nodes, _chunk(1, 2, ["F1-P1", "F1-P2"]))
+    assert other.findings[0].locs == ["F1-P2"] and other.findings[0].cite_status == "unverified"
+
+
+def test_q72_summary_loc_mapped_to_table_header():
+    ctx, nodes = sample("contract_basic")
+    nodes["F1-T1"] = DocNodeView("F1-T1", "【报价明细表：共 3 行，产品 A、B，币种 USD】",
+                                 "【报价明细表：共 3 行，产品 A、B，币种 USD】", None, target_loc="F1-T1-R1-C1")
+    raw = make(findings=[finding(locs=["F1-T1"], quote="共 3 行，产品 A、B")])
+    (f,) = validate_output(raw, ctx, nodes).findings
+    assert f.locs == ["F1-T1-R1-C1"] and f.cite_status == "verified"
+    assert f.quote_snapshot == "【报价明细表：共 3 行，产品 A、B，币种 USD】"
+    # 汇总行和它的表头单元格同时被引用时只保留一个位置
+    raw = make(findings=[finding(locs=["F1-T1", "F1-T1-R1-C1"], quote="共 3 行")])
+    nodes["F1-T1-R1-C1"] = DocNodeView("F1-T1-R1-C1", "品名", "品名")
+    assert validate_output(raw, ctx, nodes).findings[0].locs == ["F1-T1-R1-C1"]
+
+
+def test_merge_reviews_rules():
+    from app.review.validate import ChunkOutcome, merge_reviews
+
+    ctx, nodes = sample("contract_basic")
+    ids = [r.id for r in ctx.requirements]
+    a, b, c = ids[0], ids[1], ids[2]
+    r1 = validate_output(make(
+        results=[{"req_id": a, "verdict": "ok", "note": "1ok"}, {"req_id": b, "verdict": "na", "note": "1na"},
+                 {"req_id": c, "verdict": "unable", "note": "1unable"}],
+        findings=[finding(title="缺少仲裁条款", missing=True, locs=[], quote=None, severity="中")],
+        sanctions={"level": "需注意", "reasons": ["原因一"]}, doc_summary="第一段摘要"), ctx, nodes)
+    r1.tokens_in, r1.tokens_out = 10, 5
+    r2 = validate_output(make(
+        results=[{"req_id": a, "verdict": "issue", "note": "2issue"}, {"req_id": b, "verdict": "ok", "note": "2ok"}],
+        findings=[finding(title="缺少仲裁条款", missing=True, locs=[], quote=None, severity="高"),
+                  finding(locs=["F1-P23"], quote=nodes["F1-P23"].redacted_text[:10])],
+        sanctions={"level": "无明显风险", "reasons": ["原因一", "原因二"]}, doc_summary="第二段摘要"), ctx, nodes)
+    r2.tokens_in, r2.tokens_out = 20, 7
+    outcomes = [ChunkOutcome(_chunk(1, 3, ["F1-P1"]), r1), ChunkOutcome(_chunk(2, 3, ["F1-P2"]), r2),
+                ChunkOutcome(_chunk(3, 3, ["F1-P3"]), None, "模型服务调用失败", 3, 1)]
+    m = merge_reviews(ctx, outcomes)
+    verdicts = {r.req_id: (r.verdict, r.note) for r in m.requirement_results}
+    assert verdicts[a] == ("issue", "2issue") and verdicts[b] == ("ok", "2ok") and verdicts[c] == ("unable", "1unable")
+    # 两段都没有给出的要求：unable，备注“模型未返回结论”；每条发送的要求恰好一条结论（A-07）
+    assert [r.req_id for r in m.requirement_results] == ids
+    assert all(verdicts[i] == ("unable", MISSING_NOTE) for i in ids[3:])
+    assert m.doc_summary == "第一段摘要" and m.sanctions_level == "attention"
+    assert m.sanctions_reasons == ["原因一", "原因二"]
+    # 缺失型问题跨段合并，取较高严重程度
+    titles = [(f.title, f.severity) for f in m.findings]
+    assert titles == [("缺少仲裁条款", "high"), ("违约金比例偏高", "high")]
+    assert (m.tokens_in, m.tokens_out) == (33, 13)
+    with pytest.raises(ValueError):
+        merge_reviews(ctx, [outcomes[2]])
+
+
+def test_merge_sanctions_high_wins_and_none_ignored():
+    from app.review.validate import ChunkOutcome, merge_reviews
+
+    ctx, nodes = sample("contract_basic")
+    reviews = [validate_output(make(sanctions={"level": lv, "reasons": []}), ctx, nodes)
+               for lv in ("无明显风险", "高风险", "看不懂")]
+    m = merge_reviews(ctx, [ChunkOutcome(_chunk(i + 1, 3, ["F1-P1"]), r) for i, r in enumerate(reviews)])
+    assert m.sanctions_level == "high"

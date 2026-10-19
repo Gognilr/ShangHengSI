@@ -104,19 +104,21 @@ def test_logs_do_not_contain_text_names_amounts_or_key(db_sessionmaker, alice, l
     # 2. 出口复检：确认发送前的预检拦截，以及（预检被绕过时）网关拦截
     basic = Sample("销售合同 星河公司.docx", (FIXTURES / "docx" / "contract_basic.docx").read_bytes())
     tid2 = upload_and_parse(c, h, db_sessionmaker, basic)
-    original = service.build_outbound_text
+    original = service.build_outbound
 
     def leaky(db, task):
-        return original(db, task) + "\n[F1-P99] 星河虚构进出口有限公司 USD 400,000.00 13800138000"
+        built = original(db, task)
+        built.text += "\n[F1-P99] 星河虚构进出口有限公司 USD 400,000.00 13800138000"
+        return built
 
-    monkeypatch.setattr(service, "build_outbound_text", leaky)
+    monkeypatch.setattr(service, "build_outbound", leaky)
     r = c.post(url(tid2, "runs"), headers=h)
     assert (r.status_code, r.json()["code"]) == (409, "OUTBOUND_BLOCKED")
     real_recheck = service.recheck
     monkeypatch.setattr(service, "recheck", lambda *a, **k: [])
     assert confirm_and_review(c, h, db_sessionmaker, tid2)["status"] == "blocked"
     monkeypatch.setattr(service, "recheck", real_recheck)
-    monkeypatch.setattr(service, "build_outbound_text", original)
+    monkeypatch.setattr(service, "build_outbound", original)
 
     # 3. 模型服务出错（HTTP 500，重试后失败）与输出无法解析
     llm(["http_500"])

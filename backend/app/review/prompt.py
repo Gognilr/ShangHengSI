@@ -4,10 +4,14 @@ system 消息：resources/prompts/system.md 模板，{JSON_SCHEMA} 换成 11.3 �
 user 消息：【审核背景】【审核要求】【主体说明】【本地校验摘要】【待审核文件】依次拼接，空内容的部分省略。
 用户填写的补充说明、公司说明同样做 document 标签转义，外发文本已在构建时转义（SPEC 17.5）。
 修改 JSON_SCHEMA_TEXT 等于修改提示词，须同时更新 system.md 中的版本号。
+分段审核（M5，设计 docs/design/M5.md 第二节）时每段的消息只把 <document> 换成本段的行，并在【审核背景】末尾加分段说明；
+不分段时消息与 M2 逐字相同。
 """
 from dataclasses import dataclass, field
 
 from app.db.models import Task
+from app.redaction.quotes import QuoteTable
+from app.review.chunking import Chunk
 from app.redaction.outbound import escape_document_tags
 from app.review.requirements import Requirement, load_system_template
 
@@ -43,6 +47,8 @@ class ReviewContext:
     outbound_text: str
     local_summary: str = ""  # M2 中本地校验摘要为空
     prompt_version: str = field(default="")
+    boundary_locs: set[str] = field(default_factory=set)  # 分段的首选切分点（M5）
+    quote_tables: list[QuoteTable] = field(default_factory=list)  # 外发文本中被汇总的报价明细表（M5）
 
 
 def note_requirement(user_note: str | None) -> Requirement | None:
@@ -71,7 +77,17 @@ def _split_outbound(outbound_text: str) -> tuple[str, str]:
     return "", outbound_text
 
 
-def build_user_message(ctx: ReviewContext) -> str:
+def chunk_note(chunk: Chunk) -> str:
+    return (f"分段：第 {chunk.index}/{chunk.total} 段（文件较长，分段审核，其余段落另行审核；只对本段内容给出问题，"
+            "缺少某项内容的问题只在本段属于该内容应在的位置时提出）")
+
+
+def split_outbound(outbound_text: str) -> tuple[str, str]:
+    """(【主体说明】行, 正文各行)。"""
+    return _split_outbound(outbound_text)
+
+
+def build_user_message(ctx: ReviewContext, chunk: Chunk | None = None) -> str:
     background = [f"立场：{STANCE_LABELS.get(ctx.stance, ctx.stance)}",
                   f"来源：{SOURCE_LABELS.get(ctx.source, ctx.source)}",
                   f"主文件类型：{DOC_TYPE_LABELS.get(ctx.main_doc_type, ctx.main_doc_type)}"]
@@ -80,6 +96,9 @@ def build_user_message(ctx: ReviewContext) -> str:
     if ctx.company_profile and ctx.company_profile.strip():
         background.append("公司说明：" + escape_document_tags(ctx.company_profile.strip()))
     parties, body = _split_outbound(ctx.outbound_text)
+    if chunk is not None and chunk.total > 1:
+        background.append(chunk_note(chunk))
+        body = "\n".join(chunk.lines)
     parts = ["【审核背景】" + "；".join(background)]
     if ctx.requirements:
         parts.append("【审核要求】\n" + "\n".join(_requirement_line(r) for r in ctx.requirements))
@@ -91,7 +110,7 @@ def build_user_message(ctx: ReviewContext) -> str:
     return "\n".join(parts)
 
 
-def build_messages(ctx: ReviewContext) -> list[dict]:
+def build_messages(ctx: ReviewContext, chunk: Chunk | None = None) -> list[dict]:
     version, system = system_prompt()
     ctx.prompt_version = version
-    return [{"role": "system", "content": system}, {"role": "user", "content": build_user_message(ctx)}]
+    return [{"role": "system", "content": system}, {"role": "user", "content": build_user_message(ctx, chunk)}]
