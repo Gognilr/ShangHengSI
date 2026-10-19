@@ -93,7 +93,32 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
   throw new ApiError(res.status, code, message)
 }
 
+/** 取二进制响应（原件预览）：带 Cookie、统一处理 401 和错误码，不要求 JSON。 */
+async function requestBlob(path: string): Promise<Blob> {
+  let res: Response
+  try {
+    res = await fetch(API_PREFIX + path, { method: 'GET', credentials: 'same-origin' })
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', '无法连接服务器，请检查网络后重试')
+  }
+  if (res.ok) return await res.blob()
+
+  let code = 'HTTP_ERROR'
+  let message = `请求失败（${res.status}）`
+  try {
+    const data = (await res.json()) as { code?: string; message?: string }
+    if (data.code) code = data.code
+    if (data.message) message = data.message
+  } catch {
+    // 响应不是 JSON，保留默认说明
+  }
+  if (res.status === 401) hooks.onUnauthorized()
+  if (res.status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') hooks.onPasswordChangeRequired()
+  throw new ApiError(res.status, code, message)
+}
+
 export const http = {
+  getBlob: (path: string) => requestBlob(path),
   get: <T>(path: string, query?: RequestOptions['query'], opts?: Pick<RequestOptions, 'silent401'>) =>
     request<T>('GET', path, { query, ...opts }),
   post: <T>(path: string, body?: unknown, opts?: Pick<RequestOptions, 'silent401'>) =>
