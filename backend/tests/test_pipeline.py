@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 
 from app import worker
 from app.config import get_settings
-from app.db.models import DocNode, Party, RedactionItem, RedactionMap, RedactionTerm, Task, TaskFile
+from app.admin.settings_store import set_setting
+from app.db.models import DocNode, Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionTerm, Task, TaskFile
 from app.parsing import ocr
 from app.parsing.ocr import OcrLine
 from app.redaction import engine
@@ -380,3 +381,255 @@ def test_ocr_slot_is_global_lock():
         assert not worker.ocr_slot().acquire(blocking=False)
     assert worker.ocr_slot().acquire(blocking=False)
     worker.ocr_slot().release()
+
+
+# ---------------------------------------------------------------- M4-04：疑似遗漏、用户词条、已记住的名称、命中计数
+
+
+@pytest.fixture
+def text_task(db_sessionmaker, make_task):
+    """直接写入正文节点（原文加密，每行一个段落 F1-P1…）并脱敏的任务，状态 awaiting_confirm。"""
+
+    def _make(*lines: str | tuple[str, str], stance: str = "sales") -> Task:
+        task = make_task([("文件.docx", b"placeholder")], stance=stance)
+        with db_sessionmaker() as db:
+            f = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id))
+            for k, line in enumerate(lines, start=1):
+                loc, text = line if isinstance(line, tuple) else (f"F1-P{k}", line)
+                db.add(DocNode(task_id=task.id, file_id=f.id, loc=loc, ord=k, kind="paragraph", part="body",
+                               text_enc=crypto.encrypt_text(text)))
+            db.add(DocNode(task_id=task.id, file_id=f.id, loc="F1-H1", ord=0, kind="paragraph", part="header",
+                           text_enc=crypto.encrypt_text("页眉 Header Text")))
+            t = db.get(Task, task.id)
+            engine.redact_task(db, t)
+            t.status = "awaiting_confirm"
+            db.commit()
+        return task
+
+    return _make
+
+
+def suspects_of(db, task_id):
+    return list(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id)
+                           .order_by(RedactionSuspect.loc, RedactionSuspect.char_start)))
+
+
+def outbound(db, task_id):
+    return engine.build_outbound_text(db, db.get(Task, task_id))
+
+
+LINES = (
+    "卖方：星河虚构进出口有限公司",
+    "货物由 Northwind Fictive Holdings 承运，收款 6222 0000 1111 2222 333。",
+    "Northwind Fictive Holdings 另行通知。",
+    "备注：请联系蓝海示例科技公司办理。",
+)
+
+
+def test_parse_writes_suspects_and_views(db_sessionmaker, text_task):
+    task = text_task(*LINES)
+    with db_sessionmaker() as db:
+        rows = suspects_of(db, task.id)
+        assert {(r.loc, r.reason, r.decision) for r in rows} == {
+            ("F1-P2", "capitalized", "pending"), ("F1-P2", "long_digits", "pending"),
+            ("F1-P3", "capitalized", "pending"), ("F1-P4", "before_company", "pending")}
+        views = engine.suspect_views(db, db.get(Task, task.id))
+        assert [v["loc"] for v in views] == ["F1-P2", "F1-P2", "F1-P3", "F1-P4"]  # 文档顺序
+        v = views[0]
+        assert set(v) == {"id", "loc", "reason", "decision", "category", "text", "before", "after"}
+        assert (v["text"], v["before"], v["after"][:4]) == ("Northwind Fictive Holdings", "货物由 ", " 承运，")
+        assert views[3]["text"] == "蓝海示例科技公司"
+
+
+def test_ignore_cascades_and_survives_recompute(db_sessionmaker, text_task, make_user):
+    task = text_task(*LINES)
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        first = next(r for r in suspects_of(db, task.id) if r.reason == "capitalized")
+        uid = t.owner_id
+        engine.decide_suspect(db, t, first.id, decision="ignore", category=None, user_id=uid)
+        db.commit()
+    with db_sessionmaker() as db:
+        rows = suspects_of(db, task.id)
+        # 文字相同、原因相同的其他待处理条目一并忽略（Q-70 ④）；其他原因的不受影响
+        assert {(r.loc, r.reason, r.decision) for r in rows if r.reason == "capitalized"} == {
+            ("F1-P2", "capitalized", "ignore"), ("F1-P3", "capitalized", "ignore")}
+        assert all(r.decided_by == uid and r.decided_at is not None for r in rows if r.decision == "ignore")
+        assert {r.decision for r in rows if r.reason != "capitalized"} == {"pending"}
+        ids = {r.id for r in rows}
+        # 重算（PUT /parties 同一路径）后保留原 id 和决定
+        engine.apply_party_changes(db, db.get(Task, task.id), [])
+        db.commit()
+    with db_sessionmaker() as db:
+        rows = suspects_of(db, task.id)
+        assert {r.id for r in rows} == ids
+        assert sum(r.decision == "ignore" for r in rows) == 2
+
+
+def test_replace_suspect_becomes_user_term(db_sessionmaker, text_task):
+    task = text_task(*LINES)
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        rows = suspects_of(db, task.id)
+        cap = next(r for r in rows if r.reason == "capitalized")
+        digits = next(r for r in rows if r.reason == "long_digits")
+        engine.decide_suspect(db, t, cap.id, decision="replace", category="ORG", user_id=t.owner_id)
+        engine.decide_suspect(db, t, digits.id, decision="replace", category="CUSTOM", user_id=t.owner_id)
+        db.commit()
+    with db_sessionmaker() as db:
+        out = outbound(db, task.id)
+        # 全文替换：两处 Northwind 都换成同一代号，被替换的疑似遗漏不再列出
+        assert "[F1-P2] 货物由 公司_A 承运，收款 [敏感词_1]。" in out and "[F1-P3] 公司_A 另行通知。" in out
+        assert {r.reason for r in suspects_of(db, task.id)} == {"before_company"}
+        parties = db.scalars(select(Party).where(Party.task_id == task.id)).all()
+        assert {(p.code, p.role_label) for p in parties} == {("我方", "卖方"), ("公司_A", "其他")}
+        items = db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id,
+                                                       RedactionItem.detected_by == "user")).all()
+        assert {(i.loc, i.category) for i in items} == {("F1-P2", "ORG"), ("F1-P3", "ORG"), ("F1-P2", "CUSTOM")}
+        # 用户词条在重算后保留（设为我方也不丢）
+        a = next(p for p in parties if p.code == "公司_A")
+        engine.apply_party_changes(db, db.get(Task, task.id), [PartyChange(a.id, is_our_party=True)])
+        db.commit()
+    with db_sessionmaker() as db:
+        out = outbound(db, task.id)
+        assert "[F1-P2] 货物由 我方 承运，收款 [敏感词_1]。" in out and "Northwind" not in out
+        assert engine.load_redaction_map(db, task.id)["我方"] == "Northwind Fictive Holdings"
+
+
+def test_decide_suspect_errors(db_sessionmaker, text_task):
+    task = text_task(*LINES)
+    other = text_task(*LINES)
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        theirs = suspects_of(db, other.id)[0]
+        mine = suspects_of(db, task.id)[0]
+        for sid in (theirs.id, 10 ** 12):
+            with pytest.raises(engine.RedactionInputError) as e:
+                engine.decide_suspect(db, t, sid, decision="ignore", category=None, user_id=None)
+            assert (e.value.status, e.value.code) == (404, "SUSPECT_NOT_FOUND")
+        for decision, category in (("replace", None), ("replace", "OUR"), ("delete", None)):
+            with pytest.raises(engine.RedactionInputError) as e:
+                engine.decide_suspect(db, t, mine.id, decision=decision, category=category, user_id=None)
+            assert (e.value.status, e.value.code) == (422, "VALIDATION_ERROR")
+
+
+def test_add_user_term_validation(db_sessionmaker, text_task):
+    task = text_task("卖方：星河虚构进出口有限公司", "请联系 Bluefin Example 确认  。")
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+
+        def err(**kw):
+            args = {"loc": "F1-P2", "char_start": 4, "char_end": 19, "category": "ORG", **kw}
+            with pytest.raises(engine.RedactionInputError) as e:
+                engine.add_user_term(db, t, **args)
+            return e.value.status, e.value.code
+
+        assert err(loc="F1-P9") == (422, "INVALID_SELECTION")
+        assert err(loc="F1-H1", char_start=0, char_end=2) == (422, "INVALID_SELECTION")  # 不是正文节点
+        assert err(char_start=5, char_end=5) == (422, "INVALID_SELECTION")
+        assert err(char_end=999) == (422, "INVALID_SELECTION")
+        assert err(char_start=-1) == (422, "INVALID_SELECTION")
+        assert err(category="OUR") == (422, "VALIDATION_ERROR")
+        assert err(char_start=4, char_end=5) == (422, "SELECTION_LENGTH")
+        assert err(char_start=22, char_end=25) == (422, "SELECTION_LENGTH")  # 去掉空白后不足 2 个字符
+        assert err(loc="F1-P1", char_start=2, char_end=8) == (409, "ALREADY_REDACTED")
+        assert err(char_start=5, char_end=12) == (422, "INVALID_SELECTION")  # 选在单词中间
+        long_task = text_task("x" * 150)
+        # 成功：去掉首尾空白，全文替换，类别为人名
+        engine.add_user_term(db, t, loc="F1-P2", char_start=3, char_end=20, category="PERSON")
+        db.commit()
+    with db_sessionmaker() as db:
+        assert "[F1-P2] 请联系 人员_1 确认  。" in outbound(db, task.id)
+        item = db.scalar(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.detected_by == "user"))
+        assert (item.char_start, item.char_end, item.category) == (4, 19, "PERSON")
+    with db_sessionmaker() as db:
+        lt = db.get(Task, long_task.id)
+        with pytest.raises(engine.RedactionInputError) as e:
+            engine.add_user_term(db, lt, loc="F1-P1", char_start=0, char_end=101, category="CUSTOM")
+        assert e.value.code == "SELECTION_LENGTH"
+
+
+def test_manual_org_without_parties_can_become_our_party(db_sessionmaker, text_task):
+    """Q-54：没有识别出签约方的文件，手动补充一个公司名后可设为我方。"""
+    task = text_task("本协议由蓝海示例科技与对方共同签署。", stance="sales")
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        assert db.scalars(select(Party).where(Party.task_id == task.id)).all() == []
+        engine.add_user_term(db, t, loc="F1-P1", char_start=4, char_end=10, category="ORG")
+        db.commit()
+    with db_sessionmaker() as db:
+        (p,) = db.scalars(select(Party).where(Party.task_id == task.id)).all()
+        assert (p.code, p.role_label, p.is_our_party, p.country) == ("公司_A", "其他", False, "国家未知")
+        engine.apply_party_changes(db, db.get(Task, task.id), [PartyChange(p.id, is_our_party=True)])
+        db.commit()
+    with db_sessionmaker() as db:
+        assert "[F1-P1] 本协议由我方与对方共同签署。" in outbound(db, task.id)
+
+
+def test_learn_confirmed_names_and_second_task(db_sessionmaker, text_task):
+    """9.10、Q-73、T-08 的 engine 部分：确认发送时写入，第二个任务自动替换。"""
+    task = text_task("卖方：星河虚构进出口有限公司", "买方：Orion Fictive Trading LLC", "请联系 Bluefin Example 与 王示例。")
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        engine.add_user_term(db, t, loc="F1-P3", char_start=4, char_end=19, category="ORG")
+        engine.add_user_term(db, t, loc="F1-P3", char_start=22, char_end=25, category="PERSON")
+        engine.learn_confirmed_names(db, t, t.owner_id)
+        engine.learn_confirmed_names(db, t, t.owner_id)  # 重复调用不重复插入
+        db.commit()
+    with db_sessionmaker() as db:
+        rows = db.scalars(select(RedactionTerm).where(RedactionTerm.kind == "learned")).all()
+        got = {(crypto.decrypt_text(r.term_enc), r.category, r.is_our_party) for r in rows}
+        assert got == {("星河虚构进出口有限公司", "ORG", True), ("Orion Fictive Trading LLC", "ORG", False),
+                       ("Bluefin Example", "ORG", False), ("王示例", "PERSON", False)}
+        assert all(r.term_hash == engine.term_hash(crypto.decrypt_text(r.term_enc)) for r in rows)
+        assert all(b"Bluefin" not in r.term_enc for r in rows)
+        assert {r.hit_count for r in rows} == {0}
+    # 第二个任务：已记住的名称自动替换，命中计数只在解析时增加，第二步重算不计数（Q-73 ④）
+    second = text_task("BLUEFIN EXAMPLE 与王示例来函，抄送 Orion Fictive Trading LLC。")
+    with db_sessionmaker() as db:
+        out = outbound(db, second.id)
+        assert "bluefin" not in out.casefold() and "王示例" not in out and "Orion" not in out
+        items = db.scalars(select(RedactionItem).where(RedactionItem.task_id == second.id)).all()
+        assert {i.detected_by for i in items} == {"term"}
+        hits = {crypto.decrypt_text(r.term_enc): (r.hit_count, r.last_hit_at is not None)
+                for r in db.scalars(select(RedactionTerm))}
+        assert hits["Bluefin Example"] == (1, True) and hits["王示例"] == (1, True)
+        assert hits["星河虚构进出口有限公司"] == (0, False)
+        engine.apply_party_changes(db, db.get(Task, second.id), [])
+        db.commit()
+    with db_sessionmaker() as db:
+        assert db.scalar(select(RedactionTerm.hit_count).where(
+            RedactionTerm.term_hash == engine.term_hash("Bluefin Example"))) == 1
+    # 我方只升不降：另一个任务把 Orion 设为我方后 is_our_party=true；之后不是我方也不改回
+    third = text_task("买方：Orion Fictive Trading LLC", stance="purchase")
+    with db_sessionmaker() as db:
+        t3 = db.get(Task, third.id)
+        (p,) = db.scalars(select(Party).where(Party.task_id == third.id)).all()
+        assert p.is_our_party  # 立场为采购，买方预选为我方
+        engine.learn_confirmed_names(db, t3, t3.owner_id)
+        engine.learn_confirmed_names(db, db.get(Task, task.id), None)
+        db.commit()
+        assert db.scalar(select(RedactionTerm.is_our_party).where(
+            RedactionTerm.term_hash == engine.term_hash("orion fictive trading llc"))) is True
+
+
+def test_mask_quantity_setting(db_sessionmaker, text_task):
+    with db_sessionmaker() as db:
+        set_setting(db, "redaction.mask_quantity", True, None)
+        db.commit()
+    task = text_task("数量 500 MT，单价 USD 100/MT")
+    with db_sessionmaker() as db:
+        assert "[F1-P1] 数量 [数量_1] MT，单价 USD [单价_1]/MT" in outbound(db, task.id)
+
+
+def test_outbound_quote_table_summary_xlsx(db_sessionmaker, text_task):
+    cells = [("F1-S1-A1", "报价单"), ("F1-S1-A2", "品名"), ("F1-S1-B2", "单价(USD/MT)"), ("F1-S1-C2", "金额(USD)")]
+    for row, (name, price, amount) in enumerate([("针状焦", "1250", "400000"), ("石油焦", "900", "90000"),
+                                                  ("针状焦", "1100", "110000")], start=3):
+        cells += [(f"F1-S1-A{row}", name), (f"F1-S1-B{row}", price), (f"F1-S1-C{row}", amount)]
+    cells += [("F1-S1-A6", "合计"), ("F1-S1-C6", "USD 600000")]
+    task = text_task(*cells)
+    with db_sessionmaker() as db:
+        lines = outbound(db, task.id).splitlines()
+    assert lines[1:] == ["[F1-S1-A1] 报价单", "[F1-S1] 【报价明细表：共 3 行，币种 USD，产品：针状焦等 2 种】",
+                         "[F1-S1-A6] 合计", "[F1-S1-C6] USD [金额_4]"]

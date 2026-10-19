@@ -1,4 +1,4 @@
-description: 中英文混合询价函：买方与供应商、目标单价、联系方式、询价编号
+description: 中英文混合询价函：买方与供应商、目标单价、联系方式、询价编号、联系人、地址
 stance: purchase
 must_replace:
   - {text: 万象虚构贸易有限公司, category: ORG}
@@ -7,6 +7,10 @@ must_replace:
   - {text: +86 21 6000 1234, category: PHONE}
   - {text: purchase@wanxiang-example.com, category: EMAIL}
   - {text: RFQ-2026-0715, category: REFNO}
+  - {text: 刘示例, category: PERSON}
+  - {text: "88 Example Road, Pune, India", category: ADDR}
+must_suspect:
+  - Harbor Fictive Labs
 must_keep:
   - 煅后石油焦
   - Calcined Petroleum Coke

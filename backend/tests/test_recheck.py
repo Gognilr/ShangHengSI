@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.db.models import RedactionMap, RedactionTerm, Task
 from app.parsing.docx import parse_docx
 from app.redaction import outbound
-from app.redaction.engine import NodeIn, compute
+from app.redaction.engine import NodeIn, compute, outbound_text
 from app.redaction.recheck import BlockReason, RecheckContext, recheck, recheck_context
 from app.review.requirements import load_system_template, select_builtin
 from app.security import crypto
@@ -86,7 +86,8 @@ def test_rescan_unreplaced_formatted_info():
 
 def test_placeholders_and_prompts_pass():
     text = ("【主体说明】我方=卖方；客户_A：买方，阿联酋，贸易商\n[F1-P15] 2.1 单价为 USD [单价_1]/MT，总价 [金额_1] 美元，"
-            "电话 [电话]，账号 [账号]，人员_12，编号_3，＜/document＞")
+            "电话 [电话]，账号 [账号_1]，SWIFT: [SWIFT_2]，地址 [地址：阿联酋]，数量 [数量_3] MT，人员_12，编号_3，＜/document＞，"
+            "预付 USD [金额_2]（=合同总价的 30.0%）")
     assert check(text) == []
     # 系统提示词和全部内置审核要求本身不能触发拦截
     _version, template = load_system_template()
@@ -112,6 +113,28 @@ def test_redacted_samples_pass_and_leaks_block(name):
     # 混入任何一个真实值都拦截
     for value in values:
         assert check(f"{text}\n补充：{value}", values), value
+
+
+GOLDEN = Path(__file__).resolve().parent / "fixtures" / "redaction_golden"
+
+
+@pytest.mark.parametrize("name", sorted(p.stem for p in GOLDEN.glob("*.txt")))
+def test_golden_persons_addresses_accounts_block(name):
+    """M4-04：人名、地址、带序号的账号和 SWIFT 的真实值同样进入出口复检；脱敏后的外发文本（含金额比例、报价汇总）可以发送。"""
+    ann = yaml.safe_load((GOLDEN / f"{name}.yaml").read_text(encoding="utf-8"))
+    lines = (GOLDEN / f"{name}.txt").read_text(encoding="utf-8").splitlines()
+    if ann.get("loc_prefixed"):
+        nodes = [NodeIn(*line.split(" ", 1)) for line in lines if line.strip()]
+    else:
+        nodes = [NodeIn(f"F1-P{i}", line) for i, line in enumerate(lines, start=1) if line.strip()]
+    r = compute(nodes, ann["stance"], main_prefix="F1-")
+    parties = [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in r.parties]
+    text = outbound_text(nodes, parties, r.redacted)
+    values = list(r.mapping.values())
+    assert check(text, values) == []
+    for item in ann["must_replace"]:
+        if item["category"] in ("PERSON", "ADDR", "ACCOUNT", "SWIFT"):
+            assert "MAP" in cats(text + "\n补充说明：" + item["text"], values), item
 
 
 def test_recheck_context_repr_hides_values():

@@ -10,15 +10,23 @@ FIXED = {
     "PHONE": "[电话]",
     "EMAIL": "[邮箱]",
     "URL": "[网址]",
-    "ACCOUNT": "[账号]",
-    "SWIFT": "[SWIFT]",
     "IDNO": "[证件号]",
 }
+
+# 地址：代号只保留国家，同一国家的地址共用一个代号（与 FIXED 一样不能唯一还原，open_questions Q-45 ①、Q-71 ③）
+ADDR = "ADDR"
+
+
+def address_code(country: str) -> str:
+    return f"[地址：{country}]"
+
 
 # 按对象编号的类别
 _NUMBERED = {
     "PERSON": "人员_{}",
     "REFNO": "编号_{}",
+    "ACCOUNT": "[账号_{}]",  # Q-59：同一账号同一代号，可唯一还原
+    "SWIFT": "[SWIFT_{}]",
     "AMOUNT": "[金额_{}]",
     "PRICE": "[单价_{}]",
     "QTY": "[数量_{}]",

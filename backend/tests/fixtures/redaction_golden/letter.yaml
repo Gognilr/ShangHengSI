@@ -1,4 +1,4 @@
-description: 中文催款函：发函方简称、收函方英文名称、合同号、金额、账号、电话邮箱
+description: 中文催款函：发函方简称、收函方英文名称、合同号、金额、账号、电话邮箱、联系人、地址
 stance: other
 must_replace:
   - {text: 卓越虚构实业有限公司, category: ORG}
@@ -12,6 +12,10 @@ must_replace:
   - {text: 6217 0000 1234 5678 901, category: ACCOUNT}
   - {text: "13700002222", category: PHONE}
   - {text: finance@zhuoyue-example.com, category: EMAIL}
+  - {text: 赵示例, category: PERSON}
+  - {text: 深圳市南山区示例路 66 号, category: ADDR}
+must_suspect:
+  - 远景示例科技公司
 must_keep:
   - 2026年2月3日
   - 2026年7月31日

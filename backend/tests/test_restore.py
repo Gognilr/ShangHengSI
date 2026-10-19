@@ -1,4 +1,4 @@
-"""代号还原（M2-09，SPEC 9.9）。"""
+"""代号还原（M2-09、M4-04，SPEC 9.9）。"""
 from pathlib import Path
 
 import yaml
@@ -45,3 +45,18 @@ def test_round_trip_with_engine():
     for loc in ("F1-P4", "F1-P5", "F1-P6", "F1-P8"):
         original = next(n.text for n in nodes if n.loc == loc)
         assert restore(r.redacted[loc], plain) == original
+
+
+def test_numbered_accounts_restore_and_address_stays():
+    """Q-59：不同账号、SWIFT 得到不同代号且各自还原；地址代号不能唯一还原，保持原样。"""
+    nodes = [NodeIn("F1-P1", "账号：6222 0000 1111 2222，SWIFT: ABCDCNBJ"),
+             NodeIn("F1-P2", "IBAN: DE89 3704 0044 0532 0130 00，SWIFT: EFGHDEFF"),
+             NodeIn("F1-P3", "Address: Unit 5, Example Tower, Hamburg, Germany"),
+             NodeIn("F1-P4", "联系人：张示例")]
+    r = compute(nodes, "sales")
+    plain = {k: v for k, v in r.mapping.items() if "#" not in k}
+    reply = "请核对 [账号_1] 与 [账号_2]、[SWIFT_1] 与 ［SWIFT_2］，寄往 [地址：德国]，联系 人员_1。"
+    assert restore(reply, plain) == ("请核对 6222 0000 1111 2222 与 DE89 3704 0044 0532 0130 00、ABCDCNBJ 与 EFGHDEFF，"
+                                     "寄往 [地址：德国]，联系 张示例。")
+    for loc in ("F1-P1", "F1-P2", "F1-P4"):
+        assert restore(r.redacted[loc], plain) == next(n.text for n in nodes if n.loc == loc)

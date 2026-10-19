@@ -7,6 +7,8 @@ Email: export@haiyue-example.com
 Website: www.haiyue-example.com
 Buyer: Delta Mock Industries GmbH
 Country: Germany
+Attn: Mr. Hans Example
+Address: Example Strasse 12, 20095 Hamburg, Germany
 Product: Calcined Petroleum Coke, HS 27131200
 Specification: Sulfur ≤0.5%, Ash ≤0.3%, Real density ≥2.07 g/cm3, Size 1-5mm
 Quantity: 200 MT

@@ -1,4 +1,4 @@
-description: 中文采购订单（采购立场）：多方标签、订单号、发票号、证件号、单价与金额、大写金额
+description: 中文采购订单（采购立场）：多方标签、订单号、发票号、证件号、单价与金额、大写金额、联系人、收货地址
 stance: purchase
 must_replace:
   - {text: 远航虚构化工有限公司, category: ORG}
@@ -17,6 +17,8 @@ must_replace:
   - {text: "702,400.00", category: AMOUNT}
   - {text: 柒拾万贰仟肆佰元整, category: AMOUNT}
   - {text: Seabridge Fictive Shipping (Hong Kong) Limited, category: ORG}
+  - {text: 孙示例, category: PERSON}
+  - {text: 天津市滨海新区示例港路 9 号, category: ADDR}
 must_keep:
   - 石墨电极 UHP 600mm
   - 数量 40 件

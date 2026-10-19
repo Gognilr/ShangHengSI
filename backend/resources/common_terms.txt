@@ -244,3 +244,18 @@ Graphite Electrode
 Graphite Electrodes
 Carbon Raiser
 Coal Tar Pitch
+# M4-04 评审增补：英文单据中的常见标签（“Order No”“Account No”等不是名称，不应列为疑似遗漏）
+Order No
+Account No
+Invoice No
+Contract No
+Account Number
+Order Number
+Invoice Number
+Account Name
+Bank Name
+Bank Address
+Beneficiary Bank
+Swift Code
+Sales Confirmation
+Proforma Invoice

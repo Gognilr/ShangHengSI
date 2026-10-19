@@ -215,3 +215,13 @@ def test_quantity_column():
     assert quantities("1200 MT", "QTY") == ["1200"]
     # 数量列中不是整格数字的不算
     assert quantities("约 1200", "QTY") == []
+
+
+def test_person_label_with_parenthetical_note():
+    # M4-04 评审补充：标签后带括号说明再接冒号（签字栏常见写法）
+    assert persons("法定代表人（签字）：吴虚构") == ["吴虚构"]
+    assert persons("授权代表(签章)：Kevin Lee") == ["Kevin Lee"]
+    assert persons("签字（盖章）：李示例") == ["李示例"]
+    # 括号说明后没有冒号、括号过长时不算标签
+    assert persons("法定代表人（签字）吴虚构") == []
+    assert persons("联系人（以下各项均须填写完整）：王示例") == []

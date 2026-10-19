@@ -12,6 +12,8 @@ must_replace:
   - {text: "258000", category: AMOUNT}
   - {text: "658000", category: AMOUNT}
   - {text: "4671800", category: AMOUNT}
+  - {text: 周示例, category: PERSON}
+  - {text: 上海市黄浦区示例路 1 号, category: ADDR}
 must_keep:
   - 报价单 Quotation
   - "2026-03-10"

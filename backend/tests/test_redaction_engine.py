@@ -1,4 +1,4 @@
-"""脱敏核心（M2-08）：9.3 第 1–5 步、代号分配、对照表、外发文本。不需要数据库。"""
+"""脱敏核心（M2-08、M4-04）：9.3 第 1–7 步、数量、疑似遗漏、金额比例、用户词条、代号分配、对照表、外发文本。不需要数据库。"""
 import re
 from decimal import Decimal
 from pathlib import Path
@@ -8,14 +8,12 @@ import yaml
 
 from app.parsing.docx import parse_docx
 from app.redaction import detect, outbound
-from app.redaction.engine import NodeIn, PartyOverride, Term, compute
+from app.redaction.engine import NodeIn, PartyOverride, Term, UserTerm, compute, outbound_text
 from app.redaction.parties import find_other_org_names, normalize
 from app.redaction.placeholders import letters
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "docx"
 MANIFEST = yaml.safe_load((FIXTURES / "manifest.yaml").read_text(encoding="utf-8"))["samples"]
-# M2 只实现 9.3 第 1–5 步；人名、地址在 M4
-M2_SKIPPED = {"PERSON", "ADDR"}
 
 
 def sample_nodes(name: str) -> list[NodeIn]:
@@ -44,9 +42,12 @@ def test_samples_must_replace_and_keep(name):
     sample = MANIFEST[name]
     r, text = run(sample_nodes(name))
     for item in sample.get("must_replace", []):
-        if item["category"] not in M2_SKIPPED:
-            assert item["text"] not in text, item
+        assert item["text"] not in text, item
+    # 地址整段换成 [地址：国家]：地址中的英文国家名以代号中的中文国家名保留（M4-04）
+    addresses = [i["text"] for i in sample.get("must_replace", []) if i["category"] == "ADDR"]
     for keep in sample.get("must_keep", []) + sample.get("must_keep_words", []):
+        if any(keep in a for a in addresses):
+            continue
         assert keep in text, keep
     # 对照表包含每个被替换的真实值
     values = set(r.mapping.values())
@@ -63,10 +64,15 @@ def test_contract_codes_are_consistent():
     assert red["F1-P9"] == '买方：客户_A（hereinafter referred to as "客户_A"）'
     assert red["F1-P2"] == "合同编号：编号_1"
     assert red["F1-P7"] == "电话：[电话]，[电话]"
-    assert red["F1-P19"] == "开户行账号：[账号]" and red["F1-P21"] == "IBAN: [账号]" and red["F1-P20"] == "SWIFT: [SWIFT]"
+    # 账号、SWIFT 带序号（Q-59）：IBAN 与本地账号写法不同，视为不同账号
+    assert red["F1-P19"] == "开户行账号：[账号_1]" and red["F1-P21"] == "IBAN: [账号_2]" and red["F1-P20"] == "SWIFT: [SWIFT_1]"
+    assert red["F1-P10"] == "Address: [地址：阿联酋]" and red["F1-P11"] == "Contact: 人员_2, [电话]"
+    assert red["F1-P6"] == "联系人：人员_1" and red["F1-P26"] == "法定代表人（签字）：人员_3"
     # 单价与金额分开编号，币种保留；同一数值同一代号（大写与小写）
     assert red["F1-P15"] == "2.1 单价为 USD [单价_1]/MT CIF Jebel Ali Port，合同总价 Total Amount: USD [金额_1]。"
     assert red["F1-P17"] == "2.3 人民币参考价：人民币[金额_3]（¥[金额_3]）。"
+    # 金额比例（9.6）：合同总价本身不加，同币种的其他金额加，不同币种的不加
+    assert red["F1-P16"].startswith("2.2 预付款为合同总价的 30%，即 USD [金额_2]（=合同总价的 30.0%），")
     assert text.splitlines()[0] == "【主体说明】我方=卖方；客户_A：买方，阿联酋，贸易商"
     assert {(p.code, p.role_label, p.country, p.is_our_party) for p in r.parties} == {
         ("我方", "卖方", "中国", True), ("客户_A", "买方", "阿联酋", False)}
@@ -75,6 +81,10 @@ def test_contract_codes_are_consistent():
     assert r.mapping["客户_A"] == "Fictional Metals Trading FZE"
     assert r.mapping["客户_A#1"] == "FMT" and r.mapping["我方#1"] == "星河公司"
     assert r.mapping["[金额_3]"] == "捌拾万元整" and r.mapping["[金额_3]#1"] == "800,000.00"
+    assert r.mapping["[账号_1]"] == "6222 0000 1111 2222 333" and r.mapping["[SWIFT_1]"] == "FICTAEAD"
+    assert r.mapping["人员_3"] == "吴虚构"
+    assert "[地址：阿联酋]" not in r.mapping  # 地址不能唯一还原，真实值只用于出口复检
+    assert r.mapping["[地址：阿联酋]#1"] == "Plot 12, Jebel Ali Free Zone, Dubai, United Arab Emirates"
     assert {r.mapping[k] for k in r.mapping if k.startswith("[电话]#")} == {"13800138000", "021-12345678", "+971 4 123 4567"}
     assert "[电话]" not in r.mapping  # 共用代号不能唯一还原
     # 替换记录的位置和来源
@@ -110,7 +120,8 @@ def test_quotation_table_columns():
     r, _ = run(sample_nodes("quotation_table"))
     red = r.redacted
     assert red["F1-T1-R2-C4"] == "USD [单价_1]" and red["F1-T1-R3-C4"] == "USD [单价_2]"
-    assert red["F1-T1-R2-C5"] == "USD [金额_1]" and red["F1-T1-R4-C5"] == "USD [金额_3]"
+    # 没有合同总价标签时，同币种的最大金额（合计）为合同总价，其余金额附比例
+    assert red["F1-T1-R2-C5"] == "USD [金额_1]（=合同总价的 65.6%）" and red["F1-T1-R4-C5"] == "USD [金额_3]"
     assert red["F1-T1-R2-C3"] == "320"  # 数量默认保留
     # 买方信息行之后是报价条款，不能把其中的港口当成买方国家
     buyer = next(p for p in r.parties if p.role_label == "买方")
@@ -380,3 +391,148 @@ def test_no_real_value_left_in_outbound_for_regex_categories():
     for value in ("13800138000", "x@y.com", "1234 5678 9012", "www.example.com", "HT-1"):
         assert value not in out
     assert re.search(r"\d{5,}", out.splitlines()[1]) is None
+
+
+# ---------------------------------------------------------------- M4-04：engine 整合
+
+
+def item_at(r, loc, text, needle):
+    start = text.index(needle)
+    return next(i for i in r.items if i.loc == loc and i.char_start <= start and i.char_end >= start + len(needle))
+
+
+def test_user_terms_three_categories_full_text():
+    nodes = nodes_of("本项目由 Bluefin Example 负责，项目代号 ALPHA-7。", "联络人 王示例 与 BLUEFIN  EXAMPLE 确认 alpha-7。")
+    r, text = run(nodes, stance="other", user_terms=[
+        UserTerm("Bluefin Example", "ORG"), UserTerm("王示例", "PERSON"), UserTerm("ALPHA-7", "CUSTOM")])
+    assert r.redacted["F1-P1"] == "本项目由 公司_A 负责，项目代号 [敏感词_1]。"
+    assert r.redacted["F1-P2"] == "联络人 人员_1 与 公司_A 确认 [敏感词_1]。"  # 英文不区分大小写、忽略多余空格
+    assert {i.detected_by for i in r.items} == {"user"}
+    # 公司名登记为一方（角色“其他”），出现在签约方列表中，可以设为我方（Q-54）
+    assert [(p.code, p.role_label) for p in r.parties] == [("公司_A", "其他")]
+    assert r.mapping["公司_A"] == "Bluefin Example" and r.mapping["公司_A#1"] == "BLUEFIN  EXAMPLE"
+    r2, text2 = run(nodes, stance="other", user_terms=[UserTerm("Bluefin Example", "ORG")],
+                    overrides={normalize("Bluefin Example"): PartyOverride(True, None, None)})
+    assert r2.redacted["F1-P1"].startswith("本项目由 我方 负责") and text2.splitlines()[0] == "【主体说明】我方"
+    # 用户选中的数字串在字母后面也能替换（OCR 文字中常见）
+    r3, _ = run(nodes_of("A/C6217000012345678 请核对"), user_terms=[UserTerm("6217000012345678", "CUSTOM")])
+    assert r3.redacted["F1-P1"] == "A/C[敏感词_1] 请核对"
+
+
+def test_no_half_name_left():
+    full = "Aurora Fictive Energy Co., Ltd."
+    nodes = nodes_of(f"收函方：{full}", "抄送：Aurora Fictive 财务部", f"再次确认 {full} 的地址")
+    # 用户选中名称的前半；全称也在文中：前半作为全称的简称，同一代号，不出现“公司_C Fictive Energy”这类结果
+    r, text = run(nodes, stance="other", user_terms=[UserTerm("Aurora Fictive", "ORG")])
+    assert r.redacted["F1-P1"] == "收函方：公司_A"
+    assert r.redacted["F1-P2"] == "抄送：公司_A 财务部"
+    assert r.redacted["F1-P3"] == "再次确认 公司_A 的地址"
+    assert len(r.parties) == 1 and item_at(r, "F1-P2", nodes[1].text, "Aurora Fictive").detected_by == "user"
+    for word in ("Aurora", "Fictive", "Energy"):
+        assert word not in text
+    # 已记住的名称是名称的一部分、全称未带标签出现在正文中：同样整体替换
+    nodes = nodes_of(f"货物由 {full} 发运。", "Aurora Fictive 负责清关。")
+    r, text = run(nodes, stance="other", terms=[Term("Aurora Fictive", "learned", "ORG")])
+    assert r.redacted["F1-P1"] == "货物由 公司_A 发运。" and r.redacted["F1-P2"] == "公司_A 负责清关。"
+    assert r.matched_terms == {normalize("Aurora Fictive")}
+
+
+def test_persons_collected_then_full_text():
+    nodes = nodes_of("联系人：张示例", "Attn: Mr. Kevin Lee", "张示例将于下周到访，Kevin Lee 负责接待；Leeds 和 lee 不是人名。",
+                     "Contact: Fictive Trading LLC")
+    r, text = run(nodes, stance="other")
+    assert r.redacted["F1-P1"] == "联系人：人员_1"
+    assert r.redacted["F1-P2"] == "Attn: Mr. 人员_2"
+    assert r.redacted["F1-P3"] == "人员_1将于下周到访，人员_2 负责接待；Leeds 和 lee 不是人名。"
+    assert r.redacted["F1-P4"] == "Contact: 公司_A"  # 标签后是公司名称：已按第 2 步替换，不再当人名
+    assert {i.detected_by for i in r.items if i.category == "PERSON"} == {"person"}
+    assert r.mapping["人员_2"] == "Kevin Lee"
+
+
+def test_addresses_segments_country_and_repeat():
+    nodes = nodes_of(
+        "卖方：星河虚构进出口有限公司",
+        "地址：上海市浦东新区示例路 88 号星河虚构进出口有限公司大楼，电话：021-12345678",
+        "Address: Dubai",
+        "Registered Address: Unit 5, Example Tower, Hamburg, Germany",
+        "Documents to be sent to Unit 5, Example Tower, Hamburg, Germany by courier.",
+    )
+    r, text = run(nodes)
+    # 与公司名重叠的部分已替换，剩下的各段用同一代号
+    assert r.redacted["F1-P2"] == "地址：[地址：中国]我方[地址：中国]，电话：[电话]"
+    assert r.redacted["F1-P3"] == "Address: Dubai"  # 只有城市名，保留（9.2 保留国家和港口）
+    assert r.redacted["F1-P4"] == "Registered Address: [地址：德国]"
+    assert r.redacted["F1-P5"] == "Documents to be sent to [地址：德国] by courier."  # 同一地址在别处也替换
+    assert {i.detected_by for i in r.items if i.category == "ADDR"} == {"address"}
+    assert "[地址：德国]" not in r.mapping
+    assert {r.mapping[k] for k in r.mapping if k.startswith("[地址：德国]#")} == {"Unit 5, Example Tower, Hamburg, Germany"}
+
+
+def test_accounts_and_swift_numbered():
+    nodes = nodes_of("账号：6222 0000 1111 2222", "Account No.: 6222-0000-1111-2222", "账号：6217 0000 1234 5678",
+                     "IBAN: DE89 3704 0044 0532 0130 00", "SWIFT: ABCDDEFF", "BIC: ABCDDEFFXXX", "SWIFT: ABCDDEFF001")
+    r, _ = run(nodes)
+    red = [r.redacted[n.loc] for n in nodes]
+    assert red == ["账号：[账号_1]", "Account No.: [账号_1]", "账号：[账号_2]", "IBAN: [账号_3]",
+                   "SWIFT: [SWIFT_1]", "BIC: [SWIFT_1]", "SWIFT: [SWIFT_2]"]
+    assert r.mapping["[账号_1]"] == "6222 0000 1111 2222" and r.mapping["[账号_1]#1"] == "6222-0000-1111-2222"
+    assert r.mapping["[SWIFT_1]"] == "ABCDDEFF" and r.mapping["[SWIFT_2]"] == "ABCDDEFF001"
+
+
+def test_quantity_masking_on_and_off():
+    nodes = [NodeIn("F1-P1", "数量 500 MT，另加 500 MT 备用，3 个工作日内发货"),
+             NodeIn("F1-T1-R1-C1", "品名"), NodeIn("F1-T1-R1-C2", "数量"), NodeIn("F1-T1-R1-C3", "单价"),
+             NodeIn("F1-T1-R2-C1", "针状焦"), NodeIn("F1-T1-R2-C2", "320"), NodeIn("F1-T1-R2-C3", "1250")]
+    off, _ = run(nodes)
+    assert off.redacted["F1-P1"] == nodes[0].text and off.redacted["F1-T1-R2-C2"] == "320"
+    on, _ = run(nodes, mask_quantity=True)
+    assert on.redacted["F1-P1"] == "数量 [数量_1] MT，另加 [数量_1] MT 备用，3 个工作日内发货"
+    assert on.redacted["F1-T1-R2-C2"] == "[数量_2]" and on.redacted["F1-T1-R2-C3"] == "[单价_1]"
+    assert {i.detected_by for i in on.items if i.category == "QTY"} == {"amount"}
+
+
+def test_suspects_after_all_replacements():
+    nodes = nodes_of("卖方：星河虚构进出口有限公司", "货物由 Northwind Fictive Holdings 承运，收款 6222 0000 1111 2222 333。",
+                     "HS 编码 27131200，2026-03-15 装运，Force Majeure 条款适用，星河虚构进出口有限公司确认。")
+    r, _ = run(nodes)
+    by_loc = {n.loc: n.text for n in nodes}
+    found = {(s.loc, by_loc[s.loc][s.char_start:s.char_end], s.reason) for s in r.suspects}
+    assert found == {("F1-P2", "Northwind Fictive Holdings", "capitalized"),
+                     ("F1-P2", "6222 0000 1111 2222 333", "long_digits")}
+
+
+def test_ratio_in_redacted_only():
+    nodes = [NodeIn("F2-P1", "附件总价 USD 1,000.00"), NodeIn("F1-P1", "合同总价：USD 200,000.00，预付 USD 60,000.00"),
+             NodeIn("F1-P2", "尾款 140,000.00 美元，另付 EUR 5,000.00")]
+    r, _ = run(nodes, main_prefix="F1-")
+    assert r.redacted["F1-P1"] == "合同总价：USD [金额_2]，预付 USD [金额_3]（=合同总价的 30.0%）"
+    assert r.redacted["F1-P2"] == "尾款 [金额_4] 美元（=合同总价的 70.0%），另付 EUR [金额_5]"
+    assert r.redacted["F2-P1"] == "附件总价 USD [金额_1]（=合同总价的 0.5%）"  # 先在主文件中找合同总价
+    assert all("合同总价的" not in v for v in r.mapping.values())
+    assert all(i.placeholder.startswith("[金额_") for i in r.items)
+    # 多个币种、没有合同总价标签：不加比例（Q-72）
+    r, _ = run(nodes_of("USD 100.00 与 EUR 50.00"))
+    assert "合同总价" not in r.redacted["F1-P1"]
+
+
+def test_matched_terms_only_hits():
+    terms = [Term("Secret Project Phoenix", "custom", "CUSTOM"), Term("未出现的名称有限公司", "learned", "ORG")]
+    r, _ = run(nodes_of("本项目即 secret project phoenix。"), terms=terms)
+    assert r.matched_terms == {normalize("Secret Project Phoenix")}
+    assert run(nodes_of("无关内容"), terms=terms)[0].matched_terms == set()
+
+
+def test_outbound_text_with_quote_table():
+    nodes = [NodeIn("F1-P1", "报价单"),
+             NodeIn("F1-T1-R1-C1", "品名"), NodeIn("F1-T1-R1-C2", "单价 Unit Price"), NodeIn("F1-T1-R1-C3", "金额")]
+    rows = [("针状焦", "USD 1,250.00", "USD 400,000.00"), ("石油焦", "USD 900.00", "USD 90,000.00"),
+            ("针状焦", "USD 1,100.00", "USD 110,000.00")]
+    for row, (name, price, amount) in enumerate(rows, start=2):
+        nodes += [NodeIn(f"F1-T1-R{row}-C1", name), NodeIn(f"F1-T1-R{row}-C2", price), NodeIn(f"F1-T1-R{row}-C3", amount)]
+    nodes += [NodeIn("F1-T1-R5-C1", "合计"), NodeIn("F1-T1-R5-C3", "USD 600,000.00"), NodeIn("F1-P2", "以上价格含税")]
+    r = compute(nodes, "sales")
+    parties = [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in r.parties]
+    text = outbound_text(nodes, parties, r.redacted)
+    assert text.splitlines() == [
+        "【主体说明】无", "[F1-P1] 报价单", "[F1-T1] 【报价明细表：共 3 行，币种 USD，产品：针状焦等 2 种】",
+        "[F1-T1-R5-C1] 合计", "[F1-T1-R5-C3] USD [金额_4]", "[F1-P2] 以上价格含税"]

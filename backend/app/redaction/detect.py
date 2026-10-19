@@ -16,7 +16,7 @@ class Hit:
     start: int
     end: int
     category: str  # 9.2 代码
-    key: str  # 同一对象的标识：key 相同的命中使用同一代号（编号、金额、单价）
+    key: str  # 同一对象的标识：key 相同的命中使用同一代号（编号、账号、SWIFT、金额、单价）
     currency: str | None = None  # 规范币种代码（CNY、USD…），未知为 None；只有 find_amounts 填写
     value: Decimal | None = None  # 换算后的数值（“万元”已乘 10000），无法解析为 None；只有 find_amounts 填写
 
@@ -69,14 +69,17 @@ def find_formatted(text: str) -> list[Hit]:
         while end > m.start() and text[end - 1] in _URL_TRAILING:
             end -= 1
         add(m.start(), end, "URL")
+    # 账号、SWIFT 按对象编号（Q-59）：账号的 key 为去掉空格和短横线后的大写字符（IBAN 与本地写法视为不同账号）；
+    # SWIFT 的 key 为大写代码，11 位且末尾为 XXX 时与前 8 位视为同一代码
     for m in _IBAN.finditer(text):
-        add(m.start(), m.end(), "ACCOUNT")
+        add(m.start(), m.end(), "ACCOUNT", _norm_key(m.group()))
     for m in _ACCOUNT.finditer(text):
         digits = re.sub(r"\D", "", m.group(1))
         if 8 <= len(digits) <= 30:
-            add(m.start(1), m.end(1), "ACCOUNT")
+            add(m.start(1), m.end(1), "ACCOUNT", _norm_key(m.group(1)))
     for m in _SWIFT.finditer(text):
-        add(m.start(1), m.end(1), "SWIFT")
+        code = m.group(1).upper()
+        add(m.start(1), m.end(1), "SWIFT", code[:8] if len(code) == 11 and code.endswith("XXX") else code)
     for m in _CREDIT_CODE.finditer(text):
         add(m.start(), m.end(), "IDNO")
     for m in _ID_CARD.finditer(text):
@@ -237,8 +240,11 @@ _PERSON_LABELS_OPT = (
 _PERSON_LABELS_COLON = (
     "签字", "签名", r"(?i:contact\s+person)", r"(?i:contact)", r"(?i:signature)", r"(?i:name)", r"(?i:representative)",
 )
+# 标签后可有一组短的括号说明再接冒号：“法定代表人（签字）：”“授权代表(签章)：”（M4-04 评审补充，Q-76）
+_LABEL_NOTE = r"[ \t]*[（(][^）)\n]{1,6}[）)]"
 _PERSON_LABEL = re.compile(
-    r"(?<![A-Za-z])(?:(?:" + "|".join(_PERSON_LABELS_OPT) + r")[ \t]*[:：]?|(?:" + "|".join(_PERSON_LABELS_COLON) + r")[ \t]*[:：])[ \t]*"
+    r"(?<![A-Za-z])(?:(?:" + "|".join(_PERSON_LABELS_OPT) + r")(?:" + _LABEL_NOTE + r"[ \t]*[:：]|[ \t]*[:：]?)"
+    r"|(?:" + "|".join(_PERSON_LABELS_COLON) + r")(?:" + _LABEL_NOTE + r")?[ \t]*[:：])[ \t]*"
 )
 _CN_TITLES = ("总经理", "董事长", "先生", "女士", "小姐", "经理", "主任", "总裁", "代表")  # 长的在前
 _CN_PERSON_CUT = ("电话", "手机", "传真", "邮箱", "邮件", "职务", "职位", "部门", "地址")

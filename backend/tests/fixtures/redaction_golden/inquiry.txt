@@ -9,6 +9,9 @@ Quantity: 1,000 MT per month, 12 months
 Delivery: Shipment in August 2026, Port of discharge: Mumbai, India
 请在 2026年7月20日前回复，报价有效期不少于 30 天。
 Contact Tel: +86 21 6000 1234
+联系人：刘示例
+Address: 88 Example Road, Pune, India
 Email: purchase@wanxiang-example.com
 Order No.: RFQ-2026-0715
+Samples will be tested by Harbor Fictive Labs before the order.
 本询价函不构成订单，亦不构成对任何一方的约束。

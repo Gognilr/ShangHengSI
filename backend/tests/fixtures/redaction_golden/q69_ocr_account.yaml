@@ -1,0 +1,15 @@
+description: 扫描件 OCR 文字（Q-69）：“收款账号”被识别成别的字，账号前没有可识别的标签，19 位账号和无标签的参考号必须列为疑似遗漏；日期、HS 编码、数量不列
+stance: sales
+loc_prefixed: true
+must_replace:
+  - {text: 澄江虚构贸易有限公司, category: ORG}
+  - {text: 示例银行股份有限公司, category: ORG}
+must_suspect:
+  - 6217 0000 9876 5432 101
+  - 8800-1234-5678
+must_keep:
+  - 收款通知
+  - 请将货款汇至以下账户
+  - "2026-09-30"
+  - HS 编码 27131200
+  - 1200 MT

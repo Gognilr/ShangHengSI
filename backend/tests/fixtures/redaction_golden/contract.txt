@@ -2,12 +2,15 @@
 合同编号：SC-2026-0417
 签订日期：2026年4月17日
 卖方：北辰虚构新材料有限公司（以下简称“北辰公司”）
+注册地址：北京市朝阳区示例大街 18 号院 3 号楼
 统一社会信用代码：91110000MA01XYQABC
 电话：13900001234，010-87654321
 邮箱：sales@beichen-example.com
+联系人：陈示例经理
 买方：Orion Fictive Trading L.L.C.（hereinafter referred to as "Orion"）
 Address: Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates
 Tel: +971 4 555 0123
+Attn: Ms. Layla Example
 第1条 货物
 货物为针状石油焦，HS 编码 27131100，硫含量≤0.6%，灰分≤0.2%，粒度 6-25mm，数量 500 MT，允许溢短装 ±5%。
 第2条 价格与付款
@@ -17,6 +20,7 @@ Tel: +971 4 555 0123
 2.4 Beneficiary Bank: Fictive Commercial Bank Ltd.
 2.5 收款账号：6222 0000 1111 2222 333，SWIFT: FCBKCNBJ300
 第3条 交货
+货物检验由 Meridian Fictive Inspection 负责，检验费用由卖方承担。
 装运港为青岛港，目的港为 Jebel Ali Port，最迟装运日期为 2026年6月30日，贸易术语为 FOB。
 第4条 违约责任
 逾期交货的，每逾期一周按延迟交货部分货款的 0.5% 向买方支付违约金，最高不超过 5%。

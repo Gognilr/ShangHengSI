@@ -1,4 +1,4 @@
-description: 英文为主的报价单：PI 号、电话、邮箱、网址、IBAN、账号、SWIFT、单价与总额
+description: 英文为主的报价单：PI 号、电话、邮箱、网址、IBAN、账号、SWIFT、单价与总额、联系人、地址
 stance: sales
 must_replace:
   - {text: "Haiyue Fictive Carbon Co., Ltd.", category: ORG}
@@ -13,6 +13,8 @@ must_replace:
   - {text: HYFCDEFF, category: SWIFT}
   - {text: "880.00", category: PRICE}
   - {text: "176,000.00", category: AMOUNT}
+  - {text: Hans Example, category: PERSON}
+  - {text: "Example Strasse 12, 20095 Hamburg, Germany", category: ADDR}
 must_keep:
   - Calcined Petroleum Coke
   - HS 27131200
