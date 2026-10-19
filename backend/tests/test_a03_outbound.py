@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from app.db.models import RedactionTerm, Task
 from app.redaction.recheck import recheck
-from tests.acceptance_support import fixture_samples, golden_samples, outbound_records, run_sample
+from tests.acceptance_support import compact, fixture_samples, golden_samples, outbound_records, run_sample
 from tests.review_support import env, llm  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
@@ -61,4 +61,7 @@ def test_a03_no_real_values_in_outbound_records(db_sessionmaker, alice, llm):
                 problems.append(f"{sample.name} {source}：{reason.category} @ {reason.position} "
                                 f"{_culprit(text, reason, r.real_values, r.terms)}")
             problems += [f"{sample.name} {source}：含 must_replace {n!r}" for n in sample.must_replace if n in text]
+            # 长数字（账号等）换了分组写法也算出现
+            problems += [f"{sample.name} {source}：含 must_replace {n!r}（去掉分隔符后）" for n in sample.must_replace
+                         if sum(ch.isdigit() for ch in n) >= 8 and compact(n) in compact(text)]
     assert problems == []

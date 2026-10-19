@@ -6,6 +6,7 @@
 """
 import io
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,9 @@ PARSE_FAIL_EXPECTED = {"encrypted.pdf"}
 # fixtures 标注里与 SPEC 9.2 不一致的 must_replace：REFNO 只含合同号、订单号、发票号，
 # 图片报价函中“编号：QT-2026-0508”是报价单号（PDF 样本把同一编号标为 must_keep），记入 open_questions Q-77
 NOT_IN_SPEC = {"QT-2026-0508"}
+# fixtures 标注（M3-01，早于 Q-69）中漏标的敏感项：扫描合同第 2 页“收款账号”被 OCR 识别错，账号只能由疑似遗漏拦住，
+# 用户应选“替换”；A-03 检查它不出现在外发记录中（含去掉分组空格后的写法）
+EXTRA_SENSITIVE = {"scanned_contract.pdf": ["6222 0000 1111 2222 333"]}
 
 
 @dataclass
@@ -82,8 +86,9 @@ def golden_samples() -> list[Sample]:
                 name, data = f"{txt.stem}.docx", _docx_bytes([t for _, t in pairs])
         else:
             name, data = f"{txt.stem}.docx", _docx_bytes(lines)
-        out.append(Sample(name, data, ann["stance"], [i["text"] for i in ann["must_replace"]],
-                          list(ann.get("must_suspect", []))))
+        # must_suspect 也是敏感项：用户选“替换”后同样不得外发
+        suspects = list(ann.get("must_suspect", []))
+        out.append(Sample(name, data, ann["stance"], [i["text"] for i in ann["must_replace"]] + suspects, suspects))
     return out
 
 
@@ -98,6 +103,7 @@ def fixture_samples() -> list[Sample]:
                 continue
             ann = by_file.get(f.name, {})
             texts = [i["text"] for i in ann.get("must_replace") or [] if i["text"] not in NOT_IN_SPEC]
+            texts += EXTRA_SENSITIVE.get(f.name, [])
             # 标注为必须替换、但自动识别不了而被列为疑似遗漏的（如扫描件中标签识别错的账号），用户会选“替换”
             out.append(Sample(f.name, f.read_bytes(), "sales", texts, texts))
     return out
@@ -125,9 +131,14 @@ def upload_and_parse(c, h, db_sessionmaker, sample: Sample, *, source: str = "ou
     return task_id
 
 
+def compact(text: str) -> str:
+    """去掉空白和短横线：OCR 文字中的账号常没有分组空格（“6222000011112222333”）。"""
+    return re.sub(r"[\s\-]", "", text)
+
+
 def _matches(text: str, needles: list[str]) -> bool:
-    flat = " ".join(text.split())
-    return any(n in flat or flat in n for n in needles)
+    flat = compact(text)
+    return any(compact(n) in flat or flat in compact(n) for n in needles)
 
 
 def settle_suspects(c, h, task_id, must_suspect: list[str]) -> None:
