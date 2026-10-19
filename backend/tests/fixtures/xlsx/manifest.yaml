@@ -1,0 +1,506 @@
+generator: make_xlsx_fixtures.py
+note: 全部内容虚构。nodes 的 loc 假定 file_seq=1；text 为 Q-62 规定的单元格文字；no_node_locs 为不应出节点的单元格。节点按行优先排序。
+samples:
+  quotation:
+    file: quotation.xlsx
+    description: 报价单。表头行在第 7 行，上方是标题行、签约方和联系人信息；单价与金额列为货币格式（[$USD]）、预付款比例为百分比格式、折合人民币为 [$¥-804] 格式；A1:G1、A10:E10、A11:E11 为合并单元格（值在左上角）；F10 为合计行（普通数值，不是公式）。第二个工作表“备注”放数字、日期、布尔值、空白字符串等边界情形。
+    page_count: null
+    sheets:
+    - index: 1
+      name: 报价
+      state: visible
+    - index: 2
+      name: 备注
+      state: visible
+    warnings: []
+    nodes:
+    - loc: F1-S1-A1
+      sheet: 报价
+      text: 报价单 Quotation
+      part: body
+    - loc: F1-S1-A2
+      sheet: 报价
+      text: 卖方：星河虚构进出口有限公司
+      part: body
+    - loc: F1-S1-A3
+      sheet: 报价
+      text: 买方：Fictional Metals Trading FZE
+      part: body
+    - loc: F1-S1-A4
+      sheet: 报价
+      text: 联系人：周示例，电话：13800138000，邮箱：zhou.example@example.com
+      part: body
+    - loc: F1-S1-A5
+      sheet: 报价
+      text: 报价日期
+      part: body
+    - loc: F1-S1-B5
+      sheet: 报价
+      text: '2026-03-10'
+      part: body
+    - loc: F1-S1-A6
+      sheet: 报价
+      text: 有效期至
+      part: body
+    - loc: F1-S1-B6
+      sheet: 报价
+      text: '2026-04-30'
+      part: body
+    - loc: F1-S1-A7
+      sheet: 报价
+      text: 序号
+      part: body
+    - loc: F1-S1-B7
+      sheet: 报价
+      text: 品名
+      part: body
+    - loc: F1-S1-C7
+      sheet: 报价
+      text: 规格
+      part: body
+    - loc: F1-S1-D7
+      sheet: 报价
+      text: 数量(MT)
+      part: body
+    - loc: F1-S1-E7
+      sheet: 报价
+      text: 单价(USD/MT)
+      part: body
+    - loc: F1-S1-F7
+      sheet: 报价
+      text: 金额(USD)
+      part: body
+    - loc: F1-S1-G7
+      sheet: 报价
+      text: 预付款比例
+      part: body
+    - loc: F1-S1-A8
+      sheet: 报价
+      text: '1'
+      part: body
+    - loc: F1-S1-B8
+      sheet: 报价
+      text: 煅后石油焦
+      part: body
+    - loc: F1-S1-C8
+      sheet: 报价
+      text: 低硫 0-3mm
+      part: body
+    - loc: F1-S1-D8
+      sheet: 报价
+      text: '320'
+      part: body
+    - loc: F1-S1-E8
+      sheet: 报价
+      text: USD 1250
+      part: body
+    - loc: F1-S1-F8
+      sheet: 报价
+      text: USD 400000
+      part: body
+    - loc: F1-S1-G8
+      sheet: 报价
+      text: 30%
+      part: body
+    - loc: F1-S1-A9
+      sheet: 报价
+      text: '2'
+      part: body
+    - loc: F1-S1-B9
+      sheet: 报价
+      text: 针状焦
+      part: body
+    - loc: F1-S1-C9
+      sheet: 报价
+      text: 超低硫 1-5mm
+      part: body
+    - loc: F1-S1-D9
+      sheet: 报价
+      text: '100'
+      part: body
+    - loc: F1-S1-E9
+      sheet: 报价
+      text: USD 2100
+      part: body
+    - loc: F1-S1-F9
+      sheet: 报价
+      text: USD 210000
+      part: body
+    - loc: F1-S1-G9
+      sheet: 报价
+      text: 30%
+      part: body
+    - loc: F1-S1-A10
+      sheet: 报价
+      text: 合计 Total
+      part: body
+    - loc: F1-S1-F10
+      sheet: 报价
+      text: USD 610000
+      part: body
+    - loc: F1-S1-A11
+      sheet: 报价
+      text: 折合人民币（汇率 7.1）
+      part: body
+    - loc: F1-S1-F11
+      sheet: 报价
+      text: ¥ 4331000
+      part: body
+    - loc: F1-S2-A1
+      sheet: 备注
+      text: 备注
+      part: body
+    - loc: F1-S2-A2
+      sheet: 备注
+      text: 佣金率
+      part: body
+    - loc: F1-S2-B2
+      sheet: 备注
+      text: 1.25%
+      part: body
+    - loc: F1-S2-A3
+      sheet: 备注
+      text: 最小价格变动
+      part: body
+    - loc: F1-S2-B3
+      sheet: 备注
+      text: '0.0000001'
+      part: body
+    - loc: F1-S2-A4
+      sheet: 备注
+      text: 授信额度（USD）
+      part: body
+    - loc: F1-S2-B4
+      sheet: 备注
+      text: '15000000000'
+      part: body
+    - loc: F1-S2-A5
+      sheet: 备注
+      text: 含税
+      part: body
+    - loc: F1-S2-B5
+      sheet: 备注
+      text: 'TRUE'
+      part: body
+    - loc: F1-S2-A6
+      sheet: 备注
+      text: 更新时间
+      part: body
+    - loc: F1-S2-B6
+      sheet: 备注
+      text: 2026-03-10 14:30
+      part: body
+    - loc: F1-S2-A7
+      sheet: 备注
+      text: 汇率
+      part: body
+    - loc: F1-S2-B7
+      sheet: 备注
+      text: '7.1'
+      part: body
+    - loc: F1-S2-A8
+      sheet: 备注
+      text: 运费（USD）
+      part: body
+    - loc: F1-S2-B8
+      sheet: 备注
+      text: '12.5'
+      part: body
+    - loc: F1-S2-A9
+      sheet: 备注
+      text: 说明
+      part: body
+    - loc: F1-S2-B9
+      sheet: 备注
+      text: 付款以实际到港为准
+      part: body
+    no_node_locs:
+    - F1-S2-B10
+    must_replace:
+    - text: 星河虚构进出口有限公司
+      category: ORG
+    - text: Fictional Metals Trading FZE
+      category: ORG
+    - text: 周示例
+      category: PERSON
+    - text: '13800138000'
+      category: PHONE
+    - text: zhou.example@example.com
+      category: EMAIL
+    - text: USD 1250
+      category: PRICE
+    - text: USD 2100
+      category: PRICE
+    - text: USD 400000
+      category: AMOUNT
+    - text: USD 210000
+      category: AMOUNT
+    - text: USD 610000
+      category: AMOUNT
+    - text: ¥ 4331000
+      category: AMOUNT
+    must_keep:
+    - 煅后石油焦
+    - 针状焦
+    - 低硫 0-3mm
+    - 超低硫 1-5mm
+    - '320'
+    - '100'
+    - 30%
+    - '2026-03-10'
+    - '2026-04-30'
+    - '7.1'
+    - 1.25%
+  formula_uncached:
+    file: formula_uncached.xlsx
+    description: B4、B5 是没有缓存值的公式：不出节点，整个文件加一条警告（只加一次）；其余单元格正常。
+    page_count: null
+    sheets:
+    - index: 1
+      name: 汇总
+      state: visible
+    warnings:
+    - 含未计算的公式，相关金额无法核验
+    nodes:
+    - loc: F1-S1-A1
+      sheet: 汇总
+      text: 项目
+      part: body
+    - loc: F1-S1-B1
+      sheet: 汇总
+      text: 金额(USD)
+      part: body
+    - loc: F1-S1-A2
+      sheet: 汇总
+      text: 货款
+      part: body
+    - loc: F1-S1-B2
+      sheet: 汇总
+      text: USD 400000
+      part: body
+    - loc: F1-S1-A3
+      sheet: 汇总
+      text: 运费
+      part: body
+    - loc: F1-S1-B3
+      sheet: 汇总
+      text: USD 12000
+      part: body
+    - loc: F1-S1-A4
+      sheet: 汇总
+      text: 合计
+      part: body
+    - loc: F1-S1-A5
+      sheet: 汇总
+      text: 折合人民币
+      part: body
+    no_node_locs:
+    - F1-S1-B4
+    - F1-S1-B5
+    must_replace:
+    - text: USD 400000
+      category: AMOUNT
+    - text: USD 12000
+      category: AMOUNT
+    must_keep:
+    - 货款
+    - 运费
+  formula_cached:
+    file: formula_cached.xlsx
+    description: 与 formula_uncached.xlsx 相同的表，但 B4、B5 的公式带缓存值（412000、2925200）：取缓存值出节点，不报警告。
+    page_count: null
+    sheets:
+    - index: 1
+      name: 汇总
+      state: visible
+    warnings: []
+    nodes:
+    - loc: F1-S1-A1
+      sheet: 汇总
+      text: 项目
+      part: body
+    - loc: F1-S1-B1
+      sheet: 汇总
+      text: 金额(USD)
+      part: body
+    - loc: F1-S1-A2
+      sheet: 汇总
+      text: 货款
+      part: body
+    - loc: F1-S1-B2
+      sheet: 汇总
+      text: USD 400000
+      part: body
+    - loc: F1-S1-A3
+      sheet: 汇总
+      text: 运费
+      part: body
+    - loc: F1-S1-B3
+      sheet: 汇总
+      text: USD 12000
+      part: body
+    - loc: F1-S1-A4
+      sheet: 汇总
+      text: 合计
+      part: body
+    - loc: F1-S1-B4
+      sheet: 汇总
+      text: USD 412000
+      part: body
+    - loc: F1-S1-A5
+      sheet: 汇总
+      text: 折合人民币
+      part: body
+    - loc: F1-S1-B5
+      sheet: 汇总
+      text: ¥ 2925200
+      part: body
+    no_node_locs: []
+    must_replace:
+    - text: USD 400000
+      category: AMOUNT
+    - text: USD 12000
+      category: AMOUNT
+    - text: USD 412000
+      category: AMOUNT
+    - text: ¥ 2925200
+      category: AMOUNT
+    must_keep:
+    - 货款
+    - 运费
+  hidden_rows_cols:
+    file: hidden_rows_cols.xlsx
+    description: 第 4 行和 C 列被隐藏：节点照常出（part=body），整个文件加一条警告。
+    page_count: null
+    sheets:
+    - index: 1
+      name: 清单
+      state: visible
+    warnings:
+    - 含隐藏的行或列，已按正常内容审核
+    nodes:
+    - loc: F1-S1-A1
+      sheet: 清单
+      text: 项目
+      part: body
+    - loc: F1-S1-B1
+      sheet: 清单
+      text: 数量
+      part: body
+    - loc: F1-S1-C1
+      sheet: 清单
+      text: 内部备注
+      part: body
+    - loc: F1-S1-A2
+      sheet: 清单
+      text: A 料
+      part: body
+    - loc: F1-S1-B2
+      sheet: 清单
+      text: '10'
+      part: body
+    - loc: F1-S1-C2
+      sheet: 清单
+      text: 底价 USD 900
+      part: body
+    - loc: F1-S1-A3
+      sheet: 清单
+      text: B 料
+      part: body
+    - loc: F1-S1-B3
+      sheet: 清单
+      text: '20'
+      part: body
+    - loc: F1-S1-A4
+      sheet: 清单
+      text: 内部折扣
+      part: body
+    - loc: F1-S1-B4
+      sheet: 清单
+      text: '5'
+      part: body
+    - loc: F1-S1-A5
+      sheet: 清单
+      text: C 料
+      part: body
+    - loc: F1-S1-B5
+      sheet: 清单
+      text: '30'
+      part: body
+    no_node_locs: []
+    must_replace:
+    - text: USD 900
+      category: PRICE
+    must_keep:
+    - A 料
+    - B 料
+    - C 料
+    - 内部折扣
+  hidden_sheet:
+    file: hidden_sheet.xlsx
+    description: 第 2 个工作表（hidden）和第 3 个工作表（veryHidden）的节点 part=hidden_sheet，整个文件加一条警告。
+    page_count: null
+    sheets:
+    - index: 1
+      name: 报价
+      state: visible
+    - index: 2
+      name: 内部成本
+      state: hidden
+    - index: 3
+      name: 配置
+      state: veryHidden
+    warnings:
+    - 隐藏工作表未参与审核
+    nodes:
+    - loc: F1-S1-A1
+      sheet: 报价
+      text: 品名
+      part: body
+    - loc: F1-S1-B1
+      sheet: 报价
+      text: 单价
+      part: body
+    - loc: F1-S1-A2
+      sheet: 报价
+      text: 煅后石油焦
+      part: body
+    - loc: F1-S1-B2
+      sheet: 报价
+      text: USD 1250
+      part: body
+    - loc: F1-S2-A1
+      sheet: 内部成本
+      text: 成本价
+      part: hidden_sheet
+    - loc: F1-S2-B1
+      sheet: 内部成本
+      text: USD 900
+      part: hidden_sheet
+    - loc: F1-S2-A2
+      sheet: 内部成本
+      text: 利润率
+      part: hidden_sheet
+    - loc: F1-S2-B2
+      sheet: 内部成本
+      text: 28%
+      part: hidden_sheet
+    - loc: F1-S3-A1
+      sheet: 配置
+      text: 审批人
+      part: hidden_sheet
+    - loc: F1-S3-B1
+      sheet: 配置
+      text: 吴虚构
+      part: hidden_sheet
+    no_node_locs: []
+    must_replace:
+    - text: 吴虚构
+      category: PERSON
+    - text: USD 1250
+      category: PRICE
+    - text: USD 900
+      category: PRICE
+    must_keep:
+    - 煅后石油焦
+    - 28%

@@ -39,6 +39,8 @@ EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-access-log"]
 
 FROM base AS test
+# fonts-wqy-microhei：只用于生成中文测试样本（tests/fixtures），运行镜像不含。
+RUN apt-get update     && apt-get install -y --no-install-recommends fonts-wqy-microhei     && rm -rf /var/lib/apt/lists/*
 RUN pip install -r requirements-dev.txt && pip check
 COPY app ./app
 COPY alembic.ini ./

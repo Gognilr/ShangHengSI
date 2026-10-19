@@ -14,7 +14,8 @@
 - M2-19 已完成（2026-10-19）：模拟模型全流程与 A-04、T-01、T-02、T-07、T-09、T-10、T-11 通过；用虚构样本调用真实模型（deepseek-flash）试跑非思考、思考两种模式，外发记录无真实值，结论数 = 发送的要求数，非缺失型问题的引用全部校验通过；新增 Q-58、Q-59、Q-60，Q-12 待用户决定
 - M2 已验收并经用户确认（2026-10-19）；Q-12 决定采用思考模式、max_tokens 32000
 - M3 已细化（M3-00）并经用户确认（2026-10-19），设计见 docs/design/M3.md；Q-38～Q-57、Q-61～Q-66 已确认；SPEC 的 max\_tokens 默认值改为 32000
-- 下一个任务：**M3-01**（虚构样本，Sonnet 档，medium；可由 Sonnet 5.5 或 GPT-6.1 Sol 执行）
+- M3-01 已完成（2026-10-19）：PDF、XLSX、图片虚构样本与生成脚本、manifest 已提交，Docker 全部测试 668 passed
+- 下一个任务：**M3-02**（XLSX 解析，Sonnet 档，high；可由 Sonnet 5.5 或 GPT-6.1 Sol 执行）
 - GPT-6.1 Sol 分工（2026-10-16 用户决定）：试用任务 M2-13 评审通过，以后可以接手 Sonnet 档的任务，含前端任务；它做的第一个前端任务由 Opus 重点评审（见第一节）。前端界面规范见 docs/design/frontend.md
 - 上次 Opus 评审到的提交：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
 
@@ -116,7 +117,7 @@
 | 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
 |-|-|-|-|-|-|-|-|-|
 | M3-00 | 里程碑细化：模块划分、接口约定、样本约定、任务拆分 | Opus | medium | M2-19 | 22；— | docs/design/M3.md、docs/design/frontend.md（结果页双栏提前到 M3）、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 已完成 |
-| M3-01 | 虚构样本生成脚本与样本：文字版 PDF、扫描版 PDF（含低质量页）、混合 PDF、旋转页 PDF、加密 PDF、XLSX 报价单（标题行在表头上方、百分比与货币格式、合并单元格、合计行）、含未缓存公式 / 隐藏行 / 隐藏工作表的 XLSX、清晰 PNG、带 EXIF 旋转的低质量 JPG | Sonnet | medium | M3-00 | 8.4、8.5、23；设计九 | tests/fixtures/pdf/\*、tests/fixtures/xlsx/\*、tests/fixtures/images/\*（各含生成脚本和 manifest.yaml）、requirements-dev.txt（只加 reportlab）、Dockerfile（只在 test 阶段安装 fonts-wqy-microhei） | 脚本可重复生成；内容全部虚构；manifest 写明每页类型、关键节点文字、必须出现的警告和必须替换的敏感项；运行镜像不含 reportlab 和字体 | 待执行 |
+| M3-01 | 虚构样本生成脚本与样本：文字版 PDF、扫描版 PDF（含低质量页）、混合 PDF、旋转页 PDF、加密 PDF、XLSX 报价单（标题行在表头上方、百分比与货币格式、合并单元格、合计行）、含未缓存公式 / 隐藏行 / 隐藏工作表的 XLSX、清晰 PNG、带 EXIF 旋转的低质量 JPG | Sonnet | medium | M3-00 | 8.4、8.5、23；设计九 | tests/fixtures/pdf/\*、tests/fixtures/xlsx/\*、tests/fixtures/images/\*（各含生成脚本和 manifest.yaml）、requirements-dev.txt（只加 reportlab）、Dockerfile（只在 test 阶段安装 fonts-wqy-microhei） | 脚本可重复生成；内容全部虚构；manifest 写明每页类型、关键节点文字、必须出现的警告和必须替换的敏感项；运行镜像不含 reportlab 和字体 | 已完成 |
 | M3-02 | XLSX 解析：两次读取、单元格文字格式化（数字、百分比、货币、日期）、合并单元格、隐藏工作表、未缓存公式与隐藏行列的警告、单元格数上限 | Sonnet | high | M3-01 | 8.1、8.2、8.4、8.7；设计二、三 | app/parsing/model.py（只加第二节的常量和 ocr\_pages 字段）、app/parsing/xlsx.py、tests/test\_parse\_xlsx.py | manifest 的预期事实全部满足；数字不出现科学计数法和浮点误差；损坏、加密、超限文件抛出 ParseError 且消息不含原文 | 待执行 |
 | M3-03 | PDF 文字页解析：inspect\_pdf、文字页与扫描页判定、文本行合并为块、表格单元格、表格区域内的文字不重复（Q-16）、bbox 与旋转页换算、页数上限 | Sonnet | high | M3-02 | 8.1、8.2、8.5、8.7、Q-16；设计二、四 | app/parsing/pdf.py（文字页部分；扫描页先抛出 ParseError 占位）、tests/test\_parse\_pdf.py | 文字版和旋转页样本的预期事实全部满足；表格内文字只出现在单元格节点中；超过 200 页、加密、损坏时抛出 ParseError | 待执行 |
 | M3-04 | OCR 与图片：ocr.py（RapidOCR 引擎复用、禁用 onnxruntime 遥测、行合并）、PDF 扫描页（pypdfium2 200 DPI 渲染、坐标换算）、parse\_image（EXIF 方向、缩放、像素上限）、低置信与未识别到文字的警告 | Sonnet | high | M3-03 | 8.5、8.7、21、Q-64；设计四、五 | app/parsing/ocr.py、app/parsing/image.py、app/parsing/pdf.py（扫描页部分）、tests/test\_ocr.py、tests/test\_parse\_image.py、tests/test\_parse\_pdf.py | 扫描、混合、图片样本的预期事实满足（关键词出现、低置信页有警告）；坐标换算有测试；完成报告给出在 `--network none` 容器中运行 OCR 测试的命令和结果；T-20 仍通过 | 待执行 |
