@@ -374,6 +374,166 @@ samples:
     - 2026年4月30日
     - 30%
     - 70%
+  coverage_quote_table:
+    file: coverage_quote_table.docx
+    description: M5-03 覆盖说明样本：三条虚构报价明细会在发给 AI 前汇总。
+    has_revisions: false
+    nodes:
+    - loc: F1-P1
+      part: body
+      kind: heading
+      text: 报价汇总覆盖样本
+      clause_no: null
+      has_revision: false
+    - loc: F1-P2
+      part: body
+      text: 以下产品、金额和公司信息均为虚构，仅用于测试。
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R1-C1
+      part: body
+      kind: table_cell
+      text: 品名 Product
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R1-C2
+      part: body
+      kind: table_cell
+      text: 规格
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R1-C3
+      part: body
+      kind: table_cell
+      text: 数量(MT)
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R1-C4
+      part: body
+      kind: table_cell
+      text: 单价 Unit Price
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R1-C5
+      part: body
+      kind: table_cell
+      text: 金额 Amount
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R2-C1
+      part: body
+      kind: table_cell
+      text: 虚构焦炭甲
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R2-C2
+      part: body
+      kind: table_cell
+      text: Grade A
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R2-C3
+      part: body
+      kind: table_cell
+      text: '10'
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R2-C4
+      part: body
+      kind: table_cell
+      text: USD 100.00
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R2-C5
+      part: body
+      kind: table_cell
+      text: USD 1,000.00
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R3-C1
+      part: body
+      kind: table_cell
+      text: 虚构焦炭乙
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R3-C2
+      part: body
+      kind: table_cell
+      text: Grade B
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R3-C3
+      part: body
+      kind: table_cell
+      text: '20'
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R3-C4
+      part: body
+      kind: table_cell
+      text: USD 200.00
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R3-C5
+      part: body
+      kind: table_cell
+      text: USD 4,000.00
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R4-C1
+      part: body
+      kind: table_cell
+      text: 虚构焦炭丙
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R4-C2
+      part: body
+      kind: table_cell
+      text: Grade C
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R4-C3
+      part: body
+      kind: table_cell
+      text: '30'
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R4-C4
+      part: body
+      kind: table_cell
+      text: USD 300.00
+      clause_no: null
+      has_revision: false
+    - loc: F1-T1-R4-C5
+      part: body
+      kind: table_cell
+      text: USD 9,000.00
+      clause_no: null
+      has_revision: false
+    table_count: 1
+    must_replace:
+    - text: USD 100.00
+      category: PRICE
+    - text: USD 200.00
+      category: PRICE
+    - text: USD 300.00
+      category: PRICE
+    - text: USD 1,000.00
+      category: AMOUNT
+    - text: USD 4,000.00
+      category: AMOUNT
+    - text: USD 9,000.00
+      category: AMOUNT
+    must_keep:
+    - 虚构焦炭甲
+    - 虚构焦炭乙
+    - 虚构焦炭丙
+    - Grade A
+    - Grade B
+    - Grade C
+    - '10'
+    - '20'
+    - '30'
   numbering_auto:
     file: numbering_auto.docx
     description: 自动编号：numbering.xml 中的“第%1条”“%1.%2”“%1.%2.%3”、chineseCounting（含十、十一）、chineseCountingThousand、ideographTraditional、upperLetter/lowerLetter/lowerRoman/upperRoman、bullet（无

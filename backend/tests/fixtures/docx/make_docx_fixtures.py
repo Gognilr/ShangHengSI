@@ -448,6 +448,31 @@ def sample_quotation_table() -> Doc:
     return d
 
 
+def sample_coverage_quote_table() -> Doc:
+    d = Doc("coverage_quote_table", "M5-03 覆盖说明样本：三条虚构报价明细会在发给 AI 前汇总。")
+    d.para("报价汇总覆盖样本", style="Heading1")
+    d.para("以下产品、金额和公司信息均为虚构，仅用于测试。")
+    d.table([
+        ["品名 Product", "规格", "数量(MT)", "单价 Unit Price", "金额 Amount"],
+        ["虚构焦炭甲", "Grade A", "10", "USD 100.00", "USD 1,000.00"],
+        ["虚构焦炭乙", "Grade B", "20", "USD 200.00", "USD 4,000.00"],
+        ["虚构焦炭丙", "Grade C", "30", "USD 300.00", "USD 9,000.00"],
+    ])
+    d.facts = {
+        "table_count": 1,
+        "must_replace": [
+            {"text": "USD 100.00", "category": "PRICE"},
+            {"text": "USD 200.00", "category": "PRICE"},
+            {"text": "USD 300.00", "category": "PRICE"},
+            {"text": "USD 1,000.00", "category": "AMOUNT"},
+            {"text": "USD 4,000.00", "category": "AMOUNT"},
+            {"text": "USD 9,000.00", "category": "AMOUNT"},
+        ],
+        "must_keep": ["虚构焦炭甲", "虚构焦炭乙", "虚构焦炭丙", "Grade A", "Grade B", "Grade C", "10", "20", "30"],
+    }
+    return d
+
+
 def sample_numbering_auto() -> Doc:
     d = Doc("numbering_auto", "自动编号：numbering.xml 中的“第%1条”“%1.%2”“%1.%2.%3”、chineseCounting（含十、十一）、"
                               "chineseCountingThousand、ideographTraditional、upperLetter/lowerLetter/lowerRoman/upperRoman、"
@@ -604,6 +629,7 @@ def sample_parties_labels() -> Doc:
 SAMPLES = [
     sample_contract_basic,
     sample_quotation_table,
+    sample_coverage_quote_table,
     sample_numbering_auto,
     sample_revisions,
     sample_parts_misc,

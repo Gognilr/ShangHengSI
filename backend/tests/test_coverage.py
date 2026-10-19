@@ -5,7 +5,6 @@ import pytest
 from sqlalchemy import select
 
 from app.db.models import Task, TaskFile
-from app.redaction.quotes import QuoteTable
 from app.review import service
 from app.review.coverage import build_coverage, describe
 from app.review.prompt import Requirement
@@ -54,12 +53,13 @@ def test_describe_uses_fixed_sentences_and_omits_duplicate_ocr_warning():
     assert "星河虚构进出口有限公司" not in "\n".join(notes)
 
 
-def test_build_coverage_includes_a05_non_quote_samples_and_only_identifiers(db_sessionmaker, owner, ready_task):
+def test_build_coverage_includes_a05_samples_and_only_identifiers(db_sessionmaker, owner, ready_task):
     fixture_dir = Path(__file__).resolve().parent / "fixtures"
     files = [
         ("杂项.docx", (fixture_dir / "docx" / "parts_misc.docx").read_bytes()),
         ("隐藏.xlsx", (fixture_dir / "xlsx" / "hidden_sheet.xlsx").read_bytes()),
         ("扫描.pdf", (fixture_dir / "pdf" / "scanned_contract.pdf").read_bytes()),
+        ("虚构报价.docx", (fixture_dir / "docx" / "coverage_quote_table.docx").read_bytes()),
     ]
     task = ready_task(owner, files=files)
 
@@ -93,29 +93,16 @@ def test_build_coverage_includes_a05_non_quote_samples_and_only_identifiers(db_s
     }
     assert any(item["file"] == 2 and item["part"] == "hidden_sheet" for item in coverage["excluded"])
     assert coverage["ocr_low"] and coverage["ocr_low"][0] == {"file": 3, "pages": [2]}
+    assert coverage["quote_tables"] == [{"file": 4, "loc": "F4-T1", "rows": 3}]
     assert coverage["warnings"]
     joined = "\n".join(notes)
     assert "杂项.docx" in joined and "隐藏.xlsx" in joined
     assert "扫描.pdf 第 2 页 OCR 识别置信度低，请核对原件" in joined
     assert "检测到修订痕迹" in joined or "隐藏工作表未参与审核" in joined
+    assert "虚构报价.docx F4-T1 报价明细表共 3 行，只把汇总信息发给 AI，行级数据未逐行审核" in joined
     assert "付款条款见附表" not in joined and "星河虚构进出口有限公司" not in joined
+    assert "虚构焦炭甲" not in joined and "USD 100.00" not in joined
     assert coverage["sanctions_offline"] is True
-
-
-def test_build_coverage_maps_quote_summary_metadata(db_sessionmaker, owner, ready_task):
-    task = ready_task(owner)
-    with db_sessionmaker() as db:
-        stored_task = db.get(Task, task.id)
-        main = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(True)))
-        ctx = service.build_context(db, stored_task, stance=task.stance, source=task.source,
-                                    user_note=None, main_doc_type=main.doc_type)
-        ctx.quote_tables = [QuoteTable("F1-T1", "F1-T1-R1-C1", frozenset({"F1-T1-R1-C1"}), 12, [], [])]
-        coverage = build_coverage(db, stored_task, ctx, None, 1, [])
-
-    assert coverage["quote_tables"] == [{"file": 1, "loc": "F1-T1", "rows": 12}]
-    assert describe(coverage, {1: "报价.docx"}) == [
-        "报价.docx F1-T1 报价明细表共 12 行，只把汇总信息发给 AI，行级数据未逐行审核"
-    ]
 
 
 def test_all_failed_coverage_keeps_total_but_zero_verdict_counts(db_sessionmaker, owner, ready_task):
