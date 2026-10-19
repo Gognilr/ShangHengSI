@@ -178,10 +178,11 @@ def find_aliases(text: str) -> list[tuple[int, int, int]]:
     return out
 
 
-def _name_start_after_boundary(text: str, start: int, suffix_start: int) -> int:
+def _name_start_after_boundary(text: str, start: int, suffix_start: int, min_han: int = 2) -> int:
     """text[start:suffix_start] 是企业后缀前向前取到的汉字（含括号）。返回最后一个边界词之后的位置（Q-56）。
 
-    括号内的字和受保护词内部的字不算边界；边界词之后不足 2 个汉字时返回 start（按 M2 的做法整段处理，宁多勿漏）。
+    括号内的字和受保护词内部的字不算边界；边界词之后不足 min_han 个汉字时返回 start（按 M2 的做法整段处理，宁多勿漏）。
+    疑似遗漏识别（suspects.py）传 min_han=0：有边界词就从边界词之后算起，由调用方判断名称是否够长。
     """
     run = text[start:suffix_start]
     blocked = [False] * len(run)
@@ -203,7 +204,7 @@ def _name_start_after_boundary(text: str, start: int, suffix_start: int) -> int:
                 if run.startswith(word, i):
                     best = i + len(word)
                     break
-    if best and sum(1 for c in run[best:] if _CN_CHAR.match(c)) >= 2:
+    if best and sum(1 for c in run[best:] if _CN_CHAR.match(c)) >= min_han:
         return start + best
     return start
 

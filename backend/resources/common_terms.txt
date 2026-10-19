@@ -226,3 +226,21 @@ Binding Offer
 Validity of Offer
 Offer Validity
 Firm Offer
+# M4-02 增补：港口地点用词、常见产品名称（疑似遗漏的排除项；产品名称属于“保留不替换”，SPEC 9.2）
+Port
+Airport
+Harbour
+Harbor
+Terminal
+Free Zone
+Zone
+Province
+City
+Calcined Petroleum Coke
+Petroleum Coke
+Green Petroleum Coke
+Needle Coke
+Graphite Electrode
+Graphite Electrodes
+Carbon Raiser
+Coal Tar Pitch
