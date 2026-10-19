@@ -1,0 +1,37 @@
+/* 公共样式（frontend.md 第十节）：各页面重复的写法收在这里，页面内不再各自定义 */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 0;
+}
+.page--narrow {
+  max-width: 720px;
+}
+.page--standard {
+  max-width: 900px;
+}
+.page--wide {
+  max-width: 1100px;
+}
+.page--split {
+  max-width: 1600px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.gap {
+  margin-top: 12px;
+}
+.hint {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.actions {
+  margin-top: 20px;
+  text-align: right;
+}
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}

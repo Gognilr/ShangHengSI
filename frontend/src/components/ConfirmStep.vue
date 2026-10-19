@@ -355,8 +355,6 @@ h3 {
   font-size: 15px;
 }
 .hint {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
   margin: 2px 0;
 }
 .warning {
@@ -368,9 +366,6 @@ h3 {
 }
 .summary {
   margin: 0;
-}
-.gap {
-  margin-top: 12px;
 }
 .saving {
   opacity: 0.7;
@@ -384,10 +379,6 @@ h3 {
   white-space: pre-wrap;
   word-break: break-all;
   font-size: 13px;
-}
-.actions {
-  margin-top: 20px;
-  text-align: right;
 }
 .sr-only {
   position: absolute;

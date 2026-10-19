@@ -1,18 +1,29 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type HandlingStatus } from '@/api/runs'
 import {
+  CITE_TAG,
   HANDLING_OPTIONS,
+  SEVERITY_TAG,
   categoryLabel,
   citeStatusLabel,
   severityLabel,
   toOptions,
 } from '@/utils/labels'
 
-const props = defineProps<{ finding: Finding }>()
-const emit = defineEmits<{ (e: 'updated', f: Finding): void }>()
+const props = defineProps<{ finding: Finding; selected?: boolean }>()
+const emit = defineEmits<{
+  (e: 'updated', f: Finding): void
+  (e: 'select', f: Finding): void
+}>()
+
+// 缺失型问题（locs 为空）没有对应位置，不可点击
+const locatable = computed(() => props.finding.locs.length > 0)
+function onSelect() {
+  if (locatable.value) emit('select', props.finding)
+}
 
 const handlingOptions = toOptions(HANDLING_OPTIONS)
 const status = ref<HandlingStatus>(props.finding.handling_status)
@@ -26,17 +37,6 @@ watch(
     note.value = f.handling_note ?? ''
   },
 )
-
-const SEVERITY_TAG: Record<string, 'danger' | 'warning' | 'info'> = {
-  high: 'danger',
-  medium: 'warning',
-  low: 'info',
-}
-const CITE_TAG: Record<string, 'success' | 'warning' | 'info'> = {
-  verified: 'success',
-  unverified: 'warning',
-  missing: 'info',
-}
 
 async function save(body: { handling_status?: HandlingStatus; handling_note?: string | null }) {
   saving.value = true
@@ -83,7 +83,7 @@ async function copy(text: string) {
 </script>
 
 <template>
-  <el-card shadow="never" class="card">
+  <el-card shadow="never" class="card" :class="{ locatable, selected }" @click="onSelect">
     <div class="head">
       <span class="title">{{ finding.title }}</span>
       <el-tag :type="SEVERITY_TAG[finding.severity] ?? 'info'" effect="dark" size="small">
@@ -141,6 +141,12 @@ async function copy(text: string) {
 <style scoped>
 .card {
   margin-bottom: 12px;
+}
+.card.locatable {
+  cursor: pointer;
+}
+.card.selected {
+  border-color: var(--el-color-primary);
 }
 .head {
   display: flex;

@@ -78,7 +78,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page">
+  <div class="page page--wide">
     <div class="filters">
       <el-input v-model="q" clearable placeholder="按文件名搜索" class="q" @keyup.enter="search" @clear="search" />
       <el-date-picker
@@ -131,21 +131,12 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 16px 0;
-}
 .filters {
-  display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  margin-bottom: 0;
 }
 .q {
   width: 240px;
-}
-.gap {
-  margin-top: 12px;
 }
 .pager {
   margin-top: 12px;

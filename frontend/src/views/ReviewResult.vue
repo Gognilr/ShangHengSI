@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import DocPreview from '@/components/DocPreview.vue'
 import FindingCard from '@/components/FindingCard.vue'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type RunDetail } from '@/api/runs'
@@ -11,6 +12,7 @@ import {
   HANDLING_OPTIONS,
   SEVERITY_OPTIONS,
   SEVERITY_ORDER,
+  VERDICT_TAG,
   docTypeLabel,
   reqSourceLabel,
   runStatusLabel,
@@ -79,6 +81,14 @@ const findings = computed<Finding[]>(() => {
   )
 })
 
+// 点击问题：把该问题的 locs 交给右栏预览高亮（每次点击都是新数组，同一问题再点会重新滚动）
+const selectedId = ref('')
+const highlight = ref<string[]>([])
+function onSelect(f: Finding) {
+  selectedId.value = f.id
+  highlight.value = [...f.locs]
+}
+
 function onUpdated(updated: Finding) {
   if (!run.value) return
   run.value = { ...run.value, findings: run.value.findings.map((f) => (f.id === updated.id ? updated : f)) }
@@ -91,134 +101,150 @@ const reqVersion = computed(() => {
   return parts.filter(Boolean).join('，') || '—'
 })
 
-const VERDICT_TAG: Record<string, 'danger' | 'success' | 'info' | 'warning'> = {
-  issue: 'danger',
-  ok: 'success',
-  na: 'info',
-  unable: 'warning',
-}
 </script>
 
 <template>
-  <div v-loading="loading" class="page">
+  <div v-loading="loading" class="page page--split">
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" />
 
-    <template v-else-if="task">
-      <!-- 顶部信息栏 -->
-      <el-card shadow="never" class="info">
-        <div class="info-title">{{ mainFile?.original_name ?? task.title }}</div>
-        <el-descriptions :column="4" size="small" border>
-          <el-descriptions-item label="文件类型">{{ docTypeLabel(run?.main_doc_type ?? mainFile?.doc_type) }}</el-descriptions-item>
-          <el-descriptions-item label="立场">{{ stanceLabel(run?.stance ?? task.stance) }}</el-descriptions-item>
-          <el-descriptions-item label="来源">{{ sourceLabel(run?.source ?? task.source) }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            {{ run ? runStatusLabel(run.status) : statusLabel(task.status) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="审核时间">{{ formatDateTime(run?.finished_at ?? task.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="使用的模型">{{ run?.model_name ?? '—' }}</el-descriptions-item>
-          <el-descriptions-item label="审核要求版本" :span="2">{{ reqVersion }}</el-descriptions-item>
-        </el-descriptions>
-      </el-card>
-
-      <el-alert
-        v-if="task.status === 'completed_local'"
-        type="info"
-        show-icon
-        :closable="false"
-        title="该任务的外发策略为“不外发，仅本地校验”，没有 AI 审核结果。"
-        class="gap"
-      />
-
-      <template v-if="run">
-        <el-alert
-          v-if="run.status === 'failed'"
-          type="error"
-          show-icon
-          :closable="false"
-          :title="run.error_message || '审核失败'"
-          class="gap"
-        />
-        <el-alert
-          v-else-if="run.status === 'partial'"
-          type="warning"
-          show-icon
-          :closable="false"
-          title="部分审核要求无法判断，结果仅供参考。"
-          class="gap"
-        />
-
-        <el-card v-if="run.doc_summary || run.sanctions.level" shadow="never" class="gap">
-          <p v-if="run.doc_summary" class="summary">{{ run.doc_summary }}</p>
-          <div v-if="run.sanctions.level" class="sanctions">
-            <b>制裁结论：</b>{{ sanctionsLabel(run.sanctions.level) }}
-            <ul v-if="run.sanctions.reasons.length">
-              <li v-for="(r, i) in run.sanctions.reasons" :key="i">{{ r }}</li>
-            </ul>
-            <div class="note">未联网核查，基于模型自身知识，需合规人员确认最新制裁与出口管制规定。</div>
-          </div>
+    <div v-else-if="task" class="split">
+      <div class="left">
+        <!-- 顶部信息栏 -->
+        <el-card shadow="never" class="info">
+          <div class="info-title">{{ mainFile?.original_name ?? task.title }}</div>
+          <el-descriptions :column="2" size="small" border>
+            <el-descriptions-item label="文件类型">{{ docTypeLabel(run?.main_doc_type ?? mainFile?.doc_type) }}</el-descriptions-item>
+            <el-descriptions-item label="立场">{{ stanceLabel(run?.stance ?? task.stance) }}</el-descriptions-item>
+            <el-descriptions-item label="来源">{{ sourceLabel(run?.source ?? task.source) }}</el-descriptions-item>
+            <el-descriptions-item label="状态">
+              {{ run ? runStatusLabel(run.status) : statusLabel(task.status) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="审核时间">{{ formatDateTime(run?.finished_at ?? task.created_at) }}</el-descriptions-item>
+            <el-descriptions-item label="使用的模型">{{ run?.model_name ?? '—' }}</el-descriptions-item>
+            <el-descriptions-item label="审核要求版本" :span="2">{{ reqVersion }}</el-descriptions-item>
+          </el-descriptions>
         </el-card>
 
-        <el-tabs v-model="tab" class="gap">
-          <el-tab-pane :label="`问题清单（${run.findings.length}）`" name="findings">
-            <div class="filters">
-              <el-select v-model="fSeverity" clearable placeholder="全部等级" size="small">
-                <el-option v-for="o in severityOptions" :key="o.value" :label="o.label" :value="o.value" />
-              </el-select>
-              <el-select v-model="fCategory" clearable placeholder="全部类别" size="small">
-                <el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" />
-              </el-select>
-              <el-select v-model="fHandling" clearable placeholder="全部处理状态" size="small">
-                <el-option v-for="o in handlingOptions" :key="o.value" :label="o.label" :value="o.value" />
-              </el-select>
-            </div>
-            <FindingCard v-for="f in findings" :key="f.id" :finding="f" @updated="onUpdated" />
-            <el-empty
-              v-if="!findings.length"
-              :description="run.findings.length ? '没有符合筛选条件的问题' : '本次没有列出问题条目。结果由 AI 生成，仅供参考，请以人工复核为准。'"
-            />
-          </el-tab-pane>
+        <el-alert
+          v-if="task.status === 'completed_local'"
+          type="info"
+          show-icon
+          :closable="false"
+          title="该任务的外发策略为“不外发，仅本地校验”，没有 AI 审核结果。"
+          class="gap"
+        />
 
-          <el-tab-pane label="审核要求逐条结论" name="requirements">
-            <el-table :data="run.requirement_results" border size="small">
-              <el-table-column prop="req_id" label="编号" width="90" />
-              <el-table-column label="来源" width="120">
-                <template #default="{ row }">{{ reqSourceLabel(row.req_source) }}</template>
-              </el-table-column>
-              <el-table-column prop="dimension" label="维度" width="100" />
-              <el-table-column prop="req_text" label="审核要求" min-width="260" />
-              <el-table-column label="结论" width="110">
-                <template #default="{ row }">
-                  <el-tag :type="VERDICT_TAG[row.verdict] ?? 'info'" size="small">{{ verdictLabel(row.verdict) }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="note" label="说明" min-width="220" />
-            </el-table>
-          </el-tab-pane>
-        </el-tabs>
-      </template>
-    </template>
+        <template v-if="run">
+          <el-alert
+            v-if="run.status === 'failed'"
+            type="error"
+            show-icon
+            :closable="false"
+            :title="run.error_message || '审核失败'"
+            class="gap"
+          />
+          <el-alert
+            v-else-if="run.status === 'partial'"
+            type="warning"
+            show-icon
+            :closable="false"
+            title="部分审核要求无法判断，结果仅供参考。"
+            class="gap"
+          />
+
+          <el-card v-if="run.doc_summary || run.sanctions.level" shadow="never" class="gap">
+            <p v-if="run.doc_summary" class="summary">{{ run.doc_summary }}</p>
+            <div v-if="run.sanctions.level" class="sanctions">
+              <b>制裁结论：</b>{{ sanctionsLabel(run.sanctions.level) }}
+              <ul v-if="run.sanctions.reasons.length">
+                <li v-for="(r, i) in run.sanctions.reasons" :key="i">{{ r }}</li>
+              </ul>
+              <div class="note">未联网核查，基于模型自身知识，需合规人员确认最新制裁与出口管制规定。</div>
+            </div>
+          </el-card>
+
+          <el-tabs v-model="tab" class="gap">
+            <el-tab-pane :label="`问题清单（${run.findings.length}）`" name="findings">
+              <div class="filters">
+                <el-select v-model="fSeverity" clearable placeholder="全部等级" size="small">
+                  <el-option v-for="o in severityOptions" :key="o.value" :label="o.label" :value="o.value" />
+                </el-select>
+                <el-select v-model="fCategory" clearable placeholder="全部类别" size="small">
+                  <el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" />
+                </el-select>
+                <el-select v-model="fHandling" clearable placeholder="全部处理状态" size="small">
+                  <el-option v-for="o in handlingOptions" :key="o.value" :label="o.label" :value="o.value" />
+                </el-select>
+              </div>
+              <FindingCard
+                v-for="f in findings"
+                :key="f.id"
+                :finding="f"
+                :selected="f.id === selectedId"
+                @updated="onUpdated"
+                @select="onSelect"
+              />
+              <el-empty
+                v-if="!findings.length"
+                :description="run.findings.length ? '没有符合筛选条件的问题' : '本次没有列出问题条目。结果由 AI 生成，仅供参考，请以人工复核为准。'"
+              />
+            </el-tab-pane>
+
+            <el-tab-pane label="审核要求逐条结论" name="requirements">
+              <el-table :data="run.requirement_results" border size="small">
+                <el-table-column prop="req_id" label="编号" width="90" />
+                <el-table-column label="来源" width="120">
+                  <template #default="{ row }">{{ reqSourceLabel(row.req_source) }}</template>
+                </el-table-column>
+                <el-table-column prop="dimension" label="维度" width="100" />
+                <el-table-column prop="req_text" label="审核要求" min-width="260" />
+                <el-table-column label="结论" width="110">
+                  <template #default="{ row }">
+                    <el-tag :type="VERDICT_TAG[row.verdict] ?? 'info'" size="small">{{ verdictLabel(row.verdict) }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="note" label="说明" min-width="220" />
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
+        </template>
+      </div>
+      <div class="right">
+        <DocPreview :task-id="task.id" :files="task.files" :highlight="highlight" />
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .page {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 16px 0;
   min-height: 200px;
+}
+.split {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.left {
+  flex: 0 0 calc(44% - 8px);
+  min-width: 0;
+}
+.right {
+  flex: 0 0 calc(56% - 8px);
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+  height: calc(100vh - 56px - 32px);
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-bg-color);
 }
 .info-title {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 10px;
-}
-.gap {
-  margin-top: 12px;
-}
-.filters {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
 }
 .summary {
   margin: 0 0 8px;

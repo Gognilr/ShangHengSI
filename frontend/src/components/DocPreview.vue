@@ -565,6 +565,7 @@ onBeforeUnmount(() => {
 }
 
 .pdf-page {
+  box-sizing: border-box;
   position: relative;
   width: 100%;
   margin-bottom: 8px;

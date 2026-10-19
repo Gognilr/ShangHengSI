@@ -101,3 +101,9 @@ export const redactionCategoryLabel = pick(REDACTION_CATEGORY)
 export function toOptions(dict: Dict): { value: string; label: string }[] {
   return Object.entries(dict).map(([value, label]) => ({ value, label }))
 }
+
+/** 标签颜色（frontend.md 第五节）：各页面共用。 */
+export type TagType = 'danger' | 'warning' | 'info' | 'success'
+export const SEVERITY_TAG: Record<string, TagType> = { high: 'danger', medium: 'warning', low: 'info' }
+export const VERDICT_TAG: Record<string, TagType> = { issue: 'danger', ok: 'success', na: 'info', unable: 'warning' }
+export const CITE_TAG: Record<string, TagType> = { verified: 'success', unverified: 'warning', missing: 'info' }

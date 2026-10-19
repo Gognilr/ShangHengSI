@@ -233,7 +233,7 @@ const runText = computed(() => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page page--standard">
     <el-steps :active="step" :status="stepStatus" finish-status="success" align-center class="steps">
       <el-step title="上传与设置" />
       <el-step title="确认脱敏" />
@@ -342,11 +342,6 @@ const runText = computed(() => {
 </template>
 
 <style scoped>
-.page {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 16px 0;
-}
 .steps {
   margin-bottom: 24px;
 }
@@ -359,10 +354,6 @@ const runText = computed(() => {
 .center {
   text-align: center;
   padding: 32px 0;
-}
-.hint {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
 }
 .file-list {
   display: block;
