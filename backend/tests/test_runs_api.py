@@ -17,6 +17,7 @@ from app.db.models import (
     LlmCall,
     Party,
     RedactionSuspect,
+    RedactionTerm,
     ReviewRun,
     Task,
     TaskFile,
@@ -24,6 +25,7 @@ from app.db.models import (
 from app.main import API_PREFIX
 from app.review import job
 from app.review.service import _View
+from app.security.crypto import decrypt_text
 from app.tasks import pipeline
 from tests.mock_llm import build_reply
 from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task, sample  # noqa: F401
@@ -72,12 +74,16 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
         run = db.get(ReviewRun, uuid.UUID(body["id"]))
         assert (run.stance, run.source, run.user_note, run.main_doc_type) == (
             "sales", "outgoing", "请重点检查付款条款", "contract")
-        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.10-1", "2026.10-1")
+        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.10-2", "2026.10-1")
         assert run.company_req_version is None and run.created_by == user.id
         queued = db.scalars(select(Job).where(Job.type == "review")).one()
         assert (queued.status, queued.payload) == ("queued", {"task_id": str(task.id), "run_id": body["id"]})
         log = db.scalars(select(AuditLog).where(AuditLog.action == "run_create")).one()
         assert log.target_id == body["id"] and log.detail["run_no"] == 1 and log.user_id == user.id
+        # 9.10：确认发送时写入签约方名称（kind=learned），我方标记 is_our_party（Q-73）
+        learned = {(decrypt_text(t.term_enc), t.category, t.is_our_party, t.created_by)
+                   for t in db.scalars(select(RedactionTerm).where(RedactionTerm.kind == "learned"))}
+        assert learned == {(REAL_OUR_NAME, "ORG", True, user.id), (REAL_BUYER_NAME, "ORG", False, user.id)}
         assert "付款" not in str(log.detail)
     assert requests == []  # 确认发送本身不调用模型，由 worker 执行
     detail = c.get(f"{API_PREFIX}/tasks/{task.id}").json()
@@ -166,6 +172,7 @@ def test_409_outbound_blocked_names_category_and_position_only(db_sessionmaker, 
         assert db.get(Task, task.id).status == "awaiting_confirm"
     assert count(db_sessionmaker, ReviewRun) == 0 and count(db_sessionmaker, Job) == 0
     assert requests == [] and count(db_sessionmaker, LlmCall) == 0  # 预检不产生外发记录
+    assert count(db_sessionmaker, RedactionTerm) == 0  # 预检拦截时不写入已记住的名称（Q-73 ①）
 
 
 def test_precheck_also_covers_user_note(db_sessionmaker, alice, ready_task):
@@ -243,7 +250,7 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert d["task_id"] == str(task.id) and d["status"] == "completed" and d["run_no"] == 1
     assert (d["stance"], d["source"], d["main_doc_type"], d["model_name"]) == ("sales", "outgoing", "contract", "mock-model")
     assert d["coverage"] is None and d["queue_position"] is None and d["error_message"] is None
-    assert d["prompt_version"] == "2026.10-1" and d["builtin_req_version"] == "2026.10-1"
+    assert d["prompt_version"] == "2026.10-2" and d["builtin_req_version"] == "2026.10-1"
     assert d["queued_at"].endswith("Z") or "+00:00" in d["queued_at"]
     assert d["doc_summary"] == f"{REAL_OUR_NAME}向{REAL_BUYER_NAME}销售金属制品"
     assert d["sanctions"] == {"level": "attention", "reasons": [f"{REAL_BUYER_NAME}位于需关注地区"]}

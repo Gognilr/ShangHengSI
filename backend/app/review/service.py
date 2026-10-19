@@ -32,7 +32,7 @@ from app.db.models import (
     User,
 )
 from app.llm.gateway import format_reasons
-from app.redaction.engine import build_outbound_text, load_redaction_map
+from app.redaction.engine import build_outbound_text, learn_confirmed_names, load_redaction_map
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import restore
 from app.review.prompt import ReviewContext, build_messages, note_requirement
@@ -205,6 +205,8 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None) -> ReviewR
                       terms=rc.terms)
     if reasons:  # 只报类别和位置，不报真实值
         raise _conflict("OUTBOUND_BLOCKED", f"出口复检发现未脱敏的信息，已拦截，未发送（{format_reasons(reasons)}）")
+    # 9.10：预检通过后写入已记住的名称，与轮次创建同一事务；预检拦截时不写入（Q-73 ①）
+    learn_confirmed_names(db, task, user.id)
 
     run_no = (db.scalar(select(func.max(ReviewRun.run_no)).where(ReviewRun.task_id == task.id)) or 0) + 1
     run = ReviewRun(

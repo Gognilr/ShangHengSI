@@ -1,15 +1,18 @@
-"""M2-13：真实脱敏确认接口、重算、状态限制及 A-06 归属隔离。"""
+"""M2-13、M4-05：真实脱敏确认接口、重算、疑似遗漏决定与手动补充、状态限制及 A-06 归属隔离。"""
+import io
+import logging
 import uuid
 from collections import Counter
 
+import docx
 import pytest
 from sqlalchemy import select
 
-from app.db.models import DocNode, LlmCall, Party, Task
+from app.db.models import DocNode, LlmCall, Party, RedactionItem, RedactionTerm, Task
 from app.main import API_PREFIX
 from app.redaction import engine
 from app.security.crypto import decrypt_text
-from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, ready_task  # noqa: F401
+from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
 
@@ -228,3 +231,252 @@ def test_errors_and_logs_do_not_echo_input(alice, ready_task, caplog):
     assert r.status_code == 422
     assert secret not in r.text + caplog.text
     assert REAL_OUR_NAME not in caplog.text and REAL_BUYER_NAME not in caplog.text
+
+
+# ---------------------------------------------------------------- M4-05：疑似遗漏决定、手动补充（设计 M4.md 第五节）
+
+
+def docx_of(*paragraphs: str) -> bytes:
+    doc = docx.Document()
+    for text in paragraphs:
+        doc.add_paragraph(text)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+SUSPECT_DOC = (
+    "销售确认书",
+    f"卖方：{REAL_OUR_NAME}",
+    f"买方：{REAL_BUYER_NAME}",
+    "货物由 Northwind Fictive Holdings 承运。",
+    "Northwind Fictive Holdings 另行通知装船日期。",
+    "收款 6222 0000 1111 2222 333，请核对。",
+)
+
+
+def suspect_task(ready_task, user, *paragraphs):
+    return ready_task(user, [("确认书.docx", docx_of(*(paragraphs or SUSPECT_DOC)))])
+
+
+def redaction(client, task):
+    r = client.get(url(task, "redaction"))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def node_loc(client, task, needle):
+    """正文中含 needle 的节点 loc 与 needle 在节点原文中的位置。"""
+    r = client.get(f"{API_PREFIX}/tasks/{task.id}/files/{file_id(client, task)}/nodes")
+    assert r.status_code == 200, r.text
+    node = next(n for n in r.json()["items"] if n["part"] == "body" and needle in (n["text"] or ""))
+    start = node["text"].index(needle)
+    return node["loc"], start, start + len(needle)
+
+
+def test_get_redaction_lists_suspects_with_context(alice, ready_task):
+    user, c, _ = alice
+    task = suspect_task(ready_task, user)
+    data = redaction(c, task)
+    views = data["suspects"]
+    assert [(v["reason"], v["text"], v["decision"]) for v in views] == [
+        ("capitalized", "Northwind Fictive Holdings", "pending"),
+        ("capitalized", "Northwind Fictive Holdings", "pending"),
+        ("long_digits", "6222 0000 1111 2222 333", "pending")]
+    assert all(set(v) == {"id", "loc", "reason", "decision", "category", "text", "before", "after"} for v in views)
+    assert (views[0]["before"], views[0]["after"]) == ("货物由 ", " 承运。")
+    assert views[2]["before"] == "收款 " and views[2]["category"] is None
+
+
+def test_ignore_then_replace_and_send(db_sessionmaker, alice, ready_task, llm):
+    user, c, h = alice
+    task = suspect_task(ready_task, user)
+    views = redaction(c, task)["suspects"]
+    # 确认发送被未处理的疑似遗漏拦住
+    assert c.post(url(task, "runs"), headers=h).json()["code"] == "SUSPECTS_PENDING"
+    # 忽略：同文字、同原因的其他待处理条目一并忽略（Q-70 ④）
+    r = c.post(url(task, f"redaction/suspects/{views[0]['id']}"), json={"decision": "ignore"}, headers=h)
+    assert r.status_code == 200, r.text
+    after = r.json()["suspects"]
+    assert [(v["text"], v["decision"]) for v in after] == [
+        ("6222 0000 1111 2222 333", "pending"), ("Northwind Fictive Holdings", "ignore"),
+        ("Northwind Fictive Holdings", "ignore")]
+    assert r.json() == redaction(c, task)
+    # 已忽略的可以改为替换：全文替换，作为新的一方出现在签约方列表中
+    r = c.post(url(task, f"redaction/suspects/{after[1]['id']}"), json={"decision": "replace", "category": "ORG"},
+               headers=h)
+    assert r.status_code == 200, r.text
+    assert [v["reason"] for v in r.json()["suspects"]] == ["long_digits"]
+    assert r.json()["summary"]["ORG"] >= 3
+    names = {p["name"]: p["code"] for p in parties(c, task)}
+    assert names["Northwind Fictive Holdings"] == "公司_B"
+    sid = r.json()["suspects"][0]["id"]
+    r = c.post(url(task, f"redaction/suspects/{sid}"), json={"decision": "replace", "category": "CUSTOM"}, headers=h)
+    assert r.status_code == 200 and r.json()["suspects"] == []
+    out = c.get(url(task, "redaction/outbound")).json()["text"]
+    assert "Northwind" not in out and "6222" not in out and "[敏感词_1]" in out
+    with db_sessionmaker() as db:
+        assert list(db.scalars(select(LlmCall))) == []  # 第二步的操作不调用模型
+    llm("normal")
+    r = c.post(url(task, "runs"), headers=h)
+    assert r.status_code == 201, r.text
+
+
+def test_suspect_errors(db_sessionmaker, alice, ready_task):
+    user, c, h = alice
+    task = suspect_task(ready_task, user)
+    other = suspect_task(ready_task, user)
+    mine = redaction(c, task)["suspects"][0]["id"]
+    theirs = redaction(c, other)["suspects"][0]["id"]
+    for sid in (theirs, 10 ** 12, "abc", "-1", str(2 ** 70)):
+        r = c.post(url(task, f"redaction/suspects/{sid}"), json={"decision": "ignore"}, headers=h)
+        assert (r.status_code, r.json()["code"]) == (404, "SUSPECT_NOT_FOUND"), sid
+    for body in ({"decision": "replace"}, {"decision": "replace", "category": None},
+                 {"decision": "replace", "category": "OUR"}, {"decision": "delete"}, {}):
+        r = c.post(url(task, f"redaction/suspects/{mine}"), json=body, headers=h)
+        assert (r.status_code, r.json()["code"]) == (422, "VALIDATION_ERROR"), body
+    assert {v["decision"] for v in redaction(c, task)["suspects"]} == {"pending"}
+    assert {v["decision"] for v in redaction(c, other)["suspects"]} == {"pending"}
+
+
+def test_manual_errors(alice, ready_task):
+    user, c, h = alice
+    task = ready_task(user)
+    before = redaction(c, task)
+    loc, start, end = node_loc(c, task, "煅后石油焦")
+    our_loc, our_start, our_end = node_loc(c, task, REAL_OUR_NAME)
+
+    def post(**kw):
+        body = {"loc": loc, "char_start": start, "char_end": end, "category": "CUSTOM", **kw}
+        return c.post(url(task, "redaction/manual"), json=body, headers=h)
+
+    cases = [
+        ({"loc": "F9-P1"}, 422, "INVALID_SELECTION"),
+        ({"char_start": -1}, 422, "INVALID_SELECTION"),
+        ({"char_end": 10 ** 6}, 422, "INVALID_SELECTION"),
+        ({"char_start": end, "char_end": start}, 422, "INVALID_SELECTION"),
+        ({"loc": our_loc, "char_start": our_start, "char_end": our_end}, 409, "ALREADY_REDACTED"),
+        ({"loc": our_loc, "char_start": max(0, our_start - 2), "char_end": our_start + 2}, 409, "ALREADY_REDACTED"),
+        ({"char_end": start + 1}, 422, "SELECTION_LENGTH"),
+        ({"category": "OUR"}, 422, "VALIDATION_ERROR"),
+        ({"category": None}, 422, "VALIDATION_ERROR"),
+        ({"char_start": "1"}, 422, "VALIDATION_ERROR"),
+        ({"loc": ""}, 422, "VALIDATION_ERROR"),
+    ]
+    for kw, status, code in cases:
+        r = post(**kw)
+        assert (r.status_code, r.json()["code"]) == (status, code), kw
+    assert redaction(c, task) == before
+    r = post()
+    assert r.status_code == 200, r.text
+    assert r.json()["summary"]["CUSTOM"] >= 1
+    assert "煅后石油焦" not in c.get(url(task, "redaction/outbound")).json()["text"]
+
+
+def test_manual_selection_length_upper_bound(alice, ready_task):
+    user, c, h = alice
+    task = suspect_task(ready_task, user, "x" * 150, f"卖方：{REAL_OUR_NAME}")
+    loc, start, _ = node_loc(c, task, "x" * 150)
+    r = c.post(url(task, "redaction/manual"), json={"loc": loc, "char_start": 0, "char_end": 101, "category": "CUSTOM"},
+               headers=h)
+    assert (r.status_code, r.json()["code"]) == (422, "SELECTION_LENGTH")
+
+
+def test_q54_manual_party_then_our_party_and_send(db_sessionmaker, alice, ready_task, llm):
+    """Q-54：没有识别出签约方的文件，手动补充公司名后设为我方并确认发送。"""
+    user, c, h = alice
+    task = suspect_task(ready_task, user, "合作备忘录", "本备忘录由远景示例科技与对方共同确认。")
+    assert parties(c, task) == []
+    assert c.post(url(task, "runs"), headers=h).json()["code"] in ("SUSPECTS_PENDING", "OUR_PARTY_REQUIRED")
+    for v in redaction(c, task)["suspects"]:
+        c.post(url(task, f"redaction/suspects/{v['id']}"), json={"decision": "ignore"}, headers=h)
+    loc, start, end = node_loc(c, task, "远景示例科技")
+    r = c.post(url(task, "redaction/manual"), json={"loc": loc, "char_start": start, "char_end": end, "category": "ORG"},
+               headers=h)
+    assert r.status_code == 200, r.text
+    items = parties(c, task)
+    assert [(p["name"], p["code"], p["role_label"], p["is_our_party"]) for p in items] == [
+        ("远景示例科技", "公司_A", "其他", False)]
+    r = c.put(url(task, "parties"), json=payload(items, items[0]["id"]), headers=h)
+    assert r.status_code == 200, r.text
+    assert "本备忘录由我方与对方共同确认。" in c.get(url(task, "redaction/outbound")).json()["text"]
+    llm("normal")
+    assert c.post(url(task, "runs"), headers=h).status_code == 201
+
+
+def test_t08_learned_name_replaced_in_second_task(db_sessionmaker, alice, ready_task, llm):
+    """T-08 的接口部分：手动补充的公司名在确认发送后记住，第二个任务自动替换。"""
+    user, c, h = alice
+    first = suspect_task(ready_task, user, f"卖方：{REAL_OUR_NAME}", f"买方：{REAL_BUYER_NAME}", "请转交青松示例贸易处理。")
+    loc, start, end = node_loc(c, first, "青松示例贸易")
+    assert c.post(url(first, "redaction/manual"),
+                  json={"loc": loc, "char_start": start, "char_end": end, "category": "ORG"}, headers=h).status_code == 200
+    for v in redaction(c, first)["suspects"]:
+        c.post(url(first, f"redaction/suspects/{v['id']}"), json={"decision": "ignore"}, headers=h)
+    llm("normal")
+    assert c.post(url(first, "runs"), headers=h).status_code == 201
+    with db_sessionmaker() as db:
+        learned = {decrypt_text(t.term_enc): t.is_our_party
+                   for t in db.scalars(select(RedactionTerm).where(RedactionTerm.kind == "learned"))}
+    assert learned == {REAL_OUR_NAME: True, REAL_BUYER_NAME: False, "青松示例贸易": False}
+    second = suspect_task(ready_task, user, "通知", "青松示例贸易将于下月到访。")
+    out = c.get(url(second, "redaction/outbound")).json()["text"]
+    assert "青松示例贸易" not in out and "[F1-P2] 公司_A将于下月到访。" in out
+    with db_sessionmaker() as db:
+        items = db.scalars(select(RedactionItem).where(RedactionItem.task_id == second.id)).all()
+        assert {i.detected_by for i in items} == {"term"}
+        hit = db.scalar(select(RedactionTerm).where(RedactionTerm.term_hash == engine.term_hash("青松示例贸易")))
+        assert hit.hit_count == 1 and hit.last_hit_at is not None
+
+
+@pytest.mark.parametrize("state", ["parsing", "parse_failed", "reviewing", "reviewed", "completed_local"])
+def test_new_mutations_only_awaiting_confirm(db_sessionmaker, alice, ready_task, state):
+    user, c, h = alice
+    task = suspect_task(ready_task, user)
+    before = redaction(c, task)
+    sid = before["suspects"][0]["id"]
+    loc, start, end = node_loc(c, task, "销售确认书")
+    with db_sessionmaker() as db:
+        db.get(Task, task.id).status = state
+        db.commit()
+    for r in [c.post(url(task, f"redaction/suspects/{sid}"), json={"decision": "ignore"}, headers=h),
+              c.post(url(task, "redaction/manual"),
+                     json={"loc": loc, "char_start": start, "char_end": end, "category": "CUSTOM"}, headers=h)]:
+        assert (r.status_code, r.json()["code"]) == (409, "TASK_STATE_CONFLICT")
+    assert redaction(c, task) == before
+
+
+@pytest.mark.parametrize("role", ["user", "admin"])
+def test_a06_new_endpoints(make_user, login, alice, ready_task, role):
+    owner, c, h_owner = alice
+    task = suspect_task(ready_task, owner)
+    sid = redaction(c, task)["suspects"][0]["id"]
+    make_user("intruder", role=role)
+    stranger, csrf = login("intruder")
+    h = {"X-CSRF-Token": csrf}
+    for tid in [str(task.id), str(uuid.uuid4()), "invalid-id"]:
+        base = f"{API_PREFIX}/tasks/{tid}"
+        for r in [stranger.post(base + f"/redaction/suspects/{sid}", json={"decision": "ignore"}, headers=h),
+                  stranger.post(base + "/redaction/manual",
+                                json={"loc": "F1-P1", "char_start": 0, "char_end": 3, "category": "CUSTOM"}, headers=h)]:
+            assert (r.status_code, r.json()["code"]) == (404, "TASK_NOT_FOUND")
+    assert {v["decision"] for v in redaction(c, task)["suspects"]} == {"pending"}
+    # 不带 CSRF 令牌
+    r = c.post(url(task, f"redaction/suspects/{sid}"), json={"decision": "ignore"})
+    assert (r.status_code, r.json()["code"]) == (403, "CSRF_FAILED")
+    r = c.post(url(task, "redaction/manual"), json={"loc": "F1-P1", "char_start": 0, "char_end": 3, "category": "CUSTOM"})
+    assert (r.status_code, r.json()["code"]) == (403, "CSRF_FAILED")
+
+
+def test_new_endpoints_do_not_log_text(alice, ready_task, caplog):
+    user, c, h = alice
+    task = suspect_task(ready_task, user)
+    caplog.set_level(logging.DEBUG)
+    views = redaction(c, task)["suspects"]
+    c.post(url(task, f"redaction/suspects/{views[0]['id']}"), json={"decision": "replace", "category": "ORG"}, headers=h)
+    loc, start, end = node_loc(c, task, "另行通知装船日期")
+    c.post(url(task, "redaction/manual"), json={"loc": loc, "char_start": start, "char_end": end, "category": "CUSTOM"},
+           headers=h)
+    c.post(url(task, "redaction/manual"), json={"loc": loc, "char_start": 0, "char_end": 1, "category": "CUSTOM"}, headers=h)
+    for value in ("Northwind", "6222 0000", "另行通知装船日期", REAL_OUR_NAME, REAL_BUYER_NAME):
+        assert value not in caplog.text
