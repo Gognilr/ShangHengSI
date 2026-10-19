@@ -562,3 +562,26 @@ def test_t13_monthly_cap_reached_through_api(db_sessionmaker, alice, ready_task,
     with db_sessionmaker() as db:
         assert db.scalar(select(func.count()).select_from(LlmCall).where(LlmCall.status == "sent")) == 1
         assert db.get(Task, task.id).status == "reviewed"
+
+
+def test_coverage_unable_note_restores_codes(db_sessionmaker, alice, ready_task, llm):
+    """覆盖说明中“无法判断”的原因与审核要求列表一样还原为真实名称（M5-03 评审）。"""
+    user, c, h = alice
+    task = ready_task(user)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        status, payload = build_reply(json.loads(request.content))
+        out = json.loads(payload["choices"][0]["message"]["content"])
+        out["requirement_results"][1].update(verdict="unable", note="需核实客户_A的资质")
+        payload["choices"][0]["message"]["content"] = json.dumps(out, ensure_ascii=False)
+        return httpx.Response(status, json=payload)
+
+    llm(handler=handler)
+    rid = post_run(c, h, task.id).json()["id"]
+    execute(db_sessionmaker, rid)
+    d = c.get(f"{API_PREFIX}/runs/{rid}").json()
+    req_id = d["requirement_results"][1]["req_id"]
+    assert d["requirement_results"][1]["note"] == f"需核实{REAL_BUYER_NAME}的资质"
+    assert f"无法判断的审核要求：{req_id}（需核实{REAL_BUYER_NAME}的资质）" in d["coverage"]["notes"]
+    with db_sessionmaker() as db:  # 数据库中仍只存代号
+        assert db.get(ReviewRun, uuid.UUID(rid)).coverage["unable"] == [{"req_id": req_id, "note": "需核实客户_A的资质"}]
