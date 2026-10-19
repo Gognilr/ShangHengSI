@@ -441,13 +441,13 @@ samples:
     - loc: F1-T1-R2-C4
       part: body
       kind: table_cell
-      text: USD 100.00
+      text: USD 1,234.56
       clause_no: null
       has_revision: false
     - loc: F1-T1-R2-C5
       part: body
       kind: table_cell
-      text: USD 1,000.00
+      text: USD 12,345.60
       clause_no: null
       has_revision: false
     - loc: F1-T1-R3-C1
@@ -471,13 +471,13 @@ samples:
     - loc: F1-T1-R3-C4
       part: body
       kind: table_cell
-      text: USD 200.00
+      text: USD 2,345.67
       clause_no: null
       has_revision: false
     - loc: F1-T1-R3-C5
       part: body
       kind: table_cell
-      text: USD 4,000.00
+      text: USD 46,913.40
       clause_no: null
       has_revision: false
     - loc: F1-T1-R4-C1
@@ -501,28 +501,28 @@ samples:
     - loc: F1-T1-R4-C4
       part: body
       kind: table_cell
-      text: USD 300.00
+      text: USD 3,456.78
       clause_no: null
       has_revision: false
     - loc: F1-T1-R4-C5
       part: body
       kind: table_cell
-      text: USD 9,000.00
+      text: USD 103,703.40
       clause_no: null
       has_revision: false
     table_count: 1
     must_replace:
-    - text: USD 100.00
+    - text: USD 1,234.56
       category: PRICE
-    - text: USD 200.00
+    - text: USD 2,345.67
       category: PRICE
-    - text: USD 300.00
+    - text: USD 3,456.78
       category: PRICE
-    - text: USD 1,000.00
+    - text: USD 12,345.60
       category: AMOUNT
-    - text: USD 4,000.00
+    - text: USD 46,913.40
       category: AMOUNT
-    - text: USD 9,000.00
+    - text: USD 103,703.40
       category: AMOUNT
     must_keep:
     - 虚构焦炭甲

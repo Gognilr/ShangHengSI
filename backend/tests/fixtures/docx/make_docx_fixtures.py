@@ -454,19 +454,19 @@ def sample_coverage_quote_table() -> Doc:
     d.para("以下产品、金额和公司信息均为虚构，仅用于测试。")
     d.table([
         ["品名 Product", "规格", "数量(MT)", "单价 Unit Price", "金额 Amount"],
-        ["虚构焦炭甲", "Grade A", "10", "USD 100.00", "USD 1,000.00"],
-        ["虚构焦炭乙", "Grade B", "20", "USD 200.00", "USD 4,000.00"],
-        ["虚构焦炭丙", "Grade C", "30", "USD 300.00", "USD 9,000.00"],
+        ["虚构焦炭甲", "Grade A", "10", "USD 1,234.56", "USD 12,345.60"],
+        ["虚构焦炭乙", "Grade B", "20", "USD 2,345.67", "USD 46,913.40"],
+        ["虚构焦炭丙", "Grade C", "30", "USD 3,456.78", "USD 103,703.40"],
     ])
     d.facts = {
         "table_count": 1,
         "must_replace": [
-            {"text": "USD 100.00", "category": "PRICE"},
-            {"text": "USD 200.00", "category": "PRICE"},
-            {"text": "USD 300.00", "category": "PRICE"},
-            {"text": "USD 1,000.00", "category": "AMOUNT"},
-            {"text": "USD 4,000.00", "category": "AMOUNT"},
-            {"text": "USD 9,000.00", "category": "AMOUNT"},
+            {"text": "USD 1,234.56", "category": "PRICE"},
+            {"text": "USD 2,345.67", "category": "PRICE"},
+            {"text": "USD 3,456.78", "category": "PRICE"},
+            {"text": "USD 12,345.60", "category": "AMOUNT"},
+            {"text": "USD 46,913.40", "category": "AMOUNT"},
+            {"text": "USD 103,703.40", "category": "AMOUNT"},
         ],
         "must_keep": ["虚构焦炭甲", "虚构焦炭乙", "虚构焦炭丙", "Grade A", "Grade B", "Grade C", "10", "20", "30"],
     }

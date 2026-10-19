@@ -101,7 +101,7 @@ def test_build_coverage_includes_a05_samples_and_only_identifiers(db_sessionmake
     assert "检测到修订痕迹" in joined or "隐藏工作表未参与审核" in joined
     assert "虚构报价.docx F4-T1 报价明细表共 3 行，只把汇总信息发给 AI，行级数据未逐行审核" in joined
     assert "付款条款见附表" not in joined and "星河虚构进出口有限公司" not in joined
-    assert "虚构焦炭甲" not in joined and "USD 100.00" not in joined
+    assert "虚构焦炭甲" not in joined and "USD 1,234.56" not in joined
     assert coverage["sanctions_offline"] is True
 
 
