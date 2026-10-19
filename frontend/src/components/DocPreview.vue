@@ -403,7 +403,11 @@ onBeforeUnmount(() => {
                 class="docx__p"
                 :class="{ 'is-heading': it.node.kind === 'heading', 'is-highlight': hl.has(it.node.loc) }"
               >
-                <span v-if="it.node.clause_no" class="docx__no">{{ it.node.clause_no }}</span>{{ it.node.text }}
+                <!-- 与后端 with_clause_no 一致：手写编号已在文字开头时不再重复显示 -->
+                <span
+                  v-if="it.node.clause_no && !it.node.text?.startsWith(it.node.clause_no)"
+                  class="docx__no"
+                >{{ it.node.clause_no }}</span>{{ it.node.text }}
               </p>
               <table v-else class="grid">
                 <tbody>
