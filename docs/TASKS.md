@@ -13,7 +13,8 @@
 - M2-18 已完成（2026-10-16，GPT-6.1 Sol）：新增开发环境审核评测脚本和使用说明，逐份 DOCX 复用解析→脱敏→审核（经网关），输出 Markdown；附加参数仅在当前评测会话覆盖，不写全局设置；新增 Q-57（待确认）与 16 项测试，Docker 全部测试 668 passed、1 warning
 - M2-19 已完成（2026-10-19）：模拟模型全流程与 A-04、T-01、T-02、T-07、T-09、T-10、T-11 通过；用虚构样本调用真实模型（deepseek-flash）试跑非思考、思考两种模式，外发记录无真实值，结论数 = 发送的要求数，非缺失型问题的引用全部校验通过；新增 Q-58、Q-59、Q-60，Q-12 待用户决定
 - M2 已验收并经用户确认（2026-10-19）；Q-12 决定采用思考模式、max_tokens 32000
-- 下一步：M3-00（里程碑细化，Opus），细化后等用户确认
+- M3 已细化（M3-00）并经用户确认（2026-10-19），设计见 docs/design/M3.md；Q-38～Q-57、Q-61～Q-66 已确认；SPEC 的 max\_tokens 默认值改为 32000
+- 下一个任务：**M3-01**（虚构样本，Sonnet 档，medium；可由 Sonnet 5.5 或 GPT-6.1 Sol 执行）
 - GPT-6.1 Sol 分工（2026-10-16 用户决定）：试用任务 M2-13 评审通过，以后可以接手 Sonnet 档的任务，含前端任务；它做的第一个前端任务由 Opus 重点评审（见第一节）。前端界面规范见 docs/design/frontend.md
 - 上次 Opus 评审到的提交：94cd950（2026-10-17 评审 M2-18（GPT-6.1 Sol）：只改了文件范围内的文件，完成标准有测试覆盖，Q-57 已记录，输出不含原文和密钥，按 README 实跑可用，无阻塞问题。此前 2026-10-16 已评审 M2-12 至 M2-17 及 Q-52）
 
@@ -110,21 +111,26 @@
 
 ### M3 解析补全与预览（验收：T-03）
 
-| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC | 状态 |
-|-|-|-|-|-|-|-|
-| M3-00 | 里程碑细化 | Opus | medium | M2-19 | 22 | 待细化 |
-| M3-01 | 虚构样本：文字版 PDF、扫描版 PDF（用 Pillow 生成图片再转 PDF）、JPG、PNG、XLSX 报价单 | Haiku | medium | M3-00 | 23 | 待细化 |
-| M3-02 | PDF 文字版解析：段落块、表格、bbox、去除表格区域内重复的段落块、页数上限 | Sonnet | high | M3-01 | 8.5、8.7、Q-16 | 待细化 |
-| M3-03 | OCR：集成 RapidOCR、用 pypdfium2 渲染扫描页、合并文本块、低置信标记、OCR 页数上限、同一时间只跑 1 个 OCR 任务、模型文件打包进镜像 | Sonnet | high | M3-02 | 8.5、8.7、21 | 待细化 |
-| M3-04 | XLSX 解析：两次读取（缓存值和公式）、合并单元格、隐藏工作表、公式无缓存值时警告、单元格数上限 | Sonnet | medium | M3-03 | 8.4、8.7 | 待细化 |
-| M3-05 | 原文预览：节点接口和原件接口；DocPreview.vue（按节点渲染、用 pdfjs 叠加高亮、图片用 img 叠加高亮、点击问题定位） | Sonnet | high | M3-04 | 6.3 右栏、19.3、Q-17 | 待细化 |
-| M3-06 | M3 联调与验收 | Opus | medium | M3-05 | 23 | 待细化 |
+**开工前必读 [docs/design/M3.md](design/M3.md)**：模块划分、函数签名、接口形状都以它为准；前端任务同时遵守 [docs/design/frontend.md](design/frontend.md)。下表“文件范围”中的路径相对于 `backend/`（前端任务相对于 `frontend/`），“设计”列指向 M3.md 的章节。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| M3-00 | 里程碑细化：模块划分、接口约定、样本约定、任务拆分 | Opus | medium | M2-19 | 22；— | docs/design/M3.md、docs/design/frontend.md（结果页双栏提前到 M3）、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 已完成 |
+| M3-01 | 虚构样本生成脚本与样本：文字版 PDF、扫描版 PDF（含低质量页）、混合 PDF、旋转页 PDF、加密 PDF、XLSX 报价单（标题行在表头上方、百分比与货币格式、合并单元格、合计行）、含未缓存公式 / 隐藏行 / 隐藏工作表的 XLSX、清晰 PNG、带 EXIF 旋转的低质量 JPG | Sonnet | medium | M3-00 | 8.4、8.5、23；设计九 | tests/fixtures/pdf/\*、tests/fixtures/xlsx/\*、tests/fixtures/images/\*（各含生成脚本和 manifest.yaml）、requirements-dev.txt（只加 reportlab）、Dockerfile（只在 test 阶段安装 fonts-wqy-microhei） | 脚本可重复生成；内容全部虚构；manifest 写明每页类型、关键节点文字、必须出现的警告和必须替换的敏感项；运行镜像不含 reportlab 和字体 | 待执行 |
+| M3-02 | XLSX 解析：两次读取、单元格文字格式化（数字、百分比、货币、日期）、合并单元格、隐藏工作表、未缓存公式与隐藏行列的警告、单元格数上限 | Sonnet | high | M3-01 | 8.1、8.2、8.4、8.7；设计二、三 | app/parsing/model.py（只加第二节的常量和 ocr\_pages 字段）、app/parsing/xlsx.py、tests/test\_parse\_xlsx.py | manifest 的预期事实全部满足；数字不出现科学计数法和浮点误差；损坏、加密、超限文件抛出 ParseError 且消息不含原文 | 待执行 |
+| M3-03 | PDF 文字页解析：inspect\_pdf、文字页与扫描页判定、文本行合并为块、表格单元格、表格区域内的文字不重复（Q-16）、bbox 与旋转页换算、页数上限 | Sonnet | high | M3-02 | 8.1、8.2、8.5、8.7、Q-16；设计二、四 | app/parsing/pdf.py（文字页部分；扫描页先抛出 ParseError 占位）、tests/test\_parse\_pdf.py | 文字版和旋转页样本的预期事实全部满足；表格内文字只出现在单元格节点中；超过 200 页、加密、损坏时抛出 ParseError | 待执行 |
+| M3-04 | OCR 与图片：ocr.py（RapidOCR 引擎复用、禁用 onnxruntime 遥测、行合并）、PDF 扫描页（pypdfium2 200 DPI 渲染、坐标换算）、parse\_image（EXIF 方向、缩放、像素上限）、低置信与未识别到文字的警告 | Sonnet | high | M3-03 | 8.5、8.7、21、Q-64；设计四、五 | app/parsing/ocr.py、app/parsing/image.py、app/parsing/pdf.py（扫描页部分）、tests/test\_ocr.py、tests/test\_parse\_image.py、tests/test\_parse\_pdf.py | 扫描、混合、图片样本的预期事实满足（关键词出现、低置信页有警告）；坐标换算有测试；完成报告给出在 `--network none` 容器中运行 OCR 测试的命令和结果；T-20 仍通过 | 待执行 |
+| M3-05 | pipeline 接入与脱敏适配：按格式分派、OCR 预算与 ocr\_slot、删除“后续版本提供”分支；表格列提示支持 XLSX 和非首行表头；问题位置显示页码和单元格 | Opus | xhigh | M3-04 | 7.1、8.7、9.3 第 5 步、Q-65；设计一、六 | app/tasks/pipeline.py、app/redaction/engine.py（只改 \_table\_hints 及其辅助函数）、app/review/service.py（只改 \_View.locations）、tests/test\_pipeline.py、tests/test\_redaction\_engine.py、tests/test\_runs\_api.py、tests/fixtures/redaction\_golden/\*（增加 XLSX 报价单样本）、tests/test\_redaction\_golden.py | 五种格式都能从上传走到 awaiting\_confirm 或 completed\_local；OCR 超预算在 OCR 前失败；XLSX 报价单的单价和金额全部替换；回归测试集通过；对真实接口重跑 T-07 的预检拦截 | 待执行 |
+| M3-06 | 预览接口：节点接口、原件接口（错误码、响应头、保留期清理后的表现） | Sonnet | medium | M3-05 | 6.3、17.2、19.3、Q-63；设计七 | app/tasks/router.py、app/tasks/service.py、app/tasks/schemas.py、tests/test\_preview\_api.py | 每个错误码都有测试；raw 字节与原件一致且响应头齐全；text\_available 在清理后为 false；对真实接口重跑 A-06（他人和管理员 404） | 待执行 |
+| M3-07 | 前端：DocPreview 组件（DOCX、XLSX 按节点渲染，PDF 用 pdfjs-dist 逐页渲染，图片用 img，高亮层与滚动定位）、getBlob 与 preview 接口封装 | Sonnet | high | M3-06 | 6.3 右栏、Q-17；设计八 8.1、8.2 | src/api/http.ts（只加 getBlob）、src/api/preview.ts、src/components/DocPreview.vue、package.json、package-lock.json（只加 pdfjs-dist） | 四种格式都能显示；传入 loc 后高亮并在预览区内滚动；PDF 只渲染可视页；原件不经 URL 直接加载；`npm run build` 通过；按 frontend.md 第十一节自检 | 待执行 |
+| M3-08 | 前端：结果页双栏与点击定位；公共样式整理（common.css，标签颜色移到 labels.ts） | Sonnet | medium | M3-07 | 6.3；设计八 8.3；frontend.md 第二节、第十节 | src/views/ReviewResult.vue、src/components/FindingCard.vue、src/styles/common.css、src/main.ts（只加引入 common.css）、src/utils/labels.ts、src/views/ReviewNew.vue、src/views/History.vue、src/components/ConfirmStep.vue（后三个只改为使用公共样式） | 点击问题高亮对应位置，缺失型问题不可点；整理后各页面截图与整理前一致；`npm run build` 通过；按 frontend.md 第十一节自检 | 待执行 |
+| M3-09 | M3 联调与验收：五种格式走通全流程；T-03；回归 M2 验收用例；浏览器检查预览与定位 | Opus | medium | M3-08 | 22、23 | 按需 | T-03 通过，M2 的验收用例回归通过；验收结果汇报给用户 | 待执行 |
 
 ### M4 脱敏完善（验收：A-03、T-06、T-08）
 
 | 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC | 状态 |
 |-|-|-|-|-|-|-|
-| M4-00 | 里程碑细化 | Opus | high | M3-06 | 22 | 待细化 |
+| M4-00 | 里程碑细化 | Opus | high | M3-09 | 22 | 待细化 |
 | M4-01 | 手动补充：同一文字全文替换，重新生成外发文本，保持代号一致 | Opus | high | M4-00 | 6.2 第 5 项、19.4 | 待细化 |
 | M4-02 | 人名与地址识别（9.3 第 6、7 步）；国家和企业类型判断 | Sonnet | high | M4-01 | 9.3、9.4 | 待细化 |
 | M4-03 | 疑似遗漏：识别规则和处理接口 | Sonnet | medium | M4-02 | 9.5、19.4 | 待细化 |

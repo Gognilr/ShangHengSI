@@ -86,7 +86,7 @@ def test_send_records_call(gw, db_sessionmaker, make_user, monkeypatch):
     assert str(req.url) == f"{BASE_URL}/chat/completions"
     assert req.headers["Authorization"] == f"Bearer {API_KEY}"
     body = json.loads(req.content)
-    assert body == {"model": "mock-model", "messages": REVIEW_MESSAGES, "temperature": 0.1, "max_tokens": 8000,
+    assert body == {"model": "mock-model", "messages": REVIEW_MESSAGES, "temperature": 0.1, "max_tokens": 32000,
                     "response_format": {"type": "json_object"}, "thinking": {"type": "disabled"}}
     assert json.loads(row.request_text) == body
     assert_no_secret([row])
@@ -243,7 +243,7 @@ def test_connection_sends_fixed_message(gw, db_sessionmaker, make_user, monkeypa
 
 def test_settings_defaults_and_unknown_keys(gw, db_sessionmaker):
     with db_sessionmaker() as db:
-        assert settings_store.get_setting(db, "model.max_tokens") == 8000
+        assert settings_store.get_setting(db, "model.max_tokens") == 32000
         assert settings_store.get_setting(db, "model.json_mode") is True
         assert settings_store.get_setting(db, "review.company_profile") == ""
         d = settings_store.get_setting(db, "model.chunk_chars")

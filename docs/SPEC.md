@@ -24,6 +24,7 @@ Oct 10, 2026 · @Obi Bello
 |-|-|-|
 |2026-10-15|部署宿主改为 Windows Server 2022 或 2025；备份只写虚拟机内的本地备份盘，异地备份由运维自行处理（16、20 节）；OCR 由 PaddleOCR 改为 RapidOCR（3、8.5 节）；里程碑调整为 M1–M8，先做只支持 DOCX 的最小闭环（22 节）；新增开发期质量工具（5、23.3 节）；模型厂商确定为 DeepSeek（24.2 节）；网关第一步统一称“每月调用上限检查”|产品负责人|
 |2026-10-15|不联网：删除“联网搜索”设置项、review\_runs.web\_search、review\_runs.sanctions\_sources 和输出结构中的 sanctions.sources；系统提示词第 6 条改为不联网（prompt\_version 首版即按此发布）；制裁结论和覆盖说明固定注明“未联网核查”（6.3、11、12.1、14、15.2、17.5、18 节）|产品负责人|
+|2026-10-19|max\_tokens 默认值由 8000 改为 32000（11.1、15.2、18.20）：M2 评测中思考模式的输出约 6000–11000 token，8000 会截断（open\_questions Q-12）|产品负责人|
 
 ## 1\. 产品概述
 
@@ -523,7 +524,7 @@ repo/
 ### 11.1 模型调用
 
 * 接口：OpenAI 兼容的 Chat Completions，POST {base\_url}/chat/completions。
-* 参数：temperature 默认 0.1；max\_tokens 默认 8000；超时 180 秒；均可在设置中修改。
+* 参数：temperature 默认 0.1；max\_tokens 默认 32000；超时 180 秒；均可在设置中修改。
 * 输出格式：设置“使用 JSON 输出格式”开启时，请求带 response\_format={"type":"json\_object"}；关闭时只靠提示词约束。
 * 不联网：V1.0 不使用任何联网搜索能力（DeepSeek 官方接口不提供）。
 * 附加请求参数：设置中的“附加请求参数（JSON）”原样合并进请求体，用于厂商特有参数（如 DeepSeek 的 thinking）。由管理员按厂商文档填写，代码不写死任何厂商参数。
@@ -770,7 +771,7 @@ requirements:
 |API 密钥|加密保存；界面只显示末 4 位|
 |模型名称||
 |temperature|默认 0.1|
-|最大输出 token|默认 8000|
+|最大输出 token|默认 32000|
 |超时（秒）|默认 180|
 |使用 JSON 输出格式|开关，默认开|
 |附加请求参数（JSON）|原样合并进请求体，用于厂商特有参数（如 DeepSeek 的 thinking）；保存时校验为合法 JSON|
@@ -1229,7 +1230,7 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 |model.api\_key\_enc|""（加密后的 base64）|
 |model.name|""|
 |model.temperature|0.1|
-|model.max\_tokens|8000|
+|model.max\_tokens|32000|
 |model.timeout\_s|180|
 |model.json\_mode|true|
 |model.extra\_params|{}|

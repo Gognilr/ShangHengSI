@@ -18,7 +18,7 @@ DEFAULTS: dict[str, Any] = {
     "model.api_key_enc": "",
     "model.name": "",
     "model.temperature": 0.1,
-    "model.max_tokens": 8000,
+    "model.max_tokens": 32000,
     "model.timeout_s": 180,
     "model.json_mode": True,
     "model.extra_params": {},
