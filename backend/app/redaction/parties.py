@@ -69,6 +69,16 @@ _EN_LEADING_NOISE = frozenset(w.casefold() for w in (
 ))
 # 中文名称前常见的虚词：在正文中识别企业名称时去掉（“与XX有限公司签订”）
 _CN_LEADING_NOISE = set("与和及由向对将经在为给被把自从同跟即系是")
+# 正文企业名称的起点边界词（Q-56，设计 M4.md 2.2）：向前取汉字时遇到即停止，名称从边界词之后开始；多字的优先
+_CN_BOUNDARY_WORDS = (
+    "经由", "委托", "通过", "根据", "按照", "依据", "代表", "联系",
+    "由", "向", "与", "和", "及", "同", "跟", "经", "致", "自", "从", "为", "对", "将", "把", "被", "给", "在", "即", "系", "是",
+)
+# 企业名称中常见的、含边界字的词：这些词内部的字不当作边界（否则“新兴经济贸易有限公司”会被截成“济贸易有限公司”而漏掉前半）
+_CN_BOUNDARY_PROTECTED = (
+    "经贸", "经济", "经营", "经销", "经纪", "经理", "自由", "自贸", "自动", "自然", "自强", "同方", "同心", "同创", "同兴",
+    "同济", "和平", "和谐", "和顺", "和合", "和兴", "为民", "从化", "在线", "对外", "给水", "即时",
+)
 
 # ---------------------------------------------------------------- 简称
 
@@ -168,6 +178,36 @@ def find_aliases(text: str) -> list[tuple[int, int, int]]:
     return out
 
 
+def _name_start_after_boundary(text: str, start: int, suffix_start: int) -> int:
+    """text[start:suffix_start] 是企业后缀前向前取到的汉字（含括号）。返回最后一个边界词之后的位置（Q-56）。
+
+    括号内的字和受保护词内部的字不算边界；边界词之后不足 2 个汉字时返回 start（按 M2 的做法整段处理，宁多勿漏）。
+    """
+    run = text[start:suffix_start]
+    blocked = [False] * len(run)
+    for word in _CN_BOUNDARY_PROTECTED:
+        i = run.find(word)
+        while i >= 0:
+            for k in range(i, i + len(word)):
+                blocked[k] = True
+            i = run.find(word, i + 1)
+    depth = 0
+    best = 0
+    for i, ch in enumerate(run):
+        if ch in "（(":
+            depth += 1
+        elif ch in "）)":
+            depth = max(0, depth - 1)
+        elif depth == 0 and not blocked[i]:
+            for word in _CN_BOUNDARY_WORDS:
+                if run.startswith(word, i):
+                    best = i + len(word)
+                    break
+    if best and sum(1 for c in run[best:] if _CN_CHAR.match(c)) >= 2:
+        return start + best
+    return start
+
+
 def find_other_org_names(text: str) -> list[tuple[int, int]]:
     """正文中未带标签的企业名称：[(start, end)]。"""
     out = []
@@ -180,8 +220,12 @@ def find_other_org_names(text: str) -> list[tuple[int, int]]:
                and (_CN_CHAR.match(text[start - 1]) or text[start - 1] in "（）()")):
             start -= 1
         last_end = m.end()
-        while start < m.start() - 2 and text[start] in _CN_LEADING_NOISE:
-            start += 1
+        cut = _name_start_after_boundary(text, start, m.start())
+        if cut > start:
+            start = cut
+        else:  # 没有可用的边界词：沿用 M2 的做法，只去掉开头的虚词
+            while start < m.start() - 2 and text[start] in _CN_LEADING_NOISE:
+                start += 1
         while start < m.start() and text[start] in "）)":
             start += 1
         if m.start() - start >= 2:

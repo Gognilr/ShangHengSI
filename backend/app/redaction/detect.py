@@ -7,6 +7,9 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
+from app.redaction.dictionaries import common_terms, find_country
+from app.redaction.parties import normalize
+
 
 @dataclass(frozen=True)
 class Hit:
@@ -217,4 +220,162 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
         if bare:
             hits.append(Hit(bare.start(1), bare.end(1), column,
                             _amount_key(column, None, _decimal(bare.group(1)), bare.group(1))))
+    return hits
+
+
+# ---------------------------------------------------------------- 第 6 步：人名（M4-01，设计 M4.md 2.1）
+
+# 后接冒号或空格均可的标签 / 必须有冒号的标签（“签字盖章”“Contact us”“Name of Buyer”这类不是标签）
+_PERSON_LABELS_OPT = (
+    "法定代表人", "委托代理人", "授权代表", "签字人", "联系人", "经办人", "收件人", "代表人",
+    r"(?i:attention)", r"(?i:attn\.?)", r"(?i:signed\s+by)",
+)
+_PERSON_LABELS_COLON = (
+    "签字", "签名", r"(?i:contact\s+person)", r"(?i:contact)", r"(?i:signature)", r"(?i:name)", r"(?i:representative)",
+)
+_PERSON_LABEL = re.compile(
+    r"(?<![A-Za-z])(?:(?:" + "|".join(_PERSON_LABELS_OPT) + r")[ \t]*[:：]?|(?:" + "|".join(_PERSON_LABELS_COLON) + r")[ \t]*[:：])[ \t]*"
+)
+_CN_TITLES = ("总经理", "董事长", "先生", "女士", "小姐", "经理", "主任", "总裁", "代表")  # 长的在前
+_CN_PERSON_CUT = ("电话", "手机", "传真", "邮箱", "邮件", "职务", "职位", "部门", "地址")
+_CN_NOT_PERSON_END = set("部处室科组厅局院所司队厂")  # “采购部”“财务科”不是人名
+_CN_NOT_PERSON = frozenset({"同上", "同前", "见下", "待定", "略", "不详", "本人", "本公司", "我司", "贵司", "对方"})
+_EN_TITLES = re.compile(r"(?:Mr|Mrs|Ms|Miss|Dr|Prof)(?:\.[ \t]*|[ \t]+)", re.IGNORECASE)
+_EN_WORD = re.compile(r"[A-Z][A-Za-z'’\-]*\.?")
+# 职务、部门词和信息标签：遇到即停止（小写形式比较）
+_EN_STOP_WORDS = frozenset(w.casefold() for w in (
+    "Manager", "Director", "Sales", "Purchasing", "Procurement", "Department", "Dept", "Team", "Officer", "Executive",
+    "Engineer", "President", "Chairman", "Chairwoman", "CEO", "CFO", "COO", "GM", "Assistant", "Supervisor", "Representative",
+    "Agent", "Head", "Chief", "Finance", "Accounts", "Accounting", "Logistics", "Marketing", "Export", "Import", "Legal",
+    "Tel", "Telephone", "Phone", "Fax", "Mobile", "Cell", "Email", "E-mail", "Ext",
+))
+# 英文企业后缀词：名称里出现这些词说明标签后是公司名（“Company Name: ABC Ltd”），整个不当作人名
+_EN_COMPANY_WORDS = frozenset(w.casefold() for w in (
+    "Co", "Ltd", "Inc", "Corp", "Corporation", "Company", "LLC", "LLP", "PLC", "Limited", "GmbH", "Pte", "Pvt", "Sdn", "Bhd",
+))
+
+
+def _strip_cn_titles(run: str) -> str:
+    changed = True
+    while changed:
+        changed = False
+        for title in _CN_TITLES:
+            if run.endswith(title) and len(run) > len(title):
+                run = run[:-len(title)]
+                changed = True
+                break
+    return run
+
+
+def find_persons(text: str) -> list[Hit]:
+    """第 6 步：人名标签之后的人名。中文 2–4 个汉字（去掉末尾称谓后），英文 1–3 个首字母大写的单词。
+
+    不能确定时不识别（不猜测）。标签后紧接公司名称的情况由 engine 的占位处理（公司名已先被替换）。
+    """
+    hits: list[Hit] = []
+    seen: set[tuple[int, int]] = set()
+    terms = [t.casefold() for t in common_terms()]
+    for m in _PERSON_LABEL.finditer(text):
+        pos = m.end()
+        span: tuple[int, int] | None = None
+        han = re.compile(r"[一-鿿]+").match(text, pos)
+        if han:
+            run = han.group()
+            for cut in _CN_PERSON_CUT:
+                i = run.find(cut, 1)
+                if i > 0:
+                    run = run[:i]
+            run = _strip_cn_titles(run)
+            if (2 <= len(run) <= 4 and run[-1] not in _CN_NOT_PERSON_END and run not in _CN_NOT_PERSON
+                    and "公司" not in run):
+                span = (pos, pos + len(run))
+        else:
+            while (t := _EN_TITLES.match(text, pos)):
+                pos = t.end()
+            words: list[re.Match] = []
+            cur = pos
+            while len(words) < 3:
+                w = _EN_WORD.match(text, cur)
+                if w is None:
+                    break
+                token = w.group().rstrip(".")
+                if token.casefold() in _EN_COMPANY_WORDS:
+                    words = []
+                    break
+                rest = text[w.start():w.start() + 60].casefold()
+                if (token.casefold() in _EN_STOP_WORDS or text[w.end():w.end() + 1] == ":"
+                        or any(rest.startswith(t) and not rest[len(t):len(t) + 1].isalnum() for t in terms)):
+                    break
+                words.append(w)
+                nxt = re.compile(r"[ \t]+").match(text, w.end())
+                if nxt is None or w.group().endswith(".") and len(w.group()) > 2:
+                    break
+                cur = nxt.end()
+            if words:
+                end = words[-1].end()
+                if text[end - 1] == "." and len(words[-1].group()) > 2:  # 句末的句号不属于姓名；“J.”这样的缩写保留
+                    end -= 1
+                span = (words[0].start(), end)
+        if span and span not in seen:
+            seen.add(span)
+            hits.append(Hit(span[0], span[1], "PERSON", normalize(text[span[0]:span[1]])))
+    return hits
+
+
+# ---------------------------------------------------------------- 第 7 步：地址（M4-01）
+
+_ADDRESS_LABEL = re.compile(
+    r"(?:注册地址|通讯地址|办公地址|联系地址|收货地址|地址|(?<![A-Za-z])(?i:registered\s+address|address|add\.?))[ \t]*[:：]"
+)
+_INFO_LABEL = re.compile(
+    r"(?:电话|手机|传真|邮箱|联系人|(?<![A-Za-z])(?i:tel|phone|fax|e-?mail|contact|attn)\.?)[ \t]*[:：]"
+)
+_ADDRESS_EDGE = " \t,，;；、.。:：\r"
+
+
+def find_addresses(text: str) -> list[Hit]:
+    """第 7 步：地址标签（须有冒号）之后到行尾；遇到下一个信息标签或地址标签时提前结束。key 为国家。"""
+    hits: list[Hit] = []
+    for m in _ADDRESS_LABEL.finditer(text):
+        line_end = text.find("\n", m.end())
+        limit = len(text) if line_end < 0 else line_end
+        stop = [x.start() for x in (_INFO_LABEL.search(text, m.end(), limit), _ADDRESS_LABEL.search(text, m.end(), limit)) if x]
+        end = min([limit, *stop])
+        start = m.end()
+        while start < end and text[start] in _ADDRESS_EDGE:
+            start += 1
+        while end > start and text[end - 1] in _ADDRESS_EDGE:
+            end -= 1
+        if end > start:
+            hits.append(Hit(start, end, "ADDR", find_country(text[start:end]) or "国家未知"))
+    return hits
+
+
+# ---------------------------------------------------------------- 数量（M4-01，仅在“数量脱敏”开启时由 engine 调用）
+
+_QTY_UNITS = (
+    "万吨", "吨", "公斤", "千克", "件", "套", "台", "箱", "桶", "个", "批",
+    "MT", "kg", "pcs", "sets", "units", "cartons", "bags", "drums",
+)
+_QTY_UNIT_RE = "|".join(sorted(_QTY_UNITS, key=len, reverse=True))
+# “3 个工作日”“2个月”是期限不是数量
+_QTY = re.compile(
+    rf"(?<![\d.,])({_NUM})[ \t]?((?i:{_QTY_UNIT_RE}))(?![A-Za-z])"
+    r"(?!月|工作日|营业日|自然日|银行日|工作|星期|周|日|天|小时|季度|年|百分点)"
+)
+
+
+def _qty_key(unit: str, num: str) -> str:
+    value = _decimal(num)
+    shown = format(value.normalize(), "f") if value is not None else num
+    return f"QTY|{unit.casefold()}|{shown}"
+
+
+def find_quantities(text: str, column: str | None = None) -> list[Hit]:
+    """数字（可含千分位和小数）后紧跟计量单位；只替换数字，单位保留。column="QTY" 时整格只有一个数字也算数量。"""
+    hits = [Hit(m.start(1), m.end(1), "QTY", _qty_key(m.group(2), m.group(1))) for m in _QTY.finditer(text)]
+    if not hits and column == "QTY":
+        bare = _BARE_NUMBER.match(text)
+        if bare:
+            hits.append(Hit(bare.start(1), bare.end(1), "QTY", _qty_key("", bare.group(1))))
     return hits

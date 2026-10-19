@@ -233,12 +233,38 @@ def test_terms_step_one():
 def test_other_org_names_in_text():
     nodes = nodes_of("本合同由星河虚构进出口有限公司与上海示例物流有限公司签订，货物经 Example Shipping Co., Ltd. 承运。")
     r, text = run(nodes, stance="other")
-    # 未带标签的中文名称起点不确定时整段汉字一起替换（宁多勿漏）；“与”这类虚词在开头时去掉
-    assert r.redacted["F1-P1"] == "公司_A与公司_B签订，货物经 公司_C 承运。"
+    # 向前取汉字遇到“由、与”等边界词即停止（Q-56），“本合同由”“与”保留
+    assert r.redacted["F1-P1"] == "本合同由公司_A与公司_B签订，货物经 公司_C 承运。"
     assert {p.org_type for p in r.parties} == {"类型未知", "货代"}
     assert find_other_org_names("由星河虚构进出口有限公司提供") == [(1, 12)]
     # 宽泛后缀（公司、厂）在正文中不自动替换
     assert run(nodes_of("本公司与贵公司、该厂均同意。"))[0].items == []
+
+
+def test_chinese_org_name_start_boundary():
+    # Q-56（M4-01）：名称从最后一个边界词之后开始，边界词和前面的动词、介词保留
+    def names(text):
+        return [text[s:e] for s, e in find_other_org_names(text)]
+
+    assert names("货物由恒远虚构物流（深圳）有限公司代为装运。") == ["恒远虚构物流（深圳）有限公司"]
+    assert names("委托恒远虚构物流有限公司办理报关") == ["恒远虚构物流有限公司"]
+    assert names("买方向星河虚构贸易有限公司支付货款") == ["星河虚构贸易有限公司"]
+    assert names("通过上海示例国际货运代理有限公司订舱") == ["上海示例国际货运代理有限公司"]
+    assert names("经由宏达虚构船务有限公司承运") == ["宏达虚构船务有限公司"]  # 多字边界词
+    assert names("根据北方示例化工有限公司的要求") == ["北方示例化工有限公司"]
+    assert names("代表南方示例集团有限公司签署") == ["南方示例集团有限公司"]
+    assert names("卖方与买方及东方示例实业有限公司同意") == ["东方示例实业有限公司"]
+    # 括号里的字不算边界；受保护词（经贸、自由贸易等）内部的字不算边界，整个名称一起替换
+    assert names("委托华兴（对外）示例有限公司办理") == ["华兴（对外）示例有限公司"]
+    assert names("货物由新兴经济贸易有限公司提供") == ["新兴经济贸易有限公司"]
+    assert names("与自由贸易示例有限公司签订") == ["自由贸易示例有限公司"]
+    # 边界词之后不足 2 个汉字时按 M2 的做法整段处理（宁多勿漏）
+    assert names("本合同由某有限公司提供") == ["本合同由某有限公司"]
+    # 连续两个名称：第二个名称的起点边界不越过第一个名称
+    assert names("由甲示例有限公司向乙示例有限公司交付") == ["甲示例有限公司", "乙示例有限公司"]
+    # 完整流程：只替换公司名
+    r, text = run(nodes_of("货物由恒远虚构物流（深圳）有限公司代为装运，并委托星河虚构贸易有限公司办理。"), stance="other")
+    assert r.redacted["F1-P1"] == "货物由公司_A代为装运，并委托公司_B办理。"
 
 
 def test_english_org_name_after_chinese_punctuation():

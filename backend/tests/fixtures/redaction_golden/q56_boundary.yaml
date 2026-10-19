@@ -1,0 +1,25 @@
+description: 正文中的中文企业名称前有“由、委托、向、经由、通过”等动词介词（Q-56）：只替换公司名，动词介词保留
+stance: sales
+must_replace:
+  - {text: 北辰虚构贸易有限公司, category: ORG}
+  - {text: "Sample Fictive Industry Co., Ltd.", category: ORG}
+  - {text: 恒远虚构物流（深圳）有限公司, category: ORG}
+  - {text: 星河虚构报关有限公司, category: ORG}
+  - {text: 海岳虚构保险代理有限公司, category: ORG}
+  - {text: 宏达虚构船务有限公司, category: ORG}
+  - {text: 上海示例国际货运代理有限公司, category: ORG}
+must_keep:
+  - 货物由
+  - 代为装运
+  - 天津港
+  - 买方委托
+  - 办理进口报关
+  - 费用由买方承担
+  - 卖方向
+  - 投保货物运输险
+  - 110%
+  - 货物经由
+  - 承运至 Jebel Ali
+  - 2026年10月20日
+  - 合同价款通过
+  - 结算，付款期限为 30 天
