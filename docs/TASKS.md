@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- M5-08 已完成（2026-10-20，GPT-6.1 Sol，用户在会话中明确授权执行原定 Opus 档任务）：A-02 / A-05 / A-07 / A-08、T-12 / T-13 及 M2～M4 回归通过；新增 27 份可解析样本、460 条引用的真实接口 + 模拟网关验收；修复重复问题引用升级后首个定位与快照不一致，保留修复前失败证据；修正抽屉间距与提示字号。后端最终 Docker 全量 1124 passed、1 warning；之后仅抽屉 CSS 小修，构建及 A-08 7 passed；浏览器五文件 5 段、四轮状态（completed / 分段失败 partial / unable partial / 上限 failed）、旧轮次备注、扫描件定位、两种宽度、抽屉和删除取消均核对。详见 docs/acceptance/M5-08.md。M5 验收结果待用户确认；修复及 M5-06 范围例外待 Opus 复审，未冒充独立评审。下一个任务：**M6-00**（Opus 档，high），本会话停止，不进入 M6。
+
 - M5-07 已完成（2026-10-20，GPT-6.1 Sol）：新增 A-08 禁用词扫描测试，覆盖 frontend/src 的 .vue/.ts、backend/app 的 .py、backend/resources 全部文件和可选报告模板；排除测试与 fixtures，移除制裁等级“无明显风险”后扫描；Q-58 已决定只约束系统自有文字。Docker 定向测试 7 passed；Docker 全量测试 1122 passed、1 warning（测试容器额外挂载 frontend/ 只读卷，以便扫描前端源码）。下一个任务：**M5-08**（Opus 档，medium，M5 联调与验收）。
 
 - M5-06 已完成（2026-10-20）：GET /requirements 与审核要求抽屉，第一步、第二步加入口链接；后端新增测试通过（除 test_eval_review.py 因本容器缺少 tools 模块无法收集外，其余 652 passed）、前端构建通过；浏览器已核对：第一步（全部文件类型，内置要求标注适用类型）、第二步（合同·采购·我方发出，不含销售专属条目，公司补充要求为空显示“暂无”，本次补充说明正确显示）；核对时把已有测试任务重新审核回到待确认，未再发送；未测公司补充要求有数据的显示；下一个任务：**M5-07**（Haiku 档，low）。
@@ -182,7 +184,7 @@
 | M5-05 | 结果页完整版：顶部信息栏、轮次下拉、覆盖说明卡片、失败与部分完成提示、删除；第三步分段进度；TERM\_IN\_PROMPT 提示 | Sonnet | high | M5-04 | 6.2 第三步、6.3、7.3、Q-60；设计八；frontend.md | src/views/ReviewResult.vue、src/views/ReviewNew.vue（只改第三步进度）、src/components/CoverageCard.vue、src/api/runs.ts、src/api/redaction.ts（只加错误码文字）、src/utils/labels.ts | `npm run build` 通过；按 frontend.md 第十一节自检；浏览器中检查轮次切换、覆盖说明、failed / partial 显示、分段进度；界面不出现“审核通过”“无风险” | 已完成 |
 | M5-06 | 审核要求抽屉与 GET /requirements | Sonnet | medium | M5-05 | 6.2、6.5、19.5；设计九；frontend.md | app/review/requirements.py、app/review/router.py、tests/test\_requirements.py、tests/test\_runs\_api.py；前端 src/components/RequirementsDrawer.vue、src/api/requirements.ts、src/views/ReviewNew.vue（只加入口链接）、src/components/ConfirmStep.vue（只加入口链接） | 接口参数校验、类型为空、公司补充要求筛选各有测试；`npm run build` 通过；浏览器中第一步、第二步打开抽屉内容正确 | 已完成 |
 | M5-07 | 禁用词检查测试（A-08） | Haiku | low | M5-06 | A-08、Q-58；设计十 | tests/test\_forbidden\_words.py | 测试通过；扫描范围与排除规则与设计第十节一致 | 已完成 |
-| M5-08 | M5 联调与验收：A-02、A-05、A-07、A-08、T-12、T-13；回归 M2～M4 验收用例；浏览器检查结果页 | Opus | medium | M5-07 | 22、23；设计十一 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 待执行 |
+| M5-08 | M5 联调与验收：A-02、A-05、A-07、A-08、T-12、T-13；回归 M2～M4 验收用例；浏览器检查结果页 | Opus | medium | M5-07 | 22、23；设计十一 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 已完成 |
 
 ### M6 本地校验、报告与追问（验收：A-01、T-04、T-05、T-15、T-19）
 
