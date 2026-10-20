@@ -244,7 +244,7 @@ const runText = computed(() => {
     const pos = activeRun.value?.queue_position ?? task.value?.queue_position
     return pos != null ? `排队中，前面还有 ${pos - 1} 个任务` : '排队中'
   }
-  const progress = activeRun.value?.progress
+  const progress = activeRun.value?.id === latest?.id ? activeRun.value?.progress : null
   if (run.status === 'running' && progress && progress.total > 1) {
     // 最后一段已结束、结果尚在写入时仍显示最后一段，不出现 N+1/N。
     return `审核中 第 ${Math.min(progress.done + 1, progress.total)}/${progress.total} 段`

@@ -63,6 +63,8 @@ async function load() {
   run.value = null
   rounds.value = []
   selectedRun.value = ''
+  selectedId.value = ''
+  highlight.value = []
   runError.value = ''
   runLoading.value = false
   try {
@@ -166,7 +168,7 @@ function onUpdated(updated: Finding) {
 const reqVersion = computed(() => {
   if (!run.value) return '—'
   const parts = [run.value.builtin_req_version ? `内置 ${run.value.builtin_req_version}` : '']
-  if (run.value.company_req_version) parts.push(`公司补充 v${run.value.company_req_version}`)
+  if (run.value.company_req_version != null) parts.push(`公司补充 v${run.value.company_req_version}`)
   return parts.filter(Boolean).join('，') || '—'
 })
 
@@ -211,6 +213,7 @@ const reqVersion = computed(() => {
         <el-alert v-if="runError" type="error" show-icon :closable="false" :title="runError" class="gap" />
         <div v-loading="runLoading" class="run-content">
         <template v-if="run">
+          <!-- Q-80：现有接口不返回 failed_chunks，处理函数仅在有失败分段时设置 partial 的 error_message。 -->
           <el-alert
             v-if="run.status === 'failed'"
             type="error"
@@ -262,18 +265,18 @@ const reqVersion = computed(() => {
 
             <el-tab-pane label="审核要求逐条结论" name="requirements">
               <el-table :data="run.requirement_results" border size="small">
-                <el-table-column prop="req_id" label="编号" width="90" />
-                <el-table-column label="来源" width="120">
+                <el-table-column prop="req_id" label="编号" min-width="64" />
+                <el-table-column label="来源" min-width="76">
                   <template #default="{ row }">{{ reqSourceLabel(row.req_source) }}</template>
                 </el-table-column>
-                <el-table-column prop="dimension" label="维度" width="100" />
-                <el-table-column prop="req_text" label="审核要求" min-width="260" />
-                <el-table-column label="结论" width="110">
+                <el-table-column prop="dimension" label="维度" min-width="60" />
+                <el-table-column prop="req_text" label="审核要求" min-width="100" />
+                <el-table-column label="结论" min-width="88">
                   <template #default="{ row }">
                     <el-tag :type="VERDICT_TAG[row.verdict] ?? 'info'" size="small">{{ verdictLabel(row.verdict) }}</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="note" label="说明" min-width="220" />
+                <el-table-column prop="note" label="说明" min-width="100" />
               </el-table>
             </el-tab-pane>
           </el-tabs>
@@ -297,6 +300,10 @@ const reqVersion = computed(() => {
 <style scoped>
 .page {
   min-height: 200px;
+  /* Q-80：在结果页内滚动，避免 1280 最小宽度叠加窗口纵向滚动条造成横向滚动。 */
+  height: calc(100vh - 56px);
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 .split {
   display: flex;
