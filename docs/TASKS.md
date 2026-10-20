@@ -1,10 +1,12 @@
-﻿# 开发任务清单
+# 开发任务清单
 
 本文件是全部开发任务的唯一清单，按 SPEC 第 22 节的里程碑 M1–M8 拆分。
 
 **执行方式：串行。** 同一时间只有一个会话在开发。任务严格按编号顺序执行（编号顺序已满足依赖关系，并尽量让相同模型的任务排在一起，减少换会话）。
 
 ## 当前进度
+
+- M6 已细化（M6-00，2026-10-20，Opus 5.5），设计见 docs/design/M6.md，新增 Q-81～Q-90（待确认），**待用户确认**；任务顺序已调整（追问后端移到 M6-07），M6-01～M6-06 为 Sonnet 档，可由 GPT-6.1 Sol 连续执行；M6-07、M6-09 为 Opus 档。M5-08 的修复与 M5-06 范围例外的 Opus 复审（规则 10，自 3980acb 起）本会话因额度未做，留给下一个 Opus 会话（M6-07 开工前）。下一个任务：**M6-01**（Sonnet 档，high）
 
 - M5-08 已完成（2026-10-20，GPT-6.1 Sol，用户在会话中明确授权执行原定 Opus 档任务）：A-02 / A-05 / A-07 / A-08、T-12 / T-13 及 M2～M4 回归通过；新增 27 份可解析样本、460 条引用的真实接口 + 模拟网关验收；修复重复问题引用升级后首个定位与快照不一致，保留修复前失败证据；修正抽屉间距与提示字号。后端最终 Docker 全量 1124 passed、1 warning；之后仅抽屉 CSS 小修，构建及 A-08 7 passed；浏览器五文件 5 段、四轮状态（completed / 分段失败 partial / unable partial / 上限 failed）、旧轮次备注、扫描件定位、两种宽度、抽屉和删除取消均核对。详见 docs/acceptance/M5-08.md。M5 验收结果待用户确认；修复及 M5-06 范围例外待 Opus 复审，未冒充独立评审。下一个任务：**M6-00**（Opus 档，high），本会话停止，不进入 M6。
 
@@ -188,17 +190,20 @@
 
 ### M6 本地校验、报告与追问（验收：A-01、T-04、T-05、T-15、T-19）
 
-| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC | 状态 |
-|-|-|-|-|-|-|-|
-| M6-00 | 里程碑细化 | Opus | high | M5-08 | 22 | 待细化 |
-| M6-01 | 追问对话后端：用户问题先脱敏、预览确认、经网关发送、回复还原 | Opus | high | M6-00 | 13、19.6 | 待细化 |
-| M6-02 | 报价表识别和 L-01、L-02、L-03 | Sonnet | high | M6-01 | 10.1、10.2 | 待细化 |
-| M6-03 | 中文大写金额解析和 L-04；跨文件和币种校验 L-05、L-06 | Sonnet | high | M6-02 | 10.2 | 待细化 |
-| M6-04 | 日期解析和 L-07、L-08 | Sonnet | medium | M6-03 | 10.2 | 待细化 |
-| M6-05 | 本地校验结果写入、接口和前端面板（第二步折叠面板、结果页标签页） | Sonnet | medium | M6-04 | 10.3、19.4 | 待细化 |
-| M6-06 | Word 报告导出 | Sonnet | medium | M6-05 | 14 | 待细化 |
-| M6-07 | 前端追问面板 ChatPanel.vue | Sonnet | medium | M6-06 | 13 | 待细化 |
-| M6-08 | M6 联调与验收 | Opus | medium | M6-07 | 23 | 待细化 |
+**开工前必读 [docs/design/M6.md](design/M6.md)**：模块划分、函数签名、接口形状都以它为准；前端任务同时遵守 [docs/design/frontend.md](design/frontend.md)。下表“文件范围”中的路径相对于 `backend/`（前端任务相对于 `frontend/`），“设计”列指向 M6.md 的章节。M6-00 调整了顺序：追问后端（Opus）移到本地校验和报告之后，使 M6-01～M6-06 可由 Sonnet 档连续执行。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| M6-00 | 里程碑细化：模块划分、接口约定、任务拆分 | Opus | high | M5-08 | 22；— | docs/design/M6.md、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 已完成 |
+| M6-01 | 本地校验基础：公共结构、数字解析、报价表识别、L-01 / L-02 / L-03 / L-INFO；A-01 样本 | Sonnet | high | M6-00 | 10.1、10.2、Q-81～Q-83；设计二、3.1、3.2、九 | app/checks/model.py、numbers.py、amounts.py、tests/test\_checks\_numbers.py、tests/test\_checks\_amounts.py、tests/fixtures/checks/（make\_check\_fixtures.py、manifest.yaml、生成的样本） | 3.1、3.2 每条规则有正反两例测试；全部计算用 Decimal、ROUND\_HALF\_UP；每条 ai\_summary 满足 4.1（recheck 为空、不含 detail 中的金额数字）；样本中 L-01～L-03 的 manifest 完全相等 | 待执行 |
+| M6-02 | L-04 大小写一致；L-05 跨文件金额、L-06 币种一致 | Sonnet | high | M6-01 | 10.2、9.6、Q-72、Q-84；设计 3.3、3.4 | app/checks/amounts.py（只加 L-04）、app/checks/consistency.py、tests/test\_checks\_amounts.py、tests/test\_checks\_consistency.py、tests/fixtures/checks/ | T-05 的单元测试；L-05 同币种不一致、币种未知、主文件自身报价表不参与；L-06 报出后不再报 L-05；4.1 约束；manifest 中 L-04～L-06 完全相等 | 待执行 |
+| M6-03 | 日期解析与 L-07 报价有效期、L-08 交期与签约日 | Sonnet | medium | M6-02 | 10.2、Q-85、Q-86；设计 3.5 | app/checks/dates.py、tests/test\_checks\_dates.py、tests/fixtures/checks/ | 3.5 所列每种写法可解析、不确定写法与不存在的日期返回 None；L-07 以传入的 today 判断；多个签约日期不做 L-08；manifest 中 L-07、L-08 完全相等 | 待执行 |
+| M6-04 | 校验结果写入与外发接入：evaluate / run\_checks、parse 中调用（含不外发）、GET /tasks/{id}/local-findings、【本地校验摘要】、汇总行“本地校验：…” | Sonnet | high | M6-03 | 7.1、9.7、10.3、11.2、19.4；设计一、3.6、四、五（接口部分） | app/checks/service.py、app/checks/router.py、app/main.py（只加挂载）、app/tasks/pipeline.py（只加调用）、app/redaction/quotes.py（只改 summary\_text）、app/redaction/engine.py（只改 build\_outbound 传 note）、app/review/service.py（只改 build\_context 的 local\_summary）、tests/test\_checks\_service.py、tests/test\_local\_findings\_api.py，以及因汇总行文字变化需更新期望值的现有测试 | local\_only 任务也写 local\_findings 且模型调用为 0；detail 加密存储；接口他人 404（A-06 补充）；T-04 后端部分（接口返回真实数字，llm\_calls.request\_text 中不含该行金额）；汇总行 note 各分支有测试；回归集与 A-03 测试仍通过 | 待执行 |
+| M6-05 | 本地校验前端：第二步折叠面板、结果页“本地校验”标签页、不外发任务的结果页 | Sonnet | medium | M6-04 | 6.2 第 7 项、6.3、10.3；设计五；frontend.md | src/api/localFindings.ts、src/components/LocalFindings.vue、src/components/ConfirmStep.vue（只加折叠项）、src/views/ReviewResult.vue（只加标签页和不外发任务的表格）、src/utils/labels.ts | `npm run build` 通过；按 frontend.md 第十一节自检；浏览器中检查第二步面板、结果页标签页、不外发任务、点击定位 | 待执行 |
+| M6-06 | Word 报告导出：report\_docx.py、两个下载接口、审计日志；结果页“导出报告”按钮、审核历史“导出” | Sonnet | medium | M6-05 | 14、17.7、19.5、Q-87；设计六；frontend.md | app/export/report\_docx.py、app/export/router.py、app/main.py（只加挂载）、app/review/service.py（只在需要时把位置文字函数提为公共函数）、tests/test\_report\_docx.py、tests/test\_report\_api.py；前端 src/api/report.ts、src/views/ReviewResult.vue（只加按钮）、src/views/History.vue（只加导出） | T-19（结构逐节、名称已还原且无代号、固定声明、无禁用词）；不外发任务报告；清空 text\_enc 后仍可导出；文件名编码；他人 404、未完成轮次 409；审计日志 report\_export；`npm run build` 通过；浏览器中下载一次 | 待执行 |
+| M6-07 | 追问后端：问题脱敏、预览、经网关发送（网关加 timeout\_s、retry 参数）、回复还原 | Opus | high | M6-06 | 13、9.3、9.8、19.6、Q-88～Q-90；设计七 | app/chat/service.py、app/chat/router.py、app/main.py（只加挂载）、app/llm/gateway.py（只加两个关键字参数）、app/review/prompt.py（只加 chat\_system\_prompt，如放在这里）、tests/test\_chat.py、tests/test\_gateway.py | 设计第七节测试列表全部通过（含 T-15、A-06、日志安全）；网关原有测试不改 | 待执行 |
+| M6-08 | 追问前端 ChatPanel.vue | Sonnet | medium | M6-07 | 6.3、13；设计八；frontend.md | src/components/ChatPanel.vue、src/api/chat.ts、src/views/ReviewResult.vue（只加按钮和抽屉挂载） | `npm run build` 通过；按 frontend.md 第十一节自检；无 v-html；浏览器中检查 T-15 弹窗、“不再提示”、失败后可重试、不可用时按钮禁用 | 待执行 |
+| M6-09 | M6 联调与验收：A-01、T-04、T-05、T-15、T-19；回归 M2～M5 验收用例；浏览器检查 | Opus | medium | M6-08 | 22、23；设计十 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 待执行 |
 
 ### M7 设置与数据（验收：T-14、T-16、T-18）
 
