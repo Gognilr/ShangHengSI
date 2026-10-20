@@ -176,7 +176,7 @@ def test_a01_fixture_manifest_matches_all_results_exactly():
         ns = [CheckNode(n.loc, n.text, 1, n.clause_no) for n in parsed.nodes if n.part == "body"]
         _, results = check_tables(ns, [CheckFile(1, True, path.suffix[1:], entry["doc_type"], parsed.warnings)])
         assert Counter((r.code, tuple(r.locs)) for r in results) == Counter(
-            (x["code"], tuple(x["locs"])) for x in entry["expected"]), path.name
+            (x["code"], tuple(x["locs"])) for x in entry["expected"] if x["code"] in {"L-01", "L-02", "L-03", "L-INFO"}), path.name
         from app.redaction.engine import NodeIn, compute
         values = list(compute([NodeIn(n.loc, n.text, n.clause_no) for n in ns], "sales").mapping.values())
         for r in results:
@@ -185,3 +185,26 @@ def test_a01_fixture_manifest_matches_all_results_exactly():
             import re
             for value in re.findall(r"[\d,]+\.\d{2}(?!\d)", r.detail):
                 assert value not in r.ai_summary and value.replace(",", "") not in r.ai_summary
+
+
+@pytest.mark.parametrize(("text", "count"), [
+    ("人民币850000元，大写捌拾万元整", 1), ("人民币800000元，大写捌拾万元整", 0),
+    ("人民币80万元，大写捌拾万元整", 0), ("大写捌拾万元整，其他条款", 0),
+    ("大写捌拾万元整，人民币800000元；保证金人民币900000元", 0),
+    ("人民币800000.01元，大写捌拾万元整", 1),
+])
+def test_t05_uppercase_amounts(text, count):
+    from app.checks.amounts import check_uppercase
+    results = check_uppercase([CheckNode("F1-P1", text, 1, None)])
+    assert len(results) == count
+    for r in results:
+        assert r.code == "L-04" and r.locs == ["F1-P1"]
+        assert recheck(r.ai_summary, real_values=["800000", "850000", "捌拾万元整"], terms=[]) == []
+
+
+def test_uppercase_only_uses_immediate_same_row_cells():
+    from app.checks.amounts import check_uppercase
+    ns = nodes([["850000", "捌拾万元整", "700000"]])
+    results = check_uppercase(ns)
+    assert len(results) == 1 and "850,000.00" in results[0].detail
+    assert not check_uppercase(nodes([["850000"], ["捌拾万元整"]]))

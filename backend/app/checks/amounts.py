@@ -237,3 +237,41 @@ def check_tables(nodes: list[CheckNode], files: list[CheckFile]) -> tuple[list[Q
             text = f"F{file.seq} 未识别报价表结构，未做金额核验"
             results.append(CheckResult("L-INFO", SEVERITY["L-INFO"], [], file.seq, text, text))
     return tables, results
+
+
+def check_uppercase(nodes: list[CheckNode]) -> list[CheckResult]:
+    """L-04：大写金额与同节点最近的小写金额比较，否则只看同表格行紧邻单元格。"""
+    from app.redaction.detect import find_amounts
+
+    by_cell = {table_cell(n.loc): n for n in nodes if table_cell(n.loc)}
+
+    def amounts(node):
+        hits = find_amounts(node.text, "AMOUNT" if table_cell(node.loc) else None)
+        return list({(h.start, h.end): h for h in hits if h.value is not None}.values())
+
+    def upper(node, hit):
+        return bool(re.search(r"[零壹贰叁肆伍陆柒捌玖拾佰仟]", node.text[hit.start:hit.end]))
+
+    results = []
+    for node in nodes:
+        hits = amounts(node)
+        arabic = [h for h in hits if not upper(node, h)]
+        for hit in (h for h in hits if upper(node, h)):
+            other = min(arabic, key=lambda h: min(abs(h.start - hit.end), abs(hit.start - h.end))) if arabic else None
+            if other is None and (cell := table_cell(node.loc)):
+                table, col, row = cell
+                number = _col_number(col)
+                # Q-93：左右同样紧邻时先左后右；不跨行、表或文件寻找金额。
+                for step in (-1, 1):
+                    neighbor = next((n for (t, c, r), n in by_cell.items()
+                                     if t == table and r == row and _col_number(c) == number + step), None)
+                    if neighbor:
+                        other = next((h for h in amounts(neighbor) if not upper(neighbor, h)), None)
+                        if other is not None:
+                            break
+            if other is not None and rounded(hit.value) != rounded(other.value):
+                surface = node.text[hit.start:hit.end]
+                detail = f"{node.loc}：大写金额“{surface}”= {money(hit.value)}，相邻的小写金额 {money(other.value)}"
+                results.append(CheckResult("L-04", SEVERITY["L-04"], [node.loc], node.file_seq, detail,
+                                           f"{node.loc}：大写金额与相邻的小写金额不一致，差异约 {pct_diff(hit.value, other.value)}"))
+    return results

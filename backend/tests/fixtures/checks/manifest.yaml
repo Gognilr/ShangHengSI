@@ -48,3 +48,38 @@ samples:
     - F1-PG1-T1-R2-C4
     - F1-PG1-T1-R2-C2
     - F1-PG1-T1-R2-C3
+- file: uppercase_error.docx
+  doc_type: contract
+  expected:
+  - code: L-04
+    locs:
+    - F1-P1
+- file: uppercase_ok.docx
+  doc_type: contract
+  expected: []
+- file: contract_total.docx
+  doc_type: contract
+  expected: []
+- file: quote_cny.xlsx
+  doc_type: quotation
+  expected: []
+- file: quote_usd.xlsx
+  doc_type: quotation
+  expected: []
+consistency_cases:
+- files:
+  - contract_total.docx
+  - quote_cny.xlsx
+  expected:
+  - code: L-05
+    locs:
+    - F1-P1
+    - F2-S1-C3
+- files:
+  - contract_total.docx
+  - quote_usd.xlsx
+  expected:
+  - code: L-06
+    locs:
+    - F1-P1
+    - F2-S1-C3

@@ -1,5 +1,6 @@
 """生成 M6 的虚构金额样本；只在 Docker 测试镜像中运行。金额用字符串，标注独立手写。"""
 import io
+import re
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -21,7 +22,11 @@ def frozen_zip(data):
         for name in sorted(src.namelist()):
             entry = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
             entry.compress_type = zipfile.ZIP_DEFLATED
-            dst.writestr(entry, src.read(name))
+            content = src.read(name)
+            if name == "docProps/core.xml":
+                content = re.sub(rb"(<dcterms:modified[^>]*>).*?(</dcterms:modified>)",
+                                 rb"\g<1>2026-01-01T00:00:00Z\g<2>", content)
+            dst.writestr(entry, content)
     return stream.getvalue()
 
 
@@ -66,6 +71,15 @@ def pdf(name):
     canvas.save()
 
 
+def contract(name, text):
+    document = docx.Document()
+    document.core_properties.created = document.core_properties.modified = FIXED
+    document.add_paragraph(text)
+    buf = io.BytesIO()
+    document.save(buf)
+    (OUT / name).write_bytes(frozen_zip(buf.getvalue()))
+
+
 def main():
     xlsx("row_error.xlsx", [HEADER, ["虚构焦炭甲", "100", "520", "52400"], ["合计", "", "", "52400"]])
     xlsx("total_error.xlsx", [HEADER, ["虚构焦炭甲", "2", "5000", "10000"],
@@ -77,6 +91,12 @@ def main():
     word("valid_quote.docx", [HEADER, ["虚构焦炭甲", "2", "5", "10"],
                               ["虚构焦炭乙", "3", "7.5", "22.5"], ["合计", "", "", "32.5"]])
     pdf("row_error.pdf")
+    contract("uppercase_error.docx", "合同金额：人民币850000元，大写捌拾万元整。")
+    contract("uppercase_ok.docx", "合同金额：人民币80万元，大写捌拾万元整。")
+    contract("contract_total.docx", "合同总价：人民币800000元。")
+    for currency in ("CNY", "USD"):
+        xlsx(f"quote_{currency.lower()}.xlsx", [["数量", "单价", f"金额 {currency}"],
+                                               ["1", "850000", "850000"], ["合计", "", "850000"]])
     # 标注不通过被测校验代码推算；金额和位置均为明确的独立预期。
     samples = {
         "row_error.xlsx": [("L-01", ["F1-S1-D2", "F1-S1-B2", "F1-S1-C2"])],
@@ -86,11 +106,17 @@ def main():
         "formula_uncached.xlsx": [("L-INFO", ["F1-S1-A1"]), ("L-INFO", [])],
         "valid_quote.docx": [],
         "row_error.pdf": [("L-01", ["F1-PG1-T1-R2-C4", "F1-PG1-T1-R2-C2", "F1-PG1-T1-R2-C3"])],
+        "uppercase_error.docx": [("L-04", ["F1-P1"])],
+        "uppercase_ok.docx": [], "contract_total.docx": [], "quote_cny.xlsx": [], "quote_usd.xlsx": [],
     }
     manifest = {"description": "全部为虚构样本；校验位置假定 file_seq=1；M6-01 覆盖 L-01～L-03、L-INFO。",
-                "samples": [{"file": name, "doc_type": "quotation",
+                "samples": [{"file": name, "doc_type": "contract" if name.startswith(("uppercase", "contract")) else "quotation",
                              "expected": [{"code": code, "locs": locs} for code, locs in expected]}
                             for name, expected in samples.items()]}
+    manifest["consistency_cases"] = [
+        {"files": ["contract_total.docx", f"quote_{currency}.xlsx"],
+         "expected": [{"code": code, "locs": ["F1-P1", "F2-S1-C3"]}]}
+        for currency, code in (("cny", "L-05"), ("usd", "L-06"))]
     (OUT / "manifest.yaml").write_text(yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
