@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import CoverageCard from '@/components/CoverageCard.vue'
 import DocPreview from '@/components/DocPreview.vue'
 import FindingCard from '@/components/FindingCard.vue'
+import LocalFindings from '@/components/LocalFindings.vue'
 import ReRunDialog from '@/components/ReRunDialog.vue'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
@@ -160,6 +161,11 @@ function onSelect(f: Finding) {
   highlight.value = [...f.locs]
 }
 
+function onLocalSelect(locs: string[]) {
+  selectedId.value = ''
+  highlight.value = [...locs]
+}
+
 function onUpdated(updated: Finding) {
   if (!run.value) return
   run.value = { ...run.value, findings: run.value.findings.map((f) => (f.id === updated.id ? updated : f)) }
@@ -209,6 +215,8 @@ const reqVersion = computed(() => {
           title="该任务的外发策略为“不外发，仅本地校验”，没有 AI 审核结果。"
           class="gap"
         />
+
+        <LocalFindings v-if="task.status === 'completed_local'" :task-id="task.id" class="gap" @select="onLocalSelect" />
 
         <el-alert v-if="runError" type="error" show-icon :closable="false" :title="runError" class="gap" />
         <div v-loading="runLoading" class="run-content">
@@ -263,6 +271,9 @@ const reqVersion = computed(() => {
               />
             </el-tab-pane>
 
+            <el-tab-pane label="本地校验" name="local" lazy>
+              <LocalFindings :task-id="task.id" @select="onLocalSelect" />
+            </el-tab-pane>
             <el-tab-pane label="审核要求逐条结论" name="requirements">
               <el-table :data="run.requirement_results" border size="small">
                 <el-table-column prop="req_id" label="编号" min-width="64" />

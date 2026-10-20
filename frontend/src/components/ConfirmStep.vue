@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
+import LocalFindings from '@/components/LocalFindings.vue'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/http'
@@ -31,6 +32,8 @@ const ORG_TYPES = ['贸易商', '货代', '银行', '类型未知']
 const UNKNOWN_COUNTRY = '国家未知'
 
 const files = ref(props.task.files)
+// Q-95：接口没有独立计数；组件读一次列表给折叠标题计数，默认仍收起。
+const localCount = ref<number | null>(null)
 const reqDrawer = ref(false)
 const mainDocType = computed(() => files.value.find((f) => f.is_main)?.doc_type ?? null)
 const parties = ref<Party[]>([])
@@ -426,6 +429,9 @@ onMounted(loadAll)
             <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
             <pre v-else class="outbound">{{ outboundText }}</pre>
           </div>
+        </el-collapse-item>
+        <el-collapse-item :title="`7. 本地校验结果（${localCount ?? '—'} 条）`" name="local">
+          <LocalFindings :task-id="task.id" @count="localCount = $event" />
         </el-collapse-item>
       </el-collapse>
 

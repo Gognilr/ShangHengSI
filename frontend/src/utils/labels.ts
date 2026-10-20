@@ -58,6 +58,12 @@ export const categoryLabel = pick(CATEGORY_OPTIONS)
 
 export const SEVERITY_OPTIONS: Dict = { high: '高', medium: '中', low: '低' }
 export const severityLabel = pick(SEVERITY_OPTIONS)
+export const LOCAL_CHECK: Dict = {
+  'L-01': '行金额', 'L-02': '合计', 'L-03': '税额', 'L-04': '大小写一致',
+  'L-05': '跨文件金额', 'L-06': '币种一致', 'L-07': '报价有效期',
+  'L-08': '交期与签约日', 'L-INFO': '提示',
+}
+export const localCheckLabel = pick(LOCAL_CHECK)
 /** 严重程度排序用：高 → 低。 */
 export const SEVERITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
 
