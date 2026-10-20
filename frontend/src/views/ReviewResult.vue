@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import CoverageCard from '@/components/CoverageCard.vue'
 import DocPreview from '@/components/DocPreview.vue'
 import FindingCard from '@/components/FindingCard.vue'
 import ReRunDialog from '@/components/ReRunDialog.vue'
 import { ApiError } from '@/api/http'
-import { runsApi, type Finding, type RunDetail } from '@/api/runs'
+import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
 import { tasksApi, type TaskDetail } from '@/api/tasks'
 import { formatDateTime } from '@/utils/time'
 import {
@@ -14,10 +16,10 @@ import {
   SEVERITY_OPTIONS,
   SEVERITY_ORDER,
   VERDICT_TAG,
+  RUN_STATUS_TAG,
   docTypeLabel,
   reqSourceLabel,
   runStatusLabel,
-  sanctionsLabel,
   sourceLabel,
   stanceLabel,
   statusLabel,
@@ -34,6 +36,13 @@ const task = ref<TaskDetail | null>(null)
 const run = ref<RunDetail | null>(null)
 const tab = ref('findings')
 const rerunOpen = ref(false)
+const rounds = ref<RunListItem[]>([])
+const selectedRun = ref('')
+const runLoading = ref(false)
+const runError = ref('')
+const deleting = ref(false)
+let loadVersion = 0
+let runVersion = 0
 
 // 筛选：等级、类别、处理状态
 const fSeverity = ref('')
@@ -45,25 +54,83 @@ const categoryOptions = toOptions(CATEGORY_OPTIONS)
 const handlingOptions = toOptions(HANDLING_OPTIONS)
 
 async function load() {
+  const version = ++loadVersion
+  ++runVersion
   const id = String(route.params.taskId)
   loading.value = true
   error.value = ''
   task.value = null
   run.value = null
+  rounds.value = []
+  selectedRun.value = ''
+  runError.value = ''
+  runLoading.value = false
   try {
     const t = await tasksApi.get(id)
+    if (version !== loadVersion) return
     // 还没到结果阶段的任务回到新建审核页，由那里按状态显示对应步骤
     if (!['reviewed', 'completed_local'].includes(t.status)) {
       await router.replace({ name: 'review-new', query: { task: id } })
       return
     }
     task.value = t
-    if (t.latest_run) run.value = await runsApi.get(t.latest_run.id)
+    const list = await runsApi.list(id)
+    if (version !== loadVersion) return
+    rounds.value = list.items
+    selectedRun.value = t.latest_run?.id ?? list.items[0]?.id ?? ''
+    if (selectedRun.value) await selectRun(selectedRun.value)
   } catch (e) {
-    error.value = e instanceof ApiError && e.status === 404 ? '任务不存在或已被删除' : '加载失败，请刷新页面'
+    if (version === loadVersion) error.value = loadMessage(e)
   } finally {
-    loading.value = false
+    if (version === loadVersion) loading.value = false
   }
+}
+
+function loadMessage(e: unknown) {
+  return e instanceof ApiError
+    ? e.status === 404 ? '任务不存在或已被删除' : `${e.message}，请刷新页面后重试`
+    : '加载失败，请刷新页面后重试'
+}
+
+async function selectRun(id: string) {
+  const version = ++runVersion
+  runLoading.value = true
+  runError.value = ''
+  run.value = null
+  selectedId.value = ''
+  highlight.value = []
+  tab.value = 'findings'
+  fSeverity.value = ''
+  fCategory.value = ''
+  fHandling.value = ''
+  try {
+    const detail = await runsApi.get(id)
+    if (version === runVersion) run.value = detail
+  } catch (e) {
+    if (version === runVersion) runError.value = loadMessage(e)
+  } finally {
+    if (version === runVersion) runLoading.value = false
+  }
+}
+
+async function remove() {
+  if (!task.value || deleting.value) return
+  const current = task.value
+  try {
+    await ElMessageBox.confirm(
+      `确定彻底删除“${current.title}”吗？原件、脱敏记录和全部轮次的审核结果都会被删除，无法恢复。`,
+      '删除审核任务',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch { return }
+  deleting.value = true
+  try {
+    await tasksApi.remove(current.id)
+    ElMessage.success('已删除')
+    await router.push({ name: 'history' })
+  } catch (e) {
+    ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '删除失败，请重试')
+  } finally { deleting.value = false }
 }
 
 onMounted(load)
@@ -119,12 +186,17 @@ const reqVersion = computed(() => {
             <el-descriptions-item label="立场">{{ stanceLabel(run?.stance ?? task.stance) }}</el-descriptions-item>
             <el-descriptions-item label="来源">{{ sourceLabel(run?.source ?? task.source) }}</el-descriptions-item>
             <el-descriptions-item label="状态">
-              {{ run ? runStatusLabel(run.status) : statusLabel(task.status) }}
+              <el-tag v-if="run" :type="RUN_STATUS_TAG[run.status] ?? 'info'" size="small">{{ runStatusLabel(run.status) }}</el-tag>
+              <template v-else>{{ statusLabel(task.status) }}</template>
             </el-descriptions-item>
-            <el-descriptions-item label="审核时间">{{ formatDateTime(run?.finished_at ?? task.created_at) }}</el-descriptions-item>
+            <el-descriptions-item label="审核时间">{{ formatDateTime(run?.finished_at) }}</el-descriptions-item>
             <el-descriptions-item label="使用的模型">{{ run?.model_name ?? '—' }}</el-descriptions-item>
             <el-descriptions-item label="审核要求版本" :span="2">{{ reqVersion }}</el-descriptions-item>
           </el-descriptions>
+          <el-select v-if="rounds.length > 1" v-model="selectedRun" aria-label="审核轮次" class="round-select gap" @change="selectRun">
+            <el-option v-for="item in rounds" :key="item.id" :value="item.id"
+              :label="`第 ${item.run_no} 轮 · ${formatDateTime(item.finished_at ?? item.queued_at)} · ${runStatusLabel(item.status)}`" />
+          </el-select>
         </el-card>
 
         <el-alert
@@ -136,6 +208,8 @@ const reqVersion = computed(() => {
           class="gap"
         />
 
+        <el-alert v-if="runError" type="error" show-icon :closable="false" :title="runError" class="gap" />
+        <div v-loading="runLoading" class="run-content">
         <template v-if="run">
           <el-alert
             v-if="run.status === 'failed'"
@@ -146,24 +220,18 @@ const reqVersion = computed(() => {
             class="gap"
           />
           <el-alert
-            v-else-if="run.status === 'partial'"
+            v-else-if="run.status === 'partial' && run.error_message"
             type="warning"
             show-icon
             :closable="false"
-            title="部分审核要求无法判断，结果仅供参考。"
+            :title="run.error_message"
             class="gap"
           />
 
-          <el-card v-if="run.doc_summary || run.sanctions.level" shadow="never" class="gap">
+          <el-card v-if="run.doc_summary" shadow="never" class="gap">
             <p v-if="run.doc_summary" class="summary">{{ run.doc_summary }}</p>
-            <div v-if="run.sanctions.level" class="sanctions">
-              <b>制裁结论：</b>{{ sanctionsLabel(run.sanctions.level) }}
-              <ul v-if="run.sanctions.reasons.length">
-                <li v-for="(r, i) in run.sanctions.reasons" :key="i">{{ r }}</li>
-              </ul>
-              <div class="note">未联网核查，基于模型自身知识，需合规人员确认最新制裁与出口管制规定。</div>
-            </div>
           </el-card>
+          <CoverageCard :coverage="run.coverage" :sanctions="run.sanctions" class="gap" />
 
           <el-tabs v-model="tab" class="gap">
             <el-tab-pane :label="`问题清单（${run.findings.length}）`" name="findings">
@@ -210,15 +278,17 @@ const reqVersion = computed(() => {
             </el-tab-pane>
           </el-tabs>
         </template>
+        </div>
 
         <!-- 底部操作 -->
-        <div v-if="task.status === 'reviewed' && task.policy === 'ai'" class="actions">
-          <el-button @click="rerunOpen = true">重新审核</el-button>
+        <div class="actions">
+          <el-button v-if="task.status === 'reviewed' && task.policy === 'ai'" :disabled="deleting" @click="rerunOpen = true">重新审核</el-button>
+          <el-button type="danger" :loading="deleting" @click="remove">删除任务</el-button>
         </div>
         <ReRunDialog v-model="rerunOpen" :task="task" />
       </div>
       <div class="right">
-        <DocPreview :task-id="task.id" :files="task.files" :highlight="highlight" />
+        <DocPreview :key="selectedRun" :task-id="task.id" :files="task.files" :highlight="highlight" />
       </div>
     </div>
   </div>
@@ -253,17 +323,12 @@ const reqVersion = computed(() => {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 10px;
+  overflow-wrap: anywhere;
 }
+.round-select { width: 100%; }
+.run-content { min-height: 48px; }
 .summary {
   margin: 0 0 8px;
   white-space: pre-wrap;
-}
-.sanctions ul {
-  margin: 4px 0;
-  padding-left: 20px;
-}
-.note {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
 }
 </style>

@@ -51,6 +51,7 @@ export type UserCategory = 'ORG' | 'PERSON' | 'CUSTOM'
 
 /** 手动补充、疑似遗漏决定的错误提示（按错误码，其余用接口返回的 message）。 */
 export const REDACTION_ERROR_MESSAGES: Record<string, string> = {
+  TERM_IN_PROMPT: '所选文字在审核提示中也会出现，设为敏感信息后将无法发送，请只选择具体的名称或编号',
   TASK_STATE_CONFLICT: '任务状态已变化，请刷新后再试',
   SUSPECT_NOT_FOUND: '该条疑似遗漏已不存在，请刷新后再试',
   INVALID_SELECTION: '所选位置不正确',

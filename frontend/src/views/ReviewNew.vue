@@ -5,6 +5,7 @@ import type { UploadFile } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
+import { runsApi, type RunDetail } from '@/api/runs'
 import {
   MAX_FILE_MB,
   MAX_FILES,
@@ -34,6 +35,7 @@ const auth = useAuthStore()
 const step = ref(0)
 const task = ref<TaskDetail | null>(null)
 const loadError = ref('')
+const activeRun = ref<RunDetail | null>(null)
 
 // ---- 第一步表单 ----
 const files = ref<File[]>([])
@@ -172,6 +174,18 @@ async function refreshTask() {
   polling = true
   try {
     const t = await tasksApi.get(id)
+    if (taskId.value !== id) return
+    if (t.status === 'reviewing' && t.latest_run) {
+      // 第三步读取轮次进度；仍使用同一个轮询锁，避免请求重叠。
+      try {
+        const detail = await runsApi.get(t.latest_run.id)
+        if (taskId.value !== id) return
+        activeRun.value = detail
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) throw e
+        // 网络中断时沿用上次进度，下一次轮询继续读取任务。
+      }
+    } else activeRun.value = null
     if (taskId.value === id) applyTask(t)
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
@@ -191,6 +205,7 @@ async function enter() {
   stopPolling()
   loadError.value = ''
   task.value = null
+  activeRun.value = null
   if (!taskId.value) {
     step.value = 0
     return
@@ -222,11 +237,17 @@ const sourceOptions = toOptions(SOURCE_OPTIONS)
 const policyOptions = toOptions(POLICY_OPTIONS)
 
 const runText = computed(() => {
-  const run = task.value?.latest_run
+  const latest = task.value?.latest_run
+  const run = activeRun.value?.id === latest?.id ? activeRun.value : latest
   if (!run) return '正在提交'
   if (run.status === 'queued') {
-    const pos = task.value?.queue_position
-    return pos ? `排队中，前面还有 ${pos - 1} 个任务` : '排队中'
+    const pos = activeRun.value?.queue_position ?? task.value?.queue_position
+    return pos != null ? `排队中，前面还有 ${pos - 1} 个任务` : '排队中'
+  }
+  const progress = activeRun.value?.progress
+  if (run.status === 'running' && progress && progress.total > 1) {
+    // 最后一段已结束、结果尚在写入时仍显示最后一段，不出现 N+1/N。
+    return `审核中 第 ${Math.min(progress.done + 1, progress.total)}/${progress.total} 段`
   }
   return runStatusLabel(run.status)
 })

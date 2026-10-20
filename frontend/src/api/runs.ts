@@ -65,7 +65,9 @@ export interface RunDetail {
   started_at: string | null
   finished_at: string | null
   queue_position: number | null
-  coverage: unknown | null
+  chunk_count: number
+  progress: { done: number; total: number } | null
+  coverage: { summary: string; notes: string[] } | null
   doc_summary: string | null
   sanctions: { level: string | null; reasons: string[] }
   requirement_results: RequirementResult[]
