@@ -41,22 +41,28 @@ def select_builtin(doc_type: str, stance: str, source: str) -> list[Requirement]
     stance 为 sales / purchase / other；source 为 outgoing（我方发出）/ incoming（对方发来）。
     条目中写 all 的字段匹配任意值。
     """
-    selected = []
-    for item in _builtin_data()["requirements"]:
-        if (
-            _matches(item["doc_types"], doc_type)
-            and _matches(item["stances"], stance)
-            and _matches(item["sources"], source)
-        ):
-            selected.append(
-                Requirement(
-                    id=item["id"],
-                    source="builtin",
-                    dimension=item.get("dimension"),
-                    text=item["text"],
-                )
-            )
-    return selected
+    return [
+        Requirement(id=item["id"], source="builtin", dimension=item.get("dimension"), text=item["text"])
+        for item in _builtin_data()["requirements"]
+        if _matches(item["doc_types"], doc_type)
+        and _matches(item["stances"], stance)
+        and _matches(item["sources"], source)
+    ]
+
+
+def select_builtin_any_type(stance: str, source: str) -> list[tuple[Requirement, list[str]]]:
+    """只按立场、来源筛选内置要求（审核要求抽屉在文件类型未定时使用，M5-06），保持 YAML 中的顺序。
+
+    返回 (要求, 适用的文件类型列表)；doc_types 照 YAML 原样，可能含 all。
+    """
+    return [
+        (
+            Requirement(id=item["id"], source="builtin", dimension=item.get("dimension"), text=item["text"]),
+            list(item["doc_types"]),
+        )
+        for item in _builtin_data()["requirements"]
+        if _matches(item["stances"], stance) and _matches(item["sources"], source)
+    ]
 
 
 @lru_cache(maxsize=1)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/http'
@@ -30,6 +31,8 @@ const ORG_TYPES = ['贸易商', '货代', '银行', '类型未知']
 const UNKNOWN_COUNTRY = '国家未知'
 
 const files = ref(props.task.files)
+const reqDrawer = ref(false)
+const mainDocType = computed(() => files.value.find((f) => f.is_main)?.doc_type ?? null)
 const parties = ref<Party[]>([])
 const summary = ref<Record<string, number>>({})
 const suspects = ref<Suspect[]>([])
@@ -284,7 +287,17 @@ onMounted(loadAll)
         :description="`${blockedReason}。请检查签约方和外发文本后重新提交。`"
         class="gap"
       />
-      <h3>1. 文件信息</h3>
+      <h3>
+        1. 文件信息
+        <el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button>
+      </h3>
+      <RequirementsDrawer
+        v-model="reqDrawer"
+        :stance="task.stance"
+        :source="task.source"
+        :doc-type="mainDocType"
+        :user-note="task.user_note"
+      />
       <el-table :data="files" border size="small">
         <el-table-column label="文件名" min-width="200">
           <template #default="{ row }">

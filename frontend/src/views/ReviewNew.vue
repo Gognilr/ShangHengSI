@@ -17,6 +17,7 @@ import {
   type Stance,
   type TaskDetail,
 } from '@/api/tasks'
+import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmStep from '@/components/ConfirmStep.vue'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -44,6 +45,7 @@ const stance = ref<Stance>('sales')
 const source = ref<Source>('outgoing')
 const policy = ref<Policy>('ai')
 const userNote = ref('')
+const reqDrawer = ref(false)
 const submitting = ref(false)
 const formError = ref('')
 
@@ -334,6 +336,7 @@ const runText = computed(() => {
             show-word-limit
             placeholder="如：这是给土耳其客户的报价，请重点看付款条款"
           />
+          <el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button>
         </el-form-item>
 
         <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" class="block" />
@@ -359,6 +362,7 @@ const runText = computed(() => {
         <p class="hint">审核完成后会自动跳转到结果页，也可以离开页面，稍后从审核历史进入。</p>
       </div>
     </el-card>
+    <RequirementsDrawer v-model="reqDrawer" :stance="stance" :source="source" :user-note="userNote" />
   </div>
 </template>
 

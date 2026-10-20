@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- M5-06 已完成（2026-10-20）：GET /requirements 与审核要求抽屉，第一步、第二步加入口链接；后端新增测试通过（除 test_eval_review.py 因本容器缺少 tools 模块无法收集外，其余 652 passed）、前端构建通过；**未在浏览器中核对抽屉**（浏览器面板拒绝访问 localhost:5175）；下一个任务：**M5-07**（Haiku 档，low）。
+
 - M5-05 已完成（2026-10-20，Codex）：结果页轮次切换、覆盖说明、失败与分段失败提示、删除确认、轮次状态标签、第三步分段进度、TERM_IN_PROMPT 文字；新增 Q-80（待确认）。前端构建通过；Docker 全部测试 1105 passed、1 warning；以专用虚构账号和预置状态经真实接口核对 1440 / 1280 布局、轮次与旧问题编辑、coverage=null、failed / 两类 partial、进度 2/3→3/3 与终态跳转、404、删除确认取消；未在浏览器执行最终删除，未重新跑上传至模拟模型的全流程。Codex 首个前端任务，Opus 重点评审通过（2026-10-20，修复切换轮次时预览重复下载原件），用户确认 Codex 可继续接前端任务；Q-80 已确认；下一个任务：**M5-06**（Sonnet 档，medium）。
 
 - M1 已验收并经用户确认（2026-10-15）
@@ -176,7 +178,7 @@
 | M5-03 | 覆盖说明：coverage.py（build\_coverage、describe）、处理函数写入、RunDetail 返回 summary 与 notes | Sonnet | medium | M5-02 | 11.5、11.6、A-05、Q-60、Q-79；设计四 | app/review/coverage.py、app/review/job.py（只加写入覆盖说明）、app/review/service.py（只改 RunDetail 的 coverage）、tests/test\_coverage.py、tests/test\_review\_job.py、tests/test\_runs\_api.py、tests/fixtures/docx/make\_docx\_fixtures.py、tests/fixtures/docx/manifest.yaml、tests/fixtures/docx/coverage\_quote\_table.docx | 设计第四节每一项都有测试；A-05 的样本（页眉页脚批注文本框、隐藏工作表、低置信扫描页、报价明细表、解析警告）全部出现在覆盖说明中；describe 的句子不含原文；T-12 断言覆盖说明注明分段 | 已完成 |
 | M5-04 | 重新审核：PATCH /tasks/{id}、整体重算、ReRunDialog 弹窗与结果页按钮 | Sonnet | medium | M5-03 | 6.3、7.4、19.3；设计七 | app/tasks/router.py、app/tasks/service.py、app/tasks/schemas.py、tests/test\_tasks\_api.py；前端 src/components/ReRunDialog.vue、src/api/tasks.ts、src/views/ReviewResult.vue（只加按钮和弹窗挂载） | 设计第十一节重新审核部分各项有测试；对新接口重跑 A-06；`npm run build` 通过；浏览器中改立场后重新审核产生第 2 轮 | 已完成 |
 | M5-05 | 结果页完整版：顶部信息栏、轮次下拉、覆盖说明卡片、失败与部分完成提示、删除；第三步分段进度；TERM\_IN\_PROMPT 提示 | Sonnet | high | M5-04 | 6.2 第三步、6.3、7.3、Q-60；设计八；frontend.md | src/views/ReviewResult.vue、src/views/ReviewNew.vue（只改第三步进度）、src/components/CoverageCard.vue、src/api/runs.ts、src/api/redaction.ts（只加错误码文字）、src/utils/labels.ts | `npm run build` 通过；按 frontend.md 第十一节自检；浏览器中检查轮次切换、覆盖说明、failed / partial 显示、分段进度；界面不出现“审核通过”“无风险” | 已完成 |
-| M5-06 | 审核要求抽屉与 GET /requirements | Sonnet | medium | M5-05 | 6.2、6.5、19.5；设计九；frontend.md | app/review/requirements.py、app/review/router.py、tests/test\_requirements.py、tests/test\_runs\_api.py；前端 src/components/RequirementsDrawer.vue、src/api/requirements.ts、src/views/ReviewNew.vue（只加入口链接）、src/components/ConfirmStep.vue（只加入口链接） | 接口参数校验、类型为空、公司补充要求筛选各有测试；`npm run build` 通过；浏览器中第一步、第二步打开抽屉内容正确 | 待执行 |
+| M5-06 | 审核要求抽屉与 GET /requirements | Sonnet | medium | M5-05 | 6.2、6.5、19.5；设计九；frontend.md | app/review/requirements.py、app/review/router.py、tests/test\_requirements.py、tests/test\_runs\_api.py；前端 src/components/RequirementsDrawer.vue、src/api/requirements.ts、src/views/ReviewNew.vue（只加入口链接）、src/components/ConfirmStep.vue（只加入口链接） | 接口参数校验、类型为空、公司补充要求筛选各有测试；`npm run build` 通过；浏览器中第一步、第二步打开抽屉内容正确 | 已完成 |
 | M5-07 | 禁用词检查测试（A-08） | Haiku | low | M5-06 | A-08、Q-58；设计十 | tests/test\_forbidden\_words.py | 测试通过；扫描范围与排除规则与设计第十节一致 | 待执行 |
 | M5-08 | M5 联调与验收：A-02、A-05、A-07、A-08、T-12、T-13；回归 M2～M4 验收用例；浏览器检查结果页 | Opus | medium | M5-07 | 22、23；设计十一 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 待执行 |
 

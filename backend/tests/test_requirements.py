@@ -107,3 +107,16 @@ def test_requirement_fields():
 def test_unknown_doc_type_gets_only_general_items():
     ids = _ids(select_builtin("letter-unknown", "other", "outgoing"))
     assert ids and all(i.startswith("G-") for i in ids)
+
+
+def test_select_builtin_any_type_filters_only_stance_and_source():
+    from app.review.requirements import select_builtin_any_type
+
+    got = select_builtin_any_type("sales", "outgoing")
+    ids = _ids([r for r, _ in got])
+    # 任何类型下的结果是各类型结果的并集，且保持 YAML 顺序
+    union = set()
+    for t in ["contract", "quotation", "order", "inquiry", "letter"]:
+        union |= set(_ids(select_builtin(t, "sales", "outgoing")))
+    assert set(ids) == union
+    assert all(isinstance(types, list) and types for _, types in got)

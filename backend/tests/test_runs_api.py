@@ -585,3 +585,70 @@ def test_coverage_unable_note_restores_codes(db_sessionmaker, alice, ready_task,
     assert f"无法判断的审核要求：{req_id}（需核实{REAL_BUYER_NAME}的资质）" in d["coverage"]["notes"]
     with db_sessionmaker() as db:  # 数据库中仍只存代号
         assert db.get(ReviewRun, uuid.UUID(rid)).coverage["unable"] == [{"req_id": req_id, "note": "需核实客户_A的资质"}]
+
+
+# ---------------------------------------------------------------- GET /requirements（M5-06）
+
+
+def _add_company_reqs(db_sessionmaker):
+    from app.db.models import CompanyRequirement, RequirementVersion
+
+    with db_sessionmaker() as db:
+        db.add_all([
+            CompanyRequirement(code="CO-2", text="第二条", doc_types=["contract"], stances=["all"], sort=2),
+            CompanyRequirement(code="CO-1", text="第一条", doc_types=["all"], stances=["sales"], sort=1),
+            CompanyRequirement(code="CO-3", text="停用条", doc_types=["all"], stances=["all"], enabled=False),
+            CompanyRequirement(code="CO-4", text="仅报价单", doc_types=["quotation"], stances=["all"], sort=4),
+        ])
+        db.add(RequirementVersion(snapshot={}))
+        db.commit()
+
+
+def test_requirements_any_type_returns_builtin_and_filtered_company(alice, db_sessionmaker):
+    _, c, _ = alice
+    _add_company_reqs(db_sessionmaker)
+    r = c.get(f"{API_PREFIX}/requirements", params={"stance": "sales", "source": "outgoing", "doc_type": ""})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["builtin_version"] == "2026.10-1"
+    assert d["builtin"] and all(b["doc_types"] for b in d["builtin"])
+    assert d["company_version"] == 1
+    # 类型为空：不按类型筛选，停用的不返回，按 sort 排序
+    assert [x["code"] for x in d["company"]] == ["CO-1", "CO-2", "CO-4"]
+
+
+def test_requirements_with_doc_type_filters_company(alice, db_sessionmaker):
+    _, c, _ = alice
+    _add_company_reqs(db_sessionmaker)
+    d = c.get(f"{API_PREFIX}/requirements",
+              params={"stance": "purchase", "source": "incoming", "doc_type": "contract"}).json()
+    assert [x["code"] for x in d["company"]] == ["CO-2"]  # CO-1 立场不匹配，CO-4 类型不匹配
+    none = c.get(f"{API_PREFIX}/requirements", params={"stance": "sales", "source": "outgoing"}).json()
+    narrow = c.get(f"{API_PREFIX}/requirements",
+                   params={"stance": "sales", "source": "outgoing", "doc_type": "letter"}).json()
+    assert len(narrow["builtin"]) < len(none["builtin"])
+
+
+def test_requirements_no_company_requirements(alice):
+    _, c, _ = alice
+    d = c.get(f"{API_PREFIX}/requirements", params={"stance": "other", "source": "incoming"}).json()
+    assert d["company"] == [] and d["company_version"] is None
+
+
+@pytest.mark.parametrize("params", [
+    {"source": "outgoing"},
+    {"stance": "sales"},
+    {"stance": "bad", "source": "outgoing"},
+    {"stance": "sales", "source": "bad"},
+    {"stance": "sales", "source": "outgoing", "doc_type": "bad"},
+])
+def test_requirements_validation(alice, params):
+    _, c, _ = alice
+    r = c.get(f"{API_PREFIX}/requirements", params=params)
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_requirements_requires_login(new_client):
+    r = new_client().get(f"{API_PREFIX}/requirements", params={"stance": "sales", "source": "outgoing"})
+    assert r.status_code == 401
