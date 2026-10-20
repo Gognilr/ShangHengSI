@@ -94,14 +94,21 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
 }
 
 /** 取二进制响应（原件预览）：带 Cookie、统一处理 401 和错误码，不要求 JSON。 */
-async function requestBlob(path: string): Promise<Blob> {
+async function requestDownload(path: string): Promise<{ blob: Blob; filename: string }> {
   let res: Response
   try {
     res = await fetch(API_PREFIX + path, { method: 'GET', credentials: 'same-origin' })
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', '无法连接服务器，请检查网络后重试')
   }
-  if (res.ok) return await res.blob()
+  if (res.ok) {
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
+    const fallback = /filename="([^"]+)"/i.exec(disposition)?.[1] ?? 'report.docx'
+    let filename = fallback
+    try { if (encoded) filename = decodeURIComponent(encoded) } catch { /* 使用响应头中的回退文件名 */ }
+    return { blob: await res.blob(), filename }
+  }
 
   let code = 'HTTP_ERROR'
   let message = `请求失败（${res.status}）`
@@ -118,7 +125,8 @@ async function requestBlob(path: string): Promise<Blob> {
 }
 
 export const http = {
-  getBlob: (path: string) => requestBlob(path),
+  getBlob: async (path: string) => (await requestDownload(path)).blob,
+  getDownload: (path: string) => requestDownload(path),
   get: <T>(path: string, query?: RequestOptions['query'], opts?: Pick<RequestOptions, 'silent401'>) =>
     request<T>('GET', path, { query, ...opts }),
   post: <T>(path: string, body?: unknown, opts?: Pick<RequestOptions, 'silent401'>) =>

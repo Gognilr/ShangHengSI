@@ -3,6 +3,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
+import { reportApi } from '@/api/report'
 import { tasksApi, type TaskListItem } from '@/api/tasks'
 import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
@@ -15,6 +16,27 @@ const page = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
 const error = ref('')
+const exporting = ref('')
+
+async function exportReport(row: TaskListItem) {
+  if (exporting.value) return
+  exporting.value = row.id
+  try {
+    if (row.status === 'completed_local') await reportApi.local(row.id)
+    else {
+      const detail = await tasksApi.get(row.id)
+      const latest = detail.latest_run
+      if (!latest || ['queued', 'running', 'blocked'].includes(latest.status)) {
+        ElMessage.error('最新轮次尚未完成，无法导出，请刷新列表')
+        return
+      }
+      await reportApi.run(latest.id)
+    }
+    ElMessage.success('报告已下载')
+  } catch (e) {
+    ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
+  } finally { exporting.value = '' }
+}
 
 const q = ref('')
 // 日期范围：YYYY-MM-DD（按 Asia/Shanghai 日界，由后端换算）
@@ -110,9 +132,11 @@ onMounted(load)
         <template #default="{ row }">{{ statusLabel(row.status) }}</template>
       </el-table-column>
       <el-table-column prop="high_count" label="高风险问题数" width="120" align="center" />
-      <el-table-column label="操作" width="130" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="open(row)">打开</el-button>
+          <el-button v-if="['reviewed', 'completed_local'].includes(row.status)" link type="primary"
+            :loading="exporting === row.id" :disabled="!!exporting && exporting !== row.id" @click="exportReport(row)">导出</el-button>
           <el-button link type="danger" @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>

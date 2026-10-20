@@ -8,6 +8,7 @@ import FindingCard from '@/components/FindingCard.vue'
 import LocalFindings from '@/components/LocalFindings.vue'
 import ReRunDialog from '@/components/ReRunDialog.vue'
 import { ApiError } from '@/api/http'
+import { reportApi } from '@/api/report'
 import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
 import { tasksApi, type TaskDetail } from '@/api/tasks'
 import { formatDateTime } from '@/utils/time'
@@ -42,6 +43,23 @@ const selectedRun = ref('')
 const runLoading = ref(false)
 const runError = ref('')
 const deleting = ref(false)
+const exporting = ref(false)
+const exportReason = computed(() => task.value?.status === 'completed_local' ? ''
+  : runLoading.value ? '正在加载该轮次，请稍候'
+    : !run.value ? '请先加载审核轮次'
+      : ['queued', 'running', 'blocked'].includes(run.value.status) ? '该轮次尚未完成，无法导出' : '')
+
+async function exportReport() {
+  if (!task.value || exporting.value || exportReason.value) return
+  exporting.value = true
+  try {
+    if (task.value.status === 'completed_local') await reportApi.local(task.value.id)
+    else if (run.value) await reportApi.run(run.value.id)
+    ElMessage.success('报告已下载')
+  } catch (e) {
+    ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
+  } finally { exporting.value = false }
+}
 let loadVersion = 0
 let runVersion = 0
 
@@ -296,6 +314,8 @@ const reqVersion = computed(() => {
 
         <!-- 底部操作 -->
         <div class="actions">
+          <span v-if="exportReason" class="hint">{{ exportReason }}</span>
+          <el-button :loading="exporting" :disabled="!!exportReason || deleting" @click="exportReport">导出报告</el-button>
           <el-button v-if="task.status === 'reviewed' && task.policy === 'ai'" :disabled="deleting" @click="rerunOpen = true">重新审核</el-button>
           <el-button type="danger" :loading="deleting" @click="remove">删除任务</el-button>
         </div>

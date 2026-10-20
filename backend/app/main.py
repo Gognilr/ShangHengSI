@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, FastAPI
 
 from app.auth.router import router as auth_router
 from app.checks.router import router as checks_router
+from app.export.router import router as export_router
 from app.config import get_settings, setup_logging
 from app.security.crypto import check_master_key
 from app.security.csrf import csrf_guard
@@ -28,6 +29,7 @@ def build_api_router() -> APIRouter:
     router.include_router(review_router)
     router.include_router(redaction_router)
     router.include_router(checks_router)
+    router.include_router(export_router)
     return router
 
 
