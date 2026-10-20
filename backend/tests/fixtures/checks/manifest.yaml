@@ -1,0 +1,50 @@
+description: 全部为虚构样本；校验位置假定 file_seq=1；M6-01 覆盖 L-01～L-03、L-INFO。
+samples:
+- file: row_error.xlsx
+  doc_type: quotation
+  expected:
+  - code: L-01
+    locs:
+    - F1-S1-D2
+    - F1-S1-B2
+    - F1-S1-C2
+- file: total_error.xlsx
+  doc_type: quotation
+  expected:
+  - code: L-02
+    locs:
+    - F1-S1-D4
+- file: tax_error.xlsx
+  doc_type: quotation
+  expected:
+  - code: L-03
+    locs:
+    - F1-S1-E2
+  - code: L-03
+    locs:
+    - F1-S1-F2
+- file: unreadable.xlsx
+  doc_type: quotation
+  expected:
+  - code: L-INFO
+    locs:
+    - F1-S1-A1
+- file: formula_uncached.xlsx
+  doc_type: quotation
+  expected:
+  - code: L-INFO
+    locs:
+    - F1-S1-A1
+  - code: L-INFO
+    locs: []
+- file: valid_quote.docx
+  doc_type: quotation
+  expected: []
+- file: row_error.pdf
+  doc_type: quotation
+  expected:
+  - code: L-01
+    locs:
+    - F1-PG1-T1-R2-C4
+    - F1-PG1-T1-R2-C2
+    - F1-PG1-T1-R2-C3
