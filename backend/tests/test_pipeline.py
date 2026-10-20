@@ -631,5 +631,5 @@ def test_outbound_quote_table_summary_xlsx(db_sessionmaker, text_task):
     task = text_task(*cells)
     with db_sessionmaker() as db:
         lines = outbound(db, task.id).splitlines()
-    assert lines[1:] == ["[F1-S1-A1] 报价单", "[F1-S1] 【报价明细表：共 3 行，币种 USD，产品：针状焦等 2 种】",
+    assert lines[1:] == ["[F1-S1-A1] 报价单", "[F1-S1] 【报价明细表：共 3 行，币种 USD，产品：针状焦等 2 种，本地校验：未识别报价表结构，未做金额核验】",
                          "[F1-S1-A6] 合计", "[F1-S1-C6] USD [金额_4]"]
