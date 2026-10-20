@@ -291,7 +291,7 @@ const reqVersion = computed(() => {
         <ReRunDialog v-model="rerunOpen" :task="task" />
       </div>
       <div class="right">
-        <DocPreview :key="selectedRun" :task-id="task.id" :files="task.files" :highlight="highlight" />
+        <DocPreview :task-id="task.id" :files="task.files" :highlight="highlight" />
       </div>
     </div>
   </div>
