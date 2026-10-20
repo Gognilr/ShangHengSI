@@ -74,7 +74,8 @@ def pdf(name):
 def contract(name, text):
     document = docx.Document()
     document.core_properties.created = document.core_properties.modified = FIXED
-    document.add_paragraph(text)
+    for paragraph in ([text] if isinstance(text, str) else text):
+        document.add_paragraph(paragraph)
     buf = io.BytesIO()
     document.save(buf)
     (OUT / name).write_bytes(frozen_zip(buf.getvalue()))
@@ -94,6 +95,9 @@ def main():
     contract("uppercase_error.docx", "合同金额：人民币850000元，大写捌拾万元整。")
     contract("uppercase_ok.docx", "合同金额：人民币80万元，大写捌拾万元整。")
     contract("contract_total.docx", "合同总价：人民币800000元。")
+    contract("expiry.docx", "报价有效期至2026-09-30。")
+    contract("delivery_before_signing.docx", ["签订日期2026-09-15", "交货日期2026-09-01"])
+    contract("delivery_ok.docx", ["签订日期2026-09-15", "交货日期2026-09-16"])
     for currency in ("CNY", "USD"):
         xlsx(f"quote_{currency.lower()}.xlsx", [["数量", "单价", f"金额 {currency}"],
                                                ["1", "850000", "850000"], ["合计", "", "850000"]])
@@ -108,9 +112,11 @@ def main():
         "row_error.pdf": [("L-01", ["F1-PG1-T1-R2-C4", "F1-PG1-T1-R2-C2", "F1-PG1-T1-R2-C3"])],
         "uppercase_error.docx": [("L-04", ["F1-P1"])],
         "uppercase_ok.docx": [], "contract_total.docx": [], "quote_cny.xlsx": [], "quote_usd.xlsx": [],
+        "expiry.docx": [("L-INFO", []), ("L-07", ["F1-P1"])],
+        "delivery_before_signing.docx": [("L-08", ["F1-P2", "F1-P1"])], "delivery_ok.docx": [],
     }
-    manifest = {"description": "全部为虚构样本；校验位置假定 file_seq=1；M6-01 覆盖 L-01～L-03、L-INFO。",
-                "samples": [{"file": name, "doc_type": "contract" if name.startswith(("uppercase", "contract")) else "quotation",
+    manifest = {"description": "全部为虚构样本；校验位置假定 file_seq=1；日期比较基准为 2026-10-20。",
+                "samples": [{"file": name, "doc_type": "contract" if name.startswith(("uppercase", "contract", "delivery")) else "quotation",
                              "expected": [{"code": code, "locs": locs} for code, locs in expected]}
                             for name, expected in samples.items()]}
     manifest["consistency_cases"] = [

@@ -1,4 +1,4 @@
-description: 全部为虚构样本；校验位置假定 file_seq=1；M6-01 覆盖 L-01～L-03、L-INFO。
+description: 全部为虚构样本；校验位置假定 file_seq=1；日期比较基准为 2026-10-20。
 samples:
 - file: row_error.xlsx
   doc_type: quotation
@@ -65,6 +65,24 @@ samples:
   expected: []
 - file: quote_usd.xlsx
   doc_type: quotation
+  expected: []
+- file: expiry.docx
+  doc_type: quotation
+  expected:
+  - code: L-INFO
+    locs: []
+  - code: L-07
+    locs:
+    - F1-P1
+- file: delivery_before_signing.docx
+  doc_type: contract
+  expected:
+  - code: L-08
+    locs:
+    - F1-P2
+    - F1-P1
+- file: delivery_ok.docx
+  doc_type: contract
   expected: []
 consistency_cases:
 - files:
