@@ -6,7 +6,9 @@
 
 ## 当前进度
 
-- M6-06 已完成（2026-10-20，GPT-6.1 Sol）：快照型 Word 报告、任务/轮次下载接口、report_export 审计、响应头文件名、结果页与历史导出；14 项报告定向测试通过，清空节点原文仍可导出且 SQL 不读取 text_enc。浏览器验证本地与 AI 下载、结果页选旧轮次导出、历史取最新轮次、409 后恢复；构建通过。Word 实际渲染并逐页核对 AI 2 页、本地 1 页；Docker 全量 1306 passed、1 warning。新增 Q-96（待确认）。M6-01～M6-06 范围内功能已提交；额外发现第二步在 1280px 窗口下既有纵向滚动布局产生约 15px 横向滚动，已申请 ReviewNew.vue 最小扩围，尚待用户答复，未改范围外文件。停止 Vite 时补取到缩放阶段的两条 ResizeObserver loop completed with undelivered notifications 开发期错误记录（18:09:55、18:13:11）；业务流程断言通过，但控制台仍需 Opus 复核这两条，详见临时 browser-diagnostics.txt。测试凭据和虚构报告在本机临时目录 aireview-m6-qa。下一任务 **M6-07**（Opus 档，high）：停止，开工前须复审自 3980acb 起的待评审提交（含 M5 遗留）。本会话没有替代 Opus 独立评审，也没有完成 M6 里程碑验收。
+- M6-05 补充修复已完成（2026-10-20，GPT-6.1 Sol）：用户明确批准最小扩围 ReviewNew.vue；仅增加 6 行页面局部样式，沿用结果页的定高与区域内纵向滚动。1280px 修复前根页面 clientWidth=1265 / scrollWidth=1280，修复后两者均为 1280；1440px 两者均为 1440，body 最小宽度仍为 1280。第一步空表单与第二步展开面板、底部确认按钮均检查，两个宽度截图已核对；构建通过，Docker 全量 1306 passed、1 warning。修复提交 4d79604；凭据 scroll-before.json、scroll-after.json、scroll-fixed-1280.png、scroll-fixed-1440.png、scroll-full.log 位于本机临时目录 aireview-m6-qa。无新增业务决定或 open_questions；缩放阶段 ResizeObserver 开发期错误仍有出现，保留 scroll-vite.log 交 Opus 复核。下一任务仍为 **M6-07**（Opus 档，high），停止等待对应会话。
+
+- M6-06 已完成（2026-10-20，GPT-6.1 Sol）：快照型 Word 报告、任务/轮次下载接口、report_export 审计、响应头文件名、结果页与历史导出；14 项报告定向测试通过，清空节点原文仍可导出且 SQL 不读取 text_enc。浏览器验证本地与 AI 下载、结果页选旧轮次导出、历史取最新轮次、409 后恢复；构建通过。Word 实际渲染并逐页核对 AI 2 页、本地 1 页；Docker 全量 1306 passed、1 warning。新增 Q-96（待确认）。M6-01～M6-06 范围内功能已提交；额外发现第二步在 1280px 窗口下既有纵向滚动布局产生约 15px 横向滚动，ReviewNew.vue 最小扩围随后已获用户批准并补修，见顶部 M6-05 补充记录。停止 Vite 时补取到缩放阶段的两条 ResizeObserver loop completed with undelivered notifications 开发期错误记录（18:09:55、18:13:11）；业务流程断言通过，但控制台仍需 Opus 复核这两条，详见临时 browser-diagnostics.txt。测试凭据和虚构报告在本机临时目录 aireview-m6-qa。下一任务 **M6-07**（Opus 档，high）：停止，开工前须复审自 3980acb 起的待评审提交（含 M5 遗留）。本会话没有替代 Opus 独立评审，也没有完成 M6 里程碑验收。
 
 - M6-05 已完成（2026-10-20，GPT-6.1 Sol）：第二步默认收起的计数面板、AI 结果页本地校验标签页、不外发结果表格及点击定位；构建通过，1440 / 1280 浏览器检查正常、加载中、空列表、模拟 503 错误，正常流程控制台无报错；截图已核对（保存在 Tabbit 本次任务 artifacts）。Docker 全量 1292 passed、1 warning。新增 Q-95（列表计数预读，待确认）。下一任务 **M6-06**（Sonnet 档，medium），按用户授权连续完成后停在 M6-07 Opus 边界。
 
