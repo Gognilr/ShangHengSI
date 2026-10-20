@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- M6-02 已完成（2026-10-20，GPT-6.1 Sol）：L-04 大小写金额、L-05 附件合计与主合同总价、L-06 币种检查；113 项金额相关定向测试通过，新增合同与附件的精确 manifest；Docker 全量 1237 passed、1 warning。新增 Q-93（待确认）。下一任务 **M6-03**（Sonnet 档，medium），继续执行。用户已明确允许 M6-04 / M6-06 最小追加 outbound.py、validate.py、frontend/src/api/http.ts 及对应测试，保留默认行为。
+
 - M6-01 已完成（2026-10-20，GPT-6.1 Sol）：公共校验结构、Decimal 数字解析、报价表识别、L-01 / L-02 / L-03 / L-INFO 与 7 份虚构 XLSX / DOCX / PDF 样本；95 项定向测试通过，manifest 的校验项与位置完全一致，摘要出口复检为空；Docker 全量 1219 passed、1 warning。新增 Q-91、Q-92（待确认）。用户已在本会话安排 M6-01～M6-06 连续执行；下一任务 **M6-02**（Sonnet 档，high），继续执行。M6-04 / M6-06 的最小范围扩展已向用户提出，待答复，不影响先完成 M6-02、M6-03。
 
 - M6 已细化（M6-00，2026-10-20，Opus 5.5），设计见 docs/design/M6.md，新增 Q-81～Q-90（待确认），**待用户确认**；任务顺序已调整（追问后端移到 M6-07），M6-01～M6-06 为 Sonnet 档，可由 GPT-6.1 Sol 连续执行；M6-07、M6-09 为 Opus 档。M5-08 的修复与 M5-06 范围例外的 Opus 复审（规则 10，自 3980acb 起）本会话因额度未做，留给下一个 Opus 会话（M6-07 开工前）。下一个任务：**M6-01**（Sonnet 档，high）
@@ -198,7 +200,7 @@
 |-|-|-|-|-|-|-|-|-|
 | M6-00 | 里程碑细化：模块划分、接口约定、任务拆分 | Opus | high | M5-08 | 22；— | docs/design/M6.md、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 已完成 |
 | M6-01 | 本地校验基础：公共结构、数字解析、报价表识别、L-01 / L-02 / L-03 / L-INFO；A-01 样本 | Sonnet | high | M6-00 | 10.1、10.2、Q-81～Q-83；设计二、3.1、3.2、九 | app/checks/model.py、numbers.py、amounts.py、tests/test\_checks\_numbers.py、tests/test\_checks\_amounts.py、tests/fixtures/checks/（make\_check\_fixtures.py、manifest.yaml、生成的样本） | 3.1、3.2 每条规则有正反两例测试；全部计算用 Decimal、ROUND\_HALF\_UP；每条 ai\_summary 满足 4.1（recheck 为空、不含 detail 中的金额数字）；样本中 L-01～L-03 的 manifest 完全相等 | 已完成 |
-| M6-02 | L-04 大小写一致；L-05 跨文件金额、L-06 币种一致 | Sonnet | high | M6-01 | 10.2、9.6、Q-72、Q-84；设计 3.3、3.4 | app/checks/amounts.py（只加 L-04）、app/checks/consistency.py、tests/test\_checks\_amounts.py、tests/test\_checks\_consistency.py、tests/fixtures/checks/ | T-05 的单元测试；L-05 同币种不一致、币种未知、主文件自身报价表不参与；L-06 报出后不再报 L-05；4.1 约束；manifest 中 L-04～L-06 完全相等 | 待执行 |
+| M6-02 | L-04 大小写一致；L-05 跨文件金额、L-06 币种一致 | Sonnet | high | M6-01 | 10.2、9.6、Q-72、Q-84；设计 3.3、3.4 | app/checks/amounts.py（只加 L-04）、app/checks/consistency.py、tests/test\_checks\_amounts.py、tests/test\_checks\_consistency.py、tests/fixtures/checks/ | T-05 的单元测试；L-05 同币种不一致、币种未知、主文件自身报价表不参与；L-06 报出后不再报 L-05；4.1 约束；manifest 中 L-04～L-06 完全相等 | 已完成 |
 | M6-03 | 日期解析与 L-07 报价有效期、L-08 交期与签约日 | Sonnet | medium | M6-02 | 10.2、Q-85、Q-86；设计 3.5 | app/checks/dates.py、tests/test\_checks\_dates.py、tests/fixtures/checks/ | 3.5 所列每种写法可解析、不确定写法与不存在的日期返回 None；L-07 以传入的 today 判断；多个签约日期不做 L-08；manifest 中 L-07、L-08 完全相等 | 待执行 |
 | M6-04 | 校验结果写入与外发接入：evaluate / run\_checks、parse 中调用（含不外发）、GET /tasks/{id}/local-findings、【本地校验摘要】、汇总行“本地校验：…” | Sonnet | high | M6-03 | 7.1、9.7、10.3、11.2、19.4；设计一、3.6、四、五（接口部分） | app/checks/service.py、app/checks/router.py、app/main.py（只加挂载）、app/tasks/pipeline.py（只加调用）、app/redaction/quotes.py（只改 summary\_text）、app/redaction/engine.py（只改 build\_outbound 传 note）、app/review/service.py（只改 build\_context 的 local\_summary）、tests/test\_checks\_service.py、tests/test\_local\_findings\_api.py，以及因汇总行文字变化需更新期望值的现有测试 | local\_only 任务也写 local\_findings 且模型调用为 0；detail 加密存储；接口他人 404（A-06 补充）；T-04 后端部分（接口返回真实数字，llm\_calls.request\_text 中不含该行金额）；汇总行 note 各分支有测试；回归集与 A-03 测试仍通过 | 待执行 |
 | M6-05 | 本地校验前端：第二步折叠面板、结果页“本地校验”标签页、不外发任务的结果页 | Sonnet | medium | M6-04 | 6.2 第 7 项、6.3、10.3；设计五；frontend.md | src/api/localFindings.ts、src/components/LocalFindings.vue、src/components/ConfirmStep.vue（只加折叠项）、src/views/ReviewResult.vue（只加标签页和不外发任务的表格）、src/utils/labels.ts | `npm run build` 通过；按 frontend.md 第十一节自检；浏览器中检查第二步面板、结果页标签页、不外发任务、点击定位 | 待执行 |
