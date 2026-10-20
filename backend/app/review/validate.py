@@ -229,6 +229,8 @@ def _merge_duplicates(findings: list[FindingView]) -> list[FindingView]:
             same.severity = f.severity
         if _CITE_RANK[f.cite_status] > _CITE_RANK[same.cite_status]:
             same.cite_status, same.quote_model, same.quote_snapshot = f.cite_status, f.quote_model, f.quote_snapshot
+            # 升级引用时，首个定位随快照一起采用已校验问题的位置（A-02）；其他位置仍保留。
+            same.locs = list(dict.fromkeys(f.locs + same.locs))
     return out
 
 

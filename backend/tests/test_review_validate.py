@@ -78,6 +78,22 @@ def test_normal_reply_verified_with_snapshot():
     assert v.sanctions_level == "none" and v.doc_summary.startswith("模拟摘要")
 
 
+def test_a02_duplicate_promotion_keeps_verified_snapshot_at_first_location():
+    """合并待核实与已校验问题后，首个定位必须仍对应已校验的原文快照。"""
+    ctx, nodes = sample("contract_basic")
+    body = json.loads(reply(ctx))
+    first = body["findings"][0]
+    first.update(locs=["F1-P1"], quote="这是一段编造的引用")
+    second = dict(first, locs=["F1-P2", "F1-P1"], quote=nodes["F1-P2"].redacted_text)
+    body["findings"] = [first, second]
+
+    (finding,) = validate_output(json.dumps(body, ensure_ascii=False), ctx, nodes).findings
+
+    assert finding.cite_status == "verified"
+    assert finding.locs == ["F1-P2", "F1-P1"]
+    assert finding.quote_snapshot == nodes[finding.locs[0]].text
+
+
 def test_t10_invalid_loc_and_fabricated_quote():
     ctx, nodes = sample("contract_basic")
     bad_loc = validate_output(reply(ctx, "bad_loc"), ctx, nodes).findings[0]
