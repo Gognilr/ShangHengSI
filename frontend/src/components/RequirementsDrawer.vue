@@ -117,13 +117,16 @@ const scopeLine = computed(
   font-size: 13px;
 }
 h4 {
-  margin: 18px 0 8px;
+  margin: 20px 0 8px;
 }
 .ver,
 .hint {
   color: var(--el-text-color-secondary);
   font-size: 13px;
   font-weight: normal;
+}
+.hint {
+  font-size: 12px;
 }
 .list {
   margin: 0;
