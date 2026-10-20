@@ -957,6 +957,8 @@ class OutboundBuild:
 
 def build_outbound(db: Session, task: Task) -> OutboundBuild:
     """9.7 外发文本：【主体说明】+ 各正文节点一行；报价明细表整表换成一行汇总（需要解密原文识别表格）。"""
+    from app.checks.service import load_inputs, table_notes
+
     parties = list(db.scalars(select(Party).where(Party.task_id == task.id)))
     rows = _body_rows(db, task.id)
     texts = _node_texts(rows)
@@ -967,6 +969,7 @@ def build_outbound(db: Session, task: Task) -> OutboundBuild:
         [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in parties],
         [(n.loc, n.clause_no, redacted.get(n.loc, "")) for n in nodes],
         tables,
+        table_notes=table_notes(*load_inputs(db, task.id)),
     )
     return OutboundBuild(text, tables)
 

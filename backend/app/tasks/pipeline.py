@@ -9,11 +9,14 @@
 """
 import logging
 import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import worker
+from app.checks.service import run_checks
 from app.db import jobs
 from app.db.models import DocNode, Task, TaskFile
 from app.parsing import docx, image, pdf, xlsx
@@ -102,6 +105,7 @@ def parse_task(db: Session, task_id: uuid.UUID) -> None:
             current = f.original_name
             ocr_used += _parse_file(db, task, f, ocr_used)
         current = None
+        run_checks(db, task, datetime.now(ZoneInfo("Asia/Shanghai")).date())
         if task.policy == "local_only":
             task.status = "completed_local"  # 不外发：不产生任何脱敏数据（M6 起在此之前做本地校验）
         else:

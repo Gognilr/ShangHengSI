@@ -353,9 +353,12 @@ def load_node_views(db: Session, task_id: uuid.UUID,
     views = {r.loc: DocNodeView(r.loc, r.redacted_text or "", crypto.decrypt_text(r.text_enc) if r.text_enc else "",
                                 r.clause_no) for r in rows}
     if quote_tables:
+        from app.checks.service import load_inputs, table_notes
+
         mapping = load_redaction_map(db, task_id)
+        notes = table_notes(*load_inputs(db, task_id))
         for t in quote_tables:
-            line = summary_text(t)
+            line = summary_text(t, notes.get(t.loc))
             views[t.loc] = DocNodeView(t.loc, line, restore(line, mapping), None, target_loc=t.first_loc)
     return views
 

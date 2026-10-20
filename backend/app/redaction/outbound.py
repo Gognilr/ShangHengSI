@@ -58,7 +58,7 @@ def node_line(loc: str, clause_no: str | None, redacted_text: str) -> str:
 
 
 def build(parties: list[PartyInfo], nodes: list[tuple[str, str | None, str]],
-          quote_tables: Sequence[QuoteTable] = ()) -> str:
+          quote_tables: Sequence[QuoteTable] = (), *, table_notes: dict[str, str] | None = None) -> str:
     """nodes：[(loc, clause_no, redacted_text)]，已按文档顺序排列。
 
     quote_tables 中各表 row_locs 的节点不再单独成行，first_loc 处换成汇总行“[{表格位置}] 【报价明细表：…】”。
@@ -69,7 +69,7 @@ def build(parties: list[PartyInfo], nodes: list[tuple[str, str | None, str]],
     for loc, clause_no, text in nodes:
         if loc in summary_at:
             t = summary_at[loc]
-            lines.append(f"[{t.loc}] {escape_document_tags(summary_text(t))}")
+            lines.append(f"[{t.loc}] {escape_document_tags(summary_text(t, (table_notes or {}).get(t.loc)))}")
         elif loc not in skipped:
             lines.append(node_line(loc, clause_no, text))
     return "\n".join(lines)

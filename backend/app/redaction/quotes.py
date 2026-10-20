@@ -102,9 +102,11 @@ def find_quote_tables(nodes: list[_Node], redacted: dict[str, str]) -> list[Quot
     return result
 
 
-def summary_text(t: QuoteTable) -> str:
+def summary_text(t: QuoteTable, note: str | None = None) -> str:
     """【报价明细表：共 12 行，币种 USD，产品：油系针状焦等 3 种】；M6 在末尾补“，本地校验：…”。"""
     parts = [f"共 {t.rows} 行", "币种 " + "、".join(t.currencies) if t.currencies else "币种未知"]
     if t.products:
         parts.append(f"产品：{t.products[0]}" if len(t.products) == 1 else f"产品：{t.products[0]}等 {len(t.products)} 种")
+    if note:
+        parts.append(f"本地校验：{note}")
     return "【报价明细表：" + "，".join(parts) + "】"

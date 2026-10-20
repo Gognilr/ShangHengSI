@@ -173,6 +173,8 @@ def collect_requirements(db: DbSession, *, doc_type: str, stance: str, source: s
 def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_note: str | None,
                   main_doc_type: str) -> ReviewContext:
     """拼出一次审核的上下文。预检（创建轮次时）和 review 处理函数用同一个函数，保证检查的就是将要发送的内容。"""
+    from app.checks.service import local_summary
+
     attachments = list(db.scalars(
         select(TaskFile.doc_type).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(False))
         .order_by(TaskFile.seq)))
@@ -184,6 +186,7 @@ def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_n
                                           user_note=user_note),
         company_profile=str(get_setting(db, "review.company_profile") or ""),
         outbound_text=built.text,
+        local_summary=local_summary(db, task),
         boundary_locs=chunk_boundaries(db, task.id),
         quote_tables=built.quote_tables,
     )
