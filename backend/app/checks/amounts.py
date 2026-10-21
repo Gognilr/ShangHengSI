@@ -37,6 +37,9 @@ def column_kind(text: str) -> str | None:
                           (r"金额|总价|小计|\b(?:amount|total|subtotal)\b", "amount"),
                           (r"\bprice\b", "price"), (r"数量|\b(?:qty|quantity)\b", "qty")):
         if re.search(pattern, text, re.IGNORECASE):
+            # “Amount incl. VAT”“Price excl. Tax”是金额 / 单价列，VAT、Tax 只是口径说明，不是税额列。
+            if kind == "tax" and re.search(r"金额|总价|单价|\b(?:amount|total|price)\b", text, re.IGNORECASE):
+                continue
             if kind == "amount":
                 low = text.casefold()
                 if any(x in low for x in ("不含税", "excl", "net")):

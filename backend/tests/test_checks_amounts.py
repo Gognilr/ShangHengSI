@@ -22,12 +22,21 @@ def run(rows, **kwargs):
     ("VAT", "tax"), ("Tax", "tax"), ("Unit Price", "price"), ("单价", "price"),
     ("Total Price", "amount"), ("Total Amount", "amount"), ("Subtotal", "amount"),
     ("金额", "amount"), ("Price", "price"), ("Qty", "qty"), ("Quantity", "qty"),
-    ("不含税金额", "amount_excl"), ("Amount incl VAT", "tax"),
+    ("不含税金额", "amount_excl"), ("Amount incl VAT", "amount_incl"),
+    ("Amount excl. VAT", "amount_excl"), ("Total incl. Tax", "amount_incl"), ("Unit Price excl. VAT", "price"),
     ("Amount excl.", "amount_excl"), ("Net Amount", "amount_excl"),
     ("含税金额", "amount_incl"), ("Gross Amount", "amount_incl"), ("产品", None),
 ])
 def test_header_priority(text, kind):
     assert column_kind(text) == kind
+
+
+def test_vat_labelled_amount_columns_are_recognized():
+    tables, results = run([["Item", "Qty", "Unit Price", "Amount excl. VAT", "VAT Rate", "VAT", "Amount incl. VAT"],
+                           ["A", "10", "100.00", "1000.00", "13%", "130.00", "1130.00"],
+                           ["B", "10", "100.00", "1000.00", "13%", "100.00", "1100.00"]])
+    assert tables[0].recognized and tables[0].rows_checked == 2
+    assert [(r.code, r.locs) for r in results] == [("L-03", ["F1-T1-R3-C6"])]
 
 
 @pytest.mark.parametrize(("amount", "bad"), [("52,400", True), ("52,000", False), ("52,000.01", False),
