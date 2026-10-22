@@ -42,6 +42,7 @@ _LABEL_RE = re.compile(
 # 通用角色词：作为简称出现时不替换（9.3 第 3 步）
 GENERIC_WORDS = frozenset(w.casefold() for w in (
     *_LABEL_CANON, "双方", "各方", "一方", "本合同", "合同", "本协议", "协议", "公司", "本公司", "货物",
+    "集团", "本集团", "总公司", "研究院", "研究所",  # Q-142：普通词作简称时不全文替换
     "Party", "Parties", "Company", "Contract", "Agreement", "Goods", "Products", "Seller", "Buyer",
 ))
 

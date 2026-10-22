@@ -428,6 +428,9 @@ def test_postcode_fixed_code_and_mapping():
     assert {i.category for i in r.items if i.placeholder == "[邮编]"} == {"POSTCODE"}
     for value in ("251500", "200000", "SW1A 1AA"):
         assert value not in out
+    # Q-140 ④：英文邮编标签在常见用语中，不列为疑似遗漏
+    labels = compute(nodes_of("Post Code: 90210", "Zip Code: 90210", "Postal Code: K1A 0B1"), "sales")
+    assert labels.suspects == []
 
 
 def test_fill_brackets_party_name():
@@ -525,6 +528,8 @@ def test_broad_suffix_name_with_alias():
         assert one(text)[:2] == (text, []), text
     # 简称为通用角色词：名称照常登记，简称不替换
     assert one("示例通信集团公司（以下简称“乙方”）负责，乙方应按期交付。")[0] == "公司_A（以下简称“乙方”）负责，乙方应按期交付。"
+    # Q-142：简称为“集团、研究院”等普通词时同样不替换
+    assert one("由示例集团（以下简称“集团”）统一采购，集团公司负责。")[0] == "由公司_A（以下简称“集团”）统一采购，集团公司负责。"
     # 不带简称、简称结构前有其他文字：仍只是疑似遗漏（Q-137 ①）
     assert one("示例科技公司负责安装。")[1:] == ([], ["示例科技公司"])
     assert one("示例科技公司负责安装（以下简称“安装”）")[1] == []

@@ -257,5 +257,8 @@ Bank Name
 Bank Address
 Beneficiary Bank
 Swift Code
+Post Code
+Postal Code
+Zip Code
 Sales Confirmation
 Proforma Invoice
