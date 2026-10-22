@@ -325,6 +325,9 @@ class ContainerTests(unittest.TestCase):
         self.assertEqual((os.getuid(), os.getgid()), (10002, 10001))
 
     def test_root_fs_read_only(self):
+        # 只看写权限不够（uid 10002 本来就写不了 root 的目录），须是只读挂载
+        root = [line.split() for line in Path("/proc/self/mounts").read_text().splitlines() if line.split()[1] == "/"]
+        self.assertIn("ro", root[-1][3].split(","))
         for d in ("/", "/srv/converter", "/usr/lib/libreoffice", "/etc"):
             with self.subTest(dir=d), self.assertRaises(OSError):
                 with tempfile.NamedTemporaryFile(dir=d):
