@@ -1,0 +1,23 @@
+description: 企业名称含集团、分公司、支行（B-07、Q-134 ⑤）：名称延伸到最后一个后缀，“（以下简称”不并入名称，“与”隔开的两个名称分别替换；正文的动词介词保留
+stance: purchase
+must_replace:
+  - {text: HX26-FG031, category: REFNO}
+  - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: 恒岳虚构集团山东有限公司德州分公司, category: ORG}
+  - {text: 德州分公司, category: ORG}
+  - {text: 远川虚构商业银行股份有限公司示例路支行, category: ORG}
+  - {text: 示例路支行, category: ORG}
+  - {text: 北辰虚构物流有限公司, category: ORG}
+  - {text: 北辰物流, category: ORG}
+  - {text: 3700 1842 5010 5000 6612, category: ACCOUNT}
+must_keep:
+  - 甲方委托乙方提供设备维保服务
+  - 24 小时内到场
+  - 本合同由
+  - 共同签署
+  - 一式【4】份
+  - 运输由
+  - （以下简称“
+  - 负责
+  - 3 日内送达
+  - 维保款项由甲方汇入

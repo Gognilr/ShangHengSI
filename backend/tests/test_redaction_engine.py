@@ -9,7 +9,7 @@ import yaml
 from app.parsing.docx import parse_docx
 from app.redaction import detect, outbound
 from app.redaction.engine import NodeIn, PartyOverride, Term, UserTerm, compute, outbound_text
-from app.redaction.parties import find_other_org_names, normalize
+from app.redaction.parties import find_labeled_parties, find_other_org_names, normalize
 from app.redaction.placeholders import letters
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "docx"
@@ -400,6 +400,45 @@ def test_fill_brackets_party_name():
     result = compute(nodes, "purchase")
     assert {result.mapping[p.code] for p in result.parties} == {"青岚虚构石化股份有限公司", "远川虚构通信有限公司"}
     assert result.redacted["F1-P1"] == "甲方：【公司_A】"
+
+
+def test_org_name_extends_to_last_suffix():
+    # R1-04（B-07、Q-134 ⑤）：名称延伸到同一名称内的最后一个后缀，延伸时认分公司、支行等
+    def labeled(text):
+        return [text[s:e] for _, s, e in find_labeled_parties(text)]
+
+    def names(text):
+        return [text[s:e] for s, e in find_other_org_names(text)]
+
+    assert labeled("乙方：【恒岳虚构集团山东有限公司德州分公司】") == ["恒岳虚构集团山东有限公司德州分公司"]
+    assert labeled("开户行：远川虚构商业银行股份有限公司示例路支行") == ["远川虚构商业银行股份有限公司示例路支行"]
+    assert labeled("开户行：虚构银行股份有限公司和平路支行营业部") == ["虚构银行股份有限公司和平路支行营业部"]
+    assert labeled("乙方：华兴（深圳）示例有限公司（深圳）分公司") == ["华兴（深圳）示例有限公司（深圳）分公司"]
+    assert labeled("乙方：示例集团北方研究院第三分厂") == ["示例集团北方研究院第三分厂"]
+    # 简称结构不并入名称
+    assert labeled("乙方：远川虚构有限公司（以下简称“远川分公司”）") == ["远川虚构有限公司"]
+    assert labeled("乙方：远川虚构有限公司(hereinafter \"Branch\")") == ["远川虚构有限公司"]
+    assert labeled("乙方：远川虚构有限公司（下称“乙方”）") == ["远川虚构有限公司"]
+    # 不跨越分隔符、空白、填空括号、边界词
+    for text in ("甲方：A示例有限公司与B示例有限公司", "甲方：A示例有限公司，B示例有限公司", "甲方：A示例有限公司 B示例分公司",
+                 "甲方：【A示例有限公司】【B示例分公司】", "甲方：A示例有限公司、B示例有限公司"):
+        assert labeled(text) == ["A示例有限公司"], text
+    # 最长 60 字：超出的后缀不延伸
+    long_gap = "甲" * 60
+    assert labeled(f"乙方：示例有限公司{long_gap}分公司") == ["示例有限公司"]
+    # 正文：“与”隔开的第二个名称单独识别；从属、泛指词后不延伸；正文不据宽泛后缀“公司、集团”延伸
+    assert names("由甲示例有限公司与乙示例集团山东有限公司德州分公司签订") == ["甲示例有限公司", "乙示例集团山东有限公司德州分公司"]
+    assert names("款项汇至远川虚构商业银行股份有限公司示例路支行。") == ["款项汇至远川虚构商业银行股份有限公司示例路支行"]
+    assert names("星河虚构有限公司下属分公司") == ["星河虚构有限公司"]
+    assert names("星河虚构有限公司负责成立分公司") == ["星河虚构有限公司"]
+    assert names("星河虚构有限公司委托示例公司") == ["星河虚构有限公司"]
+    assert names("星河虚构有限公司（以下简称“星河分公司”）") == ["星河虚构有限公司"]
+    # 完整流程：签约方与正文同一代号，名称后半不留在正文
+    r, text = run(nodes_of("乙方：【恒岳虚构集团山东有限公司德州分公司】",
+                           "本合同由甲方与恒岳虚构集团山东有限公司德州分公司签订。"), stance="purchase")
+    assert r.redacted["F1-P1"] == "乙方：【公司_A】"
+    assert r.redacted["F1-P2"] == "本合同由甲方与公司_A签订。"
+    assert "分公司" not in text
 
 
 @pytest.mark.parametrize("text,value", [

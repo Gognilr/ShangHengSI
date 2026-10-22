@@ -7,6 +7,7 @@
   英文名称切词时，汉字与中文标点同空白一样是分隔符（“收函方：Aurora Fictive Energy Co., Ltd.”整体识别）；
   名称中间可以有一组括号括起的地区名（“Northwind Fictive (Hong Kong) Limited”整体识别）。
   “公司、厂、集团”等宽泛后缀只在签约方标签后使用，正文中不据此自动替换（留给 9.5 疑似遗漏，M4）。
+- 名称延伸到同一名称内的最后一个后缀（含分公司、支行等），不跨越分隔符和“以下简称”（R1-04）。
 """
 import re
 import unicodedata
@@ -79,6 +80,18 @@ _CN_BOUNDARY_PROTECTED = (
     "经贸", "经济", "经营", "经销", "经纪", "经理", "自由", "自贸", "自动", "自然", "自强", "同方", "同心", "同创", "同兴",
     "同济", "和平", "和谐", "和顺", "和合", "和兴", "为民", "从化", "在线", "对外", "给水", "即时",
 )
+
+# 名称延伸（Q-134 ⑤，设计 R1.md 第五节）：取到第一个后缀后，同一名称内后面还有企业后缀时延伸到最后一个，最长 60 字。
+# 延伸时后缀表增加分支机构后缀；正文（未带标签）只认明确后缀和分支机构后缀，宽泛的“公司、厂、集团”只在签约方标签后认（Q-137 ①）
+_NAME_MAX = 60
+_CN_BRANCH_SUFFIX = "分公司|支行|分行|营业部|办事处|分厂"
+_EXTEND_LABELED_RE = re.compile(rf"{_CN_BRANCH_SUFFIX}|{_SUFFIX_RE.pattern}")
+_EXTEND_TEXT_RE = re.compile(rf"{_CN_BRANCH_SUFFIX}|{_CN_STRONG_SUFFIX.pattern}")
+# 延伸不跨越：分隔符、引号、空白、填空括号、“（以下简称”等简称结构、不成对的右括号
+_EXTEND_STOP_CHARS = set("：:；;。，,、“”\"'‘’「」『』【】［］[]〖〗")
+_ALIAS_OPEN_RE = re.compile(r"[（(]\s*(?:以下|下称|简称|(?i:hereinafter|referred|the\s))")
+# 也不跨越边界词（“A有限公司与B有限公司”）和表示从属、泛指的词（“XX有限公司下属分公司”不延伸，Q-137 ②）
+_EXTEND_STOP_WORDS = (*_CN_BOUNDARY_WORDS, "或", "并", "且", "的", "等", "各", "其", "下属", "所属", "旗下", "负责", "成立", "设立")
 
 # ---------------------------------------------------------------- 简称
 
@@ -156,8 +169,53 @@ def extract_org_name(text: str, pos: int) -> tuple[int, int] | None:
         end = m.end()
         while (more := _SUFFIX_RE.match(window, end)) and more.end() > end:  # “集团有限公司”等连续后缀
             end = more.end()
+        end = _extend_to_last_suffix(window, lead, end, _EXTEND_LABELED_RE)  # “××集团山东有限公司德州分公司”
         return pos + lead, pos + end
     return None
+
+
+def _protected_mask(seg: str) -> list[bool]:
+    """seg 中落在受保护词（经贸、和平等）内部的字。"""
+    blocked = [False] * len(seg)
+    for word in _CN_BOUNDARY_PROTECTED:
+        i = seg.find(word)
+        while i >= 0:
+            for k in range(i, i + len(word)):
+                blocked[k] = True
+            i = seg.find(word, i + 1)
+    return blocked
+
+
+def _extend_to_last_suffix(text: str, start: int, end: int, suffix_re: re.Pattern) -> int:
+    """名称 text[start:end] 已以企业后缀结尾。同一名称内后面还有企业后缀时，返回最后一个后缀的结尾；否则返回 end。"""
+    seg = text[end:min(len(text), start + _NAME_MAX)]
+    blocked = _protected_mask(seg)
+    depth = 0
+    closed = [True] * (len(seg) + 1)  # closed[i]：seg[:i] 的括号是否成对（名称不能停在括号中间）
+    stop = len(seg)
+    for i, ch in enumerate(seg):
+        if ch in _EXTEND_STOP_CHARS or ch.isspace():
+            stop = i
+            break
+        if ch in "（(":
+            if _ALIAS_OPEN_RE.match(seg, i):
+                stop = i
+                break
+            depth += 1
+        elif ch in "）)":
+            if depth == 0:
+                stop = i
+                break
+            depth -= 1
+        elif depth == 0 and not blocked[i] and seg.startswith(_EXTEND_STOP_WORDS, i):
+            stop = i
+            break
+        closed[i + 1] = depth == 0
+    best = end
+    for m in suffix_re.finditer(seg, 0, stop):
+        if closed[m.end()]:
+            best = end + m.end()
+    return best
 
 
 def find_labeled_parties(text: str) -> list[tuple[str, int, int]]:
@@ -189,13 +247,7 @@ def _name_start_after_boundary(text: str, start: int, suffix_start: int, min_han
     疑似遗漏识别（suspects.py）传 min_han=0：有边界词就从边界词之后算起，由调用方判断名称是否够长。
     """
     run = text[start:suffix_start]
-    blocked = [False] * len(run)
-    for word in _CN_BOUNDARY_PROTECTED:
-        i = run.find(word)
-        while i >= 0:
-            for k in range(i, i + len(word)):
-                blocked[k] = True
-            i = run.find(word, i + 1)
+    blocked = _protected_mask(run)
     depth = 0
     best = 0
     for i, ch in enumerate(run):
@@ -218,6 +270,8 @@ def find_other_org_names(text: str) -> list[tuple[int, int]]:
     out = []
     last_end = 0
     for m in _CN_STRONG_SUFFIX.finditer(text):
+        if m.start() < last_end:  # 已被上一个名称的延伸覆盖（“××银行股份有限公司××支行”）
+            continue
         # 向前取连续的汉字（含括号），不越过上一个名称。无法确定名称起点时宁可多取（如“本合同由XX有限公司”整体替换），
         # 也不在名称中间截断而漏掉一部分真实名称
         start = m.start()
@@ -234,7 +288,8 @@ def find_other_org_names(text: str) -> list[tuple[int, int]]:
         while start < m.start() and text[start] in "）)":
             start += 1
         if m.start() - start >= 2:
-            out.append((start, m.end()))
+            last_end = _extend_to_last_suffix(text, start, m.end(), _EXTEND_TEXT_RE)
+            out.append((start, last_end))
     for m in _EN_SUFFIX_RE.finditer(text):
         head = text[max(0, m.start() - 160):m.start()]
         head = head[head.rfind("\n") + 1:]  # 不跨行
