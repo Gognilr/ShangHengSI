@@ -10,7 +10,7 @@
 ## 必须遵守
 
 * 不得增加 SPEC 没有的菜单、页面或功能。顶部只有"智能审核""审核历史"两个菜单，右上角"设置"仅管理员可见。
-* 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、向量数据库、LibreOffice、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。
+* 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、向量数据库、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。LibreOffice 只允许在 converter 容器中使用（旧格式转换，Q-136），不得进入 backend 镜像；converter 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
 * 只有 backend/app/llm/gateway.py 可以访问外网。网关依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls。任何代码不得绕过网关。
 * 发给模型的只有脱敏后的正文文本，不发图片和原文件。外发策略为 local\_only 的任务绝不调用模型。
 * 原件、对照表、节点原文等敏感字段用主密钥 AES-256-GCM 加密存储（SPEC 17.3）。
@@ -80,6 +80,16 @@ npm --prefix frontend run dev        # http://localhost:5173，/api 代理到 ht
 主密钥不能覆盖：`gen-key` 发现目标文件已存在会拒绝执行。deploy/.env、deploy/secrets/、deploy/backup/ 都不进仓库。
 
 **数据库迁移**：新增迁移只能写在 backend/app/db/alembic/versions/ 下，并保证 tests/test\_migrations.py 中“模型与迁移一致”的测试通过。
+
+**旧格式转换服务 converter**（R2-01 完成后可用；compose 整套启动时自动构建）：
+
+```powershell
+docker build -t aireview-converter:dev converter
+# converter 自身的测试（断网运行，只用标准库 unittest）
+docker run --rm --network none -v "${PWD}/converter/tests:/srv/converter/tests:ro" -v "${PWD}/backend/tests/fixtures/legacy:/srv/fixtures:ro" aireview-converter:dev python -m unittest discover -s /srv/converter/tests
+```
+
+实际命令与此不同时，在 R2-01 / R2-05 的报告中列出，经我确认后修改本节。
 
 （构建与导出离线镜像的命令在 M8 补充。）
 

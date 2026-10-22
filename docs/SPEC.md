@@ -57,7 +57,7 @@ Oct 10, 2026 · @Obi Bello
 |询价函|inquiry|询价函、RFQ|
 |函件|letter|供货函、承诺函、通知函、索赔函等|
 
-支持格式：DOCX、PDF（文字版和扫描件）、XLSX、JPG、PNG。
+支持格式：DOCX、PDF（文字版和扫描件）、XLSX、JPG、PNG；旧格式 DOC、WPS、RTF（转换为 DOCX 后解析）和 XLS、ET（转换为 XLSX 后解析），见 8.8（Q-136）。
 
 ### 1.5 审核维度
 
@@ -69,7 +69,7 @@ Oct 10, 2026 · @Obi Bello
 
 ### 1.7 V1.0 不做
 
-对接域账号；部门与共享；律师复核流程；在线文档编辑；版本比对；企业资料库与检索；向量检索；制裁名单库；DOC、XLS 旧格式；宏文件；带批注的 Word 原文导出；邮件通知；统计看板；单机客户端；本地大模型；多模型切换界面。
+对接域账号；部门与共享；律师复核流程；在线文档编辑；版本比对；企业资料库与检索；向量检索；制裁名单库；宏文件；带批注的 Word 原文导出；邮件通知；统计看板；单机客户端；本地大模型；多模型切换界面。
 
 ## 2\. 术语表
 
@@ -109,6 +109,8 @@ Oct 10, 2026 · @Obi Bello
 |Excel 解析|openpyxl||
 |PDF 解析|pdfplumber|文字版 PDF 的文本、坐标和表格|
 |OCR|RapidOCR（onnxruntime CPU 推理，使用 PaddleOCR 中英文模型，Apache 2.0）|扫描件和图片；模型文件打包进镜像。扫描页渲染使用 pdfplumber 自带的 pypdfium2|
+|旧格式转换|LibreOffice 25.2（headless，Debian 软件包 libreoffice-writer-nogui、libreoffice-calc-nogui，锁定版本）|只在 converter 容器中运行，把 DOC、WPS、RTF 转为 DOCX，XLS、ET 转为 XLSX（8.8）|
+|OLE 结构检查|olefile|上传检查中读取 DOC、XLS、WPS、ET 的目录（17.6）|
 |报告导出|python-docx||
 |加密|cryptography（AES-256-GCM、scrypt）|原件、对照表、敏感字段、备份|
 |密码哈希|argon2-cffi（argon2id）||
@@ -118,11 +120,11 @@ Oct 10, 2026 · @Obi Bello
 
 所有第三方库在 requirements.txt 和 package-lock.json 中锁定精确版本；所有 Docker 镜像使用固定版本标签。
 
-**不得引入：** Redis、Celery、RabbitMQ、Elasticsearch、任何向量数据库、LibreOffice、PyMuPDF（AGPL 许可）、Presidio、任何本地大模型或本地 embedding 模型。
+**不得引入：** Redis、Celery、RabbitMQ、Elasticsearch、任何向量数据库、PyMuPDF（AGPL 许可）、Presidio、任何本地大模型或本地 embedding 模型。LibreOffice 只允许在 converter 容器中使用，不得进入 backend 镜像。
 
 ## 4\. 系统架构
 
-系统是一个模块化单体应用，由 4 个容器组成，全部运行在一台 Ubuntu 虚拟机里。
+系统是一个模块化单体应用，由 5 个容器组成，全部运行在一台 Ubuntu 虚拟机里。
 
 ```text
 员工浏览器（局域网，HTTPS）
@@ -135,7 +137,10 @@ worker 容器（解析、OCR、本地校验、脱敏、AI 审核、备份、定�
   ├─> db 容器
   ├─> /data/files
   ├─> /backup（虚拟机数据盘上的本地备份目录；异地备份由运维定时拉取，必做）
+  ├─> /spool（内存盘 convert_spool，只与 converter 交换待转换的旧格式文件）
   └─> 云端大模型接口（唯一允许的出站地址）
+
+converter 容器（LibreOffice：旧格式 → DOCX / XLSX；不接任何网络，只挂载 /spool）
 
 app 容器 ──> 云端大模型接口（仅追问对话和测试连接，经同一模型网关）
 ```
@@ -145,6 +150,7 @@ app 容器 ──> 云端大模型接口（仅追问对话和测试连接，经�
 * 原件、对照表、真实名称和金额只存在于虚拟机内。
 * 只有 app/llm/gateway.py 中的模型网关可以访问外网，且只能访问设置中配置的模型接口地址（代码层保证，见 T-20）；网络层的出站限制由 IT 按需配置（见 20.1）。
 * 发给模型的只有文本，不发送图片和原文件。
+* converter 容器不接任何网络，不挂载原件卷、密钥和备份目录，不连数据库；只通过内存盘 /spool 与 worker 交换文件（8.8）。
 * 宿主环境：PVE 中的一台 Ubuntu Server 26.04 LTS 虚拟机，见第 20 节。
 
 ## 5\. 代码结构与模块划分
@@ -159,7 +165,7 @@ repo/
 │  │  ├─ security/        # 加密、密码哈希、会话、CSRF、权限依赖
 │  │  ├─ auth/            # 登录、退出、改密
 │  │  ├─ tasks/           # 审核任务、文件、预览接口
-│  │  ├─ parsing/         # docx.py xlsx.py pdf.py ocr.py doctype.py model.py
+│  │  ├─ parsing/         # docx.py xlsx.py pdf.py ocr.py doctype.py model.py legacy.py（旧格式转换的 worker 侧）
 │  │  ├─ redaction/       # detect.py parties.py placeholders.py ratios.py
 │  │  │                    # suspects.py outbound.py recheck.py restore.py
 │  │  ├─ checks/          # amounts.py consistency.py dates.py
@@ -183,6 +189,7 @@ repo/
 │  ├─ views/           Login.vue  ReviewNew.vue  ReviewResult.vue  History.vue
 │  ├─ views/settings/  Users.vue  Model.vue  Requirements.vue  Redaction.vue  Data.vue
 │  └─ components/      DocPreview.vue  FindingCard.vue  RequirementsDrawer.vue  ChatPanel.vue
+├─ converter/          # Dockerfile  main.py（/spool 交换协议，只用标准库）  tests/
 └─ deploy/
    ├─ docker-compose.yml  Caddyfile  .env.example
    └─ scripts/  install.sh  upgrade.sh  backup\_now.sh  restore.sh
@@ -190,7 +197,7 @@ repo/
 
 **模块规则：**
 
-* 只有 llm/gateway.py 可以发起外部网络请求。测试中必须包含一条检查：除 gateway.py 外，任何文件不得导入 httpx、requests、urllib.request。
+* 只有 llm/gateway.py 可以发起外部网络请求。测试中必须包含一条检查：除 gateway.py 外，任何文件（含 converter/）不得导入 httpx、requests、urllib.request。
 * 网关对外只提供一个函数，内部依次执行：每月调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls。任何调用方不得绕过。
 * 解析、脱敏、本地校验、审核各模块之间只通过数据库中的数据和明确的函数接口交互。
 * 内置审核要求和提示词模板是代码资源文件，随版本发布，不存数据库。
@@ -374,7 +381,16 @@ repo/
 
 ### 8.7 解析限制
 
-单个 PDF 不超过 200 页；单个任务 OCR 页数合计不超过 100 页；单个 XLSX 非空单元格不超过 20000 个。超出时解析失败并提示原因。
+单个 PDF 不超过 200 页；单个任务 OCR 页数合计不超过 100 页；单个 XLSX 非空单元格不超过 20000 个。超出时解析失败并提示原因。旧格式按转换后的文件计算。
+
+### 8.8 旧格式（DOC、WPS、RTF、XLS、ET）
+
+* 解析时由 worker 把原件明文写入内存盘 /spool，converter 容器中的 LibreOffice（headless）把 DOC、WPS、RTF 转为 DOCX，XLS、ET 转为 XLSX，再按 8.3、8.4 解析。位置编号、修订、自动编号、页眉页脚等全部以转换后的文件为准。
+* 转换结果只在解析时使用，不保存；原件照常加密保存。转换结果视为不可信输入，解析前按 17.6 的 DOCX / XLSX 规则复检。
+* 单个文件转换超过 60 秒即终止；worker 最长等待 120 秒（含排队）。同一时间只转换一个文件。
+* 解析成功时在警告中注明“已由 {原格式} 格式转换为 {DOCX / XLSX} 后解析，个别格式（如自动编号、表格列）可能与原文显示不同”。
+* 转换失败（加密、损坏、超时）时解析失败，提示另存为 DOCX / XLSX 后重新上传；converter 不可用时提示“文件转换服务不可用，请联系管理员”，其他格式不受影响。
+* 交换协议、容器加固见设计文档 docs/design/R2.md。
 
 ## 9\. 脱敏规格
 
@@ -873,7 +889,8 @@ worker 每天 03:30 执行。对于最后一次审核完成时间超过保留天
 ### 17.6 上传检查
 
 * 按扩展名和文件头双重校验格式；拒绝 docm、xlsm 等宏文件。
-* DOCX、XLSX 解压后总大小不超过 200 MB，防止压缩炸弹。
+* DOC、WPS、XLS、ET 须为 OLE 复合文档且含对应的主数据流（WordDocument；Workbook 或 Book）；含宏存储（Macros、VBA、\_VBA\_PROJECT\_CUR 等）的拒绝；加密的 OOXML（EncryptionInfo、EncryptedPackage）拒绝。RTF 须以 {\rtf 开头。
+* DOCX、XLSX 解压后总大小不超过 200 MB，防止压缩炸弹；旧格式转换后的 DOCX / XLSX 同样检查。
 * 文件以 UUID 命名存储，原文件名只存数据库；下载时对文件名做安全编码。
 
 ### 17.7 日志与审计
@@ -981,7 +998,7 @@ worker 每天 03:30 执行。对于最后一次审核完成时间超过保留天
 |seq|int|非空，从 1 开始；(task\_id, seq) 唯一|
 |is\_main|boolean|非空|
 |original\_name|varchar(255)|非空|
-|ext|varchar(10)|非空，docx / pdf / xlsx / jpg / png|
+|ext|varchar(10)|非空，docx / pdf / xlsx / jpg / png / doc / xls / wps / et / rtf|
 |size\_bytes|bigint|非空|
 |sha256|char(64)|非空，原件哈希|
 |storage\_key|varchar(64)|非空，加密文件名（UUID）|
@@ -1403,7 +1420,8 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 |-|-|-|
 |db|postgres:16（固定小版本标签）|卷 db\_data；只在内部网络，不暴露端口|
 |app|自建 backend 镜像|uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2；卷 files\_data:/data/files；只读挂载密钥文件|
-|worker|同 backend 镜像|python -m app.worker；卷 files\_data:/data/files、/data/apps/aireview/backup:/backup；镜像内含 postgresql-client 和 RapidOCR 模型文件|
+|worker|同 backend 镜像|python -m app.worker；卷 files\_data:/data/files、/data/apps/aireview/backup:/backup、convert\_spool:/spool；镜像内含 postgresql-client 和 RapidOCR 模型文件|
+|converter|自建 converter 镜像（LibreOffice）|network\_mode: none；只读根文件系统；非 root（uid 10002）；去掉全部 capability；限制内存 1.5 GiB、2 CPU；只挂载内存盘卷 convert\_spool:/spool（tmpfs，512 MB）；worker 同时挂载该卷|
 |web|caddy:2（固定小版本标签）|提供前端构建产物，/api 转发到 app:8000；监听 443 / 80；上传大小限制 320 MB；用 IP 访问时配置 default\_sni|
 
 所有服务 restart: unless-stopped；db 配置健康检查，app 和 worker 在 db 健康后启动。app 启动时执行 alembic upgrade head。
@@ -1418,6 +1436,7 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 |FILES\_DIR|/data/files|
 |BACKUP\_DIR|/backup|
 |OCR\_MODEL\_DIR|镜像内 OCR 模型目录|
+|CONVERT\_SPOOL\_DIR|/spool（worker 与 converter 交换旧格式文件的内存盘）|
 |WORKER\_CONCURRENCY|worker 并发任务数，默认 2|
 |TZ|Asia/Shanghai|
 |MAX\_UPLOAD\_MB|30|
@@ -1511,6 +1530,8 @@ M2 完成后即可用虚构样本调用真实模型检验审核效果，这是�
 |T-18|保留期设为 1 天并执行清理|原件和节点原文被删除，报告仍可导出，原文列使用引用快照|
 |T-19|导出 Word 报告|结构符合第 14 节，名称已还原，含固定声明|
 |T-20|代码扫描|除 llm/gateway.py 外，无任何外部网络调用|
+|T-21|上传 DOC、WPS、RTF、XLS、ET 各一份|转换后解析成功，第二步提示已转换；预览与定位正常；外发记录出口复检零命中|
+|T-22|上传含宏的 DOC / XLS；上传加密或损坏的 DOC；converter 停止时上传 DOC|含宏的上传即被拒绝；加密或损坏的解析失败并提示另存为 DOCX；converter 不可用时提示联系管理员，其他格式不受影响；converter 容器内只有回环网络接口|
 
 自动化测试要求：解析、脱敏、出口复检、本地校验、结果校验模块必须有单元测试；模型调用在测试中用模拟服务替代。测试样本放在 backend/tests/fixtures/，全部使用虚构内容。
 
@@ -1525,7 +1546,7 @@ M2 完成后即可用虚构样本调用真实模型检验审核效果，这是�
 
 ### 24.1 不在 V1.0 范围内
 
-对接域账号；部门与共享；律师复核流程；在线文档编辑；版本比对；带批注的 Word 原文导出；企业资料库与检索；向量检索；制裁名单库；DOC、XLS、宏文件；邮件通知；统计看板；单机客户端；本地大模型；多模型切换；原件增量备份；跨分段的全局一致性检查。以上事项如需增加，另行评估。
+对接域账号；部门与共享；律师复核流程；在线文档编辑；版本比对；带批注的 Word 原文导出；企业资料库与检索；向量检索；制裁名单库；宏文件；邮件通知；统计看板；单机客户端；本地大模型；多模型切换；原件增量备份；跨分段的全局一致性检查。以上事项如需增加，另行评估。
 
 ### 24.2 开发前需公司确认
 
