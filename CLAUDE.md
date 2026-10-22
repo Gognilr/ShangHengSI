@@ -1,4 +1,4 @@
-# 企业商务文件AI智能审查助手（V1.0）
+# 商衡SI · 企业安全脱敏与智能审查平台（V1.0）
 
 完整开发规格在 docs/SPEC.md。开始任何工作前，先阅读与当前任务相关的章节。
 本文件只列每次会话都必须遵守的要点；与 SPEC 冲突时，以 SPEC 为准。
@@ -10,6 +10,7 @@
 ## 必须遵守
 
 * 不得增加 SPEC 没有的菜单、页面或功能。顶部只有"智能审核""审核历史"两个菜单，右上角"设置"仅管理员可见。
+* 界面视觉以 docs/design/frontend.md（第二版，商衡SI 品牌主题）为准：十六进制颜色只写在 frontend/src/styles/theme.css，页面和组件只用 CSS 变量。
 * 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、向量数据库、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。LibreOffice 只允许在 converter 容器中使用（旧格式转换，Q-136），不得进入 backend 镜像；converter 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
 * 只有 backend/app/llm/gateway.py 可以访问外网。网关依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls。任何代码不得绕过网关。
 * 发给模型的只有脱敏后的正文文本，不发图片和原文件。外发策略为 local\_only 的任务绝不调用模型。

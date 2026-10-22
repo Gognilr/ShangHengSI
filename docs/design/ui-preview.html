@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商衡SI</title>
+<!-- 界面改造效果预览（静态、虚构数据）。对应 docs/商衡SI-Web界面改造方案-优化版.md -->
+<style>
+:root {
+  --c-primary: #173B68; --c-primary-l3: #5D7695; --c-primary-l5: #8B9DB4; --c-primary-l7: #B9C4D2; --c-primary-l8: #D1D8E1; --c-primary-l9: #E8EBF0; --c-primary-d2: #122F53;
+  --c-cyan: #16B8CC;
+  --c-success: #067647; --c-success-l9: #E6F1ED;
+  --c-warning: #B54708; --c-warning-l9: #F8EDE6; --c-warning-l7: #E9C8B5;
+  --c-danger: #B42318; --c-danger-l9: #F8E9E8;
+  --c-info: #667085; --c-info-l9: #F0F1F3;
+  --t1: #1D1D1F; --t2: #344054; --t3: #667085; --t4: #98A2B3;
+  --b-input: #D0D5DD; --b-card: #E5E7EB; --b-line: #EEF0F3;
+  --bg-page: #F8F9FA; --bg-fill: #F5F7FA; --bg-surface: #FFFFFF;
+  --grad: linear-gradient(135deg, #173B68 0%, #1E6FB8 55%, #16B8CC 100%);
+  --r-ctl: 8px; --r-card: 12px;
+  --shadow-pop: 0 12px 32px rgba(16,24,40,.12);
+  --font: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", sans-serif;
+  --mono: "SFMono-Regular", Consolas, "Microsoft YaHei", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font: 14px/1.6 var(--font); color: var(--t1); background: var(--bg-page); min-width: 1280px; -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--c-primary-l5); outline-offset: 2px; }
+.ico { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+
+/* ---------- 预览切换器（不属于产品界面） ---------- */
+.switcher { position: fixed; right: 20px; bottom: 20px; z-index: 100; background: #101828; color: #fff; border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow-pop); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.switcher select { background: #1D2939; color: #fff; border: 1px solid #344054; border-radius: 6px; padding: 4px 6px; }
+.switcher .tip { color: #98A2B3; }
+
+/* ---------- 品牌 ---------- */
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand svg { width: 30px; height: 30px; }
+.wordmark { font-size: 20px; font-weight: 700; letter-spacing: .5px; color: var(--c-primary); white-space: nowrap; }
+.wordmark b { font-weight: 700; background: linear-gradient(135deg, #1E6FB8, #16B8CC); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand-sub { font-size: 13px; color: var(--t3); padding-left: 12px; margin-left: 2px; border-left: 1px solid var(--b-card); white-space: nowrap; }
+
+/* ---------- 顶栏 ---------- */
+.topbar { height: 64px; background: var(--bg-surface); border-bottom: 1px solid var(--b-card); position: sticky; top: 0; z-index: 10; }
+.topbar-in { max-width: 1600px; margin: 0 auto; height: 100%; padding: 0 32px; display: flex; align-items: center; gap: 40px; }
+.nav { display: flex; height: 100%; gap: 8px; }
+.nav a { position: relative; display: flex; align-items: center; padding: 0 14px; color: var(--t2); text-decoration: none; font-size: 15px; transition: color .15s; }
+.nav a:hover { color: var(--c-primary); }
+.nav a.on { color: var(--c-primary); font-weight: 600; }
+.nav a.on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; border-radius: 2px; background: var(--grad); }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+.top-link { display: flex; align-items: center; gap: 6px; color: var(--t2); text-decoration: none; font-size: 14px; padding: 6px 10px; border-radius: var(--r-ctl); }
+.top-link:hover, .top-link.on { background: var(--c-primary-l9); color: var(--c-primary); }
+.user { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--t2); }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--c-primary-l9); color: var(--c-primary); display: grid; place-items: center; font-weight: 600; font-size: 13px; }
+.alertbar { background: var(--c-warning-l9); border-bottom: 1px solid var(--c-warning-l7); }
+.alertbar div { max-width: 1600px; margin: 0 auto; padding: 8px 32px; color: var(--c-warning); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+
+/* ---------- 页面骨架 ---------- */
+.page { margin: 0 auto; padding: 32px 0 48px; }
+.page--standard { max-width: 960px; }
+.page--wide { max-width: 1200px; }
+.page--split { max-width: 1600px; padding-left: 32px; padding-right: 32px; padding-top: 24px; }
+.ph { margin-bottom: 24px; }
+.ph h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: .3px; }
+.ph p { margin: 6px 0 0; color: var(--t3); }
+.ph-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.panel { background: var(--bg-surface); border: 1px solid var(--b-card); border-radius: var(--r-card); padding: 28px 32px; }
+.panel + .panel { margin-top: 16px; }
+.panel-h { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; font-size: 18px; font-weight: 600; }
+.panel-h .desc { font-size: 13px; font-weight: 400; color: var(--t3); }
+.panel-h .right { margin-left: auto; font-size: 14px; font-weight: 400; }
+.num { width: 26px; height: 26px; border-radius: 50%; background: var(--c-primary-l9); color: var(--c-primary); display: grid; place-items: center; font-size: 13px; font-weight: 600; flex: none; }
+.hint { color: var(--t3); font-size: 12px; }
+.muted { color: var(--t3); }
+.sub { color: var(--t3); font-size: 13px; }
+.group + .group { margin-top: 32px; padding-top: 28px; border-top: 1px solid var(--b-line); }
+.group-t { font-size: 15px; font-weight: 600; margin: 0 0 14px; }
+
+/* ---------- 控件 ---------- */
+.btn { height: 40px; padding: 0 18px; border-radius: var(--r-ctl); border: 1px solid var(--b-input); background: var(--bg-surface); color: var(--t2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; transition: background .15s, border-color .15s, color .15s; white-space: nowrap; }
+.btn:hover { border-color: var(--c-primary-l5); color: var(--c-primary); background: var(--c-primary-l9); }
+.btn-primary { background: var(--c-primary); border-color: var(--c-primary); color: #fff; font-weight: 500; }
+.btn-primary:hover { background: var(--c-primary-d2); border-color: var(--c-primary-d2); color: #fff; }
+.btn-primary[disabled] { background: var(--c-primary-l7); border-color: var(--c-primary-l7); cursor: not-allowed; }
+.btn-danger-text { border-color: transparent; background: none; color: var(--c-danger); }
+.btn-danger-text:hover { background: var(--c-danger-l9); border-color: transparent; color: var(--c-danger); }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.link { color: var(--c-primary); text-decoration: none; cursor: pointer; background: none; border: 0; padding: 0; font-size: 14px; }
+.link:hover { text-decoration: underline; }
+.link.danger { color: var(--c-danger); }
+.links { display: flex; gap: 16px; }
+.input { height: 40px; width: 100%; border: 1px solid var(--b-input); border-radius: var(--r-ctl); padding: 0 12px; background: var(--bg-surface); outline: none; transition: border-color .15s, box-shadow .15s; }
+.input:hover { border-color: var(--c-primary-l5); }
+.input:focus { border-color: var(--c-primary); box-shadow: 0 0 0 3px var(--c-primary-l9); }
+.input-sm { height: 32px; font-size: 13px; }
+textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.6; }
+.field { margin-bottom: 20px; }
+.field label { display: block; font-size: 13px; color: var(--t2); margin-bottom: 6px; font-weight: 500; }
+.field .hint { margin-top: 6px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
+.seg { display: inline-flex; background: var(--bg-fill); border: 1px solid var(--b-card); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: none; height: 34px; padding: 0 20px; border-radius: 7px; cursor: pointer; color: var(--t2); }
+.seg button.on { background: var(--bg-surface); color: var(--c-primary); font-weight: 600; box-shadow: 0 1px 3px rgba(16,24,40,.1); }
+.select { position: relative; }
+.select::after { content: ""; position: absolute; right: 12px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid var(--t3); border-bottom: 1.5px solid var(--t3); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+.select .input { appearance: none; padding-right: 30px; }
+.switch { width: 40px; height: 22px; border-radius: 11px; background: var(--b-input); position: relative; display: inline-block; vertical-align: middle; cursor: pointer; flex: none; }
+.switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.switch.on { background: var(--c-primary); }
+.switch.on::after { left: 21px; }
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--t2); user-select: none; }
+.check i { width: 16px; height: 16px; border: 1.5px solid var(--b-input); border-radius: 4px; display: grid; place-items: center; background: #fff; }
+.check.on i { background: var(--c-primary); border-color: var(--c-primary); }
+.check.on i::after { content: ""; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px,-1px); }
+.radio { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--b-input); display: inline-block; vertical-align: middle; background: #fff; flex: none; }
+.radio.on { border: 5px solid var(--c-primary); }
+
+/* 标签：语义与 labels.ts 一致 */
+.tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; border: 1px solid transparent; }
+.tag-dark.danger { background: var(--c-danger); color: #fff; } .tag-dark.warning { background: var(--c-warning); color: #fff; } .tag-dark.info { background: var(--c-info); color: #fff; }
+.tag.l-danger { background: var(--c-danger-l9); color: var(--c-danger); } .tag.l-warning { background: var(--c-warning-l9); color: var(--c-warning); }
+.tag.l-success { background: var(--c-success-l9); color: var(--c-success); } .tag.l-info { background: var(--c-info-l9); color: var(--c-info); }
+.tag.l-primary { background: var(--c-primary-l9); color: var(--c-primary); }
+.tag.plain-success { border-color: #B4D6C8; color: var(--c-success); background: #fff; } .tag.plain-warning { border-color: var(--c-warning-l7); color: var(--c-warning); background: #fff; }
+.code { font-family: var(--mono); font-size: 12px; background: var(--c-primary-l9); color: var(--c-primary); padding: 1px 6px; border-radius: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* 提示条 */
+.alert { display: flex; gap: 10px; padding: 12px 16px; border-radius: 10px; font-size: 13px; line-height: 1.6; border: 1px solid; }
+.alert .ico { margin-top: 2px; }
+.alert b { display: block; font-size: 14px; }
+.alert.warning { background: var(--c-warning-l9); border-color: var(--c-warning-l7); color: var(--c-warning); }
+.alert.info { background: var(--bg-fill); border-color: var(--b-card); color: var(--t2); }
+.alert.danger { background: var(--c-danger-l9); border-color: #E8BDBA; color: var(--c-danger); }
+.alert.success { background: var(--c-success-l9); border-color: #B4D6C8; color: var(--c-success); }
+
+/* 表格 */
+.table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.table th { background: var(--bg-fill); color: var(--t3); font-weight: 500; font-size: 13px; text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--b-card); white-space: nowrap; }
+.table th:first-child { border-top-left-radius: 8px; } .table th:last-child { border-top-right-radius: 8px; }
+.table td { padding: 14px 16px; border-bottom: 1px solid var(--b-line); color: var(--t2); vertical-align: middle; }
+.table tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover td { background: #FAFBFC; }
+.table.compact td { padding: 10px 16px; }
+.table tr.mine td { background: var(--c-primary-l9); }
+.tbl-wrap { border: 1px solid var(--b-card); border-radius: 10px; overflow: hidden; }
+.fname { display: flex; align-items: center; gap: 10px; color: var(--t1); }
+.ftype { width: 28px; height: 32px; border-radius: 5px; display: grid; place-items: center; font-size: 9px; font-weight: 700; color: #fff; flex: none; letter-spacing: .3px; }
+.ftype.docx { background: #2F6BCB; } .ftype.pdf { background: #C2412D; } .ftype.xlsx { background: #217346; } .ftype.img { background: #7A5AF8; }
+.pager { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 0; color: var(--t3); font-size: 13px; }
+.pages { display: flex; gap: 4px; }
+.pages span { min-width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; color: var(--t2); cursor: pointer; }
+.pages span.on { background: var(--c-primary); color: #fff; font-weight: 600; }
+.pages span:hover:not(.on) { background: var(--bg-fill); }
+
+/* 统计块 */
+.stats { display: grid; gap: 12px; }
+.stat { border: 1px solid var(--b-card); border-radius: 10px; padding: 14px 16px; background: var(--bg-surface); }
+.stat .k { font-size: 13px; color: var(--t3); }
+.stat .v { font-size: 22px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 13px; font-weight: 400; color: var(--t3); margin-left: 4px; }
+
+/* ---------- 登录 ---------- */
+#p-login { min-height: 100vh; display: none; flex-direction: column; background:
+  radial-gradient(900px 600px at 8% 0%, rgba(22,184,204,.07), transparent 60%),
+  radial-gradient(900px 700px at 100% 100%, rgba(23,59,104,.06), transparent 60%), var(--bg-page); }
+.login-main { flex: 1; display: grid; grid-template-columns: 1fr 1px 1fr; align-items: center; max-width: 1200px; width: 100%; margin: 0 auto; padding: 48px 48px 0; }
+.login-brand { padding-right: 72px; justify-self: end; max-width: 520px; }
+.login-brand .mark { width: 76px; height: 76px; }
+.login-brand .wm { font-size: 44px; font-weight: 700; color: var(--c-primary); letter-spacing: 1px; margin-top: 18px; line-height: 1.2; }
+.login-brand .wm b { background: linear-gradient(135deg, #1E6FB8, #16B8CC); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.login-brand .tagline { color: var(--t3); font-size: 16px; letter-spacing: 3px; margin-top: 6px; }
+.login-brand .bar { width: 32px; height: 3px; border-radius: 2px; background: var(--grad); margin: 32px 0; }
+.login-brand h2 { font-size: 32px; line-height: 1.5; font-weight: 600; margin: 0; letter-spacing: 1px; color: var(--t1); }
+.login-brand p { color: var(--t3); font-size: 15px; margin: 18px 0 0; line-height: 1.8; }
+.login-brand .chips { display: flex; gap: 8px; margin-top: 28px; }
+.login-brand .chips span { font-size: 12px; color: var(--c-primary); background: rgba(232,235,240,.7); border-radius: 999px; padding: 4px 12px; }
+.vline { width: 1px; height: 380px; background: linear-gradient(transparent, var(--b-card) 20%, var(--b-card) 80%, transparent); }
+.login-form { padding-left: 72px; max-width: 480px; width: 100%; }
+.login-form h1 { font-size: 30px; font-weight: 600; margin: 0; letter-spacing: 1px; }
+.login-form .sub2 { color: var(--t3); margin: 8px 0 36px; font-size: 15px; }
+.iinput { position: relative; margin-bottom: 18px; }
+.iinput .ico { position: absolute; left: 16px; top: 16px; width: 18px; height: 18px; color: var(--t4); }
+.iinput .ico.r { left: auto; right: 16px; cursor: pointer; }
+.iinput .input { height: 52px; padding: 0 46px; font-size: 15px; border-radius: 10px; }
+.login-row { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 24px; }
+.btn-login { width: 100%; height: 52px; font-size: 16px; letter-spacing: 6px; border-radius: 10px; }
+.login-note { margin-top: 18px; color: var(--t3); font-size: 13px; text-align: center; }
+.login-foot { text-align: center; color: var(--t4); font-size: 12px; padding: 32px 0 28px; letter-spacing: .5px; }
+
+/* ---------- 步骤条 ---------- */
+.steps { display: flex; align-items: flex-start; justify-content: center; margin: 0 auto 28px; max-width: 640px; }
+.st { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 120px; position: relative; color: var(--t4); font-size: 14px; }
+.st .c { width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--b-input); background: #fff; display: grid; place-items: center; font-weight: 600; font-size: 14px; z-index: 1; }
+.st.on { color: var(--c-primary); font-weight: 600; }
+.st.on .c { background: var(--c-primary); border-color: var(--c-primary); color: #fff; box-shadow: 0 0 0 5px var(--c-primary-l9); }
+.st.done { color: var(--t2); }
+.st.done .c { border-color: var(--c-primary); color: var(--c-primary); }
+.sline { flex: 1; height: 2px; background: var(--b-card); margin-top: 15px; border-radius: 1px; }
+.sline.done { background: var(--c-primary); }
+
+/* 上传 */
+.drop { border: 1.5px dashed var(--b-input); border-radius: 12px; background: #FCFCFD; padding: 36px 24px; text-align: center; transition: border-color .15s, background .15s; cursor: pointer; }
+.drop:hover { border-color: var(--c-primary-l5); background: var(--c-primary-l9); }
+.drop .up { width: 44px; height: 44px; border-radius: 12px; background: var(--c-primary-l9); color: var(--c-primary); display: grid; place-items: center; margin: 0 auto 12px; }
+.drop .up .ico { width: 22px; height: 22px; }
+.drop .t { color: var(--t1); font-size: 15px; }
+.drop .t em { font-style: normal; color: var(--c-primary); font-weight: 600; }
+.drop .fmt { display: flex; justify-content: center; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+.drop .fmt span { font-size: 11px; font-weight: 600; letter-spacing: .5px; color: var(--t3); border: 1px solid var(--b-card); background: #fff; border-radius: 5px; padding: 1px 7px; }
+.drop .lim { margin-top: 8px; color: var(--t3); font-size: 12px; }
+.files { margin-top: 12px; border: 1px solid var(--b-card); border-radius: 10px; }
+.frow { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--b-line); }
+.frow:last-child { border-bottom: 0; }
+.frow.main { background: var(--c-primary-l9); }
+.frow .n { flex: 1; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow .s { color: var(--t3); font-size: 13px; width: 70px; text-align: right; }
+.frow .m { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--t2); width: 76px; cursor: pointer; }
+.optcards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.optcard { border: 1.5px solid var(--b-card); border-radius: 12px; padding: 16px 18px; cursor: pointer; display: flex; gap: 12px; transition: border-color .15s, background .15s; }
+.optcard:hover { border-color: var(--c-primary-l5); }
+.optcard.on { border-color: var(--c-primary); background: linear-gradient(0deg, rgba(232,235,240,.45), rgba(232,235,240,.45)), #fff; }
+.optcard .radio { margin-top: 3px; }
+.optcard b { display: block; font-size: 15px; color: var(--t1); }
+.optcard .tg { font-size: 12px; font-weight: 400; color: var(--c-primary); background: #fff; border: 1px solid var(--c-primary-l7); border-radius: 5px; padding: 0 6px; margin-left: 6px; vertical-align: 1px; }
+.optcard p { margin: 6px 0 0; font-size: 13px; color: var(--t3); line-height: 1.65; }
+.formrow { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 16px; margin-bottom: 18px; }
+.formrow > label { color: var(--t2); font-size: 14px; }
+.formrow.top { align-items: start; } .formrow.top > label { padding-top: 8px; }
+.foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--b-line); }
+.foot .hint { margin-right: auto; font-size: 13px; }
+
+/* 状态视图 */
+.state { text-align: center; padding: 56px 24px 64px; }
+.spinner { width: 48px; height: 48px; border-radius: 50%; border: 3px solid var(--c-primary-l9); border-top-color: var(--c-primary); margin: 0 auto 20px; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+.state h3 { font-size: 18px; margin: 0 0 8px; font-weight: 600; }
+.state p { margin: 0; color: var(--t3); }
+.progress { max-width: 360px; height: 6px; background: var(--b-line); border-radius: 3px; margin: 24px auto 8px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 62%; background: var(--grad); border-radius: 3px; }
+
+/* 确认脱敏 */
+.ctx mark { background: var(--c-warning-l9); color: var(--c-warning); border-radius: 3px; padding: 0 2px; font-weight: 600; }
+.pending { font-size: 12px; font-weight: 600; color: var(--c-warning); background: var(--c-warning-l9); border-radius: 999px; padding: 2px 10px; }
+.redstats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 14px; }
+.outbound { font-family: var(--mono); font-size: 13px; line-height: 1.8; background: var(--bg-fill); border: 1px solid var(--b-card); border-radius: 10px; padding: 16px 18px; max-height: 260px; overflow: auto; white-space: pre-wrap; color: var(--t2); margin: 0; }
+.outbound .code { font-size: 12px; }
+/* 原文与外发文本对照 */
+.cmp-tools { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.seg-sm button { height: 30px; padding: 0 14px; font-size: 13px; }
+.cmp-count { margin-left: auto; font-size: 13px; color: var(--t3); }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 12px; color: var(--t2); margin-bottom: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 10px; border-radius: 3px; display: inline-block; border-bottom: 2px solid; }
+.k-org { --kb: #E8EEF7; --kl: #2F5E9E; } .k-per { --kb: #F1ECFB; --kl: #6941C6; } .k-tel { --kb: #E5F4F6; --kl: #0E7C8A; }
+.k-acc { --kb: #F4EEE7; --kl: #8A5A2B; } .k-adr { --kb: #E9F4EC; --kl: #2E7D4F; } .k-sus { --kb: var(--c-warning-l9); --kl: var(--c-warning); }
+.legend i { background: var(--kb); border-color: var(--kl); }
+.cmp { border: 1px solid var(--b-card); border-radius: 10px; max-height: 560px; overflow: auto; font-size: 14px; line-height: 1.85; }
+.cmp-head, .cmp-row { display: grid; grid-template-columns: 112px 1fr 1fr; }
+.cmp-head { position: sticky; top: 0; z-index: 2; background: var(--bg-fill); border-bottom: 1px solid var(--b-card); font-size: 13px; color: var(--t3); font-weight: 500; }
+.cmp-head span, .cmp-row > span { padding: 10px 16px; }
+.cmp-head span + span, .cmp-row > span + span { border-left: 1px solid var(--b-line); }
+.cmp-head span:last-child { color: var(--c-primary); }
+.cmp-row { border-bottom: 1px solid var(--b-line); color: var(--t1); }
+.cmp-row:hover { background: #FBFCFD; }
+.cmp-row > span:last-child { background: #FBFCFE; color: var(--t2); }
+.cmp-row.sys > span:last-child { color: var(--t3); font-size: 13px; }
+.cmp-row.warn { box-shadow: inset 3px 0 0 var(--c-warning); }
+.cmp-row .loc { font-size: 12px; color: var(--t3); line-height: 1.5; padding-top: 13px; }
+.cmp-row .loc em { display: block; font-style: normal; color: var(--t4); }
+.cmp x { cursor: default; border-radius: 3px; transition: box-shadow .12s, background .12s; }
+.cmp x.r { background: var(--kb); box-shadow: inset 0 -2px 0 var(--kl); padding: 1px 2px; }
+.cmp x.ph { font-family: var(--mono); font-size: 12.5px; background: var(--c-primary-l9); color: var(--c-primary); padding: 2px 6px; border-radius: 5px; }
+.cmp x.on { box-shadow: 0 0 0 2px var(--c-primary), inset 0 -2px 0 var(--kl, transparent); }
+.pend { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--c-warning); background: var(--c-warning-l9); border-radius: 999px; padding: 0 8px; line-height: 20px; vertical-align: 1px; }
+.cmp-gap { text-align: center; font-size: 12px; color: var(--t4); padding: 6px; background: repeating-linear-gradient(135deg, #FAFBFC 0 8px, #F5F7FA 8px 16px); border-bottom: 1px solid var(--b-line); }
+.cmp .cell { font-size: 13px; color: var(--t2); border-bottom: 1px dashed var(--b-line); padding: 2px 0; }
+.cmp .cell:last-child { border-bottom: 0; }
+.sel { background: #C9D9F2; border-radius: 2px; }
+.pop { position: absolute; left: 92px; top: 36px; z-index: 3; display: flex; align-items: center; gap: 4px; background: #fff; border: 1px solid var(--b-card); border-radius: 8px; box-shadow: var(--shadow-pop); padding: 4px 6px; font-size: 12px; white-space: nowrap; }
+.pop b { font-weight: 500; color: var(--t3); margin: 0 4px; }
+.pop button { border: 0; background: var(--c-primary-l9); color: var(--c-primary); border-radius: 5px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
+.pop button:hover { background: var(--c-primary); color: #fff; }
+.collapse { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.collapse .chev { margin-left: auto; color: var(--t3); }
+.stickybar { position: sticky; bottom: 0; z-index: 5; margin-top: 16px; background: rgba(255,255,255,.96); backdrop-filter: blur(6px); border: 1px solid var(--b-card); border-radius: 12px; box-shadow: 0 -4px 20px rgba(16,24,40,.06); padding: 14px 20px; display: flex; align-items: center; gap: 24px; }
+.cond { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--t2); }
+.cond .ok { color: var(--c-success); } .cond .no { color: var(--c-warning); }
+.stickybar .btn-primary { margin-left: auto; height: 44px; padding: 0 24px; }
+
+/* 结果页 */
+.split { display: grid; grid-template-columns: 44fr 56fr; gap: 20px; align-items: start; }
+.left { min-width: 0; }
+.rcol { position: sticky; top: 88px; height: calc(100vh - 112px); min-width: 0; }
+.rhead { display: flex; align-items: flex-start; gap: 12px; }
+.rhead h2 { font-size: 18px; margin: 0; font-weight: 600; line-height: 1.5; word-break: break-all; }
+.meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 20px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--b-line); }
+.meta .k { font-size: 12px; color: var(--t3); } .meta .v { font-size: 14px; color: var(--t1); margin-top: 2px; }
+.sev { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+.sevb { border: 1px solid var(--b-card); border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; cursor: pointer; background: #fff; }
+.sevb:hover { border-color: var(--c-primary-l5); }
+.sevb .v { font-size: 22px; font-weight: 600; margin-left: auto; font-variant-numeric: tabular-nums; }
+.sevb.h .v { color: var(--c-danger); } .sevb.m .v { color: var(--c-warning); } .sevb.l .v { color: var(--c-info); }
+.cov { background: var(--bg-fill); border: 1px solid var(--b-card); border-radius: 12px; padding: 16px 20px; margin-top: 16px; font-size: 13px; color: var(--t2); }
+.cov ul { margin: 6px 0 0; padding-left: 18px; }
+.cov .sanc { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--b-card); }
+.tabs { display: flex; gap: 28px; border-bottom: 1px solid var(--b-card); margin: 20px 0 16px; }
+.tabs span { padding: 10px 0; cursor: pointer; color: var(--t3); font-size: 15px; position: relative; }
+.tabs span.on { color: var(--c-primary); font-weight: 600; }
+.tabs span.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--c-primary); border-radius: 2px; }
+.filters { display: flex; gap: 8px; margin-bottom: 12px; }
+.filters .select { width: 150px; }
+.fc { position: relative; background: #fff; border: 1px solid var(--b-card); border-radius: 12px; padding: 18px 20px 16px 24px; margin-bottom: 12px; overflow: hidden; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.fc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+.fc.h::before { background: var(--c-danger); } .fc.m::before { background: var(--c-warning); } .fc.l::before { background: var(--c-info); }
+.fc:hover { border-color: var(--c-primary-l7); }
+.fc.sel { border-color: var(--c-primary); box-shadow: 0 0 0 3px var(--c-primary-l9); }
+.fc-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fc-h .t { font-size: 16px; font-weight: 600; color: var(--t1); margin-right: 4px; }
+.fc-h .loc { margin-left: auto; font-size: 12px; color: var(--t3); display: flex; align-items: center; gap: 4px; }
+.fc .quote { margin: 12px 0 0; padding: 10px 14px; background: var(--bg-fill); border-left: 3px solid var(--b-input); border-radius: 0 8px 8px 0; color: var(--t2); font-size: 13px; }
+.fc .row { margin-top: 12px; }
+.fc .k { font-size: 12px; color: var(--t3); margin-bottom: 2px; }
+.fc .v { color: var(--t1); }
+.fc .sugg { margin-top: 12px; background: var(--c-primary-l9); border-radius: 10px; padding: 12px 14px; }
+.fc .sugg .k { color: var(--c-primary); font-weight: 600; }
+.fc .repl { margin-top: 10px; background: #fff; border: 1px dashed var(--c-primary-l7); border-radius: 8px; padding: 8px 12px; display: flex; gap: 12px; align-items: flex-start; }
+.fc .repl span { flex: 1; color: var(--t1); }
+.fc .basis { margin-top: 10px; font-size: 12px; color: var(--t3); }
+.fc .hd { display: flex; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--b-line); }
+.fc .hd .select { width: 140px; flex: none; }
+.actbar { position: sticky; bottom: 0; background: rgba(248,249,250,.94); backdrop-filter: blur(6px); padding: 14px 0 18px; margin-top: 8px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--b-card); }
+.actbar .sp { flex: 1; }
+.viewer { height: 100%; background: #fff; border: 1px solid var(--b-card); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
+.vbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--b-card); }
+.vbar .select { width: 280px; }
+.vbody { flex: 1; overflow: auto; background: #EEF0F3; padding: 24px; }
+.paper { background: #fff; max-width: 720px; margin: 0 auto; padding: 56px 64px; box-shadow: 0 1px 3px rgba(16,24,40,.08); border-radius: 2px; font-size: 14px; line-height: 2; color: #222; }
+.paper h4 { text-align: center; font-size: 18px; margin: 0 0 20px; letter-spacing: 2px; }
+.paper p { margin: 0 0 10px; text-indent: 2em; }
+.paper .hl { background: #FDF1E8; box-shadow: inset 0 -2px 0 var(--c-warning); padding: 1px 0; }
+
+/* 设置 */
+.settings { display: grid; grid-template-columns: 220px 1fr; gap: 32px; align-items: start; }
+.snav { position: sticky; top: 96px; background: #fff; border: 1px solid var(--b-card); border-radius: 12px; padding: 10px; }
+.snav .t { font-size: 12px; color: var(--t4); padding: 6px 12px 8px; letter-spacing: 1px; }
+.snav a { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px; border-radius: 8px; color: var(--t2); text-decoration: none; cursor: pointer; }
+.snav a:hover { background: var(--bg-fill); }
+.snav a.on { background: var(--c-primary-l9); color: var(--c-primary); font-weight: 600; }
+.snav a .ico { width: 18px; height: 18px; }
+.ro { background: var(--bg-fill); }
+.kv { display: flex; gap: 8px; align-items: center; }
+.tags-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.tags-list span { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--b-card); border-radius: 8px; background: #fff; font-size: 13px; color: var(--t2); }
+.tags-list span i { font-style: normal; color: var(--t4); cursor: pointer; }
+.pageview { display: none; }
+.pageview.show { display: block; }
+#p-login.show { display: flex; }
+</style>
+</head>
+<body>
+
+<!-- 图标与 Logo 符号 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="g-s" x1="10" y1="54" x2="54" y2="10" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#173B68"/><stop offset=".55" stop-color="#1E6FB8"/><stop offset="1" stop-color="#16B8CC"/>
+    </linearGradient>
+  </defs>
+  <symbol id="logo" viewBox="0 0 64 64">
+    <g transform="skewX(-10) translate(6 0)">
+      <path d="M48 12 H28 a10 10 0 0 0 0 20 H36 a10 10 0 0 1 0 20 H16" fill="none" stroke="url(#g-s)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <rect x="3" y="17" width="5" height="5" rx="1.2" fill="#16B8CC" opacity=".9"/>
+    <rect x="9" y="24" width="4" height="4" rx="1" fill="#1E6FB8" opacity=".85"/>
+    <rect x="2" y="28" width="3.5" height="3.5" rx=".8" fill="#16B8CC" opacity=".6"/>
+    <path d="M34 26.5 l1.6 4 4 1.5 -4 1.5 -1.6 4 -1.6 -4 -4 -1.5 4 -1.5 z" fill="#fff"/>
+  </symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5M12 18v.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5 6.5-5s5.5 1.5 6.5 5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 15c2 .7 3 2.2 3.5 5"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.5M4 12h.5M4 18h.5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+
+<!-- ================= 登录 ================= -->
+<section id="p-login" class="pageview" data-title="登录">
+  <div class="login-main">
+    <div class="login-brand">
+      <svg class="mark"><use href="#logo"/></svg>
+      <div class="wm">商衡<b>SI</b></div>
+      <div class="tagline">企业安全脱敏与智能审查平台</div>
+      <div class="bar"></div>
+      <h2>让敏感信息受到保护<br>让商业决策更有依据</h2>
+      <p>面向企业商务、合同与法律文件，<br>提供本地脱敏与 AI 智能初审。</p>
+      <div class="chips"><span>安全脱敏</span><span>智能审查</span><span>局域网部署</span></div>
+    </div>
+    <div class="vline"></div>
+    <form class="login-form" onsubmit="return false">
+      <h1>欢迎登录</h1>
+      <div class="sub2">请使用内部分发的账号登录</div>
+      <div class="iinput"><svg class="ico"><use href="#i-user"/></svg><input class="input" aria-label="用户名" placeholder="请输入用户名" value="zhangwei"></div>
+      <div class="iinput"><svg class="ico"><use href="#i-lock"/></svg><input class="input" type="password" aria-label="密码" placeholder="请输入密码" value="password1"><svg class="ico r" aria-label="显示密码"><use href="#i-eye"/></svg></div>
+      <div class="login-row">
+        <span class="check on" onclick="this.classList.toggle('on')"><i></i>记住我</span>
+        <span class="hint">仅记住用户名</span>
+      </div>
+      <button class="btn btn-primary btn-login" onclick="go('new')">登录</button>
+      <div class="login-note">账号由管理员统一分发，忘记密码请联系管理员重置</div>
+    </form>
+  </div>
+  <div class="login-foot">© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V1.0</div>
+</section>
+
+<!-- ================= 公共顶栏 ================= -->
+<div id="shell" style="display:none">
+  <header class="topbar">
+    <div class="topbar-in">
+      <a class="brand" href="#new"><svg><use href="#logo"/></svg><span class="wordmark">商衡<b>SI</b></span><span class="brand-sub">企业安全脱敏与智能审查平台</span></a>
+      <nav class="nav">
+        <a href="#new" data-nav="review">智能审核</a>
+        <a href="#history" data-nav="history">审核历史</a>
+      </nav>
+      <div class="top-right">
+        <a class="top-link" href="#s-users" data-nav="settings"><svg class="ico"><use href="#i-gear"/></svg>设置</a>
+        <div class="user"><span class="avatar">张</span>张伟<svg class="ico"><use href="#i-down"/></svg></div>
+      </div>
+    </div>
+  </header>
+  <div class="alertbar"><div><svg class="ico"><use href="#i-warn"/></svg>本月模型调用已达上限的 82%（管理员提醒示例）</div></div>
+
+  <!-- ============ 智能审核 · 第一步 ============ -->
+  <section id="p-new" class="pageview" data-nav="review">
+    <div class="page page--standard">
+      <div class="ph"><h1>智能审核</h1><p>上传商务文件，本地脱敏并经您确认后，由 AI 进行初审</p></div>
+      <div class="steps">
+        <div class="st on"><span class="c">1</span>上传与设置</div><div class="sline"></div>
+        <div class="st"><span class="c">2</span>确认脱敏</div><div class="sline"></div>
+        <div class="st"><span class="c">3</span>审核中</div>
+      </div>
+      <div class="panel">
+        <div class="group">
+          <div class="group-t">审核文件</div>
+          <div class="drop">
+            <div class="up"><svg class="ico"><use href="#i-upload"/></svg></div>
+            <div class="t">将文件拖到此处，或 <em>点击选择</em></div>
+            <div class="fmt"><span>DOCX</span><span>PDF</span><span>XLSX</span><span>JPG</span><span>PNG</span></div>
+            <div class="lim">最多 10 个文件，单个不超过 30 MB</div>
+          </div>
+          <div class="files">
+            <div class="frow main"><span class="ftype docx">DOC</span><span class="n">销售合同_NB-2026-118.docx</span><span class="m"><span class="radio on"></span>主文件</span><span class="s">286 KB</span><button class="link danger">移除</button></div>
+            <div class="frow"><span class="ftype xlsx">XLS</span><span class="n">报价明细_NB-2026-118.xlsx</span><span class="m"><span class="radio"></span>主文件</span><span class="s">48 KB</span><button class="link danger">移除</button></div>
+          </div>
+        </div>
+        <div class="group">
+          <div class="group-t">审核设置</div>
+          <div class="formrow"><label>业务立场</label><div><span class="seg"><button class="on">销售</button><button>采购</button><button>其他</button></span></div></div>
+          <div class="formrow"><label>文件来源</label><div><span class="seg"><button class="on">我方发出</button><button>对方发来</button></span></div></div>
+          <div class="formrow top"><label>外发策略</label>
+            <div class="optcards">
+              <div class="optcard on"><span class="radio on"></span><div><b>脱敏后 AI 审核<span class="tg">默认</span></b><p>名称、联系方式、账号等敏感信息先在本机替换为代号，您确认外发文本后，才发送给云端模型审核。</p></div></div>
+              <div class="optcard"><span class="radio"></span><div><b>不外发，仅本地校验</b><p>文件不离开本系统，只做金额、日期等本地校验，不产生 AI 审核意见。</p></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="group">
+          <div class="group-t" style="display:flex">补充说明<span class="muted" style="font-weight:400;font-size:13px;margin-left:8px">选填</span><button class="link" style="margin-left:auto">查看审核要求</button></div>
+          <textarea class="input" rows="3" placeholder="如：这是给土耳其客户的报价，请重点看付款条款"></textarea>
+          <div class="hint" style="text-align:right;margin-top:4px">0 / 500</div>
+        </div>
+        <div class="foot"><span class="hint">解析完成后自动进入下一步</span><button class="btn btn-primary" style="padding:0 28px" onclick="go('confirm')">开始解析</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 智能审核 · 第二步 确认脱敏 ============ -->
+  <section id="p-confirm" class="pageview" data-nav="review">
+    <div class="page page--standard" style="max-width:1200px">
+      <div class="ph"><h1>智能审核</h1><p>请逐项检查脱敏结果，确认无误后再发送给模型</p></div>
+      <div class="steps">
+        <div class="st done"><span class="c"><svg class="ico"><use href="#i-check"/></svg></span>上传与设置</div><div class="sline done"></div>
+        <div class="st on"><span class="c">2</span>确认脱敏</div><div class="sline"></div>
+        <div class="st"><span class="c">3</span>审核中</div>
+      </div>
+
+      <div class="alert warning" style="margin-bottom:16px"><svg class="ico"><use href="#i-warn"/></svg><div><b>上次提交被拦截，未发送给模型</b>外发文本中出现了对照表中的真实名称（第 2 段）。请检查签约方和外发文本后重新提交。</div></div>
+
+      <div class="panel">
+        <div class="panel-h"><span class="num">1</span>文件信息<span class="right"><button class="link">查看审核要求</button></span></div>
+        <div class="tbl-wrap"><table class="table compact">
+          <thead><tr><th>文件名</th><th style="width:180px">文件类型</th><th style="width:170px">规模</th><th>提示</th></tr></thead>
+          <tbody>
+            <tr><td><div class="fname"><span class="ftype docx">DOC</span>销售合同_NB-2026-118.docx <span class="tag l-primary">主文件</span></div></td><td><div class="select"><select class="input input-sm"><option>合同</option></select></div><div class="hint">自动识别</div></td><td>8 页，96 段，3 个表格</td><td style="color:var(--c-warning);font-size:13px">检测到修订痕迹，按接受修订后的文本审核</td></tr>
+            <tr><td><div class="fname"><span class="ftype xlsx">XLS</span>报价明细_NB-2026-118.xlsx</div></td><td><div class="select"><select class="input input-sm"><option>报价单</option></select></div><div class="hint">自动识别</div></td><td>2 个工作表</td><td style="color:var(--c-warning);font-size:13px">隐藏工作表未参与审核</td></tr>
+          </tbody></table></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><span class="num">2</span>签约方确认<span class="desc">请选择哪一方是“我方”（已按业务立场预选）；修改国家或类型会重新生成代号和外发文本</span></div>
+        <div class="tbl-wrap"><table class="table compact">
+          <thead><tr><th style="width:64px;text-align:center">我方</th><th>真实名称</th><th style="width:110px">代号</th><th style="width:80px">角色</th><th style="width:150px">国家</th><th style="width:150px">类型</th></tr></thead>
+          <tbody>
+            <tr class="mine"><td style="text-align:center"><span class="radio on"></span></td><td style="color:var(--t1);font-weight:500">星河精密材料有限公司 <span class="tag l-primary">我方</span></td><td><span class="code">[公司A]</span></td><td>卖方</td><td><div class="select"><select class="input input-sm"><option>中国</option></select></div></td><td><div class="select"><select class="input input-sm"><option>制造商</option></select></div></td></tr>
+            <tr><td style="text-align:center"><span class="radio"></span></td><td style="color:var(--t1)">Nordbay Trading GmbH</td><td><span class="code">[公司B]</span></td><td>买方</td><td><div class="select"><select class="input input-sm"><option>德国</option></select></div></td><td><div class="select"><select class="input input-sm"><option>贸易商</option></select></div></td></tr>
+          </tbody></table></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><span class="num">3</span>脱敏摘要</div>
+        <div class="redstats">
+          <div class="stat"><div class="k">公司名称</div><div class="v">14<small>处</small></div></div>
+          <div class="stat"><div class="k">人名</div><div class="v">6<small>处</small></div></div>
+          <div class="stat"><div class="k">联系方式</div><div class="v">5<small>处</small></div></div>
+          <div class="stat"><div class="k">银行账号</div><div class="v">2<small>处</small></div></div>
+          <div class="stat"><div class="k">地址</div><div class="v">3<small>处</small></div></div>
+        </div>
+        <div class="sub">共替换 30 处敏感信息；金额、日期、贸易术语、产品规格保留原文。</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><span class="num">4</span>疑似遗漏<span class="pending">还有 2 条未处理</span></div>
+        <div class="tbl-wrap"><table class="table compact">
+          <thead><tr><th style="width:170px">位置</th><th style="width:150px">原因</th><th>上下文</th><th style="width:120px;text-align:center">操作</th></tr></thead>
+          <tbody>
+            <tr><td>主文件 · 第 12 段</td><td>疑似公司名称</td><td class="ctx">……货物由 <mark>Hafenlicht Logistik</mark> 负责安排海运……</td><td style="text-align:center"><span class="links" style="justify-content:center"><button class="link">替换</button><button class="link" style="color:var(--t3)">忽略</button></span></td></tr>
+            <tr><td>报价明细 · B7</td><td>疑似人名</td><td class="ctx">联系人：<mark>K. Brandt</mark>，邮件确认后生效</td><td style="text-align:center"><span class="links" style="justify-content:center"><button class="link">替换</button><button class="link" style="color:var(--t3)">忽略</button></span></td></tr>
+          </tbody></table></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><span class="num">5</span>手动补充<span class="desc">识别遗漏的信息可在原文中选中后设为敏感信息，相同文字全文一并替换</span><span class="right"><button class="btn btn-sm">在原文中选择</button></span></div>
+        <div class="tags-list"><span>[公司C] 远帆国际物流 <i>×</i></span><span>[人名3] 陈晓 <i>×</i></span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><span class="num">6</span>原文与外发文本对照<span class="desc">左侧原文仅在本机显示；右侧是确认后实际发送给模型的文本</span></div>
+        <div class="cmp-tools">
+          <span class="seg seg-sm"><button class="on">全部文件</button><button>销售合同 · 5 段有替换</button><button>报价明细 · 2 段有替换</button></span>
+          <span class="check on" onclick="this.classList.toggle('on')"><i></i>只看有替换的段落</span>
+          <span class="cmp-count">共 104 段，31 段有替换</span>
+        </div>
+        <div class="legend">
+          <span><i class="k-org"></i>公司</span><span><i class="k-per"></i>人名</span><span><i class="k-tel"></i>联系方式</span><span><i class="k-acc"></i>银行账号</span><span><i class="k-adr"></i>地址</span><span><i class="k-sus"></i>疑似遗漏（未处理，将原样发送）</span>
+          <span class="muted" style="margin-left:auto">悬停任一处，两侧对应内容同时高亮；在左侧选中文字可直接补充脱敏</span>
+        </div>
+        <div class="cmp">
+          <div class="cmp-head"><span>位置</span><span>原文</span><span>将发送的文本（已脱敏）</span></div>
+          <div class="cmp-row sys"><span class="loc">主体说明</span><span class="muted">系统生成的签约方说明，原文无对应段落</span><span>【主体说明】<x class="ph" data-k="a">[公司A]</x>：我方，卖方，中国，制造商；<x class="ph" data-k="b">[公司B]</x>：买方，德国，贸易商</span></div>
+          <div class="cmp-row"><span class="loc">第 1 段<em>第一条</em></span><span>卖方：<x class="r k-org" data-k="a">星河精密材料有限公司</x>，地址：<x class="r k-adr" data-k="adr1">江苏省常州市新北区汉江路 88 号</x></span><span>卖方：<x class="ph" data-k="a">[公司A]</x>，地址：<x class="ph" data-k="adr1">[地址1]</x></span></div>
+          <div class="cmp-row"><span class="loc">第 2 段</span><span>买方：<x class="r k-org" data-k="b">Nordbay Trading GmbH</x>，联系人：<x class="r k-per" data-k="p1">Jonas Weber</x>，电话：<x class="r k-tel" data-k="t1">+49 40 3378 2210</x></span><span>买方：<x class="ph" data-k="b">[公司B]</x>，联系人：<x class="ph" data-k="p1">[人名1]</x>，电话：<x class="ph" data-k="t1">[电话1]</x></span></div>
+          <div class="cmp-gap">已隐藏 6 段无替换的段落 · <button class="link" style="font-size:12px">展开</button></div>
+          <div class="cmp-row"><span class="loc">第 9 段<em>第三条</em></span><span>收款银行：<x class="r k-org" data-k="bk">中国银行常州分行</x>，账号：<x class="r k-acc" data-k="ac1">6217 8560 0012 3456 789</x></span><span>收款银行：<x class="ph" data-k="bk">[银行1]</x>，账号：<x class="ph" data-k="ac1">[账号1]</x></span></div>
+          <div class="cmp-row warn"><span class="loc">第 12 段<em>第四条</em></span><span>货物由 <x class="r k-sus" data-k="s1">Hafenlicht Logistik</x> 负责安排海运，提单抬头为 <x class="r k-org" data-k="b">Nordbay Trading GmbH</x>。<span class="pend">待处理</span></span><span>货物由 <x class="r k-sus" data-k="s1">Hafenlicht Logistik</x> 负责安排海运，提单抬头为 <x class="ph" data-k="b">[公司B]</x>。</span></div>
+          <div class="cmp-row"><span class="loc">第 15 段</span><span style="position:relative">运输保险由 <span class="sel">远航保险经纪</span> 代为投保，保险金额为发票金额的 110%。
+            <span class="pop"><b>设为敏感信息</b><button>公司</button><button>人名</button><button>自定义</button></span></span><span>运输保险由 远航保险经纪 代为投保，保险金额为发票金额的 110%。</span></div>
+          <div class="cmp-gap">已隐藏 22 段无替换的段落 · <button class="link" style="font-size:12px">展开</button></div>
+          <div class="cmp-row grp"><span class="loc">报价明细<em>B3–B6</em></span>
+            <span><div class="cell">B3　石墨电极 UHP 600mm　120 吨　USD 3,280.00</div><div class="cell">B4　接头 4TPI　240 只　USD 46.50</div><div class="cell">B5　包装费　1 批　USD 1,800.00</div><div class="cell">B6　合计　USD 406,560.00</div></span>
+            <span><div class="tag l-primary" style="margin-bottom:6px">报价明细已汇总发送</div>【报价明细表：3 项，币种 USD，合计 406,560.00；最大项为石墨电极 UHP 600mm】</span></div>
+          <div class="cmp-row warn"><span class="loc">报价明细<em>B7</em></span><span>联系人：<x class="r k-sus" data-k="s2">K. Brandt</x>，邮件确认后生效<span class="pend">待处理</span></span><span>联系人：<x class="r k-sus" data-k="s2">K. Brandt</x>，邮件确认后生效</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h collapse"><span class="num">7</span>本地校验结果<span class="tag l-warning">3 条</span><svg class="ico chev"><use href="#i-down"/></svg></div>
+        <div class="sub">展开后显示金额合计、日期一致性等本地校验明细（金额原样显示）。</div>
+      </div>
+
+      <div class="stickybar">
+        <span class="cond"><svg class="ico ok"><use href="#i-check"/></svg>已选择我方</span>
+        <span class="cond"><svg class="ico no"><use href="#i-warn"/></svg>疑似遗漏还有 2 条未处理</span>
+        <span class="cond muted">处理完毕后才能提交</span>
+        <button class="btn btn-primary" disabled>确认发送并开始审核</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 智能审核 · 第三步 审核中 ============ -->
+  <section id="p-running" class="pageview" data-nav="review">
+    <div class="page page--standard">
+      <div class="ph"><h1>智能审核</h1><p>上传商务文件，本地脱敏并经您确认后，由 AI 进行初审</p></div>
+      <div class="steps">
+        <div class="st done"><span class="c"><svg class="ico"><use href="#i-check"/></svg></span>上传与设置</div><div class="sline done"></div>
+        <div class="st done"><span class="c"><svg class="ico"><use href="#i-check"/></svg></span>确认脱敏</div><div class="sline done"></div>
+        <div class="st on"><span class="c">3</span>审核中</div>
+      </div>
+      <div class="panel">
+        <div class="state">
+          <div class="spinner"></div>
+          <h3>正在审核：第 5 段，共 8 段</h3>
+          <p>审核完成后会自动跳转到结果页，也可以离开页面，稍后从审核历史进入。</p>
+          <div class="progress"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 审核结果 ============ -->
+  <section id="p-result" class="pageview" data-nav="review">
+    <div class="page page--split">
+      <div class="split">
+        <div class="left">
+          <div class="panel" style="padding:20px 24px">
+            <div class="rhead">
+              <span class="ftype docx" style="margin-top:2px">DOC</span>
+              <div style="flex:1"><h2>销售合同_NB-2026-118.docx</h2><div class="sub">另含 1 个附件 · 报价明细_NB-2026-118.xlsx</div></div>
+              <span class="tag l-success">已完成</span>
+            </div>
+            <div class="meta">
+              <div><div class="k">文件类型</div><div class="v">合同</div></div>
+              <div><div class="k">立场 / 来源</div><div class="v">销售 · 我方发出</div></div>
+              <div><div class="k">审核时间</div><div class="v">2026-10-23 14:36</div></div>
+              <div><div class="k">使用的模型</div><div class="v">deepseek-chat</div></div>
+              <div><div class="k">审核要求版本</div><div class="v">内置 v3 · 公司补充 第 4 版</div></div>
+              <div><div class="k">审核轮次</div><div class="v"><div class="select"><select class="input input-sm"><option>第 2 轮 · 10-23 14:36 · 已完成</option></select></div></div></div>
+            </div>
+            <div class="sev">
+              <div class="sevb h"><span class="dot" style="background:var(--c-danger)"></span>高<span class="v">2</span></div>
+              <div class="sevb m"><span class="dot" style="background:var(--c-warning)"></span>中<span class="v">5</span></div>
+              <div class="sevb l"><span class="dot" style="background:var(--c-info)"></span>低<span class="v">3</span></div>
+            </div>
+          </div>
+
+          <div class="cov">
+            <b style="color:var(--t1)">文件摘要</b>
+            <div style="margin-top:4px">本合同为高纯石墨电极出口销售合同，CIF 汉堡，含付款、交货、质量异议与争议解决条款。</div>
+            <div class="sanc"><b style="color:var(--t1)">覆盖范围：</b>已审核全部 8 段正文与 1 个附件；隐藏工作表未参与审核。
+              <div style="margin-top:6px"><b style="color:var(--t1)">制裁结论：</b>未发现明显制裁风险</div>
+              <div class="hint" style="margin-top:4px">未联网核查，基于模型自身知识，需合规人员确认最新制裁与出口管制规定</div></div>
+          </div>
+
+          <div class="tabs"><span class="on">问题清单（10）</span><span>本地校验</span><span>审核要求逐条结论</span></div>
+          <div class="filters">
+            <div class="select"><select class="input input-sm"><option>全部等级</option></select></div>
+            <div class="select"><select class="input input-sm"><option>全部类别</option></select></div>
+            <div class="select"><select class="input input-sm"><option>全部处理状态</option></select></div>
+          </div>
+
+          <div class="fc h sel">
+            <div class="fc-h"><span class="t">付款条件对我方保障不足</span><span class="tag tag-dark danger">高</span><span class="tag l-info">付款</span><span class="tag plain-success">引用已校验</span><span class="loc"><svg class="ico" style="width:13px;height:13px"><use href="#i-pin"/></svg>第三条 第 2 款</span></div>
+            <div class="quote">买方应在收到货物后 90 日内以电汇方式支付全部货款。</div>
+            <div class="row"><div class="k">问题说明</div><div class="v">全额货到后 90 天付款，且无预付款、信用证或担保，我方承担全部收款风险。</div></div>
+            <div class="row"><div class="k">对我方的影响</div><div class="v">出口货值较高，若买方拖延或拒付，跨境追偿成本高、周期长。</div></div>
+            <div class="sugg">
+              <div class="k">修改建议</div><div class="v">改为 30% 预付款 + 70% 见提单副本付款，或要求即期信用证。</div>
+              <div class="repl"><span>买方应于合同签订后 7 日内支付合同总额 30% 的预付款，余款于收到提单副本后 5 个工作日内付清。</span><button class="btn btn-sm"><svg class="ico" style="width:14px;height:14px"><use href="#i-copy"/></svg>复制</button></div>
+            </div>
+            <div class="basis">依据：内置要求 R-PAY-02“付款方式与收款保障”</div>
+            <div class="hd"><div class="select"><select class="input input-sm"><option>待处理</option></select></div><input class="input input-sm" placeholder="备注（选填）"></div>
+          </div>
+
+          <div class="fc m">
+            <div class="fc-h"><span class="t">质量异议期限未约定</span><span class="tag tag-dark warning">中</span><span class="tag l-info">质量</span><span class="tag plain-warning">待核实</span><span class="loc"><svg class="ico" style="width:13px;height:13px"><use href="#i-pin"/></svg>第六条</span></div>
+            <div class="quote">如货物质量与合同不符，买方有权提出异议。</div>
+            <div class="row"><div class="k">问题说明</div><div class="v">未约定异议提出期限和检验机构，买方可在较长时间后提出索赔。</div></div>
+            <div class="sugg"><div class="k">修改建议</div><div class="v">约定货到目的港后 30 日内凭第三方检验报告提出，逾期视为合格。</div></div>
+            <div class="hd"><div class="select"><select class="input input-sm"><option>已采纳</option></select></div><input class="input input-sm" placeholder="备注（选填）"></div>
+          </div>
+
+          <div class="actbar">
+            <button class="btn"><svg class="ico"><use href="#i-chat"/></svg>追问</button>
+            <button class="btn"><svg class="ico"><use href="#i-dl"/></svg>导出报告</button>
+            <button class="btn"><svg class="ico"><use href="#i-redo"/></svg>重新审核</button>
+            <span class="sp"></span>
+            <button class="btn btn-danger-text">删除任务</button>
+          </div>
+        </div>
+
+        <div class="rcol">
+          <div class="viewer">
+            <div class="vbar"><div class="select"><select class="input input-sm"><option>销售合同_NB-2026-118.docx</option></select></div><span class="sub" style="margin-left:auto">点击左侧问题可定位原文</span></div>
+            <div class="vbody">
+              <div class="paper">
+                <h4>销 售 合 同</h4>
+                <p>合同编号：NB-2026-118　签订日期：2026 年 10 月 12 日</p>
+                <p>卖方：星河精密材料有限公司　买方：Nordbay Trading GmbH</p>
+                <p><b>第二条 货物与价格</b>　产品为高纯石墨电极，规格 UHP 600mm，数量 120 吨，单价 USD 3,280.00/吨，CIF 汉堡，合计 USD 393,600.00。</p>
+                <p><b>第三条 付款</b>　1. 本合同以美元结算。2. <span class="hl">买方应在收到货物后 90 日内以电汇方式支付全部货款。</span>3. 银行费用各自承担。</p>
+                <p><b>第四条 交货</b>　卖方应于 2026 年 12 月 20 日前在天津港装船，允许分批装运，不允许转运。</p>
+                <p><b>第五条 包装</b>　出口标准木箱包装，适合长途海运，箱外注明唛头。</p>
+                <p><b>第六条 质量异议</b>　如货物质量与合同不符，买方有权提出异议。</p>
+                <p><b>第七条 争议解决</b>　因本合同引起的争议，双方应友好协商解决。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 审核历史 ============ -->
+  <section id="p-history" class="pageview" data-nav="history">
+    <div class="page page--wide">
+      <div class="ph"><h1>审核历史</h1><p>查看和导出本人提交的审核任务</p></div>
+      <div class="panel" style="padding:16px 20px;display:flex;gap:12px;align-items:center">
+        <div class="iinput" style="margin:0;width:320px"><svg class="ico" style="top:11px;left:12px"><use href="#i-search"/></svg><input class="input" style="height:40px;padding-left:38px;font-size:14px;border-radius:8px" placeholder="按文件名搜索"></div>
+        <input class="input" style="width:300px" value="2026-10-01  至  2026-10-23">
+        <button class="btn btn-primary">查询</button>
+      </div>
+      <div class="panel" style="padding:8px 8px 16px">
+        <table class="table">
+          <thead><tr><th style="width:170px">提交时间</th><th>主文件名</th><th style="width:100px">文件类型</th><th style="width:70px">立场</th><th style="width:120px">状态</th><th style="width:110px;text-align:center">高风险问题</th><th style="width:170px">操作</th></tr></thead>
+          <tbody>
+            <tr><td>2026-10-23 14:20</td><td><div class="fname"><span class="ftype docx">DOC</span>销售合同_NB-2026-118.docx</div></td><td>合同</td><td>销售</td><td>已审核</td><td style="text-align:center;color:var(--c-danger);font-weight:600">2</td><td><span class="links"><button class="link" onclick="go('result')">打开</button><button class="link">导出</button><button class="link danger">删除</button></span></td></tr>
+            <tr><td>2026-10-22 10:05</td><td><div class="fname"><span class="ftype xlsx">XLS</span>报价单_Q4_北方区.xlsx</div></td><td>报价单</td><td>销售</td><td>本地校验完成</td><td style="text-align:center">—</td><td><span class="links"><button class="link">打开</button><button class="link">导出</button><button class="link danger">删除</button></span></td></tr>
+            <tr><td>2026-10-21 16:48</td><td><div class="fname"><span class="ftype pdf">PDF</span>采购框架协议_2027.pdf</div></td><td>合同</td><td>采购</td><td>待确认脱敏</td><td style="text-align:center">—</td><td><span class="links"><button class="link">打开</button><button class="link danger">删除</button></span></td></tr>
+            <tr><td>2026-10-20 09:12</td><td><div class="fname"><span class="ftype img">IMG</span>形式发票_扫描件.png</div></td><td>发票</td><td>其他</td><td style="color:var(--c-danger)">解析失败</td><td style="text-align:center">—</td><td><span class="links"><button class="link">打开</button><button class="link danger">删除</button></span></td></tr>
+            <tr><td>2026-10-18 15:30</td><td><div class="fname"><span class="ftype docx">DOC</span>代理协议_东南亚区域.docx</div></td><td>合同</td><td>销售</td><td>已审核</td><td style="text-align:center">0</td><td><span class="links"><button class="link">打开</button><button class="link">导出</button><button class="link danger">删除</button></span></td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span>共 46 条</span><div class="pages"><span>‹</span><span class="on">1</span><span>2</span><span>3</span><span>›</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 设置（五页共用左侧导航） ============ -->
+  <section id="p-settings" class="pageview" data-nav="settings">
+    <div class="page page--wide">
+      <div class="settings">
+        <nav class="snav">
+          <div class="t">设置</div>
+          <a data-s="s-users"><svg class="ico"><use href="#i-users"/></svg>账号</a>
+          <a data-s="s-model"><svg class="ico"><use href="#i-cpu"/></svg>模型</a>
+          <a data-s="s-req"><svg class="ico"><use href="#i-list"/></svg>审核要求</a>
+          <a data-s="s-redaction"><svg class="ico"><use href="#i-shield"/></svg>脱敏</a>
+          <a data-s="s-data"><svg class="ico"><use href="#i-db"/></svg>数据</a>
+        </nav>
+        <div>
+          <!-- 账号 -->
+          <div class="sp-view" id="s-users">
+            <div class="ph ph-row"><div><h1>账号管理</h1><p>新建账号、启停和重置密码；新账号首次登录时须先修改密码</p></div><button class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg>新增账号</button></div>
+            <div class="panel" style="padding:8px 8px 8px">
+              <table class="table">
+                <thead><tr><th>用户名</th><th>显示名</th><th style="width:100px">角色</th><th style="width:90px">状态</th><th style="width:170px">最近登录时间</th><th style="width:170px">操作</th></tr></thead>
+                <tbody>
+                  <tr><td style="color:var(--t1)">admin</td><td><div class="fname"><span class="avatar">管</span>系统管理员</div></td><td><span class="tag l-primary">管理员</span></td><td><span class="switch on"></span></td><td>2026-10-23 08:55</td><td><span class="links"><button class="link">编辑</button><button class="link">重置密码</button></span></td></tr>
+                  <tr><td style="color:var(--t1)">zhangwei</td><td><div class="fname"><span class="avatar">张</span>张伟</div></td><td><span class="tag l-info">普通用户</span></td><td><span class="switch on"></span></td><td>2026-10-23 14:02</td><td><span class="links"><button class="link">编辑</button><button class="link">重置密码</button></span></td></tr>
+                  <tr><td style="color:var(--t1)">liuna</td><td><div class="fname"><span class="avatar">刘</span>刘娜</div></td><td><span class="tag l-info">普通用户</span></td><td><span class="switch"></span></td><td>2026-09-30 17:21</td><td><span class="links"><button class="link">编辑</button><button class="link">重置密码</button></span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <!-- 模型 -->
+          <div class="sp-view" id="s-model">
+            <div class="ph"><h1>模型接口</h1><p>配置云端模型的接口、调用参数与费用上限；所有调用只经由模型网关</p></div>
+            <div class="panel">
+              <div class="panel-h">本月用量<span class="desc">2026-10</span></div>
+              <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+                <div class="stat"><div class="k">调用次数</div><div class="v">1,284<small>/ 3,000</small></div></div>
+                <div class="stat"><div class="k">输入 token</div><div class="v">8.62<small>M</small></div></div>
+                <div class="stat"><div class="k">输出 token</div><div class="v">1.37<small>M</small></div></div>
+                <div class="stat"><div class="k">估算费用</div><div class="v">¥ 42.18</div></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">模型接口</div>
+              <div class="grid2">
+                <div class="field"><label>接口地址</label><input class="input" value="https://api.deepseek.com/v1"><div class="hint">更换地址后，需 IT 同步修改虚拟机防火墙白名单。</div></div>
+                <div class="field"><label>模型名称</label><input class="input" value="deepseek-chat"></div>
+                <div class="field"><label>API 密钥</label><input class="input" placeholder="已设置（末 4 位 7f3a），留空表示不修改"></div>
+                <div class="field"><label>JSON 输出模式</label><div style="height:40px;display:flex;align-items:center"><span class="switch on"></span></div></div>
+              </div>
+              <div class="group" style="margin-top:12px"><div class="group-t">调用参数</div>
+                <div class="grid3">
+                  <div class="field"><label>温度（0–2）</label><input class="input" value="0.2"></div>
+                  <div class="field"><label>最大输出 token</label><input class="input" value="4096"></div>
+                  <div class="field"><label>超时（秒）</label><input class="input" value="120"></div>
+                </div>
+              </div>
+              <div class="group" style="margin-top:12px"><div class="group-t">费用与上限</div>
+                <div class="grid3">
+                  <div class="field"><label>输入单价（元 / 百万 token）</label><input class="input" value="2.00"></div>
+                  <div class="field"><label>输出单价（元 / 百万 token）</label><input class="input" value="8.00"></div>
+                  <div class="field"><label>每月调用上限</label><input class="input" value="3000"><div class="hint">0 表示不限</div></div>
+                </div>
+              </div>
+              <div class="alert success" style="margin-top:4px"><svg class="ico"><use href="#i-check"/></svg><div>连接成功：模型 deepseek-chat，耗时 812 毫秒</div></div>
+              <div class="foot"><span class="hint">测试的是已保存的设置</span><button class="btn">测试连接</button><button class="btn btn-primary">保存</button></div>
+            </div>
+          </div>
+          <!-- 审核要求 -->
+          <div class="sp-view" id="s-req">
+            <div class="ph"><h1>审核要求</h1><p>内置要求只读；公司补充要求只能增加审核内容，不能取消内置要求</p></div>
+            <div class="panel">
+              <div class="panel-h">公司说明<span class="desc">随每次审核发送给模型，请勿写入具体客户名称、电话、账号或金额</span></div>
+              <textarea class="input" rows="3">公司主营高纯石墨电极与特种碳材料，产品主要出口欧洲、中东及东南亚，需遵守两用物项出口管制要求。</textarea>
+              <div class="foot" style="margin-top:16px;padding-top:16px"><span class="hint">当前第 4 版 · 张伟 修改于 2026-10-20 11:32</span><button class="btn btn-primary">保存</button></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">公司补充要求<span class="tag l-primary">3 条启用</span><span class="right"><button class="btn btn-sm"><svg class="ico" style="width:14px;height:14px"><use href="#i-plus"/></svg>新增</button></span></div>
+              <div class="tbl-wrap"><table class="table compact">
+                <thead><tr><th style="width:90px">编号</th><th style="width:80px">维度</th><th>内容</th><th style="width:110px">适用立场</th><th style="width:70px">启用</th><th style="width:110px">操作</th></tr></thead>
+                <tbody>
+                  <tr><td>C-01</td><td>付款</td><td>出口合同预付款比例不低于 30%</td><td>销售</td><td><span class="switch on"></span></td><td><span class="links"><button class="link">编辑</button><button class="link danger">删除</button></span></td></tr>
+                  <tr><td>C-02</td><td>合规</td><td>涉及两用物项时须写明最终用户及用途声明</td><td>全部</td><td><span class="switch on"></span></td><td><span class="links"><button class="link">编辑</button><button class="link danger">删除</button></span></td></tr>
+                </tbody></table></div>
+            </div>
+            <div class="panel ro">
+              <div class="panel-h">内置要求<span class="tag l-info">只读</span><span class="desc">共 48 条</span></div>
+              <div class="sub">按维度与适用文件类型筛选查看，不可编辑。</div>
+            </div>
+          </div>
+          <!-- 脱敏 -->
+          <div class="sp-view" id="s-redaction">
+            <div class="ph"><h1>脱敏规则</h1><p>新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算</p></div>
+            <div class="panel">
+              <div style="display:flex;align-items:center;gap:16px"><div style="flex:1"><div class="panel-h" style="margin:0 0 4px">数量脱敏</div><div class="sub">开启后数量也会替换为代号，只影响之后解析的文件。</div></div><span class="switch"></span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">自定义敏感词<span class="desc">2–100 个字符，全文精确匹配</span></div>
+              <div style="display:flex;gap:8px;margin-bottom:16px"><input class="input" placeholder="输入需要替换的敏感词（2–100 个字符）"><button class="btn btn-primary">添加</button></div>
+              <div class="tags-list"><span>北极星项目 <i>×</i></span><span>NB 专用配方 <i>×</i></span><span>华东三号仓 <i>×</i></span></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">已记住的名称<span class="right"><div class="iinput" style="margin:0;width:240px"><svg class="ico" style="top:11px;left:12px"><use href="#i-search"/></svg><input class="input" style="height:40px;padding-left:38px;font-size:14px;border-radius:8px" placeholder="搜索名称"></div></span></div>
+              <div class="tbl-wrap"><table class="table compact">
+                <thead><tr><th>名称</th><th style="width:90px">类别</th><th style="width:90px">是否我方</th><th style="width:90px">记录人</th><th style="width:160px">记录时间</th><th style="width:90px">命中次数</th><th style="width:70px">操作</th></tr></thead>
+                <tbody>
+                  <tr><td style="color:var(--t1)">星河精密材料有限公司</td><td>公司</td><td><span class="tag l-primary">我方</span></td><td>张伟</td><td>2026-09-02 10:14</td><td>37</td><td><button class="link danger">删除</button></td></tr>
+                  <tr><td style="color:var(--t1)">Nordbay Trading GmbH</td><td>公司</td><td>—</td><td>张伟</td><td>2026-10-12 16:40</td><td>4</td><td><button class="link danger">删除</button></td></tr>
+                </tbody></table></div>
+            </div>
+          </div>
+          <!-- 数据 -->
+          <div class="sp-view" id="s-data">
+            <div class="ph"><h1>数据与系统</h1><p>系统状态、原件保留期限、备份与外发记录</p></div>
+            <div class="panel">
+              <div class="panel-h">系统状态</div>
+              <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+                <div class="stat"><div class="k">数据盘剩余空间</div><div class="v">412<small>GB</small></div></div>
+                <div class="stat"><div class="k">排队任务数</div><div class="v">0</div></div>
+                <div class="stat"><div class="k">最近一次备份</div><div class="v" style="font-size:16px;margin-top:6px">10-23 02:00</div></div>
+                <div class="stat"><div class="k">版本号</div><div class="v" style="font-size:16px;margin-top:6px">1.0.0</div></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">原件保留期限</div>
+              <div class="kv"><input class="input" style="width:160px" value="180"><span class="sub">天　0 表示永久保留</span><button class="btn btn-primary" style="margin-left:auto">保存</button></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">备份<span class="desc">1–60 份，超出的最旧备份会被自动删除</span></div>
+              <div class="kv"><span class="sub">保留份数</span><input class="input" style="width:120px" value="14"><span class="sub" style="margin-left:16px">备份目录 /data/backup</span><button class="btn btn-primary" style="margin-left:auto">保存</button></div>
+            </div>
+            <div class="panel">
+              <div class="panel-h">外发记录<span class="desc">点击一行查看外发文本和返回内容（均为脱敏后的内容）</span></div>
+              <div class="filters"><div class="select"><select class="input input-sm"><option>全部用户</option></select></div><div class="select"><select class="input input-sm"><option>全部状态</option></select></div></div>
+              <div class="tbl-wrap"><table class="table compact">
+                <thead><tr><th style="width:150px">时间</th><th style="width:80px">用户</th><th>任务主文件名</th><th style="width:110px">用途 / 模型</th><th style="width:80px">字数</th><th style="width:90px">状态</th></tr></thead>
+                <tbody>
+                  <tr><td>10-23 14:31</td><td>张伟</td><td>销售合同_NB-2026-118.docx</td><td>审核</td><td>6,214</td><td><span class="tag l-success">成功</span></td></tr>
+                  <tr><td>10-23 14:18</td><td>张伟</td><td>销售合同_NB-2026-118.docx</td><td>审核</td><td>6,198</td><td><span class="tag l-warning">已拦截</span></td></tr>
+                </tbody></table></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="switcher">
+  <span class="tip">预览页面</span>
+  <select id="sw" onchange="go(this.value)">
+    <option value="login">登录</option>
+    <option value="new">智能审核 · 上传与设置</option>
+    <option value="confirm">智能审核 · 确认脱敏</option>
+    <option value="running">智能审核 · 审核中</option>
+    <option value="result">审核结果</option>
+    <option value="history">审核历史</option>
+    <option value="s-users">设置 · 账号</option>
+    <option value="s-model">设置 · 模型</option>
+    <option value="s-req">设置 · 审核要求</option>
+    <option value="s-redaction">设置 · 脱敏</option>
+    <option value="s-data">设置 · 数据</option>
+  </select>
+</div>
+
+<script>
+function go(id) {
+  if (location.hash !== '#' + id) { location.hash = id; return; }
+  render(id);
+}
+function render(id) {
+  id = id || 'login';
+  const isSetting = id.startsWith('s-');
+  const target = isSetting ? 'p-settings' : 'p-' + id;
+  if (!document.getElementById(target)) return render('login');
+  document.querySelectorAll('.pageview').forEach(el => el.classList.toggle('show', el.id === target));
+  document.getElementById('shell').style.display = id === 'login' ? 'none' : 'block';
+  const nav = document.getElementById(target).dataset.nav;
+  document.querySelectorAll('[data-nav]').forEach(a => { if (a.tagName === 'A') a.classList.toggle('on', a.dataset.nav === nav); });
+  document.querySelectorAll('.sp-view').forEach(v => v.style.display = v.id === id ? 'block' : 'none');
+  document.querySelectorAll('.snav a').forEach(a => a.classList.toggle('on', a.dataset.s === id));
+  document.getElementById('sw').value = id;
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('.snav a').forEach(a => a.addEventListener('click', () => go(a.dataset.s)));
+document.querySelectorAll('.seg').forEach(s => s.addEventListener('click', e => { if (e.target.tagName === 'BUTTON') { s.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === e.target)); } }));
+document.querySelectorAll('.optcards').forEach(g => g.querySelectorAll('.optcard').forEach(c => c.addEventListener('click', () => {
+  g.querySelectorAll('.optcard').forEach(x => { x.classList.toggle('on', x === c); x.querySelector('.radio').classList.toggle('on', x === c); });
+})));
+document.querySelectorAll('.cmp-row').forEach(row => row.addEventListener('mouseover', e => {
+  const k = e.target.dataset && e.target.dataset.k;
+  document.querySelectorAll('.cmp x.on').forEach(x => x.classList.remove('on'));
+  if (k) row.querySelectorAll(`x[data-k="${k}"]`).forEach(x => x.classList.add('on'));
+}));
+window.addEventListener('hashchange', () => render(location.hash.slice(1)));
+render(location.hash.slice(1));
+</script>
+</body>
+</html>
