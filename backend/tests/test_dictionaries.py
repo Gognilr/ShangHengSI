@@ -82,8 +82,18 @@ def test_find_country_longest_match_wins():
 
 
 def test_find_country_unknown():
-    assert find_country("北京市朝阳区某某路") is None
     assert find_country("") is None
+    assert find_country("Chaoyang District, Beijing Road") is None
+    assert find_country("某区") is None  # 行政区划字前不足 2 个汉字
+
+
+def test_find_country_chinese_admin_divisions():
+    assert find_country("山东省德州市临邑县某某路 1 号") == "中国"
+    assert find_country("北京市朝阳区某某路") == "中国"
+    assert find_country("广西壮族自治区南宁市") == "中国"
+    assert find_country("某某镇某某乡") == "中国"
+    # 词典词条优先
+    assert find_country("香港特别行政区九龙某区") == "中国香港"
 
 
 def test_find_country_chinese_name_substring():

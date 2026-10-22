@@ -12,6 +12,8 @@ import yaml
 RESOURCES_DIR = Path(__file__).resolve().parents[2] / "resources"
 
 _DEFAULT_ORG_TYPE = "类型未知"
+# 中国行政区划：省、自治区、市、县、区、镇、乡前至少 2 个汉字（R1-06）
+_CN_ADMIN = re.compile(r"[一-鿿]{2,}(?:省|自治区|市|县|区|镇|乡)")
 
 
 def _term_pattern(term: str) -> str:
@@ -47,6 +49,7 @@ def find_country(text: str) -> str | None:
     """返回文本中最长的一处国家或地区名对应的中文名；没有则返回 None。
 
     匹配只看词条本身：多个词条重叠时取最长的；长度相同时取出现在前面的。
+    词典中查不到时，含中国行政区划（山东省、临邑县、朝阳区等）的判为“中国”。
     """
     pattern, mapping = _country_index()
     best = None
@@ -54,7 +57,7 @@ def find_country(text: str) -> str | None:
         if best is None or len(match.group()) > len(best.group()):
             best = match
     if best is None:
-        return None
+        return "中国" if _CN_ADMIN.search(text) else None
     return mapping[best.group().casefold()]
 
 
