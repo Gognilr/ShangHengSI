@@ -42,6 +42,7 @@ _CURRENCY_AFTER = re.compile(
 )
 _SHORT_DIGITS = 6  # 少于 6 位数字的数字类真实值，须带币种或单位才算出现
 _LONG_DIGITS = 8  # 至少 8 位数字的数字类真实值，去掉分隔符后也比较
+_BIG_AMOUNT = Decimal(10000)  # 不小于此数值的金额真实值，不论是否带币种都按数值比对（Q-134 ③）
 
 
 @dataclass(frozen=True)
@@ -111,8 +112,11 @@ def _numeric_positions(text: str, value: str) -> list[int]:
                 out.append(m.start())
     if _AMOUNT_VALUE.match(value):
         target = _decimal(value)
+        # 数值 ≥ 10000 的金额：换了千分位、小数位写法也拦截，不要求带币种（Q-134 ③，宁可误拦）。
+        # 小于 10000 的（含带小数的单价）仍须带币种：条款编号“1.8”“2.3”与单价同值时会拦死且用户无法处理（R1-03 实测）
+        any_form = target is not None and target >= _BIG_AMOUNT
         for m in _NUMBER_IN_TEXT.finditer(text):
-            if _decimal(m.group(1)) == target and _has_currency(text, m.start(1), m.end(1)):
+            if _decimal(m.group(1)) == target and (any_form or _has_currency(text, m.start(1), m.end(1))):
                 out.append(m.start(1))
     return out
 

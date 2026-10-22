@@ -70,3 +70,47 @@ def test_tables_module_has_no_engine_dependency():
     source = Path(tables.__file__).read_text(encoding="utf-8")
     assert "engine" not in source.replace("从 engine.py 移入", "").replace("不导入 engine", "")
     assert tables.HEADER_SCAN_ROWS == 20
+
+
+# ---------------------------------------------------------------- R1-03（design/R1.md 第三节，Q-134 ③）
+
+
+def _cells(rows: dict[int, list[str]], table: str = "F1-T1") -> list[NodeIn]:
+    return [NodeIn(f"{table}-R{r}-C{c}", text) for r, texts in rows.items() for c, text in enumerate(texts, start=1) if text]
+
+
+def test_multiple_header_rows_and_total_rows():
+    nodes = _cells({
+        1: ["清单"],
+        2: ["序号", "名称", "单价(元)", "总数量", "金额(元)"],
+        3: ["1", "道闸", "7,500.00", "12", "90,000.00"],
+        4: ["小计", "", "", "440000", ""],  # 小计落在数量列
+        5: ["结算价合计"],
+        6: ["序号", "项目", "金额", "备注"],  # 第二个表头：没有纯数字
+        7: ["1", "硬件金额", "710,000.00", "含运费"],
+        8: ["2", "报价合计", "1,150,000.00", "含税"],
+    })
+    hints = {nodes[i].loc: kind for i, kind in table_hints(nodes).items()}
+    assert hints["F1-T1-R3-C3"] == "PRICE" and hints["F1-T1-R3-C5"] == "AMOUNT"
+    assert "F1-T1-R3-C4" not in hints  # 数量列不脱敏时没有提示
+    assert hints["F1-T1-R4-C4"] == "AMOUNT"  # 合计行的纯数字一律按金额
+    assert hints["F1-T1-R7-C3"] == "AMOUNT" and hints["F1-T1-R8-C3"] == "AMOUNT"  # 第二个表头管到表尾
+    assert "F1-T1-R7-C1" not in hints and "F1-T1-R6-C3" not in hints
+    assert header_rows(nodes) == {"F1-T1": 2}  # 汇总仍按第一个表头
+
+
+def test_total_column_names_and_total_row_not_header():
+    nodes = _cells({
+        2: ["序号", "设备名称", "数量", "单价", "合计"],
+        3: ["1", "半球摄像机", "25", "520", "13000"],
+        4: ["合计金额", "", "", "", "222063"],  # 含“金额”但有纯数字：合计行，不是表头
+    })
+    hints = {nodes[i].loc: kind for i, kind in table_hints(nodes).items()}
+    assert hints == {"F1-T1-R3-C4": "PRICE", "F1-T1-R3-C5": "AMOUNT", "F1-T1-R4-C5": "AMOUNT"}
+    assert header_kind("合计（元）") == "AMOUNT" and header_kind("小计") == "AMOUNT" and header_kind("Subtotal") == "AMOUNT"
+
+
+def test_total_row_in_table_without_header_and_text_cells_untouched():
+    nodes = _cells({1: ["项目", "说明"], 2: ["总计", "300000", "约 30 万"]})
+    hints = {nodes[i].loc: kind for i, kind in table_hints(nodes).items()}
+    assert hints == {"F1-T1-R2-C2": "AMOUNT"}

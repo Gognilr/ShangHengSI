@@ -57,6 +57,29 @@ def _docx_bytes(lines: list[str]) -> bytes:
     return buf.getvalue()
 
 
+_DOCX_CELL = re.compile(r"^F\d+-T(\d+)-R(\d+)-C(\d+)$")
+
+
+def _docx_table_bytes(pairs: list[tuple[str, str]]) -> bytes:
+    """DOCX 表格样本（R1-03）：“F1-T1-R2-C3 文字”写入第 1 个表格的第 2 行第 3 列，其余行写成段落（段落在前、表格在后）。"""
+    d = docx.Document()
+    grids: dict[int, dict[tuple[int, int], str]] = {}
+    for loc, text in pairs:
+        m = _DOCX_CELL.match(loc)
+        if m is None:
+            d.add_paragraph(text)
+        else:
+            grids.setdefault(int(m[1]), {})[(int(m[2]), int(m[3]))] = text
+    for t in sorted(grids):
+        cells = grids[t]
+        table = d.add_table(rows=max(r for r, _ in cells), cols=max(c for _, c in cells))
+        for (r, c), text in cells.items():
+            table.cell(r - 1, c - 1).text = text
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
 def _xlsx_bytes(cells: list[tuple[str, str]]) -> bytes:
     """cells: [("F1-S1-E8", "USD 1250")]，按工作表序号与单元格写入（全部按文本写入）。"""
     wb = openpyxl.Workbook()
@@ -82,6 +105,8 @@ def golden_samples() -> list[Sample]:
             pairs = [tuple(line.split(" ", 1)) for line in lines]
             if all("-S" in loc for loc, _ in pairs):
                 name, data = f"{txt.stem}.xlsx", _xlsx_bytes(pairs)
+            elif any(_DOCX_CELL.match(loc) for loc, _ in pairs):  # DOCX 表格单元格
+                name, data = f"{txt.stem}.docx", _docx_table_bytes(pairs)
             else:  # OCR 文字块：只保留文字，按段落写入
                 name, data = f"{txt.stem}.docx", _docx_bytes([t for _, t in pairs])
         else:

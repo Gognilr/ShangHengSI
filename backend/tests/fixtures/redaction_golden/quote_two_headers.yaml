@@ -1,0 +1,29 @@
+description: 国内采购合同附件清单（B-02、Q-134 ③）：主表下方的“结算价合计”小表有第二个表头，“小计”的数字落在数量列，第二张清单的金额列名为“合计”，合计行首格为“合计金额”；表格中没有币种
+stance: purchase
+loc_prefixed: true
+must_replace:
+  - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: 澄川虚构信息技术有限公司, category: ORG}
+  - {text: "7,500.00", category: PRICE}
+  - {text: "90,000.00", category: AMOUNT}
+  - {text: "3,360.00", category: AMOUNT}
+  - {text: "1,900.00", category: PRICE}
+  - {text: "11,400.00", category: AMOUNT}
+  - {text: "444760", category: AMOUNT}
+  - {text: "715,240.00", category: AMOUNT}
+  - {text: "444,760.00", category: AMOUNT}
+  - {text: "1,160,000.00", category: AMOUNT}
+  - {text: "13000", category: AMOUNT}
+  - {text: "10000", category: AMOUNT}
+  - {text: "2700", category: AMOUNT}
+  - {text: "1350", category: PRICE}
+  - {text: "25700", category: AMOUNT}
+must_keep:
+  - 自动防爆道闸
+  - XC-132A
+  - 结算价合计
+  - 含安装费、运费
+  - 含税(13%)
+  - 室内半球
+  - 双目海螺半球
+  - 合计金额
