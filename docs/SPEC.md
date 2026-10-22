@@ -393,6 +393,7 @@ repo/
 |邮箱|EMAIL|\[邮箱]||
 |网址|URL|\[网址]||
 |详细地址|ADDR|\[地址：{国家}]|保留国家，去掉其余部分|
+|邮政编码|POSTCODE|\[邮编]|标签后的邮编（Q-139）|
 |银行账号、IBAN|ACCOUNT|\[账号\_1]|同一账号同一代号|
 |SWIFT 代码|SWIFT|\[SWIFT\_1]|同一代码同一代号|
 |税号、统一社会信用代码、证件号|IDNO|\[证件号]||
@@ -411,7 +412,7 @@ repo/
 按以下顺序执行，已替换的文字不再参与后续识别：
 
 1. **已记住的名称与自定义敏感词**：全文精确匹配（英文不区分大小写，忽略多余空格）。
-2. **签约方信息块**：在“甲方、乙方、买方、卖方、供方、需方、采购方、供应商、收货人、通知方、Buyer、Seller、Purchaser、Supplier、Vendor、Consignee、Notify Party、Beneficiary”等标签后的冒号之后，提取以企业后缀结尾的名称，建立签约方列表（见 parties 表）。同时在全文识别带企业后缀的其他名称。企业后缀表：有限公司、有限责任公司、股份有限公司、集团、公司、厂、研究院、研究所、Co., Ltd.、Co.,Ltd、Limited、Ltd.、LLC、L.L.C.、Inc.、Corp.、Corporation、GmbH、AG、S.A.、S.r.l.、B.V.、N.V.、FZE、FZCO、FZ-LLC、LLP、PLC、Pte. Ltd.、Sdn. Bhd.、JSC、OOO、PJSC、Pvt. Ltd.。
+2. **签约方信息块**：在“甲方、乙方、买方、卖方、供方、需方、采购方、供应商、收货人、通知方、Buyer、Seller、Purchaser、Supplier、Vendor、Consignee、Notify Party、Beneficiary”等标签后的冒号之后，提取以企业后缀结尾的名称，建立签约方列表（见 parties 表）。同时在全文识别带企业后缀的其他名称。企业后缀表：有限公司、有限责任公司、股份有限公司、集团、公司、厂、研究院、研究所、Co., Ltd.、Co.,Ltd、Limited、Ltd.、LLC、L.L.C.、Inc.、Corp.、Corporation、GmbH、AG、S.A.、S.r.l.、B.V.、N.V.、FZE、FZCO、FZ-LLC、LLP、PLC、Pte. Ltd.、Sdn. Bhd.、JSC、OOO、PJSC、Pvt. Ltd.。“开户行、开户银行、收款银行、Bank Name、Beneficiary Bank”标签后的值以“银行、支行、分行、分理处、营业部、储蓄所”结尾时，即使没有企业后缀也作为银行主体。正文中以“公司、集团、厂、研究院、研究所”结尾的名称，紧跟第 3 步的简称结构时同样作为主体（Q-139）。
 3. **简称**：识别“（以下简称“X”）”“（下称“X”）”“(hereinafter referred to as "X")”“(the "X")”等结构，把 X 归入对应主体并全文替换。X 为“买方”“卖方”“Buyer”等通用角色词时不替换。
 4. **格式化信息正则**：
 
@@ -421,6 +422,7 @@ repo/
    * 银行账号：在“账号、账户、开户行账号、Account No、A/C”等标签后的 8–30 位数字（可含空格或短横线）；IBAN：`\[A-Z]{2}\\d{2}\[A-Z0-9]{11,30}`
    * SWIFT：在“SWIFT、BIC”标签后的 `\[A-Z]{6}\[A-Z0-9]{2}(\[A-Z0-9]{3})?`
    * 编号：在“合同号、合同编号、订单号、发票号、Contract No、Order No、P.O. No、Invoice No”等标签后的编号
+   * 邮编：在“邮政编码、邮编、Postal Code、Post Code、Zip Code”标签后的 3–10 位字母、数字（可含空格或短横线，至少含一个数字）
 5. **金额**：带币种符号或币种代码的数字（¥、￥、$、€、£、RMB、CNY、USD、EUR、JPY 等，前置或后置）；数字后跟“元、万元、美元、欧元”等；中文大写金额（由零壹贰叁肆伍陆柒捌玖拾佰仟万亿元角分整组成，常带“人民币”“大写”前缀）。紧跟“/吨、/MT、/kg、每吨”或位于“单价、Unit Price”列的金额归为单价。表格中位于“金额、总价、Amount”列的数字视为金额。
 6. **人名**：在“联系人、授权代表、法定代表人、委托代理人、经办人、签字、签名、Attn、Attention、Contact、Signed by、Name”等标签后的 2–4 个汉字，或 1–3 个首字母大写的英文单词。
 7. **地址**：在“地址、注册地址、通讯地址、Address”标签后的整行，替换为 \[地址：国家]。
