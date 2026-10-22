@@ -8,6 +8,7 @@
   名称中间可以有一组括号括起的地区名（“Northwind Fictive (Hong Kong) Limited”整体识别）。
   “公司、厂、集团”等宽泛后缀只在签约方标签后使用，正文中不据此自动替换（留给 9.5 疑似遗漏，M4）。
 - 名称延伸到同一名称内的最后一个后缀（含分公司、支行等），不跨越分隔符和“以下简称”（R1-04）。
+- 开户行标签后没有企业后缀、以“银行、支行”等结尾的中文值也作为银行主体（R1-12）。
 """
 import re
 import unicodedata
@@ -92,6 +93,11 @@ _EXTEND_STOP_CHARS = set("：:；;。，,、“”\"'‘’「」『』【】［
 _ALIAS_OPEN_RE = re.compile(r"[（(]\s*(?:以下|下称|简称|(?i:hereinafter|referred|the\s))")
 # 也不跨越边界词（“A有限公司与B有限公司”）和表示从属、泛指的词（“XX有限公司下属分公司”不延伸，Q-137 ②）
 _EXTEND_STOP_WORDS = (*_CN_BOUNDARY_WORDS, "或", "并", "且", "的", "等", "各", "其", "下属", "所属", "旗下", "负责", "成立", "设立")
+
+# 开户行（R1-12，Q-139 ②）：这些标签后的中文值以银行类结尾时，没有企业后缀也作为银行主体；单独的“Bank”不在此列
+_BANK_VALUE_LABELS = frozenset(w.casefold() for w in ("开户行", "开户银行", "收款银行", "Bank Name", "Beneficiary Bank"))
+_BANK_VALUE_SUFFIXES = ("银行", "支行", "分行", "分理处", "营业部", "储蓄所")
+_BANK_VALUE_MIN_HAN = 4
 
 # ---------------------------------------------------------------- 简称
 
@@ -218,11 +224,45 @@ def _extend_to_last_suffix(text: str, start: int, end: int, suffix_re: re.Patter
     return best
 
 
+def _bank_value(text: str, pos: int) -> tuple[int, int] | None:
+    """开户行标签冒号之后（可跨一个填空括号）的中文银行名称，没有企业后缀：取到同一段文字中最后一个
+    “银行、支行、分行、分理处、营业部、储蓄所”为止。不跨越分隔符、空白、换行和简称结构，最长 60 字，至少 4 个汉字。"""
+    i = pos
+    while i < len(text) and text[i] in " \t　":
+        i += 1
+    if text[i:i + 1] in ("【", "［", "[", "〖"):  # 与 extract_org_name 相同
+        i += 1
+        while i < len(text) and text[i] in " \t　":
+            i += 1
+    start = i
+    depth = 0
+    best = None
+    while i < len(text) and i - start < _NAME_MAX:
+        ch = text[i]
+        if ch in _EXTEND_STOP_CHARS or ch.isspace() or _ALIAS_OPEN_RE.match(text, i):
+            break
+        if ch in "（(":
+            depth += 1
+        elif ch in "）)":
+            if depth == 0:
+                break
+            depth -= 1
+        i += 1
+        if depth == 0 and text.endswith(_BANK_VALUE_SUFFIXES, start, i):
+            best = i
+    if best is None or len(_CN_CHAR.findall(text[start:best])) < _BANK_VALUE_MIN_HAN:
+        return None
+    return start, best
+
+
 def find_labeled_parties(text: str) -> list[tuple[str, int, int]]:
-    """节点原文中“标签：名称”形式的签约方：[(规范化标签, start, end)]。"""
+    """节点原文中“标签：名称”形式的签约方：[(规范化标签, start, end)]。
+    开户行标签取不到带企业后缀的名称时，再按银行类结尾取值（R1-12）。"""
     out = []
     for m in _LABEL_RE.finditer(text):
         span = extract_org_name(text, m.end())
+        if span is None and m.group(1).casefold() in _BANK_VALUE_LABELS:
+            span = _bank_value(text, m.end())
         if span:
             out.append((_LABEL_CANON[m.group(1).casefold()], *span))
     return out
@@ -327,13 +367,22 @@ def detect_country(lines: list[str], names: list[str]) -> str | None:
     return None
 
 
+def _is_chinese_bank_name(name: str) -> bool:
+    """R1-12 开户行取到的中文银行名称：以银行类结尾且含“行”（“示例行虚构园区支行”）。"""
+    return bool(_CN_CHAR.search(name)) and name.endswith(_BANK_VALUE_SUFFIXES) and "行" in name
+
+
 def default_country(name: str) -> str | None:
-    """块中找不到国家时：以中文企业后缀结尾的中文名称视为中国企业。"""
-    return "中国" if is_chinese_name(name) else None
+    """块中找不到国家时：以中文企业后缀结尾的中文名称、中文银行名称视为中国企业。"""
+    return "中国" if is_chinese_name(name) or _is_chinese_bank_name(name) else None
 
 
 def org_type(name: str) -> str:
-    return find_org_type(name)
+    """按 org_types.yaml 判断；词典不命中的中文银行名称（“××行××支行”）固定为银行（R1-12）。"""
+    found = find_org_type(name)
+    if found == "类型未知" and _is_chinese_bank_name(name):
+        return "银行"
+    return found
 
 
 __all__ = [

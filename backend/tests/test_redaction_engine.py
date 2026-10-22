@@ -476,6 +476,37 @@ def test_org_name_extends_to_last_suffix():
     assert "分公司" not in text
 
 
+def test_bank_label_value_without_company_suffix():
+    """R1-12（B-20、Q-139 ②）：开户行标签后以银行类结尾、没有企业后缀的中文值作为银行主体。"""
+    def labeled(text):
+        return [(label, text[s:e]) for label, s, e in find_labeled_parties(text)]
+
+    assert labeled("开户银行：示例行虚构园区支行") == [("银行", "示例行虚构园区支行")]
+    assert labeled("开户行：【虚构银行】") == [("银行", "虚构银行")]
+    assert labeled("收款银行：虚构农村商业银行城东分理处") == [("银行", "虚构农村商业银行城东分理处")]
+    assert labeled("Beneficiary Bank: 示例银行（虚构）营业部") == [("银行", "示例银行（虚构）营业部")]
+    assert labeled("开户行名称：示例行虚构园区支行储蓄所") == [("银行", "示例行虚构园区支行储蓄所")]
+    # 不跨越分隔符、空白、简称结构；取到最后一个银行类结尾
+    assert labeled("开户行：示例行虚构园区支行，账号：123") == [("银行", "示例行虚构园区支行")]
+    assert labeled("开户行：示例行虚构园区支行账号见下") == [("银行", "示例行虚构园区支行")]
+    assert labeled("开户行：示例行虚构支行（以下简称“虚构支行”）") == [("银行", "示例行虚构支行")]
+    # 不识别：无值、不是银行、不足 4 个汉字、英文值、单独的 Bank 标签、其他标签、空白隔开、超过 60 字
+    for text in ("开户行：见附件", "开户行：", "开户行：【    】", "开户行：某银行", "Bank Name: Example Bank Branch",
+                 "Bank: 示例银行虚构支行", "收款人：示例行虚构园区支行", "开户行：示例行 虚构园区支行",
+                 "开户行：" + "示" * 60 + "支行"):
+        assert labeled(text) == [], text
+    # 已有的“取到企业后缀并延伸”的结果优先
+    assert labeled("开户行：远川虚构商业银行股份有限公司示例路支行") == [("银行", "远川虚构商业银行股份有限公司示例路支行")]
+    # 完整流程：全文替换为银行代号，类型为银行，国家为中国
+    r, text = run(nodes_of("乙方：远川虚构通信有限公司", "开户银行：示例行虚构园区支行",
+                           "货款汇入示例行虚构园区支行，以银行到账日为准。"), stance="purchase")
+    bank = next(p for p in r.parties if p.role_label == "银行")
+    assert bank.code.startswith("银行_") and bank.org_type == "银行" and bank.country == "中国"
+    assert r.redacted["F1-P2"] == f"开户银行：{bank.code}"
+    assert r.redacted["F1-P3"] == f"货款汇入{bank.code}，以银行到账日为准。"
+    assert "虚构园区" not in text
+
+
 @pytest.mark.parametrize("text,value", [
     ("捌拾万元整", "800000"), ("壹佰元", "100"), ("壹仟零伍元伍角", "1005.5"), ("拾元", "10"),
     ("壹亿贰仟万元整", "120000000"), ("叁万肆仟伍佰陆拾柒元捌角玖分", "34567.89"),

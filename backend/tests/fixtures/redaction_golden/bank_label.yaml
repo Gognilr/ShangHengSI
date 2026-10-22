@@ -1,0 +1,14 @@
+description: 开户行没有企业后缀（B-20、Q-139 ②）：“××行××支行”“××银行××分理处”作为银行主体全文替换；“开户行：见附件”与正文中的“银行”二字保留
+stance: purchase
+must_replace:
+  - {text: HX26-KH052, category: REFNO}
+  - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: 远川虚构通信技术有限公司, category: ORG}
+  - {text: 示例行虚构高新技术园区支行, category: ORG}
+  - {text: 虚构农村商业银行城东分理处, category: ORG}
+  - {text: 3700 1842 5010 5000 9921, category: ACCOUNT}
+must_keep:
+  - 乙方开户信息
+  - 开户行：见附件
+  - 甲方应将合同款项汇入
+  - 以银行到账日为付款日
