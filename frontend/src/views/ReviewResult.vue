@@ -318,7 +318,7 @@ const reqVersion = computed(() => {
           <ChatPanel :key="task.id" :task-id="task.id" :disabled="deleting" />
           <span v-if="exportReason" class="hint">{{ exportReason }}</span>
           <el-button :loading="exporting" :disabled="!!exportReason || deleting" @click="exportReport">导出报告</el-button>
-          <el-button v-if="task.status === 'reviewed' && task.policy === 'ai'" :disabled="deleting" @click="rerunOpen = true">重新审核</el-button>
+          <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :disabled="deleting" @click="rerunOpen = true">重新审核</el-button>
           <el-button type="danger" :loading="deleting" @click="remove">删除任务</el-button>
         </div>
         <ReRunDialog v-model="rerunOpen" :task="task" />

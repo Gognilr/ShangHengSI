@@ -10,11 +10,11 @@ import logging
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_setting
-from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, User
+from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
 from app.llm import gateway
 from app.redaction import detect, parties, placeholders, recheck
 from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
@@ -40,7 +40,8 @@ _ERRORS = {
 }
 _FAILED = (502, "CHAT_FAILED", "回复失败，请稍后重试")
 
-REASON_LOCAL_ONLY = "该任务的外发策略为不外发，不提供追问"
+REASON_ORIGINAL_DELETED = "原件已按保留期限删除，不能追问"
+REASON_LOCAL_ONLY ="该任务的外发策略为不外发，不提供追问"
 REASON_NO_RUN = "该任务尚未完成任何审核轮次，暂不能追问"
 REASON_BUSY = "任务正在重新审核或等待确认，完成后可以追问"
 
@@ -50,6 +51,8 @@ REASON_BUSY = "任务正在重新审核或等待确认，完成后可以追问"
 
 def availability(db: Session, task: Task) -> tuple[ReviewRun | None, str | None]:
     """(用于问题清单摘要的轮次, 不可用原因)。可用时原因为 None。"""
+    if db.scalar(select(exists().where(TaskFile.task_id == task.id, TaskFile.original_deleted_at.is_not(None)))):
+        return None, REASON_ORIGINAL_DELETED  # 保留期清理后不再提供追问（SPEC 16.4，M7-06）
     if task.policy != "ai":
         return None, REASON_LOCAL_ONLY
     run = db.scalar(select(ReviewRun).where(ReviewRun.task_id == task.id,

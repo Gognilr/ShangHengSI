@@ -25,6 +25,8 @@ export interface TaskFile {
   table_count: number
   has_revisions: boolean
   warnings: string[]
+  /** 原件按保留期限删除的时间；未删除为 null。 */
+  original_deleted_at?: string | null
 }
 
 export interface LatestRun {

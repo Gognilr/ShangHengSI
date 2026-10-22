@@ -318,6 +318,7 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
                 table_count=tables.get(f.id, 0),
                 has_revisions=f.has_revisions,
                 warnings=[str(w) for w in (f.warnings or [])],
+                original_deleted_at=f.original_deleted_at,
             )
             for f in files
         ],
@@ -344,6 +345,9 @@ def patch_task(db: DbSession, task: Task, patch: TaskPatch) -> TaskDetail:
                       .execution_options(populate_existing=True)).scalar_one()
     if task.policy == "local_only":
         raise AppError(409, "LOCAL_ONLY", "该任务的外发策略为不外发，不能提交 AI 审核")
+    # 原件已按保留期限删除后不能重新审核（SPEC 16.4，M7-06）
+    if db.scalar(select(exists().where(TaskFile.task_id == task.id, TaskFile.original_deleted_at.is_not(None)))):
+        raise AppError(409, "ORIGINAL_DELETED", "原件已按保留期限删除，不能重新审核")
     if task.status not in ("reviewed", "awaiting_confirm"):
         raise AppError(409, "TASK_STATE_CONFLICT", "当前状态不能重新审核")
     if "stance" in fields:

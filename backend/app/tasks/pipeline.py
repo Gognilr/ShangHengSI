@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app import worker
 from app.checks.service import run_checks
 from app.db import jobs
+from app.db.base import utcnow
 from app.db.models import DocNode, Task, TaskFile
 from app.parsing import docx, image, pdf, xlsx
 from app.parsing.doctype import detect_doc_type
@@ -108,6 +109,7 @@ def parse_task(db: Session, task_id: uuid.UUID) -> None:
         run_checks(db, task, datetime.now(ZoneInfo("Asia/Shanghai")).date())
         if task.policy == "local_only":
             task.status = "completed_local"  # 不外发：不产生任何脱敏数据（M6 起在此之前做本地校验）
+            task.last_completed_at = utcnow()  # 原件保留期清理据此计算到期时间（M7-06、Q-109）
         else:
             redact_task(db, task)
             task.status = "awaiting_confirm"

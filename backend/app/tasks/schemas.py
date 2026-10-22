@@ -51,6 +51,7 @@ class TaskFileOut(BaseModel):
     table_count: int
     has_revisions: bool
     warnings: list[str]
+    original_deleted_at: datetime | None = None
 
 
 class PreviewNode(BaseModel):
