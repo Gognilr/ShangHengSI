@@ -41,7 +41,7 @@ _ERRORS = {
 _FAILED = (502, "CHAT_FAILED", "回复失败，请稍后重试")
 
 REASON_ORIGINAL_DELETED = "原件已按保留期限删除，不能追问"
-REASON_LOCAL_ONLY ="该任务的外发策略为不外发，不提供追问"
+REASON_LOCAL_ONLY = "该任务的外发策略为不外发，不提供追问"
 REASON_NO_RUN = "该任务尚未完成任何审核轮次，暂不能追问"
 REASON_BUSY = "任务正在重新审核或等待确认，完成后可以追问"
 

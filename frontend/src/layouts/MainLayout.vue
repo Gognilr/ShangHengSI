@@ -73,11 +73,13 @@ async function onCommand(cmd: string) {
 
 <style scoped>
 .layout {
-  min-height: 100%;
+  /* 整体固定为视口高度，内容在 .main 内滚动：外层不出现滚动条，避免挤占 body 的 1280px 最小宽度 */
+  height: 100vh;
   flex-direction: column;
 }
 
 .header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   height: 56px;
@@ -119,7 +121,12 @@ async function onCommand(cmd: string) {
   color: var(--el-text-color-regular);
 }
 
+.alerts {
+  flex-shrink: 0;
+}
+
 .main {
   padding: 0;
+  min-height: 0;
 }
 </style>
