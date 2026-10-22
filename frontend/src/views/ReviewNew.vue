@@ -289,14 +289,14 @@ const runText = computed(() => {
               multiple
               :auto-upload="false"
               :show-file-list="false"
-              accept=".docx,.pdf,.xlsx,.jpg,.jpeg,.png"
+              accept=".docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png"
               @change="onFileChange"
             >
               <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
               <div class="el-upload__text">将文件拖到此处，或<em>点击选择</em></div>
               <template #tip>
                 <div class="el-upload__tip">
-                  最多 {{ MAX_FILES }} 个文件，单个不超过 {{ MAX_FILE_MB }} MB；支持 DOCX、PDF、XLSX、JPG、PNG
+                  最多 {{ MAX_FILES }} 个文件，单个不超过 {{ MAX_FILE_MB }} MB；支持 DOCX、DOC、WPS、RTF、PDF、XLSX、XLS、ET、JPG、PNG
                 </div>
               </template>
             </el-upload>

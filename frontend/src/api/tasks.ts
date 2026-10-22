@@ -79,7 +79,7 @@ export interface CreateTaskInput {
 /** 上传限制（SPEC 6.2、17.6）；后端仍会再检查一遍。 */
 export const MAX_FILES = 10
 export const MAX_FILE_MB = 30
-export const ALLOWED_EXTS = ['docx', 'pdf', 'xlsx', 'jpg', 'jpeg', 'png']
+export const ALLOWED_EXTS = ['docx', 'doc', 'wps', 'rtf', 'pdf', 'xlsx', 'xls', 'et', 'jpg', 'jpeg', 'png']
 export const MAX_NOTE_LENGTH = 500
 
 /** 前端预检查：返回第一条问题的中文说明，没有问题返回 null。 */
@@ -88,7 +88,7 @@ export function checkFiles(files: File[]): string | null {
   if (files.length > MAX_FILES) return `每个任务最多 ${MAX_FILES} 个文件`
   for (const f of files) {
     const ext = f.name.includes('.') ? f.name.split('.').pop()!.toLowerCase() : ''
-    if (!ALLOWED_EXTS.includes(ext)) return `不支持的文件格式：${f.name}（支持 DOCX、PDF、XLSX、JPG、PNG）`
+    if (!ALLOWED_EXTS.includes(ext)) return `不支持的文件格式：${f.name}（支持 DOCX、DOC、WPS、RTF、PDF、XLSX、XLS、ET、JPG、PNG）`
     if (f.size > MAX_FILE_MB * 1024 * 1024) return `文件超过 ${MAX_FILE_MB} MB：${f.name}`
     if (f.size === 0) return `文件为空：${f.name}`
   }

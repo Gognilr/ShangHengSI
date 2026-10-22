@@ -56,6 +56,8 @@ const state = computed(() => states[activeId.value])
 const kind = computed(() => {
   const ext = (activeFile.value?.ext ?? '').toLowerCase().replace(/^\./, '')
   if (ext === 'docx' || ext === 'xlsx' || ext === 'pdf') return ext
+  if (ext === 'doc' || ext === 'wps' || ext === 'rtf') return 'docx' // 旧格式经转换后按 DOCX 节点渲染
+  if (ext === 'xls' || ext === 'et') return 'xlsx'
   return ext === 'jpg' || ext === 'jpeg' || ext === 'png' ? 'image' : 'other'
 })
 const hl = computed(() => new Set(props.highlight))
