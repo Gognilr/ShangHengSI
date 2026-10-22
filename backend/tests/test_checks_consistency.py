@@ -46,6 +46,19 @@ def test_same_file_body_total_and_own_table():
     assert [r.code for r in check_consistency(ns, files, find_tables(ns))] == ["L-06"]
 
 
+def test_segmented_table_later_total_row_matches_contract_total():
+    """分段报价表：第一个合计行只是分项（硬件总计），总价在后面另一列的“报价合计”行（R1-10）。"""
+    files = [CheckFile(1, True, "docx", "contract", [])]
+    rows = [["数量", "单价", "金额"], ["2", "300000", "600000"], ["硬件总计", "", "600000"],
+            ["", "软件金额", "200000"], ["3", "报价合计", "800000"]]
+    ns = [CheckNode("F1-P1", "合同总价：人民币 800000 元", 1, None)]
+    ns += [CheckNode(f"F1-S1-{col}{row}", text, 1, None)
+           for row, values in enumerate(rows, 1) for col, text in zip("ABC", values)]
+    assert check_consistency(ns, files, find_tables(ns)) == []
+    ns[-1] = CheckNode("F1-S1-C5", "900000", 1, None)  # 没有任何合计行等于合同总价：仍按第一个合计行报出
+    assert [(r.code, r.locs) for r in check_consistency(ns, files, find_tables(ns))] == [("L-05", ["F1-P1", "F1-S1-C3"])]
+
+
 def test_table_without_currency_needs_single_currency_in_task():
     ns, files = example("850000", "")
     assert [r.code for r in check_consistency(ns, files, find_tables(ns))] == ["L-05"]

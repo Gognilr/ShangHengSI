@@ -1,9 +1,9 @@
 """L-05、L-06：比较主文件合同总价与报价表合计（含主文件自身的报价表），不读取数据库。"""
 from decimal import Decimal
 
-from app.checks.amounts import QuoteTableCheck, _scan_tables
+from app.checks.amounts import _TOTAL, QuoteTableCheck, _Table, _scan_tables
 from app.checks.model import CheckFile, CheckNode, CheckResult, SEVERITY
-from app.checks.numbers import CENT, money, pct_diff, rounded
+from app.checks.numbers import CENT, money, parse_number, pct_diff, rounded
 from app.redaction.detect import find_amounts
 from app.redaction.ratio import AmountAt, TOTAL_LABEL, contract_total
 
@@ -28,6 +28,17 @@ def contract_amount(nodes: list[CheckNode], files: list[CheckFile]) -> tuple[str
 def _single_currency(nodes: list[CheckNode]) -> bool:
     """整个任务中所有带币种的金额只有一种币种。"""
     return len({h.currency for n in nodes for h in find_amounts(n.text) if h.currency}) == 1
+
+
+def _total_row_matches(layout: _Table, value: Decimal) -> bool:
+    """表头之下任一合计行（某个单元格含合计 / 总计 / Total）有数值等于合同总价时视为一致（R1-10）：
+    分段报价表的第一个合计行可能只是分项合计（如“硬件总计”），总价在后面的“报价合计”行。"""
+    for row in sorted(r for r in layout.rows if r > layout.header):
+        cells = list(layout.rows[row].values())
+        if any(_TOTAL.search(n.text) for n in cells) and any(
+                (x := parse_number(n.text)) is not None and abs(rounded(x) - rounded(value)) <= CENT for n in cells):
+            return True
+    return False
 
 
 def compared_tables(nodes: list[CheckNode], files: list[CheckFile], tables: list[QuoteTableCheck]) -> list[QuoteTableCheck]:
@@ -62,7 +73,7 @@ def check_consistency(nodes: list[CheckNode], files: list[CheckFile],
         if table.currency is not None and table.currency != currency:
             text = f"主文件合同总价币种为 {currency}，报价表 {table.table} 币种为 {table.currency}"
             results.append(CheckResult("L-06", SEVERITY["L-06"], locs, table.file_seq, text, text))
-        elif abs(rounded(value) - rounded(table.total)) > CENT:
+        elif abs(rounded(value) - rounded(table.total)) > CENT and not _total_row_matches(layout, value):
             detail = (f"主文件合同总价 {currency} {money(value)}，报价表 {table.table} 合计 {money(table.total)}，"
                       f"相差 {money(abs(rounded(value) - rounded(table.total)))}")
             if table.currency is None:

@@ -85,6 +85,17 @@ def test_before_company_fictional_name_still_listed():
     assert found("由虚构科技公司负责") == [("虚构科技公司", "before_company")]
 
 
+@pytest.mark.parametrize(("text", "name"), [("由示例资本公司负责", "示例资本公司"), ("委托虚构日本公司代理", "虚构日本公司")])
+def test_before_company_single_char_generic_inside_name_still_listed(text, name):
+    """单字泛指词（本）前面是名称的一部分（资本、日本）时不是泛指，仍列（R1-10）。"""
+    assert found(text) == [(name, "before_company")]
+
+
+@pytest.mark.parametrize("text", ["本公司负责", "，我公司负责", "仅限本公司使用"])
+def test_before_company_single_char_generic_after_function_word_or_start(text):
+    assert found(text) == []
+
+
 def test_before_company_factory_words_excluded():
     assert found("出厂价格") == []
     assert found("货物出厂前检验") == []

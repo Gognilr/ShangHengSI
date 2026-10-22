@@ -42,6 +42,8 @@ _GENERIC_BEFORE_COMPANY = frozenset({
 })
 # “公司 / 厂”前紧挨这些泛指词时不列（“仅本公司”“由我公司负责”），不论再往前有多少汉字（R1-07）
 _GENERIC_BEFORE_WORD = ("我方", "对方", "双方", "任何", "本", "贵", "我", "该", "其", "此", "各")
+# 单字泛指词前面还是汉字时，只有这些虚词才算泛指（“仅本公司”）；“资本公司”“日本公司”仍列（R1-10）
+_GENERIC_LEAD = "由向与和及仅限经在为对从给被的是即凡如若将并或且以于至同跟让请致按据凭归属非除每"
 _MAX_NAME_HAN = 10
 _SUFFIX_TAIL = ("有限", "责任", "集团")
 _NAME_STOP_CHARS = "的并且或"  # 企业名称里几乎不会出现，说明前面是普通句子成分
@@ -84,6 +86,15 @@ def _cn_name_span(text: str, pos: int) -> tuple[int, int] | None:
     return start, pos
 
 
+def _generic_before(head: str) -> bool:
+    """head 以泛指词结尾；单字泛指词前面是汉字时，须是虚词（“仅本”“由我”），否则是名称的一部分（“资本”）。"""
+    word = next((w for w in _GENERIC_BEFORE_WORD if head.endswith(w)), None)
+    if word is None:
+        return False
+    prev = head[-len(word) - 1:-len(word)]
+    return len(word) > 1 or not prev or not _HAN.match(prev) or prev in _GENERIC_LEAD
+
+
 def _chinese_suffix_candidates(text: str) -> list[Suspect]:
     out: list[Suspect] = []
     for m in _CN_SUFFIX.finditer(text):
@@ -102,7 +113,7 @@ def _chinese_suffix_candidates(text: str) -> list[Suspect]:
             after = text[m.end():m.end() + 1]
             if before == "出" or (after and after in _FACTORY_NOT_AFTER):
                 continue
-        if text[:m.start()].endswith(_GENERIC_BEFORE_WORD):
+        if _generic_before(text[:m.start()]):
             continue
         span = _cn_name_span(text, m.start())
         if span is not None:
