@@ -134,3 +134,15 @@ export const RUN_STATUS_TAG: Record<string, TagType> = {
 export const SEVERITY_TAG: Record<string, TagType> = { high: 'danger', medium: 'warning', low: 'info' }
 export const VERDICT_TAG: Record<string, TagType> = { issue: 'danger', ok: 'success', na: 'info', unable: 'warning' }
 export const CITE_TAG: Record<string, TagType> = { verified: 'success', unverified: 'warning', missing: 'info' }
+
+/** 备份、外发记录（设置 - 数据）。 */
+export const BACKUP_STATUS: Dict = { running: '进行中', success: '成功', failed: '失败' }
+export const backupStatusLabel = pick(BACKUP_STATUS)
+export const BACKUP_STATUS_TAG: Record<string, TagType> = { running: 'info', success: 'success', failed: 'danger' }
+export const BACKUP_TRIGGER: Dict = { schedule: '定时', manual: '手动' }
+export const backupTriggerLabel = pick(BACKUP_TRIGGER)
+export const OUTBOUND_STATUS: Dict = { sent: '已发送', blocked: '已拦截', error: '出错' }
+export const outboundStatusLabel = pick(OUTBOUND_STATUS)
+export const OUTBOUND_STATUS_TAG: Record<string, TagType> = { sent: 'success', blocked: 'warning', error: 'danger' }
+export const LLM_PURPOSE: Dict = { review: '审核', chat: '追问', test: '连接测试' }
+export const llmPurposeLabel = pick(LLM_PURPOSE)

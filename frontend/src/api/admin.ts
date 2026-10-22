@@ -146,3 +146,77 @@ export const adminRedactionApi = {
   setTermEnabled: (id: string, enabled: boolean) => http.patch<TermRow>(`/admin/terms/${id}`, { enabled }),
   removeTerm: (id: string) => http.delete<void>(`/admin/terms/${id}`),
 }
+
+// ---- 数据（设置 - 数据） ----
+export interface BackupSettings {
+  time: string
+  keep: number
+  dir: string
+}
+
+export interface BackupRow {
+  id: number
+  trigger: 'schedule' | 'manual'
+  status: 'running' | 'success' | 'failed'
+  file_name: string | null
+  size_bytes: number | null
+  sha256: string | null
+  error_message: string | null
+  started_at: string
+  finished_at: string | null
+}
+
+export interface BackupRecords {
+  dir: string
+  free_bytes: number | null
+  latest: BackupRow | null
+  items: BackupRow[]
+}
+
+export interface OutboundRow {
+  id: number
+  created_at: string
+  user_id: string | null
+  user_name: string | null
+  task_title: string | null
+  purpose: 'review' | 'chat' | 'test'
+  model_name: string
+  chars: number
+  status: 'sent' | 'blocked' | 'error'
+  tokens_in: number
+  tokens_out: number
+}
+
+export interface OutboundDetail extends OutboundRow {
+  request_text: string | null
+  response_text: string | null
+  block_reason: string | null
+  error_message: string | null
+}
+
+export interface OutboundQuery {
+  user_id?: string
+  from?: string
+  to?: string
+  status?: string
+  page?: number
+}
+
+export interface SystemStatus {
+  version: string
+  queued_jobs: number
+  data_free_bytes: number | null
+}
+
+export const adminDataApi = {
+  getBackupSettings: () => http.get<BackupSettings>('/admin/settings/backup'),
+  saveBackupSettings: (time: string, keep: number) => http.put<BackupSettings>('/admin/settings/backup', { time, keep }),
+  runBackup: () => http.post<{ queued: boolean }>('/admin/backup/run'),
+  backupRecords: () => http.get<BackupRecords>('/admin/backup/records'),
+  getRetention: () => http.get<{ original_days: number }>('/admin/settings/retention'),
+  saveRetention: (days: number) => http.put<{ original_days: number }>('/admin/settings/retention', { original_days: days }),
+  outboundLogs: (q: OutboundQuery) =>
+    http.get<{ items: OutboundRow[]; total: number; page: number; page_size: number }>('/admin/outbound-logs', { ...q }),
+  outboundLog: (id: number) => http.get<OutboundDetail>(`/admin/outbound-logs/${id}`),
+  systemStatus: () => http.get<SystemStatus>('/admin/system/status'),
+}
