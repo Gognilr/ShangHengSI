@@ -9,6 +9,7 @@ LibreOffice 的行为（超时、失败、输出异常）用假的 soffice 脚�
 ContainerTests 断言运行条件与 compose 中的加固一致（断网、只读、非 root、无 capability）。
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -289,7 +290,9 @@ class RealConversionTests(SpoolCase):
     KIND = {".doc": "doc", ".wps": "doc", ".rtf": "rtf", ".xls": "xls", ".et": "xls"}
 
     def test_fixtures(self):
-        samples = sorted(p for p in FIXTURES.iterdir() if p.suffix in self.KIND)
+        # 只取 manifest.yaml 列出的可转换样本；R2-02 手工构造的含宏、缺主数据流等 OLE 样本在上传时即被拒绝，不交给 converter
+        listed = re.findall(r"^\s+file:\s*(\S+)\s*$", (FIXTURES / "manifest.yaml").read_text(encoding="utf-8"), re.M)
+        samples = sorted(FIXTURES / name for name in set(listed) if Path(name).suffix in self.KIND)
         self.assertGreaterEqual({p.suffix for p in samples}, set(self.KIND))
         for p in samples:
             with self.subTest(sample=p.name):
