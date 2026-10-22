@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- M7 已细化（M7-00，2026-10-22，Opus 5.5），设计见 docs/design/M7.md，新增 Q-99～Q-113（待确认），**待用户确认后才能执行 M7-01**。规则 10：adbabe1 之后只有 Opus 的 M6-07 / M6-09 提交，无待评审的 Sonnet、Haiku、GPT-6.1 Sol 提交。要点：备份文件格式与解密命令在 M7-01 一次定好，M8-01 的 restore.sh 只调用该命令；唯一的表结构变更是 CO 编号序列（M7-04，迁移 0002）；M7-04 强度由 medium 调为 high（含迁移和 T-14 全链路）；M7-06 补上不外发任务的 last\_completed\_at 和“原件删除后不能重新审核、追问”的后端限制。M7-02～M7-08 为 Sonnet 档，可由 GPT-6.1 Sol 连续执行。下一个任务：**M7-01**（Opus 档，xhigh）
+
 - M6-09 已完成（2026-10-22，Opus 5.5）：用户确认 Q-97 ③④ 后开工；按规则 10 评审 M6-08（c36cef1、adbabe1），未发现问题。新增 tests/test_m6_acceptance.py：A-01 在全部样本识别出的 14 张报价表上独立 Decimal 逐行重算（20 行、10 个合计，2 错行 + 1 错合计全部报出、零误报，2 个无法识别行列为未核验）；A-03 回归补本地校验样本 15 份（真实接口 + 模拟网关，出口复检零命中、本地校验金额零外发）。T-04、T-05、T-15、T-19 既有用例通过。验收中按 SPEC 11.3 把问题类别名称改为“表述 / 合规与制裁”（labels.ts、report_docx.py，bd749f5）。浏览器（compose 按当前代码重建 + 模拟模型，虚构账号 m609qa）：第二步本地校验面板、界面确认发送、结果页本地校验标签与点击定位、追问弹窗（[公司_Q1]、[电话_Q2]）与还原、外发记录核对、两种报告导出、1280 无横向溢出，均通过。Docker 最终全量 1337 passed、1 warning，exit 0。详见 docs/acceptance/M6-09.md。M6 已验收并经用户确认（2026-10-22）；Q-91～Q-96、Q-98 已确认。下一个任务：**M7-00**（Opus 档，high，里程碑细化），停止等待用户安排。
 
 - M6-08 已完成（2026-10-22，GPT-6.1 Sol）：ChatPanel.vue、api/chat.ts 与结果页挂载；右侧 480px 追问抽屉、服务端脱敏预览确认、任务级“不再提示”、Ctrl+Enter、等待禁用和失败保留问题供手动重试。前端构建 exit 0；浏览器用独立数据库、虚构账号、真实接口 + 网关模拟回复核对 T-15 弹窗与还原、取消、偏好刷新及任务隔离、失败仅一次调用且不写对话、手动重试、加载失败、不可用原因、纯文本显示，1440 / 1280 无横向溢出，抽屉均为 480px。服务就绪后功能检查无新增 JS 控制台错误（准备阶段 auth/me 502 已解决，原始日志保留）。Docker 最终全量 1332 passed、1 warning，exit 0；因执行期间出现其他会话的后端 WIP，最终测试使用已提交 63ff11e 后端快照 + 本次前端只读挂载，不包含或验证他人的后端 WIP。新增 Q-98（待确认）。凭据位于本机临时目录 aireview-m608-qa（verification.md、full-final.log、截图与控制台记录）；实现提交 c36cef1。下一个任务：**M6-09**（Opus 档，medium，M6 联调与验收），停止，交 Opus 评审与验收。
@@ -227,18 +229,20 @@
 
 ### M7 设置与数据（验收：T-14、T-16、T-18）
 
-| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC | 状态 |
-|-|-|-|-|-|-|-|
-| M7-00 | 里程碑细化 | Opus | high | M6-08 | 22 | 待细化 |
-| M7-01 | 备份：pg\_dump、打包、分块流式加密、先写 .tmp 再重命名、生成 .sha256、轮换删除、备份记录、定时触发 | Opus | xhigh | M7-00 | 16.1–16.3 | 待细化 |
-| M7-02 | 账号管理：接口和 Users.vue | Sonnet | medium | M7-01 | 15.1、19.7 | 待细化 |
-| M7-03 | 模型设置：密钥加密保存且只显示末 4 位、测试连接、用量；接口和 Model.vue | Sonnet | medium | M7-02 | 15.2、19.7 | 待细化 |
-| M7-04 | 公司补充要求、公司说明、版本历史；接口、Requirements.vue；审核时纳入 CO 编号的要求 | Sonnet | medium | M7-03 | 15.3、19.7 | 待细化 |
-| M7-05 | 脱敏设置：数量脱敏开关、自定义敏感词、已记住的名称；接口和 Redaction.vue | Sonnet | medium | M7-04 | 15.4、19.7 | 待细化 |
-| M7-06 | 原件保留期清理 | Sonnet | high | M7-05 | 16.4 | 待细化 |
-| M7-07 | 数据页：备份设置、外发记录、系统状态；接口和 Data.vue | Sonnet | medium | M7-06 | 15.5、19.7 | 待细化 |
-| M7-08 | 审计日志补全到所有规定的动作；管理员提醒条 | Sonnet | medium | M7-07 | 6.7、17.7 | 待细化 |
-| M7-09 | M7 联调与验收 | Opus | medium | M7-08 | 23 | 待细化 |
+**开工前必读 [docs/design/M7.md](design/M7.md)**：模块划分、函数签名、接口形状都以它为准；前端任务同时遵守 [docs/design/frontend.md](design/frontend.md)。下表“文件范围”中的路径相对于 `backend/`（前端任务相对于 `frontend/`），“设计”列指向 M7.md 的章节。每个任务的管理接口都按设计第二节写审计；`app/main.py` 各任务只加自己那一行 include，`src/api/admin.ts` 由 M7-02 新建、之后各任务只追加自己的函数。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| M7-00 | 里程碑细化：模块划分、接口约定、备份文件格式、任务拆分 | Opus | high | M6-09 | 22；— | docs/design/M7.md、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 已完成 |
+| M7-01 | 备份：文件格式与分块流式加密 / 解密、pg\_dump、tar、.tmp → fsync → .sha256 → 重命名、轮换、备份记录、advisory lock、backup 处理函数与定时检查、decrypt-backup 命令 | Opus | xhigh | M7-00 | 16.1–16.3、20.3、Q-100～Q-104；设计第三节 | app/backup/archive.py、service.py、job.py、app/worker.py（只加一行导入）、app/db/jobs.py（只在 finalize\_failed 加 backup 分支）、app/cli.py（只加 decrypt-backup）、tests/test\_backup\_archive.py、tests/test\_backup.py | 设计 3.5 每一项都有测试（含 T-16：写入期间只有 .tmp、完成后 .bak + .sha256、轮换只删命名匹配的最旧文件）；解密后 `pg_restore --list` 成功；篡改、截断、调换、错密码全部报错；备份密码和数据库密码不出现在命令行参数、日志、记录中 | 待执行 |
+| M7-02 | 账号管理：/admin/users 四个接口、Users.vue | Sonnet | medium | M7-01 | 15.1、17.1、19.7、Q-99；设计二、四、十一；frontend.md | app/admin/users.py、app/main.py（只加 include）、tests/test\_admin\_users.py；前端 src/api/admin.ts（新建）、src/views/settings/Users.vue、src/utils/labels.ts（只加角色、状态） | 设计第四节每个错误码和行为都有测试；最后管理员并发降级只有一次成功；审计符合第二节；`npm run build` 通过；按 frontend.md 第十一节自检，浏览器中新增、编辑、停用、重置密码各做一次 | 待执行 |
+| M7-03 | 模型设置：读写（密钥加密、只返回末 4 位）、测试连接、用量；Model.vue | Sonnet | medium | M7-02 | 11.1、15.2、19.7、Q-12、Q-105、Q-106；设计二、五、十一 | app/admin/model.py、app/main.py（只加 include）、tests/test\_admin\_model.py；前端 src/api/admin.ts（只追加）、src/views/settings/Model.vue | 设计第五节每条校验的边界有测试；完整密钥不出现在任何响应、日志、审计、llm\_calls 中；测试连接用模拟服务覆盖成功 / 未配置 / HTTP 错误；单价全程 Decimal；`npm run build` 通过；浏览器中保存一次并测试连接（模拟模型服务） | 待执行 |
+| M7-04 | 公司补充要求、公司说明、版本历史；序列迁移；GET /requirements 参数可选；Requirements.vue | Sonnet | high | M7-03 | 15.3、18.21、18.22、19.5、19.7、T-14、Q-107、Q-108、Q-113；设计二、六、十一 | app/admin/requirements.py、app/main.py（只加 include）、app/db/models.py（只声明序列）、app/db/alembic/versions/0002\_company\_requirement\_code\_seq.py、app/review/router.py（只把 stance、source 改为可选）、app/review/service.py（只让 company\_rows 接受 stance=None）、tests/test\_admin\_requirements.py、tests/test\_requirements.py、tests/test\_migrations.py（只在需要时补序列检查）；前端 src/api/admin.ts（只追加）、src/views/settings/Requirements.vue | T-14 后端全链路（新增 → GET /requirements → 确认发送 → requirement\_results 有该条 → company\_req\_version 为新版本 → 报告写出版本号）；30 条上限、编号不复用、REQ\_TEXT\_SENSITIVE、每种修改都产生新版本；模型与迁移一致的测试通过；抽屉原有行为不变；`npm run build` 通过；浏览器中新增、编辑、停用、删除、保存公司说明、查看历史版本 | 待执行 |
+| M7-05 | 脱敏设置：数量脱敏开关、自定义敏感词、已记住的名称；Redaction.vue | Sonnet | medium | M7-04 | 9.10、15.4、18.12、19.7、Q-110；设计二、七、十一 | app/admin/redaction.py、app/main.py（只加 include）、tests/test\_admin\_redaction.py；前端 src/api/admin.ts（只追加）、src/views/settings/Redaction.vue | 设计第七节测试列表全部通过；词条文字不出现在日志和审计中；`npm run build` 通过；浏览器中开关、增删启停自定义词、搜索与删除已记住的名称 | 待执行 |
+| M7-06 | 原件保留期清理：retention 处理函数与定时检查；不外发任务写 last\_completed\_at；原件删除后禁止重新审核和追问 | Sonnet | high | M7-05 | 16.4、17.8、T-18、Q-109；设计第八节 | app/backup/retention.py、app/worker.py（只加一行导入）、app/tasks/pipeline.py（只在 completed\_local 处写 last\_completed\_at）、app/tasks/service.py（只改 patch\_task 的检查）、app/tasks/schemas.py（只给 TaskFileOut 加 original\_deleted\_at）、app/chat/service.py（只改 availability）、tests/test\_retention.py、tests/test\_tasks\_api.py、tests/test\_chat.py；前端 src/views/ReviewResult.vue（只改“重新审核”按钮的显示条件）、src/api/tasks.ts（只加字段类型） | T-18 后端部分（设计第八节测试列表）全部通过；已有的报告、预览测试不改仍通过；`npm run build` 通过 | 待执行 |
+| M7-07 | 数据页：备份设置与立即备份、备份记录与空间、保留期设置、外发记录、系统状态；Data.vue | Sonnet | medium | M7-06 | 15.5、16.2、17.2、19.7、Q-111；设计二、九、十一 | app/admin/data.py、app/main.py（只加 include）、tests/test\_admin\_data.py；前端 src/api/admin.ts（只追加）、src/views/settings/Data.vue | 设计第九节测试列表全部通过；外发记录筛选的日期边界按 Asia/Shanghai；详情纯文本显示、无 v-html；`npm run build` 通过；浏览器中立即备份（compose 环境）并看到结果、筛选并打开一条外发记录 | 待执行 |
+| M7-08 | 审计日志核对与补全；管理员提醒（/auth/me alerts） | Sonnet | medium | M7-07 | 6.7、16.3、17.7、Q-112；设计第十节 | app/admin/alerts.py、app/auth/router.py（只改 me 返回 alerts）、app/auth/schemas.py（只改 alerts 类型）、tests/test\_audit.py、tests/test\_admin\_alerts.py；前端 src/api/auth.ts（只给 AdminAlert 加 code）；17.7 中发现缺失的动作所在的文件（在报告中列出） | 17.7 每个动作都有测试证明会写入；全部审计 detail 不含敏感信息；三种提醒的边界有测试；普通用户 alerts 为空；`npm run build` 通过；浏览器中构造一种提醒并看到提醒条 | 待执行 |
+| M7-09 | M7 联调与验收：T-14、T-16、T-18；A-06 补充；回归 M2～M6 验收用例；浏览器检查 5 个设置标签页与提醒条 | Opus | medium | M7-08 | 22、23；设计第十二节 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 待执行 |
 
 ### M8 部署与测试（验收：全部用例，含 T-17）
 
