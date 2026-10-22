@@ -36,3 +36,46 @@ export const adminUsersApi = {
   resetPassword: (id: string, newPassword: string) =>
     http.post<void>(`/admin/users/${id}/reset-password`, { new_password: newPassword }),
 }
+
+// ---- 模型（设置 - 模型） ----
+export interface ModelSettings {
+  base_url: string
+  name: string
+  temperature: number
+  max_tokens: number
+  timeout_s: number
+  json_mode: boolean
+  extra_params: Record<string, unknown>
+  chunk_chars: number
+  price_in_per_m: string
+  price_out_per_m: string
+  monthly_call_cap: number
+  api_key_set: boolean
+  api_key_last4: string | null
+}
+
+export type ModelSettingsIn = Omit<ModelSettings, 'api_key_set' | 'api_key_last4'> & { api_key?: string }
+
+export interface ModelTestResult {
+  ok: boolean
+  model?: string | null
+  duration_ms?: number | null
+  reply?: string | null
+  message?: string | null
+}
+
+export interface UsageOut {
+  calls: number
+  cap: number
+  tokens_in: number
+  tokens_out: number
+  cost: string
+  month: string
+}
+
+export const adminModelApi = {
+  get: () => http.get<ModelSettings>('/admin/settings/model'),
+  save: (body: ModelSettingsIn) => http.put<ModelSettings>('/admin/settings/model', body),
+  test: () => http.post<ModelTestResult>('/admin/settings/model/test'),
+  usage: () => http.get<UsageOut>('/admin/usage'),
+}
