@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- 用户决定支持旧格式（2026-10-22，Q-136）：DOC、XLS、WPS、ET、RTF 经独立断网的 LibreOffice 容器转换，作为 R2 在 R1 完成后执行；当前仍按顺序执行 **R1-04**（Opus 档，high，新会话）。
+
 - R1-03 已完成（2026-10-22，Opus 5.5）：tables.py 支持一个表格多个表头行（表头行须有单价 / 金额表头且没有纯数字单元格；第一个仍限前 20 行），每个表头的列提示管到下一个表头；金额列名增加“合计、小计、总计”；合计行（行首含合计 / 小计 / 总计 / Total）的纯数字一律按金额；header\_rows 仍返回第一个表头，报价明细表汇总范围不变。recheck 对数值 ≥ 10000 的金额真实值不论是否带币种都按数值比对。Q-134 ③ 原定“带小数的也按数值比对”，实测把与单价同值的条款编号“1.8”“2.3”拦死，改为只按 ≥ 10000（Q-134、design/R1.md 已同步，用户已确认）。新增回归样本 redaction\_golden/quote\_two\_headers（DOCX 表格），tests/acceptance\_support.py 增加按表格写入 DOCX 以便 A-03 覆盖（文件范围补充）；原用例“数量 400000 吨不拦截”按 Q-134 ③ 改为拦截。整仓挂载 Docker 全量 1682 passed、1 warning。真实合同复跑：合同 1、合同 2 的出口复检均为零命中，结算价小表、小计、清单合计全部替换。下一个任务：**R1-04**（Opus 档，high）。
 
 - R1-02 已完成（2026-10-22，Opus 5.5）：find\_persons 增加三条规则——不带冒号的标签与人名之间须有空白或填空括号；标签后以另一个标签词（电话、姓名、授权、签字、盖章等）开头的不识别；整串（未在“电话、手机”等词处截断时）后面紧跟冒号的是标签；扩充非人名词表。recheck 新增 placeholders 参数，比对对照表真实值和词条前遮盖本任务的代号原文（RecheckContext.placeholders 由 engine.load\_placeholders 从对照表读出；网关与确认发送预检两处调用各加一个参数，属文件范围补充）。新增回归样本 redaction\_golden/signature\_blocks、签字栏 12 种写法的反例、网关与复检测试；原用例“联系人张三”（无冒号无空白）按 Q-134 ② 改为不识别。全量测试中 A-03 发现 OCR 文字“联系人：周示例电话：…”漏识别，已修正（截断后的冒号属于“电话”）。整仓挂载 Docker 全量 1672 passed、1 warning。真实合同复跑：合同 1 不再有任何人名代号，“乙方授权甲方另行安排维修”原文恢复；合同 2 只剩 4 个真实人名，“电话、应签署、姓名”不再误识别，预检不再被代号本身拦截。两份合同的复检拦截只剩表格合计（R1-03）。下一个任务：**R1-03**（Opus 档，xhigh）。
@@ -292,6 +294,14 @@
 | R1-08 | 本地校验金额列名增加“合计、总计、总额” | Sonnet | medium | R1-07 | 10.1、Q-82、Q-135 ②；设计第八节 | app/checks/amounts.py（只改 column\_kind）、tests/test\_checks\_amounts.py、tests/fixtures/checks/（新增样本与 manifest 条目） | 设计第八节测试全部通过；原有 manifest 不变；真实合同 2 清单完成 L-01、L-02 | 待执行 |
 | R1-09 | L-05 比较主文件自身的附件报价表；表格无币种时在单一币种任务中按合同币种比较 | Sonnet | high | R1-08 | 10.2 L-05、L-06、Q-135 ③；设计第九节 | app/checks/consistency.py、tests/test\_checks\_consistency.py、tests/fixtures/checks/（新增样本与 manifest 条目） | 设计第九节测试全部通过；ai\_summary 不含绝对金额（recheck 为空）；原有跨文件用例不变；真实合同 1、2 正文总价与附件合计完成比较 | 待执行 |
 | R1-10 | R1 验收：全量测试、两份真实合同逐行核对外发文本、经用户同意后真实模型试审 | Opus | medium | R1-09 | 23.1 A-03、23.3；设计第七节 | docs/business\_review.md；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；结果汇报给用户 | 待执行 |
+
+### R2 旧格式支持（DOC、XLS、WPS、ET、RTF）
+
+用户决定（2026-10-22，open\_questions Q-136）：用 LibreOffice 在独立断网的 converter 容器中把旧格式转为 .docx / .xlsx，再走现有解析与脱敏。R1 完成后开始，回到 M8 之前完成。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| R2-00 | 细化：SPEC 与 CLAUDE.md 的修改稿、converter 容器与文件交换方式、上传检查、安全加固、镜像体积、任务拆分 | Opus | high | R1-10 | 1.4、1.7、3、4、8、17.6、20、24.1；— | docs/SPEC.md、CLAUDE.md、docs/design/R2.md、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 待细化 |
 
 ## 五、工作量分布
 
