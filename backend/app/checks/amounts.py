@@ -35,7 +35,8 @@ def column_kind(text: str) -> str | None:
                           (r"税额|\b(?:tax|vat)\b", "tax"),
                           (r"单价|\bunit\s*price\b", "price"),
                           (r"金额|总价|小计|\b(?:amount|total|subtotal)\b", "amount"),
-                          (r"\bprice\b", "price"), (r"数量|\b(?:qty|quantity)\b", "qty")):
+                          (r"\bprice\b", "price"), (r"数量|\b(?:qty|quantity)\b", "qty"),
+                          (r"合计|总计|总额", "amount")):  # 排在数量之后：“数量合计”仍是数量列
         if re.search(pattern, text, re.IGNORECASE):
             # “Amount incl. VAT”“Price excl. Tax”是金额 / 单价列，VAT、Tax 只是口径说明，不是税额列。
             if kind == "tax" and re.search(r"金额|总价|单价|\b(?:amount|total|price)\b", text, re.IGNORECASE):

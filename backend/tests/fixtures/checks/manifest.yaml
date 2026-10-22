@@ -84,6 +84,12 @@ samples:
 - file: delivery_ok.docx
   doc_type: contract
   expected: []
+- file: total_column.xlsx
+  doc_type: quotation
+  expected:
+  - code: L-02
+    locs:
+    - F1-S1-D4
 consistency_cases:
 - files:
   - contract_total.docx

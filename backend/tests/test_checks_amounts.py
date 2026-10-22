@@ -31,6 +31,23 @@ def test_header_priority(text, kind):
     assert column_kind(text) == kind
 
 
+@pytest.mark.parametrize(("text", "kind"), [
+    ("合计", "amount"), ("总计", "amount"), ("总额", "amount"), ("合计（元）", "amount"), ("合计金额", "amount"),
+    ("合计含税", "amount_incl"), ("数量合计", "qty"), ("单价合计", "price"), ("税额合计", "tax"),
+])
+def test_total_style_header_names(text, kind):
+    assert column_kind(text) == kind
+
+
+def test_total_named_column_is_recognized_and_checked():
+    tables, results = run([["项目", "数量", "单价", "合计"], ["A", "2", "5000", "10000"], ["B", "1", "5000", "5001"],
+                           ["合计", "", "", "15001"]])
+    assert tables[0].recognized and tables[0].rows_checked == 2
+    assert [(r.code, r.locs) for r in results] == [("L-01", ["F1-T1-R3-C4", "F1-T1-R3-C2", "F1-T1-R3-C3"])]
+    tables, results = run([["项目", "数量", "单价", "合计"], ["A", "2", "5000", "10000"], ["合计", "", "", "9000"]])
+    assert [(r.code, r.locs) for r in results] == [("L-02", ["F1-T1-R3-C4"])]
+
+
 def test_vat_labelled_amount_columns_are_recognized():
     tables, results = run([["Item", "Qty", "Unit Price", "Amount excl. VAT", "VAT Rate", "VAT", "Amount incl. VAT"],
                            ["A", "10", "100.00", "1000.00", "13%", "130.00", "1130.00"],

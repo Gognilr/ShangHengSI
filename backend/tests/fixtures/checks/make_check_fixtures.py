@@ -91,6 +91,8 @@ def main():
     xlsx("formula_uncached.xlsx", [HEADER, ["虚构焦炭甲", "1", "100", "=B2*C2"], ["合计", "", "", "100"]])
     word("valid_quote.docx", [HEADER, ["虚构焦炭甲", "2", "5", "10"],
                               ["虚构焦炭乙", "3", "7.5", "22.5"], ["合计", "", "", "32.5"]])
+    xlsx("total_column.xlsx", [["项目", "数量", "单价", "合计"], ["虚构焦炭甲", "2", "5000", "10000"],
+                               ["虚构焦炭乙", "1", "5000", "5000"], ["合计", "", "", "14000"]])
     pdf("row_error.pdf")
     contract("uppercase_error.docx", "合同金额：人民币850000元，大写捌拾万元整。")
     contract("uppercase_ok.docx", "合同金额：人民币80万元，大写捌拾万元整。")
@@ -114,6 +116,7 @@ def main():
         "uppercase_ok.docx": [], "contract_total.docx": [], "quote_cny.xlsx": [], "quote_usd.xlsx": [],
         "expiry.docx": [("L-INFO", []), ("L-07", ["F1-P1"])],
         "delivery_before_signing.docx": [("L-08", ["F1-P2", "F1-P1"])], "delivery_ok.docx": [],
+        "total_column.xlsx": [("L-02", ["F1-S1-D4"])],
     }
     manifest = {"description": "全部为虚构样本；校验位置假定 file_seq=1；日期比较基准为 2026-10-20。",
                 "samples": [{"file": name, "doc_type": "contract" if name.startswith(("uppercase", "contract", "delivery")) else "quotation",
