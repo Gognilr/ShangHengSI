@@ -1,0 +1,20 @@
+description: 带简称定义的宽泛后缀名称（B-21、Q-139 ③）：“××集团公司（以下简称“X”）”“××厂（下称“X”）”全称与简称全文替换；“本公司（以下简称“我方”）”不登记；不带简称的“××科技公司”仍只列为疑似遗漏
+stance: other
+must_replace:
+  - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: 示例通信集团公司, category: ORG}
+  - {text: 示例通信, category: ORG}
+  - {text: 远山虚构机械厂, category: ORG}
+  - {text: 远山厂, category: ORG}
+  - {text: 北辰虚构信息技术有限公司, category: ORG}
+must_keep:
+  - 我单位对于所申请的
+  - 的入网资质承诺如下
+  - 已取得相关许可
+  - 的技术人员均持证上岗
+  - 配套设备由
+  - 对设备质量负责
+  - 本公司（以下简称“我方”）
+  - 保证所提供材料真实有效
+must_suspect:
+  - 示例科技公司

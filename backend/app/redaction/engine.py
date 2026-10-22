@@ -249,6 +249,19 @@ def _trim(text: str, start: int, end: int) -> tuple[int, int]:
     return start, end
 
 
+def _broad_names_with_alias(text: str) -> list[tuple[int, int]]:
+    """第 2 步：以宽泛后缀结尾、紧跟简称结构的名称（R1-13，Q-139 ③）。名称起点与疑似遗漏相同（边界词、“的并且或”、
+    最多 10 个汉字）；不足 2 个汉字、泛称或前面紧挨泛指词（本公司、由我公司）时不登记。"""
+    out = []
+    for s, e in P.find_broad_suffix_before_alias(text):
+        if S._generic_before(text[:s]):
+            continue
+        span = S._cn_name_span(text, s)
+        if span is not None:
+            out.append((span[0], e))
+    return out
+
+
 def compute(
     nodes: list[NodeIn],
     stance: str,
@@ -298,11 +311,11 @@ def compute(
         out += [(ent, _alias_pattern(a)) for ent in entities.values() if ent.category == "ORG" for a in ent.aliases]
         return out
 
-    # 第 2 步（续）：正文中其他带明确企业后缀的名称。与已知名称重叠的不再登记；但已知的是词条（已记住名称、用户词条）、
+    # 第 2 步（续）：正文中其他带明确企业后缀的名称，以及紧跟简称结构的宽泛后缀名称（先登记，较长）。与已知名称重叠的不再登记；但已知的是词条（已记住名称、用户词条）、
     # 且完全落在新名称内、没有到达名称结尾时，说明词条只是这个名称的一部分（“Aurora Fictive”之于
     # “Aurora Fictive Energy Co., Ltd.”），仍登记完整名称，词条在下面并为它的简称
     for i, n in enumerate(nodes):
-        found = P.find_other_org_names(n.text)
+        found = _broad_names_with_alias(n.text) + P.find_other_org_names(n.text)
         if not found:
             continue
         known = [(m.start(), m.end(), ent.from_term or ent.from_user)

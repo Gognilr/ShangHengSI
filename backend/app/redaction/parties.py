@@ -6,9 +6,10 @@
 - 其他企业名称：正文中带“有限公司”等明确后缀的中文名称，以及以英文企业后缀结尾的连续大写开头单词。
   英文名称切词时，汉字与中文标点同空白一样是分隔符（“收函方：Aurora Fictive Energy Co., Ltd.”整体识别）；
   名称中间可以有一组括号括起的地区名（“Northwind Fictive (Hong Kong) Limited”整体识别）。
-  “公司、厂、集团”等宽泛后缀只在签约方标签后使用，正文中不据此自动替换（留给 9.5 疑似遗漏，M4）。
+  “公司、厂、集团”等宽泛后缀只在签约方标签后使用，正文中不据此自动替换（留给 9.5 疑似遗漏，M4；紧跟简称结构的除外，见下）。
 - 名称延伸到同一名称内的最后一个后缀（含分公司、支行等），不跨越分隔符和“以下简称”（R1-04）。
 - 开户行标签后没有企业后缀、以“银行、支行”等结尾的中文值也作为银行主体（R1-12）。
+- 正文中以宽泛后缀结尾、紧跟简称结构的名称也作为主体（R1-13），名称起点同疑似遗漏。
 """
 import re
 import unicodedata
@@ -280,6 +281,24 @@ def find_aliases(text: str) -> list[tuple[int, int, int]]:
     return out
 
 
+# 带简称定义的宽泛后缀名称（R1-13，Q-139 ③）：长的在前
+_BROAD_SUFFIXES = ("集团公司", "研究院", "研究所", "集团", "公司", "厂")
+
+
+def find_broad_suffix_before_alias(text: str) -> list[tuple[int, int]]:
+    """正文中以宽泛后缀（公司、集团、厂、研究院、研究所）结尾、后面紧跟简称结构（中间只允许空白）的位置：
+    [(后缀 start, 后缀 end)]。以“有限公司”等明确后缀结尾的由 find_other_org_names 负责，不在此列；
+    名称起点由调用方按疑似遗漏的边界确定（engine 第 2 步）。简称是否为通用角色词不影响这里的结果。"""
+    out = []
+    for m in _ALIAS_RE.finditer(text):
+        end = len(text[:m.start()].rstrip(" \t　"))
+        suffix = next((s for s in _BROAD_SUFFIXES if text.endswith(s, 0, end)), None)
+        if suffix is None or text.endswith(("有限公司", "有限责任公司"), 0, end):
+            continue
+        out.append((end - len(suffix), end))
+    return out
+
+
 def _name_start_after_boundary(text: str, start: int, suffix_start: int, min_han: int = 2) -> int:
     """text[start:suffix_start] 是企业后缀前向前取到的汉字（含括号）。返回最后一个边界词之后的位置（Q-56）。
 
@@ -387,5 +406,5 @@ def org_type(name: str) -> str:
 
 __all__ = [
     "GENERIC_WORDS", "OTHER", "default_country", "detect_country", "extract_org_name", "find_aliases",
-    "find_labeled_parties", "find_other_org_names", "is_chinese_name", "name_pattern", "normalize", "org_type",
+    "find_broad_suffix_before_alias", "find_labeled_parties", "find_other_org_names", "is_chinese_name", "name_pattern", "normalize", "org_type",
 ]

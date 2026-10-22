@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- R1-13 已完成（2026-10-23，Opus 5.5），R1-11～R1-13 收尾验收结果待用户确认：parties.find_broad_suffix_before_alias 找“宽泛后缀（集团公司、研究院、研究所、集团、公司、厂）+ 空白 + 简称结构”，engine 第 2 步按疑似遗漏的 _cn_name_span / _generic_before 取名称起点并作为主体登记（先于明确后缀名称），简称由第 3 步归入；泛称、泛指词不登记，通用角色词简称不替换，不带简称的仍只列为疑似遗漏。新增回归样本 alias_broad_suffix（虚构承诺书）与单元测试；整仓挂载 Docker 全量 1760 passed。收尾验收：两份真实合同复跑本地流程，邮编（合同 2 两处）、开户行（合同 1）、附件三第三方全称与简称（合同 2，8 行，疑似遗漏降为 0）均已替换，其余外发文本与 R1-10 相同，出口复检零命中，结果记入 docs/business_review.md 第八节。新增 Q-142（待确认）。规则 10：ea28d25 之后只有 Opus 的提交，无待评审提交。下一个任务：**R2-00**（Opus 档，high，里程碑细化），停止等待用户安排（R1 完成后回到 M8-01 还是先做 R2，由用户决定）。
+
 - R1-12 已完成（2026-10-23，Opus 5.5）：parties.find_labeled_parties 在开户行、开户银行、收款银行、Bank Name、Beneficiary Bank 标签取不到带企业后缀的名称时，按银行类结尾（银行、支行、分行、分理处、营业部、储蓄所）取值作为银行主体（可跨一个填空括号，不跨越分隔符、空白、简称结构，最长 60 字，至少 4 个汉字，英文值不处理）；词典不命中的中文银行名称类型固定为“银行”，找不到国家时视为中国。新增回归样本 bank_label 与单元测试；整仓挂载 Docker 全量 1752 passed。真实合同 1 开户行替换为银行代号（银行_C，中国，银行），真实合同 2 银行主体国家由“国家未知”变为“中国”，其余外发文本与 R1-11 相同，两份出口复检零命中。新增 Q-141（待确认）。下一个任务：**R1-13**（Opus 档，high，含 R1-11～R1-13 收尾验收）。
 
 - R1-11 已完成（2026-10-23，Opus 5.5，用户在本会话安排 R1-11～R1-12）：detect.find_formatted 新增 POSTCODE（邮政编码、邮编、Postal Code、Post Code、Zip Code、ZIP 标签后，冒号 / 空白 / 填空括号，3–10 个字母数字，可含单个空格或短横线，至少一个数字，末尾不含数字的词去掉）；共用代号“[邮编]”（placeholders.FIXED、CHAT_LABELS），真实值写入对照表“[邮编]#n”，出口复检遮盖由对照表代号自动带入，重扫不加邮编；地址遇同一行带值的邮编标签提前结束；迁移 0003 放宽 redaction_items、redaction_suspects 类别约束（降级删除 POSTCODE 行），models.py 同步；前端类别文字“邮编 / 个邮编”。新增回归样本 postcode 与单元、复检、迁移升级 / 降级测试；整仓挂载 Docker 全量 1744 passed；`npm run build` 通过。真实合同 2 两处邮编替换为 [邮编]，其余外发文本与 R1-10 相同，两份出口复检零命中。新增 Q-140（待确认，含“Post Code / Zip Code”被列为疑似遗漏的建议）。下一个任务：**R1-12**（Sonnet 档，medium），用户已安排在本会话继续。
@@ -316,7 +318,7 @@
 | R1-10 | R1 验收：全量测试、两份真实合同逐行核对外发文本、经用户同意后真实模型试审 | Opus | medium | R1-09 | 23.1 A-03、23.3；设计第七节 | docs/business\_review.md；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；结果汇报给用户 | 已完成 |
 | R1-11 | 邮编：标签后的邮编替换为共用代号 [邮编]（新类别 POSTCODE，迁移 0003 放宽类别约束），出口复检遮盖 [邮编] | Sonnet | high | R1-10 | 9.2、9.3 第 4 步、Q-139 ①；设计第十一节 | app/redaction/detect.py、placeholders.py、recheck.py（只改固定代号遮盖）、app/db/models.py（只改类别元组）、app/db/alembic/versions/0003\_postcode\_category.py、frontend/src/utils/labels.ts、frontend/src/components/ConfirmStep.vue、tests/test\_redaction\_engine.py、tests/test\_recheck.py、tests/test\_migrations.py、tests/fixtures/redaction\_golden/ | 设计第十一节测试全部通过；迁移升级 / 降级与“模型与迁移一致”通过；回归集通过；`npm run build` 通过；真实合同 2 两处邮编替换 | 已完成 |
 | R1-12 | 开户行：银行标签后以“银行、支行”等结尾、无企业后缀的值作为银行主体 | Sonnet | medium | R1-11 | 9.3 第 2 步、Q-139 ②；设计第十二节 | app/redaction/parties.py、tests/test\_redaction\_engine.py、tests/fixtures/redaction\_golden/ | 设计第十二节测试全部通过；回归集与 A-03 通过；真实合同 1 开户行替换为银行代号 | 已完成 |
-| R1-13 | 带简称定义的宽泛后缀名称（公司、集团、厂等）自动作为主体，简称一并替换；R1-11～R1-13 收尾验收 | Opus | high | R1-12 | 9.3 第 2、3 步、Q-139 ③；设计第十三节 | app/redaction/parties.py、engine.py（只改第 2 步登记）、tests/test\_redaction\_engine.py、tests/fixtures/redaction\_golden/、docs/business\_review.md | 设计第十三节测试全部通过；回归集与 A-03 通过；两份真实合同复跑：邮编、开户行、第三方简称均已替换，出口复检零命中 | 待执行 |
+| R1-13 | 带简称定义的宽泛后缀名称（公司、集团、厂等）自动作为主体，简称一并替换；R1-11～R1-13 收尾验收 | Opus | high | R1-12 | 9.3 第 2、3 步、Q-139 ③；设计第十三节 | app/redaction/parties.py、engine.py（只改第 2 步登记）、tests/test\_redaction\_engine.py、tests/fixtures/redaction\_golden/、docs/business\_review.md | 设计第十三节测试全部通过；回归集与 A-03 通过；两份真实合同复跑：邮编、开户行、第三方简称均已替换，出口复检零命中 | 已完成 |
 
 ### R2 旧格式支持（DOC、XLS、WPS、ET、RTF）
 
