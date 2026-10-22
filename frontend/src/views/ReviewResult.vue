@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CoverageCard from '@/components/CoverageCard.vue'
+import ChatPanel from '@/components/ChatPanel.vue'
 import DocPreview from '@/components/DocPreview.vue'
 import FindingCard from '@/components/FindingCard.vue'
 import LocalFindings from '@/components/LocalFindings.vue'
@@ -314,6 +315,7 @@ const reqVersion = computed(() => {
 
         <!-- 底部操作 -->
         <div class="actions">
+          <ChatPanel :key="task.id" :task-id="task.id" :disabled="deleting" />
           <span v-if="exportReason" class="hint">{{ exportReason }}</span>
           <el-button :loading="exporting" :disabled="!!exportReason || deleting" @click="exportReport">导出报告</el-button>
           <el-button v-if="task.status === 'reviewed' && task.policy === 'ai'" :disabled="deleting" @click="rerunOpen = true">重新审核</el-button>
