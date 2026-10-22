@@ -115,6 +115,12 @@ export const suspectReasonLabel = pick(SUSPECT_REASON)
 /** 用户可选的替换类别（疑似遗漏、手动补充）。 */
 export const USER_CATEGORY_OPTIONS: Dict = { ORG: '公司', PERSON: '人名', CUSTOM: '其他' }
 
+/** 账号角色、状态（设置 - 账号）。 */
+export const ROLE_OPTIONS: Dict = { user: '普通用户', admin: '管理员' }
+export const roleLabel = pick(ROLE_OPTIONS)
+export const USER_STATUS: Dict = { active: '启用中', disabled: '已停用' }
+export const userStatusLabel = pick(USER_STATUS)
+
 /** 把 options 对象转成下拉框用的数组。 */
 export function toOptions(dict: Dict): { value: string; label: string }[] {
   return Object.entries(dict).map(([value, label]) => ({ value, label }))
