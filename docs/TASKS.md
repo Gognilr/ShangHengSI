@@ -6,7 +6,7 @@
 
 ## 当前进度
 
-- R1 已细化（R1-00，2026-10-22，Opus 5.5），待用户确认：用两份作废合同试跑发现的业务问题记在 docs/business\_review.md（B-01～B-17）；本轮只修脱敏规则 B-01～B-05、B-07、B-08，设计见 docs/design/R1.md，新增 Q-134（待确认）；B-06、B-09～B-17 由用户逐条决定。确认后下一个任务：**R1-01**（Opus 档，xhigh）；R1-01～R1-04 为 Opus，R1-05、R1-06 为 Sonnet，R1-07 为 Opus。R1 完成后回到 M8-01。
+- R1 已细化（R1-00，2026-10-22，Opus 5.5）：用两份作废合同试跑发现的业务问题记在 docs/business\_review.md（B-01～B-17），设计见 docs/design/R1.md。用户确认 R1-01～R1-06 与 Q-134（2026-10-22），并追加 B-09、B-10、B-17（R1-07～R1-09，Q-135 待确认），验收改为 R1-10。B-06、B-11～B-16 由用户逐条决定。R1-01～R1-04 为 Opus，R1-05～R1-09 为 Sonnet，R1-10 为 Opus。R1 完成后回到 M8-01。
 
 - M8-01 代码已完成、服务器实跑暂缓（2026-10-22，Opus 5.5）：app/backup/restore.py（prepare 校验成员 / 清单 / 迁移版本 / 主密钥后再解包；restore_db 恢复到 {库名}_restore 再改名，失败时原库不动；swap_files / verify / drop_old_files）、cli restore-prepare / restore-db / restore-files、deploy/scripts/lib.sh、restore.sh；备份文件 0640，appuser uid/gid 10001。新增 tests/test_backup_restore.py（test_restore.py 已被代号还原占用，Q-132）、tests/test_scripts.py；整仓挂载 Docker 全量 1640 passed、1 warning。提交 e716d50。新增 Q-132、Q-133（待确认）。测试服务器已同步 e716d50 并重建重启（HTTPS 200，数据未动）。**未做**：服务器上的 restore.sh 实跑与主密钥不匹配演练——用户决定先暂停部署与发布包（M8-01 实跑、M8-02～M8-05），转而细化实际试用中发现的业务问题；M8-01 状态保持“待执行”，恢复部署工作时从服务器实跑继续。
 
@@ -269,9 +269,9 @@
 | M8-04 | 中文运维说明（按实际服务器环境） | Sonnet | medium | M8-03 | 16、20、Q-12、Q-123、Q-128～Q-131；设计〇、六 | docs/ops/运维说明.md | 设计第六节 12 章齐全；每条命令与 M8-01～M8-03 的实际脚本、参数、路径一致；不含真实密钥（服务器 IP 只作示例时用占位符） | 待执行 |
 | M8-05 | 全量回归、恢复与升级演练（T-17）、真实模型抽查、最终验收报告、正式安装 | Opus | high | M8-04 | 23、Q-127；设计七 | docs/acceptance/V1.0验收报告.md；演练中发现的问题按需修复（在报告中列出） | 全部测试通过；23.1、23.2 共 28 个编号逐条有结果；T-17 演练与两种失败演练通过；升级演练通过；正式安装完成并交付；验收报告汇报给用户 | 待执行 |
 
-### R1 真实范本修复：脱敏规则（B-01～B-05、B-07、B-08）
+### R1 真实范本修复：脱敏规则与本地校验（B-01～B-05、B-07～B-10、B-17）
 
-来源 [docs/business_review.md](business_review.md)，**开工前必读 [docs/design/R1.md](design/R1.md)**。M8 暂停期间插入执行，完成后回到 M8-01。路径相对于 `backend/`。每个任务都要加虚构的回归样本，并用本机的两份真实合同复跑本地流程（输出不提交）。B-06、B-09～B-17 待用户决定，不在本轮。
+来源 [docs/business_review.md](business_review.md)，**开工前必读 [docs/design/R1.md](design/R1.md)**。M8 暂停期间插入执行，完成后回到 M8-01。路径相对于 `backend/`。每个任务都要加虚构的回归样本，并用本机的两份真实合同复跑本地流程（输出不提交）。B-09、B-10、B-17 由用户追加（2026-10-22）；B-06、B-11～B-16 待用户决定，不在本轮。
 
 | 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
 |-|-|-|-|-|-|-|-|-|
@@ -282,7 +282,10 @@
 | R1-04 | 企业名称：延伸到最后一个后缀（含分公司、支行等），不跨越分隔符和“以下简称” | Opus | high | R1-03 | 9.3 第 2 步、Q-56、Q-134 ⑤；设计第五节 | app/redaction/parties.py、tests/test\_redaction\_engine.py、tests/fixtures/redaction\_golden/ | 设计第五节测试全部通过；回归集通过；真实合同 2 乙方与开户行完整替换，疑似遗漏中不再出现名称后半段 | 待执行 |
 | R1-05 | 合同总价标签：百分比、“的”、分项总价不作为合同总价 | Sonnet | medium | R1-04 | 9.6、Q-72、Q-134 ④；设计第四节 | app/redaction/ratio.py、tests/test\_ratio.py | 设计第四节测试全部通过；真实合同 1、2 的比例不超过 100%，合同总价取正确的金额 | 待执行 |
 | R1-06 | 中国地址判为中国（省、市、县、区等行政区划） | Sonnet | medium | R1-05 | 9.4、Q-42、Q-134 ⑥；设计第六节 | app/redaction/dictionaries.py、tests/test\_dictionaries.py、tests/fixtures/redaction\_golden/ | 设计第六节测试全部通过；真实合同 2 地址代号为“[地址：中国]”，签约方国家为中国 | 待执行 |
-| R1-07 | R1 验收：全量测试、两份真实合同逐行核对外发文本、经用户同意后真实模型试审 | Opus | medium | R1-06 | 23.1 A-03、23.3；设计第七节 | docs/business\_review.md；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；结果汇报给用户 | 待执行 |
+| R1-07 | 疑似遗漏误报：标准编号（GB 50312-2007 等）不列为长数字；泛指词（本公司、我公司等）不列为企业名称 | Sonnet | medium | R1-06 | 9.5、Q-74、Q-135 ①；设计第七节 | app/redaction/suspects.py、tests/test\_suspects.py、tests/fixtures/redaction\_golden/（只在需要时更新标注） | 设计第七节测试全部通过；回归集 must\_suspect 仍全部列出；真实合同 2 不再列出 5 条标准编号 | 待执行 |
+| R1-08 | 本地校验金额列名增加“合计、总计、总额” | Sonnet | medium | R1-07 | 10.1、Q-82、Q-135 ②；设计第八节 | app/checks/amounts.py（只改 column\_kind）、tests/test\_checks\_amounts.py、tests/fixtures/checks/（新增样本与 manifest 条目） | 设计第八节测试全部通过；原有 manifest 不变；真实合同 2 清单完成 L-01、L-02 | 待执行 |
+| R1-09 | L-05 比较主文件自身的附件报价表；表格无币种时在单一币种任务中按合同币种比较 | Sonnet | high | R1-08 | 10.2 L-05、L-06、Q-135 ③；设计第九节 | app/checks/consistency.py、tests/test\_checks\_consistency.py、tests/fixtures/checks/（新增样本与 manifest 条目） | 设计第九节测试全部通过；ai\_summary 不含绝对金额（recheck 为空）；原有跨文件用例不变；真实合同 1、2 正文总价与附件合计完成比较 | 待执行 |
+| R1-10 | R1 验收：全量测试、两份真实合同逐行核对外发文本、经用户同意后真实模型试审 | Opus | medium | R1-09 | 23.1 A-03、23.3；设计第七节 | docs/business\_review.md；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；结果汇报给用户 | 待执行 |
 
 ## 五、工作量分布
 
