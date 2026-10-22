@@ -6,7 +6,7 @@
 
 ## 当前进度
 
-- R2-05 已完成（2026-10-23，Opus 5.5），**R2 验收结果待用户确认**：compose 全套（真实 converter + 模拟模型）经界面上传 DOC、WPS、RTF、XLS、ET，解析成功、显示转换警告、预览与定位正常、1440 / 1280 无横向滚动条，外发记录零命中（A-03）；含宏 DOC / XLS 上传即拒，损坏 DOC 提示另存为 DOCX，converter 停机时 DOC 提示服务不可用、DOCX 不受影响；converter 容器只有 lo、只读、uid 10002、无 capability；manifest 12 个样本经真实 converter 解析与 manifest 一致。修复 converter 测试只转换 manifest 列出的样本（R2-02 加入的手工 OLE 样本使 4 个子测试失败）。未覆盖：加密的二进制 DOC / XLS（无法生成样本）、Word / WPS 真实样本（Q-144）。详见 docs/business_review.md 第十节。规则 10：评审 R2-03、R2-04 通过。下一个任务：按 Q-148 进入 **R3-01**（模型与强度见任务行），停止等待用户确认 R2 验收。
+- R2-05 已完成（2026-10-23，Opus 5.5），**R2 验收结果已经用户确认（2026-10-23）**：compose 全套（真实 converter + 模拟模型）经界面上传 DOC、WPS、RTF、XLS、ET，解析成功、显示转换警告、预览与定位正常、1440 / 1280 无横向滚动条，外发记录零命中（A-03）；含宏 DOC / XLS 上传即拒，损坏 DOC 提示另存为 DOCX，converter 停机时 DOC 提示服务不可用、DOCX 不受影响；converter 容器只有 lo、只读、uid 10002、无 capability；manifest 12 个样本经真实 converter 解析与 manifest 一致。修复 converter 测试只转换 manifest 列出的样本（R2-02 加入的手工 OLE 样本使 4 个子测试失败）。未覆盖：加密的二进制 DOC / XLS（无法生成样本）、Word / WPS 真实样本（Q-144）。详见 docs/business_review.md 第十节。规则 10：评审 R2-03、R2-04 通过。下一个任务：按 Q-148 进入 **R3-01**（Sonnet 档，medium），模型不同，等待用户开新会话。
 
 - R2-04 已完成（2026-10-23，Sonnet 5.5）：api/tasks.ts 的 ALLOWED_EXTS 与错误提示、ReviewNew.vue 的 accept 与格式提示增加 DOC、WPS、RTF、XLS、ET；DocPreview.vue 把 doc / wps / rtf 按 docx、xls / et 按 xlsx 渲染。`npm run build` 通过；浏览器（compose 全套）上传五种格式与 1440 / 1280 宽度检查未做，留给 R2-05 联调。下一个任务：**R2-05**（Opus 档，medium）。
 
