@@ -28,8 +28,28 @@ def test_chinese_labels(label):
 
 
 def test_chinese_label_without_colon_only_for_unambiguous_labels():
-    assert persons("联系人张三，电话") == ["张三"]
+    # 不带冒号时标签与人名之间须有空白或填空括号（Q-134 ②）：“联系人张三”不再识别，避免“联系人电话”“授权代表应签署”
+    assert persons("联系人 张三，电话") == ["张三"]
+    assert persons("联系人张三，电话") == []
     assert persons("法定代表人 王小明") == ["王小明"]
+    assert persons("法定代表人【王小明】") == ["王小明"]
+
+
+@pytest.mark.parametrize("text", [
+    "授权代表：\t授权代表：", "授权代表：            授权代表：", "联系人电话：0531-6612345", "联系人：电话：0531-6612345",
+    "联系人姓名：", "法定代表人或授权委托人姓名：", "双方授权代表应签署初验证书", "授权代表：签字", "法定代表人（签字）：盖章",
+    "经办人：日期：", "委托代理人：（签章）", "联系人：【】",
+])
+def test_signature_blocks_have_no_person(text):
+    """签字栏、标签连写、标签后接另一个标签时不识别人名（B-03，Q-134 ②）。"""
+    assert persons(text) == []
+
+
+def test_signature_block_with_names_still_found():
+    assert persons("授权代表：郑虚构\t授权代表：柳示例") == ["郑虚构", "柳示例"]
+    assert persons("联系人：【李虚构】，电话：【0531-6612345】") == ["李虚构"]
+    # OCR 把人名与下一个标签连成一串：截断后的冒号属于“电话”
+    assert persons("联系人：周示例电话：13800138000") == ["周示例"]
     # 签字、签名必须有冒号：“签字盖章”“签名页”不是标签
     assert persons("签字盖章") == []
     assert persons("签名页") == []

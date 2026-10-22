@@ -69,6 +69,19 @@ def test_fill_brackets_count_as_currency():
     assert check("第【10】期、一式【4】份", ["10", "4"]) == []
 
 
+def test_placeholders_masked_only_for_real_values():
+    """B-04、Q-134 ②：只遮盖传入的确切代号；格式化与金额重扫仍在原文上做；默认不遮盖。"""
+    text = "人员_1：【[电话]】；[地址：中国]"
+    assert check(text, ["电话", "中国"]) == [("MAP", 7), ("MAP", 16)]
+    codes = ["人员_1", "[电话]", "[地址：中国]"]
+    assert recheck(text, real_values=["电话", "中国"], terms=["电话"], placeholders=codes) == []
+    # 代号以外的出现照常拦截；未传入的代号不遮盖
+    reasons = recheck("联系电话：【[电话]】，[邮箱]", real_values=["电话", "邮箱"], terms=[], placeholders=codes)
+    assert [(r.category, r.position) for r in reasons] == [("MAP", 2), ("MAP", 13)]
+    # 重扫不受遮盖影响
+    assert {r.category for r in recheck("[电话] 13912345678", real_values=[], terms=[], placeholders=codes)} == {"PHONE"}
+
+
 def test_numeric_values_rewritten_forms():
     # 长数字前后不是数字即拦截；去掉空格、短横线后相同也拦截
     assert ("MAP", 3) in check("账号：6222000011112222333", ["6222 0000 1111 2222 333"])

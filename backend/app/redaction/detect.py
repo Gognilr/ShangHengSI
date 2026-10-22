@@ -260,7 +260,12 @@ _PERSON_LABEL = re.compile(
 _CN_TITLES = ("总经理", "董事长", "先生", "女士", "小姐", "经理", "主任", "总裁", "代表")  # 长的在前
 _CN_PERSON_CUT = ("电话", "手机", "传真", "邮箱", "邮件", "职务", "职位", "部门", "地址")
 _CN_NOT_PERSON_END = set("部处室科组厅局院所司队厂")  # “采购部”“财务科”不是人名
-_CN_NOT_PERSON = frozenset({"同上", "同前", "见下", "待定", "略", "不详", "本人", "本公司", "我司", "贵司", "对方"})
+_CN_NOT_PERSON = frozenset({"同上", "同前", "见下", "待定", "略", "不详", "本人", "本公司", "我司", "贵司", "对方",
+                            "签署", "签字", "签章", "盖章", "姓名", "名称", "日期", "电话", "授权", "本单位", "法人",
+                            "代理人", "委托人"})
+# 人名标签后以这些词开头的汉字串是另一个标签或签字栏用语，不是人名（Q-134 ②）
+_CN_NOT_NAME_START = ("电话", "手机", "传真", "邮箱", "邮件", "地址", "姓名", "名称", "职务", "职位", "日期", "签字",
+                      "签章", "签名", "签署", "盖章", "授权", "委托", "代表", "法定", "联系", "经办", "收件", "代理")
 _EN_TITLES = re.compile(r"(?:Mr|Mrs|Ms|Miss|Dr|Prof)(?:\.[ \t]*|[ \t]+)", re.IGNORECASE)
 _EN_WORD = re.compile(r"[A-Z][A-Za-z'’\-]*\.?")
 # 职务、部门词和信息标签：遇到即停止（小写形式比较）
@@ -299,13 +304,23 @@ def find_persons(text: str) -> list[Hit]:
     for m in _PERSON_LABEL.finditer(text):
         pos = m.end()
         span: tuple[int, int] | None = None
+        label = m.group()
+        # 不带冒号的标签与人名之间须有空白或填空括号：“授权代表应签署”“联系人电话：”不是“标签 + 人名”（Q-134 ②）
+        if not any(c in label for c in ":：") and label[-1] not in " \t" + FILL_OPEN:
+            continue
         han = re.compile(r"[一-鿿]+").match(text, pos)
         if han:
             run = han.group()
+            # 标签后接的是另一个标签（“授权代表：（空白）授权代表：”“联系人：电话：”）：以标签词开头，
+            # 或整串（没有在“电话、手机”等词处截断时）后面紧跟冒号。“周示例电话：…”截断后冒号属于“电话”，仍是人名
+            if run.startswith(_CN_NOT_NAME_START):
+                continue
             for cut in _CN_PERSON_CUT:
                 i = run.find(cut, 1)
                 if i > 0:
                     run = run[:i]
+            if run == han.group() and re.match(r"[ \t]*[:：]", text[han.end():han.end() + 3]):
+                continue
             run = _strip_cn_titles(run)
             if (2 <= len(run) <= 4 and run[-1] not in _CN_NOT_PERSON_END and run not in _CN_NOT_PERSON
                     and "公司" not in run):

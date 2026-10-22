@@ -165,6 +165,28 @@ def test_t07_blocked_not_sent_and_record_has_no_real_value(gw, db_sessionmaker, 
     assert REAL_NAME not in caplog.text and REAL_NAME not in str(exc.value)
 
 
+def test_placeholder_text_is_not_a_real_value(gw, db_sessionmaker, make_user, monkeypatch):
+    """B-04、Q-134 ②：对照表真实值恰好是代号的一部分（“电话”与“[电话]”）时，代号本身不拦截，正文中出现仍拦截。"""
+    requests = use(monkeypatch)
+    user = make_user("bob")
+    with db_sessionmaker() as db:
+        task = Task(owner_id=user.id, title="合同.docx", stance="sales", source="outgoing", policy="ai",
+                    status="reviewing")
+        db.add(task)
+        db.flush()
+        mapping = {"人员_1": "电话", "[电话]#1": "0531-6612345"}
+        db.add(RedactionMap(task_id=task.id, map_enc=crypto.encrypt_text(json.dumps(mapping, ensure_ascii=False))))
+        db.commit()
+        ok = [{"role": "user", "content": "[F1-P1] 联系人员_1：【[电话]】"}]
+        call_model(db, purpose="review", messages=ok, user_id=user.id, task_id=task.id)
+        assert len(requests) == 1
+        leaked = [{"role": "user", "content": "[F1-P1] 联系电话：【[电话]】"}]
+        with pytest.raises(GatewayError) as exc:
+            call_model(db, purpose="review", messages=leaked, user_id=user.id, task_id=task.id)
+        assert exc.value.code == "BLOCKED" and [(r.category, r.position) for r in exc.value.reasons] == [("MAP", 10)]
+    assert len(requests) == 1
+
+
 def test_rescan_blocks_unreplaced_phone_without_task(gw, db_sessionmaker, monkeypatch):
     use(monkeypatch)
     with db_sessionmaker() as db, pytest.raises(GatewayError) as exc:

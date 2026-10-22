@@ -54,9 +54,18 @@ class BlockReason:
 class RecheckContext:
     real_values: list[str] = field(default_factory=list)
     terms: list[str] = field(default_factory=list)
+    placeholders: list[str] = field(default_factory=list)  # 本任务对照表中的代号原文（Q-134 ②）
 
     def __repr__(self) -> str:  # 防止真实值被意外打印进日志
         return f"RecheckContext(real_values={len(self.real_values)}, terms={len(self.terms)})"
+
+
+def _mask_placeholders(text: str, placeholders: Iterable[str]) -> str:
+    """把代号原文换成等长的不可匹配字符，位置不变。只用于对照表真实值和词条的比对：
+    代号“[电话]”中的“电话”二字不是外发的真实值（B-04）。格式化信息与金额的重扫仍在原文上做。"""
+    for code in sorted({p for p in placeholders if p}, key=len, reverse=True):
+        text = text.replace(code, "\x00" * len(code))
+    return text
 
 
 def _digits(s: str) -> str:
@@ -123,13 +132,17 @@ def _value_positions(text: str, value: str) -> list[int]:
     return [m.start() for m in _text_pattern(value).finditer(text)]
 
 
-def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str]) -> list[BlockReason]:
-    """返回全部拦截原因（按位置排序、去重）；空列表表示可以发送。"""
+def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str],
+            placeholders: Iterable[str] = ()) -> list[BlockReason]:
+    """返回全部拦截原因（按位置排序、去重）；空列表表示可以发送。
+
+    placeholders 为本任务对照表中的代号原文：比对真实值、词条前先遮盖（只遮盖这些确切的代号，默认不遮盖）。"""
     reasons: set[BlockReason] = set()
+    masked = _mask_placeholders(text, placeholders)
     for value in dict.fromkeys(real_values):
-        reasons.update(BlockReason("MAP", p) for p in _value_positions(text, value))
+        reasons.update(BlockReason("MAP", p) for p in _value_positions(masked, value))
     for term in dict.fromkeys(terms):
-        reasons.update(BlockReason("TERM", p) for p in _value_positions(text, term))
+        reasons.update(BlockReason("TERM", p) for p in _value_positions(masked, term))
     for hit in detect.find_formatted(text):
         if hit.category in _RESCAN_CATEGORIES:
             reasons.add(BlockReason(hit.category, hit.start))
@@ -140,8 +153,9 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str]) -> l
 
 def recheck_context(db: Session, task_id: uuid.UUID | None) -> RecheckContext:
     """汇集对照表真实值（有任务时）与启用中的已记住名称、自定义敏感词。"""
-    from app.redaction.engine import load_real_values  # 避免循环导入
+    from app.redaction.engine import load_placeholders, load_real_values  # 避免循环导入
 
     values = load_real_values(db, task_id) if task_id is not None else []
+    codes = load_placeholders(db, task_id) if task_id is not None else []
     rows = db.scalars(select(RedactionTerm.term_enc).where(RedactionTerm.enabled.is_(True)))
-    return RecheckContext(real_values=values, terms=[crypto.decrypt_text(blob) for blob in rows])
+    return RecheckContext(real_values=values, terms=[crypto.decrypt_text(blob) for blob in rows], placeholders=codes)

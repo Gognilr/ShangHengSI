@@ -1,0 +1,18 @@
+description: 签字栏与联系方式（B-03、Q-134 ②）：两栏空白的“授权代表：”、标签连写（联系人电话、联系人姓名、授权委托人姓名）、“授权代表应签署”都不识别人名；“授权”“电话”等词在正文中保留
+stance: purchase
+must_replace:
+  - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: 远川虚构网络科技有限公司, category: ORG}
+  - {text: 李虚构, category: PERSON}
+  - {text: 0531-6612345, category: PHONE}
+  - {text: "13600001111", category: PHONE}
+must_keep:
+  - 授权代表：
+  - 乙方授权甲方另行安排维修
+  - 授权代表应签署
+  - 联系人电话
+  - 联系电话
+  - 授权委托人姓名
+  - 联系人姓名
+  - 电话及远程技术支持
+  - 盖章

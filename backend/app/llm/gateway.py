@@ -168,7 +168,8 @@ def call_model(
 
     # 2. 出口复检
     ctx = recheck_context(db, task_id)
-    reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values, terms=ctx.terms)
+    reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values, terms=ctx.terms,
+                      placeholders=ctx.placeholders)
     if reasons:
         call_id = recorder.write(status="blocked", request_text=None, block_reason=format_reasons(reasons))
         logger.warning("llm_call %s 出口复检拦截 purpose=%s 命中=%s", call_id, purpose, len(reasons))

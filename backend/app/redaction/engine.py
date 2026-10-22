@@ -1001,3 +1001,8 @@ def load_redaction_map(db: Session, task_id: uuid.UUID) -> dict[str, str]:
 def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
     """对照表中的全部真实值，含简称和共用代号类别的值（用于出口复检，M2-09）。"""
     return list(dict.fromkeys(_load_full_map(db, task_id).values()))
+
+
+def load_placeholders(db: Session, task_id: uuid.UUID) -> list[str]:
+    """对照表中的全部代号原文（去掉“#序号”），出口复检比对真实值前先遮盖它们（Q-134 ②）。"""
+    return list(dict.fromkeys(k.split("#", 1)[0] for k in _load_full_map(db, task_id)))

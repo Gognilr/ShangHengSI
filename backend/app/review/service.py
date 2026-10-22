@@ -240,7 +240,7 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None) -> ReviewR
                         main_doc_type=main.doc_type)
     rc = recheck_context(db, task.id)
     reasons = recheck("\n".join(m["content"] for m in build_messages(ctx)), real_values=rc.real_values,
-                      terms=rc.terms)
+                      terms=rc.terms, placeholders=rc.placeholders)
     if reasons:  # 只报类别和位置，不报真实值
         raise _conflict("OUTBOUND_BLOCKED", f"出口复检发现未脱敏的信息，已拦截，未发送（{format_reasons(reasons)}）")
     # 9.10：预检通过后写入已记住的名称，与轮次创建同一事务；预检拦截时不写入（Q-73 ①）
