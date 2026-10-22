@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- R1 已细化（R1-00，2026-10-22，Opus 5.5），待用户确认：用两份作废合同试跑发现的业务问题记在 docs/business\_review.md（B-01～B-17）；本轮只修脱敏规则 B-01～B-05、B-07、B-08，设计见 docs/design/R1.md，新增 Q-134（待确认）；B-06、B-09～B-17 由用户逐条决定。确认后下一个任务：**R1-01**（Opus 档，xhigh）；R1-01～R1-04 为 Opus，R1-05、R1-06 为 Sonnet，R1-07 为 Opus。R1 完成后回到 M8-01。
+
 - M8-01 代码已完成、服务器实跑暂缓（2026-10-22，Opus 5.5）：app/backup/restore.py（prepare 校验成员 / 清单 / 迁移版本 / 主密钥后再解包；restore_db 恢复到 {库名}_restore 再改名，失败时原库不动；swap_files / verify / drop_old_files）、cli restore-prepare / restore-db / restore-files、deploy/scripts/lib.sh、restore.sh；备份文件 0640，appuser uid/gid 10001。新增 tests/test_backup_restore.py（test_restore.py 已被代号还原占用，Q-132）、tests/test_scripts.py；整仓挂载 Docker 全量 1640 passed、1 warning。提交 e716d50。新增 Q-132、Q-133（待确认）。测试服务器已同步 e716d50 并重建重启（HTTPS 200，数据未动）。**未做**：服务器上的 restore.sh 实跑与主密钥不匹配演练——用户决定先暂停部署与发布包（M8-01 实跑、M8-02～M8-05），转而细化实际试用中发现的业务问题；M8-01 状态保持“待执行”，恢复部署工作时从服务器实跑继续。
 
 - M8 已细化（M8-00，2026-10-22，Opus 5.5），设计见 docs/design/M8.md，新增 Q-117～Q-131。用户确认：内网服务器（PVE 虚拟机，Ubuntu 26.04，Docker 已装，数据在 /data）就是正式部署环境，环境不再变化，M8 以它为准（设计第〇节，Q-128）；Q-114、Q-115、Q-117～Q-131 由用户授权 Opus 决定（2026-10-22）。规则 10：caa723e 之后只有 Opus 的提交，无待评审提交。要点：恢复采用“恢复到新库再改名”，恢复前校验 tar 成员、迁移版本和主密钥；备份文件 0640 + 组 aireview（gid 10001）以便 SFTP 拉取；发布包含三个镜像和去掉 build 段的 compose；Caddyfile 加 default\_sni；脚本检查 Docker 与 containerd 存储不在根分区；M8-01～M8-03 各自在服务器上实跑，M8-05 演练后正式安装。下一个任务：**M8-01**（Opus 档，xhigh），等待用户确认开工。
@@ -266,6 +268,21 @@
 | M8-03 | 离线镜像与发布包：build\_release.sh（构建、断网自检、docker save、组装、SHA256SUMS）；OCR 模型校验与 OCR\_MODEL\_DIR；在服务器上首次实跑 install.sh 与 upgrade.sh | Sonnet | medium | M8-02 | 20.5、Q-121、Q-122、Q-125；设计 1.1、五 | deploy/scripts/build\_release.sh、Dockerfile（只加 OCR 模型校验一行）、deploy/docker-compose.yml（只改 OCR\_MODEL\_DIR 的值）、tests/test\_scripts.py（只追加）；install.sh / upgrade.sh 实跑中发现的问题按需修复（在报告中列出） | 在本机实际执行一次，产出 1.1 结构的发布包；断网自检全部通过（含 OCR 识别一张图片）；发布包内 compose 不含 build 段；服务器上用发布包 install.sh、upgrade.sh 各成功一次 | 待执行 |
 | M8-04 | 中文运维说明（按实际服务器环境） | Sonnet | medium | M8-03 | 16、20、Q-12、Q-123、Q-128～Q-131；设计〇、六 | docs/ops/运维说明.md | 设计第六节 12 章齐全；每条命令与 M8-01～M8-03 的实际脚本、参数、路径一致；不含真实密钥（服务器 IP 只作示例时用占位符） | 待执行 |
 | M8-05 | 全量回归、恢复与升级演练（T-17）、真实模型抽查、最终验收报告、正式安装 | Opus | high | M8-04 | 23、Q-127；设计七 | docs/acceptance/V1.0验收报告.md；演练中发现的问题按需修复（在报告中列出） | 全部测试通过；23.1、23.2 共 28 个编号逐条有结果；T-17 演练与两种失败演练通过；升级演练通过；正式安装完成并交付；验收报告汇报给用户 | 待执行 |
+
+### R1 真实范本修复：脱敏规则（B-01～B-05、B-07、B-08）
+
+来源 [docs/business_review.md](business_review.md)，**开工前必读 [docs/design/R1.md](design/R1.md)**。M8 暂停期间插入执行，完成后回到 M8-01。路径相对于 `backend/`。每个任务都要加虚构的回归样本，并用本机的两份真实合同复跑本地流程（输出不提交）。B-06、B-09～B-17 待用户决定，不在本轮。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| R1-00 | 细化：根因、修复规则、任务拆分 | Opus | high | — | 9.2–9.8；— | docs/design/R1.md、docs/TASKS.md、docs/open\_questions.md、docs/business\_review.md | 用户确认 | 已完成 |
+| R1-01 | 填空括号【】：标签、金额（含大写）、账号、编号、人名、签约方名称跨越填空括号；recheck 的“带币种”判断同样跨越 | Opus | xhigh | R1-00 | 9.3、9.8、Q-134 ①；设计第一节 | app/redaction/detect.py、parties.py（只改名称两端的括号）、recheck.py（只改 \_has\_currency）、tests/test\_redaction\_engine.py、tests/test\_detect\_persons\_addresses.py、tests/test\_recheck.py、tests/fixtures/redaction\_golden/（新增【】模板样本） | 设计第一节正反例全部有测试；回归集召回 100% 且无误替换；真实合同 2 中名称、人名、金额、账号、编号全部替换 | 待执行 |
+| R1-02 | 人名误识别（标签后接标签、非人名词、无冒号须有分隔）；recheck 遮盖本任务代号后再比对真实值 | Opus | xhigh | R1-01 | 9.3 第 6 步、9.8、Q-134 ②；设计第二节 | app/redaction/detect.py（只改 find\_persons）、recheck.py、engine.py（只改 load\_real\_values 附近，提供代号列表）、tests/test\_detect\_persons\_addresses.py、tests/test\_recheck.py、tests/test\_gateway.py（只追加）、tests/fixtures/redaction\_golden/ | 设计第二节测试全部通过；recheck 默认参数下原有测试不改仍通过；真实合同 1、2 不再出现“授权、电话、姓名、应签署”人名，合同 2 预检不再被代号本身拦截 | 待执行 |
+| R1-03 | 表格金额：多个表头行、“合计 / 小计”列名、合计行按金额；recheck 对 ≥ 10000 或带小数的金额不论币种按数值比对 | Opus | xhigh | R1-02 | 9.3 第 5 步、9.7、9.8、Q-65、Q-134 ③；设计第三节 | app/redaction/tables.py、recheck.py（只改 \_numeric\_positions）、quotes.py（只在汇总范围受影响时调整）、tests/test\_tables.py、tests/test\_recheck.py、tests/test\_quotes.py、tests/fixtures/redaction\_golden/（新增双表头报价表样本） | 设计第三节测试全部通过；A-03 与回归集通过；真实合同 1 外发文本中无未替换的金额，补一处金额后复检仍拦截其他写法 | 待执行 |
+| R1-04 | 企业名称：延伸到最后一个后缀（含分公司、支行等），不跨越分隔符和“以下简称” | Opus | high | R1-03 | 9.3 第 2 步、Q-56、Q-134 ⑤；设计第五节 | app/redaction/parties.py、tests/test\_redaction\_engine.py、tests/fixtures/redaction\_golden/ | 设计第五节测试全部通过；回归集通过；真实合同 2 乙方与开户行完整替换，疑似遗漏中不再出现名称后半段 | 待执行 |
+| R1-05 | 合同总价标签：百分比、“的”、分项总价不作为合同总价 | Sonnet | medium | R1-04 | 9.6、Q-72、Q-134 ④；设计第四节 | app/redaction/ratio.py、tests/test\_ratio.py | 设计第四节测试全部通过；真实合同 1、2 的比例不超过 100%，合同总价取正确的金额 | 待执行 |
+| R1-06 | 中国地址判为中国（省、市、县、区等行政区划） | Sonnet | medium | R1-05 | 9.4、Q-42、Q-134 ⑥；设计第六节 | app/redaction/dictionaries.py、tests/test\_dictionaries.py、tests/fixtures/redaction\_golden/ | 设计第六节测试全部通过；真实合同 2 地址代号为“[地址：中国]”，签约方国家为中国 | 待执行 |
+| R1-07 | R1 验收：全量测试、两份真实合同逐行核对外发文本、经用户同意后真实模型试审 | Opus | medium | R1-06 | 23.1 A-03、23.3；设计第七节 | docs/business\_review.md；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；结果汇报给用户 | 待执行 |
 
 ## 五、工作量分布
 
