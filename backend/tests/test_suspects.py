@@ -76,6 +76,15 @@ def test_before_company_generic_words_excluded(text):
     assert found(f"由{text}负责") == []
 
 
+@pytest.mark.parametrize("text", ["以下模块仅本公司不限", "由我公司负责", "须经贵公司确认", "仅限我方公司", "仅对方公司使用"])
+def test_before_company_generic_word_directly_before_company(text):
+    assert found(text) == []
+
+
+def test_before_company_fictional_name_still_listed():
+    assert found("由虚构科技公司负责") == [("虚构科技公司", "before_company")]
+
+
 def test_before_company_factory_words_excluded():
     assert found("出厂价格") == []
     assert found("货物出厂前检验") == []
@@ -133,6 +142,19 @@ def test_capitalized_function_words_stripped_from_start():
 
 
 # ---------------------------------------------------------------- long_digits
+
+
+@pytest.mark.parametrize("text", [
+    "《智能建筑设计规范》（GB 50312-2007）", "GB50312-2007", "GB/T 22239-2019", "GB / T 22239-2019", "ISO 20000-2018",
+    "JGJ 12345678-2008", "依据 DL/T 12345-2008 执行", "ASTM 12345-2010",
+])
+def test_long_digits_standard_numbers_excluded(text):
+    assert found(text) == []
+
+
+@pytest.mark.parametrize("text", ["GB 12345678", "账号 1234 5678 9012", "编号 50312-2007", "GB 50312-20071"])
+def test_long_digits_not_standard_still_listed(text):
+    assert [r for _t, r in found(text)] == ["long_digits"]
 
 
 def test_long_digits_positive():

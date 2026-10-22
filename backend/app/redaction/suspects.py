@@ -40,6 +40,8 @@ _GENERIC_BEFORE_COMPANY = frozenset({
     "本", "贵", "我", "我方", "该", "对方", "双方", "各", "其", "任何", "子", "分", "母", "总", "关联", "船", "保险", "物流",
     "货运", "运输", "快递", "航空",
 })
+# “公司 / 厂”前紧挨这些泛指词时不列（“仅本公司”“由我公司负责”），不论再往前有多少汉字（R1-07）
+_GENERIC_BEFORE_WORD = ("我方", "对方", "双方", "任何", "本", "贵", "我", "该", "其", "此", "各")
 _MAX_NAME_HAN = 10
 _SUFFIX_TAIL = ("有限", "责任", "集团")
 _NAME_STOP_CHARS = "的并且或"  # 企业名称里几乎不会出现，说明前面是普通句子成分
@@ -100,6 +102,8 @@ def _chinese_suffix_candidates(text: str) -> list[Suspect]:
             after = text[m.end():m.end() + 1]
             if before == "出" or (after and after in _FACTORY_NOT_AFTER):
                 continue
+        if text[:m.start()].endswith(_GENERIC_BEFORE_WORD):
+            continue
         span = _cn_name_span(text, m.start())
         if span is not None:
             out.append(Suspect(span[0], m.end(), BEFORE_COMPANY))
@@ -247,6 +251,10 @@ _DATE_COMPACT = re.compile(r"(?<!\d)((?:19|20)\d{2})(\d{2})(\d{2})(?!\d)")
 _HS_BEFORE = re.compile(r"(?<![A-Za-z])(?i:HS|H\.S\.)(?![A-Za-z])|海关编码|商品编码|税则号")
 _UNIT_AFTER = re.compile(rf"[ \t]?(?i:{_QTY_UNIT_RE})(?![A-Za-z])")
 _MIN_DIGITS = 8
+# 标准编号：“GB 50312-2007”“GB/T 22239-2019”“ISO 9001-2015”，代号紧挨在数字之前，编号为“数字-4 位年份”（R1-07）
+_STANDARD_BEFORE = re.compile(
+    r"(?<![A-Za-z])(?:GB|GBJ|JB|HG|SH|YB|DL|JGJ|CJJ|SJ|YD|NB|ISO|IEC|EN|ASTM|DIN|JIS|ANSI|API)(?:\s*/\s*[TZ])?\s*\Z")
+_STANDARD_NO = re.compile(r"\d+(?:\.\d+)?-(?:19|20)\d{2}")
 
 
 def _valid_date(y: str, m: str, d: str) -> bool:
@@ -284,6 +292,8 @@ def _long_digit_candidates(text: str) -> list[Suspect]:
         if _HS_BEFORE.search(scan[max(0, start - 12):start]):
             continue
         if _UNIT_AFTER.match(scan, end):
+            continue
+        if _STANDARD_NO.fullmatch(m.group()) and _STANDARD_BEFORE.search(scan[max(0, start - 12):start]):
             continue
         # 含千分位逗号或小数点的数字（金额由第 5 步负责）
         if (re.match(r"[,.]\d", scan[end:end + 2]) or (start >= 2 and scan[start - 1] in ",." and scan[start - 2].isdigit())):
