@@ -92,6 +92,26 @@ def test_total_ignores_amounts_without_currency_value_or_not_positive():
     assert contract_total([], [], None) is None
 
 
+@pytest.mark.parametrize("text", [
+    "合同总价的 30%，即人民币 391,000 元",
+    "合同总价的30％，即人民币39万元",
+    "软件总价款的 20%，即￥200,000",
+    "硬件总价为人民币 200,000 元",
+])
+def test_total_label_rejects_percent_de_and_sub_item_totals(text):
+    nodes = [NodeIn("F1-P1", text), NodeIn("F1-P2", "预付 ¥ 1,000")]
+    # 标签不算，退回同币种取最大值（预付 1,000 不会被当作标签处的金额）
+    assert total_of(nodes) == ("CNY", max(h.value for h in detect.find_amounts(text) if h.currency == "CNY"))
+
+
+def test_total_label_accepted_forms():
+    nodes = [NodeIn("F1-P1", "软件总价款的 20%，即￥200,000"), NodeIn("F1-P2", "本合同固定总价为：人民币 1,000,000 元"),
+             NodeIn("F1-P3", "合同总额 人民币 900,000 元")]
+    assert total_of(nodes) == ("CNY", Decimal("1000000"))
+    nodes = [NodeIn("F1-P1", "硬件总价 ¥ 50,000"), NodeIn("F1-P2", "本合同总金额：¥ 80,000")]
+    assert total_of(nodes) == ("CNY", Decimal("80000"))
+
+
 def test_total_prices_are_not_counted():
     nodes = [NodeIn("F1-P1", "单价 USD 1250/MT"), NodeIn("F1-P2", "预付 USD 300")]
     assert total_of(nodes) == ("USD", Decimal("300"))

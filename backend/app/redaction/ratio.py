@@ -19,6 +19,24 @@ TOTAL_LABEL = re.compile(
 _LABEL_REACH = 30  # 标签之后多少个字符内的第一个金额算合同总价
 _TRAILING_CURRENCY = re.compile(rf"\s?(?:万美元|万元|亿元|美元|欧元|英镑|日元|港元|港币|元|(?:{_CODES})(?![A-Za-z]))")
 _PERCENT = Decimal("0.1")
+_PERCENT_SIGN = re.compile(r"\d\s*[%％‰]")
+_HAN = re.compile(r"[一-鿿]")
+
+
+def _label_counts(text: str, m: re.Match[str], first_start: int) -> bool:
+    """标签是否算合同总价（R1-05，设计 R1 第四节）。
+
+    1. 标签与金额之间有百分比或“的”时不算（“总价的 30%，即人民币 X 元”）。
+    2. “总价、总金额”前紧挨着“合同”以外的汉字时不算（“软件总价款”“硬件总价”）；“合同总额”“固定总价”等不受影响。
+    """
+    between = text[m.end():first_start]
+    if "的" in between or _PERCENT_SIGN.search(between):
+        return False
+    if m.group() in ("总价", "总金额") and m.start() > 0:
+        prev = text[m.start() - 1]
+        if _HAN.match(prev) and text[max(m.start() - 2, 0):m.start()] not in ("合同", "固定"):
+            return False
+    return True
 
 
 class _Node(Protocol):
@@ -55,7 +73,8 @@ def contract_total(nodes: list[_Node], amounts: list[AmountAt], main_prefix: str
             hits = sorted(by_node[idx], key=lambda h: h.start)
             for m in TOTAL_LABEL.finditer(nodes[idx].text):
                 first = next((h for h in hits if h.start >= m.end()), None)
-                if first is not None and first.start - m.end() <= _LABEL_REACH and _usable(first):
+                if first is not None and first.start - m.end() <= _LABEL_REACH and _usable(first) \
+                        and _label_counts(nodes[idx].text, m, first.start):
                     return first.currency, first.value  # type: ignore[return-value]
         return None
 
