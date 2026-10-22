@@ -114,3 +114,35 @@ export const adminRequirementsApi = {
   saveProfile: (text: string) => http.put<{ text: string; version: number | null }>('/admin/company-profile', { text }),
   versions: () => http.get<{ items: RequirementVersionRow[] }>('/admin/requirement-versions'),
 }
+
+// ---- 脱敏（设置 - 脱敏） ----
+export interface TermRow {
+  id: string
+  kind: 'learned' | 'custom'
+  term: string
+  category: string
+  is_our_party: boolean
+  enabled: boolean
+  hit_count: number
+  last_hit_at: string | null
+  created_by_name: string | null
+  created_at: string
+}
+
+export interface TermPage {
+  items: TermRow[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export const adminRedactionApi = {
+  getSetting: () => http.get<{ mask_quantity: boolean }>('/admin/settings/redaction'),
+  saveSetting: (maskQuantity: boolean) =>
+    http.put<{ mask_quantity: boolean }>('/admin/settings/redaction', { mask_quantity: maskQuantity }),
+  terms: (kind: 'learned' | 'custom', q: string, page: number) =>
+    http.get<TermPage>('/admin/terms', { kind, q: q || undefined, page }),
+  addTerm: (term: string) => http.post<TermRow>('/admin/terms', { term }),
+  setTermEnabled: (id: string, enabled: boolean) => http.patch<TermRow>(`/admin/terms/${id}`, { enabled }),
+  removeTerm: (id: string) => http.delete<void>(`/admin/terms/${id}`),
+}

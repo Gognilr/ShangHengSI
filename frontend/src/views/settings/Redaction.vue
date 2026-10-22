@@ -1,15 +1,245 @@
 <script setup lang="ts">
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { onMounted, ref } from 'vue'
+import { adminRedactionApi, type TermRow } from '@/api/admin'
+import { ApiError } from '@/api/http'
+import { formatDateTime } from '@/utils/time'
+
+const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
+
+// ---- ① 数量脱敏 ----
+const maskQuantity = ref(false)
+const maskLoading = ref(false)
+const maskError = ref('')
+
+async function loadMask() {
+  maskLoading.value = true
+  maskError.value = ''
+  try {
+    maskQuantity.value = (await adminRedactionApi.getSetting()).mask_quantity
+  } catch (e) {
+    maskError.value = `加载失败：${errText(e, '请刷新页面')}`
+  } finally {
+    maskLoading.value = false
+  }
+}
+
+async function toggleMask(value: string | number | boolean) {
+  const target = value === true
+  maskLoading.value = true
+  try {
+    maskQuantity.value = (await adminRedactionApi.saveSetting(target)).mask_quantity
+    ElMessage.success('已保存')
+  } catch (e) {
+    ElMessage.error(errText(e, '保存失败，请稍后重试'))
+    await loadMask()
+  } finally {
+    maskLoading.value = false
+  }
+}
+
+// ---- ② 自定义敏感词 ----
+const custom = ref<TermRow[]>([])
+const customLoading = ref(false)
+const customError = ref('')
+const newTerm = ref('')
+const adding = ref(false)
+
+async function loadCustom() {
+  customLoading.value = true
+  customError.value = ''
+  try {
+    custom.value = (await adminRedactionApi.terms('custom', '', 1)).items
+  } catch (e) {
+    customError.value = `加载失败：${errText(e, '请刷新页面')}`
+  } finally {
+    customLoading.value = false
+  }
+}
+
+async function addTerm() {
+  const term = newTerm.value.trim()
+  if (term.length < 2 || term.length > 100) {
+    ElMessage.error('敏感词须为 2–100 个字符')
+    return
+  }
+  adding.value = true
+  try {
+    await adminRedactionApi.addTerm(term)
+    newTerm.value = ''
+    ElMessage.success('已添加，之后新解析的文件会替换该敏感词')
+    await loadCustom()
+  } catch (e) {
+    ElMessage.error(errText(e, '添加失败，请稍后重试'))
+  } finally {
+    adding.value = false
+  }
+}
+
+async function toggleTerm(row: TermRow, value: string | number | boolean) {
+  try {
+    await adminRedactionApi.setTermEnabled(row.id, value === true)
+    ElMessage.success(value === true ? '已启用' : '已停用')
+  } catch (e) {
+    ElMessage.error(errText(e, '保存失败，请稍后重试'))
+  }
+  await loadCustom()
+}
+
+async function removeTerm(row: TermRow, reload: () => Promise<void>) {
+  try {
+    await ElMessageBox.confirm(
+      `将删除「${row.term}」。已解析的任务不受影响，删除后无法恢复。`,
+      '删除词条',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await adminRedactionApi.removeTerm(row.id)
+    ElMessage.success('已删除')
+  } catch (e) {
+    ElMessage.error(errText(e, '删除失败，请稍后重试'))
+  }
+  await reload()
+}
+
+// ---- ③ 已记住的名称 ----
+const learned = ref<TermRow[]>([])
+const learnedTotal = ref(0)
+const learnedPage = ref(1)
+const learnedSize = ref(20)
+const learnedQuery = ref('')
+const learnedLoading = ref(false)
+const learnedError = ref('')
+
+async function loadLearned() {
+  learnedLoading.value = true
+  learnedError.value = ''
+  try {
+    const res = await adminRedactionApi.terms('learned', learnedQuery.value.trim(), learnedPage.value)
+    learned.value = res.items
+    learnedTotal.value = res.total
+    learnedSize.value = res.page_size
+    // 删除后当前页已超出范围时回到最后一页
+    if (!res.items.length && res.total > 0 && learnedPage.value > 1) {
+      learnedPage.value = Math.ceil(res.total / res.page_size)
+      await loadLearned()
+    }
+  } catch (e) {
+    learnedError.value = `加载失败：${errText(e, '请刷新页面')}`
+  } finally {
+    learnedLoading.value = false
+  }
+}
+
+function searchLearned() {
+  learnedPage.value = 1
+  void loadLearned()
+}
+
+onMounted(() => {
+  void loadMask()
+  void loadCustom()
+  void loadLearned()
+})
 </script>
 
 <template>
-  <div class="placeholder">
-    <h2>脱敏</h2>
-    <p>建设中</p>
+  <div class="page">
+    <el-card shadow="never">
+      <h3 class="first">数量脱敏</h3>
+      <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
+      <div class="row">
+        <el-switch :model-value="maskQuantity" :loading="maskLoading" @change="toggleMask" />
+        <span class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</span>
+      </div>
+    </el-card>
+
+    <el-card class="gap" shadow="never">
+      <h3 class="first">自定义敏感词</h3>
+      <div class="filters">
+        <el-input v-model="newTerm" maxlength="100" placeholder="输入需要替换的敏感词（2–100 个字符）" style="width: 360px" @keyup.enter="addTerm" />
+        <el-button type="primary" :loading="adding" @click="addTerm">添加</el-button>
+      </div>
+      <div class="hint tip">新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算。</div>
+      <el-alert v-if="customError" type="error" :closable="false" show-icon :title="customError" />
+      <el-table v-loading="customLoading" :data="custom" border size="small" empty-text="尚未添加自定义敏感词">
+        <el-table-column prop="term" label="敏感词" min-width="260" />
+        <el-table-column label="启用" width="80">
+          <template #default="{ row }">
+            <el-switch :model-value="row.enabled" @change="(v: string | number | boolean) => toggleTerm(row, v)" />
+          </template>
+        </el-table-column>
+        <el-table-column label="添加时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="90">
+          <template #default="{ row }">
+            <el-button link type="danger" @click="removeTerm(row, loadCustom)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-card class="gap" shadow="never">
+      <h3 class="first">已记住的名称</h3>
+      <div class="filters">
+        <el-input v-model="learnedQuery" clearable placeholder="搜索名称" style="width: 280px" @keyup.enter="searchLearned" @clear="searchLearned" />
+        <el-button @click="searchLearned">搜索</el-button>
+      </div>
+      <el-alert v-if="learnedError" type="error" :closable="false" show-icon :title="learnedError" />
+      <el-table v-loading="learnedLoading" :data="learned" border size="small" empty-text="没有已记住的名称">
+        <el-table-column prop="term" label="名称" min-width="240" />
+        <el-table-column label="类别" width="80">
+          <template #default="{ row }">{{ row.category === 'PERSON' ? '人名' : '公司' }}</template>
+        </el-table-column>
+        <el-table-column label="是否我方" width="90">
+          <template #default="{ row }">{{ row.is_our_party ? '是' : '否' }}</template>
+        </el-table-column>
+        <el-table-column label="记录人" width="120">
+          <template #default="{ row }">{{ row.created_by_name ?? '—' }}</template>
+        </el-table-column>
+        <el-table-column label="记录时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column prop="hit_count" label="命中次数" width="90" />
+        <el-table-column label="操作" width="90">
+          <template #default="{ row }">
+            <el-button link type="danger" @click="removeTerm(row, loadLearned)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        v-if="learnedTotal > learnedSize"
+        v-model:current-page="learnedPage"
+        class="pager"
+        :page-size="learnedSize"
+        :total="learnedTotal"
+        layout="total, prev, pager, next"
+        @current-change="loadLearned"
+      />
+    </el-card>
   </div>
 </template>
 
 <style scoped>
-.placeholder {
-  padding: 16px 0;
+h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: bold;
+}
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.tip {
+  margin: 0 0 8px;
+}
+.pager {
+  margin-top: 12px;
+  justify-content: flex-end;
 }
 </style>
