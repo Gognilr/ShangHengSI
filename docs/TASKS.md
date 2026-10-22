@@ -6,7 +6,9 @@
 
 ## 当前进度
 
-- 用户决定支持旧格式（2026-10-22，Q-136）：DOC、XLS、WPS、ET、RTF 经独立断网的 LibreOffice 容器转换，作为 R2 在 R1 完成后执行；当前仍按顺序执行 **R1-04**（Opus 档，high，新会话）。
+- 用户决定支持旧格式（2026-10-22，Q-136）：DOC、XLS、WPS、ET、RTF 经独立断网的 LibreOffice 容器转换，作为 R2 在 R1 完成后执行；当前仍按顺序执行 **R1-05**（Sonnet 档，medium）。
+
+- R1-04 已完成（2026-10-22，Opus 5.5）：parties.py 的签约方名称与正文企业名称取到第一个后缀后，延伸到同一名称内的最后一个后缀（最长 60 字），延伸时认分公司、支行、分行、营业部、办事处、分厂；不跨越分隔符、引号、空白、填空括号、Q-56 边界词、“下属、负责”等从属泛指词、不成对的右括号和“（以下简称”等简称结构；正文只向明确后缀和分支机构后缀延伸（Q-137 待确认）。新增回归样本 redaction\_golden/branch\_names 与单元测试。整仓挂载 Docker 全量 1690 passed、1 warning。真实合同复跑：合同 2 乙方分公司全称、开户行（含支行）完整替换，疑似遗漏不再出现名称后半段，出口复检零命中；合同 1 外发文本不变，其“开户银行”一行只有简称加支行、没有明确后缀，仍不识别（Q-137 ③）。下一个任务：**R1-05**（Sonnet 档，medium）。
 
 - R1-03 已完成（2026-10-22，Opus 5.5）：tables.py 支持一个表格多个表头行（表头行须有单价 / 金额表头且没有纯数字单元格；第一个仍限前 20 行），每个表头的列提示管到下一个表头；金额列名增加“合计、小计、总计”；合计行（行首含合计 / 小计 / 总计 / Total）的纯数字一律按金额；header\_rows 仍返回第一个表头，报价明细表汇总范围不变。recheck 对数值 ≥ 10000 的金额真实值不论是否带币种都按数值比对。Q-134 ③ 原定“带小数的也按数值比对”，实测把与单价同值的条款编号“1.8”“2.3”拦死，改为只按 ≥ 10000（Q-134、design/R1.md 已同步，用户已确认）。新增回归样本 redaction\_golden/quote\_two\_headers（DOCX 表格），tests/acceptance\_support.py 增加按表格写入 DOCX 以便 A-03 覆盖（文件范围补充）；原用例“数量 400000 吨不拦截”按 Q-134 ③ 改为拦截。整仓挂载 Docker 全量 1682 passed、1 warning。真实合同复跑：合同 1、合同 2 的出口复检均为零命中，结算价小表、小计、清单合计全部替换。下一个任务：**R1-04**（Opus 档，high）。
 
@@ -287,7 +289,7 @@
 | R1-01 | 填空括号【】：标签、金额（含大写）、账号、编号、人名、签约方名称跨越填空括号；recheck 的“带币种”判断同样跨越 | Opus | xhigh | R1-00 | 9.3、9.8、Q-134 ①；设计第一节 | app/redaction/detect.py、parties.py（只改名称两端的括号）、recheck.py（只改 \_has\_currency）、tests/test\_redaction\_engine.py、tests/test\_detect\_persons\_addresses.py、tests/test\_recheck.py、tests/fixtures/redaction\_golden/（新增【】模板样本） | 设计第一节正反例全部有测试；回归集召回 100% 且无误替换；真实合同 2 中名称、人名、金额、账号、编号全部替换 | 已完成 |
 | R1-02 | 人名误识别（标签后接标签、非人名词、无冒号须有分隔）；recheck 遮盖本任务代号后再比对真实值 | Opus | xhigh | R1-01 | 9.3 第 6 步、9.8、Q-134 ②；设计第二节 | app/redaction/detect.py（只改 find\_persons）、recheck.py、engine.py（只改 load\_real\_values 附近，提供代号列表）、app/llm/gateway.py 与 app/review/service.py（执行时补充：只给 recheck 调用加 placeholders 参数）、tests/test\_detect\_persons\_addresses.py、tests/test\_recheck.py、tests/test\_gateway.py（只追加）、tests/fixtures/redaction\_golden/ | 设计第二节测试全部通过；recheck 默认参数下原有测试不改仍通过；真实合同 1、2 不再出现“授权、电话、姓名、应签署”人名，合同 2 预检不再被代号本身拦截 | 已完成 |
 | R1-03 | 表格金额：多个表头行、“合计 / 小计”列名、合计行按金额；recheck 对 ≥ 10000 或带小数的金额不论币种按数值比对 | Opus | xhigh | R1-02 | 9.3 第 5 步、9.7、9.8、Q-65、Q-134 ③；设计第三节 | app/redaction/tables.py、recheck.py（只改 \_numeric\_positions）、quotes.py（只在汇总范围受影响时调整）、tests/test\_tables.py、tests/test\_recheck.py、tests/test\_quotes.py、tests/fixtures/redaction\_golden/（新增双表头报价表样本）、tests/acceptance\_support.py（执行时补充：A-03 支持 DOCX 表格样本） | 设计第三节测试全部通过；A-03 与回归集通过；真实合同 1 外发文本中无未替换的金额，补一处金额后复检仍拦截其他写法 | 已完成 |
-| R1-04 | 企业名称：延伸到最后一个后缀（含分公司、支行等），不跨越分隔符和“以下简称” | Opus | high | R1-03 | 9.3 第 2 步、Q-56、Q-134 ⑤；设计第五节 | app/redaction/parties.py、tests/test\_redaction\_engine.py、tests/fixtures/redaction\_golden/ | 设计第五节测试全部通过；回归集通过；真实合同 2 乙方与开户行完整替换，疑似遗漏中不再出现名称后半段 | 待执行 |
+| R1-04 | 企业名称：延伸到最后一个后缀（含分公司、支行等），不跨越分隔符和“以下简称” | Opus | high | R1-03 | 9.3 第 2 步、Q-56、Q-134 ⑤；设计第五节 | app/redaction/parties.py、tests/test\_redaction\_engine.py、tests/fixtures/redaction\_golden/ | 设计第五节测试全部通过；回归集通过；真实合同 2 乙方与开户行完整替换，疑似遗漏中不再出现名称后半段 | 已完成 |
 | R1-05 | 合同总价标签：百分比、“的”、分项总价不作为合同总价 | Sonnet | medium | R1-04 | 9.6、Q-72、Q-134 ④；设计第四节 | app/redaction/ratio.py、tests/test\_ratio.py | 设计第四节测试全部通过；真实合同 1、2 的比例不超过 100%，合同总价取正确的金额 | 待执行 |
 | R1-06 | 中国地址判为中国（省、市、县、区等行政区划） | Sonnet | medium | R1-05 | 9.4、Q-42、Q-134 ⑥；设计第六节 | app/redaction/dictionaries.py、tests/test\_dictionaries.py、tests/fixtures/redaction\_golden/ | 设计第六节测试全部通过；真实合同 2 地址代号为“[地址：中国]”，签约方国家为中国 | 待执行 |
 | R1-07 | 疑似遗漏误报：标准编号（GB 50312-2007 等）不列为长数字；泛指词（本公司、我公司等）不列为企业名称 | Sonnet | medium | R1-06 | 9.5、Q-74、Q-135 ①；设计第七节 | app/redaction/suspects.py、tests/test\_suspects.py、tests/fixtures/redaction\_golden/（只在需要时更新标注） | 设计第七节测试全部通过；回归集 must\_suspect 仍全部列出；真实合同 2 不再列出 5 条标准编号 | 待执行 |
