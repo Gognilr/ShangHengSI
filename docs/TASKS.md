@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- M8 已细化（M8-00，2026-10-22，Opus 5.5），设计见 docs/design/M8.md，新增 Q-117～Q-127（待用户确认）。规则 10：caa723e 之后只有 Opus 的 M7-09 提交，无待评审的 Sonnet、Haiku、GPT-6.1 Sol 提交。要点：恢复采用“恢复到新库再改名”，恢复前校验 tar 成员、迁移版本和主密钥；备份文件改为 0640 + 组 aireview（gid 10001）以便 SFTP 拉取；发布包含镜像、Docker 离线安装包和去掉 build 段的 compose；防火墙只写进运维说明，不由脚本修改；M8-05 的恢复演练需要一个 Ubuntu 24.04 + Docker 的测试环境（Q-127）。下一个任务：**M8-01**（Opus 档，xhigh），等待用户确认。
+
 - M7-09 已完成（2026-10-22，Opus 5.5）：按规则 10 评审 M7-02～M7-08。新增 tests/test_m7_acceptance.py（A-06 补充：管理员调用全部 /admin/* 读取接口不出现他人任务对照表中的任何真实值，外发记录详情出口复检零命中，已记住的名称是唯一出现名称明文处；管理员访问他人任务、轮次、问题、对话、报告一律 404）。Docker 全量 1601 passed（test_forbidden_words 需整仓挂载，见 Q-116）。compose + 模拟模型浏览器验收：T-14（新增 CO-1 → 抽屉显示 → 确认发送 → 逐条结论有 CO-1 → 轮次 company_req_version=1、报告写“公司补充要求 第 1 版”）；T-16（立即备份 → .bak + .sha256、sha256sum -c OK、decrypt-backup 后 pg_restore --list 成功、保留份数 1 时只留最新一份）；T-18（只回拨验收任务的完成时间后执行清理 → 原件与节点原文清空、右栏提示、报告可导出、无重新审核、追问禁用）；5 个标签页 1440 / 1280、非管理员被拦截（设置页重定向、管理接口 403）、三种提醒条。修复 MainLayout 外层滚动导致的 1280px 横向滚动条（Q-116）。M7 验收结果与 Q-116 已经用户确认（2026-10-22）。
 
 - M7-02～M7-08 已完成（2026-10-22，Sonnet 5.5，连续执行）：账号（app/admin/users.py）、模型（model.py）、审核要求与 CO 序列迁移 0002（requirements.py）、脱敏（redaction.py）、原件保留期清理（backup/retention.py，不外发任务写 last_completed_at，原件删除后禁止重新审核和追问）、数据页（data.py）、管理员提醒（alerts.py，/auth/me 返回 code + message）；前端 api/admin.ts 及 Users / Model / Requirements / Redaction / Data 五个页面；新增 tests/test_admin_*.py、test_retention.py、test_audit.py。Docker 全量 1598 passed、1 warning；`vue-tsc --noEmit` 通过。**未做**：各前端页面的浏览器逐项检查（1440 / 1280 宽度、各状态）未在本次执行，留给 M7-09 的浏览器检查。新增 Q-115（待确认，含对范围外文件的最小改动：api/requirements.ts、tasks/service.py 序列化一个字段、删除 test_runs_api.py 两条随 Q-113 失效的旧用例）。下一个任务：**M7-09**（Opus 档，medium，M7 联调与验收），停止等待用户安排。
@@ -252,14 +254,16 @@
 
 ### M8 部署与测试（验收：全部用例，含 T-17）
 
-| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC | 状态 |
-|-|-|-|-|-|-|-|
-| M8-00 | 里程碑细化 | Opus | medium | M7-09 | 22 | 待细化 |
-| M8-01 | restore.sh：校验 SHA-256、解密（必须与备份格式一致）、恢复数据库和原件 | Opus | xhigh | M8-00 | 16.3 | 待细化 |
-| M8-02 | install.sh、upgrade.sh、backup\_now.sh | Sonnet | medium | M8-01 | 20.5 | 待细化 |
-| M8-03 | 离线镜像构建与导出脚本：固定版本，打包 RapidOCR 模型 | Sonnet | medium | M8-02 | 20.5 | 待细化 |
-| M8-04 | 中文运维说明：创建虚拟机、挂载备份盘、首次部署、升级、备份恢复、用 SFTP 拉取备份、常见问题 | Sonnet | medium | M8-03 | 20 | 待细化 |
-| M8-05 | 全量回归、恢复演练、最终验收报告 | Opus | high | M8-04 | 23 | 待细化 |
+**开工前必读 [docs/design/M8.md](design/M8.md)**：文件、命令、参数和流程都以它为准。下表“文件范围”中，后端路径相对于 `backend/`，脚本与配置路径相对于仓库根目录；“设计”列指向 M8.md 的章节。脚本的公共函数只在 `deploy/scripts/lib.sh` 中定义（M8-01 建立，之后只追加）；`app/cli.py` 各任务只加自己的子命令。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| M8-00 | 里程碑细化：发布包结构、脚本约定、恢复流程、权限、任务拆分 | Opus | medium | M7-09 | 22；— | docs/design/M8.md、docs/TASKS.md、docs/open\_questions.md | 用户确认 | 已完成 |
+| M8-01 | 恢复：restore.py（prepare 校验与解包、恢复到新库再改名、原件交换与核对）、cli 三个子命令、restore.sh、lib.sh；备份文件权限 0640 与容器 gid 10001 | Opus | xhigh | M8-00 | 16.3、20.5、Q-117～Q-120；设计二、三 | app/backup/restore.py、app/cli.py（只加 restore-prepare / restore-db / restore-files）、app/backup/service.py（只改文件权限）、Dockerfile（只改 appuser 的 uid/gid）、deploy/scripts/lib.sh、deploy/scripts/restore.sh、tests/test\_restore.py、tests/test\_backup.py（只改权限断言）、tests/test\_scripts.py | 设计 3.6 每一项都有测试；篡改、主密钥不匹配、未知迁移版本、成员名非法时系统不被改动；pg\_restore 失败时原库不变；密码不出现在命令行参数、日志、异常消息中；restore.sh 通过 `bash -n` | 待执行 |
+| M8-02 | install.sh、upgrade.sh、backup\_now.sh 与 backup-now 命令；compose 日志轮转、certs 挂载、build 段标记；.env.example、Caddyfile 注释 | Sonnet | high | M8-01 | 16.3、20.2–20.5、21、Q-120、Q-122、Q-124、Q-126；设计二、四 | deploy/scripts/install.sh、upgrade.sh、backup\_now.sh、lib.sh（只追加）、deploy/docker-compose.yml、deploy/.env.example、deploy/Caddyfile（只加注释）、app/cli.py（只加 backup-now）、tests/test\_cli\_backup\_now.py、tests/test\_scripts.py（只追加） | 设计 4.5 的测试通过；脚本不输出任何密钥（初始管理员密码除外）；`docker compose -f deploy/docker-compose.yml config` 能解析且本机 `up -d --build` 照常可用；四个服务都有日志轮转 | 待执行 |
+| M8-03 | 离线镜像与发布包：build\_release.sh（构建、断网自检、docker save、Docker 离线安装包、组装、SHA256SUMS）；OCR 模型校验与 OCR\_MODEL\_DIR | Sonnet | medium | M8-02 | 20.5、Q-121、Q-122、Q-125；设计 1.1、五 | deploy/scripts/build\_release.sh、Dockerfile（只加 OCR 模型校验一行）、deploy/docker-compose.yml（只改 OCR\_MODEL\_DIR 的值）、tests/test\_scripts.py（只追加） | 在本机实际执行一次，产出 1.1 结构的发布包；断网自检全部通过（含 OCR 识别一张图片）；发布包内 compose 不含 build 段且在没有源码目录时能 `config` 通过；报告中贴出自检输出与包内文件清单 | 待执行 |
+| M8-04 | 中文运维说明 | Sonnet | medium | M8-03 | 16、20、Q-123；设计六 | docs/ops/运维说明.md | 设计第六节 12 章齐全；每条命令与 M8-01～M8-03 的实际脚本、参数、路径一致；不含真实地址、域名、密钥 | 待执行 |
+| M8-05 | 全量回归、恢复与升级演练（T-17）、最终验收报告 | Opus | high | M8-04 | 23、Q-127；设计七 | docs/acceptance/V1.0验收报告.md；演练中发现的问题按需修复（在报告中列出） | 全部测试通过；23.1、23.2 共 28 个编号逐条有结果；T-17 演练与两种失败演练通过；升级演练通过；验收报告汇报给用户 | 待执行 |
 
 ## 五、工作量分布
 
