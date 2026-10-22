@@ -60,6 +60,15 @@ def test_short_numeric_values_need_currency():
     assert check("共 100 元", ["100"]) == [("AMOUNT", 2), ("MAP", 2)]
 
 
+def test_fill_brackets_count_as_currency():
+    """币种与数字之间隔着填空括号仍算“带币种”（B-01、Q-134 ①）；代号的序号不算数字真实值。"""
+    assert ("MAP", 4) in check("人民币【100】元", ["100"])
+    assert ("MAP", 4) in check("服务款【62500】元", ["62500"])
+    assert "AMOUNT" in cats("即人民币【93750】元")
+    assert check("即人民币[金额_10]元（=合同总价的 30.0%）", ["10"]) == []
+    assert check("第【10】期、一式【4】份", ["10", "4"]) == []
+
+
 def test_numeric_values_rewritten_forms():
     # 长数字前后不是数字即拦截；去掉空格、短横线后相同也拦截
     assert ("MAP", 3) in check("账号：6222000011112222333", ["6222 0000 1111 2222 333"])

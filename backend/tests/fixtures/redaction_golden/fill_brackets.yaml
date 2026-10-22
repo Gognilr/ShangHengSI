@@ -1,0 +1,33 @@
+description: 大型企业标准模板，填写内容用【】括起（B-01、Q-134 ①）：签约方、法定代表人、合同编号、合同总价与分期金额（小写、大写）、证件号、账号、电话、地址；条款中的份数、期数、天数、比例保留
+stance: purchase
+must_replace:
+  - {text: HX26-JK077, category: REFNO}
+  - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: 远川虚构通信技术有限公司, category: ORG}
+  - {text: 虚构商业银行股份有限公司, category: ORG}
+  - {text: 郑虚构, category: PERSON}
+  - {text: 柳示例, category: PERSON}
+  - {text: 山东省示例县城示例路 18 号, category: ADDR}
+  - {text: "312500", category: AMOUNT}
+  - {text: 叁拾壹万贰仟伍佰, category: AMOUNT}
+  - {text: "250000", category: AMOUNT}
+  - {text: "62500", category: AMOUNT}
+  - {text: "93750", category: AMOUNT}
+  - {text: 玖万叁仟柒佰伍拾元, category: AMOUNT}
+  - {text: "31250", category: AMOUNT}
+  - {text: 91370000MA3CXY812K, category: IDNO}
+  - {text: 3700 1842 5010 5000 7788, category: ACCOUNT}
+  - {text: 0531-6612345, category: PHONE}
+must_keep:
+  - 第【1】期
+  - 第【4】期
+  - 【30】％
+  - 【10】％
+  - 【0.5】%
+  - 【20】%
+  - 第【3】日
+  - 一式【4】份
+  - 各执【2】份
+  - 15日内
+  - 【合同签订后】
+  - 【2026】年【3】月【18】日

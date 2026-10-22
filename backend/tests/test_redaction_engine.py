@@ -370,6 +370,38 @@ def test_amount_patterns():
     assert amounts("610,000") == []
 
 
+def test_fill_brackets_patterns():
+    """填空括号【】［］[]〖〗：标签与值、币种与数字之间各允许一个（B-01、Q-134 ①）。"""
+    assert amounts("人民币【222063】元") == [("222063", "AMOUNT", "AMOUNT|CNY|222063")] * 2  # 前置、后置各命中一次
+    assert amounts("￥【 250000 】")[0][:2] == ("250000", "AMOUNT")
+    assert amounts("服务款［62500］元")[0][:2] == ("62500", "AMOUNT")
+    assert amounts("USD〖1,250.00〗/MT")[0][:2] == ("1,250.00", "PRICE")
+    assert amounts("人民币【22.5】万元")[0][2] == "AMOUNT|CNY|225000"
+    upper = amounts("大写：人民币【贰拾贰万贰仟零陆拾叁】元整")
+    assert upper == [("贰拾贰万贰仟零陆拾叁", "AMOUNT", "AMOUNT|CNY|222063")]
+    assert amounts("人民币【陆万陆仟陆佰壹拾捌元玖角】整")[0][0] == "陆万陆仟陆佰壹拾捌元玖角"
+    # 代号的序号不是金额（出口复检的重扫用同一函数）
+    assert amounts("即人民币[金额_10]元，大写[金额_3]元整") == []
+    # 括号里的份数、期数、比例、天数不是金额
+    for text in ("一式【4】份", "第【2】期", "合同总价的【30】％", "第【3】日", "【2026】年【3】月"):
+        assert amounts(text) == [], text
+    assert ("3700 1842 5010 5000 7788", "ACCOUNT") in cats("账号：【 3700 1842 5010 5000 7788 】")
+    assert ("HX26-JK077", "REFNO") in cats("合同编号：【  HX26-JK077 】")
+    assert ("ABCDCNBJ001", "SWIFT") in cats("SWIFT：［ABCDCNBJ001］")
+    persons = [text[h.start:h.end] for text in ("法定代表人：【郑虚构】", "授权代表：【 柳示例 】")
+               for h in detect.find_persons(text)]
+    assert persons == ["郑虚构", "柳示例"]
+    text = "法定地址：【山东省示例县城示例路 18 号】"
+    assert [text[h.start:h.end] for h in detect.find_addresses(text)] == ["山东省示例县城示例路 18 号"]
+
+
+def test_fill_brackets_party_name():
+    nodes = [NodeIn("F1-P1", "甲方：【青岚虚构石化股份有限公司】"), NodeIn("F1-P2", "乙方： 〖 远川虚构通信有限公司〗")]
+    result = compute(nodes, "purchase")
+    assert {result.mapping[p.code] for p in result.parties} == {"青岚虚构石化股份有限公司", "远川虚构通信有限公司"}
+    assert result.redacted["F1-P1"] == "甲方：【公司_A】"
+
+
 @pytest.mark.parametrize("text,value", [
     ("捌拾万元整", "800000"), ("壹佰元", "100"), ("壹仟零伍元伍角", "1005.5"), ("拾元", "10"),
     ("壹亿贰仟万元整", "120000000"), ("叁万肆仟伍佰陆拾柒元捌角玖分", "34567.89"),

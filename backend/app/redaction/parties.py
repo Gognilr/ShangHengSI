@@ -144,6 +144,10 @@ def extract_org_name(text: str, pos: int) -> tuple[int, int] | None:
     limit = min(len(text) if line_end < 0 else line_end, pos + 200)
     window = text[pos:limit]
     lead = len(window) - len(window.lstrip())
+    # 填空括号“乙方：【××有限公司】”：开括号不属于名称（Q-134 ①；与 detect.FILL_OPEN 相同）
+    if window[lead:lead + 1] in ("【", "［", "[", "〖"):
+        lead += 1
+        lead += len(window[lead:]) - len(window[lead:].lstrip(" \t"))
     for m in _SUFFIX_RE.finditer(window, lead):
         if not window[lead:m.start()].strip(" ,"):
             continue

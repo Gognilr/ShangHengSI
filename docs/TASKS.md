@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- R1-01 已完成（2026-10-22，Opus 5.5）：detect.py 的账号、SWIFT、编号、金额（前置 / 后置币种、万元、单价单位）、括号内大写金额、人名标签、地址都可跨越一个填空括号【】［］[]〖〗；后置币种金额与 recheck 的数字前不能是下划线，代号“[金额_10]元”的序号不再被当作金额；parties.extract\_org\_name 跳过名称前的开括号；recheck 的“带币种”判断跨越填空括号。新增回归样本 redaction\_golden/fill\_brackets（虚构【】模板）与单元测试；整仓挂载 Docker 全量 1650 passed、1 warning。真实合同 2 复跑：两位法定代表人、合同总价与大写、各期金额、账号、合同编号已全部替换，比例恢复正常（30.0% 等）；剩余“电话”人名（R1-02）、清单合计（R1-03）、乙方名称截断（R1-04）、地址国家（R1-06）。真实合同 1 外发文本不变。下一个任务：**R1-02**（Opus 档，xhigh）。
+
 - R1 已细化（R1-00，2026-10-22，Opus 5.5）：用两份作废合同试跑发现的业务问题记在 docs/business\_review.md（B-01～B-17），设计见 docs/design/R1.md。用户确认 R1-01～R1-06 与 Q-134（2026-10-22），并追加 B-09、B-10、B-17（R1-07～R1-09，Q-135 待确认），验收改为 R1-10。B-06、B-11～B-16 由用户逐条决定。R1-01～R1-04 为 Opus，R1-05～R1-09 为 Sonnet，R1-10 为 Opus。R1 完成后回到 M8-01。
 
 - M8-01 代码已完成、服务器实跑暂缓（2026-10-22，Opus 5.5）：app/backup/restore.py（prepare 校验成员 / 清单 / 迁移版本 / 主密钥后再解包；restore_db 恢复到 {库名}_restore 再改名，失败时原库不动；swap_files / verify / drop_old_files）、cli restore-prepare / restore-db / restore-files、deploy/scripts/lib.sh、restore.sh；备份文件 0640，appuser uid/gid 10001。新增 tests/test_backup_restore.py（test_restore.py 已被代号还原占用，Q-132）、tests/test_scripts.py；整仓挂载 Docker 全量 1640 passed、1 warning。提交 e716d50。新增 Q-132、Q-133（待确认）。测试服务器已同步 e716d50 并重建重启（HTTPS 200，数据未动）。**未做**：服务器上的 restore.sh 实跑与主密钥不匹配演练——用户决定先暂停部署与发布包（M8-01 实跑、M8-02～M8-05），转而细化实际试用中发现的业务问题；M8-01 状态保持“待执行”，恢复部署工作时从服务器实跑继续。
@@ -276,7 +278,7 @@
 | 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
 |-|-|-|-|-|-|-|-|-|
 | R1-00 | 细化：根因、修复规则、任务拆分 | Opus | high | — | 9.2–9.8；— | docs/design/R1.md、docs/TASKS.md、docs/open\_questions.md、docs/business\_review.md | 用户确认 | 已完成 |
-| R1-01 | 填空括号【】：标签、金额（含大写）、账号、编号、人名、签约方名称跨越填空括号；recheck 的“带币种”判断同样跨越 | Opus | xhigh | R1-00 | 9.3、9.8、Q-134 ①；设计第一节 | app/redaction/detect.py、parties.py（只改名称两端的括号）、recheck.py（只改 \_has\_currency）、tests/test\_redaction\_engine.py、tests/test\_detect\_persons\_addresses.py、tests/test\_recheck.py、tests/fixtures/redaction\_golden/（新增【】模板样本） | 设计第一节正反例全部有测试；回归集召回 100% 且无误替换；真实合同 2 中名称、人名、金额、账号、编号全部替换 | 待执行 |
+| R1-01 | 填空括号【】：标签、金额（含大写）、账号、编号、人名、签约方名称跨越填空括号；recheck 的“带币种”判断同样跨越 | Opus | xhigh | R1-00 | 9.3、9.8、Q-134 ①；设计第一节 | app/redaction/detect.py、parties.py（只改名称两端的括号）、recheck.py（只改 \_has\_currency）、tests/test\_redaction\_engine.py、tests/test\_detect\_persons\_addresses.py、tests/test\_recheck.py、tests/fixtures/redaction\_golden/（新增【】模板样本） | 设计第一节正反例全部有测试；回归集召回 100% 且无误替换；真实合同 2 中名称、人名、金额、账号、编号全部替换 | 已完成 |
 | R1-02 | 人名误识别（标签后接标签、非人名词、无冒号须有分隔）；recheck 遮盖本任务代号后再比对真实值 | Opus | xhigh | R1-01 | 9.3 第 6 步、9.8、Q-134 ②；设计第二节 | app/redaction/detect.py（只改 find\_persons）、recheck.py、engine.py（只改 load\_real\_values 附近，提供代号列表）、tests/test\_detect\_persons\_addresses.py、tests/test\_recheck.py、tests/test\_gateway.py（只追加）、tests/fixtures/redaction\_golden/ | 设计第二节测试全部通过；recheck 默认参数下原有测试不改仍通过；真实合同 1、2 不再出现“授权、电话、姓名、应签署”人名，合同 2 预检不再被代号本身拦截 | 待执行 |
 | R1-03 | 表格金额：多个表头行、“合计 / 小计”列名、合计行按金额；recheck 对 ≥ 10000 或带小数的金额不论币种按数值比对 | Opus | xhigh | R1-02 | 9.3 第 5 步、9.7、9.8、Q-65、Q-134 ③；设计第三节 | app/redaction/tables.py、recheck.py（只改 \_numeric\_positions）、quotes.py（只在汇总范围受影响时调整）、tests/test\_tables.py、tests/test\_recheck.py、tests/test\_quotes.py、tests/fixtures/redaction\_golden/（新增双表头报价表样本） | 设计第三节测试全部通过；A-03 与回归集通过；真实合同 1 外发文本中无未替换的金额，补一处金额后复检仍拦截其他写法 | 待执行 |
 | R1-04 | 企业名称：延伸到最后一个后缀（含分公司、支行等），不跨越分隔符和“以下简称” | Opus | high | R1-03 | 9.3 第 2 步、Q-56、Q-134 ⑤；设计第五节 | app/redaction/parties.py、tests/test\_redaction\_engine.py、tests/fixtures/redaction\_golden/ | 设计第五节测试全部通过；回归集通过；真实合同 2 乙方与开户行完整替换，疑似遗漏中不再出现名称后半段 | 待执行 |

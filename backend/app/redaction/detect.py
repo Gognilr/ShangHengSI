@@ -23,6 +23,13 @@ class Hit:
 
 # ---------------------------------------------------------------- 第 4 步：格式化信息
 
+# 填空括号（Q-134 ①）：模板中用【】等括起填写内容；标签与值、币种与数字之间各允许一个。
+# 只认这几种，不含圆括号和书名号。_OPEN / _CLOSE 都可选，只吃同一行内的空格和制表符
+FILL_OPEN = "【［[〖"
+FILL_CLOSE = "】］]〗"
+_OPEN = r"(?:[【［\[〖][ \t]*)?"
+_CLOSE = r"(?:[ \t]*[】］\]〗])?"
+
 _EMAIL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 _URL = re.compile(r"(?:https?://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&'*+,;=%]+", re.IGNORECASE)
 _URL_TRAILING = ".,;:!?'"
@@ -33,10 +40,10 @@ _IBAN = re.compile(
 )
 _ACCOUNT = re.compile(
     r"(?:开户行账号|银行账号|收款账号|付款账号|账号|帐号|账户|帐户|(?i:account\s*(?:no\.?|number)|a/c\s*no\.?|a/c))"
-    r"\s*[:：]?\s*(\d[\d \-]{6,45}\d)(?![\d])"
+    r"\s*[:：]?\s*" + _OPEN + r"(\d[\d \-]{6,45}\d)(?![\d])"
 )
 _SWIFT = re.compile(
-    r"(?i:swift(?:\s*/\s*bic)?(?:\s*code)?|bic(?:\s*code)?)\s*[:：]?\s*"
+    r"(?i:swift(?:\s*/\s*bic)?(?:\s*code)?|bic(?:\s*code)?)\s*[:：]?\s*" + _OPEN +
     r"([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)(?![A-Za-z0-9])"
 )
 _CREDIT_CODE = re.compile(r"(?<![0-9A-Za-z])[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}(?![0-9A-Za-z])")
@@ -44,7 +51,7 @@ _ID_CARD = re.compile(r"(?<![0-9A-Za-z])\d{17}[\dXx](?![0-9A-Za-z])")
 _REFNO = re.compile(
     r"(?:合同编号|合同号|订单编号|订单号|发票编号|发票号|"
     r"(?i:(?:contract|order|invoice|pi|p\.?\s?o\.?)\s*no\.?|(?:contract|order|invoice)\s*number))"
-    r"\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-/_.]{1,48}[A-Za-z0-9])"
+    r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9][A-Za-z0-9\-/_.]{1,48}[A-Za-z0-9])"
 )
 _PHONE_INTL = re.compile(r"(?<![\w+])\+\d{1,3}[ -]?\d[\d -]{6,14}\d(?!\d)")
 _PHONE_MOBILE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
@@ -108,22 +115,26 @@ _CURRENCY = {
 }
 _CODES = "RMB|CNY|USD|EUR|JPY|GBP|HKD|AED|SAR|TRY|INR|AUD|CAD|CHF|SGD|KRW|RUB"
 _PREFIX = re.compile(
-    rf"(?:(?<![A-Za-z])(?:US\$|HK\$|{_CODES})(?![A-Za-z])|人民币|美元|欧元|[¥￥$€£])\s?({_NUM})(?![\d,.]*\d)"
+    rf"(?:(?<![A-Za-z])(?:US\$|HK\$|{_CODES})(?![A-Za-z])|人民币|美元|欧元|[¥￥$€£])\s?{_OPEN}({_NUM})(?![\d,.]*\d)"
 )
 _SUFFIX = re.compile(
     # 后置币种不含“人民币”：避免把“2.3 人民币参考价”这类条款编号当成金额
-    rf"(?<![\d.,])({_NUM})\s?(万美元|万元|亿元|美元|欧元|英镑|日元|港元|港币|元|(?:{_CODES})(?![A-Za-z]))"
+    # 数字前不能是下划线或字母：外发文本中代号“[金额_1]元”的序号不是金额（出口复检的重扫用同一函数）
+    rf"(?<![\d.,_A-Za-z])({_NUM}){_CLOSE}\s?(万美元|万元|亿元|美元|欧元|英镑|日元|港元|港币|元|(?:{_CODES})(?![A-Za-z]))"
 )
 _FOLLOWED_BY_NUMBER = re.compile(r"\s?\d")
-_SUFFIX_AFTER_PREFIX =re.compile(r"\s?(万美元|万元|亿元|美元|元)")
+_SUFFIX_AFTER_PREFIX = re.compile(_CLOSE + r"\s?(万美元|万元|亿元|美元|元)")
 _CN_DIGITS = "零壹贰叁肆伍陆柒捌玖"
 _CN_UPPER = re.compile(
     r"[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]*[壹贰叁肆伍陆柒捌玖][零壹贰叁肆伍陆柒捌玖拾佰仟万亿]*[元圆]"
     r"(?:[零壹贰叁肆伍陆柒捌玖][角分])*整?"
     r"|[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]*[壹贰叁肆伍陆柒捌玖][零壹贰叁肆伍陆柒捌玖拾佰仟万亿]*(?:[零壹贰叁肆伍陆柒捌玖][角分])+整?"
+    # 填空括号内的大写、“元”在括号外：“人民币【贰拾贰万贰仟零陆拾叁】元整”只替换括号内的部分（Q-134 ①）
+    r"|[零壹贰叁肆伍陆柒捌玖拾佰仟万亿]*[壹贰叁肆伍陆柒捌玖][零壹贰叁肆伍陆柒捌玖拾佰仟万亿]*(?:[零壹贰叁肆伍陆柒捌玖][角分])*"
+    r"(?=[ \t]*[】］\]〗][ \t]*[元圆])"
 )
 # 金额后紧跟“/吨、/MT、/kg、每吨”等计量单位时归为单价
-_PER_UNIT = re.compile(r"\s*(?:/|每)\s*(?:吨|公斤|千克|个|件|套|台|箱|桶|米|批|[A-Za-z]{1,5}\b)")
+_PER_UNIT = re.compile(_CLOSE + r"\s*(?:/|每)\s*(?:吨|公斤|千克|个|件|套|台|箱|桶|米|批|[A-Za-z]{1,5}\b)")
 _BARE_NUMBER = re.compile(rf"^\s*({_NUM})\s*$")
 _MULTIPLIER = {"万元": Decimal(10000), "万美元": Decimal(10000), "亿元": Decimal(100000000)}
 
@@ -196,7 +207,7 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
         return "AMOUNT"
 
     for m in _PREFIX.finditer(text):
-        cur_text = text[m.start():m.start(1)].strip()
+        cur_text = text[m.start():m.start(1)].strip().rstrip(FILL_OPEN).strip()
         currency = _CURRENCY.get(cur_text)
         value = _decimal(m.group(1))
         tail = _SUFFIX_AFTER_PREFIX.match(text, m.end(1))
@@ -244,7 +255,7 @@ _PERSON_LABELS_COLON = (
 _LABEL_NOTE = r"[ \t]*[（(][^）)\n]{1,6}[）)]"
 _PERSON_LABEL = re.compile(
     r"(?<![A-Za-z])(?:(?:" + "|".join(_PERSON_LABELS_OPT) + r")(?:" + _LABEL_NOTE + r"[ \t]*[:：]|[ \t]*[:：]?)"
-    r"|(?:" + "|".join(_PERSON_LABELS_COLON) + r")(?:" + _LABEL_NOTE + r")?[ \t]*[:：])[ \t]*"
+    r"|(?:" + "|".join(_PERSON_LABELS_COLON) + r")(?:" + _LABEL_NOTE + r")?[ \t]*[:：])[ \t]*" + _OPEN
 )
 _CN_TITLES = ("总经理", "董事长", "先生", "女士", "小姐", "经理", "主任", "总裁", "代表")  # 长的在前
 _CN_PERSON_CUT = ("电话", "手机", "传真", "邮箱", "邮件", "职务", "职位", "部门", "地址")
@@ -340,7 +351,7 @@ _ADDRESS_LABEL = re.compile(
 _INFO_LABEL = re.compile(
     r"(?:电话|手机|传真|邮箱|联系人|(?<![A-Za-z])(?i:tel|phone|fax|e-?mail|contact|attn)\.?)[ \t]*[:：]"
 )
-_ADDRESS_EDGE = " \t,，;；、.。:：\r"
+_ADDRESS_EDGE = " \t,，;；、.。:：\r" + FILL_OPEN + FILL_CLOSE
 
 
 def find_addresses(text: str) -> list[Hit]:

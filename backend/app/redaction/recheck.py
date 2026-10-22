@@ -27,13 +27,16 @@ from app.security import crypto
 _RESCAN_CATEGORIES = {"PHONE", "EMAIL", "ACCOUNT", "IDNO"}
 _NUMERIC_VALUE = re.compile(r"^[+\d][\d\s,.\-]*$")
 _AMOUNT_VALUE = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
-_NUMBER_IN_TEXT = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\d])")
+# 数字前不能是下划线：代号“[金额_10]”的序号不是数字类真实值
+_NUMBER_IN_TEXT = re.compile(r"(?<![\d.,_])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\d])")
+# 币种与数字之间可隔一个填空括号：“人民币【123456】元”（Q-134 ①，与 detect.FILL_OPEN / FILL_CLOSE 相同）
 _CURRENCY_BEFORE = re.compile(
-    r"(?:US\$|HK\$|RMB|CNY|USD|EUR|JPY|GBP|HKD|AED|SAR|TRY|INR|AUD|CAD|CHF|SGD|KRW|RUB|人民币|美元|欧元|[¥￥$€£])\s?$",
+    r"(?:US\$|HK\$|RMB|CNY|USD|EUR|JPY|GBP|HKD|AED|SAR|TRY|INR|AUD|CAD|CHF|SGD|KRW|RUB|人民币|美元|欧元|[¥￥$€£])\s?"
+    r"(?:[【［\[〖][ \t]*)?$",
     re.IGNORECASE,
 )
 _CURRENCY_AFTER = re.compile(
-    r"^\s?(?:万美元|万元|亿元|美元|欧元|英镑|日元|港元|港币|元|RMB|CNY|USD|EUR|JPY|GBP|HKD|AED|SAR|TRY|INR|AUD|CAD|CHF|SGD|KRW|RUB)"
+    r"^(?:[ \t]*[】］\]〗])?\s?(?:万美元|万元|亿元|美元|欧元|英镑|日元|港元|港币|元|RMB|CNY|USD|EUR|JPY|GBP|HKD|AED|SAR|TRY|INR|AUD|CAD|CHF|SGD|KRW|RUB)"
     r"(?![A-Za-z])",
     re.IGNORECASE,
 )
@@ -68,14 +71,14 @@ def _decimal(s: str) -> Decimal | None:
 
 
 def _has_currency(text: str, start: int, end: int) -> bool:
-    return bool(_CURRENCY_BEFORE.search(text[max(0, start - 5):start]) or _CURRENCY_AFTER.match(text[end:end + 4]))
+    return bool(_CURRENCY_BEFORE.search(text[max(0, start - 10):start]) or _CURRENCY_AFTER.match(text[end:end + 10]))
 
 
 def _digit_bounded(text: str, start: int, end: int) -> bool:
-    """前后都不是数字（也不是紧接数字的千分位或小数点）。"""
+    """前后都不是数字（也不是紧接数字的千分位或小数点）；前面是下划线时是代号序号（“[金额_10]”），不算。"""
     before = text[start - 1] if start > 0 else ""
     after = text[end] if end < len(text) else ""
-    if before.isdigit() or after.isdigit():
+    if before.isdigit() or after.isdigit() or before == "_":
         return False
     if before in ",." and start > 1 and text[start - 2].isdigit():
         return False
