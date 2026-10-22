@@ -1,7 +1,8 @@
 """追问对话（SPEC 13、19.6，设计 docs/design/M6.md 第七节）。
 
-- 用户问题先在服务端脱敏（对照表 → 已记住名称与自定义敏感词 → 9.3 第 4～7 步），预览与发送各算一次，
-  发送时不接受前端传来的脱敏结果；结果经模型网关（上限 → 出口复检 → 发送 → 记录）发出，不自动重试。
+- 用户问题先在服务端脱敏（对照表 → 已记住名称与自定义敏感词 → 9.3 第 2、4～7 步），预览与发送各算一次，
+  发送时不接受前端传来的脱敏结果。对照表里没有的对象换成按任务编号的代号（[公司_Q1]），发送前写入本任务对照表
+  （加密），因此用户问题和模型回复都能还原，同一对象在后续追问中沿用同一代号（Q-97）；结果经模型网关（上限 → 出口复检 → 发送 → 记录）发出，不自动重试。
 - chat_messages 只存代号形式；返回给前端时按对照表还原。失败时不写对话。
 - 日志只写任务 id、llm_call id 和状态，不写问题与回复。
 """
@@ -13,10 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_setting
-from app.db.models import ChatMessage, Finding, RedactionTerm, ReviewRun, Task, User
+from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, User
 from app.llm import gateway
-from app.redaction import detect, placeholders, recheck
-from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map
+from app.redaction import detect, parties, placeholders, recheck
+from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
 from app.redaction.outbound import escape_document_tags
 from app.redaction.restore import restore
 from app.review.prompt import chat_system_prompt, split_outbound
@@ -31,10 +32,6 @@ TIMEOUT_S = 120  # 同步返回，超时 120 秒（SPEC 13）
 _SEVERITY = {"high": "高", "medium": "中", "low": "低"}
 _SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
-# 对照表里没有的对象用类别通用代号（Q-89）
-_TERM_CODES = {"ORG": "[公司]", "PERSON": "[人员]", "CUSTOM": "[敏感词]"}
-_HIT_CODES = {"PHONE": "[电话]", "EMAIL": "[邮箱]", "URL": "[网址]", "IDNO": "[证件号]", "ACCOUNT": "[账号]",
-              "SWIFT": "[SWIFT]", "REFNO": "[编号]", "AMOUNT": "[金额]", "PRICE": "[单价]", "PERSON": "[人员]"}
 
 _ERRORS = {
     "BLOCKED": (409, "CHAT_BLOCKED", "问题中仍含未脱敏的信息，已拦截，未发送"),
@@ -112,43 +109,64 @@ def _norm(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip()).casefold()
 
 
-def redact_question(db: Session, task: Task, message: str) -> tuple[str, bool]:
-    """(代号形式的问题, 是否与原文不同)。已被前一步替换的文字不再参与后续识别。"""
+@dataclass
+class Redacted:
+    text: str  # 代号形式的问题
+    changed: bool  # 与原文不同
+    new_entries: dict[str, str]  # 本次新分配的追问代号 → 真实值（发送前写入对照表）
+
+
+def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]) -> Redacted:
+    """纯函数：按 full_map（本任务对照表）和 terms（(名称, 类别)）脱敏。已被前一步替换的文字不再参与后续识别。"""
     text = message.strip()
     accepted: list[_Span] = []
+    new_entries: dict[str, str] = {}
+    next_no = max((n for k in full_map if (n := placeholders.chat_number(k)) is not None), default=0) + 1
 
     def take(start: int, end: int, code: str) -> None:
         if start >= end or any(s.start < end and start < s.end for s in accepted):
             return
         accepted.append(_Span(start, end, code))
 
-    # 1. 本任务对照表：真实值 → 代号（“代号#序号”的键取 # 前的代号），长的优先
-    mapping = [(key.split("#", 1)[0], value) for key, value in _load_full_map(db, task.id).items() if value]
+    # 1. 本任务对照表（含以前追问分配的代号）：真实值 → 代号（“代号#序号”的键取 # 前的代号），长的优先
+    mapping = [(key.split("#", 1)[0], value) for key, value in full_map.items() if value]
     by_value = {_norm(value): code for code, value in mapping}
     for code, value in sorted(mapping, key=lambda kv: len(kv[1]), reverse=True):
         for start, end in _value_spans(text, value):
             take(start, end, code)
 
-    # 2. 启用的已记住名称与自定义敏感词：对照表里有的用原代号，没有的用类别通用代号
-    terms = [(crypto.decrypt_text(r.term_enc), r.category)
-             for r in db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True)))]
-    for term, category in sorted(terms, key=lambda t: len(t[0]), reverse=True):
-        code = by_value.get(_norm(term), _TERM_CODES.get(category, "[敏感词]"))
-        for start, end in _value_spans(text, term):
-            take(start, end, code)
-
-    # 3. 9.3 第 4～7 步：格式化信息、金额、人名、地址
-    def hit_code(hit: detect.Hit) -> str:
-        known = by_value.get(_norm(text[hit.start:hit.end]))
+    def code_for(surface: str, category: str, country: str | None = None) -> str:
+        """对照表中已有的用原代号；没有的分配新的追问代号，同一对象（规范化后相同）只分配一次。"""
+        nonlocal next_no
+        known = by_value.get(_norm(surface))
         if known:
             return known
-        if hit.category == "ADDR":
-            return placeholders.address_code(hit.key) if hit.key else "[地址]"
-        return _HIT_CODES.get(hit.category, "[敏感词]")
+        code = placeholders.chat_code(category, next_no, country)
+        next_no += 1
+        new_entries[code] = surface
+        by_value[_norm(surface)] = code
+        return code
 
+    # 2. 启用的已记住名称与自定义敏感词
+    for term, category in sorted(terms, key=lambda t: len(t[0]), reverse=True):
+        spans = _value_spans(text, term)
+        if spans:
+            code = code_for(text[spans[0][0]:spans[0][1]], category)
+            for start, end in spans:
+                take(start, end, code)
+
+    # 3. 9.3 第 2 步：带企业后缀的名称（标签后的签约方、正文中的其他企业名称）
+    for start, end in [(s_, e_) for _label, s_, e_ in parties.find_labeled_parties(text)] + parties.find_other_org_names(text):
+        if not any(s.start < end and start < s.end for s in accepted):
+            take(start, end, code_for(text[start:end], "ORG"))
+
+    # 4. 9.3 第 4～7 步：格式化信息、金额、人名、地址
     for find in (detect.find_formatted, detect.find_amounts, detect.find_persons, detect.find_addresses):
         for hit in find(text):
-            take(hit.start, hit.end, hit_code(hit))
+            if any(s.start < hit.end and hit.start < s.end for s in accepted):
+                continue
+            country = hit.key if hit.category == "ADDR" and hit.key else None
+            take(hit.start, hit.end, code_for(text[hit.start:hit.end], hit.category, country))
 
     out, pos = [], 0
     for span in sorted(accepted, key=lambda s: s.start):
@@ -157,7 +175,33 @@ def redact_question(db: Session, task: Task, message: str) -> tuple[str, bool]:
         pos = span.end
     out.append(text[pos:])
     redacted = escape_document_tags("".join(out))
-    return redacted, redacted != text
+    used = {s.code for s in accepted}
+    return Redacted(redacted, redacted != text, {k: v for k, v in new_entries.items() if k in used})
+
+
+def _terms(db: Session) -> list[tuple[str, str]]:
+    return [(crypto.decrypt_text(r.term_enc), r.category)
+            for r in db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True)))]
+
+
+def redact_question(db: Session, task: Task, message: str) -> tuple[str, bool]:
+    """预览用：(代号形式的问题, 是否与原文不同)；不写对照表。"""
+    r = _redact(message, _load_full_map(db, task.id), _terms(db))
+    return r.text, r.changed
+
+
+def _redact_and_record(db: Session, task: Task, message: str) -> str:
+    """发送用：锁住本任务对照表后脱敏，新分配的追问代号写入对照表并提交，再返回代号形式的问题。
+
+    在调用模型之前提交：同一任务并发追问时不会把同一代号分给不同对象；发送失败时多出的条目不影响还原。
+    """
+    db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
+    full_map = _load_full_map(db, task.id)
+    r = _redact(message, full_map, _terms(db))
+    if r.new_entries:
+        write_full_map(db, task.id, {**full_map, **r.new_entries})
+    db.commit()
+    return r.text
 
 
 # ---------------------------------------------------------------- 消息
@@ -226,7 +270,7 @@ def preview(db: Session, task: Task, message: str) -> dict:
 
 def send(db: Session, task: Task, user: User, message: str) -> dict:
     run = _require(db, task)
-    question, _changed = redact_question(db, task, message)
+    question = _redact_and_record(db, task, message)
     messages = build_messages(db, task, run, question)
     try:
         result = gateway.call_model(db, purpose="chat", messages=messages, user_id=user.id, task_id=task.id,

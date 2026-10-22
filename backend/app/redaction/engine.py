@@ -33,7 +33,7 @@ from app.db.models import (
 from app.redaction import detect, outbound, parties as P, quotes, ratio, suspects as S, tables
 from app.redaction.dictionaries import _country_index
 from app.redaction.placeholders import (
-    ADDR, BUYER, FIXED, OTHER, OUR_CODE, SELLER, Allocator, address_code, code_role,
+    ADDR, BUYER, FIXED, OTHER, OUR_CODE, SELLER, Allocator, address_code, chat_number, code_role,
 )
 from app.redaction.recheck import recheck
 from app.security import crypto
@@ -639,6 +639,12 @@ def _main_prefix(db: Session, task_id: uuid.UUID) -> str | None:
 
 
 def _write_map(db: Session, task_id: uuid.UUID, mapping: dict[str, str]) -> None:
+    """重算脱敏时整体替换对照表，但保留追问写入的条目（chat_number 不为空的代号，Q-97），使旧对话仍可还原。"""
+    kept = {k: v for k, v in _load_full_map(db, task_id).items() if chat_number(k) is not None and k not in mapping}
+    write_full_map(db, task_id, {**mapping, **kept})
+
+
+def write_full_map(db: Session, task_id: uuid.UUID, mapping: dict[str, str]) -> None:
     blob = crypto.encrypt_text(json.dumps(mapping, ensure_ascii=False, sort_keys=True))
     row = db.get(RedactionMap, task_id)
     if row is None:

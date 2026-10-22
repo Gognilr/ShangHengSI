@@ -2,6 +2,7 @@
 
 同一任务内同一对象始终使用同一代号；字母和序号按首次出现顺序分配。
 """
+import re
 
 OUR_CODE = "我方"
 
@@ -32,6 +33,27 @@ _NUMBERED = {
     "QTY": "[数量_{}]",
     "CUSTOM": "[敏感词_{}]",
 }
+
+# 追问中出现、本任务对照表里没有的对象（M6-07，open_questions Q-97）：按任务编号，写入本任务对照表，可唯一还原。
+# 序号带 Q 前缀，与解析时分配的代号不会重名；脱敏重算对照表时保留这些条目。
+CHAT_LABELS = {
+    "ORG": "公司", "PERSON": "人员", "CUSTOM": "敏感词", "PHONE": "电话", "EMAIL": "邮箱", "URL": "网址",
+    "IDNO": "证件号", "ACCOUNT": "账号", "SWIFT": "SWIFT", "REFNO": "编号", "AMOUNT": "金额", "PRICE": "单价",
+    "ADDR": "地址",
+}
+CHAT_CODE = re.compile(r"^\[[^\[\]_]+_Q(\d+)(?:：[^\[\]]*)?\]$")
+
+
+def chat_code(category: str, n: int, country: str | None = None) -> str:
+    """[公司_Q1]、[电话_Q2]；地址保留国家：[地址_Q3：阿联酋]。"""
+    label = CHAT_LABELS.get(category, "敏感词")
+    return f"[{label}_Q{n}：{country}]" if category == "ADDR" and country else f"[{label}_Q{n}]"
+
+
+def chat_number(code: str) -> int | None:
+    m = CHAT_CODE.match(code)
+    return int(m.group(1)) if m else None
+
 
 # 签约方标签（规范化为中文）→ 代号中的角色
 BUYER = "买方"
