@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- M6-09 已完成（2026-10-22，Opus 5.5）：用户确认 Q-97 ③④ 后开工；按规则 10 评审 M6-08（c36cef1、adbabe1），未发现问题。新增 tests/test_m6_acceptance.py：A-01 在全部样本识别出的 14 张报价表上独立 Decimal 逐行重算（20 行、10 个合计，2 错行 + 1 错合计全部报出、零误报，2 个无法识别行列为未核验）；A-03 回归补本地校验样本 15 份（真实接口 + 模拟网关，出口复检零命中、本地校验金额零外发）。T-04、T-05、T-15、T-19 既有用例通过。验收中按 SPEC 11.3 把问题类别名称改为“表述 / 合规与制裁”（labels.ts、report_docx.py，bd749f5）。浏览器（compose 按当前代码重建 + 模拟模型，虚构账号 m609qa）：第二步本地校验面板、界面确认发送、结果页本地校验标签与点击定位、追问弹窗（[公司_Q1]、[电话_Q2]）与还原、外发记录核对、两种报告导出、1280 无横向溢出，均通过。Docker 最终全量 1337 passed、1 warning，exit 0。详见 docs/acceptance/M6-09.md。M6 验收结果待用户确认；Q-91～Q-96、Q-98 待确认。下一个任务：**M7-00**（Opus 档，high，里程碑细化），停止等待用户安排。
+
 - M6-08 已完成（2026-10-22，GPT-6.1 Sol）：ChatPanel.vue、api/chat.ts 与结果页挂载；右侧 480px 追问抽屉、服务端脱敏预览确认、任务级“不再提示”、Ctrl+Enter、等待禁用和失败保留问题供手动重试。前端构建 exit 0；浏览器用独立数据库、虚构账号、真实接口 + 网关模拟回复核对 T-15 弹窗与还原、取消、偏好刷新及任务隔离、失败仅一次调用且不写对话、手动重试、加载失败、不可用原因、纯文本显示，1440 / 1280 无横向溢出，抽屉均为 480px。服务就绪后功能检查无新增 JS 控制台错误（准备阶段 auth/me 502 已解决，原始日志保留）。Docker 最终全量 1332 passed、1 warning，exit 0；因执行期间出现其他会话的后端 WIP，最终测试使用已提交 63ff11e 后端快照 + 本次前端只读挂载，不包含或验证他人的后端 WIP。新增 Q-98（待确认）。凭据位于本机临时目录 aireview-m608-qa（verification.md、full-final.log、截图与控制台记录）；实现提交 c36cef1。下一个任务：**M6-09**（Opus 档，medium，M6 联调与验收），停止，交 Opus 评审与验收。
 
 - M6-07 已完成（2026-10-22，Opus 5.5）：app/chat/service.py、router.py（GET /tasks/{id}/chat、POST …/chat/preview、POST …/chat）；问题在服务端按对照表 → 已记住名称与自定义敏感词 → 9.3 第 4～7 步脱敏，发送时重新计算、不接受前端结果；网关 call_model 新增 timeout_s、retry 两个关键字参数（默认行为不变），追问固定 120 秒、不重试；失败不写对话；system 消息为模板第 1–7 条 + 自然语言回答（prompt.chat_system_prompt）。新增 tests/test_chat.py（T-15、通用代号、消息结构与最近 10 条、截断、可用条件、长度、CSRF、HTTP 500 / 超时 / 拦截 / 上限、A-06、日志安全）与网关两项测试；Docker 全量 1332 passed、1 warning。新增 Q-97（待确认）。下一个任务：**M6-08**（Sonnet 档，medium），模型不同，须换会话
@@ -65,7 +67,7 @@
 - M5-02 已完成（2026-10-19，Opus 5.5）：prompt.fixed_prompt_text；engine._add_term 在写入前按出口复检规则比较（只看 MAP 类原因，固定文字本身的格式扫描命中不算），手动补充与疑似遗漏“替换”两条路径返回 422 TERM_IN_PROMPT，具体名称不受影响；T-13 经真实接口通过（run=failed、提示文字、无新的 sent 记录）；Docker 全部测试 1088 passed（含回归集与 A-03）；下一个任务：**M5-03**（Sonnet 档，medium），模型不同，须换 Sonnet 会话
 - M5-03 已完成（2026-10-20，Codex）：coverage 结构与 RunDetail summary / notes 已实现；新增虚构报价夹具补足 A-05；新增 Q-79（待确认）；Docker 全部测试 1094 passed、1 warning；下一个任务：**M5-04**（Sonnet 档，medium）
 - M5-04 已完成（2026-10-20，Opus 5.5，用户要求在本会话继续）：PATCH /tasks/{id}（reviewed、awaiting_confirm 可改；local_only 409 LOCAL_ONLY；锁任务行后 apply_party_changes 整体重算，不写审计，latest_run_id 与 high_count 不变）；ReRunDialog 与结果页“重新审核”按钮（reviewed 且 policy=ai 时显示）；`npm run build` 通过；浏览器 1440 / 1280 宽度走通：立场改为采购后回到第二步，代号按新立场重算（我方改为买方后对方为“供应商_A”），再次确认发送产生第 2 轮，第 1 轮保留；控制台只有登录前的 /auth/me 401；未在浏览器中触发 409 提示（后端测试覆盖）；Docker 全部测试 1105 passed；下一个任务：**M5-05**（Sonnet 档，high）
-- 上次 Opus 评审到的提交：39020d3（2026-10-22 Opus 5.5 评审 3980acb..39020d3，即 M5-05 收尾至 M6-06 及 M6-05 补充修复：文件范围与用户授权的扩围一致；未改 SPEC、CLAUDE.md；ai_summary 只含位置、行号、百分比、币种和日期，出口复检零命中；报告不读 text_enc；新接口均经 owned_* 校验；前端无 v-html。发现并修复 1 处：英文表头“Amount excl./incl. VAT”“Price incl. VAT”被识别为税额列，整张报价表不做核验——column_kind 改为表头同时含金额/总价/单价词时不算税额列，改正了把错误行为写成期望的测试并补整表用例，design/M6.md 3.1 同步注明；Docker 全量 1310 passed、1 warning。遗留（不阻塞）：报告与前端的问题类别沿用前端既有中文“措辞 / 合规”，与 SPEC 11.3 的“表述 / 合规与制裁”不一致，留 M6-09 一并确认；ResizeObserver loop 为 Element Plus 在开发期缩放窗口时的已知提示，不影响功能）
+- 上次 Opus 评审到的提交：adbabe1（2026-10-22 Opus 5.5 在 M6-09 评审 39020d3..adbabe1 的 M6-08 前端提交，未发现问题）；此前 39020d3（2026-10-22 Opus 5.5 评审 3980acb..39020d3，即 M5-05 收尾至 M6-06 及 M6-05 补充修复：文件范围与用户授权的扩围一致；未改 SPEC、CLAUDE.md；ai_summary 只含位置、行号、百分比、币种和日期，出口复检零命中；报告不读 text_enc；新接口均经 owned_* 校验；前端无 v-html。发现并修复 1 处：英文表头“Amount excl./incl. VAT”“Price incl. VAT”被识别为税额列，整张报价表不做核验——column_kind 改为表头同时含金额/总价/单价词时不算税额列，改正了把错误行为写成期望的测试并补整表用例，design/M6.md 3.1 同步注明；Docker 全量 1310 passed、1 warning。遗留（不阻塞）：报告与前端的问题类别沿用前端既有中文“措辞 / 合规”，与 SPEC 11.3 的“表述 / 合规与制裁”不一致，留 M6-09 一并确认；ResizeObserver loop 为 Element Plus 在开发期缩放窗口时的已知提示，不影响功能）
 
 ## 一、模型分工与推理强度
 
@@ -221,7 +223,7 @@
 | M6-06 | Word 报告导出：report\_docx.py、两个下载接口、审计日志；结果页“导出报告”按钮、审核历史“导出” | Sonnet | medium | M6-05 | 14、17.7、19.5、Q-87；设计六；frontend.md | app/export/report\_docx.py、app/export/router.py、app/main.py（只加挂载）、app/review/service.py（只在需要时把位置文字函数提为公共函数）、tests/test\_report\_docx.py、tests/test\_report\_api.py；前端 src/api/report.ts、src/views/ReviewResult.vue（只加按钮）、src/views/History.vue（只加导出） | T-19（结构逐节、名称已还原且无代号、固定声明、无禁用词）；不外发任务报告；清空 text\_enc 后仍可导出；文件名编码；他人 404、未完成轮次 409；审计日志 report\_export；`npm run build` 通过；浏览器中下载一次 | 已完成 |
 | M6-07 | 追问后端：问题脱敏、预览、经网关发送（网关加 timeout\_s、retry 参数）、回复还原 | Opus | high | M6-06 | 13、9.3、9.8、19.6、Q-88～Q-90；设计七 | app/chat/service.py、app/chat/router.py、app/main.py（只加挂载）、app/llm/gateway.py（只加两个关键字参数）、app/review/prompt.py（只加 chat\_system\_prompt，如放在这里）、tests/test\_chat.py、tests/test\_gateway.py | 设计第七节测试列表全部通过（含 T-15、A-06、日志安全）；网关原有测试不改 | 已完成 |
 | M6-08 | 追问前端 ChatPanel.vue | Sonnet | medium | M6-07 | 6.3、13；设计八；frontend.md | src/components/ChatPanel.vue、src/api/chat.ts、src/views/ReviewResult.vue（只加按钮和抽屉挂载） | `npm run build` 通过；按 frontend.md 第十一节自检；无 v-html；浏览器中检查 T-15 弹窗、“不再提示”、失败后可重试、不可用时按钮禁用 | 已完成 |
-| M6-09 | M6 联调与验收：A-01、T-04、T-05、T-15、T-19；回归 M2～M5 验收用例；浏览器检查 | Opus | medium | M6-08 | 22、23；设计十 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 待执行 |
+| M6-09 | M6 联调与验收：A-01、T-04、T-05、T-15、T-19；回归 M2～M5 验收用例；浏览器检查 | Opus | medium | M6-08 | 22、23；设计十 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 已完成 |
 
 ### M7 设置与数据（验收：T-14、T-16、T-18）
 
