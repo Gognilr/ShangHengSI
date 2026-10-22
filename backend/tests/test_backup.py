@@ -84,7 +84,9 @@ def test_backup_success_layout_contents_and_record(env, db_sessionmaker, make_us
     assert (env["backup"] / (name + ".sha256")).read_text() == f"{rec.sha256}  {name}\n"
     assert subprocess.run(["sha256sum", "-c", name + ".sha256"], cwd=env["backup"],
                           capture_output=True).returncode == 0
-    assert oct(bak.stat().st_mode & 0o777) == "0o600"
+    # Q-120：.bak、.sha256 为 0640，组 aireview 可读以便 SFTP 拉取
+    assert oct(bak.stat().st_mode & 0o777) == "0o640"
+    assert oct((env["backup"] / (name + ".sha256")).stat().st_mode & 0o777) == "0o640"
 
     with tarfile.open(fileobj=io.BytesIO(_decrypt(bak)), mode="r:") as tar:
         names = tar.getnames()

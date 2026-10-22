@@ -42,6 +42,8 @@ TMP_RE = re.compile(r"^aireview_\d{8}_\d{4}\.bak\.tmp$")
 _FILE_KEY_RE = re.compile(r"^[0-9a-f]{32}$")  # /data/files 中的原件文件名（tasks/storage.py）
 WORK_DIR = ".work"
 FORMAT_VERSION = 1
+# .tmp / .bak / .sha256 的权限（Q-120）：组 aireview（gid 10001）可读，供运维账号 SFTP 拉取；备份本身已用备份密码加密
+BACKUP_FILE_MODE = 0o640
 
 
 class BackupError(Exception):
@@ -119,7 +121,8 @@ def _add_bytes(tar: tarfile.TarFile, name: str, data: bytes, mtime: float) -> No
 
 def _write_archive(tmp: Path, password: bytes, manifest: dict, dump: Path, files: list[Path]) -> tuple[int, str, int]:
     """写加密的 .tmp 文件并 fsync，返回（大小, SHA-256, 实际放入的原件数）。"""
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, BACKUP_FILE_MODE)
+    os.fchmod(fd, BACKUP_FILE_MODE)  # 不受 umask 影响
     with os.fdopen(fd, "wb") as f:
         hashing = _HashingFile(f)
         writer = EncryptingWriter(hashing, password)
@@ -219,7 +222,8 @@ def _locked_backup(db: Session, *, trigger: str, user_id: uuid.UUID | None, now:
         size, digest, added = _write_archive(tmp, password, manifest, dump, files)
 
         created.append(sha_path)
-        fd = os.open(sha_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        fd = os.open(sha_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, BACKUP_FILE_MODE)
+        os.fchmod(fd, BACKUP_FILE_MODE)
         with os.fdopen(fd, "w", encoding="ascii") as f:
             f.write(f"{digest}  {name}\n")  # 与 sha256sum -c 兼容
             f.flush()

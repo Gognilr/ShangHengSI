@@ -149,6 +149,8 @@
 | Q-129 | 备份与数据在同一块盘（/data）上，SPEC 20.1 要求的独立备份盘不存在 | 接受该环境；运维说明把 SFTP 异地拉取列为必做项（每天定时拉取并校验 SHA-256），否则 /data 盘损坏时数据与备份同时丢失。状态：已确认（用户授权 Opus 决定，2026-10-22） | 16.1、20.1；design/M8.md 〇、六 |
 | Q-130 | 用 IP 地址访问时浏览器不发送 SNI，Caddy 不知道出示哪张证书，HTTPS 握手失败（服务器实测） | Caddyfile 加全局 default_sni {$SITE_ADDRESS:localhost}；用域名访问时不受影响。状态：已确认（用户授权 Opus 决定，2026-10-22） | 20.4；design/M8.md 4.4 |
 | Q-131 | Docker 29 默认用 containerd 存放镜像，位置 /var/lib/containerd 不受 daemon.json 的 data-root 控制，镜像会写进 32 GiB 的根分区（服务器实测 3.2 GiB，已迁到 /data/containerd）；/data 为 nofail 挂载，未挂载时 Docker 会静默写进根分区 | 所有脚本运行前检查：/data 已挂载，安装目录、备份目录、Docker Root Dir、containerd root 都不在根分区，否则拒绝运行并指向运维说明；运维说明给出 containerd 迁移方法。状态：已确认（用户授权 Opus 决定，2026-10-22） | 20.1；design/M8.md 二、六 |
+| Q-132 | M8-01 的文件范围写的测试文件 tests/test_restore.py 已被代号还原（M2-09，app/redaction/restore.py）的测试占用 | 恢复的测试放在 tests/test_backup_restore.py（对应 app/backup/restore.py），不改动已有的 test_restore.py。状态：待确认 | design/M8.md 3.6 |
+| Q-133 | M8-01 实现中设计未写明的细节 | ① restore-prepare 在解包前先检查上次恢复的残留：原件卷中的 .restore-old/ 或数据库 {库名}_pre_restore 已存在时拒绝。设计中这两项由 restore-files、restore-db 在停服之后才检查，提前检查可避免停服后才失败（restore-db、swap 仍各自再查一次）。② restore-files 增加 --drop-new：恢复在停服之前中止（未确认、校验失败）时，restore.sh 删除已解出的 .restore-new/，不让整份原件副本留在卷里占空间。③ restore_db 在恢复出的库中清理之后改名：终止连到当前库的会话后改名，仍有连接（ObjectInUse）时最多重试 5 次；第一次改名失败时删除 {库名}_restore、当前库不动；第二次改名（新库改为原名）失败时尝试把旧库改回原名，并在错误中写明两个库的现名。④ restore_run 审计的 files 取 .restore-new/ 中待恢复的原件数。⑤ 库名只允许字母、数字、下划线，最多 40 个字符（加上 _pre_restore 不超过 PostgreSQL 的 63 字节）。⑥ 第 6 步之后脚本失败时只打印状态，不删除 .restore-new/、.restore-old/ 和旧库；解密后的 tar 与 db.dump 在任何情况下都删除。⑦ restore.sh 先检查 .sha256 只有一行、内容为“64 位小写十六进制 + 两个空格 + 本备份文件名”，再执行 sha256sum -c --strict。状态：待确认 | 16.3；design/M8.md 3.2–3.5 |
 
 ## 四、后续里程碑处理（先记录）
 

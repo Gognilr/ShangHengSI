@@ -28,9 +28,11 @@ WORKDIR /srv/backend
 COPY requirements.txt requirements-dev.txt ./
 
 FROM base AS runtime
+# appuser 固定 uid=10001、gid=10001：宿主上的组 aireview（gid 10001）可读备份文件（Q-120）
 RUN pip install -r requirements.txt && pip check \
-    && useradd --system --uid 10001 --no-create-home appuser \
-    && mkdir -p /data/files /backup && chown appuser /data/files /backup
+    && groupadd --system --gid 10001 appuser \
+    && useradd --system --uid 10001 --gid 10001 --no-create-home appuser \
+    && mkdir -p /data/files /backup && chown appuser:appuser /data/files /backup
 COPY app ./app
 COPY alembic.ini ./
 COPY resources ./resources
