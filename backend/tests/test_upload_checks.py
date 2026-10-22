@@ -2,13 +2,15 @@
 
 接口层对每个错误码的返回见 test_tasks_api.py。
 """
+import importlib.util
 import io
 import zipfile
+from pathlib import Path
 
 import pytest
 
 from app.security.errors import AppError
-from app.tasks import service
+from app.tasks import filecheck, service
 from app.tasks.service import check_uploads, clean_filename, inspect_upload
 
 MB = 1024 * 1024
@@ -98,7 +100,10 @@ def test_valid_files_pass(name, data, ext):
 # ---------------------------------------------------------------- 扩展名与文件头
 
 
-@pytest.mark.parametrize("name", ["a.doc", "a.docm", "a.xlsm", "a.xls", "a.txt", "a.exe", "noext", "a.", ".gif"])
+# R2：doc、xls 已支持，改用仍不支持的 dot、xlsb
+@pytest.mark.parametrize(
+    "name", ["a.dot", "a.docm", "a.xlsm", "a.xlsb", "a.dotm", "a.txt", "a.exe", "noext", "a.", ".gif"]
+)
 def test_unsupported_extension(name):
     assert code_of(name, docx_bytes()) == "UNSUPPORTED_FILE_TYPE"
 
@@ -217,3 +222,169 @@ def test_one_bad_file_fails_whole_batch():
     with pytest.raises(AppError) as ei:
         check_uploads(files, 0, MB)
     assert ei.value.code == "FILE_CONTENT_MISMATCH"
+
+
+# ---------------------------------------------------------------- 旧格式（R2-02，设计 R2.md 第二节）
+
+LEGACY = Path(__file__).parent / "fixtures" / "legacy"
+_spec = importlib.util.spec_from_file_location("make_ole_fixtures", LEGACY / "make_ole_fixtures.py")
+make_ole = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(make_ole)
+
+DOC = (LEGACY / "contract_basic.doc").read_bytes()  # LibreOffice 导出的真实 DOC
+XLS = (LEGACY / "quotation.xls").read_bytes()
+RTF = (LEGACY / "contract_basic.rtf").read_bytes()
+MACRO_DOC = (LEGACY / "macro_word.doc").read_bytes()
+MACRO_XLS = (LEGACY / "macro_excel.xls").read_bytes()
+ENCRYPTED = (LEGACY / "encrypted_ooxml.docx").read_bytes()
+BOOK = (LEGACY / "excel5_book.xls").read_bytes()
+NO_MAIN = (LEGACY / "word_no_main.doc").read_bytes()
+
+
+@pytest.mark.parametrize(
+    "name,data,ext",
+    [
+        ("合同.doc", DOC, "doc"),
+        ("合同.DOC", DOC, "doc"),
+        ("合同.wps", (LEGACY / "contract_basic.wps").read_bytes(), "wps"),
+        ("报价.xls", XLS, "xls"),
+        ("报价.et", (LEGACY / "quotation.et").read_bytes(), "et"),
+        ("报价.xls", BOOK, "xls"),  # Excel 5 的主数据流 Book
+        ("报价.et", BOOK, "et"),
+        ("合同.rtf", RTF, "rtf"),
+        ("合同.rtf", b"{\\rtf1\\ansi fictional}", "rtf"),
+    ],
+)
+def test_legacy_valid_files_pass(name, data, ext):
+    up = check(name, data)
+    assert (up.ext, up.size, up.name) == (ext, len(data), name)
+    assert up.file.tell() == 0 and up.file.read() == data  # 检查后指针复位，olefile 不关闭传入的文件
+
+
+def test_all_legacy_fixtures_pass():
+    rejected = {"macro_word.doc", "macro_excel.xls", "word_no_main.doc"}
+    checked = 0
+    for p in sorted(LEGACY.iterdir()):
+        if p.suffix in (".doc", ".wps", ".xls", ".et", ".rtf") and p.name not in rejected:
+            assert check(p.name, p.read_bytes()).ext == p.suffix[1:]
+            checked += 1
+    assert checked >= 13
+
+
+@pytest.mark.parametrize("ext", ["doc", "wps", "xls", "et"])
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"",
+        b"plain text",
+        PDF,
+        docx_bytes(),  # ZIP 改名为旧格式
+        make_ole.MAGIC,  # 只有文件头
+        make_ole.MAGIC + b"\x00" * 600,  # 文件头之后已损坏
+        DOC[:1024],  # 截断
+        NO_MAIN,  # 合法 OLE，但没有主数据流
+    ],
+    ids=["empty", "text", "pdf", "zip", "magic-only", "corrupt", "truncated", "no-main-stream"],
+)
+def test_legacy_ole_mismatch(ext, data):
+    assert code_of(f"a.{ext}", data) == "FILE_CONTENT_MISMATCH"
+
+
+@pytest.mark.parametrize("name,data", [("a.xls", DOC), ("a.et", DOC), ("a.doc", XLS), ("a.wps", XLS), ("a.doc", BOOK)])
+def test_legacy_main_stream_must_match_extension(name, data):
+    assert code_of(name, data) == "FILE_CONTENT_MISMATCH"
+
+
+@pytest.mark.parametrize("name,data", [("a.doc", MACRO_DOC), ("a.wps", MACRO_DOC), ("a.xls", MACRO_XLS), ("a.et", MACRO_XLS)])
+def test_legacy_macro_rejected(name, data):
+    assert code_of(name, data) == "MACRO_NOT_ALLOWED"
+
+
+@pytest.mark.parametrize(
+    "ext,tree",
+    [
+        ("doc", {"WordDocument": b"", "Macros": {}}),  # 空的 Macros 存储
+        ("doc", {"WordDocument": b"", "VBA": {"dir": b""}}),  # 任何位置的 VBA 存储
+        ("doc", {"WordDocument": b"", "ObjectPool": {"_1": {"_VBA_PROJECT": b""}}}),
+        ("doc", {"WordDocument": b"", "macros": {}}),  # 名称不分大小写
+        ("xls", {"Workbook": b"", "_vba_project_cur": {}}),
+        ("xls", {"Book": b"", "_VBA_PROJECT_CUR": {"VBA": {}}}),
+        ("et", {"Workbook": b"", "Sheet": {"VBA": {}}}),
+    ],
+)
+def test_legacy_macro_storage_variants(ext, tree):
+    assert code_of(f"a.{ext}", make_ole.build(tree)) == "MACRO_NOT_ALLOWED"
+
+
+def test_ole_builder_without_macro_passes():
+    assert check("a.doc", make_ole.build({"WordDocument": b"", "1Table": b"", "ObjectPool": {}})).ext == "doc"
+    assert check("a.et", make_ole.build({"Workbook": b""})).ext == "et"
+
+
+@pytest.mark.parametrize("name", ["a.doc", "a.wps", "a.xls", "a.et", "a.docx", "a.xlsx", "a.DOCX"])
+def test_encrypted_ooxml_rejected(name):
+    assert code_of(name, ENCRYPTED) == "FILE_ENCRYPTED"
+
+
+def test_encrypted_ooxml_with_main_stream_still_encrypted():
+    tree = {"WordDocument": b"", "EncryptionInfo": b"", "EncryptedPackage": b""}
+    assert code_of("a.doc", make_ole.build(tree)) == "FILE_ENCRYPTED"
+
+
+def test_ole_without_encryption_named_docx_is_mismatch():
+    assert code_of("a.docx", DOC) == "FILE_CONTENT_MISMATCH"
+    assert code_of("a.xlsx", XLS) == "FILE_CONTENT_MISMATCH"
+    assert code_of("a.docx", make_ole.MAGIC + b"\x00" * 600) == "FILE_CONTENT_MISMATCH"
+
+
+@pytest.mark.parametrize(
+    "data",
+    [b"", b"{\\rt", b"{\\RTF1", b" {\\rtf1", b"\xef\xbb\xbf{\\rtf1", DOC, docx_bytes(), PDF],
+    ids=["empty", "short", "upper", "space", "bom", "doc", "zip", "pdf"],
+)
+def test_rtf_header_required(data):
+    assert code_of("a.rtf", data) == "FILE_CONTENT_MISMATCH"
+
+
+def test_unsupported_message_lists_all_formats():
+    with pytest.raises(AppError) as ei:
+        check("a.txt", b"x")
+    assert "（支持 docx、doc、wps、rtf、pdf、xlsx、xls、et、jpg、png）" in ei.value.message
+
+
+def test_legacy_messages_contain_name_only():
+    for name, data in [("机密.doc", MACRO_DOC), ("机密.doc", ENCRYPTED), ("机密.doc", NO_MAIN), ("机密.rtf", b"x")]:
+        with pytest.raises(AppError) as ei:
+            check(name, data)
+        assert "机密" in ei.value.message and "fictional" not in ei.value.message
+
+
+# ---------------------------------------------------------------- 共用的 OOXML 检查（供转换结果复检）
+
+
+def test_service_limits_come_from_filecheck():
+    assert service.MAX_ARCHIVE_BYTES == filecheck.MAX_ARCHIVE_BYTES == 200 * MB
+    assert service.MAX_ARCHIVE_ENTRIES == filecheck.MAX_ARCHIVE_ENTRIES == 10000
+
+
+@pytest.mark.parametrize(
+    "name,ext",
+    [("contract_basic_doc.docx", "docx"), ("numbering_auto_rtf.docx", "docx"), ("quotation_xls.xlsx", "xlsx")],
+)
+def test_check_ooxml_accepts_converted_files(name, ext):
+    filecheck.check_ooxml(io.BytesIO((LEGACY / name).read_bytes()), ext, name)
+
+
+@pytest.mark.parametrize(
+    "data,ext,code",
+    [
+        (b"hello", "docx", "FILE_CONTENT_MISMATCH"),
+        (xlsx_bytes(), "docx", "FILE_CONTENT_MISMATCH"),
+        (docx_bytes({"word/vbaProject.bin": b"\x00"}), "docx", "MACRO_NOT_ALLOWED"),
+        (docx_bytes({f"m/{i}": b"" for i in range(10001)}), "docx", "ARCHIVE_TOO_LARGE"),
+    ],
+)
+def test_check_ooxml_rejects(data, ext, code):
+    with pytest.raises(AppError) as ei:
+        filecheck.check_ooxml(io.BytesIO(data), ext, "x")
+    assert ei.value.code == code

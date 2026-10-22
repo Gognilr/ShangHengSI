@@ -394,7 +394,7 @@ ENUM_COLUMNS = {
     ("tasks", "status"): [
         "parsing", "parse_failed", "awaiting_confirm", "reviewing", "reviewed", "completed_local",
     ],
-    ("task_files", "ext"): ["docx", "pdf", "xlsx", "jpg", "png"],
+    ("task_files", "ext"): ["docx", "pdf", "xlsx", "jpg", "png", "doc", "xls", "wps", "et", "rtf"],
     ("task_files", "doc_type"): ["contract", "quotation", "order", "inquiry", "letter"],
     ("task_files", "doc_type_source"): ["auto", "user"],
     ("doc_nodes", "kind"): ["heading", "paragraph", "list_item", "table_cell", "sheet_cell", "ocr_block"],
@@ -775,6 +775,45 @@ def test_0003_postcode_category_upgrade_and_downgrade(db_url):
             assert conn.execute(counts, (task, task)).fetchone() == (1, 1)  # 只删 POSTCODE 行
             with pytest.raises(errors.CheckViolation):
                 conn.execute(suspect, (task, "POSTCODE"))
+        command.upgrade(cfg, "head")
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+
+def test_0004_legacy_ext_upgrade_and_downgrade(db_url):
+    """R2-02：0004 放宽 task_files.ext；有旧格式文件时拒绝降级，删除后可降级并恢复原约束。"""
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    insert = ("INSERT INTO task_files (task_id, seq, is_main, original_name, ext, size_bytes, sha256, storage_key, created_at) "
+              "VALUES (%s, %s, true, 'x', %s, 1, repeat('0', 64), %s, now())")
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, "0003")
+        with psycopg.connect(url, autocommit=True) as conn:
+            task = _insert_task(conn, _insert_user(conn))
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert, (task, 1, "doc", uuid.uuid4().hex))
+        command.upgrade(cfg, "0004")
+        with psycopg.connect(url, autocommit=True) as conn:
+            for seq, ext in enumerate(["docx", "doc", "xls", "wps", "et", "rtf"], start=1):
+                conn.execute(insert, (task, seq, ext, uuid.uuid4().hex))
+            for ext in ("docm", "xlsm", "dot", "DOC"):
+                with pytest.raises(errors.CheckViolation):
+                    conn.execute(insert, (task, 99, ext, uuid.uuid4().hex))
+        with pytest.raises(RuntimeError, match="5 个旧格式文件"):
+            command.downgrade(cfg, "0003")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute("SELECT count(*) FROM task_files").fetchone()[0] == 6  # 拒绝降级时不删除任何数据
+            conn.execute("DELETE FROM task_files WHERE ext <> 'docx'")
+        command.downgrade(cfg, "0003")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute("SELECT count(*) FROM task_files").fetchone()[0] == 1
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert, (task, 2, "rtf", uuid.uuid4().hex))
         command.upgrade(cfg, "head")
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:

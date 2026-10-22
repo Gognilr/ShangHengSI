@@ -163,7 +163,7 @@ def test_filename_path_stripped_and_jpeg_stored_as_jpg(files_dir, alice, db_sess
         ([], {}, "NO_FILES"),
         ([(f"f{i}.pdf", PDF) for i in range(11)], {}, "TOO_MANY_FILES"),
         ([("big.pdf", PDF + b"x" * (1024 * 1024))], {}, "FILE_TOO_LARGE"),
-        ([("a.doc", PDF)], {}, "UNSUPPORTED_FILE_TYPE"),
+        ([("a.dot", PDF)], {}, "UNSUPPORTED_FILE_TYPE"),  # R2：doc 已支持，改用仍不支持的 dot
         ([("a.docm", docx_bytes())], {}, "UNSUPPORTED_FILE_TYPE"),
         ([("a.pdf", b"hello")], {}, "FILE_CONTENT_MISMATCH"),
         ([("a.docx", b"hello")], {}, "FILE_CONTENT_MISMATCH"),
@@ -761,3 +761,51 @@ def test_rerun_a06_others_and_admin_get_404(db_sessionmaker, rerun_user, ready_t
     with db_sessionmaker() as db:
         t = db.get(Task, task.id)
         assert (t.stance, t.status) == ("sales", "awaiting_confirm")
+
+
+# ---------------------------------------------------------------- 旧格式（R2-02）
+
+LEGACY = os.path.join(os.path.dirname(__file__), "fixtures", "legacy")
+
+
+def legacy(name: str) -> bytes:
+    with open(os.path.join(LEGACY, name), "rb") as f:
+        return f.read()
+
+
+def test_legacy_upload_stores_real_extension(files_dir, alice, db_sessionmaker):
+    c, csrf = alice
+    names = [("合同.doc", "contract_basic.doc"), ("合同.wps", "contract_basic.wps"), ("合同.rtf", "contract_basic.rtf"),
+             ("报价.xls", "quotation.xls"), ("报价.ET", "quotation.et")]
+    r = upload(c, csrf, [(n, legacy(f)) for n, f in names])
+    assert r.status_code == 201, r.text
+    with db_sessionmaker() as db:
+        files = db.scalars(select(TaskFile).order_by(TaskFile.seq)).all()
+        assert [(f.original_name, f.ext) for f in files] == [
+            ("合同.doc", "doc"), ("合同.wps", "wps"), ("合同.rtf", "rtf"), ("报价.xls", "xls"), ("报价.ET", "et"),
+        ]
+        assert storage.load_original(files[0].storage_key) == legacy("contract_basic.doc")
+        assert db.scalars(select(Job)).one().type == "parse"
+    assert len(stored_files(files_dir)) == 5
+
+
+@pytest.mark.parametrize(
+    "name,fixture,code",
+    [
+        ("a.doc", "macro_word.doc", "MACRO_NOT_ALLOWED"),
+        ("a.et", "macro_excel.xls", "MACRO_NOT_ALLOWED"),
+        ("a.doc", "encrypted_ooxml.docx", "FILE_ENCRYPTED"),
+        ("a.docx", "encrypted_ooxml.docx", "FILE_ENCRYPTED"),
+        ("a.doc", "word_no_main.doc", "FILE_CONTENT_MISMATCH"),
+        ("a.xls", "contract_basic.doc", "FILE_CONTENT_MISMATCH"),
+        ("a.rtf", "contract_basic.doc", "FILE_CONTENT_MISMATCH"),
+        ("a.doc", "../docx/contract_basic.docx", "FILE_CONTENT_MISMATCH"),
+    ],
+)
+def test_legacy_upload_errors(files_dir, alice, db_sessionmaker, name, fixture, code):
+    c, csrf = alice
+    r = upload(c, csrf, [("ok.pdf", PDF), (name, legacy(fixture))])
+    assert (r.status_code, r.json()["code"]) == (422, code)
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(Task)) == 0
+    assert stored_files(files_dir) == []

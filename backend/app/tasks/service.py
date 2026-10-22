@@ -3,7 +3,6 @@
 日志与审计只写数量、策略等非敏感信息，不写文件名和内容。
 """
 import re
-import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import BinaryIO
@@ -19,7 +18,7 @@ from app.db.models import DocNode, Job, ReviewRun, Task, TaskFile, User
 from app.redaction import engine
 from app.security import crypto
 from app.security.errors import AppError
-from app.tasks import storage
+from app.tasks import filecheck, storage
 from app.tasks.schemas import (
     LatestRun,
     PreviewNode,
@@ -33,13 +32,17 @@ from app.tasks.schemas import (
 
 MAX_FILES = 10
 PAGE_SIZE = 20
-MAX_ARCHIVE_BYTES = 200 * 1024 * 1024  # DOCX、XLSX 解压后总大小上限（17.6）
-MAX_ARCHIVE_ENTRIES = 10000
-MAX_CONTENT_TYPES_BYTES = 5 * 1024 * 1024
+MAX_ARCHIVE_BYTES = filecheck.MAX_ARCHIVE_BYTES  # DOCX、XLSX 解压后总大小上限（17.6）
+MAX_ARCHIVE_ENTRIES = filecheck.MAX_ARCHIVE_ENTRIES
 MAX_NAME_LENGTH = 255
 
 # 扩展名 → 存储用扩展名（jpeg 存为 jpg）
-EXT_MAP = {"docx": "docx", "pdf": "pdf", "xlsx": "xlsx", "jpg": "jpg", "jpeg": "jpg", "png": "png"}
+EXT_MAP = {
+    "docx": "docx", "pdf": "pdf", "xlsx": "xlsx", "jpg": "jpg", "jpeg": "jpg", "png": "png",
+    # 旧格式（SPEC 8.8）：存真实扩展名，解析时由 converter 转为 DOCX / XLSX
+    "doc": "doc", "wps": "wps", "rtf": "rtf", "xls": "xls", "et": "et",
+}
+SUPPORTED_TEXT = "docx、doc、wps、rtf、pdf、xlsx、xls、et、jpg、png"
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -51,8 +54,7 @@ class CheckedUpload:
     file: BinaryIO
 
 
-def _bad(code: str, message: str) -> AppError:
-    return AppError(422, code, message)
+_bad = filecheck.bad
 
 
 def clean_filename(raw: str | None) -> str:
@@ -67,31 +69,8 @@ def clean_filename(raw: str | None) -> str:
 
 
 def _inspect_zip(f: BinaryIO, ext: str, name: str) -> None:
-    mismatch = _bad("FILE_CONTENT_MISMATCH", f"文件内容与扩展名不符：{name}")
-    try:
-        zf = zipfile.ZipFile(f)
-    except Exception:  # noqa: BLE001  不是合法 ZIP（含各种损坏情形）
-        raise mismatch from None
-    with zf:
-        infos = zf.infolist()
-        # 声明大小取自 ZIP 目录；zipfile 读取时不会超出声明大小，后续解析仍须按声明大小限制读取
-        if len(infos) > MAX_ARCHIVE_ENTRIES or sum(i.file_size for i in infos) > MAX_ARCHIVE_BYTES:
-            raise _bad("ARCHIVE_TOO_LARGE", f"文件解压后过大：{name}")
-        names = {i.filename for i in infos}
-        required = "word/document.xml" if ext == "docx" else "xl/workbook.xml"
-        if "[Content_Types].xml" not in names or required not in names:
-            raise mismatch
-        if any(n.lower().endswith("vbaproject.bin") for n in names):
-            raise _bad("MACRO_NOT_ALLOWED", f"不允许上传含宏的文件：{name}")
-        try:
-            with zf.open("[Content_Types].xml") as c:
-                content_types = c.read(MAX_CONTENT_TYPES_BYTES + 1)
-        except Exception:  # noqa: BLE001  条目损坏、加密或压缩方式不支持
-            raise mismatch from None
-        if len(content_types) > MAX_CONTENT_TYPES_BYTES:
-            raise mismatch
-        if b"macroenabled" in content_types.lower():
-            raise _bad("MACRO_NOT_ALLOWED", f"不允许上传含宏的文件：{name}")
+    # 上限取本模块的常量（测试中可单独调小）
+    filecheck.check_ooxml(f, ext, name, max_entries=MAX_ARCHIVE_ENTRIES, max_bytes=MAX_ARCHIVE_BYTES)
 
 
 def inspect_upload(raw_name: str | None, f: BinaryIO, max_bytes: int) -> CheckedUpload:
@@ -105,7 +84,7 @@ def inspect_upload(raw_name: str | None, f: BinaryIO, max_bytes: int) -> Checked
     ext_raw = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     ext = EXT_MAP.get(ext_raw)
     if ext is None:
-        raise _bad("UNSUPPORTED_FILE_TYPE", f"不支持的文件格式：{name}（支持 docx、pdf、xlsx、jpg、png）")
+        raise _bad("UNSUPPORTED_FILE_TYPE", f"不支持的文件格式：{name}（支持 {SUPPORTED_TEXT}）")
     head = f.read(8)
     f.seek(0)
     if ext == "pdf":
@@ -114,8 +93,19 @@ def inspect_upload(raw_name: str | None, f: BinaryIO, max_bytes: int) -> Checked
         ok = head.startswith(b"\xff\xd8\xff")
     elif ext == "png":
         ok = head.startswith(b"\x89PNG")
+    elif ext in ("doc", "wps", "xls", "et"):
+        ok = True
+        filecheck.check_ole(f, ext, name)
+        f.seek(0)
+    elif ext == "rtf":
+        ok = True
+        filecheck.check_rtf(f, name)
+        f.seek(0)
     else:
         ok = True
+        # 加了打开密码的 DOCX / XLSX 实际是 OLE 文件，提示取消密码，而不是“内容不符”（Q-146）
+        if filecheck.is_encrypted_ooxml(f):
+            raise _bad("FILE_ENCRYPTED", f"文件已加密，请取消密码后重新上传：{name}")
         _inspect_zip(f, ext, name)
         f.seek(0)
     if not ok:

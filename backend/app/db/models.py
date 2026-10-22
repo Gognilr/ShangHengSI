@@ -142,7 +142,7 @@ class TaskFile(Base):
     __tablename__ = "task_files"
     __table_args__ = (
         UniqueConstraint("task_id", "seq"),
-        enum_check("ext", ["docx", "pdf", "xlsx", "jpg", "png"]),
+        enum_check("ext", ["docx", "pdf", "xlsx", "jpg", "png", "doc", "xls", "wps", "et", "rtf"]),
         enum_check("doc_type", DOC_TYPES),
         enum_check("doc_type_source", ["auto", "user"]),
     )
