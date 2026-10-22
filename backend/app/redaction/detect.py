@@ -53,6 +53,13 @@ _REFNO = re.compile(
     r"(?i:(?:contract|order|invoice|pi|p\.?\s?o\.?)\s*no\.?|(?:contract|order|invoice)\s*number))"
     r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9][A-Za-z0-9\-/_.]{1,48}[A-Za-z0-9])"
 )
+# 邮编（Q-139 ①，设计 R1.md 第十一节）：只认标签，不按“6 位数字”猜测。标签后须有冒号、空白或填空括号；
+# 值为 3–10 个字母或数字，相邻两个之间可有一个空格或短横线（“100000-1234”“SW1A 1AA”），两端不是分隔符，至少含一个数字
+_POSTCODE = re.compile(
+    r"(?:邮政编码|邮编|(?<![A-Za-z])(?i:postal\s*code|post\s*code|zip\s*code|zip)(?![A-Za-z]))"
+    r"(?:\s*[:：]\s*|\s+|(?=[【［\[〖]))" + _OPEN +
+    r"([A-Za-z0-9](?:[ \-]?[A-Za-z0-9]){2,9})(?![A-Za-z0-9])"
+)
 _PHONE_INTL = re.compile(r"(?<![\w+])\+\d{1,3}[ -]?\d[\d -]{6,14}\d(?!\d)")
 _PHONE_MOBILE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 _PHONE_LANDLINE = re.compile(r"(?<!\d)0\d{2,3}-?\d{7,8}(?!\d)")
@@ -95,6 +102,14 @@ def find_formatted(text: str) -> list[Hit]:
         value = m.group(1).rstrip(".")
         if any(c.isdigit() for c in value):
             add(m.start(1), m.start(1) + len(value), "REFNO", _norm_key(value))
+    for m in _POSTCODE.finditer(text):
+        # 去掉末尾不含数字的词：“ZIP: 10001 New York”只取“10001”
+        groups = m.group(1).split(" ")
+        while groups and not any(c.isdigit() for c in groups[-1]):
+            groups.pop()
+        value = " ".join(groups).rstrip(" -")
+        if len(value) >= 3:
+            add(m.start(1), m.start(1) + len(value), "POSTCODE")
     for pattern in (_PHONE_INTL, _PHONE_MOBILE, _PHONE_LANDLINE):
         for m in pattern.finditer(text):
             add(m.start(), m.end(), "PHONE")
@@ -370,12 +385,13 @@ _ADDRESS_EDGE = " \t,，;；、.。:：\r" + FILL_OPEN + FILL_CLOSE
 
 
 def find_addresses(text: str) -> list[Hit]:
-    """第 7 步：地址标签（须有冒号）之后到行尾；遇到下一个信息标签或地址标签时提前结束。key 为国家。"""
+    """第 7 步：地址标签（须有冒号）之后到行尾；遇到下一个信息标签、地址标签或带值的邮编标签时提前结束。key 为国家。"""
     hits: list[Hit] = []
     for m in _ADDRESS_LABEL.finditer(text):
         line_end = text.find("\n", m.end())
         limit = len(text) if line_end < 0 else line_end
-        stop = [x.start() for x in (_INFO_LABEL.search(text, m.end(), limit), _ADDRESS_LABEL.search(text, m.end(), limit)) if x]
+        stop = [x.start() for x in (_INFO_LABEL.search(text, m.end(), limit), _ADDRESS_LABEL.search(text, m.end(), limit),
+                                    _POSTCODE.search(text, m.end(), limit)) if x]
         end = min([limit, *stop])
         start = m.end()
         while start < end and text[start] in _ADDRESS_EDGE:

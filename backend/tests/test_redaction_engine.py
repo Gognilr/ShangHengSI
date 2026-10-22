@@ -395,6 +395,41 @@ def test_fill_brackets_patterns():
     assert [text[h.start:h.end] for h in detect.find_addresses(text)] == ["山东省示例县城示例路 18 号"]
 
 
+def test_postcode_patterns():
+    """R1-11（B-18、Q-139 ①）：只认标签后的邮编；可跨一个填空括号；不按“6 位数字”猜测。"""
+    assert cats("邮政编码：【251500】") == [("251500", "POSTCODE")]
+    assert cats("邮编：200000") == [("200000", "POSTCODE")]
+    assert cats("Post Code: 90210") == [("90210", "POSTCODE")]
+    assert cats("Postal Code:K1A 0B1.") == [("K1A 0B1", "POSTCODE")]
+    assert cats("邮编：100000-1234") == [("100000-1234", "POSTCODE")]
+    assert cats("Zip Code: SW1A 1AA") == [("SW1A 1AA", "POSTCODE")]
+    assert cats("ZIP 〖 10001 〗") == [("10001", "POSTCODE")]
+    assert cats("邮编【251500】") == [("251500", "POSTCODE")]
+    # 末尾不含数字的词不属于邮编；邮编后的电话照常识别
+    assert cats("ZIP: 10001 New York") == [("10001", "POSTCODE")]
+    assert cats("邮编：251500 电话：0531-6612345") == [("251500", "POSTCODE"), ("0531-6612345", "PHONE")]
+    # 不识别：无值、标签后不是邮编、没有标签、超过 10 位、不含数字、单词内部的 zip
+    for text in ("邮编为空", "邮编：", "邮政编码：【    】", "正文 251500 无标签", "邮编：2515001234567",
+                 "Zip Code: ABCDE", "unzip: 12345", "邮编为 251500"):
+        assert cats(text) == [], text
+
+
+def test_postcode_fixed_code_and_mapping():
+    """[邮编] 为共用代号（与电话相同）：真实值写入对照表“[邮编]#n”；同一行的地址在邮编标签前结束。"""
+    nodes = nodes_of("通讯地址：山东省示例县示例路 18 号 邮政编码：【251500】",
+                     "收货地址：上海市示例区虚构路 99 号，邮编：200000",
+                     "Post Code: SW1A 1AA")
+    r, out = run(nodes, "purchase")
+    assert r.redacted["F1-P1"] == "通讯地址：[地址：中国] 邮政编码：【[邮编]】"
+    assert r.redacted["F1-P2"] == "收货地址：[地址：中国]，邮编：[邮编]"
+    assert r.redacted["F1-P3"] == "Post Code: [邮编]"
+    assert "[邮编]" not in r.mapping  # 不能唯一还原
+    assert sorted(v for k, v in r.mapping.items() if k.startswith("[邮编]#")) == ["200000", "251500", "SW1A 1AA"]
+    assert {i.category for i in r.items if i.placeholder == "[邮编]"} == {"POSTCODE"}
+    for value in ("251500", "200000", "SW1A 1AA"):
+        assert value not in out
+
+
 def test_fill_brackets_party_name():
     nodes = [NodeIn("F1-P1", "甲方：【青岚虚构石化股份有限公司】"), NodeIn("F1-P2", "乙方： 〖 远川虚构通信有限公司〗")]
     result = compute(nodes, "purchase")

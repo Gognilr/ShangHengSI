@@ -92,6 +92,7 @@ export const REDACTION_CATEGORY: Dict = {
   EMAIL: '邮箱',
   URL: '网址',
   ADDR: '地址',
+  POSTCODE: '邮编',
   ACCOUNT: '账号',
   SWIFT: 'SWIFT 代码',
   IDNO: '证件号',

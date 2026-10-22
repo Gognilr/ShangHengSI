@@ -1,0 +1,9 @@
+甲方：青禾虚构机械有限公司
+通讯地址：山东省示例县示例路 18 号  邮政编码：【251500】
+联系电话：0531-6612345
+乙方：Brightfield Example Trading Ltd.
+Address: 12 Example Street, London
+Postcode: SW1A 1AA
+收货地址：上海市示例区虚构路 99 号，邮编：200001
+美国办事处 ZIP: 90210-1234
+邮编为空的，以通讯地址为准；本批产品批次 330512，分 3 批交付，交货港 Qingdao。

@@ -12,6 +12,7 @@ FIXED = {
     "EMAIL": "[邮箱]",
     "URL": "[网址]",
     "IDNO": "[证件号]",
+    "POSTCODE": "[邮编]",  # Q-139 ①：与电话相同，真实值写入对照表供出口复检
 }
 
 # 地址：代号只保留国家，同一国家的地址共用一个代号（与 FIXED 一样不能唯一还原，open_questions Q-45 ①、Q-71 ③）
@@ -39,7 +40,7 @@ _NUMBERED = {
 CHAT_LABELS = {
     "ORG": "公司", "PERSON": "人员", "CUSTOM": "敏感词", "PHONE": "电话", "EMAIL": "邮箱", "URL": "网址",
     "IDNO": "证件号", "ACCOUNT": "账号", "SWIFT": "SWIFT", "REFNO": "编号", "AMOUNT": "金额", "PRICE": "单价",
-    "ADDR": "地址",
+    "ADDR": "地址", "POSTCODE": "邮编",
 }
 CHAT_CODE = re.compile(r"^\[[^\[\]_]+_Q(\d+)(?:：[^\[\]]*)?\]$")
 

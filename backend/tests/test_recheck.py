@@ -82,6 +82,16 @@ def test_placeholders_masked_only_for_real_values():
     assert {r.category for r in recheck("[电话] 13912345678", real_values=[], terms=[], placeholders=codes)} == {"PHONE"}
 
 
+def test_postcode_real_values_block_and_code_passes():
+    """R1-11（Q-139 ①）：邮编真实值在对照表中时拦截；代号“[邮编]”本身不拦截；重扫不加邮编（无标签的 6 位数字太常见）。"""
+    text = "补充：邮编 251500，Post Code sw1a  1aa"
+    assert check(text, ["251500", "SW1A 1AA"]) == [("MAP", text.index("251500")), ("MAP", text.index("sw1a"))]
+    sent = "通讯地址：[地址：中国] 邮政编码：【[邮编]】"
+    assert recheck(sent, real_values=["251500", "邮编"], terms=[], placeholders=["[地址：中国]", "[邮编]"]) == []
+    assert check(sent, ["251500"]) == []
+    assert check("邮编：251500，批次 330512") == []
+
+
 def test_numeric_values_rewritten_forms():
     # 长数字前后不是数字即拦截；去掉空格、短横线后相同也拦截
     assert ("MAP", 3) in check("账号：6222000011112222333", ["6222 0000 1111 2222 333"])
@@ -152,7 +162,7 @@ GOLDEN = Path(__file__).resolve().parent / "fixtures" / "redaction_golden"
 
 @pytest.mark.parametrize("name", sorted(p.stem for p in GOLDEN.glob("*.txt")))
 def test_golden_persons_addresses_accounts_block(name):
-    """M4-04：人名、地址、带序号的账号和 SWIFT 的真实值同样进入出口复检；脱敏后的外发文本（含金额比例、报价汇总）可以发送。"""
+    """M4-04：人名、地址、带序号的账号和 SWIFT、邮编（R1-11）的真实值同样进入出口复检；脱敏后的外发文本（含金额比例、报价汇总）可以发送。"""
     ann = yaml.safe_load((GOLDEN / f"{name}.yaml").read_text(encoding="utf-8"))
     lines = (GOLDEN / f"{name}.txt").read_text(encoding="utf-8").splitlines()
     if ann.get("loc_prefixed"):
@@ -165,7 +175,7 @@ def test_golden_persons_addresses_accounts_block(name):
     values = list(r.mapping.values())
     assert check(text, values) == []
     for item in ann["must_replace"]:
-        if item["category"] in ("PERSON", "ADDR", "ACCOUNT", "SWIFT"):
+        if item["category"] in ("PERSON", "ADDR", "ACCOUNT", "SWIFT", "POSTCODE"):
             assert "MAP" in cats(text + "\n补充说明：" + item["text"], values), item
 
 

@@ -57,6 +57,7 @@ const SUMMARY_UNIT: Record<string, string> = {
   EMAIL: '个邮箱',
   URL: '个网址',
   ADDR: '处地址',
+  POSTCODE: '个邮编',
   ACCOUNT: '个账号',
   SWIFT: '个 SWIFT 代码',
   IDNO: '个证件号',

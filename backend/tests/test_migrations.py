@@ -385,7 +385,7 @@ ENUM_COLUMNS = {
     ("review_runs", "source"): ["outgoing", "incoming"],
     ("review_runs", "main_doc_type"): ["contract", "quotation", "order", "inquiry", "letter"],
     ("redaction_suspects", "category"): [
-        "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "ACCOUNT",
+        "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "POSTCODE", "ACCOUNT",
         "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM",
     ],
     ("tasks", "stance"): ["sales", "purchase", "other"],
@@ -400,7 +400,7 @@ ENUM_COLUMNS = {
     ("doc_nodes", "kind"): ["heading", "paragraph", "list_item", "table_cell", "sheet_cell", "ocr_block"],
     ("doc_nodes", "part"): ["body", "header", "footer", "comment", "textbox", "hidden_sheet"],
     ("redaction_items", "category"): [
-        "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "ACCOUNT",
+        "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "POSTCODE", "ACCOUNT",
         "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM",
     ],
     ("redaction_items", "detected_by"): [
@@ -743,6 +743,42 @@ def test_models_match_migration(migrated, db_url):
     finally:
         engine.dispose()
     assert diff == []
+
+
+def test_0003_postcode_category_upgrade_and_downgrade(db_url):
+    """R1-11：0003 放宽 redaction_items、redaction_suspects 的类别约束；降级时删除 POSTCODE 行后恢复原约束。"""
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    item = ("INSERT INTO redaction_items (task_id, loc, char_start, char_end, category, placeholder, detected_by) "
+            "VALUES (%s, 'F1-P1', 0, 6, %s, '[邮编]', 'regex')")
+    suspect = ("INSERT INTO redaction_suspects (task_id, loc, char_start, char_end, reason, decision, category) "
+               "VALUES (%s, 'F1-P2', 0, 6, 'long_digits', 'replace', %s)")
+    counts = ("SELECT (SELECT count(*) FROM redaction_items WHERE task_id = %s), "
+              "(SELECT count(*) FROM redaction_suspects WHERE task_id = %s)")
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, "0002")
+        with psycopg.connect(url, autocommit=True) as conn:
+            task = _insert_task(conn, _insert_user(conn))
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(item, (task, "POSTCODE"))
+        command.upgrade(cfg, "0003")
+        with psycopg.connect(url, autocommit=True) as conn:
+            for category in ("POSTCODE", "PHONE"):
+                conn.execute(item, (task, category))
+                conn.execute(suspect, (task, category))
+            assert conn.execute(counts, (task, task)).fetchone() == (2, 2)
+        command.downgrade(cfg, "0002")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute(counts, (task, task)).fetchone() == (1, 1)  # 只删 POSTCODE 行
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(suspect, (task, "POSTCODE"))
+        command.upgrade(cfg, "head")
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
 def test_downgrade_leaves_empty_database(db_url):

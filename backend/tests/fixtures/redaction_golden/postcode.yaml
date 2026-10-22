@@ -1,0 +1,22 @@
+description: 邮编（B-18、Q-139 ①）：中英文标签、填空括号、与地址同一行、带短横线和空格的写法；无标签的 6 位数字与无值的“邮编”保留
+stance: purchase
+must_replace:
+  - {text: 青禾虚构机械有限公司, category: ORG}
+  - {text: Brightfield Example Trading Ltd., category: ORG}
+  - {text: 山东省示例县示例路 18 号, category: ADDR}
+  - {text: "12 Example Street, London", category: ADDR}
+  - {text: 上海市示例区虚构路 99 号, category: ADDR}
+  - {text: "251500", category: POSTCODE}
+  - {text: SW1A 1AA, category: POSTCODE}
+  - {text: "200001", category: POSTCODE}
+  - {text: 90210-1234, category: POSTCODE}
+  - {text: 0531-6612345, category: PHONE}
+must_keep:
+  - 邮政编码：【
+  - "Postcode:"
+  - 邮编：
+  - "ZIP:"
+  - 邮编为空
+  - "330512"
+  - 分 3 批
+  - Qingdao
