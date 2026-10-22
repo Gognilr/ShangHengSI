@@ -5,7 +5,7 @@ import { chatApi, type ChatMessage } from '@/api/chat'
 import { ApiError } from '@/api/http'
 import { formatDateTime } from '@/utils/time'
 
-// 由结果页按 task.id 挂载，轮次切换共用同一个任务对话。
+// Q-98：挂载和打开抽屉时读取可用性；加载失败禁用入口并提示刷新，轮次切换共用任务对话。
 const props = defineProps<{ taskId: string; disabled?: boolean }>()
 const open = ref(false)
 const loading = ref(true)
@@ -116,7 +116,7 @@ async function send() {
 
 async function confirmSend() {
   if (sending.value || !confirmOpen.value) return
-  // 偏好只在确认发送后生效；存储失败视作未勾选，下次仍提示。
+  // Q-98：偏好只在确认发送后生效；存储失败视作未勾选，下次仍提示。
   try { localStorage.setItem(preferenceKey.value, String(skipConfirm.value)) }
   catch { skipConfirm.value = false }
   confirmOpen.value = false

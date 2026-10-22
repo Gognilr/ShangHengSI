@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- M6-08 已完成（2026-10-22，GPT-6.1 Sol）：ChatPanel.vue、api/chat.ts 与结果页挂载；右侧 480px 追问抽屉、服务端脱敏预览确认、任务级“不再提示”、Ctrl+Enter、等待禁用和失败保留问题供手动重试。前端构建 exit 0；浏览器用独立数据库、虚构账号、真实接口 + 网关模拟回复核对 T-15 弹窗与还原、取消、偏好刷新及任务隔离、失败仅一次调用且不写对话、手动重试、加载失败、不可用原因、纯文本显示，1440 / 1280 无横向溢出，抽屉均为 480px。服务就绪后功能检查无新增 JS 控制台错误（准备阶段 auth/me 502 已解决，原始日志保留）。Docker 最终全量 1332 passed、1 warning，exit 0；因执行期间出现其他会话的后端 WIP，最终测试使用已提交 63ff11e 后端快照 + 本次前端只读挂载，不包含或验证他人的后端 WIP。新增 Q-98（待确认）。凭据位于本机临时目录 aireview-m608-qa（verification.md、full-final.log、截图与控制台记录）；实现提交 c36cef1。下一个任务：**M6-09**（Opus 档，medium，M6 联调与验收），停止，交 Opus 评审与验收。
+
 - M6-07 已完成（2026-10-22，Opus 5.5）：app/chat/service.py、router.py（GET /tasks/{id}/chat、POST …/chat/preview、POST …/chat）；问题在服务端按对照表 → 已记住名称与自定义敏感词 → 9.3 第 4～7 步脱敏，发送时重新计算、不接受前端结果；网关 call_model 新增 timeout_s、retry 两个关键字参数（默认行为不变），追问固定 120 秒、不重试；失败不写对话；system 消息为模板第 1–7 条 + 自然语言回答（prompt.chat_system_prompt）。新增 tests/test_chat.py（T-15、通用代号、消息结构与最近 10 条、截断、可用条件、长度、CSRF、HTTP 500 / 超时 / 拦截 / 上限、A-06、日志安全）与网关两项测试；Docker 全量 1332 passed、1 warning。新增 Q-97（待确认）。下一个任务：**M6-08**（Sonnet 档，medium），模型不同，须换会话
 
 - M6-05 补充修复已完成（2026-10-20，GPT-6.1 Sol）：用户明确批准最小扩围 ReviewNew.vue；仅增加 6 行页面局部样式，沿用结果页的定高与区域内纵向滚动。1280px 修复前根页面 clientWidth=1265 / scrollWidth=1280，修复后两者均为 1280；1440px 两者均为 1440，body 最小宽度仍为 1280。第一步空表单与第二步展开面板、底部确认按钮均检查，两个宽度截图已核对；构建通过，Docker 全量 1306 passed、1 warning。修复提交 4d79604；凭据 scroll-before.json、scroll-after.json、scroll-fixed-1280.png、scroll-fixed-1440.png、scroll-full.log 位于本机临时目录 aireview-m6-qa。无新增业务决定或 open_questions；缩放阶段 ResizeObserver 开发期错误仍有出现，保留 scroll-vite.log 交 Opus 复核。下一任务仍为 **M6-07**（Opus 档，high），停止等待对应会话。
@@ -218,7 +220,7 @@
 | M6-05 | 本地校验前端：第二步折叠面板、结果页“本地校验”标签页、不外发任务的结果页 | Sonnet | medium | M6-04 | 6.2 第 7 项、6.3、10.3；设计五；frontend.md | src/api/localFindings.ts、src/components/LocalFindings.vue、src/components/ConfirmStep.vue（只加折叠项）、src/views/ReviewResult.vue（只加标签页和不外发任务的表格）、src/utils/labels.ts | `npm run build` 通过；按 frontend.md 第十一节自检；浏览器中检查第二步面板、结果页标签页、不外发任务、点击定位 | 已完成 |
 | M6-06 | Word 报告导出：report\_docx.py、两个下载接口、审计日志；结果页“导出报告”按钮、审核历史“导出” | Sonnet | medium | M6-05 | 14、17.7、19.5、Q-87；设计六；frontend.md | app/export/report\_docx.py、app/export/router.py、app/main.py（只加挂载）、app/review/service.py（只在需要时把位置文字函数提为公共函数）、tests/test\_report\_docx.py、tests/test\_report\_api.py；前端 src/api/report.ts、src/views/ReviewResult.vue（只加按钮）、src/views/History.vue（只加导出） | T-19（结构逐节、名称已还原且无代号、固定声明、无禁用词）；不外发任务报告；清空 text\_enc 后仍可导出；文件名编码；他人 404、未完成轮次 409；审计日志 report\_export；`npm run build` 通过；浏览器中下载一次 | 已完成 |
 | M6-07 | 追问后端：问题脱敏、预览、经网关发送（网关加 timeout\_s、retry 参数）、回复还原 | Opus | high | M6-06 | 13、9.3、9.8、19.6、Q-88～Q-90；设计七 | app/chat/service.py、app/chat/router.py、app/main.py（只加挂载）、app/llm/gateway.py（只加两个关键字参数）、app/review/prompt.py（只加 chat\_system\_prompt，如放在这里）、tests/test\_chat.py、tests/test\_gateway.py | 设计第七节测试列表全部通过（含 T-15、A-06、日志安全）；网关原有测试不改 | 已完成 |
-| M6-08 | 追问前端 ChatPanel.vue | Sonnet | medium | M6-07 | 6.3、13；设计八；frontend.md | src/components/ChatPanel.vue、src/api/chat.ts、src/views/ReviewResult.vue（只加按钮和抽屉挂载） | `npm run build` 通过；按 frontend.md 第十一节自检；无 v-html；浏览器中检查 T-15 弹窗、“不再提示”、失败后可重试、不可用时按钮禁用 | 待执行 |
+| M6-08 | 追问前端 ChatPanel.vue | Sonnet | medium | M6-07 | 6.3、13；设计八；frontend.md | src/components/ChatPanel.vue、src/api/chat.ts、src/views/ReviewResult.vue（只加按钮和抽屉挂载） | `npm run build` 通过；按 frontend.md 第十一节自检；无 v-html；浏览器中检查 T-15 弹窗、“不再提示”、失败后可重试、不可用时按钮禁用 | 已完成 |
 | M6-09 | M6 联调与验收：A-01、T-04、T-05、T-15、T-19；回归 M2～M5 验收用例；浏览器检查 | Opus | medium | M6-08 | 22、23；设计十 | 按需 | 验收用例全部通过；验收结果汇报给用户 | 待执行 |
 
 ### M7 设置与数据（验收：T-14、T-16、T-18）
