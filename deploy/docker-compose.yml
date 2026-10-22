@@ -1,4 +1,4 @@
-# 4 个服务：db / app / worker / web（SPEC 4、20.2）。
+# 5 个服务：db / app / worker / converter / web（SPEC 4、20.2）。
 # 用法：复制 .env.example 为 .env 并填写，准备 secrets/ 下的密钥文件，然后
 #   docker compose up -d
 name: aireview
@@ -61,14 +61,46 @@ services:
   worker:
     <<: *backend
     command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *backend-env
+      CONVERT_SPOOL_DIR: /spool
     volumes:
       - files_data:/data/files
       - ${BACKUP_HOST_DIR:-./backup}:/backup
       - ./secrets:/run/secrets:ro
+      - convert_spool:/spool
     depends_on:
       app:
         # 等 app 完成数据库迁移后再启动
         condition: service_healthy
+
+  # 旧格式转换（SPEC 8.8，design/R2.md 3.2）：不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
+  # 不挂载原件卷、密钥和备份目录，不连数据库；不设 depends_on（worker 按心跳判断是否可用）。
+  converter:
+    image: aireview-converter:${APP_VERSION:-dev}
+    build:
+      context: ../converter
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    user: "10002:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:size=256m,mode=1777  # LibreOffice 的临时配置目录
+    environment:
+      CONVERT_SPOOL_DIR: /spool
+    volumes:
+      - convert_spool:/spool
+    mem_limit: 1536m
+    cpus: 2
+    pids_limit: 256
+    healthcheck:
+      # 心跳文件 30 秒内更新过
+      test: ["CMD", "python", "/srv/converter/main.py", "--check"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   web:
     image: aireview-web:${APP_VERSION:-dev}
@@ -92,3 +124,10 @@ volumes:
   files_data:
   caddy_data:
   caddy_config:
+  # 内存盘（tmpfs），只在 worker 与 converter 之间交换待转换的旧格式文件，不落盘
+  convert_spool:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=512m,uid=10001,gid=10001,mode=0770
