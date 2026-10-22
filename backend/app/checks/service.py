@@ -7,7 +7,7 @@ from datetime import date
 from sqlalchemy import delete, select
 
 from app.checks.amounts import QuoteTableCheck, check_tables, check_uppercase
-from app.checks.consistency import check_consistency, contract_amount
+from app.checks.consistency import check_consistency, compared_tables, contract_amount
 from app.checks.dates import check_dates
 from app.checks.model import CheckFile, CheckNode, CheckResult
 from app.db.models import DocNode, LocalFinding, TaskFile
@@ -59,7 +59,7 @@ def table_notes(nodes, files) -> dict[str, str]:
     tables, _ = check_tables(nodes, files)
     cross = check_consistency(nodes, files, tables)
     total = contract_amount(nodes, files)
-    attachments = {f.seq for f in files if not f.is_main}
+    compared = {t.table for t in compared_tables(nodes, files, tables)}
     notes = {}
     for table in tables:
         if not table.recognized:
@@ -71,7 +71,7 @@ def table_notes(nodes, files) -> dict[str, str]:
             parts.append(f"{len(table.rows_skipped)} 行未核验")
         if table.total_ok is not None:
             parts.append("合计一致" if table.total_ok else "合计不一致")
-        if total is not None and table.file_seq in attachments and table.total is not None:
+        if total is not None and table.table in compared:
             codes = {r.code for r in cross if r.locs and table_cell(r.locs[-1])
                      and table_cell(r.locs[-1])[0] == table.table}
             parts.append("币种与合同总价不一致" if "L-06" in codes else

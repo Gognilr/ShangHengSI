@@ -6,7 +6,9 @@
 
 ## 当前进度
 
-- 用户决定支持旧格式（2026-10-22，Q-136）：DOC、XLS、WPS、ET、RTF 经独立断网的 LibreOffice 容器转换，作为 R2 在 R1 完成后执行；当前仍按顺序执行 **R1-09**（Sonnet 档，high）。
+- 用户决定支持旧格式（2026-10-22，Q-136）：DOC、XLS、WPS、ET、RTF 经独立断网的 LibreOffice 容器转换，作为 R2 在 R1 完成后执行；当前仍按顺序执行 **R1-10**（Opus 档）。
+
+- R1-09 已完成（2026-10-22，Sonnet 5.5）：consistency.py 新增 compared_tables，L-05、L-06 的比较对象包含主文件自身的报价表（合计行金额可解析）；表格未识别币种时，仅当任务中所有带币种的金额只有一种币种才按合同币种比较，详细说明注明“报价表未注明币种，按合同币种比较”，多币种时不比较；L-06 优先于 L-05 与差额判断不变；ai_summary 仍不含绝对金额。checks/service.py 的表格说明改用 compared_tables（超出任务文件范围，必要的一处联动）。说明文字中的“附件报价表”改为“报价表”。新增单元测试，原有跨文件用例仅更新“币种未识别”的措辞；未新增 manifest 样本；docs/design/M6.md 3.4 未同步改写（以 R1.md 第九节为准，Q-135 待确认）。整仓挂载 Docker 全量 1727 passed。未用真实合同复跑。下一个任务：**R1-10**（Opus 档，验收）。
 
 - R1-08 已完成（2026-10-22，Sonnet 5.5）：checks/amounts.py 的 column_kind 增加“合计、总计、总额”为金额列，排在数量之后，所以“数量合计”仍是数量列、“单价合计”“税额合计”不变；合计行判断不变。新增样本 total_column.xlsx（表头“数量 / 单价 / 合计”，期望 L-02）与 manifest 条目（原有条目不变，原有样本字节不变）及单元测试；整仓挂载 Docker 全量 1725 passed。未用真实合同 2 复跑。下一个任务：**R1-09**（Sonnet 档，high）。
 
@@ -302,7 +304,7 @@
 | R1-06 | 中国地址判为中国（省、市、县、区等行政区划） | Sonnet | medium | R1-05 | 9.4、Q-42、Q-134 ⑥；设计第六节 | app/redaction/dictionaries.py、tests/test\_dictionaries.py、tests/fixtures/redaction\_golden/ | 设计第六节测试全部通过；真实合同 2 地址代号为“[地址：中国]”，签约方国家为中国 | 已完成 |
 | R1-07 | 疑似遗漏误报：标准编号（GB 50312-2007 等）不列为长数字；泛指词（本公司、我公司等）不列为企业名称 | Sonnet | medium | R1-06 | 9.5、Q-74、Q-135 ①；设计第七节 | app/redaction/suspects.py、tests/test\_suspects.py、tests/fixtures/redaction\_golden/（只在需要时更新标注） | 设计第七节测试全部通过；回归集 must\_suspect 仍全部列出；真实合同 2 不再列出 5 条标准编号 | 已完成 |
 | R1-08 | 本地校验金额列名增加“合计、总计、总额” | Sonnet | medium | R1-07 | 10.1、Q-82、Q-135 ②；设计第八节 | app/checks/amounts.py（只改 column\_kind）、tests/test\_checks\_amounts.py、tests/fixtures/checks/（新增样本与 manifest 条目） | 设计第八节测试全部通过；原有 manifest 不变；真实合同 2 清单完成 L-01、L-02 | 已完成 |
-| R1-09 | L-05 比较主文件自身的附件报价表；表格无币种时在单一币种任务中按合同币种比较 | Sonnet | high | R1-08 | 10.2 L-05、L-06、Q-135 ③；设计第九节 | app/checks/consistency.py、tests/test\_checks\_consistency.py、tests/fixtures/checks/（新增样本与 manifest 条目） | 设计第九节测试全部通过；ai\_summary 不含绝对金额（recheck 为空）；原有跨文件用例不变；真实合同 1、2 正文总价与附件合计完成比较 | 待执行 |
+| R1-09 | L-05 比较主文件自身的附件报价表；表格无币种时在单一币种任务中按合同币种比较 | Sonnet | high | R1-08 | 10.2 L-05、L-06、Q-135 ③；设计第九节 | app/checks/consistency.py、tests/test\_checks\_consistency.py、tests/fixtures/checks/（新增样本与 manifest 条目） | 设计第九节测试全部通过；ai\_summary 不含绝对金额（recheck 为空）；原有跨文件用例不变；真实合同 1、2 正文总价与附件合计完成比较 | 已完成 |
 | R1-10 | R1 验收：全量测试、两份真实合同逐行核对外发文本、经用户同意后真实模型试审 | Opus | medium | R1-09 | 23.1 A-03、23.3；设计第七节 | docs/business\_review.md；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；结果汇报给用户 | 待执行 |
 
 ### R2 旧格式支持（DOC、XLS、WPS、ET、RTF）

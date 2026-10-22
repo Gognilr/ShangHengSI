@@ -32,12 +32,30 @@ def test_cross_file_amounts_and_currency(amount, currency, codes):
         assert recheck(r.ai_summary, real_values=["800000", "850000"], terms=[]) == []
         assert not any(x in r.ai_summary for x in ("800000", "850000", "800,000", "850,000"))
     if currency == "":
-        assert "附件报价表币种未识别" in results[0].detail
+        assert "报价表未注明币种，按合同币种比较" in results[0].detail
 
 
-def test_only_main_file_supplies_contract_total_and_own_table_is_not_attachment():
-    ns, files = example(table_seq=1)
+def test_same_file_body_total_and_own_table():
+    ns, files = example("850000", "CNY", table_seq=1)
+    results = check_consistency(ns, files, find_tables(ns))
+    assert [(r.code, r.locs) for r in results] == [("L-05", ["F1-P1", "F1-S1-C3"])]
+    assert recheck(results[0].ai_summary, real_values=["800000", "850000"], terms=[]) == []
+    ns, files = example("800000", "CNY", table_seq=1)
     assert check_consistency(ns, files, find_tables(ns)) == []
+    ns, files = example("800000", "USD", table_seq=1)
+    assert [r.code for r in check_consistency(ns, files, find_tables(ns))] == ["L-06"]
+
+
+def test_table_without_currency_needs_single_currency_in_task():
+    ns, files = example("850000", "")
+    assert [r.code for r in check_consistency(ns, files, find_tables(ns))] == ["L-05"]
+    ns.append(CheckNode("F1-P2", "保证金 USD 1000", 1, None))  # 任务中出现第二种币种：不比较
+    assert check_consistency(ns, files, find_tables(ns)) == []
+    ns, files = example("800000", "")
+    assert check_consistency(ns, files, find_tables(ns)) == []
+
+
+def test_only_main_file_supplies_contract_total():
     ns, files = example()
     ns[0] = CheckNode("F1-P1", "虚构合同，没有明确金额", 1, None)
     ns.append(CheckNode("F2-P1", "合同总价 USD 800000", 2, None))
