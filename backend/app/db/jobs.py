@@ -12,7 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
-from app.db.models import Job, ReviewRun, Task
+from app.db.models import BackupRecord, Job, ReviewRun, Task
 
 # 心跳超过此时间未更新的 running 任务视为 worker 异常退出（SPEC 7.5）
 STALE_AFTER = timedelta(minutes=15)
@@ -20,6 +20,7 @@ STALE_AFTER = timedelta(minutes=15)
 # job 在处理函数之外最终失败时写给用户的文字；处理函数内部失败也用同样的文字
 PARSE_INTERNAL_MSG = "解析时发生内部错误，请重新上传；仍然失败请联系管理员"
 REVIEW_INTERNAL_MSG = "审核时发生内部错误，请重新审核；仍然失败请联系管理员"
+BACKUP_INTERRUPTED_MSG = "备份中断"
 
 
 def make_worker_id(index: int) -> str:
@@ -108,6 +109,10 @@ def finalize_failed(db: Session, job_type: str, payload: object) -> None:
             task = db.get(Task, run.task_id, with_for_update=True)
             if task is not None and task.status == "reviewing":
                 task.status = "reviewed"
+    elif job_type == "backup":
+        # 同一时间只有一个备份（advisory lock），job 最终失败时仍为 running 的记录就是它留下的（M7 设计 3.4）
+        db.execute(update(BackupRecord).where(BackupRecord.status == "running")
+                   .values(status="failed", error_message=BACKUP_INTERRUPTED_MSG, finished_at=utcnow()))
 
 
 def requeue_stale(db: Session, *, stale_after: timedelta = STALE_AFTER) -> int:

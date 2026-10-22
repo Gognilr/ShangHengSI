@@ -237,6 +237,7 @@ def main() -> None:
     # 主密钥缺失或不是 32 字节时拒绝启动（SPEC 17.3、open_questions Q-08）
     check_master_key()
     from app.db.session import get_sessionmaker
+    import app.backup.job  # noqa: F401  导入即注册 backup 处理函数和定时备份检查
     import app.review.job  # noqa: F401  导入即注册 review 处理函数
     import app.tasks.pipeline  # noqa: F401  导入即注册 parse 处理函数
 

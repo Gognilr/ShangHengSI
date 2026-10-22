@@ -4,6 +4,8 @@
   create-admin --username NAME  创建管理员，随机初始密码只显示一次，首次登录强制修改（SPEC 20.5）。
   set-model --base-url URL --model NAME [--extra-params JSON] [--api-key-stdin]
                                 开发用：写入模型设置；API 密钥只从标准输入读取，不出现在命令行和输出中。
+  decrypt-backup --in X.bak --out X.tar [--password-file PATH]
+                                解密备份文件（restore.sh 使用，SPEC 16.3）；不给密码文件时读 BACKUP_PASSWORD_FILE。
 """
 import argparse
 import os
@@ -86,6 +88,24 @@ def set_model(base_url: str, model: str, extra_params: dict | None, api_key: str
         db.commit()
 
 
+def decrypt_backup(src: str, out: str, password_file: str | None) -> None:
+    """解密备份到新文件（O_EXCL，权限 600）。失败时删除不完整的输出并重新抛出。"""
+    from app.backup.archive import decrypt_stream, load_backup_password
+    from app.config import get_settings
+
+    password = load_backup_password(password_file or get_settings().backup_password_file)
+    with open(src, "rb") as s:
+        fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                decrypt_stream(s, f, password)
+                f.flush()
+                os.fsync(f.fileno())
+        except BaseException:
+            os.unlink(out)
+            raise
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="企业商务文件AI智能审查助手 运维命令")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -103,7 +123,29 @@ def main(argv: list[str] | None = None) -> int:
     p_model.add_argument("--extra-params", help="附加请求参数，JSON 对象，原样合并进请求体")
     p_model.add_argument("--api-key-stdin", action="store_true", help="从标准输入读取 API 密钥（一行）")
 
+    p_dec = sub.add_parser("decrypt-backup", help="解密备份文件为 tar（恢复时使用）")
+    p_dec.add_argument("--in", dest="src", required=True, help="备份文件 aireview_yyyyMMdd_HHmm.bak")
+    p_dec.add_argument("--out", required=True, help="输出的 tar 文件路径（不能已存在）")
+    p_dec.add_argument("--password-file", help="备份密码文件；默认取环境变量 BACKUP_PASSWORD_FILE")
+
     args = parser.parse_args(argv)
+
+    if args.command == "decrypt-backup":
+        from app.backup.archive import BackupFormatError
+
+        if not os.path.isfile(args.src):
+            print(f"错误：备份文件 {args.src} 不存在。", file=sys.stderr)
+            return 1
+        try:
+            decrypt_backup(args.src, args.out, args.password_file)
+        except FileExistsError:
+            print(f"错误：{args.out} 已存在，拒绝覆盖。", file=sys.stderr)
+            return 1
+        except (BackupFormatError, RuntimeError) as exc:
+            print(f"错误：{exc}", file=sys.stderr)
+            return 1
+        print(f"已解密到 {args.out}。")
+        return 0
 
     if args.command == "gen-key":
         try:
