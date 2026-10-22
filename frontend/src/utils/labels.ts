@@ -48,10 +48,10 @@ export const DOC_TYPE_SOURCE: Dict = { auto: '自动识别', user: '手动修改
 export const docTypeSourceLabel = pick(DOC_TYPE_SOURCE)
 
 export const CATEGORY_OPTIONS: Dict = {
-  wording: '措辞',
+  wording: '表述',
   logic: '逻辑',
   legal: '法律',
-  compliance: '合规',
+  compliance: '合规与制裁',
   commercial: '商务',
 }
 export const categoryLabel = pick(CATEGORY_OPTIONS)

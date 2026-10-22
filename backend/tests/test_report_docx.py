@@ -8,7 +8,7 @@ from docx import Document
 from sqlalchemy import event, select, update
 
 from app.db.models import DocNode, Finding, RequirementResult, ReviewRun, Task, TaskFile
-from app.export.report_docx import DECLARATION, SANCTIONS_NOTE, build_local_report, build_run_report
+from app.export.report_docx import CATEGORY, DECLARATION, SANCTIONS_NOTE, build_local_report, build_run_report
 from app.security.crypto import encrypt_text
 from tests.review_support import env, ready_task  # noqa: F401
 from tests.test_checks_service import ROOT
@@ -69,6 +69,12 @@ def test_report_sections_restore_snapshot_and_layout(report_case, db_sessionmake
     assert [c.text for c in issues.rows[0].cells] == ["序号", "等级", "类别", "位置", "原文", "问题说明", "修改建议", "引用状态", "处理状态与备注"]
     assert issues.cell(1, 0).text == "1" and issues.cell(1, 4).text == "—"
     assert issues.cell(2, 0).text == "2" and "快照" in issues.cell(2, 4).text
+    assert issues.cell(1, 2).text == "法律" and issues.cell(2, 2).text == "商务"
+
+
+def test_category_labels_follow_spec():
+    # SPEC 11.3：表述 / 逻辑 / 法律 / 合规与制裁 / 商务
+    assert CATEGORY == {"wording": "表述", "logic": "逻辑", "legal": "法律", "compliance": "合规与制裁", "commercial": "商务"}
 
 
 def test_report_does_not_select_node_original_and_survives_purge(report_case, db_sessionmaker):

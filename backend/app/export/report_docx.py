@@ -19,7 +19,7 @@ from app.review.service import run_detail
 DECLARATION = "本报告由 AI 辅助生成，仅供内部参考，不构成法律意见。重大事项及高风险交易请由法务、合规人员或律师确认。"
 SANCTIONS_NOTE = "未联网核查，基于模型自身知识，需合规人员确认最新制裁与出口管制规定"
 SEVERITY = {"high": "高", "medium": "中", "low": "低"}
-CATEGORY = {"wording": "措辞", "logic": "逻辑", "legal": "法律", "compliance": "合规", "commercial": "商务"}
+CATEGORY = {"wording": "表述", "logic": "逻辑", "legal": "法律", "compliance": "合规与制裁", "commercial": "商务"}
 CITE = {"verified": "引用已校验", "unverified": "待核实", "missing": "缺失型"}
 HANDLING = {"pending": "待处理", "adopted": "已采纳", "ignored": "已忽略"}
 VERDICT = {"issue": "有问题", "ok": "未发现问题", "na": "不适用", "unable": "无法判断"}
