@@ -147,14 +147,14 @@ def _applies(values: list, value: str) -> bool:
     return "all" in values or value in values
 
 
-def company_rows(db: DbSession, *, doc_type: str | None, stance: str) -> list[CompanyRequirement]:
+def company_rows(db: DbSession, *, doc_type: str | None, stance: str | None) -> list[CompanyRequirement]:
     """启用且适用的公司补充要求，按 sort、code 排序；doc_type 为 None 表示不按类型筛选。"""
     return [
         row
         for row in db.scalars(select(CompanyRequirement).where(CompanyRequirement.enabled.is_(True))
                               .order_by(CompanyRequirement.sort, CompanyRequirement.code))
         if (doc_type is None or _applies(list(row.doc_types or []), doc_type))
-        and _applies(list(row.stances or []), stance)
+        and (stance is None or _applies(list(row.stances or []), stance))
     ]
 
 

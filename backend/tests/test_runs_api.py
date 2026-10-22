@@ -636,8 +636,7 @@ def test_requirements_no_company_requirements(alice):
 
 
 @pytest.mark.parametrize("params", [
-    {"source": "outgoing"},
-    {"stance": "sales"},
+    # Q-113（M7-04）：stance、source 改为可选，单独给出一个不再是错误
     {"stance": "bad", "source": "outgoing"},
     {"stance": "sales", "source": "bad"},
     {"stance": "sales", "source": "outgoing", "doc_type": "bad"},

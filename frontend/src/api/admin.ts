@@ -79,3 +79,38 @@ export const adminModelApi = {
   test: () => http.post<ModelTestResult>('/admin/settings/model/test'),
   usage: () => http.get<UsageOut>('/admin/usage'),
 }
+
+// ---- 审核要求（设置 - 审核要求） ----
+export interface CompanyReqRow {
+  id: string
+  code: string
+  text: string
+  doc_types: string[]
+  stances: string[]
+  enabled: boolean
+  sort: number
+  created_at: string
+  updated_at: string
+}
+
+export type CompanyReqBody = Pick<CompanyReqRow, 'text' | 'doc_types' | 'stances' | 'enabled' | 'sort'>
+
+export interface RequirementVersionRow {
+  version: number
+  created_by_name: string | null
+  created_at: string
+  snapshot: {
+    requirements: { code: string; text: string; doc_types: string[]; stances: string[]; sort: number }[]
+    company_profile: string
+  }
+}
+
+export const adminRequirementsApi = {
+  list: () => http.get<{ items: CompanyReqRow[]; version: number | null }>('/admin/company-requirements'),
+  create: (body: CompanyReqBody) => http.post<CompanyReqRow>('/admin/company-requirements', body),
+  update: (id: string, body: CompanyReqBody) => http.put<CompanyReqRow>(`/admin/company-requirements/${id}`, body),
+  remove: (id: string) => http.delete<void>(`/admin/company-requirements/${id}`),
+  getProfile: () => http.get<{ text: string; version: number | null }>('/admin/company-profile'),
+  saveProfile: (text: string) => http.put<{ text: string; version: number | null }>('/admin/company-profile', { text }),
+  versions: () => http.get<{ items: RequirementVersionRow[] }>('/admin/requirement-versions'),
+}

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, Depends, FastAPI
 
 from app.admin.model import router as admin_model_router
+from app.admin.requirements import router as admin_requirements_router
 from app.admin.users import router as admin_users_router
 from app.auth.router import router as auth_router
 from app.chat.router import router as chat_router
@@ -36,6 +37,7 @@ def build_api_router() -> APIRouter:
     router.include_router(chat_router)
     router.include_router(admin_users_router)
     router.include_router(admin_model_router)
+    router.include_router(admin_requirements_router)
     return router
 
 

@@ -18,6 +18,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Sequence,
     String,
     Text,
     UniqueConstraint,
@@ -498,6 +499,10 @@ class Setting(Base):
 
 
 # ---- 18.21 company_requirements ----
+# CO 编号序列（Q-107，迁移 0002）：删除后编号不复用。不挂在 metadata 上，由迁移创建。
+company_requirement_code_seq = Sequence("company_requirement_code_seq")
+
+
 class CompanyRequirement(Base):
     __tablename__ = "company_requirements"
 

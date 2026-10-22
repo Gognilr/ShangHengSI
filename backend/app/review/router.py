@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session as DbSession
 from app.db.models import DOC_TYPES, Finding, RequirementVersion, ReviewRun, Task, User
 from app.db.session import get_db
 from app.review import service
-from app.review.requirements import builtin_version, select_builtin, select_builtin_any_type
+from app.review.requirements import (
+    Requirement,
+    _builtin_data,
+    _matches,
+    builtin_version,
+    select_builtin,
+    select_builtin_any_type,
+)
 from app.review.service import FindingOut, FindingPatch, RunCreated, RunDetail, RunList
 from app.security.errors import AppError
 from app.security.deps import current_user, owned_finding, owned_run, owned_task
@@ -77,10 +84,24 @@ class RequirementsOut(BaseModel):
     company: list[CompanyRequirementOut]
 
 
+def _builtin_filtered(
+    doc_type: str | None, stance: str | None, source: str | None
+) -> list[tuple[Requirement, list[str]]]:
+    """按给出的条件筛选内置要求（缺少的条件不参与筛选），保持 YAML 顺序；返回 (要求, 适用的文件类型)。"""
+    return [
+        (Requirement(id=i["id"], source="builtin", dimension=i.get("dimension"), text=i["text"]),
+         list(i["doc_types"]))
+        for i in _builtin_data()["requirements"]
+        if (doc_type is None or _matches(i["doc_types"], doc_type))
+        and (stance is None or _matches(i["stances"], stance))
+        and (source is None or _matches(i["sources"], source))
+    ]
+
+
 @router.get("/requirements", response_model=RequirementsOut)
 def list_requirements(
-    stance: Literal["sales", "purchase", "other"],
-    source: Literal["outgoing", "incoming"],
+    stance: Literal["sales", "purchase", "other"] | None = Query(None),
+    source: Literal["outgoing", "incoming"] | None = Query(None),
     doc_type: str | None = Query(None),
     _user: User = Depends(current_user),
     db: DbSession = Depends(get_db),
@@ -89,7 +110,10 @@ def list_requirements(
     doc_type = doc_type or None
     if doc_type is not None and doc_type not in DOC_TYPES:
         raise AppError(422, "VALIDATION_ERROR", "文件类型取值不合法")
-    if doc_type is None:
+    if stance is None or source is None:
+        # Q-113：设置页列出全部内置要求，缺少的立场、来源不参与筛选（公司补充要求同样不按立场筛选）
+        builtin = _builtin_filtered(doc_type, stance, source)
+    elif doc_type is None:
         builtin = select_builtin_any_type(stance, source)
     else:
         builtin = [(r, None) for r in select_builtin(doc_type, stance, source)]

@@ -24,7 +24,7 @@ export interface RequirementsView {
 
 export const requirementsApi = {
   /** docType 为空表示全部类型。 */
-  get: (query: { stance: Stance; source: Source; docType?: string | null }) =>
+  get: (query: { stance?: Stance; source?: Source; docType?: string | null }) =>
     http.get<RequirementsView>('/requirements', {
       stance: query.stance,
       source: query.source,
