@@ -41,8 +41,13 @@ class LoginOut(BaseModel):
     csrf_token: str
 
 
+class AlertOut(BaseModel):
+    code: str
+    message: str
+
+
 class MeOut(BaseModel):
     user: UserOut
     csrf_token: str
-    # 管理员提醒（SPEC 6.7），M7 实现；普通用户始终为空
-    alerts: list[str] = []
+    # 管理员提醒（SPEC 6.7）；普通用户始终为空
+    alerts: list[AlertOut] = []

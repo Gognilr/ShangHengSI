@@ -10,8 +10,9 @@ export interface User {
   must_change_password: boolean
 }
 
-/** 管理员提醒（SPEC 6.7）。具体内容在 M7 实现，这里只约定有 message 字段。 */
+/** 管理员提醒（SPEC 6.7）：code 为 BACKUP_FAILED / BACKUP_SPACE_LOW / CALL_CAP_NEAR，界面只显示 message。 */
 export interface AdminAlert {
+  code?: string
   message: string
 }
 
