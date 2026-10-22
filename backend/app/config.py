@@ -33,6 +33,7 @@ class Settings:
     tz: str
     max_upload_mb: int
     app_version: str
+    convert_spool_dir: str
 
 
 def load_settings() -> Settings:
@@ -48,6 +49,7 @@ def load_settings() -> Settings:
         tz=os.environ.get("TZ", "Asia/Shanghai"),
         max_upload_mb=_int_env("MAX_UPLOAD_MB", 30),
         app_version=os.environ.get("APP_VERSION", "dev"),
+        convert_spool_dir=os.environ.get("CONVERT_SPOOL_DIR", "/spool"),
     )
 
 

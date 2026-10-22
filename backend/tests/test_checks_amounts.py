@@ -234,3 +234,13 @@ def test_uppercase_only_uses_immediate_same_row_cells():
     results = check_uppercase(ns)
     assert len(results) == 1 and "850,000.00" in results[0].detail
     assert not check_uppercase(nodes([["850000"], ["捌拾万元整"]]))
+
+
+def test_formula_warning_for_all_xlsx_parsed_formats():
+    """公式警告按“解析为 xlsx”判断：xlsx、xls、et 报，docx、doc、wps、rtf、pdf 不报。"""
+    from app.parsing.xlsx import WARN_FORMULA
+    for ext in ("xlsx", "xls", "et"):
+        _, results = check_tables([], [CheckFile(1, True, ext, "contract", [WARN_FORMULA])])
+        assert len(results) == 1 and "含未计算的公式" in results[0].detail, ext
+    for ext in ("docx", "doc", "wps", "rtf", "pdf"):
+        assert check_tables([], [CheckFile(1, True, ext, "contract", [WARN_FORMULA])]) == ([], []), ext

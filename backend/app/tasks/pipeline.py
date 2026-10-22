@@ -20,7 +20,7 @@ from app.checks.service import run_checks
 from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import DocNode, Task, TaskFile
-from app.parsing import docx, image, pdf, xlsx
+from app.parsing import docx, image, legacy, pdf, xlsx
 from app.parsing.doctype import detect_doc_type
 from app.parsing.model import MAX_OCR_PAGES_PER_TASK, ParsedFile, ParseError
 from app.redaction.engine import redact_task
@@ -47,6 +47,14 @@ def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int) -> tuple[Parsed
         return docx.parse_docx(data, seq), docx.PARSER_VERSION
     if ext == "xlsx":
         return xlsx.parse_xlsx(data, seq), xlsx.PARSER_VERSION
+    if ext in legacy.LEGACY_EXTS:  # 不占 OCR 名额；转换结果只在内存中解析，不保存
+        converted = legacy.convert(data, ext)
+        if legacy.result_ext(ext) == "docx":
+            parsed, version = docx.parse_docx(converted, seq), docx.PARSER_VERSION
+        else:
+            parsed, version = xlsx.parse_xlsx(converted, seq), xlsx.PARSER_VERSION
+        parsed.warnings.append(legacy.converted_warning(ext))
+        return parsed, f"{version}+{legacy.CONVERTER_TAG}"
     if ext == "pdf":
         need = len(pdf.inspect_pdf(data).scanned_pages)  # 页数超限也在这里失败
         if not need:
@@ -58,7 +66,7 @@ def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int) -> tuple[Parsed
         _check_ocr_budget(ocr_used, 1)
         with worker.ocr_slot():
             return image.parse_image(data, seq), image.PARSER_VERSION
-    raise ValueError("unexpected ext")  # 上传检查只放行以上五种（tasks.service.EXT_MAP），走内部错误
+    raise ValueError("unexpected ext")  # 上传检查只放行以上各种（tasks.service.EXT_MAP），走内部错误
 
 
 def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int) -> int:

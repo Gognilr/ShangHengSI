@@ -11,6 +11,7 @@ import pytest
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 GATEWAY = APP_DIR / "llm" / "gateway.py"
+CONVERTER_DIR = Path(__file__).resolve().parents[2] / "converter"  # 仓库根目录下；只挂载 backend 时不存在
 
 FORBIDDEN = {
     "httpx",
@@ -59,18 +60,28 @@ def _app_files() -> list[Path]:
     return sorted(p for p in APP_DIR.rglob("*.py") if p != GATEWAY)
 
 
+def _converter_files() -> list[Path]:
+    """converter 容器的代码（R2）：同样不得有网络调用，它本来就断网。"""
+    return sorted(CONVERTER_DIR.rglob("*.py")) if CONVERTER_DIR.is_dir() else []
+
+
 def test_scan_covers_project_code():
     files = _app_files()
     assert len(files) >= 10
     assert APP_DIR / "main.py" in files
 
 
+@pytest.mark.skipif(not CONVERTER_DIR.is_dir(), reason="需要整仓挂载才有 converter/")
+def test_scan_covers_converter():
+    assert CONVERTER_DIR / "main.py" in _converter_files()
+
+
 def test_no_network_calls_outside_gateway():
     violations = {}
-    for path in _app_files():
+    for path in _app_files() + _converter_files():
         hits = find_network_imports(path.read_text(encoding="utf-8"))
         if hits:
-            violations[str(path.relative_to(APP_DIR.parent))] = hits
+            violations[str(path.relative_to(CONVERTER_DIR.parent if CONVERTER_DIR in path.parents else APP_DIR.parent))] = hits
     assert violations == {}, f"只有 app/llm/gateway.py 可以访问网络：{violations}"
 
 

@@ -9,6 +9,8 @@ from app.parsing.xlsx import WARN_FORMULA
 from app.redaction.detect import _CURRENCY
 from app.redaction.tables import HEADER_SCAN_ROWS, table_cell
 
+XLSX_EXTS = frozenset({"xlsx", "xls", "et"})  # 解析为 xlsx 的格式（xls、et 经 converter 转换）
+
 _CURRENCY_TOKEN = re.compile(
     "|".join(r"(?<![A-Za-z])" + re.escape(k) + r"(?![A-Za-z])" if k.isascii() and k[0].isalpha()
              else re.escape(k) for k in sorted(_CURRENCY, key=len, reverse=True)), re.IGNORECASE)
@@ -234,7 +236,7 @@ def find_tables(nodes: list[CheckNode]) -> list[QuoteTableCheck]:
 def check_tables(nodes: list[CheckNode], files: list[CheckFile]) -> tuple[list[QuoteTableCheck], list[CheckResult]]:
     tables, results = _evaluate_tables(nodes)
     for file in files:
-        if file.ext == "xlsx" and WARN_FORMULA in file.warnings:
+        if file.ext in XLSX_EXTS and WARN_FORMULA in file.warnings:
             text = f"F{file.seq} 含未计算的公式，相关金额无法核验"
             results.append(CheckResult("L-INFO", SEVERITY["L-INFO"], [], file.seq, text, text))
         if file.doc_type == "quotation" and not any(t.file_seq == file.seq for t in tables):

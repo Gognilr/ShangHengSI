@@ -633,3 +633,82 @@ def test_outbound_quote_table_summary_xlsx(db_sessionmaker, text_task):
         lines = outbound(db, task.id).splitlines()
     assert lines[1:] == ["[F1-S1-A1] 报价单", "[F1-S1] 【报价明细表：共 3 行，币种 USD，产品：针状焦等 2 种，本地校验：未识别报价表结构，未做金额核验】",
                          "[F1-S1-A6] 合计", "[F1-S1-C6] USD [金额_4]"]
+
+
+# ---- R2-03：旧格式（模拟 converter，不需要 LibreOffice） ----
+
+from tests.legacy_support import LEGACY, fake_converter, manifest, replay_handler, spool  # noqa: E402,F401
+
+
+def _node_view(db, task_id, seq):
+    rows = db.scalars(select(DocNode).where(DocNode.task_id == task_id, DocNode.loc.like(f"F{seq}-%"))
+                      .order_by(DocNode.ord)).all()
+    return [(n.loc, n.kind, n.part, crypto.decrypt_text(n.text_enc)) for n in rows]
+
+
+def _legacy_warning(ext, base):
+    return (f"已由 {ext.upper()} 格式转换为 {base.upper()} 后解析，"
+            "个别格式（如自动编号、表格列）可能与原文显示不同")
+
+
+def test_parse_legacy_formats_match_manifest(db_sessionmaker, make_task, spool):
+    """五种旧格式经 pipeline 解析出与 manifest 一致的节点和警告，并附转换警告与 parser_version。"""
+    names = [("合同.doc", "contract_basic.doc", "contract_basic_doc"),
+             ("合同.wps", "contract_basic.wps", "contract_basic_wps"),
+             ("合同.rtf", "contract_basic.rtf", "contract_basic_rtf"),
+             ("报价.xls", "quotation.xls", "quotation_xls"),
+             ("报价.et", "quotation.et", "quotation_et")]
+    task = make_task([(n, (LEGACY / f).read_bytes()) for n, f, _ in names], policy="local_only")
+    with fake_converter(spool, replay_handler()):
+        with db_sessionmaker() as db:
+            pipeline.parse_task(db, task.id)
+    samples = manifest()
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        assert (t.status, t.error_message) == ("completed_local", None)
+        files = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)).all()
+        for seq, (f, (_, _, key)) in enumerate(zip(files, names), start=1):
+            want = samples[key]
+            base = "docx" if want["parse_as"] == "docx" else "xlsx"
+            assert f.parser_version == f"{base}-1+lo25.2"
+            assert f.warnings == want["warnings"] + [_legacy_warning(f.ext, base)]
+            assert f.has_revisions == want["has_revisions"] and f.page_count == want["page_count"]
+            got = _node_view(db, task.id, seq)
+            assert len(got) == want["node_count"]
+            assert [(n["loc"].replace("F1-", f"F{seq}-", 1), n["kind"], n["part"], n["text"])
+                    for n in want["nodes"]] == got
+
+
+def test_parse_legacy_ai_task_redacts_converted_text(db_sessionmaker, make_task, spool):
+    task = make_task([("合同.doc", (LEGACY / "contract_basic.doc").read_bytes())])
+    with fake_converter(spool, replay_handler()):
+        with db_sessionmaker() as db:
+            pipeline.parse_task(db, task.id)
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        assert t.status == "awaiting_confirm"
+        assert "星河" not in engine.build_outbound_text(db, t)
+
+
+def test_parse_legacy_failures_mark_parse_failed(db_sessionmaker, make_task, spool):
+    task = make_task([("坏.doc", bytes.fromhex("d0cf11e0a1b11ae1") + b"garbage")])
+    with fake_converter(spool, lambda kind, data: ("err", "FAILED")):
+        with db_sessionmaker() as db:
+            pipeline.parse_task(db, task.id)
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        assert t.status == "parse_failed"
+        assert t.error_message == "坏.doc：无法转换该文件（可能已加密或已损坏），请另存为 DOCX / XLSX 后重新上传"
+        assert count(db, DocNode, task.id) == 0
+
+
+def test_parse_legacy_converter_down_does_not_affect_docx(db_sessionmaker, make_task, spool):
+    """没有心跳时旧格式提示服务不可用；DOCX 不经过 converter。"""
+    bad = make_task([("合同.doc", (LEGACY / "contract_basic.doc").read_bytes())])
+    ok = make_task([("合同.docx", sample("contract_basic"))])
+    with db_sessionmaker() as db:
+        pipeline.parse_task(db, bad.id)
+        pipeline.parse_task(db, ok.id)
+    with db_sessionmaker() as db:
+        assert db.get(Task, bad.id).error_message == "合同.doc：文件转换服务不可用，请联系管理员"
+        assert db.get(Task, ok.id).status == "awaiting_confirm"
