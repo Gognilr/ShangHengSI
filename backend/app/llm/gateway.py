@@ -1,6 +1,6 @@
 """模型网关 —— 全系统唯一可以访问外网的模块（SPEC 5、11.1、11.7、17.4，设计 docs/design/M2.md 第七节）。
 
-call_model() 依次执行：读取设置 → 每月调用上限检查 → 出口复检 → 发送（失败重试 2 次）→ 每次尝试写一条 llm_calls。
+call_model() 依次执行：读取设置 → 每月调用上限检查 → 出口复检 → 发送（失败重试 2 次；追问不重试）→ 每次尝试写一条 llm_calls。
 - 出口复检对全部 messages 的 content 拼接后检查（9.8）；拦截时写一条 status=blocked、request_text 为空、
   block_reason 只含类别和位置的记录，然后抛出 GatewayError("BLOCKED")，不发送。
 - 请求体：model、messages、temperature、max_tokens，json_mode 开启时加 response_format，再合并附加请求参数。
@@ -143,8 +143,13 @@ def call_model(
     task_title: str | None = None,
     run_id: uuid.UUID | None = None,
     json_mode: bool | None = None,
+    timeout_s: float | None = None,
+    retry: bool = True,
 ) -> ModelResult:
-    """调用模型。成功返回 ModelResult；失败抛出 GatewayError（code 见 MESSAGES）。"""
+    """调用模型。成功返回 ModelResult；失败抛出 GatewayError（code 见 MESSAGES）。
+
+    timeout_s 覆盖设置中的超时（追问固定 120 秒，SPEC 13）；retry=False 时失败不重试（追问由用户手动重试）。
+    """
     if purpose not in ("review", "chat", "test"):
         raise ValueError("purpose")
     if not all(isinstance(m.get("content"), str) and isinstance(m.get("role"), str) for m in messages):
@@ -152,6 +157,8 @@ def call_model(
     cfg = _load_config(db)
     if not (cfg.base_url and cfg.api_key and cfg.name):
         raise GatewayError("NOT_CONFIGURED")
+    if timeout_s is not None:
+        cfg.timeout_s = float(timeout_s)
     recorder = _Recorder(db, cfg.api_key, {"user_id": user_id, "task_id": task_id, "task_title": task_title,
                                            "run_id": run_id, "purpose": purpose, "model_name": cfg.name[:100]})
 
@@ -173,7 +180,7 @@ def call_model(
     url = cfg.base_url.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json"}
     last: GatewayError | None = None
-    for attempt in range(len(RETRY_DELAYS) + 1):
+    for attempt in range(len(RETRY_DELAYS) + 1 if retry else 1):
         if attempt:
             time.sleep(RETRY_DELAYS[attempt - 1])
         started = time.monotonic()

@@ -196,6 +196,33 @@ def test_retries_exhausted(gw, db_sessionmaker, monkeypatch, mode, code):
         assert exc.value.llm_call_id == calls(db)[-1].id
 
 
+def test_retry_false_sends_once(gw, db_sessionmaker, monkeypatch):
+    """追问（M6-07）：retry=False 时失败不重试，只有一次请求和一条 error 记录。"""
+    requests = use(monkeypatch, "http_500")
+    with db_sessionmaker() as db:
+        with pytest.raises(GatewayError) as exc:
+            call_model(db, purpose="chat", messages=REVIEW_MESSAGES, retry=False)
+        assert exc.value.code == "HTTP_ERROR" and len(requests) == 1 and gw == []
+        assert [c.status for c in calls(db)] == ["error"]
+
+
+def test_timeout_override(gw, db_sessionmaker, monkeypatch):
+    """timeout_s 覆盖设置中的超时；不传时仍用设置值（默认 180 秒）。"""
+    seen: list[float] = []
+    original = gateway._send_once
+
+    def spy(cfg, *args):
+        seen.append(cfg.timeout_s)
+        return original(cfg, *args)
+
+    monkeypatch.setattr(gateway, "_send_once", spy)
+    use(monkeypatch)
+    with db_sessionmaker() as db:
+        call_model(db, purpose="chat", messages=REVIEW_MESSAGES, timeout_s=120)
+        call_model(db, purpose="review", messages=REVIEW_MESSAGES)
+    assert seen == [120.0, 180.0]
+
+
 def test_client_error_not_retried_and_key_masked(gw, db_sessionmaker, monkeypatch, caplog):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": {"message": f"Incorrect API key provided: {API_KEY}"}})

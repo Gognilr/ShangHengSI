@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, Depends, FastAPI
 
 from app.auth.router import router as auth_router
+from app.chat.router import router as chat_router
 from app.checks.router import router as checks_router
 from app.export.router import router as export_router
 from app.config import get_settings, setup_logging
@@ -30,6 +31,7 @@ def build_api_router() -> APIRouter:
     router.include_router(redaction_router)
     router.include_router(checks_router)
     router.include_router(export_router)
+    router.include_router(chat_router)
     return router
 
 
