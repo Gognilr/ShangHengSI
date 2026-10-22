@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- M8-01 代码已完成、服务器实跑暂缓（2026-10-22，Opus 5.5）：app/backup/restore.py（prepare 校验成员 / 清单 / 迁移版本 / 主密钥后再解包；restore_db 恢复到 {库名}_restore 再改名，失败时原库不动；swap_files / verify / drop_old_files）、cli restore-prepare / restore-db / restore-files、deploy/scripts/lib.sh、restore.sh；备份文件 0640，appuser uid/gid 10001。新增 tests/test_backup_restore.py（test_restore.py 已被代号还原占用，Q-132）、tests/test_scripts.py；整仓挂载 Docker 全量 1640 passed、1 warning。提交 e716d50。新增 Q-132、Q-133（待确认）。测试服务器已同步 e716d50 并重建重启（HTTPS 200，数据未动）。**未做**：服务器上的 restore.sh 实跑与主密钥不匹配演练——用户决定先暂停部署与发布包（M8-01 实跑、M8-02～M8-05），转而细化实际试用中发现的业务问题；M8-01 状态保持“待执行”，恢复部署工作时从服务器实跑继续。
+
 - M8 已细化（M8-00，2026-10-22，Opus 5.5），设计见 docs/design/M8.md，新增 Q-117～Q-131。用户确认：内网服务器（PVE 虚拟机，Ubuntu 26.04，Docker 已装，数据在 /data）就是正式部署环境，环境不再变化，M8 以它为准（设计第〇节，Q-128）；Q-114、Q-115、Q-117～Q-131 由用户授权 Opus 决定（2026-10-22）。规则 10：caa723e 之后只有 Opus 的提交，无待评审提交。要点：恢复采用“恢复到新库再改名”，恢复前校验 tar 成员、迁移版本和主密钥；备份文件 0640 + 组 aireview（gid 10001）以便 SFTP 拉取；发布包含三个镜像和去掉 build 段的 compose；Caddyfile 加 default\_sni；脚本检查 Docker 与 containerd 存储不在根分区；M8-01～M8-03 各自在服务器上实跑，M8-05 演练后正式安装。下一个任务：**M8-01**（Opus 档，xhigh），等待用户确认开工。
 
 - M7-09 已完成（2026-10-22，Opus 5.5）：按规则 10 评审 M7-02～M7-08。新增 tests/test_m7_acceptance.py（A-06 补充：管理员调用全部 /admin/* 读取接口不出现他人任务对照表中的任何真实值，外发记录详情出口复检零命中，已记住的名称是唯一出现名称明文处；管理员访问他人任务、轮次、问题、对话、报告一律 404）。Docker 全量 1601 passed（test_forbidden_words 需整仓挂载，见 Q-116）。compose + 模拟模型浏览器验收：T-14（新增 CO-1 → 抽屉显示 → 确认发送 → 逐条结论有 CO-1 → 轮次 company_req_version=1、报告写“公司补充要求 第 1 版”）；T-16（立即备份 → .bak + .sha256、sha256sum -c OK、decrypt-backup 后 pg_restore --list 成功、保留份数 1 时只留最新一份）；T-18（只回拨验收任务的完成时间后执行清理 → 原件与节点原文清空、右栏提示、报告可导出、无重新审核、追问禁用）；5 个标签页 1440 / 1280、非管理员被拦截（设置页重定向、管理接口 403）、三种提醒条。修复 MainLayout 外层滚动导致的 1280px 横向滚动条（Q-116）。M7 验收结果与 Q-116 已经用户确认（2026-10-22）。
