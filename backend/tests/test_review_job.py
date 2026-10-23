@@ -117,7 +117,8 @@ def test_high_count_and_partial(db_sessionmaker, owner, ready_task, llm):
 
     llm(handler=custom_reply(mutate))
     with db_sessionmaker() as db:
-        db.get(Task, task.id).user_note = "请重点检查付款条款"
+        db.get(Task, task.id).user_note_enc = crypto.encrypt_text("请重点检查付款条款")
+        db.get(Task, task.id).user_note_redacted = "请重点检查付款条款"
         db.commit()
     run = new_run(db_sessionmaker, task, owner)
     run_job(db_sessionmaker, run.id)

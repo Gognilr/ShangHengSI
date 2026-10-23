@@ -82,7 +82,8 @@ SCHEMA = {
         stance v10 NN
         source v10 NN
         policy v12 NN
-        user_note v500
+        user_note_enc bytea
+        user_note_redacted text
         status v20 NN
         error_message text
         latest_run_id uuid
@@ -188,7 +189,7 @@ SCHEMA = {
         status v10 NN
         stance v10 NN
         source v10 NN
-        user_note v500
+        user_note text
         main_doc_type v12 NN
         model_name v100
         prompt_version v20

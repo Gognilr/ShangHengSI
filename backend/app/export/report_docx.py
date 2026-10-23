@@ -146,7 +146,7 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     task = db.get(Task, run.task_id)
     files, main = _files(db, task)
     detail = run_detail(db, run)  # 复用结果页的位置、覆盖说明和还原，不读取节点原文。
-    # run_detail 已对模型字段做一次还原，引用快照也是原文；不能再次替换已还原值。
+    # run_detail 已对模型字段、NOTE 及要求文字做一次还原，引用快照也是原文；不能再次替换已还原值。
     text = _clean
 
     doc = _new_document()

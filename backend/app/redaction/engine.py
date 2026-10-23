@@ -622,6 +622,14 @@ def _node_texts(rows: list[DocNode]) -> dict[str, str]:
     return {r.loc: crypto.decrypt_text(r.text_enc) if r.text_enc is not None else "" for r in rows}
 
 
+def _texts_with_note(rows: list[DocNode], task: Task) -> dict[str, str]:
+    """NOTE 原文只在内存中解密；追加在正文之后，不创建 doc_nodes 行。"""
+    texts = _node_texts(rows)
+    if task.user_note_enc is not None:
+        texts["NOTE"] = crypto.decrypt_text(task.user_note_enc)
+    return texts
+
+
 def _load_terms(db: Session) -> list[Term]:
     """启用中的已记住名称与自定义敏感词，解密到内存（18.12），不写日志。"""
     rows = db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True)).order_by(RedactionTerm.created_at))
@@ -699,8 +707,10 @@ def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut]) ->
 def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
          existing: dict[str, Party], extra_terms: Sequence[UserTerm] = ()) -> RedactionResult:
     rows = _body_rows(db, task.id)
-    texts = _node_texts(rows)
+    texts = _texts_with_note(rows, task)
     nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no) for r in rows]
+    if texts.get("NOTE"):
+        nodes.append(NodeIn("NOTE", texts["NOTE"], None))
     user_terms = _user_terms(db, task.id, texts)
     seen = {(P.normalize(u.text), u.category) for u in user_terms}
     user_terms += [u for u in extra_terms if (P.normalize(u.text), u.category) not in seen]
@@ -710,6 +720,7 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
 
     for r in rows:
         r.redacted_text = result.redacted[r.loc]
+    task.user_note_redacted = result.redacted.get("NOTE")
     db.execute(delete(RedactionItem).where(RedactionItem.task_id == task.id))
     db.add_all(RedactionItem(task_id=task.id, loc=i.loc, char_start=i.char_start, char_end=i.char_end,
                              category=i.category, placeholder=i.placeholder, detected_by=i.detected_by)
@@ -848,8 +859,11 @@ def add_user_term(db: Session, task: Task, *, loc: str, char_start: int, char_en
     """
     if category not in USER_CATEGORIES:
         raise RedactionInputError(422, "VALIDATION_ERROR", "类别不正确")
-    node = _body_node(db, task.id, loc)
-    text = crypto.decrypt_text(node.text_enc) if node is not None and node.text_enc is not None else None
+    if loc == "NOTE":
+        text = crypto.decrypt_text(task.user_note_enc) if task.user_note_enc is not None else None
+    else:
+        node = _body_node(db, task.id, loc)
+        text = crypto.decrypt_text(node.text_enc) if node is not None and node.text_enc is not None else None
     if text is None or not (0 <= char_start < char_end <= len(text)):
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确")
     start, end = _strip_span(text, char_start, char_end)
@@ -875,7 +889,7 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
         raise RedactionInputError(404, "SUSPECT_NOT_FOUND", "疑似遗漏不存在")
     if decision not in ("replace", "ignore") or (decision == "replace" and category not in USER_CATEGORIES):
         raise RedactionInputError(422, "VALIDATION_ERROR", "处理方式或类别不正确")
-    texts = _node_texts(_body_rows(db, task.id))
+    texts = _texts_with_note(_body_rows(db, task.id), task)
     text = texts.get(row.loc, "")
     now = utcnow()
     if decision == "ignore":
@@ -906,7 +920,7 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
     """
     rows = _body_rows(db, task.id)
     order = {r.loc: k for k, r in enumerate(rows)}
-    texts = _node_texts(rows)
+    texts = _texts_with_note(rows, task)
     suspects = sorted(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id)),
                       key=lambda r: (r.decision != "pending", order.get(r.loc, len(order)), r.char_start, r.id))
     out = []

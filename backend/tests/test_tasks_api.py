@@ -91,7 +91,7 @@ def test_create_task_success(files_dir, alice, db_sessionmaker, make_user):
     with db_sessionmaker() as db:
         task = db.get(Task, uuid.UUID(tid))
         assert (task.status, task.stance, task.source, task.policy) == ("parsing", "purchase", "incoming", "ai")
-        assert task.title == "附件.pdf" and task.user_note == "请重点看付款条款"
+        assert task.title == "附件.pdf" and crypto.decrypt_text(task.user_note_enc) == "请重点看付款条款"
         files = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)).all()
         assert [(f.seq, f.is_main, f.original_name, f.ext) for f in files] == [
             (1, False, "合同.docx", "docx"),
@@ -378,7 +378,7 @@ def test_detail_contents(files_dir, make_user, login, db_sessionmaker):
     now = utcnow()
     with db_sessionmaker() as db:
         task = db.get(Task, tid)
-        task.user_note = "补充说明"
+        task.user_note_enc = crypto.encrypt_text("补充说明")
         f1, f2 = db.scalars(select(TaskFile).where(TaskFile.task_id == tid).order_by(TaskFile.seq)).all()
         f1.doc_type_source = "auto"
         f1.has_revisions = True
@@ -718,7 +718,7 @@ def test_rerun_validation_errors(db_sessionmaker, rerun_user, ready_task):
         r = patch_task(c, h, task.id, body)
         assert (r.status_code, r.json()["code"]) == (422, "VALIDATION_ERROR"), body
     with db_sessionmaker() as db:
-        assert db.get(Task, task.id).user_note is None
+        assert db.get(Task, task.id).user_note_enc is None
     assert patch_task(c, h, task.id, {"user_note": "x" * 500}).status_code == 200
     assert c.patch(f"{API_PREFIX}/tasks/{task.id}", json={"stance": "purchase"}).status_code == 403  # 缺 CSRF
     with db_sessionmaker() as db:

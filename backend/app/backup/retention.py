@@ -77,6 +77,7 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
                 storage.delete_original(f.storage_key)
                 f.original_deleted_at = now
             db.execute(update(DocNode).where(DocNode.task_id == tid).values(text_enc=None))
+            task.user_note_enc = None
             db.commit()
             done_tasks += 1
             done_files += len(files)

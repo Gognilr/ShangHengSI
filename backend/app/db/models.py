@@ -126,7 +126,8 @@ class Task(Base):
     stance: Mapped[str] = mapped_column(String(10), nullable=False)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     policy: Mapped[str] = mapped_column(String(12), nullable=False)
-    user_note: Mapped[Optional[str]] = mapped_column(String(500))
+    user_note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    user_note_redacted: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
     # Q-04：latest_run_id 与 review_runs.task_id 构成循环外键，这里不加外键
@@ -337,7 +338,7 @@ class ReviewRun(Base):
     status: Mapped[str] = mapped_column(String(10), nullable=False)
     stance: Mapped[str] = mapped_column(String(10), nullable=False)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
-    user_note: Mapped[Optional[str]] = mapped_column(String(500))
+    user_note: Mapped[Optional[str]] = mapped_column(Text)  # 本轮补充说明的代号快照（R4）
     main_doc_type: Mapped[str] = mapped_column(String(12), nullable=False)
     model_name: Mapped[Optional[str]] = mapped_column(String(100))
     prompt_version: Mapped[Optional[str]] = mapped_column(String(20))

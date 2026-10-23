@@ -23,6 +23,7 @@ from app.db.models import (
     TaskFile,
 )
 from app.main import API_PREFIX
+from app.redaction.engine import load_redaction_map
 from app.review import job
 from app.review.service import _View
 from app.security.crypto import decrypt_text
@@ -178,9 +179,18 @@ def test_409_outbound_blocked_names_category_and_position_only(db_sessionmaker, 
 def test_precheck_also_covers_user_note(db_sessionmaker, alice, ready_task):
     user, c, h = alice
     task = ready_task(user, user_note=f"请核对{REAL_BUYER_NAME}的付款条款")
+    with db_sessionmaker() as db:
+        stored = db.get(Task, task.id)
+        mapping = load_redaction_map(db, task.id)
+        code = next(code for code, value in mapping.items() if value == REAL_BUYER_NAME)
+        assert REAL_BUYER_NAME not in stored.user_note_redacted and code in stored.user_note_redacted
+        stored.user_note_redacted = f"请核对{REAL_BUYER_NAME}的付款条款"
+        db.commit()
     r = post_run(c, h, task.id)
     assert (r.status_code, r.json()["code"]) == (409, "OUTBOUND_BLOCKED")
     assert REAL_BUYER_NAME not in r.json()["message"]
+    assert count(db_sessionmaker, ReviewRun) == 0 and count(db_sessionmaker, Job) == 0
+    assert count(db_sessionmaker, LlmCall) == 0
 
 
 def test_run_no_increments_after_block(db_sessionmaker, alice, ready_task, llm):

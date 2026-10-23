@@ -79,7 +79,7 @@ def ready_task(db_sessionmaker, env):
         files = files or [("销售合同.docx", sample("contract_basic"))]
         with db_sessionmaker() as db:
             task = Task(owner_id=owner.id, title=files[0][0], stance=stance, source=source, policy=policy,
-                        user_note=user_note, status="parsing")
+                        user_note_enc=crypto.encrypt_text(user_note) if user_note else None, status="parsing")
             db.add(task)
             db.flush()
             for seq, (name, data) in enumerate(files, start=1):

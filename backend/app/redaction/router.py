@@ -87,6 +87,7 @@ class ManualRedaction(BaseModel):
 
 class OutboundOut(BaseModel):
     text: str
+    note: str | None
 
 
 def _party_list(db: DbSession, task: Task) -> PartyList:
@@ -203,4 +204,4 @@ def manual_redaction(
 
 @router.get("/redaction/outbound", response_model=OutboundOut)
 def get_outbound(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> OutboundOut:
-    return OutboundOut(text=engine.build_outbound_text(db, task))
+    return OutboundOut(text=engine.build_outbound_text(db, task), note=task.user_note_redacted)

@@ -236,7 +236,7 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None) -> ReviewR
     if main is None or main.doc_type is None:
         raise _conflict("TASK_STATE_CONFLICT", "文件类型尚未识别，不能提交审核")
 
-    ctx = build_context(db, task, stance=task.stance, source=task.source, user_note=task.user_note,
+    ctx = build_context(db, task, stance=task.stance, source=task.source, user_note=task.user_note_redacted,
                         main_doc_type=main.doc_type)
     rc = recheck_context(db, task.id)
     reasons = recheck("\n".join(m["content"] for m in build_messages(ctx)), real_values=rc.real_values,
@@ -249,7 +249,7 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None) -> ReviewR
     run_no = (db.scalar(select(func.max(ReviewRun.run_no)).where(ReviewRun.task_id == task.id)) or 0) + 1
     run = ReviewRun(
         task_id=task.id, run_no=run_no, status="queued", stance=task.stance, source=task.source,
-        user_note=task.user_note, main_doc_type=main.doc_type,
+        user_note=task.user_note_redacted, main_doc_type=main.doc_type,
         model_name=str(get_setting(db, "model.name") or "").strip()[:100] or None,
         prompt_version=load_system_template()[0], builtin_req_version=builtin_version(),
         company_req_version=db.scalar(select(func.max(RequirementVersion.version))),
@@ -377,7 +377,7 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
         queue_position = jobs.queue_position(db, job_id)
     return RunDetail(
         id=run.id, task_id=run.task_id, run_no=run.run_no, status=run.status, error_message=run.error_message,
-        stance=run.stance, source=run.source, user_note=run.user_note, main_doc_type=run.main_doc_type,
+        stance=run.stance, source=run.source, user_note=view.text(run.user_note), main_doc_type=run.main_doc_type,
         model_name=run.model_name, prompt_version=run.prompt_version, builtin_req_version=run.builtin_req_version,
         company_req_version=run.company_req_version, queued_at=run.queued_at, started_at=run.started_at,
         finished_at=run.finished_at, queue_position=queue_position,
@@ -385,7 +385,7 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
         doc_summary=view.text(run.doc_summary),
         sanctions=Sanctions(level=run.sanctions_level,
                             reasons=[view.text(str(r)) or "" for r in (run.sanctions_reasons or [])]),
-        requirement_results=[RequirementResultOut(req_id=r.req_id, req_source=r.req_source, req_text=r.req_text,
+        requirement_results=[RequirementResultOut(req_id=r.req_id, req_source=r.req_source, req_text=view.text(r.req_text) or "",
                                                   dimension=r.dimension, verdict=r.verdict, note=view.text(r.note))
                              for r in results],
         findings=[view.finding(f, locations) for f in findings],

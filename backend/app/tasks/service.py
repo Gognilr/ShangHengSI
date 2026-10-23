@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.audit import service as audit
 from app.config import get_settings
 from app.db import jobs
-from app.db.models import DocNode, Job, ReviewRun, Task, TaskFile, User
+from app.db.models import DocNode, Job, RedactionItem, RedactionSuspect, ReviewRun, Task, TaskFile, User
 from app.redaction import engine
 from app.security import crypto
 from app.security.errors import AppError
@@ -163,7 +163,7 @@ def create_task(
             stance=stance,
             source=source,
             policy=policy,
-            user_note=user_note,
+            user_note_enc=crypto.encrypt_text(user_note) if user_note else None,
             status="parsing",
         )
         db.add(task)
@@ -291,7 +291,7 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
         stance=task.stance,
         source=task.source,
         policy=task.policy,
-        user_note=task.user_note,
+        user_note=crypto.decrypt_text(task.user_note_enc) if task.user_note_enc is not None else None,
         created_at=task.created_at,
         files=[
             TaskFileOut(
@@ -345,7 +345,15 @@ def patch_task(db: DbSession, task: Task, patch: TaskPatch) -> TaskDetail:
     if "source" in fields:
         task.source = patch.source
     if "user_note" in fields:
-        task.user_note = (patch.user_note or "").strip() or None
+        note = (patch.user_note or "").strip() or None
+        previous = crypto.decrypt_text(task.user_note_enc) if task.user_note_enc is not None else None
+        if note != previous:
+            # NOTE 的字符位置属于旧原文，不能将旧词条或忽略决定套用到新文字（Q-153）。
+            db.execute(delete(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == "NOTE",
+                                                   RedactionItem.detected_by == "user"))
+            db.execute(delete(RedactionSuspect).where(RedactionSuspect.task_id == task.id, RedactionSuspect.loc == "NOTE"))
+            task.user_note_enc = crypto.encrypt_text(note) if note else None
+            task.user_note_redacted = None
     engine.apply_party_changes(db, task, [])
     task.status = "awaiting_confirm"
     db.flush()
