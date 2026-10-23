@@ -78,9 +78,13 @@ async function locate(loc: string) {
   focusedLoc.value = loc
   activeFile.value = fileSeq(loc)
   await nextTick()
-  const target = Array.from(grid.value?.querySelectorAll<HTMLElement>('.compare-row') ?? []).find(element => element.dataset.loc === loc || loc.startsWith(`${element.dataset.loc}-`))
-  if (!target || !grid.value) return
-  // 只滚动对照网格，不调用 scrollIntoView，避免带动整页。
+  if (!grid.value) return
+  // 对照区不完整可见时（顶栏高 64px），先把整个网格滚到视口中部，用户才能看到定位结果。
+  const box = grid.value.getBoundingClientRect()
+  if (box.top < 64 || box.bottom > innerHeight) grid.value.scrollIntoView({ block: 'center' })
+  const target = Array.from(grid.value.querySelectorAll<HTMLElement>('.compare-row')).find(element => element.dataset.loc === loc || loc.startsWith(`${element.dataset.loc}-`))
+  if (!target) return
+  // 行定位只改网格自身的 scrollTop，不再带动外层页面。
   grid.value.scrollTop += target.getBoundingClientRect().top - grid.value.getBoundingClientRect().top - 52
   flashLoc.value = target.dataset.loc ?? ''
   clearTimeout(flashTimer)
