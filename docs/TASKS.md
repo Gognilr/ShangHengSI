@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- **R4-07 已经用户确认（2026-10-24）**：设计 docs/design/R4.md 第十一节与 Q-161 已确认；SPEC 已按 11.7 写入（变更记录、5 目录、9.5、18.11、23.2 T-27）。规则 10：6a98319 之后只有 Opus 的提交，无待评审提交。**下一个任务：R4-08（GPT-6.1 Sol，测试先行，high）**——开工前读 CLAUDE.md、R4.md 第〇节与第十一节；cn\_surnames.txt 与 persons\_narrative.txt 不得改动；完成后停下交 **R4-09（Opus，high）**。暂停中的 M8-02 初稿与两份界面方案文档不得暂存。
+
 - **R4-07 设计已完成，待用户确认（2026-10-24，Opus 5.5，high）**：用户决定采用 business_review 12.3 方案 2（叙述中的中文人名列为疑似遗漏，测试先行）。设计 docs/design/R4.md 第十一节：新原因 person_name，姓氏表 + 名 1–2 字，必须左边界 + 右侧称谓 / 动作词或前置角色词，只提示不自动替换；迁移 0006 放宽 reason 约束；前端原因“疑似人名”、替换默认“人名”。已写入姓氏表 backend/resources/cn_surnames.txt（26 复姓 + 184 单姓）与回归样本 persons_narrative（must_replace 1 条、must_keep 12 条反例，现状全部通过；must_suspect 由 R4-08 按 11.5 追加）。原型在设计 11.6 的 12 条正例全部命中、16 条反例零命中；在全部回归样本、SPEC 与设计文档上除已由标签替换的人名外零误报。新增 **Q-161（待确认）**。SPEC 修改稿见 11.7，用户确认后由 Opus 写入。**下一步：用户确认后执行 R4-08（GPT-6.1 Sol，测试先行，high）**，完成后 R4-09（Opus，high）评审验收，再回到 M8-02。
 
 - **R4-06 已完成（2026-10-24，Opus 5.5，high）：R4 通过验收，修复 1 处，待用户确认。** 评审 df92943..6a98319（R4-05）：文件范围、无 v-html、只用 CSS 变量、Q-160 已记录，未改 SPEC / CLAUDE.md / 设计文档。compose 全套按 HEAD 重建 + mock-llm，用虚构账号经真实接口跑 institutions_domestic、bare_amounts 两份样本（含表格）、含新公司 / 人名 / 金额的补充说明及 5 次追问：8 条外发记录逐条重跑出口复检 **0 命中**；追问 409 / 错位 409 / 缺类别 422 / 替换为追问代号 / 保留均符合设计 5.2；数据库只存代号形式与密文；容器日志无探测串。浏览器核对设计第六节全部符合，1280 / 1366 / 1440 / 1920 无横向滚动。**修复 4c73398**：App.vue 遗留全局 `.placeholder`（48px 内边距、18px 字号）作用到追问预览与对照区代号，预览中代号成大块压住文字；已删除。**发现（待用户决定）**：叙述中的中文人名（“对方联系人为陆虚岚”）在补充说明、追问、正文中都不替换也不列疑似遗漏，原样外发——SPEC 9.5 无此规则，非 R4 回归；方案见 business_review 12.3。整仓挂载 Docker 全量 **2135 passed、1 warning、exit 0**（472.26 秒）；前端 build exit 0。详见 business_review 第十二节。**下一步**：用户确认 R4（含 Q-160、12.3 的处理方式）后回到 **M8-02（Sonnet，high）**。（用户已选 12.3 方案 2，见上一条 R4-07。）
@@ -420,7 +422,7 @@
 | R4-04 | 追问的疑似遗漏检查（后端） | GPT-6.1 Sol（测试先行） | high | R4-03 | 13、19.6；设计第五节 | 设计第五节“文件范围” | 设计 5.2 测试表逐条有测试并通过；全量测试通过；**完成后停下，交 Opus 一并审核 R4-01～R4-04**（审核通过后才做 R4-05） | 已完成 |
 | R4-05 | 前端：第二步补充说明一行、NOTE 疑似遗漏位置名、追问常驻预览与逐条确认 | GPT-6.1 Sol | medium | R4-04 | 6.2、13；设计第六节、frontend.md | 设计第六节“文件范围” | 设计 6.3 | 已完成 |
 | R4-06 | 联调与验收；按规则 10、11 评审 R4-01～R4-05 | Opus | high | R4-05 | 23；设计第七节 | docs/business\_review.md（追加 R4 一节）；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；汇报用户确认后回到 M8-02 | 已完成 |
-| R4-07 | 细化：叙述中的中文人名——设计第十一节、姓氏表 resources/cn\_surnames.txt、回归样本 persons\_narrative.\*、SPEC 修改稿、Q-161 | Opus | high | R4-06 | 9.5、18.11、23.2；设计第十一节 | docs/design/R4.md、backend/resources/cn\_surnames.txt、backend/tests/fixtures/redaction\_golden/persons\_narrative.\*、docs/TASKS.md、docs/open\_questions.md | 用户确认；确认后 Opus 按 11.7 写入 SPEC | 待确认 |
+| R4-07 | 细化：叙述中的中文人名——设计第十一节、姓氏表 resources/cn\_surnames.txt、回归样本 persons\_narrative.\*、SPEC 修改稿、Q-161 | Opus | high | R4-06 | 9.5、18.11、23.2；设计第十一节 | docs/design/R4.md、backend/resources/cn\_surnames.txt、backend/tests/fixtures/redaction\_golden/persons\_narrative.\*、docs/TASKS.md、docs/open\_questions.md | 用户确认（2026-10-24 已确认）；SPEC 已按 11.7 写入 | 已完成 |
 | R4-08 | 叙述中的中文人名列为疑似遗漏（后端规则、迁移 0006、前端原因与默认类别） | GPT-6.1 Sol（测试先行） | high | R4-07 | 9.5、18.11；设计第十一节 | 设计 11.4 | 设计 11.6 测试表逐条有测试并通过；persons\_narrative 按 11.5 追加 must\_suspect；模型与迁移一致；全量测试通过；前端 build 与浏览器核对 11.3；**完成后停下交 Opus（R4-09）** | 待执行 |
 | R4-09 | 评审 R4-08 并验收：核对测试、样本与姓氏表未改动；真实接口 + 模拟网关重跑探测句、外发比对；浏览器核对 11.3 | Opus | high | R4-08 | 23；设计 11.8 | docs/business\_review.md（追加）；验收中发现的问题按需修复 | 全部通过；汇报用户确认后回到 M8-02 | 待执行 |
 
