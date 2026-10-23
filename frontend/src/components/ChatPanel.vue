@@ -64,7 +64,7 @@ watch(open, value => {
 
 function askConfirm(data: ChatPreview) {
   confirmation.value = data
-  decisions.value = data.suspects.map(() => ({ choice: '', category: '' }))
+  decisions.value = data.suspects.map(s => ({ choice: '', category: s.reason === 'person_name' ? 'PERSON' : '' }))
   skipConfirm.value = false
   confirmOpen.value = true
 }

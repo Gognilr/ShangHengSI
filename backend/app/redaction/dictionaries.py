@@ -92,3 +92,11 @@ def common_terms() -> frozenset[str]:
             if line and not line.startswith("#"):
                 terms.add(line)
     return frozenset(terms)
+
+
+@lru_cache(maxsize=1)
+def cn_surnames() -> tuple[str, ...]:
+    """中文姓氏：忽略注释与空行，复姓优先（R4 11.1）。"""
+    with open(RESOURCES_DIR / "cn_surnames.txt", encoding="utf-8") as f:
+        terms = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+    return tuple(sorted(terms, key=len, reverse=True))

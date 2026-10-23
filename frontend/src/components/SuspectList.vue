@@ -34,7 +34,7 @@ const category = ref<UserCategory>('ORG')
 function askReplace(s: Suspect) {
   target.value = s
   // long_digits 默认“其他”，其余默认“公司”
-  category.value = s.reason === 'long_digits' ? 'CUSTOM' : 'ORG'
+  category.value = s.reason === 'person_name' ? 'PERSON' : s.reason === 'long_digits' ? 'CUSTOM' : 'ORG'
   dlg.value = true
 }
 

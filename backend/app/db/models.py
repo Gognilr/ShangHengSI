@@ -253,7 +253,7 @@ class RedactionItem(Base):
 class RedactionSuspect(Base):
     __tablename__ = "redaction_suspects"
     __table_args__ = (
-        enum_check("reason", ["org_suffix", "capitalized", "long_digits", "before_company"]),
+        enum_check("reason", ["org_suffix", "capitalized", "long_digits", "before_company", "person_name"]),
         enum_check("decision", ["pending", "replace", "ignore"]),
         enum_check("category", REDACTION_CATEGORIES),
         # decision=replace 时 category 必填

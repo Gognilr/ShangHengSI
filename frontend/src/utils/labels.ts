@@ -106,6 +106,7 @@ export const redactionCategoryLabel = pick(REDACTION_CATEGORY)
 
 /** 疑似遗漏的原因（设计 M4 第六节）。 */
 export const SUSPECT_REASON: Dict = {
+  person_name: '疑似人名',
   org_suffix: '带企业后缀的名称',
   capitalized: '连续大写的英文单词',
   long_digits: '长串数字',

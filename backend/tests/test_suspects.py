@@ -294,3 +294,14 @@ def test_golden_must_keep_not_suspect(name):
             for keep in ann["must_keep"]:
                 assert not (keep in listed or listed in keep) or len(listed) < 2, (
                     f"must_keep 被列为疑似遗漏：{keep!r} ← {listed!r}（{n.loc}，{sus.reason}）")
+
+
+def test_r4_person_narrative_all_occurrences():
+    """11.5：样本中的两处陆虚岚都列出；已由标签替换的周示例不重复列出。"""
+    nodes, ann = load('persons_narrative')
+    result = compute(nodes, ann['stance'])
+    names = []
+    for n in nodes:
+        occupied = [(i.char_start, i.char_end) for i in result.items if i.loc == n.loc]
+        names.extend(n.text[s.start:s.end] for s in find_suspects(n.text, occupied) if s.reason == 'person_name')
+    assert names == ['陆虚岚', '陆虚岚', '欧阳虚明', '何虚芳', '宋虚婷', '林虚']

@@ -11,13 +11,14 @@ from datetime import date
 
 from app.redaction import parties as P
 from app.redaction.detect import _QTY_UNIT_RE
-from app.redaction.dictionaries import _country_index, common_terms
+from app.redaction.dictionaries import _country_index, common_terms, cn_surnames
 
 ORG_SUFFIX = "org_suffix"
 BEFORE_COMPANY = "before_company"
 CAPITALIZED = "capitalized"
 LONG_DIGITS = "long_digits"
-_PRIORITY = {ORG_SUFFIX: 0, BEFORE_COMPANY: 1, CAPITALIZED: 2, LONG_DIGITS: 3}
+PERSON_NAME = "person_name"
+_PRIORITY = {ORG_SUFFIX: 0, BEFORE_COMPANY: 1, CAPITALIZED: 2, PERSON_NAME: 3, LONG_DIGITS: 4}
 _MASK = "\x00"
 
 
@@ -25,7 +26,7 @@ _MASK = "\x00"
 class Suspect:
     start: int
     end: int
-    reason: str  # org_suffix / capitalized / long_digits / before_company（18.11）
+    reason: str  # org_suffix / capitalized / person_name / long_digits / before_company（18.11）
 
 
 # ---------------------------------------------------------------- 中文：企业后缀与“公司、厂”之前的名称
@@ -323,6 +324,65 @@ def _long_digit_candidates(text: str) -> list[Suspect]:
     return out
 
 
+# ---------------------------------------------------------------- 叙述中的中文人名（R4 11.1，只提示不自动替换）
+
+_PERSON_EXCLUDE = frozenset("的了是在不和有与及或等其此该本我你他她它们对于由从被把将这那个元年月日号条款项部处室科组局院所司厂公费价表量额数率期限类型式法案件据单证物品货款税码规程序质料装箱运输场线网机器设备产业务度位面积目标准求格验收前后内外字")
+_PERSON_NOT_NAME = frozenset("总 工 董 某 老 师 姐 哥 叔 姨".split())
+_PERSON_TITLES = tuple(sorted("副总经理 总经理 董事长 工程师 会计师 先生 女士 小姐 经理 总监 主任 董事 总裁 总工 律师 老师 博士 教授 部长 处长 科长 厂长 局长 院长 校长 书记 主管 专员 助理 秘书 同志".split(), key=len, reverse=True))
+_PERSON_VERBS = tuple(sorted("表示 提到 提出 告知 告诉 通知 确认 同意 答应 承诺 要求 建议 反馈 回复 认为 指出 负责 签字 签署 签收 来电 致电 联系 沟通 商量 协商 洽谈".split(), key=len, reverse=True))
+_PERSON_ROLES = tuple(sorted("法定代表人 法人代表 项目经理 联系人 对接人 负责人 经办人 收件人 签收人 业务员 跟单员 采购员 销售员 代理人 担保人".split(), key=len, reverse=True))
+_PERSON_ROLE_RE = re.compile("(?:" + "|".join(_PERSON_ROLES) + ")[为是]?")
+_PERSON_LEFT_WORDS = tuple("对方 客户 供应商 甲方 乙方 买方 卖方 厂家 我司 贵司 他们 我们 昨天 今天 明天 刚才 刚刚 已经 之前 此前 后来 另外 但是 不过 因为 如果 还有 以及 并且".split())
+_PERSON_LEFT_CHARS = frozenset("由向与和及跟同请让给经据对为是的被把将且并或即找问派")
+_PERSON_ANCHOR_RE = re.compile("|".join(sorted((*_PERSON_TITLES, *_PERSON_VERBS, "说(?![明服法])", "(?<!名)称(?![号呼谓重量])"), key=len, reverse=True)))
+
+
+def _is_person_name(text: str) -> bool:
+    if not text or not all(_HAN.fullmatch(c) for c in text):
+        return False
+    for surname in cn_surnames():
+        if text.startswith(surname):
+            given = text[len(surname):]
+            if not 1 <= len(given) <= 2 or any(c in _PERSON_EXCLUDE for c in given):
+                continue
+            if given in _PERSON_NOT_NAME or (surname == "周" and given[0] in "一二三四五六日末"):
+                continue
+            return True
+    return False
+
+
+def _person_left_ok(text: str, start: int) -> bool:
+    if start == 0 or not _HAN.fullmatch(text[start - 1]) or text[start - 1] in _PERSON_LEFT_CHARS:
+        return True
+    head = text[:start]
+    return head.endswith(_PERSON_LEFT_WORDS) or any(
+        head.endswith(role + suffix) for role in _PERSON_ROLES for suffix in ("", "为", "是"))
+
+
+def _person_candidates(text: str) -> list[Suspect]:
+    out: list[Suspect] = []
+    for anchor in _PERSON_ANCHOR_RE.finditer(text):
+        end = anchor.start()
+        start = end
+        while start > max(0, end - 4) and _HAN.fullmatch(text[start - 1]):
+            start -= 1
+        for s in range(start, end):
+            if _is_person_name(text[s:end]) and _person_left_ok(text, s):
+                out.append(Suspect(s, end, PERSON_NAME))
+                break
+    for role in _PERSON_ROLE_RE.finditer(text):
+        start = role.end()
+        for length in (3, 2, 4):
+            end = start + length
+            if end > len(text) or not _is_person_name(text[start:end]):
+                continue
+            if (end == len(text) or not _HAN.fullmatch(text[end]) or text[end] in "的和与及在等或"
+                    or _PERSON_ANCHOR_RE.match(text, end)):
+                out.append(Suspect(start, end, PERSON_NAME))
+                break
+    return out
+
+
 # ---------------------------------------------------------------- 入口
 
 
@@ -338,13 +398,14 @@ def find_suspects(text: str, occupied: list[tuple[int, int]]) -> list[Suspect]:
     """节点原文中未被替换的疑似遗漏，按位置排序。
 
     occupied 为该节点已被替换的区间 [(start, end)]。同一位置命中多条规则时只保留一条，
-    优先级 org_suffix > before_company > capitalized > long_digits；互相重叠的候选取较长的。
+    优先级 org_suffix > before_company > capitalized > person_name > long_digits；互相重叠的候选取较长的。
     """
     masked = _mask(text, occupied)
     cands: list[Suspect] = []
     cands += _chinese_suffix_candidates(masked)
     cands += _english_suffix_candidates(masked)
     cands += _capitalized_candidates(masked)
+    cands += _person_candidates(masked)
     cands += _long_digit_candidates(masked)
     cands = [c for c in cands if c.end > c.start and _MASK not in masked[c.start:c.end]]
     chosen: list[Suspect] = []
