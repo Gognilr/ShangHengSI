@@ -219,3 +219,8 @@ def test_recheck_context_from_db(db_sessionmaker, make_user, master_key):
         assert recheck_context(db, None).real_values == []
         assert recheck("FMT 与星河虚构进出口有限公司", real_values=ctx.real_values, terms=ctx.terms) == [
             BlockReason("MAP", 0), BlockReason("TERM", 5)]
+def test_r4_bare_amounts_do_not_change_exit_rescan():
+    """R4 3.5 #11：模型历史回复中的无币种金额不产生新的 AMOUNT 拦截。"""
+    from app.redaction.recheck import recheck
+    assert not any(r.category == "AMOUNT" for r in recheck(
+        "总价约 50000，合同总价：125000", real_values=[], terms=[]))

@@ -393,7 +393,7 @@ def compute(
         for hit in detect.find_formatted(text):  # 第 4 步：按 find_formatted 的顺序（即优先级）逐个取舍
             _accept([_Span(i, hit.start, hit.end, hit.category, hit.key, "regex")], occ, spans)
         amounts = [_Span(i, h.start, h.end, h.category, h.key, "amount", h.currency, h.value)
-                   for h in detect.find_amounts(text, hints.get(i))]
+                   for h in [*detect.find_amounts(text, hints.get(i)), *detect.find_bare_amounts(text)]]
         _accept(amounts, occ, spans)
         if mask_quantity:  # 数量：第 5 步之后、第 6 步之前（设计 M4.md 第三节）
             column = "QTY" if qty_hints.get(i) == "QTY" else None

@@ -4,6 +4,11 @@ loc_prefixed: true
 must_replace:
   - {text: 青岚虚构石化股份有限公司, category: ORG}
   - {text: 澄川虚构信息技术有限公司, category: ORG}
+  - {text: "125000", category: AMOUNT}
+  - {text: "350", category: AMOUNT}
+  - {text: "86,400.00", category: AMOUNT}
+  - {text: "37500", category: AMOUNT}
+  - {text: "1280", category: PRICE}
 must_keep:
   - 合计：12 台
   - 预付款 30%
@@ -13,11 +18,3 @@ must_keep:
   - 尾款于验收后 30 天内支付
   - 交货期（天）
   - "60"
-# R4-00 先行写入：以下数字在 R4-02 之前原样外发。R4-02 实现后测试会提示“已知缺口已修复”，
-# 届时按设计 R4.md 3.5 移入 must_replace（“350万”只替换数字，标注写 “350”），文字不得改动
-known_gaps:
-  - {text: "125000"}
-  - {text: 350万}
-  - {text: "86,400.00"}
-  - {text: "37500"}
-  - {text: "1280"}

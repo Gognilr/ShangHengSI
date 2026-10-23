@@ -208,6 +208,62 @@ def _amount_key(category: str, currency: str | None, value: Decimal | None, surf
     return f"{category}|{currency or ''}|{value.normalize():f}"
 
 
+# R4：无币种金额只供识别入口使用；出口复检仍调用 find_amounts，不重扫模型历史回复。
+AMOUNT_LABELS = (
+    "合同总价", "合同总额", "合同金额", "合同价款", "合同价", "总价款", "总价", "总金额", "总额", "金额", "价款", "货款",
+    "报价", "单价", "含税单价", "不含税单价", "含税价", "不含税价", "合计", "总计", "小计", "预付款", "首付款", "定金",
+    "订金", "进度款", "尾款", "质保金", "保证金", "履约保证金", "违约金", "服务费", "费用", "预算", "投资额", "采购额", "销售额", "税额",
+    "Total Amount", "Total Price", "Total Value", "Contract Value", "Contract Price", "Contract Amount", "Amount", "Total",
+    "Subtotal", "Unit Price", "Price", "Deposit", "Advance Payment", "Down Payment", "Balance", "Retention",
+)
+_BARE_LABEL_RE = re.compile("|".join(re.escape(w).replace(r"\ ", r"[ \t]+") for w in sorted(AMOUNT_LABELS, key=len, reverse=True)), re.IGNORECASE)
+_BARE_UNIT = "|".join(re.escape(w) for w in sorted(_CURRENCY, key=len, reverse=True))
+_BARE_LABEL_TAIL = re.compile(rf"[ \t　]*(?:[（(][ \t]*(?P<unit>{_BARE_UNIT})[ \t]*[）)])?[ \t　]*[:：]?[ \t　]*$", re.IGNORECASE)
+_BARE_VALUE = re.compile(
+    rf"[ \t　]*(?:[（(][ \t]*(?P<unit>{_BARE_UNIT})[ \t]*[）)])?[ \t　]*"
+    rf"[为是:：]?[ \t　]*(?:不超过|不低于|共计|合计|约|计)?[ \t　]*{_OPEN}"
+    rf"(?P<num>{_NUM})(?![\d,.]*\d)(?P<scale>[万亿])?{_CLOSE}", re.IGNORECASE)
+_BARE_BAD_TAIL = re.compile(r"[A-Za-z0-9一-鿿%‰]")
+_BARE_SPACED_UNIT = re.compile(r"[ \t　]+(?:[A-Za-z%‰]|平方米|立方米|个月|小时|公斤|千克|天|日|月|年|周|台|套|件|个|只|项|条|次|批|吨|克|米|人|家|份|页)")
+
+
+def amount_label_kind(text: str) -> str | None:
+    """紧邻左格必须完整等于金额标签（可有单位说明和末尾冒号）。"""
+    compact = re.sub(r"\s+", "", text)
+    for label in sorted(AMOUNT_LABELS, key=len, reverse=True):
+        key = re.sub(r"\s+", "", label)
+        if compact[:len(key)].casefold() == key.casefold() and _BARE_LABEL_TAIL.fullmatch(compact[len(key):]):
+            return "PRICE" if "单价" in label or "price" in label.casefold() else "AMOUNT"
+    return None
+
+
+def find_bare_amounts(text: str) -> list[Hit]:
+    """金额标签后的数字；只替换数字，保留单位与万/亿，币种规则优先（R4 3.2）。"""
+    hits: list[Hit] = []
+    existing = find_amounts(text)
+    for label in _BARE_LABEL_RE.finditer(text):
+        if label.start() and re.match(r"[第\dA-Za-z]", text[label.start() - 1]):
+            continue
+        m = _BARE_VALUE.match(text, label.end())
+        if m is None or _BARE_BAD_TAIL.match(text, m.end()) or _BARE_SPACED_UNIT.match(text, m.end()):
+            continue
+        start, end = m.span("num")
+        if any(h.start < end and start < h.end for h in existing):
+            continue
+        num, scale = m.group("num"), m.group("scale")
+        if not (len(num.split(".")[0].replace(",", "")) >= 3 or "," in num
+                or re.search(r"\.\d{2}$", num) or scale):
+            continue
+        value = _decimal(num)
+        if value is not None and scale:
+            value *= Decimal(10000 if scale == "万" else 100000000)
+        unit = m.group("unit")
+        currency = _CURRENCY.get(unit.upper() if unit and unit.isascii() else unit)
+        cat = "PRICE" if "单价" in label.group() or "price" in label.group().casefold() else "AMOUNT"
+        hits.append(Hit(start, end, cat, _amount_key(cat, currency, value, num), currency, value))
+    return hits
+
+
 def find_amounts(text: str, column: str | None = None) -> list[Hit]:
     """第 5 步：金额与单价。只替换数字部分，币种文字保留（9.2“币种保留”）。
 
@@ -248,9 +304,11 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
         value = chinese_upper_value(m.group())
         hits.append(Hit(m.start(), m.end(), cat, _amount_key(cat, "CNY", value, m.group()), "CNY", value))
     if column in ("PRICE", "AMOUNT"):
-        bare = _BARE_NUMBER.match(text)
+        bare = re.fullmatch(rf"\s*({_NUM})(万)?\s*", text)
         if bare:
             value = _decimal(bare.group(1))
+            if value is not None and bare.group(2):
+                value *= 10000
             hits.append(Hit(bare.start(1), bare.end(1), column, _amount_key(column, None, value, bare.group(1)),
                             None, value))
     return hits
