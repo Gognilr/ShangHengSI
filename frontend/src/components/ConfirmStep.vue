@@ -219,6 +219,7 @@ function setField(id: string, field: 'country' | 'org_type', value: string) {
 
 // ---- 外发文本（纯文本，不用 v-html） ----
 const outboundText = ref('')
+const outboundNote = ref<string | null>(null)
 const outboundLoading = ref(false)
 const outboundError = ref('')
 
@@ -226,8 +227,11 @@ async function loadOutbound() {
   outboundLoading.value = true
   outboundError.value = ''
   outboundText.value = ''
+  outboundNote.value = null
   try {
-    outboundText.value = (await redactionApi.outbound(props.task.id)).text
+    const outbound = await redactionApi.outbound(props.task.id)
+    outboundText.value = outbound.text
+    outboundNote.value = outbound.note
   } catch (e) {
     outboundError.value = e instanceof ApiError ? e.message : '加载失败'
   } finally {
@@ -442,7 +446,7 @@ onMounted(loadAll)
       <section class="panel">
       <h3><span class="section-number">6</span>原文与外发文本对照</h3>
       <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
-      <RedactionCompare ref="compare" :task-id="task.id" :files="files" :outbound-text="outboundText" :items="redactedItems" :suspects="suspects" :loading="outboundLoading" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" />
+      <RedactionCompare ref="compare" :task-id="task.id" :files="files" :outbound-text="outboundText" :note="task.user_note" :outbound-note="outboundNote" :items="redactedItems" :suspects="suspects" :loading="outboundLoading" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" />
       </section>
       <section class="panel">
       <h3><span class="section-number">7</span>本地校验结果<span class="hint">{{ localCount ?? '—' }} 条</span></h3>

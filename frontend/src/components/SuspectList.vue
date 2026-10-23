@@ -18,6 +18,7 @@ const showIgnored = ref<string[]>([])
 
 /** loc 形如 F1-PG2-B3：取文件名和页码，其余位置原样显示。 */
 function where(s: Suspect): string {
+  if (s.loc === 'NOTE') return '本次补充说明'
   const m = /^F(\d+)-(.*)$/.exec(s.loc)
   const file = m ? props.files.find((f) => f.seq === Number(m[1])) : undefined
   const page = /^PG(\d+)/.exec(m?.[2] ?? '')

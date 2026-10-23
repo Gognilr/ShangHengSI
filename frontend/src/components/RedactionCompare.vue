@@ -4,10 +4,10 @@ import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode } from '@/api/preview'
 import { redactionApi, REDACTION_ERROR_MESSAGES, type RedactionInfo, type RedactionItemPos, type Suspect, type UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
-import { buildCompareRows, type CompareRow, type CompareSeg } from '@/utils/compare'
+import { buildCompareRows, buildNoteRow, type CompareRow, type CompareSeg } from '@/utils/compare'
 import { REDACTION_KIND, USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 
-const props = withDefaults(defineProps<{ taskId: string; files: TaskFile[]; outboundText: string; items: RedactionItemPos[]; suspects: Suspect[]; loading?: boolean; editable?: boolean }>(), { loading: false, editable: true })
+const props = withDefaults(defineProps<{ taskId: string; files: TaskFile[]; outboundText: string; note?: string | null; outboundNote?: string | null; items: RedactionItemPos[]; suspects: Suspect[]; loading?: boolean; editable?: boolean }>(), { loading: false, editable: true })
 const emit = defineEmits<{ done: [info: RedactionInfo]; stale: []; busy: [value: boolean] }>()
 const nodes = ref<PreviewNode[]>([])
 const nodeErrors = ref<Record<number, string>>({})
@@ -41,9 +41,13 @@ async function loadNodes() {
   loadingNodes.value = false
 }
 watch(() => [props.taskId, props.files.map(file => file.id).join(',')], loadNodes, { immediate: true })
-const rows = computed(() => buildCompareRows(props.outboundText, nodes.value, props.items, props.suspects))
+const rows = computed(() => {
+  const body = buildCompareRows(props.outboundText, nodes.value, props.items, props.suspects)
+  const note = buildNoteRow(props.note ?? '', props.outboundNote ?? null, props.items, props.suspects)
+  return note ? [...body, note] : body
+})
 const fileSeq = (loc: string | null) => Number(/^F(\d+)(?:-|$)/.exec(loc ?? '')?.[1] ?? 0)
-const fileRows = computed(() => rows.value.filter(row => !activeFile.value || row.kind === 'header' || fileSeq(row.loc) === activeFile.value))
+const fileRows = computed(() => rows.value.filter(row => !activeFile.value || row.kind === 'header' || row.loc === 'NOTE' || fileSeq(row.loc) === activeFile.value))
 const changedCount = computed(() => fileRows.value.filter(row => row.kind !== 'header' && row.hasRedaction).length)
 const unmatchedCount = computed(() => fileRows.value.filter(row => row.kind === 'unmatched').length)
 const bodyCount = computed(() => fileRows.value.filter(row => row.kind !== 'header').length)

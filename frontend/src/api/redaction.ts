@@ -69,5 +69,5 @@ export const redactionApi = {
   manual: (taskId: string, body: { loc: string; char_start: number; char_end: number; category: UserCategory }) =>
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/manual`, body),
   /** 外发文本预览（代号版本），只能按纯文本显示。 */
-  outbound: (taskId: string) => http.get<{ text: string }>(`/tasks/${taskId}/redaction/outbound`),
+  outbound: (taskId: string) => http.get<{ text: string; note: string | null }>(`/tasks/${taskId}/redaction/outbound`),
 }

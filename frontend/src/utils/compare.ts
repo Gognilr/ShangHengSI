@@ -28,7 +28,7 @@ export function splitOriginal(text: string, items: RedactionItemPos[]): CompareS
 }
 
 /** 只识别接口提供的占位符，最长匹配优先；其余字符原样保留。 */
-function splitOutbound(text: string, items: RedactionItemPos[]): CompareSeg[] {
+export function splitOutbound(text: string, items: RedactionItemPos[]): CompareSeg[] {
   const known = new Map(items.map(item => [item.placeholder, item.category]))
   known.delete('')
   const result: CompareSeg[] = []
@@ -51,7 +51,7 @@ function splitOutbound(text: string, items: RedactionItemPos[]): CompareSeg[] {
   return result
 }
 
-function markPending(segments: CompareSeg[], suspects: Suspect[]): CompareSeg[] {
+export function markPending(segments: CompareSeg[], suspects: Pick<Suspect, 'decision' | 'text'>[]): CompareSeg[] {
   const texts = [...new Set(suspects.filter(s => s.decision === 'pending' && s.text).map(s => s.text))]
   return segments.flatMap(seg => {
     if (seg.placeholder || !texts.length) return [seg]
@@ -136,4 +136,17 @@ export function buildCompareRows(outboundText: string, nodes: PreviewNode[], ite
     rows.splice(before < 0 ? rows.length : before, 0, { row, anchor: index })
   })
   return rows.map(entry => entry.row)
+}
+
+/** NOTE 独立于正文行协议，保留多行原文和服务端 note 的全部字符。 */
+export function buildNoteRow(note: string, outboundNote: string | null, items: RedactionItemPos[], suspects: Suspect[]): CompareRow | null {
+  if (!note) return null
+  const noteItems = items.filter(item => item.loc === 'NOTE')
+  const noteSuspects = suspects.filter(item => item.loc === 'NOTE')
+  const left = markPending(splitOriginal(note, noteItems), noteSuspects)
+  let right = markPending(splitOutbound(outboundNote ?? '', noteItems), noteSuspects)
+  const invalid = outboundNote === null || right.map(seg => seg.text).join('') !== outboundNote
+  if (invalid) right = [{ text: outboundNote ?? '' }]
+  return { kind: invalid ? 'unmatched' : 'pair', loc: 'NOTE', label: '本次补充说明', left: [left], right,
+    hasRedaction: [...left, ...right].some(seg => !!seg.placeholder), hasPendingSuspect: noteSuspects.some(s => s.decision === 'pending') }
 }
