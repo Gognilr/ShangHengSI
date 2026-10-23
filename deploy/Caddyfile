@@ -1,3 +1,7 @@
+{
+	default_sni {$SITE_ADDRESS:localhost}
+}
+
 # 站点地址来自 SITE_ADDRESS（内网域名，如 review.公司域名）；开发环境默认 localhost。
 # tls internal：用 Caddy 内部 CA 签发证书。有公司证书时改为
 #   tls /etc/caddy/certs/server.crt /etc/caddy/certs/server.key

@@ -3,11 +3,14 @@
 #   docker compose up -d
 name: aireview
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 x-backend: &backend
   image: aireview-backend:${APP_VERSION:-dev}
-  build:
-    context: ../backend
-    target: runtime
   restart: unless-stopped
   environment: &backend-env
     DATABASE_URL: postgresql://aireview:${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}@db:5432/aireview
@@ -27,6 +30,7 @@ x-backend: &backend
 services:
   db:
     image: postgres:16.15
+    logging: *logging
     restart: unless-stopped
     environment:
       POSTGRES_USER: aireview
@@ -44,6 +48,12 @@ services:
 
   app:
     <<: *backend
+    logging: *logging
+    # build-begin
+    build:
+      context: ../backend
+      target: runtime
+    # build-end
     command:
       - sh
       - -c
@@ -60,6 +70,7 @@ services:
 
   worker:
     <<: *backend
+    logging: *logging
     command: ["python", "-m", "app.worker"]
     environment:
       <<: *backend-env
@@ -78,8 +89,11 @@ services:
   # 不挂载原件卷、密钥和备份目录，不连数据库；不设 depends_on（worker 按心跳判断是否可用）。
   converter:
     image: aireview-converter:${APP_VERSION:-dev}
+    logging: *logging
+    # build-begin
     build:
       context: ../converter
+    # build-end
     restart: unless-stopped
     network_mode: none
     read_only: true
@@ -104,8 +118,11 @@ services:
 
   web:
     image: aireview-web:${APP_VERSION:-dev}
+    logging: *logging
+    # build-begin
     build:
       context: ../frontend
+    # build-end
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
@@ -114,6 +131,7 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

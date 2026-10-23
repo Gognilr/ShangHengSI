@@ -154,6 +154,50 @@ def _restore_command(args) -> int:
     return 0
 
 
+def backup_now(*, wait: bool, timeout: int) -> int:
+    """入队后只观察本次之后的新记录；异常不输出连接参数（Q-164）。"""
+    import time
+
+    from sqlalchemy import func, select
+
+    from app.backup.job import enqueue_backup
+    from app.db.models import BackupRecord
+    from app.db.session import get_sessionmaker
+
+    try:
+        sm = get_sessionmaker()
+        with sm() as db:
+            job = enqueue_backup(db, trigger="manual", user_id=None)
+            if job is None:
+                print("已有备份正在进行")
+                return 2
+            # enqueue_backup 持有事务锁，此时尚未提交，worker 还不能领取本次任务。
+            last_id = db.scalar(select(func.max(BackupRecord.id))) or 0
+            db.commit()
+        if not wait:
+            print("已加入手动备份队列。")
+            return 0
+        deadline = time.monotonic() + timeout
+        while True:
+            # 每次使用新会话，避免 ORM 缓存 running 状态。
+            with sm() as db:
+                record = db.scalar(select(BackupRecord).where(BackupRecord.id > last_id)
+                                   .order_by(BackupRecord.id.desc()).limit(1))
+                if record is not None and record.status == "success":
+                    print(f"备份成功：{record.file_name}，{record.size_bytes} 字节。")
+                    return 0
+                if record is not None and record.status == "failed":
+                    print(f"备份失败：{record.error_message or '原因未记录'}", file=sys.stderr)
+                    return 1
+            if time.monotonic() >= deadline:
+                print("等待备份超时；任务仍可能在排队或执行，请检查 worker 状态与备份记录。", file=sys.stderr)
+                return 3
+            time.sleep(3)
+    except Exception as exc:  # noqa: BLE001  异常消息可能带密码，只输出类名
+        print(f"错误：手动备份命令失败（{type(exc).__name__}），请检查 worker 与数据库状态。", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="商衡SI 运维命令")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -192,7 +236,16 @@ def main(argv: list[str] | None = None) -> int:
     g_rfiles.add_argument("--drop-new", action="store_true", help="删除尚未交换的待恢复原件（恢复中止时）")
     p_rfiles.add_argument("--expect-files", type=int, help="--verify 时期望的原件数")
 
+    p_backup = sub.add_parser("backup-now", help="加入手动备份队列，可等待备份完成")
+    p_backup.add_argument("--wait", action="store_true", help="等待备份结果")
+    p_backup.add_argument("--timeout", type=int, default=3600, help="等待超时秒数，默认 3600")
+
     args = parser.parse_args(argv)
+
+    if args.command == "backup-now":
+        if args.timeout <= 0:
+            parser.error("--timeout 必须大于 0")
+        return backup_now(wait=args.wait, timeout=args.timeout)
 
     if args.command in ("restore-prepare", "restore-db", "restore-files"):
         return _restore_command(args)

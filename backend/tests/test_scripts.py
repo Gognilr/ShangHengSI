@@ -142,3 +142,125 @@ def test_restore_container_commands_do_not_read_stdin(tmp_path):
              'confirm "将要恢复" "确认恢复"; info DONE',
              root=tmp_path, env={"PATH": f"{bindir}:{os.environ['PATH']}"}, stdin="确认恢复\n")
     assert r.returncode == 0 and r.stdout.endswith("DONE\n"), r.stderr
+
+
+def test_m8_configuration():
+    import yaml
+
+    text = (DEPLOY / "docker-compose.yml").read_text(encoding="utf-8")
+    config = yaml.safe_load(text)
+    services = config["services"]
+    assert set(services) == {"db", "app", "worker", "converter", "web"}
+    for name, service in services.items():
+        assert service["logging"] == {"driver": "json-file", "options": {"max-size": "50m", "max-file": "5"}}, name
+        assert bool(service.get("ports")) == (name == "web")
+    assert "./certs:/etc/caddy/certs:ro" in services["web"]["volumes"]
+    # 同一标签只有 app 构建，避免 app / worker 并行导出的竞态（Q-150）。
+    assert "build" not in config["x-backend"] and "build" not in services["worker"]
+    assert services["app"]["build"]["context"] == "../backend"
+    release_lines = []
+    inside = False
+    for line in text.splitlines():
+        if line.strip() == "# build-begin":
+            assert not inside
+            inside = True
+        elif line.strip() == "# build-end":
+            assert inside
+            inside = False
+        elif not inside:
+            release_lines.append(line)
+    assert not inside and text.count("# build-begin") == 3
+    release = yaml.safe_load("\n".join(release_lines))
+    assert all("build" not in service for service in release["services"].values())
+    assert "default_sni {$SITE_ADDRESS:localhost}" in (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("name", ["install.sh", "upgrade.sh", "backup_now.sh"])
+def test_m8_usage_and_unknown_arguments(name):
+    for arg, expected in [("--help", 0), ("--unknown", 1)]:
+        r = subprocess.run(["bash", str(SCRIPTS / name), arg], capture_output=True, text=True)
+        assert r.returncode == expected, r.stderr
+        assert ("用法" in r.stdout) if expected == 0 else ("未知参数" in r.stderr)
+
+
+def test_m8_secret_output_and_stdin():
+    import re
+
+    for name in ("install.sh", "upgrade.sh", "backup_now.sh", "lib.sh"):
+        text = (SCRIPTS / name).read_text(encoding="utf-8")
+        assert not re.search(r"(?:echo|printf|info)\s+[^\n]*\$\{?(?:POSTGRES_PASSWORD|APP_MASTER_KEY|BACKUP_PASSWORD|API_KEY)", text)
+        for line in text.splitlines():
+            if line.startswith(("compose exec ", "compose up -d", "docker run ")):
+                assert line.rstrip().endswith("</dev/null"), line
+
+
+def test_m8_env_set_preserves_other_lines_and_does_not_execute(tmp_path):
+    marker = tmp_path / "executed"
+    original = "# 保留\nPOSTGRES_PASSWORD=private\nAPP_VERSION=old\nOTHER=a b\nAPP_VERSION=duplicate\n"
+    (tmp_path / ".env").write_text(original, encoding="utf-8")
+    value = f"$(touch {marker})&\\literal"
+    r = _lib('env_set APP_VERSION "$NEW_VERSION"', root=tmp_path, env={"NEW_VERSION": value})
+    assert r.returncode == 0, r.stderr
+    assert not marker.exists()
+    assert (tmp_path / ".env").read_text(encoding="utf-8") == f"# 保留\nPOSTGRES_PASSWORD=private\nAPP_VERSION={value}\nOTHER=a b\n"
+    assert (tmp_path / ".env").stat().st_mode & 0o777 == 0o600
+    assert "private" not in r.stdout + r.stderr
+
+
+def test_m8_release_checksum_required_and_verified(tmp_path):
+    r = _lib("check_release", root=tmp_path)
+    assert r.returncode == 1 and "SHA256SUMS" in r.stderr
+    import hashlib
+    (tmp_path / "VERSION").write_text("1.0.0\n", encoding="utf-8")
+    digest = hashlib.sha256(b"1.0.0\n").hexdigest()
+    (tmp_path / "SHA256SUMS").write_text(f"{digest}  VERSION\n", encoding="utf-8")
+    r = _lib("check_release; release_version", root=tmp_path)
+    assert r.returncode == 0 and r.stdout == "1.0.0", r.stderr
+    (tmp_path / "VERSION").write_text("1.0.1\n", encoding="utf-8")
+    r = _lib("check_release", root=tmp_path)
+    assert r.returncode == 1 and "校验失败" in r.stderr
+
+
+@pytest.mark.parametrize("outcome", ["cancel", "backup_failure", "success"])
+def test_upgrade_preserves_config_and_stops_before_writes(tmp_path, outcome):
+    import shutil
+
+    package = tmp_path / "package"
+    target = tmp_path / "installed"
+    for root in (package, target):
+        (root / "scripts").mkdir(parents=True)
+    (target / "secrets").mkdir()
+    (target / "secrets/master_key").write_text("fictive-key")
+    old_env = "APP_VERSION=1.0.0\nPOSTGRES_PASSWORD=fictive-secret\nSITE_ADDRESS=example.test\n"
+    (target / ".env").write_text(old_env)
+    (target / "Caddyfile").write_text("company-certificate")
+    (target / "docker-compose.yml").write_text("old-compose")
+    (target / "scripts/backup_now.sh").write_text("exit 1\n" if outcome == "backup_failure" else "exit 0\n")
+    for name, content in {"VERSION": "1.0.1\n", "Caddyfile": "new-caddy", "docker-compose.yml": "new-compose", ".env.example": "new-example"}.items():
+        (package / name).write_text(content)
+    shutil.copy(SCRIPTS / "upgrade.sh", package / "scripts/upgrade.sh")
+    # 真实升级脚本与 env_set；仅替代机器与 Docker 检查，避免接触实际部署。
+    lib = (SCRIPTS / "lib.sh").read_text(encoding="utf-8")
+    lib += '\nrequire_root() { :; }\nrequire_cmd() { :; }\ncheck_storage() { :; }\ncheck_release() { :; }\n'
+    lib += '\nload_release_images() { :; }\ncompose() { :; }\nwait_healthy() { :; }\n'
+    (package / "scripts/lib.sh").write_text(lib, encoding="utf-8")
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "docker").write_text("#!/bin/sh\nexit 0\n")
+    (bindir / "docker").chmod(0o755)
+    r = subprocess.run(["bash", str(package / "scripts/upgrade.sh"), "--target", str(target)],
+                       input="取消\n" if outcome == "cancel" else "已创建快照\n", capture_output=True, text=True,
+                       env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"})
+    assert "fictive-secret" not in r.stdout + r.stderr
+    assert (target / "secrets/master_key").read_text() == "fictive-key"
+    assert (target / "Caddyfile").read_text() == "company-certificate"
+    if outcome == "success":
+        assert r.returncode == 0, r.stderr
+        assert (target / ".env").read_text() == old_env.replace("1.0.0", "1.0.1")
+        assert (target / "Caddyfile.new").read_text() == "new-caddy"
+        assert (target / "docker-compose.yml").read_text() == "new-compose"
+    else:
+        assert r.returncode != 0
+        assert (target / ".env").read_text() == old_env
+        assert (target / "docker-compose.yml").read_text() == "old-compose"
+        assert not (target / "Caddyfile.new").exists()

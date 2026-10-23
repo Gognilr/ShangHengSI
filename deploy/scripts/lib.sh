@@ -125,3 +125,62 @@ resolve_path() {
     *) printf '%s' "$ROOT/${1#./}" ;;
   esac
 }
+
+# M8-02 追加：发布包须校验；只有源码仓库可跳过不存在的校验清单（Q-164）。
+check_release() {
+  if [ -f "$ROOT/SHA256SUMS" ]; then
+    (cd "$ROOT" && sha256sum -c SHA256SUMS >/dev/null 2>&1) || die "发布包校验失败，系统未升级；请重新传输完整发布包"
+  elif [ -d "$ROOT/../.git" ] && [ -d "$ROOT/../backend/app" ]; then
+    info '源码仓库：跳过发布包校验。'
+  else
+    die "缺少 SHA256SUMS，请使用完整发布包"
+  fi
+}
+
+release_version() {
+  local version
+  [ -f "$ROOT/VERSION" ] || die "缺少 VERSION，请先构建发布包"
+  version="$(cat "$ROOT/VERSION")"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "VERSION 格式不正确"
+  printf '%s' "$version"
+}
+
+load_release_images() {
+  local version="$1" archive image
+  archive="$ROOT/images/aireview-images-$version.tar"
+  [ -f "$archive" ] || die "缺少当前版本的离线镜像文件"
+  docker load -i "$archive" </dev/null >/dev/null 2>&1 || die "导入离线镜像失败；请检查磁盘空间与镜像包"
+  # R2：发布包增加 converter，运行时禁止下载镜像。
+  for image in "aireview-backend:$version" "aireview-web:$version" "aireview-converter:$version" postgres:16.15; do
+    docker image inspect "$image" >/dev/null 2>&1 || die "离线包缺少镜像 $image"
+  done
+}
+
+# 不执行 .env；用临时文件替换指定键，其他行原样保留。值通过环境传给 awk，不出现在进程参数中。
+env_set() {
+  local key="$1" value="$2" tmp
+  tmp="$(mktemp "$ROOT/.env.XXXXXX")"
+  chmod 600 "$tmp"
+  if ! ENV_KEY="$key" ENV_VALUE="$value" awk '
+    BEGIN { key=ENVIRON["ENV_KEY"]; value=ENVIRON["ENV_VALUE"]; found=0 }
+    index($0, key "=")==1 { if (!found) print key "=" value; found=1; next }
+    { print }
+    END { if (!found) print key "=" value }
+  ' "$ROOT/.env" > "$tmp"; then
+    rm -f "$tmp"
+    die "写入环境配置失败"
+  fi
+  mv "$tmp" "$ROOT/.env"
+}
+
+require_running() {
+  local cid
+  cid="$(compose ps -q "$1")"
+  [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Running}}' "$cid")" = true ] || die "服务 $1 未运行，请检查日志"
+}
+
+check_https() {
+  local code
+  code="$(curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 20 "https://$1/")" || die "HTTPS 检查失败，请检查 web 服务与证书"
+  [ "$code" = 200 ] || die "HTTPS 未返回 200，请检查 web 服务"
+}
