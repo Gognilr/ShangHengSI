@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.admin.settings_store import get_setting
 from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
 from app.llm import gateway
-from app.redaction import detect, parties, placeholders, recheck
+from app.redaction import detect, parties, placeholders, recheck, suspects
 from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
 from app.redaction.outbound import escape_document_tags
 from app.redaction.restore import restore
@@ -117,9 +117,11 @@ class Redacted:
     text: str  # 代号形式的问题
     changed: bool  # 与原文不同
     new_entries: dict[str, str]  # 本次新分配的追问代号 → 真实值（发送前写入对照表）
+    suspects: list[dict]  # 原文未替换区间；偏移量相对 message.strip()
 
 
-def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]) -> Redacted:
+def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]],
+            decisions: list[dict] | None = None) -> Redacted:
     """纯函数：按 full_map（本任务对照表）和 terms（(名称, 类别)）脱敏。已被前一步替换的文字不再参与后续识别。"""
     text = message.strip()
     accepted: list[_Span] = []
@@ -171,6 +173,23 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             country = hit.key if hit.category == "ADDR" and hit.key else None
             take(hit.start, hit.end, code_for(text[hit.start:hit.end], hit.category, country))
 
+    found = [{"start": s.start, "end": s.end, "text": text[s.start:s.end], "reason": s.reason}
+             for s in suspects.find_suspects(text, [(s.start, s.end) for s in accepted])]
+    if decisions is not None:  # None 只作预览；发送即使没传决定也用空列表重新校验。
+        for suspect in found:
+            matches = [d for d in decisions if (d["start"], d["end"]) == (suspect["start"], suspect["end"])]
+            if not matches:
+                raise AppError(409, "CHAT_SUSPECTS_PENDING", "问题中有尚未确认的疑似敏感信息")
+            # 未写明重复决定的取舍：同一区间多条决定一律拒绝，避免依赖请求顺序（Q-159）。
+            if len(matches) != 1:
+                raise AppError(422, "VALIDATION_ERROR", "同一疑似敏感信息只能提交一个决定")
+            decision = matches[0]
+            if decision["decision"] == "replace":
+                category = decision.get("category")
+                if category not in ("ORG", "PERSON", "CUSTOM"):
+                    raise AppError(422, "VALIDATION_ERROR", "替换疑似敏感信息时必须选择类别")
+                take(suspect["start"], suspect["end"], code_for(suspect["text"], category))
+
     out, pos = [], 0
     for span in sorted(accepted, key=lambda s: s.start):
         out.append(text[pos:span.start])
@@ -179,7 +198,7 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
     out.append(text[pos:])
     redacted = escape_document_tags("".join(out))
     used = {s.code for s in accepted}
-    return Redacted(redacted, redacted != text, {k: v for k, v in new_entries.items() if k in used})
+    return Redacted(redacted, redacted != text, {k: v for k, v in new_entries.items() if k in used}, found)
 
 
 def _terms(db: Session) -> list[tuple[str, str]]:
@@ -193,14 +212,14 @@ def redact_question(db: Session, task: Task, message: str) -> tuple[str, bool]:
     return r.text, r.changed
 
 
-def _redact_and_record(db: Session, task: Task, message: str) -> str:
+def _redact_and_record(db: Session, task: Task, message: str, decisions: list[dict] | None = None) -> str:
     """发送用：锁住本任务对照表后脱敏，新分配的追问代号写入对照表并提交，再返回代号形式的问题。
 
     在调用模型之前提交：同一任务并发追问时不会把同一代号分给不同对象；发送失败时多出的条目不影响还原。
     """
     db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
     full_map = _load_full_map(db, task.id)
-    r = _redact(message, full_map, _terms(db))
+    r = _redact(message, full_map, _terms(db), decisions=decisions or [])
     if r.new_entries:
         write_full_map(db, task.id, {**full_map, **r.new_entries})
     db.commit()
@@ -267,13 +286,14 @@ def list_messages(db: Session, task: Task) -> dict:
 
 def preview(db: Session, task: Task, message: str) -> dict:
     _require(db, task)
-    redacted, changed = redact_question(db, task, message)
-    return {"redacted": redacted, "changed": changed}
+    r = _redact(message, _load_full_map(db, task.id), _terms(db))
+    return {"redacted": r.text, "changed": r.changed, "suspects": r.suspects}
 
 
-def send(db: Session, task: Task, user: User, message: str) -> dict:
+def send(db: Session, task: Task, user: User, message: str, decisions: list[dict] | None = None) -> dict:
     run = _require(db, task)
-    question = _redact_and_record(db, task, message)
+    question = (_redact_and_record(db, task, message, decisions) if decisions
+                else _redact_and_record(db, task, message))
     messages = build_messages(db, task, run, question)
     try:
         result = gateway.call_model(db, purpose="chat", messages=messages, user_id=user.id, task_id=task.id,

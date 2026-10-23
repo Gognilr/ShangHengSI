@@ -1,9 +1,9 @@
 """追问接口（SPEC 19.6）。任务一律经 owned_task 取得，非本人返回 404。"""
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StrictInt, StringConstraints
 from sqlalchemy.orm import Session as DbSession
 
 from app.chat import service
@@ -16,8 +16,16 @@ router = APIRouter()
 Question = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=service.MAX_CHARS)]
 
 
+class ChatDecision(BaseModel):
+    start: StrictInt
+    end: StrictInt
+    decision: Literal["replace", "keep"]
+    category: Literal["ORG", "PERSON", "CUSTOM"] | None = None
+
+
 class ChatIn(BaseModel):
     message: Question
+    decisions: list[ChatDecision] = Field(default_factory=list)
 
 
 class ChatMessageOut(BaseModel):
@@ -33,9 +41,17 @@ class ChatList(BaseModel):
     items: list[ChatMessageOut]
 
 
+class ChatSuspect(BaseModel):
+    start: int
+    end: int
+    text: str
+    reason: str
+
+
 class ChatPreview(BaseModel):
     redacted: str
     changed: bool
+    suspects: list[ChatSuspect]
 
 
 class ChatReply(BaseModel):
@@ -56,4 +72,4 @@ def preview_chat(body: ChatIn, task: Task = Depends(owned_task), db: DbSession =
 @router.post("/tasks/{id}/chat", response_model=ChatReply)
 def send_chat(body: ChatIn, task: Task = Depends(owned_task), user: User = Depends(current_user),
               db: DbSession = Depends(get_db)) -> dict:
-    return service.send(db, task, user, body.message)
+    return service.send(db, task, user, body.message, decisions=[d.model_dump() for d in body.decisions])

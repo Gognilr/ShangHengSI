@@ -121,7 +121,7 @@ def test_unchanged_question_preview(db_sessionmaker, alice, ready_task, llm):
     user, c, h = alice
     task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
     p = c.post(url(task, "/preview"), json={"message": "  第4条的违约金上限是否偏低？ "}, headers=h).json()
-    assert p == {"redacted": "第4条的违约金上限是否偏低？", "changed": False}
+    assert p == {"redacted": "第4条的违约金上限是否偏低？", "changed": False, "suspects": []}
 
 
 def test_terms_outside_map_and_formatted_info_get_numbered_codes(db_sessionmaker, alice, ready_task, llm):
@@ -371,3 +371,169 @@ def test_chat_code_format():
     assert chat_number("[公司_Q12]") == 12 and chat_number("[地址_Q3：阿联酋]") == 3
     for code in ("客户_A", "[金额_1]", "[账号_2]", "人员_1", "[电话]", "[地址：阿联酋]", "我方"):
         assert chat_number(code) is None  # 解析时分配的代号不会被当成追问代号
+
+
+# ---------------------------------------------------------------- R4-04（设计 5.2，既有测试仅按 Q-158 修改上面的 preview 相等断言）
+
+R4_NAME = "Meridian Fictive Inspection"
+R4_QUESTION = R4_NAME + " 的检验报告能用吗？"
+
+
+def r4_decision(decision="keep", category=None, start=0):
+    out = {"start": start, "end": len(R4_NAME), "decision": decision}
+    if category is not None:
+        out["category"] = category
+    return out
+
+
+def test_r4_preview_unchanged_but_suspect(db_sessionmaker, alice, ready_task, llm):
+    """5.2 #1：未自动识别不等于没有风险，偏移量按去掉首尾空白后的文字。"""
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    preview = c.post(url(task, "/preview"), json={"message": "  " + R4_QUESTION + "  "}, headers=h)
+    assert preview.status_code == 200
+    assert preview.json() == {"redacted": R4_QUESTION, "changed": False,
+                              "suspects": [{"start": 0, "end": len(R4_NAME), "text": R4_NAME, "reason": "capitalized"}]}
+    assert message_count(db_sessionmaker) == 0 and chat_calls(db_sessionmaker) == []
+
+
+@pytest.mark.parametrize("body", [
+    {"message": R4_QUESTION},
+    {"message": R4_QUESTION, "decisions": []},
+    {"message": R4_QUESTION, "decisions": [r4_decision(start=1)]},
+])
+def test_r4_missing_or_shifted_decision_blocks_send(db_sessionmaker, alice, ready_task, llm, body):
+    """5.2 #2、#7：缺决定或区间不完全一致时，不调用模型，不写对话或对照表。"""
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    with db_sessionmaker() as db:
+        mapping = load_redaction_map(db, task.id)
+    requests = llm("normal")
+    response = c.post(url(task), json=body, headers=h)
+    assert response.status_code == 409
+    assert response.json() == {"code": "CHAT_SUSPECTS_PENDING", "message": "问题中有尚未确认的疑似敏感信息"}
+    assert requests == [] and chat_calls(db_sessionmaker) == [] and message_count(db_sessionmaker) == 0
+    with db_sessionmaker() as db:
+        assert load_redaction_map(db, task.id) == mapping
+
+
+def test_r4_replace_suspect_and_restore_reply(db_sessionmaker, alice, ready_task, llm):
+    """5.2 #3：决定只影响本条追问，不写名称库或任务词条；代号按原协议加密写入对照表。"""
+    from app.db.models import RedactionItem
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    with db_sessionmaker() as db:
+        terms = list(db.scalars(select(RedactionTerm.id)))
+        items = list(db.scalars(select(RedactionItem.id)))
+    requests = []
+    llm(handler=chat_reply("[公司_Q1] 的报告需要人工核对。", requests))
+    response = c.post(url(task), headers=h,
+                      json={"message": R4_QUESTION, "decisions": [r4_decision("replace", "ORG")]})
+    assert response.status_code == 200, response.text
+    assert response.json()["assistant"]["content"] == R4_NAME + " 的报告需要人工核对。"
+    assert requests[0]["messages"][-1]["content"] == "[公司_Q1] 的检验报告能用吗？"
+    assert R4_NAME not in chat_calls(db_sessionmaker)[0].request_text
+    with db_sessionmaker() as db:
+        assert list(db.scalars(select(RedactionTerm.id))) == terms
+        assert list(db.scalars(select(RedactionItem.id))) == items
+        assert load_redaction_map(db, task.id)["[公司_Q1]"] == R4_NAME
+
+
+def test_r4_keep_suspect_does_not_remember_decision(db_sessionmaker, alice, ready_task, llm):
+    """5.2 #4：保留仍走网关与出口复检，下一条同样的问题仍须决定。"""
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    sent = []
+    llm(handler=chat_reply("请人工核对。", sent))
+    response = c.post(url(task), headers=h, json={"message": R4_QUESTION, "decisions": [r4_decision()]})
+    assert response.status_code == 200, response.text
+    assert sent[0]["messages"][-1]["content"] == R4_QUESTION
+    assert len(chat_calls(db_sessionmaker)) == 1 and chat_calls(db_sessionmaker)[0].status == "sent"
+    before = message_count(db_sessionmaker)
+    response = c.post(url(task), headers=h, json={"message": R4_QUESTION})
+    assert response.status_code == 409 and response.json()["code"] == "CHAT_SUSPECTS_PENDING"
+    assert len(sent) == 1 and message_count(db_sessionmaker) == before
+
+
+def test_r4_replace_needs_category(db_sessionmaker, alice, ready_task, llm):
+    """5.2 #5：匹配的替换决定缺少类别时 422，未发送。"""
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    requests = llm("normal")
+    response = c.post(url(task), headers=h, json={"message": R4_QUESTION, "decisions": [r4_decision("replace")]})
+    assert response.status_code == 422
+    assert requests == [] and message_count(db_sessionmaker) == 0
+
+
+def test_r4_no_suspects_keeps_send_contract(db_sessionmaker, alice, ready_task, llm):
+    """5.2 #6：没有疑似遗漏时，不传决定正常发送；不匹配的决定忽略。"""
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    sent = []
+    llm(handler=chat_reply("请人工核对。", sent))
+    message = "第4条的违约金上限是否偏低？"
+    for body in ({"message": message}, {"message": message, "decisions": [r4_decision("replace")]}):
+        response = c.post(url(task), headers=h, json=body)
+        assert response.status_code == 200, response.text
+        assert sent[-1]["messages"][-1]["content"] == message
+
+
+def test_r4_suspect_decision_logs_are_safe(db_sessionmaker, alice, ready_task, llm, caplog):
+    """5.2 #8：预览、缺决定、替换确认、保留确认的 DEBUG 日志均无追问原文。"""
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    replacement_task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    caplog.set_level(logging.DEBUG)
+    caplog.clear()
+    c.post(url(task, "/preview"), headers=h, json={"message": R4_QUESTION})
+    c.post(url(task), headers=h, json={"message": R4_QUESTION})
+    llm(handler=chat_reply("请人工核对。", []))
+    assert c.post(url(task), headers=h, json={"message": R4_QUESTION, "decisions": [r4_decision()]}).status_code == 200
+    # 保留后的历史含原文，随后把同一名称加入对照表会被既有出口复检拦截；两种成功分支用独立任务验证。
+    assert c.post(url(replacement_task), headers=h, json={"message": R4_QUESTION, "decisions": [r4_decision("replace", "ORG")]}).status_code == 200
+    logs = "\n".join(r.getMessage() + (r.exc_text or "") for r in caplog.records)
+    assert R4_QUESTION not in logs and R4_NAME not in logs and "检验报告能用吗" not in logs
+
+
+@pytest.mark.parametrize("category,code", [("PERSON", "[人员_Q1]"), ("CUSTOM", "[敏感词_Q1]")])
+def test_r4_other_replacement_categories(category, code):
+    result = service._redact(R4_QUESTION, {}, [], [r4_decision("replace", category)])
+    assert result.text == code + " 的检验报告能用吗？"
+    assert result.new_entries == {code: R4_NAME}
+
+
+def test_r4_occupied_spans_and_unicode_offsets():
+    prefix = "😀𠮷 "
+    message = prefix + R4_QUESTION
+    result = service._redact("  " + message + "  ", {}, [])
+    assert result.suspects == [{"start": len(prefix), "end": len(prefix) + len(R4_NAME),
+                                "text": R4_NAME, "reason": "capitalized"}]
+    covered = service._redact(message, {"[公司_Q1]": R4_NAME}, [])
+    assert covered.suspects == []
+
+
+def test_r4_partial_and_duplicate_decisions():
+    from app.security.errors import AppError
+    message = R4_QUESTION + " Northern Fictive Laboratory 的报告呢？"
+    with pytest.raises(AppError) as missing:
+        service._redact(message, {}, [], [r4_decision()])
+    assert missing.value.code == "CHAT_SUSPECTS_PENDING"
+    with pytest.raises(AppError) as duplicate:
+        service._redact(R4_QUESTION, {}, [], [r4_decision(), r4_decision("replace", "ORG")])
+    assert duplicate.value.status == 422
+    ignored = service._redact(R4_QUESTION, {}, [], [r4_decision(), r4_decision("replace", start=999)])
+    assert ignored.text == R4_QUESTION and ignored.new_entries == {}
+
+
+@pytest.mark.parametrize("decisions", [[r4_decision(), r4_decision()], [r4_decision(), r4_decision("replace", "ORG")]])
+def test_r4_duplicate_decisions_do_not_write_or_send(db_sessionmaker, alice, ready_task, llm, decisions):
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    requests = llm("normal")
+    with db_sessionmaker() as db:
+        mapping = load_redaction_map(db, task.id)
+    response = c.post(url(task), headers=h, json={"message": R4_QUESTION, "decisions": decisions})
+    assert response.status_code == 422
+    assert requests == [] and chat_calls(db_sessionmaker) == [] and message_count(db_sessionmaker) == 0
+    with db_sessionmaker() as db:
+        assert load_redaction_map(db, task.id) == mapping
