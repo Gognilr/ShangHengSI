@@ -370,9 +370,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="doc-preview">
+    <div class="doc-preview__toolbar">
     <el-tabs v-if="sortedFiles.length > 1" v-model="activeId" class="doc-preview__files">
       <el-tab-pane v-for="f in sortedFiles" :key="f.id" :label="f.original_name" :name="f.id" />
     </el-tabs>
+    <span v-else class="doc-preview__name" :title="activeFile?.original_name">{{ activeFile?.original_name }}</span>
+    <span class="hint">点击左侧问题可定位原文</span>
+    </div>
 
     <div ref="body" v-loading="!state || state.loading" class="doc-preview__body">
       <template v-if="state && !state.loading">
@@ -520,12 +524,21 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 240px;
 }
+.doc-preview__toolbar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--el-border-color-light); }
+.doc-preview__files { flex: 1; min-width: 0; }
+.doc-preview__files :deep(.el-tabs__header) { margin: 0; }
+.doc-preview__toolbar > .hint { margin-left: auto; }
+.doc-preview__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.docx { background: var(--el-bg-color); padding: 24px; border: 1px solid var(--el-border-color-light); min-height: 100%; box-sizing: border-box; }
 
 .doc-preview__body {
   flex: 1;
   min-height: 0;
   overflow: auto;
   position: relative;
+  padding: 20px;
+  box-sizing: border-box;
+  background: var(--el-fill-color-light);
 }
 
 .docx__p {
@@ -568,6 +581,9 @@ onBeforeUnmount(() => {
 
 .sheet-wrap {
   overflow-x: auto;
+  background: var(--el-bg-color);
+  padding: 16px;
+  border: 1px solid var(--el-border-color-light);
 }
 
 .pdf-page {
@@ -606,13 +622,14 @@ onBeforeUnmount(() => {
 }
 
 .is-highlight {
-  background: var(--el-color-warning-light-8);
-  border-left: 3px solid var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+  border-bottom: 2px solid var(--el-color-warning);
 }
 
 .hl-box.is-highlight {
   border: 1px solid var(--el-color-warning);
-  background: var(--el-color-warning-light-8);
+  border-bottom-width: 2px;
+  background: var(--el-color-warning-light-9);
   opacity: 0.6;
 }
 </style>

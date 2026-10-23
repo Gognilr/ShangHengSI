@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { ChatDotRound } from '@element-plus/icons-vue'
 import { chatApi, type ChatMessage } from '@/api/chat'
 import { ApiError } from '@/api/http'
 import { formatDateTime } from '@/utils/time'
@@ -132,7 +133,7 @@ onBeforeUnmount(() => { active = false })
 <template>
   <el-tooltip :content="buttonReason" :disabled="!buttonReason" placement="top">
     <span class="chat-trigger">
-      <el-button :disabled="!available || loading || !!error || disabled" @click="show">追问</el-button>
+      <el-button :icon="ChatDotRound" :disabled="!available || loading || !!error || disabled" @click="show">追问</el-button>
     </span>
   </el-tooltip>
 
@@ -173,12 +174,13 @@ onBeforeUnmount(() => { active = false })
 </template>
 
 <style scoped>
-.chat-trigger { display: inline-block; margin-right: 12px; }
+.chat-trigger { display: inline-block; }
 .chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.messages { flex: 1; min-height: 120px; overflow-y: auto; margin-bottom: 16px; }
+.messages { flex: 1; min-height: 120px; overflow-y: auto; margin-bottom: 16px; padding: 12px; background: var(--el-fill-color-light); border-radius: 12px; }
 .message { max-width: 90%; margin-bottom: 16px; }
 .message--user { margin-left: auto; text-align: right; }
-.message-content { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
+.message-content { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; padding: 12px 16px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: 12px; text-align: left; }
+.message--user .message-content { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-8); }
 .redacted {
   margin: 0 0 12px;
   padding: 12px;

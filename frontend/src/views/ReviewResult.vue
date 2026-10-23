@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Download, Refresh, Delete } from '@element-plus/icons-vue'
 import CoverageCard from '@/components/CoverageCard.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import DocPreview from '@/components/DocPreview.vue'
@@ -28,6 +29,7 @@ import {
   statusLabel,
   toOptions,
   verdictLabel,
+  severityLabel,
 } from '@/utils/labels'
 
 const route = useRoute()
@@ -159,6 +161,11 @@ onMounted(load)
 watch(() => route.params.taskId, load)
 
 const mainFile = computed(() => task.value?.files.find((f) => f.is_main) ?? task.value?.files[0])
+const severityCounts = computed(() => ['high', 'medium', 'low'].map(value => ({ value, label: severityLabel(value), count: (run.value?.findings ?? []).filter(f => f.severity === value).length })))
+const fileBadge = computed(() => {
+  const ext = mainFile.value?.ext ?? ''
+  return ['docx', 'doc', 'wps', 'rtf'].includes(ext) ? 'DOC' : ['xlsx', 'xls', 'et'].includes(ext) ? 'XLS' : ext === 'pdf' ? 'PDF' : 'IMG'
+})
 
 const findings = computed<Finding[]>(() => {
   const list = (run.value?.findings ?? []).filter(
@@ -206,25 +213,23 @@ const reqVersion = computed(() => {
     <div v-else-if="task" class="split">
       <div class="left">
         <!-- 顶部信息栏 -->
-        <el-card shadow="never" class="info">
-          <div class="info-title">{{ mainFile?.original_name ?? task.title }}</div>
-          <el-descriptions :column="2" size="small" border>
-            <el-descriptions-item label="文件类型">{{ docTypeLabel(run?.main_doc_type ?? mainFile?.doc_type) }}</el-descriptions-item>
-            <el-descriptions-item label="立场">{{ stanceLabel(run?.stance ?? task.stance) }}</el-descriptions-item>
-            <el-descriptions-item label="来源">{{ sourceLabel(run?.source ?? task.source) }}</el-descriptions-item>
-            <el-descriptions-item label="状态">
+        <section class="panel info">
+          <div class="info-heading"><span class="file-badge">{{ fileBadge }}</span><div class="file-heading"><div class="info-title">{{ mainFile?.original_name ?? task.title }}</div><span v-if="task.files.length > 1" class="hint">另有 {{ task.files.length - 1 }} 个附件</span></div>
               <el-tag v-if="run" :type="RUN_STATUS_TAG[run.status] ?? 'info'" size="small">{{ runStatusLabel(run.status) }}</el-tag>
               <template v-else>{{ statusLabel(task.status) }}</template>
-            </el-descriptions-item>
-            <el-descriptions-item label="审核时间">{{ formatDateTime(run?.finished_at) }}</el-descriptions-item>
-            <el-descriptions-item label="使用的模型">{{ run?.model_name ?? '—' }}</el-descriptions-item>
-            <el-descriptions-item label="审核要求版本" :span="2">{{ reqVersion }}</el-descriptions-item>
-          </el-descriptions>
-          <el-select v-if="rounds.length > 1" v-model="selectedRun" aria-label="审核轮次" class="round-select gap" @change="selectRun">
+          </div>
+          <dl class="metadata">
+            <div><dt>文件类型</dt><dd>{{ docTypeLabel(run?.main_doc_type ?? mainFile?.doc_type) }}</dd></div>
+            <div><dt>立场 / 来源</dt><dd>{{ stanceLabel(run?.stance ?? task.stance) }} / {{ sourceLabel(run?.source ?? task.source) }}</dd></div>
+            <div><dt>审核时间</dt><dd>{{ formatDateTime(run?.finished_at) }}</dd></div>
+            <div><dt>使用的模型</dt><dd>{{ run?.model_name ?? '—' }}</dd></div>
+            <div><dt>审核要求版本</dt><dd>{{ reqVersion }}</dd></div>
+            <div><dt>审核轮次</dt><dd><el-select v-if="rounds.length > 1" v-model="selectedRun" aria-label="审核轮次" class="round-select" size="small" @change="selectRun">
             <el-option v-for="item in rounds" :key="item.id" :value="item.id"
               :label="`第 ${item.run_no} 轮 · ${formatDateTime(item.finished_at ?? item.queued_at)} · ${runStatusLabel(item.status)}`" />
-          </el-select>
-        </el-card>
+          </el-select><span v-else>{{ run ? `第 ${run.run_no} 轮` : '—' }}</span></dd></div>
+          </dl>
+        </section>
 
         <el-alert
           v-if="task.status === 'completed_local'"
@@ -235,7 +240,7 @@ const reqVersion = computed(() => {
           class="gap"
         />
 
-        <LocalFindings v-if="task.status === 'completed_local'" :task-id="task.id" class="gap" @select="onLocalSelect" />
+        <section v-if="task.status === 'completed_local'" class="panel gap"><h2 class="local-title">本地校验结果</h2><LocalFindings :task-id="task.id" @select="onLocalSelect" /></section>
 
         <el-alert v-if="runError" type="error" show-icon :closable="false" :title="runError" class="gap" />
         <div v-loading="runLoading" class="run-content">
@@ -258,10 +263,8 @@ const reqVersion = computed(() => {
             class="gap"
           />
 
-          <el-card v-if="run.doc_summary" shadow="never" class="gap">
-            <p v-if="run.doc_summary" class="summary">{{ run.doc_summary }}</p>
-          </el-card>
-          <CoverageCard :coverage="run.coverage" :sanctions="run.sanctions" class="gap" />
+          <div class="severity-counts gap" aria-label="按问题等级筛选"><button v-for="item in severityCounts" :key="item.value" class="stat severity-count" :class="[`severity-${item.value}`, { active: fSeverity === item.value }]" :aria-pressed="fSeverity === item.value" @click="fSeverity = fSeverity === item.value ? '' : item.value"><span class="stat-label"><i />{{ item.label }}</span><strong class="stat-value">{{ item.count }}</strong></button></div>
+          <CoverageCard :coverage="run.coverage" :sanctions="run.sanctions" :doc-summary="run.doc_summary" class="gap" />
 
           <el-tabs v-model="tab" class="gap">
             <el-tab-pane :label="`问题清单（${run.findings.length}）`" name="findings">
@@ -294,7 +297,7 @@ const reqVersion = computed(() => {
               <LocalFindings :task-id="task.id" @select="onLocalSelect" />
             </el-tab-pane>
             <el-tab-pane label="审核要求逐条结论" name="requirements">
-              <el-table :data="run.requirement_results" border size="small">
+              <el-table :data="run.requirement_results" size="small">
                 <el-table-column prop="req_id" label="编号" min-width="64" />
                 <el-table-column label="来源" min-width="76">
                   <template #default="{ row }">{{ reqSourceLabel(row.req_source) }}</template>
@@ -314,12 +317,12 @@ const reqVersion = computed(() => {
         </div>
 
         <!-- 底部操作 -->
-        <div class="actions">
+        <div class="result-actions">
           <ChatPanel :key="task.id" :task-id="task.id" :disabled="deleting" />
           <span v-if="exportReason" class="hint">{{ exportReason }}</span>
-          <el-button :loading="exporting" :disabled="!!exportReason || deleting" @click="exportReport">导出报告</el-button>
-          <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :disabled="deleting" @click="rerunOpen = true">重新审核</el-button>
-          <el-button type="danger" :loading="deleting" @click="remove">删除任务</el-button>
+          <el-button :icon="Download" :loading="exporting" :disabled="!!exportReason || deleting" @click="exportReport">导出报告</el-button>
+          <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :icon="Refresh" :disabled="deleting" @click="rerunOpen = true">重新审核</el-button>
+          <el-button link type="danger" :icon="Delete" :loading="deleting" @click="remove">删除任务</el-button>
         </div>
         <ReRunDialog v-model="rerunOpen" :task="task" />
       </div>
@@ -337,35 +340,56 @@ const reqVersion = computed(() => {
   height: calc(100vh - 64px);
   box-sizing: border-box;
   overflow-y: auto;
+  /* 顶部 32px 留白放在双栏容器，避免 sticky 再叠加滚动容器的顶部 padding。 */
+  padding-top: 0;
 }
 .split {
   display: flex;
-  gap: 16px;
+  padding-top: 32px;
+  gap: 20px;
   align-items: flex-start;
 }
 .left {
-  flex: 0 0 calc(44% - 8px);
+  flex: 0 0 calc(44% - 10px);
   min-width: 0;
 }
 .right {
-  flex: 0 0 calc(56% - 8px);
+  flex: 0 0 calc(56% - 10px);
   min-width: 0;
   position: sticky;
-  top: 16px;
-  height: calc(100vh - 64px - 32px);
+  top: 24px;
+  height: calc(100vh - 64px - 48px);
   box-sizing: border-box;
-  padding: 12px;
   border: 1px solid var(--el-border-color-light);
-  border-radius: var(--el-border-radius-base);
+  border-radius: var(--si-radius-card);
   background: var(--el-bg-color);
 }
 .info-title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  margin-bottom: 10px;
   overflow-wrap: anywhere;
 }
+.info { padding: 20px 24px; }
+.info-heading { display: flex; align-items: center; gap: 12px; }
+.file-heading { flex: 1; min-width: 0; }
+.file-badge { flex: none; width: 40px; height: 40px; border-radius: 8px; display: grid; place-items: center; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font-size: 12px; font-weight: 600; }
+.metadata { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 20px 0 0; }
+.metadata > div { min-width: 0; }
+dt { color: var(--el-text-color-secondary); font-size: 12px; margin-bottom: 4px; }
+dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.severity-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.severity-count { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--el-bg-color); cursor: pointer; font-family: inherit; color: var(--el-text-color-primary); }
+.severity-count.active { border-color: var(--el-color-primary); box-shadow: 0 0 0 2px var(--el-color-primary-light-9); }
+.severity-count .stat-label { display: flex; align-items: center; gap: 8px; }
+.severity-count i { width: 8px; height: 8px; border-radius: 50%; background: var(--el-color-info); }
+.severity-high i { background: var(--el-color-danger); }
+.severity-medium i { background: var(--el-color-warning); }
+.result-actions { position: sticky; bottom: 0; z-index: 3; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 16px 12px; margin-top: 24px; border-top: 1px solid var(--el-border-color-light); border-radius: 12px; background: color-mix(in srgb, var(--el-bg-color) 96%, transparent); }
+.result-actions :deep(.el-button + .el-button) { margin-left: 0; }
+.result-actions > .hint { flex-basis: 100%; order: -1; }
+.result-actions > .el-button:last-child { margin-left: auto; }
 .round-select { width: 100%; }
+.local-title { font-size: 18px; margin: 0 0 16px; }
 .run-content { min-height: 48px; }
 .summary {
   margin: 0 0 8px;

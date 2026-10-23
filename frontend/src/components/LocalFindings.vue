@@ -44,7 +44,7 @@ watch(() => props.taskId, load, { immediate: true })
 <template>
   <div v-loading="loading" class="local-findings">
     <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" />
-    <el-table v-else :data="items" border size="small" empty-text="本地校验未发现问题"
+    <el-table v-else :data="items" size="small" empty-text="本地校验未发现问题"
       :row-class-name="({ row }: { row: LocalFinding }) => row.locs.length ? 'locatable' : ''"
       @row-click="select">
       <el-table-column label="严重程度" width="76">
@@ -64,7 +64,7 @@ watch(() => props.taskId, load, { immediate: true })
 </template>
 
 <style scoped>
-.local-findings { min-height: 64px; }
+.local-findings { min-height: 64px; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); overflow: hidden; }
 .detail { white-space: pre-wrap; overflow-wrap: anywhere; }
 :deep(.cell) { overflow-wrap: anywhere; }
 :deep(.locatable) { cursor: pointer; }
