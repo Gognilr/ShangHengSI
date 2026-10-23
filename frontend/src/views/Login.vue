@@ -49,10 +49,11 @@ async function submit() {
   if (!formRef.value || !(await formRef.value.validate().catch(() => false))) return
   submitting.value = true
   try {
-    await auth.login(form.username.trim(), form.password)
+    const username = form.username.trim()
+    await auth.login(username, form.password)
     // 仅在登录成功后保存或删除用户名，失败时不改变已记住的值。
     try {
-      if (remember.value) localStorage.setItem(USERNAME_KEY, form.username.trim())
+      if (remember.value) localStorage.setItem(USERNAME_KEY, username)
       else localStorage.removeItem(USERNAME_KEY)
     } catch {
       // 存储失败不影响会话，也不保存密码或其他认证数据。
@@ -121,6 +122,7 @@ h2 { font-size: 32px; font-weight: 600; line-height: 1.6; margin: 0 0 20px; }
 h1 { font-size: 30px; font-weight: 600; margin: 0 0 4px; }
 .subtitle { color: var(--el-text-color-secondary); margin: 0 0 32px; }
 .login-form :deep(.el-input) { --el-input-height: 52px; }
+.login-form :deep(.el-input__wrapper:focus-within) { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; }
 .login-form :deep(.el-form-item) { margin-bottom: 24px; }
 .remember-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 20px; }
 .error { margin-bottom: 16px; }
