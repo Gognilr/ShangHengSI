@@ -10,6 +10,7 @@ call_model() 依次执行：读取设置 → 每月调用上限检查 → 出口
 """
 import json
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -53,11 +54,13 @@ class ModelResult:
 
 class GatewayError(Exception):
     def __init__(self, code: str, message: str | None = None, *, reasons: list[BlockReason] | None = None,
-                 llm_call_id: int | None = None):
+                 llm_call_id: int | None = None, detail: str | None = None):
         super().__init__(message or MESSAGES.get(code, code))
         self.code = code
         self.reasons = reasons or []
         self.llm_call_id = llm_call_id
+        # 模型服务返回的出错原因（已去掉密钥）。只在设置页“测试连接”中给管理员看，不写日志（M8-05）
+        self.detail = detail
 
 
 @dataclass
@@ -226,12 +229,33 @@ def _send_once(cfg: _Config, url: str, headers: dict, request_text: str) -> tupl
         return _Failure(GatewayError("HTTP_ERROR", f"{MESSAGES['HTTP_ERROR']}（{type(exc).__name__}）"), True)
     if resp.status_code != 200:
         retry = resp.status_code >= 500 or resp.status_code in _RETRYABLE_STATUS
-        return _Failure(GatewayError("HTTP_ERROR", f"{MESSAGES['HTTP_ERROR']}（HTTP {resp.status_code}）"), retry,
-                        resp.text)
+        return _Failure(GatewayError("HTTP_ERROR", f"{MESSAGES['HTTP_ERROR']}（HTTP {resp.status_code}）",
+                                     detail=_error_detail(resp.text, cfg.api_key)), retry, resp.text)
     try:
         return _parse_response(resp)
     except (ValueError, KeyError, IndexError, TypeError):
         return _Failure(GatewayError("BAD_RESPONSE"), True, resp.text)
+
+
+_DETAIL_MAX = 300
+_KEY_LIKE = re.compile(r"\b(?:sk|key|token)-[A-Za-z0-9_\-]{6,}", re.IGNORECASE)
+
+
+def _error_detail(text: str | None, api_key: str) -> str | None:
+    """取 OpenAI 兼容格式的 error.message（取不到时用返回内容开头），去掉密钥与类似密钥的串、合并空白，截断。"""
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+        err = data.get("error") if isinstance(data, dict) else None
+        msg = err.get("message") if isinstance(err, dict) else err if isinstance(err, str) else None
+    except ValueError:
+        msg = None
+    msg = msg if isinstance(msg, str) and msg.strip() else text
+    if api_key:
+        msg = msg.replace(api_key, "***")
+    msg = _KEY_LIKE.sub("***", " ".join(msg.split()))
+    return msg[:_DETAIL_MAX] or None
 
 
 def test_connection(db: Session, user_id: uuid.UUID | None) -> ModelResult:

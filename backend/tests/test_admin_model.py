@@ -286,3 +286,34 @@ def test_usage(admin, db_sessionmaker):
     # (3000*2 + 1500*4.5) / 1e6 = 0.01275 → 0.01
     assert u["cost"] == "0.01"
     assert len(u["month"]) == 7 and u["month"][4] == "-"
+
+
+def test_connection_shows_provider_reason_without_key(admin, monkeypatch, caplog):
+    """M8-05：测试连接失败时附上模型服务给出的原因，去掉密钥；原因不写日志。"""
+    import httpx
+
+    c, csrf = admin
+    _put(c, csrf)
+    reason = f"The supported API model names are model-a, model-b. key {KEY1} sk-abcdefghijklmn"
+
+    def handler(request):
+        return httpx.Response(400, json={"error": {"message": reason, "type": "invalid_request_error"}})
+
+    monkeypatch.setattr(gateway, "TRANSPORT", httpx.MockTransport(handler))
+    with caplog.at_level(logging.DEBUG):
+        r = c.post(TEST, headers=_hdr(csrf))
+    msg = r.json()["message"]
+    assert r.json()["ok"] is False and "HTTP 400" in msg and "supported API model names are model-a" in msg
+    assert KEY1 not in r.text and "sk-abcdefghijklmn" not in r.text
+    assert "supported API model names" not in caplog.text
+
+
+@pytest.mark.parametrize("text,expected", [
+    (None, None),
+    ("", None),
+    ('{"error": "plain reason"}', "plain reason"),
+    ("<html>bad   gateway\n</html>", "<html>bad gateway </html>"),
+    ('{"error": {"message": "' + "x" * 400 + '"}}', "x" * 300),
+])
+def test_error_detail_extraction(text, expected):
+    assert gateway._error_detail(text, "") == expected

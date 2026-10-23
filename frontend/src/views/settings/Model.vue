@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { adminModelApi, type ModelSettings, type ModelTestResult, type UsageOut } from '@/api/admin'
 import { ApiError } from '@/api/http'
 import PageHeader from '@/components/PageHeader.vue'
@@ -45,6 +45,18 @@ function fill(s: ModelSettings) {
     price_out_per_m: s.price_out_per_m,
     monthly_call_cap: s.monthly_call_cap,
   })
+  savedForm.value = JSON.stringify(form)
+}
+
+// 测试连接用的是已保存的设置；表单有未保存的修改时先提示保存（M8-05）
+const savedForm = ref('')
+const dirty = computed(() => savedForm.value !== '' && JSON.stringify(form) !== savedForm.value)
+
+// 附加请求参数的推荐值（与运维说明第 4 章一致），点按钮填入，不必手写 JSON
+const RECOMMENDED_EXTRA = '{"thinking": {"type": "enabled"}, "reasoning_effort": "high"}'
+function fillRecommendedExtra() {
+  form.extra_text = RECOMMENDED_EXTRA
+  formRef.value?.validateField('extra_text').catch(() => undefined)
 }
 
 async function loadUsage() {
@@ -143,6 +155,10 @@ async function save() {
 }
 
 async function testConnection() {
+  if (dirty.value) {
+    ElMessage.warning('有未保存的修改，请先保存再测试连接')
+    return
+  }
   testing.value = true
   testResult.value = null
   try {
@@ -177,10 +193,10 @@ async function testConnection() {
           <el-form-item label="接口地址" prop="base_url" class="span-all"><el-input v-model="form.base_url" placeholder="例如 https://api.deepseek.com/v1" /><div class="hint note">更换地址后，需 IT 同步修改虚拟机防火墙白名单。</div></el-form-item>
           <el-form-item label="模型名称" prop="name"><el-input v-model="form.name" /></el-form-item>
           <el-form-item label="API 密钥" prop="api_key"><el-input v-model="form.api_key" type="password" show-password autocomplete="new-password" :placeholder="saved?.api_key_set ? `已设置（末 4 位 ${saved.api_key_last4}），留空表示不修改` : '尚未设置'" /></el-form-item>
-          <el-form-item label="附加请求参数" prop="extra_text" class="span-all"><el-input v-model="form.extra_text" type="textarea" :rows="3" /><div class="hint note">JSON 对象。DeepSeek 推荐值：{"thinking": {"type": "enabled"}}</div></el-form-item>
+          <el-form-item label="附加请求参数" prop="extra_text" class="span-all"><el-input v-model="form.extra_text" type="textarea" :rows="3" /><div class="hint note extra-note"><span>一般不用手动编辑：使用 DeepSeek 时点“填入推荐值”（开启思考模式，思考强度 high），再保存。</span><el-button link type="primary" @click="fillRecommendedExtra">填入推荐值</el-button></div></el-form-item>
         </div>
-        <el-alert v-if="testResult" :type="testResult.ok ? 'success' : 'error'" :closable="false" show-icon :title="testResult.ok ? `连接成功：模型 ${testResult.model}，耗时 ${testResult.duration_ms} 毫秒` : `连接失败：${testResult.message}`" />
-        <div class="actions"><span class="hint">测试的是已保存的设置</span><el-button :loading="testing" @click="testConnection">测试连接</el-button></div>
+        <el-alert v-if="testResult && !dirty":type="testResult.ok ? 'success' : 'error'" :closable="false" show-icon :title="testResult.ok ? `连接成功：模型 ${testResult.model}，耗时 ${testResult.duration_ms} 毫秒` : `连接失败：${testResult.message}`" />
+        <div class="actions"><span v-if="dirty" class="hint unsaved">有未保存的修改，请先点页面底部“保存”再测试</span><span v-else class="hint">测试的是已保存的设置</span><el-button :loading="testing" @click="testConnection">测试连接</el-button></div>
       </section>
       <section class="panel">
         <h3>调用参数</h3>
@@ -219,4 +235,6 @@ h3 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
 .note { width: 100%; margin-top: 4px; line-height: 1.5; }
 .actions { border-top: 1px solid var(--el-border-color-lighter); padding-top: 20px; }
 .actions > .hint { margin-right: 12px; }
+.actions > .unsaved { color: var(--el-color-warning); }
+.extra-note { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
 </style>

@@ -211,7 +211,9 @@ def test_model(admin: User = Depends(require_admin), db: DbSession = Depends(get
     try:
         result = gateway.test_connection(db, admin.id)
     except gateway.GatewayError as exc:
-        return ConnectionResult(ok=False, message=str(exc))
+        # 附上模型服务给出的原因（如“模型名称不支持”），便于管理员自行排查；已去掉密钥（M8-05）
+        message = f"{exc}：{exc.detail}" if exc.detail else str(exc)
+        return ConnectionResult(ok=False, message=message)
     return ConnectionResult(ok=True, model=result.model_name, duration_ms=result.duration_ms, reply=result.content[:200])
 
 
