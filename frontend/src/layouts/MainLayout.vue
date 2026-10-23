@@ -33,27 +33,29 @@ async function onCommand(cmd: string) {
   <el-container class="layout">
     <el-header class="header">
       <div class="header-inner">
-      <SiLogo show-tagline />
-      <el-menu mode="horizontal" :default-active="activeMenu" router :ellipsis="false" class="menu">
-        <el-menu-item index="/review/new">智能审核</el-menu-item>
-        <el-menu-item index="/history">审核历史</el-menu-item>
-      </el-menu>
-      <div class="right">
-        <router-link v-if="auth.isAdmin" to="/settings" class="settings-link" :class="{ selected: route.path.startsWith('/settings') }"><el-icon><Setting /></el-icon>设置</router-link>
-        <el-dropdown trigger="click" @command="onCommand">
-          <span class="user"><span class="avatar">{{ initial }}</span><span class="display-name">{{ displayName }}</span> ▾</span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="password">修改密码</el-dropdown-item>
-              <el-dropdown-item command="logout" divided>退出</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
+        <SiLogo show-tagline />
+        <el-menu mode="horizontal" :default-active="activeMenu" router :ellipsis="false" class="menu">
+          <el-menu-item index="/review/new">智能审核</el-menu-item>
+          <el-menu-item index="/history">审核历史</el-menu-item>
+        </el-menu>
+        <div class="right">
+          <router-link v-if="auth.isAdmin" to="/settings" class="settings-link" :class="{ selected: route.path.startsWith('/settings') }">
+            <el-icon><Setting /></el-icon>设置
+          </router-link>
+          <el-dropdown trigger="click" @command="onCommand">
+            <span class="user"><span class="avatar">{{ initial }}</span><span class="display-name">{{ displayName }}</span> ▾</span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="password">修改密码</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>退出</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
     </el-header>
 
-    <!-- 管理员提醒条（SPEC 6.7）；提醒内容在 M7 接入，这里只留位置 -->
+    <!-- 管理员提醒条（SPEC 6.7），沿用登录状态返回的提醒内容。 -->
     <div v-if="auth.isAdmin && auth.alerts.length" class="alerts">
       <el-alert
         v-for="(a, i) in auth.alerts"
@@ -114,6 +116,7 @@ async function onCommand(cmd: string) {
 .menu :deep(.el-menu-item.is-active) { color: var(--el-color-primary); font-weight: 600; }
 .menu :deep(.el-menu-item.is-active)::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 2px; background: var(--si-brand-gradient); }
 .menu :deep(.el-menu-item:hover), .menu :deep(.el-menu-item:focus) { background: transparent; color: var(--el-color-primary); }
+.menu :deep(.el-menu-item:focus-visible) { outline: 2px solid var(--el-color-primary-light-5); outline-offset: -4px; }
 
 .right {
   display: flex;
