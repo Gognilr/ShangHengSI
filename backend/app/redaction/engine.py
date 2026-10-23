@@ -504,8 +504,9 @@ def _assign_countries(entities: dict[str, _Entity], nodes: list[NodeIn], spans: 
 
 def _ratio_inserts(nodes: list[NodeIn], spans: list[_Span], main_prefix: str | None) -> dict[int, list[tuple[int, str]]]:
     """金额比例（9.6）：{节点下标: [(在原文中的插入位置, 比例文字)]}。比例只进入 redacted，不进入对照表和替换项。"""
+    # 补充说明（NOTE）不参与金额比例（R4 4.1）：既不用来确定合同总价，自身金额也不加比例
     amounts = [ratio.AmountAt(s.node, detect.Hit(s.start, s.end, s.category, s.key, s.currency, s.value))
-               for s in spans if s.category == "AMOUNT"]
+               for s in spans if s.category == "AMOUNT" and nodes[s.node].loc != "NOTE"]
     total = ratio.contract_total(nodes, amounts, main_prefix)
     out: dict[int, list[tuple[int, str]]] = {}
     if total is None:

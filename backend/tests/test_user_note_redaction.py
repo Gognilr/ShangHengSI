@@ -253,3 +253,12 @@ def test_r4_note_keeps_document_codes_and_clears_note(db_sessionmaker, alice, re
         assert stored.user_note_enc is None and stored.user_note_redacted is None
         assert list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == "NOTE"))) == []
         assert list(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id, RedactionSuspect.loc == "NOTE"))) == []
+
+
+def test_r4_note_amount_is_not_contract_total():
+    """R4 审核补充（4.1）：补充说明中的金额不作为合同总价、自身不加比例，正文金额不因此出现比例。"""
+    body = [engine.NodeIn("F1-P1", "卖方：澄川虚构信息技术有限公司"), engine.NodeIn("F1-P2", "首期付款人民币30,000元。")]
+    plain = engine.compute(body, "sales", main_prefix="F1-")
+    with_note = engine.compute([*body, engine.NodeIn("NOTE", "合同总价：人民币100,000元")], "sales", main_prefix="F1-")
+    assert with_note.redacted["F1-P2"] == plain.redacted["F1-P2"] == "首期付款人民币[金额_1]元。"
+    assert "合同总价的" not in with_note.redacted["NOTE"]
