@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- **Q-162 已由 Opus 决定（2026-10-24）**：同意最小授权——test_migrations.py 只在 `ENUM_COLUMNS` 的 `("redaction_suspects", "reason")` 列表末尾追加 `"person_name"`（与已确认 SPEC 18.11 精确一致，不放宽断言；系设计 11.4 漏列该文件），已写入 design/R4.md 11.4、11.6。R4-08 文件范围外其余既有测试仍不得改。**下一步：恢复 R4-08（GPT-6.1 Sol，测试先行，high）**——做这一处追加，重跑定向，再前端 build、四尺寸浏览器核对 11.3 与整仓 Docker 全量；完成后停下交 R4-09（Opus，high）。
+
 - **R4-08 检查点，未完成（2026-10-24，GPT-6.1 Sol，测试先行）：因既有迁移测试契约冲突停下，交 Opus 决定 Q-162。** 已实现共用 person_name 规则、姓氏读取、迁移 0006 与模型 CHECK、前端原因及默认 PERSON；persons_narrative.yaml 只追加 11.5 的 must_suspect，姓氏表与样本原文未改。新增设计 11.6 #1～18 自动化测试（含正文 / NOTE 真实解析、未处理阻断、替换后模拟网关、追问替换 / 保留、已有代号、迁移升级 / 降级与 DEBUG 日志），另追加样本两处陆虚岚均命中的测试。首轮 **15 failed / 18 passed，exit 1**；实现后 Docker 定向（人名、suspects、golden、迁移）**292 passed / 1 failed，exit 1**，模型与迁移一致测试通过。唯一失败：`tests/test_migrations.py::test_enum_check_constraints_exist_and_reject` 的 ENUM_COLUMNS 仍精确限定 reason 为旧四值（第 410 行），与设计 11.2 / 已确认 SPEC 新增 person_name 冲突；设计 11.6 禁止改既有测试，11.4 未列此文件，因此保留旧断言，按要求停下。未运行前端 build、浏览器检查和全量测试，不称完成。仓库外证据：本会话 visualizations/r4-08/red.log、red.exit、focused.log、focused.exit（退出码均落盘重读）。**下一步：Opus，high，先决定 Q-162（建议仅允许 ENUM_COLUMNS 该行追加 person_name，保留断言与样本）；确认后恢复 R4-08，先重跑定向，再前端 build / 四尺寸浏览器与整仓 Docker 全量，完成后才交 R4-09。** 暂停中的 M8-02 初稿及两份方案文档保留，未暂存；未部署，未改 Opus 评审指针。
 
 - **R4-07 已经用户确认（2026-10-24）**：设计 docs/design/R4.md 第十一节与 Q-161 已确认；SPEC 已按 11.7 写入（变更记录、5 目录、9.5、18.11、23.2 T-27）。规则 10：6a98319 之后只有 Opus 的提交，无待评审提交。**下一个任务：R4-08（GPT-6.1 Sol，测试先行，high）**——开工前读 CLAUDE.md、R4.md 第〇节与第十一节；cn\_surnames.txt 与 persons\_narrative.txt 不得改动；完成后停下交 **R4-09（Opus，high）**。暂停中的 M8-02 初稿与两份界面方案文档不得暂存。
