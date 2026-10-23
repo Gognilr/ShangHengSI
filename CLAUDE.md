@@ -82,15 +82,14 @@ npm --prefix frontend run dev        # http://localhost:5173，/api 代理到 ht
 
 **数据库迁移**：新增迁移只能写在 backend/app/db/alembic/versions/ 下，并保证 tests/test\_migrations.py 中“模型与迁移一致”的测试通过。
 
-**旧格式转换服务 converter**（R2-01 完成后可用；compose 整套启动时自动构建）：
+**旧格式转换服务 converter**（compose 整套启动时自动构建）：
 
 ```powershell
 docker build -t aireview-converter:dev converter
-# converter 自身的测试（断网运行，只用标准库 unittest）
-docker run --rm --network none -v "${PWD}/converter/tests:/srv/converter/tests:ro" -v "${PWD}/backend/tests/fixtures/legacy:/srv/fixtures:ro" aireview-converter:dev python -m unittest discover -s /srv/converter/tests
+# converter 自身的测试（只用标准库 unittest）。必须带与 compose 相同的加固参数：断网、只读根文件系统、去掉全部 capability、
+# no-new-privileges；镜像默认以 uid 10002 运行。测试会断言这些条件，缺少参数时 ContainerTests 失败
+docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true -v "${PWD}/converter/tests:/srv/converter/tests:ro" -v "${PWD}/backend/tests/fixtures/legacy:/srv/fixtures:ro" aireview-converter:dev python -m unittest discover -s /srv/converter/tests
 ```
-
-实际命令与此不同时，在 R2-01 / R2-05 的报告中列出，经我确认后修改本节。
 
 （构建与导出离线镜像的命令在 M8 补充。）
 
