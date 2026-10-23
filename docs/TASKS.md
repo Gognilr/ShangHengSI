@@ -6,7 +6,9 @@
 
 ## 当前进度
 
-- **R4-09 已完成，待用户确认（2026-10-24，Opus 5.5，high）：R4-08 通过验收，修复误报 3 类（Q-163）。** 核对：姓氏表与样本原文未改，yaml 只追加 must_suspect，test_migrations.py 只有 Q-162 一行，11.6 #1～#18 逐条有测试。独立探测发现“李经理表示”“请欧阳总监”“马上 / 施工方 / 费用要求”等误报，只改 suspects.py 姓名判断（排除字、称谓名、整段复姓），新增 13 条用例追加在 test_person_suspects.py；设计 11.1 已补充。真实接口 + worker + mock-llm 重跑 R4-06 探测句：正文 / NOTE 各列一条 person_name、未处理 409、替换后外发为人员代号，追问新姓名 409 → replace 为 [人员_Q1]，3 条 llm_calls 探测串 0、出口复检 0 命中、日志 0。浏览器核对 11.3 三条与四种宽度无横向滚动。整仓全量（不含 M8-02 初稿）**2184 passed、exit 0**；前端 build exit 0。详见 business_review 第十三节。**下一步：用户确认 Q-163 后回到 M8-02。**
+- **R4 验收已经用户确认（2026-10-24）**：Q-163 已确认，R4（含追加的叙述人名）全部结束。**下一个任务：M8-02（Sonnet，high）**——恢复暂停中的初稿（backend/app/cli.py、deploy/scripts/lib.sh 的未提交改动，及 install.sh、upgrade.sh、backup\_now.sh、tests/test\_cli\_backup\_now.py），开工前先读 CLAUDE.md、SPEC 对应章节与 design/M8.md；两份界面方案文档仍不得暂存。
+
+- **R4-09 已完成（2026-10-24，Opus 5.5，high）：R4-08 通过验收，修复误报 3 类（Q-163）。** 核对：姓氏表与样本原文未改，yaml 只追加 must_suspect，test_migrations.py 只有 Q-162 一行，11.6 #1～#18 逐条有测试。独立探测发现“李经理表示”“请欧阳总监”“马上 / 施工方 / 费用要求”等误报，只改 suspects.py 姓名判断（排除字、称谓名、整段复姓），新增 13 条用例追加在 test_person_suspects.py；设计 11.1 已补充。真实接口 + worker + mock-llm 重跑 R4-06 探测句：正文 / NOTE 各列一条 person_name、未处理 409、替换后外发为人员代号，追问新姓名 409 → replace 为 [人员_Q1]，3 条 llm_calls 探测串 0、出口复检 0 命中、日志 0。浏览器核对 11.3 三条与四种宽度无横向滚动。整仓全量（不含 M8-02 初稿）**2184 passed、exit 0**；前端 build exit 0。详见 business_review 第十三节。**下一步：用户确认 Q-163 后回到 M8-02。**
 
 - **R4-08 已完成（2026-10-24，GPT-6.1 Sol，测试先行）**：叙述中的中文人名共用 person_name 疑似遗漏规则、姓氏读取、迁移 0006 / 模型 reason CHECK、前端“疑似人名”及默认 PERSON；实现检查点 **41e68a8**，按 Q-162 唯一允许的旧测试修订 **705222a**（只在 ENUM_COLUMNS 追加 person_name，精确相等断言不变）。设计 11.6 #1～18 自动化用例及 golden 回归通过，persons_narrative 的两处陆虚岚均列出；姓氏表、样本原文、recheck.py 未改。恢复后 Docker 定向 **293 passed、1 warning、exit 0**；整仓挂载 Docker 全量 **2176 passed、1 warning、exit 0**（481.88 秒，独立退出码落盘重读，包含既有暂停 M8-02 初稿）；前端 build **exit 0**（既有 chunk 大小提示）。本地 compose app / worker 按当前 backend 重建，mock-model 经真实接口完成虚构 DOCX + NOTE：未处理时按钮禁用，默认人名，替换后正文 / NOTE 为人员_1 / 人员_2；追问新姓名逐条确认默认人名且可改选，实际发送为 [人员_Q1]；已有姓名沿用原代号；非人名候选仍须选择类别。1280 / 1366 / 1440 / 1920 页面、替换弹窗和追问确认均无横向溢出，截图逐张检查，Tab 外环 2px；加载 / 正常 / 空状态与 mock 离线“回复失败，请稍后重试”均核对，mock 已恢复，正常控制台无错误 / 警告。实际审核与成功追问请求不含三个探测姓名，按映射复检 0 命中；两次失败追问未写对话，应用日志探测姓名命中 0。仓库外证据与逐项映射：本会话 visualizations/r4-08/browser-verification.md、full.log / full.exit、resumed-focused.log / .exit、build.log / .exit、measurements.json、live-outbound.json / .exit 及截图。未新增 Q 项，Q-162 已执行；暂停初稿及两份方案文档未修改或暂存；仅更新本地联调环境，未部署到服务器，未改 Opus 评审指针。**下一任务 R4-09（Opus，high）**：独立评审测试 / 样本 / 姓氏表及 Q-162 范围，重跑实际接口 + 模拟网关 / 外发比对和前端 11.3；用户确认验收后再回 M8-02。本会话停止，不执行 R4-09。
 
@@ -432,7 +434,7 @@
 | R4-06 | 联调与验收；按规则 10、11 评审 R4-01～R4-05 | Opus | high | R4-05 | 23；设计第七节 | docs/business\_review.md（追加 R4 一节）；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；汇报用户确认后回到 M8-02 | 已完成 |
 | R4-07 | 细化：叙述中的中文人名——设计第十一节、姓氏表 resources/cn\_surnames.txt、回归样本 persons\_narrative.\*、SPEC 修改稿、Q-161 | Opus | high | R4-06 | 9.5、18.11、23.2；设计第十一节 | docs/design/R4.md、backend/resources/cn\_surnames.txt、backend/tests/fixtures/redaction\_golden/persons\_narrative.\*、docs/TASKS.md、docs/open\_questions.md | 用户确认（2026-10-24 已确认）；SPEC 已按 11.7 写入 | 已完成 |
 | R4-08 | 叙述中的中文人名列为疑似遗漏（后端规则、迁移 0006、前端原因与默认类别） | GPT-6.1 Sol（测试先行） | high | R4-07 | 9.5、18.11；设计第十一节 | 设计 11.4 | 设计 11.6 测试表逐条有测试并通过；persons\_narrative 按 11.5 追加 must\_suspect；模型与迁移一致；全量测试通过；前端 build 与浏览器核对 11.3；**完成后停下交 Opus（R4-09）** | 已完成 |
-| R4-09 | 评审 R4-08 并验收：核对测试、样本与姓氏表未改动；真实接口 + 模拟网关重跑探测句、外发比对；浏览器核对 11.3 | Opus | high | R4-08 | 23；设计 11.8 | docs/business\_review.md（追加）；验收中发现的问题按需修复 | 全部通过；汇报用户确认后回到 M8-02 | 已完成（待用户确认） |
+| R4-09 | 评审 R4-08 并验收：核对测试、样本与姓氏表未改动；真实接口 + 模拟网关重跑探测句、外发比对；浏览器核对 11.3 | Opus | high | R4-08 | 23；设计 11.8 | docs/business\_review.md（追加）；验收中发现的问题按需修复 | 全部通过；汇报用户确认后回到 M8-02 | 已完成 |
 
 ## 五、工作量分布
 

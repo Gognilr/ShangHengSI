@@ -318,4 +318,4 @@ C:\Users\Administrator\.codex\visualizations\2026\10\23\01a16645-9450-77a2-884f-
 * 整仓挂载 Docker 全量（HEAD + 本次修复的干净导出，**不含**暂停的 M8-02 初稿）：**2184 passed、1 warning、exit 0**（447.21 秒）。定向 `test_person_suspects.py` + `test_suspects.py`：158 passed。前端 build exit 0（既有 chunk 大小提示）。
 * 第一次全量只挂载了 backend，`test_scripts.py` / `test_forbidden_words.py` 因找不到整仓文件失败 10 条——属挂载方式问题，改为整仓挂载后通过。
 
-**待用户确认**：Q-163（误报修复的取舍）。确认后回到 M8-02。
+**用户确认（2026-10-24）**：Q-163 已确认，R4 验收通过，回到 M8-02。
