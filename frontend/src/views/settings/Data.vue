@@ -23,6 +23,7 @@ import {
   toOptions,
 } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
+import PageHeader from '@/components/PageHeader.vue'
 
 const auth = useAuthStore()
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -231,8 +232,36 @@ onBeforeUnmount(stopPolling)
 </script>
 
 <template>
-  <div class="page">
-    <el-card shadow="never">
+  <div class="settings-page">
+    <PageHeader title="数据与系统" description="系统状态、原件保留期限、备份与外发记录" />
+    <section class="panel">
+      <h3 class="first">系统状态</h3>
+      <el-alert v-if="statusError" type="error" :closable="false" show-icon :title="statusError" />
+      <div v-if="status" class="system-stats">
+        <div class="stat"><div class="stat-label">版本号</div><div class="stat-value">{{ status.version }}</div></div>
+        <div class="stat"><div class="stat-label">排队任务数</div><div class="stat-value">{{ status.queued_jobs }}</div></div>
+        <div class="stat"><div class="stat-label">数据盘剩余空间</div><div class="stat-value">{{ formatBytes(status.data_free_bytes) }}</div></div>
+      </div>
+    </section>
+
+<section class="panel">
+      <h3 class="first">原件保留期限</h3>
+      <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
+      <el-form label-width="110px" @submit.prevent="saveRetention">
+        <el-form-item label="保留天数">
+          <el-input-number v-model="retentionDays" :min="0" :max="3650" />
+          <span class="hint inline">0 表示永久保留</span>
+        </el-form-item>
+      </el-form>
+      <div class="hint">
+        到期后删除原件和节点原文，保留审核结果和报告；删除后不能重新审核和追问。旧备份中仍保存着这些原件，直到被轮换删除。
+      </div>
+      <div class="actions">
+        <el-button type="primary" :loading="retentionSaving" @click="saveRetention">保存</el-button>
+      </div>
+    </section>
+
+<section class="panel">
       <h3 class="first">备份</h3>
       <el-alert v-if="backupError" type="error" :closable="false" show-icon :title="backupError" />
       <div v-loading="backupLoading">
@@ -267,7 +296,7 @@ onBeforeUnmount(stopPolling)
         </div>
 
         <h3>最近 20 条备份记录</h3>
-        <el-table :data="records?.items ?? []" border size="small" empty-text="尚无备份记录">
+        <el-table :data="records?.items ?? []" size="small" empty-text="尚无备份记录">
           <el-table-column label="开始时间" width="170">
             <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
           </el-table-column>
@@ -293,29 +322,12 @@ onBeforeUnmount(stopPolling)
           </el-table-column>
         </el-table>
       </div>
-    </el-card>
+    </section>
 
-    <el-card class="gap" shadow="never">
-      <h3 class="first">原件保留期限</h3>
-      <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
-      <el-form label-width="110px" @submit.prevent="saveRetention">
-        <el-form-item label="保留天数">
-          <el-input-number v-model="retentionDays" :min="0" :max="3650" />
-          <span class="hint inline">0 表示永久保留</span>
-        </el-form-item>
-      </el-form>
-      <div class="hint">
-        到期后删除原件和节点原文，保留审核结果和报告；删除后不能重新审核和追问。旧备份中仍保存着这些原件，直到被轮换删除。
-      </div>
-      <div class="actions">
-        <el-button type="primary" :loading="retentionSaving" @click="saveRetention">保存</el-button>
-      </div>
-    </el-card>
-
-    <el-card class="gap" shadow="never">
+<section class="panel">
       <h3 class="first">外发记录</h3>
       <div class="filters">
-        <el-select v-model="filters.user_id" clearable filterable placeholder="全部用户" style="width: 160px" @change="search">
+        <el-select v-model="filters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="search">
           <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
         </el-select>
         <el-date-picker
@@ -325,15 +337,15 @@ onBeforeUnmount(stopPolling)
           range-separator="至"
           start-placeholder="开始日期"
           end-placeholder="结束日期"
-          style="width: 260px"
+          class="date-filter"
           @change="search"
         />
-        <el-select v-model="filters.status" clearable placeholder="全部状态" style="width: 140px" @change="search">
+        <el-select v-model="filters.status" clearable placeholder="全部状态" class="status-filter" @change="search">
           <el-option v-for="o in toOptions(OUTBOUND_STATUS)" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
       </div>
       <el-alert v-if="logError" type="error" :closable="false" show-icon :title="logError" />
-      <el-table v-loading="logLoading" :data="logs" border size="small" empty-text="没有符合条件的外发记录" @row-click="openDetail">
+      <el-table v-loading="logLoading" :data="logs" size="small" empty-text="没有符合条件的外发记录" @row-click="openDetail">
         <el-table-column label="时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
@@ -364,17 +376,7 @@ onBeforeUnmount(stopPolling)
         @current-change="loadLogs"
       />
       <div class="hint">点击一行查看外发文本和返回内容（均为脱敏后的内容）。</div>
-    </el-card>
-
-    <el-card class="gap" shadow="never">
-      <h3 class="first">系统状态</h3>
-      <el-alert v-if="statusError" type="error" :closable="false" show-icon :title="statusError" />
-      <el-descriptions v-if="status" border size="small" :column="3">
-        <el-descriptions-item label="版本号">{{ status.version }}</el-descriptions-item>
-        <el-descriptions-item label="排队任务数">{{ status.queued_jobs }}</el-descriptions-item>
-        <el-descriptions-item label="数据盘剩余空间">{{ formatBytes(status.data_free_bytes) }}</el-descriptions-item>
-      </el-descriptions>
-    </el-card>
+    </section>
 
     <el-drawer v-model="drawer" title="外发记录详情" direction="rtl" size="560px">
       <el-alert v-if="detailError" type="error" :closable="false" show-icon :title="detailError" />
@@ -401,9 +403,9 @@ onBeforeUnmount(stopPolling)
 
 <style scoped>
 h3 {
-  margin: 20px 0 8px;
-  font-size: 15px;
-  font-weight: bold;
+  margin: 20px 0 16px;
+  font-size: 18px;
+  font-weight: 600;
 }
 h3.first {
   margin-top: 0;
@@ -432,4 +434,11 @@ h3.first {
 :deep(.el-table__row) {
   cursor: pointer;
 }
+.system-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.system-stats .stat-value { overflow-wrap: anywhere; }
+.user-filter { width: 160px; }
+.date-filter { width: 260px; }
+.status-filter { width: 140px; }
+.filters { flex-wrap: wrap; }
+.actions { padding-top: 20px; border-top: 1px solid var(--el-border-color-lighter); }
 </style>

@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { User, Cpu, List, Lock, Coin } from '@element-plus/icons-vue'
 
-// 设置页 5 个标签页（SPEC 15），标签与子路由一一对应
+// 设置页导航与原子路由一一对应，权限仍由路由 meta.admin 校验。
 const tabs = [
-  { name: 'users', label: '账号' },
-  { name: 'model', label: '模型' },
-  { name: 'requirements', label: '审核要求' },
-  { name: 'redaction', label: '脱敏' },
-  { name: 'data', label: '数据' },
+  { name: 'users', label: '账号', icon: User },
+  { name: 'model', label: '模型', icon: Cpu },
+  { name: 'requirements', label: '审核要求', icon: List },
+  { name: 'redaction', label: '脱敏', icon: Lock },
+  { name: 'data', label: '数据', icon: Coin },
 ]
 
 const route = useRoute()
@@ -25,21 +26,24 @@ function onTabChange(name: string | number) {
 </script>
 
 <template>
-  <div class="settings">
-    <h2 class="settings-title">设置</h2>
-    <el-tabs :model-value="activeTab" @update:model-value="onTabChange">
-      <el-tab-pane v-for="t in tabs" :key="t.name" :label="t.label" :name="t.name" />
-    </el-tabs>
-    <router-view />
+  <div class="page page--wide settings">
+    <aside class="panel settings-nav" aria-label="设置导航">
+      <el-menu :default-active="activeTab" @select="onTabChange"><el-menu-item v-for="t in tabs" :key="t.name" :index="t.name"><el-icon><component :is="t.icon" /></el-icon><span>{{ t.label }}</span></el-menu-item></el-menu>
+    </aside>
+    <div class="settings-content"><router-view /></div>
   </div>
 </template>
 
 <style scoped>
 .settings {
-  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
 }
-
-.settings-title {
-  margin: 0 0 8px;
-}
+.settings-nav { flex: 0 0 220px; box-sizing: border-box; padding: 12px; position: sticky; top: 32px; }
+/* 主滚动区从顶栏下开始，32px 对应视口顶部的 64 + 32 = 96px。 */
+.settings-nav :deep(.el-menu) { border-right: 0; }
+.settings-nav :deep(.el-menu-item) { height: 44px; border-radius: 8px; }
+.settings-nav :deep(.el-menu-item.is-active) { background: var(--el-color-primary-light-9); font-weight: 600; }
+.settings-content { flex: 1; min-width: 0; }
 </style>

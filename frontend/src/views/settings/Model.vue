@@ -3,6 +3,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { onMounted, reactive, ref } from 'vue'
 import { adminModelApi, type ModelSettings, type ModelTestResult, type UsageOut } from '@/api/admin'
 import { ApiError } from '@/api/http'
+import PageHeader from '@/components/PageHeader.vue'
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -156,110 +157,66 @@ async function testConnection() {
 </script>
 
 <template>
-  <div class="page">
-    <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" />
-
-    <el-card v-loading="loading" shadow="never">
-      <h3 class="first">模型接口</h3>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="140px" @submit.prevent="save">
-        <el-form-item label="接口地址" prop="base_url">
-          <el-input v-model="form.base_url" placeholder="例如 https://api.deepseek.com/v1" />
-          <div class="hint note">更换地址后，需 IT 同步修改虚拟机防火墙白名单。</div>
-        </el-form-item>
-        <el-form-item label="模型名称" prop="name">
-          <el-input v-model="form.name" />
-        </el-form-item>
-        <el-form-item label="API 密钥" prop="api_key">
-          <el-input
-            v-model="form.api_key"
-            type="password"
-            show-password
-            autocomplete="new-password"
-            :placeholder="saved?.api_key_set ? `已设置（末 4 位 ${saved.api_key_last4}），留空表示不修改` : '尚未设置'"
-          />
-        </el-form-item>
-        <el-form-item label="附加请求参数" prop="extra_text">
-          <el-input v-model="form.extra_text" type="textarea" :rows="3" />
-          <div class="hint note">JSON 对象。DeepSeek 推荐值：{"thinking": {"type": "enabled"}}</div>
-        </el-form-item>
-
-        <h3>调用参数</h3>
-        <el-form-item label="温度（0–2）">
-          <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" :precision="2" />
-        </el-form-item>
-        <el-form-item label="最大输出 token">
-          <el-input-number v-model="form.max_tokens" :min="1" :max="1000000" :step="1000" />
-        </el-form-item>
-        <el-form-item label="超时（秒）">
-          <el-input-number v-model="form.timeout_s" :min="10" :max="600" />
-        </el-form-item>
-        <el-form-item label="JSON 输出模式">
-          <el-switch v-model="form.json_mode" />
-        </el-form-item>
-        <el-form-item label="分段字符数">
-          <el-input-number v-model="form.chunk_chars" :min="1000" :max="1000000" :step="1000" />
-        </el-form-item>
-
-        <h3>费用与上限</h3>
-        <el-form-item label="输入单价（元 / 百万 token）" prop="price_in_per_m">
-          <el-input v-model="form.price_in_per_m" class="narrow" />
-        </el-form-item>
-        <el-form-item label="输出单价（元 / 百万 token）" prop="price_out_per_m">
-          <el-input v-model="form.price_out_per_m" class="narrow" />
-        </el-form-item>
-        <el-form-item label="每月调用上限">
-          <el-input-number v-model="form.monthly_call_cap" :min="0" :max="1000000000" />
-          <span class="hint inline">0 表示不限</span>
-        </el-form-item>
-      </el-form>
-
-      <el-alert
-        v-if="testResult"
-        :type="testResult.ok ? 'success' : 'error'"
-        :closable="false"
-        show-icon
-        :title="testResult.ok ? `连接成功：模型 ${testResult.model}，耗时 ${testResult.duration_ms} 毫秒` : `连接失败：${testResult.message}`"
-      />
-      <div class="actions">
-        <span class="hint inline">测试的是已保存的设置</span>
-        <el-button :loading="testing" @click="testConnection">测试连接</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+  <div class="settings-page">
+    <PageHeader title="模型接口" description="配置云端模型的接口、调用参数与费用上限" />
+    <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="gap" />
+    <section class="panel usage-panel">
+      <h3>本月用量{{ usage ? `（${usage.month}）` : '' }}</h3>
+      <div v-if="usage" class="usage-stats">
+        <div class="stat"><div class="stat-label">调用次数</div><div class="stat-value">{{ usage.calls }}<small>{{ usage.cap > 0 ? ` / ${usage.cap}` : '（不限）' }}</small></div></div>
+        <div class="stat"><div class="stat-label">输入 token</div><div class="stat-value">{{ usage.tokens_in }}</div></div>
+        <div class="stat"><div class="stat-label">输出 token</div><div class="stat-value">{{ usage.tokens_out }}</div></div>
+        <div class="stat"><div class="stat-label">估算费用（元）</div><div class="stat-value">{{ usage.cost }}</div></div>
       </div>
-    </el-card>
-
-    <el-card class="gap" shadow="never">
-      <h3 class="first">本月用量{{ usage ? `（${usage.month}）` : '' }}</h3>
-      <el-descriptions v-if="usage" border size="small" :column="4">
-        <el-descriptions-item label="调用次数">
-          {{ usage.calls }}{{ usage.cap > 0 ? ` / ${usage.cap}` : '（不限）' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="输入 token">{{ usage.tokens_in }}</el-descriptions-item>
-        <el-descriptions-item label="输出 token">{{ usage.tokens_out }}</el-descriptions-item>
-        <el-descriptions-item label="估算费用（元）">{{ usage.cost }}</el-descriptions-item>
-      </el-descriptions>
       <el-empty v-else description="暂时无法读取用量" :image-size="60" />
-    </el-card>
+    </section>
+    <el-form ref="formRef" v-loading="loading" :model="form" :rules="rules" label-position="top" class="model-form" @submit.prevent="save">
+      <section class="panel">
+        <h3>模型接口</h3>
+        <div class="model-grid">
+          <el-form-item label="接口地址" prop="base_url" class="span-all"><el-input v-model="form.base_url" placeholder="例如 https://api.deepseek.com/v1" /><div class="hint note">更换地址后，需 IT 同步修改虚拟机防火墙白名单。</div></el-form-item>
+          <el-form-item label="模型名称" prop="name"><el-input v-model="form.name" /></el-form-item>
+          <el-form-item label="API 密钥" prop="api_key"><el-input v-model="form.api_key" type="password" show-password autocomplete="new-password" :placeholder="saved?.api_key_set ? `已设置（末 4 位 ${saved.api_key_last4}），留空表示不修改` : '尚未设置'" /></el-form-item>
+          <el-form-item label="附加请求参数" prop="extra_text" class="span-all"><el-input v-model="form.extra_text" type="textarea" :rows="3" /><div class="hint note">JSON 对象。DeepSeek 推荐值：{"thinking": {"type": "enabled"}}</div></el-form-item>
+        </div>
+        <el-alert v-if="testResult" :type="testResult.ok ? 'success' : 'error'" :closable="false" show-icon :title="testResult.ok ? `连接成功：模型 ${testResult.model}，耗时 ${testResult.duration_ms} 毫秒` : `连接失败：${testResult.message}`" />
+        <div class="actions"><span class="hint">测试的是已保存的设置</span><el-button :loading="testing" @click="testConnection">测试连接</el-button></div>
+      </section>
+      <section class="panel">
+        <h3>调用参数</h3>
+        <div class="model-grid three-cols">
+          <el-form-item label="温度（0–2）"><el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" :precision="2" /></el-form-item>
+          <el-form-item label="最大输出 token"><el-input-number v-model="form.max_tokens" :min="1" :max="1000000" :step="1000" /></el-form-item>
+          <el-form-item label="超时（秒）"><el-input-number v-model="form.timeout_s" :min="10" :max="600" /></el-form-item>
+          <el-form-item label="JSON 输出模式"><el-switch v-model="form.json_mode" /></el-form-item>
+          <el-form-item label="分段字符数"><el-input-number v-model="form.chunk_chars" :min="1000" :max="1000000" :step="1000" /></el-form-item>
+        </div>
+      </section>
+      <section class="panel">
+        <h3>费用与上限</h3>
+        <div class="model-grid three-cols">
+          <el-form-item label="输入单价（元 / 百万 token）" prop="price_in_per_m"><el-input v-model="form.price_in_per_m" /></el-form-item>
+          <el-form-item label="输出单价（元 / 百万 token）" prop="price_out_per_m"><el-input v-model="form.price_out_per_m" /></el-form-item>
+          <el-form-item label="每月调用上限"><el-input-number v-model="form.monthly_call_cap" :min="0" :max="1000000000" /><span class="hint note">0 表示不限</span></el-form-item>
+        </div>
+        <div class="actions"><el-button type="primary" :loading="saving" @click="save">保存</el-button></div>
+      </section>
+    </el-form>
   </div>
 </template>
 
 <style scoped>
-h3 {
-  margin: 20px 0 8px;
-  font-size: 15px;
-  font-weight: bold;
-}
-h3.first {
-  margin-top: 0;
-}
-.narrow {
-  width: 200px;
-}
-.note {
-  width: 100%;
-  margin-top: 4px;
-  line-height: 1.5;
-}
-.inline {
-  margin: 0 12px;
-}
+h3 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
+.model-form { margin-top: 16px; }
+.model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+.three-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.span-all { grid-column: 1 / -1; }
+.model-grid :deep(.el-form-item) { min-width: 0; }
+.model-grid :deep(.el-input-number) { width: 100%; }
+.usage-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat-value { overflow-wrap: anywhere; }
+.stat-value small { font-size: 12px; font-weight: 400; color: var(--el-text-color-secondary); }
+.note { width: 100%; margin-top: 4px; line-height: 1.5; }
+.actions { border-top: 1px solid var(--el-border-color-lighter); padding-top: 20px; }
+.actions > .hint { margin-right: 12px; }
 </style>

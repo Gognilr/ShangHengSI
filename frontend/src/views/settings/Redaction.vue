@@ -4,6 +4,8 @@ import { onMounted, ref } from 'vue'
 import { adminRedactionApi, type TermRow } from '@/api/admin'
 import { ApiError } from '@/api/http'
 import { formatDateTime } from '@/utils/time'
+import { Search } from '@element-plus/icons-vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
@@ -147,25 +149,22 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <el-card shadow="never">
-      <h3 class="first">数量脱敏</h3>
+  <div class="settings-page">
+    <PageHeader title="脱敏规则" description="新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算" />
+    <section class="panel">
       <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
-      <div class="row">
-        <el-switch :model-value="maskQuantity" :loading="maskLoading" @change="toggleMask" />
-        <span class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</span>
-      </div>
-    </el-card>
+      <div class="quantity-row"><div><h3>数量脱敏</h3><span class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</span></div><el-switch :model-value="maskQuantity" :loading="maskLoading" @change="toggleMask" /></div>
+    </section>
 
-    <el-card class="gap" shadow="never">
+    <section class="panel">
       <h3 class="first">自定义敏感词</h3>
       <div class="filters">
-        <el-input v-model="newTerm" maxlength="100" placeholder="输入需要替换的敏感词（2–100 个字符）" style="width: 360px" @keyup.enter="addTerm" />
+        <el-input v-model="newTerm" maxlength="100" placeholder="输入需要替换的敏感词（2–100 个字符）" class="term-input" @keyup.enter="addTerm" />
         <el-button type="primary" :loading="adding" @click="addTerm">添加</el-button>
       </div>
       <div class="hint tip">新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算。</div>
       <el-alert v-if="customError" type="error" :closable="false" show-icon :title="customError" />
-      <el-table v-loading="customLoading" :data="custom" border size="small" empty-text="尚未添加自定义敏感词">
+      <el-table v-loading="customLoading" :data="custom" size="small" empty-text="尚未添加自定义敏感词">
         <el-table-column prop="term" label="敏感词" min-width="260" />
         <el-table-column label="启用" width="80">
           <template #default="{ row }">
@@ -181,16 +180,17 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </section>
 
-    <el-card class="gap" shadow="never">
-      <h3 class="first">已记住的名称</h3>
+    <section class="panel">
+      <div class="section-heading"><h3 class="first">已记住的名称</h3>
       <div class="filters">
-        <el-input v-model="learnedQuery" clearable placeholder="搜索名称" style="width: 280px" @keyup.enter="searchLearned" @clear="searchLearned" />
+        <el-input v-model="learnedQuery" clearable placeholder="搜索名称" :prefix-icon="Search" class="learned-query" @keyup.enter="searchLearned" @clear="searchLearned" />
         <el-button @click="searchLearned">搜索</el-button>
       </div>
+      </div>
       <el-alert v-if="learnedError" type="error" :closable="false" show-icon :title="learnedError" />
-      <el-table v-loading="learnedLoading" :data="learned" border size="small" empty-text="没有已记住的名称">
+      <el-table v-loading="learnedLoading" :data="learned" size="small" empty-text="没有已记住的名称">
         <el-table-column prop="term" label="名称" min-width="240" />
         <el-table-column label="类别" width="80">
           <template #default="{ row }">{{ row.category === 'PERSON' ? '人名' : '公司' }}</template>
@@ -220,15 +220,15 @@ onMounted(() => {
         layout="total, prev, pager, next"
         @current-change="loadLearned"
       />
-    </el-card>
+    </section>
   </div>
 </template>
 
 <style scoped>
 h3 {
-  margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: bold;
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
 }
 .row {
   display: flex;
@@ -236,10 +236,16 @@ h3 {
   align-items: center;
 }
 .tip {
-  margin: 0 0 8px;
+  margin: 0 0 16px;
 }
 .pager {
   margin-top: 12px;
   justify-content: flex-end;
 }
+.quantity-row, .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.section-heading { margin-bottom: 16px; }
+.section-heading h3, .section-heading .filters { margin: 0; }
+.term-input { width: 360px; }
+.learned-query { width: 240px; }
+.filters { flex-wrap: wrap; }
 </style>

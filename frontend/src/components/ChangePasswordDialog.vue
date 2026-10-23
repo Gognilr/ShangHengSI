@@ -76,7 +76,7 @@ async function submit() {
   <el-dialog
     v-model="visible"
     title="修改密码"
-    width="420px"
+    width="480px"
     :close-on-click-modal="false"
     :close-on-press-escape="!forced"
     :show-close="!forced"

@@ -11,6 +11,7 @@ import { ApiError } from '@/api/http'
 import { requirementsApi, type BuiltinRequirement } from '@/api/requirements'
 import { DOC_TYPE_OPTIONS, STANCE_OPTIONS, docTypeLabel, stanceLabel, toOptions } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
+import PageHeader from '@/components/PageHeader.vue'
 
 const MAX_ITEMS = 30
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -211,29 +212,28 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <el-card shadow="never">
-      <h3 class="first">内置要求（只读）</h3>
-      <div class="filters">
-        <el-select v-model="builtinType" clearable placeholder="全部文件类型" style="width: 180px" @change="loadBuiltin">
-          <el-option v-for="o in toOptions(DOC_TYPE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
-        </el-select>
-        <span class="hint version">内置要求版本：{{ builtinVersion || '—' }}，共 {{ builtin.length }} 条</span>
+  <div class="settings-page">
+    <PageHeader title="审核要求" description="内置要求只读；公司补充要求只能增加审核内容，不能取消内置要求" />
+    <section class="panel">
+      <h3 class="first">公司说明</h3>
+      <el-alert v-if="profileError" type="error" :closable="false" show-icon :title="profileError" />
+      <div v-loading="profileLoading">
+        <el-input
+          v-model="profile"
+          type="textarea"
+          :rows="4"
+          maxlength="300"
+          show-word-limit
+          placeholder="如公司主营产品、主要用途和市场、出口合规要求。可为空。"
+        />
+        <div class="hint tip">公司说明会随每次审核发送给模型，请勿写入具体客户名称、电话、账号或金额。</div>
       </div>
-      <el-alert v-if="builtinError" type="error" :closable="false" show-icon :title="builtinError" />
-      <el-table v-loading="builtinLoading" :data="builtin" border size="small" max-height="360" empty-text="没有符合条件的内置要求">
-        <el-table-column prop="id" label="编号" width="90" />
-        <el-table-column label="维度" width="120">
-          <template #default="{ row }">{{ row.dimension ?? '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="text" label="内容" min-width="360" />
-        <el-table-column label="适用文件类型" width="200">
-          <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <div class="actions">
+        <el-button type="primary" :loading="profileSaving" @click="saveProfile">保存</el-button>
+      </div>
+    </section>
 
-    <el-card class="gap" shadow="never">
+<section class="panel">
       <h3 class="first">公司补充要求</h3>
       <div class="hint tip">补充要求只能增加审核内容，不能取消内置要求。请勿在补充要求中写入具体客户名称。</div>
       <div class="filters">
@@ -242,7 +242,7 @@ onMounted(() => {
         <span v-else class="hint version">已有 {{ items.length }} / {{ MAX_ITEMS }} 条</span>
       </div>
       <el-alert v-if="listError" type="error" :closable="false" show-icon :title="listError" />
-      <el-table v-loading="listLoading" :data="items" border size="small" empty-text="尚未添加公司补充要求">
+      <el-table v-loading="listLoading" :data="items" size="small" empty-text="尚未添加公司补充要求">
         <el-table-column prop="code" label="编号" width="80" />
         <el-table-column prop="text" label="内容" min-width="260" />
         <el-table-column label="适用文件类型" width="150">
@@ -264,31 +264,33 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </section>
 
-    <el-card class="gap" shadow="never">
-      <h3 class="first">公司说明</h3>
-      <el-alert v-if="profileError" type="error" :closable="false" show-icon :title="profileError" />
-      <div v-loading="profileLoading">
-        <el-input
-          v-model="profile"
-          type="textarea"
-          :rows="4"
-          maxlength="300"
-          show-word-limit
-          placeholder="如公司主营产品、主要用途和市场、出口合规要求。可为空。"
-        />
-        <div class="hint tip">公司说明会随每次审核发送给模型，请勿写入具体客户名称、电话、账号或金额。</div>
+<section class="panel readonly-panel">
+      <h3 class="first">内置要求 <el-tag size="small" type="info">只读</el-tag></h3>
+      <div class="filters">
+        <el-select v-model="builtinType" clearable placeholder="全部文件类型" class="type-filter" @change="loadBuiltin">
+          <el-option v-for="o in toOptions(DOC_TYPE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+        <span class="hint version">内置要求版本：{{ builtinVersion || '—' }}，共 {{ builtin.length }} 条</span>
       </div>
-      <div class="actions">
-        <el-button type="primary" :loading="profileSaving" @click="saveProfile">保存</el-button>
-      </div>
-    </el-card>
+      <el-alert v-if="builtinError" type="error" :closable="false" show-icon :title="builtinError" />
+      <el-table v-loading="builtinLoading" :data="builtin" size="small" max-height="360" empty-text="没有符合条件的内置要求">
+        <el-table-column prop="id" label="编号" width="90" />
+        <el-table-column label="维度" width="120">
+          <template #default="{ row }">{{ row.dimension ?? '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="text" label="内容" min-width="360" />
+        <el-table-column label="适用文件类型" width="200">
+          <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
+        </el-table-column>
+      </el-table>
+    </section>
 
-    <el-card class="gap" shadow="never">
+<section class="panel">
       <h3 class="first">版本历史</h3>
       <el-alert v-if="versionsError" type="error" :closable="false" show-icon :title="versionsError" />
-      <el-table v-loading="versionsLoading" :data="versions" border size="small" max-height="320" empty-text="尚无修改记录">
+      <el-table v-loading="versionsLoading" :data="versions" size="small" max-height="320" empty-text="尚无修改记录">
         <el-table-column label="版本号" width="100">
           <template #default="{ row }">第 {{ row.version }} 版</template>
         </el-table-column>
@@ -304,7 +306,7 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </section>
 
     <el-dialog v-model="dialog" :title="editing ? `编辑 ${editing.code}` : '新增公司补充要求'" width="640px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">
@@ -312,13 +314,13 @@ onMounted(() => {
           <el-input v-model="form.text" type="textarea" :rows="4" maxlength="200" show-word-limit />
         </el-form-item>
         <el-form-item label="适用文件类型">
-          <el-select :model-value="form.doc_types" multiple style="width: 100%" @update:model-value="(v: string[]) => normalizeScope('doc_types', v)">
+          <el-select :model-value="form.doc_types" multiple class="scope-select" @update:model-value="(v: string[]) => normalizeScope('doc_types', v)">
             <el-option label="全部" value="all" />
             <el-option v-for="o in toOptions(DOC_TYPE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="适用立场">
-          <el-select :model-value="form.stances" multiple style="width: 100%" @update:model-value="(v: string[]) => normalizeScope('stances', v)">
+          <el-select :model-value="form.stances" multiple class="scope-select" @update:model-value="(v: string[]) => normalizeScope('stances', v)">
             <el-option label="全部" value="all" />
             <el-option v-for="o in toOptions(STANCE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
@@ -357,9 +359,9 @@ onMounted(() => {
 
 <style scoped>
 h3 {
-  margin: 20px 0 8px;
-  font-size: 15px;
-  font-weight: bold;
+  margin: 20px 0 16px;
+  font-size: 18px;
+  font-weight: 600;
 }
 h3.first {
   margin-top: 0;
@@ -383,4 +385,8 @@ h3.first {
   word-break: break-all;
   font-family: inherit;
 }
+.readonly-panel { background: var(--el-fill-color-light); }
+.type-filter { width: 180px; }
+.scope-select { width: 100%; }
+.filters { flex-wrap: wrap; }
 </style>

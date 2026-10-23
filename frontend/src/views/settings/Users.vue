@@ -6,6 +6,8 @@ import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { ROLE_OPTIONS, roleLabel, toOptions, userStatusLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
+import { Plus } from '@element-plus/icons-vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 const auth = useAuthStore()
 const items = ref<UserRow[]>([])
@@ -155,17 +157,15 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 </script>
 
 <template>
-  <div class="page">
+  <div class="settings-page">
+    <PageHeader title="账号管理" description="新建账号、启停和重置密码；新账号首次登录时须先修改密码"><el-button type="primary" :icon="Plus" @click="openCreate">新增账号</el-button></PageHeader>
     <el-card shadow="never">
-      <div class="filters">
-        <el-button type="primary" @click="openCreate">新增账号</el-button>
-      </div>
       <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="gap" />
-      <el-table v-loading="loading" :data="items" border empty-text="暂无账号">
+      <el-table v-loading="loading" :data="items" empty-text="暂无账号">
         <el-table-column prop="username" label="用户名" min-width="140" />
-        <el-table-column prop="display_name" label="显示名" min-width="140" />
+        <el-table-column label="显示名" min-width="140"><template #default="{ row }"><div class="user-name"><span class="avatar">{{ Array.from(row.display_name)[0] ?? '?' }}</span><span>{{ row.display_name }}</span></div></template></el-table-column>
         <el-table-column label="角色" width="100">
-          <template #default="{ row }">{{ roleLabel(row.role) }}</template>
+          <template #default="{ row }"><el-tag type="info" size="small">{{ roleLabel(row.role) }}</el-tag></template>
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
@@ -228,3 +228,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.user-name { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+</style>

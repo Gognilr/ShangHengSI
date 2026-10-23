@@ -7,8 +7,14 @@ import { reportApi } from '@/api/report'
 import { tasksApi, type TaskListItem } from '@/api/tasks'
 import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
+import { Search } from '@element-plus/icons-vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 const router = useRouter()
+function fileBadge(name: string) {
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  return ['docx', 'doc', 'wps', 'rtf'].includes(ext) ? 'DOC' : ['xlsx', 'xls', 'et'].includes(ext) ? 'XLS' : ext === 'pdf' ? 'PDF' : 'IMG'
+}
 
 const items = ref<TaskListItem[]>([])
 const total = ref(0)
@@ -101,8 +107,9 @@ onMounted(load)
 
 <template>
   <div class="page page--wide">
-    <div class="filters">
-      <el-input v-model="q" clearable placeholder="按文件名搜索" class="q" @keyup.enter="search" @clear="search" />
+    <PageHeader title="审核历史" description="查看和导出本人提交的审核任务" />
+    <div class="panel filters">
+      <el-input v-model="q" :prefix-icon="Search" aria-label="按文件名搜索" clearable placeholder="按文件名搜索" class="q" @keyup.enter="search" @clear="search" />
       <el-date-picker
         v-model="range"
         type="daterange"
@@ -117,11 +124,13 @@ onMounted(load)
 
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />
 
-    <el-table v-loading="loading" :data="items" border class="gap" empty-text="没有审核记录">
+    <section class="panel history-table gap">
+    <el-table v-loading="loading" :data="items" empty-text="没有审核记录">
+      <template #empty><el-empty description="没有审核记录"><el-button @click="router.push({ name: 'review-new' })">去新建审核</el-button></el-empty></template>
       <el-table-column label="提交时间" width="170">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column prop="title" label="主文件名" min-width="240" show-overflow-tooltip />
+      <el-table-column prop="title" label="主文件名" min-width="240" show-overflow-tooltip><template #default="{ row }"><div class="file-cell"><span class="file-badge" :class="`badge-${fileBadge(row.title).toLowerCase()}`">{{ fileBadge(row.title) }}</span><span class="file-title">{{ row.title }}</span></div></template></el-table-column>
       <el-table-column label="文件类型" width="110">
         <template #default="{ row }">{{ docTypeLabel(row.doc_type) }}</template>
       </el-table-column>
@@ -129,9 +138,9 @@ onMounted(load)
         <template #default="{ row }">{{ stanceLabel(row.stance) }}</template>
       </el-table-column>
       <el-table-column label="状态" width="130">
-        <template #default="{ row }">{{ statusLabel(row.status) }}</template>
+        <template #default="{ row }"><span :class="{ danger: row.status === 'parse_failed' }">{{ statusLabel(row.status) }}</span></template>
       </el-table-column>
-      <el-table-column prop="high_count" label="高风险问题数" width="120" align="center" />
+      <el-table-column label="高风险问题数" width="120" align="center"><template #default="{ row }"><span :class="{ 'high-count': row.high_count > 0 }">{{ row.high_count }}</span></template></el-table-column>
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="open(row)">打开</el-button>
@@ -142,15 +151,15 @@ onMounted(load)
       </el-table-column>
     </el-table>
 
-    <el-pagination
+    <div class="pager"><span class="hint">共 {{ total }} 条</span><el-pagination
       v-model:current-page="page"
-      class="pager"
-      layout="total, prev, pager, next"
+      layout="prev, pager, next"
       :page-size="pageSize"
       :total="total"
       hide-on-single-page
       @current-change="load"
-    />
+    /></div>
+    </section>
   </div>
 </template>
 
@@ -160,10 +169,22 @@ onMounted(load)
   margin-bottom: 0;
 }
 .q {
-  width: 240px;
+  width: 320px;
 }
 .pager {
-  margin-top: 12px;
-  justify-content: flex-end;
+  display: flex;
+  margin-top: 20px;
+  align-items: center;
+  justify-content: space-between;
 }
+.history-table { padding: 20px 24px; }
+.history-table :deep(.el-table__row) { height: 52px; }
+.file-cell { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.file-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-badge { flex: none; width: 32px; height: 32px; display: grid; place-items: center; font-size: 12px; font-weight: 600; border-radius: 6px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.badge-xls { color: var(--el-color-success); background: var(--el-color-success-light-9); }
+.badge-pdf { color: var(--el-color-danger); background: var(--el-color-danger-light-9); }
+.badge-img { color: var(--el-color-info); background: var(--el-color-info-light-9); }
+.danger, .high-count { color: var(--el-color-danger); }
+.high-count { font-weight: 600; }
 </style>
