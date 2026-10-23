@@ -157,3 +157,19 @@ def test_design_11_6_migration():
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+@pytest.mark.parametrize('text', [
+    '李经理表示同意。', '请欧阳总监确认。', '王总经理表示同意。', '马上通知对方。', '由施工方负责清理。',
+    '费用要求见附件。', '管理要求见第五条。', '车间负责人确认后发货。', '顾问建议修改。', '申请表示通过。',
+])
+def test_r4_09_acceptance_negative(text):
+    """R4-09 验收（Q-163）：只有姓的称呼与常见词不列为人名。"""
+    assert not [s for s in find_suspects(text, []) if s.reason == 'person_name']
+
+
+@pytest.mark.parametrize(('text', 'name'), [
+    ('王博表示同意。', '王博'), ('客户钱虚鸣来电询问交期。', '钱虚鸣'), ('司马虚远先生已签收。', '司马虚远'),
+])
+def test_r4_09_acceptance_positive(text, name):
+    assert [(text[s.start:s.end], s.reason) for s in find_suspects(text, [])] == [(name, 'person_name')]

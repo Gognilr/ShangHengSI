@@ -326,7 +326,9 @@ def _long_digit_candidates(text: str) -> list[Suspect]:
 
 # ---------------------------------------------------------------- 叙述中的中文人名（R4 11.1，只提示不自动替换）
 
-_PERSON_EXCLUDE = frozenset("的了是在不和有与及或等其此该本我你他她它们对于由从被把将这那个元年月日号条款项部处室科组局院所司厂公费价表量额数率期限类型式法案件据单证物品货款税码规程序质料装箱运输场线网机器设备产业务度位面积目标准求格验收前后内外字")
+_PERSON_EXCLUDE = frozenset("的了是在不和有与及或等其此该本我你他她它们对于由从被把将这那个元年月日号条款项部处室科组局院所司厂公费价表量额数率期限类型式法案件据单证物品货款税码规程序质料装箱运输场线网机器设备产业务度位面积目标准求格验收前后内外字"
+                             # R4-09 验收补充（Q-163）：常见词“马上、施工方、费用、管理、车间”等
+                             "上下方向时未重服付复贴能燃碎区落猫皮油间报请色材合理列根释除用卡辆属氏电客问州")
 _PERSON_NOT_NAME = frozenset("总 工 董 某 老 师 姐 哥 叔 姨".split())
 _PERSON_TITLES = tuple(sorted("副总经理 总经理 董事长 工程师 会计师 先生 女士 小姐 经理 总监 主任 董事 总裁 总工 律师 老师 博士 教授 部长 处长 科长 厂长 局长 院长 校长 书记 主管 专员 助理 秘书 同志".split(), key=len, reverse=True))
 _PERSON_VERBS = tuple(sorted("表示 提到 提出 告知 告诉 通知 确认 同意 答应 承诺 要求 建议 反馈 回复 认为 指出 负责 签字 签署 签收 来电 致电 联系 沟通 商量 协商 洽谈".split(), key=len, reverse=True))
@@ -338,7 +340,8 @@ _PERSON_ANCHOR_RE = re.compile("|".join(sorted((*_PERSON_TITLES, *_PERSON_VERBS,
 
 
 def _is_person_name(text: str) -> bool:
-    if not text or not all(_HAN.fullmatch(c) for c in text):
+    # 恰好是复姓（“请欧阳总监”）时不拆成“欧 + 阳”（Q-163）
+    if not text or not all(_HAN.fullmatch(c) for c in text) or text in cn_surnames():
         return False
     for surname in cn_surnames():
         if text.startswith(surname):
@@ -346,6 +349,9 @@ def _is_person_name(text: str) -> bool:
             if not 1 <= len(given) <= 2 or any(c in _PERSON_EXCLUDE for c in given):
                 continue
             if given in _PERSON_NOT_NAME or (surname == "周" and given[0] in "一二三四五六日末"):
+                continue
+            # 双字名是称谓或称谓开头（“李经理”“欧阳总监”“王总经”）：只有姓的称呼；单字名（王博）不受影响（Q-163）
+            if len(given) == 2 and any(t.startswith(given) for t in _PERSON_TITLES):
                 continue
             return True
     return False
