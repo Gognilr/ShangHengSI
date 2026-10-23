@@ -6,6 +6,7 @@
 
 ## 当前进度
 
+- **R4 已细化（R4-00，2026-10-23，Opus 5.5），待用户确认**：功能讨论中用虚构文字实测发现四处外发漏洞（医院、学校、政府机关作签约方与国内合同标签不识别；不带币种的金额不替换；本次补充说明原文外发且明文存储；追问什么都没识别出时不提示）。用户决定（方案二）先做这四项再回到 M8-02，其余改进进入 V2（另立 docs/v2/）。设计 docs/design/R4.md；两份回归样本 institutions\_domestic、bare\_amounts 已写入，待修项以 known\_gaps 登记（当前测试通过）；SPEC 修改稿在设计第八节、分工规则提案在第九节，均待确认后写入；新增 Q-151～Q-156。M8-02 暂停，工作区初稿保留、不提交。规则 10：4f50c8c 之后只有 Opus 的提交，无待评审提交。下一个任务：用户确认后 **R4-01**（GPT-6.1 Sol，测试先行，high）。
 - M8-01 已完成（2026-10-23，Opus 5.5）：补做服务器实跑。git archive 59e498d 同步到 /data/apps/aireview（保留 .env、secrets/、backup/ 与 Caddyfile 的 default\_sni），重建 backend / converter / web 镜像 test-4f50c8c 并重启（6 个服务正常，HTTPS 200，迁移 0004）。手动备份 aireview\_20261023\_1739.bak 后故意改动（新建标记表、新增一个原件、移走一个原件）：① 输入错误确认文字 → 取消，.restore/ 与 .restore-new/ 均已清理，数据不变；② 正式恢复 rc=0、28 秒，标记表与新增原件消失、移走的原件回来且哈希一致，原件集合哈希与改动前相同，sessions 为空、有 restore\_run 审计，旧库与 .restore-old/ 已删除；③ 主密钥不匹配演练（临时随机 32 字节密钥，退出时还原并核对哈希）：第 3 步拒绝“当前主密钥与备份不匹配”，app、worker 未停止，数据、原件、备份目录与演练前一致，还原后两个原件均可解密。实跑发现并修复：compose run / exec -T 会读走脚本标准输入，使“确认恢复”读不到（59e498d，restore.sh 容器命令接 /dev/null，新增回归测试；Q-150 待确认，含 app / worker 并行构建同一镜像标签的竞态，交 M8-02 / M8-03）。整仓挂载 Docker 全量 **1882 passed、1 warning、exit 0**（423.96 秒）。服务器备份目录目前仍为 700（M7 时创建），由 M8-02 的 install.sh 按 2750 设置。下一个任务：**M8-02**（Sonnet 档，high），模型不同，须换会话。
 - **R3 验收结果已经用户确认（2026-10-23）**，Q-149 已确认（重新审核对话框只显示当前任务的只读对照，确定后照旧 PATCH → 第二步重算并再次确认）。R3 结束，按 Q-148 回到 **M8-01（Opus，xhigh）**。
 - R3-08 已完成（2026-10-23，Opus 5.5）：独立评审 bf7983a..da8a599 的 GPT-6.1 Sol 提交通过，详见 docs/business_review.md 11.4。修复粘底操作栏离视口底边 48px 露出正文的问题（28abdd3）。Docker 整仓全量 **1881 passed、1 warning**，前端 build 通过；浏览器复核记住我、对照逐字一致（77 行，未对齐 0）、选中补充码点偏移、定位、普通用户权限与他人任务 404。**R3 验收结果待用户确认**；Q-149 待确认，另有 3 条建议交用户决定。确认后回到 **M8-01**。
@@ -383,6 +384,20 @@
 | R3-06 | 审核结果页：信息卡、等级计数筛选、摘要与覆盖面板、标签页、粘底操作区；FindingCard、CoverageCard、LocalFindings、DocPreview（外框、工具条、纸面、高亮样式）、ChatPanel、ReRunDialog 外观 | Sonnet | medium | R3-05 | 6.3、13；设计 4.4、4.7 | frontend/src/views/ReviewResult.vue、frontend/src/components/FindingCard.vue、CoverageCard.vue、LocalFindings.vue、DocPreview.vue（只改样式与工具条布局，不改渲染与定位逻辑）、ChatPanel.vue、ReRunDialog.vue（只改样式） | 筛选、定位、处理状态保存、追问、导出、重新审核、删除行为与改版前一致；本地校验任务、失败、部分完成三种状态截图；第十一节自检 | 已完成 |
 | R3-07 | 审核历史；SettingsLayout 左侧导航与设置五页；ChangePasswordDialog | Sonnet | medium | R3-06 | 6.4、6.6、15；设计 4.5、4.6、4.7 | frontend/src/views/History.vue、frontend/src/views/settings/SettingsLayout.vue、Users.vue、Model.vue、Requirements.vue、Redaction.vue、Data.vue、frontend/src/components/ChangePasswordDialog.vue | 检索、分页、保存、测试连接、启停、重置密码、删除确认与改版前一致；强制改密不可关闭；普通用户不可见设置；第十一节自检 | 已完成 |
 | R3-08 | R3 联调与验收（设计第八节）；按规则 10 评审 R3 的 Sonnet 提交 | Opus | medium | R3-07 | 6、21；设计第八节 | docs/business\_review.md（追加 R3 验收一节）；验收中发现的问题按需修复（在报告中列出） | 设计第八节全部完成；与 ui-preview.html 的差异截图汇报给用户 | 已完成 |
+
+### R4 V1.0 收尾安全包（机构名称、无币种金额、本次补充说明、追问）
+
+用户决定（2026-10-23，方案二）：功能讨论中实测发现的四处外发漏洞作为 V1.0 上线前的收尾任务先做，完成后回到 **M8-02**；讨论中确定的其余改进全部进入 V2（另立 docs/v2/，不在本清单）。**开工前必读 [docs/design/R4.md](design/R4.md) 第〇节与对应小节**；R4-01～R4-04 按设计第九节“测试先行、逐个审核”执行（规则待用户确认，见 Q-156）。提交时只暂存本任务文件，工作区中暂停的 M8-02 初稿不得提交（设计第〇节第 5 条）。
+
+| 编号 | 任务 | 模型 | 强度 | 依赖 | SPEC / 设计 | 文件范围 | 完成标准 | 状态 |
+|-|-|-|-|-|-|-|-|-|
+| R4-00 | 细化：设计 R4.md、两份回归样本（known\_gaps 先行登记）、SPEC 修改稿、分工规则提案、任务拆分 | Opus | high | — | 6.2、9.3–9.7、11.2、13、17.3、18、19、23.2；— | docs/design/R4.md、backend/tests/fixtures/redaction\_golden/institutions\_domestic.\*、bare\_amounts.\*、docs/TASKS.md、docs/open\_questions.md | 用户确认；确认后由 Opus 按设计第八节写入 SPEC、按第九节写入本文件第二节与 AGENTS.md | 待确认 |
+| R4-01 | 机构名称与国内合同签约方标签 | GPT-6.1 Sol（测试先行） | high | R4-00 | 9.3 第 2 步、9.4、9.5；设计第二节 | 设计第二节“文件范围” | 设计 2.7 测试表逐条有测试并通过；institutions\_domestic 的 known\_gaps 移入 must\_replace、追加 must\_suspect；全量测试通过；完成后停下交 Opus 审核 | 待执行 |
+| R4-02 | 不带币种的金额 | GPT-6.1 Sol（测试先行） | high | R4-01 | 9.3 第 5 步；设计第三节 | 设计第三节“文件范围” | 设计 3.5 测试表逐条有测试并通过；bare\_amounts 的 known\_gaps 移入 must\_replace；全量测试通过；完成后停下交 Opus 审核 | 待执行 |
+| R4-03 | 本次补充说明：伪节点脱敏、加密存储、迁移 0005、接口与报告还原、保留期清理 | GPT-6.1 Sol（测试先行） | xhigh | R4-02 | 9.7、11.2、16.4、17.3、18.5、18.14、18.15、19；设计第四节 | 设计第四节“文件范围” | 设计 4.6 测试表逐条有测试并通过；模型与迁移一致测试通过；全量测试通过；完成后停下交 Opus 审核 | 待执行 |
+| R4-04 | 追问的疑似遗漏检查（后端） | GPT-6.1 Sol（测试先行） | high | R4-03 | 13、19.6；设计第五节 | 设计第五节“文件范围” | 设计 5.2 测试表逐条有测试并通过；全量测试通过；完成后停下交 Opus 审核 | 待执行 |
+| R4-05 | 前端：第二步补充说明一行、NOTE 疑似遗漏位置名、追问常驻预览与逐条确认 | GPT-6.1 Sol | medium | R4-04 | 6.2、13；设计第六节、frontend.md | 设计第六节“文件范围” | 设计 6.3 | 待执行 |
+| R4-06 | 联调与验收；按规则 10、11 评审 R4-01～R4-05 | Opus | high | R4-05 | 23；设计第七节 | docs/business\_review.md（追加 R4 一节）；验收中发现的问题按需修复（在报告中列出） | 设计第七节全部完成；汇报用户确认后回到 M8-02 | 待执行 |
 
 ## 五、工作量分布
 
