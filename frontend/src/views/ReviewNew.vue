@@ -369,7 +369,7 @@ const runText = computed(() => {
 <style scoped>
 .page {
   /* 与结果页一致：长内容在页面内滚动，避免外层滚动条挤占 1280px 最小宽度。 */
-  height: calc(100vh - 56px);
+  height: calc(100vh - 64px);
   box-sizing: border-box;
   overflow-y: auto;
 }

@@ -155,7 +155,7 @@ def _restore_command(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m app.cli", description="企业商务文件AI智能审查助手 运维命令")
+    parser = argparse.ArgumentParser(prog="python -m app.cli", description="商衡SI 运维命令")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_key = sub.add_parser("gen-key", help="生成主密钥文件（32 字节，权限 600，不覆盖已有文件）")

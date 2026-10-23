@@ -1,0 +1,77 @@
+:root {
+  --el-color-primary: #173B68;
+  --el-color-primary-light-3: #5D7695;
+  --el-color-primary-light-5: #8B9DB4;
+  --el-color-primary-light-7: #B9C4D2;
+  --el-color-primary-light-8: #D1D8E1;
+  --el-color-primary-light-9: #E8EBF0;
+  --el-color-primary-dark-2: #122F53;
+  --el-color-success: #067647;
+  --el-color-success-light-3: #519F7E;
+  --el-color-success-light-5: #82BAA3;
+  --el-color-success-light-7: #B4D6C8;
+  --el-color-success-light-8: #CDE4DA;
+  --el-color-success-light-9: #E6F1ED;
+  --el-color-success-dark-2: #055E39;
+  --el-color-warning: #B54708;
+  --el-color-warning-light-3: #CB7E52;
+  --el-color-warning-light-5: #DAA384;
+  --el-color-warning-light-7: #E9C8B5;
+  --el-color-warning-light-8: #F0DACE;
+  --el-color-warning-light-9: #F8EDE6;
+  --el-color-warning-dark-2: #913906;
+  --el-color-danger: #B42318;
+  --el-color-danger-light-3: #CA655D;
+  --el-color-danger-light-5: #DA918C;
+  --el-color-danger-light-7: #E8BDBA;
+  --el-color-danger-light-8: #F0D3D1;
+  --el-color-danger-light-9: #F8E9E8;
+  --el-color-danger-dark-2: #901C13;
+  --el-color-error: var(--el-color-danger);
+  --el-color-error-light-3: var(--el-color-danger-light-3);
+  --el-color-error-light-5: var(--el-color-danger-light-5);
+  --el-color-error-light-7: var(--el-color-danger-light-7);
+  --el-color-error-light-8: var(--el-color-danger-light-8);
+  --el-color-error-light-9: var(--el-color-danger-light-9);
+  --el-color-error-dark-2: var(--el-color-danger-dark-2);
+  --el-color-info: #667085;
+  --el-color-info-light-3: #949BAA;
+  --el-color-info-light-5: #B2B8C2;
+  --el-color-info-light-7: #D1D4DA;
+  --el-color-info-light-8: #E0E2E7;
+  --el-color-info-light-9: #F0F1F3;
+  --el-color-info-dark-2: #525A6A;
+  --el-text-color-primary: #1D1D1F;
+  --el-text-color-regular: #344054;
+  --el-text-color-secondary: #667085;
+  --el-text-color-placeholder: #98A2B3;
+  --el-border-color: #D0D5DD;
+  --el-border-color-light: #E5E7EB;
+  --el-border-color-lighter: #EEF0F3;
+  --el-bg-color-page: #F8F9FA;
+  --el-fill-color-light: #F5F7FA;
+  --el-font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", sans-serif;
+  --el-component-size: 40px;
+  --el-component-size-small: 32px;
+  --el-border-radius-base: 8px;
+  --si-radius-card: 12px;
+  --si-cyan: #16B8CC;
+  --si-brand-blue: #1E6FB8;
+  --si-brand-gradient: linear-gradient(135deg, #173B68 0%, #1E6FB8 55%, #16B8CC 100%);
+  --si-shadow-pop: 0 12px 32px rgba(16,24,40,.12);
+}
+html body { font-family: var(--el-font-family); font-size: 14px; line-height: 1.6; color: var(--el-text-color-primary); }
+:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; }
+.el-card { --el-card-border-radius: var(--si-radius-card); --el-card-border-color: var(--el-border-color-light); box-shadow: none; }
+.el-dialog, .el-message-box { --el-dialog-border-radius: var(--si-radius-card); --el-messagebox-border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-pop); }
+.el-dialog__title { font-size: 18px; font-weight: 600; }
+.el-drawer { border-radius: var(--si-radius-card) 0 0 var(--si-radius-card); box-shadow: var(--si-shadow-pop); }
+.el-table { --el-table-header-bg-color: var(--el-fill-color-light); }
+/* Element Plus 的按钮尺寸在组件中写死，需同步映射到主题尺寸令牌。 */
+.el-button { --el-button-size: var(--el-component-size); height: var(--el-button-size); }
+.el-button--small { --el-button-size: var(--el-component-size-small); }
+.el-button.is-link { height: auto; }
+.el-select__wrapper { min-height: var(--el-component-size); }
+.el-select--small .el-select__wrapper { min-height: var(--el-component-size-small); }
+.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner { transition: color 150ms, background-color 150ms, border-color 150ms; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }

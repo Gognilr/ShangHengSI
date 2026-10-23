@@ -56,7 +56,7 @@ def create_app() -> FastAPI:
     setup_logging()
     # 不暴露自动生成的接口文档
     app = FastAPI(
-        title="企业商务文件AI智能审查助手",
+        title="商衡SI",
         version=get_settings().app_version,
         docs_url=None,
         redoc_url=None,

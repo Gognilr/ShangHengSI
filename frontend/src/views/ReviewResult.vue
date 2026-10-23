@@ -334,7 +334,7 @@ const reqVersion = computed(() => {
 .page {
   min-height: 200px;
   /* Q-80：在结果页内滚动，避免 1280 最小宽度叠加窗口纵向滚动条造成横向滚动。 */
-  height: calc(100vh - 56px);
+  height: calc(100vh - 64px);
   box-sizing: border-box;
   overflow-y: auto;
 }
@@ -352,7 +352,7 @@ const reqVersion = computed(() => {
   min-width: 0;
   position: sticky;
   top: 16px;
-  height: calc(100vh - 56px - 32px);
+  height: calc(100vh - 64px - 32px);
   box-sizing: border-box;
   padding: 12px;
   border: 1px solid var(--el-border-color-light);
