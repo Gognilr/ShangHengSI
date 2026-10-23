@@ -310,15 +310,18 @@ onMounted(loadAll)
         </el-table-column>
         <el-table-column label="文件类型" width="190">
           <template #default="{ row }">
-            <el-select
-              :model-value="row.doc_type ?? undefined"
-              placeholder="请选择"
-              size="small"
-              @change="(v: string) => changeDocType(row.id, v)"
-            >
-              <el-option v-for="o in docTypeOptions" :key="o.value" :label="o.label" :value="o.value" />
-            </el-select>
-            <div class="hint">{{ docTypeSourceLabel(row.doc_type_source) }}</div>
+            <div class="doc-type-field">
+              <el-select
+                class="doc-type-select"
+                :model-value="row.doc_type ?? undefined"
+                placeholder="请选择"
+                size="small"
+                @change="(v: string) => changeDocType(row.id, v)"
+              >
+                <el-option v-for="o in docTypeOptions" :key="o.value" :label="o.label" :value="o.value" />
+              </el-select>
+              <span class="hint doc-type-source">{{ docTypeSourceLabel(row.doc_type_source) }}</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="规模" width="150">
@@ -461,6 +464,9 @@ h3 {
 .hint {
   margin: 2px 0;
 }
+.doc-type-field { display: flex; align-items: center; gap: 8px; }
+.doc-type-select { flex: 1; min-width: 0; }
+.doc-type-source { flex: none; white-space: nowrap; }
 .warning {
   color: var(--el-color-warning);
   font-size: 13px;

@@ -184,7 +184,7 @@ async function submit() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="在原文中选择" width="80%" append-to-body>
+  <el-dialog v-model="visible" title="在原文中选择" width="80%" top="24px" class="manual-dialog" append-to-body>
     <p class="hint">在同一段文字内选中要替换的文字，再选择类别。已替换的文字带底色，悬停可看到代号；相同的文字会在全文一并替换。</p>
 
     <el-tabs v-model="activeId">
@@ -221,9 +221,29 @@ async function submit() {
 </template>
 
 <style scoped>
+.manual-dialog {
+  /* 总高度随视口约束，正文收缩滚动，避免默认 15vh 顶距把底部操作推出窗口。 */
+  max-height: calc(100vh - 48px);
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+}
+.manual-dialog :deep(.el-dialog__header),
+.manual-dialog :deep(.el-dialog__footer) { flex: none; }
+.manual-dialog :deep(.el-dialog__body) {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.manual-dialog :deep(.el-tabs),
+.manual-dialog :deep(.el-alert),
+.manual-dialog .hint,
+.pick { flex-shrink: 0; }
 .body {
   min-height: 120px;
   max-height: 50vh;
+  flex: 1 1 auto;
   overflow: auto;
   padding: 8px;
   background: var(--el-fill-color-light);
@@ -252,9 +272,10 @@ async function submit() {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
 }
 .picked {
-  flex: 1;
+  flex: 1 0 100%;
   min-width: 0;
   font-size: 13px;
   white-space: pre-wrap;

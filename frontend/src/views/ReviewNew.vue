@@ -396,6 +396,8 @@ const runText = computed(() => {
   align-items: center;
   gap: 12px;
   padding: 4px 0;
+  /* el-radio-group 默认字号为 0，文件名等非单选控件须明确恢复正文字号。 */
+  font-size: 14px;
 }
 .file-name {
   flex: 1;
