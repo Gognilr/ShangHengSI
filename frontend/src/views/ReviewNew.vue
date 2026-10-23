@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { runsApi, type RunDetail } from '@/api/runs'
 import {
+  ALLOWED_EXTS,
   MAX_FILE_MB,
   MAX_FILES,
   MAX_NOTE_LENGTH,
@@ -19,6 +20,8 @@ import {
 } from '@/api/tasks'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmStep from '@/components/ConfirmStep.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import StepBar from '@/components/StepBar.vue'
 import { useAuthStore } from '@/stores/auth'
 import {
   POLICY_OPTIONS,
@@ -253,161 +256,136 @@ const runText = computed(() => {
   }
   return runStatusLabel(run.status)
 })
+
+const runProgress = computed(() => {
+  const run = activeRun.value
+  const progress = run?.id === task.value?.latest_run?.id ? run?.progress : null
+  return run?.status === 'running' && progress && progress.total > 1
+    ? Math.min(progress.done, progress.total) / progress.total * 100 : null
+})
+function fileBadge(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  if (['docx', 'doc', 'wps', 'rtf'].includes(ext)) return 'DOC'
+  if (['xlsx', 'xls', 'et'].includes(ext)) return 'XLS'
+  if (ext === 'pdf') return 'PDF'
+  return 'IMG'
+}
 </script>
-
 <template>
-  <div class="page page--standard">
-    <el-steps :active="step" :status="stepStatus" finish-status="success" align-center class="steps">
-      <el-step title="上传与设置" />
-      <el-step title="确认脱敏" />
-      <el-step title="审核中" />
-    </el-steps>
-
+  <div class="page" :class="step === 1 ? 'page--wide' : 'page--standard'">
+    <PageHeader title="智能审核" description="上传商务文件，本地脱敏并经确认后，由 AI 进行初审" />
+    <StepBar :active="step" :status="stepStatus" />
     <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" class="block" />
 
-    <!-- 第一步：上传与设置；解析中和解析失败也停留在这一步 -->
-    <el-card v-if="step === 0 && !loadError" shadow="never">
+    <section v-if="step === 0 && !loadError" class="panel">
       <div v-if="parsing" class="center">
         <el-icon class="is-loading" :size="32"><Loading /></el-icon>
         <p>正在解析文件，请稍候……</p>
         <p class="hint">解析完成后会自动进入下一步，也可以离开页面，稍后从审核历史进入。</p>
       </div>
-
       <div v-else-if="parseFailed" class="center">
         <el-result icon="error" title="解析失败" :sub-title="task?.error_message ?? '文件无法解析'">
-          <template #extra>
-            <el-button type="primary" @click="startOver">重新上传</el-button>
-          </template>
+          <template #extra><el-button type="primary" @click="startOver">重新上传</el-button></template>
         </el-result>
       </div>
-
       <el-form v-else label-width="110px" @submit.prevent="startParse">
-        <el-form-item label="审核文件">
-          <div class="full">
-            <el-upload
-              drag
-              multiple
-              :auto-upload="false"
-              :show-file-list="false"
-              accept=".docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png"
-              @change="onFileChange"
-            >
-              <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-              <div class="el-upload__text">将文件拖到此处，或<em>点击选择</em></div>
-              <template #tip>
-                <div class="el-upload__tip">
-                  最多 {{ MAX_FILES }} 个文件，单个不超过 {{ MAX_FILE_MB }} MB；支持 DOCX、DOC、WPS、RTF、PDF、XLSX、XLS、ET、JPG、PNG
-                </div>
-              </template>
-            </el-upload>
-
-            <el-radio-group v-if="files.length" v-model="mainIndex" class="file-list">
-              <div v-for="(f, i) in files" :key="fileKey(f)" class="file-row">
-                <el-radio :value="i">主文件</el-radio>
-                <span class="file-name" :title="f.name">{{ f.name }}</span>
-                <span class="file-size">{{ formatSize(f.size) }}</span>
-                <el-button link type="danger" @click="removeFile(i)">移除</el-button>
-              </div>
+        <section class="form-group">
+          <h2>审核文件</h2>
+          <el-upload drag multiple :auto-upload="false" :show-file-list="false" :accept="ALLOWED_EXTS.map(ext => `.${ext}`).join(',')" @change="onFileChange">
+            <div class="upload-icon"><el-icon :size="28"><UploadFilled /></el-icon></div>
+            <div class="el-upload__text">将文件拖到此处，或 <em>点击选择</em></div>
+            <template #tip>
+              <div class="format-tags"><el-tag v-for="ext in ALLOWED_EXTS" :key="ext" type="info" size="small" effect="plain">{{ ext.toUpperCase() }}</el-tag></div>
+              <p class="hint upload-limit">最多 {{ MAX_FILES }} 个文件，单个不超过 {{ MAX_FILE_MB }} MB</p>
+            </template>
+          </el-upload>
+          <el-radio-group v-if="files.length" v-model="mainIndex" class="file-list" aria-label="主文件选择">
+            <div v-for="(f, i) in files" :key="fileKey(f)" class="file-row" :class="{ 'is-main': mainIndex === i }">
+              <span class="file-badge" :class="`file-badge--${fileBadge(f.name).toLowerCase()}`">{{ fileBadge(f.name) }}</span>
+              <span class="file-name" :title="f.name">{{ f.name }}</span>
+              <el-radio :value="i" :aria-label="`${f.name}，设为主文件`">主文件</el-radio>
+              <span class="file-size">{{ formatSize(f.size) }}</span>
+              <el-button link type="danger" @click="removeFile(i)">移除</el-button>
+            </div>
+          </el-radio-group>
+        </section>
+        <section class="form-group settings-group">
+          <h2>审核设置</h2>
+          <el-form-item label="业务立场">
+            <el-radio-group v-model="stance" class="segmented" aria-label="业务立场"><el-radio-button v-for="o in stanceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio-button></el-radio-group>
+          </el-form-item>
+          <el-form-item label="文件来源">
+            <el-radio-group v-model="source" class="segmented" aria-label="文件来源"><el-radio-button v-for="o in sourceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio-button></el-radio-group>
+          </el-form-item>
+          <el-form-item label="外发策略" class="policy-item">
+            <el-radio-group v-model="policy" class="policy-cards" aria-label="外发策略">
+              <el-radio v-for="o in policyOptions" :key="o.value" :value="o.value" border :aria-label="o.label">
+                <span class="policy-title">{{ o.label }}</span>
+                <span class="policy-description">{{ o.value === 'ai' ? '名称、联系方式、账号等敏感信息先在本机替换为代号，确认外发文本后，才发送给云端模型审核。' : '文件不离开本系统，只做金额、日期等本地校验，不产生 AI 审核意见。' }}</span>
+              </el-radio>
             </el-radio-group>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="业务立场">
-          <el-radio-group v-model="stance">
-            <el-radio v-for="o in stanceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="文件来源">
-          <el-radio-group v-model="source">
-            <el-radio v-for="o in sourceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="外发策略">
-          <el-radio-group v-model="policy">
-            <el-radio v-for="o in policyOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="本次补充说明">
-          <el-input
-            v-model="userNote"
-            type="textarea"
-            :rows="3"
-            :maxlength="MAX_NOTE_LENGTH"
-            show-word-limit
-            placeholder="如：这是给土耳其客户的报价，请重点看付款条款"
-          />
-          <el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button>
-        </el-form-item>
-
-        <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" class="block" />
-
-        <el-form-item>
-          <el-button type="primary" native-type="submit" :loading="submitting" :disabled="!files.length">
-            开始解析
-          </el-button>
-        </el-form-item>
+          </el-form-item>
+        </section>
+        <section class="form-group">
+          <div class="group-heading"><h2>补充说明</h2><el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button></div>
+          <el-input v-model="userNote" type="textarea" aria-label="本次补充说明" :rows="3" :maxlength="MAX_NOTE_LENGTH" show-word-limit placeholder="如：这是给土耳其客户的报价，请重点看付款条款" />
+        </section>
+        <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" class="gap" />
+        <div class="parse-actions"><span class="hint">{{ files.length ? '解析完成后自动进入下一步' : '请先选择要审核的文件' }}</span><el-button type="primary" native-type="submit" :loading="submitting" :disabled="!files.length">开始解析</el-button></div>
       </el-form>
-    </el-card>
+    </section>
 
-    <!-- 第二步：确认脱敏 -->
-    <el-card v-else-if="step === 1 && task" shadow="never">
+    <section v-else-if="step === 1 && task" class="confirm-step">
       <ConfirmStep :key="task.id" :task="task" @confirmed="refreshTask" @stale="refreshTask" />
-    </el-card>
-
-    <!-- 第三步：审核中 -->
-    <el-card v-else-if="step === 2 && task" shadow="never">
+    </section>
+    <section v-else-if="step === 2 && task" class="panel">
       <div class="center">
         <el-icon class="is-loading" :size="32"><Loading /></el-icon>
         <p>{{ runText }}</p>
+        <el-progress v-if="runProgress !== null" :percentage="runProgress" :show-text="false" :stroke-width="6" class="run-progress" />
         <p class="hint">审核完成后会自动跳转到结果页，也可以离开页面，稍后从审核历史进入。</p>
       </div>
-    </el-card>
+    </section>
     <RequirementsDrawer v-model="reqDrawer" :stance="stance" :source="source" :user-note="userNote" />
   </div>
 </template>
 
 <style scoped>
-.page {
-  /* 与结果页一致：长内容在页面内滚动，避免外层滚动条挤占 1280px 最小宽度。 */
-  height: calc(100vh - 64px);
-  box-sizing: border-box;
-  overflow-y: auto;
-}
-.steps {
-  margin-bottom: 24px;
-}
-.block {
-  margin-bottom: 16px;
-}
-.full {
-  width: 100%;
-}
-.center {
-  text-align: center;
-  padding: 32px 0;
-}
-.file-list {
-  display: block;
-  margin-top: 12px;
-  width: 100%;
-}
-.file-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 0;
-  /* el-radio-group 默认字号为 0，文件名等非单选控件须明确恢复正文字号。 */
-  font-size: 14px;
-}
-.file-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.file-size {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-}
+.page { height: calc(100vh - 64px); box-sizing: border-box; overflow-y: auto; }
+.block { margin-bottom: 16px; }
+.center { text-align: center; padding: 48px 0; }
+.center > .el-icon { color: var(--el-color-primary); }
+.form-group + .form-group { margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--el-border-color-lighter); }
+h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
+.group-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.group-heading h2 { margin: 0; }
+.upload-icon { width: 44px; height: 44px; display: grid; place-items: center; margin: 0 auto 16px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 12px; }
+:deep(.el-upload-dragger) { border: 1.5px dashed var(--el-border-color); border-radius: var(--si-radius-card); padding: 32px 24px; }
+:deep(.el-upload-dragger:hover), :deep(.el-upload-dragger.is-dragover) { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.format-tags { display: flex; justify-content: center; gap: 4px; margin-top: 12px; flex-wrap: wrap; }
+.upload-limit { text-align: center; margin: 8px 0 0; }
+.file-list { display: block; width: 100%; margin-top: 16px; }
+.file-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--el-border-color-light); border-radius: 8px; font-size: 14px; }
+.file-row + .file-row { margin-top: 8px; }
+.file-row.is-main { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); }
+.file-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; font-size: 12px; font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.file-badge--xls { background: var(--el-color-success-light-9); color: var(--el-color-success); }
+.file-badge--pdf { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
+.file-badge--img { background: var(--el-color-info-light-9); color: var(--el-color-info); }
+.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-row :deep(.el-radio) { margin: 0; flex: none; }
+.file-size { flex: none; color: var(--el-text-color-secondary); font-size: 13px; }
+.segmented { padding: 4px; border: 1px solid var(--el-border-color-light); background: var(--el-fill-color-light); border-radius: 8px; }
+.segmented :deep(.el-radio-button__inner) { border: 0; border-radius: 6px; box-shadow: none; background: transparent; }
+.segmented :deep(.el-radio-button.is-active .el-radio-button__inner) { background: var(--el-bg-color); color: var(--el-color-primary); font-weight: 600; }
+.policy-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; }
+.policy-cards :deep(.el-radio) { margin: 0; padding: 16px; height: auto; min-height: 144px; align-items: flex-start; border-radius: var(--si-radius-card); white-space: normal; }
+.policy-cards :deep(.el-radio.is-checked) { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.policy-cards :deep(.el-radio__input) { margin-top: 4px; }
+.policy-cards :deep(.el-radio__label) { white-space: normal; padding-left: 12px; }
+.policy-title { display: block; font-size: 16px; font-weight: 600; line-height: 1.6; }
+.policy-description { display: block; margin-top: 8px; font-size: 13px; line-height: 1.8; color: var(--el-text-color-secondary); }
+.policy-item { margin-bottom: 0; }
+.parse-actions { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--el-border-color-lighter); }
+.run-progress { max-width: 360px; margin: 20px auto; }
 </style>
