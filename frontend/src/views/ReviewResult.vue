@@ -384,7 +384,8 @@ dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 .severity-count i { width: 8px; height: 8px; border-radius: 50%; background: var(--el-color-info); }
 .severity-high i { background: var(--el-color-danger); }
 .severity-medium i { background: var(--el-color-warning); }
-.result-actions { position: sticky; bottom: 0; z-index: 3; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 16px 12px; margin-top: 24px; border-top: 1px solid var(--el-border-color-light); border-radius: 12px; background: color-mix(in srgb, var(--el-bg-color) 96%, transparent); }
+/* 滚动容器 .page 有 48px 底部内边距，sticky 会从内边距处起算；用负值抵消，使操作栏贴住视口底边，下方不露出问题卡片。 */
+.result-actions { position: sticky; bottom: -48px; z-index: 3; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 16px 12px; margin-top: 24px; border-top: 1px solid var(--el-border-color-light); border-radius: 12px; background: color-mix(in srgb, var(--el-bg-color) 96%, transparent); }
 .result-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .result-actions > .hint { flex-basis: 100%; order: -1; }
 .result-actions > .el-button:last-child { margin-left: auto; }

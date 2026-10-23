@@ -494,7 +494,8 @@ h3 {
 .summary-stats + .summary { margin-top: 16px; }
 .manual-panel { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .manual-panel > .el-button { flex: none; }
-.confirm-actions { position: sticky; bottom: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 24px; margin-top: 16px; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); box-shadow: var(--el-box-shadow-light); }
+/* 滚动容器 .page 有 48px 底部内边距，sticky 会从内边距处起算；用负值抵消，使操作栏贴住视口底边，下方不露出正文。 */
+.confirm-actions { position: sticky; bottom: -48px; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 24px; margin-top: 16px; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); box-shadow: var(--el-box-shadow-light); }
 .confirm-actions > .el-button { height: 44px; flex: none; }
 .conditions { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--el-color-warning); }
 .conditions .met { color: var(--el-text-color-regular); }
