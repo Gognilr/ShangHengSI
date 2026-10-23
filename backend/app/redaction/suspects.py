@@ -35,6 +35,10 @@ _HAN = re.compile(r"[一-鿿]")
 _CN_SUFFIX = re.compile("股份有限公司|有限责任公司|集团有限公司|有限公司|集团|研究院|研究所")
 _CN_SUFFIX_MORE = re.compile("股份有限公司|有限责任公司|集团有限公司|有限公司|集团|研究院|研究所|公司")
 _COMPANY_WORD = re.compile("公司|厂")
+_INSTITUTION_WORD = re.compile("|".join(sorted(P.INSTITUTION_TEXT_SUFFIXES, key=len, reverse=True)))
+_GENERIC_INSTITUTION = frozenset({
+    "定点", "指定", "三甲", "二甲", "附属", "民营", "公立", "私立", "综合", "专科", "高等", "职业", "技工", "人民", "中心",
+})
 # 泛称：整段等于其中之一时不列为疑似遗漏（“本公司”“物流公司”）
 _GENERIC_BEFORE_COMPANY = frozenset({
     "本", "贵", "我", "我方", "该", "对方", "双方", "各", "其", "任何", "子", "分", "母", "总", "关联", "船", "保险", "物流",
@@ -117,6 +121,12 @@ def _chinese_suffix_candidates(text: str) -> list[Suspect]:
             continue
         span = _cn_name_span(text, m.start())
         if span is not None:
+            out.append(Suspect(span[0], m.end(), BEFORE_COMPANY))
+    for m in _INSTITUTION_WORD.finditer(text):
+        if _generic_before(text[:m.start()]):
+            continue
+        span = _cn_name_span(text, m.start())
+        if span is not None and text[span[0]:m.start()] not in _GENERIC_INSTITUTION:
             out.append(Suspect(span[0], m.end(), BEFORE_COMPANY))
     return out
 

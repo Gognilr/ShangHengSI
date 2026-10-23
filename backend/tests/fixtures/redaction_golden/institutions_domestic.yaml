@@ -3,17 +3,17 @@ stance: sales
 must_replace:
   - {text: 澄川虚构信息技术有限公司, category: ORG}
   - {text: 青岚虚构建设工程有限公司, category: ORG}
+  - {text: 江北市第一虚构人民医院, category: ORG}
+  - {text: 东川市虚构工程咨询事务所, category: ORG}
+  - {text: 东川市虚构区教育局, category: ORG}
+  - {text: 江北市虚构大学, category: ORG}
+  - {text: 东川市虚构新区管理委员会, category: ORG}
+  - {text: 江北市虚构区人民政府, category: ORG}
 must_keep:
   - 项目采购合同
   - 采购人应于验收合格后支付货款
   - 负责提供场地所需的水电
   - 本院、该医院及定点医院的相关规定另行通知
-# R4-00 先行写入：以下名称在 R4-01 之前原样外发。R4-01 实现后测试会提示“已知缺口已修复”，
-# 届时把每一条移入 must_replace（category: ORG），文字不得改动；并按设计 R4.md 2.6 加入 must_suspect
-known_gaps:
-  - {text: 江北市第一虚构人民医院}
-  - {text: 东川市虚构工程咨询事务所}
-  - {text: 东川市虚构区教育局}
-  - {text: 江北市虚构大学}
-  - {text: 东川市虚构新区管理委员会}
-  - {text: 江北市虚构区人民政府}
+must_suspect:
+  - 江北市第二虚构中学
+  - 江北市虚构卫生健康委员会

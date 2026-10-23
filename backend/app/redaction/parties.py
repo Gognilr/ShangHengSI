@@ -20,8 +20,14 @@ from app.redaction.placeholders import BUYER, OTHER, SELLER
 # ---------------------------------------------------------------- 标签
 
 _LABELS: list[tuple[str, list[str]]] = [
-    (BUYER, ["买方", "需方", "采购方", "购货方", "买受人", "Buyer", "Purchaser", "Importer"]),
-    (SELLER, ["卖方", "供方", "供应商", "供货方", "销售方", "出卖人", "Seller", "Supplier", "Vendor", "Exporter"]),
+    (BUYER, ["买方", "需方", "采购方", "购货方", "买受人", "Buyer", "Purchaser", "Importer",
+             "采购人", "采购单位", "发包人", "发包方", "委托方", "委托人", "委托单位", "承租方", "承租人", "招标人", "招标单位",
+             "建设单位", "业主", "业主单位", "客户", "Client", "Customer", "Employer", "Owner", "Lessee", "Licensee"]),
+    (SELLER, ["卖方", "供方", "供应商", "供货方", "销售方", "出卖人", "Seller", "Supplier", "Vendor", "Exporter",
+              "承包人", "承包方", "受托方", "受托人", "受托单位", "出租方", "出租人", "中标人", "中标单位", "投标人", "投标单位",
+              "施工单位", "承建单位", "服务方", "服务提供方", "Contractor", "Lessor", "Licensor", "Service Provider"]),
+    ("监理方", ["监理单位", "监理人", "监理方"]),
+    ("代理机构", ["招标代理机构", "采购代理机构", "代理机构"]),
     ("甲方", ["甲方", "Party A"]),
     ("乙方", ["乙方", "Party B"]),
     ("丙方", ["丙方", "Party C"]),
@@ -50,6 +56,13 @@ GENERIC_WORDS = frozenset(w.casefold() for w in (
 
 _CN_SUFFIX = "股份有限公司|有限责任公司|集团有限公司|有限公司|集团公司|集团|公司|研究院|研究所|厂"
 _CN_STRONG_SUFFIX = re.compile("股份有限公司|有限责任公司|集团有限公司|有限公司")
+# R4：正文只提示窄表中的机构；标签值另允许单字后缀等，不能把普通句子登记成已记住名称。
+INSTITUTION_TEXT_SUFFIXES = (
+    "卫生健康委员会", "管理委员会", "人民政府", "卫生院", "医院", "幼儿园", "小学", "中学", "大学", "学院", "学校",
+    "研究中心", "委员会", "管委会", "事务所", "合作社", "协会", "学会", "商会", "基金会", "联合会",
+)
+_INSTITUTION_SUFFIXES = tuple(sorted((*INSTITUTION_TEXT_SUFFIXES, "诊所", "中心", "出版社", "电视台", "局", "厅", "署", "院"), key=len, reverse=True))
+_INSTITUTION_RE = re.compile("|".join(_INSTITUTION_SUFFIXES))
 _EN_SUFFIX = (
     r"Co\.\s?,\s?Ltd\.?|Co\.\s?Limited|Company\s+Limited|Pte\.?\s?Ltd\.?|Pvt\.?\s?Ltd\.?|Sdn\.?\s?Bhd\.?|"
     r"L\.L\.C\.?|FZ-LLC|LLC|LLP|PLC|Limited|Ltd\.?|Inc\.?|Corp\.?|Corporation|GmbH|S\.A\.|S\.r\.l\.|"
@@ -179,6 +192,18 @@ def extract_org_name(text: str, pos: int) -> tuple[int, int] | None:
             end = more.end()
         end = _extend_to_last_suffix(window, lead, end, _EXTEND_LABELED_RE)  # “××集团山东有限公司德州分公司”
         return pos + lead, pos + end
+    for m in _INSTITUTION_RE.finditer(window, lead):
+        prefix = window[lead:m.start()]
+        if not _valid_prefix(prefix) or len(_CN_CHAR.findall(prefix)) < 2:
+            continue
+        end = _extend_to_last_suffix(window, lead, m.end(), _EXTEND_LABELED_RE)
+        name = window[lead:end]
+        if len(name) > _NAME_MAX or any(w in name for w in (*_EXTEND_STOP_WORDS, "应", "须", "提供", "于")):
+            continue
+        tail = window[end:]
+        if tail and not (tail[0].isspace() or tail[0] in "，,。；;、）)】］]〗" or _ALIAS_OPEN_RE.match(tail)):
+            continue
+        return pos + lead, pos + end
     return None
 
 
@@ -283,7 +308,7 @@ def find_aliases(text: str) -> list[tuple[int, int, int]]:
 
 
 # 带简称定义的宽泛后缀名称（R1-13，Q-139 ③）：长的在前
-_BROAD_SUFFIXES = ("集团公司", "研究院", "研究所", "集团", "公司", "厂")
+_BROAD_SUFFIXES = tuple(sorted(("集团公司", "研究院", "研究所", "集团", "公司", "厂", *INSTITUTION_TEXT_SUFFIXES), key=len, reverse=True))
 
 
 def find_broad_suffix_before_alias(text: str) -> list[tuple[int, int]]:
@@ -394,7 +419,8 @@ def _is_chinese_bank_name(name: str) -> bool:
 
 def default_country(name: str) -> str | None:
     """块中找不到国家时：以中文企业后缀结尾的中文名称、中文银行名称视为中国企业。"""
-    return "中国" if is_chinese_name(name) or _is_chinese_bank_name(name) else None
+    return "中国" if (is_chinese_name(name) or _is_chinese_bank_name(name)
+                    or (_CN_CHAR.search(name) and name.endswith(_INSTITUTION_SUFFIXES))) else None
 
 
 def org_type(name: str) -> str:
