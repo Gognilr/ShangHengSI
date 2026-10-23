@@ -16,10 +16,4 @@ body {
   font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
   background: var(--el-bg-color-page);
 }
-
-.placeholder {
-  padding: 48px;
-  font-size: 18px;
-  color: var(--el-text-color-secondary);
-}
 </style>
