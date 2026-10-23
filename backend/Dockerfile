@@ -36,6 +36,7 @@ RUN pip install -r requirements.txt && pip check \
 COPY app ./app
 COPY alembic.ini ./
 COPY resources ./resources
+RUN python -c "from pathlib import Path; import rapidocr_onnxruntime as r; assert len(list((Path(r.__file__).parent / 'models').glob('*.onnx'))) == 3"
 USER appuser
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-access-log"]

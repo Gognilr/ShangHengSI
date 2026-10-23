@@ -18,7 +18,7 @@ x-backend: &backend
     BACKUP_PASSWORD_FILE: /run/secrets/backup_password
     FILES_DIR: /data/files
     BACKUP_DIR: /backup
-    OCR_MODEL_DIR: /srv/backend/resources/ocr_models
+    OCR_MODEL_DIR: /usr/local/lib/python3.12/site-packages/rapidocr_onnxruntime/models
     WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
     TZ: Asia/Shanghai
     MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-30}
