@@ -23,7 +23,18 @@
 * 遇到 SPEC 未写明的细节：选最简单、最安全的做法，并记录到 docs/open\_questions.md。
 * 冲突时的优先级：安全 > 正确性 > 简洁 > 性能。
 
-## 开发方式
+## 当前阶段：V2 开发（2026-10-24 起）
+
+V1.0 已于 2026-10-24 验收并正式安装，git 标签 `v1.0.0`（011d417）。现在在 main 上开发 V2，下面几条优先于“开发方式”中 V1.0 的写法：
+
+* 开工前必读：docs/v2/TASKS-V2.md（任务清单、当前进度、第一节执行规则）、所在批次的 docs/v2/design/V2-x.md 第〇节与对应任务卡、docs/v2/open\_questions.md；范围与顺序见 docs/v2/PLAN.md。不再从 docs/TASKS.md 接任务（它只作 V1.0 的历史记录），不需要通读 docs/SPEC.md。
+* 按 TASKS-V2 第一节执行：批次 V2-A → V2-B → V2-C → V2-D 串行；单个任务只跑与本任务相关的测试，整仓全量放在批次末的集中测试任务；同一批由 GPT-6.1 Sol 连续完成，集中测试后停下，由 Opus 审核整批。
+* SPEC 的变更只写在 docs/v2/SPEC-V2.md（V2 验收时由 Opus 合并进 docs/SPEC.md）；V2 的待确认问题写在 docs/v2/open\_questions.md，编号 V2Q-。
+* 本文件“必须遵守”各条在 V2 中继续有效。需要改动它们的事项（本地实体识别模型、设置页的角色分工、“智能助手”菜单）由对应批次的 Opus 任务给出修改稿，经我确认后改本文件；确认前不得实现。
+* 正式服务器已投入生产。V2 的部署与演练（保留期清理、主密钥更换、upgrade.sh 升级等）只在另外准备的测试虚拟机上做；正式服务器上任何停服、删数据、升级或恢复操作先征得我同意。
+* 线上 V1.0 需要紧急修复时，在 `v1.0.0` 标签上开修复分支，修复后合并回 main。
+
+## 开发方式（V1.0）
 
 * 严格按 SPEC 第 22 节的里程碑 M1 → M8 推进。全部开发任务见 docs/TASKS.md，同一时间只执行一个任务，按编号顺序串行。
 * 开始一个里程碑前，由 Opus 细化该里程碑的任务（Mx-00），等我确认后才能执行。已确认的任务可以直接开发，不必再等确认。
@@ -91,5 +102,17 @@ docker build -t aireview-converter:dev converter
 docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true -v "${PWD}/converter/tests:/srv/converter/tests:ro" -v "${PWD}/backend/tests/fixtures/legacy:/srv/fixtures:ro" aireview-converter:dev python -m unittest discover -s /srv/converter/tests
 ```
 
-（构建与导出离线镜像的命令在 M8 补充。）
+**整仓全量测试**（批次末集中测试与验收使用。test_scripts.py、test_forbidden_words.py 需要看到 deploy/ 与 frontend/，只挂载 backend/ 时这两个文件约 20 条失败）：
+
+```powershell
+docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgres:test@aireview-test-db:5432/postgres -v "${PWD}:/srv" -w /srv/backend aireview-backend-test pytest -q
+```
+
+**构建发布包**（在 Git Bash 中执行；脚本要求 git 工作区干净，有未跟踪文件时先 `git clone` 到仓库外的目录，在 clone 中执行）：
+
+```bash
+bash deploy/scripts/build_release.sh 1.0.1 --out ../release
+```
+
+产出 `aireview-{版本}.tar.gz`（四个镜像、compose、脚本、运维说明、SHA256SUMS，归档内属主为 root）。服务器上的解包、安装、升级、备份与恢复见 docs/ops/运维说明.md。
 
