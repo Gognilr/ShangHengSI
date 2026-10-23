@@ -1,0 +1,10 @@
+Buyer: Anadolu Fictive Kimya Sanayi ve Ticaret A.Ş.
+Consignee: ООО «Ромашка Фиктив»
+Notify Party: Wisla Fictive Trading Sp. z o.o.
+Agent: Vltava Fictive Logistics s.r.o.
+Supplier: Duna Fictive Chemicals Kft.
+Bank: Gulf Fictive Trading Co. W.L.L.
+Distributor: Lumiere Fictive Industries SARL
+Partner: Tevere Fictive Impianti S.p.A.
+Importer: PT Nusantara Fictive Kimia
+The goods shall be packed in jumbo bags.

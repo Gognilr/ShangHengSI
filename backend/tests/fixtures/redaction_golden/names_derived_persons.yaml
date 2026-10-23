@@ -1,0 +1,17 @@
+description: 主体字号派生、姓 + 称谓、英文称谓 + 姓名、叙述中的人名（V2-B-03，设计 V2-B.md 第三节）：乙方字号“澄川虚构”“澄川虚构信息技术”在正文中替换为乙方代号，“软件平台 V3.0”保留；张经理、李总、Carter Fictive 替换为人员代号；“与王建国沟通”中的王建国列为疑似遗漏
+stance: purchase
+must_replace:
+  - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: 青岚公司, category: ORG}
+  - {text: 澄川虚构信息技术有限公司, category: ORG}
+must_keep:
+  - 软件平台 V3.0
+  - 对方同意延期交货
+  - 乙方授权代表应在验收单上签字
+# V2-B-00 先行写入：V2-B-03 实现后移入 must_replace（字号类别 ORG，人名类别 PERSON），文字不得改动；并按设计 3.6 加入 must_suspect
+known_gaps:
+  - {text: 澄川虚构信息技术标准}
+  - {text: 澄川虚构软件平台}
+  - {text: 张经理}
+  - {text: 李总}
+  - {text: Carter Fictive}

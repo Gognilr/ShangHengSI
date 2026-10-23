@@ -1,0 +1,11 @@
+description: 没有“地址”标签的中国地址（V2-B-02，设计 V2-B.md 2.4）：含省、市、区、县一级和“路、街、大道”加门牌号的整段替换为 [地址：中国]；只有城市名或港口的保留
+stance: purchase
+must_replace:
+  - {text: 青岚虚构石化股份有限公司, category: ORG}
+must_keep:
+  - 本合同在北京市签订
+  - 交货地点为青岛港
+# V2-B-00 先行写入：V2-B-02 实现后移入 must_replace（category: ADDR），文字不得改动
+known_gaps:
+  - {text: 江苏省南京市江宁区虚构路 88 号}
+  - {text: 东川市虚构区示例大道 1200 号}
