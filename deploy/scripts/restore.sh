@@ -45,8 +45,14 @@ STAGE="check"
 WORK=""
 FILES_EXPECTED=""
 
+# 容器命令的标准输入一律接 /dev/null：-T 只关闭 TTY，docker 仍会读走脚本的标准输入，
+# 使第 5 步的确认读不到运维人员输入（或提前键入）的“确认恢复”。
 worker_cli() {
-  compose run --rm --no-deps -T worker python -m app.cli "$@"
+  compose run --rm --no-deps -T worker python -m app.cli "$@" </dev/null
+}
+
+app_cli() {
+  compose exec -T app python -m app.cli "$@" </dev/null
 }
 
 on_exit() {
@@ -185,9 +191,9 @@ compose up -d app worker
 wait_healthy app 300
 
 # ---------------------------------------------------------------- 10. 核对与清理
-compose exec -T app python -m app.cli restore-files --verify --expect-files "$FILES_EXPECTED"
-compose exec -T app python -m app.cli restore-db --drop-old
-compose exec -T app python -m app.cli restore-files --drop-old
+app_cli restore-files --verify --expect-files "$FILES_EXPECTED"
+app_cli restore-db --drop-old
+app_cli restore-files --drop-old
 STAGE="done"
 
 info ""

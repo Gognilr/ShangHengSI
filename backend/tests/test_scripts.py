@@ -121,3 +121,24 @@ def test_restore_usage_and_arguments():
     assert r.returncode == 1 and "用法" in r.stderr
     r = subprocess.run(["bash", script, "a.bak", "b.bak"], capture_output=True, text=True)
     assert r.returncode == 1 and "只能指定一个备份文件" in r.stderr
+
+
+def test_restore_container_commands_do_not_read_stdin(tmp_path):
+    """服务器实跑发现：docker compose run -T 会读走标准输入，第 5 步确认随之失败。"""
+    text = (SCRIPTS / "restore.sh").read_text(encoding="utf-8")
+    for line in text.splitlines():
+        if "compose run" in line or "compose exec" in line:
+            assert line.rstrip().endswith("</dev/null"), line
+    # 假的 docker 像真实的 docker 一样读完标准输入
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fake = bindir / "docker"
+    fake.write_text("#!/usr/bin/env bash\ncat >/dev/null\n", encoding="utf-8")
+    fake.chmod(0o755)
+    funcs = subprocess.run(["sed", "-n", "/^worker_cli()/,/^}/p;/^app_cli()/,/^}/p", str(SCRIPTS / "restore.sh")],
+                           capture_output=True, text=True, check=True).stdout
+    assert "worker_cli()" in funcs and "app_cli()" in funcs
+    r = _lib(f'{funcs}\nworker_cli decrypt-backup\napp_cli restore-files --verify\n'
+             'confirm "将要恢复" "确认恢复"; info DONE',
+             root=tmp_path, env={"PATH": f"{bindir}:{os.environ['PATH']}"}, stdin="确认恢复\n")
+    assert r.returncode == 0 and r.stdout.endswith("DONE\n"), r.stderr
