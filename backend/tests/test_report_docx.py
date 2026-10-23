@@ -20,7 +20,7 @@ def report_case(make_user, ready_task, db_sessionmaker):
     task = ready_task(user)
     with db_sessionmaker() as db:
         run = ReviewRun(task_id=task.id, run_no=2, status="completed", stance="purchase", source="incoming",
-                        main_doc_type="contract", model_name="mock-model", builtin_req_version="2026.10-1",
+                        main_doc_type="contract", model_name="mock-model", builtin_req_version="2026.11-1",
                         company_req_version=3, created_by=user.id, finished_at=datetime(2026, 10, 20, 0, 12, tzinfo=timezone.utc),
                         doc_summary="我方与客户_A订立合同", sanctions_level="attention", sanctions_reasons=["客户_A需核实"])
         db.add(run)

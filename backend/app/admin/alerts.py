@@ -60,4 +60,19 @@ def _cap_alerts(db: Session) -> list[dict]:
 
 
 def admin_alerts(db: Session) -> list[dict]:
-    return [*_backup_alerts(db), *_cap_alerts(db)]
+    return [*_backup_alerts(db), *_cap_alerts(db), *_prompt_term_alerts(db)]
+
+
+def _prompt_term_alerts(db: Session) -> list[dict]:
+    """沿用出口复检的词条匹配规则，提醒中只给数量。"""
+    from app.redaction.recheck import recheck, recheck_context
+    from app.review.prompt import fixed_prompt_text
+
+    fixed = fixed_prompt_text(db)
+    terms = recheck_context(db, None).terms
+    count = sum(any(r.category == "TERM" for r in recheck(fixed, real_values=[], terms=[term]))
+                for term in terms)
+    if not count:
+        return []
+    return [{"code": "PROMPT_TERM_CONFLICT", "message":
+             f"有 {count} 个已记住的名称或自定义敏感词出现在审核提示文字中，所有审核会被拦截，请在设置 → 脱敏中停用或删除"}]

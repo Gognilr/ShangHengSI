@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.db.base import utcnow
 from app.db.models import BackupRecord, LlmCall
 from app.main import API_PREFIX
+from tests.review_support import env  # noqa: F401
 
 ME = f"{API_PREFIX}/auth/me"
 GB = 1024**3
@@ -68,6 +69,25 @@ def add_calls(sm, n, status="sent"):
 
 
 def test_no_alerts_by_default(admin):
+    assert alerts(admin) == []
+
+
+def test_prompt_term_conflict_enabled_and_disabled(admin, db_sessionmaker, env):
+    from app.db.models import RedactionTerm
+    from app.security import crypto
+
+    with db_sessionmaker() as db:
+        term = RedactionTerm(kind="custom", category="CUSTOM", term_hash="a" * 64,
+                             term_enc=crypto.encrypt_text("验收"), enabled=True)
+        db.add(term)
+        db.commit()
+        term_id = term.id
+    got = alerts(admin)
+    assert len(got) == 1 and got[0]["code"] == "PROMPT_TERM_CONFLICT"
+    assert "1 个" in got[0]["message"] and "验收" not in got[0]["message"]
+    with db_sessionmaker() as db:
+        db.get(RedactionTerm, term_id).enabled = False
+        db.commit()
     assert alerts(admin) == []
 
 
