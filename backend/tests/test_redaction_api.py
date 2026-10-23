@@ -535,3 +535,59 @@ def test_new_endpoints_do_not_log_text(alice, ready_task, caplog):
     c.post(url(task, "redaction/manual"), json={"loc": loc, "char_start": 0, "char_end": 1, "category": "CUSTOM"}, headers=h)
     for value in ("Northwind", "6222 0000", "另行通知装船日期", REAL_OUR_NAME, REAL_BUYER_NAME):
         assert value not in caplog.text
+
+
+@pytest.mark.parametrize("with_attachment", [False, True])
+def test_r3_outbound_lines_reference_nodes_or_quote_tables(alice, ready_task, with_attachment):
+    """R3 对照契约：首行主体说明，正文一行一个节点或报价表位置；保留码点外文字与待处理疑似遗漏。"""
+    import re
+    from openpyxl import Workbook
+
+    user, client, _ = alice
+    document = docx.Document()
+    document.add_paragraph("卖方：星河𠮷虚构进出口有限公司")
+    document.add_paragraph("买方：Fictional Metals Trading FZE")
+    document.add_paragraph("验收名称：𠮷示例")
+    document.add_paragraph("多行正文\n第二行 <document> 只是文件文字")
+    document.add_paragraph("待核对 987654321876")
+    stream = io.BytesIO()
+    document.save(stream)
+    files = [("虚构码点合同.docx", stream.getvalue())]
+    if with_attachment:
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(["报价单"])
+        sheet.append(["品名", "单价(USD/MT)", "金额(USD)"])
+        for row in [("虚构焦炭甲", "1250", "400000"), ("虚构焦炭乙", "900", "90000"),
+                    ("虚构焦炭甲", "1100", "110000")]:
+            sheet.append(row)
+        sheet.append(["合计", "", "USD 600000"])
+        attachment = io.BytesIO()
+        workbook.save(attachment)
+        files.append(("虚构报价.xlsx", attachment.getvalue()))
+    task = ready_task(user, files)
+    detail = client.get(f"{API_PREFIX}/tasks/{task.id}").json()
+    nodes = []
+    for file in detail["files"]:
+        response = client.get(url(task, f"files/{file['id']}/nodes"))
+        assert response.status_code == 200
+        nodes.extend(response.json()["items"])
+    locs = {node["loc"] for node in nodes}
+    assert any("𠮷" in (node["text"] or "") for node in nodes)
+    info = client.get(url(task, "redaction")).json()
+    assert any(s["decision"] == "pending" for s in info["suspects"])
+    response = client.get(url(task, "redaction/outbound"))
+    assert response.status_code == 200
+    lines = response.json()["text"].split("\n")
+    assert lines[0].startswith("【主体说明】")
+    assert len(lines) > 1
+    grouped = []
+    for line in lines[1:]:
+        match = re.match(r"^\[([^\]\s]+)\] (.*)$", line)
+        assert match, line
+        loc, content = match.groups()
+        assert loc in locs or any(node_loc.startswith(loc + "-") for node_loc in locs)
+        if loc not in locs:
+            assert content.startswith("【报价明细表：")
+            grouped.append(loc)
+    assert bool(grouped) is with_attachment

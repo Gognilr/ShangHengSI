@@ -147,3 +147,9 @@ export const outboundStatusLabel = pick(OUTBOUND_STATUS)
 export const OUTBOUND_STATUS_TAG: Record<string, TagType> = { sent: 'success', blocked: 'warning', error: 'danger' }
 export const LLM_PURPOSE: Dict = { review: '审核', chat: '追问', test: '连接测试' }
 export const llmPurposeLabel = pick(LLM_PURPOSE)
+/** 对照视图与手动补充共用的类别色组。 */
+export const REDACTION_KIND: Record<string, string> = {
+  OUR: 'org', ORG: 'org', PERSON: 'person', PHONE: 'contact', EMAIL: 'contact', URL: 'contact',
+  ADDR: 'addr', POSTCODE: 'addr', ACCOUNT: 'id', SWIFT: 'id', IDNO: 'id', REFNO: 'id',
+  AMOUNT: 'other', PRICE: 'other', QTY: 'other', CUSTOM: 'other',
+}

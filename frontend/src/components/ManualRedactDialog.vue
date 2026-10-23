@@ -4,7 +4,8 @@ import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode } from '@/api/preview'
 import { REDACTION_ERROR_MESSAGES, redactionApi, type RedactionItemPos, type RedactionInfo, type UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
-import { USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
+import { USER_CATEGORY_OPTIONS, REDACTION_KIND, toOptions } from '@/utils/labels'
+import { splitOriginal, type CompareSeg } from '@/utils/compare'
 
 /**
  * 手动补充（设计 M4 第六节）：按节点原文显示，用户在同一个节点内选中文字后设为敏感信息。
@@ -65,10 +66,6 @@ watch(activeId, (id) => {
 })
 
 // ---- 节点文字按已替换的片段拆分（码点位置） ----
-interface Seg {
-  text: string
-  code?: string
-}
 const itemsByLoc = computed(() => {
   const m = new Map<string, RedactionItemPos[]>()
   for (const it of props.items) {
@@ -80,18 +77,8 @@ const itemsByLoc = computed(() => {
   return m
 })
 
-function segments(n: PreviewNode): Seg[] {
-  const chars = Array.from(n.text ?? '')
-  const out: Seg[] = []
-  let pos = 0
-  for (const it of itemsByLoc.value.get(n.loc) ?? []) {
-    if (it.char_start < pos || it.char_end > chars.length) continue
-    if (it.char_start > pos) out.push({ text: chars.slice(pos, it.char_start).join('') })
-    out.push({ text: chars.slice(it.char_start, it.char_end).join(''), code: it.placeholder })
-    pos = it.char_end
-  }
-  if (pos < chars.length) out.push({ text: chars.slice(pos).join('') })
-  return out
+function segments(n: PreviewNode): CompareSeg[] {
+  return splitOriginal(n.text ?? '', itemsByLoc.value.get(n.loc) ?? [])
 }
 
 function clauseOf(n: PreviewNode): string {
@@ -200,7 +187,7 @@ async function submit() {
       <el-empty v-else-if="!states[activeId].loading && !states[activeId].nodes.length" description="没有可选择的正文" />
       <div v-for="n in states[activeId].nodes" :key="n.loc" class="node">
         <span v-if="clauseOf(n)" class="clause">{{ clauseOf(n) }}</span>
-        <span class="txt" :data-loc="n.loc"><template v-for="(g, i) in segments(n)" :key="i"><span v-if="g.code" class="done" :title="g.code">{{ g.text }}</span><template v-else>{{ g.text }}</template></template></span>
+        <span class="txt" :data-loc="n.loc"><template v-for="(g, i) in segments(n)" :key="i"><span v-if="g.placeholder" class="done" :class="`kind-${REDACTION_KIND[g.category ?? ''] ?? 'other'}`" :title="g.placeholder">{{ g.text }}</span><template v-else>{{ g.text }}</template></template></span>
       </div>
     </div>
 
@@ -221,23 +208,24 @@ async function submit() {
 </template>
 
 <style scoped>
-.manual-dialog {
+:global(.manual-dialog) {
   /* 总高度随视口约束，正文收缩滚动，避免默认 15vh 顶距把底部操作推出窗口。 */
   max-height: calc(100vh - 48px);
   margin-bottom: 24px;
   display: flex;
   flex-direction: column;
 }
-.manual-dialog :deep(.el-dialog__header),
-.manual-dialog :deep(.el-dialog__footer) { flex: none; }
-.manual-dialog :deep(.el-dialog__body) {
+:global(.manual-dialog .el-dialog__header),
+:global(.manual-dialog .el-dialog__footer) { flex: none; }
+:global(.manual-dialog .el-dialog__body) {
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.manual-dialog :deep(.el-tabs),
-.manual-dialog :deep(.el-alert),
+:global(.manual-dialog .el-tabs),
+:global(.manual-dialog .el-alert),
 .manual-dialog .hint,
 .pick { flex-shrink: 0; }
 .body {
@@ -267,8 +255,8 @@ async function submit() {
   font-size: 14px;
 }
 .done {
-  background: var(--el-color-warning-light-8);
-  border-bottom: 1px solid var(--el-color-warning);
+  background: var(--kind-bg);
+  border-bottom: 2px solid var(--kind-color);
 }
 .pick {
   display: flex;
@@ -283,4 +271,10 @@ async function submit() {
   white-space: pre-wrap;
   word-break: break-all;
 }
+.kind-org { --kind-bg: var(--si-k-org-bg); --kind-color: var(--si-k-org); }
+.kind-person { --kind-bg: var(--si-k-person-bg); --kind-color: var(--si-k-person); }
+.kind-contact { --kind-bg: var(--si-k-contact-bg); --kind-color: var(--si-k-contact); }
+.kind-id { --kind-bg: var(--si-k-id-bg); --kind-color: var(--si-k-id); }
+.kind-addr { --kind-bg: var(--si-k-addr-bg); --kind-color: var(--si-k-addr); }
+.kind-other { --kind-bg: var(--si-k-other-bg); --kind-color: var(--si-k-other); }
 </style>

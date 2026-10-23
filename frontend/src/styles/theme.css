@@ -76,3 +76,17 @@ html body { font-family: var(--el-font-family); font-size: 14px; line-height: 1.
 .el-select--small .el-select__wrapper { min-height: var(--el-component-size-small); }
 .el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner { transition: color 150ms, background-color 150ms, border-color 150ms; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+:root {
+  --si-k-org-bg: #E8EEF7;
+  --si-k-org: #2F5E9E;
+  --si-k-person-bg: #F1ECFB;
+  --si-k-person: #6941C6;
+  --si-k-contact-bg: #E5F4F6;
+  --si-k-contact: #0E7C8A;
+  --si-k-id-bg: #F4EEE7;
+  --si-k-id: #8A5A2B;
+  --si-k-addr-bg: #E9F4EC;
+  --si-k-addr: #2E7D4F;
+  --si-k-other-bg: #F0F1F3;
+  --si-k-other: #667085;
+}

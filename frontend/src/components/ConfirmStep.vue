@@ -16,6 +16,7 @@ import { RUN_ERROR_MESSAGES, runsApi } from '@/api/runs'
 import { tasksApi, type TaskDetail } from '@/api/tasks'
 import ManualRedactDialog from './ManualRedactDialog.vue'
 import SuspectList from './SuspectList.vue'
+import RedactionCompare from './RedactionCompare.vue'
 import { DOC_TYPE_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, toOptions } from '@/utils/labels'
 
 const props = defineProps<{ task: TaskDetail }>()
@@ -42,6 +43,11 @@ const suspects = ref<Suspect[]>([])
 const redactedItems = ref<RedactionInfo['items']>([])
 const deciding = ref(false)
 const selectedSuspectLoc = ref('')
+const compare = ref<InstanceType<typeof RedactionCompare>>()
+function locateSuspect(loc: string) {
+  selectedSuspectLoc.value = loc
+  void compare.value?.locate(loc)
+}
 const manualOpen = ref(false)
 const loading = ref(true)
 const loadError = ref('')
@@ -139,7 +145,7 @@ async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    const [p] = await Promise.all([redactionApi.parties(props.task.id), loadSummary(), loadBlocked()])
+    const [p] = await Promise.all([redactionApi.parties(props.task.id), loadSummary(), loadBlocked(), loadOutbound()])
     parties.value = p.items
   } catch (e) {
     loadError.value = e instanceof ApiError ? e.message : '加载失败，请刷新页面'
@@ -212,7 +218,6 @@ function setField(id: string, field: 'country' | 'org_type', value: string) {
 }
 
 // ---- 外发文本（纯文本，不用 v-html） ----
-const openPanels = ref<string[]>([])
 const outboundText = ref('')
 const outboundLoading = ref(false)
 const outboundError = ref('')
@@ -220,6 +225,7 @@ const outboundError = ref('')
 async function loadOutbound() {
   outboundLoading.value = true
   outboundError.value = ''
+  outboundText.value = ''
   try {
     outboundText.value = (await redactionApi.outbound(props.task.id)).text
   } catch (e) {
@@ -230,14 +236,7 @@ async function loadOutbound() {
 }
 
 async function reloadOutbound() {
-  if (openPanels.value.includes('outbound')) await loadOutbound()
-}
-
-function onPanelChange(names: string[] | string) {
-  const list = Array.isArray(names) ? names : [names]
-  const wasOpen = openPanels.value.includes('outbound')
-  openPanels.value = list
-  if (!wasOpen && list.includes('outbound')) void loadOutbound()
+  await loadOutbound()
 }
 
 // ---- 确认发送 ----
@@ -423,7 +422,7 @@ onMounted(loadAll)
       <h3>
         <span class="section-number">4</span>疑似遗漏<span v-if="pendingCount" class="pending">还有 {{ pendingCount }} 条未处理</span>
       </h3>
-      <SuspectList :suspects="suspects" :files="files" :busy="deciding" :selected-loc="selectedSuspectLoc" @locate="selectedSuspectLoc = $event" @decide="decideSuspect" />
+      <SuspectList :suspects="suspects" :files="files" :busy="deciding" :selected-loc="selectedSuspectLoc" @locate="locateSuspect" @decide="decideSuspect" />
 
       </section>
       <section class="panel manual-panel">
@@ -442,14 +441,8 @@ onMounted(loadAll)
       </section>
       <section class="panel">
       <h3><span class="section-number">6</span>原文与外发文本对照</h3>
-      <el-collapse :model-value="openPanels" @change="onPanelChange">
-        <el-collapse-item title="查看将发送的文本（只读，已用代号替换）" name="outbound">
-          <div v-loading="outboundLoading">
-            <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
-            <pre v-else class="outbound">{{ outboundText }}</pre>
-          </div>
-        </el-collapse-item>
-      </el-collapse>
+      <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
+      <RedactionCompare ref="compare" :task-id="task.id" :files="files" :outbound-text="outboundText" :items="redactedItems" :suspects="suspects" :loading="outboundLoading" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" />
       </section>
       <section class="panel">
       <h3><span class="section-number">7</span>本地校验结果<span class="hint">{{ localCount ?? '—' }} 条</span></h3>
@@ -535,16 +528,6 @@ h3 {
 }
 .saving {
   opacity: 0.7;
-}
-.outbound {
-  max-height: 360px;
-  overflow: auto;
-  margin: 0;
-  padding: 8px;
-  background: var(--el-fill-color-light);
-  white-space: pre-wrap;
-  word-break: break-all;
-  font-size: 13px;
 }
 .sr-only {
   position: absolute;
