@@ -245,13 +245,15 @@ async function submit() {
   max-height: 50vh;
   flex: 1 1 auto;
   overflow: auto;
-  padding: 8px;
+  padding: 24px;
   background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
 }
 .node {
   display: flex;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 12px;
 }
 .clause {
   flex: none;

@@ -41,6 +41,7 @@ const summary = ref<Record<string, number>>({})
 const suspects = ref<Suspect[]>([])
 const redactedItems = ref<RedactionInfo['items']>([])
 const deciding = ref(false)
+const selectedSuspectLoc = ref('')
 const manualOpen = ref(false)
 const loading = ref(true)
 const loadError = ref('')
@@ -291,8 +292,9 @@ onMounted(loadAll)
         :description="`${blockedReason}。请检查签约方和外发文本后重新提交。`"
         class="gap"
       />
-      <h3>
-        1. 文件信息
+      <section class="panel">
+      <h3><span class="section-number">1</span>
+        文件信息
         <el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button>
       </h3>
       <RequirementsDrawer
@@ -302,7 +304,7 @@ onMounted(loadAll)
         :doc-type="mainDocType"
         :user-note="task.user_note"
       />
-      <el-table :data="files" border size="small">
+      <el-table :data="files" size="small" class="compact-table">
         <el-table-column label="文件名" min-width="200">
           <template #default="{ row }">
             {{ row.original_name }}<el-tag v-if="row.is_main" size="small" class="tag">主文件</el-tag>
@@ -340,9 +342,11 @@ onMounted(loadAll)
         </el-table-column>
       </el-table>
 
-      <h3>2. 签约方确认</h3>
+      </section>
+      <section class="panel">
+      <h3><span class="section-number">2</span>签约方确认</h3>
       <p class="hint">请选择哪一方是“我方”（已按业务立场预选）；国家和类型可以修改，修改后会重新生成代号和外发文本。</p>
-      <el-table :data="parties" border size="small" :class="{ saving: savingParties }">
+      <el-table :data="parties" size="small" class="compact-table" :class="{ saving: savingParties }" :row-class-name="({ row }: { row: Party }) => row.is_our_party ? 'our-party' : ''">
         <el-table-column label="我方" width="70" align="center">
           <template #default="{ row }">
             <el-radio
@@ -355,8 +359,8 @@ onMounted(loadAll)
             </el-radio>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="真实名称" min-width="200" />
-        <el-table-column prop="code" label="代号" width="110" />
+        <el-table-column label="真实名称" min-width="200"><template #default="{ row }">{{ row.name }}<el-tag v-if="row.is_our_party" size="small" class="tag">我方</el-tag></template></el-table-column>
+        <el-table-column label="代号" width="110"><template #default="{ row }"><span class="party-code">{{ row.code }}</span></template></el-table-column>
         <el-table-column prop="role_label" label="角色" width="90" />
         <el-table-column label="国家" width="170">
           <template #default="{ row }">
@@ -407,16 +411,25 @@ onMounted(loadAll)
         class="gap"
       />
 
-      <h3>3. 脱敏摘要</h3>
+      </section>
+      <section class="panel">
+      <h3><span class="section-number">3</span>脱敏摘要</h3>
+      <div class="summary-stats">
+        <div v-for="([code, count]) in Object.entries(summary).filter(([, n]) => n > 0)" :key="code" class="stat"><div class="stat-label">{{ REDACTION_CATEGORY[code] ?? code }}</div><div class="stat-value">{{ count }}</div></div>
+      </div>
       <p class="summary">{{ summaryText }}</p>
-
+      </section>
+      <section class="panel">
       <h3>
-        4. 疑似遗漏<span v-if="pendingCount" class="pending">还有 {{ pendingCount }} 条未处理</span>
+        <span class="section-number">4</span>疑似遗漏<span v-if="pendingCount" class="pending">还有 {{ pendingCount }} 条未处理</span>
       </h3>
-      <SuspectList :suspects="suspects" :files="files" :busy="deciding" @decide="decideSuspect" />
+      <SuspectList :suspects="suspects" :files="files" :busy="deciding" :selected-loc="selectedSuspectLoc" @locate="selectedSuspectLoc = $event" @decide="decideSuspect" />
 
-      <h3>5. 手动补充</h3>
+      </section>
+      <section class="panel manual-panel">
+      <div><h3><span class="section-number">5</span>手动补充</h3>
       <p class="hint">识别遗漏的名称等信息，可以在原文中选中后设为敏感信息，相同的文字会在全文一并替换。</p>
+      </div>
       <el-button :disabled="loading" @click="manualOpen = true">在原文中选择</el-button>
       <ManualRedactDialog
         v-model="manualOpen"
@@ -426,23 +439,37 @@ onMounted(loadAll)
         @done="onManualDone"
         @stale="emit('stale')"
       />
-
-      <el-collapse :model-value="openPanels" class="gap" @change="onPanelChange">
-        <el-collapse-item title="6. 查看将发送的文本（只读，已用代号替换）" name="outbound">
+      </section>
+      <section class="panel">
+      <h3><span class="section-number">6</span>原文与外发文本对照</h3>
+      <el-collapse :model-value="openPanels" @change="onPanelChange">
+        <el-collapse-item title="查看将发送的文本（只读，已用代号替换）" name="outbound">
           <div v-loading="outboundLoading">
             <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
             <pre v-else class="outbound">{{ outboundText }}</pre>
           </div>
         </el-collapse-item>
-        <el-collapse-item :title="`7. 本地校验结果（${localCount ?? '—'} 条）`" name="local">
+      </el-collapse>
+      </section>
+      <section class="panel">
+      <h3><span class="section-number">7</span>本地校验结果<span class="hint">{{ localCount ?? '—' }} 条</span></h3>
+      <el-collapse>
+        <el-collapse-item title="展开本地校验结果" name="local">
           <LocalFindings :task-id="task.id" @count="localCount = $event" />
         </el-collapse-item>
       </el-collapse>
+      </section>
 
       <el-alert v-if="submitError" type="error" show-icon :closable="false" :title="submitError" class="gap" />
 
-      <div class="actions">
-        <span v-if="disabledReason" class="hint reason">{{ disabledReason }}</span>
+      <div class="confirm-actions">
+        <ul class="conditions" aria-label="提交条件" aria-live="polite">
+          <li :class="{ met: ourCount === 1 }">{{ ourCount === 1 ? '✓ 已选择我方' : !parties.length ? '未识别到签约方，暂时不能提交 AI 审核' : '请先选择哪一方是我方' }}</li>
+          <li :class="{ met: pendingCount === 0 }">{{ pendingCount === 0 ? '✓ 疑似遗漏已处理' : `疑似遗漏还有 ${pendingCount} 条未处理` }}</li>
+          <li v-if="savingParties || deciding">正在保存修改……</li>
+          <li v-if="loading">正在读取脱敏信息……</li>
+          <li v-if="disabledReason && ourCount === 1 && pendingCount === 0">{{ disabledReason }}</li>
+        </ul>
         <el-button
           type="primary"
           :disabled="!canConfirm"
@@ -458,9 +485,26 @@ onMounted(loadAll)
 
 <style scoped>
 h3 {
-  margin: 20px 0 8px;
-  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
 }
+.section-number { display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font-size: 14px; }
+.compact-table { border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); margin-top: 16px; }
+:deep(.our-party) { --el-table-tr-bg-color: var(--el-color-primary-light-9); }
+.party-code { background: var(--el-fill-color-light); border-radius: 16px; padding: 4px 8px; font-family: ui-monospace, Consolas, monospace; }
+.summary-stats { display: flex; flex-wrap: wrap; gap: 12px; }
+.summary-stats .stat { min-width: 100px; }
+.summary-stats + .summary { margin-top: 16px; }
+.manual-panel { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.manual-panel > .el-button { flex: none; }
+.confirm-actions { position: sticky; bottom: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 24px; margin-top: 16px; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); box-shadow: var(--el-box-shadow-light); }
+.confirm-actions > .el-button { height: 44px; flex: none; }
+.conditions { list-style: none; margin: 0; padding: 0; font-size: 13px; color: var(--el-color-warning); }
+.conditions .met { color: var(--el-text-color-regular); }
 .hint {
   margin: 2px 0;
 }
@@ -472,7 +516,10 @@ h3 {
   font-size: 13px;
 }
 .pending {
-  margin-left: 12px;
+  margin-left: auto;
+  background: var(--el-color-warning-light-9);
+  border-radius: 16px;
+  padding: 4px 12px;
   font-size: 13px;
   font-weight: normal;
   color: var(--el-color-warning);

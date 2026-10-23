@@ -4,9 +4,10 @@ import type { Suspect, UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
 import { USER_CATEGORY_OPTIONS, suspectReasonLabel, toOptions } from '@/utils/labels'
 
-const props = defineProps<{ suspects: Suspect[]; files: TaskFile[]; busy: boolean }>()
+const props = defineProps<{ suspects: Suspect[]; files: TaskFile[]; busy: boolean; selectedLoc?: string }>()
 const emit = defineEmits<{
   (e: 'decide', id: number, decision: 'replace' | 'ignore', category: UserCategory | null): void
+  (e: 'locate', loc: string): void
 }>()
 
 const categoryOptions = toOptions(USER_CATEGORY_OPTIONS)
@@ -48,9 +49,9 @@ function submitReplace() {
     <el-empty v-if="!suspects.length" description="未发现疑似遗漏" :image-size="48" />
 
     <template v-else>
-      <el-table :data="pending" border size="small" empty-text="疑似遗漏已全部处理">
+      <el-table :data="pending" size="small" class="suspect-table" empty-text="疑似遗漏已全部处理">
         <el-table-column label="位置" width="200">
-          <template #default="{ row }">{{ where(row) }}</template>
+          <template #default="{ row }"><el-button link type="primary" :aria-pressed="selectedLoc === row.loc" @click="emit('locate', row.loc)">{{ where(row) }}</el-button></template>
         </el-table-column>
         <el-table-column label="原因" width="170">
           <template #default="{ row }">{{ suspectReasonLabel(row.reason) }}</template>
@@ -70,7 +71,7 @@ function submitReplace() {
 
       <el-collapse v-if="ignored.length" v-model="showIgnored" class="gap">
         <el-collapse-item :title="`已忽略（${ignored.length}）`" name="ignored">
-          <el-table :data="ignored" border size="small">
+          <el-table :data="ignored" size="small" class="suspect-table">
             <el-table-column label="位置" width="200">
               <template #default="{ row }">{{ where(row) }}</template>
             </el-table-column>
@@ -106,6 +107,7 @@ function submitReplace() {
 </template>
 
 <style scoped>
+.suspect-table { border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
 .ctx {
   white-space: pre-wrap;
   word-break: break-all;
@@ -114,6 +116,8 @@ function submitReplace() {
 .hit {
   background: var(--el-color-warning-light-8);
   color: inherit;
+  border-radius: 4px;
+  padding: 0 4px;
 }
 p.ctx {
   margin: 0 0 12px;
