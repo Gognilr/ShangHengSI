@@ -38,5 +38,6 @@ chmod +x "$package/scripts/"*.sh
 if [ -f "$repo/docs/ops/运维说明.md" ]; then cp "$repo/docs/ops/运维说明.md" "$package/docs/"; else info '警告：M8-04 运维说明尚未生成'; fi
 printf '%s\n' "$version" > "$package/VERSION"
 (cd "$package" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS && sha256sum -c SHA256SUMS)
-tar -czf "$package.tar.gz" -C "$out" "aireview-$version"
+# M8-05：归档内属主统一为 root，避免以 root 解包时保留开发机的 uid（脚本会以 root 执行）。
+tar -czf "$package.tar.gz" --owner=0 --group=0 --numeric-owner -C "$out" "aireview-$version"
 info "发布包完成：$package.tar.gz"
