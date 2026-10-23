@@ -6,6 +6,8 @@
 
 ## 当前进度
 
+- Q-158 已由 Opus 决定（2026-10-23）：两处测试契约冲突按 design/R4.md 4.7、5.3 修订（R4-03 改写 test_precheck_also_covers_user_note 为篡改代号形式后仍 409，并把直接访问 Task.user_note 的既有测试换成新存储；R4-04 只在 test_unchanged_question_preview 期望中加入 "suspects": []）。下一步恢复 **R4-03（GPT-6.1 Sol，测试先行，xhigh）**，随后 R4-04，完成后按 Q-157 交 Opus 一并审核。
+
 - R4-02 已完成（2026-10-23，GPT-6.1 Sol，测试先行）：新增 find_bare_amounts 共用规则、紧邻左格金额提示，正文第 5 步与追问第 4 步接入；实现 b9fa3fe。设计 3.5 逐条测试、完整 golden、表格与既有追问定向 **302 passed**；整仓挂载 Docker 全量 **2108 passed、1 warning、exit 0**（413.55 秒），独立退出码已落盘重读。bare_amounts 原文未改，仅按设计移动标注（350万按明确要求标数字350）；recheck.py 未改。**用户决定：保留两条旧断言，R4-03 前停下交 Opus 决定（Q-158）**。冲突：test_runs_api.py 的 test_precheck_also_covers_user_note 仍要求补充说明原文被 409 拦截，新设计要求脱敏后发送；test_chat.py 的 test_unchanged_question_preview 精确断言旧响应，新设计要求新增 suspects，但 R4-04 限制测试只追加。两条旧测试均未修改；R4-03、R4-04 保持待执行。下一步由 **Opus，high** 决定测试契约冲突；解决后恢复 **R4-03（GPT-6.1 Sol，测试先行，xhigh）**，随后 R4-04，完成后按 Q-157 一并审核。未进入 R4-05 或 M8-02，暂停初稿保留。
 
 - R4-01 已完成（2026-10-23，GPT-6.1 Sol，测试先行）：机构标签、标签值结尾检查、正文机构疑似遗漏、简称及默认国家共用规则；实现 ef521c8。设计 2.7 的逐条用例、完整 golden 集与边界回归通过，新增测试首轮 7 failed / 3 passed，修复后定向 277 passed，补充标签与后缀测试 131 passed；整仓挂载 Docker 全量 **1939 passed、1 warning、exit 0**（420.08 秒），退出码已落盘重读。institutions_domestic 原文未改，仅按设计移动六条标注并追加两条 must_suspect。未新增 Q 项；暂停中的 M8-02 初稿未动。下一任务：**R4-02（GPT-6.1 Sol，测试先行，high）**，按授权直接继续；R4-04 后交 Opus 一并审核。
