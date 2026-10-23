@@ -407,7 +407,7 @@ ENUM_COLUMNS = {
     ("redaction_items", "detected_by"): [
         "term", "party", "alias", "regex", "amount", "person", "address", "user",
     ],
-    ("redaction_suspects", "reason"): ["org_suffix", "capitalized", "long_digits", "before_company"],
+    ("redaction_suspects", "reason"): ["org_suffix", "capitalized", "long_digits", "before_company", "person_name"],
     ("redaction_suspects", "decision"): ["pending", "replace", "ignore"],
     ("redaction_terms", "kind"): ["learned", "custom"],
     ("redaction_terms", "category"): ["ORG", "PERSON", "CUSTOM"],
