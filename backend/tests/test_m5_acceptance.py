@@ -131,7 +131,7 @@ def test_all_samples_verified_locations_coverage_and_requirement_identity(db_ses
             parts.update(part for _, part in excluded)
             stats["ocr_low_pages"] += sum(len(x["pages"]) for x in coverage["ocr_low"])
             assert ("未做跨分段的一致性检查" in joined) == (len(calls) > 1)
-            assert len(coverage["quote_tables"]) == len(ctx.quote_tables)
+            assert len(coverage["quote_tables"]) == sum(not t.detailed for t in ctx.quote_tables)
 
     assert {"header", "footer", "comment", "textbox", "hidden_sheet"} <= parts
     assert stats["samples"] >= 26 and stats["chunked_runs"] > 0

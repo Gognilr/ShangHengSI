@@ -36,11 +36,11 @@ def test_docx_quote_table():
     assert t.rows == 3
     assert t.currencies == ["USD"]
     assert t.products == ["煅后石油焦", "针状焦"]
-    # 表头行至最后一个数据行整表替换；合计行照常逐格发送
+    # detailed 表先输出表级说明，再逐格输出；超过 200 行才整表汇总，合计行照常逐格发送。
     assert "F1-T2-R4-C5" in t.row_locs and "F1-T2-R1-C2" in t.row_locs
     assert not any(loc.startswith("F1-T2-R5") for loc in t.row_locs)
     assert len(t.row_locs) == 4 * 5
-    assert summary_text(t) == "【报价明细表：共 3 行，币种 USD，产品：煅后石油焦等 2 种】"
+    assert summary_text(t) == "【报价明细表：共 3 行，币种 USD；明细逐格列在下方】"
 
 
 def test_pdf_quote_table():
@@ -117,7 +117,8 @@ def test_products_use_redacted_text_and_dedupe():
     red["F1-T1-R4-C2"] = "煅后石油焦"
     (t,) = find_quote_tables(nodes, red)
     assert t.products == ["煅后石油焦 （低硫）", "针状焦", "煅后石油焦"]
-    assert summary_text(t).endswith("产品：煅后石油焦 （低硫）等 3 种】")
+    assert t.products[0] == '煅后石油焦 （低硫）' and len(t.products) == 3
+    assert '产品：' not in summary_text(t) and summary_text(t).endswith('；明细逐格列在下方】')
 
 
 def test_product_column_headers():
@@ -140,7 +141,7 @@ def test_no_product_column():
     nodes = docx_table("F1-T1", rows)
     (t,) = find_quote_tables(nodes, redacted_of(nodes))
     assert t.products == []
-    assert summary_text(t) == "【报价明细表：共 3 行，币种 USD】"
+    assert summary_text(t) == "【报价明细表：共 3 行，币种 USD；明细逐格列在下方】"
 
 
 def test_currencies_order_and_dedupe():
@@ -166,7 +167,7 @@ def test_currency_unknown():
     nodes = docx_table("F1-T1", rows)
     (t,) = find_quote_tables(nodes, redacted_of(nodes))
     assert t.currencies == []
-    assert summary_text(t) == "【报价明细表：共 3 行，币种未知，产品：A等 3 种】"
+    assert summary_text(t) == "【报价明细表：共 3 行，币种未知；明细逐格列在下方】"
 
 
 def test_summary_text_formats():
@@ -177,6 +178,8 @@ def test_summary_text_formats():
         "【报价明细表：共 12 行，币种 USD，产品：油系针状焦】"
     assert summary_text(QuoteTable(**base, currencies=[], products=[])) == "【报价明细表：共 12 行，币种未知】"
     assert summary_text(QuoteTable(**base, currencies=["USD", "EUR"], products=[])) == "【报价明细表：共 12 行，币种 USD、EUR】"
+    assert summary_text(QuoteTable(**base, currencies=['USD'], products=['虚构产品'], detailed=True), '金额计算一致') == \
+        '【报价明细表：共 12 行，币种 USD，本地校验：金额计算一致；明细逐格列在下方】'
 
 
 def test_non_table_nodes_ignored():

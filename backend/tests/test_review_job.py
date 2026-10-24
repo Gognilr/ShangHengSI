@@ -604,6 +604,6 @@ def test_q72_finding_on_quote_summary_line(db_sessionmaker, owner, ready_task, l
         assert len(tables) == 1 and f.locs == [tables[0].first_loc]
         assert f.cite_status == "verified" and crypto.decrypt_text(f.quote_snapshot_enc).startswith("【报价明细表")
         stored_run = db.get(ReviewRun, run.id)
-        assert stored_run.coverage["quote_tables"] == [{"file": 1, "loc": tables[0].loc, "rows": tables[0].rows}]
+        assert stored_run.coverage["quote_tables"] == []
         detail = service.run_detail(db, stored_run)
-        assert any("报价明细表共 3 行，只把汇总信息发给 AI" in note for note in detail.coverage["notes"])
+        assert not any("报价明细表" in note for note in detail.coverage["notes"])
