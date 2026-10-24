@@ -1,0 +1,6808 @@
+{
+  "schema": 1,
+  "samples_sha256": "e775e7890b555c305880130a4279790bc3203a2c7773fa045c866daee81e91d8",
+  "policy": "不传入已替换文本；以等长空白遮盖，保留字符位置；严格同类别、同起止位置算实体召回，覆盖率另列；部分规则重叠单列，不计入完整残余实体。",
+  "records": [
+    {
+      "id": "letter-cn",
+      "origin": "narrative",
+      "split": "calibration",
+      "text": "致海岚研究中心：沈澈宁已核对检验安排。请把纸质记录寄往江苏省南京市江宁区星澜路 27 号 3 栋 502 室。澄野实验室将于下周提供样品，复核由罗映秋完成。交货期限为 30 天，硫含量不超过 0.6%，本函不改变原付款安排。",
+      "input": "致海岚研究中心：沈澈宁已核对检验安排。请把纸                       3 栋 502 室。澄野实验室将于下周提供样品，复核由罗映秋完成。交货期限为 30 天，硫含量不超过 0.6%，本函不改变原付款安排。",
+      "expected": [
+        [
+          1,
+          7,
+          "ORG"
+        ],
+        [
+          8,
+          11,
+          "PERSON"
+        ],
+        [
+          55,
+          60,
+          "ORG"
+        ],
+        [
+          72,
+          75,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [
+        [
+          27,
+          54,
+          "ADDR"
+        ]
+      ],
+      "keep": [
+        [
+          84,
+          88
+        ],
+        [
+          96,
+          100
+        ],
+        [
+          101,
+          111
+        ]
+      ],
+      "rule_occupied": [
+        [
+          22,
+          44
+        ]
+      ]
+    },
+    {
+      "id": "minutes-cn",
+      "origin": "narrative",
+      "split": "calibration",
+      "text": "会议纪要：岚川材料研究站与星穗检测联盟交换了验收意见。许沐青整理了问题清单，陶砚舟核对了附件。现场沟通地点为浙江省杭州市余杭区云棠街 66 号。会议明确，项目周期为 90 天，任何一方提出异议应书面通知，不能将进度讨论理解为验收合格。",
+      "input": "会议纪要：岚川材料研究站与星穗检测联盟交换了验收意见。许沐青整理了问题清单，陶砚舟核对了附件。现场                      。会议明确，项目周期为 90 天，任何一方提出异议应书面通知，不能将进度讨论理解为验收合格。",
+      "expected": [
+        [
+          5,
+          12,
+          "ORG"
+        ],
+        [
+          13,
+          19,
+          "ORG"
+        ],
+        [
+          27,
+          30,
+          "PERSON"
+        ],
+        [
+          38,
+          41,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          77,
+          81
+        ],
+        [
+          83,
+          87
+        ],
+        [
+          88,
+          101
+        ]
+      ],
+      "rule_occupied": [
+        [
+          49,
+          71
+        ]
+      ]
+    },
+    {
+      "id": "claim-cn",
+      "origin": "narrative",
+      "split": "calibration",
+      "text": "索赔说明由季闻溪提交，柏知遥负责提供运输记录。松汀质量协作组收到货损照片后，安排清岚技术工作室核对包装。退回样品的接收地址为湖北省武汉市洪山区苇晴路 19 号。损失原因尚需查明；付款比例为 30%，不能直接视为违约金比例。",
+      "input": "索赔说明由季闻溪提交，柏知遥负责提供运输记录。松汀质量协作组收到货损照片后，安排清岚技术工作室核对包装。退回样品的                      。损失原因尚需查明；付款比例为 30%，不能直接视为违约金比例。",
+      "expected": [
+        [
+          5,
+          8,
+          "PERSON"
+        ],
+        [
+          11,
+          14,
+          "PERSON"
+        ],
+        [
+          23,
+          30,
+          "ORG"
+        ],
+        [
+          40,
+          47,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          80,
+          88
+        ],
+        [
+          95,
+          98
+        ],
+        [
+          105,
+          110
+        ]
+      ],
+      "rule_occupied": [
+        [
+          57,
+          79
+        ]
+      ]
+    },
+    {
+      "id": "mail-en",
+      "origin": "narrative",
+      "split": "calibration",
+      "text": "Nora Vale reviewed the inspection notes for Aster Vale Research. Elias Rowan will send the signed checklist to 27 Cedar Quay, Suite 405, Bristol, United Kingdom. Northmere Materials Lab requested a second inspection. The goods are calcined petroleum coke, with a delivery period of 30 days. FOB Qingdao Port and the 0.6% sulfur limit remain unchanged.",
+      "input": "Nora Vale reviewed the inspection notes for Aster Vale Research. Elias Rowan will send the signed checklist to 27 Cedar Quay, Suite 405, Bristol, United Kingdom. Northmere Materials Lab requested a second inspection. The goods are calcined petroleum coke, with a delivery period of 30 days. FOB Qingdao Port and the 0.6% sulfur limit remain unchanged.",
+      "expected": [
+        [
+          0,
+          9,
+          "PERSON"
+        ],
+        [
+          44,
+          63,
+          "ORG"
+        ],
+        [
+          65,
+          76,
+          "PERSON"
+        ],
+        [
+          111,
+          160,
+          "ADDR"
+        ],
+        [
+          162,
+          185,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          231,
+          254
+        ],
+        [
+          282,
+          289
+        ],
+        [
+          291,
+          307
+        ],
+        [
+          316,
+          320
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "legal-cn",
+      "origin": "narrative",
+      "split": "holdout",
+      "text": "关于证据交换，程晚棠确认已收到提交材料，苏砚澄另行补充了签收记录。云棣争议调解中心建议由衡岚技术评估所核对数据。文书送达至四川省成都市武侯区晴杉巷 108 号。适用中华人民共和国法律，双方同意按本合同执行；黄金价格表示上涨不构成单方调价依据。",
+      "input": "关于证据交换，程晚棠确认已收到提交材料，苏砚澄另行补充了签收记录。云棣争议调解中心建议由衡岚技术评估所核对数据。文书送达至                  。适用中华人民共和国法律，双方同意按本合同执行；黄金价格表示上涨不构成单方调价依据。",
+      "expected": [
+        [
+          7,
+          10,
+          "PERSON"
+        ],
+        [
+          20,
+          23,
+          "PERSON"
+        ],
+        [
+          33,
+          41,
+          "ORG"
+        ],
+        [
+          44,
+          51,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          80,
+          91
+        ],
+        [
+          92,
+          102
+        ],
+        [
+          103,
+          111
+        ]
+      ],
+      "rule_occupied": [
+        [
+          61,
+          79
+        ]
+      ]
+    },
+    {
+      "id": "handover-cn",
+      "origin": "narrative",
+      "split": "holdout",
+      "text": "交接时，郑栖禾记录了全部批次，邵清弦复核了计量结果。景汐设备服务站与芦洲检验联络处共同签收了清单。后续资料寄送山东省青岛市崂山区松澜大道 216 号。规格为 6-25mm，数量 500 MT，交期另行协商。高于市场价格的部分由买方承担。",
+      "input": "交接时，郑栖禾记录了全部批次，邵清弦复核了计量结果。景汐设备服务站与芦洲检验联络处共同签收了清单。后                        。规格为 6-25mm，数量 500 MT，交期另行协商。高于市场价格的部分由买方承担。",
+      "expected": [
+        [
+          4,
+          7,
+          "PERSON"
+        ],
+        [
+          15,
+          18,
+          "PERSON"
+        ],
+        [
+          26,
+          33,
+          "ORG"
+        ],
+        [
+          34,
+          41,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          79,
+          85
+        ],
+        [
+          89,
+          95
+        ],
+        [
+          96,
+          102
+        ],
+        [
+          103,
+          117
+        ]
+      ],
+      "rule_occupied": [
+        [
+          50,
+          74
+        ]
+      ]
+    },
+    {
+      "id": "notice-cn",
+      "origin": "narrative",
+      "split": "holdout",
+      "text": "履约通知已经潘予安核对，贺溪桥随后提交了修订表。晴川工程协调组要求青榆现场服务中心按时移交档案。存放地点为广东省广州市黄埔区映荷路 73 号。我们周五前回复，常规要求见第三条；文件说明见附件二，本合同项目名称为虚构工程。",
+      "input": "履约通知已经潘予安核对，贺溪桥随后提交了修订表。晴川工程协调组要求青榆现场服务中心按时移交档案。                      。我们周五前回复，常规要求见第三条；文件说明见附件二，本合同项目名称为虚构工程。",
+      "expected": [
+        [
+          6,
+          9,
+          "PERSON"
+        ],
+        [
+          12,
+          15,
+          "PERSON"
+        ],
+        [
+          24,
+          31,
+          "ORG"
+        ],
+        [
+          33,
+          41,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          71,
+          78
+        ],
+        [
+          79,
+          87
+        ],
+        [
+          88,
+          96
+        ],
+        [
+          97,
+          109
+        ]
+      ],
+      "rule_occupied": [
+        [
+          48,
+          70
+        ]
+      ]
+    },
+    {
+      "id": "minutes-en",
+      "origin": "narrative",
+      "split": "holdout",
+      "text": "Mira Fenwick completed the review for Silvermere Quality Council. Owen Ashford confirmed that Bracken Vale Research would inspect the retained sample. Please send the archive to 84 Alder Lane, Floor 2, Leeds, United Kingdom. The contract allows a 5% tolerance. CIF Jebel Ali Port, HS 27131100, and the agreed payment period are unchanged.",
+      "input": "Mira Fenwick completed the review for Silvermere Quality Council. Owen Ashford confirmed that Bracken Vale Research would inspect the retained sample. Please send the archive to 84 Alder Lane, Floor 2, Leeds, United Kingdom. The contract allows a 5% tolerance. CIF Jebel Ali Port, HS 27131100, and the agreed payment period are unchanged.",
+      "expected": [
+        [
+          0,
+          12,
+          "PERSON"
+        ],
+        [
+          38,
+          64,
+          "ORG"
+        ],
+        [
+          66,
+          78,
+          "PERSON"
+        ],
+        [
+          94,
+          115,
+          "ORG"
+        ],
+        [
+          178,
+          223,
+          "ADDR"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          247,
+          249
+        ],
+        [
+          261,
+          279
+        ],
+        [
+          281,
+          292
+        ],
+        [
+          298,
+          323
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "alias_broad_suffix:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "承诺书",
+      "input": "承诺书",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "alias_broad_suffix:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "致：青岚虚构石化股份有限公司",
+      "input": "致：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          2,
+          14
+        ]
+      ]
+    },
+    {
+      "id": "alias_broad_suffix:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "我单位对于所申请的示例通信集团公司（以下简称“示例通信”）的入网资质承诺如下：",
+      "input": "我单位对于所申请的        （以下简称“    ”）的入网资质承诺如下：",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          9
+        ],
+        [
+          29,
+          38
+        ]
+      ],
+      "rule_occupied": [
+        [
+          9,
+          17
+        ],
+        [
+          23,
+          27
+        ]
+      ]
+    },
+    {
+      "id": "alias_broad_suffix:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "一、示例通信已取得相关许可，示例通信的技术人员均持证上岗。",
+      "input": "一、    已取得相关许可，    的技术人员均持证上岗。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          6,
+          13
+        ],
+        [
+          18,
+          28
+        ]
+      ],
+      "rule_occupied": [
+        [
+          2,
+          6
+        ],
+        [
+          14,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "alias_broad_suffix:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "二、配套设备由远山虚构机械厂（下称“远山厂”）生产，远山厂对设备质量负责。",
+      "input": "二、配套设备由       （下称“   ”）生产，   对设备质量负责。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          2,
+          7
+        ],
+        [
+          29,
+          36
+        ]
+      ],
+      "rule_occupied": [
+        [
+          7,
+          14
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          26,
+          29
+        ]
+      ]
+    },
+    {
+      "id": "alias_broad_suffix:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "三、本公司（以下简称“我方”）保证所提供材料真实有效。",
+      "input": "三、本公司（以下简称“我方”）保证所提供材料真实有效。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          2,
+          15
+        ],
+        [
+          15,
+          26
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "alias_broad_suffix:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "四、安装由示例科技公司负责。",
+      "input": "四、安装由示例科技公司负责。",
+      "expected": [
+        [
+          5,
+          11,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "alias_broad_suffix:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "承诺单位：北辰虚构信息技术有限公司",
+      "input": "承诺单位：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "bank_label:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同编号：HX26-KH052",
+      "input": "合同编号：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "bank_label:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：【青岚虚构石化股份有限公司】",
+      "input": "甲方：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "bank_label:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方：【远川虚构通信技术有限公司】",
+      "input": "乙方：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "bank_label:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方开户信息",
+      "input": "乙方开户信息",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "bank_label:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "开户银行：【示例行虚构高新技术园区支行】",
+      "input": "开户银行：【             】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          6,
+          19
+        ]
+      ]
+    },
+    {
+      "id": "bank_label:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "账号：【 3700 1842 5010 5000 9921 】",
+      "input": "账号：【                          】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          29
+        ]
+      ]
+    },
+    {
+      "id": "bank_label:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收款银行：虚构农村商业银行城东分理处",
+      "input": "收款银行：             ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "bank_label:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "开户行：见附件",
+      "input": "开户行：见附件",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          7
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "bank_label:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方应将合同款项汇入示例行虚构高新技术园区支行，以银行到账日为付款日。",
+      "input": "甲方应将合同款项汇入             ，以银行到账日为付款日。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          10
+        ],
+        [
+          24,
+          34
+        ]
+      ],
+      "rule_occupied": [
+        [
+          10,
+          23
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：青岚虚构石化股份有限公司",
+      "input": "甲方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方：澄川虚构信息技术有限公司",
+      "input": "乙方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同总价：125000，分两期支付。",
+      "input": "合同总价：      ，分两期支付。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          11
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "预计采购额约 350万。",
+      "input": "预计采购额约    万。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          7,
+          10
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同金额（元）：86,400.00",
+      "input": "合同金额（元）：         ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          8,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "预付款：37500，尾款于验收后 30 天内支付。",
+      "input": "预付款：     ，尾款于验收后 30 天内支付。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          10,
+          24
+        ]
+      ],
+      "rule_occupied": [
+        [
+          4,
+          9
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "单价：1280",
+      "input": "单价：    ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合计：12 台",
+      "input": "合计：12 台",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          7
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "bare_amounts:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "预付款 30%，于 2026年5月10日前支付。",
+      "input": "预付款 30%，于 2026年5月10日前支付。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          7
+        ],
+        [
+          10,
+          20
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "bare_amounts:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "第 3 条 金额以本合同为准。",
+      "input": "第 3 条 金额以本合同为准。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          14
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "bare_amounts:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "质保金为合同总价的 5%。",
+      "input": "质保金为合同总价的 5%。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          12
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "bare_amounts:F1-T1-R1-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "项目",
+      "input": "项目",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "bare_amounts:F1-T1-R1-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "内容",
+      "input": "内容",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "bare_amounts:F1-T1-R2-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同总价（元）",
+      "input": "合同总价（元）",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "bare_amounts:F1-T1-R2-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "125000",
+      "input": "      ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          6
+        ]
+      ]
+    },
+    {
+      "id": "bare_amounts:F1-T1-R3-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "交货期（天）",
+      "input": "交货期（天）",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "bare_amounts:F1-T1-R3-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "60",
+      "input": "60",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          2
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "branch_names:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同编号：HX26-FG031",
+      "input": "合同编号：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "branch_names:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：【青岚虚构石化股份有限公司】",
+      "input": "甲方：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "branch_names:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方：【恒岳虚构集团山东有限公司德州分公司】",
+      "input": "乙方：【                 】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          21
+        ]
+      ]
+    },
+    {
+      "id": "branch_names:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "开户行：【远川虚构商业银行股份有限公司示例路支行】",
+      "input": "开户行：【                   】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          24
+        ]
+      ]
+    },
+    {
+      "id": "branch_names:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "账号：【 3700 1842 5010 5000 6612 】",
+      "input": "账号：【                          】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          29
+        ]
+      ]
+    },
+    {
+      "id": "branch_names:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方委托乙方提供设备维保服务，乙方应在接到通知后 24 小时内到场。",
+      "input": "甲方委托乙方提供设备维保服务，乙方应在接到通知后 24 小时内到场。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          14
+        ],
+        [
+          25,
+          33
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "branch_names:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本合同由青岚虚构石化股份有限公司与恒岳虚构集团山东有限公司德州分公司共同签署，一式【4】份。",
+      "input": "本合同由            与                 共同签署，一式【4】份。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          4
+        ],
+        [
+          34,
+          38
+        ],
+        [
+          39,
+          45
+        ]
+      ],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ],
+        [
+          17,
+          34
+        ]
+      ]
+    },
+    {
+      "id": "branch_names:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "运输由北辰虚构物流有限公司（以下简称“北辰物流”）负责，北辰物流应在 3 日内送达。",
+      "input": "运输由          （以下简称“    ”）负责，    应在 3 日内送达。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ],
+        [
+          13,
+          19
+        ],
+        [
+          25,
+          27
+        ],
+        [
+          35,
+          41
+        ]
+      ],
+      "rule_occupied": [
+        [
+          3,
+          13
+        ],
+        [
+          19,
+          23
+        ],
+        [
+          28,
+          32
+        ]
+      ]
+    },
+    {
+      "id": "branch_names:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "维保款项由甲方汇入远川虚构商业银行股份有限公司示例路支行。",
+      "input": "维保款项由甲方汇入                   。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          9
+        ]
+      ],
+      "rule_occupied": [
+        [
+          9,
+          28
+        ]
+      ]
+    },
+    {
+      "id": "cn_address_unlabeled:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：青岚虚构石化股份有限公司",
+      "input": "甲方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "cn_address_unlabeled:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "货物运至江苏省南京市江宁区虚构路 88 号 3 号仓库。",
+      "input": "货物运至                  3 号仓库。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          21
+        ]
+      ]
+    },
+    {
+      "id": "cn_address_unlabeled:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方在东川市虚构区示例大道 1200 号设立现场办公室。",
+      "input": "乙方在                 设立现场办公室。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "cn_address_unlabeled:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本合同在北京市签订。",
+      "input": "本合同在北京市签订。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          9
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "cn_address_unlabeled:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "交货地点为青岛港。",
+      "input": "交货地点为青岛港。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          8
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "销售合同 / Sales Contract",
+      "input": "销售合同 / Sales Contract",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同编号：SC-2026-0417",
+      "input": "合同编号：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "签订日期：2026年4月17日",
+      "input": "签订日期：2026年4月17日",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          5,
+          15
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "卖方：北辰虚构新材料有限公司（以下简称“北辰公司”）",
+      "input": "卖方：           （以下简称“    ”）",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          14
+        ],
+        [
+          20,
+          24
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "注册地址：北京市朝阳区示例大街 18 号院 3 号楼",
+      "input": "注册地址：                     ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          26
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "统一社会信用代码：91110000MA01XYQABC",
+      "input": "统一社会信用代码：                  ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          9,
+          27
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "电话：13900001234，010-87654321",
+      "input": "电话：           ，            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          14
+        ],
+        [
+          15,
+          27
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "邮箱：sales@beichen-example.com",
+      "input": "邮箱：                         ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          28
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人：陈示例经理",
+      "input": "联系人：   经理",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "买方：Orion Fictive Trading L.L.C.（hereinafter referred to as \"Orion\"）",
+      "input": "买方：                            （hereinafter referred to as \"     \"）",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          31
+        ],
+        [
+          60,
+          65
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Address: Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates",
+      "input": "Address:                                                                     ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          9,
+          77
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Tel: +971 4 555 0123",
+      "input": "Tel:                ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Attn: Ms. Layla Example",
+      "input": "Attn: Ms.              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          10,
+          23
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "第1条 货物",
+      "input": "第1条 货物",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "货物为针状石油焦，HS 编码 27131100，硫含量≤0.6%，灰分≤0.2%，粒度 6-25mm，数量 500 MT，允许溢短装 ±5%。",
+      "input": "货物为针状石油焦，HS 编码 27131100，硫含量≤0.6%，灰分≤0.2%，粒度 6-25mm，数量 500 MT，允许溢短装 ±5%。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          8
+        ],
+        [
+          15,
+          23
+        ],
+        [
+          24,
+          32
+        ],
+        [
+          33,
+          40
+        ],
+        [
+          44,
+          50
+        ],
+        [
+          54,
+          60
+        ],
+        [
+          67,
+          70
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P16",
+      "origin": "golden",
+      "split": "regression",
+      "text": "第2条 价格与付款",
+      "input": "第2条 价格与付款",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P17",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2.1 单价为 USD 1,250.00/MT FOB Qingdao Port，合同总价 USD 625,000.00。",
+      "input": "2.1 单价为 USD         /MT FOB Qingdao Port，合同总价 USD           。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          8,
+          11
+        ],
+        [
+          24,
+          40
+        ],
+        [
+          46,
+          49
+        ]
+      ],
+      "rule_occupied": [
+        [
+          12,
+          20
+        ],
+        [
+          50,
+          60
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P18",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2.2 买方应在提单日后 30 天内以 T/T 方式付款，预付款为合同总价的 30%，即 USD 187,500.00。",
+      "input": "2.2 买方应在提单日后 30 天内以 T/T 方式付款，预付款为合同总价的 30%，即 USD           。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          13,
+          17
+        ],
+        [
+          39,
+          42
+        ],
+        [
+          45,
+          48
+        ]
+      ],
+      "rule_occupied": [
+        [
+          49,
+          59
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P19",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2.3 人民币参考价：人民币 4,500,000.00 元（大写：肆佰伍拾万元整）。",
+      "input": "2.3 人民币参考价：人民币              元（大写：       ）。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          15,
+          27
+        ],
+        [
+          33,
+          40
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P20",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2.4 Beneficiary Bank: Fictive Commercial Bank Ltd.",
+      "input": "2.4 Beneficiary Bank:                             ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          22,
+          50
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P21",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2.5 收款账号：6222 0000 1111 2222 333，SWIFT: FCBKCNBJ300",
+      "input": "2.5 收款账号：                       ，SWIFT:            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          9,
+          32
+        ],
+        [
+          40,
+          51
+        ]
+      ]
+    },
+    {
+      "id": "contract:F1-P22",
+      "origin": "golden",
+      "split": "regression",
+      "text": "第3条 交货",
+      "input": "第3条 交货",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P23",
+      "origin": "golden",
+      "split": "regression",
+      "text": "货物检验由 Meridian Fictive Inspection 负责，检验费用由卖方承担。",
+      "input": "货物检验由 Meridian Fictive Inspection 负责，检验费用由卖方承担。",
+      "expected": [
+        [
+          6,
+          33,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          37,
+          46
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P24",
+      "origin": "golden",
+      "split": "regression",
+      "text": "装运港为青岛港，目的港为 Jebel Ali Port，最迟装运日期为 2026年6月30日，贸易术语为 FOB。",
+      "input": "装运港为青岛港，目的港为 Jebel Ali Port，最迟装运日期为 2026年6月30日，贸易术语为 FOB。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          4,
+          7
+        ],
+        [
+          13,
+          27
+        ],
+        [
+          36,
+          46
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P25",
+      "origin": "golden",
+      "split": "regression",
+      "text": "第4条 违约责任",
+      "input": "第4条 违约责任",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P26",
+      "origin": "golden",
+      "split": "regression",
+      "text": "逾期交货的，每逾期一周按延迟交货部分货款的 0.5% 向买方支付违约金，最高不超过 5%。",
+      "input": "逾期交货的，每逾期一周按延迟交货部分货款的 0.5% 向买方支付违约金，最高不超过 5%。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          22,
+          26
+        ],
+        [
+          36,
+          44
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P27",
+      "origin": "golden",
+      "split": "regression",
+      "text": "第5条 适用法律与争议解决",
+      "input": "第5条 适用法律与争议解决",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "contract:F1-P28",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本合同适用中华人民共和国法律，争议提交上海国际仲裁中心仲裁。",
+      "input": "本合同适用中华人民共和国法律，争议提交上海国际仲裁中心仲裁。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          14
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "fill_brackets:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同编号：【  HX26-JK077 】",
+      "input": "合同编号：【             】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          8,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：【青岚虚构石化股份有限公司】",
+      "input": "甲方：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方：【远川虚构通信技术有限公司】",
+      "input": "乙方：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "签订地：【山东省示例县】",
+      "input": "签订地：【山东省示例县】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "fill_brackets:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "第一条  合同双方当事人",
+      "input": "第一条  合同双方当事人",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "fill_brackets:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "法定代表人：【郑虚构】",
+      "input": "法定代表人：【   】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          7,
+          10
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "法定地址：【山东省示例县城示例路 18 号】",
+      "input": "法定地址：【               】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          6,
+          21
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "法定代表人：【 柳示例 】",
+      "input": "法定代表人：【     】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          8,
+          11
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1. 本合同固定总价为：人民币【312500】元（含税）（大写：人民币【叁拾壹万贰仟伍佰】元整），其中设备款￥【 250000 】，服务款【62500】元。",
+      "input": "1. 本合同固定总价为：人民币【      】元（含税）（大写：人民币【        】元整），其中设备款￥【        】，服务款【     】元。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          16,
+          22
+        ],
+        [
+          36,
+          44
+        ],
+        [
+          57,
+          63
+        ],
+        [
+          70,
+          75
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同价款分【4】期支付。第【1】期在【合同签订后】15日内，由甲方向乙方支付合同总价的【30】％，即人民币【93750】元（大写：人民币【玖万叁仟柒佰伍拾元】整）；第【4】期支付合同总价的【10】％，即人民币【31250】元。",
+      "input": "合同价款分【4】期支付。第【1】期在【合同签订后】15日内，由甲方向乙方支付合同总价的【30】％，即人民币【     】元（大写：人民币【         】整）；第【4】期支付合同总价的【10】％，即人民币【     】元。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          12,
+          17
+        ],
+        [
+          18,
+          25
+        ],
+        [
+          25,
+          29
+        ],
+        [
+          43,
+          48
+        ],
+        [
+          82,
+          87
+        ],
+        [
+          94,
+          99
+        ]
+      ],
+      "rule_occupied": [
+        [
+          54,
+          59
+        ],
+        [
+          69,
+          78
+        ],
+        [
+          105,
+          110
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "如乙方逾期，每逾期【1】日，应按合同金额的【0.5】%支付违约金；一方违反保密约定，应支付合同总价【20】%的违约金。",
+      "input": "如乙方逾期，每逾期【1】日，应按合同金额的【0.5】%支付违约金；一方违反保密约定，应支付合同总价【20】%的违约金。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          21,
+          27
+        ],
+        [
+          49,
+          54
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "fill_brackets:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方名称：【远川虚构通信技术有限公司】",
+      "input": "乙方名称：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          6,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "国税纳税人识别号：【91370000MA3CXY812K】",
+      "input": "国税纳税人识别号：【                  】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          10,
+          28
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "开户行：【虚构商业银行股份有限公司】",
+      "input": "开户行：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "账号：【 3700 1842 5010 5000 7788 】",
+      "input": "账号：【                          】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          29
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P16",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系电话：【0531-6612345】",
+      "input": "联系电话：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          6,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "fill_brackets:F1-P17",
+      "origin": "golden",
+      "split": "regression",
+      "text": "发往国内其他地区的，发出后第【3】日视为送达；本合同一式【4】份，双方各执【2】份。",
+      "input": "发往国内其他地区的，发出后第【3】日视为送达；本合同一式【4】份，双方各执【2】份。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          13,
+          18
+        ],
+        [
+          26,
+          32
+        ],
+        [
+          35,
+          41
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "fill_brackets:F1-P18",
+      "origin": "golden",
+      "split": "regression",
+      "text": "如协商不成，提交至【示例市】仲裁委员会仲裁。",
+      "input": "如协商不成，提交至【示例市】仲裁委员会仲裁。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "fill_brackets:F1-P19",
+      "origin": "golden",
+      "split": "regression",
+      "text": "日期：【2026】年【3】月【18】日",
+      "input": "日期：【2026】年【3】月【18】日",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          19
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "foreign_suffixes:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Buyer: Anadolu Fictive Kimya Sanayi ve Ticaret A.Ş.",
+      "input": "Buyer:                                             ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          7,
+          51
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Consignee: ООО «Ромашка Фиктив»",
+      "input": "Consignee:                     ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          11,
+          31
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Notify Party: Wisla Fictive Trading Sp. z o.o.",
+      "input": "Notify Party:                                 ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          14,
+          46
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Agent: Vltava Fictive Logistics s.r.o.",
+      "input": "Agent:                                ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          7,
+          38
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Supplier: Duna Fictive Chemicals Kft.",
+      "input": "Supplier:                            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          10,
+          37
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Bank: Gulf Fictive Trading Co. W.L.L.",
+      "input": "Bank:                                ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          6,
+          37
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Distributor: Lumiere Fictive Industries SARL",
+      "input": "Distributor:                                ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          13,
+          44
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Partner: Tevere Fictive Impianti S.p.A.",
+      "input": "Partner:                               ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          9,
+          39
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Importer: PT Nusantara Fictive Kimia",
+      "input": "Importer:                           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          10,
+          36
+        ]
+      ]
+    },
+    {
+      "id": "foreign_suffixes:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "The goods shall be packed in jumbo bags.",
+      "input": "The goods shall be packed in jumbo bags.",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          40
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "询价函 / Request for Quotation",
+      "input": "询价函 / Request for Quotation",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "买方：万象虚构贸易有限公司",
+      "input": "买方：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          13
+        ]
+      ]
+    },
+    {
+      "id": "inquiry:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Supplier: Lumen Placeholder Chemicals Inc.",
+      "input": "Supplier:                                 ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          10,
+          42
+        ]
+      ]
+    },
+    {
+      "id": "inquiry:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "我司拟采购下列产品，诚邀贵司报价。We would like to request your best offer for the following:",
+      "input": "我司拟采购下列产品，诚邀贵司报价。We would like to request your best offer for the following:",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Item: 煅后石油焦 (Calcined Petroleum Coke)",
+      "input": "Item: 煅后石油焦 (Calcined Petroleum Coke)",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          6,
+          11
+        ],
+        [
+          13,
+          36
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Specification: Sulfur ≤0.7%, Volatile matter ≤0.5%, Size 0-3mm",
+      "input": "Specification: Sulfur ≤0.7%, Volatile matter ≤0.5%, Size 0-3mm",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          15,
+          27
+        ],
+        [
+          29,
+          50
+        ],
+        [
+          52,
+          62
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Quantity: 1,000 MT per month, 12 months",
+      "input": "Quantity: 1,000 MT per month, 12 months",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          10,
+          28
+        ],
+        [
+          30,
+          39
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "目标价格：不高于 USD 700/MT CFR Mumbai",
+      "input": "目标价格：不高于 USD    /MT CFR Mumbai",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          9,
+          12
+        ],
+        [
+          20,
+          30
+        ]
+      ],
+      "rule_occupied": [
+        [
+          13,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "inquiry:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Delivery: Shipment in August 2026, Port of discharge: Mumbai, India",
+      "input": "Delivery: Shipment in August 2026, Port of discharge: Mumbai, India",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          22,
+          33
+        ],
+        [
+          54,
+          67
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "请在 2026年7月20日前回复，报价有效期不少于 30 天。",
+      "input": "请在 2026年7月20日前回复，报价有效期不少于 30 天。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          13
+        ],
+        [
+          22,
+          30
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Contact Tel: +86 21 6000 1234",
+      "input": "Contact Tel:                 ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          13,
+          29
+        ]
+      ]
+    },
+    {
+      "id": "inquiry:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人：刘示例",
+      "input": "联系人：   ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "inquiry:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Address: 88 Example Road, Pune, India",
+      "input": "Address:                             ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          9,
+          37
+        ]
+      ]
+    },
+    {
+      "id": "inquiry:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Email: purchase@wanxiang-example.com",
+      "input": "Email:                              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          7,
+          36
+        ]
+      ]
+    },
+    {
+      "id": "inquiry:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Order No.: RFQ-2026-0715",
+      "input": "Order No.:              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          11,
+          24
+        ]
+      ]
+    },
+    {
+      "id": "inquiry:F1-P16",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Samples will be tested by Harbor Fictive Labs before the order.",
+      "input": "Samples will be tested by Harbor Fictive Labs before the order.",
+      "expected": [
+        [
+          26,
+          45,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "inquiry:F1-P17",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本询价函不构成订单，亦不构成对任何一方的约束。",
+      "input": "本询价函不构成订单，亦不构成对任何一方的约束。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "institutions_domestic:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "项目采购合同",
+      "input": "项目采购合同",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "institutions_domestic:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "采购人：江北市第一虚构人民医院",
+      "input": "采购人：           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "供应商：澄川虚构信息技术有限公司",
+      "input": "供应商：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "监理单位：东川市虚构工程咨询事务所",
+      "input": "监理单位：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "发包人：东川市虚构区教育局",
+      "input": "发包人：         ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          13
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "承包人：青岚虚构建设工程有限公司",
+      "input": "承包人：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "委托方：江北市虚构大学",
+      "input": "委托方：       ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          11
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "受托方：澄川虚构信息技术有限公司",
+      "input": "受托方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "出租方：东川市虚构新区管理委员会",
+      "input": "出租方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "承租方：青岚虚构建设工程有限公司",
+      "input": "承租方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "建设单位：江北市虚构区人民政府",
+      "input": "建设单位：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "institutions_domestic:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本项目由江北市第二虚构中学提出需求，资金由江北市虚构卫生健康委员会统筹。",
+      "input": "本项目由江北市第二虚构中学提出需求，资金由江北市虚构卫生健康委员会统筹。",
+      "expected": [
+        [
+          4,
+          13,
+          "ORG"
+        ],
+        [
+          21,
+          33,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "institutions_domestic:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "采购人应于验收合格后支付货款。",
+      "input": "采购人应于验收合格后支付货款。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          14
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "institutions_domestic:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：负责提供场地所需的水电。",
+      "input": "甲方：负责提供场地所需的水电。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          14
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "institutions_domestic:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本院、该医院及定点医院的相关规定另行通知。",
+      "input": "本院、该医院及定点医院的相关规定另行通知。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          20
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "labels_extended:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：青岚虚构石化股份有限公司",
+      "input": "甲方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "提单号：COSU1234567890",
+      "input": "提单号：              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "信用证号：LC26FICT0091",
+      "input": "信用证号：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "项目编号：QL-2026-ZB-017",
+      "input": "项目编号：              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          19
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "招标编号：ZB2026FICT0042",
+      "input": "招标编号：              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          19
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "报价单号：QT-2026-0508",
+      "input": "报价单号：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "护照号：E12345678",
+      "input": "护照号：         ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          13
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "营业执照注册号：110105012345678",
+      "input": "营业执照注册号：               ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          8,
+          23
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "组织机构代码：MA01XYQ1-5",
+      "input": "组织机构代码：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          7,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联行号：102100099996",
+      "input": "联行号：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "微信：zhang_fiction88",
+      "input": "微信：               ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "QQ：88001234",
+      "input": "QQ：        ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          11
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Skype：fiction.trader.01",
+      "input": "Skype：                 ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          6,
+          23
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "项目名称：江北市虚构医院信息化改造项目",
+      "input": "项目名称：              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          19
+        ]
+      ]
+    },
+    {
+      "id": "labels_extended:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本项目工期为 90 天。",
+      "input": "本项目工期为 90 天。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          11
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "letter:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "关于逾期付款的催告函",
+      "input": "关于逾期付款的催告函",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "letter:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "发函方：卓越虚构实业有限公司（以下简称“卓越公司”）",
+      "input": "发函方：          （以下简称“    ”）",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          14
+        ],
+        [
+          20,
+          24
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收函方：Aurora Fictive Energy Co., Ltd.",
+      "input": "收函方：                               ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          35
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "致：Cedar Fictive Trading Inc.",
+      "input": "致：                          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          2,
+          28
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "抄送：Delta Example Marine Ltd，请知悉。",
+      "input": "抄送：                        ，请知悉。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          27
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "依据双方于 2026年2月3日签订的销售合同（合同编号：HT-2026-0102），贵司应于 2026年7月31日前支付货款人民币 1,360,000.00 元，另有运费 USD 52,300.50。",
+      "input": "依据双方于 2026年2月3日签订的销售合同（合同编号：            ），贵司应于 2026年7月31日前支付货款人民币              元，另有运费 USD          。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          6,
+          15
+        ],
+        [
+          47,
+          57
+        ],
+        [
+          62,
+          65
+        ],
+        [
+          86,
+          89
+        ]
+      ],
+      "rule_occupied": [
+        [
+          28,
+          40
+        ],
+        [
+          66,
+          78
+        ],
+        [
+          90,
+          99
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "截至本函日期，贵司仍未付款，已构成逾期。卓越公司特此函告，请贵司于 2026年9月15日前将上述款项汇至：",
+      "input": "截至本函日期，贵司仍未付款，已构成逾期。    特此函告，请贵司于 2026年9月15日前将上述款项汇至：",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          34,
+          44
+        ]
+      ],
+      "rule_occupied": [
+        [
+          20,
+          24
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收款账号：6217 0000 1234 5678 901",
+      "input": "收款账号：                       ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          28
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系电话：13700002222",
+      "input": "联系电话：           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "邮箱：finance@zhuoyue-example.com",
+      "input": "邮箱：                           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          30
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人：赵示例",
+      "input": "联系人：   ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "地址：深圳市南山区示例路 66 号",
+      "input": "地址：              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "letter:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "逾期违约金按每日 0.05% 计算。如贵司对本函有异议，请在收到本函后 5 个工作日内书面回复。",
+      "input": "逾期违约金按每日 0.05% 计算。如贵司对本函有异议，请在收到本函后 5 个工作日内书面回复。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          5
+        ],
+        [
+          9,
+          14
+        ],
+        [
+          36,
+          42
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "letter:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本函抄送远景示例科技公司法务部。",
+      "input": "本函抄送远景示例科技公司法务部。",
+      "expected": [
+        [
+          4,
+          12,
+          "ORG"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "letter:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "卓越公司保留依据合同及适用法律追究贵司责任的权利。",
+      "input": "    保留依据合同及适用法律追究贵司责任的权利。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "names_derived_persons:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：青岚虚构石化股份有限公司（以下简称“青岚公司”）",
+      "input": "甲方：            （以下简称“    ”）",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ],
+        [
+          21,
+          25
+        ]
+      ]
+    },
+    {
+      "id": "names_derived_persons:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方：澄川虚构信息技术有限公司",
+      "input": "乙方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "names_derived_persons:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方应按澄川虚构信息技术标准交付澄川虚构软件平台 V3.0。",
+      "input": "乙方应按        标准交付    软件平台 V3.0。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          20,
+          29
+        ]
+      ],
+      "rule_occupied": [
+        [
+          4,
+          12
+        ],
+        [
+          16,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "names_derived_persons:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "请张经理于本周内回复，抄送李总。",
+      "input": "请   于本周内回复，抄送  。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          1,
+          4
+        ],
+        [
+          13,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "names_derived_persons:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "经与王建国沟通，对方同意延期交货。",
+      "input": "经与王建国沟通，对方同意延期交货。",
+      "expected": [
+        [
+          2,
+          5,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          8,
+          16
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "names_derived_persons:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Please send the invoice to Mr. Carter Fictive before Friday.",
+      "input": "Please send the invoice to Mr.                before Friday.",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          31,
+          45
+        ]
+      ]
+    },
+    {
+      "id": "names_derived_persons:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方授权代表应在验收单上签字。",
+      "input": "乙方授权代表应在验收单上签字。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          14
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "order:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "采购订单",
+      "input": "采购订单",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "order:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "订单编号：PO-2026-0925",
+      "input": "订单编号：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "下单日期：2026年9月25日",
+      "input": "下单日期：2026年9月25日",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          5,
+          15
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "order:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "买方：远航虚构化工有限公司",
+      "input": "买方：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          13
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系电话：021-65432100",
+      "input": "联系电话：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人：孙示例女士",
+      "input": "联系人：   女士",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收货地址：天津市滨海新区示例港路 9 号",
+      "input": "收货地址：               ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "统一社会信用代码：91310115MA1H8XQ4TB",
+      "input": "统一社会信用代码：                  ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          9,
+          27
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "供应商：Sunrise Mock Materials Co., Ltd.",
+      "input": "供应商：                                ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          36
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收货人：Greenfield Imaginary Logistics Pte. Ltd.",
+      "input": "收货人：                                        ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          44
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "通知方：宏达虚构国际货运代理有限公司",
+      "input": "通知方：              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1. 石墨电极 UHP 600mm，数量 40 件，单价 人民币 12,800.00 元/件，金额 人民币 512,000.00 元。",
+      "input": "1. 石墨电极 UHP 600mm，数量 40 件，单价 人民币           元/件，金额 人民币            元。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          17
+        ],
+        [
+          18,
+          25
+        ],
+        [
+          29,
+          32
+        ],
+        [
+          50,
+          53
+        ]
+      ],
+      "rule_occupied": [
+        [
+          33,
+          42
+        ],
+        [
+          54,
+          64
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2. 石墨电极接头 4TPI，数量 80 件，单价 人民币 2,380.00 元/件，金额 人民币 190,400.00 元。",
+      "input": "2. 石墨电极接头 4TPI，数量 80 件，单价 人民币          元/件，金额 人民币            元。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          10,
+          14
+        ],
+        [
+          15,
+          22
+        ],
+        [
+          26,
+          29
+        ],
+        [
+          46,
+          49
+        ]
+      ],
+      "rule_occupied": [
+        [
+          30,
+          38
+        ],
+        [
+          50,
+          60
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合计：人民币 702,400.00 元（大写：柒拾万贰仟肆佰元整）。",
+      "input": "合计：人民币            元（大写：         ）。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          6
+        ]
+      ],
+      "rule_occupied": [
+        [
+          7,
+          17
+        ],
+        [
+          23,
+          32
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "付款方式：货到验收合格后 45 天内以电汇方式付款。",
+      "input": "付款方式：货到验收合格后 45 天内以电汇方式付款。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          13,
+          17
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "order:F1-P16",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收款账号：1234 5678 9012 3456 78",
+      "input": "收款账号：                      ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          27
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P17",
+      "origin": "golden",
+      "split": "regression",
+      "text": "发票号：INV-2026-7788",
+      "input": "发票号：             ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P18",
+      "origin": "golden",
+      "split": "regression",
+      "text": "承运人：Seabridge Fictive Shipping (Hong Kong) Limited 负责安排舱位。",
+      "input": "承运人：                                               负责安排舱位。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          50
+        ]
+      ]
+    },
+    {
+      "id": "order:F1-P19",
+      "origin": "golden",
+      "split": "regression",
+      "text": "交货地点：天津港，交货期限为 2026年11月30日前。",
+      "input": "交货地点：天津港，交货期限为 2026年11月30日前。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          5,
+          8
+        ],
+        [
+          15,
+          26
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "order:F1-P20",
+      "origin": "golden",
+      "split": "regression",
+      "text": "质量要求：电阻率≤5.8 μΩ·m，体积密度≥1.70 g/cm3。",
+      "input": "质量要求：电阻率≤5.8 μΩ·m，体积密度≥1.70 g/cm3。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          5,
+          17
+        ],
+        [
+          18,
+          33
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "order:F1-P21",
+      "origin": "golden",
+      "split": "regression",
+      "text": "供应商未按期交货的，每逾期一日按订单总额的 0.1% 支付违约金。",
+      "input": "供应商未按期交货的，每逾期一日按订单总额的 0.1% 支付违约金。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          22,
+          26
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "业务往来备忘",
+      "input": "业务往来备忘",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人：周示例，电话另行告知。",
+      "input": "联系人：   ，电话另行告知。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "persons_narrative:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "对方联系人为陆虚岚，负责本批货物验收。",
+      "input": "对方联系人为陆虚岚，负责本批货物验收。",
+      "expected": [
+        [
+          6,
+          9,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "陆虚岚提到预付款比例偏高。",
+      "input": "陆虚岚提到预付款比例偏高。",
+      "expected": [
+        [
+          0,
+          3,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "请与欧阳虚明联系确认交期。",
+      "input": "请与欧阳虚明联系确认交期。",
+      "expected": [
+        [
+          2,
+          6,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "昨天何虚芳表示可以接受分期付款。",
+      "input": "昨天何虚芳表示可以接受分期付款。",
+      "expected": [
+        [
+          2,
+          5,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "宋虚婷女士已确认样品合格。",
+      "input": "宋虚婷女士已确认样品合格。",
+      "expected": [
+        [
+          0,
+          3,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "经办人为林虚，请核对。",
+      "input": "经办人为林虚，请核对。",
+      "expected": [
+        [
+          4,
+          6,
+          "PERSON"
+        ]
+      ],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "周示例经理同意按原价执行。",
+      "input": "   经理同意按原价执行。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          3
+        ]
+      ]
+    },
+    {
+      "id": "persons_narrative:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "王总提到的条款需要复核。",
+      "input": "  提到的条款需要复核。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          2,
+          11
+        ]
+      ],
+      "rule_occupied": [
+        [
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "id": "persons_narrative:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "李经理和赵总监都同意了。",
+      "input": "   和   都同意了。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          7,
+          11
+        ]
+      ],
+      "rule_occupied": [
+        [
+          0,
+          3
+        ],
+        [
+          4,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "persons_narrative:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "周期表示为 30 天。",
+      "input": "周期表示为 30 天。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          10
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "常规要求见第三条。",
+      "input": "常规要求见第三条。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          8
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "我们周五前回复。",
+      "input": "我们周五前回复。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          7
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "本合同项目名称为虚构工程，方案说明见附件。",
+      "input": "本合同项目名称为虚构工程，方案说明见附件。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          20
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P16",
+      "origin": "golden",
+      "split": "regression",
+      "text": "文件说明见附件二。",
+      "input": "文件说明见附件二。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          8
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P17",
+      "origin": "golden",
+      "split": "regression",
+      "text": "双方同意按本合同执行，任何一方提出异议应书面通知。",
+      "input": "双方同意按本合同执行，任何一方提出异议应书面通知。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          24
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P18",
+      "origin": "golden",
+      "split": "regression",
+      "text": "由于对方要求提前交货，交期另行协商。",
+      "input": "由于对方要求提前交货，交期另行协商。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          17
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P19",
+      "origin": "golden",
+      "split": "regression",
+      "text": "黄金价格表示上涨。",
+      "input": "黄金价格表示上涨。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          8
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "persons_narrative:F1-P20",
+      "origin": "golden",
+      "split": "regression",
+      "text": "高于市场价格的部分由买方承担。",
+      "input": "高于市场价格的部分由买方承担。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          14
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "postcode:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：青禾虚构机械有限公司",
+      "input": "甲方：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          13
+        ]
+      ]
+    },
+    {
+      "id": "postcode:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "通讯地址：山东省示例县示例路 18 号  邮政编码：【251500】",
+      "input": "通讯地址：                邮政编码：【      】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          21,
+          27
+        ]
+      ],
+      "rule_occupied": [
+        [
+          5,
+          19
+        ],
+        [
+          27,
+          33
+        ]
+      ]
+    },
+    {
+      "id": "postcode:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系电话：0531-6612345",
+      "input": "联系电话：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "postcode:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方：Brightfield Example Trading Ltd.",
+      "input": "乙方：                                ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          35
+        ]
+      ]
+    },
+    {
+      "id": "postcode:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Address: 12 Example Street, London",
+      "input": "Address:                          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          9,
+          34
+        ]
+      ]
+    },
+    {
+      "id": "postcode:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Postcode: SW1A 1AA",
+      "input": "Postcode:         ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          9
+        ]
+      ],
+      "rule_occupied": [
+        [
+          10,
+          18
+        ]
+      ]
+    },
+    {
+      "id": "postcode:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收货地址：上海市示例区虚构路 99 号，邮编：200001",
+      "input": "收货地址：              ，邮编：      ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          20,
+          23
+        ]
+      ],
+      "rule_occupied": [
+        [
+          5,
+          19
+        ],
+        [
+          23,
+          29
+        ]
+      ]
+    },
+    {
+      "id": "postcode:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "美国办事处 ZIP: 90210-1234",
+      "input": "美国办事处 ZIP:           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          6,
+          10
+        ]
+      ],
+      "rule_occupied": [
+        [
+          11,
+          21
+        ]
+      ]
+    },
+    {
+      "id": "postcode:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "邮编为空的，以通讯地址为准；本批产品批次 330512，分 3 批交付，交货港 Qingdao。",
+      "input": "邮编为空的，以通讯地址为准；本批产品批次 330512，分 3 批交付，交货港 Qingdao。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          4
+        ],
+        [
+          21,
+          27
+        ],
+        [
+          28,
+          33
+        ],
+        [
+          40,
+          47
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "q56_boundary:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "货物运输确认书",
+      "input": "货物运输确认书",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "q56_boundary:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "买方：北辰虚构贸易有限公司",
+      "input": "买方：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          13
+        ]
+      ]
+    },
+    {
+      "id": "q56_boundary:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "卖方：Sample Fictive Industry Co., Ltd.",
+      "input": "卖方：                                 ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          36
+        ]
+      ]
+    },
+    {
+      "id": "q56_boundary:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "货物由恒远虚构物流（深圳）有限公司代为装运，装运港为天津港。",
+      "input": "货物由              代为装运，装运港为天津港。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ],
+        [
+          17,
+          21
+        ],
+        [
+          26,
+          29
+        ]
+      ],
+      "rule_occupied": [
+        [
+          3,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "q56_boundary:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "买方委托星河虚构报关有限公司办理进口报关，费用由买方承担。",
+      "input": "买方委托          办理进口报关，费用由买方承担。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          4
+        ],
+        [
+          14,
+          20
+        ],
+        [
+          21,
+          28
+        ]
+      ],
+      "rule_occupied": [
+        [
+          4,
+          14
+        ]
+      ]
+    },
+    {
+      "id": "q56_boundary:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "卖方向海岳虚构保险代理有限公司投保货物运输险，投保金额为发票金额的 110%。",
+      "input": "卖方向            投保货物运输险，投保金额为发票金额的 110%。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ],
+        [
+          15,
+          22
+        ],
+        [
+          34,
+          38
+        ]
+      ],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "q56_boundary:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "货物经由宏达虚构船务有限公司承运至 Jebel Ali，预计 2026年10月20日到港。",
+      "input": "货物经由          承运至 Jebel Ali，预计 2026年10月20日到港。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          4
+        ],
+        [
+          14,
+          27
+        ],
+        [
+          31,
+          42
+        ]
+      ],
+      "rule_occupied": [
+        [
+          4,
+          14
+        ]
+      ]
+    },
+    {
+      "id": "q56_boundary:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合同价款通过上海示例国际货运代理有限公司结算，付款期限为 30 天。",
+      "input": "合同价款通过              结算，付款期限为 30 天。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          6
+        ],
+        [
+          20,
+          33
+        ]
+      ],
+      "rule_occupied": [
+        [
+          6,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "q69_ocr_account:F1-PG1-B1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收款通知",
+      "input": "收款通知",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          4
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "q69_ocr_account:F1-PG1-B2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "卖方：澄江虚构贸易有限公司",
+      "input": "卖方：          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          13
+        ]
+      ]
+    },
+    {
+      "id": "q69_ocr_account:F1-PG1-B3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "请将货款汇至以下账户：",
+      "input": "请将货款汇至以下账户：",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          10
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "q69_ocr_account:F1-PG1-B4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "收欵賬虎：6217 0000 9876 5432 101",
+      "input": "收欵賬虎：6217 0000 9876 5432 101",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "q69_ocr_account:F1-PG1-B5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "开户银行：示例银行股份有限公司深圳分行",
+      "input": "开户银行：              ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          19
+        ]
+      ]
+    },
+    {
+      "id": "q69_ocr_account:F1-PG1-B6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "付款参考号 8800-1234-5678",
+      "input": "付款参考号 8800-1234-5678",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "q69_ocr_account:F1-PG1-B7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "付款日期：2026-09-30，HS 编码 27131200，数量 1200 MT，金额以发票为准。",
+      "input": "付款日期：2026-09-30，HS 编码 27131200，数量 1200 MT，金额以发票为准。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          5,
+          15
+        ],
+        [
+          16,
+          30
+        ],
+        [
+          34,
+          41
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "QUOTATION / 报价单",
+      "input": "QUOTATION / 报价单",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "PI No.: PI-2026-0233",
+      "input": "PI No.:             ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          8,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Date: 2026-05-08",
+      "input": "Date: 2026-05-08",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          6,
+          16
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Seller: Haiyue Fictive Carbon Co., Ltd.",
+      "input": "Seller:                                ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          8,
+          39
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Tel: +86 532 8888 0000",
+      "input": "Tel:                  ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          22
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Email: export@haiyue-example.com",
+      "input": "Email:                          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          7,
+          32
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Website: www.haiyue-example.com",
+      "input": "Website:                       ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          9,
+          31
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Buyer: Delta Mock Industries GmbH",
+      "input": "Buyer:                           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          7,
+          33
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Country: Germany",
+      "input": "Country: Germany",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          9,
+          16
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Attn: Mr. Hans Example",
+      "input": "Attn: Mr.             ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          10,
+          22
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Address: Example Strasse 12, 20095 Hamburg, Germany",
+      "input": "Address:                                           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          44,
+          51
+        ]
+      ],
+      "rule_occupied": [
+        [
+          9,
+          51
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Product: Calcined Petroleum Coke, HS 27131200",
+      "input": "Product: Calcined Petroleum Coke, HS 27131200",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          9,
+          32
+        ],
+        [
+          34,
+          45
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P13",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Specification: Sulfur ≤0.5%, Ash ≤0.3%, Real density ≥2.07 g/cm3, Size 1-5mm",
+      "input": "Specification: Sulfur ≤0.5%, Ash ≤0.3%, Real density ≥2.07 g/cm3, Size 1-5mm",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          15,
+          27
+        ],
+        [
+          29,
+          38
+        ],
+        [
+          40,
+          64
+        ],
+        [
+          66,
+          76
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P14",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Quantity: 200 MT",
+      "input": "Quantity: 200 MT",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          10,
+          16
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P15",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Unit price: USD 880.00/MT CIF Hamburg",
+      "input": "Unit price: USD       /MT CIF Hamburg",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          12,
+          15
+        ],
+        [
+          26,
+          37
+        ]
+      ],
+      "rule_occupied": [
+        [
+          16,
+          22
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P16",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Total amount: USD 176,000.00",
+      "input": "Total amount: USD           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          14,
+          17
+        ]
+      ],
+      "rule_occupied": [
+        [
+          18,
+          28
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P17",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Validity: 15 days from the date of this quotation.",
+      "input": "Validity: 15 days from the date of this quotation.",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          10,
+          17
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P18",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Payment: 100% T/T in advance to the following account.",
+      "input": "Payment: 100% T/T in advance to the following account.",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          9,
+          28
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation:F1-P19",
+      "origin": "golden",
+      "split": "regression",
+      "text": "Account No.: 4400 1122 3344 5566",
+      "input": "Account No.:                    ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          13,
+          32
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P20",
+      "origin": "golden",
+      "split": "regression",
+      "text": "IBAN: DE89 3704 0044 0532 0130 00",
+      "input": "IBAN:                            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          6,
+          33
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P21",
+      "origin": "golden",
+      "split": "regression",
+      "text": "SWIFT Code: HYFCDEFF",
+      "input": "SWIFT Code:         ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          12,
+          20
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P22",
+      "origin": "golden",
+      "split": "regression",
+      "text": "报价人联系电话：18600001111",
+      "input": "报价人联系电话：           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          8,
+          19
+        ]
+      ]
+    },
+    {
+      "id": "quotation:F1-P23",
+      "origin": "golden",
+      "split": "regression",
+      "text": "备注：以上价格不含港口杂费，装期为收到预付款后 25 天内。",
+      "input": "备注：以上价格不含港口杂费，装期为收到预付款后 25 天内。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          24,
+          28
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "报价单 Quotation",
+      "input": "报价单 Quotation",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          13
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "卖方：星河虚构进出口有限公司",
+      "input": "卖方：           ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          14
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "买方：Fictional Metals Trading FZE",
+      "input": "买方：                            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          31
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系电话：13800138000，邮箱：zhou.example@example.com",
+      "input": "联系电话：           ，邮箱：                        ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          16
+        ],
+        [
+          20,
+          44
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "报价日期",
+      "input": "报价日期",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-B5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2026-03-10",
+      "input": "2026-03-10",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          10
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "有效期至",
+      "input": "有效期至",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-B6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2026-04-30",
+      "input": "2026-04-30",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          10
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "序号",
+      "input": "序号",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-B7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "品名",
+      "input": "品名",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-C7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "规格",
+      "input": "规格",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-D7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "数量(MT)",
+      "input": "数量(MT)",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-E7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "单价(USD/MT)",
+      "input": "单价(USD/MT)",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-F7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "金额(USD)",
+      "input": "金额(USD)",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          3,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-G7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "预付款比例",
+      "input": "预付款比例",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1",
+      "input": "1",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-B8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "煅后石油焦",
+      "input": "煅后石油焦",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          5
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-C8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "低硫 0-3mm",
+      "input": "低硫 0-3mm",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          8
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-D8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "320",
+      "input": "320",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-E8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "USD 1250",
+      "input": "USD     ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ]
+      ],
+      "rule_occupied": [
+        [
+          4,
+          8
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-F8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "USD 400000",
+      "input": "USD       ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ]
+      ],
+      "rule_occupied": [
+        [
+          4,
+          10
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-G8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "30%",
+      "input": "30%",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2",
+      "input": "2",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-B9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "针状焦",
+      "input": "针状焦",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-C9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "超低硫 1-5mm",
+      "input": "超低硫 1-5mm",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          9
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-D9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "120",
+      "input": "120",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-E9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2150",
+      "input": "    ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-F9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "258000",
+      "input": "      ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          6
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-G9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "30%",
+      "input": "30%",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合计 Total",
+      "input": "合计 Total",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          8
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-F10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "USD 658000",
+      "input": "USD       ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          3
+        ]
+      ],
+      "rule_occupied": [
+        [
+          4,
+          10
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-A11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "折合人民币（汇率 7.1）",
+      "input": "折合人民币（汇率 7.1）",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          9,
+          12
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S1-F11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "¥ 4671800",
+      "input": "¥        ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          2,
+          9
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S2-A1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "备注",
+      "input": "备注",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S2-A2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "佣金率",
+      "input": "佣金率",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S2-B2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1.25%",
+      "input": "1.25%",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          5
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S2-A3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "价格条款",
+      "input": "价格条款",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S2-B3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "CIF Hamburg",
+      "input": "CIF Hamburg",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          11
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S2-A4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "付款以实际到港为准",
+      "input": "付款以实际到港为准",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quotation_xlsx:F1-S2-A5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人：周示例",
+      "input": "联系人：   ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          4,
+          7
+        ]
+      ]
+    },
+    {
+      "id": "quotation_xlsx:F1-S2-A6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "地址：上海市黄浦区示例路 1 号",
+      "input": "地址：             ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          16
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：青岚虚构石化股份有限公司",
+      "input": "甲方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方：澄川虚构信息技术有限公司",
+      "input": "乙方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "附件一：软件许可产品及配套硬件清单",
+      "input": "附件一：软件许可产品及配套硬件清单",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R1-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "无人值守系统分项报价表",
+      "input": "无人值守系统分项报价表",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R2-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "序号",
+      "input": "序号",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R2-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "名称",
+      "input": "名称",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R2-C3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "型号",
+      "input": "型号",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R2-C4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "单价(元)",
+      "input": "单价(元)",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R2-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "总数量",
+      "input": "总数量",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R2-C6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "金额(元)",
+      "input": "金额(元)",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R3-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1",
+      "input": "1",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R3-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "自动防爆道闸",
+      "input": "自动防爆道闸",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R3-C3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "XG-11",
+      "input": "XG-11",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R3-C4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "7,500.00",
+      "input": "        ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          8
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R3-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "12.00",
+      "input": "12.00",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R3-C6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "90,000.00",
+      "input": "         ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          9
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R4-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2",
+      "input": "2",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R4-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "数字式车辆检测器",
+      "input": "数字式车辆检测器",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R4-C3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "XC-132A",
+      "input": "XC-132A",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          7
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R4-C4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "280.00",
+      "input": "      ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          6
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R4-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "12.00",
+      "input": "12.00",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R4-C6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "3,360.00",
+      "input": "        ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          8
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R5-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "3",
+      "input": "3",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R5-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "车牌识别一体机",
+      "input": "车牌识别一体机",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R5-C3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "XP-08",
+      "input": "XP-08",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R5-C4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1,900.00",
+      "input": "        ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          8
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R5-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "6.00",
+      "input": "6.00",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R5-C6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "11,400.00",
+      "input": "         ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          9
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R6-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "小计",
+      "input": "小计",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R6-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "444760",
+      "input": "      ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          6
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R7-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "结算价合计",
+      "input": "结算价合计",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          5
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R8-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "序号",
+      "input": "序号",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R8-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "项目",
+      "input": "项目",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R8-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "金额",
+      "input": "金额",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R8-C7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "备注",
+      "input": "备注",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R9-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1",
+      "input": "1",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R9-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "硬件金额",
+      "input": "硬件金额",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R9-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "715,240.00",
+      "input": "          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          10
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R9-C7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "含安装费、运费",
+      "input": "含安装费、运费",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          7
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R10-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2",
+      "input": "2",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R10-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "软件金额",
+      "input": "软件金额",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R10-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "444,760.00",
+      "input": "          ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          10
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R11-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "3",
+      "input": "3",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R11-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "报价合计",
+      "input": "报价合计",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R11-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1,160,000.00",
+      "input": "            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          12
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T1-R11-C7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "含税(13%)",
+      "input": "含税(13%)",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          7
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R1-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "序号",
+      "input": "序号",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R1-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "设备名称",
+      "input": "设备名称",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R1-C3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "数量",
+      "input": "数量",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R1-C4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "单价",
+      "input": "单价",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R1-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合计",
+      "input": "合计",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R2-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1",
+      "input": "1",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R2-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "室内半球",
+      "input": "室内半球",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          4
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R2-C3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "25",
+      "input": "25",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R2-C4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "520",
+      "input": "   ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          3
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R2-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "13000",
+      "input": "     ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R3-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2",
+      "input": "2",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R3-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "双目海螺半球",
+      "input": "双目海螺半球",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R3-C3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "4",
+      "input": "4",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R3-C4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2500",
+      "input": "    ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R3-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "10000",
+      "input": "     ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R4-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "3",
+      "input": "3",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R4-C2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "交换机",
+      "input": "交换机",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R4-C3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2",
+      "input": "2",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R4-C4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "1350",
+      "input": "    ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R4-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "2700",
+      "input": "    ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R5-C1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "合计金额",
+      "input": "合计金额",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          4
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "quote_two_headers:F1-T2-R5-C5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "25700",
+      "input": "     ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          0,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "signature_blocks:F1-P1",
+      "origin": "golden",
+      "split": "regression",
+      "text": "甲方：青岚虚构石化股份有限公司       乙方：远川虚构网络科技有限公司",
+      "input": "甲方：                   乙方：            ",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          3,
+          15
+        ],
+        [
+          25,
+          37
+        ]
+      ]
+    },
+    {
+      "id": "signature_blocks:F1-P2",
+      "origin": "golden",
+      "split": "regression",
+      "text": "授权代表：\t授权代表：",
+      "input": "授权代表：\t授权代表：",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          5
+        ],
+        [
+          6,
+          11
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "signature_blocks:F1-P3",
+      "origin": "golden",
+      "split": "regression",
+      "text": "盖章：\t盖章：",
+      "input": "盖章：\t盖章：",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          2
+        ],
+        [
+          4,
+          6
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "signature_blocks:F1-P4",
+      "origin": "golden",
+      "split": "regression",
+      "text": "日期：2026年8月  日                    日期：2026年8月  日",
+      "input": "日期：2026年8月  日                    日期：2026年8月  日",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": []
+    },
+    {
+      "id": "signature_blocks:F1-P5",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方未在规定的时间内赶到甲方住所地进行维修的，视为乙方授权甲方另行安排维修，所产生的费用由乙方承担。",
+      "input": "乙方未在规定的时间内赶到甲方住所地进行维修的，视为乙方授权甲方另行安排维修，所产生的费用由乙方承担。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          25,
+          37
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "signature_blocks:F1-P6",
+      "origin": "golden",
+      "split": "regression",
+      "text": "测试完成后，甲方和乙方的授权代表应签署【2】份初验证书，双方各执【1】份。",
+      "input": "测试完成后，甲方和乙方的授权代表应签署【2】份初验证书，双方各执【1】份。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          12,
+          19
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "signature_blocks:F1-P7",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人电话：【0531-6612345】",
+      "input": "联系人电话：【            】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          5
+        ]
+      ],
+      "rule_occupied": [
+        [
+          7,
+          19
+        ]
+      ]
+    },
+    {
+      "id": "signature_blocks:F1-P8",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人：【李虚构】",
+      "input": "联系人：【   】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [],
+      "rule_occupied": [
+        [
+          5,
+          8
+        ]
+      ]
+    },
+    {
+      "id": "signature_blocks:F1-P9",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系电话：【13600001111】",
+      "input": "联系电话：【           】",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          4
+        ]
+      ],
+      "rule_occupied": [
+        [
+          6,
+          17
+        ]
+      ]
+    },
+    {
+      "id": "signature_blocks:F1-P10",
+      "origin": "golden",
+      "split": "regression",
+      "text": "法定代表人或授权委托人姓名：",
+      "input": "法定代表人或授权委托人姓名：",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          6,
+          13
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "signature_blocks:F1-P11",
+      "origin": "golden",
+      "split": "regression",
+      "text": "联系人姓名：",
+      "input": "联系人姓名：",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          0,
+          5
+        ]
+      ],
+      "rule_occupied": []
+    },
+    {
+      "id": "signature_blocks:F1-P12",
+      "origin": "golden",
+      "split": "regression",
+      "text": "乙方应提供电话及远程技术支持服务。",
+      "input": "乙方应提供电话及远程技术支持服务。",
+      "expected": [],
+      "partial_rule_overlap": [],
+      "keep": [
+        [
+          5,
+          14
+        ]
+      ],
+      "rule_occupied": []
+    }
+  ]
+}

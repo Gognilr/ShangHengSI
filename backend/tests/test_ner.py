@@ -11,12 +11,11 @@ FIXTURES = Path(__file__).parent / 'fixtures/ner'
 
 
 def corpus():
-    source = ROOT / 'docs/v2/reports/ner-selection/prepare_corpus.py'
-    spec = importlib.util.spec_from_file_location('ner_prepare', source)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    with patch('app.redaction.ner.recognize', return_value=[]):
-        return module.build(ROOT)['records']
+    # V2Q-48：对拍须固定06a原始输入，不能随当前规则的遮盖范围改变。
+    import hashlib
+    data = (FIXTURES / 'reference_corpus.json').read_bytes()
+    assert hashlib.sha256(data).hexdigest() == '63e2892c2ce663229d3ffaa5d95b34cfbd764f2d08f852b472a8e6e63fcb9ab1'
+    return json.loads(data)['records']
 
 
 def test_reference_parity():
