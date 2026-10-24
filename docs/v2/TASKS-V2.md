@@ -4,11 +4,11 @@
 
 ## 当前进度（只保留最近 3 条）
 
+- 2026-10-24（GPT-6.1 Sol）：**V2-B-06 按 V2Q-39 继续修正，待 V2Q-40，尚未完成**。两条黄金集例外按显式清单实施；模型结果尊重撤销排除项；港口/贸易术语/字母数字代码、合同及邮编/HS标签只过滤模型结果，规则与模型同一区间疑似沿用原规则原因。391节点对拍一致（最大差5.96e-8），原叙述31/32、新留出47/48、高置信保留误替换0、过滤误报8；0012升降级与结构一致44 passed，断网启动/复用/实际DOCX解析与追问7 passed，发布入口3 passed，A-03+撤销+新增NER接口16 passed（均独立回读exit 0）。8CPU断网万字中位8.8018秒、峰值增1,990,025,216字节；最终runtime/test构建exit 0、禁用包缺席、启动仅校验不加载；按history层大小较B05增1,207,033,856字节达标。原接口整组37 failed/68 passed已拆查：修复合同误报、原因覆盖及新增测试字段错误后，旧追问36 passed/1 deselected；仅R4部分决定用例因Northern Fictive Laboratory高置信自动替换仍与旧期望冲突，V2Q-40异步请求单用例隔离授权，未答复不改。离线合组214 passed/1 failed（T-20目录扫描ENOMEM）保留失败回执；独立复核T-20及新模型行为24 passed、exit 0。**下一步：确认V2Q-40后只隔离该旧R4用例、保留全部原断言，补跑受影响追问及最终定向合组，再完成B06；B07/B08不抢跑。** 无服务器操作，未跑整仓全量，黄金样本和其他保护测试未改。证据：本会话仓库外b06-resume-*.log、b06-api-final.log、b06-chat-compatible.log、b06-targeted-recheck.log、b06-resource-module.log、b06-history-final.json及对应.exit。
+
 - 2026-10-24（Opus 5.5）：**V2Q-39 已确认**：① 只对 Harbor Fictive Labs、林虚两条原 must_suspect，在 test_redaction_golden.py 内以显式清单接受“列疑似或被同类别 ner 替换完整覆盖”，样本与其他断言不改；② 6 个 must_keep 失败只在 ner.py 过滤或 ner_stopwords.txt 追加中修正；③ 必修：engine 模型循环须丢弃与撤销排除项重叠的结果（设计 6.3 新增第 13 条用例）；④ 镜像增量改按 docker history 层解压大小计，b06 约 1.21 GB，未超门槛（第 11 条口径已改）。**下一步：V2-B-06 继续（GPT-6.1 Sol，xhigh）**，完成上述修正与剩余迁移、耗时内存、接口及回归测试。
 
 - 2026-10-24（GPT-6.1 Sol）：**V2-B-06 接入初稿，因 V2Q-39 停止，未完成**。新留出集先单独提交 25e58d7（8份/48实体）；纯 onnxruntime + numpy + tokenizers 推理与06a的391节点对拍完全一致（最大分差5.96e-8），原叙述31/32、新留出47/48、高置信保留项0，过滤后误报16。接入正文/NOTE/追问、启动自检、0012迁移、构建清单与离线模型目录参数初稿已写。定向回归首次9 failed/121 passed/1 skipped：6个must_keep被列疑似，2个原must_suspect被高置信自动替换，另1个新测试原因合并问题已修复，随后产品test镜像断网单元与T-20为28 passed（exit 0）。原回归exit 1仍有效，A-03因该次未配置DB而跳过，runtime与test构建退出0；镜像inspect Size增量2,149,016,471字节超过1.5GB门槛，仍失败；迁移/耗时内存/完整接口与剩余回归未完成，不以局部成功替代。未改保护样本/断言/阈值，B-06状态保持待执行，不进入B-07。**下一步先确认V2Q-39的保护期望最小例外；修正模型对保留项的误列，再完成B-06剩余测试。** 证据：本会话仓库外 b06-*.log/.exit。
-
-- 2026-10-24（Opus 5.5）：**V2-B-06a 审核通过、选型已确认**（用户 2026-10-24 同意新门槛与接入约束）。独立断网重跑 verify_evidence / verify_metrics 均退出 0：下载与导出哈希、冻结样本、391 节点 / 45 实体分母、由原始预测重算的分数、2 CPU 与断网配置一致；原门槛不通过的结论成立。补查发现中置信误报 80 条（合同角色词、称谓、数字型号等）与留出样本过小，已写入接入约束。选定 urchade/gliner_multi-v2.1 FP32 ONNX（Apache-2.0；6 个文件清单与 SHA-256 见 design/V2-B.md 6.2），阈值中 0.4 / 高 0.95；B-06 不装 torch / transformers / gliner，用 onnxruntime + numpy + tokenizers 自写前后处理并与 06a 结果对拍；新增结果过滤、新留出集（≥ 40 实体）、误报 ≤ 20 条；资源门槛改为万字 ≤ 10 秒、单进程 ≤ 2.5 GB、镜像 ≤ 1.5 GB，整机压力场景 ≤ 12 GiB（V2Q-37）。用户指定整机容量测试在 172.16.11.252 上做，隔离条件见 6.4（V2Q-38）。已同步 V2-B.md 第〇节与各任务卡迁移编号（V2Q-31）、第六节、第八节第 6 条，SPEC-V2 第 3 节与 T-34，CLAUDE.md。V2Q-34 Opus 已核对，建议确认。**下一任务 V2-B-06（GPT-6.1 Sol，xhigh，测试先行）**：按 design/V2-B.md 6.3，模型文件从 06a 证据目录复制到 backend/models/ner/。
 
 ## 一、执行规则
 
@@ -103,6 +103,9 @@
 | V2-Z | 全量回归、浏览器、评测对比、测试服务器升级演练（upgrade.sh）、SPEC-V2 合并进 docs/SPEC.md、打标签 `v2.0.0` | Opus | high | V2-D 完成 | 待细化 |
 
 ## 归档
+
+- 2026-10-24（Opus 5.5）：**V2-B-06a 审核通过、选型已确认**（用户 2026-10-24 同意新门槛与接入约束）。独立断网重跑 verify_evidence / verify_metrics 均退出 0：下载与导出哈希、冻结样本、391 节点 / 45 实体分母、由原始预测重算的分数、2 CPU 与断网配置一致；原门槛不通过的结论成立。补查发现中置信误报 80 条（合同角色词、称谓、数字型号等）与留出样本过小，已写入接入约束。选定 urchade/gliner_multi-v2.1 FP32 ONNX（Apache-2.0；6 个文件清单与 SHA-256 见 design/V2-B.md 6.2），阈值中 0.4 / 高 0.95；B-06 不装 torch / transformers / gliner，用 onnxruntime + numpy + tokenizers 自写前后处理并与 06a 结果对拍；新增结果过滤、新留出集（≥ 40 实体）、误报 ≤ 20 条；资源门槛改为万字 ≤ 10 秒、单进程 ≤ 2.5 GB、镜像 ≤ 1.5 GB，整机压力场景 ≤ 12 GiB（V2Q-37）。用户指定整机容量测试在 172.16.11.252 上做，隔离条件见 6.4（V2Q-38）。已同步 V2-B.md 第〇节与各任务卡迁移编号（V2Q-31）、第六节、第八节第 6 条，SPEC-V2 第 3 节与 T-34，CLAUDE.md。V2Q-34 Opus 已核对，建议确认。**下一任务 V2-B-06（GPT-6.1 Sol，xhigh，测试先行）**：按 design/V2-B.md 6.3，模型文件从 06a 证据目录复制到 backend/models/ner/。
+
 
 - 2026-10-24（GPT-6.1 Sol）：**V2-B-05 已完成**：新增撤销接口（共用任务行锁、精确位置校验、仅 person 人名 / user 词条可撤销），人名原文加密存入 0011_redaction_exclusions（含 V2Q-35 批准 loc），全文重算不替换 / 不列疑似 / 不记名称库；用户词条撤销清掉同词同类全部 user 来源，不写排除表。审计 redaction_revoke 仅含 category。按 Opus 5ee5cc4 决定，只在 tasks/service.py 补充说明实际变化分支删除 NOTE 来源排除项，正文来源及说明未变时保留。设计第五节 #1～8 自动化覆盖，另验 CSRF、精确范围、重复请求、状态限制、普通用户 / 管理员他人任务 404、已记住人名不可撤销；Docker 定向 + 迁移 + 既有接口 / NOTE / 人名 + golden + A-03 **276 passed、1 warning，93.15 秒**，b05-final.exit 独立落盘回读 **0**。无新增 Q 项；V2Q-34 仍待 Opus 核对。只同步迁移结构期望为 23 表，样本未改；全量及浏览器留 B-08，前端撤销入口留 B-07。**下一任务 V2-B-06a（Opus，high）**：按设计 6.1 先说明候选文件名 / 来源 / 大小并取得下载同意，再断网容器选型；本会话停止，不下载或接入模型。证据：本会话 visualizations/v2-b/b05-red.log / .exit、b05-focused.log / .exit、b05-final.log / .exit。
 

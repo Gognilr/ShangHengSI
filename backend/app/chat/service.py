@@ -197,8 +197,8 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
     found = [{"start": s.start, "end": s.end, "text": text[s.start:s.end], "reason": s.reason}
              for s in suspects.find_suspects(text, [(s.start, s.end) for s in accepted], derived=short_derived)]
     for suspect in model_suspects:
-        found = [s for s in found if (s['start'], s['end']) != (suspect['start'], suspect['end'])]
-        found.append(suspect)
+        if not any((s['start'], s['end']) == (suspect['start'], suspect['end']) for s in found):
+            found.append(suspect)
     if decisions is not None:  # None 只作预览；发送即使没传决定也用空列表重新校验。
         for suspect in found:
             matches = [d for d in decisions if (d["start"], d["end"]) == (suspect["start"], suspect["end"])]

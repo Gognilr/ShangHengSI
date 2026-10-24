@@ -161,6 +161,16 @@ def _stopwords():
 
 def keep_entity(text: str, entity: Entity) -> bool:
     surface = text[entity.start:entity.end].strip()
+    # V2Q-39：港口、贸易术语与字母数字代码属于保留项，只过滤模型结果。
+    if re.fullmatch(r'(?i:HS)\s*\d[\d .-]*', surface):
+        return False
+    if (re.fullmatch(r'[A-Za-z0-9_./-]+', surface)
+            and re.search(r'[A-Za-z]', surface) and re.search(r'\d', surface)):
+        return False
+    if entity.label == 'ORG' and re.search(r'港$|(?i:\bPort)$', surface):
+        return False
+    if entity.label == 'ORG' and re.match(r'(?i:FOB|CIF|CFR|EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS)\b', surface):
+        return False
     return (len(surface) >= 2 and surface.casefold() not in _stopwords()
             and re.fullmatch(r'[\d\s\-/.]+', surface) is None
             and (entity.label != 'ADDR' or re.search(r'[^\W\d_]', surface) is not None))

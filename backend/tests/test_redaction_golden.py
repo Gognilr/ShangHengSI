@@ -106,6 +106,13 @@ def test_must_suspect_listed(name):
         found = list(occurrences(nodes, needle))
         assert found, f"标注文字不在样本中：{needle}"
         for loc, start, end in found:
+            # V2Q-39：仅这两条可由更严格的高置信实体识别替换，其他断言不变。
+            ner_promotions = {('inquiry', 'Harbor Fictive Labs'): 'ORG',
+                              ('persons_narrative', '林虚'): 'PERSON'}
+            category = ner_promotions.get((name, needle))
+            if category and any(i.loc == loc and i.char_start <= start and i.char_end >= end
+                                and i.detected_by == 'ner' and i.category == category for i in result.items):
+                continue
             assert any(s.loc == loc and s.char_start <= start and s.char_end >= end for s in result.suspects), \
                 f"未列为疑似遗漏：{needle}（{loc}）"
 

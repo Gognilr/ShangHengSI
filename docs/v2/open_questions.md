@@ -8,6 +8,7 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-40 | B-06 新增 NER 高置信替换影响旧 R4 的部分决定测试（待确认） | 旧 test_chat.py::test_r4_partial_and_duplicate_decisions 的组合问题中，Northern Fictive Laboratory 得分0.9565615654，按固定0.95高阈值自动替换；原测试认为它仍未处理，要求只决定 Meridian Fictive Inspection 时返回 CHAT_SUSPECTS_PENDING，与新行为冲突。本次不改该保护测试。建议仅在这一个旧R4用例中通过monkeypatch固定 ner.recognize 返回空列表，保留原始样本、全部漏决定/重复决定断言；B-06另增真实模型测试，验证高置信替换后剩余疑似仍须决定，漏决定409、重复决定422，不能绕过服务端确认。已通过异步问题向用户请求此单用例授权，未获答复前不改。其他回归问题按产品修复：合同/邮编标签/HS追加停用词；同一区间规则已有疑似时保留原规则原因，模型只补缺口（不减少疑似或替换）。 | V2-B-06；test_chat.py单个用例；test_ner.py新增真实模型覆盖 | B-06完成前 |
 
 
 ## 二、已决定

@@ -113,7 +113,7 @@ def test_chat_confidence_and_rule_precedence(monkeypatch):
                 ner.Entity(text.index('陆清禾'), text.index('陆清禾') + 3, 'PERSON', 0.7)]
 
     monkeypatch.setattr(ner, 'recognize', predict)
-    result = _redact('电话：13800138000，沈柏宁通知陆清禾。', {}, [])
+    result = _redact('电话：13800138000，沈柏宁复核陆清禾。', {}, [])
     assert '沈柏宁' not in result.text
     assert any(s['text'] == '陆清禾' and s['reason'] == 'ner' for s in result.suspects)
 
@@ -138,3 +138,131 @@ def test_check_rejects_missing_or_changed(monkeypatch, tmp_path, changed):
         (tmp_path / 'model.onnx').write_bytes(b'changed')
     with pytest.raises(RuntimeError, match='缺失或 SHA-256'):
         ner.check()
+
+
+@pytest.mark.parametrize('score', [0.7, 0.99])
+def test_revoked_person_not_reintroduced_by_model(monkeypatch, score):
+    from app.redaction import ner
+    from app.redaction.engine import NodeIn, compute
+
+    def predict(text):
+        return [ner.Entity(m.start(), m.end(), 'PERSON', score)
+                for m in __import__('re').finditer('周示例', text)]
+
+    monkeypatch.setattr(ner, 'recognize', predict)
+    result = compute([NodeIn('F1-P1', '联系人：周示例'), NodeIn('NOTE', '周示例复核。')],
+                     'other', exclusions=['周示例'])
+    assert not result.items
+    assert not result.suspects
+    assert not result.mapping
+
+
+@pytest.mark.parametrize('surface,label', [('青岛港', 'ORG'), ('天津港', 'ADDR'),
+    ('FOB Qingdao Port', 'ORG'), ('CIF Example', 'ORG'), ('HS 27131200', 'ADDR'),
+    ('XC-132A', 'ADDR')])
+def test_preserved_ports_terms_and_codes(surface, label):
+    from app.redaction import ner
+    assert not ner.keep_entity(surface, ner.Entity(0, len(surface), label, 0.99))
+
+
+@pytest.mark.parametrize('surface,label', [('沈澄港', 'PERSON'), ('Anne Port', 'PERSON'),
+                                          ('123 Port', 'ADDR')])
+def test_port_filter_does_not_remove_person_or_street_address(surface, label):
+    from app.redaction import ner
+    assert ner.keep_entity(surface, ner.Entity(0, len(surface), label, 0.99))
+
+
+@pytest.mark.parametrize('entry', ['app', 'worker'])
+@pytest.mark.parametrize('changed', [False, True])
+def test_startup_rejects_corrupt_or_missing_files(monkeypatch, tmp_path, entry, changed):
+    import asyncio
+    import hashlib
+    from app.redaction import ner
+    from app import main, worker
+    monkeypatch.setattr(ner, 'MODEL_DIR', tmp_path)
+    monkeypatch.setattr(main, 'check_master_key', lambda: None)
+    monkeypatch.setattr(worker, 'check_master_key', lambda: None)
+    digest = hashlib.sha256(b'original').hexdigest()
+    for name in ner.FILES:
+        (tmp_path / name).write_bytes(b'original')
+    (tmp_path / 'MANIFEST.sha256').write_text(''.join(f'{digest}  {name}\n' for name in ner.FILES))
+    if changed:
+        (tmp_path / 'model.onnx').write_bytes(b'PRIVATE_FILE_CONTENT')
+    else:
+        (tmp_path / 'tokenizer.json').unlink()
+
+    async def start_app():
+        async with main.lifespan(main.app):
+            pytest.fail('文件异常时不得进入服务期')
+
+    with pytest.raises(RuntimeError, match='模型文件缺失或 SHA-256') as error:
+        asyncio.run(start_app()) if entry == 'app' else worker.main()
+    assert 'PRIVATE_FILE_CONTENT' not in str(error.value)
+
+
+def test_model_load_failure_is_safe(monkeypatch):
+    from app.redaction import ner
+    monkeypatch.setattr(ner, '_model', None)
+    monkeypatch.setattr(ner, 'check', lambda **kw: None)
+
+    def failed():
+        raise ValueError('PRIVATE_MODEL_CONTENT')
+
+    monkeypatch.setattr(ner, '_Recognizer', failed)
+    with pytest.raises(RuntimeError, match='模型加载失败') as error:
+        ner._get_model()
+    assert 'PRIVATE_MODEL_CONTENT' not in str(error.value)
+
+
+def test_lazy_load_and_reuse(monkeypatch):
+    from app.redaction import ner
+    monkeypatch.setattr(ner, '_model', None)
+    calls = []
+    sentinel = object()
+    monkeypatch.setattr(ner, 'check', lambda **kw: None)
+    monkeypatch.setattr(ner, '_Recognizer', lambda: calls.append(1) or sentinel)
+    assert not calls
+    assert ner._get_model() is sentinel
+    assert ner._get_model() is sentinel
+    assert calls == [1]
+
+
+def test_offline_body_note_and_question_with_real_model():
+    import io
+    from docx import Document
+    from app.parsing.docx import parse_docx
+    from app.redaction.engine import NodeIn, compute
+    from app.chat.service import _redact
+    text = '经与王建国沟通，沈柏宁复核了江岚研究院的记录。'
+    document = Document()
+    document.add_paragraph(text)
+    stream = io.BytesIO()
+    document.save(stream)
+    parsed = parse_docx(stream.getvalue(), 1)
+    nodes = [NodeIn(n.loc, n.text, n.clause_no) for n in parsed.nodes if n.part == 'body']
+    result = compute([*nodes, NodeIn('NOTE', text)], 'other')
+    for loc in ('F1-P1', 'NOTE'):
+        assert any(i.loc == loc and i.detected_by == 'ner' for i in result.items)
+        assert '沈柏宁' not in result.redacted[loc] or any(s.loc == loc for s in result.suspects)
+    question = _redact('经与王建国沟通……', {}, [])
+    assert '王建国' not in question.text or any(s['text'] == '王建国' for s in question.suspects)
+
+
+def test_real_model_promotion_keeps_remaining_decisions_required():
+    from app.chat.service import _redact
+    from app.security.errors import AppError
+    name = 'Meridian Fictive Inspection'
+    message = name + ' 的检验报告能用吗？ Northern Fictive Laboratory 的报告呢？'
+    preview = _redact(message, {}, [])
+    assert preview.new_entries == {'[公司_Q1]': 'Northern Fictive Laboratory'}
+    assert preview.suspects == [{'start': 0, 'end': len(name), 'text': name, 'reason': 'capitalized'}]
+    with pytest.raises(AppError) as pending:
+        _redact(message, {}, [], [])
+    assert pending.value.code == 'CHAT_SUSPECTS_PENDING'
+    decision = {'start': 0, 'end': len(name), 'decision': 'keep'}
+    sent = _redact(message, {}, [], [decision])
+    assert 'Northern Fictive Laboratory' not in sent.text
+    assert sent.new_entries == preview.new_entries
+    with pytest.raises(AppError) as duplicate:
+        _redact(message, {}, [], [decision, decision])
+    assert duplicate.value.status == 422

@@ -464,9 +464,10 @@ def compute(
     # 模型只读取规则未替换的文字；等长空白保持原文偏移。
     ner_suspects = []
     for i, n in enumerate(nodes):
+        excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         residual = ner.mask(n.text, occupied[i])
         for hit in ner.recognize(residual):
-            if _overlaps(occupied[i], hit.start, hit.end):
+            if _overlaps(occupied[i] + excluded_spans, hit.start, hit.end):
                 continue
             if hit.score >= ner.HIGH:
                 surface = n.text[hit.start:hit.end]
@@ -498,10 +499,10 @@ def compute(
                             for s in S.find_suspects(n.text, occupied[i] + excluded_spans, derived=short_derived)]
     result.matched_terms = {s.term for s in spans if s.term}
     for suspect in ner_suspects:
-        result.suspects = [s for s in result.suspects
-                           if (s.loc, s.char_start, s.char_end) !=
-                           (suspect.loc, suspect.char_start, suspect.char_end)]
-        result.suspects.append(suspect)
+        # 同一区间已由规则列疑似时沿用既有原因，模型只补缺口（只增不减）。
+        if not any((s.loc, s.char_start, s.char_end) ==
+                   (suspect.loc, suspect.char_start, suspect.char_end) for s in result.suspects):
+            result.suspects.append(suspect)
     return result
 
 
