@@ -1,4 +1,4 @@
-"""全部 22 张表的 ORM 模型，逐表对应 SPEC 18.3–18.24。
+"""全部 23 张表的 ORM 模型，对应 SPEC 18.3–18.24 与 V2-B 任务内排除表。
 
 约定见 SPEC 18.1：时间 timestamptz（UTC）；枚举用 varchar + CHECK；_enc 结尾为主密钥加密后的 bytea；
 任务下属表的 task_id 外键均 ON DELETE CASCADE。
@@ -247,6 +247,19 @@ class RedactionItem(Base):
     category: Mapped[str] = mapped_column(String(10), nullable=False)
     placeholder: Mapped[str] = mapped_column(String(64), nullable=False)
     detected_by: Mapped[str] = mapped_column(String(10), nullable=False)
+
+
+class RedactionExclusion(Base):
+    """V2-B-05：任务内撤销的人名原文加密；loc 只记录来源（V2Q-35）。"""
+    __tablename__ = "redaction_exclusions"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    task_id: Mapped[uuid.UUID] = _task_fk()
+    loc: Mapped[str] = mapped_column(String(64), nullable=False)
+    text_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    category: Mapped[str] = mapped_column(String(10), nullable=False)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _ts_now()
 
 
 # ---- 18.11 redaction_suspects ----

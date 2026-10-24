@@ -16,6 +16,7 @@ from app.db.session import get_db
 from app.redaction import engine
 from app.security.deps import current_user, owned_task
 from app.security.errors import AppError, NotFoundError
+from app.audit import service as audit
 
 router = APIRouter(prefix="/tasks/{id}")
 
@@ -83,6 +84,12 @@ class ManualRedaction(BaseModel):
     char_start: StrictInt
     char_end: StrictInt
     category: UserCategory
+
+
+class RevokeRedaction(BaseModel):
+    loc: str = Field(min_length=1, max_length=64)
+    char_start: StrictInt
+    char_end: StrictInt
 
 
 class OutboundOut(BaseModel):
@@ -205,3 +212,20 @@ def manual_redaction(
 @router.get("/redaction/outbound", response_model=OutboundOut)
 def get_outbound(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> OutboundOut:
     return OutboundOut(text=engine.build_outbound_text(db, task), note=task.user_note_redacted)
+
+
+@router.post("/redaction/revoke", response_model=RedactionOut)
+def revoke_redaction(body: RevokeRedaction, task: Task = Depends(owned_task), user: User = Depends(current_user),
+                     db: DbSession = Depends(get_db)) -> RedactionOut:
+    locked = _lock_awaiting(db, task)
+    try:
+        category = engine.revoke_redaction(db, locked, loc=body.loc, char_start=body.char_start,
+                                           char_end=body.char_end, user_id=user.id)
+    except engine.RedactionInputError as exc:
+        db.rollback()
+        raise _input_error(exc) from None
+    audit.record(db, "redaction_revoke", user_id=user.id, target_type="task", target_id=str(task.id),
+                 detail={"category": category})
+    result = _redaction(db, locked)
+    db.commit()
+    return result

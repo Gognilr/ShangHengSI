@@ -352,6 +352,10 @@ def patch_task(db: DbSession, task: Task, patch: TaskPatch) -> TaskDetail:
             db.execute(delete(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == "NOTE",
                                                    RedactionItem.detected_by == "user"))
             db.execute(delete(RedactionSuspect).where(RedactionSuspect.task_id == task.id, RedactionSuspect.loc == "NOTE"))
+            # V2Q-35：只清除旧补充说明来源的撤销记录，正文来源及未改说明时的记录保留。
+            from app.db.models import RedactionExclusion
+            db.execute(delete(RedactionExclusion).where(RedactionExclusion.task_id == task.id,
+                                                        RedactionExclusion.loc == "NOTE"))
             task.user_note_enc = crypto.encrypt_text(note) if note else None
             task.user_note_redacted = None
     engine.apply_party_changes(db, task, [])

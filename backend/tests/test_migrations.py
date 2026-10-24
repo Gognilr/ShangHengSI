@@ -321,6 +321,15 @@ SCHEMA = {
         created_at ts NN""",
 }
 
+SCHEMA["redaction_exclusions"] = """
+    id uuid NN =gen_random_uuid()
+    task_id uuid NN
+    loc v64 NN
+    text_enc bytea NN
+    category v10 NN
+    created_by uuid
+    created_at ts NN"""
+
 PRIMARY_KEYS = {t: ["id"] for t in SCHEMA}
 PRIMARY_KEYS.update(
     sessions=["token_hash"], redaction_maps=["task_id"], settings=["key"], requirement_versions=["version"]
@@ -357,6 +366,8 @@ INDEXES = {
 
 # 外键：(表, 字段) -> (被引用表, 删除规则 c=CASCADE a=NO ACTION)
 FOREIGN_KEYS = {
+    ("redaction_exclusions", "task_id"): ("tasks", "c"),
+    ("redaction_exclusions", "created_by"): ("users", "a"),
     ("sessions", "user_id"): ("users", "a"),
     ("tasks", "owner_id"): ("users", "a"),
     ("task_files", "task_id"): ("tasks", "c"),
@@ -483,9 +494,9 @@ def _tables(conn):
 # ---------------------------------------------------------------- 结构
 
 
-def test_exactly_22_tables(migrated):
+def test_exactly_23_tables(migrated):
     assert _tables(migrated) == set(SCHEMA)
-    assert len(SCHEMA) == 22
+    assert len(SCHEMA) == 23  # V2-B-05：新增 redaction_exclusions。
 
 
 def test_pgcrypto_enabled(migrated):
@@ -796,6 +807,35 @@ def test_0008_requirement_sources_upgrade_and_downgrade():
             assert conn.execute('SELECT text FROM company_requirements').fetchone()[0] == '字' * 200
             assert conn.execute("SELECT count(*) FROM information_schema.columns WHERE table_name='company_requirements' AND column_name='sources'").fetchone()[0] == 0
         command.upgrade(cfg, 'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_0011_exclusions_upgrade_downgrade_and_cascade():
+    """B-05 #6：新表字段、任务级联与降级删除表，旧表数据保留。"""
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, "0010")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert "redaction_exclusions" not in _tables(conn)
+            owner = _insert_user(conn)
+            task = _insert_task(conn, owner)
+        command.upgrade(cfg, "0011")
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute("INSERT INTO redaction_exclusions (task_id, loc, text_enc, category, created_by, created_at) VALUES (%s, 'NOTE', %s, 'PERSON', %s, now())", (task, b'ciphertext', owner))
+            assert conn.execute("SELECT loc, text_enc, category, created_by FROM redaction_exclusions").fetchone() == ("NOTE", b'ciphertext', "PERSON", owner)
+            conn.execute("DELETE FROM tasks WHERE id=%s", (task,))
+            assert conn.execute("SELECT count(*) FROM redaction_exclusions").fetchone()[0] == 0
+        command.downgrade(cfg, "0010")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert "redaction_exclusions" not in _tables(conn)
+            assert conn.execute("SELECT count(*) FROM users WHERE id=%s", (owner,)).fetchone()[0] == 1
+        command.upgrade(cfg, "head")
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

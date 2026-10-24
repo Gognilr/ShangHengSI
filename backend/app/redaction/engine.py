@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app.admin.settings_store import get_setting
 from app.db.base import utcnow
 from app.db.models import (
-    DocNode, Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionTerm, Task, TaskFile,
+    DocNode, Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionTerm, RedactionExclusion, Task, TaskFile,
 )
 from app.redaction import detect, outbound, parties as P, quotes, ratio, suspects as S, tables
 from app.redaction.dictionaries import _country_index
@@ -271,6 +271,7 @@ def compute(
     user_terms: Sequence[UserTerm] = (),
     mask_quantity: bool = False,
     main_prefix: str | None = None,
+    exclusions: Sequence[str] = (),
 ) -> RedactionResult:
     """对正文节点执行 9.3 第 1–7 步、数量脱敏、疑似遗漏和金额比例。
 
@@ -278,6 +279,7 @@ def compute(
     main_prefix 为主文件节点位置编号的前缀（如 "F1-"），确定合同总价时先在主文件中找（9.6）。
     """
     entities: dict[str, _Entity] = {}
+    excluded = {P.normalize(value) for value in exclusions}
 
     def entity(name: str, category: str) -> _Entity:
         key = P.normalize(name)
@@ -416,6 +418,8 @@ def compute(
     persons: list[_Entity] = []
     for i, n in enumerate(nodes):
         for h in detect.find_persons(n.text):
+            if P.normalize(n.text[h.start:h.end]) in excluded:
+                continue
             if _overlaps(occupied[i], h.start, h.end):  # 标签后是公司名称等已替换的文字
                 continue
             name = n.text[h.start:h.end]
@@ -471,7 +475,9 @@ def compute(
 
     # 疑似遗漏：全部替换项确定之后，在每个节点未替换的文字上识别（9.5）
     for i, n in enumerate(nodes):
-        result.suspects += [SuspectOut(n.loc, s.start, s.end, s.reason) for s in S.find_suspects(n.text, occupied[i], derived=short_derived)]
+        excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
+        result.suspects += [SuspectOut(n.loc, s.start, s.end, s.reason)
+                            for s in S.find_suspects(n.text, occupied[i] + excluded_spans, derived=short_derived)]
     result.matched_terms = {s.term for s in spans if s.term}
     return result
 
@@ -746,6 +752,8 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     user_terms += [u for u in extra_terms if (P.normalize(u.text), u.category) not in seen]
     result = compute(nodes, task.stance, terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
                      mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
+                     exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
+                         select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
                      main_prefix=_main_prefix(db, task.id))
 
     for r in rows:
@@ -880,6 +888,34 @@ def _add_term(db: Session, task: Task, text: str, loc: str, start: int, end: int
     if any(not text[k].isspace() and not any(s <= k < e for s, e in covered) for k in range(start, end)):
         # 防御性检查：不应出现；调用方不提交，本次修改随事务回滚
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确，请选择完整的词")
+
+
+def revoke_redaction(db: Session, task: Task, *, loc: str, char_start: int, char_end: int,
+                     user_id: uuid.UUID) -> str:
+    """精确命中可撤销项后重算；调用方持有任务行锁，审计与重算同事务。"""
+    item = db.scalar(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == loc,
+                     RedactionItem.char_start == char_start, RedactionItem.char_end == char_end))
+    if item is None or not (item.detected_by == "user" or item.detected_by == "person" and item.category == "PERSON"):
+        raise RedactionInputError(422, "NOT_REVOCABLE", "该替换项不能撤销")
+    texts = _texts_with_note(_body_rows(db, task.id), task)
+    surface = texts.get(loc, "")[char_start:char_end]
+    if not surface:
+        raise RedactionInputError(422, "NOT_REVOCABLE", "该替换项不能撤销")
+    category = item.category
+    if item.detected_by == "person":
+        db.add(RedactionExclusion(task_id=task.id, loc=loc, text_enc=crypto.encrypt_text(surface),
+                                 category=category, created_by=user_id))
+    else:
+        # 用户词条全文生效，同词同类的全部来源一并移除，防止重算从其他位置重新取回。
+        for row in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id,
+                              RedactionItem.detected_by == "user", RedactionItem.category == category)):
+            value = texts.get(row.loc, "")[row.char_start:row.char_end]
+            if P.normalize(value) == P.normalize(surface):
+                db.delete(row)
+    db.flush()
+    existing = _existing_parties(db, task)
+    _run(db, task, _current_overrides(existing), existing)
+    return category
 
 
 def add_user_term(db: Session, task: Task, *, loc: str, char_start: int, char_end: int, category: str) -> None:
