@@ -4,14 +4,14 @@ must_replace:
   - {text: 青岚虚构石化股份有限公司, category: ORG}
   - {text: 青岚公司, category: ORG}
   - {text: 澄川虚构信息技术有限公司, category: ORG}
+  - {text: 澄川虚构信息技术, category: ORG}
+  - {text: 澄川虚构, category: ORG}
+  - {text: 张经理, category: PERSON}
+  - {text: 李总, category: PERSON}
+  - {text: Carter Fictive, category: PERSON}
 must_keep:
   - 软件平台 V3.0
   - 对方同意延期交货
   - 乙方授权代表应在验收单上签字
-# V2-B-00 先行写入：V2-B-03 实现后移入 must_replace（字号类别 ORG，人名类别 PERSON），文字不得改动；并按设计 3.6 加入 must_suspect
-known_gaps:
-  - {text: 澄川虚构信息技术标准}
-  - {text: 澄川虚构软件平台}
-  - {text: 张经理}
-  - {text: 李总}
-  - {text: Carter Fictive}
+must_suspect:
+  - 王建国

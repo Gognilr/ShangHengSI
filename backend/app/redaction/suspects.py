@@ -19,6 +19,7 @@ CAPITALIZED = "capitalized"
 LONG_DIGITS = "long_digits"
 PERSON_NAME = "person_name"
 _PRIORITY = {ORG_SUFFIX: 0, BEFORE_COMPANY: 1, CAPITALIZED: 2, PERSON_NAME: 3, LONG_DIGITS: 4}
+_PRIORITY.update(derived_name=3, person_like=4)
 _MASK = "\x00"
 
 
@@ -400,7 +401,7 @@ def _mask(text: str, occupied: list[tuple[int, int]]) -> str:
     return "".join(chars)
 
 
-def find_suspects(text: str, occupied: list[tuple[int, int]]) -> list[Suspect]:
+def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=()) -> list[Suspect]:
     """节点原文中未被替换的疑似遗漏，按位置排序。
 
     occupied 为该节点已被替换的区间 [(start, end)]。同一位置命中多条规则时只保留一条，
@@ -412,6 +413,16 @@ def find_suspects(text: str, occupied: list[tuple[int, int]]) -> list[Suspect]:
     cands += _english_suffix_candidates(masked)
     cands += _capitalized_candidates(masked)
     cands += _person_candidates(masked)
+    # 新旧叙述人名规则重叠时保持既有 person_name 原因（V2Q-34），新增命中才用 person_like。
+    surname = "|".join(map(re.escape, cn_surnames()))
+    trigger = "与|和|由|请|致|联系|经|向|给|找|跟|同|派|委托|授权|通知|抄送"
+    end = "沟通|协商|确认|同意|说|称|表示|负责|签字|签署|联系|提出|认为|回复|反馈|处理|商定"
+    pat = re.compile(rf"(?:{trigger})((?:{surname})[一-鿿]{{1,2}}?)(?=$|[^一-鿿]|{end})")
+    for m in pat.finditer(masked):
+        if _is_person_name(m.group(1)) and not _is_place(m.group(1)) and not any(s.start == m.start(1) and s.end == m.end(1) for s in cands):
+            cands.append(Suspect(m.start(1), m.end(1), "person_like"))
+    for alias in derived:
+        cands += [Suspect(m.start(), m.end(), "derived_name") for m in re.finditer(re.escape(alias), masked)]
     cands += _long_digit_candidates(masked)
     cands = [c for c in cands if c.end > c.start and _MASK not in masked[c.start:c.end]]
     chosen: list[Suspect] = []

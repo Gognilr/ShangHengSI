@@ -2,10 +2,13 @@ description: 叙述中的中文人名（R4-08，设计 R4.md 第十一节）：�
 stance: sales
 must_replace:
   - {text: 周示例, category: PERSON}
+  - {text: 王总, category: PERSON}
+  - {text: 李经理, category: PERSON}
+  - {text: 赵总监, category: PERSON}
 must_keep:
   - 业务往来备忘
-  - 王总提到的条款需要复核
-  - 李经理和赵总监都同意了
+  - 提到的条款需要复核
+  - 都同意了
   - 周期表示为 30 天
   - 常规要求见第三条
   - 我们周五前回复

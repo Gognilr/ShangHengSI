@@ -13,8 +13,9 @@
 """
 import re
 import unicodedata
+from functools import lru_cache
 
-from app.redaction.dictionaries import find_country, find_org_type
+from app.redaction.dictionaries import find_country, find_org_type, _country_index, common_terms, RESOURCES_DIR
 from app.redaction.placeholders import BUYER, OTHER, SELLER
 
 # ---------------------------------------------------------------- 标签
@@ -131,6 +132,33 @@ _ALIAS_RE = re.compile(
 def normalize(name: str) -> str:
     """名称的规范形式：全角转半角、去掉空白、不区分大小写。用于判断是否同一对象。"""
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", name)).casefold()
+
+
+@lru_cache(maxsize=1)
+def industry_words() -> tuple[str, ...]:
+    return tuple(sorted((s.strip() for s in (RESOURCES_DIR / "industry_words.txt").read_text(encoding="utf-8").splitlines()
+                         if s.strip() and not s.startswith("#")), key=len, reverse=True))
+
+
+def derived_names(name: str) -> tuple[list[str], list[str]]:
+    """主体部分、字号：返回（自动别名，二字疑似别名），不登记为独立主体。"""
+    if not is_chinese_name(name):
+        return [], []
+    body = re.sub(rf"(?:{_CN_SUFFIX}|{_CN_BRANCH_SUFFIX})+$", "", name)
+    brand = body
+    _, countries = _country_index()
+    places = sorted([p for p, country in countries.items() if country == "中国" and re.fullmatch(r"[一-鿿]+", p)]
+                    + ["华东", "华南", "华北", "华中", "西南", "西北", "东北"], key=len, reverse=True)
+    while (place := next((p for p in places if brand.startswith(p)), None)):
+        brand = brand[len(place):]
+    while (word := next((w for w in industry_words() if brand.endswith(w)), None)):
+        brand = brand[:-len(word)]
+    blocked = set(industry_words()) | set(common_terms()) | {"中国", "国际", "东方", "中华"}
+    auto = [body] if len(body) >= 4 and body not in blocked else []
+    if brand not in blocked and len(brand) >= 3:
+        auto.append(brand)
+    short = [brand] if brand not in blocked and len(brand) == 2 else []
+    return list(dict.fromkeys(auto)), short
 
 
 def name_pattern(surface: str, *, case_sensitive: bool = False) -> re.Pattern:

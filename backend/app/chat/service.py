@@ -165,6 +165,15 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
         if not any(s.start < end and start < s.end for s in accepted):
             take(start, end, code_for(text[start:end], "ORG"))
 
+    # V2-B-03：只从已有主体的完整名称派生，沿用原代号。
+    short_derived = []
+    for code, value in mapping:
+        auto, short = parties.derived_names(value)
+        short_derived.extend(short)
+        for alias in auto:
+            for start, end in _value_spans(text, alias):
+                take(start, end, code)
+
     # 4. 9.3 第 4～7 步：格式化信息、金额、人名、地址
     for find in (detect.find_formatted, detect.find_amounts, detect.find_bare_amounts, detect.find_persons, detect.find_addresses, detect.find_projects):
         for hit in find(text):
@@ -174,7 +183,7 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             take(hit.start, hit.end, code_for(text[hit.start:hit.end], hit.category, country))
 
     found = [{"start": s.start, "end": s.end, "text": text[s.start:s.end], "reason": s.reason}
-             for s in suspects.find_suspects(text, [(s.start, s.end) for s in accepted])]
+             for s in suspects.find_suspects(text, [(s.start, s.end) for s in accepted], derived=short_derived)]
     if decisions is not None:  # None 只作预览；发送即使没传决定也用空列表重新校验。
         for suspect in found:
             matches = [d for d in decisions if (d["start"], d["end"]) == (suspect["start"], suspect["end"])]

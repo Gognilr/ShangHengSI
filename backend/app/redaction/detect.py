@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
-from app.redaction.dictionaries import common_terms, find_country
+from app.redaction.dictionaries import common_terms, find_country, cn_surnames
 from app.redaction.parties import normalize
 
 
@@ -456,6 +456,19 @@ def find_persons(text: str) -> list[Hit]:
         if span and span not in seen:
             seen.add(span)
             hits.append(Hit(span[0], span[1], "PERSON", normalize(text[span[0]:span[1]])))
+    # V2-B-03：独立称谓入口；原有标签识别的结果不变。
+    titles = "总经理 副总经理 董事长 总监 经理 主任 主管 总工 工程师 律师 会计 老师 先生 女士 小姐 局长 处长 科长 院长 校长 书记 部长 总 工".split()
+    pattern = re.compile("(?:" + "|".join(map(re.escape, cn_surnames())) + ")(?:"
+                         + "|".join(sorted(titles, key=len, reverse=True)) + ")")
+    left = ("请", "由", "与", "和", "及", "致", "向", "给", "找", "跟", "同", "经", "抄送", "联系", "通知", "委托", "授权")
+    for m in pattern.finditer(text):
+        if m.start() and re.match(r"[一-鿿]", text[m.start() - 1]) and not text[:m.start()].endswith(left):
+            continue
+        if not any(h.start < m.end() and m.start() < h.end for h in hits):
+            hits.append(Hit(m.start(), m.end(), "PERSON", normalize(m.group())))
+    for m in re.finditer(r"(?<![A-Za-z])(?:Mr|Mrs|Ms|Dr|Prof)\.[ \t]+([A-Z][A-Za-z'’\-]*(?:[ \t]+[A-Z][A-Za-z'’\-]*){0,2})", text):
+        if not any(h.start < m.end(1) and m.start(1) < h.end for h in hits):
+            hits.append(Hit(m.start(1), m.end(1), "PERSON", normalize(m.group(1))))
     return hits
 
 

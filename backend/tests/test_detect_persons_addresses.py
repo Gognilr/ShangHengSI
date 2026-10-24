@@ -61,8 +61,8 @@ def test_chinese_title_stripped_and_length_rules():
     assert persons("联系人：王五总经理") == ["王五"]
     assert persons("联系人：赵六经理，电话") == ["赵六"]
     assert persons("联系人：欧阳小明") == ["欧阳小明"]
-    # 去掉称谓后不足 2 个或超过 4 个汉字：不识别（不猜测）
-    assert persons("联系人：王经理") == []
+    # V2Q-33：姓加称谓单独识别；原输入不变，其余姓名长度规则仍保留。
+    assert persons("联系人：王经理") == ["王经理"]
     assert persons("联系人：欧阳小明明白") == []
     assert persons("联系人：张") == []
 

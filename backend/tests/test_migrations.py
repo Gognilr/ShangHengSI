@@ -406,9 +406,9 @@ ENUM_COLUMNS = {
         "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM", "IM", "PROJECT",
     ],
     ("redaction_items", "detected_by"): [
-        "term", "party", "alias", "regex", "amount", "person", "address", "user",
+        "term", "party", "alias", "regex", "amount", "person", "address", "user", "derived",
     ],
-    ("redaction_suspects", "reason"): ["org_suffix", "capitalized", "long_digits", "before_company", "person_name"],
+    ("redaction_suspects", "reason"): ["org_suffix", "capitalized", "long_digits", "before_company", "person_name", "derived_name", "person_like"],
     ("redaction_suspects", "decision"): ["pending", "replace", "ignore"],
     ("redaction_terms", "kind"): ["learned", "custom"],
     ("redaction_terms", "category"): ["ORG", "PERSON", "CUSTOM"],
@@ -796,6 +796,39 @@ def test_0008_requirement_sources_upgrade_and_downgrade():
             assert conn.execute('SELECT text FROM company_requirements').fetchone()[0] == '字' * 200
             assert conn.execute("SELECT count(*) FROM information_schema.columns WHERE table_name='company_requirements' AND column_name='sources'").fetchone()[0] == 0
         command.upgrade(cfg, 'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_0010_suspect_reasons_upgrade_and_downgrade():
+    """B-03 #10；V2Q-31 顺延：新原因 / 来源可写，降级删除新行并恢复约束。"""
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    item = "INSERT INTO redaction_items (task_id, loc, char_start, char_end, category, placeholder, detected_by) VALUES (%s, 'F1-P1', 0, 3, 'ORG', 'x', %s)"
+    suspect = "INSERT INTO redaction_suspects (task_id, loc, char_start, char_end, reason) VALUES (%s, 'F1-P1', 0, 3, %s)"
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, "0009")
+        with psycopg.connect(url, autocommit=True) as conn:
+            task = _insert_task(conn, _insert_user(conn))
+            for sql, value in [(item, "derived"), (suspect, "derived_name"), (suspect, "person_like")]:
+                with pytest.raises(errors.CheckViolation):
+                    conn.execute(sql, (task, value))
+        command.upgrade(cfg, "0010")
+        with psycopg.connect(url, autocommit=True) as conn:
+            for sql, value in [(item, "derived"), (item, "party"), (suspect, "derived_name"), (suspect, "person_like"), (suspect, "person_name")]:
+                conn.execute(sql, (task, value))
+        command.downgrade(cfg, "0009")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute("SELECT detected_by FROM redaction_items").fetchall() == [("party",)]
+            assert conn.execute("SELECT reason FROM redaction_suspects").fetchall() == [("person_name",)]
+            for sql, value in [(item, "derived"), (suspect, "derived_name"), (suspect, "person_like")]:
+                with pytest.raises(errors.CheckViolation):
+                    conn.execute(sql, (task, value))
+        command.upgrade(cfg, "head")
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

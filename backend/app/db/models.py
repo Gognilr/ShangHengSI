@@ -234,7 +234,7 @@ class RedactionItem(Base):
         enum_check("category", REDACTION_CATEGORIES),
         enum_check(
             "detected_by",
-            ["term", "party", "alias", "regex", "amount", "person", "address", "user"],
+            ["term", "party", "alias", "regex", "amount", "person", "address", "user", "derived"],
         ),
         Index("ix_redaction_items_task_id_loc", "task_id", "loc"),
     )
@@ -253,7 +253,7 @@ class RedactionItem(Base):
 class RedactionSuspect(Base):
     __tablename__ = "redaction_suspects"
     __table_args__ = (
-        enum_check("reason", ["org_suffix", "capitalized", "long_digits", "before_company", "person_name"]),
+        enum_check("reason", ["org_suffix", "capitalized", "long_digits", "before_company", "person_name", "derived_name", "person_like"]),
         enum_check("decision", ["pending", "replace", "ignore"]),
         enum_check("category", REDACTION_CATEGORIES),
         # decision=replace 时 category 必填

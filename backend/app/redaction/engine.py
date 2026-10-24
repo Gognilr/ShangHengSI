@@ -363,6 +363,17 @@ def compute(
             if all(P.normalize(alias) != P.normalize(a) for a in owner.aliases):
                 owner.aliases.append(alias)
 
+    # V2-B-03：派生别名归原主体，只将完整名称记入名称库。
+    short_derived: list[str] = []
+    for ent in entities.values():
+        if ent.category == "ORG":
+            auto, short = P.derived_names(ent.name)
+            short_derived.extend(short)
+            for alias in auto:
+                if alias not in ent.aliases:
+                    ent.aliases.append(alias)
+                    ent.alias_src[alias] = ("derived", None)
+
     # 类型
     for ent in entities.values():
         if ent.category != "ORG":
@@ -377,7 +388,7 @@ def compute(
         pool += [(ent, pattern(s), by, ent.key if ent.from_term else None) for s in ent.surfaces]
         for a in ent.aliases:
             a_by, a_term = ent.alias_src.get(a, ("alias", None))
-            a_pat = _alias_pattern(a) if a_by == "alias" else _user_pattern(a) if a_by == "user" else P.name_pattern(a)
+            a_pat = _user_pattern(a) if a_by in ("user", "derived") else _alias_pattern(a) if a_by == "alias" else P.name_pattern(a)
             pool.append((ent, a_pat, a_by, a_term))
 
     hints = tables.table_hints(nodes)
@@ -460,7 +471,7 @@ def compute(
 
     # 疑似遗漏：全部替换项确定之后，在每个节点未替换的文字上识别（9.5）
     for i, n in enumerate(nodes):
-        result.suspects += [SuspectOut(n.loc, s.start, s.end, s.reason) for s in S.find_suspects(n.text, occupied[i])]
+        result.suspects += [SuspectOut(n.loc, s.start, s.end, s.reason) for s in S.find_suspects(n.text, occupied[i], derived=short_derived)]
     result.matched_terms = {s.term for s in spans if s.term}
     return result
 
