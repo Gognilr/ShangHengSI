@@ -70,6 +70,55 @@ class TermPatch(BaseModel):
     enabled: bool
 
 
+class OurPartyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=100)]
+
+
+@router.get("/our-parties")
+def list_our_parties(db: DbSession = Depends(get_db)) -> dict:
+    rows = db.execute(select(RedactionTerm, User.display_name).outerjoin(User, User.id == RedactionTerm.created_by)
+                      .where(RedactionTerm.kind == "learned", RedactionTerm.is_our_party.is_(True))
+                      .order_by(RedactionTerm.created_at.desc(), RedactionTerm.id)).all()
+    return {"items": [_row(t, name) for t, name in rows]}
+
+
+@router.post("/our-parties", response_model=TermRow, status_code=201)
+def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(require_admin),
+                     db: DbSession = Depends(get_db)) -> TermRow:
+    from app.review.prompt import fixed_prompt_text
+    if any(r.category == "MAP" for r in recheck(fixed_prompt_text(db), real_values=[body.name], terms=[])):
+        raise AppError(422, "TERM_IN_PROMPT", "该名称在审核提示中也会出现，请填写具体的公司名称")
+    digest = term_hash(body.name)
+    row = db.scalar(select(RedactionTerm).where(RedactionTerm.kind == "learned", RedactionTerm.term_hash == digest).with_for_update())
+    if row is None:
+        row = RedactionTerm(kind="learned", category="ORG", term_hash=digest, term_enc=crypto.encrypt_text(body.name),
+                            is_our_party=True, enabled=True, hit_count=0, created_by=admin.id, created_at=utcnow())
+        db.add(row)
+    else:
+        row.category, row.is_our_party, row.created_by = "ORG", True, admin.id
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise AppError(409, "TERM_EXISTS", "该名称已存在，请刷新后重试") from None
+    _audit(db, admin, request, row, op="our_party")
+    db.commit()
+    return _row(row, admin.display_name)
+
+
+@router.delete("/our-parties/{tid}", status_code=204)
+def delete_our_party(tid: str, request: Request, admin: User = Depends(require_admin),
+                     db: DbSession = Depends(get_db)) -> Response:
+    row = _load(db, tid)
+    if row.kind != "learned" or not row.is_our_party:
+        raise NotFoundError("TERM_NOT_FOUND", "我方主体不存在")
+    _audit(db, admin, request, row, op="delete")
+    db.delete(row)
+    db.commit()
+    return Response(status_code=204)
+
+
 def _row(t: RedactionTerm, name: Optional[str]) -> TermRow:
     return TermRow(
         id=t.id, kind=t.kind, term=crypto.decrypt_text(t.term_enc), category=t.category,

@@ -489,6 +489,11 @@ def _apply_ours(entities: dict[str, _Entity], stance: str, overrides: dict[str, 
     if len(remembered) == 1:
         remembered[0].is_our = True
         return
+    if len(remembered) > 1:
+        labeled = [e for e in remembered if e.role_label != OTHER]
+        if len(labeled) == 1:
+            labeled[0].is_our = True
+        return
     wanted = SELLER if stance == "sales" else BUYER if stance == "purchase" else None
     candidates = [e for e in orgs if wanted and e.role_label == wanted]
     if len(candidates) == 1:
@@ -564,6 +569,10 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
     items: list[ItemOut] = []
     party_order: list[str] = []
     codes: dict[str, str] = {}
+    counterpart = []
+    if len(ours) == 1 and ours[0].role_label in ("甲方", "乙方"):
+        opposite = "乙方" if ours[0].role_label == "甲方" else "甲方"
+        counterpart = [e.key for e in entities.values() if e.category == "ORG" and e.role_label == opposite]
 
     def remember(code: str, primary: str | None, surface: str) -> None:
         if primary is not None and code not in mapping:
@@ -580,7 +589,10 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
             if ent.is_our:
                 category, code = "OUR", OUR_CODE
             else:
-                code = alloc.org(ent.key, code_role(ent.role_label, stance, ent.org_type))
+                role = code_role(ent.role_label, stance, ent.org_type)
+                if len(counterpart) == 1 and ent.key in counterpart:
+                    role = {"purchase": "供应商", "sales": "客户"}.get(stance, "公司")
+                code = alloc.org(ent.key, role)
             if ent.key not in codes:
                 codes[ent.key] = code
                 party_order.append(ent.key)
@@ -1017,7 +1029,7 @@ def build_outbound(db: Session, task: Task) -> OutboundBuild:
     redacted = {r.loc: r.redacted_text or "" for r in rows}
     tables = quotes.find_quote_tables(nodes, redacted)
     text = outbound.build(
-        [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in parties],
+        [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party, stance=task.stance) for p in parties],
         [(n.loc, n.clause_no, redacted.get(n.loc, "")) for n in nodes],
         tables,
         table_notes=table_notes(*load_inputs(db, task.id)),

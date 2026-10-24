@@ -23,6 +23,7 @@ class PartyInfo:
     country: str | None
     org_type: str | None
     is_our_party: bool
+    stance: str | None = None  # V2-B-04：只用于甲乙方我方说明；旧调用保持兼容。
 
 
 def escape_document_tags(text: str) -> str:
@@ -40,7 +41,10 @@ def party_description(parties: list[PartyInfo]) -> str:
     parts = []
     for p in sorted(parties, key=lambda p: (not p.is_our_party, _letter_order(p.code))):
         if p.is_our_party:
-            parts.append(OUR_CODE if p.role_label == OTHER else f"{OUR_CODE}={p.role_label}")
+            desc = OUR_CODE if p.role_label == OTHER else f"{OUR_CODE}={p.role_label}"
+            if p.role_label in ("甲方", "乙方") and p.stance in ("purchase", "sales"):
+                desc += "（采购方）" if p.stance == "purchase" else "（销售方）"
+            parts.append(desc)
             continue
         fields = []
         code_role = p.code.rsplit("_", 1)[0]

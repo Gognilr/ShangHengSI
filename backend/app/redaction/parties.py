@@ -327,7 +327,14 @@ def find_labeled_parties(text: str) -> list[tuple[str, int, int]]:
         if span is None and m.group(1).casefold() in _BANK_VALUE_LABELS:
             span = _bank_value(text, m.end())
         if span:
-            out.append((_LABEL_CANON[m.group(1).casefold()], *span))
+            label = _LABEL_CANON[m.group(1).casefold()]
+            if label in ("甲方", "乙方"):
+                note = re.search(r"[（(]([^）)]+)[）)]", m.group())
+                if note and any(w in note.group(1) for w in ("采购方", "买方", "需方", "发包人", "委托方", "承租方")):
+                    label = BUYER
+                elif note and any(w in note.group(1) for w in ("供方", "卖方", "供应商", "承包人", "受托方", "出租方")):
+                    label = SELLER
+            out.append((label, *span))
     return out
 
 
