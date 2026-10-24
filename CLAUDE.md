@@ -11,9 +11,9 @@
 
 * 不得增加 SPEC 没有的菜单、页面或功能。顶部只有"智能审核""审核历史"两个菜单，右上角"设置"仅管理员可见。
 * 界面视觉以 docs/design/frontend.md（第二版，商衡SI 品牌主题）为准：十六进制颜色只写在 frontend/src/styles/theme.css，页面和组件只用 CSS 变量。
-* 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、向量数据库、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。LibreOffice 只允许在 converter 容器中使用（旧格式转换，Q-136），不得进入 backend 镜像；converter 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
-* 只有 backend/app/llm/gateway.py 可以访问外网。网关依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls。任何代码不得绕过网关。
-* 发给模型的只有脱敏后的正文文本，不发图片和原文件。外发策略为 local\_only 的任务绝不调用模型。
+* 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务（向量检索只用 PostgreSQL 的 pgvector 扩展，V2-E）、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。本地模型只允许 SPEC-V2 第 3 节列出的实体识别模型、向量模型各一个，均须经选型报告和我确认，用 onnxruntime 在 CPU 上离线运行；列入前不得接入。LibreOffice 只允许在 converter 容器中使用（旧格式转换，Q-136），不得进入 backend 镜像；converter 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
+* 只有两处可以访问外网：① 模型网关 backend/app/llm/gateway.py，依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls，任何模型调用不得绕过网关；② 法规同步 backend/app/lawsync/client.py（V2-E），只访问固定的国家法律法规数据库域名，只下载公开的法规目录与全文，请求中不含任何任务数据，默认关闭，同步结果经业务管理员确认才生效。其他代码不得访问外网。
+* 发给模型的只有脱敏后的正文文本，以及本地检索得到的公开法条原文和经过脱敏的公司范本条款（V2-E），全部经过出口复检；不发图片和原文件。外发策略为 local\_only 的任务绝不调用模型。
 * 原件、对照表、节点原文等敏感字段用主密钥 AES-256-GCM 加密存储（SPEC 17.3）。
 * 日志中不得出现原文、真实名称、金额、API 密钥。
 * 所有任务相关接口校验 owner\_id，非本人一律返回 404。管理员也不能查看他人任务内容。
@@ -28,9 +28,9 @@
 V1.0 已于 2026-10-24 验收并正式安装，git 标签 `v1.0.0`（011d417）。现在在 main 上开发 V2，下面几条优先于“开发方式”中 V1.0 的写法：
 
 * 开工前必读：docs/v2/TASKS-V2.md（任务清单、当前进度、第一节执行规则）、所在批次的 docs/v2/design/V2-x.md 第〇节与对应任务卡、docs/v2/open\_questions.md；范围与顺序见 docs/v2/PLAN.md。不再从 docs/TASKS.md 接任务（它只作 V1.0 的历史记录），不需要通读 docs/SPEC.md。
-* 按 TASKS-V2 第一节执行：批次 V2-A → V2-B → V2-C → V2-D 串行；单个任务只跑与本任务相关的测试，整仓全量放在批次末的集中测试任务；同一批由 GPT-6.1 Sol 连续完成，集中测试后停下，由 Opus 审核整批。
+* 按 TASKS-V2 第一节执行：批次 V2-A → V2-B → V2-C → V2-E → V2-D 串行；单个任务只跑与本任务相关的测试，整仓全量放在批次末的集中测试任务；同一批由 GPT-6.1 Sol 连续完成，集中测试后停下，由 Opus 审核整批。
 * SPEC 的变更只写在 docs/v2/SPEC-V2.md（V2 验收时由 Opus 合并进 docs/SPEC.md）；V2 的待确认问题写在 docs/v2/open\_questions.md，编号 V2Q-。
-* 本文件“必须遵守”各条在 V2 中继续有效。需要改动它们的事项（本地实体识别模型、设置页的角色分工、“智能助手”菜单）由对应批次的 Opus 任务给出修改稿，经我确认后改本文件；确认前不得实现。
+* 本文件“必须遵守”各条在 V2 中继续有效。需要改动它们的事项（本地实体识别模型、本地向量模型、设置页的角色分工、“智能助手”菜单）由对应批次的 Opus 任务给出修改稿，经我确认后改本文件；确认前不得实现。
 * 正式服务器已投入生产。V2 的部署与演练（保留期清理、主密钥更换、upgrade.sh 升级等）只在另外准备的测试虚拟机上做；正式服务器上任何停服、删数据、升级或恢复操作先征得我同意。
 * 线上 V1.0 需要紧急修复时，在 `v1.0.0` 标签上开修复分支，修复后合并回 main。
 
