@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "policy": "全部虚构；在首次模型运行前冻结；每个实体须类别与起止完全一致，阈值固定0.4/0.95。",
+  "samples": [
+    {"id":"letter","text":"沈柏宁向陆清禾介绍了江岚研究院的检测计划。顾景安随后代表澄岳实验室回复，要求松溪技术中心复核结果。","entities":[["沈柏宁","PERSON"],["陆清禾","PERSON"],["江岚研究院","ORG"],["顾景安","PERSON"],["澄岳实验室","ORG"],["松溪技术中心","ORG"]],"must_keep":["检测计划","复核结果"]},
+    {"id":"minutes","text":"唐知远主持本次会议，苏映秋汇报了青禾研究所的进度。叶明川说明云杉检测中心的意见，海棠研究院将提供补充记录。","entities":[["唐知远","PERSON"],["苏映秋","PERSON"],["青禾研究所","ORG"],["叶明川","PERSON"],["云杉检测中心","ORG"],["海棠研究院","ORG"]],"must_keep":["本次会议","补充记录"]},
+    {"id":"claim","text":"许云舟收到北辰实验室的来函后，将资料交给林疏桐。温书言建议先由清川研究中心分析，再请星洲研究院复查。","entities":[["许云舟","PERSON"],["北辰实验室","ORG"],["林疏桐","PERSON"],["温书言","PERSON"],["清川研究中心","ORG"],["星洲研究院","ORG"]],"must_keep":["资料","复查"]},
+    {"id":"legal","text":"郑怀瑾提交了松原研究院出具的说明，宋沐言确认文件完整。杜承泽提议听取远岚实验室与澄海检测中心的技术意见。","entities":[["郑怀瑾","PERSON"],["松原研究院","ORG"],["宋沐言","PERSON"],["杜承泽","PERSON"],["远岚实验室","ORG"],["澄海检测中心","ORG"]],"must_keep":["文件完整","技术意见"]},
+    {"id":"email","text":"Mira Wren reviewed the notes from Cedar Grove Research. Owen Finch asked Hazel Brook to contact Silver Fern Institute and Amber Lake Laboratory before Friday.","entities":[["Mira Wren","PERSON"],["Cedar Grove Research","ORG"],["Owen Finch","PERSON"],["Hazel Brook","PERSON"],["Silver Fern Institute","ORG"],["Amber Lake Laboratory","ORG"]],"must_keep":["Friday","notes"]},
+    {"id":"inspection","text":"Evan Reed visited Willow Bay Institute with Clara Moss. Theo Ash later shared the results with Pine Vale Research and Copper Hill Laboratory.","entities":[["Evan Reed","PERSON"],["Willow Bay Institute","ORG"],["Clara Moss","PERSON"],["Theo Ash","PERSON"],["Pine Vale Research","ORG"],["Copper Hill Laboratory","ORG"]],"must_keep":["results","visited"]},
+    {"id":"handover","text":"梁予安与邵星河讨论了枫桥研究院的交接安排。何映雪联系白榆实验室，并把梧桐检测中心的记录一并移交。","entities":[["梁予安","PERSON"],["邵星河","PERSON"],["枫桥研究院","ORG"],["何映雪","PERSON"],["白榆实验室","ORG"],["梧桐检测中心","ORG"]],"must_keep":["交接安排","记录"]},
+    {"id":"bilingual","text":"程望舒把报告交给Lena Birch，并抄送周听澜。报告由霁川研究院编制，Meadow Brook Institute与Oak Ridge Laboratory参与复核。","entities":[["程望舒","PERSON"],["Lena Birch","PERSON"],["周听澜","PERSON"],["霁川研究院","ORG"],["Meadow Brook Institute","ORG"],["Oak Ridge Laboratory","ORG"]],"must_keep":["报告","参与复核"]}
+  ]
+}
