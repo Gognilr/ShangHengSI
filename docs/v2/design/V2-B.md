@@ -14,12 +14,12 @@
 3. **每个改了脱敏规则的任务**都要跑 `tests/test_redaction_golden.py`、`tests/test_a03_outbound.py` 和本节列出的测试文件。
 4. **只增不减**：本批所有规则只能让更多内容被替换或列为疑似遗漏；唯一的例外是 B6“撤销误识别”，它只对用户明确操作的那段文字生效。出口复检（`recheck.py`）除第 1.4 节新增类别的对照表比对外不改。
 5. **三个入口共用规则**：文件正文（engine）、本次补充说明（NOTE 伪节点）、追问（chat `_redact`）。新规则写在 `detect.py`、`parties.py`、`suspects.py` 或新模块中，engine 与 chat 都调用；不各写一套。
-6. **迁移编号**：V2-A 用了 0006、0007。本批 V2-B-01 用 0008，V2-B-03 用 0009，V2-B-05 用 0010，V2-B-06 用 0011。
+6. **迁移编号**（按 V2Q-31 调整）：V2-A 用了 0006～0008。本批 V2-B-01 用 0009，V2-B-03 用 0010，V2-B-05 用 0011，V2-B-06 用 0012。
 7. 日志不得含原文；提交只暂存本任务文件。
 
 ## 一、标签扩展与新类别（V2-B-01，测试先行）
 
-**文件范围**：`backend/app/redaction/detect.py`、`backend/app/redaction/placeholders.py`、`backend/app/redaction/engine.py`（新类别接入）、`backend/app/chat/service.py`（新类别接入）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0008_im_project_categories.py`（新）、`frontend/src/utils/labels.ts`（只追加类别名称与 REDACTION\_KIND）、对应测试、`labels_extended.yaml`（按 1.5）。
+**文件范围**：`backend/app/redaction/detect.py`、`backend/app/redaction/placeholders.py`、`backend/app/redaction/engine.py`（新类别接入）、`backend/app/chat/service.py`（新类别接入）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0009_im_project_categories.py`（新，编号按 V2Q-31）、`frontend/src/utils/labels.ts`（只追加类别名称与 REDACTION\_KIND）、对应测试、`labels_extended.yaml`（按 1.5）。
 
 ### 1.1 编号类（REFNO，代号“编号\_n”）新增标签
 
@@ -40,7 +40,7 @@
 | IM 即时通信账号 | 共用“[联系方式]”（与电话相同） | 微信、微信号、WeChat、QQ、QQ号、WhatsApp、Skype、Telegram、LINE、钉钉 | 标签后 3～40 个非空白字符（字母、数字、`_ . - +`），到空白或中文标点为止 | 不能唯一还原；真实值写入对照表“[联系方式]#n”供出口复检第 1 条比对 |
 | PROJECT 项目名称 | 按对象编号“项目\_n” | 项目名称、工程名称、项目全称、Project Name、Project Title | 标签后到行尾，或遇到下一个信息标签（同人名、地址的截断规则）、`；;。` 为止；2～60 字；值为“见附件、另行约定、待定、同上”等时不替换 | 可唯一还原 |
 
-* `REDACTION_CATEGORIES` 增加 IM、PROJECT；迁移 0008 放宽 redaction\_items、redaction\_suspects 的类别约束（降级时删除这两类的行，与 0003 的做法相同）。
+* `REDACTION_CATEGORIES` 增加 IM、PROJECT；迁移 0009 放宽 redaction\_items、redaction\_suspects 的类别约束（降级时删除这两类的行，与 0003 的做法相同）。
 * `placeholders.FIXED["IM"] = "[联系方式]"`，`_NUMBERED["PROJECT"] = "项目_{}"`；`CHAT_LABELS` 增加 IM“联系方式”、PROJECT“项目”。
 * 9.3 识别顺序：IM 与 REFNO、IDNO 一起在第 4 步；PROJECT 在第 7 步（地址）之后。
 * 前端：`REDACTION_KIND` 中 IM 归 contact，PROJECT 归 other（V2-B-07 再调整颜色分组）。
@@ -56,7 +56,7 @@
 | 5 | 同一微信号出现两次 | 两处都是“[联系方式]”，对照表有一条“[联系方式]#n” |
 | 6 | 出口复检：外发文本中混入 labels\_extended 的微信号原文 | MAP 拦截 |
 | 7 | 追问 `_redact("对方微信 zhang_fiction88 说可以")` 与 `_redact("微信：zhang_fiction88")` | 后者替换为“[联系方式_Qn]”；前者无标签冒号时按现有规则不识别（不扩大） |
-| 8 | 迁移 0008 升级 / 降级 | 按 1.4；模型与迁移一致 |
+| 8 | 迁移 0009 升级 / 降级 | 按 1.4；模型与迁移一致 |
 | 9 | 现有回归集、A-03 | 全部通过 |
 
 ## 二、外文企业形式与无标签中国地址（V2-B-02，测试先行）
@@ -100,7 +100,7 @@
 
 ## 三、字号派生、姓 + 称谓、叙述人名（V2-B-03，测试先行）
 
-**文件范围**：`backend/app/redaction/parties.py`（字号派生）、`backend/app/redaction/detect.py`（人名）、`backend/app/redaction/suspects.py`（叙述人名）、`backend/app/redaction/engine.py`（接入）、`backend/app/chat/service.py`（接入）、`backend/resources/cn_surnames.txt`（新）、`backend/resources/industry_words.txt`（新）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0009_suspect_reasons.py`（新）、对应测试、`names_derived_persons.yaml`（按 3.6）。
+**文件范围**：`backend/app/redaction/parties.py`（字号派生）、`backend/app/redaction/detect.py`（人名）、`backend/app/redaction/suspects.py`（叙述人名）、`backend/app/redaction/engine.py`（接入）、`backend/app/chat/service.py`（接入）、`backend/resources/cn_surnames.txt`（新）、`backend/resources/industry_words.txt`（新）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0010_suspect_reasons.py`（新，编号按 V2Q-31）、对应测试、`names_derived_persons.yaml`（按 3.6）。
 
 ### 3.1 主体字号派生
 
@@ -122,7 +122,7 @@
 
 `{触发词}{姓}{1～2 个汉字}{结束}`：触发词为“与、和、由、请、致、联系、经、向、给、找、跟、同、派、委托、授权、通知、抄送”；结束为标点、空白、句尾，或“沟通、协商、确认、同意、说、称、表示、负责、签字、签署、联系、提出、认为、回复、反馈、处理、商定”之一。命中的“{姓}{1～2 字}”列为疑似遗漏，原因 `person_like`；姓 + 名恰好是 countries.yaml 中的地名（张家港、常州等）时不列。
 
-### 3.4 迁移 0009
+### 3.4 迁移 0010
 
 `redaction_suspects.reason` 约束增加 `derived_name`、`person_like`；`redaction_items.detected_by` 增加 `derived`；降级时删除这些行后恢复约束。前端疑似遗漏的原因文字：“名称简写”“疑似人名”。
 
@@ -143,7 +143,7 @@ chat `_redact` 第 3 步之后对本任务对照表中的主体做同样的字�
 | 7 | “与张家港港务局联系” | 不列“张家港” |
 | 8 | 派生别名 | 不写入已记住的名称（确认发送后 redaction\_terms 只有完整名称） |
 | 9 | 追问“澄川虚构的报价是否偏高？”（本任务乙方为澄川虚构信息技术有限公司） | “澄川虚构”替换为乙方已有代号 |
-| 10 | 迁移 0009 | 升级 / 降级；模型与迁移一致 |
+| 10 | 迁移 0010 | 升级 / 降级；模型与迁移一致 |
 | 11 | 现有回归集、A-03 | 全部通过（如有原样本因字号派生而多替换，导致 must\_keep 失败，停下报告，不改样本） |
 
 ## 四、我方主体预置与甲乙方按立场命名（V2-B-04，测试先行）
@@ -200,7 +200,7 @@ chat `_redact` 第 3 步之后对本任务对照表中的主体做同样的字�
 
 ## 六、本地实体识别模型（V2-B-06a 选型、V2-B-06 接入）
 
-### 6.1 选型实测（V2-B-06a，Opus，需用户同意下载模型）
+### 6.1 选型实测（V2-B-06a，Opus，需用户同意下载模型；原方案，结论见 6.2）
 
 * **候选**（许可在实测时逐个核实，只用允许商用的）：
   1. `urchade/gliner_multi-v2.1`（Apache 2.0，mDeBERTa-v3-base，可直接指定“人名、公司、机构、地址”等标签；旧版本为非商用许可，不得使用；中文效果与 ONNX 导出待验证）；
@@ -211,17 +211,39 @@ chat `_redact` 第 3 步之后对本任务对照表中的主体做同样的字�
 * **下载与运行**：模型只在开发机下载（下载前把文件名、来源、大小告诉用户并取得同意），放在独立目录，在 `--network none` 的容器中评测；不在服务器上下载。
 * **产出**：`docs/v2/reports/V2-B-ner-selection.md`（各候选的指标、许可、文件大小与 SHA-256、推荐与阈值）；SPEC-V2 B 部分第 3 节、CLAUDE.md 禁用清单的修改稿（写明模型名称与许可）。经用户确认后 V2-B-06 才能开工。
 
-### 6.2 接入（V2-B-06，测试先行）
+### 6.2 选型结论（V2-B-06a 审核，用户 2026-10-24 确认，V2Q-37）
 
-**文件范围**：`backend/app/redaction/ner.py`（新）、`backend/app/redaction/engine.py`、`backend/app/chat/service.py`、`backend/app/main.py` 与 `backend/app/worker.py`（只加启动自检）、`backend/Dockerfile`（模型文件与校验）、`backend/requirements.txt`（如需分词库）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0011_ner_source.py`（新）、对应测试。
+实测报告见 [V2-B-ner-selection.md](../reports/V2-B-ner-selection.md)。按 6.1 原门槛没有候选全部通过；用户提供目标硬件（28 vCPU、38 GiB 内存、balloon 下限 16 GiB）并要求不为轻量化牺牲识别效果，资源门槛改为 6.4，识别效果门槛不变。
 
-* **接口**：`ner.recognize(text: str) -> list[Entity]`，`Entity(start, end, label: "PERSON" | "ORG" | "ADDR", score: float)`；进程内首次使用时加载一次并复用；`ner.check()` 在 app 启动（lifespan）和 worker 进入主循环前调用，模型文件缺失、SHA-256 不符或加载失败时拒绝启动（同主密钥检查，Q-28）。
-* **接入位置**：engine 在 9.3 第 1～7 步与新规则之后、疑似遗漏之前，对每个节点（含 NOTE）**未被替换的文字**调用；score ≥ 高阈值的自动替换（PERSON → 人员代号；ORG → 作为主体登记，角色“其他”；ADDR → [地址：国家]），detected\_by=`ner`；中阈值 ≤ score < 高阈值的列为疑似遗漏，原因 `ner`；低于中阈值忽略。阈值为 ner.py 中的常量，取 6.1 报告的推荐值。
+* **选定**：`urchade/gliner_multi-v2.1`，固定提交 `443d26d654e0324125a96bebd8e796c14ff2efe6`，Apache-2.0；分词文件来自 `microsoft/mdeberta-v3-base` 提交 `a0484667b22365f84929a935b5e50a51f71f159d`，MIT。产品使用 V2-B-06a 用 GLiNER 0.2.24 官方接口从上述固定权重导出的 **FP32 ONNX**（opset 19），**不量化**（默认 INT8 召回降到 7/32）。
+* **产品文件清单**（6 个，构建时放入 `backend/models/ner/`，不进仓库）：
+
+  | 文件 | 字节数 | SHA-256 |
+  |-|-:|-|
+  | model.onnx | 1,157,108,161 | `d3f51a308a876e09209321cc466dffcc4b1ca8f4877144d24b08ae3f7c8dabd0` |
+  | tokenizer.json | 16,351,316 | `87208f39b9e81f180629d45da55d7a24cf1e011884552d6d5096c92e0a639d39` |
+  | tokenizer\_config.json | 20,227 | `928d015db8ce40c131beaf323a25ab913c8d7b7d20baf997bf42e0f6d3cd2f8b` |
+  | special\_tokens\_map.json | 286 | `9463f61e1b109a8eb4688b829260d7c6b1e6dff04c98ff7269bb89e2b92369b9` |
+  | added\_tokens.json | 86 | `030e747c4ca7992a3ac794c6fda9919352c88ae722e85178217cd083b450078d` |
+  | gliner\_config.json | 453 | `a947b4597e76e9f2baf3c9d33b78ad994ee2d8a2efdbfbafc580fb84bc441aea` |
+
+* **推理参数**（与 06a 实测一致，ner.py 常量）：标签 `person` → PERSON、`organization` → ORG、`street address` → ADDR；预切分为“单个汉字 / 拉丁字母词（含 `'’-` 连接）/ 数字 / 其他非空白字符各为一个词”；320 字符窗、步长 288，重叠部分同一区间取最高分；以 0.01 为下限做 flat 解码后再分档；**中阈值 0.4、高阈值 0.95**。
+* **已知限制**：span 最长 12 个词（gliner\_config `max_width`），超过 12 个汉字的机构名只能靠规则；完整残余地址 0/2，地址仍以规则为主；英文人名 `Nora Vale` 漏识别。这些不降低 B-08“漏掉数必须为 0”的要求（只能列为疑似遗漏的算“列为疑似遗漏”）。
+
+### 6.3 接入（V2-B-06，测试先行）
+
+**文件范围**：`backend/app/redaction/ner.py`（新）、`backend/app/redaction/engine.py`、`backend/app/chat/service.py`、`backend/app/main.py` 与 `backend/app/worker.py`（只加启动自检）、`backend/resources/ner_stopwords.txt`（新）、`backend/models/ner/MANIFEST.sha256`（新，入仓，只含 6.2 清单的文件名与 SHA-256）、`.gitignore`（忽略 `backend/models/ner/` 下除 MANIFEST 外的文件）、`backend/Dockerfile`（模型文件与校验）、`backend/requirements.txt`（只加 `tokenizers`，固定版本）、`deploy/scripts/build_release.sh`（只加模型目录参数与校验）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0012_ner_source.py`（新，编号按 V2Q-31）、`backend/tests/fixtures/ner/`（新：对拍参考、新留出集）、对应测试。
+
+* **接口**：`ner.recognize(text: str) -> list[Entity]`，`Entity(start, end, label: "PERSON" | "ORG" | "ADDR", score: float)`；进程内首次使用时加载一次并复用；`ner.check()` 在 app 启动（lifespan）和 worker 进入主循环前调用，模型文件缺失、SHA-256 不符或加载失败时拒绝启动（同主密钥检查，Q-28）。app 启动时只校验文件与 SHA-256，第一次追问时才加载；worker 启动时加载。
+* **推理实现**：只用 `onnxruntime` + `numpy` + `tokenizers`（Apache-2.0）自写 GLiNER `markerV0` 的前处理（预切分、`<<ENT>>` / `<<SEP>>` 标签提示、子词首 token 对齐、span 索引与掩码）与后处理（sigmoid、flat 贪心去重叠、映射回字符位置）。**产品镜像不得安装 torch、transformers、gliner、sentencepiece**。会话选项：worker `intra_op_num_threads=8`，app 每进程 4，`inter_op_num_threads=1`，关闭 ORT 遥测。允许把多个窗口合成一批（每批 ≤ 8 窗），对拍仍须通过。
+* **对拍**：把 06a 的 `gliner-fp32-characters.predictions.json` 中分数 ≥ 0.3 的结果裁剪为 `backend/tests/fixtures/ner/reference_predictions.json`（只含节点 id、起止、类别、分数，不含文字；节点文字由测试按 06a 的 `prepare_corpus.py` 同法重建）。实现对 391 个节点逐条比对：分数 ≥ 0.3 的（起、止、类别）集合完全一致，分数差 ≤ 1e-4。对不上时停下汇报，不得改阈值或样本凑数。
+* **结果过滤**（高、中两档都适用，只去掉模型结果，不影响规则）：整段等于 `ner_stopwords.txt` 中的词（合同角色：甲方、乙方、买方、卖方、我方、贵司、本公司、Buyer、Seller、Supplier、Consignee 等；称谓：Mr.、Ms.、经理、女士等；通用名词：银行、Bank、Address、Beneficiary Bank、仲裁委员会、中华人民共和国等）；去掉首尾空白后少于 2 个字符；只由数字、空白和 `-/.` 组成；ADDR 结果中不含任何字母或汉字。词表按 06a 实测的误报整理，可增不可删。
+* **接入位置**：engine 在 9.3 第 1～7 步与新规则之后、疑似遗漏之前，对每个节点（含 NOTE）**未被替换的文字**（已替换区间以等长空白遮盖，保持位置）调用；score ≥ 高阈值的自动替换（PERSON → 人员代号；ORG → 作为主体登记，角色“其他”；ADDR → [地址：国家]），detected\_by=`ner`；中阈值 ≤ score < 高阈值的列为疑似遗漏，原因 `ner`；低于中阈值忽略。
 * **追问**：chat `_redact` 同样调用；高置信替换为追问代号，中置信并入 R4-04 的疑似遗漏。
 * **只增不减**：模型结果不撤销、不改变任何规则替换；实体识别的替换不能撤销（B6）。
-* **离线**：模型文件在镜像构建时放入并校验 SHA-256；运行时不联网、不下载；禁用遥测（同 Q-64）；T-20 扫描照常通过。
-* **迁移 0011**：detected\_by 增加 `ner`，suspects.reason 增加 `ner`。
-* **性能**：模型调用受“解析 2 个并发”约束（V2-C-01 之前仍受现有 WORKER\_CONCURRENCY 约束）；app 进程在第一次追问时才加载（启动时只校验文件与 SHA-256），减少两个 uvicorn 进程的常驻内存。
+* **离线**：模型文件不进仓库、运行时不联网不下载。构建上下文 `backend/models/ner/` 由开发机从 06a 证据目录复制；runtime 与 test 两个 stage 都 COPY 模型并按 `MANIFEST.sha256` 校验，缺文件或哈希不符即构建失败。`build_release.sh` 增加 `--ner-models <目录>`：复制到 clone 的 `backend/models/ner/` 并校验后再构建，未提供时拒绝构建。禁用遥测（同 Q-64）；T-20 扫描照常通过。
+* **迁移 0012**：detected\_by 增加 `ner`，suspects.reason 增加 `ner`。
+* **并发**：模型调用受“解析 2 个并发”约束（V2-C-01 之前仍受现有 WORKER\_CONCURRENCY 约束），不得放大现有 worker / app 并发。
 
 | # | 场景 | 期望 |
 |-|-|-|
@@ -230,8 +252,34 @@ chat `_redact` 第 3 步之后对本任务对照表中的主体做同样的字�
 | 3 | 规则已替换的文字 | 模型不再重复识别，替换结果与 V2-B-06 之前相同 |
 | 4 | `--network none` 容器 | 解析、追问可用 |
 | 5 | 追问“经与王建国沟通……” | 王建国被替换或列为疑似遗漏（取决于置信度） |
-| 6 | 迁移 0011 | 升级 / 降级；模型与迁移一致 |
+| 6 | 迁移 0012 | 升级 / 降级；模型与迁移一致 |
 | 7 | 现有回归集、A-03、T-20 | 全部通过 |
+| 8 | 对拍（391 节点） | 与 06a FP32 结果一致（见“对拍”） |
+| 9 | 新留出集 `fixtures/ner/holdout/`：≥ 8 份虚构叙述、≥ 40 个人名 + 机构名，含中英文；**样本与标注单独提交后才运行模型**，提交顺序可查 | 高 + 中置信合计召回 ≥ 90%；高置信在 must\_keep 上零误替换；阈值不得因此调整 |
+| 10 | 中置信误报：现有 golden + 6.1 叙述共 391 节点 | 过滤后不属于应识别实体的中 / 高置信结果 ≤ 20 条（06a 为 80 条） |
+| 11 | runtime 镜像 | `torch`、`transformers`、`gliner`、`sentencepiece` 均未安装；镜像比 V2-B-05 的 runtime 增加 ≤ 1.5 GB（用 `docker image inspect` Size 差值） |
+| 12 | 开发机预检：`--cpus 8`、worker 线程配置 | 1 万字（同 06a 拼接方法）预热后中位数 ≤ 10 秒；单进程峰值内存增加 ≤ 2.5 GB |
+
+### 6.4 资源门槛与整机容量测试（用户 2026-10-24 确认，V2Q-37、V2Q-38）
+
+B-06 只做 6.3 第 11、12 条的开发机预检；以下整机测试放在 **V2-B-08**，在 **172.16.11.252** 上做（用户指定，V2Q-38）。
+
+| 项目 | 门槛 |
+|-|-|
+| 解析耗时 | 1 万字残余文字的模型识别 ≤ 10 秒；20 页合同整体解析时间比 V2-B-05 代码增加 ≤ 30 秒 |
+| 追问耗时 | 模型已加载时，500 字的问题模型识别 ≤ 1 秒；第一次追问（含加载）≤ 15 秒 |
+| 单进程内存 | 加载模型后峰值增加 ≤ 2.5 GB |
+| 整机压力场景 | 2 个解析任务并行 + app 两个进程均已加载且同时追问 + OCR 同时工作：测试套件峰值总内存 ≤ 12 GiB；无交换、无 OOM；各请求不超时 |
+| balloon 下限 | 压力场景测试套件峰值 + 同时刻正式服务的实际内存 ≤ 16 GiB |
+| 镜像 | 增加 ≤ 1.5 GB |
+| 离线与自检 | 测试套件 app / worker 在断网网络下运行；模型文件改动后拒绝启动 |
+
+**在正式服务器上测试的条件**（V2Q-38）：
+
+1. 每次开测前把时间段、预计时长、要启动的容器告诉用户，取得同意后才开始；选在用户指定的低峰时段。
+2. 测试套件用独立的 compose 项目名、独立的网络、数据卷和端口，使用测试用主密钥与虚构样本；不停、不重启、不升级正式服务，不读写正式数据库、数据卷、主密钥和备份。
+3. 测试套件的容器设置内存上限（合计 12 GiB）；监测宿主可用内存，低于 4 GiB 或正式服务出现异常时立即停止测试套件。
+4. 测试结束后删除测试容器、网络、数据卷和测试镜像，并记录删除结果；结果写入 V2-B-08 报告。
 
 ## 七、前端（V2-B-07）
 
@@ -253,7 +301,7 @@ chat `_redact` 第 3 步之后对本任务对照表中的主体做同样的字�
 3. A-03：外发记录真实值零命中。
 4. 用本轮讨论中的虚构探测句（机构签约方、无币种金额、叙述人名、字号简称、英文称谓、外文企业形式、无标签地址、微信号）经真实接口 + 模拟网关走一遍，逐句写结果。
 5. 浏览器清单（四种宽度）：图例 7 组；10 种手动类别；撤销的悬停、确认与刷新；我方主体设置；新原因文字；追问中的模型识别疑似遗漏弹窗。
-6. 内存与耗时：worker、app 进程在处理 20 页合同时的常驻内存与解析耗时，与 V2-A 结束时对比。
+6. 内存与耗时：worker、app 进程在处理 20 页合同时的常驻内存与解析耗时，与 V2-A 结束时对比；并按 6.4 在 172.16.11.252 上做整机容量测试（遵守 6.4 的测试条件），逐项写结果。
 
 ## 九、批次审核（V2-B-09，Opus）
 
