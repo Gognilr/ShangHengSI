@@ -59,7 +59,7 @@ const displayRows = computed(() => {
   let hidden: { hidden: number; index: number } | null = null
   const flush = () => { if (hidden) result.push(hidden); hidden = null }
   fileRows.value.forEach((row, index) => {
-    const show = !changedOnly.value || row.hasRedaction || row.hasPendingSuspect || row.kind === 'header' || row.kind === 'unmatched' || row.loc === focusedLoc.value
+    const show = !changedOnly.value || row.hasRedaction || row.hasPendingSuspect || row.kind === 'header' || row.kind === 'table_note' || row.kind === 'unmatched' || row.loc === focusedLoc.value
     if (show) { flush(); result.push({ row, index }); return }
     if (!hidden) hidden = { hidden: 0, index }
     hidden.hidden++

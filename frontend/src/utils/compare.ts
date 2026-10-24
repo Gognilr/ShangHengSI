@@ -3,7 +3,7 @@ import type { RedactionItemPos, Suspect } from '@/api/redaction'
 
 export interface CompareSeg { text: string; placeholder?: string; category?: string; suspect?: boolean }
 export interface CompareRow {
-  kind: 'header' | 'pair' | 'grouped' | 'not_sent' | 'unmatched'
+  kind: 'header' | 'pair' | 'grouped' | 'table_note' | 'not_sent' | 'unmatched'
   loc: string | null
   label: string
   left: CompareSeg[][]
@@ -103,6 +103,8 @@ export function buildCompareRows(outboundText: string, nodes: PreviewNode[], ite
   const original = (node: PreviewNode) => markPending(splitOriginal(node.text ?? '', items.filter(item => item.loc === node.loc)), suspects.filter(s => s.loc === node.loc))
   for (const line of parsed) {
     const exact = line.loc ? byLoc.get(line.loc) : undefined
+    const tableNote = !exact && !!line.loc && /^F\d+-(?:S\d+|T\d+|PG\d+-T\d+)$/.test(line.loc)
+      && nodes.some(node => node.loc.startsWith(`${line.loc}-`) && outboundLocs.has(node.loc))
     const grouped = !exact && line.loc ? nodes.filter(node => node.loc.startsWith(`${line.loc}-`) && !outboundLocs.has(node.loc) && !used.has(node.loc)) : []
     const paired = exact ? [exact.node] : grouped
     paired.forEach(node => used.add(node.loc))
@@ -110,17 +112,18 @@ export function buildCompareRows(outboundText: string, nodes: PreviewNode[], ite
     if (line.loc) locs.add(line.loc)
     const rowItems = line.header ? items : items.filter(item => locs.has(item.loc))
     const rowSuspects = suspects.filter(s => locs.has(s.loc))
-    const kind = line.header ? 'header' : exact ? 'pair' : grouped.length ? 'grouped' : 'unmatched'
+    const kind = line.header ? 'header' : exact ? 'pair' : tableNote ? 'table_note' : grouped.length ? 'grouped' : 'unmatched'
     let right = markPending(splitOutbound(line.content, rowItems), rowSuspects)
     // 展示分段必须可逆；任何失配都退回后端原行，绝不修饰将发送的内容。
     const invalid = right.map(seg => seg.text).join('') !== line.content
     if (invalid) right = [{ text: line.content }]
-    const left = line.header ? [[{ text: '系统生成的签约方说明，原文无对应段落' }]] : paired.map(original)
+    const left = line.header ? [[{ text: '系统生成的签约方说明，原文无对应段落' }]]
+      : tableNote ? [[{ text: '系统生成的报价明细表说明，原文无对应段落' }]] : paired.map(original)
     rows.push({
       anchor: exact?.index ?? (grouped.length ? byLoc.get(grouped[0]!.loc)!.index : null),
       row: {
         kind: invalid ? 'unmatched' : kind, loc: line.loc,
-        label: line.header ? '主体说明' : exact ? nodeLabel(exact.node) : line.loc ?? '—',
+        label: line.header ? '主体说明' : tableNote ? '报价明细表说明' : exact ? nodeLabel(exact.node) : line.loc ?? '—',
         left, right,
         hasRedaction: left.some(segs => segs.some(seg => !!seg.placeholder)) || right.some(seg => !!seg.placeholder),
         hasPendingSuspect: rowSuspects.some(s => s.decision === 'pending'),
