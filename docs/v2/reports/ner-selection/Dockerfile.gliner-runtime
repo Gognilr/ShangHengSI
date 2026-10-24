@@ -1,0 +1,9 @@
+# 量取 GLiNER 的可运行 ONNX 候选镜像增量，不包含导出用 onnx / 原始权重。
+FROM aireview-backend:dev
+USER root
+ENV HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 TOKENIZERS_PARALLELISM=false
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1+cpu \
+    && pip install --no-cache-dir --index-url https://pypi.org/simple gliner==0.2.24 transformers==4.57.3 sentencepiece==0.2.1 \
+    && pip check
+COPY model_int8.onnx tokenizer.json tokenizer_config.json special_tokens_map.json gliner_config.json /opt/ner/
+USER appuser

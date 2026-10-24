@@ -1,0 +1,9 @@
+# V2-B-06a 评测专用镜像；不修改产品镜像或运行依赖。
+FROM aireview-backend-test:latest
+ENV HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 TOKENIZERS_PARALLELISM=false
+RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1+cpu
+RUN pip install --index-url https://pypi.org/simple gliner==0.2.24 transformers==4.57.3 onnx==1.17.0 sentencepiece==0.2.1 psutil==7.0.0 \
+    && pip check \
+    && pip freeze > /eval-requirements.freeze.txt
+RUN pip install --index-url https://pypi.org/simple onnx==1.19.1 ml_dtypes==0.5.3 \
+    && pip check && pip freeze > /eval-requirements.freeze.txt

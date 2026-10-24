@@ -1,0 +1,6 @@
+# 仅用于量出候选的实际镜像增量；不改产品 Dockerfile。
+FROM aireview-backend:dev
+USER root
+RUN pip install --no-cache-dir --index-url https://pypi.org/simple tokenizers==0.22.2 huggingface_hub==0.36.2
+COPY model_int8.onnx tokenizer.json config.json /opt/ner/
+USER appuser

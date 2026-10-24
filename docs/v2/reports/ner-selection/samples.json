@@ -1,0 +1,53 @@
+{
+  "description": "V2-B-06a 固定虚构叙述性评测集。人名、机构和地址均为人为编写的虚构内容；不取自真实业务文件。前四份用于阈值选择，后四份为保留评测，不修改文字追求通过。",
+  "samples": [
+    {
+      "id": "letter-cn", "split": "calibration", "genre": "函件", "language": "zh",
+      "text": "致海岚研究中心：沈澈宁已核对检验安排。请把纸质记录寄往江苏省南京市江宁区星澜路 27 号 3 栋 502 室。澄野实验室将于下周提供样品，复核由罗映秋完成。交货期限为 30 天，硫含量不超过 0.6%，本函不改变原付款安排。",
+      "entities": [["海岚研究中心", "ORG"], ["沈澈宁", "PERSON"], ["江苏省南京市江宁区星澜路 27 号 3 栋 502 室", "ADDR"], ["澄野实验室", "ORG"], ["罗映秋", "PERSON"]],
+      "must_keep": ["30 天", "0.6%", "本函不改变原付款安排"]
+    },
+    {
+      "id": "minutes-cn", "split": "calibration", "genre": "会议纪要", "language": "zh",
+      "text": "会议纪要：岚川材料研究站与星穗检测联盟交换了验收意见。许沐青整理了问题清单，陶砚舟核对了附件。现场沟通地点为浙江省杭州市余杭区云棠街 66 号。会议明确，项目周期为 90 天，任何一方提出异议应书面通知，不能将进度讨论理解为验收合格。",
+      "entities": [["岚川材料研究站", "ORG"], ["星穗检测联盟", "ORG"], ["许沐青", "PERSON"], ["陶砚舟", "PERSON"], ["浙江省杭州市余杭区云棠街 66 号", "ADDR"]],
+      "must_keep": ["90 天", "任何一方提出异议应书面通知", "项目周期"]
+    },
+    {
+      "id": "claim-cn", "split": "calibration", "genre": "索赔函", "language": "zh",
+      "text": "索赔说明由季闻溪提交，柏知遥负责提供运输记录。松汀质量协作组收到货损照片后，安排清岚技术工作室核对包装。退回样品的接收地址为湖北省武汉市洪山区苇晴路 19 号。损失原因尚需查明；付款比例为 30%，不能直接视为违约金比例。",
+      "entities": [["季闻溪", "PERSON"], ["柏知遥", "PERSON"], ["松汀质量协作组", "ORG"], ["清岚技术工作室", "ORG"], ["湖北省武汉市洪山区苇晴路 19 号", "ADDR"]],
+      "must_keep": ["30%", "损失原因尚需查明", "违约金比例"]
+    },
+    {
+      "id": "mail-en", "split": "calibration", "genre": "英文邮件", "language": "en",
+      "text": "Nora Vale reviewed the inspection notes for Aster Vale Research. Elias Rowan will send the signed checklist to 27 Cedar Quay, Suite 405, Bristol, United Kingdom. Northmere Materials Lab requested a second inspection. The goods are calcined petroleum coke, with a delivery period of 30 days. FOB Qingdao Port and the 0.6% sulfur limit remain unchanged.",
+      "entities": [["Nora Vale", "PERSON"], ["Aster Vale Research", "ORG"], ["Elias Rowan", "PERSON"], ["27 Cedar Quay, Suite 405, Bristol, United Kingdom", "ADDR"], ["Northmere Materials Lab", "ORG"]],
+      "must_keep": ["calcined petroleum coke", "30 days", "FOB Qingdao Port", "0.6%"]
+    },
+    {
+      "id": "legal-cn", "split": "holdout", "genre": "法律文书片段", "language": "zh",
+      "text": "关于证据交换，程晚棠确认已收到提交材料，苏砚澄另行补充了签收记录。云棣争议调解中心建议由衡岚技术评估所核对数据。文书送达至四川省成都市武侯区晴杉巷 108 号。适用中华人民共和国法律，双方同意按本合同执行；黄金价格表示上涨不构成单方调价依据。",
+      "entities": [["程晚棠", "PERSON"], ["苏砚澄", "PERSON"], ["云棣争议调解中心", "ORG"], ["衡岚技术评估所", "ORG"], ["四川省成都市武侯区晴杉巷 108 号", "ADDR"]],
+      "must_keep": ["适用中华人民共和国法律", "双方同意按本合同执行", "黄金价格表示上涨"]
+    },
+    {
+      "id": "handover-cn", "split": "holdout", "genre": "交接记录", "language": "zh",
+      "text": "交接时，郑栖禾记录了全部批次，邵清弦复核了计量结果。景汐设备服务站与芦洲检验联络处共同签收了清单。后续资料寄送山东省青岛市崂山区松澜大道 216 号。规格为 6-25mm，数量 500 MT，交期另行协商。高于市场价格的部分由买方承担。",
+      "entities": [["郑栖禾", "PERSON"], ["邵清弦", "PERSON"], ["景汐设备服务站", "ORG"], ["芦洲检验联络处", "ORG"], ["山东省青岛市崂山区松澜大道 216 号", "ADDR"]],
+      "must_keep": ["6-25mm", "500 MT", "交期另行协商", "高于市场价格的部分由买方承担"]
+    },
+    {
+      "id": "notice-cn", "split": "holdout", "genre": "履约通知", "language": "zh",
+      "text": "履约通知已经潘予安核对，贺溪桥随后提交了修订表。晴川工程协调组要求青榆现场服务中心按时移交档案。存放地点为广东省广州市黄埔区映荷路 73 号。我们周五前回复，常规要求见第三条；文件说明见附件二，本合同项目名称为虚构工程。",
+      "entities": [["潘予安", "PERSON"], ["贺溪桥", "PERSON"], ["晴川工程协调组", "ORG"], ["青榆现场服务中心", "ORG"], ["广东省广州市黄埔区映荷路 73 号", "ADDR"]],
+      "must_keep": ["我们周五前回复", "常规要求见第三条", "文件说明见附件二", "本合同项目名称为虚构工程"]
+    },
+    {
+      "id": "minutes-en", "split": "holdout", "genre": "英文会议纪要", "language": "en",
+      "text": "Mira Fenwick completed the review for Silvermere Quality Council. Owen Ashford confirmed that Bracken Vale Research would inspect the retained sample. Please send the archive to 84 Alder Lane, Floor 2, Leeds, United Kingdom. The contract allows a 5% tolerance. CIF Jebel Ali Port, HS 27131100, and the agreed payment period are unchanged.",
+      "entities": [["Mira Fenwick", "PERSON"], ["Silvermere Quality Council", "ORG"], ["Owen Ashford", "PERSON"], ["Bracken Vale Research", "ORG"], ["84 Alder Lane, Floor 2, Leeds, United Kingdom", "ADDR"]],
+      "must_keep": ["5%", "CIF Jebel Ali Port", "HS 27131100", "the agreed payment period"]
+    }
+  ]
+}
