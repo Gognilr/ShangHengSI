@@ -37,6 +37,7 @@ export interface RedactionItemPos {
   char_end: number
   category: string
   placeholder: string
+  can_revoke: boolean
 }
 
 export interface RedactionInfo {
@@ -46,11 +47,13 @@ export interface RedactionInfo {
   items: RedactionItemPos[]
 }
 
-/** 用户可选的替换类别（后端只接受这三种）。 */
-export type UserCategory = 'ORG' | 'PERSON' | 'CUSTOM'
+/** 确认脱敏页的十类；追问界面仍只提供既有三类。 */
+export type UserCategory = 'ORG' | 'PERSON' | 'IM' | 'ACCOUNT' | 'IDNO' | 'REFNO' | 'ADDR' | 'AMOUNT' | 'PROJECT' | 'CUSTOM'
 
 /** 手动补充、疑似遗漏决定的错误提示（按错误码，其余用接口返回的 message）。 */
 export const REDACTION_ERROR_MESSAGES: Record<string, string> = {
+  INVALID_AMOUNT: '金额须为可解析的数字，请重新选择',
+  NOT_REVOCABLE: '该替换项不能撤销，请刷新后核对',
   TERM_IN_PROMPT: '所选文字在审核提示中也会出现，设为敏感信息后将无法发送，请只选择具体的名称或编号',
   TASK_STATE_CONFLICT: '任务状态已变化，请刷新后再试',
   SUSPECT_NOT_FOUND: '该条疑似遗漏已不存在，请刷新后再试',
@@ -68,6 +71,8 @@ export const redactionApi = {
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/suspects/${suspectId}`, { decision, category }),
   manual: (taskId: string, body: { loc: string; char_start: number; char_end: number; category: UserCategory }) =>
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/manual`, body),
+  revoke: (taskId: string, body: { loc: string; char_start: number; char_end: number }) =>
+    http.post<RedactionInfo>(`/tasks/${taskId}/redaction/revoke`, body),
   /** 外发文本预览（代号版本），只能按纯文本显示。 */
   outbound: (taskId: string) => http.get<{ text: string; note: string | null }>(`/tasks/${taskId}/redaction/outbound`),
 }

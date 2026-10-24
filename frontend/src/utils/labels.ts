@@ -109,6 +109,7 @@ export const redactionCategoryLabel = pick(REDACTION_CATEGORY)
 
 /** 疑似遗漏的原因（设计 M4 第六节）。 */
 export const SUSPECT_REASON: Dict = {
+  derived_name: '名称简写', person_like: '疑似人名', ner: '模型识别',
   person_name: '疑似人名',
   org_suffix: '带企业后缀的名称',
   capitalized: '连续大写的英文单词',
@@ -117,8 +118,13 @@ export const SUSPECT_REASON: Dict = {
 }
 export const suspectReasonLabel = pick(SUSPECT_REASON)
 
-/** 用户可选的替换类别（疑似遗漏、手动补充）。 */
+/** 追问可选的替换类别，保持既有接口的三类。 */
 export const USER_CATEGORY_OPTIONS: Dict = { ORG: '公司', PERSON: '人名', CUSTOM: '其他' }
+/** 确认脱敏页十类；追问仍使用上面的三类，避免扩大追问接口契约。 */
+export const MANUAL_CATEGORY_OPTIONS: Dict = {
+  ORG: '公司', PERSON: '人名', IM: '联系方式', ACCOUNT: '账号', IDNO: '证件号',
+  REFNO: '编号', ADDR: '地址', AMOUNT: '金额', PROJECT: '项目', CUSTOM: '其他',
+}
 
 /** 账号角色、状态（设置 - 账号）。 */
 export const ROLE_OPTIONS: Dict = { user: '普通用户', admin: '管理员' }
@@ -156,5 +162,5 @@ export const REDACTION_KIND: Record<string, string> = {
   IM: 'contact', PROJECT: 'other',
   OUR: 'org', ORG: 'org', PERSON: 'person', PHONE: 'contact', EMAIL: 'contact', URL: 'contact',
   ADDR: 'addr', POSTCODE: 'addr', ACCOUNT: 'id', SWIFT: 'id', IDNO: 'id', REFNO: 'id',
-  AMOUNT: 'other', PRICE: 'other', QTY: 'other', CUSTOM: 'other',
+  AMOUNT: 'amount', PRICE: 'amount', QTY: 'amount', CUSTOM: 'other',
 }

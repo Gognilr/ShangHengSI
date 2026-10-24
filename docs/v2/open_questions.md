@@ -8,6 +8,7 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-41 | V2-B-07 撤销入口需要逐项可撤销标志，旧接口字段清单不允许新增（待确认） | 源码中RedactionItemOut原来仅loc/char_start/char_end/category/placeholder五字段，前端无法区分同为PERSON的规则人名、已记住名称、NER结果，也无法识别其他类别的user词条。B07初稿增加服务端can_revoke布尔值，仅awaiting_confirm且来源user或person/PERSON为true，原POST行锁/归属/状态/精确位置校验不变；新增接口用例覆盖签约方false、规则人名true、NER人名false、用户PROJECT词条true并成功撤销。旧test_redaction_api.py::test_get_parties_summary_outbound以严格五字段清单断言，新增字段导致失败；原断言尚未修改。建议只给这一条断言的字段清单添加can_revoke并断言为bool，其余样本与断言不变，已异步询问用户此最小同步授权，答复前不改保护用例。 | B07；redaction/router.py；test_redaction_api.py单条字段断言；frontend/api/redaction.ts | B07完成前 |
 
 
 ## 二、已决定
@@ -61,3 +62,5 @@
 
 | V2Q-34 | 新旧叙述人名规则重叠时的原因与资源复用 | 原 R4 person_name 与新 person_like 命中同一区间时保留既有 person_name 原因，新规则只补缺口，避免改变已有确认记录及客户端默认类别；二字派生名使用 derived_name。复用现有 cn_surnames.txt 及缓存读取接口，保留原条目并按任务要求扩充至 455 单姓 / 91 复姓，前端新原因文字按 B-07 统一接入。状态：待确认（Opus 2026-10-24 已核对：做法合理，建议确认） | V2-B-03；suspects.py；V2-B-07 |
 
+
+| V2Q-42 | V2-B-07 手动金额的数值校验与币种边界 | 按最简单且保留既有币种隔离的做法：只接受有限的十进制数字（允许正负号、规范三位千分组及小数），NaN/Infinity/错误千分组/文字返回422 INVALID_AMOUNT；按既有类别+币种+Decimal规范数值键复用代号。与同位置自动金额完全重合时沿用其币种；无标签手动数字不推断币种，不强制与已知币种金额合并，也不将数字匹配到更长金额的小数部分。确认页使用独立十类选项，保留追问原三类接口。状态：待确认；已按既有安全边界实施并补测试，批次审核核对。 | B07；engine.py手动金额；确认页类别选项；test_v2b_manual.py |

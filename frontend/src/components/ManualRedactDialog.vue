@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode } from '@/api/preview'
 import { REDACTION_ERROR_MESSAGES, redactionApi, type RedactionItemPos, type RedactionInfo, type UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
-import { USER_CATEGORY_OPTIONS, REDACTION_KIND, toOptions } from '@/utils/labels'
+import { MANUAL_CATEGORY_OPTIONS, REDACTION_KIND, toOptions } from '@/utils/labels'
 import { splitOriginal, type CompareSeg } from '@/utils/compare'
 
 /**
@@ -20,7 +21,7 @@ const emit = defineEmits<{
   (e: 'stale'): void
 }>()
 
-const categoryOptions = toOptions(USER_CATEGORY_OPTIONS)
+const categoryOptions = toOptions(MANUAL_CATEGORY_OPTIONS)
 const visible = computed({ get: () => props.modelValue, set: (v) => emit('update:modelValue', v) })
 
 interface FileNodes {
@@ -109,6 +110,7 @@ function cpLen(s: string): number {
 }
 
 function onMouseUp() {
+  if (saving.value) return
   const s = window.getSelection()
   if (!s || s.rangeCount === 0 || s.isCollapsed) return
   const range = s.getRangeAt(0)
@@ -141,6 +143,31 @@ function onMouseUp() {
     return
   }
   sel.value = { loc, start, end, text: picked }
+}
+
+function revocable(node: PreviewNode, index: number): RedactionItemPos | undefined {
+  const parts = segments(node)
+  const start = parts.slice(0, index).reduce((n, part) => n + cpLen(part.text), 0)
+  const end = start + cpLen(parts[index]?.text ?? '')
+  return props.items.find(item => item.loc === node.loc && item.char_start === start && item.char_end === end && item.can_revoke)
+}
+async function revoke(item: RedactionItemPos | undefined) {
+  if (!item || saving.value) return
+  try {
+    await ElMessageBox.confirm('撤销后，同一文字将在全文恢复原样。确认它不是敏感信息后再撤销。',
+      '撤销误识别', { type: 'warning', confirmButtonText: '撤销', cancelButtonText: '取消' })
+  } catch { return }
+  saving.value = true
+  saveError.value = ''
+  try {
+    const info = await redactionApi.revoke(props.taskId, { loc: item.loc, char_start: item.char_start, char_end: item.char_end })
+    clearSel()
+    emit('done', info)
+    ElMessage.success('已撤销，脱敏结果已更新')
+  } catch (e) {
+    saveError.value = e instanceof ApiError ? REDACTION_ERROR_MESSAGES[e.code] ?? e.message : '撤销失败，请重试'
+    if (e instanceof ApiError && e.code === 'TASK_STATE_CONFLICT') emit('stale')
+  } finally { saving.value = false }
 }
 
 async function submit() {
@@ -187,7 +214,7 @@ async function submit() {
       <el-empty v-else-if="!states[activeId].loading && !states[activeId].nodes.length" description="没有可选择的正文" />
       <div v-for="n in states[activeId].nodes" :key="n.loc" class="node">
         <span v-if="clauseOf(n)" class="clause">{{ clauseOf(n) }}</span>
-        <span class="txt" :data-loc="n.loc"><template v-for="(g, i) in segments(n)" :key="i"><span v-if="g.placeholder" class="done" :class="`kind-${REDACTION_KIND[g.category ?? ''] ?? 'other'}`" :title="g.placeholder">{{ g.text }}</span><template v-else>{{ g.text }}</template></template></span>
+        <span class="txt" :data-loc="n.loc"><template v-for="(g, i) in segments(n)" :key="i"><el-popover v-if="g.placeholder" trigger="hover" :width="240" :disabled="saving || !revocable(n, i)"><template #reference><span class="done" :class="`kind-${REDACTION_KIND[g.category ?? ''] ?? 'other'}`" :title="g.placeholder">{{ g.text }}</span></template><el-button link type="primary" :loading="saving" @click="revoke(revocable(n, i))">撤销（不是敏感信息）</el-button></el-popover><template v-else>{{ g.text }}</template></template></span>
       </div>
     </div>
 
@@ -277,4 +304,5 @@ async function submit() {
 .kind-id { --kind-bg: var(--si-k-id-bg); --kind-color: var(--si-k-id); }
 .kind-addr { --kind-bg: var(--si-k-addr-bg); --kind-color: var(--si-k-addr); }
 .kind-other { --kind-bg: var(--si-k-other-bg); --kind-color: var(--si-k-other); }
+.kind-amount { --kind-bg: var(--si-k-amount-bg); --kind-color: var(--si-k-amount); }
 </style>

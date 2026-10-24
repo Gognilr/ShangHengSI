@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode } from '@/api/preview'
 import { redactionApi, REDACTION_ERROR_MESSAGES, type RedactionInfo, type RedactionItemPos, type Suspect, type UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
 import { buildCompareRows, buildNoteRow, type CompareRow, type CompareSeg } from '@/utils/compare'
-import { REDACTION_KIND, USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
+import { REDACTION_KIND, MANUAL_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 
 const props = withDefaults(defineProps<{ taskId: string; files: TaskFile[]; outboundText: string; note?: string | null; outboundNote?: string | null; items: RedactionItemPos[]; suspects: Suspect[]; loading?: boolean; editable?: boolean }>(), { loading: false, editable: true })
 const emit = defineEmits<{ done: [info: RedactionInfo]; stale: []; busy: [value: boolean] }>()
@@ -76,7 +77,7 @@ function originalLoc(row: CompareRow, index: number): string {
 }
 const kind = (seg: CompareSeg) => seg.suspect ? '' : `kind-${REDACTION_KIND[seg.category ?? ''] ?? 'other'}`
 const linked = (row: CompareRow, seg: CompareSeg) => !!seg.placeholder && hovered.value?.loc === row.loc && hovered.value?.kind === row.kind && hovered.value.placeholder === seg.placeholder
-const legend = [{ kind: 'org', label: '公司、银行' }, { kind: 'person', label: '人名' }, { kind: 'contact', label: '联系方式' }, { kind: 'id', label: '账号、编号' }, { kind: 'addr', label: '地址、邮编' }, { kind: 'other', label: '金额、数量及其他' }]
+const legend = [{ kind: 'org', label: '公司、银行' }, { kind: 'person', label: '人名' }, { kind: 'contact', label: '联系方式' }, { kind: 'id', label: '账号、编号' }, { kind: 'addr', label: '地址、邮编' }, { kind: 'amount', label: '金额、单价、数量' }, { kind: 'other', label: '敏感词、项目' }]
 
 async function locate(loc: string) {
   focusedLoc.value = loc
@@ -102,7 +103,42 @@ const selectionNotice = ref('')
 const saveError = ref('')
 const saving = ref(false)
 const category = ref<UserCategory>('ORG')
-const categoryOptions = toOptions(USER_CATEGORY_OPTIONS)
+const categoryOptions = toOptions(MANUAL_CATEGORY_OPTIONS)
+
+function originalItem(row: CompareRow, segments: CompareSeg[], index: number, line: number) {
+  const loc = originalLoc(row, line)
+  const start = segments.slice(0, index).reduce((n, seg) => n + Array.from(seg.text).length, 0)
+  return props.items.find(item => item.loc === loc && item.char_start === start &&
+    item.char_end === start + Array.from(segments[index]?.text ?? '').length && item.can_revoke)
+}
+function outboundItem(row: CompareRow, segments: CompareSeg[], index: number) {
+  if (row.kind !== 'pair' || !row.loc) return undefined
+  const placeholder = segments[index]?.placeholder
+  if (!placeholder) return undefined
+  const occurrence = segments.slice(0, index).filter(seg => seg.placeholder === placeholder).length
+  const item = props.items.filter(item => item.loc === row.loc && item.placeholder === placeholder)
+    .sort((a, b) => a.char_start - b.char_start)[occurrence]
+  return item?.can_revoke ? item : undefined
+}
+async function revokeItem(item: RedactionItemPos | undefined) {
+  if (!item || !props.editable || saving.value) return
+  try {
+    await ElMessageBox.confirm('撤销后，同一文字将在全文恢复原样。确认它不是敏感信息后再撤销。',
+      '撤销误识别', { type: 'warning', confirmButtonText: '撤销', cancelButtonText: '取消' })
+  } catch { return }
+  saving.value = true
+  emit('busy', true)
+  saveError.value = ''
+  try {
+    const info = await redactionApi.revoke(props.taskId, { loc: item.loc, char_start: item.char_start, char_end: item.char_end })
+    clearSelection()
+    emit('done', info)
+    ElMessage.success('已撤销，脱敏结果已更新')
+  } catch (e) {
+    saveError.value = e instanceof ApiError ? REDACTION_ERROR_MESSAGES[e.code] ?? e.message : '撤销失败，请重试'
+    if (e instanceof ApiError && e.code === 'TASK_STATE_CONFLICT') emit('stale')
+  } finally { saving.value = false; emit('busy', false) }
+}
 function clearSelection() { selection.value = null; selectionNotice.value = ''; saveError.value = '' }
 function onMouseUp() {
   if (!props.editable || saving.value) return
@@ -126,7 +162,7 @@ function onMouseUp() {
   if (props.items.some(item => item.loc === loc && item.char_start < end && item.char_end > start)) { selectionNotice.value = '所选文字已被替换'; return }
   if (Array.from(text.trim()).length < 2 || Array.from(text.trim()).length > 100) { selectionNotice.value = '请选择 2–100 个字符'; return }
   const bounds = range.getBoundingClientRect()
-  selection.value = { loc, start, end, text, left: Math.max(8, Math.min(bounds.left, innerWidth - 420)), top: Math.max(8, Math.min(bounds.bottom + 8, innerHeight - 200)) }
+  selection.value = { loc, start, end, text, left: Math.max(8, Math.min(bounds.left, innerWidth - 420)), top: Math.max(8, Math.min(bounds.bottom + 8, innerHeight - 360)) }
 }
 async function saveSelection() {
   if (!selection.value || saving.value) return
@@ -171,14 +207,14 @@ onBeforeUnmount(() => { version++; clearTimeout(flashTimer) })
           <div class="location">{{ entry.row.label }}<span v-if="entry.row.hasPendingSuspect" class="pending-label">待处理</span></div>
           <div class="original-cell">
             <template v-if="!nodeErrors[fileSeq(entry.row.loc)]">
-              <p v-for="(segments, index) in entry.row.left" :key="index" class="compare-original" :data-loc="entry.row.kind === 'header' ? undefined : originalLoc(entry.row, index)"><template v-for="(seg, i) in segments" :key="i"><span v-if="seg.placeholder || seg.suspect" class="segment" :class="[kind(seg), { replaced: seg.placeholder, suspect: seg.suspect, linked: linked(entry.row, seg) }]" :title="seg.suspect ? '待处理' : seg.placeholder" :tabindex="seg.placeholder ? 0 : undefined" @mouseenter="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @mouseleave="hovered = null" @focus="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @blur="hovered = null">{{ seg.text }}</span><template v-else>{{ seg.text }}</template></template></p>
+              <p v-for="(segments, index) in entry.row.left" :key="index" class="compare-original" :data-loc="entry.row.kind === 'header' ? undefined : originalLoc(entry.row, index)"><template v-for="(seg, i) in segments" :key="i"><el-popover v-if="seg.placeholder || seg.suspect" trigger="hover" :width="240" :disabled="!editable || saving || !originalItem(entry.row, segments, i, index)"><template #reference><span class="segment" :class="[kind(seg), { replaced: seg.placeholder, suspect: seg.suspect, linked: linked(entry.row, seg) }]" :title="seg.suspect ? '待处理' : seg.placeholder" :tabindex="seg.placeholder ? 0 : undefined" @mouseenter="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @mouseleave="hovered = null" @focus="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @blur="hovered = null">{{ seg.text }}</span></template><el-button link type="primary" :loading="saving" @click="revokeItem(originalItem(entry.row, segments, i, index))">撤销（不是敏感信息）</el-button></el-popover><template v-else>{{ seg.text }}</template></template></p>
               <span v-if="!entry.row.left.length" class="hint">—</span>
             </template>
             <span v-else class="hint">原文读取失败</span>
           </div>
           <div class="outbound-cell">
             <div v-if="entry.row.kind === 'grouped'" class="hint">报价明细已汇总发送</div>
-            <p v-if="entry.row.right !== null" class="outbound-text"><template v-for="(seg, i) in entry.row.right" :key="i"><span v-if="seg.placeholder || seg.suspect" class="segment" :class="[kind(seg), { placeholder: seg.placeholder, suspect: seg.suspect, linked: linked(entry.row, seg) }]" :title="seg.suspect ? '待处理' : undefined" :tabindex="seg.placeholder ? 0 : undefined" @mouseenter="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @mouseleave="hovered = null" @focus="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @blur="hovered = null">{{ seg.text }}</span><template v-else>{{ seg.text }}</template></template></p>
+            <p v-if="entry.row.right !== null" class="outbound-text"><template v-for="(seg, i) in entry.row.right" :key="i"><el-popover v-if="seg.placeholder || seg.suspect" trigger="hover" :width="240" :disabled="!editable || saving || !outboundItem(entry.row, entry.row.right, i)"><template #reference><span class="segment" :class="[kind(seg), { placeholder: seg.placeholder, suspect: seg.suspect, linked: linked(entry.row, seg) }]" :title="seg.suspect ? '待处理' : undefined" :tabindex="seg.placeholder ? 0 : undefined" @mouseenter="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @mouseleave="hovered = null" @focus="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @blur="hovered = null">{{ seg.text }}</span></template><el-button link type="primary" :loading="saving" @click="revokeItem(outboundItem(entry.row, entry.row.right, i))">撤销（不是敏感信息）</el-button></el-popover><template v-else>{{ seg.text }}</template></template></p>
             <span v-else class="hint">—（不发送）</span>
           </div>
         </div>
@@ -186,6 +222,7 @@ onBeforeUnmount(() => { version++; clearTimeout(flashTimer) })
       <el-empty v-if="!displayRows.length && !loading && !loadingNodes" description="没有可对照的段落" :image-size="48" />
     </div>
     <el-alert v-if="selectionNotice" type="warning" :closable="false" show-icon :title="selectionNotice" class="gap" />
+    <el-alert v-if="saveError && !selection" type="error" :closable="false" show-icon :title="saveError" class="gap" />
     <div v-if="selection" class="selection-popover" :style="{ left: `${selection.left}px`, top: `${selection.top}px` }" role="dialog" aria-label="设为敏感信息">
       <p class="picked">已选：{{ selection.text }}</p>
       <el-radio-group v-model="category" :disabled="saving" aria-label="替换类别"><el-radio v-for="option in categoryOptions" :key="option.value" :value="option.value">{{ option.label }}</el-radio></el-radio-group>
@@ -224,9 +261,10 @@ onBeforeUnmount(() => { version++; clearTimeout(flashTimer) })
 .kind-id { --kind-bg: var(--si-k-id-bg); --kind-color: var(--si-k-id); }
 .kind-addr { --kind-bg: var(--si-k-addr-bg); --kind-color: var(--si-k-addr); }
 .kind-other { --kind-bg: var(--si-k-other-bg); --kind-color: var(--si-k-other); }
+.kind-amount { --kind-bg: var(--si-k-amount-bg); --kind-color: var(--si-k-amount); }
 .fold-row { padding: 8px 12px; text-align: center; background: var(--el-fill-color-lighter); border-top: 1px solid var(--el-border-color-lighter); }
 .warning { color: var(--el-color-warning); margin-left: 8px; }
-.selection-popover { position: fixed; z-index: 3000; width: 380px; padding: 16px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: 12px; box-shadow: var(--el-box-shadow-light); }
+.selection-popover { position: fixed; z-index: 3000; width: 380px; max-height: calc(100vh - 16px); overflow: auto; padding: 16px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: 12px; box-shadow: var(--el-box-shadow-light); }
 .picked { margin: 0 0 8px; max-height: 64px; overflow: auto; overflow-wrap: anywhere; font-size: 13px; }
 .selection-actions { display: flex; justify-content: flex-end; margin-top: 12px; gap: 8px; }
 </style>

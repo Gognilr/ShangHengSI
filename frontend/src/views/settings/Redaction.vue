@@ -105,6 +105,7 @@ async function removeTerm(row: TermRow, reload: () => Promise<void>) {
     ElMessage.error(errText(e, '删除失败，请稍后重试'))
   }
   await reload()
+  if (row.is_our_party) await loadOurParties()
 }
 
 // ---- ③ 已记住的名称 ----
@@ -141,10 +142,58 @@ function searchLearned() {
   void loadLearned()
 }
 
+// ---- ④ 我方主体 ----
+const ourParties = ref<TermRow[]>([])
+const ourLoading = ref(false)
+const ourAdding = ref(false)
+const ourError = ref('')
+const ourName = ref('')
+const ourRemoving = ref('')
+async function loadOurParties() {
+  ourLoading.value = true
+  ourError.value = ''
+  try { ourParties.value = (await adminRedactionApi.ourParties()).items }
+  catch (e) { ourError.value = errText(e, '我方主体加载失败，请刷新页面') }
+  finally { ourLoading.value = false }
+}
+async function addOurParty() {
+  if (ourAdding.value) return
+  const name = ourName.value.trim()
+  if (Array.from(name).length < 2 || Array.from(name).length > 100) {
+    ourError.value = '我方主体名称须为 2–100 个字符'
+    return
+  }
+  ourAdding.value = true
+  ourError.value = ''
+  try {
+    await adminRedactionApi.addOurParty(name)
+    ourName.value = ''
+    await Promise.all([loadOurParties(), loadLearned()])
+    ElMessage.success('已添加我方主体')
+  } catch (e) { ourError.value = errText(e, '添加失败，请重试') }
+  finally { ourAdding.value = false }
+}
+async function removeOurParty(row: TermRow) {
+  if (ourRemoving.value) return
+  try {
+    await ElMessageBox.confirm(`将删除「${row.term}」的已记住名称及我方预置。已解析任务不受影响，删除后无法恢复。`,
+      '删除我方主体', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+  } catch { return }
+  ourRemoving.value = row.id
+  ourError.value = ''
+  try {
+    await adminRedactionApi.removeOurParty(row.id)
+    await Promise.all([loadOurParties(), loadLearned()])
+    ElMessage.success('已删除我方主体')
+  } catch (e) { ourError.value = errText(e, '删除失败，请重试') }
+  finally { ourRemoving.value = '' }
+}
+
 onMounted(() => {
   void loadMask()
   void loadCustom()
   void loadLearned()
+  void loadOurParties()
 })
 </script>
 
@@ -220,6 +269,21 @@ onMounted(() => {
         layout="total, prev, pager, next"
         @current-change="loadLearned"
       />
+    </section>
+    <section class="panel">
+      <h3>我方主体</h3>
+      <p class="hint tip">预置本公司的完整名称，之后新解析的文件出现该名称时可预选我方主体。</p>
+      <div class="filters">
+        <el-input v-model="ourName" maxlength="100" class="term-input" placeholder="输入我方完整公司名称" aria-label="我方主体名称" :disabled="ourAdding" @keyup.enter="addOurParty" />
+        <el-button type="primary" :loading="ourAdding" @click="addOurParty">添加我方主体</el-button>
+      </div>
+      <el-alert v-if="ourError" type="error" show-icon :closable="false" :title="ourError" class="gap" />
+      <el-table v-loading="ourLoading" :data="ourParties" size="small" empty-text="尚未预置我方主体">
+        <el-table-column prop="term" label="名称" min-width="260" />
+        <el-table-column label="记录人" width="120"><template #default="{ row }">{{ row.created_by_name ?? '—' }}</template></el-table-column>
+        <el-table-column label="记录时间" width="170"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="danger" :loading="ourRemoving === row.id" :disabled="!!ourRemoving" @click="removeOurParty(row)">删除</el-button></template></el-table-column>
+      </el-table>
     </section>
   </div>
 </template>

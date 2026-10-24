@@ -39,7 +39,7 @@ from app.redaction.recheck import recheck
 from app.security import crypto
 
 COUNTRY_UNKNOWN = "国家未知"
-USER_CATEGORIES = ("ORG", "PERSON", "CUSTOM")  # 手动补充、疑似遗漏“替换”可选的类别（Q-70 ①）
+USER_CATEGORIES = ("ORG", "PERSON", "IM", "ACCOUNT", "IDNO", "REFNO", "ADDR", "AMOUNT", "PROJECT", "CUSTOM")
 MANUAL_MIN, MANUAL_MAX = 2, 100  # 手动补充去掉首尾空白后的字符数（Q-70 ③）
 CONTEXT_CHARS = 30  # 疑似遗漏前后各显示多少个字符的原文（Q-70 ⑤）
 _BLOCK_MAX_LINES = 6  # 签约方所在行之后，最多再看几行找国家（9.4）
@@ -218,6 +218,15 @@ def _user_pattern(text: str) -> re.Pattern:
     return re.compile(body, pat.flags)
 
 
+def _manual_amount(text: str) -> Decimal:
+    if not re.fullmatch(r'[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?', text.strip()):
+        raise RedactionInputError(422, 'INVALID_AMOUNT', '金额须为可解析的数字')
+    value = detect._decimal(text.strip())
+    if value is None or not value.is_finite():
+        raise RedactionInputError(422, 'INVALID_AMOUNT', '金额须为可解析的数字')
+    return value
+
+
 def _is_place(text: str) -> bool:
     """整段只是国家、城市或港口名称（countries.yaml）。"""
     pattern, _mapping = _country_index()
@@ -296,6 +305,8 @@ def compute(
         ent.from_term = True
         ent.term_our = ent.term_our or t.is_our_party
     for u in user_terms:
+        if u.category == 'AMOUNT':
+            _manual_amount(u.text)
         ent = entity(u.text, u.category)
         ent.from_user = not ent.from_term
 
@@ -387,7 +398,10 @@ def compute(
     for ent in entities.values():
         by = "term" if ent.from_term else "user" if ent.from_user else "party"
         pattern = _user_pattern if by == "user" else P.name_pattern
-        pool += [(ent, pattern(s), by, ent.key if ent.from_term else None) for s in ent.surfaces]
+        for surface in ent.surfaces:
+            pat = (re.compile(r'(?<![\d.,])' + re.escape(surface) + r'(?![\d.,])')
+                   if by == 'user' and ent.category == 'AMOUNT' else pattern(surface))
+            pool.append((ent, pat, by, ent.key if ent.from_term else None))
         for a in ent.aliases:
             a_by, a_term = ent.alias_src.get(a, ("alias", None))
             a_pat = _user_pattern(a) if a_by in ("user", "derived") else _alias_pattern(a) if a_by == "alias" else P.name_pattern(a)
@@ -400,13 +414,34 @@ def compute(
     for i, n in enumerate(nodes):
         text = n.text
         occ: list[tuple[int, int]] = []
+        amount_hits = [*detect.find_amounts(text, hints.get(i)), *detect.find_bare_amounts(text)]
         cands = [_Span(i, m.start(), m.end(), ent.category, ent.key, by, term=term)
                  for ent, pat, by, term in pool for m in pat.finditer(text)]
+        for candidate in cands:
+            if candidate.detected_by != 'user':
+                continue
+            surface = text[candidate.start:candidate.end]
+            if candidate.category == 'AMOUNT':
+                candidate.value = _manual_amount(surface)
+                # 沿用自动识别的类别/币种/数值键；无标签的手动金额不猜币种（V2Q-42）。
+                matched = next((h for h in amount_hits if h.start == candidate.start and h.end == candidate.end
+                                and h.category == 'AMOUNT'), None)
+                candidate.currency = matched.currency if matched else None
+                candidate.key = detect._amount_key('AMOUNT', candidate.currency, candidate.value, surface)
+            elif candidate.category == 'ADDR':
+                candidate.key = detect.find_country(surface) or COUNTRY_UNKNOWN
+            elif candidate.category in ('ACCOUNT', 'REFNO'):
+                prefix = '账号：' if candidate.category == 'ACCOUNT' else '编号：'
+                matched = next((h for h in detect.find_formatted(prefix + surface)
+                                if h.category == candidate.category and h.start == len(prefix)
+                                and h.end == len(prefix + surface)), None)
+                if matched:
+                    candidate.key = matched.key
         _accept(cands, occ, spans, longest_first=True)
         for hit in detect.find_formatted(text):  # 第 4 步：按 find_formatted 的顺序（即优先级）逐个取舍
             _accept([_Span(i, hit.start, hit.end, hit.category, hit.key, "regex")], occ, spans)
         amounts = [_Span(i, h.start, h.end, h.category, h.key, "amount", h.currency, h.value)
-                   for h in [*detect.find_amounts(text, hints.get(i)), *detect.find_bare_amounts(text)]]
+                   for h in amount_hits]
         _accept(amounts, occ, spans)
         if mask_quantity:  # 数量：第 5 步之后、第 6 步之前（设计 M4.md 第三节）
             column = "QTY" if qty_hints.get(i) == "QTY" else None
@@ -898,6 +933,8 @@ def _add_term(db: Session, task: Task, text: str, loc: str, start: int, end: int
     所选文字若按出口复检规则出现在固定提示文字中（Q-77 ③），设为敏感信息后将无法发送，先拒绝。
     """
     term = text[start:end]
+    if category == 'AMOUNT':
+        _manual_amount(term)
     from app.review.prompt import fixed_prompt_text  # 避免循环导入
     if any(r.category == "MAP" for r in recheck(fixed_prompt_text(db), real_values=[term], terms=[])):
         raise RedactionInputError(422, "TERM_IN_PROMPT",

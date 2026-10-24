@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type { Suspect, UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
-import { USER_CATEGORY_OPTIONS, suspectReasonLabel, toOptions } from '@/utils/labels'
+import { MANUAL_CATEGORY_OPTIONS, suspectReasonLabel, toOptions } from '@/utils/labels'
 
 const props = defineProps<{ suspects: Suspect[]; files: TaskFile[]; busy: boolean; selectedLoc?: string }>()
 const emit = defineEmits<{
@@ -10,7 +10,7 @@ const emit = defineEmits<{
   (e: 'locate', loc: string): void
 }>()
 
-const categoryOptions = toOptions(USER_CATEGORY_OPTIONS)
+const categoryOptions = toOptions(MANUAL_CATEGORY_OPTIONS)
 
 const pending = computed(() => props.suspects.filter((s) => s.decision === 'pending'))
 const ignored = computed(() => props.suspects.filter((s) => s.decision === 'ignore'))
@@ -34,7 +34,7 @@ const category = ref<UserCategory>('ORG')
 function askReplace(s: Suspect) {
   target.value = s
   // long_digits 默认“其他”，其余默认“公司”
-  category.value = s.reason === 'person_name' ? 'PERSON' : s.reason === 'long_digits' ? 'CUSTOM' : 'ORG'
+  category.value = ['person_name', 'person_like'].includes(s.reason) ? 'PERSON' : s.reason === 'long_digits' ? 'CUSTOM' : 'ORG'
   dlg.value = true
 }
 

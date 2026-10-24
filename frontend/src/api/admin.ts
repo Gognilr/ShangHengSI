@@ -138,6 +138,9 @@ export interface TermPage {
 }
 
 export const adminRedactionApi = {
+  ourParties: () => http.get<{ items: TermRow[] }>('/admin/our-parties'),
+  addOurParty: (name: string) => http.post<TermRow>('/admin/our-parties', { name }),
+  removeOurParty: (id: string) => http.delete<void>(`/admin/our-parties/${id}`),
   getSetting: () => http.get<{ mask_quantity: boolean }>('/admin/settings/redaction'),
   saveSetting: (maskQuantity: boolean) =>
     http.put<{ mask_quantity: boolean }>('/admin/settings/redaction', { mask_quantity: maskQuantity }),

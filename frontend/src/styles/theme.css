@@ -87,6 +87,8 @@ html body { font-family: var(--el-font-family); font-size: 14px; line-height: 1.
   --si-k-id: #8A5A2B;
   --si-k-addr-bg: #E9F4EC;
   --si-k-addr: #2E7D4F;
+  --si-k-amount-bg: #FFF3D6;
+  --si-k-amount: #9C6500;
   --si-k-other-bg: #F0F1F3;
   --si-k-other: #667085;
 }

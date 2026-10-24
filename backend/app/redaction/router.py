@@ -52,6 +52,7 @@ class RedactionItemOut(BaseModel):
     char_end: int
     category: str
     placeholder: str
+    can_revoke: bool
 
 
 class SuspectView(BaseModel):
@@ -71,7 +72,7 @@ class RedactionOut(BaseModel):
     items: list[RedactionItemOut]
 
 
-UserCategory = Literal["ORG", "PERSON", "CUSTOM"]
+UserCategory = Literal["ORG", "PERSON", "IM", "ACCOUNT", "IDNO", "REFNO", "ADDR", "AMOUNT", "PROJECT", "CUSTOM"]
 
 
 class SuspectDecision(BaseModel):
@@ -162,7 +163,10 @@ def _redaction(db: DbSession, task: Task) -> RedactionOut:
         summary=engine.redaction_summary(db, task),
         suspects=[SuspectView(**v) for v in engine.suspect_views(db, task)],
         items=[RedactionItemOut(loc=r.loc, char_start=r.char_start, char_end=r.char_end,
-                                category=r.category, placeholder=r.placeholder) for r in rows],
+                                category=r.category, placeholder=r.placeholder,
+                                can_revoke=task.status == 'awaiting_confirm' and
+                                (r.detected_by == 'user' or r.detected_by == 'person' and r.category == 'PERSON'))
+               for r in rows],
     )
 
 
