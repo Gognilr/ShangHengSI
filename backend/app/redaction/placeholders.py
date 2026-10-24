@@ -8,6 +8,7 @@ OUR_CODE = "我方"
 
 # 不区分对象、所有命中共用一个代号的类别
 FIXED = {
+    "IM": "[联系方式]",
     "PHONE": "[电话]",
     "EMAIL": "[邮箱]",
     "URL": "[网址]",
@@ -25,6 +26,7 @@ def address_code(country: str) -> str:
 
 # 按对象编号的类别
 _NUMBERED = {
+    "PROJECT": "项目_{}",
     "PERSON": "人员_{}",
     "REFNO": "编号_{}",
     "ACCOUNT": "[账号_{}]",  # Q-59：同一账号同一代号，可唯一还原
@@ -38,6 +40,7 @@ _NUMBERED = {
 # 追问中出现、本任务对照表里没有的对象（M6-07，open_questions Q-97）：按任务编号，写入本任务对照表，可唯一还原。
 # 序号带 Q 前缀，与解析时分配的代号不会重名；脱敏重算对照表时保留这些条目。
 CHAT_LABELS = {
+    "IM": "联系方式", "PROJECT": "项目",
     "ORG": "公司", "PERSON": "人员", "CUSTOM": "敏感词", "PHONE": "电话", "EMAIL": "邮箱", "URL": "网址",
     "IDNO": "证件号", "ACCOUNT": "账号", "SWIFT": "SWIFT", "REFNO": "编号", "AMOUNT": "金额", "PRICE": "单价",
     "ADDR": "地址", "POSTCODE": "邮编",

@@ -38,7 +38,7 @@ SEVERITIES = ["high", "medium", "low"]
 # 9.2 代码列
 REDACTION_CATEGORIES = [
     "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "POSTCODE", "ACCOUNT",
-    "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM",
+    "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM", "IM", "PROJECT",
 ]
 
 

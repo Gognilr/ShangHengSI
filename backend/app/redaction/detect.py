@@ -49,7 +49,9 @@ _SWIFT = re.compile(
 _CREDIT_CODE = re.compile(r"(?<![0-9A-Za-z])[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}(?![0-9A-Za-z])")
 _ID_CARD = re.compile(r"(?<![0-9A-Za-z])\d{17}[\dXx](?![0-9A-Za-z])")
 _REFNO = re.compile(
-    r"(?:合同编号|合同号|订单编号|订单号|发票编号|发票号|"
+    r"(?:提单编号|提单号|信用证编号|信用证号|报关单编号|报关单号|项目编号|项目号|招标项目编号|招标编号|报价单号|报价编号|运单号|集装箱号|"
+    r"(?i:(?:B/L|Bill\s+of\s+Lading|L/C|Credit|Customs\s+Declaration|Project|Tender|Bid|Quotation|Quote|Waybill|Container)\s+No\.?)|"
+    r"合同编号|合同号|订单编号|订单号|发票编号|发票号|"
     r"(?i:(?:contract|order|invoice|pi|p\.?\s?o\.?)\s*no\.?|(?:contract|order|invoice)\s*number))"
     r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9][A-Za-z0-9\-/_.]{1,48}[A-Za-z0-9])"
 )
@@ -63,6 +65,21 @@ _POSTCODE = re.compile(
 _PHONE_INTL = re.compile(r"(?<![\w+])\+\d{1,3}[ -]?\d[\d -]{6,14}\d(?!\d)")
 _PHONE_MOBILE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 _PHONE_LANDLINE = re.compile(r"(?<!\d)0\d{2,3}-?\d{7,8}(?!\d)")
+
+# V2-B-01：即时通信必须带冒号，避免将叙述中的账号猜作标签值（设计 1.5 #7）。
+_IM = re.compile(
+    r"(?:微信号|微信|QQ号|钉钉|(?<![A-Za-z])(?i:WeChat|QQ|WhatsApp|Skype|Telegram|LINE)(?![A-Za-z]))"
+    r"[ \t]*[:：][ \t]*" + _OPEN + r"([A-Za-z0-9_.+\-]{3,40})(?![A-Za-z0-9_.+\-])"
+)
+_LABELED_ID = re.compile(
+    r"(?:护照号码|护照号|营业执照注册号|工商注册号|注册号|组织机构代码|纳税人识别号|税号|"
+    r"(?<![A-Za-z])(?i:Passport\s+No\.?|Organization\s+Code|Tax\s+ID|VAT\s+No\.?|TIN)(?![A-Za-z]))"
+    r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9\-]{5,30})(?![A-Za-z0-9\-])"
+)
+_BANK_CODE = re.compile(
+    r"(?:开户行行号|大额支付行号|联行号|行号|(?<![A-Za-z])(?i:CNAPS|Sort\s+Code|Routing\s+No\.?|ABA|IFSC)(?![A-Za-z]))"
+    r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9]{6,15})(?![A-Za-z0-9])"
+)
 
 
 def _norm_key(value: str) -> str:
@@ -94,6 +111,13 @@ def find_formatted(text: str) -> list[Hit]:
     for m in _SWIFT.finditer(text):
         code = m.group(1).upper()
         add(m.start(1), m.end(1), "SWIFT", code[:8] if len(code) == 11 and code.endswith("XXX") else code)
+    for m in _BANK_CODE.finditer(text):
+        add(m.start(1), m.end(1), "SWIFT", m.group(1).upper())
+    for m in _LABELED_ID.finditer(text):
+        if sum(c.isdigit() for c in m.group(1)) >= 2:
+            add(m.start(1), m.end(1), "IDNO")
+    for m in _IM.finditer(text):
+        add(m.start(1), m.end(1), "IM")
     for m in _CREDIT_CODE.finditer(text):
         add(m.start(), m.end(), "IDNO")
     for m in _ID_CARD.finditer(text):
@@ -376,6 +400,9 @@ def find_persons(text: str) -> list[Hit]:
     seen: set[tuple[int, int]] = set()
     terms = [t.casefold() for t in common_terms()]
     for m in _PERSON_LABEL.finditer(text):
+        # Project Name 是项目标签，不能把其中 Name 当成人名标签抢先识别。
+        if re.search(r"(?i:Project)[ \t]+$", text[:m.start()]) and m.group().lower().startswith("name"):
+            continue
         pos = m.end()
         span: tuple[int, int] | None = None
         label = m.group()
@@ -459,6 +486,26 @@ def find_addresses(text: str) -> list[Hit]:
             end -= 1
         if end > start:
             hits.append(Hit(start, end, "ADDR", find_country(text[start:end]) or "国家未知"))
+    return hits
+
+
+_PROJECT_LABEL = re.compile(r"(?:项目名称|工程名称|项目全称|(?<![A-Za-z])(?i:Project\s+Name|Project\s+Title))[ \t]*[:：][ \t]*" + _OPEN)
+_PROJECT_EMPTY = frozenset({"见附件", "另行约定", "待定", "同上"})
+
+
+def find_projects(text: str) -> list[Hit]:
+    """项目名称在地址之后识别；保留信息标签和句尾分隔符。"""
+    hits = []
+    for m in _PROJECT_LABEL.finditer(text):
+        stop = re.search(r"[\n；;。]", text[m.end():])
+        end = m.end() + stop.start() if stop else len(text)
+        labels = [x.start() for x in (_INFO_LABEL.search(text, m.end(), end),
+                  _ADDRESS_LABEL.search(text, m.end(), end), _PROJECT_LABEL.search(text, m.end(), end),
+                  _POSTCODE.search(text, m.end(), end)) if x]
+        end = min([end, *labels])
+        value = text[m.end():end].rstrip(_ADDRESS_EDGE)
+        if 2 <= len(value) <= 60 and value not in _PROJECT_EMPTY:
+            hits.append(Hit(m.end(), m.end() + len(value), "PROJECT", normalize(value)))
     return hits
 
 

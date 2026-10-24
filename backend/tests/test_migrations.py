@@ -388,7 +388,7 @@ ENUM_COLUMNS = {
     ("review_runs", "main_doc_type"): ["contract", "quotation", "order", "inquiry", "letter"],
     ("redaction_suspects", "category"): [
         "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "POSTCODE", "ACCOUNT",
-        "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM",
+        "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM", "IM", "PROJECT",
     ],
     ("tasks", "stance"): ["sales", "purchase", "other"],
     ("tasks", "source"): ["outgoing", "incoming"],
@@ -403,7 +403,7 @@ ENUM_COLUMNS = {
     ("doc_nodes", "part"): ["body", "header", "footer", "comment", "textbox", "hidden_sheet"],
     ("redaction_items", "category"): [
         "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "POSTCODE", "ACCOUNT",
-        "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM",
+        "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM", "IM", "PROJECT",
     ],
     ("redaction_items", "detected_by"): [
         "term", "party", "alias", "regex", "amount", "person", "address", "user",
@@ -796,6 +796,44 @@ def test_0008_requirement_sources_upgrade_and_downgrade():
             assert conn.execute('SELECT text FROM company_requirements').fetchone()[0] == '字' * 200
             assert conn.execute("SELECT count(*) FROM information_schema.columns WHERE table_name='company_requirements' AND column_name='sources'").fetchone()[0] == 0
         command.upgrade(cfg, 'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_0009_im_project_categories_upgrade_and_downgrade():
+    """V2-B-01 1.5 #8；V2Q-31：保留现有 0008，类别迁移顺延 0009。"""
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    item = ("INSERT INTO redaction_items (task_id, loc, char_start, char_end, category, placeholder, detected_by) "
+            "VALUES (%s, 'F1-P1', 0, 6, %s, 'x', 'regex')")
+    suspect = ("INSERT INTO redaction_suspects (task_id, loc, char_start, char_end, reason, decision, category) "
+               "VALUES (%s, 'F1-P2', 0, 6, 'long_digits', 'replace', %s)")
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, "0008")
+        with psycopg.connect(url, autocommit=True) as conn:
+            task = _insert_task(conn, _insert_user(conn))
+            for sql in (item, suspect):
+                for category in ("IM", "PROJECT"):
+                    with pytest.raises(errors.CheckViolation):
+                        conn.execute(sql, (task, category))
+        command.upgrade(cfg, "0009")
+        with psycopg.connect(url, autocommit=True) as conn:
+            for sql in (item, suspect):
+                for category in ("IM", "PROJECT", "PHONE"):
+                    conn.execute(sql, (task, category))
+        command.downgrade(cfg, "0008")
+        with psycopg.connect(url, autocommit=True) as conn:
+            for table in ("redaction_items", "redaction_suspects"):
+                assert conn.execute(f"SELECT category FROM {table}").fetchall() == [("PHONE",)]
+            for sql in (item, suspect):
+                for category in ("IM", "PROJECT"):
+                    with pytest.raises(errors.CheckViolation):
+                        conn.execute(sql, (task, category))
+        command.upgrade(cfg, "head")
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

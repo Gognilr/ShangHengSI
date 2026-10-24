@@ -2,21 +2,18 @@ description: 编号、证件、银行代码标签扩展与新类别（V2-B-01，
 stance: sales
 must_replace:
   - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: COSU1234567890, category: REFNO}
+  - {text: LC26FICT0091, category: REFNO}
+  - {text: QL-2026-ZB-017, category: REFNO}
+  - {text: ZB2026FICT0042, category: REFNO}
+  - {text: QT-2026-0508, category: REFNO}
+  - {text: E12345678, category: IDNO}
+  - {text: "110105012345678", category: IDNO}
+  - {text: MA01XYQ1-5, category: IDNO}
+  - {text: "102100099996", category: SWIFT}
+  - {text: zhang_fiction88, category: IM}
+  - {text: "88001234", category: IM}
+  - {text: fiction.trader.01, category: IM}
+  - {text: 江北市虚构医院信息化改造项目, category: PROJECT}
 must_keep:
   - 本项目工期为 90 天
-# V2-B-00 先行写入：以下内容在 V2-B-01 之前原样外发（或只把数字部分列为疑似遗漏）。V2-B-01 实现后测试会提示“已知缺口已修复”，
-# 届时按设计 V2-B.md 1.5 移入 must_replace 并写明类别，文字不得改动
-known_gaps:
-  - {text: COSU1234567890}
-  - {text: LC26FICT0091}
-  - {text: QL-2026-ZB-017}
-  - {text: ZB2026FICT0042}
-  - {text: QT-2026-0508}
-  - {text: E12345678}
-  - {text: "110105012345678"}
-  - {text: MA01XYQ1-5}
-  - {text: "102100099996"}
-  - {text: zhang_fiction88}
-  - {text: "88001234"}
-  - {text: fiction.trader.01}
-  - {text: 江北市虚构医院信息化改造项目}

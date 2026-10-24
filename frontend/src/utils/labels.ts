@@ -95,7 +95,9 @@ export const REDACTION_CATEGORY: Dict = {
   ADDR: '地址',
   POSTCODE: '邮编',
   ACCOUNT: '账号',
-  SWIFT: 'SWIFT 代码',
+  SWIFT: 'SWIFT / 银行代码',
+  IM: '即时通信账号',
+  PROJECT: '项目名称',
   IDNO: '证件号',
   REFNO: '编号',
   AMOUNT: '金额',
@@ -151,6 +153,7 @@ export const LLM_PURPOSE: Dict = { review: '审核', chat: '追问', test: '连�
 export const llmPurposeLabel = pick(LLM_PURPOSE)
 /** 对照视图与手动补充共用的类别色组。 */
 export const REDACTION_KIND: Record<string, string> = {
+  IM: 'contact', PROJECT: 'other',
   OUR: 'org', ORG: 'org', PERSON: 'person', PHONE: 'contact', EMAIL: 'contact', URL: 'contact',
   ADDR: 'addr', POSTCODE: 'addr', ACCOUNT: 'id', SWIFT: 'id', IDNO: 'id', REFNO: 'id',
   AMOUNT: 'other', PRICE: 'other', QTY: 'other', CUSTOM: 'other',

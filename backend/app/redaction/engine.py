@@ -441,6 +441,11 @@ def compute(
             _accept([_Span(i, m.start(), m.end(), ADDR, country, "address")
                      for pat, country in repeat for m in pat.finditer(n.text)], occupied[i], spans)
 
+    # V2-B-01：项目名称在地址之后识别，共用对象代号。
+    for i, n in enumerate(nodes):
+        for h in detect.find_projects(n.text):
+            _accept([_Span(i, h.start, h.end, h.category, h.key, "regex")], occupied[i], spans)
+
     spans.sort(key=lambda s: (s.node, s.start))
     _apply_ours(entities, stance, overrides, {s.key for s in spans})
     _assign_countries(entities, nodes, spans)

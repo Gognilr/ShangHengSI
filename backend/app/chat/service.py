@@ -166,7 +166,7 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             take(start, end, code_for(text[start:end], "ORG"))
 
     # 4. 9.3 第 4～7 步：格式化信息、金额、人名、地址
-    for find in (detect.find_formatted, detect.find_amounts, detect.find_bare_amounts, detect.find_persons, detect.find_addresses):
+    for find in (detect.find_formatted, detect.find_amounts, detect.find_bare_amounts, detect.find_persons, detect.find_addresses, detect.find_projects):
         for hit in find(text):
             if any(s.start < hit.end and hit.start < s.end for s in accepted):
                 continue
