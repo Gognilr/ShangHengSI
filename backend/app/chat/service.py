@@ -139,6 +139,7 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
     for code, value in sorted(mapping, key=lambda kv: len(kv[1]), reverse=True):
         for start, end in _value_spans(text, value):
             take(start, end, code)
+    project_replaceable = {(s.start, s.end) for s in accepted}
 
     def code_for(surface: str, category: str, country: str | None = None) -> str:
         """对照表中已有的用原代号；没有的分配新的追问代号，同一对象（规范化后相同）只分配一次。"""
@@ -159,11 +160,14 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             code = code_for(text[spans[0][0]:spans[0][1]], category)
             for start, end in spans:
                 take(start, end, code)
+                if category == 'ORG':
+                    project_replaceable.add((start, end))
 
     # 3. 9.3 第 2 步：带企业后缀的名称（标签后的签约方、正文中的其他企业名称）
     for start, end in [(s_, e_) for _label, s_, e_ in parties.find_labeled_parties(text)] + parties.find_other_org_names(text):
         if not any(s.start < end and start < s.end for s in accepted):
             take(start, end, code_for(text[start:end], "ORG"))
+            project_replaceable.add((start, end))
 
     # V2-B-03：只从已有主体的完整名称派生，沿用原代号。
     short_derived = []
@@ -173,10 +177,18 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
         for alias in auto:
             for start, end in _value_spans(text, alias):
                 take(start, end, code)
+                project_replaceable.add((start, end))
 
     # 4. 9.3 第 4～7 步：格式化信息、金额、人名、地址
     for find in (detect.find_formatted, detect.find_amounts, detect.find_bare_amounts, detect.find_persons, detect.find_addresses, detect.find_projects):
         for hit in find(text):
+            if hit.category == 'PROJECT':
+                # V2Q-47：只有完整包含的既有区间让位于项目整体；部分交叉仍先到先得。
+                overlaps = [s for s in accepted if s.start < hit.end and hit.start < s.end]
+                if any((s.start, s.end) not in project_replaceable
+                       or not (hit.start <= s.start and s.end <= hit.end) for s in overlaps):
+                    continue
+                accepted = [s for s in accepted if s not in overlaps]
             if any(s.start < hit.end and hit.start < s.end for s in accepted):
                 continue
             country = hit.key if hit.category == "ADDR" and hit.key else None
