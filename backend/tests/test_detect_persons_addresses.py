@@ -151,7 +151,7 @@ def test_address_labels(label):
 
 
 def test_address_requires_colon():
-    assert addresses("地址 上海市示例路1号") == []
+    assert addresses("地址 上海市示例路1号") == ["上海市示例路1号"]  # V2Q-32：无标签中国地址新规则，用户确认同步期望。
     assert addresses("Address Room 1") == []
     assert addresses("our address is Room 1") == []
 

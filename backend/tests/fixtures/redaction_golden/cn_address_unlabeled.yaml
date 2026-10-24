@@ -2,10 +2,8 @@ description: 没有“地址”标签的中国地址（V2-B-02，设计 V2-B.md 
 stance: purchase
 must_replace:
   - {text: 青岚虚构石化股份有限公司, category: ORG}
+  - {text: 江苏省南京市江宁区虚构路 88 号, category: ADDR}
+  - {text: 东川市虚构区示例大道 1200 号, category: ADDR}
 must_keep:
   - 本合同在北京市签订
   - 交货地点为青岛港
-# V2-B-00 先行写入：V2-B-02 实现后移入 must_replace（category: ADDR），文字不得改动
-known_gaps:
-  - {text: 江苏省南京市江宁区虚构路 88 号}
-  - {text: 东川市虚构区示例大道 1200 号}

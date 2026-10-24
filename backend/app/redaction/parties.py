@@ -64,6 +64,9 @@ INSTITUTION_TEXT_SUFFIXES = (
 _INSTITUTION_SUFFIXES = tuple(sorted((*INSTITUTION_TEXT_SUFFIXES, "诊所", "中心", "出版社", "电视台", "局", "厅", "署", "院"), key=len, reverse=True))
 _INSTITUTION_RE = re.compile("|".join(_INSTITUTION_SUFFIXES))
 _EN_SUFFIX = (
+    r"GmbH\s+&\s+Co\.\s+KG|Co\.\s+W\.L\.L\.|Ltd\.\s+[ŞS]ti\.|Sp\.\s+z\s+o\.\s*o\.|"
+    r"S\.A\.\s+de\s+C\.V\.|A\.Ş\.|A\.S\.|s\.r\.o\.|a\.s\.|Kft\.|Zrt\.|Nyrt\.|S\.R\.L\.|"
+    r"S\.A\.R\.L\.|S\.A\.S\.|S\.p\.A\.|Ltda\.|W\.L\.L\.|ApS|A/S|Oy|AB|ASA|K\.K\.|Bhd\.|Est\.|SpA|WLL|SRL|SARL|"
     r"Co\.\s?,\s?Ltd\.?|Co\.\s?Limited|Company\s+Limited|Pte\.?\s?Ltd\.?|Pvt\.?\s?Ltd\.?|Sdn\.?\s?Bhd\.?|"
     r"L\.L\.C\.?|FZ-LLC|LLC|LLP|PLC|Limited|Ltd\.?|Inc\.?|Corp\.?|Corporation|GmbH|S\.A\.|S\.r\.l\.|"
     r"B\.V\.|N\.V\.|FZCO|FZE|PJSC|JSC|OOO"
@@ -72,14 +75,14 @@ _EN_SUFFIX_RE = re.compile(rf"(?<![A-Za-z])(?:(?i:{_EN_SUFFIX})|AG)(?![A-Za-z])"
 _SUFFIX_RE = re.compile(rf"(?:{_CN_SUFFIX})|(?<![A-Za-z])(?:(?i:{_EN_SUFFIX})|AG)(?![A-Za-z])")
 _NAME_FORBIDDEN = set("：:；;。，、“”\"「」『』\n\t")
 _CN_CHAR = re.compile(r"[一-鿿]")
-_EN_WORD_OK = re.compile(r"^(?:[A-Z0-9][A-Za-z0-9&'.\-]*|&|of|and|de|du|la|for)$")
+_EN_WORD_OK = re.compile(r"^(?:[A-ZÀ-ÖØ-Þ0-9][A-Za-zÀ-ÖØ-öø-ÿĀ-ſ0-9&'.\-]*|&|of|and|de|du|la|for|ve|z)$")
 # 英文名称切词：空白、汉字、中文标点（含全角形式）和下列半角标点都是分隔符，使“收函方：Aurora Energy Co., Ltd.”中的
 # 冒号前不会把“Aurora”并进无效单词；撇号、句点、逗号、连字符、&留在单词内
 # 名称中间可以有一组括号括起的 1–3 个大写开头的单词（“Northwind (Hong Kong) Limited”“Example (HK) Co., Ltd.”），整体算一个单词
 _EN_PAREN_GROUP = r"\([A-Z][A-Za-z.&\-]*(?: [A-Z][A-Za-z.&\-]*){0,2}\)"
 _EN_TOKEN_RE = re.compile(rf"{_EN_PAREN_GROUP}|[^\s一-鿿　-〿＀-￯：:；;\"“”‘「」『』()（）]+")
 _EN_PAREN_OK = re.compile(rf"^{_EN_PAREN_GROUP}$")
-_EN_CONNECTORS = frozenset({"&", "of", "and", "de", "du", "la", "for"})
+_EN_CONNECTORS = frozenset({"&", "of", "and", "de", "du", "la", "for", "ve", "z"})
 _EN_LEADING_NOISE = frozenset(w.casefold() for w in (
     "The", "To", "From", "By", "With", "Messrs", "Messrs.", "Dear", "Attn", "Seller", "Buyer", "Supplier",
     "Purchaser", "Vendor", "Consignee", "Beneficiary", "Party", "Bank", "Name", "Company",
@@ -178,11 +181,16 @@ def extract_org_name(text: str, pos: int) -> tuple[int, int] | None:
     limit = min(len(text) if line_end < 0 else line_end, pos + 200)
     window = text[pos:limit]
     lead = len(window) - len(window.lstrip())
+    prefixed = _PREFIXED_ORG.match(window, lead)
+    if prefixed:
+        return pos + prefixed.start(), pos + prefixed.end()
     # 填空括号“乙方：【××有限公司】”：开括号不属于名称（Q-134 ①；与 detect.FILL_OPEN 相同）
     if window[lead:lead + 1] in ("【", "［", "[", "〖"):
         lead += 1
         lead += len(window[lead:]) - len(window[lead:].lstrip(" \t"))
     for m in _SUFFIX_RE.finditer(window, lead):
+        if not _foreign_suffix_allowed(window, lead, m):
+            continue
         if not window[lead:m.start()].strip(" ,"):
             continue
         if not _valid_prefix(window[lead:m.start()]):
@@ -352,7 +360,7 @@ def _name_start_after_boundary(text: str, start: int, suffix_start: int, min_han
 
 def find_other_org_names(text: str) -> list[tuple[int, int]]:
     """正文中未带标签的企业名称：[(start, end)]。"""
-    out = []
+    out = [m.span() for m in _PREFIXED_ORG.finditer(text)]
     last_end = 0
     for m in _CN_STRONG_SUFFIX.finditer(text):
         if m.start() < last_end:  # 已被上一个名称的延伸覆盖（“××银行股份有限公司××支行”）
@@ -397,8 +405,35 @@ def find_other_org_names(text: str) -> list[tuple[int, int]]:
                         or kept[0].group().startswith("(")):
             kept.pop(0)
         if kept and any(c.isupper() for c in kept[0].group()):
-            out.append((offset + kept[0].start(), m.end()))
+            start = offset + kept[0].start()
+            if _foreign_suffix_allowed(text, start, m):
+                out.append((start, m.end()))
     return out
+
+
+# V2-B-02：前置企业形式只认明确引号或 PT/CV 后的 2～8 个首字母大写词。
+_LATIN_NAME_WORD = r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿĀ-ſ'\-]*"
+_PREFIXED_ORG = re.compile(
+    r'(?<![\w])(?:ООО|АО|ПАО|ЗАО|ОАО|ИП|ТОО|OOO|ZAO|OAO|TOO)[ \t]+(?:«[^»\n]{1,60}»|"[^"\n]{1,60}"|“[^”\n]{1,60}”)'
+    rf"|(?<![\w])(?:PT|CV)[ \t]+{_LATIN_NAME_WORD}(?:[ \t]+(?!Tbk\b){_LATIN_NAME_WORD}){{1,7}}(?:[ \t]+Tbk)?"
+)
+_SHORT_SUFFIXES = frozenset({"AB", "ASA", "Oy", "SpA", "WLL", "SRL", "SARL"})
+
+
+def _foreign_suffix_allowed(text: str, start: int, match: re.Match) -> bool:
+    suffix = match.group()
+    before = text[start:match.start()].strip()
+    if suffix.casefold() in {s.casefold() for s in _SHORT_SUFFIXES}:
+        if suffix not in _SHORT_SUFFIXES:
+            return False
+        words = re.findall(_LATIN_NAME_WORD, before)
+        if len(words) < 2 or re.match(r"[ \t]+[\w]", text[match.end():]):
+            return False
+    if suffix == "A.S.":
+        return bool(re.search(r"(?:Sanayi|Ticaret|Tic\.|San\.)$", before))
+    if suffix.casefold() == "est.":
+        return bool(re.search(r"(?:Trading|General|Commercial)$", before, re.IGNORECASE))
+    return True
 
 
 def detect_country(lines: list[str], names: list[str]) -> str | None:
@@ -419,6 +454,14 @@ def _is_chinese_bank_name(name: str) -> bool:
 
 def default_country(name: str) -> str | None:
     """块中找不到国家时：以中文企业后缀结尾的中文名称、中文银行名称视为中国企业。"""
+    if re.search(r"(?:A\.Ş\.|Ltd\.\s+Şti\.)$", name, re.IGNORECASE):
+        return "土耳其"
+    if re.search(r"Sp\.\s+z\s+o\.\s*o\.$", name, re.IGNORECASE):
+        return "波兰"
+    if re.search(r"(?:Kft\.|Zrt\.)$", name, re.IGNORECASE):
+        return "匈牙利"
+    if name.startswith("PT "):
+        return "印度尼西亚"
     return "中国" if (is_chinese_name(name) or _is_chinese_bank_name(name)
                     or (_CN_CHAR.search(name) and name.endswith(_INSTITUTION_SUFFIXES))) else None
 

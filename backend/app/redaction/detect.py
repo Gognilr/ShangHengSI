@@ -468,6 +468,11 @@ _INFO_LABEL = re.compile(
     r"(?:电话|手机|传真|邮箱|联系人|(?<![A-Za-z])(?i:tel|phone|fax|e-?mail|contact|attn)\.?)[ \t]*[:：]"
 )
 _ADDRESS_EDGE = " \t,，;；、.。:：\r" + FILL_OPEN + FILL_CLOSE
+_CN_UNLABELED_ADDRESS = re.compile(
+    r"(?:[一-鿿]{2,7}(?:省|自治区|市|自治州|地区|旗)|[一-鿿]{1,7}(?:区|县))+"
+    r"[一-鿿0-9]{1,20}(?:大道|大街|胡同|路|街|道|巷|弄)[ \t]*\d{1,5}[ \t]*号"
+    r"(?:[A-Za-z0-9一二三四五六七八九十\-]{1,10}(?:号楼|单元|栋|幢|座|楼|层|室))*"
+)
 
 
 def find_addresses(text: str) -> list[Hit]:
@@ -486,6 +491,13 @@ def find_addresses(text: str) -> list[Hit]:
             end -= 1
         if end > start:
             hits.append(Hit(start, end, "ADDR", find_country(text[start:end]) or "国家未知"))
+    for m in _CN_UNLABELED_ADDRESS.finditer(text):
+        if not any(h.start < m.end() and m.start() < h.end for h in hits):
+            # 不把叙述前缀算进行政区名称，如“货物运至江苏省”“乙方在东川市”。
+            head = re.match(r".*?(?:省|自治区|市|自治州|地区|区|县|旗)", m.group()).group()
+            boundary = list(re.finditer(r"运至|送至|交至|位于|坐落于|在|至", head))
+            start = m.start() + boundary[-1].end() if boundary else m.start()
+            hits.append(Hit(start, m.end(), "ADDR", "中国"))
     return hits
 
 

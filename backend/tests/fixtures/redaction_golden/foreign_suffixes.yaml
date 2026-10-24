@@ -1,16 +1,14 @@
 description: 外文企业形式（V2-B-02，设计 V2-B.md 第二节）：土耳其 A.Ş.、俄文 ООО «…»、波兰 Sp. z o.o.、捷克 s.r.o.、匈牙利 Kft.、海湾 W.L.L.、法国 SARL、意大利 S.p.A.、印尼 PT 前置形式作为主体替换
 stance: sales
-must_replace: []
+must_replace:
+  - {text: Anadolu Fictive Kimya Sanayi ve Ticaret A.Ş., category: ORG}
+  - {text: ООО «Ромашка Фиктив», category: ORG}
+  - {text: Wisla Fictive Trading Sp. z o.o., category: ORG}
+  - {text: Vltava Fictive Logistics s.r.o., category: ORG}
+  - {text: Duna Fictive Chemicals Kft., category: ORG}
+  - {text: Gulf Fictive Trading Co. W.L.L., category: ORG}
+  - {text: Lumiere Fictive Industries SARL, category: ORG}
+  - {text: Tevere Fictive Impianti S.p.A., category: ORG}
+  - {text: PT Nusantara Fictive Kimia, category: ORG}
 must_keep:
   - The goods shall be packed in jumbo bags.
-# V2-B-00 先行写入：V2-B-02 实现后移入 must_replace（category: ORG），文字不得改动
-known_gaps:
-  - {text: Anadolu Fictive Kimya Sanayi ve Ticaret A.Ş.}
-  - {text: ООО «Ромашка Фиктив»}
-  - {text: Wisla Fictive Trading Sp. z o.o.}
-  - {text: Vltava Fictive Logistics s.r.o.}
-  - {text: Duna Fictive Chemicals Kft.}
-  - {text: Gulf Fictive Trading Co. W.L.L.}
-  - {text: Lumiere Fictive Industries SARL}
-  - {text: Tevere Fictive Impianti S.p.A.}
-  - {text: PT Nusantara Fictive Kimia}
