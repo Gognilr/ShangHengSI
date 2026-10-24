@@ -75,7 +75,7 @@ def chat_system_prompt() -> tuple[str, str]:
     """追问用的 system 消息（SPEC 13）：模板第 1–7 条原样，第 8 条（JSON 输出）和 JSON 结构行换成自然语言回答。"""
     version, template = load_system_template()
     lines = [line for line in template.strip().splitlines()
-             if not line.startswith("8.") and not line.startswith("JSON 结构")]
+             if not line.startswith(("8.", "9.", "JSON 结构"))]
     while lines and not lines[-1].strip():
         lines.pop()
     return version, "\n".join(lines + [CHAT_ANSWER_RULE])
