@@ -122,9 +122,9 @@ async function decideSuspect(id: number, decision: 'replace' | 'ignore', categor
   }
 }
 
-function onManualDone(info: RedactionInfo) {
+function onManualDone(info: RedactionInfo, action: 'add' | 'revoke') {
   submitError.value = ''
-  ElMessage.success('已设为敏感信息')
+  ElMessage.success(action === 'revoke' ? '已撤销，脱敏结果已更新' : '已设为敏感信息')
   void afterChange(info)
 }
 

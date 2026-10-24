@@ -74,7 +74,16 @@ def test_08_only_full_names_learned(db_sessionmaker, alice, ready_task):
 @pytest.mark.parametrize("text", ["请王建国处理", "通知王建国，", "抄送欧阳建国。"])
 def test_new_narrative_candidates(text):
     r = run(text)
-    assert r.suspects
+    if text == '通知王建国，':
+        # V2Q-44：仅此参数允许真实模型完整替换，不放宽其他参数或样本。
+        start = text.index('王建国')
+        suspected = any(s.char_start <= start and s.char_end >= start + len('王建国') for s in r.suspects)
+        if not suspected:
+            assert any(i.detected_by == 'ner' and i.category == 'PERSON'
+                       and i.char_start <= start and i.char_end >= start + len('王建国') for i in r.items)
+            assert '王建国' not in r.redacted['F1-P0']
+    else:
+        assert r.suspects
 
 
 def test_overlap_keeps_existing_reason():

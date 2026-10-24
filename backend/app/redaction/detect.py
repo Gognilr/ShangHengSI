@@ -484,7 +484,17 @@ _ADDRESS_EDGE = " \t,，;；、.。:：\r" + FILL_OPEN + FILL_CLOSE
 _CN_UNLABELED_ADDRESS = re.compile(
     r"(?:[一-鿿]{2,7}(?:省|自治区|市|自治州|地区|旗)|[一-鿿]{1,7}(?:区|县))+"
     r"[一-鿿0-9]{1,20}(?:大道|大街|胡同|路|街|道|巷|弄)[ \t]*\d{1,5}[ \t]*号"
-    r"(?:[A-Za-z0-9一二三四五六七八九十\-]{1,10}(?:号楼|单元|栋|幢|座|楼|层|室))*"
+    r"(?:[ \t]*[A-Za-z0-9一二三四五六七八九十\-]{1,10}[ \t]*(?:号楼|单元|栋|幢|座|楼|层|室))*"
+)
+# V2Q-45：无标签英文地址须有门牌+道路词，或套间/楼层+逗号分隔的城市/国家；
+# 仅接受同一行内的地址组成部分，不把独立地名、港口或后续叙述并入地址。
+_EN_UNIT = r"(?i:Suite|Floor|Unit|Room)[ \t]+[A-Za-z0-9-]{1,10}"
+_EN_PLACE = r"[A-Z][a-z]+(?:[ \t-]+[A-Z][a-z]+){0,3}"
+_EN_STREET = (r"\d{1,5}[ \t]+(?:[A-Z][A-Za-z'’-]*[ \t]+){1,6}"
+              r"(?i:Street|St|Road|Rd|Lane|Ln|Quay|Avenue|Ave|Drive|Dr|Way|Boulevard|Blvd|Court|Ct)\b")
+_EN_UNLABELED_ADDRESS = re.compile(
+    r"(?<![\w])(?:" + _EN_STREET + r"(?:,[ \t]*(?:" + _EN_UNIT + r"|" + _EN_PLACE + r")){0,3}"
+    r"|" + _EN_UNIT + r",[ \t]*" + _EN_PLACE + r"(?:,[ \t]*" + _EN_PLACE + r"){0,2})"
 )
 
 
@@ -508,9 +518,12 @@ def find_addresses(text: str) -> list[Hit]:
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             # 不把叙述前缀算进行政区名称，如“货物运至江苏省”“乙方在东川市”。
             head = re.match(r".*?(?:省|自治区|市|自治州|地区|区|县|旗)", m.group()).group()
-            boundary = list(re.finditer(r"运至|送至|交至|位于|坐落于|在|至", head))
+            boundary = list(re.finditer(r"运至|送至|交至|寄往|寄至|发往|送往|位于|坐落于|在|至", head))
             start = m.start() + boundary[-1].end() if boundary else m.start()
             hits.append(Hit(start, m.end(), "ADDR", "中国"))
+    for m in _EN_UNLABELED_ADDRESS.finditer(text):
+        if not any(h.start < m.end() and m.start() < h.end for h in hits):
+            hits.append(Hit(m.start(), m.end(), 'ADDR', find_country(m.group()) or '国家未知'))
     return hits
 
 

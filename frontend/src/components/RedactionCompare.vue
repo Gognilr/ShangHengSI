@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode } from '@/api/preview'
 import { redactionApi, REDACTION_ERROR_MESSAGES, type RedactionInfo, type RedactionItemPos, type Suspect, type UserCategory } from '@/api/redaction'
@@ -9,7 +9,7 @@ import { buildCompareRows, buildNoteRow, type CompareRow, type CompareSeg } from
 import { REDACTION_KIND, MANUAL_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 
 const props = withDefaults(defineProps<{ taskId: string; files: TaskFile[]; outboundText: string; note?: string | null; outboundNote?: string | null; items: RedactionItemPos[]; suspects: Suspect[]; loading?: boolean; editable?: boolean }>(), { loading: false, editable: true })
-const emit = defineEmits<{ done: [info: RedactionInfo]; stale: []; busy: [value: boolean] }>()
+const emit = defineEmits<{ done: [info: RedactionInfo, action: 'add' | 'revoke']; stale: []; busy: [value: boolean] }>()
 const nodes = ref<PreviewNode[]>([])
 const nodeErrors = ref<Record<number, string>>({})
 const loadingNodes = ref(false)
@@ -132,8 +132,7 @@ async function revokeItem(item: RedactionItemPos | undefined) {
   try {
     const info = await redactionApi.revoke(props.taskId, { loc: item.loc, char_start: item.char_start, char_end: item.char_end })
     clearSelection()
-    emit('done', info)
-    ElMessage.success('已撤销，脱敏结果已更新')
+    emit('done', info, 'revoke')
   } catch (e) {
     saveError.value = e instanceof ApiError ? REDACTION_ERROR_MESSAGES[e.code] ?? e.message : '撤销失败，请重试'
     if (e instanceof ApiError && e.code === 'TASK_STATE_CONFLICT') emit('stale')
@@ -173,7 +172,7 @@ async function saveSelection() {
     const info = await redactionApi.manual(props.taskId, { loc: selection.value.loc, char_start: selection.value.start, char_end: selection.value.end, category: category.value })
     window.getSelection()?.removeAllRanges()
     clearSelection()
-    emit('done', info)
+    emit('done', info, 'add')
   } catch (e) {
     saveError.value = e instanceof ApiError ? REDACTION_ERROR_MESSAGES[e.code] ?? e.message : '保存失败，请重试'
     if (e instanceof ApiError && e.code === 'TASK_STATE_CONFLICT') emit('stale')

@@ -494,6 +494,15 @@ def compute(
     # V2-B-01：项目名称在地址之后识别，共用对象代号。
     for i, n in enumerate(nodes):
         for h in detect.find_projects(n.text):
+            # V2Q-45：项目整体优先于其内部的主体等替换，避免仅留下项目尾部；
+            # 只移除完全在项目内的项，主体在其他位置的代号与对照表保持原流程。
+            if any(s.node == i and s.start < h.end and h.start < s.end
+                   and not (h.start <= s.start and s.end <= h.end) for s in spans):
+                continue
+            enclosed = [s for s in spans if s.node == i and h.start <= s.start and s.end <= h.end]
+            if enclosed:
+                spans = [s for s in spans if s not in enclosed]
+                occupied[i] = [(s.start, s.end) for s in spans if s.node == i]
             _accept([_Span(i, h.start, h.end, h.category, h.key, "regex")], occupied[i], spans)
 
     # 模型只读取规则未替换的文字；等长空白保持原文偏移。

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode } from '@/api/preview'
 import { REDACTION_ERROR_MESSAGES, redactionApi, type RedactionItemPos, type RedactionInfo, type UserCategory } from '@/api/redaction'
@@ -17,7 +17,7 @@ const props = defineProps<{ modelValue: boolean; taskId: string; files: TaskFile
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
   /** 已补充成功，返回最新的脱敏信息 */
-  (e: 'done', info: RedactionInfo): void
+  (e: 'done', info: RedactionInfo, action: 'add' | 'revoke'): void
   (e: 'stale'): void
 }>()
 
@@ -162,8 +162,7 @@ async function revoke(item: RedactionItemPos | undefined) {
   try {
     const info = await redactionApi.revoke(props.taskId, { loc: item.loc, char_start: item.char_start, char_end: item.char_end })
     clearSel()
-    emit('done', info)
-    ElMessage.success('已撤销，脱敏结果已更新')
+    emit('done', info, 'revoke')
   } catch (e) {
     saveError.value = e instanceof ApiError ? REDACTION_ERROR_MESSAGES[e.code] ?? e.message : '撤销失败，请重试'
     if (e instanceof ApiError && e.code === 'TASK_STATE_CONFLICT') emit('stale')
@@ -183,7 +182,7 @@ async function submit() {
     })
     window.getSelection()?.removeAllRanges()
     clearSel()
-    emit('done', info)
+    emit('done', info, 'add')
   } catch (e) {
     if (e instanceof ApiError) {
       saveError.value = REDACTION_ERROR_MESSAGES[e.code] ?? e.message
