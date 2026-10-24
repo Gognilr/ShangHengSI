@@ -178,14 +178,14 @@ chat `_redact` 第 3 步之后对本任务对照表中的主体做同样的字�
 
 ## 五、撤销误识别（V2-B-05，测试先行）
 
-**文件范围**：`backend/app/db/models.py`、`backend/app/db/alembic/versions/0010_redaction_exclusions.py`（新）、`backend/app/redaction/engine.py`、`backend/app/redaction/router.py`、`backend/app/audit/service.py`（只追加动作）、对应测试。
+**文件范围**：`backend/app/db/models.py`、`backend/app/db/alembic/versions/0011_redaction_exclusions.py`（新，编号按 V2Q-31）、`backend/app/redaction/engine.py`、`backend/app/redaction/router.py`、`backend/app/audit/service.py`（只追加动作）、`backend/app/tasks/service.py`（只改重新审核的补充说明清理分支，见第 6 条，V2Q-35）、对应测试。
 
 1. **可撤销的范围**：本任务中自动识别的人名（detected\_by=person，含 3.2）和本任务的用户词条（detected\_by=user，任何类别）。签约方、公司名称、已记住的名称、自定义敏感词、账号、证件号、电话、邮箱、金额、地址、实体识别结果都**不能**撤销。
 2. **接口**：`POST /tasks/{id}/redaction/revoke {loc, char_start, char_end}`，位置须正好是一个可撤销替换项的范围，否则 422 `NOT_REVOCABLE`；只在 awaiting\_confirm 状态（与手动补充共用任务行锁）。
-3. **存储**：新表 `redaction_exclusions`（id、task\_id 外键级联、text\_enc 加密的原文、category、created\_by、created\_at）。用户词条的撤销直接删除对应 detected\_by=user 的行，不写排除表。
+3. **存储**：新表 `redaction_exclusions`（id、task\_id 外键级联、loc varchar(64) NOT NULL（撤销时的位置：NOTE 或正文节点 loc，不加密，V2Q-35）、text\_enc 加密的原文、category、created\_by、created\_at）。用户词条的撤销直接删除对应 detected\_by=user 的行，不写排除表。
 4. **重算**：engine 读入本任务的排除项；人名识别命中的文字与某个排除项规范形式相同时不替换（全文生效），也不列为疑似遗漏；排除的文字不写入已记住的名称。出口复检不变（文字不在对照表中，复检第 2 条的格式重扫照常）。
 5. **审计**：写 `redaction_revoke`，detail 只含 `{category}`。
-6. 修改补充说明时，loc=NOTE 的排除项与用户词条一起删除（同 R4-03 4.3）。
+6. 修改补充说明时，loc=NOTE 的排除项与用户词条一起删除（同 R4-03 4.3）：在 `tasks/service.py` 重新审核时补充说明实际变化的既有清理分支中，同一事务删除 task\_id 相同且 loc=NOTE 的排除项；正文来源的排除项保留。排除项全文生效，删除后正文中同名文字恢复替换（偏安全）。保留期清理不动排除表（与对照表同样保留）。
 
 | # | 场景 | 期望 |
 |-|-|-|
@@ -194,7 +194,9 @@ chat `_redact` 第 3 步之后对本任务对照表中的主体做同样的字�
 | 3 | 撤销自己手动补充的词 | 该用户词条删除，重算后不再替换 |
 | 4 | 撤销后确认发送 | 外发请求含“周示例”原文（用户的选择）；redaction\_terms 没有该名称 |
 | 5 | 他人任务 | 404 |
-| 6 | 迁移 0010 | 升级 / 降级；模型与迁移一致 |
+| 6 | 迁移 0011 | 升级 / 降级；模型与迁移一致 |
+| 7 | 在补充说明中撤销“周示例”，重新审核时修改补充说明 | loc=NOTE 的排除项被删除，“周示例”重新被替换；正文来源的排除项保留 |
+| 8 | 重新审核，补充说明未改 | 排除项全部保留 |
 
 ## 六、本地实体识别模型（V2-B-06a 选型、V2-B-06 接入）
 
