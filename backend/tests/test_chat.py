@@ -512,8 +512,11 @@ def test_r4_occupied_spans_and_unicode_offsets():
     assert covered.suspects == []
 
 
-def test_r4_partial_and_duplicate_decisions():
+def test_r4_partial_and_duplicate_decisions(monkeypatch):
     from app.security.errors import AppError
+    # V2Q-40：仅隔离这个旧 R4 用例的 NER，原漏决定与重复决定断言全部保留。
+    # 高置信提升及剩余疑似确认链由 test_ner.py 的真实模型用例另行验证。
+    monkeypatch.setattr(service.ner, "recognize", lambda text: [])
     message = R4_QUESTION + " Northern Fictive Laboratory 的报告呢？"
     with pytest.raises(AppError) as missing:
         service._redact(message, {}, [], [r4_decision()])

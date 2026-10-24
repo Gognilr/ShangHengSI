@@ -8,13 +8,13 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
-| V2Q-40 | B-06 新增 NER 高置信替换影响旧 R4 的部分决定测试（待确认） | 旧 test_chat.py::test_r4_partial_and_duplicate_decisions 的组合问题中，Northern Fictive Laboratory 得分0.9565615654，按固定0.95高阈值自动替换；原测试认为它仍未处理，要求只决定 Meridian Fictive Inspection 时返回 CHAT_SUSPECTS_PENDING，与新行为冲突。本次不改该保护测试。建议仅在这一个旧R4用例中通过monkeypatch固定 ner.recognize 返回空列表，保留原始样本、全部漏决定/重复决定断言；B-06另增真实模型测试，验证高置信替换后剩余疑似仍须决定，漏决定409、重复决定422，不能绕过服务端确认。已通过异步问题向用户请求此单用例授权，未获答复前不改。其他回归问题按产品修复：合同/邮编标签/HS追加停用词；同一区间规则已有疑似时保留原规则原因，模型只补缺口（不减少疑似或替换）。 | V2-B-06；test_chat.py单个用例；test_ner.py新增真实模型覆盖 | B-06完成前 |
 
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-40 | B-06 新增 NER 高置信替换影响旧 R4 的部分决定测试 | 用户于2026-10-24明确同意“这一个用例的隔离调整并继续”：仅在test_chat.py::test_r4_partial_and_duplicate_decisions中用monkeypatch固定ner.recognize返回空列表，保留原始样本和全部漏决定/重复决定断言，继续专测R4规则；B-06另以test_ner.py::test_real_model_promotion_keeps_remaining_decisions_required调用真实本地模型，验证Northern Fictive Laboratory高置信自动替换后，剩余疑似仍须决定、漏决定409、重复决定422。不得扩展到其他旧用例，不修改样本、阈值或产品确认流程。其他兼容修正仍在产品范围内：合同/邮编/HS标签追加模型停用词，既有规则与模型命中同一区间疑似时保留规则原因，模型只补缺口。 | 2026-10-24 |
 | V2Q-37 | V2-B-06a 原资源门槛与目标硬件不匹配，新门槛 | 用户 2026-10-24 同意 Opus 提案：选定 urchade/gliner_multi-v2.1 FP32 ONNX（不量化），阈值中 0.4 / 高 0.95；识别门槛不变（叙述召回 ≥ 90%、高置信 must_keep 零误替换），另加新留出集（≥ 8 份、≥ 40 人名 + 机构名，先提交样本再运行）、对拍 06a 结果、中置信误报 ≤ 20 条；资源门槛改为万字识别 ≤ 10 秒、20 页合同解析增加 ≤ 30 秒、追问 500 字 ≤ 1 秒（首次含加载 ≤ 15 秒）、单进程内存增加 ≤ 2.5 GB、整机压力场景测试套件 ≤ 12 GiB 且与正式服务合计 ≤ 16 GiB、镜像增加 ≤ 1.5 GB；产品不装 torch / transformers / gliner / sentencepiece，线程 worker 8 / app 每进程 4。见 design/V2-B.md 6.2～6.4 | 2026-10-24 |
 | V2Q-39 | V2-B-06 高置信自动替换与既有 must_suspect 契约冲突；附带核对 | Opus 2026-10-24 确认（用户授权 Opus 核对）：① 批准最小例外：test_redaction_golden.py 的 test_must_suspect_listed 只对 inquiry 的 Harbor Fictive Labs 与 persons_narrative 的林虚两条，在测试内以显式清单（注明 V2Q-39）接受“仍列疑似遗漏，或被 detected_by=ner、同类别（ORG / PERSON）且完整覆盖的替换项替换”；样本 .txt / .yaml、其他样本与其他断言不改。理由：替换比列疑似更严，符合第〇节第 4 条“只增不减”。② 6 个 must_keep 失败（青岛港、FOB Qingdao Port、天津港、HS 27131200、XC-132A 被列 ner 疑似）只能在 ner.py 过滤规则或 ner_stopwords.txt 追加词条中修正，不改 must_keep、不改阈值；建议规则：去掉以贸易术语（FOB、CIF、CFR、EXW 等）开头或以“港 / Port”结尾的 ORG，去掉同时含字母与数字的单个代码串及以 HS 开头的编码。③ 必修缺陷：engine 的模型循环没有读取撤销排除项，用户已撤销的人名可能被 ner 高置信重新替换或列为 ner 疑似，违反 B-05“全文重算不替换、不列疑似”。须在 engine.py 中丢弃与排除项（同 P.name_pattern 匹配区间）重叠的模型结果，并加一条用例：撤销“周示例”后，即使模型高置信识别，也不替换、不列疑似。④ 镜像增量口径更正：本机 Docker 使用 containerd 镜像存储，image inspect Size 同时计入压缩与解压内容，2,149,016,471 字节是重复计数；改按 docker history 新增层的解压大小之和计算（b06 实测：模型层 1.17 GB + pip 层增加约 34 MB ≈ 1.21 GB，未超过 1.5 GB），设计 6.3 第 11 条、6.4 已同步。B-06 可按以上范围继续；剩余迁移、耗时内存、完整接口与回归测试照常完成 | 2026-10-24 |
 | V2Q-38 | 整机容量测试的地点 | 用户 2026-10-24 指定在正式服务器 172.16.11.252 上做（CLAUDE.md“部署与演练只在测试虚拟机”的例外，仅限 V2-B-08 容量测试）：每次开测前征得用户同意并在低峰时段；独立 compose 项目、网络、数据卷、端口，测试主密钥与虚构样本；不停 / 不重启 / 不升级正式服务，不读写正式数据库、数据卷、主密钥和备份；测试套件内存上限合计 12 GiB，宿主可用内存低于 4 GiB 或正式服务异常即停；测后删除测试容器、网络、数据卷与镜像并记录。见 design/V2-B.md 6.4 | 2026-10-24 |
