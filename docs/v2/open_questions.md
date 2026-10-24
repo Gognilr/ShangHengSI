@@ -8,6 +8,10 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-43 | B08 全量七项分段测试被通用词“双方”的模型疑似拦截，需最小修复范围 | 真实 engine 对 long_contract 的20个条款各产生一条“双方”ner疑似，导致 SUSPECTS_PENDING；建议仅在 ner_stopwords.txt 追加“双方”，增加通用词过滤与真实姓名不被屏蔽的回归。七项旧分段测试、原样本、模型阈值和服务端决定检查保持不变。不统一模拟空NER。状态：需决定，未实施。 | B08追加 backend/resources/ner_stopwords.txt 及对应测试；报告第二节 | 继续B08修复前 |
+| V2Q-44 | B08 两项保护断言与真实NER更严格替换冲突 | 建议仅同步 test_suspects.py::test_r4_person_narrative_all_occurrences 中“林虚”及 test_v2b_derived.py::test_new_narrative_candidates 的“通知王建国，”参数：原疑似或 detected_by=ner、PERSON、完整覆盖姓名均可；列表中其余姓名、原文、其余参数与断言不动，不模拟空模型。V2Q-39仅授权golden，V2Q-40/41均不覆盖本项。状态：需决定，两用例未改。 | 上述两个测试的明确姓名断言；报告第二节 | 继续B08修复前 |
+| V2Q-45 | B08 三处地址漏召回及组合项目重叠探测未满足完整覆盖 | 冻结叙述样本letter-cn楼栋房间尾部、mail-en完整英文地址、minutes-en楼层城市国家尾部未完整覆盖；另实测项目名称含已识别我方主体时只替换主体，项目尾部仍在。建议最小扩展 detect.py、engine.py及对应测试，先写完整区间与重叠回归再修复；不得改冻结标注、放宽零漏门槛或港口/城市must_keep。英文无标签地址需明确保守识别条件（门牌道路、楼层/套间、城市国家组合），若与现有保护契约冲突另报，不能自行改旧断言。状态：需决定，未实施。 | B08追加 backend/app/redaction/detect.py、engine.py及对应测试；报告第三、四节 | 继续B08修复前 |
+| V2Q-46 | 撤销成功同时提示“已设为敏感信息”，父组件超出B07文件范围 | 浏览器MutationObserver实测两条提示同时出现；ConfirmStep.vue::onManualDone无条件提示新增成功，而子组件撤销也emit done。建议最小扩展ConfirmStep.vue及两个现有撤销子组件的完成事件，区分新增与撤销，只显示对应的一条提示，保留刷新流程；不改服务端权限/锁/接口。状态：需决定，未实施。 | frontend/src/components/ConfirmStep.vue、RedactionCompare.vue、ManualRedactDialog.vue；build与浏览器复核 | 继续B08修复前 |
 
 
 ## 二、已决定
