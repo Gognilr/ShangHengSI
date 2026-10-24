@@ -36,7 +36,7 @@ def _letter_order(code: str) -> tuple[int, str]:
 
 
 def party_description(parties: list[PartyInfo]) -> str:
-    """【主体说明】我方=卖方；客户_A：买方，阿联酋，贸易商；收货人_B：土耳其，货代"""
+    """【主体说明】我方=卖方；客户_A：阿联酋，贸易商；收货人_B：土耳其，货代"""
     parts = []
     for p in sorted(parties, key=lambda p: (not p.is_our_party, _letter_order(p.code))):
         if p.is_our_party:
@@ -44,9 +44,8 @@ def party_description(parties: list[PartyInfo]) -> str:
             continue
         fields = []
         code_role = p.code.rsplit("_", 1)[0]
-        # 类型未知时不重复展开客户 / 供应商代号的交易角色；已知类型保留原有说明。
-        role = ({'客户': '买方', '供应商': '卖方'}.get(code_role, code_role)
-                if not p.org_type or p.org_type == '类型未知' else code_role)
+        # 客户 / 供应商代号已表达买方 / 卖方角色，不重复写（V2Q-24）
+        role = {'客户': '买方', '供应商': '卖方'}.get(code_role, code_role)
         if p.role_label != OTHER and p.role_label != role:
             fields.append(p.role_label)
         if p.country and p.country != '国家未知':

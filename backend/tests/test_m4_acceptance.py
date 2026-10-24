@@ -54,7 +54,7 @@ def test_t06_contract_all_categories(db_sessionmaker, alice, llm):
         assert summary.get(cat, 0) >= 1, cat
     # 【主体说明】：对方带角色、国家和企业类型
     first = text.splitlines()[0]
-    assert first == "【主体说明】我方=卖方；客户_A：买方，阿联酋，贸易商"
+    assert first == "【主体说明】我方=卖方；客户_A：阿联酋，贸易商"
     # 地址代号带国家；人名、简称用代号
     assert "[地址：阿联酋]" in text and "人员_1" in text and "（以下简称“我方”）" in text
     # 金额附比例：预付款 = 合同总价的 30%；合同总价本身不加比例

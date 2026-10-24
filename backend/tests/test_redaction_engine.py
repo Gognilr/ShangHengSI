@@ -73,7 +73,7 @@ def test_contract_codes_are_consistent():
     assert red["F1-P17"] == "2.3 人民币参考价：人民币[金额_3]（¥[金额_3]）。"
     # 金额比例（9.6）：合同总价本身不加，同币种的其他金额加，不同币种的不加
     assert red["F1-P16"].startswith("2.2 预付款为合同总价的 30%，即 USD [金额_2]（=合同总价的 30.0%），")
-    assert text.splitlines()[0] == "【主体说明】我方=卖方；客户_A：买方，阿联酋，贸易商"
+    assert text.splitlines()[0] == "【主体说明】我方=卖方；客户_A：阿联酋，贸易商"
     assert {(p.code, p.role_label, p.country, p.is_our_party) for p in r.parties} == {
         ("我方", "卖方", "中国", True), ("客户_A", "买方", "阿联酋", False)}
     # 对照表：唯一代号 → 主要写法；其他写法和共用代号的值以“代号#n”保存

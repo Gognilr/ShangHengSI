@@ -102,7 +102,7 @@ def test_parse_ai_task(db_sessionmaker, make_task):
         assert {"FMT", "13800138000"} <= set(engine.load_real_values(db, task.id))
 
         out = engine.build_outbound_text(db, t)
-        assert out.splitlines()[0] == "【主体说明】我方=卖方；客户_A：买方，阿联酋，贸易商"
+        assert out.splitlines()[0] == "【主体说明】我方=卖方；客户_A：阿联酋，贸易商"
         assert "[F1-P2] 合同编号：编号_1" in out and "[F2-T1-R2-C4] USD [单价_" in out
         for value in ("星河", "Fictional Metals", "FMT", "13800138000", "FICTAEAD", "400,000.00", "HT-2026-0088"):
             assert value not in out
