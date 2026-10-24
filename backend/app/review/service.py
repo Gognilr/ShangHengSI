@@ -147,7 +147,7 @@ def _applies(values: list, value: str) -> bool:
     return "all" in values or value in values
 
 
-def company_rows(db: DbSession, *, doc_type: str | None, stance: str | None) -> list[CompanyRequirement]:
+def company_rows(db: DbSession, *, doc_type: str | None, stance: str | None, source: str | None = None) -> list[CompanyRequirement]:
     """启用且适用的公司补充要求，按 sort、code 排序；doc_type 为 None 表示不按类型筛选。"""
     return [
         row
@@ -155,6 +155,7 @@ def company_rows(db: DbSession, *, doc_type: str | None, stance: str | None) -> 
                               .order_by(CompanyRequirement.sort, CompanyRequirement.code))
         if (doc_type is None or _applies(list(row.doc_types or []), doc_type))
         and (stance is None or _applies(list(row.stances or []), stance))
+        and (source is None or _applies(list(row.sources or []), source))
     ]
 
 
@@ -163,7 +164,7 @@ def collect_requirements(db: DbSession, *, doc_type: str, stance: str, source: s
     """发送给模型的全部审核要求：内置 → 公司补充（启用且适用）→ 本次补充说明 NOTE。"""
     reqs = select_builtin(doc_type, stance, source)
     reqs.extend(Requirement(id=row.code, source="company", dimension=None, text=row.text)
-                for row in company_rows(db, doc_type=doc_type, stance=stance))
+                for row in company_rows(db, doc_type=doc_type, stance=stance, source=source))
     note = note_requirement(user_note)
     if note is not None:
         reqs.append(note)

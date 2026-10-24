@@ -286,9 +286,10 @@ SCHEMA = {
     "company_requirements": """
         id uuid NN =gen_random_uuid()
         code v8 NN
-        text v200 NN
+        text v300 NN
         doc_types jsonb NN ='["all"]'
         stances jsonb NN ='["all"]'
+        sources jsonb NN ='["all"]'
         enabled bool NN =true
         sort int NN =0
         created_by uuid
@@ -770,6 +771,30 @@ def test_0007_check_codes_upgrade_and_downgrade():
             for code in ('L-09', 'L-10', 'L-11'):
                 with pytest.raises(errors.CheckViolation):
                     conn.execute(sql, (task, code, b'x'))
+        command.upgrade(cfg, 'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_0008_requirement_sources_upgrade_and_downgrade():
+    name = 'aireview_test_' + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, '0007')
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute("INSERT INTO company_requirements (code, text, created_at, updated_at) VALUES ('CO-1', '旧要求', now(), now())")
+        command.upgrade(cfg, '0008')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute('SELECT sources FROM company_requirements').fetchone()[0] == ['all']
+            conn.execute("UPDATE company_requirements SET text = %s, sources = '[\"incoming\"]'", ('字' * 300,))
+        command.downgrade(cfg, '0007')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute('SELECT text FROM company_requirements').fetchone()[0] == '字' * 200
+            assert conn.execute("SELECT count(*) FROM information_schema.columns WHERE table_name='company_requirements' AND column_name='sources'").fetchone()[0] == 0
         command.upgrade(cfg, 'head')
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:

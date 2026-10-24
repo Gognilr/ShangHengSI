@@ -8,6 +8,7 @@
 - 审计 detail 只放操作类型和版本号，不放补充要求和公司说明的文字。
 """
 import uuid
+from itertools import product
 from datetime import datetime
 from typing import Annotated, Any, Optional
 
@@ -35,7 +36,8 @@ from app.security.sessions import client_ip
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 
-MAX_COMPANY_REQUIREMENTS = 30
+MAX_COMPANY_REQUIREMENTS = 100
+MAX_COMBO_REQUIREMENTS = 30
 _LOCK_KEY = 7_207_001  # 修改审核要求的 advisory lock 键（固定值）
 _SENSITIVE_MSG = "内容中含已记住的名称、自定义敏感词或电话、账号、带币种金额等信息，不能保存"
 
@@ -52,9 +54,10 @@ def _scope_list(values: list[str], allowed: list[str]) -> list[str]:
 class CompanyReqIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
     doc_types: list[str]
     stances: list[str]
+    sources: list[str] = Field(default_factory=lambda: ['all'])
     enabled: bool
     sort: int = Field(ge=0, le=9999)
 
@@ -68,6 +71,11 @@ class CompanyReqIn(BaseModel):
     def _stances(cls, v: list[str]) -> list[str]:
         return _scope_list(v, STANCES)
 
+    @field_validator('sources')
+    @classmethod
+    def _sources(cls, v: list[str]) -> list[str]:
+        return _scope_list(v, ['outgoing', 'incoming'])
+
 
 class CompanyReqRow(BaseModel):
     id: uuid.UUID
@@ -75,6 +83,7 @@ class CompanyReqRow(BaseModel):
     text: str
     doc_types: list[str]
     stances: list[str]
+    sources: list[str]
     enabled: bool
     sort: int
     created_at: datetime
@@ -83,13 +92,14 @@ class CompanyReqRow(BaseModel):
     @classmethod
     def of(cls, r: CompanyRequirement) -> "CompanyReqRow":
         return cls(id=r.id, code=r.code, text=r.text, doc_types=list(r.doc_types or []),
-                   stances=list(r.stances or []), enabled=r.enabled, sort=r.sort,
+                   stances=list(r.stances or []), sources=list(r.sources or []), enabled=r.enabled, sort=r.sort,
                    created_at=r.created_at, updated_at=r.updated_at)
 
 
 class CompanyReqList(BaseModel):
     items: list[CompanyReqRow]
     version: Optional[int]
+    combo_counts: list[dict]
 
 
 class ProfileIn(BaseModel):
@@ -140,7 +150,7 @@ def _new_version(db: DbSession, admin: User) -> int:
     snapshot = {
         "requirements": [
             {"code": r.code, "text": r.text, "doc_types": list(r.doc_types or []),
-             "stances": list(r.stances or []), "sort": r.sort}
+             "stances": list(r.stances or []), "sources": list(r.sources or []), "sort": r.sort}
             for r in rows
         ],
         "company_profile": str(get_setting(db, "review.company_profile") or ""),
@@ -171,7 +181,27 @@ def _audit(db: DbSession, admin: User, request: Request, *, target_type: str, ta
 @router.get("/company-requirements", response_model=CompanyReqList)
 def list_company_requirements(db: DbSession = Depends(get_db)) -> CompanyReqList:
     rows = db.scalars(select(CompanyRequirement).order_by(CompanyRequirement.sort, CompanyRequirement.code)).all()
-    return CompanyReqList(items=[CompanyReqRow.of(r) for r in rows], version=_latest_version(db))
+    return CompanyReqList(items=[CompanyReqRow.of(r) for r in rows], version=_latest_version(db), combo_counts=_combo_counts(rows))
+
+
+def _combo_counts(rows) -> list[dict]:
+    return [dict(doc_type=doc, stance=stance, source=source, count=sum(
+        row.enabled and all('all' in values or value in values for values, value in
+                            ((row.doc_types, doc), (row.stances, stance), (row.sources, source)))
+        for row in rows)) for doc, stance, source in product(DOC_TYPES, STANCES, ('outgoing', 'incoming'))]
+
+
+def _check_combos(db: DbSession, body: CompanyReqIn, excluded=None) -> None:
+    if not body.enabled:
+        return
+    rows = [row for row in db.scalars(select(CompanyRequirement)) if row.id != excluded]
+    over = [c for c in _combo_counts([*rows, body]) if c['count'] > MAX_COMBO_REQUIREMENTS]
+    if over:
+        from app.review.prompt import DOC_TYPE_LABELS, STANCE_LABELS, SOURCE_LABELS
+
+        labels = [f"{DOC_TYPE_LABELS[c['doc_type']]} · {STANCE_LABELS[c['stance']]} · "
+                  f"{SOURCE_LABELS[c['source']]}（{c['count']} 条）" for c in over[:3]]
+        raise AppError(409, 'COMPANY_REQ_COMBO_LIMIT', '以下组合生效的补充要求超过 30 条：' + '；'.join(labels))
 
 
 @router.post("/company-requirements", response_model=CompanyReqRow, status_code=status.HTTP_201_CREATED)
@@ -180,12 +210,13 @@ def create_company_requirement(
 ) -> CompanyReqRow:
     _lock(db)
     if db.scalar(select(func.count()).select_from(CompanyRequirement)) >= MAX_COMPANY_REQUIREMENTS:
-        raise AppError(409, "COMPANY_REQ_LIMIT", "公司补充要求最多 30 条")
+        raise AppError(409, "COMPANY_REQ_LIMIT", "公司补充要求最多 100 条")
     _reject_sensitive(db, body.text)
+    _check_combos(db, body)
     now = utcnow()
     row = CompanyRequirement(
         code=f"CO-{db.scalar(select(company_requirement_code_seq.next_value()))}",
-        text=body.text, doc_types=body.doc_types, stances=body.stances, enabled=body.enabled, sort=body.sort,
+        text=body.text, doc_types=body.doc_types, stances=body.stances, sources=body.sources, enabled=body.enabled, sort=body.sort,
         created_by=admin.id, created_at=now, updated_at=now,
     )
     db.add(row)
@@ -205,7 +236,9 @@ def update_company_requirement(
     row = _load(db, rid)
     if body.text != row.text:
         _reject_sensitive(db, body.text)
+    _check_combos(db, body, row.id)
     row.text, row.doc_types, row.stances = body.text, body.doc_types, body.stances
+    row.sources = body.sources
     row.enabled, row.sort = body.enabled, body.sort
     db.flush()
     version = _new_version(db, admin)

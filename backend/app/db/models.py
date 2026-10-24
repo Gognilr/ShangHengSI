@@ -509,9 +509,10 @@ class CompanyRequirement(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     code: Mapped[str] = mapped_column(String(8), nullable=False, unique=True)
-    text: Mapped[str] = mapped_column(String(200), nullable=False)
+    text: Mapped[str] = mapped_column(String(300), nullable=False)
     doc_types: Mapped[Any] = _jsonb_all()
     stances: Mapped[Any] = _jsonb_all()
+    sources: Mapped[Any] = _jsonb_all()
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=_TRUE)
     sort: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)

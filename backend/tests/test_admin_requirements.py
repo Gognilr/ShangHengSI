@@ -86,7 +86,7 @@ def test_create_update_delete_flow(admin, db_sessionmaker):
     assert r.json()["doc_types"] == ["contract", "quotation"] and r.json()["code"] == row["code"]
 
     assert c.delete(f"{REQ}/{row['id']}", headers=_hdr(csrf)).status_code == 204
-    assert c.get(REQ).json() == {"items": [], "version": 3}
+    assert c.get(REQ).json()["items"] == [] and c.get(REQ).json()["version"] == 3
     assert c.delete(f"{REQ}/{row['id']}", headers=_hdr(csrf)).json()["code"] == "REQUIREMENT_NOT_FOUND"
 
 
@@ -97,12 +97,47 @@ def test_not_found(admin, uid):
     assert c.delete(f"{REQ}/{uid}", headers=_hdr(csrf)).status_code == 404
 
 
+def test_v2_combo_limit_sources_counts_and_snapshot(admin, db_sessionmaker):
+    c, csrf = admin
+    scope = dict(doc_types=['contract'], stances=['sales'], sources=['outgoing'])
+    for i in range(30):
+        assert _create(c, csrf, text=f'虚构要求{i}', **scope).status_code == 201
+    rejected = _create(c, csrf, **scope)
+    assert rejected.status_code == 409 and rejected.json()['code'] == 'COMPANY_REQ_COMBO_LIMIT'
+    assert '合同 · 销售 · 我方发出（31 条）' in rejected.json()['message']
+    incoming = _create(c, csrf, text='仅对方发来适用', doc_types=['contract'], stances=['sales'], sources=['incoming'])
+    assert incoming.status_code == 201
+    disabled = _create(c, csrf, enabled=False, **scope).json()
+    enabling = c.put(f"{REQ}/{disabled['id']}", json=body(**scope), headers=_hdr(csrf))
+    assert enabling.status_code == 409 and enabling.json()['code'] == 'COMPANY_REQ_COMBO_LIMIT'
+    changing = c.put(f"{REQ}/{incoming.json()['id']}", json=body(**scope), headers=_hdr(csrf))
+    assert changing.status_code == 409
+    listing = c.get(REQ).json()
+    assert len(listing['combo_counts']) == 30
+    for combo in listing['combo_counts']:
+        expected = 30 if (combo['doc_type'], combo['stance'], combo['source']) == ('contract', 'sales', 'outgoing') else (
+            1 if (combo['doc_type'], combo['stance'], combo['source']) == ('contract', 'sales', 'incoming') else 0)
+        assert combo['count'] == expected
+    assert incoming.json()['code'] not in [r['code'] for r in c.get(OPEN, params={'source': 'outgoing'}).json()['company']]
+    with db_sessionmaker() as db:
+        for source, contains in [('outgoing', False), ('incoming', True)]:
+            reqs = service.collect_requirements(db, doc_type='contract', stance='sales', source=source, user_note=None)
+            assert (incoming.json()['code'] in [r.id for r in reqs]) is contains
+    assert next(r for r in _versions(db_sessionmaker)[-1].snapshot['requirements'] if r['code'] == incoming.json()['code'])['sources'] == ['incoming']
+
+
+@pytest.mark.parametrize('sources', [[], ['all', 'incoming'], ['bogus']])
+def test_v2_invalid_source_scope(admin, sources):
+    c, csrf = admin
+    assert _create(c, csrf, sources=sources).status_code == 422
+
+
 @pytest.mark.parametrize(
     "over",
     [
         {"text": ""},
         {"text": "   "},
-        {"text": "字" * 201},
+        {"text": "字" * 301},
         {"doc_types": []},
         {"doc_types": ["all", "contract"]},
         {"doc_types": ["contract", "bogus"]},
@@ -123,7 +158,7 @@ def test_validation(admin, over):
 
 def test_validation_boundaries_and_dedup(admin):
     c, csrf = admin
-    r = _create(c, csrf, text="字" * 200, sort=0, doc_types=["contract", "contract"], stances=["sales", "purchase", "other"])
+    r = _create(c, csrf, text="字" * 300, sort=0, doc_types=["contract", "contract"], stances=["sales", "purchase", "other"])
     assert r.status_code == 201 and r.json()["doc_types"] == ["contract"]
     assert _create(c, csrf, sort=9999).status_code == 201
 
@@ -131,14 +166,14 @@ def test_validation_boundaries_and_dedup(admin):
 # ---------------------------------------------------------------- 上限与编号
 
 
-def test_limit_30_and_codes_not_reused(admin):
+def test_limit_100_and_codes_not_reused(admin):
     c, csrf = admin
-    rows = [_create(c, csrf, text=f"第{i}条要求", sort=i).json() for i in range(30)]
+    rows = [_create(c, csrf, text=f"第{i}条要求", sort=i, enabled=False).json() for i in range(100)]
     r = _create(c, csrf, text="多出来的一条")
     assert r.status_code == 409 and r.json()["code"] == "COMPANY_REQ_LIMIT"
-    assert r.json()["message"] == "公司补充要求最多 30 条"
+    assert r.json()["message"] == "公司补充要求最多 100 条"
     nums = [int(x["code"][3:]) for x in rows]
-    assert nums == sorted(nums) and len(set(nums)) == 30
+    assert nums == sorted(nums) and len(set(nums)) == 100
     # 停用的也占名额；删除后可再加，但编号不复用
     assert c.delete(f"{REQ}/{rows[-1]['id']}", headers=_hdr(csrf)).status_code == 204
     again = _create(c, csrf, text="补一条")
@@ -187,7 +222,7 @@ def test_every_change_creates_version_with_enabled_only_snapshot(admin, db_sessi
     assert [r["text"] for r in versions[2].snapshot["requirements"]] == ["要求乙", "要求甲"]  # 按 sort
     assert versions[3].snapshot["company_profile"] == "我们是一家虚构的贸易公司"
     assert [r["text"] for r in versions[4].snapshot["requirements"]] == ["要求乙"]
-    assert set(versions[0].snapshot["requirements"][0]) == {"code", "text", "doc_types", "stances", "sort"}
+    assert set(versions[0].snapshot["requirements"][0]) == {"code", "text", "doc_types", "stances", "sources", "sort"}
 
     listing = c.get(VERSIONS).json()["items"]
     assert [v["version"] for v in listing] == [5, 4, 3, 2, 1]

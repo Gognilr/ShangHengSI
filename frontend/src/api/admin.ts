@@ -87,26 +87,27 @@ export interface CompanyReqRow {
   text: string
   doc_types: string[]
   stances: string[]
+  sources: string[]
   enabled: boolean
   sort: number
   created_at: string
   updated_at: string
 }
 
-export type CompanyReqBody = Pick<CompanyReqRow, 'text' | 'doc_types' | 'stances' | 'enabled' | 'sort'>
+export type CompanyReqBody = Pick<CompanyReqRow, 'text' | 'doc_types' | 'stances' | 'sources' | 'enabled' | 'sort'>
 
 export interface RequirementVersionRow {
   version: number
   created_by_name: string | null
   created_at: string
   snapshot: {
-    requirements: { code: string; text: string; doc_types: string[]; stances: string[]; sort: number }[]
+    requirements: { code: string; text: string; doc_types: string[]; stances: string[]; sources?: string[]; sort: number }[]
     company_profile: string
   }
 }
 
 export const adminRequirementsApi = {
-  list: () => http.get<{ items: CompanyReqRow[]; version: number | null }>('/admin/company-requirements'),
+  list: () => http.get<{ items: CompanyReqRow[]; version: number | null; combo_counts: { doc_type: string; stance: string; source: string; count: number }[] }>('/admin/company-requirements'),
   create: (body: CompanyReqBody) => http.post<CompanyReqRow>('/admin/company-requirements', body),
   update: (id: string, body: CompanyReqBody) => http.put<CompanyReqRow>(`/admin/company-requirements/${id}`, body),
   remove: (id: string) => http.delete<void>(`/admin/company-requirements/${id}`),

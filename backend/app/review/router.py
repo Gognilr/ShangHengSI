@@ -75,6 +75,7 @@ class CompanyRequirementOut(BaseModel):
     text: str
     doc_types: list[str]
     stances: list[str]
+    sources: list[str]
 
 
 class RequirementsOut(BaseModel):
@@ -123,6 +124,6 @@ def list_requirements(
                  for r, types in builtin],
         company_version=db.scalar(select(func.max(RequirementVersion.version))),
         company=[CompanyRequirementOut(code=c.code, text=c.text, doc_types=list(c.doc_types or []),
-                                       stances=list(c.stances or []))
-                 for c in service.company_rows(db, doc_type=doc_type, stance=stance)],
+                                       stances=list(c.stances or []), sources=list(c.sources or []))
+                 for c in service.company_rows(db, doc_type=doc_type, stance=stance, source=source)],
     )

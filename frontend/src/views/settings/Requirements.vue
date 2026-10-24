@@ -9,11 +9,11 @@ import {
 } from '@/api/admin'
 import { ApiError } from '@/api/http'
 import { requirementsApi, type BuiltinRequirement } from '@/api/requirements'
-import { DOC_TYPE_OPTIONS, STANCE_OPTIONS, docTypeLabel, stanceLabel, toOptions } from '@/utils/labels'
+import { DOC_TYPE_OPTIONS, STANCE_OPTIONS, SOURCE_OPTIONS, docTypeLabel, stanceLabel, sourceLabel, toOptions } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
 import PageHeader from '@/components/PageHeader.vue'
 
-const MAX_ITEMS = 30
+const MAX_ITEMS = 100
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 // ---- ① 内置要求（只读） ----
@@ -42,6 +42,10 @@ const scopeText = (values: string[], label: (v: string) => string) =>
 
 // ---- ② 公司补充要求 ----
 const items = ref<CompanyReqRow[]>([])
+const comboCounts = ref<{ doc_type: string; stance: string; source: string; count: number }[]>([])
+const comboColumns = toOptions(STANCE_OPTIONS).flatMap(stance => toOptions(SOURCE_OPTIONS).map(source => ({ stance: stance.value, source: source.value, label: stance.label + ' / ' + source.label })))
+const comboRows = computed(() => toOptions(DOC_TYPE_OPTIONS).map(doc => ({ doc_type: doc.value, label: doc.label })))
+const comboCount = (doc: string, stance: string, source: string) => comboCounts.value.find(c => c.doc_type === doc && c.stance === stance && c.source === source)?.count ?? 0
 const currentVersion = ref<number | null>(null)
 const listLoading = ref(false)
 const listError = ref('')
@@ -54,6 +58,7 @@ async function loadList() {
     const res = await adminRequirementsApi.list()
     items.value = res.items
     currentVersion.value = res.version
+    comboCounts.value = res.combo_counts
   } catch (e) {
     listError.value = `加载失败：${errText(e, '请刷新页面')}`
   } finally {
@@ -65,17 +70,17 @@ const formRef = ref<FormInstance>()
 const dialog = ref(false)
 const editing = ref<CompanyReqRow | null>(null)
 const submitting = ref(false)
-const form = reactive<CompanyReqBody>({ text: '', doc_types: ['all'], stances: ['all'], enabled: true, sort: 0 })
+const form = reactive<CompanyReqBody>({ text: '', doc_types: ['all'], stances: ['all'], sources: ['all'], enabled: true, sort: 0 })
 const rules: FormRules = {
   text: [
     { required: true, whitespace: true, message: '请输入内容', trigger: 'blur' },
-    { max: 200, message: '内容不能超过 200 字', trigger: 'blur' },
+    { max: 300, message: '内容不能超过 300 字', trigger: 'blur' },
   ],
 }
 
 function openCreate() {
   editing.value = null
-  Object.assign(form, { text: '', doc_types: ['all'], stances: ['all'], enabled: true, sort: 0 })
+  Object.assign(form, { text: '', doc_types: ['all'], stances: ['all'], sources: ['all'], enabled: true, sort: 0 })
   dialog.value = true
   formRef.value?.clearValidate()
 }
@@ -86,6 +91,7 @@ function openEdit(row: CompanyReqRow) {
     text: row.text,
     doc_types: [...row.doc_types],
     stances: [...row.stances],
+    sources: [...row.sources],
     enabled: row.enabled,
     sort: row.sort,
   })
@@ -94,7 +100,7 @@ function openEdit(row: CompanyReqRow) {
 }
 
 /** “全部”与具体值互斥：新选了“全部”则只留“全部”，选了具体值则去掉“全部”，清空时回到“全部”。 */
-function normalizeScope(key: 'doc_types' | 'stances', value: string[]) {
+function normalizeScope(key: 'doc_types' | 'stances' | 'sources', value: string[]) {
   const previous = form[key]
   let next = value
   if (next.includes('all') && !previous.includes('all')) next = ['all']
@@ -125,6 +131,7 @@ async function toggleEnabled(row: CompanyReqRow, value: boolean) {
       text: row.text,
       doc_types: row.doc_types,
       stances: row.stances,
+      sources: row.sources,
       enabled: value,
       sort: row.sort,
     })
@@ -236,6 +243,13 @@ onMounted(() => {
 <section class="panel">
       <h3 class="first">公司补充要求</h3>
       <div class="hint tip">补充要求只能增加审核内容，不能取消内置要求。请勿在补充要求中写入具体客户名称。</div>
+      <h4>各组合生效条数</h4>
+      <el-table v-loading="listLoading" :data="comboRows" size="small" class="combo-table">
+        <el-table-column prop="label" label="文件类型" width="110" />
+        <el-table-column v-for="col in comboColumns" :key="col.stance + col.source" :label="col.label" min-width="120">
+          <template #default="{ row }"><span :class="{ warning: comboCount(row.doc_type, col.stance, col.source) >= 25 }">{{ comboCount(row.doc_type, col.stance, col.source) }} / 30</span></template>
+        </el-table-column>
+      </el-table>
       <div class="filters">
         <el-button type="primary" :disabled="full" @click="openCreate">新增</el-button>
         <span v-if="full" class="hint version">已达 {{ MAX_ITEMS }} 条上限，请先删除不用的条目。</span>
@@ -250,6 +264,9 @@ onMounted(() => {
         </el-table-column>
         <el-table-column label="适用立场" width="120">
           <template #default="{ row }">{{ scopeText(row.stances, stanceLabel) }}</template>
+        </el-table-column>
+        <el-table-column label="适用来源" width="120">
+          <template #default="{ row }">{{ scopeText(row.sources, sourceLabel) }}</template>
         </el-table-column>
         <el-table-column label="启用" width="70">
           <template #default="{ row }">
@@ -311,7 +328,7 @@ onMounted(() => {
     <el-dialog v-model="dialog" :title="editing ? `编辑 ${editing.code}` : '新增公司补充要求'" width="640px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">
         <el-form-item label="内容" prop="text">
-          <el-input v-model="form.text" type="textarea" :rows="4" maxlength="200" show-word-limit />
+          <el-input v-model="form.text" type="textarea" :rows="4" maxlength="300" show-word-limit />
         </el-form-item>
         <el-form-item label="适用文件类型">
           <el-select :model-value="form.doc_types" multiple class="scope-select" @update:model-value="(v: string[]) => normalizeScope('doc_types', v)">
@@ -323,6 +340,12 @@ onMounted(() => {
           <el-select :model-value="form.stances" multiple class="scope-select" @update:model-value="(v: string[]) => normalizeScope('stances', v)">
             <el-option label="全部" value="all" />
             <el-option v-for="o in toOptions(STANCE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="适用来源">
+          <el-select :model-value="form.sources" multiple class="scope-select" @update:model-value="(v: string[]) => normalizeScope('sources', v)">
+            <el-option label="全部" value="all" />
+            <el-option v-for="o in toOptions(SOURCE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="启用">
@@ -346,7 +369,7 @@ onMounted(() => {
           <li v-for="r in viewing.snapshot.requirements" :key="r.code">
             <b>{{ r.code }}</b>　{{ r.text }}
             <div class="hint">
-              文件类型：{{ scopeText(r.doc_types, docTypeLabel) }}；立场：{{ scopeText(r.stances, stanceLabel) }}
+              文件类型：{{ scopeText(r.doc_types, docTypeLabel) }}；立场：{{ scopeText(r.stances, stanceLabel) }}；来源：{{ scopeText(r.sources ?? ['all'], sourceLabel) }}
             </div>
           </li>
         </ul>
@@ -389,4 +412,6 @@ h3.first {
 .type-filter { width: 180px; }
 .scope-select { width: 100%; }
 .filters { flex-wrap: wrap; }
+.warning { color: var(--el-color-warning); }
+.combo-table { margin-bottom: 16px; }
 </style>

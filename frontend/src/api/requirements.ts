@@ -13,6 +13,7 @@ export interface CompanyRequirement {
   text: string
   doc_types: string[]
   stances: string[]
+  sources: string[]
 }
 
 export interface RequirementsView {
