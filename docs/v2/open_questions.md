@@ -8,16 +8,16 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
-| V2Q-43 | B08 全量七项分段测试被通用词“双方”的模型疑似拦截，需最小修复范围 | 真实 engine 对 long_contract 的20个条款各产生一条“双方”ner疑似，导致 SUSPECTS_PENDING；建议仅在 ner_stopwords.txt 追加“双方”，增加通用词过滤与真实姓名不被屏蔽的回归。七项旧分段测试、原样本、模型阈值和服务端决定检查保持不变。不统一模拟空NER。状态：需决定，未实施。 | B08追加 backend/resources/ner_stopwords.txt 及对应测试；报告第二节 | 继续B08修复前 |
-| V2Q-44 | B08 两项保护断言与真实NER更严格替换冲突 | 建议仅同步 test_suspects.py::test_r4_person_narrative_all_occurrences 中“林虚”及 test_v2b_derived.py::test_new_narrative_candidates 的“通知王建国，”参数：原疑似或 detected_by=ner、PERSON、完整覆盖姓名均可；列表中其余姓名、原文、其余参数与断言不动，不模拟空模型。V2Q-39仅授权golden，V2Q-40/41均不覆盖本项。状态：需决定，两用例未改。 | 上述两个测试的明确姓名断言；报告第二节 | 继续B08修复前 |
-| V2Q-45 | B08 三处地址漏召回及组合项目重叠探测未满足完整覆盖 | 冻结叙述样本letter-cn楼栋房间尾部、mail-en完整英文地址、minutes-en楼层城市国家尾部未完整覆盖；另实测项目名称含已识别我方主体时只替换主体，项目尾部仍在。建议最小扩展 detect.py、engine.py及对应测试，先写完整区间与重叠回归再修复；不得改冻结标注、放宽零漏门槛或港口/城市must_keep。英文无标签地址需明确保守识别条件（门牌道路、楼层/套间、城市国家组合），若与现有保护契约冲突另报，不能自行改旧断言。状态：需决定，未实施。 | B08追加 backend/app/redaction/detect.py、engine.py及对应测试；报告第三、四节 | 继续B08修复前 |
-| V2Q-46 | 撤销成功同时提示“已设为敏感信息”，父组件超出B07文件范围 | 浏览器MutationObserver实测两条提示同时出现；ConfirmStep.vue::onManualDone无条件提示新增成功，而子组件撤销也emit done。建议最小扩展ConfirmStep.vue及两个现有撤销子组件的完成事件，区分新增与撤销，只显示对应的一条提示，保留刷新流程；不改服务端权限/锁/接口。状态：需决定，未实施。 | frontend/src/components/ConfirmStep.vue、RedactionCompare.vue、ManualRedactDialog.vue；build与浏览器复核 | 继续B08修复前 |
 
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-46 | B08 撤销成功同时提示“已设为敏感信息” | 已确认（2026-10-24）。授权把文件范围扩到 frontend/src/components/ConfirmStep.vue、RedactionCompare.vue、ManualRedactDialog.vue：子组件分别发出“新增完成”和“撤销完成”事件（或在完成事件中带操作类型），父组件只显示对应的一条提示，刷新流程照旧执行。服务端接口、权限、行锁、状态校验一律不改。完成后前端 build 通过，并在浏览器复核：撤销后只出现“已撤销”，新增后只出现“已设为敏感信息”。 | 2026-10-24 |
+| V2Q-45 | B08 三处地址漏召回及“项目名称含我方主体”重叠未满足完整覆盖 | 已确认（2026-10-24），测试先行。授权扩展 backend/app/redaction/detect.py、engine.py 及对应测试。① 先写失败回归：letter-cn 楼栋房间尾部、mail-en 完整英文地址、minutes-en 楼层城市国家尾部各一条，按完整区间断言；另加一条项目名称包含我方主体的重叠用例；再修代码。② 英文无标签地址只认保守组合：门牌号加道路词，或楼层/套间加城市或国家；单独的城市、国家、港口名不得替换，现有 must_keep 必须继续通过。③ 重叠规则：项目名称整段（含其中的主体名称）按 PROJECT 替换；主体在其他位置的出现照常替换为签约方代号；还原后必须与原文完全一致。若与签约方代号现有不变量冲突（如有测试要求外发文本一定出现“我方”），停下报告，不得自行改旧断言。④ 冻结标注、零漏门槛、已有保护断言不改；修复导致其他旧断言失败的，同样另报。 | 2026-10-24 |
+| V2Q-44 | B08 两项保护断言与真实NER更严格替换冲突 | 已确认（2026-10-24）。仅同步 test_suspects.py::test_r4_person_narrative_all_occurrences 中“林虚”与 test_v2b_derived.py::test_new_narrative_candidates 中“通知王建国，”两个参数，接受二选一：仍列疑似；或被替换，且替换项须同时满足 detected_by=ner、类别 PERSON、区间完整覆盖姓名（两端不留姓名的字），出口文本中不再出现该姓名。两种情况都不满足时测试仍须失败。同一用例中其他姓名、原文、参数和断言不动，不得模拟空 NER。 | 2026-10-24 |
+| V2Q-43 | B08 七项分段测试被通用词“双方”的模型疑似拦截 | 已确认（2026-10-24）。仅在 backend/resources/ner_stopwords.txt 追加“双方”一行（整段相等过滤，只去模型结果，不影响规则，符合只增不减；词表可增不可删）。补回归：单独的“双方”不再列疑似；含“双”字的真实姓名仍能被识别或列为疑似；long_contract 不再触发 SUSPECTS_PENDING。七项旧分段测试、样本、模型阈值、服务端 SUSPECTS_PENDING 检查不变，不得统一模拟空 NER。 | 2026-10-24 |
 | V2Q-41 | V2-B-07 撤销入口逐项can_revoke字段与旧字段清单同步 | 已确认（2026-10-24）。用户明确授权范围只到test_redaction_api.py::test_get_parties_summary_outbound这一条字段断言：仍以set(i)=={...}完全相等比较，仅加入can_revoke成为六字段，并追加每项isinstance(i["can_revoke"],bool)断言；不得改子集比较，其余签约方字段、summary、出口文本、LlmCall为空等原断言与样本一律不改。can_revoke不含文字，只控制前端入口；其服务端范围为awaiting_confirm且来源user（任何类别）或来源person且PERSON，实际撤销仍由POST行锁/归属/状态/位置校验最终决定。补跑原失败整组定向测试后按批次规则完成B07。本授权不包括V2Q-42，后者仍待确认。 | 2026-10-24 |
 | V2Q-40 | B-06 新增 NER 高置信替换影响旧 R4 的部分决定测试 | 用户于2026-10-24明确同意“这一个用例的隔离调整并继续”：仅在test_chat.py::test_r4_partial_and_duplicate_decisions中用monkeypatch固定ner.recognize返回空列表，保留原始样本和全部漏决定/重复决定断言，继续专测R4规则；B-06另以test_ner.py::test_real_model_promotion_keeps_remaining_decisions_required调用真实本地模型，验证Northern Fictive Laboratory高置信自动替换后，剩余疑似仍须决定、漏决定409、重复决定422。不得扩展到其他旧用例，不修改样本、阈值或产品确认流程。其他兼容修正仍在产品范围内：合同/邮编/HS标签追加模型停用词，既有规则与模型命中同一区间疑似时保留规则原因，模型只补缺口。 | 2026-10-24 |
 | V2Q-37 | V2-B-06a 原资源门槛与目标硬件不匹配，新门槛 | 用户 2026-10-24 同意 Opus 提案：选定 urchade/gliner_multi-v2.1 FP32 ONNX（不量化），阈值中 0.4 / 高 0.95；识别门槛不变（叙述召回 ≥ 90%、高置信 must_keep 零误替换），另加新留出集（≥ 8 份、≥ 40 人名 + 机构名，先提交样本再运行）、对拍 06a 结果、中置信误报 ≤ 20 条；资源门槛改为万字识别 ≤ 10 秒、20 页合同解析增加 ≤ 30 秒、追问 500 字 ≤ 1 秒（首次含加载 ≤ 15 秒）、单进程内存增加 ≤ 2.5 GB、整机压力场景测试套件 ≤ 12 GiB 且与正式服务合计 ≤ 16 GiB、镜像增加 ≤ 1.5 GB；产品不装 torch / transformers / gliner / sentencepiece，线程 worker 8 / app 每进程 4。见 design/V2-B.md 6.2～6.4 | 2026-10-24 |
