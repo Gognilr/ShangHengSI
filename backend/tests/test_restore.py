@@ -23,6 +23,13 @@ def test_bracket_codes_and_fullwidth():
     assert restore("USD [金额_1]（[金额_12]），USD ［金额_1］，编号_1", mapping) == "USD 400,000.00（9.00），USD 400,000.00，HT-1"
 
 
+def test_all_nine_bracket_variants_and_long_codes():
+    assert restore('账号为[账号_1】，金额【金额_2]', {'[账号_1]': 'X', '[金额_2]': 'Y'}) == '账号为X，金额Y'
+    for left in '[［【':
+        for right in ']］】':
+            assert restore(left + '金额_12' + right, {'[金额_1]': 'A', '[金额_12]': 'B'}) == 'B'
+
+
 def test_inserted_values_not_replaced_again():
     # 真实值里恰好含有另一个代号的文字，不会被二次替换
     mapping = {"客户_A": "客户_B 贸易", "客户_B": "乙"}

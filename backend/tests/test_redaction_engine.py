@@ -221,9 +221,16 @@ def test_letters_by_first_appearance_and_overrides():
     codes2 = {p.key: p.code for p in r2.parties}
     assert codes2[normalize("Alpha Trading LLC")] == "我方"
     assert codes2[normalize("星河虚构进出口有限公司")] == "卖方_B"
-    assert text2.splitlines()[0] == "【主体说明】我方=买方；收货人_A：土耳其，货代；卖方_B：中国，类型未知"
+    assert text2.splitlines()[0] == "【主体说明】我方=买方；收货人_A：土耳其，货代；卖方_B：中国"
     with pytest.raises(ValueError):
         compute(nodes, "sales", overrides={k: PartyOverride(True, None, None) for k in overrides})
+
+
+def test_v2_party_description_omits_unknown_fields():
+    p = outbound.PartyInfo('客户_A', '买方', '国家未知', '类型未知', False)
+    assert outbound.party_description([p]) == '【主体说明】客户_A'
+    p.country = '中国'
+    assert outbound.party_description([p]) == '【主体说明】客户_A：中国'
 
 
 def test_terms_step_one():

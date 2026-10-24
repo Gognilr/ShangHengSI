@@ -12,7 +12,7 @@ from functools import lru_cache
 
 def _variants(code: str) -> list[str]:
     if code.startswith("[") and code.endswith("]"):
-        return [code, "［" + code[1:-1] + "］"]
+        return [left + code[1:-1] + right for left in '[［【' for right in ']］】']
     return [code]
 
 

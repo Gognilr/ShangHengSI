@@ -299,15 +299,23 @@ class _View:
         if not firsts:
             return {}
         rows = {r.loc: r for r in self.db.execute(
-            select(DocNode.loc, DocNode.clause_no, DocNode.page, DocNode.sheet, DocNode.cell_ref)
-            .where(DocNode.task_id == self.task_id, DocNode.loc.in_(firsts)))}
+            select(DocNode.loc, DocNode.file_id, DocNode.clause_no, DocNode.page, DocNode.sheet, DocNode.cell_ref)
+            .where(DocNode.task_id == self.task_id).order_by(DocNode.file_id, DocNode.ord))}
+        parents = {}
+        nearest = {}
+        for row in rows.values():
+            clause = row.clause_no or ''
+            if re.fullmatch(r'第[^条章\n]{1,20}[条章]', clause):
+                nearest[row.file_id] = clause
+            elif re.fullmatch(r'[（(]?(?:\d+|[A-Za-z]|[一二三四五六七八九十百]+)[）).、]?', clause):
+                parents[row.loc] = nearest.get(row.file_id)
         out = {}
         for loc in firsts:
             r = rows.get(loc)
             if r is None:
                 shown = loc
             elif r.clause_no:
-                shown = r.clause_no
+                shown = f'{parents[loc]} {r.clause_no}' if parents.get(loc) else r.clause_no
             elif r.sheet and r.cell_ref:
                 shown = f"{r.sheet}!{r.cell_ref}"
             elif r.page:

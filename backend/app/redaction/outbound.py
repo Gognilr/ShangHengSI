@@ -44,11 +44,16 @@ def party_description(parties: list[PartyInfo]) -> str:
             continue
         fields = []
         code_role = p.code.rsplit("_", 1)[0]
-        if p.role_label != OTHER and p.role_label != code_role:
+        # 类型未知时不重复展开客户 / 供应商代号的交易角色；已知类型保留原有说明。
+        role = ({'客户': '买方', '供应商': '卖方'}.get(code_role, code_role)
+                if not p.org_type or p.org_type == '类型未知' else code_role)
+        if p.role_label != OTHER and p.role_label != role:
             fields.append(p.role_label)
-        fields.append(p.country or "国家未知")
-        fields.append(p.org_type or "类型未知")
-        parts.append(f"{p.code}：{'，'.join(fields)}")
+        if p.country and p.country != '国家未知':
+            fields.append(p.country)
+        if p.org_type and p.org_type != '类型未知':
+            fields.append(p.org_type)
+        parts.append(f"{p.code}：{'，'.join(fields)}" if fields else p.code)
     return "【主体说明】" + ("；".join(parts) if parts else "无")
 
 

@@ -75,7 +75,7 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
         run = db.get(ReviewRun, uuid.UUID(body["id"]))
         assert (run.stance, run.source, run.user_note, run.main_doc_type) == (
             "sales", "outgoing", "请重点检查付款条款", "contract")
-        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.10-2", "2026.11-1")
+        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-1", "2026.11-1")
         assert run.company_req_version is None and run.created_by == user.id
         queued = db.scalars(select(Job).where(Job.type == "review")).one()
         assert (queued.status, queued.payload) == ("queued", {"task_id": str(task.id), "run_id": body["id"]})
@@ -89,6 +89,24 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
     assert requests == []  # 确认发送本身不调用模型，由 worker 执行
     detail = c.get(f"{API_PREFIX}/tasks/{task.id}").json()
     assert detail["status"] == "reviewing" and detail["latest_run"]["run_no"] == 1 and detail["queue_position"] == 1
+
+
+@pytest.mark.parametrize('child,parent,expected', [('2.', '第五条', '第五条 2.'), ('第八条', '第五条', '第八条'),
+                                                 ('2.', None, '2.'), ('（一）', '第五章', '第五章 （一）'),
+                                                 ('(b)', '第五条', '第五条 (b)')])
+def test_v2_child_location_shows_nearest_parent(db_sessionmaker, alice, ready_task, child, parent, expected):
+    user, _, _ = alice
+    task = ready_task(user, files=[('主合同.docx', sample('contract_basic'))])
+    with db_sessionmaker() as db:
+        nodes = db.scalars(select(DocNode).where(DocNode.task_id == task.id).order_by(DocNode.ord)).all()
+        for node in nodes:
+            node.clause_no = None
+        if parent:
+            nodes[0].clause_no = parent
+        nodes[1].clause_no = child
+        db.flush()
+        shown = _View(db, task.id).locations([SimpleNamespace(locs=[nodes[1].loc])])
+        assert shown[nodes[1].loc] == f'主合同.docx {expected}'
 
 
 def test_409_task_state_conflict(db_sessionmaker, alice, ready_task):
@@ -264,7 +282,7 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert d["coverage"]["summary"].startswith("本次按 ")
     assert isinstance(d["coverage"]["notes"], list)
     assert "requirements" not in d["coverage"] and "星河虚构进出口有限公司" not in str(d["coverage"])
-    assert d["prompt_version"] == "2026.10-2" and d["builtin_req_version"] == "2026.11-1"
+    assert d["prompt_version"] == "2026.11-1" and d["builtin_req_version"] == "2026.11-1"
     assert d["queued_at"].endswith("Z") or "+00:00" in d["queued_at"]
     assert d["doc_summary"] == f"{REAL_OUR_NAME}向{REAL_BUYER_NAME}销售金属制品"
     assert d["sanctions"] == {"level": "attention", "reasons": [f"{REAL_BUYER_NAME}位于需关注地区"]}
