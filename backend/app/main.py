@@ -49,6 +49,8 @@ def build_api_router() -> APIRouter:
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # 主密钥缺失或不是 32 字节时拒绝启动（SPEC 17.3、open_questions Q-08）
     check_master_key()
+    from app.redaction import ner
+    ner.check()
     yield
 
 

@@ -30,7 +30,7 @@ from app.db.base import utcnow
 from app.db.models import (
     DocNode, Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionTerm, RedactionExclusion, Task, TaskFile,
 )
-from app.redaction import detect, outbound, parties as P, quotes, ratio, suspects as S, tables
+from app.redaction import detect, ner, outbound, parties as P, quotes, ratio, suspects as S, tables
 from app.redaction.dictionaries import _country_index
 from app.redaction.placeholders import (
     ADDR, BUYER, FIXED, OTHER, OUR_CODE, SELLER, Allocator, address_code, chat_number, code_role,
@@ -461,6 +461,24 @@ def compute(
         for h in detect.find_projects(n.text):
             _accept([_Span(i, h.start, h.end, h.category, h.key, "regex")], occupied[i], spans)
 
+    # 模型只读取规则未替换的文字；等长空白保持原文偏移。
+    ner_suspects = []
+    for i, n in enumerate(nodes):
+        residual = ner.mask(n.text, occupied[i])
+        for hit in ner.recognize(residual):
+            if _overlaps(occupied[i], hit.start, hit.end):
+                continue
+            if hit.score >= ner.HIGH:
+                surface = n.text[hit.start:hit.end]
+                if hit.label in ('ORG', 'PERSON'):
+                    ent = entity(surface, hit.label)
+                    key = ent.key
+                else:
+                    key = detect.find_country(surface) or COUNTRY_UNKNOWN
+                _accept([_Span(i, hit.start, hit.end, hit.label, key, 'ner')], occupied[i], spans)
+            elif hit.score >= ner.MEDIUM:
+                ner_suspects.append(SuspectOut(n.loc, hit.start, hit.end, 'ner'))
+
     spans.sort(key=lambda s: (s.node, s.start))
     _apply_ours(entities, stance, overrides, {s.key for s in spans})
     _assign_countries(entities, nodes, spans)
@@ -479,6 +497,11 @@ def compute(
         result.suspects += [SuspectOut(n.loc, s.start, s.end, s.reason)
                             for s in S.find_suspects(n.text, occupied[i] + excluded_spans, derived=short_derived)]
     result.matched_terms = {s.term for s in spans if s.term}
+    for suspect in ner_suspects:
+        result.suspects = [s for s in result.suspects
+                           if (s.loc, s.char_start, s.char_end) !=
+                           (suspect.loc, suspect.char_start, suspect.char_end)]
+        result.suspects.append(suspect)
     return result
 
 

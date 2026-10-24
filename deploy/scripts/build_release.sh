@@ -4,18 +4,35 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/lib.sh"
 repo="$(cd "$ROOT/.." && pwd)"
 version="${1:-}"
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die '用法：build_release.sh 版本 [--out 目录]'
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die '用法：build_release.sh 版本 --ner-models 目录 [--out 目录]'
 shift
 out="$repo/release"
-if [ "$#" -gt 0 ]; then
-  [ "$#" -eq 2 ] && [ "$1" = --out ] || die '用法：build_release.sh 版本 [--out 目录]'
-  out="$2"
-fi
+ner_models=""
+while [ "$#" -gt 0 ]; do
+  [ "$#" -ge 2 ] || die '缺少参数值'
+  case "$1" in
+    --out) out="$2" ;;
+    --ner-models) [ -z "$ner_models" ] || die '模型目录参数重复'; ner_models="$2" ;;
+    *) die '未知参数' ;;
+  esac
+  shift 2
+done
+[ -n "$ner_models" ] && [ -d "$ner_models" ] || die '必须提供 --ner-models 离线模型目录'
 require_cmd git docker tar sha256sum
 # Git Bash 自动改写容器内绝对路径；只转换明确的宿主路径（Q-165）。
 host_path() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 export MSYS_NO_PATHCONV=1
 [ -z "$(git -C "$repo" status --porcelain)" ] || die '工作区不干净，请先提交或使用干净的隔离源码副本'
+# 以仓库中的清单核对来源，不能信任外部模型目录自带的清单。
+manifest="$repo/backend/models/ner/MANIFEST.sha256"
+(cd "$ner_models" && sha256sum -c "$manifest") || die '实体识别模型校验失败'
+mkdir -p "$repo/backend/models/ner"
+for model_file in model.onnx tokenizer.json tokenizer_config.json special_tokens_map.json added_tokens.json gliner_config.json; do
+  if [ "$(cd "$ner_models" && pwd)" != "$(cd "$repo/backend/models/ner" && pwd)" ]; then
+    cp "$ner_models/$model_file" "$repo/backend/models/ner/$model_file"
+  fi
+done
+(cd "$repo/backend/models/ner" && sha256sum -c MANIFEST.sha256) || die '模型复制后校验失败'
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 package="$out/aireview-$version"

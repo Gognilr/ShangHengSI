@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.admin.settings_store import get_setting
 from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
 from app.llm import gateway
-from app.redaction import detect, parties, placeholders, recheck, suspects
+from app.redaction import detect, ner, parties, placeholders, recheck, suspects
 from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
 from app.redaction.outbound import escape_document_tags
 from app.redaction.restore import restore
@@ -182,8 +182,23 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             country = hit.key if hit.category == "ADDR" and hit.key else None
             take(hit.start, hit.end, code_for(text[hit.start:hit.end], hit.category, country))
 
+    model_suspects = []
+    for hit in ner.recognize(ner.mask(text, [(s.start, s.end) for s in accepted])):
+        if any(s.start < hit.end and hit.start < s.end for s in accepted):
+            continue
+        if hit.score >= ner.HIGH:
+            surface = text[hit.start:hit.end]
+            country = detect.find_country(surface) if hit.label == 'ADDR' else None
+            take(hit.start, hit.end, code_for(surface, hit.label, country))
+        elif hit.score >= ner.MEDIUM:
+            model_suspects.append({'start': hit.start, 'end': hit.end,
+                                   'text': text[hit.start:hit.end], 'reason': 'ner'})
+
     found = [{"start": s.start, "end": s.end, "text": text[s.start:s.end], "reason": s.reason}
              for s in suspects.find_suspects(text, [(s.start, s.end) for s in accepted], derived=short_derived)]
+    for suspect in model_suspects:
+        found = [s for s in found if (s['start'], s['end']) != (suspect['start'], suspect['end'])]
+        found.append(suspect)
     if decisions is not None:  # None 只作预览；发送即使没传决定也用空列表重新校验。
         for suspect in found:
             matches = [d for d in decisions if (d["start"], d["end"]) == (suspect["start"], suspect["end"])]

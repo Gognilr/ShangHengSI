@@ -236,6 +236,8 @@ def main() -> None:
     setup_logging()
     # 主密钥缺失或不是 32 字节时拒绝启动（SPEC 17.3、open_questions Q-08）
     check_master_key()
+    from app.redaction import ner
+    ner.check(load=True)
     from app.db.session import get_sessionmaker
     import app.backup.job  # noqa: F401  导入即注册 backup 处理函数和定时备份检查
     import app.backup.retention  # noqa: F401  导入即注册 retention 处理函数和定时检查
