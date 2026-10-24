@@ -412,7 +412,7 @@ ENUM_COLUMNS = {
     ("redaction_terms", "kind"): ["learned", "custom"],
     ("redaction_terms", "category"): ["ORG", "PERSON", "CUSTOM"],
     ("local_findings", "check_code"): [
-        "L-01", "L-02", "L-03", "L-04", "L-05", "L-06", "L-07", "L-08", "L-INFO",
+        "L-01", "L-02", "L-03", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-INFO",
     ],
     ("local_findings", "severity"): ["high", "medium", "low"],
     ("review_runs", "status"): ["queued", "running", "blocked", "completed", "partial", "failed"],
@@ -744,6 +744,36 @@ def test_models_match_migration(migrated, db_url):
     finally:
         engine.dispose()
     assert diff == []
+
+
+def test_0007_check_codes_upgrade_and_downgrade():
+    name = 'aireview_test_' + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, '0006')
+        sql = ("INSERT INTO local_findings (task_id, check_code, severity, detail_enc, ai_summary, created_at) "
+               "VALUES (%s, %s, 'high', %s, 's', now())")
+        with psycopg.connect(url, autocommit=True) as conn:
+            task = _insert_task(conn, _insert_user(conn))
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(sql, (task, 'L-09', b'x'))
+        command.upgrade(cfg, '0007')
+        with psycopg.connect(url, autocommit=True) as conn:
+            for code in ('L-01', 'L-09', 'L-10', 'L-11'):
+                conn.execute(sql, (task, code, b'x'))
+        command.downgrade(cfg, '0006')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute('SELECT check_code FROM local_findings').fetchall() == [('L-01',)]
+            for code in ('L-09', 'L-10', 'L-11'):
+                with pytest.raises(errors.CheckViolation):
+                    conn.execute(sql, (task, code, b'x'))
+        command.upgrade(cfg, 'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
 def test_0003_postcode_category_upgrade_and_downgrade(db_url):

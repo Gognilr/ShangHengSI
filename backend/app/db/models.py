@@ -302,7 +302,7 @@ class LocalFinding(Base):
     __table_args__ = (
         enum_check(
             "check_code",
-            ["L-01", "L-02", "L-03", "L-04", "L-05", "L-06", "L-07", "L-08", "L-INFO"],
+            ["L-01", "L-02", "L-03", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-INFO"],
         ),
         enum_check("severity", SEVERITIES),
     )

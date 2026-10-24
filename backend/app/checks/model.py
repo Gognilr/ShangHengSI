@@ -30,4 +30,5 @@ class CheckResult:
 
 
 SEVERITY = {"L-01": "high", "L-02": "high", "L-03": "medium", "L-04": "high", "L-05": "high",
-            "L-06": "medium", "L-07": "medium", "L-08": "medium", "L-INFO": "low"}
+            "L-06": "medium", "L-07": "medium", "L-08": "medium", "L-INFO": "low",
+            "L-09": "high", "L-10": "medium", "L-11": "medium"}

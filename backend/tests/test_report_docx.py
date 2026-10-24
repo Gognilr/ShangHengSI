@@ -77,6 +77,21 @@ def test_category_labels_follow_spec():
     assert CATEGORY == {"wording": "表述", "logic": "逻辑", "legal": "法律", "compliance": "合规与制裁", "commercial": "商务"}
 
 
+def test_v2_report_new_local_check_names(report_case, db_sessionmaker):
+    from app.db.models import LocalFinding
+
+    user, task, _ = report_case
+    with db_sessionmaker() as db:
+        for code in ('L-09', 'L-10', 'L-11'):
+            db.add(LocalFinding(task_id=task.id, check_code=code, severity='medium',
+                                detail_enc=encrypt_text('虚构检查详情'), ai_summary='虚构摘要'))
+        db.commit()
+        _, data = build_local_report(db, db.get(Task, task.id), user)
+    _, text = contents(data)
+    for name in ('分期金额', '废止法律', '增值税税率'):
+        assert name in text
+
+
 def test_report_does_not_select_node_original_and_survives_purge(report_case, db_sessionmaker):
     user, task, run = report_case
     statements = []

@@ -1,0 +1,14 @@
+version: "2026.11-1"
+laws:
+  - {name: 中华人民共和国合同法, aliases: [合同法], abolished: "2021-01-01", replaced_by: 中华人民共和国民法典}
+  - {name: 中华人民共和国担保法, aliases: [担保法], abolished: "2021-01-01", replaced_by: 中华人民共和国民法典}
+  - {name: 中华人民共和国物权法, aliases: [物权法], abolished: "2021-01-01", replaced_by: 中华人民共和国民法典}
+  - {name: 中华人民共和国民法通则, aliases: [民法通则], abolished: "2021-01-01", replaced_by: 中华人民共和国民法典}
+  - {name: 中华人民共和国民法总则, aliases: [民法总则], abolished: "2021-01-01", replaced_by: 中华人民共和国民法典}
+  - {name: 中华人民共和国侵权责任法, aliases: [侵权责任法], abolished: "2021-01-01", replaced_by: 中华人民共和国民法典}
+  - {name: 中华人民共和国中外合资经营企业法, aliases: [中外合资经营企业法], abolished: "2020-01-01", replaced_by: 中华人民共和国外商投资法}
+  - {name: 中华人民共和国中外合作经营企业法, aliases: [中外合作经营企业法], abolished: "2020-01-01", replaced_by: 中华人民共和国外商投资法}
+  - {name: 中华人民共和国外资企业法, aliases: [外资企业法], abolished: "2020-01-01", replaced_by: 中华人民共和国外商投资法}
+  - {name: 中华人民共和国经济合同法, aliases: [经济合同法], abolished: "1999-10-01", replaced_by: 中华人民共和国民法典}
+  - {name: 中华人民共和国涉外经济合同法, aliases: [涉外经济合同法], abolished: "1999-10-01", replaced_by: 中华人民共和国民法典}
+  - {name: 中华人民共和国技术合同法, aliases: [技术合同法], abolished: "1999-10-01", replaced_by: 中华人民共和国民法典}
