@@ -59,8 +59,9 @@ def test_get_parties_summary_outbound(db_sessionmaker, alice, ready_task):
     assert data["suspects"] == []
     assert data["summary"] == dict(Counter(i["category"] for i in data["items"]))
     assert data["summary"]["ORG"] >= 2 and data["summary"]["AMOUNT"] >= 1
-    assert all(set(i) == {"loc", "char_start", "char_end", "category", "placeholder"}
+    assert all(set(i) == {"loc", "char_start", "char_end", "category", "placeholder", "can_revoke"}
                and i["char_start"] < i["char_end"] for i in data["items"])
+    assert all(isinstance(i["can_revoke"], bool) for i in data["items"])
     r = c.get(url(task, "redaction/outbound"))
     assert r.status_code == 200
     text = r.json()["text"]
