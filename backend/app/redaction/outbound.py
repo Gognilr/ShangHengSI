@@ -64,12 +64,12 @@ def build(parties: list[PartyInfo], nodes: list[tuple[str, str | None, str]],
     quote_tables 中各表 row_locs 的节点不再单独成行，first_loc 处换成汇总行“[{表格位置}] 【报价明细表：…】”。
     """
     summary_at = {t.first_loc: t for t in quote_tables}
-    skipped = {loc for t in quote_tables for loc in t.row_locs}
+    skipped = {loc for t in quote_tables if not t.detailed for loc in t.row_locs}
     lines = [party_description(parties)]
     for loc, clause_no, text in nodes:
         if loc in summary_at:
             t = summary_at[loc]
             lines.append(f"[{t.loc}] {escape_document_tags(summary_text(t, (table_notes or {}).get(t.loc)))}")
-        elif loc not in skipped:
+        if loc not in skipped:
             lines.append(node_line(loc, clause_no, text))
     return "\n".join(lines)

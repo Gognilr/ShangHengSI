@@ -43,7 +43,7 @@ def test_describe_uses_fixed_sentences_and_omits_duplicate_ocr_warning():
     assert notes == [
         "合同.docx：页眉 2 处、页脚 1 处、批注 1 处、文本框 1 处未参与 AI 审核",
         "报价.xlsx：隐藏工作表的单元格 15 个未参与 AI 审核",
-        "报价.xlsx F2-S1 报价明细表共 12 行，只把汇总信息发给 AI，行级数据未逐行审核",
+        "报价.xlsx F2-S1 报价明细表共 12 行，超过 200 行，只把汇总信息发给 AI，行级数据未逐行审核",
         "扫描.pdf 第 2、5 页 OCR 识别置信度低，请核对原件",
         "合同.docx：检测到修订痕迹，按接受修订后的文本审核",
         "无法判断的审核要求：G-06（需合规人员确认）、G-09",
@@ -93,7 +93,7 @@ def test_build_coverage_includes_a05_samples_and_only_identifiers(db_sessionmake
     }
     assert any(item["file"] == 2 and item["part"] == "hidden_sheet" for item in coverage["excluded"])
     assert coverage["ocr_low"] and coverage["ocr_low"][0] == {"file": 3, "pages": [2]}
-    assert coverage["quote_tables"] == [{"file": 4, "loc": "F4-T1", "rows": 3}]
+    assert coverage["quote_tables"] == []
     # A-05：每个文件的每条解析警告都列出（与 ocr_low 重复的低置信度警告除外），0 条被静默忽略
     assert {item["file"] for item in coverage["warnings"]} >= {1, 2, 3}
     for item in coverage["warnings"]:
@@ -102,7 +102,7 @@ def test_build_coverage_includes_a05_samples_and_only_identifiers(db_sessionmake
     joined = "\n".join(notes)
     assert "杂项.docx" in joined and "隐藏.xlsx" in joined
     assert "扫描.pdf 第 2 页 OCR 识别置信度低，请核对原件" in joined
-    assert "虚构报价.docx F4-T1 报价明细表共 3 行，只把汇总信息发给 AI，行级数据未逐行审核" in joined
+    assert "虚构报价.docx F4-T1 报价明细表" not in joined
     assert "付款条款见附表" not in joined and "星河虚构进出口有限公司" not in joined
     assert "虚构焦炭甲" not in joined and "USD 1,234.56" not in joined
     assert coverage["sanctions_offline"] is True

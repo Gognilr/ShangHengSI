@@ -511,8 +511,9 @@ def _ratio_inserts(nodes: list[NodeIn], spans: list[_Span], main_prefix: str | N
     out: dict[int, list[tuple[int, str]]] = {}
     if total is None:
         return out
+    quote_locs = {loc for t in quotes.find_quote_tables(nodes, {}) for loc in t.row_locs}
     for a in amounts:
-        if ratio.applies(a.hit, total):
+        if nodes[a.node].loc not in quote_locs and ratio.applies(a.hit, total):
             pos = ratio.insert_position(nodes[a.node].text, a.hit.end)
             out.setdefault(a.node, []).append((pos, ratio.ratio_text(a.hit.value, total[1])))  # type: ignore[arg-type]
     return out

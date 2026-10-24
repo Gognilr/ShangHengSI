@@ -701,5 +701,9 @@ def test_outbound_text_with_quote_table():
     parties = [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in r.parties]
     text = outbound_text(nodes, parties, r.redacted)
     assert text.splitlines() == [
-        "【主体说明】无", "[F1-P1] 报价单", "[F1-T1] 【报价明细表：共 3 行，币种 USD，产品：针状焦等 2 种】",
+        "【主体说明】无", "[F1-P1] 报价单", "[F1-T1] 【报价明细表：共 3 行，币种 USD；明细逐格列在下方】",
+        "[F1-T1-R1-C1] 品名", "[F1-T1-R1-C2] 单价 Unit Price", "[F1-T1-R1-C3] 金额",
+        "[F1-T1-R2-C1] 针状焦", "[F1-T1-R2-C2] USD [单价_1]", "[F1-T1-R2-C3] USD [金额_1]",
+        "[F1-T1-R3-C1] 石油焦", "[F1-T1-R3-C2] USD [单价_2]", "[F1-T1-R3-C3] USD [金额_2]",
+        "[F1-T1-R4-C1] 针状焦", "[F1-T1-R4-C2] USD [单价_3]", "[F1-T1-R4-C3] USD [金额_3]",
         "[F1-T1-R5-C1] 合计", "[F1-T1-R5-C3] USD [金额_4]", "[F1-P2] 以上价格含税"]

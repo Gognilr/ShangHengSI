@@ -631,11 +631,33 @@ def test_outbound_quote_table_summary_xlsx(db_sessionmaker, text_task):
     task = text_task(*cells)
     with db_sessionmaker() as db:
         lines = outbound(db, task.id).splitlines()
-    assert lines[1:] == ["[F1-S1-A1] 报价单", "[F1-S1] 【报价明细表：共 3 行，币种 USD，产品：针状焦等 2 种，本地校验：未识别报价表结构，未做金额核验】",
-                         "[F1-S1-A6] 合计", "[F1-S1-C6] USD [金额_4]"]
+    assert lines[1:3] == ["[F1-S1-A1] 报价单", "[F1-S1] 【报价明细表：共 3 行，币种 USD，本地校验：未识别报价表结构，未做金额核验；明细逐格列在下方】"]
+    assert len(lines) == len(cells) + 2
+    assert lines[-2:] == ["[F1-S1-A6] 合计", "[F1-S1-C6] USD [金额_4]"]
 
 
 # ---- R2-03：旧格式（模拟 converter，不需要 LibreOffice） ----
+
+def test_v2_detail_table_note_and_cell_citations(db_sessionmaker, text_task):
+    from app.redaction.engine import build_outbound
+    from app.review.validate import load_node_views, validate_output
+    from tests.test_review_validate import sample as review_sample, make, finding
+    from tests.test_v2_quote_details import table_nodes
+
+    task = text_task(*[(n.loc, n.text) for n in table_nodes()])
+    with db_sessionmaker() as db:
+        data = build_outbound(db, db.get(Task, task.id))
+        views = load_node_views(db, task.id, data.quote_tables)
+        ctx, _ = review_sample('contract_basic')
+        note = views['F2-S1']
+        result = validate_output(make(findings=[finding(locs=['F2-S1'], quote='明细逐格列在下方')]), ctx, views)
+        assert result.findings[0].cite_status == 'verified'
+        assert result.findings[0].locs == ['F2-S1-A1']
+        assert '明细逐格列在下方' in note.redacted_text
+        cell = views['F2-S1-C3']
+        result = validate_output(make(findings=[finding(locs=['F2-S1-C3'], quote=cell.redacted_text)]), ctx, views)
+        assert result.findings[0].cite_status == 'verified'
+        assert result.findings[0].quote_snapshot == '50,000.00'
 
 from tests.legacy_support import LEGACY, fake_converter, manifest, replay_handler, spool  # noqa: E402,F401
 

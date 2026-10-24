@@ -61,7 +61,7 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
     quote_tables = []
     for table in ctx.quote_tables:
         match = _FILE_SEQ.match(table.loc)
-        if match:
+        if match and not table.detailed:
             quote_tables.append({"file": int(match.group(1)), "loc": table.loc, "rows": table.rows})
 
     warnings: list[dict] = []
@@ -114,7 +114,7 @@ def describe(coverage: dict, file_names: dict[int, str]) -> list[str]:
     for item in coverage.get("quote_tables", []):
         notes.append(
             f"{file_name(int(item['file']))} {item['loc']} 报价明细表共 {int(item['rows'])} 行，"
-            "只把汇总信息发给 AI，行级数据未逐行审核"
+            "超过 200 行，只把汇总信息发给 AI，行级数据未逐行审核"
         )
 
     low_files: set[int] = set()

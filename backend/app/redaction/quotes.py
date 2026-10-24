@@ -11,6 +11,7 @@ from app.redaction import detect, tables
 from app.redaction.detect import _CODES, _CURRENCY
 
 MIN_DATA_ROWS = 3  # 单价列中有数字的行不足 3 行时不算报价明细表
+DETAIL_MAX_ROWS = 200
 _PRODUCT_HEADER = re.compile(r"品名|产品|货物|名称|规格型号|description|product|commodity|item", re.IGNORECASE)
 _DIGIT = re.compile(r"\d")
 _HEADER_CURRENCY = re.compile(rf"(?<![A-Za-z])(?:US\$|HK\$|{_CODES})(?![A-Za-z])|人民币|美元|欧元|英镑|日元|港元|港币|[¥￥$€£]")
@@ -30,6 +31,7 @@ class QuoteTable:
     rows: int  # 数据行数
     currencies: list[str]  # 按出现顺序去重；都识别不到时为空
     products: list[str]  # 产品列的已脱敏文字，按出现顺序去重；没有产品列时为空
+    detailed: bool = False
 
 
 def _dedupe(items: list[str]) -> list[str]:
@@ -98,6 +100,7 @@ def find_quote_tables(nodes: list[_Node], redacted: dict[str, str]) -> list[Quot
             rows=len(data_rows),
             currencies=currencies,
             products=_dedupe(products),
+            detailed=len(data_rows) <= DETAIL_MAX_ROWS,
         ))
     return result
 
@@ -105,8 +108,8 @@ def find_quote_tables(nodes: list[_Node], redacted: dict[str, str]) -> list[Quot
 def summary_text(t: QuoteTable, note: str | None = None) -> str:
     """【报价明细表：共 12 行，币种 USD，产品：油系针状焦等 3 种】；M6 在末尾补“，本地校验：…”。"""
     parts = [f"共 {t.rows} 行", "币种 " + "、".join(t.currencies) if t.currencies else "币种未知"]
-    if t.products:
+    if t.products and not t.detailed:
         parts.append(f"产品：{t.products[0]}" if len(t.products) == 1 else f"产品：{t.products[0]}等 {len(t.products)} 种")
     if note:
         parts.append(f"本地校验：{note}")
-    return "【报价明细表：" + "，".join(parts) + "】"
+    return "【报价明细表：" + "，".join(parts) + ("；明细逐格列在下方" if t.detailed else "") + "】"

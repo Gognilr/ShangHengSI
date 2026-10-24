@@ -260,7 +260,8 @@ def find_bare_amounts(text: str) -> list[Hit]:
         unit = m.group("unit")
         currency = _CURRENCY.get(unit.upper() if unit and unit.isascii() else unit)
         cat = "PRICE" if "单价" in label.group() or "price" in label.group().casefold() else "AMOUNT"
-        hits.append(Hit(start, end, cat, _amount_key(cat, currency, value, num), currency, value))
+        if value != 0:
+            hits.append(Hit(start, end, cat, _amount_key(cat, currency, value, num), currency, value))
     return hits
 
 
@@ -311,7 +312,7 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
                 value *= 10000
             hits.append(Hit(bare.start(1), bare.end(1), column, _amount_key(column, None, value, bare.group(1)),
                             None, value))
-    return hits
+    return [hit for hit in hits if hit.value != 0]
 
 
 # ---------------------------------------------------------------- 第 6 步：人名（M4-01，设计 M4.md 2.1）
