@@ -2,6 +2,8 @@
 
 2026-10-23 · Opus 5.5（V2-A-00） · 用户已确认（2026-10-23）
 
+2026-10-24 · Opus 5.5（V2-A-09）修订：迁移编号顺延（V2Q-23）、A-02 用例 2 措辞、A-03 / A-06 同步测试清单、L-09 / L-11 误报收窄（V2Q-30）、主体说明角色（V2Q-24）。修订处标“V2-A-09”。
+
 范围见 [PLAN.md](../PLAN.md) 第三节 A1～A6；执行规则见 [TASKS-V2.md](../TASKS-V2.md) 第一节。本文件是 V2-A 各任务之间的接口契约，每张任务卡自包含：开工时读 CLAUDE.md、本文件第〇节和对应任务的一节即可。规格变更汇总在 [SPEC-V2.md](../SPEC-V2.md) A 部分。
 
 ## 〇、共同约定
@@ -11,7 +13,7 @@
 3. **允许修改的已有测试**：只有各节“需同步修改的已有测试”列出的，按新行为改期望值，不得删除用例。
 4. **出口复检**：本批唯一影响复检的是“金额为 0 不再识别”（3.2），复检因此不再拦截 0 值；`recheck.py` 本身不改。
 5. **提交**：`git add <具体路径>`；提交说明以任务编号开头，英语或日语。
-6. **迁移编号**：R4 用了 0005。本批 V2-A-05 用 0006，V2-A-07 用 0007，按任务顺序执行，不得调换。
+6. **迁移编号**：R4 用了 0005、0006（R4-08）。本批 V2-A-05 用 0007，V2-A-07 用 0008，按任务顺序执行，不得调换（V2-A-09 按 V2Q-23 修订）。
 
 ## 一、任务一览
 
@@ -21,9 +23,9 @@
 | V2-A-02 | 系统提示词严重程度口径 | 二 | test\_review\_prompt.py、test\_requirements.py |
 | V2-A-03 | 报价明细表逐格发送（后端） | 三 | test\_pipeline.py、test\_review\_validate.py、test\_coverage.py、test\_detect\*.py、test\_redaction\_engine.py、test\_recheck.py、test\_redaction\_golden.py、test\_a03\_outbound.py |
 | V2-A-04 | 原文对照适配逐格发送（前端） | 四 | `npm --prefix frontend run build` |
-| V2-A-05 | 本地校验 L-09、L-10、L-11（迁移 0006） | 五 | 新增 test\_checks\_installments.py、test\_checks\_references.py；test\_migrations.py；test\_report\_docx.py |
+| V2-A-05 | 本地校验 L-09、L-10、L-11（迁移 0007） | 五 | 新增 test\_checks\_installments.py、test\_checks\_references.py；test\_migrations.py；test\_report\_docx.py |
 | V2-A-06 | 小修三项 | 六 | test\_outbound（或含主体说明的测试文件）、test\_restore.py、test\_runs\_api.py |
-| V2-A-07 | 公司补充要求上限、来源筛选、组合校验（迁移 0007） | 七 | test\_admin\_requirements.py、test\_runs\_api.py、test\_migrations.py；前端 build |
+| V2-A-07 | 公司补充要求上限、来源筛选、组合校验（迁移 0008） | 七 | test\_admin\_requirements.py、test\_runs\_api.py、test\_migrations.py；前端 build |
 | V2-A-08 | 集中测试与评测对比 | 八 | 整仓全量 |
 | V2-A-09 | 批次审核（Opus） | 九 | — |
 
@@ -96,7 +98,7 @@
 | # | 场景 | 期望 |
 |-|-|-|
 | 1 | `load_system_template()` | 版本 `2026.11-1`；正文含第 8 条全文，第 9 条为 JSON 输出要求 |
-| 2 | `chat_system_prompt()` | 不含“严重程度”“JSON”，含第 1～7 条，末尾为自然语言回答规则 |
+| 2 | `chat_system_prompt()` | 不含“严重程度”、第 9 条 JSON 输出要求、“JSON 结构”行与 JSON 结构正文；含第 1～7 条，末尾为原样的 CHAT\_ANSWER\_RULE（它本身提到 JSON，除这一行外不得有“JSON”）（V2-A-09 修订措辞，行为不变） |
 | 3 | 审核请求（模拟网关记录） | system 消息含第 8 条；`run.prompt_version == "2026.11-1"` |
 
 ## 三、报价明细表逐格发送（V2-A-03，测试先行）
@@ -140,7 +142,9 @@ engine `_ratio_inserts` 跳过位于任何报价明细表单元格（`row_locs`�
 | 10 | 覆盖说明（detailed 的表） | 不出现报价明细表条目 |
 | 11 | A-03（tests/test\_a03\_outbound.py） | 全部样本外发记录真实值零命中 |
 
-**需同步修改的已有测试**：test\_pipeline、test\_coverage、test\_review\_validate 中断言“整表只有一行汇总”“覆盖说明含报价明细表”的期望值；test\_detect 中断言 0 值被替换的用例（如有）。只改期望，不删用例。
+**需同步修改的已有测试**：test\_pipeline、test\_coverage、test\_review\_validate 中断言“整表只有一行汇总”“覆盖说明含报价明细表”的期望值；test\_detect 中断言 0 值被替换的用例（如有）。只改期望，不删用例。V2-A-09 补列（实施中经用户批准）：test\_redaction\_engine（逐行期望）、test\_quotes（说明文字期望）、test\_review\_job、test\_m5\_acceptance（覆盖说明只统计超过 200 行的表）。
+
+用例 1 的前提（V2-A-09 补记）：回归样本 quotation\_xlsx 只有两个数据行，达不到报价明细表的 3 行下限；样本与回归断言不改，用例 1 在测试内存中派生第三行后检验。
 
 ## 四、原文对照适配（V2-A-04）
 
@@ -152,7 +156,7 @@ engine `_ratio_inserts` 跳过位于任何报价明细表单元格（`row_locs`�
 
 ## 五、本地校验 L-09、L-10、L-11（V2-A-05）
 
-**文件范围**：`backend/app/checks/installments.py`（新，L-09）、`backend/app/checks/references.py`（新，L-10、L-11）、`backend/resources/abolished_laws.yaml`（新）、`backend/resources/vat_rates.yaml`（新）、`backend/app/checks/model.py`、`backend/app/checks/service.py`、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0006_check_codes.py`（新）、`backend/app/export/report_docx.py`（名称表）、`frontend/src/utils/labels.ts`（只追加名称）、对应测试。
+**文件范围**：`backend/app/checks/installments.py`（新，L-09）、`backend/app/checks/references.py`（新，L-10、L-11）、`backend/resources/abolished_laws.yaml`（新）、`backend/resources/vat_rates.yaml`（新）、`backend/app/checks/model.py`、`backend/app/checks/service.py`、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0007_check_codes.py`（新）、`backend/app/export/report_docx.py`（名称表）、`frontend/src/utils/labels.ts`（只追加名称）、对应测试。
 
 只校验 part=body 的节点（Q-81）；所有计算用 Decimal、ROUND\_HALF\_UP；详细说明可含真实数字（加密存储），`ai_summary` 不含绝对金额（SPEC 10.3）。
 
@@ -170,6 +174,8 @@ engine `_ratio_inserts` 跳过位于任何报价明细表单元格（`row_locs`�
 * 等于 100%（差 ≤ 0.01）不报。
 
 L-09 的严重程度按上面逐条给，不用 `SEVERITY` 的固定值（`SEVERITY["L-09"]` 设为 high 仅作默认）。
+
+**V2-A-09 收窄（V2Q-30）**：① (a) 的金额 X 取到全角逗号为止（“即 30,000 元，余款 70,000 元……”只取前者）；基数“合同总价款”与合同总价同义。② (b) 中含“违约金、滞纳金、罚金、赔偿、履约保证金、投标保证金、保函、每日、每天、逾期”的句子里的比例不计入（质量保证金照常计入）。
 
 ### 5.2 L-10 引用已废止的法律
 
@@ -206,13 +212,13 @@ levy: ["5", "3", "1"]                  # 征收率
 outdated: ["17", "16", "11", "10"]     # 2018-05-01、2019-04-01 两次调整前的税率
 ```
 
-* 只在“增值税语境”中检查：同一句（以。；！？换行分隔）含“增值税、税率、税点、专用发票、普通发票、含税、开票”之一，且不含“关税、消费税、所得税、预提”。该句中的百分比若在 `outdated` 中，报 L-11，**中**：“写明的增值税税率 N% 为已调整的旧税率（现行一般为 13%、9%、6%），请人工确认适用税率”。
+* 只在“增值税语境”中检查：同一句（以。；！？换行分隔）含“增值税、税率、税点、专用发票、普通发票、含税、开票”之一，且不含“关税、消费税、所得税、预提”。该句中的百分比若在 `outdated` 中（紧跟在“的”之后的百分比除外，如“合同总价的 10%”是付款或违约金比例；V2-A-09 按 V2Q-30 收窄），报 L-11，**中**：“写明的增值税税率 N% 为已调整的旧税率（现行一般为 13%、9%、6%），请人工确认适用税率”。
 * 报价表“税率”列（L-03 已识别）的单元格值在 `outdated` 中时同样报出。
 * 只报 `outdated` 中的值；其他不在现行档位的值不报（避免把关税、折扣率误报）。
 
 ### 5.4 其他
 
-* 迁移 0006：`local_findings.check_code` 的约束加入 L-09、L-10、L-11（降级时删除这三种结果后恢复原约束）；models.py 同步。
+* 迁移 0007：`local_findings.check_code` 的约束加入 L-09、L-10、L-11（降级时删除这三种结果后恢复原约束）；models.py 同步。
 * `checks/service.py` 的结果顺序：L-01、L-02、L-03、L-INFO、L-04、L-05、L-06、L-07、L-08、L-09、L-10、L-11。
 * 报告与界面的名称：L-09“分期金额”，L-10“废止法律”，L-11“增值税税率”。
 
@@ -235,7 +241,7 @@ outdated: ["17", "16", "11", "10"]     # 2018-05-01、2019-04-01 两次调整前
 | 13 | “税率 13%” | 不报 |
 | 14 | 报价表税率列有一格 `16%` | L-11 |
 | 15 | `ai_summary` | L-09、L-10、L-11 均不含绝对金额 |
-| 16 | 迁移 0006 升级 / 降级 | 按 5.4；模型与迁移一致 |
+| 16 | 迁移 0007 升级 / 降级 | 按 5.4；模型与迁移一致 |
 | 17 | Word 报告 | 本地校验表显示三种新名称 |
 
 ## 六、小修三项（V2-A-06）
@@ -268,16 +274,18 @@ outdated: ["17", "16", "11", "10"]     # 2018-05-01、2019-04-01 两次调整前
 
 **需同步修改的已有测试**：断言外发文本或主体说明含“国家未知”“类型未知”的用例（检索 tests/ 中的这两个词）。
 
+**V2-A-09 补记（V2Q-24）**：用例 1 要求“客户\_A”后面不再出现“买方”。实现为：类型未知时，客户 / 供应商代号已表达的买方 / 卖方角色不重复写；类型已知时保留原有“客户\_A：买方，……”写法，既有测试不变。
+
 ## 七、公司补充要求（V2-A-07）
 
-**文件范围**：`backend/app/admin/requirements.py`、`backend/app/review/service.py`（`company_rows`、`collect_requirements`）、`backend/app/review/router.py`（GET /requirements 的 source）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0007_company_req_sources.py`（新）、`frontend/src/views/settings/Requirements.vue`、`frontend/src/api/admin.ts`、`frontend/src/api/requirements.ts`、对应测试。
+**文件范围**：`backend/app/admin/requirements.py`、`backend/app/review/service.py`（`company_rows`、`collect_requirements`）、`backend/app/review/router.py`（GET /requirements 的 source）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0008_company_req_sources.py`（新）、`frontend/src/views/settings/Requirements.vue`、`frontend/src/api/admin.ts`、`frontend/src/api/requirements.ts`、对应测试。
 
 1. **数量与长度**：总数上限 30 → 100（含停用）；每条 200 → 300 字（`company_requirements.text` 改为 varchar(300)）。
 2. **来源筛选**：新增 `sources jsonb 非空 默认 ["all"]`，取值 all / outgoing / incoming，与 `stances` 相同的校验；`company_rows` 增加 source 条件；`collect_requirements` 传入来源；GET /requirements 的 source 参数同样筛选公司补充要求；版本快照（requirement\_versions）包含 sources。
 3. **组合校验**：新增、修改、启用时，逐一检查 5 种文件类型 × 3 种立场 × 2 种来源共 30 个组合，启用且适用的条数超过 30 时 409 `COMPANY_REQ_COMBO_LIMIT`，message 列出最多 3 个超限组合，如“以下组合生效的补充要求超过 30 条：合同 · 销售 · 我方发出（31 条）”。停用不受限。
 4. **列表接口**：GET /admin/company-requirements 增加 `combo_counts: [{doc_type, stance, source, count}]`（30 项）。
 5. **设置页**：每条增加“适用来源”多选（默认全部）；字数提示 300；列表上方显示“各组合生效条数”表（行：5 种文件类型；列：销售 / 采购 / 其他 × 我方发出 / 对方发来），≥ 25 的格用警告色。
-6. **迁移 0007**：text 放宽到 300、新增 sources（已有行为 ["all"]）；降级时文字超过 200 的截断、删除 sources。
+6. **迁移 0008**：text 放宽到 300、新增 sources（已有行为 ["all"]）；降级时文字超过 200 的截断、删除 sources。
 
 | # | 场景 | 期望 |
 |-|-|-|
@@ -288,7 +296,7 @@ outdated: ["17", "16", "11", "10"]     # 2018-05-01、2019-04-01 两次调整前
 | 5 | GET /requirements?source=outgoing | 不返回只适用于 incoming 的补充要求 |
 | 6 | `combo_counts` | 30 项，计数与实际一致 |
 | 7 | 版本快照 | 含 sources |
-| 8 | 迁移 0007 升级 / 降级 | 按第 6 条；模型与迁移一致 |
+| 8 | 迁移 0008 升级 / 降级 | 按第 6 条；模型与迁移一致 |
 | 9 | 保存含已记住名称的要求 | 仍 422（Q-108 不变） |
 
 ## 八、集中测试与评测对比（V2-A-08）

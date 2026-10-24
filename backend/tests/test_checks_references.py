@@ -44,3 +44,11 @@ def test_vat_rate_table_column_and_safe_summary():
            if r.code == 'L-11']
     assert len(got) == 1 and got[0].locs == ['F1-S1-B2']
     assert '100' not in got[0].ai_summary
+
+
+# V2-A-09（V2Q-30）：增值税语境中“{基数}的 N%”是付款或违约金比例，不当作税率
+@pytest.mark.parametrize('text,count', [('验收合格后，乙方开具增值税专用发票，甲方支付合同总价的10%', 0),
+                                      ('合同价款为含税价，逾期交货违约金累计不超过合同总价的 10%', 0),
+                                      ('乙方开具税率为10%的增值税专用发票', 1), ('税率：11%', 1)])
+def test_vat_ignores_ratio_of_base(text, count):
+    assert len(results(text)) == count

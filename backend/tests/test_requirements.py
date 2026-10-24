@@ -152,4 +152,5 @@ def test_v2_contract_selection_count_and_order():
     assert _ids(select_builtin('contract', 'purchase', 'incoming')) == (
         [f'G-{i:02}' for i in range(1, 11)] + ['G-12'] +
         [f'C-{i:02}' for i in range(1, 13)] + [f'C-{i:02}' for i in range(14, 20)])
-    assert len(select_builtin('contract', 'sales', 'outgoing')) == 29
+    sales = _ids(select_builtin('contract', 'sales', 'outgoing'))
+    assert len(sales) == 29 and 'C-13' in sales and 'C-14' not in sales  # V2-A-09 补齐用例 4

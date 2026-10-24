@@ -55,3 +55,23 @@ def test_clause_boundaries_currency_fill_and_rounding():
                    ('1.', '违约金为合同总价的80%')) == []
     assert results((None, '合同总价100,000元'), (None, '预付款为合同总价的30%，即USD 30,001')) == []
     assert results((None, '合同总价100,000元'), (None, '预付款为合同总价的【30】%，即人民币【3】万元')) == []
+
+
+# V2-A-09（V2Q-30）：审核时用常见写法实测发现的误报与漏报
+def test_penalty_and_deposit_ratios_not_summed():
+    clause = [('第三条', '付款方式'), ('1.', '签约后支付合同总价的30%'), ('2.', '到货后支付合同总价的60%'),
+              ('3.', '验收后支付合同总价的10%')]
+    assert results(*clause, ('4.', '甲方逾期付款的，每日按合同总价的0.05%支付违约金')) == []
+    assert results(*clause[:2], ('2.', '到货后支付合同总价的70%'),
+                   ('3.', '乙方应提交合同总价的10%作为履约保证金')) == []
+    # 质量保证金是付款的一部分，照常计入
+    got = results(*clause[:3], ('3.', '合同总价的20%作为质量保证金，质保期满后支付'))
+    assert len(got) == 1 and '合计 110%' in got[0].detail
+
+
+def test_amount_stops_at_fullwidth_comma_and_contract_total_price_label():
+    got = results((None, '合同总价人民币100,000元'),
+                  (None, '预付款为合同总价的30%，即人民币33,000元，余款人民币70,000元验收后支付'))
+    assert len(got) == 1 and '30000.00' in got[0].detail
+    got = results((None, '合同总价人民币100,000元'), (None, '支付合同总价款的30%，即人民币33,000元'))
+    assert len(got) == 1

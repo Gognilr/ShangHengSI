@@ -72,7 +72,7 @@ CHAT_ANSWER_RULE = "8. 用简体中文自然语言回答，不输出 JSON。"
 
 
 def chat_system_prompt() -> tuple[str, str]:
-    """追问用的 system 消息（SPEC 13）：模板第 1–7 条原样，第 8 条（JSON 输出）和 JSON 结构行换成自然语言回答。"""
+    """追问用的 system 消息（SPEC 13）：模板第 1–7 条原样，第 8 条（严重程度）、第 9 条（JSON 输出）和 JSON 结构行换成自然语言回答。"""
     version, template = load_system_template()
     lines = [line for line in template.strip().splitlines()
              if not line.startswith(("8.", "9.", "JSON 结构"))]

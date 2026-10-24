@@ -258,14 +258,14 @@ onMounted(() => {
       <el-alert v-if="listError" type="error" :closable="false" show-icon :title="listError" />
       <el-table v-loading="listLoading" :data="items" size="small" empty-text="尚未添加公司补充要求">
         <el-table-column prop="code" label="编号" width="80" />
-        <el-table-column prop="text" label="内容" min-width="260" />
+        <el-table-column prop="text" label="内容" min-width="200" />
         <el-table-column label="适用文件类型" width="150">
           <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
         </el-table-column>
-        <el-table-column label="适用立场" width="120">
+        <el-table-column label="适用立场" width="100">
           <template #default="{ row }">{{ scopeText(row.stances, stanceLabel) }}</template>
         </el-table-column>
-        <el-table-column label="适用来源" width="120">
+        <el-table-column label="适用来源" width="100">
           <template #default="{ row }">{{ scopeText(row.sources, sourceLabel) }}</template>
         </el-table-column>
         <el-table-column label="启用" width="70">

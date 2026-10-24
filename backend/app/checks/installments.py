@@ -7,14 +7,16 @@ from app.checks.model import CheckNode, CheckFile, CheckResult
 from app.checks.numbers import CENT, rounded
 from app.redaction.detect import find_amounts
 
-_TOTALS = ('合同总价', '合同总额', '合同金额', '合同价款', '总价款', '总价')
+_TOTALS = ('合同总价', '合同总额', '合同金额', '合同价款', '合同总价款', '总价款', '总价')
 _FILL = r'[ \t【［\[〖]*'
 _CLOSE = r'[ \t】］\]〗]*'
 _RATE = _FILL + r'(?P<rate>\d+(?:\.\d+)?)' + _CLOSE + r'[%％]'
 _AMOUNT = re.compile(r'(?P<base>[\u4e00-\u9fff]{1,30})的\s*' + _RATE +
-                     r'\s*[，,]?\s*(?:即|计|为|合)\s*(?P<amount>[^。；;！？\n]+)')
+                     r'\s*[，,]?\s*(?:即|计|为|合)\s*(?P<amount>[^。；;！？\n，]+)')  # 到全角逗号为止，不把后文的余款算进来
 _SUM = re.compile(r'(?:合同总价|合同总额|合同金额|合同价款|总价款)的\s*' + _RATE)
 _LEVEL = re.compile(r'^第[^条章\n]{1,20}[条章]$')
+# 违约金、保证金等也写成“合同总价的 N%”，不是付款分期，不计入各期比例之和（V2Q-30）
+_NOT_INSTALLMENT = re.compile(r'违约金|滞纳金|罚金|赔偿|履约保证金|投标保证金|保函|每日|每天|逾期')
 
 
 def _base(text: str) -> str:
@@ -83,6 +85,7 @@ def check_installments(nodes: list[CheckNode], files: list[CheckFile]) -> list[C
                     section = []
                     active = bool(re.search('付款|支付|结算', node.text))
                 if active:
-                    section += [(node.loc, Decimal(m['rate'])) for m in _SUM.finditer(node.text)]
+                    section += [(node.loc, Decimal(m['rate'])) for sentence in re.split(r'[。；;！？\n]', node.text)
+                                if not _NOT_INSTALLMENT.search(sentence) for m in _SUM.finditer(sentence)]
             finish()
     return results
