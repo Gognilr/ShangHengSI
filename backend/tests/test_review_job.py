@@ -355,7 +355,7 @@ def test_review_handler_registered_and_runs_from_queue(db_sessionmaker, owner, r
     with db_sessionmaker() as db:
         queued = db.scalars(select(Job).where(Job.type == "review")).one()
         assert queued.status == "queued" and queued.payload == {"task_id": str(task.id), "run_id": str(run.id)}
-        claimed = jobs.claim(db, "test-worker")
+        claimed = jobs.claim(db, "test-worker", ("review",))
         assert claimed.id == queued.id
         worker.HANDLERS[claimed.type](db, claimed.payload)
     assert get_run(db_sessionmaker, run.id).status == "completed"

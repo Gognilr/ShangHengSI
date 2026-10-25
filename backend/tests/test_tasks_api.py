@@ -442,8 +442,8 @@ def test_detail_latest_run_and_queue_position(files_dir, make_user, login, db_se
     assert d["queue_position"] == 2
     # 开始处理后不再排队
     with db_sessionmaker() as db:
-        jobs.claim(db, "w")
-        jobs.claim(db, "w")
+        jobs.claim(db, "w", ("review",))
+        jobs.claim(db, "w", ("review",))
     assert c.get(f"{API_PREFIX}/tasks/{tid}").json()["queue_position"] is None
 
 

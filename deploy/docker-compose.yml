@@ -19,7 +19,6 @@ x-backend: &backend
     FILES_DIR: /data/files
     BACKUP_DIR: /backup
     OCR_MODEL_DIR: /usr/local/lib/python3.12/site-packages/rapidocr_onnxruntime/models
-    WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
     TZ: Asia/Shanghai
     MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-30}
     APP_VERSION: ${APP_VERSION:-dev}
@@ -74,6 +73,8 @@ services:
     command: ["python", "-m", "app.worker"]
     environment:
       <<: *backend-env
+      WORKER_REVIEW_CONCURRENCY: ${WORKER_REVIEW_CONCURRENCY:-8}
+      WORKER_PARSE_CONCURRENCY: ${WORKER_PARSE_CONCURRENCY:-2}
       CONVERT_SPOOL_DIR: /spool
     volumes:
       - files_data:/data/files

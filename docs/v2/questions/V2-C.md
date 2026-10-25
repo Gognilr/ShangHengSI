@@ -13,6 +13,7 @@
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-60 | V2-C-01 的旧配置与 claim 调用测试超出任务卡列出的测试文件；compose 旧变量位于共用环境块 | 已确认（用户 2026-10-25）：最小扩展 test_smoke.py 的默认配置断言、test_tasks_api.py / test_review_job.py 的 jobs.claim 类型参数；从 compose 共用块删除 WORKER_CONCURRENCY，新变量仅加 worker。其余断言与 app 配置不改 | 2026-10-25 |
 | V2Q-52 | 管理员提醒条不能关闭，长期占据顶部（用户 2026-10-25 在测试环境看到“最近一次备份失败”提醒） | 已确认（2026-10-25）。每条提醒加“本次收起”：只在当前页面会话的内存中隐藏，站内切换页面保持收起；刷新、退出或重新登录后重新显示；提醒文字变化或出现新提醒时照常显示。不改服务端、不写库、不记审计，不用 localStorage / sessionStorage / Cookie；提醒产生与消失条件不变。放入 V2-C-06（文件范围已含 MainLayout.vue、stores/auth.ts，无需扩大），浏览器检查在 V2-C-08。SPEC-V2 C 部分 6.7、design/V2-C.md 6.1、6.3 第 11 条已写入；frontend.md 对提醒条的 closable 例外在 V2 验收时合并 | 2026-10-25 |
 
 ## 三、按建议做法实施的事项

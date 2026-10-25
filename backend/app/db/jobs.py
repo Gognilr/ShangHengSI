@@ -38,11 +38,11 @@ def enqueue(db: Session, type: str, payload: dict, *, run_after: datetime | None
     return job
 
 
-def claim(db: Session, worker_id: str) -> Job | None:
-    """取一条到期的 queued 任务：置 running、attempts+1、locked_by、heartbeat_at，并提交。"""
+def claim(db: Session, worker_id: str, types: tuple[str, ...]) -> Job | None:
+    """按类型取一条到期的 queued 任务：置 running、更新锁与心跳，并提交。"""
     job = db.execute(
         select(Job)
-        .where(Job.status == "queued", Job.run_after <= func.now())
+        .where(Job.status == "queued", Job.run_after <= func.now(), Job.type.in_(types))
         .order_by(Job.id)
         .limit(1)
         .with_for_update(skip_locked=True)

@@ -21,6 +21,16 @@ def _int_env(name: str, default: int) -> int:
         raise RuntimeError(f"环境变量 {name} 必须是整数") from None
 
 
+def _concurrency_env(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        raise RuntimeError(f"环境变量 {name} 必须是 1～32 的整数") from None
+    if not 1 <= value <= 32:
+        raise RuntimeError(f"环境变量 {name} 必须是 1～32 的整数")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -29,7 +39,8 @@ class Settings:
     files_dir: str
     backup_dir: str
     ocr_model_dir: str
-    worker_concurrency: int
+    worker_review_concurrency: int
+    worker_parse_concurrency: int
     tz: str
     max_upload_mb: int
     app_version: str
@@ -45,7 +56,8 @@ def load_settings() -> Settings:
         files_dir=os.environ.get("FILES_DIR", "/data/files"),
         backup_dir=os.environ.get("BACKUP_DIR", "/backup"),
         ocr_model_dir=os.environ.get("OCR_MODEL_DIR", ""),
-        worker_concurrency=_int_env("WORKER_CONCURRENCY", 2),
+        worker_review_concurrency=_concurrency_env("WORKER_REVIEW_CONCURRENCY", 8),
+        worker_parse_concurrency=_concurrency_env("WORKER_PARSE_CONCURRENCY", 2),
         tz=os.environ.get("TZ", "Asia/Shanghai"),
         max_upload_mb=_int_env("MAX_UPLOAD_MB", 30),
         app_version=os.environ.get("APP_VERSION", "dev"),

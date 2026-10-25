@@ -46,10 +46,11 @@ def test_app_error_unhandled_and_validation_formats(app):
 
 
 def test_settings_defaults(monkeypatch):
-    for name in ("WORKER_CONCURRENCY", "MAX_UPLOAD_MB", "FILES_DIR", "BACKUP_DIR"):
+    for name in ("WORKER_CONCURRENCY", "WORKER_REVIEW_CONCURRENCY", "WORKER_PARSE_CONCURRENCY", "MAX_UPLOAD_MB", "FILES_DIR", "BACKUP_DIR"):
         monkeypatch.delenv(name, raising=False)
     s = load_settings()
-    assert s.worker_concurrency == 2
+    assert s.worker_review_concurrency == 8
+    assert s.worker_parse_concurrency == 2
     assert s.max_upload_mb == 30
     assert s.files_dir == "/data/files"
     assert s.backup_dir == "/backup"

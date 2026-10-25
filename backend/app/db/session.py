@@ -16,11 +16,16 @@ def normalize_url(url: str) -> str:
 
 
 @lru_cache
-def get_engine() -> Engine:
+def get_engine(*, pool_size: int | None = None, max_overflow: int | None = None) -> Engine:
     url = get_settings().database_url
     if not url:
         raise RuntimeError("未配置 DATABASE_URL")
-    return create_engine(normalize_url(url), pool_pre_ping=True)
+    options = {}
+    if pool_size is not None:
+        options["pool_size"] = pool_size
+    if max_overflow is not None:
+        options["max_overflow"] = max_overflow
+    return create_engine(normalize_url(url), pool_pre_ping=True, **options)
 
 
 @lru_cache

@@ -32,7 +32,7 @@ class _Running:
 
     def __init__(self, sm, **kw):
         self.stop = threading.Event()
-        kw.setdefault("concurrency", 2)
+        kw.setdefault("parse_concurrency", 2)
         kw.setdefault("idle_seconds", 0.02)
         kw.setdefault("periodic_tick_seconds", 0.05)
         self.thread = threading.Thread(target=worker.run_worker, args=(sm, self.stop), kwargs=kw)
@@ -87,7 +87,7 @@ def test_dispatch_runs_each_job_exactly_once_concurrently(handlers, db_sessionma
 
     handlers["parse"] = handle
     ids = [_enqueue(db_sessionmaker, payload={"n": n}) for n in range(12)]
-    with _Running(db_sessionmaker, concurrency=3):
+    with _Running(db_sessionmaker, parse_concurrency=3):
         assert _wait(lambda: set(_statuses(db_sessionmaker).values()) == {"done"})
     assert sorted(seen) == list(range(12))
     assert set(_statuses(db_sessionmaker)) == set(ids)
@@ -119,7 +119,7 @@ def test_handler_failure_does_not_stop_worker(handlers, db_sessionmaker):
     handlers["parse"] = handle
     bad = _enqueue(db_sessionmaker, payload={"bad": True})
     good = _enqueue(db_sessionmaker, payload={"bad": False})
-    with _Running(db_sessionmaker, concurrency=1):
+    with _Running(db_sessionmaker, parse_concurrency=1):
         assert _wait(lambda: _statuses(db_sessionmaker)[good] == "done")
     assert _statuses(db_sessionmaker)[bad] == "failed"
 
@@ -160,7 +160,7 @@ def test_heartbeat_updates_while_handler_runs(handlers, db_sessionmaker):
 
     handlers["parse"] = handle
     jid = _enqueue(db_sessionmaker)
-    with _Running(db_sessionmaker, concurrency=1, heartbeat_seconds=0.05):
+    with _Running(db_sessionmaker, parse_concurrency=1, heartbeat_seconds=0.05):
         assert started.wait(5)
         with db_sessionmaker() as db:
             first = db.get(Job, jid).heartbeat_at
@@ -180,7 +180,7 @@ def test_stale_job_is_requeued_and_rerun_by_worker(handlers, db_sessionmaker):
     handlers["parse"] = lambda db, payload: ran.set()
     jid = _enqueue(db_sessionmaker)
     with db_sessionmaker() as db:
-        job = jobs.claim(db, "dead-worker")
+        job = jobs.claim(db, "dead-worker", ("parse", "review", "backup", "retention"))
         job.heartbeat_at = datetime.now(timezone.utc) - timedelta(minutes=20)
         db.commit()
     worker._PERIODIC.clear()
@@ -239,7 +239,7 @@ def test_worker_stops_promptly_on_stop_event(handlers, db_sessionmaker):
     t = threading.Thread(
         target=worker.run_worker,
         args=(db_sessionmaker, stop),
-        kwargs={"concurrency": 2, "idle_seconds": 30, "periodic_tick_seconds": 30},
+        kwargs={"parse_concurrency": 2, "idle_seconds": 30, "periodic_tick_seconds": 30},
     )
     t.start()
     time.sleep(0.2)
@@ -258,7 +258,7 @@ def test_stop_waits_for_running_job_to_finish(handlers, db_sessionmaker):
 
     handlers["parse"] = handle
     jid = _enqueue(db_sessionmaker)
-    with _Running(db_sessionmaker, concurrency=1):
+    with _Running(db_sessionmaker, parse_concurrency=1):
         assert started.wait(5)
     assert _statuses(db_sessionmaker)[jid] == "done"
 
@@ -322,3 +322,143 @@ def test_unregistered_handler_does_not_leave_task_parsing(handlers, db_sessionma
         assert _wait(lambda: _statuses(db_sessionmaker)[jid] == "failed")
     with db_sessionmaker() as db:
         assert db.get(Task, tid).status == "parse_failed"
+
+
+def test_review_does_not_wait_for_busy_parse_group(handlers, db_sessionmaker):
+    started = threading.Barrier(3)
+    release = threading.Event()
+    reviewed = threading.Event()
+
+    def parse(db, payload):
+        if not release.is_set():
+            started.wait(5)
+        release.wait(10)
+
+    handlers.update(parse=parse, review=lambda db, payload: reviewed.set())
+    parses = [_enqueue(db_sessionmaker, "parse") for _ in range(3)]
+    try:
+        with _Running(db_sessionmaker, review_concurrency=1, parse_concurrency=2):
+            started.wait(5)
+            review = _enqueue(db_sessionmaker, "review")
+            assert reviewed.wait(3)
+            assert _wait(lambda: _statuses(db_sessionmaker)[review] == "done")
+            assert sorted(_statuses(db_sessionmaker)[jid] for jid in parses) == ["queued", "running", "running"]
+            release.set()
+    finally:
+        release.set()
+
+
+def test_default_worker_thread_groups(monkeypatch):
+    threads = []
+    stop = threading.Event()
+    stop.set()
+
+    class Thread:
+        def __init__(self, **kw):
+            threads.append(kw)
+
+        def start(self):
+            pass
+
+        def join(self, timeout):
+            pass
+
+    monkeypatch.setattr(worker.threading, "Thread", Thread)
+    worker.run_worker(None, stop)
+    assert [t["args"][-1] for t in threads].count(("review",)) == 8
+    assert [t["args"][-1] for t in threads].count(("parse",)) == 2
+    assert [t["args"][-1] for t in threads].count(("backup", "retention")) == 1
+    assert len({t["args"][1] for t in threads}) == 11
+
+
+def test_eight_reviews_with_gateway_sessions_and_heartbeats(handlers, db_sessionmaker, monkeypatch):
+    from types import SimpleNamespace
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+    from app.db import session
+
+    monkeypatch.setattr(session, "get_settings", lambda: SimpleNamespace(
+        database_url=db_sessionmaker.kw["bind"].url.render_as_string(hide_password=False)))
+    session.get_engine.cache_clear()
+    engine = session.get_engine(pool_size=12, max_overflow=12)
+    sm = sessionmaker(bind=engine, expire_on_commit=False)
+    simultaneous = threading.Barrier(8)
+    seen = []
+
+    def review(db, payload):
+        db.execute(text("SELECT 1"))
+        simultaneous.wait(10)
+        # 模拟网关在独立会话写外发记录，延迟期间任务会话与心跳仍然存在。
+        with sm() as gateway_db:
+            gateway_db.execute(text("SELECT 1"))
+            time.sleep(2)
+        seen.append(payload["n"])
+
+    handlers["review"] = review
+    ids = [_enqueue(sm, "review", {"n": i}) for i in range(8)]
+    try:
+        with _Running(sm, review_concurrency=8, parse_concurrency=2, heartbeat_seconds=0.05):
+            assert _wait(lambda: all(_statuses(sm)[jid] == "done" for jid in ids), timeout=15)
+        assert sorted(seen) == list(range(8))
+        assert engine.pool.size() == 12
+        assert engine.pool.checkedout() == 0
+    finally:
+        engine.dispose()
+        session.get_engine.cache_clear()
+
+
+def test_stop_deadline_applies_to_all_groups(handlers, db_sessionmaker, monkeypatch):
+    release = threading.Event()
+    started = threading.Barrier(4)
+
+    def handle(db, payload):
+        started.wait(5)
+        release.wait(10)
+
+    handlers.update({kind: handle for kind in ("review", "parse", "backup")})
+    ids = [_enqueue(db_sessionmaker, kind) for kind in handlers]
+    stop = threading.Event()
+    monkeypatch.setattr(worker, "_stop", stop)
+    thread = threading.Thread(target=worker.run_worker, args=(db_sessionmaker, stop), kwargs={
+        "review_concurrency": 1, "parse_concurrency": 1, "idle_seconds": 0.02,
+        "periodic_tick_seconds": 0.02, "join_timeout": 0.1,
+    })
+    thread.start()
+    try:
+        started.wait(5)
+        begin = time.monotonic()
+        worker._handle_signal(15, None)
+        thread.join(2)
+        assert not thread.is_alive() and time.monotonic() - begin < 1
+        assert all(_statuses(db_sessionmaker)[jid] == "running" for jid in ids)
+    finally:
+        stop.set()
+        release.set()
+        thread.join(5)
+        assert _wait(lambda: all(_statuses(db_sessionmaker)[jid] == "done" for jid in ids))
+
+
+def test_startup_ignores_legacy_variable_and_warns_once(monkeypatch, caplog):
+    from app.config import load_settings
+    from app.db import session
+    from app.redaction import ner
+
+    monkeypatch.setenv("WORKER_CONCURRENCY", "invalid-ignored-secret")
+    monkeypatch.setenv("WORKER_REVIEW_CONCURRENCY", "8")
+    monkeypatch.setenv("WORKER_PARSE_CONCURRENCY", "2")
+    monkeypatch.setattr(worker, "get_settings", load_settings)
+    monkeypatch.setattr(worker, "check_master_key", lambda: None)
+    monkeypatch.setattr(ner, "check", lambda **kw: None)
+    monkeypatch.setattr(worker.signal, "signal", lambda *args: None)
+    pool_options = []
+    monkeypatch.setattr(session, "get_engine", lambda **kw: pool_options.append(kw) or "engine")
+    monkeypatch.setattr(worker, "sessionmaker", lambda **kw: "factory")
+    calls = []
+    monkeypatch.setattr(worker, "run_worker", lambda *args, **kw: calls.append((args, kw)))
+    with caplog.at_level(logging.WARNING, logger="app.worker"):
+        worker.main()
+    warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == ["已改为 WORKER_REVIEW_CONCURRENCY / WORKER_PARSE_CONCURRENCY"]
+    assert "invalid-ignored-secret" not in caplog.text
+    assert pool_options == [{"pool_size": 12, "max_overflow": 12}]
+    assert calls[0][1] == {"review_concurrency": 8, "parse_concurrency": 2}

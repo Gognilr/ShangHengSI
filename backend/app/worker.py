@@ -1,6 +1,6 @@
 """后台 worker 入口：python -m app.worker。
 
-- 并发数取 WORKER_CONCURRENCY，每个并发一个线程，各自独立的数据库会话，从 jobs 表取任务并按 type 分派给处理函数。
+- 审核、解析、维护分组取任务，各自独立的数据库会话，OCR 仍由全局锁互斥。
 - 处理函数抛出异常：job 记为 failed（last_error 只写异常类名）；没有注册处理函数的类型记为 failed/NO_HANDLER。
   处理函数自己负责在抛出前把 task / run 置为失败状态。
 - 处理期间有独立线程定期更新心跳；心跳超时的任务由定时工作重新入队（最多尝试 max_attempts 次）。
@@ -9,6 +9,7 @@
 - 日志只写 job id、类型、task id、耗时、错误码，不写文件名和任何文本。
 """
 import logging
+import os
 import signal
 import threading
 import time
@@ -175,11 +176,12 @@ def _worker_loop(
     stop: threading.Event,
     idle_seconds: float,
     heartbeat_seconds: float,
+    types: tuple[str, ...],
 ) -> None:
     while not stop.is_set():
         try:
             with session_factory() as db:
-                job = jobs.claim(db, worker_id)
+                job = jobs.claim(db, worker_id, types)
                 claimed = (job.id, job.type, job.payload) if job else None
         except Exception as exc:  # noqa: BLE001  数据库暂时不可用时等待后重试
             logger.error("取任务失败: %s", type(exc).__name__)
@@ -198,22 +200,26 @@ def run_worker(
     session_factory: sessionmaker[Session],
     stop: threading.Event,
     *,
-    concurrency: int,
+    review_concurrency: int = 8,
+    parse_concurrency: int = 2,
     idle_seconds: float = IDLE_SECONDS,
     heartbeat_seconds: float = HEARTBEAT_SECONDS,
     periodic_tick_seconds: float = PERIODIC_TICK_SECONDS,
     join_timeout: float = JOIN_TIMEOUT_SECONDS,
 ) -> None:
     """启动并发线程，主线程负责定时工作；stop 置位后等待正在处理的任务结束再返回。"""
-    threads = [
-        threading.Thread(
-            target=_worker_loop,
-            args=(session_factory, jobs.make_worker_id(i), stop, idle_seconds, heartbeat_seconds),
-            name=f"worker-{i}",
-            daemon=True,
-        )
-        for i in range(concurrency)
-    ]
+    groups = (("review", review_concurrency, ("review",)),
+              ("parse", parse_concurrency, ("parse",)),
+              ("maintenance", 1, ("backup", "retention")))
+    threads = []
+    for group, concurrency, types in groups:
+        for i in range(concurrency):
+            threads.append(threading.Thread(
+                target=_worker_loop,
+                args=(session_factory, jobs.make_worker_id(len(threads)), stop, idle_seconds, heartbeat_seconds, types),
+                name=f"worker-{group}-{i}",
+                daemon=True,
+            ))
     for t in threads:
         t.start()
     while not stop.is_set():
@@ -234,11 +240,14 @@ def _handle_signal(signum: int, _frame: object) -> None:
 
 def main() -> None:
     setup_logging()
+    settings = get_settings()
+    if "WORKER_CONCURRENCY" in os.environ:
+        logger.warning("已改为 WORKER_REVIEW_CONCURRENCY / WORKER_PARSE_CONCURRENCY")
     # 主密钥缺失或不是 32 字节时拒绝启动（SPEC 17.3、open_questions Q-08）
     check_master_key()
     from app.redaction import ner
     ner.check(load=True)
-    from app.db.session import get_sessionmaker
+    from app.db.session import get_engine
     import app.backup.job  # noqa: F401  导入即注册 backup 处理函数和定时备份检查
     import app.backup.retention  # noqa: F401  导入即注册 retention 处理函数和定时检查
     import app.review.job  # noqa: F401  导入即注册 review 处理函数
@@ -246,9 +255,12 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
-    settings = get_settings()
-    logger.info("worker 启动，版本 %s，并发 %s", settings.app_version, settings.worker_concurrency)
-    run_worker(get_sessionmaker(), _stop, concurrency=max(1, settings.worker_concurrency))
+    logger.info("worker 启动，版本 %s，审核并发 %s，解析并发 %s，维护并发 1",
+                settings.app_version, settings.worker_review_concurrency, settings.worker_parse_concurrency)
+    pool_size = settings.worker_review_concurrency + settings.worker_parse_concurrency + 2
+    factory = sessionmaker(bind=get_engine(pool_size=pool_size, max_overflow=pool_size), expire_on_commit=False)
+    run_worker(factory, _stop, review_concurrency=settings.worker_review_concurrency,
+               parse_concurrency=settings.worker_parse_concurrency)
     logger.info("worker 已退出")
 
 

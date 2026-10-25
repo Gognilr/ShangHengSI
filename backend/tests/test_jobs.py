@@ -38,7 +38,7 @@ def test_claim_marks_running_in_id_order(db_sessionmaker):
     a = _add(db_sessionmaker)
     b = _add(db_sessionmaker)
     with db_sessionmaker() as db:
-        job = jobs.claim(db, "w1")
+        job = jobs.claim(db, "w1", ("parse", "review", "backup", "retention"))
         assert job.id == a and job.status == "running" and job.attempts == 1
         assert job.locked_by == "w1" and job.heartbeat_at is not None
     assert _get(db_sessionmaker, b).status == "queued"
@@ -48,7 +48,7 @@ def test_claim_skips_future_run_after_and_empty(db_sessionmaker):
     future = datetime.now(timezone.utc) + timedelta(hours=1)
     _add(db_sessionmaker, run_after=future)
     with db_sessionmaker() as db:
-        assert jobs.claim(db, "w1") is None
+        assert jobs.claim(db, "w1", ("parse", "review", "backup", "retention")) is None
 
 
 def test_two_connections_never_claim_same_job(db_sessionmaker):
@@ -58,9 +58,9 @@ def test_two_connections_never_claim_same_job(db_sessionmaker):
     with db_sessionmaker() as a, db_sessionmaker() as b:
         locked = a.execute(select(Job).where(Job.id == first).with_for_update()).scalar_one()
         assert locked.id == first
-        got = jobs.claim(b, "w2")
+        got = jobs.claim(b, "w2", ("parse", "review", "backup", "retention"))
         assert got is not None and got.id == second
-        assert jobs.claim(b, "w2") is None  # 只剩被 A 锁住的那条，不会等待也不会重复取
+        assert jobs.claim(b, "w2", ("parse", "review", "backup", "retention")) is None  # 只剩被 A 锁住的那条，不会等待也不会重复取
         a.rollback()
     assert _get(db_sessionmaker, first).status == "queued"
 
@@ -73,7 +73,7 @@ def test_concurrent_threads_claim_distinct_jobs(db_sessionmaker):
     def run(name):
         while True:
             with db_sessionmaker() as db:
-                job = jobs.claim(db, name)
+                job = jobs.claim(db, name, ("parse", "review", "backup", "retention"))
             if job is None:
                 return
             with lock:
@@ -91,8 +91,8 @@ def test_heartbeat_complete_fail(db_sessionmaker):
     a = _add(db_sessionmaker)
     b = _add(db_sessionmaker)
     with db_sessionmaker() as db:
-        jobs.claim(db, "w")
-        jobs.claim(db, "w")
+        jobs.claim(db, "w", ("parse", "review", "backup", "retention"))
+        jobs.claim(db, "w", ("parse", "review", "backup", "retention"))
         db.execute(text("UPDATE jobs SET heartbeat_at = now() - interval '1 hour'"))
         db.commit()
         jobs.heartbeat(db, a)
@@ -118,11 +118,11 @@ def test_requeue_stale_requeues_then_fails_after_max_attempts(db_sessionmaker):
     fresh = _add(db_sessionmaker)
     for attempt in (1, 2, 3):
         with db_sessionmaker() as db:
-            job = jobs.claim(db, "w")
+            job = jobs.claim(db, "w", ("parse", "review", "backup", "retention"))
             assert job.id == jid and job.attempts == attempt
         with db_sessionmaker() as db:
             if attempt == 1:
-                jobs.claim(db, "w")  # fresh 也在运行，但心跳新鲜，不应被动
+                jobs.claim(db, "w", ("parse", "review", "backup", "retention"))  # fresh 也在运行，但心跳新鲜，不应被动
         _age(db_sessionmaker, jid, 16)
         with db_sessionmaker() as db:
             assert jobs.requeue_stale(db) == 1
@@ -138,7 +138,7 @@ def test_requeue_stale_requeues_then_fails_after_max_attempts(db_sessionmaker):
 def test_requeue_stale_ignores_recent_heartbeat(db_sessionmaker):
     jid = _add(db_sessionmaker)
     with db_sessionmaker() as db:
-        jobs.claim(db, "w")
+        jobs.claim(db, "w", ("parse", "review", "backup", "retention"))
     _age(db_sessionmaker, jid, 14)
     with db_sessionmaker() as db:
         assert jobs.requeue_stale(db) == 0
@@ -155,11 +155,27 @@ def test_queue_position(db_sessionmaker):
         assert jobs.queue_position(db, p2) == 2  # 只数同类型
         assert jobs.queue_position(db, r2) == 2
         assert jobs.queue_position(db, 99999) is None
-        job = jobs.claim(db, "w")  # 取走 p1
+        job = jobs.claim(db, "w", ("parse", "review", "backup", "retention"))  # 取走 p1
         assert job.id == p1
         assert jobs.queue_position(db, p1) is None  # 不在排队
         assert jobs.queue_position(db, p2) == 1
         assert jobs.queue_position(db, r1) == 1
+
+
+def test_claim_filters_types_and_preserves_order_and_skip_locked(db_sessionmaker):
+    parse = _add(db_sessionmaker, "parse")
+    backup = _add(db_sessionmaker, "backup")
+    review1 = _add(db_sessionmaker, "review")
+    review2 = _add(db_sessionmaker, "review")
+    with db_sessionmaker() as locked, db_sessionmaker() as db:
+        locked.execute(select(Job).where(Job.id == review1).with_for_update())
+        assert jobs.claim(db, "review-worker", ("review",)).id == review2
+        assert jobs.claim(db, "review-worker", ("review",)) is None
+        assert jobs.claim(db, "empty-worker", ()) is None
+        locked.rollback()
+        assert jobs.claim(db, "review-worker", ("review",)).id == review1
+        assert jobs.claim(db, "maintenance-worker", ("backup", "retention")).id == backup
+    assert _get(db_sessionmaker, parse).status == "queued"
 
 
 # ---------------------------------------------------------------- 最终失败时收尾业务状态（Q-53）
@@ -241,7 +257,7 @@ def test_requeue_stale_finalizes_after_max_attempts(db_sessionmaker, make_user):
     jid = _add(db_sessionmaker, "parse", {"task_id": str(tid)})
     for attempt in (1, 2, 3):
         with db_sessionmaker() as db:
-            jobs.claim(db, "w")
+            jobs.claim(db, "w", ("parse", "review", "backup", "retention"))
         _age(db_sessionmaker, jid, 16)
         with db_sessionmaker() as db:
             jobs.requeue_stale(db)
