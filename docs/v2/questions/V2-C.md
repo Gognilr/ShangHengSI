@@ -8,6 +8,7 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-68 | C-06 前端角色与自动替换的调用链缺少四个范围文件 | 已只读核对：frontend/src/api/auth.ts 的 Role 只有 user/admin，须补 sys_admin/biz_admin；utils/labels.ts 是账号页角色选项与中文名的共用来源；api/redaction.ts 当前只接受既有替换参数，须传自动替换标志；components/ConfirmStep.vue 接收 SuspectList 的 decide 事件再调用接口，须转发该标志。请求只扩这四处类型、文案、参数传递，不改变设计权限、流程或交互。已提交用户选择“批准四处最小扩展 / 先交 Opus 补齐任务卡”，尚未收到答复；C-06 状态仍待执行，未修改实现 | C-06；上述四个前端文件与对应测试 | C-06 实现前 |
 
 ## 二、已决定
 
