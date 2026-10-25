@@ -56,6 +56,7 @@ class ModelSettings(BaseModel):
     price_in_per_m: str
     price_out_per_m: str
     monthly_call_cap: int
+    user_daily_cap: int
     api_key_set: bool
     api_key_last4: Optional[str]
 
@@ -74,6 +75,7 @@ class ModelSettingsIn(BaseModel):
     price_in_per_m: str
     price_out_per_m: str
     monthly_call_cap: int = Field(ge=0, le=1_000_000_000)
+    user_daily_cap: int = Field(default=0, ge=0, le=10000)
     api_key: Optional[str] = None
 
     @field_validator("base_url")
@@ -138,6 +140,7 @@ def _read(db: DbSession) -> ModelSettings:
         price_in_per_m=_norm_price(s["price_in_per_m"]),
         price_out_per_m=_norm_price(s["price_out_per_m"]),
         monthly_call_cap=int(s["monthly_call_cap"] or 0),
+        user_daily_cap=int(s["user_daily_cap"] or 0),
         api_key_set=bool(enc),
         api_key_last4=last4,
     )
@@ -171,6 +174,7 @@ def put_model(
         "model.price_in_per_m": _norm_price(body.price_in_per_m),
         "model.price_out_per_m": _norm_price(body.price_out_per_m),
         "model.monthly_call_cap": body.monthly_call_cap,
+        "model.user_daily_cap": body.user_daily_cap,
     }
     changed: list[str] = []
     for key, value in new_values.items():

@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 
 from app.admin import settings_store
 from app.chat import service
-from app.db.models import ChatMessage, Job, LlmCall, RedactionTerm, ReviewRun, Task
+from app.db.models import ChatMessage, Job, LlmCall, RedactionMap, RedactionTerm, ReviewRun, Task
 from app.llm import gateway
 from app.main import API_PREFIX
 from app.redaction.engine import load_redaction_map, term_hash
@@ -90,6 +90,46 @@ def test_v2c_chat_activity_and_readonly_report(alice, db_sessionmaker, ready_tas
     with db_sessionmaker() as db:
         activity = db.get(Task, task.id).last_activity_at
         assert (activity > before) if outcome == "success" else (activity == before)
+
+
+@pytest.mark.parametrize("scenario", ["blocked", "race", "other_calls"])
+def test_v2c04_personal_chat_cap(alice, db_sessionmaker, ready_task, llm, make_user, monkeypatch, scenario):
+    from datetime import timedelta
+    from app.db.base import utcnow
+    user,c,h = alice
+    task = reviewed(db_sessionmaker,user,c,h,ready_task,llm)
+    other = make_user("chat_other")
+    before = utcnow()-timedelta(days=2)
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db,"model.user_daily_cap",2,None)
+        if scenario == "blocked":
+            db.add_all([LlmCall(user_id=user.id,purpose="review",status="sent",model_name="mock") for _ in range(2)])
+        if scenario == "other_calls":
+            db.add_all([LlmCall(user_id=who,purpose=purpose,status="sent",model_name="mock")
+                        for who,purpose in ((other.id,"review"),(user.id,"test")) for _ in range(3)])
+        db.get(Task,task.id).last_activity_at = before
+        db.commit()
+        calls_before = db.scalar(select(func.count()).select_from(LlmCall))
+        map_before = db.get(RedactionMap,task.id).map_enc
+    if scenario == "blocked":
+        monkeypatch.setattr(gateway,"call_model",lambda *args,**kw: pytest.fail("预检拒绝不能调用网关"))
+    elif scenario == "race":
+        def exceeded(*args,**kw):
+            raise gateway.GatewayError("USER_CAP_REACHED")
+        monkeypatch.setattr(gateway,"call_model",exceeded)
+    else:
+        llm(handler=chat_reply("请复核付款期限。",[]))
+    r = c.post(url(task),json={"message":"第2条如何修改？"},headers=h)
+    assert r.status_code == (200 if scenario == "other_calls" else 409)
+    if scenario != "other_calls":
+        assert r.json()["code"] == "USER_CAP_REACHED"
+    with db_sessionmaker() as db:
+        if scenario != "other_calls":
+            assert db.scalar(select(func.count()).select_from(ChatMessage)) == 0
+            assert db.scalar(select(func.count()).select_from(LlmCall)) == calls_before
+            assert db.get(Task,task.id).last_activity_at == before
+        if scenario == "blocked":
+            assert db.get(RedactionMap,task.id).map_enc == map_before
 
 
 def message_count(db_sessionmaker) -> int:

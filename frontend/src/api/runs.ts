@@ -84,6 +84,8 @@ export const runsApi = {
 
 /** 确认发送时后端返回的 409 / 422 错误码对应的中文提示（设计八）。 */
 export const RUN_ERROR_MESSAGES: Record<string, string> = {
+  CAP_REACHED: '已达本月调用上限，请联系管理员',
+  USER_CAP_REACHED: '已达今日个人调用上限，请明天再试或联系管理员',
   LOCAL_ONLY: '该任务的外发策略为“不外发，仅本地校验”，不能发送给模型',
   TASK_STATE_CONFLICT: '任务状态已变化，请刷新后再试',
   SUSPECTS_PENDING: '还有疑似遗漏没有处理，请全部处理后再提交',

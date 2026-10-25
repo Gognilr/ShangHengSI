@@ -8,12 +8,14 @@ export const API_PREFIX = '/api/v1'
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
+  readonly data: unknown
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, data?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.data = data
   }
 }
 
@@ -80,8 +82,10 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
 
   let code = 'HTTP_ERROR'
   let message = `请求失败（${res.status}）`
+  let responseData: unknown
   try {
     const data = (await res.json()) as { code?: string; message?: string }
+    responseData = data
     if (data.code) code = data.code
     if (data.message) message = data.message
   } catch {
@@ -90,7 +94,7 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
 
   if (res.status === 401 && !opts.silent401) hooks.onUnauthorized()
   if (res.status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') hooks.onPasswordChangeRequired()
-  throw new ApiError(res.status, code, message)
+  throw new ApiError(res.status, code, message, responseData)
 }
 
 /** 取二进制响应（原件预览）：带 Cookie、统一处理 401 和错误码，不要求 JSON。 */

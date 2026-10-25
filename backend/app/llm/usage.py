@@ -3,6 +3,7 @@
 只统计 status=sent 的记录；月份按 Asia/Shanghai（配置项 TZ）计算。费用用 Decimal 估算，保留 2 位小数（ROUND_HALF_UP）。
 """
 from datetime import datetime
+import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
@@ -29,6 +30,21 @@ def monthly_sent_calls(db: Session, now: datetime | None = None) -> int:
         select(func.count()).select_from(LlmCall)
         .where(LlmCall.status == "sent", LlmCall.created_at >= month_start(now))
     ) or 0
+
+
+def cap_reached(db: Session, user_id: uuid.UUID | None, purpose: str) -> str | None:
+    """只读上限预检，不预占名额；网关在发送前仍会再次检查。"""
+    cap = int(get_setting(db, "model.monthly_call_cap") or 0)
+    if cap and monthly_sent_calls(db) >= cap:
+        return "CAP_REACHED"
+    daily_cap = int(get_setting(db, "model.user_daily_cap") or 0)
+    if not daily_cap or purpose == "test" or user_id is None:
+        return None
+    start = utcnow().astimezone(ZoneInfo("Asia/Shanghai")).replace(hour=0, minute=0, second=0, microsecond=0)
+    used = db.scalar(select(func.count()).select_from(LlmCall).where(
+        LlmCall.user_id == user_id, LlmCall.status == "sent", LlmCall.purpose != "test",
+        LlmCall.created_at >= start)) or 0
+    return "USER_CAP_REACHED" if used >= daily_cap else None
 
 
 def monthly_usage(db: Session, now: datetime | None = None) -> dict:

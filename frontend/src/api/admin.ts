@@ -50,6 +50,7 @@ export interface ModelSettings {
   price_in_per_m: string
   price_out_per_m: string
   monthly_call_cap: number
+  user_daily_cap: number
   api_key_set: boolean
   api_key_last4: string | null
 }

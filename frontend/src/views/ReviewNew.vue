@@ -17,11 +17,13 @@ import {
   type Source,
   type Stance,
   type TaskDetail,
+  type DuplicateFile,
 } from '@/api/tasks'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmStep from '@/components/ConfirmStep.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StepBar from '@/components/StepBar.vue'
+import { formatDateTime } from '@/utils/time'
 import { useAuthStore } from '@/stores/auth'
 import {
   POLICY_OPTIONS,
@@ -51,6 +53,7 @@ const userNote = ref('')
 const reqDrawer = ref(false)
 const submitting = ref(false)
 const formError = ref('')
+const duplicateFile = ref<DuplicateFile | null>(null)
 
 // 立场和来源默认为该用户上次的选择。接口没有返回 last_stance / last_source，
 // 所以在浏览器里按用户记一份（open_questions Q-51）。
@@ -103,7 +106,8 @@ function formatSize(bytes: number): string {
   return Math.max(1, Math.round(bytes / 1024)) + ' KB'
 }
 
-async function startParse() {
+async function startParse(allowDuplicate = false) {
+  if (submitting.value) return
   formError.value = checkFiles(files.value) ?? ''
   if (formError.value) return
   submitting.value = true
@@ -115,14 +119,31 @@ async function startParse() {
       source: source.value,
       policy: policy.value,
       userNote: userNote.value,
+      allowDuplicate,
     })
     savePrefs()
     await router.replace({ name: 'review-new', query: { task: id } })
   } catch (e) {
-    formError.value = e instanceof ApiError ? e.message : '提交失败，请重试'
+    if (e instanceof ApiError && e.code === 'DUPLICATE_FILE' && e.data && typeof e.data === 'object') {
+      const old = e.data as Partial<DuplicateFile>
+      if (typeof old.task_id === 'string' && typeof old.created_at === 'string' && typeof old.title === 'string') {
+        duplicateFile.value = old as DuplicateFile
+      } else formError.value = e.message
+    } else formError.value = e instanceof ApiError ? e.message : '提交失败，请重试'
   } finally {
     submitting.value = false
   }
+}
+
+function openPrevious() {
+  const id = duplicateFile.value?.task_id
+  duplicateFile.value = null
+  if (id) void router.push({ name: 'review-result', params: { taskId: id } })
+}
+
+function continueDuplicate() {
+  duplicateFile.value = null
+  void startParse(true)
 }
 
 // ---- 轮询：解析中、审核中每 3 秒读取一次任务（离开页面即停止） ----
@@ -288,7 +309,7 @@ function fileBadge(name: string): string {
           <template #extra><el-button type="primary" @click="startOver">重新上传</el-button></template>
         </el-result>
       </div>
-      <el-form v-else label-width="110px" @submit.prevent="startParse">
+      <el-form v-else label-width="110px" @submit.prevent="startParse()">
         <section class="form-group">
           <h2>审核文件</h2>
           <el-upload drag multiple :auto-upload="false" :show-file-list="false" :accept="ALLOWED_EXTS.map(ext => `.${ext}`).join(',')" @change="onFileChange">
@@ -347,6 +368,13 @@ function fileBadge(name: string): string {
       </div>
     </section>
     <RequirementsDrawer v-model="reqDrawer" :stance="stance" :source="source" :user-note="userNote" />
+    <el-dialog :model-value="duplicateFile !== null" title="重复文件" width="480px" :close-on-click-modal="false" @close="duplicateFile = null">
+      <p v-if="duplicateFile">你在 {{ formatDateTime(duplicateFile.created_at) }} 审核过同一文件</p>
+      <template #footer>
+        <el-button @click="openPrevious">打开上次结果</el-button>
+        <el-button type="primary" @click="continueDuplicate">继续新建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

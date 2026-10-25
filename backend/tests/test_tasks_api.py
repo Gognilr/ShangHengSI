@@ -120,6 +120,39 @@ def test_v2c03_expiry_list_detail_permanent_and_original_deleted(files_dir, make
     assert d["task_expires_at"] is d["original_expires_at"] is None
 
 
+def test_v2c04_duplicate_file_defaults_override_owner_and_latest(files_dir, make_user, login, db_sessionmaker):
+    alice, bob = make_user("dup_a"), make_user("dup_b")
+    c, csrf = login("dup_a")
+    data = docx_bytes("重复文件虚构内容")
+    first = upload(c, csrf, [("第一份.docx", data)])
+    assert first.status_code == 201
+    before_files = stored_files(files_dir)
+    second = upload(c, csrf, [("改名.docx", data)])  # 表单不传 allow_duplicate，验证默认 false
+    assert second.status_code == 409 and second.json()["code"] == "DUPLICATE_FILE"
+    assert second.json()["task_id"] == first.json()["id"] and second.json()["title"] == "第一份.docx"
+    assert second.json()["created_at"]
+    assert stored_files(files_dir) == before_files
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(Task)) == 1
+        assert db.scalar(select(func.count()).select_from(Job)) == 1
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "task_create")) == 1
+    allowed = upload(c, csrf, [("继续新建.docx", data)], allow_duplicate="true")
+    assert allowed.status_code == 201
+    assert upload(c,csrf,[("又一份.docx",data)]).json()["task_id"] == allowed.json()["id"]
+    cb, hb = login("dup_b")
+    assert upload(cb,hb,[("其他用户.docx",data)]).status_code == 201
+    for tid in (first.json()["id"],allowed.json()["id"]):
+        assert c.delete(f"{API_PREFIX}/tasks/{tid}",headers={"X-CSRF-Token":csrf}).status_code == 204
+    assert upload(c,csrf,[("删除后重传.docx",data)]).status_code == 201
+
+
+def test_v2c04_duplicate_compares_only_main_file(files_dir, alice):
+    c, csrf = alice
+    main, attachment = docx_bytes("主文件"), docx_bytes("附件")
+    assert upload(c,csrf,[("主.docx",main),("附.docx",attachment)]).status_code == 201
+    assert upload(c,csrf,[("新主.docx",attachment)]).status_code == 201
+
+
 def form(**kw):
     data = {"stance": "sales", "source": "outgoing", "policy": "ai"}
     data.update(kw)
@@ -181,7 +214,7 @@ def test_policy_defaults_to_ai_and_local_only_accepted(files_dir, alice, db_sess
         headers={"X-CSRF-Token": csrf},
     )
     assert r.status_code == 201
-    r2 = upload(c, csrf, [("b.pdf", PDF)], policy="local_only")
+    r2 = upload(c, csrf, [("b.pdf", PDF)], policy="local_only", allow_duplicate="true")
     assert r2.status_code == 201
     with db_sessionmaker() as db:
         policies = {t.title: t.policy for t in db.scalars(select(Task))}

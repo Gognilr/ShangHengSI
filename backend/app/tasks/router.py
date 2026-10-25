@@ -5,6 +5,8 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -55,12 +57,20 @@ def create_task(
     source: Literal["outgoing", "incoming"] = Form(...),
     policy: Literal["ai", "local_only"] = Form("ai"),
     user_note: str | None = Form(None, max_length=500),
+    allow_duplicate: bool = Form(False),
     user: User = Depends(current_user),
     db: DbSession = Depends(get_db),
 ) -> TaskCreated:
     # 浏览器在没选文件时会提交一个文件名为空的部分，当作没有文件
     raw = [(f.filename, f.file) for f in (files or []) if f.filename]
     uploads = service.check_uploads(raw, main_index, get_settings().max_upload_mb * 1024 * 1024)
+    if not allow_duplicate:
+        duplicate = service.duplicate_task(db, user, uploads[main_index])
+        if duplicate is not None:
+            return JSONResponse(status_code=409, content=jsonable_encoder({
+                "code": "DUPLICATE_FILE", "message": "你已上传过同一文件，请选择打开上次结果或继续新建",
+                "task_id": duplicate.id, "title": duplicate.title, "created_at": duplicate.created_at,
+            }))
     note = user_note.strip() if user_note and user_note.strip() else None
     task = service.create_task(
         db,

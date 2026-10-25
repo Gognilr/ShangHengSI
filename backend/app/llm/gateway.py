@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_settings_map
 from app.db.models import LlmCall
-from app.llm.usage import monthly_sent_calls
+from app.llm import usage
 from app.redaction.recheck import BlockReason, recheck, recheck_context
 from app.security import crypto
 
@@ -35,6 +35,7 @@ TEST_MESSAGE = "这是一条连接测试消息，不含任何业务数据。请�
 MESSAGES = {
     "NOT_CONFIGURED": "模型尚未配置，请联系管理员",
     "CAP_REACHED": "已达本月调用上限，请联系管理员",
+    "USER_CAP_REACHED": "已达今日个人调用上限，请明天再试或联系管理员",
     "BLOCKED": "出口复检发现未脱敏的信息，已拦截，未发送",
     "HTTP_ERROR": "模型服务调用失败",
     "TIMEOUT": "模型服务响应超时",
@@ -165,9 +166,10 @@ def call_model(
     recorder = _Recorder(db, cfg.api_key, {"user_id": user_id, "task_id": task_id, "task_title": task_title,
                                            "run_id": run_id, "purpose": purpose, "model_name": cfg.name[:100]})
 
-    # 1. 每月调用上限（只统计 status=sent）
-    if cfg.monthly_call_cap > 0 and monthly_sent_calls(db) >= cfg.monthly_call_cap:
-        raise GatewayError("CAP_REACHED")
+    # 1. 调用上限：共用月度、个人每日的只读检查。
+    reached = usage.cap_reached(db, user_id, purpose)
+    if reached:
+        raise GatewayError(reached)
 
     # 2. 出口复检
     ctx = recheck_context(db, task_id)

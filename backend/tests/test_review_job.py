@@ -266,11 +266,11 @@ def test_bad_output_once_then_ok(db_sessionmaker, owner, ready_task, llm):
 def test_monthly_cap_reached_fails_without_calling_model(db_sessionmaker, owner, ready_task, llm):
     task = ready_task(owner)
     requests = llm("normal")
+    run = new_run(db_sessionmaker, task, owner)  # V2Q-65：验证确认通过后、worker 执行前额度用尽
     with db_sessionmaker() as db:
         settings_store.set_setting(db, "model.monthly_call_cap", 1, None)
         db.add(LlmCall(purpose="review", model_name="mock-model", status="sent"))
         db.commit()
-    run = new_run(db_sessionmaker, task, owner)
     run_job(db_sessionmaker, run.id)
     r = get_run(db_sessionmaker, run.id)
     assert (r.status, r.error_message) == ("failed", "已达本月调用上限，请联系管理员")
@@ -633,3 +633,29 @@ def test_q72_finding_on_quote_summary_line(db_sessionmaker, owner, ready_task, l
         assert stored_run.coverage["quote_tables"] == []
         detail = service.run_detail(db, stored_run)
         assert not any("报价明细表" in note for note in detail.coverage["notes"])
+
+
+def test_v2c04_personal_cap_reached_on_second_chunk(db_sessionmaker,owner,ready_task,llm,monkeypatch):
+    from app.review.chunking import Chunk
+    task = ready_task(owner)
+    def two_chunks(lines,limit):
+        midpoint = len(lines)//2
+        parts = (lines[:midpoint],lines[midpoint:])
+        return [Chunk(i,2,[line.text for line in part],part[0].loc,part[-1].loc,
+                      frozenset(line.loc for line in part)) for i,part in enumerate(parts,1)]
+    monkeypatch.setattr(job,"split_chunks",two_chunks)
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db,"model.user_daily_cap",2,None)
+        db.add(LlmCall(user_id=owner.id,purpose="review",status="sent",model_name="mock"))
+        db.commit()
+    requests = llm("normal")
+    run = new_run(db_sessionmaker,task,owner)
+    run_job(db_sessionmaker,run.id)
+    result = get_run(db_sessionmaker,run.id)
+    assert result.chunk_count == 2 and result.status == "partial"
+    assert len(requests) == 1
+    assert result.failed_chunks[0]["index"] == 2
+    assert result.failed_chunks[0]["reason"] == "已达今日个人调用上限，请明天再试或联系管理员"
+    with db_sessionmaker() as db:
+        calls = list(db.scalars(select(LlmCall)))
+        assert len(calls) == 2 and all(c.user_id == owner.id and c.status == "sent" for c in calls)

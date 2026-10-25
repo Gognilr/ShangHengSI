@@ -27,6 +27,7 @@ const form = reactive({
   price_in_per_m: '0.00',
   price_out_per_m: '0.00',
   monthly_call_cap: 0,
+  user_daily_cap: 0,
 })
 
 function fill(s: ModelSettings) {
@@ -44,6 +45,7 @@ function fill(s: ModelSettings) {
     price_in_per_m: s.price_in_per_m,
     price_out_per_m: s.price_out_per_m,
     monthly_call_cap: s.monthly_call_cap,
+    user_daily_cap: s.user_daily_cap,
   })
   savedForm.value = JSON.stringify(form)
 }
@@ -141,6 +143,7 @@ async function save() {
         price_in_per_m: form.price_in_per_m.trim(),
         price_out_per_m: form.price_out_per_m.trim(),
         monthly_call_cap: form.monthly_call_cap,
+        user_daily_cap: form.user_daily_cap,
         ...(key ? { api_key: key } : {}),
       }),
     )
@@ -214,6 +217,7 @@ async function testConnection() {
           <el-form-item label="输入单价（元 / 百万 token）" prop="price_in_per_m"><el-input v-model="form.price_in_per_m" /></el-form-item>
           <el-form-item label="输出单价（元 / 百万 token）" prop="price_out_per_m"><el-input v-model="form.price_out_per_m" /></el-form-item>
           <el-form-item label="每月调用上限"><el-input-number v-model="form.monthly_call_cap" :min="0" :max="1000000000" /><span class="hint note">0 表示不限</span></el-form-item>
+          <el-form-item label="个人每日上限"><el-input-number v-model="form.user_daily_cap" :min="0" :max="10000" /><span class="hint note">按上海时间每天统计，0 表示不限</span></el-form-item>
         </div>
         <div class="actions"><el-button type="primary" :loading="saving" @click="save">保存</el-button></div>
       </section>

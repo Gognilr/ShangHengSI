@@ -78,6 +78,13 @@ export interface CreateTaskInput {
   source: Source
   policy: Policy
   userNote: string
+  allowDuplicate?: boolean
+}
+
+export interface DuplicateFile {
+  task_id: string
+  title: string
+  created_at: string
 }
 
 /** 上传限制（SPEC 6.2、17.6）；后端仍会再检查一遍。 */
@@ -114,6 +121,7 @@ export const tasksApi = {
     form.append('stance', input.stance)
     form.append('source', input.source)
     form.append('policy', input.policy)
+    form.append('allow_duplicate', String(input.allowDuplicate ?? false))
     if (input.userNote.trim()) form.append('user_note', input.userNote.trim())
     return http.postForm<{ id: string }>('/tasks', form)
   },

@@ -87,6 +87,16 @@ def test_get_defaults(admin):
     r = c.get(MODEL).json()
     assert r["api_key_set"] is False and r["api_key_last4"] is None
     assert r["price_in_per_m"] == "0.00" and r["max_tokens"] == 32000
+    assert r["user_daily_cap"] == 0
+
+
+@pytest.mark.parametrize("value,expected", [(0,200),(10000,200),(-1,422),(10001,422)])
+def test_v2c04_daily_cap_setting(admin,value,expected):
+    c,csrf = admin
+    response = _put(c,csrf,user_daily_cap=value)
+    assert response.status_code == expected
+    if expected == 200:
+        assert c.get(MODEL).json()["user_daily_cap"] == value
 
 
 def test_put_and_get_only_last4_and_no_full_key_anywhere(admin, db_sessionmaker, caplog):

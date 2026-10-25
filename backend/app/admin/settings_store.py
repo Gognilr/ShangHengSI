@@ -26,6 +26,7 @@ DEFAULTS: dict[str, Any] = {
     "model.price_in_per_m": 0,
     "model.price_out_per_m": 0,
     "model.monthly_call_cap": 0,
+    "model.user_daily_cap": 0,
     "redaction.mask_quantity": False,
     "review.company_profile": "",
     "backup.time": "02:00",

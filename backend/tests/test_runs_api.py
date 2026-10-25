@@ -70,6 +70,51 @@ def test_v2c_confirm_activity_only_on_success(alice, db_sessionmaker, ready_task
         assert (activity > before) if outcome == "success" else (activity == before)
 
 
+@pytest.mark.parametrize("kind,code", [("daily", "USER_CAP_REACHED"), ("monthly", "CAP_REACHED"),
+                                      ("state", "TASK_STATE_CONFLICT")])
+def test_v2c04_confirmation_cap_has_no_side_effects(alice, db_sessionmaker, ready_task, monkeypatch, kind, code):
+    from datetime import timedelta
+    from app.admin import settings_store
+    from app.db.base import utcnow
+    from app.llm import gateway
+    user, c, h = alice
+    task = ready_task(user)
+    before = utcnow()-timedelta(days=3)
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "model.monthly_call_cap" if kind == "monthly" else "model.user_daily_cap", 2, None)
+        db.add_all([LlmCall(user_id=user.id, purpose="review", status="sent", model_name="mock") for _ in range(2)])
+        db.get(Task, task.id).last_activity_at = before
+        if kind == "state":
+            db.get(Task, task.id).status = "reviewing"
+        db.commit()
+        previous_jobs = db.scalar(select(func.count()).select_from(Job))
+    monkeypatch.setattr(gateway, "call_model", lambda *a, **kw: pytest.fail("预检拒绝不能调用网关"))
+    response = post_run(c, h, task.id)
+    assert response.status_code == 409 and response.json()["code"] == code
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        assert t.last_activity_at == before
+        assert t.status == ("reviewing" if kind == "state" else "awaiting_confirm")
+        assert db.scalar(select(func.count()).select_from(ReviewRun)) == 0
+        assert db.scalar(select(func.count()).select_from(Job)) == previous_jobs
+        assert db.scalar(select(func.count()).select_from(RedactionTerm).where(RedactionTerm.kind == "learned")) == 0
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == "run_create")) == 0
+        assert db.scalar(select(func.count()).select_from(LlmCall)) == 2
+
+
+def test_v2c04_other_users_and_test_calls_do_not_use_personal_cap(alice, db_sessionmaker, ready_task, make_user):
+    from app.admin.settings_store import set_setting
+    user, c, h = alice
+    other = make_user("other")
+    task = ready_task(user)
+    with db_sessionmaker() as db:
+        set_setting(db, "model.user_daily_cap", 2, None)
+        db.add_all([LlmCall(user_id=who, purpose=purpose, status="sent", model_name="mock")
+                    for who,purpose in ((other.id,"review"),(user.id,"test")) for _ in range(3)])
+        db.commit()
+    assert post_run(c,h,task.id).status_code == 201
+
+
 def count(db_sessionmaker, model) -> int:
     with db_sessionmaker() as db:
         return db.scalar(select(func.count()).select_from(model))
@@ -497,7 +542,8 @@ def test_upload_five_formats_to_awaiting_confirm(db_sessionmaker, alice):
              ("扫描件.jpeg", fixture_bytes("images/quotation_lowq.jpg"))]
     for policy, expected in (("ai", "awaiting_confirm"), ("local_only", "completed_local")):
         parts = [("files", (name, data, "application/octet-stream")) for name, data in files]
-        r = c.post(f"{API_PREFIX}/tasks", data={"stance": "sales", "source": "outgoing", "policy": policy},
+        r = c.post(f"{API_PREFIX}/tasks", data={"stance": "sales", "source": "outgoing", "policy": policy,
+                                               "allow_duplicate": "true"},
                    files=parts, headers=h)
         assert r.status_code == 201, r.text
         tid = r.json()["id"]
@@ -595,7 +641,7 @@ def test_t12_chunked_review_through_api(db_sessionmaker, alice, llm):
 
 
 def test_t13_monthly_cap_reached_through_api(db_sessionmaker, alice, ready_task, llm):
-    """T-13：上限为 1 且本月已有 1 次 sent。确认发送不提前拦截；轮次 failed、提示文字，没有新的 sent 记录。"""
+    """V2Q-65：确认发送提前检查每月上限，不建轮次或发送。"""
     from app.admin import settings_store
 
     user, c, h = alice
@@ -606,15 +652,11 @@ def test_t13_monthly_cap_reached_through_api(db_sessionmaker, alice, ready_task,
         db.add(LlmCall(purpose="review", model_name="mock-model", status="sent"))
         db.commit()
     r = post_run(c, h, task.id)
-    assert r.status_code == 201, r.text
-    run_id = r.json()["id"]
-    execute(db_sessionmaker, run_id)
-    detail = c.get(f"{API_PREFIX}/runs/{run_id}").json()
-    assert (detail["status"], detail["error_message"]) == ("failed", "已达本月调用上限，请联系管理员")
-    assert detail["findings"] == [] and requests == []
+    assert r.status_code == 409 and r.json() == {"code": "CAP_REACHED", "message": "已达本月调用上限，请联系管理员"}
+    assert count(db_sessionmaker, ReviewRun) == 0 and requests == []
     with db_sessionmaker() as db:
         assert db.scalar(select(func.count()).select_from(LlmCall).where(LlmCall.status == "sent")) == 1
-        assert db.get(Task, task.id).status == "reviewed"
+        assert db.get(Task, task.id).status == "awaiting_confirm"
 
 
 def test_coverage_unable_note_restores_codes(db_sessionmaker, alice, ready_task, llm):

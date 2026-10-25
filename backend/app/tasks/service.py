@@ -3,6 +3,7 @@
 日志与审计只写数量、策略等非敏感信息，不写文件名和内容。
 """
 import re
+import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import BinaryIO
@@ -126,6 +127,20 @@ def check_uploads(
     if not 0 <= main_index < len(raw_files):
         raise _bad("VALIDATION_ERROR", "主文件序号不正确")
     return [inspect_upload(name, f, max_bytes) for name, f in raw_files]
+
+
+def duplicate_task(db: DbSession, user: User, upload: CheckedUpload) -> Task | None:
+    """仅比较本人主文件；检查后复位文件指针，不写原件、任务或审计。"""
+    digest = hashlib.sha256()
+    upload.file.seek(0)
+    try:
+        while chunk := upload.file.read(1024 * 1024):
+            digest.update(chunk)
+    finally:
+        upload.file.seek(0)
+    return db.scalar(select(Task).join(TaskFile, TaskFile.task_id == Task.id).where(
+        Task.owner_id == user.id, TaskFile.is_main.is_(True), TaskFile.sha256 == digest.hexdigest(),
+    ).order_by(Task.created_at.desc(), Task.id.desc()).limit(1))
 
 
 def create_task(

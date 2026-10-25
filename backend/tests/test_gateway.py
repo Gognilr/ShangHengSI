@@ -139,6 +139,48 @@ def test_monthly_cap_checked_first(gw, db_sessionmaker, monkeypatch):
         assert len(requests) == 2
 
 
+@pytest.mark.parametrize("scenario,blocked", [("today", True), ("yesterday", False), ("test", False), ("unlimited", False)])
+def test_v2c04_personal_cap_gateway(gw, db_sessionmaker, make_user, monkeypatch, scenario, blocked):
+    from datetime import timedelta
+    now = datetime(2026, 10, 26, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(usage, "utcnow", lambda: now)
+    owner = make_user("daily")
+    requests = use(monkeypatch)
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "model.user_daily_cap", 0 if scenario == "unlimited" else 2, None)
+        for _ in range(5 if scenario == "yesterday" else 2):
+            db.add(LlmCall(user_id=owner.id, purpose="review", status="sent", model_name="mock",
+                           created_at=now-timedelta(days=1) if scenario == "yesterday" else now))
+        db.commit()
+        before = len(calls(db))
+        if blocked:
+            with pytest.raises(GatewayError) as exc:
+                call_model(db, purpose="review", user_id=owner.id, messages=REVIEW_MESSAGES)
+            assert exc.value.code == "USER_CAP_REACHED" and len(calls(db)) == before
+            assert requests == []
+        else:
+            call_model(db, purpose="test" if scenario == "test" else "review", user_id=owner.id, messages=REVIEW_MESSAGES)
+            assert len(calls(db)) == before+1 and len(requests) == 1
+
+
+def test_v2c04_shanghai_day_boundary_and_zero_skip(gw, db_sessionmaker, make_user, monkeypatch):
+    from datetime import timedelta
+    now = datetime(2026, 10, 26, 16, 1, tzinfo=timezone.utc)  # 上海 27 日 00:01
+    midnight = now.replace(hour=16, minute=0)
+    monkeypatch.setattr(usage, "utcnow", lambda: now)
+    user = make_user("boundary")
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "model.user_daily_cap", 1, None)
+        db.add(LlmCall(user_id=user.id, purpose="review", status="sent", model_name="mock", created_at=midnight-timedelta(seconds=1)))
+        db.commit()
+        assert usage.cap_reached(db, user.id, "review") is None
+        db.add(LlmCall(user_id=user.id, purpose="review", status="sent", model_name="mock", created_at=midnight))
+        db.commit()
+        assert usage.cap_reached(db, user.id, "review") == "USER_CAP_REACHED"
+    monkeypatch.setattr(usage, "get_setting", lambda db, key: 0)
+    assert usage.cap_reached(object(), user.id, "review") is None  # 零上限不触发数据库计数
+
+
 def test_t07_blocked_not_sent_and_record_has_no_real_value(gw, db_sessionmaker, make_user, monkeypatch, caplog):
     requests = use(monkeypatch)
     user = make_user("alice")

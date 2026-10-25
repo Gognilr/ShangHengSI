@@ -32,6 +32,7 @@ from app.db.models import (
     User,
 )
 from app.llm.gateway import format_reasons
+from app.llm import gateway, usage
 from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import restore
@@ -236,6 +237,10 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None) -> ReviewR
     main = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(True))).first()
     if main is None or main.doc_type is None:
         raise _conflict("TASK_STATE_CONFLICT", "文件类型尚未识别，不能提交审核")
+
+    reached = usage.cap_reached(db, user.id, "review")
+    if reached:
+        raise _conflict(reached, gateway.MESSAGES[reached])
 
     ctx = build_context(db, task, stance=task.stance, source=task.source, user_note=task.user_note_redacted,
                         main_doc_type=main.doc_type)

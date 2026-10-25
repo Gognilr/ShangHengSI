@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.admin.settings_store import get_setting
 from app.db.base import utcnow
 from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
-from app.llm import gateway
+from app.llm import gateway, usage
 from app.redaction import detect, ner, parties, placeholders, recheck, suspects
 from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
 from app.redaction.outbound import escape_document_tags
@@ -37,6 +37,7 @@ _SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 _ERRORS = {
     "BLOCKED": (409, "CHAT_BLOCKED", "问题中仍含未脱敏的信息，已拦截，未发送"),
     "CAP_REACHED": (409, "CHAT_CAP_REACHED", gateway.MESSAGES["CAP_REACHED"]),
+    "USER_CAP_REACHED": (409, "USER_CAP_REACHED", gateway.MESSAGES["USER_CAP_REACHED"]),
     "NOT_CONFIGURED": (409, "CHAT_NOT_CONFIGURED", gateway.MESSAGES["NOT_CONFIGURED"]),
 }
 _FAILED = (502, "CHAT_FAILED", "回复失败，请稍后重试")
@@ -323,6 +324,10 @@ def preview(db: Session, task: Task, message: str) -> dict:
 
 def send(db: Session, task: Task, user: User, message: str, decisions: list[dict] | None = None) -> dict:
     run = _require(db, task)
+    reached = usage.cap_reached(db, user.id, "chat")
+    if reached:
+        status, code, text = _ERRORS[reached]
+        raise AppError(status, code, text)
     question = (_redact_and_record(db, task, message, decisions) if decisions
                 else _redact_and_record(db, task, message))
     messages = build_messages(db, task, run, question)
