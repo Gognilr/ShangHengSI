@@ -200,12 +200,12 @@
 
 ### 11.1 / 15.2 调用上限（V2-C，C4）
 原文：每月调用上限
-新文：增加“个人每日调用上限”（默认 0 不限）：网关第一步同时检查本月全部调用与本人当天调用；测试连接不计；确认发送、追问发送前先检查
+新文：增加“个人每日调用上限”（默认 0 不限）：网关第一步同时检查本月全部调用与本人当天调用；测试连接不计；确认发送、追问发送前先检查（每月与个人两项，确认发送的每月预检为新增；被拒时不建轮次、不写问答、不更新活动时间，V2Q-65）
 理由：并发提高后一个人可能用完全公司的月度额度
 
 ### 15.5 数据（V2-C，C2、C3、C5）
 原文：原件保留期限：天数，0 表示永久（默认 0）；系统状态：版本号、排队任务数、数据盘剩余空间
-新文：数据保留分五项（原件与原文、审核结果与对话、外发记录正文、审计日志、未完成任务），每项从 30 / 90 / 180 / 365 天 / 永久中选择，新安装默认 30 / 365 / 180 / 永久 / 30，原件不长于结果；系统状态增加原件、数据库、备份的占用与预计可用天数；增加审计日志列表
+新文：数据保留分五项（原件与原文、审核结果与对话、外发记录正文、审计日志、未完成任务），每项从 30 / 90 / 180 / 365 天 / 永久中选择，新安装默认 30 / 365 / 180 / 永久 / 30，原件不长于结果；系统状态增加原件、数据库、备份的占用与预计可用天数（备份目录占用与剩余空间、数据库体积历史由 worker 在每次成功备份时记入备份记录，app 不挂载备份目录；按 30 天内跨度不少于 7 天的样本估算，V2Q-64）；增加审计日志列表
 理由：控制存储增长；外发记录与审计可查
 
 ### 16.4 保留期清理（V2-C，C2）
@@ -228,11 +228,11 @@
 理由：文件名常带客户名称
 
 ### 18 数据库（V2-C）
-新文：users.role 取值 user / sys\_admin / biz\_admin / admin；tasks 增加 last\_activity\_at；settings 增加 retention.result\_days、retention.outbound\_days、retention.audit\_days、retention.unfinished\_days、retention.review\_pending、model.user\_daily\_cap
+新文：users.role 取值 user / sys\_admin / biz\_admin / admin；tasks 增加 last\_activity\_at；backup\_records 增加 db\_bytes、dir\_bytes、dir\_free\_bytes（V2Q-64）；settings 增加 retention.result\_days、retention.outbound\_days、retention.audit\_days、retention.unfinished\_days、retention.review\_pending、model.user\_daily\_cap
 理由：同上
 
 ### 19 接口（V2-C）
-新文：GET /tasks、GET /tasks/{id} 返回 original\_expires\_at、task\_expires\_at；POST /tasks 增加 allow\_duplicate（409 DUPLICATE\_FILE）；GET /admin/audit-logs；GET / PUT /admin/settings/retention 改为五项；GET /admin/system/status 增加占用与可用天数
+新文：GET /tasks、GET /tasks/{id} 返回 original\_expires\_at、task\_expires\_at；POST /tasks 增加 allow\_duplicate（409 DUPLICATE\_FILE）；GET /admin/audit-logs；GET / PUT /admin/settings/retention 改为五项；GET /admin/system/status 增加占用与可用天数；GET /admin/backup/records 的 free\_bytes 改为取最近一次成功备份时的统计，增加 free\_measured\_at（V2Q-64）；POST /tasks/{id}/runs 增加 409 CAP\_REACHED / USER\_CAP\_REACHED，POST /tasks/{id}/chat 增加 409 USER\_CAP\_REACHED（V2Q-65）
 理由：同上
 
 ### 20.3 环境变量（V2-C，C1）

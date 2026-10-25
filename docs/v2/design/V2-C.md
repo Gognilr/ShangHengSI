@@ -8,7 +8,7 @@
 
 1. **开工条件**：V2-B 已通过批次审核（V2-B-09），追加的 V2-B-10 已通过审核（V2-B-11）。M8 的部署脚本（install.sh、upgrade.sh、backup\_now.sh、restore.sh、lib.sh）已在 V1.0 中提交。
 2. **测试**：每节测试用例逐条写成测试，不得删改；单个任务只跑列出的测试文件。涉及数据删除（V2-C-02）与加密（V2-C-07）的任务为测试先行，审核时重点核对。
-3. **迁移编号**：V2-B 实际用到 0013（0012_ner_source、0013_ner_node_results，V2Q-49）。本批 V2-C-02 用 0014，V2-C-06 用 0015（V2Q-53）。
+3. **迁移编号**：V2-B 实际用到 0013（0012_ner_source、0013_ner_node_results，V2Q-49）。本批 V2-C-02 用 0014，V2-C-03 用 0015（V2Q-64），V2-C-06 顺延为 0016（V2Q-53、V2Q-64）。
 4. **升级安全**：从 v1.0.0 升级到 V2 时，任何会删除数据的新规则都不得因为“默认值变化”而在升级当天自动删除老数据（见 2.6）。
 5. 日志不含原文、名称、金额、密钥；提交只暂存本任务文件。
 
@@ -132,46 +132,137 @@ V1.0 只有 `retention.original_days`（默认 0 即永久，管理员可改为 
 
 ## 三、到期提示与存储用量（V2-C-03）
 
-**文件范围**：`backend/app/tasks/service.py`（列表与详情返回到期时间）、`backend/app/tasks/schemas.py`、`backend/app/admin/data.py`（系统状态）、`frontend/src/views/History.vue`、`frontend/src/views/ReviewResult.vue`、`frontend/src/views/settings/Data.vue`、`frontend/src/api/tasks.ts`、`frontend/src/api/admin.ts`、对应测试。
+**文件范围**：`backend/app/tasks/service.py`（列表与详情返回到期时间）、`backend/app/tasks/schemas.py`、`backend/app/admin/data.py`（系统状态；备份记录的剩余空间）、`backend/app/backup/service.py`（只在备份成功时记录统计，V2Q-64）、`backend/app/db/models.py`（只加 backup\_records 三列）、`backend/app/db/alembic/versions/0015_backup_stats.py`（新）、`frontend/src/views/History.vue`、`frontend/src/views/ReviewResult.vue`、`frontend/src/views/settings/Data.vue`、`frontend/src/api/tasks.ts`、`frontend/src/api/admin.ts`、对应测试（test\_tasks\_api.py、test\_admin\_data.py、test\_backup.py、test\_migrations.py）。不改 `deploy/docker-compose.yml`：app 不挂载备份目录（V2Q-64）。
 
 1. `GET /tasks`、`GET /tasks/{id}` 增加 `original_expires_at`、`task_expires_at`（按 2.1、2.2 计算；永久为 null；原件已删除时 original\_expires\_at 为 null）。
 2. 审核历史增加一列“保留至”（显示任务删除日期，永久显示“永久”）；结果页在任务删除前 7 天内或原件删除前 7 天内显示一行提示“本任务将于 {日期} 删除，如需留存请导出报告”“原件将于 {日期} 删除，之后不能重新审核和追问”。
-3. 系统状态（`GET /admin/system/status`）增加：原件占用（遍历 FILES\_DIR 求和）、数据库占用（pg\_database\_size）、备份目录占用与最近一次备份大小、数据盘剩余空间（已有）、**预计可用天数** = 剩余空间 ÷（近 30 天原件日均新增 × (备份保留份数 + 1) + 近 30 天数据库日均增量 × (备份保留份数 + 1)），近 30 天没有新增时显示“—”。结果缓存 10 分钟（目录遍历较慢）。
-4. 设置 → 数据 → 系统状态显示上述各项；预计可用天数 < 30 时警告色。
+3. 系统状态（`GET /admin/system/status`）增加存储用量，数据来源与计算见 3.1、3.2。
+4. 设置 → 数据 → 系统状态显示上述各项；预计可用天数 < 30 时警告色；为 null 时显示“—”，并按 `estimate_reason` 显示一行灰色说明（3.2）；备份三项显示“（{统计时间} 备份时统计）”，没有统计时显示“—”。
 5. 设置 → 数据的“数据保留”分区改为五项（2.1 的名称与可选值，下拉框选 30 / 90 / 180 / 365 天 / 永久），一个“保存”按钮整体提交；后端 422 时显示其提示（RETENTION\_ORDER 显示“原件与原文的保留期不能长于审核结果”）。当前值不是可选值时（V1.0 遗留，见 2.6），下拉框额外列出“{n} 天（旧版设置）”并选中，提示“请改选一个档位后保存”。保存成功后重新拉取提醒（RETENTION\_REVIEW 随之消失）。`api/admin.ts` 的 getRetention / saveRetention 改为五项。（V2Q-62 审阅时发现此表单原未分配任务，归入本任务。）
+
+### 3.1 数据来源（V2Q-64）
+
+app 容器不挂载备份目录（备份里有已按保留期删除、但尚未轮换掉的数据，面向网络的 app 不应能读到）。凡是要看备份目录的数据，都由 worker 在备份时测量，写进该次备份记录；数据库体积的历史也借每天的备份记录保存，不另建采样表、不加定时任务。
+
+**备份时记录**（`backup/service.py`，只在 status=success 的分支；迁移 0015 给 `backup_records` 加三列，均为可空 BIGINT，旧记录为 NULL，降级删除这三列）：
+
+| 列 | 含义 | 测量时机与方法 |
+|-|-|-|
+| `db_bytes` | 数据库体积 | pg\_dump 完成后，同一会话 `SELECT pg_database_size(current_database())` |
+| `dir_bytes` | 备份目录占用 | 轮换完成后，备份目录**顶层**普通文件的大小之和（`os.scandir`，不跟随符号链接，不进入子目录，工作目录 `.work` 是目录、自然不计） |
+| `dir_free_bytes` | 备份目录所在磁盘的剩余空间 | 轮换完成后 `shutil.disk_usage(备份目录).free` |
+
+* 每项单独测量，某一项出错（OSError、数据库错误）时该列写 NULL，日志只记错误类型，**备份仍记为成功**；不为测量重试。
+* 失败的备份（含“备份文件已生成，但删除旧备份失败”）不写这三列。
+* 定时与立即备份都记录；同一天多次备份都算样本。
+
+**app 实时测量**（`admin/data.py`）：
+
+| 项 | 来源 |
+|-|-|
+| 原件占用 `files_bytes` | 遍历 FILES\_DIR（`os.walk`，不跟随符号链接）的普通文件大小之和；根目录不可读时为 null；单个文件 stat 失败时跳过 |
+| 数据库占用 `db_bytes` | 实时 `pg_database_size(current_database())` |
+| 数据盘剩余 `data_free_bytes` | 已有，`disk_usage(FILES_DIR).free` |
+
+**取自最近一次成功备份记录**（按 finished\_at 最新、status=success；没有这样的记录或其列为 NULL 时对应项为 null）：`backup_dir_bytes` ← dir\_bytes，`latest_backup_bytes` ← size\_bytes，`backup_free_bytes` ← dir\_free\_bytes，`backup_stats_at` ← finished\_at。
+
+**顺带修正**：`GET /admin/backup/records` 的 `free_bytes` 现在在 app 容器里对 BACKUP\_DIR 求剩余空间，app 没有挂载备份目录，实际量到的是容器自身的文件系统，不是备份盘。改为取最近一次成功备份的 dir\_free\_bytes，并增加 `free_measured_at`（该记录的 finished\_at）；没有时两者为 null。`dir` 字段不变。Data.vue 备份分区的剩余空间旁显示“（{时间} 备份时统计）”；为 null 时显示“—（尚无成功备份的统计）”，不再显示“备份目录不可用”。
+
+### 3.2 预计可用天数
+
+```
+样本 S = status=success 且 db_bytes 非空、finished_at ≥ now − 30 天 的备份记录，按 finished_at 升序
+E = S 的第一条，L = S 的最后一条
+跨度 span = L.finished_at − E.finished_at
+若 S 少于 2 条或 span < 7 天          → null，estimate_reason = "insufficient_history"
+数据库日均增量 db_daily = max(0, L.db_bytes − E.db_bytes) × 86400 ÷ span 秒数
+原件日均新增 files_daily = Σ task_files.size_bytes（created_at ∈ [E.finished_at, now]）× 86400 ÷ (now − E.finished_at) 秒数
+每日占用 daily = (files_daily + db_daily) × (backup.keep + 1)
+若 data_free_bytes 为 null             → null，estimate_reason = "unavailable"
+若 daily = 0                          → null，estimate_reason = "no_growth"
+否则 estimated_days = data_free_bytes ÷ daily（整除，向下取整），estimate_reason = null
+```
+
+* 全部用整数运算（字节数为整数，除法向下取整），不用浮点。
+* “不足 30 天”：只要 30 天内最早与最晚样本相隔 ≥ 7 天就按实际跨度折算日均，不按 30 天摊薄（摊薄会高估可用天数）。新安装、从 V1.0 升级（旧记录列为 NULL）或备份连续失败时，前 7 天显示“—”。
+* 负增长（清理后数据库变小）按 0 计；原件新增按仍存在的 task\_files 行统计，已删除任务的文件不计。
+* 公式假定备份目录与数据盘同盘；分盘时把备份占用也算在数据盘上，结果偏保守（可用天数偏少），不另行判断。
+* 界面说明文字：insufficient\_history “备份统计不足 7 天，暂无法估算”；no\_growth “近 30 天没有新增数据”；unavailable “无法读取数据盘剩余空间”。
+
+**缓存**：存储用量部分（files\_bytes、db\_bytes、data\_free\_bytes、备份四项、estimated\_days、estimate\_reason）在 app 进程内存中缓存 10 分钟，返回 `storage_measured_at`（本次测量时间）；version、queued\_jobs 每次实时查询。app 有 2 个 uvicorn 进程，各自缓存，可接受。不写库、不提供手动刷新。
+
+### 3.3 测试用例
 
 | # | 场景 | 期望 |
 |-|-|-|
 | 1 | 原件 30、结果 365，最后活动 2026-01-01 | original\_expires\_at=2026-01-31，task\_expires\_at=2027-01-01（按 Asia/Shanghai 日期显示） |
 | 2 | 结果层永久 | task\_expires\_at 为 null，历史列表显示“永久” |
 | 3 | 距删除 5 天 | 结果页显示删除提示 |
-| 4 | 系统状态 | 各项占用为非负整数；近 30 天无新增时可用天数为 null |
-| 5 | 10 分钟内重复请求 | 不重复遍历目录（用计数桩验证） |
+| 4 | 系统状态 | 各项占用为非负整数；近 30 天无新增时可用天数为 null，estimate\_reason=no\_growth |
+| 5 | 10 分钟内重复请求 | 不重复遍历目录、不重复查询数据库体积与备份记录（用计数桩验证）；queued\_jobs 仍实时；超过 10 分钟重新测量 |
+| 6 | 没有任何成功备份，或只有 V1.0 留下的旧记录（三列为 NULL） | 备份三项与 backup\_stats\_at 为 null；estimated\_days 为 null，estimate\_reason=insufficient\_history |
+| 7 | 30 天内两条样本相隔 10 天，db\_bytes 增加 10 MiB；now 取后一条样本的时间，这 10 天内新增原件 20 MiB；keep=7；剩余 900 MiB | db\_daily=1 MiB、files\_daily=2 MiB、daily=24 MiB、estimated\_days=37 |
+| 8 | 样本相隔 6 天 | null，insufficient\_history |
+| 9 | 31 天前的样本 + 30 天内仅 1 条 | 31 天前的不计入；null，insufficient\_history |
+| 10 | 后一条样本 db\_bytes 比前一条小，且期间无原件新增 | db\_daily=0；null，no\_growth |
+| 11 | 只有失败的备份记录带有数据（测试直接造） | 不作为样本 |
+| 12 | FILES\_DIR 不可读 | files\_bytes 为 null，接口 200，其余各项正常 |
+| 13 | 数据盘剩余空间读不到 | estimated\_days 为 null，estimate\_reason=unavailable |
+| 14 | 一次成功备份 | 记录的 db\_bytes > 0；dir\_bytes 等于备份目录顶层文件大小之和（含本次备份与 .sha256，不含子目录内文件）；dir\_free\_bytes 非空 |
+| 15 | 成功备份时 disk\_usage 抛 OSError（桩） | 备份 status=success，dir\_free\_bytes 为 NULL，其余两列正常；日志只记错误类型 |
+| 16 | 备份失败、轮换失败 | 三列均为 NULL |
+| 17 | `GET /admin/backup/records` | free\_bytes、free\_measured\_at 取自最近一次成功备份；没有时为 null；不再在 app 中调用 disk\_usage(BACKUP\_DIR)（桩断言未调用） |
+| 18 | 迁移 0015 升级 / 降级 | 升级后旧记录三列为 NULL；降级删除三列；模型与迁移一致 |
 
 ## 四、个人每日限额与重复文件提示（V2-C-04）
 
-**文件范围**：`backend/app/llm/gateway.py`（只改调用上限检查）、`backend/app/llm/usage.py`、`backend/app/admin/model.py`（设置项）、`backend/app/admin/settings_store.py`、`backend/app/tasks/router.py`、`backend/app/tasks/service.py`、`frontend/src/views/settings/Model.vue`、`frontend/src/views/ReviewNew.vue`、`frontend/src/api/tasks.ts`、对应测试。
+**文件范围**：`backend/app/llm/gateway.py`（只改调用上限检查与 MESSAGES）、`backend/app/llm/usage.py`、`backend/app/admin/model.py`（设置项）、`backend/app/admin/settings_store.py`、`backend/app/review/service.py`（只在 create\_run 中加上限预检，V2Q-65）、`backend/app/chat/service.py`（只在 send 中加上限预检、在 \_ERRORS 中加 USER\_CAP\_REACHED，V2Q-65）、`backend/app/tasks/router.py`、`backend/app/tasks/service.py`、`frontend/src/views/settings/Model.vue`、`frontend/src/views/ReviewNew.vue`、`frontend/src/api/tasks.ts`、`frontend/src/api/runs.ts`（只在 RUN\_ERROR\_MESSAGES 中加两条）、对应测试（test\_gateway.py、test\_admin\_model.py、test\_runs\_api.py、test\_chat.py、test\_review\_job.py、test\_tasks\_api.py）。C-02 对 review/service.py、chat/service.py 的授权仅限活动时间，本任务的授权仅限下面写明的预检，两处都不改权限、出口复检、状态机和活动时间的写法。
 
 ### 4.1 个人每日限额
 
 * 设置 `model.user_daily_cap`（默认 0 = 不限，范围 0～10000），在模型设置页“每月调用上限”下方。
 * 网关第一步“调用上限检查”同时检查：本月全部 sent 次数 < 每月上限；**本人今天**（Asia/Shanghai 自然日）sent 次数 < 个人每日上限。purpose=test 不计、不受限。超限时不发送、不写 llm\_calls，错误码 `USER_CAP_REACHED`，“已达今日个人调用上限，请明天再试或联系管理员”。审核中途达到限额时，与每月上限相同：后续分段失败，轮次 partial / failed。
-* 确认发送与追问发送前先做同样的检查，超限时直接 409 USER\_CAP\_REACHED（不建轮次），避免用户等到审核中途才失败。
+* 确认发送与追问发送前先做同样的检查，超限时直接 409（不建轮次、不写问答），避免用户等到审核中途才失败。
+
+**共用检查**（V2Q-65）：`usage.cap_reached(db, user_id, purpose) -> str | None`，返回 `"CAP_REACHED"`、`"USER_CAP_REACHED"` 或 None。先查每月（与 V1.0 相同：所有 purpose 都受限，计数含 test），再查个人（purpose=test 或 user\_id 为空时跳过；计数只算该 user\_id、status=sent、purpose≠test、created\_at ≥ 本地当天 0 点）。两项上限为 0 时不查。网关第一步、确认发送、追问三处都调用它，不各写一份。只读，不加锁、不预占名额：预检通过后仍可能在网关处超限，届时按网关的结果处理。
+
+**预检入口**：
+
+| 入口 | 位置 | 超限时的返回 |
+|-|-|-|
+| 确认发送（含重新审核，都经 `POST /tasks/{id}/runs`） | `review/service.py` create\_run：在现有状态、疑似遗漏、我方、文件类型检查**之后**，build\_context 与出口预检**之前** | CAP\_REACHED → 409 `CAP_REACHED`“已达本月调用上限，请联系管理员”；USER\_CAP\_REACHED → 409 `USER_CAP_REACHED`（文字同上） |
+| 追问（`POST /tasks/{id}/chat`） | `chat/service.py` send：在 \_require（可追问条件）**之后**，\_redact\_and\_record **之前** | CAP\_REACHED → 409 `CHAT_CAP_REACHED`（沿用 V1.0）；USER\_CAP\_REACHED → 409 `USER_CAP_REACHED` |
+
+* 被预检拒绝时：不建轮次、不入队、任务状态不变、不写已记住的名称（learn\_confirmed\_names）、不写 run\_create 审计；不写 chat\_messages、不写追问的脱敏记录；不写 llm\_calls、不调用模型；不更新 last\_activity\_at（与 2.2 “被拒不写”一致）。
+* create\_run 的每月上限预检是 V1.0 没有的：V1.0 在月度额度用完后仍能建轮次，到 worker 才失败。按 4.1 第三条“同样的检查”一并前移。
+* 追问在预检之后网关仍返回 USER\_CAP\_REACHED 时（并发竞态），`_ERRORS` 映射为 409 USER\_CAP\_REACHED，不落到 502 CHAT\_FAILED。
+* 前端：`RUN_ERROR_MESSAGES` 加 `CAP_REACHED`、`USER_CAP_REACHED` 两条（文字同上）；ChatPanel 已显示后端 message，不改。
+* 审核分段的外发记录 user\_id 为 run.created\_by（即任务所有者），个人计数据此统计，不改。
 
 ### 4.2 重复文件提示
 
 * `POST /tasks` 增加表单字段 `allow_duplicate`（默认 false）。主文件的 SHA-256 与**本人**未删除的任务中某个主文件相同、且 allow\_duplicate 为 false 时，返回 409 `DUPLICATE_FILE`，body 含最近一个这样的任务的 `{task_id, title, created_at}`，不创建任务。只比较本人的任务，不泄露他人信息。
 * 前端收到 409 时弹窗：“你在 {时间} 审核过同一文件”，按钮“打开上次结果”（跳转该任务）与“继续新建”（带 allow\_duplicate=true 重新提交）。
 
+### 4.3 测试用例
+
 | # | 场景 | 期望 |
 |-|-|-|
 | 1 | 个人上限 2，今天已 sent 2 次 | 第 3 次网关不发送，USER\_CAP\_REACHED，无 llm\_calls 新行 |
 | 2 | 昨天 sent 5 次、今天 0 次 | 可发送 |
 | 3 | 测试连接 | 不受个人上限影响 |
-| 4 | 确认发送时已超限 | 409，不建轮次 |
+| 4 | 确认发送时已超个人上限 | 409 USER\_CAP\_REACHED；无新 review\_runs、jobs；任务仍为 awaiting\_confirm；last\_activity\_at 不变；已记住的名称未写入；无 run\_create 审计；网关桩未被调用 |
 | 5 | 上传与本人旧任务主文件相同的文件 | 409 DUPLICATE\_FILE，返回旧任务信息 |
 | 6 | 他人上传过同一文件 | 正常创建（不提示） |
 | 7 | allow\_duplicate=true | 正常创建 |
+| 8 | 确认发送时每月上限已满 | 409 CAP\_REACHED，其余同第 4 条 |
+| 9 | 任务不是 awaiting\_confirm 且已超个人上限 | 409 TASK\_STATE\_CONFLICT（状态检查在前） |
+| 10 | 追问时已超个人上限 | 409 USER\_CAP\_REACHED；无 chat\_messages、llm\_calls 新行；网关桩未被调用；last\_activity\_at 不变 |
+| 11 | 追问预检通过，网关返回 USER\_CAP\_REACHED（桩） | 409 USER\_CAP\_REACHED，不是 502 |
+| 12 | 追问时每月上限已满 | 409 CHAT\_CAP\_REACHED（V1.0 断言保留） |
+| 13 | 他人今天 sent 3 次、本人今天 purpose=test 的 sent 3 次，个人上限 2 | 本人确认发送与追问都可进行 |
+| 14 | 两段的审核，个人上限 = 今天已用 + 1 | 第一段 sent，第二段失败，轮次 partial |
+| 15 | 个人上限 0 | 不检查个人计数（大量 sent 也可发送） |
 
 ## 五、审计日志页与图片警告（V2-C-05）
 
@@ -189,11 +280,11 @@ V1.0 只有 `retention.original_days`（默认 0 即永久，管理员可改为 
 
 ## 六、设置权限拆分（V2-C-06，测试先行）
 
-**文件范围**：`backend/app/db/models.py`、`backend/app/db/alembic/versions/0015_admin_roles.py`（新）、`backend/app/security/deps.py`、`backend/app/admin/*.py`（替换权限依赖）、`backend/app/auth/router.py`（提醒按角色）、`backend/app/admin/users.py`、`backend/app/cli.py`（只改创建管理员的角色值）、`backend/app/redaction/engine.py` 与 `backend/app/redaction/router.py`（“以后自动替换”）、`frontend/src/router/index.ts`、`frontend/src/layouts/MainLayout.vue`、`frontend/src/views/settings/SettingsLayout.vue`、`frontend/src/views/settings/Users.vue`、`frontend/src/components/ManualRedactDialog.vue`、`frontend/src/components/SuspectList.vue`、`frontend/src/stores/auth.ts`、对应测试。
+**文件范围**：`backend/app/db/models.py`、`backend/app/db/alembic/versions/0016_admin_roles.py`（新）、`backend/app/security/deps.py`、`backend/app/admin/*.py`（替换权限依赖）、`backend/app/auth/router.py`（提醒按角色）、`backend/app/admin/users.py`、`backend/app/cli.py`（只改创建管理员的角色值）、`backend/app/redaction/engine.py` 与 `backend/app/redaction/router.py`（“以后自动替换”）、`frontend/src/router/index.ts`、`frontend/src/layouts/MainLayout.vue`、`frontend/src/views/settings/SettingsLayout.vue`、`frontend/src/views/settings/Users.vue`、`frontend/src/components/ManualRedactDialog.vue`、`frontend/src/components/SuspectList.vue`、`frontend/src/stores/auth.ts`、对应测试。
 
 ### 6.1 角色
 
-`users.role` 取值由 user / admin 改为：`user`（普通用户）、`sys_admin`（系统管理员）、`biz_admin`（业务管理员）、`admin`（两者兼任）。迁移 0015：原 admin 保持 admin（升级后能力不变）。
+`users.role` 取值由 user / admin 改为：`user`（普通用户）、`sys_admin`（系统管理员）、`biz_admin`（业务管理员）、`admin`（两者兼任）。迁移 0016（down\_revision=0015）：原 admin 保持 admin（升级后能力不变）。
 
 | 设置页与接口 | sys\_admin | biz\_admin | admin |
 |-|-|-|-|
@@ -221,7 +312,7 @@ V1.0 只有 `retention.original_days`（默认 0 即永久，管理员可改为 
 | 1 | biz\_admin 访问账号、模型、数据接口 | 403；访问审核要求、脱敏接口正常 |
 | 2 | sys\_admin 访问审核要求、脱敏接口 | 403 |
 | 3 | admin | 全部可访问（与升级前相同） |
-| 4 | 迁移 0015 升级 | 原 admin 仍为 admin；降级时 sys\_admin、biz\_admin 改回 admin（有权限的都保留为管理员） |
+| 4 | 迁移 0016 升级 | 原 admin 仍为 admin；降级时 sys\_admin、biz\_admin 改回 admin（有权限的都保留为管理员） |
 | 5 | 停用最后一个 sys\_admin（另有 biz\_admin） | 409 |
 | 6 | 任一管理员访问他人任务、轮次、问题、对话 | 404（A-06） |
 | 7 | 普通用户勾选“以后自动替换”保存“示例简称” | redaction\_terms 新增 custom 词条，created\_by 为该用户；下一个任务自动替换 |
@@ -269,4 +360,4 @@ V1.0 只有 `retention.original_days`（默认 0 即永久，管理员可改为 
 
 ## 十、新增待确认问题
 
-见 docs/v2/questions/V2-C.md（V2Q-17～V2Q-22）；后续增补 V2Q-52（提醒条本次收起）、V2Q-53（迁移编号顺延）。
+见 docs/v2/questions/V2-C.md（V2Q-17～V2Q-22）；后续增补 V2Q-52（提醒条本次收起）、V2Q-53（迁移编号顺延）、V2Q-61～63（C-02 入口、升级保护、清理计数）、V2Q-64（存储统计来源，第三节）、V2Q-65（C-04 上限预检入口，第四节）。
