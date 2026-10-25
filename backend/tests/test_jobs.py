@@ -222,6 +222,24 @@ def test_fail_finalizes_review_run_and_task(db_sessionmaker, make_user):
         assert task.status == "reviewed"
 
 
+def test_v2c_final_failure_activity_guards(db_sessionmaker, make_user):
+    owner = make_user("alice")
+    before = datetime.now(timezone.utc) - timedelta(days=3)
+    for status, kind, changed in (("reviewing", "review", True), ("reviewed", "review", False),
+                                  ("parsing", "parse", False)):
+        tid = _task(db_sessionmaker, owner, status=status)
+        rid = _run(db_sessionmaker, owner, tid, status="running")
+        jid = _add(db_sessionmaker, kind, {"task_id": str(tid), "run_id": str(rid)},
+                   status="running", attempts=3, heartbeat_at=before)
+        with db_sessionmaker() as db:
+            db.get(Task, tid).last_activity_at = before
+            db.commit()
+            jobs.requeue_stale(db)
+            task = db.get(Task, tid)
+            assert (task.last_activity_at > before) if changed else (task.last_activity_at == before)
+            assert db.get(Job, jid).status == "failed"
+
+
 def test_fail_keeps_state_already_set_by_handler(db_sessionmaker, make_user):
     """处理函数已经收尾（如解析失败写了具体原因、轮次 blocked）时不覆盖。"""
     owner = make_user("alice")

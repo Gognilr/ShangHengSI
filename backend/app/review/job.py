@@ -68,6 +68,7 @@ def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_s
         run.failed_chunks = failed
     run.coverage = None if status == "blocked" else coverage  # blocked 未发送；其他带结果的终态写入覆盖说明
     task.status = task_status
+    task.last_activity_at = utcnow()
     db.commit()
     logger.info("run %s 结束 状态=%s", run_id, status)
 
@@ -117,6 +118,7 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
     task.high_count = high
     task.error_message = None
     task.last_completed_at = now
+    task.last_activity_at = now
     try:
         db.commit()
     except IntegrityError:  # 保存期间任务被删除

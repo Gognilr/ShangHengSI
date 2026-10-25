@@ -14,6 +14,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_setting
+from app.db.base import utcnow
 from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
 from app.llm import gateway
 from app.redaction import detect, ner, parties, placeholders, recheck, suspects
@@ -338,6 +339,7 @@ def send(db: Session, task: Task, user: User, message: str, decisions: list[dict
     answer = ChatMessage(task_id=task.id, role="assistant", content_redacted=result.content,
                          tokens_in=result.tokens_in, tokens_out=result.tokens_out)
     db.add(answer)
+    task.last_activity_at = utcnow()
     db.commit()
     logger.info("task %s 追问已回复 llm_call=%s", task.id, result.llm_call_id)
     mapping = load_redaction_map(db, task.id)

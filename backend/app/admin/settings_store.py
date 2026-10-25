@@ -30,7 +30,12 @@ DEFAULTS: dict[str, Any] = {
     "review.company_profile": "",
     "backup.time": "02:00",
     "backup.keep": 7,
-    "retention.original_days": 0,
+    "retention.original_days": 30,
+    "retention.result_days": 365,
+    "retention.outbound_days": 180,
+    "retention.audit_days": 0,
+    "retention.unfinished_days": 30,
+    "retention.review_pending": False,
 }
 
 

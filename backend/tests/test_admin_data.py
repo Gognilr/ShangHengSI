@@ -142,14 +142,52 @@ def test_records_latest_and_space(admin, dirs, db_sessionmaker):
 
 def test_retention_settings(admin, db_sessionmaker):
     c, csrf = admin
-    assert c.get(A + "/settings/retention").json() == {"original_days": 0}
-    assert c.put(A + "/settings/retention", json={"original_days": 3650}, headers=_hdr(csrf)).json() == {"original_days": 3650}
-    assert c.put(A + "/settings/retention", json={"original_days": 0}, headers=_hdr(csrf)).status_code == 200
-    c.put(A + "/settings/retention", json={"original_days": 0}, headers=_hdr(csrf))  # 无变化
+    body = dict(original_days=30, result_days=365, outbound_days=180, audit_days=0, unfinished_days=30)
+    assert c.get(A + "/settings/retention").json() == body
+    body["original_days"] = 365
+    assert c.put(A + "/settings/retention", json=body, headers=_hdr(csrf)).json() == body
+    body["original_days"] = 30
+    assert c.put(A + "/settings/retention", json=body, headers=_hdr(csrf)).status_code == 200
+    c.put(A + "/settings/retention", json=body, headers=_hdr(csrf))  # 无变化
     assert _audits(db_sessionmaker) == [("setting", "retention", {"keys": ["retention.original_days"]})] * 2
-    for bad in (-1, 3651, "x", 1.5, None):
-        assert c.put(A + "/settings/retention", json={"original_days": bad}, headers=_hdr(csrf)).status_code == 422, bad
+    for bad in (-1, 3650, 3651, 45, "x", 1.5, None):
+        assert c.put(A + "/settings/retention", json={**body, "original_days": bad}, headers=_hdr(csrf)).status_code == 422, bad
     assert c.put(A + "/settings/retention", json={}, headers=_hdr(csrf)).status_code == 422
+
+
+@pytest.mark.parametrize("original,result", [(365, 90), (0, 365)])
+def test_v2c_retention_order(admin, original, result):
+    c, csrf = admin
+    body = dict(original_days=original, result_days=result, outbound_days=180, audit_days=0, unfinished_days=30)
+    r = c.put(A + "/settings/retention", json=body, headers=_hdr(csrf))
+    assert r.status_code == 422 and r.json()["code"] == "RETENTION_ORDER"
+
+
+def test_v2c_legacy_45_get_reject_and_confirm(admin, db_sessionmaker):
+    c, csrf = admin
+    body = dict(original_days=45, result_days=0, outbound_days=0, audit_days=0, unfinished_days=0)
+    with db_sessionmaker() as db:
+        for key, value in body.items():
+            settings_store.set_setting(db, "retention." + key, value, None)
+        settings_store.set_setting(db, "retention.review_pending", True, None)
+        db.commit()
+    assert c.get(A + "/settings/retention").json() == body
+    assert c.put(A + "/settings/retention", json=body, headers=_hdr(csrf)).status_code == 422
+    assert any(a["code"] == "RETENTION_REVIEW" for a in c.get(f"{API_PREFIX}/auth/me").json()["alerts"])
+    body["original_days"] = 30
+    assert c.put(A + "/settings/retention", json=body, headers=_hdr(csrf)).status_code == 200
+    assert not any(a["code"] == "RETENTION_REVIEW" for a in c.get(f"{API_PREFIX}/auth/me").json()["alerts"])
+
+
+def test_v2c_same_values_clear_pending_and_audit(admin, db_sessionmaker):
+    c, csrf = admin
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "retention.review_pending", True, None)
+        db.commit()
+    body = c.get(A + "/settings/retention").json()
+    assert c.put(A + "/settings/retention", json=body, headers=_hdr(csrf)).status_code == 200
+    assert _audits(db_sessionmaker)[-1][1] == "retention"
+    assert not any(a["code"] == "RETENTION_REVIEW" for a in c.get(f"{API_PREFIX}/auth/me").json()["alerts"])
 
 
 # ---------------------------------------------------------------- 外发记录
@@ -233,6 +271,7 @@ def test_outbound_detail(admin, make_user, db_sessionmaker):
     assert d["block_reason"] is None and d["error_message"] is None and d["user_name"] == "alice"
     blocked = c.get(f"{A}/outbound-logs/{next(r for r in rows if r['status'] == 'blocked')['id']}").json()
     assert blocked["request_text"] is None and blocked["block_reason"] == "MAP@12；PHONE@30"
+    assert blocked["body_notice"] is None
     err = c.get(f"{A}/outbound-logs/{next(r for r in rows if r['status'] == 'error')['id']}").json()
     assert err["error_message"] == "模型服务调用失败（HTTP 500）"
 

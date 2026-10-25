@@ -46,6 +46,15 @@ def alerts(c):
     return c.get(ME).json()["alerts"]
 
 
+def test_v2c_retention_pending_admin_only(admin, db_sessionmaker, make_user, login):
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db, "retention.review_pending", True, None)
+        db.commit()
+    assert {"code": "RETENTION_REVIEW", "message": "数据保留已改为分层设置，新增的保留项暂为永久，请在设置 → 数据中确认"} in alerts(admin)
+    make_user("reader")
+    assert alerts(login("reader")[0]) == []
+
+
 def add_backup(sm, status, size=None):
     with sm() as s:
         s.add(BackupRecord(trigger="schedule", status=status, size_bytes=size, started_at=utcnow(),

@@ -48,6 +48,32 @@ def get_run(db_sessionmaker, run_id) -> ReviewRun:
         return db.get(ReviewRun, run_id)
 
 
+@pytest.mark.parametrize("status", ["completed", "partial", "blocked", "failed"])
+def test_v2c_all_terminal_runs_update_activity(db_sessionmaker, owner, ready_task, llm, status):
+    from datetime import timedelta
+    from app.db.base import utcnow
+    task = ready_task(owner, user_note="请检查付款条款")
+    if status == "partial":
+        llm(handler=custom_reply(lambda output, messages: output["requirement_results"].pop()))
+    else:
+        llm("normal")
+    run = new_run(db_sessionmaker, task, owner)
+    before = utcnow() - timedelta(days=5)
+    with db_sessionmaker() as db:
+        db.get(Task, task.id).last_activity_at = before
+        if status == "blocked":
+            from app.db.models import DocNode
+            db.scalar(select(DocNode).where(DocNode.task_id == task.id)).redacted_text = "联系电话 13800138000"
+        elif status == "failed":
+            from app.admin.settings_store import set_setting
+            set_setting(db, "model.name", "", None)
+        db.commit()
+    run_job(db_sessionmaker, run.id)
+    assert get_run(db_sessionmaker, run.id).status == status
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).last_activity_at > before
+
+
 def llm_calls(db_sessionmaker) -> list[LlmCall]:
     with db_sessionmaker() as db:
         return list(db.scalars(select(LlmCall).order_by(LlmCall.id)))

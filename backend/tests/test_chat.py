@@ -64,6 +64,34 @@ def chat_calls(db_sessionmaker) -> list[LlmCall]:
         return list(db.scalars(select(LlmCall).where(LlmCall.purpose == "chat").order_by(LlmCall.id)))
 
 
+@pytest.mark.parametrize("outcome", ["success", "blocked", "gateway_error"])
+def test_v2c_chat_activity_and_readonly_report(alice, db_sessionmaker, ready_task, llm, monkeypatch, outcome):
+    from datetime import timedelta
+    from app.db.base import utcnow
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    before = utcnow() - timedelta(days=5)
+    with db_sessionmaker() as db:
+        db.get(Task, task.id).last_activity_at = before
+        db.commit()
+    assert c.get(f"{API_PREFIX}/runs/{task.latest_run_id}/report").status_code == 200
+    assert c.get(url(task)).status_code == 200
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).last_activity_at == before
+    message = "第2条如何修改？"
+    if outcome == "success":
+        llm(handler=chat_reply("建议确认付款期限。", []))
+    elif outcome == "blocked":
+        monkeypatch.setattr(service, "build_messages", lambda *args: [{"role": "user", "content": "电话13800138000"}])
+    else:
+        llm(handler=lambda request: httpx.Response(500))
+    r = c.post(url(task), json={"message": message}, headers=h)
+    assert r.status_code == 200 if outcome == "success" else r.status_code >= 400
+    with db_sessionmaker() as db:
+        activity = db.get(Task, task.id).last_activity_at
+        assert (activity > before) if outcome == "success" else (activity == before)
+
+
 def message_count(db_sessionmaker) -> int:
     with db_sessionmaker() as db:
         return db.scalar(select(func.count()).select_from(ChatMessage))

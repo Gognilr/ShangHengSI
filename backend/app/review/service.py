@@ -260,6 +260,7 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None) -> ReviewR
     db.flush()
     jobs.enqueue(db, "review", {"task_id": str(task.id), "run_id": str(run.id)})
     task.status = "reviewing"
+    task.last_activity_at = utcnow()
     task.latest_run_id = run.id
     task.error_message = None
     audit.record(db, "run_create", user_id=user.id, target_type="run", target_id=str(run.id),

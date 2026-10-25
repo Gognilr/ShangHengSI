@@ -138,23 +138,41 @@ def backup_records(db: DbSession = Depends(get_db)) -> BackupRecords:
 class RetentionSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    original_days: int = Field(ge=0, le=3650)
+    original_days: int
+    result_days: int
+    outbound_days: int
+    audit_days: int
+    unfinished_days: int
 
 
 @router.get("/settings/retention", response_model=RetentionSettings)
 def get_retention(db: DbSession = Depends(get_db)) -> RetentionSettings:
-    return RetentionSettings(original_days=int(get_setting(db, "retention.original_days") or 0))
+    return RetentionSettings(**{name: int(get_setting(db, "retention." + name) or 0)
+                                for name in RetentionSettings.model_fields})
 
 
 @router.put("/settings/retention", response_model=RetentionSettings)
 def put_retention(
     body: RetentionSettings, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
 ) -> RetentionSettings:
-    if int(get_setting(db, "retention.original_days") or 0) != body.original_days:
-        set_setting(db, "retention.original_days", body.original_days, admin.id)
+    values = body.model_dump()
+    if any(value not in (0, 30, 90, 180, 365) for value in values.values()):
+        raise AppError(422, "VALIDATION_ERROR", "请为数据保留期选择 30、90、180、365 天或永久")
+    if body.result_days != 0 and (body.original_days == 0 or body.original_days > body.result_days):
+        raise AppError(422, "RETENTION_ORDER", "原件与原文的保留期不能长于审核结果")
+    changed = []
+    for name, value in values.items():
+        key = "retention." + name
+        if get_setting(db, key) != value:
+            set_setting(db, key, value, admin.id)
+            changed.append(key)
+    pending = bool(get_setting(db, "retention.review_pending"))
+    if pending:
+        set_setting(db, "retention.review_pending", False, admin.id)
+    if changed or pending:
         audit.record(db, "setting_update", user_id=admin.id, target_type="setting", target_id="retention",
-                     detail={"keys": ["retention.original_days"]}, ip=client_ip(request))
-        db.commit()
+                     detail={"keys": changed or ["retention.review_pending"]}, ip=client_ip(request))
+    db.commit()
     return body
 
 
@@ -180,6 +198,7 @@ class OutboundDetail(OutboundRow):
     response_text: Optional[str]
     block_reason: Optional[str]
     error_message: Optional[str]
+    body_notice: Optional[str] = None
 
 
 class OutboundPage(BaseModel):
@@ -242,9 +261,13 @@ def get_outbound(log_id: str, db: DbSession = Depends(get_db)) -> OutboundDetail
     if row is None:
         raise not_found
     call, name = row
+    # 网关 sent/error 必存请求正文；两段正文均为 NULL 表示已清理。
+    # blocked 原本就不存正文，不误标；之后改保留设置也不让已清理的说明消失。
+    cleared = call.status in ("sent", "error") and call.request_text is None and call.response_text is None
     return OutboundDetail(**_outbound_fields(call, name), request_text=call.request_text,
                           response_text=call.response_text, block_reason=call.block_reason,
-                          error_message=call.error_message)
+                          error_message=call.error_message,
+                          body_notice="正文已按保留期清除" if cleared else None)
 
 
 # ---------------------------------------------------------------- 系统状态

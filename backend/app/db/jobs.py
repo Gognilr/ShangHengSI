@@ -109,6 +109,7 @@ def finalize_failed(db: Session, job_type: str, payload: object) -> None:
             task = db.get(Task, run.task_id, with_for_update=True)
             if task is not None and task.status == "reviewing":
                 task.status = "reviewed"
+                task.last_activity_at = utcnow()
     elif job_type == "backup":
         # 同一时间只有一个备份（advisory lock），job 最终失败时仍为 running 的记录就是它留下的（M7 设计 3.4）
         db.execute(update(BackupRecord).where(BackupRecord.status == "running")

@@ -8,13 +8,14 @@ from datetime import date, datetime, time, timedelta
 from typing import BinaryIO
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, distinct, exists, func, select
+from sqlalchemy import delete, distinct, exists, func, select, update
 from sqlalchemy.orm import Session as DbSession
 
 from app.audit import service as audit
 from app.config import get_settings
 from app.db import jobs
-from app.db.models import DocNode, Job, RedactionItem, RedactionSuspect, ReviewRun, Task, TaskFile, User
+from app.db.base import utcnow
+from app.db.models import DocNode, Job, LlmCall, RedactionItem, RedactionSuspect, ReviewRun, Task, TaskFile, User
 from app.redaction import engine
 from app.security import crypto
 from app.security.errors import AppError
@@ -165,6 +166,7 @@ def create_task(
             policy=policy,
             user_note_enc=crypto.encrypt_text(user_note) if user_note else None,
             status="parsing",
+            last_activity_at=utcnow(),
         )
         db.add(task)
         db.flush()
@@ -360,6 +362,7 @@ def patch_task(db: DbSession, task: Task, patch: TaskPatch) -> TaskDetail:
             task.user_note_redacted = None
     engine.apply_party_changes(db, task, [])
     task.status = "awaiting_confirm"
+    task.last_activity_at = utcnow()
     db.flush()
     result = task_detail(db, task)
     db.commit()
@@ -415,17 +418,18 @@ def load_raw(file: TaskFile) -> tuple[bytes, str]:
 # ---------------------------------------------------------------- 删除
 
 
-def delete_task(db: DbSession, task: Task, user: User, ip: str | None) -> None:
+def delete_task(db: DbSession, task: Task, user: User | None, ip: str | None) -> None:
     """彻底删除（17.8）：先删原件文件，再删任务行（子表级联删除；llm_calls 无外键，记录保留）。"""
     keys = db.scalars(select(TaskFile.storage_key).where(TaskFile.task_id == task.id)).all()
     for key in keys:
         storage.delete_original(key)
     # 还在排队的 parse / review 任务没有意义了；正在运行的由处理函数发现任务已删除后自行结束
     db.execute(delete(Job).where(Job.status == "queued", Job.payload["task_id"].astext == str(task.id)))
+    db.execute(update(LlmCall).where(LlmCall.task_id == task.id).values(task_title=None))
     audit.record(
         db,
         "task_delete",
-        user_id=user.id,
+        user_id=user.id if user else None,
         target_type="task",
         target_id=str(task.id),
         detail={"files": len(keys)},

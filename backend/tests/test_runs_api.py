@@ -45,6 +45,31 @@ def post_run(client, headers, task_id):
     return client.post(f"{API_PREFIX}/tasks/{task_id}/runs", headers=headers)
 
 
+@pytest.mark.parametrize("outcome", ["success", "SUSPECTS_PENDING", "OUTBOUND_BLOCKED", "TASK_STATE_CONFLICT"])
+def test_v2c_confirm_activity_only_on_success(alice, db_sessionmaker, ready_task, outcome):
+    from datetime import timedelta
+    from app.db.base import utcnow
+    user, c, h = alice
+    task = ready_task(user)
+    before = utcnow() - timedelta(days=5)
+    with db_sessionmaker() as db:
+        db.get(Task, task.id).last_activity_at = before
+        if outcome == "SUSPECTS_PENDING":
+            db.add(RedactionSuspect(task_id=task.id, loc="F1-P2", char_start=0, char_end=2, reason="org_suffix"))
+        elif outcome == "OUTBOUND_BLOCKED":
+            db.scalar(select(DocNode).where(DocNode.task_id == task.id)).redacted_text = "联系电话 13800138000"
+        elif outcome == "TASK_STATE_CONFLICT":
+            db.get(Task, task.id).status = "reviewing"
+        db.commit()
+    r = post_run(c, h, task.id)
+    assert r.status_code == (201 if outcome == "success" else 409)
+    if outcome != "success":
+        assert r.json()["code"] == outcome
+    with db_sessionmaker() as db:
+        activity = db.get(Task, task.id).last_activity_at
+        assert (activity > before) if outcome == "success" else (activity == before)
+
+
 def count(db_sessionmaker, model) -> int:
     with db_sessionmaker() as db:
         return db.scalar(select(func.count()).select_from(model))

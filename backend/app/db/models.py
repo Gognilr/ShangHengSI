@@ -136,6 +136,7 @@ class Task(Base):
     created_at: Mapped[datetime] = _ts_now()
     updated_at: Mapped[datetime] = _ts_updated()
     last_completed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    last_activity_at: Mapped[datetime] = _ts_now()
 
 
 # ---- 18.6 task_files ----

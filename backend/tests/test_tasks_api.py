@@ -27,6 +27,7 @@ from app.db.models import (
 from app.main import API_PREFIX
 from app.security import crypto
 from app.tasks import storage
+from tests.review_support import env, ready_task  # noqa: F401
 
 CONTENT_TYPES = b'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'
 SECRET = "虚构甲公司专属内容ABC123"
@@ -59,6 +60,41 @@ def files_dir(tmp_path, monkeypatch):
 
 def stored_files(d) -> list[str]:
     return sorted(p.name for p in d.iterdir()) if d.exists() else []
+
+
+def test_v2c_create_activity_and_view_does_not_extend(files_dir, alice, db_sessionmaker):
+    c, csrf = alice
+    before = utcnow()
+    r = upload(c, csrf, [("虚构.docx", docx_bytes())])
+    assert r.status_code == 201
+    tid = uuid.UUID(r.json()["id"])
+    with db_sessionmaker() as db:
+        activity = db.get(Task, tid).last_activity_at
+        assert before <= activity <= utcnow()
+    assert c.get(f"{API_PREFIX}/tasks/{tid}").status_code == 200
+    assert c.get(f"{API_PREFIX}/tasks").status_code == 200
+    with db_sessionmaker() as db:
+        assert db.get(Task, tid).last_activity_at == activity
+
+
+def test_v2c_patch_activity_success_and_rejection(make_user, login, db_sessionmaker, ready_task):
+    user = make_user("activity")
+    c, csrf = login("activity")
+    task = ready_task(user)
+    before = utcnow() - timedelta(days=5)
+    with db_sessionmaker() as db:
+        db.get(Task, task.id).last_activity_at = before
+        db.commit()
+    endpoint = f"{API_PREFIX}/tasks/{task.id}"
+    assert c.patch(endpoint, json={"user_note": "请检查付款"}, headers={"X-CSRF-Token": csrf}).status_code == 200
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).last_activity_at > before
+        db.get(Task, task.id).status = "reviewing"
+        db.get(Task, task.id).last_activity_at = before
+        db.commit()
+    assert c.patch(endpoint, json={"user_note": "请检查付款"}, headers={"X-CSRF-Token": csrf}).status_code == 409
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id).last_activity_at == before
 
 
 def form(**kw):
@@ -503,6 +539,8 @@ def test_delete_removes_everything_but_keeps_llm_calls(files_dir, make_user, log
         assert count(db_sessionmaker, model, model.task_id == tid) == 0, model
     # llm_calls 保留
     assert count(db_sessionmaker, LlmCall, LlmCall.task_id == tid) == 1
+    with db_sessionmaker() as db:
+        assert db.scalar(select(LlmCall.task_title).where(LlmCall.task_id == tid)) is None
     # 排队中的 job 被清掉，别的任务的不受影响
     with db_sessionmaker() as db:
         payloads = [j.payload["task_id"] for j in db.scalars(select(Job))]

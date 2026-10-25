@@ -31,12 +31,14 @@ def alice(make_user, login):
 def set_days(sm, days):
     with sm() as db:
         settings_store.set_setting(db, "retention.original_days", days, None)
+        for layer in ("result", "outbound", "audit", "unfinished"):
+            settings_store.set_setting(db, f"retention.{layer}_days", 0, None)
         db.commit()
 
 
 def age(sm, task_id, days):
     with sm() as db:
-        db.execute(update(Task).where(Task.id == task_id).values(last_completed_at=utcnow() - timedelta(days=days)))
+        db.execute(update(Task).where(Task.id == task_id).values(last_completed_at=utcnow() - timedelta(days=days), last_activity_at=utcnow() - timedelta(days=days)))
         db.commit()
 
 
@@ -79,7 +81,7 @@ def test_t18_expired_task_is_cleaned_and_report_still_exports(alice, db_sessionm
     set_days(db_sessionmaker, 1)
     age(db_sessionmaker, task.id, 2)
 
-    assert run(db_sessionmaker) == {"tasks": 1, "files": 1}
+    assert run(db_sessionmaker) == dict(tasks=1, files=1, results=0, unfinished=0, outbound=0, audit=0)
 
     f = files_of(db_sessionmaker, task.id)[0]
     assert f.original_deleted_at is not None
@@ -122,7 +124,7 @@ def test_t18_expired_task_is_cleaned_and_report_still_exports(alice, db_sessionm
     # 审计
     with db_sessionmaker() as db:
         row = db.scalar(select(AuditLog).where(AuditLog.action == "retention_run"))
-        assert row.detail == {"tasks": 1, "files": 1} and row.user_id is None
+        assert row.detail == dict(tasks=1, files=1, results=0, unfinished=0, outbound=0, audit=0) and row.user_id is None
 
 
 def test_second_run_does_not_repeat(alice, db_sessionmaker, ready_task, llm):  # noqa: F811
@@ -130,9 +132,9 @@ def test_second_run_does_not_repeat(alice, db_sessionmaker, ready_task, llm):  #
     task = reviewed(db_sessionmaker, user, client, headers, ready_task, llm)
     set_days(db_sessionmaker, 1)
     age(db_sessionmaker, task.id, 2)
-    assert run(db_sessionmaker) == {"tasks": 1, "files": 1}
+    assert run(db_sessionmaker) == dict(tasks=1, files=1, results=0, unfinished=0, outbound=0, audit=0)
     first = files_of(db_sessionmaker, task.id)[0].original_deleted_at
-    assert run(db_sessionmaker) == {"tasks": 0, "files": 0}
+    assert run(db_sessionmaker) == dict(tasks=0, files=0, results=0, unfinished=0, outbound=0, audit=0)
     assert files_of(db_sessionmaker, task.id)[0].original_deleted_at == first
 
 
@@ -149,7 +151,7 @@ def test_not_expired_and_ineligible_statuses_untouched(alice, db_sessionmaker, r
         db.commit()
     set_days(db_sessionmaker, 7)
     age(db_sessionmaker, fresh.id, 3)  # 未满 7 天
-    assert run(db_sessionmaker) == {"tasks": 0, "files": 0}
+    assert run(db_sessionmaker) == dict(tasks=0, files=0, results=0, unfinished=0, outbound=0, audit=0)
     for t in (fresh, waiting, *others.values()):
         assert files_of(db_sessionmaker, t.id)[0].original_deleted_at is None
         assert storage._path(files_of(db_sessionmaker, t.id)[0].storage_key).exists()
@@ -158,8 +160,9 @@ def test_not_expired_and_ineligible_statuses_untouched(alice, db_sessionmaker, r
 def test_days_zero_does_nothing_and_does_not_enqueue(alice, db_sessionmaker, ready_task, llm):  # noqa: F811
     user, client, headers = alice
     task = reviewed(db_sessionmaker, user, client, headers, ready_task, llm)
+    set_days(db_sessionmaker, 0)
     age(db_sessionmaker, task.id, 400)
-    assert run(db_sessionmaker) == {"tasks": 0, "files": 0}
+    assert run(db_sessionmaker) == dict(tasks=0, files=0, results=0, unfinished=0, outbound=0, audit=0)
     assert files_of(db_sessionmaker, task.id)[0].original_deleted_at is None
     with db_sessionmaker() as db:
         assert retention.check_retention(db, datetime(2026, 10, 22, 4, 0, tzinfo=SH)) is False
@@ -172,10 +175,10 @@ def test_boundary_exactly_at_cutoff_is_kept(alice, db_sessionmaker, ready_task, 
     now = utcnow()
     set_days(db_sessionmaker, 5)
     with db_sessionmaker() as db:
-        db.execute(update(Task).where(Task.id == task.id).values(last_completed_at=now - timedelta(days=5)))
+        db.execute(update(Task).where(Task.id == task.id).values(last_completed_at=now - timedelta(days=5), last_activity_at=now - timedelta(days=5)))
         db.commit()
-        assert retention.run_retention(db, now) == {"tasks": 0, "files": 0}
-        assert retention.run_retention(db, now + timedelta(seconds=1)) == {"tasks": 1, "files": 1}
+        assert retention.run_retention(db, now) == dict(tasks=0, files=0, results=0, unfinished=0, outbound=0, audit=0)
+        assert retention.run_retention(db, now + timedelta(seconds=1)) == dict(tasks=1, files=1, results=0, unfinished=0, outbound=0, audit=0)
 
 
 def test_local_only_task_gets_last_completed_and_is_cleaned(alice, db_sessionmaker, ready_task):  # noqa: F811
@@ -184,7 +187,7 @@ def test_local_only_task_gets_last_completed_and_is_cleaned(alice, db_sessionmak
     assert task.status == "completed_local" and task.last_completed_at is not None
     set_days(db_sessionmaker, 1)
     age(db_sessionmaker, task.id, 2)
-    assert run(db_sessionmaker) == {"tasks": 1, "files": 1}
+    assert run(db_sessionmaker) == dict(tasks=1, files=1, results=0, unfinished=0, outbound=0, audit=0)
     assert files_of(db_sessionmaker, task.id)[0].original_deleted_at is not None
 
 
@@ -198,7 +201,7 @@ def test_pdf_raw_after_cleanup(alice, db_sessionmaker, ready_task):  # noqa: F81
     assert client.get(f"{API_PREFIX}/tasks/{task.id}/files/{fid}/raw").status_code == 200
     set_days(db_sessionmaker, 1)
     age(db_sessionmaker, task.id, 2)
-    assert run(db_sessionmaker) == {"tasks": 1, "files": 1}
+    assert run(db_sessionmaker) == dict(tasks=1, files=1, results=0, unfinished=0, outbound=0, audit=0)
     r = client.get(f"{API_PREFIX}/tasks/{task.id}/files/{fid}/raw")
     assert r.status_code == 404 and r.json()["code"] == "ORIGINAL_DELETED"
 
@@ -213,7 +216,7 @@ def test_multiple_files_and_missing_file_ok(alice, db_sessionmaker, ready_task):
     storage.delete_original(keys[1])  # 文件已不在磁盘上
     set_days(db_sessionmaker, 1)
     age(db_sessionmaker, task.id, 2)
-    assert run(db_sessionmaker) == {"tasks": 1, "files": 2}
+    assert run(db_sessionmaker) == dict(tasks=1, files=2, results=0, unfinished=0, outbound=0, audit=0)
     assert all(f.original_deleted_at is not None for f in files_of(db_sessionmaker, task.id))
     assert all(not storage._path(k).exists() for k in keys)
 
@@ -234,7 +237,7 @@ def test_one_failure_does_not_stop_others(alice, db_sessionmaker, ready_task, mo
         real(key)
 
     monkeypatch.setattr(storage, "delete_original", flaky)
-    assert run(db_sessionmaker) == {"tasks": 1, "files": 1}
+    assert run(db_sessionmaker) == dict(tasks=1, files=1, results=0, unfinished=0, outbound=0, audit=0)
     assert files_of(db_sessionmaker, a.id)[0].original_deleted_at is None
     assert files_of(db_sessionmaker, b.id)[0].original_deleted_at is not None
     assert "OSError" in caplog.text and "secret path" not in caplog.text
@@ -276,3 +279,146 @@ def test_handler_registered_and_periodic_registered():
 
     assert "retention" in worker._HANDLERS if hasattr(worker, "_HANDLERS") else True
     assert "retention_schedule" in worker._PERIODIC
+
+
+# V2-C-02：以下用例与设计 2.7 逐项对应，全部使用隔离虚构数据。
+def _layers(sm, **values):
+    with sm() as db:
+        for key, default in dict(original=30, result=365, outbound=180, audit=0, unfinished=30).items():
+            settings_store.set_setting(db, f"retention.{key}_days", values.get(key, default), None)
+        db.commit()
+
+
+def _activity(sm, tid, days):
+    with sm() as db:
+        db.execute(update(Task).where(Task.id == tid).values(last_activity_at=utcnow() - timedelta(days=days)))
+        db.commit()
+
+
+def test_v2c_original_layer_preserves_report(alice, db_sessionmaker, ready_task, llm):
+    user, client, headers = alice
+    task = reviewed(db_sessionmaker, user, client, headers, ready_task, llm)
+    _layers(db_sessionmaker)
+    _activity(db_sessionmaker, task.id, 31)
+    run(db_sessionmaker)
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id) is not None
+        assert all(n.text_enc is None for n in db.scalars(select(DocNode).where(DocNode.task_id == task.id)))
+        assert db.get(Task, task.id).user_note_enc is None
+    assert not storage._path(files_of(db_sessionmaker, task.id)[0].storage_key).exists()
+    assert client.get(f"{API_PREFIX}/runs/{task.latest_run_id}/report").status_code == 200
+
+
+def test_v2c_result_layer_deletes_entire_task_but_keeps_calls(alice, db_sessionmaker, ready_task, llm):
+    from app.db.models import ChatMessage, Party, RedactionItem, LocalFinding
+    user, client, headers = alice
+    task = reviewed(db_sessionmaker, user, client, headers, ready_task, llm)
+    _layers(db_sessionmaker)
+    _activity(db_sessionmaker, task.id, 366)
+    file = files_of(db_sessionmaker, task.id)[0]
+    with db_sessionmaker() as db:
+        db.add(ChatMessage(task_id=task.id, role="user", content_redacted="虚构问题"))
+        db.commit()
+    run(db_sessionmaker)
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id) is None
+        for model in (TaskFile, DocNode, Party, RedactionItem, ReviewRun, Finding, ChatMessage, LocalFinding):
+            assert list(db.scalars(select(model).where(model.task_id == task.id))) == []
+        assert db.get(RedactionMap, task.id) is None
+        from app.db.models import LlmCall
+        calls = list(db.scalars(select(LlmCall).where(LlmCall.task_id == task.id)))
+        assert calls and all(c.task_title is None for c in calls)
+    assert not storage._path(file.storage_key).exists()
+
+
+def test_v2c_recent_chat_activity_protects_old_review(alice, db_sessionmaker, ready_task):
+    user, _, _ = alice
+    task = ready_task(user, policy="local_only")
+    age(db_sessionmaker, task.id, 40)
+    _layers(db_sessionmaker)
+    _activity(db_sessionmaker, task.id, 5)
+    run(db_sessionmaker)
+    assert files_of(db_sessionmaker, task.id)[0].original_deleted_at is None
+
+
+@pytest.mark.parametrize("status,deleted", [("awaiting_confirm", True), ("parse_failed", True),
+                                           ("parsing", False), ("reviewing", False)])
+def test_v2c_unfinished_cleanup_guards_running_tasks(alice, db_sessionmaker, ready_task, status, deleted):
+    user, _, _ = alice
+    task = ready_task(user)
+    with db_sessionmaker() as db:
+        db.get(Task, task.id).status = status
+        db.commit()
+    _layers(db_sessionmaker)
+    _activity(db_sessionmaker, task.id, 400)
+    run(db_sessionmaker)
+    with db_sessionmaker() as db:
+        assert (db.get(Task, task.id) is None) is deleted
+
+
+def test_v2c_outbound_and_audit_layers(alice, db_sessionmaker, make_user, login):
+    from app.db.models import LlmCall
+    user, _, _ = alice
+    make_user("sys", role="admin")
+    client, _ = login("sys")
+    _layers(db_sessionmaker, audit=30)
+    with db_sessionmaker() as db:
+        call = LlmCall(user_id=user.id, purpose="review", model_name="mock", status="sent",
+                       request_text="脱敏正文", response_text="虚构回复", tokens_in=12, tokens_out=8,
+                       created_at=utcnow() - timedelta(days=181))
+        db.add(call)
+        log = AuditLog(action="task_delete", created_at=utcnow() - timedelta(days=31))
+        db.add(log)
+        db.commit()
+        cid, aid = call.id, log.id
+    run(db_sessionmaker)
+    with db_sessionmaker() as db:
+        call = db.get(LlmCall, cid)
+        assert call.request_text is call.response_text is None
+        assert (call.user_id, call.status, call.tokens_in, call.tokens_out, call.model_name) == (user.id, "sent", 12, 8, "mock")
+        assert db.get(AuditLog, aid) is None
+        assert db.scalar(select(AuditLog.id).where(AuditLog.action == "retention_run")) is not None
+    _layers(db_sessionmaker, outbound=0)
+    detail = client.get(f"{API_PREFIX}/admin/outbound-logs/{cid}").json()
+    assert detail["request_text"] is detail["response_text"] is None
+    assert "正文已按保留期清除" in str(detail)
+
+
+def test_v2c_shared_500_task_limit_and_next_run(alice, db_sessionmaker):
+    from sqlalchemy import func
+    user, _, _ = alice
+    _layers(db_sessionmaker, original=0, result=30, unfinished=30)
+    with db_sessionmaker() as db:
+        db.add_all([Task(owner_id=user.id, title="虚构.docx", stance="sales", source="outgoing", policy="ai",
+                         status="reviewed" if i < 250 else "awaiting_confirm",
+                         last_activity_at=utcnow() - timedelta(days=400)) for i in range(501)])
+        db.commit()
+    run(db_sessionmaker)
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(Task)) == 1
+    run(db_sessionmaker)
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(Task)) == 0
+
+
+def test_v2c_cleanup_crosses_owners_but_api_stays_owner_only(alice, make_user, login, db_sessionmaker, ready_task):
+    user, client, _ = alice
+    bob = make_user("bob")
+    tasks = [ready_task(owner, policy="local_only") for owner in (user, bob)]
+    assert client.get(f"{API_PREFIX}/tasks/{tasks[1].id}").status_code == 404
+    _layers(db_sessionmaker, original=0, result=30)
+    for task in tasks:
+        _activity(db_sessionmaker, task.id, 31)
+    run(db_sessionmaker)
+    with db_sessionmaker() as db:
+        assert all(db.get(Task, task.id) is None for task in tasks)
+
+
+def test_v2c_schedule_checks_all_layers_and_permanent_disables(db_sessionmaker):
+    after = utcnow().astimezone(SH).replace(hour=23, minute=59)
+    _layers(db_sessionmaker, original=0, result=0, outbound=0, audit=0, unfinished=0)
+    with db_sessionmaker() as db:
+        assert not retention.check_retention(db, after)
+        settings_store.set_setting(db, "retention.audit_days", 30, None)
+        db.commit()
+        assert retention.check_retention(db, after)
