@@ -43,7 +43,7 @@ WARN_HEADER_FOOTER = "页眉页脚未参与 AI 审核"
 WARN_COMMENTS = "批注未参与 AI 审核"
 WARN_TEXTBOXES = "文本框未参与 AI 审核"
 WARN_NOTES = "脚注和尾注未参与 AI 审核"
-WARN_EMBEDDED = "文档中的图片和嵌入对象未识别文字，未参与 AI 审核"
+WARN_EMBEDDED = "文件中有 {count} 个图片或嵌入对象未参与 AI 审核；如有扫描附件，请另存为 PDF 或图片一并上传"
 WARN_EMPTY = "未提取到正文文字"
 
 _OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # 加密的 docx 和 .doc 都是 OLE 复合文档
@@ -534,7 +534,7 @@ class _DocxParser:
         self.pkg = _Package(data)
         self.f = f"F{file_seq}"
         self.has_revisions = False
-        self.has_embedded = False
+        self.embedded_objects: set[etree._Element] = set()
         self.p = 0  # 正文段落序号
         self.t = 0  # 正文顶层表格序号
         self.comments: dict[str, etree._Element] = {}
@@ -650,8 +650,8 @@ class _DocxParser:
             warnings.append(WARN_TEXTBOXES)
         if notes:
             warnings.append(WARN_NOTES)
-        if self.has_embedded:
-            warnings.append(WARN_EMBEDDED)
+        if self.embedded_objects:
+            warnings.append(WARN_EMBEDDED.format(count=len(self.embedded_objects)))
         if "body" not in parts:
             warnings.append(WARN_EMPTY)
         return warnings
@@ -703,7 +703,7 @@ class _DocxParser:
                 if branch is not None:
                     yield from self._items(branch, want)
             elif tag == w.altChunk:  # 嵌入的外部文档（HTML、RTF 等），不解析
-                self.has_embedded = True
+                self.embedded_objects.add(child)
 
     def _rows(self, tbl: etree._Element):
         """表格中接受修订后仍存在的行：(tr, 整行是插入的)。"""
@@ -945,7 +945,7 @@ class _DocxParser:
                 self._embedded(c, ctx)
             # 其余（delText、instrText 域代码、softHyphen、sym、脚注引用等）不计入
 
-    def _embedded(self, el: etree._Element, ctx: _Inline) -> None:
+    def _embedded(self, el: etree._Element, ctx: _Inline, *, object_preview: bool = False) -> None:
         """图形、VML、OLE 对象：只取其中的文本框；遇到图片或嵌入对象记下以便提示。"""
         tag = el.tag
         if not isinstance(tag, str):
@@ -954,15 +954,20 @@ class _DocxParser:
             branch = _choose(el)
             if branch is not None:
                 for c in branch:
-                    self._embedded(c, ctx)
+                    self._embedded(c, ctx, object_preview=object_preview)
             return
         if tag == self.w.txbxContent:
             self._textbox(el, ctx)
             return
-        if etree.QName(el).localname in _EMBEDDED_LOCALNAMES:
-            self.has_embedded = True
+        if tag == self.w.object and any(isinstance(child.tag, str) and etree.QName(child).localname == "OLEObject"
+                                       for child in el.iter()):
+            # OLE 对象及其预览图合计一项，避免同时把预览图当成另一张图片。
+            self.embedded_objects.add(el)
+            object_preview = True
+        if not object_preview and etree.QName(el).localname in _EMBEDDED_LOCALNAMES:
+            self.embedded_objects.add(el)
         for c in el:
-            self._embedded(c, ctx)
+            self._embedded(c, ctx, object_preview=object_preview)
 
     def _textbox(self, txbx: etree._Element, ctx: _Inline) -> None:
         items, side = self._flatten(txbx)

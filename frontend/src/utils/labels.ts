@@ -157,6 +157,18 @@ export const outboundStatusLabel = pick(OUTBOUND_STATUS)
 export const OUTBOUND_STATUS_TAG: Record<string, TagType> = { sent: 'success', blocked: 'warning', error: 'danger' }
 export const LLM_PURPOSE: Dict = { review: '审核', chat: '追问', test: '连接测试' }
 export const llmPurposeLabel = pick(LLM_PURPOSE)
+
+/** 审计动作名称；未知动作按通用翻译规则保留原值。 */
+export const AUDIT_ACTION: Dict = {
+  login: '登录', login_failed: '登录失败', password_change: '修改密码',
+  user_create: '创建账号', user_update: '修改账号',
+  setting_update: '修改设置', task_create: '创建审核任务', task_delete: '删除审核任务',
+  run_create: '确认发送', backup_run: '执行备份', retention_run: '执行保留期清理',
+  redaction_revoke: '撤销替换', report_export: '导出报告', restore_run: '恢复备份',
+}
+export const auditActionLabel = pick(AUDIT_ACTION)
+export const AUDIT_TARGET: Dict = { user: '账号', task: '任务', run: '审核轮次', finding: '问题', setting: '设置', term: '敏感词', backup: '备份', company_requirement: '审核要求' }
+export const auditTargetLabel = pick(AUDIT_TARGET)
 /** 对照视图与手动补充共用的类别色组。 */
 export const REDACTION_KIND: Record<string, string> = {
   IM: 'contact', PROJECT: 'other',

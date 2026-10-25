@@ -209,6 +209,25 @@ export interface OutboundQuery {
   page?: number
 }
 
+export interface AuditRow {
+  id: number
+  created_at: string
+  user_name: string | null
+  action: string
+  target_type: string | null
+  target_id: string | null
+  detail: Record<string, unknown>
+  ip: string | null
+}
+
+export interface AuditQuery {
+  user_id?: string
+  action?: string
+  from?: string
+  to?: string
+  page?: number
+}
+
 export interface SystemStatus {
   version: string
   queued_jobs: number
@@ -243,4 +262,5 @@ export const adminDataApi = {
     http.get<{ items: OutboundRow[]; total: number; page: number; page_size: number }>('/admin/outbound-logs', { ...q }),
   outboundLog: (id: number) => http.get<OutboundDetail>(`/admin/outbound-logs/${id}`),
   systemStatus: () => http.get<SystemStatus>('/admin/system/status'),
+  auditLogs: (q: AuditQuery) => http.get<{ items: AuditRow[]; total: number; page: number; page_size: number }>('/admin/audit-logs', { ...q }),
 }

@@ -335,8 +335,23 @@ def test_footnotes_images_and_empty_warnings():
                      rels=[("rIdF", "footnotes", "footnotes.xml")])
     parsed = parse_docx(data, 1)
     assert [n.text for n in parsed.nodes] == ["正文"]
-    assert parsed.warnings == [WARN_NOTES, WARN_EMBEDDED]
+    assert parsed.warnings == [WARN_NOTES, WARN_EMBEDDED.format(count=1)]
     assert parse_docx(make_docx(P()), 1).warnings == [WARN_EMPTY]
+
+
+def test_v2c05_three_images_have_counted_warning():
+    image = '<w:r><w:drawing><a:blip r:embed="rId5"/></w:drawing></w:r>'
+    parsed = parse_docx(make_docx(P("正文")+P(runs=image)*3),1)
+    assert parsed.warnings == ["文件中有 3 个图片或嵌入对象未参与 AI 审核；如有扫描附件，请另存为 PDF 或图片一并上传"]
+    assert [node.text for node in parsed.nodes] == ["正文"]
+
+
+def test_v2c05_ole_preview_is_one_object_and_altchunk_counted():
+    body = P("正文") + P(runs='<w:r><w:object><v:shape xmlns:v="urn:schemas-microsoft-com:vml"><v:imagedata r:id="rId6"/></v:shape><o:OLEObject xmlns:o="urn:schemas-microsoft-com:office:office" r:id="rId7"/></w:object></w:r>')
+    # 命名空间由测试文档显式提供，预览图不重复计入嵌入对象。
+    data = make_docx(body+'<w:altChunk r:id="rId8"/>')
+    parsed = parse_docx(data,1)
+    assert WARN_EMBEDDED.format(count=2) in parsed.warnings
 
 
 def test_manual_clause_no():

@@ -50,6 +50,7 @@ def test_all_endpoints_forbid_non_admin(make_user, login, api, dirs):
         ("post", "/backup/run", None), ("get", "/backup/records", None),
         ("get", "/settings/retention", None), ("put", "/settings/retention", {"original_days": 1}),
         ("get", "/outbound-logs", None), ("get", "/outbound-logs/1", None), ("get", "/system/status", None),
+        ("get", "/audit-logs", None),
     ]:
         r = getattr(c, method)(A + path, headers=_hdr(csrf), **({"json": body} if body is not None else {}))
         assert r.status_code == 403, path
@@ -424,3 +425,30 @@ def test_v2c03_files_walk_skips_links_and_failed_stat(tmp_path, monkeypatch):
         return original(path, *args, **kwargs)
     monkeypatch.setattr(Path, "stat", stat)
     assert data._files_bytes(str(root)) == 8
+
+
+def test_v2c05_audit_filters_pagination_and_read_only(admin,db_sessionmaker,make_user):
+    from sqlalchemy import func
+    user = make_user("audit_reader")
+    base = datetime(2026,10,26,0,tzinfo=UTC)
+    with db_sessionmaker() as db:
+        db.add_all([AuditLog(user_id=user.id, action="task_create", target_type="task",target_id=str(i),
+                             detail={"files":1}, ip="127.0.0.1",created_at=base+timedelta(minutes=i)) for i in range(25)])
+        db.add(AuditLog(user_id=user.id,action="task_delete",created_at=base))
+        db.add(AuditLog(action="task_create",created_at=base-timedelta(days=1)))
+        db.commit()
+        before = db.scalar(select(func.count()).select_from(AuditLog))
+    c,_ = admin
+    params = {"action":"task_create","user_id":str(user.id),"from":"2026-10-26","to":"2026-10-26"}
+    first = c.get(A+"/audit-logs",params=params)
+    assert first.status_code == 200
+    d = first.json()
+    assert (d["total"],d["page"],d["page_size"]) == (25,1,20)
+    assert [row["target_id"] for row in d["items"]] == [str(i) for i in range(24,4,-1)]
+    assert all(row["user_name"] == user.display_name and row["detail"] == {"files":1}
+               and row["ip"] == "127.0.0.1" for row in d["items"])
+    last = c.get(A+"/audit-logs",params={**params,"page":2}).json()
+    assert [row["target_id"] for row in last["items"]] == [str(i) for i in range(4,-1,-1)]
+    assert c.get(A+"/audit-logs",params={**params,"action":"task_delete"}).json()["total"] == 1
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(AuditLog)) == before

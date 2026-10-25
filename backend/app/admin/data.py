@@ -385,3 +385,50 @@ def system_status(db: DbSession = Depends(get_db)) -> SystemStatus:
     s = get_settings()
     queued = db.scalar(select(func.count()).select_from(Job).where(Job.status == "queued")) or 0
     return SystemStatus(version=s.app_version, queued_jobs=int(queued), **_storage_snapshot(db))
+
+
+# ---------------------------------------------------------------- 只读审计日志
+
+
+class AuditRow(BaseModel):
+    id: int
+    created_at: datetime
+    user_name: Optional[str]
+    action: str
+    target_type: Optional[str]
+    target_id: Optional[str]
+    detail: dict
+    ip: Optional[str]
+
+
+class AuditPage(BaseModel):
+    items: list[AuditRow]
+    total: int
+    page: int
+    page_size: int
+
+
+@router.get("/audit-logs", response_model=AuditPage)
+def audit_logs(
+    user_id: Optional[uuid.UUID] = Query(None), action: Optional[str] = Query(None, max_length=100),
+    date_from: Optional[date] = Query(None, alias="from"), date_to: Optional[date] = Query(None, alias="to"),
+    page: int = Query(1, ge=1, le=100000), db: DbSession = Depends(get_db),
+) -> AuditPage:
+    from app.db.models import AuditLog
+    conditions = []
+    if user_id is not None:
+        conditions.append(AuditLog.user_id == user_id)
+    if action:
+        conditions.append(AuditLog.action == action)
+    if date_from is not None:
+        conditions.append(AuditLog.created_at >= datetime.combine(date_from, time.min, _tz()))
+    if date_to is not None:
+        conditions.append(AuditLog.created_at < datetime.combine(date_to+timedelta(days=1), time.min, _tz()))
+    total = db.scalar(select(func.count()).select_from(AuditLog).where(*conditions)) or 0
+    rows = db.execute(select(AuditLog, User.display_name).outerjoin(User, User.id == AuditLog.user_id)
+                      .where(*conditions).order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+                      .offset((page-1)*PAGE_SIZE).limit(PAGE_SIZE)).all()
+    return AuditPage(items=[AuditRow(id=log.id, created_at=log.created_at, user_name=name, action=log.action,
+                                    target_type=log.target_type, target_id=log.target_id, detail=log.detail,
+                                    ip=str(log.ip) if log.ip is not None else None) for log,name in rows],
+                     total=total, page=page, page_size=PAGE_SIZE)

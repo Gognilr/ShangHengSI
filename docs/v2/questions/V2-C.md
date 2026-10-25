@@ -25,6 +25,7 @@
 
 | 编号 | 问题 | 采用的做法 | 影响范围 |
 |-|-|-|-|
+| V2Q-67 | C-05 未指定图片和嵌入对象的去重计数口径 | 采用实际解析分支中可识别的 XML 对象计数，以元素身份去重；沿用 Choice/Fallback 选择、不重复计兼容分支；同一个 w:object 的 OLE 与预览图合计一项；独立图片各计一项，altChunk 嵌入文档计一项；文本框文字解析不变。增加三图片、OLE 预览图归一与 altChunk 测试，保留原有正文和警告顺序断言。状态：待确认 | C-05 parsing/docx.py、test_parse_docx.py |
 | V2Q-63 | C-02 未指定清理计数接口、跨层 500 个任务的计数方式和外发正文清除说明字段 | 采用：① 保留原 tasks/files 两项原件清理计数，新增 results/unfinished/outbound/audit 四项，返回值与 retention_run.detail 一致且只含数量。500 限额按不同 task.id 计，跨原件/结果层不重复占名额，失败尝试也占名额，逐任务锁后重查资格。② 外发详情增加可空 body_notice，sent/error 两段正文均 NULL 时为“正文已按保留期清除”；依据 gateway._Recorder 的 sent/error 必存 request_text 约定推断，不新增标记列、不改外发记录其他字段；blocked 原本正文为空时不误报，之后将保留期改为永久也仍显示清除说明。③ 与新设计冲突的旧测试只同步活动时间夹具、完整分层计数、五项表单与默认值；原件清除、报告、权限、异常继续处理和约束拒绝断言保留。状态：待确认 | C-02 retention.py、admin/data.py 与对应测试；外发详情提示由后续 C-03 Data.vue 接入 |
 | V2Q-53 | V2-C 设计中的迁移编号与 V2-B 实际编号冲突（Opus 2026-10-25 审阅 V2Q-49 时发现） | V2-B 已用 0012_ner_source，V2Q-49 新增 0013_ner_node_results。按 V2Q-31 先例顺延：V2-C-02 由 0012 改为 0014（down_revision=0013），V2-C-06 由 0013 改为 0015（down_revision=0014），只改编号与依赖链，不改表结构、行为与测试要求。design/V2-C.md 第〇节、第二节、第六节已由 Opus 同步；若 V2-B 收尾时迁移数又有变化，V2-C 开工前由 Opus 再核对。状态：已确认（用户 2026-10-25） | design/V2-C.md；V2-C-02、V2-C-06 |
 | V2Q-17 | 分类并发的实现方式 | worker 分三组线程按任务类型取任务（审核 8、解析 2、维护 1），jobs.claim 增加类型条件；WORKER\_CONCURRENCY 不再使用，仍被设置时只警告；worker 连接池按两类并发之和加 2 设置 pool\_size 与 max\_overflow，app 不变。状态：已确认（2026-10-23） | 20.3、21；design/V2-C.md 第一节 |

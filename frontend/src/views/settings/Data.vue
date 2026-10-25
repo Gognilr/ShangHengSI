@@ -9,6 +9,7 @@ import {
   type OutboundRow,
   type SystemStatus,
   type RetentionSettings,
+  type AuditRow,
   type UserRow,
 } from '@/api/admin'
 import { ApiError } from '@/api/http'
@@ -22,6 +23,9 @@ import {
   llmPurposeLabel,
   outboundStatusLabel,
   toOptions,
+  AUDIT_ACTION,
+  auditActionLabel,
+  auditTargetLabel,
 } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
 import PageHeader from '@/components/PageHeader.vue'
@@ -231,11 +235,38 @@ async function loadStatus() {
   }
 }
 
+// ---- ⑤ 只读审计日志 ----
+const auditFilters = reactive<{ user_id: string; action: string; range: [string, string] | null }>({ user_id: '', action: '', range: null })
+const auditRows = ref<AuditRow[]>([])
+const auditTotal = ref(0)
+const auditPage = ref(1)
+const auditLoading = ref(false)
+const auditError = ref('')
+
+async function loadAudit() {
+  auditLoading.value = true
+  auditError.value = ''
+  try {
+    const result = await adminDataApi.auditLogs({ user_id: auditFilters.user_id || undefined, action: auditFilters.action || undefined,
+      from: auditFilters.range?.[0], to: auditFilters.range?.[1], page: auditPage.value })
+    auditRows.value = result.items
+    auditTotal.value = result.total
+  } catch (e) {
+    auditError.value = `加载失败：${errText(e, '请刷新页面')}`
+  } finally { auditLoading.value = false }
+}
+
+function searchAudit() {
+  auditPage.value = 1
+  void loadAudit()
+}
+
 onMounted(async () => {
   void loadBackup()
   void loadRetention()
   void loadLogs()
   void loadStatus()
+  void loadAudit()
   try {
     users.value = (await adminUsersApi.list()).items
   } catch {
@@ -408,6 +439,29 @@ onBeforeUnmount(stopPolling)
       <div class="hint">点击一行查看外发文本和返回内容（均为脱敏后的内容）。</div>
     </section>
 
+    <section class="panel">
+      <h3 class="first">审计日志</h3>
+      <div class="filters">
+        <el-select v-model="auditFilters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="searchAudit">
+          <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
+        </el-select>
+        <el-select v-model="auditFilters.action" clearable placeholder="全部动作" class="status-filter" @change="searchAudit">
+          <el-option v-for="option in toOptions(AUDIT_ACTION)" :key="option.value" :label="option.label" :value="option.value" />
+        </el-select>
+        <el-date-picker v-model="auditFilters.range" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" class="date-filter" @change="searchAudit" />
+      </div>
+      <el-alert v-if="auditError" type="error" :closable="false" show-icon :title="auditError" />
+      <el-table v-loading="auditLoading" :data="auditRows" size="small" empty-text="没有符合条件的审计日志">
+        <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="用户" width="100"><template #default="{ row }">{{ row.user_name ?? '—' }}</template></el-table-column>
+        <el-table-column label="动作" width="120"><template #default="{ row }">{{ auditActionLabel(row.action) }}</template></el-table-column>
+        <el-table-column label="对象" min-width="150"><template #default="{ row }">{{ row.target_type ? auditTargetLabel(row.target_type) : '—' }} / {{ row.target_id ?? '—' }}</template></el-table-column>
+        <el-table-column label="详情" min-width="180"><template #default="{ row }"><span class="audit-detail">{{ JSON.stringify(row.detail) }}</span></template></el-table-column>
+        <el-table-column label="IP" min-width="110"><template #default="{ row }">{{ row.ip ?? '—' }}</template></el-table-column>
+      </el-table>
+      <el-pagination v-if="auditTotal > 20" v-model:current-page="auditPage" class="pager" :page-size="20" :total="auditTotal" layout="total, prev, pager, next" @current-change="loadAudit" />
+    </section>
+
     <el-drawer v-model="drawer" title="外发记录详情" direction="rtl" size="560px">
       <el-alert v-if="detailError" type="error" :closable="false" show-icon :title="detailError" />
       <div v-loading="detailLoading">
@@ -447,6 +501,7 @@ h3.first {
   color: var(--el-color-danger);
 }
 .warning { color: var(--el-color-warning); }
+.audit-detail { white-space: pre-wrap; overflow-wrap: anywhere; }
 .retention-select { width: 220px; }
 .pager {
   margin-top: 12px;
