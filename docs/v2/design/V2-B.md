@@ -311,4 +311,4 @@ B-06 只做 6.3 第 11、12 条的开发机预检；以下整机测试放在 **V
 
 ## 十、新增待确认问题
 
-见 docs/v2/open\_questions.md V2Q-10～V2Q-16。
+见 docs/v2/questions/V2-B.md（V2Q-10～V2Q-16 等）。

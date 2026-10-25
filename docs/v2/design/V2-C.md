@@ -232,4 +232,4 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0014：**tasks 
 
 ## 十、新增待确认问题
 
-见 docs/v2/open\_questions.md V2Q-17～V2Q-22；后续增补 V2Q-52（提醒条本次收起）、V2Q-53（迁移编号顺延）。
+见 docs/v2/questions/V2-C.md（V2Q-17～V2Q-22）；后续增补 V2Q-52（提醒条本次收起）、V2Q-53（迁移编号顺延）。

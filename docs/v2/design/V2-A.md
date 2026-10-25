@@ -322,4 +322,4 @@ outdated: ["17", "16", "11", "10"]     # 2018-05-01、2019-04-01 两次调整前
 
 ## 十、新增待确认问题
 
-见 docs/v2/open\_questions.md V2Q-04～V2Q-09。
+见 docs/v2/questions/V2-A.md（V2Q-04～V2Q-09 等）。

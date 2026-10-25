@@ -104,7 +104,9 @@ V1.0 解决了“合同类文件能安全地交给云端模型初审”。V2 做
 | docs/v2/TASKS-V2.md | V2 任务清单与进度；“当前进度”只保留最近 3 条，更早的移到文件末尾的归档 |
 | docs/v2/SPEC-V2.md | 只写相对 V1.0 SPEC 的变更，按 V1.0 章节号逐条写“原文 → 新文”；V2 验收时由 Opus 合并进 docs/SPEC.md |
 | docs/v2/design/V2-A.md、V2-B.md、V2-C.md、V2-E.md、V2-D.md | 各批设计与任务卡（细化时创建） |
-| docs/v2/open\_questions.md | V2 的待确认问题，编号 V2Q-01 起 |
+| docs/v2/open\_questions.md | V2 待确认问题的编号规则、索引与跨批次决定，编号 V2Q-01 起 |
+| docs/v2/questions/V2-x.md | 各批次的待确认问题（2026-10-25 起按批次分文件） |
+| docs/v2/archive/progress.md | TASKS-V2“当前进度”的归档 |
 
 V2 开工时（`v1.0.0` 之后），在 CLAUDE.md 与 AGENTS.md 中各加一段：当前开发 V2，读 docs/v2/ 下的文件。
 
