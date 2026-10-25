@@ -34,7 +34,7 @@
 
 ## 二、数据保留四层（V2-C-02，测试先行）
 
-**文件范围**：`backend/app/backup/retention.py`、`backend/app/admin/settings_store.py`、`backend/app/admin/data.py`、`backend/app/tasks/service.py`（删除任务时清空外发记录文件名；活动时间）、`backend/app/review/job.py` 与 `backend/app/chat/service.py`（只更新活动时间）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0014_retention_layers.py`（新）、`backend/app/admin/alerts.py`、对应测试。
+**文件范围**：`backend/app/backup/retention.py`、`backend/app/admin/settings_store.py`、`backend/app/admin/data.py`、`backend/app/tasks/service.py`（删除任务时清空外发记录文件名；活动时间）、`backend/app/review/job.py`、`backend/app/review/service.py`（只改 create\_run）、`backend/app/chat/service.py`、`backend/app/db/jobs.py`（只改 finalize\_failed 的 review 分支）——这四个文件只更新活动时间（V2Q-61）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0014_retention_layers.py`（新）、`backend/app/admin/alerts.py`、对应测试（test\_retention.py、test\_admin\_data.py、test\_admin\_alerts.py、test\_migrations.py、test\_tasks\_api.py、test\_runs\_api.py、test\_review\_job.py、test\_chat.py、test\_jobs.py）。
 
 ### 2.1 设置项
 
@@ -50,9 +50,24 @@
 
 ### 2.2 活动时间
 
-tasks 增加 `last_activity_at timestamptz 非空`：创建任务、确认发送、审核轮次结束、追问成功、重新审核（PATCH）时更新为当前时间。只打开查看不算。迁移回填 `coalesce(last_completed_at, updated_at, created_at)`。原件层与结果层都按 `last_activity_at` 计算（原件层原来按 last\_completed\_at，改为活动时间后，追问会延长原件的保留）。
+tasks 增加 `last_activity_at timestamptz 非空`：创建任务、确认发送、审核轮次结束、追问成功、重新审核（PATCH）时更新为当前时间。只打开查看不算。迁移回填 `coalesce(last_completed_at, updated_at, created_at)`。
+
+更新入口（V2Q-61，只有下表这些地方写 `last_activity_at`，均与该操作的状态变化在同一事务中，值取 `utcnow()`；操作被拒绝或失败时不写；不改网关、权限、预检、状态机和其他行为）：
+
+| 活动 | 入口 | 写入时机 |
+|-|-|-|
+| 创建任务 | tasks/service.py `create_task` | 建任务行时（迁移后的列非空，新行必须带值） |
+| 确认发送 | review/service.py `create_run` | 预检通过、建轮次并入队、任务置 reviewing 的同一事务；前面任何 409（LOCAL\_ONLY、TASK\_STATE\_CONFLICT、SUSPECTS\_PENDING、OUR\_PARTY\_REQUIRED、OUTBOUND\_BLOCKED）都不写 |
+| 审核轮次结束 | review/job.py `_save`（completed / partial）与 `_finish`（blocked / failed） | 写轮次终态的同一事务；任务或轮次已被删除（`_reload` 返回 None）时不写 |
+| 审核轮次结束（处理函数之外） | db/jobs.py `finalize_failed` 的 review 分支 | 只在任务由 reviewing 改为 reviewed 时写；处理函数已收尾、任务不在 reviewing 时不写；parse、backup 分支不写 |
+| 追问成功 | chat/service.py `send` | 保存问答两条消息的同一事务；脱敏预检拦截、网关失败（含上限）不写 |
+| 重新审核 | tasks/service.py `patch_task` | 通过全部检查、任务回到 awaiting\_confirm 的同一事务；409 / 422 不写 |
+
+解析完成、解析失败、打开查看、导出报告、处理问题状态、删除都不写。原件层与结果层都按 `last_activity_at` 计算（原件层原来按 last\_completed\_at，改为活动时间后，追问会延长原件的保留）。
 
 ### 2.3 清理任务（每天 03:30，沿用现有 retention job）
+
+五项都为 0 时不入队；任一项非 0 就入队，为 0 的那一类跳过。`retention.review_pending=true` 期间照常按当前保存的值执行（升级后新增四项为 0 即不清理，见 2.6）。
 
 按顺序执行，每类逐个任务加锁处理，单次最多处理 500 个任务（剩余的第二天继续），写一条审计 `retention_run`（只含各类数量）：
 
@@ -72,7 +87,21 @@ tasks 增加 `last_activity_at timestamptz 非空`：创建任务、确认发送
 
 ### 2.6 从 v1.0.0 升级
 
-V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0014：**tasks 表非空且 settings 中没有 retention.\* 行时**，写入 `original_days=0、result_days=0、outbound_days=0、audit_days=0、unfinished_days=0`（保持升级前“全部永久”的行为），并写入 `retention.review_pending=true`；管理员登录后显示提醒“数据保留已改为分层设置，当前全部为永久，请在设置 → 数据中确认”（code `RETENTION_REVIEW`），保存一次保留设置后清除。新安装（tasks 表为空）不写，使用 2.1 的默认值。
+V1.0 只有 `retention.original_days`（默认 0 即永久，管理员可改为 0～3650 的任意天数，只有改过才有设置行）。升级不得让任何新规则在升级当天删除 V1.0 不会删除的数据（第〇节第 4 条，V2Q-19、V2Q-62）。
+
+迁移 0014 按下面的规则写设置：
+
+1. **判断旧库**：`users` 表非空即为已有数据的库（V1.0 安装流程先迁移、再创建管理员，新安装执行迁移时 users 必为空；只看 tasks 会漏掉任务已全部删除、但仍有外发记录和审计日志的库）。
+2. **旧库**：
+   * `retention.original_days`：已有设置行的**原值保留，不改写、不取整**（管理员在 V1.0 中明确选过，V1.0 已在按它清理；回填后的活动时间对已审核任务等于 last\_completed\_at，清理范围与升级前相同）。没有设置行时写 0。
+   * `retention.result_days`、`outbound_days`、`audit_days`、`unfinished_days`：没有设置行时写 0（V1.0 中这几类数据都永久保存）；已有行时保留原值（V1.0 不会产生这些行，此条只为重跑与恢复时不覆盖）。
+   * 写入 `retention.review_pending=true`。
+3. **新安装**（users 为空）：不写任何设置，使用 2.1 的默认值。
+4. **降级**：删除 `last_activity_at` 列，删除 `retention.result_days`、`outbound_days`、`audit_days`、`unfinished_days`、`review_pending` 五行；**不动 `retention.original_days` 行**（V1.0 认识它，迁移写的 0 与 V1.0 默认值相同，管理员在 V2 中改过的值 V1.0 也照此执行）。
+
+提醒与确认：`review_pending=true` 时管理员登录后显示提醒“数据保留已改为分层设置，新增的保留项暂为永久，请在设置 → 数据中确认”（code `RETENTION_REVIEW`）。PUT /admin/settings/retention 校验通过即清除 review\_pending（五项与原值相同也清除，并照常写审计）；校验失败不清除。
+
+非档位旧值：`original_days` 为 30 / 90 / 180 / 365 / 0 以外的值（如 45）时，GET 照实返回，清理照它执行；PUT 时五项都必须是可选值，原样提交 45 返回 422（管理员须改选一个档位）。设置页如何显示这个值由 V2-C-03 处理（下拉框中额外列出“45 天（旧版设置）”，提交时由后端 422 提示改选）。
 
 ### 2.7 测试用例
 
@@ -88,11 +117,18 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0014：**tasks 
 | 8 | 保存原件 365、结果 90 | 422 RETENTION\_ORDER |
 | 9 | 保存 45 天 | 422 |
 | 10 | 用户删除任务 | 该任务 llm\_calls.task\_title 为空 |
-| 11 | 升级：已有任务、无保留设置的库执行 0014 | 五项均为 0，提醒 RETENTION\_REVIEW 出现；保存一次后消失；清理任务不删除任何数据 |
-| 12 | 新安装执行 0014 | 不写设置，默认值为 2.1 |
+| 11 | 升级：已有用户与任务、无 retention.\* 行的库执行 0014 | 五项均为 0，提醒 RETENTION\_REVIEW 出现；原值保存一次后消失；清理任务不删除任何数据 |
+| 12 | 新安装（users 为空）执行 0014 | 不写设置，默认值为 2.1 |
 | 13 | 单次超过 500 个任务 | 本次处理 500 个，其余下次 |
-| 14 | 迁移 0014 升级 / 降级 | 降级删除 last\_activity\_at 与新增设置行；模型与迁移一致 |
+| 14 | 迁移 0014 升级 / 降级 | 降级删除 last\_activity\_at 与 2.6 第 4 条的五行；original\_days 行保留；模型与迁移一致 |
 | 15 | A-06 | 清理只按时间，不看 owner；接口仍只返回本人任务 |
+| 16 | 升级：旧库已保存 original\_days=30；另有 last\_completed\_at 31 天前与 400 天前的已审核任务、31 天前的待确认任务、200 天前的外发记录、400 天前的审计日志 | 迁移后 original\_days=30、其余四项 0、review\_pending=true；执行清理只删两个已审核任务的原件与原文（与 V1.0 相同），任务、待确认任务、外发正文、审计全部保留；降级后 original\_days 仍为 30 |
+| 17 | 升级：旧库 original\_days=45 | 迁移后仍为 45，GET 返回 45，清理按 45 天；PUT 原样提交 45 → 422 且 review\_pending 仍为 true；改选 30 后保存成功、提醒消失 |
+| 18 | 升级：tasks 为空，但 users、外发记录、审计日志非空 | 按旧库处理：五项为 0、review\_pending=true；清理不删任何数据 |
+| 19 | 确认发送成功；以及分别因 SUSPECTS\_PENDING、OUTBOUND\_BLOCKED、TASK\_STATE\_CONFLICT 被拒 | 成功时 last\_activity\_at 更新为本次时间；被拒时不变（test\_runs\_api.py） |
+| 20 | 审核轮次以 completed、partial、blocked、failed 结束 | 四种都更新 last\_activity\_at（test\_review\_job.py） |
+| 21 | review job 心跳超时用完次数，经 finalize\_failed 收尾 | 任务 reviewing → reviewed 时更新；任务已不在 reviewing 时不变；parse job 最终失败不更新（test\_jobs.py） |
+| 22 | 创建任务、追问成功、重新审核（PATCH）；追问被预检拦截或网关失败、PATCH 返回 409；打开详情、列表、导出报告 | 前三者更新；其余都不变（test\_tasks\_api.py、test\_chat.py） |
 
 ## 三、到期提示与存储用量（V2-C-03）
 
@@ -102,6 +138,7 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0014：**tasks 
 2. 审核历史增加一列“保留至”（显示任务删除日期，永久显示“永久”）；结果页在任务删除前 7 天内或原件删除前 7 天内显示一行提示“本任务将于 {日期} 删除，如需留存请导出报告”“原件将于 {日期} 删除，之后不能重新审核和追问”。
 3. 系统状态（`GET /admin/system/status`）增加：原件占用（遍历 FILES\_DIR 求和）、数据库占用（pg\_database\_size）、备份目录占用与最近一次备份大小、数据盘剩余空间（已有）、**预计可用天数** = 剩余空间 ÷（近 30 天原件日均新增 × (备份保留份数 + 1) + 近 30 天数据库日均增量 × (备份保留份数 + 1)），近 30 天没有新增时显示“—”。结果缓存 10 分钟（目录遍历较慢）。
 4. 设置 → 数据 → 系统状态显示上述各项；预计可用天数 < 30 时警告色。
+5. 设置 → 数据的“数据保留”分区改为五项（2.1 的名称与可选值，下拉框选 30 / 90 / 180 / 365 天 / 永久），一个“保存”按钮整体提交；后端 422 时显示其提示（RETENTION\_ORDER 显示“原件与原文的保留期不能长于审核结果”）。当前值不是可选值时（V1.0 遗留，见 2.6），下拉框额外列出“{n} 天（旧版设置）”并选中，提示“请改选一个档位后保存”。保存成功后重新拉取提醒（RETENTION\_REVIEW 随之消失）。`api/admin.ts` 的 getRetention / saveRetention 改为五项。（V2Q-62 审阅时发现此表单原未分配任务，归入本任务。）
 
 | # | 场景 | 期望 |
 |-|-|-|
@@ -219,9 +256,9 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0014：**tasks 
 **产出**：`docs/v2/reports/V2-C-test.md`（新）。
 
 1. 整仓挂载 Docker 全量测试通过。
-2. 浏览器清单（四种宽度）：管理员提醒条“本次收起”（6.3 第 11 条）；审核历史“保留至”列与结果页到期提示；系统状态的占用与可用天数；审计日志分区；个人限额设置与超限提示；重复文件弹窗；三种管理员角色看到的设置导航与提醒；“以后自动替换”勾选。
+2. 浏览器清单（四种宽度）：管理员提醒条“本次收起”（6.3 第 11 条）；数据保留五项设置（含旧版非档位值的显示与 422 提示、保存后提醒消失）；审核历史“保留至”列与结果页到期提示；系统状态的占用与可用天数；审计日志分区；个人限额设置与超限提示；重复文件弹窗；三种管理员角色看到的设置导航与提醒；“以后自动替换”勾选。
 3. 在测试服务器（用户已授权的专用测试机）上演练：
-   * 用 v1.0.0 的库执行升级迁移，确认保留设置全部为永久、提醒出现、清理不删数据（2.6）；
+   * 用 v1.0.0 的库执行升级迁移两次：一次未保存过原件保留期，确认五项全部为永久、提醒出现、清理不删数据；一次在 V1.0 中先把原件保留期存为 30 天，确认升级后仍为 30、新增四项为永久、清理只删 V1.0 同样会删的原件（2.6）；
    * 把测试数据的活动时间回拨后执行清理，四层结果与 2.7 一致；
    * 执行 rotate\_key.sh 一次，之后上传、审核、追问、导出、恢复演练（用更换前的备份 + 旧主密钥）均正常。
 4. 8 个审核并发（模拟模型）时 worker 无连接池超时，记录内存。
