@@ -493,3 +493,28 @@ docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgr
 遵守共同约定及用户“已有标注不得改动”：上述两处旧测试保持原样，新增 V2Q-58 并暂停。任务行仍待执行，未报告全量成功。待用户明确确认最小测试同步后，先补相应反例确保真正的正文 `15` 仍失败，再重跑指定回归；通过后运行用户要求的一次整仓挂载全量，持久化 / 重读退出码，更新 B10 完成状态并停交 B11（Opus，high）。未连接服务器、未调用真实云模型。
 
 最终代码复核：protected-conflicts.log / .exit 仅重跑上述两个原测试，仍为 **2 failed、1 warning，64.87秒，exit 1**（已落盘重读），失败原因与首轮一致。测试先行提交3135e82，实现/暂停记录提交c319bb4；两份既有未跟踪界面方案保持原样。
+
+## V2-B-10：V2Q-58 批准后续跑（2026-10-25，GPT-6.1 Sol）
+
+用户明确批准 V2Q-58 并要求继续；开工时已存在批准记录提交 `c0fd22f`，任务卡文件范围也已由 Opus 补列。本轮重新核对 CLAUDE.md、TASKS-V2 第一节与 B10/B11 状态、V2-B 第〇 / 十一节、问题索引和 V2Q-58，main 工作区仍只有两份既有未跟踪界面方案。
+
+- `test_fill_brackets_patterns` 仅去掉该条 `* 2` 并同步注释，其余输入 / 断言不动。
+- A-03 的 must_replace 检查仅对 `amounts_cn_forms.docx` 的 `15` 排除完整 `[C-15]`；保留所有原 recheck、MAP / terms、长数字和其他标注检查。新增反例验证正文未替换的 `15万欧元` 仍使相同检查失败，并检查其他样本 / 其他标注不享有例外。
+- 更新新测试中的历史诊断说明，不修改产品代码。两处同步和反例提交为 `34aa0db`。
+- 指定七文件回归：**327 passed、1 warning、178.76秒、exit 0**。证据 `approved-focused.log` / `approved-focused.exit`，退出码独立落盘后重读。
+- 继续使用本机已有 Python 3.12 镜像 `aireview-backend-test:b06`（image id `sha256:dfe873f448018432d748b51c3c103849359c180bfb01a053e3673567e2d94e8b`），未下载或重建镜像。所有测试挂载整仓至 `/srv`，工作目录 `/srv/backend`，数据库为本机测试容器及测试自建临时库。
+
+**本轮收尾结论：V2-B-10 已完成，停交 V2-B-11（Opus，high）。**
+
+- 用户要求的**一次整仓挂载全量**已完成：**2674 passed、1 warning、994.57秒（16分34秒）、exit 0**。`approved-full.log` / `approved-full.exit` 均在前述仓库外证据目录，独立退出码已重读为0；未重复运行全量。
+- 唯一 warning 为既有 Starlette TestClient / httpx 弃用提示，无测试失败或跳过。运行容器 `aireview-v2b10-full` 已由 `--rm` 自动删除。
+- 完整命令如下（镜像取已有的含NER依赖版本，代码以整仓挂载为准）：
+
+```powershell
+docker run --rm --name aireview-v2b10-full --network aireview-test -e TEST_DATABASE_URL=postgresql://postgres:test@aireview-test-db:5432/postgres -v "${PWD}:/srv" -w /srv/backend aireview-backend-test:b06 pytest -q
+```
+
+- 本轮未改样本 txt / yaml，txt SHA-256 仍为 `504f21c7a4deba702ae4a016bbf26abe6f5269d9bf53b39df50e1c7a6987de78`；相对批准提交 c0fd22f，样本与 recheck.py 均无差异。既有未跟踪界面方案保留。
+- 已将 TASKS-V2 的 B10 行改为已完成，当前进度改为完成交接，保留3条且每条少于400字。V2Q-58 已确认，无新增待确认问题。未修改产品业务代码、前端、迁移、设计或规格，未连接服务器、调用真实云模型或下载文件。
+
+**V2-B-11 审核入口**：按设计第〇 / 十一节及 V2Q-57、V2Q-58 审核测试先行提交3135e82、实现c319bb4、失败证据cbae897、授权记录c0fd22f、同步34aa0db及收尾记录。重点核对自动识别区间/币种/数值、只增不减、手动相对数字区间及两个API、原样本/标注保护、固定提示与代号不误拦、V2Q-58例外仅限完整[C-15]且正文15仍失败。前轮失败与诊断错误已保留，不计为成功。本会话完成实现与自测，不代替独立审核；B11通过后才可进入V2-C-01。
