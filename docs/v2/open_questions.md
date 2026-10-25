@@ -13,11 +13,11 @@
 | 本文件 | 跨批次总体决定 | V2Q-01、V2Q-02、V2Q-03、V2Q-25 |
 | [questions/V2-A.md](questions/V2-A.md) | V2-A 审核效果 | V2Q-04、V2Q-05、V2Q-06、V2Q-07、V2Q-08、V2Q-09、V2Q-23、V2Q-24、V2Q-30 |
 | [questions/V2-B.md](questions/V2-B.md) | V2-B 脱敏增强 | V2Q-10、V2Q-11、V2Q-12、V2Q-13、V2Q-14、V2Q-15、V2Q-16、V2Q-31、V2Q-32、V2Q-33、V2Q-34、V2Q-35、V2Q-36、V2Q-37、V2Q-38、V2Q-39、V2Q-40、V2Q-41、V2Q-42、V2Q-43、V2Q-44、V2Q-45、V2Q-46、V2Q-47、V2Q-48、V2Q-49、V2Q-50、V2Q-51、V2Q-54、V2Q-55、V2Q-56、V2Q-57、V2Q-58、V2Q-59 |
-| [questions/V2-C.md](questions/V2-C.md) | V2-C 系统与数据 | V2Q-17、V2Q-18、V2Q-19、V2Q-20、V2Q-21、V2Q-22、V2Q-52、V2Q-53、V2Q-60、V2Q-61、V2Q-62、V2Q-63 |
+| [questions/V2-C.md](questions/V2-C.md) | V2-C 系统与数据 | V2Q-17、V2Q-18、V2Q-19、V2Q-20、V2Q-21、V2Q-22、V2Q-52、V2Q-53、V2Q-60、V2Q-61、V2Q-62、V2Q-63、V2Q-64、V2Q-65 |
 | [questions/V2-E.md](questions/V2-E.md) | V2-E 法规库与向量检索 | V2Q-26、V2Q-27、V2Q-28、V2Q-29 |
 | [questions/V2-D.md](questions/V2-D.md) | V2-D 智能助手 | （暂无） |
 
-下一个编号：V2Q-64。
+下一个编号：V2Q-66。
 
 ## 一、需决定
 
