@@ -330,6 +330,13 @@ SCHEMA["redaction_exclusions"] = """
     created_by uuid
     created_at ts NN"""
 
+SCHEMA['ner_node_results'] = """
+    id uuid NN =gen_random_uuid()
+    task_id uuid NN
+    loc v64 NN
+    data_enc bytea NN
+    updated_at ts NN"""
+
 PRIMARY_KEYS = {t: ["id"] for t in SCHEMA}
 PRIMARY_KEYS.update(
     sessions=["token_hash"], redaction_maps=["task_id"], settings=["key"], requirement_versions=["version"]
@@ -337,6 +344,7 @@ PRIMARY_KEYS.update(
 
 # 唯一约束 / 唯一索引（不含主键）
 UNIQUES = {
+    ('ner_node_results', 'task_id, loc'),
     ("users", "username"),
     ("task_files", "task_id, seq"),
     ("doc_nodes", "task_id, loc"),
@@ -366,6 +374,7 @@ INDEXES = {
 
 # 外键：(表, 字段) -> (被引用表, 删除规则 c=CASCADE a=NO ACTION)
 FOREIGN_KEYS = {
+    ('ner_node_results', 'task_id'): ('tasks', 'c'),
     ("redaction_exclusions", "task_id"): ("tasks", "c"),
     ("redaction_exclusions", "created_by"): ("users", "a"),
     ("sessions", "user_id"): ("users", "a"),
@@ -496,7 +505,7 @@ def _tables(conn):
 
 def test_exactly_23_tables(migrated):
     assert _tables(migrated) == set(SCHEMA)
-    assert len(SCHEMA) == 23  # V2-B-05：新增 redaction_exclusions。
+    assert len(SCHEMA) == 24  # V2Q-49：新增加密节点结果表，仍严格核对完整表集合。
 
 
 def test_pgcrypto_enabled(migrated):

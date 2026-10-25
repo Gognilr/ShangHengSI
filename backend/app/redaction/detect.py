@@ -522,6 +522,13 @@ def find_addresses(text: str) -> list[Hit]:
             start = m.start() + boundary[-1].end() if boundary else m.start()
             hits.append(Hit(start, m.end(), "ADDR", "中国"))
     for m in _EN_UNLABELED_ADDRESS.finditer(text):
+        surface = m.group()
+        tail = surface.partition(',')[2]
+        # Opus复核：套间/楼层后的大写词组未必是地名；Court/Way亦常见于普通句子。
+        unit_only = re.match(_EN_UNIT, surface) is not None
+        ambiguous_road = re.search(r'(?i:\bCourt|\bCt|\bWay)$', surface.partition(',')[0]) is not None
+        if (unit_only or ambiguous_road) and (not tail or find_country(tail) is None):
+            continue
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             hits.append(Hit(m.start(), m.end(), 'ADDR', find_country(m.group()) or '国家未知'))
     return hits

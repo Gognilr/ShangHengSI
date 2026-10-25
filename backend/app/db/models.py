@@ -1,4 +1,4 @@
-"""全部 23 张表的 ORM 模型，对应 SPEC 18.3–18.24 与 V2-B 任务内排除表。
+"""全部 24 张表的 ORM 模型，对应 SPEC 18.3–18.24 与 V2-B 任务内排除、NER缓存表。
 
 约定见 SPEC 18.1：时间 timestamptz（UTC）；枚举用 varchar + CHECK；_enc 结尾为主密钥加密后的 bytea；
 任务下属表的 task_id 外键均 ON DELETE CASCADE。
@@ -247,6 +247,18 @@ class RedactionItem(Base):
     category: Mapped[str] = mapped_column(String(10), nullable=False)
     placeholder: Mapped[str] = mapped_column(String(64), nullable=False)
     detected_by: Mapped[str] = mapped_column(String(10), nullable=False)
+
+
+class NerNodeResult(Base):
+    """V2Q-49：节点模型结果及缓存键一并加密，随任务删除。"""
+    __tablename__ = 'ner_node_results'
+    __table_args__ = (UniqueConstraint('task_id', 'loc'),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    task_id: Mapped[uuid.UUID] = _task_fk()
+    loc: Mapped[str] = mapped_column(String(64), nullable=False)
+    data_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    updated_at: Mapped[datetime] = _ts_updated()
 
 
 class RedactionExclusion(Base):

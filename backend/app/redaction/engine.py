@@ -15,6 +15,8 @@ redact_task() 等函数负责读写数据库，不提交事务，由调用方提
 """
 import hashlib
 import json
+import logging
+import math
 import re
 import uuid
 from collections.abc import Sequence
@@ -28,7 +30,8 @@ from sqlalchemy.orm import Session
 from app.admin.settings_store import get_setting
 from app.db.base import utcnow
 from app.db.models import (
-    DocNode, Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionTerm, RedactionExclusion, Task, TaskFile,
+    DocNode, Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionTerm, RedactionExclusion,
+    NerNodeResult, Task, TaskFile,
 )
 from app.redaction import detect, ner, outbound, parties as P, quotes, ratio, suspects as S, tables
 from app.redaction.dictionaries import _country_index
@@ -39,6 +42,7 @@ from app.redaction.recheck import recheck
 from app.security import crypto
 
 COUNTRY_UNKNOWN = "国家未知"
+logger = logging.getLogger(__name__)
 USER_CATEGORIES = ("ORG", "PERSON", "IM", "ACCOUNT", "IDNO", "REFNO", "ADDR", "AMOUNT", "PROJECT", "CUSTOM")
 MANUAL_MIN, MANUAL_MAX = 2, 100  # 手动补充去掉首尾空白后的字符数（Q-70 ③）
 CONTEXT_CHARS = 30  # 疑似遗漏前后各显示多少个字符的原文（Q-70 ⑤）
@@ -135,6 +139,9 @@ class RedactionResult:
     redacted: dict[str, str]  # loc → 脱敏后文本（含金额比例）
     suspects: list[SuspectOut] = field(default_factory=list)
     matched_terms: set[str] = field(default_factory=set)  # 命中的已记住名称、自定义敏感词（规范形式），用于命中计数
+    ner_cache: dict[str, dict] = field(default_factory=dict)
+    ner_cache_hits: int = 0
+    ner_cache_misses: int = 0
 
 
 class RedactionInputError(ValueError):
@@ -271,6 +278,26 @@ def _broad_names_with_alias(text: str) -> list[tuple[int, int]]:
     return out
 
 
+def _cached_entities(entry: object, key: str, length: int) -> list[ner.Entity] | None:
+    """持久化内容校验失败视为未命中，不让损坏数据改变替换位置。"""
+    if not isinstance(entry, dict) or set(entry) != {'key', 'entities'} or entry['key'] != key:
+        return None
+    values = entry['entities']
+    if not isinstance(values, list):
+        return None
+    result = []
+    for value in values:
+        if not isinstance(value, list) or len(value) != 4:
+            return None
+        start, end, label, score = value
+        if (type(start) is not int or type(end) is not int or not 0 <= start < end <= length
+                or label not in ner.LABELS or type(score) not in (int, float)
+                or not math.isfinite(score) or not 0 <= score <= 1):
+            return None
+        result.append(ner.Entity(start, end, label, score))
+    return result
+
+
 def compute(
     nodes: list[NodeIn],
     stance: str,
@@ -281,6 +308,7 @@ def compute(
     mask_quantity: bool = False,
     main_prefix: str | None = None,
     exclusions: Sequence[str] = (),
+    ner_cache: dict[str, dict] | None = None,
 ) -> RedactionResult:
     """对正文节点执行 9.3 第 1–7 步、数量脱敏、疑似遗漏和金额比例。
 
@@ -507,10 +535,24 @@ def compute(
 
     # 模型只读取规则未替换的文字；等长空白保持原文偏移。
     ner_suspects = []
+    context = ner.cache_context()
+    node_cache, same_compute = {}, {}
+    cache_hits = cache_misses = 0
     for i, n in enumerate(nodes):
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         residual = ner.mask(n.text, occupied[i])
-        for hit in ner.recognize(residual):
+        key = ner.cache_key(residual, context=context)
+        predicted = _cached_entities((ner_cache or {}).get(n.loc), key, len(residual))
+        if predicted is None:
+            predicted = same_compute.get(key)
+        if predicted is None:
+            predicted = ner.recognize(residual)
+            cache_misses += 1
+        else:
+            cache_hits += 1
+        same_compute[key] = predicted
+        node_cache[n.loc] = {'key': key, 'entities': [[e.start, e.end, e.label, e.score] for e in predicted]}
+        for hit in predicted:
             if _overlaps(occupied[i] + excluded_spans, hit.start, hit.end):
                 continue
             if hit.score >= ner.HIGH:
@@ -535,6 +577,8 @@ def compute(
                 ent.org_type = o.org_type or ent.org_type
                 ent.confirmed = o.confirmed
     result = _assemble(nodes, stance, entities, spans, main_prefix)
+    result.ner_cache = node_cache
+    result.ner_cache_hits, result.ner_cache_misses = cache_hits, cache_misses
 
     # 疑似遗漏：全部替换项确定之后，在每个节点未替换的文字上识别（9.5）
     for i, n in enumerate(nodes):
@@ -818,11 +862,31 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     user_terms = _user_terms(db, task.id, texts)
     seen = {(P.normalize(u.text), u.category) for u in user_terms}
     user_terms += [u for u in extra_terms if (P.normalize(u.text), u.category) not in seen]
+    cached_rows = {r.loc: r for r in db.scalars(select(NerNodeResult).where(NerNodeResult.task_id == task.id))}
+    cached = {}
+    for loc, row in cached_rows.items():
+        try:
+            cached[loc] = json.loads(crypto.decrypt_text(row.data_enc))
+        except (crypto.DecryptionError, UnicodeError, ValueError, TypeError):
+            pass  # 不记录密文、键或节点文字；同一事务中以重算结果覆盖。
     result = compute(nodes, task.stance, terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
                      mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
                      exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
                          select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
-                     main_prefix=_main_prefix(db, task.id))
+                     main_prefix=_main_prefix(db, task.id), ner_cache=cached)
+
+    for loc, entry in result.ner_cache.items():
+        if cached.get(loc) != entry:
+            row = cached_rows.get(loc)
+            if row is None:
+                row = NerNodeResult(task_id=task.id, loc=loc)
+                db.add(row)
+            row.data_enc = crypto.encrypt_text(json.dumps(entry, ensure_ascii=False))
+            row.updated_at = utcnow()
+    for loc, row in cached_rows.items():
+        if loc not in result.ner_cache:
+            db.delete(row)
+    logger.debug('实体识别缓存：命中=%d，重算=%d', result.ner_cache_hits, result.ner_cache_misses)
 
     for r in rows:
         r.redacted_text = result.redacted[r.loc]

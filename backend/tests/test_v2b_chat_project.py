@@ -45,9 +45,25 @@ def test_partial_crossing_keeps_existing_priority_and_only_used_entries():
 def test_project_does_not_override_other_category_priority():
     text = '项目名称：合同总价：100元采购项目'
     result = _redact(text, {}, [])
-    assert '[金额_Q1]' in result.text
-    assert '采购项目' in result.text
-    assert all('项目_Q' not in code for code in result.new_entries)
+    # V2Q-50：只同步本条旧期望，项目整段优先于内部金额；未用代号不得入表。
+    assert len(result.new_entries) == 1
+    code, value = next(iter(result.new_entries.items()))
+    assert code.startswith('[项目_Q') and value == text[5:]
+    assert result.text == f'项目名称：{code}' and '采购项目' not in result.text
+    assert restore(result.text, result.new_entries) == text
+
+
+def test_project_containing_address_has_same_priority_in_body_and_chat():
+    from app.redaction.engine import NodeIn, compute
+    text = '项目名称：东川市长江路88号仓库改造项目'
+    body = compute([NodeIn('F1-P1', text)], 'other')
+    assert len(body.items) == 1 and body.items[0].category == 'PROJECT'
+    chat = _redact(text, {}, [])
+    assert len(chat.new_entries) == 1
+    code, value = next(iter(chat.new_entries.items()))
+    assert code.startswith('[项目_Q') and value == text[5:]
+    assert chat.text == f'项目名称：{code}'
+    assert restore(body.redacted['F1-P1'], body.mapping) == restore(chat.text, chat.new_entries) == text
 
 
 @pytest.mark.usefixtures('env')

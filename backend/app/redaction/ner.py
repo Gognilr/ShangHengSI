@@ -13,6 +13,7 @@ import onnxruntime as ort
 from tokenizers import Tokenizer
 
 MODEL_DIR = Path(__file__).resolve().parents[2] / 'models/ner'
+STOPWORDS_FILE = Path(__file__).resolve().parents[2] / 'resources/ner_stopwords.txt'
 MEDIUM = 0.4
 HIGH = 0.95
 LABELS = ('PERSON', 'ORG', 'ADDR')
@@ -30,6 +31,16 @@ class Entity:
     end: int
     label: Literal['PERSON', 'ORG', 'ADDR']
     score: float
+
+
+def cache_context() -> bytes:
+    """V2Q-49：只读取小型版本文件；不缓存文件内容，改动后下一次重算立即失效。"""
+    return (MODEL_DIR / 'MANIFEST.sha256').read_bytes() + STOPWORDS_FILE.read_bytes()
+
+
+def cache_key(residual: str, *, context: bytes | None = None) -> str:
+    """残余文本的摘要只用于内存比对，持久化时必须连实体一起加密。"""
+    return hashlib.sha256((cache_context() if context is None else context) + residual.encode('utf-8')).hexdigest()
 
 
 def check(*, load: bool = False) -> None:
