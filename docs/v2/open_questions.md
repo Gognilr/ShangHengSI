@@ -8,6 +8,9 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-49 | B-08 审阅发现：确认页的手动新增、撤销、修改主体、疑似“替换”都经 engine._run → compute 在 app 进程（4 线程）对全文重跑 NER；冻结391段（约9,100字）实测13.56秒/次，20页合同预计每次点击15～25秒，app 首次还要加载模型，期间任务行加锁。B-08 资源测量未覆盖此路径。设计6.3允许的批量推理经原型实测更慢（64窗2.68→3.06秒），不作为方案 | 状态：待确认（确认前不得实施）。① 先测量（无需授权）：运行镜像口径下，20页PDF在 app 进程中手动新增/撤销/疑似替换三种操作的冷启动后首次与热态耗时；统计 parse_task 中 ner.recognize 调用次数与窗口数（只记数量和时间，不记文本）。② 结果复用，只改 backend/app/redaction/ner.py、engine.py 及对应测试：同一次 compute 内残余文本完全相同的节点只推理一次；进程内有上限的 LRU，键为残余文本 SHA-256，值只存起止位置、标签、分数，不存原文。新增“命中缓存与不走缓存结果完全相同”“缓存不含原文”两条测试；test_ner 对拍、golden、类别召回、A03 照常通过。不改模型、精度、阈值、线程数。③ 只能改善第二次及以后的点击；app 进程第一次点击仍全文推理，是否把解析时识别结果持久化（需迁移）另行决定 | backend/app/redaction/ner.py、engine.py；design/V2-B.md 6.3、6.4 | V2-B-08 收尾前 |
+| V2Q-50 | V2Q-47 后三入口不一致：engine（正文/NOTE）的项目整段吞掉其内部全部已替换区间（比 V2Q-45 原文“含其中的主体名称”宽，方向更安全）；追问 _redact 只让位于对照表/主体/词条区间。实测“项目名称：东川市长江路88号仓库改造项目”正文为“项目_1”，追问为“[地址_Q1：中国]仓库改造项目”，留下项目尾部。只在项目首次出现于追问时触发 | 状态：待确认（确认前不得实施）。① 事后确认 engine 侧“完整包含的任何类别都让位于项目整段”的做法。② 追问 _redact 改为与 engine 相同：项目区间完整包含的任何已接受区间都让位于项目整段；部分交叉仍先到先得；项目识别仍只用 detect.find_projects；new_entries 只记录实际用到的代号；逐字还原、出口复检、疑似决定检查不改。③ 授权把 test_v2b_chat_project.py::test_project_does_not_override_other_category_priority 的期望改为整段 PROJECT、无“采购项目”尾部；其他旧断言失败仍须停下另报 | backend/app/chat/service.py（仅 _redact）、backend/tests/test_v2b_chat_project.py | V2-B-08 收尾前 |
+| V2Q-51 | B-08 观察项：确认页“设为敏感信息”十类浮层在打开后缩小窗口或滚动对照网格时不重新定位，可超出视口或脱离选区。原因：RedactionCompare.vue 的 .selection-popover 为 position: fixed，坐标只在选中文字时计算一次，组件没有 resize/scroll 监听 | 状态：待确认（确认前不得实施）。只改 frontend/src/components/RedactionCompare.vue：窗口 resize 时把浮层坐标重新收回视口（同现有 8px / innerWidth-420 / innerHeight-360 规则）；对照网格或页面滚动时关闭浮层并清空选区；卸载时移除监听；不改样式变量与颜色。验收：前端 build 通过；1280×800、1366×768、1440×900、1920×1080 四宽各一张截图（静态打开与打开后缩窗各一）；截图工具仍失败时记为限制，附截图清单请用户人工查看 | frontend/src/components/RedactionCompare.vue | V2-B-08 收尾前 |
 
 
 
