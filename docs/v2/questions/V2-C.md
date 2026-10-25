@@ -8,6 +8,7 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-66 | C-04 重复文件弹窗需要使用 409 响应中的旧任务信息，但 api/http.ts 当前只保留 code/message，丢弃额外 JSON 字段；该文件不在 C-04 范围内 | 请求最小扩展 frontend/src/api/http.ts：ApiError 增加可选响应数据字段，构造参数兼容既有三参数用法；请求失败时保留已解析响应体，供 api/tasks.ts 与 ReviewNew.vue 使用 DUPLICATE_FILE 的 task_id/title/created_at。401/403、错误码、提示与下载行为不变，不在日志、本地存储或 URL 保存业务数据。后端可在已授权的 tasks/router.py 局部返回 409 JSON，无需扩展公共安全错误模块。已向用户提交“批准最小扩展 / 先交 Opus”选择，尚未收到答复；未开始 C-04 修改 | C-04 第 4.2 节；frontend/src/api/http.ts 的 ApiError 与 request 错误处理 | C-04 实现前 |
 
 ## 二、已决定
 
