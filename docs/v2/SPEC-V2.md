@@ -99,7 +99,7 @@
 
 ### 3 技术栈与固定约束（V2-B，B8；V2-B-06a 选型，用户 2026-10-24 确认）
 原文：不得引入：……任何本地大模型或本地 embedding 模型
-新文：不得引入：……任何本地大模型或本地 embedding 模型。允许一个本地实体识别模型：`urchade/gliner_multi-v2.1`（Apache-2.0，固定提交 443d26d654e0324125a96bebd8e796c14ff2efe6；分词文件来自 microsoft/mdeberta-v3-base，MIT），使用从该权重导出的 FP32 ONNX（SHA-256 d3f51a308a876e09209321cc466dffcc4b1ca8f4877144d24b08ae3f7c8dabd0），6 个文件的清单与 SHA-256 见 design/V2-B.md 6.2；用 onnxruntime 在 CPU 上离线运行，只用于脱敏识别。推理只用 onnxruntime、numpy 与 tokenizers（Apache-2.0），后端镜像不得安装 torch、transformers、gliner、sentencepiece。模型文件不进仓库，构建时放入镜像并校验 SHA-256。资源门槛：1 万字识别 ≤ 10 秒，单进程内存增加 ≤ 2.5 GB，镜像增加 ≤ 1.5 GB，整机压力场景见 design/V2-B.md 6.4
+新文：不得引入：……任何本地大模型或本地 embedding 模型。允许一个本地实体识别模型：`urchade/gliner_multi-v2.1`（Apache-2.0，固定提交 443d26d654e0324125a96bebd8e796c14ff2efe6；分词文件来自 microsoft/mdeberta-v3-base，MIT），使用从该权重导出的 FP32 ONNX（SHA-256 d3f51a308a876e09209321cc466dffcc4b1ca8f4877144d24b08ae3f7c8dabd0），6 个文件的清单与 SHA-256 见 design/V2-B.md 6.2；用 onnxruntime 在 CPU 上离线运行，只用于脱敏识别。推理只用 onnxruntime、numpy 与 tokenizers（Apache-2.0），后端镜像不得安装 torch、transformers、gliner、sentencepiece。模型文件不进仓库，构建时放入镜像并校验 SHA-256。资源门槛：1 万字识别 ≤ 15 秒，追问 500 字识别 ≤ 3 秒、1,000 字 ≤ 6 秒（热态 p95，V2Q-56），单进程内存增加 ≤ 2.5 GB，镜像增加 ≤ 1.5 GB，整机压力场景见 design/V2-B.md 6.4
 理由：规则对叙述性文字中的人名、机构名召回不足；用户 2026-10-23 同意在硬件允许时引入；06a 实测 GLiNER FP32 召回 31/32，原 2 vCPU / 3 秒 / 1 GB 门槛与目标硬件（28 vCPU / 38 GiB）不匹配，用户确认按目标硬件定门槛、不为轻量化牺牲识别效果（V2Q-37）
 
 ### 9.1 原则（V2-B，B8）
