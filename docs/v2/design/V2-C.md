@@ -8,7 +8,7 @@
 
 1. **开工条件**：V2-B 已通过批次审核（V2-B-09）。M8 的部署脚本（install.sh、upgrade.sh、backup\_now.sh、restore.sh、lib.sh）已在 V1.0 中提交。
 2. **测试**：每节测试用例逐条写成测试，不得删改；单个任务只跑列出的测试文件。涉及数据删除（V2-C-02）与加密（V2-C-07）的任务为测试先行，审核时重点核对。
-3. **迁移编号**：V2-B 用到 0011。本批 V2-C-02 用 0012，V2-C-06 用 0013。
+3. **迁移编号**：V2-B 实际用到 0013（0012_ner_source、0013_ner_node_results，V2Q-49）。本批 V2-C-02 用 0014，V2-C-06 用 0015（V2Q-53）。
 4. **升级安全**：从 v1.0.0 升级到 V2 时，任何会删除数据的新规则都不得因为“默认值变化”而在升级当天自动删除老数据（见 2.6）。
 5. 日志不含原文、名称、金额、密钥；提交只暂存本任务文件。
 
@@ -34,7 +34,7 @@
 
 ## 二、数据保留四层（V2-C-02，测试先行）
 
-**文件范围**：`backend/app/backup/retention.py`、`backend/app/admin/settings_store.py`、`backend/app/admin/data.py`、`backend/app/tasks/service.py`（删除任务时清空外发记录文件名；活动时间）、`backend/app/review/job.py` 与 `backend/app/chat/service.py`（只更新活动时间）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0012_retention_layers.py`（新）、`backend/app/admin/alerts.py`、对应测试。
+**文件范围**：`backend/app/backup/retention.py`、`backend/app/admin/settings_store.py`、`backend/app/admin/data.py`、`backend/app/tasks/service.py`（删除任务时清空外发记录文件名；活动时间）、`backend/app/review/job.py` 与 `backend/app/chat/service.py`（只更新活动时间）、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0014_retention_layers.py`（新）、`backend/app/admin/alerts.py`、对应测试。
 
 ### 2.1 设置项
 
@@ -72,7 +72,7 @@ tasks 增加 `last_activity_at timestamptz 非空`：创建任务、确认发送
 
 ### 2.6 从 v1.0.0 升级
 
-V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0012：**tasks 表非空且 settings 中没有 retention.\* 行时**，写入 `original_days=0、result_days=0、outbound_days=0、audit_days=0、unfinished_days=0`（保持升级前“全部永久”的行为），并写入 `retention.review_pending=true`；管理员登录后显示提醒“数据保留已改为分层设置，当前全部为永久，请在设置 → 数据中确认”（code `RETENTION_REVIEW`），保存一次保留设置后清除。新安装（tasks 表为空）不写，使用 2.1 的默认值。
+V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0014：**tasks 表非空且 settings 中没有 retention.\* 行时**，写入 `original_days=0、result_days=0、outbound_days=0、audit_days=0、unfinished_days=0`（保持升级前“全部永久”的行为），并写入 `retention.review_pending=true`；管理员登录后显示提醒“数据保留已改为分层设置，当前全部为永久，请在设置 → 数据中确认”（code `RETENTION_REVIEW`），保存一次保留设置后清除。新安装（tasks 表为空）不写，使用 2.1 的默认值。
 
 ### 2.7 测试用例
 
@@ -88,10 +88,10 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0012：**tasks 
 | 8 | 保存原件 365、结果 90 | 422 RETENTION\_ORDER |
 | 9 | 保存 45 天 | 422 |
 | 10 | 用户删除任务 | 该任务 llm\_calls.task\_title 为空 |
-| 11 | 升级：已有任务、无保留设置的库执行 0012 | 五项均为 0，提醒 RETENTION\_REVIEW 出现；保存一次后消失；清理任务不删除任何数据 |
-| 12 | 新安装执行 0012 | 不写设置，默认值为 2.1 |
+| 11 | 升级：已有任务、无保留设置的库执行 0014 | 五项均为 0，提醒 RETENTION\_REVIEW 出现；保存一次后消失；清理任务不删除任何数据 |
+| 12 | 新安装执行 0014 | 不写设置，默认值为 2.1 |
 | 13 | 单次超过 500 个任务 | 本次处理 500 个，其余下次 |
-| 14 | 迁移 0012 升级 / 降级 | 降级删除 last\_activity\_at 与新增设置行；模型与迁移一致 |
+| 14 | 迁移 0014 升级 / 降级 | 降级删除 last\_activity\_at 与新增设置行；模型与迁移一致 |
 | 15 | A-06 | 清理只按时间，不看 owner；接口仍只返回本人任务 |
 
 ## 三、到期提示与存储用量（V2-C-03）
@@ -152,11 +152,11 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0012：**tasks 
 
 ## 六、设置权限拆分（V2-C-06，测试先行）
 
-**文件范围**：`backend/app/db/models.py`、`backend/app/db/alembic/versions/0013_admin_roles.py`（新）、`backend/app/security/deps.py`、`backend/app/admin/*.py`（替换权限依赖）、`backend/app/auth/router.py`（提醒按角色）、`backend/app/admin/users.py`、`backend/app/cli.py`（只改创建管理员的角色值）、`backend/app/redaction/engine.py` 与 `backend/app/redaction/router.py`（“以后自动替换”）、`frontend/src/router/index.ts`、`frontend/src/layouts/MainLayout.vue`、`frontend/src/views/settings/SettingsLayout.vue`、`frontend/src/views/settings/Users.vue`、`frontend/src/components/ManualRedactDialog.vue`、`frontend/src/components/SuspectList.vue`、`frontend/src/stores/auth.ts`、对应测试。
+**文件范围**：`backend/app/db/models.py`、`backend/app/db/alembic/versions/0015_admin_roles.py`（新）、`backend/app/security/deps.py`、`backend/app/admin/*.py`（替换权限依赖）、`backend/app/auth/router.py`（提醒按角色）、`backend/app/admin/users.py`、`backend/app/cli.py`（只改创建管理员的角色值）、`backend/app/redaction/engine.py` 与 `backend/app/redaction/router.py`（“以后自动替换”）、`frontend/src/router/index.ts`、`frontend/src/layouts/MainLayout.vue`、`frontend/src/views/settings/SettingsLayout.vue`、`frontend/src/views/settings/Users.vue`、`frontend/src/components/ManualRedactDialog.vue`、`frontend/src/components/SuspectList.vue`、`frontend/src/stores/auth.ts`、对应测试。
 
 ### 6.1 角色
 
-`users.role` 取值由 user / admin 改为：`user`（普通用户）、`sys_admin`（系统管理员）、`biz_admin`（业务管理员）、`admin`（两者兼任）。迁移 0013：原 admin 保持 admin（升级后能力不变）。
+`users.role` 取值由 user / admin 改为：`user`（普通用户）、`sys_admin`（系统管理员）、`biz_admin`（业务管理员）、`admin`（两者兼任）。迁移 0015：原 admin 保持 admin（升级后能力不变）。
 
 | 设置页与接口 | sys\_admin | biz\_admin | admin |
 |-|-|-|-|
@@ -168,6 +168,7 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0012：**tasks 
 
 * `deps.require_sys_admin`、`deps.require_biz_admin` 取代 `require_admin`；无权限 403（错误码不变）。
 * 管理员提醒：备份、磁盘、调用上限、RETENTION\_REVIEW 给系统管理员；PROMPT\_TERM\_CONFLICT 给系统管理员和业务管理员（它会让所有审核被拦截）。
+* 提醒条“本次收起”（V2Q-52）：MainLayout 每条 `el-alert` 改为可关闭，关闭按钮文字“本次收起”（`close-text`），其他样式不变。`stores/auth.ts` 增加只在内存中的已收起集合，键为“code + 提醒文字”；`MainLayout` 只显示不在集合中的提醒；退出登录、重新登录（auth 状态清空）时清空集合；页面刷新自然恢复。不得使用 localStorage、sessionStorage、Cookie，不改 `/auth/me` 与服务端。所有提醒都收起后不留空白提醒区。
 * 至少保留一个启用的、角色为 sys\_admin 或 admin 的账号（原“最后一个管理员”规则改为此条，Q-99 ④ 的加锁方式不变）。管理员不能修改自己的角色（Q-99 ② 不变）。
 * 两种管理员都不能查看他人任务（17.2 不变）。
 * 前端：顶栏“设置”对非 user 角色可见；设置左侧导航只显示有权限的分页；直接访问无权限分页时跳到第一个有权限的分页；账号页角色下拉为“普通用户 / 系统管理员 / 业务管理员 / 系统与业务管理员”。
@@ -183,13 +184,14 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0012：**tasks 
 | 1 | biz\_admin 访问账号、模型、数据接口 | 403；访问审核要求、脱敏接口正常 |
 | 2 | sys\_admin 访问审核要求、脱敏接口 | 403 |
 | 3 | admin | 全部可访问（与升级前相同） |
-| 4 | 迁移 0013 升级 | 原 admin 仍为 admin；降级时 sys\_admin、biz\_admin 改回 admin（有权限的都保留为管理员） |
+| 4 | 迁移 0015 升级 | 原 admin 仍为 admin；降级时 sys\_admin、biz\_admin 改回 admin（有权限的都保留为管理员） |
 | 5 | 停用最后一个 sys\_admin（另有 biz\_admin） | 409 |
 | 6 | 任一管理员访问他人任务、轮次、问题、对话 | 404（A-06） |
 | 7 | 普通用户勾选“以后自动替换”保存“示例简称” | redaction\_terms 新增 custom 词条，created\_by 为该用户；下一个任务自动替换 |
 | 8 | 勾选的文字出现在固定提示词中 | 422 TERM\_IN\_PROMPT，本次替换不保存 |
 | 9 | /auth/me | 返回 role；提醒按 6.1 分配 |
 | 10 | 前端 | build 通过；浏览器检查在 V2-C-08 |
+| 11 | 提醒条“本次收起”（V2Q-52，前端） | build 通过；浏览器检查在 V2-C-08：收起后在智能审核、审核历史、设置之间切换仍不显示；刷新后重新显示；退出再登录重新显示；同一 code 文字变化后重新显示；收起一条时其他提醒仍显示；源码中无 localStorage / sessionStorage / document.cookie |
 
 ## 七、主密钥更换（V2-C-07，测试先行）
 
@@ -217,7 +219,7 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0012：**tasks 
 **产出**：`docs/v2/reports/V2-C-test.md`（新）。
 
 1. 整仓挂载 Docker 全量测试通过。
-2. 浏览器清单（四种宽度）：审核历史“保留至”列与结果页到期提示；系统状态的占用与可用天数；审计日志分区；个人限额设置与超限提示；重复文件弹窗；三种管理员角色看到的设置导航与提醒；“以后自动替换”勾选。
+2. 浏览器清单（四种宽度）：管理员提醒条“本次收起”（6.3 第 11 条）；审核历史“保留至”列与结果页到期提示；系统状态的占用与可用天数；审计日志分区；个人限额设置与超限提示；重复文件弹窗；三种管理员角色看到的设置导航与提醒；“以后自动替换”勾选。
 3. 在测试服务器（用户已授权的专用测试机）上演练：
    * 用 v1.0.0 的库执行升级迁移，确认保留设置全部为永久、提醒出现、清理不删数据（2.6）；
    * 把测试数据的活动时间回拨后执行清理，四层结果与 2.7 一致；
@@ -230,4 +232,4 @@ V1.0 的 `retention.original_days` 默认 0（永久）。迁移 0012：**tasks 
 
 ## 十、新增待确认问题
 
-见 docs/v2/open\_questions.md V2Q-17～V2Q-22。
+见 docs/v2/open\_questions.md V2Q-17～V2Q-22；后续增补 V2Q-52（提醒条本次收起）、V2Q-53（迁移编号顺延）。
