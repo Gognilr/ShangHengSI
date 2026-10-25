@@ -455,3 +455,39 @@ B06 的开发机证据：8 CPU 断网万字模型中位 8.8018 秒，单进程�
 **结论**：V2-B 通过审核（含上述 2 处修复），待用户确认后进入 V2-C-01。
 
 **用户确认（2026-10-25）**：V2-B 审核结果、V2Q-34（新旧叙述人名规则重叠时保留旧原因）、V2Q-42（手动金额只接受纯数字，带币种符号的选区返回 422）均已确认。Q51 四宽截图仍为限制。下一任务 V2-C-01。
+
+## V2-B-10 实现检查点与 V2Q-58（2026-10-25，GPT-6.1 Sol）
+
+**状态：未完成，等待 V2Q-58；整仓挂载全量尚未运行，V2-B-11 未开始。**
+
+已完整阅读 CLAUDE.md、TASKS-V2 第一节与任务行、V2-B 共同约定 / 第十一节、问题索引与 B 批问题（含已确认 V2Q-57）。main 开工，只有两份既有未跟踪界面方案，未触碰。
+
+### 实现与保护范围
+
+- 测试先行提交 `3135e82`：11.1 七行示例、边界反例、手动金额、币种隔离和还原；初始有效红灯 37 failed / 21 passed（exit 1）。随后补充实际 manual / suspect API、固定提示全文及代号后量级反例、外发定位诊断，最终新增测试 79 passed。
+- detect.py 只改第 5 步及辅助正则：新增前置币种、块 / 块钱、量级、余 / 多、括号单位、小写中文数字；按同区间去重，前置币种优先。数字金额保留单位，小写中文金额整段替换；Decimal 换算。
+- engine.py 只改 `_manual_amount`、compute 用户金额处理及 `_add_term` 金额校验：返回相对数字区间，保留带币种选区中的币种与单位，按同币种 / 同值复用代号，纯数字不推断币种；提示按 11.2。两个 API 入口及重复选区 409 已测。
+- amounts_cn_forms.yaml 仅把原 11 条 known_gaps 原文移入 must_replace 并增加 category: AMOUNT；两条原 must_replace、三条 must_keep 文字未改。txt SHA-256：`504f21c7a4deba702ae4a016bbf26abe6f5269d9bf53b39df50e1c7a6987de78`。其他已有标注、旧测试均未改；recheck.py、find_bare_amounts、前端、迁移、设计、SPEC、CLAUDE、AGENTS 未改。
+
+### 验证与失败证据
+
+证据目录（仓库外）：`C:/Users/Administrator/.codex/visualizations/2026/10/25/01a171fc-85f1-7ae3-a2d5-cd786e647d40/v2-b-10/`。各次退出码独立写入 `.exit` 并重读。
+
+1. 默认 `aireview-backend-test:latest` 是旧依赖，首次 conftest 加载报缺 tokenizers（exit 4），不是有效测试红灯。后续使用本机已有 `aireview-backend-test:b06`（Python 3.12 / NER 依赖已在镜像），未下载 / 构建镜像。
+2. `v2b10-red.log/.exit`：37 failed、21 passed，exit 1；测试先行代码提交后开始实现。
+3. `v2b10-focused.log/.exit`：指定七文件首轮 303 passed、2 failed、1 warning，175.20 秒，exit 1。该轮载入的是新增 API 测试之前的 58 条版本；后续新测试另跑。
+4. `amounts-final.log/.exit`：最终新测试 79 passed、1 warning，32.30 秒，exit 0。包含真实本地 NER 的虚构样本外发诊断（云模型为模拟服务）、其余定向 compute/API 用例按测试目的隔离 NER。
+5. 诊断中发现单独样本输出 `[金额_n]千元` 时保留单位可能被小写规则再认作金额，已在本任务范围修正，新增三条代号量级反例；首次诊断的 setup error（漏导入测试 fixture）和该缺陷失败分别保存在 diagnostic-setup-error.*、diagnostic-unit-bug.*，不作为通过证据。
+
+指定七文件的命令：
+
+```powershell
+docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgres:test@aireview-test-db:5432/postgres -v "${PWD}:/srv" -w /srv/backend aireview-backend-test:b06 pytest -q tests/test_v2b_amounts.py tests/test_redaction_golden.py tests/test_a03_outbound.py tests/test_v2b_manual.py tests/test_redaction_engine.py tests/test_quotes.py tests/test_recheck.py
+```
+
+### 受保护旧断言冲突（V2Q-58，未改）
+
+- `test_redaction_engine.py::test_fill_brackets_patterns`：旧断言 `amounts("人民币【222063】元") == [("222063", "AMOUNT", "AMOUNT|CNY|222063")] * 2`，与设计新去重契约直接冲突。实现返回一条，数值 / 区间 / 币种未变。建议只去掉 `* 2` 并同步注释，原输入和所有其他断言保留。
+- `test_a03_outbound.py::test_a03_no_real_values_in_outbound_records`：11 条标注转正后，对短串 `15` 做 `n in text`，匹配到固定要求编号 `[C-15]`。最终新测试实际经过 upload / parse / confirm / gateway 模拟服务 / llm_calls 记录，两个请求文本中 `15` 的上下文分别为 `责条款\\n[C-15] 质保期的起算`、`免责条款\n[C-15] 质保期的起算`，除此无该串，原 `15万欧元` 已替换，recheck 无拦截。建议仅对该样本该标注，排除完整固定编号 `[C-15]` 后保持严格的短串检查；原 MAP / terms / recheck / 长数字及其他标注检查不变。不得改样本 / 产品要求编号 / 代号 / recheck 来绕过。
+
+遵守共同约定及用户“已有标注不得改动”：上述两处旧测试保持原样，新增 V2Q-58 并暂停。任务行仍待执行，未报告全量成功。待用户明确确认最小测试同步后，先补相应反例确保真正的正文 `15` 仍失败，再重跑指定回归；通过后运行用户要求的一次整仓挂载全量，持久化 / 重读退出码，更新 B10 完成状态并停交 B11（Opus，high）。未连接服务器、未调用真实云模型。

@@ -146,7 +146,8 @@ _NUM = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
 # 币种 → 规范代码；同一数值、同一币种使用同一代号
 _CURRENCY = {
     "RMB": "CNY", "CNY": "CNY", "人民币": "CNY", "¥": "CNY", "￥": "CNY", "元": "CNY", "万元": "CNY", "亿元": "CNY",
-    "USD": "USD", "US$": "USD", "$": "USD", "美元": "USD", "万美元": "USD",
+    "USD": "USD", "US$": "USD", "$": "USD", "美元": "USD", "万美元": "USD", "美金": "USD",
+    "块": "CNY", "块钱": "CNY",
     "EUR": "EUR", "€": "EUR", "欧元": "EUR", "GBP": "GBP", "£": "GBP", "英镑": "GBP",
     "JPY": "JPY", "日元": "JPY", "HKD": "HKD", "HK$": "HKD", "港元": "HKD", "港币": "HKD",
     "AED": "AED", "SAR": "SAR", "TRY": "TRY", "INR": "INR", "AUD": "AUD", "CAD": "CAD", "CHF": "CHF",
@@ -154,7 +155,7 @@ _CURRENCY = {
 }
 _CODES = "RMB|CNY|USD|EUR|JPY|GBP|HKD|AED|SAR|TRY|INR|AUD|CAD|CHF|SGD|KRW|RUB"
 _PREFIX = re.compile(
-    rf"(?:(?<![A-Za-z])(?:US\$|HK\$|{_CODES})(?![A-Za-z])|人民币|美元|欧元|[¥￥$€£])\s?{_OPEN}({_NUM})(?![\d,.]*\d)"
+    rf"(?:(?<![A-Za-z])(?:US\$|HK\$|{_CODES})(?![A-Za-z])|人民币|美元|欧元|日元|英镑|港币|港元|美金|[¥￥$€£])\s?{_OPEN}({_NUM})(?![\d,.]*\d)"
 )
 _SUFFIX = re.compile(
     # 后置币种不含“人民币”：避免把“2.3 人民币参考价”这类条款编号当成金额
@@ -176,6 +177,18 @@ _CN_UPPER = re.compile(
 _PER_UNIT = re.compile(_CLOSE + r"\s*(?:/|每)\s*(?:吨|公斤|千克|个|件|套|台|箱|桶|米|批|[A-Za-z]{1,5}\b)")
 _BARE_NUMBER = re.compile(rf"^\s*({_NUM})\s*$")
 _MULTIPLIER = {"万元": Decimal(10000), "万美元": Decimal(10000), "亿元": Decimal(100000000)}
+# V2-B-10：独立的后置语法，不扩展无币种金额的标签或门槛。
+_SCALE = {'千': Decimal(1000), '万': Decimal(10000), '百万': Decimal(1000000),
+          '千万': Decimal(10000000), '亿': Decimal(100000000)}
+_MONEY_UNIT = rf"美元|美金|欧元|英镑|日元|港元|港币|元|圆|(?:{_CODES})(?![A-Za-z])"
+_MONEY_TAIL = (rf"(?P<before>[余多])?(?P<scale>千万|百万|千|万|亿)?(?P<after>[余多])?"
+               rf"(?P<unit>{_MONEY_UNIT})")
+_EXT_SUFFIX = re.compile(rf"(?<![第\d.,_A-Za-z])(?P<num>{_NUM})(?![\d,.]*\d)[ \t]*"
+                         rf"(?:{_MONEY_TAIL}|(?P<block>块)(?=钱|整|[^一-鿿]|$)|"
+                         rf"[（(][ \t]*(?P<br_scale>千万|百万|千|万|亿)?(?P<br_unit>{_MONEY_UNIT})[ \t]*[）)])")
+_LOWER_CN = re.compile(rf"(?<![第每\d.,_零壹贰叁肆伍陆柒捌玖拾佰仟一二三四五六七八九两〇十百千万亿])"
+                       rf"(?P<num>[一二三四五六七八九两〇零十百千万亿]+)(?P<unit>{_MONEY_UNIT})整?")
+_LOWER_TO_UPPER = str.maketrans('一二三四五六七八九两〇十百千', '壹贰叁肆伍陆柒捌玖贰零拾佰仟')
 
 
 def _decimal(num: str) -> Decimal | None:
@@ -336,7 +349,39 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
                 value *= 10000
             hits.append(Hit(bare.start(1), bare.end(1), column, _amount_key(column, None, value, bare.group(1)),
                             None, value))
-    return [hit for hit in hits if hit.value != 0]
+    # 前置币种优先；扩展后置语法提供量级，保留原有命中的类别和区间。
+    extended = list(_EXT_SUFFIX.finditer(text))
+    prefixes = {m.span(1) for m in _PREFIX.finditer(text)}
+    for m in extended:
+        if m.group('before') and m.group('after') or _FOLLOWED_BY_NUMBER.match(text, m.end()):
+            continue
+        start, end = m.span('num')
+        unit = m.group('unit') or m.group('br_unit') or '块'
+        scale = m.group('scale') or m.group('br_scale')
+        value = _decimal(m.group('num')) * _SCALE.get(scale, Decimal(1))
+        same = [h for h in hits if (h.start, h.end) == (start, end)]
+        currency = same[0].currency if (start, end) in prefixes and same else _CURRENCY.get(unit, 'CNY')
+        cat = same[0].category if same else category(m.end())
+        hits = [h for h in hits if (h.start, h.end) != (start, end)]
+        hits.append(Hit(start, end, cat, _amount_key(cat, currency, value, m.group('num')), currency, value))
+    for m in _LOWER_CN.finditer(text):
+        if not any(ch in m.group('num') for ch in '十百千万亿'):
+            continue
+        # 后置语法内的“千元 / 万元”是阿拉伯金额的单位，不另切出小写金额。
+        if any(e.start() <= m.start() and m.end() <= e.end() for e in extended):
+            continue
+        if text[:m.start()].rstrip(' \t（(').endswith(']'):
+            continue  # 代号后的量级是保留单位，不是另一笔中文金额。
+        if any(h.start < m.end() and m.start() < h.end for h in hits):
+            continue
+        value = chinese_upper_value(m.group('num').translate(_LOWER_TO_UPPER))
+        if value is None:
+            continue
+        currency = _CURRENCY.get(m.group('unit'), 'CNY')
+        cat = category(m.end())
+        hits.append(Hit(m.start(), m.end(), cat, _amount_key(cat, currency, value, m.group()), currency, value))
+    unique = {(h.start, h.end): h for h in reversed(hits) if h.value != 0}
+    return sorted(unique.values(), key=lambda h: (h.start, h.end))
 
 
 # ---------------------------------------------------------------- 第 6 步：人名（M4-01，设计 M4.md 2.1）

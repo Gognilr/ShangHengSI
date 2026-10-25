@@ -9,6 +9,8 @@ from app.redaction import detect, ner
 from app.redaction.engine import NodeIn, UserTerm, compute, _manual_amount, RedactionInputError
 from app.redaction.recheck import recheck
 from app.review.requirements import load_system_template, select_builtin
+from tests.review_support import env, ready_task, llm  # noqa: F401
+from tests.test_user_note_redaction import alice, task_url  # noqa: F401
 
 
 # 11.4 #2：11.1 七行示例逐条检查区间、类别、币种及换算值。
@@ -58,7 +60,8 @@ def test_automatic_contract(text, surface, currency, value):
 
 @pytest.mark.parametrize('text', ['100块砖', '第2块', '分为3块区域', '3 块区域', '一元化',
     '二元结构', '多元化经营', '第十元', '每百元收入', '1000万', '3千',
-    '[金额_1]元', '[金额_12]块钱', '[金额_3]（元）'])
+    '[金额_1]元', '[金额_12]块钱', '[金额_3]（元）', '[金额_1]千元',
+    '[金额_2]百万美元', '[金额_3]（千元）'])
 def test_negative_contract(text):
     assert detect.find_amounts(text) == []
 
@@ -110,3 +113,72 @@ def test_manual_bare_currency_isolation(monkeypatch):
     result = compute([NodeIn('F1-P1', '1000；1000元')], 'other', user_terms=[UserTerm('1000', 'AMOUNT')])
     assert len(result.items) == 2
     assert result.items[0].placeholder != result.items[1].placeholder
+
+
+@pytest.mark.usefixtures('env')
+def test_fixed_prompt_text(db_sessionmaker):
+    from app.review.prompt import fixed_prompt_text
+    with db_sessionmaker() as db:
+        assert not any(r.category == 'AMOUNT' for r in recheck(
+            fixed_prompt_text(db), real_values=[], terms=[]))
+
+
+@pytest.mark.usefixtures('env')
+@pytest.mark.parametrize('surface', MANUAL)
+@pytest.mark.parametrize('entry', ['manual', 'suspect'])
+def test_selection_entrypoints(surface, entry, db_sessionmaker, alice, ready_task, monkeypatch):
+    """模拟旧任务未命中的选区；确认页与疑似决定均走实际事务/API。"""
+    import io
+    from docx import Document
+    from sqlalchemy import delete
+    from app.db.models import RedactionItem, RedactionSuspect
+    monkeypatch.setattr(ner, 'recognize', lambda text: [])
+    user, client, headers = alice
+    document = Document()
+    document.add_paragraph(surface + '；' + surface)
+    stream = io.BytesIO()
+    document.save(stream)
+    task = ready_task(user, files=[('虚构金额.docx', stream.getvalue())])
+    with db_sessionmaker() as db:
+        db.execute(delete(RedactionItem).where(RedactionItem.task_id == task.id))
+        if entry == 'suspect':
+            row = RedactionSuspect(task_id=task.id, loc='F1-P1', char_start=0,
+                char_end=len(surface), reason='ner', decision='pending')
+            db.add(row)
+            db.flush()
+            sid = row.id
+        db.commit()
+    if entry == 'manual':
+        response = client.post(task_url(task, '/redaction/manual'), headers=headers,
+            json={'loc': 'F1-P1', 'char_start': 0, 'char_end': len(surface), 'category': 'AMOUNT'})
+    else:
+        response = client.post(task_url(task, f'/redaction/suspects/{sid}'), headers=headers,
+            json={'decision': 'replace', 'category': 'AMOUNT'})
+    assert response.status_code == 200, response.text
+    items = response.json()['items']
+    h, = detect.find_amounts(surface)
+    assert len(items) == 2
+    assert {(i['char_start'], i['char_end']) for i in items} == {
+        (h.start, h.end), (len(surface) + 1 + h.start, len(surface) + 1 + h.end)}
+    assert len({i['placeholder'] for i in items}) == 1
+    overlap = client.post(task_url(task, '/redaction/manual'), headers=headers,
+        json={'loc': 'F1-P1', 'char_start': 0, 'char_end': len(surface), 'category': 'AMOUNT'})
+    assert (overlap.status_code, overlap.json()['code']) == (409, 'ALREADY_REDACTED')
+
+
+@pytest.mark.usefixtures('env')
+def test_amounts_fixture_wire_diagnostic(db_sessionmaker, alice, llm):
+    """V2Q-58：定位 A-03 的短串冲突；旧 A-03 断言仍保留并失败。"""
+    import re
+    from tests.acceptance_support import golden_samples, run_sample, outbound_records
+    client, headers = alice[1:]
+    requests = llm('normal')
+    sample = next(s for s in golden_samples() if s.name == 'amounts_cn_forms.docx')
+    run_sample(client, headers, db_sessionmaker, sample)
+    record, = outbound_records(db_sessionmaker, requests)
+    for source, text in [('llm_calls', record.request_text), ('request', record.wire_text)]:
+        contexts = [text[max(0, m.start()-8):m.end()+8] for m in re.finditer('15', text)]
+        print(source, '15 contexts:', contexts)
+        assert contexts and all('[C-15]' in c for c in contexts)
+        assert '15万欧元' not in text
+        assert recheck(text, real_values=record.real_values, terms=record.terms) == []

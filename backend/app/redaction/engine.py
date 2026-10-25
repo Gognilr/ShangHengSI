@@ -225,13 +225,25 @@ def _user_pattern(text: str) -> re.Pattern:
     return re.compile(body, pat.flags)
 
 
-def _manual_amount(text: str) -> Decimal:
-    if not re.fullmatch(r'[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?', text.strip()):
-        raise RedactionInputError(422, 'INVALID_AMOUNT', '金额须为可解析的数字')
-    value = detect._decimal(text.strip())
-    if value is None or not value.is_finite():
-        raise RedactionInputError(422, 'INVALID_AMOUNT', '金额须为可解析的数字')
-    return value
+def _manual_amount(text: str) -> detect.Hit:
+    """选区内的相对替换区间；纯数字保持未知币种（V2Q-42、57）。"""
+    stripped = text.strip()
+    offset = len(text) - len(text.lstrip())
+    if re.fullmatch(r'[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?', stripped):
+        value = detect._decimal(stripped)
+        if value is not None and value.is_finite():
+            return detect.Hit(offset, offset + len(stripped), 'AMOUNT',
+                              detect._amount_key('AMOUNT', None, value, stripped), None, value)
+    else:
+        hits = detect.find_amounts(text)
+        if len(hits) == 1:
+            h = hits[0]
+            rest = text[:h.start] + text[h.end:]
+            words = sorted([*detect._CURRENCY, '千', '万', '百万', '千万', '亿',
+                            '余', '多', '整', '约', '计', '共计', '圆'], key=len, reverse=True)
+            if re.fullmatch(r'(?:' + '|'.join(map(re.escape, words)) + r'|[（）()\s])*', rest):
+                return h
+    raise RedactionInputError(422, 'INVALID_AMOUNT', '金额须为数字，可带币种或单位（如 ¥1,000、1000元）')
 
 
 def _is_place(text: str) -> bool:
@@ -450,11 +462,14 @@ def compute(
                 continue
             surface = text[candidate.start:candidate.end]
             if candidate.category == 'AMOUNT':
-                candidate.value = _manual_amount(surface)
+                manual = _manual_amount(surface)
+                candidate.start += manual.start
+                candidate.end = candidate.start + manual.end - manual.start
+                candidate.value = manual.value
                 # 沿用自动识别的类别/币种/数值键；无标签的手动金额不猜币种（V2Q-42）。
                 matched = next((h for h in amount_hits if h.start == candidate.start and h.end == candidate.end
                                 and h.category == 'AMOUNT'), None)
-                candidate.currency = matched.currency if matched else None
+                candidate.currency = manual.currency if manual.currency is not None else matched.currency if matched else None
                 candidate.key = detect._amount_key('AMOUNT', candidate.currency, candidate.value, surface)
             elif candidate.category == 'ADDR':
                 candidate.key = detect.find_country(surface) or COUNTRY_UNKNOWN
@@ -1016,8 +1031,7 @@ def _add_term(db: Session, task: Task, text: str, loc: str, start: int, end: int
     所选文字若按出口复检规则出现在固定提示文字中（Q-77 ③），设为敏感信息后将无法发送，先拒绝。
     """
     term = text[start:end]
-    if category == 'AMOUNT':
-        _manual_amount(term)
+    amount = _manual_amount(term) if category == 'AMOUNT' else None
     from app.review.prompt import fixed_prompt_text  # 避免循环导入
     if any(r.category == "MAP" for r in recheck(fixed_prompt_text(db), real_values=[term], terms=[])):
         raise RedactionInputError(422, "TERM_IN_PROMPT",
@@ -1029,7 +1043,8 @@ def _add_term(db: Session, task: Task, text: str, loc: str, start: int, end: int
     _run(db, task, _current_overrides(existing), existing, [UserTerm(term, category)])
     covered = [(i.char_start, i.char_end) for i in db.scalars(
         select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == loc))]
-    if any(not text[k].isspace() and not any(s <= k < e for s, e in covered) for k in range(start, end)):
+    check_start, check_end = (start + amount.start, start + amount.end) if amount else (start, end)
+    if any(not text[k].isspace() and not any(s <= k < e for s, e in covered) for k in range(check_start, check_end)):
         # 防御性检查：不应出现；调用方不提交，本次修改随事务回滚
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确，请选择完整的词")
 

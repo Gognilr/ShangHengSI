@@ -3,20 +3,19 @@ stance: purchase
 must_replace:
   - {text: 青岚虚构石化股份有限公司, category: ORG}
   - {text: 澄川虚构信息技术有限公司, category: ORG}
+
+  - {text: "4870", category: AMOUNT}
+  - {text: "3.5", category: AMOUNT}
+  - {text: "2600", category: AMOUNT}
+  - {text: "68", category: AMOUNT}
+  - {text: "9,350.00", category: AMOUNT}
+  - {text: 三万五千, category: AMOUNT}
+  - {text: "56,000", category: AMOUNT}
+  - {text: "1,250", category: AMOUNT}
+  - {text: "7,800", category: AMOUNT}
+  - {text: "7800", category: AMOUNT}
+  - {text: "15", category: AMOUNT}
 must_keep:
   - 推行一元化管理与多元化经营
   - 3 块区域
   - 每百元营业收入的运输成本另行核算
-# V2-B-10 先行写入：以下内容在 V2-B-10 之前原样外发。实现后按设计第十一节移入 must_replace（category: AMOUNT），文字不得改动
-known_gaps:
-  - {text: "4870"}
-  - {text: "3.5"}
-  - {text: "2600"}
-  - {text: "68"}
-  - {text: "9,350.00"}
-  - {text: 三万五千}
-  - {text: "56,000"}
-  - {text: "1,250"}
-  - {text: "7,800"}
-  - {text: "7800"}
-  - {text: "15"}
