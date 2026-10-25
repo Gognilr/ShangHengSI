@@ -8,6 +8,7 @@ import {
   type OutboundDetail,
   type OutboundRow,
   type SystemStatus,
+  type RetentionSettings,
   type UserRow,
 } from '@/api/admin'
 import { ApiError } from '@/api/http'
@@ -120,14 +121,23 @@ async function runBackup() {
 }
 
 // ---- ② 原件保留期限 ----
-const retentionDays = ref(0)
+const retention = reactive<RetentionSettings>({ original_days: 30, result_days: 365, outbound_days: 180, audit_days: 0, unfinished_days: 30 })
+const retentionLoaded = ref(false)
+const retentionOptions = [30, 90, 180, 365, 0]
+const retentionFields: { key: keyof RetentionSettings; label: string }[] = [
+  { key: 'original_days', label: '原件与原文' }, { key: 'result_days', label: '审核结果与对话' },
+  { key: 'outbound_days', label: '外发记录正文' }, { key: 'audit_days', label: '审计日志' },
+  { key: 'unfinished_days', label: '未完成任务' },
+]
+const estimateReasons = { insufficient_history: '备份统计不足 7 天，暂无法估算', no_growth: '近 30 天没有新增数据', unavailable: '无法读取数据盘剩余空间' }
 const retentionSaving = ref(false)
 const retentionError = ref('')
 
 async function loadRetention() {
   retentionError.value = ''
   try {
-    retentionDays.value = (await adminDataApi.getRetention()).original_days
+    Object.assign(retention, await adminDataApi.getRetention())
+    retentionLoaded.value = true
   } catch (e) {
     retentionError.value = `加载失败：${errText(e, '请刷新页面')}`
   }
@@ -136,8 +146,9 @@ async function loadRetention() {
 async function saveRetention() {
   retentionSaving.value = true
   try {
-    retentionDays.value = (await adminDataApi.saveRetention(retentionDays.value)).original_days
+    Object.assign(retention, await adminDataApi.saveRetention({ ...retention }))
     ElMessage.success('已保存')
+    await auth.refresh()
   } catch (e) {
     ElMessage.error(errText(e, '保存失败，请稍后重试'))
   } finally {
@@ -205,14 +216,18 @@ async function openDetail(row: OutboundRow) {
 
 // ---- ④ 系统状态 ----
 const status = ref<SystemStatus | null>(null)
+const statusLoading = ref(false)
 const statusError = ref('')
 
 async function loadStatus() {
+  statusLoading.value = true
   statusError.value = ''
   try {
     status.value = await adminDataApi.systemStatus()
   } catch (e) {
     statusError.value = `加载失败：${errText(e, '请刷新页面')}`
+  } finally {
+    statusLoading.value = false
   }
 }
 
@@ -233,31 +248,45 @@ onBeforeUnmount(stopPolling)
 
 <template>
   <div class="settings-page">
-    <PageHeader title="数据与系统" description="系统状态、原件保留期限、备份与外发记录" />
-    <section class="panel">
+    <PageHeader title="数据与系统" description="系统状态、数据保留、备份与外发记录" />
+    <section v-loading="statusLoading" class="panel">
       <h3 class="first">系统状态</h3>
       <el-alert v-if="statusError" type="error" :closable="false" show-icon :title="statusError" />
       <div v-if="status" class="system-stats">
         <div class="stat"><div class="stat-label">版本号</div><div class="stat-value">{{ status.version }}</div></div>
         <div class="stat"><div class="stat-label">排队任务数</div><div class="stat-value">{{ status.queued_jobs }}</div></div>
         <div class="stat"><div class="stat-label">数据盘剩余空间</div><div class="stat-value">{{ formatBytes(status.data_free_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">原件占用</div><div class="stat-value">{{ formatBytes(status.files_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">数据库占用</div><div class="stat-value">{{ formatBytes(status.db_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">预计可用天数</div><div class="stat-value" :class="{ warning: status.estimated_days !== null && status.estimated_days < 30 }">{{ status.estimated_days ?? '—' }}</div></div>
+        <div class="stat"><div class="stat-label">备份目录占用</div><div class="stat-value">{{ formatBytes(status.backup_dir_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">最近一次备份大小</div><div class="stat-value">{{ formatBytes(status.latest_backup_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">备份盘剩余空间</div><div class="stat-value">{{ formatBytes(status.backup_free_bytes) }}</div></div>
       </div>
+      <template v-if="status">
+        <p class="hint">存储用量统计时间：{{ formatDateTime(status.storage_measured_at) }}</p>
+        <p v-if="status.backup_stats_at" class="hint">备份三项（{{ formatDateTime(status.backup_stats_at) }} 备份时统计）</p>
+        <p v-if="status.estimate_reason" class="hint">{{ estimateReasons[status.estimate_reason] }}</p>
+      </template>
     </section>
 
 <section class="panel">
-      <h3 class="first">原件保留期限</h3>
+      <h3 class="first">数据保留</h3>
       <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
       <el-form label-width="110px" @submit.prevent="saveRetention">
-        <el-form-item label="保留天数">
-          <el-input-number v-model="retentionDays" :min="0" :max="3650" />
-          <span class="hint inline">0 表示永久保留</span>
+        <el-form-item v-for="field in retentionFields" :key="field.key" :label="field.label">
+          <el-select v-model="retention[field.key]" :disabled="!retentionLoaded || retentionSaving" class="retention-select" :aria-label="field.label">
+            <el-option v-if="!retentionOptions.includes(retention[field.key])" :value="retention[field.key]" :label="`${retention[field.key]} 天（旧版设置）`" />
+            <el-option v-for="days in retentionOptions" :key="days" :value="days" :label="days === 0 ? '永久' : `${days} 天`" />
+          </el-select>
+          <span v-if="!retentionOptions.includes(retention[field.key])" class="hint inline">请改选一个档位后保存</span>
         </el-form-item>
       </el-form>
       <div class="hint">
-        到期后删除原件和节点原文，保留审核结果和报告；删除后不能重新审核和追问。旧备份中仍保存着这些原件，直到被轮换删除。
+        原件到期后不能重新审核和追问；审核结果到期后整个任务删除。未完成任务按无活动时间清理。旧备份中的数据会保留至备份被轮换删除。
       </div>
       <div class="actions">
-        <el-button type="primary" :loading="retentionSaving" @click="saveRetention">保存</el-button>
+        <el-button type="primary" :loading="retentionSaving" :disabled="!retentionLoaded" @click="saveRetention">保存</el-button>
       </div>
     </section>
 
@@ -277,7 +306,8 @@ onBeforeUnmount(stopPolling)
             <span>{{ records?.dir ?? '—' }}</span>
           </el-form-item>
           <el-form-item label="剩余空间">
-            <span>{{ records?.free_bytes === null ? '备份目录不可用' : formatBytes(records?.free_bytes) }}</span>
+            <span>{{ records?.free_bytes == null ? '—（尚无成功备份的统计）' : formatBytes(records.free_bytes) }}</span>
+            <span v-if="records?.free_measured_at" class="hint inline">（{{ formatDateTime(records.free_measured_at) }} 备份时统计）</span>
           </el-form-item>
           <el-form-item label="最近一次">
             <template v-if="records?.latest">
@@ -392,9 +422,9 @@ onBeforeUnmount(stopPolling)
           <el-alert v-if="detail.block_reason" class="gap" type="warning" :closable="false" show-icon title="拦截原因（类别和位置）" :description="detail.block_reason" />
           <el-alert v-if="detail.error_message" class="gap" type="error" :closable="false" show-icon title="错误信息" :description="detail.error_message" />
           <h3>外发文本</h3>
-          <pre class="plain">{{ detail.request_text ?? '（未发送）' }}</pre>
+          <pre class="plain">{{ detail.request_text ?? detail.body_notice ?? '（未发送）' }}</pre>
           <h3>返回内容</h3>
-          <pre class="plain">{{ detail.response_text ?? '（无）' }}</pre>
+          <pre class="plain">{{ detail.response_text ?? detail.body_notice ?? '（无）' }}</pre>
         </template>
       </div>
     </el-drawer>
@@ -416,6 +446,8 @@ h3.first {
 .danger {
   color: var(--el-color-danger);
 }
+.warning { color: var(--el-color-warning); }
+.retention-select { width: 220px; }
 .pager {
   margin-top: 12px;
   justify-content: flex-end;

@@ -173,6 +173,7 @@ export interface BackupRow {
 export interface BackupRecords {
   dir: string
   free_bytes: number | null
+  free_measured_at: string | null
   latest: BackupRow | null
   items: BackupRow[]
 }
@@ -196,6 +197,7 @@ export interface OutboundDetail extends OutboundRow {
   response_text: string | null
   block_reason: string | null
   error_message: string | null
+  body_notice: string | null
 }
 
 export interface OutboundQuery {
@@ -210,6 +212,23 @@ export interface SystemStatus {
   version: string
   queued_jobs: number
   data_free_bytes: number | null
+  files_bytes: number | null
+  db_bytes: number | null
+  backup_dir_bytes: number | null
+  latest_backup_bytes: number | null
+  backup_free_bytes: number | null
+  backup_stats_at: string | null
+  estimated_days: number | null
+  estimate_reason: 'insufficient_history' | 'no_growth' | 'unavailable' | null
+  storage_measured_at: string
+}
+
+export interface RetentionSettings {
+  original_days: number
+  result_days: number
+  outbound_days: number
+  audit_days: number
+  unfinished_days: number
 }
 
 export const adminDataApi = {
@@ -217,8 +236,8 @@ export const adminDataApi = {
   saveBackupSettings: (time: string, keep: number) => http.put<BackupSettings>('/admin/settings/backup', { time, keep }),
   runBackup: () => http.post<{ queued: boolean }>('/admin/backup/run'),
   backupRecords: () => http.get<BackupRecords>('/admin/backup/records'),
-  getRetention: () => http.get<{ original_days: number }>('/admin/settings/retention'),
-  saveRetention: (days: number) => http.put<{ original_days: number }>('/admin/settings/retention', { original_days: days }),
+  getRetention: () => http.get<RetentionSettings>('/admin/settings/retention'),
+  saveRetention: (values: RetentionSettings) => http.put<RetentionSettings>('/admin/settings/retention', values),
   outboundLogs: (q: OutboundQuery) =>
     http.get<{ items: OutboundRow[]; total: number; page: number; page_size: number }>('/admin/outbound-logs', { ...q }),
   outboundLog: (id: number) => http.get<OutboundDetail>(`/admin/outbound-logs/${id}`),

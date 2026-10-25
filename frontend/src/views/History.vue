@@ -6,7 +6,7 @@ import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { tasksApi, type TaskListItem } from '@/api/tasks'
 import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
-import { formatDateTime } from '@/utils/time'
+import { formatDate, formatDateTime } from '@/utils/time'
 import { Search } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 
@@ -130,7 +130,7 @@ onMounted(load)
       <el-table-column label="提交时间" width="170">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column prop="title" label="主文件名" min-width="240" show-overflow-tooltip><template #default="{ row }"><div class="file-cell"><span class="file-badge" :class="`badge-${fileBadge(row.title).toLowerCase()}`">{{ fileBadge(row.title) }}</span><span class="file-title">{{ row.title }}</span></div></template></el-table-column>
+      <el-table-column prop="title" label="主文件名" min-width="160" show-overflow-tooltip><template #default="{ row }"><div class="file-cell"><span class="file-badge" :class="`badge-${fileBadge(row.title).toLowerCase()}`">{{ fileBadge(row.title) }}</span><span class="file-title">{{ row.title }}</span></div></template></el-table-column>
       <el-table-column label="文件类型" width="110">
         <template #default="{ row }">{{ docTypeLabel(row.doc_type) }}</template>
       </el-table-column>
@@ -141,6 +141,7 @@ onMounted(load)
         <template #default="{ row }"><span :class="{ danger: row.status === 'parse_failed' }">{{ statusLabel(row.status) }}</span></template>
       </el-table-column>
       <el-table-column label="高风险问题数" width="120" align="center"><template #default="{ row }"><span :class="{ 'high-count': row.high_count > 0 }">{{ row.high_count }}</span></template></el-table-column>
+      <el-table-column label="保留至" width="110"><template #default="{ row }">{{ row.task_expires_at ? formatDate(row.task_expires_at) : '永久' }}</template></el-table-column>
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="open(row)">打开</el-button>

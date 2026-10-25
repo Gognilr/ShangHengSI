@@ -48,6 +48,8 @@ export interface TaskDetail {
   files: TaskFile[]
   latest_run: LatestRun | null
   queue_position: number | null
+  original_expires_at: string | null
+  task_expires_at: string | null
 }
 
 export interface TaskListItem {
@@ -58,6 +60,8 @@ export interface TaskListItem {
   status: TaskStatus
   high_count: number
   created_at: string
+  original_expires_at: string | null
+  task_expires_at: string | null
 }
 
 export interface TaskPage {

@@ -28,6 +28,8 @@ class TaskListItem(BaseModel):
     status: str
     high_count: int
     created_at: UtcDatetime
+    original_expires_at: UtcDatetime | None
+    task_expires_at: UtcDatetime | None
 
 
 class TaskPage(BaseModel):
@@ -94,3 +96,5 @@ class TaskDetail(BaseModel):
     files: list[TaskFileOut]
     latest_run: LatestRun | None
     queue_position: int | None
+    original_expires_at: UtcDatetime | None
+    task_expires_at: UtcDatetime | None

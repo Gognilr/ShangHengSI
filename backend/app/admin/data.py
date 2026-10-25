@@ -4,7 +4,10 @@
 - 日期筛选按 Asia/Shanghai 的整天计算（与审核历史相同）。
 """
 import re
+import os
 import shutil
+import threading
+import time as monotime
 import uuid
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -13,14 +16,15 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session as DbSession
 
 from app.admin.settings_store import get_setting, set_setting
 from app.audit import service as audit
 from app.backup.job import enqueue_backup
 from app.config import get_settings
-from app.db.models import BackupRecord, Job, LlmCall, User
+from app.db.base import utcnow
+from app.db.models import BackupRecord, Job, LlmCall, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import require_admin
 from app.security.errors import AppError, NotFoundError
@@ -80,6 +84,7 @@ class BackupRow(BaseModel):
 class BackupRecords(BaseModel):
     dir: str
     free_bytes: Optional[int]
+    free_measured_at: Optional[datetime]
     latest: Optional[BackupRow]
     items: list[BackupRow]
 
@@ -129,7 +134,11 @@ def backup_records(db: DbSession = Depends(get_db)) -> BackupRecords:
     rows = db.scalars(select(BackupRecord).order_by(BackupRecord.id.desc()).limit(20)).all()
     items = [BackupRow.of(r) for r in rows]
     directory = get_settings().backup_dir
-    return BackupRecords(dir=directory, free_bytes=_free(directory), latest=items[0] if items else None, items=items)
+    latest_ok = _latest_backup(db)
+    free = latest_ok.dir_free_bytes if latest_ok else None
+    return BackupRecords(dir=directory, free_bytes=free,
+                         free_measured_at=latest_ok.finished_at if latest_ok and free is not None else None,
+                         latest=items[0] if items else None, items=items)
 
 
 # ---------------------------------------------------------------- 原件保留期
@@ -277,10 +286,102 @@ class SystemStatus(BaseModel):
     version: str
     queued_jobs: int
     data_free_bytes: Optional[int]
+    files_bytes: Optional[int]
+    db_bytes: Optional[int]
+    backup_dir_bytes: Optional[int]
+    latest_backup_bytes: Optional[int]
+    backup_free_bytes: Optional[int]
+    backup_stats_at: Optional[datetime]
+    estimated_days: Optional[int]
+    estimate_reason: Optional[str]
+    storage_measured_at: datetime
+
+
+_storage_lock = threading.Lock()
+_storage_cache: dict = {}
+
+
+def _latest_backup(db: DbSession) -> BackupRecord | None:
+    return db.scalar(select(BackupRecord).where(BackupRecord.status == "success", BackupRecord.finished_at.is_not(None))
+                     .order_by(BackupRecord.finished_at.desc(), BackupRecord.id.desc()).limit(1))
+
+
+def _files_bytes(directory: str) -> int | None:
+    try:
+        # os.walk 默认吞掉根目录权限错误，先验证根目录可读。
+        with os.scandir(directory):
+            pass
+        total = 0
+        for root, _, files in os.walk(directory, followlinks=False):
+            for name in files:
+                path = Path(root) / name
+                try:
+                    if not path.is_symlink() and path.is_file():
+                        total += path.stat().st_size
+                except OSError:
+                    continue
+        return total
+    except OSError:
+        return None
+
+
+def _db_bytes(db: DbSession) -> int | None:
+    try:
+        with db.begin_nested():
+            return int(db.scalar(text("SELECT pg_database_size(current_database())")))
+    except Exception:  # 只影响测量，不影响其他系统状态
+        return None
+
+
+def _estimate(db: DbSession, now: datetime, free: int | None) -> tuple[int | None, str | None]:
+    samples = list(db.scalars(select(BackupRecord).where(
+        BackupRecord.status == "success", BackupRecord.db_bytes.is_not(None),
+        BackupRecord.finished_at >= now - timedelta(days=30), BackupRecord.finished_at <= now,
+    ).order_by(BackupRecord.finished_at, BackupRecord.id)))
+    if len(samples) < 2:
+        return None, "insufficient_history"
+    first, last = samples[0], samples[-1]
+    span = (last.finished_at - first.finished_at) // timedelta(seconds=1)
+    if span < 7 * 86400:
+        return None, "insufficient_history"
+    elapsed = (now - first.finished_at) // timedelta(seconds=1)
+    db_daily = max(0, last.db_bytes - first.db_bytes) * 86400 // span
+    added = db.scalar(select(func.coalesce(func.sum(TaskFile.size_bytes), 0)).where(
+        TaskFile.created_at >= first.finished_at, TaskFile.created_at <= now))
+    files_daily = int(added) * 86400 // elapsed
+    daily = (db_daily + files_daily) * (int(get_setting(db, "backup.keep")) + 1)
+    if free is None:
+        return None, "unavailable"
+    if daily == 0:
+        return None, "no_growth"
+    return free // daily, None
+
+
+def _storage_snapshot(db: DbSession) -> dict:
+    settings = get_settings()
+    # 隔离不同数据库与文件根目录；实际 app 每个进程只持有自己的一个快照。
+    key = (db.get_bind(), settings.files_dir)
+    with _storage_lock:
+        if _storage_cache.get("key") == key and monotime.monotonic() < _storage_cache["until"]:
+            return dict(_storage_cache["value"])
+        now = utcnow()
+        latest = _latest_backup(db)
+        measured = latest is not None and any(value is not None for value in
+                       (latest.db_bytes, latest.dir_bytes, latest.dir_free_bytes))
+        free = _free(settings.files_dir)
+        estimated, reason = _estimate(db, now, free)
+        value = dict(files_bytes=_files_bytes(settings.files_dir), db_bytes=_db_bytes(db), data_free_bytes=free,
+                     backup_dir_bytes=latest.dir_bytes if measured else None,
+                     latest_backup_bytes=latest.size_bytes if measured else None,
+                     backup_free_bytes=latest.dir_free_bytes if measured else None,
+                     backup_stats_at=latest.finished_at if measured else None,
+                     estimated_days=estimated, estimate_reason=reason, storage_measured_at=now)
+        _storage_cache.update(key=key, until=monotime.monotonic() + 600, value=value)
+        return dict(value)
 
 
 @router.get("/system/status", response_model=SystemStatus)
 def system_status(db: DbSession = Depends(get_db)) -> SystemStatus:
     s = get_settings()
     queued = db.scalar(select(func.count()).select_from(Job).where(Job.status == "queued")) or 0
-    return SystemStatus(version=s.app_version, queued_jobs=int(queued), data_free_bytes=_free(s.files_dir))
+    return SystemStatus(version=s.app_version, queued_jobs=int(queued), **_storage_snapshot(db))

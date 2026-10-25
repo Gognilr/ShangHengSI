@@ -168,6 +168,27 @@ def _keep(db: Session) -> int:
         return 7
 
 
+def _measure_stat(func):
+    """统计失败不能把有效备份置失败；每项独立测量且不重试。"""
+    try:
+        return int(func())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("备份统计失败 错误=%s", type(exc).__name__)
+        return None
+
+
+def _database_bytes(db: Session) -> int:
+    # 数据库测量出错只回滚保存点，后续备份仍能提交成功记录。
+    with db.begin_nested():
+        return db.scalar(text("SELECT pg_database_size(current_database())"))
+
+
+def _directory_bytes(directory: Path) -> int:
+    with os.scandir(directory) as entries:
+        return sum(entry.stat(follow_symlinks=False).st_size for entry in entries
+                   if entry.is_file(follow_symlinks=False))
+
+
 def _finish(db: Session, record_id: int, *, trigger: str, user_id: uuid.UUID | None, **fields) -> BackupRecord:
     record = db.get(BackupRecord, record_id)
     for k, v in fields.items():
@@ -212,6 +233,7 @@ def _locked_backup(db: Session, *, trigger: str, user_id: uuid.UUID | None, now:
         work.mkdir(mode=0o700)
         dump = work / "db.dump"
         _pg_dump(db, dump)
+        db_bytes = _measure_stat(lambda: _database_bytes(db))
 
         manifest = {"format": FORMAT_VERSION, "app_version": settings.app_version,
                     "created_at": utcnow().isoformat(), "task_count": db.scalar(select(func.count()).select_from(Task)),
@@ -250,7 +272,9 @@ def _locked_backup(db: Session, *, trigger: str, user_id: uuid.UUID | None, now:
     ms = int((time.monotonic() - started) * 1000)
     logger.info("备份 %s 完成 %s 大小=%s 原件=%s 轮换删除=%s 耗时=%sms", record_id, name, size, added, len(removed), ms)
     return _finish(db, record_id, trigger=trigger, user_id=user_id, status="success", file_name=name,
-                   size_bytes=size, sha256=digest, error_message=None)
+                   size_bytes=size, sha256=digest, error_message=None, db_bytes=db_bytes,
+                   dir_bytes=_measure_stat(lambda: _directory_bytes(backup_dir)),
+                   dir_free_bytes=_measure_stat(lambda: shutil.disk_usage(backup_dir).free))
 
 
 def run_backup(db: Session, *, trigger: str, user_id: uuid.UUID | None = None,

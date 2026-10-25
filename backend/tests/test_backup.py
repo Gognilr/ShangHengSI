@@ -77,6 +77,8 @@ def test_backup_success_layout_contents_and_record(env, db_sessionmaker, make_us
     rec = _run(db_sessionmaker, user_id=admin.id)
     name = "aireview_20261022_0200.bak"
     assert rec.status == "success" and rec.file_name == name and rec.trigger == "manual"
+    assert rec.db_bytes > 0 and rec.dir_free_bytes is not None
+    assert rec.dir_bytes == sum(p.stat().st_size for p in env["backup"].iterdir() if p.is_file())
     assert _names(env["backup"]) == {name, name + ".sha256"}  # 无 .tmp、无 .work
     bak = env["backup"] / name
     data = bak.read_bytes()
@@ -125,6 +127,52 @@ def test_only_tmp_exists_while_writing(env, db_sessionmaker, monkeypatch):
     assert seen and seen[0] == {"aireview_20261022_0200.bak.tmp", ".work"}
 
 
+def test_v2c03_backup_stats_skip_links_and_children(env, db_sessionmaker):
+    child = env["backup"] / "child"
+    child.mkdir()
+    (child / "large").write_bytes(b"x"*10000)
+    (env["backup"] / "linked").symlink_to(child / "large")
+    rec = _run(db_sessionmaker)
+    assert rec.status == "success"
+    assert rec.dir_bytes == sum(p.stat().st_size for p in env["backup"].iterdir() if p.is_file() and not p.is_symlink())
+
+
+@pytest.mark.parametrize("failed_stat", ["free", "database", "directory"])
+def test_v2c03_measurement_failure_keeps_backup_success(env, db_sessionmaker, monkeypatch, caplog, failed_stat):
+    def failure(*args):
+        raise OSError("private-path-must-not-log")
+    if failed_stat == "free":
+        monkeypatch.setattr(service.shutil, "disk_usage", failure)
+    else:
+        monkeypatch.setattr(service, "_database_bytes" if failed_stat == "database" else "_directory_bytes", failure)
+    rec = _run(db_sessionmaker)
+    assert rec.status == "success"
+    values = dict(free=rec.dir_free_bytes, database=rec.db_bytes, directory=rec.dir_bytes)
+    assert values.pop(failed_stat) is None
+    assert all(value is not None for value in values.values())
+    assert "OSError" in caplog.text and "private-path-must-not-log" not in caplog.text
+
+
+def test_v2c03_rotation_failure_has_no_stats(env, db_sessionmaker, monkeypatch):
+    monkeypatch.setattr(service, "rotate", lambda *args: (_ for _ in ()).throw(OSError("private")))
+    rec = _run(db_sessionmaker)
+    assert rec.status == "failed" and rec.file_name
+    assert rec.db_bytes is rec.dir_bytes is rec.dir_free_bytes is None
+
+
+def test_v2c03_database_stat_error_rolls_back_savepoint(env, db_sessionmaker, monkeypatch):
+    from sqlalchemy.orm import Session
+    original = Session.scalar
+    def scalar(db, statement, *args, **kwargs):
+        if str(statement) == "SELECT pg_database_size(current_database())":
+            return db.execute(text("SELECT 1 / 0")).scalar()
+        return original(db, statement, *args, **kwargs)
+    monkeypatch.setattr(Session, "scalar", scalar)
+    rec = _run(db_sessionmaker)
+    assert rec.status == "success" and rec.db_bytes is None
+    assert rec.dir_bytes > 0 and rec.dir_free_bytes is not None
+
+
 def test_rotation_deletes_only_oldest_matching_files(env, db_sessionmaker):
     d = env["backup"]
     for stamp in ("20261020_0200", "20261021_0200"):
@@ -164,6 +212,7 @@ def _assert_failed(env, sm, message: str, *, extra: set[str] = frozenset()):
         rec = db.scalars(select(BackupRecord).order_by(BackupRecord.id.desc())).first()
         assert rec.status == "failed" and rec.error_message == message and rec.finished_at is not None
         assert rec.file_name is None
+        assert rec.db_bytes is rec.dir_bytes is rec.dir_free_bytes is None
         audit = db.scalars(select(AuditLog).where(AuditLog.action == "backup_run")).all()[-1]
         assert audit.detail == {"trigger": "manual", "status": "failed"}
     assert _names(env["backup"]) == set(extra)

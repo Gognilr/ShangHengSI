@@ -97,6 +97,29 @@ def test_v2c_patch_activity_success_and_rejection(make_user, login, db_sessionma
         assert db.get(Task, task.id).last_activity_at == before
 
 
+def test_v2c03_expiry_list_detail_permanent_and_original_deleted(files_dir, make_user, login, db_sessionmaker):
+    from app.admin.settings_store import set_setting
+    user = make_user("expiry")
+    c, _ = login("expiry")
+    tid, _ = make_full_task(db_sessionmaker, user, files_dir)
+    last = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with db_sessionmaker() as db:
+        db.get(Task, tid).last_activity_at = last
+        db.commit()
+    d = c.get(f"{API_PREFIX}/tasks/{tid}").json()
+    assert datetime.fromisoformat(d["original_expires_at"]) == datetime(2026, 1, 31, tzinfo=timezone.utc)
+    assert datetime.fromisoformat(d["task_expires_at"]) == datetime(2027, 1, 1, tzinfo=timezone.utc)
+    row = c.get(f"{API_PREFIX}/tasks").json()["items"][0]
+    assert row["task_expires_at"] == d["task_expires_at"] and row["original_expires_at"] == d["original_expires_at"]
+    with db_sessionmaker() as db:
+        set_setting(db, "retention.result_days", 0, None)
+        for f in db.scalars(select(TaskFile).where(TaskFile.task_id == tid)):
+            f.original_deleted_at = utcnow()
+        db.commit()
+    d = c.get(f"{API_PREFIX}/tasks/{tid}").json()
+    assert d["task_expires_at"] is d["original_expires_at"] is None
+
+
 def form(**kw):
     data = {"stance": "sales", "source": "outgoing", "policy": "ai"}
     data.update(kw)
@@ -307,7 +330,7 @@ def add_task(sm, owner, title, *, created_at=None, status="reviewed", stance="sa
     now = created_at or utcnow()
     with sm() as db:
         t = Task(owner_id=owner.id, title=title, stance=stance, source="outgoing", policy="ai", status=status,
-                 high_count=high, created_at=now, updated_at=now)
+                 high_count=high, created_at=now, updated_at=now, last_activity_at=now)
         db.add(t)
         db.flush()
         names = [title, *extra_names]
@@ -335,6 +358,7 @@ def test_list_only_own_tasks_newest_first(files_dir, make_user, login, db_sessio
     assert body["items"][1] == {
         "id": str(a1), "title": "第一份.docx", "doc_type": "contract", "stance": "sales",
         "status": "reviewed", "high_count": 2, "created_at": "2026-05-01T08:00:00Z",
+        "original_expires_at": "2026-05-31T08:00:00Z", "task_expires_at": "2027-05-01T08:00:00Z",
     }
     assert body["items"][0]["doc_type"] is None and body["items"][0]["stance"] == "purchase"
     # 管理员也只看到自己的

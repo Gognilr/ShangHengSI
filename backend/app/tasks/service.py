@@ -12,6 +12,7 @@ from sqlalchemy import delete, distinct, exists, func, select, update
 from sqlalchemy.orm import Session as DbSession
 
 from app.audit import service as audit
+from app.admin.settings_store import get_setting
 from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
@@ -247,6 +248,7 @@ def list_tasks(
             status=t.status,
             high_count=t.high_count,
             created_at=t.created_at,
+            **_expiry_fields(db, t),
         )
         for t, doc_type in rows
     ]
@@ -254,6 +256,24 @@ def list_tasks(
 
 
 # ---------------------------------------------------------------- 详情
+
+
+def _expiry_fields(db: DbSession, task: Task) -> dict:
+    original = result = None
+    if task.status in ("reviewed", "completed_local"):
+        result_days = int(get_setting(db, "retention.result_days") or 0)
+        original_days = int(get_setting(db, "retention.original_days") or 0)
+        if result_days:
+            result = task.last_activity_at + timedelta(days=result_days)
+        if original_days and db.scalar(select(exists().where(
+                TaskFile.task_id == task.id, TaskFile.original_deleted_at.is_(None)))):
+            original = task.last_activity_at + timedelta(days=original_days)
+    elif task.status in ("parse_failed", "awaiting_confirm"):
+        # 未完成任务按专属保留层删除；解析中、审核中没有删除日期。
+        days = int(get_setting(db, "retention.unfinished_days") or 0)
+        if days:
+            result = task.last_activity_at + timedelta(days=days)
+    return {"original_expires_at": original, "task_expires_at": result}
 
 
 def task_detail(db: DbSession, task: Task) -> TaskDetail:
@@ -316,6 +336,7 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
         ],
         latest_run=latest_run,
         queue_position=queue_position,
+        **_expiry_fields(db, task),
     )
 
 

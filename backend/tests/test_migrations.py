@@ -307,6 +307,9 @@ SCHEMA = {
         status v8 NN
         file_name v100
         size_bytes bigint
+        db_bytes bigint
+        dir_bytes bigint
+        dir_free_bytes bigint
         sha256 c64
         error_message text
         started_at ts NN
@@ -1126,6 +1129,30 @@ def test_v2c_0014_upgrade_safety_and_downgrade(legacy, original, tasks):
                                 "AND column_name='last_activity_at'").fetchone() is None
             values = dict(conn.execute("SELECT key,value FROM settings WHERE key LIKE 'retention.%'").fetchall())
             assert values == ({"retention.original_days": original or 0} if legacy else {})
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_v2c03_0015_backup_stats_nullable_and_downgrade():
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    url = _url_for(name)
+    cfg = _alembic(url)
+    try:
+        command.upgrade(cfg, "0014")
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute("INSERT INTO backup_records(trigger,status,started_at,finished_at) "
+                         "VALUES('manual','success',now(),now())")
+        command.upgrade(cfg, "0015")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute("SELECT db_bytes,dir_bytes,dir_free_bytes FROM backup_records").fetchone() == (None,None,None)
+        command.downgrade(cfg, "0014")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute("SELECT count(*) FROM information_schema.columns WHERE table_name='backup_records' "
+                                "AND column_name IN ('db_bytes','dir_bytes','dir_free_bytes')").fetchone()[0] == 0
+        command.upgrade(cfg, "head")
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

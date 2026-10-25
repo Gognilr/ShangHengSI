@@ -1,5 +1,5 @@
 """数据页接口：备份设置与立即备份、记录、保留期、外发记录、系统状态（SPEC 15.5，设计 M7 第九节）。全部内容虚构。"""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -20,6 +20,8 @@ def _hdr(csrf):
 
 @pytest.fixture
 def dirs(tmp_path, monkeypatch):
+    from app.admin import data
+    data._storage_cache.clear()
     monkeypatch.setenv("BACKUP_DIR", str(tmp_path / "backup"))
     monkeypatch.setenv("FILES_DIR", str(tmp_path / "files"))
     monkeypatch.setenv("APP_VERSION", "9.9.9-test")
@@ -129,7 +131,7 @@ def test_records_latest_and_space(admin, dirs, db_sessionmaker):
                            started_at=utcnow(), finished_at=utcnow()))
         s.commit()
     d = c.get(A + "/backup/records").json()
-    assert d["dir"] == str(dirs / "backup") and isinstance(d["free_bytes"], int) and d["free_bytes"] > 0
+    assert d["dir"] == str(dirs / "backup") and d["free_bytes"] is None and d["free_measured_at"] is None
     assert len(d["items"]) == 20
     assert d["latest"]["status"] == "failed" and d["latest"]["error_message"] == "数据库导出失败（返回码 1）"
     assert d["latest"]["id"] == d["items"][0]["id"] and d["items"][1]["file_name"] == "aireview_0024.bak"
@@ -299,13 +301,126 @@ def test_outbound_is_read_only_and_writes_no_audit(admin, make_user, db_sessionm
 
 
 def test_system_status(admin, dirs, db_sessionmaker):
+    from app.admin import data
     c, _ = admin
     d = c.get(A + "/system/status").json()
-    assert d == {"version": "9.9.9-test", "queued_jobs": 0, "data_free_bytes": None}
+    assert d["version"] == "9.9.9-test" and d["queued_jobs"] == 0 and d["data_free_bytes"] is None
+    assert d["estimated_days"] is None and d["estimate_reason"] == "insufficient_history"
     (dirs / "files").mkdir()
+    data._storage_cache.clear()
     with db_sessionmaker() as s:
         s.add(Job(type="parse", payload={}))
         s.add(Job(type="parse", payload={}, status="done"))
         s.commit()
     d = c.get(A + "/system/status").json()
     assert d["queued_jobs"] == 1 and isinstance(d["data_free_bytes"], int) and d["data_free_bytes"] > 0
+
+
+def _stats_samples(sm, now, *, span=10, start=10, finish=20, status="success", old=False):
+    with sm() as db:
+        for when, size in ((now-timedelta(days=31 if old else span), start), (now, finish)):
+            db.add(BackupRecord(trigger="schedule", status=status, db_bytes=size * 1024**2,
+                                dir_bytes=30, dir_free_bytes=40, size_bytes=50,
+                                started_at=when-timedelta(minutes=1), finished_at=when))
+        db.commit()
+
+
+@pytest.mark.parametrize("scenario,expected,reason", [
+    ("growth", 37, None), ("short", None, "insufficient_history"),
+    ("old", None, "insufficient_history"), ("negative", None, "no_growth"),
+    ("no_growth", None, "no_growth"), ("failed", None, "insufficient_history"),
+    ("unavailable", None, "unavailable"),
+])
+def test_v2c03_storage_estimate(admin, db_sessionmaker, make_user, monkeypatch, scenario, expected, reason):
+    from app.admin import data
+    from app.db.models import Task, TaskFile
+    now = utcnow()
+    _stats_samples(db_sessionmaker, now, span=6 if scenario == "short" else 10,
+                   start=20 if scenario == "negative" else 10,
+                   finish=10 if scenario in ("negative", "no_growth") else 20,
+                   status="failed" if scenario == "failed" else "success", old=scenario == "old")
+    if scenario == "growth":
+        user = make_user("storage")
+        with db_sessionmaker() as db:
+            task = Task(owner_id=user.id, title="虚构.docx", stance="sales", source="outgoing", policy="ai", status="parsing")
+            db.add(task)
+            db.flush()
+            db.add(TaskFile(task_id=task.id, seq=1, is_main=True, original_name="虚构.docx", ext="docx",
+                            size_bytes=20*1024**2, sha256="0"*64, storage_key="0"*32,
+                            created_at=now-timedelta(days=5)))
+            db.commit()
+    monkeypatch.setattr(data, "utcnow", lambda: now)
+    monkeypatch.setattr(data, "_free", lambda path: None if scenario == "unavailable" else 900*1024**2)
+    d = admin[0].get(A + "/system/status").json()
+    assert (d["estimated_days"], d["estimate_reason"]) == (expected, reason)
+    assert d["db_bytes"] > 0
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_v2c03_no_measured_backup(admin, db_sessionmaker, legacy):
+    if legacy:
+        with db_sessionmaker() as db:
+            db.add(BackupRecord(trigger="manual", status="success", size_bytes=123, started_at=utcnow(), finished_at=utcnow()))
+            db.commit()
+    d = admin[0].get(A + "/system/status").json()
+    assert all(d[key] is None for key in ("backup_dir_bytes", "latest_backup_bytes", "backup_free_bytes", "backup_stats_at", "estimated_days"))
+    assert d["estimate_reason"] == "insufficient_history"
+
+
+def test_v2c03_snapshot_cache_and_live_queue(admin, dirs, db_sessionmaker, monkeypatch):
+    from app.admin import data
+    clock = [10]
+    calls = dict(files=0, database=0, backup=0)
+    def counted(key, value):
+        def measure(*args):
+            calls[key] += 1
+            return value
+        return measure
+    monkeypatch.setattr(data.monotime, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(data, "_files_bytes", counted("files", 100))
+    monkeypatch.setattr(data, "_db_bytes", counted("database", 200))
+    monkeypatch.setattr(data, "_latest_backup", counted("backup", None))
+    c = admin[0]
+    first = c.get(A + "/system/status").json()
+    with db_sessionmaker() as db:
+        db.add(Job(type="parse", payload={}))
+        db.commit()
+    second = c.get(A + "/system/status").json()
+    assert second["queued_jobs"] == 1 and first["queued_jobs"] == 0
+    assert second["storage_measured_at"] == first["storage_measured_at"]
+    assert calls == dict(files=1, database=1, backup=1)
+    clock[0] += 601
+    assert c.get(A + "/system/status").status_code == 200
+    assert calls == dict(files=2, database=2, backup=2)
+
+
+def test_v2c03_unreadable_files_and_backup_free_source(admin, db_sessionmaker, monkeypatch):
+    from app.admin import data
+    _stats_samples(db_sessionmaker, utcnow())
+    monkeypatch.setattr(data.os, "scandir", lambda path: (_ for _ in ()).throw(PermissionError("private path")))
+    c = admin[0]
+    d = c.get(A + "/system/status").json()
+    assert d["files_bytes"] is None and d["db_bytes"] > 0
+    monkeypatch.setattr(data, "_free", lambda path: pytest.fail("备份接口不应访问文件系统剩余空间"))
+    d = c.get(A + "/backup/records").json()
+    assert d["free_bytes"] == 40 and d["free_measured_at"] is not None
+
+
+def test_v2c03_files_walk_skips_links_and_failed_stat(tmp_path, monkeypatch):
+    from app.admin import data
+    from pathlib import Path
+    root = tmp_path / "files"
+    root.mkdir()
+    (root / "regular").write_bytes(b"123")
+    (root / "nested").mkdir()
+    (root / "nested" / "content").write_bytes(b"12345")
+    (root / "link-file").symlink_to(root / "regular")
+    (root / "link-dir").symlink_to(root / "nested", target_is_directory=True)
+    (root / "unreadable").write_bytes(b"ignored")
+    original = Path.stat
+    def stat(path, *args, **kwargs):
+        if path.name == "unreadable":
+            raise OSError("stat unavailable")
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "stat", stat)
+    assert data._files_bytes(str(root)) == 8

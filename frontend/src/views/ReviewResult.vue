@@ -13,7 +13,7 @@ import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
 import { tasksApi, type TaskDetail } from '@/api/tasks'
-import { formatDateTime } from '@/utils/time'
+import { formatDate, formatDateTime } from '@/utils/time'
 import {
   CATEGORY_OPTIONS,
   HANDLING_OPTIONS,
@@ -38,6 +38,16 @@ const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const task = ref<TaskDetail | null>(null)
+const expiryWarnings = computed(() => {
+  const current = task.value
+  if (!current) return []
+  const soon = (value: string | null) => value && Date.parse(value) >= Date.now()
+    && Date.parse(value) - Date.now() <= 7 * 86400000
+  const messages: string[] = []
+  if (soon(current.task_expires_at)) messages.push(`本任务将于 ${formatDate(current.task_expires_at)} 删除，如需留存请导出报告`)
+  if (soon(current.original_expires_at)) messages.push(`原件将于 ${formatDate(current.original_expires_at)} 删除，之后不能重新审核和追问`)
+  return messages
+})
 const run = ref<RunDetail | null>(null)
 const tab = ref('findings')
 const rerunOpen = ref(false)
@@ -212,6 +222,7 @@ const reqVersion = computed(() => {
 
     <div v-else-if="task" class="split">
       <div class="left">
+        <el-alert v-for="message in expiryWarnings" :key="message" class="gap" type="warning" show-icon :closable="false" :title="message" />
         <!-- 顶部信息栏 -->
         <section class="panel info">
           <div class="info-heading"><span class="file-badge">{{ fileBadge }}</span><div class="file-heading"><div class="info-title">{{ mainFile?.original_name ?? task.title }}</div><span v-if="task.files.length > 1" class="hint">另有 {{ task.files.length - 1 }} 个附件</span></div>
