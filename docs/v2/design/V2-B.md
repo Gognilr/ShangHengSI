@@ -322,7 +322,7 @@ B-06 只做 6.3 第 11、12 条的开发机预检；以下整机测试放在 **V
 
 **起因**：V2-B-09 审核中实测，中文合同常见的几种金额写法没有被第 5 步识别（“1000块”“1千元”“1000余元”“1,000.00（元）”“人民币一千元”“15万欧元”“日元 56,000”“美金 7,800”），“港币1,000元”的币种被认成人民币。出口复检重扫也用 `find_amounts`，所以这些金额会原样外发。另外，确认页手动标记“金额”只接受纯数字（V2Q-42），选中带“¥”“元”的文字会被拒绝。本节一并处理，V2Q-57 取代 V2Q-42 的第 1、2 条。
 
-**文件范围**：`backend/app/redaction/detect.py`（只改第 5 步金额：`_CURRENCY`、`_PREFIX`、`_SUFFIX` 及新增的辅助正则，`find_amounts`）、`backend/app/redaction/engine.py`（只改 `_manual_amount`、`compute` 中用户金额候选的处理、`_add_term` 的金额校验）、`backend/tests/test_v2b_amounts.py`（新）、`backend/tests/fixtures/redaction_golden/amounts_cn_forms.yaml`（按 11.4 转正）。不改 recheck.py、`find_bare_amounts`、前端、迁移（AMOUNT 类别已有）。
+**文件范围**：`backend/app/redaction/detect.py`（只改第 5 步金额：`_CURRENCY`、`_PREFIX`、`_SUFFIX` 及新增的辅助正则，`find_amounts`）、`backend/app/redaction/engine.py`（只改 `_manual_amount`、`compute` 中用户金额候选的处理、`_add_term` 的金额校验）、`backend/tests/test_v2b_amounts.py`（新）、`backend/tests/fixtures/redaction_golden/amounts_cn_forms.yaml`（按 11.4 转正）。另按 V2Q-58（用户 2026-10-25 批准）只做两处既有测试同步：`test_redaction_engine.py::test_fill_brackets_patterns` 去掉 `人民币【222063】元` 断言的 `* 2`；`test_a03_outbound.py` 只对 amounts\_cn\_forms 的 `15` 标注先排除完整的 `[C-15]` 再检查，并补反例。不改 recheck.py、`find_bare_amounts`、前端、迁移（AMOUNT 类别已有）。
 
 **开工前已写入**：回归样本 `amounts_cn_forms.txt / .yaml`（11 处待修项以 known\_gaps 登记，当前测试通过）。**样本 .txt 与已有标注文字不得改动。**
 
