@@ -34,8 +34,9 @@ class Entity:
 
 
 def cache_context() -> bytes:
-    """V2Q-49：只读取小型版本文件；不缓存文件内容，改动后下一次重算立即失效。"""
-    return (MODEL_DIR / 'MANIFEST.sha256').read_bytes() + STOPWORDS_FILE.read_bytes()
+    """V2Q-49：只读取小型版本文件；不缓存文件内容，改动后下一次重算立即失效。
+    本文件（解码与 keep_entity 过滤）也计入，升级改动过滤规则时旧结果随之失效（V2-B-09）。"""
+    return (MODEL_DIR / 'MANIFEST.sha256').read_bytes() + STOPWORDS_FILE.read_bytes() + Path(__file__).read_bytes()
 
 
 def cache_key(residual: str, *, context: bytes | None = None) -> str:

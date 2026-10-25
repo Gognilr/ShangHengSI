@@ -535,6 +535,8 @@ def compute(
 
     # 模型只读取规则未替换的文字；等长空白保持原文偏移。
     ner_suspects = []
+    ner_names: dict[str, tuple[str, str]] = {}  # 实体键 → (首个高置信文字, 类别)
+    locs = {n.loc: i for i, n in enumerate(nodes)}
     context = ner.cache_context()
     node_cache, same_compute = {}, {}
     cache_hits = cache_misses = 0
@@ -560,11 +562,19 @@ def compute(
                 if hit.label in ('ORG', 'PERSON'):
                     ent = entity(surface, hit.label)
                     key = ent.key
+                    ner_names.setdefault(key, (surface, hit.label))
                 else:
                     key = detect.find_country(surface) or COUNTRY_UNKNOWN
                 _accept([_Span(i, hit.start, hit.end, hit.label, key, 'ner')], occupied[i], spans)
             elif hit.score >= ner.MEDIUM:
                 ner_suspects.append(SuspectOut(n.loc, hit.start, hit.end, 'ner'))
+    # V2-B-09：高置信的名称与签约方一样全文替换（含前面的节点），否则对照表中的真实值会被出口复检拦截。
+    for i, n in enumerate(nodes):
+        excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
+        _accept([_Span(i, m.start(), m.end(), label, key, 'ner')
+                 for key, (surface, label) in ner_names.items() for m in P.name_pattern(surface).finditer(n.text)
+                 if not _overlaps(excluded_spans, m.start(), m.end())], occupied[i], spans, longest_first=True)
+    ner_suspects = [s for s in ner_suspects if not _overlaps(occupied[locs[s.loc]], s.char_start, s.char_end)]
 
     spans.sort(key=lambda s: (s.node, s.start))
     _apply_ours(entities, stance, overrides, {s.key for s in spans})

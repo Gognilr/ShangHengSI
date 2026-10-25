@@ -422,3 +422,36 @@ B06 的开发机证据：8 CPU 断网万字模型中位 8.8018 秒，单进程�
 本机隔离环境已执行 `docker compose -f <证据目录>/b08-browser-compose.yml down`，回读 `b08-local-down.exit` 为0，五个本轮容器及两条本轮网络已移除；没有使用 `-v`，保留虚构测试数据卷便于复现。前端15174会话已结束；既有15173与其他测试栈未操作。Tabbit `finish` 返回 finished=true、forcedCleanup=false，保留本轮标签供续查；无截图产物。
 
 下一步：先取得 V2Q-43～46 的最小修复与保护断言授权，保留 V2Q-42 待确认；先写失败回归再修复并跑相关定向组，之后重跑 B08 全量、召回与浏览器未完成项。待本机验证具备通过条件，再按 V2Q-38 单独请求低峰时段整机容量测试授权。所有集中门槛通过后才标记 B08 已完成，再停交 B09 Opus 审核。
+
+## V2-B-09 批次审核（Opus 5.5，2026-10-25）
+
+审阅范围：9942607..e1761ec 的 V2-B-01～V2-B-08 提交（含 B06a、各 V2Q 授权记录）及本报告。
+
+**逐项核对（设计第九节、TASKS 规则 10～12）**
+
+- **样本与用例未被删改**：回归样本 .txt 全部未改；四份新样本 yaml 只按 1.5、2.5、3.6 把 known\_gaps 移入 must\_replace（写明类别）并追加 must\_suspect；names\_derived\_persons 的两条标注改写为“澄川虚构信息技术”“澄川虚构”与设计 3.6 #1 原文一致；persons\_narrative 的 must\_keep 改写与 V2Q-33 一致。各节测试用例表逐条有对应测试。
+- **既有测试的改动全部有授权**：test\_detect\_persons\_addresses（V2Q-32、V2Q-33）、test\_redaction\_golden（V2Q-39，只对两条显式清单放行）、test\_chat（V2Q-40，只隔离一个用例的 NER）、test\_redaction\_api（V2Q-41）、test\_suspects（V2Q-44）、test\_ner 输入冻结（V2Q-48）、test\_migrations（只追加类别、原因、新表，严格比较不放宽）。未发现超出授权的改动。
+- **只增不减**：detect / parties / suspects 删除的行都是被改写的同一规则（扩展字符集、角色说明、外文后缀），旧后缀不受新门槛影响；新增的过滤（ner\_stopwords、keep\_entity）只作用于模型结果；项目整段优先（V2Q-45/50）只扩大替换范围；唯一的减少是 B6 撤销，只对用户操作的文字生效。recheck.py 未改。
+- **文件范围**：B01～B07 在任务卡范围内；B08 的代码改动都落在 V2Q-43～V2Q-51 授权的文件内。未改 docs/SPEC.md、CLAUDE.md、AGENTS.md。
+- **日志与错误消息**：新增日志只有 engine 的一条 DEBUG（命中 / 重算计数）；ner.py 无日志，启动失败消息不含文件内容；缓存解密失败不记录密文；审计 redaction\_revoke 只含类别。
+- **A-06 / owner**：新接口 POST /tasks/{id}/redaction/revoke 走 owned\_task（他人 404）并加任务行锁；我方主体接口在 /admin 路由，路由级 require\_admin；缓存表随任务级联删除，有测试。
+- **加密与事务**：ner\_node\_results 只存 AES-256-GCM 加密的 {key, entities}，不含原文与明文哈希；与对照表写入同一事务，回滚后不变（test\_ner\_node\_cache）；损坏缓存按未命中重算。
+- **离线**：模型文件不进仓库（只入库 MANIFEST.sha256），Dockerfile 两个 stage 构建时校验 SHA-256；requirements 只加 tokenizers==0.22.2；产品不装 torch / transformers / gliner / sentencepiece（6.3 #11 测试）。
+- **性能证据**：6.4 方案丙各项在 0F 节逐项有原始数据与门槛；外层 run.exit=1 的原因（OCR 已退出后 compose wait 找不到容器）与测量结果无关，各角色及验收、清理的退出码均为 0，接受该解释。双任务并发余量只有约 2.4 秒，V2-C-01 改并发时必须重测（已在 0F 注明）。
+- **Q51**：代码核对符合 V2Q-51（resize 收回视口、对照网格或页面滚动关闭浮层、卸载移除监听；对照网格本身即滚动容器）；四宽视觉截图仍未取得，保留为限制。
+
+**审核中发现并修复**
+
+1. **模型高置信识别的名称只替换识别到的那一处**（engine.compute）：模型对每个节点单独识别，同一名称在另一节点（含排在前面的节点、NOTE）得分低于 0.95 时保持原文；而该名称已作为主体写入对照表，确认发送时出口复检按对照表真实值拦截（OUTBOUND\_BLOCKED），用户只能逐处手动补充。断网容器实测复现（三个节点中只有一处被替换）。修复：模型高置信的人名、机构名与签约方一样全文替换（name\_pattern，含在前的节点与 NOTE，已撤销的人名仍不替换），被覆盖的中置信疑似不再重复列出。新增 test\_ner.py::test\_high\_confidence\_name\_replaced\_in\_every\_node（先失败后通过）。属于“只增不减”方向。
+2. **节点缓存键未包含过滤代码**：cache\_context 只含 MANIFEST 与停用词表，以后升级若只改 keep\_entity 过滤规则，待确认任务会继续使用旧结果。已把 ner.py 本身计入缓存键。
+
+**观察（不改）**
+
+- 模型高置信识别的机构名会作为“其他”主体登记，确认发送时与其他签约方一样写入已记住的名称（9.10 原有逻辑）；模型误识别时管理员可在设置中删除。如希望模型结果不进入名称库，需另定。
+- test\_migrations 中函数名 test\_exactly\_23\_tables 实际断言 24 张表，只是名称未更新。
+
+**验证**：修复后先跑相关定向组（test_ner、test_ner_node_cache、test_v2b_*、golden、A-03、suspects、chat、redaction_api）622 passed；再整仓挂载 Docker 全量 **2587 passed**、1 warning（1018.78 秒，exit 0；比 B08 的 2586 项多出新增的 1 条）。前端未改。
+
+**结论**：V2-B 通过审核（含上述 2 处修复），待用户确认后进入 V2-C-01。
+
+**待用户确认**：V2Q-34（新旧叙述人名规则重叠时保留旧原因，Opus 已核对建议确认）、V2Q-42（手动金额只接受纯数字，带币种符号的选区返回 422，建议确认）。

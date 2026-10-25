@@ -102,6 +102,45 @@ def test_engine_masking_and_note(monkeypatch):
     assert '沈柏宁' not in result.redacted['NOTE']
 
 
+def test_high_confidence_name_replaced_in_every_node(monkeypatch):
+    """V2-B-09：模型只在一个节点给出高置信时，其他节点（含 NOTE、在前的节点）的同名文字也要替换，
+    否则对照表中有该真实值，出口复检会拦截发送；中置信疑似与已撤销的人名不受影响。"""
+    import re
+    from app.redaction import ner
+    from app.redaction.engine import NodeIn, compute
+    from app.redaction.recheck import recheck
+    from app.redaction.restore import restore
+
+    def predict(text):
+        if '[[命中]]' not in text:
+            return [ner.Entity(m.start(), m.end(), 'ORG', 0.7)
+                    for m in re.finditer('Northern Fictive Laboratory', text)]
+        return [ner.Entity(m.start(), m.end(), label, 0.99)
+                for name, label in (('Northern Fictive Laboratory', 'ORG'), ('钱虚明', 'PERSON'), ('周示例', 'PERSON'))
+                for m in re.finditer(name, text)]
+
+    monkeypatch.setattr(ner, 'recognize', predict)
+    nodes = [NodeIn('F1-P1', '甲方：青岚虚构石化股份有限公司'),
+             NodeIn('F1-P2', '检测报告由 Northern Fictive Laboratory 出具，钱虚明负责，周示例抄送。'),
+             NodeIn('F1-P3', '[[命中]] 据 Northern Fictive Laboratory 的结论，钱虚明、周示例签字。'),
+             NodeIn('NOTE', '请钱虚明再核对 Northern Fictive Laboratory 的报告。')]
+    result = compute(nodes, 'purchase', exclusions=['周示例'])
+    outbound = '\n'.join(result.redacted.values())
+    for name in ('Northern Fictive Laboratory', '钱虚明'):
+        assert name not in outbound
+    assert outbound.count('周示例') == 2  # 已撤销：全文不替换
+    assert not result.suspects  # 中置信区间已被替换，不再重复列为疑似遗漏
+    by_loc = {}
+    for i in result.items:
+        by_loc.setdefault(i.loc, set()).add((i.category, i.detected_by))
+    assert {('ORG', 'ner'), ('PERSON', 'ner')} <= by_loc['F1-P2'] and {('ORG', 'ner'), ('PERSON', 'ner')} <= by_loc['NOTE']
+    assert len({i.placeholder for i in result.items if i.category == 'ORG' and i.detected_by == 'ner'}) == 1
+    assert not [r for r in recheck(outbound, real_values=result.mapping.values(), terms=[],
+                                   placeholders=[k.split('#', 1)[0] for k in result.mapping]) if r.category == 'MAP']
+    for n in nodes:
+        assert restore(result.redacted[n.loc], result.mapping) == n.text
+
+
 def test_chat_confidence_and_rule_precedence(monkeypatch):
     from app.redaction import ner
     from app.chat.service import _redact
