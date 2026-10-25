@@ -491,3 +491,5 @@ docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgr
 - `test_a03_outbound.py::test_a03_no_real_values_in_outbound_records`：11 条标注转正后，对短串 `15` 做 `n in text`，匹配到固定要求编号 `[C-15]`。最终新测试实际经过 upload / parse / confirm / gateway 模拟服务 / llm_calls 记录，两个请求文本中 `15` 的上下文分别为 `责条款\\n[C-15] 质保期的起算`、`免责条款\n[C-15] 质保期的起算`，除此无该串，原 `15万欧元` 已替换，recheck 无拦截。建议仅对该样本该标注，排除完整固定编号 `[C-15]` 后保持严格的短串检查；原 MAP / terms / recheck / 长数字及其他标注检查不变。不得改样本 / 产品要求编号 / 代号 / recheck 来绕过。
 
 遵守共同约定及用户“已有标注不得改动”：上述两处旧测试保持原样，新增 V2Q-58 并暂停。任务行仍待执行，未报告全量成功。待用户明确确认最小测试同步后，先补相应反例确保真正的正文 `15` 仍失败，再重跑指定回归；通过后运行用户要求的一次整仓挂载全量，持久化 / 重读退出码，更新 B10 完成状态并停交 B11（Opus，high）。未连接服务器、未调用真实云模型。
+
+最终代码复核：protected-conflicts.log / .exit 仅重跑上述两个原测试，仍为 **2 failed、1 warning，64.87秒，exit 1**（已落盘重读），失败原因与首轮一致。测试先行提交3135e82，实现/暂停记录提交c319bb4；两份既有未跟踪界面方案保持原样。
