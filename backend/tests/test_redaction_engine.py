@@ -379,7 +379,7 @@ def test_amount_patterns():
 
 def test_fill_brackets_patterns():
     """填空括号【】［］[]〖〗：标签与值、币种与数字之间各允许一个（B-01、Q-134 ①）。"""
-    assert amounts("人民币【222063】元") == [("222063", "AMOUNT", "AMOUNT|CNY|222063")] * 2  # 前置、后置各命中一次
+    assert amounts("人民币【222063】元") == [("222063", "AMOUNT", "AMOUNT|CNY|222063")]  # V2Q-58：同区间去重
     assert amounts("￥【 250000 】")[0][:2] == ("250000", "AMOUNT")
     assert amounts("服务款［62500］元")[0][:2] == ("62500", "AMOUNT")
     assert amounts("USD〖1,250.00〗/MT")[0][:2] == ("1,250.00", "PRICE")

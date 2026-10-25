@@ -168,7 +168,7 @@ def test_selection_entrypoints(surface, entry, db_sessionmaker, alice, ready_tas
 
 @pytest.mark.usefixtures('env')
 def test_amounts_fixture_wire_diagnostic(db_sessionmaker, alice, llm):
-    """V2Q-58：定位 A-03 的短串冲突；旧 A-03 断言仍保留并失败。"""
+    """V2Q-58：实测固定编号中的短串与正文金额脱敏，A-03 仅按授权同步。"""
     import re
     from tests.acceptance_support import golden_samples, run_sample, outbound_records
     client, headers = alice[1:]

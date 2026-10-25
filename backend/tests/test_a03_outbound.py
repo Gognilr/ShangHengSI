@@ -36,6 +36,21 @@ def _culprit(text, reason, values, terms) -> str:
     return repr(text[reason.position:reason.position + 30])
 
 
+def _must_replace_present(sample_name: str, needle: str, text: str) -> bool:
+    # V2Q-58：只排除该样本该标注与固定要求编号的碰撞，正文短串仍严格检查。
+    if sample_name == 'amounts_cn_forms.docx' and needle == '15':
+        text = text.replace('[C-15]', '')
+    return needle in text
+
+
+def test_v2q58_unredacted_body_still_fails():
+    assert not _must_replace_present('amounts_cn_forms.docx', '15', '[C-15] 质保期要求')
+    with pytest.raises(AssertionError):
+        assert not _must_replace_present('amounts_cn_forms.docx', '15', '[C-15] 正文金额15万欧元')
+    assert _must_replace_present('other.docx', '15', '[C-15]')
+    assert _must_replace_present('amounts_cn_forms.docx', 'C-15', '[C-15]')
+
+
 def test_a03_no_real_values_in_outbound_records(db_sessionmaker, alice, llm):
     c, h = alice
     requests = llm("normal")
@@ -60,7 +75,8 @@ def test_a03_no_real_values_in_outbound_records(db_sessionmaker, alice, llm):
             for reason in recheck(text, real_values=r.real_values, terms=r.terms):
                 problems.append(f"{sample.name} {source}：{reason.category} @ {reason.position} "
                                 f"{_culprit(text, reason, r.real_values, r.terms)}")
-            problems += [f"{sample.name} {source}：含 must_replace {n!r}" for n in sample.must_replace if n in text]
+            problems += [f"{sample.name} {source}：含 must_replace {n!r}" for n in sample.must_replace
+                         if _must_replace_present(sample.name, n, text)]
             # 长数字（账号等）换了分组写法也算出现
             problems += [f"{sample.name} {source}：含 must_replace {n!r}（去掉分隔符后）" for n in sample.must_replace
                          if sum(ch.isdigit() for ch in n) >= 8 and compact(n) in compact(text)]
