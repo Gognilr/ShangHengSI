@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode } from '@/api/preview'
@@ -139,6 +139,19 @@ async function revokeItem(item: RedactionItemPos | undefined) {
   } finally { saving.value = false; emit('busy', false) }
 }
 function clearSelection() { selection.value = null; selectionNotice.value = ''; saveError.value = '' }
+function onWindowResize() {
+  if (!selection.value) return
+  selection.value.left = Math.max(8, Math.min(selection.value.left, innerWidth - 420))
+  selection.value.top = Math.max(8, Math.min(selection.value.top, innerHeight - 360))
+}
+function onPageScroll(event: Event) {
+  const target = event.target
+  if (target === document || target === window || target === grid.value
+      || (target instanceof Element && grid.value && target.contains(grid.value))) {
+    window.getSelection()?.removeAllRanges()
+    clearSelection()
+  }
+}
 function onMouseUp() {
   if (!props.editable || saving.value) return
   const selected = window.getSelection()
@@ -178,7 +191,15 @@ async function saveSelection() {
     if (e instanceof ApiError && e.code === 'TASK_STATE_CONFLICT') emit('stale')
   } finally { saving.value = false; emit('busy', false) }
 }
-onBeforeUnmount(() => { version++; clearTimeout(flashTimer) })
+onMounted(() => {
+  window.addEventListener('resize', onWindowResize)
+  window.addEventListener('scroll', onPageScroll, true)
+})
+onBeforeUnmount(() => {
+  version++; clearTimeout(flashTimer)
+  window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('scroll', onPageScroll, true)
+})
 </script>
 
 <template>
