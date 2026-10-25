@@ -163,6 +163,7 @@ _SUFFIX = re.compile(
     rf"(?<![\d.,_A-Za-z])({_NUM}){_CLOSE}\s?(万美元|万元|亿元|美元|欧元|英镑|日元|港元|港币|元|(?:{_CODES})(?![A-Za-z]))"
 )
 _FOLLOWED_BY_NUMBER = re.compile(r"\s?\d")
+_PREFIX_WORDS = {"美元", "欧元", "英镑", "日元", "港元", "港币", "美金", *_CODES.split("|")}
 _SUFFIX_AFTER_PREFIX = re.compile(_CLOSE + r"\s?(万美元|万元|亿元|美元|元)")
 _CN_DIGITS = "零壹贰叁肆伍陆柒捌玖"
 _CN_UPPER = re.compile(
@@ -180,15 +181,24 @@ _MULTIPLIER = {"万元": Decimal(10000), "万美元": Decimal(10000), "亿元": 
 # V2-B-10：独立的后置语法，不扩展无币种金额的标签或门槛。
 _SCALE = {'千': Decimal(1000), '万': Decimal(10000), '百万': Decimal(1000000),
           '千万': Decimal(10000000), '亿': Decimal(100000000)}
-_MONEY_UNIT = rf"美元|美金|欧元|英镑|日元|港元|港币|元|圆|(?:{_CODES})(?![A-Za-z])"
+_MONEY_UNIT = rf"美元|美金|欧元|英镑|日元|港元|港币|元|(?:{_CODES})(?![A-Za-z])"
 _MONEY_TAIL = (rf"(?P<before>[余多])?(?P<scale>千万|百万|千|万|亿)?(?P<after>[余多])?"
                rf"(?P<unit>{_MONEY_UNIT})")
 _EXT_SUFFIX = re.compile(rf"(?<![第\d.,_A-Za-z])(?P<num>{_NUM})(?![\d,.]*\d)[ \t]*"
                          rf"(?:{_MONEY_TAIL}|(?P<block>块)(?=钱|整|[^一-鿿]|$)|"
                          rf"[（(][ \t]*(?P<br_scale>千万|百万|千|万|亿)?(?P<br_unit>{_MONEY_UNIT})[ \t]*[）)])")
 _LOWER_CN = re.compile(rf"(?<![第每\d.,_零壹贰叁肆伍陆柒捌玖拾佰仟一二三四五六七八九两〇十百千万亿])"
-                       rf"(?P<num>[一二三四五六七八九两〇零十百千万亿]+)(?P<unit>{_MONEY_UNIT})整?")
+                       rf"(?P<num>[一二三四五六七八九两〇零十百千万亿]+)(?P<unit>{_MONEY_UNIT}|圆)整?")
 _LOWER_TO_UPPER = str.maketrans('一二三四五六七八九两〇十百千', '壹贰叁肆伍陆柒捌玖贰零拾佰仟')
+
+
+def _prefix_of_next(text: str, end: int, unit: str | None, num: str) -> bool:
+    """“3.1 USD 100”：USD 是后一个数字的前置币种，前面的短数字是条款编号。
+
+    元、万元、块等不能前置；带千分位或三位以上的数字也不是条款编号，仍算金额（V2-B-11，“30000元 3日内”）。
+    """
+    return (unit in _PREFIX_WORDS and "," not in num and len(num.split(".")[0]) <= 2
+            and _FOLLOWED_BY_NUMBER.match(text, end) is not None)
 
 
 def _decimal(num: str) -> Decimal | None:
@@ -329,7 +339,7 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
         hits.append(Hit(m.start(1), m.end(1), cat, _amount_key(cat, currency, value, m.group(1)), currency, value))
     for m in _SUFFIX.finditer(text):
         suffix = m.group(2)
-        if _FOLLOWED_BY_NUMBER.match(text, m.end()):  # “3.1 USD 100”：USD 是后一个数字的前置币种
+        if _prefix_of_next(text, m.end(), suffix, m.group(1)):
             continue
         value = _decimal(m.group(1))
         if value is not None and suffix in _MULTIPLIER:
@@ -353,7 +363,10 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
     extended = list(_EXT_SUFFIX.finditer(text))
     prefixes = {m.span(1) for m in _PREFIX.finditer(text)}
     for m in extended:
-        if m.group('before') and m.group('after') or _FOLLOWED_BY_NUMBER.match(text, m.end()):
+        if m.group('before') and m.group('after'):
+            continue
+        if not (m.group('scale') or m.group('before') or m.group('after')) and _prefix_of_next(
+                text, m.end(), m.group('unit'), m.group('num')):
             continue
         start, end = m.span('num')
         unit = m.group('unit') or m.group('br_unit') or '块'
@@ -366,6 +379,9 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
         hits.append(Hit(start, end, cat, _amount_key(cat, currency, value, m.group('num')), currency, value))
     for m in _LOWER_CN.finditer(text):
         if not any(ch in m.group('num') for ch in '十百千万亿'):
+            continue
+        # “单位：千元”“百元大钞”只有量级、没有具体数字，不是金额（V2-B-11）。
+        if not (m.group('num')[0] == '十' or any(ch in m.group('num') for ch in '一二三四五六七八九两')):
             continue
         # 后置语法内的“千元 / 万元”是阿拉伯金额的单位，不另切出小写金额。
         if any(e.start() <= m.start() and m.end() <= e.end() for e in extended):

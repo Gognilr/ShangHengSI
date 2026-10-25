@@ -182,3 +182,32 @@ def test_amounts_fixture_wire_diagnostic(db_sessionmaker, alice, llm):
         assert contexts and all('[C-15]' in c for c in contexts)
         assert '15万欧元' not in text
         assert recheck(text, real_values=record.real_values, terms=record.terms) == []
+
+
+# V2-B-11 审核补充：金额后紧跟“空格 + 数字”不再整笔漏掉（V1.0 起的漏洞）；只有量级的单位说明与“圆钢”不算金额。
+@pytest.mark.parametrize('text,surfaces', [
+    ('支付30000元 3日内付清', ['30000']),
+    ('首付款30000元\n2. 尾款', ['30000']),
+    ('100元 200元', ['100', '200']),
+    ('1000元2000元', ['1000', '2000']),
+    ('预付100美元 3日内', ['100', '3']),
+    ('3.1 USD 100', ['100']),
+])
+def test_review_amount_followed_by_number(text, surfaces):
+    hits = detect.find_amounts(text)
+    assert [text[h.start:h.end] for h in hits] == surfaces
+    assert any(r.category == 'AMOUNT' and r.position == text.index(surfaces[0])
+               for r in recheck(text, real_values=[], terms=[]))
+
+
+@pytest.mark.parametrize('text', ['金额单位：千元', '单位：百万元', '（千元）', '百元大钞', '千元以下采购',
+                                  'Q235 Φ20圆钢', '直径20圆管'])
+def test_review_unit_only_not_amount(text):
+    assert detect.find_amounts(text) == []
+
+
+@pytest.mark.parametrize('text,surface,value', [('十元', '十元', '10'), ('数十万元', '十万元', '100000'),
+                                                ('一千圆整', '一千圆整', '1000')])
+def test_review_lower_cn_still_hits(text, surface, value):
+    h, = detect.find_amounts(text)
+    assert (text[h.start:h.end], h.value) == (surface, Decimal(value))
