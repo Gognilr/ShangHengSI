@@ -31,9 +31,10 @@ const fulltextCount = computed(() => rows.value.filter(r => r.has_fulltext).leng
 const err = (e: unknown) => e instanceof ApiError ? e.message : '请求失败，请稍后重试'
 let timer: ReturnType<typeof setInterval> | null = null
 let active = true
+let reloadQueued = false
 
 async function load(silent = false) {
-  if (loading.value) return
+  if (loading.value) { reloadQueued = true; return }
   loading.value = true
   if (!silent) error.value = ''
   try {
@@ -43,7 +44,10 @@ async function load(silent = false) {
     records.value = imports.items; enabled.value = settings.refs_enabled; settingsLoaded.value = true; error.value = ''
     if (detailOpen.value && detail.value?.status === 'parsing') await loadDetail(detail.value.id)
   } catch (e) { if (!silent) error.value = `加载失败：${err(e)}` }
-  finally { loading.value = false }
+  finally {
+    loading.value = false
+    if (reloadQueued && active) { reloadQueued = false; void load() }
+  }
 }
 async function search() { filter.page = 1; await load() }
 async function saveSetting(value: string | number | boolean) {
@@ -126,15 +130,15 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-button @click="search">查询</el-button>
       </div>
       <el-table :data="rows" empty-text="没有符合条件的法规，可导入官方导出的目录">
-        <el-table-column prop="title" label="法规标题" min-width="200" />
-        <el-table-column prop="category" label="分类" min-width="100" />
-        <el-table-column label="时效性" width="100"><template #default="{ row }">{{ LAW_STATUS[row.status] }}</template></el-table-column>
-        <el-table-column label="公布日期" width="110"><template #default="{ row }">{{ formatDate(row.published_on) }}</template></el-table-column>
-        <el-table-column label="施行日期" width="110"><template #default="{ row }">{{ formatDate(row.effective_on) }}</template></el-table-column>
-        <el-table-column label="全文" width="72"><template #default="{ row }">{{ row.has_fulltext ? '有' : '无' }}</template></el-table-column>
-        <el-table-column label="替代法规" min-width="140"><template #default="{ row }">{{ row.replaced_by || '—' }}</template></el-table-column>
-        <el-table-column label="来源" width="100"><template #default="{ row }">{{ LAW_SOURCE[row.source] }}</template></el-table-column>
-        <el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="editReplacement(row)">编辑替代</el-button></template></el-table-column>
+        <el-table-column prop="title" label="法规标题" min-width="180" />
+        <el-table-column prop="category" label="分类" min-width="80" />
+        <el-table-column label="时效性" width="80"><template #default="{ row }">{{ LAW_STATUS[row.status] }}</template></el-table-column>
+        <el-table-column label="公布日期" width="100"><template #default="{ row }">{{ formatDate(row.published_on) }}</template></el-table-column>
+        <el-table-column label="施行日期" width="100"><template #default="{ row }">{{ formatDate(row.effective_on) }}</template></el-table-column>
+        <el-table-column label="全文" width="60"><template #default="{ row }">{{ row.has_fulltext ? '有' : '无' }}</template></el-table-column>
+        <el-table-column label="替代法规" min-width="120"><template #default="{ row }">{{ row.replaced_by || '—' }}</template></el-table-column>
+        <el-table-column label="来源" width="80"><template #default="{ row }">{{ LAW_SOURCE[row.source] }}</template></el-table-column>
+        <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="editReplacement(row)">编辑替代</el-button></template></el-table-column>
       </el-table>
       <div class="pagination"><span>共 {{ total }} 条</span><el-pagination v-model:current-page="filter.page" :page-size="20" :total="total" layout="prev, pager, next" @current-change="load()" /></div>
     </section>
@@ -146,7 +150,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column label="类型" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_KIND[row.kind] }}</template></el-table-column>
         <el-table-column label="状态" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_STATUS[row.status] }}</template></el-table-column>
         <el-table-column prop="added" label="新增" width="72" /><el-table-column prop="changed" label="变化" width="72" /><el-table-column prop="skipped" label="跳过" width="72" />
-        <el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
+        <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
       </el-table>
     </section>
     <el-dialog v-model="uploadOpen" :title="kind === 'catalog' ? '导入法规目录' : '导入法规全文'" width="640px" :close-on-click-modal="!saving">

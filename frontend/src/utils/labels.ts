@@ -174,9 +174,14 @@ export const AUDIT_ACTION: Dict = {
   setting_update: '修改设置', task_create: '创建审核任务', task_delete: '删除审核任务',
   run_create: '确认发送', backup_run: '执行备份', retention_run: '执行保留期清理',
   redaction_revoke: '撤销替换', report_export: '导出报告', restore_run: '恢复备份',
+  law_import_upload: '上传法规导入文件', law_import_apply: '确认法规更新',
+  law_import_discard: '放弃法规更新', law_sync_run: '执行法规同步',
+  law_update: '修改法规信息',
+  template_create: '创建公司范本', template_update: '修改公司范本',
+  template_delete: '删除公司范本', template_clause_update: '修改范本条款',
 }
 export const auditActionLabel = pick(AUDIT_ACTION)
-export const AUDIT_TARGET: Dict = { user: '账号', task: '任务', run: '审核轮次', finding: '问题', setting: '设置', term: '敏感词', backup: '备份', company_requirement: '审核要求' }
+export const AUDIT_TARGET: Dict = { user: '账号', task: '任务', run: '审核轮次', finding: '问题', setting: '设置', term: '敏感词', backup: '备份', company_requirement: '审核要求', law_import: '法规更新', law: '法规', template: '公司范本' }
 export const auditTargetLabel = pick(AUDIT_TARGET)
 /** 对照视图与手动补充共用的类别色组。 */
 export const REDACTION_KIND: Record<string, string> = {

@@ -30,6 +30,17 @@ def test_release_requires_trusted_models_before_build(tmp_path, state):
     (destination / 'MANIFEST.sha256').write_text('\n'.join(manifest) + '\n')
     # 外部自带的伪造清单不得替换仓库的可信清单。
     (source / 'MANIFEST.sha256').write_text('untrusted manifest\n')
+    # E-04起发布入口还要求向量模型；提供独立的可信假文件，使原NER三个场景仍检查原来的行为。
+    embedding_source = tmp_path / 'external-embedding'
+    embedding_source.mkdir()
+    embedding_destination = tmp_path / 'repo/backend/models/embedding'
+    embedding_destination.mkdir()
+    embedding_manifest = []
+    for filename in ('model.onnx', 'tokenizer.json'):
+        content = ('embedding-' + filename).encode()
+        (embedding_source / filename).write_bytes(content)
+        embedding_manifest.append(hashlib.sha256(content).hexdigest() + '  ' + filename)
+    (embedding_destination / 'MANIFEST.sha256').write_text('\n'.join(embedding_manifest) + '\n')
     if state == 'corrupt':
         (source / 'model.onnx').write_bytes(b'corrupt')
     bin_dir = tmp_path / 'bin'
@@ -40,6 +51,7 @@ def test_release_requires_trusted_models_before_build(tmp_path, state):
         target.write_text('#!/bin/sh\n' + body + '\n')
         target.chmod(0o755)
     args = ['bash', str(scripts / 'build_release.sh'), '2.0.0', '--out', str(tmp_path / 'out')]
+    args.extend(['--embedding-models', str(embedding_source)])
     if state != 'omitted':
         args.extend(['--ner-models', str(source)])
     result = subprocess.run(args, capture_output=True, text=True,

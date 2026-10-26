@@ -80,12 +80,19 @@ def list_page(category_codes: tuple[int, ...], status_codes: tuple[int, ...], pa
         type(page) is not int or not 1 <= page <= 60 or type(page_size) is not int or not 1 <= page_size <= 100):
         raise ValueError('同步查询参数不正确')
     data = _request('POST', f'https://{API_HOST}/law-search/search/list',
-                    {'category_codes':list(category_codes),'status_codes':list(status_codes),
-                     'page':page,'page_size':page_size})
+                    {'searchRange':1,'searchType':2,'searchContent':'',
+                     'sxrq':[],'gbrq':[],'gbrqYear':[],'zdjgCodeId':[],
+                     'flfgCodeId':list(category_codes),'sxx':list(status_codes),
+                     'pageNum':page,'pageSize':page_size})
     rows, total = data.get('rows'), data.get('total')
     if not isinstance(rows,list) or len(rows)>page_size or type(total) is not int or total<0:
         raise SyncError('BAD_RESPONSE')
+    normalized = []
     for row in rows:
+        # 官方字段仅在出口内归一化，领域层继续使用既有契约。
+        if isinstance(row,dict):
+            row = dict(row,published_on=row.get('gbrq'),effective_on=row.get('sxrq'),
+                       category=row.get('flxz'),office=row.get('zdjgName'))
         if (not isinstance(row,dict) or not isinstance(row.get('bbbs'),str) or not _ID.fullmatch(row['bbbs']) or
             not isinstance(row.get('title'),str) or not 0<len(row['title'].strip())<=300 or
             not _day(row.get('published_on')) or not _day(row.get('effective_on')) or
@@ -93,14 +100,18 @@ def list_page(category_codes: tuple[int, ...], status_codes: tuple[int, ...], pa
             not isinstance(row.get('category'),str) or not 0<len(row['category'])<=60 or
             (row.get('office') is not None and (not isinstance(row['office'],str) or len(row['office'])>100))):
             raise SyncError('BAD_RESPONSE')
+        normalized.append(row)
+    data['rows'] = normalized
     return data
 
 
 def download_urls(flk_ids: list[str]) -> list[str]:
     if type(flk_ids) is not list or not 1<=len(flk_ids)<=100 or any(type(i) is not str or not _ID.fullmatch(i) for i in flk_ids):
         raise ValueError('官方编号不正确')
-    data = _request('POST',f'https://{API_HOST}/law-search/download/batch',{'flk_ids':flk_ids})
-    urls = data.get('urls')
+    data = _request('POST',f'https://{API_HOST}/law-search/download/batch',
+                    [{'bbbs':i,'format':'docx'} for i in flk_ids])
+    files = data.get('data')
+    urls = [r.get('url') if isinstance(r,dict) else None for r in files] if isinstance(files,list) else None
     if not isinstance(urls,list) or len(urls)!=len(flk_ids) or any(not isinstance(u,str) for u in urls):
         raise SyncError('BAD_RESPONSE')
     for url in urls:

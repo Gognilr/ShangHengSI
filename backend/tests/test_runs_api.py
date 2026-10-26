@@ -145,7 +145,7 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
         run = db.get(ReviewRun, uuid.UUID(body["id"]))
         assert (run.stance, run.source, run.user_note, run.main_doc_type) == (
             "sales", "outgoing", "请重点检查付款条款", "contract")
-        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-1", "2026.11-1")
+        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-3", "2026.11-1")
         assert run.company_req_version is None and run.created_by == user.id
         queued = db.scalars(select(Job).where(Job.type == "review")).one()
         assert (queued.status, queued.payload) == ("queued", {"task_id": str(task.id), "run_id": body["id"]})
@@ -352,7 +352,7 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert d["coverage"]["summary"].startswith("本次按 ")
     assert isinstance(d["coverage"]["notes"], list)
     assert "requirements" not in d["coverage"] and "星河虚构进出口有限公司" not in str(d["coverage"])
-    assert d["prompt_version"] == "2026.11-1" and d["builtin_req_version"] == "2026.11-1"
+    assert d["prompt_version"] == "2026.11-3" and d["builtin_req_version"] == "2026.11-1"
     assert d["queued_at"].endswith("Z") or "+00:00" in d["queued_at"]
     assert d["doc_summary"] == f"{REAL_OUR_NAME}向{REAL_BUYER_NAME}销售金属制品"
     assert d["sanctions"] == {"level": "attention", "reasons": [f"{REAL_BUYER_NAME}位于需关注地区"]}

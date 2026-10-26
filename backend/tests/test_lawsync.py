@@ -175,3 +175,30 @@ def test_t43_failure_rolls_back_directory(db_sessionmaker,monkeypatch,reason):
         assert not db.scalar(select(LawImportArticle))
         assert get_setting(db,'lawsync.last_status')['reason']==reason
 
+
+
+def test_official_wire_fields_and_download_shape(wire):
+    import json
+    from app.lawsync import client
+    raw=dict(bbbs='1'*32,title='示例协议法',gbrq='2026-01-01',sxrq='2026-02-01',
+             sxx=3,flxz='法律',zdjgName='示例机关')
+    def respond(r):
+        body=json.loads(r.content)
+        if r.url.path.endswith('/list'):
+            assert body == dict(searchRange=1,searchType=2,searchContent='',sxrq=[],gbrq=[],
+                                gbrqYear=[],zdjgCodeId=[],flfgCodeId=[102],sxx=[3],pageNum=1,pageSize=100)
+            return httpx.Response(200,json=dict(code=200,rows=[raw],total=1))
+        assert body == [dict(bbbs='1'*32,format='docx')]
+        return httpx.Response(200,json=dict(code=200,data=[dict(url='https://flkoss.obs-bj2.cucloud.cn/prod/a.docx',urlIn='http://internal/ignored')]))
+    wire[0](respond)
+    row=client.list_page((102,),(3,),1,100)['rows'][0]
+    assert (row['published_on'],row['effective_on'],row['category'],row['office']) == ('2026-01-01','2026-02-01','法律','示例机关')
+    assert client.download_urls(['1'*32]) == ['https://flkoss.obs-bj2.cucloud.cn/prod/a.docx']
+
+
+@pytest.mark.parametrize('data', [None,[{}],[dict(url='https://example.com/a')],[dict(urlIn='https://flkoss.obs-bj2.cucloud.cn/prod/a')]])
+def test_official_download_rejects_missing_or_untrusted_url(wire,data):
+    from app.lawsync import client
+    wire[0](lambda r:httpx.Response(200,json=dict(code=200,data=data)))
+    with pytest.raises(client.SyncError,match='BAD_RESPONSE'):
+        client.download_urls(['1'*32])
