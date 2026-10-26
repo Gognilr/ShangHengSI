@@ -1268,3 +1268,60 @@ def test_t41_15_laws_upgrade_downgrade():
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+@pytest.mark.parametrize('conflict', [False, True])
+def test_t42_11_builtin_laws_migration_preserves_existing_and_edits(conflict):
+    from datetime import date
+    expected = {
+        '合同法': ('1999-03-15', '2021-01-01', '民法典'),
+        '担保法': ('1995-06-30', '2021-01-01', '民法典'),
+        '物权法': ('2007-03-16', '2021-01-01', '民法典'),
+        '民法通则': ('2009-08-27', '2021-01-01', '民法典'),
+        '民法总则': ('2017-03-15', '2021-01-01', '民法典'),
+        '侵权责任法': ('2009-12-26', '2021-01-01', '民法典'),
+        '中外合资经营企业法': ('2016-09-03', '2020-01-01', '外商投资法'),
+        '中外合作经营企业法': ('2017-11-04', '2020-01-01', '外商投资法'),
+        '外资企业法': ('2016-09-03', '2020-01-01', '外商投资法'),
+        '经济合同法': (None, '1999-10-01', '民法典'),
+        '涉外经济合同法': (None, '1999-10-01', '民法典'),
+        '技术合同法': (None, '1999-10-01', '民法典'),
+    }
+    prefix = '中华人民共和国'
+    name = 'aireview_test_'+uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    url, cfg = _url_for(name), _alembic(_url_for(name))
+    try:
+        command.upgrade(cfg, '0017')
+        with psycopg.connect(url, autocommit=True) as conn:
+            if conflict:
+                conn.execute("INSERT INTO laws(title,category,status,source,published_on,created_at,updated_at) "
+                             "VALUES('中华人民共和国合同法','司法解释','valid','import','1999-03-15',now(),now())")
+        command.upgrade(cfg, '0018')
+        with psycopg.connect(url, autocommit=True) as conn:
+            rows = conn.execute('SELECT title,published_on,repealed_on,replaced_by,category,status,source, '
+                                'created_at=updated_at FROM laws ORDER BY id').fetchall()
+            assert len(rows) == 12
+            for title, published, repeal, replacement, category, status, source, equal in rows:
+                if conflict and title == prefix+'合同法':
+                    assert (category, status, source, repeal, replacement) == ('司法解释', 'valid', 'import', None, None)
+                    continue
+                p, r, by = expected[title.removeprefix(prefix)]
+                assert (published, repeal, replacement) == (date.fromisoformat(p) if p else None,
+                                                           date.fromisoformat(r), prefix+by)
+                assert (category, status, source, equal) == ('法律', 'repealed', 'builtin', True)
+            conn.execute("UPDATE laws SET updated_at=created_at+interval '1 second',replaced_by='示例新规定' "
+                         "WHERE title='中华人民共和国担保法'")
+            conn.execute("UPDATE laws SET source='import' WHERE title='中华人民共和国物权法'")
+        command.downgrade(cfg, '0017')
+        with psycopg.connect(url, autocommit=True) as conn:
+            titles = {r[0] for r in conn.execute('SELECT title FROM laws')}
+            assert titles == {prefix+'担保法', prefix+'物权法'} | ({prefix+'合同法'} if conflict else set())
+        command.upgrade(cfg, '0018')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute('SELECT count(*) FROM laws').fetchone()[0] == 12
+            assert conn.execute("SELECT replaced_by FROM laws WHERE title='中华人民共和国担保法'").fetchone()[0] == '示例新规定'
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

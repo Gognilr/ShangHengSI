@@ -15,6 +15,7 @@ from app.checks.model import CheckFile, CheckNode, CheckResult
 from app.db.models import DocNode, LocalFinding, TaskFile
 from app.redaction.tables import table_cell
 from app.security import crypto
+from app.laws.index import LawIndex, load as load_laws
 
 
 @dataclass
@@ -23,13 +24,13 @@ class Evaluation:
     tables: list[QuoteTableCheck]
 
 
-def evaluate(nodes: list[CheckNode], files: list[CheckFile], today: date) -> Evaluation:
+def evaluate(nodes: list[CheckNode], files: list[CheckFile], today: date, laws: LawIndex | None = None) -> Evaluation:
     tables, results = check_tables(nodes, files)
     results += check_uppercase(nodes)
     results += check_consistency(nodes, files, tables)
     results += check_dates(nodes, today)
     results += check_installments(nodes, files)
-    results += check_references(nodes)
+    results += check_references(nodes, laws=laws)
     order = {code: i for i, code in enumerate(("L-01", "L-02", "L-03", "L-INFO", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11"))}
     positions = {node.loc: i for i, node in enumerate(nodes)}
     results.sort(key=lambda r: (order[r.code], r.file_seq or 0, positions.get(r.locs[0], -1) if r.locs else -1))
@@ -47,7 +48,8 @@ def load_inputs(db, task_id: uuid.UUID) -> tuple[list[CheckNode], list[CheckFile
 
 def run_checks(db, task, today: date) -> None:
     nodes, files = load_inputs(db, task.id)
-    evaluation = evaluate(nodes, files, today)
+    titles = {title for node in nodes for title in re.findall(r'《([^《》]+)》', node.text)}
+    evaluation = evaluate(nodes, files, today, laws=load_laws(db, titles))
     file_ids = dict(db.execute(select(TaskFile.seq, TaskFile.id).where(TaskFile.task_id == task.id)).all())
     loc_files = dict(db.execute(select(DocNode.loc, DocNode.file_id).where(DocNode.task_id == task.id)).all())
     db.execute(delete(LocalFinding).where(LocalFinding.task_id == task.id))

@@ -114,3 +114,48 @@ def test_real_api_gateway_summary_and_quote_citation(db_sessionmaker, make_user,
         requests = list(db.scalars(select(LlmCall.request_text).where(LlmCall.task_id == tid)))
         assert requests and all("【本地校验摘要】" in text and "[L-01]" in text for text in requests)
         assert all("52,400" not in text and "52400" not in text for text in requests)
+
+
+def test_t42_database_read_failure_keeps_other_checks(db_sessionmaker, make_user, ready_task, caplog, monkeypatch):
+    from app.laws import index
+    from sqlalchemy import text
+    owner = make_user('law-failure')
+    task = ready_task(owner, [("报价单.xlsx", (ROOT/'row_error.xlsx').read_bytes())], policy='local_only')
+    with db_sessionmaker() as db:
+        node = db.scalar(select(DocNode).where(DocNode.task_id == task.id).order_by(DocNode.ord))
+        node.text_enc = crypto.encrypt_text(crypto.decrypt_text(node.text_enc)+'《示例秘密法》')
+        db.commit()
+        execute = db.execute
+        def fail_law_query(statement, *a, **kw):
+            if 'FROM laws' in str(statement):
+                # 真正使 PostgreSQL 子事务失败，验证保存点回滚后仍可持久化其他校验结果。
+                return execute(text("SELECT CAST('示例秘密法' AS integer)"))
+            return execute(statement, *a, **kw)
+        monkeypatch.setattr(db, 'execute', fail_law_query)
+        caplog.clear()
+        run_checks(db, task, date(2026, 10, 20))
+        db.commit()
+        codes = [r.check_code for r in db.scalars(select(LocalFinding).where(LocalFinding.task_id == task.id))]
+    assert 'L-01' in codes and 'L-10' not in codes
+    warnings = [r for r in caplog.records if r.levelname == 'WARNING']
+    assert len(warnings) == 1 and '示例秘密法' not in caplog.text and 'secret' not in caplog.text
+
+
+def test_t42_pipeline_passes_actual_law_index(db_sessionmaker, make_user, ready_task):
+    from app.db.models import Law
+    from docx import Document
+    import io
+    with db_sessionmaker() as db:
+        db.add(Law(title='中华人民共和国示例供货合同法', category='法律', source='import',
+                   status='repealed', published_on=date(2020, 1, 1)))
+        db.commit()
+    document = Document()
+    document.add_paragraph('依据《示例供货合同法》订立合同。')
+    buf = io.BytesIO()
+    document.save(buf)
+    task = ready_task(make_user('law-pipeline'), [('示例.docx', buf.getvalue())], policy='local_only')
+    with db_sessionmaker() as db:
+        rows = list(db.scalars(select(LocalFinding).where(LocalFinding.task_id == task.id, LocalFinding.check_code == 'L-10')))
+        assert len(rows) == 1
+        assert crypto.decrypt_text(rows[0].detail_enc) == '引用《示例供货合同法》，该法已废止'
+        assert rows[0].ai_summary == '引用《示例供货合同法》，该法已废止'

@@ -1,13 +1,15 @@
-"""L-10 / L-11：版本化清单匹配，不推断其他法律或税率是否有效。"""
+"""L-10 读本地法规快照、L-11 读税率清单；不推断未收录法规或税率。"""
 import re
 from functools import lru_cache
 from pathlib import Path
 from decimal import Decimal
+from datetime import date
 
 import yaml
 
 from app.checks.amounts import _scan_tables
 from app.checks.model import CheckNode, CheckResult
+from app.laws.index import LawIndex, canonical
 
 _RESOURCES = Path(__file__).resolve().parents[2] / 'resources'
 
@@ -17,17 +19,22 @@ def _resource(name):
     return yaml.safe_load((_RESOURCES / name).read_text(encoding='utf-8'))
 
 
-def check_references(nodes: list[CheckNode]) -> list[CheckResult]:
+def check_references(nodes: list[CheckNode], laws: LawIndex | None = None) -> list[CheckResult]:
     results = []
-    laws = _resource('abolished_laws.yaml')['laws']
+    laws = laws or {}
     matches = {}
     for node in nodes:
         for title in re.findall(r'《([^《》]+)》', node.text):
-            law = next((law for law in laws if title in [law['name'], *law['aliases']]), None)
-            if law:
-                key = (node.file_seq, law['name'])
+            versions = laws.get(canonical(title), [])
+            if versions and all(law.status == 'repealed' for law in versions):
+                key = (node.file_seq, canonical(title))
                 if key not in matches:
-                    text = f"引用《{title}》，该法已于 {law['abolished']} 废止，现行规定见《{law['replaced_by']}》"
+                    dates = [law.repealed_on for law in versions if law.repealed_on is not None]
+                    text = f'引用《{title}》，该法已于 {max(dates).isoformat()} 废止' if dates else f'引用《{title}》，该法已废止'
+                    latest = sorted(versions, key=lambda law: law.published_on or date.min, reverse=True)
+                    replacement = next((law.replaced_by for law in latest if law.replaced_by), None)
+                    if replacement:
+                        text += f'，现行规定见《{replacement}》'
                     matches[key] = CheckResult('L-10', 'medium', [], node.file_seq, text, text)
                 if node.loc not in matches[key].locs:
                     matches[key].locs.append(node.loc)
