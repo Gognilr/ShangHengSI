@@ -209,7 +209,7 @@ def run_worker(
 ) -> None:
     """启动并发线程，主线程负责定时工作；stop 置位后等待正在处理的任务结束再返回。"""
     groups = (("review", review_concurrency, ("review",)),
-              ("parse", parse_concurrency, ("parse",)),
+              ("parse", parse_concurrency, ("parse", "law_import")),
               ("maintenance", 1, ("backup", "retention")))
     threads = []
     for group, concurrency, types in groups:
@@ -252,6 +252,7 @@ def main() -> None:
     import app.backup.retention  # noqa: F401  导入即注册 retention 处理函数和定时检查
     import app.review.job  # noqa: F401  导入即注册 review 处理函数
     import app.tasks.pipeline  # noqa: F401  导入即注册 parse 处理函数
+    import app.laws.job  # noqa: F401  导入即注册 law_import 处理函数
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)

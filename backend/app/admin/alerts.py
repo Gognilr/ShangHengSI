@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_setting
 from app.config import get_settings
-from app.db.models import BackupRecord
+from app.db.models import BackupRecord, LawImport
 from app.llm.usage import monthly_sent_calls
 
 _GB = Decimal(1024**3)
@@ -61,13 +61,20 @@ def _cap_alerts(db: Session) -> list[dict]:
 
 def admin_alerts(db: Session, role: str = "admin") -> list[dict]:
     if role == "biz_admin":
-        return _prompt_term_alerts(db)
+        return [*_prompt_term_alerts(db), *_law_import_alerts(db)]
     if role not in ("sys_admin", "admin"):
         return []
     retention = [{"code": "RETENTION_REVIEW", "message":
                   "数据保留已改为分层设置，新增的保留项暂为永久，请在设置 → 数据中确认"}] \
         if get_setting(db, "retention.review_pending") else []
-    return [*_backup_alerts(db), *_cap_alerts(db), *_prompt_term_alerts(db), *retention]
+    return [*_backup_alerts(db), *_cap_alerts(db), *_prompt_term_alerts(db), *retention,
+            *(_law_import_alerts(db) if role == 'admin' else [])]
+
+
+def _law_import_alerts(db: Session) -> list[dict]:
+    if db.scalar(select(LawImport.id).where(LawImport.status == 'pending').limit(1)) is None:
+        return []
+    return [{'code': 'LAW_IMPORT_PENDING', 'message': '法规库有一项更新待确认，请在设置 → 法规库中处理'}]
 
 
 def _prompt_term_alerts(db: Session) -> list[dict]:

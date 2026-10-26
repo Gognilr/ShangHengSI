@@ -31,6 +31,7 @@ TYPE_ALIASES = {
     "bytea": "bytea",
     "inet": "inet",
     "real": "real",
+    "date": "date",
     "ts": "timestamp with time zone",
 }
 
@@ -341,6 +342,44 @@ SCHEMA['ner_node_results'] = """
     data_enc bytea NN
     updated_at ts NN"""
 
+SCHEMA['laws'] = """
+    id bigint NN =serial
+    title v300 NN
+    category v60 NN
+    office v100
+    status v10 NN
+    published_on date
+    effective_on date
+    repealed_on date
+    replaced_by v300
+    flk_id v32
+    source v10 NN
+    fulltext_at ts
+    created_at ts NN
+    updated_at ts NN"""
+SCHEMA['law_imports'] = """
+    id uuid NN =gen_random_uuid()
+    kind v10 NN
+    status v10 NN
+    declared_status v10
+    file_names jsonb NN
+    added int NN =0
+    changed int NN =0
+    unchanged int NN =0
+    skipped int NN =0
+    diff jsonb
+    error v200
+    created_by uuid
+    created_at ts NN
+    applied_by uuid
+    applied_at ts"""
+SCHEMA['law_import_files'] = """
+    id uuid NN =gen_random_uuid()
+    import_id uuid NN
+    seq int NN
+    name v255 NN
+    data_enc bytea NN"""
+
 PRIMARY_KEYS = {t: ["id"] for t in SCHEMA}
 PRIMARY_KEYS.update(
     sessions=["token_hash"], redaction_maps=["task_id"], settings=["key"], requirement_versions=["version"]
@@ -348,6 +387,8 @@ PRIMARY_KEYS.update(
 
 # 唯一约束 / 唯一索引（不含主键）
 UNIQUES = {
+    ('laws', 'title, published_on'),
+    ('laws', 'flk_id'),
     ('ner_node_results', 'task_id, loc'),
     ("users", "username"),
     ("task_files", "task_id, seq"),
@@ -362,6 +403,7 @@ UNIQUES = {
 
 # 普通索引
 INDEXES = {
+    ('laws', 'title'),
     ("sessions", "user_id"),
     ("tasks", "owner_id, created_at DESC"),
     ("doc_nodes", "file_id, ord"),
@@ -378,6 +420,9 @@ INDEXES = {
 
 # 外键：(表, 字段) -> (被引用表, 删除规则 c=CASCADE a=NO ACTION)
 FOREIGN_KEYS = {
+    ('law_imports', 'created_by'): ('users', 'a'),
+    ('law_imports', 'applied_by'): ('users', 'a'),
+    ('law_import_files', 'import_id'): ('law_imports', 'c'),
     ('ner_node_results', 'task_id'): ('tasks', 'c'),
     ("redaction_exclusions", "task_id"): ("tasks", "c"),
     ("redaction_exclusions", "created_by"): ("users", "a"),
@@ -403,6 +448,11 @@ FOREIGN_KEYS = {
 
 # 枚举字段：(表, 字段) -> 合法取值（抽取代表性字段验证 CHECK 约束确实存在并生效）
 ENUM_COLUMNS = {
+    ('laws', 'status'): ['not_yet', 'valid', 'amended', 'repealed'],
+    ('laws', 'source'): ['builtin', 'import', 'sync'],
+    ('law_imports', 'kind'): ['catalog', 'fulltext', 'sync'],
+    ('law_imports', 'status'): ['parsing', 'pending', 'applied', 'discarded', 'failed'],
+    ('law_imports', 'declared_status'): ['not_yet', 'valid', 'amended', 'repealed'],
     ("users", "role"): ["user", "sys_admin", "biz_admin", "admin"],
     ("users", "status"): ["active", "disabled"],
     ("users", "last_stance"): ["sales", "purchase", "other"],
@@ -451,7 +501,7 @@ ENUM_COLUMNS = {
     ("chat_messages", "role"): ["user", "assistant"],
     ("llm_calls", "purpose"): ["review", "chat", "test"],
     ("llm_calls", "status"): ["sent", "blocked", "error"],
-    ("jobs", "type"): ["parse", "review", "backup", "retention"],
+    ("jobs", "type"): ["parse", "review", "backup", "retention", "law_import"],
     ("jobs", "status"): ["queued", "running", "done", "failed"],
     ("backup_records", "trigger"): ["schedule", "manual"],
     ("backup_records", "status"): ["running", "success", "failed"],
@@ -509,7 +559,7 @@ def _tables(conn):
 
 def test_exactly_23_tables(migrated):
     assert _tables(migrated) == set(SCHEMA)
-    assert len(SCHEMA) == 24  # V2Q-49：新增加密节点结果表，仍严格核对完整表集合。
+    assert len(SCHEMA) == 27  # V2-E-01：新增三张法规库表，仍严格核对完整表集合。
 
 
 def test_pgcrypto_enabled(migrated):
@@ -565,7 +615,7 @@ def _index_rows(conn):
     rows = conn.execute(
         """
         SELECT i.indrelid::regclass::text, i.indisunique,
-               regexp_replace(pg_get_indexdef(i.indexrelid), '^.*\\((.*)\\)$', '\\1')
+               regexp_replace(pg_get_indexdef(i.indexrelid), '^.*\\((.*)\\)( NULLS NOT DISTINCT)?$', '\\1')
         FROM pg_index i
         WHERE i.indrelid::regclass::text = ANY(%s) AND NOT i.indisprimary
         """,
@@ -1181,4 +1231,40 @@ def test_v2c06_0016_role_upgrade_and_downgrade():
         command.upgrade(cfg,"head")
     finally:
         with psycopg.connect(ADMIN_URL,autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_t41_15_laws_upgrade_downgrade():
+    name = 'aireview_test_'+uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    url, tables = _url_for(name), {'laws', 'law_imports', 'law_import_files'}
+    cfg = _alembic(url)
+    try:
+        command.upgrade(cfg, '0016')
+        command.upgrade(cfg, '0017')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert tables <= _tables(conn)
+            ins = ("INSERT INTO laws(title,category,status,source,created_at,updated_at,published_on) "
+                   "VALUES('示例供货合同法','法律','valid','builtin',now(),now(),%s)")
+            conn.execute(ins, (None,))
+            with pytest.raises(errors.UniqueViolation):
+                conn.execute(ins, (None,))
+            conn.execute(ins, ('2020-01-01',))
+            with pytest.raises(errors.UniqueViolation):
+                conn.execute(ins, ('2020-01-01',))
+            iid = conn.execute("INSERT INTO law_imports(kind,status,file_names,created_at) "
+                               "VALUES('catalog','parsing','[]',now()) RETURNING id").fetchone()[0]
+            conn.execute("INSERT INTO law_import_files(import_id,seq,name,data_enc) VALUES(%s,1,'目录.xlsx','x')", (iid,))
+            conn.execute('DELETE FROM law_imports WHERE id=%s', (iid,))
+            assert conn.execute('SELECT count(*) FROM law_import_files').fetchone()[0] == 0
+            conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('law_import','{}',now())")
+        command.downgrade(cfg, '0016')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert not (_tables(conn) & tables)
+            with pytest.raises(errors.CheckViolation):
+                conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('law_import','{}',now())")
+        command.upgrade(cfg, 'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

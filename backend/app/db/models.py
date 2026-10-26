@@ -1,11 +1,11 @@
-"""全部 24 张表的 ORM 模型，对应 SPEC 18.3–18.24 与 V2-B 任务内排除、NER缓存表。
+"""全部 27 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规目录表。
 
 约定见 SPEC 18.1：时间 timestamptz（UTC）；枚举用 varchar + CHECK；_enc 结尾为主密钥加密后的 bytea；
 任务下属表的 task_id 外键均 ON DELETE CASCADE。
 时间戳的默认值由应用在写入时提供（utcnow），数据库侧只有 SPEC 明确写出的默认值。
 """
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
@@ -14,6 +14,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     ForeignKey,
     Index,
     Integer,
@@ -65,6 +66,66 @@ _ZERO = text("0")
 
 def _task_fk() -> Any:
     return mapped_column(Uuid, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+
+
+LAW_STATUSES = ['not_yet', 'valid', 'amended', 'repealed']
+
+
+class Law(Base):
+    __tablename__ = 'laws'
+    __table_args__ = (
+        UniqueConstraint('title', 'published_on', postgresql_nulls_not_distinct=True),
+        enum_check('status', LAW_STATUSES),
+        enum_check('source', ['builtin', 'import', 'sync']),
+        Index('ix_laws_title', 'title'),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    category: Mapped[str] = mapped_column(String(60), nullable=False)
+    office: Mapped[Optional[str]] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    published_on: Mapped[Optional[date]] = mapped_column(Date)
+    effective_on: Mapped[Optional[date]] = mapped_column(Date)
+    repealed_on: Mapped[Optional[date]] = mapped_column(Date)
+    replaced_by: Mapped[Optional[str]] = mapped_column(String(300))
+    flk_id: Mapped[Optional[str]] = mapped_column(String(32), unique=True)
+    source: Mapped[str] = mapped_column(String(10), nullable=False)
+    fulltext_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    created_at: Mapped[datetime] = _ts_now()
+    updated_at: Mapped[datetime] = _ts_updated()
+
+
+class LawImport(Base):
+    __tablename__ = 'law_imports'
+    __table_args__ = (
+        enum_check('kind', ['catalog', 'fulltext', 'sync']),
+        enum_check('status', ['parsing', 'pending', 'applied', 'discarded', 'failed']),
+        enum_check('declared_status', LAW_STATUSES),
+    )
+    id: Mapped[uuid.UUID] = uuid_pk()
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    declared_status: Mapped[Optional[str]] = mapped_column(String(10))
+    file_names: Mapped[list] = mapped_column(JSONB, nullable=False)
+    added: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)
+    changed: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)
+    unchanged: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)
+    skipped: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)
+    diff: Mapped[Optional[dict]] = mapped_column(JSONB)
+    error: Mapped[Optional[str]] = mapped_column(String(200))
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey('users.id'))
+    created_at: Mapped[datetime] = _ts_now()
+    applied_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey('users.id'))
+    applied_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+
+
+class LawImportFile(Base):
+    __tablename__ = 'law_import_files'
+    id: Mapped[uuid.UUID] = uuid_pk()
+    import_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey('law_imports.id', ondelete='CASCADE'), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    data_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
 
 
 # ---- 18.3 users ----
@@ -496,7 +557,7 @@ class LlmCall(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        enum_check("type", ["parse", "review", "backup", "retention"]),
+        enum_check("type", ["parse", "review", "backup", "retention", "law_import"]),
         enum_check("status", ["queued", "running", "done", "failed"]),
         Index("ix_jobs_status_run_after", "status", "run_after"),
     )

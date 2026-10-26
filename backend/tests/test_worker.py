@@ -93,6 +93,15 @@ def test_dispatch_runs_each_job_exactly_once_concurrently(handlers, db_sessionma
     assert set(_statuses(db_sessionmaker)) == set(ids)
 
 
+def test_law_import_runs_in_parse_group(handlers, db_sessionmaker):
+    seen = []
+    handlers['law_import'] = lambda db, payload: seen.append(threading.current_thread().name)
+    jid = _enqueue(db_sessionmaker, 'law_import', {'import_id': 'example'})
+    with _Running(db_sessionmaker, parse_concurrency=1):
+        assert _wait(lambda: _statuses(db_sessionmaker)[jid] == 'done')
+    assert seen == ['worker-parse-0']
+
+
 def test_handler_exception_marks_failed_without_message(handlers, db_sessionmaker, caplog):
     secret = "合同金额 USD 123456 客户甲公司"
 
@@ -366,7 +375,7 @@ def test_default_worker_thread_groups(monkeypatch):
     monkeypatch.setattr(worker.threading, "Thread", Thread)
     worker.run_worker(None, stop)
     assert [t["args"][-1] for t in threads].count(("review",)) == 8
-    assert [t["args"][-1] for t in threads].count(("parse",)) == 2
+    assert [t["args"][-1] for t in threads].count(("parse", "law_import")) == 2
     assert [t["args"][-1] for t in threads].count(("backup", "retention")) == 1
     assert len({t["args"][1] for t in threads}) == 11
 
