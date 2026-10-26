@@ -13,6 +13,8 @@ import {
   type UserRow,
 } from '@/api/admin'
 import { ApiError } from '@/api/http'
+import { lawsyncApi, type LawsyncSettings } from '@/api/admin'
+import { LAWSYNC_INTERVAL } from '@/utils/labels'
 import { useAuthStore } from '@/stores/auth'
 import {
   BACKUP_STATUS_TAG,
@@ -31,6 +33,43 @@ import { formatDateTime } from '@/utils/time'
 import PageHeader from '@/components/PageHeader.vue'
 
 const auth = useAuthStore()
+const syncSettings = ref<LawsyncSettings | null>(null)
+const syncForm = reactive({ enabled: false, interval: 'monthly' as 'monthly' | 'weekly' })
+const syncError = ref('')
+const syncLoading = ref(false)
+const syncSaving = ref(false)
+const syncRunning = ref(false)
+let syncTimer: ReturnType<typeof setInterval> | null = null
+let syncBaseline: string | null = null
+async function loadSync(silent = false) {
+  if (syncLoading.value) return
+  syncLoading.value = true
+  try {
+    const result = await lawsyncApi.get()
+    syncSettings.value = result
+    if (!silent) { Object.assign(syncForm, { enabled: result.enabled, interval: result.interval }); syncError.value = '' }
+    if (syncRunning.value && result.last_run_at !== syncBaseline) {
+      if (syncTimer) clearInterval(syncTimer)
+      syncTimer = null; syncRunning.value = false; await auth.refresh()
+    }
+  } catch (e) { if (!silent) syncError.value = e instanceof ApiError ? e.message : '加载失败，请刷新页面' }
+  finally { syncLoading.value = false }
+}
+async function saveSync() {
+  syncSaving.value = true; syncError.value = ''
+  try { syncSettings.value = await lawsyncApi.save(syncForm.enabled, syncForm.interval); ElMessage.success('自动更新设置已保存'); await auth.refresh() }
+  catch (e) { if (syncSettings.value) Object.assign(syncForm, { enabled: syncSettings.value.enabled, interval: syncSettings.value.interval }); syncError.value = e instanceof ApiError ? e.message : '保存失败，请稍后重试' }
+  finally { syncSaving.value = false }
+}
+async function runSync() {
+  syncRunning.value = true; syncError.value = ''; syncBaseline = syncSettings.value?.last_run_at ?? null
+  try {
+    await lawsyncApi.run(); ElMessage.success('同步已入队，结果需业务管理员确认')
+    syncTimer = setInterval(() => { void loadSync(true) }, 3000)
+  } catch (e) { syncRunning.value = false; syncError.value = e instanceof ApiError ? e.message : '同步未能开始，请稍后重试' }
+}
+onMounted(() => { void loadSync() })
+onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 /** 字节数显示为 MB / GB，保留 1 位小数。 */
@@ -299,6 +338,21 @@ onBeforeUnmount(stopPolling)
         <p v-if="status.backup_stats_at" class="hint">备份三项（{{ formatDateTime(status.backup_stats_at) }} 备份时统计）</p>
         <p v-if="status.estimate_reason" class="hint">{{ estimateReasons[status.estimate_reason] }}</p>
       </template>
+    </section>
+
+<section v-loading="syncLoading" class="panel">
+      <h3 class="first">法规库自动更新</h3>
+      <el-alert v-if="syncError" :title="syncError" type="error" :closable="false" show-icon />
+      <el-form label-width="110px">
+        <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规库自动更新" /></el-form-item>
+        <el-form-item label="更新频率"><el-select v-model="syncForm.interval" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规更新频率"><el-option v-for="(label, value) in LAWSYNC_INTERVAL" :key="value" :value="value" :label="label" /></el-select></el-form-item>
+        <el-form-item label="上次运行">{{ formatDateTime(syncSettings?.last_run_at) }}</el-form-item>
+        <el-form-item label="运行结果">{{ syncRunning ? '已入队，等待同步结果' : !syncSettings?.last_status ? '尚未运行' : syncSettings.last_status.ok ? '已生成待确认更新' : '同步失败，可改用手动导入' }}</el-form-item>
+      </el-form>
+      <p class="hint">默认关闭。只从官方数据库拉取公开法规，目录与全文变更经业务管理员确认后才生效。</p>
+      <p v-if="!syncSettings?.enabled" class="hint">请先开启并保存设置，再立即同步。</p>
+      <p v-else-if="syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" class="hint">设置已修改，请先保存后同步。</p>
+      <div class="actions"><el-button :disabled="!syncSettings?.enabled || syncSaving || syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" :loading="syncRunning" @click="runSync">立即同步</el-button><el-button type="primary" :disabled="!syncSettings || syncRunning" :loading="syncSaving" @click="saveSync">保存自动更新设置</el-button></div>
     </section>
 
 <section class="panel">

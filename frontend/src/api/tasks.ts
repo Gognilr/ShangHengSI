@@ -36,6 +36,7 @@ export interface LatestRun {
 }
 
 export interface TaskDetail {
+  template_suggestion: { id: string; name: string } | null
   id: string
   title: string
   status: TaskStatus

@@ -36,6 +36,7 @@ const files = ref(props.task.files)
 // Q-95：接口没有独立计数；组件读一次列表给折叠标题计数，默认仍收起。
 const localCount = ref<number | null>(null)
 const reqDrawer = ref(false)
+const skipTemplate = ref(false)
 const mainDocType = computed(() => files.value.find((f) => f.is_main)?.doc_type ?? null)
 const parties = ref<Party[]>([])
 const summary = ref<Record<string, number>>({})
@@ -269,7 +270,7 @@ async function confirmSend() {
   submitError.value = ''
   submitting.value = true
   try {
-    await runsApi.create(props.task.id)
+    await runsApi.create(props.task.id, !skipTemplate.value)
     emit('confirmed')
   } catch (e) {
     handleError(e)
@@ -282,6 +283,10 @@ onMounted(loadAll)
 </script>
 
 <template>
+  <div v-if="task.template_suggestion" class="panel gap">
+    将对照公司范本：{{ task.template_suggestion.name }}
+    <el-checkbox v-model="skipTemplate" :disabled="submitting">不对照</el-checkbox>
+  </div>
   <div v-loading="loading" class="confirm">
     <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" />
 

@@ -2,6 +2,14 @@
 
 type Dict = Record<string, string>
 
+export const LAW_STATUS: Dict = { not_yet: '尚未生效', valid: '有效', amended: '已修改', repealed: '已废止' }
+export const LAW_IMPORT_STATUS: Dict = { parsing: '解析中', pending: '待确认', applied: '已生效', discarded: '已放弃', failed: '失败' }
+export const LAW_IMPORT_KIND: Dict = { catalog: '目录导入', fulltext: '全文导入', sync: '自动同步' }
+export const LAW_SOURCE: Dict = { builtin: '内置', import: '手动导入', sync: '自动同步' }
+export const LAW_FIELD: Dict = { status: '时效性', category: '分类', effective_on: '施行日期', office: '制定机关', flk_id: '官方编号' }
+export const TEMPLATE_STATE: Dict = { current: '', modified: '（范本已修改）', deleted: '（范本已删除）' }
+export const LAWSYNC_INTERVAL: Dict = { monthly: '每月', weekly: '每周' }
+
 function pick(dict: Dict) {
   return (code: string | null | undefined): string => (code ? (dict[code] ?? code) : '—')
 }
@@ -59,6 +67,7 @@ export const categoryLabel = pick(CATEGORY_OPTIONS)
 export const SEVERITY_OPTIONS: Dict = { high: '高', medium: '中', low: '低' }
 export const severityLabel = pick(SEVERITY_OPTIONS)
 export const LOCAL_CHECK: Dict = {
+  'L-12': '公司范本缺失条款',
   'L-01': '行金额', 'L-02': '合计', 'L-03': '税额', 'L-04': '大小写一致',
   'L-05': '跨文件金额', 'L-06': '币种一致', 'L-07': '报价有效期',
   'L-08': '交期与签约日', 'L-INFO': '提示',

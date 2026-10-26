@@ -1,4 +1,8 @@
 :root {
+  /* V2-E-07新增页面所需排版档位，完整令牌整理留V2-U-01。 */
+  --si-font-h2: 600 18px/1.45 var(--el-font-family);
+  --si-font-h4: 600 15px/1.5 var(--el-font-family);
+  --si-font-body: 400 14px/1.6 var(--el-font-family);
   --el-color-primary: #173B68;
   --el-color-primary-light-3: #5D7695;
   --el-color-primary-light-5: #8B9DB4;

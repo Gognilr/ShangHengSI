@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { TEMPLATE_STATE } from '@/utils/labels'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Refresh, Delete } from '@element-plus/icons-vue'
@@ -240,6 +241,7 @@ const reqVersion = computed(() => {
               :label="`第 ${item.run_no} 轮 · ${formatDateTime(item.finished_at ?? item.queued_at)} · ${runStatusLabel(item.status)}`" />
           </el-select><span v-else>{{ run ? `第 ${run.run_no} 轮` : '—' }}</span></dd></div>
           </dl>
+          <p v-if="run?.template" class="hint">本轮对照公司范本：{{ run.template.name }}{{ TEMPLATE_STATE[run.template.status] ?? '' }}</p>
         </section>
 
         <el-alert

@@ -94,6 +94,8 @@ async function copy(text: string) {
         {{ severityLabel(finding.severity) }}
       </el-tag>
       <el-tag size="small" type="info">{{ categoryLabel(finding.category) }}</el-tag>
+      <el-tag v-if="finding.source === 'template'" size="small" type="info">范本对照</el-tag>
+      <el-tag v-if="finding.law_unverified" size="small" type="warning" effect="plain">引用未经法规库核实</el-tag>
       <el-tag :type="CITE_TAG[finding.cite_status] ?? 'info'" size="small" effect="plain">
         {{ citeStatusLabel(finding.cite_status) }}
       </el-tag>
@@ -124,6 +126,11 @@ async function copy(text: string) {
       <span class="label">依据</span><span class="text">{{ finding.basis }}</span>
     </div>
 
+    <el-collapse v-if="finding.law_refs?.length" @click.stop>
+      <el-collapse-item v-for="(law, index) in finding.law_refs" :key="index" :name="index" :title="`依据：《${law.title}》${law.article_no ?? ''}`">
+        <p class="text">{{ law.text }}</p>
+      </el-collapse-item>
+    </el-collapse>
     <div class="handling">
       <el-select v-model="status" size="small" class="status" :disabled="saving" @change="save({ handling_status: status })">
         <el-option v-for="o in handlingOptions" :key="o.value" :label="o.label" :value="o.value" />

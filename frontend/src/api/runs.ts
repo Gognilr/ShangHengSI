@@ -27,6 +27,9 @@ export interface RequirementResult {
 export type HandlingStatus = 'pending' | 'adopted' | 'ignored'
 
 export interface Finding {
+  law_refs: { title: string; article_no: string | null; text: string }[]
+  law_unverified: boolean
+  source: string
   id: string
   seq: number
   title: string
@@ -48,6 +51,7 @@ export interface Finding {
 }
 
 export interface RunDetail {
+  template: { name: string; status: string } | null
   id: string
   task_id: string
   run_no: number
@@ -75,7 +79,7 @@ export interface RunDetail {
 }
 
 export const runsApi = {
-  create: (taskId: string) => http.post<RunCreated>(`/tasks/${taskId}/runs`),
+  create: (taskId: string, useTemplate = true) => http.post<RunCreated>(`/tasks/${taskId}/runs`, { use_template: useTemplate }),
   list: (taskId: string) => http.get<{ items: RunListItem[] }>(`/tasks/${taskId}/runs`),
   get: (runId: string) => http.get<RunDetail>(`/runs/${runId}`),
   patchFinding: (findingId: string, body: { handling_status?: HandlingStatus; handling_note?: string | null }) =>

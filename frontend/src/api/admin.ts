@@ -2,6 +2,16 @@
 import { http } from './http'
 import type { Role } from './auth'
 
+export interface LawsyncSettings {
+  enabled: boolean; interval: 'monthly' | 'weekly'; last_run_at: string | null
+  last_status: { ok: boolean; at: string; reason?: string } | null
+}
+export const lawsyncApi = {
+  get: () => http.get<LawsyncSettings>('/admin/settings/lawsync'),
+  save: (enabled: boolean, interval: string) => http.put<LawsyncSettings>('/admin/settings/lawsync', { enabled, interval }),
+  run: () => http.post<{ queued: boolean }>('/admin/lawsync/run'),
+}
+
 // ---- 账号（设置 - 账号） ----
 export type UserStatus = 'active' | 'disabled'
 
