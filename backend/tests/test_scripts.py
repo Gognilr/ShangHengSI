@@ -264,3 +264,140 @@ def test_upgrade_preserves_config_and_stops_before_writes(tmp_path, outcome):
         assert (target / ".env").read_text() == old_env
         assert (target / "docker-compose.yml").read_text() == "old-compose"
         assert not (target / "Caddyfile.new").exists()
+
+
+@pytest.fixture
+def rotate_script(tmp_path):
+    """真实脚本 + 假 docker/备份，仅在临时目录验证顺序和故障，不操作本机部署。"""
+    import shutil
+    root = tmp_path / "installed"
+    (root / "scripts").mkdir(parents=True)
+    (root / "secrets").mkdir()
+    shutil.copy(SCRIPTS / "rotate_key.sh", root / "scripts/rotate_key.sh")
+    lib = (SCRIPTS / "lib.sh").read_text(encoding="utf-8")
+    lib += '\nrequire_root() { :; }\ncheck_storage() { :; }\n'
+    (root / "scripts/lib.sh").write_text(lib, encoding="utf-8")
+    (root / ".env").write_text("BACKUP_HOST_DIR=./backup\n")
+    (root / "backup").mkdir()
+    (root / "scripts/backup_now.sh").write_text(
+        '#!/usr/bin/env bash\necho backup >> "$TRACE"\n'
+        '[ "${STRICT_STOPPED:-0}" != 1 ] || [ ! -e "$ROOT_TEST/stopped" ] || exit 1\n'
+        '[ "${FAIL:-}" != backup ]\n', encoding="utf-8")
+    (root / "scripts/backup_now.sh").chmod(0o755)
+    old = root / "secrets/master_key"
+    new = root / "new-key"
+    old.write_bytes(b"O"*32)
+    new.write_bytes(b"N"*32)
+    old.chmod(0o600)
+    new.chmod(0o600)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fake = bindir / "docker"
+    fake.write_text('''#!/usr/bin/env bash
+case " $* " in
+  *" version "*) exit 0 ;;
+  *" ps "*) [ -e "$ROOT_TEST/stopped" ] || printf 'app\nworker\n'; exit 0 ;;
+  *" stop "*) action=stop ;;
+  *" rotate-key "*) action=rotate ;;
+  *" verify-key "*) action=verify ;;
+  *" up "*) action=start ;;
+  *) exit 1 ;;
+esac
+echo "$action" >> "$TRACE"
+if [ "$action" = stop ]; then touch "$ROOT_TEST/stopped"; fi
+if [ "$action" = start ]; then
+  rm -f "$ROOT_TEST/stopped"
+  cmp "$ROOT_TEST/secrets/master_key" "$ROOT_TEST/new-key" >/dev/null && echo new-active >> "$TRACE" || echo old-active >> "$TRACE"
+fi
+if [ "$action" = rotate ] || [ "$action" = verify ]; then
+  [ -z "$(cat)" ] || exit 9
+fi
+[ "${FAIL:-}" != "$action" ]
+''', encoding="utf-8")
+    fake.chmod(0o755)
+    trace = root / "trace"
+    def run(fail="", answer="确认更换主密钥\n", strict_stopped=False):
+        result = subprocess.run(["bash",str(root / "scripts/rotate_key.sh"),"--new-key-file",str(new)],
+                                input=answer,capture_output=True,text=True,
+                                env={**os.environ,"PATH":f"{bindir}:{os.environ['PATH']}","TRACE":str(trace),
+                                     "FAIL":fail,"ROOT_TEST":str(root),"STRICT_STOPPED":str(int(strict_stopped))})
+        return result, trace.read_text().splitlines() if trace.exists() else []
+    return root,old,new,run
+
+
+@pytest.mark.parametrize("failure", ["", "backup", "stop", "rotate", "verify", "start"])
+def test_v2c07_script_order_and_failure_boundary(rotate_script, failure):
+    from datetime import datetime
+    root,old,new,run = rotate_script
+    result,events = run(failure)
+    output = result.stdout + result.stderr
+    assert "O"*32 not in output and "N"*32 not in output
+    archive = root / f"secrets/master_key.old-{datetime.now():%Y%m%d}"
+    if not failure or failure == "start":
+        assert events == ["backup","stop","rotate","verify","start","new-active"]
+        assert old.read_bytes() == new.read_bytes() == b"N"*32
+        assert archive.read_bytes() == b"O"*32
+        assert archive.stat().st_mode & 0o777 == 0o600
+        assert old.stat().st_mode & 0o777 == 0o600
+        assert (result.returncode == 0) is (not failure)
+        if failure:
+            assert "不要换回旧密钥" in output
+    else:
+        assert result.returncode != 0 and old.read_bytes() == b"O"*32
+        assert not archive.exists()
+        if failure in ("backup","stop"):
+            assert events[-2:] == ["start","old-active"]
+            assert "rotate" not in events and "数据未改动" in output
+        else:
+            assert events == (["backup","stop","rotate"] if failure == "rotate" else ["backup","stop","rotate","verify"])
+            assert "保持停止" in output and "同一新密钥" in output
+
+
+@pytest.mark.parametrize("same", [True, False])
+def test_v2c07_script_existing_old_copy(rotate_script, same):
+    from datetime import datetime
+    root,old,new,run = rotate_script
+    archive = root / f"secrets/master_key.old-{datetime.now():%Y%m%d}"
+    value = b"O"*32 if same else b"X"*32
+    archive.write_bytes(value)
+    archive.chmod(0o600)
+    result,events = run()
+    assert archive.read_bytes() == value
+    if same:
+        assert result.returncode == 0, result.stderr
+    else:
+        assert result.returncode != 0 and not events
+        assert old.read_bytes() == b"O"*32
+
+
+@pytest.mark.parametrize("invalid", ["cancel", "length", "mode", "symlink"])
+def test_v2c07_script_checks_before_backup(rotate_script, invalid):
+    root,old,new,run = rotate_script
+    if invalid == "length":
+        new.write_bytes(b"short")
+    elif invalid == "mode":
+        new.chmod(0o644)
+    elif invalid == "symlink":
+        new.unlink()
+        new.symlink_to(old)
+    result,events = run(answer="取消\n" if invalid == "cancel" else "确认更换主密钥\n")
+    assert result.returncode != 0 and not events
+    assert old.read_bytes() == b"O"*32
+
+
+def test_v2c07_script_container_stdin():
+    source = (SCRIPTS / "rotate_key.sh").read_text(encoding="utf-8")
+    commands = [line for line in source.splitlines() if "compose run " in line]
+    assert commands
+    assert all(line.rstrip().endswith("</dev/null") for line in commands)
+
+
+def test_v2c07_script_resume_stopped_worker_does_not_start_old_key(rotate_script):
+    """实际 backup_now 依赖 exec worker，轮换失败后重跑不能恢复旧密钥服务（V2Q-71）。"""
+    root,old,new,run = rotate_script
+    first,events = run("rotate", strict_stopped=True)
+    assert first.returncode != 0 and (root / "stopped").exists()
+    previous = len(events)
+    second,events = run(strict_stopped=True)
+    assert "start" not in events[previous:], "可能已有混合密文时，不能因第二次备份失败而启动旧密钥服务"
+    assert second.returncode == 0, "同一新密钥重跑应能完成停服续做"

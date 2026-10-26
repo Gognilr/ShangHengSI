@@ -240,7 +240,17 @@ def main(argv: list[str] | None = None) -> int:
     p_backup.add_argument("--wait", action="store_true", help="等待备份结果")
     p_backup.add_argument("--timeout", type=int, default=3600, help="等待超时秒数，默认 3600")
 
+    p_rotate = sub.add_parser("rotate-key", help="停服轮换主密钥加密的数据，可用同一新密钥续做")
+    p_rotate.add_argument("--old-key-file", required=True, help="旧主密钥文件")
+    p_rotate.add_argument("--new-key-file", required=True, help="新主密钥文件")
+    p_verify = sub.add_parser("verify-key", help="抽查加密列与原件能否用给定主密钥解密")
+    p_verify.add_argument("--key-file", required=True, help="待验证主密钥文件")
+
     args = parser.parse_args(argv)
+
+    if args.command in ("rotate-key", "verify-key"):
+        from app.security.rotate import command
+        return command(args)
 
     if args.command == "backup-now":
         if args.timeout <= 0:
