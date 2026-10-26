@@ -1,6 +1,6 @@
 # V2-C 集中测试报告
 
-2026-10-26，GPT-6.1 Sol。C-07 完成提交为 `1739d33`。本报告对应 C-08；后台测试、构建和指定机器隔离演练均已通过，**尚有 V2Q-73 的自定义词表记录人显示遗漏等待范围批准，因此 C-08 暂不标完成，不进入 C-09。**
+2026-10-26，GPT-6.1 Sol。C-07 完成提交为 `1739d33`。本报告对应 C-08；后台测试、构建、浏览器清单和指定机器隔离演练均已通过。V2Q-73 已由用户批准，记录人列补齐并完成构建及四尺寸浏览器核对，**C-08 已完成，停在 C-09，等待 Opus（high）整批审核。**
 
 ## 整仓全量与批准的旧测试同步
 
@@ -10,6 +10,7 @@
 | V2Q-72 批准的三个完整文件 | 34 passed，63.86 秒 | `V2-C-08-legacy-contracts.log/.exit`，0 |
 | 同步后整仓全量重跑 | **2844 passed、1 warning，1126.55 秒** | **`V2-C-08-full-final.log/.exit`，0，已保存重读** |
 | 前端 vue-tsc 与构建 | **通过**；既有大块体积提示 | `V2-C-08-build.log/.exit`，0，已保存重读 |
+| V2Q-73 补列后的 vue-tsc 与构建 | **通过**；既有大块体积提示 | `V2-C-08-creator-build.log/.exit`，0，已保存重读 |
 | 差异空白检查 | 通过 | `git diff --check` |
 
 四项失败对应三个旧测试文件，用户逐项批准为 V2Q-72，已写入 questions/V2-C.md 与总索引：
@@ -39,7 +40,7 @@ npm --prefix frontend run build
 | 日限额 | model-cap：系统管理员保存个人上限 1，PUT 200；普通用户首次审核 201/completed、导出 200；chat-cap 与 confirm-cap：追问、下一任务确认分别返回 409 USER_CAP_REACHED 并显示中文提示；local-api-verify：两次拒绝后总 sent 仍为 1、对话记录 0，第二任务保持 awaiting_confirm |
 | 重复文件 | duplicate：409 DUPLICATE_FILE 返回本人旧任务，弹窗显示旧时间及“打开上次结果/继续新建”；点击继续后确实创建第二个不同 task_id，随后完成解析。继续新建回执中对 multipart postData 的读取返回 null，脚本附加断言失败，实际 POST 已 201；后续 confirm-cap/new-task-remembered 验证新任务真实存在并保持待确认，不把这条脚本异常当产品失败或重复创建 |
 | 角色 | biz-login：仅审核要求/脱敏，只有词条冲突提醒，直接访问数据跳审核要求；sys-login：仅账号/模型/数据，备份与冲突提醒，访问脱敏跳账号；admin 可见全部分页；disable-conflict：业务管理员通过真实开关停用冲突词 200；普通用户没有设置入口和管理员提醒，直接访问设置跳智能审核 |
-| 以后自动替换 | manual-remember：普通用户在真实原文中选择“煅后石油焦”，选择其他并勾选，以 remember=true 保存，POST 200；new-task-remembered：下一个真实上传任务外发文本已不含该原词；local-api-verify：custom 词条启用，created_by 为该普通用户。**自定义词列表记录人列仍缺失，见 V2Q-73** |
+| 以后自动替换 | manual-remember：普通用户在真实原文中选择“煅后石油焦”，选择其他并勾选，以 remember=true 保存，POST 200；new-task-remembered：下一个真实上传任务外发文本已不含该原词；local-api-verify：custom 词条启用，created_by 为该普通用户。V2Q-73 补列后，creator-verify 核对业务管理员所见记录人为“虚构普通用户”，旧词条“验收”的空记录人显示“—”；四尺寸单元格均在视口内，页面无水平溢出 |
 | 到期提示与历史 | expiry-layout：把虚构任务活动时间回拨到原件到期前 6 天，显示“原件将于 2026-11-01 删除，之后不能重新审核和追问”；history/history-layout：两条本人任务、保留至列显示永久（结果层为永久） |
 | 四种宽度与焦点 | 1280×800、1366×768、1440×900、1920×1080；对已加载的账号、模型、数据、确认页、结果页、历史页检查 documentWidth 等于视口宽，检查到的控件不超出视口；history-layout：Tab 焦点 outline 为 solid；normal-console-layout：三种设置页正常导航没有 pageerror/console error |
 
@@ -49,6 +50,7 @@ npm --prefix frontend run build
 - `.codex-tmp/v2c08/evidence/result-1366.png`：到期提示、结果与原文。
 - `.codex-tmp/v2c08/evidence/confirm-1440.png`：确认页、签约方、粘底栏。
 - `.codex-tmp/v2c08/evidence/history-1920.png`：保留至列、两条记录及键盘焦点。
+- `.codex-tmp/v2c08/evidence/custom-creator-1280.png`：V2Q-73 补列后，业务管理员查看普通用户创建的自定义词及空记录人；已目视检查。四尺寸断言见 `browser-creator-verify.json`。
 
 几何回执为四尺寸逐页检查，截图为上述主要视图的目视证据，不声称所有页面所有状态均有四张截图。首次环境存在密钥属主、脚本 PYTHONPATH 和 internal 网络端口未发布导致的 502/入口空白，已修正隔离配置后完成真实 UI 流程；保留失败回执。另有一次截图超时、原生选择框文字遮挡 input 的自动化点击超时，后续改点可见文字并取得真实回执。预期 409、模拟 500、先前环境 502 与正常页面控制台结果分别记录。
 
@@ -75,6 +77,6 @@ npm --prefix frontend run build
 
 ## 遗留与下一步
 
-V2Q-72 的三文件范围批准已落实。V2Q-73 申请只给 `frontend/src/views/settings/Redaction.vue` 的自定义词表增加“记录人”列；后端与 API 类型已经返回 created_by_name。拟议补丁保存在 `.codex-tmp/v2c08/custom-creator-proposed.patch`，尚未应用到产品文件。
+V2Q-72 的三文件范围批准和 V2Q-73 的单文件显示扩展均已落实，批准记录见 questions/V2-C.md。最后的产品变更仅为 Redaction.vue 增加记录人列，没有后端改动；沿用此前 2844 项整仓通过凭据，另完成补列后的前端构建和浏览器验证。Tabbit 任务正常结束，finished=true、forcedCleanup=false，截图与回执已保留。
 
-批准后：只补这一列，前端 build，业务管理员查看上述普通用户创建的词条并核对显示名和窄窗口；更新本报告并完成 C-08，然后停在 C-09（Opus，high）整批审核。本机 `aireview-v2c08` 与 15176 测试页暂留以便这一步核对；其余既有本机项目未改动。
+C-08 已完成，下一步为 C-09（Opus，high）整批审核，本会话停在此处。本机虚构数据的 `aireview-v2c08` 与 http://localhost:15176 测试页保留供审核复核；指定机器上的隔离资源已清理，其余既有本机项目未改动。

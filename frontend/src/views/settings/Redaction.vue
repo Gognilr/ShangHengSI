@@ -215,6 +215,9 @@ onMounted(() => {
       <el-alert v-if="customError" type="error" :closable="false" show-icon :title="customError" />
       <el-table v-loading="customLoading" :data="custom" size="small" empty-text="尚未添加自定义敏感词">
         <el-table-column prop="term" label="敏感词" min-width="260" />
+        <el-table-column label="记录人" width="120">
+          <template #default="{ row }">{{ row.created_by_name ?? '—' }}</template>
+        </el-table-column>
         <el-table-column label="启用" width="80">
           <template #default="{ row }">
             <el-switch :model-value="row.enabled" @change="(v: string | number | boolean) => toggleTerm(row, v)" />
