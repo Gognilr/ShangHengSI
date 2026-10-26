@@ -38,6 +38,8 @@ COPY alembic.ini ./
 COPY resources ./resources
 COPY models/ner ./models/ner
 RUN cd models/ner && sha256sum -c MANIFEST.sha256
+COPY models/embedding ./models/embedding
+RUN cd models/embedding && sha256sum -c MANIFEST.sha256
 RUN python -c "from pathlib import Path; import rapidocr_onnxruntime as r; assert len(list((Path(r.__file__).parent / 'models').glob('*.onnx'))) == 3"
 USER appuser
 EXPOSE 8000
@@ -52,6 +54,8 @@ COPY alembic.ini ./
 COPY resources ./resources
 COPY models/ner ./models/ner
 RUN cd models/ner && sha256sum -c MANIFEST.sha256
+COPY models/embedding ./models/embedding
+RUN cd models/embedding && sha256sum -c MANIFEST.sha256
 COPY tests ./tests
 COPY pytest.ini ./
 CMD ["pytest"]

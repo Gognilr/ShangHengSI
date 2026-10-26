@@ -53,6 +53,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     check_master_key()
     from app.redaction import ner
     ner.check()
+    from app.embedding import engine
+    engine.check()
     yield
 
 

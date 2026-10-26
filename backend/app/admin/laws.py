@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
+from app.config import get_settings
 from app.db import jobs
 from app.db.models import LAW_STATUSES, Law, LawImport, LawImportFile, User
 from app.db.session import get_db
@@ -42,9 +43,13 @@ def record_audit(db, request, user, action, target, detail):
 
 
 @router.post('/law-imports', status_code=202)
-def upload_import(request: Request, kind: Literal['catalog'] = Form(...), status: LawStatus = Form(...),
+def upload_import(request: Request, kind: Literal['catalog', 'fulltext'] = Form(...), status: LawStatus | None = Form(None),
                   files: list[UploadFile] = File(...), admin: User = Depends(require_biz_admin),
                   db: Session = Depends(get_db)):
+    if kind == 'catalog' and status is None:
+        raise AppError(422, 'LAW_IMPORT_STATUS', '请选择目录的时效性')
+    if kind == 'fulltext' and len(files) != 1:
+        raise AppError(422, 'LAW_IMPORT_FILES', '请选择一个全文 ZIP 压缩包')
     if not 1 <= len(files) <= 10:
         raise AppError(422, 'LAW_IMPORT_FILES', '请选择 1～10 个目录文件')
     imports.lock(db)
@@ -54,14 +59,19 @@ def upload_import(request: Request, kind: Literal['catalog'] = Form(...), status
     for file in files:
         # 浏览器可能发送含路径的名称，只保留末段；从不将用户文件名传给解析器或写入日志。
         name = PurePosixPath((file.filename or '').replace('\\', '/')).name
-        if not name or len(name) > 255 or PurePosixPath(name).suffix.lower() not in ('.xls', '.xlsx'):
+        allowed = ('.zip',) if kind == 'fulltext' else ('.xls', '.xlsx')
+        if not name or len(name) > 255 or PurePosixPath(name).suffix.lower() not in allowed:
+            if kind == 'fulltext':
+                raise AppError(422, 'LAW_IMPORT_FILES', '全文文件须为 ZIP，文件名最多 255 字')
             raise AppError(422, 'LAW_IMPORT_FILES', '目录文件须为 XLS 或 XLSX，文件名最多 255 字')
-        content = file.file.read(5*1024*1024+1)
-        if len(content) > 5*1024*1024:
-            raise AppError(422, 'LAW_IMPORT_FILES', '每个目录文件最多 5 MB')
+        limit = get_settings().max_upload_mb if kind == 'fulltext' else 5
+        content = file.file.read(limit*1024*1024+1)
+        if len(content) > limit*1024*1024:
+            raise AppError(422, 'LAW_IMPORT_FILES', f'每个文件最多 {limit} MB')
         names.append(name)
         contents.append(content)
-    row = LawImport(kind=kind, status='parsing', declared_status=status, file_names=names, created_by=admin.id)
+    row = LawImport(kind=kind, status='parsing', declared_status=status if kind == 'catalog' else None,
+                    file_names=names, created_by=admin.id)
     db.add(row)
     db.flush()
     for seq, (name, content) in enumerate(zip(names, contents), 1):

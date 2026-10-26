@@ -210,7 +210,7 @@ def run_worker(
     """启动并发线程，主线程负责定时工作；stop 置位后等待正在处理的任务结束再返回。"""
     groups = (("review", review_concurrency, ("review",)),
               ("parse", parse_concurrency, ("parse", "law_import")),
-              ("maintenance", 1, ("backup", "retention")))
+              ("maintenance", 1, ("backup", "retention", "law_embed")))
     threads = []
     for group, concurrency, types in groups:
         for i in range(concurrency):
@@ -247,6 +247,8 @@ def main() -> None:
     check_master_key()
     from app.redaction import ner
     ner.check(load=True)
+    from app.embedding import engine
+    engine.check(load=True)
     from app.db.session import get_engine
     import app.backup.job  # noqa: F401  导入即注册 backup 处理函数和定时备份检查
     import app.backup.retention  # noqa: F401  导入即注册 retention 处理函数和定时检查
@@ -260,6 +262,9 @@ def main() -> None:
                 settings.app_version, settings.worker_review_concurrency, settings.worker_parse_concurrency)
     pool_size = settings.worker_review_concurrency + settings.worker_parse_concurrency + 2
     factory = sessionmaker(bind=get_engine(pool_size=pool_size, max_overflow=pool_size), expire_on_commit=False)
+    with factory() as db:
+        app.laws.job.enqueue_embed(db)
+        db.commit()
     run_worker(factory, _stop, review_concurrency=settings.worker_review_concurrency,
                parse_concurrency=settings.worker_parse_concurrency)
     logger.info("worker 已退出")

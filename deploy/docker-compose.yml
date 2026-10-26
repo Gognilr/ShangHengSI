@@ -28,7 +28,11 @@ x-backend: &backend
 
 services:
   db:
-    image: postgres:16.15
+    image: aireview-db:${APP_VERSION:-dev}
+    # build-begin
+    build:
+      context: ./db
+    # build-end
     logging: *logging
     restart: unless-stopped
     environment:

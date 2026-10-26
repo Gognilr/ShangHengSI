@@ -13,6 +13,30 @@ DEPLOY = ROOT / "deploy"
 SCRIPTS = DEPLOY / "scripts"
 
 
+@pytest.mark.parametrize('available', ['1', ''])
+def test_t44_13_restore_requires_pgvector(tmp_path, available):
+    # 与 restore.sh 调用相同的真实检查函数；空结果必须在恢复副作用之前失败。
+    result = _lib('compose() { printf "%s" "$VECTOR_AVAILABLE"; }; check_pgvector; info restore-allowed',
+                  root=tmp_path, env={'VECTOR_AVAILABLE': available})
+    if available:
+        assert result.returncode == 0 and 'restore-allowed' in result.stdout
+    else:
+        assert result.returncode != 0
+        assert '当前数据库镜像不含 pgvector，请先按升级步骤更换 db 镜像' in result.stderr
+        assert 'restore-allowed' not in result.stdout
+    script = (SCRIPTS/'restore.sh').read_text()
+    assert script.index('check_pgvector') < script.index('worker_cli decrypt-backup')
+
+
+def test_t44_14_release_db_image():
+    for name in ('build_release.sh', 'lib.sh'):
+        text = (SCRIPTS/name).read_text()
+        assert 'aireview-db:$version' in text and 'postgres:16.15' not in text
+    compose = (DEPLOY/'docker-compose.yml').read_text()
+    assert 'aireview-db:${APP_VERSION:-dev}' in compose
+    assert 'postgresql-16-pgvector=0.8.7-1.pgdg13+1' in (DEPLOY/'db/Dockerfile').read_text()
+
+
 def _scripts() -> list[Path]:
     found = sorted(SCRIPTS.glob("*.sh"))
     assert found, f"未找到 {SCRIPTS}/*.sh；测试须挂载整个仓库"

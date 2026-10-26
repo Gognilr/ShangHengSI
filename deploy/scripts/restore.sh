@@ -119,6 +119,7 @@ SHA_FILE="$BACKUP_DIR/$NAME.sha256"
 [ -f "$SHA_FILE" ] && [ ! -L "$SHA_FILE" ] || die "缺少校验文件 $NAME.sha256"
 compose ps --status running --services 2>/dev/null | grep -qx db \
   || die "数据库服务 db 未运行；请先执行 cd $ROOT && docker compose up -d db"
+check_pgvector
 
 size="$(stat -c %s -- "$BACKUP_DIR/$NAME")"
 avail="$(df -P -B1 -- "$BACKUP_DIR" | awk 'NR == 2 { print $4 }')"

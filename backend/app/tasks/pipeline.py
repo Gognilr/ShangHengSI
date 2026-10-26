@@ -19,7 +19,7 @@ from app import worker
 from app.checks.service import run_checks
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import DocNode, Task, TaskFile
+from app.db.models import DocNode, Task, TaskFile, TaskClauseVector
 from app.parsing import docx, image, legacy, pdf, xlsx
 from app.parsing.doctype import detect_doc_type
 from app.parsing.model import MAX_OCR_PAGES_PER_TASK, ParsedFile, ParseError
@@ -122,6 +122,14 @@ def parse_task(db: Session, task_id: uuid.UUID) -> None:
             redact_task(db, task)
             task.status = "awaiting_confirm"
         task.error_message = None
+        # 保存点隔离向量失败；清掉旧缓存，避免重解析失败后沿用旧原文向量。
+        db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == task.id))
+        try:
+            with db.begin_nested():
+                from app.review.clauses import store_vectors
+                store_vectors(db, task)
+        except Exception:
+            logger.warning('任务条款向量计算失败 task=%s', task.id)
         db.commit()
     except ParseError as exc:
         db.rollback()

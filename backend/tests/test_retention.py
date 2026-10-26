@@ -21,6 +21,30 @@ pytestmark = pytest.mark.usefixtures("env")
 SH = timezone(timedelta(hours=8))
 
 
+@pytest.fixture(autouse=True)
+def fake_embedding(monkeypatch):
+    import numpy as np
+    from app.embedding import engine
+    monkeypatch.setattr(engine, 'embed', lambda texts, kind:
+                        np.tile(np.eye(1, 1024, dtype=np.float32), (len(texts), 1)))
+
+
+def test_t44_11_original_layer_deletes_clause_vectors(alice, db_sessionmaker, ready_task, llm):
+    from app.db.models import TaskClauseVector
+    from sqlalchemy import func
+    user, client, headers = alice
+    task = reviewed(db_sessionmaker, user, client, headers, ready_task, llm)
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(TaskClauseVector)
+                         .where(TaskClauseVector.task_id == task.id)) > 0
+    set_days(db_sessionmaker, 1)
+    age(db_sessionmaker, task.id, 2)
+    assert run(db_sessionmaker)['tasks'] == 1
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(TaskClauseVector)
+                         .where(TaskClauseVector.task_id == task.id)) == 0
+
+
 @pytest.fixture
 def alice(make_user, login):
     user = make_user("alice")

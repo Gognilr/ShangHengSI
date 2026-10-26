@@ -67,6 +67,15 @@ def fixture(path: str) -> bytes:
     return (ROOT / path).read_bytes()
 
 
+@pytest.fixture(autouse=True)
+def fake_embedding(monkeypatch):
+    # E-04：常规解析回归不调用真实向量模型，对拍集中在 E-08。
+    import numpy as np
+    from app.embedding import engine as embedding_engine
+    monkeypatch.setattr(embedding_engine, 'embed', lambda texts, kind:
+                        np.tile(np.eye(1, 1024, dtype=np.float32), (len(texts), 1)))
+
+
 def count(db, model, task_id) -> int:
     return db.scalar(select(func.count()).select_from(model).where(model.task_id == task_id))
 

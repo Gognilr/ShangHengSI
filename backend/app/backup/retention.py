@@ -14,7 +14,7 @@ from app.audit import service as audit
 from app.backup.service import local_tz
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import AuditLog, DocNode, Job, LlmCall, Task, TaskFile
+from app.db.models import AuditLog, DocNode, Job, LlmCall, Task, TaskFile, TaskClauseVector
 from app.tasks import storage
 from app.tasks.service import delete_task
 from app.worker import job_handler, register_periodic
@@ -96,6 +96,7 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
                         storage.delete_original(file.storage_key)
                         file.original_deleted_at = now
                     db.execute(update(DocNode).where(DocNode.task_id == tid).values(text_enc=None))
+                    db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == tid))
                     task.user_note_enc = None
                     if task.status == "awaiting_confirm":
                         # 原件已删，不能再提交；回到重新审核前的已审核状态，旧结果照常可看。

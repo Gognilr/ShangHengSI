@@ -151,7 +151,7 @@ load_release_images() {
   [ -f "$archive" ] || die "缺少当前版本的离线镜像文件"
   docker load -i "$archive" </dev/null >/dev/null 2>&1 || die "导入离线镜像失败；请检查磁盘空间与镜像包"
   # R2：发布包增加 converter，运行时禁止下载镜像。
-  for image in "aireview-backend:$version" "aireview-web:$version" "aireview-converter:$version" postgres:16.15; do
+  for image in "aireview-backend:$version" "aireview-web:$version" "aireview-converter:$version" "aireview-db:$version"; do
     docker image inspect "$image" >/dev/null 2>&1 || die "离线包缺少镜像 $image"
   done
 }
@@ -177,6 +177,14 @@ require_running() {
   local cid
   cid="$(compose ps -q "$1")"
   [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Running}}' "$cid")" = true ] || die "服务 $1 未运行，请检查日志"
+}
+
+# 恢复前确认目标 PG16 镜像能够安装备份中的 vector 扩展。
+check_pgvector() {
+  local available
+  available="$(compose exec -T db sh -ec 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT 1 FROM pg_available_extensions WHERE name='"'"'vector'"'"'"' </dev/null)" \
+    || die '无法检查数据库 pgvector 扩展'
+  [ "$available" = 1 ] || die '当前数据库镜像不含 pgvector，请先按升级步骤更换 db 镜像'
 }
 
 check_https() {

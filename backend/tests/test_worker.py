@@ -376,7 +376,7 @@ def test_default_worker_thread_groups(monkeypatch):
     worker.run_worker(None, stop)
     assert [t["args"][-1] for t in threads].count(("review",)) == 8
     assert [t["args"][-1] for t in threads].count(("parse", "law_import")) == 2
-    assert [t["args"][-1] for t in threads].count(("backup", "retention")) == 1
+    assert [t["args"][-1] for t in threads].count(("backup", "retention", "law_embed")) == 1
     assert len({t["args"][1] for t in threads}) == 11
 
 
@@ -448,6 +448,10 @@ def test_stop_deadline_applies_to_all_groups(handlers, db_sessionmaker, monkeypa
 
 
 def test_startup_ignores_legacy_variable_and_warns_once(monkeypatch, caplog):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from app.embedding import engine as embedding_engine
+    from app.laws import job as law_job
     from app.config import load_settings
     from app.db import session
     from app.redaction import ner
@@ -458,10 +462,14 @@ def test_startup_ignores_legacy_variable_and_warns_once(monkeypatch, caplog):
     monkeypatch.setattr(worker, "get_settings", load_settings)
     monkeypatch.setattr(worker, "check_master_key", lambda: None)
     monkeypatch.setattr(ner, "check", lambda **kw: None)
+    startup = []
+    monkeypatch.setattr(embedding_engine, 'check', lambda **kw: startup.append(kw))
+    monkeypatch.setattr(law_job, 'enqueue_embed', lambda db: startup.append('enqueue'))
     monkeypatch.setattr(worker.signal, "signal", lambda *args: None)
     pool_options = []
     monkeypatch.setattr(session, "get_engine", lambda **kw: pool_options.append(kw) or "engine")
-    monkeypatch.setattr(worker, "sessionmaker", lambda **kw: "factory")
+    monkeypatch.setattr(worker, "sessionmaker", lambda **kw:
+                        lambda: nullcontext(SimpleNamespace(commit=lambda: startup.append('commit'))))
     calls = []
     monkeypatch.setattr(worker, "run_worker", lambda *args, **kw: calls.append((args, kw)))
     with caplog.at_level(logging.WARNING, logger="app.worker"):
@@ -471,3 +479,13 @@ def test_startup_ignores_legacy_variable_and_warns_once(monkeypatch, caplog):
     assert "invalid-ignored-secret" not in caplog.text
     assert pool_options == [{"pool_size": 12, "max_overflow": 12}]
     assert calls[0][1] == {"review_concurrency": 8, "parse_concurrency": 2}
+    assert startup == [{'load': True}, 'enqueue', 'commit']
+
+
+def test_law_embed_runs_in_maintenance_group(handlers, db_sessionmaker):
+    seen = []
+    handlers['law_embed'] = lambda db, payload: seen.append(threading.current_thread().name)
+    jid = _enqueue(db_sessionmaker, 'law_embed', {})
+    with _Running(db_sessionmaker):
+        assert _wait(lambda: _statuses(db_sessionmaker)[jid] == 'done')
+    assert len(seen) == 1 and seen[0].startswith('worker-maintenance-')

@@ -33,6 +33,11 @@ def apply(db, iid, user_id):
         raise AppError(409, 'LAW_IMPORT_STATE', '当前状态不能确认生效')
     # 锁住法规表，确保检查与写入之间连直接 SQL 写入也不能改变旧值或插入相同键。
     db.execute(text('LOCK TABLE laws IN SHARE ROW EXCLUSIVE MODE'))
+    if record.kind == 'fulltext':
+        from app.laws.fulltext import apply as apply_fulltext
+        apply_fulltext(db, record)
+        record.status, record.applied_by, record.applied_at = 'applied', user_id, utcnow()
+        return record
     diff = record.diff
     changed = []
     for item in diff['changed']:
@@ -66,4 +71,7 @@ def discard(db, iid, user_id):
     if row.status not in ('pending', 'failed'):
         raise AppError(409, 'LAW_IMPORT_STATE', '当前状态不能放弃')
     row.status, row.applied_by, row.applied_at = 'discarded', user_id, utcnow()
+    from sqlalchemy import delete
+    from app.db.models import LawImportArticle
+    db.execute(delete(LawImportArticle).where(LawImportArticle.import_id == row.id))
     return row

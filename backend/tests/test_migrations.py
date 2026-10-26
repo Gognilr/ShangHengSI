@@ -19,9 +19,38 @@ from psycopg import errors
 ADMIN_URL = os.environ.get("TEST_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not ADMIN_URL, reason="未设置 TEST_DATABASE_URL")
 
+
+def test_t44_1_pgvector_upgrade_downgrade():
+    name = 'aireview_test_' + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, '0019')
+        tables = {'law_articles', 'law_import_articles', 'task_clause_vectors'}
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert tables <= _tables(conn)
+            assert conn.execute("SELECT extversion FROM pg_extension WHERE extname='vector'").fetchone() == ('0.8.7',)
+            assert conn.execute("SELECT format_type(atttypid,atttypmod) FROM pg_attribute "
+                "WHERE attrelid='law_articles'::regclass AND attname='embedding'").fetchone() == ('vector(1024)',)
+            index = conn.execute("SELECT indexdef FROM pg_indexes WHERE indexname='ix_law_articles_embedding'").fetchone()[0]
+            assert 'hnsw' in index and 'vector_cosine_ops' in index
+            conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('law_embed','{}',now())")
+        command.downgrade(cfg, '0018')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert not tables & _tables(conn)
+            assert conn.execute("SELECT 1 FROM pg_extension WHERE extname='vector'").fetchone() is None
+            assert conn.execute("SELECT 1 FROM jobs WHERE type='law_embed'").fetchone() is None
+        command.upgrade(cfg, 'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 TYPE_ALIASES = {
+    'vector1024': 'vector(1024)',
     "uuid": "uuid",
     "text": "text",
     "int": "integer",
@@ -380,6 +409,30 @@ SCHEMA['law_import_files'] = """
     name v255 NN
     data_enc bytea NN"""
 
+SCHEMA['law_articles'] = """
+    id bigint NN =serial
+    law_id bigint NN
+    article_no v30
+    seq int NN
+    text text NN
+    embedding vector1024"""
+SCHEMA['law_import_articles'] = """
+    id bigint NN =serial
+    import_id uuid NN
+    title v300 NN
+    published_on date NN
+    article_no v30
+    seq int NN
+    text text NN"""
+SCHEMA['task_clause_vectors'] = """
+    id bigint NN =serial
+    task_id uuid NN
+    file_seq int NN
+    first_loc v20 NN
+    locs jsonb NN
+    embedding vector1024 NN
+    model v60 NN"""
+
 PRIMARY_KEYS = {t: ["id"] for t in SCHEMA}
 PRIMARY_KEYS.update(
     sessions=["token_hash"], redaction_maps=["task_id"], settings=["key"], requirement_versions=["version"]
@@ -387,6 +440,7 @@ PRIMARY_KEYS.update(
 
 # 唯一约束 / 唯一索引（不含主键）
 UNIQUES = {
+    ('law_articles', 'law_id, seq'),
     ('laws', 'title, published_on'),
     ('laws', 'flk_id'),
     ('ner_node_results', 'task_id, loc'),
@@ -403,6 +457,8 @@ UNIQUES = {
 
 # 普通索引
 INDEXES = {
+    ('law_articles', 'embedding vector_cosine_ops'),
+    ('task_clause_vectors', 'task_id'),
     ('laws', 'title'),
     ("sessions", "user_id"),
     ("tasks", "owner_id, created_at DESC"),
@@ -420,6 +476,9 @@ INDEXES = {
 
 # 外键：(表, 字段) -> (被引用表, 删除规则 c=CASCADE a=NO ACTION)
 FOREIGN_KEYS = {
+    ('law_articles', 'law_id'): ('laws', 'c'),
+    ('law_import_articles', 'import_id'): ('law_imports', 'c'),
+    ('task_clause_vectors', 'task_id'): ('tasks', 'c'),
     ('law_imports', 'created_by'): ('users', 'a'),
     ('law_imports', 'applied_by'): ('users', 'a'),
     ('law_import_files', 'import_id'): ('law_imports', 'c'),
@@ -501,7 +560,7 @@ ENUM_COLUMNS = {
     ("chat_messages", "role"): ["user", "assistant"],
     ("llm_calls", "purpose"): ["review", "chat", "test"],
     ("llm_calls", "status"): ["sent", "blocked", "error"],
-    ("jobs", "type"): ["parse", "review", "backup", "retention", "law_import"],
+    ("jobs", "type"): ["parse", "review", "backup", "retention", "law_import", "law_embed"],
     ("jobs", "status"): ["queued", "running", "done", "failed"],
     ("backup_records", "trigger"): ["schedule", "manual"],
     ("backup_records", "status"): ["running", "success", "failed"],
@@ -559,7 +618,7 @@ def _tables(conn):
 
 def test_exactly_23_tables(migrated):
     assert _tables(migrated) == set(SCHEMA)
-    assert len(SCHEMA) == 27  # V2-E-01：新增三张法规库表，仍严格核对完整表集合。
+    assert len(SCHEMA) == 30  # V2-E-04：新增三张向量与全文暂存表，严格核对完整集合。
 
 
 def test_pgcrypto_enabled(migrated):

@@ -30,3 +30,7 @@ Thumbs.db
 # 离线实体识别模型只跟踪校验清单。
 backend/models/ner/*
 !backend/models/ner/MANIFEST.sha256
+
+# 离线向量模型只跟踪校验清单。
+backend/models/embedding/*
+!backend/models/embedding/MANIFEST.sha256

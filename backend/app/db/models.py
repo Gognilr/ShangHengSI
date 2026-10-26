@@ -1,4 +1,4 @@
-"""全部 27 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规目录表。
+"""全部 30 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量表。
 
 约定见 SPEC 18.1：时间 timestamptz（UTC）；枚举用 varchar + CHECK；_enc 结尾为主密钥加密后的 bytea；
 任务下属表的 task_id 外键均 ON DELETE CASCADE。
@@ -28,6 +28,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+from pgvector.sqlalchemy import Vector
 
 from app.db.base import TIMESTAMPTZ, Base, enum_check, utcnow, uuid_pk
 
@@ -93,6 +94,44 @@ class Law(Base):
     fulltext_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     created_at: Mapped[datetime] = _ts_now()
     updated_at: Mapped[datetime] = _ts_updated()
+
+
+class LawArticle(Base):
+    __tablename__ = 'law_articles'
+    __table_args__ = (
+        UniqueConstraint('law_id', 'seq'),
+        Index('ix_law_articles_embedding', 'embedding', postgresql_using='hnsw',
+              postgresql_ops={'embedding': 'vector_cosine_ops'}),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    law_id: Mapped[int] = mapped_column(BigInteger, ForeignKey('laws.id', ondelete='CASCADE'), nullable=False)
+    article_no: Mapped[Optional[str]] = mapped_column(String(30))
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1024))
+
+
+class LawImportArticle(Base):
+    __tablename__ = 'law_import_articles'
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    import_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey('law_imports.id', ondelete='CASCADE'), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    published_on: Mapped[date] = mapped_column(Date, nullable=False)
+    article_no: Mapped[Optional[str]] = mapped_column(String(30))
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class TaskClauseVector(Base):
+    __tablename__ = 'task_clause_vectors'
+    __table_args__ = (Index('ix_task_clause_vectors_task_id', 'task_id'),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    task_id: Mapped[uuid.UUID] = _task_fk()
+    file_seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    first_loc: Mapped[str] = mapped_column(String(20), nullable=False)
+    locs: Mapped[list] = mapped_column(JSONB, nullable=False)
+    embedding: Mapped[Any] = mapped_column(Vector(1024), nullable=False)
+    model: Mapped[str] = mapped_column(String(60), nullable=False)
 
 
 class LawImport(Base):
@@ -557,7 +596,7 @@ class LlmCall(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        enum_check("type", ["parse", "review", "backup", "retention", "law_import"]),
+        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed"]),
         enum_check("status", ["queued", "running", "done", "failed"]),
         Index("ix_jobs_status_run_after", "status", "run_after"),
     )
