@@ -259,7 +259,7 @@
 
 ### 3 技术栈与固定约束（V2-E，E4、E5）
 原文：|数据库|PostgreSQL 16|……；|模型调用|httpx|只允许在模型网关模块中使用|；不得引入……向量数据库……任何本地大模型或本地 embedding 模型（V2-B 已允许一个实体识别模型）
-新文：数据库为 PostgreSQL 16 + pgvector 扩展（db 使用自建镜像 aireview-db：postgres:16.15 加 PGDG 软件包 postgresql-16-pgvector，版本锁定）；新增“向量检索”一行：pgvector（HNSW、余弦距离）+ 一个本地向量模型（V2-E-04a 选型、用户确认后写入本节，onnxruntime 在 CPU 上离线运行，推理只用 onnxruntime、numpy、tokenizers；Python 依赖增加 pgvector）；httpx 只允许在模型网关与法规同步客户端（lawsync/client.py）中使用；不得引入独立的向量数据库服务，其余禁用项不变
+新文：数据库为 PostgreSQL 16 + pgvector 扩展（db 使用自建镜像 aireview-db：postgres:16.15 加 PGDG 软件包 postgresql-16-pgvector，版本锁定）；新增“向量检索”一行：pgvector（HNSW、余弦距离）+ 一个本地向量模型：`BAAI/bge-m3`（MIT，固定提交 5617a9f61b028005a4858fdac845db406aefb181）官方 FP32 ONNX 经 onnxruntime 动态量化得到的 INT8 ONNX（SHA-256 63e806d9763c82e8ffb55e32d577a64cacf2a57be1ac0d803f118cf770cb399d），只用稠密向量（1024 维，CLS 池化后 L2 归一化，最多 512 个 token），两个文件的清单与 SHA-256 见 reports/V2-E-04a.md 第六节；onnxruntime 在 CPU 上离线运行，推理只用 onnxruntime、numpy、tokenizers；模型文件不进仓库，构建时放入镜像并校验 SHA-256；资源门槛：1 万字向量化 ≤ 5 秒（worker 8 线程），单进程内存增加 ≤ 1.5 GB，镜像增加 ≤ 1.5 GB；Python 依赖增加 pgvector（V2-E-04a 选型，用户 2026-10-26 确认，V2Q-88）；httpx 只允许在模型网关与法规同步客户端（lawsync/client.py）中使用；不得引入独立的向量数据库服务，其余禁用项不变
 理由：法条依据与范本对照需要语义检索；在现有数据库内实现，不增加服务（V2Q-26、V2Q-27）
 
 ### 4、5 架构与目录（V2-E）
