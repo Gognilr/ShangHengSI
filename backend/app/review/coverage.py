@@ -87,12 +87,16 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
         "failed_chunks": failed,
         "no_cross_chunk_check": is_chunked,
         "sanctions_offline": True,
+        "law_refs": dict(ctx.law_stats),
     }
 
 
 def describe(coverage: dict, file_names: dict[int, str]) -> list[str]:
     """把结构化覆盖信息转成结果页和报告共用的固定中文句子。"""
     notes: list[str] = []
+    laws = coverage.get('law_refs', {})
+    if laws.get('enabled'):
+        notes.append(f"本次附带相关法条 {int(laws.get('sent',0))} 条（因出口复检丢弃 {int(laws.get('dropped',0))} 条）")
 
     def file_name(seq: int) -> str:
         return file_names.get(seq, f"文件{seq}")

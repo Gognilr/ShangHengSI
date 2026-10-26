@@ -26,6 +26,47 @@ from tests.mock_llm import build_content, build_reply
 from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: F401
 
 
+def test_t45_review_refs_snapshot_and_dropped(db_sessionmaker,owner,ready_task,llm,monkeypatch):
+    from app.laws import retrieve
+    task=ready_task(owner)
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db,'laws.refs_enabled',True,None);db.commit()
+    monkeypatch.setattr(retrieve.engine,'embed',lambda texts,kind:[([1.0]+[0.0]*1023) for _ in texts])
+    monkeypatch.setattr(retrieve,'search',lambda *a:[
+        dict(id=1,title='示例供货法',article_no='第三条',text='应依约交付。',score=0.9),
+        dict(id=2,title='示例供货法',article_no='第四条',text=REAL_OUR_NAME,score=0.8)])
+    def mutate(output,messages): output['findings'][0]['law_refs']=['LAW1','LAW99']
+    requests=llm(handler=custom_reply(mutate))
+    run=new_run(db_sessionmaker,task,owner);run_job(db_sessionmaker,run.id)
+    assert len(requests)==1
+    message=json.loads(requests[0].content)['messages'][1]['content']
+    assert '[LAW1]《示例供货法》第三条：应依约交付。' in message and REAL_OUR_NAME not in message
+    with db_sessionmaker() as db:
+        f=db.scalar(select(Finding).where(Finding.run_id==run.id))
+        assert f.law_refs==[dict(title='示例供货法',article_no='第三条',text='应依约交付。')]
+        assert db.get(ReviewRun,run.id).coverage['law_refs']==dict(enabled=True,sent=1,dropped=1,chars=len('《示例供货法》第三条：应依约交付。'))
+        assert service.run_detail(db,db.get(ReviewRun,run.id)).findings[0].law_refs==f.law_refs
+
+
+def test_t45_each_chunk_restarts_refs(db_sessionmaker,owner,ready_task,llm,monkeypatch):
+    from app.laws import retrieve
+    task=chunked_task(db_sessionmaker,owner,ready_task)
+    seen=[]
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db,'laws.refs_enabled',True,None);db.commit()
+    original=retrieve.prepare
+    def prepare(db,ctx,chunk,nodes):
+        seen.append(chunk.index)
+        ctx.law_refs=[dict(ref='LAW1',title='示例供货法',article_no='第三条',text='应依约交付。')]
+    monkeypatch.setattr(retrieve,'prepare',prepare)
+    requests=llm('normal')
+    run=new_run(db_sessionmaker,task,owner);run_job(db_sessionmaker,run.id)
+    assert len(seen)>=2 and len(seen)==len(requests)
+    for request in requests:
+        message=json.loads(request.content)['messages'][1]['content']
+        assert message.count('[LAW1]')==1 and '[LAW2]' not in message
+
+
 @pytest.fixture
 def owner(make_user):
     return make_user("alice")

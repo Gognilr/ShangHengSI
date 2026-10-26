@@ -94,6 +94,8 @@ class FindingView:
     suggestion: str | None
     suggested_text: str | None
     basis: str | None
+    law_refs: list[dict] = field(default_factory=list)
+    law_unverified: bool = False
 
 
 @dataclass
@@ -225,6 +227,8 @@ def _merge_duplicates(findings: list[FindingView]) -> list[FindingView]:
             continue
         same.req_ids += [r for r in f.req_ids if r not in same.req_ids]
         same.locs += [loc for loc in f.locs if loc not in same.locs]
+        same.law_refs += [r for r in f.law_refs if r not in same.law_refs]
+        same.law_unverified = same.law_unverified or f.law_unverified
         if _SEVERITY_RANK[f.severity] > _SEVERITY_RANK[same.severity]:
             same.severity = f.severity
         if _CITE_RANK[f.cite_status] > _CITE_RANK[same.cite_status]:
@@ -276,6 +280,8 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
             locs=locs, missing=f.missing, cite_status=status, quote_model=f.quote, quote_snapshot=snapshot,
             problem=f.problem, impact=f.impact, suggestion=f.suggestion, suggested_text=f.suggested_text,
             basis=f.basis,
+            law_refs=[{k:r[k] for k in ('title','article_no','text')} for r in ctx.law_refs
+                      if r['ref'] in f.law_refs],
         ))
     sanctions = out.sanctions
     return ValidatedReview(
@@ -386,6 +392,8 @@ def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uui
         call_ids.append(result.llm_call_id)
         try:
             review = validate_output(result.content, ctx, nodes, chunk)
+            from app.laws.retrieve import verify_findings
+            verify_findings(db,review.findings)
         except OutputError as exc:
             if attempt == 1:
                 exc.tokens_in, exc.tokens_out, exc.llm_call_ids = tokens_in, tokens_out, call_ids

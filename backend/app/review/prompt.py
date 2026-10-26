@@ -31,7 +31,7 @@ JSON_SCHEMA_TEXT = (
     '"severity": "高 / 中 / 低 之一", "req_ids": ["相关的审核要求编号"], "locs": ["位置编号，如 F1-P23"], '
     '"quote": "从该位置原文中逐字摘录，不超过 100 字", "missing": false, "problem": "问题说明", '
     '"impact": "对我方的影响", "suggestion": "修改建议", "suggested_text": "可直接替换的条款措辞，没有则为 null", '
-    '"basis": "依据，如通行商业惯例；不得编造法条编号"}], '
+    '"basis": "依据，如通行商业惯例；不得编造法条编号", "law_refs": ["参考法条编号，如 LAW3"]}], '
     '"sanctions": {"level": "无明显风险 / 需注意 / 高风险 之一", "reasons": ["原因"]}}'
 )
 
@@ -53,6 +53,8 @@ class ReviewContext:
     prompt_version: str = field(default="")
     boundary_locs: set[str] = field(default_factory=set)  # 分段的首选切分点（M5）
     quote_tables: list[QuoteTable] = field(default_factory=list)  # 外发文本中被汇总的报价明细表（M5）
+    law_refs: list[dict] = field(default_factory=list)
+    law_stats: dict = field(default_factory=lambda: dict(enabled=False,sent=0,dropped=0,chars=0))
 
 
 def note_requirement(user_note: str | None) -> Requirement | None:
@@ -124,6 +126,9 @@ def build_user_message(ctx: ReviewContext, chunk: Chunk | None = None) -> str:
     if ctx.local_summary and ctx.local_summary.strip():
         parts.append("【本地校验摘要】" + escape_document_tags(ctx.local_summary.strip()))
     parts.append(f"【待审核文件】\n<document>\n{body}\n</document>")
+    if ctx.law_refs:
+        from app.laws.retrieve import section
+        parts.append(section(ctx.law_refs))
     return "\n".join(parts)
 
 
@@ -145,6 +150,6 @@ def fixed_prompt_text(db: Session) -> str:
     parts.append(str(get_setting(db, "review.company_profile") or ""))
     parts += [*STANCE_LABELS.values(), *SOURCE_LABELS.values(), *DOC_TYPE_LABELS.values()]
     parts += ["【审核背景】立场：；来源：；主文件类型：；附件：；公司说明：", "【审核要求】（公司补充）（本次补充说明）",
-              "【主体说明】【本地校验摘要】【待审核文件】<document></document>",
+              "【主体说明】【本地校验摘要】【待审核文件】【参考法条】<document></document>",
               chunk_note(Chunk(index=1, total=2, lines=[], first_loc="", last_loc="", locs=frozenset()))]
     return "\n".join(parts)

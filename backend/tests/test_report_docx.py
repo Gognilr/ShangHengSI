@@ -47,6 +47,19 @@ def contents(data):
     return doc, text
 
 
+def test_t45_report_law_snapshot(report_case,db_sessionmaker):
+    user,task,run=report_case
+    with db_sessionmaker() as db:
+        f=db.scalar(select(Finding).where(Finding.run_id==run.id,Finding.seq==1))
+        f.law_refs=[dict(title='示例供货法',article_no='第三条',text='历史条文全文。')]
+        f.law_unverified=True
+        db.commit()
+        _,data=build_run_report(db,db.get(ReviewRun,run.id),user)
+    _,text=contents(data)
+    assert '依据：《示例供货法》第三条' in text and '历史条文全文。' in text
+    assert '引用未经法规库核实' in text
+
+
 def test_report_sections_restore_snapshot_and_layout(report_case, db_sessionmaker):
     user, task, run = report_case
     with db_sessionmaker() as db:

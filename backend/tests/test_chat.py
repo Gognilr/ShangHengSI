@@ -64,6 +64,24 @@ def chat_calls(db_sessionmaker) -> list[LlmCall]:
         return list(db.scalars(select(LlmCall).where(LlmCall.purpose == "chat").order_by(LlmCall.id)))
 
 
+def test_t45_chat_references_use_original_question(db_sessionmaker,alice,ready_task,llm,monkeypatch):
+    from app.laws import retrieve
+    user,c,h=alice
+    task=reviewed(db_sessionmaker,user,c,h,ready_task,llm)
+    with db_sessionmaker() as db:
+        settings_store.set_setting(db,'laws.refs_enabled',True,None);db.commit()
+    queries=[]
+    monkeypatch.setattr(retrieve.engine,'embed',lambda texts,kind:queries.extend(texts) or [[1.0]+[0.0]*1023])
+    monkeypatch.setattr(retrieve,'search',lambda *a:[dict(id=i,title='示例供货法',article_no='第三条',text='依约交付。',score=0.9) for i in range(9)])
+    requests=[]
+    llm(handler=chat_reply('建议核实约定',requests))
+    with db_sessionmaker() as db:
+        service.send(db,db.get(Task,task.id),user,'付款期限是否合理？')
+    assert queries==['付款期限是否合理？']
+    message=requests[0]['messages'][1]['content']
+    assert '【参考法条】' in message and message.count('[LAW')==5
+
+
 @pytest.mark.parametrize("outcome", ["success", "blocked", "gateway_error"])
 def test_v2c_chat_activity_and_readonly_report(alice, db_sessionmaker, ready_task, llm, monkeypatch, outcome):
     from datetime import timedelta

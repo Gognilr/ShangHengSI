@@ -69,6 +69,36 @@ def test_t43_sync_queue_upgrade_downgrade():
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
+
+def test_t45_refs_upgrade_downgrade_defaults():
+    name = 'aireview_test_' + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        cfg=_alembic(_url_for(name))
+        command.upgrade(cfg,'0020')
+        with psycopg.connect(_url_for(name),autocommit=True) as conn:
+            owner=_insert_user(conn)
+            task=_insert_task(conn,owner)
+            run=conn.execute("INSERT INTO review_runs(task_id,run_no,status,stance,source,main_doc_type,created_by,queued_at) "
+                             "VALUES(%s,1,'completed','sales','incoming','contract',%s,now()) RETURNING id",(task,owner)).fetchone()[0]
+            conn.execute("INSERT INTO findings(run_id,task_id,seq,title,category,severity,cite_status,problem) "
+                         "VALUES(%s,%s,1,'示例','legal','low','unverified','示例问题')",(run,task))
+        command.upgrade(cfg,'0021')
+        with psycopg.connect(_url_for(name),autocommit=True) as conn:
+            assert conn.execute('SELECT law_refs,law_unverified,source FROM findings').fetchone()==([],False,'model')
+            cols=dict(conn.execute("SELECT column_name,column_default FROM information_schema.columns WHERE table_name='findings'"))
+            assert cols['law_refs']=="'[]'::jsonb" and cols['law_unverified']=='false'
+            assert cols['source']=="'model'::character varying"
+        command.downgrade(cfg,'0020')
+        with psycopg.connect(_url_for(name),autocommit=True) as conn:
+            cols={r[0] for r in conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='findings'")}
+            assert not {'law_refs','law_unverified','source'} & cols
+        command.upgrade(cfg,'head')
+    finally:
+        with psycopg.connect(ADMIN_URL,autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
 TYPE_ALIASES = {
     'vector1024': 'vector(1024)',
     "uuid": "uuid",
@@ -454,6 +484,7 @@ SCHEMA['task_clause_vectors'] = """
     model v60 NN"""
 
 PRIMARY_KEYS = {t: ["id"] for t in SCHEMA}
+SCHEMA['findings'] += "\n    law_refs jsonb NN ='[]'\n    law_unverified bool NN =false\n    source v10 NN ='model'"
 PRIMARY_KEYS.update(
     sessions=["token_hash"], redaction_maps=["task_id"], settings=["key"], requirement_versions=["version"]
 )
@@ -585,6 +616,9 @@ ENUM_COLUMNS = {
     ("backup_records", "trigger"): ["schedule", "manual"],
     ("backup_records", "status"): ["running", "success", "failed"],
 }
+
+
+ENUM_COLUMNS[('findings','source')] = ['model','template']
 
 
 def _parse_schema(spec: str):

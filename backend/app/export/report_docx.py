@@ -170,6 +170,10 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     for finding in detail.findings:
         problem = [text(finding.problem)]
         problem += [label + text(value) for label, value in (("对我方的影响：", finding.impact), ("依据：", finding.basis)) if value]
+        for ref in finding.law_refs:
+            problem.append(f"依据：《{_clean(ref['title'])}》{_clean(ref.get('article_no') or '')}\n{_clean(ref['text'])}")
+        if finding.law_unverified:
+            problem.append('引用未经法规库核实')
         suggestion = ([text(finding.suggestion)] if finding.suggestion else [])
         if finding.suggested_text:
             suggestion.append("建议措辞：" + text(finding.suggested_text))

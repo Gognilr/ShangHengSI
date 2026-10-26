@@ -99,6 +99,7 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
             quote_snapshot_enc=crypto.encrypt_text(f.quote_snapshot) if f.quote_snapshot is not None else None,
             problem=f.problem, impact=f.impact, suggestion=f.suggestion, suggested_text=f.suggested_text,
             basis=f.basis,
+            law_refs=f.law_refs, law_unverified=f.law_unverified,
         ))
     high = sum(1 for f in review.findings if f.severity == "high")
     now = utcnow()
@@ -193,6 +194,8 @@ def _review_chunk(db: Session, ctx: ReviewContext, run_id: uuid.UUID, chunk: Chu
     """审核一段（只有 1 段时消息与不分段相同）。网关拦截时把整轮置为 blocked 并返回 None；其他失败返回失败的结果。"""
     run = db.get(ReviewRun, run_id)
     try:
+        from app.laws.retrieve import prepare
+        prepare(db,ctx,chunk if chunk.total>1 else None,nodes)
         review = review_once(db, ctx, run=run, user_id=run.created_by, chunk=chunk if chunk.total > 1 else None,
                              nodes=nodes)
     except GatewayError as exc:

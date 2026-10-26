@@ -515,6 +515,7 @@ class Finding(Base):
         enum_check("severity", SEVERITIES),
         enum_check("cite_status", ["verified", "unverified", "missing"]),
         enum_check("handling_status", ["pending", "adopted", "ignored"]),
+        enum_check("source", ["model", "template"]),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -534,6 +535,9 @@ class Finding(Base):
     missing: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     cite_status: Mapped[str] = mapped_column(String(10), nullable=False)
     quote_model: Mapped[Optional[str]] = mapped_column(Text)
+    law_refs: Mapped[Any] = _jsonb_list()
+    law_unverified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('false'))
+    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'model'"))
     quote_snapshot_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     problem: Mapped[str] = mapped_column(Text, nullable=False)
     impact: Mapped[Optional[str]] = mapped_column(Text)

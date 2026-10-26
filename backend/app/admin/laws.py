@@ -23,6 +23,27 @@ router = APIRouter(prefix='/admin', dependencies=[Depends(require_biz_admin)])
 LawStatus = Literal['not_yet', 'valid', 'amended', 'repealed']
 
 
+class LawSettings(BaseModel):
+    model_config = ConfigDict(extra='forbid',strict=True)
+    refs_enabled: bool
+
+
+@router.get('/settings/laws')
+def get_law_settings(db: Session = Depends(get_db)):
+    from app.admin.settings_store import get_setting
+    return {'refs_enabled':get_setting(db,'laws.refs_enabled')}
+
+
+@router.put('/settings/laws')
+def put_law_settings(body: LawSettings, request: Request, admin: User = Depends(require_biz_admin),
+                     db: Session = Depends(get_db)):
+    from app.admin.settings_store import set_setting
+    set_setting(db,'laws.refs_enabled',body.refs_enabled,admin.id)
+    audit.record(db,'laws_settings',user_id=admin.id,detail={'refs_enabled':body.refs_enabled},ip=client_ip(request))
+    db.commit()
+    return body
+
+
 def law_dict(row):
     return {**{k: getattr(row, k) for k in ('id', 'title', 'category', 'status', 'published_on',
                                           'effective_on', 'replaced_by', 'source')},

@@ -100,6 +100,8 @@ class FindingOut(BaseModel):
     suggestion: str | None
     suggested_text: str | None
     basis: str | None
+    law_refs: list[dict] = []
+    law_unverified: bool = False
     handling_status: str
     handling_note: str | None
 
@@ -344,6 +346,7 @@ class _View:
             quote=quote, problem=self.text(f.problem) or "", impact=self.text(f.impact),
             suggestion=self.text(f.suggestion), suggested_text=self.text(f.suggested_text), basis=self.text(f.basis),
             handling_status=f.handling_status, handling_note=f.handling_note,
+            law_refs=f.law_refs, law_unverified=f.law_unverified,
         )
 
 

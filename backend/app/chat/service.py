@@ -331,6 +331,10 @@ def send(db: Session, task: Task, user: User, message: str, decisions: list[dict
     question = (_redact_and_record(db, task, message, decisions) if decisions
                 else _redact_and_record(db, task, message))
     messages = build_messages(db, task, run, question)
+    from app.laws.retrieve import question_refs
+    law_section = question_refs(db,task,message)
+    if law_section:
+        messages[1]['content'] += '\n'+law_section
     try:
         result = gateway.call_model(db, purpose="chat", messages=messages, user_id=user.id, task_id=task.id,
                                     task_title=task.title, json_mode=False, timeout_s=TIMEOUT_S, retry=False)
