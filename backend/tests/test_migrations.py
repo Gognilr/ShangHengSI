@@ -1220,6 +1220,8 @@ def test_v2c_0014_upgrade_safety_and_downgrade(legacy, original, tasks):
                 assert conn.execute("SELECT count(*) FROM tasks WHERE last_activity_at IS DISTINCT FROM "
                                     "coalesce(last_completed_at,updated_at,created_at)").fetchone()[0] == 0
         if legacy:
+            # E-04：当前清理代码只在已完成迁移的库上运行；0014 的原断言仍在上方验证。
+            command.upgrade(cfg, "head")
             engine = create_engine(normalize_url(url))
             try:
                 with Session(engine) as db:
@@ -1232,6 +1234,7 @@ def test_v2c_0014_upgrade_safety_and_downgrade(legacy, original, tasks):
                 assert conn.execute("SELECT count(*) FROM audit_logs WHERE action='task_delete'").fetchone()[0] == 1
                 deleted = conn.execute("SELECT count(*) FROM task_files WHERE original_deleted_at IS NOT NULL").fetchone()[0]
                 assert deleted == (2 if original == 30 else 1 if original == 45 else 0)
+            command.downgrade(cfg, "0014")
         command.downgrade(cfg, "0013")
         with psycopg.connect(url, autocommit=True) as conn:
             assert conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='tasks' "

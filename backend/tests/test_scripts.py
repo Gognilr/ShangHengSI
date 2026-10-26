@@ -193,7 +193,7 @@ def test_m8_configuration():
             inside = False
         elif not inside:
             release_lines.append(line)
-    assert not inside and text.count("# build-begin") == 3
+    assert not inside and text.count("# build-begin") == 4
     release = yaml.safe_load("\n".join(release_lines))
     assert all("build" not in service for service in release["services"].values())
     assert "default_sni {$SITE_ADDRESS:localhost}" in (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
