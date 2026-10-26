@@ -186,9 +186,9 @@
    * 响应按不可信输入处理：JSON 必须 `code == 200` 且字段类型符合预期（rows 中 bbbs 为 32 位十六进制、title 为 ≤ 300 字的字符串、日期为 `YYYY-MM-DD` 或 null、sxx 为 1～4 或 null），否则抛 `SyncError("BAD_RESPONSE")`；返回 HTML、验证码或非 200 状态时抛 `SyncError("BLOCKED")`；网络错误抛 `SyncError("NETWORK")`。不重试、不处理验证码。
 2. **同步流程**（`law_sync`，维护组）：
    1. 定时检查（`register_periodic`，每小时）：`lawsync.enabled` 为 true、距 `lawsync.last_run_at` 已满 30 天（monthly）或 7 天（weekly）、没有 parsing / pending 的导入记录时入队一次。`POST /admin/lawsync/run`（系统管理员）立即入队一次（开关关闭时 409；有未完成导入时 409 LAW\_IMPORT\_PENDING）。
-   2. 拉目录：分类 法律（codeId 102，含其下级）、行政法规（210）、司法解释（320、330、340），时效性 1～4，每页 100，逐页直到取完；总页数超过 60 页即中止（异常数据保护）。sxx 为空的行跳过。
+   2. 拉目录：分类 法律（官网“法律 > 法律”节点的 codeIdList：102、110 宪法相关法、120 民法商法、130 行政法、140 经济法、150 社会法、155 生态环境法、160 刑法、170 诉讼与非诉讼程序法；官网条目只挂在叶子码上，单发 102 取不到法律，V2Q-109）、行政法规（210）、司法解释（320、330、340），一次请求同时发送这 13 个码，出口白名单同此；时效性 1～4，每页 100，逐页直到取完；总页数超过 60 页即中止（异常数据保护）。sxx 为空的行跳过。
    3. 比对规则同 2.3 第 4 条，键为“标题 + 公布日期”；新行与已有行写入 flk\_id；内置行同键时只更新 status、category、office、effective\_on。
-   4. 拉全文：本次新增且 status 为 valid 的法律、司法解释，按公布日期从新到旧最多 200 部：`download_urls` 分批取地址、`download_file` 逐个下载，docx / doc 按第五节规则拆条（doc 经 converter），结果写入暂存表 law\_import\_articles（5.1 第 3 条）；单个文件失败只记入 diff 的 fulltext\_failed，不中止。
+   4. 拉全文：本次新增且 status 为 valid 的法律、司法解释（按行中的 flfgCodeId 判断：102～170 九个法律码与 320、330、340；不按 flxz 文字判断，V2Q-109），按公布日期从新到旧最多 200 部：`download_urls` 分批取地址、`download_file` 逐个下载，docx / doc 按第五节规则拆条（doc 经 converter），结果写入暂存表 law\_import\_articles（5.1 第 3 条）；单个文件失败只记入 diff 的 fulltext\_failed，不中止。
    5. 结果写成一条 kind=sync、status=pending 的 law\_imports（diff 另含 `fulltext: [{title, published_on, articles}]`），提醒业务管理员确认（LAW\_IMPORT\_PENDING），**不自动生效**。确认流程同 2.4，全文部分按 5.3 写入。
    6. 任一步抛 SyncError：本次不写 laws、不留下 pending 记录（已写的暂存行删除），`lawsync.last_status = {"ok": false, "at": 时间, "reason": 代码}`；成功时 `{"ok": true, ...}`，并更新 `lawsync.last_run_at`。
    7. 审计 `law_sync_run`（请求数、结果代码、added、changed、全文数），不写 llm\_calls。
