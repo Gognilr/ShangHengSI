@@ -403,7 +403,7 @@ FOREIGN_KEYS = {
 
 # 枚举字段：(表, 字段) -> 合法取值（抽取代表性字段验证 CHECK 约束确实存在并生效）
 ENUM_COLUMNS = {
-    ("users", "role"): ["user", "admin"],
+    ("users", "role"): ["user", "sys_admin", "biz_admin", "admin"],
     ("users", "status"): ["active", "disabled"],
     ("users", "last_stance"): ["sales", "purchase", "other"],
     ("users", "last_source"): ["outgoing", "incoming"],
@@ -1155,4 +1155,30 @@ def test_v2c03_0015_backup_stats_nullable_and_downgrade():
         command.upgrade(cfg, "head")
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_v2c06_0016_role_upgrade_and_downgrade():
+    name = "aireview_test_"+uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL,autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    url = _url_for(name)
+    cfg = _alembic(url)
+    try:
+        command.upgrade(cfg,"0015")
+        with psycopg.connect(url,autocommit=True) as conn:
+            original = _insert_user(conn)
+            conn.execute("UPDATE users SET role='admin' WHERE id=%s",(original,))
+        command.upgrade(cfg,"0016")
+        with psycopg.connect(url,autocommit=True) as conn:
+            assert conn.execute("SELECT role FROM users WHERE id=%s",(original,)).fetchone()[0]=="admin"
+            for role in ("sys_admin","biz_admin"):
+                key = _insert_user(conn)
+                conn.execute("UPDATE users SET role=%s WHERE id=%s",(role,key))
+        command.downgrade(cfg,"0015")
+        with psycopg.connect(url,autocommit=True) as conn:
+            assert conn.execute("SELECT role FROM users").fetchall()==[("admin",)]*3
+        command.upgrade(cfg,"head")
+    finally:
+        with psycopg.connect(ADMIN_URL,autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

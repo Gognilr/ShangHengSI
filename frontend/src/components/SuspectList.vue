@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { Suspect, UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
 import { MANUAL_CATEGORY_OPTIONS, suspectReasonLabel, toOptions } from '@/utils/labels'
 
 const props = defineProps<{ suspects: Suspect[]; files: TaskFile[]; busy: boolean; selectedLoc?: string }>()
 const emit = defineEmits<{
-  (e: 'decide', id: number, decision: 'replace' | 'ignore', category: UserCategory | null): void
+  (e: 'decide', id: number, decision: 'replace' | 'ignore', category: UserCategory | null, remember?: boolean): void
   (e: 'locate', loc: string): void
 }>()
 
@@ -30,8 +30,11 @@ function where(s: Suspect): string {
 const dlg = ref(false)
 const target = ref<Suspect | null>(null)
 const category = ref<UserCategory>('ORG')
+const remember = ref(false)
+watch(category, () => { remember.value = false })
 
 function askReplace(s: Suspect) {
+  remember.value = false
   target.value = s
   // long_digits 默认“其他”，其余默认“公司”
   category.value = ['person_name', 'person_like'].includes(s.reason) ? 'PERSON' : s.reason === 'long_digits' ? 'CUSTOM' : 'ORG'
@@ -40,7 +43,7 @@ function askReplace(s: Suspect) {
 
 function submitReplace() {
   if (!target.value) return
-  emit('decide', target.value.id, 'replace', category.value)
+  emit('decide', target.value.id, 'replace', category.value, category.value === 'CUSTOM' && remember.value)
   dlg.value = false
 }
 </script>
@@ -99,6 +102,7 @@ function submitReplace() {
       <el-radio-group v-model="category">
         <el-radio v-for="o in categoryOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
       </el-radio-group>
+      <el-checkbox v-if="category === 'CUSTOM'" v-model="remember">以后自动替换</el-checkbox>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
         <el-button type="primary" @click="submitReplace">确定</el-button>

@@ -2,6 +2,7 @@
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { adminUsersApi, type UserRow } from '@/api/admin'
+import type { Role } from '@/api/auth'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { ROLE_OPTIONS, roleLabel, toOptions, userStatusLabel } from '@/utils/labels'
@@ -38,7 +39,7 @@ const formRef = ref<FormInstance>()
 const dialog = ref<'' | 'create' | 'edit'>('')
 const editing = ref<UserRow | null>(null)
 const submitting = ref(false)
-const form = reactive({ username: '', display_name: '', password: '', role: 'user' as 'user' | 'admin' })
+const form = reactive({ username: '', display_name: '', password: '', role: 'user' as Role })
 
 function validatePassword(_rule: unknown, value: string, callback: (e?: Error) => void) {
   if (value.length < 8) return callback(new Error('密码至少 8 位'))

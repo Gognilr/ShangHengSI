@@ -67,9 +67,9 @@ export const redactionApi = {
   saveParties: (taskId: string, items: PartyUpdate[]) =>
     http.put<{ items: Party[] }>(`/tasks/${taskId}/parties`, { items }),
   redaction: (taskId: string) => http.get<RedactionInfo>(`/tasks/${taskId}/redaction`),
-  decideSuspect: (taskId: string, suspectId: number, decision: 'replace' | 'ignore', category: UserCategory | null) =>
-    http.post<RedactionInfo>(`/tasks/${taskId}/redaction/suspects/${suspectId}`, { decision, category }),
-  manual: (taskId: string, body: { loc: string; char_start: number; char_end: number; category: UserCategory }) =>
+  decideSuspect: (taskId: string, suspectId: number, decision: 'replace' | 'ignore', category: UserCategory | null, remember = false) =>
+    http.post<RedactionInfo>(`/tasks/${taskId}/redaction/suspects/${suspectId}`, { decision, category, ...(remember ? { remember: true } : {}) }),
+  manual: (taskId: string, body: { loc: string; char_start: number; char_end: number; category: UserCategory; remember?: boolean }) =>
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/manual`, body),
   revoke: (taskId: string, body: { loc: string; char_start: number; char_end: number }) =>
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/revoke`, body),

@@ -7,16 +7,23 @@ import { ApiError, setCsrfToken } from '@/api/http'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const alerts = ref<AdminAlert[]>([])
+  const dismissedAlerts = ref(new Set<string>())
+  const alertKey = (alert: AdminAlert) => JSON.stringify([alert.code ?? '', alert.message])
+  const visibleAlerts = computed(() => alerts.value.filter(alert => !dismissedAlerts.value.has(alertKey(alert))))
+  function dismissAlert(alert: AdminAlert): void { dismissedAlerts.value.add(alertKey(alert)) }
   // 是否已向服务端确认过登录状态（路由守卫只在首次导航时探测一次）
   const loaded = ref(false)
 
   const isLoggedIn = computed(() => user.value !== null)
-  const isAdmin = computed(() => user.value?.role === 'admin')
+  const canSysAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'sys_admin')
+  const canBizAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'biz_admin')
+  const isAdmin = computed(() => canSysAdmin.value || canBizAdmin.value)
   const mustChangePassword = computed(() => user.value?.must_change_password === true)
 
   function clear(): void {
     user.value = null
     alerts.value = []
+    dismissedAlerts.value.clear()
     setCsrfToken('')
   }
 
@@ -24,6 +31,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function refresh(): Promise<void> {
     try {
       const me = await authApi.me()
+      if (user.value?.id !== me.user.id) dismissedAlerts.value.clear()
       user.value = me.user
       alerts.value = me.alerts
       setCsrfToken(me.csrf_token)
@@ -39,6 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(username: string, password: string): Promise<void> {
+    clear()
     const res = await authApi.login(username, password)
     user.value = res.user
     setCsrfToken(res.csrf_token)
@@ -64,9 +73,13 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     user,
     alerts,
+    visibleAlerts,
+    dismissAlert,
     loaded,
     isLoggedIn,
     isAdmin,
+    canSysAdmin,
+    canBizAdmin,
     mustChangePassword,
     clear,
     refresh,

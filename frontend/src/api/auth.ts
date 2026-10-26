@@ -1,6 +1,6 @@
 import { http } from './http'
 
-export type Role = 'user' | 'admin'
+export type Role = 'user' | 'sys_admin' | 'biz_admin' | 'admin'
 
 export interface User {
   id: string

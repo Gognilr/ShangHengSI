@@ -127,7 +127,7 @@ export const MANUAL_CATEGORY_OPTIONS: Dict = {
 }
 
 /** 账号角色、状态（设置 - 账号）。 */
-export const ROLE_OPTIONS: Dict = { user: '普通用户', admin: '管理员' }
+export const ROLE_OPTIONS: Dict = { user: '普通用户', sys_admin: '系统管理员', biz_admin: '业务管理员', admin: '系统与业务管理员' }
 export const roleLabel = pick(ROLE_OPTIONS)
 export const USER_STATUS: Dict = { active: '启用中', disabled: '已停用' }
 export const userStatusLabel = pick(USER_STATUS)

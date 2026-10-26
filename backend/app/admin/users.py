@@ -1,8 +1,8 @@
 """账号管理：/api/v1/admin/users*（SPEC 15.1、19.7，设计 M7 第四节）。
 
-- 全部接口经 require_admin；不提供删除账号的接口。
+- 全部接口经 require_sys_admin；不提供删除账号的接口。
 - 停用账号、重置密码时删除其全部会话；新建与重置后须在首次登录时改密。
-- 最后一个启用中的管理员不能被停用或降级（读全部管理员行时加 FOR UPDATE，防止并发各降一个）。
+- 最后一个启用中的系统管理员不能被停用或降级（按顺序锁定全部系统管理员行，防止并发各降一个）。
 - 审计 detail 只放字段名、角色、状态，不放密码和显示名。
 """
 import re
@@ -20,12 +20,12 @@ from app.audit import service as audit
 from app.db.base import utcnow
 from app.db.models import User
 from app.db.session import get_db
-from app.security.deps import require_admin
+from app.security.deps import require_sys_admin
 from app.security.errors import AppError, NotFoundError
 from app.security.passwords import MAX_LENGTH, hash_password, validate_password_strength
 from app.security.sessions import client_ip, delete_user_sessions
 
-router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/admin", dependencies=[Depends(require_sys_admin)])
 
 # Q-99：用户名只允许字母、数字和 _ . @ -
 _USERNAME = re.compile(r"[A-Za-z0-9_.@-]{1,50}")
@@ -68,7 +68,7 @@ class UserCreateIn(BaseModel):
     display_name: Text50
     # 长度和字符规则由 validate_password_strength 检查，以便返回 PASSWORD_TOO_WEAK
     password: str = Field(max_length=MAX_LENGTH * 2)
-    role: Literal["user", "admin"]
+    role: Literal["user", "sys_admin", "biz_admin", "admin"]
 
     @field_validator("username")
     @classmethod
@@ -82,7 +82,7 @@ class UserPatchIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     display_name: Optional[Text50] = None
-    role: Optional[Literal["user", "admin"]] = None
+    role: Optional[Literal["user", "sys_admin", "biz_admin", "admin"]] = None
     status: Optional[Literal["active", "disabled"]] = None
 
 
@@ -105,7 +105,7 @@ def _load_user(db: DbSession, uid: str, *, lock: bool = False) -> tuple[User, li
         return user, []
     rows = db.scalars(
         select(User)
-        .where((User.role == "admin") | (User.id == key))
+        .where(User.role.in_(("sys_admin", "admin")) | (User.id == key))
         .order_by(User.id)
         .with_for_update()
         .execution_options(populate_existing=True)
@@ -113,7 +113,7 @@ def _load_user(db: DbSession, uid: str, *, lock: bool = False) -> tuple[User, li
     user = next((u for u in rows if u.id == key), None)
     if user is None:
         raise NotFoundError("USER_NOT_FOUND", "账号不存在")
-    return user, [u for u in rows if u.role == "admin"]
+    return user, [u for u in rows if u.role in ("sys_admin", "admin")]
 
 
 @router.get("/users", response_model=UserList)
@@ -126,7 +126,7 @@ def list_users(db: DbSession = Depends(get_db)) -> UserList:
 def create_user(
     body: UserCreateIn,
     request: Request,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_sys_admin),
     db: DbSession = Depends(get_db),
 ) -> UserRow:
     validate_password_strength(body.password)
@@ -168,7 +168,7 @@ def update_user(
     uid: str,
     body: UserPatchIn,
     request: Request,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_sys_admin),
     db: DbSession = Depends(get_db),
 ) -> UserRow:
     user, admins = _load_user(db, uid, lock=True)
@@ -179,9 +179,9 @@ def update_user(
     if is_self and (new_role is not None or new_status is not None):
         raise AppError(409, "SELF_CHANGE", "不能停用自己或修改自己的角色")
 
-    # 停用或降级一个启用中的管理员时，确认之后还有别的启用中的管理员
-    demotes = user.role == "admin" and user.status == "active" and (
-        new_role == "user" or new_status == "disabled"
+    # 停用或降级一个启用中的系统管理员时，确认之后还有别的启用中的系统管理员。
+    demotes = user.role in ("sys_admin", "admin") and user.status == "active" and (
+        new_role in ("user", "biz_admin") or new_status == "disabled"
     )
     if demotes:
         if not any(a.id != user.id and a.status == "active" for a in admins):
@@ -224,7 +224,7 @@ def reset_password(
     uid: str,
     body: ResetPasswordIn,
     request: Request,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_sys_admin),
     db: DbSession = Depends(get_db),
 ) -> Response:
     user, _ = _load_user(db, uid)

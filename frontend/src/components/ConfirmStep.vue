@@ -104,12 +104,12 @@ async function afterChange(info: RedactionInfo) {
   }
 }
 
-async function decideSuspect(id: number, decision: 'replace' | 'ignore', category: UserCategory | null) {
+async function decideSuspect(id: number, decision: 'replace' | 'ignore', category: UserCategory | null, remember = false) {
   if (deciding.value) return
   deciding.value = true
   submitError.value = ''
   try {
-    await afterChange(await redactionApi.decideSuspect(props.task.id, id, decision, category))
+    await afterChange(await redactionApi.decideSuspect(props.task.id, id, decision, category, remember))
   } catch (e) {
     handleError(e)
     try {

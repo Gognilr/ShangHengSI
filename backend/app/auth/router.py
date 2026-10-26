@@ -48,7 +48,7 @@ def logout(ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get
 @router.get("/me", response_model=MeOut)
 def me(ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)) -> MeOut:
     # 提醒只给管理员，且须已改密（须改密时先去改密，不查询系统状态）
-    alerts = admin_alerts(db) if ctx.user.role == "admin" and not ctx.user.must_change_password else []
+    alerts = admin_alerts(db, ctx.user.role) if ctx.user.role != "user" and not ctx.user.must_change_password else []
     return MeOut(user=UserOut.of(ctx.user), csrf_token=ctx.session.csrf_token, alerts=alerts)
 
 

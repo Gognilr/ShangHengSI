@@ -71,7 +71,7 @@ def _task_fk() -> Any:
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        enum_check("role", ["user", "admin"]),
+        enum_check("role", ["user", "sys_admin", "biz_admin", "admin"]),
         enum_check("status", ["active", "disabled"]),
         enum_check("last_stance", STANCES),
         enum_check("last_source", SOURCES),

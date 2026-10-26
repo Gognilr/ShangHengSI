@@ -78,6 +78,7 @@ UserCategory = Literal["ORG", "PERSON", "IM", "ACCOUNT", "IDNO", "REFNO", "ADDR"
 class SuspectDecision(BaseModel):
     decision: Literal["replace", "ignore"]
     category: UserCategory | None = None
+    remember: StrictBool = False
 
 
 class ManualRedaction(BaseModel):
@@ -85,6 +86,7 @@ class ManualRedaction(BaseModel):
     char_start: StrictInt
     char_end: StrictInt
     category: UserCategory
+    remember: StrictBool = False
 
 
 class RevokeRedaction(BaseModel):
@@ -188,7 +190,8 @@ def decide_suspect(
     if suspect_id is None:
         raise NotFoundError("SUSPECT_NOT_FOUND", "疑似遗漏不存在")
     try:
-        engine.decide_suspect(db, locked, suspect_id, decision=body.decision, category=body.category, user_id=user.id)
+        engine.decide_suspect(db, locked, suspect_id, decision=body.decision, category=body.category, user_id=user.id,
+                              **({"remember": True} if body.remember else {}))
     except engine.RedactionInputError as exc:
         db.rollback()  # 不保留本次的任何修改（也释放任务行锁）
         raise _input_error(exc) from None
@@ -199,12 +202,12 @@ def decide_suspect(
 
 @router.post("/redaction/manual", response_model=RedactionOut)
 def manual_redaction(
-    body: ManualRedaction, task: Task = Depends(owned_task), db: DbSession = Depends(get_db),
+    body: ManualRedaction, task: Task = Depends(owned_task), db: DbSession = Depends(get_db), user: User = Depends(current_user),
 ) -> RedactionOut:
     locked = _lock_awaiting(db, task)
     try:
         engine.add_user_term(db, locked, loc=body.loc, char_start=body.char_start, char_end=body.char_end,
-                             category=body.category)
+                             category=body.category, **({"remember": True, "user_id": user.id} if body.remember else {}))
     except engine.RedactionInputError as exc:
         db.rollback()  # 不保留本次的任何修改（也释放任务行锁）
         raise _input_error(exc) from None

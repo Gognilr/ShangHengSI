@@ -28,6 +28,89 @@ def url(task, suffix):
     return f"{API_PREFIX}/tasks/{task.id}/{suffix}"
 
 
+@pytest.mark.parametrize("mode", ["manual", "suspect"])
+def test_v2c06_remember_custom_immediate_and_deduplicated(alice,db_sessionmaker,ready_task,mode):
+    from app.db.models import RedactionSuspect
+    from app.security.crypto import encrypt_text
+    user,c,h = alice
+    task = ready_task(user)
+    duplicate_task = ready_task(user, user_note="示例简称用于另一任务")
+    with db_sessionmaker() as db:
+        node = db.scalar(select(DocNode).where(DocNode.task_id==task.id,DocNode.part=="body"))
+        node.text_enc = encrypt_text("示例简称用于本次报价。")
+        loc = node.loc
+        db.commit()
+    if mode == "manual":
+        response = c.post(url(task,"redaction/manual"),json={"loc":loc,"char_start":0,"char_end":4,"category":"CUSTOM","remember":True},headers=h)
+    else:
+        with db_sessionmaker() as db:
+            suspect = RedactionSuspect(task_id=task.id,loc=loc,char_start=0,char_end=4,reason="capitalized")
+            db.add(suspect)
+            db.commit()
+            sid = suspect.id
+        response = c.post(url(task,f"redaction/suspects/{sid}"),json={"decision":"replace","category":"CUSTOM","remember":True},headers=h)
+    assert response.status_code == 200,response.text
+    duplicate = c.post(url(duplicate_task,"redaction/manual"),
+                       json={"loc":"NOTE","char_start":0,"char_end":4,"category":"CUSTOM","remember":True}, headers=h)
+    assert duplicate.status_code == 200, duplicate.text
+    with db_sessionmaker() as db:
+        terms = list(db.scalars(select(RedactionTerm).where(RedactionTerm.kind=="custom")))
+        assert len(terms)==1 and decrypt_text(terms[0].term_enc)=="示例简称"
+        assert terms[0].category=="CUSTOM" and terms[0].enabled and terms[0].created_by==user.id
+    next_task = ready_task(user,user_note="示例简称用于补充要求")
+    with db_sessionmaker() as db:
+        assert "示例简称" not in (db.get(Task,next_task.id).user_note_redacted or "")
+        assert len(list(db.scalars(select(RedactionTerm).where(RedactionTerm.kind=="custom")))) == 1
+
+
+@pytest.mark.parametrize("mode", ["manual", "suspect"])
+def test_v2c06_remember_prompt_conflict_is_atomic(alice,db_sessionmaker,ready_task,mode):
+    from app.db.models import RedactionSuspect
+    from app.security.crypto import encrypt_text
+    user,c,h = alice
+    task = ready_task(user)
+    with db_sessionmaker() as db:
+        node = db.scalar(select(DocNode).where(DocNode.task_id==task.id,DocNode.part=="body"))
+        node.text_enc = encrypt_text("待审核文件")
+        loc = node.loc
+        db.commit()
+        before = [(i.loc,i.char_start,i.char_end,i.placeholder) for i in db.scalars(select(RedactionItem).where(RedactionItem.task_id==task.id))]
+    if mode == "manual":
+        response = c.post(url(task,"redaction/manual"),json={"loc":loc,"char_start":0,"char_end":5,"category":"CUSTOM","remember":True},headers=h)
+    else:
+        with db_sessionmaker() as db:
+            suspect = RedactionSuspect(task_id=task.id,loc=loc,char_start=0,char_end=5,reason="capitalized")
+            db.add(suspect)
+            db.commit()
+            sid = suspect.id
+        response = c.post(url(task,f"redaction/suspects/{sid}"),json={"decision":"replace","category":"CUSTOM","remember":True},headers=h)
+    assert response.status_code==422 and response.json()["code"]=="TERM_IN_PROMPT"
+    with db_sessionmaker() as db:
+        assert list(db.scalars(select(RedactionTerm).where(RedactionTerm.kind=="custom")))==[]
+        assert [(i.loc,i.char_start,i.char_end,i.placeholder) for i in db.scalars(select(RedactionItem).where(RedactionItem.task_id==task.id))]==before
+        if mode == "suspect":
+            assert db.get(RedactionSuspect, sid).decision == "pending"
+
+
+def test_v2c06_remember_does_not_enable_disabled_term(alice,db_sessionmaker,ready_task):
+    from app.security.crypto import encrypt_text
+    user,c,h = alice
+    task = ready_task(user, user_note="示例简称用于本次补充")
+    with db_sessionmaker() as db:
+        term = RedactionTerm(kind="custom",category="CUSTOM",term_hash=engine.term_hash("示例简称"),
+                             term_enc=encrypt_text("示例简称"),enabled=False,created_by=None)
+        db.add(term)
+        db.commit()
+        key = term.id
+    response = c.post(url(task,"redaction/manual"),
+                      json={"loc":"NOTE","char_start":0,"char_end":4,"category":"CUSTOM","remember":True},headers=h)
+    assert response.status_code == 200, response.text
+    with db_sessionmaker() as db:
+        assert not db.get(RedactionTerm,key).enabled
+        assert db.get(RedactionTerm,key).created_by is None
+        assert len(list(db.scalars(select(RedactionTerm).where(RedactionTerm.kind=="custom")))) == 1
+
+
 def parties(client, task):
     r = client.get(url(task, "parties"))
     assert r.status_code == 200, r.text

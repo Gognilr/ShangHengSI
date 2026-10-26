@@ -1077,12 +1077,13 @@ def revoke_redaction(db: Session, task: Task, *, loc: str, char_start: int, char
     return category
 
 
-def add_user_term(db: Session, task: Task, *, loc: str, char_start: int, char_end: int, category: str) -> None:
+def add_user_term(db: Session, task: Task, *, loc: str, char_start: int, char_end: int, category: str,
+                  remember: bool = False, user_id: uuid.UUID | None = None) -> None:
     """手动补充（19.4）：校验位置 → 取原文片段（去掉首尾空白后 2–100 个字符）→ 加入用户词条 → 整体重算。不提交。
 
     同文字全文替换（英文不区分大小写、忽略多余空格）。失败时抛出 RedactionInputError，消息不含原文。
     """
-    if category not in USER_CATEGORIES:
+    if category not in USER_CATEGORIES or remember and (category != "CUSTOM" or user_id is None):
         raise RedactionInputError(422, "VALIDATION_ERROR", "类别不正确")
     if loc == "NOTE":
         text = crypto.decrypt_text(task.user_note_enc) if task.user_note_enc is not None else None
@@ -1100,10 +1101,19 @@ def add_user_term(db: Session, task: Task, *, loc: str, char_start: int, char_en
     if taken:
         raise RedactionInputError(409, "ALREADY_REDACTED", "所选文字已被替换，请选择未替换的文字")
     _add_term(db, task, text, loc, start, end, category)
+    if remember:
+        _remember_custom(db, text[start:end], user_id)
+
+
+def _remember_custom(db: Session, term: str, user_id: uuid.UUID) -> None:
+    """与本次替换同事务保存；同名不重复、不重启业务管理员停用的词条。"""
+    db.execute(pg_insert(RedactionTerm).values(kind="custom", category="CUSTOM", term_hash=term_hash(term),
+               term_enc=crypto.encrypt_text(term), created_by=user_id, enabled=True, created_at=utcnow())
+               .on_conflict_do_nothing(index_elements=["kind", "term_hash"]))
 
 
 def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, category: str | None,
-                   user_id: uuid.UUID | None) -> None:
+                   user_id: uuid.UUID | None, remember: bool = False) -> None:
     """疑似遗漏的决定（19.4）。不提交。
 
     replace：把疑似遗漏的文字作为用户词条（类别 ORG / PERSON / CUSTOM），全文替换后整体重算；
@@ -1114,6 +1124,8 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
         raise RedactionInputError(404, "SUSPECT_NOT_FOUND", "疑似遗漏不存在")
     if decision not in ("replace", "ignore") or (decision == "replace" and category not in USER_CATEGORIES):
         raise RedactionInputError(422, "VALIDATION_ERROR", "处理方式或类别不正确")
+    if remember and (decision != "replace" or category != "CUSTOM" or user_id is None):
+        raise RedactionInputError(422, "VALIDATION_ERROR", "只有其他类别的替换可以选择以后自动替换")
     texts = _texts_with_note(_body_rows(db, task.id), task)
     text = texts.get(row.loc, "")
     now = utcnow()
@@ -1132,6 +1144,8 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
     if end <= start:
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确")
     _add_term(db, task, text, row.loc, start, end, category)  # type: ignore[arg-type]
+    if remember:
+        _remember_custom(db, text[start:end], user_id)
 
 
 def _flat(text: str) -> str:

@@ -96,10 +96,13 @@ interface Sel {
 const sel = ref<Sel | null>(null)
 const selNotice = ref('')
 const category = ref<UserCategory>('ORG')
+const remember = ref(false)
+watch(category, () => { remember.value = false })
 const saving = ref(false)
 const saveError = ref('')
 
 function clearSel() {
+  remember.value = false
   sel.value = null
   selNotice.value = ''
   saveError.value = ''
@@ -179,6 +182,7 @@ async function submit() {
       char_start: sel.value.start,
       char_end: sel.value.end,
       category: category.value,
+      ...(category.value === 'CUSTOM' && remember.value ? { remember: true } : {}),
     })
     window.getSelection()?.removeAllRanges()
     clearSel()
@@ -223,6 +227,7 @@ async function submit() {
       <el-radio-group v-model="category">
         <el-radio v-for="o in categoryOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
       </el-radio-group>
+      <el-checkbox v-if="category === 'CUSTOM'" v-model="remember" :disabled="saving">以后自动替换</el-checkbox>
       <el-button type="primary" :loading="saving" @click="submit">设为敏感信息</el-button>
     </div>
     <el-alert v-if="saveError" type="error" show-icon :closable="false" :title="saveError" class="gap" />

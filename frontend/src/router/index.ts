@@ -19,6 +19,7 @@ declare module 'vue-router' {
     public?: boolean
     /** 仅管理员可访问 */
     admin?: boolean
+    adminScope?: 'sys' | 'biz'
   }
 }
 
@@ -42,11 +43,11 @@ export const router = createRouter({
           meta: { admin: true },
           children: [
             { path: '', redirect: '/settings/users' },
-            { path: 'users', name: 'settings-users', component: Users },
-            { path: 'model', name: 'settings-model', component: Model },
-            { path: 'requirements', name: 'settings-requirements', component: Requirements },
-            { path: 'redaction', name: 'settings-redaction', component: Redaction },
-            { path: 'data', name: 'settings-data', component: Data },
+            { path: 'users', name: 'settings-users', component: Users, meta: { adminScope: 'sys' } },
+            { path: 'model', name: 'settings-model', component: Model, meta: { adminScope: 'sys' } },
+            { path: 'requirements', name: 'settings-requirements', component: Requirements, meta: { adminScope: 'biz' } },
+            { path: 'redaction', name: 'settings-redaction', component: Redaction, meta: { adminScope: 'biz' } },
+            { path: 'data', name: 'settings-data', component: Data, meta: { adminScope: 'sys' } },
           ],
         },
       ],
@@ -79,6 +80,10 @@ router.beforeEach(async (to) => {
   if (to.meta.admin && !auth.isAdmin) {
     ElMessage.error('没有权限访问该页面')
     return { path: HOME_PATH }
+  }
+
+  if ((to.meta.adminScope === 'sys' && !auth.canSysAdmin) || (to.meta.adminScope === 'biz' && !auth.canBizAdmin)) {
+    return { path: auth.canSysAdmin ? '/settings/users' : '/settings/requirements' }
   }
 
   return true

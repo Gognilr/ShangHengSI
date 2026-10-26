@@ -59,7 +59,11 @@ def _cap_alerts(db: Session) -> list[dict]:
     return []
 
 
-def admin_alerts(db: Session) -> list[dict]:
+def admin_alerts(db: Session, role: str = "admin") -> list[dict]:
+    if role == "biz_admin":
+        return _prompt_term_alerts(db)
+    if role not in ("sys_admin", "admin"):
+        return []
     retention = [{"code": "RETENTION_REVIEW", "message":
                   "数据保留已改为分层设置，新增的保留项暂为永久，请在设置 → 数据中确认"}] \
         if get_setting(db, "retention.review_pending") else []

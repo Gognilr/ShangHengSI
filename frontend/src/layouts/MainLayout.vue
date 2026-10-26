@@ -56,13 +56,15 @@ async function onCommand(cmd: string) {
     </el-header>
 
     <!-- 管理员提醒条（SPEC 6.7），沿用登录状态返回的提醒内容。 -->
-    <div v-if="auth.isAdmin && auth.alerts.length" class="alerts">
+    <div v-if="auth.isAdmin && auth.visibleAlerts.length" class="alerts">
       <el-alert
-        v-for="(a, i) in auth.alerts"
-        :key="i"
+        v-for="a in auth.visibleAlerts"
+        :key="JSON.stringify([a.code, a.message])"
         type="warning"
         show-icon
-        :closable="false"
+        :closable="true"
+        close-text="本次收起"
+        @close="auth.dismissAlert(a)"
         :title="a.message"
       />
     </div>

@@ -1,23 +1,25 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { User, Cpu, List, Lock, Coin } from '@element-plus/icons-vue'
 
-// 设置页导航与原子路由一一对应，权限仍由路由 meta.admin 校验。
-const tabs = [
-  { name: 'users', label: '账号', icon: User },
-  { name: 'model', label: '模型', icon: Cpu },
-  { name: 'requirements', label: '审核要求', icon: List },
-  { name: 'redaction', label: '脱敏', icon: Lock },
-  { name: 'data', label: '数据', icon: Coin },
-]
+// 设置页导航与路由一一对应，分页权限由路由角色守卫校验。
+const auth = useAuthStore()
+const tabs = computed(() => [
+  { name: 'users', label: '账号', icon: User, scope: 'sys' },
+  { name: 'model', label: '模型', icon: Cpu, scope: 'sys' },
+  { name: 'requirements', label: '审核要求', icon: List, scope: 'biz' },
+  { name: 'redaction', label: '脱敏', icon: Lock, scope: 'biz' },
+  { name: 'data', label: '数据', icon: Coin, scope: 'sys' },
+].filter(tab => tab.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin))
 
 const route = useRoute()
 const router = useRouter()
 
 const activeTab = computed(() => {
-  const hit = tabs.find((t) => route.path === `/settings/${t.name}`)
-  return hit ? hit.name : 'users'
+  const hit = tabs.value.find((t) => route.path === `/settings/${t.name}`)
+  return hit ? hit.name : tabs.value[0]?.name ?? ''
 })
 
 function onTabChange(name: string | number) {

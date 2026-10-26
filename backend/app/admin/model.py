@@ -23,11 +23,11 @@ from app.db.session import get_db
 from app.llm import gateway
 from app.llm.usage import monthly_usage
 from app.security import crypto
-from app.security.deps import require_admin
+from app.security.deps import require_sys_admin
 from app.security.errors import AppError
 from app.security.sessions import client_ip
 
-router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/admin", dependencies=[Depends(require_sys_admin)])
 
 _PRICE = re.compile(r"\d{1,9}(\.\d{1,4})?")
 _KEY_CHARS = re.compile(r"[\x21-\x7e]{8,500}")
@@ -155,7 +155,7 @@ def get_model(db: DbSession = Depends(get_db)) -> ModelSettings:
 def put_model(
     body: ModelSettingsIn,
     request: Request,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_sys_admin),
     db: DbSession = Depends(get_db),
 ) -> ModelSettings:
     extra = body.extra_params
@@ -211,7 +211,7 @@ def put_model(
 
 
 @router.post("/settings/model/test", response_model=ConnectionResult)
-def test_model(admin: User = Depends(require_admin), db: DbSession = Depends(get_db)) -> ConnectionResult:
+def test_model(admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)) -> ConnectionResult:
     try:
         result = gateway.test_connection(db, admin.id)
     except gateway.GatewayError as exc:

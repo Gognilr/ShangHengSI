@@ -23,11 +23,11 @@ from app.redaction import parties
 from app.redaction.engine import term_hash
 from app.redaction.recheck import recheck
 from app.security import crypto
-from app.security.deps import require_admin
+from app.security.deps import require_biz_admin
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 
-router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/admin", dependencies=[Depends(require_biz_admin)])
 
 PAGE_SIZE = 20
 
@@ -84,7 +84,7 @@ def list_our_parties(db: DbSession = Depends(get_db)) -> dict:
 
 
 @router.post("/our-parties", response_model=TermRow, status_code=201)
-def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(require_admin),
+def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(require_biz_admin),
                      db: DbSession = Depends(get_db)) -> TermRow:
     from app.review.prompt import fixed_prompt_text
     if any(r.category == "MAP" for r in recheck(fixed_prompt_text(db), real_values=[body.name], terms=[])):
@@ -108,7 +108,7 @@ def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(r
 
 
 @router.delete("/our-parties/{tid}", status_code=204)
-def delete_our_party(tid: str, request: Request, admin: User = Depends(require_admin),
+def delete_our_party(tid: str, request: Request, admin: User = Depends(require_biz_admin),
                      db: DbSession = Depends(get_db)) -> Response:
     row = _load(db, tid)
     if row.kind != "learned" or not row.is_our_party:
@@ -150,7 +150,7 @@ def get_redaction(db: DbSession = Depends(get_db)) -> MaskQuantity:
 
 @router.put("/settings/redaction", response_model=MaskQuantity)
 def put_redaction(
-    body: MaskQuantity, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    body: MaskQuantity, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
 ) -> MaskQuantity:
     if bool(get_setting(db, "redaction.mask_quantity")) != body.mask_quantity:
         set_setting(db, "redaction.mask_quantity", body.mask_quantity, admin.id)
@@ -183,7 +183,7 @@ def list_terms(
 
 @router.post("/terms", response_model=TermRow, status_code=status.HTTP_201_CREATED)
 def create_term(
-    body: TermIn, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    body: TermIn, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
 ) -> TermRow:
     digest = term_hash(body.term)
     if db.scalar(select(RedactionTerm.id).where(RedactionTerm.kind == "custom", RedactionTerm.term_hash == digest)):
@@ -211,7 +211,7 @@ def create_term(
 
 @router.patch("/terms/{tid}", response_model=TermRow)
 def patch_term(
-    tid: str, body: TermPatch, request: Request, admin: User = Depends(require_admin),
+    tid: str, body: TermPatch, request: Request, admin: User = Depends(require_biz_admin),
     db: DbSession = Depends(get_db),
 ) -> TermRow:
     row = _load(db, tid)
@@ -227,7 +227,7 @@ def patch_term(
 
 @router.delete("/terms/{tid}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_term(
-    tid: str, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    tid: str, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
 ) -> Response:
     row = _load(db, tid)
     _audit(db, admin, request, row, op="delete")

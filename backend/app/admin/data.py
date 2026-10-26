@@ -26,11 +26,11 @@ from app.config import get_settings
 from app.db.base import utcnow
 from app.db.models import BackupRecord, Job, LlmCall, TaskFile, User
 from app.db.session import get_db
-from app.security.deps import require_admin
+from app.security.deps import require_sys_admin
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 
-router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/admin", dependencies=[Depends(require_sys_admin)])
 
 PAGE_SIZE = 20
 _TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
@@ -101,7 +101,7 @@ def get_backup_settings(db: DbSession = Depends(get_db)) -> BackupSettings:
 
 @router.put("/settings/backup", response_model=BackupSettings)
 def put_backup_settings(
-    body: BackupSettingsIn, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    body: BackupSettingsIn, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)
 ) -> BackupSettings:
     value = body.time.strip()
     if not _TIME.fullmatch(value):
@@ -120,7 +120,7 @@ def put_backup_settings(
 
 @router.post("/backup/run", status_code=202)
 def run_backup_now(
-    request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)
 ) -> dict:
     if enqueue_backup(db, trigger="manual", user_id=admin.id) is None:
         db.rollback()
@@ -162,7 +162,7 @@ def get_retention(db: DbSession = Depends(get_db)) -> RetentionSettings:
 
 @router.put("/settings/retention", response_model=RetentionSettings)
 def put_retention(
-    body: RetentionSettings, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    body: RetentionSettings, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)
 ) -> RetentionSettings:
     values = body.model_dump()
     if any(value not in (0, 30, 90, 180, 365) for value in values.values()):

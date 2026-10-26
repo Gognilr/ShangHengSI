@@ -4,7 +4,7 @@
   管理员也一样，没有任何例外；“不存在”与“不是你的”对外完全相同，不暴露对象是否存在。
 - 以 run_id、finding_id 访问时，先查出所属任务再校验归属。
 - 路径中的 id 不是合法 UUID 时同样返回 404，不返回 422。
-- 设置类接口（/api/v1/admin/*）的路由整体挂 require_admin，非管理员返回 403。
+- 设置类接口按职责挂 require_sys_admin 或 require_biz_admin，无权限返回 403。
 
 依赖的参数名与 SPEC 19 节的路径参数一致：/tasks/{id}、/tasks/{id}/files/{fid}、/runs/{rid}、/findings/{fid}。
 """
@@ -27,6 +27,18 @@ def current_user(ctx: AuthContext = Depends(require_auth)) -> User:
 def require_admin(user: User = Depends(current_user)) -> User:
     if user.role != "admin":
         raise AppError(403, "FORBIDDEN", "需要管理员权限")
+    return user
+
+
+def require_sys_admin(user: User = Depends(current_user)) -> User:
+    if user.role not in ("sys_admin", "admin"):
+        raise AppError(403, "FORBIDDEN", "需要系统管理员权限")
+    return user
+
+
+def require_biz_admin(user: User = Depends(current_user)) -> User:
+    if user.role not in ("biz_admin", "admin"):
+        raise AppError(403, "FORBIDDEN", "需要业务管理员权限")
     return user
 
 

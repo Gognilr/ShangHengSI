@@ -30,11 +30,11 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.redaction.recheck import recheck, recheck_context
-from app.security.deps import require_admin
+from app.security.deps import require_biz_admin
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 
-router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/admin", dependencies=[Depends(require_biz_admin)])
 
 MAX_COMPANY_REQUIREMENTS = 100
 MAX_COMBO_REQUIREMENTS = 30
@@ -206,7 +206,7 @@ def _check_combos(db: DbSession, body: CompanyReqIn, excluded=None) -> None:
 
 @router.post("/company-requirements", response_model=CompanyReqRow, status_code=status.HTTP_201_CREATED)
 def create_company_requirement(
-    body: CompanyReqIn, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    body: CompanyReqIn, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
 ) -> CompanyReqRow:
     _lock(db)
     if db.scalar(select(func.count()).select_from(CompanyRequirement)) >= MAX_COMPANY_REQUIREMENTS:
@@ -229,7 +229,7 @@ def create_company_requirement(
 
 @router.put("/company-requirements/{rid}", response_model=CompanyReqRow)
 def update_company_requirement(
-    rid: str, body: CompanyReqIn, request: Request, admin: User = Depends(require_admin),
+    rid: str, body: CompanyReqIn, request: Request, admin: User = Depends(require_biz_admin),
     db: DbSession = Depends(get_db),
 ) -> CompanyReqRow:
     _lock(db)
@@ -249,7 +249,7 @@ def update_company_requirement(
 
 @router.delete("/company-requirements/{rid}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_company_requirement(
-    rid: str, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    rid: str, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
 ) -> Response:
     _lock(db)
     row = _load(db, rid)
@@ -269,7 +269,7 @@ def get_company_profile(db: DbSession = Depends(get_db)) -> ProfileOut:
 
 @router.put("/company-profile", response_model=ProfileOut)
 def put_company_profile(
-    body: ProfileIn, request: Request, admin: User = Depends(require_admin), db: DbSession = Depends(get_db)
+    body: ProfileIn, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
 ) -> ProfileOut:
     _lock(db)
     _reject_sensitive(db, body.text)
