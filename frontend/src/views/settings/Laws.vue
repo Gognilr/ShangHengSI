@@ -43,7 +43,7 @@ async function load(silent = false) {
     rows.value = list.items; total.value = list.total; counts.value = list.counts
     records.value = imports.items; enabled.value = settings.refs_enabled; settingsLoaded.value = true; error.value = ''
     if (detailOpen.value && detail.value?.status === 'parsing') await loadDetail(detail.value.id)
-  } catch (e) { if (!silent) error.value = `加载失败：${err(e)}` }
+  } catch (e) { if (!silent) error.value = `加载失败：${err(e)}。请刷新页面后重试。` }
   finally {
     loading.value = false
     if (reloadQueued && active) { reloadQueued = false; void load() }

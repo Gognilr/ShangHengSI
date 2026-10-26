@@ -27,7 +27,7 @@ async function load(silent = false) {
   if (loading.value) return
   loading.value = true
   try { const result = await templatesApi.list(); if (active) { rows.value = result.items; error.value = '' } }
-  catch (e) { if (!silent) error.value = `加载失败：${err(e)}` }
+  catch (e) { if (!silent) error.value = `加载失败：${err(e)}。请刷新页面后重试。` }
   finally { loading.value = false }
 }
 function open(row?: TemplateRow) {

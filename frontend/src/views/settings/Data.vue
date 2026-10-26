@@ -52,7 +52,7 @@ async function loadSync(silent = false) {
       if (syncTimer) clearInterval(syncTimer)
       syncTimer = null; syncRunning.value = false; await auth.refresh()
     }
-  } catch (e) { if (!silent) syncError.value = e instanceof ApiError ? e.message : '加载失败，请刷新页面' }
+  } catch (e) { if (!silent) syncError.value = `加载法规更新设置失败：${e instanceof ApiError ? e.message : '请求未完成'}。请刷新页面后重试。` }
   finally { syncLoading.value = false }
 }
 async function saveSync() {
