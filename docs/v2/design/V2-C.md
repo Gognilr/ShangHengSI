@@ -280,7 +280,7 @@ E = S 的第一条，L = S 的最后一条
 
 ## 六、设置权限拆分（V2-C-06，测试先行）
 
-**文件范围**：`backend/app/db/models.py`、`backend/app/db/alembic/versions/0016_admin_roles.py`（新）、`backend/app/security/deps.py`、`backend/app/admin/*.py`（替换权限依赖）、`backend/app/auth/router.py`（提醒按角色）、`backend/app/admin/users.py`、`backend/app/cli.py`（只改创建管理员的角色值）、`backend/app/redaction/engine.py` 与 `backend/app/redaction/router.py`（“以后自动替换”）、`frontend/src/router/index.ts`、`frontend/src/layouts/MainLayout.vue`、`frontend/src/views/settings/SettingsLayout.vue`、`frontend/src/views/settings/Users.vue`、`frontend/src/components/ManualRedactDialog.vue`、`frontend/src/components/SuspectList.vue`、`frontend/src/stores/auth.ts`、对应测试。
+**文件范围**：`backend/app/db/models.py`、`backend/app/db/alembic/versions/0016_admin_roles.py`（新）、`backend/app/security/deps.py`、`backend/app/admin/*.py`（替换权限依赖）、`backend/app/auth/router.py`（提醒按角色）、`backend/app/admin/users.py`、`backend/app/cli.py`（只改创建管理员的角色值）、`backend/app/redaction/engine.py` 与 `backend/app/redaction/router.py`（“以后自动替换”）、`frontend/src/router/index.ts`、`frontend/src/layouts/MainLayout.vue`、`frontend/src/views/settings/SettingsLayout.vue`、`frontend/src/views/settings/Users.vue`、`frontend/src/components/ManualRedactDialog.vue`、`frontend/src/components/SuspectList.vue`、`frontend/src/stores/auth.ts`、`frontend/src/api/auth.ts`、`frontend/src/utils/labels.ts`、`frontend/src/api/redaction.ts`、`frontend/src/components/ConfirmStep.vue`（这四个只补角色类型、角色中文名和“以后自动替换”标志的传递，V2Q-68）、对应测试。
 
 ### 6.1 角色
 

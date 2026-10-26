@@ -8,12 +8,12 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
-| V2Q-68 | C-06 前端角色与自动替换的调用链缺少四个范围文件 | 已只读核对：frontend/src/api/auth.ts 的 Role 只有 user/admin，须补 sys_admin/biz_admin；utils/labels.ts 是账号页角色选项与中文名的共用来源；api/redaction.ts 当前只接受既有替换参数，须传自动替换标志；components/ConfirmStep.vue 接收 SuspectList 的 decide 事件再调用接口，须转发该标志。请求只扩这四处类型、文案、参数传递，不改变设计权限、流程或交互。已提交用户选择“批准四处最小扩展 / 先交 Opus 补齐任务卡”，尚未收到答复；C-06 状态仍待执行，未修改实现 | C-06；上述四个前端文件与对应测试 | C-06 实现前 |
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-68 | C-06 前端角色与自动替换的调用链缺少四个范围文件 | 已确认（用户 2026-10-26）：C-06 文件范围加入 frontend/src/api/auth.ts（Role 补 sys_admin/biz_admin）、utils/labels.ts（四个角色中文名）、api/redaction.ts（传“以后自动替换”标志，可选、默认不勾选，不勾选时请求与行为不变）、components/ConfirmStep.vue（转发疑似遗漏的该标志）；只补类型、文案和参数传递，不改设计规定的权限、流程或交互；检查方式同 6.3 #10。已写入 design/V2-C.md 第六节文件范围 | 2026-10-26 |
 | V2Q-66 | C-04 前端错误响应数据与模型设置 API 类型未列入范围 | 用户已确认（2026-10-26，分两次明确批准）：① frontend/src/api/http.ts 仅给 ApiError 增加可选响应数据，旧三参数构造、401/403、提示、下载行为不变；② frontend/src/api/admin.ts 仅给 ModelSettings 增加 user_daily_cap 类型字段。后端重复文件信息由已授权 tasks/router.py 局部返回 JSON，不改公共安全错误模块 | 2026-10-26 |
 | V2Q-65 | 后续 C-04 要求确认发送与追问发送前检查个人日限额，但其文件范围同样遗漏 review/service.py、chat/service.py | 已确认（用户 2026-10-26，按 Opus 修订稿）：已写入 design/V2-C.md 第四节：① 文件范围加 review/service.py（只在 create_run 加预检）、chat/service.py（只在 send 加预检与 USER_CAP_REACHED 错误映射）、frontend/src/api/runs.ts（两条错误提示），列出六个测试文件；C-02 的活动时间授权不沿用。② 共用 usage.cap_reached(db, user_id, purpose)，网关第一步与两处预检都调用；每月照 V1.0（所有 purpose、计数含 test），个人跳过 test 与空 user_id；只读、不预占。③ create_run 在现有状态/疑似/我方/文件类型检查之后、build_context 与出口预检之前；send 在 _require 之后、_redact_and_record 之前。④ 被拒：不建轮次/入队、不写已记住名称与审计、不写问答与脱敏记录、不写 llm_calls、不调模型、不更新活动时间。⑤ 确认发送时**每月上限**也前移预检（用户同意此新行为）（409 CAP_REACHED），V1.0 是建轮次后到 worker 才失败。⑥ 追问预检后网关竞态返回 USER_CAP_REACHED 时映射 409，不落 502。测试由 7 条扩为 15 条（4.3）；SPEC-V2 11.1/15.2、19 同步 | 2026-10-26 |
 | V2Q-64 | C-03 存储统计缺少真实数据来源与部署范围：app 容器未挂载 /backup；无数据库体积历史，无法直接算“近 30 天数据库日均增量” | 已确认（用户 2026-10-26，按 Opus 修订稿）：已写入 design/V2-C.md 第三节：① 不给 app 挂载备份目录（备份含已按保留期删除、尚未轮换掉的数据，面向网络的 app 不应能读），不改 compose。② 由 worker 在每次**成功**备份时测量并写入该备份记录：迁移 0015 给 backup_records 加可空 db_bytes（pg_database_size）、dir_bytes（轮换后备份目录顶层文件之和）、dir_free_bytes；单项测量失败写 NULL、备份仍成功；不建采样表、不加定时任务。V2-C-06 迁移顺延为 0016。③ app 实时测原件占用（遍历 FILES_DIR，不可读为 null）与数据库占用；备份三项取最近一次成功备份记录。④ 估算：30 天内成功备份样本，首末跨度 ≥ 7 天才算，否则 null（insufficient_history）；按实际跨度折算日均、不按 30 天摊薄；负增长按 0；剩余空间读不到为 unavailable；无新增为 no_growth；整数运算。⑤ 存储部分进程内缓存 10 分钟，version/queued_jobs 实时。⑥ 顺带修正：/admin/backup/records 的 free_bytes 现在在 app 内量的是容器自身文件系统，改为取最近一次成功备份的 dir_free_bytes 并给统计时间。测试由 5 条扩为 18 条（3.3）；SPEC-V2 15.5、18、19 同步 | 2026-10-26 |
