@@ -904,3 +904,20 @@ def test_legacy_upload_errors(files_dir, alice, db_sessionmaker, name, fixture, 
     with db_sessionmaker() as db:
         assert db.scalar(select(func.count()).select_from(Task)) == 0
     assert stored_files(files_dir) == []
+
+
+def test_v2q74_r4_rereview_pending_expiry_uses_original_and_result_layers(files_dir, make_user, login, db_sessionmaker):
+    """V2Q-74 R4：重新审核后未提交的任务按原件层、结果层计算到期，不按未完成任务。"""
+    user = make_user("expiry_rereview")
+    c, _ = login("expiry_rereview")
+    tid, _ = make_full_task(db_sessionmaker, user, files_dir)
+    last = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with db_sessionmaker() as db:
+        task = db.get(Task, tid)
+        task.status = "awaiting_confirm"
+        task.latest_run_id = db.scalar(select(ReviewRun.id).where(ReviewRun.task_id == tid))
+        task.last_activity_at = last
+        db.commit()
+    d = c.get(f"{API_PREFIX}/tasks/{tid}").json()
+    assert datetime.fromisoformat(d["original_expires_at"]) == datetime(2026, 1, 31, tzinfo=timezone.utc)
+    assert datetime.fromisoformat(d["task_expires_at"]) == datetime(2027, 1, 1, tzinfo=timezone.utc)

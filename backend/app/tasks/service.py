@@ -275,7 +275,9 @@ def list_tasks(
 
 def _expiry_fields(db: DbSession, task: Task) -> dict:
     original = result = None
-    if task.status in ("reviewed", "completed_local"):
+    # V2Q-74：重新审核后未提交（待确认且有旧轮次）与已审核任务同按原件层、结果层计算。
+    if task.status in ("reviewed", "completed_local") or (
+            task.status == "awaiting_confirm" and task.latest_run_id is not None):
         result_days = int(get_setting(db, "retention.result_days") or 0)
         original_days = int(get_setting(db, "retention.original_days") or 0)
         if result_days:

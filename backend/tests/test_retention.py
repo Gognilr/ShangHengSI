@@ -422,3 +422,53 @@ def test_v2c_schedule_checks_all_layers_and_permanent_disables(db_sessionmaker):
         settings_store.set_setting(db, "retention.audit_days", 30, None)
         db.commit()
         assert retention.check_retention(db, after)
+
+
+# V2Q-74（C-09 审核修订）：重新审核后未提交的任务不按未完成任务整删。
+def _rereview_pending(sm, user, client, headers, ready_task, llm):  # noqa: F811
+    task = reviewed(sm, user, client, headers, ready_task, llm)
+    r = client.patch(f"{API_PREFIX}/tasks/{task.id}", json={"stance": "purchase"}, headers=headers)
+    assert r.status_code == 200, r.text
+    with sm() as db:
+        t = db.get(Task, task.id)
+        assert t.status == "awaiting_confirm" and t.latest_run_id is not None
+        return t
+
+
+def test_v2q74_r1_rereview_pending_follows_result_layer(alice, db_sessionmaker, ready_task, llm):  # noqa: F811
+    user, client, headers = alice
+    task = _rereview_pending(db_sessionmaker, user, client, headers, ready_task, llm)
+    _layers(db_sessionmaker)
+    _activity(db_sessionmaker, task.id, 400)
+    counts = run(db_sessionmaker)
+    assert counts["results"] == 1 and counts["unfinished"] == 0
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id) is None
+
+
+def test_v2q74_r2_rereview_pending_keeps_results_after_unfinished_days(alice, db_sessionmaker, ready_task, llm):  # noqa: F811
+    user, client, headers = alice
+    task = _rereview_pending(db_sessionmaker, user, client, headers, ready_task, llm)
+    _layers(db_sessionmaker)
+    _activity(db_sessionmaker, task.id, 31)
+    counts = run(db_sessionmaker)
+    assert counts == dict(tasks=1, files=1, results=0, unfinished=0, outbound=0, audit=0)
+    with db_sessionmaker() as db:
+        t = db.get(Task, task.id)
+        assert t is not None and t.status == "reviewed" and t.latest_run_id is not None
+        assert db.scalar(select(ReviewRun.id).where(ReviewRun.task_id == task.id)) is not None
+        assert db.scalar(select(Finding.id).where(Finding.task_id == task.id)) is not None
+        assert all(n.text_enc is None for n in db.scalars(select(DocNode).where(DocNode.task_id == task.id)))
+    assert files_of(db_sessionmaker, task.id)[0].original_deleted_at is not None
+    assert client.get(f"{API_PREFIX}/runs/{task.latest_run_id}/report").status_code == 200
+
+
+def test_v2q74_r3_never_submitted_pending_is_still_unfinished(alice, db_sessionmaker, ready_task):  # noqa: F811
+    user, _, _ = alice
+    task = ready_task(user)
+    _layers(db_sessionmaker)
+    _activity(db_sessionmaker, task.id, 31)
+    counts = run(db_sessionmaker)
+    assert counts["unfinished"] == 1 and counts["results"] == 0
+    with db_sessionmaker() as db:
+        assert db.get(Task, task.id) is None

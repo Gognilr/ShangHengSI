@@ -71,9 +71,9 @@ tasks 增加 `last_activity_at timestamptz 非空`：创建任务、确认发送
 
 按顺序执行，每类逐个任务加锁处理，单次最多处理 500 个任务（剩余的第二天继续），写一条审计 `retention_run`（只含各类数量）：
 
-1. **原件层**（现有逻辑）：status 为 reviewed / completed\_local、`last_activity_at` 早于截止、仍有原件的任务：删原件、清节点原文和 user\_note\_enc。
-2. **结果层**：status 为 reviewed / completed\_local、`last_activity_at` 早于截止的任务：调用与用户删除相同的删除函数整个删除（17.8）。
-3. **未完成任务**：status 为 parse\_failed / awaiting\_confirm、`last_activity_at` 早于截止的任务：整个删除。parsing / reviewing 不删。
+1. **原件层**（现有逻辑）：status 为 reviewed / completed\_local、`last_activity_at` 早于截止、仍有原件的任务：删原件、清节点原文和 user\_note\_enc。V2Q-74：重新审核后未提交的任务（awaiting\_confirm 且 latest\_run\_id 非空）同样处理，并把 status 改回 reviewed。
+2. **结果层**：status 为 reviewed / completed\_local（V2Q-74：含 awaiting\_confirm 且 latest\_run\_id 非空）、`last_activity_at` 早于截止的任务：调用与用户删除相同的删除函数整个删除（17.8）。
+3. **未完成任务**：status 为 parse\_failed / awaiting\_confirm、**latest\_run\_id 为空（从未提交过审核，V2Q-74）**、`last_activity_at` 早于截止的任务：整个删除。parsing / reviewing 不删。
 4. **外发记录正文**：created\_at 早于截止、正文未清空的 llm\_calls：request\_text、response\_text 置空，其余字段保留；外发记录详情显示“正文已按保留期清除”。
 5. **审计日志**：created\_at 早于截止的 audit\_logs 删除（retention\_run 本身写在删除之后）。
 
@@ -327,9 +327,10 @@ E = S 的第一条，L = S 的最后一条
 
 1. **命令**：`python -m app.cli rotate-key --old-key-file <旧> --new-key-file <新>`，在 app、worker 停止时由脚本在一次性容器中运行。
 2. **范围**：所有以 `_enc` 结尾的列（按 SQLAlchemy 元数据自动列出，测试中断言列表包含 doc\_nodes.text\_enc、redaction\_maps.map\_enc、redaction\_terms.term\_enc、local\_findings.detail\_enc、findings.quote\_snapshot\_enc、tasks.user\_note\_enc、redaction\_exclusions.text\_enc）、settings 中的 `model.api_key_enc`（base64）、FILES\_DIR 中的全部原件。备份文件用备份密码加密，不在范围内。
-3. **可续做**：对每个密文先用新密钥试解，成功说明已处理，跳过；否则用旧密钥解密、新密钥加密写回。数据库按表分批（每批 500 行一个事务）；原件写到同目录的临时文件、fsync 后改名替换。中断后重跑同一命令即可继续，不需要进度表。两个密钥都解不开时停止并报告位置（表名与主键，不含内容）。
-4. **verify-key**：`python -m app.cli verify-key --key-file <新>` 抽查每个加密列与原件各最多 20 个，全部能用新密钥解开时返回 0。
-5. **rotate\_key.sh**（沿用 lib.sh 的检查与确认方式）：检查 /data 挂载与新密钥文件（32 字节、权限 600）→ 要求输入确认文字 → 先执行一次 backup\_now.sh --wait → 停止 app、worker → 运行 rotate-key（容器命令接 `</dev/null`，Q-150）→ verify-key → 旧密钥改名为 `master_key.old-{yyyyMMdd}`（600），新密钥放到 `master_key` → 启动 app、worker → 提示把新密钥离线保管，旧密钥在旧备份全部过期前不得销毁（旧备份恢复时需要旧主密钥，restore.sh 会校验）。
+3. **原件范围（V2Q-75）**：只处理 FILES\_DIR 顶层文件名为 32 位小写十六进制的条目（与 tasks/storage.py、备份、恢复同一规则）；其他条目（上传中断留下的 `{key}.tmp`、恢复留下的 `.restore-new/`、`.restore-old/` 等）一律跳过、不读不改。名称合格但不是普通文件（目录、符号链接）时报错。FILES\_DIR 不可用或有上述不合格原件时，在改动数据库**之前**报错（预检），不留下部分轮换。
+4. **可续做**：对每个密文先用新密钥试解，成功说明已处理，跳过；否则用旧密钥解密、新密钥加密写回。数据库按表分批（每批 500 行一个事务）；原件写到同目录的临时文件、fsync 后改名替换。中断后重跑同一命令即可继续，不需要进度表。两个密钥都解不开时停止并报告位置（表名与主键，不含内容）。
+5. **verify-key**：`python -m app.cli verify-key --key-file <新>` 抽查每个加密列与原件各最多 20 个，全部能用新密钥解开时返回 0。
+6. **rotate\_key.sh**（沿用 lib.sh 的检查与确认方式）：检查 /data 挂载与新密钥文件（32 字节、权限 600）→ 要求输入确认文字 → 先执行一次 backup\_now.sh --wait → 停止 app、worker → 运行 rotate-key（容器命令接 `</dev/null`，Q-150）→ verify-key → 旧密钥改名为 `master_key.old-{yyyyMMdd}`（600），新密钥放到 `master_key` → 启动 app、worker → 提示把新密钥离线保管，旧密钥在旧备份全部过期前不得销毁（旧备份恢复时需要旧主密钥，restore.sh 会校验）。
    * **失败边界（V2Q-70）**：以“换文件”为提交点，分三段处理。
      | 失败位置 | 密钥文件 | app、worker | 退出与提示 |
      |-|-|-|-|
@@ -343,13 +344,13 @@ E = S 的第一条，L = S 的最后一条
      * **启动判定**（在确认文字之前，均不启动任何服务）：
        | `master_key.pending` | worker | 处理 |
        |-|-|-|
-       | 不存在 | 运行中 | 首次运行，按第 5 条完整执行 |
+       | 不存在 | 运行中 | 首次运行，按第 6 条完整执行 |
        | 不存在 | 未运行 | 拒绝，非 0，不备份、不停止、不启动；提示“未发现进行中的更换，数据未改动；请先正常启动服务再执行” |
        | 存在，为 32 字节、600 的普通文件，内容与 `--new-key-file` 相同 | 任意 | **续做** |
        | 存在，但内容不同或不是合格的密钥文件 | 任意 | 拒绝，非 0，不启动；提示“有一次更换尚未完成，必须使用同一新密钥续做”，两个文件都不动 |
      * **续做流程**：检查与确认 → 停止 app、worker（已停止时为空操作；若有人手工启动过旧密钥服务也一并停止）→ rotate-key → verify-key → 保存旧密钥副本 → 换文件 → 启动。**续做不再备份**：第一次运行前的备份就是只需旧密钥即可恢复的完整备份；混合状态的备份需要两种密钥，restore.sh 的主密钥核对会拒绝它，而且每多一份备份都会按保留份数挤掉更早的备份，可能删掉那份完整备份。续做从一开始就按 ② 段处理：换文件前任一步失败都保持停服、保留 `master_key.pending`，不启动旧密钥服务；换文件后按 ③ 段。
      * 续做的输出说明“续做上次未完成的更换，不再备份；第一次执行前的备份是完整的旧密钥备份”，不含密钥和明文。
-6. 日志与输出不含任何密钥和明文。
+7. 日志与输出不含任何密钥和明文。
 
 | # | 场景 | 期望 |
 |-|-|-|
@@ -383,6 +384,21 @@ E = S 的第一条，L = S 的最后一条
 
 核对测试用例未被删改；数据删除与密钥更换的实现逐行审阅；A-06；升级不误删（2.6）；审阅 V2-C-08 报告；汇报用户，确认后进入 V2-D-00。
 
+### 9.1 审核修订（V2Q-74、V2Q-75，用户 2026-10-26 同意修复）
+
+**V2Q-74 重新审核后未提交的任务**：PATCH 让已审核任务回到 awaiting\_confirm 且保留旧轮次。原 2.3 第 3 条把它当未完成任务，默认 30 天整删、连同旧审核结果，与结果层 365 天不符。修订见 2.3 第 1～3 条：判据为 `latest_run_id` 是否为空；原件层处理这类任务时改回 reviewed（原件已删，无法再提交，PATCH 也会返回 ORIGINAL\_DELETED）。第三节到期时间同步：这类任务的 original\_expires\_at、task\_expires\_at 按原件层、结果层计算，不按 unfinished\_days。文件范围：backup/retention.py、tasks/service.py（只改 \_expiry\_fields）、test\_retention.py、test\_tasks\_api.py。
+
+**V2Q-75 换密钥的原件范围**：见第七节第 3 条。文件范围：security/rotate.py、test\_rotate\_key.py。
+
+| # | 场景 | 期望 |
+|-|-|-|
+| R1 | 已审核任务 PATCH 后搁置 400 天；原件 30、结果 365、未完成 30 | 整个删除，计入 results，不计入 unfinished |
+| R2 | 同上，搁置 31 天 | 任务与旧轮次、问题保留；原件、节点原文删除；status 为 reviewed；计入 tasks/files，不计入 unfinished |
+| R3 | 从未提交审核的待确认任务 31 天（对照） | 仍按未完成任务整删 |
+| R4 | GET /tasks/{id}：PATCH 后的任务 | original\_expires\_at = 活动时间 + 30 天，task\_expires\_at = 活动时间 + 365 天 |
+| K1 | FILES\_DIR 中另有不完整的 `{32hex}.tmp`、`.restore-new/` 目录（内含文件）、其他名称的文件 | rotate-key 成功；这些条目内容不变；verify-key 通过 |
+| K2 | 名为 32 位十六进制的目录或符号链接 | rotate-key 在改动数据库前报错：报告位置不含文件名原文，所有 `_enc` 列仍可用旧密钥解开 |
+
 ## 十、新增待确认问题
 
-见 docs/v2/questions/V2-C.md（V2Q-17～V2Q-22）；后续增补 V2Q-52（提醒条本次收起）、V2Q-53（迁移编号顺延）、V2Q-61～63（C-02 入口、升级保护、清理计数）、V2Q-64（存储统计来源，第三节）、V2Q-65（C-04 上限预检入口，第四节）。
+见 docs/v2/questions/V2-C.md（V2Q-17～V2Q-22）；后续增补 V2Q-52（提醒条本次收起）、V2Q-53（迁移编号顺延）、V2Q-61～63（C-02 入口、升级保护、清理计数）、V2Q-64（存储统计来源，第三节）、V2Q-65（C-04 上限预检入口，第四节）；批次审核修订 V2Q-74、V2Q-75（9.1）。

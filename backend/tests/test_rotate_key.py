@@ -214,3 +214,43 @@ def test_v2c07_original_write_failure_keeps_complete_old(rotation, monkeypatch):
     assert "不得输出此内容" not in str(exc.value)
     assert original.read_bytes() == saved
     assert not list(d["files"].glob(".rotate-*.tmp"))
+
+
+# V2Q-75（C-09 审核修订）：只处理按存储规则命名的原件，其他条目不读不改；不合格原件在改库前报错。
+def test_v2q75_k1_skips_non_original_entries(rotation):
+    from app.security import rotate
+    d = rotation
+    partial = d["files"] / ("e" * 32 + ".tmp")
+    partial.write_bytes(b"partial-upload")
+    restore_dir = d["files"] / ".restore-new"
+    restore_dir.mkdir()
+    (restore_dir / ("d" * 32)).write_bytes(b"restore-leftover")
+    other = d["files"] / "notes.txt"
+    other.write_bytes(b"other-file")
+    rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
+    assert partial.read_bytes() == b"partial-upload"
+    assert (restore_dir / ("d" * 32)).read_bytes() == b"restore-leftover"
+    assert other.read_bytes() == b"other-file"
+    rotate.verify_key(d["engine"], d["files"], d["new"])
+    assert_rotated(d)
+
+
+@pytest.mark.parametrize("kind", ["dir", "symlink"])
+def test_v2q75_k2_bad_original_entry_fails_before_database(rotation, kind):
+    from app.security import rotate
+    d = rotation
+    name = "c" * 32
+    bad = d["files"] / name
+    if kind == "dir":
+        bad.mkdir()
+    else:
+        bad.symlink_to(next(p for p in d["files"].iterdir() if p.name != name))
+    with pytest.raises(rotate.RotationError) as exc:
+        rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
+    assert name not in str(exc.value)
+    # 数据库尚未改动：全部密文仍可用旧密钥解开。
+    with d["engine"].connect() as conn:
+        for (table_name, pk, col), expected in d["before"].items():
+            table = Base.metadata.tables[table_name]
+            where = [c == v for c, v in zip(table.primary_key, pk)]
+            assert crypto.decrypt(conn.execute(select(table.c[col]).where(*where)).scalar_one(), key=d["old"]) == expected

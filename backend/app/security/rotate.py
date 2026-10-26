@@ -3,6 +3,7 @@ import base64
 import binascii
 import hashlib
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -12,6 +13,9 @@ from sqlalchemy import and_, select, tuple_, update
 from app.db.base import Base
 from app.db import models  # noqa: F401  注册全部元数据
 from app.security import crypto
+
+
+_ORIGINAL_NAME = re.compile(r"[0-9a-f]{32}")  # tasks/storage.py 的 storage_key
 
 
 class RotationError(Exception):
@@ -89,17 +93,20 @@ def _rotate_database(engine, old_key, new_key, batch_size):
 
 
 def _originals(directory):
+    """V2Q-75：与存储、备份、恢复同一规则，只取 32 位小写十六进制命名的条目；
+    上传或恢复中断留下的 .tmp、.restore-* 等其他条目不读不改。返回列表，供改库前预检。"""
     directory = Path(directory)
     if not directory.is_dir() or directory.is_symlink():
         raise RotationError("原件目录不可用：files")
+    originals = []
     for path in sorted(directory.iterdir()):
-        # 强制终止可能遗留密文临时文件；从不把它们当成业务原件。
-        if path.name.startswith(".rotate-") and path.name.endswith(".tmp"):
+        if not _ORIGINAL_NAME.fullmatch(path.name):
             continue
         location = "files:" + hashlib.sha256(path.name.encode()).hexdigest()[:16]
         if path.is_symlink() or not path.is_file():
             raise RotationError(f"原件不是普通文件：{location}")
-        yield path, location
+        originals.append((path, location))
+    return originals
 
 
 def _replace_original(path, blob):
@@ -131,8 +138,10 @@ def rotate_key(engine, files_dir, old_key, new_key, *, batch_size=500):
         raise RotationError("新旧主密钥须为不同的 32 字节密钥")
     if not 1 <= batch_size <= 500:
         raise RotationError("数据库批次须为 1–500 行")
+    # 原件清单先于数据库检查，目录或原件不合格时不留下部分轮换。
+    originals = _originals(files_dir)
     _rotate_database(engine, old_key, new_key, batch_size)
-    for path, location in _originals(files_dir):
+    for path, location in originals:
         try:
             changed = _rotate_blob(path.read_bytes(), old_key, new_key, location)
             if changed is not None:
