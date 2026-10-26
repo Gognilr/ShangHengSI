@@ -49,6 +49,26 @@ def test_t44_1_pgvector_upgrade_downgrade():
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
+
+def test_t43_sync_queue_upgrade_downgrade():
+    name = 'aireview_test_' + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        cfg = _alembic(_url_for(name))
+        command.upgrade(cfg, '0020')
+        with psycopg.connect(_url_for(name), autocommit=True) as conn:
+            conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('law_sync','{}',now())")
+        command.downgrade(cfg, '0019')
+        with psycopg.connect(_url_for(name), autocommit=True) as conn:
+            assert conn.execute("SELECT 1 FROM jobs WHERE type='law_sync'").fetchone() is None
+            with pytest.raises(errors.CheckViolation):
+                conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('law_sync','{}',now())")
+        command.upgrade(cfg,'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
 TYPE_ALIASES = {
     'vector1024': 'vector(1024)',
     "uuid": "uuid",
@@ -560,7 +580,7 @@ ENUM_COLUMNS = {
     ("chat_messages", "role"): ["user", "assistant"],
     ("llm_calls", "purpose"): ["review", "chat", "test"],
     ("llm_calls", "status"): ["sent", "blocked", "error"],
-    ("jobs", "type"): ["parse", "review", "backup", "retention", "law_import", "law_embed"],
+    ("jobs", "type"): ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync"],
     ("jobs", "status"): ["queued", "running", "done", "failed"],
     ("backup_records", "trigger"): ["schedule", "manual"],
     ("backup_records", "status"): ["running", "success", "failed"],

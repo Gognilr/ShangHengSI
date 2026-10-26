@@ -55,12 +55,29 @@ def apply(db, iid, user_id):
     for row, changes in changed:
         for field, (_, value) in changes.items():
             setattr(row, field, date.fromisoformat(value) if field == 'effective_on' and value else value)
-        row.source, row.updated_at = 'import', now
+        if record.kind != 'sync' or row.source != 'builtin':
+            row.source = 'sync' if record.kind == 'sync' else 'import'
+        row.updated_at = now
     for item in diff['added']:
         values = dict(item)
         for field in ('published_on', 'effective_on'):
             values[field] = date.fromisoformat(values[field]) if values[field] else None
-        db.add(Law(**values, source='import', created_at=now, updated_at=now))
+        db.add(Law(**values, source='sync' if record.kind == 'sync' else 'import', created_at=now, updated_at=now))
+    if record.kind == 'sync':
+        from app.laws.fulltext import apply as apply_fulltext
+        db.flush()
+        matched = []
+        for item in diff.get('fulltext', []):
+            law = db.scalar(select(Law).where(Law.title == item['title'],
+                              Law.published_on == date.fromisoformat(item['published_on'])))
+            if law is None:
+                _stale()
+            matched.append({**item, 'law_id': law.id})
+        # 复用全文数量核对、替换、暂存清理及向量化入队；保持目录与全文同一事务。
+        original_diff = record.diff
+        record.diff = {'matched': matched}
+        apply_fulltext(db, record)
+        record.diff = original_diff
     record.status, record.applied_by, record.applied_at = 'applied', user_id, now
     return record
 

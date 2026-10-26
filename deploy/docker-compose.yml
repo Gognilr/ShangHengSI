@@ -80,6 +80,7 @@ services:
       WORKER_REVIEW_CONCURRENCY: ${WORKER_REVIEW_CONCURRENCY:-8}
       WORKER_PARSE_CONCURRENCY: ${WORKER_PARSE_CONCURRENCY:-2}
       CONVERT_SPOOL_DIR: /spool
+      LAWSYNC_PROXY: ${LAWSYNC_PROXY:-}
     volumes:
       - files_data:/data/files
       - ${BACKUP_HOST_DIR:-./backup}:/backup

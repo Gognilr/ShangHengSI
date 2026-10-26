@@ -45,6 +45,7 @@ class Settings:
     max_upload_mb: int
     app_version: str
     convert_spool_dir: str
+    lawsync_proxy: str = ""
 
 
 def load_settings() -> Settings:
@@ -62,6 +63,7 @@ def load_settings() -> Settings:
         max_upload_mb=_int_env("MAX_UPLOAD_MB", 30),
         app_version=os.environ.get("APP_VERSION", "dev"),
         convert_spool_dir=os.environ.get("CONVERT_SPOOL_DIR", "/spool"),
+        lawsync_proxy=os.environ.get("LAWSYNC_PROXY", ""),
     )
 
 

@@ -14,6 +14,10 @@ from app.db.models import Setting
 
 # SPEC 18.20：键名及默认值
 DEFAULTS: dict[str, Any] = {
+    "lawsync.enabled": False,
+    "lawsync.interval": "monthly",
+    "lawsync.last_run_at": None,
+    "lawsync.last_status": None,
     "model.base_url": "",
     "model.api_key_enc": "",
     "model.name": "",

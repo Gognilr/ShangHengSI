@@ -67,7 +67,7 @@ def admin_alerts(db: Session, role: str = "admin") -> list[dict]:
     retention = [{"code": "RETENTION_REVIEW", "message":
                   "数据保留已改为分层设置，新增的保留项暂为永久，请在设置 → 数据中确认"}] \
         if get_setting(db, "retention.review_pending") else []
-    return [*_backup_alerts(db), *_cap_alerts(db), *_prompt_term_alerts(db), *retention,
+    return [*_backup_alerts(db), *_cap_alerts(db), *_prompt_term_alerts(db), *retention, *_lawsync_alerts(db),
             *(_law_import_alerts(db) if role == 'admin' else [])]
 
 
@@ -75,6 +75,13 @@ def _law_import_alerts(db: Session) -> list[dict]:
     if db.scalar(select(LawImport.id).where(LawImport.status == 'pending').limit(1)) is None:
         return []
     return [{'code': 'LAW_IMPORT_PENDING', 'message': '法规库有一项更新待确认，请在设置 → 法规库中处理'}]
+
+
+def _lawsync_alerts(db):
+    status = get_setting(db, 'lawsync.last_status')
+    if get_setting(db, 'lawsync.enabled') and isinstance(status, dict) and status.get('ok') is False:
+        return [{'code': 'LAWSYNC_FAILED', 'message': '法规库自动更新失败，可改用手动导入（设置 → 法规库）'}]
+    return []
 
 
 def _prompt_term_alerts(db: Session) -> list[dict]:

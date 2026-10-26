@@ -36,6 +36,39 @@ PAGE_SIZE = 20
 _TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
 
 
+class LawsyncSettingsIn(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    enabled: bool
+    interval: Literal['monthly', 'weekly']
+
+
+@router.get('/settings/lawsync')
+def get_lawsync(db: DbSession = Depends(get_db)):
+    return {name: get_setting(db, 'lawsync.'+name) for name in
+            ('enabled', 'interval', 'last_run_at', 'last_status')}
+
+
+@router.put('/settings/lawsync')
+def put_lawsync(body: LawsyncSettingsIn, request: Request,
+                admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+    from app.laws import imports
+    imports.lock(db)
+    for name, value in body.model_dump().items():
+        set_setting(db, 'lawsync.'+name, value, admin.id)
+    audit.record(db, 'lawsync_settings', user_id=admin.id, target_type='setting', target_id='lawsync',
+                 detail=body.model_dump(), ip=client_ip(request))
+    db.commit()
+    return get_lawsync(db)
+
+
+@router.post('/lawsync/run', status_code=202)
+def run_lawsync(request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+    from app.lawsync.job import enqueue
+    enqueue(db)
+    db.commit()
+    return {'queued': True}
+
+
 def _tz() -> ZoneInfo:
     return ZoneInfo(get_settings().tz or "Asia/Shanghai")
 

@@ -18,6 +18,34 @@ def _hdr(csrf):
     return {"X-CSRF-Token": csrf}
 
 
+def test_t43_lawsync_settings_and_manual_run(admin, db_sessionmaker):
+    from app.db.models import LawImport
+    c, csrf = admin
+    assert c.get(A+'/settings/lawsync').json() == dict(enabled=False, interval='monthly',last_run_at=None,last_status=None)
+    assert c.post(A+'/lawsync/run',headers=_hdr(csrf)).status_code==409
+    result=c.put(A+'/settings/lawsync',json=dict(enabled=True,interval='weekly'),headers=_hdr(csrf))
+    assert result.status_code==200 and result.json()['interval']=='weekly'
+    with db_sessionmaker() as db:
+        db.add(LawImport(kind='catalog',status='pending',file_names=[])); db.commit()
+    result=c.post(A+'/lawsync/run',headers=_hdr(csrf))
+    assert result.status_code==409 and result.json()['code']=='LAW_IMPORT_PENDING'
+    with db_sessionmaker() as db:
+        db.query(LawImport).delete(); db.commit()
+    assert c.post(A+'/lawsync/run',headers=_hdr(csrf)).status_code==202
+    assert c.post(A+'/lawsync/run',headers=_hdr(csrf)).status_code==409
+    with db_sessionmaker() as db:
+        assert db.scalar(select(AuditLog).where(AuditLog.action=='lawsync_settings'))
+
+
+@pytest.mark.parametrize('role',['user','biz_admin'])
+def test_t43_lawsync_role_access(make_user,login,role):
+    make_user('sync_role',role=role)
+    c, csrf=login('sync_role')
+    assert c.get(A+'/settings/lawsync').status_code==403
+    assert c.put(A+'/settings/lawsync',json=dict(enabled=True,interval='monthly'),headers=_hdr(csrf)).status_code==403
+    assert c.post(A+'/lawsync/run',headers=_hdr(csrf)).status_code==403
+
+
 @pytest.fixture
 def dirs(tmp_path, monkeypatch):
     from app.admin import data

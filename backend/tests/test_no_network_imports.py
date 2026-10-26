@@ -11,6 +11,7 @@ import pytest
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 GATEWAY = APP_DIR / "llm" / "gateway.py"
+LAWSYNC = APP_DIR / 'lawsync' / 'client.py'
 CONVERTER_DIR = Path(__file__).resolve().parents[2] / "converter"  # 仓库根目录下；只挂载 backend 时不存在
 
 FORBIDDEN = {
@@ -57,7 +58,7 @@ def find_network_imports(source: str) -> list[str]:
 
 
 def _app_files() -> list[Path]:
-    return sorted(p for p in APP_DIR.rglob("*.py") if p != GATEWAY)
+    return sorted(p for p in APP_DIR.rglob("*.py") if p not in {GATEWAY, LAWSYNC})
 
 
 def _converter_files() -> list[Path]:
@@ -82,7 +83,25 @@ def test_no_network_calls_outside_gateway():
         hits = find_network_imports(path.read_text(encoding="utf-8"))
         if hits:
             violations[str(path.relative_to(CONVERTER_DIR.parent if CONVERTER_DIR in path.parents else APP_DIR.parent))] = hits
-    assert violations == {}, f"只有 app/llm/gateway.py 可以访问网络：{violations}"
+    assert violations == {}, f"只有 gateway.py 与 lawsync/client.py 可以访问网络：{violations}"
+
+
+def test_lawsync_fixed_domains_signatures_redirects():
+    tree = ast.parse(LAWSYNC.read_text(encoding='utf-8'))
+    domains = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+               and ('.cn' in n.value or '.com' in n.value or '://' in n.value)}
+    assert domains == {'flk.npc.gov.cn', 'flkoss.obs-bj2.cucloud.cn', 'https://'}
+    signatures = {n.name: ([a.arg for a in n.args.args], [ast.unparse(a.annotation) for a in n.args.args],
+                          ast.unparse(n.returns)) for n in tree.body if isinstance(n, ast.FunctionDef) and
+                          not n.name.startswith('_')}
+    assert signatures == {
+        'list_page': (['category_codes','status_codes','page','page_size'],
+                      ['tuple[int, ...]','tuple[int, ...]','int','int'],'dict'),
+        'download_urls': (['flk_ids'],['list[str]'],'list[str]'),
+        'download_file': (['url'],['str'],'bytes')}
+    keywords = [kw.value for n in ast.walk(tree) if isinstance(n, ast.Call) for kw in n.keywords
+                if kw.arg == 'follow_redirects']
+    assert keywords and all(isinstance(v, ast.Constant) and v.value is False for v in keywords)
 
 
 @pytest.mark.parametrize(
