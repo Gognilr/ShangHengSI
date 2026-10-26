@@ -8,12 +8,12 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
-| V2Q-70 | C-07 第七节第 5 条要求换密钥文件后启动 app/worker，测试 #7 却要求“任一步失败不换密钥文件”；启动失败时两者冲突，且数据库已用新密钥 | 请 Opus 明确失败边界。建议：切换前失败不换主密钥，保持停服以便续做；切换后启动失败保留新主密钥和旧密钥副本，停止 app/worker 并报告，避免用旧密钥打开已轮换数据库。不修改设计或测试口径，决定前不实施 C-07 | C-07 rotate_key.sh、test_scripts.py | C-07 测试先行前 |
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-70 | C-07 第七节第 5 条要求换密钥文件后启动 app/worker，测试 #7 却要求“任一步失败不换密钥文件”；启动失败时两者冲突，且数据库已用新密钥 | 已确认（用户 2026-10-26，按 Opus 裁定）：以“换文件”为提交点。① 检查、确认、备份、停止失败：数据未动，密钥文件不动，已停的服务用原密钥重新启动。② rotate-key、verify-key 失败：密钥文件不动，服务保持停止（数据可能已部分改为新密钥），提示保留新密钥并用同一新密钥重跑续做；首次执行前的备份仍只需旧密钥即可恢复。③ 换文件后启动失败：不回滚密钥，退出码非 0，提示更换已完成、不要换回旧密钥。换文件先复制旧密钥为 master_key.old-{yyyyMMdd}，再临时文件 + mv 替换；.old 文件已存在且内容不同则在停服前拒绝，绝不覆盖；旧密钥固定取当前 master_key。测试 #7 改写，新增 #8（启动失败不回滚）、#9（.old 已存在）。已写入 design/V2-C.md 第七节 | 2026-10-26 |
 | V2Q-68 | C-06 前端角色与自动替换的调用链缺少四个范围文件 | 已确认（用户 2026-10-26）：C-06 文件范围加入 frontend/src/api/auth.ts（Role 补 sys_admin/biz_admin）、utils/labels.ts（四个角色中文名）、api/redaction.ts（传“以后自动替换”标志，可选、默认不勾选，不勾选时请求与行为不变）、components/ConfirmStep.vue（转发疑似遗漏的该标志）；只补类型、文案和参数传递，不改设计规定的权限、流程或交互；检查方式同 6.3 #10。已写入 design/V2-C.md 第六节文件范围 | 2026-10-26 |
 | V2Q-66 | C-04 前端错误响应数据与模型设置 API 类型未列入范围 | 用户已确认（2026-10-26，分两次明确批准）：① frontend/src/api/http.ts 仅给 ApiError 增加可选响应数据，旧三参数构造、401/403、提示、下载行为不变；② frontend/src/api/admin.ts 仅给 ModelSettings 增加 user_daily_cap 类型字段。后端重复文件信息由已授权 tasks/router.py 局部返回 JSON，不改公共安全错误模块 | 2026-10-26 |
 | V2Q-65 | 后续 C-04 要求确认发送与追问发送前检查个人日限额，但其文件范围同样遗漏 review/service.py、chat/service.py | 已确认（用户 2026-10-26，按 Opus 修订稿）：已写入 design/V2-C.md 第四节：① 文件范围加 review/service.py（只在 create_run 加预检）、chat/service.py（只在 send 加预检与 USER_CAP_REACHED 错误映射）、frontend/src/api/runs.ts（两条错误提示），列出六个测试文件；C-02 的活动时间授权不沿用。② 共用 usage.cap_reached(db, user_id, purpose)，网关第一步与两处预检都调用；每月照 V1.0（所有 purpose、计数含 test），个人跳过 test 与空 user_id；只读、不预占。③ create_run 在现有状态/疑似/我方/文件类型检查之后、build_context 与出口预检之前；send 在 _require 之后、_redact_and_record 之前。④ 被拒：不建轮次/入队、不写已记住名称与审计、不写问答与脱敏记录、不写 llm_calls、不调模型、不更新活动时间。⑤ 确认发送时**每月上限**也前移预检（用户同意此新行为）（409 CAP_REACHED），V1.0 是建轮次后到 worker 才失败。⑥ 追问预检后网关竞态返回 USER_CAP_REACHED 时映射 409，不落 502。测试由 7 条扩为 15 条（4.3）；SPEC-V2 11.1/15.2、19 同步 | 2026-10-26 |
