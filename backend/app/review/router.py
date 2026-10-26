@@ -5,7 +5,7 @@ GET /runs/{rid}/report（导出报告）在 M7 之前的里程碑实现，不在
 """
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Body, Depends, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
@@ -29,14 +29,19 @@ from app.security.sessions import client_ip
 router = APIRouter()
 
 
+class RunIn(BaseModel):
+    use_template: bool = True
+
+
 @router.post("/tasks/{id}/runs", status_code=status.HTTP_201_CREATED, response_model=RunCreated)
 def create_run(
     request: Request,
+    body: RunIn | None = Body(None),
     task: Task = Depends(owned_task),
     user: User = Depends(current_user),
     db: DbSession = Depends(get_db),
 ) -> RunCreated:
-    run = service.create_run(db, task, user, client_ip(request))
+    run = service.create_run(db, task, user, client_ip(request),use_template=body.use_template if body else True)
     return RunCreated(id=run.id, run_no=run.run_no, status=run.status)
 
 

@@ -39,6 +39,7 @@ class FindingOut(_Model):
     suggested_text: str | None = None
     basis: str | None = None
     law_refs: list[str] = []
+    source: str | None = None
 
     @field_validator("req_ids", "locs", "law_refs", mode="before")
     @classmethod

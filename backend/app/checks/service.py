@@ -87,7 +87,7 @@ def table_notes(nodes, files) -> dict[str, str]:
 
 
 def local_summary(db, task) -> str:
-    rows = db.scalars(select(LocalFinding).where(LocalFinding.task_id == task.id).order_by(LocalFinding.id))
+    rows = db.scalars(select(LocalFinding).where(LocalFinding.task_id == task.id,LocalFinding.check_code!='L-12').order_by(LocalFinding.id))
     return "\n".join(f"[{r.check_code}] {r.ai_summary}" for r in rows)
 
 

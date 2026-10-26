@@ -152,6 +152,9 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
 
     doc = _new_document()
     _basic(doc, task, files, main, user, run)
+    if detail.template:
+        state={'modified':'（范本已修改）','deleted':'（范本已删除）'}.get(detail.template['status'],'')
+        doc.add_paragraph('本轮对照公司范本：'+text(detail.template['name'])+state)
     _heading(doc, "二 覆盖说明与限制事项")
     if detail.coverage:
         doc.add_paragraph(text(detail.coverage["summary"]))
@@ -169,6 +172,7 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     rows = []
     for finding in detail.findings:
         problem = [text(finding.problem)]
+        if finding.source=='template':problem.insert(0,'范本对照')
         problem += [label + text(value) for label, value in (("对我方的影响：", finding.impact), ("依据：", finding.basis)) if value]
         for ref in finding.law_refs:
             problem.append(f"依据：《{_clean(ref['title'])}》{_clean(ref.get('article_no') or '')}\n{_clean(ref['text'])}")

@@ -1,4 +1,4 @@
-"""全部 30 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量表。
+"""全部 32 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量、范本表。
 
 约定见 SPEC 18.1：时间 timestamptz（UTC）；枚举用 varchar + CHECK；_enc 结尾为主密钥加密后的 bytea；
 任务下属表的 task_id 外键均 ON DELETE CASCADE。
@@ -132,6 +132,34 @@ class TaskClauseVector(Base):
     locs: Mapped[list] = mapped_column(JSONB, nullable=False)
     embedding: Mapped[Any] = mapped_column(Vector(1024), nullable=False)
     model: Mapped[str] = mapped_column(String(60), nullable=False)
+
+
+class StandardTemplate(Base):
+    __tablename__ = 'standard_templates'
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name_enc: Mapped[bytes] = mapped_column(LargeBinary,nullable=False)
+    doc_types: Mapped[Any] = mapped_column(JSONB,nullable=False)
+    stances: Mapped[Any] = mapped_column(JSONB,nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean,nullable=False,server_default=text('true'))
+    content_hash: Mapped[str] = mapped_column(CHAR(64),nullable=False)
+    clause_count: Mapped[int] = mapped_column(Integer,nullable=False)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid,ForeignKey('users.id'))
+    created_at: Mapped[datetime] = _ts_now()
+    updated_at: Mapped[datetime] = _ts_updated()
+
+
+class StandardClause(Base):
+    __tablename__ = 'standard_clauses'
+    __table_args__ = (UniqueConstraint('template_id','seq'),)
+    id: Mapped[uuid.UUID] = uuid_pk()
+    template_id: Mapped[uuid.UUID] = mapped_column(Uuid,ForeignKey('standard_templates.id',ondelete='CASCADE'),nullable=False)
+    seq: Mapped[int] = mapped_column(Integer,nullable=False)
+    title_enc: Mapped[bytes] = mapped_column(LargeBinary,nullable=False)
+    text_enc: Mapped[bytes] = mapped_column(LargeBinary,nullable=False)
+    stance_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    acceptable_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    escalate_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1024))
 
 
 class LawImport(Base):
@@ -428,7 +456,7 @@ class LocalFinding(Base):
     __table_args__ = (
         enum_check(
             "check_code",
-            ["L-01", "L-02", "L-03", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-INFO"],
+            ["L-01", "L-02", "L-03", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-12", "L-INFO"],
         ),
         enum_check("severity", SEVERITIES),
     )
@@ -470,6 +498,9 @@ class ReviewRun(Base):
     prompt_version: Mapped[Optional[str]] = mapped_column(String(20))
     builtin_req_version: Mapped[Optional[str]] = mapped_column(String(20))
     company_req_version: Mapped[Optional[int]] = mapped_column(Integer)
+    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid,ForeignKey('standard_templates.id',ondelete='SET NULL'))
+    template_name_snapshot_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    template_hash: Mapped[Optional[str]] = mapped_column(CHAR(64))
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     failed_chunks: Mapped[Any] = _jsonb_list()
     coverage: Mapped[Optional[Any]] = mapped_column(JSONB)
@@ -600,13 +631,13 @@ class LlmCall(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync"]),
+        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed"]),
         enum_check("status", ["queued", "running", "done", "failed"]),
         Index("ix_jobs_status_run_after", "status", "run_after"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    type: Mapped[str] = mapped_column(String(12), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
     payload: Mapped[Any] = mapped_column(JSONB, nullable=False)
     status: Mapped[str] = mapped_column(String(8), nullable=False, server_default="queued")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))

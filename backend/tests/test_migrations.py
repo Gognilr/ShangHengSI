@@ -483,6 +483,29 @@ SCHEMA['task_clause_vectors'] = """
     embedding vector1024 NN
     model v60 NN"""
 
+SCHEMA['standard_templates'] = """
+    id uuid NN =gen_random_uuid()
+    name_enc bytea NN
+    doc_types jsonb NN
+    stances jsonb NN
+    enabled bool NN =true
+    content_hash c64 NN
+    clause_count int NN
+    created_by uuid
+    created_at ts NN
+    updated_at ts NN"""
+SCHEMA['standard_clauses'] = """
+    id uuid NN =gen_random_uuid()
+    template_id uuid NN
+    seq int NN
+    title_enc bytea NN
+    text_enc bytea NN
+    stance_enc bytea
+    acceptable_enc bytea
+    escalate_enc bytea
+    embedding vector1024"""
+SCHEMA['review_runs'] += "\n    template_id uuid\n    template_name_snapshot_enc bytea\n    template_hash c64"
+SCHEMA['jobs'] = SCHEMA['jobs'].replace('type v12','type v20')
 PRIMARY_KEYS = {t: ["id"] for t in SCHEMA}
 SCHEMA['findings'] += "\n    law_refs jsonb NN ='[]'\n    law_unverified bool NN =false\n    source v10 NN ='model'"
 PRIMARY_KEYS.update(
@@ -618,6 +641,12 @@ ENUM_COLUMNS = {
 }
 
 
+UNIQUES.add(('standard_clauses','template_id, seq'))
+FOREIGN_KEYS.update({('standard_templates','created_by'):('users','a'),
+                     ('standard_clauses','template_id'):('standard_templates','c'),
+                     ('review_runs','template_id'):('standard_templates','n')})
+ENUM_COLUMNS[('jobs','type')].append('template_embed')
+ENUM_COLUMNS[('local_findings','check_code')].append('L-12')
 ENUM_COLUMNS[('findings','source')] = ['model','template']
 
 
@@ -672,7 +701,7 @@ def _tables(conn):
 
 def test_exactly_23_tables(migrated):
     assert _tables(migrated) == set(SCHEMA)
-    assert len(SCHEMA) == 30  # V2-E-04：新增三张向量与全文暂存表，严格核对完整集合。
+    assert len(SCHEMA) == 32  # V2-E-06：增加两张范本表，严格核对完整集合（V2Q-97）。
 
 
 def test_pgcrypto_enabled(migrated):

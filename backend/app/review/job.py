@@ -100,6 +100,7 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
             problem=f.problem, impact=f.impact, suggestion=f.suggestion, suggested_text=f.suggested_text,
             basis=f.basis,
             law_refs=f.law_refs, law_unverified=f.law_unverified,
+            source=f.source,
         ))
     high = sum(1 for f in review.findings if f.severity == "high")
     now = utcnow()
@@ -153,6 +154,8 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
                               effective_limit(get_setting(db, "model.chunk_chars")))
         total = len(chunks)
         nodes = load_node_views(db, task.id, ctx.quote_tables)
+        from app.standards.compare import start as start_templates
+        start_templates(db,ctx,run,nodes)
         if not _set_progress(db, run_id, 0, total):
             return
         outcomes: list[ChunkOutcome] = []
@@ -196,6 +199,8 @@ def _review_chunk(db: Session, ctx: ReviewContext, run_id: uuid.UUID, chunk: Chu
     try:
         from app.laws.retrieve import prepare
         prepare(db,ctx,chunk if chunk.total>1 else None,nodes)
+        from app.standards.compare import prepare as prepare_template
+        prepare_template(db,ctx,chunk if chunk.total>1 else None)
         review = review_once(db, ctx, run=run, user_id=run.created_by, chunk=chunk if chunk.total > 1 else None,
                              nodes=nodes)
     except GatewayError as exc:

@@ -376,7 +376,7 @@ def test_default_worker_thread_groups(monkeypatch):
     worker.run_worker(None, stop)
     assert [t["args"][-1] for t in threads].count(("review",)) == 8
     assert [t["args"][-1] for t in threads].count(("parse", "law_import")) == 2
-    assert [t["args"][-1] for t in threads].count(("backup", "retention", "law_embed", "law_sync")) == 1
+    assert [t["args"][-1] for t in threads].count(("backup", "retention", "law_embed", "law_sync", "template_embed")) == 1
     assert len({t["args"][1] for t in threads}) == 11
 
 

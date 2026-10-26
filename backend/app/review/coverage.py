@@ -88,12 +88,18 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
         "no_cross_chunk_check": is_chunked,
         "sanctions_offline": True,
         "law_refs": dict(ctx.law_stats),
+        "template": dict(ctx.template_stats),
     }
 
 
 def describe(coverage: dict, file_names: dict[int, str]) -> list[str]:
     """把结构化覆盖信息转成结果页和报告共用的固定中文句子。"""
     notes: list[str] = []
+    template=coverage.get('template',{})
+    if template.get('blocked'):
+        notes.append('公司范本对照未通过出口复检，本次未发送')
+    elif template.get('total',0)>template.get('sent',0):
+        notes.append(f"范本对照共 {template['total']} 对，因长度只发送前 {template['sent']} 对")
     laws = coverage.get('law_refs', {})
     if laws.get('enabled'):
         notes.append(f"本次附带相关法条 {int(laws.get('sent',0))} 条（因出口复检丢弃 {int(laws.get('dropped',0))} 条）")

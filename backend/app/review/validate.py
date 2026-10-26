@@ -96,6 +96,7 @@ class FindingView:
     basis: str | None
     law_refs: list[dict] = field(default_factory=list)
     law_unverified: bool = False
+    source: str = 'model'
 
 
 @dataclass
@@ -229,6 +230,7 @@ def _merge_duplicates(findings: list[FindingView]) -> list[FindingView]:
         same.locs += [loc for loc in f.locs if loc not in same.locs]
         same.law_refs += [r for r in f.law_refs if r not in same.law_refs]
         same.law_unverified = same.law_unverified or f.law_unverified
+        if f.source=='template':same.source='template'
         if _SEVERITY_RANK[f.severity] > _SEVERITY_RANK[same.severity]:
             same.severity = f.severity
         if _CITE_RANK[f.cite_status] > _CITE_RANK[same.cite_status]:
@@ -282,6 +284,7 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
             basis=f.basis,
             law_refs=[{k:r[k] for k in ('title','article_no','text')} for r in ctx.law_refs
                       if r['ref'] in f.law_refs],
+            source='template' if f.source=='范本对照' else 'model',
         ))
     sanctions = out.sanctions
     return ValidatedReview(

@@ -142,6 +142,8 @@ def test_v2c07_metadata_includes_future_columns(rotation):
     expected = {"doc_nodes.text_enc", "redaction_maps.map_enc", "redaction_terms.term_enc",
                 "local_findings.detail_enc", "findings.quote_snapshot_enc", "tasks.user_note_enc",
                 "redaction_exclusions.text_enc"}
+    expected |= {'standard_templates.name_enc','review_runs.template_name_snapshot_enc','law_import_files.data_enc'}
+    expected |= {'standard_clauses.'+name+'_enc' for name in ('title','text','stance','acceptable','escalate')}
     assert expected <= {f"{col.table.name}.{col.name}" for col in rotate.encrypted_columns()}
     # 使用真正的数据库扩展表验证发现、批量处理和抽查，而非固定列名单。
     metadata = MetaData()

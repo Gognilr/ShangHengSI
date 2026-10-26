@@ -294,6 +294,7 @@ def _expiry_fields(db: DbSession, task: Task) -> dict:
 
 
 def task_detail(db: DbSession, task: Task) -> TaskDetail:
+    from app.standards.service import suggestion
     files = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)).all()
     paragraphs = dict(
         db.execute(
@@ -323,6 +324,7 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
             if job_id is not None:
                 queue_position = jobs.queue_position(db, job_id)
     return TaskDetail(
+        template_suggestion=suggestion(db,task),
         id=task.id,
         title=task.title,
         status=task.status,

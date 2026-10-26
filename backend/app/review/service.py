@@ -102,6 +102,7 @@ class FindingOut(BaseModel):
     basis: str | None
     law_refs: list[dict] = []
     law_unverified: bool = False
+    source: str = 'model'
     handling_status: str
     handling_note: str | None
 
@@ -112,6 +113,7 @@ class Progress(BaseModel):
 
 
 class RunDetail(BaseModel):
+    template: dict | None = None
     id: uuid.UUID
     task_id: uuid.UUID
     run_no: int
@@ -218,7 +220,7 @@ def _conflict(code: str, message: str) -> AppError:
     return AppError(409, code, message)
 
 
-def create_run(db: DbSession, task: Task, user: User, ip: str | None) -> ReviewRun:
+def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_template: bool = True) -> ReviewRun:
     """POST /tasks/{id}/runs：前置检查 → 预检出口复检 → 建轮次 → 入队 → 任务进入 reviewing。"""
     # 锁住任务行并重读：两个并发的确认请求只有一个能通过状态检查
     task = db.execute(select(Task).where(Task.id == task.id).with_for_update()
@@ -264,6 +266,13 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None) -> ReviewR
         created_by=user.id, queued_at=utcnow(),
     )
     db.add(run)
+    if use_template:
+        from app.standards.service import choose
+        template=choose(db,task,main.doc_type)
+        if template:
+            run.template_id=template.id
+            run.template_name_snapshot_enc=template.name_enc
+            run.template_hash=template.content_hash
     db.flush()
     jobs.enqueue(db, "review", {"task_id": str(task.id), "run_id": str(run.id)})
     task.status = "reviewing"
@@ -347,6 +356,7 @@ class _View:
             suggestion=self.text(f.suggestion), suggested_text=self.text(f.suggested_text), basis=self.text(f.basis),
             handling_status=f.handling_status, handling_note=f.handling_note,
             law_refs=f.law_refs, law_unverified=f.law_unverified,
+            source=f.source,
         )
 
 
@@ -393,7 +403,9 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
     job_id = db.scalar(select(Job.id).where(Job.type == "review", Job.payload["run_id"].astext == str(run.id)))
     if job_id is not None:
         queue_position = jobs.queue_position(db, job_id)
+    from app.standards.service import snapshot
     return RunDetail(
+        template=snapshot(db,run),
         id=run.id, task_id=run.task_id, run_no=run.run_no, status=run.status, error_message=run.error_message,
         stance=run.stance, source=run.source, user_note=view.text(run.user_note), main_doc_type=run.main_doc_type,
         model_name=run.model_name, prompt_version=run.prompt_version, builtin_req_version=run.builtin_req_version,

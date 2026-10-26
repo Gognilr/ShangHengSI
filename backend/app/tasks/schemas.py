@@ -84,6 +84,7 @@ class LatestRun(BaseModel):
 
 
 class TaskDetail(BaseModel):
+    template_suggestion: dict | None = None
     id: uuid.UUID
     title: str
     status: str
