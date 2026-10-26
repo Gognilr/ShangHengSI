@@ -28,7 +28,7 @@ def run(db):
         page=1
         while True:
             requests+=1
-            data=client.list_page((102,210,320,330,340),(1,2,3,4),page,100)
+            data=client.list_page(client.CATEGORY_CODES,(1,2,3,4),page,100)
             rows.extend(data['rows'])
             if data['total']>6000:
                 raise client.SyncError('BAD_RESPONSE')
@@ -70,8 +70,10 @@ def run(db):
         record=LawImport(kind='sync',status='parsing',file_names=[],added=len(diff['added']),
                          changed=len(diff['changed']),unchanged=unchanged,skipped=skipped)
         db.add(record); db.flush()
+        # flxz 是“民法商法”等原始子类名；全文资格按已校验的官方码判断。
+        fulltext_ids={r['bbbs'] for r in rows if r['flfgCodeId'] in client.CATEGORY_CODES and r['flfgCodeId']!=210}
         candidates=sorted((r for r in diff['added'] if r['status']=='valid' and
-                           r['category'] in ('法律','司法解释')),key=lambda r:r['published_on'],reverse=True)[:200]
+                           r['flk_id'] in fulltext_ids),key=lambda r:r['published_on'],reverse=True)[:200]
         for row in candidates:
             try:
                 # 一次只取一部的地址，避免官方漏返时将其他法规全文错误绑定。

@@ -13,6 +13,7 @@ from app.config import get_settings
 
 API_HOST = 'flk.npc.gov.cn'
 FILE_HOST = 'flkoss.obs-bj2.cucloud.cn'
+CATEGORY_CODES = (102,110,120,130,140,150,155,160,170,210,320,330,340)
 _ID = re.compile(r'^[0-9a-f]{32}$')
 _lock = threading.Lock()
 _last_request = None
@@ -74,7 +75,7 @@ def _day(value):
 
 def list_page(category_codes: tuple[int, ...], status_codes: tuple[int, ...], page: int, page_size: int) -> dict:
     if (type(category_codes) is not tuple or not category_codes or
-        any(type(c) is not int or c not in (102,210,320,330,340) for c in category_codes) or
+        any(type(c) is not int or c not in CATEGORY_CODES for c in category_codes) or
         type(status_codes) is not tuple or not status_codes or
         any(type(c) is not int or c not in (1,2,3,4) for c in status_codes) or
         type(page) is not int or not 1 <= page <= 60 or type(page_size) is not int or not 1 <= page_size <= 100):
@@ -97,6 +98,7 @@ def list_page(category_codes: tuple[int, ...], status_codes: tuple[int, ...], pa
             not isinstance(row.get('title'),str) or not 0<len(row['title'].strip())<=300 or
             not _day(row.get('published_on')) or not _day(row.get('effective_on')) or
             (row.get('sxx') is not None and (type(row['sxx']) is not int or row['sxx'] not in (1,2,3,4))) or
+            type(row.get('flfgCodeId')) is not int or row['flfgCodeId'] not in CATEGORY_CODES or
             not isinstance(row.get('category'),str) or not 0<len(row['category'])<=60 or
             (row.get('office') is not None and (not isinstance(row['office'],str) or len(row['office'])>100))):
             raise SyncError('BAD_RESPONSE')

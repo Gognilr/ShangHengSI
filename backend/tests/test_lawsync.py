@@ -32,7 +32,7 @@ def wire(monkeypatch):
 
 def item(n=1, **kw):
     return dict(bbbs=f'{n:032x}', title=f'示例供货法规{n}', published_on='2026-01-01',
-                effective_on=None, sxx=3, category='法律', office='示例机关', **kw)
+                effective_on=None, sxx=3, category='法律', office='示例机关', flfgCodeId=102, **kw)
 
 
 def test_t43_signatures_and_input_rejection(wire):
@@ -181,7 +181,7 @@ def test_official_wire_fields_and_download_shape(wire):
     import json
     from app.lawsync import client
     raw=dict(bbbs='1'*32,title='示例协议法',gbrq='2026-01-01',sxrq='2026-02-01',
-             sxx=3,flxz='法律',zdjgName='示例机关')
+             sxx=3,flxz='法律',zdjgName='示例机关',flfgCodeId=102)
     def respond(r):
         body=json.loads(r.content)
         if r.url.path.endswith('/list'):
@@ -202,3 +202,50 @@ def test_official_download_rejects_missing_or_untrusted_url(wire,data):
     wire[0](lambda r:httpx.Response(200,json=dict(code=200,data=data)))
     with pytest.raises(client.SyncError,match='BAD_RESPONSE'):
         client.download_urls(['1'*32])
+
+
+CODES=(102,110,120,130,140,150,155,160,170,210,320,330,340)
+
+@pytest.mark.parametrize('code',[0,101,111,180,211,310,350,True,'120'])
+def test_v2q109_rejects_unknown_request_code(wire,code):
+    from app.lawsync import client
+    with pytest.raises(ValueError):client.list_page((code,),(3,),1,100)
+    assert not wire[1]
+
+@pytest.mark.parametrize('code',[None,True,'120',101,180,350])
+def test_v2q109_rejects_unknown_row_code(wire,code):
+    from app.lawsync import client
+    row=dict(bbbs='2'*32,title='示例子类法',gbrq='2026-01-01',sxrq=None,sxx=3,
+             flxz='民法商法',zdjgName=None,flfgCodeId=code)
+    wire[0](lambda r:httpx.Response(200,json=dict(code=200,rows=[row],total=1)))
+    with pytest.raises(client.SyncError,match='BAD_RESPONSE'):client.list_page(CODES,(3,),1,100)
+
+
+def test_v2q109_all_codes_in_wire_request(wire):
+    import json
+    from app.lawsync import client
+    def response(r):
+        assert json.loads(r.content)['flfgCodeId']==list(CODES)
+        return httpx.Response(200,json=dict(code=200,rows=[],total=0))
+    wire[0](response)
+    client.list_page(CODES,(1,2,3,4),1,100)
+
+
+def test_v2q109_subcategory_fulltext_candidate(db_sessionmaker,monkeypatch):
+    from app.lawsync import client,sync
+    seen=[]
+    def page(c,s,p,n):
+        assert c==CODES and s==(1,2,3,4) and p==1 and n==100
+        return dict(code=200,total=2,rows=[dict(item(),category='民法商法',flfgCodeId=120),dict(item(2),category='法律',flfgCodeId=210)])
+    monkeypatch.setattr(client,'list_page',page)
+    def urls(ids):
+        seen.extend(ids);return ['https://flkoss.obs-bj2.cucloud.cn/prod/a.docx']
+    monkeypatch.setattr(client,'download_urls',urls)
+    monkeypatch.setattr(client,'download_file',lambda u:document())
+    with db_sessionmaker() as db:
+        sync.run(db)
+        r=db.scalar(select(LawImport))
+        assert r.status=='pending' and r.added==2
+        assert seen==[item()['bbbs']]
+        assert len(r.diff['fulltext'])==1 and r.diff['added'][0]['category']=='民法商法'
+        assert db.scalar(select(func.count()).select_from(Law))==0
