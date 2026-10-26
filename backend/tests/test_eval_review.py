@@ -72,7 +72,7 @@ def test_gateway_cap_and_recheck(cli, llm, db_sessionmaker, cap):
     assert eval_review.main(args) == 1
     assert not requests
     text = report.read_text(encoding="utf-8")
-    assert ("REVIEW\\_FAILED" if cap else "OUTBOUND\\_BLOCKED") in text
+    assert ("| 错误码 | CAP\\_REACHED |" if cap else "OUTBOUND\\_BLOCKED") in text
     assert "forbidden@example" not in text
 
 

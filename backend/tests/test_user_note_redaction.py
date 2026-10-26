@@ -145,10 +145,12 @@ def test_r4_note_result_report_and_retention(db_sessionmaker, alice, ready_task,
     for after_retention in (False, True):
         if after_retention:
             with db_sessionmaker() as db:
-                settings_store.set_setting(db, "retention.original_days", 1, None)
-                db.get(Task, task.id).last_completed_at = utcnow() - timedelta(days=2)
+                for layer, days in {"original": 30, "result": 0, "outbound": 0, "audit": 0, "unfinished": 0}.items():
+                    settings_store.set_setting(db, f"retention.{layer}_days", days, None)
+                db.get(Task, task.id).last_activity_at = utcnow() - timedelta(days=31)
                 db.commit()
-                assert retention.run_retention(db) == {"tasks": 1, "files": 1}
+                assert retention.run_retention(db) == {"tasks": 1, "files": 1, "results": 0,
+                                                       "unfinished": 0, "outbound": 0, "audit": 0}
                 stored = db.get(Task, task.id)
                 assert stored.user_note_enc is None and stored.user_note_redacted
         detail = c.get(f"{API_PREFIX}/runs/{rid}").json()

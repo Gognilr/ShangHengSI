@@ -88,7 +88,9 @@ def test_setting_and_account_changes_are_audited(admin, make_user, db_sessionmak
         "text": REQ_TEXT, "doc_types": ["all"], "stances": ["all"], "enabled": True, "sort": 1}).status_code == 201
     assert c.put(f"{API_PREFIX}/admin/company-profile", headers=_hdr(csrf), json={"text": PROFILE_TEXT}).status_code == 200
     assert c.put(f"{API_PREFIX}/admin/settings/backup", headers=_hdr(csrf), json={"time": "03:00", "keep": 5}).status_code == 200
-    assert c.put(f"{API_PREFIX}/admin/settings/retention", headers=_hdr(csrf), json={"original_days": 30}).status_code == 200
+    assert c.put(f"{API_PREFIX}/admin/settings/retention", headers=_hdr(csrf), json={
+        "original_days": 30, "result_days": 0, "outbound_days": 0, "audit_days": 0,
+        "unfinished_days": 0}).status_code == 200
 
     acts = actions(db_sessionmaker)
     assert acts.count("user_create") == 1 and acts.count("user_update") == 2
