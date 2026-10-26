@@ -310,6 +310,8 @@ if [ "$action" = start ]; then
   cmp "$ROOT_TEST/secrets/master_key" "$ROOT_TEST/new-key" >/dev/null && echo new-active >> "$TRACE" || echo old-active >> "$TRACE"
 fi
 if [ "$action" = rotate ] || [ "$action" = verify ]; then
+  case " $* " in *" /run/secrets/master_key.pending "*) ;; *) exit 8 ;; esac
+  cmp "$ROOT_TEST/secrets/master_key.pending" "$ROOT_TEST/new-key" >/dev/null || exit 8
   [ -z "$(cat)" ] || exit 9
 fi
 [ "${FAIL:-}" != "$action" ]
@@ -330,6 +332,7 @@ def test_v2c07_script_order_and_failure_boundary(rotate_script, failure):
     from datetime import datetime
     root,old,new,run = rotate_script
     result,events = run(failure)
+    pending = root / "secrets/master_key.pending"
     output = result.stdout + result.stderr
     assert "O"*32 not in output and "N"*32 not in output
     archive = root / f"secrets/master_key.old-{datetime.now():%Y%m%d}"
@@ -339,6 +342,7 @@ def test_v2c07_script_order_and_failure_boundary(rotate_script, failure):
         assert archive.read_bytes() == b"O"*32
         assert archive.stat().st_mode & 0o777 == 0o600
         assert old.stat().st_mode & 0o777 == 0o600
+        assert not pending.exists()
         assert (result.returncode == 0) is (not failure)
         if failure:
             assert "不要换回旧密钥" in output
@@ -346,9 +350,12 @@ def test_v2c07_script_order_and_failure_boundary(rotate_script, failure):
         assert result.returncode != 0 and old.read_bytes() == b"O"*32
         assert not archive.exists()
         if failure in ("backup","stop"):
+            assert not pending.exists()
             assert events[-2:] == ["start","old-active"]
             assert "rotate" not in events and "数据未改动" in output
         else:
+            assert pending.read_bytes() == b"N"*32
+            assert pending.stat().st_mode & 0o777 == 0o600
             assert events == (["backup","stop","rotate"] if failure == "rotate" else ["backup","stop","rotate","verify"])
             assert "保持停止" in output and "同一新密钥" in output
 
@@ -392,12 +399,77 @@ def test_v2c07_script_container_stdin():
     assert all(line.rstrip().endswith("</dev/null") for line in commands)
 
 
-def test_v2c07_script_resume_stopped_worker_does_not_start_old_key(rotate_script):
-    """实际 backup_now 依赖 exec worker，轮换失败后重跑不能恢复旧密钥服务（V2Q-71）。"""
+@pytest.mark.parametrize("first_failure", ["rotate", "verify"])
+@pytest.mark.parametrize("retry_failure", ["", "stop", "rotate", "verify"])
+def test_v2c07_script_resume_stopped_worker_does_not_start_old_key(rotate_script, first_failure, retry_failure):
+    """V2Q-71 批准改写：停服续做跳过备份，再次失败仍保留 pending 且不启动旧服务。"""
+    from datetime import datetime
     root,old,new,run = rotate_script
-    first,events = run("rotate", strict_stopped=True)
+    first,events = run(first_failure, strict_stopped=True)
     assert first.returncode != 0 and (root / "stopped").exists()
+    pending = root / "secrets/master_key.pending"
+    assert pending.read_bytes() == new.read_bytes()
+    previous = len(events)
+    second,events = run(retry_failure, strict_stopped=True)
+    retried = events[previous:]
+    assert "backup" not in retried and "old-active" not in retried
+    assert "续做上次未完成的更换，不再备份" in second.stdout
+    if retry_failure:
+        expected = ["stop"]
+        if retry_failure != "stop":
+            expected.append("rotate")
+        if retry_failure == "verify":
+            expected.append("verify")
+        assert retried == expected
+        assert second.returncode != 0 and old.read_bytes() == b"O"*32
+        assert pending.read_bytes() == b"N"*32
+        assert (root / "stopped").exists()
+    else:
+        assert retried == ["stop","rotate","verify","start","new-active"]
+        assert second.returncode == 0, second.stderr
+        assert old.read_bytes() == b"N"*32 and not pending.exists()
+        archive = root / f"secrets/master_key.old-{datetime.now():%Y%m%d}"
+        assert archive.read_bytes() == b"O"*32
+
+
+@pytest.mark.parametrize("invalid", ["different", "length", "mode", "symlink", "directory"])
+def test_v2c07_script_refuses_invalid_pending_without_changes(rotate_script, invalid):
+    root,old,new,run = rotate_script
+    pending = root / "secrets/master_key.pending"
+    if invalid == "directory":
+        pending.mkdir()
+    elif invalid == "symlink":
+        pending.symlink_to(new)
+    else:
+        pending.write_bytes(b"X"*32 if invalid == "different" else b"short" if invalid == "length" else b"N"*32)
+        pending.chmod(0o644 if invalid == "mode" else 0o600)
+    saved = pending.read_bytes() if pending.is_file() else None
+    result,events = run(strict_stopped=True)
+    assert result.returncode != 0 and not events
+    assert "必须使用同一新密钥续做" in result.stderr
+    assert old.read_bytes() == b"O"*32
+    if saved is not None:
+        assert pending.read_bytes() == saved
+    else:
+        assert pending.is_dir()
+
+
+def test_v2c07_script_no_pending_and_stopped_worker(rotate_script):
+    root,old,new,run = rotate_script
+    (root / "stopped").touch()
+    result,events = run(strict_stopped=True)
+    assert result.returncode != 0 and not events
+    assert "未发现进行中的更换，数据未改动；请先正常启动服务再执行" in result.stderr
+    assert old.read_bytes() == b"O"*32
+    assert not (root / "secrets/master_key.pending").exists()
+
+
+def test_v2c07_script_resume_stops_manually_started_services(rotate_script):
+    root,old,new,run = rotate_script
+    first,events = run("rotate",strict_stopped=True)
+    assert first.returncode != 0
+    (root / "stopped").unlink()  # 模拟有人手工启动过旧密钥服务。
     previous = len(events)
     second,events = run(strict_stopped=True)
-    assert "start" not in events[previous:], "可能已有混合密文时，不能因第二次备份失败而启动旧密钥服务"
-    assert second.returncode == 0, "同一新密钥重跑应能完成停服续做"
+    assert second.returncode == 0, second.stderr
+    assert events[previous:] == ["stop","rotate","verify","start","new-active"]

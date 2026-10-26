@@ -34,23 +34,37 @@ for key_path in "$OLD_KEY" "$NEW_KEY"; do
   [ "$(stat -c %s -- "$key_path")" -eq 32 ] || die '主密钥文件必须恰好 32 字节'
   [ "$(stat -c %a -- "$key_path")" = 600 ] || die '主密钥文件权限必须为 600'
 done
-cmp -s -- "$OLD_KEY" "$NEW_KEY" && die '新旧主密钥相同，拒绝更换'
 check_storage "$(resolve_path "$(env_get BACKUP_HOST_DIR)")"
 exec 9>"$ROOT/secrets/.rotate-key.lock"
 flock -n 9 || die '另一个密钥更换操作正在执行'
+PENDING="$ROOT/secrets/master_key.pending"
+RESUME=0
+if [ -e "$PENDING" ] || [ -L "$PENDING" ]; then
+  [ -f "$PENDING" ] && [ ! -L "$PENDING" ] \
+    && [ "$(stat -c %s -- "$PENDING")" -eq 32 ] \
+    && [ "$(stat -c %a -- "$PENDING")" = 600 ] \
+    && cmp -s -- "$PENDING" "$NEW_KEY" \
+    || die '有一次更换尚未完成，必须使用同一新密钥续做；主密钥和 pending 均未改动'
+  RESUME=1
+fi
+cmp -s -- "$OLD_KEY" "$NEW_KEY" && die '新旧主密钥相同，拒绝更换'
 ARCHIVE="$OLD_KEY.old-$(date +%Y%m%d)"
 if [ -e "$ARCHIVE" ] || [ -L "$ARCHIVE" ]; then
   [ -f "$ARCHIVE" ] && [ ! -L "$ARCHIVE" ] && cmp -s -- "$OLD_KEY" "$ARCHIVE" \
     || die '当天的旧密钥副本已存在且不同，拒绝覆盖；数据未改动'
   [ "$(stat -c %a -- "$ARCHIVE")" = 600 ] || die '旧密钥副本权限必须为 600'
 fi
-# V2Q-71 尚待明确停服备份入口。先拒绝无法在线备份的状态，绝不误启可能已有混合密文的服务。
-RUNNING="$(compose ps --status running --services </dev/null)" || die '无法读取服务状态，数据未改动'
-printf '%s\n' "$RUNNING" | grep -qx worker \
-  || die 'worker 未运行，不能执行在线备份；请保持停服，核对续做流程与新旧密钥，禁止自动启动旧密钥服务'
+if [ "$RESUME" -eq 0 ]; then
+  RUNNING="$(compose ps --status running --services </dev/null)" || die '无法读取服务状态，数据未改动'
+  printf '%s\n' "$RUNNING" | grep -qx worker \
+    || die '未发现进行中的更换，数据未改动；请先正常启动服务再执行'
+else
+  info '续做上次未完成的更换，不再备份；第一次执行前的备份是完整的旧密钥备份。'
+fi
 confirm '即将备份、停止 app/worker 并更换全部数据的主密钥。请确认已离线保管新旧密钥。' '确认更换主密钥'
 
 STAGE=before
+[ "$RESUME" -eq 0 ] || STAGE=changing
 STEP=准备
 CANDIDATE=""
 on_exit() {
@@ -60,12 +74,14 @@ on_exit() {
   if [ "$rc" -ne 0 ]; then
     case "$STAGE" in
       before)
+        rm -f -- "$PENDING"
+        sync -f "$ROOT/secrets"
         info "更换失败（$STEP），数据未改动，主密钥文件未更换；尝试用原密钥重新启动 app、worker。" >&2
         compose up -d --wait app worker </dev/null || info '服务恢复启动失败，请检查 compose logs。' >&2
         ;;
       changing)
         info "更换失败（$STEP），数据可能已部分轮换，app、worker 保持停止，主密钥文件未更换。" >&2
-        info '请保留新密钥文件，用同一新密钥重新执行 rotate_key.sh 续做。第一次执行前的备份只需旧密钥即可恢复；重跑时的新备份可能含两种密钥的数据。' >&2
+        info '请保留新密钥和 master_key.pending，用同一新密钥重新执行 rotate_key.sh 续做，续做不再备份；第一次执行前的备份是完整的旧密钥备份。不要手工启动服务。' >&2
         ;;
       committed)
         info '数据与主密钥文件更换已完成，当前为新密钥。不要换回旧密钥；请用 docker compose logs 排查启动失败。' >&2
@@ -75,15 +91,21 @@ on_exit() {
   exit "$rc"
 }
 trap on_exit EXIT
-# 候选文件置于现有只读 secrets 挂载，所有权与旧主密钥一致，容器用户可读取。
-CANDIDATE="$(mktemp "$ROOT/secrets/.rotate-key.XXXXXX")"
-cp -- "$NEW_KEY" "$CANDIDATE"
-chmod 600 "$CANDIDATE"
-chown --reference="$OLD_KEY" "$CANDIDATE"
-sync -f "$CANDIDATE"
-CONTAINER_NEW="/run/secrets/$(basename "$CANDIDATE")"
-STEP=备份
-bash "$ROOT/scripts/backup_now.sh" --wait
+if [ "$RESUME" -eq 0 ]; then
+  STEP=备份
+  bash "$ROOT/scripts/backup_now.sh" --wait
+  # 备份成功后才写 pending；文件即状态，与新密钥一并持久化后才能停止服务。
+  STEP=记录进行中的更换
+  CANDIDATE="$(mktemp "$ROOT/secrets/.rotate-key.XXXXXX")"
+  cp -- "$NEW_KEY" "$CANDIDATE"
+  chmod 600 "$CANDIDATE"
+  chown --reference="$OLD_KEY" "$CANDIDATE"
+  sync -f "$CANDIDATE"
+  mv -fT -- "$CANDIDATE" "$PENDING"
+  CANDIDATE=""
+  sync -f "$ROOT/secrets"
+fi
+CONTAINER_NEW=/run/secrets/master_key.pending
 STEP=停止服务
 compose stop app worker </dev/null
 STAGE=changing
@@ -99,8 +121,7 @@ cmp -s -- "$OLD_KEY" "$ARCHIVE" || die '旧密钥副本校验失败，未更换�
 chmod 600 "$ARCHIVE"
 sync -f "$ARCHIVE"
 STEP=切换主密钥
-mv -f -- "$CANDIDATE" "$OLD_KEY"
-CANDIDATE=""
+mv -fT -- "$PENDING" "$OLD_KEY"
 STAGE=committed
 sync -f "$ROOT/secrets"
 STEP=启动服务
