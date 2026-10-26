@@ -4,7 +4,7 @@
 
 ## 当前进度（只保留最近 3 条，每条不超过 400 字；更早的见 [archive/progress.md](archive/progress.md)）
 
-- 2026-10-26（GPT-6.1 Sol）：**V2-C-07实施检查点，尚未完成**。按V2Q-70完成轮换/抽查命令、动态加密列、500行事务和原件原子替换，命令/crypto/备份CLI三个完整文件42 passed、退出0已重读；脚本32 passed/1 failed、退出1已保留。停服重跑发现V2Q-71：backup_now依赖运行的worker，续做备份入口缺失；现保守拒绝停服重跑，防止误启旧密钥，成功续做断言仍保留失败。详见reports/V2-C-07.md。待Opus补齐V2Q-71后继续C07（GPT-6.1 Sol，测试先行，xhigh），未进入C08。（V2Q-71 已由 Opus 裁定：以 secrets/master_key.pending 标记续做，续做不再备份，新增测试 #10～#13，见 design/V2-C.md 第七节；用户确认后继续 C-07）
+- 2026-10-26（GPT-6.1 Sol）：**V2-C-07实施检查点，尚未完成**。按V2Q-70完成轮换/抽查命令、动态加密列、500行事务和原件原子替换，命令/crypto/备份CLI三个完整文件42 passed、退出0已重读；脚本32 passed/1 failed、退出1已保留。停服重跑发现V2Q-71：backup_now依赖运行的worker，续做备份入口缺失；现保守拒绝停服重跑，防止误启旧密钥，成功续做断言仍保留失败。详见reports/V2-C-07.md。待Opus补齐V2Q-71后继续C07（GPT-6.1 Sol，测试先行，xhigh），未进入C08。（V2Q-71 已由 Opus 裁定：以 secrets/master_key.pending 标记续做，续做不再备份，新增测试 #10～#13，见 design/V2-C.md 第七节，用户已确认，C-07 可继续）
 
 - 2026-10-26（GPT-6.1 Sol）：**V2-C-06已完成**。四角色迁移0016、系统/业务权限与导航、管理员保底、提醒按角色及本次收起、CUSTOM立即自动记住均实现，V2Q-68四文件范围已纳入。测试先红10 failed/4 passed；13个相关文件616 passed，补强后的两个完整文件68 passed，build退出0均落盘重读。详见reports/V2-C-06.md；V2Q-69为实现细节待确认。下一步C07（GPT-6.1 Sol，测试先行，xhigh）因V2Q-70换密钥后启动失败的设计/测试冲突待Opus明确，未实施（V2Q-70 已由 Opus 裁定并经用户确认，见 design/V2-C.md 第七节，C-07 可开工）；全量、浏览器和测试虚拟机演练留C08。
 
