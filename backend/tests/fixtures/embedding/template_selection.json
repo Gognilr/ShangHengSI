@@ -1,0 +1,168 @@
+{
+  "note": "V2-E-04a 范本选择评测集（全部虚构）：5 份范本、10 份应匹配的合同（expect 为应选中的范本），另有 3 份没有对应范本的合同（expect 为 null）。T1 的条款取 template_pairs.json 的 template；合同的 pairs 引用该文件中对应条款的 zh 或 en 版本。2026-10-26 Opus 编写，推理前固定，不得按结果修改。",
+  "templates": {
+    "T1": {"name": "采购合同范本", "from_pairs": "template"},
+    "T2": {"name": "技术服务合同范本", "clauses": [
+      {"title": "服务内容", "text": "受托方为委托方提供信息系统的运行维护服务，服务范围包括服务器、网络设备和应用系统的日常巡检、故障处理和性能优化，具体以附件《服务清单》为准。"},
+      {"title": "服务期限", "text": "服务期限为一年，自本合同生效之日起计算。期满前三十日双方未提出异议的，自动续期一年。"},
+      {"title": "服务标准", "text": "受托方应提供每周七天、每天二十四小时的响应服务。一般故障应在四小时内修复，重大故障应在两小时内到达现场。"},
+      {"title": "委托方的协助义务", "text": "委托方应为受托方提供必要的工作条件、系统账号和技术资料，并指定专人负责联络和配合。"},
+      {"title": "人员要求", "text": "受托方派驻的服务人员应具备相应资质，委托方认为服务人员不能胜任的，有权要求受托方在五个工作日内更换。"},
+      {"title": "服务费用及支付", "text": "服务费按季度支付，每季度结束后十日内，委托方根据考核结果向受托方支付当季服务费。"},
+      {"title": "服务考核", "text": "委托方每月对服务质量进行考核，考核不达标的，按照附件《考核办法》扣减当月服务费。"},
+      {"title": "工作成果归属", "text": "受托方在履行本合同过程中形成的技术文档、配置资料及其他工作成果，其知识产权归委托方所有。"},
+      {"title": "数据安全", "text": "受托方应严格遵守委托方的信息安全管理制度，不得擅自复制、下载或对外提供委托方系统中的任何数据。"},
+      {"title": "违约责任", "text": "受托方未达到服务标准，连续两个月考核不合格的，委托方有权解除合同，并要求受托方赔偿由此造成的损失。"}
+    ]},
+    "T3": {"name": "保密协议范本", "clauses": [
+      {"title": "保密信息的范围", "text": "本协议所称保密信息，是指披露方以书面、口头或电子形式向接收方提供的、未公开的技术信息和经营信息，包括但不限于技术方案、客户名单、价格策略和财务数据。"},
+      {"title": "除外情形", "text": "下列信息不属于保密信息：接收方在披露前已合法知悉的信息；非因接收方过错已为公众所知的信息；接收方从有权披露的第三方合法取得的信息。"},
+      {"title": "保密义务", "text": "接收方应对保密信息严格保密，仅为双方合作之目的使用保密信息，未经披露方书面同意，不得向任何第三方披露。"},
+      {"title": "知悉范围", "text": "接收方仅可向因合作需要而必须知悉保密信息的员工和顾问披露，并应确保其承担不低于本协议的保密义务。"},
+      {"title": "依法披露", "text": "接收方依据法律规定或者司法机关、行政机关的要求必须披露保密信息的，应在披露前及时通知披露方，并仅在要求范围内披露。"},
+      {"title": "资料返还与销毁", "text": "合作终止或者披露方提出要求时，接收方应在十日内返还或销毁全部保密资料及其复制件，并出具书面确认。"},
+      {"title": "保密期限", "text": "本协议项下的保密义务自签署之日起生效，在双方合作终止后五年内持续有效。"},
+      {"title": "权利保留", "text": "披露方向接收方提供保密信息，不构成对任何专利、商标、著作权或其他知识产权的许可或转让。"},
+      {"title": "违约责任", "text": "接收方违反本协议的，应向披露方支付违约金人民币五十万元；违约金不足以弥补披露方损失的，接收方还应赔偿差额部分。"},
+      {"title": "争议解决", "text": "因本协议产生的争议，双方应协商解决；协商不成的，提交披露方所在地人民法院诉讼解决。"}
+    ]},
+    "T4": {"name": "房屋租赁合同范本", "clauses": [
+      {"title": "租赁房屋", "text": "出租人将位于示例市示例区示例路的房屋出租给承租人，建筑面积以不动产权证书记载为准，房屋用途为办公。"},
+      {"title": "租赁期限", "text": "租赁期限为三年，自房屋交付之日起计算。租赁期满，承租人需要续租的，应在期满前三个月书面提出。"},
+      {"title": "租金及支付", "text": "月租金按建筑面积每平方米一百元计算，租金每季度支付一次，承租人应于每季度首月五日前支付当季租金。"},
+      {"title": "押金", "text": "承租人应在签订本合同时向出租人支付相当于三个月租金的押金。租赁期满承租人结清全部费用并返还房屋后，出租人无息退还押金。"},
+      {"title": "物业及其他费用", "text": "租赁期间的物业管理费、水费、电费、燃气费和通讯费由承租人承担，房屋的房产税由出租人承担。"},
+      {"title": "房屋维修", "text": "房屋主体结构及共用设施的维修由出租人负责；因承租人使用不当造成房屋或设施损坏的，由承租人负责修复或赔偿。"},
+      {"title": "装修与改造", "text": "承租人对房屋进行装修或改造，应事先取得出租人的书面同意。租赁期满时，出租人有权要求承租人恢复原状。"},
+      {"title": "转租", "text": "未经出租人书面同意，承租人不得将房屋全部或部分转租、转借给第三方。"},
+      {"title": "提前解约", "text": "租赁期内任何一方提前解除合同的，应提前两个月书面通知对方，并按两个月租金的标准向对方支付违约金。"},
+      {"title": "房屋返还", "text": "租赁关系终止后，承租人应在十日内腾空并返还房屋，逾期返还的，按日租金的两倍支付房屋占用费。"}
+    ]},
+    "T5": {"name": "经销协议范本", "clauses": [
+      {"title": "经销授权", "text": "供应商授权经销商在约定区域内销售本协议附件所列产品，经销商以自己的名义购进并转售产品，自负盈亏。"},
+      {"title": "经销区域与期限", "text": "经销区域为附件所列省份，经销期限为两年。经销商不得在约定区域以外主动销售产品。"},
+      {"title": "年度销售目标", "text": "经销商的年度采购目标以附件为准。经销商连续两个季度未完成目标百分之六十的，供应商有权调整经销区域或终止授权。"},
+      {"title": "订货与交付", "text": "经销商应按月向供应商提交订单，供应商确认后十五日内发货，运费由供应商承担。"},
+      {"title": "价格政策", "text": "供应商按经销价格表向经销商供货，并有权根据市场情况调整建议零售价；经销商不得低于供应商公布的最低限价销售。"},
+      {"title": "付款与信用额度", "text": "经销商应在下单时预付百分之三十的货款，余款在收货后三十日内付清；供应商可根据经销商的信用情况给予一定的信用额度。"},
+      {"title": "商标使用", "text": "经销商可在经销期限内为销售产品之目的使用供应商的商标和宣传资料，但不得注册与供应商商标相同或近似的商标或域名。"},
+      {"title": "市场推广", "text": "经销商应在经销区域内开展市场推广活动，推广方案须事先报供应商审核，供应商按约定比例给予推广费用支持。"},
+      {"title": "售后服务", "text": "经销商负责向终端客户提供产品安装和一般售后服务，供应商提供技术培训和备件支持。"},
+      {"title": "协议终止", "text": "经销商严重违反价格政策或者窜货销售的，供应商有权立即终止本协议，并取消经销商已享有的返利。"}
+    ]}
+  },
+  "contracts": [
+    {"id": "C01", "expect": "T1", "lang": "zh", "pairs": {"version": "zh", "ids": ["P01", "P03", "P04", "P05", "P06", "P08", "P10", "P12", "P13", "P14", "P16", "P17", "P18", "P20", "P21", "P23", "P27", "P29"]},
+     "extra": [
+       {"title": "安装调试", "text": "乙方应派技术人员到甲方现场完成设备安装调试，并对甲方操作人员进行不少于三天的培训。"},
+       {"title": "备品备件", "text": "乙方应保证在设备停产后五年内继续以合理价格向甲方供应备品备件。"}
+     ]},
+    {"id": "C02", "expect": "T1", "lang": "en", "pairs": {"version": "en", "ids": ["P01", "P02", "P03", "P05", "P07", "P08", "P09", "P11", "P12", "P14", "P15", "P16", "P19", "P21", "P22", "P24", "P26", "P28", "P30"]},
+     "extra": [
+       {"title": "Incoterms", "text": "The Goods shall be delivered DAP Example City in accordance with Incoterms 2020."}
+     ]},
+    {"id": "C03", "expect": "T2", "lang": "zh", "clauses": [
+      {"title": "运维范围", "text": "乙方负责甲方数据中心机房设备及业务系统的运维工作，内容包括例行巡检、故障排除、系统调优和定期备份。"},
+      {"title": "合同期", "text": "本合同有效期十二个月，期满前一个月双方均未书面表示终止的，合同期限顺延一年。"},
+      {"title": "响应时限", "text": "乙方提供全年无休的值守服务，接到故障报告后，普通故障四小时内解决，严重故障两小时内工程师到场。"},
+      {"title": "甲方配合", "text": "甲方应向乙方开放必要的系统权限和机房出入权限，提供相关技术文档，并指定联系人。"},
+      {"title": "费用结算", "text": "运维费按季结算，甲方在每季度末根据服务评价结果于十日内付款。"},
+      {"title": "绩效评价", "text": "甲方按月对乙方的服务进行评分，评分低于八十分的，按评分办法扣减当月费用。"},
+      {"title": "信息安全", "text": "乙方人员应遵守甲方的网络安全规定，未经许可不得拷贝、导出甲方业务数据。"},
+      {"title": "发票", "text": "乙方应在收款前开具税率为百分之六的增值税专用发票。"}
+    ]},
+    {"id": "C04", "expect": "T2", "lang": "en", "clauses": [
+      {"title": "Scope of Services", "text": "The Service Provider shall provide operation and maintenance services for the Client's IT systems, including routine inspection of servers and network equipment, troubleshooting and performance tuning, as detailed in the Service Schedule."},
+      {"title": "Term", "text": "The term of this Agreement is one (1) year from the Effective Date and shall automatically renew for one further year unless either party objects at least thirty (30) days before expiry."},
+      {"title": "Service Levels", "text": "The Service Provider shall provide 24x7 support. Ordinary incidents shall be resolved within four (4) hours and engineers shall arrive on site within two (2) hours for critical incidents."},
+      {"title": "Personnel", "text": "The Service Provider's personnel shall be appropriately qualified, and the Client may require replacement of any unsuitable personnel within five (5) business days."},
+      {"title": "Fees and Payment", "text": "Service fees shall be paid quarterly within ten (10) days after the end of each quarter, subject to the results of the service evaluation."},
+      {"title": "Deliverables", "text": "All intellectual property rights in the technical documents, configuration records and other work products created under this Agreement shall belong to the Client."},
+      {"title": "Termination", "text": "If the Service Provider fails the monthly service evaluation for two consecutive months, the Client may terminate this Agreement and claim damages."}
+    ]},
+    {"id": "C05", "expect": "T3", "lang": "zh", "clauses": [
+      {"title": "定义", "text": "本协议所指保密资料，是提供方以任何形式提供给对方且未向社会公开的技术资料、商业信息，例如产品设计、客户资料、报价及财务信息。"},
+      {"title": "不属于保密资料的情形", "text": "接收方在获得前已经合法掌握的、非因接收方原因已经公开的，以及接收方从有权披露的第三方合法获得的资料，不受本协议约束。"},
+      {"title": "保密责任", "text": "接收方只能将保密资料用于双方商定的项目，不得用于其他目的，未经提供方书面许可，不得透露给任何其他人。"},
+      {"title": "资料的处置", "text": "项目结束或者提供方要求时，接收方须在十日内将全部保密资料及其副本归还或者销毁，并书面确认。"},
+      {"title": "期限", "text": "本协议自签字之日起生效，保密责任在项目终止后五年内仍然有效。"},
+      {"title": "违约", "text": "接收方违约泄露保密资料的，应向提供方支付违约金人民币五十万元，并赔偿超出违约金部分的损失。"},
+      {"title": "管辖", "text": "本协议的争议由提供方住所地人民法院管辖。"}
+    ]},
+    {"id": "C06", "expect": "T3", "lang": "en", "clauses": [
+      {"title": "Confidential Information", "text": "\"Confidential Information\" means any non-public technical or business information disclosed by the Disclosing Party in writing, orally or electronically, including technical solutions, customer lists, pricing and financial data."},
+      {"title": "Exclusions", "text": "Confidential Information does not include information that was lawfully known to the Receiving Party before disclosure, becomes public through no fault of the Receiving Party, or is lawfully obtained from a third party entitled to disclose it."},
+      {"title": "Obligations", "text": "The Receiving Party shall keep the Confidential Information strictly confidential, use it solely for the purpose of the cooperation, and not disclose it to any third party without the Disclosing Party's prior written consent."},
+      {"title": "Compelled Disclosure", "text": "If the Receiving Party is required by law or by a court or governmental authority to disclose Confidential Information, it shall promptly notify the Disclosing Party before disclosure and disclose only the information required."},
+      {"title": "No License", "text": "Nothing in this Agreement grants the Receiving Party any license or right under any patent, trademark, copyright or other intellectual property of the Disclosing Party."},
+      {"title": "Term", "text": "The confidentiality obligations shall remain in force for five (5) years after the termination of the cooperation."},
+      {"title": "Remedies", "text": "The Receiving Party shall pay liquidated damages of RMB 500,000 for any breach and shall further compensate any losses exceeding such amount."}
+    ]},
+    {"id": "C07", "expect": "T4", "lang": "zh", "clauses": [
+      {"title": "租赁物", "text": "甲方将其位于示例市示例区的写字楼一层出租给乙方作办公使用，面积以产权证登记面积为准。"},
+      {"title": "租期", "text": "租期三年，自交房之日起算。乙方如需续租，应在租期届满三个月前书面告知甲方。"},
+      {"title": "租金", "text": "租金每平方米每月一百元，按季度预付，乙方须在每季度第一个月的五号之前付清当季租金。"},
+      {"title": "保证金", "text": "签约时乙方向甲方交纳三个月租金作为租赁保证金，租期届满乙方交还房屋且无欠费的，甲方不计利息退还。"},
+      {"title": "费用承担", "text": "租赁期内的水电费、物业费、网络通讯费由乙方承担，房产税由甲方承担。"},
+      {"title": "维修责任", "text": "房屋结构和公共设施由甲方负责维修，因乙方使用不当造成损坏的，由乙方修复或赔偿。"},
+      {"title": "转租限制", "text": "乙方不得擅自将房屋转租或转借他人，确需转租的须事先取得甲方书面同意。"},
+      {"title": "退租", "text": "租期届满或合同解除后，乙方应于十日内腾退房屋，逾期按日租金两倍支付占用费。"}
+    ]},
+    {"id": "C08", "expect": "T4", "lang": "zh", "clauses": [
+      {"title": "出租房屋情况", "text": "出租方将示例市示例区示例大厦十二层整层房屋出租给承租方，作为承租方的办公场所。"},
+      {"title": "租赁期", "text": "租赁期为五年，自出租方交付房屋之日起计算，前两个月为免租装修期。"},
+      {"title": "租金标准与支付", "text": "第一年月租金为人民币八万元，此后每年递增百分之三，租金每半年支付一次。"},
+      {"title": "装修", "text": "承租方可以按照办公需要进行装修，装修方案须经出租方书面确认，租赁期满后装修添附物无偿归出租方所有。"},
+      {"title": "提前解除", "text": "任何一方提前解除本合同的，应提前六十日书面通知对方，并支付两个月租金作为违约金。"},
+      {"title": "押金", "text": "承租方于签约当日支付押金人民币二十四万元，合同终止后承租方结清费用并交还房屋的，出租方无息退还。"},
+      {"title": "优先续租权", "text": "租赁期满，在同等条件下承租方享有优先承租的权利。"}
+    ]},
+    {"id": "C09", "expect": "T5", "lang": "zh", "clauses": [
+      {"title": "授权", "text": "甲方授予乙方在附件所列区域内经销甲方产品的权利，乙方以自身名义采购并销售产品，独立承担经营风险。"},
+      {"title": "区域与期限", "text": "乙方的经销区域为附件列明的三个省份，经销期为两年；乙方不得到上述区域以外开展销售。"},
+      {"title": "销售任务", "text": "乙方的年度进货任务见附件；连续两个季度完成率低于百分之六十的，甲方可以缩小乙方的经销区域或取消其经销资格。"},
+      {"title": "价格管理", "text": "甲方按经销价向乙方供货，乙方对外销售价格不得低于甲方规定的最低限价。"},
+      {"title": "付款", "text": "乙方下订单时预付百分之三十货款，其余货款在收到产品后三十天内结清。"},
+      {"title": "品牌使用", "text": "乙方可以在经销期内为销售需要使用甲方商标及宣传物料，但不得抢注与甲方商标相同或相近的商标和域名。"},
+      {"title": "终止", "text": "乙方严重违反价格管理规定或跨区域窜货的，甲方可立即终止本协议，并取消乙方的返利。"}
+    ]},
+    {"id": "C10", "expect": "T5", "lang": "en", "clauses": [
+      {"title": "Appointment", "text": "The Supplier appoints the Distributor as its distributor of the Products in the Territory. The Distributor shall purchase and resell the Products in its own name and for its own account."},
+      {"title": "Territory and Term", "text": "The Territory consists of the provinces listed in Schedule 1 and the term is two (2) years. The Distributor shall not actively sell the Products outside the Territory."},
+      {"title": "Minimum Purchase Targets", "text": "If the Distributor achieves less than sixty percent (60%) of its purchase targets for two consecutive quarters, the Supplier may reduce the Territory or terminate the appointment."},
+      {"title": "Orders and Delivery", "text": "The Distributor shall place monthly orders and the Supplier shall ship the Products within fifteen (15) days of order confirmation, with freight paid by the Supplier."},
+      {"title": "Trademarks", "text": "The Distributor may use the Supplier's trademarks and marketing materials during the term solely for selling the Products, and shall not register any identical or similar trademark or domain name."},
+      {"title": "Marketing", "text": "The Distributor shall carry out marketing activities in the Territory under plans approved in advance by the Supplier, which shall contribute to the marketing costs at the agreed ratio."},
+      {"title": "After-sales Service", "text": "The Distributor shall provide installation and basic after-sales service to end customers, and the Supplier shall provide technical training and spare parts support."}
+    ]}
+  ],
+  "negatives": [
+    {"id": "N01", "expect": null, "lang": "zh", "clauses": [
+      {"title": "借款金额与用途", "text": "贷款人向借款人提供借款人民币五百万元，借款人只能将借款用于补充日常经营流动资金。"},
+      {"title": "借款期限", "text": "借款期限为十二个月，自借款实际发放之日起计算。"},
+      {"title": "利率与结息", "text": "借款年利率为百分之五点五，按月结息，借款人应于每月二十日支付当月利息。"},
+      {"title": "还款", "text": "借款人应于借款期限届满之日一次性归还全部本金；经贷款人同意，借款人可以提前还款。"},
+      {"title": "担保", "text": "本借款由借款人的股东提供连带责任保证，并由借款人以其名下房产提供抵押担保。"},
+      {"title": "提前收回", "text": "借款人改变借款用途或者财务状况严重恶化的，贷款人有权提前收回全部借款。"},
+      {"title": "逾期利息", "text": "借款人未按期还款的，自逾期之日起按约定利率上浮百分之五十计收逾期利息。"}
+    ]},
+    {"id": "N02", "expect": null, "lang": "zh", "clauses": [
+      {"title": "工程概况", "text": "工程名称为示例厂区二期厂房建设项目，建筑面积约两万平方米，结构形式为钢结构。"},
+      {"title": "承包范围", "text": "承包人负责施工图纸范围内的土建、钢结构、给排水及电气安装工程。"},
+      {"title": "工期", "text": "计划开工日期以发包人发出的开工通知为准，总工期为二百四十日历天。"},
+      {"title": "工程款支付", "text": "发包人按月支付已完工程量价款的百分之七十，竣工验收合格后付至百分之九十七，其余百分之三为保修金。"},
+      {"title": "安全文明施工", "text": "承包人应严格遵守安全生产法律法规，设置专职安全员，因承包人原因发生安全事故的，由承包人承担全部责任。"},
+      {"title": "竣工验收", "text": "工程具备竣工验收条件后，承包人应提交竣工资料，发包人在收到资料后二十八日内组织验收。"},
+      {"title": "工程保修", "text": "屋面防水工程的保修期为五年，其他部分的保修期按照国家有关规定执行。"}
+    ]},
+    {"id": "N03", "expect": null, "lang": "zh", "clauses": [
+      {"title": "投资方案", "text": "投资方以人民币三千万元认购目标公司新增注册资本三百万元，溢价部分计入资本公积。"},
+      {"title": "交割条件", "text": "投资方支付投资款以目标公司完成尽职调查、取得股东会决议及原股东放弃优先认购权为前提。"},
+      {"title": "股权回购", "text": "目标公司未能在约定期限内完成上市的，投资方有权要求创始股东按投资款加年化百分之八的价格回购股权。"},
+      {"title": "优先清算权", "text": "目标公司清算时，投资方有权优先于其他股东获得相当于投资款一点二倍的清算财产。"},
+      {"title": "董事委派", "text": "交割后目标公司董事会由五名董事组成，投资方有权委派一名董事。"},
+      {"title": "反稀释", "text": "目标公司以低于本轮价格进行后续融资的，创始股东应对投资方进行股权或现金补偿。"},
+      {"title": "信息权", "text": "目标公司应在每季度结束后三十日内向投资方提供季度财务报表。"}
+    ]}
+  ]
+}

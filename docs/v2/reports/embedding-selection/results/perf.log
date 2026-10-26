@@ -1,0 +1,12 @@
+{"variant": "bge-m3-int8", "threads": 8, "chars": 10000, "passages": 20, "load_seconds": 26.49, "embed_seconds": [4.638, 4.561, 4.444], "embed_median": 4.561, "rss_base_mb": 51.2, "peak_increase_gb": 1.575, "cpu_count": 16}
+{"variant": "bge-m3-int8", "threads": 4, "first_load_and_query_seconds": 4.49, "query_seconds": 0.046, "peak_increase_gb": 1.136}
+{"variant": "e5-small-int8", "threads": 8, "chars": 10000, "passages": 20, "load_seconds": 2.56, "embed_seconds": [0.68, 0.696, 0.734], "embed_median": 0.696, "rss_base_mb": 51.5, "peak_increase_gb": 1.003, "cpu_count": 16}
+{"variant": "e5-small-int8", "threads": 4, "first_load_and_query_seconds": 1.43, "query_seconds": 0.006, "peak_increase_gb": 0.522}
+{"variant": "bge-small-zh-int8", "threads": 8, "chars": 10000, "passages": 20, "load_seconds": 0.41, "embed_seconds": [0.492, 0.476, 0.447], "embed_median": 0.476, "rss_base_mb": 51.5, "peak_increase_gb": 0.862, "cpu_count": 16}
+{"variant": "bge-small-zh-int8", "threads": 4, "first_load_and_query_seconds": 0.21, "query_seconds": 0.006, "peak_increase_gb": 0.062}
+{"variant": "bge-m3-fp32", "threads": 8, "chars": 10000, "passages": 20, "load_seconds": 30.47, "embed_seconds": [14.558, 11.006, 11.502], "embed_median": 11.502, "rss_base_mb": 51.3, "peak_increase_gb": 2.102, "cpu_count": 16}
+{"variant": "bge-m3-fp32", "threads": 4, "first_load_and_query_seconds": 12.49, "query_seconds": 0.14, "peak_increase_gb": 1.534}
+{"variant": "e5-small-fp32", "threads": 8, "chars": 10000, "passages": 20, "load_seconds": 22.66, "embed_seconds": [1.223, 1.151, 1.157], "embed_median": 1.157, "rss_base_mb": 51.3, "peak_increase_gb": 1.336, "cpu_count": 16}
+{"variant": "e5-small-fp32", "threads": 4, "first_load_and_query_seconds": 3.91, "query_seconds": 0.012, "peak_increase_gb": 1.162}
+{"variant": "bge-small-zh-fp32", "threads": 8, "chars": 10000, "passages": 20, "load_seconds": 1.18, "embed_seconds": [0.874, 0.867, 0.824], "embed_median": 0.867, "rss_base_mb": 51.2, "peak_increase_gb": 0.915, "cpu_count": 16}
+{"variant": "bge-small-zh-fp32", "threads": 4, "first_load_and_query_seconds": 0.52, "query_seconds": 0.015, "peak_increase_gb": 0.155}

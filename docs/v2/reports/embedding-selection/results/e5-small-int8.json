@@ -1,0 +1,1944 @@
+{
+ "variant": "e5-small-int8",
+ "law_corpus_seconds": 51.2,
+ "law": {
+  "passage": {
+   "recall10": 0.84,
+   "recall5": 0.72,
+   "mrr": 0.6303,
+   "recall10_en": 0.7,
+   "misses": [
+    "L003",
+    "L006",
+    "L007",
+    "L008",
+    "L019",
+    "L021",
+    "L023",
+    "L025",
+    "L029",
+    "L034",
+    "L045",
+    "L056",
+    "L059",
+    "L070",
+    "L092",
+    "L095"
+   ],
+   "per_item": [
+    {
+     "id": "L001",
+     "rank": 1,
+     "best_gold": 0.9365,
+     "top1": 0.9365,
+     "top10": 0.917,
+     "en": false
+    },
+    {
+     "id": "L002",
+     "rank": 1,
+     "best_gold": 0.9313,
+     "top1": 0.9313,
+     "top10": 0.9078,
+     "en": false
+    },
+    {
+     "id": "L003",
+     "rank": 15,
+     "best_gold": 0.8183,
+     "top1": 0.8384,
+     "top10": 0.8219,
+     "en": true
+    },
+    {
+     "id": "L004",
+     "rank": 2,
+     "best_gold": 0.9153,
+     "top1": 0.9256,
+     "top10": 0.9072,
+     "en": false
+    },
+    {
+     "id": "L005",
+     "rank": 9,
+     "best_gold": 0.9169,
+     "top1": 0.9288,
+     "top10": 0.9169,
+     "en": false
+    },
+    {
+     "id": "L006",
+     "rank": null,
+     "best_gold": 0.8905,
+     "top1": 0.9137,
+     "top10": 0.9029,
+     "en": false
+    },
+    {
+     "id": "L007",
+     "rank": 21,
+     "best_gold": 0.9209,
+     "top1": 0.9323,
+     "top10": 0.9257,
+     "en": false
+    },
+    {
+     "id": "L008",
+     "rank": null,
+     "best_gold": 0.884,
+     "top1": 0.9186,
+     "top10": 0.9028,
+     "en": false
+    },
+    {
+     "id": "L009",
+     "rank": 3,
+     "best_gold": 0.7759,
+     "top1": 0.7817,
+     "top10": 0.7706,
+     "en": true
+    },
+    {
+     "id": "L010",
+     "rank": 1,
+     "best_gold": 0.9242,
+     "top1": 0.9242,
+     "top10": 0.9047,
+     "en": false
+    },
+    {
+     "id": "L011",
+     "rank": 1,
+     "best_gold": 0.9535,
+     "top1": 0.9535,
+     "top10": 0.92,
+     "en": false
+    },
+    {
+     "id": "L012",
+     "rank": 2,
+     "best_gold": 0.9206,
+     "top1": 0.9223,
+     "top10": 0.9073,
+     "en": false
+    },
+    {
+     "id": "L013",
+     "rank": 1,
+     "best_gold": 0.8259,
+     "top1": 0.8259,
+     "top10": 0.8157,
+     "en": true
+    },
+    {
+     "id": "L014",
+     "rank": 1,
+     "best_gold": 0.9391,
+     "top1": 0.9391,
+     "top10": 0.9234,
+     "en": false
+    },
+    {
+     "id": "L015",
+     "rank": 1,
+     "best_gold": 0.9242,
+     "top1": 0.9242,
+     "top10": 0.9151,
+     "en": false
+    },
+    {
+     "id": "L016",
+     "rank": 6,
+     "best_gold": 0.926,
+     "top1": 0.9317,
+     "top10": 0.9234,
+     "en": false
+    },
+    {
+     "id": "L017",
+     "rank": 1,
+     "best_gold": 0.9294,
+     "top1": 0.9294,
+     "top10": 0.918,
+     "en": false
+    },
+    {
+     "id": "L018",
+     "rank": 3,
+     "best_gold": 0.922,
+     "top1": 0.9243,
+     "top10": 0.9189,
+     "en": false
+    },
+    {
+     "id": "L019",
+     "rank": null,
+     "best_gold": 0.8937,
+     "top1": 0.9199,
+     "top10": 0.9098,
+     "en": false
+    },
+    {
+     "id": "L020",
+     "rank": 7,
+     "best_gold": 0.9175,
+     "top1": 0.9237,
+     "top10": 0.9161,
+     "en": false
+    },
+    {
+     "id": "L021",
+     "rank": null,
+     "best_gold": 0.7985,
+     "top1": 0.8168,
+     "top10": 0.8103,
+     "en": true
+    },
+    {
+     "id": "L022",
+     "rank": 3,
+     "best_gold": 0.9258,
+     "top1": 0.9286,
+     "top10": 0.9196,
+     "en": false
+    },
+    {
+     "id": "L023",
+     "rank": null,
+     "best_gold": 0.9043,
+     "top1": 0.9287,
+     "top10": 0.9204,
+     "en": false
+    },
+    {
+     "id": "L024",
+     "rank": 1,
+     "best_gold": 0.9445,
+     "top1": 0.9445,
+     "top10": 0.9094,
+     "en": false
+    },
+    {
+     "id": "L025",
+     "rank": null,
+     "best_gold": 0.9092,
+     "top1": 0.9294,
+     "top10": 0.9223,
+     "en": false
+    },
+    {
+     "id": "L026",
+     "rank": 2,
+     "best_gold": 0.8997,
+     "top1": 0.9017,
+     "top10": 0.8905,
+     "en": false
+    },
+    {
+     "id": "L027",
+     "rank": 1,
+     "best_gold": 0.9222,
+     "top1": 0.9222,
+     "top10": 0.9054,
+     "en": false
+    },
+    {
+     "id": "L028",
+     "rank": 6,
+     "best_gold": 0.9131,
+     "top1": 0.9216,
+     "top10": 0.9085,
+     "en": false
+    },
+    {
+     "id": "L029",
+     "rank": 19,
+     "best_gold": 0.9102,
+     "top1": 0.921,
+     "top10": 0.9135,
+     "en": false
+    },
+    {
+     "id": "L030",
+     "rank": 1,
+     "best_gold": 0.9407,
+     "top1": 0.9407,
+     "top10": 0.9118,
+     "en": false
+    },
+    {
+     "id": "L031",
+     "rank": 2,
+     "best_gold": 0.8239,
+     "top1": 0.8286,
+     "top10": 0.8137,
+     "en": true
+    },
+    {
+     "id": "L032",
+     "rank": 1,
+     "best_gold": 0.9518,
+     "top1": 0.9518,
+     "top10": 0.9353,
+     "en": false
+    },
+    {
+     "id": "L033",
+     "rank": 2,
+     "best_gold": 0.9316,
+     "top1": 0.9345,
+     "top10": 0.9196,
+     "en": false
+    },
+    {
+     "id": "L034",
+     "rank": 29,
+     "best_gold": 0.7817,
+     "top1": 0.8008,
+     "top10": 0.7889,
+     "en": true
+    },
+    {
+     "id": "L035",
+     "rank": 7,
+     "best_gold": 0.9136,
+     "top1": 0.9217,
+     "top10": 0.9128,
+     "en": false
+    },
+    {
+     "id": "L036",
+     "rank": 3,
+     "best_gold": 0.9101,
+     "top1": 0.9112,
+     "top10": 0.9077,
+     "en": false
+    },
+    {
+     "id": "L037",
+     "rank": 1,
+     "best_gold": 0.9277,
+     "top1": 0.9277,
+     "top10": 0.9142,
+     "en": false
+    },
+    {
+     "id": "L038",
+     "rank": 1,
+     "best_gold": 0.9373,
+     "top1": 0.9373,
+     "top10": 0.9099,
+     "en": false
+    },
+    {
+     "id": "L039",
+     "rank": 1,
+     "best_gold": 0.916,
+     "top1": 0.916,
+     "top10": 0.9104,
+     "en": false
+    },
+    {
+     "id": "L040",
+     "rank": 1,
+     "best_gold": 0.8205,
+     "top1": 0.8205,
+     "top10": 0.7984,
+     "en": true
+    },
+    {
+     "id": "L041",
+     "rank": 4,
+     "best_gold": 0.9128,
+     "top1": 0.9213,
+     "top10": 0.9082,
+     "en": false
+    },
+    {
+     "id": "L042",
+     "rank": 1,
+     "best_gold": 0.9324,
+     "top1": 0.9324,
+     "top10": 0.9093,
+     "en": false
+    },
+    {
+     "id": "L043",
+     "rank": 1,
+     "best_gold": 0.9481,
+     "top1": 0.9481,
+     "top10": 0.9182,
+     "en": false
+    },
+    {
+     "id": "L044",
+     "rank": 1,
+     "best_gold": 0.9385,
+     "top1": 0.9385,
+     "top10": 0.9188,
+     "en": false
+    },
+    {
+     "id": "L045",
+     "rank": 12,
+     "best_gold": 0.9196,
+     "top1": 0.93,
+     "top10": 0.9204,
+     "en": false
+    },
+    {
+     "id": "L046",
+     "rank": 1,
+     "best_gold": 0.9297,
+     "top1": 0.9297,
+     "top10": 0.9053,
+     "en": false
+    },
+    {
+     "id": "L047",
+     "rank": 2,
+     "best_gold": 0.9305,
+     "top1": 0.9309,
+     "top10": 0.9192,
+     "en": false
+    },
+    {
+     "id": "L048",
+     "rank": 2,
+     "best_gold": 0.9248,
+     "top1": 0.9286,
+     "top10": 0.9184,
+     "en": false
+    },
+    {
+     "id": "L049",
+     "rank": 1,
+     "best_gold": 0.9276,
+     "top1": 0.9276,
+     "top10": 0.904,
+     "en": false
+    },
+    {
+     "id": "L050",
+     "rank": 1,
+     "best_gold": 0.9285,
+     "top1": 0.9285,
+     "top10": 0.9035,
+     "en": false
+    },
+    {
+     "id": "L051",
+     "rank": 1,
+     "best_gold": 0.9487,
+     "top1": 0.9487,
+     "top10": 0.9087,
+     "en": false
+    },
+    {
+     "id": "L052",
+     "rank": 2,
+     "best_gold": 0.8129,
+     "top1": 0.8167,
+     "top10": 0.8036,
+     "en": true
+    },
+    {
+     "id": "L053",
+     "rank": 1,
+     "best_gold": 0.9492,
+     "top1": 0.9492,
+     "top10": 0.9095,
+     "en": false
+    },
+    {
+     "id": "L054",
+     "rank": 1,
+     "best_gold": 0.919,
+     "top1": 0.919,
+     "top10": 0.9041,
+     "en": false
+    },
+    {
+     "id": "L055",
+     "rank": 1,
+     "best_gold": 0.9256,
+     "top1": 0.9256,
+     "top10": 0.9086,
+     "en": false
+    },
+    {
+     "id": "L056",
+     "rank": null,
+     "best_gold": 0.9002,
+     "top1": 0.9169,
+     "top10": 0.9105,
+     "en": false
+    },
+    {
+     "id": "L057",
+     "rank": 1,
+     "best_gold": 0.9411,
+     "top1": 0.9411,
+     "top10": 0.9003,
+     "en": false
+    },
+    {
+     "id": "L058",
+     "rank": 8,
+     "best_gold": 0.9178,
+     "top1": 0.9316,
+     "top10": 0.9176,
+     "en": false
+    },
+    {
+     "id": "L059",
+     "rank": null,
+     "best_gold": 0.8728,
+     "top1": 0.9094,
+     "top10": 0.9025,
+     "en": false
+    },
+    {
+     "id": "L060",
+     "rank": 1,
+     "best_gold": 0.9141,
+     "top1": 0.9141,
+     "top10": 0.8963,
+     "en": false
+    },
+    {
+     "id": "L061",
+     "rank": 6,
+     "best_gold": 0.9094,
+     "top1": 0.9252,
+     "top10": 0.9072,
+     "en": false
+    },
+    {
+     "id": "L062",
+     "rank": 3,
+     "best_gold": 0.9106,
+     "top1": 0.9145,
+     "top10": 0.9058,
+     "en": false
+    },
+    {
+     "id": "L063",
+     "rank": 1,
+     "best_gold": 0.9263,
+     "top1": 0.9263,
+     "top10": 0.9166,
+     "en": false
+    },
+    {
+     "id": "L064",
+     "rank": 8,
+     "best_gold": 0.9135,
+     "top1": 0.9171,
+     "top10": 0.9128,
+     "en": false
+    },
+    {
+     "id": "L065",
+     "rank": 10,
+     "best_gold": 0.9125,
+     "top1": 0.9168,
+     "top10": 0.9125,
+     "en": false
+    },
+    {
+     "id": "L066",
+     "rank": 1,
+     "best_gold": 0.9586,
+     "top1": 0.9586,
+     "top10": 0.9185,
+     "en": false
+    },
+    {
+     "id": "L067",
+     "rank": 1,
+     "best_gold": 0.9251,
+     "top1": 0.9251,
+     "top10": 0.9054,
+     "en": false
+    },
+    {
+     "id": "L068",
+     "rank": 6,
+     "best_gold": 0.9135,
+     "top1": 0.917,
+     "top10": 0.9102,
+     "en": false
+    },
+    {
+     "id": "L069",
+     "rank": 1,
+     "best_gold": 0.9249,
+     "top1": 0.9249,
+     "top10": 0.9147,
+     "en": false
+    },
+    {
+     "id": "L070",
+     "rank": null,
+     "best_gold": 0.9094,
+     "top1": 0.9293,
+     "top10": 0.9215,
+     "en": false
+    },
+    {
+     "id": "L071",
+     "rank": 6,
+     "best_gold": 0.9201,
+     "top1": 0.9236,
+     "top10": 0.9193,
+     "en": false
+    },
+    {
+     "id": "L072",
+     "rank": 1,
+     "best_gold": 0.9179,
+     "top1": 0.9179,
+     "top10": 0.9102,
+     "en": false
+    },
+    {
+     "id": "L073",
+     "rank": 2,
+     "best_gold": 0.926,
+     "top1": 0.9273,
+     "top10": 0.9217,
+     "en": false
+    },
+    {
+     "id": "L074",
+     "rank": 2,
+     "best_gold": 0.9473,
+     "top1": 0.9533,
+     "top10": 0.9336,
+     "en": false
+    },
+    {
+     "id": "L075",
+     "rank": 1,
+     "best_gold": 0.969,
+     "top1": 0.969,
+     "top10": 0.9184,
+     "en": false
+    },
+    {
+     "id": "L076",
+     "rank": 1,
+     "best_gold": 0.9419,
+     "top1": 0.9419,
+     "top10": 0.9092,
+     "en": false
+    },
+    {
+     "id": "L077",
+     "rank": 7,
+     "best_gold": 0.909,
+     "top1": 0.9202,
+     "top10": 0.9019,
+     "en": false
+    },
+    {
+     "id": "L078",
+     "rank": 1,
+     "best_gold": 0.9524,
+     "top1": 0.9524,
+     "top10": 0.9233,
+     "en": false
+    },
+    {
+     "id": "L079",
+     "rank": 1,
+     "best_gold": 0.9324,
+     "top1": 0.9324,
+     "top10": 0.9116,
+     "en": false
+    },
+    {
+     "id": "L080",
+     "rank": 1,
+     "best_gold": 0.9347,
+     "top1": 0.9347,
+     "top10": 0.9167,
+     "en": false
+    },
+    {
+     "id": "L081",
+     "rank": 3,
+     "best_gold": 0.9291,
+     "top1": 0.935,
+     "top10": 0.9174,
+     "en": false
+    },
+    {
+     "id": "L082",
+     "rank": 1,
+     "best_gold": 0.9474,
+     "top1": 0.9474,
+     "top10": 0.9307,
+     "en": false
+    },
+    {
+     "id": "L083",
+     "rank": 1,
+     "best_gold": 0.9479,
+     "top1": 0.9479,
+     "top10": 0.9262,
+     "en": false
+    },
+    {
+     "id": "L084",
+     "rank": 1,
+     "best_gold": 0.9448,
+     "top1": 0.9448,
+     "top10": 0.9174,
+     "en": false
+    },
+    {
+     "id": "L085",
+     "rank": 1,
+     "best_gold": 0.955,
+     "top1": 0.955,
+     "top10": 0.9385,
+     "en": false
+    },
+    {
+     "id": "L086",
+     "rank": 1,
+     "best_gold": 0.9783,
+     "top1": 0.9783,
+     "top10": 0.941,
+     "en": false
+    },
+    {
+     "id": "L087",
+     "rank": 1,
+     "best_gold": 0.9328,
+     "top1": 0.9328,
+     "top10": 0.9069,
+     "en": false
+    },
+    {
+     "id": "L088",
+     "rank": 1,
+     "best_gold": 0.9344,
+     "top1": 0.9344,
+     "top10": 0.9049,
+     "en": false
+    },
+    {
+     "id": "L089",
+     "rank": 1,
+     "best_gold": 0.9279,
+     "top1": 0.9279,
+     "top10": 0.9109,
+     "en": false
+    },
+    {
+     "id": "L090",
+     "rank": 1,
+     "best_gold": 0.9305,
+     "top1": 0.9305,
+     "top10": 0.9154,
+     "en": false
+    },
+    {
+     "id": "L091",
+     "rank": 1,
+     "best_gold": 0.9607,
+     "top1": 0.9607,
+     "top10": 0.9141,
+     "en": false
+    },
+    {
+     "id": "L092",
+     "rank": 41,
+     "best_gold": 0.9093,
+     "top1": 0.9271,
+     "top10": 0.916,
+     "en": false
+    },
+    {
+     "id": "L093",
+     "rank": 1,
+     "best_gold": 0.9292,
+     "top1": 0.9292,
+     "top10": 0.9138,
+     "en": false
+    },
+    {
+     "id": "L094",
+     "rank": 1,
+     "best_gold": 0.9288,
+     "top1": 0.9288,
+     "top10": 0.9192,
+     "en": false
+    },
+    {
+     "id": "L095",
+     "rank": 21,
+     "best_gold": 0.9168,
+     "top1": 0.9335,
+     "top10": 0.9201,
+     "en": false
+    },
+    {
+     "id": "L096",
+     "rank": 5,
+     "best_gold": 0.8109,
+     "top1": 0.8132,
+     "top10": 0.8085,
+     "en": true
+    },
+    {
+     "id": "L097",
+     "rank": 1,
+     "best_gold": 0.9304,
+     "top1": 0.9304,
+     "top10": 0.9145,
+     "en": false
+    },
+    {
+     "id": "L098",
+     "rank": 1,
+     "best_gold": 0.9506,
+     "top1": 0.9506,
+     "top10": 0.9277,
+     "en": false
+    },
+    {
+     "id": "L099",
+     "rank": 1,
+     "best_gold": 0.931,
+     "top1": 0.931,
+     "top10": 0.9186,
+     "en": false
+    },
+    {
+     "id": "L100",
+     "rank": 2,
+     "best_gold": 0.8171,
+     "top1": 0.819,
+     "top10": 0.8035,
+     "en": true
+    }
+   ],
+   "law_min_score": 0.77,
+   "offtopic_top1": [
+    0.8682,
+    0.8641,
+    0.8798,
+    0.8687,
+    0.9027,
+    0.8865,
+    0.764,
+    0.8839,
+    0.8618,
+    0.8836
+   ],
+   "offtopic_filtered_all": 1,
+   "offtopic_kept_of_50": 45,
+   "relevant_kept_of_500": 500
+  },
+  "query": {
+   "recall10": 0.83,
+   "recall5": 0.8,
+   "mrr": 0.6725,
+   "recall10_en": 0.5,
+   "misses": [
+    "L003",
+    "L006",
+    "L007",
+    "L008",
+    "L009",
+    "L019",
+    "L021",
+    "L023",
+    "L025",
+    "L029",
+    "L034",
+    "L056",
+    "L059",
+    "L064",
+    "L065",
+    "L095",
+    "L096"
+   ],
+   "per_item": [
+    {
+     "id": "L001",
+     "rank": 1,
+     "best_gold": 0.9331,
+     "top1": 0.9331,
+     "top10": 0.9124,
+     "en": false
+    },
+    {
+     "id": "L002",
+     "rank": 1,
+     "best_gold": 0.9151,
+     "top1": 0.9151,
+     "top10": 0.8889,
+     "en": false
+    },
+    {
+     "id": "L003",
+     "rank": 16,
+     "best_gold": 0.8109,
+     "top1": 0.8373,
+     "top10": 0.8165,
+     "en": true
+    },
+    {
+     "id": "L004",
+     "rank": 4,
+     "best_gold": 0.907,
+     "top1": 0.9199,
+     "top10": 0.8969,
+     "en": false
+    },
+    {
+     "id": "L005",
+     "rank": 3,
+     "best_gold": 0.9106,
+     "top1": 0.9197,
+     "top10": 0.9038,
+     "en": false
+    },
+    {
+     "id": "L006",
+     "rank": 41,
+     "best_gold": 0.8947,
+     "top1": 0.9117,
+     "top10": 0.9024,
+     "en": false
+    },
+    {
+     "id": "L007",
+     "rank": 28,
+     "best_gold": 0.9083,
+     "top1": 0.9221,
+     "top10": 0.916,
+     "en": false
+    },
+    {
+     "id": "L008",
+     "rank": null,
+     "best_gold": 0.8574,
+     "top1": 0.8918,
+     "top10": 0.8778,
+     "en": false
+    },
+    {
+     "id": "L009",
+     "rank": 14,
+     "best_gold": 0.7834,
+     "top1": 0.7977,
+     "top10": 0.7847,
+     "en": true
+    },
+    {
+     "id": "L010",
+     "rank": 1,
+     "best_gold": 0.9122,
+     "top1": 0.9122,
+     "top10": 0.8944,
+     "en": false
+    },
+    {
+     "id": "L011",
+     "rank": 1,
+     "best_gold": 0.9482,
+     "top1": 0.9482,
+     "top10": 0.9022,
+     "en": false
+    },
+    {
+     "id": "L012",
+     "rank": 1,
+     "best_gold": 0.9094,
+     "top1": 0.9094,
+     "top10": 0.8925,
+     "en": false
+    },
+    {
+     "id": "L013",
+     "rank": 2,
+     "best_gold": 0.8082,
+     "top1": 0.8122,
+     "top10": 0.8021,
+     "en": true
+    },
+    {
+     "id": "L014",
+     "rank": 1,
+     "best_gold": 0.9233,
+     "top1": 0.9233,
+     "top10": 0.9098,
+     "en": false
+    },
+    {
+     "id": "L015",
+     "rank": 1,
+     "best_gold": 0.9105,
+     "top1": 0.9105,
+     "top10": 0.8982,
+     "en": false
+    },
+    {
+     "id": "L016",
+     "rank": 1,
+     "best_gold": 0.9221,
+     "top1": 0.9221,
+     "top10": 0.9122,
+     "en": false
+    },
+    {
+     "id": "L017",
+     "rank": 1,
+     "best_gold": 0.9211,
+     "top1": 0.9211,
+     "top10": 0.9072,
+     "en": false
+    },
+    {
+     "id": "L018",
+     "rank": 2,
+     "best_gold": 0.913,
+     "top1": 0.913,
+     "top10": 0.9038,
+     "en": false
+    },
+    {
+     "id": "L019",
+     "rank": null,
+     "best_gold": 0.8848,
+     "top1": 0.9084,
+     "top10": 0.9021,
+     "en": false
+    },
+    {
+     "id": "L020",
+     "rank": 2,
+     "best_gold": 0.9092,
+     "top1": 0.9131,
+     "top10": 0.9031,
+     "en": false
+    },
+    {
+     "id": "L021",
+     "rank": null,
+     "best_gold": 0.7881,
+     "top1": 0.8052,
+     "top10": 0.7982,
+     "en": true
+    },
+    {
+     "id": "L022",
+     "rank": 1,
+     "best_gold": 0.9195,
+     "top1": 0.9195,
+     "top10": 0.9071,
+     "en": false
+    },
+    {
+     "id": "L023",
+     "rank": null,
+     "best_gold": 0.8897,
+     "top1": 0.9073,
+     "top10": 0.901,
+     "en": false
+    },
+    {
+     "id": "L024",
+     "rank": 1,
+     "best_gold": 0.9339,
+     "top1": 0.9339,
+     "top10": 0.8979,
+     "en": false
+    },
+    {
+     "id": "L025",
+     "rank": 32,
+     "best_gold": 0.8975,
+     "top1": 0.9103,
+     "top10": 0.9036,
+     "en": false
+    },
+    {
+     "id": "L026",
+     "rank": 1,
+     "best_gold": 0.8983,
+     "top1": 0.8983,
+     "top10": 0.8804,
+     "en": false
+    },
+    {
+     "id": "L027",
+     "rank": 1,
+     "best_gold": 0.9104,
+     "top1": 0.9104,
+     "top10": 0.8938,
+     "en": false
+    },
+    {
+     "id": "L028",
+     "rank": 3,
+     "best_gold": 0.9096,
+     "top1": 0.9137,
+     "top10": 0.8982,
+     "en": false
+    },
+    {
+     "id": "L029",
+     "rank": 17,
+     "best_gold": 0.8959,
+     "top1": 0.9088,
+     "top10": 0.8976,
+     "en": false
+    },
+    {
+     "id": "L030",
+     "rank": 1,
+     "best_gold": 0.9396,
+     "top1": 0.9396,
+     "top10": 0.9089,
+     "en": false
+    },
+    {
+     "id": "L031",
+     "rank": 2,
+     "best_gold": 0.8088,
+     "top1": 0.8119,
+     "top10": 0.7984,
+     "en": true
+    },
+    {
+     "id": "L032",
+     "rank": 1,
+     "best_gold": 0.9423,
+     "top1": 0.9423,
+     "top10": 0.9218,
+     "en": false
+    },
+    {
+     "id": "L033",
+     "rank": 2,
+     "best_gold": 0.9173,
+     "top1": 0.9175,
+     "top10": 0.9064,
+     "en": false
+    },
+    {
+     "id": "L034",
+     "rank": 34,
+     "best_gold": 0.7857,
+     "top1": 0.8034,
+     "top10": 0.7947,
+     "en": true
+    },
+    {
+     "id": "L035",
+     "rank": 4,
+     "best_gold": 0.9078,
+     "top1": 0.9108,
+     "top10": 0.9013,
+     "en": false
+    },
+    {
+     "id": "L036",
+     "rank": 3,
+     "best_gold": 0.9014,
+     "top1": 0.9042,
+     "top10": 0.897,
+     "en": false
+    },
+    {
+     "id": "L037",
+     "rank": 1,
+     "best_gold": 0.9091,
+     "top1": 0.9091,
+     "top10": 0.894,
+     "en": false
+    },
+    {
+     "id": "L038",
+     "rank": 1,
+     "best_gold": 0.9259,
+     "top1": 0.9259,
+     "top10": 0.8944,
+     "en": false
+    },
+    {
+     "id": "L039",
+     "rank": 3,
+     "best_gold": 0.9074,
+     "top1": 0.9087,
+     "top10": 0.9045,
+     "en": false
+    },
+    {
+     "id": "L040",
+     "rank": 1,
+     "best_gold": 0.8133,
+     "top1": 0.8133,
+     "top10": 0.7976,
+     "en": true
+    },
+    {
+     "id": "L041",
+     "rank": 4,
+     "best_gold": 0.9051,
+     "top1": 0.9115,
+     "top10": 0.8979,
+     "en": false
+    },
+    {
+     "id": "L042",
+     "rank": 1,
+     "best_gold": 0.9178,
+     "top1": 0.9178,
+     "top10": 0.8899,
+     "en": false
+    },
+    {
+     "id": "L043",
+     "rank": 1,
+     "best_gold": 0.941,
+     "top1": 0.941,
+     "top10": 0.9131,
+     "en": false
+    },
+    {
+     "id": "L044",
+     "rank": 1,
+     "best_gold": 0.9297,
+     "top1": 0.9297,
+     "top10": 0.9089,
+     "en": false
+    },
+    {
+     "id": "L045",
+     "rank": 2,
+     "best_gold": 0.9174,
+     "top1": 0.9219,
+     "top10": 0.9047,
+     "en": false
+    },
+    {
+     "id": "L046",
+     "rank": 1,
+     "best_gold": 0.9211,
+     "top1": 0.9211,
+     "top10": 0.8942,
+     "en": false
+    },
+    {
+     "id": "L047",
+     "rank": 2,
+     "best_gold": 0.9213,
+     "top1": 0.9217,
+     "top10": 0.9067,
+     "en": false
+    },
+    {
+     "id": "L048",
+     "rank": 6,
+     "best_gold": 0.9087,
+     "top1": 0.9161,
+     "top10": 0.9069,
+     "en": false
+    },
+    {
+     "id": "L049",
+     "rank": 1,
+     "best_gold": 0.924,
+     "top1": 0.924,
+     "top10": 0.8899,
+     "en": false
+    },
+    {
+     "id": "L050",
+     "rank": 1,
+     "best_gold": 0.9285,
+     "top1": 0.9285,
+     "top10": 0.8998,
+     "en": false
+    },
+    {
+     "id": "L051",
+     "rank": 1,
+     "best_gold": 0.939,
+     "top1": 0.939,
+     "top10": 0.8958,
+     "en": false
+    },
+    {
+     "id": "L052",
+     "rank": 2,
+     "best_gold": 0.8144,
+     "top1": 0.8168,
+     "top10": 0.8067,
+     "en": true
+    },
+    {
+     "id": "L053",
+     "rank": 1,
+     "best_gold": 0.9428,
+     "top1": 0.9428,
+     "top10": 0.9046,
+     "en": false
+    },
+    {
+     "id": "L054",
+     "rank": 1,
+     "best_gold": 0.9012,
+     "top1": 0.9012,
+     "top10": 0.8899,
+     "en": false
+    },
+    {
+     "id": "L055",
+     "rank": 1,
+     "best_gold": 0.9119,
+     "top1": 0.9119,
+     "top10": 0.8894,
+     "en": false
+    },
+    {
+     "id": "L056",
+     "rank": null,
+     "best_gold": 0.8877,
+     "top1": 0.9046,
+     "top10": 0.8979,
+     "en": false
+    },
+    {
+     "id": "L057",
+     "rank": 1,
+     "best_gold": 0.9358,
+     "top1": 0.9358,
+     "top10": 0.887,
+     "en": false
+    },
+    {
+     "id": "L058",
+     "rank": 2,
+     "best_gold": 0.9133,
+     "top1": 0.926,
+     "top10": 0.8977,
+     "en": false
+    },
+    {
+     "id": "L059",
+     "rank": null,
+     "best_gold": 0.8512,
+     "top1": 0.8902,
+     "top10": 0.8782,
+     "en": false
+    },
+    {
+     "id": "L060",
+     "rank": 1,
+     "best_gold": 0.9144,
+     "top1": 0.9144,
+     "top10": 0.8796,
+     "en": false
+    },
+    {
+     "id": "L061",
+     "rank": 6,
+     "best_gold": 0.8961,
+     "top1": 0.9107,
+     "top10": 0.8929,
+     "en": false
+    },
+    {
+     "id": "L062",
+     "rank": 1,
+     "best_gold": 0.9038,
+     "top1": 0.9038,
+     "top10": 0.8942,
+     "en": false
+    },
+    {
+     "id": "L063",
+     "rank": 1,
+     "best_gold": 0.9099,
+     "top1": 0.9099,
+     "top10": 0.8943,
+     "en": false
+    },
+    {
+     "id": "L064",
+     "rank": 15,
+     "best_gold": 0.8991,
+     "top1": 0.9105,
+     "top10": 0.9002,
+     "en": false
+    },
+    {
+     "id": "L065",
+     "rank": 13,
+     "best_gold": 0.9037,
+     "top1": 0.9134,
+     "top10": 0.9043,
+     "en": false
+    },
+    {
+     "id": "L066",
+     "rank": 1,
+     "best_gold": 0.9517,
+     "top1": 0.9517,
+     "top10": 0.9025,
+     "en": false
+    },
+    {
+     "id": "L067",
+     "rank": 1,
+     "best_gold": 0.9139,
+     "top1": 0.9139,
+     "top10": 0.8877,
+     "en": false
+    },
+    {
+     "id": "L068",
+     "rank": 1,
+     "best_gold": 0.9043,
+     "top1": 0.9043,
+     "top10": 0.8871,
+     "en": false
+    },
+    {
+     "id": "L069",
+     "rank": 1,
+     "best_gold": 0.9135,
+     "top1": 0.9135,
+     "top10": 0.9005,
+     "en": false
+    },
+    {
+     "id": "L070",
+     "rank": 7,
+     "best_gold": 0.9003,
+     "top1": 0.9085,
+     "top10": 0.8988,
+     "en": false
+    },
+    {
+     "id": "L071",
+     "rank": 4,
+     "best_gold": 0.9055,
+     "top1": 0.9128,
+     "top10": 0.9031,
+     "en": false
+    },
+    {
+     "id": "L072",
+     "rank": 1,
+     "best_gold": 0.9111,
+     "top1": 0.9111,
+     "top10": 0.8987,
+     "en": false
+    },
+    {
+     "id": "L073",
+     "rank": 1,
+     "best_gold": 0.9115,
+     "top1": 0.9115,
+     "top10": 0.9036,
+     "en": false
+    },
+    {
+     "id": "L074",
+     "rank": 2,
+     "best_gold": 0.9471,
+     "top1": 0.9521,
+     "top10": 0.9242,
+     "en": false
+    },
+    {
+     "id": "L075",
+     "rank": 1,
+     "best_gold": 0.9596,
+     "top1": 0.9596,
+     "top10": 0.9034,
+     "en": false
+    },
+    {
+     "id": "L076",
+     "rank": 1,
+     "best_gold": 0.9335,
+     "top1": 0.9335,
+     "top10": 0.8917,
+     "en": false
+    },
+    {
+     "id": "L077",
+     "rank": 1,
+     "best_gold": 0.8956,
+     "top1": 0.8956,
+     "top10": 0.8792,
+     "en": false
+    },
+    {
+     "id": "L078",
+     "rank": 1,
+     "best_gold": 0.9315,
+     "top1": 0.9315,
+     "top10": 0.9098,
+     "en": false
+    },
+    {
+     "id": "L079",
+     "rank": 1,
+     "best_gold": 0.9191,
+     "top1": 0.9191,
+     "top10": 0.8935,
+     "en": false
+    },
+    {
+     "id": "L080",
+     "rank": 1,
+     "best_gold": 0.925,
+     "top1": 0.925,
+     "top10": 0.9007,
+     "en": false
+    },
+    {
+     "id": "L081",
+     "rank": 2,
+     "best_gold": 0.9203,
+     "top1": 0.9211,
+     "top10": 0.9011,
+     "en": false
+    },
+    {
+     "id": "L082",
+     "rank": 1,
+     "best_gold": 0.9327,
+     "top1": 0.9327,
+     "top10": 0.9086,
+     "en": false
+    },
+    {
+     "id": "L083",
+     "rank": 2,
+     "best_gold": 0.9351,
+     "top1": 0.9394,
+     "top10": 0.9166,
+     "en": false
+    },
+    {
+     "id": "L084",
+     "rank": 1,
+     "best_gold": 0.9359,
+     "top1": 0.9359,
+     "top10": 0.9073,
+     "en": false
+    },
+    {
+     "id": "L085",
+     "rank": 1,
+     "best_gold": 0.9441,
+     "top1": 0.9441,
+     "top10": 0.9242,
+     "en": false
+    },
+    {
+     "id": "L086",
+     "rank": 1,
+     "best_gold": 0.9674,
+     "top1": 0.9674,
+     "top10": 0.9291,
+     "en": false
+    },
+    {
+     "id": "L087",
+     "rank": 1,
+     "best_gold": 0.9242,
+     "top1": 0.9242,
+     "top10": 0.8848,
+     "en": false
+    },
+    {
+     "id": "L088",
+     "rank": 1,
+     "best_gold": 0.9209,
+     "top1": 0.9209,
+     "top10": 0.8942,
+     "en": false
+    },
+    {
+     "id": "L089",
+     "rank": 1,
+     "best_gold": 0.9157,
+     "top1": 0.9157,
+     "top10": 0.9045,
+     "en": false
+    },
+    {
+     "id": "L090",
+     "rank": 1,
+     "best_gold": 0.9144,
+     "top1": 0.9144,
+     "top10": 0.9016,
+     "en": false
+    },
+    {
+     "id": "L091",
+     "rank": 1,
+     "best_gold": 0.9526,
+     "top1": 0.9526,
+     "top10": 0.9037,
+     "en": false
+    },
+    {
+     "id": "L092",
+     "rank": 5,
+     "best_gold": 0.8916,
+     "top1": 0.8944,
+     "top10": 0.8893,
+     "en": false
+    },
+    {
+     "id": "L093",
+     "rank": 1,
+     "best_gold": 0.9206,
+     "top1": 0.9206,
+     "top10": 0.8979,
+     "en": false
+    },
+    {
+     "id": "L094",
+     "rank": 1,
+     "best_gold": 0.9212,
+     "top1": 0.9212,
+     "top10": 0.9094,
+     "en": false
+    },
+    {
+     "id": "L095",
+     "rank": 48,
+     "best_gold": 0.9038,
+     "top1": 0.9245,
+     "top10": 0.9113,
+     "en": false
+    },
+    {
+     "id": "L096",
+     "rank": 11,
+     "best_gold": 0.8038,
+     "top1": 0.8089,
+     "top10": 0.8041,
+     "en": true
+    },
+    {
+     "id": "L097",
+     "rank": 1,
+     "best_gold": 0.9167,
+     "top1": 0.9167,
+     "top10": 0.9046,
+     "en": false
+    },
+    {
+     "id": "L098",
+     "rank": 1,
+     "best_gold": 0.9366,
+     "top1": 0.9366,
+     "top10": 0.9066,
+     "en": false
+    },
+    {
+     "id": "L099",
+     "rank": 3,
+     "best_gold": 0.9178,
+     "top1": 0.9215,
+     "top10": 0.9066,
+     "en": false
+    },
+    {
+     "id": "L100",
+     "rank": 3,
+     "best_gold": 0.8162,
+     "top1": 0.8195,
+     "top10": 0.8044,
+     "en": true
+    }
+   ],
+   "law_min_score": 0.8,
+   "offtopic_top1": [
+    0.857,
+    0.8555,
+    0.8573,
+    0.8663,
+    0.8892,
+    0.8748,
+    0.7802,
+    0.8744,
+    0.8462,
+    0.8704
+   ],
+   "offtopic_filtered_all": 1,
+   "offtopic_kept_of_50": 45,
+   "relevant_kept_of_500": 492
+  }
+ },
+ "pair": {
+  "unrelated_max": [
+   0.9031,
+   0.901,
+   0.8979,
+   0.9071,
+   0.878,
+   0.8909,
+   0.9054,
+   0.9021,
+   0.8969,
+   0.9156,
+   0.909,
+   0.9036,
+   0.9005,
+   0.895,
+   0.8639,
+   0.9026,
+   0.8895,
+   0.9149,
+   0.8969,
+   0.8751
+  ],
+  "clause_pair_min": 0.93,
+  "zh": {
+   "best_match_acc": 1.0,
+   "recall_at_thr": 0.9333333333333333,
+   "wrong": [],
+   "below_thr": [
+    "P01",
+    "P11"
+   ],
+   "diag_min": 0.9242,
+   "diag_mean": 0.956,
+   "l12_missed": [
+    "P05",
+    "P07",
+    "P08",
+    "P10",
+    "P12",
+    "P18",
+    "P22",
+    "P27",
+    "P29"
+   ]
+  },
+  "en": {
+   "best_match_acc": 0.9,
+   "recall_at_thr": 0.0,
+   "wrong": [
+    "P02",
+    "P09",
+    "P14"
+   ],
+   "below_thr": [
+    "P01",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P10",
+    "P11",
+    "P12",
+    "P13",
+    "P15",
+    "P16",
+    "P17",
+    "P18",
+    "P19",
+    "P20",
+    "P21",
+    "P22",
+    "P23",
+    "P24",
+    "P25",
+    "P26",
+    "P27",
+    "P28",
+    "P29",
+    "P30"
+   ],
+   "diag_min": 0.7989,
+   "diag_mean": 0.8333,
+   "l12_missed": []
+  },
+  "best_match_acc_all": 0.95
+ },
+ "select": {
+  "template_select_min": 0.92,
+  "rows": [
+   {
+    "id": "C01",
+    "expect": "T1",
+    "best": "T1",
+    "avgs": {
+     "T1": 0.9525,
+     "T2": 0.9101,
+     "T3": 0.9159,
+     "T4": 0.8983,
+     "T5": 0.911
+    }
+   },
+   {
+    "id": "C02",
+    "expect": "T1",
+    "best": "T1",
+    "avgs": {
+     "T1": 0.8318,
+     "T2": 0.7928,
+     "T3": 0.7927,
+     "T4": 0.7925,
+     "T5": 0.7991
+    }
+   },
+   {
+    "id": "C03",
+    "expect": "T2",
+    "best": "T2",
+    "avgs": {
+     "T1": 0.9212,
+     "T2": 0.9403,
+     "T3": 0.9144,
+     "T4": 0.905,
+     "T5": 0.9043
+    }
+   },
+   {
+    "id": "C04",
+    "expect": "T2",
+    "best": "T2",
+    "avgs": {
+     "T1": 0.8015,
+     "T2": 0.8309,
+     "T3": 0.789,
+     "T4": 0.7896,
+     "T5": 0.7938
+    }
+   },
+   {
+    "id": "C05",
+    "expect": "T3",
+    "best": "T3",
+    "avgs": {
+     "T1": 0.9303,
+     "T2": 0.9148,
+     "T3": 0.9597,
+     "T4": 0.8927,
+     "T5": 0.8947
+    }
+   },
+   {
+    "id": "C06",
+    "expect": "T3",
+    "best": "T3",
+    "avgs": {
+     "T1": 0.8047,
+     "T2": 0.8014,
+     "T3": 0.8337,
+     "T4": 0.7814,
+     "T5": 0.7783
+    }
+   },
+   {
+    "id": "C07",
+    "expect": "T4",
+    "best": "T4",
+    "avgs": {
+     "T1": 0.9108,
+     "T2": 0.9183,
+     "T3": 0.9039,
+     "T4": 0.9588,
+     "T5": 0.8896
+    }
+   },
+   {
+    "id": "C08",
+    "expect": "T4",
+    "best": "T4",
+    "avgs": {
+     "T1": 0.9102,
+     "T2": 0.9114,
+     "T3": 0.8996,
+     "T4": 0.9547,
+     "T5": 0.896
+    }
+   },
+   {
+    "id": "C09",
+    "expect": "T5",
+    "best": "T5",
+    "avgs": {
+     "T1": 0.9204,
+     "T2": 0.9097,
+     "T3": 0.9053,
+     "T4": 0.8959,
+     "T5": 0.9513
+    }
+   },
+   {
+    "id": "C10",
+    "expect": "T5",
+    "best": "T5",
+    "avgs": {
+     "T1": 0.8056,
+     "T2": 0.7834,
+     "T3": 0.7744,
+     "T4": 0.776,
+     "T5": 0.8303
+    }
+   },
+   {
+    "id": "N01",
+    "expect": null,
+    "best": "T1",
+    "avgs": {
+     "T1": 0.9121,
+     "T2": 0.8979,
+     "T3": 0.9022,
+     "T4": 0.905,
+     "T5": 0.8913
+    }
+   },
+   {
+    "id": "N02",
+    "expect": null,
+    "best": "T1",
+    "avgs": {
+     "T1": 0.9018,
+     "T2": 0.8966,
+     "T3": 0.8893,
+     "T4": 0.8931,
+     "T5": 0.8841
+    }
+   },
+   {
+    "id": "N03",
+    "expect": null,
+    "best": "T1",
+    "avgs": {
+     "T1": 0.8998,
+     "T2": 0.8871,
+     "T3": 0.8948,
+     "T4": 0.8832,
+     "T5": 0.8909
+    }
+   }
+  ],
+  "argmax_acc": 1.0,
+  "correct_at_thr": 0.6,
+  "margin_min": 0.0191
+ }
+}

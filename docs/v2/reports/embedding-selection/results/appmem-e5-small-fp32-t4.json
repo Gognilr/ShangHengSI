@@ -1,0 +1,7 @@
+{
+ "variant": "e5-small-fp32",
+ "threads": 4,
+ "first_load_and_query_seconds": 3.91,
+ "query_seconds": 0.012,
+ "peak_increase_gb": 1.162
+}

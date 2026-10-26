@@ -1,0 +1,7 @@
+{
+ "variant": "bge-m3-int8",
+ "threads": 4,
+ "first_load_and_query_seconds": 4.49,
+ "query_seconds": 0.046,
+ "peak_increase_gb": 1.136
+}

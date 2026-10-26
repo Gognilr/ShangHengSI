@@ -1,0 +1,7 @@
+{
+ "variant": "bge-small-zh-fp32",
+ "threads": 4,
+ "first_load_and_query_seconds": 0.52,
+ "query_seconds": 0.015,
+ "peak_increase_gb": 0.155
+}

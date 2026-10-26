@@ -1,0 +1,22 @@
+{
+ "variant": "bge-m3-int8",
+ "batch": 1,
+ "arena": false,
+ "opt": "extended",
+ "threads": 8,
+ "chars": 10000,
+ "passages": 20,
+ "load_seconds": 4.59,
+ "embed_seconds": [
+  4.1,
+  3.663,
+  3.622
+ ],
+ "embed_median": 3.663,
+ "rss_base_mb": 51.4,
+ "peak_increase_gb": 1.136,
+ "cpu_count": 16,
+ "load_peak_increase_gb": 1.136,
+ "after_load_rss_increase_gb": 1.096,
+ "after_embed_rss_increase_gb": 1.127
+}

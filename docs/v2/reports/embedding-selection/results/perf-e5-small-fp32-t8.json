@@ -1,0 +1,16 @@
+{
+ "variant": "e5-small-fp32",
+ "threads": 8,
+ "chars": 10000,
+ "passages": 20,
+ "load_seconds": 22.66,
+ "embed_seconds": [
+  1.223,
+  1.151,
+  1.157
+ ],
+ "embed_median": 1.157,
+ "rss_base_mb": 51.3,
+ "peak_increase_gb": 1.336,
+ "cpu_count": 16
+}
