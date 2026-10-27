@@ -376,8 +376,9 @@ def test_default_worker_thread_groups(monkeypatch):
     worker.run_worker(None, stop)
     assert [t["args"][-1] for t in threads].count(("review",)) == 8
     assert [t["args"][-1] for t in threads].count(("parse", "law_import")) == 2
+    assert [t["args"][-1] for t in threads].count(("assist",)) == 4
     assert [t["args"][-1] for t in threads].count(("backup", "retention", "law_embed", "law_sync", "template_embed")) == 1
-    assert len({t["args"][1] for t in threads}) == 11
+    assert len({t["args"][1] for t in threads}) == 15
 
 
 def test_eight_reviews_with_gateway_sessions_and_heartbeats(handlers, db_sessionmaker, monkeypatch):
@@ -477,8 +478,8 @@ def test_startup_ignores_legacy_variable_and_warns_once(monkeypatch, caplog):
     warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
     assert warnings == ["已改为 WORKER_REVIEW_CONCURRENCY / WORKER_PARSE_CONCURRENCY"]
     assert "invalid-ignored-secret" not in caplog.text
-    assert pool_options == [{"pool_size": 12, "max_overflow": 12}]
-    assert calls[0][1] == {"review_concurrency": 8, "parse_concurrency": 2}
+    assert pool_options == [{"pool_size": 16, "max_overflow": 16}]
+    assert calls[0][1] == {"review_concurrency": 8, "parse_concurrency": 2, "assist_concurrency": 4}
     assert startup == [{'load': True}, 'enqueue', 'commit']
 
 
