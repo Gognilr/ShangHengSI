@@ -1,0 +1,248 @@
+# V2-U 集中测试报告
+
+2026-10-27 · 实现与首轮检查：GPT-6.1 Terra（用户同意）；收尾：GPT-6.1 Sol。
+
+## 当前结论
+
+U-01～U-07 已分别提交。整仓测试 3084 passed、退出码 0，前端构建及最终样式检查通过；主要页面四宽度截图与关键交互已核对。**U-08 暂不标记完成**：1280px 窗口的正文可用行长实测约 35.2 字，低于设计清单 36 字下限，已提出 V2Q-114，等待用户决定是否接受该窄窗口例外。未进入 U-09 或 V2-D。
+
+## 环境与命令
+
+前端通过本机 Vite 访问独立 `aireview-e08-ui-app`（127.0.0.1:8197）；数据为既有虚构 UI 样本和本次新增的虚构状态，不连接正式服务器，不调用真实模型。处理状态直接建立测试记录，未创建后台模型作业。法规导入和外发记录详情的个别显示分支使用浏览器响应模拟，见下表；不将这些检查视为真实导入或真实模型验证。
+
+```powershell
+docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgres:test@aireview-e04-test-db:5432/postgres -v "${PWD}:/srv" -w /srv/backend aireview-backend-test:e04 pytest -q
+npm --prefix frontend run build
+docker run --rm -v "${PWD}:/srv" -w /srv/backend aireview-backend-test:e04 pytest -q tests/test_frontend_style.py tests/test_forbidden_words.py
+```
+
+- 整仓：**3084 passed、1 warning，1498.60 秒，退出码 0**。日志 `.codex-tmp/v2u/full-test-pgvector.log`，退出码 `.codex-tmp/v2u/full-test-pgvector.exit`。警告为既有 Starlette/httpx 弃用提示。
+- `aireview-test-db` 实际仍为普通 postgres:16.15，保留未覆盖；本次改用已存在的 `aireview-e04-test-db`（aireview-db:dev）。最初对旧库发起的进程已停止，不计为通过。默认旧测试镜像缺 pgvector，采用已有 e04 测试镜像，未下载或重建镜像。
+- 整仓运行期间修正了前端角色列、Teleport 样式命中与卡片间距。整仓结果覆盖后端和全部收集用例；这些最后的纯前端修正后又分别通过前端 build、27 项规范/禁用措辞检查。不能将此描述成在最终代码快照上重新启动的第二次整仓测试。
+- 前端 build 含 vue-tsc，通过；Vite 有大于 500 kB 构建块的提示。U-01 测试先行记录为修改前 5 failed、20 passed，之后补充扫描器自检，最终两个检查文件 27 passed。
+
+## 浏览器检查
+
+窗口：1280×800、1366×768、1440×900、1920×1080。主要页面均有四宽度截图；以下记录区分实际后端虚构样本和响应模拟。
+
+| 项目 | 结果与证据 |
+|-|-|
+| 结果页首屏 | 1366×768 可见结论、第一张问题标题和原文引用。主内容区 clientHeight=scrollHeight；长正文样本左右栏均可独立滚动，滚动条为 thin。见 `result-final2-*`、`result-metrics.json`、`long-doc-check.js` 的执行回执 |
+| 工具条与等级 | 追问、重新审核可打开；虚构合同导出出现“报告已下载”；删除只验证确认并取消。等级筛选与再点取消正常。未完成轮次导出禁用，第二行可见原因 |
+| 编号与轮次 | 筛选后原“02”保持不变；点击问题后原文显示“正在定位：问题 01”。虚构两轮切换可显示对应问题与状态。备注添加、回车保存、修改后自动聚焦正常 |
+| 结果状态 | 虚构失败、部分完成、仅本地校验、原件四天后到期状态均已打开核对；到期文案为“原件将于 … 删除，之后不能重新审核和追问” |
+| 原文阅读 | 15px / 27px，pre-wrap 保留连续空格和段内换行；长正文定位上下留白约 225px，超过 48px。XLSX 单元格、PDF canvas、PNG 原图均显示。行长精确值见 V2Q-114，1280px 尚不满足下限 |
+| 智能审核 | 第一页无重复标题；四宽度页面无横向溢出，主滚动区 right=窗口宽度，步骤条距顶栏下方 24px。确认页主滚动区管理滚动，操作栏贴底。解析/审核/排队状态有计时、说明和返回入口；解析显示文件清单，不显示百分比和转圈；审核显示模拟第2/5段与既有摘要计数 |
+| 减少动态效果 | 解析进度条 animation=none，宽 280px / 总宽560px，静止半段；恢复模拟前的媒体偏好 |
+| 历史与加载 | 筛选和表格在同一面板；空查询显示“没有审核记录”。受控网络延迟下历史与结果首次加载骨架可见，完成后消失。不存在任务显示预期404提示 |
+| 设置页 | 七页×四宽度共28组滚动测量：document.scrollWidth=窗口宽度，main右边缘贴窗口；带两条管理员提醒时底部内容可见，设置导航保持sticky |
+| 标题、焦点 | 已打开新增账号、重置密码、公司补充要求、公司范本上传、修改密码、重新审核、审核要求、手动选择、疑似遗漏分类、追问、追问发送确认与法规差异等对话框/抽屉；抽查标题18px/600/26.1px。顶栏菜单、设置、用户入口和上传入口Tab外环为深主色2px |
+| 法规导入（响应模拟） | 原隔离库有pending记录，导入按钮按业务禁用。仅在浏览器将GET导入记录列表模拟为空，检查目录/全文导入弹窗四宽度后取消；未上传文件，未改原pending记录，已撤销拦截 |
+| 外发详情（响应模拟） | 浏览器模拟一条虚构日志及其详情，四宽度确认抽屉宽560px、贴窗口右侧、标题令牌生效；已撤销拦截。初次模拟详情路由未命中产生预期404，修正测试匹配后通过 |
+| 控制台与请求 | 正常页面检查的pageerror记录为空。人工构造404、登录前401、账号切换时logout请求中断、测试截图超时及测试选择器失败均保留，不将它们混作产品正常路径已通过的证据 |
+
+## 集中测试发现并修复
+
+1. 角色列截断“系统与业务管理员”：列宽140px，四宽度复查完整。提交 `02d81eb`。
+2. Teleport后的局部选择器未命中弹窗和抽屉：改用组件类名限定选择器，复测18px/600/26.1px。提交 `e265a83`。
+3. 典型卡片高度超目标：收紧间距后，含引用、问题、影响、建议的虚构单行样本在1366px下236.6px；额外法条/范本信息或长文本会更高。提交 `ac877e1`。
+
+修复均在各原任务文件范围内完成；未改接口、后端业务、设计文档或既有回归样本。
+
+## 截图与来源
+
+截图不入仓库，保存在 `.codex-tmp/v2u/before/` 和 `after/`。下列每组均有1280、1366、1440、1920四档。
+
+| 页面 | 改前组 | 改后组 |
+|-|-|-|
+| 登录 | `before/login-*` | `after/login-after-*` |
+| 上传与设置 | `before/new2-*` | `after/new-after-*` |
+| 确认脱敏 | `before/confirm-*` | `after/confirm-after-*` |
+| 解析中 | `before/retro-parsing-*` | `after/parsing-after-*` |
+| 审核中 | `before/retro-running-*` | `after/running-after-*` |
+| 历史 | `before/history-*` | `after/history-after-*` |
+| 结果 | `before/result-*` | `after/result-final2-*` |
+| 账号 | `before/settings-users-*` | `after/users-final-*` |
+| 其余设置 | `before/settings-{model,requirements,laws,templates,redaction,data}-*` | `after/after-settings-{model,requirements,laws,templates,redaction,data}-*` |
+
+主要页面的1366、1920图均按上述同组文件配对。结果页示例：
+
+![改前结果页1366](../../../.codex-tmp/v2u/before/result-1366.png)
+![改后结果页1366](../../../.codex-tmp/v2u/after/result-final2-1366.png)
+![改后结果页1920](../../../.codex-tmp/v2u/after/result-final2-1920.png)
+
+实际动手前采集的基线为登录、新建审核、历史、结果和七个设置页。确认页复用E-08保存截图，并用 `git diff 79c7122 1c30d24 -- frontend` 验证前端源码一致。解析中/审核中基线为改动后从提交 `1c30d24` 归档重建的旧前端补拍，使用同一虚构状态记录，明确不算动手前原始截图。`before/new-1280.png` 来自失联旧页面，不能使用，以`new2-*`为准。旧版补拍服务已停止，资料保留。
+
+## 主要页面截图配对
+
+<details><summary>登录</summary>
+
+![登录 改前 1366](../../../.codex-tmp/v2u/before/login-1366.png)
+
+![登录 改后 1366](../../../.codex-tmp/v2u/after/login-after-1366.png)
+
+![登录 改前 1920](../../../.codex-tmp/v2u/before/login-1920.png)
+
+![登录 改后 1920](../../../.codex-tmp/v2u/after/login-after-1920.png)
+
+</details>
+
+<details><summary>上传与设置</summary>
+
+![上传与设置 改前 1366](../../../.codex-tmp/v2u/before/new2-1366.png)
+
+![上传与设置 改后 1366](../../../.codex-tmp/v2u/after/new-after-1366.png)
+
+![上传与设置 改前 1920](../../../.codex-tmp/v2u/before/new2-1920.png)
+
+![上传与设置 改后 1920](../../../.codex-tmp/v2u/after/new-after-1920.png)
+
+</details>
+
+<details><summary>确认脱敏</summary>
+
+![确认脱敏 改前 1366](../../../.codex-tmp/v2u/before/confirm-1366.png)
+
+![确认脱敏 改后 1366](../../../.codex-tmp/v2u/after/confirm-after-1366.png)
+
+![确认脱敏 改前 1920](../../../.codex-tmp/v2u/before/confirm-1920.png)
+
+![确认脱敏 改后 1920](../../../.codex-tmp/v2u/after/confirm-after-1920.png)
+
+</details>
+
+<details><summary>解析中（旧版基线补拍）</summary>
+
+![解析中（旧版基线补拍） 改前 1366](../../../.codex-tmp/v2u/before/retro-parsing-1366.png)
+
+![解析中（旧版基线补拍） 改后 1366](../../../.codex-tmp/v2u/after/parsing-after-1366.png)
+
+![解析中（旧版基线补拍） 改前 1920](../../../.codex-tmp/v2u/before/retro-parsing-1920.png)
+
+![解析中（旧版基线补拍） 改后 1920](../../../.codex-tmp/v2u/after/parsing-after-1920.png)
+
+</details>
+
+<details><summary>审核中（旧版基线补拍）</summary>
+
+![审核中（旧版基线补拍） 改前 1366](../../../.codex-tmp/v2u/before/retro-running-1366.png)
+
+![审核中（旧版基线补拍） 改后 1366](../../../.codex-tmp/v2u/after/running-after-1366.png)
+
+![审核中（旧版基线补拍） 改前 1920](../../../.codex-tmp/v2u/before/retro-running-1920.png)
+
+![审核中（旧版基线补拍） 改后 1920](../../../.codex-tmp/v2u/after/running-after-1920.png)
+
+</details>
+
+<details><summary>审核历史</summary>
+
+![审核历史 改前 1366](../../../.codex-tmp/v2u/before/history-1366.png)
+
+![审核历史 改后 1366](../../../.codex-tmp/v2u/after/history-after-1366.png)
+
+![审核历史 改前 1920](../../../.codex-tmp/v2u/before/history-1920.png)
+
+![审核历史 改后 1920](../../../.codex-tmp/v2u/after/history-after-1920.png)
+
+</details>
+
+<details><summary>审核结果</summary>
+
+![审核结果 改前 1366](../../../.codex-tmp/v2u/before/result-1366.png)
+
+![审核结果 改后 1366](../../../.codex-tmp/v2u/after/result-final2-1366.png)
+
+![审核结果 改前 1920](../../../.codex-tmp/v2u/before/result-1920.png)
+
+![审核结果 改后 1920](../../../.codex-tmp/v2u/after/result-final2-1920.png)
+
+</details>
+
+<details><summary>账号</summary>
+
+![账号 改前 1366](../../../.codex-tmp/v2u/before/settings-users-1366.png)
+
+![账号 改后 1366](../../../.codex-tmp/v2u/after/users-final-1366.png)
+
+![账号 改前 1920](../../../.codex-tmp/v2u/before/settings-users-1920.png)
+
+![账号 改后 1920](../../../.codex-tmp/v2u/after/users-final-1920.png)
+
+</details>
+
+<details><summary>模型</summary>
+
+![模型 改前 1366](../../../.codex-tmp/v2u/before/settings-model-1366.png)
+
+![模型 改后 1366](../../../.codex-tmp/v2u/after/after-settings-model-1366.png)
+
+![模型 改前 1920](../../../.codex-tmp/v2u/before/settings-model-1920.png)
+
+![模型 改后 1920](../../../.codex-tmp/v2u/after/after-settings-model-1920.png)
+
+</details>
+
+<details><summary>审核要求</summary>
+
+![审核要求 改前 1366](../../../.codex-tmp/v2u/before/settings-requirements-1366.png)
+
+![审核要求 改后 1366](../../../.codex-tmp/v2u/after/after-settings-requirements-1366.png)
+
+![审核要求 改前 1920](../../../.codex-tmp/v2u/before/settings-requirements-1920.png)
+
+![审核要求 改后 1920](../../../.codex-tmp/v2u/after/after-settings-requirements-1920.png)
+
+</details>
+
+<details><summary>法规库</summary>
+
+![法规库 改前 1366](../../../.codex-tmp/v2u/before/settings-laws-1366.png)
+
+![法规库 改后 1366](../../../.codex-tmp/v2u/after/after-settings-laws-1366.png)
+
+![法规库 改前 1920](../../../.codex-tmp/v2u/before/settings-laws-1920.png)
+
+![法规库 改后 1920](../../../.codex-tmp/v2u/after/after-settings-laws-1920.png)
+
+</details>
+
+<details><summary>公司范本</summary>
+
+![公司范本 改前 1366](../../../.codex-tmp/v2u/before/settings-templates-1366.png)
+
+![公司范本 改后 1366](../../../.codex-tmp/v2u/after/after-settings-templates-1366.png)
+
+![公司范本 改前 1920](../../../.codex-tmp/v2u/before/settings-templates-1920.png)
+
+![公司范本 改后 1920](../../../.codex-tmp/v2u/after/after-settings-templates-1920.png)
+
+</details>
+
+<details><summary>脱敏</summary>
+
+![脱敏 改前 1366](../../../.codex-tmp/v2u/before/settings-redaction-1366.png)
+
+![脱敏 改后 1366](../../../.codex-tmp/v2u/after/after-settings-redaction-1366.png)
+
+![脱敏 改前 1920](../../../.codex-tmp/v2u/before/settings-redaction-1920.png)
+
+![脱敏 改后 1920](../../../.codex-tmp/v2u/after/after-settings-redaction-1920.png)
+
+</details>
+
+<details><summary>数据</summary>
+
+![数据 改前 1366](../../../.codex-tmp/v2u/before/settings-data-1366.png)
+
+![数据 改后 1366](../../../.codex-tmp/v2u/after/after-settings-data-1366.png)
+
+![数据 改前 1920](../../../.codex-tmp/v2u/before/settings-data-1920.png)
+
+![数据 改后 1920](../../../.codex-tmp/v2u/after/after-settings-data-1920.png)
+
+</details>
+
+## 待决定
+
+V2Q-114：1280px实际约35.2字/行；1366px约38.5字，1440/1920px约39.3字。等待用户接受窄窗口例外或由Opus调整设计。此项决定前，U-08保持待执行，不声称整批验收完成。
