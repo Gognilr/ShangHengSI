@@ -8,7 +8,6 @@ import { tasksApi, type TaskListItem } from '@/api/tasks'
 import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
 import { formatDate, formatDateTime } from '@/utils/time'
 import { Search } from '@element-plus/icons-vue'
-import PageHeader from '@/components/PageHeader.vue'
 
 const router = useRouter()
 function fileBadge(name: string) {
@@ -21,6 +20,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
+const initialLoad = ref(true)
 const error = ref('')
 const exporting = ref('')
 
@@ -70,6 +70,7 @@ async function load() {
     error.value = e instanceof ApiError ? e.message : '加载失败，请刷新页面'
   } finally {
     loading.value = false
+    initialLoad.value = false
   }
 }
 
@@ -107,8 +108,8 @@ onMounted(load)
 
 <template>
   <div class="page page--wide">
-    <PageHeader title="审核历史" description="查看和导出本人提交的审核任务" />
-    <div class="panel filters">
+    <section class="panel history-table">
+    <div class="filters">
       <el-input v-model="q" :prefix-icon="Search" aria-label="按文件名搜索" clearable placeholder="按文件名搜索" class="q" @keyup.enter="search" @clear="search" />
       <el-date-picker
         v-model="range"
@@ -124,11 +125,11 @@ onMounted(load)
 
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />
 
-    <section class="panel history-table gap">
-    <el-table v-loading="loading" :data="items" empty-text="没有审核记录">
+    <el-skeleton v-if="loading && initialLoad && !items.length" :rows="5" animated />
+    <el-table v-else v-loading="loading" :data="items" empty-text="没有审核记录">
       <template #empty><el-empty description="没有审核记录"><el-button @click="router.push({ name: 'review-new' })">去新建审核</el-button></el-empty></template>
       <el-table-column label="提交时间" width="170">
-        <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+        <template #default="{ row }"><span class="num">{{ formatDateTime(row.created_at) }}</span></template>
       </el-table-column>
       <el-table-column prop="title" label="主文件名" min-width="160" show-overflow-tooltip><template #default="{ row }"><div class="file-cell"><span class="file-badge" :class="`badge-${fileBadge(row.title).toLowerCase()}`">{{ fileBadge(row.title) }}</span><span class="file-title">{{ row.title }}</span></div></template></el-table-column>
       <el-table-column label="文件类型" width="110">
@@ -140,8 +141,8 @@ onMounted(load)
       <el-table-column label="状态" width="130">
         <template #default="{ row }"><span :class="{ danger: row.status === 'parse_failed' }">{{ statusLabel(row.status) }}</span></template>
       </el-table-column>
-      <el-table-column label="高风险问题数" width="120" align="center"><template #default="{ row }"><span :class="{ 'high-count': row.high_count > 0 }">{{ row.high_count }}</span></template></el-table-column>
-      <el-table-column label="保留至" width="110"><template #default="{ row }">{{ row.task_expires_at ? formatDate(row.task_expires_at) : '永久' }}</template></el-table-column>
+      <el-table-column label="高风险问题数" width="120" align="center"><template #default="{ row }"><span class="num" :class="{ 'high-count': row.high_count > 0 }">{{ row.high_count }}</span></template></el-table-column>
+      <el-table-column label="保留至" width="110"><template #default="{ row }"><span class="num">{{ row.task_expires_at ? formatDate(row.task_expires_at) : '永久' }}</span></template></el-table-column>
       <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="open(row)">打开</el-button>
@@ -167,7 +168,7 @@ onMounted(load)
 <style scoped>
 .filters {
   flex-wrap: wrap;
-  margin-bottom: 0;
+  margin-bottom: 16px;
 }
 .q {
   width: 320px;

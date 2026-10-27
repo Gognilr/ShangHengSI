@@ -9,7 +9,7 @@ defineProps<{ title: string; description?: string }>()
 </template>
 <style scoped>
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-h1 { margin: 0; font-size: 24px; font-weight: 600; }
-p { margin: 4px 0 0; font-size: 14px; color: var(--el-text-color-secondary); }
+h1 { margin: 0; font: var(--si-font-title); }
+p { margin: 4px 0 0; font: var(--si-font-body); color: var(--el-text-color-secondary); }
 .page-header-actions { flex: none; }
 </style>

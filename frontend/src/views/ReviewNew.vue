@@ -21,7 +21,6 @@ import {
 } from '@/api/tasks'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmStep from '@/components/ConfirmStep.vue'
-import PageHeader from '@/components/PageHeader.vue'
 import StepBar from '@/components/StepBar.vue'
 import { formatDateTime } from '@/utils/time'
 import { useAuthStore } from '@/stores/auth'
@@ -294,7 +293,6 @@ function fileBadge(name: string): string {
 </script>
 <template>
   <div class="page" :class="step === 1 ? 'page--wide' : 'page--standard'">
-    <PageHeader title="智能审核" description="上传商务文件，本地脱敏并经确认后，由 AI 进行初审" />
     <StepBar :active="step" :status="stepStatus" />
     <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" class="block" />
 
@@ -312,6 +310,7 @@ function fileBadge(name: string): string {
       <el-form v-else label-width="110px" @submit.prevent="startParse()">
         <section class="form-group">
           <h2>审核文件</h2>
+          <p class="hint">上传商务文件，本地脱敏并经确认后，由 AI 进行初审</p>
           <el-upload drag multiple :auto-upload="false" :show-file-list="false" :accept="ALLOWED_EXTS.map(ext => `.${ext}`).join(',')" @change="onFileChange">
             <div class="upload-icon"><el-icon :size="28"><UploadFilled /></el-icon></div>
             <div class="el-upload__text">将文件拖到此处，或 <em>点击选择</em></div>
@@ -379,7 +378,6 @@ function fileBadge(name: string): string {
 </template>
 
 <style scoped>
-.page { height: calc(100vh - 64px); box-sizing: border-box; overflow-y: auto; }
 .block { margin-bottom: 16px; }
 .center { text-align: center; padding: 48px 0; }
 .center > .el-icon { color: var(--el-color-primary); }

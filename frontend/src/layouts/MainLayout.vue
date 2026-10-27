@@ -162,5 +162,7 @@ async function onCommand(cmd: string) {
 .main {
   padding: 0;
   min-height: 0;
+  overflow-y: auto;
 }
+.main :deep(.confirm-actions) { bottom: 0; }
 </style>
