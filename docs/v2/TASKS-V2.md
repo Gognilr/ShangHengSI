@@ -95,6 +95,7 @@
 | V2-E-06 | 公司范本库：上传、拆分、加密、向量、选择、对照与整节复检、L-12、轮次快照（迁移 0021，设计第八节） | GPT-6.1 Sol（测试先行） | xhigh | V2-E-05 | 已完成 |
 | V2-E-07 | 前端：法规库页、公司范本页、数据页自动更新、第二步范本提示、结果页依据与标签（设计第九节） | GPT-6.1 Sol | medium | V2-E-06 | 已完成 |
 | V2-E-08 | 集中测试：整仓全量、浏览器清单、评测对比（开 / 关法条依据与范本对照）、引擎对拍、测试虚拟机上实测资源并演练 upgrade.sh 与 restore.sh，写批次测试报告（设计第十节） | GPT-6.1 Sol | medium | V2-E-07 | 待执行 |
+| V2-E-08a | 无条号文本分段与标题规范化（设计 5.8，T-44a，V2Q-111）。文件范围：`backend/app/laws/articles.py`、`backend/app/laws/fulltext.py`、`backend/app/laws/job.py`（只改 passage 拼接）；测试只追加 test\_law\_articles.py、test\_laws\_fulltext.py、test\_law\_refs.py，只跑这三个文件与 test\_law\_embed 相关用例。不加迁移、不改外网代码。完成后回到 V2-E-08，只对 282 份未入库的重跑并按设计第十节第 6 条判定 | GPT-6.1 Sol（测试先行） | medium | V2Q-111（已确认） | 待执行 |
 | V2-E-09 | 批次审核，汇报用户 | Opus | high | V2-E-08 | 待执行 |
 
 ### V2-U 界面改进
