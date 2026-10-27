@@ -491,8 +491,7 @@ h3 {
   align-items: center;
   gap: 12px;
   margin: 0 0 16px;
-  font-size: 18px;
-  font-weight: 600;
+  font: var(--si-font-h2);
 }
 .section-number { display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font-size: 14px; }
 .compact-table { border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); margin-top: 16px; }

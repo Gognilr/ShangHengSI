@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Loading, UploadFilled } from '@element-plus/icons-vue'
+import { UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
+import { redactionApi } from '@/api/redaction'
 import { runsApi, type RunDetail } from '@/api/runs'
 import {
   ALLOWED_EXTS,
@@ -240,10 +241,11 @@ async function enter() {
 
 onMounted(() => {
   loadPrefs()
+  clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
   void enter()
 })
 watch(taskId, () => void enter())
-onBeforeUnmount(stopPolling)
+onBeforeUnmount(() => { stopPolling(); if (clockTimer) clearInterval(clockTimer) })
 
 async function startOver() {
   files.value = []
@@ -256,6 +258,24 @@ async function startOver() {
 const parsing = computed(() => task.value?.status === 'parsing')
 const parseFailed = computed(() => task.value?.status === 'parse_failed')
 const stepStatus = computed(() => (parseFailed.value ? 'error' : 'process'))
+const now = ref(Date.now())
+let clockTimer: ReturnType<typeof setInterval> | null = null
+const replacementCount = ref<number | null>(null)
+watch([() => task.value?.id, () => task.value?.status], async ([id, status]) => {
+  replacementCount.value = null
+  if (!id || status !== 'reviewing') return
+  try {
+    const info = await redactionApi.redaction(id)
+    if (task.value?.id === id && task.value.status === 'reviewing') replacementCount.value = Object.values(info.summary).reduce((sum, n) => sum + n, 0)
+  } catch { /* 摘要不可用不影响审核轮询。 */ }
+})
+const queued = computed(() => (activeRun.value?.id === task.value?.latest_run?.id ? activeRun.value?.status : task.value?.latest_run?.status) === 'queued')
+const elapsed = computed(() => {
+  const start = parsing.value ? task.value?.created_at : queued.value ? activeRun.value?.queued_at : activeRun.value?.started_at
+  if (!start) return ''
+  const seconds = Math.max(0, Math.floor((now.value - Date.parse(start)) / 1000))
+  return Number.isFinite(seconds) ? `已用 ${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒` : ''
+})
 
 const stanceOptions = toOptions(STANCE_OPTIONS)
 const sourceOptions = toOptions(SOURCE_OPTIONS)
@@ -297,10 +317,20 @@ function fileBadge(name: string): string {
     <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" class="block" />
 
     <section v-if="step === 0 && !loadError" class="panel">
-      <div v-if="parsing" class="center">
-        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-        <p>正在解析文件，请稍候……</p>
+      <div v-if="parsing" class="processing">
+        <h2>正在本机解析文件</h2>
+        <p v-if="elapsed" class="num">{{ elapsed }}</p>
+        <el-progress class="progress-indeterminate" :percentage="100" :indeterminate="true" :show-text="false" :stroke-width="8" />
+        <p class="hint">本机正在读取正文与表格、识别扫描页文字、核对金额与日期、识别敏感信息；扫描件页数多时需要更长时间。</p>
+        <div v-if="task?.files.length" class="file-list">
+          <div v-for="file in task.files" :key="file.id" class="file-row">
+            <span class="file-badge" :class="`file-badge--${fileBadge(file.original_name).toLowerCase()}`">{{ fileBadge(file.original_name) }}</span>
+            <span class="file-name" :title="file.original_name">{{ file.original_name }}<template v-if="file.is_main">（主文件）</template></span>
+            <span class="file-size num">{{ formatSize(file.size_bytes) }}</span>
+          </div>
+        </div>
         <p class="hint">解析完成后会自动进入下一步，也可以离开页面，稍后从审核历史进入。</p>
+        <div class="actions"><el-button @click="router.push('/history')">返回审核历史</el-button></div>
       </div>
       <div v-else-if="parseFailed" class="center">
         <el-result icon="error" title="解析失败" :sub-title="task?.error_message ?? '文件无法解析'">
@@ -359,11 +389,19 @@ function fileBadge(name: string): string {
       <ConfirmStep :key="task.id" :task="task" @confirmed="refreshTask" @stale="refreshTask" />
     </section>
     <section v-else-if="step === 2 && task" class="panel">
-      <div class="center">
-        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-        <p>{{ runText }}</p>
-        <el-progress v-if="runProgress !== null" :percentage="runProgress" :show-text="false" :stroke-width="6" class="run-progress" />
+      <div class="processing">
+        <h2>{{ queued ? runText : '正在审核' }}</h2>
+        <p v-if="!queued && runText !== '审核中'">{{ runText }}<template v-if="elapsed"> · {{ elapsed }}</template></p>
+        <p v-else-if="elapsed" class="num">{{ elapsed }}</p>
+        <el-progress v-if="!queued && runProgress !== null" :percentage="runProgress" :show-text="false" :stroke-width="8" class="run-progress" />
+        <ul class="completed-steps">
+          <li>✓ 已在本机完成文件解析</li>
+          <li v-if="replacementCount !== null">✓ 已在本机替换敏感信息 {{ replacementCount }} 处</li>
+          <li>✓ 外发文本已经确认，并通过发送前检查</li>
+          <li>○ {{ queued ? '等待云端模型审核' : '云端模型审核中' }}</li>
+        </ul>
         <p class="hint">审核完成后会自动跳转到结果页，也可以离开页面，稍后从审核历史进入。</p>
+        <div class="actions"><el-button @click="router.push('/history')">返回审核历史</el-button></div>
       </div>
     </section>
     <RequirementsDrawer v-model="reqDrawer" :stance="stance" :source="source" :user-note="userNote" />
@@ -382,7 +420,7 @@ function fileBadge(name: string): string {
 .center { text-align: center; padding: 48px 0; }
 .center > .el-icon { color: var(--el-color-primary); }
 .form-group + .form-group { margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--el-border-color-lighter); }
-h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
+h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .group-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .group-heading h2 { margin: 0; }
 .upload-icon { width: 44px; height: 44px; display: grid; place-items: center; margin: 0 auto 16px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 12px; }
@@ -405,7 +443,7 @@ h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
 .segmented :deep(.el-radio-button__inner) { border: 0; border-radius: 6px; box-shadow: none; background: transparent; }
 .segmented :deep(.el-radio-button.is-active .el-radio-button__inner) { background: var(--el-bg-color); color: var(--el-color-primary); font-weight: 600; }
 .policy-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; }
-.policy-cards :deep(.el-radio) { margin: 0; padding: 16px; height: auto; min-height: 144px; align-items: flex-start; border-radius: var(--si-radius-card); white-space: normal; }
+.policy-cards :deep(.el-radio) { margin: 0; padding: 16px; height: auto; align-items: flex-start; border-radius: var(--si-radius-card); white-space: normal; }
 .policy-cards :deep(.el-radio.is-checked) { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .policy-cards :deep(.el-radio__input) { margin-top: 4px; }
 .policy-cards :deep(.el-radio__label) { white-space: normal; padding-left: 12px; }
@@ -413,5 +451,11 @@ h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
 .policy-description { display: block; margin-top: 8px; font-size: 13px; line-height: 1.8; color: var(--el-text-color-secondary); }
 .policy-item { margin-bottom: 0; }
 .parse-actions { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--el-border-color-lighter); }
-.run-progress { max-width: 360px; margin: 20px auto; }
+.processing { max-width: 560px; margin: 0 auto; }
+.processing h2 { font: var(--si-font-h3); }
+.processing p { margin: 12px 0; }
+.completed-steps { list-style: none; margin: 20px 0; padding: 0; }
+.completed-steps li + li { margin-top: 8px; }
+.run-progress, .progress-indeterminate { margin: 16px 0; }
+@media (prefers-reduced-motion: reduce) { .progress-indeterminate :deep(.el-progress-bar__inner--indeterminate) { width: 50% !important; left: 25% !important; animation: none !important; } }
 </style>
