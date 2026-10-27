@@ -123,7 +123,7 @@ class Redacted:
 
 
 def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]],
-            decisions: list[dict] | None = None) -> Redacted:
+            decisions: list[dict] | None = None, *, allocator=None) -> Redacted:
     """纯函数：按 full_map（本任务对照表）和 terms（(名称, 类别)）脱敏。已被前一步替换的文字不再参与后续识别。"""
     text = message.strip()
     accepted: list[_Span] = []
@@ -148,8 +148,17 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
         known = by_value.get(_norm(surface))
         if known:
             return known
-        code = placeholders.chat_code(category, next_no, country)
-        next_no += 1
+        if allocator is None:
+            code = placeholders.chat_code(category, next_no, country)
+            next_no += 1
+        elif category == "ORG":
+            code = allocator.org(surface, "公司")
+        elif category == "ADDR":
+            code = allocator.address(country or "国家未知", surface)
+        elif category in placeholders.FIXED:
+            code = allocator.fixed(category, surface)
+        else:
+            code = allocator.numbered(category, surface)
         new_entries[code] = surface
         by_value[_norm(surface)] = code
         return code

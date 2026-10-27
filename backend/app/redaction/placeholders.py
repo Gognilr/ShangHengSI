@@ -108,3 +108,65 @@ class Allocator:
             self._counters[category] = n
             self._codes[(category, key)] = _NUMBERED[category].format(n)
         return self._codes[(category, key)]
+
+    def fixed(self, category: str, key: str) -> str:
+        return FIXED[category]
+
+    def address(self, country: str, key: str) -> str:
+        return address_code(country)
+
+    def our(self) -> str:
+        return OUR_CODE
+
+
+NEUTRAL = re.compile(r"\[\[(?:OUR|[A-Z]+_\d+)\]\]")
+_NEUTRAL_LABELS = {
+    "ORG": "ORG", "PERSON": "PER", "PROJECT": "PRJ", "REFNO": "REF", "PHONE": "TEL",
+    "EMAIL": "EMAIL", "URL": "URL", "POSTCODE": "ZIP", "ACCOUNT": "ACCT", "SWIFT": "SWIFT",
+    "AMOUNT": "AMT", "PRICE": "PRICE", "QTY": "QTY", "CUSTOM": "TERM", "IM": "IM", "IDNO": "ID", "ADDR": "ADDR",
+}
+
+
+class NeutralAllocator:
+    """按类别和规范化真实值续号；已用过的号码永不复用。"""
+
+    def __init__(self) -> None:
+        self._counters: dict[str, int] = {}
+        self._codes: dict[tuple[str, str], str] = {}
+
+    @staticmethod
+    def _normalize(key: str) -> str:
+        # 延迟导入避免 parties 中的角色常量形成循环导入。
+        from app.redaction.parties import normalize
+        return normalize(key)
+
+    def seed(self, pinned: dict[str, str]) -> None:
+        categories = {label: category for category, label in _NEUTRAL_LABELS.items()}
+        for entry, value in pinned.items():
+            code = entry.split("#", 1)[0]
+            match = re.fullmatch(r"\[\[([A-Z]+)_(\d+)\]\]", code)
+            if not match or match[1] not in categories:
+                continue
+            category, number = categories[match[1]], int(match[2])
+            self._counters[category] = max(self._counters.get(category, 0), number)
+            self._codes.setdefault((category, self._normalize(value)), code)
+
+    def numbered(self, category: str, key: str) -> str:
+        identity = (category, self._normalize(key))
+        if identity not in self._codes:
+            number = self._counters.get(category, 0) + 1
+            self._counters[category] = number
+            self._codes[identity] = f"[[{_NEUTRAL_LABELS[category]}_{number}]]"
+        return self._codes[identity]
+
+    def org(self, key: str, role: str) -> str:
+        return self.numbered("ORG", key)
+
+    def fixed(self, category: str, key: str) -> str:
+        return self.numbered(category, key)
+
+    def address(self, country: str, key: str) -> str:
+        return self.numbered("ADDR", key)
+
+    def our(self) -> str:
+        return "[[OUR]]"

@@ -36,7 +36,7 @@ from app.db.models import (
 from app.redaction import detect, ner, outbound, parties as P, quotes, ratio, suspects as S, tables
 from app.redaction.dictionaries import _country_index
 from app.redaction.placeholders import (
-    ADDR, BUYER, FIXED, OTHER, OUR_CODE, SELLER, Allocator, address_code, chat_number, code_role,
+    ADDR, BUYER, FIXED, OTHER, SELLER, Allocator, NeutralAllocator, chat_number, code_role,
 )
 from app.redaction.recheck import recheck
 from app.security import crypto
@@ -321,6 +321,9 @@ def compute(
     main_prefix: str | None = None,
     exclusions: Sequence[str] = (),
     ner_cache: dict[str, dict] | None = None,
+    style: str = "review",
+    pinned: dict[str, str] | None = None,
+    ratio: bool = True,
 ) -> RedactionResult:
     """对正文节点执行 9.3 第 1–7 步、数量脱敏、疑似遗漏和金额比例。
 
@@ -601,7 +604,10 @@ def compute(
                 ent.country = o.country or ent.country
                 ent.org_type = o.org_type or ent.org_type
                 ent.confirmed = o.confirmed
-    result = _assemble(nodes, stance, entities, spans, main_prefix)
+    if style not in ("review", "neutral"):
+        raise ValueError("未知代号样式")
+    result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
+                       with_ratio=ratio and style == "review")
     result.ner_cache = node_cache
     result.ner_cache_hits, result.ner_cache_misses = cache_hits, cache_misses
 
@@ -702,12 +708,15 @@ def _render(text: str, items: list[ItemOut], inserts: list[tuple[int, str]]) -> 
 
 
 def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], spans: list[_Span],
-              main_prefix: str | None) -> RedactionResult:
+              main_prefix: str | None, *, style: str = "review", pinned: dict[str, str] | None = None,
+              with_ratio: bool = True) -> RedactionResult:
     ours = [e for e in entities.values() if e.is_our]
     if len(ours) > 1:
         raise ValueError("我方只能有一个")
-    alloc = Allocator()
-    mapping: dict[str, str] = {}
+    alloc = NeutralAllocator() if style == "neutral" else Allocator()
+    if style == "neutral":
+        alloc.seed(pinned or {})
+    mapping: dict[str, str] = dict(pinned or {}) if style == "neutral" else {}
     extra: dict[str, list[str]] = {}
     items: list[ItemOut] = []
     party_order: list[str] = []
@@ -730,7 +739,7 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
         if category == "ORG":
             ent = entities[s.key]
             if ent.is_our:
-                category, code = "OUR", OUR_CODE
+                category, code = "OUR", alloc.our()
             else:
                 role = code_role(ent.role_label, stance, ent.org_type)
                 if len(counterpart) == 1 and ent.key in counterpart:
@@ -741,22 +750,25 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
                 party_order.append(ent.key)
             remember(code, ent.name, surface)
         elif category in FIXED:
-            code = FIXED[category]
-            remember(code, None, surface)
+            code = alloc.fixed(category, surface)
+            remember(code, surface if style == "neutral" else None, surface)
         elif category == ADDR:
-            code = address_code(s.key)
-            remember(code, None, surface)
+            code = alloc.address(s.key, surface)
+            remember(code, surface if style == "neutral" else None, surface)
         else:
-            code = alloc.numbered(category, s.key)
             primary = entities[s.key].name if s.key in entities and category in ("PERSON", "CUSTOM") else surface
+            code = alloc.numbered(category, primary if style == "neutral" else s.key)
             remember(code, primary, surface)
         items.append(ItemOut(node.loc, s.start, s.end, category, code, s.detected_by))
 
     for code, values in extra.items():
+        if style == "neutral":
+            known = [v for k, v in mapping.items() if k.startswith(code + "#")]
+            values = known + [v for v in values if v not in known]
         for n, value in enumerate(values, start=1):
             mapping[f"{code}#{n}"] = value
 
-    inserts = _ratio_inserts(nodes, spans, main_prefix)
+    inserts = _ratio_inserts(nodes, spans, main_prefix) if with_ratio else {}
     by_node: dict[str, list[ItemOut]] = {}
     for it in items:
         by_node.setdefault(it.loc, []).append(it)
@@ -878,7 +890,10 @@ def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut]) ->
 
 
 def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
-         existing: dict[str, Party], extra_terms: Sequence[UserTerm] = ()) -> RedactionResult:
+         existing: dict[str, Party], extra_terms: Sequence[UserTerm] = (), *,
+         style: str | None = None, pin: bool | None = None) -> RedactionResult:
+    style = style or ("neutral" if task.kind == "assistant" else "review")
+    pin = task.kind == "assistant" if pin is None else pin
     rows = _body_rows(db, task.id)
     texts = _texts_with_note(rows, task)
     nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no) for r in rows]
@@ -898,7 +913,8 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
                      mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
                      exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
                          select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
-                     main_prefix=_main_prefix(db, task.id), ner_cache=cached)
+                     main_prefix=_main_prefix(db, task.id), ner_cache=cached, style=style,
+                     pinned=_load_full_map(db, task.id) if pin else None, ratio=style == "review")
 
     for loc, entry in result.ner_cache.items():
         if cached.get(loc) != entry:
@@ -954,13 +970,18 @@ def _count_hits(db: Session, matched: set[str]) -> None:
                    .values(hit_count=RedactionTerm.hit_count + 1, last_hit_at=utcnow()))
 
 
-def redact_task(db: Session, task: Task) -> None:
+def redact_task(db: Session, task: Task, style: str = "review", pin: bool = False) -> None:
     """parse 阶段的脱敏：写 parties、redaction_items、redaction_maps、redaction_suspects 和正文节点的 redacted_text，
     并统计已记住名称、自定义敏感词的命中次数（只在这里统计，第二步重算不计数）。不提交。"""
+    if pin:
+        existing = _existing_parties(db, task)
+        result = _run(db, task, _current_overrides(existing) if existing else None, existing, style=style, pin=True)
+        _count_hits(db, result.matched_terms)
+        return
     db.execute(delete(Party).where(Party.task_id == task.id))
     db.execute(delete(RedactionSuspect).where(RedactionSuspect.task_id == task.id))
     db.flush()
-    result = _run(db, task, None, {})
+    result = _run(db, task, None, {}, style=style, pin=pin)
     _count_hits(db, result.matched_terms)
 
 
@@ -1003,7 +1024,8 @@ def apply_party_changes(db: Session, task: Task, changes: list[PartyChange]) -> 
         if ch.org_type is not None:
             o.org_type = ch.org_type
     if changes:
-        if sum(o.is_our_party for o in overrides.values()) != 1:
+        our_count = sum(o.is_our_party for o in overrides.values())
+        if our_count > 1 or (task.kind != "assistant" and our_count != 1):
             raise ValueError("必须恰好一方为我方")
         for o in overrides.values():
             o.confirmed = True
@@ -1236,6 +1258,9 @@ def build_outbound(db: Session, task: Task) -> OutboundBuild:
     texts = _node_texts(rows)
     nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no) for r in rows]
     redacted = {r.loc: r.redacted_text or "" for r in rows}
+    if task.kind == "assistant":
+        # 会话保留逐节点文本：不添加审核专用比例、报价汇总及本地校验说明。
+        return OutboundBuild("\n".join(f"⟦{n.loc}⟧{redacted[n.loc]}" for n in nodes), [])
     tables = quotes.find_quote_tables(nodes, redacted)
     text = outbound.build(
         [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party, stance=task.stance) for p in parties],
