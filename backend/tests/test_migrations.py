@@ -506,6 +506,23 @@ SCHEMA['standard_clauses'] = """
     embedding vector1024"""
 SCHEMA['review_runs'] += "\n    template_id uuid\n    template_name_snapshot_enc bytea\n    template_hash c64"
 SCHEMA['jobs'] = SCHEMA['jobs'].replace('type v12','type v20')
+# V2Q-130：用户确认只同步 D-01 迁移结构期望，保留严格集合与类型检查。
+SCHEMA['tasks'] += "\n    kind v10 NN ='review'"
+SCHEMA['task_files'] += "\n    confirmed_at ts"
+SCHEMA['assistant_messages'] = """
+    id bigint NN =serial
+    task_id uuid NN
+    role v10 NN
+    template v20
+    params jsonb NN ='{}'
+    content_redacted text NN =''
+    status v10 NN
+    error_code v40
+    extras jsonb NN ='{}'
+    tokens_in int NN =0
+    tokens_out int NN =0
+    created_at ts NN
+    updated_at ts NN"""
 PRIMARY_KEYS = {t: ["id"] for t in SCHEMA}
 SCHEMA['findings'] += "\n    law_refs jsonb NN ='[]'\n    law_unverified bool NN =false\n    source v10 NN ='model'"
 PRIMARY_KEYS.update(
@@ -514,6 +531,7 @@ PRIMARY_KEYS.update(
 
 # 唯一约束 / 唯一索引（不含主键）
 UNIQUES = {
+    ("assistant_messages", "task_id"),
     ('law_articles', 'law_id, seq'),
     ('laws', 'title, published_on'),
     ('laws', 'flk_id'),
@@ -531,6 +549,7 @@ UNIQUES = {
 
 # 普通索引
 INDEXES = {
+    ("assistant_messages", "task_id, id"),
     ('law_articles', 'embedding vector_cosine_ops'),
     ('task_clause_vectors', 'task_id'),
     ('laws', 'title'),
@@ -550,6 +569,7 @@ INDEXES = {
 
 # 外键：(表, 字段) -> (被引用表, 删除规则 c=CASCADE a=NO ACTION)
 FOREIGN_KEYS = {
+    ("assistant_messages", "task_id"): ("tasks", "c"),
     ('law_articles', 'law_id'): ('laws', 'c'),
     ('law_import_articles', 'import_id'): ('law_imports', 'c'),
     ('task_clause_vectors', 'task_id'): ('tasks', 'c'),
@@ -648,6 +668,11 @@ FOREIGN_KEYS.update({('standard_templates','created_by'):('users','a'),
 ENUM_COLUMNS[('jobs','type')].append('template_embed')
 ENUM_COLUMNS[('local_findings','check_code')].append('L-12')
 ENUM_COLUMNS[('findings','source')] = ['model','template']
+ENUM_COLUMNS[('tasks','kind')] = ['review', 'assistant']
+ENUM_COLUMNS[('tasks','status')].append('active')
+ENUM_COLUMNS[('assistant_messages','role')] = ['user', 'assistant']
+ENUM_COLUMNS[('assistant_messages','template')] = ['translate', 'summary', 'reply', 'crosscheck', 'compare']
+ENUM_COLUMNS[('assistant_messages','status')] = ['queued', 'streaming', 'done', 'failed', 'stopped']
 
 
 def _parse_schema(spec: str):
@@ -701,7 +726,7 @@ def _tables(conn):
 
 def test_exactly_23_tables(migrated):
     assert _tables(migrated) == set(SCHEMA)
-    assert len(SCHEMA) == 32  # V2-E-06：增加两张范本表，严格核对完整集合（V2Q-97）。
+    assert len(SCHEMA) == 33  # V2-D-01：新增消息表，仍严格核对完整集合（V2Q-130）。
 
 
 def test_pgcrypto_enabled(migrated):
@@ -757,7 +782,8 @@ def _index_rows(conn):
     rows = conn.execute(
         """
         SELECT i.indrelid::regclass::text, i.indisunique,
-               regexp_replace(pg_get_indexdef(i.indexrelid), '^.*\\((.*)\\)( NULLS NOT DISTINCT)?$', '\\1')
+               regexp_replace(split_part(pg_get_indexdef(i.indexrelid), ' WHERE ', 1),
+                              '^.*\\((.*)\\)( NULLS NOT DISTINCT)?$', '\\1')
         FROM pg_index i
         WHERE i.indrelid::regclass::text = ANY(%s) AND NOT i.indisprimary
         """,
@@ -770,6 +796,27 @@ def test_unique_constraints_and_indexes(migrated):
     rows = _index_rows(migrated)
     assert {(t, c) for t, u, c in rows if u} == UNIQUES
     assert {(t, c) for t, u, c in rows if not u} == INDEXES
+
+
+def test_assistant_partial_index_predicate(migrated):
+    """索引列与唯一性仍由集合检查覆盖，另严格核对完整的部分索引集合及谓词。"""
+    rows = migrated.execute(
+        "SELECT i.indexrelid::regclass::text, pg_get_expr(i.indpred, i.indrelid) FROM pg_index i "
+        "WHERE i.indrelid::regclass::text = ANY(%s) AND i.indpred IS NOT NULL", (sorted(SCHEMA),)
+    ).fetchall()
+    assert dict(rows) == {
+        "ix_assistant_messages_one_pending":
+            "((status)::text = ANY ((ARRAY['queued'::character varying, 'streaming'::character varying])::text[]))"
+    }
+
+
+@pytest.mark.parametrize("message_status", ["queued", "streaming", "failed", "stopped"])
+def test_assistant_user_message_requires_done(migrated, message_status):
+    owner = _insert_user(migrated)
+    tid = _insert_task(migrated, owner)
+    with pytest.raises(errors.CheckViolation):
+        migrated.execute("INSERT INTO assistant_messages(task_id,role,status,created_at,updated_at) "
+                         "VALUES(%s,'user',%s,now(),now())", (tid, message_status))
 
 
 def test_foreign_keys_and_cascade_rules(migrated):
@@ -826,8 +873,8 @@ def test_enum_check_constraints_exist_and_reject(migrated):
     for key, values in ENUM_COLUMNS.items():
         assert key in defs, f"{key} 缺少 CHECK 约束"
         assert defs[key] == set(values), f"{key} 取值与 SPEC 不一致"
-    # 约束数量 = 枚举字段数 + 1（疑似遗漏的 replace 必填 category）
-    assert len(rows) == len(ENUM_COLUMNS) + 1
+    # 枚举之外：疑似遗漏 replace 必填 category，以及会话 user 消息必须 done。
+    assert len(rows) == len(ENUM_COLUMNS) + 2
 
 
 def test_check_rejects_invalid_values(migrated):
