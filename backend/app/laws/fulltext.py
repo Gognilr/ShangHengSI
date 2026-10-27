@@ -40,8 +40,10 @@ def preview(db, record, data):
             if match:
                 try:
                     published = datetime.strptime(match[2], '%Y%m%d').date()
+                    # 官网文件名将空格写成“+”；只扩展文件名候选，不改目录标题。
+                    filename_titles = {normalize_title(match[1]), normalize_title(match[1].replace('+', ' '))}
                     candidates = [row for row in db.scalars(select(Law).where(Law.published_on == published))
-                                  if normalize_title(row.title) == normalize_title(match[1])]
+                                  if normalize_title(row.title) in filename_titles]
                     if len(candidates) > 1:
                         diff['unmatched'].append({'file': info.filename[:255], 'reason': '对应多部法规'})
                         continue

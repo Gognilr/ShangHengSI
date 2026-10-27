@@ -225,3 +225,55 @@ def test_t44a_11_ambiguous_normalized_title(db_sessionmaker):
         assert row.diff['matched'] == []
         assert row.diff['unmatched'][0]['reason'] == '对应多部法规'
         assert db.scalar(select(func.count()).select_from(LawImportArticle)) == 0
+
+
+@pytest.mark.parametrize('title,filename,published,suffix', [
+    ('最高人民法院 最高人民检察院关于示例问题的批复',
+     '最高人民法院+最高人民检察院关于示例问题的批复', date(2020,3,19), '20200319'),
+    ('示例关于适用《最高人民法院  最高人民检察院关于示例的解释》的批复',
+     '示例关于适用《最高人民法院++最高人民检察院关于示例的解释》的批复', date(2017,7,26), '20170726'),
+])
+def test_t44a_11_official_plus_filename(db_sessionmaker, title, filename, published, suffix, caplog):
+    from app.laws.fulltext import preview
+    from tests.test_law_articles import unnumbered_doc
+    with db_sessionmaker() as db:
+        law = Law(title=title, category='司法解释', status='valid', source='import', published_on=published)
+        db.add(law)
+        row = LawImport(kind='fulltext', status='parsing', file_names=['全文.zip'])
+        db.add(row); db.flush()
+        preview(db, row, archive([(filename + '_' + suffix + '.docx', unnumbered_doc([title, '示例正文。']))]))
+        assert row.diff['unmatched'] == []
+        assert row.diff['matched'] == [dict(law_id=law.id, title=title, published_on=published.isoformat(), articles=1, replace=False)]
+        staged = db.scalar(select(LawImportArticle))
+        assert staged.title == title and staged.text == '示例正文。'
+        assert law.title == title
+    assert title not in caplog.text and '示例正文' not in caplog.text
+
+
+def test_t44a_11_plus_and_literal_plus_are_ambiguous(db_sessionmaker):
+    from app.laws.fulltext import preview
+    with db_sessionmaker() as db:
+        for title in ['示例 联合批复', '示例+联合批复']:
+            db.add(Law(title=title, category='司法解释', status='valid', source='import', published_on=date(2020,3,19)))
+        row = LawImport(kind='fulltext', status='parsing', file_names=['全文.zip'])
+        db.add(row); db.flush()
+        preview(db, row, archive([('示例+联合批复_20200319.docx', law_doc())]))
+        assert row.diff['matched'] == []
+        assert row.diff['unmatched'] == [dict(file='示例+联合批复_20200319.docx', reason='对应多部法规')]
+        assert db.scalar(select(func.count()).select_from(LawImportArticle)) == 0
+
+
+def test_t44a_11_literal_plus_preserved_and_date_scoped(db_sessionmaker):
+    from app.laws.fulltext import preview
+    from tests.test_law_articles import unnumbered_doc
+    title = '示例+联合批复'
+    with db_sessionmaker() as db:
+        law = Law(title=title, category='司法解释', status='valid', source='import', published_on=date(2020,3,19))
+        db.add(law)
+        db.add(Law(title='示例 联合批复', category='司法解释', status='valid', source='import', published_on=date(2020,3,20)))
+        row = LawImport(kind='fulltext', status='parsing', file_names=['全文.zip'])
+        db.add(row); db.flush()
+        preview(db, row, archive([('示例+联合批复_20200319.docx', unnumbered_doc([title, '示例正文。']))]))
+        assert row.diff['unmatched'] == [] and row.diff['matched'][0]['law_id'] == law.id
+        assert row.diff['matched'][0]['title'] == title
+        assert db.scalar(select(LawImportArticle.title)) == title

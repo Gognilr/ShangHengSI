@@ -4,11 +4,11 @@
 
 ## 当前进度（只保留最近 3 条，每条不超过 400 字；更早的见 [archive/progress.md](archive/progress.md)）
 
+- 2026-10-27（GPT-6.1 Sol）：**V2-E-08b已完成**。仅全文导入增加文件名原样/“+”换空格两种比较，同日多部拒绝；只追加4项测试，先3 failed后全文件24 passed/1既有警告。6份官网原名ZIP经真实法规库页面上传、预览、二次确认，新增6份/33条、跳过0；现864份/32846条，全文缺口清零，3617条未向量化。详见reports/V2-E-08b.md。返回E08（GPT-6.1 Sol，medium），需测试VM和真实离线模型资源验证授权；暂不进入E09/U。
+
 - 2026-10-27（Opus）：**V2Q-112 已确认**。官网下载文件名把标题空格写成“+”；全文导入比较文件名标题时，原样与“+”换空格两种规范化任一等于目录标题即为候选，同日多部仍不猜。设计5.8第3条、T-44a第11条已补，新增V2-E-08b。下一步V2-E-08b（GPT-6.1 Sol，medium，测试先行），完成后用6份原名ZIP经页面导入并回E-08。
 
 - 2026-10-27（GPT-6.1 Sol）：**V2-E-08a已完成，E08未完成**。E08a相关57 passed；整仓3059 passed/1既有警告，converter 27 OK。原282份一次获取新增273份后，用户授权浏览器下载剩9份，已全部拿到；原名ZIP走真实法规库页面，3份/31条确认生效，现858份/32813条，3584条未向量化。6份官网原名含“+”仍无法匹配，登记V2Q-112交Opus明确契约；用户无需再下载。必备9部齐全。详见reports/V2-E-08-retry.md。下一步E08（GPT-6.1 Sol，medium）：处理命名契约并做测试VM资源实测；暂不进入E09/U。
-
-- 2026-10-26（GPT-6.1 Sol）：**V2-E-07 已完成**。法规库/公司范本设置页、数据页自动更新、确认页范本建议及不对照、结果页依据/未核实/范本标签/轮次快照，L-12中文。首次构建一处类型错误修复，最终build退出0；安全与样式静态自检通过，四宽度浏览器截图留E-08。V2Q-99记录全文统计及令牌边界，详见reports/V2-E-07.md。下一步V2-E-08（GPT-6.1 Sol，medium）。
 
 ## 一、执行规则
 
@@ -91,7 +91,7 @@
 | V2-E-07 | 前端：法规库页、公司范本页、数据页自动更新、第二步范本提示、结果页依据与标签（设计第九节） | GPT-6.1 Sol | medium | V2-E-06 | 已完成 |
 | V2-E-08 | 集中测试：整仓全量、浏览器清单、评测对比（开 / 关法条依据与范本对照）、引擎对拍、测试虚拟机上实测资源并演练 upgrade.sh 与 restore.sh，写批次测试报告（设计第十节） | GPT-6.1 Sol | medium | V2-E-07 | 待执行 |
 | V2-E-08a | 无条号文本分段与标题规范化（设计 5.8，T-44a，V2Q-111）。文件范围：`backend/app/laws/articles.py`、`backend/app/laws/fulltext.py`、`backend/app/laws/job.py`（只改 passage 拼接）；测试只追加 test\_law\_articles.py、test\_laws\_fulltext.py、test\_law\_refs.py，只跑这三个文件与 test\_law\_embed 相关用例。不加迁移、不改外网代码。完成后回到 V2-E-08，只对 282 份未入库的重跑并按设计第十节第 6 条判定 | GPT-6.1 Sol（测试先行） | medium | V2Q-111（已确认） | 已完成 |
-| V2-E-08b | 官网文件名“+”的匹配（设计 5.8 第 3 条、T-44a 第 11 条补充，V2Q-112）。文件范围：`backend/app/laws/fulltext.py`；测试只追加 test\_laws\_fulltext.py，只跑该文件。不加迁移、不改外网代码与 articles.py 的 normalize\_title。完成后用已保存的 6 份官网原名 ZIP（.codex-tmp/V2-E-08-browser-manual/）经法规库页面全文导入并确认生效，回到 V2-E-08 继续 | GPT-6.1 Sol（测试先行） | medium | V2Q-112（已确认） | 待执行 |
+| V2-E-08b | 官网文件名“+”的匹配（设计 5.8 第 3 条、T-44a 第 11 条补充，V2Q-112）。文件范围：`backend/app/laws/fulltext.py`；测试只追加 test\_laws\_fulltext.py，只跑该文件。不加迁移、不改外网代码与 articles.py 的 normalize\_title。完成后用已保存的 6 份官网原名 ZIP（.codex-tmp/V2-E-08-browser-manual/）经法规库页面全文导入并确认生效，回到 V2-E-08 继续 | GPT-6.1 Sol（测试先行） | medium | V2Q-112（已确认） | 已完成 |
 | V2-E-09 | 批次审核，汇报用户 | Opus | high | V2-E-08 | 待执行 |
 
 ### V2-U 界面改进
