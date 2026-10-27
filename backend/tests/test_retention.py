@@ -496,3 +496,63 @@ def test_v2q74_r3_never_submitted_pending_is_still_unfinished(alice, db_sessionm
     assert counts["unfinished"] == 1 and counts["results"] == 0
     with db_sessionmaker() as db:
         assert db.get(Task, task.id) is None
+@pytest.mark.parametrize("status,confirmed,message,has_file,deleted", [
+    ("active", False, False, False, True),
+    ("awaiting_confirm", False, False, True, True),
+    ("parse_failed", False, False, True, True),
+    ("active", True, False, True, False),
+    ("awaiting_confirm", True, False, True, False),
+    ("active", False, True, False, False),
+    ("parsing", False, False, True, False),
+])
+def test_d01_assistant_unfinished_conditions(alice, db_sessionmaker, status, confirmed, message, has_file, deleted):
+    from app.db.models import AssistantMessage
+    user, _, _ = alice
+    with db_sessionmaker() as db:
+        for layer in ("original", "result", "outbound", "audit"):
+            settings_store.set_setting(db, f"retention.{layer}_days", 0, None)
+        settings_store.set_setting(db, "retention.unfinished_days", 1, None)
+        task = Task(kind="assistant", owner_id=user.id, title="虚构会话", stance="other", source="incoming",
+                    policy="ai", status=status, last_activity_at=utcnow() - timedelta(days=2))
+        db.add(task)
+        db.flush()
+        if has_file:
+            key, digest = storage.save_original(b"test")
+            db.add(TaskFile(task_id=task.id, seq=1, is_main=True, original_name="虚构.pdf", ext="pdf",
+                            size_bytes=4, sha256=digest, storage_key=key, confirmed_at=utcnow() if confirmed else None))
+        if message:
+            db.add(AssistantMessage(task_id=task.id, role="user", status="done", content_redacted="代号问题"))
+        tid = task.id
+        db.commit()
+    result = run(db_sessionmaker)
+    assert result["unfinished"] == int(deleted)
+    with db_sessionmaker() as db:
+        assert (db.get(Task, tid) is None) == deleted
+
+
+def test_d01_assistant_original_and_result_layers(alice, db_sessionmaker):
+    from app.db.models import AssistantMessage
+    user, _, _ = alice
+    set_days(db_sessionmaker, 1)
+    with db_sessionmaker() as db:
+        task = Task(kind="assistant", owner_id=user.id, title="虚构会话", stance="other", source="incoming",
+                    policy="ai", status="active", last_activity_at=utcnow() - timedelta(days=2))
+        db.add(task)
+        db.flush()
+        key, digest = storage.save_original(b"test")
+        file = TaskFile(task_id=task.id, seq=1, is_main=True, original_name="虚构.pdf", ext="pdf",
+                        size_bytes=4, sha256=digest, storage_key=key, confirmed_at=utcnow())
+        db.add(file)
+        db.add(AssistantMessage(task_id=task.id, role="user", status="done", content_redacted="代号问题"))
+        tid = task.id
+        db.commit()
+    assert run(db_sessionmaker)["tasks"] == 1
+    with db_sessionmaker() as db:
+        assert db.get(Task, tid).status == "active"
+        assert db.scalar(select(AssistantMessage).where(AssistantMessage.task_id == tid)) is not None
+        settings_store.set_setting(db, "retention.result_days", 1, None)
+        db.commit()
+    assert run(db_sessionmaker)["results"] == 1
+    with db_sessionmaker() as db:
+        assert db.get(Task, tid) is None
+        assert db.scalar(select(AssistantMessage).where(AssistantMessage.task_id == tid)) is None

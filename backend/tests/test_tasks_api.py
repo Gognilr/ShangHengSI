@@ -921,3 +921,13 @@ def test_v2q74_r4_rereview_pending_expiry_uses_original_and_result_layers(files_
     d = c.get(f"{API_PREFIX}/tasks/{tid}").json()
     assert datetime.fromisoformat(d["original_expires_at"]) == datetime(2026, 1, 31, tzinfo=timezone.utc)
     assert datetime.fromisoformat(d["task_expires_at"]) == datetime(2027, 1, 1, tzinfo=timezone.utc)
+def test_d01_review_confirmation_sets_file_timestamp(make_user, login, db_sessionmaker, ready_task):
+    user = make_user("review_confirmed_timestamp")
+    c, csrf = login(user.username)
+    task = ready_task(user)
+    before = utcnow()
+    response = c.post(f"{API_PREFIX}/tasks/{task.id}/runs", headers={"X-CSRF-Token": csrf})
+    assert response.status_code == 201, response.text
+    with db_sessionmaker() as db:
+        files = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)).all()
+        assert files and all(before <= f.confirmed_at <= utcnow() for f in files)

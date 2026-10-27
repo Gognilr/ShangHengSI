@@ -101,11 +101,20 @@ def _fail(db: Session, task_id: uuid.UUID, file_name: str | None, reason: str) -
     db.commit()
 
 
-def parse_task(db: Session, task_id: uuid.UUID) -> None:
+def parse_task(db: Session, task_id: uuid.UUID, file_ids: list[str] | None = None) -> None:
     task = db.get(Task, task_id)
     if task is None or task.status != "parsing":  # 已删除，或重复投递
         return
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
+    if task.kind == "assistant":
+        # 会话只接受显式的新文件集合，避免旧 job 或重复投递覆盖已确认原文。
+        selected = {uuid.UUID(str(fid)) for fid in (file_ids or [])}
+        new_files = [f for f in files if f.id in selected and f.confirmed_at is None]
+        if not selected or {f.id for f in new_files} != selected:
+            # 已移除或已确认的批次属于过期投递，不能覆盖较新批次的状态。
+            return
+        _parse_assistant(db, task, new_files, [f for f in files if f.id not in selected])
+        return
     current: str | None = None
     ocr_used = 0
     try:
@@ -143,4 +152,34 @@ def parse_task(db: Session, task_id: uuid.UUID) -> None:
 
 @job_handler("parse")
 def handle_parse(db: Session, payload: dict) -> None:
-    parse_task(db, uuid.UUID(str(payload["task_id"])))
+    parse_task(db, uuid.UUID(str(payload["task_id"])), payload.get("file_ids"))
+
+
+def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: list[TaskFile]) -> None:
+    """与审核解析隔离：保留旧节点，不运行合同校验或合同向量。"""
+    task_id, current = task.id, None
+    try:
+        ocr_used = 0
+        for old in old_files:
+            if old.ext in ("png", "jpg"):
+                ocr_used += 1
+            elif old.ext == "pdf":
+                # 只检查旧 PDF 的扫描页数，不重新解析、不运行 OCR、不改旧节点。
+                # 不能按 OCR 节点计页：空白扫描页可能没有节点，却仍消耗页数预算。
+                ocr_used += len(pdf.inspect_pdf(storage.load_original(old.storage_key)).scanned_pages)
+        db.execute(delete(DocNode).where(DocNode.task_id == task.id, DocNode.file_id.in_([f.id for f in files])))
+        for file in files:
+            current = file.original_name
+            ocr_used += _parse_file(db, task, file, ocr_used)
+        current = None
+        redact_task(db, task, style="neutral", pin=True)
+        task.status, task.error_message = "awaiting_confirm", None
+        db.commit()
+    except ParseError as exc:
+        db.rollback()
+        _fail(db, task_id, current, str(exc))
+        logger.info("task %s 解析失败", task_id)
+    except Exception:
+        db.rollback()
+        _fail(db, task_id, current, MSG_INTERNAL)
+        raise

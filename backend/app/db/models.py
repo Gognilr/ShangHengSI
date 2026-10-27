@@ -238,12 +238,13 @@ class Session(Base):
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
+        enum_check("kind", ["review", "assistant"]),
         enum_check("stance", STANCES),
         enum_check("source", SOURCES),
         enum_check("policy", ["ai", "local_only"]),
         enum_check(
             "status",
-            ["parsing", "parse_failed", "awaiting_confirm", "reviewing", "reviewed", "completed_local"],
+            ["parsing", "parse_failed", "awaiting_confirm", "reviewing", "reviewed", "completed_local", "active"],
         ),
         Index("ix_tasks_owner_id_created_at", "owner_id", text("created_at DESC")),
     )
@@ -251,6 +252,7 @@ class Task(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     owner_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False, server_default="review")
     stance: Mapped[str] = mapped_column(String(10), nullable=False)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     policy: Mapped[str] = mapped_column(String(12), nullable=False)
@@ -293,6 +295,7 @@ class TaskFile(Base):
     has_revisions: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     warnings: Mapped[Any] = _jsonb_list()
     original_deleted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     created_at: Mapped[datetime] = _ts_now()
 
 
@@ -582,6 +585,33 @@ class Finding(Base):
 
 
 # ---- 18.17 chat_messages ----
+class AssistantMessage(Base):
+    """会话消息仅保存代号文本，随所属任务删除。"""
+    __tablename__ = "assistant_messages"
+    __table_args__ = (
+        enum_check("role", ["user", "assistant"]),
+        enum_check("template", ["translate", "summary", "reply", "crosscheck", "compare"]),
+        enum_check("status", ["queued", "streaming", "done", "failed", "stopped"]),
+        CheckConstraint("role <> 'user' OR status = 'done'", name="user_done"),
+        Index("ix_assistant_messages_task_id_id", "task_id", "id"),
+        Index("ix_assistant_messages_one_pending", "task_id", unique=True,
+              postgresql_where=text("role = 'assistant' AND status IN ('queued','streaming')")),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    task_id: Mapped[uuid.UUID] = _task_fk()
+    role: Mapped[str] = mapped_column(String(10), nullable=False)
+    template: Mapped[Optional[str]] = mapped_column(String(20))
+    params: Mapped[Any] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    content_redacted: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    error_code: Mapped[Optional[str]] = mapped_column(String(40))
+    extras: Mapped[Any] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)
+    tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)
+    created_at: Mapped[datetime] = _ts_now()
+    updated_at: Mapped[datetime] = _ts_updated()
+
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
     __table_args__ = (

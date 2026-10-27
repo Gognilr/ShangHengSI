@@ -1470,3 +1470,42 @@ def test_t42_11_builtin_laws_migration_preserves_existing_and_edits(conflict):
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+def test_t47_11_assistant_upgrade_downgrade():
+    """0023 的旧数据默认值、消息约束、部分唯一索引及回退。"""
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, "0022")
+        with psycopg.connect(url, autocommit=True) as conn:
+            owner = _insert_user(conn)
+            tid = _insert_task(conn, owner)
+        command.upgrade(cfg, "0023")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute("SELECT kind FROM tasks WHERE id=%s", (tid,)).fetchone() == ("review",)
+            assert "assistant_messages" in _tables(conn)
+            assert conn.execute("SELECT data_type FROM information_schema.columns WHERE table_name='task_files' "
+                                "AND column_name='confirmed_at'").fetchone() == ("timestamp with time zone",)
+            conn.execute("INSERT INTO assistant_messages(task_id,role,status,created_at,updated_at) "
+                         "VALUES(%s,'assistant','queued',now(),now())", (tid,))
+            with pytest.raises(errors.UniqueViolation):
+                conn.execute("INSERT INTO assistant_messages(task_id,role,status,created_at,updated_at) "
+                             "VALUES(%s,'assistant','streaming',now(),now())", (tid,))
+            with pytest.raises(errors.CheckViolation):
+                conn.execute("INSERT INTO assistant_messages(task_id,role,status,created_at,updated_at) "
+                             "VALUES(%s,'user','queued',now(),now())", (tid,))
+            with pytest.raises(errors.CheckViolation):
+                conn.execute("UPDATE tasks SET kind='invalid' WHERE id=%s", (tid,))
+            assert conn.execute("SELECT params,extras,content_redacted,tokens_in,tokens_out FROM assistant_messages").fetchone() == ({}, {}, "", 0, 0)
+        command.downgrade(cfg, "0022")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert "assistant_messages" not in _tables(conn)
+            assert conn.execute("SELECT id FROM tasks WHERE id=%s", (tid,)).fetchone() == (tid,)
+            assert not conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='kind'").fetchall()
+            assert not conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='task_files' AND column_name='confirmed_at'").fetchall()
+        command.upgrade(cfg, "head")
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

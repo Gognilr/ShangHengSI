@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.db.models import Party, RedactionItem, Task, User
 from app.db.session import get_db
 from app.redaction import engine
-from app.security.deps import current_user, owned_task
+from app.security.deps import current_user, owned_redaction_task as owned_task
 from app.security.errors import AppError, NotFoundError
 from app.audit import service as audit
 
@@ -136,14 +136,15 @@ def put_parties(
     body: PartyUpdates, task: Task = Depends(owned_task), db: DbSession = Depends(get_db),
 ) -> PartyList:
     locked = _lock_awaiting(db, task)
-    if not body.items:
+    if not body.items and locked.kind != "assistant":
         raise AppError(422, "OUR_PARTY_REQUIRED", "必须恰好一方为我方")
     ids = [p.id for p in body.items]
     existing_ids = set(db.scalars(select(Party.id).where(Party.task_id == task.id)))
     # Q-50：PUT 提交完整列表；重复、遗漏、其他任务的 ID 统一拒绝，不透露归属。
     if len(set(ids)) != len(ids) or set(ids) != existing_ids:
         raise AppError(422, "VALIDATION_ERROR", "签约方列表不正确")
-    if sum(p.is_our_party for p in body.items) != 1:
+    our_count = sum(p.is_our_party for p in body.items)
+    if our_count > 1 or (locked.kind != "assistant" and our_count != 1):
         raise AppError(422, "OUR_PARTY_REQUIRED", "必须恰好一方为我方")
     # Q-50：国家、类型只约束存储长度和非空，不额外增加词典枚举限制。
     if any(not p.country.strip() or not p.org_type.strip() for p in body.items):

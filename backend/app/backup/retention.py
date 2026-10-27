@@ -14,7 +14,7 @@ from app.audit import service as audit
 from app.backup.service import local_tz
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import AuditLog, DocNode, Job, LlmCall, Task, TaskFile, TaskClauseVector
+from app.db.models import AssistantMessage, AuditLog, DocNode, Job, LlmCall, Task, TaskFile, TaskClauseVector
 from app.tasks import storage
 from app.tasks.service import delete_task
 from app.worker import job_handler, register_periodic
@@ -55,9 +55,15 @@ def _pending(task_id) -> object:
 def _layer_conditions(layer: str) -> list:
     """V2Q-74：重新审核后未提交（待确认且有旧轮次）归原件层、结果层；未完成层只含从未提交审核的任务。"""
     if layer == "unfinished":
-        return [Task.status.in_(("parse_failed", "awaiting_confirm")), Task.latest_run_id.is_(None)]
-    return [or_(Task.status.in_(ELIGIBLE_STATUS),
-                and_(Task.status == "awaiting_confirm", Task.latest_run_id.is_not(None)))]
+        return [or_(
+            and_(Task.kind == "review", Task.status.in_(("parse_failed", "awaiting_confirm")), Task.latest_run_id.is_(None)),
+            and_(Task.kind == "assistant", Task.status != "parsing",
+                 ~exists().where(AssistantMessage.task_id == Task.id),
+                 ~exists().where(TaskFile.task_id == Task.id, TaskFile.confirmed_at.is_not(None)),
+                 or_(Task.status != "active", ~exists().where(TaskFile.task_id == Task.id))))]
+    return [or_(and_(Task.kind == "review", or_(Task.status.in_(ELIGIBLE_STATUS),
+                and_(Task.status == "awaiting_confirm", Task.latest_run_id.is_not(None)))),
+                and_(Task.kind == "assistant", Task.status == "active"))]
 
 
 def run_retention(db: Session, now: datetime | None = None) -> dict:

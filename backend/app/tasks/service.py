@@ -139,7 +139,7 @@ def duplicate_task(db: DbSession, user: User, upload: CheckedUpload) -> Task | N
     finally:
         upload.file.seek(0)
     return db.scalar(select(Task).join(TaskFile, TaskFile.task_id == Task.id).where(
-        Task.owner_id == user.id, TaskFile.is_main.is_(True), TaskFile.sha256 == digest.hexdigest(),
+        Task.owner_id == user.id, Task.kind == "review", TaskFile.is_main.is_(True), TaskFile.sha256 == digest.hexdigest(),
     ).order_by(Task.created_at.desc(), Task.id.desc()).limit(1))
 
 
@@ -232,7 +232,7 @@ def list_tasks(
     date_from: date | None,
     date_to: date | None,
 ) -> TaskPage:
-    conds = [Task.owner_id == user.id]
+    conds = [Task.owner_id == user.id, Task.kind == "review"]
     if q and q.strip():
         pattern = _like_pattern(q.strip())
         conds.append(
@@ -468,7 +468,7 @@ def delete_task(db: DbSession, task: Task, user: User | None, ip: str | None) ->
     db.execute(update(LlmCall).where(LlmCall.task_id == task.id).values(task_title=None))
     audit.record(
         db,
-        "task_delete",
+        "assistant_session_delete" if task.kind == "assistant" else "task_delete",
         user_id=user.id if user else None,
         target_type="task",
         target_id=str(task.id),

@@ -12,6 +12,7 @@ from app.admin.redaction import router as admin_redaction_router
 from app.admin.requirements import router as admin_requirements_router
 from app.admin.users import router as admin_users_router
 from app.auth.router import router as auth_router
+from app.assistant.router import router as assistant_router
 from app.chat.router import router as chat_router
 from app.checks.router import router as checks_router
 from app.export.router import router as export_router
@@ -33,6 +34,7 @@ def build_api_router() -> APIRouter:
     """
     router = APIRouter(prefix=API_PREFIX, dependencies=[Depends(csrf_guard)])
     router.include_router(auth_router)
+    router.include_router(assistant_router)
     router.include_router(tasks_router)
     router.include_router(review_router)
     router.include_router(redaction_router)

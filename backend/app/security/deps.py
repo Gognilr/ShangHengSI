@@ -49,17 +49,30 @@ def _parse_id(raw: str) -> uuid.UUID | None:
         return None
 
 
-def load_owned_task(db: DbSession, user: User, task_id: str) -> Task:
+def load_owned_task(db: DbSession, user: User, task_id: str, kind: str | None = "review") -> Task:
     """按 id 取当前用户自己的任务，否则 404。供依赖和服务层共用。"""
     tid = _parse_id(task_id)
     task = db.get(Task, tid) if tid is not None else None
-    if task is None or task.owner_id != user.id:
+    if task is None or task.owner_id != user.id or (kind is not None and task.kind != kind):
         raise NotFoundError("TASK_NOT_FOUND", "任务不存在")
     return task
 
 
-def owned_task(id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> Task:  # noqa: A002
-    return load_owned_task(db, user, id)
+def _review_kind() -> str:
+    return "review"
+
+
+def owned_task(id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db), *,
+               kind: str = Depends(_review_kind)) -> Task:  # noqa: A002
+    # kind 由依赖封装显式传入，不接受请求参数改变权限范围。
+    return load_owned_task(db, user, id, kind)
+
+
+def owned_redaction_task(id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> Task:
+    task = load_owned_task(db, user, id, None)
+    if task.kind == "assistant" and task.status != "awaiting_confirm":
+        raise AppError(409, "TASK_STATE_CONFLICT", "当前任务状态不允许修改")
+    return task
 
 
 def owned_task_file(
