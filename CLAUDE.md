@@ -9,11 +9,11 @@
 
 ## 必须遵守
 
-* 不得增加 SPEC 没有的菜单、页面或功能。顶部只有"智能审核""审核历史"两个菜单，右上角"设置"仅管理员可见。
+* 不得增加 SPEC 没有的菜单、页面或功能。顶部只有"智能审核""审核历史""智能助手"三个菜单（智能助手自 V2-D 起，V2Q-124），右上角"设置"仅管理员可见。
 * 界面视觉以 docs/design/frontend.md（第二版，商衡SI 品牌主题）为准：十六进制颜色只写在 frontend/src/styles/theme.css，页面和组件只用 CSS 变量。
 * 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务（向量检索只用 PostgreSQL 的 pgvector 扩展，V2-E）、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。本地模型只允许 SPEC-V2 第 3 节列出的实体识别模型、向量模型各一个，均须经选型报告和我确认，用 onnxruntime 在 CPU 上离线运行；列入前不得接入。实体识别模型已确认为 urchade/gliner_multi-v2.1（Apache-2.0，FP32 ONNX，文件与 SHA-256 见 docs/v2/design/V2-B.md 6.2）；向量模型已确认为 BAAI/bge-m3（MIT，由官方 ONNX 量化的 INT8 ONNX，只用稠密向量，文件与 SHA-256 见 docs/v2/reports/V2-E-04a.md 第六节）。后端镜像不得安装 torch、transformers、gliner、sentencepiece；模型文件不进仓库。LibreOffice 只允许在 converter 容器中使用（旧格式转换，Q-136），不得进入 backend 镜像；converter 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
 * 只有两处可以访问外网：① 模型网关 backend/app/llm/gateway.py，依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls，任何模型调用不得绕过网关；② 法规同步 backend/app/lawsync/client.py（V2-E），只访问固定的国家法律法规数据库域名（flk.npc.gov.cn）及其全文文件存储域名（flkoss.obs-bj2.cucloud.cn），只下载公开的法规目录与全文，请求中不含任何任务数据，默认关闭，同步结果经业务管理员确认才生效。其他代码不得访问外网。
-* 发给模型的只有脱敏后的正文文本，以及本地检索得到的公开法条原文和经过脱敏的公司范本条款（V2-E），全部经过出口复检；不发图片和原文件。外发策略为 local\_only 的任务绝不调用模型。
+* 发给模型的只有脱敏后的正文文本与用户消息，以及本地检索得到的公开法条原文、经过脱敏的公司范本条款（V2-E）、经过脱敏的公司知识库片段与本人历史合同条款（V2-D），全部经过出口复检；智能助手的流式发送也在网关内；不发图片和原文件。外发策略为 local\_only 的任务绝不调用模型。
 * 原件、对照表、节点原文等敏感字段用主密钥 AES-256-GCM 加密存储（SPEC 17.3）。
 * 日志中不得出现原文、真实名称、金额、API 密钥。
 * 所有任务相关接口校验 owner\_id，非本人一律返回 404。管理员也不能查看他人任务内容。
