@@ -119,3 +119,16 @@ def test_t42_latest_replacement_max_date_and_file_scope(db_sessionmaker):
     got = [r for r in check_references(nodes, laws=laws) if r.code == 'L-10']
     assert len(got) == 2 and got[0].locs == ['F1-P1', 'F1-P2'] and got[1].locs == ['F2-P1']
     assert got[0].detail == '引用《示例法》，该法已于 2023-01-01 废止，现行规定见《示例新规定》'
+
+
+@pytest.mark.parametrize('category', ['宪法相关法', '民法商法', '行政法', '经济法',
+                                    '社会法', '生态环境法', '刑法', '诉讼与非诉讼程序法'])
+def test_e08_law_subcategories_in_l10(db_sessionmaker, category):
+    with db_sessionmaker() as db:
+        law = Law(title='示例法', category=category, status='repealed', source='import',
+                  published_on=date(2020, 1, 1))
+        db.add(law); db.commit()
+        assert results('依据《示例法》', laws=load(db, {'示例法'}))[0].code == 'L-10'
+        assert law.category == category
+        law.status = 'valid'; db.commit()
+        assert not results('依据《示例法》', laws=load(db, {'示例法'}))

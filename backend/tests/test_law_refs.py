@@ -122,3 +122,18 @@ def test_t45_law_setting_permission(make_user,login,role,expected):
     assert c.get('/api/v1/admin/settings/laws').status_code==expected
     response=c.put('/api/v1/admin/settings/laws',json=dict(refs_enabled=True),headers={'X-CSRF-Token':csrf})
     assert response.status_code==expected
+
+
+@pytest.mark.parametrize('category', ['宪法相关法', '民法商法', '行政法', '经济法',
+                                    '社会法', '生态环境法', '刑法', '诉讼与非诉讼程序法'])
+def test_e08_law_subcategories_in_retrieval(db_sessionmaker, category):
+    from app.laws.retrieve import search
+    with db_sessionmaker() as db:
+        law=Law(title='示例法',category=category,status='valid',source='import',published_on=date(2020,1,1))
+        db.add(law); db.flush()
+        article=LawArticle(law_id=law.id,seq=1,article_no='第一条',text='交付约定',embedding=vector())
+        db.add(article); db.commit()
+        assert [row['id'] for row in search(db,[vector()])]==[article.id]
+        assert law.category==category
+        law.status='repealed'; db.commit()
+        assert search(db,[vector()])==[]

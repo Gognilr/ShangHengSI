@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.admin.settings_store import get_setting
 from app.db.models import DocNode, Law, LawArticle, Task, TaskClauseVector
 from app.embedding import engine
-from app.laws.index import canonical, PREFIX
+from app.laws.index import canonical, PREFIX, LAW_CATEGORIES
 from app.redaction.outbound import escape_document_tags
 from app.redaction.recheck import recheck, recheck_context
 from app.review.clauses import first_level
@@ -31,7 +31,7 @@ def search(db,vectors):
     for vector in vectors:
         distance=LawArticle.embedding.cosine_distance(vector)
         rows=db.execute(select(LawArticle,Law.title,(1-distance).label('score')).join(Law)
-            .where(Law.status=='valid',Law.category.in_(['法律','司法解释']),LawArticle.embedding.is_not(None),
+            .where(Law.status=='valid',Law.category.in_(LAW_CATEGORIES+('司法解释',)),LawArticle.embedding.is_not(None),
                    distance<=1-LAW_MIN_SCORE).order_by(distance,LawArticle.id).limit(5)).all()
         for article,title,score in rows:
             if article.id not in found or score>found[article.id]['score']:

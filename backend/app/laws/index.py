@@ -9,6 +9,9 @@ from app.db.models import Law
 
 logger = logging.getLogger(__name__)
 PREFIX = '中华人民共和国'
+# 保留导入目录的分类原文；这些名称对应已核实的法律子类。
+LAW_CATEGORIES = ('法律', '宪法相关法', '民法商法', '行政法', '经济法',
+                  '社会法', '生态环境法', '刑法', '诉讼与非诉讼程序法')
 
 
 def canonical(title: str) -> str:
@@ -35,7 +38,7 @@ def load(db, titles: set[str]) -> LawIndex:
         # 读库报错只回滚保存点，后续校验结果仍可在原事务中持久化。
         with db.begin_nested():
             rows = db.execute(select(Law.title, Law.status, Law.published_on, Law.repealed_on, Law.replaced_by)
-                              .where(Law.title.in_(names), or_(Law.category.in_(['法律', '行政法规', '司法解释']),
+                              .where(Law.title.in_(names), or_(Law.category.in_(LAW_CATEGORIES + ('行政法规', '司法解释')),
                                                              Law.source == 'builtin'))
                               .order_by(Law.published_on.desc().nullslast(), Law.id.desc())).all()
         index: LawIndex = {}
