@@ -8,6 +8,7 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-131 | D-03 要求 assist job 与 llm_calls.purpose=assist，但文件范围漏列 db/models.py、db/jobs.py 和迁移结构期望测试 | 请求补入 db/models.py（仅同步 jobs.type / llm_calls.purpose 的 assist 枚举）、db/jobs.py（仅助手 job 最终失败后的消息收尾）；在卡中已约定的 0023a 迁移同步两项数据库 CHECK，在 test_migrations.py 同步两项枚举期望并保持严格检查，追加失败/重启回归测试。防止未注册处理函数、心跳超时用尽等失败留下 queued / streaming 消息、一直占用生成名额。增量还原已先完成，16 项测试通过；范围外文件未改 | D-03 队列、记录、失败生命周期及对应测试 | 接入 assist 队列前 |
 
 ## 二、已决定
 
