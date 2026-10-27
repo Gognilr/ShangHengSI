@@ -165,7 +165,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
       <el-table v-loading="loading" :data="items" empty-text="暂无账号">
         <el-table-column prop="username" label="用户名" min-width="140" />
         <el-table-column label="显示名" min-width="140"><template #default="{ row }"><div class="user-name"><span class="avatar">{{ Array.from(row.display_name)[0] ?? '?' }}</span><span>{{ row.display_name }}</span></div></template></el-table-column>
-        <el-table-column label="角色" width="100">
+        <el-table-column label="角色" width="140">
           <template #default="{ row }"><el-tag type="info" size="small">{{ roleLabel(row.role) }}</el-tag></template>
         </el-table-column>
         <el-table-column label="状态" width="100">
