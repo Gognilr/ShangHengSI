@@ -140,7 +140,7 @@ h4 {
 }
 .code {
   margin-right: 8px;
-  font-family: monospace;
+  font-family: inherit;
   font-weight: 600;
 }
 .dim {

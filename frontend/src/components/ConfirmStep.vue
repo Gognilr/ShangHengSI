@@ -497,7 +497,7 @@ h3 {
 .section-number { display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font-size: 14px; }
 .compact-table { border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); margin-top: 16px; }
 :deep(.our-party) { --el-table-tr-bg-color: var(--el-color-primary-light-9); }
-.party-code { background: var(--el-fill-color-light); border-radius: 16px; padding: 4px 8px; font-family: ui-monospace, Consolas, monospace; }
+.party-code { background: var(--el-fill-color-light); border-radius: 12px; padding: 4px 8px; font-family: inherit; }
 .summary-stats { display: flex; flex-wrap: wrap; gap: 12px; }
 .summary-stats .stat { min-width: 100px; }
 .summary-stats + .summary { margin-top: 16px; }
@@ -521,7 +521,7 @@ h3 {
 .pending {
   margin-left: auto;
   background: var(--el-color-warning-light-9);
-  border-radius: 16px;
+  border-radius: 12px;
   padding: 4px 12px;
   font-size: 13px;
   font-weight: normal;

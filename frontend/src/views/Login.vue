@@ -109,7 +109,7 @@ async function submit() {
   justify-content: center;
   position: relative;
   padding: 64px 0 96px;
-  background: radial-gradient(ellipse at 10% 10%, color-mix(in srgb, var(--si-cyan) 7%, transparent), transparent 55%), radial-gradient(ellipse at 90% 90%, color-mix(in srgb, var(--el-color-primary) 6%, transparent), transparent 55%), var(--el-bg-color-page);
+  background: var(--el-bg-color-page);
 }
 .login-shell { width: calc(100% - 128px); max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 1px 408px; gap: 64px; align-items: center; }
 .brand-area { min-width: 0; }
@@ -118,11 +118,11 @@ h2 { font-size: 32px; font-weight: 600; line-height: 1.6; margin: 0 0 20px; }
 .brand-description { max-width: 440px; font-size: 15px; color: var(--el-text-color-secondary); margin: 0; }
 .brand-tags { display: flex; gap: 12px; margin-top: 32px; }
 .brand-tags span { padding: 4px 12px; border: 1px solid var(--el-border-color-light); border-radius: 6px; color: var(--el-text-color-secondary); background: var(--el-bg-color); font-size: 13px; }
-.divider { align-self: stretch; background: linear-gradient(transparent, var(--el-border-color-light), transparent); }
+.divider { align-self: stretch; background: var(--el-border-color-light); }
 h1 { font-size: 30px; font-weight: 600; margin: 0 0 4px; }
 .subtitle { color: var(--el-text-color-secondary); margin: 0 0 32px; }
 .login-form :deep(.el-input) { --el-input-height: 52px; }
-.login-form :deep(.el-input__wrapper:focus-within) { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; }
+.login-form :deep(.el-input__wrapper:focus-within) { outline: 2px solid var(--si-focus-ring); outline-offset: 2px; }
 .login-form :deep(.el-form-item) { margin-bottom: 24px; }
 .remember-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 20px; }
 .error { margin-bottom: 16px; }

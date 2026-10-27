@@ -550,7 +550,7 @@ onBeforeUnmount(() => {
 }
 
 .docx__p.is-heading {
-  font-weight: bold;
+  font-weight: 600;
 }
 
 .docx__no {

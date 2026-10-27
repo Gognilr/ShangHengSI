@@ -1,8 +1,16 @@
 :root {
-  /* V2-E-07新增页面所需排版档位，完整令牌整理留V2-U-01。 */
+  /* 字号、行高与字重成组使用。 */
   --si-font-h2: 600 18px/1.45 var(--el-font-family);
   --si-font-h4: 600 15px/1.5 var(--el-font-family);
   --si-font-body: 400 14px/1.6 var(--el-font-family);
+  --si-font-display: 600 32px/1.3 var(--el-font-family);
+  --si-font-title-lg: 600 30px/1.3 var(--el-font-family);
+  --si-font-title: 600 24px/1.35 var(--el-font-family);
+  --si-font-h3: 600 16px/1.5 var(--el-font-family);
+  --si-font-reading: 400 15px/1.8 var(--el-font-family);
+  --si-font-meta: 400 13px/1.5 var(--el-font-family);
+  --si-font-caption: 400 12px/1.6 var(--el-font-family);
+  --si-font-stat: 600 24px/1.3 var(--el-font-family);
   --el-color-primary: #173B68;
   --el-color-primary-light-3: #5D7695;
   --el-color-primary-light-5: #8B9DB4;
@@ -63,15 +71,25 @@
   --si-brand-blue: #1E6FB8;
   --si-brand-gradient: linear-gradient(135deg, #173B68 0%, #1E6FB8 55%, #16B8CC 100%);
   --si-shadow-pop: 0 12px 32px rgba(16,24,40,.12);
+  --si-text-reading: #333A45;
+  --si-focus-ring: var(--el-color-primary);
+  --si-stage-bg: #EDEFF2;
+  --si-paper-shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.05);
+  --si-card-hover-border: var(--el-border-color);
+  --si-scrollbar: #C9CED6;
+  --si-radius-paper: 4px;
 }
-html body { font-family: var(--el-font-family); font-size: 14px; line-height: 1.6; color: var(--el-text-color-primary); }
-:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; }
-.el-textarea__inner:focus-visible { outline: 2px solid var(--el-color-primary-light-5); outline-offset: 2px; }
+html body { font: var(--si-font-body); color: var(--el-text-color-primary); text-autospace: normal; -webkit-font-smoothing: antialiased; }
+* { scrollbar-width: thin; scrollbar-color: var(--si-scrollbar) transparent; }
+:focus-visible { outline: 2px solid var(--si-focus-ring); outline-offset: 2px; }
+.el-textarea__inner:focus-visible { outline: 2px solid var(--si-focus-ring); outline-offset: 2px; }
 .el-card { --el-card-border-radius: var(--si-radius-card); --el-card-border-color: var(--el-border-color-light); box-shadow: none; }
 .el-dialog, .el-message-box { --el-dialog-border-radius: var(--si-radius-card); --el-messagebox-border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-pop); }
 .el-dialog__title { font-size: 18px; font-weight: 600; }
 .el-drawer { border-radius: var(--si-radius-card) 0 0 var(--si-radius-card); box-shadow: var(--si-shadow-pop); }
 .el-table { --el-table-header-bg-color: var(--el-fill-color-light); }
+.el-table, .el-pagination, .stat-value, .num { font-variant-numeric: tabular-nums; }
+.el-table th.el-table__cell { font: var(--si-font-meta); color: var(--el-text-color-secondary); }
 /* Element Plus 的按钮尺寸在组件中写死，需同步映射到主题尺寸令牌。 */
 .el-button { --el-button-size: var(--el-component-size); height: var(--el-button-size); }
 .el-button--small { --el-button-size: var(--el-component-size-small); }

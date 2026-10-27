@@ -118,7 +118,7 @@ async function onCommand(cmd: string) {
 .menu :deep(.el-menu-item.is-active) { color: var(--el-color-primary); font-weight: 600; }
 .menu :deep(.el-menu-item.is-active)::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 2px; background: var(--si-brand-gradient); }
 .menu :deep(.el-menu-item:hover), .menu :deep(.el-menu-item:focus) { background: transparent; color: var(--el-color-primary); }
-.menu :deep(.el-menu-item:focus-visible) { outline: 2px solid var(--el-color-primary-light-5); outline-offset: -4px; }
+.menu :deep(.el-menu-item:focus-visible) { outline: 2px solid var(--si-focus-ring); outline-offset: -4px; }
 
 .right {
   display: flex;
