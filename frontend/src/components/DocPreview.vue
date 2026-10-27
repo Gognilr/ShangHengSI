@@ -11,7 +11,7 @@ import type { TaskFile } from '@/api/tasks'
  * 每个节点的元素带 data-loc；highlight 中的 loc 加 is-highlight 类，并在预览容器内滚动到第一个。
  * 原件一律先取 Blob（PDF 转 ArrayBuffer，图片用 object URL），不把接口地址交给 pdfjs 或 img。
  */
-const props = defineProps<{ taskId: string; files: TaskFile[]; highlight: string[] }>()
+const props = defineProps<{ taskId: string; files: TaskFile[]; highlight: string[]; highlightLabel?: string }>()
 
 interface PdfPage {
   num: number
@@ -61,6 +61,7 @@ const kind = computed(() => {
   return ext === 'jpg' || ext === 'jpeg' || ext === 'png' ? 'image' : 'other'
 })
 const hl = computed(() => new Set(props.highlight))
+const hasHighlight = computed(() => !!state.value?.nodes.some(node => hl.value.has(node.loc)))
 const showFallback = computed(
   () => !!state.value && (kind.value === 'pdf' || kind.value === 'image') && !state.value.pdfPages.length && !state.value.imageUrl,
 )
@@ -375,7 +376,7 @@ onBeforeUnmount(() => {
       <el-tab-pane v-for="f in sortedFiles" :key="f.id" :label="f.original_name" :name="f.id" />
     </el-tabs>
     <span v-else class="doc-preview__name" :title="activeFile?.original_name">{{ activeFile?.original_name }}</span>
-    <span class="hint">点击左侧问题可定位原文</span>
+    <span class="hint" :class="{ locating: highlightLabel && hasHighlight }">{{ highlightLabel && hasHighlight ? `正在定位：${highlightLabel}` : '点击左侧问题可定位原文' }}</span>
     </div>
 
     <div ref="body" v-loading="!state || state.loading" class="doc-preview__body">
@@ -529,21 +530,22 @@ onBeforeUnmount(() => {
 .doc-preview__files :deep(.el-tabs__header) { margin: 0; }
 .doc-preview__toolbar > .hint { margin-left: auto; }
 .doc-preview__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.docx { background: var(--el-bg-color); padding: 24px; border: 1px solid var(--el-border-color-light); min-height: 100%; box-sizing: border-box; }
+.locating { color: var(--el-color-primary); }
+.docx { background: var(--el-bg-color); padding: 48px; border-radius: var(--si-radius-paper); box-shadow: var(--si-paper-shadow); min-height: 100%; max-width: calc(40em + 96px); margin: 0 auto; box-sizing: border-box; font: var(--si-font-reading); color: var(--si-text-reading); }
 
 .doc-preview__body {
   flex: 1;
   min-height: 0;
   overflow: auto;
   position: relative;
-  padding: 20px;
+  padding: 24px;
   box-sizing: border-box;
-  background: var(--el-fill-color-light);
+  background: var(--si-stage-bg);
 }
 
 .docx__p {
-  margin: 0 0 8px;
-  line-height: 1.7;
+  margin: 0 0 12px;
+  font: var(--si-font-reading);
   white-space: pre-wrap;
   border-left: 3px solid transparent;
   padding-left: 8px;
@@ -552,16 +554,22 @@ onBeforeUnmount(() => {
 .docx__p.is-heading {
   font-weight: 600;
 }
+.docx__p.is-highlight { border-left-color: var(--el-color-warning); }
 
 .docx__no {
+  display: inline-block;
+  min-width: 2em;
   margin-right: 8px;
   color: var(--el-text-color-secondary);
+  font: var(--si-font-meta);
+  font-variant-numeric: tabular-nums;
 }
 
 .grid {
   border-collapse: collapse;
   margin-bottom: 12px;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .grid td,
@@ -575,7 +583,7 @@ onBeforeUnmount(() => {
 .grid th {
   background: var(--el-fill-color-light);
   color: var(--el-text-color-secondary);
-  font-weight: normal;
+  font: var(--si-font-meta);
   text-align: center;
 }
 
@@ -583,7 +591,8 @@ onBeforeUnmount(() => {
   overflow-x: auto;
   background: var(--el-bg-color);
   padding: 16px;
-  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--si-radius-paper);
+  box-shadow: var(--si-paper-shadow);
 }
 
 .pdf-page {
@@ -591,8 +600,9 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
   margin-bottom: 8px;
-  border: 1px solid var(--el-border-color);
   background: var(--el-bg-color);
+  border-radius: var(--si-radius-paper);
+  box-shadow: var(--si-paper-shadow);
 }
 
 .pdf-page__canvas,
@@ -608,6 +618,9 @@ onBeforeUnmount(() => {
 
 .img-wrap {
   position: relative;
+  background: var(--el-bg-color);
+  border-radius: var(--si-radius-paper);
+  box-shadow: var(--si-paper-shadow);
 }
 
 .hl-layer {
@@ -624,6 +637,7 @@ onBeforeUnmount(() => {
 .is-highlight {
   background: var(--el-color-warning-light-9);
   border-bottom: 2px solid var(--el-color-warning);
+  scroll-margin-block: 48px;
 }
 
 .hl-box.is-highlight {
