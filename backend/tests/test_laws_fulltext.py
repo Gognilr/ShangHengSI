@@ -82,10 +82,12 @@ def test_t44_5_doc_conversion(db_sessionmaker, monkeypatch):
     assert calls == ['doc']
 
 
-def test_no_articles_unmatched(db_sessionmaker):
-    iid, _ = seed(db_sessionmaker, [('示例法_20200101.docx', _doc_without_articles())])
+def test_no_articles_falls_back_to_segments(db_sessionmaker):
+    iid, lid = seed(db_sessionmaker, [('示例法_20200101.docx', _doc_without_articles())])
     with db_sessionmaker() as db:
-        assert db.get(LawImport, iid).diff['unmatched'][0]['reason'] == '未识别到条文'
+        diff = db.get(LawImport, iid).diff
+        assert diff['unmatched'] == []
+        assert diff['matched'] == [dict(law_id=lid, title='示例法', published_on='2020-01-01', articles=1, replace=False)]
 
 
 def test_zip_entry_limit_and_cleanup(db_sessionmaker):
@@ -168,3 +170,58 @@ def test_fulltext_upload_permissions(db_sessionmaker, make_user, login, role, co
             assert db.scalar(select(Job.type)) == 'law_import'
             stored = db.scalar(select(LawImportFile))
             assert crypto.decrypt(stored.data_enc).startswith(b'PK')
+
+
+def test_t44a_7_empty_body_unmatched(db_sessionmaker):
+    from tests.test_law_articles import unnumbered_doc
+    iid, _ = seed(db_sessionmaker, [('示例法_20200101.docx', unnumbered_doc(['示例法', '（示例题注）']))])
+    with db_sessionmaker() as db:
+        assert db.get(LawImport, iid).diff['unmatched'] == [dict(file='示例法_20200101.docx', reason='正文为空')]
+
+
+def test_t44a_8_null_article_passage_and_import(db_sessionmaker, monkeypatch, caplog):
+    from tests.test_law_articles import unnumbered_doc
+    iid, lid = seed(db_sessionmaker, [('示例法_20200101.docx', unnumbered_doc(['示例法', '一、示例无条号正文。']))])
+    passages = []
+    def embed(texts, kind):
+        assert kind == 'passage'
+        passages.extend(texts)
+        return np.tile(np.eye(1, 1024, dtype=np.float32), (len(texts), 1))
+    monkeypatch.setattr(engine, 'embed', embed)
+    with db_sessionmaker() as db:
+        assert db.get(LawImport, iid).added == 1
+        imports.apply(db, iid, None)
+        db.commit()
+        handle_embed(db, {})
+        article = db.scalar(select(LawArticle).where(LawArticle.law_id == lid))
+        assert article.article_no is None and article.embedding is not None
+    assert passages == ['《示例法》：一、示例无条号正文。']
+    assert '示例法' not in caplog.text and '示例无条号正文' not in caplog.text
+
+
+@pytest.mark.parametrize('title,filename', [
+    ('最高人民法院　最高人民检察院关于示例问题的批复', '最高人民法院最高人民检察院关于示例问题的批复'),
+    ('示例规定（试行）', '示例规定(试行)')])
+def test_t44a_11_normalized_filename(db_sessionmaker, title, filename):
+    from tests.test_law_articles import unnumbered_doc
+    with db_sessionmaker() as db:
+        db.add(Law(title=title, category='司法解释', status='valid', source='import', published_on=date(2020,3,19)))
+        row = LawImport(kind='fulltext', status='parsing', file_names=['全文.zip'])
+        db.add(row); db.flush()
+        from app.laws.fulltext import preview
+        preview(db, row, archive([(filename + '_20200319.docx', unnumbered_doc([filename, '示例正文。']))]))
+        assert row.diff['unmatched'] == [] and row.diff['matched'][0]['title'] == title
+        assert db.scalar(select(LawImportArticle.text)) == '示例正文。'
+
+
+def test_t44a_11_ambiguous_normalized_title(db_sessionmaker):
+    from app.laws.fulltext import preview
+    with db_sessionmaker() as db:
+        for title in ['示例规定（试行）', '示例规定(试行)']:
+            db.add(Law(title=title, category='法律', status='valid', source='import', published_on=date(2020,3,19)))
+        row = LawImport(kind='fulltext', status='parsing', file_names=['全文.zip'])
+        db.add(row); db.flush()
+        preview(db, row, archive([('示例规定(试行)_20200319.docx', law_doc())]))
+        assert row.diff['matched'] == []
+        assert row.diff['unmatched'][0]['reason'] == '对应多部法规'
+        assert db.scalar(select(func.count()).select_from(LawImportArticle)) == 0

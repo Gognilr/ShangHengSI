@@ -90,7 +90,7 @@ def handle_embed(db, payload):
                 if not rows:
                     db.commit()
                     return
-                vectors = engine.embed([f'《{title}》{a.article_no}：{a.text}' for a, title in rows], 'passage')
+                vectors = engine.embed([f'《{title}》{a.article_no or ""}：{a.text}' for a, title in rows], 'passage')
                 for (article, _), vector in zip(rows, vectors):
                     article.embedding = vector
                 db.commit()

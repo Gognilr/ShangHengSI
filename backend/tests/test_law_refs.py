@@ -137,3 +137,49 @@ def test_e08_law_subcategories_in_retrieval(db_sessionmaker, category):
         assert law.category==category
         law.status='repealed'; db.commit()
         assert search(db,[vector()])==[]
+
+
+def test_t44a_10_unnumbered_is_not_first_article(db_sessionmaker):
+    from app.laws.retrieve import verify_findings
+    from app.db.base import utcnow
+    with db_sessionmaker() as db:
+        law = Law(title='示例批复', category='司法解释', status='valid', source='import', fulltext_at=utcnow())
+        db.add(law); db.flush()
+        db.add(LawArticle(law_id=law.id, seq=1, article_no=None, text='一、示例内容。'))
+        db.flush()
+        finding = SimpleNamespace(problem='《示例批复》第一条', basis=None, suggestion=None, law_unverified=False)
+        verify_findings(db, [finding])
+        assert finding.law_unverified is True
+
+
+def test_t44a_9_null_reference_snapshot_and_report(monkeypatch):
+    import io
+    from docx import Document
+    from app.laws.retrieve import section
+    from app.export import report_docx
+    ref = dict(title='示例批复', article_no=None, text='一、示例正文。')
+    c = ctx(); c.law_refs = [dict(ref='LAW1', **ref)]
+    result = validate_output(json.dumps(dict(requirement_results=[], findings=[
+        dict(title='示例问题', problem='需确认示例事项。', law_refs=['LAW1'])])), c, {})
+    assert result.findings[0].law_refs == [ref]
+    assert '[LAW1]《示例批复》：一、示例正文。' in section(c.law_refs)
+    # 复用结果页快照路径并调用实际报告构建函数，其他段落用最小替身隔离。
+    finding = SimpleNamespace(seq=1, severity='low', category='legal', locs=[], missing=True,
+        quote=None, title='示例问题', problem='需确认。', impact=None, basis=None, suggestion=None,
+        suggested_text=None, law_refs=[ref], law_unverified=False, source='model',
+        cite_status='missing', handling_status='pending', handling_note=None, location=None)
+    detail = SimpleNamespace(template=None, coverage=None, findings=[finding],
+        sanctions=SimpleNamespace(level='attention', reasons=[]), requirement_results=[])
+    monkeypatch.setattr(report_docx, 'run_detail', lambda *args: detail)
+    monkeypatch.setattr(report_docx, '_files', lambda *args: ([], None))
+    monkeypatch.setattr(report_docx, '_basic', lambda *args: None)
+    monkeypatch.setattr(report_docx, '_local', lambda *args: None)
+    monkeypatch.setattr(report_docx, '_filename', lambda *args: '示例报告.docx')
+    _, data = report_docx.build_run_report(SimpleNamespace(get=lambda *args: None), SimpleNamespace(task_id=None), None)
+    doc = Document(io.BytesIO(data))
+    rendered = '\n'.join(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
+    assert '依据：《示例批复》' in rendered and '一、示例正文。' in rendered
+    assert 'None' not in rendered and 'null' not in rendered
+    from pathlib import Path
+    component = (Path(__file__).resolve().parents[2] / 'frontend/src/components/FindingCard.vue').read_text(encoding='utf-8')
+    assert "law.article_no ?? ''" in component and '{{ law.text }}' in component

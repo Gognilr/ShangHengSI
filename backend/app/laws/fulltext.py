@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 
 from app.db.base import utcnow
 from app.db.models import Law, LawArticle, LawImportArticle
-from app.laws.articles import split
+from app.laws.articles import normalize_title, split
 from app.laws.catalog import CatalogError
 from app.parsing import docx, legacy
 from app.tasks import filecheck
@@ -40,7 +40,12 @@ def preview(db, record, data):
             if match:
                 try:
                     published = datetime.strptime(match[2], '%Y%m%d').date()
-                    law = db.scalar(select(Law).where(Law.title == match[1], Law.published_on == published))
+                    candidates = [row for row in db.scalars(select(Law).where(Law.published_on == published))
+                                  if normalize_title(row.title) == normalize_title(match[1])]
+                    if len(candidates) > 1:
+                        diff['unmatched'].append({'file': info.filename[:255], 'reason': '对应多部法规'})
+                        continue
+                    law = candidates[0] if candidates else None
                 except ValueError:
                     pass
                 reason = '法规目录中没有对应版本'
@@ -54,8 +59,8 @@ def preview(db, record, data):
                         filecheck.check_ole(io.BytesIO(value), 'doc', '法规全文')
                         value = legacy.convert(value, 'doc')
                     filecheck.check_ooxml(io.BytesIO(value), 'docx', '法规全文')
-                    articles = split(docx.parse_docx(value, 1).nodes)
-                    reason = '未识别到条文'
+                    articles = split(docx.parse_docx(value, 1).nodes, title=law.title)
+                    reason = '正文为空'
                     if articles:
                         seen.add(law.id)
                         db.add_all(LawImportArticle(import_id=record.id, title=law.title,

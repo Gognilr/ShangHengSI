@@ -4,7 +4,7 @@
 
 ## 当前进度（只保留最近 3 条，每条不超过 400 字；更早的见 [archive/progress.md](archive/progress.md)）
 
-- 2026-10-27（GPT-6.1 Sol）：**V2-E-08 未完成**。最终整仓3044 passed；13码同步2170条/22页、法律477条、新增2161，全文165成功/35失败且pending，V2Q-109关闭；云评测四组合已齐。864份有效法律/解释中582份拆出29229条并向量化，282份未入条文库，全库门槛未达；无条号拆分及受阻文件处理登记V2Q-111，需Opus判断。浏览器、对拍与隔离升级/恢复通过，详见reports/V2-E-test.md。暂不进入E09/U。
+- 2026-10-27（GPT-6.1 Sol）：**V2-E-08a 已完成，E08未完成**。无条号分段、连续无空白条号容错、标题规范化及空条号passage完成；T-44a全部12项追加，用户授权仅同步两条旧预期，相关三文件57 passed/1既有警告。详见reports/V2-E-08a.md。E08原864份中582份/29229条入库并向量化，282份缺口未重跑；原四组合、浏览器、对拍与隔离演练见V2-E-test.md。下一步返回E08（GPT-6.1 Sol，medium），重新获取前须下载授权，远端演练需测试VM；暂不进入E09/U。
 
 - 2026-10-26（GPT-6.1 Sol）：**V2-E-07 已完成**。法规库/公司范本设置页、数据页自动更新、确认页范本建议及不对照、结果页依据/未核实/范本标签/轮次快照，L-12中文。首次构建一处类型错误修复，最终build退出0；安全与样式静态自检通过，四宽度浏览器截图留E-08。V2Q-99记录全文统计及令牌边界，详见reports/V2-E-07.md。下一步V2-E-08（GPT-6.1 Sol，medium）。
 
@@ -95,7 +95,7 @@
 | V2-E-06 | 公司范本库：上传、拆分、加密、向量、选择、对照与整节复检、L-12、轮次快照（迁移 0021，设计第八节） | GPT-6.1 Sol（测试先行） | xhigh | V2-E-05 | 已完成 |
 | V2-E-07 | 前端：法规库页、公司范本页、数据页自动更新、第二步范本提示、结果页依据与标签（设计第九节） | GPT-6.1 Sol | medium | V2-E-06 | 已完成 |
 | V2-E-08 | 集中测试：整仓全量、浏览器清单、评测对比（开 / 关法条依据与范本对照）、引擎对拍、测试虚拟机上实测资源并演练 upgrade.sh 与 restore.sh，写批次测试报告（设计第十节） | GPT-6.1 Sol | medium | V2-E-07 | 待执行 |
-| V2-E-08a | 无条号文本分段与标题规范化（设计 5.8，T-44a，V2Q-111）。文件范围：`backend/app/laws/articles.py`、`backend/app/laws/fulltext.py`、`backend/app/laws/job.py`（只改 passage 拼接）；测试只追加 test\_law\_articles.py、test\_laws\_fulltext.py、test\_law\_refs.py，只跑这三个文件与 test\_law\_embed 相关用例。不加迁移、不改外网代码。完成后回到 V2-E-08，只对 282 份未入库的重跑并按设计第十节第 6 条判定 | GPT-6.1 Sol（测试先行） | medium | V2Q-111（已确认） | 待执行 |
+| V2-E-08a | 无条号文本分段与标题规范化（设计 5.8，T-44a，V2Q-111）。文件范围：`backend/app/laws/articles.py`、`backend/app/laws/fulltext.py`、`backend/app/laws/job.py`（只改 passage 拼接）；测试只追加 test\_law\_articles.py、test\_laws\_fulltext.py、test\_law\_refs.py，只跑这三个文件与 test\_law\_embed 相关用例。不加迁移、不改外网代码。完成后回到 V2-E-08，只对 282 份未入库的重跑并按设计第十节第 6 条判定 | GPT-6.1 Sol（测试先行） | medium | V2Q-111（已确认） | 已完成 |
 | V2-E-09 | 批次审核，汇报用户 | Opus | high | V2-E-08 | 待执行 |
 
 ### V2-U 界面改进

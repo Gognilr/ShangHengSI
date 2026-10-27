@@ -44,6 +44,8 @@ E-03 执行补充（用户 2026-10-26 在本会话确认）：允许补齐 model
 
 ## 三、按建议做法实施的事项
 
+V2Q-111 执行说明（2026-10-27）：用户授权按 5.8 仅修改两条旧预期：`test_law_articles.py::test_no_articles` 改为返回 `(None, 1, '示例前言')`；`test_laws_fulltext.py::test_no_articles_unmatched` 改为一段匹配成功、unmatched 为空，并更名为 `test_no_articles_falls_back_to_segments`。`_doc_without_articles()` 和其他旧断言不改；T-44a 全部 12 项追加，第 7 项独立创建只有标题和题注的文件。完成证据见 `reports/V2-E-08a.md`；E-08 真实缺口尚未重跑。
+
 | 编号 | 问题 | 采用的做法 | 影响范围 |
 |-|-|-|-|
 | V2Q-99（待确认） | E-07 统计接口与前端排版令牌的现状 | 现有laws列表counts只有全库时效性与总数，全文标记仅逐行返回；页面明确显示“本页有全文”计数，不伪称全库数量。分类用可输入精确筛选，不猜测官网所有分类。theme.css仅追加本任务需要的h2/h4/body三项font令牌，完整整理留U-01；解析与向量未就绪每3秒单请求轮询，退出清定时器；浏览器四宽度检查按批次规则留E-08 | E-07前端 |
