@@ -28,6 +28,29 @@ def cats(text: str, values=(), terms=()) -> set[str]:
     return {c for c, _ in check(text, values, terms)}
 
 
+def test_assistant_recheck_extra_task_maps(db_sessionmaker, make_user, tmp_path, monkeypatch):
+    from app.redaction.engine import write_full_map
+    key = tmp_path / "extra_key"
+    key.write_bytes(os.urandom(32))
+    monkeypatch.setenv("APP_MASTER_KEY_FILE", str(key))
+    get_settings.cache_clear()
+    crypto.get_master_key.cache_clear()
+    try:
+        owner = make_user("extra_context")
+        with db_sessionmaker() as db:
+            tasks = [Task(owner_id=owner.id, title="虚构", stance="other", source="incoming", policy="ai", status="reviewed") for _ in range(2)]
+            db.add_all(tasks)
+            db.flush()
+            write_full_map(db, tasks[0].id, {"[[ORG_1]]": "虚构会话企业"})
+            write_full_map(db, tasks[1].id, {"公司_A": "虚构来源合同企业"})
+            ctx = recheck_context(db, tasks[0].id, extra_task_ids=[tasks[1].id])
+            assert "虚构来源合同企业" in ctx.real_values and "虚构会话企业" in ctx.real_values
+            assert recheck("虚构来源合同企业", real_values=ctx.real_values, terms=ctx.terms, placeholders=ctx.placeholders)
+    finally:
+        get_settings.cache_clear()
+        crypto.get_master_key.cache_clear()
+
+
 # ---------------------------------------------------------------- 对照表真实值与词条
 
 

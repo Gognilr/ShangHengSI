@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import time
+import threading
 import uuid
 from dataclasses import dataclass, field
 
@@ -29,6 +30,7 @@ logger = logging.getLogger("app.llm.gateway")
 RETRY_DELAYS: tuple[float, ...] = (10, 30)  # SPEC 7.5：重试 2 次，间隔 10 秒、30 秒（测试中改为 0）
 TRANSPORT: httpx.BaseTransport | None = None  # 测试中注入 httpx.MockTransport
 _RESPONSE_KEEP_CHARS = 2000  # 出错时保留的返回内容长度
+STREAM_TOTAL_SECONDS = 600
 _RETRYABLE_STATUS = {408, 409, 425, 429}
 TEST_MESSAGE = "这是一条连接测试消息，不含任何业务数据。请只回复：OK"
 
@@ -111,7 +113,14 @@ class _Recorder:
             if k in fields:
                 fields[k] = self._clean(fields[k])
         with Session(bind=self.bind) as s:
-            row = LlmCall(**self.base, **fields)
+            base = dict(self.base)
+            if base.get("purpose") == "assist" and base.get("task_id") is not None:
+                from sqlalchemy import select
+                from app.db.models import Task
+                # 与会话删除使用同一任务行锁：删除中或删除后落下的调用记录不能重新留下标题。
+                task = s.scalar(select(Task).where(Task.id == base["task_id"]).with_for_update())
+                base["task_title"] = task.title if task is not None else None
+            row = LlmCall(**base, **fields)
             s.add(row)
             s.commit()
             return row.id
@@ -267,3 +276,131 @@ def test_connection(db: Session, user_id: uuid.UUID | None) -> ModelResult:
 
 
 test_connection.__test__ = False  # 不让 pytest 当成测试函数收集
+
+
+def stream_model(db: Session, *, purpose: str, messages: list[dict], on_delta,
+                 user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
+                 task_title: str | None = None, extra_task_ids=(), json_mode: bool = False) -> ModelResult:
+    """助手 SSE 发送唯一入口：上限、整包复检、单次发送、独立记录；流式失败不重试。"""
+    from app.db.models import Task
+    if purpose != "assist":
+        raise ValueError("purpose")
+    if not messages or not all(isinstance(m.get("content"), str) and m.get("role") in ("system", "user", "assistant") for m in messages):
+        raise ValueError("messages")
+    task = db.get(Task, task_id) if task_id is not None else None
+    if task is not None and task.policy == "local_only":
+        raise GatewayError("BLOCKED")
+    cfg = _load_config(db)
+    if not (cfg.base_url and cfg.api_key and cfg.name):
+        raise GatewayError("NOT_CONFIGURED")
+    reached = usage.cap_reached(db, user_id, purpose)
+    if reached:
+        raise GatewayError(reached)
+    recorder = _Recorder(db, cfg.api_key, {"user_id": user_id, "task_id": task_id, "task_title": task_title,
+                                          "purpose": purpose, "model_name": cfg.name[:100]})
+    ctx = recheck_context(db, task_id, extra_task_ids=extra_task_ids)
+    reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values,
+                      terms=ctx.terms, placeholders=ctx.placeholders)
+    if reasons:
+        cid = recorder.write(status="blocked", request_text=None, block_reason=format_reasons(reasons))
+        logger.warning("llm_call %s 出口复检拦截 purpose=assist 命中=%s", cid, len(reasons))
+        raise GatewayError("BLOCKED", reasons=reasons, llm_call_id=cid)
+    body = _build_body(cfg, messages, json_mode)
+    body["stream"], body["stream_options"] = True, {"include_usage": True}
+    request_text = json.dumps(body, ensure_ascii=False)
+    started = last_received = time.monotonic()
+    parts, tokens_in, tokens_out = [], 0, 0
+    complete, stopped, pending = False, False, []
+
+    def event(data):
+        nonlocal complete, stopped, tokens_in, tokens_out
+        if data == "[DONE]":
+            complete = True
+            return False
+        payload = json.loads(data)
+        if not isinstance(payload, dict) or "error" in payload:
+            raise ValueError("event")
+        usage_data = payload.get("usage") or {}
+        tokens_in = int(usage_data.get("prompt_tokens") or tokens_in)
+        tokens_out = int(usage_data.get("completion_tokens") or tokens_out)
+        choices = payload.get("choices")
+        if not isinstance(choices, list):
+            raise ValueError("choices")
+        if choices:
+            choice = choices[0]
+            content = (choice.get("delta") or {}).get("content")
+            if content is not None:
+                if not isinstance(content, str):
+                    raise ValueError("content")
+                parts.append(content)
+                if on_delta(content) is False:
+                    stopped = True
+                    return False
+            if choice.get("finish_reason") is not None:
+                complete = True
+        return True
+
+    error = None
+    deadline_hit = threading.Event()
+    deadline_timer = None
+    try:
+        with httpx.Client(timeout=min(cfg.timeout_s, STREAM_TOTAL_SECONDS), transport=TRANSPORT, trust_env=False,
+                          follow_redirects=False) as client:
+            with client.stream("POST", cfg.base_url.rstrip("/") + "/chat/completions",
+                               headers={"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json"},
+                               content=request_text.encode("utf-8")) as response:
+                if response.status_code != 200:
+                    raise GatewayError("HTTP_ERROR")
+
+                def expire():
+                    deadline_hit.set()
+                    try:
+                        response.close()
+                    except Exception:
+                        pass  # 只用于唤醒阻塞读取，不记录响应或异常原文。
+
+                deadline_timer = threading.Timer(max(0, STREAM_TOTAL_SECONDS - (time.monotonic() - started)), expire)
+                deadline_timer.daemon = True
+                deadline_timer.start()
+                for line in response.iter_lines():
+                    now = time.monotonic()
+                    if deadline_hit.is_set() or now - started >= STREAM_TOTAL_SECONDS or now - last_received > cfg.timeout_s:
+                        raise GatewayError("TIMEOUT")
+                    last_received = now
+                    if line.startswith("data:"):
+                        pending.append(line[5:].lstrip(" "))
+                    elif not line and pending:
+                        data, pending = "\n".join(pending), []
+                        if not event(data):
+                            break
+                if pending and not stopped:
+                    event("\n".join(pending))
+                if not (complete or stopped):
+                    raise GatewayError("BAD_RESPONSE")
+    except httpx.TimeoutException:
+        error = GatewayError("TIMEOUT")
+    except httpx.HTTPError:
+        error = GatewayError("HTTP_ERROR")
+    except GatewayError as exc:
+        error = exc
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+        error = GatewayError("BAD_RESPONSE")
+    except Exception:
+        # 消费方写库失败也必须留下本次已开始的外发记录，再交 worker 统一收尾。
+        error = GatewayError("HTTP_ERROR")
+    finally:
+        if deadline_timer is not None:
+            deadline_timer.cancel()
+    if deadline_hit.is_set():
+        error = GatewayError("TIMEOUT")
+    duration = int((time.monotonic() - started) * 1000)
+    content = "".join(parts)
+    cid = recorder.write(status="error" if error else "sent", request_text=request_text,
+                         response_text=content[:_RESPONSE_KEEP_CHARS] if error else content,
+                         tokens_in=tokens_in, tokens_out=tokens_out, duration_ms=duration,
+                         **({"error_message": str(error)} if error else {}))
+    logger.info("llm_call %s 流式结束 purpose=assist 状态=%s 耗时=%sms", cid, "error" if error else "sent", duration)
+    if error:
+        error.llm_call_id = cid
+        raise error
+    return ModelResult(content, cfg.name, tokens_in, tokens_out, duration, cid)

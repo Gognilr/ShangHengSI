@@ -632,7 +632,7 @@ class ChatMessage(Base):
 class LlmCall(Base):
     __tablename__ = "llm_calls"
     __table_args__ = (
-        enum_check("purpose", ["review", "chat", "test"]),
+        enum_check("purpose", ["review", "chat", "test", "assist"]),
         enum_check("status", ["sent", "blocked", "error"]),
         Index("ix_llm_calls_created_at", text("created_at DESC")),
         Index("ix_llm_calls_user_id_created_at", "user_id", text("created_at DESC")),
@@ -661,7 +661,7 @@ class LlmCall(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed"]),
+        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist"]),
         enum_check("status", ["queued", "running", "done", "failed"]),
         Index("ix_jobs_status_run_after", "status", "run_after"),
     )

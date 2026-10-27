@@ -62,3 +62,14 @@ def monthly_usage(db: Session, now: datetime | None = None) -> dict:
         "tokens_out": int(tokens_out),
         "cost": cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
     }
+
+
+def remaining_calls(db: Session, user_id: uuid.UUID) -> dict[str, int | None]:
+    """翻译分段预检的剩余调用数；None 表示该项不限次数，网关发送前仍再次检查。"""
+    cap = int(get_setting(db, "model.monthly_call_cap") or 0)
+    daily = int(get_setting(db, "model.user_daily_cap") or 0)
+    start = utcnow().astimezone(ZoneInfo("Asia/Shanghai")).replace(hour=0, minute=0, second=0, microsecond=0)
+    used = db.scalar(select(func.count()).select_from(LlmCall).where(
+        LlmCall.user_id == user_id, LlmCall.status == "sent", LlmCall.purpose != "test", LlmCall.created_at >= start)) or 0
+    return {"monthly": max(0, cap - monthly_sent_calls(db)) if cap else None,
+            "daily": max(0, daily - used) if daily else None}

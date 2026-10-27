@@ -7,10 +7,10 @@ from app.admin.settings_store import get_setting
 from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
+from app.db.models import AssistantMessage, Party, RedactionMap, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
 from app.llm import gateway, usage
 from app.redaction import engine
-from app.security.errors import AppError
+from app.security.errors import AppError, NotFoundError
 from app.tasks import service as tasks, storage
 from app.assistant.schemas import SessionDetail, SessionFile, SessionItem, SessionPage, SessionPatch
 
@@ -62,6 +62,184 @@ def create(db: Session, user: User, ip: str | None) -> SessionDetail:
     db.flush()
     audit.record(db, "assistant_session_create", user_id=user.id, target_type="task", target_id=str(task.id), ip=ip)
     result = detail(db, task)
+    db.commit()
+    return result
+
+
+def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
+    from app.assistant.stream import incremental
+    content, _ = incremental(message.content_redacted, engine.load_redaction_map(db, task.id), 0,
+                              finished=message.status not in ("queued", "streaming"))
+    return {"id": message.id, "role": message.role, "content": content, "status": message.status,
+            "template": message.template, "params": message.params, "extras": message.extras,
+            "tokens_in": message.tokens_in, "tokens_out": message.tokens_out,
+            "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at}
+
+
+def error_text(code: str | None) -> str | None:
+    return {"ASSIST_INTERRUPTED": "服务重启，回复中断，请重试", "ASSIST_TOO_LONG": "所选文件过长，请减少使用的文件",
+            "SESSION_READONLY": "原件已按保留期限删除，本会话只能查看"}.get(code, gateway.MESSAGES.get(code)) if code else None
+
+
+def owned_message(db: Session, task: Task, mid: int) -> AssistantMessage:
+    row = db.get(AssistantMessage, mid)
+    if row is None or row.task_id != task.id:
+        raise NotFoundError("MESSAGE_NOT_FOUND", "消息不存在")
+    return row
+
+
+def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetail:
+    from app.redaction.recheck import recheck, recheck_context
+    task = lock(db, task)
+    _writable(db, task)
+    if task.status != "awaiting_confirm":
+        raise AppError(409, "SESSION_BUSY", "当前会话状态不能确认脱敏")
+    if db.scalar(select(exists().where(RedactionSuspect.task_id == task.id, RedactionSuspect.decision == "pending"))):
+        raise AppError(409, "SUSPECTS_PENDING", "还有疑似遗漏的敏感信息未处理，请先逐项处理")
+    count = db.scalar(select(func.count()).select_from(Party).where(Party.task_id == task.id, Party.is_our_party.is_(True))) or 0
+    if count > 1:
+        raise AppError(409, "OUR_PARTY_REQUIRED", "我方最多只能选择一方")
+    ctx = recheck_context(db, task.id)
+    reasons = recheck(engine.build_outbound_text(db, task), real_values=ctx.real_values, terms=ctx.terms, placeholders=ctx.placeholders)
+    if reasons:
+        raise AppError(409, "OUTBOUND_BLOCKED", gateway.MESSAGES["BLOCKED"] + f"（{gateway.format_reasons(reasons)}）")
+    now, count = utcnow(), 0
+    for file in _files(db, task):
+        if file.confirmed_at is None:
+            file.confirmed_at = now
+            count += 1
+    engine.learn_confirmed_names(db, task, user.id)
+    task.status, task.last_activity_at = "active", now
+    audit.record(db, "assistant_files_confirm", user_id=user.id, target_type="task", target_id=str(task.id),
+                 detail={"files": count}, ip=ip)
+    db.flush()
+    result = detail(db, task)
+    db.commit()
+    return result
+
+
+def _validate_input(body):
+    if body.template is not None:
+        raise AppError(422, "VALIDATION_ERROR", "模板功能尚未接入")
+    if body.use_kb or body.use_history:
+        raise AppError(422, "VALIDATION_ERROR", "参考资料功能尚未接入")
+    if set(body.params) - {"file_ids"}:
+        raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
+    text = body.message.strip()
+    if not 1 <= len(text) <= 4000:
+        raise AppError(422, "VALIDATION_ERROR", "请输入 1～4000 字的消息")
+    return text
+
+
+def _question(db: Session, task: Task, text: str, decisions=None):
+    from app.chat.service import _redact, _terms
+    from app.redaction.placeholders import NeutralAllocator
+    mapping = engine._load_full_map(db, task.id)
+    alloc = NeutralAllocator()
+    alloc.seed(mapping)
+    return _redact(text, mapping, _terms(db), decisions=decisions, allocator=alloc)
+
+
+def preview(db: Session, task: Task, body) -> dict:
+    from app.assistant.prompt import selected_files
+    _writable(db, task)
+    text = _validate_input(body)
+    selected_files(db, task, body.params)
+    result = _question(db, task, text)
+    return {"redacted": result.text, "changed": result.changed, "suspects": result.suspects}
+
+
+def _require_send(db: Session, task: Task):
+    _writable(db, task)
+    reason = availability(db, task)
+    if reason:
+        code = next((k for k, value in gateway.MESSAGES.items() if value == reason), "SESSION_BUSY")
+        raise AppError(409, code, reason)
+    # 所有会话的发送都先锁 owner，确保每人两个生成名额的检查与写入串行。
+    active = db.scalar(select(func.count()).select_from(AssistantMessage).join(Task, Task.id == AssistantMessage.task_id)
+                       .where(Task.owner_id == task.owner_id, AssistantMessage.role == "assistant",
+                              AssistantMessage.status.in_(("queued", "streaming")))) or 0
+    if active >= 2:
+        raise AppError(409, "SESSION_BUSY", "你已有两条回复正在生成，请稍后再发送")
+
+
+def _queue_reply(db: Session, task: Task, user_message: AssistantMessage) -> AssistantMessage:
+    reply = AssistantMessage(task_id=task.id, role="assistant", status="queued", template=user_message.template,
+                             params=user_message.params, extras={"user_message_id": user_message.id})
+    db.add(reply)
+    db.flush()
+    jobs.enqueue(db, "assist", {"task_id": str(task.id), "message_id": reply.id})
+    task.last_activity_at = utcnow()
+    return reply
+
+
+def send(db: Session, task: Task, user: User, body) -> dict:
+    from app.assistant.prompt import file_block, selected_files
+    text = _validate_input(body)
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    task = lock(db, task)
+    _require_send(db, task)
+    file_block(db, task, body.params)
+    db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
+    result = _question(db, task, text, decisions=[d.model_dump() for d in body.decisions])
+    if result.new_entries:
+        engine.write_full_map(db, task.id, {**engine._load_full_map(db, task.id), **result.new_entries})
+    params = {"file_ids": [str(f.id) for f in selected_files(db, task, body.params)]}
+    row = AssistantMessage(task_id=task.id, role="user", content_redacted=result.text, status="done",
+                           params=params, template=body.template)
+    db.add(row)
+    db.flush()
+    reply = _queue_reply(db, task, row)
+    response = {"user": message_out(db, task, row), "assistant": message_out(db, task, reply)}
+    db.commit()
+    return response
+
+
+def list_messages(db: Session, task: Task, after_id: int) -> dict:
+    rows = db.scalars(select(AssistantMessage).where(AssistantMessage.task_id == task.id, AssistantMessage.id > after_id)
+                      .order_by(AssistantMessage.id))
+    return {"items": [message_out(db, task, row) for row in rows]}
+
+
+def get_delta(db: Session, task: Task, mid: int, offset: int) -> dict:
+    from app.assistant.stream import incremental
+    row = owned_message(db, task, mid)
+    text, new_offset = incremental(row.content_redacted, engine.load_redaction_map(db, task.id), offset,
+                                   finished=row.status not in ("queued", "streaming"))
+    if offset > new_offset:
+        raise AppError(422, "VALIDATION_ERROR", "消息偏移量不正确")
+    return {"status": row.status, "text_from_offset": text, "offset": new_offset, "error": error_text(row.error_code)}
+
+
+def stop(db: Session, task: Task, mid: int) -> dict:
+    task = lock(db, task)
+    row = owned_message(db, task, mid)
+    db.refresh(row, with_for_update=True)
+    if row.role != "assistant":
+        raise AppError(409, "SESSION_BUSY", "只能停止助手回复")
+    if row.status == "queued":
+        row.status = "stopped"
+    elif row.status == "streaming":
+        row.extras = {**row.extras, "stop_requested": True}
+    result = message_out(db, task, row)
+    db.commit()
+    return result
+
+
+def retry(db: Session, task: Task, user: User, mid: int) -> dict:
+    from app.assistant.prompt import file_block
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    task = lock(db, task)
+    _require_send(db, task)
+    previous = owned_message(db, task, mid)
+    if previous.role != "assistant" or previous.status != "failed":
+        raise AppError(409, "SESSION_BUSY", "只能重试失败的回复")
+    source = owned_message(db, task, int(previous.extras.get("user_message_id", 0)))
+    if source.role != "user":
+        raise AppError(409, "SESSION_BUSY", "原始消息不存在")
+    file_block(db, task, source.params)
+    reply = _queue_reply(db, task, source)
+    result = {"user": message_out(db, task, source), "assistant": message_out(db, task, reply)}
     db.commit()
     return result
 

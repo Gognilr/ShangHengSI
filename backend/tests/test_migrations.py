@@ -673,6 +673,8 @@ ENUM_COLUMNS[('tasks','status')].append('active')
 ENUM_COLUMNS[('assistant_messages','role')] = ['user', 'assistant']
 ENUM_COLUMNS[('assistant_messages','template')] = ['translate', 'summary', 'reply', 'crosscheck', 'compare']
 ENUM_COLUMNS[('assistant_messages','status')] = ['queued', 'streaming', 'done', 'failed', 'stopped']
+ENUM_COLUMNS[('jobs','type')].append('assist')
+ENUM_COLUMNS[('llm_calls','purpose')].append('assist')
 
 
 def _parse_schema(spec: str):
@@ -1552,6 +1554,36 @@ def test_t47_11_assistant_upgrade_downgrade():
             assert conn.execute("SELECT id FROM tasks WHERE id=%s", (tid,)).fetchone() == (tid,)
             assert not conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='tasks' AND column_name='kind'").fetchall()
             assert not conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='task_files' AND column_name='confirmed_at'").fetchall()
+        command.upgrade(cfg, "head")
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_d03_assist_queue_and_purpose_upgrade_downgrade():
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, "0023a")
+        with psycopg.connect(url, autocommit=True) as conn:
+            owner = _insert_user(conn)
+            tid = _insert_task(conn, owner)
+            conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('assist','{}',now())")
+            conn.execute("INSERT INTO llm_calls(purpose,model_name,status,created_at) VALUES('assist','mock','sent',now())")
+            conn.execute("INSERT INTO assistant_messages(task_id,role,status,created_at,updated_at) "
+                         "VALUES(%s,'assistant','queued',now(),now())", (tid,))
+        command.downgrade(cfg, "0023")
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert conn.execute("SELECT status,error_code FROM assistant_messages").fetchone() == ("failed", "ASSIST_INTERRUPTED")
+            assert conn.execute("SELECT count(*) FROM jobs WHERE type='assist'").fetchone() == (0,)
+            assert conn.execute("SELECT count(*) FROM llm_calls WHERE purpose='assist'").fetchone() == (0,)
+            with pytest.raises(errors.CheckViolation):
+                conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('assist','{}',now())")
+            with pytest.raises(errors.CheckViolation):
+                conn.execute("INSERT INTO llm_calls(purpose,model_name,status,created_at) VALUES('assist','mock','sent',now())")
         command.upgrade(cfg, "head")
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:

@@ -2,7 +2,7 @@
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
 from app.tasks.schemas import TaskFileOut, UtcDatetime
 
@@ -44,3 +44,26 @@ class SessionDetail(SessionItem):
     can_send: bool
     send_reason: str | None
     code_count: int
+
+
+class MessageDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    start: StrictInt = Field(ge=0)
+    end: StrictInt = Field(gt=0)
+    decision: Literal["replace", "keep"]
+    category: Literal["ORG", "PERSON", "CUSTOM"] | None = None
+
+
+class MessageIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(default="", max_length=4000)
+    template: Literal["translate", "summary", "reply", "crosscheck", "compare"] | None = None
+    params: dict = Field(default_factory=dict)
+    decisions: list[MessageDecision] = Field(default_factory=list)
+    use_kb: StrictBool = False
+    use_history: StrictBool = False
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def trim_message(cls, value):
+        return value.strip() if isinstance(value, str) else value

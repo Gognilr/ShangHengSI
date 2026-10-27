@@ -155,11 +155,15 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str],
     return sorted(reasons, key=lambda r: (r.position, r.category))
 
 
-def recheck_context(db: Session, task_id: uuid.UUID | None) -> RecheckContext:
+def recheck_context(db: Session, task_id: uuid.UUID | None, extra_task_ids: Iterable[uuid.UUID] = ()) -> RecheckContext:
     """汇集对照表真实值（有任务时）与启用中的已记住名称、自定义敏感词。"""
     from app.redaction.engine import load_placeholders, load_real_values  # 避免循环导入
 
     values = load_real_values(db, task_id) if task_id is not None else []
     codes = load_placeholders(db, task_id) if task_id is not None else []
+    for extra_id in dict.fromkeys(extra_task_ids):
+        if extra_id != task_id:
+            values.extend(load_real_values(db, extra_id))
+            codes.extend(load_placeholders(db, extra_id))
     rows = db.scalars(select(RedactionTerm.term_enc).where(RedactionTerm.enabled.is_(True)))
     return RecheckContext(real_values=values, terms=[crypto.decrypt_text(blob) for blob in rows], placeholders=codes)

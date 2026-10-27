@@ -202,6 +202,7 @@ def run_worker(
     *,
     review_concurrency: int = 8,
     parse_concurrency: int = 2,
+    assist_concurrency: int = 4,
     idle_seconds: float = IDLE_SECONDS,
     heartbeat_seconds: float = HEARTBEAT_SECONDS,
     periodic_tick_seconds: float = PERIODIC_TICK_SECONDS,
@@ -210,6 +211,7 @@ def run_worker(
     """启动并发线程，主线程负责定时工作；stop 置位后等待正在处理的任务结束再返回。"""
     groups = (("review", review_concurrency, ("review",)),
               ("parse", parse_concurrency, ("parse", "law_import")),
+              ("assist", assist_concurrency, ("assist",)),
               ("maintenance", 1, ("backup", "retention", "law_embed", "law_sync", "template_embed")))
     threads = []
     for group, concurrency, types in groups:
@@ -257,18 +259,20 @@ def main() -> None:
     import app.laws.job  # noqa: F401  导入即注册 law_import 处理函数
     import app.lawsync.job  # noqa: F401  导入即注册同步与到期检查
     import app.standards.job  # noqa: F401  注册范本向量化
+    import app.assistant.job  # noqa: F401  注册助手流式生成
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
-    logger.info("worker 启动，版本 %s，审核并发 %s，解析并发 %s，维护并发 1",
-                settings.app_version, settings.worker_review_concurrency, settings.worker_parse_concurrency)
-    pool_size = settings.worker_review_concurrency + settings.worker_parse_concurrency + 2
+    logger.info("worker 启动，版本 %s，审核并发 %s，解析并发 %s，助手并发 %s，维护并发 1",
+                settings.app_version, settings.worker_review_concurrency, settings.worker_parse_concurrency,
+                settings.worker_assist_concurrency)
+    pool_size = settings.worker_review_concurrency + settings.worker_parse_concurrency + settings.worker_assist_concurrency + 2
     factory = sessionmaker(bind=get_engine(pool_size=pool_size, max_overflow=pool_size), expire_on_commit=False)
     with factory() as db:
         app.laws.job.enqueue_embed(db)
         db.commit()
     run_worker(factory, _stop, review_concurrency=settings.worker_review_concurrency,
-               parse_concurrency=settings.worker_parse_concurrency)
+               parse_concurrency=settings.worker_parse_concurrency, assist_concurrency=settings.worker_assist_concurrency)
     logger.info("worker 已退出")
 
 

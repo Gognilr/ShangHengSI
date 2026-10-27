@@ -46,6 +46,7 @@ class Settings:
     app_version: str
     convert_spool_dir: str
     lawsync_proxy: str = ""
+    worker_assist_concurrency: int = 4
 
 
 def load_settings() -> Settings:
@@ -59,6 +60,7 @@ def load_settings() -> Settings:
         ocr_model_dir=os.environ.get("OCR_MODEL_DIR", ""),
         worker_review_concurrency=_concurrency_env("WORKER_REVIEW_CONCURRENCY", 8),
         worker_parse_concurrency=_concurrency_env("WORKER_PARSE_CONCURRENCY", 2),
+        worker_assist_concurrency=_concurrency_env("WORKER_ASSIST_CONCURRENCY", 4),
         tz=os.environ.get("TZ", "Asia/Shanghai"),
         max_upload_mb=_int_env("MAX_UPLOAD_MB", 30),
         app_version=os.environ.get("APP_VERSION", "dev"),

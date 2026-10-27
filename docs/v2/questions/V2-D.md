@@ -8,12 +8,13 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
-| V2Q-131 | D-03 要求 assist job 与 llm_calls.purpose=assist，但文件范围漏列 db/models.py、db/jobs.py 和迁移结构期望测试 | 请求补入 db/models.py（仅同步 jobs.type / llm_calls.purpose 的 assist 枚举）、db/jobs.py（仅助手 job 最终失败后的消息收尾）；在卡中已约定的 0023a 迁移同步两项数据库 CHECK，在 test_migrations.py 同步两项枚举期望并保持严格检查，追加失败/重启回归测试。防止未注册处理函数、心跳超时用尽等失败留下 queued / streaming 消息、一直占用生成名额。增量还原已先完成，16 项测试通过；范围外文件未改 | D-03 队列、记录、失败生命周期及对应测试 | 接入 assist 队列前 |
+| V2Q-132 | 新增默认 4 个 assist 线程后，旧 worker 测试仍固定默认 11 个线程、连接池 12 及无 assist 的启动参数 | 请求仅同步 test_default_worker_thread_groups、test_startup_ignores_legacy_variable_and_warns_once 两处结构期望：线程数 15、连接池与溢出数 16、启动参数含 assist_concurrency=4，并追加 assist 分组数量断言；保留审核/解析/维护组数量、唯一 worker_id、旧环境变量告警、启动自检等全部行为断言。新增助手组隔离/配置测试已追加。旧断言未改 | backend/tests/test_worker.py；D-03 完成判定 | 本次收尾前 |
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-131 | D-03 文件范围遗漏 assist 队列、外发用途与公共失败生命周期的必要文件 | 用户确认最小补充：db/models.py 仅同步 jobs.type / llm_calls.purpose 的 assist 枚举；db/jobs.py 仅补助手 job 最终失败收尾；新 0023a 同步两项 CHECK，在 test_migrations.py 同步两项枚举期望并保持严格检查，追加队列失败/重启回归测试 | 2026-10-27 |
 | V2Q-130 | D-01 新结构与 test_migrations.py 固定的 32 表及旧列、主外键、枚举期望冲突；本批规定旧测试只能追加 | 用户确认允许只同步迁移结构期望（完整表集合为 33 表、新列、主外键、枚举、索引和附加 CHECK 数量），保持严格相等检查、原有业务用例和回归样本不变；补充部分索引谓词与 user 消息必须 done 的验证 | 2026-10-27 |
 | V2Q-129 | D-01 文件范围遗漏公共权限依赖、脱敏路由、审核确认服务；D-01 的解析链路先依赖 D-02 的中性代号接口 | 用户 2026-10-27 确认最小调整：D-01 增加 backend/app/security/deps.py、backend/app/redaction/router.py、backend/app/review/service.py 及对应追加测试，只实现既定权限隔离、脱敏复用和 confirmed_at 写入；D-01、D-02 连续实现、分别提交，D-02 接通后补跑 D-01 真实解析集成测试，再判定 D-01 完成。不改设计文档 | 2026-10-27 |
 | V2Q-115 | 会话放在哪里：新建一套文件、解析、脱敏、对照表的表，还是复用审核任务的表 | 按建议（用户 2026-10-27 确认）：复用：会话就是 `kind='assistant'` 的任务。文件、解析、脱敏确认页、对照表（加密）、出口复检、owner 校验、删除与保留期全部沿用；新增消息表 assistant\_messages。审核侧接口按 kind 隔离，会话不出现在审核历史 | 2026-10-27 |

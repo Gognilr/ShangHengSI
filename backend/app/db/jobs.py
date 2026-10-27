@@ -12,7 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
-from app.db.models import BackupRecord, Job, ReviewRun, Task
+from app.db.models import AssistantMessage, BackupRecord, Job, ReviewRun, Task
 
 # 心跳超过此时间未更新的 running 任务视为 worker 异常退出（SPEC 7.5）
 STALE_AFTER = timedelta(minutes=15)
@@ -114,6 +114,14 @@ def finalize_failed(db: Session, job_type: str, payload: object) -> None:
         # 同一时间只有一个备份（advisory lock），job 最终失败时仍为 running 的记录就是它留下的（M7 设计 3.4）
         db.execute(update(BackupRecord).where(BackupRecord.status == "running")
                    .values(status="failed", error_message=BACKUP_INTERRUPTED_MSG, finished_at=utcnow()))
+    elif job_type == "assist":
+        try:
+            mid = int(payload["message_id"])
+        except (KeyError, TypeError, ValueError):
+            return
+        message = db.get(AssistantMessage, mid, with_for_update=True)
+        if message is not None and message.role == "assistant" and message.task_id == _uuid(payload, "task_id") and message.status in ("queued", "streaming"):
+            message.status, message.error_code = "failed", "ASSIST_INTERRUPTED"
 
 
 def requeue_stale(db: Session, *, stale_after: timedelta = STALE_AFTER) -> int:

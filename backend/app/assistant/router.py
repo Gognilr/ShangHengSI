@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from sqlalchemy.orm import Session
 
 from app.assistant import service
-from app.assistant.schemas import SessionDetail, SessionPage, SessionPatch
+from app.assistant.schemas import MessageIn, SessionDetail, SessionPage, SessionPatch
 from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import _parse_id, current_user, load_owned_task
@@ -82,3 +82,38 @@ def raw(file: TaskFile = Depends(owned_file)):
         "Content-Disposition": f"inline; filename*=UTF-8''{quote(file.original_name, safe='')}",
         "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; sandbox"})
+
+
+@router.post("/{id}/confirm", response_model=SessionDetail)
+def confirm(request: Request, task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return service.confirm(db, task, user, client_ip(request))
+
+
+@router.post("/{id}/preview")
+def preview(body: MessageIn, task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    return service.preview(db, task, body)
+
+
+@router.post("/{id}/messages", status_code=201)
+def send(body: MessageIn, task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return service.send(db, task, user, body)
+
+
+@router.get("/{id}/messages")
+def messages(after_id: int = Query(0, ge=0), task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    return service.list_messages(db, task, after_id)
+
+
+@router.get("/{id}/messages/{mid}")
+def delta(mid: int, offset: int = Query(0, ge=0), task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    return service.get_delta(db, task, mid, offset)
+
+
+@router.post("/{id}/messages/{mid}/stop")
+def stop(mid: int, task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    return service.stop(db, task, mid)
+
+
+@router.post("/{id}/messages/{mid}/retry", status_code=201)
+def retry(mid: int, task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return service.retry(db, task, user, mid)

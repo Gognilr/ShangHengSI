@@ -489,3 +489,39 @@ def test_law_embed_runs_in_maintenance_group(handlers, db_sessionmaker):
     with _Running(db_sessionmaker):
         assert _wait(lambda: _statuses(db_sessionmaker)[jid] == 'done')
     assert len(seen) == 1 and seen[0].startswith('worker-maintenance-')
+
+
+def test_assist_group_does_not_wait_for_review_slot(handlers, db_sessionmaker):
+    release = threading.Event()
+    review_started = threading.Event()
+    seen = []
+
+    def review(db, payload):
+        review_started.set()
+        release.wait(5)
+
+    handlers.update({"review": review, "assist": lambda db, payload: seen.append(threading.current_thread().name)})
+    review_id = _enqueue(db_sessionmaker, "review", {})
+    assist_ids = [_enqueue(db_sessionmaker, "assist", {}) for _ in range(2)]
+    with _Running(db_sessionmaker, review_concurrency=1, parse_concurrency=1, assist_concurrency=2):
+        try:
+            assert review_started.wait(5)
+            assert _wait(lambda: all(_statuses(db_sessionmaker)[jid] == "done" for jid in assist_ids))
+            assert _statuses(db_sessionmaker)[review_id] == "running"
+            assert len(seen) == 2 and all(name.startswith("worker-assist-") for name in seen)
+        finally:
+            release.set()
+
+
+@pytest.mark.parametrize("value", ["0", "33", "invalid"])
+def test_assist_concurrency_rejects_invalid_configuration(monkeypatch, value):
+    from app.config import load_settings
+    monkeypatch.setenv("WORKER_ASSIST_CONCURRENCY", value)
+    with pytest.raises(RuntimeError, match="WORKER_ASSIST_CONCURRENCY"):
+        load_settings()
+
+
+def test_assist_concurrency_default(monkeypatch):
+    from app.config import load_settings
+    monkeypatch.delenv("WORKER_ASSIST_CONCURRENCY", raising=False)
+    assert load_settings().worker_assist_concurrency == 4
