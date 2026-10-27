@@ -87,7 +87,7 @@ async function submit() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="重新审核" width="640px" top="24px" class="rerun-dialog" :close-on-click-modal="false" append-to-body>
+  <el-dialog v-model="visible" title="重新审核" width="640px" top="24px" class="rerun-dialog u7-rerundialog" :close-on-click-modal="false" append-to-body>
     <el-form label-width="96px" @submit.prevent="submit">
       <el-form-item label="立场">
         <el-radio-group v-model="form.stance">
@@ -126,8 +126,8 @@ async function submit() {
 </template>
 
 <style scoped>
-:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
-:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+:global(.u7-rerundialog .el-dialog__title), :global(.u7-rerundialog .el-drawer__title) { font: var(--si-font-h2); }
+:global(.u7-rerundialog .el-dialog__body), :global(.u7-rerundialog .el-drawer__body) { font: var(--si-font-body); }
 
 /* el-dialog 的根节点被 Teleport 移出组件，按唯一类名限定才能命中。 */
 :global(.rerun-dialog) { max-height: calc(100vh - 48px); margin-bottom: 24px; display: flex; flex-direction: column; }

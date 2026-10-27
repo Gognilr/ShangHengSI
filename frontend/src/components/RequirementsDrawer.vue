@@ -66,7 +66,7 @@ const scopeLine = computed(
 </script>
 
 <template>
-  <el-drawer v-model="visible" title="审核要求" direction="rtl" :size="560">
+  <el-drawer class="u7-requirementsdrawer" v-model="visible" title="审核要求" direction="rtl" :size="560">
     <div v-loading="loading" class="body">
       <p class="intro">AI 将按以下要求逐条审核。公司补充要求只能增加审核内容，不能取消内置要求。</p>
       <p class="scope">当前范围：{{ scopeLine }}</p>
@@ -105,8 +105,8 @@ const scopeLine = computed(
 </template>
 
 <style scoped>
-:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
-:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+:global(.u7-requirementsdrawer .el-dialog__title), :global(.u7-requirementsdrawer .el-drawer__title) { font: var(--si-font-h2); }
+:global(.u7-requirementsdrawer .el-dialog__body), :global(.u7-requirementsdrawer .el-drawer__body) { font: var(--si-font-body); }
 
 .body {
   min-height: 120px;

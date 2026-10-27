@@ -73,7 +73,7 @@ async function submit() {
 </script>
 
 <template>
-  <el-dialog
+  <el-dialog class="u7-changepassworddialog"
     v-model="visible"
     title="修改密码"
     width="480px"
@@ -116,8 +116,8 @@ async function submit() {
 </template>
 
 <style scoped>
-:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
-:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+:global(.u7-changepassworddialog .el-dialog__title), :global(.u7-changepassworddialog .el-drawer__title) { font: var(--si-font-h2); }
+:global(.u7-changepassworddialog .el-dialog__body), :global(.u7-changepassworddialog .el-drawer__body) { font: var(--si-font-body); }
 
 .tip {
   margin-bottom: 16px;

@@ -101,7 +101,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column label="操作" min-width="180"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="detail(row)">查看条款</el-button><el-button link type="primary" :disabled="saving" @click="open(row)">编辑</el-button><el-button link type="danger" :disabled="saving" @click="remove(row)">删除</el-button></template></el-table-column>
       </el-table>
     </section>
-    <el-dialog v-model="dialog" :title="editing ? '编辑范本设置' : '上传公司范本'" width="640px" :close-on-click-modal="!saving">
+    <el-dialog class="u7-templates" v-model="dialog" :title="editing ? '编辑范本设置' : '上传公司范本'" width="640px" :close-on-click-modal="!saving">
       <el-alert v-if="formError" :title="formError" type="error" :closable="false" class="gap" />
       <el-form label-position="top">
         <el-form-item label="范本名称"><el-input v-model="form.name" maxlength="100" show-word-limit /></el-form-item>
@@ -111,7 +111,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
       </el-form>
       <template #footer><el-button :disabled="saving" @click="dialog = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">{{ editing ? '保存设置' : '上传并拆分条款' }}</el-button></template>
     </el-dialog>
-    <el-dialog v-model="detailOpen" title="范本条款" width="640px" :close-on-click-modal="!saving">
+    <el-dialog class="u7-templates" v-model="detailOpen" title="范本条款" width="640px" :close-on-click-modal="!saving">
       <div v-loading="detailLoading">
         <el-alert v-if="detailError" :title="detailError" type="error" :closable="false" show-icon />
         <template v-if="viewing">
@@ -132,8 +132,8 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 </template>
 
 <style scoped>
-:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
-:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+:global(.u7-templates .el-dialog__title), :global(.u7-templates .el-drawer__title) { font: var(--si-font-h2); }
+:global(.u7-templates .el-dialog__body), :global(.u7-templates .el-drawer__body) { font: var(--si-font-body); }
 
 h2 { font: var(--si-font-h2); margin: 0 0 16px; overflow-wrap: anywhere; }
 .plain { font: var(--si-font-body); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--el-fill-color-light); padding: 12px; border-left: 3px solid var(--el-border-color); }

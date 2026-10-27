@@ -516,7 +516,7 @@ onBeforeUnmount(stopPolling)
       <el-pagination v-if="auditTotal > 20" v-model:current-page="auditPage" class="pager" :page-size="20" :total="auditTotal" layout="total, prev, pager, next" @current-change="loadAudit" />
     </section>
 
-    <el-drawer v-model="drawer" title="外发记录详情" direction="rtl" size="560px">
+    <el-drawer class="u7-data" v-model="drawer" title="外发记录详情" direction="rtl" size="560px">
       <el-alert v-if="detailError" type="error" :closable="false" show-icon :title="detailError" />
       <div v-loading="detailLoading">
         <template v-if="detail">
@@ -540,8 +540,8 @@ onBeforeUnmount(stopPolling)
 </template>
 
 <style scoped>
-:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
-:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+:global(.u7-data .el-dialog__title), :global(.u7-data .el-drawer__title) { font: var(--si-font-h2); }
+:global(.u7-data .el-dialog__body), :global(.u7-data .el-drawer__body) { font: var(--si-font-body); }
 
 h3 {
   margin: 20px 0 16px;

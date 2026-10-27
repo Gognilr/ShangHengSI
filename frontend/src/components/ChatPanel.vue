@@ -216,7 +216,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
     </span>
   </el-tooltip>
 
-  <el-drawer v-model="open" title="追问" size="480px" direction="rtl" append-to-body
+  <el-drawer class="u7-chatpanel" v-model="open" title="追问" size="480px" direction="rtl" append-to-body
     :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy"
     @opened="scrollToLatest">
     <div class="chat-panel">
@@ -244,7 +244,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
     </div>
   </el-drawer>
 
-  <el-dialog :model-value="confirmOpen" title="确认发送内容" width="640px" top="24px" append-to-body
+  <el-dialog class="u7-chatpanel" :model-value="confirmOpen" title="确认发送内容" width="640px" top="24px" append-to-body
     :close-on-click-modal="false" @update:model-value="cancelConfirm">
     <div class="chat-confirm-body">
     <p>将发送：</p>
@@ -272,8 +272,8 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 </template>
 
 <style scoped>
-:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
-:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+:global(.u7-chatpanel .el-dialog__title), :global(.u7-chatpanel .el-drawer__title) { font: var(--si-font-h2); }
+:global(.u7-chatpanel .el-dialog__body), :global(.u7-chatpanel .el-drawer__body) { font: var(--si-font-body); }
 
 .chat-trigger { display: inline-block; }
 .chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }

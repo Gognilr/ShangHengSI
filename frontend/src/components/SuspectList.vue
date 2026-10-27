@@ -97,7 +97,7 @@ function submitReplace() {
       </el-collapse>
     </template>
 
-    <el-dialog v-model="dlg" title="替换为哪一类" width="480px" append-to-body>
+    <el-dialog class="u7-suspectlist" v-model="dlg" title="替换为哪一类" width="480px" append-to-body>
       <p class="ctx">{{ target?.text }}</p>
       <el-radio-group v-model="category">
         <el-radio v-for="o in categoryOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
@@ -112,8 +112,8 @@ function submitReplace() {
 </template>
 
 <style scoped>
-:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
-:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+:global(.u7-suspectlist .el-dialog__title), :global(.u7-suspectlist .el-drawer__title) { font: var(--si-font-h2); }
+:global(.u7-suspectlist .el-dialog__body), :global(.u7-suspectlist .el-drawer__body) { font: var(--si-font-body); }
 
 .suspect-table { border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
 .ctx {

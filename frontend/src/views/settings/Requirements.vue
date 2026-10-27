@@ -325,7 +325,7 @@ onMounted(() => {
       </el-table>
     </section>
 
-    <el-dialog v-model="dialog" :title="editing ? `编辑 ${editing.code}` : '新增公司补充要求'" width="640px" :close-on-click-modal="false">
+    <el-dialog class="u7-requirements" v-model="dialog" :title="editing ? `编辑 ${editing.code}` : '新增公司补充要求'" width="640px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">
         <el-form-item label="内容" prop="text">
           <el-input v-model="form.text" type="textarea" :rows="4" maxlength="300" show-word-limit />
@@ -361,7 +361,7 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <el-dialog :model-value="viewing !== null" :title="viewing ? `第 ${viewing.version} 版` : ''" width="640px" @close="viewing = null">
+    <el-dialog class="u7-requirements" :model-value="viewing !== null" :title="viewing ? `第 ${viewing.version} 版` : ''" width="640px" @close="viewing = null">
       <template v-if="viewing">
         <h3 class="first">当时启用的公司补充要求（{{ viewing.snapshot.requirements.length }} 条）</h3>
         <el-empty v-if="!viewing.snapshot.requirements.length" description="当时没有启用的补充要求" :image-size="48" />
@@ -381,8 +381,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
-:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+:global(.u7-requirements .el-dialog__title), :global(.u7-requirements .el-drawer__title) { font: var(--si-font-h2); }
+:global(.u7-requirements .el-dialog__body), :global(.u7-requirements .el-drawer__body) { font: var(--si-font-body); }
 
 h3 {
   margin: 20px 0 16px;
