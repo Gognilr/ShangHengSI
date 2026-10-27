@@ -6,13 +6,9 @@ defineProps<{ coverage: RunDetail['coverage']; sanctions: RunDetail['sanctions']
 </script>
 
 <template>
-  <section class="panel coverage">
-    <p v-if="docSummary" class="document-summary">{{ docSummary }}</p>
+  <div class="coverage">
     <template v-if="coverage">
       <p class="summary">{{ coverage.summary }}</p>
-      <ul v-if="coverage.notes.length">
-        <li v-for="(note, i) in coverage.notes" :key="i">{{ note }}</li>
-      </ul>
     </template>
     <div class="sanctions">
       <b>制裁结论：</b><span :class="{ high: sanctions.level === 'high' }">{{ sanctionsLabel(sanctions.level) }}</span>
@@ -21,12 +17,18 @@ defineProps<{ coverage: RunDetail['coverage']; sanctions: RunDetail['sanctions']
       </ul>
       <div class="hint">未联网核查，基于模型自身知识，需合规人员确认最新制裁与出口管制规定</div>
     </div>
-  </section>
+    <el-collapse v-if="docSummary || coverage?.notes.length">
+      <el-collapse-item :title="`文件摘要与限制事项（${coverage?.notes.length ?? 0} 条）`" name="details">
+        <p v-if="docSummary" class="document-summary">{{ docSummary }}</p>
+        <ul v-if="coverage?.notes.length"><li v-for="(note, i) in coverage.notes" :key="i">{{ note }}</li></ul>
+      </el-collapse-item>
+    </el-collapse>
+  </div>
 </template>
 
 <style scoped>
-.coverage { padding: 20px 24px; background: var(--el-fill-color-light); }
-.document-summary { margin: 0 0 16px; padding-bottom: 16px; border-bottom: 1px solid var(--el-border-color-light); white-space: pre-wrap; overflow-wrap: anywhere; }
+.coverage { margin-top: 12px; }
+.document-summary { margin: 0 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .summary {
   margin: 0 0 8px;
 }
