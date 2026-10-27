@@ -1,6 +1,4 @@
 """会话 CRUD：任务行锁串行化文件修改，审计只写标识和数量。"""
-import uuid
-
 from sqlalchemy import delete, exists, func, select
 from sqlalchemy.orm import Session
 
@@ -9,7 +7,7 @@ from app.admin.settings_store import get_setting
 from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, DocNode, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
+from app.db.models import AssistantMessage, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
 from app.llm import gateway, usage
 from app.redaction import engine
 from app.security.errors import AppError

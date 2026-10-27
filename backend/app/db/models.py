@@ -1,4 +1,4 @@
-"""全部 32 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量、范本表。
+"""全部 33 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量、范本、会话消息表。
 
 约定见 SPEC 18.1：时间 timestamptz（UTC）；枚举用 varchar + CHECK；_enc 结尾为主密钥加密后的 bytea；
 任务下属表的 task_id 外键均 ON DELETE CASCADE。
@@ -595,7 +595,7 @@ class AssistantMessage(Base):
         CheckConstraint("role <> 'user' OR status = 'done'", name="user_done"),
         Index("ix_assistant_messages_task_id_id", "task_id", "id"),
         Index("ix_assistant_messages_one_pending", "task_id", unique=True,
-              postgresql_where=text("role = 'assistant' AND status IN ('queued','streaming')")),
+              postgresql_where=text("status IN ('queued','streaming')")),
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     task_id: Mapped[uuid.UUID] = _task_fk()

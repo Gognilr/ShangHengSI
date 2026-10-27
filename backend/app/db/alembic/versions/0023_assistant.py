@@ -36,7 +36,7 @@ def upgrade():
         sa.CheckConstraint("role <> 'user' OR status = 'done'", name="user_done"))
     op.create_index("ix_assistant_messages_task_id_id", "assistant_messages", ["task_id", "id"])
     op.create_index("ix_assistant_messages_one_pending", "assistant_messages", ["task_id"], unique=True,
-                    postgresql_where=sa.text("role = 'assistant' AND status IN ('queued','streaming')"))
+                    postgresql_where=sa.text("status IN ('queued','streaming')"))
 
 
 def downgrade():
