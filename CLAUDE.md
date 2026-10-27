@@ -58,8 +58,10 @@ V1.0 已于 2026-10-24 验收并正式安装，git 标签 `v1.0.0`（011d417）�
 docker build -t aireview-backend-test --target test backend
 
 # 启动测试用的 PostgreSQL（首次创建；之后用 docker start aireview-test-db）
+# V2-E-04 起测试库必须带 pgvector：用自建的 aireview-db 镜像（旧的 postgres:16.15 测试库容器先 docker rm -f 再按此重建）
+docker build -t aireview-db:dev deploy/db
 docker network create aireview-test
-docker run -d --name aireview-test-db --network aireview-test -e POSTGRES_PASSWORD=test postgres:16.15
+docker run -d --name aireview-test-db --network aireview-test -e POSTGRES_PASSWORD=test aireview-db:dev
 
 # 运行全部测试（数据库测试会自建、自删独立的临时库）
 docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgres:test@aireview-test-db:5432/postgres -v "${PWD}/backend:/srv/backend" aireview-backend-test pytest -q

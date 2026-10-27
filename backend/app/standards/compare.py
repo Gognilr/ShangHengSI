@@ -7,6 +7,7 @@ from app.embedding import engine
 from app.review.clauses import first_level
 from app.security import crypto
 from app.standards.service import clauses,decoded
+from app.redaction.outbound import escape_document_tags
 
 CLAUSE_PAIR_MIN=0.70
 
@@ -25,6 +26,11 @@ def limit_pairs(pairs):
     return result
 
 
+def _title(nodes,loc):
+    # 取已随正文外发的脱敏文字：原文截断可能把名称切成半截，碎片不会再被对照表匹配（V2-E-09）。
+    return escape_document_tags(nodes[loc].redacted_text[:60]) if loc in nodes else ''
+
+
 def start(db,ctx,run,nodes):
     ctx.template_candidates=[]
     ctx.template_stats=dict(total=0,sent=0,blocked=False)
@@ -34,12 +40,12 @@ def start(db,ctx,run,nodes):
         db.commit();return
     stored=db.scalars(select(TaskClauseVector).where(TaskClauseVector.task_id==ctx.task.id)).all()
     if stored:
-        source=[dict(loc=r.first_loc,locs=r.locs,vector=r.embedding,title=nodes[r.first_loc].text[:60] if r.first_loc in nodes else '') for r in stored]
+        source=[dict(loc=r.first_loc,locs=r.locs,vector=r.embedding,title=_title(nodes,r.first_loc)) for r in stored]
     else:
         kinds=dict(db.execute(select(DocNode.loc,DocNode.kind).where(DocNode.task_id==ctx.task.id)).all())
         parsed=first_level([SimpleNamespace(loc=n.loc,kind=kinds.get(n.loc,'paragraph'),part='body',clause_no=n.clause_no,text=n.text) for n in nodes.values()])
         vectors=engine.embed([c.text for c in parsed],'passage') if parsed else []
-        source=[dict(loc=c.first_loc,locs=c.locs,title=c.title,vector=v) for c,v in zip(parsed,vectors)]
+        source=[dict(loc=c.first_loc,locs=c.locs,title=_title(nodes,c.first_loc),vector=v) for c,v in zip(parsed,vectors)]
     standards=clauses(db,row.id)
     for c in standards:
         if c.embedding is None:continue
@@ -61,7 +67,6 @@ def start(db,ctx,run,nodes):
 def prepare(db,ctx,chunk):
     from app.chat.service import _redact,_terms
     from app.redaction.engine import _load_full_map,write_full_map
-    from app.redaction.outbound import escape_document_tags
     from app.redaction.recheck import recheck,recheck_context
     ctx.template_section=''
     pairs=[p for p in ctx.template_candidates if chunk is None or set(p['locs'])&set(chunk.locs)]
@@ -85,10 +90,7 @@ def prepare(db,ctx,chunk):
         redacted=_redact(raw,mapping,terms)
         suspect=suspect or bool(redacted.suspects)
         mapping.update(redacted.new_entries)
-        # 本文件标题可能含原文，亦须走同一脱敏函数。
-        title=_redact(p['document_title'],mapping,terms)
-        mapping.update(title.new_entries);suspect=suspect or bool(title.suspects)
-        output.append(f"[T{i}] 本文件位置：{p['loc']}（{title.text}）\n{redacted.text}")
+        output.append(f"[T{i}] 本文件位置：{p['loc']}（{p['document_title']}）\n{redacted.text}")
     write_full_map(db,ctx.task.id,mapping)
     db.commit()
     bounded=[];size=len('【公司范本对照】\n')
