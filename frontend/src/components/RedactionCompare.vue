@@ -271,8 +271,8 @@ onBeforeUnmount(() => {
 .pending-label { display: block; margin-top: 8px; color: var(--el-color-warning); }
 .compare-original, .outbound-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; font-size: 14px; }
 .compare-original + .compare-original { margin-top: 8px; }
-.replaced { background: var(--kind-bg); border-bottom: 2px solid var(--kind-color); }
-.placeholder { font-family: inherit; background: var(--kind-bg); color: var(--kind-color); border-radius: 6px; padding: 0 4px; }
+.replaced { background: var(--kind-bg); border-bottom: 2px solid var(--kind-color); border-radius: var(--si-radius-paper); }
+.placeholder { font-family: inherit; background: var(--kind-bg); color: var(--kind-color); border-radius: var(--si-radius-paper); padding: 0 4px; }
 .linked { outline: 2px solid var(--el-color-primary); outline-offset: 1px; }
 .suspect { --kind-bg: var(--el-color-warning-light-9); --kind-color: var(--el-color-warning); background: var(--kind-bg); border-bottom: 2px solid var(--kind-color); }
 .kind-org { --kind-bg: var(--si-k-org-bg); --kind-color: var(--si-k-org); }

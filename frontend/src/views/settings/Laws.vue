@@ -133,8 +133,8 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column prop="title" label="法规标题" min-width="180" />
         <el-table-column prop="category" label="分类" min-width="80" />
         <el-table-column label="时效性" width="80"><template #default="{ row }">{{ LAW_STATUS[row.status] }}</template></el-table-column>
-        <el-table-column label="公布日期" width="100"><template #default="{ row }">{{ formatDate(row.published_on) }}</template></el-table-column>
-        <el-table-column label="施行日期" width="100"><template #default="{ row }">{{ formatDate(row.effective_on) }}</template></el-table-column>
+        <el-table-column label="公布日期" width="100" class-name="num"><template #default="{ row }">{{ formatDate(row.published_on) }}</template></el-table-column>
+        <el-table-column label="施行日期" width="100" class-name="num"><template #default="{ row }">{{ formatDate(row.effective_on) }}</template></el-table-column>
         <el-table-column label="全文" width="60"><template #default="{ row }">{{ row.has_fulltext ? '有' : '无' }}</template></el-table-column>
         <el-table-column label="替代法规" min-width="120"><template #default="{ row }">{{ row.replaced_by || '—' }}</template></el-table-column>
         <el-table-column label="来源" width="80"><template #default="{ row }">{{ LAW_SOURCE[row.source] }}</template></el-table-column>
@@ -146,7 +146,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
       <div class="section-head"><h2>法规库更新记录</h2><el-button :disabled="pending || saving" @click="openUpload('catalog')">导入目录</el-button><el-button :disabled="pending || saving" @click="openUpload('fulltext')">导入全文</el-button></div>
       <p v-if="pending" class="hint">有一项更新正在解析或等待确认，请处理后再导入。</p>
       <el-table :data="records" empty-text="尚无导入或同步记录">
-        <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="类型" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_KIND[row.kind] }}</template></el-table-column>
         <el-table-column label="状态" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_STATUS[row.status] }}</template></el-table-column>
         <el-table-column prop="added" label="新增" width="72" /><el-table-column prop="changed" label="变化" width="72" /><el-table-column prop="skipped" label="跳过" width="72" />
@@ -186,6 +186,9 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 h2 { font: var(--si-font-h2); margin: 0 0 16px; }
 h3 { font: var(--si-font-h4); margin: 24px 0 12px; }
 p { overflow-wrap: anywhere; white-space: pre-wrap; }

@@ -112,6 +112,9 @@ function submitReplace() {
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 .suspect-table { border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
 .ctx {
   white-space: pre-wrap;
@@ -121,7 +124,7 @@ function submitReplace() {
 .hit {
   background: var(--el-color-warning-light-8);
   color: inherit;
-  border-radius: 4px;
+  border-radius: var(--si-radius-paper);
   padding: 0 4px;
 }
 p.ctx {

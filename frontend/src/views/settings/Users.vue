@@ -175,7 +175,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="最近登录时间" width="170">
+        <el-table-column label="最近登录时间" width="170" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.last_login_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="220">
@@ -231,5 +231,8 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 .user-name { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 </style>

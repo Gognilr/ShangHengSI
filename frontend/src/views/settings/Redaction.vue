@@ -223,7 +223,7 @@ onMounted(() => {
             <el-switch :model-value="row.enabled" @change="(v: string | number | boolean) => toggleTerm(row, v)" />
           </template>
         </el-table-column>
-        <el-table-column label="添加时间" width="170">
+        <el-table-column label="添加时间" width="170" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="90">
@@ -253,10 +253,10 @@ onMounted(() => {
         <el-table-column label="记录人" width="120">
           <template #default="{ row }">{{ row.created_by_name ?? '—' }}</template>
         </el-table-column>
-        <el-table-column label="记录时间" width="170">
+        <el-table-column label="记录时间" width="170" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column prop="hit_count" label="命中次数" width="90" />
+        <el-table-column prop="hit_count" label="命中次数" width="90" class-name="num" />
         <el-table-column label="操作" width="90">
           <template #default="{ row }">
             <el-button link type="danger" @click="removeTerm(row, loadLearned)">删除</el-button>
@@ -284,7 +284,7 @@ onMounted(() => {
       <el-table v-loading="ourLoading" :data="ourParties" size="small" empty-text="尚未预置我方主体">
         <el-table-column prop="term" label="名称" min-width="260" />
         <el-table-column label="记录人" width="120"><template #default="{ row }">{{ row.created_by_name ?? '—' }}</template></el-table-column>
-        <el-table-column label="记录时间" width="170"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="记录时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="danger" :loading="ourRemoving === row.id" :disabled="!!ourRemoving" @click="removeOurParty(row)">删除</el-button></template></el-table-column>
       </el-table>
     </section>
@@ -294,8 +294,7 @@ onMounted(() => {
 <style scoped>
 h3 {
   margin: 0 0 16px;
-  font-size: 18px;
-  font-weight: 600;
+  font: var(--si-font-h2);
 }
 .row {
   display: flex;

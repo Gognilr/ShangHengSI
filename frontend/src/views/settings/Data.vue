@@ -412,7 +412,7 @@ onBeforeUnmount(stopPolling)
 
         <h3>最近 20 条备份记录</h3>
         <el-table :data="records?.items ?? []" size="small" empty-text="尚无备份记录">
-          <el-table-column label="开始时间" width="170">
+          <el-table-column label="开始时间" width="170" class-name="num">
             <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
           </el-table-column>
           <el-table-column label="方式" width="70">
@@ -426,7 +426,7 @@ onBeforeUnmount(stopPolling)
           <el-table-column label="文件名" min-width="200">
             <template #default="{ row }">{{ row.file_name ?? '—' }}</template>
           </el-table-column>
-          <el-table-column label="大小" width="100">
+          <el-table-column label="大小" width="100" class-name="num">
             <template #default="{ row }">{{ row.size_bytes === null ? '—' : formatBytes(row.size_bytes) }}</template>
           </el-table-column>
           <el-table-column label="说明" min-width="200">
@@ -461,7 +461,7 @@ onBeforeUnmount(stopPolling)
       </div>
       <el-alert v-if="logError" type="error" :closable="false" show-icon :title="logError" />
       <el-table v-loading="logLoading" :data="logs" size="small" empty-text="没有符合条件的外发记录" @row-click="openDetail">
-        <el-table-column label="时间" width="170">
+        <el-table-column label="时间" width="170" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="用户" width="110">
@@ -474,7 +474,7 @@ onBeforeUnmount(stopPolling)
           <template #default="{ row }">{{ llmPurposeLabel(row.purpose) }}</template>
         </el-table-column>
         <el-table-column prop="model_name" label="模型" width="130" />
-        <el-table-column prop="chars" label="字数" width="80" />
+        <el-table-column prop="chars" label="字数" width="80" class-name="num" />
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
             <el-tag size="small" :type="OUTBOUND_STATUS_TAG[row.status]">{{ outboundStatusLabel(row.status) }}</el-tag>
@@ -506,7 +506,7 @@ onBeforeUnmount(stopPolling)
       </div>
       <el-alert v-if="auditError" type="error" :closable="false" show-icon :title="auditError" />
       <el-table v-loading="auditLoading" :data="auditRows" size="small" empty-text="没有符合条件的审计日志">
-        <el-table-column label="时间" width="170"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="用户" width="100"><template #default="{ row }">{{ row.user_name ?? '—' }}</template></el-table-column>
         <el-table-column label="动作" width="120"><template #default="{ row }">{{ auditActionLabel(row.action) }}</template></el-table-column>
         <el-table-column label="对象" min-width="150"><template #default="{ row }">{{ row.target_type ? auditTargetLabel(row.target_type) : '—' }} / {{ row.target_id ?? '—' }}</template></el-table-column>
@@ -540,10 +540,12 @@ onBeforeUnmount(stopPolling)
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 h3 {
   margin: 20px 0 16px;
-  font-size: 18px;
-  font-weight: 600;
+  font: var(--si-font-h2);
 }
 h3.first {
   margin-top: 0;

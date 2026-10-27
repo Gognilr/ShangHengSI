@@ -95,7 +95,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column prop="name" label="范本名称" min-width="180" />
         <el-table-column label="文件类型" min-width="130"><template #default="{ row }">{{ row.doc_types.map(docTypeLabel).join('、') }}</template></el-table-column>
         <el-table-column label="立场" min-width="100"><template #default="{ row }">{{ row.stances.map(stanceLabel).join('、') }}</template></el-table-column>
-        <el-table-column prop="clause_count" label="条款数" width="80" />
+        <el-table-column prop="clause_count" label="条款数" width="80" class-name="num" />
         <el-table-column label="向量状态" width="100"><template #default="{ row }">{{ row.ready ? '可用' : '准备中' }}</template></el-table-column>
         <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
         <el-table-column label="操作" min-width="180"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="detail(row)">查看条款</el-button><el-button link type="primary" :disabled="saving" @click="open(row)">编辑</el-button><el-button link type="danger" :disabled="saving" @click="remove(row)">删除</el-button></template></el-table-column>
@@ -132,6 +132,9 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 h2 { font: var(--si-font-h2); margin: 0 0 16px; overflow-wrap: anywhere; }
 .plain { font: var(--si-font-body); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--el-fill-color-light); padding: 12px; border-left: 3px solid var(--el-border-color); }
 </style>

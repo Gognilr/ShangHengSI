@@ -116,6 +116,9 @@ async function submit() {
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 .tip {
   margin-bottom: 16px;
 }

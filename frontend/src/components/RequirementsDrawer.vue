@@ -105,6 +105,9 @@ const scopeLine = computed(
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 .body {
   min-height: 120px;
 }
@@ -114,19 +117,18 @@ const scopeLine = computed(
 .scope {
   margin: 0 0 8px;
   color: var(--el-text-color-secondary);
-  font-size: 13px;
+  font: var(--si-font-meta);
 }
 h4 {
-  display: flex; align-items: center; gap: 8px; margin: 24px 0 12px; font-size: 16px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px; margin: 24px 0 12px; font: var(--si-font-h3);
 }
 .ver,
 .hint {
   color: var(--el-text-color-secondary);
-  font-size: 13px;
-  font-weight: normal;
+  font: var(--si-font-meta);
 }
 .hint {
-  font-size: 12px;
+  font: var(--si-font-caption);
 }
 .list {
   margin: 0;

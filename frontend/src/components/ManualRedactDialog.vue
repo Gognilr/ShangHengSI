@@ -239,6 +239,9 @@ async function submit() {
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 :global(.manual-dialog) {
   /* 总高度随视口约束，正文收缩滚动，避免默认 15vh 顶距把底部操作推出窗口。 */
   max-height: calc(100vh - 48px);

@@ -226,7 +226,7 @@ async function testConnection() {
 </template>
 
 <style scoped>
-h3 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
+h3 { margin: 0 0 16px; font: var(--si-font-h2); }
 .model-form { margin-top: 16px; }
 .model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
 .three-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -235,7 +235,7 @@ h3 { margin: 0 0 16px; font-size: 18px; font-weight: 600; }
 .model-grid :deep(.el-input-number) { width: 100%; }
 .usage-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .stat-value { overflow-wrap: anywhere; }
-.stat-value small { font-size: 12px; font-weight: 400; color: var(--el-text-color-secondary); }
+.stat-value small { font: var(--si-font-caption); color: var(--el-text-color-secondary); }
 .note { width: 100%; margin-top: 4px; line-height: 1.5; }
 .actions { border-top: 1px solid var(--el-border-color-lighter); padding-top: 20px; }
 .actions > .hint { margin-right: 12px; }

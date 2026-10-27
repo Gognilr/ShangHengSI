@@ -126,10 +126,13 @@ async function submit() {
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 /* el-dialog 的根节点被 Teleport 移出组件，按唯一类名限定才能命中。 */
 :global(.rerun-dialog) { max-height: calc(100vh - 48px); margin-bottom: 24px; display: flex; flex-direction: column; }
 :global(.rerun-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; flex: 1 1 auto; }
 :global(.rerun-dialog .el-dialog__header), :global(.rerun-dialog .el-dialog__footer) { flex: none; }
 .current-comparison { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--el-border-color-light); }
-h3 { margin: 0 0 12px; font-size: 18px; }
+h3 { margin: 0 0 12px; font: var(--si-font-h2); }
 </style>

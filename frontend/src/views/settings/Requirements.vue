@@ -257,7 +257,7 @@ onMounted(() => {
       </div>
       <el-alert v-if="listError" type="error" :closable="false" show-icon :title="listError" />
       <el-table v-loading="listLoading" :data="items" size="small" empty-text="尚未添加公司补充要求">
-        <el-table-column prop="code" label="编号" width="80" />
+        <el-table-column prop="code" label="编号" width="80" class-name="num" />
         <el-table-column prop="text" label="内容" min-width="200" />
         <el-table-column label="适用文件类型" width="150">
           <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
@@ -293,7 +293,7 @@ onMounted(() => {
       </div>
       <el-alert v-if="builtinError" type="error" :closable="false" show-icon :title="builtinError" />
       <el-table v-loading="builtinLoading" :data="builtin" size="small" max-height="360" empty-text="没有符合条件的内置要求">
-        <el-table-column prop="id" label="编号" width="90" />
+        <el-table-column prop="id" label="编号" width="90" class-name="num" />
         <el-table-column label="维度" width="120">
           <template #default="{ row }">{{ row.dimension ?? '—' }}</template>
         </el-table-column>
@@ -308,13 +308,13 @@ onMounted(() => {
       <h3 class="first">版本历史</h3>
       <el-alert v-if="versionsError" type="error" :closable="false" show-icon :title="versionsError" />
       <el-table v-loading="versionsLoading" :data="versions" size="small" max-height="320" empty-text="尚无修改记录">
-        <el-table-column label="版本号" width="100">
+        <el-table-column label="版本号" width="100" class-name="num">
           <template #default="{ row }">第 {{ row.version }} 版</template>
         </el-table-column>
         <el-table-column label="修改人" min-width="160">
           <template #default="{ row }">{{ row.created_by_name ?? '—' }}</template>
         </el-table-column>
-        <el-table-column label="时间" width="170">
+        <el-table-column label="时间" width="170" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="90">
@@ -381,10 +381,12 @@ onMounted(() => {
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 h3 {
   margin: 20px 0 16px;
-  font-size: 18px;
-  font-weight: 600;
+  font: var(--si-font-h2);
 }
 h3.first {
   margin-top: 0;

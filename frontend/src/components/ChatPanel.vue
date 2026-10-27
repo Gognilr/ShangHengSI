@@ -272,6 +272,9 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 </template>
 
 <style scoped>
+:deep(.el-dialog__title), :deep(.el-drawer__title) { font: var(--si-font-h2); }
+:deep(.el-dialog__body), :deep(.el-drawer__body) { font: var(--si-font-body); }
+
 .chat-trigger { display: inline-block; }
 .chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .live-preview { flex-shrink: 0; max-height: 200px; overflow-y: auto; margin-top: 12px; }
@@ -286,7 +289,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 .messages { flex: 1; min-height: 120px; overflow-y: auto; margin-bottom: 16px; padding: 12px; background: var(--el-fill-color-light); border-radius: 12px; }
 .message { max-width: 90%; margin-bottom: 16px; }
 .message--user { margin-left: auto; text-align: right; }
-.message-content { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; padding: 12px 16px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: 12px; text-align: left; }
+.message-content { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; padding: 12px 16px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); text-align: left; font: var(--si-font-body); }
 .message--user .message-content { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-8); }
 .redacted {
   margin: 0 0 12px;
