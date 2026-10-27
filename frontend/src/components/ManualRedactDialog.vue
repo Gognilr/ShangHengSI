@@ -201,7 +201,7 @@ async function submit() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="在原文中选择" width="80%" top="24px" class="manual-dialog u7-manualredactdialog" append-to-body>
+  <el-dialog v-model="visible" title="在原文中选择" width="80%" top="24px" class="manual-dialog" append-to-body>
     <p class="hint">在同一段文字内选中要替换的文字，再选择类别。已替换的文字带底色，悬停可看到代号；相同的文字会在全文一并替换。</p>
 
     <el-tabs v-model="activeId">
@@ -239,9 +239,6 @@ async function submit() {
 </template>
 
 <style scoped>
-:global(.u7-manualredactdialog .el-dialog__title), :global(.u7-manualredactdialog .el-drawer__title) { font: var(--si-font-h2); }
-:global(.u7-manualredactdialog .el-dialog__body), :global(.u7-manualredactdialog .el-drawer__body) { font: var(--si-font-body); }
-
 :global(.manual-dialog) {
   /* 总高度随视口约束，正文收缩滚动，避免默认 15vh 顶距把底部操作推出窗口。 */
   max-height: calc(100vh - 48px);

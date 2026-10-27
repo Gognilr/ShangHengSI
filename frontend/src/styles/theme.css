@@ -85,7 +85,8 @@ html body { font: var(--si-font-body); color: var(--el-text-color-primary); text
 .el-textarea__inner:focus-visible { outline: 2px solid var(--si-focus-ring); outline-offset: 2px; }
 .el-card { --el-card-border-radius: var(--si-radius-card); --el-card-border-color: var(--el-border-color-light); box-shadow: none; }
 .el-dialog, .el-message-box { --el-dialog-border-radius: var(--si-radius-card); --el-messagebox-border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-pop); }
-.el-dialog__title { font-size: 18px; font-weight: 600; }
+.el-dialog__title, .el-drawer__title { font: var(--si-font-h2); }
+.el-dialog__body, .el-drawer__body { font: var(--si-font-body); }
 .el-drawer { border-radius: var(--si-radius-card) 0 0 var(--si-radius-card); box-shadow: var(--si-shadow-pop); }
 .el-table { --el-table-header-bg-color: var(--el-fill-color-light); }
 .el-table, .el-pagination, .stat-value, .num { font-variant-numeric: tabular-nums; }

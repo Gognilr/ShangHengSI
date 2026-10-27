@@ -190,7 +190,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
       </el-table>
     </el-card>
 
-    <el-dialog class="u7-users" :model-value="dialog !== ''" :title="dialogTitle" width="480px" :close-on-click-modal="false" @close="dialog = ''">
+    <el-dialog :model-value="dialog !== ''" :title="dialogTitle" width="480px" :close-on-click-modal="false" @close="dialog = ''">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" :disabled="dialog === 'edit'" maxlength="50" autocomplete="off" />
@@ -214,7 +214,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
       </template>
     </el-dialog>
 
-    <el-dialog class="u7-users" :model-value="resetTarget !== null" title="重置密码" width="480px" :close-on-click-modal="false" @close="resetTarget = null">
+    <el-dialog :model-value="resetTarget !== null" title="重置密码" width="480px" :close-on-click-modal="false" @close="resetTarget = null">
       <el-form ref="resetRef" :model="resetForm" :rules="{ password: rules.password }" label-width="110px" @submit.prevent="submitReset">
         <el-form-item label="账号">{{ resetTarget?.username }}（{{ resetTarget?.display_name }}）</el-form-item>
         <el-form-item label="新密码" prop="password">
@@ -231,8 +231,5 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 </template>
 
 <style scoped>
-:global(.u7-users .el-dialog__title), :global(.u7-users .el-drawer__title) { font: var(--si-font-h2); }
-:global(.u7-users .el-dialog__body), :global(.u7-users .el-drawer__body) { font: var(--si-font-body); }
-
 .user-name { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 </style>

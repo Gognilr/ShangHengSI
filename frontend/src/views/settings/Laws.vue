@@ -153,7 +153,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
       </el-table>
     </section>
-    <el-dialog class="u7-laws" v-model="uploadOpen" :title="kind === 'catalog' ? '导入法规目录' : '导入法规全文'" width="640px" :close-on-click-modal="!saving">
+    <el-dialog v-model="uploadOpen" :title="kind === 'catalog' ? '导入法规目录' : '导入法规全文'" width="640px" :close-on-click-modal="!saving">
       <el-alert v-if="uploadError" :title="uploadError" type="error" :closable="false" class="gap" />
       <el-form label-position="top">
         <el-form-item v-if="kind === 'catalog'" label="目录时效性（必选）"><el-select v-model="status" placeholder="请选择时效性"><el-option v-for="o in toOptions(LAW_STATUS)" :key="o.value" :value="o.value" :label="o.label" /></el-select></el-form-item>
@@ -162,7 +162,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
       </el-form>
       <template #footer><el-button :disabled="saving" @click="uploadOpen = false">取消</el-button><el-button type="primary" :loading="saving" @click="upload">上传并预览差异</el-button></template>
     </el-dialog>
-    <el-dialog class="u7-laws" v-model="detailOpen" title="法规库更新差异" width="640px" :close-on-click-modal="!saving">
+    <el-dialog v-model="detailOpen" title="法规库更新差异" width="640px" :close-on-click-modal="!saving">
       <div v-loading="detailLoading">
         <el-alert v-if="detailError || detail?.error" :title="detailError || detail?.error || ''" type="error" :closable="false" />
         <template v-if="detail">
@@ -186,9 +186,6 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 </template>
 
 <style scoped>
-:global(.u7-laws .el-dialog__title), :global(.u7-laws .el-drawer__title) { font: var(--si-font-h2); }
-:global(.u7-laws .el-dialog__body), :global(.u7-laws .el-drawer__body) { font: var(--si-font-body); }
-
 h2 { font: var(--si-font-h2); margin: 0 0 16px; }
 h3 { font: var(--si-font-h4); margin: 24px 0 12px; }
 p { overflow-wrap: anywhere; white-space: pre-wrap; }
