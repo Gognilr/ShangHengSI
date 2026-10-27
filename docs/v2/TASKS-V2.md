@@ -4,7 +4,7 @@
 
 ## 当前进度（只保留最近 3 条，每条不超过 400 字；更早的见 [archive/progress.md](archive/progress.md)）
 
-- 2026-10-27（Opus 5.5）：**V2-E-09 审核完成，待用户确认**。核对f661bfc..79c7122：用例未删改（旧测试只有已批准的结构/版本同步，L-10旧用例因yaml删除改读库且断言更严）；lawsync出口、T-20扩展、法条逐条预检、范本整节复检、向量删除与权限未见越权或外发漏洞。修复1处：范本对照中“本文件位置”标题取原文前60字再脱敏，截断会把名称切成半截漏替换，改用已外发的脱敏文字；新用例修复前失败，相关6文件167 passed。CLAUDE.md测试库改为aireview-db:dev。详见reports/V2-E-test.md末节。确认后进入V2-U-01（GPT-6.1 Sol，medium）。
+- 2026-10-27（Opus 5.5）：**V2-E-09已完成，用户确认整批通过**；V2Q-86/87/92/95/98/99按现做法确认，法条开关维持默认关闭。核对f661bfc..79c7122：用例未删改；lawsync出口、T-20扩展、法条逐条预检、范本整节复检、向量删除与权限未见越权或外发漏洞。修复1处：范本对照中“本文件位置”标题取原文前60字再脱敏，截断会把名称切成半截漏替换，改用已外发的脱敏文字；新用例修复前失败，相关6文件167 passed。CLAUDE.md测试库改为aireview-db:dev。详见reports/V2-E-test.md末节。下一步V2-U-01（GPT-6.1 Sol，测试先行，medium），动手前先拍改前截图。
 
 - 2026-10-27（GPT-6.1 Sol）：**V2-E-08已完成**。E08b后整仓3063 passed/1既有警告；864份/32846条全文缺口0。用户授权的172.16.11.252独立内部网络项目完整向量化5213.05秒、剩余0；DB460.16MiB、索引260.02MiB，app/worker峰值RSS2.316/2.479GiB。6万条线性估计158.71分钟，非实测。证据SHA一致、独立项目清理完成，原五服务状态不变；四组合partial等限制保留。详见reports/V2-E-test.md末节。下一步V2-E-09（Opus，high）整批审核，本会话停止，不进入U。
 
@@ -92,7 +92,7 @@
 | V2-E-08 | 集中测试：整仓全量、浏览器清单、评测对比（开 / 关法条依据与范本对照）、引擎对拍、测试虚拟机上实测资源并演练 upgrade.sh 与 restore.sh，写批次测试报告（设计第十节） | GPT-6.1 Sol | medium | V2-E-07 | 已完成 |
 | V2-E-08a | 无条号文本分段与标题规范化（设计 5.8，T-44a，V2Q-111）。文件范围：`backend/app/laws/articles.py`、`backend/app/laws/fulltext.py`、`backend/app/laws/job.py`（只改 passage 拼接）；测试只追加 test\_law\_articles.py、test\_laws\_fulltext.py、test\_law\_refs.py，只跑这三个文件与 test\_law\_embed 相关用例。不加迁移、不改外网代码。完成后回到 V2-E-08，只对 282 份未入库的重跑并按设计第十节第 6 条判定 | GPT-6.1 Sol（测试先行） | medium | V2Q-111（已确认） | 已完成 |
 | V2-E-08b | 官网文件名“+”的匹配（设计 5.8 第 3 条、T-44a 第 11 条补充，V2Q-112）。文件范围：`backend/app/laws/fulltext.py`；测试只追加 test\_laws\_fulltext.py，只跑该文件。不加迁移、不改外网代码与 articles.py 的 normalize\_title。完成后用已保存的 6 份官网原名 ZIP（.codex-tmp/V2-E-08-browser-manual/）经法规库页面全文导入并确认生效，回到 V2-E-08 继续 | GPT-6.1 Sol（测试先行） | medium | V2Q-112（已确认） | 已完成 |
-| V2-E-09 | 批次审核，汇报用户 | Opus | high | V2-E-08 | 待执行 |
+| V2-E-09 | 批次审核，汇报用户 | Opus | high | V2-E-08 | 已完成 |
 
 ### V2-U 界面改进
 
