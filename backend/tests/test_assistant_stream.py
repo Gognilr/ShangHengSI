@@ -44,3 +44,15 @@ def test_incomplete_code_is_withheld_and_terminal_literal_bracket_is_visible():
     assert incremental("正文[[OR", {}, 0) == ("正文", 2)
     assert incremental("正文[", {}, 0) == ("正文", 2)
     assert incremental("正文[", {}, 0, finished=True) == ("正文[", 3)
+
+
+def test_finished_reply_keeps_text_after_unclosed_brackets():
+    # V2-D-10：结束后的回复中出现未闭合的 [[，其后的正文不得丢失；已知代号照常还原。
+    from app.assistant.stream import incremental
+    mapping = {"[[ORG_1]]": "虚构企业"}
+    text = "[[ORG_1]] 的写法 a[[0] 后续说明"
+    streaming, offset = incremental(text, mapping, 0)
+    assert streaming == "虚构企业 的写法 a"
+    rest, final = incremental(text, mapping, offset, finished=True)
+    assert streaming + rest == "虚构企业 的写法 a[[0] 后续说明" and final == len(streaming + rest)
+    assert incremental("已停止[[OR", mapping, 0, finished=True) == ("已停止[[OR", 7)

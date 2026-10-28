@@ -4,6 +4,9 @@ from app.redaction.restore import restore
 
 
 def safe_prefix(text: str, *, finished: bool = False) -> str:
+    # 已结束的回复不会再有后续片段：未闭合的 [[ 原样显示，不能截掉其后的正文。
+    if finished:
+        return text
     opening = text.rfind("[[")
     if opening >= 0 and text.find("]]", opening + 2) < 0:
         return text[:opening]
