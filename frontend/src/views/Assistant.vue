@@ -15,7 +15,7 @@ const session = ref<Session | null>(null), messages = ref<Message[]>([]), templa
 const loading = ref(false), error = ref(''), working = ref(false)
 const offsets = new Map<number, number>()
 let active = true, version = 0, listVersion = 0, polling = false, timer: ReturnType<typeof setTimeout> | undefined
-function failure(e: unknown) { return e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '加载失败，请刷新页面后重试' }
+function failure(e: unknown) { return e instanceof ApiError ? e.status === 404 ? '会话不存在或已被删除' : e.message : '加载失败，请刷新页面后重试' }
 async function list() {
   const current = ++listVersion
   listLoading.value = true; listError.value = ''

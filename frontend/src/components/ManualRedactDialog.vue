@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
-import { previewApi, type PreviewNode } from '@/api/preview'
+import { previewApi, type PreviewNode, type PreviewNodes } from '@/api/preview'
 import { REDACTION_ERROR_MESSAGES, redactionApi, type RedactionItemPos, type RedactionInfo, type UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
 import { MANUAL_CATEGORY_OPTIONS, REDACTION_KIND, toOptions } from '@/utils/labels'
@@ -13,7 +13,7 @@ import { splitOriginal, type CompareSeg } from '@/utils/compare'
  * 每个节点的文字放在独立的 .txt 元素中，元素文字内容与原文逐字相同（片段只是拆成多个 span）；
  * 字符位置按 Unicode 字符（码点）计，与后端 Python 字符串下标一致。
  */
-const props = defineProps<{ modelValue: boolean; taskId: string; files: TaskFile[]; items: RedactionItemPos[] }>()
+const props = defineProps<{ modelValue: boolean; taskId: string; files: TaskFile[]; items: RedactionItemPos[]; nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes> }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void
   /** 已补充成功，返回最新的脱敏信息 */
@@ -42,7 +42,7 @@ async function loadFile(id: string) {
   const st = reactive<FileNodes>({ loading: true, error: '', available: true, nodes: [] })
   states[id] = st
   try {
-    const res = await previewApi.nodes(props.taskId, id)
+    const res = await (props.nodeLoader ?? previewApi.nodes)(props.taskId, id)
     st.available = res.text_available
     st.nodes = res.items.filter((n) => n.part === 'body' && n.text)
   } catch (e) {

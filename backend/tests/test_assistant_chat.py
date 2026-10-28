@@ -422,3 +422,54 @@ def test_delete_during_stream_does_not_restore_outbound_title(conversation, db_s
         assert db.get(Task, uuid.UUID(tid)) is None
         call = db.scalar(select(LlmCall))
         assert call is not None and call.task_title is None
+
+
+def test_d07_capabilities_generation_and_owner_isolation(conversation, db_sessionmaker, make_user, login):
+    from app.db.models import AssistantMessage
+    from app.admin.settings_store import set_setting
+    c, h, tid, user = conversation
+    assert c.get(f'{BASE}/{tid}').json()['kb_enabled'] is False
+    assert c.get(BASE).json()['kb_enabled'] is False
+    other = make_user('d07_other', role='admin')
+    with db_sessionmaker() as db:
+        foreign = Task(kind='assistant', owner_id=other.id, title='不可见会话', stance='other', source='incoming', policy='ai', status='active', last_activity_at=utcnow())
+        db.add(foreign); db.flush()
+        db.add(AssistantMessage(task_id=foreign.id, role='assistant', status='queued'))
+        own = AssistantMessage(task_id=uuid.UUID(tid), role='assistant', status='done')
+        db.add(own); db.commit()
+        mid, foreign_id = own.id, str(foreign.id)
+        set_setting(db, 'assistant.kb_enabled', True, user.id); db.commit()
+    for status, expected in [('queued', True), ('streaming', True), ('done', False), ('stopped', False), ('failed', False)]:
+        with db_sessionmaker() as db:
+            db.get(AssistantMessage, mid).status = status; db.commit()
+        detail = c.get(f'{BASE}/{tid}').json()
+        listing = c.get(BASE).json()
+        assert detail['kb_enabled'] is True and detail['generating'] is expected
+        assert listing['kb_enabled'] is True and len(listing['items']) == 1
+        assert listing['items'][0]['id'] == tid and listing['items'][0]['generating'] is expected
+    assert c.get(f'{BASE}/{foreign_id}').status_code == 404
+    other_client, _ = login(other.username)
+    assert other_client.get(f'{BASE}/{tid}').status_code == 404
+
+
+def test_d07_outbound_readonly_kind_and_permission(conversation, db_sessionmaker, make_user, login):
+    c, _, tid, user = conversation
+    response = c.get(f'{BASE}/{tid}/outbound')
+    assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
+    assert '[[ORG_1]]' in response.json()['text'] and REAL not in response.text
+    # 增加只读入口不改变既有脱敏修改状态限制或审核接口隔离。
+    assert c.get(f'/api/v1/tasks/{tid}/redaction/outbound').status_code == 409
+    with db_sessionmaker() as db:
+        file = db.scalar(select(TaskFile).where(TaskFile.task_id == uuid.UUID(tid)))
+        fid = str(file.id)
+        file.original_deleted_at = utcnow()
+        review = Task(kind='review', owner_id=user.id, title='虚构审核', stance='other', source='incoming', policy='ai', status='reviewed')
+        db.add(review); db.commit()
+        review_id = str(review.id)
+    assert c.get(f'{BASE}/{tid}/outbound').status_code == 200
+    assert c.get(f'{BASE}/{review_id}/outbound').status_code == 404
+    assert c.get(f'{BASE}/{tid}/files/{fid}/nodes').status_code == 200
+    assert c.get(f'/api/v1/tasks/{tid}/files/{fid}/nodes').status_code == 404
+    admin = make_user('d07_admin', role='admin')
+    other, _ = login(admin.username)
+    assert other.get(f'{BASE}/{tid}/outbound').status_code == 404

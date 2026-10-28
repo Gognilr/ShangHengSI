@@ -8,15 +8,15 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
-| V2Q-137 | D-07 普通用户无法获知知识库总开关，会话列表也没有生成中标志 | 请求最小补入 assistant/schemas.py、assistant/service.py，在本人会话列表/详情中仅加 kb_enabled 与 generating 布尔字段，追加权限与状态测试；不开放管理员知识库数据 | D-07 默认勾选/隐藏与列表生成圆点 | D-07 完成前 |
-| V2Q-138 | D-07 ConfirmStep 内两个共享组件固定读取审核原文，会话按 kind 隔离返回 404 | 请求最小补入 RedactionCompare.vue、ManualRedactDialog.vue，增加可选节点加载函数，由 ConfirmStep assistant 模式传入会话接口；默认仍用原审核接口，不放宽后端 kind 隔离 | D-07 确认脱敏、对照与手动补充 | D-07 完成前 |
-| V2Q-140 | D-07 已确认会话的“查看外发文本”缺本人只读入口；现有 redaction GET 受 awaiting_confirm 依赖限制，active 会话返回 409 | 请求最小补入 assistant/router.py，新增本人会话只读 outbound 接口，复用现有外发构建与追加权限测试；不改变审核接口和脱敏修改状态限制。前端调用已放在范围内 api/assistant.ts，接口确认前不实现 | D-07 查看外发文本 | D-07 完成前 |
 
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-137 | D-07 会话展示缺少知识库开关与生成标志 | 用户确认最小补入 assistant/schemas.py、service.py，仅增加本人列表/详情的 kb_enabled 与 generating 布尔字段；追加默认关闭、状态转换、本人列表与管理员不能查看他人详情的测试 | 2026-10-28 |
+| V2Q-138 | D-07 共用原文组件固定调用审核节点接口 | 用户确认 RedactionCompare.vue、ManualRedactDialog.vue 增加可选 nodeLoader，ConfirmStep assistant 模式传会话节点接口；默认仍用原审核接口，不放宽 kind 隔离 | 2026-10-28 |
+| V2Q-140 | 已确认会话没有本人只读外发文本入口 | 用户确认 assistant/router.py 增加本人 GET outbound，复用外发构建；追加本人/他人/审核 kind/只读状态测试，保留旧 redaction 状态守卫，响应 no-store | 2026-10-28 |
 | V2Q-135 | D-05 漏列公开发送、解析组、非流式来源复检和迁移结构期望的必要联动 | 用户确认三个最小联动文件及追加测试：assistant/service.py 接受并保存参考选择供重试沿用；worker.py 注册并在解析组领取 kb_import；llm/gateway.py 非流式入口接 extra_task_ids；迁移测试严格期望同步 35 表、新表列/主外键/索引/状态与 kb_import，保持全部业务断言和检查强度 | 2026-10-28 |
 | V2Q-133 | D-04 文件范围遗漏模板接口、查看时本地还原、非流式比价与翻译段长设置的必要文件 | 用户确认允许三个最小联动文件及对应追加测试：assistant/service.py 接模板参数/固定消息、翻译额度预检和结果现场还原；llm/gateway.py 非流式 call_model 允许 assist，保留上限/复检/记录并关闭自动重试；admin/settings_store.py 登记 assistant.translate_segment_chars 默认 4000。已完成接入，相关 153 项回归通过，既有审核默认行为保持 | 2026-10-28 |
 | V2Q-132 | 默认新增 4 个 assist 线程后，旧 worker 测试固定的线程数、连接池和启动参数期望需要同步 | 用户确认仅同步两处结构期望：默认唯一 worker 数 15、连接池与溢出数 16、启动参数含 assist_concurrency=4，并增加 assist 组数量为 4 的断言；保留其他三组数量、唯一 worker_id、旧环境变量告警、启动自检和初始化顺序等全部行为断言 | 2026-10-28 |

@@ -22,6 +22,7 @@ import { DOC_TYPE_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, toOptions } f
 
 const props = withDefaults(defineProps<{ task: TaskDetail; mode?: 'review' | 'assistant' }>(), { mode: 'review' })
 const assistant = computed(() => props.mode === 'assistant')
+const nodeLoader = computed(() => assistant.value ? assistantApi.nodes : undefined)
 const emit = defineEmits<{
   /** 已提交确认发送，父页面应刷新任务状态 */
   (e: 'confirmed'): void
@@ -447,6 +448,7 @@ onMounted(loadAll)
       <ManualRedactDialog
         v-model="manualOpen"
         :task-id="task.id"
+        :node-loader="nodeLoader"
         :files="files"
         :items="redactedItems"
         @done="onManualDone"
@@ -456,7 +458,7 @@ onMounted(loadAll)
       <section class="panel">
       <h3><span class="section-number">6</span>原文与外发文本对照</h3>
       <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
-      <RedactionCompare ref="compare" :task-id="task.id" :files="files" :outbound-text="outboundText" :note="task.user_note" :outbound-note="outboundNote" :items="redactedItems" :suspects="suspects" :loading="outboundLoading" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" />
+      <RedactionCompare ref="compare" :node-loader="nodeLoader" :task-id="task.id" :files="files" :outbound-text="outboundText" :note="task.user_note" :outbound-note="outboundNote" :items="redactedItems" :suspects="suspects" :loading="outboundLoading" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" />
       </section>
       <section v-if="!assistant" class="panel">
       <h3><span class="section-number">7</span>本地校验结果<span class="hint">{{ localCount ?? '—' }} 条</span></h3>

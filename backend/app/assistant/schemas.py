@@ -25,6 +25,7 @@ class SessionItem(BaseModel):
     file_count: int
     last_activity_at: UtcDatetime
     original_deleted: bool
+    generating: bool = False
 
 
 class SessionPage(BaseModel):
@@ -32,6 +33,7 @@ class SessionPage(BaseModel):
     total: int
     page: int
     page_size: int = 30
+    kb_enabled: bool = False
 
 
 class SessionDetail(SessionItem):
@@ -44,6 +46,7 @@ class SessionDetail(SessionItem):
     can_send: bool
     send_reason: str | None
     code_count: int
+    kb_enabled: bool = False
 
 
 class MessageDecision(BaseModel):

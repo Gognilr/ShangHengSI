@@ -36,10 +36,10 @@ def availability(db: Session, task: Task) -> str | None:
     return gateway.MESSAGES[reached] if reached else None
 
 
-def _item(task: Task, files: list[TaskFile]) -> SessionItem:
+def _item(task: Task, files: list[TaskFile], *, generating: bool = False) -> SessionItem:
     return SessionItem(id=task.id, title=task.title, status=task.status, file_count=len(files),
                        last_activity_at=task.last_activity_at,
-                       original_deleted=any(f.original_deleted_at is not None for f in files))
+                       original_deleted=any(f.original_deleted_at is not None for f in files), generating=generating)
 
 
 def detail(db: Session, task: Task) -> SessionDetail:
@@ -48,11 +48,13 @@ def detail(db: Session, task: Task) -> SessionDetail:
     preview = tasks.task_detail(db, task)
     confirmed = {f.id: f.confirmed_at for f in files}
     reason = availability(db, task)
-    return SessionDetail(**_item(task, files).model_dump(), stance=task.stance, source=task.source, policy=task.policy,
+    generating = bool(db.scalar(select(exists().where(AssistantMessage.task_id == task.id,
+                       AssistantMessage.role == 'assistant', AssistantMessage.status.in_(('queued', 'streaming'))))))
+    return SessionDetail(**_item(task, files, generating=generating).model_dump(), stance=task.stance, source=task.source, policy=task.policy,
                          error_message=task.error_message, created_at=task.created_at,
                          files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id]) for f in preview.files],
                          can_send=reason is None, send_reason=reason,
-                         code_count=len(engine.load_redaction_map(db, task.id)))
+                         code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')))
 
 
 def create(db: Session, user: User, ip: str | None) -> SessionDetail:
@@ -296,7 +298,12 @@ def list_sessions(db: Session, user: User, q: str | None, page: int) -> SessionP
     total = db.scalar(select(func.count()).select_from(Task).where(*conditions)) or 0
     rows = db.scalars(select(Task).where(*conditions).order_by(Task.last_activity_at.desc(), Task.id.desc())
                       .offset((page - 1) * 30).limit(30))
-    return SessionPage(items=[_item(t, _files(db, t)) for t in rows], total=total, page=page)
+    rows = list(rows)
+    generating = set(db.scalars(select(AssistantMessage.task_id).where(
+        AssistantMessage.task_id.in_([task.id for task in rows]), AssistantMessage.role == 'assistant',
+        AssistantMessage.status.in_(('queued', 'streaming')))))
+    return SessionPage(items=[_item(t, _files(db, t), generating=t.id in generating) for t in rows], total=total, page=page,
+                       kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')))
 
 
 def lock(db: Session, task: Task) -> Task:

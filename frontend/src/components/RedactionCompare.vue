@@ -2,13 +2,13 @@
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
-import { previewApi, type PreviewNode } from '@/api/preview'
+import { previewApi, type PreviewNode, type PreviewNodes } from '@/api/preview'
 import { redactionApi, REDACTION_ERROR_MESSAGES, type RedactionInfo, type RedactionItemPos, type Suspect, type UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
 import { buildCompareRows, buildNoteRow, type CompareRow, type CompareSeg } from '@/utils/compare'
 import { REDACTION_KIND, MANUAL_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 
-const props = withDefaults(defineProps<{ taskId: string; files: TaskFile[]; outboundText: string; note?: string | null; outboundNote?: string | null; items: RedactionItemPos[]; suspects: Suspect[]; loading?: boolean; editable?: boolean }>(), { loading: false, editable: true })
+const props = withDefaults(defineProps<{ taskId: string; files: TaskFile[]; outboundText: string; note?: string | null; outboundNote?: string | null; items: RedactionItemPos[]; suspects: Suspect[]; loading?: boolean; editable?: boolean; nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes> }>(), { loading: false, editable: true })
 const emit = defineEmits<{ done: [info: RedactionInfo, action: 'add' | 'revoke']; stale: []; busy: [value: boolean] }>()
 const nodes = ref<PreviewNode[]>([])
 const nodeErrors = ref<Record<number, string>>({})
@@ -30,7 +30,7 @@ async function loadNodes() {
   nodeErrors.value = {}
   const results = await Promise.all(props.files.map(async file => {
     try {
-      const result = await previewApi.nodes(props.taskId, file.id)
+      const result = await (props.nodeLoader ?? previewApi.nodes)(props.taskId, file.id)
       return { file, nodes: result.items, error: result.text_available ? '' : '原文已按保留期清理' }
     } catch (e) {
       return { file, nodes: [], error: e instanceof ApiError ? e.message : '加载失败，请刷新页面' }
