@@ -1,5 +1,6 @@
 """全部会话接口校验本人及 assistant kind，复用既有预览与删除。"""
 from urllib.parse import quote
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
@@ -117,3 +118,14 @@ def stop(mid: int, task: Task = Depends(owned_session), db: Session = Depends(ge
 @router.post("/{id}/messages/{mid}/retry", status_code=201)
 def retry(mid: int, task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
     return service.retry(db, task, user, mid)
+
+
+@router.get("/{id}/messages/{mid}/export")
+def export(mid: int, request: Request, format: Literal['docx', 'xlsx'] = 'docx',
+           variant: Literal['translation', 'bilingual'] = 'translation', task: Task = Depends(owned_session),
+           user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.assistant.export import generate
+    data, media, filename = generate(db, task, mid, format, variant, user, client_ip(request))
+    return Response(content=data, media_type=media, headers={
+        'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})

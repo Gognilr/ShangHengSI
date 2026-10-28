@@ -24,7 +24,7 @@ from app.audit import service as audit
 from app.backup.job import enqueue_backup
 from app.config import get_settings
 from app.db.base import utcnow
-from app.db.models import BackupRecord, Job, LlmCall, TaskFile, User
+from app.db.models import BackupRecord, Job, LlmCall, Task, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import require_sys_admin
 from app.security.errors import AppError, NotFoundError
@@ -261,6 +261,7 @@ def _outbound_fields(call: LlmCall, user_name: Optional[str]) -> dict:
 
 @router.get("/outbound-logs", response_model=OutboundPage)
 def list_outbound(
+    purpose: Optional[Literal['review', 'chat', 'test', 'assist']] = Query(None),
     user_id: Optional[uuid.UUID] = Query(None),
     date_from: Optional[date] = Query(None, alias="from"),
     date_to: Optional[date] = Query(None, alias="to"),
@@ -269,6 +270,8 @@ def list_outbound(
     db: DbSession = Depends(get_db),
 ) -> OutboundPage:
     conds = []
+    if purpose is not None:
+        conds.append(LlmCall.purpose == purpose)
     if user_id is not None:
         conds.append(LlmCall.user_id == user_id)
     if status is not None:
@@ -316,6 +319,7 @@ def get_outbound(log_id: str, db: DbSession = Depends(get_db)) -> OutboundDetail
 
 
 class SystemStatus(BaseModel):
+    assistant_sessions: int = 0
     version: str
     queued_jobs: int
     data_free_bytes: Optional[int]
@@ -417,7 +421,8 @@ def _storage_snapshot(db: DbSession) -> dict:
 def system_status(db: DbSession = Depends(get_db)) -> SystemStatus:
     s = get_settings()
     queued = db.scalar(select(func.count()).select_from(Job).where(Job.status == "queued")) or 0
-    return SystemStatus(version=s.app_version, queued_jobs=int(queued), **_storage_snapshot(db))
+    sessions = db.scalar(select(func.count()).select_from(Task).where(Task.kind == 'assistant')) or 0
+    return SystemStatus(version=s.app_version, queued_jobs=int(queued), assistant_sessions=sessions, **_storage_snapshot(db))
 
 
 # ---------------------------------------------------------------- 只读审计日志
