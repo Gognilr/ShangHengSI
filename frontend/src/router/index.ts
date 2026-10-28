@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import History from '@/views/History.vue'
+import Assistant from '@/views/Assistant.vue'
 import Login from '@/views/Login.vue'
 import ReviewNew from '@/views/ReviewNew.vue'
 import ReviewResult from '@/views/ReviewResult.vue'
@@ -39,6 +40,8 @@ export const router = createRouter({
         { path: 'review/new', name: 'review-new', component: ReviewNew },
         { path: 'review/:taskId', name: 'review-result', component: ReviewResult },
         { path: 'history', name: 'history', component: History },
+        { path: 'assistant', name: 'assistant', component: Assistant },
+        { path: 'assistant/:sessionId', name: 'assistant-session', component: Assistant },
         {
           path: 'settings',
           component: SettingsLayout,

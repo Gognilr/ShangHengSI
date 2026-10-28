@@ -14,8 +14,8 @@ const pwdOpen = ref(false)
 // 须改密期间对话框始终打开且不可关闭
 const pwdVisible = computed(() => pwdOpen.value || auth.mustChangePassword)
 
-// 顶部菜单只有两项（SPEC 1.6）；“设置”不在菜单里，是右上角仅管理员可见的入口
-const activeMenu = computed(() => route.path.startsWith('/settings') ? '' : (route.path.startsWith('/history') ? '/history' : '/review/new'))
+// “设置”仍是仅管理员可见的独立入口。
+const activeMenu = computed(() => route.path.startsWith('/settings') ? '' : route.path.startsWith('/assistant') ? '/assistant' : (route.path.startsWith('/history') ? '/history' : '/review/new'))
 const displayName = computed(() => auth.user?.display_name ?? '')
 const initial = computed(() => Array.from(displayName.value)[0] ?? '')
 
@@ -37,6 +37,7 @@ async function onCommand(cmd: string) {
         <el-menu mode="horizontal" :default-active="activeMenu" router :ellipsis="false" class="menu">
           <el-menu-item index="/review/new">智能审核</el-menu-item>
           <el-menu-item index="/history">审核历史</el-menu-item>
+          <el-menu-item index="/assistant">智能助手</el-menu-item>
         </el-menu>
         <div class="right">
           <router-link v-if="auth.isAdmin" to="/settings" class="settings-link" :class="{ selected: route.path.startsWith('/settings') }">

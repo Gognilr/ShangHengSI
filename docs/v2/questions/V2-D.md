@@ -10,6 +10,7 @@
 |-|-|-|-|-|
 | V2Q-137 | D-07 普通用户无法获知知识库总开关，会话列表也没有生成中标志 | 请求最小补入 assistant/schemas.py、assistant/service.py，在本人会话列表/详情中仅加 kb_enabled 与 generating 布尔字段，追加权限与状态测试；不开放管理员知识库数据 | D-07 默认勾选/隐藏与列表生成圆点 | D-07 完成前 |
 | V2Q-138 | D-07 ConfirmStep 内两个共享组件固定读取审核原文，会话按 kind 隔离返回 404 | 请求最小补入 RedactionCompare.vue、ManualRedactDialog.vue，增加可选节点加载函数，由 ConfirmStep assistant 模式传入会话接口；默认仍用原审核接口，不放宽后端 kind 隔离 | D-07 确认脱敏、对照与手动补充 | D-07 完成前 |
+| V2Q-140 | D-07 已确认会话的“查看外发文本”缺本人只读入口；现有 redaction GET 受 awaiting_confirm 依赖限制，active 会话返回 409 | 请求最小补入 assistant/router.py，新增本人会话只读 outbound 接口，复用现有外发构建与追加权限测试；不改变审核接口和脱敏修改状态限制。前端调用已放在范围内 api/assistant.ts，接口确认前不实现 | D-07 查看外发文本 | D-07 完成前 |
 
 
 ## 二、已决定

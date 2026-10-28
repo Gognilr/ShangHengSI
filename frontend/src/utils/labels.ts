@@ -167,6 +167,11 @@ export const OUTBOUND_STATUS_TAG: Record<string, TagType> = { sent: 'success', b
 export const LLM_PURPOSE: Dict = { review: '审核', chat: '追问', test: '连接测试' }
 export const llmPurposeLabel = pick(LLM_PURPOSE)
 
+export const ASSISTANT_TEMPLATE: Dict = { translate: '翻译', summary: '摘要', reply: '起草回复', crosscheck: '单证核对', compare: '比价' }
+export const ASSISTANT_STATUS: Dict = { active: '可继续', parsing: '解析中', parse_failed: '解析失败', awaiting_confirm: '待确认', queued: '排队中', streaming: '生成中', done: '已完成', stopped: '已停止', failed: '失败' }
+export const assistantStatusLabel = pick(ASSISTANT_STATUS)
+export const ASSISTANT_ERROR: Dict = { SESSION_READONLY: '原件已按保留期限删除，本会话只能查看', ASSIST_INTERRUPTED: '服务重启，回复中断，请重试', ASSIST_TOO_LONG: '所选文件过长，请减少使用的文件', ASSIST_QUOTA: '翻译调用次数不足，请明天再试或联系管理员' }
+
 /** 审计动作名称；未知动作按通用翻译规则保留原值。 */
 export const AUDIT_ACTION: Dict = {
   login: '登录', login_failed: '登录失败', password_change: '修改密码',

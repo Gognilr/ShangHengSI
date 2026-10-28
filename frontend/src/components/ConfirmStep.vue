@@ -14,12 +14,14 @@ import {
 } from '@/api/redaction'
 import { RUN_ERROR_MESSAGES, runsApi } from '@/api/runs'
 import { tasksApi, type TaskDetail } from '@/api/tasks'
+import { assistantApi } from '@/api/assistant'
 import ManualRedactDialog from './ManualRedactDialog.vue'
 import SuspectList from './SuspectList.vue'
 import RedactionCompare from './RedactionCompare.vue'
 import { DOC_TYPE_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, toOptions } from '@/utils/labels'
 
-const props = defineProps<{ task: TaskDetail }>()
+const props = withDefaults(defineProps<{ task: TaskDetail; mode?: 'review' | 'assistant' }>(), { mode: 'review' })
+const assistant = computed(() => props.mode === 'assistant')
 const emit = defineEmits<{
   /** 已提交确认发送，父页面应刷新任务状态 */
   (e: 'confirmed'): void
@@ -246,10 +248,10 @@ async function reloadOutbound() {
 
 // ---- 确认发送 ----
 const canConfirm = computed(
-  () => ourCount.value === 1 && pendingCount.value === 0 && !savingParties.value && !deciding.value && !loading.value,
+  () => (assistant.value ? ourCount.value <= 1 : ourCount.value === 1) && pendingCount.value === 0 && !savingParties.value && !deciding.value && !loading.value,
 )
 const disabledReason = computed(() => {
-  if (ourCount.value !== 1) return '请先在签约方中选择我方'
+  if (!assistant.value && ourCount.value !== 1) return '请先在签约方中选择我方'
   if (pendingCount.value > 0) return `还有 ${pendingCount.value} 条疑似遗漏未处理`
   return ''
 })
@@ -270,7 +272,8 @@ async function confirmSend() {
   submitError.value = ''
   submitting.value = true
   try {
-    await runsApi.create(props.task.id, !skipTemplate.value)
+    if (assistant.value) await assistantApi.confirm(props.task.id)
+    else await runsApi.create(props.task.id, !skipTemplate.value)
     emit('confirmed')
   } catch (e) {
     handleError(e)
@@ -283,7 +286,7 @@ onMounted(loadAll)
 </script>
 
 <template>
-  <div v-if="task.template_suggestion" class="panel gap">
+  <div v-if="!assistant && task.template_suggestion" class="panel gap">
     将对照公司范本：{{ task.template_suggestion.name }}
     <el-checkbox v-model="skipTemplate" :disabled="submitting">不对照</el-checkbox>
   </div>
@@ -303,7 +306,7 @@ onMounted(loadAll)
       <section class="panel">
       <h3><span class="section-number">1</span>
         文件信息
-        <el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button>
+        <el-button v-if="!assistant" link type="primary" @click="reqDrawer = true">查看审核要求</el-button>
       </h3>
       <RequirementsDrawer
         v-model="reqDrawer"
@@ -323,6 +326,7 @@ onMounted(loadAll)
             <div class="doc-type-field">
               <el-select
                 class="doc-type-select"
+                :disabled="assistant"
                 :model-value="row.doc_type ?? undefined"
                 placeholder="请选择"
                 size="small"
@@ -354,6 +358,7 @@ onMounted(loadAll)
       <section class="panel">
       <h3><span class="section-number">2</span>签约方确认</h3>
       <p class="hint">请选择哪一方是“我方”（已按业务立场预选）；国家和类型可以修改，修改后会重新生成代号和外发文本。</p>
+      <p v-if="assistant" class="hint">会话可以不设置我方，最多选择一方。<el-button link :disabled="savingParties" @click="setOur('')">不设我方</el-button></p>
       <el-table :data="parties" size="small" class="compact-table" :class="{ saving: savingParties }" :row-class-name="({ row }: { row: Party }) => row.is_our_party ? 'our-party' : ''">
         <el-table-column label="我方" width="70" align="center">
           <template #default="{ row }">
@@ -402,7 +407,7 @@ onMounted(loadAll)
         </el-table-column>
       </el-table>
       <el-alert
-        v-if="!loading && !parties.length"
+        v-if="!assistant && !loading && !parties.length"
         type="warning"
         show-icon
         :closable="false"
@@ -411,7 +416,7 @@ onMounted(loadAll)
         class="gap"
       />
       <el-alert
-        v-if="parties.length && ourCount !== 1"
+        v-if="!assistant && parties.length && ourCount !== 1"
         type="warning"
         show-icon
         :closable="false"
@@ -453,7 +458,7 @@ onMounted(loadAll)
       <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
       <RedactionCompare ref="compare" :task-id="task.id" :files="files" :outbound-text="outboundText" :note="task.user_note" :outbound-note="outboundNote" :items="redactedItems" :suspects="suspects" :loading="outboundLoading" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" />
       </section>
-      <section class="panel">
+      <section v-if="!assistant" class="panel">
       <h3><span class="section-number">7</span>本地校验结果<span class="hint">{{ localCount ?? '—' }} 条</span></h3>
       <el-collapse>
         <el-collapse-item title="展开本地校验结果" name="local">
@@ -466,7 +471,8 @@ onMounted(loadAll)
 
       <div class="confirm-actions">
         <ul class="conditions" aria-label="提交条件" aria-live="polite">
-          <li :class="{ met: ourCount === 1 }">{{ ourCount === 1 ? '✓ 已选择我方' : !parties.length ? '未识别到签约方，暂时不能提交 AI 审核' : '请先选择哪一方是我方' }}</li>
+          <li v-if="assistant" :class="{ met: ourCount <= 1 }">{{ ourCount ? '已选择一方为我方' : '未设置我方，可以确认脱敏' }}</li>
+          <li v-else :class="{ met: ourCount === 1 }">{{ ourCount === 1 ? '✓ 已选择我方' : !parties.length ? '未识别到签约方，暂时不能提交 AI 审核' : '请先选择哪一方是我方' }}</li>
           <li :class="{ met: pendingCount === 0 }">{{ pendingCount === 0 ? '✓ 疑似遗漏已处理' : `疑似遗漏还有 ${pendingCount} 条未处理` }}</li>
           <li v-if="savingParties || deciding">正在保存修改……</li>
           <li v-if="loading">正在读取脱敏信息……</li>
@@ -478,7 +484,7 @@ onMounted(loadAll)
           :loading="submitting"
           @click="confirmSend"
         >
-          确认发送并开始审核
+          {{ assistant ? '确认脱敏' : '确认发送并开始审核' }}
         </el-button>
       </div>
     </template>
