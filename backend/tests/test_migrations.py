@@ -523,6 +523,24 @@ SCHEMA['assistant_messages'] = """
     tokens_out int NN =0
     created_at ts NN
     updated_at ts NN"""
+SCHEMA['kb_docs'] = """
+    id uuid NN =gen_random_uuid()
+    name_enc bytea NN
+    status v10 NN
+    error_message text
+    enabled bool NN =true
+    chunk_count int NN =0
+    content_hash c64 NN
+    created_by uuid NN
+    created_at ts NN
+    updated_at ts NN"""
+SCHEMA['kb_chunks'] = """
+    id bigint NN =serial
+    doc_id uuid NN
+    seq int NN
+    heading_enc bytea
+    text_enc bytea NN
+    embedding vector1024"""
 PRIMARY_KEYS = {t: ["id"] for t in SCHEMA}
 SCHEMA['findings'] += "\n    law_refs jsonb NN ='[]'\n    law_unverified bool NN =false\n    source v10 NN ='model'"
 PRIMARY_KEYS.update(
@@ -531,6 +549,8 @@ PRIMARY_KEYS.update(
 
 # 唯一约束 / 唯一索引（不含主键）
 UNIQUES = {
+    ('kb_docs', 'content_hash'),
+    ('kb_chunks', 'doc_id, seq'),
     ("assistant_messages", "task_id"),
     ('law_articles', 'law_id, seq'),
     ('laws', 'title, published_on'),
@@ -549,6 +569,8 @@ UNIQUES = {
 
 # 普通索引
 INDEXES = {
+    ('kb_docs', 'status, enabled'),
+    ('kb_chunks', 'embedding vector_cosine_ops'),
     ("assistant_messages", "task_id, id"),
     ('law_articles', 'embedding vector_cosine_ops'),
     ('task_clause_vectors', 'task_id'),
@@ -569,6 +591,8 @@ INDEXES = {
 
 # 外键：(表, 字段) -> (被引用表, 删除规则 c=CASCADE a=NO ACTION)
 FOREIGN_KEYS = {
+    ('kb_docs', 'created_by'): ('users', 'a'),
+    ('kb_chunks', 'doc_id'): ('kb_docs', 'c'),
     ("assistant_messages", "task_id"): ("tasks", "c"),
     ('law_articles', 'law_id'): ('laws', 'c'),
     ('law_import_articles', 'import_id'): ('law_imports', 'c'),
@@ -674,6 +698,8 @@ ENUM_COLUMNS[('assistant_messages','role')] = ['user', 'assistant']
 ENUM_COLUMNS[('assistant_messages','template')] = ['translate', 'summary', 'reply', 'crosscheck', 'compare']
 ENUM_COLUMNS[('assistant_messages','status')] = ['queued', 'streaming', 'done', 'failed', 'stopped']
 ENUM_COLUMNS[('jobs','type')].append('assist')
+ENUM_COLUMNS[('jobs','type')].append('kb_import')
+ENUM_COLUMNS[('kb_docs','status')] = ['parsing', 'ready', 'failed']
 ENUM_COLUMNS[('llm_calls','purpose')].append('assist')
 
 
@@ -728,7 +754,7 @@ def _tables(conn):
 
 def test_exactly_23_tables(migrated):
     assert _tables(migrated) == set(SCHEMA)
-    assert len(SCHEMA) == 33  # V2-D-01：新增消息表，仍严格核对完整集合（V2Q-130）。
+    assert len(SCHEMA) == 35  # V2Q-135：新增两表，仍严格核对完整集合。
 
 
 def test_pgcrypto_enabled(migrated):

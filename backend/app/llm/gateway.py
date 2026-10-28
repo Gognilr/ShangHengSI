@@ -158,6 +158,7 @@ def call_model(
     json_mode: bool | None = None,
     timeout_s: float | None = None,
     retry: bool = True,
+    extra_task_ids=(),
 ) -> ModelResult:
     """调用模型。成功返回 ModelResult；失败抛出 GatewayError（code 见 MESSAGES）。
 
@@ -187,7 +188,7 @@ def call_model(
         raise GatewayError(reached)
 
     # 2. 出口复检
-    ctx = recheck_context(db, task_id)
+    ctx = recheck_context(db, task_id, extra_task_ids=extra_task_ids)
     reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values, terms=ctx.terms,
                       placeholders=ctx.placeholders)
     if reasons:

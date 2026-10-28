@@ -123,3 +123,84 @@ def test_history_not_selected_no_engine(conversation, db_sessionmaker, monkeypat
         task = db.get(Task, uuid.UUID(conversation[2]))
         refs, extras = prepare(db, task, AssistantMessage(content_redacted='普通问题', params={}))
         assert refs == {'kb': [], 'history': []} and extras['kb_sent'] == 0
+
+
+def test_reference_choices_public_send_and_retry(conversation, db_sessionmaker, monkeypatch):
+    from app.db.models import AssistantMessage
+    from app.assistant.job import handle_assist
+    from app.embedding import engine as embedding
+    from tests.test_assistant_chat import BASE, install
+    c, h, tid, _ = conversation
+    monkeypatch.setattr(embedding, 'embed', lambda texts, kind: [vector() for _ in texts])
+    response = c.post(f'{BASE}/{tid}/preview', headers=h,
+                      json={'message': '核对验收要求', 'use_kb': True, 'use_history': True})
+    assert response.status_code == 200
+    response = c.post(f'{BASE}/{tid}/messages', headers=h,
+                      json={'message': '核对验收要求', 'use_kb': True, 'use_history': True})
+    assert response.status_code == 201, response.text
+    mid = response.json()['assistant']['id']
+    install(monkeypatch, ['片段'], httpx.ReadTimeout('fictional'))
+    with db_sessionmaker() as db:
+        row = db.get(AssistantMessage, mid)
+        assert row.params['use_kb'] is True and row.params['use_history'] is True
+        handle_assist(db, {'task_id': tid, 'message_id': mid})
+        db.refresh(row)
+        assert row.status == 'failed'
+    retry = c.post(f'{BASE}/{tid}/messages/{mid}/retry', headers=h)
+    assert retry.status_code == 201, retry.text
+    assert retry.json()['assistant']['params']['use_kb'] is True
+    assert retry.json()['assistant']['params']['use_history'] is True
+
+
+def test_nonstream_source_extra_context_blocks(conversation, db_sessionmaker, make_user, monkeypatch):
+    import pytest
+    from app.llm import gateway
+    other = make_user('nonstream_other')
+    requests = []
+    monkeypatch.setattr(gateway, 'TRANSPORT', httpx.MockTransport(lambda req: requests.append(req) or httpx.Response(503)))
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(conversation[2]))
+        ids = sources(db, task, other)
+        with pytest.raises(gateway.GatewayError) as exc:
+            gateway.call_model(db, purpose='assist', task_id=task.id, user_id=task.owner_id,
+                               messages=[{'role': 'user', 'content': '虚构来源买方'}],
+                               extra_task_ids=[ids[0]], json_mode=True)
+        assert exc.value.code == 'BLOCKED' and requests == []
+
+
+def test_compare_public_history_checks_sources(conversation, db_sessionmaker, make_user, monkeypatch):
+    from app.llm import gateway
+    from app.embedding import engine as embedding
+    from app.db.models import AssistantMessage
+    from app.assistant.job import handle_assist
+    from tests.test_assistant_chat import BASE
+    from tests.test_assistant_compare import compare_input, data
+    c, h, tid, _ = conversation
+    body = compare_input(db_sessionmaker, tid)
+    body['use_history'] = True
+    other = make_user('compare_other')
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        ids = sources(db, task, other)
+    monkeypatch.setattr(embedding, 'embed', lambda texts, kind: [vector() for _ in texts])
+    seen = []
+    original = gateway.call_model
+    def checked(*args, **kwargs):
+        seen.extend(kwargs.get('extra_task_ids', ()))
+        return original(*args, **kwargs)
+    monkeypatch.setattr(gateway, 'call_model', checked)
+    requests = []
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, json={'choices': [{'message': {'content': json.dumps(data())}}]})
+    monkeypatch.setattr(gateway, 'TRANSPORT', httpx.MockTransport(handle))
+    response = c.post(f'{BASE}/{tid}/messages', headers=h, json=body)
+    assert response.status_code == 201, response.text
+    mid = response.json()['assistant']['id']
+    with db_sessionmaker() as db:
+        handle_assist(db, {'task_id': tid, 'message_id': mid})
+        assert db.get(AssistantMessage, mid).status == 'done'
+    assert seen == [ids[0]] and len(requests) == 1
+    payload = json.loads(requests[0].content)
+    assert payload['stream'] is False and '【我的历史合同条款】[H1]' in str(payload)
+    assert '虚构来源买方' not in str(payload)

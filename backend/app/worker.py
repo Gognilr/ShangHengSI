@@ -178,10 +178,12 @@ def _worker_loop(
     heartbeat_seconds: float,
     types: tuple[str, ...],
 ) -> None:
+    # 知识库复用解析组，不增加线程；启动分组参数保留，领取时扩展解析任务类型。
+    claim_types = (*types, "kb_import") if "parse" in types else types
     while not stop.is_set():
         try:
             with session_factory() as db:
-                job = jobs.claim(db, worker_id, types)
+                job = jobs.claim(db, worker_id, claim_types)
                 claimed = (job.id, job.type, job.payload) if job else None
         except Exception as exc:  # noqa: BLE001  数据库暂时不可用时等待后重试
             logger.error("取任务失败: %s", type(exc).__name__)
@@ -260,6 +262,7 @@ def main() -> None:
     import app.lawsync.job  # noqa: F401  导入即注册同步与到期检查
     import app.standards.job  # noqa: F401  注册范本向量化
     import app.assistant.job  # noqa: F401  注册助手流式生成
+    import app.kb.job  # noqa: F401  注册知识库解析
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)

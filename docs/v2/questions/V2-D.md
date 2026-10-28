@@ -8,12 +8,13 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
-| V2Q-135 | D-05 任务卡漏列三个必要联动文件，迁移测试的全表严格期望也将与新增两表冲突 | 请求仅补入 assistant/service.py（去掉参考资料拒绝分支，将 use_kb/use_history 选择保存到消息参数供 worker/重试使用）、worker.py（注册 kb_import 并纳入解析组）、llm/gateway.py（非流式入口补 extra_task_ids，供比价引用来源复检），以及追加测试；迁移测试仅同步 35 表及新表列/主外键/索引/枚举/kb_import 期望，保持严格相等与既有业务断言。确认前这三个文件和旧结构期望均不改 | D-05 接口至 worker 的完整链路与严格迁移回归 | D-05 完成前 |
+
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-135 | D-05 漏列公开发送、解析组、非流式来源复检和迁移结构期望的必要联动 | 用户确认三个最小联动文件及追加测试：assistant/service.py 接受并保存参考选择供重试沿用；worker.py 注册并在解析组领取 kb_import；llm/gateway.py 非流式入口接 extra_task_ids；迁移测试严格期望同步 35 表、新表列/主外键/索引/状态与 kb_import，保持全部业务断言和检查强度 | 2026-10-28 |
 | V2Q-133 | D-04 文件范围遗漏模板接口、查看时本地还原、非流式比价与翻译段长设置的必要文件 | 用户确认允许三个最小联动文件及对应追加测试：assistant/service.py 接模板参数/固定消息、翻译额度预检和结果现场还原；llm/gateway.py 非流式 call_model 允许 assist，保留上限/复检/记录并关闭自动重试；admin/settings_store.py 登记 assistant.translate_segment_chars 默认 4000。已完成接入，相关 153 项回归通过，既有审核默认行为保持 | 2026-10-28 |
 | V2Q-132 | 默认新增 4 个 assist 线程后，旧 worker 测试固定的线程数、连接池和启动参数期望需要同步 | 用户确认仅同步两处结构期望：默认唯一 worker 数 15、连接池与溢出数 16、启动参数含 assist_concurrency=4，并增加 assist 组数量为 4 的断言；保留其他三组数量、唯一 worker_id、旧环境变量告警、启动自检和初始化顺序等全部行为断言 | 2026-10-28 |
 | V2Q-131 | D-03 文件范围遗漏 assist 队列、外发用途与公共失败生命周期的必要文件 | 用户确认最小补充：db/models.py 仅同步 jobs.type / llm_calls.purpose 的 assist 枚举；db/jobs.py 仅补助手 job 最终失败收尾；新 0023a 同步两项 CHECK，在 test_migrations.py 同步两项枚举期望并保持严格检查，追加队列失败/重启回归测试 | 2026-10-27 |

@@ -526,3 +526,12 @@ def test_assist_concurrency_default(monkeypatch):
     from app.config import load_settings
     monkeypatch.delenv("WORKER_ASSIST_CONCURRENCY", raising=False)
     assert load_settings().worker_assist_concurrency == 4
+
+
+def test_kb_import_claimed_only_by_parse_group(handlers, db_sessionmaker):
+    seen = []
+    handlers['kb_import'] = lambda db, payload: seen.append(threading.current_thread().name)
+    jid = _enqueue(db_sessionmaker, 'kb_import', {'doc_id': 'fictional'})
+    with _Running(db_sessionmaker, parse_concurrency=1):
+        assert _wait(lambda: _statuses(db_sessionmaker)[jid] == 'done')
+    assert seen == ['worker-parse-0']

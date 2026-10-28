@@ -52,7 +52,8 @@ def handle_assist(db: Session, payload: dict) -> None:
             row.status = "streaming"
             db.commit()
             outcome = gateway.call_model(db, purpose="assist", messages=messages, user_id=owner_id,
-                                         task_id=tid, task_title=title, json_mode=True, retry=False)
+                                         task_id=tid, task_title=title, json_mode=True, retry=False,
+                                         extra_task_ids=[uuid.UUID(item['task_id']) for item in references['history']])
             compare_tokens = (outcome.tokens_in, outcome.tokens_out)
             try:
                 from app.assistant.compare import normalize

@@ -151,8 +151,6 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
 
 
 def _validate_input(db: Session, task: Task, body):
-    if body.use_kb or body.use_history:
-        raise AppError(422, "VALIDATION_ERROR", "参考资料功能尚未接入")
     if body.template is not None:
         from app.assistant.templates import prepare
         files = {str(f.id): f.seq for f in _files(db, task) if f.confirmed_at is not None}
@@ -229,6 +227,7 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     if result.new_entries:
         engine.write_full_map(db, task.id, {**engine._load_full_map(db, task.id), **result.new_entries})
     params = {**params, "file_ids": [str(f.id) for f in selected_files(db, task, params)]}
+    params.update(use_kb=body.use_kb, use_history=body.use_history)
     row = AssistantMessage(task_id=task.id, role="user", content_redacted=result.text, status="done",
                            params=params, template=body.template)
     db.add(row)
