@@ -12,6 +12,7 @@ const tabs = computed(() => [
   { name: 'requirements', label: '审核要求', icon: List, scope: 'biz' },
   { name: 'laws', label: '法规库', icon: List, scope: 'biz' },
   { name: 'templates', label: '公司范本', icon: List, scope: 'biz' },
+  { name: 'knowledge', label: '知识库', icon: List, scope: 'biz' },
   { name: 'redaction', label: '脱敏', icon: Lock, scope: 'biz' },
   { name: 'data', label: '数据', icon: Coin, scope: 'sys' },
 ].filter(tab => tab.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin))

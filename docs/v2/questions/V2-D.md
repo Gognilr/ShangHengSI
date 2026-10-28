@@ -8,6 +8,7 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-141 | D-08 外发用途/筛选和系统状态的前端 API 类型漏列必要文件 | 请求仅补 frontend/src/api/admin.ts：OutboundRow.purpose 增加 assist、OutboundQuery 增加 purpose、SystemStatus 增加 assistant_sessions 数值类型；现有接口路径、权限和其他字段保持。确认前不改该文件、不接数据页新筛选参数 | D-08 数据页用途筛选与会话数展示 | D-08 完成前 |
 
 
 ## 二、已决定

@@ -13,6 +13,7 @@ import Redaction from '@/views/settings/Redaction.vue'
 import Requirements from '@/views/settings/Requirements.vue'
 import Laws from '@/views/settings/Laws.vue'
 import Templates from '@/views/settings/Templates.vue'
+import Knowledge from '@/views/settings/Knowledge.vue'
 import SettingsLayout from '@/views/settings/SettingsLayout.vue'
 import Users from '@/views/settings/Users.vue'
 
@@ -53,6 +54,7 @@ export const router = createRouter({
             { path: 'requirements', name: 'settings-requirements', component: Requirements, meta: { adminScope: 'biz' } },
             { path: 'laws', name: 'settings-laws', component: Laws, meta: { adminScope: 'biz' } },
             { path: 'templates', name: 'settings-templates', component: Templates, meta: { adminScope: 'biz' } },
+            { path: 'knowledge', name: 'settings-knowledge', component: Knowledge, meta: { adminScope: 'biz' } },
             { path: 'redaction', name: 'settings-redaction', component: Redaction, meta: { adminScope: 'biz' } },
             { path: 'data', name: 'settings-data', component: Data, meta: { adminScope: 'sys' } },
           ],
