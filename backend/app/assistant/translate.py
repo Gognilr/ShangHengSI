@@ -66,3 +66,18 @@ def target_mapping(mapping: dict[str, str], target: str) -> dict[str, str]:
         alternatives = [primary] + [value for key, value in mapping.items() if key.startswith(code + "#")]
         result[code] = next((value for value in alternatives if _script(value, target)), primary)
     return result
+
+
+def task_segments(db, task, params):
+    from sqlalchemy import select
+    from app.assistant.prompt import selected_files
+    from app.admin.settings_store import get_setting
+    from app.db.models import DocNode
+    files = selected_files(db, task, params)
+    if len(files) != 1:
+        raise AppError(422, "VALIDATION_ERROR", "翻译只能选择一个文件")
+    rows = db.scalars(select(DocNode).where(DocNode.file_id == files[0].id, DocNode.part == "body").order_by(DocNode.ord))
+    nodes = [(row.loc, row.redacted_text or "") for row in rows]
+    if not nodes:
+        raise AppError(422, "VALIDATION_ERROR", "所选文件没有可翻译的正文")
+    return segments(nodes, get_setting(db, "assistant.translate_segment_chars"))

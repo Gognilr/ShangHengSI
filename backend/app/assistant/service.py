@@ -68,16 +68,48 @@ def create(db: Session, user: User, ip: str | None) -> SessionDetail:
 
 def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
     from app.assistant.stream import incremental
-    content, _ = incremental(message.content_redacted, engine.load_redaction_map(db, task.id), 0,
+    mapping = _message_mapping(db, task, message)
+    content, _ = incremental(message.content_redacted, mapping, 0,
                               finished=message.status not in ("queued", "streaming"))
-    return {"id": message.id, "role": message.role, "content": content, "status": message.status,
+    result = {"id": message.id, "role": message.role, "content": content, "status": message.status,
             "template": message.template, "params": message.params, "extras": message.extras,
             "tokens_in": message.tokens_in, "tokens_out": message.tokens_out,
             "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at}
+    if message.role == "assistant":
+        from app.redaction.restore import restore
+        if message.template == "translate":
+            result["translation"] = {loc: restore(text, mapping) for loc, text in message.extras.get("translation", {}).items()}
+            result["translation_notice"] = "名称、地址、金额按原文写法还原，请核对"
+        elif message.template == "compare" and message.extras.get("compare"):
+            from app.assistant.compare import calculate
+            result["compare"] = _decimal_strings(calculate(message.extras["compare"], mapping))
+        elif message.template == "reply":
+            from app.assistant.templates import draft_only
+            result["draft"] = draft_only(content)
+    return result
+
+
+def _message_mapping(db: Session, task: Task, message: AssistantMessage) -> dict:
+    if message.role == "assistant" and message.template == "translate":
+        from app.assistant.translate import target_mapping
+        return target_mapping(engine._load_full_map(db, task.id), message.params["target"])
+    return engine.load_redaction_map(db, task.id)
+
+
+def _decimal_strings(value):
+    from decimal import Decimal
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, dict):
+        return {key: _decimal_strings(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_decimal_strings(item) for item in value]
+    return value
 
 
 def error_text(code: str | None) -> str | None:
     return {"ASSIST_INTERRUPTED": "服务重启，回复中断，请重试", "ASSIST_TOO_LONG": "所选文件过长，请减少使用的文件",
+            "ASSIST_QUOTA": "翻译调用次数不足，请明天再试或联系管理员",
             "SESSION_READONLY": "原件已按保留期限删除，本会话只能查看"}.get(code, gateway.MESSAGES.get(code)) if code else None
 
 
@@ -118,17 +150,29 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     return result
 
 
-def _validate_input(body):
-    if body.template is not None:
-        raise AppError(422, "VALIDATION_ERROR", "模板功能尚未接入")
+def _validate_input(db: Session, task: Task, body):
     if body.use_kb or body.use_history:
         raise AppError(422, "VALIDATION_ERROR", "参考资料功能尚未接入")
+    if body.template is not None:
+        from app.assistant.templates import prepare
+        files = {str(f.id): f.seq for f in _files(db, task) if f.confirmed_at is not None}
+        result = prepare(body.template, body.params, files, body.message)
+        return result.message, result.params
     if set(body.params) - {"file_ids"}:
         raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
     text = body.message.strip()
     if not 1 <= len(text) <= 4000:
         raise AppError(422, "VALIDATION_ERROR", "请输入 1～4000 字的消息")
-    return text
+    return text, body.params
+
+
+def _preflight(db: Session, task: Task, template, params):
+    if template == "translate":
+        from app.assistant.translate import require_quota, task_segments
+        require_quota(len(task_segments(db, task, params)), usage.remaining_calls(db, task.owner_id))
+    else:
+        from app.assistant.prompt import file_block
+        file_block(db, task, params)
 
 
 def _question(db: Session, task: Task, text: str, decisions=None):
@@ -143,8 +187,8 @@ def _question(db: Session, task: Task, text: str, decisions=None):
 def preview(db: Session, task: Task, body) -> dict:
     from app.assistant.prompt import selected_files
     _writable(db, task)
-    text = _validate_input(body)
-    selected_files(db, task, body.params)
+    text, params = _validate_input(db, task, body)
+    selected_files(db, task, params)
     result = _question(db, task, text)
     return {"redacted": result.text, "changed": result.changed, "suspects": result.suspects}
 
@@ -174,17 +218,17 @@ def _queue_reply(db: Session, task: Task, user_message: AssistantMessage) -> Ass
 
 
 def send(db: Session, task: Task, user: User, body) -> dict:
-    from app.assistant.prompt import file_block, selected_files
-    text = _validate_input(body)
+    from app.assistant.prompt import selected_files
     db.scalar(select(User).where(User.id == user.id).with_for_update())
     task = lock(db, task)
     _require_send(db, task)
-    file_block(db, task, body.params)
+    text, params = _validate_input(db, task, body)
+    _preflight(db, task, body.template, params)
     db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
     result = _question(db, task, text, decisions=[d.model_dump() for d in body.decisions])
     if result.new_entries:
         engine.write_full_map(db, task.id, {**engine._load_full_map(db, task.id), **result.new_entries})
-    params = {"file_ids": [str(f.id) for f in selected_files(db, task, body.params)]}
+    params = {**params, "file_ids": [str(f.id) for f in selected_files(db, task, params)]}
     row = AssistantMessage(task_id=task.id, role="user", content_redacted=result.text, status="done",
                            params=params, template=body.template)
     db.add(row)
@@ -204,11 +248,14 @@ def list_messages(db: Session, task: Task, after_id: int) -> dict:
 def get_delta(db: Session, task: Task, mid: int, offset: int) -> dict:
     from app.assistant.stream import incremental
     row = owned_message(db, task, mid)
-    text, new_offset = incremental(row.content_redacted, engine.load_redaction_map(db, task.id), offset,
+    text, new_offset = incremental(row.content_redacted, _message_mapping(db, task, row), offset,
                                    finished=row.status not in ("queued", "streaming"))
     if offset > new_offset:
         raise AppError(422, "VALIDATION_ERROR", "消息偏移量不正确")
-    return {"status": row.status, "text_from_offset": text, "offset": new_offset, "error": error_text(row.error_code)}
+    result = {"status": row.status, "text_from_offset": text, "offset": new_offset, "error": error_text(row.error_code)}
+    if row.template == "compare" and row.role == "assistant" and row.extras.get("compare"):
+        result["compare"] = message_out(db, task, row)["compare"]
+    return result
 
 
 def stop(db: Session, task: Task, mid: int) -> dict:
@@ -227,7 +274,6 @@ def stop(db: Session, task: Task, mid: int) -> dict:
 
 
 def retry(db: Session, task: Task, user: User, mid: int) -> dict:
-    from app.assistant.prompt import file_block
     db.scalar(select(User).where(User.id == user.id).with_for_update())
     task = lock(db, task)
     _require_send(db, task)
@@ -237,7 +283,7 @@ def retry(db: Session, task: Task, user: User, mid: int) -> dict:
     source = owned_message(db, task, int(previous.extras.get("user_message_id", 0)))
     if source.role != "user":
         raise AppError(409, "SESSION_BUSY", "原始消息不存在")
-    file_block(db, task, source.params)
+    _preflight(db, task, source.template, source.params)
     reply = _queue_reply(db, task, source)
     result = {"user": message_out(db, task, source), "assistant": message_out(db, task, reply)}
     db.commit()

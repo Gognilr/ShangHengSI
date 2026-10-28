@@ -57,9 +57,10 @@ def file_block(db: Session, task: Task, params: dict) -> str:
     return "\n".join(blocks)
 
 
-def build_messages(db: Session, task: Task, user_message: AssistantMessage) -> list[dict]:
-    block = file_block(db, task, user_message.params)
-    history = list(reversed(list(db.scalars(select(AssistantMessage).where(
+def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, nodes=None) -> list[dict]:
+    block = file_block(db, task, user_message.params) if nodes is None else (
+        "【翻译分段】<document>\n" + escape_document_tags("\n".join(f"⟦{loc}⟧ {text}" for loc, text in nodes)) + "\n</document>")
+    history = [] if user_message.template == "translate" else list(reversed(list(db.scalars(select(AssistantMessage).where(
         AssistantMessage.task_id == task.id, AssistantMessage.id < user_message.id, AssistantMessage.status == "done")
         .order_by(AssistantMessage.id.desc()).limit(10)))))
     used = set(NEUTRAL.findall("\n".join([block, user_message.content_redacted] + [m.content_redacted for m in history])))
@@ -80,7 +81,13 @@ def build_messages(db: Session, task: Task, user_message: AssistantMessage) -> l
                 if country:
                     label += f"（{country}）"
         descriptions.append(f"{code}：{label}")
-    return [{"role": "system", "content": system_prompt()},
-            {"role": "user", "content": "【代号说明】\n" + "\n".join(descriptions) + "\n" + block}] + [
+    system, options = system_prompt(), ""
+    if user_message.template:
+        from app.assistant.templates import instruction
+        system += "\n\n" + instruction(user_message.template)
+        labels = {"target": "目标语言", "focus": "侧重点", "tone": "语气", "language": "回复语言"}
+        options = "【模板参数】\n" + "\n".join(f"{label}：{user_message.params[key]}" for key, label in labels.items() if key in user_message.params) + "\n"
+    return [{"role": "system", "content": system},
+            {"role": "user", "content": options + "【代号说明】\n" + "\n".join(descriptions) + "\n" + block}] + [
                 {"role": m.role, "content": escape_document_tags(m.content_redacted)} for m in history
             ] + [{"role": "user", "content": escape_document_tags(user_message.content_redacted)}]

@@ -14,6 +14,7 @@ from app.db.models import Setting
 
 # SPEC 18.20：键名及默认值
 DEFAULTS: dict[str, Any] = {
+    "assistant.translate_segment_chars": 4000,
     "laws.refs_enabled": False,
     "lawsync.enabled": False,
     "lawsync.interval": "monthly",

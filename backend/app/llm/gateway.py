@@ -163,8 +163,14 @@ def call_model(
 
     timeout_s 覆盖设置中的超时（追问固定 120 秒，SPEC 13）；retry=False 时失败不重试（追问由用户手动重试）。
     """
-    if purpose not in ("review", "chat", "test"):
+    if purpose not in ("review", "chat", "test", "assist"):
         raise ValueError("purpose")
+    if purpose == "assist":
+        from app.db.models import Task
+        task = db.get(Task, task_id) if task_id is not None else None
+        if task is not None and task.policy == "local_only":
+            raise GatewayError("BLOCKED")
+        retry = False  # 比价由用户手动重试，不能因 JSON 对齐失败或网络错误重复计费。
     if not all(isinstance(m.get("content"), str) and isinstance(m.get("role"), str) for m in messages):
         raise ValueError("messages")
     cfg = _load_config(db)
@@ -191,6 +197,10 @@ def call_model(
 
     # 3. 发送，失败重试
     body = _build_body(cfg, messages, cfg.json_mode if json_mode is None else json_mode)
+    if purpose == "assist":
+        body["stream"] = False
+        if json_mode is True:
+            body["response_format"] = {"type": "json_object"}
     request_text = json.dumps(body, ensure_ascii=False)
     url = cfg.base_url.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json"}
