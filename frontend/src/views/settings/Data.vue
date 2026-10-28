@@ -19,6 +19,7 @@ import { useAuthStore } from '@/stores/auth'
 import {
   BACKUP_STATUS_TAG,
   OUTBOUND_STATUS,
+  LLM_PURPOSE,
   OUTBOUND_STATUS_TAG,
   backupStatusLabel,
   backupTriggerLabel,
@@ -201,10 +202,11 @@ async function saveRetention() {
 
 // ---- ③ 外发记录 ----
 const users = ref<UserRow[]>([])
-const filters = reactive<{ user_id: string; range: [string, string] | null; status: string }>({
+const filters = reactive<{ user_id: string; range: [string, string] | null; status: string; purpose: OutboundRow['purpose'] | '' }>({
   user_id: '',
   range: null,
   status: '',
+  purpose: '',
 })
 const logs = ref<OutboundRow[]>([])
 const logTotal = ref(0)
@@ -222,6 +224,7 @@ async function loadLogs() {
   logError.value = ''
   try {
     const res = await adminDataApi.outboundLogs({
+      purpose: filters.purpose || undefined,
       user_id: filters.user_id || undefined,
       from: filters.range?.[0],
       to: filters.range?.[1],
@@ -325,6 +328,7 @@ onBeforeUnmount(stopPolling)
       <div v-if="status" class="system-stats">
         <div class="stat"><div class="stat-label">版本号</div><div class="stat-value">{{ status.version }}</div></div>
         <div class="stat"><div class="stat-label">排队任务数</div><div class="stat-value">{{ status.queued_jobs }}</div></div>
+        <div class="stat"><div class="stat-label">会话数</div><div class="stat-value">{{ status.assistant_sessions }}</div></div>
         <div class="stat"><div class="stat-label">数据盘剩余空间</div><div class="stat-value">{{ formatBytes(status.data_free_bytes) }}</div></div>
         <div class="stat"><div class="stat-label">原件占用</div><div class="stat-value">{{ formatBytes(status.files_bytes) }}</div></div>
         <div class="stat"><div class="stat-label">数据库占用</div><div class="stat-value">{{ formatBytes(status.db_bytes) }}</div></div>
@@ -455,6 +459,9 @@ onBeforeUnmount(stopPolling)
           class="date-filter"
           @change="search"
         />
+        <el-select v-model="filters.purpose" clearable placeholder="全部用途" aria-label="外发用途" class="status-filter" @change="search">
+          <el-option v-for="o in toOptions(LLM_PURPOSE)" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
         <el-select v-model="filters.status" clearable placeholder="全部状态" class="status-filter" @change="search">
           <el-option v-for="o in toOptions(OUTBOUND_STATUS)" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>

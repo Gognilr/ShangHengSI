@@ -195,7 +195,7 @@ export interface OutboundRow {
   user_id: string | null
   user_name: string | null
   task_title: string | null
-  purpose: 'review' | 'chat' | 'test'
+  purpose: 'review' | 'chat' | 'test' | 'assist'
   model_name: string
   chars: number
   status: 'sent' | 'blocked' | 'error'
@@ -212,6 +212,7 @@ export interface OutboundDetail extends OutboundRow {
 }
 
 export interface OutboundQuery {
+  purpose?: 'review' | 'chat' | 'test' | 'assist'
   user_id?: string
   from?: string
   to?: string
@@ -239,6 +240,7 @@ export interface AuditQuery {
 }
 
 export interface SystemStatus {
+  assistant_sessions: number
   version: string
   queued_jobs: number
   data_free_bytes: number | null

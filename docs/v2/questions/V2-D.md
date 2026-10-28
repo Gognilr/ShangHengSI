@@ -8,13 +8,13 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
-| V2Q-141 | D-08 外发用途/筛选和系统状态的前端 API 类型漏列必要文件 | 请求仅补 frontend/src/api/admin.ts：OutboundRow.purpose 增加 assist、OutboundQuery 增加 purpose、SystemStatus 增加 assistant_sessions 数值类型；现有接口路径、权限和其他字段保持。确认前不改该文件、不接数据页新筛选参数 | D-08 数据页用途筛选与会话数展示 | D-08 完成前 |
 
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-141 | D-08 数据页漏列必要的前端 API 类型文件 | 用户确认仅同步 frontend/src/api/admin.ts：assist 用途、purpose 筛选参数和 assistant_sessions 数值字段；接口路径、权限和其余字段保持。Data.vue 使用既有 adminDataApi 接用途筛选和会话数 | 2026-10-28 |
 | V2Q-137 | D-07 会话展示缺少知识库开关与生成标志 | 用户确认最小补入 assistant/schemas.py、service.py，仅增加本人列表/详情的 kb_enabled 与 generating 布尔字段；追加默认关闭、状态转换、本人列表与管理员不能查看他人详情的测试 | 2026-10-28 |
 | V2Q-138 | D-07 共用原文组件固定调用审核节点接口 | 用户确认 RedactionCompare.vue、ManualRedactDialog.vue 增加可选 nodeLoader，ConfirmStep assistant 模式传会话节点接口；默认仍用原审核接口，不放宽 kind 隔离 | 2026-10-28 |
 | V2Q-140 | 已确认会话没有本人只读外发文本入口 | 用户确认 assistant/router.py 增加本人 GET outbound，复用外发构建；追加本人/他人/审核 kind/只读状态测试，保留旧 redaction 状态守卫，响应 no-store | 2026-10-28 |
