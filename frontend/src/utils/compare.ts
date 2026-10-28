@@ -94,8 +94,9 @@ export function buildCompareRows(outboundText: string, nodes: PreviewNode[], ite
   const byLoc = new Map(nodes.map((node, index) => [node.loc, { node, index }]))
   const lines = outboundText ? outboundText.split('\n') : []
   const parsed = lines.map((text, index) => {
-    const match = /^\[([^\]\s]+)\] /.exec(text)
-    return { loc: match?.[1] ?? null, content: match ? text.slice(match[0].length) : text, header: index === 0 && !text.startsWith('[') }
+    // 审核与助手各自使用既定标记；只移除位置前缀，正文的空格等字符原样保留。
+    const match = /^\[([^\]\s]+)\] /.exec(text) ?? /^⟦([^⟧\s]+)⟧/.exec(text)
+    return { loc: match?.[1] ?? null, content: match ? text.slice(match[0].length) : text, header: index === 0 && !match && !text.startsWith('[') }
   })
   const outboundLocs = new Set(parsed.map(line => line.loc).filter((loc): loc is string => loc !== null))
   const used = new Set<string>()

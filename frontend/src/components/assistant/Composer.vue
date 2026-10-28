@@ -21,8 +21,9 @@ const limits = computed(() => props.template === 'translate' ? [1, 1] : props.te
 const reason = computed(() => !props.session.can_send ? props.session.send_reason ?? '当前不能发送' : fileIds.value.length < limits.value[0]! || fileIds.value.length > limits.value[1]! ? `请选择 ${limits.value[0]}～${limits.value[1]} 个已确认文件` : !text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length) ? '请输入问题或粘贴来函' : '')
 let pending: MessageInput | null = null
 function input(): MessageInput {
-  const params: Record<string, unknown> = { file_ids: [...fileIds.value] }
-  if (props.template === 'translate') params.target = target.value
+  const params: Record<string, unknown> = props.template === 'translate'
+    ? { file_id: fileIds.value[0], target: target.value }
+    : { file_ids: [...fileIds.value] }
   if (props.template === 'summary') params.focus = focus.value
   if (props.template === 'reply') Object.assign(params, { tone: tone.value, language: language.value })
   return { message: text.value, template: props.template, params, use_kb: useKb.value && !!props.session.kb_enabled, use_history: useHistory.value }

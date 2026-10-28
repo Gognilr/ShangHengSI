@@ -14,6 +14,7 @@
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-142 | D-09 浏览器确认页不识别助手中性位置标记，共享解析器漏列于文件范围 | 用户确认最小补入 frontend/src/utils/compare.ts，兼容助手 ⟦loc⟧，保留审核 [loc] 格式；避免首行正文误判为主体说明，不改实际外发文本。新增 frontend/tests/compare-neutral.mjs 验证双格式、Unicode/空白字符保留、逐格与未知位置处理 | 2026-10-28 |
 | V2Q-141 | D-08 数据页漏列必要的前端 API 类型文件 | 用户确认仅同步 frontend/src/api/admin.ts：assist 用途、purpose 筛选参数和 assistant_sessions 数值字段；接口路径、权限和其余字段保持。Data.vue 使用既有 adminDataApi 接用途筛选和会话数 | 2026-10-28 |
 | V2Q-137 | D-07 会话展示缺少知识库开关与生成标志 | 用户确认最小补入 assistant/schemas.py、service.py，仅增加本人列表/详情的 kb_enabled 与 generating 布尔字段；追加默认关闭、状态转换、本人列表与管理员不能查看他人详情的测试 | 2026-10-28 |
 | V2Q-138 | D-07 共用原文组件固定调用审核节点接口 | 用户确认 RedactionCompare.vue、ManualRedactDialog.vue 增加可选 nodeLoader，ConfirmStep assistant 模式传会话节点接口；默认仍用原审核接口，不放宽 kind 隔离 | 2026-10-28 |
