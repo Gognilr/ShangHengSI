@@ -1588,3 +1588,30 @@ def test_d03_assist_queue_and_purpose_upgrade_downgrade():
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_t51_10_kb_upgrade_downgrade():
+    name = 'aireview_test_' + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    try:
+        url = _url_for(name)
+        cfg = _alembic(url)
+        command.upgrade(cfg, '0023a')
+        command.upgrade(cfg, '0024')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert {'kb_docs', 'kb_chunks'} <= _tables(conn)
+            assert conn.execute("SELECT format_type(atttypid,atttypmod) FROM pg_attribute WHERE attrelid='kb_chunks'::regclass AND attname='embedding'").fetchone() == ('vector(1024)',)
+            index = conn.execute("SELECT indexdef FROM pg_indexes WHERE indexname='ix_kb_chunks_embedding'").fetchone()[0]
+            assert 'hnsw' in index and 'vector_cosine_ops' in index
+            conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('kb_import','{}',now())")
+        command.downgrade(cfg, '0023a')
+        with psycopg.connect(url, autocommit=True) as conn:
+            assert not {'kb_docs', 'kb_chunks'} & _tables(conn)
+            assert conn.execute("SELECT 1 FROM jobs WHERE type='kb_import'").fetchone() is None
+            with pytest.raises(errors.CheckViolation):
+                conn.execute("INSERT INTO jobs(type,payload,created_at) VALUES('kb_import','{}',now())")
+        command.upgrade(cfg, 'head')
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

@@ -35,6 +35,9 @@ def handle_assist(db: Session, payload: dict) -> None:
             raise AppError(409, "ASSIST_INTERRUPTED", "原始消息不存在")
         owner_id, title = task.owner_id, task.title
         template, params = user_row.template, user_row.params
+        from app.assistant.history import prepare
+        references, reference_metadata = prepare(db, task, user_row)
+        row.extras = {**row.extras, **reference_metadata}
         if template == "translate":
             from app.assistant.translate import task_segments
             service._preflight(db, task, template, params)
@@ -44,7 +47,7 @@ def handle_assist(db: Session, payload: dict) -> None:
         else:
             parts = [None]
         if template == "compare":
-            messages = prompt.build_messages(db, task, user_row)
+            messages = prompt.build_messages(db, task, user_row, references=references)
             seqs = [file.seq for file in prompt.selected_files(db, task, params)]
             row.status = "streaming"
             db.commit()
@@ -99,12 +102,13 @@ def handle_assist(db: Session, payload: dict) -> None:
                 db.rollback()
                 break
             # 本段消息在开始发送前完成组装，之后不持有消息行锁。
-            messages = prompt.build_messages(db, task, user_row, nodes=part)
+            messages = prompt.build_messages(db, task, user_row, nodes=part, references=references)
             db.commit()
             if number > 1:
                 content += "\n"
             outcome = gateway.stream_model(db, purpose="assist", messages=messages, user_id=owner_id,
-                                           task_id=tid, task_title=title, on_delta=write)
+                                           task_id=tid, task_title=title, on_delta=write,
+                                           extra_task_ids=[uuid.UUID(item['task_id']) for item in references['history']])
             row = db.scalar(select(AssistantMessage).where(AssistantMessage.id == mid).with_for_update()
                             .execution_options(populate_existing=True))
             if row is None:

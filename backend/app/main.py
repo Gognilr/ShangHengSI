@@ -32,7 +32,9 @@ def build_api_router() -> APIRouter:
 
     各模块的路由在后续任务中 include 到这里。
     """
+    from app.kb.router import router as kb_router
     router = APIRouter(prefix=API_PREFIX, dependencies=[Depends(csrf_guard)])
+    router.include_router(kb_router)
     router.include_router(auth_router)
     router.include_router(assistant_router)
     router.include_router(tasks_router)

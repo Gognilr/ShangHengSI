@@ -1,4 +1,4 @@
-"""全部 33 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量、范本、会话消息表。
+"""全部 35 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量、范本、会话与知识库表。
 
 约定见 SPEC 18.1：时间 timestamptz（UTC）；枚举用 varchar + CHECK；_enc 结尾为主密钥加密后的 bytea；
 任务下属表的 task_id 外键均 ON DELETE CASCADE。
@@ -661,7 +661,7 @@ class LlmCall(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist"]),
+        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist", "kb_import"]),
         enum_check("status", ["queued", "running", "done", "failed"]),
         Index("ix_jobs_status_run_after", "status", "run_after"),
     )
@@ -755,3 +755,37 @@ class AuditLog(Base):
     detail: Mapped[Any] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     ip: Mapped[Optional[str]] = mapped_column(INET)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, nullable=False, default=utcnow, index=True)
+
+
+class KbDoc(Base):
+    __tablename__ = "kb_docs"
+    __table_args__ = (
+        enum_check("status", ["parsing", "ready", "failed"]),
+        UniqueConstraint("content_hash"),
+        Index("ix_kb_docs_status_enabled", "status", "enabled"),
+    )
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=_TRUE)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)
+    content_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = _ts_now()
+    updated_at: Mapped[datetime] = _ts_updated()
+
+
+class KbChunk(Base):
+    __tablename__ = "kb_chunks"
+    __table_args__ = (
+        UniqueConstraint("doc_id", "seq"),
+        Index("ix_kb_chunks_embedding", "embedding", postgresql_using="hnsw",
+              postgresql_ops={"embedding": "vector_cosine_ops"}),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    doc_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("kb_docs.id", ondelete="CASCADE"), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    heading_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    text_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1024))
