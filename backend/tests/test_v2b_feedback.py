@@ -129,3 +129,19 @@ def test_t53_14_15_lowercase_evidence():
 def test_t53_16_chat_evidence():
     from app.chat.service import _redact
     assert not _redact('Bulk Density 偏低怎么办，bulk density 指什么？', {}, []).suspects
+
+
+@pytest.mark.parametrize('text', ['Calcined Needle Coke', 'Product Name: Calcined Needle Coke'])
+def test_v2q167_standard_product_preserved(text):
+    result = compute([NodeIn('F1-P1', text)], 'other')
+    assert result.redacted['F1-P1'] == text
+    start = text.index('Calcined Needle Coke')
+    assert not result.items
+    assert not any(s.char_start < len(text) and s.char_end > start for s in result.suspects)
+
+
+def test_v2q167_product_label_does_not_exempt_proper_name():
+    text = 'Product Name: Velmora Needle Coke'
+    result = compute([NodeIn('F1-P1', text)], 'other')
+    start = text.index('Velmora')
+    assert any(s.char_start <= start and s.char_end >= start + len('Velmora') for s in result.suspects)

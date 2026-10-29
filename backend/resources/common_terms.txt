@@ -240,6 +240,7 @@ Calcined Petroleum Coke
 Petroleum Coke
 Green Petroleum Coke
 Needle Coke
+Calcined Needle Coke
 Graphite Electrode
 Graphite Electrodes
 Carbon Raiser

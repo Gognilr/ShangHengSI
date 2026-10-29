@@ -4,7 +4,7 @@
 
 ## 当前进度（只保留最近 3 条，每条不超过 400 字；更早的见 [archive/progress.md](archive/progress.md)）
 
-- 2026-10-29（GPT-6.1 Sol）：**V2-B-12 实现中，停下报告 V2Q-167**。边界、人名称谓、NER 过滤、小写佐证、跨原因同文分组及次数显示接通；专项 41 passed、前端 build 通过。指定回归 118 passed / 1 failed：任务卡新加 must_keep 的 Calcined 仍被 capitalized 列疑似。建议扩范围向 common_terms.txt 仅补完整产品术语 Calcined Needle Coke，待用户决定，不改样本或旧断言。详见 reports/V2-B-12.md；13→14→17→18 未开工。
+- 2026-10-29（GPT-6.1 Sol）：**V2-B-12 实现中，待决定 V2Q-168**。用户确认 V2Q-167 范围例外，只补 Calcined Needle Coke 一行及保护性专项；两项资源及许可证下载获准并留存。完整指定集合 510 passed / 2 failed，均为旧宋虚婷疑似预期与新敬称自动替换冲突；A-03、NER 对拍、追问及规范检查通过，build 通过。建议最小同步一条 YAML 标注和对应固定列表断言，并补自动替换 / 敬称保留断言。两处未改，详见 reports/V2-B-12.md。13→14→17→18 未开工。
 
 - 2026-10-29（GPT-6.1 Sol）：**V2-B-16 已完成**。四类外发修复已接通正文、NOTE、追问与出口复检；按用户确认的 V2Q-166 通用条件收窄新增职务规则，旧规则及样本不变。指定八文件完整回归 540 passed、1 既有警告、退出 0；修正新增电话与旧固话的同区间重复命中。详见 reports/V2-B-16.md。下一步 V2-B-12（GPT-6.1 Sol，high），按指定顺序连续推进。
 
