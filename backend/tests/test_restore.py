@@ -67,3 +67,14 @@ def test_numbered_accounts_restore_and_address_stays():
                                      "寄往 [地址：德国]，联系 张示例。")
     for loc in ("F1-P1", "F1-P2", "F1-P4"):
         assert restore(r.redacted[loc], plain) == next(n.text for n in nodes if n.loc == loc)
+
+
+def test_codes_in_typical_model_output():
+    """模型回复里常见的写法：加粗、引号、英文所有格、紧挨标点和英文单词、表格与列表。"""
+    mapping = {"客户_A": "Fictional Metals Trading FZE", "人员_1": "张三", "[金额_1]": "400,000.00"}
+    text = ("**客户_A** 应在“人员_1”签字后付款；客户_A's obligation, see 客户_A.\n"
+            "| 付款方 | 客户_A |\n- 金额：USD【金额_1】(含税)\n`人员_1`")
+    assert restore(text, mapping) == (
+        "**Fictional Metals Trading FZE** 应在“张三”签字后付款；Fictional Metals Trading FZE's obligation, "
+        "see Fictional Metals Trading FZE.\n| 付款方 | Fictional Metals Trading FZE |\n"
+        "- 金额：USD400,000.00(含税)\n`张三`")

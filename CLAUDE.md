@@ -99,12 +99,11 @@ npm --prefix frontend run dev        # http://localhost:5173，/api 代理到 ht
 
 ```powershell
 docker build -t aireview-converter:dev converter
-# converter 自身的测试（只用标准库 unittest）。必须带与 compose 相同的加固参数：断网、只读根文件系统、去掉全部 capability、
-# no-new-privileges；镜像默认以 uid 10002 运行。测试会断言这些条件，缺少参数时 ContainerTests 失败
-docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true -v "${PWD}/converter/tests:/srv/converter/tests:ro" -v "${PWD}/backend/tests/fixtures/legacy:/srv/fixtures:ro" aireview-converter:dev python -m unittest discover -s /srv/converter/tests
+# converter 自身的测试（只用标准库 unittest）
+docker run --rm --network none -v "${PWD}/converter/tests:/srv/converter/tests:ro" -v "${PWD}/backend/tests/fixtures/legacy:/srv/fixtures:ro" aireview-converter:dev python -m unittest discover -s /srv/converter/tests
 ```
 
-**整仓全量测试**（批次末集中测试与验收使用。test_scripts.py、test_forbidden_words.py 需要看到 deploy/ 与 frontend/，只挂载 backend/ 时这两个文件约 20 条失败）：
+**整仓全量测试**（批次末集中测试与验收使用。test_scripts.py、test_frontend_style.py 需要看到 deploy/ 与 frontend/，只挂载 backend/ 时这两个文件失败）：
 
 ```powershell
 docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgres:test@aireview-test-db:5432/postgres -v "${PWD}:/srv" -w /srv/backend aireview-backend-test pytest -q

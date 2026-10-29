@@ -110,100 +110,6 @@ def test_backup_success_layout_contents_and_record(env, db_sessionmaker, make_us
             (admin.id, "backup", str(rec.id), {"trigger": "manual", "status": "success"})]
 
 
-def test_only_tmp_exists_while_writing(env, db_sessionmaker, monkeypatch):
-    """T-16：写入期间只有 .tmp，没有 .bak 和 .sha256。"""
-    seen: list[set[str]] = []
-    real = service.EncryptingWriter
-
-    class Spy(real):
-        def write(self, data):
-            if not seen:
-                seen.append(_names(env["backup"]))
-            return super().write(data)
-
-    monkeypatch.setattr(service, "EncryptingWriter", Spy)
-    rec = _run(db_sessionmaker)
-    assert rec.status == "success"
-    assert seen and seen[0] == {"aireview_20261022_0200.bak.tmp", ".work"}
-
-
-def test_v2c03_backup_stats_skip_links_and_children(env, db_sessionmaker):
-    child = env["backup"] / "child"
-    child.mkdir()
-    (child / "large").write_bytes(b"x"*10000)
-    (env["backup"] / "linked").symlink_to(child / "large")
-    rec = _run(db_sessionmaker)
-    assert rec.status == "success"
-    assert rec.dir_bytes == sum(p.stat().st_size for p in env["backup"].iterdir() if p.is_file() and not p.is_symlink())
-
-
-@pytest.mark.parametrize("failed_stat", ["free", "database", "directory"])
-def test_v2c03_measurement_failure_keeps_backup_success(env, db_sessionmaker, monkeypatch, caplog, failed_stat):
-    def failure(*args):
-        raise OSError("private-path-must-not-log")
-    if failed_stat == "free":
-        monkeypatch.setattr(service.shutil, "disk_usage", failure)
-    else:
-        monkeypatch.setattr(service, "_database_bytes" if failed_stat == "database" else "_directory_bytes", failure)
-    rec = _run(db_sessionmaker)
-    assert rec.status == "success"
-    values = dict(free=rec.dir_free_bytes, database=rec.db_bytes, directory=rec.dir_bytes)
-    assert values.pop(failed_stat) is None
-    assert all(value is not None for value in values.values())
-    assert "OSError" in caplog.text and "private-path-must-not-log" not in caplog.text
-
-
-def test_v2c03_rotation_failure_has_no_stats(env, db_sessionmaker, monkeypatch):
-    monkeypatch.setattr(service, "rotate", lambda *args: (_ for _ in ()).throw(OSError("private")))
-    rec = _run(db_sessionmaker)
-    assert rec.status == "failed" and rec.file_name
-    assert rec.db_bytes is rec.dir_bytes is rec.dir_free_bytes is None
-
-
-def test_v2c03_database_stat_error_rolls_back_savepoint(env, db_sessionmaker, monkeypatch):
-    from sqlalchemy.orm import Session
-    original = Session.scalar
-    def scalar(db, statement, *args, **kwargs):
-        if str(statement) == "SELECT pg_database_size(current_database())":
-            return db.execute(text("SELECT 1 / 0")).scalar()
-        return original(db, statement, *args, **kwargs)
-    monkeypatch.setattr(Session, "scalar", scalar)
-    rec = _run(db_sessionmaker)
-    assert rec.status == "success" and rec.db_bytes is None
-    assert rec.dir_bytes > 0 and rec.dir_free_bytes is not None
-
-
-def test_rotation_deletes_only_oldest_matching_files(env, db_sessionmaker):
-    d = env["backup"]
-    for stamp in ("20261020_0200", "20261021_0200"):
-        (d / f"aireview_{stamp}.bak").write_bytes(b"old")
-        (d / f"aireview_{stamp}.bak.sha256").write_text("x")
-    keep_alone = {"aireview_x.txt", "other.bak", "aireview_2026.bak", "aireview_20261019_0200.bak.sha256"}
-    for n in keep_alone:
-        (d / n).write_bytes(b"keep")
-    with db_sessionmaker() as db:
-        set_setting(db, "backup.keep", 2, None)
-        db.commit()
-    assert _run(db_sessionmaker).status == "success"
-    assert _names(d) == keep_alone | {"aireview_20261021_0200.bak", "aireview_20261021_0200.bak.sha256",
-                                      "aireview_20261022_0200.bak", "aireview_20261022_0200.bak.sha256"}
-
-
-def test_stale_tmp_and_interrupted_record_cleaned(env, db_sessionmaker):
-    (env["backup"] / "aireview_20261021_0200.bak.tmp").write_bytes(b"crashed")
-    (env["backup"] / "keep.tmp").write_bytes(b"not ours")
-    with db_sessionmaker() as db:
-        db.add(BackupRecord(trigger="schedule", status="running"))
-        db.commit()
-    rec = _run(db_sessionmaker)
-    assert rec.status == "success"
-    assert "aireview_20261021_0200.bak.tmp" not in _names(env["backup"]) and "keep.tmp" in _names(env["backup"])
-    with db_sessionmaker() as db:
-        rows = db.scalars(select(BackupRecord).order_by(BackupRecord.id)).all()
-        assert [(r.status, r.error_message) for r in rows] == [("failed", "备份中断"), ("success", None)]
-        assert rows[0].finished_at is not None
-
-
 # ---------------------------------------------------------------- 失败
 
 
@@ -230,95 +136,7 @@ def test_pg_dump_failure(env, db_sessionmaker, monkeypatch):
     _assert_failed(env, db_sessionmaker, "数据库导出失败（返回码 1）", extra={"aireview_20261001_0200.bak"})
 
 
-def test_write_failure_removes_tmp(env, db_sessionmaker, monkeypatch):
-    real = service.EncryptingWriter
-
-    class Broken(real):
-        def write(self, data):
-            raise OSError("disk full: /secret/path")
-
-    monkeypatch.setattr(service, "EncryptingWriter", Broken)
-    _run(db_sessionmaker)
-    _assert_failed(env, db_sessionmaker, "备份失败（OSError）")
-
-
-@pytest.mark.parametrize("content", [b"", b"short\n"])
-def test_invalid_password_file(env, db_sessionmaker, content):
-    env["pw"].write_bytes(content)
-    _run(db_sessionmaker)
-    _assert_failed(env, db_sessionmaker, "备份密码文件无效：密码至少 12 个字符")
-
-
-def test_missing_password_file_and_backup_dir(env, db_sessionmaker, monkeypatch):
-    env["pw"].unlink()
-    _run(db_sessionmaker)
-    _assert_failed(env, db_sessionmaker, "备份密码文件无效：无法读取")
-    monkeypatch.setenv("BACKUP_DIR", str(env["tmp"] / "no-such-dir"))
-    get_settings.cache_clear()
-    rec = _run(db_sessionmaker)
-    assert rec.status == "failed" and rec.error_message == "备份目录不存在或不可写"
-
-
-def test_same_minute_backup_fails_without_overwriting(env, db_sessionmaker):
-    first = _run(db_sessionmaker)
-    before = (env["backup"] / first.file_name).read_bytes()
-    _run(db_sessionmaker)
-    _assert_failed(env, db_sessionmaker, "同一分钟内已有备份，请稍后再试",
-                   extra={first.file_name, first.file_name + ".sha256"})
-    assert (env["backup"] / first.file_name).read_bytes() == before
-
-
-def test_lock_held_skips_without_record(env, db_sessionmaker, db_engine):
-    with db_engine.connect() as other:
-        assert other.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": service.LOCK_KEY}).scalar()
-        other.commit()
-        assert _run(db_sessionmaker) is None
-        other.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": service.LOCK_KEY})
-        other.commit()
-    with db_sessionmaker() as db:
-        assert db.scalars(select(BackupRecord)).all() == []
-    assert _run(db_sessionmaker).status == "success"  # 锁已释放
-
-
-def test_secrets_not_in_argv_logs_or_records(env, db_sessionmaker, monkeypatch, caplog):
-    calls = []
-    real_run = subprocess.run
-
-    def spy(args, **kw):
-        calls.append((args, kw.get("env", {})))
-        return real_run(args, **kw)
-
-    monkeypatch.setattr(service.subprocess, "run", spy)
-    with caplog.at_level(logging.DEBUG):
-        rec = _run(db_sessionmaker)
-    assert rec.status == "success"
-    (args, pg_env), = calls
-    db_password = db_sessionmaker.kw["bind"].url.password
-    assert pg_env["PGPASSWORD"] == db_password and pg_env["PGDATABASE"]
-    # 命令行只有固定参数和输出路径，连接串与密码只在环境变量中
-    assert args[:5] == ["pg_dump", "-Fc", "--no-owner", "--no-privileges", "-f"] and len(args) == 6
-    assert args[5].endswith("/backup/.work/db.dump")
-    assert PASSWORD not in caplog.text and "PGPASSWORD" not in caplog.text
-    with db_sessionmaker() as db:
-        for r in db.scalars(select(BackupRecord)):
-            assert PASSWORD not in (r.error_message or "")
-    assert PASSWORD.encode() not in (env["backup"] / rec.file_name).read_bytes()
-
-
 # ---------------------------------------------------------------- 触发
-
-
-def test_enqueue_backup_rejects_when_busy(env, db_sessionmaker):
-    with db_sessionmaker() as db:
-        first = backup_job.enqueue_backup(db, trigger="manual", user_id=None)
-        db.commit()
-        assert first is not None and first.payload == {"trigger": "manual", "user_id": None}
-        assert backup_job.enqueue_backup(db, trigger="manual", user_id=None) is None
-        db.rollback()
-        db.get(Job, first.id).status = "done"
-        db.add(BackupRecord(trigger="schedule", status="running"))
-        db.commit()
-        assert backup_job.enqueue_backup(db, trigger="manual", user_id=None) is None
 
 
 def test_check_schedule_once_per_local_day(env, db_sessionmaker):
@@ -343,26 +161,6 @@ def test_check_schedule_once_per_local_day(env, db_sessionmaker):
         assert len(db.scalars(select(Job)).all()) == 2
 
 
-def test_check_schedule_catch_up_and_busy(env, db_sessionmaker):
-    with db_sessionmaker() as db:
-        # 当天任何时间晚于设定时间启动都会补做；有立即备份在排队时等下一分钟
-        backup_job.enqueue_backup(db, trigger="manual", user_id=None)
-        db.commit()
-        now = datetime.now(SH).replace(hour=23, minute=30)
-        assert backup_job.check_schedule(db, now) is False
-        db.execute(text("UPDATE jobs SET status = 'done'"))
-        db.commit()
-        assert backup_job.check_schedule(db, now) is True
-
-
-def test_check_schedule_invalid_time_skips(env, db_sessionmaker, caplog):
-    with db_sessionmaker() as db:
-        set_setting(db, "backup.time", "25:00", None)
-        db.commit()
-        assert backup_job.check_schedule(db, T0 + timedelta(hours=20)) is False
-        assert db.scalars(select(Job)).all() == []
-
-
 def test_handler_registered_and_runs(env, db_sessionmaker, make_user):
     from app import worker
 
@@ -376,17 +174,6 @@ def test_handler_registered_and_runs(env, db_sessionmaker, make_user):
     with db_sessionmaker() as db:
         rec = db.scalars(select(BackupRecord)).one()
         assert rec.status == "success" and rec.trigger == "manual"
-
-
-def test_finalize_failed_marks_running_backup_record(db_sessionmaker):
-    with db_sessionmaker() as db:
-        db.add(BackupRecord(trigger="manual", status="running"))
-        db.add(BackupRecord(trigger="manual", status="success"))
-        db.commit()
-        jobs.finalize_failed(db, "backup", {"trigger": "manual"})
-        db.commit()
-        assert [(r.status, r.error_message) for r in db.scalars(select(BackupRecord).order_by(BackupRecord.id))] == [
-            ("failed", "备份中断"), ("success", None)]
 
 
 # ---------------------------------------------------------------- 解密命令

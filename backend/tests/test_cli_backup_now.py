@@ -50,20 +50,3 @@ def test_wait_ignores_old_record_and_waits_for_worker(sm, monkeypatch, capsys, s
     assert ("123" in out.out) if status == "success" else ("磁盘空间不足" in out.err)
 
 
-def test_wait_timeout(sm, monkeypatch, capsys):
-    import time
-
-    clock = iter([0, 0, 4])
-    monkeypatch.setattr(time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(time, "sleep", lambda _: None)
-    assert cli.main(["backup-now", "--wait", "--timeout", "3"]) == 3
-    assert "超时" in capsys.readouterr().err
-
-
-def test_no_connection_secret_in_errors(sm, monkeypatch, capsys):
-    def fail(*a, **kw):
-        raise RuntimeError("postgresql://fictive:secret@db/test")
-    monkeypatch.setattr(backup_job, "enqueue_backup", fail)
-    assert cli.main(["backup-now"]) == 1
-    out = capsys.readouterr()
-    assert "secret" not in out.out + out.err

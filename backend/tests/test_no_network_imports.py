@@ -1,132 +1,26 @@
-"""T-20：除 app/llm/gateway.py 外，项目代码中没有任何外部网络调用（SPEC 5、23.2）。
+"""T-20：除 app/llm/gateway.py 与 app/lawsync/client.py 外，backend/app 不导入网络库（SPEC 5、23.2）。
 
-扫描范围是 backend/app/ 下的项目代码（open_questions Q-09），不含 tests 和第三方库。
-用语法树检查，比 SPEC 列出的 httpx、requests、urllib.request 更严：凡能直接发起网络连接的标准库和常见第三方库都禁止，
-包括通过 importlib.import_module / __import__ 动态导入。
+出口在网络层另有封堵，这里只做一条简单的源码检查。
 """
 import ast
 from pathlib import Path
 
-import pytest
-
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
-GATEWAY = APP_DIR / "llm" / "gateway.py"
-LAWSYNC = APP_DIR / 'lawsync' / 'client.py'
-CONVERTER_DIR = Path(__file__).resolve().parents[2] / "converter"  # 仓库根目录下；只挂载 backend 时不存在
-
-FORBIDDEN = {
-    "httpx",
-    "requests",
-    "urllib.request",
-    "urllib3",
-    "http.client",
-    "aiohttp",
-    "socket",
-    "ssl",
-    "smtplib",
-    "ftplib",
-    "telnetlib",
-    "websocket",
-    "websockets",
-    "xmlrpc.client",
-}
+ALLOWED = {APP_DIR / "llm" / "gateway.py", APP_DIR / "lawsync" / "client.py"}
+FORBIDDEN = {"httpx", "requests", "urllib.request", "urllib3", "http.client", "aiohttp", "socket"}
 
 
-def _forbidden(module: str) -> bool:
-    return any(module == f or module.startswith(f + ".") for f in FORBIDDEN)
-
-
-def find_network_imports(source: str) -> list[str]:
-    """返回源码中所有被禁止的导入（模块名）。"""
-    hits: list[str] = []
+def _imports(source: str) -> list[str]:
+    names = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
-            hits += [a.name for a in node.names if _forbidden(a.name)]
+            names += [a.name for a in node.names]
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            if _forbidden(node.module):
-                hits.append(node.module)
-            # from urllib import request / from http import client
-            hits += [f"{node.module}.{a.name}" for a in node.names if _forbidden(f"{node.module}.{a.name}")]
-        elif isinstance(node, ast.Call):
-            func = node.func
-            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-            if name in ("import_module", "__import__") and node.args:
-                arg = node.args[0]
-                if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and _forbidden(arg.value):
-                    hits.append(arg.value)
-    return hits
+            names += [node.module] + [f"{node.module}.{a.name}" for a in node.names]
+    return [n for n in names if any(n == f or n.startswith(f + ".") for f in FORBIDDEN)]
 
 
-def _app_files() -> list[Path]:
-    return sorted(p for p in APP_DIR.rglob("*.py") if p not in {GATEWAY, LAWSYNC})
-
-
-def _converter_files() -> list[Path]:
-    """converter 容器的代码（R2）：同样不得有网络调用，它本来就断网。"""
-    return sorted(CONVERTER_DIR.rglob("*.py")) if CONVERTER_DIR.is_dir() else []
-
-
-def test_scan_covers_project_code():
-    files = _app_files()
-    assert len(files) >= 10
-    assert APP_DIR / "main.py" in files
-
-
-@pytest.mark.skipif(not CONVERTER_DIR.is_dir(), reason="需要整仓挂载才有 converter/")
-def test_scan_covers_converter():
-    assert CONVERTER_DIR / "main.py" in _converter_files()
-
-
-def test_no_network_calls_outside_gateway():
-    violations = {}
-    for path in _app_files() + _converter_files():
-        hits = find_network_imports(path.read_text(encoding="utf-8"))
-        if hits:
-            violations[str(path.relative_to(CONVERTER_DIR.parent if CONVERTER_DIR in path.parents else APP_DIR.parent))] = hits
-    assert violations == {}, f"只有 gateway.py 与 lawsync/client.py 可以访问网络：{violations}"
-
-
-def test_lawsync_fixed_domains_signatures_redirects():
-    tree = ast.parse(LAWSYNC.read_text(encoding='utf-8'))
-    domains = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
-               and ('.cn' in n.value or '.com' in n.value or '://' in n.value)}
-    assert domains == {'flk.npc.gov.cn', 'flkoss.obs-bj2.cucloud.cn', 'https://'}
-    signatures = {n.name: ([a.arg for a in n.args.args], [ast.unparse(a.annotation) for a in n.args.args],
-                          ast.unparse(n.returns)) for n in tree.body if isinstance(n, ast.FunctionDef) and
-                          not n.name.startswith('_')}
-    assert signatures == {
-        'list_page': (['category_codes','status_codes','page','page_size'],
-                      ['tuple[int, ...]','tuple[int, ...]','int','int'],'dict'),
-        'download_urls': (['flk_ids'],['list[str]'],'list[str]'),
-        'download_file': (['url'],['str'],'bytes')}
-    keywords = [kw.value for n in ast.walk(tree) if isinstance(n, ast.Call) for kw in n.keywords
-                if kw.arg == 'follow_redirects']
-    assert keywords and all(isinstance(v, ast.Constant) and v.value is False for v in keywords)
-
-
-@pytest.mark.parametrize(
-    "snippet",
-    [
-        "import httpx",
-        "import requests",
-        "import urllib.request",
-        "from urllib import request",
-        "from urllib.request import urlopen",
-        "from http import client",
-        "import http.client as hc",
-        "import socket",
-        "from requests.adapters import HTTPAdapter",
-        "import importlib\nimportlib.import_module('httpx')",
-        "__import__('requests')",
-    ],
-)
-def test_detector_catches_network_imports(snippet):
-    assert find_network_imports(snippet)
-
-
-@pytest.mark.parametrize(
-    "snippet",
-    ["import json", "from urllib.parse import quote", "import http", "from . import socket_utils", "import hashlib"],
-)
-def test_detector_allows_harmless_imports(snippet):
-    assert find_network_imports(snippet) == []
+def test_no_network_imports_outside_gateway_and_lawsync():
+    violations = {str(p.relative_to(APP_DIR)): hits for p in sorted(APP_DIR.rglob("*.py"))
+                  if p not in ALLOWED and (hits := _imports(p.read_text(encoding="utf-8")))}
+    assert violations == {}

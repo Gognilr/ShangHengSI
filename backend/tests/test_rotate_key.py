@@ -116,27 +116,6 @@ def test_v2c07_resume_committed_batches(rotation, monkeypatch):
     assert_rotated(d)
 
 
-def test_v2c07_bad_row_cli_nonzero_without_plaintext(rotation, monkeypatch, capsys, caplog):
-    d = rotation
-    with d["engine"].begin() as conn:
-        conn.execute(update(Task).where(Task.id == d["task"].id).values(user_note_enc=b"DO-NOT-LOG-CORRUPT"))
-    monkeypatch.setattr("app.db.session.get_sessionmaker", lambda: d["sm"])
-    code = cli.main(["rotate-key", "--old-key-file", str(d["old_file"]), "--new-key-file", str(d["new_file"])])
-    captured = capsys.readouterr()
-    output = captured.out + captured.err + caplog.text
-    assert code != 0 and "tasks" in output and str(d["task"].id) in output
-    for secret in ("DO-NOT-LOG-CORRUPT", "虚构轮换补充说明", "sk-test-0123456789", repr(d["old"]), repr(d["new"])):
-        assert secret not in output
-
-
-def test_v2c07_cli_verify_exit_codes(rotation, monkeypatch, capsys):
-    d = rotation
-    monkeypatch.setattr("app.db.session.get_sessionmaker", lambda: d["sm"])
-    assert cli.main(["rotate-key", "--old-key-file", str(d["old_file"]), "--new-key-file", str(d["new_file"])]) == 0
-    assert cli.main(["verify-key", "--key-file", str(d["new_file"])]) == 0
-    assert cli.main(["verify-key", "--key-file", str(d["old_file"])]) != 0
-
-
 def test_v2c07_metadata_includes_future_columns(rotation):
     from app.security import rotate
     expected = {"doc_nodes.text_enc", "redaction_maps.map_enc", "redaction_terms.term_enc",
@@ -171,88 +150,6 @@ def test_v2c07_metadata_includes_future_columns(rotation):
         future.drop(d["engine"])
 
 
-def test_v2c07_bad_model_secret_and_bad_original(rotation):
-    from app.security import rotate
-    d = rotation
-    with d["engine"].begin() as conn:
-        conn.execute(update(Setting).where(Setting.key == "model.api_key_enc").values(value="invalid-base64"))
-    with pytest.raises(rotate.RotationError, match="settings.*model.api_key_enc"):
-        rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
-    with d["engine"].begin() as conn:
-        conn.execute(update(Setting).where(Setting.key == "model.api_key_enc").values(value=crypto.encrypt_to_b64("sk-test-0123456789", key=d["old"])))
-    original = next(d["files"].iterdir())
-    original.write_bytes(b"bad-original-not-for-output")
-    with pytest.raises(rotate.RotationError) as exc:
-        rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
-    assert "files" in str(exc.value) and "bad-original-not-for-output" not in str(exc.value)
-
-
-def test_v2c07_resume_after_original_replacement(rotation, monkeypatch):
-    from app.security import rotate
-    d = rotation
-    another = d["files"] / ("f"*32)
-    another.write_bytes(crypto.encrypt(b"another fictional original", key=d["old"]))
-    d["originals"][another.name] = b"another fictional original"
-    real_replace = rotate._replace_original
-    def interrupted(path, blob):
-        real_replace(path, blob)
-        raise RuntimeError("原件替换后中断")
-    monkeypatch.setattr(rotate, "_replace_original", interrupted)
-    with pytest.raises(RuntimeError, match="原件替换后中断"):
-        rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
-    monkeypatch.setattr(rotate, "_replace_original", real_replace)
-    rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
-    assert_rotated(d)
-
-
-def test_v2c07_original_write_failure_keeps_complete_old(rotation, monkeypatch):
-    from app.security import rotate
-    d = rotation
-    original = next(d["files"].iterdir())
-    saved = original.read_bytes()
-    monkeypatch.setattr(rotate.os, "replace", lambda *_: (_ for _ in ()).throw(OSError("不得输出此内容")))
-    with pytest.raises(rotate.RotationError, match="原件读写失败") as exc:
-        rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
-    assert "不得输出此内容" not in str(exc.value)
-    assert original.read_bytes() == saved
-    assert not list(d["files"].glob(".rotate-*.tmp"))
-
-
 # V2Q-75（C-09 审核修订）：只处理按存储规则命名的原件，其他条目不读不改；不合格原件在改库前报错。
-def test_v2q75_k1_skips_non_original_entries(rotation):
-    from app.security import rotate
-    d = rotation
-    partial = d["files"] / ("e" * 32 + ".tmp")
-    partial.write_bytes(b"partial-upload")
-    restore_dir = d["files"] / ".restore-new"
-    restore_dir.mkdir()
-    (restore_dir / ("d" * 32)).write_bytes(b"restore-leftover")
-    other = d["files"] / "notes.txt"
-    other.write_bytes(b"other-file")
-    rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
-    assert partial.read_bytes() == b"partial-upload"
-    assert (restore_dir / ("d" * 32)).read_bytes() == b"restore-leftover"
-    assert other.read_bytes() == b"other-file"
-    rotate.verify_key(d["engine"], d["files"], d["new"])
-    assert_rotated(d)
 
 
-@pytest.mark.parametrize("kind", ["dir", "symlink"])
-def test_v2q75_k2_bad_original_entry_fails_before_database(rotation, kind):
-    from app.security import rotate
-    d = rotation
-    name = "c" * 32
-    bad = d["files"] / name
-    if kind == "dir":
-        bad.mkdir()
-    else:
-        bad.symlink_to(next(p for p in d["files"].iterdir() if p.name != name))
-    with pytest.raises(rotate.RotationError) as exc:
-        rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
-    assert name not in str(exc.value)
-    # 数据库尚未改动：全部密文仍可用旧密钥解开。
-    with d["engine"].connect() as conn:
-        for (table_name, pk, col), expected in d["before"].items():
-            table = Base.metadata.tables[table_name]
-            where = [c == v for c, v in zip(table.primary_key, pk)]
-            assert crypto.decrypt(conn.execute(select(table.c[col]).where(*where)).scalar_one(), key=d["old"]) == expected

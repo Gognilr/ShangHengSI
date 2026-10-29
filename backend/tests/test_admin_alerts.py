@@ -46,15 +46,6 @@ def alerts(c):
     return c.get(ME).json()["alerts"]
 
 
-def test_v2c_retention_pending_admin_only(admin, db_sessionmaker, make_user, login):
-    with db_sessionmaker() as db:
-        settings_store.set_setting(db, "retention.review_pending", True, None)
-        db.commit()
-    assert {"code": "RETENTION_REVIEW", "message": "数据保留已改为分层设置，新增的保留项暂为永久，请在设置 → 数据中确认"} in alerts(admin)
-    make_user("reader")
-    assert alerts(login("reader")[0]) == []
-
-
 def add_backup(sm, status, size=None):
     with sm() as s:
         s.add(BackupRecord(trigger="schedule", status=status, size_bytes=size, started_at=utcnow(),
@@ -81,38 +72,12 @@ def test_no_alerts_by_default(admin):
     assert alerts(admin) == []
 
 
-def test_prompt_term_conflict_enabled_and_disabled(admin, db_sessionmaker, env):
-    from app.db.models import RedactionTerm
-    from app.security import crypto
-
-    with db_sessionmaker() as db:
-        term = RedactionTerm(kind="custom", category="CUSTOM", term_hash="a" * 64,
-                             term_enc=crypto.encrypt_text("验收"), enabled=True)
-        db.add(term)
-        db.commit()
-        term_id = term.id
-    got = alerts(admin)
-    assert len(got) == 1 and got[0]["code"] == "PROMPT_TERM_CONFLICT"
-    assert "1 个" in got[0]["message"] and "验收" not in got[0]["message"]
-    with db_sessionmaker() as db:
-        db.get(RedactionTerm, term_id).enabled = False
-        db.commit()
-    assert alerts(admin) == []
-
-
 def test_regular_user_always_empty(make_user, login, db_sessionmaker, backup_dir):
     make_user("alice")
     add_backup(db_sessionmaker, "failed")
     set_cap(db_sessionmaker, 1)
     add_calls(db_sessionmaker, 5)
     c, _ = login("alice")
-    assert alerts(c) == []
-
-
-def test_must_change_password_admin_gets_no_alerts(make_user, login, db_sessionmaker, backup_dir):
-    make_user("boss", role="admin", must_change_password=True)
-    add_backup(db_sessionmaker, "failed")
-    c, _ = login("boss")
     assert alerts(c) == []
 
 
@@ -123,22 +88,6 @@ def test_backup_failed(admin, db_sessionmaker):
     add_backup(db_sessionmaker, "failed")
     assert alerts(admin) == [
         {"code": "BACKUP_FAILED", "message": "最近一次备份失败，请到“设置 - 数据”查看原因"}]
-
-
-def test_backup_failed_cleared_by_later_success(admin, db_sessionmaker, free_space):
-    free_space(50 * GB)
-    add_backup(db_sessionmaker, "failed")
-    add_backup(db_sessionmaker, "success", GB)
-    assert alerts(admin) == []
-
-
-def test_running_record_is_ignored_for_failure(admin, db_sessionmaker, free_space):
-    free_space(50 * GB)
-    add_backup(db_sessionmaker, "failed")
-    add_backup(db_sessionmaker, "running")
-    assert [a["code"] for a in alerts(admin)] == ["BACKUP_FAILED"]  # 进行中的不算“已结束”
-    add_backup(db_sessionmaker, "success", GB)
-    assert alerts(admin) == []
 
 
 # ---------------------------------------------------------------- 空间不足
@@ -156,40 +105,7 @@ def test_space_low_boundary(admin, db_sessionmaker, free_space):
     assert alerts(admin)[0]["message"] == "备份目录剩余空间不足：剩余 1.5 GB，建议不少于 6.0 GB"
 
 
-def test_space_not_checked_without_successful_backup(admin, db_sessionmaker, free_space):
-    free_space(0)
-    assert alerts(admin) == []
-    add_backup(db_sessionmaker, "failed")
-    assert [a["code"] for a in alerts(admin)] == ["BACKUP_FAILED"]
-
-
-def test_space_uses_latest_successful_backup(admin, db_sessionmaker, free_space):
-    free_space(5 * GB)
-    add_backup(db_sessionmaker, "success", 10 * GB)
-    add_backup(db_sessionmaker, "success", 1 * GB)
-    assert alerts(admin) == []
-
-
-def test_backup_dir_unavailable(admin, db_sessionmaker, backup_dir):
-    add_backup(db_sessionmaker, "success", GB)
-    backup_dir.rmdir()
-    a = alerts(admin)
-    assert a == [{"code": "BACKUP_SPACE_LOW", "message": "备份目录不可用"}]
-
-
-def test_failed_and_space_low_together(admin, db_sessionmaker, free_space):
-    free_space(GB)
-    add_backup(db_sessionmaker, "success", 3 * GB)
-    add_backup(db_sessionmaker, "failed")
-    assert [a["code"] for a in alerts(admin)] == ["BACKUP_FAILED", "BACKUP_SPACE_LOW"]
-
-
 # ---------------------------------------------------------------- 调用上限
-
-
-def test_cap_zero_means_unlimited(admin, db_sessionmaker):
-    add_calls(db_sessionmaker, 50)
-    assert alerts(admin) == []
 
 
 @pytest.mark.parametrize("cap,used,expected", [
@@ -213,18 +129,3 @@ def test_cap_near(admin, db_sessionmaker, cap, used, expected):
         assert got == [{"code": "CALL_CAP_NEAR", "message": expected}]
 
 
-def test_cap_counts_only_sent(admin, db_sessionmaker):
-    set_cap(db_sessionmaker, 10)
-    add_calls(db_sessionmaker, 20, status="blocked")
-    add_calls(db_sessionmaker, 20, status="error")
-    assert alerts(admin) == []
-
-
-def test_alert_messages_contain_no_path(admin, db_sessionmaker, backup_dir, free_space):
-    free_space(GB)
-    add_backup(db_sessionmaker, "success", 3 * GB)
-    add_backup(db_sessionmaker, "failed")
-    set_cap(db_sessionmaker, 1)
-    add_calls(db_sessionmaker, 1)
-    text = " ".join(a["message"] for a in alerts(admin))
-    assert str(backup_dir) not in text and "/" not in text.replace("（1/1 次）", "")

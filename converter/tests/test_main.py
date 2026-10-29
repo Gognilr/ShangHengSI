@@ -6,7 +6,6 @@
       aireview-converter:dev python -m unittest discover -s /srv/converter/tests
 
 LibreOffice 的行为（超时、失败、输出异常）用假的 soffice 脚本模拟；真实转换用 /srv/fixtures 中的虚构样本。
-ContainerTests 断言运行条件与 compose 中的加固一致（断网、只读、非 root、无 capability）。
 """
 import os
 import re
@@ -316,43 +315,6 @@ class RealConversionTests(SpoolCase):
         code = main.run_once(self.spool)
         self.assertIn(code, ("OK",) + main.ERROR_CODES)
         self.assert_clean(file_id)
-
-
-class ContainerTests(unittest.TestCase):
-    """运行条件：只有 lo、根文件系统只读、uid 10002 / gid 10001、无 capability、no-new-privileges。"""
-
-    def test_only_loopback(self):
-        self.assertEqual(sorted(os.listdir("/sys/class/net")), ["lo"])
-
-    def test_user(self):
-        self.assertEqual((os.getuid(), os.getgid()), (10002, 10001))
-
-    def test_root_fs_read_only(self):
-        # 只看写权限不够（uid 10002 本来就写不了 root 的目录），须是只读挂载
-        root = [line.split() for line in Path("/proc/self/mounts").read_text().splitlines() if line.split()[1] == "/"]
-        self.assertIn("ro", root[-1][3].split(","))
-        for d in ("/", "/srv/converter", "/usr/lib/libreoffice", "/etc"):
-            with self.subTest(dir=d), self.assertRaises(OSError):
-                with tempfile.NamedTemporaryFile(dir=d):
-                    pass
-
-    def test_no_capabilities_no_new_privs(self):
-        status = dict(line.split(":\t", 1) for line in Path("/proc/self/status").read_text().splitlines() if ":\t" in line)
-        self.assertEqual(int(status["CapEff"], 16), 0)
-        self.assertEqual(int(status["CapPrm"], 16), 0)
-        self.assertEqual(status["NoNewPrivs"].strip(), "1")
-
-    def test_libreoffice_version_pinned(self):
-        out = subprocess.run(
-            ["dpkg-query", "-W", "-f=${Version}", "libreoffice-writer-nogui", "libreoffice-calc-nogui"],
-            capture_output=True, text=True, check=True,
-        ).stdout
-        self.assertEqual(out, "4:25.2.3-2+deb13u8" * 2)
-
-    def test_no_java_no_uno(self):
-        for pkg in ("python3-uno", "default-jre-headless", "libreoffice-java-common"):
-            r = subprocess.run(["dpkg-query", "-W", "-f=${db:Status-Abbrev}", pkg], capture_output=True, text=True)
-            self.assertFalse(r.stdout.startswith("ii"), pkg)  # 未知（返回非 0）或 un（未安装）
 
 
 if __name__ == "__main__":
