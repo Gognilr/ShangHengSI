@@ -463,7 +463,7 @@ recheck.py 不改；它调用的 `find_amounts` 自动带上 11.1 的新写法�
 | 6 | 12 | “各位先生”“女士们”“叶先生” | 前两个无人名；“叶先生”按 3.2 整段替换（不变） |
 | 7 | 12 | “DEAR MR.KE MOLAN:”“Dear Mrs Lorna Fictive,”“Attn: MISS JANE FICTIVE” | 只替换姓名部分 |
 | 8 | 12 | “Dr Street 12”“Main Dr. ” 后无大写词 | 不识别人名 |
-| 9 | 12 | “Product Name: Calcined Needle Coke”“Item Name: Graphite Electrode”“Contact Name: Lorna Fictive”“Company Name: Northwind Fictive” | 前两个无人名；后两个与现状相同（Contact Name 识别人名，Company Name 行为不变） |
+| 9 | 12 | “Product Name: Calcined Needle Coke”“Item Name: Graphite Electrode”“Contact Name: Lorna Fictive”“Company Name: Northwind Fictive” | 前两个无人名；后两个与现状相同（Contact Name 识别人名，Company Name 行为不变）；V2-B-17 起 Company Name 按 13.2 第 5 条归 ORG（V2Q 待 GPT 编号，用户 2026-10-29 同意同步阶段性测试） |
 | 10 | 12 | 同一文字在 5 个节点出现、原因分别为 capitalized 与 ner | `suspect_views` 返回一行，occurrences=5；ignore 后 5 条全部 ignore；replace 后全文替换 |
 | 11 | 12 | 两组不同文字，各 3 处 | 第二步计数为 2；发送前检查按组数 |
 | 12 | 12 | ner 返回“approved suppliers”“ASTM D4052”“GB/T 24526”“T/ZGTS 002-2022”“ASTM”“We”“The inspector” | 都不进入替换或疑似遗漏 |
