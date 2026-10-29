@@ -483,7 +483,7 @@ recheck.py 不改；它调用的 `find_amounts` 自动带上 11.1 的新写法�
 
 ## 十三、自查发现的修复（V2-B-16～V2-B-18，V2Q-152～V2Q-154）
 
-2026-10-29 · Opus 5.5（自查后追加） · **待用户确认**
+2026-10-29 · Opus 5.5（自查后追加） · 用户已确认（2026-10-29，含 V2Q-152～154 按建议）
 
 **起因**：见 [reports/V2-B-selfcheck.md](../reports/V2-B-selfcheck.md)。用虚构样本离线实测，发现多类写法原样外发。出口复检重扫用的是同一套正则，**同样放行**。所以本节规则一旦加入 `detect.find_formatted` / `find_amounts`，复检会自动随之收紧，recheck.py 本身不改。
 
