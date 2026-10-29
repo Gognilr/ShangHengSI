@@ -34,8 +34,9 @@ _LABELS: list[tuple[str, list[str]]] = [
     ("丙方", ["丙方", "Party C"]),
     ("收货人", ["收货人", "Consignee"]),
     ("通知方", ["通知方", "通知人", "Notify Party"]),
-    ("银行", ["开户行", "开户银行", "收款银行", "Beneficiary Bank", "Bank Name", "Bank"]),
+    ("银行", ["开户行", "开户银行", "收款银行", "受益人银行", "Beneficiary Bank", "Bank Name", "Bank"]),
     ("受益人", ["受益人", "Beneficiary"]),
+    (OTHER, ["Company Name"]),
 ]
 _LABEL_CANON = {word.casefold(): canon for canon, words in _LABELS for word in words}
 _LABEL_WORDS = sorted(_LABEL_CANON, key=len, reverse=True)
@@ -45,6 +46,60 @@ _LABEL_RE = re.compile(
     + r"))\s*(?:名称|全称|(?i:company\s+name|name))?\s*(?:[（(][^）)\n]{1,20}[）)])?\s*[:：]",
     re.MULTILINE,
 )
+
+
+@lru_cache(maxsize=1)
+def _bilingual_label_patterns():
+    pairs = [(cn, en) for _, words in _LABELS for cn in words if re.search(r'[一-鿿]', cn)
+             for en in words if en.isascii()]
+    pairs += [(cn, en) for chinese, english in (
+        ('联系人 经办人 收件人', ['Contact', 'Contact Person', 'Contact Name', 'Name', 'Attn.']),
+        ('授权代表 委托代理人', ['Authorized Representative', 'Representative']),
+        ('法定代表人 代表人', ['Legal Representative', 'Representative']),
+        ('签字 签名 签字人', ['Signature', 'Signed by']),
+        ('合同编号 合同号', ['Contract No.', 'Contract Number']),
+        ('订单号 订单编号', ['Order No.', 'Order Number']),
+        ('发票号 发票编号', ['Invoice No.', 'Invoice Number']),
+        ('提单号 提单编号', ['B/L No.', 'Bill of Lading No.']),
+        ('信用证号 信用证编号', ['L/C No.', 'Credit No.']),
+        ('报关单号 报关单编号', ['Customs Declaration No.']),
+        ('招标编号 招标项目编号', ['Tender No.', 'Bid No.']),
+        ('报价单号 报价编号', ['Quotation No.', 'Quote No.']),
+        ('运单号', ['Waybill No.']),
+        ('集装箱号', ['Container No.']),
+        ('银行账号 收款账号 付款账号 开户行账号 账号 帐号 账户', ['Account No.', 'Account Number', 'Account', 'A/C']),
+        ('地址 注册地址 通讯地址 办公地址 联系地址 收货地址', ['Address', 'Registered Address']),
+        ('电话 联系电话 手机 传真', ['Tel.', 'Telephone', 'Phone', 'Mobile', 'Fax']),
+        ('邮箱 电子邮箱 邮件', ['Email', 'E-mail']),
+        ('护照号 护照号码', ['Passport No.']),
+        ('税号 纳税人识别号', ['Tax ID', 'VAT No.', 'TIN']),
+        ('注册号 工商注册号 营业执照注册号', ['Registration No.']),
+        ('组织机构代码', ['Organization Code']),
+        ('微信 微信号', ['WeChat', 'WeChat ID']),
+        ('行号 联行号 开户行行号', ['CNAPS', 'Routing No.', 'Sort Code']),
+        ('项目编号 项目号', ['Project No.']),
+    ) for cn in chinese.split() for en in english]
+    patterns = []
+    for cn, en in sorted(set(pairs), key=lambda pair: -(len(pair[0]) + len(pair[1]))):
+        latin = re.escape(en).replace(r'\ ', r'[ \t]+').replace(r'\.', r'\.?')
+        patterns.append(re.compile(rf'(?P<cn>{re.escape(cn)})[ \t]+(?P<en>{latin})(?=[ \t]*[:：])'
+            rf'|(?P<enfirst>{latin})[ \t]*(?P<cnlast>{re.escape(cn)})(?=[ \t]*[:：])', re.I))
+    return tuple(patterns)
+
+
+def bilingual_label_text(text: str) -> str:
+    """识别时用等长空白遮盖双语标签的英文部分，原文、值及偏移不变。"""
+    if not re.search(r'[:：]', text) or not re.search(r'[一-鿿]', text) or not re.search(r'[A-Za-z]', text):
+        return text
+    for pattern in _bilingual_label_patterns():
+        matches = list(pattern.finditer(text))
+        if matches:
+            chars = list(text)
+            for match in matches:
+                start, end = match.span('en' if match.group('en') else 'enfirst')
+                chars[start:end] = ' ' * (end - start)
+            text = ''.join(chars)
+    return text
 
 # 通用角色词：作为简称出现时不替换（9.3 第 3 步）
 GENERIC_WORDS = frozenset(w.casefold() for w in (
@@ -85,7 +140,7 @@ _EN_TOKEN_RE = re.compile(rf"{_EN_PAREN_GROUP}|[^\s一-鿿　-〿＀-￯：:；;
 _EN_PAREN_OK = re.compile(rf"^{_EN_PAREN_GROUP}$")
 _EN_CONNECTORS = frozenset({"&", "of", "and", "de", "du", "la", "for", "ve", "z"})
 _EN_LEADING_NOISE = frozenset(w.casefold() for w in (
-    "The", "To", "From", "By", "With", "Messrs", "Messrs.", "Dear", "Attn", "Seller", "Buyer", "Supplier",
+    "The", "To", "From", "By", "With", "Messrs", "Messrs.", "M/s", "Dear", "Attn", "Seller", "Buyer", "Supplier",
     "Purchaser", "Vendor", "Consignee", "Beneficiary", "Party", "Bank", "Name", "Company",
 ))
 # 中文名称前常见的虚词：在正文中识别企业名称时去掉（“与XX有限公司签订”）
@@ -116,7 +171,7 @@ _ALIAS_OPEN_RE = re.compile(r"[（(]\s*(?:以下|下称|简称|(?i:hereinafter|r
 _EXTEND_STOP_WORDS = (*_CN_BOUNDARY_WORDS, "或", "并", "且", "的", "等", "各", "其", "下属", "所属", "旗下", "负责", "成立", "设立")
 
 # 开户行（R1-12，Q-139 ②）：这些标签后的中文值以银行类结尾时，没有企业后缀也作为银行主体；单独的“Bank”不在此列
-_BANK_VALUE_LABELS = frozenset(w.casefold() for w in ("开户行", "开户银行", "收款银行", "Bank Name", "Beneficiary Bank"))
+_BANK_VALUE_LABELS = frozenset(w.casefold() for w in ("开户行", "开户银行", "收款银行", "受益人银行", "Bank Name", "Beneficiary Bank"))
 _BANK_VALUE_SUFFIXES = ("银行", "支行", "分行", "分理处", "营业部", "储蓄所")
 _BANK_VALUE_MIN_HAN = 4
 
@@ -392,11 +447,16 @@ def _bank_value(text: str, pos: int) -> tuple[int, int] | None:
 def find_labeled_parties(text: str) -> list[tuple[str, int, int]]:
     """节点原文中“标签：名称”形式的签约方：[(规范化标签, start, end)]。
     开户行标签取不到带企业后缀的名称时，再按银行类结尾取值（R1-12）。"""
+    text = bilingual_label_text(text)
     out = []
     for m in _LABEL_RE.finditer(text):
         span = extract_org_name(text, m.end())
         if span is None and m.group(1).casefold() in _BANK_VALUE_LABELS:
             span = _bank_value(text, m.end())
+        if span is None and m.group(1).casefold() == 'company name':
+            value = re.match(r'[ \t]*([A-Z][A-Za-z\'-]*(?:[ \t]+[A-Z][A-Za-z\'-]*){0,7})', text[m.end():])
+            if value:
+                span = (m.end() + value.start(1), m.end() + value.end(1))
         if span:
             label = _LABEL_CANON[m.group(1).casefold()]
             if label in ("甲方", "乙方"):
@@ -514,6 +574,9 @@ def find_other_org_names(text: str) -> list[tuple[int, int]]:
             start = offset + kept[0].start()
             if _foreign_suffix_allowed(text, start, m):
                 out.append((start, m.end()))
+    for m in re.finditer(r"(?<![A-Za-z])(?:Messrs\.|M/s)[ \t]+([A-Z][A-Za-z'’-]*(?:[ \t]+[A-Z][A-Za-z'’-]*){0,7})", text):
+        if not any(a < m.end(1) and m.start(1) < b for a, b in out):
+            out.append(m.span(1))
     return out
 
 

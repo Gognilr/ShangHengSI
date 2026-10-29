@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from app.redaction.dictionaries import common_terms, find_country, cn_surnames
-from app.redaction.parties import normalize
+from app.redaction.parties import normalize, bilingual_label_text
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,8 @@ _ACCOUNT = re.compile(
     r"(?:开户行账号|银行账号|收款账号|付款账号|账号|帐号|账户|帐户|(?i:account\s*(?:no\.?|number)|a/c\s*no\.?|a/c))"
     r"\s*[:：]?\s*" + _OPEN + r"(\d[\d \-]{6,45}\d)(?![\d])"
 )
+_ACCOUNT_SIMPLE = re.compile(r'(?<![A-Za-z])(?i:Account|A/C|Acct\.?)[ \t]+'
+    + _OPEN + r'(\d[\d -]{6,45}\d)(?!\d)')
 _SWIFT = re.compile(
     r"(?i:swift(?:\s*/\s*bic)?(?:\s*code)?|bic(?:\s*code)?)\s*[:：]?\s*" + _OPEN +
     r"([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)(?![A-Za-z0-9])"
@@ -81,7 +83,7 @@ _IM = re.compile(
 )
 _LABELED_ID = re.compile(
     r"(?:护照号码|护照号|营业执照注册号|工商注册号|注册号|组织机构代码|纳税人识别号|税号|"
-    r"(?<![A-Za-z])(?i:Passport\s+No\.?|Organization\s+Code|Tax\s+ID|VAT\s+No\.?|TIN)(?![A-Za-z]))"
+    r"(?<![A-Za-z])(?i:Passport\s+No\.?|Organization\s+Code|Tax\s+ID|VAT\s+No\.?|TIN|ИНН|КПП|ОГРН|UEN|ABN|EIN|CNPJ)(?![A-Za-z]))"
     r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9\-]{5,30})(?![A-Za-z0-9\-])"
 )
 _BANK_CODE = re.compile(
@@ -96,6 +98,7 @@ def _norm_key(value: str) -> str:
 
 def find_formatted(text: str) -> list[Hit]:
     """第 4 步的全部命中（可能互相重叠，由调用方按顺序取舍）。顺序即优先级。"""
+    text = bilingual_label_text(text)
     hits: list[Hit] = []
 
     def add(start: int, end: int, category: str, key: str = "") -> None:
@@ -116,6 +119,10 @@ def find_formatted(text: str) -> list[Hit]:
         digits = re.sub(r"\D", "", m.group(1))
         if 8 <= len(digits) <= 30:
             add(m.start(1), m.end(1), "ACCOUNT", _norm_key(m.group(1)))
+    for m in _ACCOUNT_SIMPLE.finditer(text):
+        if 8 <= sum(c.isdigit() for c in m.group(1)) <= 30 and not any(
+                h.category == 'ACCOUNT' and (h.start, h.end) == m.span(1) for h in hits):
+            add(m.start(1), m.end(1), 'ACCOUNT', _norm_key(m.group(1)))
     for m in _SWIFT.finditer(text):
         code = m.group(1).upper()
         add(m.start(1), m.end(1), "SWIFT", code[:8] if len(code) == 11 and code.endswith("XXX") else code)
@@ -552,12 +559,13 @@ def find_persons(text: str) -> list[Hit]:
 
     不能确定时不识别（不猜测）。标签后紧接公司名称的情况由 engine 的占位处理（公司名已先被替换）。
     """
+    text = bilingual_label_text(text)
     hits: list[Hit] = []
     seen: set[tuple[int, int]] = set()
     terms = [t.casefold() for t in common_terms()]
     for m in _PERSON_LABEL.finditer(text):
         # Project Name 是项目标签，不能把其中 Name 当成人名标签抢先识别。
-        if (re.search(r"(?i:Project|Product|Item|Commodity|Goods|Cargo|Brand|Model|Material|Part|Article|Grade|Chemical|Trade)[ \t]+$",
+        if (re.search(r"(?i:Project|Product|Item|Commodity|Goods|Cargo|Brand|Model|Material|Part|Article|Grade|Chemical|Trade|Company)[ \t]+$",
                       text[:m.start()]) and m.group().lower().startswith("name")):
             continue
         pos = m.end()
@@ -664,7 +672,7 @@ def find_persons(text: str) -> list[Hit]:
         honorific = re.match(r'先生|女士|小姐', text[m.end(1):]) is not None
         if given.startswith(tuple(endings)) or (family in '应须需将可会均亦再另也都必' and not honorific):
             continue
-        if (name in _CN_NOT_PERSON or name in common_terms() or name in endings
+        if (name in _CN_NOT_PERSON or name in common_terms() or name in endings or name in roles
                 or name.endswith(('地', '的'))):
             continue
         start, end = m.span(1)
@@ -675,7 +683,44 @@ def find_persons(text: str) -> list[Hit]:
         start, end = m.span(1)
         if not any(h.start < end and start < h.end for h in hits):
             hits.append(Hit(start, end, 'PERSON', normalize(m.group(1))))
+    name = r"[一-鿿]{2,4}|[A-Z][A-Za-z'’-]*(?:[ \t]+[A-Z][A-Za-z'’-]*){0,3}"
+    mail_rules = [re.compile(rf'(?im)^(?:From|To|Cc|Bcc|Sender|Reply-To):[ \t]*["“]?(?P<name>{name})'),
+                  re.compile(rf'(?<![A-Za-z])(?P<name>{name})["”]?[ \t]*<' + _EMAIL.pattern + '>')]
+    for rule in mail_rules:
+        for m in rule.finditer(text):
+            surface = m.group('name')
+            if _valid_signature_name(surface) and not any(h.start < m.end('name') and m.start('name') < h.end for h in hits):
+                hits.append(Hit(*m.span('name'), 'PERSON', normalize(surface)))
+    lines = text.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+    for index, start, end in find_signature_persons(lines):
+        start, end = offsets[index] + start, offsets[index] + end
+        if not any(h.start < end and start < h.end for h in hits):
+            hits.append(Hit(start, end, 'PERSON', normalize(text[start:end])))
     return hits
+
+
+def _valid_signature_name(surface: str) -> bool:
+    if re.fullmatch(r'[一-鿿]{2,4}', surface):
+        return surface not in _CN_NOT_PERSON and surface not in common_terms()
+    words = surface.split()
+    return bool(words) and all(w.rstrip('.').casefold() not in _EN_STOP_WORDS | _EN_COMPANY_WORDS for w in words)
+
+
+def find_signature_persons(texts: list[str]) -> list[tuple[int, int, int]]:
+    """落款后下一非空节点的独立姓名；正文、NOTE 与追问共用。"""
+    signoff = re.compile(r'(?i)(?:Best regards|Kind regards|Regards|Sincerely|Yours faithfully|Yours sincerely|Thanks and regards|此致[ \t]*敬礼)[,，.!。 \t\r\n]*$')
+    whole_name = re.compile(r"\s*([一-鿿]{2,4}|[A-Z][A-Za-z'’-]*(?:[ \t]+[A-Z][A-Za-z'’-]*){1,3})\s*\Z")
+    out = []
+    for index, text in enumerate(texts):
+        if not signoff.fullmatch(text.strip()):
+            continue
+        following = next((j for j in range(index + 1, len(texts)) if texts[j].strip()), None)
+        if following is not None and (m := whole_name.fullmatch(texts[following])) and _valid_signature_name(m.group(1)):
+            out.append((following, *m.span(1)))
+    return out
 
 
 # ---------------------------------------------------------------- 第 7 步：地址（M4-01）
@@ -706,6 +751,7 @@ _EN_UNLABELED_ADDRESS = re.compile(
 
 def find_addresses(text: str) -> list[Hit]:
     """第 7 步：地址标签（须有冒号）之后到行尾；遇到下一个信息标签、地址标签或带值的邮编标签时提前结束。key 为国家。"""
+    text = bilingual_label_text(text)
     hits: list[Hit] = []
     for m in _ADDRESS_LABEL.finditer(text):
         line_end = text.find("\n", m.end())

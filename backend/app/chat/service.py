@@ -220,8 +220,15 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             country = hit.key if hit.category == "ADDR" and hit.key else None
             take(hit.start, hit.end, code_for(text[hit.start:hit.end], hit.category, country))
 
+    # B-17：本问题中新识别的英文姓名也按规范形式全文一致替换。
+    for hit in detect.find_persons(text):
+        surface = text[hit.start:hit.end]
+        if any(c.isascii() and c.isalpha() for c in surface):
+            code = code_for(surface, 'PERSON')
+            for match in parties.name_pattern(surface).finditer(text):
+                take(match.start(), match.end(), code)
     model_suspects = []
-    for hit in ner.recognize(ner.mask(text, [(s.start, s.end) for s in accepted])):
+    for hit in ner.recognize(parties.bilingual_label_text(ner.mask(text, [(s.start, s.end) for s in accepted]))):
         if any(s.start < hit.end and hit.start < s.end for s in accepted):
             continue
         if hit.score >= ner.HIGH:

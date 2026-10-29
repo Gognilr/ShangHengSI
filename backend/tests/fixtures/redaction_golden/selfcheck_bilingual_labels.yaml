@@ -3,7 +3,6 @@ stance: sales
 must_replace:
   - {text: 王立军, category: PERSON}
   - {text: lorna@northwind-fictive.com, category: EMAIL}
-known_gaps:
   - {text: 中国工商银行苏州虚构支行, category: ORG}
   - {text: CCX-2026-0815, category: REFNO}
   - {text: Lorna Fictive, category: PERSON}
@@ -12,4 +11,6 @@ known_gaps:
   - {text: "770101001", category: IDNO}
   - {text: 201912345K, category: IDNO}
 must_keep:
+  - Contact
+  - Authorized Representative
   - Thanks for your offer.

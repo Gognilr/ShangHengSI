@@ -508,10 +508,13 @@ def compute(
                     occ, spans)
         occupied.append(occ)
 
-    # 第 6 步：人名。先在全部节点中按标签收集并登记为对象，再全文匹配（中文精确；英文区分大小写、要求单词边界）
+    # 第 6 步：先按标签或落款登记人名，再全文匹配；英文按规范形式一致替换并要求单词边界。
     persons: list[_Entity] = []
+    signature_hits = {}
+    for index, start, end in detect.find_signature_persons([n.text for n in nodes]):
+        signature_hits.setdefault(index, []).append(detect.Hit(start, end, 'PERSON', P.normalize(nodes[index].text[start:end])))
     for i, n in enumerate(nodes):
-        for h in detect.find_persons(n.text):
+        for h in [*detect.find_persons(n.text), *signature_hits.get(i, ())]:
             if P.normalize(n.text[h.start:h.end]) in excluded:
                 continue
             if _overlaps(occupied[i], h.start, h.end):  # 标签后是公司名称等已替换的文字
@@ -523,7 +526,7 @@ def compute(
             ent = entity(name, "PERSON")
             if ent not in persons:
                 persons.append(ent)
-    person_pats = [(ent, P.name_pattern(s, case_sensitive=True)) for ent in persons for s in ent.surfaces]
+    person_pats = [(ent, P.name_pattern(s)) for ent in persons for s in ent.surfaces]
     if person_pats:
         for i, n in enumerate(nodes):
             _accept([_Span(i, m.start(), m.end(), "PERSON", ent.key, "person")
@@ -573,7 +576,7 @@ def compute(
     cache_hits = cache_misses = 0
     for i, n in enumerate(nodes):
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
-        residual = ner.mask(n.text, occupied[i])
+        residual = P.bilingual_label_text(ner.mask(n.text, occupied[i]))
         key = ner.cache_key(residual, context=context)
         predicted = _cached_entities((ner_cache or {}).get(n.loc), key, len(residual))
         if predicted is None:

@@ -217,3 +217,7 @@ def test_t54_14_account_and_foreign_tax(text, value, category):
 
 def test_t54_14_not_account_manager():
     assert not detect.find_formatted('account manager')
+
+def test_role_word_is_not_name_inside_department_note():
+    text = '联系人：张三（销售经理）'
+    assert [text[h.start:h.end] for h in detect.find_persons(text)] == ['张三']
