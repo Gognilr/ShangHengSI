@@ -108,3 +108,9 @@ def hanzi_pinyin() -> dict[str, tuple[str, ...]]:
     rows = (RESOURCES_DIR / 'hanzi_pinyin.txt').read_text(encoding='utf-8').splitlines()
     return {parts[0]: tuple(parts[1:]) for row in rows if row and not row.startswith('#')
             if len(parts := row.split()) > 1}
+
+
+@lru_cache(maxsize=1)
+def en_words() -> frozenset[str]:
+    """SCOWL size 50 普通词；来源及完整许可见 en_words.README.md。"""
+    return frozenset((RESOURCES_DIR / 'en_words.txt').read_text(encoding='utf-8').splitlines())

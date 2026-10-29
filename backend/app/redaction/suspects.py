@@ -11,7 +11,7 @@ from datetime import date
 
 from app.redaction import parties as P
 from app.redaction.detect import _QTY_UNIT_RE
-from app.redaction.dictionaries import _country_index, common_terms, cn_surnames
+from app.redaction.dictionaries import _country_index, common_terms, cn_surnames, en_words
 
 ORG_SUFFIX = "org_suffix"
 BEFORE_COMPANY = "before_company"
@@ -197,7 +197,7 @@ class _Excluder:
         s = " ".join(words).casefold()
         return s in self.terms or s in _MONTHS_WEEKDAYS
 
-    def covered(self, words: list[str]) -> bool:
+    def covered(self, words: list[str], extra_words=frozenset()) -> bool:
         """words 能否完全分解为：常见合同用语（单词或短语）、月份、星期、国家 / 城市 / 港口名称。"""
         n = len(words)
         ok = [False] * (n + 1)
@@ -208,7 +208,8 @@ class _Excluder:
             for j in range(i + 1, min(n, i + self.max_words) + 1):
                 piece = words[i:j]
                 text = " ".join(piece)
-                if self.piece_ok(piece) or _is_place(text):
+                token = text.casefold().removesuffix("'s").removesuffix('’s').strip('-')
+                if self.piece_ok(piece) or _is_place(text) or (j == i + 1 and token in extra_words):
                     ok[j] = True
         return ok[n]
 
@@ -233,6 +234,7 @@ def lowercase_evidence(text: str) -> frozenset[str]:
 def _capitalized_candidates(text: str, lowercase_words=frozenset()) -> list[Suspect]:
     excl = _excluder()
     out: list[Suspect] = []
+    extra_words = en_words() | lowercase_words
     for words in _capitalized_runs(text):
         while words and re.fullmatch(r'[A-Z]\.', words[0].group()):
             words = words[1:]
@@ -243,7 +245,7 @@ def _capitalized_candidates(text: str, lowercase_words=frozenset()) -> list[Susp
         tokens = [_word_core(w.group()) for w in words]
         if all(t.casefold().removesuffix("'s").removesuffix('’s').strip('-') in lowercase_words for t in tokens):
             continue
-        if excl.covered(tokens):
+        if excl.covered(tokens, extra_words):
             continue
         out.append(Suspect(words[0].start(), _end_without_period(words[-1]), CAPITALIZED))
     return out
