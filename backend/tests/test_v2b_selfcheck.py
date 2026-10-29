@@ -218,6 +218,143 @@ def test_t54_14_account_and_foreign_tax(text, value, category):
 def test_t54_14_not_account_manager():
     assert not detect.find_formatted('account manager')
 
+
 def test_role_word_is_not_name_inside_department_note():
     text = '联系人：张三（销售经理）'
     assert [text[h.start:h.end] for h in detect.find_persons(text)] == ['张三']
+
+
+@pytest.mark.usefixtures('no_ner')
+@pytest.mark.parametrize('name', ['Công ty TNHH Hư Cấu Việt Nam', 'Công ty Cổ phần Hư Cấu Việt Nam',
+    'Công ty CP Hư Cấu Việt Nam', 'Tổng công ty Hư Cấu Việt Nam', 'Công ty Trách nhiệm hữu hạn Hư Cấu Việt Nam'])
+def test_t54_15_vietnamese_company(name):
+    result = compute([NodeIn('F1-P1', 'Notify party: ' + name + ', Hai Phong')], 'other')
+    assert len(result.parties) == 1 and result.parties[0].country == '越南'
+    assert any(v == name for v in result.mapping.values())
+    assert 'Hai Phong' in result.redacted['F1-P1'] and name not in result.redacted['F1-P1']
+
+
+@pytest.mark.parametrize('text,name', [('Contact person: Иванов Иван Иванович', 'Иванов Иван Иванович'),
+    ('Signed by Ivanov I.I., General Director', 'Ivanov I.I.'), ('Иванов И.И.', 'Иванов И.И.')])
+def test_t54_16_cyrillic_and_initials(text, name):
+    hits = detect.find_persons(text)
+    assert [text[h.start:h.end] for h in hits] == [name]
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_t54_17_english_brand():
+    nodes = [NodeIn('F1-P1', 'Velmora Fictive Industries Pte. Ltd.'), NodeIn('F1-P2', 'Velmora shall'),
+        NodeIn('NOTE', "Velmora's bank"), NodeIn('F1-P3', 'Global Fictive Trading Ltd.'),
+        NodeIn('F1-P4', 'Global shall')]
+    result = compute(nodes, 'other')
+    code = result.redacted['F1-P1']
+    assert result.redacted['F1-P2'] == code + ' shall'
+    assert result.redacted['NOTE'] == code + "'s bank"
+    assert result.redacted['F1-P4'] == 'Global shall'
+
+
+@pytest.mark.usefixtures('no_ner')
+@pytest.mark.parametrize('text', ['SGS/CCIC 在装货港取样', '提交上海市虚构区人民法院管辖',
+    'Disputes: Singapore International Arbitration Centre', '采用 ISO 和 ASTM 标准'])
+def test_t54_18_public_institutions(text):
+    result = compute([NodeIn('F1-P1', text)], 'other')
+    assert result.redacted['F1-P1'] == text
+    assert not result.items and not result.suspects
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_t54_18_institution_party_still_private():
+    result = compute([NodeIn('F1-P1', '检验方：SGS'), NodeIn('F1-P2', 'SGS 在装货港取样')], 'other')
+    assert len(result.parties) == 1
+    assert all('SGS' not in t for t in result.redacted.values())
+    assert len({i.placeholder for i in result.items}) == 1
+
+
+def test_t54_18_model_public_institution(monkeypatch):
+    monkeypatch.setattr(ner, 'recognize', lambda text: [ner.Entity(0, 3, 'ORG', 0.99)])
+    result = compute([NodeIn('F1-P1', 'SGS')], 'other')
+    assert result.redacted['F1-P1'] == 'SGS' and not result.items and not result.suspects
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_t54_19_industry_brand():
+    result = compute([NodeIn('F1-P1', '乙方：苏州澄川虚构机电设备有限公司'),
+        NodeIn('F1-P2', '澄川虚构负责安装')], 'other')
+    assert result.redacted['F1-P2'] == result.parties[0].code + '负责安装'
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_t54_20_cross_node_company():
+    result = compute([NodeIn('F1-P1', '买方 Buyer : NORTHWIND FICTIVE'),
+        NodeIn('F1-P2', 'TRADING LLC')], 'other')
+    assert len(result.parties) == 1 and len(result.items) == 2
+    code = result.parties[0].code
+    assert result.redacted['F1-P1'] == '买方 Buyer : ' + code
+    assert result.redacted['F1-P2'] == code
+
+
+@pytest.mark.parametrize('text,value', [('货物运至苏州工业园区星湖街328号创意产业园5栋。',
+    '苏州工业园区星湖街328号创意产业园5栋'), ('12 Fictive Street, Singapore #02-12',
+    '12 Fictive Street, Singapore #02-12')])
+def test_t54_18_address_tail(text, value):
+    assert any(text[h.start:h.end] == value for h in detect.find_addresses(text))
+
+
+def test_t54_18_ocr_person():
+    text = '联系人 : 王 立军'
+    assert any(text[h.start:h.end] == '王 立军' for h in detect.find_persons(text))
+
+
+def test_v2q170_unlisted_chinese_city_known_limitation():
+    from app.redaction.parties import derived_names
+    automatic, short = derived_names('无锡澄川虚构机电设备有限公司')
+    assert '澄川虚构' not in automatic and '澄川虚构' not in short
+
+
+@pytest.mark.usefixtures('no_ner')
+@pytest.mark.parametrize('text,category,value', [
+    ('Email: export@haiyue-example.com', 'EMAIL', 'export@haiyue-example.com'),
+    ('Address: Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates', 'ADDR',
+     'Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates')])
+def test_v2q171_brand_does_not_split_formatted_or_address(text, category, value):
+    result = compute([NodeIn('F1-P1', 'Haiyue Fictive Trading Ltd.'),
+        NodeIn('F1-P2', 'Fictive Metals Ltd.'), NodeIn('F1-P3', text)], 'other')
+    assert any(i.loc == 'F1-P3' and i.category == category
+               and text[i.char_start:i.char_end] == value for i in result.items)
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_v2q171_brand_does_not_split_other_capitalized_name():
+    text = 'Meridian Fictive Inspection'
+    result = compute([NodeIn('F1-P1', 'Fictive Metals Ltd.'), NodeIn('F1-P2', text)], 'other')
+    assert result.redacted['F1-P2'] == text
+    assert any(s.loc == 'F1-P2' and s.char_start == 0 and s.char_end == len(text) for s in result.suspects)
+
+
+@pytest.mark.parametrize('score', [0.7, 0.99])
+def test_v2q171_known_place_model_kept_in_body_note_chat(monkeypatch, score):
+    from app.chat.service import _redact
+    text = 'Hai Phong'
+    monkeypatch.setattr(ner, 'recognize', lambda value: [ner.Entity(0, len(text), 'ORG', score)])
+    for loc in ['F1-P1', 'NOTE']:
+        result = compute([NodeIn(loc, text)], 'other')
+        assert result.redacted[loc] == text and not result.items and not result.suspects
+    chat = _redact(text, {}, [])
+    assert chat.text == text and not chat.new_entries and not chat.suspects
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_public_abbreviation_inside_private_company_still_redacted():
+    from app.chat.service import _redact
+    text = 'SGS Fictive Trading Ltd.'
+    body = compute([NodeIn('F1-P1', text)], 'other')
+    assert text not in body.redacted['F1-P1']
+    assert text not in _redact(text, {}, []).text
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_cross_node_ocr_rule_also_applies_to_multiline_chat():
+    from app.chat.service import _redact
+    text = '买方 Buyer : NORTHWIND FICTIVE\nTRADING LLC'
+    result = _redact(text, {}, [])
+    assert 'NORTHWIND' not in result.text and 'FICTIVE' not in result.text and 'TRADING' not in result.text
