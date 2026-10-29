@@ -25,7 +25,7 @@ require_cmd git docker tar sha256sum
 # Git Bash 自动改写容器内绝对路径；只转换明确的宿主路径（Q-165）。
 host_path() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 export MSYS_NO_PATHCONV=1
-[ -z "$(git -C "$repo" status --porcelain)" ] || die '工作区不干净，请先提交或使用干净的隔离源码副本'
+[ -z "$(git -C "$(host_path "$repo")" status --porcelain)" ] || die '工作区不干净，请先提交或使用干净的隔离源码副本'
 # 以仓库中的清单核对来源，不能信任外部模型目录自带的清单。
 manifest="$repo/backend/models/ner/MANIFEST.sha256"
 (cd "$ner_models" && sha256sum -c "$manifest") || die '实体识别模型校验失败'
