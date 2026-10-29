@@ -18,7 +18,7 @@ defineProps<{ coverage: RunDetail['coverage']; sanctions: RunDetail['sanctions']
       <div class="hint">未联网核查，基于模型自身知识，需合规人员确认最新制裁与出口管制规定</div>
     </div>
     <el-collapse v-if="docSummary || coverage?.notes.length">
-      <el-collapse-item :title="`文件摘要与限制事项（${coverage?.notes.length ?? 0} 条）`" name="details">
+      <el-collapse-item :title="`文件摘要与限制事项${coverage?.notes.length ? `（限制事项 ${coverage.notes.length} 条）` : ''}`" name="details">
         <p v-if="docSummary" class="document-summary">{{ docSummary }}</p>
         <ul v-if="coverage?.notes.length"><li v-for="(note, i) in coverage.notes" :key="i">{{ note }}</li></ul>
       </el-collapse-item>
