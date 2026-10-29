@@ -478,7 +478,7 @@ recheck.py 不改；它调用的 `find_amounts` 自动带上 11.1 的新写法�
 | 21 | 13 | 追问中出现英文写法 | 替换为已有的中文主体代号 |
 | 22 | 14 | “Kinematic Viscosity”“Document Title”（无小写写法） | 不列 |
 | 23 | 14 | “Velmora Refinery”“Hardgrave Machine Method” | 列 |
-| 24 | 14 | 仿真实 PDF 的虚构样本 `en_spec_suspects.txt`（V2-B-14 开工前由 Opus 写入，≥ 200 行） | 疑似遗漏组数 ≤ 30，且 must\_suspect 全部列出 |
+| 24 | 14 | 仿真实 PDF 的虚构样本 `en_spec_suspects.txt / .yaml`（Opus 2026-10-29 写入，288 行；写入时 134 组，其中首字母大写段 107 组、实体识别 27 组） | 原因为 capitalized 的组数 ≤ 20，且 must\_suspect 全部列出；实体识别原因的组数不在 12.5 范围，只在完成报告中如实列出，不设门槛 |
 | 25 | 全部 | 现有回归集、A-03 | 全部通过；如有原样本因本节规则导致失败，停下报告，不改样本 |
 
 ## 十三、自查发现的修复（V2-B-16～V2-B-18，V2Q-152～V2Q-154）

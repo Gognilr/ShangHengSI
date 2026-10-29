@@ -1,0 +1,22 @@
+description: 英文技术规格与检验计划（V2-B-14，设计 V2-B.md 12.5、12.6 第 24 条）：虚构，结构仿照真实英文询价与检验计划 PDF；大量首字母大写的技术术语、标准名称与表头不应列为疑似遗漏，无后缀的虚构名称（炼厂、技术室）与不在常用词表中的方法名仍须列出
+stance: sales
+must_replace:
+  - {text: "Chengchuan Fictive Carbon Materials Co., Ltd.", category: ORG}
+  - {text: Northwind Fictive Trading LLC, category: ORG}
+  - {text: Halden Fictive, category: PERSON}
+must_keep:
+  - Qingdao
+  - CIF
+  - FOB
+  - ASTM D4052
+  - GB/T 24526
+  - T/ZGTS 002-2022
+  - ISO 10143
+  - riffle splitter
+  - graphite electrodes
+  - 450–550
+  - max 0.9 × 10⁻⁶
+must_suspect:
+  - Velmora Refinery
+  - Corvane Technical Office
+  - Hardgrave Machine Method

@@ -1,0 +1,288 @@
+Date: 12 Oct 2026
+No.: 2026/NWF-0517
+Chengchuan Fictive Carbon Materials Co., Ltd.
+Subject: Request for Technical and Commercial Offer – Needle Coke Grades A / B / C
+Dear Mr. Halden Fictive,
+We hereby express our interest in purchasing Needle Coke for the production of Ultra High Power
+(UHP) graphite electrodes and nipples. Our technical requirements are defined in our internal
+specifications for Grade A, Grade B and Grade C, and we kindly ask you to confirm compliance
+with the parameters listed below.
+1. Required Grades
+Please send your technical offer for Grades A, B and C together with your best commercial offer.
+Parameter Description Grade A Grade B Grade C
+Coefficient of Thermal Expansion (CTE) max 0.9 × 10⁻⁶ 1/°C max 1.0 × 10⁻⁶ 1/°C max 1.0 × 10⁻⁶ 1/°C
+Could you specify your maximum acceptable CTE limits for each requested Grade?
+Sulphur and Nitrogen Content Sulphur: max 0.4 m-% Sulphur: max 0.4 m-% Sulphur: max 0.45 m-%
+What are your maximum allowable percentages for Sulphur (S) and Nitrogen (N)?
+Particle Size Distribution ≥ 8 mm: Min. 25%; ≥ 11.2 mm: Min 35% ≥ 11.2 mm: Min 35%
+≤ 1 mm: Max. 30%; ≤ 1 mm: Max 12% ≤ 1 mm: Max 12%
+< 0.5 mm: Max. 5%; < 0.5 mm: Max 5% < 0.5 mm: Max 5%
+Please specify the required grain fractions or grain sizes (in mm or mesh).
+End Application For production of UHP graphite electrodes and nipples
+Are these grades intended for electrode production, battery anodes, or another structural application?
+Bulk Density min 0.92 min 0.90 min 0.90
+Real Density min 2.14 min 2.135 min 2.13
+Vibrated Bulk Density (1–2 mm) min 0.97 min 0.91 min 0.91
+Specific Electrical Resistance (SER) 450–550 μΩ·m 450–550 μΩ·m 450–550 μΩ·m
+Grain Stability min 90% min 75% min 75%
+General Strength min 42% min 38% min 38%
+2. Technical Parameters to be Confirmed
+A. Processing State
+• Calcined Needle Coke (CNC)
+B. Feedstock Base
+• Petroleum-based or Coal Tar Pitch based (please specify)
+C. Coefficient of Thermal Expansion (CTE, 30–600°C), please state the exact value for each type
+D. Particle Size Distribution (PSD)
+E. End Application
+• UHP graphite electrodes and nipples
+3. Documents Requested
+We kindly ask you to provide:
+• Technical Data Sheet (TDS) for each grade
+• Certificate of Analysis (COA) for recent production batches
+• Production method details (feedstock, coking process, calcination conditions) if possible
+• Quality control standards applied at Velmora Refinery
+• Packing details (Big Bags, weight per bag, loading method)
+4. Commercial Terms
+Please quote your price per metric ton on CIF Hai Phong basis and FOB Qingdao basis.
+Please state the minimum order quantity, delivery time and payment terms.
+5. Additional Notes
+We are ready to proceed with evaluation and qualification immediately upon receiving your full
+technical proposal. If required, we can provide our internal acceptance criteria and penalty limits.
+The final quantities and the long-term purchase plan will depend on your production technology,
+product quality and pricing.
+We look forward to your prompt response.
+Best regards,
+Managing Director
+Northwind Fictive Trading LLC
+ITP
+Needle Coke (Grade A)
+Corvane Technical Office
+REV. DATE STATUS PREPARED CHECKED APPROVED
+Contractor No.: PAG 1 OF 7
+CLIENT No.:
+PROJECT TITLE:
+Corvane Technical Office
+Document Title Needle Coke Rev.
+Page 2 of 7
+Document No. A
+Revision Summary Index
+Page Revisions A B C D E
+1 X
+2 X
+3 X
+4 X
+5 X
+6 X
+7 X
+Corvane Technical Office
+Document Title Needle Coke Rev.
+Page 3 of 7
+Document No. A
+1. General
+This document defines the technical requirements and acceptance criteria for needle coke
+intended for the production of Ultra High Power (UHP) graphite electrodes and nipples. It
+covers the technical specifications of needle coke, qualification requirements for approved
+suppliers, qualified laboratories, inspection requirements and sampling procedures to be
+applied throughout the procurement process.
+2. Standards
+In general, the standards applicable to this field are listed in Table 1.
+Table 1 – General Standards
+Abbreviation Full Name
+ISO International Organization for Standardization
+ASTM American Society for Testing and Materials
+YB/T Ferrous Metallurgy Industry Standard (Recommended)
+GB/T National Standard of China (Recommended)
+T/ZGTS Association Standard of the Carbon Industry
+The standards for the physical and chemical properties of coke are mainly found in ISO, ASTM
+and the equivalent Chinese standards (GB/T and YB/T).
+These standards also cover the basic parameters for the characterization of coking feedstock (CSO).
+Corvane Technical Office
+Document Title Needle Coke Rev.
+Page 4 of 7
+Document No. A
+Table 2 – Applicable Standards
+Standard No. Standard Title
+GB/T 2001 Coke for Metallurgical Use — Determination of Moisture
+ASTM D3173 Test Method for Moisture in the Analysis Sample of Coal and Coke
+YB/T 5189 Calcined Petroleum Coke for Aluminium Industry – Test Methods
+ASTM D3175 Test Method for Volatile Matter in the Analysis Sample of Coal and Coke
+GB/T 1429 Carbon Materials — Determination of Ash Content
+ASTM D4422 Test Method for Ash in Analysis of Petroleum Coke
+GB/T 24526 Carbon Materials — Determination of Total Sulphur Content
+ASTM D1552 Test Method for Sulfur in Petroleum Products (High Temperature Method)
+GB/T 19227 Determination of Nitrogen in Coal
+ASTM D5373 Test Methods for Determination of Carbon, Hydrogen and Nitrogen in Coal
+GB/T 21354 Carbon Materials — Determination of Bulk Density
+ISO 1014 Coke — Determination of True Relative Density
+GB/T 32158 Carbon Materials — Determination of Real Density
+ASTM D5004 Test Method for Real Density of Calcined Petroleum Coke
+GB/T 37308 Determination of Thermal Expansion Coefficient of Needle Coke
+ASTM D6745 Test Method for Linear Thermal Expansion of Electrode Carbons
+ASTM D4292 Test Method for Vibrated Bulk Density of Calcined Petroleum Coke
+ISO 10143 Calcined Coke for Electrodes — Determination of the Electrical Resistivity of Granules
+ASTM E1269 Test Method for Specific Heat Capacity by Differential Scanning Calorimetry
+ASTM D5709 Test Method for Sieve Analysis of Petroleum Coke
+ISO 8723 Calcined Coke — Determination of Oil Content by Solvent Extraction
+ASTM D6791 Test Method for Grain Stability of Calcined Petroleum Coke
+ASTM D409 Test Method for Grindability of Coal by the Hardgrave Machine Method
+T/ZGTS 002-2022 Oil Needle Coke for Graphite Electrode Body – Appendix B (Strength of Coke)
+ASTM D5863 Test Methods for Nickel, Vanadium, Iron and Sodium in Crude Oils and Residual Fuels
+ASTM D445 Test Method for Kinematic Viscosity of Transparent and Opaque Liquids
+ASTM D189 Test Method for Conradson Carbon Residue of Petroleum Products
+ASTM D1160 Test Method for Distillation of Petroleum Products at Reduced Pressure
+ASTM D4124 Test Methods for Separation of Asphalt into Four Fractions
+ASTM D6560 Test Method for Determination of Asphaltenes (Heptane Insolubles) in Crude Petroleum
+ASTM D482 Test Method for Ash from Petroleum Products
+ASTM D4052 Test Method for Density, Relative Density and API Gravity of Liquids by Digital Density Meter
+ASTM D346 Practice for Collection and Preparation of Coke Samples for Laboratory Analysis
+ASTM D2234 Practice for Collection of a Gross Sample of Coal
+Corvane Technical Office
+Document Title Needle Coke Rev.
+Page 5 of 7
+Document No. A
+3. Technical Specifications of Needle Coke
+Table 3 presents the technical specifications for Grade A Needle Coke. The specifications are defined
+by acceptable minimum and maximum limits and approved operating ranges.
+Values within the Penalty Range are acceptable only with the contractual penalties defined in the
+purchase agreement. Any value outside the Penalty Limits shall be deemed unacceptable, and the
+entire lot shall be rejected.
+Table 3 – Technical Specifications for Grade A Needle Coke
+Parameter Unit Value Standard
+Moisture m-% max 0.1 GB/T 2001 or ASTM D3173
+Volatile Matter m-% max 0.2 YB/T 5189 or ASTM D3175
+Ash Content m-% max 0.04 GB/T 1429 or ASTM D4422
+Sulfur m-% max 0.4 GB/T 24526 or ASTM D1552
+Nitrogen m-% max 0.2 GB/T 19227 or ASTM D5373
+Bulk Density t/m3 min 0.92 GB/T 21354 or ISO 1014
+Real Density t/m3 min 2.14 GB/T 32158 or ASTM D5004
+CTE (30–600 °C) 1/°C max 0.9 × 10⁻⁶ GB/T 37308 or ASTM D6745
+Vibrated Bulk Density (1 mm – 2 mm) t/m3 min 0.97 ASTM D4292
+Specific Electrical Resistance µΩm 450–550 ISO 10143
+Specific Heat (for information) kJ/kg·K approx. 0.99 ASTM E1269
+Dedusting Oil m-% max 0.1 ISO 8723
+Grain Stability m-% min 90 ASTM D6791
+HGI (for information) 35–45 ASTM D409
+Strength m-% min 42 T/ZGTS 002-2022 Appendix B
+Size ≥ 8 mm Min. 25% ASTM D5709
+Size ≤ 1 mm Max. 30% ASTM D5709
+Size < 0.5 mm Max. 5% ASTM D5709
+Size < 0.074 mm Max. 0.5% ASTM D5709
+4. Product Sampling
+Sampling shall be performed in accordance with ASTM D346 and ASTM D2234. Sampling may be
+carried out at different stages of production and logistics, including packaging and pre-shipment inspection.
+4.1. Sampling at Supplier Warehouse or Customs Warehouse (Before Shipment)
+Sampling shall be carried out at the supplier's warehouse or customs warehouse prior to loading.
+Considering the preferred packaging (Big Bags), a total of √N+1 bags shall be randomly selected
+from N Big Bags in accordance with the contractual requirements.
+From each selected Big Bag, increments shall be collected from four different depths (L/6, L/3,
+2L/3 and 5L/6) measured from the top surface of the bag, in the quantities specified by the standards.
+The increments collected from each bag shall be thoroughly mixed to form an individual composite sample.
+Accordingly, √N+1 composite samples shall be obtained, each of which shall be labelled and sealed.
+One quarter of each sealed sample shall be separated with a riffle splitter, packed, labelled with the
+same identification code and resealed.
+All quartered samples shall then be submitted to the Reference Laboratory for Particle Size Distribution (PSD) analysis.
+Corvane Technical Office
+Document Title Needle Coke Rev.
+Page 6 of 7
+Document No. A
+Upon receipt and approval of the PSD test results, the remaining portions of the samples shall be
+combined and homogenized. The resulting bulk sample shall then be divided into four equal portions
+using a riffle splitter.
+The four samples shall be identically labelled and sealed and shall be distributed respectively to
+the Buyer, Seller, Reference Laboratory and Inspection Company.
+The sample allocated to the Reference Laboratory shall be subjected to the tests specified in Table 3,
+and the test results shall be reported accordingly.
+The inspection stages are presented in Table 4.
+The Seller, Inspection Company and Buyer shall each retain their samples for a minimum period of
+one (1) year, so that repeat testing can be performed in the event of any dispute.
+5. Visual Inspection and Documentation
+During inspection (packaging stage and pre-shipment stage), the inspector shall assess:
+• Packaging Quality;
+• Storage Conditions;
+• Presence of Dust Contamination;
+• Environmental Cleanliness and Contamination Risks.
+The inspector shall also record all stages with photographs, including:
+• Inspection Activities;
+• Sampling Operations;
+• PSD Testing;
+• Preparation of Composite Samples.
+The Seller should provide written instructions for the long-term storage of the purchased needle coke, including:
+• Storage Temperature;
+• Relative Humidity Limits;
+• Any Additional Preservation Requirements.
+Corvane Technical Office
+Document Title Needle Coke Rev.
+Page 7 of 7
+Document No. A
+Table 4 – Inspection and Test Plan (ITP)
+Stage Activity Tests Responsible Parties Status* Acceptance Criteria
+Before Packaging Sampling Moisture, Volatile Matter, Ash Content, Sulfur, Nitrogen Manufacturer and Inspection Company Witness
+Bulk Density, Real Density, CTE (30–600 °C), Vibrated Bulk Density (1 mm – 2 mm)
+Specific Heat, Dedusting Oil, Grain Stability, Strength, PSD
+All results shall comply with the requirements specified in Table 3.
+Any measured value that exceeds the specified limits after considering the laboratory's
+reported measurement uncertainty shall be considered non-conforming.
+Before Shipment Sampling and Documentation Review (Section 7) Inspection Company and Reference Laboratory Hold
+Moisture, Volatile Matter, Ash Content, Sulfur, Nitrogen, Bulk Density, Real Density
+CTE (30–600 °C), Vibrated Bulk Density, Specific Heat, Dedusting Oil, Grain Stability, Strength, PSD
+Any measured value outside the limits shall be considered unacceptable.
+* Witness (Optional Surveillance): The inspector shall be notified before the activity starts and
+may attend the inspection or testing at his discretion. If the inspector fails to attend at the
+scheduled time, the manufacturer may proceed with the activity and record the results.
+* Hold: The contractor shall notify the inspector before the activity starts. Continuation of the
+activity is subject to the inspector's presence and written approval.
+Engineering Technical Office
+Grade A Needle Coke Test Plan
+Acceptable Technical Conditions
+Range Moisture Volatile Matter Ash Content Sulfur Nitrogen Bulk Density Real Density CTE SER
+Standard GB/T 2001 YB/T 5189 GB/T 1429 GB/T 24526 GB/T 19227 GB/T 21354 GB/T 32158 GB/T 37308 ISO 10143
+Unit m-% m-% m-% m-% m-% t/m3 t/m3 1/°C µΩm
+Acceptance max 0.1 max 0.2 max 0.04 max 0.4 max 0.2 min 0.92 min 2.14 max 0.9 × 10⁻⁶ 450–550
+Penalty 0.1–0.4 0.2–0.3 0.04–0.05 0.4–0.5 0.2–0.3 0.90–0.92 2.135–2.14 0.9–1.0 × 10⁻⁶ 400–450, 550–600
+Reject >0.4 >0.3 >0.05 >0.5 >0.3 <0.90 <2.135 >1.0 × 10⁻⁶ <400, >600
+Range Specific Heat Dedusting Oil Grain Stability HGI Strength Size
+Standard ASTM E1269 ISO 8723 ASTM D6791 ASTM D409 T/ZGTS 002-2022 ASTM D5709
+Acceptance approx. 0.99 max 0.1 min 90 35–45 min 42 Min. 25%
+Penalty For information 0.1–0.15 80–90 For information 35–42 20–25
+Reject ----- >0.15 <80 ----- <35 <20
+Engineering Technical Office
+Grade A Needle Coke Test Plan
+Conditions for Penalty Application
+Parameter Conditions for Applying Penalties Penalty Currency Relative Amount (%) Application Procedure
+Moisture 0.1–0.4 PI Currency 5 To the entire order
+Volatile Matter 0.2–0.3 PI Currency 5 To the entire order
+Ash Content 0.04–0.05 PI Currency 5 To the entire order
+Sulfur 0.4–0.5 PI Currency 10 To the entire order
+Nitrogen 0.2–0.3 PI Currency 10 To the entire order
+Bulk Density 0.90–0.92 PI Currency 5 To the entire order
+Real Density 2.135–2.14 PI Currency 10 To the entire order
+CTE (30–600 °C) 0.9–1.0 × 10⁻⁶ PI Currency 10 To the entire order
+Vibrated Bulk Density (1 mm – 2 mm) 0.95–0.97 PI Currency 5 To the entire order
+Specific Electrical Resistance 400–450, 550–600 PI Currency 5 To the entire order
+Specific Heat (for information) For information PI Currency 0 Not applicable
+Dedusting Oil 0.1–0.15 PI Currency 5 To the entire order
+Grain Stability 80–90 PI Currency 5 To the entire order
+HGI (for information) For information PI Currency 0 Not applicable
+Strength 35–42 PI Currency 5 To the entire order
+Size ≥ 8 mm 20–25 PI Currency 10 To the entire order
+Size ≤ 1 mm 30–35 PI Currency 10 To the entire order
+Size < 0.5 mm 5–10 PI Currency 10 To the entire order
+Size < 0.074 mm 0.5–1 PI Currency 10 To the entire order
+Engineering Technical Office
+Grade A Needle Coke Test Plan
+Non-Financial Penalty
+Type of Non-Cash Penalty: Withhold Payment, Forfeit the Performance Guarantee, Reject the Shipment
+Remove the Supplier from the AVL (for this item), Remove the Supplier from the AVL (for all products)
+Moisture >0.4 Reject the Shipment
+Volatile Matter >0.3 Reject the Shipment
+Ash Content >0.05 Reject the Shipment
+Sulfur >0.5 Reject the Shipment
+Nitrogen >0.3 Reject the Shipment
+Bulk Density <0.90 Reject the Shipment
+Real Density <2.135 Reject the Shipment
+CTE (30–600 °C) >1.0 × 10⁻⁶ Reject the Shipment
+Vibrated Bulk Density (1 mm – 2 mm) <0.95 Reject the Shipment
+Specific Electrical Resistance <400, >600 Reject the Shipment
+Strength <35 Reject the Shipment
+Repeated rejection within twelve months shall remove the Supplier from the AVL for all products.
+Prepared by Engineering Technical Office of Northwind Fictive Trading LLC.
