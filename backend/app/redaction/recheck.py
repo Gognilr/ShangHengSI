@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import RedactionTerm
 from app.redaction import detect
-from app.redaction.parties import name_pattern
+from app.redaction.parties import name_pattern, single_english_word
 from app.security import crypto
 
 _RESCAN_CATEGORIES = {"PHONE", "EMAIL", "ACCOUNT", "IDNO"}
@@ -122,9 +122,9 @@ def _numeric_positions(text: str, value: str) -> list[int]:
 
 
 def _text_pattern(value: str) -> re.Pattern:
-    # 全大写的短英文简称区分大小写，与脱敏时一致；其余英文不区分大小写、忽略多余空格
+    # 全大写的短英文简称、单个英文单词（V2Q-173）区分大小写，与脱敏时一致；其余英文不区分大小写、忽略多余空格
     short_caps = value.isascii() and value.isupper() and len(value) <= 6
-    return name_pattern(value, case_sensitive=short_caps)
+    return name_pattern(value, case_sensitive=short_caps or single_english_word(value))
 
 
 def _value_positions(text: str, value: str) -> list[int]:

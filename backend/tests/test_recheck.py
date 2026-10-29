@@ -247,3 +247,11 @@ def test_r4_bare_amounts_do_not_change_exit_rescan():
     from app.redaction.recheck import recheck
     assert not any(r.category == "AMOUNT" for r in recheck(
         "总价约 50000，合同总价：125000", real_values=[], terms=[]))
+
+
+def test_single_english_word_value_is_case_sensitive():
+    """V2Q-173：单词英文姓名脱敏时区分大小写，复检一致，小写普通词不拦截；原大小写仍拦截。"""
+    text = "人员_1 will sign; it is a long-term deal. Please grant a bill of lading."
+    assert recheck(text, real_values=["Long", "Grant", "Bill"], terms=[]) == []
+    assert [r.category for r in recheck("Mr. Long agrees.", real_values=["Long"], terms=[])] == ["MAP"]
+    assert [r.category for r in recheck("LORNA FICTIVE agrees.", real_values=["Lorna Fictive"], terms=[])] == ["MAP"]
