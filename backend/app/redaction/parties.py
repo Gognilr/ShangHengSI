@@ -102,6 +102,38 @@ def bilingual_label_text(text: str) -> str:
             text = ''.join(chars)
     return text
 
+
+def find_cross_node_parties(texts: list[str], file_keys: list[str] | None = None) -> list[tuple]:
+    """返回前节点/起/止、后节点/起/止、全称、角色；正文与多行追问共用。"""
+    out = []
+    for index in range(1, len(texts)):
+        if file_keys is not None and file_keys[index - 1] != file_keys[index]:
+            continue
+        previous, current = texts[index - 1], texts[index]
+        suffix = current.strip()
+        if not re.fullmatch(r'(?i:(?:TRADING[ \t]+)?(?:LLC|LLP|Ltd\.?|Limited|Inc\.?|Co\.,?[ \t]*Ltd\.?|Pte\.?[ \t]+Ltd\.?))', suffix):
+            continue
+        label = _LABEL_RE.search(bilingual_label_text(previous))
+        if label is None:
+            continue
+        head = previous[label.end():].strip()
+        if not re.fullmatch(r"[A-Z][A-Za-z'’-]*(?:[ \t]+[A-Z][A-Za-z'’-]*){0,7}", head):
+            continue
+        first = len(previous) - len(previous[label.end():].lstrip())
+        second = len(current) - len(current.lstrip())
+        out.append((index - 1, first, first + len(head), index, second, second + len(suffix),
+                    head + ' ' + suffix, _LABEL_CANON[label.group(1).casefold()]))
+    return out
+
+
+def public_preservation_spans(text: str, *, explicit_names=(), private_spans=(), overrides=()) -> list[tuple[int, int]]:
+    """公共机构原文保留；显式主体、敏感词及更长私有名称优先。"""
+    explicit = {normalize(value) for value in explicit_names}
+    return [(start, end) for start, end in public_institution_spans(text)
+            if normalize(text[start:end]) not in explicit
+            and not any(a < end and start < b for a, b in overrides)
+            and not any(a <= start and end <= b and (a < start or end < b) for a, b in private_spans)]
+
 # 通用角色词：作为简称出现时不替换（9.3 第 3 步）
 GENERIC_WORDS = frozenset(w.casefold() for w in (
     *_LABEL_CANON, "双方", "各方", "一方", "本合同", "合同", "本协议", "协议", "公司", "本公司", "货物",

@@ -720,6 +720,16 @@ def find_persons(text: str) -> list[Hit]:
     return hits
 
 
+def english_alias_allowed(text: str, start: int, end: int) -> bool:
+    """仅 B-18 英文单词别名共用的语境判断，不遮盖让位的较长名称。"""
+    from app.redaction.suspects import _capitalized_candidates
+    protected = [(h.start, h.end) for h in [*find_formatted(text), *find_addresses(text)]]
+    if any(a <= start and end <= b for a, b in protected):
+        return False
+    return not any(s.start <= start and end <= s.end and (s.start < start or end < s.end)
+                   for s in _capitalized_candidates(text))
+
+
 def _valid_signature_name(surface: str) -> bool:
     if re.fullmatch(r'[一-鿿]{2,4}', surface):
         return surface not in _CN_NOT_PERSON and surface not in common_terms()
@@ -767,6 +777,21 @@ _EN_UNLABELED_ADDRESS = re.compile(
 )
 
 
+def _extended_address_end(text: str, start: int, end: int, country: str | None) -> int:
+    cn_tail = re.compile(r'[一-鿿]{0,20}(?:产业园|科技园|工业园|大厦|广场|中心|园)'
+        r'(?:[ \t]*\d+(?:号楼|单元|栋|幢|层|楼|室))+')
+    if country == '中国' and (tail := cn_tail.match(text, end)):
+        end = tail.end()
+    if tail := re.match(r'[ \t]*#\d{2}-\d{2,4}(?!\d)', text[end:]):
+        end += tail.end()
+    if tail := re.match(r',[ \t]*([A-Z][A-Za-z]+(?:[ \t]+[A-Z][A-Za-z]+)*)[ \t]+\d{4,6}(?!\d)', text[end:]):
+        if find_country(tail.group(1)):
+            end += tail.end()
+    elif find_country(text[start:end]) and (tail := re.match(r'[ \t]+\d{4,6}(?!\d)', text[end:])):
+        end += tail.end()
+    return end
+
+
 def find_addresses(text: str) -> list[Hit]:
     """第 7 步：地址标签（须有冒号）之后到行尾；遇到下一个信息标签、地址标签或带值的邮编标签时提前结束。key 为国家。"""
     text = bilingual_label_text(text)
@@ -802,23 +827,20 @@ def find_addresses(text: str) -> list[Hit]:
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             hits.append(Hit(m.start(), m.end(), 'ADDR', find_country(m.group()) or '国家未知'))
     # 只扩展已有无标签地址的连续尾部，不单独把园区、楼栋或邮编猜作地址。
-    extended = []
-    cn_tail = re.compile(r'[一-鿿]{0,20}(?:产业园|科技园|工业园|大厦|广场|中心|园)'
-        r'(?:[ \t]*\d+(?:号楼|单元|栋|幢|层|楼|室))+')
-    for hit in hits:
-        end = hit.end
-        if hit.key == '中国' and (tail := cn_tail.match(text, end)):
-            end = tail.end()
-        if tail := re.match(r'[ \t]*#\d{2}-\d{2,4}(?!\d)', text[end:]):
-            end += tail.end()
-        if tail := re.match(r',[ \t]*([A-Z][A-Za-z]+(?:[ \t]+[A-Z][A-Za-z]+)*)[ \t]+\d{4,6}(?!\d)', text[end:]):
-            if find_country(tail.group(1)):
-                end += tail.end()
-        elif find_country(text[hit.start:end]) and (tail := re.match(r'[ \t]+\d{4,6}(?!\d)', text[end:])):
-            end += tail.end()
-        extended.append(Hit(hit.start, end, hit.category, hit.key))
-    hits = extended
-    return hits
+    return [Hit(h.start, _extended_address_end(text, h.start, h.end, h.key), h.category, h.key) for h in hits]
+
+
+def address_extension_parts(text: str) -> list[tuple[int, int]]:
+    """只返回新扩展且被完整地址覆盖的尾部，供同代号复检别名使用。"""
+    hits = find_addresses(text)
+    out = []
+    for pattern in (_CN_UNLABELED_ADDRESS, _EN_UNLABELED_ADDRESS):
+        for match in pattern.finditer(text):
+            country = '中国' if pattern is _CN_UNLABELED_ADDRESS else find_country(match.group())
+            end = _extended_address_end(text, match.start(), match.end(), country)
+            if end > match.end() and any(h.start < match.end() and end <= h.end for h in hits):
+                out.append((match.end(), end))
+    return sorted(set(out))
 
 
 _PROJECT_LABEL = re.compile(r"(?:项目名称|工程名称|项目全称|(?<![A-Za-z])(?i:Project\s+Name|Project\s+Title))[ \t]*[:：][ \t]*" + _OPEN)

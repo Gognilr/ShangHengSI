@@ -317,18 +317,19 @@ def _mask_dates(text: str) -> str:
     return "".join(chars)
 
 
-def _long_digit_candidates(text: str) -> list[Suspect]:
+def _long_digit_candidates(text: str, *, context: str | None = None) -> list[Suspect]:
     out: list[Suspect] = []
     scan = _mask_dates(text)
+    context = scan if context is None else context
     for m in _DIGIT_CHAIN.finditer(scan):
         if sum(c.isdigit() for c in m.group()) < _MIN_DIGITS:
             continue
         start, end = m.start(), m.end()
-        if _HS_BEFORE.search(scan[max(0, start - 12):start]):
+        if _HS_BEFORE.search(context[max(0, start - 12):start]):
             continue
         if _UNIT_AFTER.match(scan, end):
             continue
-        if _STANDARD_NO.fullmatch(m.group()) and _STANDARD_BEFORE.search(scan[max(0, start - 12):start]):
+        if _STANDARD_NO.fullmatch(m.group()) and _STANDARD_BEFORE.search(context[max(0, start - 12):start]):
             continue
         # 含千分位逗号或小数点的数字（金额由第 5 步负责）
         if (re.match(r"[,.]\d", scan[end:end + 2]) or (start >= 2 and scan[start - 1] in ",." and scan[start - 2].isdigit())):
@@ -435,7 +436,9 @@ def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), low
             cands.append(Suspect(m.start(1), m.end(1), "person_like"))
     for alias in derived:
         cands += [Suspect(m.start(), m.end(), "derived_name") for m in re.finditer(re.escape(alias), masked)]
-    cands += _long_digit_candidates(masked)
+    # 标准 / HS 前缀的语义上下文仍读原文；候选随后按遮盖区间过滤。
+    # 否则公共 ISO / ASTM 被遮盖后，其标准编号会反被当成长串敏感数字。
+    cands += _long_digit_candidates(masked, context=text)
     cands = [c for c in cands if c.end > c.start and _MASK not in masked[c.start:c.end]]
     chosen: list[Suspect] = []
     for c in sorted(cands, key=lambda c: (-(c.end - c.start), _PRIORITY[c.reason], c.start)):

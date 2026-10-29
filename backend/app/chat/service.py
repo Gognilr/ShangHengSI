@@ -129,13 +129,24 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
     accepted: list[_Span] = []
     new_entries: dict[str, str] = {}
     next_no = max((n for k in full_map if (n := placeholders.chat_number(k)) is not None), default=0) + 1
-    from app.redaction.dictionaries import public_institution_spans
+    from app.redaction.dictionaries import is_known_place
+    mapping = [(key.split('#', 1)[0], value) for key, value in full_map.items() if value]
+    org_spans = [(a, b) for _, a, b in parties.find_labeled_parties(text)] + parties.find_other_org_names(text)
+    lines = text.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+    cross = [(offsets[i] + a, offsets[i] + b, offsets[j] + c, offsets[j] + d, name)
+             for i, a, b, j, c, d, name, _ in parties.find_cross_node_parties(lines)]
+    cross_spans = [(a, b) for a, b, c, d, _ in cross] + [(c, d) for a, b, c, d, _ in cross]
+    known_spans = [(a, b) for _, value in mapping for a, b in _value_spans(text, value)]
     explicit = {parties.normalize(value) for value in full_map.values()}
     explicit.update(parties.normalize(text[a:b]) for _, a, b in parties.find_labeled_parties(text))
-    public_spans = [(a, b) for a, b in public_institution_spans(text)
-                    if parties.normalize(text[a:b]) not in explicit
-                    and not any(m.start() < b and a < m.end() for term, _ in terms
-                                for m in parties.name_pattern(term).finditer(text))]
+    public_spans = parties.public_preservation_spans(text, explicit_names=explicit,
+        private_spans=org_spans + cross_spans,
+        overrides=known_spans + [m.span() for term, _ in terms for m in parties.name_pattern(term).finditer(text)])
+    english_brands = {(code, parties.normalize(alias)) for code, value in mapping
+                      for alias in parties.derived_names(value)[0] if re.fullmatch(r'[A-Za-z]+', alias)}
 
     def take(start: int, end: int, code: str) -> None:
         if start >= end or any(s.start < end and start < s.end for s in accepted) or any(a < end and start < b for a, b in public_spans):
@@ -143,10 +154,12 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
         accepted.append(_Span(start, end, code))
 
     # 1. 本任务对照表（含以前追问分配的代号）：真实值 → 代号（“代号#序号”的键取 # 前的代号），长的优先
-    mapping = [(key.split("#", 1)[0], value) for key, value in full_map.items() if value]
     by_value = {_norm(value): code for code, value in mapping}
     for code, value in sorted(mapping, key=lambda kv: len(kv[1]), reverse=True):
         for start, end in _value_spans(text, value):
+            if ((code, parties.normalize(value)) in english_brands
+                    and not detect.english_alias_allowed(text, start, end)):
+                continue
             take(start, end, code)
 
     def code_for(surface: str, category: str, country: str | None = None) -> str:
@@ -170,6 +183,14 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
         by_value[_norm(surface)] = code
         return code
 
+    def remember_alias(code: str, surface: str) -> None:
+        if any(k.split('#', 1)[0] == code and v == surface for k, v in {**full_map, **new_entries}.items()):
+            return
+        number = 1
+        while f'{code}#{number}' in full_map or f'{code}#{number}' in new_entries:
+            number += 1
+        new_entries[f'{code}#{number}'] = surface
+
     # 2. 启用的已记住名称与自定义敏感词
     for term, category in sorted(terms, key=lambda t: len(t[0]), reverse=True):
         spans = _value_spans(text, term)
@@ -179,39 +200,45 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
                 take(start, end, code)
 
     # 3. 9.3 第 2 步：带企业后缀的名称（标签后的签约方、正文中的其他企业名称）
-    org_spans = [(s_, e_) for _label, s_, e_ in parties.find_labeled_parties(text)] + parties.find_other_org_names(text)
-    links = parties.bilingual_links([value for _, value in mapping] + [text[a:b] for a, b in org_spans])
+    org_names = [text[a:b] for a, b in org_spans] + [name for _, _, _, _, name in cross]
+    links = parties.bilingual_links([value for _, value in mapping] + org_names)
     known_parties = {parties.normalize(value): (code, value) for code, value in mapping}
     for english_key, chinese_key in links.items():
         known = known_parties.get(chinese_key)
         if known:
             code = known[0]
         else:
-            chinese_surface = next(text[a:b] for a, b in org_spans
-                                   if parties.normalize(text[a:b]) == chinese_key)
+            chinese_surface = next(name for name in org_names if parties.normalize(name) == chinese_key)
             code = code_for(chinese_surface, 'ORG')
-        for start, end in org_spans:
-            surface = text[start:end]
+        for surface in org_names:
             if parties.normalize(surface) != english_key:
                 continue
             by_value[_norm(surface)] = code
-            if surface not in full_map.values():
-                number = 1
-                while f'{code}#{number}' in full_map or f'{code}#{number}' in new_entries:
-                    number += 1
-                new_entries[f'{code}#{number}'] = surface
+            remember_alias(code, surface)
+    for a, b, c, d, name in cross:
+        code = code_for(name, 'ORG')
+        take(a, b, code)
+        take(c, d, code)
+        remember_alias(code, text[a:b])
+        remember_alias(code, text[c:d])
     for start, end in org_spans:
         if not any(s.start < end and start < s.end for s in accepted):
             take(start, end, code_for(text[start:end], "ORG"))
 
     # V2-B-03：只从已有主体的完整名称派生，沿用原代号。
     short_derived = []
-    for code, value in mapping:
+    for key, value in [*mapping, *list(new_entries.items())]:
+        code = key.split('#', 1)[0]
         auto, short = parties.derived_names(value)
         short_derived.extend(short)
         for alias in auto:
             for start, end in _value_spans(text, alias):
+                english = re.fullmatch(r'[A-Za-z]+', alias) is not None
+                if english and not detect.english_alias_allowed(text, start, end):
+                    continue
                 take(start, end, code)
+                if english and any(s.start == start and s.end == end and s.code == code for s in accepted):
+                    remember_alias(code, text[start:end])
 
     # 4. 9.3 第 4～7 步：格式化信息、金额、人名、地址
     for find in (detect.find_formatted, detect.find_amounts, detect.find_bare_amounts, detect.find_persons, detect.find_addresses, detect.find_projects):
@@ -225,7 +252,12 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             if any(s.start < hit.end and hit.start < s.end for s in accepted):
                 continue
             country = hit.key if hit.category == "ADDR" and hit.key else None
-            take(hit.start, hit.end, code_for(text[hit.start:hit.end], hit.category, country))
+            code = code_for(text[hit.start:hit.end], hit.category, country)
+            take(hit.start, hit.end, code)
+            if hit.category == 'ADDR' and any(s.start == hit.start and s.end == hit.end and s.code == code for s in accepted):
+                for start, end in detect.address_extension_parts(text):
+                    if hit.start <= start and end <= hit.end:
+                        remember_alias(code, text[start:end].strip())
 
     # B-17：本问题中新识别的英文姓名也按规范形式全文一致替换。
     for hit in detect.find_persons(text):
@@ -237,6 +269,8 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
     model_suspects = []
     for hit in ner.recognize(parties.bilingual_label_text(ner.mask(text, [(s.start, s.end) for s in accepted] + public_spans))):
         if any(s.start < hit.end and hit.start < s.end for s in accepted) or any(a < hit.end and hit.start < b for a, b in public_spans):
+            continue
+        if is_known_place(text[hit.start:hit.end]):
             continue
         if hit.score >= ner.HIGH:
             surface = text[hit.start:hit.end]

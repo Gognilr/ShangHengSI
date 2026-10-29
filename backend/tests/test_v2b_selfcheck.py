@@ -358,3 +358,72 @@ def test_cross_node_ocr_rule_also_applies_to_multiline_chat():
     text = '买方 Buyer : NORTHWIND FICTIVE\nTRADING LLC'
     result = _redact(text, {}, [])
     assert 'NORTHWIND' not in result.text and 'FICTIVE' not in result.text and 'TRADING' not in result.text
+
+
+@pytest.mark.usefixtures('no_ner')
+@pytest.mark.parametrize('text', ['Email: export@haiyue-example.com',
+    'Meridian Fictive Inspection', 'Address: Office 405, Fictive Tower, Dubai'])
+def test_v2q171_chat_saved_brand_alias_does_not_split_context(text):
+    from app.chat.service import _redact
+    mapping = {'公司_A': 'Haiyue Fictive Trading Ltd.', '公司_A#1': 'Haiyue',
+        '公司_B': 'Fictive Metals Ltd.', '公司_B#1': 'Fictive'}
+    result = _redact(text, mapping, [])
+    if text == 'Meridian Fictive Inspection':
+        assert result.text == text
+        assert any(s['start'] == 0 and s['end'] == len(text) for s in result.suspects)
+    else:
+        # 完整格式化 / 地址代号取代原字段，不遗留被别名拆开的部分。
+        assert 'export@' not in result.text and 'Tower' not in result.text
+
+
+def test_v2q171_longer_model_entity_with_place_is_not_filtered(monkeypatch):
+    from app.chat.service import _redact
+    from app.redaction import parties
+    text = 'Hai Phong Fictive Port Co.'
+    monkeypatch.setattr(parties, 'find_other_org_names', lambda value: [])
+    monkeypatch.setattr(ner, 'recognize', lambda value: [ner.Entity(0, len(text), 'ORG', 0.99)])
+    for loc in ['F1-P1', 'NOTE']:
+        result = compute([NodeIn(loc, text)], 'other')
+        assert text not in result.redacted[loc]
+        assert any(i.category == 'ORG' and i.char_start == 0 and i.char_end == len(text) for i in result.items)
+    result = _redact(text, {}, [])
+    assert text not in result.text and text in result.new_entries.values()
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_v2q171_explicit_person_and_user_term_override_place():
+    from app.chat.service import _redact
+    from app.redaction.engine import UserTerm
+    tagged = 'Contact person: Hai Phong'
+    result = compute([NodeIn('F1-P1', tagged)], 'other')
+    assert 'Hai Phong' not in result.redacted['F1-P1'] and result.items[0].category == 'PERSON'
+    result = compute([NodeIn('NOTE', 'Hai Phong')], 'other', user_terms=[UserTerm('Hai Phong', 'CUSTOM')])
+    assert 'Hai Phong' not in result.redacted['NOTE'] and result.items[0].detected_by == 'user'
+    assert 'Hai Phong' not in _redact(tagged, {}, []).text
+    assert 'Hai Phong' not in _redact('Hai Phong', {}, [('Hai Phong', 'CUSTOM')]).text
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_v2q171_brand_equal_to_formatted_value_keeps_category():
+    from app.chat.service import _redact
+    name, field = 'HARBORXX Fictive Trading Ltd.', 'SWIFT: HARBORXX'
+    result = compute([NodeIn('F1-P1', name), NodeIn('F1-P2', field)], 'other')
+    assert any(i.loc == 'F1-P2' and i.category == 'SWIFT' for i in result.items)
+    chat = _redact(field, {'公司_A': name}, [])
+    assert chat.text.startswith('SWIFT: [SWIFT_')
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_address_extension_is_also_a_recheck_value():
+    from app.chat.service import _redact
+    text = '货物运至苏州工业园区星湖街328号创意产业园5栋。'
+    tail = '创意产业园5栋'
+    for loc in ['F1-P1', 'NOTE']:
+        result = compute([NodeIn(loc, text)], 'other')
+        assert tail in result.mapping.values()
+        assert any(r.category == 'MAP' for r in recheck(result.redacted[loc] + '\n补充：' + tail,
+            real_values=result.mapping.values(), terms=[]))
+    result = _redact(text, {}, [])
+    assert tail in result.new_entries.values()
+    assert any(r.category == 'MAP' for r in recheck(result.text + '\n补充：' + tail,
+        real_values=result.new_entries.values(), terms=[]))

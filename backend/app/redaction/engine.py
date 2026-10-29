@@ -355,27 +355,11 @@ def compute(
 
     # B-18：相邻同文件节点拆开的企业名称，只在这两个节点的精确区间替换。
     cross_parts = []
-    for index in range(1, len(nodes)):
-        previous, current = nodes[index - 1], nodes[index]
-        if previous.loc.split('-', 1)[0] != current.loc.split('-', 1)[0]:
-            continue
-        suffix = current.text.strip()
-        if not re.fullmatch(r'(?i:(?:TRADING[ \t]+)?(?:LLC|LLP|Ltd\.?|Limited|Inc\.?|Co\.,?[ \t]*Ltd\.?|Pte\.?[ \t]+Ltd\.?))', suffix):
-            continue
-        normalized = P.bilingual_label_text(previous.text)
-        label = P._LABEL_RE.search(normalized)
-        if label is None:
-            continue
-        head = previous.text[label.end():].strip()
-        if not re.fullmatch(r"[A-Z][A-Za-z'’-]*(?:[ \t]+[A-Z][A-Za-z'’-]*){0,7}", head):
-            continue
-        ent = entity(head + ' ' + suffix, 'ORG')
-        ent.role_label = P._LABEL_CANON[label.group(1).casefold()]
-        ent.block_node = index - 1
-        start = len(previous.text) - len(previous.text[label.end():].lstrip())
-        cross_parts.append((index - 1, start, start + len(head), ent.key))
-        start = len(current.text) - len(current.text.lstrip())
-        cross_parts.append((index, start, start + len(suffix), ent.key))
+    for first, a, b, second, c, d, name, role in P.find_cross_node_parties(
+            [n.text for n in nodes], [n.loc.split('-', 1)[0] for n in nodes]):
+        ent = entity(name, 'ORG')
+        ent.role_label, ent.block_node = role, first
+        cross_parts += [(first, a, b, ent.key), (second, c, d, ent.key)]
 
     # 第 2 步：签约方信息块
     public_parties = set()
@@ -503,7 +487,9 @@ def compute(
         occ: list[tuple[int, int]] = []
         amount_hits = [*detect.find_amounts(text, hints.get(i)), *detect.find_bare_amounts(text)]
         cands = [_Span(i, m.start(), m.end(), ent.category, ent.key, by, term=term)
-                 for ent, pat, by, term in pool for m in pat.finditer(text)]
+                 for ent, pat, by, term in pool for m in pat.finditer(text)
+                 if not (by == 'derived' and re.fullmatch(r'[A-Za-z]+', m.group())
+                         and not detect.english_alias_allowed(text, m.start(), m.end()))]
         cands += [_Span(i, start, end, 'ORG', key, 'party')
                   for index, start, end, key in cross_parts if index == i]
         for candidate in cands:
@@ -530,13 +516,9 @@ def compute(
                 if matched:
                     candidate.key = matched.key
         # 公共机构保留；签约方、用户词条及更长的私有企业名称仍按原优先级替换。
-        from app.redaction.dictionaries import public_institution_spans
-        occ.extend((start, end) for start, end in public_institution_spans(text)
-                   if P.normalize(text[start:end]) not in public_parties
-                   and not any(c.start < end and start < c.end and (
-                       c.detected_by in ('user', 'term') or
-                       c.category == 'ORG' and c.start <= start and end <= c.end
-                       and (c.start < start or end < c.end)) for c in cands))
+        occ.extend(P.public_preservation_spans(text, explicit_names=public_parties,
+            private_spans=[(c.start, c.end) for c in cands if c.category == 'ORG'],
+            overrides=[(c.start, c.end) for c in cands if c.detected_by in ('user', 'term')]))
         _accept(cands, occ, spans, longest_first=True)
         for hit in detect.find_formatted(text):  # 第 4 步：按 find_formatted 的顺序（即优先级）逐个取舍
             _accept([_Span(i, hit.start, hit.end, hit.category, hit.key, "regex")], occ, spans)
@@ -631,6 +613,9 @@ def compute(
         node_cache[n.loc] = {'key': key, 'entities': [[e.start, e.end, e.label, e.score] for e in predicted]}
         for hit in predicted:
             if _overlaps(occupied[i] + excluded_spans, hit.start, hit.end):
+                continue
+            from app.redaction.dictionaries import is_known_place
+            if is_known_place(n.text[hit.start:hit.end]):
                 continue
             if hit.score >= ner.HIGH:
                 surface = n.text[hit.start:hit.end]
@@ -814,6 +799,9 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
         elif category == ADDR:
             code = alloc.address(s.key, surface)
             remember(code, surface if style == "neutral" else None, surface)
+            for start, end in detect.address_extension_parts(node.text):
+                if s.start <= start and end <= s.end:
+                    remember(code, None, node.text[start:end].strip())
         else:
             primary = entities[s.key].name if s.key in entities and category in ("PERSON", "CUSTOM") else surface
             code = alloc.numbered(category, primary if style == "neutral" else s.key)

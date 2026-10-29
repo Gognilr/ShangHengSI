@@ -4,6 +4,7 @@
 英文词条按单词边界匹配、不区分大小写（“Iran”不命中“Irani”）；中文词条按原样子串匹配。
 """
 import re
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
@@ -127,3 +128,17 @@ def _public_institution_pattern() -> re.Pattern:
 def public_institution_spans(text: str) -> list[tuple[int, int]]:
     """已知公共机构与法院 / 仲裁机构规则；偏移相对原文。"""
     return [m.span() for m in _public_institution_pattern().finditer(text)]
+
+
+def _place_key(text: str) -> str:
+    return re.sub(r'\s+', '', unicodedata.normalize('NFKC', text)).casefold()
+
+
+@lru_cache(maxsize=1)
+def _place_keys(terms: tuple[str, ...]) -> frozenset[str]:
+    return frozenset(_place_key(term) for term in terms)
+
+
+def is_known_place(text: str) -> bool:
+    """仅整段规范形式完全匹配现有地名词条；不判断子串（V2Q-171）。"""
+    return _place_key(text) in _place_keys(tuple(_country_index()[1]))
