@@ -8,6 +8,7 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-167 | V2-B-12 按 T-53 #1 新增 must_keep: Calcined 后，Product Name: Calcined Needle Coke 仍被原 capitalized 规则列疑似，违反 must_keep 的“不替换、不列疑似”契约；12.2 只排除人名标签不能解决 | 建议仅扩展本任务范围至 backend/resources/common_terms.txt，追加完整术语 Calcined Needle Coke，新增同句专项反例。现有词表已有 Needle Coke 与 Calcined Petroleum Coke；不整体放行 Product Name 内容，不改样本、原标注或断言。详见 reports/V2-B-12.md | common_terms.txt（待授权）、test_v2b_feedback.py；V2-B-12 未完成 | 继续 V2-B-12 前 |
 
 ## 二、已决定
 

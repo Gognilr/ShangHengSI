@@ -612,10 +612,12 @@ def compute(
     result.ner_cache_hits, result.ner_cache_misses = cache_hits, cache_misses
 
     # 疑似遗漏：全部替换项确定之后，在每个节点未替换的文字上识别（9.5）
+    lowercase_words = S.lowercase_evidence('\n'.join(n.text for n in nodes))
     for i, n in enumerate(nodes):
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         result.suspects += [SuspectOut(n.loc, s.start, s.end, s.reason)
-                            for s in S.find_suspects(n.text, occupied[i] + excluded_spans, derived=short_derived)]
+                            for s in S.find_suspects(n.text, occupied[i] + excluded_spans, derived=short_derived,
+                                                     lowercase_words=lowercase_words)]
     result.matched_terms = {s.term for s in spans if s.term}
     for suspect in ner_suspects:
         # 同一区间已由规则列疑似时沿用既有原因，模型只补缺口（只增不减）。
@@ -1139,7 +1141,7 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
     """疑似遗漏的决定（19.4）。不提交。
 
     replace：把疑似遗漏的文字作为用户词条（类别 ORG / PERSON / CUSTOM），全文替换后整体重算；
-    ignore：本条及本任务中文字相同（规范形式）、原因相同的其他 pending 疑似遗漏都置 ignore（Q-70 ④）。
+    ignore：本条及本任务中文字相同（规范形式）的全部原因 pending 疑似遗漏都置 ignore（V2Q-145）。
     """
     row = db.get(RedactionSuspect, suspect_id)
     if row is None or row.task_id != task.id:
@@ -1154,7 +1156,7 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
     if decision == "ignore":
         key = P.normalize(text[row.char_start:row.char_end])
         same = db.scalars(select(RedactionSuspect).where(
-            RedactionSuspect.task_id == task.id, RedactionSuspect.reason == row.reason,
+            RedactionSuspect.task_id == task.id,
             RedactionSuspect.decision == "pending", RedactionSuspect.id != row.id))
         for r in [row, *(r for r in same if P.normalize(texts.get(r.loc, "")[r.char_start:r.char_end]) == key)]:
             r.decision, r.category, r.decided_by, r.decided_at = "ignore", None, user_id, now
@@ -1183,17 +1185,29 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
     order = {r.loc: k for k, r in enumerate(rows)}
     texts = _texts_with_note(rows, task)
     suspects = sorted(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id)),
-                      key=lambda r: (r.decision != "pending", order.get(r.loc, len(order)), r.char_start, r.id))
+                      key=lambda r: (order.get(r.loc, len(order)), r.char_start, r.id))
     out = []
+    groups = {}
     for r in suspects:
         t = texts.get(r.loc, "")
+        key = P.normalize(t[r.char_start:r.char_end])
+        if key in groups:
+            group = groups[key]
+            group['occurrences'] += 1
+            if S._PRIORITY.get(r.reason, 5) < S._PRIORITY.get(group['reason'], 5):
+                group['reason'] = r.reason
+            if r.decision == 'pending':
+                group['decision'] = 'pending'
+            continue
         out.append({
             "id": r.id, "loc": r.loc, "reason": r.reason, "decision": r.decision, "category": r.category,
             "text": t[r.char_start:r.char_end],
+            "occurrences": 1,
             "before": _flat(t[max(0, r.char_start - CONTEXT_CHARS):r.char_start]),
             "after": _flat(t[r.char_end:r.char_end + CONTEXT_CHARS]),
         })
-    return out
+        groups[key] = out[-1]
+    return sorted(out, key=lambda r: r['decision'] != 'pending')
 
 
 def term_hash(text: str) -> str:

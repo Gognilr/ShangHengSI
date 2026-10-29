@@ -520,7 +520,7 @@ _CN_NOT_PERSON = frozenset({"同上", "同前", "见下", "待定", "略", "不�
 # 人名标签后以这些词开头的汉字串是另一个标签或签字栏用语，不是人名（Q-134 ②）
 _CN_NOT_NAME_START = ("电话", "手机", "传真", "邮箱", "邮件", "地址", "姓名", "名称", "职务", "职位", "日期", "签字",
                       "签章", "签名", "签署", "盖章", "授权", "委托", "代表", "法定", "联系", "经办", "收件", "代理")
-_EN_TITLES = re.compile(r"(?:Mr|Mrs|Ms|Miss|Dr|Prof)(?:\.[ \t]*|[ \t]+)", re.IGNORECASE)
+_EN_TITLES = re.compile(r"(?:Mr|Mrs|Ms|Miss)(?:\.[ \t]*|[ \t]+)|(?:Dr|Prof)\.[ \t]*", re.IGNORECASE)
 _EN_WORD = re.compile(r"[A-Z][A-Za-z'’\-]*\.?")
 # 职务、部门词和信息标签：遇到即停止（小写形式比较）
 _EN_STOP_WORDS = frozenset(w.casefold() for w in (
@@ -557,7 +557,8 @@ def find_persons(text: str) -> list[Hit]:
     terms = [t.casefold() for t in common_terms()]
     for m in _PERSON_LABEL.finditer(text):
         # Project Name 是项目标签，不能把其中 Name 当成人名标签抢先识别。
-        if re.search(r"(?i:Project)[ \t]+$", text[:m.start()]) and m.group().lower().startswith("name"):
+        if (re.search(r"(?i:Project|Product|Item|Commodity|Goods|Cargo|Brand|Model|Material|Part|Article|Grade|Chemical|Trade)[ \t]+$",
+                      text[:m.start()]) and m.group().lower().startswith("name")):
             continue
         pos = m.end()
         span: tuple[int, int] | None = None
@@ -616,15 +617,39 @@ def find_persons(text: str) -> list[Hit]:
     titles = "总经理 副总经理 董事长 总监 经理 主任 主管 总工 工程师 律师 会计 老师 先生 女士 小姐 局长 处长 科长 院长 校长 书记 部长 总 工".split()
     pattern = re.compile("(?:" + "|".join(map(re.escape, cn_surnames())) + ")(?:"
                          + "|".join(sorted(titles, key=len, reverse=True)) + ")")
-    left = ("请", "由", "与", "和", "及", "致", "向", "给", "找", "跟", "同", "经", "抄送", "联系", "通知", "委托", "授权")
+    left = ("请", "由", "与", "和", "及", "致", "向", "给", "找", "跟", "同", "经", "抄送", "联系", "通知", "委托", "授权", "尊敬的", "亲爱的")
+    full_name = re.compile('(?:' + '|'.join(map(re.escape, cn_surnames())) + r')[一-鿿]{1,2}?(?=先生|女士|小姐)')
+    for m in full_name.finditer(text):
+        if m.start() and re.match(r'[一-鿿]', text[m.start() - 1]) and not text[:m.start()].endswith(left):
+            continue
+        if m.group() in _CN_NOT_PERSON:
+            continue
+        if not any(h.start < m.end() and m.start() < h.end for h in hits):
+            hits.append(Hit(m.start(), m.end(), 'PERSON', normalize(m.group())))
     for m in pattern.finditer(text):
         if m.start() and re.match(r"[一-鿿]", text[m.start() - 1]) and not text[:m.start()].endswith(left):
             continue
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             hits.append(Hit(m.start(), m.end(), "PERSON", normalize(m.group())))
-    for m in re.finditer(r"(?<![A-Za-z])(?:Mr|Mrs|Ms|Dr|Prof)\.[ \t]+([A-Z][A-Za-z'’\-]*(?:[ \t]+[A-Z][A-Za-z'’\-]*){0,2})", text):
-        if not any(h.start < m.end(1) and m.start(1) < h.end for h in hits):
-            hits.append(Hit(m.start(1), m.end(1), "PERSON", normalize(m.group(1))))
+    for m in _EN_TITLES.finditer(text):
+        if m.start() and text[m.start() - 1].isascii() and text[m.start() - 1].isalpha():
+            continue
+        cur, words = m.end(), []
+        while len(words) < 3:
+            word = _EN_WORD.match(text, cur)
+            if word is None or word.group().rstrip('.').casefold() in _EN_STOP_WORDS | _EN_COMPANY_WORDS:
+                break
+            words.append(word)
+            gap = re.match(r'[ \t]+', text[word.end():])
+            if gap is None:
+                break
+            cur = word.end() + gap.end()
+        if words:
+            start, end = words[0].start(), words[-1].end()
+            if text[end - 1] == '.' and len(words[-1].group()) > 2:
+                end -= 1
+            if not any(h.start < end and start < h.end for h in hits):
+                hits.append(Hit(start, end, 'PERSON', normalize(text[start:end])))
     # V2-B-16：职务前置只接受明确的人名终点，避免把谓语当姓名。
     roles = '副董事长 董事长 副总经理 总经理 副总裁 总裁 总监 经理 主任 主管 部长 处长 科长 厂长 总工 工程师 会计 出纳 法务 采购 销售 业务员 专员 助理 秘书 代表'.split()
     endings = '沟通 协商 确认 同意 说 称 表示 负责 签字 签署 联系 提出 认为 回复 反馈 处理 商定 已 于 在 对 将'.split()

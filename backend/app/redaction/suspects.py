@@ -224,15 +224,25 @@ def _excluder() -> _Excluder:
     return _Excluder(terms, max(longest, 4))
 
 
-def _capitalized_candidates(text: str) -> list[Suspect]:
+def lowercase_evidence(text: str) -> frozenset[str]:
+    """本次正文中完整的小写单词；不从大小写混合的名称中截取。"""
+    return frozenset(w.removesuffix("'s").removesuffix('’s').strip('-') for w in
+        re.findall(r"(?<![A-Za-z])[a-z]+(?:['’][a-z]+)?(?:-[a-z]+)*(?![A-Za-z])", text))
+
+
+def _capitalized_candidates(text: str, lowercase_words=frozenset()) -> list[Suspect]:
     excl = _excluder()
     out: list[Suspect] = []
     for words in _capitalized_runs(text):
+        while words and re.fullmatch(r'[A-Z]\.', words[0].group()):
+            words = words[1:]
         while words and _word_core(words[0].group()).casefold() in _LEADING_WORDS:
             words = words[1:]
         if len(words) < 2:
             continue
         tokens = [_word_core(w.group()) for w in words]
+        if all(t.casefold().removesuffix("'s").removesuffix('’s').strip('-') in lowercase_words for t in tokens):
+            continue
         if excl.covered(tokens):
             continue
         out.append(Suspect(words[0].start(), _end_without_period(words[-1]), CAPITALIZED))
@@ -401,7 +411,7 @@ def _mask(text: str, occupied: list[tuple[int, int]]) -> str:
     return "".join(chars)
 
 
-def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=()) -> list[Suspect]:
+def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), lowercase_words=frozenset()) -> list[Suspect]:
     """节点原文中未被替换的疑似遗漏，按位置排序。
 
     occupied 为该节点已被替换的区间 [(start, end)]。同一位置命中多条规则时只保留一条，
@@ -411,7 +421,7 @@ def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=()) -> 
     cands: list[Suspect] = []
     cands += _chinese_suffix_candidates(masked)
     cands += _english_suffix_candidates(masked)
-    cands += _capitalized_candidates(masked)
+    cands += _capitalized_candidates(masked, lowercase_words)
     cands += _person_candidates(masked)
     # 新旧叙述人名规则重叠时保持既有 person_name 原因（V2Q-34），新增命中才用 person_like。
     surname = "|".join(map(re.escape, cn_surnames()))

@@ -28,6 +28,7 @@ export interface Suspect {
   text: string
   before: string
   after: string
+  occurrences: number
 }
 
 /** 已替换的片段；char_start / char_end 按 Unicode 字符（码点）计，与后端一致。 */

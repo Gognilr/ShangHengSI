@@ -173,6 +173,10 @@ def _stopwords():
 
 def keep_entity(text: str, entity: Entity) -> bool:
     surface = text[entity.start:entity.end].strip()
+    if re.fullmatch(r'[a-z\s-]+', surface):
+        return False
+    if re.fullmatch(r'(?:GB(?:/[TZ])?|YB/T|HG/T|SH/T|JB/T|T/[A-Z]+|ASTM|ISO|IEC|EN|DIN|JIS|BS|API)(?:\s+[A-Z0-9][A-Z0-9 ./-]*)?', surface):
+        return False
     # V2Q-39：港口、贸易术语与字母数字代码属于保留项，只过滤模型结果。
     if re.fullmatch(r'(?i:HS)\s*\d[\d .-]*', surface):
         return False

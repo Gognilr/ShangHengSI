@@ -64,6 +64,7 @@ class SuspectView(BaseModel):
     text: str
     before: str
     after: str
+    occurrences: int
 
 
 class RedactionOut(BaseModel):

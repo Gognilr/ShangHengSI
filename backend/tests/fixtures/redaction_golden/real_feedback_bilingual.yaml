@@ -6,11 +6,14 @@ must_replace:
   - {text: 青岚虚构国际贸易有限公司, category: ORG}
   - {text: "Chengchuan Fictive Carbon Materials Co., Ltd.", category: ORG}
   - {text: "Qinglan Fictive International Trade Co., Ltd.", category: ORG}
-known_gaps:
   - {text: KE MOLAN, category: PERSON}
   - {text: 柯墨兰, category: PERSON}
   - {text: Lorna Fictive, category: PERSON}
 must_keep:
+  - 我方
+  - 现指定
+  - Calcined
+  - 先生
   - 煅后针状焦
 must_suspect:
   - Velmora Refinery

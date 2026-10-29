@@ -62,7 +62,7 @@ function submitReplace() {
         </el-table-column>
         <el-table-column label="上下文" min-width="260">
           <template #default="{ row }">
-            <span class="ctx">{{ row.before }}<mark class="hit">{{ row.text }}</mark>{{ row.after }}</span>
+            <span class="ctx">{{ row.before }}<mark class="hit">{{ row.text }}</mark>{{ row.after }}<span v-if="row.occurrences > 1">（共 {{ row.occurrences }} 处）</span></span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="130" align="center">
@@ -84,7 +84,7 @@ function submitReplace() {
             </el-table-column>
             <el-table-column label="上下文" min-width="260">
               <template #default="{ row }">
-                <span class="ctx">{{ row.before }}<mark class="hit">{{ row.text }}</mark>{{ row.after }}</span>
+                <span class="ctx">{{ row.before }}<mark class="hit">{{ row.text }}</mark>{{ row.after }}<span v-if="row.occurrences > 1">（共 {{ row.occurrences }} 处）</span></span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="130" align="center">
