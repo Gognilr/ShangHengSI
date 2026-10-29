@@ -1,0 +1,12 @@
+pki {
+	ca site {
+		name "商衡SI"
+		root {
+			cert /run/site-ca/root.crt
+		}
+		intermediate {
+			cert /run/site-ca/intermediate.crt
+			key /run/site-ca/intermediate.key
+		}
+	}
+}

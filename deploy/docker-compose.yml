@@ -130,6 +130,7 @@ services:
       context: ../frontend
     # build-end
     restart: unless-stopped
+    command: ["/bin/sh", "/etc/caddy/fragments/start.sh"]
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
     ports:
@@ -137,6 +138,8 @@ services:
       - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy:/etc/caddy/fragments:ro
+      - ./secrets/ca:/run/site-ca:ro
       - ./certs:/etc/caddy/certs:ro
       - caddy_data:/data
       - caddy_config:/config

@@ -192,3 +192,28 @@ check_https() {
   code="$(curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 20 "https://$1/")" || die "HTTPS 检查失败，请检查 web 服务与证书"
   [ "$code" = 200 ] || die "HTTPS 未返回 200，请检查 web 服务"
 }
+
+# V2-Z-01：证书与主密钥一样由保管人另存，不进入业务备份。
+check_site_ca() {
+  local file
+  [ ! -e "$ROOT/secrets/ca/root.key" ] && [ ! -L "$ROOT/secrets/ca/root.key" ] \
+    || die '请密钥保管人取走 root.key 离线保存，并从服务器删除'
+  for file in root.crt intermediate.crt intermediate.key root.sha256; do
+    [ -s "$ROOT/secrets/ca/$file" ] && [ ! -L "$ROOT/secrets/ca/$file" ] \
+      || die '缺少 secrets/ca/ 证书；先导入发布包镜像，运行 python -m app.cli gen-ca --ip <服务器IP> --out <离线目录>，离线保管 root.key，再复制其余四个文件到 secrets/ca/（详见运维说明第 5 节）'
+  done
+}
+
+prepare_cert_page() {
+  local site="$1" fingerprint tmp
+  check_site_ca
+  [[ "$site" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die '证书下载页需要固定 IPv4 私网地址'
+  fingerprint="$(cat "$ROOT/secrets/ca/root.sha256")"
+  [[ "$fingerprint" =~ ^([0-9A-F]{2}:){31}[0-9A-F]{2}$ ]] || die 'root.sha256 指纹格式不正确'
+  mkdir -p "$ROOT/caddy/public"
+  tmp="$(mktemp "$ROOT/caddy/public/.index.XXXXXX")"
+  sed -e "s/@@FINGERPRINT@@/$fingerprint/g" -e "s/@@SITE@@/$site/g" \
+    "$ROOT/caddy/cert.html.template" > "$tmp"
+  chmod 644 "$tmp"
+  mv "$tmp" "$ROOT/caddy/public/index.html"
+}

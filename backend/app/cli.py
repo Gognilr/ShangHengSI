@@ -205,6 +205,14 @@ def main(argv: list[str] | None = None) -> int:
     p_key = sub.add_parser("gen-key", help="生成主密钥文件（32 字节，权限 600，不覆盖已有文件）")
     p_key.add_argument("--out", required=True, help="输出文件路径")
 
+    p_ca = sub.add_parser("gen-ca", help="离线生成限定私网 IP 的 HTTPS 根证书与中间证书")
+    p_ca.add_argument("--ip", required=True, help="服务器 IPv4 私有地址")
+    p_ca.add_argument("--net", default="172.16.0.0/12", help="根证书允许的私有网段")
+    p_ca.add_argument("--out", required=True, help="输出目录，不覆盖已有目标文件")
+    p_ca.add_argument("--reissue-intermediate", action="store_true", help="使用离线根重新签发中间证书")
+    p_ca.add_argument("--root-cert", help="离线根证书文件")
+    p_ca.add_argument("--root-key", help="离线根私钥文件")
+
     p_admin = sub.add_parser("create-admin", help="创建管理员（随机初始密码只显示一次）")
     p_admin.add_argument("--username", required=True, help="用户名，最多 50 个字符")
     p_admin.add_argument("--display-name", default="管理员", help="显示名，默认“管理员”")
@@ -275,6 +283,25 @@ def main(argv: list[str] | None = None) -> int:
             print(f"错误：{exc}", file=sys.stderr)
             return 1
         print(f"已解密到 {args.out}。")
+        return 0
+
+    if args.command == "gen-ca":
+        from app.security.site_ca import generate_ca
+
+        try:
+            fingerprint = generate_ca(args.ip, args.out, net=args.net,
+                reissue_intermediate=args.reissue_intermediate,
+                root_cert=args.root_cert, root_key=args.root_key)
+        except FileExistsError:
+            print("错误：目标文件已存在，拒绝覆盖；请使用新目录。", file=sys.stderr)
+            return 1
+        except Exception as exc:  # 不输出文件内容或私钥解析错误详情。
+            print(f"错误：证书生成失败（{type(exc).__name__}），请检查私网地址、根证书与输出目录。", file=sys.stderr)
+            return 1
+        print("已生成 root.crt、root.sha256、intermediate.crt、intermediate.key" +
+              ("。" if args.reissue_intermediate else "、root.key。"))
+        print(f"根证书 SHA-256 指纹：{fingerprint}")
+        print("请密钥保管人取走 root.key 离线保存，并从服务器删除；服务器仅保留根证书、中间证书与中间私钥。")
         return 0
 
     if args.command == "gen-key":

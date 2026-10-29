@@ -26,6 +26,7 @@ docker compose version >/dev/null 2>&1 || die "需要 Docker Compose v2"
 backup_dir="$(resolve_path "$backup_dir")"
 check_storage "$backup_dir"
 check_release
+check_site_ca
 version="$(release_version)"
 if [ -z "$site" ]; then
   for candidate in $(hostname -I); do
@@ -35,7 +36,7 @@ if [ -z "$site" ]; then
   done
 fi
 # Q-164：只接收单个主机名/IP，不允许 URL、端口及 .env 插值字符。
-[[ "$site" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || die "访问地址须为 IPv4 或内网域名"
+[[ "$site" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "访问地址须为证书对应的固定 IPv4 私网地址"
 [[ "$admin" =~ ^[a-zA-Z0-9_.@-]{1,50}$ ]] || die "管理员用户名格式不正确"
 [[ "$backup_dir" =~ ^/[a-zA-Z0-9_./-]+$ ]] || die "备份目录须为不含空格和插值字符的绝对路径"
 [ -z "$(ss -H -ltn '( sport = :80 or sport = :443 )')" ] || die "80 或 443 端口已被占用"
@@ -60,6 +61,7 @@ chmod 600 "$ROOT/.env"
 env_set POSTGRES_PASSWORD "$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 env_set APP_VERSION "$version"
 env_set SITE_ADDRESS "$site"
+prepare_cert_page "$site"
 env_set HTTP_PORT 80
 env_set HTTPS_PORT 443
 env_set BACKUP_HOST_DIR "$backup_dir"

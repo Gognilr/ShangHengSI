@@ -1,12 +1,36 @@
 {
 	default_sni {$SITE_ADDRESS:localhost}
+	skip_install_trust
+	import /etc/caddy/fragments/{$CADDY_CA_MODE:development}.global
 }
 
-# 站点地址来自 SITE_ADDRESS（内网域名，如 review.公司域名）；开发环境默认 localhost。
-# tls internal：用 Caddy 内部 CA 签发证书。有公司证书时改为
-#   tls /etc/caddy/certs/server.crt /etc/caddy/certs/server.key
+# 只有下载页走 HTTP，其余请求继续跳转 HTTPS。
+http://{$SITE_ADDRESS:localhost} {
+	handle /cert {
+		redir /cert/ 308
+	}
+	handle /cert/shangheng-si-root.crt {
+		rewrite * /root.crt
+		root * /run/site-ca
+		header Content-Disposition "attachment; filename=shangheng-si-root.crt"
+		file_server
+	}
+	handle /cert/ {
+		rewrite * /index.html
+		root * /etc/caddy/fragments/public
+		file_server
+	}
+	handle /cert/* {
+		respond "页面不存在" 404
+	}
+	handle {
+		redir https://{$SITE_ADDRESS:localhost}{uri} 308
+	}
+}
+
+# 开发默认 localhost；安装脚本准备固定私网 IP 的自定义 CA。
 {$SITE_ADDRESS:localhost} {
-	tls internal
+	import /etc/caddy/fragments/{$CADDY_CA_MODE:development}.tls
 
 	# /api 转发给 app；上传大小限制 320 MB（SPEC 20.2）
 	handle /api/* {

@@ -105,6 +105,7 @@ trap on_exit EXIT
 require_root
 require_cmd docker sha256sum findmnt stat df awk install
 [ -f "$ROOT/.env" ] || die "未找到 $ROOT/.env，系统尚未安装"
+info '证书不在备份中；恢复到新机器时，请密钥保管人提供 secrets/ca/ 中的根证书、中间证书与中间私钥，或用离线根重新签发；根私钥不能放在服务器。'
 BACKUP_DIR="$(env_get BACKUP_HOST_DIR)"
 BACKUP_DIR="$(resolve_path "${BACKUP_DIR:-./backup}")"
 [ -d "$BACKUP_DIR" ] || die "备份目录 $BACKUP_DIR 不存在"
