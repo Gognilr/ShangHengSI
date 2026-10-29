@@ -65,9 +65,21 @@ def test_t54_role_person(text, value):
     assert any(text[h.start:h.end] == value for h in detect.find_persons(text))
 
 
-@pytest.mark.parametrize('text', ['经理同意后生效', '总经理高兴地表示'])
+@pytest.mark.parametrize('text', ['经理同意后生效', '总经理高兴地表示',
+    '授权代表应签署', '代表应签字', '经理须确认', '代表应及时签字'])
 def test_t54_non_person(text):
     assert not detect.find_persons(text)
+
+
+def test_v2q166_modal_surname_with_honorific():
+    text = '销售代表应采薇女士'
+    hits = detect.find_persons(text)
+    assert [(text[h.start:h.end], h.category) for h in hits] == [('应采薇', 'PERSON')]
+
+
+def test_t54_existing_phone_has_no_duplicate():
+    hits = detect.find_formatted('邮编：251500 电话：0531-6612345')
+    assert [(h.start, h.end) for h in hits if h.category == 'PHONE'] == [(13, 25)]
 
 
 @pytest.mark.parametrize('text,surface', [('+1 (713) 555-0142', '+1 (713) 555-0142'),

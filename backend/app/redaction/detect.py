@@ -157,6 +157,8 @@ def find_formatted(text: str) -> list[Hit]:
             continue
         if any(h.category in ('ACCOUNT', 'IDNO') and h.start < m.end() and m.start() < h.end for h in hits):
             continue
+        if any(h.category == 'PHONE' and (h.start, h.end) == m.span() for h in hits):
+            continue
         add(m.start(), m.end(), 'PHONE')
     return hits
 
@@ -631,6 +633,12 @@ def find_persons(text: str) -> list[Hit]:
     rule = re.compile(role + '(' + surname + r'[一-鿿]{1,2}?)(?=先生|女士|小姐|[^一-鿿]|$|' + '|'.join(endings) + ')')
     for m in rule.finditer(text):
         name = m.group(1)
+        # V2Q-166：只收窄本次职务入口；情态词姓氏须有敬称，谓语不能充当名字。
+        family = next(s for s in cn_surnames() if name.startswith(s))
+        given = name[len(family):]
+        honorific = re.match(r'先生|女士|小姐', text[m.end(1):]) is not None
+        if given.startswith(tuple(endings)) or (family in '应须需将可会均亦再另也都必' and not honorific):
+            continue
         if (name in _CN_NOT_PERSON or name in common_terms() or name in endings
                 or name.endswith(('地', '的'))):
             continue
