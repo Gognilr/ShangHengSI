@@ -378,3 +378,106 @@ recheck.py 不改；它调用的 `find_amounts` 自动带上 11.1 的新写法�
 | 14 | 现有回归集、A-03、`test_v2b_manual.py`、`test_redaction_engine.py`、`test_quotes.py` | 全部通过；如有原样本因新规则多替换导致 must\_keep 失败，停下报告，不改样本 |
 
 单个任务按 TASKS-V2 第一节第 2 条只跑本任务相关测试：`test_v2b_amounts.py`、`test_redaction_golden.py`、`test_a03_outbound.py`、`test_v2b_manual.py`、`test_redaction_engine.py`、`test_quotes.py`、`test_recheck.py`。本任务结束后**加跑一次整仓挂载全量**（V2-B 已过集中测试，不再另设集中测试任务），然后停下交 Opus 审核（规则 12），审核通过后才进入 V2-C-01。
+
+## 十二、真实样本反馈修复（V2-B-12～V2-B-15，V2Q-143～V2Q-145）
+
+2026-10-29 · Opus 5.5（V2-D-10 之后追加） · **待用户确认**
+
+**起因**：用户 2026-10-29 提供两份真实样本（中英对照的供货函 .docx；32 页英文询价与检验计划 .pdf，样本不进仓库），用当前 main 的解析与脱敏离线实测，发现四类问题：
+
+1. 正文中未带标签的中文企业名称把前面的“我方”“现指定”一并取入（“我方××碳材料股份有限公司”“现指定××国际贸易有限公司”整段成为一个主体名称），外发文本丢掉“我方”，带前缀的写法还会写入已记住的名称。
+2. 人名：“尊敬的××（全名）先生”与“DEAR MR.××（大写、点后无空格）”未替换，只列疑似遗漏；“Product Name: Calcined Needle Coke”中的 Calcined 被当成人名替换。
+3. 同一家公司的中文名与英文名（拼音字号 + 英文行业词 + Co., Ltd.）分到两个代号，模型会以为文件里多了两家公司。
+4. 英文为主的 PDF 产生 **735 条**疑似遗漏（相同文字去重后 174 组），大多是首字母大写的技术术语（Bulk Density、Document Title）、标准编号（ASTM D4052、GB/T 24526）、代词与角色词（We、The inspector）；第二步要求疑似遗漏全部处理才能发送，等于无法使用；真正该替换的无后缀名称（“×× Refinery”“×× Technical Office”、无后缀的英文字号）埋在其中。
+
+**任务划分**：V2-B-12 做 12.1～12.3（不需要决定）；V2-B-13 做 12.4（依赖 V2Q-143）；V2-B-14 做 12.5（依赖 V2Q-144，需下载授权）；V2-B-15 由 Opus 审核。三个实现任务按 TASKS-V2 第一节连续完成，**V2-B-14 结束后加跑一次整仓挂载全量**（不另设集中测试），停下交 V2-B-15。V2Q-143 / 144 未确认时，V2-B-12 完成后直接停下交审核，13、14 留待确认。
+
+**共同约定**：本节第〇节第 3、5、7 条照旧；“只增不减”在本节有三处收窄，均为把**不是敏感信息的文字**移出替换或疑似遗漏：12.1 名称前的边界词、12.2 第 3 条的“Product Name:”、12.3 第 2 条的标准编号与代词，各有 must\_keep 或单元测试兜住名称本身仍被替换。recheck.py 不改。
+
+**文件范围**：
+* V2-B-12：`backend/app/redaction/parties.py`（只改边界词表）、`detect.py`（只改 `find_persons` 及其常量）、`suspects.py`（只改首字母大写段与参数）、`ner.py`（只改 `keep_entity`）、`engine.py`（`compute` 传入小写词集合、`suspect_views`、`decide_suspect`）、`backend/app/redaction/router.py`（SuspectView 加字段）、`backend/app/chat/service.py`（只接入小写佐证）、`backend/resources/ner_stopwords.txt`（只追加）、`frontend/src/components/SuspectList.vue`、`ConfirmStep.vue`（只改计数）、`frontend/src/api/redaction.ts`、`backend/tests/test_v2b_feedback.py`（新）、`real_feedback_bilingual.yaml`（按 12.6 第 1 条）。
+* V2-B-13：`backend/resources/hanzi_pinyin.txt`（新）、`backend/scripts/gen_hanzi_pinyin.py`（新）、`backend/app/redaction/parties.py`（新增关联函数）、`engine.py`（接入）、`chat/service.py`（接入）、`dictionaries.py`（读资源）、`test_v2b_feedback.py`（追加）。
+* V2-B-14：`backend/resources/en_words.txt`（新）及来源说明、`dictionaries.py`、`suspects.py`、`backend/tests/fixtures/redaction_golden/en_spec_suspects.*`（由 Opus 开工前写入）、`test_v2b_feedback.py`（追加）。
+* 均不加迁移，不改 recheck.py、外网代码与已有回归样本 .txt。
+
+**开工前已写入**：回归样本 `real_feedback_bilingual.txt / .yaml`（虚构，结构仿照真实样本）：五个企业名称在 must\_replace 中（当前因整段覆盖而通过），三处人名以 known\_gaps 登记，“Velmora Refinery”在 must\_suspect 中；当前测试通过。**样本 .txt 与已有标注文字不得改动**，只可按各节移入 must\_replace、追加 must\_keep。
+
+### 12.1 中文正文企业名称的起点（V2-B-12）
+
+`parties._CN_BOUNDARY_WORDS` 增加（多字的优先匹配，沿用 `_name_start_after_boundary` 与 `_CN_BOUNDARY_PROTECTED` 机制）：
+
+* 自称与他称：我方、我司、本司、我公司、本公司、贵方、贵司、贵公司、对方；
+* 指定类动词：现指定、现委托、兹委托、特委托、指定、授权、聘请、选定。
+
+单字“现”“特”“兹”不加（“现代”“特变”等字号会被截断）。这些词同时进入 `_EXTEND_STOP_WORDS`（现有写法自动包含）。疑似遗漏（suspects.py 以 min\_han=0 调用同一函数）随之生效。
+
+不处理已写入的带前缀的已记住名称（不迁移数据）。
+
+### 12.2 人名（V2-B-12，`detect.find_persons`）
+
+1. **中文全名 + 敬称**：`{姓}{1～2 个汉字}{先生|女士|小姐}`，前面是句首、标点、空白、3.2 的前导词，或新增的前导词“尊敬的、亲爱的”；**只替换姓名部分**，敬称保留（与英文规则一致）。姓名部分在 `_CN_NOT_PERSON` 中时不算。3.2 的“姓 + 称谓”（“叶先生”）不变，3.2 的前导词也加入“尊敬的、亲爱的”。
+2. **英文称谓**：称谓不区分大小写，增加 Miss；`Mr / Mrs / Ms / Miss` 后可以是“点 + 可选空白”或“空白”；`Dr / Prof` 仍须带点（无点的 Dr 可能是 Drive）。姓名为 1～3 个首字母大写的单词（全大写也算，`MR.KE MOLAN`），遇 `_EN_STOP_WORDS` 停止；只替换姓名，称谓保留。
+3. **`Name:` 标签**：前一个单词（同一行，以空白相隔）是 Product、Item、Commodity、Goods、Cargo、Brand、Model、Material、Part、Article、Grade、Chemical、Trade 之一时，不当作人名标签（与现有 Project Name 的处理相同）。Company、Bank、Account 不在此列（现有行为不变）。
+
+### 12.3 疑似遗漏：分组与过滤（V2-B-12）
+
+1. **分组显示**：`engine.suspect_views` 把规范形式（`P.normalize`）相同的疑似遗漏合成一行，不论原因；代表行取文档顺序的第一处，原因取现有优先级最高的一个；新增字段 `occurrences`（该组条数）。`decide_suspect` 的 ignore 改为本任务中规范形式相同的**全部原因**的 pending 一并忽略（Q-70 ④原为同原因，见 V2Q-145）；replace 不变（本来就全文替换后重算）。第二步的“还有 n 条未处理”、发送前检查按**组数**计。前端 `SuspectList.vue` 在文字后显示“共 n 处”（n > 1 时），`ConfirmStep.vue` 的计数改为组数；`frontend/src/api/redaction.ts` 类型加 `occurrences`。数据库不变（仍逐条存储）。
+2. **实体识别结果过滤**（`ner.keep_entity`，两档都生效；`cache_context` 已包含 ner.py 与停用词文件，缓存自动失效）：
+   * 只由小写拉丁字母、空白与连字符组成的（approved suppliers、inspector）；
+   * 标准编号：`GB`、`GB/T`、`GB/Z`、`YB/T`、`HG/T`、`SH/T`、`JB/T`、`T/` + 大写字母、`ASTM`、`ISO`、`IEC`、`EN`、`DIN`、`JIS`、`BS`、`API` 单独出现，或其后跟编号（`ASTM D4052`、`GB/T 24526`、`T/ZGTS 002-2022`）；
+   * `ner_stopwords.txt` 追加：we、us、our、you、your、your company、our company、the buyer、the seller、buyer、seller、party、parties、contractor、manufacturer、supplier、inspector、the inspector、inspection company（只增不删）。
+3. **首字母大写段**（`suspects._capitalized_candidates`）：
+   * 开头的单字母编号（`A.`、`B.`、`(a)`）去掉后再判断；
+   * **文内小写佐证**：段中每个单词（去掉所有格与连字符两端）都在本次识别的全部正文节点中以全小写形式单独出现过时，不列（“Bulk Density”而正文另有“bulk density”）。engine 在 `compute` 中一次性收集小写词集合传入；追问入口只用问题文本本身。
+4. 实测（真实 PDF，原型脚本，不进仓库）：735 条 → 174 组 → 第 2、3 条后约 106 组。剩余的主要是从不以小写出现的技术术语，由 12.5 处理。
+
+### 12.4 中英文同一主体（V2-B-13，依赖 V2Q-143）
+
+按 V2Q-143 的决定实施。建议方案（甲，自动关联）：
+
+1. 资源 `backend/resources/hanzi_pinyin.txt`：常用汉字（GB 2312 一、二级 6763 字）的全部无声调拼音读音，由 Unicode Unihan 数据库 `kMandarin` / `kHanyuPinyin` 字段生成（Unicode License，下载前取得同意；生成脚本放 `backend/scripts/`，不进镜像运行路径）。
+2. 中文主体：3.1 第 1 步的“主体部分”；可去掉开头的地名后再比（英文名常省略地名）。
+3. 英文主体：英文企业后缀之前、从首词起连续的“可完全切分为拼音音节”的单词，小写连接为 J（音节表取自资源文件的全部读音）；J 至少 2 个音节。
+4. 若 J 等于中文主体部分某个前缀（≥ 2 个汉字，任一读音组合）的拼音连写，两者关联。**只做一对一关联**：一个英文主体只匹配到一个中文主体、反之亦然时才合并，否则都不合并。
+5. 合并后共用中文主体的代号；英文写法作为别名（与 9.3 第 3 步简称相同的方式，对照表 `代号#n`）；国家、企业类型以中文主体为准；不写入已记住的名称。
+6. 追问入口按本任务对照表做同样的关联。
+
+方案乙（手动合并）见 V2Q-143。
+
+### 12.5 英文常用词表（V2-B-14，依赖 V2Q-144）
+
+1. 资源 `backend/resources/en_words.txt`：按 V2Q-144 确定的来源生成的常用英文词（小写，每行一个，≤ 1 MB），README 注明来源、版本与许可证；下载前把文件名、来源、大小告诉用户并取得同意。
+2. 首字母大写段：段中每个单词都属于 common\_terms、月份星期、国家城市港口、文内小写佐证（12.3 第 3 条）或 `en_words.txt` 之一时不列；**至少有一个单词不在这些集合里**时才列（“Velmora Refinery”“Hardgrave Method”列，“Kinematic Viscosity”“Document Title”不列）。
+3. 只作用于疑似遗漏的 capitalized 原因；企业后缀识别、人名、实体识别不受影响。
+
+### 12.6 测试用例（T-53）
+
+单个任务只跑：本节新测试文件 `test_v2b_feedback.py`、`test_redaction_golden.py`、`test_a03_outbound.py`、`test_suspects.py`、`test_redaction_engine.py`、`test_v2b_derived.py`、`test_ner.py`（若存在）、`test_chat.py`；V2-B-12 另跑前端 build。实体识别相关用例用 monkeypatch 固定 `ner.recognize` 返回值，不依赖模型分数。
+
+| # | 任务 | 输入 | 期望 |
+|-|-|-|-|
+| 1 | 12 | 回归样本 real\_feedback\_bilingual | known\_gaps 三条移入 must\_replace（PERSON，文字不变）；追加 must\_keep：我方、现指定、Calcined、先生 |
+| 2 | 12 | “我方澄川虚构碳材料股份有限公司，现指定青岚虚构国际贸易有限公司为代理” | 两个主体名称恰为“澄川虚构碳材料股份有限公司”“青岚虚构国际贸易有限公司”；“我方”“现指定”在外发文本中 |
+| 3 | 12 | “现代虚构重工有限公司”“特变虚构电工有限公司” | 名称完整，不被截断 |
+| 4 | 12 | 已记住名称“我方虚构科技有限公司”存在时的同句 | 仍按已记住名称整段替换（不迁移，行为不变） |
+| 5 | 12 | “尊敬的柯墨兰先生：”“请欧阳明月女士确认” | “柯墨兰”“欧阳明月”替换为人员代号，“先生”“女士”保留 |
+| 6 | 12 | “各位先生”“女士们”“叶先生” | 前两个无人名；“叶先生”按 3.2 整段替换（不变） |
+| 7 | 12 | “DEAR MR.KE MOLAN:”“Dear Mrs Lorna Fictive,”“Attn: MISS JANE FICTIVE” | 只替换姓名部分 |
+| 8 | 12 | “Dr Street 12”“Main Dr. ” 后无大写词 | 不识别人名 |
+| 9 | 12 | “Product Name: Calcined Needle Coke”“Item Name: Graphite Electrode”“Contact Name: Lorna Fictive”“Company Name: Northwind Fictive” | 前两个无人名；后两个与现状相同（Contact Name 识别人名，Company Name 行为不变） |
+| 10 | 12 | 同一文字在 5 个节点出现、原因分别为 capitalized 与 ner | `suspect_views` 返回一行，occurrences=5；ignore 后 5 条全部 ignore；replace 后全文替换 |
+| 11 | 12 | 两组不同文字，各 3 处 | 第二步计数为 2；发送前检查按组数 |
+| 12 | 12 | ner 返回“approved suppliers”“ASTM D4052”“GB/T 24526”“T/ZGTS 002-2022”“ASTM”“We”“The inspector” | 都不进入替换或疑似遗漏 |
+| 13 | 12 | ner 返回“Velmora Refinery”“CCIC” | 仍按置信度分档进入替换或疑似遗漏（过滤不误伤） |
+| 14 | 12 | “B. Feedstock Base”且正文另有“feedstock base” | 不列；“B. Velmora Base”列“Velmora Base” |
+| 15 | 12 | 正文有“Kinematic Viscosity”但没有小写写法 | 本任务仍列（留给 12.5）；正文另有“kinematic viscosity”时不列 |
+| 16 | 12 | 追问“Bulk Density 偏低怎么办，bulk density 指什么？” | 追问入口只用问题文本做小写佐证，不列 |
+| 17 | 13 | “澄川虚构碳材料股份有限公司”与“Chengchuan Fictive Carbon Materials Co., Ltd.” | 同一代号；英文写法为别名；还原后与原文一致 |
+| 18 | 13 | “青岚虚构国际贸易有限公司”与“Qingdao Qinglan Fictive International Trade Co., Ltd.”、“Qinglan Fictive Trade Co., Ltd.” | 前者带地名、后者无地名，均关联同一代号 |
+| 19 | 13 | 两个中文主体字号拼音相同（“华信虚构”“华新虚构”）与一个英文“Huaxin Fictive Co., Ltd.” | 不合并（非一对一） |
+| 20 | 13 | “Northwind Fictive International Limited”（非拼音） | 不关联任何中文主体 |
+| 21 | 13 | 追问中出现英文写法 | 替换为已有的中文主体代号 |
+| 22 | 14 | “Kinematic Viscosity”“Document Title”（无小写写法） | 不列 |
+| 23 | 14 | “Velmora Refinery”“Hardgrave Machine Method” | 列 |
+| 24 | 14 | 仿真实 PDF 的虚构样本 `en_spec_suspects.txt`（V2-B-14 开工前由 Opus 写入，≥ 200 行） | 疑似遗漏组数 ≤ 30，且 must\_suspect 全部列出 |
+| 25 | 全部 | 现有回归集、A-03 | 全部通过；如有原样本因本节规则导致失败，停下报告，不改样本 |

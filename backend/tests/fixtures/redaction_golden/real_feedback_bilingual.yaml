@@ -1,0 +1,16 @@
+description: 真实样本反馈（V2-B-12，设计 V2-B.md 第十二节）：中文正文企业名称前的“我方”“现指定”不属于名称；“全名 + 先生”、大写无空格的“MR.KE MOLAN”、无点的“Mrs Lorna Fictive”中的姓名替换为人员代号；“Product Name:”后的产品名不是人名；标准编号不列疑似遗漏
+stance: sales
+must_replace:
+  - {text: NORTHWIND FICTIVE INTERNATIONAL LIMITED, category: ORG}
+  - {text: 澄川虚构碳材料股份有限公司, category: ORG}
+  - {text: 青岚虚构国际贸易有限公司, category: ORG}
+  - {text: "Chengchuan Fictive Carbon Materials Co., Ltd.", category: ORG}
+  - {text: "Qinglan Fictive International Trade Co., Ltd.", category: ORG}
+known_gaps:
+  - {text: KE MOLAN, category: PERSON}
+  - {text: 柯墨兰, category: PERSON}
+  - {text: Lorna Fictive, category: PERSON}
+must_keep:
+  - 煅后针状焦
+must_suspect:
+  - Velmora Refinery
