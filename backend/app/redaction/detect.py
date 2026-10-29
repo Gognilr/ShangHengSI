@@ -72,7 +72,7 @@ _PHONE_SEPARATED = re.compile(
     r"|1[3-9]\d[ -]\d{4}[ -]\d{4}|0\d{2,3}[ -]\d{3,4}[ -]?\d{4})(?![A-Za-z0-9-])"
 )
 _IM_NO_COLON = re.compile(
-    r"(?:微信号[ \t]*|(?:微信|QQ号|(?<![A-Za-z])(?i:WeChat(?:[ \t]*ID)?|QQ|WhatsApp|Telegram|LINE|Skype)(?![A-Za-z]))[ \t]+)"
+    r"(?:微信号[ \t]*|(?:微信|QQ号|(?<![A-Za-z])(?:(?i:WeChat(?:[ \t]*ID)?|QQ|WhatsApp|Telegram|Skype)|LINE)(?![A-Za-z]))[ \t]+)"
     r"([A-Za-z0-9_.+\-]{3,40})(?![A-Za-z0-9_.+\-])"
 )
 
@@ -348,8 +348,10 @@ _EN_NUMBERS = dict(zip(
 _EN_SCALES = {'hundred': 100, 'thousand': 1000, 'million': 1000000, 'billion': 1000000000}
 _EN_NUMBER_WORD = '|'.join([*_EN_NUMBERS, *_EN_SCALES, 'and'])
 _EN_MONEY = re.compile(rf'(?<![A-Za-z])(?:{_EN_NUMBER_WORD})(?:[ \t-]+(?:{_EN_NUMBER_WORD}))+(?![A-Za-z])', re.I)
-_EN_CURRENCIES = re.compile(r'\b(?:US Dollars|Dollars|USD|EUR|Euros|RMB|Yuan|Renminbi|Pounds|GBP|JPY|Yen|HKD|CNY)\b', re.I)
+_EN_CURRENCIES = re.compile(r'\b(?:(?:Singapore|Hong Kong|HK|Australian|Canadian|New Taiwan)[ \t]+Dollars|US Dollars|Dollars|SGD|AUD|CAD|TWD|USD|EUR|Euros|RMB|Yuan|Renminbi|Pounds|GBP|JPY|Yen|HKD|CNY)\b', re.I)
 _EN_CURRENCY_CODES = {'us dollars': 'USD', 'dollars': 'USD', 'euros': 'EUR',
+    'singapore dollars': 'SGD', 'hong kong dollars': 'HKD', 'hk dollars': 'HKD', 'australian dollars': 'AUD',
+    'canadian dollars': 'CAD', 'new taiwan dollars': 'TWD',
     'yuan': 'CNY', 'renminbi': 'CNY', 'rmb': 'CNY', 'pounds': 'GBP', 'yen': 'JPY'}
 
 
@@ -388,9 +390,10 @@ def _english_amounts(text: str) -> list[Hit]:
         trailing_and = re.search(r'[ \t-]+and$', m.group(), re.I)
         if trailing_and:
             end = m.start() + trailing_and.start()
-        cents = re.search(r'\band[ \t]+(.+)$', m.group(), re.I)
+        # 元与分以最后一个 and 分开：英式读法“One Hundred and Twenty Thousand and Fifty Cents”（V2Q-173）。
+        cents = next(reversed([*re.finditer(r'\band[ \t]+', m.group(), re.I)]), None)
         if cents and re.match(r'[ \t]+cents\b', text[end:], re.I):
-            value = _english_value(m.group()[:cents.start()]) + _english_value(cents.group(1)) / 100
+            value = _english_value(m.group()[:cents.start()]) + _english_value(m.group()[cents.end():]) / 100
             end += re.match(r'[ \t]+cents\b', text[end:], re.I).end()
         fraction = re.match(r'[ \t]+and[ \t]+(\d{1,2})/100\b', text[end:], re.I)
         if fraction:
@@ -408,7 +411,7 @@ def _english_amounts(text: str) -> list[Hit]:
             currency_match = min(currencies, key=lambda c: abs(c.start() - m.start()))
         currency = None
         if currency_match:
-            token = currency_match.group().casefold()
+            token = re.sub(r'[ 	]+', ' ', currency_match.group().casefold())
             currency = _EN_CURRENCY_CODES.get(token, token.upper())
         hits.append(Hit(m.start(), end, 'AMOUNT', _amount_key('AMOUNT', currency, value, m.group()), currency, value))
     return hits
@@ -527,7 +530,15 @@ _CN_NOT_PERSON = frozenset({"同上", "同前", "见下", "待定", "略", "不�
 # 人名标签后以这些词开头的汉字串是另一个标签或签字栏用语，不是人名（Q-134 ②）
 _CN_NOT_NAME_START = ("电话", "手机", "传真", "邮箱", "邮件", "地址", "姓名", "名称", "职务", "职位", "日期", "签字",
                       "签章", "签名", "签署", "盖章", "授权", "委托", "代表", "法定", "联系", "经办", "收件", "代理")
-_EN_TITLES = re.compile(r"(?:Mr|Mrs|Ms|Miss)(?:\.[ \t]*|[ \t]+)|(?:Dr|Prof)\.[ \t]*", re.IGNORECASE)
+# 无点写法只认 Mr / Mrs / Ms / Miss 与全大写 MR / MRS / MISS；全大写 MS（低碳钢、Microsoft）与小写 ms 须带点（V2Q-173）
+_EN_TITLES = re.compile(r"(?:Mr|Mrs|Ms|Miss|MR|MRS|MISS)[ \t]+|(?i:Mr|Mrs|Ms|Miss|Dr|Prof)\.[ \t]*")
+_FUNCTION_ROLES = ("采购", "销售", "会计", "出纳", "法务")
+# 落款后的部门名称不是姓名（V2Q-173）
+_EN_DEPARTMENT_WORDS = frozenset(("department", "dept", "control", "team", "office", "division", "center", "centre",
+                                  "section", "unit", "group", "desk"))
+# 首字母写法中常见的贸易、地名缩写，不是姓名首字母（V2Q-173）
+_NOT_INITIALS = frozenset(("U.S.", "U.K.", "U.N.", "E.U.", "L.C.", "T.T.", "D.P.", "D.A.", "B.L.", "P.O.", "A.M.", "P.M.",
+                           "N.B.", "I.E.", "E.G.", "C.O.", "O.K."))
 _EN_WORD = re.compile(r"[A-Z][A-Za-z'’\-]*\.?")
 # 职务、部门词和信息标签：遇到即停止（小写形式比较）
 _EN_STOP_WORDS = frozenset(w.casefold() for w in (
@@ -672,6 +683,10 @@ def find_persons(text: str) -> list[Hit]:
         honorific = re.match(r'先生|女士|小姐', text[m.end(1):]) is not None
         if given.startswith(tuple(endings)) or (family in '应须需将可会均亦再另也都必' and not honorific):
             continue
+        # V2Q-173：后接冒号的是字段标签（采购范围：）；职能词常修饰名词（采购文件、会计年度），无敬称时须接结束词。
+        if not honorific and (text[m.end(1):m.end(1) + 1] in (':', '：') or (
+                m.group()[:m.start(1) - m.start()] in _FUNCTION_ROLES and not text.startswith(tuple(endings), m.end(1)))):
+            continue
         if (name in _CN_NOT_PERSON or name in common_terms() or name in endings or name in roles
                 or name.endswith(('地', '的'))):
             continue
@@ -683,9 +698,11 @@ def find_persons(text: str) -> list[Hit]:
         start, end = m.span(1)
         if not any(h.start < end and start < h.end for h in hits):
             hits.append(Hit(start, end, 'PERSON', normalize(m.group(1))))
-    name = r"[一-鿿]{2,4}|[A-Z][A-Za-z'’-]*(?:[ \t]+[A-Z][A-Za-z'’-]*){0,3}"
+    en_name = r"[A-Z][A-Za-z'’-]*(?:[ \t]+[A-Z][A-Za-z'’-]*){0,3}"
+    name = r"[一-鿿]{2,4}|" + en_name
+    # <邮箱> 前的中文姓名左侧不能是汉字，避免从“邮件发送至<…>”中截字（V2Q-173）
     mail_rules = [re.compile(rf'(?im)^(?:From|To|Cc|Bcc|Sender|Reply-To):[ \t]*["“]?(?P<name>{name})'),
-                  re.compile(rf'(?<![A-Za-z])(?P<name>{name})["”]?[ \t]*<' + _EMAIL.pattern + '>')]
+                  re.compile(rf'(?<![A-Za-z])(?P<name>(?<![一-鿿])[一-鿿]{{2,4}}|{en_name})["”]?[ \t]*<' + _EMAIL.pattern + '>')]
     for rule in mail_rules:
         for m in rule.finditer(text):
             surface = m.group('name')
@@ -703,9 +720,13 @@ def find_persons(text: str) -> list[Hit]:
     cyrillic_word = r'[А-ЯЁ][А-Яа-яЁё-]+'
     russian = re.compile(rf'(?<![А-Яа-яЁё]){cyrillic_word}[ \t]+{cyrillic_word}[ \t]+'
                          rf'[А-ЯЁ][А-Яа-яЁё-]*(?:ович|евич|ична|овна|евна|ич)(?![А-Яа-яЁё])')
-    initials = re.compile(r"(?<![A-Za-zА-Яа-яЁё])[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё'’-]+[ \t]+[A-ZА-ЯЁ]\.[ \t]*[A-ZА-ЯЁ]\.")
+    initials = re.compile(r"(?<![A-Za-zА-Яа-яЁё])([A-ZА-ЯЁ][A-Za-zА-Яа-яЁё'’-]+)[ \t]+([A-ZА-ЯЁ]\.[ \t]*[A-ZА-ЯЁ]\.)"
+                          r"(?![ \t]*[A-Za-zА-Яа-яЁё]\.)")
     for rule in (russian, initials):
         for m in rule.finditer(text):
+            # V2Q-173：U.S.、L.C. 等缩写与 The 开头的不是首字母写法；F.O.B. 由上面的后视排除。
+            if rule is initials and (re.sub(r'[ \t]', '', m.group(2)) in _NOT_INITIALS or m.group(1) == 'The'):
+                continue
             hits = [h for h in hits if not (m.start() <= h.start and h.end <= m.end())]
             if not any(h.start < m.end() and m.start() < h.end for h in hits):
                 hits.append(Hit(m.start(), m.end(), 'PERSON', normalize(m.group())))
@@ -713,7 +734,8 @@ def find_persons(text: str) -> list[Hit]:
         value = re.match(r'([一-鿿]{1,3})[ \t]([一-鿿]{1,3})(?![一-鿿])', text[label.end():])
         if value and 2 <= len(value.group(1) + value.group(2)) <= 4:
             start, end = label.end(), label.end() + value.end()
-            if value.group(1) + value.group(2) not in _CN_NOT_PERSON:
+            # V2Q-173：后半段是职务（“张三 经理”）时不并入，保留原规则的姓名区间。
+            if value.group(1) + value.group(2) not in _CN_NOT_PERSON and value.group(2) not in [*roles, *titles]:
                 hits = [h for h in hits if not (start <= h.start and h.end <= end)]
                 if not any(h.start < end and start < h.end for h in hits):
                     hits.append(Hit(start, end, 'PERSON', normalize(text[start:end])))
@@ -732,9 +754,10 @@ def english_alias_allowed(text: str, start: int, end: int) -> bool:
 
 def _valid_signature_name(surface: str) -> bool:
     if re.fullmatch(r'[一-鿿]{2,4}', surface):
-        return surface not in _CN_NOT_PERSON and surface not in common_terms()
+        return (surface not in _CN_NOT_PERSON and surface not in common_terms()
+                and surface[-1] not in _CN_NOT_PERSON_END and not surface.endswith(('中心', '办公室')))
     words = surface.split()
-    return bool(words) and all(w.rstrip('.').casefold() not in _EN_STOP_WORDS | _EN_COMPANY_WORDS for w in words)
+    return bool(words) and words[-1].casefold() not in _EN_DEPARTMENT_WORDS and all(w.rstrip('.').casefold() not in _EN_STOP_WORDS | _EN_COMPANY_WORDS for w in words)
 
 
 def find_signature_persons(texts: list[str]) -> list[tuple[int, int, int]]:

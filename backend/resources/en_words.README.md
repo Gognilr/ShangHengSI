@@ -6,7 +6,7 @@
 下载与使用已由用户于 2026-10-29 确认。
 
 生成口径：取 final/ 中 english、american、british、british_z、canadian、australian 的 words 类别、级别不大于 50 的全部文件，按 ISO-8859-1 读取，只保留完整匹配 [a-z]+ 的行，合并去重、按 ASCII 排序，每行一个词并以 LF 结尾。不纳入 upper、proper-names、abbreviations、contractions 或更高级别。不手工补词。
-只供 capitalized 疑似遗漏过滤；不用于公司后缀、人名或 NER 过滤。
+只供 capitalized 疑似遗漏过滤，以及 V2-B-18 起英文字号派生时排除常用词（设计 13.3 第 3 条）；不用于公司后缀、人名或 NER 过滤。
 
 结果：63726 词，596413 字节；SHA-256：14470206cdbaba6987bec9457e58bff60147c4694c0151735a74a928d2a64ee5。
 

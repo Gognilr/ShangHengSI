@@ -83,7 +83,8 @@ def test_find_country_longest_match_wins():
 
 def test_find_country_unknown():
     assert find_country("") is None
-    assert find_country("Chaoyang District, Beijing Road") is None
+    # V2Q-173：中国 places 追加省级行政区后 Beijing 是词典地名，例句换成不含词典地名的写法（用户 2026-10-29 同意）
+    assert find_country("Chaoyang District, Harbor Road") is None
     assert find_country("某区") is None  # 行政区划字前不足 2 个汉字
 
 

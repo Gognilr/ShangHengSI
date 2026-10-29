@@ -230,6 +230,11 @@ def industry_words() -> tuple[str, ...]:
                          if s.strip() and not s.startswith("#")), key=len, reverse=True))
 
 
+def single_english_word(surface: str) -> bool:
+    """单个英文单词（人名全文匹配时区分大小写，V2Q-173）。"""
+    return re.fullmatch(r"[A-Za-z'’\-]+\.?", surface.strip()) is not None
+
+
 def derived_names(name: str) -> tuple[list[str], list[str]]:
     """主体部分、字号：返回（自动别名，二字疑似别名），不登记为独立主体。"""
     if not is_chinese_name(name):
@@ -240,6 +245,10 @@ def derived_names(name: str) -> tuple[list[str], list[str]]:
                 'manufacturing', 'global', 'enterprises', 'corporation'}
             words = [word for word in re.findall(r'[A-Za-z]+', name[:suffix.start()])
                      if word.casefold() not in industry]
+            # 国内企业英文名常以省市拼音开头（Jiangsu Velmora …），跳过开头的地名再取字号（V2Q-173）
+            while words and (k := next((k for k in range(len(words), 0, -1)
+                                        if _country_index()[0].fullmatch(' '.join(words[:k]))), 0)):
+                words = words[k:]
             if words:
                 brand = words[0]
                 if (len(brand) >= 4 and brand[0].isupper() and brand.casefold() not in en_words()

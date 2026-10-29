@@ -7,7 +7,7 @@
 # 有歧义的英文名（如 Georgia、Congo、Valencia）未收录，避免误判。
 countries:
   # ---------- 亚洲 ----------
-  - {name: "中国", aliases: ["中华人民共和国", "China", "PRC", "People's Republic of China"], places: ["上海", "Shanghai", "宁波", "Ningbo", "深圳", "Shenzhen", "青岛", "Qingdao", "天津", "Tianjin", "广州", "Guangzhou", "大连", "Dalian", "厦门", "Xiamen", "苏州"]}
+  - {name: "中国", aliases: ["中华人民共和国", "China", "PRC", "People's Republic of China"], places: ["上海", "Shanghai", "宁波", "Ningbo", "深圳", "Shenzhen", "青岛", "Qingdao", "天津", "Tianjin", "广州", "Guangzhou", "大连", "Dalian", "厦门", "Xiamen", "苏州", "北京", "Beijing", "重庆", "Chongqing", "河北", "Hebei", "山西", "Shanxi", "内蒙古", "Inner Mongolia", "辽宁", "Liaoning", "吉林", "Jilin", "黑龙江", "Heilongjiang", "江苏", "Jiangsu", "浙江", "Zhejiang", "安徽", "Anhui", "福建", "Fujian", "江西", "Jiangxi", "山东", "Shandong", "河南", "Henan", "湖北", "Hubei", "湖南", "Hunan", "广东", "Guangdong", "广西", "Guangxi", "海南", "Hainan", "四川", "Sichuan", "贵州", "Guizhou", "云南", "Yunnan", "西藏", "Xizang", "陕西", "Shaanxi", "甘肃", "Gansu", "青海", "Qinghai", "宁夏", "Ningxia", "新疆", "Xinjiang"]}
   - {name: "中国香港", aliases: ["香港", "Hong Kong", "HK"], places: ["九龙", "Kowloon"]}
   - {name: "中国澳门", aliases: ["澳门", "Macau", "Macao"], places: []}
   - {name: "中国台湾", aliases: ["台湾", "Taiwan"], places: ["基隆", "Keelung", "高雄", "Kaohsiung"]}

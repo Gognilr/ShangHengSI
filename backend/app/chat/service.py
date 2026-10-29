@@ -227,18 +227,28 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
 
     # V2-B-03：只从已有主体的完整名称派生，沿用原代号。
     short_derived = []
+    derived = []
     for key, value in [*mapping, *list(new_entries.items())]:
-        code = key.split('#', 1)[0]
         auto, short = parties.derived_names(value)
         short_derived.extend(short)
-        for alias in auto:
-            for start, end in _value_spans(text, alias):
-                english = re.fullmatch(r'[A-Za-z]+', alias) is not None
-                if english and not detect.english_alias_allowed(text, start, end):
-                    continue
-                take(start, end, code)
-                if english and any(s.start == start and s.end == end and s.code == code for s in accepted):
-                    remember_alias(code, text[start:end])
+        derived += [(key.split('#', 1)[0], alias) for alias in auto]
+    # 两个以上主体派生出同一英文字号时不归任何一方，只列疑似（V2Q-173）
+    owners = {}
+    for code, alias in derived:
+        if re.fullmatch(r'[A-Za-z]+', alias):
+            owners.setdefault(alias.casefold(), set()).add(code)
+    shared = {alias for alias, codes in owners.items() if len(codes) > 1}
+    short_derived += sorted({alias for _, alias in derived if alias.casefold() in shared})
+    for code, alias in derived:
+        if alias.casefold() in shared:
+            continue
+        for start, end in _value_spans(text, alias):
+            english = re.fullmatch(r'[A-Za-z]+', alias) is not None
+            if english and not detect.english_alias_allowed(text, start, end):
+                continue
+            take(start, end, code)
+            if english and any(s.start == start and s.end == end and s.code == code for s in accepted):
+                remember_alias(code, text[start:end])
 
     # 4. 9.3 第 4～7 步：格式化信息、金额、人名、地址
     for find in (detect.find_formatted, detect.find_amounts, detect.find_bare_amounts, detect.find_persons, detect.find_addresses, detect.find_projects):
@@ -264,7 +274,7 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
         surface = text[hit.start:hit.end]
         if any(c.isascii() and c.isalpha() for c in surface):
             code = code_for(surface, 'PERSON')
-            for match in parties.name_pattern(surface).finditer(text):
+            for match in parties.name_pattern(surface, case_sensitive=parties.single_english_word(surface)).finditer(text):
                 take(match.start(), match.end(), code)
     model_suspects = []
     for hit in ner.recognize(parties.bilingual_label_text(ner.mask(text, [(s.start, s.end) for s in accepted] + public_spans))):

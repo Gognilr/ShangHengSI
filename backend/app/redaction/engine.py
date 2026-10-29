@@ -448,15 +448,28 @@ def compute(
 
     # V2-B-03：派生别名归原主体，只将完整名称记入名称库。
     short_derived: list[str] = []
+    derived_auto = {}
     for ent in entities.values():
         if ent.category == "ORG":
+            derived_auto[ent.key] = []
             for full_name in [ent.name, *ent.surfaces, *ent.aliases]:
                 auto, short = P.derived_names(full_name)
                 short_derived.extend(short)
-                for alias in auto:
-                    if alias not in ent.aliases:
-                        ent.aliases.append(alias)
-                        ent.alias_src[alias] = ("derived", None)
+                derived_auto[ent.key] += auto
+    # 两个以上主体派生出同一英文字号时不归任何一方，只列疑似（V2Q-173）
+    owners = {}
+    for key, auto in derived_auto.items():
+        for alias in auto:
+            if re.fullmatch(r'[A-Za-z]+', alias):
+                owners.setdefault(alias.casefold(), set()).add(key)
+    shared = {alias for alias, keys in owners.items() if len(keys) > 1}
+    short_derived += sorted({a for auto in derived_auto.values() for a in auto if a.casefold() in shared})
+    for key, auto in derived_auto.items():
+        ent = entities[key]
+        for alias in auto:
+            if alias.casefold() not in shared and alias not in ent.aliases:
+                ent.aliases.append(alias)
+                ent.alias_src[alias] = ("derived", None)
 
     # 类型
     for ent in entities.values():
@@ -549,7 +562,8 @@ def compute(
             ent = entity(name, "PERSON")
             if ent not in persons:
                 persons.append(ent)
-    person_pats = [(ent, P.name_pattern(s)) for ent in persons for s in ent.surfaces]
+    # 单个英文单词的姓名区分大小写（He、Long、Price 不吞掉普通词，V2Q-173）；多词姓名按规范形式匹配。
+    person_pats = [(ent, P.name_pattern(s, case_sensitive=P.single_english_word(s))) for ent in persons for s in ent.surfaces]
     if person_pats:
         for i, n in enumerate(nodes):
             _accept([_Span(i, m.start(), m.end(), "PERSON", ent.key, "person")
