@@ -141,7 +141,7 @@ release_version() {
   local version
   [ -f "$ROOT/VERSION" ] || die "缺少 VERSION，请先构建发布包"
   version="$(cat "$ROOT/VERSION")"
-  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "VERSION 格式不正确"
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc[1-9][0-9]*)?$ ]] || die "VERSION 格式不正确"
   printf '%s' "$version"
 }
 

@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/lib.sh"
 repo="$(cd "$ROOT/.." && pwd)"
 version="${1:-}"
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die '用法：build_release.sh 版本 --ner-models 目录 --embedding-models 目录 [--out 目录]'
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc[1-9][0-9]*)?$ ]] || die '用法：build_release.sh 版本（可带 -rc1） --ner-models 目录 --embedding-models 目录 [--out 目录]'
 shift
 out="$repo/release"
 ner_models=""
