@@ -51,9 +51,15 @@ def test_t53_06_08_09_non_persons(text):
     assert detect.find_persons(text) == []
 
 
-def test_t53_09_company_name_unchanged():
+def test_t53_09_company_name_org_v2q169():
     text = 'Company Name: Northwind Fictive'
-    assert [text[h.start:h.end] for h in detect.find_persons(text)] == ['Northwind Fictive']
+    assert detect.find_persons(text) == []
+    result = compute([NodeIn('F1-P1', text)], 'other')
+    item, = result.items
+    assert (item.char_start, item.char_end, item.category) == (14, len(text), 'ORG')
+    assert item.detected_by != 'user'
+    assert result.redacted['F1-P1'].startswith('Company Name:')
+    assert 'Northwind' not in result.redacted['F1-P1'] and 'Fictive' not in result.redacted['F1-P1']
 
 
 @pytest.mark.usefixtures('env')

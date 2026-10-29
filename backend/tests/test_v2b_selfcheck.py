@@ -130,3 +130,90 @@ def test_t54_prompt_phone_and_amount_contract():
             texts.append(path.read_text(encoding='utf-8'))
     assert all(not any(r.category in ('PHONE', 'AMOUNT') for r in recheck(t, real_values=[], terms=[]))
                for t in texts)
+
+
+@pytest.fixture
+def no_ner(monkeypatch):
+    monkeypatch.setattr(ner, 'recognize', lambda text: [])
+
+
+@pytest.mark.usefixtures('no_ner')
+@pytest.mark.parametrize('label', ['联系人 Contact', 'Contact联系人',
+    '授权代表 Authorized Representative', 'Authorized Representative 授权代表'])
+def test_t54_10_bilingual_person_label(label):
+    text = label + '：王立军'
+    result = compute([NodeIn('F1-P1', text)], 'other')
+    assert result.redacted['F1-P1'] == label + '：人员_1'
+    assert len(result.items) == 1 and result.items[0].category == 'PERSON'
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_t54_10_bilingual_seller():
+    result = compute([NodeIn('F1-P1', 'Seller卖方：澄川虚构科技有限公司')], 'other')
+    assert result.redacted['F1-P1'] == 'Seller卖方：' + result.parties[0].code
+
+
+@pytest.mark.parametrize('text,value,category', [
+    ('合同编号 Contract No.：CCX-2026-0815', 'CCX-2026-0815', 'REFNO'),
+    ('Contract No. 合同编号：CCX-2026-0815', 'CCX-2026-0815', 'REFNO'),
+    ('银行账号 Account No.：6222000011112222', '6222000011112222', 'ACCOUNT'),
+    ('地址 Address：上海市虚构路88号', '上海市虚构路88号', 'ADDR'),
+    ('Address地址：上海市虚构路88号', '上海市虚构路88号', 'ADDR')])
+def test_t54_10_other_bilingual_labels(text, value, category):
+    hits = detect.find_addresses(text) if category == 'ADDR' else detect.find_formatted(text)
+    assert any(h.category == category and text[h.start:h.end] == value for h in hits)
+
+
+@pytest.mark.parametrize('text', ['开户行 Bank：中国工商银行苏州虚构支行',
+    '受益人银行 Beneficiary Bank：中国工商银行苏州虚构支行'])
+def test_t54_10_bilingual_bank(text):
+    from app.redaction import parties
+    assert any(text[a:b] == '中国工商银行苏州虚构支行' for label, a, b in parties.find_labeled_parties(text))
+
+
+@pytest.mark.parametrize('text,name', [('To: 王立军 <wang@fictive.cn>', '王立军'),
+    ('"Lorna Fictive" <lorna@fictive.com>', 'Lorna Fictive'),
+    ('From: Lorna Fictive', 'Lorna Fictive')])
+def test_t54_11_mail_names(text, name):
+    assert any(text[h.start:h.end] == name for h in detect.find_persons(text))
+
+
+@pytest.mark.usefixtures('no_ner')
+@pytest.mark.parametrize('name,replaced', [('Purchasing Department', False), ('Lorna Fictive', True)])
+def test_t54_12_signoff(name, replaced):
+    result = compute([NodeIn('F1-P1', 'Best regards,'), NodeIn('F1-P2', ''),
+        NodeIn('F1-P3', name)], 'other')
+    assert (name not in result.redacted['F1-P3']) is replaced
+    if replaced:
+        assert result.items[0].category == 'PERSON'
+
+
+@pytest.mark.usefixtures('no_ner')
+def test_t54_12_same_english_person_everywhere():
+    result = compute([NodeIn('F1-P1', 'From: Lorna Fictive'), NodeIn('NOTE', 'LORNA FICTIVE')], 'other')
+    assert len(result.items) == 2 and len({i.placeholder for i in result.items}) == 1
+
+
+@pytest.mark.usefixtures('no_ner')
+@pytest.mark.parametrize('text,name', [('Messrs. Northwind Fictive Trading', 'Northwind Fictive Trading'),
+    ('M/s Northwind Fictive Trading', 'Northwind Fictive Trading'),
+    ('Company Name: Velmora Fictive', 'Velmora Fictive')])
+def test_t54_13_org_prefix(text, name):
+    result = compute([NodeIn('F1-P1', text)], 'other')
+    assert len(result.items) == 1 and result.items[0].category == 'ORG'
+    item = result.items[0]
+    assert text[item.char_start:item.char_end] == name
+    assert 'Trading' not in result.redacted['F1-P1']
+    if text.startswith('Messrs.'):
+        assert result.redacted['F1-P1'].startswith('Messrs. ')
+
+
+@pytest.mark.parametrize('text,value,category', [('Account 072-123456-7', '072-123456-7', 'ACCOUNT'),
+    ('ИНН 7701234567', '7701234567', 'IDNO'), ('КПП 770101001', '770101001', 'IDNO'),
+    ('UEN 201912345K', '201912345K', 'IDNO')])
+def test_t54_14_account_and_foreign_tax(text, value, category):
+    assert any(h.category == category and text[h.start:h.end] == value for h in detect.find_formatted(text))
+
+
+def test_t54_14_not_account_manager():
+    assert not detect.find_formatted('account manager')
