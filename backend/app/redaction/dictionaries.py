@@ -114,3 +114,16 @@ def hanzi_pinyin() -> dict[str, tuple[str, ...]]:
 def en_words() -> frozenset[str]:
     """SCOWL size 50 普通词；来源及完整许可见 en_words.README.md。"""
     return frozenset((RESOURCES_DIR / 'en_words.txt').read_text(encoding='utf-8').splitlines())
+
+
+@lru_cache(maxsize=1)
+def _public_institution_pattern() -> re.Pattern:
+    terms = [line.strip() for line in (RESOURCES_DIR / 'public_institutions.txt').read_text(encoding='utf-8').splitlines()
+             if line.strip() and not line.startswith('#')]
+    return re.compile('|'.join(_term_pattern(t) for t in sorted(terms, key=len, reverse=True))
+                      + r'|[一-鿿]{2,12}(?:人民法院|仲裁委员会|仲裁院|仲裁中心)', re.I)
+
+
+def public_institution_spans(text: str) -> list[tuple[int, int]]:
+    """已知公共机构与法院 / 仲裁机构规则；偏移相对原文。"""
+    return [m.span() for m in _public_institution_pattern().finditer(text)]

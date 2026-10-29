@@ -699,6 +699,24 @@ def find_persons(text: str) -> list[Hit]:
         start, end = offsets[index] + start, offsets[index] + end
         if not any(h.start < end and start < h.end for h in hits):
             hits.append(Hit(start, end, 'PERSON', normalize(text[start:end])))
+    # B-18：父称结尾限定俄文三词全名；首字母整体优先于原标签规则的局部命中。
+    cyrillic_word = r'[А-ЯЁ][А-Яа-яЁё-]+'
+    russian = re.compile(rf'(?<![А-Яа-яЁё]){cyrillic_word}[ \t]+{cyrillic_word}[ \t]+'
+                         rf'[А-ЯЁ][А-Яа-яЁё-]*(?:ович|евич|ична|овна|евна|ич)(?![А-Яа-яЁё])')
+    initials = re.compile(r"(?<![A-Za-zА-Яа-яЁё])[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё'’-]+[ \t]+[A-ZА-ЯЁ]\.[ \t]*[A-ZА-ЯЁ]\.")
+    for rule in (russian, initials):
+        for m in rule.finditer(text):
+            hits = [h for h in hits if not (m.start() <= h.start and h.end <= m.end())]
+            if not any(h.start < m.end() and m.start() < h.end for h in hits):
+                hits.append(Hit(m.start(), m.end(), 'PERSON', normalize(m.group())))
+    for label in _PERSON_LABEL.finditer(text):
+        value = re.match(r'([一-鿿]{1,3})[ \t]([一-鿿]{1,3})(?![一-鿿])', text[label.end():])
+        if value and 2 <= len(value.group(1) + value.group(2)) <= 4:
+            start, end = label.end(), label.end() + value.end()
+            if value.group(1) + value.group(2) not in _CN_NOT_PERSON:
+                hits = [h for h in hits if not (start <= h.start and h.end <= end)]
+                if not any(h.start < end and start < h.end for h in hits):
+                    hits.append(Hit(start, end, 'PERSON', normalize(text[start:end])))
     return hits
 
 
@@ -783,6 +801,23 @@ def find_addresses(text: str) -> list[Hit]:
             continue
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             hits.append(Hit(m.start(), m.end(), 'ADDR', find_country(m.group()) or '国家未知'))
+    # 只扩展已有无标签地址的连续尾部，不单独把园区、楼栋或邮编猜作地址。
+    extended = []
+    cn_tail = re.compile(r'[一-鿿]{0,20}(?:产业园|科技园|工业园|大厦|广场|中心|园)'
+        r'(?:[ \t]*\d+(?:号楼|单元|栋|幢|层|楼|室))+')
+    for hit in hits:
+        end = hit.end
+        if hit.key == '中国' and (tail := cn_tail.match(text, end)):
+            end = tail.end()
+        if tail := re.match(r'[ \t]*#\d{2}-\d{2,4}(?!\d)', text[end:]):
+            end += tail.end()
+        if tail := re.match(r',[ \t]*([A-Z][A-Za-z]+(?:[ \t]+[A-Z][A-Za-z]+)*)[ \t]+\d{4,6}(?!\d)', text[end:]):
+            if find_country(tail.group(1)):
+                end += tail.end()
+        elif find_country(text[hit.start:end]) and (tail := re.match(r'[ \t]+\d{4,6}(?!\d)', text[end:])):
+            end += tail.end()
+        extended.append(Hit(hit.start, end, hit.category, hit.key))
+    hits = extended
     return hits
 
 

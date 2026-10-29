@@ -11,7 +11,7 @@ from datetime import date
 
 from app.redaction import parties as P
 from app.redaction.detect import _QTY_UNIT_RE
-from app.redaction.dictionaries import _country_index, common_terms, cn_surnames, en_words
+from app.redaction.dictionaries import _country_index, common_terms, cn_surnames, en_words, public_institution_spans
 
 ORG_SUFFIX = "org_suffix"
 BEFORE_COMPANY = "before_company"
@@ -419,7 +419,7 @@ def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), low
     occupied 为该节点已被替换的区间 [(start, end)]。同一位置命中多条规则时只保留一条，
     优先级 org_suffix > before_company > capitalized > person_name > long_digits；互相重叠的候选取较长的。
     """
-    masked = _mask(text, occupied)
+    masked = _mask(text, [*occupied, *public_institution_spans(text)])
     cands: list[Suspect] = []
     cands += _chinese_suffix_candidates(masked)
     cands += _english_suffix_candidates(masked)

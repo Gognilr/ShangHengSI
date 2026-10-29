@@ -7,7 +7,7 @@
 # 有歧义的英文名（如 Georgia、Congo、Valencia）未收录，避免误判。
 countries:
   # ---------- 亚洲 ----------
-  - {name: "中国", aliases: ["中华人民共和国", "China", "PRC", "People's Republic of China"], places: ["上海", "Shanghai", "宁波", "Ningbo", "深圳", "Shenzhen", "青岛", "Qingdao", "天津", "Tianjin", "广州", "Guangzhou", "大连", "Dalian", "厦门", "Xiamen"]}
+  - {name: "中国", aliases: ["中华人民共和国", "China", "PRC", "People's Republic of China"], places: ["上海", "Shanghai", "宁波", "Ningbo", "深圳", "Shenzhen", "青岛", "Qingdao", "天津", "Tianjin", "广州", "Guangzhou", "大连", "Dalian", "厦门", "Xiamen", "苏州"]}
   - {name: "中国香港", aliases: ["香港", "Hong Kong", "HK"], places: ["九龙", "Kowloon"]}
   - {name: "中国澳门", aliases: ["澳门", "Macau", "Macao"], places: []}
   - {name: "中国台湾", aliases: ["台湾", "Taiwan"], places: ["基隆", "Keelung", "高雄", "Kaohsiung"]}
@@ -15,7 +15,7 @@ countries:
   - {name: "韩国", aliases: ["大韩民国", "South Korea", "Republic of Korea", "Korea"], places: ["釜山", "Busan", "Pusan", "仁川", "Incheon"]}
   - {name: "朝鲜", aliases: ["朝鲜民主主义人民共和国", "North Korea", "DPRK"], places: []}
   - {name: "蒙古", aliases: ["Mongolia"], places: []}
-  - {name: "越南", aliases: ["Vietnam", "Viet Nam"], places: ["胡志明市", "Ho Chi Minh City", "海防", "Haiphong"]}
+  - {name: "越南", aliases: ["Vietnam", "Viet Nam"], places: ["胡志明市", "Ho Chi Minh City", "海防", "Haiphong", "Hai Phong"]}
   - {name: "泰国", aliases: ["Thailand"], places: ["曼谷", "Bangkok", "廉差邦", "Laem Chabang"]}
   - {name: "缅甸", aliases: ["Myanmar", "Burma"], places: ["仰光", "Yangon", "Rangoon"]}
   - {name: "老挝", aliases: ["Laos"], places: ["万象", "Vientiane"]}

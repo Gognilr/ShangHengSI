@@ -15,7 +15,7 @@ import re
 import unicodedata
 from functools import lru_cache
 
-from app.redaction.dictionaries import find_country, find_org_type, _country_index, common_terms, RESOURCES_DIR
+from app.redaction.dictionaries import find_country, find_org_type, _country_index, common_terms, RESOURCES_DIR, en_words, public_institution_spans
 from app.redaction.placeholders import BUYER, OTHER, SELLER
 
 # ---------------------------------------------------------------- 标签
@@ -37,6 +37,7 @@ _LABELS: list[tuple[str, list[str]]] = [
     ("银行", ["开户行", "开户银行", "收款银行", "受益人银行", "Beneficiary Bank", "Bank Name", "Bank"]),
     ("受益人", ["受益人", "Beneficiary"]),
     (OTHER, ["Company Name"]),
+    ("检验方", ["检验方", "检验机构", "Inspection Party"]),
 ]
 _LABEL_CANON = {word.casefold(): canon for canon, words in _LABELS for word in words}
 _LABEL_WORDS = sorted(_LABEL_CANON, key=len, reverse=True)
@@ -200,6 +201,18 @@ def industry_words() -> tuple[str, ...]:
 def derived_names(name: str) -> tuple[list[str], list[str]]:
     """主体部分、字号：返回（自动别名，二字疑似别名），不登记为独立主体。"""
     if not is_chinese_name(name):
+        suffix = _EN_SUFFIX_RE.search(name)
+        if suffix:
+            industry = {'industries', 'industry', 'trading', 'technology', 'technologies', 'international',
+                'group', 'holdings', 'logistics', 'engineering', 'chemical', 'chemicals', 'materials',
+                'manufacturing', 'global', 'enterprises', 'corporation'}
+            words = [word for word in re.findall(r'[A-Za-z]+', name[:suffix.start()])
+                     if word.casefold() not in industry]
+            if words:
+                brand = words[0]
+                if (len(brand) >= 4 and brand[0].isupper() and brand.casefold() not in en_words()
+                        and not _country_index()[0].fullmatch(brand)):
+                    return [brand], []
         return [], []
     body = re.sub(rf"(?:{_CN_SUFFIX}|{_CN_BRANCH_SUFFIX})+$", "", name)
     brand = body
@@ -457,6 +470,11 @@ def find_labeled_parties(text: str) -> list[tuple[str, int, int]]:
             value = re.match(r'[ \t]*([A-Z][A-Za-z\'-]*(?:[ \t]+[A-Z][A-Za-z\'-]*){0,7})', text[m.end():])
             if value:
                 span = (m.end() + value.start(1), m.end() + value.end(1))
+        if span is None:
+            for start, end in public_institution_spans(text[m.end():]):
+                if not text[m.end():m.end() + start].strip():
+                    span = (m.end() + start, m.end() + end)
+                    break
         if span:
             label = _LABEL_CANON[m.group(1).casefold()]
             if label in ("甲方", "乙方"):
@@ -582,9 +600,12 @@ def find_other_org_names(text: str) -> list[tuple[int, int]]:
 
 # V2-B-02：前置企业形式只认明确引号或 PT/CV 后的 2～8 个首字母大写词。
 _LATIN_NAME_WORD = r"[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿĀ-ſ'\-]*"
+_VI_FORM = r'(?:Công ty Trách nhiệm hữu hạn|Công ty Cổ phần|Công ty TNHH|Công ty CP|Tổng công ty)'
+_VI_WORD = r"[A-ZÀ-ÖØ-ÞĀ-ŽẠ-Ỹ][^\W\d_]*"
 _PREFIXED_ORG = re.compile(
     r'(?<![\w])(?:ООО|АО|ПАО|ЗАО|ОАО|ИП|ТОО|OOO|ZAO|OAO|TOO)[ \t]+(?:«[^»\n]{1,60}»|"[^"\n]{1,60}"|“[^”\n]{1,60}”)'
     rf"|(?<![\w])(?:PT|CV)[ \t]+{_LATIN_NAME_WORD}(?:[ \t]+(?!Tbk\b){_LATIN_NAME_WORD}){{1,7}}(?:[ \t]+Tbk)?"
+    rf'|(?<![\w]){_VI_FORM}[ \t]+{_VI_WORD}(?:[ \t]+{_VI_WORD})*'
 )
 _SHORT_SUFFIXES = frozenset({"AB", "ASA", "Oy", "SpA", "WLL", "SRL", "SARL"})
 
@@ -631,6 +652,8 @@ def default_country(name: str) -> str | None:
         return "匈牙利"
     if name.startswith("PT "):
         return "印度尼西亚"
+    if name.startswith(('Công ty ', 'Tổng công ty ')):
+        return '越南'
     return "中国" if (is_chinese_name(name) or _is_chinese_bank_name(name)
                     or (_CN_CHAR.search(name) and name.endswith(_INSTITUTION_SUFFIXES))) else None
 

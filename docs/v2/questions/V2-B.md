@@ -8,11 +8,13 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-171 | B-18 新英文字号抢占邮箱 / 完整地址 / 更长名称区间，及已知地名 Hai Phong 被 NER 列疑似，触发四处 golden 失败 | 建议只限制本次新增英文字号：格式化、完整地址和更长连续大写开头名称段内部不命中，独立 Velmora / 所有格仍替换；三入口共用。完整匹配现有国家 / 城市 / 港口词条的 NER 结果不替换、不列疑似，显式标签和手动词条优先。原样本、标注、旧断言不变。已补5条专项全部复现，待用户决定。详见 reports/V2-B-18.md | parties / dictionaries / engine / chat 与本任务新测试；不改旧样本 | B-18 继续修正前 |
 
 ## 二、已决定
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V2Q-170 | B-18 苏州字号示例需要地名资源范围例外 | 已确认（用户 2026-10-29）。countries.yaml 只改两处：越南 places 追加 Hai Phong、中国 places 追加苏州，其他条目不变，不写特判。已知局限：中国地名清单只有港口城市加苏州，字号前为其他城市或省名（如无锡）的仍派生不出字号，留真实样本校准统一补充。增加“无锡澄川虚构机电设备有限公司”不派生“澄川虚构”的反例；苏州新增若导致旧回归失败，停下报告。 | 2026-10-29 |
 | V2Q-169 | B-14 / B-17 替代前阶段行为时，本轮 feedback 专项的两处阶段性同步 | 已确认（用户 2026-10-29）。文件范围只扩展 test_v2b_feedback.py：① B-14 的 B-12 小写佐证用例仅本测试 monkeypatch 英文词表为空，原输入及断言不变；T-53 #22～24 另用真实词表严格断言普通词不列、专名仍列。② B-17 将 Company Name 无后缀名称测试改名，find_persons 为空、compute 精确名称区间为 ORG 自动替换，外发保留 Company Name: 且无 Northwind / Fictive。其他旧测试与回归样本不改；test_detect_persons_addresses.py 第129行应照常通过，失败须停下报告。 | 2026-10-29 |
 | V2Q-168 | V2-B-12 全名敬称规则与宋虚婷旧疑似预期同步 | 已确认（用户 2026-10-29）。仅把 persons_narrative.yaml 中宋虚婷从 must_suspect 移入 must_replace（PERSON）；test_suspects.py::test_r4_person_narrative_all_occurrences 仅从疑似期望列表去掉宋虚婷，追加严格断言 F1-P7 中姓名区间为 PERSON 自动替换、外发文本无姓名且“女士已确认样品合格。”完整保留。原 .txt、其余标注与断言不变，test_person_suspects.py 第 32 行不改。完整指定集合重跑后完成 B-12 并继续 13→14→17→18。 | 2026-10-29 |
 | V2Q-167 | V2-B-12 产品术语保留的文件范围例外 | 已确认（用户 2026-10-29）。只扩展 common_terms.txt 一处范围，在 Needle Coke 附近仅追加完整术语 Calcined Needle Coke，其他词表内容、样本 .txt / .yaml、已有标注和断言不变；只增不减仅在此术语最小收窄，不放行任意 Product Name 内容。追加专项：完整术语单独及 Product Name 后均不替换、不列疑似；Product Name: Velmora Needle Coke 中 Velmora 仍列疑似。B-14 后保留此行。用户回复提及编号 166，但该号已由前次确认的职务前置规则使用，沿用本事项已登记的 167，避免覆盖。另已同意下载 Unihan.zip、SCOWL 2020.12.07 与配套许可证。 | 2026-10-29 |

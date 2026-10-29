@@ -129,9 +129,16 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
     accepted: list[_Span] = []
     new_entries: dict[str, str] = {}
     next_no = max((n for k in full_map if (n := placeholders.chat_number(k)) is not None), default=0) + 1
+    from app.redaction.dictionaries import public_institution_spans
+    explicit = {parties.normalize(value) for value in full_map.values()}
+    explicit.update(parties.normalize(text[a:b]) for _, a, b in parties.find_labeled_parties(text))
+    public_spans = [(a, b) for a, b in public_institution_spans(text)
+                    if parties.normalize(text[a:b]) not in explicit
+                    and not any(m.start() < b and a < m.end() for term, _ in terms
+                                for m in parties.name_pattern(term).finditer(text))]
 
     def take(start: int, end: int, code: str) -> None:
-        if start >= end or any(s.start < end and start < s.end for s in accepted):
+        if start >= end or any(s.start < end and start < s.end for s in accepted) or any(a < end and start < b for a, b in public_spans):
             return
         accepted.append(_Span(start, end, code))
 
@@ -228,8 +235,8 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             for match in parties.name_pattern(surface).finditer(text):
                 take(match.start(), match.end(), code)
     model_suspects = []
-    for hit in ner.recognize(parties.bilingual_label_text(ner.mask(text, [(s.start, s.end) for s in accepted]))):
-        if any(s.start < hit.end and hit.start < s.end for s in accepted):
+    for hit in ner.recognize(parties.bilingual_label_text(ner.mask(text, [(s.start, s.end) for s in accepted] + public_spans))):
+        if any(s.start < hit.end and hit.start < s.end for s in accepted) or any(a < hit.end and hit.start < b for a, b in public_spans):
             continue
         if hit.score >= ner.HIGH:
             surface = text[hit.start:hit.end]
@@ -240,7 +247,7 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
                                    'text': text[hit.start:hit.end], 'reason': 'ner'})
 
     found = [{"start": s.start, "end": s.end, "text": text[s.start:s.end], "reason": s.reason}
-             for s in suspects.find_suspects(text, [(s.start, s.end) for s in accepted], derived=short_derived,
+             for s in suspects.find_suspects(text, [(s.start, s.end) for s in accepted] + public_spans, derived=short_derived,
                                             lowercase_words=suspects.lowercase_evidence(text))]
     for suspect in model_suspects:
         if not any((s['start'], s['end']) == (suspect['start'], suspect['end']) for s in found):
