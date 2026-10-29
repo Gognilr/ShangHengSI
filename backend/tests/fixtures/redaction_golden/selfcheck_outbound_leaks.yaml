@@ -1,0 +1,21 @@
+description: 自查发现的外发漏洞（V2-B-16，设计 V2-B.md 第十三节）：北美与带分隔符的电话、英文大写金额、无冒号的即时通信号、职务在前的中文人名；出口复检同样放行，当前原样外发
+stance: sales
+must_replace:
+  - {text: "480,000.00", category: AMOUNT}
+  - {text: "480,000", category: AMOUNT}
+known_gaps:
+  - {text: "(713) 555-0142", category: PHONE}
+  - {text: 138-1234-5678, category: PHONE}
+  - {text: 0512-6688 1234, category: PHONE}
+  - {text: "(021) 6688-1234", category: PHONE}
+  - {text: Four Hundred Eighty Thousand, category: AMOUNT}
+  - {text: four hundred eighty thousand, category: AMOUNT}
+  - {text: zw_fictive88, category: IM}
+  - {text: "12345678", category: IM}
+  - {text: lan_fictive01, category: IM}
+  - {text: 孙明亮, category: PERSON}
+  - {text: 周女士, category: PERSON}
+  - {text: 刘洋, category: PERSON}
+must_keep:
+  - 一式两份
+  - 经理同意后生效

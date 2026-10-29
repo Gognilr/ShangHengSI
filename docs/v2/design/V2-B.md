@@ -390,7 +390,7 @@ recheck.py 不改；它调用的 `find_amounts` 自动带上 11.1 的新写法�
 3. 同一家公司的中文名与英文名（拼音字号 + 英文行业词 + Co., Ltd.）分到两个代号，模型会以为文件里多了两家公司。
 4. 英文为主的 PDF 产生 **735 条**疑似遗漏（相同文字去重后 174 组），大多是首字母大写的技术术语（Bulk Density、Document Title）、标准编号（ASTM D4052、GB/T 24526）、代词与角色词（We、The inspector）；第二步要求疑似遗漏全部处理才能发送，等于无法使用；真正该替换的无后缀名称（“×× Refinery”“×× Technical Office”、无后缀的英文字号）埋在其中。
 
-**任务划分**：V2-B-12 做 12.1～12.3（不需要决定）；V2-B-13 做 12.4（依赖 V2Q-143）；V2-B-14 做 12.5（依赖 V2Q-144，需下载授权）；V2-B-15 由 Opus 审核。三个实现任务按 TASKS-V2 第一节连续完成，**V2-B-14 结束后加跑一次整仓挂载全量**（不另设集中测试），停下交 V2-B-15。V2Q-143 / 144 已确认（2026-10-29）；V2-B-13、14 下载资源前仍须向用户说明并取得同意，未同意时停在该任务。
+**任务划分**：V2-B-12 做 12.1～12.3（不需要决定）；V2-B-13 做 12.4（依赖 V2Q-143）；V2-B-14 做 12.5（依赖 V2Q-144，需下载授权）；V2-B-15 由 Opus 审核。三个实现任务按 TASKS-V2 第一节连续完成；整仓挂载全量与停下交审的时点按第十三节（V2-B-18 之后）。V2Q-143 / 144 已确认（2026-10-29）；V2-B-13、14 下载资源前仍须向用户说明并取得同意，未同意时停在该任务。
 
 **共同约定**：本节第〇节第 3、5、7 条照旧；“只增不减”在本节有三处收窄，均为把**不是敏感信息的文字**移出替换或疑似遗漏：12.1 名称前的边界词、12.2 第 3 条的“Product Name:”、12.3 第 2 条的标准编号与代词，各有 must\_keep 或单元测试兜住名称本身仍被替换。recheck.py 不改。
 
@@ -480,3 +480,165 @@ recheck.py 不改；它调用的 `find_amounts` 自动带上 11.1 的新写法�
 | 23 | 14 | “Velmora Refinery”“Hardgrave Machine Method” | 列 |
 | 24 | 14 | 仿真实 PDF 的虚构样本 `en_spec_suspects.txt`（V2-B-14 开工前由 Opus 写入，≥ 200 行） | 疑似遗漏组数 ≤ 30，且 must\_suspect 全部列出 |
 | 25 | 全部 | 现有回归集、A-03 | 全部通过；如有原样本因本节规则导致失败，停下报告，不改样本 |
+
+## 十三、自查发现的修复（V2-B-16～V2-B-18，V2Q-152～V2Q-154）
+
+2026-10-29 · Opus 5.5（自查后追加） · **待用户确认**
+
+**起因**：见 [reports/V2-B-selfcheck.md](../reports/V2-B-selfcheck.md)。用虚构样本离线实测，发现多类写法原样外发。出口复检重扫用的是同一套正则，**同样放行**。所以本节规则一旦加入 `detect.find_formatted` / `find_amounts`，复检会自动随之收紧，recheck.py 本身不改。
+
+**执行顺序**（V2Q-154）：V2-B-16 → V2-B-12 → V2-B-13 → V2-B-14 → V2-B-17 → V2-B-18 → V2-B-15（审核覆盖 12～14 与 16～18）。
+
+* V2-B-16 修外发漏洞，排在最前。
+* V2-B-18 的 13.3 第 3 条依赖 V2-B-14 的英文常用词表。
+* **V2-B-18 结束后加跑一次整仓挂载全量**（取代第十二节“V2-B-14 后加跑”的安排），然后停下交 V2-B-15。
+
+**共同约定**：
+
+* 第〇节第 3、5、7 条与第十二节共同约定照旧。
+* 三个入口（正文、补充说明、追问）共用规则。
+* 本节只有 13.2 第 1、5 条与 13.3 第 4 条把不是敏感信息的文字移出替换（英文标签词、Messrs.、Company Name 的类别、公共机构），其余规则只增不减。
+
+**开工前已写入**的回归样本（虚构，当前测试通过，待修项以 known\_gaps 登记）：
+
+* `selfcheck_outbound_leaks`（V2-B-16）
+* `selfcheck_bilingual_labels`（V2-B-17）
+* `selfcheck_foreign_institutions`（V2-B-18）
+
+样本 .txt 与已有标注文字不得改动；修好后按各节把条目移入 must\_replace、追加 must\_keep。
+
+### 13.1 外发漏洞（V2-B-16，测试先行，xhigh）
+
+**文件范围**：
+
+* `backend/app/redaction/detect.py`：电话、即时通信正则，`find_amounts` 中的英文大写金额，`find_persons` 中的职务前置规则。
+* `backend/app/redaction/engine.py`：只在英文大写金额需要与数字金额共用代号时，改代号键的生成。
+* `backend/tests/test_v2b_selfcheck.py`（新）、`selfcheck_outbound_leaks.yaml`。
+
+1. **电话**（`find_formatted`，命中类别 PHONE）。与现有电话规则一样，不要求标签。
+   * 括号区号：`(?:\+\d{1,3}[ -]?)?\(0?\d{2,4}\)[ -]?\d{3,4}[ -]?\d{4}`，如 `+1 (713) 555-0142`、`(021) 6688-1234`；
+   * 国内手机带分隔：`1[3-9]\d[ -]\d{4}[ -]\d{4}`；
+   * 国内固话区号后带分隔：`0\d{2,3}[ -]\d{3,4}[ -]?\d{4}`，数字合计 10～12 位；
+   * 三种都要求前后不是数字、字母或 `-`。与账号、证件号重叠时，按现有优先级处理（账号、证件号在前）。
+2. **英文大写金额**（`find_amounts`，类别 AMOUNT）。
+   * 匹配数字单词串，不区分大小写：zero～nineteen、twenty～ninety、hundred、thousand、million、billion、and，以及连字符写法。至少 2 个词，且至少含 hundred / thousand / million / billion 之一。
+   * 还须满足以下之一：
+     - 前面（同一句内）有币种词，如 US Dollars、Dollars、USD、EUR、Euros、RMB、Yuan、Renminbi、Pounds、GBP、JPY、Yen、HKD；
+     - 后面紧跟币种词；
+     - 整段形如 `Say … Only`。
+   * 只替换数字单词串，连同其后的 `and cents …` / `and xx/100`。
+   * 数值按英文读法换算为 Decimal。币种取币种词；`Say … Only` 中没有币种词时，取同一节点中最近的币种。
+   * 与同币种、同数值的数字金额**共用代号**。
+   * 没有币种的 “two thousand tons”“one hundred percent” 不算。
+3. **即时通信无冒号**（V2Q-152）。
+   * 标签：`微信号|微信|WeChat(?:\s*ID)?|QQ(?:号)?|WhatsApp|Telegram|LINE|Skype`，后接空白；“微信号”也可直接接值。
+   * 值须含数字或下划线；QQ 的值为 5～11 位数字。
+   * 叙述中的“微信沟通”“WeChat Pay”不命中。
+4. **职务在前的中文人名**（`find_persons`，类别 PERSON）。
+   * 写法一：`{职务词}{姓}{1～2 个汉字}`，后面须是以下之一：
+     - “先生、女士、小姐”：只替换姓名，敬称保留；
+     - 标点、空白或句尾；
+     - 3.3 的结束词，或“已、于、在、对、将”。
+   * 写法二：`{职务词}{姓}{先生|女士|小姐}`，整段替换（与 3.2 一致）。
+   * 职务词（长的优先）：董事长、副董事长、总经理、副总经理、总裁、副总裁、总监、经理、主任、主管、部长、处长、科长、厂长、总工、工程师、会计、出纳、法务、采购、销售、业务员、专员、助理、秘书、代表。
+   * 排除：姓名（姓 + 名）等于 3.3 结束词，或在 `_CN_NOT_PERSON`、common\_terms 中时不算（如“经理同意后生效”）。
+
+### 13.2 中英对照标签与邮件（V2-B-17，测试先行，high）
+
+**文件范围**：
+
+* `backend/app/redaction/detect.py`：标签正则、邮件头、落款、无冒号的账号与外国税号。
+* `parties.py`：中英对照的签约方标签、`Messrs.`。
+* `engine.py`：接入落款姓名的同值替换。
+* `chat/service.py`：接入。
+* `test_v2b_selfcheck.py`（追加）、`selfcheck_bilingual_labels.yaml`。
+
+1. **中英对照标签**。
+   * 所有带标签的规则（签约方、人名、银行、账号、编号、地址、电话、邮箱）都接受两种写法：
+     - 中文标签 + 空白 + 英文标签 + 冒号；
+     - 英文标签 + 可选空白 + 中文标签 + 冒号。
+   * 标签以冒号前的整体为准，**英文标签词本身不作为值**。
+   * 至少覆盖：联系人 Contact、授权代表 Authorized Representative、开户行 Bank、受益人银行 Beneficiary Bank、合同编号 Contract No.、地址 Address、Seller卖方、Buyer买方。
+2. **邮件头**：以下两处的姓名替换为人员代号（1～4 个首字母大写英文单词或 2～4 个汉字），邮箱照旧替换。
+   * `From / To / Cc / Bcc / Sender / Reply-To:` 之后；
+   * 任意位置 `<邮箱>` 前紧挨的姓名。
+3. **落款**。
+   * 落款词：`Best regards / Kind regards / Regards / Sincerely / Yours faithfully / Yours sincerely / Thanks and regards`，以及“此致 敬礼”。
+   * 落款词所在节点之后的下一个非空节点，若只有 2～4 个首字母大写英文单词或 2～4 个汉字，替换为人员代号。
+4. **同值替换**：本文件中已被识别为人名的英文姓名（规范形式相同），在其他位置单独出现时同样替换为同一代号。机制与签约方简称的同值替换相同。
+5. **`Messrs.`、`M/s` 与 `Company Name:`**。
+   * `Messrs.`、`M/s` 作为企业前导词，不作为人名称谓。其后连续的首字母大写单词（到标点或行尾）为企业名称（ORG）。
+   * `Company Name:` 标签后、无企业后缀的名称归 ORG（现为 PERSON）。
+6. **无冒号的账号与外国税号**。
+   * `Account|A/C|Acct\.?` + 空白 + 8～30 位数字（可含空格、短横线）为 ACCOUNT。
+   * `ИНН / КПП / ОГРН / UEN / ABN / EIN / CNPJ` 后接可选冒号与编号，为 IDNO。
+
+### 13.3 外文形式、公共机构与一致性（V2-B-18，测试先行，high）
+
+**文件范围**：
+
+* `backend/app/redaction/parties.py`：越南企业形式、英文字号别名。
+* `detect.py`：俄文全名与首字母、地址尾部、OCR 空格。
+* `engine.py`：公共机构保留、跨节点名称。
+* `suspects.py`：公共机构不列疑似。
+* `dictionaries.py`。
+* 资源文件：`backend/resources/public_institutions.txt`（新）；`industry_words.txt`（只追加）；`countries.yaml`（越南城市缺失时只追加）。
+* `chat/service.py`：接入。
+* `test_v2b_selfcheck.py`（追加）、`selfcheck_foreign_institutions.yaml`。
+
+1. **越南企业形式**。
+   * 前导词：`Công ty TNHH`、`Công ty Cổ phần`、`Công ty CP`、`Tổng công ty`、`Công ty Trách nhiệm hữu hạn`。
+   * 后接首字母大写的名称单词（含越南文字符），到逗号、括号或行尾为止，整段为 ORG，国家推断为越南。
+2. **俄文人名**。
+   * 西里尔字母“姓 + 名 + 父称”整段为 PERSON。第三个词须以 -ович / -евич / -ич / -овна / -евна / -ична 结尾。
+   * 首字母写法 `Фамилия И.О.` 与拉丁写法 `Ivanov I.I.` 的首字母一并包含（修正现在的 `人员_2I.`）。
+3. **英文字号别名**。
+   * 英文 ORG 全称去掉企业后缀和英文行业词，取剩下的首词。行业词包括 Industries、Industry、Trading、Technology、Technologies、International、Group、Holdings、Logistics、Engineering、Chemical、Chemicals、Materials、Manufacturing、Global、Enterprises、Corporation 等。
+   * 首词须 ≥ 4 个字母、首字母大写，且不在 12.5 的英文常用词表与地名中，才作为该主体的别名。
+   * 正文中单独出现时（含所有格 `Velmora's`）替换为同一代号。
+   * 不写入已记住的名称。
+4. **公共机构保留**（V2Q-153）。
+   * 资源文件 `public_institutions.txt`，每行一个名称，含中英文与常见缩写：
+     - 检验机构：SGS、CCIC、中国检验认证集团、Bureau Veritas、BV、Intertek、Cotecna、TÜV 等；
+     - 仲裁机构：中国国际经济贸易仲裁委员会、CIETAC、上海国际仲裁中心、深圳国际仲裁院、北京仲裁委员会、SIAC、Singapore International Arbitration Centre、HKIAC、ICC International Court of Arbitration、LCIA 等；
+     - 标准化组织：ISO、ASTM、IEC 等。
+   * 另用规则识别 `{2～12 个汉字}(?:人民法院|仲裁委员会|仲裁院|仲裁中心)`。
+   * 命中的文字不替换、不列疑似遗漏，模型结果同样过滤。
+   * **签约方信息块中的主体不受影响**：检验机构本身是签约方时照常替换，全文一致。
+   * 只用资源文件，不加设置界面。
+5. **行业词补充**（`industry_words.txt` 只追加）：机电、设备、机电设备、精密、智能、光电、化学、钢铁、有色、矿业、冶金、汽车、汽配、纺织、服装、食品、包装、印刷、医疗器械、仪器、仪表、自动化、电力、新能源、半导体、通信、塑胶、橡胶、模具、五金、建材、家具、环境、检测、制造。
+6. **无标签地址尾部**。
+   * 中国地址：识别出的地址后紧跟“××园 / 产业园 / 科技园 / 工业园 / 大厦 / 广场 / 中心 + 楼栋”时并入地址。楼栋为 `\d+栋|\d+幢|\d+号楼|\d+层|\d+楼|\d+室|\d+单元` 中的一个或多个。
+   * 外国地址：紧跟 `#\d{2}-\d{2,4}`，以及 `, {国家或城市} \d{4,6}` 时并入。
+7. **OCR 噪声**。
+   * 标签与冒号之间允许空白（`联系人 :`）。
+   * 人名标签后的 2～4 个汉字，中间允许一个空格（`王 立军`）。
+   * 一个节点只有英文企业后缀词（`TRADING LLC`、`Co., Ltd.`），且上一节点以签约方标签后的首字母大写单词结尾时，两段合为同一主体，各自替换为同一代号。
+
+### 13.4 测试用例（T-54）
+
+单个任务只跑以下测试文件：`test_v2b_selfcheck.py`、`test_redaction_golden.py`、`test_a03_outbound.py`、`test_recheck.py`、`test_redaction_engine.py`、`test_suspects.py`、`test_v2b_amounts.py`、`test_chat.py`。实体识别相关用例用 monkeypatch 固定 `ner.recognize`。
+
+| # | 任务 | 输入 | 期望 |
+|-|-|-|-|
+| 1 | 16 | 回归样本 selfcheck\_outbound\_leaks | known\_gaps 全部移入 must\_replace（类别不变）；must\_keep 两条通过 |
+| 2 | 16 | 13.1 第 1 条各写法；`2026-0512-1234`、`订单号 0512 6688 1234 5`、`账号：0110 2345 6789 012` | 前者为 PHONE；后三者不产生 PHONE（日期样式、位数不符、账号优先） |
+| 3 | 16 | 固定提示文字、内置要求全文、系统 / 追问提示词模板 | `recheck` 无 PHONE、AMOUNT 新命中 |
+| 4 | 16 | `USD 480,000.00 (Say US Dollars Four Hundred Eighty Thousand Only)` | 两处同一代号；数值 480000；币种 USD |
+| 5 | 16 | `EUR One Million Two Hundred Thousand and Fifty Cents`、`two thousand tons`、`one hundred percent` | 第一个数值 1200000.50（EUR）；后两个无命中 |
+| 6 | 16 | 外发文本 `[金额_1]`、`Say US Dollars [金额_1] Only` | 复检无 AMOUNT 命中 |
+| 7 | 16 | `微信 zw_fictive88`、`QQ 12345678`、`微信沟通后确认`、`WeChat Pay 付款`、`QQ群` | 前两个为 IM；后三个无命中 |
+| 8 | 16 | `我司总经理孙明亮先生已同意`、`采购总监周女士确认`、`由项目经理刘洋负责`、`经理同意后生效`、`总经理高兴地表示` | 孙明亮、周女士、刘洋为 PERSON（“先生”保留）；后两句无人名 |
+| 9 | 17 | 回归样本 selfcheck\_bilingual\_labels | known\_gaps 全部移入 must\_replace；追加 must\_keep：Contact、Authorized Representative |
+| 10 | 17 | `联系人 Contact：王立军`、`Seller卖方：澄川虚构科技有限公司` | 外发为 `联系人 Contact：人员_1`、`Seller卖方：{代号}`；Contact 不被替换 |
+| 11 | 17 | `To: 王立军 <wang@fictive.cn>`、`"Lorna Fictive" <lorna@fictive.com>` | 姓名替换为人员代号 |
+| 12 | 17 | 落款 `Best regards,` 下一行 `Purchasing Department` | 不替换（“Department”为停止词）；下一行为 `Lorna Fictive` 时替换 |
+| 13 | 17 | `Messrs. Northwind Fictive Trading`、`Company Name: Velmora Fictive` | 两者为 ORG，整段替换，`Trading` 不外发 |
+| 14 | 17 | `Account 072-123456-7`、`ИНН 7701234567`、`UEN 201912345K`、`account manager` | 前三个分别为 ACCOUNT、IDNO、IDNO；最后一个无命中 |
+| 15 | 18 | 回归样本 selfcheck\_foreign\_institutions | known\_gaps 全部移入 must\_replace；追加 must\_keep：Hai Phong、Singapore International Arbitration Centre |
+| 16 | 18 | `Signed by Ivanov I.I., General Director` | `Ivanov I.I.` 整段替换，`General Director` 保留 |
+| 17 | 18 | 全称 `Velmora Fictive Industries Pte. Ltd.`，正文 `Velmora shall`、`Velmora's bank`；另一主体 `Global Fictive Trading Ltd.`，正文 `Global shall` | 前两处同一代号；`Global` 是常用词，不派生 |
+| 18 | 18 | 正文 `SGS/CCIC 在装货港取样`、`提交上海市虚构区人民法院管辖` | 不替换、不列疑似；签约方信息块为 `检验方：SGS` 的样本中，SGS 全文替换 |
+| 19 | 18 | 乙方 `苏州澄川虚构机电设备有限公司`，正文 `澄川虚构负责安装` | 字号“澄川虚构”替换为乙方代号 |
+| 20 | 18 | `买方 Buyer : NORTHWIND FICTIVE` 下一节点 `TRADING LLC` | 两段为同一主体、同一代号 |
+| 21 | 全部 | 现有回归集（含第十二节样本）、A-03 | 全部通过；如有原样本因本节规则导致失败，停下报告，不改样本 |

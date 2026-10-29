@@ -1,0 +1,15 @@
+description: 自查发现的中英对照标签与邮件问题（V2-B-17，设计 V2-B.md 第十三节）：中文标签与冒号之间夹英文标签时标签失效、英文标签词被当成人名；邮件头与落款中的姓名；无冒号的账号与外国税号
+stance: sales
+must_replace:
+  - {text: 王立军, category: PERSON}
+  - {text: lorna@northwind-fictive.com, category: EMAIL}
+known_gaps:
+  - {text: 中国工商银行苏州虚构支行, category: ORG}
+  - {text: CCX-2026-0815, category: REFNO}
+  - {text: Lorna Fictive, category: PERSON}
+  - {text: 072-123456-7, category: ACCOUNT}
+  - {text: "7701234567", category: IDNO}
+  - {text: "770101001", category: IDNO}
+  - {text: 201912345K, category: IDNO}
+must_keep:
+  - Thanks for your offer.

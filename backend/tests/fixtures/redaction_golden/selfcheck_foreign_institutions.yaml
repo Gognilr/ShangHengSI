@@ -1,0 +1,12 @@
+description: 自查发现的外文企业形式、机构与一致性问题（V2-B-18，设计 V2-B.md 第十三节）：越南企业形式、俄文全名、字号派生的行业词缺口、无标签地址的园区楼栋尾部、OCR 噪声中的人名
+stance: purchase
+must_replace:
+  - {text: 苏州澄川虚构机电设备有限公司, category: ORG}
+known_gaps:
+  - {text: Công ty TNHH Hư Cấu Việt Nam, category: ORG}
+  - {text: Иванов Иван Иванович, category: PERSON}
+  - {text: 澄川虚构, category: ORG}
+  - {text: 创意产业园5栋, category: ADDR}
+  - {text: 王 立军, category: PERSON}
+must_keep:
+  - 安装调试
