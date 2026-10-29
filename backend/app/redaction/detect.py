@@ -65,6 +65,14 @@ _POSTCODE = re.compile(
 _PHONE_INTL = re.compile(r"(?<![\w+])\+\d{1,3}[ -]?\d[\d -]{6,14}\d(?!\d)")
 _PHONE_MOBILE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 _PHONE_LANDLINE = re.compile(r"(?<!\d)0\d{2,3}-?\d{7,8}(?!\d)")
+_PHONE_SEPARATED = re.compile(
+    r"(?<![A-Za-z0-9-])(?:(?:\+\d{1,3}[ -]?)?\(0?\d{2,4}\)[ -]?\d{3,4}[ -]?\d{4}"
+    r"|1[3-9]\d[ -]\d{4}[ -]\d{4}|0\d{2,3}[ -]\d{3,4}[ -]?\d{4})(?![A-Za-z0-9-])"
+)
+_IM_NO_COLON = re.compile(
+    r"(?:微信号[ \t]*|(?:微信|QQ号|(?<![A-Za-z])(?i:WeChat(?:[ \t]*ID)?|QQ|WhatsApp|Telegram|LINE|Skype)(?![A-Za-z]))[ \t]+)"
+    r"([A-Za-z0-9_.+\-]{3,40})(?![A-Za-z0-9_.+\-])"
+)
 
 # V2-B-01：即时通信必须带冒号，避免将叙述中的账号猜作标签值（设计 1.5 #7）。
 _IM = re.compile(
@@ -118,6 +126,12 @@ def find_formatted(text: str) -> list[Hit]:
             add(m.start(1), m.end(1), "IDNO")
     for m in _IM.finditer(text):
         add(m.start(1), m.end(1), "IM")
+    for m in _IM_NO_COLON.finditer(text):
+        value = m.group(1)
+        label = text[m.start():m.start(1)].strip().casefold()
+        if (re.fullmatch(r'\d{5,11}', value) if label in ('qq', 'qq号')
+                else any(c.isdigit() or c == '_' for c in value)):
+            add(m.start(1), m.end(1), 'IM')
     for m in _CREDIT_CODE.finditer(text):
         add(m.start(), m.end(), "IDNO")
     for m in _ID_CARD.finditer(text):
@@ -137,6 +151,13 @@ def find_formatted(text: str) -> list[Hit]:
     for pattern in (_PHONE_INTL, _PHONE_MOBILE, _PHONE_LANDLINE):
         for m in pattern.finditer(text):
             add(m.start(), m.end(), "PHONE")
+    for m in _PHONE_SEPARATED.finditer(text):
+        # 不截取更长的分组数字串；账号、证件号仍优先。
+        if re.match(r'[ -]+\d', text[m.end():]):
+            continue
+        if any(h.category in ('ACCOUNT', 'IDNO') and h.start < m.end() and m.start() < h.end for h in hits):
+            continue
+        add(m.start(), m.end(), 'PHONE')
     return hits
 
 
@@ -312,13 +333,85 @@ def find_bare_amounts(text: str) -> list[Hit]:
     return hits
 
 
+_EN_NUMBERS = dict(zip(
+    'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety'.split(),
+    [*range(20), 20, 30, 40, 50, 60, 70, 80, 90]))
+_EN_SCALES = {'hundred': 100, 'thousand': 1000, 'million': 1000000, 'billion': 1000000000}
+_EN_NUMBER_WORD = '|'.join([*_EN_NUMBERS, *_EN_SCALES, 'and'])
+_EN_MONEY = re.compile(rf'(?<![A-Za-z])(?:{_EN_NUMBER_WORD})(?:[ \t-]+(?:{_EN_NUMBER_WORD}))+(?![A-Za-z])', re.I)
+_EN_CURRENCIES = re.compile(r'\b(?:US Dollars|Dollars|USD|EUR|Euros|RMB|Yuan|Renminbi|Pounds|GBP|JPY|Yen|HKD|CNY)\b', re.I)
+_EN_CURRENCY_CODES = {'us dollars': 'USD', 'dollars': 'USD', 'euros': 'EUR',
+    'yuan': 'CNY', 'renminbi': 'CNY', 'rmb': 'CNY', 'pounds': 'GBP', 'yen': 'JPY'}
+
+
+def _english_value(words: str) -> Decimal:
+    total = current = 0
+    for word in re.split(r'[ \t-]+', words.casefold()):
+        if word in _EN_NUMBERS:
+            current += _EN_NUMBERS[word]
+        elif word == 'hundred':
+            current *= 100
+        elif word in _EN_SCALES:
+            total += current * _EN_SCALES[word]
+            current = 0
+    return Decimal(total + current)
+
+
+def _english_amounts(text: str) -> list[Hit]:
+    hits = []
+    currencies = list(_EN_CURRENCIES.finditer(text))
+    for m in _EN_MONEY.finditer(text):
+        words = re.split(r'[ \t-]+', m.group().casefold())
+        if not any(w in _EN_SCALES for w in words):
+            continue
+        # 前置币种只在同一句内有效；Say … Only 可沿用本节点最近币种。
+        sentence = max((text.rfind(c, 0, m.start()) for c in '\n;；。!?'), default=-1) + 1
+        periods = list(re.finditer(r'(?<!\d)\.(?!\d)', text[:m.start()]))
+        if periods:
+            sentence = max(sentence, periods[-1].end())
+        before = [c for c in currencies if sentence <= c.start() < m.start()]
+        after = next((c for c in currencies if re.fullmatch(r'[ \t]*', text[m.end():c.start()])
+                      and c.start() >= m.end()), None)
+        say = re.search(r'\bSay\b[^\n;；。!?]*$', text[:m.start()], re.I)
+        end = m.end()
+        value = _english_value(m.group())
+        # 尾部 and 可属于 cents / 分数部分，不把它留在整数匹配中。
+        trailing_and = re.search(r'[ \t-]+and$', m.group(), re.I)
+        if trailing_and:
+            end = m.start() + trailing_and.start()
+        cents = re.search(r'\band[ \t]+(.+)$', m.group(), re.I)
+        if cents and re.match(r'[ \t]+cents\b', text[end:], re.I):
+            value = _english_value(m.group()[:cents.start()]) + _english_value(cents.group(1)) / 100
+            end += re.match(r'[ \t]+cents\b', text[end:], re.I).end()
+        fraction = re.match(r'[ \t]+and[ \t]+(\d{1,2})/100\b', text[end:], re.I)
+        if fraction:
+            value += Decimal(fraction.group(1)) / 100
+            end += fraction.end()
+        named_cents = re.match(rf'[ \t]+and[ \t]+cents[ \t]+((?:{_EN_NUMBER_WORD})(?:[ \t-]+(?:{_EN_NUMBER_WORD}))*)\b', text[end:], re.I)
+        if named_cents:
+            value += _english_value(named_cents.group(1)) / 100
+            end += named_cents.end()
+        only = re.match(r'[ \t]+Only\b', text[end:], re.I)
+        if not before and after is None and not (say and only):
+            continue
+        currency_match = before[-1] if before else after
+        if currency_match is None and say and only and currencies:
+            currency_match = min(currencies, key=lambda c: abs(c.start() - m.start()))
+        currency = None
+        if currency_match:
+            token = currency_match.group().casefold()
+            currency = _EN_CURRENCY_CODES.get(token, token.upper())
+        hits.append(Hit(m.start(), end, 'AMOUNT', _amount_key('AMOUNT', currency, value, m.group()), currency, value))
+    return hits
+
+
 def find_amounts(text: str, column: str | None = None) -> list[Hit]:
     """第 5 步：金额与单价。只替换数字部分，币种文字保留（9.2“币种保留”）。
 
     column 为表格列提示：PRICE（单价列）或 AMOUNT（金额列）；该列中带币种的金额按列归类，
     整格只有一个数字时也按列归为单价或金额。
     """
-    hits: list[Hit] = []
+    hits: list[Hit] = _english_amounts(text)
 
     def category(end: int) -> str:
         if column == "PRICE" or _PER_UNIT.match(text, end):
@@ -530,6 +623,25 @@ def find_persons(text: str) -> list[Hit]:
     for m in re.finditer(r"(?<![A-Za-z])(?:Mr|Mrs|Ms|Dr|Prof)\.[ \t]+([A-Z][A-Za-z'’\-]*(?:[ \t]+[A-Z][A-Za-z'’\-]*){0,2})", text):
         if not any(h.start < m.end(1) and m.start(1) < h.end for h in hits):
             hits.append(Hit(m.start(1), m.end(1), "PERSON", normalize(m.group(1))))
+    # V2-B-16：职务前置只接受明确的人名终点，避免把谓语当姓名。
+    roles = '副董事长 董事长 副总经理 总经理 副总裁 总裁 总监 经理 主任 主管 部长 处长 科长 厂长 总工 工程师 会计 出纳 法务 采购 销售 业务员 专员 助理 秘书 代表'.split()
+    endings = '沟通 协商 确认 同意 说 称 表示 负责 签字 签署 联系 提出 认为 回复 反馈 处理 商定 已 于 在 对 将'.split()
+    surname = '(?:' + '|'.join(map(re.escape, cn_surnames())) + ')'
+    role = '(?:' + '|'.join(sorted(roles, key=len, reverse=True)) + ')'
+    rule = re.compile(role + '(' + surname + r'[一-鿿]{1,2}?)(?=先生|女士|小姐|[^一-鿿]|$|' + '|'.join(endings) + ')')
+    for m in rule.finditer(text):
+        name = m.group(1)
+        if (name in _CN_NOT_PERSON or name in common_terms() or name in endings
+                or name.endswith(('地', '的'))):
+            continue
+        start, end = m.span(1)
+        if not any(h.start < end and start < h.end for h in hits):
+            hits.append(Hit(start, end, 'PERSON', normalize(name)))
+    short = re.compile(role + '(' + surname + r'(?:先生|女士|小姐))')
+    for m in short.finditer(text):
+        start, end = m.span(1)
+        if not any(h.start < end and start < h.end for h in hits):
+            hits.append(Hit(start, end, 'PERSON', normalize(m.group(1))))
     return hits
 
 

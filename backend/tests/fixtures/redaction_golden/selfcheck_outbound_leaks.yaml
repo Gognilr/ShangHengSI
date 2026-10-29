@@ -3,7 +3,6 @@ stance: sales
 must_replace:
   - {text: "480,000.00", category: AMOUNT}
   - {text: "480,000", category: AMOUNT}
-known_gaps:
   - {text: "(713) 555-0142", category: PHONE}
   - {text: 138-1234-5678, category: PHONE}
   - {text: 0512-6688 1234, category: PHONE}
