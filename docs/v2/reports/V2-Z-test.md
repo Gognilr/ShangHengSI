@@ -48,6 +48,8 @@ SHA-256：`833D27404DEF484D6BAD5132D69552A42EFAA46826A8909CA86FF9000F42D472`。
 
 下载页和 HTTPS 首页可用。测试根指纹：`B1:F1:7B:CE:00:C9:47:CE:1A:BD:B7:FE:F2:51:83:2E:F3:D5:F4:B1:91:D9:D2:02:7A:CA:B0:79:92:C1:A9:B8`。等待用户导入后确认浏览器无警告；完成后由用户核对并删除该测试根。Windows curl 需 `--ssl-no-revoke --cacert` 才完成本次本地链验证（默认 Schannel 返回吊销状态未知），不能代替用户浏览器验收。
 
+用户反馈仍有警告后，2026-10-30 只读排查：Tabbit 实际错误为 ERR_CERT_AUTHORITY_INVALID；按 DER SHA-256 检查本机 CurrentUser/Root、LocalMachine/Root，目标根匹配数均为 0（CurrentUser/CA、My 也为 0）。HTTP 下载文件与服务器 root.crt 字节一致，DER 指纹与 root.sha256、下载页一致；显式指定该根时 TLS 链及 IP 172.16.31.175 验证通过。已确认本机缺少该根信任，未导入 / 删除证书或绕过浏览器警告；仍待用户导入后重开浏览器验证。用户表示真实样本稍后核对，继续保留确认页，不推进审核。
+
 已停止 15 个历史测试容器：e08manual-app-20261027、e08-ui 的 app / worker / converter、v2c08 的 app / worker / edge / db / mock、v2a 的 app / worker / web / db / mock-llm / converter（均带 aireview- 前缀）。保留容器、日志与卷；日常 aireview 服务、EAM 及既有测试数据库未删除。全量结束后测试容器自动移除，独立 z03-test-db 已停止；候选服务、本机前端与真实样本确认页保留，供用户核对。自愿的真实模型评测不做。
 
 状态：自动检查已结束，Z-03 尚未完成，不进入 Z-05 发布结论。仍待两份真实样本的用户核对及模拟审核、最终出口复检、用户证书信任 / 删除确认；V2Q-178 的还原验收口径交总审核判断。
