@@ -145,3 +145,84 @@ def test_v2q167_product_label_does_not_exempt_proper_name():
     result = compute([NodeIn('F1-P1', text)], 'other')
     start = text.index('Velmora')
     assert any(s.char_start <= start and s.char_end >= start + len('Velmora') for s in result.suspects)
+
+
+@pytest.mark.parametrize('english', ['Chengchuan Fictive Carbon Materials Co., Ltd.'])
+def test_t53_17_bilingual_same_code_and_restore(english):
+    from app.redaction.restore import restore
+    chinese = '澄川虚构碳材料股份有限公司'
+    nodes = [NodeIn('F1-P1', chinese), NodeIn('F1-P2', english)]
+    result = compute(nodes, 'other')
+    assert len(result.parties) == 1
+    assert result.parties[0].country == '中国'
+    assert result.redacted['F1-P1'] == result.redacted['F1-P2']
+    code = result.redacted['F1-P1']
+    assert result.mapping[code] == chinese
+    assert english in [v for k, v in result.mapping.items() if k.startswith(code + '#')]
+    assert restore(result.redacted['F1-P1'], result.mapping) == chinese
+    # 同一代号的别名保留原英文写法；按来源选择该写法后可逐字重放。
+    alias = next(v for k, v in result.mapping.items() if k.startswith(code + '#') and v == english)
+    assert restore(result.redacted['F1-P2'], {code: alias}) == english
+
+
+@pytest.mark.parametrize('english', ['Qingdao Qinglan Fictive International Trade Co., Ltd.',
+    'Qinglan Fictive Trade Co., Ltd.'])
+def test_t53_18_bilingual_geography(english):
+    result = compute([NodeIn('F1-P1', '青岚虚构国际贸易有限公司'), NodeIn('F1-P2', english)], 'other')
+    assert len(result.parties) == 1 and result.redacted['F1-P1'] == result.redacted['F1-P2']
+
+
+def test_t53_19_bilingual_ambiguity():
+    result = compute([NodeIn('F1-P1', '华信虚构科技有限公司'), NodeIn('F1-P2', '华新虚构科技有限公司'),
+        NodeIn('F1-P3', 'Huaxin Fictive Co., Ltd.')], 'other')
+    assert len(result.parties) == 3
+    assert len(set(result.redacted.values())) == 3
+
+
+def test_t53_20_non_pinyin_company():
+    from app.redaction.parties import bilingual_links
+    assert not bilingual_links(['澄川虚构科技有限公司', 'Northwind Fictive International Limited'])
+
+
+def test_t53_21_chat_bilingual_existing_code():
+    from app.chat.service import _redact
+    chinese, english = '澄川虚构碳材料股份有限公司', 'Chengchuan Fictive Carbon Materials Co., Ltd.'
+    result = _redact(english, {'公司_A': chinese}, [])
+    assert result.text == '公司_A'
+    assert english in result.new_entries.values()
+    assert all(k.startswith('公司_A#') for k in result.new_entries)
+
+
+def test_t53_13_pinyin_resource():
+    from app.redaction.dictionaries import hanzi_pinyin
+    readings = hanzi_pinyin()
+    assert len(readings) == 6763
+    assert {'cheng', 'deng'} <= set(readings['澄'])
+    assert {'chong', 'zhong'} <= set(readings['重'])
+    assert all(value and all(p.isascii() and p.isalpha() and p.islower() for p in value)
+               for value in readings.values())
+
+
+def test_t53_13_ambiguity_in_reverse_direction():
+    from app.redaction.parties import bilingual_links
+    assert not bilingual_links(['澄川虚构科技有限公司', 'Chengchuan Fictive Co., Ltd.',
+        'Chengchuan Other Co., Ltd.'])
+
+
+@pytest.mark.usefixtures('env')
+def test_t53_13_alias_not_learned(alice, ready_task, db_sessionmaker):
+    from app.db.models import RedactionTerm, Task
+    from app.redaction.engine import learn_confirmed_names
+    from app.security.crypto import decrypt_text
+    user = alice[0]
+    chinese, english = '澄川虚构碳材料股份有限公司', 'Chengchuan Fictive Carbon Materials Co., Ltd.'
+    doc = Document()
+    doc.add_paragraph(chinese)
+    doc.add_paragraph(english)
+    stream = io.BytesIO()
+    doc.save(stream)
+    task = ready_task(user, files=[('虚构双语.docx', stream.getvalue())])
+    with db_sessionmaker() as db:
+        learn_confirmed_names(db, db.get(Task, task.id), user.id)
+        names = [decrypt_text(r.term_enc) for r in db.scalars(select(RedactionTerm))]
+        assert chinese in names and english not in names
