@@ -115,7 +115,9 @@ def test_t53_13_ner_kept(text, score):
     assert ner.keep_entity(text, ner.Entity(0, len(text), 'ORG', score))
 
 
-def test_t53_14_15_lowercase_evidence():
+def test_t53_14_15_lowercase_evidence(monkeypatch):
+    # V2Q-169：仅本用例隔离后续 B-14 词表，保留 B-12 的原输入及全部断言。
+    monkeypatch.setattr(suspects, 'en_words', lambda: frozenset(), raising=False)
     nodes = [NodeIn('F1-P1', 'B. Feedstock Base'), NodeIn('F1-P2', 'feedstock base')]
     assert not compute(nodes, 'other').suspects
     text = 'B. Velmora Base'
@@ -226,3 +228,54 @@ def test_t53_13_alias_not_learned(alice, ready_task, db_sessionmaker):
         learn_confirmed_names(db, db.get(Task, task.id), user.id)
         names = [decrypt_text(r.term_enc) for r in db.scalars(select(RedactionTerm))]
         assert chinese in names and english not in names
+
+
+@pytest.mark.parametrize('text', ['Kinematic Viscosity', 'Document Title'])
+def test_t53_22_common_english_words(text):
+    assert not compute([NodeIn('F1-P1', text)], 'other').suspects
+
+
+@pytest.mark.parametrize('text', ['Velmora Refinery', 'Hardgrave Machine Method'])
+def test_t53_23_uncommon_name_still_suspect(text):
+    result = compute([NodeIn('F1-P1', text)], 'other')
+    assert any(s.char_start == 0 and s.char_end == len(text) for s in result.suspects)
+
+
+def test_t53_24_spec_capitalized_groups(monkeypatch):
+    from pathlib import Path
+    import yaml
+    root = Path(__file__).parent / 'fixtures/redaction_golden'
+    lines = (root / 'en_spec_suspects.txt').read_text(encoding='utf-8').splitlines()
+    annotation = yaml.safe_load((root / 'en_spec_suspects.yaml').read_text(encoding='utf-8'))
+    assert len(lines) >= 200
+    # T-24 的 NER 组数需如实报告，使用已选离线模型，不用分数模拟。
+    monkeypatch.setattr(ner, 'recognize', lambda text: [e for e in ner.raw_recognize(text) if ner.keep_entity(text, e)])
+    nodes = [NodeIn(f'F1-P{i}', line) for i, line in enumerate(lines, 1) if line.strip()]
+    result = compute(nodes, annotation['stance'])
+    texts = {n.loc: n.text for n in nodes}
+    groups = {}
+    for s in result.suspects:
+        key = parties.normalize(texts[s.loc][s.char_start:s.char_end])
+        previous = groups.get(key)
+        if previous is None or suspects._PRIORITY.get(s.reason, 5) < suspects._PRIORITY.get(previous, 5):
+            groups[key] = s.reason
+    capitalized = sum(reason == 'capitalized' for reason in groups.values())
+    model = sum(reason == 'ner' for reason in groups.values())
+    print('T-24 capitalized groups:', capitalized, 'NER groups:', model, 'total groups:', len(groups))
+    assert capitalized <= 20
+    for needle in annotation['must_suspect']:
+        for n in nodes:
+            start = n.text.find(needle)
+            if start >= 0:
+                assert any(s.loc == n.loc and s.char_start <= start and s.char_end >= start + len(needle)
+                           for s in result.suspects), needle
+
+
+def test_t53_14_word_resource():
+    from pathlib import Path
+    from app.redaction.dictionaries import en_words
+    words = en_words()
+    assert {'kinematic', 'viscosity', 'document', 'title', 'global'} <= words
+    assert not {'velmora', 'hardgrave'} & words
+    assert (Path(__file__).parents[1] / 'resources/en_words.txt').stat().st_size <= 1_000_000
+    assert all(w.isascii() and w.isalpha() and w.islower() for w in words)
