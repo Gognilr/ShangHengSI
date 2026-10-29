@@ -5,6 +5,7 @@ must_replace:
   - {text: 王总, category: PERSON}
   - {text: 李经理, category: PERSON}
   - {text: 赵总监, category: PERSON}
+  - {text: 宋虚婷, category: PERSON}
 must_keep:
   - 业务往来备忘
   - 提到的条款需要复核
@@ -22,5 +23,4 @@ must_suspect:
   - 陆虚岚
   - 欧阳虚明
   - 何虚芳
-  - 宋虚婷
   - 林虚

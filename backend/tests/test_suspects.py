@@ -312,4 +312,9 @@ def test_r4_person_narrative_all_occurrences():
                    for n in nodes if '林虚' in n.text for i in result.items)
         assert all('林虚' not in text for text in result.redacted.values())
         names.append('林虚')
-    assert names == ['陆虚岚', '陆虚岚', '欧阳虚明', '何虚芳', '宋虚婷', '林虚']
+    assert names == ['陆虚岚', '陆虚岚', '欧阳虚明', '何虚芳', '林虚']
+    # V2Q-168：全名加敬称已提升为规则自动替换，敬称及后文保留。
+    assert any(i.loc == 'F1-P7' and i.char_start == 0 and i.char_end == 3
+               and i.category == 'PERSON' and i.detected_by != 'user' for i in result.items)
+    assert all('宋虚婷' not in text for text in result.redacted.values())
+    assert result.redacted['F1-P7'].endswith('女士已确认样品合格。')
