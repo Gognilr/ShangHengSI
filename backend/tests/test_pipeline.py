@@ -443,11 +443,13 @@ def test_parse_writes_suspects_and_views(db_sessionmaker, text_task):
             ("F1-P2", "capitalized", "pending"), ("F1-P2", "long_digits", "pending"),
             ("F1-P3", "capitalized", "pending"), ("F1-P4", "before_company", "pending")}
         views = engine.suspect_views(db, db.get(Task, task.id))
-        assert [v["loc"] for v in views] == ["F1-P2", "F1-P2", "F1-P3", "F1-P4"]  # 文档顺序
+        assert [v["loc"] for v in views] == ["F1-P2", "F1-P2", "F1-P4"]  # 各组首处的文档顺序
+        assert [v["occurrences"] for v in views] == [2, 1, 1]
         v = views[0]
-        assert set(v) == {"id", "loc", "reason", "decision", "category", "text", "before", "after"}
+        assert set(v) == {"id", "loc", "reason", "decision", "category", "text", "before", "after", "occurrences"}
         assert (v["text"], v["before"], v["after"][:4]) == ("Northwind Fictive Holdings", "货物由 ", " 承运，")
-        assert views[3]["text"] == "蓝海示例科技公司"
+        assert v["after"] == LINES[1].split("Northwind Fictive Holdings", 1)[1][:30]
+        assert views[2]["text"] == "蓝海示例科技公司"
 
 
 def test_ignore_cascades_and_survives_recompute(db_sessionmaker, text_task, make_user):

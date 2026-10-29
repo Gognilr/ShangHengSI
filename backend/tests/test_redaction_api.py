@@ -365,11 +365,13 @@ def test_get_redaction_lists_suspects_with_context(alice, ready_task):
     views = data["suspects"]
     assert [(v["reason"], v["text"], v["decision"]) for v in views] == [
         ("capitalized", "Northwind Fictive Holdings", "pending"),
-        ("capitalized", "Northwind Fictive Holdings", "pending"),
         ("long_digits", "6222 0000 1111 2222 333", "pending")]
-    assert all(set(v) == {"id", "loc", "reason", "decision", "category", "text", "before", "after"} for v in views)
+    assert [v["occurrences"] for v in views] == [2, 1]
+    assert all(set(v) == {"id", "loc", "reason", "decision", "category", "text", "before", "after", "occurrences"} for v in views)
     assert (views[0]["before"], views[0]["after"]) == ("货物由 ", " 承运。")
-    assert views[2]["before"] == "收款 " and views[2]["category"] is None
+    assert views[0]["loc"] == node_loc(c, task, "货物由 Northwind Fictive Holdings")[0]
+    account = next(v for v in views if v["reason"] == "long_digits" and v["text"] == "6222 0000 1111 2222 333")
+    assert account["before"] == "收款 " and account["category"] is None
 
 
 def test_ignore_then_replace_and_send(db_sessionmaker, alice, ready_task, llm):
@@ -378,13 +380,13 @@ def test_ignore_then_replace_and_send(db_sessionmaker, alice, ready_task, llm):
     views = redaction(c, task)["suspects"]
     # 确认发送被未处理的疑似遗漏拦住
     assert c.post(url(task, "runs"), headers=h).json()["code"] == "SUSPECTS_PENDING"
-    # 忽略：同文字、同原因的其他待处理条目一并忽略（Q-70 ④）
+    # 忽略：同规范名称的所有原因一并忽略，视图仍按组返回（B-12）。
     r = c.post(url(task, f"redaction/suspects/{views[0]['id']}"), json={"decision": "ignore"}, headers=h)
     assert r.status_code == 200, r.text
     after = r.json()["suspects"]
     assert [(v["text"], v["decision"]) for v in after] == [
-        ("6222 0000 1111 2222 333", "pending"), ("Northwind Fictive Holdings", "ignore"),
-        ("Northwind Fictive Holdings", "ignore")]
+        ("6222 0000 1111 2222 333", "pending"), ("Northwind Fictive Holdings", "ignore")]
+    assert [v["occurrences"] for v in after] == [1, 2]
     assert r.json() == redaction(c, task)
     # 已忽略的可以改为替换：全文替换，作为新的一方出现在签约方列表中
     r = c.post(url(task, f"redaction/suspects/{after[1]['id']}"), json={"decision": "replace", "category": "ORG"},
@@ -503,13 +505,15 @@ def test_suspect_replace_rejects_text_in_fixed_prompt(db_sessionmaker, alice, re
     assert (r.status_code, r.json()["code"]) == TERM_IN_PROMPT
     assert "Northwind" not in r.text
     assert redaction(c, task) == before  # 决定未写入
-    r = c.post(url(task, f"redaction/suspects/{views[2]['id']}"), json={"decision": "replace", "category": "CUSTOM"},
+    account = next(v for v in views if v["reason"] == "long_digits" and v["text"] == "6222 0000 1111 2222 333")
+    r = c.post(url(task, f"redaction/suspects/{account['id']}"), json={"decision": "replace", "category": "CUSTOM"},
                headers=h)
     assert r.status_code == 200, r.text
     sid = next(v["id"] for v in r.json()["suspects"] if v["text"] == "Northwind Fictive Holdings")
     r = c.post(url(task, f"redaction/suspects/{sid}"), json={"decision": "ignore"}, headers=h)
     assert r.status_code == 200, r.text
-    assert [v["decision"] for v in r.json()["suspects"]] == ["ignore", "ignore"]
+    assert [(v["text"], v["decision"], v["occurrences"]) for v in r.json()["suspects"]] == [
+        ("Northwind Fictive Holdings", "ignore", 2)]
 
 
 def test_manual_selection_length_upper_bound(alice, ready_task):

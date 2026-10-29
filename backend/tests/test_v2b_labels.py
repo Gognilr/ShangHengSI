@@ -52,9 +52,13 @@ def test_06_im_map_blocks_leak():
     assert any(x.category == "MAP" for x in reasons)
 
 
-def test_07_chat_requires_colon():
+def test_07_chat_wechat_with_or_without_colon():
     assert _redact("微信：zhang_fiction88", {}, []).text == "微信：[联系方式_Q1]"
-    assert _redact("对方微信 zhang_fiction88 说可以", {}, []).text == "对方微信 zhang_fiction88 说可以"
+    assert _redact("对方微信 zhang_fiction88 说可以", {}, []).text == "对方微信 [联系方式_Q1] 说可以"
+    for text in ("微信沟通", "WeChat", "WeChat Pay"):
+        redacted = _redact(text, {}, [])
+        assert redacted.text == text
+        assert redacted.new_entries == {}
 
 
 def test_note_uses_same_rules():
