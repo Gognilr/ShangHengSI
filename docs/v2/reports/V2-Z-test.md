@@ -14,7 +14,7 @@ SHA-256：`833D27404DEF484D6BAD5132D69552A42EFAA46826A8909CA86FF9000F42D472`。
 
 ## 自动检查与主流程
 
-- 独立 clone 前端 build 通过；既有 chunk 提示。全量测试仍在独立 `aireview-z03-test-db`（aireview-db:dev，pgvector）运行，最终结果待补。
+- 独立 clone 前端 build 通过、退出 0；既有 chunk 提示。Docker / Python 3.12 整仓挂载全量 **3173 passed、3 skipped、1 既有 Starlette 警告、退出 0，2755.05 秒（45 分 55 秒）**。3 个跳过项为 test_ner.py 的模型更换专项评测（需 NER_MODEL_EVAL=1）；本轮未换模型，不扩展重跑。数据库为独立 `aireview-z03-test-db`（aireview-db:dev，pgvector）。日志：`.codex-tmp/z03/fulltest-final.log`，退出码记录 `fulltest-final.exit`；失败首轮日志另存。
 - 首轮错用本机旧 postgres:16.15 测试库，缺 pgvector，迁移初始化失败；中止，保留日志，不计通过。首轮断网构建缺可复用缓存，未下载依赖即失败；获用户同意后标准联网构建成功。clone 初次本机 build 缺 node_modules，npm ci 后成功。
 - 浏览器 1366×768，经本机 Vite 代理到候选 compose：虚构账号登录、合同上传、实际离线 NER 脱敏、确认、模拟审核、结果、追问、Word 导出均走通（导出 HTTP 200，40,512 字节）；助手一次脱敏确认与 SSE 对话完成。追问模拟服务返回审核形状 JSON，页面正常显示并还原名称，不据此评价真实模型回答质量。
 - Z-02 的纯摘要标题未显示 0 条。浏览器截图捕获超时，保留 DOM 与接口证据；脚本错误等待路由及精确回复文本也超时，随后读取既有页面确认实际结果，未重复提交业务操作。
@@ -48,6 +48,6 @@ SHA-256：`833D27404DEF484D6BAD5132D69552A42EFAA46826A8909CA86FF9000F42D472`。
 
 下载页和 HTTPS 首页可用。测试根指纹：`B1:F1:7B:CE:00:C9:47:CE:1A:BD:B7:FE:F2:51:83:2E:F3:D5:F4:B1:91:D9:D2:02:7A:CA:B0:79:92:C1:A9:B8`。等待用户导入后确认浏览器无警告；完成后由用户核对并删除该测试根。Windows curl 需 `--ssl-no-revoke --cacert` 才完成本次本地链验证（默认 Schannel 返回吊销状态未知），不能代替用户浏览器验收。
 
-已停止 15 个历史测试容器：e08manual-app-20261027、e08-ui 的 app / worker / converter、v2c08 的 app / worker / edge / db / mock、v2a 的 app / worker / web / db / mock-llm / converter（均带 aireview- 前缀）。保留容器、日志与卷；日常 aireview 服务、EAM 及既有测试数据库未删除。本次候选服务和测试数据库仍保留供验收。自愿的真实模型评测不做。
+已停止 15 个历史测试容器：e08manual-app-20261027、e08-ui 的 app / worker / converter、v2c08 的 app / worker / edge / db / mock、v2a 的 app / worker / web / db / mock-llm / converter（均带 aireview- 前缀）。保留容器、日志与卷；日常 aireview 服务、EAM 及既有测试数据库未删除。全量结束后测试容器自动移除，独立 z03-test-db 已停止；候选服务、本机前端与真实样本确认页保留，供用户核对。自愿的真实模型评测不做。
 
-状态：Z-03 尚未完成，不进入 Z-05 发布结论。待全量最终结果、两份真实样本的用户核对及模拟审核、用户证书信任 / 删除确认。
+状态：自动检查已结束，Z-03 尚未完成，不进入 Z-05 发布结论。仍待两份真实样本的用户核对及模拟审核、最终出口复检、用户证书信任 / 删除确认；V2Q-178 的还原验收口径交总审核判断。
