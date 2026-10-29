@@ -1,0 +1,8 @@
+description: 落款下一行（原 test_v2b_selfcheck 落款用例）：姓名替换，部门名称保留
+stance: other
+must_replace:
+  - {text: "Hana Fictive", category: PERSON}
+  - {text: "王立新", category: PERSON}
+must_keep:
+  - "销售部"
+  - "采购中心"

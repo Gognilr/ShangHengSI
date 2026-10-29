@@ -1,0 +1,10 @@
+description: 英文字号不拆开邮箱、地址和其他大写名称（原 test_v2q171）
+stance: other
+must_replace:
+  - {text: "Haiyue Fictive Trading Ltd.", category: ORG}
+  - {text: "Fictive Metals Ltd.", category: ORG}
+  - {text: "export@haiyue-example.com", category: EMAIL}
+  - {text: "Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates", category: ADDR}
+must_keep: []
+must_suspect:
+  - "Meridian Fictive Inspection"

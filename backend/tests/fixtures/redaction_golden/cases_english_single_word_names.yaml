@@ -1,0 +1,13 @@
+description: 单词英文姓名只按原大小写传播（原 test_v2q173_f1）：He、Long、Price、Bill、Grant 作姓名时替换，小写普通词保留；多词姓名不区分大小写
+stance: other
+must_replace:
+  - {text: "Long", category: PERSON}
+  - {text: "Price", category: PERSON}
+  - {text: "Bill", category: PERSON}
+  - {text: "Grant", category: PERSON}
+  - {text: "Lorna Fictive", category: PERSON}
+  - {text: "LORNA FICTIVE", category: PERSON}
+must_keep:
+  - "he can ship in a long time"
+  - "a long-term deal"
+  - "The price is fixed. Please grant a bill of lading."

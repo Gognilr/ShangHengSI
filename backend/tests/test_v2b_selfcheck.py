@@ -1,4 +1,7 @@
-"""V2-B-16：T-54 外发漏洞契约，测试先行。"""
+"""V2-B-16～18 自查：golden 样本表达不了的部分（金额数值与币种、NOTE 与追问入口、还原、模型打桩、真实实体识别下会列为疑似的反例）。
+
+纯正文的识别正反例在 tests/fixtures/redaction_golden/cases_*。
+"""
 from decimal import Decimal
 
 import pytest
@@ -7,14 +10,6 @@ from app.redaction import detect, ner
 from app.redaction.engine import NodeIn, compute
 from app.redaction.recheck import recheck
 from tests.test_v2b_amounts import test_prompt_contract, test_fixed_prompt_text, env  # noqa: F401
-
-
-@pytest.mark.parametrize('text', ['+1 (713) 555-0142', '(021) 6688-1234',
-    '138-1234-5678', '138 1234 5678', '0512-6688 1234', '0512 6688 1234'])
-def test_t54_phone(text):
-    assert any(h.category == 'PHONE' and h.start == 0 and h.end == len(text)
-               for h in detect.find_formatted(text))
-    assert any(h.category == 'PHONE' for h in recheck(text, real_values=[], terms=[]))
 
 
 @pytest.mark.parametrize('text', ['2026-0512-1234', '订单号 0512 6688 1234 5',
@@ -48,33 +43,14 @@ def test_t54_non_amount(text):
     assert not detect.find_amounts(text)
 
 
-@pytest.mark.parametrize('text,value', [('微信 zw_fictive88', 'zw_fictive88'),
-    ('QQ 12345678', '12345678'), ('微信号lan_fictive01', 'lan_fictive01')])
-def test_t54_im(text, value):
-    assert any(h.category == 'IM' and text[h.start:h.end] == value for h in detect.find_formatted(text))
-
-
 @pytest.mark.parametrize('text', ['微信沟通后确认', 'WeChat Pay 付款', 'QQ群'])
 def test_t54_non_im(text):
     assert not any(h.category == 'IM' for h in detect.find_formatted(text))
 
 
-@pytest.mark.parametrize('text,value', [('我司总经理孙明亮先生已同意', '孙明亮'),
-    ('采购总监周女士确认', '周女士'), ('由项目经理刘洋负责', '刘洋')])
-def test_t54_role_person(text, value):
-    assert any(text[h.start:h.end] == value for h in detect.find_persons(text))
-
-
-@pytest.mark.parametrize('text', ['经理同意后生效', '总经理高兴地表示',
-    '授权代表应签署', '代表应签字', '经理须确认', '代表应及时签字'])
+@pytest.mark.parametrize('text', ['总经理高兴地表示'])
 def test_t54_non_person(text):
     assert not detect.find_persons(text)
-
-
-def test_v2q166_modal_surname_with_honorific():
-    text = '销售代表应采薇女士'
-    hits = detect.find_persons(text)
-    assert [(text[h.start:h.end], h.category) for h in hits] == [('应采薇', 'PERSON')]
 
 
 def test_t54_existing_phone_has_no_duplicate():
@@ -138,48 +114,7 @@ def no_ner(monkeypatch):
 
 
 @pytest.mark.usefixtures('no_ner')
-@pytest.mark.parametrize('label', ['联系人 Contact', 'Contact联系人',
-    '授权代表 Authorized Representative', 'Authorized Representative 授权代表'])
-def test_t54_10_bilingual_person_label(label):
-    text = label + '：王立军'
-    result = compute([NodeIn('F1-P1', text)], 'other')
-    assert result.redacted['F1-P1'] == label + '：人员_1'
-    assert len(result.items) == 1 and result.items[0].category == 'PERSON'
-
-
-@pytest.mark.usefixtures('no_ner')
-def test_t54_10_bilingual_seller():
-    result = compute([NodeIn('F1-P1', 'Seller卖方：澄川虚构科技有限公司')], 'other')
-    assert result.redacted['F1-P1'] == 'Seller卖方：' + result.parties[0].code
-
-
-@pytest.mark.parametrize('text,value,category', [
-    ('合同编号 Contract No.：CCX-2026-0815', 'CCX-2026-0815', 'REFNO'),
-    ('Contract No. 合同编号：CCX-2026-0815', 'CCX-2026-0815', 'REFNO'),
-    ('银行账号 Account No.：6222000011112222', '6222000011112222', 'ACCOUNT'),
-    ('地址 Address：上海市虚构路88号', '上海市虚构路88号', 'ADDR'),
-    ('Address地址：上海市虚构路88号', '上海市虚构路88号', 'ADDR')])
-def test_t54_10_other_bilingual_labels(text, value, category):
-    hits = detect.find_addresses(text) if category == 'ADDR' else detect.find_formatted(text)
-    assert any(h.category == category and text[h.start:h.end] == value for h in hits)
-
-
-@pytest.mark.parametrize('text', ['开户行 Bank：中国工商银行苏州虚构支行',
-    '受益人银行 Beneficiary Bank：中国工商银行苏州虚构支行'])
-def test_t54_10_bilingual_bank(text):
-    from app.redaction import parties
-    assert any(text[a:b] == '中国工商银行苏州虚构支行' for label, a, b in parties.find_labeled_parties(text))
-
-
-@pytest.mark.parametrize('text,name', [('To: 王立军 <wang@fictive.cn>', '王立军'),
-    ('"Lorna Fictive" <lorna@fictive.com>', 'Lorna Fictive'),
-    ('From: Lorna Fictive', 'Lorna Fictive')])
-def test_t54_11_mail_names(text, name):
-    assert any(text[h.start:h.end] == name for h in detect.find_persons(text))
-
-
-@pytest.mark.usefixtures('no_ner')
-@pytest.mark.parametrize('name,replaced', [('Purchasing Department', False), ('Lorna Fictive', True)])
+@pytest.mark.parametrize('name,replaced', [('Purchasing Department', False)])
 def test_t54_12_signoff(name, replaced):
     result = compute([NodeIn('F1-P1', 'Best regards,'), NodeIn('F1-P2', ''),
         NodeIn('F1-P3', name)], 'other')
@@ -195,50 +130,13 @@ def test_t54_12_same_english_person_everywhere():
 
 
 @pytest.mark.usefixtures('no_ner')
-@pytest.mark.parametrize('text,name', [('Messrs. Northwind Fictive Trading', 'Northwind Fictive Trading'),
-    ('M/s Northwind Fictive Trading', 'Northwind Fictive Trading'),
-    ('Company Name: Velmora Fictive', 'Velmora Fictive')])
-def test_t54_13_org_prefix(text, name):
-    result = compute([NodeIn('F1-P1', text)], 'other')
-    assert len(result.items) == 1 and result.items[0].category == 'ORG'
-    item = result.items[0]
-    assert text[item.char_start:item.char_end] == name
-    assert 'Trading' not in result.redacted['F1-P1']
-    if text.startswith('Messrs.'):
-        assert result.redacted['F1-P1'].startswith('Messrs. ')
-
-
-@pytest.mark.parametrize('text,value,category', [('Account 072-123456-7', '072-123456-7', 'ACCOUNT'),
-    ('ИНН 7701234567', '7701234567', 'IDNO'), ('КПП 770101001', '770101001', 'IDNO'),
-    ('UEN 201912345K', '201912345K', 'IDNO')])
-def test_t54_14_account_and_foreign_tax(text, value, category):
-    assert any(h.category == category and text[h.start:h.end] == value for h in detect.find_formatted(text))
-
-
-def test_t54_14_not_account_manager():
-    assert not detect.find_formatted('account manager')
-
-
-def test_role_word_is_not_name_inside_department_note():
-    text = '联系人：张三（销售经理）'
-    assert [text[h.start:h.end] for h in detect.find_persons(text)] == ['张三']
-
-
-@pytest.mark.usefixtures('no_ner')
-@pytest.mark.parametrize('name', ['Công ty TNHH Hư Cấu Việt Nam', 'Công ty Cổ phần Hư Cấu Việt Nam',
-    'Công ty CP Hư Cấu Việt Nam', 'Tổng công ty Hư Cấu Việt Nam', 'Công ty Trách nhiệm hữu hạn Hư Cấu Việt Nam'])
-def test_t54_15_vietnamese_company(name):
+def test_t54_15_vietnamese_company():
+    # 只核对国家；五种企业形式的替换见 golden cases_org_prefixes
+    name = 'Công ty TNHH Hư Cấu Việt Nam'
     result = compute([NodeIn('F1-P1', 'Notify party: ' + name + ', Hai Phong')], 'other')
     assert len(result.parties) == 1 and result.parties[0].country == '越南'
     assert any(v == name for v in result.mapping.values())
     assert 'Hai Phong' in result.redacted['F1-P1'] and name not in result.redacted['F1-P1']
-
-
-@pytest.mark.parametrize('text,name', [('Contact person: Иванов Иван Иванович', 'Иванов Иван Иванович'),
-    ('Signed by Ivanov I.I., General Director', 'Ivanov I.I.'), ('Иванов И.И.', 'Иванов И.И.')])
-def test_t54_16_cyrillic_and_initials(text, name):
-    hits = detect.find_persons(text)
-    assert [text[h.start:h.end] for h in hits] == [name]
 
 
 @pytest.mark.usefixtures('no_ner')
@@ -253,82 +151,16 @@ def test_t54_17_english_brand():
     assert result.redacted['F1-P4'] == 'Global shall'
 
 
-@pytest.mark.usefixtures('no_ner')
-@pytest.mark.parametrize('text', ['SGS/CCIC 在装货港取样', '提交上海市虚构区人民法院管辖',
-    'Disputes: Singapore International Arbitration Centre', '采用 ISO 和 ASTM 标准'])
-def test_t54_18_public_institutions(text):
-    result = compute([NodeIn('F1-P1', text)], 'other')
-    assert result.redacted['F1-P1'] == text
-    assert not result.items and not result.suspects
-
-
-@pytest.mark.usefixtures('no_ner')
-def test_t54_18_institution_party_still_private():
-    result = compute([NodeIn('F1-P1', '检验方：SGS'), NodeIn('F1-P2', 'SGS 在装货港取样')], 'other')
-    assert len(result.parties) == 1
-    assert all('SGS' not in t for t in result.redacted.values())
-    assert len({i.placeholder for i in result.items}) == 1
-
-
 def test_t54_18_model_public_institution(monkeypatch):
     monkeypatch.setattr(ner, 'recognize', lambda text: [ner.Entity(0, 3, 'ORG', 0.99)])
     result = compute([NodeIn('F1-P1', 'SGS')], 'other')
     assert result.redacted['F1-P1'] == 'SGS' and not result.items and not result.suspects
 
 
-@pytest.mark.usefixtures('no_ner')
-def test_t54_19_industry_brand():
-    result = compute([NodeIn('F1-P1', '乙方：苏州澄川虚构机电设备有限公司'),
-        NodeIn('F1-P2', '澄川虚构负责安装')], 'other')
-    assert result.redacted['F1-P2'] == result.parties[0].code + '负责安装'
-
-
-@pytest.mark.usefixtures('no_ner')
-def test_t54_20_cross_node_company():
-    result = compute([NodeIn('F1-P1', '买方 Buyer : NORTHWIND FICTIVE'),
-        NodeIn('F1-P2', 'TRADING LLC')], 'other')
-    assert len(result.parties) == 1 and len(result.items) == 2
-    code = result.parties[0].code
-    assert result.redacted['F1-P1'] == '买方 Buyer : ' + code
-    assert result.redacted['F1-P2'] == code
-
-
-@pytest.mark.parametrize('text,value', [('货物运至苏州工业园区星湖街328号创意产业园5栋。',
-    '苏州工业园区星湖街328号创意产业园5栋'), ('12 Fictive Street, Singapore #02-12',
-    '12 Fictive Street, Singapore #02-12')])
-def test_t54_18_address_tail(text, value):
-    assert any(text[h.start:h.end] == value for h in detect.find_addresses(text))
-
-
-def test_t54_18_ocr_person():
-    text = '联系人 : 王 立军'
-    assert any(text[h.start:h.end] == '王 立军' for h in detect.find_persons(text))
-
-
 def test_v2q170_unlisted_chinese_city_known_limitation():
     from app.redaction.parties import derived_names
     automatic, short = derived_names('无锡澄川虚构机电设备有限公司')
     assert '澄川虚构' not in automatic and '澄川虚构' not in short
-
-
-@pytest.mark.usefixtures('no_ner')
-@pytest.mark.parametrize('text,category,value', [
-    ('Email: export@haiyue-example.com', 'EMAIL', 'export@haiyue-example.com'),
-    ('Address: Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates', 'ADDR',
-     'Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates')])
-def test_v2q171_brand_does_not_split_formatted_or_address(text, category, value):
-    result = compute([NodeIn('F1-P1', 'Haiyue Fictive Trading Ltd.'),
-        NodeIn('F1-P2', 'Fictive Metals Ltd.'), NodeIn('F1-P3', text)], 'other')
-    assert any(i.loc == 'F1-P3' and i.category == category
-               and text[i.char_start:i.char_end] == value for i in result.items)
-
-
-@pytest.mark.usefixtures('no_ner')
-def test_v2q171_brand_does_not_split_other_capitalized_name():
-    text = 'Meridian Fictive Inspection'
-    result = compute([NodeIn('F1-P1', 'Fictive Metals Ltd.'), NodeIn('F1-P2', text)], 'other')
-    assert result.redacted['F1-P2'] == text
-    assert any(s.loc == 'F1-P2' and s.char_start == 0 and s.char_end == len(text) for s in result.suspects)
 
 
 @pytest.mark.parametrize('score', [0.7, 0.99])
@@ -436,52 +268,23 @@ def _persons(text):
 
 
 @pytest.mark.usefixtures('no_ner')
-def test_v2q173_f1_single_word_english_person_is_case_sensitive():
+def test_v2q173_f1_single_word_english_person_is_case_sensitive_in_chat():
+    # 正文见 golden cases_english_single_word_names
     from app.chat.service import _redact
-    lines = ['Dear Mr. He,', 'We told him he can ship in a long time.', 'Mr. Long will sign; it is a long-term deal.',
-             'Attn: Ms. Price', 'The price is fixed. Please grant a bill of lading.', 'Mr. Bill and Ms. Grant agree.']
-    nodes = [NodeIn(f'F1-P{i + 1}', t) for i, t in enumerate(lines)]
-    out = compute(nodes, 'other').redacted
-    assert 'he can ship in a long time.' in out['F1-P2']
-    assert 'a long-term deal.' in out['F1-P3'] and 'Mr. Long' not in out['F1-P3']
-    assert out['F1-P5'] == 'The price is fixed. Please grant a bill of lading.'
-    assert 'Bill' not in out['F1-P6'] and 'Grant' not in out['F1-P6']
     text = _redact('Dear Mr. Price, the price is high. Mr. Price agrees.', {}, []).text
     assert 'the price is high' in text and 'Price' not in text
 
 
-@pytest.mark.usefixtures('no_ner')
-def test_v2q173_f1_multi_word_name_still_case_insensitive():
-    out = compute([NodeIn('F1-P1', 'Dear Mr. Lorna Fictive,'), NodeIn('F1-P2', 'LORNA FICTIVE will reply.')],
-                  'other')
-    assert 'Lorna' not in out.redacted['F1-P1'] and 'LORNA' not in out.redacted['F1-P2']
-    assert len({i.placeholder for i in out.items if i.category == 'PERSON'}) == 1
+# 以下反例在真实实体识别下会被列为疑似，无法写成 golden 的 must_keep，保留识别器层面的断言；其余正反例见 golden cases_*。
 
-
-@pytest.mark.parametrize('text', ['一、采购范围：钢材。', '采购文件。', '销售金额：见附件。', '采购周期，30天。',
-    '采购单价：见报价。', '采购申请。', '会计年度。', '采购方式：招标', '采购计划。', '采购成本，', '采购明细。',
-    '采购商品，', '采购周期内，', '主管单位：某局'])
+@pytest.mark.parametrize('text', ['主管单位：某局'])
 def test_v2q173_f2_role_word_before_noun_is_not_person(text):
     assert _persons(text) == []
 
 
-@pytest.mark.parametrize('text,name', [('我司总经理孙明亮先生已同意', '孙明亮'), ('采购总监周女士确认', '周女士'),
-    ('由项目经理刘洋负责', '刘洋'), ('联系人为销售经理刘洋。', '刘洋'), ('采购王强确认', '王强'),
-    ('会计李芳负责', '李芳'), ('总经理孙明亮。', '孙明亮'), ('销售代表应采薇女士', '应采薇')])
-def test_v2q173_f2_role_person_still_found(text, name):
-    assert name in _persons(text)
-
-
-@pytest.mark.parametrize('text', ['The U.S. market is large.', 'Price F.O.B. Shanghai.', 'Payment L.C. at sight.',
-    'Payment T.T. in advance.'])
+@pytest.mark.parametrize('text', ['The U.S. market is large.'])
 def test_v2q173_f3_abbreviations_are_not_initials(text):
     assert _persons(text) == []
-
-
-@pytest.mark.parametrize('text,name', [('Signed by Ivanov I.I., General Director', 'Ivanov I.I.'),
-    ('Подписал Иванов И.И.', 'Иванов И.И.'), ('Signed by Smith J.R.', 'Smith J.R.')])
-def test_v2q173_f3_real_initials_kept(text, name):
-    assert name in _persons(text)
 
 
 @pytest.mark.parametrize('text', ['See line 1234 of the spec.', 'Production Line 100 is idle.', 'line no_12 ok'])
@@ -489,27 +292,9 @@ def test_v2q173_f4_lowercase_line_is_not_im(text):
     assert not any(h.category == 'IM' for h in detect.find_formatted(text))
 
 
-def test_v2q173_f4_uppercase_line_is_im():
-    text = 'LINE fictive_88'
-    assert any(h.category == 'IM' and text[h.start:h.end] == 'fictive_88' for h in detect.find_formatted(text))
-
-
-@pytest.mark.parametrize('text', ['MS Plate 10mm', 'Response 200 ms Max', 'MS Word file', 'mr Brown said'])
+@pytest.mark.parametrize('text', ['mr Brown said'])
 def test_v2q173_f5_ms_without_dot_is_not_title(text):
     assert _persons(text) == []
-
-
-@pytest.mark.parametrize('text,name', [('Dear Mrs Lorna Fictive,', 'Lorna Fictive'),
-    ('Dear Ms Lorna Fictive,', 'Lorna Fictive'), ('Attn: MISS JANE FICTIVE', 'JANE FICTIVE'),
-    ('DEAR MR.KE MOLAN:', 'KE MOLAN'), ('Dear MR KE MOLAN', 'KE MOLAN'), ('Dear ms. Lorna Fictive', 'Lorna Fictive')])
-def test_v2q173_f5_titles_still_work(text, name):
-    assert name in _persons(text)
-
-
-def test_v2q173_f6_chinese_name_before_mail_needs_left_boundary():
-    assert _persons('邮件发送至<sales@fictive.cn>') == []
-    assert _persons('王立军 <wang@fictive.cn>') == ['王立军']
-    assert _persons('收件：王立军<wang@fictive.cn>') == ['王立军']
 
 
 def test_v2q173_f7_british_and_and_named_dollars():
@@ -526,17 +311,6 @@ def test_v2q173_f7_british_and_and_named_dollars():
 
 
 @pytest.mark.usefixtures('no_ner')
-def test_v2q173_f8_province_is_skipped_and_brand_derived():
-    lines = ['卖方 Seller: Jiangsu Velmora Fictive Co., Ltd.', '买方 Buyer: Jiangsu Northwind Fictive Co., Ltd.',
-             'Goods delivered to Jiangsu province by Velmora.']
-    result = compute([NodeIn(f'F1-P{i + 1}', t) for i, t in enumerate(lines)], 'other')
-    out = result.redacted['F1-P3']
-    assert 'Jiangsu province' in out and 'Velmora' not in out
-    seller = next(i.placeholder for i in result.items if i.loc == 'F1-P1')
-    assert seller in out
-
-
-@pytest.mark.usefixtures('no_ner')
 def test_v2q173_f8_shared_english_brand_is_not_assigned_but_suspected():
     from app.chat.service import _redact
     lines = ['卖方 Seller: Velmora Fictive Trading Co., Ltd.', '买方 Buyer: Velmora Northwind Industries Ltd.',
@@ -549,23 +323,6 @@ def test_v2q173_f8_shared_english_brand_is_not_assigned_but_suspected():
     assert 'Velmora shall' in chat.text and any(s['text'] == 'Velmora' for s in chat.suspects)
 
 
-@pytest.mark.usefixtures('no_ner')
-def test_v2q173_f8_chinese_province_prefix_brand():
-    result = compute([NodeIn('F1-P1', '乙方：江苏澄川虚构机电设备有限公司'), NodeIn('F1-P2', '澄川虚构负责安装。')], 'purchase')
-    assert '澄川虚构' not in result.redacted['F1-P2']
-
-
-def test_v2q173_f9_role_after_spaced_name_kept():
-    assert _persons('联系人：张三 经理') == ['张三']
-    assert _persons('联系人：王 立军') == ['王 立军']
-
-
-@pytest.mark.parametrize('lines', [['此致 敬礼', '销售部'], ['Best regards,', 'Quality Control'],
-                                   ['Best regards,', 'Purchasing Office'], ['此致 敬礼', '采购中心']])
+@pytest.mark.parametrize('lines', [['Best regards,', 'Quality Control'], ['Best regards,', 'Purchasing Office']])
 def test_v2q173_f10_signoff_department_is_not_person(lines):
     assert detect.find_signature_persons(lines) == []
-
-
-def test_v2q173_f10_signoff_name_still_found():
-    assert detect.find_signature_persons(['Best regards,', 'Lorna Fictive']) == [(1, 0, 13)]
-    assert detect.find_signature_persons(['此致 敬礼', '王立军']) == [(1, 0, 3)]

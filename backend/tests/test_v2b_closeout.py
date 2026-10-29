@@ -47,21 +47,14 @@ def test_frozen_narrative_address_is_fully_covered(sample_id):
         assert kept in result.redacted['F1-P1']
 
 
-@pytest.mark.parametrize('text', ['Bristol', 'United Kingdom', 'Qingdao Port', 'FOB Qingdao Port',
-                                  '上海市', '中国', '天津港', 'Floor 2', 'Suite 405'])
+@pytest.mark.parametrize('text', ['上海市', '中国', 'Floor 2'])  # 其余见 golden cases_addresses
 def test_unlabeled_address_does_not_consume_places_or_unit_alone(text):
     assert detect.find_addresses(text) == []
 
 
-@pytest.mark.parametrize('text', ['Price per Unit 100, Total Amount', 'Unit 2, Clause',
-                                  "12 Supreme People's Court", '7 In Any Way'])
+@pytest.mark.parametrize('text', ["12 Supreme People's Court"])  # 其余见 golden cases_addresses
 def test_unlabeled_address_rejects_reviewed_generic_phrases(text):
     assert detect.find_addresses(text) == []
-
-
-@pytest.mark.parametrize('text', ['Floor 2, Shanghai', '88 Harbour Road, Wan Chai, Hong Kong'])
-def test_unlabeled_address_keeps_known_place_combinations(text):
-    assert [(h.start, h.end, h.category) for h in detect.find_addresses(text)] == [(0, len(text), 'ADDR')]
 
 
 def test_project_containing_our_party_has_one_complete_reversible_span():

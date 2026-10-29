@@ -1,0 +1,18 @@
+description: 地址正反例（原 test_v2b_selfcheck、test_v2b_closeout 单句用例）：中英对照地址标签、园区楼栋尾部、新加坡单元号、已知地名组合；单独的地名、港口、楼层与普通短语不算地址
+stance: other
+must_replace:
+  - {text: "上海市虚构路88号", category: ADDR}
+  - {text: "上海市虚构路99号", category: ADDR}
+  - {text: "苏州工业园区星湖街120号创意产业园3栋", category: ADDR}
+  - {text: "12 Fictive Street, Singapore #02-12", category: ADDR}
+  - {text: "Floor 2, Shanghai", category: ADDR}
+  - {text: "88 Harbour Road, Wan Chai, Hong Kong", category: ADDR}
+must_keep:
+  - "Bristol"
+  - "United Kingdom"
+  - "Qingdao Port"
+  - "天津港"
+  - "Suite 405"
+  - "Price per Unit 100, Total Amount"
+  - "Unit 2, Clause"
+  - "7 In Any Way"

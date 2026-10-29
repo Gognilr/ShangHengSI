@@ -1,0 +1,7 @@
+description: OCR 把公司名称拆到下一行（原 test_t54_20）：两段都替换为同一主体
+stance: other
+must_replace:
+  - {text: "NORTHWIND FICTIVE", category: ORG}
+  - {text: "TRADING LLC", category: ORG}
+must_keep:
+  - "买方 Buyer"

@@ -1,0 +1,10 @@
+description: 中文字号派生（原 test_t54_19、test_v2q173_f8）：行业词与省名前缀去掉后字号单独出现也替换
+stance: purchase
+must_replace:
+  - {text: "苏州澄川虚构机电设备有限公司", category: ORG}
+  - {text: "澄川虚构", category: ORG}
+  - {text: "江苏岚汀虚构机电设备有限公司", category: ORG}
+  - {text: "岚汀虚构", category: ORG}
+must_keep:
+  - "负责安装"
+  - "负责调试"

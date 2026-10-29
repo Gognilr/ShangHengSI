@@ -1,0 +1,15 @@
+description: 格式化字段的正反例（原 test_v2b_selfcheck / test_v2b_labels 的单句用例）：空格分隔的电话、LINE 加用户名为即时通信、无冒号账号与俄文/新加坡税号；普通词与数量词不误识别
+stance: other
+must_replace:
+  - {text: "138 1234 5678", category: PHONE}
+  - {text: "0512 6688 1234", category: PHONE}
+  - {text: "fictive_88", category: IM}
+  - {text: "073-654321-9", category: ACCOUNT}
+  - {text: "7709876543", category: IDNO}
+  - {text: "770901002", category: IDNO}
+  - {text: "202054321M", category: IDNO}
+must_keep:
+  - "微信沟通后确认"
+  - "account manager"
+  - "two thousand tons"
+  - "one hundred percent"

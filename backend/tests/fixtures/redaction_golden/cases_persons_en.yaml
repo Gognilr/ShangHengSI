@@ -1,0 +1,22 @@
+description: 英文与俄文人名的正反例（原 test_v2b_selfcheck 单句用例）：称谓大小写与缺点号、邮件头、首字母缩写姓名、俄文全名；U.S.、F.O.B. 等缩写和无点号的 MS / ms 不是人名
+stance: other
+must_replace:
+  - {text: "Mara Fictive", category: PERSON}
+  - {text: "Dana Fictive", category: PERSON}
+  - {text: "JANE FICTIVE", category: PERSON}
+  - {text: "KE MOLAN", category: PERSON}
+  - {text: "LI MOLAN", category: PERSON}
+  - {text: "Ivy Fictive", category: PERSON}
+  - {text: "Nora Fictive", category: PERSON}
+  - {text: "Pell Fictive", category: PERSON}
+  - {text: "Петров Пётр Петрович", category: PERSON}
+  - {text: "Ivanov I.I.", category: PERSON}
+  - {text: "Сидоров П.П.", category: PERSON}
+  - {text: "Smith J.R.", category: PERSON}
+must_keep:
+  - "MS Plate"
+  - "200 ms"
+  - "MS Word"
+  - "F.O.B."
+  - "L.C."
+  - "T.T."

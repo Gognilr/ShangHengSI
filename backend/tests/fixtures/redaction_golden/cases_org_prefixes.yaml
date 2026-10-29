@@ -1,0 +1,15 @@
+description: 企业名称前缀与越南企业形式（原 test_v2b_selfcheck 单句用例）：Messrs.、M/s、Company Name、中英对照卖方标签与五种越南企业形式；地名 Hai Phong 保留
+stance: other
+must_replace:
+  - {text: "Northwind Fictive Trading", category: ORG}
+  - {text: "Kestrel Ashby Trading", category: ORG}
+  - {text: "Velmora Fictive", category: ORG}
+  - {text: "澄川虚构科技有限公司", category: ORG}
+  - {text: "Công ty TNHH Hư Cấu Việt Nam", category: ORG}
+  - {text: "Công ty Cổ phần Ánh Dương Hư Cấu", category: ORG}
+  - {text: "Công ty CP Sao Mai Hư Cấu", category: ORG}
+  - {text: "Tổng công ty Bình Minh Hư Cấu", category: ORG}
+  - {text: "Công ty Trách nhiệm hữu hạn Hoa Sen Hư Cấu", category: ORG}
+must_keep:
+  - "Seller卖方"
+  - "Hai Phong"

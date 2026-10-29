@@ -1,0 +1,12 @@
+description: 英文标签在前或在后的中英对照标签（原 test_t54_10）
+stance: sales
+must_replace:
+  - {text: "周立军", category: PERSON}
+  - {text: "吴立军", category: PERSON}
+  - {text: "CCX-2026-0816", category: REFNO}
+  - {text: "6222000011113333", category: ACCOUNT}
+  - {text: "中国建设银行苏州虚构支行", category: ORG}
+must_keep:
+  - "Contact联系人"
+  - "Authorized Representative 授权代表"
+  - "Beneficiary Bank"

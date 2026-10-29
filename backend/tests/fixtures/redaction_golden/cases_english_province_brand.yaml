@@ -1,0 +1,8 @@
+description: 英文省名前缀不作字号（原 test_v2q173_f8）：Jiangsu province 保留，字号 Velmora 替换
+stance: other
+must_replace:
+  - {text: "Jiangsu Velmora Fictive Co., Ltd.", category: ORG}
+  - {text: "Jiangsu Northwind Fictive Co., Ltd.", category: ORG}
+  - {text: "Velmora", category: ORG}
+must_keep:
+  - "Jiangsu province"

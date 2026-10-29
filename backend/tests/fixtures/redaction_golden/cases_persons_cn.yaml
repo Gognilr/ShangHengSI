@@ -1,0 +1,32 @@
+description: 中文人名的正反例（原 test_v2b_selfcheck 单句用例）：职务在前的姓名、姓加敬称、邮件地址前的姓名、OCR 空格；职务词后接名词、情态动词时不是人名
+stance: other
+must_replace:
+  - {text: "周女士", category: PERSON}
+  - {text: "刘泽", category: PERSON}
+  - {text: "王强", category: PERSON}
+  - {text: "李芳", category: PERSON}
+  - {text: "孙明远", category: PERSON}
+  - {text: "应采薇", category: PERSON}
+  - {text: "张三", category: PERSON}
+  - {text: "赵晨", category: PERSON}
+  - {text: "王立新", category: PERSON}
+  - {text: "陈立华", category: PERSON}
+  - {text: "钱 立平", category: PERSON}
+must_keep:
+  - "销售经理"
+  - "邮件发送至"
+  - "代表应签字"
+  - "经理须确认"
+  - "代表应及时签字"
+  - "采购范围"
+  - "采购文件"
+  - "销售金额"
+  - "采购周期"
+  - "采购单价"
+  - "采购申请"
+  - "会计年度"
+  - "采购方式"
+  - "采购计划"
+  - "采购成本"
+  - "采购明细"
+  - "采购商品"

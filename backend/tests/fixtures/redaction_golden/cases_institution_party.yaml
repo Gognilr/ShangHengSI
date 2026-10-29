@@ -1,0 +1,6 @@
+description: 公共机构作为合同一方时按主体替换，正文其他处一并替换（原 test_t54_18_institution_party）
+stance: other
+must_replace:
+  - {text: "SGS", category: ORG}
+must_keep:
+  - "在装货港取样"

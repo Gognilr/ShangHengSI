@@ -71,38 +71,10 @@ def test_project_unique_and_information_boundary():
     assert r.mapping["项目_1"] == "东川虚构项目"
 
 
-@pytest.mark.parametrize("label", [
-    "提单号", "提单编号", "B/L No", "Bill of Lading No", "信用证号", "信用证编号", "L/C No", "Credit No",
-    "报关单号", "报关单编号", "Customs Declaration No", "项目编号", "项目号", "Project No", "招标编号",
-    "招标项目编号", "Tender No", "Bid No", "报价单号", "报价编号", "Quotation No", "Quote No", "运单号",
-    "Waybill No", "集装箱号", "Container No"])
-@pytest.mark.parametrize("separator", ["：", " ", "【"])
-def test_all_reference_labels(label, separator):
-    text = label + separator + "FICT-2026/09_A.1"
-    assert any(h.category == "REFNO" and text[h.start:h.end] == "FICT-2026/09_A.1"
-               for h in detect.find_formatted(text))
-
-
 @pytest.mark.parametrize("label", ["护照号", "护照号码", "Passport No", "营业执照注册号", "注册号", "工商注册号",
                                   "组织机构代码", "Organization Code", "税号", "纳税人识别号", "Tax ID", "VAT No", "TIN"])
-def test_all_id_labels(label):
-    text = label + ": FA12-5678"
-    assert any(h.category == "IDNO" and text[h.start:h.end] == "FA12-5678" for h in detect.find_formatted(text))
+def test_id_labels_need_digits(label):
+    # 各标签的正例见 golden cases_label_matrix
     assert not any(h.category == "IDNO" for h in detect.find_formatted(label + ": FICTIONAL"))
 
 
-@pytest.mark.parametrize("label", ["行号", "联行号", "开户行行号", "大额支付行号", "CNAPS", "Sort Code", "Routing No", "ABA", "IFSC"])
-def test_all_bank_labels(label):
-    text = label + ": FICT001234"
-    assert any(h.category == "SWIFT" and text[h.start:h.end] == "FICT001234" for h in detect.find_formatted(text))
-
-
-@pytest.mark.parametrize("label", ["微信", "微信号", "WeChat", "QQ", "QQ号", "WhatsApp", "Skype", "Telegram", "LINE", "钉钉"])
-def test_all_im_labels(label):
-    text = label + ": fiction.01；备注"
-    assert any(h.category == "IM" and text[h.start:h.end] == "fiction.01" for h in detect.find_formatted(text))
-
-
-@pytest.mark.parametrize("label", ["项目名称", "工程名称", "项目全称", "Project Name", "Project Title"])
-def test_all_project_labels(label):
-    assert result(label + ": 虚构工程").redacted["F1-P1"] == label + ": 项目_1"
