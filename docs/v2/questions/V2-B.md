@@ -8,6 +8,7 @@
 
 | 编号 | 问题 | 建议 | 影响范围 | 最晚需要 |
 |-|-|-|-|-|
+| V2Q-173 | V2-B-15 审核实测发现本批新规则把普通词替换为人员 / 联系方式代号：英文单词人名全文不区分大小写（he、long、price）、“采购范围 / 销售金额 / 会计年度”被当成职务 + 人名、“The U.S. / F.O.B. / L.C.”被当成首字母人名、line 1234、MS Plate、“<邮箱>”前截取汉字、英式 and 金额换算错误、英文字号取到省名 Jiangsu 等（详见 reports/V2-B-15.md 第二节 F1～F11） | 按 reports/V2-B-15.md 第三节 11 条只收窄本批新增规则，含 countries.yaml 中国 places 追加 34 个省级行政区中英文名（只追加）；职能词“采购、销售、会计、出纳、法务”后无敬称时须接结束词，代价是“采购钱进，”这类写法不再自动替换（批次前也不替换）。由 Opus 在 V2-B-15 内修复并补正反例，重跑相关集合与整仓全量 | detect.py、parties.py、engine.py、chat/service.py、countries.yaml、en_words.README.md、test_v2b_selfcheck.py / test_v2b_feedback.py（只追加） | V2-B-15 完成前 |
 
 ## 二、已决定
 
