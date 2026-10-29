@@ -100,3 +100,11 @@ def cn_surnames() -> tuple[str, ...]:
     with open(RESOURCES_DIR / "cn_surnames.txt", encoding="utf-8") as f:
         terms = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
     return tuple(sorted(terms, key=len, reverse=True))
+
+
+@lru_cache(maxsize=1)
+def hanzi_pinyin() -> dict[str, tuple[str, ...]]:
+    """离线 GB2312 汉字全部读音；资源由固定 Unihan 版本生成。"""
+    rows = (RESOURCES_DIR / 'hanzi_pinyin.txt').read_text(encoding='utf-8').splitlines()
+    return {parts[0]: tuple(parts[1:]) for row in rows if row and not row.startswith('#')
+            if len(parts := row.split()) > 1}

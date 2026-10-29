@@ -172,7 +172,28 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
                 take(start, end, code)
 
     # 3. 9.3 第 2 步：带企业后缀的名称（标签后的签约方、正文中的其他企业名称）
-    for start, end in [(s_, e_) for _label, s_, e_ in parties.find_labeled_parties(text)] + parties.find_other_org_names(text):
+    org_spans = [(s_, e_) for _label, s_, e_ in parties.find_labeled_parties(text)] + parties.find_other_org_names(text)
+    links = parties.bilingual_links([value for _, value in mapping] + [text[a:b] for a, b in org_spans])
+    known_parties = {parties.normalize(value): (code, value) for code, value in mapping}
+    for english_key, chinese_key in links.items():
+        known = known_parties.get(chinese_key)
+        if known:
+            code = known[0]
+        else:
+            chinese_surface = next(text[a:b] for a, b in org_spans
+                                   if parties.normalize(text[a:b]) == chinese_key)
+            code = code_for(chinese_surface, 'ORG')
+        for start, end in org_spans:
+            surface = text[start:end]
+            if parties.normalize(surface) != english_key:
+                continue
+            by_value[_norm(surface)] = code
+            if surface not in full_map.values():
+                number = 1
+                while f'{code}#{number}' in full_map or f'{code}#{number}' in new_entries:
+                    number += 1
+                new_entries[f'{code}#{number}'] = surface
+    for start, end in org_spans:
         if not any(s.start < end and start < s.end for s in accepted):
             take(start, end, code_for(text[start:end], "ORG"))
 
@@ -240,7 +261,7 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
     out.append(text[pos:])
     redacted = escape_document_tags("".join(out))
     used = {s.code for s in accepted}
-    return Redacted(redacted, redacted != text, {k: v for k, v in new_entries.items() if k in used}, found)
+    return Redacted(redacted, redacted != text, {k: v for k, v in new_entries.items() if k.split('#', 1)[0] in used}, found)
 
 
 def _terms(db: Session) -> list[tuple[str, str]]:

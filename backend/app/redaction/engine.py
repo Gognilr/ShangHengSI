@@ -404,6 +404,19 @@ def compute(
         owner.term_our = owner.term_our or frag.term_our
         del entities[frag.key]
 
+    # V2-B-13：英文写法只作中文主体的派生别名，不作为独立已记住名称。
+    links = P.bilingual_links([e.name for e in entities.values() if e.category == 'ORG'])
+    for english_key, chinese_key in links.items():
+        english, owner = entities[english_key], entities[chinese_key]
+        for alias in [*english.surfaces, *english.aliases]:
+            if alias not in owner.aliases:
+                owner.aliases.append(alias)
+                owner.alias_src[alias] = ('term', english.key) if english.from_term else ('derived', None)
+        owner.term_our = owner.term_our or english.term_our
+        if owner.role_label == OTHER:
+            owner.role_label = english.role_label
+        del entities[english_key]
+
     # 第 3 步：简称，归入紧挨在结构前面的名称
     for n in nodes:
         found = P.find_aliases(n.text)

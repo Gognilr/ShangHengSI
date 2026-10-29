@@ -163,6 +163,75 @@ def derived_names(name: str) -> tuple[list[str], list[str]]:
     return list(dict.fromkeys(auto)), short
 
 
+def bilingual_links(names: list[str]) -> dict[str, str]:
+    """英文规范名称 → 中文规范名称；只关联双向唯一的拼音前缀。"""
+    from app.redaction.dictionaries import hanzi_pinyin
+    chinese = {normalize(n): n for n in names if is_chinese_name(n)}
+    english = {normalize(n): n for n in names if not is_chinese_name(n) and _EN_SUFFIX_RE.search(n)}
+    if not chinese or not english:
+        return {}
+    readings = hanzi_pinyin()
+    syllables = {p for values in readings.values() for p in values}
+    places = _country_index()[1]
+
+    def split_count(word: str) -> int:
+        counts = {0: 0}
+        for end in range(1, len(word) + 1):
+            options = [count + 1 for start, count in list(counts.items())
+                       if start < end and word[start:end] in syllables]
+            if options:
+                counts[end] = max(options)
+        return counts.get(len(word), 0)
+
+    def english_prefixes(name: str) -> set[str]:
+        head = name[:_EN_SUFFIX_RE.search(name).start()]
+        words = re.findall(r'[A-Za-z]+', head)
+        variants = [words]
+        # 地名可有可无：同时容纳英文保留地名、中文省略地名的写法（T-53 #18）。
+        for end in range(1, len(words)):
+            if ' '.join(words[:end]).casefold() in places:
+                variants.append(words[end:])
+        out = set()
+        for variant in variants:
+            prefix, count = '', 0
+            for word in variant:
+                n = split_count(word.casefold())
+                if not n:
+                    break
+                prefix += word.casefold()
+                count += n
+            if count >= 2:
+                out.add(prefix)
+        return out
+
+    def chinese_bodies(name: str) -> set[str]:
+        body = re.sub(rf'(?:{_CN_SUFFIX}|{_CN_BRANCH_SUFFIX})+$', '', name)
+        bodies = {body}
+        while (place := next((p for p in sorted(places, key=len, reverse=True)
+                              if re.fullmatch(r'[一-鿿]+', p) and body.startswith(p)), None)):
+            body = body[len(place):]
+            bodies.add(body)
+        return bodies
+
+    def matches(body: str, joined: str) -> bool:
+        positions = {0}
+        for count, ch in enumerate(body, start=1):
+            positions = {pos + len(p) for pos in positions for p in readings.get(ch, ())
+                         if joined.startswith(p, pos)}
+            if count >= 2 and len(joined) in positions:
+                return True
+            if not positions:
+                break
+        return False
+
+    bodies = {key: chinese_bodies(name) for key, name in chinese.items()}
+    prefixes = {key: english_prefixes(name) for key, name in english.items()}
+    pairs = [(en, cn) for en, joined_variants in prefixes.items() for cn, variants in bodies.items()
+             if any(matches(body, joined) for body in variants for joined in joined_variants)]
+    return {en: cn for en, cn in pairs if sum(e == en for e, c in pairs) == 1
+            and sum(c == cn for e, c in pairs) == 1}
+
+
 def name_pattern(surface: str, *, case_sensitive: bool = False) -> re.Pattern:
     """名称的匹配正则：英文不区分大小写、忽略多余空格（句点、逗号后的空格可有可无）；首尾是英文字母或数字时要求单词边界。"""
     s = re.sub(r"([.,])\s+", r"\1", surface.strip())
