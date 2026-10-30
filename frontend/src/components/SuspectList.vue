@@ -8,11 +8,22 @@ const props = defineProps<{ suspects: Suspect[]; files: TaskFile[]; busy: boolea
 const emit = defineEmits<{
   (e: 'decide', id: number, decision: 'replace' | 'ignore', category: UserCategory | null, remember?: boolean): void
   (e: 'locate', loc: string): void
+  (e: 'batch-ignore', ids: number[]): void
 }>()
 
 const categoryOptions = toOptions(MANUAL_CATEGORY_OPTIONS)
 
 const pending = computed(() => props.suspects.filter((s) => s.decision === 'pending'))
+const selectedIds = ref<number[]>([])
+const allSelected = computed(() => pending.value.length > 0 && selectedIds.value.length === pending.value.length)
+const partlySelected = computed(() => selectedIds.value.length > 0 && !allSelected.value)
+watch(pending, (rows) => {
+  const ids = new Set(rows.map((s) => s.id))
+  selectedIds.value = selectedIds.value.filter((id) => ids.has(id))
+})
+function selectAll(value: string | number | boolean) {
+  selectedIds.value = value ? pending.value.map((s) => s.id) : []
+}
 const ignored = computed(() => props.suspects.filter((s) => s.decision === 'ignore'))
 const showIgnored = ref<string[]>([])
 
@@ -53,7 +64,21 @@ function submitReplace() {
     <el-empty v-if="!suspects.length" description="未发现疑似遗漏" :image-size="48" />
 
     <template v-else>
+      <div v-if="pending.length" class="batch-actions">
+        <el-button :disabled="busy || !selectedIds.length || selectedIds.length > 200" :loading="busy" @click="emit('batch-ignore', [...selectedIds])">忽略所选（{{ selectedIds.length }} 组）</el-button>
+        <span class="hint">每次最多选择 200 组，请逐组核对后忽略。</span>
+      </div>
       <el-table :data="pending" size="small" class="suspect-table" empty-text="疑似遗漏已全部处理">
+        <el-table-column width="88">
+          <template #header>
+            <el-checkbox :model-value="allSelected" :indeterminate="partlySelected" :disabled="busy" @change="selectAll">全选</el-checkbox>
+          </template>
+          <template #default="{ row }">
+            <el-checkbox-group v-model="selectedIds">
+              <el-checkbox :value="row.id" :aria-label="`选择疑似遗漏：${row.text}`" :disabled="busy" />
+            </el-checkbox-group>
+          </template>
+        </el-table-column>
         <el-table-column label="位置" width="200">
           <template #default="{ row }"><el-button link type="primary" :aria-pressed="selectedLoc === row.loc" @click="emit('locate', row.loc)">{{ where(row) }}</el-button></template>
         </el-table-column>
@@ -113,6 +138,7 @@ function submitReplace() {
 
 <style scoped>
 .suspect-table { border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
+.batch-actions { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .ctx {
   white-space: pre-wrap;
   word-break: break-all;

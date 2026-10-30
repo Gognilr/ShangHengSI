@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import LocalFindings from '@/components/LocalFindings.vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/http'
 import {
@@ -120,6 +120,28 @@ async function decideSuspect(id: number, decision: 'replace' | 'ignore', categor
       await loadSummary()
     } catch {
       // 保持当前显示
+    }
+  } finally {
+    deciding.value = false
+  }
+}
+
+async function ignoreSuspects(ids: number[]) {
+  // V2Q-186：一次确认对应一次原子请求，超过接口上限时由列表提示减少选择。
+  if (deciding.value || !ids.length || ids.length > 200) return
+  deciding.value = true
+  submitError.value = ''
+  try {
+    await ElMessageBox.confirm(
+      `所选 ${ids.length} 组将不替换，按原文发送给模型。请确认其中没有公司名、人名等敏感信息。`,
+      '忽略所选疑似遗漏',
+      { type: 'warning', confirmButtonText: '忽略所选', cancelButtonText: '取消' },
+    )
+    await afterChange(await redactionApi.ignoreSuspects(props.task.id, ids))
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      handleError(e)
+      try { await loadSummary() } catch { /* 保持当前显示 */ }
     }
   } finally {
     deciding.value = false
@@ -437,7 +459,7 @@ onMounted(loadAll)
       <h3>
         <span class="section-number">4</span>疑似遗漏<span v-if="pendingCount" class="pending">还有 {{ pendingCount }} 条未处理</span>
       </h3>
-      <SuspectList :suspects="suspects" :files="files" :busy="deciding" :selected-loc="selectedSuspectLoc" @locate="locateSuspect" @decide="decideSuspect" />
+      <SuspectList :suspects="suspects" :files="files" :busy="deciding" :selected-loc="selectedSuspectLoc" @locate="locateSuspect" @decide="decideSuspect" @batch-ignore="ignoreSuspects" />
 
       </section>
       <section class="panel manual-panel">

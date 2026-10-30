@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from app.db.models import Party, RedactionItem, Task, User
+from app.db.models import Party, RedactionItem, RedactionSuspect, Task, User
 from app.db.session import get_db
 from app.redaction import engine
 from app.security.deps import current_user, owned_redaction_task as owned_task
@@ -80,6 +80,11 @@ class SuspectDecision(BaseModel):
     decision: Literal["replace", "ignore"]
     category: UserCategory | None = None
     remember: StrictBool = False
+
+
+class SuspectBatchDecision(BaseModel):
+    ids: list[StrictInt] = Field(min_length=1, max_length=200)
+    decision: Literal["ignore"]
 
 
 class ManualRedaction(BaseModel):
@@ -180,6 +185,29 @@ def get_redaction(task: Task = Depends(owned_task), db: DbSession = Depends(get_
 
 
 _MAX_ID = 2 ** 63 - 1
+
+
+@router.post("/redaction/suspects/batch", response_model=RedactionOut)
+def decide_suspects_batch(
+    body: SuspectBatchDecision, task: Task = Depends(owned_task), user: User = Depends(current_user),
+    db: DbSession = Depends(get_db),
+) -> RedactionOut:
+    locked = _lock_awaiting(db, task)
+    ids = list(dict.fromkeys(body.ids))
+    if any(sid < 1 or sid > _MAX_ID for sid in ids) or set(ids) != set(db.scalars(
+        select(RedactionSuspect.id).where(RedactionSuspect.task_id == locked.id, RedactionSuspect.id.in_(ids))
+    )):
+        raise NotFoundError("SUSPECT_NOT_FOUND", "疑似遗漏不存在")
+    try:
+        for sid in ids:
+            engine.decide_suspect(db, locked, sid, decision="ignore", category=None, user_id=user.id)
+    except engine.RedactionInputError as exc:
+        db.rollback()
+        raise _input_error(exc) from None
+    # 忽略分支只更新决定；整批结束后统一刷新一次摘要和列表，不逐项重算。
+    result = _redaction(db, locked)
+    db.commit()
+    return result
 
 
 @router.post("/redaction/suspects/{sid}", response_model=RedactionOut)

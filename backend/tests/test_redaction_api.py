@@ -374,6 +374,28 @@ def test_get_redaction_lists_suspects_with_context(alice, ready_task):
     assert account["before"] == "收款 " and account["category"] is None
 
 
+def test_f03_batch_ignore_is_owned_and_atomic(alice, ready_task, make_user, db_sessionmaker):
+    from app.db.models import RedactionSuspect
+
+    user, c, h = alice
+    task = suspect_task(ready_task, user)
+    other = suspect_task(ready_task, make_user("batch_other"))
+    before = redaction(c, task)
+    ids = [s["id"] for s in before["suspects"]]
+    assert len(ids) >= 2
+    with db_sessionmaker() as db:
+        foreign = db.scalar(select(RedactionSuspect.id).where(RedactionSuspect.task_id == other.id))
+    endpoint = url(task, "redaction/suspects/batch")
+    r = c.post(endpoint, json={"ids": [ids[0], foreign], "decision": "ignore"}, headers=h)
+    assert r.status_code == 404, r.text
+    assert redaction(c, task) == before
+    r = c.post(endpoint, json={"ids": ids, "decision": "ignore"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert all(s["decision"] == "ignore" for s in r.json()["suspects"])
+    assert r.json() == redaction(c, task)
+    assert r.json()["summary"] == before["summary"]
+
+
 def test_ignore_then_replace_and_send(db_sessionmaker, alice, ready_task, llm):
     user, c, h = alice
     task = suspect_task(ready_task, user)

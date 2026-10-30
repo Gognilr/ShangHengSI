@@ -70,6 +70,8 @@ export const redactionApi = {
   redaction: (taskId: string) => http.get<RedactionInfo>(`/tasks/${taskId}/redaction`),
   decideSuspect: (taskId: string, suspectId: number, decision: 'replace' | 'ignore', category: UserCategory | null, remember = false) =>
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/suspects/${suspectId}`, { decision, category, ...(remember ? { remember: true } : {}) }),
+  ignoreSuspects: (taskId: string, ids: number[]) =>
+    http.post<RedactionInfo>(`/tasks/${taskId}/redaction/suspects/batch`, { ids, decision: 'ignore' }),
   manual: (taskId: string, body: { loc: string; char_start: number; char_end: number; category: UserCategory; remember?: boolean }) =>
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/manual`, body),
   revoke: (taskId: string, body: { loc: string; char_start: number; char_end: number }) =>
