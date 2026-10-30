@@ -42,7 +42,7 @@
 | V3-A-03 | 智能助手两栏、对话与输入框 | Opus | high | V3-A-02 | 已完成 |
 | V3-A-04 | 审核结果分栏、状态 / 空状态 / 提示、表格细节 | Sonnet 5.5 | medium | V3-A-03 | 已完成 |
 | V3-A-05 | 设置分节与未保存提示 | Sonnet 5.5 | medium | V3-A-04 | 已完成 |
-| V3-A-06 | 全局搜索 | Sonnet 5.5 | medium | V3-A-05 | 待执行 |
+| V3-A-06 | 全局搜索 | Sonnet 5.5 | medium | V3-A-05 | 已完成 |
 | V3-A-07 | 安装到桌面与工作文件夹 | Sonnet 5.5 | high | V3-A-06 | 待执行 |
 | V3-A-08 | 集中测试 | Sonnet 5.5 | medium | V3-A-07 | 待执行 |
 | V3-A-09 | 审核与合并规格、改 CLAUDE.md 菜单表述 | Opus | high | V3-A-08 | 待执行 |

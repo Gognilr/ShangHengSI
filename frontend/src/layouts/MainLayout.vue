@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ChevronsUpDown, FileSearch, HistoryIcon, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings } from '@lucide/vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
+import GlobalSearch from '@/components/GlobalSearch.vue'
 import SidebarSessions from '@/components/SidebarSessions.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import SiLogo from '@/components/brand/SiLogo.vue'
@@ -41,8 +42,15 @@ const activeMenu = computed(() => route.path.startsWith('/settings') ? '' : rout
 const displayName = computed(() => auth.user?.display_name ?? '')
 const initial = computed(() => Array.from(displayName.value)[0] ?? '')
 
-// 全局搜索对话框由 V3-A-06 挂载到这里
+// 全局搜索：侧栏按钮或 Ctrl+K（Mac 为 ⌘K）打开；须改密期间不响应
 const searchOpen = ref(false)
+function onShortcut(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'k') return
+  event.preventDefault()
+  if (!auth.mustChangePassword) searchOpen.value = true
+}
+onMounted(() => window.addEventListener('keydown', onShortcut))
+onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut))
 
 const creating = ref(false)
 async function createSession() {
@@ -150,6 +158,7 @@ async function onCommand(cmd: string) {
       </main>
     </div>
 
+    <GlobalSearch v-model="searchOpen" @new-session="createSession" />
     <ChangePasswordDialog
       :model-value="pwdVisible"
       :forced="auth.mustChangePassword"
