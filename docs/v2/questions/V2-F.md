@@ -4,7 +4,9 @@
 
 ## 一、需决定
 
-（无）
+| 编号 | 问题 | 建议 | 影响范围 |
+|-|-|-|-|
+| V2Q-185 | F-02 新增 must_keep「Grain Stability」与既有首字母大写规则冲突：en_spec_suspects.txt 第 243 行把多个表头连在同一节点，Dedusting 不在常用词表，使 capitalized 疑似区间覆盖 Grain Stability（也覆盖 Specific Heat）。NER 中置信过滤不能消除该规则疑似 | 请 Opus 补充最小修正规则，或由用户授权把该虚构样本连写表头拆成独立节点；未决定前不改原样本、不放宽标注，F-02 不标完成 | F-02；golden 与后续任务依赖 |
 
 ## 二、已决定
 

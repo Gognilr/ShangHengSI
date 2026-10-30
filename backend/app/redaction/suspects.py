@@ -44,7 +44,7 @@ _GENERIC_INSTITUTION = frozenset({
 # 泛称：整段等于其中之一时不列为疑似遗漏（“本公司”“物流公司”）
 _GENERIC_BEFORE_COMPANY = frozenset({
     "本", "贵", "我", "我方", "该", "对方", "双方", "各", "其", "任何", "子", "分", "母", "总", "关联", "船", "保险", "物流",
-    "货运", "运输", "快递", "航空",
+    "货运", "运输", "快递", "航空", "代理", "代理出口", "出口代理",
 })
 # “公司 / 厂”前紧挨这些泛指词时不列（“仅本公司”“由我公司负责”），不论再往前有多少汉字（R1-07）
 _GENERIC_BEFORE_WORD = ("我方", "对方", "双方", "任何", "本", "贵", "我", "该", "其", "此", "各")
@@ -231,6 +231,18 @@ def lowercase_evidence(text: str) -> frozenset[str]:
         re.findall(r"(?<![A-Za-z])[a-z]+(?:['’][a-z]+)?(?:-[a-z]+)*(?![A-Za-z])", text))
 
 
+def common_english_fragment(text: str, lowercase_words=frozenset()) -> bool:
+    """英文片段的每个词均为常用词或正文小写证据；中文与代码不适用。"""
+    if not re.fullmatch(r"[A-Za-z\s'’.-]+", text):
+        return False
+    tokens = re.findall(r"[A-Za-z]+(?:['’][A-Za-z]+)?(?:-[A-Za-z]+)*", text)
+    known = en_words() | lowercase_words
+    return bool(tokens) and all(
+        t.casefold().removesuffix("'s").removesuffix('’s') in known
+        or all(w in known for w in t.casefold().split('-')) for t in tokens
+    )
+
+
 def _capitalized_candidates(text: str, lowercase_words=frozenset()) -> list[Suspect]:
     excl = _excluder()
     out: list[Suspect] = []
@@ -243,7 +255,7 @@ def _capitalized_candidates(text: str, lowercase_words=frozenset()) -> list[Susp
         if len(words) < 2:
             continue
         tokens = [_word_core(w.group()) for w in words]
-        if all(t.casefold().removesuffix("'s").removesuffix('’s').strip('-') in lowercase_words for t in tokens):
+        if common_english_fragment(' '.join(tokens), lowercase_words):
             continue
         if excl.covered(tokens, extra_words):
             continue

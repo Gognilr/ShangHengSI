@@ -1,0 +1,13 @@
+description: 通用代理与检验角色保留，虚构公司全称仍须替换（V2-F-02）
+stance: sales
+must_replace:
+  - {text: 澄川虚构设备有限公司, category: ORG}
+must_keep:
+  - 代理出口公司
+  - 代理公司
+  - 卖家
+  - 买家
+  - 第三方公证机构
+  - 公证机构
+  - 出口代理公司
+  - 第三方检验机构

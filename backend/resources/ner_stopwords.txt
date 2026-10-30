@@ -71,3 +71,11 @@ reference laboratory
 the reference laboratory
 independent laboratory
 umpire laboratory
+卖家
+买家
+代理公司
+代理出口公司
+出口代理公司
+第三方公证机构
+公证机构
+第三方检验机构

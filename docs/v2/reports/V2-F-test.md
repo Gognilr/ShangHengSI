@@ -6,4 +6,16 @@
 
 解析节点与任务补充说明、追问 preview/send、助手消息入口删除设计指定的六种字符。新增追问用例修复前失败（已知名称没有沿用原代号）。同名 `cases_zero_width.docx` 含原始零宽字符，`.txt/.yaml` 标注归一后的识别结果；容器脚本验证 DOCX 解析、名称映射、助手输入与六种字符清除通过。既有 golden 加载器直接构造 NodeIn，故原始 DOCX 解析另行验证，不修改公共测试加载器。
 
-Docker / Python 3.12，独立 `aireview-f-test-db`（aireview-db:dev，已核实可用 vector 扩展）：`test_chat.py`、`test_redaction_golden.py`、`test_a03_outbound.py` 共 **268 passed、1 既有警告、exit 0**（409.86 秒）。原始 DOCX 的解析与替换也写入同一新增追问用例，单独复跑。
+Docker / Python 3.12，独立 `aireview-f-test-db`（aireview-db:dev，已核实可用 vector 扩展）：`test_chat.py`、`test_redaction_golden.py`、`test_a03_outbound.py` 共 **268 passed、1 既有警告、exit 0**（409.86 秒）。原始 DOCX 的解析与替换也写入同一新增追问用例，单独复跑 **1 passed、exit 0**（27.61 秒）。
+
+## F-02 疑似遗漏减负（进行中）
+
+新增角色与英文术语 golden 标注，修复前两个代表性保留用例均失败。实现后中文角色用例通过；英文保留用例仍失败：第 243 行连写表头 `Range Specific Heat Dedusting Oil Grain Stability HGI Strength Size` 中的未知词使既有 capitalized 规则覆盖全段，违背新增 must_keep。已向用户报告，未放宽标注或擅改原样本。
+
+容器内模拟 NER 结果验证：中置信常用词过滤、高置信自动替换保留、含汉字与虚构名称仍列疑似，均通过。Docker 定向 `test_redaction_golden.py` 与 `test_a03_outbound.py`：**227 passed、1 failed、1 既有警告、exit 1**（311.13 秒）；唯一失败为上述 must_keep，A-03 通过。原有三项 must_suspect 仍通过。日志与退出码：`.codex-tmp/v2f/f02-focused.log`、`f02-focused.exit`，保留在本机忽略目录。
+
+没有修改既有原样本或放宽标注；新增 must_keep 六项与中文角色标注按任务卡加入。共享英文判断按单词检查常用词 / 小写证据，连字符复合词按组成词检查；高置信 NER 分支、签约方和出口复检未改。V2Q-185 待决定，F-02 保持待执行，F-03～05 尚未执行，未跑整仓全量。
+
+## 后续交接
+
+用户已提供两份真实样本本机原路径；F-05 使用，不复制入仓库。用户已批准 F-03 增补 SuspectList.vue（任务卡已由用户侧更新，441c73a），原有逐组替换 / 忽略按钮保留。F-05 须独立候选环境、模拟模型、前端 build、整仓挂载全量一次及用户目视复核；完成后才交 Opus F-06，不提前更新版本或标签。

@@ -676,6 +676,9 @@ def compute(
                                                      lowercase_words=lowercase_words)]
     result.matched_terms = {s.term for s in spans if s.term}
     for suspect in ner_suspects:
+        text = nodes[locs[suspect.loc]].text[suspect.char_start:suspect.char_end]
+        if S.common_english_fragment(text, lowercase_words):
+            continue
         # 同一区间已由规则列疑似时沿用既有原因，模型只补缺口（只增不减）。
         if not any((s.loc, s.char_start, s.char_end) ==
                    (suspect.loc, suspect.char_start, suspect.char_end) for s in result.suspects):

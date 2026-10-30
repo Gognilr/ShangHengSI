@@ -5,6 +5,12 @@ must_replace:
   - {text: Northwind Fictive Trading LLC, category: ORG}
   - {text: Halden Fictive, category: PERSON}
 must_keep:
+  - Bulk Density
+  - Grain Stability
+  - Specific Heat
+  - Supplier Warehouse
+  - Customs Warehouse
+  - Non-Financial Penalty
   - Qingdao
   - CIF
   - FOB
