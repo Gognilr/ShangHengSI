@@ -7,7 +7,7 @@ import { reportApi } from '@/api/report'
 import { tasksApi, type TaskListItem } from '@/api/tasks'
 import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
 import { formatDate, formatDateTime } from '@/utils/time'
-import { Search } from '@element-plus/icons-vue'
+import { Search } from 'lucide-vue-next'
 
 const router = useRouter()
 function fileBadge(name: string) {
@@ -110,7 +110,7 @@ onMounted(load)
   <div class="page page--wide">
     <section class="panel history-table">
     <div class="filters">
-      <el-input v-model="q" :prefix-icon="Search" aria-label="按文件名搜索" clearable placeholder="按文件名搜索" class="q" @keyup.enter="search" @clear="search" />
+      <el-input v-model="q" aria-label="按文件名搜索" clearable placeholder="按文件名搜索" class="q" @keyup.enter="search" @clear="search"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
       <el-date-picker
         v-model="range"
         type="daterange"

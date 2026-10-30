@@ -7,7 +7,7 @@ import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { ROLE_OPTIONS, roleLabel, toOptions, userStatusLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 
 const auth = useAuthStore()
@@ -159,7 +159,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 
 <template>
   <div class="settings-page">
-    <PageHeader title="账号管理" description="新建账号、启停和重置密码；新账号首次登录时须先修改密码"><el-button type="primary" :icon="Plus" @click="openCreate">新增账号</el-button></PageHeader>
+    <PageHeader title="账号管理" description="新建账号、启停和重置密码；新账号首次登录时须先修改密码"><el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新增账号</el-button></PageHeader>
     <el-card shadow="never">
       <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="gap" />
       <el-table v-loading="loading" :data="items" empty-text="暂无账号">
@@ -231,5 +231,6 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 </template>
 
 <style scoped>
+:deep(.el-button .el-icon + span) { margin-left: 6px; }
 .user-name { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 </style>

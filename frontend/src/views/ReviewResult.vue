@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, Refresh, Delete } from '@element-plus/icons-vue'
+import { Download, RotateCw, Trash2 } from 'lucide-vue-next'
 import ResultToolbar from '@/components/ResultToolbar.vue'
 import ResultSummary from '@/components/ResultSummary.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
@@ -207,10 +207,10 @@ const reqVersion = computed(() => {
     <template v-else-if="task">
     <ResultToolbar :task="task" :run="run" :rounds="rounds" :selected-run="selectedRun" :req-version="reqVersion" :warnings="expiryWarnings" :export-reason="exportReason" @select-run="selectedRun = $event; selectRun($event)">
       <ChatPanel :key="task.id" :task-id="task.id" :disabled="deleting" />
-      <el-button :icon="Download" :loading="exporting" :disabled="!!exportReason || deleting" @click="exportReport">导出报告</el-button>
-      <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :icon="Refresh" :disabled="deleting" @click="rerunOpen = true">重新审核</el-button>
+      <el-button :loading="exporting" :disabled="!!exportReason || deleting" @click="exportReport"><template #icon><Download :size="16" :stroke-width="1.75" /></template>导出报告</el-button>
+      <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :disabled="deleting" @click="rerunOpen = true"><template #icon><RotateCw :size="16" :stroke-width="1.75" /></template>重新审核</el-button>
       <span class="action-separator" aria-hidden="true"></span>
-      <el-button link type="danger" :icon="Delete" :loading="deleting" @click="remove">删除任务</el-button>
+      <el-button link type="danger" :loading="deleting" @click="remove"><template #icon><Trash2 :size="16" :stroke-width="1.75" /></template>删除任务</el-button>
     </ResultToolbar>
     <div class="split">
       <div class="left">
@@ -300,6 +300,7 @@ const reqVersion = computed(() => {
 </template>
 
 <style scoped>
+:deep(.el-button .el-icon + span) { margin-left: 6px; }
 .page { height: calc(100vh - 64px); max-height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 0; padding-bottom: 0; }
 .split { display: flex; flex: 1; min-height: 0; gap: 20px; padding: 20px 0; }
 .left { flex: 0 0 clamp(480px, 42%, 640px); min-width: 0; overflow-y: auto; }

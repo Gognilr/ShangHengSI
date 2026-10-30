@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ChatDotRound } from '@element-plus/icons-vue'
+import { MessageSquare } from 'lucide-vue-next'
 import { chatApi, type ChatMessage, type ChatPreview, type ChatDecision } from '@/api/chat'
 import { ApiError } from '@/api/http'
 import { formatDateTime } from '@/utils/time'
@@ -212,7 +212,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 <template>
   <el-tooltip :content="buttonReason" :disabled="!buttonReason" placement="top">
     <span class="chat-trigger">
-      <el-button :icon="ChatDotRound" :disabled="!available || loading || !!error || disabled" @click="show">追问</el-button>
+      <el-button :disabled="!available || loading || !!error || disabled" @click="show"><template #icon><MessageSquare :size="16" :stroke-width="1.75" /></template>追问</el-button>
     </span>
   </el-tooltip>
 
@@ -272,6 +272,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 </template>
 
 <style scoped>
+:deep(.el-button .el-icon + span) { margin-left: 6px; }
 .chat-trigger { display: inline-block; }
 .chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .live-preview { flex-shrink: 0; max-height: 200px; overflow-y: auto; margin-top: 12px; }

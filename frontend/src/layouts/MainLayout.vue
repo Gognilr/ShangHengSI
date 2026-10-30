@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 import SiLogo from '@/components/brand/SiLogo.vue'
-import { Setting } from '@element-plus/icons-vue'
+import { Settings } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -41,7 +41,7 @@ async function onCommand(cmd: string) {
         </el-menu>
         <div class="right">
           <router-link v-if="auth.isAdmin" to="/settings" class="settings-link" :class="{ selected: route.path.startsWith('/settings') }">
-            <el-icon><Setting /></el-icon>设置
+            <el-icon><Settings :size="16" :stroke-width="1.75" /></el-icon>设置
           </router-link>
           <el-dropdown trigger="click" @command="onCommand">
             <span class="user"><span class="avatar">{{ initial }}</span><span class="display-name">{{ displayName }}</span> ▾</span>
@@ -132,7 +132,7 @@ async function onCommand(cmd: string) {
 .settings-link {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 4px 12px;
   border-radius: var(--el-border-radius-base);
   color: var(--el-text-color-regular);

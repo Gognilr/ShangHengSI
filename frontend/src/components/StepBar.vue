@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { Check, Close } from '@element-plus/icons-vue'
+import { Check, X } from 'lucide-vue-next'
 withDefaults(defineProps<{ active: number; status?: 'wait' | 'process' | 'finish' | 'error' | 'success' }>(), { status: 'process' })
 const titles = ['上传与设置', '确认脱敏', '审核中']
 </script>
 <template>
   <ol class="step-bar" aria-label="审核步骤">
     <li v-for="(title, index) in titles" :key="title" :class="{ done: index < active, current: index === active, error: index === active && status === 'error' }" :aria-current="index === active ? 'step' : undefined">
-      <span class="number"><el-icon v-if="index < active"><Check /></el-icon><el-icon v-else-if="index === active && status === 'error'"><Close /></el-icon><span v-else>{{ index + 1 }}</span></span>
+      <span class="number"><el-icon v-if="index < active"><Check :size="16" :stroke-width="1.75" /></el-icon><el-icon v-else-if="index === active && status === 'error'"><X :size="16" :stroke-width="1.75" /></el-icon><span v-else>{{ index + 1 }}</span></span>
       <span>{{ title }}</span>
       <span v-if="index < titles.length - 1" class="connector" aria-hidden="true"></span>
     </li>

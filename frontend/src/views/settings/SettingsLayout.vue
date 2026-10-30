@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { User, Cpu, List, Lock, Coin } from '@element-plus/icons-vue'
+import { User, Cpu, List, Lock, Database } from 'lucide-vue-next'
 
 // 设置页导航与路由一一对应，分页权限由路由角色守卫校验。
 const auth = useAuthStore()
@@ -14,7 +14,7 @@ const tabs = computed(() => [
   { name: 'templates', label: '公司范本', icon: List, scope: 'biz' },
   { name: 'knowledge', label: '知识库', icon: List, scope: 'biz' },
   { name: 'redaction', label: '脱敏', icon: Lock, scope: 'biz' },
-  { name: 'data', label: '数据', icon: Coin, scope: 'sys' },
+  { name: 'data', label: '数据', icon: Database, scope: 'sys' },
 ].filter(tab => tab.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin))
 
 const route = useRoute()
@@ -33,7 +33,7 @@ function onTabChange(name: string | number) {
 <template>
   <div class="page page--wide settings">
     <aside class="panel settings-nav" aria-label="设置导航">
-      <el-menu :default-active="activeTab" @select="onTabChange"><el-menu-item v-for="t in tabs" :key="t.name" :index="t.name"><el-icon><component :is="t.icon" /></el-icon><span>{{ t.label }}</span></el-menu-item></el-menu>
+      <el-menu :default-active="activeTab" @select="onTabChange"><el-menu-item v-for="t in tabs" :key="t.name" :index="t.name"><el-icon><component :is="t.icon" :size="16" :stroke-width="1.75" /></el-icon><span>{{ t.label }}</span></el-menu-item></el-menu>
     </aside>
     <div class="settings-content"><router-view /></div>
   </div>
@@ -50,5 +50,6 @@ function onTabChange(name: string | number) {
 .settings-nav :deep(.el-menu) { border-right: 0; }
 .settings-nav :deep(.el-menu-item) { height: 44px; border-radius: 8px; }
 .settings-nav :deep(.el-menu-item.is-active) { background: var(--el-color-primary-light-9); font-weight: 600; }
+.settings-nav :deep(.el-menu-item .el-icon) { margin-right: 6px; }
 .settings-content { flex: 1; min-width: 0; }
 </style>

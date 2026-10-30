@@ -4,7 +4,7 @@ import { onMounted, ref } from 'vue'
 import { adminRedactionApi, type TermRow } from '@/api/admin'
 import { ApiError } from '@/api/http'
 import { formatDateTime } from '@/utils/time'
-import { Search } from '@element-plus/icons-vue'
+import { Search } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -237,7 +237,7 @@ onMounted(() => {
     <section class="panel">
       <div class="section-heading"><h3 class="first">已记住的名称</h3>
       <div class="filters">
-        <el-input v-model="learnedQuery" clearable placeholder="搜索名称" :prefix-icon="Search" class="learned-query" @keyup.enter="searchLearned" @clear="searchLearned" />
+        <el-input v-model="learnedQuery" clearable placeholder="搜索名称" class="learned-query" @keyup.enter="searchLearned" @clear="searchLearned"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
         <el-button @click="searchLearned">搜索</el-button>
       </div>
       </div>

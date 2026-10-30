@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { UploadFilled } from '@element-plus/icons-vue'
+import { Upload } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -342,7 +342,7 @@ function fileBadge(name: string): string {
           <h2>审核文件</h2>
           <p class="hint">上传商务文件，本地脱敏并经确认后，由 AI 进行初审</p>
           <el-upload drag multiple :auto-upload="false" :show-file-list="false" :accept="ALLOWED_EXTS.map(ext => `.${ext}`).join(',')" @change="onFileChange">
-            <div class="upload-icon"><el-icon :size="28"><UploadFilled /></el-icon></div>
+            <div class="upload-icon"><el-icon :size="16"><Upload :size="16" :stroke-width="1.75" /></el-icon></div>
             <div class="el-upload__text">将文件拖到此处，或 <em>点击选择</em></div>
             <template #tip>
               <div class="format-tags"><el-tag v-for="ext in ALLOWED_EXTS" :key="ext" type="info" size="small" effect="plain">{{ ext.toUpperCase() }}</el-tag></div>

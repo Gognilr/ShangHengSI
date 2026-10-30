@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage, type InputInstance } from 'element-plus'
-import { CopyDocument } from '@element-plus/icons-vue'
+import { Copy } from 'lucide-vue-next'
 import { computed, nextTick, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type HandlingStatus } from '@/api/runs'
@@ -123,7 +123,7 @@ async function copy(text: string) {
     </div>
     <div v-if="finding.suggested_text" class="replacement">
       <span class="label">可直接替换的措辞</span>
-      <el-button link size="small" :icon="CopyDocument" @click.stop="copy(finding.suggested_text)">复制</el-button>
+      <el-button link size="small" @click.stop="copy(finding.suggested_text)"><template #icon><Copy :size="16" :stroke-width="1.75" /></template>复制</el-button>
       <span class="text replace">{{ finding.suggested_text }}</span>
     </div>
     </div>
@@ -155,6 +155,7 @@ async function copy(text: string) {
 </template>
 
 <style scoped>
+:deep(.el-button .el-icon + span) { margin-left: 6px; }
 .card { margin-bottom: 12px; position: relative; transition: border-color 150ms; }
 .card::before { content: ''; position: absolute; left: 0; top: 16px; bottom: 16px; width: 3px; border-top-right-radius: 2px; border-bottom-right-radius: 2px; background: var(--el-color-info); }
 .card.severity-high::before { background: var(--el-color-danger); }

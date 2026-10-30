@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules, InputInstance } from 'element-plus'
-import { Lock, User } from '@element-plus/icons-vue'
+import { Lock, User } from 'lucide-vue-next'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
@@ -84,10 +84,10 @@ async function submit() {
         <p class="subtitle">请使用内部分发的账号登录</p>
         <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="submit">
           <el-form-item label="用户名" prop="username">
-            <el-input ref="usernameRef" v-model="form.username" :prefix-icon="User" aria-label="用户名" autocomplete="username" />
+            <el-input ref="usernameRef" v-model="form.username" aria-label="用户名" autocomplete="username"><template #prefix><User :size="16" :stroke-width="1.75" /></template></el-input>
           </el-form-item>
           <el-form-item label="密码" prop="password">
-            <el-input ref="passwordRef" v-model="form.password" :prefix-icon="Lock" aria-label="密码" type="password" show-password autocomplete="current-password" />
+            <el-input ref="passwordRef" v-model="form.password" aria-label="密码" type="password" show-password autocomplete="current-password"><template #prefix><Lock :size="16" :stroke-width="1.75" /></template></el-input>
           </el-form-item>
           <div class="remember-row"><el-checkbox v-model="remember">记住我</el-checkbox><span class="hint">仅记住用户名</span></div>
           <el-alert v-if="errorText" type="error" :closable="false" show-icon :title="errorText" class="error" />
