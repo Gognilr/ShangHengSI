@@ -61,9 +61,10 @@ async function exportReport() {
   if (!task.value || exporting.value || exportReason.value) return
   exporting.value = true
   try {
-    if (task.value.status === 'completed_local') await reportApi.local(task.value.id)
-    else if (run.value) await reportApi.run(run.value.id)
-    ElMessage.success('报告已下载')
+    let saved = false
+    if (task.value.status === 'completed_local') saved = await reportApi.local(task.value.id)
+    else if (run.value) saved = await reportApi.run(run.value.id)
+    if (!saved) ElMessage.success('报告已下载')
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
   } finally { exporting.value = false }

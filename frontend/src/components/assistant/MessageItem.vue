@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { saveBlob } from '@/utils/save'
 import type { Message } from '@/api/assistant'
 import { assistantApi } from '@/api/assistant'
 import { ApiError } from '@/api/http'
@@ -20,8 +21,7 @@ async function download(format: 'docx' | 'xlsx', variant = 'translation') {
   downloading.value = true; error.value = ''
   try {
     const { blob, filename } = await assistantApi.download(props.sessionId, props.message.id, format, variant)
-    const url = URL.createObjectURL(blob), a = document.createElement('a')
-    a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+    await saveBlob(blob, filename)
   } catch (e) { error.value = e instanceof ApiError ? e.message : '导出失败，请重试' }
   finally { downloading.value = false }
 }

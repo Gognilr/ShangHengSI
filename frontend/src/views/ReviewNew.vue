@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkFolderBar from '@/components/WorkFolderBar.vue'
 import { Upload } from '@lucide/vue'
 import { ElMessage } from 'element-plus'
 import type { UploadFile } from 'element-plus'
@@ -83,9 +84,8 @@ function fileKey(f: File) {
   return `${f.name}|${f.size}|${f.lastModified}`
 }
 
-function onFileChange(uf: UploadFile) {
-  const raw = uf.raw
-  if (!raw) return
+// 拖入、点击选择与从工作文件夹选择走同一段代码，数量与大小检查不变
+function addFile(raw: File) {
   if (files.value.some((f) => fileKey(f) === fileKey(raw))) return
   if (files.value.length >= MAX_FILES) {
     formError.value = `每个任务最多 ${MAX_FILES} 个文件`
@@ -93,6 +93,9 @@ function onFileChange(uf: UploadFile) {
   }
   files.value = [...files.value, raw]
   formError.value = ''
+}
+function onFileChange(uf: UploadFile) {
+  if (uf.raw) addFile(uf.raw)
 }
 
 function removeFile(index: number) {
@@ -341,6 +344,7 @@ function fileBadge(name: string): string {
         <section class="form-group">
           <h2>审核文件</h2>
           <p class="hint">上传商务文件，本地脱敏并经确认后，由 AI 进行初审</p>
+          <WorkFolderBar @add="(list: File[]) => list.forEach(addFile)" />
           <el-upload drag multiple :auto-upload="false" :show-file-list="false" :accept="ALLOWED_EXTS.map(ext => `.${ext}`).join(',')" @change="onFileChange">
             <div class="upload-icon"><Upload :size="24" :stroke-width="1.75" /></div>
             <div class="el-upload__text">将文件拖到此处，或 <em>点击选择</em></div>

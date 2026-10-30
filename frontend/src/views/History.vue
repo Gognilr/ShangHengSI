@@ -33,7 +33,8 @@ async function exportReport(row: TaskListItem) {
   if (exporting.value) return
   exporting.value = row.id
   try {
-    if (row.status === 'completed_local') await reportApi.local(row.id)
+    let saved: boolean
+    if (row.status === 'completed_local') saved = await reportApi.local(row.id)
     else {
       const detail = await tasksApi.get(row.id)
       const latest = detail.latest_run
@@ -41,9 +42,9 @@ async function exportReport(row: TaskListItem) {
         ElMessage.error('最新轮次尚未完成，无法导出，请刷新列表')
         return
       }
-      await reportApi.run(latest.id)
+      saved = await reportApi.run(latest.id)
     }
-    ElMessage.success('报告已下载')
+    if (!saved) ElMessage.success('报告已下载')
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
   } finally { exporting.value = '' }

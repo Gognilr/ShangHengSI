@@ -6,6 +6,7 @@ import type { Stance } from '@/api/tasks'
 import { ApiError } from '@/api/http'
 import { assistantStatusLabel, statusTag } from '@/utils/labels'
 import EmptyState from '@/components/EmptyState.vue'
+import WorkFolderBar from '@/components/WorkFolderBar.vue'
 import { FileText } from '@lucide/vue'
 import ConfirmStep from '@/components/ConfirmStep.vue'
 const props = defineProps<{ session: Session }>()
@@ -32,11 +33,14 @@ async function perform(action: () => Promise<unknown>) {
   catch (e) { error.value = e instanceof ApiError ? e.message : '处理失败，请重试' }
   finally { busy.value = false }
 }
+async function addList(files: File[]) {
+  if (files.length > 5 || files.length + props.session.files.length > 10) { error.value = '每次最多加入 5 个文件，会话合计最多 10 个文件'; return }
+  if (files.length) await perform(() => assistantApi.addFiles(props.session.id, files))
+}
 async function added(event: Event) {
   const input = event.target as HTMLInputElement, files = Array.from(input.files ?? [])
   input.value = ''
-  if (files.length > 5 || files.length + props.session.files.length > 10) { error.value = '每次最多加入 5 个文件，会话合计最多 10 个文件'; return }
-  if (files.length) await perform(() => assistantApi.addFiles(props.session.id, files))
+  await addList(files)
 }
 async function remove(file: SessionFile) {
   try { await ElMessageBox.confirm(`将移除“${file.original_name}”及其解析与脱敏数据，无法恢复。`, '移除文件', { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' }) }
@@ -52,6 +56,7 @@ function confirmed() { confirmOpen.value = false; emit('refresh') }
 <template>
   <aside class="files">
     <div class="file-heading"><h2>文件（{{ session.files.length }}）</h2><el-button size="small" :disabled="!canUpload" :loading="busy" @click="upload?.click()">加入文件</el-button><input ref="upload" class="file-input" type="file" multiple accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png" @change="added"></div>
+    <WorkFolderBar :disabled="!canUpload" @add="addList" />
     <p v-if="!canUpload" class="hint">{{ session.original_deleted ? '原件已按保留期限删除，本会话只能查看' : session.status !== 'active' ? '处理完成后可以继续加入文件' : session.generating ? '回复完成后可以继续加入文件' : '每会话最多 10 个文件' }}</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="session.status === 'parsing'"><h3>正在本机解析文件</h3><el-progress :percentage="100" :indeterminate="true" :show-text="false" /><p class="hint num">已用 {{ elapsed }} 秒</p><p class="hint">在本机读取正文并识别敏感信息，可以离开页面稍后继续。</p></template>

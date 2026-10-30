@@ -42,6 +42,8 @@ http://{$SITE_ADDRESS:localhost} {
 
 	# 前端静态文件（frontend/Dockerfile 构建进镜像的 /srv/frontend）；单页应用，找不到的路径回到 index.html
 	handle {
+		@manifest path *.webmanifest
+		header @manifest Content-Type application/manifest+json
 		root * /srv/frontend
 		try_files {path} /index.html
 		file_server
