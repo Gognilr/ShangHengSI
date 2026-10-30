@@ -55,10 +55,10 @@
 ## 二、疑似遗漏减负规则（V2-F-02，GPT-6.1 Sol，high，测试先行）
 
 1. **NER 中置信结果的常用词过滤**：NER 中置信结果（列为疑似遗漏的那部分）是英文片段、且每个词都在 `en_words()` 或本文件的小写证据（`lowercase_evidence`）中时，不列为疑似遗漏。判断复用 `suspects.py` 中首字母大写规则的同一函数，不另写词表。连字符复合词（Non-Financial）按组成词逐个判断，两条规则一致（V2Q-185）。高置信结果照常自动替换，不加此过滤。含汉字的片段不适用。
-2. **中文通用角色词**：`resources/ner_stopwords.txt` 追加：卖家、买家、代理公司、代理出口公司、出口代理公司、第三方公证机构、公证机构、第三方检验机构；“公司、厂”之前的泛称表（`_GENERIC_BEFORE_COMPANY`）追加“代理、代理出口、出口代理”。
+2. **中文通用角色词**：`resources/ner_stopwords.txt` 追加：卖家、买家、代理公司、代理出口公司、出口代理公司、第三方公证机构、公证机构、第三方检验机构；“公司、厂”之前的泛称表（`_GENERIC_BEFORE_COMPANY`）追加“代理、代理出口、出口代理”。再追加公共机关泛称：海关、海关 HS、海关HS、中国海关（2026-10-30 用户确认：真实样本中“海关 HS 编码：……”的“海关 HS”被 NER 列为疑似；HS 编码本身按 V2Q-39 保留不变）。
 3. **测试**（golden 标注）：
    * `en_spec_suspects.yaml` 的 must\_keep 追加样本中已有的常用词术语：Bulk Density、Supplier Warehouse、Customs Warehouse、Non-Financial Penalty（以样本实际出现的写法为准）；Grain Stability、Specific Heat 不加（样本第 243 行连写表头中含非常用词 Dedusting，首字母大写规则按设计整段列为疑似，见 V2Q-185）；must\_suspect 原有三项（Velmora Refinery、Corvane Technical Office、Hardgrave Machine Method）必须仍然列出。
-   * 新增中文样本 `cases_generic_roles`：“现指定某虚构公司为代理出口公司”“由代理公司承担”“卖家应”“第三方公证机构出具”，must\_keep 这些通用词，must\_replace 其中的虚构公司全称。
+   * 新增中文样本 `cases_generic_roles`：“现指定某虚构公司为代理出口公司”“由代理公司承担”“卖家应”“第三方公证机构出具”“海关 HS 编码：2713129000”，must\_keep 这些通用词与该编码，must\_replace 其中的虚构公司全称。
    * 按设计有意改变的旧标注可以修改，报告中列出。
 
 **文件范围**：`backend/app/redaction/suspects.py`、`backend/app/redaction/engine.py`（只改 NER 中置信结果转疑似处，如需要）、`backend/resources/ner_stopwords.txt`、`backend/tests/fixtures/redaction_golden/`。
