@@ -18,7 +18,7 @@ from app.parsing import ocr
 from app.parsing.docx import manual_clause_no
 from app.parsing.model import LOW_OCR_CONF, MAX_PDF_PAGES, ParsedFile, ParsedNode, ParseError
 
-PARSER_VERSION = "pdf-2"
+PARSER_VERSION = "pdf-1"
 TEXT_PAGE_MIN_CHARS = 20  # SPEC 8.5，去掉空白后的字符数
 
 MSG_CORRUPT = "PDF 文件无法读取，可能已损坏或已加密"
