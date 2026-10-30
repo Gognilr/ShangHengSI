@@ -26,6 +26,12 @@ Docker / Python 3.12，独立 `aireview-f-test-db`（aireview-db:dev，已核实
 
 Docker 代表性用例 **1 passed、55 deselected、exit 0**（26.40 秒），覆盖成功及混入他人任务 ID 时整批 404、无变化。前端 `vue-tsc` / build exit 0，既有 chunk 体积提示。新代码无十六进制颜色、v-html、console 或禁用措辞；浏览器四尺寸与状态检查放在 F-05 集中执行。未新增测试函数矩阵。
 
+## F-04 PDF 图文混排页
+
+生成两页虚构 `fixtures/pdf/mixed_same_page.pdf`；旧代码实测 **2 页、3 节点、OCR 0 页，第 1 页图片正文缺失**，符合任务卡前置条件。两页均渲染并目视核对，未裁切、重叠。新解析器按图片覆盖并集 ≥ 50% 且可提取文字 < 200 字补做 OCR，先按 bbox 去掉已有文字行，再排除重叠块并追加 OCR 节点；位置编号不重复，普通文字页保持文字节点。inspect_pdf 同步计入混排页，使既有任务 OCR 页数预检 / 互斥生效，parser_version 更新为 pdf-2。
+
+`test_parse_pdf.py`：**22 passed、1 既有警告、exit 0**（10.84 秒），含一个新增代表性用例：图片正文进入 OCR 节点、页眉不重复、警告存在、页数 / 编号连续。首轮有一处推导式语法错误，在收集阶段失败，已改为普通循环；日志保留 `f04-focused.log`，最终为 `f04-focused-final.log/.exit`。未新增依赖或下载文件。
+
 ## 后续交接
 
 用户已提供两份真实样本本机原路径；F-05 使用，不复制入仓库。用户已批准 F-03 增补 SuspectList.vue（任务卡已由用户侧更新，441c73a），原有逐组替换 / 忽略按钮保留。F-05 须独立候选环境、模拟模型、前端 build、整仓挂载全量一次及用户目视复核；完成后才交 Opus F-06，不提前更新版本或标签。

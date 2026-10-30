@@ -153,6 +153,20 @@ def test_mixed_pdf_text_and_scanned():
         assert norm(kw) in _page_text(parsed, 2), kw
 
 
+def test_f04_same_page_mixed_image_body():
+    data = (FIXTURES / "mixed_same_page.pdf").read_bytes()
+    assert inspect_pdf(data).scanned_pages == [1]  # 混排页也占任务 OCR 预算
+    parsed = parse_pdf(data, 1)
+    assert parsed.page_count == 2 and parsed.ocr_pages == 1
+    assert "第 1 页为图文混排，已对图片部分做 OCR" in parsed.warnings
+    page1 = [n for n in parsed.nodes if n.page == 1]
+    assert any(n.kind == 'ocr_block' and 'FICTIONALIMAGEBODY' in norm(n.text) for n in page1)
+    assert sum('FICTIVEMIXEDPAGEHEADER' in norm(n.text) for n in page1) == 1
+    assert all(n.kind == 'paragraph' for n in parsed.nodes if n.page == 2)
+    assert len({n.loc for n in parsed.nodes}) == len(parsed.nodes)
+    assert [n.ord for n in parsed.nodes] == list(range(1, len(parsed.nodes) + 1))
+
+
 def test_scanned_coordinates_and_empty_page_warning(monkeypatch):
     from app.parsing import ocr as ocr_mod
 

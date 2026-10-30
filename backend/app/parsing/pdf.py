@@ -18,7 +18,7 @@ from app.parsing import ocr
 from app.parsing.docx import manual_clause_no
 from app.parsing.model import LOW_OCR_CONF, MAX_PDF_PAGES, ParsedFile, ParsedNode, ParseError
 
-PARSER_VERSION = "pdf-1"
+PARSER_VERSION = "pdf-2"
 TEXT_PAGE_MIN_CHARS = 20  # SPEC 8.5，去掉空白后的字符数
 
 MSG_CORRUPT = "PDF 文件无法读取，可能已损坏或已加密"
@@ -66,11 +66,34 @@ def _is_scanned(page) -> bool:
     return len(_WS.sub("", page.extract_text() or "")) < TEXT_PAGE_MIN_CHARS
 
 
+def _is_mixed(page) -> bool:
+    if len(_WS.sub("", page.extract_text() or "")) >= 200:
+        return False
+    # 图片先裁到页面，再按横向条带求并集面积，重叠图片不重复计数。
+    boxes = [(max(0, im['x0']), max(0, im['top']), min(page.width, im['x1']),
+              min(page.height, im['bottom'])) for im in page.images]
+    boxes = [b for b in boxes if b[0] < b[2] and b[1] < b[3]]
+    xs = sorted({x for b in boxes for x in (b[0], b[2])})
+    area = 0.0
+    for left, right in zip(xs, xs[1:]):
+        intervals = sorted((b[1], b[3]) for b in boxes if b[0] < right and b[2] > left)
+        covered, end = 0.0, 0.0
+        for top, bottom in intervals:
+            covered += max(0, bottom - max(top, end))
+            end = max(end, bottom)
+        area += (right - left) * covered
+    return area >= page.width * page.height * 0.5
+
+
 def inspect_pdf(data: bytes) -> PdfInfo:
     """页数与需要 OCR 的页码。"""
     with _open(data) as pdf:
         try:
-            scanned = [i for i, p in enumerate(pdf.pages, start=1) if _is_scanned(_dedupe(p))]
+            scanned = []
+            for i, raw in enumerate(pdf.pages, start=1):
+                page = _dedupe(raw)
+                if _is_scanned(page) or _is_mixed(page):
+                    scanned.append(i)
         except ParseError:
             raise
         except Exception:  # noqa: BLE001
@@ -167,9 +190,20 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
     lines = ocr.recognize(img)
     for ln in lines:  # 像素 → PDF 点
         ln.bbox = [v / scale for v in ln.bbox]
+    existing = [n for n in nodes if n.page == page_no]
+    boxes = [n.bbox for n in existing if n.bbox]
+
+    def overlaps(bbox):
+        return any(bbox[0] < b[2] and bbox[2] > b[0] and bbox[1] < b[3] and bbox[3] > b[1] for b in boxes)
+
+    # 合并前先去掉已有文字的 OCR 行，避免页眉与紧邻的图片正文合并后整块被丢弃。
+    lines = [ln for ln in lines if not overlaps(ln.bbox)]
+    first_no = max((int(n.loc.rsplit('-B', 1)[1]) for n in existing if re.search(r'-B\d+$', n.loc)), default=0) + 1
     confs: list[float] = []
-    for no, block in enumerate(ocr.merge_lines(lines), start=1):
+    for no, block in enumerate(ocr.merge_lines(lines), start=first_no):
         text, bbox, conf = ocr.block_of(block)
+        if overlaps(bbox):
+            continue
         confs.append(conf)
         nodes.append(
             ParsedNode(
@@ -183,6 +217,7 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
 def parse_pdf(data: bytes, file_seq: int) -> ParsedFile:
     nodes: list[ParsedNode] = []
     scanned: list[int] = []
+    mixed: list[int] = []
     low_conf: list[int] = []
     empty: list[int] = []
     started = time.monotonic()
@@ -192,14 +227,16 @@ def parse_pdf(data: bytes, file_seq: int) -> ParsedFile:
         try:
             for page_no, raw in enumerate(pdf.pages, start=1):
                 page = _dedupe(raw)
-                if not _is_scanned(page):
+                is_scanned = _is_scanned(page)
+                if not is_scanned:
                     _parse_text_page(page, page_no, file_seq, nodes)
-                    continue
+                    if not _is_mixed(page):
+                        continue
                 if pdfium_doc is None:
                     import pypdfium2
 
                     pdfium_doc = pypdfium2.PdfDocument(data)
-                scanned.append(page_no)
+                (scanned if is_scanned else mixed).append(page_no)
                 confs = _parse_scanned_page(pdfium_doc, page_no, file_seq, nodes)
                 if not confs:
                     empty.append(page_no)
@@ -212,18 +249,20 @@ def parse_pdf(data: bytes, file_seq: int) -> ParsedFile:
         finally:
             if pdfium_doc is not None:
                 pdfium_doc.close()
-    if scanned:
-        log.info("pdf ocr: pages=%d blocks=%d elapsed=%.1fs", len(scanned), len(nodes), time.monotonic() - started)
+    if scanned or mixed:
+        log.info("pdf ocr: pages=%d blocks=%d elapsed=%.1fs", len(scanned) + len(mixed), len(nodes), time.monotonic() - started)
     if not nodes:
         raise ParseError(MSG_NO_TEXT)
 
     warnings: list[str] = []
     if scanned:
         warnings.append(f"第 {'、'.join(str(p) for p in scanned)} 页为扫描页，已用 OCR 识别")
+    for p in mixed:
+        warnings.append(f"第 {p} 页为图文混排，已对图片部分做 OCR")
     for p in low_conf[:MAX_LOW_CONF_PAGES]:
         warnings.append(f"第 {p} 页 OCR 识别置信度低，请核对原件")
     if len(low_conf) > MAX_LOW_CONF_PAGES:
         warnings.append(f"等 {len(low_conf) - MAX_LOW_CONF_PAGES} 页 OCR 识别置信度低，请核对原件")
     for p in empty:
         warnings.append(f"第 {p} 页未识别到文字")
-    return ParsedFile(nodes=nodes, page_count=page_count, has_revisions=False, warnings=warnings, ocr_pages=len(scanned))
+    return ParsedFile(nodes=nodes, page_count=page_count, has_revisions=False, warnings=warnings, ocr_pages=len(scanned) + len(mixed))
