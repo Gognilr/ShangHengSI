@@ -7,7 +7,12 @@ from sqlalchemy import select
 
 from app.db.models import LlmCall
 from app.llm import gateway
-from tests.review_support import env  # noqa: F401
+from tests.test_v3_models import models
+
+
+@pytest.fixture
+def env(models):
+    return models
 
 
 class Events(httpx.SyncByteStream):
@@ -38,10 +43,11 @@ def test_stream_sent_usage_and_forced_flags(env, db_sessionmaker, monkeypatch):
     requests = transport(monkeypatch)
     seen = []
     with db_sessionmaker() as db:
-        result = gateway.stream_model(db, purpose="assist", messages=[{"role": "user", "content": "普通问题"}],
+        result = gateway.stream_model(db, model_id=1, purpose="assist", messages=[{"role": "user", "content": "普通问题"}],
                                       on_delta=lambda text: seen.append(text))
         row = db.scalar(select(LlmCall))
         assert (row.purpose, row.status, row.response_text, row.tokens_in, row.tokens_out) == ("assist", "sent", "你好世界", 12, 7)
+        assert row.model_id == 1
         assert result.content == "你好世界" and seen == ["你好", "世界"]
     body = json.loads(requests[0].content)
     assert body["stream"] is True and body["stream_options"] == {"include_usage": True}
@@ -51,7 +57,7 @@ def test_stream_sent_usage_and_forced_flags(env, db_sessionmaker, monkeypatch):
 def test_t49_7_stop_records_received_part(env, db_sessionmaker, monkeypatch):
     requests = transport(monkeypatch, ("第一段", "不应继续"))
     with db_sessionmaker() as db:
-        result = gateway.stream_model(db, purpose="assist", messages=[{"role": "user", "content": "问题"}],
+        result = gateway.stream_model(db, model_id=1, purpose="assist", messages=[{"role": "user", "content": "问题"}],
                                       on_delta=lambda text: False)
         row = db.scalar(select(LlmCall))
         assert result.content == row.response_text == "第一段" and row.status == "sent"
@@ -65,7 +71,7 @@ def test_t49_9_partial_failure_no_retry(env, db_sessionmaker, monkeypatch, error
     seen = []
     with db_sessionmaker() as db:
         with pytest.raises(gateway.GatewayError) as caught:
-            gateway.stream_model(db, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=seen.append)
+            gateway.stream_model(db, model_id=1, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=seen.append)
         assert caught.value.code == code
         row = db.scalar(select(LlmCall))
         assert row.status == "error" and row.response_text == "已生成部分"
@@ -77,7 +83,7 @@ def test_t49_8_blocked_before_transport(env, db_sessionmaker, monkeypatch):
     requests = transport(monkeypatch)
     with db_sessionmaker() as db:
         with pytest.raises(gateway.GatewayError) as caught:
-            gateway.stream_model(db, purpose="assist", messages=[{"role": "user", "content": "电话：13800138001"}],
+            gateway.stream_model(db, model_id=1, purpose="assist", messages=[{"role": "user", "content": "电话：13800138001"}],
                                  on_delta=lambda text: None)
         assert caught.value.code == "BLOCKED"
         row = db.scalar(select(LlmCall))
@@ -89,7 +95,7 @@ def test_bad_response_and_total_time_limit(env, db_sessionmaker, monkeypatch):
     monkeypatch.setattr(gateway, "TRANSPORT", httpx.MockTransport(lambda request: httpx.Response(200, content=b'data: invalid\n\n')))
     with db_sessionmaker() as db:
         with pytest.raises(gateway.GatewayError) as caught:
-            gateway.stream_model(db, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=lambda text: None)
+            gateway.stream_model(db, model_id=1, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=lambda text: None)
         assert caught.value.code == "BAD_RESPONSE"
 
 
@@ -101,7 +107,7 @@ def test_stream_total_deadline_with_keepalive(env, db_sessionmaker, monkeypatch)
         httpx.Response(200, content=b": keepalive\n" * 10)))
     with db_sessionmaker() as db:
         with pytest.raises(gateway.GatewayError) as caught:
-            gateway.stream_model(db, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=lambda text: None)
+            gateway.stream_model(db, model_id=1, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=lambda text: None)
         assert caught.value.code == "TIMEOUT"
         assert db.scalar(select(LlmCall.status)) == "error"
 
@@ -123,7 +129,7 @@ def test_total_deadline_closes_blocked_read_and_keeps_partial(env, db_sessionmak
     monkeypatch.setattr(gateway, "TRANSPORT", httpx.MockTransport(lambda request: httpx.Response(200, stream=Blocking())))
     with db_sessionmaker() as db:
         with pytest.raises(gateway.GatewayError) as caught:
-            gateway.stream_model(db, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=lambda text: None)
+            gateway.stream_model(db, model_id=1, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=lambda text: None)
         assert caught.value.code == "TIMEOUT"
         row = db.scalar(select(LlmCall))
         assert row.status == "error" and row.response_text == "partial"
@@ -134,11 +140,12 @@ def test_remaining_call_query_counts_assist(env, db_sessionmaker, make_user):
     from app.llm.usage import remaining_calls
     user = make_user("remaining_assist")
     with db_sessionmaker() as db:
-        set_setting(db, "model.monthly_call_cap", 5, None)
+        from app.db.models import LlmModel
+        db.get(LlmModel, 1).monthly_call_cap = 5
         set_setting(db, "model.user_daily_cap", 2, None)
-        db.add(LlmCall(user_id=user.id, purpose="assist", model_name="mock", status="sent"))
+        db.add(LlmCall(model_id=1, user_id=user.id, purpose="assist", model_name="mock", status="sent"))
         db.commit()
-        assert remaining_calls(db, user.id) == {"monthly": 4, "daily": 1}
+        assert remaining_calls(db, user.id, 1) == {"monthly": 4, "daily": 1}
 
 
 def test_inter_delta_timeout_keeps_first_delta(env, db_sessionmaker, monkeypatch):
@@ -148,7 +155,7 @@ def test_inter_delta_timeout_keeps_first_delta(env, db_sessionmaker, monkeypatch
     transport(monkeypatch, ("first", "second"))
     with db_sessionmaker() as db:
         with pytest.raises(gateway.GatewayError) as caught:
-            gateway.stream_model(db, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=lambda text: None)
+            gateway.stream_model(db, model_id=1, purpose="assist", messages=[{"role": "user", "content": "问题"}], on_delta=lambda text: None)
         assert caught.value.code == "TIMEOUT"
         row = db.scalar(select(LlmCall))
         assert row.status == "error" and row.response_text == "first"

@@ -1,7 +1,7 @@
 """系统设置的读写（SPEC 15、18.20）。
 
 settings 表一个键一行，值为 JSON；表中没有的键返回 18.20 的默认值。
-API 密钥以 crypto.encrypt_to_b64 加密后存于 model.api_key_enc，任何时候都不以明文写入数据库或日志。
+模型连接与密钥保存在 llm_models，本表只留默认模型与跨模型个人上限。
 本模块的写函数不提交事务，由调用方提交。
 """
 import copy
@@ -21,18 +21,8 @@ DEFAULTS: dict[str, Any] = {
     "lawsync.interval": "monthly",
     "lawsync.last_run_at": None,
     "lawsync.last_status": None,
-    "model.base_url": "",
-    "model.api_key_enc": "",
-    "model.name": "",
-    "model.temperature": 0.1,
-    "model.max_tokens": 32000,
-    "model.timeout_s": 180,
-    "model.json_mode": True,
-    "model.extra_params": {},
-    "model.chunk_chars": 60000,
-    "model.price_in_per_m": 0,
-    "model.price_out_per_m": 0,
-    "model.monthly_call_cap": 0,
+    "model.default_review_id": None,
+    "model.default_assist_id": None,
     "model.user_daily_cap": 0,
     "redaction.mask_quantity": False,
     "review.company_profile": "",

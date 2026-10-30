@@ -14,11 +14,37 @@ from app import cli
 from app.admin import settings_store
 from app.config import get_settings
 from app.db import session as db_session_module
-from app.db.models import LlmCall, RedactionMap, Task
+from app.db.models import LlmCall, LlmModel, RedactionMap, Task
 from app.llm import gateway, usage
-from app.llm.gateway import GatewayError, call_model, test_connection
+from app.llm.gateway import GatewayError
 from app.security import crypto
 from tests.mock_llm import build_content, mock_transport
+
+def call_model(db, **kwargs):
+    return gateway.call_model(db, model_id=db.scalar(select(LlmModel.id)), **kwargs)
+
+
+def test_connection(db, user_id):
+    return gateway.test_config(db, gateway.load_model(db, db.scalar(select(LlmModel.id))), user_id, structured=False)
+
+
+test_connection.__test__ = False
+
+
+def configure(db, key, value, user_id=None):
+    """旧网关断言使用新配置表；个人上限仍为跨模型设置。"""
+    if key in settings_store.DEFAULTS:
+        return settings_store.set_setting(db, key, value, user_id)
+    model = db.scalar(select(LlmModel))
+    name = key.removeprefix("model.")
+    if name == "name":
+        name = "model_name"
+    if name == "api_key_enc":
+        import base64
+        value = base64.b64decode(value)
+    setattr(model, name, value)
+    db.flush()
+
 
 API_KEY = "sk-test-0123456789SECRETKEY"
 BASE_URL = "https://llm.example.test/v1"
@@ -37,10 +63,9 @@ def gw(tmp_path, monkeypatch, pg_url, db_engine, db_sessionmaker):
     sleeps: list[float] = []
     monkeypatch.setattr(gateway.time, "sleep", sleeps.append)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.base_url", BASE_URL, None)
-        settings_store.set_setting(db, "model.name", "mock-model", None)
-        settings_store.set_setting(db, "model.api_key_enc", crypto.encrypt_to_b64(API_KEY), None)
-        settings_store.set_setting(db, "model.extra_params", {"thinking": {"type": "disabled"}}, None)
+        db.add(LlmModel(display_name="网关测试", base_url=BASE_URL, model_name="mock-model",
+                        api_key_enc=crypto.encrypt_text(API_KEY), for_review=True, for_assist=True,
+                        extra_params={"thinking": {"type": "disabled"}}))
         db.commit()
     yield sleeps
     db_session_module.get_engine().dispose()
@@ -95,9 +120,9 @@ def test_send_records_call(gw, db_sessionmaker, make_user, monkeypatch):
 def test_extra_params_merge_and_json_mode(gw, db_sessionmaker, monkeypatch):
     requests = use(monkeypatch)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.extra_params",
+        configure(db, "model.extra_params",
                                    {"temperature": 0.7, "messages": [{"role": "user", "content": "替换"}], "top_p": 0.9}, None)
-        settings_store.set_setting(db, "model.json_mode", False, None)
+        configure(db, "model.json_mode", False, None)
         db.commit()
         call_model(db, purpose="chat", messages=REVIEW_MESSAGES)
         call_model(db, purpose="chat", messages=REVIEW_MESSAGES, json_mode=True)
@@ -107,23 +132,23 @@ def test_extra_params_merge_and_json_mode(gw, db_sessionmaker, monkeypatch):
     assert "response_format" not in first and second["response_format"] == {"type": "json_object"}
 
 
-def test_not_configured(gw, db_sessionmaker, monkeypatch):
+def test_disabled_model(gw, db_sessionmaker, monkeypatch):
     requests = use(monkeypatch)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.api_key_enc", "", None)
+        db.scalar(select(LlmModel)).enabled = False
         db.commit()
         with pytest.raises(GatewayError) as exc:
             call_model(db, purpose="review", messages=REVIEW_MESSAGES)
-        assert exc.value.code == "NOT_CONFIGURED" and calls(db) == [] and requests == []
+        assert exc.value.code == "MODEL_UNAVAILABLE" and calls(db) == [] and requests == []
 
 
 def test_monthly_cap_checked_first(gw, db_sessionmaker, monkeypatch):
     requests = use(monkeypatch)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.monthly_call_cap", 2, None)
-        db.add_all([LlmCall(purpose="review", model_name="m", status="sent"),
-                    LlmCall(purpose="review", model_name="m", status="error"),
-                    LlmCall(purpose="review", model_name="m", status="sent",
+        configure(db, "model.monthly_call_cap", 2, None)
+        db.add_all([LlmCall(model_id=1, purpose="review", model_name="m", status="sent"),
+                    LlmCall(model_id=1, purpose="review", model_name="m", status="error"),
+                    LlmCall(model_id=1, purpose="review", model_name="m", status="sent",
                             created_at=datetime(2020, 1, 1, tzinfo=timezone.utc))])  # 往月不计
         db.commit()
         call_model(db, purpose="review", messages=REVIEW_MESSAGES)  # 本月第 2 次
@@ -133,7 +158,7 @@ def test_monthly_cap_checked_first(gw, db_sessionmaker, monkeypatch):
             call_model(db, purpose="review", messages=leaky)
         assert exc.value.code == "CAP_REACHED" and str(exc.value) == "已达本月调用上限，请联系管理员"
         assert len(requests) == 1 and [c.status for c in calls(db)][-1] == "sent"
-        settings_store.set_setting(db, "model.monthly_call_cap", 0, None)  # 0 表示不限
+        configure(db, "model.monthly_call_cap", 0, None)  # 0 表示不限
         db.commit()
         call_model(db, purpose="review", messages=REVIEW_MESSAGES)
         assert len(requests) == 2
@@ -147,9 +172,9 @@ def test_v2c04_personal_cap_gateway(gw, db_sessionmaker, make_user, monkeypatch,
     owner = make_user("daily")
     requests = use(monkeypatch)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.user_daily_cap", 0 if scenario == "unlimited" else 2, None)
+        configure(db, "model.user_daily_cap", 0 if scenario == "unlimited" else 2, None)
         for _ in range(5 if scenario == "yesterday" else 2):
-            db.add(LlmCall(user_id=owner.id, purpose="review", status="sent", model_name="mock",
+            db.add(LlmCall(model_id=1, user_id=owner.id, purpose="review", status="sent", model_name="mock",
                            created_at=now-timedelta(days=1) if scenario == "yesterday" else now))
         db.commit()
         before = len(calls(db))
@@ -163,22 +188,24 @@ def test_v2c04_personal_cap_gateway(gw, db_sessionmaker, make_user, monkeypatch,
             assert len(calls(db)) == before+1 and len(requests) == 1
 
 
-def test_v2c04_shanghai_day_boundary_and_zero_skip(gw, db_sessionmaker, make_user, monkeypatch):
+def test_v2c04_shanghai_day_boundary_and_zero_cap(gw, db_sessionmaker, make_user, monkeypatch):
     from datetime import timedelta
     now = datetime(2026, 10, 26, 16, 1, tzinfo=timezone.utc)  # 上海 27 日 00:01
     midnight = now.replace(hour=16, minute=0)
     monkeypatch.setattr(usage, "utcnow", lambda: now)
     user = make_user("boundary")
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.user_daily_cap", 1, None)
-        db.add(LlmCall(user_id=user.id, purpose="review", status="sent", model_name="mock", created_at=midnight-timedelta(seconds=1)))
+        configure(db, "model.user_daily_cap", 1, None)
+        db.add(LlmCall(model_id=1, user_id=user.id, purpose="review", status="sent", model_name="mock", created_at=midnight-timedelta(seconds=1)))
         db.commit()
-        assert usage.cap_reached(db, user.id, "review") is None
-        db.add(LlmCall(user_id=user.id, purpose="review", status="sent", model_name="mock", created_at=midnight))
+        assert usage.cap_reached(db, user.id, "review", 1) is None
+        db.add(LlmCall(model_id=1, user_id=user.id, purpose="review", status="sent", model_name="mock", created_at=midnight))
         db.commit()
-        assert usage.cap_reached(db, user.id, "review") == "USER_CAP_REACHED"
-    monkeypatch.setattr(usage, "get_setting", lambda db, key: 0)
-    assert usage.cap_reached(object(), user.id, "review") is None  # 零上限不触发数据库计数
+        assert usage.cap_reached(db, user.id, "review", 1) == "USER_CAP_REACHED"
+        configure(db, "model.user_daily_cap", 0)
+        db.commit()
+        assert usage.cap_reached(db, user.id, "review", 1) is None
+
 
 
 def test_t07_blocked_not_sent_and_record_has_no_real_value(gw, db_sessionmaker, make_user, monkeypatch, caplog):
@@ -334,41 +361,34 @@ def test_connection_sends_fixed_message(gw, db_sessionmaker, make_user, monkeypa
 
 def test_settings_defaults_and_unknown_keys(gw, db_sessionmaker):
     with db_sessionmaker() as db:
-        assert settings_store.get_setting(db, "model.max_tokens") == 32000
-        assert settings_store.get_setting(db, "model.json_mode") is True
+        assert settings_store.get_setting(db, "model.default_review_id") is None
         assert settings_store.get_setting(db, "review.company_profile") == ""
-        d = settings_store.get_setting(db, "model.chunk_chars")
-        assert d == 60000
+        assert gateway.load_model(db, 1).chunk_chars == 60000
         with pytest.raises(KeyError):
-            settings_store.get_setting(db, "model.unknown")
+            settings_store.get_setting(db, "model.max_tokens")
         with pytest.raises(KeyError):
             settings_store.set_setting(db, "nope", 1, None)
-        settings_store.set_setting(db, "model.max_tokens", 4000, None)
-        db.commit()
-        assert settings_store.get_setting(db, "model.max_tokens") == 4000
-        assert settings_store.get_settings_map(db, "model.")["name"] == "mock-model"
-        assert settings_store.DEFAULTS["model.extra_params"] == {}  # 默认值不被修改
 
 
 def test_monthly_usage_shanghai_month_and_cost(gw, db_sessionmaker):
     now = datetime(2026, 10, 15, 4, 0, tzinfo=timezone.utc)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.price_in_per_m", 2, None)
-        settings_store.set_setting(db, "model.price_out_per_m", 8, None)
+        configure(db, "model.price_in_per_m", 2, None)
+        configure(db, "model.price_out_per_m", 8, None)
         db.add_all([
             # 9 月 30 日 17:00 UTC = 上海 10 月 1 日 01:00，计入 10 月
-            LlmCall(purpose="review", model_name="m", status="sent", tokens_in=1_000_000, tokens_out=125_001,
+            LlmCall(model_id=1, purpose="review", model_name="m", status="sent", tokens_in=1_000_000, tokens_out=125_001,
                     created_at=datetime(2026, 9, 30, 17, 0, tzinfo=timezone.utc)),
             # 9 月 30 日 15:00 UTC = 上海 9 月 30 日 23:00，不计
-            LlmCall(purpose="review", model_name="m", status="sent", tokens_in=5, tokens_out=5,
+            LlmCall(model_id=1, purpose="review", model_name="m", status="sent", tokens_in=5, tokens_out=5,
                     created_at=datetime(2026, 9, 30, 15, 0, tzinfo=timezone.utc)),
-            LlmCall(purpose="review", model_name="m", status="error", tokens_in=7, tokens_out=7,
+            LlmCall(model_id=1, purpose="review", model_name="m", status="error", tokens_in=7, tokens_out=7,
                     created_at=datetime(2026, 10, 2, tzinfo=timezone.utc)),
-            LlmCall(purpose="review", model_name="m", status="blocked",
+            LlmCall(model_id=1, purpose="review", model_name="m", status="blocked",
                     created_at=datetime(2026, 10, 2, tzinfo=timezone.utc)),
         ])
         db.commit()
-        u = usage.monthly_usage(db, now)
+        u = usage.monthly_usage(db, now=now)
     # 费用 = 1,000,000×2/1e6 + 125,001×8/1e6 = 2 + 1.000008 → 3.00（四舍五入两位）
     assert u == {"calls": 1, "tokens_in": 1_000_000, "tokens_out": 125_001, "cost": Decimal("3.00")}
     assert usage.month_start(now).isoformat() == "2026-10-01T00:00:00+08:00"

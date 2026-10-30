@@ -1,6 +1,6 @@
 """模型网关 —— 全系统唯一可以访问外网的模块（SPEC 5、11.1、11.7、17.4，设计 docs/design/M2.md 第七节）。
 
-call_model() 依次执行：读取设置 → 每月调用上限检查 → 出口复检 → 发送（失败重试 2 次；追问不重试）→ 每次尝试写一条 llm_calls。
+call_model() 依次执行：读取模型 → 调用上限检查 → 出口复检 → 发送（失败重试 2 次；追问不重试）→ 每次尝试写一条 llm_calls。
 - 出口复检对全部 messages 的 content 拼接后检查（9.8）；拦截时写一条 status=blocked、request_text 为空、
   block_reason 只含类别和位置的记录，然后抛出 GatewayError("BLOCKED")，不发送。
 - 请求体：model、messages、temperature、max_tokens，json_mode 开启时加 response_format，再合并附加请求参数。
@@ -15,12 +15,12 @@ import time
 import threading
 import uuid
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 import httpx
 from sqlalchemy.orm import Session
 
-from app.admin.settings_store import get_settings_map
-from app.db.models import LlmCall
+from app.db.models import LlmCall, LlmModel
 from app.llm import usage
 from app.redaction.recheck import BlockReason, recheck, recheck_context
 from app.security import crypto
@@ -35,6 +35,7 @@ _RETRYABLE_STATUS = {408, 409, 425, 429}
 TEST_MESSAGE = "这是一条连接测试消息，不含任何业务数据。请只回复：OK"
 
 MESSAGES = {
+    "MODEL_UNAVAILABLE": "所选模型已停用，请换一个模型",
     "NOT_CONFIGURED": "模型尚未配置，请联系管理员",
     "CAP_REACHED": "已达本月调用上限，请联系管理员",
     "USER_CAP_REACHED": "已达今日个人调用上限，请明天再试或联系管理员",
@@ -77,16 +78,22 @@ class _Config:
     json_mode: bool
     extra_params: dict = field(default_factory=dict)
     monthly_call_cap: int = 0
+    id: int | None = None
+    chunk_chars: int = 60000
+    price_in_per_m: Decimal = Decimal("0")
+    price_out_per_m: Decimal = Decimal("0")
 
 
-def _load_config(db: Session) -> _Config:
-    s = get_settings_map(db, "model.")
-    api_key = crypto.decrypt_from_b64(s["api_key_enc"]) if s["api_key_enc"] else ""
-    extra = s["extra_params"] if isinstance(s["extra_params"], dict) else {}
+def load_model(db: Session, model_id: int) -> _Config:
+    model = db.get(LlmModel, model_id)
+    if model is None or not model.enabled:
+        raise GatewayError("MODEL_UNAVAILABLE")
     return _Config(
-        base_url=str(s["base_url"]).strip(), api_key=api_key, name=str(s["name"]).strip(),
-        temperature=float(s["temperature"]), max_tokens=int(s["max_tokens"]), timeout_s=float(s["timeout_s"]),
-        json_mode=bool(s["json_mode"]), extra_params=extra, monthly_call_cap=int(s["monthly_call_cap"] or 0),
+        id=model.id, base_url=model.base_url.strip(), api_key=crypto.decrypt_text(model.api_key_enc),
+        name=model.model_name.strip(), temperature=float(model.temperature), max_tokens=model.max_tokens,
+        timeout_s=model.timeout_s, json_mode=model.json_mode, extra_params=model.extra_params,
+        monthly_call_cap=model.monthly_call_cap, chunk_chars=model.chunk_chars,
+        price_in_per_m=model.price_in_per_m, price_out_per_m=model.price_out_per_m,
     )
 
 
@@ -146,9 +153,20 @@ def _parse_response(resp: httpx.Response) -> tuple[str, int, int]:
     return content, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
 
 
-def call_model(
+def call_model(db: Session, *, model_id: int, purpose: str, messages: list[dict],
+               user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
+               task_title: str | None = None, run_id: uuid.UUID | None = None,
+               json_mode: bool | None = None, timeout_s: float | None = None,
+               retry: bool = True, extra_task_ids=()) -> ModelResult:
+    return _call_config(db, cfg=load_model(db, model_id), purpose=purpose, messages=messages,
+                        user_id=user_id, task_id=task_id, task_title=task_title, run_id=run_id,
+                        json_mode=json_mode, timeout_s=timeout_s, retry=retry, extra_task_ids=extra_task_ids)
+
+
+def _call_config(
     db: Session,
     *,
+    cfg: _Config,
     purpose: str,
     messages: list[dict],
     user_id: uuid.UUID | None = None,
@@ -174,16 +192,15 @@ def call_model(
         retry = False  # 比价由用户手动重试，不能因 JSON 对齐失败或网络错误重复计费。
     if not all(isinstance(m.get("content"), str) and isinstance(m.get("role"), str) for m in messages):
         raise ValueError("messages")
-    cfg = _load_config(db)
     if not (cfg.base_url and cfg.api_key and cfg.name):
         raise GatewayError("NOT_CONFIGURED")
     if timeout_s is not None:
         cfg.timeout_s = float(timeout_s)
     recorder = _Recorder(db, cfg.api_key, {"user_id": user_id, "task_id": task_id, "task_title": task_title,
-                                           "run_id": run_id, "purpose": purpose, "model_name": cfg.name[:100]})
+                                           "run_id": run_id, "purpose": purpose, "model_id": cfg.id, "model_name": cfg.name[:100]})
 
     # 1. 调用上限：共用月度、个人每日的只读检查。
-    reached = usage.cap_reached(db, user_id, purpose)
+    reached = usage.cap_reached(db, user_id, purpose, cfg.id)
     if reached:
         raise GatewayError(reached)
 
@@ -280,16 +297,36 @@ def _error_detail(text: str | None, api_key: str) -> str | None:
     return msg[:_DETAIL_MAX] or None
 
 
-def test_connection(db: Session, user_id: uuid.UUID | None) -> ModelResult:
-    """设置页“测试连接”：发送不含任何业务数据的固定测试消息（purpose=test），同样经过上限检查和出口复检。"""
-    return call_model(db, purpose="test", messages=[{"role": "user", "content": TEST_MESSAGE}], user_id=user_id,
-                      json_mode=False)
+STRUCTURED_MESSAGE = '请只输出以下 JSON，不要添加其他文字：{"ok": true, "items": [{"n": 1}, {"n": 2}]}'
 
 
-test_connection.__test__ = False  # 不让 pytest 当成测试函数收集
+def test_config(db: Session, cfg: _Config, user_id: uuid.UUID | None, *, structured: bool) -> ModelResult:
+    """固定测试消息同样经出口复检与记录；不受业务调用上限限制。"""
+    result = _call_config(db, cfg=cfg, purpose="test", user_id=user_id, retry=False,
+                          messages=[{"role": "user", "content": STRUCTURED_MESSAGE if structured else TEST_MESSAGE}],
+                          json_mode=cfg.json_mode if structured else False)
+    if structured:
+        content = result.content.strip()
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\s*\n?", "", content, count=1, flags=re.IGNORECASE)
+            content = re.sub(r"\s*```$", "", content)
+        try:
+            data = json.loads(content)
+            valid = (isinstance(data, dict) and set(data) == {"ok", "items"} and data["ok"] is True
+                     and isinstance(data["items"], list) and len(data["items"]) == 2
+                     and all(isinstance(item, dict) and set(item) == {"n"} and type(item["n"]) is int
+                             and item["n"] == n for item, n in zip(data["items"], (1, 2))))
+        except (ValueError, TypeError):
+            valid = False
+        if not valid:
+            raise GatewayError("BAD_RESPONSE", llm_call_id=result.llm_call_id)
+    return result
 
 
-def stream_model(db: Session, *, purpose: str, messages: list[dict], on_delta,
+test_config.__test__ = False
+
+
+def stream_model(db: Session, *, model_id: int, purpose: str, messages: list[dict], on_delta,
                  user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
                  task_title: str | None = None, extra_task_ids=(), json_mode: bool = False) -> ModelResult:
     """助手 SSE 发送唯一入口：上限、整包复检、单次发送、独立记录；流式失败不重试。"""
@@ -301,14 +338,14 @@ def stream_model(db: Session, *, purpose: str, messages: list[dict], on_delta,
     task = db.get(Task, task_id) if task_id is not None else None
     if task is not None and task.policy == "local_only":
         raise GatewayError("BLOCKED")
-    cfg = _load_config(db)
+    cfg = load_model(db, model_id)
     if not (cfg.base_url and cfg.api_key and cfg.name):
         raise GatewayError("NOT_CONFIGURED")
-    reached = usage.cap_reached(db, user_id, purpose)
+    reached = usage.cap_reached(db, user_id, purpose, cfg.id)
     if reached:
         raise GatewayError(reached)
     recorder = _Recorder(db, cfg.api_key, {"user_id": user_id, "task_id": task_id, "task_title": task_title,
-                                          "purpose": purpose, "model_name": cfg.name[:100]})
+                                          "purpose": purpose, "model_id": cfg.id, "model_name": cfg.name[:100]})
     ctx = recheck_context(db, task_id, extra_task_ids=extra_task_ids)
     reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values,
                       terms=ctx.terms, placeholders=ctx.placeholders)

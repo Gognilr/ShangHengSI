@@ -1,4 +1,4 @@
-"""全部 35 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量、范本、会话与知识库表。
+"""全部 36 张表的 ORM 模型，含 V2 任务内排除、NER 缓存与法规、向量、范本、会话与知识库表。
 
 约定见 SPEC 18.1：时间 timestamptz（UTC）；枚举用 varchar + CHECK；_enc 结尾为主密钥加密后的 bytea；
 任务下属表的 task_id 外键均 ON DELETE CASCADE。
@@ -6,6 +6,7 @@
 """
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Optional
 
 from sqlalchemy import (
@@ -19,6 +20,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     Sequence,
     String,
     Text,
@@ -480,6 +482,8 @@ class LocalFinding(Base):
 # ---- 18.14 review_runs ----
 class ReviewRun(Base):
     __tablename__ = "review_runs"
+    model_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("llm_models.id"))
+    model_label: Mapped[Optional[str]] = mapped_column(String(40))
     __table_args__ = (
         UniqueConstraint("task_id", "run_no"),
         enum_check("status", ["queued", "running", "blocked", "completed", "partial", "failed"]),
@@ -588,6 +592,8 @@ class Finding(Base):
 class AssistantMessage(Base):
     """会话消息仅保存代号文本，随所属任务删除。"""
     __tablename__ = "assistant_messages"
+    model_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("llm_models.id"))
+    model_label: Mapped[Optional[str]] = mapped_column(String(40))
     __table_args__ = (
         enum_check("role", ["user", "assistant"]),
         enum_check("template", ["translate", "summary", "reply", "crosscheck", "compare"]),
@@ -628,9 +634,38 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = _ts_now()
 
 
+class LlmModel(Base):
+    """模型连接与用途；密钥使用主密钥加密。"""
+    __tablename__ = "llm_models"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    description: Mapped[Optional[str]] = mapped_column(String(200))
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    api_key_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    model_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    temperature: Mapped[Decimal] = mapped_column(Numeric(3, 2), nullable=False, server_default=text("0.1"))
+    max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("32000"))
+    timeout_s: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("180"))
+    json_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    extra_params: Mapped[Any] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    chunk_chars: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("60000"))
+    price_in_per_m: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, server_default=text("0"))
+    price_out_per_m: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, server_default=text("0"))
+    monthly_call_cap: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    for_review: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    for_assist: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    structured_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    structured_tested_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = _ts_now()
+    updated_at: Mapped[datetime] = _ts_updated()
+
+
 # ---- 18.18 llm_calls ----
 class LlmCall(Base):
     __tablename__ = "llm_calls"
+    model_id: Mapped[Optional[int]] = mapped_column(Integer)
     __table_args__ = (
         enum_check("purpose", ["review", "chat", "test", "assist"]),
         enum_check("status", ["sent", "blocked", "error"]),

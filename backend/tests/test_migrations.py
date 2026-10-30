@@ -301,3 +301,45 @@ def test_t42_11_builtin_laws_migration_preserves_existing_and_edits(conflict):
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
+
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_v3b_models_upgrade(configured):
+    import base64
+    import json
+    from decimal import Decimal
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    url = _url_for(name)
+    cfg = _alembic(url)
+    blob = b"fictional-already-encrypted-key"
+    try:
+        command.upgrade(cfg, "0024")
+        with psycopg.connect(url, autocommit=True) as conn:
+            values = {"model.user_daily_cap": 7, "model.temperature": 0.25}
+            if configured:
+                values.update({"model.base_url": "https://mock.example.test/v1", "model.name": "x"*50,
+                               "model.api_key_enc": base64.b64encode(blob).decode()})
+            for key, value in values.items():
+                conn.execute("INSERT INTO settings(key,value,updated_at) VALUES(%s,%s,now())", (key,json.dumps(value)))
+            conn.execute("INSERT INTO llm_calls(purpose,model_name,status,created_at) VALUES('review','old','sent',now())")
+            owner = _insert_user(conn)
+            task = _insert_task(conn, owner)
+            conn.execute("INSERT INTO review_runs(task_id,run_no,status,stance,source,main_doc_type,created_by,queued_at) "
+                         "VALUES(%s,1,'queued','sales','outgoing','contract',%s,now())", (task,owner))
+        command.upgrade(cfg, "head")
+        with psycopg.connect(url, autocommit=True) as conn:
+            rows = conn.execute("SELECT id,display_name,api_key_enc,temperature,enabled,for_review,for_assist,structured_ok FROM llm_models").fetchall()
+            defaults = dict(conn.execute("SELECT key,value FROM settings WHERE key LIKE 'model.%'").fetchall())
+            mid = rows[0][0] if configured else None
+            assert defaults == {"model.user_daily_cap": 7, "model.default_review_id": mid, "model.default_assist_id": mid}
+            assert conn.execute("SELECT model_id FROM llm_calls").fetchone()[0] == mid
+            assert conn.execute("SELECT model_id FROM review_runs").fetchone()[0] == mid
+            if configured:
+                assert rows[0][1:] == ("x"*40, blob, Decimal("0.25"), True, True, True, True)
+            else:
+                assert rows == []
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

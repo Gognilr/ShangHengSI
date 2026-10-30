@@ -1,6 +1,4 @@
 """停服主密钥轮换（V2-C-07）。显式使用两把密钥，不改变进程内主密钥缓存。"""
-import base64
-import binascii
 import hashlib
 import os
 import re
@@ -77,19 +75,6 @@ def _rotate_database(engine, old_key, new_key, batch_size):
                         conn.execute(update(table).where(and_(*(key == value for key, value in zip(keys, pk)))).values(**values))
                 last = [rows[-1][key.name] for key in keys]
             _after_batch()
-    table = models.Setting.__table__
-    with engine.begin() as conn:
-        value = conn.execute(select(table.c.value).where(table.c.key == "model.api_key_enc")).scalar_one_or_none()
-        if value is not None:
-            try:
-                blob = base64.b64decode(value, validate=True)
-            except (ValueError, TypeError, binascii.Error):
-                raise RotationError("无法解密：settings 主键 model.api_key_enc") from None
-            changed = _rotate_blob(blob, old_key, new_key, "settings 主键 model.api_key_enc")
-            if changed is not None:
-                conn.execute(update(table).where(table.c.key == "model.api_key_enc").values(
-                    value=base64.b64encode(changed).decode("ascii"), updated_at=table.c.updated_at))
-    _after_batch()
 
 
 def _originals(directory):
@@ -161,13 +146,6 @@ def verify_key(engine, files_dir, key):
                     except crypto.DecryptionError:
                         pk = ','.join(str(row[c.name]) for c in table.primary_key)
                         raise RotationError(f"抽查失败：{table.name} 主键 {pk}") from None
-    with engine.connect() as conn:
-        value = conn.execute(select(models.Setting.value).where(models.Setting.key == "model.api_key_enc")).scalar_one_or_none()
-        if value is not None:
-            try:
-                crypto.decrypt_from_b64(value, key=key)
-            except (crypto.DecryptionError, ValueError, TypeError):
-                raise RotationError("抽查失败：settings 主键 model.api_key_enc") from None
     for number, (path, location) in enumerate(_originals(files_dir)):
         if number >= 20:
             break

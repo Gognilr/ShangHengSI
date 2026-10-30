@@ -7,9 +7,28 @@ from sqlalchemy import Column, LargeBinary, MetaData, Table, Integer, select, up
 from app import cli
 from app.config import get_settings
 from app.db.base import Base
-from app.db.models import Setting, Task, RedactionTerm, RedactionExclusion, NerNodeResult, LocalFinding, ReviewRun, Finding
+from app.db.models import LlmModel, Setting, Task, RedactionTerm, RedactionExclusion, NerNodeResult, LocalFinding, ReviewRun, Finding
 from app.security import crypto
-from tests.review_support import env, ready_task  # noqa: F401
+from tests.review_support import ready_task  # noqa: F401
+
+@pytest.fixture
+def env(tmp_path, monkeypatch, db_sessionmaker):
+    import os
+    key = tmp_path / "master_key"
+    key.write_bytes(os.urandom(32))
+    monkeypatch.setenv("APP_MASTER_KEY_FILE", str(key))
+    monkeypatch.setenv("FILES_DIR", str(tmp_path / "files"))
+    get_settings.cache_clear()
+    crypto.get_master_key.cache_clear()
+    with db_sessionmaker() as db:
+        db.add(LlmModel(display_name="轮换测试", base_url="https://mock.example.test/v1",
+                        api_key_enc=crypto.encrypt_text("sk-test-0123456789"), model_name="mock",
+                        for_review=True, for_assist=True))
+        db.commit()
+    yield
+    get_settings.cache_clear()
+    crypto.get_master_key.cache_clear()
+
 
 pytestmark = pytest.mark.usefixtures("env")
 
@@ -64,10 +83,10 @@ def assert_rotated(data):
             assert crypto.decrypt(blob, key=data["new"]) == expected
             with pytest.raises(crypto.DecryptionError):
                 crypto.decrypt(blob, key=data["old"])
-        value = conn.execute(select(Setting.value).where(Setting.key == "model.api_key_enc")).scalar_one()
-        assert crypto.decrypt_from_b64(value, key=data["new"]) == "sk-test-0123456789"
+        value = conn.execute(select(LlmModel.api_key_enc)).scalar_one()
+        assert crypto.decrypt_text(value, key=data["new"]) == "sk-test-0123456789"
         with pytest.raises(crypto.DecryptionError):
-            crypto.decrypt_from_b64(value, key=data["old"])
+            crypto.decrypt(value, key=data["old"])
         for table in Base.metadata.sorted_tables:
             after = [dict(row) for row in conn.execute(select(table).order_by(*table.primary_key)).mappings()]
             before = data["business"][table.name]
@@ -120,7 +139,7 @@ def test_v2c07_metadata_includes_future_columns(rotation):
     from app.security import rotate
     expected = {"doc_nodes.text_enc", "redaction_maps.map_enc", "redaction_terms.term_enc",
                 "local_findings.detail_enc", "findings.quote_snapshot_enc", "tasks.user_note_enc",
-                "redaction_exclusions.text_enc"}
+                "redaction_exclusions.text_enc", "llm_models.api_key_enc"}
     expected |= {'standard_templates.name_enc','review_runs.template_name_snapshot_enc','law_import_files.data_enc'}
     expected |= {'standard_clauses.'+name+'_enc' for name in ('title','text','stance','acceptable','escalate')}
     assert expected <= {f"{col.table.name}.{col.name}" for col in rotate.encrypted_columns()}
