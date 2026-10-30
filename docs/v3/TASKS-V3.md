@@ -16,7 +16,7 @@
 
 1. **开工前必读**：CLAUDE.md、本文件对应任务行、所在批次设计文档的第〇节与本任务的一节、[open\_questions.md](open_questions.md)。不需要读 docs/SPEC.md 全文和 docs/v2/，任务卡已摘录需要的部分。
 2. **测试**：任务卡列出的用例照写，可以多写，不得删改；不为样式、措辞、部署脚本等加测试。单个任务只跑相关测试文件（改了脱敏或外发构建的另跑 `tests/test_redaction_golden.py`、`tests/test_a03_outbound.py`）；前端任务只跑 `npm --prefix frontend run build`。整仓全量与浏览器检查只在批次末的集中测试任务中做一次。
-3. **不停顿**：同一批内的任务由 GPT-6.1 Sol 连续完成；集中测试完成后停下，由 Opus 审核整批。
+3. **不停顿**：同一批内的任务由 GPT-6.1 Sol 连续完成；集中测试完成后停下，由 Opus 审核整批。V3-A 例外（用户 2026-10-30 定）：02、03 由 Opus 做全局界面基础，04～08 由 Sonnet 5.5 连续完成。
 4. **文件范围、提交**：只改任务卡列出的文件；用 `git add <具体路径>` 暂存；提交说明以任务编号开头，用英语或日语。
 5. **不改** docs/SPEC.md、CLAUDE.md、AGENTS.md、docs/design/frontend.md 与设计文档；规格变更由 Opus 在批次审核中合并。
 6. **SPEC 和设计都没写明的细节**：按“最简单、最安全”实现，记入 [open\_questions.md](open_questions.md) 第三节，编号取索引中的“下一个编号”。
@@ -38,13 +38,13 @@
 | 编号 | 任务 | 模型 | 强度 | 依赖 | 状态 |
 |-|-|-|-|-|-|
 | V3-A-01 | Lucide 图标 | GPT-6.1 Sol | medium | V3-00 确认 | 已完成 |
-| V3-A-02 | 侧栏主布局与首页 | GPT-6.1 Sol | high | V3-A-01 | 待执行 |
-| V3-A-03 | 智能助手两栏、对话与输入框 | GPT-6.1 Sol | high | V3-A-02 | 待执行 |
-| V3-A-04 | 审核结果分栏、状态 / 空状态 / 提示、表格细节 | GPT-6.1 Sol | medium | V3-A-03 | 待执行 |
-| V3-A-05 | 设置分节与未保存提示 | GPT-6.1 Sol | medium | V3-A-04 | 待执行 |
-| V3-A-06 | 全局搜索 | GPT-6.1 Sol | medium | V3-A-05 | 待执行 |
-| V3-A-07 | 安装到桌面与工作文件夹 | GPT-6.1 Sol | high | V3-A-06 | 待执行 |
-| V3-A-08 | 集中测试 | GPT-6.1 Sol | medium | V3-A-07 | 待执行 |
+| V3-A-02 | 侧栏主布局与首页 | Opus | high | V3-A-01 | 待执行 |
+| V3-A-03 | 智能助手两栏、对话与输入框 | Opus | high | V3-A-02 | 待执行 |
+| V3-A-04 | 审核结果分栏、状态 / 空状态 / 提示、表格细节 | Sonnet 5.5 | medium | V3-A-03 | 待执行 |
+| V3-A-05 | 设置分节与未保存提示 | Sonnet 5.5 | medium | V3-A-04 | 待执行 |
+| V3-A-06 | 全局搜索 | Sonnet 5.5 | medium | V3-A-05 | 待执行 |
+| V3-A-07 | 安装到桌面与工作文件夹 | Sonnet 5.5 | high | V3-A-06 | 待执行 |
+| V3-A-08 | 集中测试 | Sonnet 5.5 | medium | V3-A-07 | 待执行 |
 | V3-A-09 | 审核与合并规格、改 CLAUDE.md 菜单表述 | Opus | high | V3-A-08 | 待执行 |
 
 ### V3-B 多模型（[design/V3-B.md](design/V3-B.md)）

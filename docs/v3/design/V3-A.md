@@ -22,7 +22,7 @@
 
 **文件范围**：`frontend/package.json`、`frontend/package-lock.json`、`frontend/src/**/*.vue`（只改图标引用与用法）。
 
-## 二、侧栏主布局与首页（V3-A-02，GPT-6.1 Sol，high）
+## 二、侧栏主布局与首页（V3-A-02，Opus，high）
 
 ### 2.1 结构（`layouts/MainLayout.vue` 重写）
 
@@ -61,7 +61,7 @@
 
 **文件范围**：`frontend/src/layouts/MainLayout.vue`、`frontend/src/components/SplitHandle.vue`（新）、`frontend/src/components/SidebarSessions.vue`（新，近期会话列表）、`frontend/src/stores/sessions.ts`（新）、`frontend/src/router/index.ts`、`frontend/src/views/ReviewResult.vue`、`frontend/src/views/Assistant.vue`（只改根元素高度）、`frontend/src/components/brand/SiLogo.vue`（如需“只显示图形”的属性）、`frontend/src/styles/common.css`。
 
-## 三、智能助手：两栏、对话与输入框（V3-A-03，GPT-6.1 Sol，high）
+## 三、智能助手：两栏、对话与输入框（V3-A-03，Opus，high）
 
 ### 3.1 页面
 
@@ -86,7 +86,7 @@
 
 **文件范围**：`frontend/src/views/Assistant.vue`、`frontend/src/components/assistant/Conversation.vue`、`MessageItem.vue`、`Composer.vue`、`TemplatePicker.vue`、`SessionList.vue`（删除）、`frontend/src/stores/sessions.ts`（只调用 `refresh()`）。
 
-## 四、审核结果分栏、状态 / 空状态 / 提示、表格细节（V3-A-04，GPT-6.1 Sol，medium）
+## 四、审核结果分栏、状态 / 空状态 / 提示、表格细节（V3-A-04，Sonnet 5.5，medium）
 
 ### 4.1 可拖动分栏（`views/ReviewResult.vue`）
 
@@ -125,7 +125,7 @@
 
 **文件范围**：`frontend/src/main.ts`、`frontend/src/utils/toast.ts`（新，如需封装）与全部 `ElMessage` 调用处（只改调用方式）、`frontend/src/views/ReviewResult.vue`、`frontend/src/components/EmptyState.vue`（新）、`frontend/src/components/TableSkeleton.vue`（新）、`frontend/src/utils/labels.ts`、`frontend/src/views/History.vue`、`frontend/src/views/settings/` 下的列表页（Users、Data 的外发记录与审计日志、Laws、Templates、Knowledge、Redaction、Requirements 的列表部分）、`frontend/src/components/assistant/FilePanel.vue`（状态标签）、问题清单所在组件（空状态）。
 
-## 五、设置分节与未保存提示（V3-A-05，GPT-6.1 Sol，medium）
+## 五、设置分节与未保存提示（V3-A-05，Sonnet 5.5，medium）
 
 * 新组件 `components/SettingSection.vue`：两列网格，左 240px（标题 15px / 600 + 一两行次要色说明），右侧为字段；节与节之间 1px `--el-border-color-lighter` 分隔线，上下各 24px；不再在面板里套卡片。1280 宽以下改为上下排列。
 * `SettingSection` 另有 `stacked` 形式：标题与说明在上一行、内容占满宽度，用于放表格的节（表格放在两列的右侧太窄）。
@@ -148,7 +148,7 @@
 
 **文件范围**：`frontend/src/components/SettingSection.vue`（新）、`frontend/src/components/UnsavedBar.vue`（新）、`frontend/src/views/settings/` 下除 `Model.vue` 外的全部页面与 `SettingsLayout.vue`（切换分类时的提醒）。
 
-## 六、全局搜索（V3-A-06，GPT-6.1 Sol，medium）
+## 六、全局搜索（V3-A-06，Sonnet 5.5，medium）
 
 ### 6.1 接口
 
@@ -174,7 +174,7 @@
 
 **文件范围**：`backend/app/tasks/search.py`（新，路由与查询）、`backend/app/main.py`（注册路由一行）、`backend/tests/test_search.py`（新）、`frontend/src/api/search.ts`（新）、`frontend/src/components/GlobalSearch.vue`（新）、`frontend/src/layouts/MainLayout.vue`（打开入口与快捷键）。
 
-## 七、安装到桌面与工作文件夹（V3-A-07，GPT-6.1 Sol，high）
+## 七、安装到桌面与工作文件夹（V3-A-07，Sonnet 5.5，high）
 
 ### 7.1 安装到桌面
 
@@ -196,7 +196,7 @@
 
 **文件范围**：`frontend/public/manifest.webmanifest`（新）、`frontend/public/icons/`（新，3 个 PNG）、`frontend/index.html`、`deploy/Caddyfile`（仅在需要时）、`docs/ops/运维说明.md`（新增一节，含工作文件夹的说明）、`frontend/src/utils/workFolder.ts`（新）、`frontend/src/utils/save.ts`（新）、`frontend/src/components/WorkFolderBar.vue`（新，入口一行）、`frontend/src/components/WorkFolderPicker.vue`（新，列出与点选对话框）、`frontend/src/views/ReviewNew.vue`、`frontend/src/components/assistant/FilePanel.vue`、`frontend/src/api/report.ts`、`frontend/src/components/assistant/MessageItem.vue`。
 
-## 八、集中测试（V3-A-08，GPT-6.1 Sol，medium）
+## 八、集中测试（V3-A-08，Sonnet 5.5，medium）
 
 1. `npm --prefix frontend run build`；整仓全量测试一次（含 `test_frontend_style.py`）。
 2. 用 `.claude/launch.json` 的 frontend-dev 在浏览器面板中按下面清单检查，每项截图一张存 `docs/v3/reports/V3-A/`（只用虚构数据）：
@@ -243,11 +243,11 @@
 | 编号 | 任务 | 模型 | 强度 | 依赖 |
 |-|-|-|-|-|
 | V3-A-01 | Lucide 图标（第一节） | GPT-6.1 Sol | medium | V3-00 用户确认 |
-| V3-A-02 | 侧栏主布局与首页（第二节） | GPT-6.1 Sol | high | V3-A-01 |
-| V3-A-03 | 智能助手两栏、对话与输入框（第三节） | GPT-6.1 Sol | high | V3-A-02 |
-| V3-A-04 | 审核结果分栏、状态 / 空状态 / 提示、表格细节（第四节） | GPT-6.1 Sol | medium | V3-A-03 |
-| V3-A-05 | 设置分节与未保存提示（第五节） | GPT-6.1 Sol | medium | V3-A-04 |
-| V3-A-06 | 全局搜索（第六节） | GPT-6.1 Sol | medium | V3-A-05 |
-| V3-A-07 | 安装到桌面与工作文件夹（第七节） | GPT-6.1 Sol | high | V3-A-06 |
-| V3-A-08 | 集中测试（第八节） | GPT-6.1 Sol | medium | V3-A-07 |
+| V3-A-02 | 侧栏主布局与首页（第二节） | Opus | high | V3-A-01 |
+| V3-A-03 | 智能助手两栏、对话与输入框（第三节） | Opus | high | V3-A-02 |
+| V3-A-04 | 审核结果分栏、状态 / 空状态 / 提示、表格细节（第四节） | Sonnet 5.5 | medium | V3-A-03 |
+| V3-A-05 | 设置分节与未保存提示（第五节） | Sonnet 5.5 | medium | V3-A-04 |
+| V3-A-06 | 全局搜索（第六节） | Sonnet 5.5 | medium | V3-A-05 |
+| V3-A-07 | 安装到桌面与工作文件夹（第七节） | Sonnet 5.5 | high | V3-A-06 |
+| V3-A-08 | 集中测试（第八节） | Sonnet 5.5 | medium | V3-A-07 |
 | V3-A-09 | 审核与合并规格（第九、十节） | Opus | high | V3-A-08 |
