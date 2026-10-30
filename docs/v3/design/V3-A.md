@@ -8,15 +8,15 @@
 
 1. **只改外观与交互，不改流程**：发送前确认（V2Q-127）、脱敏确认、疑似遗漏处理、导出、删除确认全部保留；接口形状不变（除新增搜索）。
 2. **偏好存本浏览器**：侧栏收起状态与宽度、审核结果左栏宽度写 `localStorage`，读写一律 `try/catch`，读不到按默认值；不存任何业务内容、文件名、路径。键名统一前缀 `si.`：`si.sidebar.collapsed`、`si.sidebar.width`、`si.review.leftWidth`。工作文件夹的授权句柄按第七节存在本浏览器的 IndexedDB。
-3. **图标**：本批起只用 `lucide-vue-next`（V3-A-01 起）。Element Plus 组件内部自带的图标（下拉箭头、关闭等）不处理。
+3. **图标**：本批起只用 `@lucide/vue`（V3-A-01 起）。Element Plus 组件内部自带的图标（下拉箭头、关闭等）不处理。
 4. **颜色**：十六进制颜色仍只写在 theme.css；唯一例外是 `public/manifest.webmanifest` 的 `theme_color`、`background_color`（浏览器要求写在清单中，取 theme.css 中品牌主色与页面底色的值）。
 5. **测试**：前端任务只跑 `npm --prefix frontend run build`；后端只有搜索接口加用例。浏览器检查集中在 V3-A-08。
 6. **尺寸**：以 1280×800、1440×900、1920×1080 三档检查；1280 宽、侧栏展开时审核结果右栏不足以阅读，由用户收起侧栏，不自动收起。
 
 ## 一、Lucide 图标（V3-A-01，GPT-6.1 Sol，medium）
 
-* `frontend/package.json` 增加 `lucide-vue-next`，**精确版本**，取实施当天 npm 上发布满两周的最新版本，写进任务报告；`npm ci` 后提交 `package-lock.json`。
-* 把 `frontend/src` 中全部 `@element-plus/icons-vue` 的引用（约 11 处）换成 Lucide 对应图标。用法：`<Settings :size="16" :stroke-width="1.75" />`，颜色继承文字色（`currentColor`），不另写颜色；放进 `el-button` 时用其 `icon` 插槽或在文字前，图标与文字间距 6px。
+* `frontend/package.json` 增加 `@lucide/vue`，**精确版本**，取实施当天 npm 上发布满两周的最新版本，写进任务报告；`npm ci` 后提交 `package-lock.json`。
+* 把 `frontend/src` 中全部 `@element-plus/icons-vue` 的引用（约 11 处）换成 Lucide 对应图标。用法：`<Settings :size="16" :stroke-width="1.75" />`，颜色继承文字色（`currentColor`），不另写颜色；放进 `el-button` 时用其 `icon` 插槽或在文字前，图标与文字间距 6px。Element Plus 的 `.el-icon svg` 按 1em 取宽高，由 `styles/common.css` 一条规则把 `el-icon` 内的 Lucide 图标定为 16px；上传框中央图标例外，24px。
 * 对应关系由实施者按图形含义选择（如 Setting → `Settings`、Search → `Search`、Plus → `Plus`、Download → `Download`、CopyDocument → `Copy`、Refresh → `RotateCw`、Upload → `Upload`、Document → `FileText`、ChatDotRound → `MessageSquare`），在报告中列一张表。
 * 完成后 `frontend/src` 中不再出现 `@element-plus/icons-vue`。
 
@@ -221,7 +221,7 @@
 **docs/SPEC.md**
 
 * **1.6 菜单结构**：改为“左侧侧栏：新建会话；三个菜单 **智能助手**、**智能审核**、**审核历史**（13A）；搜索；近期会话；底部为系统管理员、业务管理员可见的**设置**入口与用户菜单（修改密码、退出）。侧栏可收起为图标窄栏。默认首页为智能助手。不得增加其他菜单。”
-* **3 技术栈**：前端依赖增加 `lucide-vue-next`（精确版本以 package.json 为准）。
+* **3 技术栈**：前端依赖增加 `@lucide/vue`（精确版本以 package.json 为准）。
 * **6.8 界面风格**之后新增 **6.9 主布局与全局搜索**：侧栏结构（第二节）、强制改密时主区域不显示业务页面、全局搜索的入口与范围（只搜本人的审核与会话标题，第六节）、工作文件夹（7.2：选定不上传、只上传勾选的文件、导出写入文件夹且不覆盖、路径与文件名不发送到服务器）。
 * **13A 第 2 条**：增加“输入框 Enter 打开发送确认、Shift+Enter 换行；生成中发送按钮变为停止”。
 * **19 接口**：19.3 增加 `POST /search`（本人范围）。
@@ -234,7 +234,7 @@
 * 2.2：`.page--split` 增加可拖动分栏（4.1）；智能助手页为对话区 + 文件面板两栏，对话最大宽度 760px。
 * 2.3：“顶栏选中项已说明位置”改为“侧栏选中项”；设置八类页面用 `SettingSection` 分节（含 `stacked`）与底部 `UnsavedBar`（第五节）。
 * 第四节组件表：增加 `SplitHandle`、`EmptyState`、`TableSkeleton`、`SettingSection`、`UnsavedBar`、`GlobalSearch`、`WorkFolderBar`、`WorkFolderPicker`；“没有内容”一行改为 `EmptyState`；数据列表一行增加表头固定、行尾“⋯”菜单（4.4 表）、长名称省略、首次加载骨架；“操作完成的短反馈”一行写明显示在右下角；“不要使用”中骨架屏的范围按 4.4 放宽。
-* 图标规则改为：“只用 `lucide-vue-next`（本地打包），默认 16px、线宽 1.75、继承文字色；图标旁必须有文字，窄栏与纯图标按钮例外，须有悬停提示与 `aria-label`”。
+* 图标规则改为：“只用 `@lucide/vue`（本地打包），默认 16px、线宽 1.75、继承文字色；图标旁必须有文字，窄栏与纯图标按钮例外，须有悬停提示与 `aria-label`”。
 * 第五节：增加任务处理状态的标签（4.2）。
 * 新增一条偏好存储约定（共同约定第 2 条）。
 

@@ -7,7 +7,7 @@ import { reportApi } from '@/api/report'
 import { tasksApi, type TaskListItem } from '@/api/tasks'
 import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
 import { formatDate, formatDateTime } from '@/utils/time'
-import { Search } from 'lucide-vue-next'
+import { Search } from '@lucide/vue'
 
 const router = useRouter()
 function fileBadge(name: string) {

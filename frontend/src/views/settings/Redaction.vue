@@ -4,7 +4,7 @@ import { onMounted, ref } from 'vue'
 import { adminRedactionApi, type TermRow } from '@/api/admin'
 import { ApiError } from '@/api/http'
 import { formatDateTime } from '@/utils/time'
-import { Search } from 'lucide-vue-next'
+import { Search } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)

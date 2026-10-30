@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { User, Cpu, List, Lock, Database } from 'lucide-vue-next'
+import { User, Cpu, List, Lock, Database } from '@lucide/vue'
 
 // 设置页导航与路由一一对应，分页权限由路由角色守卫校验。
 const auth = useAuthStore()

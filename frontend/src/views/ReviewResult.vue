@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, RotateCw, Trash2 } from 'lucide-vue-next'
+import { Download, RotateCw, Trash2 } from '@lucide/vue'
 import ResultToolbar from '@/components/ResultToolbar.vue'
 import ResultSummary from '@/components/ResultSummary.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
@@ -300,7 +300,6 @@ const reqVersion = computed(() => {
 </template>
 
 <style scoped>
-:deep(.el-button .el-icon + span) { margin-left: 6px; }
 .page { height: calc(100vh - 64px); max-height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 0; padding-bottom: 0; }
 .split { display: flex; flex: 1; min-height: 0; gap: 20px; padding: 20px 0; }
 .left { flex: 0 0 clamp(480px, 42%, 640px); min-width: 0; overflow-y: auto; }

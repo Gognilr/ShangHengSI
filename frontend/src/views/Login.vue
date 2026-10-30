@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules, InputInstance } from 'element-plus'
-import { Lock, User } from 'lucide-vue-next'
+import { Lock, User } from '@lucide/vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'

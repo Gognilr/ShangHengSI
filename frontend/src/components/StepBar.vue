@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, X } from 'lucide-vue-next'
+import { Check, X } from '@lucide/vue'
 withDefaults(defineProps<{ active: number; status?: 'wait' | 'process' | 'finish' | 'error' | 'success' }>(), { status: 'process' })
 const titles = ['上传与设置', '确认脱敏', '审核中']
 </script>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage, type InputInstance } from 'element-plus'
-import { Copy } from 'lucide-vue-next'
+import { Copy } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type HandlingStatus } from '@/api/runs'
@@ -155,7 +155,6 @@ async function copy(text: string) {
 </template>
 
 <style scoped>
-:deep(.el-button .el-icon + span) { margin-left: 6px; }
 .card { margin-bottom: 12px; position: relative; transition: border-color 150ms; }
 .card::before { content: ''; position: absolute; left: 0; top: 16px; bottom: 16px; width: 3px; border-top-right-radius: 2px; border-bottom-right-radius: 2px; background: var(--el-color-info); }
 .card.severity-high::before { background: var(--el-color-danger); }

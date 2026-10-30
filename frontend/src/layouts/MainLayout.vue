@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 import SiLogo from '@/components/brand/SiLogo.vue'
-import { Settings } from 'lucide-vue-next'
+import { Settings } from '@lucide/vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()

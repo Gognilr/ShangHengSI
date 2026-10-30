@@ -7,7 +7,7 @@ import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { ROLE_OPTIONS, roleLabel, toOptions, userStatusLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
-import { Plus } from 'lucide-vue-next'
+import { Plus } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 
 const auth = useAuthStore()
@@ -231,6 +231,5 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 </template>
 
 <style scoped>
-:deep(.el-button .el-icon + span) { margin-left: 6px; }
 .user-name { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 </style>

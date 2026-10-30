@@ -40,3 +40,9 @@
 .stat-value { font: var(--si-font-stat); }
 .num { font-variant-numeric: tabular-nums; }
 .avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--el-color-primary-light-9); color: var(--el-color-primary); display: inline-grid; place-items: center; font-size: 13px; font-weight: 600; }
+
+/* Lucide 图标统一 16px（V3-A-01）：Element Plus 的 .el-icon svg 按 1em 取宽高，会盖掉图标自身的 size */
+.el-icon > svg.lucide {
+  width: 16px;
+  height: 16px;
+}
