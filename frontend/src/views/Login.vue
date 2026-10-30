@@ -96,7 +96,7 @@ async function submit() {
         <p class="account-help">账号由管理员统一分发，忘记密码请联系管理员重置</p>
       </section>
     </div>
-    <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V1.0</footer>
+    <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V2.0</footer>
   </div>
 </template>
 

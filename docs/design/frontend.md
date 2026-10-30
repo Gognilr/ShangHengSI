@@ -118,7 +118,7 @@
 | 对话框 | `el-dialog` | 表单类宽 480px，内容较多的宽 640px；主按钮放右边，“取消”在它左边；提交中显示 loading |
 | 删除等不可恢复的操作 | `ElMessageBox.confirm(…, { type: 'warning' })` | 写明删除什么、会连带删除什么、“无法恢复”；确定按钮文字写动作，如“删除” |
 | 操作完成的短反馈 | `ElMessage.success` / `ElMessage.error` | 只用于用户刚刚点击的操作。不要在页面加载时弹出 |
-| 需要用户看到并处理的状态 | `el-alert :closable="false" show-icon` | 持续显示，不要用会自动消失的提示代替 |
+| 需要用户看到并处理的状态 | `el-alert :closable="false" show-icon` | 持续显示，不要用会自动消失的提示代替。例外：管理员提醒条提供“本次收起”，只在当前页面会话的内存中生效，刷新即恢复（SPEC 6.7） |
 | 整页的结果状态 | `el-result` | 如解析失败（带“重新上传”按钮） |
 | 没有内容 | `el-empty` 或表格的 `empty-text` | 说明为什么没有内容，必要时给出已有页面的入口（如“去新建审核”） |
 | 小标签 | `el-tag size="small"` | 颜色见第五节 |

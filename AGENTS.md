@@ -2,17 +2,15 @@
 
 本仓库的项目规则写在 **CLAUDE.md**，对你同样适用，开始任何工作前必须完整阅读。本文件只补充你需要额外知道的几点；与 CLAUDE.md、docs/SPEC.md 冲突时以它们为准。
 
-## 当前阶段：V2（2026-10-24 起，优先于下文 V1.0 的写法）
+## 当前阶段：V2.0 已完成，等待 V3.0 细化（2026-10-30 起，优先于下文 V1.0 的写法）
 
-V1.0 已正式安装并打标签 `v1.0.0`。现在开发 V2，按 CLAUDE.md“当前阶段：V2 开发”一节和 **docs/v2/TASKS-V2.md 第一节**执行。下文“你的任务范围”“收尾”中与之不同的地方，以 TASKS-V2 为准：
+V2.0 已完成并打标签 `v2.0.0`，docs/SPEC.md 已是 V2.0 版。按 CLAUDE.md“当前阶段”一节执行：
 
-* 任务从 docs/v2/TASKS-V2.md 接：“模型”列为 GPT-6.1 Sol（含“测试先行”）的任务你可以做；“模型”列为 Opus 的（各批 -00 细化、V2-B-06a 和 V2-E-04a 模型选型、批次审核、V2-Z）不做。
-* 开工前读：CLAUDE.md、TASKS-V2 对应任务行、所在批次 docs/v2/design/V2-x.md 的第〇节与任务卡、docs/v2/open\_questions.md（编号规则与索引）和所在批次的 docs/v2/questions/V2-x.md（已完成批次的问题文件和 docs/v2/archive/ 不必读）。测试按 CLAUDE.md“永不过度设计、过度测试”一条执行：只写少量代表性用例，脱敏识别类用例写成 golden 样本标注；脱敏行为按设计有意改变时可以修改旧测试，并在报告中列出。
-* 测试：单个任务只跑与本任务相关的测试文件（改了脱敏规则另加 test\_redaction\_golden.py 与 test\_a03\_outbound.py，前端任务跑 build）；整仓全量只在批次末的集中测试任务中跑，用 CLAUDE.md 中“整仓全量测试”的命令。
-* 同一批内的任务连续完成，不逐个停下等待审核（包括前端任务）；集中测试任务完成后停下，请用户开 Opus 会话审核整批。
-* 进度写在 docs/v2/TASKS-V2.md 的“当前进度”（只保留最近 3 条，每条不超过 400 字，细节写进报告；更早的移到 docs/v2/archive/progress.md 最前面）；新的待确认问题写在所在批次的 docs/v2/questions/V2-x.md，编号取 docs/v2/open\_questions.md 索引中的最大编号加一，并在索引中追加。不改 docs/SPEC.md、docs/v2/SPEC-V2.md、CLAUDE.md、本文件和设计文档。
-* 需要调用真实模型、或从网上下载文件的步骤（如集中测试中的真实模型试审），先告诉用户内容并取得同意。
+* V3.0 由 Opus 先细化，经用户确认后才有你可以接的任务；在此之前不要自行开发 V3.0 内容。之后的任务清单位置与规则以 V3.0 细化结果为准；V2 的执行规则（docs/v2/TASKS-V2.md 第一节）在新规则确定前继续适用于 V2 遗留修复。
+* 测试按 CLAUDE.md“永不过度设计、过度测试”一条执行：只写少量代表性用例，脱敏识别类用例写成 golden 样本标注；单个任务只跑相关测试文件，整仓全量只在批次末跑一次。测试库必须是带 pgvector 的 aireview-db 镜像（见 CLAUDE.md 常用命令）。
+* 需要调用真实模型、或从网上下载文件的步骤，先告诉用户内容并取得同意。
 * 不要连接或操作正式服务器；需要部署或演练时停下，请用户提供测试虚拟机。
+* 不改 docs/SPEC.md、CLAUDE.md、本文件和设计文档。
 
 ## 你的任务范围
 
@@ -35,5 +33,5 @@ V1.0 已正式安装并打标签 `v1.0.0`。现在开发 V2，按 CLAUDE.md“�
 
 * 本机是 Windows，主力 shell 是 PowerShell 5.1（不支持 `&&`，用 `;` 或 `if ($?) { ... }`）。后端的运行、测试、迁移一律在 Docker 中进行，命令见 CLAUDE.md 的“常用命令”，照 PowerShell 写法执行。在 Git Bash 中运行 `docker run -v "$(pwd)/..."` 时路径挂载会失效，不要用。
 * 本机 Python 是 3.11，不要用本机 Python 跑后端测试；后端要求 3.12，只在容器里运行。
-* 测试数据库：`docker start aireview-test-db`（容器已存在时）。
+* 测试数据库：`docker start aireview-test-db`（容器已存在时；必须是 aireview-db 镜像，旧的 postgres:16.15 容器缺 pgvector，按 CLAUDE.md 重建）。
 * 单个任务只跑相关测试；整仓全量只在批次末的集中测试中跑一次（在 Docker 中）。
