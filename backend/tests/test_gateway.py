@@ -404,14 +404,30 @@ def test_set_model_command(gw, db_sessionmaker, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "sk-new-key" not in out and "9876" in out
     with db_sessionmaker() as db:
-        s = settings_store.get_settings_map(db, "model.")
-        assert (s["base_url"], s["name"], s["extra_params"]) == ("http://mock-llm:9000/v1", "mock-v2",
-                                                                 {"thinking": {"type": "enabled"}})
-        assert "sk-new-key" not in s["api_key_enc"] and crypto.decrypt_from_b64(s["api_key_enc"]) == "sk-new-key-ABCD9876"
-    # 不带 --api-key-stdin 时保留原密钥；非法参数报错
-    assert cli.main(["set-model", "--base-url", "https://x.test/v1", "--model", "m3"]) == 0
+        row = db.scalar(select(LlmModel).where(LlmModel.model_name == "mock-v2"))
+        model_id = row.id
+        assert (row.base_url, row.model_name, row.extra_params) == (
+            "http://mock-llm:9000/v1", "mock-v2", {"thinking": {"type": "enabled"}})
+        assert b"sk-new-key" not in row.api_key_enc
+        assert crypto.decrypt_text(row.api_key_enc) == "sk-new-key-ABCD9876"
+        assert row.for_review and row.for_assist
+        assert settings_store.get_setting(db, "model.default_review_id") == model_id
+        assert settings_store.get_setting(db, "model.default_assist_id") == model_id
+    # 同名更新保留原密钥与未传的附加参数；新增但不带密钥时拒绝。
+    assert cli.main(["set-model", "--base-url", "https://x.test/v1", "--model", "mock-v2"]) == 0
+    assert cli.main(["set-model", "--base-url", "https://x.test/v1", "--model", "m3"]) == 1
     with db_sessionmaker() as db:
-        assert crypto.decrypt_from_b64(settings_store.get_setting(db, "model.api_key_enc")) == "sk-new-key-ABCD9876"
+        row = db.get(LlmModel, model_id)
+        assert row.base_url == "https://x.test/v1"
+        assert crypto.decrypt_text(row.api_key_enc) == "sk-new-key-ABCD9876"
+        assert row.extra_params == {"thinking": {"type": "enabled"}}
+        assert db.scalar(select(LlmModel.id).where(LlmModel.model_name == "m3")) is None
+    # 新建另一模型不改变已有默认。
+    monkeypatch.setattr("sys.stdin", io.StringIO("sk-another-key-5678\n"))
+    assert cli.main(["set-model", "--base-url", "https://x.test/v1", "--model", "m3", "--api-key-stdin"]) == 0
+    with db_sessionmaker() as db:
+        assert settings_store.get_setting(db, "model.default_review_id") == model_id
+        assert settings_store.get_setting(db, "model.default_assist_id") == model_id
     assert cli.main(["set-model", "--base-url", "ftp://x", "--model", "m"]) == 1
     assert cli.main(["set-model", "--base-url", "https://x", "--model", "m", "--extra-params", "[1]"]) == 1
 
@@ -421,10 +437,10 @@ def test_set_model_strips_bom_and_rejects_non_ascii_key(gw, db_sessionmaker, mon
     monkeypatch.setattr("sys.stdin", io.StringIO("﻿sk-bom-key-1234\r\n"))
     assert cli.main(["set-model", "--base-url", "http://mock-llm:9000/v1", "--model", "m", "--api-key-stdin"]) == 0
     with db_sessionmaker() as db:
-        assert crypto.decrypt_from_b64(settings_store.get_setting(db, "model.api_key_enc")) == "sk-bom-key-1234"
+        assert crypto.decrypt_text(db.scalar(select(LlmModel.api_key_enc).where(LlmModel.model_name == "m"))) == "sk-bom-key-1234"
     # 其他非 ASCII 或空白字符无法放进 HTTP 头：拒绝，原密钥不变
     for bad in ("sk-全角-1234\n", "sk bad key 12\n"):
         monkeypatch.setattr("sys.stdin", io.StringIO(bad))
         assert cli.main(["set-model", "--base-url", "http://mock-llm:9000/v1", "--model", "m", "--api-key-stdin"]) == 1
     with db_sessionmaker() as db:
-        assert crypto.decrypt_from_b64(settings_store.get_setting(db, "model.api_key_enc")) == "sk-bom-key-1234"
+        assert crypto.decrypt_text(db.scalar(select(LlmModel.api_key_enc).where(LlmModel.model_name == "m"))) == "sk-bom-key-1234"

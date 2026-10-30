@@ -79,18 +79,33 @@ def create_admin(username: str, display_name: str) -> str:
 
 
 def set_model(base_url: str, model: str, extra_params: dict | None, api_key: str | None) -> None:
-    """写入模型接口地址、模型名称、附加请求参数和 API 密钥（加密）。参数为 None 的项不改。需要 DATABASE_URL。"""
-    from app.admin.settings_store import set_setting
+    """开发用：按实际模型名称写入模型表；未提供的参数保留原值（V3Q-10）。"""
+    from sqlalchemy import select
+
+    from app.admin.settings_store import get_setting, set_setting
+    from app.db.models import LlmModel
     from app.db.session import get_sessionmaker
     from app.security import crypto
 
     with get_sessionmaker()() as db:
-        set_setting(db, "model.base_url", base_url, None)
-        set_setting(db, "model.name", model, None)
+        row = db.scalar(select(LlmModel).where(LlmModel.model_name == model).order_by(LlmModel.id))
+        if row is None:
+            if api_key is None:
+                raise ValueError("新建模型须通过 --api-key-stdin 提供 API 密钥。")
+            row = LlmModel(display_name=model[:40], model_name=model, base_url=base_url,
+                           api_key_enc=crypto.encrypt_text(api_key), for_review=True, for_assist=True)
+            db.add(row)
+        else:
+            row.base_url = base_url
+            if api_key is not None:
+                row.api_key_enc = crypto.encrypt_text(api_key)
         if extra_params is not None:
-            set_setting(db, "model.extra_params", extra_params, None)
-        if api_key is not None:
-            set_setting(db, "model.api_key_enc", crypto.encrypt_to_b64(api_key), None)
+            row.extra_params = extra_params
+        db.flush()
+        for purpose in ("review", "assist"):
+            key = f"model.default_{purpose}_id"
+            if get_setting(db, key) is None:
+                set_setting(db, key, row.id, None)
         db.commit()
 
 
@@ -351,7 +366,11 @@ def main(argv: list[str] | None = None) -> int:
             if not all("!" <= c <= "~" for c in api_key):
                 print("错误：API 密钥只能包含可见的 ASCII 字符。", file=sys.stderr)
                 return 1
-        set_model(args.base_url.strip(), args.model.strip(), extra, api_key)
+        try:
+            set_model(args.base_url.strip(), args.model.strip(), extra, api_key)
+        except ValueError as exc:
+            print(f"错误：{exc}", file=sys.stderr)
+            return 1
         tail = f"，API 密钥末 4 位 {api_key[-4:]}" if api_key and len(api_key) >= 8 else ""
         print(f"已设置模型：{args.base_url.strip()}，{args.model.strip()}{tail}。")
         return 0
