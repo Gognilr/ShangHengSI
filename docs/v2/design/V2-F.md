@@ -69,7 +69,7 @@
 * **界面**（ConfirmStep.vue 的疑似遗漏列表）：每组前加复选框，表头“全选”；列表上方“忽略所选（N 组）”按钮，点击后弹出确认：“所选 N 组将不替换，按原文发送给模型。请确认其中没有公司名、人名等敏感信息。”确认后调用批量接口。逐组的“替换 / 忽略”按钮保留。
 * 测试：后端一个用例（批量忽略成功；含他人任务 id 时 404 且本任务无变化）；前端 build，遵守 docs/design/frontend.md。
 
-**文件范围**：`backend/app/redaction/router.py`、`backend/app/redaction/engine.py`（如需加批量函数）、`backend/tests/test_redaction*.py`（只加一个用例）、`frontend/src/api/redaction.ts`、`frontend/src/components/ConfirmStep.vue`。
+**文件范围**：`backend/app/redaction/router.py`、`backend/app/redaction/engine.py`（如需加批量函数）、`backend/tests/test_redaction*.py`（只加一个用例）、`frontend/src/api/redaction.ts`、`frontend/src/components/ConfirmStep.vue`、`frontend/src/components/SuspectList.vue`（每组的行在此渲染；2026-10-30 用户确认补入范围）。
 
 ## 四、PDF 图文混排页（V2-F-04，GPT-6.1 Sol，high）
 
