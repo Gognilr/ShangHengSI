@@ -133,7 +133,7 @@ onBeforeUnmount(() => { active = false; ++version; clearTimeout(timer); offsets.
   </div>
 </template>
 <style scoped>
-.assistant-page { height: calc(100vh - 64px); max-height: 100%; box-sizing: border-box; padding-top: 20px; padding-bottom: 20px; display: grid; grid-template-columns: 264px minmax(0, 1fr) 320px; gap: 20px; overflow: hidden; }
+.assistant-page { height: 100%; box-sizing: border-box; padding-top: 20px; padding-bottom: 20px; display: grid; grid-template-columns: 264px minmax(0, 1fr) 320px; gap: 20px; overflow: hidden; }
 .sidebar, .dialogue, .file-sidebar { min-width: 0; min-height: 0; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
 .dialogue { display: flex; flex-direction: column; overflow: hidden; }
 .toolbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--el-border-color-light); }

@@ -27,7 +27,7 @@ declare module 'vue-router' {
   }
 }
 
-export const HOME_PATH = '/review/new'
+export const HOME_PATH = '/assistant'
 
 export const router = createRouter({
   history: createWebHistory(),

@@ -300,7 +300,7 @@ const reqVersion = computed(() => {
 </template>
 
 <style scoped>
-.page { height: calc(100vh - 64px); max-height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 0; padding-bottom: 0; }
+.page { height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 0; padding-bottom: 0; }
 .split { display: flex; flex: 1; min-height: 0; gap: 20px; padding: 20px 0; }
 .left { flex: 0 0 clamp(480px, 42%, 640px); min-width: 0; overflow-y: auto; }
 .right { flex: 1; min-width: 0; min-height: 0; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); overflow-y: auto; }

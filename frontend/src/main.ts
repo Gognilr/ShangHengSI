@@ -7,7 +7,7 @@ import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import { setHttpHooks } from '@/api/http'
 import App from './App.vue'
-import { router } from './router'
+import { HOME_PATH, router } from './router'
 import { useAuthStore } from './stores/auth'
 
 const app = createApp(App)
@@ -31,7 +31,7 @@ setHttpHooks({
   },
   // 服务端要求先改密：重新读取登录状态，主布局会弹出改密对话框
   onPasswordChangeRequired: () => {
-    void auth.refresh().then(() => router.replace({ path: '/review/new' }))
+    void auth.refresh().then(() => router.replace({ path: HOME_PATH }))
   },
 })
 

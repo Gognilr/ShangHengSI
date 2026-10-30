@@ -39,3 +39,12 @@
 - 上传框 44px 底块中的图标改为 24px（不包 el-icon）。
 - 删除四处 `:deep(.el-button .el-icon + span)`，与 Element Plus 默认 6px 重复。
 - `npm --prefix frontend run build`：通过。浏览器尺寸核对留到 V3-A-08。
+
+## V3-A-02：侧栏主布局与首页（Opus 5.5，2026-10-30）
+
+- 新建 `SplitHandle.vue`（附 `readStoredWidth`）、`SidebarSessions.vue`、`stores/sessions.ts`；重写 `MainLayout.vue`；`SiLogo` 加 `markOnly`；首页改 `/assistant`（`main.ts` 中改密后的跳转也改用 `HOME_PATH`，超出原文件范围一行）；审核结果、智能助手根元素改 `height: 100%`。
+- `common.css`：`.page` 加左右 32px 留白。侧栏展开后主区域在 1280 宽下只有 1048px，原来内容贴边。
+- 近期会话按接口每页 30 条（V3Q-08）。全局搜索按钮已放好，对话框与 Ctrl K 由 V3-A-06 接上。
+- `npm --prefix frontend run build`：通过。
+- 本机浏览器（v2f 测试环境，临时管理员 ui-check，查完已删测试会话并退出）：强制改密时主区域只显示提示；侧栏新建会话后进入会话并出现在近期会话；收起 / 展开与偏好写入正确；分隔条方向键 16px、夹在 200～320、双击回 232、拖动写入正确；1280×800 与 1440×900 下智能审核、设置页布局正常，无控制台报错。修正一处：分隔条原先保存的是更新前的旧值。
+- 交给 V3-A-04：1280 宽、侧栏展开时，账号管理表的操作列要在表格内横向滚动，按 4.4 表格细节处理。
