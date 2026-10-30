@@ -2,6 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import TableSkeleton from '@/components/TableSkeleton.vue'
+import { useTableMaxHeight } from '@/utils/tableHeight'
 import { ApiError } from '@/api/http'
 import { lawsApi, type LawRow, type LawImport } from '@/api/laws'
 import { LAW_STATUS, LAW_IMPORT_STATUS, LAW_IMPORT_KIND, LAW_SOURCE, LAW_FIELD, toOptions } from '@/utils/labels'
@@ -15,6 +18,8 @@ const filter = reactive({ q: '', category: '', status: '', page: 1, page_size: 2
 const enabled = ref(false)
 const settingsLoaded = ref(false)
 const loading = ref(false)
+const loaded = ref(false)
+const tableMax = useTableMaxHeight(420)
 const saving = ref(false)
 const error = ref('')
 const detail = ref<LawImport | null>(null)
@@ -46,6 +51,7 @@ async function load(silent = false) {
   } catch (e) { if (!silent) error.value = `加载失败：${err(e)}。请刷新页面后重试。` }
   finally {
     loading.value = false
+    loaded.value = true
     if (reloadQueued && active) { reloadQueued = false; void load() }
   }
 }
@@ -129,8 +135,10 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-select v-model="filter.status" clearable placeholder="全部时效性" aria-label="法规时效性" class="category" @change="search"><el-option v-for="o in toOptions(LAW_STATUS)" :key="o.value" :value="o.value" :label="o.label" /></el-select>
         <el-button @click="search">查询</el-button>
       </div>
-      <el-table :data="rows" empty-text="没有符合条件的法规，可导入官方导出的目录">
-        <el-table-column prop="title" label="法规标题" min-width="180" />
+      <TableSkeleton v-if="!loaded" :columns="['1fr', '80px', '80px', '100px', '100px', '60px', '120px', '80px', '90px']" />
+      <el-table v-else :data="rows" :max-height="tableMax">
+        <template #empty><EmptyState compact title="没有符合条件的法规" description="可调整筛选条件，或导入官方导出的目录。" /></template>
+        <el-table-column prop="title" label="法规标题" min-width="180" show-overflow-tooltip />
         <el-table-column prop="category" label="分类" min-width="80" />
         <el-table-column label="时效性" width="80"><template #default="{ row }">{{ LAW_STATUS[row.status] }}</template></el-table-column>
         <el-table-column label="公布日期" width="100" class-name="num"><template #default="{ row }">{{ formatDate(row.published_on) }}</template></el-table-column>
@@ -145,7 +153,8 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
     <section class="panel">
       <div class="section-head"><h2>法规库更新记录</h2><el-button :disabled="pending || saving" @click="openUpload('catalog')">导入目录</el-button><el-button :disabled="pending || saving" @click="openUpload('fulltext')">导入全文</el-button></div>
       <p v-if="pending" class="hint">有一项更新正在解析或等待确认，请处理后再导入。</p>
-      <el-table :data="records" empty-text="尚无导入或同步记录">
+      <el-table :data="records">
+        <template #empty><EmptyState compact title="尚无导入或同步记录" /></template>
         <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="类型" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_KIND[row.kind] }}</template></el-table-column>
         <el-table-column label="状态" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_STATUS[row.status] }}</template></el-table-column>

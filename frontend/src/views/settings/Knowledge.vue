@@ -2,11 +2,16 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import RowMore from '@/components/RowMore.vue'
+import TableSkeleton from '@/components/TableSkeleton.vue'
+import { useTableMaxHeight } from '@/utils/tableHeight'
 import { kbApi, type KbDoc, type KbChunk } from '@/api/kb'
 import { ApiError } from '@/api/http'
 import { KB_STATUS, KB_STATUS_TAG } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
 
+const tableMax = useTableMaxHeight(320), loaded = ref(false)
 const rows = ref<KbDoc[]>([]), enabled = ref(false), loading = ref(false), saving = ref(false), error = ref('')
 const uploading = ref(false), uploadOpen = ref(false), formError = ref(''), files = ref<UploadUserFile[]>([])
 const previewOpen = ref(false), previewLoading = ref(false), previewError = ref(''), viewing = ref(''), chunks = ref<KbChunk[]>([])
@@ -21,7 +26,7 @@ async function load() {
   loading.value = true
   try { const data = await kbApi.list(); if (active) { rows.value = data.items; enabled.value = data.enabled; error.value = '' } }
   catch (e) { if (active) error.value = `加载失败：${err(e)}。请刷新页面后重试。` }
-  finally { if (active) { loading.value = false; schedule() } }
+  finally { if (active) { loading.value = false; loaded.value = true; schedule() } }
 }
 async function switchGlobal(value: string | number | boolean) {
   saving.value = true; error.value = ''
@@ -84,14 +89,16 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
       <div class="setting-row"><span>在智能助手中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" /></div>
       <p class="hint">关闭后不会检索知识库；只有启用且解析完成的文档参与检索。</p>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="gap" />
-      <el-table :data="rows" empty-text="尚无知识库文档，可上传公司制度、流程与产品资料">
-        <el-table-column label="名称" min-width="180"><template #default="{ row }">{{ row.name }}<p v-if="row.error_message" class="error">{{ row.error_message }}</p></template></el-table-column>
+      <TableSkeleton v-if="!loaded" :columns="['1fr', '90px', '80px', '80px', '1fr', '170px', '160px']" />
+      <el-table v-else :data="rows" :max-height="tableMax">
+        <template #empty><EmptyState compact title="尚无知识库文档" description="点击右上角“上传文档”，可上传公司制度、流程与产品资料。" /></template>
+        <el-table-column label="名称" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.name }}<p v-if="row.error_message" class="error">{{ row.error_message }}</p></template></el-table-column>
         <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="KB_STATUS_TAG[row.status]" size="small">{{ KB_STATUS[row.status] }}</el-tag></template></el-table-column>
         <el-table-column prop="chunk_count" label="片段数" width="80" class-name="num" />
         <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving || uploading" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
         <el-table-column prop="uploaded_by" label="上传人" min-width="90" />
         <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="操作" min-width="180"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="preview(row)">预览片段</el-button><el-button link type="primary" :disabled="saving" @click="rename(row)">改名</el-button><el-button link type="primary" :disabled="saving || uploading" @click="toggle(row, !row.enabled)">{{ row.enabled ? '停用' : '启用' }}</el-button><el-button link type="danger" :disabled="saving || uploading" @click="remove(row)">删除</el-button></template></el-table-column>
+        <el-table-column label="操作" width="140"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="preview(row)">预览片段</el-button><RowMore><el-dropdown-item :disabled="saving" @click="rename(row)">改名</el-dropdown-item><el-dropdown-item :disabled="saving || uploading" @click="toggle(row, !row.enabled)">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving || uploading" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
     </section>
     <el-dialog v-model="uploadOpen" title="上传知识库文档" width="640px" :close-on-click-modal="!uploading" :close-on-press-escape="!uploading" :show-close="!uploading">

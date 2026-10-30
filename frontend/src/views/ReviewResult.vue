@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, RotateCw, Trash2 } from '@lucide/vue'
+import { Download, ListChecks, RotateCw, Trash2 } from '@lucide/vue'
 import ResultToolbar from '@/components/ResultToolbar.vue'
 import ResultSummary from '@/components/ResultSummary.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
@@ -10,6 +10,8 @@ import DocPreview from '@/components/DocPreview.vue'
 import FindingCard from '@/components/FindingCard.vue'
 import LocalFindings from '@/components/LocalFindings.vue'
 import ReRunDialog from '@/components/ReRunDialog.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
@@ -159,7 +161,33 @@ async function remove() {
   } finally { deleting.value = false }
 }
 
-onMounted(load)
+// 左右分栏（V3-A 4.1）：左栏 ≥ 400px 且右栏 ≥ 420px，宽度存本浏览器
+const LEFT_KEY = 'si.review.leftWidth'
+const HANDLE = 8, GAP = 12, LEFT_MIN = 400, RIGHT_MIN = 420
+const splitEl = ref<HTMLElement>()
+const containerWidth = ref(0)
+const storedLeft = ref<number | null>(null)
+const leftMax = computed(() => Math.max(LEFT_MIN, containerWidth.value - HANDLE - GAP * 2 - RIGHT_MIN))
+const leftDefault = computed(() => Math.min(leftMax.value, Math.max(LEFT_MIN, Math.min(640, Math.max(480, Math.round(containerWidth.value * 0.42))))))
+const leftWidth = computed({
+  get: () => storedLeft.value === null ? leftDefault.value : Math.min(leftMax.value, Math.max(LEFT_MIN, storedLeft.value)),
+  set: (value: number) => { storedLeft.value = value },
+})
+let resizeObserver: ResizeObserver | undefined
+function measure() { containerWidth.value = splitEl.value?.clientWidth ?? 0 }
+function bindSplit(el: unknown) {
+  const node = (el as HTMLElement | null) ?? undefined
+  if (node === splitEl.value) return
+  resizeObserver?.disconnect()
+  splitEl.value = node
+  if (node) { measure(); resizeObserver = new ResizeObserver(measure); resizeObserver.observe(node) }
+}
+onBeforeUnmount(() => resizeObserver?.disconnect())
+onMounted(() => {
+  const saved = readStoredWidth(LEFT_KEY, 0, 100000, 0)
+  storedLeft.value = saved > 0 ? saved : null
+  void load()
+})
 watch(() => route.params.taskId, load)
 
 const severityCounts = computed(() => ['high', 'medium', 'low'].map(value => ({ value, label: severityLabel(value), count: (run.value?.findings ?? []).filter(f => f.severity === value).length })))
@@ -212,8 +240,8 @@ const reqVersion = computed(() => {
       <span class="action-separator" aria-hidden="true"></span>
       <el-button link type="danger" :loading="deleting" @click="remove"><template #icon><Trash2 :size="16" :stroke-width="1.75" /></template>删除任务</el-button>
     </ResultToolbar>
-    <div class="split">
-      <div class="left">
+    <div :ref="bindSplit" class="split">
+      <div class="left" :style="{ flexBasis: `${leftWidth}px` }">
         <ResultSummary v-if="task.status === 'completed_local'" :run="null" local :counts="[]" :severity="fSeverity" />
         <section v-if="task.status === 'completed_local'" class="panel gap"><h2 class="local-title">本地校验结果</h2><LocalFindings :task-id="task.id" @select="onLocalSelect" /></section>
 
@@ -259,9 +287,11 @@ const reqVersion = computed(() => {
                 @updated="onUpdated"
                 @select="onSelect"
               />
-              <el-empty
+              <EmptyState
                 v-if="!findings.length"
-                :description="run.findings.length ? '没有符合筛选条件的问题' : '本次没有列出问题条目。结果由 AI 生成，仅供参考，请以人工复核为准。'"
+                :icon="ListChecks"
+                :title="run.findings.length ? '没有符合筛选条件的问题' : '本次没有列出问题条目'"
+                :description="run.findings.length ? '调整上方的类别或处理状态筛选后再看。' : '结果由 AI 生成，仅供参考，请以人工复核为准。'"
               />
             </el-tab-pane>
 
@@ -290,6 +320,7 @@ const reqVersion = computed(() => {
 
         <ReRunDialog v-model="rerunOpen" :task="task" />
       </div>
+      <SplitHandle v-model="leftWidth" :min="LEFT_MIN" :max="leftMax" :default-value="leftDefault" :storage-key="LEFT_KEY" label="调整左右宽度" />
       <div class="right">
         <DocPreview :task-id="task.id" :files="task.files" :highlight="highlight" :highlight-label="selectedId && run ? `问题 ${String(run.findings.findIndex(item => item.id === selectedId) + 1).padStart(2, '0')}` : ''" />
       </div>
@@ -301,8 +332,8 @@ const reqVersion = computed(() => {
 
 <style scoped>
 .page { height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 0; padding-bottom: 0; }
-.split { display: flex; flex: 1; min-height: 0; gap: 20px; padding: 20px 0; }
-.left { flex: 0 0 clamp(480px, 42%, 640px); min-width: 0; overflow-y: auto; }
+.split { display: flex; flex: 1; min-height: 0; gap: 12px; padding: 20px 0; }
+.left { flex: 0 0 auto; min-width: 0; overflow-y: auto; }
 .right { flex: 1; min-width: 0; min-height: 0; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); overflow-y: auto; }
 .empty-paper { min-height: 240px; }
 .action-separator { width: 1px; height: 24px; background: var(--el-border-color-light); }

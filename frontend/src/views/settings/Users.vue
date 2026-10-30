@@ -9,10 +9,16 @@ import { ROLE_OPTIONS, roleLabel, toOptions, userStatusLabel } from '@/utils/lab
 import { formatDateTime } from '@/utils/time'
 import { Plus } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import RowMore from '@/components/RowMore.vue'
+import TableSkeleton from '@/components/TableSkeleton.vue'
+import { useTableMaxHeight } from '@/utils/tableHeight'
 
 const auth = useAuthStore()
 const items = ref<UserRow[]>([])
 const loading = ref(false)
+const loaded = ref(false)
+const tableMax = useTableMaxHeight(300)
 const error = ref('')
 
 async function load() {
@@ -24,6 +30,7 @@ async function load() {
     error.value = e instanceof ApiError ? `加载失败：${e.message}` : '加载失败，请刷新页面'
   } finally {
     loading.value = false
+    loaded.value = true
   }
 }
 onMounted(load)
@@ -162,9 +169,11 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
     <PageHeader title="账号管理" description="新建账号、启停和重置密码；新账号首次登录时须先修改密码"><el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新增账号</el-button></PageHeader>
     <el-card shadow="never">
       <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="gap" />
-      <el-table v-loading="loading" :data="items" empty-text="暂无账号">
-        <el-table-column prop="username" label="用户名" min-width="140" />
-        <el-table-column label="显示名" min-width="140"><template #default="{ row }"><div class="user-name"><span class="avatar">{{ Array.from(row.display_name)[0] ?? '?' }}</span><span>{{ row.display_name }}</span></div></template></el-table-column>
+      <TableSkeleton v-if="!loaded" :columns="['1fr', '1fr', '140px', '100px', '170px', '160px']" />
+      <el-table v-else v-loading="loading" :data="items" :max-height="tableMax">
+        <template #empty><EmptyState compact title="暂无账号" description="点击右上角“新增账号”添加。" /></template>
+        <el-table-column prop="username" label="用户名" min-width="140" show-overflow-tooltip />
+        <el-table-column label="显示名" min-width="140" show-overflow-tooltip><template #default="{ row }"><div class="user-name"><span class="avatar">{{ Array.from(row.display_name)[0] ?? '?' }}</span><span>{{ row.display_name }}</span></div></template></el-table-column>
         <el-table-column label="角色" width="140">
           <template #default="{ row }"><el-tag type="info" size="small">{{ roleLabel(row.role) }}</el-tag></template>
         </el-table-column>
@@ -178,13 +187,13 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
         <el-table-column label="最近登录时间" width="170" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.last_login_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="220">
+        <el-table-column label="操作" width="160">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button v-if="!isSelf(row)" link :type="row.status === 'active' ? 'danger' : 'primary'" @click="toggleStatus(row)">
-              {{ row.status === 'active' ? '停用' : '启用' }}
-            </el-button>
             <el-button link type="primary" @click="openReset(row)">重置密码</el-button>
+            <RowMore>
+              <el-dropdown-item @click="openEdit(row)">修改角色</el-dropdown-item>
+              <el-dropdown-item v-if="!isSelf(row)" :class="{ 'danger-item': row.status === 'active' }" @click="toggleStatus(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-dropdown-item>
+            </RowMore>
           </template>
         </el-table-column>
       </el-table>

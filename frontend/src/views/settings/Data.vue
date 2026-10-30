@@ -16,6 +16,9 @@ import { ApiError } from '@/api/http'
 import { lawsyncApi, type LawsyncSettings } from '@/api/admin'
 import { LAWSYNC_INTERVAL } from '@/utils/labels'
 import { useAuthStore } from '@/stores/auth'
+import EmptyState from '@/components/EmptyState.vue'
+import TableSkeleton from '@/components/TableSkeleton.vue'
+import { useTableMaxHeight } from '@/utils/tableHeight'
 import {
   BACKUP_STATUS_TAG,
   OUTBOUND_STATUS,
@@ -213,6 +216,9 @@ const logTotal = ref(0)
 const logPage = ref(1)
 const logSize = ref(20)
 const logLoading = ref(false)
+const logLoaded = ref(false)
+const auditLoaded = ref(false)
+const tableMax = useTableMaxHeight(360)
 const logError = ref('')
 const drawer = ref(false)
 const detail = ref<OutboundDetail | null>(null)
@@ -238,6 +244,7 @@ async function loadLogs() {
     logError.value = `加载失败：${errText(e, '请刷新页面')}`
   } finally {
     logLoading.value = false
+    logLoaded.value = true
   }
 }
 
@@ -295,7 +302,7 @@ async function loadAudit() {
     auditTotal.value = result.total
   } catch (e) {
     auditError.value = `加载失败：${errText(e, '请刷新页面')}`
-  } finally { auditLoading.value = false }
+  } finally { auditLoading.value = false; auditLoaded.value = true }
 }
 
 function searchAudit() {
@@ -415,7 +422,8 @@ onBeforeUnmount(stopPolling)
         </div>
 
         <h3>最近 20 条备份记录</h3>
-        <el-table :data="records?.items ?? []" size="small" empty-text="尚无备份记录">
+        <el-table :data="records?.items ?? []" size="small">
+          <template #empty><EmptyState compact title="尚无备份记录" /></template>
           <el-table-column label="开始时间" width="170" class-name="num">
             <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
           </el-table-column>
@@ -467,14 +475,16 @@ onBeforeUnmount(stopPolling)
         </el-select>
       </div>
       <el-alert v-if="logError" type="error" :closable="false" show-icon :title="logError" />
-      <el-table v-loading="logLoading" :data="logs" size="small" empty-text="没有符合条件的外发记录" @row-click="openDetail">
+      <TableSkeleton v-if="!logLoaded" :columns="['170px', '110px', '1fr', '90px', '130px', '80px', '90px']" />
+      <el-table v-else v-loading="logLoading" :data="logs" size="small" :max-height="tableMax" @row-click="openDetail">
+        <template #empty><EmptyState compact title="没有符合条件的外发记录" description="可调整上方筛选条件。" /></template>
         <el-table-column label="时间" width="170" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="用户" width="110">
           <template #default="{ row }">{{ row.user_name ?? '—' }}</template>
         </el-table-column>
-        <el-table-column label="任务主文件名" min-width="160">
+        <el-table-column label="任务主文件名" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ row.task_title ?? '—' }}</template>
         </el-table-column>
         <el-table-column label="用途" width="90">
@@ -512,7 +522,9 @@ onBeforeUnmount(stopPolling)
         <el-date-picker v-model="auditFilters.range" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" class="date-filter" @change="searchAudit" />
       </div>
       <el-alert v-if="auditError" type="error" :closable="false" show-icon :title="auditError" />
-      <el-table v-loading="auditLoading" :data="auditRows" size="small" empty-text="没有符合条件的审计日志">
+      <TableSkeleton v-if="!auditLoaded" :columns="['170px', '100px', '120px', '1fr', '1fr', '110px']" />
+      <el-table v-else v-loading="auditLoading" :data="auditRows" size="small" :max-height="tableMax">
+        <template #empty><EmptyState compact title="没有符合条件的审计日志" description="可调整上方筛选条件。" /></template>
         <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="用户" width="100"><template #default="{ row }">{{ row.user_name ?? '—' }}</template></el-table-column>
         <el-table-column label="动作" width="120"><template #default="{ row }">{{ auditActionLabel(row.action) }}</template></el-table-column>

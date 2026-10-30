@@ -155,6 +155,19 @@ export const SEVERITY_TAG: Record<string, TagType> = { high: 'danger', medium: '
 export const VERDICT_TAG: Record<string, TagType> = { issue: 'danger', ok: 'success', na: 'info', unable: 'warning' }
 export const CITE_TAG: Record<string, TagType> = { verified: 'success', unverified: 'warning', missing: 'info' }
 
+/** 任务 / 文件处理状态标签（V3-A 4.2）：解析中 info、待确认 warning、已确认 success、失败 danger；只读、已过期为 info + plain。 */
+const STATUS_TAG: Record<string, [TagType, 'light' | 'plain']> = {
+  parsing: ['info', 'light'], reviewing: ['info', 'light'], queued: ['info', 'light'], streaming: ['info', 'light'],
+  awaiting_confirm: ['warning', 'light'],
+  reviewed: ['success', 'light'], completed_local: ['success', 'light'], confirmed: ['success', 'light'], done: ['success', 'light'],
+  parse_failed: ['danger', 'light'], failed: ['danger', 'light'],
+  readonly: ['info', 'plain'], expired: ['info', 'plain'],
+}
+export function statusTag(code: string): { type: TagType; effect: 'light' | 'plain' } {
+  const [type, effect] = STATUS_TAG[code] ?? ['info', 'plain']
+  return { type, effect }
+}
+
 /** 备份、外发记录（设置 - 数据）。 */
 export const BACKUP_STATUS: Dict = { running: '进行中', success: '成功', failed: '失败' }
 export const backupStatusLabel = pick(BACKUP_STATUS)

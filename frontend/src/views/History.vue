@@ -5,11 +5,16 @@ import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { tasksApi, type TaskListItem } from '@/api/tasks'
-import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
+import EmptyState from '@/components/EmptyState.vue'
+import RowMore from '@/components/RowMore.vue'
+import TableSkeleton from '@/components/TableSkeleton.vue'
+import { docTypeLabel, stanceLabel, statusLabel, statusTag } from '@/utils/labels'
+import { useTableMaxHeight } from '@/utils/tableHeight'
 import { formatDate, formatDateTime } from '@/utils/time'
-import { Search } from '@lucide/vue'
+import { FileSearch, Search } from '@lucide/vue'
 
 const router = useRouter()
+const tableMax = useTableMaxHeight(300)
 function fileBadge(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   return ['docx', 'doc', 'wps', 'rtf'].includes(ext) ? 'DOC' : ['xlsx', 'xls', 'et'].includes(ext) ? 'XLS' : ext === 'pdf' ? 'PDF' : 'IMG'
@@ -125,9 +130,9 @@ onMounted(load)
 
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />
 
-    <el-skeleton v-if="loading && initialLoad && !items.length" :rows="5" animated />
-    <el-table v-else v-loading="loading" :data="items" empty-text="没有审核记录">
-      <template #empty><el-empty description="没有审核记录"><el-button @click="router.push({ name: 'review-new' })">去新建审核</el-button></el-empty></template>
+    <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['170px', '1fr', '110px', '80px', '130px', '120px', '110px', '180px']" />
+    <el-table v-else v-loading="loading" :data="items" :max-height="tableMax">
+      <template #empty><EmptyState :icon="FileSearch" title="没有审核记录" description="上传文件并完成审核后，记录会出现在这里。"><el-button @click="router.push({ name: 'review-new' })">去新建审核</el-button></EmptyState></template>
       <el-table-column label="提交时间" width="170">
         <template #default="{ row }"><span class="num">{{ formatDateTime(row.created_at) }}</span></template>
       </el-table-column>
@@ -139,16 +144,17 @@ onMounted(load)
         <template #default="{ row }">{{ stanceLabel(row.stance) }}</template>
       </el-table-column>
       <el-table-column label="状态" width="130">
-        <template #default="{ row }"><span :class="{ danger: row.status === 'parse_failed' }">{{ statusLabel(row.status) }}</span></template>
+        <template #default="{ row }"><el-tag size="small" :type="statusTag(row.status).type" :effect="statusTag(row.status).effect">{{ statusLabel(row.status) }}</el-tag></template>
       </el-table-column>
       <el-table-column label="高风险问题数" width="120" align="center"><template #default="{ row }"><span class="num" :class="{ 'high-count': row.high_count > 0 }">{{ row.high_count }}</span></template></el-table-column>
       <el-table-column label="保留至" width="110"><template #default="{ row }"><span class="num">{{ row.task_expires_at ? formatDate(row.task_expires_at) : '永久' }}</span></template></el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="open(row)">打开</el-button>
-          <el-button v-if="['reviewed', 'completed_local'].includes(row.status)" link type="primary"
-            :loading="exporting === row.id" :disabled="!!exporting && exporting !== row.id" @click="exportReport(row)">导出</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
+          <RowMore>
+            <el-dropdown-item v-if="['reviewed', 'completed_local'].includes(row.status)" :disabled="!!exporting" @click="exportReport(row)">导出报告</el-dropdown-item>
+            <el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item>
+          </RowMore>
         </template>
       </el-table-column>
     </el-table>
@@ -187,6 +193,6 @@ onMounted(load)
 .badge-xls { color: var(--el-color-success); background: var(--el-color-success-light-9); }
 .badge-pdf { color: var(--el-color-danger); background: var(--el-color-danger-light-9); }
 .badge-img { color: var(--el-color-info); background: var(--el-color-info-light-9); }
-.danger, .high-count { color: var(--el-color-danger); }
+.high-count { color: var(--el-color-danger); }
 .high-count { font-weight: 600; }
 </style>

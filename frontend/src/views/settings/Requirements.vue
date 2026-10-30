@@ -12,6 +12,10 @@ import { requirementsApi, type BuiltinRequirement } from '@/api/requirements'
 import { DOC_TYPE_OPTIONS, STANCE_OPTIONS, SOURCE_OPTIONS, docTypeLabel, stanceLabel, sourceLabel, toOptions } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
 import PageHeader from '@/components/PageHeader.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import RowMore from '@/components/RowMore.vue'
+import TableSkeleton from '@/components/TableSkeleton.vue'
+import { useTableMaxHeight } from '@/utils/tableHeight'
 
 const MAX_ITEMS = 100
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -48,6 +52,8 @@ const comboRows = computed(() => toOptions(DOC_TYPE_OPTIONS).map(doc => ({ doc_t
 const comboCount = (doc: string, stance: string, source: string) => comboCounts.value.find(c => c.doc_type === doc && c.stance === stance && c.source === source)?.count ?? 0
 const currentVersion = ref<number | null>(null)
 const listLoading = ref(false)
+const listLoaded = ref(false)
+const tableMax = useTableMaxHeight(360)
 const listError = ref('')
 const full = computed(() => items.value.length >= MAX_ITEMS)
 
@@ -63,6 +69,7 @@ async function loadList() {
     listError.value = `加载失败：${errText(e, '请刷新页面')}`
   } finally {
     listLoading.value = false
+    listLoaded.value = true
   }
 }
 
@@ -256,9 +263,11 @@ onMounted(() => {
         <span v-else class="hint version">已有 {{ items.length }} / {{ MAX_ITEMS }} 条</span>
       </div>
       <el-alert v-if="listError" type="error" :closable="false" show-icon :title="listError" />
-      <el-table v-loading="listLoading" :data="items" size="small" empty-text="尚未添加公司补充要求">
+      <TableSkeleton v-if="!listLoaded" :columns="['80px', '1fr', '150px', '100px', '100px', '70px', '70px', '110px']" />
+      <el-table v-else v-loading="listLoading" :data="items" size="small" :max-height="tableMax">
+        <template #empty><EmptyState compact title="尚未添加公司补充要求" description="点击上方“新增”，补充的要求会并入每次审核。" /></template>
         <el-table-column prop="code" label="编号" width="80" class-name="num" />
-        <el-table-column prop="text" label="内容" min-width="200" />
+        <el-table-column prop="text" label="内容" min-width="200" show-overflow-tooltip />
         <el-table-column label="适用文件类型" width="150">
           <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
         </el-table-column>
@@ -277,7 +286,7 @@ onMounted(() => {
         <el-table-column label="操作" width="110">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="remove(row)">删除</el-button>
+            <RowMore><el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item></RowMore>
           </template>
         </el-table-column>
       </el-table>

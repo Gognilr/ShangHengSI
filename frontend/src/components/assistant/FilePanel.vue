@@ -4,7 +4,9 @@ import { ElMessageBox } from 'element-plus'
 import { assistantApi, confirmationTask, type Session, type SessionFile } from '@/api/assistant'
 import type { Stance } from '@/api/tasks'
 import { ApiError } from '@/api/http'
-import { assistantStatusLabel } from '@/utils/labels'
+import { assistantStatusLabel, statusTag } from '@/utils/labels'
+import EmptyState from '@/components/EmptyState.vue'
+import { FileText } from '@lucide/vue'
 import ConfirmStep from '@/components/ConfirmStep.vue'
 const props = defineProps<{ session: Session }>()
 const emit = defineEmits<{ refresh: [] }>()
@@ -55,10 +57,10 @@ function confirmed() { confirmOpen.value = false; emit('refresh') }
     <template v-if="session.status === 'parsing'"><h3>正在本机解析文件</h3><el-progress :percentage="100" :indeterminate="true" :show-text="false" /><p class="hint num">已用 {{ elapsed }} 秒</p><p class="hint">在本机读取正文并识别敏感信息，可以离开页面稍后继续。</p></template>
     <el-alert v-if="session.error_message" :title="session.error_message" type="error" :closable="false" />
     <div v-for="file in session.files" :key="file.id" class="file-row">
-      <span class="file-badge">{{ file.ext.toUpperCase() }}</span><div class="file-info"><div class="file-name">{{ file.original_name }}</div><div class="hint">{{ file.confirmed_at ? '已确认' : assistantStatusLabel(session.status) }}</div><p v-for="warning in file.warnings" :key="warning" class="warning">{{ warning }}</p></div>
+      <span class="file-badge">{{ file.ext.toUpperCase() }}</span><div class="file-info"><div class="file-name">{{ file.original_name }}</div><el-tag size="small" :type="statusTag(file.confirmed_at ? 'confirmed' : session.status).type" :effect="statusTag(file.confirmed_at ? 'confirmed' : session.status).effect">{{ file.confirmed_at ? '已确认' : assistantStatusLabel(session.status) }}</el-tag><p v-for="warning in file.warnings" :key="warning" class="warning">{{ warning }}</p></div>
       <el-button v-if="!file.confirmed_at && session.status !== 'parsing'" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
     </div>
-    <el-empty v-if="!session.files.length" description="加入文件后，在本机解析与脱敏" />
+    <EmptyState v-if="!session.files.length" compact :icon="FileText" title="还没有文件" description="加入文件后，在本机解析与脱敏。" />
     <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="confirmOpen = true">确认脱敏（{{ pending.length }} 个文件）</el-button>
     <div class="session-settings"><label>我方立场</label><el-select :model-value="session.stance" :disabled="!canStance || busy" @change="stance"><el-option label="销售" value="sales" /><el-option label="采购" value="purchase" /><el-option label="其他" value="other" /></el-select><p class="hint">第一个文件确认后不能修改立场</p><p>本会话代号 <span class="num">{{ session.code_count }}</span> 个</p><el-button :disabled="busy || session.status === 'parsing'" @click="showOutbound">查看外发文本</el-button><p class="hint">发给模型的只有脱敏后的文字，回复在本机还原</p></div>
     <el-dialog v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmStep :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
