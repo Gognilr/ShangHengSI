@@ -147,7 +147,7 @@ export function toOptions(dict: Dict): { value: string; label: string }[] {
 }
 
 /** 标签颜色（frontend.md 第五节）：各页面共用。 */
-export type TagType = 'danger' | 'warning' | 'info' | 'success'
+export type TagType = 'danger' | 'warning' | 'info' | 'success' | 'primary'
 export const RUN_STATUS_TAG: Record<string, TagType> = {
   completed: 'success', partial: 'warning', blocked: 'warning', failed: 'danger', queued: 'info', running: 'info',
 }
@@ -155,11 +155,12 @@ export const SEVERITY_TAG: Record<string, TagType> = { high: 'danger', medium: '
 export const VERDICT_TAG: Record<string, TagType> = { issue: 'danger', ok: 'success', na: 'info', unable: 'warning' }
 export const CITE_TAG: Record<string, TagType> = { verified: 'success', unverified: 'warning', missing: 'info' }
 
-/** 任务 / 文件处理状态标签（V3-A 4.2）：解析中 info、待确认 warning、已确认 success、失败 danger；只读、已过期为 info + plain。 */
+/** 任务 / 文件处理状态标签（V3-A 4.2）：解析中 info、待确认 warning、已确认 success、失败 danger；只读、已过期为 info + plain。
+ *  审核完成用 primary 而不用 success：绿色的“已审核”容易被读成“审核通过”（frontend.md 第五节）。 */
 const STATUS_TAG: Record<string, [TagType, 'light' | 'plain']> = {
   parsing: ['info', 'light'], reviewing: ['info', 'light'], queued: ['info', 'light'], streaming: ['info', 'light'],
   awaiting_confirm: ['warning', 'light'],
-  reviewed: ['success', 'light'], completed_local: ['success', 'light'], confirmed: ['success', 'light'], done: ['success', 'light'],
+  reviewed: ['primary', 'light'], completed_local: ['primary', 'light'], confirmed: ['success', 'light'], done: ['success', 'light'],
   parse_failed: ['danger', 'light'], failed: ['danger', 'light'],
   readonly: ['info', 'plain'], expired: ['info', 'plain'],
 }
