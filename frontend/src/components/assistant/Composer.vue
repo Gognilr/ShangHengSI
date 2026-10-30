@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ArrowUp, Square } from '@lucide/vue'
 import { assistantApi, type Session, type Template, type MessageInput } from '@/api/assistant'
 import type { ChatPreview, ChatDecision } from '@/api/chat'
 import type { UserCategory } from '@/api/redaction'
 import { ApiError } from '@/api/http'
 import { USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 import TemplatePicker from './TemplatePicker.vue'
-const props = defineProps<{ session: Session; template: Template | null }>()
-const emit = defineEmits<{ 'update:template': [value: Template | null]; sent: [] }>()
+const props = defineProps<{ session: Session; template: Template | null; generating: number | null }>()
+const emit = defineEmits<{ 'update:template': [value: Template | null]; sent: []; stop: [mid: number] }>()
 const text = ref(''), fileIds = ref<string[]>([]), target = ref('英文'), focus = ref('全部'), tone = ref('正式'), language = ref('同来函')
 const useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
 const preview = ref<ChatPreview | null>(null)
@@ -38,6 +39,12 @@ async function submit() {
   } catch (e) { error.value = e instanceof ApiError ? e.message : '预览失败，请重试' }
   finally { busy.value = false }
 }
+// Enter 打开“确认发送内容”，Shift+Enter 换行；输入法组字期间的 Enter 不处理
+function onKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  if (props.generating === null) void submit()
+}
 async function send() {
   if (!pending || !confirmed.value || sending.value) return
   sending.value = true; error.value = ''
@@ -62,17 +69,25 @@ async function send() {
   <div class="composer">
     <p v-if="session.original_deleted" class="hint">原件已按保留期限删除，本会话只能查看</p>
     <template v-else>
-      <TemplatePicker :model-value="template" @update:model-value="emit('update:template', $event)" />
-      <div class="parameters">
+      <div v-if="files.length || template === 'translate' || template === 'summary' || template === 'reply'" class="parameters">
         <el-select v-model="fileIds" multiple collapse-tags collapse-tags-tooltip placeholder="使用的文件" aria-label="使用的文件"><el-option v-for="file in files" :key="file.id" :label="`文件 ${file.seq}：${file.original_name}`" :value="file.id" /></el-select>
         <el-select v-if="template === 'translate'" v-model="target" aria-label="目标语言"><el-option v-for="option in ['中文','英文','日文','韩文','俄文','西班牙文','法文','德文','阿拉伯文']" :key="option" :label="option" :value="option" /></el-select>
         <el-select v-if="template === 'summary'" v-model="focus" aria-label="侧重点"><el-option v-for="option in ['全部','义务与期限','金额与付款','风险']" :key="option" :label="option" :value="option" /></el-select>
         <el-select v-if="template === 'reply'" v-model="tone" aria-label="回复语气"><el-option v-for="option in ['正式','简洁','友好坚定']" :key="option" :label="option" :value="option" /></el-select>
         <el-select v-if="template === 'reply'" v-model="language" aria-label="回复语言"><el-option v-for="option in ['中文','英文','同来函']" :key="option" :label="option" :value="option" /></el-select>
       </div>
-      <el-input v-model="text" type="textarea" :rows="3" maxlength="4000" show-word-limit placeholder="输入问题或粘贴来函（Ctrl+Enter 发送）" aria-label="问题或来函" @keydown.ctrl.enter.prevent="submit" />
-      <div class="send-row"><div><el-checkbox v-if="session.kb_enabled" v-model="useKb">附带公司知识库</el-checkbox><el-checkbox v-model="useHistory">参考我的历史合同</el-checkbox></div><el-button type="primary" :disabled="!!reason || sending" :loading="busy" @click="submit">发送</el-button></div>
-      <p v-if="reason" class="hint">{{ reason }}</p><el-alert v-if="error && !open" :title="error" type="error" :closable="false" />
+      <div class="input-box">
+        <el-input v-model="text" type="textarea" :autosize="{ minRows: 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" placeholder="输入问题或粘贴来函" aria-label="问题或来函" @keydown="onKeydown" />
+        <el-button v-if="generating !== null" class="send" circle aria-label="停止生成" title="停止生成" @click="emit('stop', generating)"><Square :size="14" :stroke-width="2" fill="currentColor" /></el-button>
+        <el-button v-else class="send" type="primary" circle aria-label="发送" :title="reason || '发送'" :disabled="!!reason || sending" :loading="busy" @click="submit"><ArrowUp v-if="!busy" :size="16" :stroke-width="2" /></el-button>
+      </div>
+      <div class="options">
+        <!-- V3-B 在这一行加模型选择 -->
+        <TemplatePicker :model-value="template" @update:model-value="emit('update:template', $event)" />
+        <el-checkbox v-if="session.kb_enabled" v-model="useKb">附带公司知识库</el-checkbox><el-checkbox v-model="useHistory">参考我的历史合同</el-checkbox>
+        <span class="keys">Enter 发送，Shift+Enter 换行</span>
+      </div>
+      <p v-if="reason && (text.trim() || template || !session.can_send)" class="hint">{{ reason }}</p><el-alert v-if="error && !open" :title="error" type="error" :closable="false" />
     </template>
     <el-dialog v-model="open" title="确认发送内容" width="640px" :close-on-click-modal="false" :close-on-press-escape="!sending" :show-close="!sending" append-to-body>
       <p class="hint">发给模型的只有脱敏后的文字，请核对后发送。</p><pre>{{ preview?.redacted }}</pre>
@@ -86,10 +101,18 @@ async function send() {
   </div>
 </template>
 <style scoped>
-.composer { padding: 16px 20px; border-top: 1px solid var(--el-border-color-light); background: var(--el-bg-color); }
-.parameters { display: flex; gap: 8px; margin: 12px 0; }
+.composer { padding: 12px 24px 16px; border-top: 1px solid var(--el-border-color-light); background: var(--el-bg-color); }
+.composer > * { max-width: 760px; margin-left: auto; margin-right: auto; }
+.parameters { display: flex; gap: 8px; margin-bottom: 8px; }
 .parameters :deep(.el-select) { min-width: 0; flex: 1; }
-.send-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.input-box { position: relative; }
+.input-box :deep(.el-textarea__inner) { padding: 10px 52px 10px 12px; font: var(--si-font-body); resize: none; }
+.input-box :deep(.el-input__count) { right: 52px; }
+.send { position: absolute; right: 8px; bottom: 6px; width: 32px; height: 32px; }
+.options { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; }
+.options :deep(.el-checkbox) { margin-right: 0; }
+.keys { margin-left: auto; font: var(--si-font-caption); color: var(--el-text-color-placeholder); }
+.hint { margin: 6px 0 0; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-body); max-height: 320px; overflow-y: auto; padding: 16px; background: var(--el-fill-color-light); border-radius: var(--el-border-radius-base); }
 .suspect { border-top: 1px solid var(--el-border-color-light); padding: 12px 0; }
 .suspect :deep(.el-select) { width: 160px; }

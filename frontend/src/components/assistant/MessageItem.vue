@@ -9,7 +9,7 @@ import { formatDateTime } from '@/utils/time'
 import { assistantStatusLabel } from '@/utils/labels'
 import CompareTable from './CompareTable.vue'
 import TranslationView from './TranslationView.vue'
-const props = defineProps<{ message: Message; sessionId: string }>()
+const props = defineProps<{ message: Message; sessionId: string; last?: boolean }>()
 const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number] }>()
 const parsed = computed(() => markdown(props.message.content))
 const pending = computed(() => ['queued', 'streaming'].includes(props.message.status))
@@ -37,8 +37,8 @@ async function copy() {
 }
 </script>
 <template>
-  <article class="message" :class="{ mine: message.role === 'user' }">
-    <div class="hint">{{ message.role === 'user' ? '你' : '助手' }} · <span class="num">{{ formatDateTime(message.created_at) }}</span> · {{ assistantStatusLabel(message.status) }}</div>
+  <article class="message" :class="message.role === 'user' ? 'mine' : 'reply'">
+    <div class="hint meta">{{ message.role === 'user' ? '你' : '助手' }} · <span class="num">{{ formatDateTime(message.created_at) }}</span><template v-if="message.role === 'assistant' && !pending"> · {{ assistantStatusLabel(message.status) }}</template></div>
     <CompareTable v-if="message.compare" :comparison="message.compare" />
     <TranslationView v-else-if="message.template === 'translate' && message.role === 'assistant'" :message="message" :session-id="sessionId" />
     <div v-else class="markdown">
@@ -48,13 +48,13 @@ async function copy() {
         <p v-else :class="{ heading: block.kind === 'heading', list: block.kind === 'list' }"><span v-if="block.kind === 'list'">• </span><template v-for="(part, pi) in inline(block.text)" :key="pi"><el-tag v-if="part.unknown" type="warning" size="small">{{ part.text }}</el-tag><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></p>
       </template>
     </div>
-    <span v-if="pending" class="cursor" aria-label="正在生成">▍</span>
+    <p v-if="pending" class="generating" role="status">正在生成…</p>
     <p v-if="unknown" class="warning">回复中有无法还原的代号</p>
     <el-alert v-if="message.error" :title="message.error" type="error" :closable="false" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="message.role === 'assistant' && message.extras.kb_sent !== undefined" class="hint">附带公司知识库片段 {{ message.extras.kb_sent }} 段（{{ message.extras.kb_dropped ?? 0 }} 段因含疑似敏感信息未发送）</p>
     <p v-for="source in message.extras.history_sources" :key="source.task_id" class="hint"><router-link :to="`/review/${source.task_id}`" target="_blank" rel="noopener">来自 {{ source.month }} 的一份合同</router-link></p>
-    <div v-if="message.role === 'assistant'" class="message-actions">
+    <div v-if="message.role === 'assistant'" class="message-actions" :class="{ 'on-hover': !pending && message.status !== 'failed' && !last }">
       <el-button v-if="pending" size="small" @click="emit('stop', message.id)">停止</el-button>
       <el-button v-else-if="message.status === 'failed'" size="small" @click="emit('retry', message.id)">重试</el-button>
       <template v-else><el-button link @click="copy">复制</el-button><el-button link :loading="downloading" @click="download('docx')">导出 Word</el-button><el-button v-if="message.template === 'translate'" link :disabled="downloading" @click="download('docx', 'bilingual')">导出对照 Word</el-button><el-button v-if="hasTable" link :disabled="downloading" @click="download('xlsx')">导出 Excel</el-button></template>
@@ -62,9 +62,14 @@ async function copy() {
   </article>
 </template>
 <style scoped>
-.message { padding: 20px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
-.mine { background: var(--el-fill-color-light); padding: 16px; border-radius: var(--si-radius-card); margin-top: 16px; }
-.markdown { font: var(--si-font-reading); overflow-wrap: anywhere; white-space: pre-wrap; }
+.message { padding: 16px 0; }
+/* 用户消息：靠右气泡；助手回复：满宽、无边框无底色 */
+.mine { display: flex; flex-direction: column; align-items: flex-end; }
+.mine .markdown { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--el-color-primary-light-9); border-radius: var(--si-radius-card); }
+.mine .markdown p:first-child { margin-top: 0; }
+.mine .markdown p:last-child { margin-bottom: 0; }
+.meta { margin-bottom: 4px; }
+.markdown { font: var(--si-font-reading); color: var(--si-text-reading); overflow-wrap: anywhere; white-space: pre-wrap; }
 .markdown p { margin: 12px 0; }
 .heading { font: var(--si-font-h3); }
 strong { font-weight: 600; }
@@ -74,9 +79,11 @@ table { border-collapse: collapse; width: 100%; font: var(--si-font-body); }
 td, th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--el-border-color-light); }
 th { background: var(--el-fill-color-light); }
 .warning { color: var(--el-color-warning); font: var(--si-font-meta); }
-.message-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.generating { margin: 4px 0 0; font: var(--si-font-meta); color: var(--el-text-color-secondary); }
+.message-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .message-actions :deep(.el-button) { margin-left: 0; }
-.cursor { color: var(--el-color-primary); animation: blink 1s steps(2) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+/* 悬停该条回复或键盘聚焦其中时显示操作；保持占位，不跳动 */
+.message-actions.on-hover { opacity: 0; transition: opacity 150ms; }
+.reply:hover .message-actions.on-hover, .reply:focus-within .message-actions.on-hover { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .message-actions.on-hover { transition: none; } }
 </style>
