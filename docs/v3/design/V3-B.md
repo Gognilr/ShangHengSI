@@ -140,7 +140,7 @@
 
 **文件范围**
 
-* V3-B-01：`backend/app/db/models.py`、`backend/app/db/alembic/versions/`（一个新迁移）、`backend/app/llm/gateway.py`、`backend/app/llm/usage.py`、`backend/app/admin/settings_store.py`（删除迁出的默认值）、`backend/app/security/rotate.py`、第六节 1～4 的测试文件。
+* V3-B-01：`backend/app/db/models.py`、`backend/app/db/alembic/versions/`（一个新迁移）、`backend/app/llm/gateway.py`、`backend/app/llm/usage.py`、`backend/app/admin/settings_store.py`（删除迁出的默认值）、`backend/app/security/rotate.py`、`backend/app/cli.py`（set-model 适配，V3Q-10）、第六节 1～4 的测试文件及 `backend/tests/test_gateway.py` 中两项 set-model 测试。
 * V3-B-02：`backend/app/admin/model.py`、`backend/app/models_api.py`（新，`GET /models`）、`backend/app/main.py`、`backend/app/review/`（router、service、job、validate 中取模型与写入轮次处）、`backend/app/chat/service.py`、`backend/app/assistant/`（schema、service、job、prompt 中取模型处）、`backend/app/export/report_docx.py`（模型一行）、第六节 5～8 的测试文件。
 * V3-B-03：`frontend/src/views/settings/Model.vue`、`frontend/src/api/admin.ts`（模型部分）、`frontend/src/components/ModelEditDrawer.vue`（新）。
 * V3-B-04：`frontend/src/api/models.ts`（新）、`frontend/src/views/ReviewNew.vue`、`frontend/src/components/ReRunDialog.vue`、`frontend/src/components/ResultToolbar.vue`、`frontend/src/components/assistant/Composer.vue`、`MessageItem.vue`、`frontend/src/api/tasks.ts`、`runs.ts`、`assistant.ts`（请求加 `model_id`）。
