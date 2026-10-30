@@ -17,7 +17,7 @@ from app.redaction.engine import load_redaction_map, term_hash
 from app.review import job
 from app.review.prompt import CHAT_ANSWER_RULE, chat_system_prompt
 from app.security import crypto
-from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: F401
+from tests.review_support import configure_model, REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
 
@@ -119,11 +119,11 @@ def test_v2c04_personal_chat_cap(alice, db_sessionmaker, ready_task, llm, make_u
     other = make_user("chat_other")
     before = utcnow()-timedelta(days=2)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db,"model.user_daily_cap",2,None)
+        configure_model(db,"model.user_daily_cap",2,None)
         if scenario == "blocked":
-            db.add_all([LlmCall(user_id=user.id,purpose="review",status="sent",model_name="mock") for _ in range(2)])
+            db.add_all([LlmCall(model_id=1, user_id=user.id,purpose="review",status="sent",model_name="mock") for _ in range(2)])
         if scenario == "other_calls":
-            db.add_all([LlmCall(user_id=who,purpose=purpose,status="sent",model_name="mock")
+            db.add_all([LlmCall(model_id=1, user_id=who,purpose=purpose,status="sent",model_name="mock")
                         for who,purpose in ((other.id,"review"),(user.id,"test")) for _ in range(3)])
         db.get(Task,task.id).last_activity_at = before
         db.commit()
@@ -329,9 +329,9 @@ def test_long_document_truncated_at_line(db_sessionmaker, alice, ready_task, llm
     user, c, h = alice
     task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.chunk_chars", 300, None)
+        configure_model(db, "model.chunk_chars", 300, None)
         db.commit()
-        document = service._document(db, db.get(Task, task.id))
+        document = service._document(db, db.get(Task, task.id), chunk_chars=300)
     body = document.split("<document>\n", 1)[1].split("\n</document>", 1)[0]
     assert len(body) <= 300 and body.endswith(body.splitlines()[-1])
     assert document.endswith(f"（文件较长，以上只含前 {len(body)} 字）")
@@ -432,7 +432,7 @@ def test_monthly_cap(db_sessionmaker, alice, ready_task, llm):
     user, c, h = alice
     task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)  # 审核本身已有 1 次 sent
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.monthly_call_cap", 1, None)
+        configure_model(db, "model.monthly_call_cap", 1, None)
         db.commit()
     requests = llm("normal")
     r = c.post(url(task), json={"message": "问题"}, headers=h)

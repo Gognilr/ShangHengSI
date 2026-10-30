@@ -11,7 +11,7 @@ import pytest
 
 from app.admin import settings_store
 from app.config import get_settings
-from app.db.models import Task, TaskFile, User
+from app.db.models import LlmModel, Task, TaskFile, User
 from app.llm import gateway
 from app.security import crypto
 from app.tasks import pipeline, storage
@@ -42,9 +42,13 @@ def env(tmp_path, monkeypatch, db_sessionmaker):
     monkeypatch.setattr(gateway, "RETRY_DELAYS", (0, 0))
     monkeypatch.setattr(gateway, "TRANSPORT", httpx.MockTransport(_no_call))
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.base_url", "https://llm.example.test/v1", None)
-        settings_store.set_setting(db, "model.name", "mock-model", None)
-        settings_store.set_setting(db, "model.api_key_enc", crypto.encrypt_to_b64("sk-test-0123456789"), None)
+        model = LlmModel(display_name="模拟模型", model_name="mock-model", base_url="https://llm.example.test/v1",
+                         api_key_enc=crypto.encrypt_text("sk-test-0123456789"),
+                         for_review=True, for_assist=True, structured_ok=True)
+        db.add(model)
+        db.flush()
+        settings_store.set_setting(db, "model.default_review_id", model.id, None)
+        settings_store.set_setting(db, "model.default_assist_id", model.id, None)
         db.commit()
     yield
     get_settings.cache_clear()
@@ -92,3 +96,14 @@ def ready_task(db_sessionmaker, env):
             return task
 
     return _make
+
+
+def configure_model(db, key, value, user_id=None):
+    """既有审核／助手用例改用新模型表；共享上限等设置仍走 settings。"""
+    if key in settings_store.DEFAULTS:
+        return settings_store.set_setting(db, key, value, user_id)
+    from sqlalchemy import select
+    model = db.scalar(select(LlmModel).order_by(LlmModel.id))
+    field = key.removeprefix("model.")
+    setattr(model, "model_name" if field == "name" else field, value)
+    db.flush()

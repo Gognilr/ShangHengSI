@@ -60,6 +60,7 @@ class MessageDecision(BaseModel):
 
 class MessageIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    model_id: int | None = Field(None, gt=0)
     message: str = Field(default="", max_length=4000)
     template: Literal["translate", "summary", "reply", "crosscheck", "compare"] | None = None
     params: dict = Field(default_factory=dict)

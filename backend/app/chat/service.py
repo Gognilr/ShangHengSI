@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from app.admin.settings_store import get_setting
 from app.db.base import utcnow
-from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
+from app.db.models import ChatMessage, LlmModel, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
 from app.llm import gateway, usage
+from app.models_api import select_model
 from app.parsing.model import strip_invisible
 from app.redaction import detect, ner, parties, placeholders, recheck, suspects
 from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
@@ -351,10 +351,10 @@ def _redact_and_record(db: Session, task: Task, message: str, decisions: list[di
 # ---------------------------------------------------------------- 消息
 
 
-def _document(db: Session, task: Task) -> str:
+def _document(db: Session, task: Task, chunk_chars: int = 60000) -> str:
     """最新外发文本（reviewed 状态下脱敏未变，与最新轮次一致）；超过分段长度时在行边界截断（Q-90）。"""
     parties, body = split_outbound(build_outbound(db, task).text)
-    limit = int(get_setting(db, "model.chunk_chars") or 60000)
+    limit = chunk_chars
     note = ""
     if len(body) > limit:
         cut = body.rfind("\n", 0, limit)
@@ -382,11 +382,11 @@ def _history(db: Session, task: Task) -> list[ChatMessage]:
     return rows[::-1]
 
 
-def build_messages(db: Session, task: Task, run: ReviewRun, question: str) -> list[dict]:
+def build_messages(db: Session, task: Task, run: ReviewRun, question: str, chunk_chars: int = 60000) -> list[dict]:
     """system（模板第 1–7 条 + 自然语言回答）→ 外发文本与问题清单摘要 → 最近 10 条对话 → 新问题（均为代号形式）。"""
     _version, system = chat_system_prompt()
     messages = [{"role": "system", "content": system},
-                {"role": "user", "content": _document(db, task) + "\n" + _findings_summary(db, run)}]
+                {"role": "user", "content": _document(db, task, chunk_chars) + "\n" + _findings_summary(db, run)}]
     messages += [{"role": m.role, "content": m.content_redacted} for m in _history(db, task)]
     messages.append({"role": "user", "content": question})
     return messages
@@ -416,19 +416,22 @@ def preview(db: Session, task: Task, message: str) -> dict:
 def send(db: Session, task: Task, user: User, message: str, decisions: list[dict] | None = None) -> dict:
     message = strip_invisible(message)
     run = _require(db, task)
-    reached = usage.cap_reached(db, user.id, "chat")
+    model = db.get(LlmModel, run.model_id) if run.model_id is not None else None
+    if model is None or not model.enabled or not model.for_review:
+        model = select_model(db, None, "review")
+    reached = usage.cap_reached(db, user.id, "chat", model.id)
     if reached:
         status, code, text = _ERRORS[reached]
         raise AppError(status, code, text)
     question = (_redact_and_record(db, task, message, decisions) if decisions
                 else _redact_and_record(db, task, message))
-    messages = build_messages(db, task, run, question)
+    messages = build_messages(db, task, run, question, model.chunk_chars)
     from app.laws.retrieve import question_refs
     law_section = question_refs(db,task,message)
     if law_section:
         messages[1]['content'] += '\n'+law_section
     try:
-        result = gateway.call_model(db, purpose="chat", messages=messages, user_id=user.id, task_id=task.id,
+        result = gateway.call_model(db, model_id=model.id, purpose="chat", messages=messages, user_id=user.id, task_id=task.id,
                                     task_title=task.title, json_mode=False, timeout_s=TIMEOUT_S, retry=False)
     except gateway.GatewayError as exc:
         logger.info("task %s 追问失败 llm_call=%s 错误=%s", task.id, exc.llm_call_id, exc.code)

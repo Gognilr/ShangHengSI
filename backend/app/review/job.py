@@ -15,7 +15,7 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.admin.settings_store import get_setting
+from app.llm.gateway import load_model
 from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import Finding, RequirementResult, ReviewRun, Task
@@ -141,7 +141,12 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
         _finish(db, run_id, status="failed", message=MSG_LOCAL_ONLY, task_status="reviewed")
         return
     run.status, run.started_at, run.finished_at, run.error_message = "running", utcnow(), None, None
-    run.model_name = str(get_setting(db, "model.name") or "").strip()[:100] or run.model_name
+    try:
+        model = load_model(db, run.model_id)
+    except GatewayError:
+        _finish(db, run_id, status="failed", message="所选模型已停用，请重新审核并换一个模型", task_status="reviewed")
+        return
+    run.model_name = model.name
     db.commit()
     logger.info("run %s 开始", run_id)
 
@@ -151,7 +156,7 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
                             main_doc_type=run.main_doc_type)
         _, body = split_outbound(ctx.outbound_text)
         chunks = split_chunks(outbound_lines(body, ctx.boundary_locs),
-                              effective_limit(get_setting(db, "model.chunk_chars")))
+                              effective_limit(model.chunk_chars))
         total = len(chunks)
         nodes = load_node_views(db, task.id, ctx.quote_tables)
         from app.standards.compare import start as start_templates

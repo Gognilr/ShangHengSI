@@ -11,7 +11,7 @@ from app.db.base import utcnow
 from app.redaction import engine
 from app.security import crypto
 from app.llm import gateway
-from tests.review_support import env  # noqa: F401
+from tests.review_support import configure_model, env  # noqa: F401
 from tests.test_assistant_chat import BASE, conversation, run  # noqa: F401
 
 MAPPING = {"[[ORG_1]]": "虚构甲公司", "[[ORG_2]]": "虚构乙公司", "[[PRICE_1]]": "USD 10.00",
@@ -119,7 +119,7 @@ def test_t50_7_10_non_stream_compare_end_to_end(conversation, db_sessionmaker, m
     c, h, tid, _ = conversation
     body = compare_input(db_sessionmaker, tid)
     with db_sessionmaker() as db:
-        set_setting(db, "model.extra_params", {"stream": True, "response_format": {"type": "text"}}, None)
+        configure_model(db, "model.extra_params", {"stream": True, "response_format": {"type": "text"}}, None)
         db.commit()
     requests = []
 

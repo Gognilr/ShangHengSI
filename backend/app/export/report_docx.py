@@ -117,7 +117,7 @@ def _basic(doc, task, files, main, user, run=None):
             ("文件类型", DOC_TYPE_LABELS.get(run.main_doc_type if run else main.doc_type if main else None, "—")),
             ("立场", STANCE_LABELS.get(run.stance if run else task.stance, "—")),
             ("来源", SOURCE_LABELS.get(run.source if run else task.source, "—")),
-            ("审核人", user.display_name), ("审核时间", when), ("模型", run.model_name if run else "—"),
+            ("审核人", user.display_name), ("审核时间", when), ("模型", (f"{run.model_label}（{run.model_name}）" if run.model_label else run.model_name) if run else "—"),
             ("审核要求版本", version), ("轮次", f"第 {run.run_no} 轮" if run else "—")]
     _table(doc, ("项目", "内容"), rows, (3.5, 23.2))
     if run is None:

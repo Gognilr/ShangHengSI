@@ -388,7 +388,7 @@ def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uui
     tokens_in = tokens_out = 0
     call_ids: list[int] = []
     for attempt in range(2):
-        result = call_model(db, purpose="review", messages=messages, user_id=user_id, task_id=ctx.task.id,
+        result = call_model(db, model_id=run.model_id, purpose="review", messages=messages, user_id=user_id, task_id=ctx.task.id,
                             task_title=ctx.task.title, run_id=run.id)
         tokens_in += result.tokens_in
         tokens_out += result.tokens_out

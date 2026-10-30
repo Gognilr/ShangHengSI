@@ -29,7 +29,7 @@ from app.review.service import _View
 from app.security.crypto import decrypt_text
 from app.tasks import pipeline
 from tests.mock_llm import build_reply
-from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task, sample  # noqa: F401
+from tests.review_support import configure_model, REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task, sample  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
 
@@ -81,8 +81,8 @@ def test_v2c04_confirmation_cap_has_no_side_effects(alice, db_sessionmaker, read
     task = ready_task(user)
     before = utcnow()-timedelta(days=3)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.monthly_call_cap" if kind == "monthly" else "model.user_daily_cap", 2, None)
-        db.add_all([LlmCall(user_id=user.id, purpose="review", status="sent", model_name="mock") for _ in range(2)])
+        configure_model(db, "model.monthly_call_cap" if kind == "monthly" else "model.user_daily_cap", 2, None)
+        db.add_all([LlmCall(model_id=1, user_id=user.id, purpose="review", status="sent", model_name="mock") for _ in range(2)])
         db.get(Task, task.id).last_activity_at = before
         if kind == "state":
             db.get(Task, task.id).status = "reviewing"
@@ -109,7 +109,7 @@ def test_v2c04_other_users_and_test_calls_do_not_use_personal_cap(alice, db_sess
     task = ready_task(user)
     with db_sessionmaker() as db:
         set_setting(db, "model.user_daily_cap", 2, None)
-        db.add_all([LlmCall(user_id=who, purpose=purpose, status="sent", model_name="mock")
+        db.add_all([LlmCall(model_id=1, user_id=who, purpose=purpose, status="sent", model_name="mock")
                     for who,purpose in ((other.id,"review"),(user.id,"test")) for _ in range(3)])
         db.commit()
     assert post_run(c,h,task.id).status_code == 201
@@ -313,7 +313,7 @@ def test_list_runs_newest_first(db_sessionmaker, alice, ready_task, llm):
     items = r.json()["items"]
     assert [(i["id"], i["run_no"], i["status"]) for i in items] == [(second, 2, "queued"), (first, 1, "completed")]
     assert items[1]["model_name"] == "mock-model" and items[1]["finished_at"] and items[0]["finished_at"] is None
-    assert set(items[0]) == {"id", "run_no", "status", "queued_at", "finished_at", "model_name"}
+    assert set(items[0]) == {"id", "run_no", "status", "queued_at", "finished_at", "model_name", "model_id", "model_label"}
 
 
 def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, ready_task, llm):
@@ -621,7 +621,7 @@ def test_t12_chunked_review_through_api(db_sessionmaker, alice, llm):
 
     _, c, h = alice
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.chunk_chars", 1000, None)
+        configure_model(db, "model.chunk_chars", 1000, None)
         db.commit()
     requests = llm("normal")
     golden = next(s for s in golden_samples() if s.name == "contract.docx")
@@ -648,8 +648,8 @@ def test_t13_monthly_cap_reached_through_api(db_sessionmaker, alice, ready_task,
     task = ready_task(user)
     requests = llm("normal")
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.monthly_call_cap", 1, None)
-        db.add(LlmCall(purpose="review", model_name="mock-model", status="sent"))
+        configure_model(db, "model.monthly_call_cap", 1, None)
+        db.add(LlmCall(model_id=1, purpose="review", model_name="mock-model", status="sent"))
         db.commit()
     r = post_run(c, h, task.id)
     assert r.status_code == 409 and r.json() == {"code": "CAP_REACHED", "message": "已达本月调用上限，请联系管理员"}

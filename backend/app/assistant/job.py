@@ -33,6 +33,9 @@ def handle_assist(db: Session, payload: dict) -> None:
         user_row = service.owned_message(db, task, int(row.extras.get("user_message_id", 0)))
         if user_row.role != "user":
             raise AppError(409, "ASSIST_INTERRUPTED", "原始消息不存在")
+        model_id = row.model_id
+        from app.models_api import select_model
+        select_model(db, model_id, "assist", structured=row.template == "compare")
         owner_id, title = task.owner_id, task.title
         template, params = user_row.template, user_row.params
         from app.assistant.history import prepare
@@ -40,18 +43,18 @@ def handle_assist(db: Session, payload: dict) -> None:
         row.extras = {**row.extras, **reference_metadata}
         if template == "translate":
             from app.assistant.translate import task_segments
-            service._preflight(db, task, template, params)
+            service._preflight(db, task, template, params, model_id)
             parts = task_segments(db, task, params)
             row.extras = {**row.extras, "segments_total": len(parts), "segments_done": 0,
                           "translation": {}, "translation_unaligned": []}
         else:
             parts = [None]
         if template == "compare":
-            messages = prompt.build_messages(db, task, user_row, references=references)
+            messages = prompt.build_messages(db, task, user_row, references=references, model_id=model_id)
             seqs = [file.seq for file in prompt.selected_files(db, task, params)]
             row.status = "streaming"
             db.commit()
-            outcome = gateway.call_model(db, purpose="assist", messages=messages, user_id=owner_id,
+            outcome = gateway.call_model(db, model_id=model_id, purpose="assist", messages=messages, user_id=owner_id,
                                          task_id=tid, task_title=title, json_mode=True, retry=False,
                                          extra_task_ids=[uuid.UUID(item['task_id']) for item in references['history']])
             compare_tokens = (outcome.tokens_in, outcome.tokens_out)
@@ -103,11 +106,11 @@ def handle_assist(db: Session, payload: dict) -> None:
                 db.rollback()
                 break
             # 本段消息在开始发送前完成组装，之后不持有消息行锁。
-            messages = prompt.build_messages(db, task, user_row, nodes=part, references=references)
+            messages = prompt.build_messages(db, task, user_row, nodes=part, references=references, model_id=model_id)
             db.commit()
             if number > 1:
                 content += "\n"
-            outcome = gateway.stream_model(db, purpose="assist", messages=messages, user_id=owner_id,
+            outcome = gateway.stream_model(db, model_id=model_id, purpose="assist", messages=messages, user_id=owner_id,
                                            task_id=tid, task_title=title, on_delta=write,
                                            extra_task_ids=[uuid.UUID(item['task_id']) for item in references['history']])
             row = db.scalar(select(AssistantMessage).where(AssistantMessage.id == mid).with_for_update()

@@ -7,9 +7,11 @@ from app.admin import alerts as alerts_module
 from app.admin import settings_store
 from app.config import get_settings
 from app.db.base import utcnow
-from app.db.models import BackupRecord, LlmCall
+from app.db.models import BackupRecord, LlmCall, LlmModel
 from app.main import API_PREFIX
 from tests.review_support import env  # noqa: F401
+
+pytestmark = pytest.mark.usefixtures("env")
 
 ME = f"{API_PREFIX}/auth/me"
 GB = 1024**3
@@ -57,14 +59,14 @@ def add_backup(sm, status, size=None):
 
 def set_cap(sm, cap):
     with sm() as s:
-        settings_store.set_setting(s, "model.monthly_call_cap", cap, None)
+        s.get(LlmModel, 1).monthly_call_cap = cap
         s.commit()
 
 
 def add_calls(sm, n, status="sent"):
     with sm() as s:
         for _ in range(n):
-            s.add(LlmCall(purpose="chat", model_name="m", status=status, created_at=utcnow()))
+            s.add(LlmCall(model_id=1, purpose="chat", model_name="m", status=status, created_at=utcnow()))
         s.commit()
 
 
@@ -110,14 +112,14 @@ def test_space_low_boundary(admin, db_sessionmaker, free_space):
 
 @pytest.mark.parametrize("cap,used,expected", [
     (10, 8, None),                      # 80%
-    (10, 9, "本月模型调用已达上限的 90%（9/10 次）"),   # 恰好 90%
-    (10, 10, "本月模型调用已达上限（10/10 次），审核和追问暂停"),
-    (10, 12, "本月模型调用已达上限（12/10 次），审核和追问暂停"),
+    (10, 9, "模型“模拟模型”本月调用已达上限的 90%（9/10 次）"),   # 恰好 90%
+    (10, 10, "模型“模拟模型”本月调用已达上限（10/10 次），使用该模型的审核和追问暂停"),
+    (10, 12, "模型“模拟模型”本月调用已达上限（12/10 次），使用该模型的审核和追问暂停"),
     (3, 2, None),                       # 66.7%
-    (3, 3, "本月模型调用已达上限（3/3 次），审核和追问暂停"),
+    (3, 3, "模型“模拟模型”本月调用已达上限（3/3 次），使用该模型的审核和追问暂停"),
     (1, 0, None),
     (1000, 899, None),
-    (1000, 900, "本月模型调用已达上限的 90%（900/1000 次）"),
+    (1000, 900, "模型“模拟模型”本月调用已达上限的 90%（900/1000 次）"),
 ])
 def test_cap_near(admin, db_sessionmaker, cap, used, expected):
     set_cap(db_sessionmaker, cap)

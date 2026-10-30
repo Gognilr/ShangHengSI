@@ -13,7 +13,7 @@ from app.llm import gateway
 from app.main import API_PREFIX
 from app.redaction import engine, ner
 from app.security import crypto
-from tests.review_support import env  # noqa: F401
+from tests.review_support import configure_model, env  # noqa: F401
 from tests.test_gateway_stream import Events
 
 BASE = API_PREFIX + "/assistant/sessions"
@@ -101,13 +101,13 @@ def test_t49_2_11_12_busy_and_length(conversation, db_sessionmaker):
     assert send(conversation).status_code == 409
     with db_sessionmaker() as db:
         db.get(Task, uuid.UUID(tid)).status = "active"
-        set_setting(db, "model.chunk_chars", 1, None)
+        configure_model(db, "model.chunk_chars", 1, None)
         db.commit()
     r = send(conversation)
     assert r.status_code == 409 and r.json()["code"] == "ASSIST_TOO_LONG"
     with db_sessionmaker() as db:
         assert db.scalar(select(func.count()).select_from(AssistantMessage)) == 0
-        set_setting(db, "model.chunk_chars", 60000, None)
+        configure_model(db, "model.chunk_chars", 60000, None)
         db.commit()
     assert send(conversation).status_code == 201
     r = send(conversation)

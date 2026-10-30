@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_setting
 from app.config import get_settings
-from app.db.models import BackupRecord, LawImport
+from app.db.models import BackupRecord, LawImport, LlmModel
 from app.llm.usage import monthly_sent_calls
 
 _GB = Decimal(1024**3)
@@ -48,15 +48,20 @@ def _backup_alerts(db: Session) -> list[dict]:
 
 
 def _cap_alerts(db: Session) -> list[dict]:
-    cap = int(get_setting(db, "model.monthly_call_cap") or 0)
-    if cap <= 0:
-        return []
-    used = monthly_sent_calls(db)
-    if Decimal(used) >= Decimal(cap):
-        return [{"code": "CALL_CAP_NEAR", "message": f"本月模型调用已达上限（{used}/{cap} 次），审核和追问暂停"}]
-    if Decimal(used) >= Decimal(cap) * _NEAR:
-        return [{"code": "CALL_CAP_NEAR", "message": f"本月模型调用已达上限的 90%（{used}/{cap} 次）"}]
-    return []
+    alerts = []
+    rows = db.scalars(select(LlmModel).where(LlmModel.enabled.is_(True), LlmModel.monthly_call_cap > 0)
+                      .order_by(LlmModel.sort_order, LlmModel.id))
+    for model in rows:
+        cap = model.monthly_call_cap
+        used = monthly_sent_calls(db, model.id)
+        if Decimal(used) >= Decimal(cap):
+            message = f"模型“{model.display_name}”本月调用已达上限（{used}/{cap} 次），使用该模型的审核和追问暂停"
+        elif Decimal(used) >= Decimal(cap) * _NEAR:
+            message = f"模型“{model.display_name}”本月调用已达上限的 90%（{used}/{cap} 次）"
+        else:
+            continue
+        alerts.append({"code": "CALL_CAP_NEAR", "message": message})
+    return alerts
 
 
 def admin_alerts(db: Session, role: str = "admin") -> list[dict]:

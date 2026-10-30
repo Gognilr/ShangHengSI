@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.admin.settings_store import get_setting
+from app.models_api import select_model
 from app.db.models import AssistantMessage, DocNode, Party, Task, TaskFile
 from app.redaction.outbound import escape_document_tags
 from app.redaction.placeholders import NEUTRAL
@@ -42,7 +42,7 @@ def selected_files(db: Session, task: Task, params: dict) -> list[TaskFile]:
     return files
 
 
-def file_block(db: Session, task: Task, params: dict) -> str:
+def file_block(db: Session, task: Task, params: dict, *, model_id: int | None = None) -> str:
     files = selected_files(db, task, params)
     blocks, size = [], 0
     for index, file in enumerate(files, 1):
@@ -51,14 +51,14 @@ def file_block(db: Session, task: Task, params: dict) -> str:
         size += len(text)
         blocks.append(f"【文件{file.seq}：{_TYPES.get(file.doc_type, '资料')}，{file.ext}，第{index}/{len(files)}个】"
                       f"<document>{escape_document_tags(text)}</document>")
-    limit = int(get_setting(db, "model.chunk_chars") or 60000)
+    limit = select_model(db, model_id, "assist").chunk_chars
     if size > limit:
         raise AppError(409, "ASSIST_TOO_LONG", f"所选文件合计约 {size} 字，超过单次上限 {limit} 字，请减少使用的文件")
     return "\n".join(blocks)
 
 
-def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, nodes=None, references=None) -> list[dict]:
-    block = file_block(db, task, user_message.params) if nodes is None else (
+def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, nodes=None, references=None, model_id: int | None = None) -> list[dict]:
+    block = file_block(db, task, user_message.params, model_id=model_id) if nodes is None else (
         "【翻译分段】<document>\n" + escape_document_tags("\n".join(f"⟦{loc}⟧ {text}" for loc, text in nodes)) + "\n</document>")
     history = [] if user_message.template == "translate" else list(reversed(list(db.scalars(select(AssistantMessage).where(
         AssistantMessage.task_id == task.id, AssistantMessage.id < user_message.id, AssistantMessage.status == "done")

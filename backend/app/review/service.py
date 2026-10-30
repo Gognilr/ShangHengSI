@@ -31,6 +31,7 @@ from app.db.models import (
     TaskFile,
     User,
 )
+from app.models_api import select_model
 from app.llm.gateway import format_reasons
 from app.llm import gateway, usage
 from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map
@@ -63,6 +64,8 @@ class RunListItem(BaseModel):
     queued_at: UtcDatetime
     finished_at: UtcDatetime | None
     model_name: str | None
+    model_id: int | None = None
+    model_label: str | None = None
 
 
 class RunList(BaseModel):
@@ -124,6 +127,8 @@ class RunDetail(BaseModel):
     user_note: str | None
     main_doc_type: str
     model_name: str | None
+    model_id: int | None = None
+    model_label: str | None = None
     prompt_version: str | None
     builtin_req_version: str | None
     company_req_version: int | None
@@ -220,7 +225,7 @@ def _conflict(code: str, message: str) -> AppError:
     return AppError(409, code, message)
 
 
-def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_template: bool = True) -> ReviewRun:
+def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_template: bool = True, model_id: int | None = None) -> ReviewRun:
     """POST /tasks/{id}/runs：前置检查 → 预检出口复检 → 建轮次 → 入队 → 任务进入 reviewing。"""
     # 锁住任务行并重读：两个并发的确认请求只有一个能通过状态检查
     task = db.execute(select(Task).where(Task.id == task.id).with_for_update()
@@ -242,7 +247,8 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
     if main is None or main.doc_type is None:
         raise _conflict("TASK_STATE_CONFLICT", "文件类型尚未识别，不能提交审核")
 
-    reached = usage.cap_reached(db, user.id, "review")
+    model = select_model(db, model_id, "review")
+    reached = usage.cap_reached(db, user.id, "review", model.id)
     if reached:
         raise _conflict(reached, gateway.MESSAGES[reached])
 
@@ -260,7 +266,7 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
     run = ReviewRun(
         task_id=task.id, run_no=run_no, status="queued", stance=task.stance, source=task.source,
         user_note=task.user_note_redacted, main_doc_type=main.doc_type,
-        model_name=str(get_setting(db, "model.name") or "").strip()[:100] or None,
+        model_id=model.id, model_label=model.display_name, model_name=model.model_name,
         prompt_version=load_system_template()[0], builtin_req_version=builtin_version(),
         company_req_version=db.scalar(select(func.max(RequirementVersion.version))),
         created_by=user.id, queued_at=utcnow(),
@@ -293,7 +299,7 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
 def list_runs(db: DbSession, task: Task) -> RunList:
     rows = db.scalars(select(ReviewRun).where(ReviewRun.task_id == task.id).order_by(ReviewRun.run_no.desc()))
     return RunList(items=[RunListItem(id=r.id, run_no=r.run_no, status=r.status, queued_at=r.queued_at,
-                                      finished_at=r.finished_at, model_name=r.model_name) for r in rows])
+                                      finished_at=r.finished_at, model_name=r.model_name, model_id=r.model_id, model_label=r.model_label) for r in rows])
 
 
 class _View:
@@ -410,7 +416,7 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
         template=snapshot(db,run),
         id=run.id, task_id=run.task_id, run_no=run.run_no, status=run.status, error_message=run.error_message,
         stance=run.stance, source=run.source, user_note=view.text(run.user_note), main_doc_type=run.main_doc_type,
-        model_name=run.model_name, prompt_version=run.prompt_version, builtin_req_version=run.builtin_req_version,
+        model_name=run.model_name, model_id=run.model_id, model_label=run.model_label, prompt_version=run.prompt_version, builtin_req_version=run.builtin_req_version,
         company_req_version=run.company_req_version, queued_at=run.queued_at, started_at=run.started_at,
         finished_at=run.finished_at, queue_position=queue_position,
         chunk_count=run.chunk_count, progress=_progress(run), coverage=_coverage(run, view),

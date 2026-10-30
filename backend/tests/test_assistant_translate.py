@@ -9,7 +9,7 @@ from app.db.models import AssistantMessage, DocNode, Job, LlmCall, TaskFile
 from app.redaction import engine
 from app.security import crypto
 from app.llm import gateway
-from tests.review_support import env  # noqa: F401
+from tests.review_support import configure_model, env  # noqa: F401
 from tests.test_assistant_chat import BASE, conversation, run  # noqa: F401
 from tests.test_gateway_stream import Events
 
@@ -184,7 +184,7 @@ def test_translation_ignores_single_call_limit_and_honors_configured_segment_siz
     c, h, tid, _ = conversation
     body = translation_input(db_sessionmaker, tid)
     with db_sessionmaker() as db:
-        set_setting(db, "model.chunk_chars", 100, None)
+        configure_model(db, "model.chunk_chars", 100, None)
         set_setting(db, "assistant.translate_segment_chars", 2000, None)
         expected = len(task_segments(db, db.get(Task, uuid.UUID(tid)), {"file_ids": [body["params"]["file_id"]]}))
         db.commit()

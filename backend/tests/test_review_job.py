@@ -23,7 +23,7 @@ from app.redaction import engine
 from app.review import job, service
 from app.security import crypto
 from tests.mock_llm import build_content, build_reply
-from tests.review_support import REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: F401
+from tests.review_support import configure_model, REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: F401
 
 
 def test_t45_review_refs_snapshot_and_dropped(db_sessionmaker,owner,ready_task,llm,monkeypatch):
@@ -107,7 +107,8 @@ def test_v2c_all_terminal_runs_update_activity(db_sessionmaker, owner, ready_tas
             db.scalar(select(DocNode).where(DocNode.task_id == task.id)).redacted_text = "联系电话 13800138000"
         elif status == "failed":
             from app.admin.settings_store import set_setting
-            set_setting(db, "model.name", "", None)
+            from app.db.models import LlmModel
+            db.get(LlmModel, 1).enabled = False
         db.commit()
     run_job(db_sessionmaker, run.id)
     assert get_run(db_sessionmaker, run.id).status == status
@@ -309,8 +310,8 @@ def test_monthly_cap_reached_fails_without_calling_model(db_sessionmaker, owner,
     requests = llm("normal")
     run = new_run(db_sessionmaker, task, owner)  # V2Q-65：验证确认通过后、worker 执行前额度用尽
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.monthly_call_cap", 1, None)
-        db.add(LlmCall(purpose="review", model_name="mock-model", status="sent"))
+        configure_model(db, "model.monthly_call_cap", 1, None)
+        db.add(LlmCall(model_id=1, purpose="review", model_name="mock-model", status="sent"))
         db.commit()
     run_job(db_sessionmaker, run.id)
     r = get_run(db_sessionmaker, run.id)
@@ -323,14 +324,14 @@ def test_monthly_cap_reached_fails_without_calling_model(db_sessionmaker, owner,
 def test_model_not_configured_fails(db_sessionmaker, owner, ready_task, llm):
     task = ready_task(owner)
     requests = llm("normal")
-    with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.name", "", None)
-        db.commit()
     run = new_run(db_sessionmaker, task, owner)
-    assert run.model_name is None
+    with db_sessionmaker() as db:
+        from app.db.models import LlmModel
+        db.get(LlmModel, 1).enabled = False
+        db.commit()
     run_job(db_sessionmaker, run.id)
     r = get_run(db_sessionmaker, run.id)
-    assert (r.status, r.error_message) == ("failed", "模型尚未配置，请联系管理员") and requests == []
+    assert (r.status, r.error_message) == ("failed", "所选模型已停用，请重新审核并换一个模型") and requests == []
 
 
 def test_unexpected_error_marks_failed_and_reraises(db_sessionmaker, owner, ready_task, llm, monkeypatch):
@@ -478,7 +479,7 @@ def long_contract() -> bytes:
 def chunked_task(db_sessionmaker, owner, ready_task):
     task = ready_task(owner, [("长合同.docx", long_contract())])
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.chunk_chars", 1000, None)
+        configure_model(db, "model.chunk_chars", 1000, None)
         db.commit()
     return task
 
@@ -605,7 +606,7 @@ def test_cap_reached_mid_run(db_sessionmaker, owner, ready_task, llm):
     task = chunked_task(db_sessionmaker, owner, ready_task)
     requests = llm("normal")
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.monthly_call_cap", 2, None)
+        configure_model(db, "model.monthly_call_cap", 2, None)
         db.commit()
     run = new_run(db_sessionmaker, task, owner)
     run_job(db_sessionmaker, run.id)
@@ -686,8 +687,8 @@ def test_v2c04_personal_cap_reached_on_second_chunk(db_sessionmaker,owner,ready_
                       frozenset(line.loc for line in part)) for i,part in enumerate(parts,1)]
     monkeypatch.setattr(job,"split_chunks",two_chunks)
     with db_sessionmaker() as db:
-        settings_store.set_setting(db,"model.user_daily_cap",2,None)
-        db.add(LlmCall(user_id=owner.id,purpose="review",status="sent",model_name="mock"))
+        configure_model(db,"model.user_daily_cap",2,None)
+        db.add(LlmCall(model_id=1, user_id=owner.id,purpose="review",status="sent",model_name="mock"))
         db.commit()
     requests = llm("normal")
     run = new_run(db_sessionmaker,task,owner)

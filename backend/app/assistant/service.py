@@ -7,8 +7,9 @@ from app.admin.settings_store import get_setting
 from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, Party, RedactionMap, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
+from app.db.models import AssistantMessage, LlmModel, Party, RedactionMap, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
 from app.llm import gateway, usage
+from app.models_api import select_model
 from app.redaction import engine
 from app.security.errors import AppError, NotFoundError
 from app.tasks import service as tasks, storage
@@ -29,11 +30,18 @@ def availability(db: Session, task: Task) -> str | None:
     if db.scalar(select(exists().where(AssistantMessage.task_id == task.id, AssistantMessage.role == "assistant",
                                        AssistantMessage.status.in_(("queued", "streaming"))))):
         return "上一条回复尚未完成"
-    if not all(str(get_setting(db, key) or "").strip() for key in
-               ("model.base_url", "model.api_key_enc", "model.name")):
+    # 详情尚未指定本次模型，具体用途、结构化能力和配额在发送时检查。
+    if not db.scalar(select(exists().where(LlmModel.enabled.is_(True), LlmModel.for_assist.is_(True)))):
         return gateway.MESSAGES["NOT_CONFIGURED"]
-    reached = usage.cap_reached(db, task.owner_id, "assist")
-    return gateway.MESSAGES[reached] if reached else None
+    return None
+
+
+def choose_model(db: Session, task: Task, model_id=None, template=None):
+    if model_id is None:
+        model_id = db.scalar(select(AssistantMessage.model_id).where(AssistantMessage.task_id == task.id,
+                             AssistantMessage.role == "assistant", AssistantMessage.model_id.is_not(None))
+                             .order_by(AssistantMessage.id.desc()).limit(1))
+    return select_model(db, model_id, "assist", structured=template == "compare")
 
 
 def _item(task: Task, files: list[TaskFile], *, generating: bool = False) -> SessionItem:
@@ -75,6 +83,7 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
                               finished=message.status not in ("queued", "streaming"))
     result = {"id": message.id, "role": message.role, "content": content, "status": message.status,
             "template": message.template, "params": message.params, "extras": message.extras,
+            "model_id": message.model_id, "model_label": message.model_label,
             "tokens_in": message.tokens_in, "tokens_out": message.tokens_out,
             "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at}
     if message.role == "assistant":
@@ -110,7 +119,8 @@ def _decimal_strings(value):
 
 
 def error_text(code: str | None) -> str | None:
-    return {"ASSIST_INTERRUPTED": "服务重启，回复中断，请重试", "ASSIST_TOO_LONG": "所选文件过长，请减少使用的文件",
+    return {"MODEL_NOT_ALLOWED": "所选模型不可用于本次操作，请换一个模型或联系管理员",
+            "ASSIST_INTERRUPTED": "服务重启，回复中断，请重试", "ASSIST_TOO_LONG": "所选文件过长，请减少使用的文件",
             "ASSIST_QUOTA": "翻译调用次数不足，请明天再试或联系管理员",
             "SESSION_READONLY": "原件已按保留期限删除，本会话只能查看"}.get(code, gateway.MESSAGES.get(code)) if code else None
 
@@ -166,13 +176,13 @@ def _validate_input(db: Session, task: Task, body):
     return text, body.params
 
 
-def _preflight(db: Session, task: Task, template, params):
+def _preflight(db: Session, task: Task, template, params, model_id: int):
     if template == "translate":
         from app.assistant.translate import require_quota, task_segments
-        require_quota(len(task_segments(db, task, params)), usage.remaining_calls(db, task.owner_id))
+        require_quota(len(task_segments(db, task, params)), usage.remaining_calls(db, task.owner_id, model_id))
     else:
         from app.assistant.prompt import file_block
-        file_block(db, task, params)
+        file_block(db, task, params, model_id=model_id)
 
 
 def _question(db: Session, task: Task, text: str, decisions=None):
@@ -193,12 +203,15 @@ def preview(db: Session, task: Task, body) -> dict:
     return {"redacted": result.text, "changed": result.changed, "suspects": result.suspects}
 
 
-def _require_send(db: Session, task: Task):
+def _require_send(db: Session, task: Task, model_id: int):
     _writable(db, task)
     reason = availability(db, task)
     if reason:
         code = next((k for k, value in gateway.MESSAGES.items() if value == reason), "SESSION_BUSY")
         raise AppError(409, code, reason)
+    reached = usage.cap_reached(db, task.owner_id, "assist", model_id)
+    if reached:
+        raise AppError(409, reached, gateway.MESSAGES[reached])
     # 所有会话的发送都先锁 owner，确保每人两个生成名额的检查与写入串行。
     active = db.scalar(select(func.count()).select_from(AssistantMessage).join(Task, Task.id == AssistantMessage.task_id)
                        .where(Task.owner_id == task.owner_id, AssistantMessage.role == "assistant",
@@ -207,9 +220,10 @@ def _require_send(db: Session, task: Task):
         raise AppError(409, "SESSION_BUSY", "你已有两条回复正在生成，请稍后再发送")
 
 
-def _queue_reply(db: Session, task: Task, user_message: AssistantMessage) -> AssistantMessage:
+def _queue_reply(db: Session, task: Task, user_message: AssistantMessage, model: LlmModel) -> AssistantMessage:
     reply = AssistantMessage(task_id=task.id, role="assistant", status="queued", template=user_message.template,
-                             params=user_message.params, extras={"user_message_id": user_message.id})
+                             params=user_message.params, extras={"user_message_id": user_message.id},
+                             model_id=model.id, model_label=model.display_name)
     db.add(reply)
     db.flush()
     jobs.enqueue(db, "assist", {"task_id": str(task.id), "message_id": reply.id})
@@ -221,9 +235,10 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     from app.assistant.prompt import selected_files
     db.scalar(select(User).where(User.id == user.id).with_for_update())
     task = lock(db, task)
-    _require_send(db, task)
+    model = choose_model(db, task, body.model_id, body.template)
+    _require_send(db, task, model.id)
     text, params = _validate_input(db, task, body)
-    _preflight(db, task, body.template, params)
+    _preflight(db, task, body.template, params, model.id)
     db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
     result = _question(db, task, text, decisions=[d.model_dump() for d in body.decisions])
     if result.new_entries:
@@ -234,7 +249,7 @@ def send(db: Session, task: Task, user: User, body) -> dict:
                            params=params, template=body.template)
     db.add(row)
     db.flush()
-    reply = _queue_reply(db, task, row)
+    reply = _queue_reply(db, task, row, model)
     response = {"user": message_out(db, task, row), "assistant": message_out(db, task, reply)}
     db.commit()
     return response
@@ -277,15 +292,16 @@ def stop(db: Session, task: Task, mid: int) -> dict:
 def retry(db: Session, task: Task, user: User, mid: int) -> dict:
     db.scalar(select(User).where(User.id == user.id).with_for_update())
     task = lock(db, task)
-    _require_send(db, task)
     previous = owned_message(db, task, mid)
     if previous.role != "assistant" or previous.status != "failed":
         raise AppError(409, "SESSION_BUSY", "只能重试失败的回复")
+    model = select_model(db, previous.model_id, "assist", structured=previous.template == "compare")
+    _require_send(db, task, model.id)
     source = owned_message(db, task, int(previous.extras.get("user_message_id", 0)))
     if source.role != "user":
         raise AppError(409, "SESSION_BUSY", "原始消息不存在")
-    _preflight(db, task, source.template, source.params)
-    reply = _queue_reply(db, task, source)
+    _preflight(db, task, source.template, source.params, model.id)
+    reply = _queue_reply(db, task, source, model)
     result = {"user": message_out(db, task, source), "assistant": message_out(db, task, reply)}
     db.commit()
     return result
