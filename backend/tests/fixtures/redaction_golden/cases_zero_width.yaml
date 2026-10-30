@@ -1,0 +1,6 @@
+description: 零宽字符清除后的识别标注；同名 DOCX 含原始零宽字符，另经解析入口核对
+stance: sales
+must_replace:
+  - {text: 澄川虚构设备有限公司, category: ORG}
+  - {text: 陆虚岚, category: PERSON}
+must_keep: []

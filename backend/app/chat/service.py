@@ -17,6 +17,7 @@ from app.admin.settings_store import get_setting
 from app.db.base import utcnow
 from app.db.models import ChatMessage, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
 from app.llm import gateway, usage
+from app.parsing.model import strip_invisible
 from app.redaction import detect, ner, parties, placeholders, recheck, suspects
 from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
 from app.redaction.outbound import escape_document_tags
@@ -406,12 +407,14 @@ def list_messages(db: Session, task: Task) -> dict:
 
 
 def preview(db: Session, task: Task, message: str) -> dict:
+    message = strip_invisible(message)
     _require(db, task)
     r = _redact(message, _load_full_map(db, task.id), _terms(db))
     return {"redacted": r.text, "changed": r.changed, "suspects": r.suspects}
 
 
 def send(db: Session, task: Task, user: User, message: str, decisions: list[dict] | None = None) -> dict:
+    message = strip_invisible(message)
     run = _require(db, task)
     reached = usage.cap_reached(db, user.id, "chat")
     if reached:

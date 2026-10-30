@@ -159,6 +159,31 @@ def url(task, suffix=""):
     return f"{API_PREFIX}/tasks/{task.id}/chat{suffix}"
 
 
+def test_f01_zero_width_known_name(db_sessionmaker, alice, ready_task, llm):
+    from pathlib import Path
+    from app.parsing.docx import parse_docx
+    from app.redaction.engine import NodeIn, compute
+
+    sample = Path(__file__).parent / "fixtures/redaction_golden/cases_zero_width.docx"
+    nodes = parse_docx(sample.read_bytes(), 1).nodes
+    parsed = compute([NodeIn(n.loc, n.text) for n in nodes], "sales")
+    assert {"澄川虚构设备有限公司", "陆虚岚"} <= set(parsed.mapping.values())
+    assert all("\u200b" not in n.text and "\u200d" not in n.text for n in nodes)
+    user, c, h = alice
+    task = reviewed(db_sessionmaker, user, c, h, ready_task, llm)
+    code = code_of(db_sessionmaker, task.id, REAL_BUYER_NAME)
+    message = REAL_BUYER_NAME[:2] + "\u200b" + REAL_BUYER_NAME[2:] + "是否需要修改？"
+    p = c.post(url(task, "/preview"), json={"message": message}, headers=h)
+    assert p.status_code == 200, p.text
+    assert code in p.json()["redacted"] and "\u200b" not in p.json()["redacted"]
+    sent = []
+    llm(handler=chat_reply("建议复核。", sent))
+    r = c.post(url(task), json={"message": message}, headers=h)
+    assert r.status_code == 200, r.text
+    assert code in sent[0]["messages"][-1]["content"]
+    assert REAL_BUYER_NAME not in sent[0]["messages"][-1]["content"]
+
+
 # ---------------------------------------------------------------- T-15
 
 

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from app.config import get_settings
+from app.parsing.model import strip_invisible
 from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import current_user, owned_task, owned_task_file
@@ -71,7 +72,7 @@ def create_task(
                 "code": "DUPLICATE_FILE", "message": "你已上传过同一文件，请选择打开上次结果或继续新建",
                 "task_id": duplicate.id, "title": duplicate.title, "created_at": duplicate.created_at,
             }))
-    note = user_note.strip() if user_note and user_note.strip() else None
+    note = strip_invisible(user_note or "").strip() or None
     task = service.create_task(
         db,
         user,
@@ -130,6 +131,8 @@ def get_task(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) 
 
 @router.patch("/{id}", response_model=TaskDetail)
 def patch_task(patch: TaskPatch, task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> TaskDetail:
+    if patch.user_note is not None:
+        patch.user_note = strip_invisible(patch.user_note).strip() or None
     return service.patch_task(db, task, patch)
 
 

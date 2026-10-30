@@ -6,6 +6,11 @@
 from dataclasses import dataclass
 
 
+def strip_invisible(text: str) -> str:
+    """删除复制文本中妨碍名称匹配的零宽字符（V2-F-01）。"""
+    return text.translate(dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad")))
+
+
 @dataclass
 class ParsedNode:
     loc: str  # 位置编号，任务内唯一（SPEC 8.2、open_questions Q-15）
@@ -21,6 +26,9 @@ class ParsedNode:
     cell_ref: str | None = None
     ocr_conf: float | None = None
     has_revision: bool = False
+
+    def __post_init__(self) -> None:
+        self.text = strip_invisible(self.text)
 
 
 @dataclass

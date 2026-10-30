@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
 from app.tasks.schemas import TaskFileOut, UtcDatetime
+from app.parsing.model import strip_invisible
 
 
 class SessionPatch(BaseModel):
@@ -69,4 +70,4 @@ class MessageIn(BaseModel):
     @field_validator("message", mode="before")
     @classmethod
     def trim_message(cls, value):
-        return value.strip() if isinstance(value, str) else value
+        return strip_invisible(value).strip() if isinstance(value, str) else value
