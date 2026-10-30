@@ -52,4 +52,6 @@ SHA-256：`833D27404DEF484D6BAD5132D69552A42EFAA46826A8909CA86FF9000F42D472`。
 
 已停止 15 个历史测试容器：e08manual-app-20261027、e08-ui 的 app / worker / converter、v2c08 的 app / worker / edge / db / mock、v2a 的 app / worker / web / db / mock-llm / converter（均带 aireview- 前缀）。保留容器、日志与卷；日常 aireview 服务、EAM 及既有测试数据库未删除。全量结束后测试容器自动移除，独立 z03-test-db 已停止；候选服务、本机前端与真实样本确认页保留，供用户核对。自愿的真实模型评测不做。
 
-状态：自动检查已结束，Z-03 尚未完成，不进入 Z-05 发布结论。仍待两份真实样本的用户核对及模拟审核、最终出口复检、用户证书信任 / 删除确认；V2Q-178 的还原验收口径交总审核判断。
+2026-10-30 Opus 接手复查（只读，未导入 / 删除证书）：服务器下发链为站点证书 → 中间证书，openssl 以该根验证通过（含 IP）；Windows 链引擎在根作为附加证书时只报 UntrustedRoot，名称约束无问题。CurrentUser / LocalMachine 的 Root、CA、My、AuthRoot 及注册表按 SHA-1 指纹均无该根，浏览器下载的文件在 Edge 下载目录 E:\下载，与服务器 root.crt 字节一致。根因是根证书未实际导入；下载页指纹命令写死 `$HOME\Downloads`，在本机报找不到文件，且未提示安全警告须点“是”。已改下载页模板（及运维说明第 5 节对应句）：在下载文件夹打开 PowerShell，运行指纹核对与 `Import-Certificate … Cert:\CurrentUser\Root`；候选环境下载页已按新模板重新生成，指纹命令在 E:\下载 实测输出与登记指纹一致。
+
+状态：自动检查已结束，Z-03 尚未完成，不进入 Z-05 发布结论。仍待两份真实样本的用户核对及模拟审核、最终出口复检、用户证书信任 / 删除确认；V2Q-178 已判定按“规则外差异为 0”验收；正式包、标签与服务器安装按 V2Q-179 延后。

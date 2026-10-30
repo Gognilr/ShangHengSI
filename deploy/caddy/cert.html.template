@@ -7,11 +7,10 @@
 <p><a href="/cert/shangheng-si-root.crt">下载根证书</a></p>
 <p>根证书 SHA-256 指纹：<code>@@FINGERPRINT@@</code></p>
 <ol>
-<li>下载证书后，先请 IT 提供已登记的 SHA-256 指纹，核对与本页一致。</li>
-<li>在 Windows PowerShell 中运行 <code>$cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Resolve-Path "$HOME\Downloads\shangheng-si-root.crt").Path); $sha = [System.Security.Cryptography.SHA256]::Create(); [BitConverter]::ToString($sha.ComputeHash($cert.RawData)).Replace('-', ':'); $sha.Dispose()</code>，文件另存到其他位置时修改路径。核对显示的指纹与 IT 登记值一致。</li>
-<li>双击证书文件，点击“安装证书”，存储位置选择“当前用户”。</li>
-<li>选择“将所有的证书都放入下列存储”，浏览并选择“受信任的根证书颁发机构”，按向导完成导入。</li>
-<li>关闭并重新打开浏览器，访问 <a href="https://@@SITE@@/">https://@@SITE@@/</a>。</li>
+<li>点击上面的“下载根证书”。下载完成后，在浏览器的下载列表中点击“在文件夹中显示”。</li>
+<li>在打开的文件夹窗口地址栏输入 <code>powershell</code> 并回车，在弹出的窗口中运行：<br><code>[BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Security.Cryptography.X509Certificates.X509Certificate2]::new((Resolve-Path .\shangheng-si-root.crt).Path).RawData)).Replace('-', ':')</code><br>核对显示的指纹与 IT 登记值一致；不一致时停止，联系 IT。</li>
+<li>在同一窗口运行：<br><code>Import-Certificate -FilePath .\shangheng-si-root.crt -CertStoreLocation Cert:\CurrentUser\Root</code><br>弹出“安全警告”时点击“是”。不点“是”证书不会导入。</li>
+<li>关闭所有浏览器窗口后重新打开，访问 <a href="https://@@SITE@@/">https://@@SITE@@/</a>，地址栏不再提示不安全即完成。</li>
 </ol>
 </main>
 </body>
