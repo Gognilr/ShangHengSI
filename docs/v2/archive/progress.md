@@ -1,3 +1,5 @@
+- 2026-10-30（GPT-6.1 Sol）：**V2-F-02 已完成**：NER 中置信英文共用常用词 / 小写证据过滤，追加中文角色与代理泛称；连字符复合词按组成词判断，首字母大写规则随之变化（用户确认，7db3b00）。按 V2Q-185 仅删两项 must_keep，原始 TXT 不改。golden 与 A-03 228 passed。见 reports/V2-F-test.md。继续 F-03（GPT-6.1 Sol，medium）。
+
 - 2026-10-30（GPT-6.1 Sol）：**V2-F-02 检查点，未完成**：NER 中置信英文常用词过滤与通用代理角色规则已实现，golden 与 A-03 为 227 passed、1 failed；唯一失败是新增 must_keep 被既有连写表头的 capitalized 疑似区间覆盖（V2Q-185）。未改原样本或放宽标注，待用户 / Opus 决定；F-03～05 尚未执行，整仓全量未跑。见 reports/V2-F-test.md。用户已提供 F-05 两份样本路径并批准 F-03 增补 SuspectList.vue。
 
 - 2026-10-30（GPT-6.1 Sol）：**V2-F-01 已完成**：解析节点、任务补充说明、追问与助手消息入口清除六种零宽字符。新增追问用例修复前失败；修复后相关测试与 golden、A-03 共 268 passed，补入 DOCX 解析断言后该用例复跑通过。见 reports/V2-F-test.md。继续 F-02（GPT-6.1 Sol，high）。
