@@ -9,6 +9,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import SettingSection from '@/components/SettingSection.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -208,14 +209,28 @@ onMounted(() => {
 <template>
   <div class="settings-page">
     <PageHeader title="脱敏规则" description="新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算" />
-    <section class="panel">
-      <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
-      <div class="quantity-row"><div><h3>数量脱敏</h3><span class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</span></div><el-switch :model-value="maskQuantity" :loading="maskLoading" @change="toggleMask" /></div>
-    </section>
-
-    <section class="panel">
-      <h3 class="first">自定义敏感词</h3>
-      <div class="filters">
+    <div class="panel setting-panel">
+      <SettingSection title="数量脱敏" description="开启后数量也会替换为代号，只影响之后解析的文件。">
+        <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
+        <el-switch :model-value="maskQuantity" :loading="maskLoading" @change="toggleMask" />
+      </SettingSection>
+      <SettingSection title="我方主体" description="预置本公司的完整名称，之后新解析的文件出现该名称时可预选我方主体。" stacked>
+        <div class="filters">
+        <el-input v-model="ourName" maxlength="100" class="term-input" placeholder="输入我方完整公司名称" aria-label="我方主体名称" :disabled="ourAdding" @keyup.enter="addOurParty" />
+        <el-button type="primary" :loading="ourAdding" @click="addOurParty">添加我方主体</el-button>
+      </div>
+      <el-alert v-if="ourError" type="error" show-icon :closable="false" :title="ourError" class="gap" />
+      <TableSkeleton v-if="!loadedOnce.our" :columns="['1fr', '120px', '170px', '70px']" />
+      <el-table v-else v-loading="ourLoading" :data="ourParties" size="small" :max-height="tableMax">
+        <template #empty><EmptyState compact title="尚未预置我方主体" description="在上方输入我方完整公司名称后添加。" /></template>
+        <el-table-column prop="term" label="名称" min-width="260" show-overflow-tooltip />
+        <el-table-column label="记录人" width="120"><template #default="{ row }">{{ row.created_by_name ?? '—' }}</template></el-table-column>
+        <el-table-column label="记录时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="操作" width="70"><template #default="{ row }"><RowMore :disabled="!!ourRemoving"><el-dropdown-item class="danger-item" @click="removeOurParty(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
+      </el-table>
+      </SettingSection>
+      <SettingSection title="自定义敏感词" description="需要替换的公司内部词汇；新增、停用、删除只影响之后解析的文件。" stacked>
+        <div class="filters">
         <el-input v-model="newTerm" maxlength="100" placeholder="输入需要替换的敏感词（2–100 个字符）" class="term-input" @keyup.enter="addTerm" />
         <el-button type="primary" :loading="adding" @click="addTerm">添加</el-button>
       </div>
@@ -242,14 +257,11 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </section>
-
-    <section class="panel">
-      <div class="section-heading"><h3 class="first">已记住的名称</h3>
-      <div class="filters">
+      </SettingSection>
+      <SettingSection title="已记住的名称" description="确认脱敏时记住的公司和人名。" stacked>
+        <div class="filters">
         <el-input v-model="learnedQuery" clearable placeholder="搜索名称" class="learned-query" @keyup.enter="searchLearned" @clear="searchLearned"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
         <el-button @click="searchLearned">搜索</el-button>
-      </div>
       </div>
       <el-alert v-if="learnedError" type="error" :closable="false" show-icon :title="learnedError" />
       <TableSkeleton v-if="!loadedOnce.learned" :columns="['1fr', '80px', '90px', '120px', '170px', '90px', '70px']" />
@@ -284,24 +296,8 @@ onMounted(() => {
         layout="total, prev, pager, next"
         @current-change="loadLearned"
       />
-    </section>
-    <section class="panel">
-      <h3>我方主体</h3>
-      <p class="hint tip">预置本公司的完整名称，之后新解析的文件出现该名称时可预选我方主体。</p>
-      <div class="filters">
-        <el-input v-model="ourName" maxlength="100" class="term-input" placeholder="输入我方完整公司名称" aria-label="我方主体名称" :disabled="ourAdding" @keyup.enter="addOurParty" />
-        <el-button type="primary" :loading="ourAdding" @click="addOurParty">添加我方主体</el-button>
-      </div>
-      <el-alert v-if="ourError" type="error" show-icon :closable="false" :title="ourError" class="gap" />
-      <TableSkeleton v-if="!loadedOnce.our" :columns="['1fr', '120px', '170px', '70px']" />
-      <el-table v-else v-loading="ourLoading" :data="ourParties" size="small" :max-height="tableMax">
-        <template #empty><EmptyState compact title="尚未预置我方主体" description="在上方输入我方完整公司名称后添加。" /></template>
-        <el-table-column prop="term" label="名称" min-width="260" show-overflow-tooltip />
-        <el-table-column label="记录人" width="120"><template #default="{ row }">{{ row.created_by_name ?? '—' }}</template></el-table-column>
-        <el-table-column label="记录时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="70"><template #default="{ row }"><RowMore :disabled="!!ourRemoving"><el-dropdown-item class="danger-item" @click="removeOurParty(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
-      </el-table>
-    </section>
+      </SettingSection>
+    </div>
   </div>
 </template>
 

@@ -15,6 +15,9 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import SettingSection from '@/components/SettingSection.vue'
+import UnsavedBar from '@/components/UnsavedBar.vue'
+import { useUnsaved } from '@/utils/unsaved'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 
 const MAX_ITEMS = 100
@@ -171,14 +174,14 @@ async function remove(row: CompanyReqRow) {
 // ---- ③ 公司说明 ----
 const profile = ref('')
 const profileLoading = ref(false)
-const profileSaving = ref(false)
+const profileBase = ref('')
 const profileError = ref('')
 
 async function loadProfile() {
   profileLoading.value = true
   profileError.value = ''
   try {
-    profile.value = (await adminRequirementsApi.getProfile()).text
+    profile.value = profileBase.value = (await adminRequirementsApi.getProfile()).text
   } catch (e) {
     profileError.value = `加载失败：${errText(e, '请刷新页面')}`
   } finally {
@@ -186,18 +189,14 @@ async function loadProfile() {
   }
 }
 
+const profileDirty = () => !profileLoading.value && profile.value !== profileBase.value
 async function saveProfile() {
-  profileSaving.value = true
-  try {
-    profile.value = (await adminRequirementsApi.saveProfile(profile.value.trim())).text
-    ElMessage.success('已保存')
-    await Promise.all([loadList(), loadVersions()])
-  } catch (e) {
-    ElMessage.error(errText(e, '保存失败，请稍后重试'))
-  } finally {
-    profileSaving.value = false
-  }
+  profile.value = profileBase.value = (await adminRequirementsApi.saveProfile(profile.value.trim())).text
+  await Promise.all([loadList(), loadVersions()])
 }
+const { dirty, saving, saveAll, discardAll } = useUnsaved([
+  { dirty: profileDirty, save: saveProfile, discard: () => { profile.value = profileBase.value } },
+])
 
 // ---- ④ 版本历史 ----
 const versions = ref<RequirementVersionRow[]>([])
@@ -228,8 +227,8 @@ onMounted(() => {
 <template>
   <div class="settings-page">
     <PageHeader title="审核要求" description="内置要求只读；公司补充要求只能增加审核内容，不能取消内置要求" />
-    <section class="panel">
-      <h3 class="first">公司说明</h3>
+    <div class="panel setting-panel">
+      <SettingSection title="公司说明" description="简述公司主营与出口合规情况，随每次审核发送给模型。">
       <el-alert v-if="profileError" type="error" :closable="false" show-icon :title="profileError" />
       <div v-loading="profileLoading">
         <el-input
@@ -242,13 +241,27 @@ onMounted(() => {
         />
         <div class="hint tip">公司说明会随每次审核发送给模型，请勿写入具体客户名称、电话、账号或金额。</div>
       </div>
-      <div class="actions">
-        <el-button type="primary" :loading="profileSaving" @click="saveProfile">保存</el-button>
+    </SettingSection>
+      <SettingSection title="内置要求" description="只读；按文件类型查看系统自带的审核要求。" stacked>
+      <div class="filters">
+        <el-select v-model="builtinType" clearable placeholder="全部文件类型" class="type-filter" @change="loadBuiltin">
+          <el-option v-for="o in toOptions(DOC_TYPE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
+        </el-select>
+        <span class="hint version">内置要求版本：{{ builtinVersion || '—' }}，共 {{ builtin.length }} 条</span>
       </div>
-    </section>
-
-<section class="panel">
-      <h3 class="first">公司补充要求</h3>
+      <el-alert v-if="builtinError" type="error" :closable="false" show-icon :title="builtinError" />
+      <el-table v-loading="builtinLoading" :data="builtin" size="small" max-height="360" empty-text="没有符合条件的内置要求">
+        <el-table-column prop="id" label="编号" width="90" class-name="num" />
+        <el-table-column label="维度" width="120">
+          <template #default="{ row }">{{ row.dimension ?? '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="text" label="内容" min-width="360" />
+        <el-table-column label="适用文件类型" width="200">
+          <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
+        </el-table-column>
+      </el-table>
+    </SettingSection>
+      <SettingSection title="公司补充要求" description="在内置要求之外增加本公司的审核内容。" stacked>
       <div class="hint tip">补充要求只能增加审核内容，不能取消内置要求。请勿在补充要求中写入具体客户名称。</div>
       <h4>各组合生效条数</h4>
       <el-table v-loading="listLoading" :data="comboRows" size="small" class="combo-table">
@@ -290,31 +303,8 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </section>
-
-<section class="panel readonly-panel">
-      <h3 class="first">内置要求 <el-tag size="small" type="info">只读</el-tag></h3>
-      <div class="filters">
-        <el-select v-model="builtinType" clearable placeholder="全部文件类型" class="type-filter" @change="loadBuiltin">
-          <el-option v-for="o in toOptions(DOC_TYPE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
-        </el-select>
-        <span class="hint version">内置要求版本：{{ builtinVersion || '—' }}，共 {{ builtin.length }} 条</span>
-      </div>
-      <el-alert v-if="builtinError" type="error" :closable="false" show-icon :title="builtinError" />
-      <el-table v-loading="builtinLoading" :data="builtin" size="small" max-height="360" empty-text="没有符合条件的内置要求">
-        <el-table-column prop="id" label="编号" width="90" class-name="num" />
-        <el-table-column label="维度" width="120">
-          <template #default="{ row }">{{ row.dimension ?? '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="text" label="内容" min-width="360" />
-        <el-table-column label="适用文件类型" width="200">
-          <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
-        </el-table-column>
-      </el-table>
-    </section>
-
-<section class="panel">
-      <h3 class="first">版本历史</h3>
+    </SettingSection>
+      <SettingSection title="版本历史" description="公司说明与补充要求每次修改的记录。" stacked>
       <el-alert v-if="versionsError" type="error" :closable="false" show-icon :title="versionsError" />
       <el-table v-loading="versionsLoading" :data="versions" size="small" max-height="320" empty-text="尚无修改记录">
         <el-table-column label="版本号" width="100" class-name="num">
@@ -332,7 +322,9 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </section>
+    </SettingSection>
+    </div>
+    <UnsavedBar :dirty="dirty" :saving="saving" @save="saveAll" @discard="discardAll" />
 
     <el-dialog v-model="dialog" :title="editing ? `编辑 ${editing.code}` : '新增公司补充要求'" width="640px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">

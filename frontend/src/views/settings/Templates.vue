@@ -5,6 +5,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import SettingSection from '@/components/SettingSection.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import { ApiError } from '@/api/http'
 import { templatesApi, type TemplateRow, type TemplateDetail, type TemplateClause } from '@/api/templates'
@@ -95,9 +96,10 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
       <el-button type="primary" :disabled="rows.length >= 50 || saving" @click="open()">上传公司范本</el-button>
     </PageHeader>
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
-    <section v-loading="loading" class="panel">
-      <p class="hint">最多 50 份，含停用范本。只有启用且向量准备完成的范本参与选择；更换文件请删除后重新上传。</p>
-      <TableSkeleton v-if="!loaded" :columns="['1fr', '130px', '100px', '80px', '100px', '80px', '160px']" />
+    <div v-loading="loading" class="panel setting-panel">
+      <SettingSection title="范本列表" description="审核时按文件类型和立场选择合适的范本。" stacked>
+        <p class="hint">最多 50 份，含停用范本。只有启用且向量准备完成的范本参与选择；更换文件请删除后重新上传。</p>
+        <TableSkeleton v-if="!loaded" :columns="['1fr', '130px', '100px', '80px', '100px', '80px', '160px']" />
       <el-table v-else :data="rows" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚无公司范本" description="点击右上角上传按钮，可上传 DOCX 标准合同。" /></template>
         <el-table-column prop="name" label="范本名称" min-width="180" show-overflow-tooltip />
@@ -108,7 +110,8 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
         <el-table-column label="操作" width="140"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="detail(row)">查看条款</el-button><RowMore><el-dropdown-item :disabled="saving" @click="open(row)">编辑</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
-    </section>
+      </SettingSection>
+    </div>
     <el-dialog v-model="dialog" :title="editing ? '编辑范本设置' : '上传公司范本'" width="640px" :close-on-click-modal="!saving">
       <el-alert v-if="formError" :title="formError" type="error" :closable="false" class="gap" />
       <el-form label-position="top">

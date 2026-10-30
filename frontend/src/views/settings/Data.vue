@@ -18,6 +18,9 @@ import { LAWSYNC_INTERVAL } from '@/utils/labels'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import SettingSection from '@/components/SettingSection.vue'
+import UnsavedBar from '@/components/UnsavedBar.vue'
+import { useUnsaved } from '@/utils/unsaved'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import {
   BACKUP_STATUS_TAG,
@@ -59,10 +62,11 @@ async function loadSync(silent = false) {
   } catch (e) { if (!silent) syncError.value = `加载法规更新设置失败：${e instanceof ApiError ? e.message : '请求未完成'}。请刷新页面后重试。` }
   finally { syncLoading.value = false }
 }
+const syncDirty = () => !!syncSettings.value && (syncForm.enabled !== syncSettings.value.enabled || syncForm.interval !== syncSettings.value.interval)
+function discardSync() { if (syncSettings.value) Object.assign(syncForm, { enabled: syncSettings.value.enabled, interval: syncSettings.value.interval }) }
 async function saveSync() {
   syncSaving.value = true; syncError.value = ''
-  try { syncSettings.value = await lawsyncApi.save(syncForm.enabled, syncForm.interval); ElMessage.success('自动更新设置已保存'); await auth.refresh() }
-  catch (e) { if (syncSettings.value) Object.assign(syncForm, { enabled: syncSettings.value.enabled, interval: syncSettings.value.interval }); syncError.value = e instanceof ApiError ? e.message : '保存失败，请稍后重试' }
+  try { syncSettings.value = await lawsyncApi.save(syncForm.enabled, syncForm.interval); await auth.refresh() }
   finally { syncSaving.value = false }
 }
 async function runSync() {
@@ -89,7 +93,7 @@ const backup = reactive({ time: '02:00', keep: 7 })
 const records = ref<BackupRecords | null>(null)
 const backupLoading = ref(false)
 const backupError = ref('')
-const backupSaving = ref(false)
+const backupBase = reactive({ time: '02:00', keep: 7 })
 const backupStarting = ref(false)
 
 async function loadBackup() {
@@ -97,8 +101,8 @@ async function loadBackup() {
   backupError.value = ''
   try {
     const [s, r] = await Promise.all([adminDataApi.getBackupSettings(), adminDataApi.backupRecords()])
-    backup.time = s.time
-    backup.keep = s.keep
+    backup.time = backupBase.time = s.time
+    backup.keep = backupBase.keep = s.keep
     records.value = r
   } catch (e) {
     backupError.value = `加载失败：${errText(e, '请刷新页面')}`
@@ -107,19 +111,13 @@ async function loadBackup() {
   }
 }
 
+const backupDirty = () => backup.time !== backupBase.time || backup.keep !== backupBase.keep
+function discardBackup() { backup.time = backupBase.time; backup.keep = backupBase.keep }
 async function saveBackup() {
-  backupSaving.value = true
-  try {
-    const s = await adminDataApi.saveBackupSettings(backup.time, backup.keep)
-    backup.time = s.time
-    backup.keep = s.keep
-    ElMessage.success('已保存')
-    await auth.refresh()
-  } catch (e) {
-    ElMessage.error(errText(e, '保存失败，请稍后重试'))
-  } finally {
-    backupSaving.value = false
-  }
+  const s = await adminDataApi.saveBackupSettings(backup.time, backup.keep)
+  backup.time = backupBase.time = s.time
+  backup.keep = backupBase.keep = s.keep
+  await auth.refresh()
 }
 
 // 点击“立即备份”后每 3 秒刷新记录，直到出现新的、已结束的记录；离开页面停止（SPEC 21）
@@ -177,30 +175,26 @@ const retentionFields: { key: keyof RetentionSettings; label: string }[] = [
   { key: 'unfinished_days', label: '未完成任务' },
 ]
 const estimateReasons = { insufficient_history: '备份统计不足 7 天，暂无法估算', no_growth: '近 30 天没有新增数据', unavailable: '无法读取数据盘剩余空间' }
-const retentionSaving = ref(false)
+const retentionBase = reactive<RetentionSettings>({ ...retention })
 const retentionError = ref('')
 
 async function loadRetention() {
   retentionError.value = ''
   try {
     Object.assign(retention, await adminDataApi.getRetention())
+    Object.assign(retentionBase, retention)
     retentionLoaded.value = true
   } catch (e) {
     retentionError.value = `加载失败：${errText(e, '请刷新页面')}`
   }
 }
 
+const retentionDirty = () => retentionLoaded.value && retentionFields.some(field => retention[field.key] !== retentionBase[field.key])
+function discardRetention() { Object.assign(retention, retentionBase) }
 async function saveRetention() {
-  retentionSaving.value = true
-  try {
-    Object.assign(retention, await adminDataApi.saveRetention({ ...retention }))
-    ElMessage.success('已保存')
-    await auth.refresh()
-  } catch (e) {
-    ElMessage.error(errText(e, '保存失败，请稍后重试'))
-  } finally {
-    retentionSaving.value = false
-  }
+  Object.assign(retention, await adminDataApi.saveRetention({ ...retention }))
+  Object.assign(retentionBase, retention)
+  await auth.refresh()
 }
 
 // ---- ③ 外发记录 ----
@@ -324,73 +318,21 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(stopPolling)
+const { dirty, saving, saveAll, discardAll } = useUnsaved([
+  { dirty: backupDirty, save: saveBackup, discard: discardBackup },
+  { dirty: retentionDirty, save: saveRetention, discard: discardRetention },
+  { dirty: syncDirty, save: saveSync, discard: discardSync },
+])
 </script>
 
 <template>
   <div class="settings-page">
     <PageHeader title="数据与系统" description="系统状态、数据保留、备份与外发记录" />
-    <section v-loading="statusLoading" class="panel">
-      <h3 class="first">系统状态</h3>
-      <el-alert v-if="statusError" type="error" :closable="false" show-icon :title="statusError" />
-      <div v-if="status" class="system-stats">
-        <div class="stat"><div class="stat-label">版本号</div><div class="stat-value">{{ status.version }}</div></div>
-        <div class="stat"><div class="stat-label">排队任务数</div><div class="stat-value">{{ status.queued_jobs }}</div></div>
-        <div class="stat"><div class="stat-label">会话数</div><div class="stat-value">{{ status.assistant_sessions }}</div></div>
-        <div class="stat"><div class="stat-label">数据盘剩余空间</div><div class="stat-value">{{ formatBytes(status.data_free_bytes) }}</div></div>
-        <div class="stat"><div class="stat-label">原件占用</div><div class="stat-value">{{ formatBytes(status.files_bytes) }}</div></div>
-        <div class="stat"><div class="stat-label">数据库占用</div><div class="stat-value">{{ formatBytes(status.db_bytes) }}</div></div>
-        <div class="stat"><div class="stat-label">预计可用天数</div><div class="stat-value" :class="{ warning: status.estimated_days !== null && status.estimated_days < 30 }">{{ status.estimated_days ?? '—' }}</div></div>
-        <div class="stat"><div class="stat-label">备份目录占用</div><div class="stat-value">{{ formatBytes(status.backup_dir_bytes) }}</div></div>
-        <div class="stat"><div class="stat-label">最近一次备份大小</div><div class="stat-value">{{ formatBytes(status.latest_backup_bytes) }}</div></div>
-        <div class="stat"><div class="stat-label">备份盘剩余空间</div><div class="stat-value">{{ formatBytes(status.backup_free_bytes) }}</div></div>
-      </div>
-      <template v-if="status">
-        <p class="hint">存储用量统计时间：{{ formatDateTime(status.storage_measured_at) }}</p>
-        <p v-if="status.backup_stats_at" class="hint">备份三项（{{ formatDateTime(status.backup_stats_at) }} 备份时统计）</p>
-        <p v-if="status.estimate_reason" class="hint">{{ estimateReasons[status.estimate_reason] }}</p>
-      </template>
-    </section>
-
-<section v-loading="syncLoading" class="panel">
-      <h3 class="first">法规库自动更新</h3>
-      <el-alert v-if="syncError" :title="syncError" type="error" :closable="false" show-icon />
-      <el-form label-width="110px">
-        <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规库自动更新" /></el-form-item>
-        <el-form-item label="更新频率"><el-select v-model="syncForm.interval" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规更新频率"><el-option v-for="(label, value) in LAWSYNC_INTERVAL" :key="value" :value="value" :label="label" /></el-select></el-form-item>
-        <el-form-item label="上次运行">{{ formatDateTime(syncSettings?.last_run_at) }}</el-form-item>
-        <el-form-item label="运行结果">{{ syncRunning ? '已入队，等待同步结果' : !syncSettings?.last_status ? '尚未运行' : syncSettings.last_status.ok ? '已生成待确认更新' : '同步失败，可改用手动导入' }}</el-form-item>
-      </el-form>
-      <p class="hint">默认关闭。只从官方数据库拉取公开法规，目录与全文变更经业务管理员确认后才生效。</p>
-      <p v-if="!syncSettings?.enabled" class="hint">请先开启并保存设置，再立即同步。</p>
-      <p v-else-if="syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" class="hint">设置已修改，请先保存后同步。</p>
-      <div class="actions"><el-button :disabled="!syncSettings?.enabled || syncSaving || syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" :loading="syncRunning" @click="runSync">立即同步</el-button><el-button type="primary" :disabled="!syncSettings || syncRunning" :loading="syncSaving" @click="saveSync">保存自动更新设置</el-button></div>
-    </section>
-
-<section class="panel">
-      <h3 class="first">数据保留</h3>
-      <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
-      <el-form label-width="110px" @submit.prevent="saveRetention">
-        <el-form-item v-for="field in retentionFields" :key="field.key" :label="field.label">
-          <el-select v-model="retention[field.key]" :disabled="!retentionLoaded || retentionSaving" class="retention-select" :aria-label="field.label">
-            <el-option v-if="!retentionOptions.includes(retention[field.key])" :value="retention[field.key]" :label="`${retention[field.key]} 天（旧版设置）`" />
-            <el-option v-for="days in retentionOptions" :key="days" :value="days" :label="days === 0 ? '永久' : `${days} 天`" />
-          </el-select>
-          <span v-if="!retentionOptions.includes(retention[field.key])" class="hint inline">请改选一个档位后保存</span>
-        </el-form-item>
-      </el-form>
-      <div class="hint">
-        原件到期后不能重新审核和追问；审核结果到期后整个任务删除。未完成任务按无活动时间清理。旧备份中的数据会保留至备份被轮换删除。
-      </div>
-      <div class="actions">
-        <el-button type="primary" :loading="retentionSaving" :disabled="!retentionLoaded" @click="saveRetention">保存</el-button>
-      </div>
-    </section>
-
-<section class="panel">
-      <h3 class="first">备份</h3>
+    <div class="panel setting-panel">
+      <SettingSection title="备份" description="每天定时备份数据，超出份数的最旧备份自动删除。">
       <el-alert v-if="backupError" type="error" :closable="false" show-icon :title="backupError" />
       <div v-loading="backupLoading">
-        <el-form label-width="110px" @submit.prevent="saveBackup">
+        <el-form label-width="110px" @submit.prevent>
           <el-form-item label="备份时间">
             <el-time-picker v-model="backup.time" format="HH:mm" value-format="HH:mm" :clearable="false" />
           </el-form-item>
@@ -418,10 +360,9 @@ onBeforeUnmount(stopPolling)
         </el-form>
         <div class="actions">
           <el-button :loading="backupStarting || polling" @click="runBackup">{{ polling ? '备份进行中……' : '立即备份' }}</el-button>
-          <el-button type="primary" :loading="backupSaving" @click="saveBackup">保存</el-button>
         </div>
 
-        <h3>最近 20 条备份记录</h3>
+        <h4 class="sub">最近 20 条备份记录</h4>
         <el-table :data="records?.items ?? []" size="small">
           <template #empty><EmptyState compact title="尚无备份记录" /></template>
           <el-table-column label="开始时间" width="170" class-name="num">
@@ -449,10 +390,60 @@ onBeforeUnmount(stopPolling)
           </el-table-column>
         </el-table>
       </div>
-    </section>
+    </SettingSection>
 
-<section class="panel">
-      <h3 class="first">外发记录</h3>
+      <SettingSection title="数据保留" description="原件、审核结果和各类记录的保留期限。">
+      <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
+      <el-form label-width="110px" @submit.prevent>
+        <el-form-item v-for="field in retentionFields" :key="field.key" :label="field.label">
+          <el-select v-model="retention[field.key]" :disabled="!retentionLoaded" class="retention-select" :aria-label="field.label">
+            <el-option v-if="!retentionOptions.includes(retention[field.key])" :value="retention[field.key]" :label="`${retention[field.key]} 天（旧版设置）`" />
+            <el-option v-for="days in retentionOptions" :key="days" :value="days" :label="days === 0 ? '永久' : `${days} 天`" />
+          </el-select>
+          <span v-if="!retentionOptions.includes(retention[field.key])" class="hint inline">请改选一个档位后保存</span>
+        </el-form-item>
+      </el-form>
+      <div class="hint">
+        原件到期后不能重新审核和追问；审核结果到期后整个任务删除。未完成任务按无活动时间清理。旧备份中的数据会保留至备份被轮换删除。
+      </div>
+    </SettingSection>
+
+      <SettingSection v-loading="syncLoading" title="法规库自动更新" description="定期从官方数据库拉取公开法规，变更经业务管理员确认后生效。">
+      <el-alert v-if="syncError" :title="syncError" type="error" :closable="false" show-icon />
+      <el-form label-width="110px">
+        <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规库自动更新" /></el-form-item>
+        <el-form-item label="更新频率"><el-select v-model="syncForm.interval" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规更新频率"><el-option v-for="(label, value) in LAWSYNC_INTERVAL" :key="value" :value="value" :label="label" /></el-select></el-form-item>
+        <el-form-item label="上次运行">{{ formatDateTime(syncSettings?.last_run_at) }}</el-form-item>
+        <el-form-item label="运行结果">{{ syncRunning ? '已入队，等待同步结果' : !syncSettings?.last_status ? '尚未运行' : syncSettings.last_status.ok ? '已生成待确认更新' : '同步失败，可改用手动导入' }}</el-form-item>
+      </el-form>
+      <p class="hint">默认关闭。只从官方数据库拉取公开法规，目录与全文变更经业务管理员确认后才生效。</p>
+      <p v-if="!syncSettings?.enabled" class="hint">请先开启并保存设置，再立即同步。</p>
+      <p v-else-if="syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" class="hint">设置已修改，请先在页面底部保存后同步。</p>
+      <div class="actions"><el-button :disabled="!syncSettings?.enabled || syncSaving || syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" :loading="syncRunning" @click="runSync">立即同步</el-button></div>
+    </SettingSection>
+
+      <SettingSection v-loading="statusLoading" title="系统状态" description="版本、任务队列与存储占用。">
+      <el-alert v-if="statusError" type="error" :closable="false" show-icon :title="statusError" />
+      <div v-if="status" class="system-stats">
+        <div class="stat"><div class="stat-label">版本号</div><div class="stat-value">{{ status.version }}</div></div>
+        <div class="stat"><div class="stat-label">排队任务数</div><div class="stat-value">{{ status.queued_jobs }}</div></div>
+        <div class="stat"><div class="stat-label">会话数</div><div class="stat-value">{{ status.assistant_sessions }}</div></div>
+        <div class="stat"><div class="stat-label">数据盘剩余空间</div><div class="stat-value">{{ formatBytes(status.data_free_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">原件占用</div><div class="stat-value">{{ formatBytes(status.files_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">数据库占用</div><div class="stat-value">{{ formatBytes(status.db_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">预计可用天数</div><div class="stat-value" :class="{ warning: status.estimated_days !== null && status.estimated_days < 30 }">{{ status.estimated_days ?? '—' }}</div></div>
+        <div class="stat"><div class="stat-label">备份目录占用</div><div class="stat-value">{{ formatBytes(status.backup_dir_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">最近一次备份大小</div><div class="stat-value">{{ formatBytes(status.latest_backup_bytes) }}</div></div>
+        <div class="stat"><div class="stat-label">备份盘剩余空间</div><div class="stat-value">{{ formatBytes(status.backup_free_bytes) }}</div></div>
+      </div>
+      <template v-if="status">
+        <p class="hint">存储用量统计时间：{{ formatDateTime(status.storage_measured_at) }}</p>
+        <p v-if="status.backup_stats_at" class="hint">备份三项（{{ formatDateTime(status.backup_stats_at) }} 备份时统计）</p>
+        <p v-if="status.estimate_reason" class="hint">{{ estimateReasons[status.estimate_reason] }}</p>
+      </template>
+    </SettingSection>
+
+      <SettingSection title="外发记录" description="每次发给模型的记录，均为脱敏后的内容。" stacked>
       <div class="filters">
         <el-select v-model="filters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="search">
           <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
@@ -508,10 +499,9 @@ onBeforeUnmount(stopPolling)
         @current-change="loadLogs"
       />
       <div class="hint">点击一行查看外发文本和返回内容（均为脱敏后的内容）。</div>
-    </section>
+    </SettingSection>
 
-    <section class="panel">
-      <h3 class="first">审计日志</h3>
+      <SettingSection title="审计日志" description="关键操作的记录，用于追溯。" stacked>
       <div class="filters">
         <el-select v-model="auditFilters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="searchAudit">
           <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
@@ -533,8 +523,9 @@ onBeforeUnmount(stopPolling)
         <el-table-column label="IP" min-width="110"><template #default="{ row }">{{ row.ip ?? '—' }}</template></el-table-column>
       </el-table>
       <el-pagination v-if="auditTotal > 20" v-model:current-page="auditPage" class="pager" :page-size="20" :total="auditTotal" layout="total, prev, pager, next" @current-change="loadAudit" />
-    </section>
-
+    </SettingSection>
+    </div>
+    <UnsavedBar :dirty="dirty" :saving="saving" @save="saveAll" @discard="discardAll" />
     <el-drawer v-model="drawer" title="外发记录详情" direction="rtl" size="560px">
       <el-alert v-if="detailError" type="error" :closable="false" show-icon :title="detailError" />
       <div v-loading="detailLoading">
@@ -559,6 +550,7 @@ onBeforeUnmount(stopPolling)
 </template>
 
 <style scoped>
+h4.sub { margin: 20px 0 12px; font: var(--si-font-body); font-weight: 600; }
 h3 {
   margin: 20px 0 16px;
   font: var(--si-font-h2);

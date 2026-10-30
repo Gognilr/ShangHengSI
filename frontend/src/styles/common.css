@@ -50,3 +50,6 @@
 
 /* 表格行尾“⋯”下拉中的危险项（V3-A 4.4） */
 .el-dropdown-menu__item.danger-item { color: var(--el-color-danger); }
+
+/* 设置页：一个面板内由 SettingSection 分节，节自带上下 24px（V3-A 5） */
+.setting-panel { padding-top: 0; padding-bottom: 0; }

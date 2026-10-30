@@ -12,6 +12,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import SettingSection from '@/components/SettingSection.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 
 const auth = useAuthStore()
@@ -167,7 +168,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 <template>
   <div class="settings-page">
     <PageHeader title="账号管理" description="新建账号、启停和重置密码；新账号首次登录时须先修改密码"><el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新增账号</el-button></PageHeader>
-    <el-card shadow="never">
+    <div class="panel setting-panel"><SettingSection title="账号列表" description="新账号首次登录时须先修改密码。" stacked>
       <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="gap" />
       <TableSkeleton v-if="!loaded" :columns="['1fr', '1fr', '140px', '100px', '170px', '160px']" />
       <el-table v-else v-loading="loading" :data="items" :max-height="tableMax">
@@ -197,7 +198,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </SettingSection></div>
 
     <el-dialog :model-value="dialog !== ''" :title="dialogTitle" width="480px" :close-on-click-modal="false" @close="dialog = ''">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">

@@ -5,6 +5,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import SettingSection from '@/components/SettingSection.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import { kbApi, type KbDoc, type KbChunk } from '@/api/kb'
 import { ApiError } from '@/api/http'
@@ -85,11 +86,14 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
 <template>
   <div>
     <PageHeader title="公司知识库" description="上传公司制度、流程与产品资料。员工在智能助手中勾选后，相关片段经脱敏后随问题发送给模型。"><el-button type="primary" :disabled="saving || uploading" @click="openUpload">上传文档</el-button></PageHeader>
-    <section v-loading="loading" class="panel">
-      <div class="setting-row"><span>在智能助手中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" /></div>
-      <p class="hint">关闭后不会检索知识库；只有启用且解析完成的文档参与检索。</p>
+    <div v-loading="loading" class="panel setting-panel">
+      <SettingSection title="知识库开关" description="关闭后智能助手不检索知识库。">
+        <span>在智能助手中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" />
+        <p class="hint">关闭后不会检索知识库；只有启用且解析完成的文档参与检索。</p>
+      </SettingSection>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="gap" />
-      <TableSkeleton v-if="!loaded" :columns="['1fr', '90px', '80px', '80px', '1fr', '170px', '160px']" />
+      <SettingSection title="资料列表" description="只有启用且解析完成的文档参与检索。" stacked>
+        <TableSkeleton v-if="!loaded" :columns="['1fr', '90px', '80px', '80px', '1fr', '170px', '160px']" />
       <el-table v-else :data="rows" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚无知识库文档" description="点击右上角“上传文档”，可上传公司制度、流程与产品资料。" /></template>
         <el-table-column label="名称" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.name }}<p v-if="row.error_message" class="error">{{ row.error_message }}</p></template></el-table-column>
@@ -100,7 +104,8 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
         <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="操作" width="140"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="preview(row)">预览片段</el-button><RowMore><el-dropdown-item :disabled="saving" @click="rename(row)">改名</el-dropdown-item><el-dropdown-item :disabled="saving || uploading" @click="toggle(row, !row.enabled)">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving || uploading" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
-    </section>
+      </SettingSection>
+    </div>
     <el-dialog v-model="uploadOpen" title="上传知识库文档" width="640px" :close-on-click-modal="!uploading" :close-on-press-escape="!uploading" :show-close="!uploading">
       <p class="hint">支持 DOCX、PDF、XLSX 及对应旧格式，单个文件不超过 20 MB。相同内容不能重复上传。</p>
       <el-upload v-model:file-list="files" multiple :auto-upload="false" :disabled="uploading" accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et"><el-button :disabled="uploading">选择文件</el-button></el-upload>
@@ -113,7 +118,6 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
   </div>
 </template>
 <style scoped>
-.setting-row { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
 .preview { min-height: 120px; max-height: 65vh; overflow-y: auto; }
 .chunk { border-bottom: 1px solid var(--el-border-color-light); padding: 16px 0; }
 .chunk h3 { font: var(--si-font-h3); margin: 0 0 12px; }

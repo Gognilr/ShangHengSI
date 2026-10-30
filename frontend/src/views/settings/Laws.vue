@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import SettingSection from '@/components/SettingSection.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import { ApiError } from '@/api/http'
 import { lawsApi, type LawRow, type LawImport } from '@/api/laws'
@@ -118,13 +119,27 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 <template>
   <div>
     <PageHeader title="法规库" description="导入官方法规目录与全文，预览差异并确认生效。" />
-    <section class="panel">
-      <h2>审核时附带相关法条</h2>
-      <el-switch :model-value="enabled" :disabled="saving || loading || !settingsLoaded" aria-label="审核时附带相关法条" @change="saveSetting" />
-      <p class="hint">开启后每次审核约多 5 千个 token，默认关闭，评测确认效果后再开启。</p>
-    </section>
-    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
-    <section v-loading="loading" class="panel">
+    <div class="panel setting-panel">
+      <SettingSection title="审核时附带相关法条" description="审核时把检索到的法条原文一并发给模型。">
+        <el-switch :model-value="enabled" :disabled="saving || loading || !settingsLoaded" aria-label="审核时附带相关法条" @change="saveSetting" />
+        <p class="hint">开启后每次审核约多 5 千个 token，默认关闭，评测确认效果后再开启。</p>
+      </SettingSection>
+      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
+      <SettingSection title="导入目录与全文" description="导入官方导出的法规目录与全文，预览差异后确认生效。">
+        <el-button :disabled="pending || saving" @click="openUpload('catalog')">导入目录</el-button><el-button :disabled="pending || saving" @click="openUpload('fulltext')">导入全文</el-button>
+        <p v-if="pending" class="hint">有一项更新正在解析或等待确认，请处理后再导入。</p>
+      </SettingSection>
+      <SettingSection title="导入记录" description="每次导入与自动同步的结果。" stacked>
+        <el-table :data="records">
+        <template #empty><EmptyState compact title="尚无导入或同步记录" /></template>
+        <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="类型" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_KIND[row.kind] }}</template></el-table-column>
+        <el-table-column label="状态" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_STATUS[row.status] }}</template></el-table-column>
+        <el-table-column prop="added" label="新增" width="72" /><el-table-column prop="changed" label="变化" width="72" /><el-table-column prop="skipped" label="跳过" width="72" />
+        <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
+      </el-table>
+      </SettingSection>
+      <SettingSection v-loading="loading" title="法规列表" description="按标题、分类、时效性查找法规。" stacked>
       <div class="counts">
         <span v-for="o in toOptions(LAW_STATUS)" :key="o.value">{{ o.label }} <b class="num">{{ counts[o.value] ?? 0 }}</b></span>
         <span>总数 <b class="num">{{ counts.total ?? 0 }}</b></span><span>本页有全文 <b class="num">{{ fulltextCount }}</b></span>
@@ -149,19 +164,8 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="editReplacement(row)">编辑替代</el-button></template></el-table-column>
       </el-table>
       <div class="pagination"><span>共 {{ total }} 条</span><el-pagination v-model:current-page="filter.page" :page-size="20" :total="total" layout="prev, pager, next" @current-change="load()" /></div>
-    </section>
-    <section class="panel">
-      <div class="section-head"><h2>法规库更新记录</h2><el-button :disabled="pending || saving" @click="openUpload('catalog')">导入目录</el-button><el-button :disabled="pending || saving" @click="openUpload('fulltext')">导入全文</el-button></div>
-      <p v-if="pending" class="hint">有一项更新正在解析或等待确认，请处理后再导入。</p>
-      <el-table :data="records">
-        <template #empty><EmptyState compact title="尚无导入或同步记录" /></template>
-        <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="类型" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_KIND[row.kind] }}</template></el-table-column>
-        <el-table-column label="状态" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_STATUS[row.status] }}</template></el-table-column>
-        <el-table-column prop="added" label="新增" width="72" /><el-table-column prop="changed" label="变化" width="72" /><el-table-column prop="skipped" label="跳过" width="72" />
-        <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
-      </el-table>
-    </section>
+    </SettingSection>
+    </div>
     <el-dialog v-model="uploadOpen" :title="kind === 'catalog' ? '导入法规目录' : '导入法规全文'" width="640px" :close-on-click-modal="!saving">
       <el-alert v-if="uploadError" :title="uploadError" type="error" :closable="false" class="gap" />
       <el-form label-position="top">
