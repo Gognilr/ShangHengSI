@@ -67,3 +67,7 @@ manufacturer
 inspector
 the inspector
 inspection company
+reference laboratory
+the reference laboratory
+independent laboratory
+umpire laboratory
