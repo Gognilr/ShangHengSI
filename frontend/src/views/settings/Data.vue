@@ -361,8 +361,9 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
         <div class="actions">
           <el-button :loading="backupStarting || polling" @click="runBackup">{{ polling ? '备份进行中……' : '立即备份' }}</el-button>
         </div>
-
-        <h4 class="sub">最近 20 条备份记录</h4>
+      </div>
+    </SettingSection>
+      <SettingSection title="备份记录" description="最近 20 条备份的结果。" stacked>
         <el-table :data="records?.items ?? []" size="small">
           <template #empty><EmptyState compact title="尚无备份记录" /></template>
           <el-table-column label="开始时间" width="170" class-name="num">
@@ -389,8 +390,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
             </template>
           </el-table-column>
         </el-table>
-      </div>
-    </SettingSection>
+      </SettingSection>
 
       <SettingSection title="数据保留" description="原件、审核结果和各类记录的保留期限。">
       <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
@@ -550,7 +550,6 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
 </template>
 
 <style scoped>
-h4.sub { margin: 20px 0 12px; font: var(--si-font-body); font-weight: 600; }
 h3 {
   margin: 20px 0 16px;
   font: var(--si-font-h2);
