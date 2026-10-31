@@ -15,6 +15,14 @@ function countHeader(headers: Headers, name: string): number {
 export const reportApi = {
   run: (runId: string) => download(`/runs/${runId}/report`),
   local: (taskId: string) => download(`/tasks/${taskId}/report`),
+  async revised(runId: string, fileSeq: number): Promise<{ revised: number; commented: number }> {
+    const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/revised?file_seq=${fileSeq}`)
+    await saveBlob(blob, filename)
+    return {
+      revised: countHeader(headers, 'X-SI-Revised'),
+      commented: countHeader(headers, 'X-SI-Commented'),
+    }
+  },
   async annotated(runId: string, fileSeq: number): Promise<{ total: number; unanchored: number }> {
     const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/annotated?file_seq=${fileSeq}`)
     await saveBlob(blob, filename)

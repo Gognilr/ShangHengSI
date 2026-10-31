@@ -92,6 +92,29 @@ async function exportAnnotated(seq: number) {
     ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
   } finally { exporting.value = false }
 }
+
+async function exportRevised(seq: number) {
+  if (!task.value || !run.value || exporting.value || deleting.value || exportReason.value) return
+  if (!['completed', 'partial'].includes(run.value.status)
+    || !task.value.files.some(file => file.seq === seq && file.annotatable && !file.has_revisions)) return
+  const runId = run.value.id
+  const taskId = task.value.id
+  exporting.value = true
+  try {
+    try {
+      await ElMessageBox.confirm('修订版按已采纳的问题改写条款，请在 Word 中逐条核对后接受或拒绝；文件中如有批注，发给对方前请先删除。', '导出修订版', {
+        type: 'warning', confirmButtonText: '导出修订版', cancelButtonText: '取消',
+      })
+    } catch { return }
+    const { revised, commented } = await reportApi.revised(runId, seq)
+    if (task.value?.id !== taskId || run.value?.id !== runId) return
+    annotationNotice.value = commented > 0
+      ? `共 ${revised} 处修订；另有 ${commented} 条已采纳的问题未能写成修订，已作为批注附上，请人工修改。` : ''
+    if (!commented) ElMessage.success(`已生成修订版，共 ${revised} 处修订`)
+  } catch (e) {
+    ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
+  } finally { exporting.value = false }
+}
 let loadVersion = 0
 let runVersion = 0
 
@@ -259,7 +282,7 @@ const reqVersion = computed(() => {
   <div class="page page--split">
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" />
     <template v-else-if="task">
-    <ResultToolbar :task="task" :run="run" :rounds="rounds" :selected-run="selectedRun" :req-version="reqVersion" :warnings="expiryWarnings" :export-reason="exportReason" :exporting="exporting" :deleting="deleting" @select-run="selectedRun = $event; selectRun($event)" @export-report="exportReport" @export-annotated="exportAnnotated">
+    <ResultToolbar :task="task" :run="run" :rounds="rounds" :selected-run="selectedRun" :req-version="reqVersion" :warnings="expiryWarnings" :export-reason="exportReason" :exporting="exporting" :deleting="deleting" @select-run="selectedRun = $event; selectRun($event)" @export-report="exportReport" @export-annotated="exportAnnotated" @export-revised="exportRevised">
       <template #before-export><ChatPanel :key="task.id" :task-id="task.id" :disabled="deleting" /></template>
       <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :disabled="deleting" @click="rerunOpen = true"><template #icon><RotateCw :size="16" :stroke-width="1.75" /></template>重新审核</el-button>
       <span class="action-separator" aria-hidden="true"></span>

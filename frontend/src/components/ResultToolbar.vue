@@ -7,13 +7,14 @@ import { TEMPLATE_STATE, RUN_STATUS_TAG, docTypeLabel, runStatusLabel, sourceLab
 import { formatDateTime } from '@/utils/time'
 
 const props = defineProps<{ task: TaskDetail; run: RunDetail | null; rounds: RunListItem[]; selectedRun: string; reqVersion: string; warnings: string[]; exportReason: string; exporting: boolean; deleting: boolean }>()
-const emit = defineEmits<{ selectRun: [id: string]; exportReport: []; exportAnnotated: [seq: number] }>()
+const emit = defineEmits<{ selectRun: [id: string]; exportReport: []; exportAnnotated: [seq: number]; exportRevised: [seq: number] }>()
 const annotatedFiles = computed(() => props.run && ['completed', 'partial'].includes(props.run.status)
   ? props.task.files.filter(file => file.annotatable) : [])
 
 function exportCommand(command: string | number) {
   if (command === 'report') emit('exportReport')
   else if (typeof command === 'number') emit('exportAnnotated', command)
+  else if (command.startsWith('revised:')) emit('exportRevised', Number(command.slice(8)))
 }
 
 function badge(ext: string) {
@@ -45,10 +46,15 @@ function badge(ext: string) {
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="report">审核报告</el-dropdown-item>
-              <el-dropdown-item v-for="file in annotatedFiles" :key="file.id" :command="file.seq">
-                <span class="export-file" :title="`批注版：${file.original_name}`">批注版：{{ file.original_name }}</span>
-              </el-dropdown-item>
-              <el-dropdown-item disabled divided class="export-hint">批注版支持 Word 与 WPS 文字文件；PDF、图片、表格只能导出审核报告</el-dropdown-item>
+              <template v-for="file in annotatedFiles" :key="file.id">
+                <el-dropdown-item :command="file.seq">
+                  <span class="export-file" :title="`批注版：${file.original_name}`">批注版：{{ file.original_name }}</span>
+                </el-dropdown-item>
+                <el-dropdown-item v-if="!file.has_revisions" :command="`revised:${file.seq}`">
+                  <span class="export-file" :title="`修订版：${file.original_name}`">修订版：{{ file.original_name }}</span>
+                </el-dropdown-item>
+              </template>
+              <el-dropdown-item disabled divided class="export-hint">批注版、修订版支持 Word 与 WPS 文字文件，修订版只写已采纳的问题；PDF、图片、表格只能导出审核报告</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
