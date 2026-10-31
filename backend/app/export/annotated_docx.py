@@ -52,7 +52,7 @@ def validate(original: bytes, result: bytes) -> None:
         raise AnnotationValidationError("PART_CHANGED")
 
 
-def _save(anchors, original):
+def _save(anchors, original, validator=None):
     stream = BytesIO()
     anchors.document.save(stream)
     generated = _parts(stream.getvalue())
@@ -66,7 +66,7 @@ def _save(anchors, original):
                 raise AnnotationValidationError("UNEXPECTED_PART")
             target.writestr(name, generated[name])
     result = output.getvalue()
-    validate(original, result)
+    (validator or validate)(original, result)
     return result
 
 
@@ -76,7 +76,7 @@ def _belongs(locs, seq, is_main=False):
     return int(match[1]) == seq if match else is_main
 
 
-def build_annotated(db, run, file: TaskFile):
+def check_available(run, file):
     if run.status not in ("completed", "partial"):
         raise AppError(409, "ANNOTATED_UNAVAILABLE", "本轮尚未完成")
     if file.ext not in ("docx", "doc", "wps", "rtf"):
@@ -85,6 +85,36 @@ def build_annotated(db, run, file: TaskFile):
         raise AppError(409, "ORIGINAL_DELETED", "原件已按保留期删除，不能生成批注版")
     if file.ext != "docx" and not file.converted_storage_key:
         raise AppError(409, "ANNOTATED_UNAVAILABLE", "该文件在升级前上传，没有保存转换结果，请重新上传后审核")
+
+
+def load_source(db, file):
+    try:
+        original = storage.load_original(file.storage_key if file.ext == "docx" else file.converted_storage_key)
+    except FileNotFoundError:
+        raise AppError(409, "ORIGINAL_DELETED", "原件已按保留期删除，不能生成批注版") from None
+    stored = {n.loc: crypto.decrypt_text(n.text_enc) if n.text_enc is not None else ""
+              for n in db.scalars(select(DocNode).where(DocNode.file_id == file.id))}
+    try:
+        return original, load_anchors(original, file.seq, stored)
+    except AnchorMismatch:
+        raise AppError(409, "ANCHOR_MISMATCH", MISMATCH) from None
+
+
+def finding_text(f, run):
+    lines = [f"【{SEVERITY.get(f.severity, f.severity)} · {CATEGORY.get(f.category, f.category)}】{f.title}",
+             f"问题：{f.problem}", f"建议：{f.suggestion or '—'}"]
+    if f.suggested_text:
+        lines.append(f"建议条文：{f.suggested_text}")
+    if f.basis:
+        lines.append(f"依据：{f.basis}")
+    for ref in f.law_refs:
+        lines.append(f"依据：《{ref['title']}》{ref.get('article_no') or ''} {ref['text']}")
+    lines.append(f"—— 商衡SI 第 {run.run_no} 轮 · 问题 {f.seq}")
+    return "\n".join(lines)
+
+
+def build_annotated(db, run, file: TaskFile):
+    check_available(run, file)
     task = db.get(Task, run.task_id)
     detail = run_detail(db, run)
     # 没有文件位置的任务级问题挂在主文件；跨文件问题只按首个位置归属。
@@ -96,16 +126,7 @@ def build_annotated(db, run, file: TaskFile):
                                         (r["file_id"] is None and file.is_main))))), key=lambda r: r["id"])
     if not findings and not local:
         raise AppError(409, "ANNOTATED_UNAVAILABLE", "本轮没有可批注的问题")
-    try:
-        original = storage.load_original(file.storage_key if file.ext == "docx" else file.converted_storage_key)
-    except FileNotFoundError:
-        raise AppError(409, "ORIGINAL_DELETED", "原件已按保留期删除，不能生成批注版") from None
-    stored = {n.loc: crypto.decrypt_text(n.text_enc) if n.text_enc is not None else ""
-              for n in db.scalars(select(DocNode).where(DocNode.file_id == file.id))}
-    try:
-        anchors = load_anchors(original, file.seq, stored)
-    except AnchorMismatch:
-        raise AppError(409, "ANCHOR_MISMATCH", MISMATCH) from None
+    original, anchors = load_source(db, file)
     mapping = load_redaction_map(db, task.id)
     quotes = dict(db.execute(select(Finding.id, Finding.quote_model).where(Finding.run_id == run.id)).all())
     unanchored = 0
@@ -127,17 +148,8 @@ def build_annotated(db, run, file: TaskFile):
         anchors.document.add_comment(runs, _clean(text), author="商衡SI", initials="SI")
 
     for f in findings:
-        lines = [f"【{SEVERITY.get(f.severity, f.severity)} · {CATEGORY.get(f.category, f.category)}】{f.title}",
-                 f"问题：{f.problem}", f"建议：{f.suggestion or '—'}"]
-        if f.suggested_text:
-            lines.append(f"建议条文：{f.suggested_text}")
-        if f.basis:
-            lines.append(f"依据：{f.basis}")
-        for ref in f.law_refs:
-            lines.append(f"依据：《{ref['title']}》{ref.get('article_no') or ''} {ref['text']}")
-        lines.append(f"—— 商衡SI 第 {run.run_no} 轮 · 问题 {f.seq}")
         add(f.locs[0] if f.locs else None, restore(quotes.get(f.id) or "", mapping),
-            "\n".join(lines), f.location)
+            finding_text(f, run), f.location)
     for row in local:
         text = (f"【本地校验 · {SEVERITY.get(row['severity'], row['severity'])}】"
                 f"{CHECKS.get(row['check_code'], row['check_code'])}\n"

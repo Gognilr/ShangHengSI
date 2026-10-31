@@ -70,7 +70,7 @@ class Anchors:
                     depth = max(0, depth - 1)
         return unsafe
 
-    def locate(self, loc, quote) -> Anchor:
+    def locate(self, loc, quote, skip_inserted: bool = False) -> Anchor:
         paragraphs = self.node_paragraphs.get(loc)
         if not paragraphs:
             return Anchor(self._first())
@@ -86,6 +86,7 @@ class Anchors:
             visible = []
             for el in p.iter():
                 if any(a.tag in (qn("w:del"), qn("w:moveFrom"), qn("w:txbxContent"))
+                       or (skip_inserted and a.tag == qn("w:ins"))
                        for a in el.iterancestors()):
                     continue
                 if el.tag == qn("w:t"):

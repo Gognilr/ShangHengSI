@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.audit import service as audit
 from app.db.models import ReviewRun, Task, TaskFile, User
 from app.export.annotated_docx import build_annotated
+from app.export.revised_docx import build_revised
 from app.db.session import get_db
 from app.export.report_docx import build_local_report, build_run_report
 from app.security.deps import current_user, owned_run, owned_task
@@ -30,6 +31,22 @@ def annotated(file_seq: int = Query(..., ge=1), run: ReviewRun = Depends(owned_r
     response = _response(filename, content)
     response.headers["X-SI-Total"] = str(total)
     response.headers["X-SI-Unanchored"] = str(unanchored)
+    return response
+
+
+@router.get("/runs/{rid}/revised")
+def revised(file_seq: int = Query(..., ge=1), run: ReviewRun = Depends(owned_run),
+            user: User = Depends(current_user), db: Session = Depends(get_db)):
+    file = db.scalar(select(TaskFile).where(TaskFile.task_id == run.task_id, TaskFile.seq == file_seq))
+    if file is None:
+        raise AppError(404, "NOT_FOUND", "文件不存在")
+    filename, content, count, commented = build_revised(db, run, file)
+    audit.record(db, "export_revised", user_id=user.id, target_type="run", target_id=str(run.id),
+                 detail={"run_no": run.run_no, "file_seq": file.seq, "revised": count, "commented": commented})
+    db.commit()
+    response = _response(filename, content)
+    response.headers["X-SI-Revised"] = str(count)
+    response.headers["X-SI-Commented"] = str(commented)
     return response
 
 

@@ -36,5 +36,15 @@ def build():
     doc.save(Path(__file__).with_name("anchors.docx"))
 
 
+def build_revise():
+    doc = Document()
+    p = doc.add_paragraph()
+    p.add_run("星河虚构公司应").bold = True
+    p.add_run("按期交货。").italic = True
+    doc.add_paragraph("未约定争议解决方式。", style="List Number")
+    doc.save(Path(__file__).with_name("revise.docx"))
+
+
 if __name__ == "__main__":
     build()
+    build_revise()
