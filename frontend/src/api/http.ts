@@ -98,7 +98,7 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
 }
 
 /** 取二进制响应（原件预览）：带 Cookie、统一处理 401 和错误码，不要求 JSON。 */
-async function requestDownload(path: string): Promise<{ blob: Blob; filename: string }> {
+async function requestDownload(path: string): Promise<{ blob: Blob; filename: string; headers: Headers }> {
   let res: Response
   try {
     res = await fetch(API_PREFIX + path, { method: 'GET', credentials: 'same-origin' })
@@ -111,7 +111,7 @@ async function requestDownload(path: string): Promise<{ blob: Blob; filename: st
     const fallback = /filename="([^"]+)"/i.exec(disposition)?.[1] ?? 'report.docx'
     let filename = fallback
     try { if (encoded) filename = decodeURIComponent(encoded) } catch { /* 使用响应头中的回退文件名 */ }
-    return { blob: await res.blob(), filename }
+    return { blob: await res.blob(), filename, headers: res.headers }
   }
 
   let code = 'HTTP_ERROR'

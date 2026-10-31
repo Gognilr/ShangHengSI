@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, ListChecks, RotateCw, Trash2 } from '@lucide/vue'
+import { ListChecks, RotateCw, Trash2 } from '@lucide/vue'
 import ResultToolbar from '@/components/ResultToolbar.vue'
 import ResultSummary from '@/components/ResultSummary.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
@@ -52,6 +52,7 @@ const runLoading = ref(false)
 const runError = ref('')
 const deleting = ref(false)
 const exporting = ref(false)
+const annotationNotice = ref('')
 const exportReason = computed(() => task.value?.status === 'completed_local' ? ''
   : runLoading.value ? '正在加载该轮次，请稍候'
     : !run.value ? '请先加载审核轮次'
@@ -65,6 +66,28 @@ async function exportReport() {
     if (task.value.status === 'completed_local') saved = await reportApi.local(task.value.id)
     else if (run.value) saved = await reportApi.run(run.value.id)
     if (!saved) ElMessage.success('报告已下载')
+  } catch (e) {
+    ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
+  } finally { exporting.value = false }
+}
+
+async function exportAnnotated(seq: number) {
+  if (!task.value || !run.value || exporting.value || deleting.value || exportReason.value) return
+  if (!['completed', 'partial'].includes(run.value.status) || !task.value.files.some(file => file.seq === seq && file.annotatable)) return
+  const runId = run.value.id
+  const taskId = task.value.id
+  exporting.value = true
+  try {
+    try {
+      await ElMessageBox.confirm('批注版含内部审核意见，请勿直接发给对方。', '导出批注版', {
+        type: 'warning', confirmButtonText: '导出批注版', cancelButtonText: '取消',
+      })
+    } catch { return }
+    const { total, unanchored } = await reportApi.annotated(runId, seq)
+    if (task.value?.id !== taskId || run.value?.id !== runId) return
+    annotationNotice.value = unanchored > 0
+      ? `共 ${total} 条批注，其中 ${unanchored} 条未能精确定位，已挂在所在段落开头。` : ''
+    if (!unanchored) ElMessage.success(`已生成批注版，共 ${total} 条批注`)
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
   } finally { exporting.value = false }
@@ -86,6 +109,7 @@ async function load() {
   const id = String(route.params.taskId)
   loading.value = true
   error.value = ''
+  annotationNotice.value = ''
   task.value = null
   run.value = null
   rounds.value = []
@@ -125,6 +149,7 @@ async function selectRun(id: string) {
   const version = ++runVersion
   runLoading.value = true
   runError.value = ''
+  annotationNotice.value = ''
   run.value = null
   selectedId.value = ''
   highlight.value = []
@@ -234,13 +259,13 @@ const reqVersion = computed(() => {
   <div class="page page--split">
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" />
     <template v-else-if="task">
-    <ResultToolbar :task="task" :run="run" :rounds="rounds" :selected-run="selectedRun" :req-version="reqVersion" :warnings="expiryWarnings" :export-reason="exportReason" @select-run="selectedRun = $event; selectRun($event)">
-      <ChatPanel :key="task.id" :task-id="task.id" :disabled="deleting" />
-      <el-button :loading="exporting" :disabled="!!exportReason || deleting" @click="exportReport"><template #icon><Download :size="16" :stroke-width="1.75" /></template>导出报告</el-button>
+    <ResultToolbar :task="task" :run="run" :rounds="rounds" :selected-run="selectedRun" :req-version="reqVersion" :warnings="expiryWarnings" :export-reason="exportReason" :exporting="exporting" :deleting="deleting" @select-run="selectedRun = $event; selectRun($event)" @export-report="exportReport" @export-annotated="exportAnnotated">
+      <template #before-export><ChatPanel :key="task.id" :task-id="task.id" :disabled="deleting" /></template>
       <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :disabled="deleting" @click="rerunOpen = true"><template #icon><RotateCw :size="16" :stroke-width="1.75" /></template>重新审核</el-button>
       <span class="action-separator" aria-hidden="true"></span>
       <el-button link type="danger" :loading="deleting" @click="remove"><template #icon><Trash2 :size="16" :stroke-width="1.75" /></template>删除任务</el-button>
     </ResultToolbar>
+    <el-alert v-if="annotationNotice" type="warning" show-icon closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
     <div :ref="bindSplit" class="split">
       <div class="left" :style="{ flexBasis: `${leftWidth}px` }">
         <ResultSummary v-if="task.status === 'completed_local'" :run="null" local :counts="[]" :severity="fSeverity" />
@@ -340,5 +365,6 @@ const reqVersion = computed(() => {
 .action-separator { width: 1px; height: 24px; background: var(--el-border-color-light); }
 .local-title { font: var(--si-font-h2); margin: 0 0 16px; }
 .run-content { min-height: 48px; }
+.annotation-notice { flex: none; margin-top: 12px; }
 .filters { margin-bottom: 12px; }
 </style>
