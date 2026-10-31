@@ -144,7 +144,7 @@
 * V3-B-02：`backend/app/admin/model.py`、`backend/app/models_api.py`（新，`GET /models`）、`backend/app/main.py`、`backend/app/review/`（router、service、job、validate 中取模型与写入轮次处）、`backend/app/chat/service.py`、`backend/app/assistant/`（schema、service、job、prompt 中取模型处）、`backend/app/export/report_docx.py`（模型一行）、`backend/app/admin/alerts.py`（月上限提醒按模型，V3Q-12）、第六节 5～8 的测试文件及 `backend/tests/test_admin_alerts.py`。
 * V3-B-03：`frontend/src/views/settings/Model.vue`、`frontend/src/api/admin.ts`（模型部分）、`frontend/src/components/ModelEditDrawer.vue`（新）。
 * V3-B-04：`frontend/src/api/models.ts`（新）、`frontend/src/views/ReviewNew.vue`、`frontend/src/components/ReRunDialog.vue`、`frontend/src/components/ResultToolbar.vue`、`frontend/src/components/assistant/Composer.vue`、`MessageItem.vue`、`frontend/src/api/tasks.ts`、`runs.ts`、`assistant.ts`（请求加 `model_id`）。
-* V3-B-05：`backend/tools/eval_review.py`（评测附加参数改为合并到所选模型的调用配置，V3Q-15）、`backend/tests/test_eval_review.py`；其余只写测试报告。
+* V3-B-05：`backend/tools/eval_review.py`（评测附加参数改为合并到所选模型的调用配置，V3Q-15）、`backend/tests/test_eval_review.py`；现有测试同步新模型接口（V3Q-16）：`test_admin_roles.py`、`test_assistant_history.py`、`test_audit.py`（补回模型审计断言）、`test_m5_acceptance.py`、`test_m7_acceptance.py`、`test_review_validate.py`；其余只写测试报告。
 
 ## 六、测试用例（代表性，照写）
 

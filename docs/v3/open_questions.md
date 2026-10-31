@@ -10,7 +10,7 @@
 
 | 编号 | 问题 | 建议 | 影响 | 最晚需要 |
 |-|-|-|-|-|
-| V3Q-16 | B-05 文件范围“其余只写报告”与整仓旧测试同步：test_admin_roles.py、test_assistant_history.py、test_audit.py、test_m5_acceptance.py、test_m7_acceptance.py、test_review_validate.py | 将这 6 个现有测试文件纳入本批，仅同步模型路径、ID 与夹具，保留业务断言、不增加用例；改动保留未提交 | 3 项旧历史引用用例缺少必填模型参数，修正后文件 7 项通过；其余为旧接口／配置适配 | B-05 收尾前，已请求用户确认 |
+| （暂无） | | | | |
 
 ## 二、已决定
 
@@ -28,6 +28,7 @@
 | V3Q-13 | 详情未选择模型时的助手可用性；已有轮次／回复引用的模型删除 | 按建议执行（用户 2026-10-31 认可）：详情只检查有可用助手模型，具体模型用途、结构化能力与配额在发送时检查；已有轮次／回复引用时返回 MODEL_IN_USE，保留模型记录与外键 | 2026-10-31 |
 | V3Q-14 | B-04 的实际创建审核调用位于 ConfirmStep.vue，任务卡漏列该文件 | 用户 2026-10-31 批准最小适配：ConfirmStep.vue 增加可选 modelId 属性，在创建轮次时传入；第一步／重新审核对话框经页面参数把模型 ID 带到确认步骤。其他确认流程保持 | 2026-10-31 |
 | V3Q-15 | 集中测试前兼容检查：开发评测工具 backend/tools/eval_review.py 仍覆盖已删除的 model.extra_params，网关改从 LlmModel 读取后覆盖失效；B-05 文件范围未包含该文件 | 按建议（用户 2026-10-31 批准）：`backend/tools/eval_review.py` 与 `backend/tests/test_eval_review.py` 补入 V3-B-05 范围，最小适配。只在评测会话读取所选模型时把命令行附加参数合并进本次调用配置（建议包一层 `gateway.load_model`，只改返回的 `_Config`），不得修改会话中的持久 LlmModel 对象，不写回模型配置，不增加参数或功能。只改写现有评测用例：请求体带合并后的参数，评测后数据库中模型的 extra_params 不变 | 2026-10-31 |
+| V3Q-16 | B-05 文件范围“其余只写报告”与整仓旧测试同步：test_admin_roles.py、test_assistant_history.py、test_audit.py、test_m5_acceptance.py、test_m7_acceptance.py、test_review_validate.py | 按建议（用户 2026-10-31 批准）：test_admin_roles.py、test_assistant_history.py、test_audit.py、test_m5_acceptance.py、test_m7_acceptance.py、test_review_validate.py 补入 V3-B-05 范围，只同步新模型接口、夹具与必填 model_id，不新增用例、不放宽业务断言。test_audit.py 须补回模型审计覆盖：保留每日上限调用，另加一次 `POST /admin/models` 新建模型，断言 setting_update 审计含 `("model", <新建 id>)` | 2026-10-31 |
 
 ## 三、实施中按“最简单、最安全”处理的事项
 
