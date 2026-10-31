@@ -6,9 +6,9 @@ from sqlalchemy import func, select
 
 from app.admin.settings_store import get_setting, set_setting
 from app.config import get_settings
-from app.db.models import Job, LlmCall, Task
+from app.db.models import Job, LlmCall, LlmModel, Task
 from tools import eval_review
-from tests.review_support import env, llm, sample  # noqa: F401
+from tests.review_support import configure_model, env, llm, sample  # noqa: F401
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def test_cli_full_pipeline_and_temporary_parameters(cli, llm, db_sessionmaker):
     (directory / "ignored.yaml").write_text("ignored")
     requests = llm()
     with db_sessionmaker() as db:
-        set_setting(db, "model.extra_params", {"seed": 7, "thinking": {"type": "enabled"}}, None)
+        configure_model(db, "model.extra_params", {"seed": 7, "thinking": {"type": "enabled"}}, None)
         db.commit()
     assert eval_review.main(args + ["--extra-params", '{"thinking":{"type":"disabled"}}']) == 0
     assert len(requests) == 1
@@ -42,7 +42,7 @@ def test_cli_full_pipeline_and_temporary_parameters(cli, llm, db_sessionmaker):
     assert "要求结论统计" in text and "各要求结论" in text and "问题清单" in text
     assert "C\\-01" in text and "prompt_version" in text and "2026" in text
     with db_sessionmaker() as db:
-        assert get_setting(db, "model.extra_params") == {"seed": 7, "thinking": {"type": "enabled"}}
+        assert db.get(LlmModel, 1).extra_params == {"seed": 7, "thinking": {"type": "enabled"}}
         assert db.scalar(select(func.count()).select_from(LlmCall)) == 1
         assert set(db.scalars(select(Job.status))) == {"done"}
         assert db.scalar(select(Task.status)) == "reviewed"
@@ -55,7 +55,7 @@ def test_model_output_validation(cli, llm, db_sessionmaker, mode, expected):
     assert eval_review.main(args + ["--extra-params", '{"thinking":{"type":"enabled"}}']) == (0 if expected == "partial" else 1)
     assert expected in report.read_text(encoding="utf-8")
     with db_sessionmaker() as db:
-        assert get_setting(db, "model.extra_params") == {}
+        assert db.get(LlmModel, 1).extra_params == {}
 
 
 @pytest.mark.parametrize("cap", [True, False])
@@ -64,8 +64,8 @@ def test_gateway_cap_and_recheck(cli, llm, db_sessionmaker, cap):
     requests = llm()
     with db_sessionmaker() as db:
         if cap:
-            set_setting(db, "model.monthly_call_cap", 1, None)
-            db.add(LlmCall(purpose="test", model_name="mock-model", status="sent"))
+            configure_model(db, "model.monthly_call_cap", 1, None)
+            db.add(LlmCall(model_id=1, purpose="test", model_name="mock-model", status="sent"))
         else:
             set_setting(db, "review.company_profile", "联系 forbidden@example.test", None)
         db.commit()

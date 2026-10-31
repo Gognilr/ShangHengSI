@@ -1,7 +1,9 @@
 """开发期虚构 DOCX 样本评测；复用业务链路，所有模型调用仍经过网关。"""
 import argparse
 from collections import Counter
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
+from dataclasses import replace
+from unittest.mock import patch
 import hashlib
 import html
 import json
@@ -19,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import Job, ReviewRun, Setting, User
+from app.db.models import Job, ReviewRun, User
 from app.db.session import get_engine
 from app.review.job import run_review
 from app.review.service import create_run, run_detail
@@ -28,19 +30,19 @@ from app.tasks.pipeline import parse_task
 from app.tasks.service import check_uploads, create_task
 
 
-class EvaluationSession(Session):
-    """Q-57：附加参数仅覆盖当前会话的读取结果，不写 settings，不影响其他进程。"""
-
-    def __init__(self, *args, extra_params=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.extra_params = extra_params or {}
-
-    def get(self, entity, ident, **kwargs):
-        row = super().get(entity, ident, **kwargs)
-        if entity is Setting and ident == "model.extra_params" and self.extra_params:
-            base = row.value if row is not None and isinstance(row.value, dict) else {}
-            return Setting(key=ident, value={**base, **self.extra_params})
-        return row
+@contextmanager
+def EvaluationSession(*args, extra_params=None, **kwargs):
+    """V3Q-15：只合并当前评测调用的配置，不修改持久模型对象。"""
+    from app.llm import gateway
+    original = gateway.load_model
+    with Session(*args, **kwargs) as db:
+        def load_model(session, model_id):
+            cfg = original(session, model_id)
+            if session is db and extra_params:
+                return replace(cfg, extra_params={**cfg.extra_params, **extra_params})
+            return cfg
+        with patch.object(gateway, "load_model", load_model):
+            yield db
 
 
 def require_development() -> None:
