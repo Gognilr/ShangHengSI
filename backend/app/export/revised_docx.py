@@ -138,6 +138,9 @@ def build_revised(db, run, file):
                     continue
                 p = OxmlElement("w:p")
                 props = deepcopy(source.pPr) if source.pPr is not None else OxmlElement("w:pPr")
+                # 不复制分节符，否则接受后多出一个分节。
+                for sect in props.findall(qn("w:sectPr")):
+                    props.remove(sect)
                 # 段落标记与文字各有独立修订编号。
                 rp = props.find(qn("w:rPr"))
                 if rp is None:
