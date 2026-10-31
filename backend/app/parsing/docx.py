@@ -75,10 +75,10 @@ _MANUAL_CLAUSE = re.compile(
 _LVL_PLACEHOLDER = re.compile(r"%([1-9])")
 
 
-def parse_docx(data: bytes, file_seq: int) -> ParsedFile:
-    """解析 DOCX。file_seq 为文件在任务中的序号（从 1 开始），用于位置编号。"""
+def parse_docx(data: bytes, file_seq: int, track: bool = False) -> ParsedFile:
+    """解析 DOCX。file_seq 从 1 开始；track 开启时附带原 XML 段落，节点与版本不变。"""
     try:
-        return _DocxParser(data, file_seq).parse()
+        return _DocxParser(data, file_seq, track=track).parse()
     except ParseError:
         raise
     except Exception:  # noqa: BLE001  任何其他异常都视为文件损坏；不带异常消息，避免原文片段外泄
@@ -527,10 +527,19 @@ class _Para:
     numbered: bool = False
     clause: str | None = None
     heading: bool = False
+    paragraphs: list[etree._Element] = field(default_factory=list)
+
+
+@dataclass
+class TrackedDocx(ParsedFile):
+    """仅 track=True 返回的内存追踪信息；None 表示非正文，不进入库中节点。"""
+
+    document: etree._Element | None = None
+    node_paragraphs: dict[str, list[etree._Element] | None] = field(default_factory=dict)
 
 
 class _DocxParser:
-    def __init__(self, data: bytes, file_seq: int):
+    def __init__(self, data: bytes, file_seq: int, track: bool = False):
         self.pkg = _Package(data)
         self.f = f"F{file_seq}"
         self.has_revisions = False
@@ -539,6 +548,8 @@ class _DocxParser:
         self.t = 0  # 正文顶层表格序号
         self.comments: dict[str, etree._Element] = {}
         self.emitted_comments: set[str] = set()
+        self.track = track
+        self.node_paragraphs: dict[str, list[etree._Element] | None] = {}
 
     # -- 总流程
 
@@ -589,6 +600,10 @@ class _DocxParser:
 
         notes = any(self._has_note_text(self.pkg.xml(first(k))) for k in ("footnotes", "endnotes"))
         self._finalize(nodes)
+        if self.track:
+            return TrackedDocx(nodes=nodes, page_count=None, has_revisions=self.has_revisions,
+                               warnings=self._warnings(nodes, notes), document=root,
+                               node_paragraphs=self.node_paragraphs)
         return ParsedFile(nodes=nodes, page_count=None, has_revisions=self.has_revisions,
                           warnings=self._warnings(nodes, notes))
 
@@ -636,6 +651,8 @@ class _DocxParser:
                 node.loc = f"{self.f}-CM{cm}"
             if len(node.loc) > MAX_LOC_LENGTH:
                 raise ParseError(MSG_CORRUPT)
+            if self.track and node.part != "body":
+                self.node_paragraphs[node.loc] = None
 
     def _warnings(self, nodes: list[ParsedNode], notes: bool) -> list[str]:
         parts = {n.part for n in nodes}
@@ -743,6 +760,7 @@ class _DocxParser:
         para.text = carry.text + para.text
         para.rev = True
         para.side = carry.side + para.side
+        para.paragraphs = carry.paragraphs + para.paragraphs
         return para
 
     def _body(self, body: etree._Element) -> list[ParsedNode]:
@@ -776,6 +794,8 @@ class _DocxParser:
             kind = "heading" if para.heading else "list_item" if para.numbered else "paragraph"
             out.append(self._node(loc, kind, "body", text, clause=para.clause or manual_clause_no(text),
                                   rev=para.rev))
+            if self.track:
+                self.node_paragraphs[loc] = para.paragraphs
         out.extend(self._side_nodes(para.side, loc))
 
     def _table(self, tbl: etree._Element, prefix: str, parent: str | None, out: list[ParsedNode]) -> None:
@@ -794,8 +814,12 @@ class _DocxParser:
         k = 0
         carry: _Para | None = None
 
+        paragraphs: list[etree._Element] = []
+
         def take(para: _Para) -> None:
             nonlocal rev
+            if self.track:
+                paragraphs.extend(para.paragraphs)
             if para.text.strip():
                 texts.append(para.text.strip())
             rev = rev or para.rev
@@ -821,6 +845,9 @@ class _DocxParser:
                     texts.extend(t for t, _ in items)
                     rev = rev or any(r for _, r in items)
                     side.extend(sub_side)
+                    if self.track:
+                        paragraphs.extend(p for p in blk.iter(w.p)
+                                          if not any(a.tag == w.txbxContent for a in p.iterancestors()))
                 else:
                     self._table(blk, prefix, loc, nested)
         if carry is not None:
@@ -828,6 +855,8 @@ class _DocxParser:
         text = "\n".join(texts)
         if text:
             out.append(self._node(loc, "table_cell", "body", text, parent=parent, rev=rev))
+            if self.track:
+                self.node_paragraphs[loc] = paragraphs
         out.extend(self._side_nodes(side, loc if text else parent))
         out.extend(nested)
 
@@ -887,6 +916,8 @@ class _DocxParser:
         self._inline(p, ctx)
         para = _Para(text="".join(ctx.parts), rev=ctx.rev or mark_deleted or mark_inserted,
                      mark_deleted=mark_deleted, side=ctx.side)
+        if self.track and body:
+            para.paragraphs = [p]
         if para.rev:
             self.has_revisions = True
         if body and not mark_deleted:
