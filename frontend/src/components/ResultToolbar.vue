@@ -54,7 +54,7 @@ function badge(ext: string) {
                   <span class="export-file" :title="`修订版：${file.original_name}`">修订版：{{ file.original_name }}</span>
                 </el-dropdown-item>
               </template>
-              <el-dropdown-item disabled divided class="export-hint">批注版、修订版支持 Word 与 WPS 文字文件，修订版只写已采纳的问题；PDF、图片、表格只能导出审核报告</el-dropdown-item>
+              <el-dropdown-item disabled divided><span class="export-hint">批注版、修订版支持 Word 与 WPS 文字文件，修订版只写已采纳的问题；PDF、图片、表格只能导出审核报告</span></el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>

@@ -81,7 +81,8 @@ def build_revised(db, run, file):
         raise AppError(409, "REVISED_UNAVAILABLE", "本轮没有已采纳且有建议条文的问题")
     original, anchors = shared.load_source(db, file)
     mapping = load_redaction_map(db, run.task_id)
-    quotes = dict(db.execute(select(Finding.id, Finding.quote_model).where(Finding.run_id == run.id)).all())
+    raw = {row.id: row for row in db.execute(select(Finding.id, Finding.quote_model, Finding.suggested_text)
+                                            .where(Finding.run_id == run.id))}
     document = anchors.document
     # 预期文本单独维护；不可从生成后的修订 XML 反推，避免校验成为自我比较。
     expected = [(p, _paragraph_text(p)) for p in _paragraphs(document.element)]
@@ -116,8 +117,9 @@ def build_revised(db, run, file):
     revised = 0
     for f in findings:
         loc = f.locs[0] if f.locs else None
-        quote = restore(quotes.get(f.id) or "", mapping)
-        text = restore(f.suggested_text, mapping)
+        quote = restore(raw[f.id].quote_model or "", mapping)
+        # run_detail 已还原展示文字；修订从库中原值还原一次，避免真实值被二次替换。
+        text = restore(raw[f.id].suggested_text, mapping)
         if not text.strip() or _CODES.search(text):
             fallbacks.append((f, loc, quote))
             continue
@@ -147,7 +149,8 @@ def build_revised(db, run, file):
                 ins.append(text_run(line, exemplar))
                 p.append(ins)
                 tail.addnext(p)
-                index = next(i for i, (e, _) in enumerate(expected) if e is tail)
+                index = max(i for i, (e, _) in enumerate(expected)
+                            if e is tail or tail in e.iterancestors())
                 expected.insert(index + 1, (p, line))
                 tail = p
             tails[loc] = tail
