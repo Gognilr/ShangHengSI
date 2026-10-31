@@ -350,6 +350,9 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
                 has_revisions=f.has_revisions,
                 warnings=[str(w) for w in (f.warnings or [])],
                 original_deleted_at=f.original_deleted_at,
+                annotatable=(f.original_deleted_at is None and
+                             (f.ext == "docx" or (f.ext in ("doc", "wps", "rtf") and
+                                                  bool(f.converted_storage_key)))),
             )
             for f in files
         ],
@@ -460,9 +463,11 @@ def load_raw(file: TaskFile) -> tuple[bytes, str]:
 
 def delete_task(db: DbSession, task: Task, user: User | None, ip: str | None) -> None:
     """彻底删除（17.8）：先删原件文件，再删任务行（子表级联删除；llm_calls 无外键，记录保留）。"""
-    keys = db.scalars(select(TaskFile.storage_key).where(TaskFile.task_id == task.id)).all()
-    for key in keys:
-        storage.delete_original(key)
+    files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)))
+    for file in files:
+        storage.delete_original(file.storage_key)
+        if file.converted_storage_key:
+            storage.delete_original(file.converted_storage_key)
     # 还在排队的 parse / review 任务没有意义了；正在运行的由处理函数发现任务已删除后自行结束
     db.execute(delete(Job).where(Job.status == "queued", Job.payload["task_id"].astext == str(task.id)))
     db.execute(update(LlmCall).where(LlmCall.task_id == task.id).values(task_title=None))
@@ -472,7 +477,7 @@ def delete_task(db: DbSession, task: Task, user: User | None, ip: str | None) ->
         user_id=user.id if user else None,
         target_type="task",
         target_id=str(task.id),
-        detail={"files": len(keys)},
+        detail={"files": len(files)},
         ip=ip,
     )
     db.delete(task)

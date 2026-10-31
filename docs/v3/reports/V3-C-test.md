@@ -14,3 +14,11 @@
 - `parse_docx(..., track=True)` 返回正文节点对应的原 XML 段落，非正文标记为 None；默认输出与 `docx-1` 不变。load_anchors 对所有节点的 loc 与解密文字做完整字典比较，改字、缺少节点或多出节点均抛 AnchorMismatch。定位不做模糊匹配；拆分只允许 rPr 与单个 t 的 run，复制格式并保留空格。
 - Docker Python 3.12，沿用 `aireview-db:dev` 的 `aireview-v3b-test-db`；最终 `tests/test_docx_anchor.py tests/test_parse_docx.py`：**79 passed**（2.51 秒），一个既有 Starlette/httpx 弃用警告。fixtures 下全部 25 份 .docx（含本次样本）追踪／默认解析一致；既有加密样本保持相同报错。
 - V3Q-19 待确认：完全没有正文段落时，仅在内存副本新增空段作为回退落点。不调用真实模型、不下载文件、不接触正式服务器；未跑整仓全量。批注版生成、接口及逐字／部件校验属于 C-03，尚未实施。
+
+## V3-C-03（2026-10-31，已完成）
+
+- 新增内存批注生成与 `GET /runs/{rid}/annotated?file_seq=N`：按所选轮次排除已忽略问题，先模型问题后本地校验；字段复用结果页还原，定位使用还原后的模型 quote。返回中文文件名、总数与未精确定位数，记录不含文件名／内容的审计。他人轮次 404；不支持格式、未完成、原件删除、旧格式未保存转换结果及无问题时 409。
+- 结果重新打开后检查 document.xml 中全部 w:t／w:delText／w:instrText 拼接文字一致；非正文／批注相关部件直接保留原始字节并校验。校验失败返回固定 500、无文件，日志仅任务编号与原因代码。转换结果沿用原件加密存储；0026 增加可空 converted_storage_key，保留期及任务删除同步清理，失败事务清理新副本。未增加依赖。
+- V3Q-20 按用户提交 `8b4051a` 执行：TaskFileOut 加 `annotatable: bool = False`，仅任务详情填实际值。V3Q-21 待确认：任务级问题归主文件；本地校验按位置挂段首，不计模型 quote 定位失败；助手维持原解析行为。
+- Docker Python 3.12，测试库沿用 pgvector 镜像 aireview-db:dev 的 aireview-v3b-test-db，自动创建／删除独立临时库。批注、定位、报告接口、保留期、旧格式与模型／迁移一致性共 **73 passed**（73.31 秒）。随后补入 schema 与任务详情字段、增加清理／无问题断言；最终 `test_annotated_export.py test_pipeline.py test_tasks_api.py` **102 passed**（140.06 秒）。助手上传与预览兼容用例 **1 passed**（8.24 秒）。均只有既有 Starlette/httpx 弃用警告。
+- 新增测试 4 个代表性用例，覆盖任务卡三项及生成校验失败；初跑两次夹具问题（不存在的 encrypt_json、Comments 不支持下标）已修正。不跑整仓全量，不调用真实模型、不下载文件、不连接正式服务器；Word 目视与浏览器检查留 C-05。既有未跟踪资料保留。

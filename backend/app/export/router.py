@@ -1,11 +1,13 @@
 """归属隔离的 Word 报告下载与最小审计。"""
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
-from app.db.models import ReviewRun, Task, User
+from app.db.models import ReviewRun, Task, TaskFile, User
+from app.export.annotated_docx import build_annotated
 from app.db.session import get_db
 from app.export.report_docx import build_local_report, build_run_report
 from app.security.deps import current_user, owned_run, owned_task
@@ -13,6 +15,22 @@ from app.security.errors import AppError
 
 router = APIRouter()
 CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+@router.get("/runs/{rid}/annotated")
+def annotated(file_seq: int = Query(..., ge=1), run: ReviewRun = Depends(owned_run),
+              user: User = Depends(current_user), db: Session = Depends(get_db)):
+    file = db.scalar(select(TaskFile).where(TaskFile.task_id == run.task_id, TaskFile.seq == file_seq))
+    if file is None:
+        raise AppError(404, "NOT_FOUND", "文件不存在")
+    filename, content, total, unanchored = build_annotated(db, run, file)
+    audit.record(db, "export_annotated", user_id=user.id, target_type="run", target_id=str(run.id),
+                 detail={"run_no": run.run_no, "file_seq": file.seq, "total": total, "unanchored": unanchored})
+    db.commit()
+    response = _response(filename, content)
+    response.headers["X-SI-Total"] = str(total)
+    response.headers["X-SI-Unanchored"] = str(unanchored)
+    return response
 
 
 def _response(filename, content):

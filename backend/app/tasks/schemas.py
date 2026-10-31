@@ -54,6 +54,7 @@ class TaskFileOut(BaseModel):
     has_revisions: bool
     warnings: list[str]
     original_deleted_at: datetime | None = None
+    annotatable: bool = False
 
 
 class PreviewNode(BaseModel):

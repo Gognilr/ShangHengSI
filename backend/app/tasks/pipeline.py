@@ -69,9 +69,22 @@ def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int) -> tuple[Parsed
     raise ValueError("unexpected ext")  # 上传检查只放行以上各种（tasks.service.EXT_MAP），走内部错误
 
 
-def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int) -> int:
+def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list[str] | None = None) -> int:
     """解析一个文件并写入节点和解析信息，返回本文件 OCR 的页数。"""
-    parsed, version = _parse_bytes(f.ext, storage.load_original(f.storage_key), f.seq, ocr_used)
+    data = storage.load_original(f.storage_key)
+    if f.ext in ("doc", "wps", "rtf") and task.kind == "review":
+        converted = (storage.load_original(f.converted_storage_key) if f.converted_storage_key
+                     else legacy.convert(data, f.ext))
+        parsed, version = _parse_bytes("docx", converted, f.seq, ocr_used)
+        parsed.warnings.append(legacy.converted_warning(f.ext))
+        version += f"+{legacy.CONVERTER_TAG}"
+        # 成功解析后才保存；重试复用已有结果，事务失败时由调用处清理新文件。
+        if not f.converted_storage_key:
+            f.converted_storage_key, _ = storage.save_original(converted)
+            if saved is not None:
+                saved.append(f.converted_storage_key)
+    else:
+        parsed, version = _parse_bytes(f.ext, data, f.seq, ocr_used)
     db.add_all(
         DocNode(
             task_id=task.id, file_id=f.id, loc=n.loc, ord=n.ord, kind=n.kind, part=n.part,
@@ -117,11 +130,12 @@ def parse_task(db: Session, task_id: uuid.UUID, file_ids: list[str] | None = Non
         return
     current: str | None = None
     ocr_used = 0
+    saved: list[str] = []
     try:
         db.execute(delete(DocNode).where(DocNode.task_id == task.id))
         for f in files:
             current = f.original_name
-            ocr_used += _parse_file(db, task, f, ocr_used)
+            ocr_used += _parse_file(db, task, f, ocr_used, saved)
         current = None
         run_checks(db, task, datetime.now(ZoneInfo("Asia/Shanghai")).date())
         if task.policy == "local_only":
@@ -142,10 +156,14 @@ def parse_task(db: Session, task_id: uuid.UUID, file_ids: list[str] | None = Non
         db.commit()
     except ParseError as exc:
         db.rollback()
+        for key in saved:
+            storage.delete_original(key)
         _fail(db, task_id, current, str(exc))
         logger.info("task %s 解析失败", task_id)
     except Exception:
         db.rollback()
+        for key in saved:
+            storage.delete_original(key)
         _fail(db, task_id, current, MSG_INTERNAL)
         raise  # job 记为 failed，last_error 只有异常类名
 

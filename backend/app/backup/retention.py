@@ -100,6 +100,8 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
                                                                   TaskFile.original_deleted_at.is_(None))))
                     for file in files:
                         storage.delete_original(file.storage_key)
+                        if file.converted_storage_key:
+                            storage.delete_original(file.converted_storage_key)
                         file.original_deleted_at = now
                     db.execute(update(DocNode).where(DocNode.task_id == tid).values(text_enc=None))
                     db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == tid))

@@ -290,6 +290,7 @@ class TaskFile(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     sha256: Mapped[str] = mapped_column(CHAR(64), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    converted_storage_key: Mapped[Optional[str]] = mapped_column(String(64))
     doc_type: Mapped[Optional[str]] = mapped_column(String(12))
     doc_type_source: Mapped[Optional[str]] = mapped_column(String(6))
     parser_version: Mapped[Optional[str]] = mapped_column(String(20))
