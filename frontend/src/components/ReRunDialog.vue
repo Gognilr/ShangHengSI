@@ -2,6 +2,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
+import { modelsApi, type AvailableModel } from '@/api/models'
+import { runsApi } from '@/api/runs'
 import { MAX_NOTE_LENGTH, tasksApi, type Source, type Stance, type TaskDetail } from '@/api/tasks'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
 import { redactionApi, type RedactionInfo } from '@/api/redaction'
@@ -42,6 +44,24 @@ const form = reactive<{ stance: Stance; source: Source; userNote: string }>({
   userNote: '',
 })
 
+const modelItems = ref<AvailableModel[]>([])
+const modelId = ref<number>()
+const modelsLoading = ref(false)
+let modelsVersion = 0
+async function loadModels() {
+  const version = ++modelsVersion
+  modelsLoading.value = true
+  try {
+    const [list, rounds] = await Promise.all([modelsApi.list('review'), runsApi.list(props.task.id)])
+    if (version !== modelsVersion || !props.modelValue) return
+    modelItems.value = list.items
+    modelId.value = list.items.find(m => m.id === rounds.items[0]?.model_id)?.id
+      ?? list.items.find(m => m.is_default)?.id ?? list.items[0]?.id
+    if (!modelId.value) errorText.value = '没有可用的审核模型，请联系管理员'
+  } catch (e) { if (version === modelsVersion) errorText.value = e instanceof ApiError ? e.message : '模型列表加载失败，请关闭后重试' }
+  finally { if (version === modelsVersion) modelsLoading.value = false }
+}
+
 const stanceOptions = toOptions(STANCE_OPTIONS)
 const sourceOptions = toOptions(SOURCE_OPTIONS)
 
@@ -59,15 +79,19 @@ watch(
       form.source = props.task.source
       form.userNote = props.task.user_note ?? ''
       errorText.value = ''
+      modelId.value = undefined
+      void loadModels()
       void loadComparison()
     } else {
       previewVersion++
+      modelsVersion++
     }
   },
   { immediate: true },
 )
 
 async function submit() {
+  if (!modelId.value || modelsLoading.value) return
   errorText.value = ''
   submitting.value = true
   try {
@@ -77,7 +101,7 @@ async function submit() {
       user_note: form.userNote.trim(),
     })
     visible.value = false
-    await router.push({ name: 'review-new', query: { task: props.task.id } })
+    await router.push({ name: 'review-new', query: { task: props.task.id, model_id: String(modelId.value) } })
   } catch (e) {
     errorText.value = e instanceof ApiError ? e.message : '提交失败，请稍后重试'
   } finally {
@@ -98,6 +122,11 @@ async function submit() {
         <el-radio-group v-model="form.source">
           <el-radio v-for="o in sourceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
         </el-radio-group>
+      </el-form-item>
+      <el-form-item label="审核模型">
+        <span v-if="modelItems.length === 1">{{ modelItems[0]!.display_name }}</span>
+        <el-select v-else v-model="modelId" :loading="modelsLoading" :disabled="!modelItems.length" aria-label="审核模型" placeholder="选择审核模型"><el-option class="model-option" v-for="model in modelItems" :key="model.id" :value="model.id" :label="model.display_name"><span>{{ model.display_name }}</span><small v-if="model.description" class="model-description">{{ model.description }}</small></el-option></el-select>
+        <p class="hint">换一个模型重新审核，可以对照两轮结果</p>
       </el-form-item>
       <el-form-item label="本次补充说明">
         <el-input
@@ -120,12 +149,14 @@ async function submit() {
     <el-alert v-if="errorText" type="error" :closable="false" show-icon :title="errorText" class="gap" />
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="submitting" @click="submit">确定</el-button>
+      <el-button type="primary" :loading="submitting" :disabled="!modelId || modelsLoading" @click="submit">确定</el-button>
     </template>
   </el-dialog>
 </template>
 
 <style scoped>
+.model-option { height: auto; min-height: 40px; padding-top: 8px; padding-bottom: 8px; font: var(--si-font-body); }
+.model-description { display: block; color: var(--el-text-color-secondary); font: var(--si-font-caption); overflow-wrap: anywhere; }
 /* el-dialog 的根节点被 Teleport 移出组件，按唯一类名限定才能命中。 */
 :global(.rerun-dialog) { max-height: calc(100vh - 48px); margin-bottom: 24px; display: flex; flex-direction: column; }
 :global(.rerun-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; flex: 1 1 auto; }

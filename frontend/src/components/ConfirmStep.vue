@@ -20,7 +20,7 @@ import SuspectList from './SuspectList.vue'
 import RedactionCompare from './RedactionCompare.vue'
 import { DOC_TYPE_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, toOptions } from '@/utils/labels'
 
-const props = withDefaults(defineProps<{ task: TaskDetail; mode?: 'review' | 'assistant' }>(), { mode: 'review' })
+const props = withDefaults(defineProps<{ task: TaskDetail; modelId?: number; mode?: 'review' | 'assistant' }>(), { mode: 'review' })
 const assistant = computed(() => props.mode === 'assistant')
 const nodeLoader = computed(() => assistant.value ? assistantApi.nodes : undefined)
 const emit = defineEmits<{
@@ -296,7 +296,7 @@ async function confirmSend() {
   submitting.value = true
   try {
     if (assistant.value) await assistantApi.confirm(props.task.id)
-    else await runsApi.create(props.task.id, !skipTemplate.value)
+    else await runsApi.create(props.task.id, !skipTemplate.value, props.modelId)
     emit('confirmed')
   } catch (e) {
     handleError(e)

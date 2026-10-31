@@ -6,6 +6,7 @@ import type { UploadFile } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
+import { modelsApi, type AvailableModel } from '@/api/models'
 import { redactionApi } from '@/api/redaction'
 import { runsApi, type RunDetail } from '@/api/runs'
 import {
@@ -55,6 +56,25 @@ const reqDrawer = ref(false)
 const submitting = ref(false)
 const formError = ref('')
 const duplicateFile = ref<DuplicateFile | null>(null)
+
+const modelItems = ref<AvailableModel[]>([])
+const modelId = ref<number>()
+const modelError = ref('')
+const modelsLoading = ref(true)
+async function loadModels() {
+  modelsLoading.value = true
+  modelError.value = ''
+  try {
+    modelItems.value = (await modelsApi.list('review')).items
+    const fromRoute = Number(route.query.model_id)
+    modelId.value = modelItems.value.find(m => m.id === fromRoute)?.id
+      ?? modelItems.value.find(m => m.id === modelId.value)?.id
+      ?? modelItems.value.find(m => m.is_default)?.id ?? modelItems.value[0]?.id
+    if (!modelId.value) modelError.value = '没有可用的审核模型，请联系管理员'
+  } catch (e) { modelError.value = e instanceof ApiError ? e.message : '模型列表加载失败，请刷新页面' }
+  finally { modelsLoading.value = false }
+}
+watch(() => route.query.model_id, () => { void loadModels() })
 
 // 立场和来源默认为该用户上次的选择。接口没有返回 last_stance / last_source，
 // 所以在浏览器里按用户记一份（open_questions Q-51）。
@@ -113,6 +133,7 @@ async function startParse(allowDuplicate = false) {
   if (submitting.value) return
   formError.value = checkFiles(files.value) ?? ''
   if (formError.value) return
+  if (policy.value === 'ai' && (!modelId.value || modelError.value)) { formError.value = modelError.value || '请选择审核模型'; return }
   submitting.value = true
   try {
     const { id } = await tasksApi.create({
@@ -125,7 +146,7 @@ async function startParse(allowDuplicate = false) {
       allowDuplicate,
     })
     savePrefs()
-    await router.replace({ name: 'review-new', query: { task: id } })
+    await router.replace({ name: 'review-new', query: { task: id, ...(policy.value === 'ai' && modelId.value ? { model_id: String(modelId.value) } : {}) } })
   } catch (e) {
     if (e instanceof ApiError && e.code === 'DUPLICATE_FILE' && e.data && typeof e.data === 'object') {
       const old = e.data as Partial<DuplicateFile>
@@ -244,6 +265,7 @@ async function enter() {
 
 onMounted(() => {
   loadPrefs()
+  void loadModels()
   clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
   void enter()
 })
@@ -371,6 +393,11 @@ function fileBadge(name: string): string {
           <el-form-item label="文件来源">
             <el-radio-group v-model="source" class="segmented" aria-label="文件来源"><el-radio-button v-for="o in sourceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio-button></el-radio-group>
           </el-form-item>
+          <el-form-item v-if="policy === 'ai'" label="审核模型">
+            <span v-if="modelItems.length === 1">{{ modelItems[0]!.display_name }}</span>
+            <el-select v-else v-model="modelId" placeholder="选择审核模型" aria-label="审核模型" :loading="modelsLoading" :disabled="!modelItems.length"><el-option class="model-option" v-for="model in modelItems" :key="model.id" :value="model.id" :label="model.display_name"><span>{{ model.display_name }}</span><small v-if="model.description" class="model-description">{{ model.description }}</small></el-option></el-select>
+            <p v-if="modelError" class="hint">{{ modelError }}</p>
+          </el-form-item>
           <el-form-item label="外发策略" class="policy-item">
             <el-radio-group v-model="policy" class="policy-cards" aria-label="外发策略">
               <el-radio v-for="o in policyOptions" :key="o.value" :value="o.value" border :aria-label="o.label">
@@ -390,7 +417,9 @@ function fileBadge(name: string): string {
     </section>
 
     <section v-else-if="step === 1 && task" class="confirm-step">
-      <ConfirmStep :key="task.id" :task="task" @confirmed="refreshTask" @stale="refreshTask" />
+      <el-alert v-if="modelError" :title="modelError" type="error" :closable="false" show-icon class="gap" />
+      <p v-else-if="modelId" class="hint">审核模型：{{ modelItems.find(m => m.id === modelId)?.display_name }}</p>
+      <ConfirmStep v-if="!modelsLoading && !modelError" :key="`${task.id}:${modelId ?? ''}`" :task="task" :model-id="modelId" @confirmed="refreshTask" @stale="refreshTask" />
     </section>
     <section v-else-if="step === 2 && task" class="panel">
       <div class="processing">
@@ -420,6 +449,8 @@ function fileBadge(name: string): string {
 </template>
 
 <style scoped>
+.model-option { height: auto; min-height: 40px; padding-top: 8px; padding-bottom: 8px; font: var(--si-font-body); }
+.model-description { display: block; color: var(--el-text-color-secondary); font: var(--si-font-caption); overflow-wrap: anywhere; }
 .block { margin-bottom: 16px; }
 .center { text-align: center; padding: 48px 0; }
 .center > .el-icon { color: var(--el-color-primary); }

@@ -29,7 +29,7 @@ function badge(ext: string) {
       <div class="actions"><slot /></div>
     </div>
     <div class="details">
-      <span>{{ docTypeLabel(run?.main_doc_type ?? (task.files.find(f => f.is_main) ?? task.files[0])?.doc_type) }} · {{ stanceLabel(run?.stance ?? task.stance) }} / {{ sourceLabel(run?.source ?? task.source) }} · 审核于 {{ formatDateTime(run?.finished_at) }} · 模型 {{ run?.model_name ?? '—' }} · 要求 {{ reqVersion }}<template v-if="run?.template"> · 本轮对照公司范本：{{ run.template.name }}{{ TEMPLATE_STATE[run.template.status] ?? '' }}</template><template v-for="warning in warnings" :key="warning"> · <span class="warning">{{ warning }}</span></template></span>
+      <span>{{ docTypeLabel(run?.main_doc_type ?? (task.files.find(f => f.is_main) ?? task.files[0])?.doc_type) }} · {{ stanceLabel(run?.stance ?? task.stance) }} / {{ sourceLabel(run?.source ?? task.source) }} · 审核于 {{ formatDateTime(run?.finished_at) }} · 模型 {{ run?.model_label ? `${run.model_label}（${run.model_name ?? '—'}）` : run?.model_name ?? '—' }} · 要求 {{ reqVersion }}<template v-if="run?.template"> · 本轮对照公司范本：{{ run.template.name }}{{ TEMPLATE_STATE[run.template.status] ?? '' }}</template><template v-for="warning in warnings" :key="warning"> · <span class="warning">{{ warning }}</span></template></span>
       <span v-if="exportReason" class="hint">{{ exportReason }}</span>
     </div>
   </header>

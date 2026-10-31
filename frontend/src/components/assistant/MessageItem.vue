@@ -54,6 +54,7 @@ async function copy() {
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="message.role === 'assistant' && message.extras.kb_sent !== undefined" class="hint">附带公司知识库片段 {{ message.extras.kb_sent }} 段（{{ message.extras.kb_dropped ?? 0 }} 段因含疑似敏感信息未发送）</p>
     <p v-for="source in message.extras.history_sources" :key="source.task_id" class="hint"><router-link :to="`/review/${source.task_id}`" target="_blank" rel="noopener">来自 {{ source.month }} 的一份合同</router-link></p>
+    <p v-if="message.role === 'assistant' && message.model_label" class="hint">{{ message.model_label }}</p>
     <div v-if="message.role === 'assistant'" class="message-actions" :class="{ 'on-hover': !pending && message.status !== 'failed' && !last }">
       <el-button v-if="pending" size="small" @click="emit('stop', message.id)">停止</el-button>
       <el-button v-else-if="message.status === 'failed'" size="small" @click="emit('retry', message.id)">重试</el-button>

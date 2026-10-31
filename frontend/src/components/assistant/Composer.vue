@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { modelsApi, type AvailableModel } from '@/api/models'
 import { ArrowUp, Square } from '@lucide/vue'
 import { assistantApi, type Session, type Template, type MessageInput } from '@/api/assistant'
 import type { ChatPreview, ChatDecision } from '@/api/chat'
@@ -9,6 +11,36 @@ import { USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 import TemplatePicker from './TemplatePicker.vue'
 const props = defineProps<{ session: Session; template: Template | null; generating: number | null }>()
 const emit = defineEmits<{ 'update:template': [value: Template | null]; sent: []; stop: [mid: number] }>()
+const modelItems = ref<AvailableModel[]>([])
+const modelId = ref<number>()
+const modelError = ref('')
+const modelLoading = ref(false)
+const allowedModels = computed(() => modelItems.value.filter(m => props.template !== 'compare' || m.structured_ok))
+let modelVersion = 0
+function selectAvailable(preferred?: number | null) {
+  modelId.value = allowedModels.value.find(m => m.id === preferred)?.id
+    ?? allowedModels.value.find(m => m.is_default)?.id ?? allowedModels.value[0]?.id
+}
+watch(() => props.session.id, async id => {
+  const version = ++modelVersion
+  modelLoading.value = true
+  modelError.value = ''
+  modelId.value = undefined
+  try {
+    const [list, history] = await Promise.all([modelsApi.list('assist'), assistantApi.messages(id)])
+    if (version !== modelVersion) return
+    modelItems.value = list.items
+    selectAvailable([...history.items].reverse().find(m => m.role === 'assistant' && m.model_id)?.model_id)
+  } catch (e) { if (version === modelVersion) modelError.value = e instanceof ApiError ? e.message : '模型列表加载失败，请刷新页面' }
+  finally { if (version === modelVersion) modelLoading.value = false }
+}, { immediate: true })
+watch(() => props.template, template => {
+  if (modelLoading.value || !modelItems.value.length) return
+  if (!allowedModels.value.some(m => m.id === modelId.value)) {
+    selectAvailable()
+    if (template === 'compare') ElMessage.info(modelId.value ? '比价需要结构化输出，已切换可用模型' : '没有支持结构化输出的助手模型，请联系管理员')
+  }
+})
 const text = ref(''), fileIds = ref<string[]>([]), target = ref('英文'), focus = ref('全部'), tone = ref('正式'), language = ref('同来函')
 const useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
 const preview = ref<ChatPreview | null>(null)
@@ -19,7 +51,7 @@ watch(() => props.session.id, () => { text.value = ''; useHistory.value = false;
 watch(() => props.session.kb_enabled, value => { useKb.value = !!value })
 watch(() => files.value.map(f => f.id).join(','), () => { fileIds.value = files.value.map(f => f.id) })
 const limits = computed(() => props.template === 'translate' ? [1, 1] : props.template === 'summary' ? [1, 3] : props.template === 'reply' ? [0, 3] : props.template ? [2, 6] : [0, 10])
-const reason = computed(() => !props.session.can_send ? props.session.send_reason ?? '当前不能发送' : fileIds.value.length < limits.value[0]! || fileIds.value.length > limits.value[1]! ? `请选择 ${limits.value[0]}～${limits.value[1]} 个已确认文件` : !text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length) ? '请输入问题或粘贴来函' : '')
+const reason = computed(() => modelLoading.value ? '正在加载模型列表' : modelError.value ? modelError.value : !modelId.value ? '没有可用的助手模型，请联系管理员' : !props.session.can_send ? props.session.send_reason ?? '当前不能发送' : fileIds.value.length < limits.value[0]! || fileIds.value.length > limits.value[1]! ? `请选择 ${limits.value[0]}～${limits.value[1]} 个已确认文件` : !text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length) ? '请输入问题或粘贴来函' : '')
 let pending: MessageInput | null = null
 function input(): MessageInput {
   const params: Record<string, unknown> = props.template === 'translate'
@@ -27,7 +59,7 @@ function input(): MessageInput {
     : { file_ids: [...fileIds.value] }
   if (props.template === 'summary') params.focus = focus.value
   if (props.template === 'reply') Object.assign(params, { tone: tone.value, language: language.value })
-  return { message: text.value, template: props.template, params, use_kb: useKb.value && !!props.session.kb_enabled, use_history: useHistory.value }
+  return { model_id: modelId.value, message: text.value, template: props.template, params, use_kb: useKb.value && !!props.session.kb_enabled, use_history: useHistory.value }
 }
 async function submit() {
   if (reason.value || busy.value) return
@@ -82,7 +114,7 @@ async function send() {
         <el-button v-else class="send" type="primary" circle aria-label="发送" :title="reason || '发送'" :disabled="!!reason || sending" :loading="busy" @click="submit"><ArrowUp v-if="!busy" :size="16" :stroke-width="2" /></el-button>
       </div>
       <div class="options">
-        <!-- V3-B 在这一行加模型选择 -->
+        <el-select v-model="modelId" class="model-select" size="small" aria-label="助手模型" placeholder="选择模型" :loading="modelLoading" :disabled="modelLoading || !allowedModels.length || sending || busy || generating !== null"><el-option v-for="model in allowedModels" :key="model.id" :value="model.id" :label="model.display_name" /></el-select>
         <TemplatePicker :model-value="template" @update:model-value="emit('update:template', $event)" />
         <el-checkbox v-if="session.kb_enabled" v-model="useKb">附带公司知识库</el-checkbox><el-checkbox v-model="useHistory">参考我的历史合同</el-checkbox>
         <span class="keys">Enter 发送，Shift+Enter 换行</span>
@@ -101,6 +133,7 @@ async function send() {
   </div>
 </template>
 <style scoped>
+.model-select { width: 160px; }
 .composer { padding: 12px 24px 16px; border-top: 1px solid var(--el-border-color-light); background: var(--el-bg-color); }
 .composer > * { max-width: 760px; margin-left: auto; margin-right: auto; }
 .parameters { display: flex; gap: 8px; margin-bottom: 8px; }

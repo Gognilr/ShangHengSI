@@ -22,6 +22,7 @@ export interface Comparison {
   totals: Record<string, { amount: string | null; currency: string | null; status: string }>
 }
 export interface Message {
+  model_id: number | null; model_label: string | null
   id: number; role: 'user' | 'assistant'; content: string; status: string; template: Template | null
   params: Record<string, unknown>; created_at: string; error: string | null; error_code: string | null
   extras: { segments_total?: number; segments_done?: number; kb_sent?: number; kb_dropped?: number
@@ -29,6 +30,7 @@ export interface Message {
   translation?: Record<string, string>; translation_notice?: string; compare?: Comparison; draft?: string
 }
 export interface MessageInput {
+  model_id?: number
   message: string; template?: Template | null; params: Record<string, unknown>
   use_kb: boolean; use_history: boolean; decisions?: ChatDecision[]
 }

@@ -12,6 +12,8 @@ export interface RunListItem {
   status: string
   queued_at: string
   finished_at: string | null
+  model_id: number | null
+  model_label: string | null
   model_name: string | null
 }
 
@@ -61,6 +63,8 @@ export interface RunDetail {
   source: string
   user_note: string | null
   main_doc_type: string
+  model_id: number | null
+  model_label: string | null
   model_name: string | null
   prompt_version: string | null
   builtin_req_version: string | null
@@ -79,7 +83,7 @@ export interface RunDetail {
 }
 
 export const runsApi = {
-  create: (taskId: string, useTemplate = true) => http.post<RunCreated>(`/tasks/${taskId}/runs`, { use_template: useTemplate }),
+  create: (taskId: string, useTemplate = true, modelId?: number) => http.post<RunCreated>(`/tasks/${taskId}/runs`, { use_template: useTemplate, model_id: modelId }),
   list: (taskId: string) => http.get<{ items: RunListItem[] }>(`/tasks/${taskId}/runs`),
   get: (runId: string) => http.get<RunDetail>(`/runs/${runId}`),
   patchFinding: (findingId: string, body: { handling_status?: HandlingStatus; handling_note?: string | null }) =>
