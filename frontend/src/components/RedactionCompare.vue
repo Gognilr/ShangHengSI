@@ -120,6 +120,8 @@ function outboundItem(row: CompareRow, segments: CompareSeg[], index: number) {
     .sort((a, b) => a.char_start - b.char_start)[occurrence]
   return item?.can_revoke ? item : undefined
 }
+// 右侧占位符悬停时显示左侧同一行对应的原文（原文本就在本机显示，不涉及外发）。
+const originalText = (row: CompareRow, placeholder?: string) => placeholder ? row.left.flat().find(seg => seg.placeholder === placeholder)?.text ?? '' : ''
 async function revokeItem(item: RedactionItemPos | undefined) {
   if (!item || !props.editable || saving.value) return
   try {
@@ -234,7 +236,7 @@ onBeforeUnmount(() => {
           </div>
           <div class="outbound-cell">
             <div v-if="entry.row.kind === 'grouped'" class="hint">报价明细已汇总发送</div>
-            <p v-if="entry.row.right !== null" class="outbound-text"><template v-for="(seg, i) in entry.row.right" :key="i"><el-popover v-if="seg.placeholder || seg.suspect" trigger="hover" :width="240" :disabled="!editable || saving || !outboundItem(entry.row, entry.row.right, i)"><template #reference><span class="segment" :class="[kind(seg), { placeholder: seg.placeholder, suspect: seg.suspect, linked: linked(entry.row, seg) }]" :title="seg.suspect ? '待处理' : undefined" :tabindex="seg.placeholder ? 0 : undefined" @mouseenter="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @mouseleave="hovered = null" @focus="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @blur="hovered = null">{{ seg.text }}</span></template><el-button link type="primary" :loading="saving" @click="revokeItem(outboundItem(entry.row, entry.row.right, i))">撤销（不是敏感信息）</el-button></el-popover><template v-else>{{ seg.text }}</template></template></p>
+            <p v-if="entry.row.right !== null" class="outbound-text"><template v-for="(seg, i) in entry.row.right" :key="i"><el-popover v-if="seg.placeholder || seg.suspect" trigger="hover" :width="240" :disabled="!originalText(entry.row, seg.placeholder) && (!editable || saving || !outboundItem(entry.row, entry.row.right, i))"><template #reference><span class="segment" :class="[kind(seg), { placeholder: seg.placeholder, suspect: seg.suspect, linked: linked(entry.row, seg) }]" :title="seg.suspect ? '待处理' : undefined" :tabindex="seg.placeholder ? 0 : undefined" @mouseenter="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @mouseleave="hovered = null" @focus="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @blur="hovered = null">{{ seg.text }}</span></template><p v-if="originalText(entry.row, seg.placeholder)" class="popover-original">原文：{{ originalText(entry.row, seg.placeholder) }}</p><el-button v-if="editable && outboundItem(entry.row, entry.row.right, i)" link type="primary" :loading="saving" :disabled="saving" @click="revokeItem(outboundItem(entry.row, entry.row.right, i))">撤销（不是敏感信息）</el-button></el-popover><template v-else>{{ seg.text }}</template></template></p>
             <span v-else class="hint">—（不发送）</span>
           </div>
         </div>
@@ -286,5 +288,7 @@ onBeforeUnmount(() => {
 .warning { color: var(--el-color-warning); margin-left: 8px; }
 .selection-popover { position: fixed; z-index: 3000; width: 380px; max-height: calc(100vh - 16px); overflow: auto; padding: 16px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: 12px; box-shadow: var(--el-box-shadow-light); }
 .picked { margin: 0 0 8px; max-height: 64px; overflow: auto; overflow-wrap: anywhere; font-size: 13px; }
+.popover-original { margin: 0 0 4px; font-size: 13px; overflow-wrap: anywhere; }
+.popover-original:last-child { margin-bottom: 0; }
 .selection-actions { display: flex; justify-content: flex-end; margin-top: 12px; gap: 8px; }
 </style>
