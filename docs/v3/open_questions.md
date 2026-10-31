@@ -4,7 +4,7 @@
 
 状态：**需决定** = 必须由产品负责人决定后才能实施；**已决定** = 产品负责人已同意；第三节为实施中按“最简单、最安全”处理、待确认的事项。
 
-下一个编号：V3Q-20
+下一个编号：V3Q-21
 
 ## 一、需决定
 
@@ -31,6 +31,7 @@
 | V3Q-15 | 集中测试前兼容检查：开发评测工具 backend/tools/eval_review.py 仍覆盖已删除的 model.extra_params，网关改从 LlmModel 读取后覆盖失效；B-05 文件范围未包含该文件 | 按建议（用户 2026-10-31 批准）：`backend/tools/eval_review.py` 与 `backend/tests/test_eval_review.py` 补入 V3-B-05 范围，最小适配。只在评测会话读取所选模型时把命令行附加参数合并进本次调用配置（建议包一层 `gateway.load_model`，只改返回的 `_Config`），不得修改会话中的持久 LlmModel 对象，不写回模型配置，不增加参数或功能。只改写现有评测用例：请求体带合并后的参数，评测后数据库中模型的 extra_params 不变 | 2026-10-31 |
 | V3Q-16 | B-05 文件范围“其余只写报告”与整仓旧测试同步：test_admin_roles.py、test_assistant_history.py、test_audit.py、test_m5_acceptance.py、test_m7_acceptance.py、test_review_validate.py | 按建议（用户 2026-10-31 批准）：test_admin_roles.py、test_assistant_history.py、test_audit.py、test_m5_acceptance.py、test_m7_acceptance.py、test_review_validate.py 补入 V3-B-05 范围，只同步新模型接口、夹具与必填 model_id，不新增用例、不放宽业务断言。test_audit.py 须补回模型审计覆盖：保留每日上限调用，另加一次 `POST /admin/models` 新建模型，断言 setting_update 审计含 `("model", <新建 id>)` | 2026-10-31 |
 | V3Q-18 | V3-C-01 要求升级提示词版本号，但版本号所在的 `backend/resources/prompts/system.md` 未列入任务文件范围；`test_requirements.py`、`test_runs_api.py` 也写死了旧版本号 | 按建议（用户 2026-10-31 批准）：`backend/resources/prompts/system.md`、`backend/tests/test_requirements.py`、`backend/tests/test_runs_api.py` 补入 V3-C-01 范围。system.md 只把第 2 行版本号从 `2026.11-3` 改为 `2026.11-4`，正文不变；两个测试只把断言中的版本字符串同步为 `2026.11-4`，不改其他断言、不加用例 | 2026-10-31 |
+| V3Q-20 | V3-C-03 要求任务详情的文件列表返回 `annotatable`，但定义响应字段的 `backend/app/tasks/schemas.py` 未列入范围 | 用户 2026-10-31 批准：`backend/app/tasks/schemas.py` 补入 V3-C-03 范围，只给 `TaskFileOut` 增加 `annotatable: bool = False`（带默认值，继承它的助手 `SessionFile` 与修改文件类型接口的响应不受影响，不改这两处）；实际值只在 `tasks/service.py` 的任务详情中填写 | 2026-10-31 |
 
 ## 三、实施中按“最简单、最安全”处理的事项
 
