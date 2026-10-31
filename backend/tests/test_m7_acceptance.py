@@ -19,7 +19,7 @@ pytestmark = pytest.mark.usefixtures("env")
 
 ADMIN_READS = [
     "/admin/users",
-    "/admin/settings/model",
+    "/admin/models",
     "/admin/usage",
     "/admin/company-requirements",
     "/admin/company-profile",

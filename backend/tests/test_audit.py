@@ -2,6 +2,7 @@
 import json
 import os
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -10,6 +11,7 @@ from app.backup import service as backup_service
 from app.config import get_settings
 from app.db.models import AuditLog
 from app.main import API_PREFIX
+from app.llm import gateway
 from app.security import crypto
 from tests.test_report_docx import report_case  # noqa: F401
 from tests.review_support import env, ready_task  # noqa: F401
@@ -68,7 +70,7 @@ def test_login_and_login_failed_are_audited(make_user, new_client, db_sessionmak
     assert "ghost-user" not in dump and "wrong-pass" not in dump
 
 
-def test_setting_and_account_changes_are_audited(admin, make_user, db_sessionmaker):
+def test_setting_and_account_changes_are_audited(admin, make_user, db_sessionmaker, monkeypatch):
     c, csrf = admin
     u = make_user("alice")
     # 账号变更
@@ -78,10 +80,14 @@ def test_setting_and_account_changes_are_audited(admin, make_user, db_sessionmak
     assert c.post(f"{API_PREFIX}/admin/users/{u.id}/reset-password", headers=_hdr(csrf),
                   json={"new_password": NEW_PASSWORD}).status_code == 204
     # 设置修改：模型、脱敏、审核要求、备份、保留期
-    assert c.put(f"{API_PREFIX}/admin/settings/model", headers=_hdr(csrf), json={
-        "base_url": "https://llm.example.test/v1", "name": "mock-model", "temperature": 0.1, "max_tokens": 32000,
-        "timeout_s": 180, "json_mode": True, "extra_params": {}, "chunk_chars": 60000, "price_in_per_m": "0",
-        "price_out_per_m": "0", "monthly_call_cap": 0, "api_key": API_KEY}).status_code == 200
+    assert c.put(f"{API_PREFIX}/admin/settings/user-daily-cap", headers=_hdr(csrf), json={"value": 5}).status_code == 200
+    monkeypatch.setattr(gateway, "TRANSPORT", httpx.MockTransport(lambda request: httpx.Response(200, json={
+        "choices": [{"message": {"content": json.dumps({"ok": True, "items": [{"n": 1}, {"n": 2}]})}}]})))
+    model = c.post(f"{API_PREFIX}/admin/models", headers=_hdr(csrf), json={
+        "display_name": "审计测试模型", "base_url": "https://llm.example.test/v1",
+        "model_name": "mock-model", "api_key": API_KEY})
+    assert model.status_code == 201, model.text
+    model_id = model.json()["id"]
     assert c.put(f"{API_PREFIX}/admin/settings/redaction", headers=_hdr(csrf), json={"mask_quantity": True}).status_code == 200
     assert c.post(f"{API_PREFIX}/admin/terms", headers=_hdr(csrf), json={"term": TERM}).status_code == 201
     assert c.post(f"{API_PREFIX}/admin/company-requirements", headers=_hdr(csrf), json={
@@ -95,8 +101,9 @@ def test_setting_and_account_changes_are_audited(admin, make_user, db_sessionmak
     acts = actions(db_sessionmaker)
     assert acts.count("user_create") == 1 and acts.count("user_update") == 2
     targets = {(r.target_type, r.target_id) for r in rows(db_sessionmaker, "setting_update")}
-    assert {("setting", "model"), ("setting", "redaction"), ("setting", "backup"), ("setting", "retention"),
+    assert {("model", "all"), ("setting", "redaction"), ("setting", "backup"), ("setting", "retention"),
             ("company_profile", None)} <= targets
+    assert ("model", str(model_id)) in targets
     assert any(t == "term" for t, _ in targets) and any(t == "company_requirement" for t, _ in targets)
     assert all(r.user_id is not None for r in rows(db_sessionmaker, "setting_update"))
 
@@ -130,9 +137,9 @@ def test_backup_run_is_audited_on_failure(tmp_path, monkeypatch, db_sessionmaker
     assert r[0].detail == {"trigger": "manual", "status": "failed"}
 
 
-def test_audit_details_never_contain_secrets(admin, make_user, login, db_sessionmaker):
+def test_audit_details_never_contain_secrets(admin, make_user, login, db_sessionmaker, monkeypatch):
     """走一遍带敏感输入的操作后，扫描全部审计行：密码、API 密钥（含末 4 位）、词条、补充要求、公司说明、显示名、原文都不出现。"""
-    test_setting_and_account_changes_are_audited(admin, make_user, db_sessionmaker)
+    test_setting_and_account_changes_are_audited(admin, make_user, db_sessionmaker, monkeypatch)
     c, csrf = login("alice") if False else admin
     c.post(f"{API_PREFIX}/tasks", data=form(), headers=_hdr(csrf),
            files=[("files", ("a.docx", docx_bytes(), "application/octet-stream"))])

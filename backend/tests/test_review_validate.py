@@ -239,9 +239,9 @@ def configured(tmp_path, monkeypatch, db_sessionmaker, make_user):
     user = make_user("alice")
     ctx, nodes = sample("contract_basic")
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.base_url", "https://llm.example.test/v1", None)
-        settings_store.set_setting(db, "model.name", "mock-model", None)
-        settings_store.set_setting(db, "model.api_key_enc", crypto.encrypt_to_b64("sk-test-key-000000"), None)
+        from app.db.models import LlmModel
+        db.add(LlmModel(display_name="校验模拟", model_name="mock-model", base_url="https://llm.example.test/v1",
+                        api_key_enc=crypto.encrypt_text("sk-test-key-000000"), for_review=True, for_assist=True))
         task = Task(owner_id=user.id, title="合同.docx", stance="sales", source="incoming", policy="ai",
                     status="reviewing")
         db.add(task)
@@ -264,7 +264,7 @@ def test_review_once_retries_once_on_bad_output(configured, db_sessionmaker, mon
     user, ctx = configured
     requests = []
     monkeypatch.setattr(gateway, "TRANSPORT", mock_transport(["non_json", "normal"], requests))
-    run = SimpleNamespace(id=uuid.uuid4())
+    run = SimpleNamespace(id=uuid.uuid4(), model_id=1)
     with db_sessionmaker() as db:
         v = review_once(db, ctx, run=run, user_id=user.id)
         rows = list(db.scalars(select(LlmCall).order_by(LlmCall.id)))
@@ -282,7 +282,7 @@ def test_review_once_fails_after_second_bad_output(configured, db_sessionmaker, 
     monkeypatch.setattr(gateway, "TRANSPORT", mock_transport("non_json"))
     with db_sessionmaker() as db:
         with pytest.raises(OutputError) as exc:
-            review_once(db, ctx, run=SimpleNamespace(id=uuid.uuid4()), user_id=user.id)
+            review_once(db, ctx, run=SimpleNamespace(id=uuid.uuid4(), model_id=1), user_id=user.id)
         assert db.scalar(select(func.count()).select_from(LlmCall)) == 2
     assert len(exc.value.llm_call_ids) == 2 and exc.value.tokens_in > 0
 

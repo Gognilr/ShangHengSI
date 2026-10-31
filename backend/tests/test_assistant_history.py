@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import httpx
 from sqlalchemy import select
 
-from app.db.models import Task, TaskFile, DocNode, TaskClauseVector, LlmCall
+from app.db.models import Task, TaskFile, DocNode, TaskClauseVector, LlmCall, LlmModel
 from app.redaction import engine
 from app.security import crypto
 from tests.review_support import env  # noqa: F401
@@ -70,7 +70,7 @@ def test_t51_8_source_extra_context_blocks_injection(conversation, db_sessionmak
         # 故意跳过引用脱敏：来源映射必须独立阻断，不能依赖会话映射已包含它。
         import pytest
         with pytest.raises(gateway.GatewayError) as exc:
-            gateway.stream_model(db, purpose='assist', task_id=task.id, user_id=task.owner_id,
+            gateway.stream_model(db, model_id=1, purpose='assist', task_id=task.id, user_id=task.owner_id,
                                  messages=[{'role': 'user', 'content': '虚构来源买方'}], on_delta=lambda _: True,
                                  extra_task_ids=[ids[0]])
         assert exc.value.code == 'BLOCKED'
@@ -100,7 +100,7 @@ def test_t51_worker_references_outbound_and_extras(conversation, db_sessionmaker
         user = AssistantMessage(task_id=task.id, role='user', status='done', content_redacted='说明验收要求',
                                 params={'use_kb': True, 'use_history': True})
         db.add(user); db.flush()
-        reply = _queue_reply(db, task, user)
+        reply = _queue_reply(db, task, user, db.get(LlmModel, 1))
         mid = reply.id
         db.commit()
         handle_assist(db, {'task_id': str(task.id), 'message_id': mid})
@@ -162,7 +162,7 @@ def test_nonstream_source_extra_context_blocks(conversation, db_sessionmaker, ma
         task = db.get(Task, uuid.UUID(conversation[2]))
         ids = sources(db, task, other)
         with pytest.raises(gateway.GatewayError) as exc:
-            gateway.call_model(db, purpose='assist', task_id=task.id, user_id=task.owner_id,
+            gateway.call_model(db, model_id=1, purpose='assist', task_id=task.id, user_id=task.owner_id,
                                messages=[{'role': 'user', 'content': '虚构来源买方'}],
                                extra_task_ids=[ids[0]], json_mode=True)
         assert exc.value.code == 'BLOCKED' and requests == []

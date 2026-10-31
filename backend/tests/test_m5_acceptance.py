@@ -29,7 +29,7 @@ from tests.acceptance_support import (
     upload_and_parse,
 )
 from tests.mock_llm import build_reply
-from tests.review_support import env, llm  # noqa: F401
+from tests.review_support import configure_model, env, llm  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
 REQ_LINE = re.compile(r"^\[([A-Z]{1,2}-\d+|CO-\d+|NOTE)\]", re.MULTILINE)
@@ -41,7 +41,7 @@ def test_all_samples_verified_locations_coverage_and_requirement_identity(db_ses
     c, token = login("m5-acceptance")
     h = {"X-CSRF-Token": token}
     with db_sessionmaker() as db:
-        settings_store.set_setting(db, "model.chunk_chars", 1000, None)
+        configure_model(db, "model.chunk_chars", 1000, None)
         db.commit()
 
     def every_location(request):

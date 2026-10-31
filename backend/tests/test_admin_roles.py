@@ -13,7 +13,7 @@ pytestmark = pytest.mark.usefixtures("env")
 def test_v2c06_role_endpoint_matrix(make_user, login, role):
     user = make_user("role_reader", role=role)
     client, _ = login(user.username)
-    sys_paths = ("users", "settings/model", "usage", "settings/backup", "settings/retention",
+    sys_paths = ("users", "models", "usage", "settings/backup", "settings/retention",
                  "outbound-logs", "system/status", "audit-logs")
     biz_paths = ("company-requirements", "company-profile", "requirement-versions",
                  "settings/redaction", "terms?kind=custom", "our-parties")
