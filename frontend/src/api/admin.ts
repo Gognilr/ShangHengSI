@@ -48,47 +48,30 @@ export const adminUsersApi = {
 }
 
 // ---- 模型（设置 - 模型） ----
-export interface ModelSettings {
-  base_url: string
-  name: string
-  temperature: number
-  max_tokens: number
-  timeout_s: number
-  json_mode: boolean
-  extra_params: Record<string, unknown>
-  chunk_chars: number
-  price_in_per_m: string
-  price_out_per_m: string
-  monthly_call_cap: number
-  user_daily_cap: number
-  api_key_set: boolean
-  api_key_last4: string | null
+export interface ModelUsage { calls: number; tokens_in: number; tokens_out: number; cost: string }
+export interface ModelTestResult { ok: boolean; model?: string; duration_ms?: number; message?: string }
+export interface ModelTests { connection: ModelTestResult; structured: ModelTestResult }
+export interface ModelBody {
+  display_name: string; description: string | null; base_url: string; model_name: string
+  temperature: number | string; max_tokens: number; timeout_s: number; json_mode: boolean
+  extra_params: Record<string, unknown>; chunk_chars: number; price_in_per_m: string; price_out_per_m: string
+  monthly_call_cap: number; for_review: boolean; for_assist: boolean; sort_order: number; api_key?: string
 }
-
-export type ModelSettingsIn = Omit<ModelSettings, 'api_key_set' | 'api_key_last4'> & { api_key?: string }
-
-export interface ModelTestResult {
-  ok: boolean
-  model?: string | null
-  duration_ms?: number | null
-  reply?: string | null
-  message?: string | null
+export interface ModelRow extends Omit<ModelBody, 'api_key'> {
+  id: number; enabled: boolean; structured_ok: boolean; structured_tested_at: string | null
+  created_at: string; updated_at: string; api_key_last4: string; used: boolean
+  is_default_review: boolean; is_default_assist: boolean; usage: ModelUsage; tests?: ModelTests | null
 }
-
-export interface UsageOut {
-  calls: number
-  cap: number
-  tokens_in: number
-  tokens_out: number
-  cost: string
-  month: string
-}
-
+export interface ModelList { items: ModelRow[]; user_daily_cap: number; usage: ModelUsage }
 export const adminModelApi = {
-  get: () => http.get<ModelSettings>('/admin/settings/model'),
-  save: (body: ModelSettingsIn) => http.put<ModelSettings>('/admin/settings/model', body),
-  test: () => http.post<ModelTestResult>('/admin/settings/model/test'),
-  usage: () => http.get<UsageOut>('/admin/usage'),
+  list: () => http.get<ModelList>('/admin/models'),
+  create: (body: ModelBody) => http.post<ModelRow>('/admin/models', body),
+  update: (id: number, body: ModelBody) => http.put<ModelRow>(`/admin/models/${id}`, body),
+  test: (id: number) => http.post<{ tests: ModelTests; structured_ok: boolean; message: string | null }>(`/admin/models/${id}/test`),
+  setDefault: (id: number, purpose: 'review' | 'assist') => http.post<ModelRow>(`/admin/models/${id}/default`, { purpose }),
+  setEnabled: (id: number, enabled: boolean) => http.post<ModelRow>(`/admin/models/${id}/enabled`, { enabled }),
+  delete: (id: number) => http.delete<void>(`/admin/models/${id}`),
+  dailyCap: (value: number) => http.put<{ value: number }>('/admin/settings/user-daily-cap', { value }),
 }
 
 // ---- 审核要求（设置 - 审核要求） ----
