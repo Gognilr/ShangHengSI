@@ -38,9 +38,11 @@ def make_ctx(**kw) -> ReviewContext:
 def test_system_message_uses_versioned_template():
     version, template = load_system_template()
     v, system = system_prompt()
-    assert v == version == "2026.11-3"
+    assert v == version == "2026.11-4"
     assert "{JSON_SCHEMA}" not in system and system.rstrip().endswith(f"JSON 结构：{JSON_SCHEMA_TEXT}")
     assert system.startswith("你是企业商务文件审核助手")
+    assert '"quote": "从 locs 第一个位置的原文中一字不差地摘录的连续片段，不超过 100 字，不跨段落，不加省略号；缺失型问题为 null"' in system
+    assert '"suggested_text": "对 quote 这一片段的完整替换文字（直接替换后语句通顺）；缺失型问题写建议新增的完整条款；无法给出时为 null"' in system
     ctx = make_ctx()
     messages = build_messages(ctx)
     assert [m["role"] for m in messages] == ["system", "user"] and messages[0]["content"] == system
@@ -51,7 +53,7 @@ def test_chat_system_prompt_v2_clarified_case_2():
     from app.review.prompt import CHAT_ANSWER_RULE, chat_system_prompt
 
     version, text = chat_system_prompt()
-    assert version == "2026.11-3"
+    assert version == "2026.11-4"
     assert "严重程度" not in text
     assert "只输出一个符合规定结构的 JSON 对象" not in text
     assert "JSON 结构" not in text and JSON_SCHEMA_TEXT not in text
@@ -74,7 +76,7 @@ def test_review_gateway_receives_severity_and_run_version(db_sessionmaker, make_
         db.commit()
         job.run_review(db, run.id)
         db.refresh(run)
-        assert run.prompt_version == "2026.11-3"
+        assert run.prompt_version == "2026.11-4"
     assert requests
     system = json.loads(requests[0].content)["messages"][0]["content"]
     severity = next(line for line in SPEC_11_2_TEMPLATE.splitlines() if line.startswith("8."))

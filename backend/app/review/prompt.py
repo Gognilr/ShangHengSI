@@ -29,8 +29,10 @@ JSON_SCHEMA_TEXT = (
     '"note": "简要说明"}], '
     '"findings": [{"title": "问题标题", "category": "表述 / 逻辑 / 法律 / 合规与制裁 / 商务 之一", '
     '"severity": "高 / 中 / 低 之一", "req_ids": ["相关的审核要求编号"], "locs": ["位置编号，如 F1-P23"], '
-    '"quote": "从该位置原文中逐字摘录，不超过 100 字", "missing": false, "problem": "问题说明", '
-    '"impact": "对我方的影响", "suggestion": "修改建议", "suggested_text": "可直接替换的条款措辞，没有则为 null", '
+    '"quote": "从 locs 第一个位置的原文中一字不差地摘录的连续片段，不超过 100 字，不跨段落，不加省略号；缺失型问题为 null", '
+    '"missing": false, "problem": "问题说明", '
+    '"impact": "对我方的影响", "suggestion": "修改建议", '
+    '"suggested_text": "对 quote 这一片段的完整替换文字（直接替换后语句通顺）；缺失型问题写建议新增的完整条款；无法给出时为 null", '
     '"basis": "依据，如通行商业惯例；不得编造法条编号", "law_refs": ["参考法条编号，如 LAW3"], "source": "范本对照 或省略"}], '
     '"sanctions": {"level": "无明显风险 / 需注意 / 高风险 之一", "reasons": ["原因"]}}'
 )
