@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, select, update as sql_update
 from sqlalchemy.orm import Session as DbSession
 from typing_extensions import Annotated
 
@@ -98,7 +98,8 @@ def _get(db, mid):
 
 
 def _used(db, mid):
-    return bool(db.scalar(select(exists().where(LlmCall.model_id == mid))))
+    # 测试连接不算使用：只测试过的模型仍可删除（V3Q-17）。
+    return bool(db.scalar(select(exists().where(LlmCall.model_id == mid, LlmCall.purpose != "test"))))
 
 
 def _usage(db, mid=None):
@@ -186,6 +187,12 @@ def _save(db, row, body, request, admin):
             row.api_key_enc = crypto.encrypt_text(key)
         row.structured_ok, row.structured_tested_at = structured_ok, tested_at
     db.flush()
+    # 尚无默认模型时，保存的模型自动成为对应默认（V3Q-17）。
+    for purpose in ("review", "assist"):
+        key = f"model.default_{purpose}_id"
+        if row.enabled and values[f"for_{purpose}"] and get_setting(db, key) is None:
+            set_setting(db, key, row.id, admin.id)
+            changed.append(key)
     if changed:
         _audit(db, request, admin, row.id, changed)
     db.commit()
@@ -258,6 +265,8 @@ def delete(mid: int, request: Request, admin: User = Depends(require_sys_admin),
         key = f"model.default_{purpose}_id"
         if get_setting(db, key) == mid:
             set_setting(db, key, None, admin.id)
+    # 测试记录与未保存模型的测试一样不再归属模型。
+    db.execute(sql_update(LlmCall).where(LlmCall.model_id == mid).values(model_id=None))
     db.delete(row)
     _audit(db, request, admin, mid, ["delete"])
     db.commit()

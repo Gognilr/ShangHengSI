@@ -86,6 +86,7 @@ def test_save_metadata_key_and_explicit_tests(admin, db_sessionmaker, monkeypatc
     response = client.get(BASE)
     assert KEY not in response.text and "api_key_enc" not in response.text
     assert client.get(API_PREFIX + "/admin/usage").json()["calls"] == 4
+    assert client.delete(BASE + f"/{mid}", headers=headers).status_code == 204  # 只做过测试仍可删除
 
 
 def test_delete_used_default_and_disable_guards(admin, db_sessionmaker):
