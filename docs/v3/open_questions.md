@@ -4,7 +4,7 @@
 
 状态：**需决定** = 必须由产品负责人决定后才能实施；**已决定** = 产品负责人已同意；第三节为实施中按“最简单、最安全”处理、待确认的事项。
 
-下一个编号：V3Q-23
+下一个编号：V3Q-24
 
 ## 一、需决定
 
@@ -33,6 +33,7 @@
 | V3Q-18 | V3-C-01 要求升级提示词版本号，但版本号所在的 `backend/resources/prompts/system.md` 未列入任务文件范围；`test_requirements.py`、`test_runs_api.py` 也写死了旧版本号 | 按建议（用户 2026-10-31 批准）：`backend/resources/prompts/system.md`、`backend/tests/test_requirements.py`、`backend/tests/test_runs_api.py` 补入 V3-C-01 范围。system.md 只把第 2 行版本号从 `2026.11-3` 改为 `2026.11-4`，正文不变；两个测试只把断言中的版本字符串同步为 `2026.11-4`，不改其他断言、不加用例 | 2026-10-31 |
 | V3Q-20 | V3-C-03 要求任务详情的文件列表返回 `annotatable`，但定义响应字段的 `backend/app/tasks/schemas.py` 未列入范围 | 用户 2026-10-31 批准：`backend/app/tasks/schemas.py` 补入 V3-C-03 范围，只给 `TaskFileOut` 增加 `annotatable: bool = False`（带默认值，继承它的助手 `SessionFile` 与修改文件类型接口的响应不受影响，不改这两处）；实际值只在 `tasks/service.py` 的任务详情中填写 | 2026-10-31 |
 | V3Q-22 | V3-C-04 要从响应头读取批注总数与未精确定位数，但 `http.getDownload` 只返回 blob 与 filename，任务范围未列 `frontend/src/api/http.ts` | 按建议（Opus 2026-10-31 审核同意）：`frontend/src/api/http.ts` 补入 V3-C-04 范围，只给 `requestDownload` 的返回值增加 `headers: Headers`（即 `res.headers`）；请求方式、文件名解析、错误处理、`getBlob` 不变。`X-SI-Total`、`X-SI-Unanchored` 只在 report.ts 中读取并转为数字，缺失或非数字时按 0 处理；同源请求无需改后端或 Caddy 的响应头暴露设置。助手导出等其他调用方不改 | 2026-10-31 |
+| V3Q-23 | V3-D 修订版是否做、缺失型与无法写成修订的问题怎么处理（V3-C-06 建议） | 按建议（用户 2026-10-31 确认）：做 V3-D；只写已采纳且有建议条文的问题；缺失型写成插入新段落；无法写成修订的已采纳问题以批注附在同一份修订版中。设计见 V3-D | 2026-10-31 |
 
 ## 三、实施中按“最简单、最安全”处理的事项
 
