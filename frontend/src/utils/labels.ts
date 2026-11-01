@@ -15,6 +15,7 @@ function pick(dict: Dict) {
 }
 
 export const STATUS_OPTIONS: Dict = {
+  draft: '草稿',
   parsing: '解析中',
   parse_failed: '解析失败',
   awaiting_confirm: '待确认脱敏',
@@ -113,10 +114,16 @@ export const REDACTION_CATEGORY: Dict = {
   PRICE: '单价',
   QTY: '数量',
   CUSTOM: '敏感词',
+  NAME: '名称（不确定）',
+  TERM: '专有名词（不确定）',
 }
 export const redactionCategoryLabel = pick(REDACTION_CATEGORY)
 
-/** 疑似遗漏的原因（设计 M4 第六节）。 */
+/** 不确定项为何保留原文（V31-S 视图的 kept_by）。 */
+export const KEPT_BY: Dict = { user: '你保留的', memory: '按术语记忆保留', vector: '本机判断为普通术语' }
+export const keptByLabel = pick(KEPT_BY)
+
+/** 不确定项（原“疑似遗漏”）的原因（设计 M4 第六节）。 */
 export const SUSPECT_REASON: Dict = {
   derived_name: '名称简写', person_like: '疑似人名', ner: '模型识别',
   person_name: '疑似人名',
@@ -158,7 +165,7 @@ export const CITE_TAG: Record<string, TagType> = { verified: 'success', unverifi
 /** 任务 / 文件处理状态标签（V3-A 4.2）：解析中 info、待确认 warning、已确认 success、失败 danger；只读、已过期为 info + plain。
  *  审核完成用 primary 而不用 success：绿色的“已审核”容易被读成“审核通过”（frontend.md 第五节）。 */
 const STATUS_TAG: Record<string, [TagType, 'light' | 'plain']> = {
-  parsing: ['info', 'light'], reviewing: ['info', 'light'], queued: ['info', 'light'], streaming: ['info', 'light'],
+  draft: ['info', 'light'], parsing: ['info', 'light'], reviewing: ['info', 'light'], queued: ['info', 'light'], streaming: ['info', 'light'],
   awaiting_confirm: ['warning', 'light'],
   reviewed: ['primary', 'light'], completed_local: ['primary', 'light'], confirmed: ['success', 'light'], done: ['success', 'light'],
   parse_failed: ['danger', 'light'], failed: ['danger', 'light'],
@@ -212,4 +219,6 @@ export const REDACTION_KIND: Record<string, string> = {
   OUR: 'org', ORG: 'org', PERSON: 'person', PHONE: 'contact', EMAIL: 'contact', URL: 'contact',
   ADDR: 'addr', POSTCODE: 'addr', ACCOUNT: 'id', SWIFT: 'id', IDNO: 'id', REFNO: 'id',
   AMOUNT: 'amount', PRICE: 'amount', QTY: 'amount', CUSTOM: 'other',
+  // 不确定项的默认替换：类别色同“其他”，画布按 detected_by=uncertain 另画虚线胶囊（V31-U2 4.2）
+  NAME: 'other', TERM: 'other',
 }

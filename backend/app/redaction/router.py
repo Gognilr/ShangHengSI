@@ -53,6 +53,7 @@ class RedactionItemOut(BaseModel):
     category: str
     placeholder: str
     can_revoke: bool
+    detected_by: str  # V31-U2：画布区分不确定项的默认替换（uncertain），不含原文
 
 
 class SuspectView(BaseModel):
@@ -175,7 +176,7 @@ def _redaction(db: DbSession, task: Task) -> RedactionOut:
         summary=engine.redaction_summary(db, task),
         suspects=[SuspectView(**v) for v in engine.suspect_views(db, task)],
         items=[RedactionItemOut(loc=r.loc, char_start=r.char_start, char_end=r.char_end,
-                                category=r.category, placeholder=r.placeholder,
+                                category=r.category, placeholder=r.placeholder, detected_by=r.detected_by,
                                 can_revoke=task.status == 'awaiting_confirm' and
                                 (r.detected_by == 'user' or r.detected_by == 'person' and r.category == 'PERSON'))
                for r in rows],

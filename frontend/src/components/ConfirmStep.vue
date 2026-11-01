@@ -95,7 +95,6 @@ async function loadSummary() {
   applyRedaction(await redactionApi.redaction(props.task.id))
 }
 
-const pendingCount = computed(() => suspects.value.filter((s) => s.decision === 'pending').length)
 
 /** 替换、忽略、手动补充成功后：以返回值刷新疑似遗漏和摘要，并重新读取签约方（可能出现新的方）和外发文本。 */
 async function afterChange(info: RedactionInfo) {
@@ -137,7 +136,7 @@ async function ignoreSuspects(ids: number[]) {
       '忽略所选疑似遗漏',
       { type: 'warning', confirmButtonText: '忽略所选', cancelButtonText: '取消' },
     )
-    await afterChange(await redactionApi.ignoreSuspects(props.task.id, ids))
+    await afterChange(await redactionApi.batchSuspects(props.task.id, ids, 'ignore'))
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
       handleError(e)
@@ -271,11 +270,10 @@ async function reloadOutbound() {
 
 // ---- 确认发送 ----
 const canConfirm = computed(
-  () => (assistant.value ? ourCount.value <= 1 : ourCount.value === 1) && pendingCount.value === 0 && !savingParties.value && !deciding.value && !loading.value,
+  () => (assistant.value ? ourCount.value <= 1 : ourCount.value === 1) && !savingParties.value && !deciding.value && !loading.value,
 )
 const disabledReason = computed(() => {
   if (!assistant.value && ourCount.value !== 1) return '请先在签约方中选择我方'
-  if (pendingCount.value > 0) return `还有 ${pendingCount.value} 条疑似遗漏未处理`
   return ''
 })
 
@@ -457,7 +455,7 @@ onMounted(loadAll)
       </section>
       <section class="panel">
       <h3>
-        <span class="section-number">4</span>疑似遗漏<span v-if="pendingCount" class="pending">还有 {{ pendingCount }} 条未处理</span>
+        <span class="section-number">4</span>不确定项（已默认替换，可改为保留原文）
       </h3>
       <SuspectList :suspects="suspects" :files="files" :busy="deciding" :selected-loc="selectedSuspectLoc" @locate="locateSuspect" @decide="decideSuspect" @batch-ignore="ignoreSuspects" />
 
@@ -497,10 +495,9 @@ onMounted(loadAll)
         <ul class="conditions" aria-label="提交条件" aria-live="polite">
           <li v-if="assistant" :class="{ met: ourCount <= 1 }">{{ ourCount ? '已选择一方为我方' : '未设置我方，可以确认脱敏' }}</li>
           <li v-else :class="{ met: ourCount === 1 }">{{ ourCount === 1 ? '✓ 已选择我方' : !parties.length ? '未识别到签约方，暂时不能提交 AI 审核' : '请先选择哪一方是我方' }}</li>
-          <li :class="{ met: pendingCount === 0 }">{{ pendingCount === 0 ? '✓ 疑似遗漏已处理' : `疑似遗漏还有 ${pendingCount} 条未处理` }}</li>
           <li v-if="savingParties || deciding">正在保存修改……</li>
           <li v-if="loading">正在读取脱敏信息……</li>
-          <li v-if="disabledReason && ourCount === 1 && pendingCount === 0">{{ disabledReason }}</li>
+          <li v-if="disabledReason && ourCount === 1">{{ disabledReason }}</li>
         </ul>
         <el-button
           type="primary"

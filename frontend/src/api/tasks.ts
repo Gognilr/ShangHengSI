@@ -4,6 +4,7 @@ export type Stance = 'sales' | 'purchase' | 'other'
 export type Source = 'outgoing' | 'incoming'
 export type Policy = 'ai' | 'local_only'
 export type TaskStatus =
+  | 'draft'
   | 'parsing'
   | 'parse_failed'
   | 'awaiting_confirm'
@@ -26,6 +27,10 @@ export interface TaskFile {
   has_revisions: boolean
   annotatable: boolean
   warnings: string[]
+  /** V31-S：解析中 / 完成 / 失败（由服务器按文件派生）。 */
+  parse_state: 'parsing' | 'done' | 'failed'
+  /** 解析失败的原因，不含原文。 */
+  parse_error: string | null
   /** 原件按保留期限删除的时间；未删除为 null。 */
   original_deleted_at?: string | null
 }
@@ -52,6 +57,8 @@ export interface TaskDetail {
   queue_position: number | null
   original_expires_at: string | null
   task_expires_at: string | null
+  /** 本任务有排队或进行中的解析（V31-S）。 */
+  busy: boolean
 }
 
 export interface TaskListItem {
@@ -81,6 +88,24 @@ export interface CreateTaskInput {
   policy: Policy
   userNote: string
   allowDuplicate?: boolean
+  /** 草稿任务（拖入即解析，V31-S 第四节）；草稿时主文件固定为第一个。 */
+  draft?: boolean
+}
+
+export interface ProceedInput {
+  stance: Stance
+  source: Source
+  policy: Policy
+  user_note: string | null
+}
+
+/** 草稿与文件接口的错误提示（按错误码，其余用接口返回的 message）。 */
+export const TASK_ERROR_MESSAGES: Record<string, string> = {
+  DUPLICATE_IN_TASK: '该文件已在本任务中',
+  LAST_FILE: '这是任务中的最后一个文件，请删除整个任务',
+  FILES_NOT_READY: '文件还没有解析完成',
+  TOO_MANY_FILES: '每个任务最多 10 个文件',
+  TASK_STATE_CONFLICT: '任务状态已变化，请刷新后再试',
 }
 
 export interface DuplicateFile {
@@ -124,6 +149,7 @@ export const tasksApi = {
     form.append('source', input.source)
     form.append('policy', input.policy)
     form.append('allow_duplicate', String(input.allowDuplicate ?? false))
+    if (input.draft) form.append('draft', 'true')
     if (input.userNote.trim()) form.append('user_note', input.userNote.trim())
     return http.postForm<{ id: string }>('/tasks', form)
   },
@@ -135,4 +161,18 @@ export const tasksApi = {
   patch: (id: string, body: TaskPatch) => http.patch<TaskDetail>(`/tasks/${id}`, body),
   setFileDocType: (taskId: string, fileId: string, docType: string) =>
     http.patch<TaskFile>(`/tasks/${taskId}/files/${fileId}`, { doc_type: docType }),
+  /** 设为主文件：标题随之改变，后台重算（V31-S 4.3）。 */
+  setMain: (taskId: string, fileId: string) =>
+    http.patch<TaskFile>(`/tasks/${taskId}/files/${fileId}`, { is_main: true }),
+  /** 向草稿或从未提交审核的任务追加文件并入队解析。 */
+  addFiles(taskId: string, files: File[]) {
+    const form = new FormData()
+    for (const f of files) form.append('files', f, f.name)
+    return http.postForm<TaskDetail>(`/tasks/${taskId}/files`, form)
+  },
+  /** keepalive：关闭标签页时仍发出（延迟删除到期前离开页面）。 */
+  removeFile: (taskId: string, fileId: string, opts: { keepalive?: boolean } = {}) =>
+    http.delete<TaskDetail>(`/tasks/${taskId}/files/${fileId}`, opts),
+  /** 草稿进入第二步（ai）或完成本地校验（local_only）。 */
+  proceed: (taskId: string, body: ProceedInput) => http.post<TaskDetail>(`/tasks/${taskId}/proceed`, body),
 }

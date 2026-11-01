@@ -46,6 +46,8 @@ interface RequestOptions {
   query?: Record<string, string | number | undefined>
   /** 为 true 时 401 不触发全局跳转（用于登录请求和启动时探测登录状态）。 */
   silent401?: boolean
+  /** 关闭标签页时仍须发出的请求（V31-U2 延迟删除），透传给 fetch。 */
+  keepalive?: boolean
 }
 
 async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
@@ -69,6 +71,7 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
       method,
       headers,
       credentials: 'same-origin',
+      keepalive: opts.keepalive,
       body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
     })
   } catch {
@@ -138,5 +141,5 @@ export const http = {
   postForm: <T>(path: string, form: FormData) => request<T>('POST', path, { form }),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, { body }),
-  delete: <T>(path: string) => request<T>('DELETE', path),
+  delete: <T>(path: string, opts?: Pick<RequestOptions, 'keepalive'>) => request<T>('DELETE', path, { ...opts }),
 }

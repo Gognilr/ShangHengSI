@@ -60,5 +60,5 @@ export const assistantApi = {
 /** 确认组件复用审核的只读展示类型；不调用审核任务接口。 */
 export function confirmationTask(session: Session): TaskDetail {
   return { ...session, status: 'awaiting_confirm', user_note: null, latest_run: null, queue_position: null,
-    original_expires_at: null, task_expires_at: null, template_suggestion: null }
+    original_expires_at: null, task_expires_at: null, template_suggestion: null, busy: false }
 }

@@ -96,7 +96,8 @@ export const RUN_ERROR_MESSAGES: Record<string, string> = {
   USER_CAP_REACHED: '已达今日个人调用上限，请明天再试或联系管理员',
   LOCAL_ONLY: '该任务的外发策略为“不外发，仅本地校验”，不能发送给模型',
   TASK_STATE_CONFLICT: '任务状态已变化，请刷新后再试',
-  SUSPECTS_PENDING: '还有疑似遗漏没有处理，请全部处理后再提交',
+  FILES_PARSING: '还有文件正在解析，请稍候',
+  FILE_PARSE_FAILED: '请先删除解析失败的文件',
   OUR_PARTY_REQUIRED: '请先选择哪一方是我方',
   OUTBOUND_BLOCKED: '外发文本中发现未脱敏的敏感信息，已阻止发送',
 }
