@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ChevronsUpDown, FileSearch, HistoryIcon, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings } from '@lucide/vue'
+import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 import GlobalSearch from '@/components/GlobalSearch.vue'
 import SidebarSessions from '@/components/SidebarSessions.vue'
@@ -18,6 +19,7 @@ const sessions = useSessionsStore()
 const route = useRoute()
 const router = useRouter()
 
+const appearanceOpen = ref(false)
 const pwdOpen = ref(false)
 // 须改密期间对话框始终打开且不可关闭
 const pwdVisible = computed(() => pwdOpen.value || auth.mustChangePassword)
@@ -68,7 +70,9 @@ watch(() => [auth.user?.id, auth.mustChangePassword] as const, ([id, mustChange]
 }, { immediate: true })
 
 async function onCommand(cmd: string) {
-  if (cmd === 'password') {
+  if (cmd === 'appearance') {
+    appearanceOpen.value = true
+  } else if (cmd === 'password') {
     pwdOpen.value = true
   } else if (cmd === 'logout') {
     await auth.logout()
@@ -121,6 +125,7 @@ async function onCommand(cmd: string) {
             </button>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="appearance">外观</el-dropdown-item>
                 <el-dropdown-item command="password">修改密码</el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出</el-dropdown-item>
               </el-dropdown-menu>
@@ -161,6 +166,7 @@ async function onCommand(cmd: string) {
     </div>
 
     <GlobalSearch v-model="searchOpen" @new-session="createSession" />
+    <AppearanceDialog v-model="appearanceOpen" />
     <ChangePasswordDialog
       :model-value="pwdVisible"
       :forced="auth.mustChangePassword"

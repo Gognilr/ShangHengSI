@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiToast from '@/components/ui/SiToast.vue'
 // 短提示统一显示在右下角（V3-A 4.3）
 const messageConfig = { placement: 'bottom-right' as const }
 </script>
@@ -6,6 +7,7 @@ const messageConfig = { placement: 'bottom-right' as const }
 <template>
   <el-config-provider :message="messageConfig">
     <router-view />
+    <SiToast />
   </el-config-provider>
 </template>
 
