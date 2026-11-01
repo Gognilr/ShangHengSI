@@ -89,7 +89,6 @@ def test_logs_do_not_contain_text_names_amounts_or_key(db_sessionmaker, alice, l
     r = c.post(url(tid, "redaction/manual"), headers=h,
                json={"loc": target["loc"], "char_start": start, "char_end": start + 5, "category": "CUSTOM"})
     assert r.status_code == 200, r.text
-    assert c.post(url(tid, "runs"), headers=h).json()["code"] == "SUSPECTS_PENDING"
     settle_suspects(c, h, tid, contract.must_suspect)
     assert c.get(url(tid, "redaction/outbound")).status_code == 200
     run = confirm_and_review(c, h, db_sessionmaker, tid)

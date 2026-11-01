@@ -69,7 +69,7 @@ def post_run(client, headers, task_id):
     return client.post(f"{API_PREFIX}/tasks/{task_id}/runs", headers=headers)
 
 
-@pytest.mark.parametrize("outcome", ["success", "SUSPECTS_PENDING", "OUTBOUND_BLOCKED", "TASK_STATE_CONFLICT"])
+@pytest.mark.parametrize("outcome", ["success", "pending_success", "OUTBOUND_BLOCKED", "TASK_STATE_CONFLICT"])
 def test_v2c_confirm_activity_only_on_success(alice, db_sessionmaker, ready_task, outcome):
     from datetime import timedelta
     from app.db.base import utcnow
@@ -78,7 +78,7 @@ def test_v2c_confirm_activity_only_on_success(alice, db_sessionmaker, ready_task
     before = utcnow() - timedelta(days=5)
     with db_sessionmaker() as db:
         db.get(Task, task.id).last_activity_at = before
-        if outcome == "SUSPECTS_PENDING":
+        if outcome == "pending_success":
             db.add(RedactionSuspect(task_id=task.id, loc="F1-P2", char_start=0, char_end=2, reason="org_suffix"))
         elif outcome == "OUTBOUND_BLOCKED":
             db.scalar(select(DocNode).where(DocNode.task_id == task.id)).redacted_text = "联系电话 13800138000"
@@ -86,12 +86,12 @@ def test_v2c_confirm_activity_only_on_success(alice, db_sessionmaker, ready_task
             db.get(Task, task.id).status = "reviewing"
         db.commit()
     r = post_run(c, h, task.id)
-    assert r.status_code == (201 if outcome == "success" else 409)
-    if outcome != "success":
+    assert r.status_code == (201 if outcome in ("success", "pending_success") else 409)
+    if outcome not in ("success", "pending_success"):
         assert r.json()["code"] == outcome
     with db_sessionmaker() as db:
         activity = db.get(Task, task.id).last_activity_at
-        assert (activity > before) if outcome == "success" else (activity == before)
+        assert (activity > before) if outcome in ("success", "pending_success") else (activity == before)
 
 
 @pytest.mark.parametrize("kind,code", [("daily", "USER_CAP_REACHED"), ("monthly", "CAP_REACHED"),
@@ -169,7 +169,7 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
         run = db.get(ReviewRun, uuid.UUID(body["id"]))
         assert (run.stance, run.source, run.user_note, run.main_doc_type) == (
             "sales", "outgoing", "请重点检查付款条款", "contract")
-        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-5", "2026.11-1")
+        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-6", "2026.11-1")
         assert run.company_req_version is None and run.created_by == user.id
         queued = db.scalars(select(Job).where(Job.type == "review")).one()
         assert (queued.status, queued.payload) == ("queued", {"task_id": str(task.id), "run_id": body["id"]})
@@ -241,12 +241,6 @@ def test_409_suspects_pending(db_sessionmaker, alice, ready_task):
         db.add(RedactionSuspect(task_id=task.id, loc="F1-P2", char_start=0, char_end=2, reason="org_suffix"))
         db.add(RedactionSuspect(task_id=task.id, loc="F1-P3", char_start=0, char_end=2, reason="capitalized",
                                 decision="ignore"))
-        db.commit()
-    r = post_run(c, h, task.id)
-    assert (r.status_code, r.json()["code"]) == (409, "SUSPECTS_PENDING")
-    with db_sessionmaker() as db:  # 全部处理后可以提交
-        for s in db.scalars(select(RedactionSuspect)):
-            s.decision = "ignore"
         db.commit()
     assert post_run(c, h, task.id).status_code == 201
 
@@ -376,7 +370,7 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert d["coverage"]["summary"].startswith("本次按 ")
     assert isinstance(d["coverage"]["notes"], list)
     assert "requirements" not in d["coverage"] and "星河虚构进出口有限公司" not in str(d["coverage"])
-    assert d["prompt_version"] == "2026.11-5" and d["builtin_req_version"] == "2026.11-1"
+    assert d["prompt_version"] == "2026.11-6" and d["builtin_req_version"] == "2026.11-1"
     assert d["queued_at"].endswith("Z") or "+00:00" in d["queued_at"]
     assert d["doc_summary"] == f"{REAL_OUR_NAME}向{REAL_BUYER_NAME}销售金属制品"
     assert d["sanctions"] == {"level": "attention", "reasons": [f"{REAL_BUYER_NAME}位于需关注地区"]}

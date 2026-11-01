@@ -27,6 +27,18 @@ _PRIORITY.update(derived_name=3, person_like=4)
 _MASK = "\x00"
 
 
+def default_category(text: str, reason: str) -> str:
+    """V31-S-02：只给不确定项分配默认类别，不判定签约方。"""
+    if reason == LONG_DIGITS:
+        return 'REFNO'
+    if re.search(r'[一-鿿]', text):
+        return 'NAME'
+    if any((len(w) >= 2 and w.isupper()) or any(c.isdigit() for c in w)
+           for w in re.findall(r'[A-Za-z0-9]+', text)):
+        return 'TERM'
+    return 'NAME'
+
+
 @dataclass(frozen=True)
 class Suspect:
     start: int

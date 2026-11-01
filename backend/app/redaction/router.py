@@ -65,6 +65,8 @@ class SuspectView(BaseModel):
     before: str
     after: str
     occurrences: int
+    placeholder: str | None
+    kept_by: str | None
 
 
 class RedactionOut(BaseModel):
@@ -77,14 +79,14 @@ UserCategory = Literal["ORG", "PERSON", "IM", "ACCOUNT", "IDNO", "REFNO", "ADDR"
 
 
 class SuspectDecision(BaseModel):
-    decision: Literal["replace", "ignore"]
-    category: UserCategory | None = None
+    decision: Literal["replace", "ignore", "reset"]
+    category: UserCategory | Literal['NAME', 'TERM'] | None = None
     remember: StrictBool = False
 
 
 class SuspectBatchDecision(BaseModel):
     ids: list[StrictInt] = Field(min_length=1, max_length=200)
-    decision: Literal["ignore"]
+    decision: Literal["ignore", "reset"]
 
 
 class ManualRedaction(BaseModel):
@@ -200,7 +202,9 @@ def decide_suspects_batch(
         raise NotFoundError("SUSPECT_NOT_FOUND", "疑似遗漏不存在")
     try:
         for sid in ids:
-            engine.decide_suspect(db, locked, sid, decision="ignore", category=None, user_id=user.id)
+            engine.decide_suspect(db, locked, sid, decision=body.decision, category=None, user_id=user.id, recompute=False)
+        existing = engine._existing_parties(db, locked)
+        engine._run(db, locked, engine._current_overrides(existing), existing)
     except engine.RedactionInputError as exc:
         db.rollback()
         raise _input_error(exc) from None

@@ -105,10 +105,11 @@ def test_must_keep_not_replaced(name):
 
 @pytest.mark.parametrize("name", SAMPLES)
 def test_must_suspect_listed(name):
-    nodes, ann, result, _, _ = load(name)
+    nodes, ann, result, text, sent = load(name)
     for needle in ann.get('plain_uncertain', []):
         assert list(occurrences(nodes, needle)), f"标注文字不在样本中：{needle}"
     for needle in ann.get("must_suspect", []):
+        assert needle not in text and needle not in sent, f'不确定项未默认替换：{needle}'
         found = list(occurrences(nodes, needle))
         assert found, f"标注文字不在样本中：{needle}"
         for loc, start, end in found:

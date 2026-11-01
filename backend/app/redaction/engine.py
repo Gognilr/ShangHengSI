@@ -129,6 +129,7 @@ class SuspectOut:
     char_start: int
     char_end: int
     reason: str
+    category: str = 'NAME'
 
 
 @dataclass
@@ -320,6 +321,7 @@ def compute(
     mask_quantity: bool = False,
     main_prefix: str | None = None,
     exclusions: Sequence[str] = (),
+    keeps: Sequence[str] = (),
     ner_cache: dict[str, dict] | None = None,
     style: str = "review",
     pinned: dict[str, str] | None = None,
@@ -680,27 +682,44 @@ def compute(
                 ent.confirmed = o.confirmed
     if style not in ("review", "neutral"):
         raise ValueError("未知代号样式")
-    result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
-                       with_ratio=ratio and style == "review")
-    result.ner_cache = node_cache
-    result.ner_cache_hits, result.ner_cache_misses = cache_hits, cache_misses
+    found: list[SuspectOut] = []
 
     # 疑似遗漏：全部替换项确定之后，在每个节点未替换的文字上识别（9.5）
     lowercase_words = S.lowercase_evidence('\n'.join(n.text for n in nodes))
     for i, n in enumerate(nodes):
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
-        result.suspects += [SuspectOut(n.loc, s.start, s.end, s.reason)
+        found += [SuspectOut(n.loc, s.start, s.end, s.reason)
                             for s in S.find_suspects(n.text, occupied[i] + excluded_spans, derived=short_derived,
                                                      lowercase_words=lowercase_words, header=n.loc in headers)]
-    result.matched_terms = {s.term for s in spans if s.term}
     for suspect in ner_suspects:
         text = nodes[locs[suspect.loc]].text[suspect.char_start:suspect.char_end]
         if S.common_english_fragment(text, lowercase_words):
             continue
         # 同一区间已由规则列疑似时沿用既有原因，模型只补缺口（只增不减）。
         if not any((s.loc, s.char_start, s.char_end) ==
-                   (suspect.loc, suspect.char_start, suspect.char_end) for s in result.suspects):
-            result.suspects.append(suspect)
+                   (suspect.loc, suspect.char_start, suspect.char_end) for s in found):
+            found.append(suspect)
+    kept = {P.normalize(t) for t in keeps}
+    uncertain = {}
+    for suspect in found:
+        surface = nodes[locs[suspect.loc]].text[suspect.char_start:suspect.char_end]
+        suspect.category = S.default_category(surface, suspect.reason)
+        uncertain.setdefault(P.normalize(surface), (surface, suspect.category))
+    for key, (surface, category) in sorted(uncertain.items(), key=lambda pair: -len(pair[1][0])):
+        if key in kept:
+            continue
+        for i, n in enumerate(nodes):
+            excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
+            _accept([_Span(i, m.start(), m.end(), category, key, 'uncertain')
+                     for m in P.name_pattern(surface).finditer(n.text)
+                     if not _overlaps(excluded_spans, m.start(), m.end())], occupied[i], spans)
+    spans.sort(key=lambda s: (s.node, s.start))
+    result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
+                       with_ratio=ratio and style == "review")
+    result.suspects = found
+    result.ner_cache = node_cache
+    result.ner_cache_hits, result.ner_cache_misses = cache_hits, cache_misses
+    result.matched_terms = {s.term for s in spans if s.term}
     return result
 
 
@@ -912,7 +931,7 @@ def _user_terms(db: Session, task_id: uuid.UUID, texts: dict[str, str]) -> list[
     for r in rows:
         text = texts.get(r.loc, "")[r.char_start:r.char_end]
         category = "ORG" if r.category == "OUR" else r.category
-        if not text.strip() or category not in USER_CATEGORIES:
+        if not text.strip() or category not in (*USER_CATEGORIES, 'NAME', 'TERM'):
             continue
         key = (P.normalize(text), category)
         if key not in seen:
@@ -992,6 +1011,9 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
         except (crypto.DecryptionError, UnicodeError, ValueError, TypeError):
             pass  # 不记录密文、键或节点文字；同一事务中以重算结果覆盖。
     result = compute(nodes, task.stance, terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
+                     keeps=[texts.get(r.loc, '')[r.char_start:r.char_end] for r in db.scalars(
+                         select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
+                                                       RedactionSuspect.decision == 'ignore'))],
                      mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
                      exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
                          select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
@@ -1050,6 +1072,17 @@ def _count_hits(db: Session, matched: set[str]) -> None:
     if ids:
         db.execute(update(RedactionTerm).where(RedactionTerm.id.in_(ids))
                    .values(hit_count=RedactionTerm.hit_count + 1, last_hit_at=utcnow()))
+
+
+def ensure_default_replacements(db: Session, task: Task) -> None:
+    """V31Q-16：升级前留下的 pending 在确认时补算，不能只移除旧发送闸门。"""
+    items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id)))
+    pending = db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
+                                                     RedactionSuspect.decision == 'pending'))
+    if any(not any(i.loc == s.loc and i.char_start <= s.char_start and i.char_end >= s.char_end
+                   for i in items) for s in pending):
+        existing = _existing_parties(db, task)
+        _run(db, task, _current_overrides(existing), existing)
 
 
 def redact_task(db: Session, task: Task, style: str = "review", pin: bool = False) -> None:
@@ -1217,7 +1250,7 @@ def _remember_custom(db: Session, term: str, user_id: uuid.UUID) -> None:
 
 
 def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, category: str | None,
-                   user_id: uuid.UUID | None, remember: bool = False) -> None:
+                   user_id: uuid.UUID | None, remember: bool = False, recompute: bool = True) -> None:
     """疑似遗漏的决定（19.4）。不提交。
 
     replace：把疑似遗漏的文字作为用户词条（类别 ORG / PERSON / CUSTOM），全文替换后整体重算；
@@ -1226,21 +1259,24 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
     row = db.get(RedactionSuspect, suspect_id)
     if row is None or row.task_id != task.id:
         raise RedactionInputError(404, "SUSPECT_NOT_FOUND", "疑似遗漏不存在")
-    if decision not in ("replace", "ignore") or (decision == "replace" and category not in USER_CATEGORIES):
+    if decision not in ("replace", "ignore", "reset") or (decision == "replace" and category not in (*USER_CATEGORIES, 'NAME', 'TERM')):
         raise RedactionInputError(422, "VALIDATION_ERROR", "处理方式或类别不正确")
     if remember and (decision != "replace" or category != "CUSTOM" or user_id is None):
         raise RedactionInputError(422, "VALIDATION_ERROR", "只有其他类别的替换可以选择以后自动替换")
     texts = _texts_with_note(_body_rows(db, task.id), task)
     text = texts.get(row.loc, "")
     now = utcnow()
-    if decision == "ignore":
+    if decision in ('ignore', 'reset'):
         key = P.normalize(text[row.char_start:row.char_end])
         same = db.scalars(select(RedactionSuspect).where(
             RedactionSuspect.task_id == task.id,
-            RedactionSuspect.decision == "pending", RedactionSuspect.id != row.id))
+            RedactionSuspect.decision.in_(['pending', 'ignore']), RedactionSuspect.id != row.id))
         for r in [row, *(r for r in same if P.normalize(texts.get(r.loc, "")[r.char_start:r.char_end]) == key)]:
-            r.decision, r.category, r.decided_by, r.decided_at = "ignore", None, user_id, now
+            r.decision, r.category, r.decided_by, r.decided_at = ('pending' if decision == 'reset' else 'ignore'), None, user_id, now
         db.flush()
+        if recompute:
+            existing = _existing_parties(db, task)
+            _run(db, task, _current_overrides(existing), existing)
         return
     row.decision, row.category, row.decided_by, row.decided_at = "replace", category, user_id, now
     db.flush()
@@ -1264,6 +1300,7 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
     rows = _body_rows(db, task.id)
     order = {r.loc: k for k, r in enumerate(rows)}
     texts = _texts_with_note(rows, task)
+    items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id)))
     suspects = sorted(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id)),
                       key=lambda r: (order.get(r.loc, len(order)), r.char_start, r.id))
     out = []
@@ -1280,14 +1317,18 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
                 group['decision'] = 'pending'
             continue
         out.append({
-            "id": r.id, "loc": r.loc, "reason": r.reason, "decision": r.decision, "category": r.category,
+            "id": r.id, "loc": r.loc, "reason": r.reason, "decision": r.decision,
+            "category": S.default_category(t[r.char_start:r.char_end], r.reason),
+            "placeholder": next((i.placeholder for i in items if i.loc == r.loc and i.char_start <= r.char_start
+                                 and i.char_end >= r.char_end), None),
+            "kept_by": 'user' if r.decision == 'ignore' else None,
             "text": t[r.char_start:r.char_end],
             "occurrences": 1,
             "before": _flat(t[max(0, r.char_start - CONTEXT_CHARS):r.char_start]),
             "after": _flat(t[r.char_end:r.char_end + CONTEXT_CHARS]),
         })
         groups[key] = out[-1]
-    return sorted(out, key=lambda r: r['decision'] != 'pending')
+    return out
 
 
 def term_hash(text: str) -> str:

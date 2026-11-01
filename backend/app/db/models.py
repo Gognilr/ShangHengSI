@@ -42,7 +42,7 @@ SEVERITIES = ["high", "medium", "low"]
 # 9.2 代码列
 REDACTION_CATEGORIES = [
     "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "POSTCODE", "ACCOUNT",
-    "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM", "IM", "PROJECT",
+    "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM", "IM", "PROJECT", "NAME", "TERM",
 ]
 
 
@@ -369,7 +369,7 @@ class RedactionItem(Base):
         enum_check("category", REDACTION_CATEGORIES),
         enum_check(
             "detected_by",
-            ["term", "party", "alias", "regex", "amount", "person", "address", "user", "derived", "ner"],
+            ["term", "party", "alias", "regex", "amount", "person", "address", "user", "derived", "ner", "uncertain"],
         ),
         Index("ix_redaction_items_task_id_loc", "task_id", "loc"),
     )

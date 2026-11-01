@@ -245,10 +245,8 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
         raise _conflict("LOCAL_ONLY", "该任务的外发策略为不外发，不能提交 AI 审核")
     if task.status != "awaiting_confirm":
         raise _conflict("TASK_STATE_CONFLICT", "当前状态不能提交审核")
-    pending = db.scalar(select(func.count()).select_from(RedactionSuspect)
-                        .where(RedactionSuspect.task_id == task.id, RedactionSuspect.decision == "pending"))
-    if pending:
-        raise _conflict("SUSPECTS_PENDING", "还有疑似遗漏的敏感信息未处理，请先逐项处理")
+    from app.redaction.engine import ensure_default_replacements
+    ensure_default_replacements(db, task)
     our = db.scalar(select(func.count()).select_from(Party)
                     .where(Party.task_id == task.id, Party.is_our_party.is_(True)))
     if our != 1:

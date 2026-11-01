@@ -68,8 +68,7 @@ def test_design_11_6_body_note_gateway_logs(db_sessionmaker, alice, ready_task, 
     assert len(suspects) == 1
     s = suspects[0]
     assert (s['loc'], s['text'], s['reason']) == ('NOTE' if in_note else 'F1-P2', '陆虚岚', 'person_name')
-    blocked = c.post(task_url(task, '/runs'), headers=h)
-    assert (blocked.status_code, blocked.json()['code']) == (409, 'SUSPECTS_PENDING')
+    assert s['placeholder'].startswith('[名称_')  # V31-S-02：默认已替换，仍可指定为人名
     r = c.post(task_url(task, f"/redaction/suspects/{s['id']}"), headers=h,
                json={'decision': 'replace', 'category': 'PERSON'})
     assert r.status_code == 200, r.text

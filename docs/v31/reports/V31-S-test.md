@@ -11,3 +11,10 @@
 - 最终受影响四文件复跑 **413 通过、0 失败**（246.18 秒）：`tests/test_redaction_golden.py tests/test_a03_outbound.py tests/test_restore.py tests/test_suspects.py`；其余三个文件 `test_person_suspects.py test_ner.py test_ner_node_cache.py` 此前 **83 通过、3 跳过**，未改动且未重复运行。两次合计最终相关覆盖 **496 通过、3 跳过**，不是整仓全量。3 个跳过是更换模型时才运行的对拍 / 留出集 / 参考质量评测。最终输出留在 `aireview-v31s01-recheck`，`git diff --check` 通过。
 - 测试使用 Docker Python 3.12、`aireview-backend-test` 与 `aireview-v3d-test-db`（`aireview-db:dev`，aireview-test 网络）；没有使用缺 pgvector 的旧 `aireview-test-db`，也未改动它。
 - 未跑整仓全量（留 S-07）、未调用真实模型、未接触正式服务器。无新增待确认实现决定；`plain_terms.txt` 为开发方起草，仍待业务人员审阅（设计 1.3）。
+
+## V31-S-02（2026-11-02）
+
+- 不确定项在代号分配前全文默认替换；NAME / TERM 与中性 NAME / PROPN、REFNO 按设计分配。保留原文只作用于不确定项，reset 单条 / 批量生效；视图补 category / placeholder / kept_by 并按文档顺序。pending 不再阻止审核与助手确认，默认项不进已记住的名称。迁移 0027、提示词 2026.11-6 / assistant-2026.11-3。
+- V31Q-16：旧确认任务中未覆盖的 pending 在确认时先补算，随后照常校验我方与出口。正常新任务不重复计算。
+- 首轮七文件 360 通过、8 失败，golden / A-03 / 回程 / 迁移 / 助手会话通过；失败均为已改变行为的旧预期。扩展八文件 206 通过、2 失败；最后对提示词、具体名称修改类别、keep / reset / pending 发送、旧 pending 与助手闸门定向 16 通过。容器依次为 aireview-v31s02-first / api / fix，保留输出。未重复全量。
+- 旧测试调整：不再断言 SUSPECTS_PENDING；疑似按文档顺序且携带新字段；已有默认替换的名称通过疑似接口改类别；提示词常量与版本同步设计（SPEC 留 S-08 合并）。追问 CHAT_SUSPECTS_PENDING 保持原样。

@@ -26,6 +26,8 @@ def address_code(country: str) -> str:
 
 # 按对象编号的类别
 _NUMBERED = {
+    "NAME": "[名称_{}]",
+    "TERM": "[专有名词_{}]",
     "PROJECT": "[项目_{}]",
     "PERSON": "[人员_{}]",
     "REFNO": "[编号_{}]",
@@ -125,6 +127,7 @@ class Allocator:
 
 NEUTRAL = re.compile(r"\[\[(?:OUR|[A-Z]+_\d+)\]\]")
 _NEUTRAL_LABELS = {
+    "NAME": "NAME", "TERM": "PROPN",
     "ORG": "ORG", "PERSON": "PER", "PROJECT": "PRJ", "REFNO": "REF", "PHONE": "TEL",
     "EMAIL": "EMAIL", "URL": "URL", "POSTCODE": "ZIP", "ACCOUNT": "ACCT", "SWIFT": "SWIFT",
     "AMOUNT": "AMT", "PRICE": "PRICE", "QTY": "QTY", "CUSTOM": "TERM", "IM": "IM", "IDNO": "ID", "ADDR": "ADDR",
