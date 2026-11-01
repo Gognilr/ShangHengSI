@@ -1,0 +1,46 @@
+# V31-S-01：开发方起草，待业务人员审阅；仅遮盖疑似识别，不撤销已有替换。
+# 按单词边界、不区分大小写；外部数据许可见中文词库的 README。
+MOQ
+OEM
+ODM
+L/C
+T/T
+D/P
+D/A
+B/L
+AWB
+COA
+COO
+MSDS
+SDS
+TDS
+QC
+QA
+FAT
+SAT
+PI
+PO
+HS
+MT
+kg
+g
+mg
+t
+mm
+cm
+m
+km
+ppm
+mesh
+MPa
+kPa
+Pa
+℃
+°C
+Fixed Carbon
+Volatile Matter
+Ash Content
+Particle Size
+Real Density
+Bulk Density
+Moisture Content
