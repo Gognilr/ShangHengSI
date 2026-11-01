@@ -113,4 +113,3 @@ def test_sensitive_term_overrides_memory_and_replace_forgets_only_personal(make_
     assert response.status_code == 200, response.text
     with db_sessionmaker() as db:
         assert list(db.scalars(select(KeepTerm))) == []
-
