@@ -256,8 +256,7 @@ def test_other_org_names_in_text():
     assert {p.org_type for p in r.parties} == {"类型未知", "货代"}
     assert find_other_org_names("由星河虚构进出口有限公司提供") == [(1, 12)]
     # 宽泛后缀（公司、厂）在正文中不自动替换
-    generic = run(nodes_of("本公司与贵公司、该厂均同意。"))[0]
-    assert not generic.parties and all(i.detected_by == 'uncertain' for i in generic.items)
+    assert run(nodes_of("本公司与贵公司、该厂均同意。"))[0].items == []  # V31-S-08：泛称也不默认替换
 
 
 def test_chinese_org_name_start_boundary():
@@ -533,8 +532,7 @@ def test_broad_suffix_name_with_alias():
     assert one("示例虚构研究所 （以下简称\"示例所\"）提供数据。")[0] == "[公司_A] （以下简称\"[公司_A]\"）提供数据。"
     # 泛称、泛指词：不登记
     for text in ("本公司（以下简称“我方”）保证。", "由我公司（以下简称“乙方”）负责。", "该研究院（以下简称“研究院”）"):
-        generic = compute([NodeIn('F1-P1', text)], 'other')
-        assert not generic.parties and all(i.detected_by == 'uncertain' for i in generic.items), text
+        assert one(text)[:2] == (text, []), text
     # 简称为通用角色词：名称照常登记，简称不替换
     assert one("示例通信集团公司（以下简称“乙方”）负责，乙方应按期交付。")[0] == "[公司_A]（以下简称“乙方”）负责，乙方应按期交付。"
     # Q-142：简称为“集团、研究院”等普通词时同样不替换
@@ -601,7 +599,7 @@ def test_no_half_name_left():
     # 用户选中名称的前半；全称也在文中：前半作为全称的简称，同一代号，不出现“[公司_C] Fictive Energy”这类结果
     r, text = run(nodes, stance="other", user_terms=[UserTerm("Aurora Fictive", "ORG")])
     assert r.redacted["F1-P1"] == "收函方：[公司_A]"
-    assert r.redacted["F1-P2"] == "抄送：[公司_A] [名称_1]"
+    assert r.redacted["F1-P2"] == "抄送：[公司_A] 财务部"
     assert r.redacted["F1-P3"] == "再次确认 [公司_A] 的地址"
     assert len(r.parties) == 1 and item_at(r, "F1-P2", nodes[1].text, "Aurora Fictive").detected_by == "user"
     for word in ("Aurora", "Fictive", "Energy"):

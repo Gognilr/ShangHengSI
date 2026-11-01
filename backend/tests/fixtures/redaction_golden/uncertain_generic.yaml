@@ -1,0 +1,16 @@
+description: 指代与职能泛称不默认替换，真名称照常替换（全部虚构，V31-S-08）
+stance: other
+must_replace:
+- {text: 澜溪公司, category: ORG}
+- {text: 澄岭公司, category: ORG}
+must_suspect: []
+must_keep:
+- 我公司
+- 贵公司
+- 本公司
+- 该厂
+- 物流公司
+- 保险公司
+- 财务部
+- 采购部
+- 法务部

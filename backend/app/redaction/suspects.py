@@ -499,10 +499,29 @@ def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), low
     return sorted(chosen, key=lambda c: c.start)
 
 
+# V31-S-08：指代与职能泛称（贵公司、该厂、财务部）不是名称；默认替换会让模型分不清条款主体。
+_GENERIC_NOUN = '公司|集团|工厂|厂|单位|研究院|研究所|银行'
+_GENERIC_DEICTIC = re.compile(rf'(.*?)(?:本|贵|我|该|其|此|对方)(?:{_GENERIC_NOUN})')
+_GENERIC_WHOLE = re.compile(
+    rf'(?:{_GENERIC_NOUN}|(?:保险|物流|货代|运输|快递|船)公司|(?:律师|会计师)事务所|办公室'
+    r'|(?:财务|法务|采购|销售|技术|质检|质量|品质|人事|人力资源|行政|生产|市场|商务|物流|仓储|研发|工程'
+    r'|安全|审计|客服|外贸|进出口|业务|计划|设备)(?:部门|部|处|科|中心))')
+
+
+def _generic_reference(surface: str) -> bool:
+    if _GENERIC_WHOLE.fullmatch(surface):
+        return True
+    m = _GENERIC_DEICTIC.fullmatch(surface)
+    # 指代词前只允许为空、常用词或以虚词开头的动作（“已收到贵公司”）；“富贵公司”这类仍列出。
+    return bool(m) and (not m[1] or m[1] in zh_words() or m[1][0] in '已向与和及对由给从被把请经')
+
+
 def plain_candidate(text: str, candidate: Suspect, *, header: bool = False) -> bool:
     """只过滤不确定项；称谓与角色词锚定的人名不使用常用词表。"""
     surface = text[candidate.start:candidate.end]
     if header and candidate.reason in (CAPITALIZED, 'ner'):
+        return True
+    if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY, 'ner') and _generic_reference(surface):
         return True
     if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY):
         suffixes = (*P.INSTITUTION_TEXT_SUFFIXES, '股份有限公司', '有限责任公司', '集团有限公司',
