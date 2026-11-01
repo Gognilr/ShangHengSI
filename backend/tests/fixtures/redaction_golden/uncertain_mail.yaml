@@ -1,0 +1,43 @@
+description: 虚构往来邮件摘录（V31-S-01，全部虚构）
+stance: sales
+must_replace:
+- text: Kelviro Refinery
+  category: ORG
+- text: Vexlira Refinery
+  category: ORG
+must_suspect:
+- Qilvona Technical Office
+- Zirvane Technical Office
+- Zilvora Inspection Office
+- 陆虚岚
+- 何虚芳
+must_keep:
+- COA
+- COO
+- SDS
+- TDS
+- QC
+- QA
+- FAT
+- SAT
+- PI
+- PO
+- HS
+- CaO
+- MgO
+- HCl
+- KOH
+- ASME 12345-2020
+- SAE 12345-2020
+- GOST 12345-2020
+plain_uncertain:
+- Coal Tar Pitch
+- Quinoline Insolubles
+- Toluene Insolubles
+- Mettler Softening Point
+- Coking Value
+- Wettability Index
+- Blaine Fineness
+- Roga Index
+- Micum Index
+- Shatter Index

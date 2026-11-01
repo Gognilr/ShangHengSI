@@ -1,0 +1,35 @@
+description: 虚构 XLSX 参数表：标题独占行、参数表头、正文与另一工作表（V31-S-01，全部虚构）
+stance: sales
+must_replace:
+- text: Kelvaza Refinery
+  category: ORG
+must_suspect:
+- Qervori Technical Office
+- Zelvane Technical Office
+- Vexzora Refinery
+- Zelvora Inspection Office
+- 陆虚岚
+- 何虚芳
+- 欧阳虚明
+- 8800-1234-5678
+must_keep:
+- Xylometric Characterization
+- Zymographic Parameter
+- Particle Size
+- MPa
+- mesh
+- ppm
+- IEEE 802.3:2022
+- DIN 12345-2020
+plain_uncertain:
+- 磨耗指数法
+- 真密度法
+- 颗粒形貌分析
+- 孔径分布法
+- 热膨胀系数法
+- 含硫量测定法
+- 粉末电阻法
+- 灰分校正法
+- 焦粉筛分法
+- 水分校准法
+loc_prefixed: true

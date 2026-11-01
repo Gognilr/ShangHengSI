@@ -1,0 +1,42 @@
+description: 虚构产品报价（V31-S-01，全部虚构）
+stance: sales
+must_replace:
+- text: Qelvori Technical Office
+  category: ORG
+- text: Kelvora Refinery
+  category: ORG
+- text: Vexlora Refinery
+  category: ORG
+- text: Zelvori Inspection Office
+  category: ORG
+must_suspect:
+- Zexvane Technical Office
+- 陆虚岚
+- 何虚芳
+- 欧阳虚明
+must_keep:
+- MOQ
+- OEM
+- ODM
+- L/C
+- T/T
+- D/P
+- D/A
+- B/L
+- AWB
+- MSDS
+- Fixed Carbon
+- Volatile Matter
+- Ash Content
+- Real Density
+plain_uncertain:
+- Calcined Needle Coke
+- Green Petroleum Coke
+- Anode Grade Blend
+- Low Sulphur Blend
+- Electrode Paste
+- Carbon Raiser
+- Recarburizer Blend
+- Graphitized Aggregate
+- Pitch Binder
+- Needle Coke Fines

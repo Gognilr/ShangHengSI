@@ -1,0 +1,36 @@
+技术审阅记录。
+复核单位：Qilvona Technical Office。
+复核单位：Zirvane Technical Office。
+复核单位：Kelviro Refinery。
+复核单位：Vexlira Refinery。
+复核单位：Zilvora Inspection Office。
+技术项：Coal Tar Pitch。
+技术项：Quinoline Insolubles。
+技术项：Toluene Insolubles。
+技术项：Mettler Softening Point。
+技术项：Coking Value。
+技术项：Wettability Index。
+技术项：Blaine Fineness。
+技术项：Roga Index。
+技术项：Micum Index。
+技术项：Shatter Index。
+参考项：COA。
+参考项：COO。
+参考项：SDS。
+参考项：TDS。
+参考项：QC。
+参考项：QA。
+参考项：FAT。
+参考项：SAT。
+参考项：PI。
+参考项：PO。
+参考项：HS。
+参考项：CaO。
+参考项：MgO。
+参考项：HCl。
+参考项：KOH。
+参考项：ASME 12345-2020。
+参考项：SAE 12345-2020。
+参考项：GOST 12345-2020。
+陆虚岚表示已收到规格。
+何虚芳提到另行复核。

@@ -157,13 +157,13 @@ def test_capitalized_function_words_stripped_from_start():
 
 @pytest.mark.parametrize("text", [
     "《智能建筑设计规范》（GB 50312-2007）", "GB50312-2007", "GB/T 22239-2019", "GB / T 22239-2019", "ISO 20000-2018",
-    "JGJ 12345678-2008", "依据 DL/T 12345-2008 执行", "ASTM 12345-2010",
+    "JGJ 12345678-2008", "依据 DL/T 12345-2008 执行", "ASTM 12345-2010", "GB 12345678",  # V31-S-01：标准号不要求年份
 ])
 def test_long_digits_standard_numbers_excluded(text):
     assert found(text) == []
 
 
-@pytest.mark.parametrize("text", ["GB 12345678", "账号 1234 5678 9012", "编号 50312-2007", "GB 50312-20071"])
+@pytest.mark.parametrize("text", ["账号 1234 5678 9012", "编号 50312-2007", "GB 50312-20071"])
 def test_long_digits_not_standard_still_listed(text):
     assert [r for _t, r in found(text)] == ["long_digits"]
 
@@ -288,9 +288,9 @@ def test_golden_must_keep_not_suspect(name):
     nodes, ann = load(name)
     result = compute(nodes, ann["stance"])
     for n in nodes:
-        occupied = [(i.char_start, i.char_end) for i in result.items if i.loc == n.loc]
-        for sus in find_suspects(n.text, occupied):
-            listed = n.text[sus.start:sus.end]
+        # V31-S-01：表头位置由 compute 按整张工作表计算，单节点不能判断。
+        for sus in (s for s in result.suspects if s.loc == n.loc):
+            listed = n.text[sus.char_start:sus.char_end]
             for keep in ann["must_keep"]:
                 assert not (keep in listed or listed in keep) or len(listed) < 2, (
                     f"must_keep 被列为疑似遗漏：{keep!r} ← {listed!r}（{n.loc}，{sus.reason}）")

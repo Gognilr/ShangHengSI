@@ -8,10 +8,14 @@
 import re
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
 
 from app.redaction import parties as P
 from app.redaction.detect import _QTY_UNIT_RE
-from app.redaction.dictionaries import _country_index, common_terms, cn_surnames, en_words, public_institution_spans
+from app.redaction.dictionaries import (
+    RESOURCES_DIR, _country_index, _term_pattern, common_terms, cn_surnames, en_words,
+    public_institution_spans, zh_words, zh_legal_finance,
+)
 
 ORG_SUFFIX = "org_suffix"
 BEFORE_COMPANY = "before_company"
@@ -298,10 +302,34 @@ _DATE_COMPACT = re.compile(r"(?<!\d)((?:19|20)\d{2})(\d{2})(\d{2})(?!\d)")
 _HS_BEFORE = re.compile(r"(?<![A-Za-z])(?i:HS|H\.S\.)(?![A-Za-z])|海关编码|商品编码|税则号")
 _UNIT_AFTER = re.compile(rf"[ \t]?(?i:{_QTY_UNIT_RE})(?![A-Za-z])")
 _MIN_DIGITS = 8
-# 标准编号：“GB 50312-2007”“GB/T 22239-2019”“ISO 9001-2015”，代号紧挨在数字之前，编号为“数字-4 位年份”（R1-07）
-_STANDARD_BEFORE = re.compile(
-    r"(?<![A-Za-z])(?:GB|GBJ|JB|HG|SH|YB|DL|JGJ|CJJ|SJ|YD|NB|ISO|IEC|EN|ASTM|DIN|JIS|ANSI|API)(?:\s*/\s*[TZ])?\s*\Z")
-_STANDARD_NO = re.compile(r"\d+(?:\.\d+)?-(?:19|20)\d{2}")
+# V31-S-01：标准代号加编号，可含字母前缀、分级与年份；年份不再是必需项。
+_STANDARD = re.compile(
+    r'(?<![A-Za-z0-9_])(?:GB|GBJ|JB|HG|SH|YB|DL|NB|QB|JGJ|CJJ|SJ|YD|ISO|IEC|EN|ASTM|DIN|JIS|ANSI|API|BS|ASME|AWS|SAE|IEEE|GOST)'
+    r'(?:[ \t]*/[ \t]*[TZ])?[ \t]*(?:[A-Z][ \t]*)?\d+(?:[/.]\d+)*'
+    r'(?:[-:]\d{4})?(?![A-Za-z0-9_/-])')
+# 元素符号严格区分大小写；不把 CNOOC 或产品牌号当作化学式。
+_ELEMENT = ('H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn '
+            'Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce '
+            'Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn '
+            'Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og').split()
+_CHEMICAL = re.compile(r'(?<![A-Za-z0-9_])(?:(?:' + '|'.join(sorted(_ELEMENT, key=len, reverse=True))
+                       + r')\d*)+(?![A-Za-z0-9_])')
+_CHEMICAL_PLAIN = frozenset({'NaOH', 'NaCl', 'HCl', 'KOH', 'CaO', 'MgO'})
+_TRADE = re.compile(r'(?<![A-Za-z0-9_])(?:EXW|FCA|FAS|FOB|CFR|CIF|CPT|CIP|DAP|DPU|DDP|Incoterms[ \t]+(?:2020|2010))(?![A-Za-z0-9_])', re.I)
+
+
+@lru_cache(maxsize=1)
+def _plain_pattern() -> re.Pattern:
+    terms = [line.strip() for line in (RESOURCES_DIR / 'plain_terms.txt').read_text(encoding='utf-8').splitlines()
+             if line.strip() and not line.startswith('#')]
+    return re.compile('|'.join(_term_pattern(t) for t in sorted(terms, key=len, reverse=True)), re.I)
+
+
+def plain_content_spans(text: str) -> list[tuple[int, int]]:
+    """标准、化学式、贸易术语和行业参数的偏移；只用于不确定项过滤。"""
+    return [m.span() for pattern in (_STANDARD, _TRADE, _plain_pattern()) for m in pattern.finditer(text)] + [
+        m.span() for m in _CHEMICAL.finditer(text)
+        if any(c.isdigit() for c in m.group()) or m.group() in _CHEMICAL_PLAIN]
 
 
 def _valid_date(y: str, m: str, d: str) -> bool:
@@ -339,9 +367,7 @@ def _long_digit_candidates(text: str, *, context: str | None = None) -> list[Sus
         start, end = m.start(), m.end()
         if _HS_BEFORE.search(context[max(0, start - 12):start]):
             continue
-        if _UNIT_AFTER.match(scan, end):
-            continue
-        if _STANDARD_NO.fullmatch(m.group()) and _STANDARD_BEFORE.search(context[max(0, start - 12):start]):
+        if _UNIT_AFTER.match(context, end):
             continue
         # 含千分位逗号或小数点的数字（金额由第 5 步负责）
         if (re.match(r"[,.]\d", scan[end:end + 2]) or (start >= 2 and scan[start - 1] in ",." and scan[start - 2].isdigit())):
@@ -426,13 +452,13 @@ def _mask(text: str, occupied: list[tuple[int, int]]) -> str:
     return "".join(chars)
 
 
-def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), lowercase_words=frozenset()) -> list[Suspect]:
+def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), lowercase_words=frozenset(), header: bool = False) -> list[Suspect]:
     """节点原文中未被替换的疑似遗漏，按位置排序。
 
     occupied 为该节点已被替换的区间 [(start, end)]。同一位置命中多条规则时只保留一条，
     优先级 org_suffix > before_company > capitalized > person_name > long_digits；互相重叠的候选取较长的。
     """
-    masked = _mask(text, [*occupied, *public_institution_spans(text)])
+    masked = _mask(text, [*occupied, *public_institution_spans(text), *plain_content_spans(text)])
     cands: list[Suspect] = []
     cands += _chinese_suffix_candidates(masked)
     cands += _english_suffix_candidates(masked)
@@ -448,12 +474,35 @@ def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), low
             cands.append(Suspect(m.start(1), m.end(1), "person_like"))
     for alias in derived:
         cands += [Suspect(m.start(), m.end(), "derived_name") for m in re.finditer(re.escape(alias), masked)]
-    # 标准 / HS 前缀的语义上下文仍读原文；候选随后按遮盖区间过滤。
-    # 否则公共 ISO / ASTM 被遮盖后，其标准编号会反被当成长串敏感数字。
+    # HS 前缀和数量单位的语义上下文仍读原文；候选随后按遮盖区间过滤。
+    # 否则单位被遮盖后，前面的数量会反被当成长串敏感数字。
     cands += _long_digit_candidates(masked, context=text)
     cands = [c for c in cands if c.end > c.start and _MASK not in masked[c.start:c.end]]
+    cands = [c for c in cands if not plain_candidate(text, c, header=header)]
     chosen: list[Suspect] = []
     for c in sorted(cands, key=lambda c: (-(c.end - c.start), _PRIORITY[c.reason], c.start)):
         if not any(c.start < k.end and k.start < c.end for k in chosen):
             chosen.append(c)
     return sorted(chosen, key=lambda c: c.start)
+
+
+def plain_candidate(text: str, candidate: Suspect, *, header: bool = False) -> bool:
+    """只过滤不确定项；称谓与角色词锚定的人名不使用常用词表。"""
+    surface = text[candidate.start:candidate.end]
+    if header and candidate.reason in (CAPITALIZED, 'ner'):
+        return True
+    if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY):
+        suffixes = (*P.INSTITUTION_TEXT_SUFFIXES, '股份有限公司', '有限责任公司', '集团有限公司',
+                    '有限公司', '集团', '研究院', '研究所', '公司', '厂')
+        return any(surface.endswith(suffix) and surface[:-len(suffix)] in zh_legal_finance()
+                   for suffix in suffixes)
+    if surface in zh_legal_finance():
+        return True
+    if candidate.reason == 'ner':
+        return bool(re.fullmatch(r'[一-鿿]+', surface)) and surface in zh_words()
+    if candidate.reason in (PERSON_NAME, 'person_like') and surface in zh_words():
+        title = text[candidate.end:].startswith(_PERSON_TITLES)
+        role = any(m.end() == candidate.start for m in _PERSON_ROLE_RE.finditer(text[:candidate.start]))
+        action = text[candidate.end:].startswith((*_PERSON_VERBS, '说', '称', '处理', '商定'))
+        return action and not title and not role
+    return False

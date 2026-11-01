@@ -12,6 +12,8 @@ import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
 
+from app.redaction.dictionaries import RESOURCES_DIR, zh_legal_finance
+
 MODEL_DIR = Path(__file__).resolve().parents[2] / 'models/ner'
 STOPWORDS_FILE = Path(__file__).resolve().parents[2] / 'resources/ner_stopwords.txt'
 MEDIUM = 0.4
@@ -36,7 +38,8 @@ class Entity:
 def cache_context() -> bytes:
     """V2Q-49：只读取小型版本文件；不缓存文件内容，改动后下一次重算立即失效。
     本文件（解码与 keep_entity 过滤）也计入，升级改动过滤规则时旧结果随之失效（V2-B-09）。"""
-    return (MODEL_DIR / 'MANIFEST.sha256').read_bytes() + STOPWORDS_FILE.read_bytes() + Path(__file__).read_bytes()
+    return ((MODEL_DIR / 'MANIFEST.sha256').read_bytes() + STOPWORDS_FILE.read_bytes()
+            + (RESOURCES_DIR / 'zh_legal_finance.txt').read_bytes() + Path(__file__).read_bytes())
 
 
 def cache_key(residual: str, *, context: bytes | None = None) -> str:
@@ -188,5 +191,6 @@ def keep_entity(text: str, entity: Entity) -> bool:
     if entity.label == 'ORG' and re.match(r'(?i:FOB|CIF|CFR|EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS)\b', surface):
         return False
     return (len(surface) >= 2 and surface.casefold() not in _stopwords()
+            and surface not in zh_legal_finance()
             and re.fullmatch(r'[\d\s\-/.]+', surface) is None
             and (entity.label != 'ADDR' or re.search(r'[^\W\d_]', surface) is not None))

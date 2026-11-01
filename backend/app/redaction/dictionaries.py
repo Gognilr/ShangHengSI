@@ -118,6 +118,18 @@ def en_words() -> frozenset[str]:
 
 
 @lru_cache(maxsize=1)
+def zh_words() -> frozenset[str]:
+    """中文常用词，仅过滤中置信实体与动作词锚定的人名疑似。"""
+    return frozenset((RESOURCES_DIR / 'zh_words.txt').read_text(encoding='utf-8').splitlines())
+
+
+@lru_cache(maxsize=1)
+def zh_legal_finance() -> frozenset[str]:
+    """法律财经词，仅按整段匹配；来源和剔除表见同名 README。"""
+    return frozenset((RESOURCES_DIR / 'zh_legal_finance.txt').read_text(encoding='utf-8').splitlines())
+
+
+@lru_cache(maxsize=1)
 def _public_institution_pattern() -> re.Pattern:
     terms = [line.strip() for line in (RESOURCES_DIR / 'public_institutions.txt').read_text(encoding='utf-8').splitlines()
              if line.strip() and not line.startswith('#')]

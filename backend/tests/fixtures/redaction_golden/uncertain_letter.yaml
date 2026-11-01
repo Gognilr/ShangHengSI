@@ -1,0 +1,40 @@
+description: 虚构英文商业函件（V31-S-01，全部虚构）
+stance: sales
+must_replace:
+- text: Zolvane Technical Office
+  category: ORG
+- text: Kelvona Refinery
+  category: ORG
+- text: Vexvora Refinery
+  category: ORG
+must_suspect:
+- Qexvona Technical Office
+- Zilvona Inspection Office
+- 陆虚岚
+- 何虚芳
+- 欧阳虚明
+must_keep:
+- EXW
+- FCA
+- FAS
+- FOB
+- CFR
+- CIF
+- CPT
+- CIP
+- DAP
+- DPU
+- DDP
+- Incoterms 2020
+- Incoterms 2010
+plain_uncertain:
+- Laytime Calculation
+- Demurrage Adjustment
+- Despatch Settlement
+- Deadfreight Calculation
+- Stevedoring Charges
+- Stowage Factor
+- Draught Survey
+- Ullage Measurement
+- Mate Receipt
+- Charterparty Terms

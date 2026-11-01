@@ -1,0 +1,31 @@
+F1-T1-R1-C1 Xylometric Characterization
+F1-T1-R1-C2 Zymographic Parameter
+F1-P1 技术审阅记录。
+F1-P2 复核单位：Qelvona Technical Office。
+F1-P3 复核单位：Zorvane Technical Office。
+F1-P4 复核单位：Kelvori Refinery。
+F1-P5 复核单位：Vexmora Refinery。
+F1-P6 复核单位：Zalvona Inspection Office。
+F1-P7 技术项：Conradson Carbon Residue。
+F1-P8 技术项：Differential Scanning Calorimetry。
+F1-P9 技术项：Heptane Insolubles。
+F1-P10 技术项：Dedusting Oil。
+F1-P11 技术项：Electrical Resistivity。
+F1-P12 技术项：Thermogravimetric Analysis。
+F1-P13 技术项：Anisotropic Texture。
+F1-P14 技术项：Mesophase Content。
+F1-P15 技术项：Optical Texture。
+F1-P16 技术项：Porosimetry Method。
+F1-P17 参考项：SiO2。
+F1-P18 参考项：Fe2O3。
+F1-P19 参考项：Al2O3。
+F1-P20 参考项：CaCO3。
+F1-P21 参考项：H2SO4。
+F1-P22 参考项：NaOH。
+F1-P23 参考项：NaCl。
+F1-P24 参考项：GB/T 22239-2019。
+F1-P25 参考项：ASTM D388。
+F1-P26 参考项：ISO 9001:2015。
+F1-P100 陆虚岚表示已收到规格。
+F1-P101 何虚芳提到另行复核。
+F1-P102 欧阳虚明表示稍后回复。

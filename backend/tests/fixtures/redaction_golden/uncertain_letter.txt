@@ -1,0 +1,32 @@
+技术审阅记录。
+复核单位：Qexvona Technical Office。
+复核单位：Zolvane Technical Office。
+复核单位：Kelvona Refinery。
+复核单位：Vexvora Refinery。
+复核单位：Zilvona Inspection Office。
+技术项：Laytime Calculation。
+技术项：Demurrage Adjustment。
+技术项：Despatch Settlement。
+技术项：Deadfreight Calculation。
+技术项：Stevedoring Charges。
+技术项：Stowage Factor。
+技术项：Draught Survey。
+技术项：Ullage Measurement。
+技术项：Mate Receipt。
+技术项：Charterparty Terms。
+参考项：EXW。
+参考项：FCA。
+参考项：FAS。
+参考项：FOB。
+参考项：CFR。
+参考项：CIF。
+参考项：CPT。
+参考项：CIP。
+参考项：DAP。
+参考项：DPU。
+参考项：DDP。
+参考项：Incoterms 2020。
+参考项：Incoterms 2010。
+陆虚岚表示已收到规格。
+何虚芳提到另行复核。
+欧阳虚明表示稍后回复。

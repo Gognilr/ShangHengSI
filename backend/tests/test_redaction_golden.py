@@ -9,9 +9,11 @@ tests/fixtures/redaction_golden/ 下每份虚构样本（.txt，每行一个正�
                   既要出现在外发文本里，也不能被任何替换项覆盖，也不能被列为疑似遗漏；
                   落在某个 must_replace 文字内部的出现（如地址中的国家名）不检查；
   must_suspect —— 必须列为疑似遗漏的文字（9.5、Q-69）：自动替换识别不了、需要用户在第二步处理的内容。
+  plain_uncertain —— 普通内容但本地无法确定，允许列出；只校验标注存在，供过度替换统计与评测。
 每次修改识别规则或词典都必须通过。
 """
 from pathlib import Path
+from functools import cache
 
 import pytest
 import yaml
@@ -26,6 +28,7 @@ SAMPLES = sorted(p.stem for p in GOLDEN.glob("*.txt"))
 COMPATIBLE = {"ORG": {"ORG", "OUR"}}
 
 
+@cache
 def load(name: str):
     lines = (GOLDEN / f"{name}.txt").read_text(encoding="utf-8").splitlines()
     ann = yaml.safe_load((GOLDEN / f"{name}.yaml").read_text(encoding="utf-8"))
@@ -103,6 +106,8 @@ def test_must_keep_not_replaced(name):
 @pytest.mark.parametrize("name", SAMPLES)
 def test_must_suspect_listed(name):
     nodes, ann, result, _, _ = load(name)
+    for needle in ann.get('plain_uncertain', []):
+        assert list(occurrences(nodes, needle)), f"标注文字不在样本中：{needle}"
     for needle in ann.get("must_suspect", []):
         found = list(occurrences(nodes, needle))
         assert found, f"标注文字不在样本中：{needle}"

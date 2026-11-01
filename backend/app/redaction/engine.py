@@ -608,6 +608,20 @@ def compute(
     ner_suspects = []
     ner_names: dict[str, tuple[str, str]] = {}  # 实体键 → (首个高置信文字, 类别)
     locs = {n.loc: i for i, n in enumerate(nodes)}
+    # XLSX 按文件与工作表分别取含至少两个非空单元格的最上一行；标题独占行不算表头。
+    sheet_rows: dict[tuple[str, int], int] = {}
+    for n in nodes:
+        if (m := re.fullmatch(r'(F\d+-S\d+)-[A-Z]+(\d+)', n.loc)) and n.text.strip():
+            row = (m[1], int(m[2]))
+            sheet_rows[row] = sheet_rows.get(row, 0) + 1
+    first_rows: dict[str, int] = {}
+    for (sheet, row), count in sheet_rows.items():
+        if count >= 2:
+            first_rows[sheet] = min(first_rows.get(sheet, row), row)
+    headers = {n.loc for n in nodes if re.search(r'-R1-C\d+$', n.loc)}
+    headers.update(n.loc for n in nodes
+                   if (m := re.fullmatch(r'(F\d+-S\d+)-[A-Z]+(\d+)', n.loc))
+                   and first_rows.get(m[1]) == int(m[2]))
     context = ner.cache_context()
     node_cache, same_compute = {}, {}
     cache_hits = cache_misses = 0
@@ -641,7 +655,11 @@ def compute(
                     key = detect.find_country(surface) or COUNTRY_UNKNOWN
                 _accept([_Span(i, hit.start, hit.end, hit.label, key, 'ner')], occupied[i], spans)
             elif hit.score >= ner.MEDIUM:
-                ner_suspects.append(SuspectOut(n.loc, hit.start, hit.end, 'ner'))
+                candidate = S.Suspect(hit.start, hit.end, 'ner')
+                if (not S.plain_candidate(n.text, candidate, header=n.loc in headers)
+                        and not any(a <= hit.start and hit.end <= b for a, b in
+                                    [*S.public_institution_spans(n.text), *S.plain_content_spans(n.text)])):
+                    ner_suspects.append(SuspectOut(n.loc, hit.start, hit.end, 'ner'))
     # V2-B-09：高置信的名称与签约方一样全文替换（含前面的节点），否则对照表中的真实值会被出口复检拦截。
     for i, n in enumerate(nodes):
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
@@ -673,7 +691,7 @@ def compute(
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         result.suspects += [SuspectOut(n.loc, s.start, s.end, s.reason)
                             for s in S.find_suspects(n.text, occupied[i] + excluded_spans, derived=short_derived,
-                                                     lowercase_words=lowercase_words)]
+                                                     lowercase_words=lowercase_words, header=n.loc in headers)]
     result.matched_terms = {s.term for s in spans if s.term}
     for suspect in ner_suspects:
         text = nodes[locs[suspect.loc]].text[suspect.char_start:suspect.char_end]

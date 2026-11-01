@@ -1,0 +1,36 @@
+description: 虚构中文采购合同（V31-S-01，全部虚构）
+stance: sales
+must_replace:
+- text: Zovvane Technical Office
+  category: ORG
+- text: Kelvexa Refinery
+  category: ORG
+- text: Vexnora Refinery
+  category: ORG
+must_suspect:
+- Qervona Technical Office
+- Zalvora Inspection Office
+- 陆虚岚
+- 何虚芳
+must_keep:
+- 仲裁
+- 保险
+- 风险
+- 赔偿
+- GB/Z 20202-2020
+- HG/T 20592-2009
+- YB/T 5189-2017
+- NB/T 47013.1-2015
+- JB/T 4730-2005
+- NaCl
+plain_uncertain:
+- 针状焦级配
+- 低硫增碳料
+- 中间相含量
+- 堆积密度法
+- 振实密度法
+- 各向异性结构
+- 电极接头料
+- 煅后焦细粉
+- 煤沥青结合剂
+- 微孔结构分析

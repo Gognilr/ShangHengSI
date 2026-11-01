@@ -1,0 +1,33 @@
+F1-S1-A1 技术参数说明
+F1-S1-A3 Xylometric Characterization
+F1-S1-B3 Zymographic Parameter
+F1-S1-A4 技术审阅记录。
+F1-S1-A5 复核单位：Qervori Technical Office。
+F1-S1-A6 复核单位：Zelvane Technical Office。
+F1-S1-A7 复核单位：Kelvaza Refinery。
+F1-S1-A8 复核单位：Vexzora Refinery。
+F1-S1-A9 复核单位：Zelvora Inspection Office。
+F1-S1-A10 技术项：磨耗指数法。
+F1-S1-A11 技术项：真密度法。
+F1-S1-A12 技术项：颗粒形貌分析。
+F1-S1-A13 技术项：孔径分布法。
+F1-S1-A14 技术项：热膨胀系数法。
+F1-S1-A15 技术项：含硫量测定法。
+F1-S1-A16 技术项：粉末电阻法。
+F1-S1-A17 技术项：灰分校正法。
+F1-S1-A18 技术项：焦粉筛分法。
+F1-S1-A19 技术项：水分校准法。
+F1-S1-A22 参考项：Particle Size。
+F1-S1-A23 参考项：MPa。
+F1-S1-A24 参考项：mesh。
+F1-S1-A25 参考项：ppm。
+F1-S1-A26 参考项：IEEE 802.3:2022。
+F1-S1-A27 参考项：DIN 12345-2020。
+F1-S2-A1 第二张工作表
+F1-S2-A5 Xylometric Characterization
+F1-S2-B5 Zymographic Parameter
+F1-S1-A100 陆虚岚表示已收到规格。
+F1-S1-A101 何虚芳提到另行复核。
+F1-S1-A102 欧阳虚明表示稍后回复。
+F1-S1-C3 8800-1234-5678
+F1-S1-D3 陆虚岚表示稍后复核。

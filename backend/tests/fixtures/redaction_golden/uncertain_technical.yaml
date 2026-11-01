@@ -1,0 +1,40 @@
+description: 虚构技术规格书（V31-S-01，全部虚构）
+stance: sales
+must_replace:
+- text: Qelvona Technical Office
+  category: ORG
+- text: Kelvori Refinery
+  category: ORG
+- text: Vexmora Refinery
+  category: ORG
+must_suspect:
+- Zorvane Technical Office
+- Zalvona Inspection Office
+- 陆虚岚
+- 何虚芳
+- 欧阳虚明
+must_keep:
+- SiO2
+- Fe2O3
+- Al2O3
+- CaCO3
+- H2SO4
+- NaOH
+- NaCl
+- GB/T 22239-2019
+- ASTM D388
+- ISO 9001:2015
+- Xylometric Characterization
+- Zymographic Parameter
+plain_uncertain:
+- Conradson Carbon Residue
+- Differential Scanning Calorimetry
+- Heptane Insolubles
+- Dedusting Oil
+- Electrical Resistivity
+- Thermogravimetric Analysis
+- Anisotropic Texture
+- Mesophase Content
+- Optical Texture
+- Porosimetry Method
+loc_prefixed: true
