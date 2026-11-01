@@ -1,0 +1,18 @@
+{
+  "samples": 52,
+  "items": 591,
+  "true_items": 531,
+  "plain_items": 60,
+  "eligible_true": 356,
+  "eligible_plain": 60,
+  "k": 5,
+  "threshold": 0.5973327159881593,
+  "false_keeps": 0,
+  "plain_kept": 54,
+  "plain_keep_ratio": 0.9,
+  "enabled": true,
+  "model": "bge-m3-int8@5617a9f",
+  "dataset_sha256": "f9b03774350a0acc8c1e26aa19606a11bdc857f080b5d49bc5f5a34d3ac76711",
+  "seconds": 85.056,
+  "reference_sha256": "c5f75b5efce623700a50044f3a309f56ed941bb144490548d19b3397cc7bf4cc"
+}

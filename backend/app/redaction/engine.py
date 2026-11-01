@@ -295,7 +295,8 @@ def _broad_names_with_alias(text: str) -> list[tuple[int, int]]:
 
 def _cached_entities(entry: object, key: str, length: int) -> list[ner.Entity] | None:
     """持久化内容校验失败视为未命中，不让损坏数据改变替换位置。"""
-    if not isinstance(entry, dict) or set(entry) != {'key', 'entities'} or entry['key'] != key:
+    if (not isinstance(entry, dict) or set(entry) not in ({'key', 'entities'}, {'key', 'entities', 'vector_kept'})
+            or entry['key'] != key):
         return None
     values = entry['entities']
     if not isinstance(values, list):
@@ -1045,20 +1046,38 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     user_keeps = [texts.get(r.loc, '')[r.char_start:r.char_end] for r in db.scalars(
                          select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
                                                        RedactionSuspect.decision == 'ignore'))]
-    result = compute(nodes, task.stance, terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
-                     keeps=[*user_keeps, *memory.values()],
-                     prior_suspects=[SuspectOut(r.loc, r.char_start, r.char_end, r.reason) for r in db.scalars(
-                         select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
-                                                       RedactionSuspect.decision.in_(['pending', 'ignore'])))],
-                     mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
-                     exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
-                         select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
-                     main_prefix=_main_prefix(db, task.id), ner_cache=cached, style=style,
-                     pinned=_load_full_map(db, task.id) if pin else None, ratio=style == "review")
+    options = dict(terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
+                   prior_suspects=[SuspectOut(r.loc, r.char_start, r.char_end, r.reason) for r in db.scalars(
+                       select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
+                                                     RedactionSuspect.decision.in_(["pending", "ignore"])))],
+                   mask_quantity=bool(get_setting(db, 'redaction.mask_quantity')),
+                   exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
+                       select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
+                   main_prefix=_main_prefix(db, task.id), style=style,
+                   pinned=_load_full_map(db, task.id) if pin else None, ratio=style == 'review')
+    keeps = [*user_keeps, *memory.values()]
+    result = compute(nodes, task.stance, **options, keeps=keeps, ner_cache=cached)
+    vector_words = []
+    if get_setting(db, 'redaction.vector_assist'):
+        try:
+            from app.redaction.vector_assist import keep_words
+            vector_words = keep_words(nodes, result.suspects, {P.normalize(word) for word in keeps})
+        except Exception:
+            logger.warning('不确定项向量辅助不可用 task=%s', task.id)
+            vector_words = []
+        if vector_words:
+            result = compute(nodes, task.stance, **options, keeps=[*keeps, *vector_words], ner_cache=result.ner_cache)
+            vector_keys = {P.normalize(word) for word in vector_words}
+            for s in result.suspects:
+                if P.normalize(texts[s.loc][s.char_start:s.char_end]) in vector_keys and not any(
+                        i.loc == s.loc and i.char_start < s.char_end and i.char_end > s.char_start for i in result.items):
+                    # 仅记已保留区间，随节点缓存一起加密；不保存查询向量或文字。
+                    result.ner_cache[s.loc].setdefault('vector_kept', []).append([s.char_start, s.char_end])
     user_keys = {P.normalize(t) for t in user_keeps}
     result.kept_memory = {term_hash(texts[s.loc][s.char_start:s.char_end]) for s in result.suspects
                           if P.normalize(texts[s.loc][s.char_start:s.char_end]) in memory
-                          and P.normalize(texts[s.loc][s.char_start:s.char_end]) not in user_keys}
+                          and P.normalize(texts[s.loc][s.char_start:s.char_end]) not in user_keys
+                          and not any(i.loc == s.loc and i.char_start < s.char_end and i.char_end > s.char_start for i in result.items)}
 
     for loc, entry in result.ner_cache.items():
         if cached.get(loc) != entry:
@@ -1348,6 +1367,13 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
     texts = _texts_with_note(rows, task)
     from app.redaction.keep_terms import effective
     memory = effective(db, task.owner_id)
+    vector_spans = set()
+    for cached in db.scalars(select(NerNodeResult).where(NerNodeResult.task_id == task.id)):
+        try:
+            data = json.loads(crypto.decrypt_text(cached.data_enc))
+            vector_spans.update((cached.loc, start, end) for start, end in data.get('vector_kept', []))
+        except (crypto.DecryptionError, UnicodeError, ValueError, TypeError, AttributeError):
+            pass
     items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id)))
     suspects = sorted(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id)),
                       key=lambda r: (order.get(r.loc, len(order)), r.char_start, r.id))
@@ -1366,12 +1392,14 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
             if r.decision == 'pending':
                 group['decision'] = 'pending'
             continue
+        covered = any(i.loc == r.loc and i.char_start < r.char_end and i.char_end > r.char_start for i in items)
         out.append({
             "id": r.id, "loc": r.loc, "reason": r.reason, "decision": r.decision,
             "category": S.default_category(t[r.char_start:r.char_end], r.reason),
             "placeholder": next((i.placeholder for i in items if i.loc == r.loc and i.char_start <= r.char_start
                                  and i.char_end >= r.char_end), None),
-            "kept_by": 'user' if r.decision == 'ignore' else ('memory' if key in memory else None),
+            "kept_by": None if covered else ('user' if r.decision == 'ignore' else (
+                'memory' if key in memory else ('vector' if (r.loc, r.char_start, r.char_end) in vector_spans else None))),
             "text": t[r.char_start:r.char_end],
             "occurrences": 1,
             "before": _flat(t[max(0, r.char_start - CONTEXT_CHARS):r.char_start]),

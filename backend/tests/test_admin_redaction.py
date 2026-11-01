@@ -68,9 +68,9 @@ def test_permissions(make_user, login, api):
 
 def test_mask_quantity_toggle_and_audit(admin, db_sessionmaker):
     c, csrf = admin
-    assert c.get(SETTING).json() == {"mask_quantity": False}
-    assert c.put(SETTING, json={"mask_quantity": True}, headers=_hdr(csrf)).json() == {"mask_quantity": True}
-    assert c.get(SETTING).json() == {"mask_quantity": True}
+    assert c.get(SETTING).json() == {"mask_quantity": False, "vector_assist": True}
+    assert c.put(SETTING, json={"mask_quantity": True}, headers=_hdr(csrf)).json() == {"mask_quantity": True, "vector_assist": True}
+    assert c.get(SETTING).json() == {"mask_quantity": True, "vector_assist": True}
     c.put(SETTING, json={"mask_quantity": True}, headers=_hdr(csrf))  # 没有变化，不写审计
     c.put(SETTING, json={"mask_quantity": False}, headers=_hdr(csrf))
     assert _audits(db_sessionmaker) == [
@@ -79,6 +79,11 @@ def test_mask_quantity_toggle_and_audit(admin, db_sessionmaker):
     ]
     assert c.put(SETTING, json={"mask_quantity": "x"}, headers=_hdr(csrf)).status_code == 422
     assert c.put(SETTING, json={}, headers=_hdr(csrf)).status_code == 422
+
+    response = c.put(SETTING, json={'mask_quantity': False, 'vector_assist': False}, headers=_hdr(csrf))
+    assert response.status_code == 200 and response.json()['vector_assist'] is False
+    assert c.get(SETTING).json()['vector_assist'] is False
+    assert _audits(db_sessionmaker)[-1] == ('setting', 'redaction', {'keys': ['redaction.vector_assist']})
 
 
 def test_create_custom_term(admin, db_sessionmaker):

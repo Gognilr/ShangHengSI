@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StrictBool, StringConstraints
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession, object_session
@@ -97,6 +97,7 @@ class MaskQuantity(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mask_quantity: bool
+    vector_assist: StrictBool | None = None
 
 
 class TermRow(BaseModel):
@@ -210,19 +211,24 @@ def _audit(db: DbSession, admin: User, request: Request, term: RedactionTerm, **
 
 @router.get("/settings/redaction", response_model=MaskQuantity)
 def get_redaction(db: DbSession = Depends(get_db)) -> MaskQuantity:
-    return MaskQuantity(mask_quantity=bool(get_setting(db, "redaction.mask_quantity")))
+    return MaskQuantity(mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
+                        vector_assist=bool(get_setting(db, 'redaction.vector_assist')))
 
 
 @router.put("/settings/redaction", response_model=MaskQuantity)
 def put_redaction(
     body: MaskQuantity, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
 ) -> MaskQuantity:
-    if bool(get_setting(db, "redaction.mask_quantity")) != body.mask_quantity:
-        set_setting(db, "redaction.mask_quantity", body.mask_quantity, admin.id)
+    changed = []
+    for key, value in (('redaction.mask_quantity', body.mask_quantity), ('redaction.vector_assist', body.vector_assist)):
+        if value is not None and bool(get_setting(db, key)) != value:
+            set_setting(db, key, value, admin.id)
+            changed.append(key)
+    if changed:
         audit.record(db, "setting_update", user_id=admin.id, target_type="setting", target_id="redaction",
-                     detail={"keys": ["redaction.mask_quantity"]}, ip=client_ip(request))
+                     detail={"keys": changed}, ip=client_ip(request))
         db.commit()
-    return body
+    return get_redaction(db)
 
 
 @router.get("/terms", response_model=TermPage)

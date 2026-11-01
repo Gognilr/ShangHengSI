@@ -25,6 +25,7 @@ DEFAULTS: dict[str, Any] = {
     "model.default_assist_id": None,
     "model.user_daily_cap": 0,
     "redaction.mask_quantity": False,
+    "redaction.vector_assist": True,
     "review.company_profile": "",
     "backup.time": "02:00",
     "backup.keep": 7,

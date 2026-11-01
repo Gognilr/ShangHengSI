@@ -20,10 +20,10 @@ def operation(task) -> None:
 
 
 def finish(db, task) -> dict:
-    from app.redaction import engine, keep_terms, parties as P
+    from app.redaction import engine, parties as P
     texts = engine._texts_with_note(engine._body_rows(db, task.id), task)
     rows = list(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id)))
-    memory = keep_terms.effective(db, task.owner_id)
+    views = engine.suspect_views(db, task)
     groups = {}
     for row in rows:
         word = texts.get(row.loc, '')[row.char_start:row.char_end]
@@ -35,10 +35,14 @@ def finish(db, task) -> dict:
                             and i.char_end >= r.char_end for r in rows)}
     result = dict(ops=task.confirm_ops or 0,
                   seconds=max(0, int((utcnow() - task.awaiting_since).total_seconds())) if task.awaiting_since else 0,
-                  uncertain=len(groups), kept_user=sum('ignore' in decisions for decisions in groups.values()),
-                  kept_memory=sum('ignore' not in decisions and 'pending' in decisions and key in memory for key, decisions in groups.items()),
+                  uncertain=len(groups), kept_user=sum(v['kept_by'] == 'user' for v in views),
+                  kept_memory=sum(v['kept_by'] == 'memory' for v in views),
                   replaced_user=sum('replace' in decisions for decisions in groups.values()), manual=len(user_words - from_suspects),
                   files=db.scalar(select(func.count()).select_from(TaskFile).where(TaskFile.task_id == task.id)))
+    # V31Q-23：向量保留与术语记忆分开，只有实际命中时才增加内部审计字段。
+    vector_count = sum(v['kept_by'] == 'vector' for v in views)
+    if vector_count:
+        result['kept_vector'] = vector_count
     task.confirm_ops, task.awaiting_since = 0, None
     return result
 
@@ -52,5 +56,5 @@ def aggregate(db, days: int) -> dict:
                 avg_ops=sum(r['ops'] for r in data) / n if n else 0,
                 median_seconds=median(r['seconds'] for r in data) if n else 0,
                 avg_uncertain=uncertain / n if n else 0,
-                kept_ratio=sum(r['kept_user'] + r['kept_memory'] for r in data) / uncertain if uncertain else 0,
+                kept_ratio=sum(r['kept_user'] + r['kept_memory'] + r.get('kept_vector', 0) for r in data) / uncertain if uncertain else 0,
                 memory_ratio=sum(r['kept_memory'] for r in data) / uncertain if uncertain else 0)
