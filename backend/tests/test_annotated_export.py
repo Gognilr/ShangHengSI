@@ -23,6 +23,19 @@ from tests.review_support import env  # noqa: F401
 pytestmark = pytest.mark.usefixtures("env")
 
 
+def test_annotation_integrity_notice(case, login, db_sessionmaker):
+    user, _, rid, _, _ = case
+    with db_sessionmaker() as db:
+        row = db.scalar(select(Finding).where(Finding.run_id == rid, Finding.seq == 1))
+        row.problem = '客户A和[客户_C]待核对'
+        db.commit()
+    client, _ = login(user.username)
+    response = client.get(f'/api/v1/runs/{rid}/annotated?file_seq=1')
+    assert response.status_code == 200, response.text
+    comments = '\n'.join(c.text for c in Document(io.BytesIO(response.content)).comments)
+    assert '有 2 处文字未能还原' in comments and '客户A' in comments and '[客户_C]' in comments
+
+
 @pytest.fixture
 def case(make_user, db_sessionmaker):
     user = make_user("annotated-owner")

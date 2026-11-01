@@ -34,6 +34,30 @@ from tests.review_support import configure_model, REAL_BUYER_NAME, REAL_OUR_NAME
 pytestmark = pytest.mark.usefixtures("env")
 
 
+def test_return_integrity_marks(alice, ready_task, llm, db_sessionmaker):
+    user, client, headers = alice
+    task = ready_task(user)
+    def handler(request):
+        status, payload = build_reply(json.loads(request.content))
+        output = json.loads(payload['choices'][0]['message']['content'])
+        output['doc_summary'] = '摘要[客户_C]'
+        output['findings'][0].update(problem='客户A与[Customer_A]，见F1-P1和[客户_C]。',
+                                     suggested_text='[客户_A]应付款（=合同总价的 30.0%），联系[电话]。')
+        payload['choices'][0]['message']['content'] = json.dumps(output, ensure_ascii=False)
+        return httpx.Response(status, json=payload)
+    llm(handler=handler)
+    rid = post_run(client, headers, task.id).json()['id']
+    execute(db_sessionmaker, rid)
+    data = client.get(f'{API_PREFIX}/runs/{rid}').json()
+    finding = data['findings'][0]
+    assert REAL_BUYER_NAME in finding['problem'] and '销售合同.docx F1-P1' in finding['problem']
+    assert [finding['problem'][m['start']:m['end']] for m in finding['marks']['problem']] == ['客户A', '[客户_C]']
+    assert finding['unresolved'] == 3 and '合同总价的' not in finding['suggested_text']
+    assert finding['marks']['suggested_text'][0]['kind'] == 'shared'
+    assert data['doc_summary_marks'] == [{'start': 2, 'end': 8, 'kind': 'unknown'}]
+    assert all(set(m) == {'start', 'end', 'kind'} for marks in finding['marks'].values() for m in marks)
+
+
 @pytest.fixture
 def alice(make_user, login):
     user = make_user("alice")

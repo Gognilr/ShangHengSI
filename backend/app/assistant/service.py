@@ -11,6 +11,8 @@ from app.db.models import AssistantMessage, LlmModel, Party, RedactionMap, Redac
 from app.llm import gateway, usage
 from app.models_api import select_model
 from app.redaction import engine
+from app.redaction.restore import check
+from app.review.service import MarkOut
 from app.security.errors import AppError, NotFoundError
 from app.tasks import service as tasks, storage
 from app.assistant.schemas import SessionDetail, SessionFile, SessionItem, SessionPage, SessionPatch
@@ -85,8 +87,12 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             "template": message.template, "params": message.params, "extras": message.extras,
             "model_id": message.model_id, "model_label": message.model_label,
             "tokens_in": message.tokens_in, "tokens_out": message.tokens_out,
-            "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at}
+            "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at,
+            "marks": []}
     if message.role == "assistant":
+        if message.status not in ('queued', 'streaming'):
+            result['marks'] = [MarkOut.model_validate(mark).model_dump()
+                               for mark in check(message.content_redacted, mapping).marks]
         from app.redaction.restore import restore
         if message.template == "translate":
             result["translation"] = {loc: restore(text, mapping) for loc, text in message.extras.get("translation", {}).items()}

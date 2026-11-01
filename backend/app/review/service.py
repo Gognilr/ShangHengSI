@@ -1,7 +1,7 @@
 """审核轮次业务逻辑：确认发送（含预检）、轮次列表与详情（还原真实名称）、修改问题处理状态
 （SPEC 7.1–7.3、19.5，设计 docs/design/M2.md 第八节）。
 
-- 数据库中的模型文字一律是代号形式；返回前端前用对照表 restore 还原（19.1）。
+- 数据库中的模型文字一律是代号形式；返回前端前用对照表做完整性检查与还原。
 - 日志与审计只写数量、轮次号、类别等非敏感信息，不写名称、原文、金额。
 - 出参模型就定义在本文件（任务文件范围内没有单独的 schemas 文件）。
 """
@@ -36,7 +36,7 @@ from app.llm.gateway import format_reasons
 from app.llm import gateway, usage
 from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map
 from app.redaction.recheck import recheck, recheck_context
-from app.redaction.restore import restore
+from app.redaction.restore import check, _LOCATION
 from app.review.coverage import describe
 from app.review.prompt import ReviewContext, build_messages, note_requirement
 from app.review.requirements import Requirement, builtin_version, load_system_template, select_builtin
@@ -86,6 +86,13 @@ class RequirementResultOut(BaseModel):
     note: str | None
 
 
+class MarkOut(BaseModel):
+    model_config = {"from_attributes": True}
+    start: int
+    end: int
+    kind: str
+
+
 class FindingOut(BaseModel):
     id: uuid.UUID
     seq: int
@@ -108,6 +115,8 @@ class FindingOut(BaseModel):
     source: str = 'model'
     handling_status: str
     handling_note: str | None
+    marks: dict[str, list[MarkOut]] = {}
+    unresolved: int = 0
 
 
 class Progress(BaseModel):
@@ -140,6 +149,7 @@ class RunDetail(BaseModel):
     progress: Progress | None  # 审核中时的分段进度，其他状态为 null
     coverage: dict | None  # 轮次结束后的 summary 与 notes；处理中和 blocked 为 null
     doc_summary: str | None
+    doc_summary_marks: list[MarkOut] = []
     sanctions: Sanctions
     requirement_results: list[RequirementResultOut]
     findings: list[FindingOut]
@@ -313,16 +323,22 @@ class _View:
                                           .where(TaskFile.task_id == task_id)).all())
 
     def text(self, value: str | None) -> str | None:
-        return restore(value, self.mapping) if value else value
+        return self.checked(value).text if value else value
+
+    def checked(self, value: str | None, *, clause=False):
+        locs = {m.group().strip('[]') for m in _LOCATION.finditer(value or '')}
+        return check(value, self.mapping, clause=clause, locations=self.readable(locs))
 
     def locations(self, findings: list[Finding]) -> dict[str, str]:
-        """第一个位置 → “原文件名 + 空格 + 可读位置”（设计 docs/design/M3.md 6.3）。
+        return self.readable({f.locs[0] for f in findings if f.locs})
+
+    def readable(self, locs) -> dict[str, str]:
+        """位置集合 → “原文件名 + 空格 + 可读位置”（设计 docs/design/M3.md 6.3）。
 
         可读位置：有 clause_no 时为 clause_no；否则 PDF、图片节点为“第 N 页”，XLSX 节点为“工作表!单元格”，
         其他为 loc。节点已被删除时只显示 loc。
         """
-        firsts = {f.locs[0] for f in findings if f.locs}
-        if not firsts:
+        if not locs:
             return {}
         rows = {r.loc: r for r in self.db.execute(
             select(DocNode.loc, DocNode.file_id, DocNode.clause_no, DocNode.page, DocNode.sheet, DocNode.cell_ref)
@@ -336,7 +352,7 @@ class _View:
             elif re.fullmatch(r'[（(]?(?:\d+|[A-Za-z]|[一二三四五六七八九十百]+)[）).、]?', clause):
                 parents[row.loc] = nearest.get(row.file_id)
         out = {}
-        for loc in firsts:
+        for loc in locs:
             r = rows.get(loc)
             if r is None:
                 shown = loc
@@ -356,12 +372,15 @@ class _View:
     def finding(self, f: Finding, locations: dict[str, str]) -> FindingOut:
         quote = crypto.decrypt_text(f.quote_snapshot_enc) if f.quote_snapshot_enc is not None else None
         locs = [str(x) for x in (f.locs or [])]
+        checked = {key: self.checked(getattr(f, key), clause=key == 'suggested_text')
+                   for key in ('title', 'problem', 'impact', 'suggestion', 'suggested_text', 'basis')}
+        marks = {key: list(value.marks) for key, value in checked.items() if value.marks}
+        values = {key: value.text if getattr(f, key) is not None else None for key, value in checked.items()}
         return FindingOut(
-            id=f.id, seq=f.seq, title=self.text(f.title) or "", category=f.category, severity=f.severity,
+            id=f.id, seq=f.seq, category=f.category, severity=f.severity,
             req_ids=[str(x) for x in (f.req_ids or [])], locs=locs,
             location=locations.get(locs[0]) if locs else None, missing=f.missing, cite_status=f.cite_status,
-            quote=quote, problem=self.text(f.problem) or "", impact=self.text(f.impact),
-            suggestion=self.text(f.suggestion), suggested_text=self.text(f.suggested_text), basis=self.text(f.basis),
+            quote=quote, **values, marks=marks, unresolved=sum(len(v) for v in marks.values()),
             handling_status=f.handling_status, handling_note=f.handling_note,
             law_refs=f.law_refs, law_unverified=f.law_unverified,
             source=f.source,
@@ -412,6 +431,7 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
     if job_id is not None:
         queue_position = jobs.queue_position(db, job_id)
     from app.standards.service import snapshot
+    summary = view.checked(run.doc_summary)
     return RunDetail(
         template=snapshot(db,run),
         id=run.id, task_id=run.task_id, run_no=run.run_no, status=run.status, error_message=run.error_message,
@@ -420,7 +440,7 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
         company_req_version=run.company_req_version, queued_at=run.queued_at, started_at=run.started_at,
         finished_at=run.finished_at, queue_position=queue_position,
         chunk_count=run.chunk_count, progress=_progress(run), coverage=_coverage(run, view),
-        doc_summary=view.text(run.doc_summary),
+        doc_summary=summary.text if run.doc_summary is not None else None, doc_summary_marks=list(summary.marks),
         sanctions=Sanctions(level=run.sanctions_level,
                             reasons=[view.text(str(r)) or "" for r in (run.sanctions_reasons or [])]),
         requirement_results=[RequirementResultOut(req_id=r.req_id, req_source=r.req_source, req_text=view.text(r.req_text) or "",

@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from docx import Document
 from docx.enum.section import WD_ORIENT
+from docx.enum.text import WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
@@ -70,6 +71,30 @@ def _heading(doc, title):
     _font(paragraph.add_run(title), 10.5, True)
 
 
+def _marked(value, marks=()):
+    """按检查结果的码点位置分段，再清理 XML 不接受的字符，避免高亮偏移。"""
+    if not value:
+        return [(_clean(value), False)]
+    parts, cursor = [], 0
+    for mark in marks:
+        if cursor < mark.start:
+            parts.append((_clean(value[cursor:mark.start]), False))
+        parts.append((_clean(value[mark.start:mark.end]), True))
+        cursor = mark.end
+    if cursor < len(value):
+        parts.append((_clean(value[cursor:]), False))
+    return parts
+
+
+def _lines(lines):
+    result = []
+    for line in lines:
+        if result:
+            result.append(('\n', False))
+        result.extend(line)
+    return result or [('—', False)]
+
+
 def _table(doc, headers, rows, widths):
     table = doc.add_table(rows=1, cols=len(headers))
     table.style = "Table Grid"
@@ -83,7 +108,12 @@ def _table(doc, headers, rows, widths):
     for values in rows:
         cells = table.add_row().cells
         for cell, value in zip(cells, values):
-            _font(cell.paragraphs[0].add_run(_clean(value)), 9)
+            parts = value if isinstance(value, list) else [(_clean(value), False)]
+            for text, highlight in parts:
+                run = cell.paragraphs[0].add_run(text)
+                _font(run, 9)
+                if highlight:
+                    run.font.highlight_color = WD_COLOR_INDEX.YELLOW
     # 列与单元格宽度同时设置，避免 Word 使用默认等宽布局。
     for row in table.rows:
         for cell, width in zip(row.cells, widths):
@@ -171,22 +201,28 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     _heading(doc, "四 问题清单")
     rows = []
     for finding in detail.findings:
-        problem = [text(finding.problem)]
-        if finding.source=='template':problem.insert(0,'范本对照')
-        problem += [label + text(value) for label, value in (("对我方的影响：", finding.impact), ("依据：", finding.basis)) if value]
+        problem = [_marked(finding.title, finding.marks.get('title', ())),
+                   _marked(finding.problem, finding.marks.get('problem', ()))]
+        if finding.source=='template':problem.insert(0,[('范本对照', False)])
+        for field, label in (('impact', '对我方的影响：'), ('basis', '依据：')):
+            value = getattr(finding, field)
+            if value:
+                problem.append([(label, False)] + _marked(value, finding.marks.get(field, ())))
         for ref in finding.law_refs:
-            problem.append(f"依据：《{_clean(ref['title'])}》{_clean(ref.get('article_no') or '')}\n{_clean(ref['text'])}")
+            problem.append([(f"依据：《{_clean(ref['title'])}》{_clean(ref.get('article_no') or '')}\n{_clean(ref['text'])}", False)])
         if finding.law_unverified:
-            problem.append('引用未经法规库核实')
-        suggestion = ([text(finding.suggestion)] if finding.suggestion else [])
+            problem.append([('引用未经法规库核实', False)])
+        if finding.unresolved:
+            problem.append([(f'注：本问题有 {finding.unresolved} 处文字未能还原（已标黄），请核对。', False)])
+        suggestion = ([_marked(finding.suggestion, finding.marks.get('suggestion', ()))] if finding.suggestion else [])
         if finding.suggested_text:
-            suggestion.append("建议措辞：" + text(finding.suggested_text))
+            suggestion.append([('建议措辞：', False)] + _marked(finding.suggested_text, finding.marks.get('suggested_text', ())))
         handling = HANDLING.get(finding.handling_status, finding.handling_status)
         if finding.handling_note:
             handling += "\n" + _clean(finding.handling_note)
         rows.append((finding.seq, SEVERITY.get(finding.severity, finding.severity), CATEGORY.get(finding.category, finding.category),
-                     finding.location or ("缺失项" if finding.missing else "—"), text(finding.quote), "\n".join(problem),
-                     "\n".join(suggestion), CITE.get(finding.cite_status, finding.cite_status), handling))
+                     finding.location or ("缺失项" if finding.missing else "—"), text(finding.quote), _lines(problem),
+                     _lines(suggestion), CITE.get(finding.cite_status, finding.cite_status), handling))
     if rows:
         _table(doc, ("序号", "等级", "类别", "位置", "原文", "问题说明", "修改建议", "引用状态", "处理状态与备注"),
                rows, (1, 1, 1.5, 3, 4.5, 5.5, 5, 2.2, 3))

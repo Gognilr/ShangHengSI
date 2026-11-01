@@ -55,6 +55,29 @@ def prepare(sm, rid):
         db.commit()
 
 
+def test_revision_integrity_gate_and_ratio_removal(case, login, db_sessionmaker):
+    user, _, rid, _, original = case
+    prepare(db_sessionmaker, rid)
+    client, _ = login(user.username)
+    path = f'/api/v1/runs/{rid}/revised?file_seq=1'
+    with db_sessionmaker() as db:
+        row = db.scalar(select(Finding).where(Finding.run_id == rid, Finding.seq == 1))
+        row.suggested_text = '客户A应付款'
+        db.commit()
+    response = client.get(path)
+    assert response.status_code == 200, response.text
+    assert response.headers['X-SI-Revised'] == '1' and response.headers['X-SI-Commented'] == '3'
+    assert any('未能还原' in c.text and '客户A' in c.text for c in Document(io.BytesIO(response.content)).comments)
+    with db_sessionmaker() as db:
+        row = db.scalar(select(Finding).where(Finding.run_id == rid, Finding.seq == 1))
+        row.suggested_text = '[客户_A]应付款（=合同总价的 30.0%）'
+        db.commit()
+    response = client.get(path)
+    assert response.status_code == 200, response.text
+    assert response.headers['X-SI-Revised'] == '2'
+    revised_docx.validate(original, response.content, ['星河虚构公司应付款。', '未约定争议解决方式。', '双方协商解决争议。'])
+
+
 def test_revisions_comments_views_and_audit(case, login, db_sessionmaker):
     user, _, rid, fid, original = case
     prepare(db_sessionmaker, rid)

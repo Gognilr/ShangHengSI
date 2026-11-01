@@ -24,6 +24,20 @@ pytestmark = pytest.mark.usefixtures("env")
 QUESTION = f"{REAL_BUYER_NAME} 要求把 USD 400,000.00 的付款改为见票后 90 天，{REAL_OUR_NAME}能接受吗？"
 
 
+def test_reply_integrity_marks(alice, db_sessionmaker, ready_task, llm):
+    user, client, headers = alice
+    task = reviewed(db_sessionmaker, user, client, headers, ready_task, llm)
+    llm(handler=chat_reply('客户A与[Customer_A]，见F1-P1和[客户_C]。', []))
+    response = client.post(url(task), headers=headers, json={'message': '请说明付款条款'})
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data['user']['marks'] == []
+    answer = data['assistant']
+    assert REAL_BUYER_NAME in answer['content'] and '销售合同.docx F1-P1' in answer['content']
+    assert [answer['content'][m['start']:m['end']] for m in answer['marks']] == ['客户A', '[客户_C]']
+    assert client.get(url(task)).json()['items'][-1]['marks'] == answer['marks']
+
+
 @pytest.fixture
 def alice(make_user, login):
     user = make_user("alice")

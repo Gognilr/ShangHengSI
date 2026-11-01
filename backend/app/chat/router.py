@@ -10,6 +10,7 @@ from app.chat import service
 from app.db.models import Task, User
 from app.db.session import get_db
 from app.security.deps import current_user, owned_task
+from app.review.service import MarkOut
 
 router = APIRouter()
 
@@ -33,6 +34,7 @@ class ChatMessageOut(BaseModel):
     role: str
     content: str
     created_at: datetime
+    marks: list[MarkOut] = []
 
 
 class ChatList(BaseModel):

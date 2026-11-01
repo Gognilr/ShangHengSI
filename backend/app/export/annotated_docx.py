@@ -109,6 +109,11 @@ def finding_text(f, run):
         lines.append(f"依据：{f.basis}")
     for ref in f.law_refs:
         lines.append(f"依据：《{ref['title']}》{ref.get('article_no') or ''} {ref['text']}")
+    if f.unresolved:
+        examples = list(dict.fromkeys(getattr(f, field)[mark.start:mark.end]
+                                      for field, marks in f.marks.items() for mark in marks))[:3]
+        shown = '、'.join(f'“{raw}”' for raw in examples)
+        lines.append(f"※ 有 {f.unresolved} 处文字未能还原（如{shown}），请核对。")
     lines.append(f"—— 商衡SI 第 {run.run_no} 轮 · 问题 {f.seq}")
     return "\n".join(lines)
 

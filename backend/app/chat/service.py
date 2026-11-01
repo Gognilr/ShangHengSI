@@ -21,7 +21,8 @@ from app.parsing.model import strip_invisible
 from app.redaction import detect, ner, parties, placeholders, recheck, suspects
 from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
 from app.redaction.outbound import escape_document_tags
-from app.redaction.restore import restore
+from app.redaction.restore import check, restore, _LOCATION
+from app.review.service import _View, MarkOut
 from app.review.prompt import chat_system_prompt, split_outbound
 from app.security import crypto
 from app.security.errors import AppError
@@ -395,15 +396,27 @@ def build_messages(db: Session, task: Task, run: ReviewRun, question: str, chunk
 # ---------------------------------------------------------------- 对外函数
 
 
-def message_out(m: ChatMessage, mapping: dict[str, str]) -> dict:
-    return {"id": m.id, "role": m.role, "content": restore(m.content_redacted, mapping), "created_at": m.created_at}
+def message_out(m: ChatMessage, mapping: dict[str, str], *, locations=None) -> dict:
+    checked = check(m.content_redacted, mapping, locations=locations) if m.role == 'assistant' else None
+    return {"id": m.id, "role": m.role,
+            "content": checked.text if checked else restore(m.content_redacted, mapping),
+            "marks": [MarkOut.model_validate(mark).model_dump() for mark in checked.marks] if checked else [],
+            "created_at": m.created_at}
+
+
+def _locations(db, task, messages):
+    locs = {match.group().strip('[]') for message in messages if message.role == 'assistant'
+            for match in _LOCATION.finditer(message.content_redacted or '')}
+    return _View(db, task.id).readable(locs) if locs else {}
 
 
 def list_messages(db: Session, task: Task) -> dict:
     _run, reason = availability(db, task)
     mapping = load_redaction_map(db, task.id)
-    rows = db.scalars(select(ChatMessage).where(ChatMessage.task_id == task.id).order_by(ChatMessage.id))
-    return {"available": reason is None, "reason": reason, "items": [message_out(m, mapping) for m in rows]}
+    rows = list(db.scalars(select(ChatMessage).where(ChatMessage.task_id == task.id).order_by(ChatMessage.id)))
+    locations = _locations(db, task, rows)
+    return {"available": reason is None, "reason": reason,
+            "items": [message_out(m, mapping, locations=locations) for m in rows]}
 
 
 def preview(db: Session, task: Task, message: str) -> dict:
@@ -447,4 +460,5 @@ def send(db: Session, task: Task, user: User, message: str, decisions: list[dict
     db.commit()
     logger.info("task %s 追问已回复 llm_call=%s", task.id, result.llm_call_id)
     mapping = load_redaction_map(db, task.id)
-    return {"user": message_out(asked, mapping), "assistant": message_out(answer, mapping)}
+    return {"user": message_out(asked, mapping),
+            "assistant": message_out(answer, mapping, locations=_locations(db, task, [answer]))}

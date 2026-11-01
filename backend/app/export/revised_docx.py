@@ -17,18 +17,13 @@ from app.export import annotated_docx as shared
 from app.export.docx_anchor import split_runs
 from app.export.report_docx import _clean
 from app.redaction.engine import load_redaction_map
-from app.redaction.restore import restore
+from app.redaction.restore import check, restore
 from app.review.service import run_detail
 from app.security.errors import AppError
 
 logger = logging.getLogger(__name__)
 _TEXT = {qn("w:t"), qn("w:delText"), qn("w:instrText")}
 _SPACE = "{http://www.w3.org/XML/1998/namespace}space"
-_CODES = re.compile(
-    r"\[[^\[\]\r\n]+\]|［[^［］\r\n]+］|【[^【】\r\n]*[:：][^【】\r\n]*】|"
-    r"(?:客户|供应商|买方|卖方|其他|收货人|通知方|受益人|银行|公司)_[A-Z]+|"
-    r"(?:项目|人员|编号|账号|SWIFT|金额|单价|数量|敏感词)_(?:Q)?\d+"
-)
 
 
 class RevisionValidationError(shared.AnnotationValidationError):
@@ -119,8 +114,9 @@ def build_revised(db, run, file):
         loc = f.locs[0] if f.locs else None
         quote = restore(raw[f.id].quote_model or "", mapping)
         # run_detail 已还原展示文字；修订从库中原值还原一次，避免真实值被二次替换。
-        text = restore(raw[f.id].suggested_text, mapping)
-        if not text.strip() or _CODES.search(text):
+        checked = check(raw[f.id].suggested_text, mapping, clause=True)
+        text = checked.text
+        if not text.strip() or checked.marks:
             fallbacks.append((f, loc, quote))
             continue
         paragraphs = anchors.node_paragraphs.get(loc)

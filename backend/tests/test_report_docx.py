@@ -47,6 +47,23 @@ def contents(data):
     return doc, text
 
 
+def test_report_integrity_highlights(report_case, db_sessionmaker):
+    from docx.enum.text import WD_COLOR_INDEX
+    user, _, run = report_case
+    with db_sessionmaker() as db:
+        finding = db.scalar(select(Finding).where(Finding.run_id == run.id, Finding.seq == 2))
+        finding.problem = '客户A与[客户_C]待核对'
+        finding.suggested_text = '[客户_A]应付款（=合同总价的 30.0%）。'
+        db.commit()
+        _, data = build_run_report(db, db.get(ReviewRun, run.id), user)
+    doc, text = contents(data)
+    highlighted = [r.text for t in doc.tables for row in t.rows for cell in row.cells
+                   for p in cell.paragraphs for r in p.runs if r.font.highlight_color == WD_COLOR_INDEX.YELLOW]
+    assert highlighted == ['客户A', '[客户_C]']
+    assert '注：本问题有 2 处文字未能还原（已标黄），请核对。' in text
+    assert '合同总价的' not in text
+
+
 def test_t45_report_law_snapshot(report_case,db_sessionmaker):
     user,task,run=report_case
     with db_sessionmaker() as db:

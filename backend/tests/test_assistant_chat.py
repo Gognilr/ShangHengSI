@@ -67,6 +67,23 @@ def run(sm, tid):
         handle_assist(db, job.payload)
 
 
+def test_finished_integrity_marks_preserve_delta(conversation, db_sessionmaker, monkeypatch):
+    client, _, tid, _ = conversation
+    install(monkeypatch, chunks=('你好 [[ORG_1]]，', '[[ORG_9]]'))
+    response = send(conversation)
+    assert response.status_code == 201, response.text
+    mid = response.json()['assistant']['id']
+    assert response.json()['assistant']['marks'] == []
+    run(db_sessionmaker, tid)
+    delta = client.get(f'{BASE}/{tid}/messages/{mid}?offset=0').json()
+    messages = client.get(f'{BASE}/{tid}/messages').json()['items']
+    answer = messages[-1]
+    assert answer['content'] == delta['text_from_offset'] == '你好 ' + REAL + '，[[ORG_9]]'
+    assert messages[-2]['marks'] == []
+    assert [answer['content'][m['start']:m['end']] for m in answer['marks']] == ['[[ORG_9]]']
+    assert 'marks' not in delta
+
+
 def test_t49_1_3_15_17_send_restore_outbound_and_logs(conversation, db_sessionmaker, monkeypatch, caplog):
     from app.assistant.prompt import VERSION, system_prompt
     c, h, tid, _ = conversation
