@@ -4,7 +4,7 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StrictBool
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
@@ -24,7 +24,15 @@ router = APIRouter(prefix="/tasks")
 
 
 class FileTypePatch(BaseModel):
-    doc_type: Literal["contract", "quotation", "order", "inquiry", "letter"]
+    doc_type: Literal["contract", "quotation", "order", "inquiry", "letter"] | None = None
+    is_main: StrictBool | None = None
+
+
+class ProceedIn(BaseModel):
+    stance: Literal['sales', 'purchase', 'other']
+    source: Literal['outgoing', 'incoming']
+    policy: Literal['ai', 'local_only']
+    user_note: str | None = Field(None, max_length=500)
 
 
 @router.patch("/{id}/files/{fid}", response_model=TaskFileOut)
@@ -35,14 +43,22 @@ def patch_file_type(
     db: DbSession = Depends(get_db),
 ) -> TaskFileOut:
     # Q-50：与确认发送共用任务行锁，等待锁后刷新状态。
-    locked = db.scalar(select(Task).where(Task.id == task.id).with_for_update()
-                       .execution_options(populate_existing=True))
-    if locked is None:
-        raise NotFoundError("TASK_NOT_FOUND", "任务不存在")
-    if locked.status != "awaiting_confirm":
-        raise AppError(409, "TASK_STATE_CONFLICT", "当前任务状态不允许修改")
-    file.doc_type = patch.doc_type
-    file.doc_type_source = "user"
+    if not patch.model_fields_set or ('doc_type' in patch.model_fields_set and patch.doc_type is None) or (
+            'is_main' in patch.model_fields_set and patch.is_main is not True):
+        raise AppError(422, 'VALIDATION_ERROR', '请设置文件类型或主文件')
+    locked = service.lock_files(db, task, main_change=patch.is_main is True)
+    file = db.scalar(select(TaskFile).where(TaskFile.id == file.id, TaskFile.task_id == locked.id)
+                     .execution_options(populate_existing=True))
+    if file is None:
+        raise NotFoundError('FILE_NOT_FOUND', '文件不存在')
+    if patch.doc_type is not None:
+        file.doc_type, file.doc_type_source = patch.doc_type, 'user'
+    if patch.is_main:
+        for row in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)):
+            row.is_main = row.id == file.id
+        locked.title = file.original_name
+        from app.db import jobs
+        jobs.enqueue(db, 'parse', {'task_id': str(task.id), 'file_ids': []})
     db.flush()
     result = next(f for f in service.task_detail(db, locked).files if f.id == file.id)
     db.commit()
@@ -59,6 +75,7 @@ def create_task(
     policy: Literal["ai", "local_only"] = Form("ai"),
     user_note: str | None = Form(None, max_length=500),
     allow_duplicate: bool = Form(False),
+    draft: bool = Form(False),
     user: User = Depends(current_user),
     db: DbSession = Depends(get_db),
 ) -> TaskCreated:
@@ -83,8 +100,29 @@ def create_task(
         policy=policy,
         user_note=note,
         ip=client_ip(request),
+        draft=draft,
     )
     return TaskCreated(id=task.id)
+
+
+@router.post('/{id}/files', response_model=TaskDetail)
+def add_task_files(files: list[UploadFile] = File(...), task: Task = Depends(owned_task),
+                   db: DbSession = Depends(get_db)) -> TaskDetail:
+    uploads = service.check_uploads([(f.filename, f.file) for f in files if f.filename], 0,
+                                    get_settings().max_upload_mb * 1024 * 1024)
+    return service.add_files(db, task, uploads)
+
+
+@router.delete('/{id}/files/{fid}', response_model=TaskDetail)
+def delete_task_file(request: Request, file: TaskFile = Depends(owned_task_file), task: Task = Depends(owned_task),
+                     user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> TaskDetail:
+    return service.delete_file(db, task, file, user, client_ip(request))
+
+
+@router.post('/{id}/proceed', response_model=TaskDetail)
+def proceed_task(body: ProceedIn, task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> TaskDetail:
+    body.user_note = strip_invisible(body.user_note or '').strip() or None
+    return service.proceed(db, task, body)
 
 
 @router.get("", response_model=TaskPage)

@@ -55,6 +55,8 @@ class TaskFileOut(BaseModel):
     warnings: list[str]
     original_deleted_at: datetime | None = None
     annotatable: bool = False
+    parse_state: str = 'parsing'
+    parse_error: str | None = None
 
 
 class PreviewNode(BaseModel):
@@ -85,6 +87,7 @@ class LatestRun(BaseModel):
 
 
 class TaskDetail(BaseModel):
+    busy: bool = False
     template_suggestion: dict | None = None
     id: uuid.UUID
     title: str

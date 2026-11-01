@@ -10,7 +10,7 @@ import uuid
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.admin.settings_store import get_setting
@@ -245,6 +245,11 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
         raise _conflict("LOCAL_ONLY", "该任务的外发策略为不外发，不能提交 AI 审核")
     if task.status != "awaiting_confirm":
         raise _conflict("TASK_STATE_CONFLICT", "当前状态不能提交审核")
+    from app.tasks.service import task_busy
+    if task_busy(db, task.id):
+        raise _conflict('FILES_PARSING', '还有文件正在解析，请稍候')
+    if db.scalar(select(exists().where(TaskFile.task_id == task.id, TaskFile.parse_error.is_not(None)))):
+        raise _conflict('FILE_PARSE_FAILED', '请先删除解析失败的文件')
     from app.redaction.engine import ensure_default_replacements
     ensure_default_replacements(db, task)
     our = db.scalar(select(func.count()).select_from(Party)

@@ -12,7 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, BackupRecord, Job, ReviewRun, Task
+from app.db.models import AssistantMessage, BackupRecord, Job, ReviewRun, Task, TaskFile
 
 # 心跳超过此时间未更新的 running 任务视为 worker 异常退出（SPEC 7.5）
 STALE_AFTER = timedelta(minutes=15)
@@ -101,6 +101,11 @@ def finalize_failed(db: Session, job_type: str, payload: object) -> None:
         if task is not None and task.status == "parsing":
             task.status = "parse_failed"
             task.error_message = PARSE_INTERNAL_MSG
+        elif task is not None and task.kind == 'review' and task.status in ('draft', 'awaiting_confirm') and task.latest_run_id is None:
+            selected = {str(fid) for fid in payload.get('file_ids', [])}
+            for file in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.parser_version.is_(None))):
+                if str(file.id) in selected:
+                    file.parse_error = file.parse_error or PARSE_INTERNAL_MSG
     elif job_type == "review":
         run_id = _uuid(payload, "run_id")
         run = db.get(ReviewRun, run_id, with_for_update=True) if run_id else None

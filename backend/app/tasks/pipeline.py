@@ -99,8 +99,9 @@ def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list
     f.has_revisions = parsed.has_revisions
     f.warnings = parsed.warnings
     head = "\n".join(n.text for n in parsed.nodes if n.part == "body")[:_HEAD_CHARS]
-    f.doc_type = detect_doc_type(f.original_name, head)
-    f.doc_type_source = "auto"
+    if f.doc_type_source != 'user':
+        f.doc_type = detect_doc_type(f.original_name, head)
+        f.doc_type_source = "auto"
     db.flush()
     return parsed.ocr_pages
 
@@ -116,6 +117,10 @@ def _fail(db: Session, task_id: uuid.UUID, file_name: str | None, reason: str) -
 
 def parse_task(db: Session, task_id: uuid.UUID, file_ids: list[str] | None = None) -> None:
     task = db.get(Task, task_id)
+    if task is not None and task.kind == 'review' and task.status in ('draft', 'awaiting_confirm') and file_ids is not None:
+        if task.latest_run_id is None:
+            _parse_draft(db, task, file_ids)
+        return
     if task is None or task.status != "parsing":  # 已删除，或重复投递
         return
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
@@ -200,4 +205,73 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
     except Exception:
         db.rollback()
         _fail(db, task_id, current, MSG_INTERNAL)
+        raise
+
+
+def recompute_task(db: Session, task: Task):
+    """草稿与未提交任务共用：保留用户决定，按当前主文件统一重算。"""
+    from app.redaction import engine
+    run_checks(db, task, datetime.now(ZoneInfo('Asia/Shanghai')).date())
+    existing = engine._existing_parties(db, task)
+    overrides = engine._current_overrides(existing) if any(p.confirmed for p in existing.values()) else None
+    result = engine._run(db, task, overrides, existing, style='review', pin=False)
+    try:
+        with db.begin_nested():
+            from app.review.clauses import store_vectors
+            store_vectors(db, task)
+    except Exception:
+        logger.warning('任务条款向量计算失败 task=%s', task.id)
+    return result
+
+
+def _parse_draft(db: Session, task: Task, file_ids: list[str]) -> None:
+    task_id, saved = task.id, []
+    selected = {uuid.UUID(str(fid)) for fid in file_ids}
+    files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
+    new = [f for f in files if f.id in selected and f.parser_version is None]
+    try:
+        ocr_used = 0
+        for old in files:
+            if old in new or not old.parser_version:
+                continue
+            if old.ext in ('png', 'jpg'):
+                ocr_used += 1
+            elif old.ext == 'pdf':
+                ocr_used += len(pdf.inspect_pdf(storage.load_original(old.storage_key)).scanned_pages)
+        for file in new:
+            count = len(saved)
+            try:
+                with db.begin_nested():
+                    db.execute(delete(DocNode).where(DocNode.file_id == file.id))
+                    used = _parse_file(db, task, file, ocr_used, saved)
+                    file.parse_error = None
+                ocr_used += used
+            except ParseError as exc:
+                for key in saved[count:]:
+                    storage.delete_original(key)
+                del saved[count:]
+                file.parse_error = str(exc)
+        # 解析各自进行，写入统一脱敏结果前锁任务并重读；后提交者能看到先提交的节点。
+        task = db.scalar(select(Task).where(Task.id == task_id).with_for_update().execution_options(populate_existing=True))
+        if task is None or task.status not in ('draft', 'awaiting_confirm') or task.latest_run_id is not None:
+            db.rollback()
+            for key in saved:
+                storage.delete_original(key)
+            return
+        result = recompute_task(db, task)
+        from app.redaction import engine, keep_terms
+        engine._count_hits(db, result.matched_terms)
+        keep_terms.count_hits(db, task.owner_id, result.kept_memory)
+        task.error_message = None
+        db.commit()
+    except Exception:
+        db.rollback()
+        for key in saved:
+            storage.delete_original(key)
+        if db.get(Task, task_id) is None:
+            return
+        for file in db.scalars(select(TaskFile).where(TaskFile.task_id == task_id, TaskFile.id.in_(selected),
+                                                     TaskFile.parser_version.is_(None))):
+            file.parse_error = MSG_INTERNAL
+        db.commit()
         raise

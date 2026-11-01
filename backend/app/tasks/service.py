@@ -4,6 +4,7 @@
 """
 import re
 import hashlib
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import BinaryIO
@@ -20,7 +21,7 @@ from app.db.base import utcnow
 from app.db.models import DocNode, Job, LlmCall, RedactionItem, RedactionSuspect, ReviewRun, Task, TaskFile, User
 from app.redaction import engine
 from app.security import crypto
-from app.security.errors import AppError
+from app.security.errors import AppError, NotFoundError
 from app.tasks import filecheck, storage
 from app.tasks.schemas import (
     LatestRun,
@@ -35,6 +36,131 @@ from app.tasks.schemas import (
 
 MAX_FILES = 10
 PAGE_SIZE = 20
+
+
+def task_busy(db, task_id) -> bool:
+    return bool(db.scalar(select(exists().where(Job.type == 'parse', Job.payload['task_id'].astext == str(task_id),
+                                               Job.status.in_(['queued', 'running'])))))
+
+
+def lock_files(db, task: Task, *, main_change: bool = True) -> Task:
+    locked = db.scalar(select(Task).where(Task.id == task.id).with_for_update().execution_options(populate_existing=True))
+    if locked is None:
+        raise NotFoundError('TASK_NOT_FOUND', '任务不存在')
+    if locked.status not in ('draft', 'awaiting_confirm') or main_change and locked.latest_run_id is not None:
+        raise AppError(409, 'TASK_STATE_CONFLICT', '当前任务状态不允许修改文件')
+    return locked
+
+
+def add_files(db, task, uploads) -> TaskDetail:
+    task = lock_files(db, task)
+    old = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)))
+    if len(old) + len(uploads) > MAX_FILES:
+        raise AppError(422, 'TOO_MANY_FILES', '每个任务最多 10 个文件')
+    hashes = {f.sha256 for f in old}
+    saved, added = [], []
+    try:
+        seq = max(f.seq for f in old)
+        for up in uploads:
+            up.file.seek(0)
+            data = up.file.read()
+            digest = hashlib.sha256(data).hexdigest()
+            if digest in hashes:
+                raise AppError(422, 'DUPLICATE_IN_TASK', '该文件已在本任务中')
+            hashes.add(digest)
+            key, digest = storage.save_original(data)
+            saved.append(key)
+            seq += 1
+            row = TaskFile(task_id=task.id, seq=seq, is_main=False, original_name=up.name,
+                           ext=up.ext, size_bytes=len(data), sha256=digest, storage_key=key)
+            db.add(row)
+            added.append(row)
+        db.flush()
+        jobs.enqueue(db, 'parse', {'task_id': str(task.id), 'file_ids': [str(f.id) for f in added]})
+        task.last_activity_at = utcnow()
+        result = task_detail(db, task)
+        db.commit()
+        return result
+    except BaseException:
+        db.rollback()
+        for key in saved:
+            storage.delete_original(key)
+        raise
+
+
+def delete_file(db, task, file, user, ip) -> TaskDetail:
+    from app.db.models import NerNodeResult, RedactionExclusion, TaskClauseVector
+    task = lock_files(db, task)
+    files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
+    target = next((f for f in files if f.id == file.id), None)
+    if target is None:
+        raise NotFoundError('FILE_NOT_FOUND', '文件不存在')
+    if len(files) == 1:
+        raise AppError(409, 'LAST_FILE', '请删除任务，不能删除最后一个文件')
+    prefix = f'F{target.seq}-'
+    for model in (RedactionItem, RedactionSuspect, RedactionExclusion, NerNodeResult):
+        db.execute(delete(model).where(model.task_id == task.id, model.loc.startswith(prefix)))
+    db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == task.id, TaskClauseVector.file_seq == target.seq))
+    storage.delete_original(target.storage_key)
+    if target.converted_storage_key:
+        storage.delete_original(target.converted_storage_key)
+    if target.is_main:
+        main = next(f for f in files if f.id != target.id)
+        main.is_main = True
+        task.title = main.original_name
+    db.delete(target)
+    db.flush()
+    # 在删除接口内即清除仅属于该文件的映射；后台 job 再做全部校验与向量。
+    existing = engine._existing_parties(db, task)
+    engine._run(db, task, engine._current_overrides(existing) if any(p.confirmed for p in existing.values()) else None, existing)
+    jobs.enqueue(db, 'parse', {'task_id': str(task.id), 'file_ids': []})
+    task.last_activity_at = utcnow()
+    audit.record(db, 'task_file_delete', user_id=user.id, target_type='task', target_id=str(task.id), detail={'files': 1}, ip=ip)
+    result = task_detail(db, task)
+    db.commit()
+    return result
+
+
+def proceed(db, task, body) -> TaskDetail:
+    from app.db.models import NerNodeResult, Party, RedactionExclusion, RedactionMap
+    from app.tasks.pipeline import recompute_task
+    task = lock_files(db, task)
+    if task.status != 'draft':
+        raise AppError(409, 'TASK_STATE_CONFLICT', '当前任务状态不能进入确认')
+    files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)))
+    done = [f for f in files if f.parser_version and not f.parse_error]
+    if not done or body.policy == 'local_only' and (len(done) != len(files) or task_busy(db, task.id)):
+        raise AppError(409, 'FILES_NOT_READY', '文件尚未全部解析完成' if body.policy == 'local_only' else '至少需要一份文件解析完成')
+    task.stance, task.source, task.policy = body.stance, body.source, body.policy
+    set_user_note(db, task, body.user_note)
+    if body.policy == 'local_only':
+        for model in (Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionExclusion, NerNodeResult):
+            db.execute(delete(model).where(model.task_id == task.id))
+        db.execute(update(DocNode).where(DocNode.task_id == task.id).values(redacted_text=None))
+        task.user_note_redacted = None
+        task.status, task.last_completed_at = 'completed_local', utcnow()
+    else:
+        recompute_task(db, task)
+        task.status = 'awaiting_confirm'
+    owner = db.get(User, task.owner_id)
+    owner.last_stance, owner.last_source = body.stance, body.source
+    task.last_activity_at = utcnow()
+    result = task_detail(db, task)
+    db.commit()
+    return result
+
+
+def set_user_note(db, task, value) -> None:
+    """补充说明改变时不继承旧位置上的词条、保留与撤销决定。"""
+    from app.db.models import RedactionExclusion
+    note = (value or '').strip() or None
+    previous = crypto.decrypt_text(task.user_note_enc) if task.user_note_enc is not None else None
+    if note != previous:
+        db.execute(delete(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == 'NOTE', RedactionItem.detected_by == 'user'))
+        db.execute(delete(RedactionSuspect).where(RedactionSuspect.task_id == task.id, RedactionSuspect.loc == 'NOTE'))
+        db.execute(delete(RedactionExclusion).where(RedactionExclusion.task_id == task.id, RedactionExclusion.loc == 'NOTE'))
+        task.user_note_enc = crypto.encrypt_text(note) if note else None
+        task.user_note_redacted = None
 MAX_ARCHIVE_BYTES = filecheck.MAX_ARCHIVE_BYTES  # DOCX、XLSX 解压后总大小上限（17.6）
 MAX_ARCHIVE_ENTRIES = filecheck.MAX_ARCHIVE_ENTRIES
 MAX_NAME_LENGTH = 255
@@ -154,6 +280,7 @@ def create_task(
     policy: str,
     user_note: str | None,
     ip: str | None,
+    draft: bool = False,
 ) -> Task:
     """加密保存原件，建任务（parsing）和文件记录，入队 parse，记住本次立场与来源。"""
     saved: list[str] = []
@@ -181,7 +308,7 @@ def create_task(
             source=source,
             policy=policy,
             user_note_enc=crypto.encrypt_text(user_note) if user_note else None,
-            status="parsing",
+            status="draft" if draft else "parsing",
             last_activity_at=utcnow(),
         )
         db.add(task)
@@ -192,7 +319,8 @@ def create_task(
         owner = db.merge(user)  # 保证 user 属于当前会话
         owner.last_stance = stance
         owner.last_source = source
-        jobs.enqueue(db, "parse", {"task_id": str(task.id)})
+        db.flush()
+        jobs.enqueue(db, "parse", {'task_id': str(task.id), **({'file_ids': [str(r.id) for r in rows]} if draft else {})})
         audit.record(
             db,
             "task_create",
@@ -285,7 +413,7 @@ def _expiry_fields(db: DbSession, task: Task) -> dict:
         if original_days and db.scalar(select(exists().where(
                 TaskFile.task_id == task.id, TaskFile.original_deleted_at.is_(None)))):
             original = task.last_activity_at + timedelta(days=original_days)
-    elif task.status in ("parse_failed", "awaiting_confirm"):
+    elif task.status in ("parse_failed", "awaiting_confirm", "draft"):
         # 未完成任务按专属保留层删除；解析中、审核中没有删除日期。
         days = int(get_setting(db, "retention.unfinished_days") or 0)
         if days:
@@ -324,6 +452,7 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
             if job_id is not None:
                 queue_position = jobs.queue_position(db, job_id)
     return TaskDetail(
+        busy=task_busy(db, task.id),
         template_suggestion=suggestion(db,task),
         id=task.id,
         title=task.title,
@@ -345,6 +474,8 @@ def task_detail(db: DbSession, task: Task) -> TaskDetail:
                 doc_type=f.doc_type,
                 doc_type_source=f.doc_type_source,
                 page_count=f.page_count,
+                parse_state='failed' if f.parse_error else ('done' if f.parser_version else 'parsing'),
+                parse_error=f.parse_error,
                 paragraph_count=paragraphs.get(f.id, 0),
                 table_count=tables.get(f.id, 0),
                 has_revisions=f.has_revisions,

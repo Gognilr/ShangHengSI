@@ -56,7 +56,7 @@ def _layer_conditions(layer: str) -> list:
     """V2Q-74：重新审核后未提交（待确认且有旧轮次）归原件层、结果层；未完成层只含从未提交审核的任务。"""
     if layer == "unfinished":
         return [or_(
-            and_(Task.kind == "review", Task.status.in_(("parse_failed", "awaiting_confirm")), Task.latest_run_id.is_(None)),
+            and_(Task.kind == "review", Task.status.in_(("parse_failed", "awaiting_confirm", "draft")), Task.latest_run_id.is_(None)),
             and_(Task.kind == "assistant", Task.status != "parsing",
                  ~exists().where(AssistantMessage.task_id == Task.id),
                  ~exists().where(TaskFile.task_id == Task.id, TaskFile.confirmed_at.is_not(None)),

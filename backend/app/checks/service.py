@@ -48,6 +48,11 @@ def load_inputs(db, task_id: uuid.UUID) -> tuple[list[CheckNode], list[CheckFile
 
 def run_checks(db, task, today: date) -> None:
     nodes, files = load_inputs(db, task.id)
+    if task.status in ('draft', 'awaiting_confirm') and task.latest_run_id is None:
+        parsed = set(db.scalars(select(TaskFile.seq).where(TaskFile.task_id == task.id,
+                                 TaskFile.parser_version.is_not(None), TaskFile.parse_error.is_(None))))
+        nodes = [n for n in nodes if n.file_seq in parsed]
+        files = [f for f in files if f.seq in parsed]
     titles = {title for node in nodes for title in re.findall(r'《([^《》]+)》', node.text)}
     evaluation = evaluate(nodes, files, today, laws=load_laws(db, titles))
     file_ids = dict(db.execute(select(TaskFile.seq, TaskFile.id).where(TaskFile.task_id == task.id)).all())

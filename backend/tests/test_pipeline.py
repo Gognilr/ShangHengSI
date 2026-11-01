@@ -446,7 +446,7 @@ def test_parse_writes_suspects_and_views(db_sessionmaker, text_task):
         assert [v["loc"] for v in views] == ["F1-P2", "F1-P2", "F1-P4"]  # 各组首处的文档顺序
         assert [v["occurrences"] for v in views] == [2, 1, 1]
         v = views[0]
-        assert set(v) == {"id", "loc", "reason", "decision", "category", "text", "before", "after", "occurrences"}
+        assert set(v) == {"id", "loc", "reason", "decision", "category", "text", "before", "after", "occurrences", "placeholder", "kept_by"}
         assert (v["text"], v["before"], v["after"][:4]) == ("Northwind Fictive Holdings", "货物由 ", " 承运，")
         assert v["after"] == LINES[1].split("Northwind Fictive Holdings", 1)[1][:30]
         assert views[2]["text"] == "蓝海示例科技公司"
@@ -528,6 +528,9 @@ def test_add_user_term_validation(db_sessionmaker, text_task):
     task = text_task("卖方：星河虚构进出口有限公司", "请联系 Bluefin Example 确认  。")
     with db_sessionmaker() as db:
         t = db.get(Task, task.id)
+        # V31-S-02：先明确保留默认不确定项，再验证手动补充原文的原有契约。
+        for candidate in list(suspects_of(db, task.id)):
+            engine.decide_suspect(db, t, candidate.id, decision='ignore', category=None, user_id=t.owner_id)
 
         def err(**kw):
             args = {"loc": "F1-P2", "char_start": 4, "char_end": 19, "category": "ORG", **kw}
@@ -565,6 +568,9 @@ def test_manual_org_without_parties_can_become_our_party(db_sessionmaker, text_t
     task = text_task("本协议由蓝海示例科技与对方共同签署。", stance="sales")
     with db_sessionmaker() as db:
         t = db.get(Task, task.id)
+        # V31-S-02：先明确保留默认不确定项，再验证手动补充原文的原有契约。
+        for candidate in list(suspects_of(db, task.id)):
+            engine.decide_suspect(db, t, candidate.id, decision='ignore', category=None, user_id=t.owner_id)
         assert db.scalars(select(Party).where(Party.task_id == task.id)).all() == []
         engine.add_user_term(db, t, loc="F1-P1", char_start=4, char_end=10, category="ORG")
         db.commit()
@@ -582,6 +588,9 @@ def test_learn_confirmed_names_and_second_task(db_sessionmaker, text_task):
     task = text_task("卖方：星河虚构进出口有限公司", "买方：Orion Fictive Trading LLC", "请联系 Bluefin Example 与 王示例。")
     with db_sessionmaker() as db:
         t = db.get(Task, task.id)
+        # V31-S-02：先明确保留默认不确定项，再验证手动补充原文的原有契约。
+        for candidate in list(suspects_of(db, task.id)):
+            engine.decide_suspect(db, t, candidate.id, decision='ignore', category=None, user_id=t.owner_id)
         engine.add_user_term(db, t, loc="F1-P3", char_start=4, char_end=19, category="ORG")
         engine.add_user_term(db, t, loc="F1-P3", char_start=22, char_end=25, category="PERSON")
         engine.learn_confirmed_names(db, t, t.owner_id)

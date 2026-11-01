@@ -246,7 +246,7 @@ class Task(Base):
         enum_check("policy", ["ai", "local_only"]),
         enum_check(
             "status",
-            ["parsing", "parse_failed", "awaiting_confirm", "reviewing", "reviewed", "completed_local", "active"],
+            ["parsing", "parse_failed", "awaiting_confirm", "reviewing", "reviewed", "completed_local", "active", "draft"],
         ),
         Index("ix_tasks_owner_id_created_at", "owner_id", text("created_at DESC")),
     )
@@ -294,6 +294,7 @@ class TaskFile(Base):
     doc_type: Mapped[Optional[str]] = mapped_column(String(12))
     doc_type_source: Mapped[Optional[str]] = mapped_column(String(6))
     parser_version: Mapped[Optional[str]] = mapped_column(String(20))
+    parse_error: Mapped[Optional[str]] = mapped_column(Text)
     page_count: Mapped[Optional[int]] = mapped_column(Integer)
     has_revisions: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     warnings: Mapped[Any] = _jsonb_list()
