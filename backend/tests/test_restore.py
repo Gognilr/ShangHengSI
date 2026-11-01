@@ -5,7 +5,7 @@ import yaml
 
 from app.parsing.docx import parse_docx
 from app.redaction.engine import NodeIn, compute
-from app.redaction.restore import restore
+from app.redaction.restore import check, restore
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "docx"
 
@@ -78,3 +78,37 @@ def test_codes_in_typical_model_output():
         "**Fictional Metals Trading FZE** 应在“张三”签字后付款；Fictional Metals Trading FZE's obligation, "
         "see Fictional Metals Trading FZE.\n| 付款方 | Fictional Metals Trading FZE |\n"
         "- 金额：USD400,000.00(含税)\n`张三`")
+
+
+def test_check_does_not_scan_inserted_values():
+    mapping = {"[客户_A]": "客户_B 贸易", "客户_B": "乙", "[我方]": "甲",
+               "[电话]#1": "123", "客户_C#1": "丙", "[SWIFT_1]": "EXAMPLE",
+               "[公司_Q2]": "追问公司"}
+    checked = check("客户_A；客户_B；我方；〔我方〕；客户_C；[SWIFT_1]；公司_Q2", mapping)
+    assert checked.text == "客户_B 贸易；乙；我方；甲；客户_C；EXAMPLE；追问公司"
+    assert (checked.restored, checked.fixed, checked.removed) == (5, 3, 0)
+    assert [(m.raw, m.kind) for m in checked.marks] == [("客户_C", "unknown")]
+    assert check(None, mapping).text == ""
+
+
+def test_check_marks_use_output_positions():
+    text = "😀[客户_A]、客户A、[金额_9]（=合同总价的 30.0%）、[电话]、F1-T2-R3-C4"
+    checked = check(text, {"[客户_A]": "很长的虚构公司"}, clause=True,
+                    locations={"F1-T2-R3-C4": "表格"})
+    assert checked.text == "😀很长的虚构公司、客户A、[金额_9]、[电话]、F1-T2-R3-C4"
+    assert (checked.restored, checked.fixed, checked.removed) == (1, 0, 1)
+    assert [m.kind for m in checked.marks] == ["variant", "unknown", "shared", "note"]
+    assert all(checked.text[m.start:m.end] == m.raw for m in checked.marks)
+    assert all(a.end <= b.start for a, b in zip(checked.marks, checked.marks[1:]))
+
+
+def test_check_assistant_matches_finished_stream():
+    from app.assistant.stream import incremental
+
+    mapping = {"[[ORG_1]]": "虚构公司", "[[PER_1]]": "客户_A", "[[OUR]]": "甲方"}
+    text = "[[ORG_1]]、［[ORG_1]】、[[PER_1]]、[[OUR]]；[ORG_1]、ORG_1、[[ORG_9]]；[[未结束"
+    checked = check(text, mapping)
+    assert checked.text == incremental(text, mapping, 0, finished=True)[0]
+    assert (checked.restored, checked.fixed) == (4, 0)
+    assert [(m.raw, m.kind) for m in checked.marks] == [
+        ("[ORG_1]", "variant"), ("ORG_1", "variant"), ("[[ORG_9]]", "unknown")]

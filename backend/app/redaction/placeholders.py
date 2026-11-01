@@ -64,6 +64,10 @@ BUYER = "买方"
 SELLER = "卖方"
 OTHER = "其他"
 
+# 回程文法使用同一份类别标签；从现有格式导出，新增编号类别时自动生效。
+ROLE_LABELS = frozenset(("客户", "供应商", BUYER, SELLER, "收货人", "通知方", "受益人", "银行", "公司", OTHER))
+NUMBERED_LABELS = frozenset(fmt.strip("[]").split("_", 1)[0] for fmt in _NUMBERED.values()) | frozenset(CHAT_LABELS.values())
+
 
 def letters(n: int) -> str:
     """0→A，25→Z，26→AA（与电子表格列名相同）。"""

@@ -30,3 +30,30 @@ must_keep:
   - 15 days
   - 100% T/T in advance
   - 25 天
+returns:
+  - field: clause
+    model: "Payment by Customer_A to [我方] via [电话], [邮箱], [网址], [证件号], [邮编], [联系方式], [地址：德国]."
+    expect: "Payment by Delta Mock Industries GmbH to Haiyue Fictive Carbon Co., Ltd. via [电话], [邮箱], [网址], [证件号], [邮编], [联系方式], [地址：德国]."
+    marks: [{raw: "[电话]", kind: shared}, {raw: "[邮箱]", kind: shared}, {raw: "[网址]", kind: shared}, {raw: "[证件号]", kind: shared}, {raw: "[邮编]", kind: shared}, {raw: "[联系方式]", kind: shared}, {raw: "[地址：德国]", kind: shared}]
+    fixed: 2
+  - field: text
+    model: "[电话] [地址：德国] ( =合同总价的 30.0%) 【主体说明】 【报价明细表：单价×数量】"
+    expect: "[电话] [地址：德国] ( =合同总价的 30.0%) 【主体说明】 【报价明细表：单价×数量】"
+    marks: []
+  - field: clause
+    model: "[Amount 1](=合同总价的 30%)【主体说明】【报价明细表：单价×数量】"
+    expect: "176,000.00【主体说明】【报价明细表：单价×数量】"
+    marks: [{raw: "【主体说明】", kind: note}, {raw: "【报价明细表：单价×数量】", kind: note}]
+    fixed: 1
+    removed: 1
+  - field: text
+    model: "〔Ｐｅｒｓｏｎ＿１］, [人员1], Person_1; [[ORG_7]]."
+    expect: "Hans Example, Hans Example, Hans Example; [[ORG_7]]."
+    marks: [{raw: "[[ORG_7]]", kind: unknown}]
+    restored: 3
+    fixed: 3
+  - field: clause
+    model: "See [F1-TB2], F1-T2-R3-C4."
+    expect: "See [F1-TB2], F1-T2-R3-C4."
+    locations: {F1-TB2: 报价表}
+    marks: [{raw: "[F1-TB2]", kind: note}, {raw: F1-T2-R3-C4, kind: note}]

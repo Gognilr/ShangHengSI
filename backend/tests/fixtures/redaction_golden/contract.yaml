@@ -44,3 +44,30 @@ must_keep:
   - 最高不超过 5%
   - 检验费用由卖方承担
   - 适用中华人民共和国法律
+returns:
+  - field: text
+    model: "客户_A与我方核对[金额_1]。"
+    expect: "Orion Fictive Trading L.L.C.与北辰虚构新材料有限公司核对625,000.00。"
+    marks: []
+    restored: 3
+    fixed: 0
+  - field: clause
+    model: "[ Customer A 】向客户＿Ａ付款[金额_2]（=合同总价的 30.0%）。"
+    expect: "Orion Fictive Trading L.L.C.向Orion Fictive Trading L.L.C.付款187,500.00。"
+    marks: []
+    restored: 3
+    fixed: 2
+    removed: 1
+  - field: text
+    model: "客户A、客户 A、Customer A、人员1、Person 1。"
+    expect: "客户A、客户 A、Customer A、人员1、Person 1。"
+    marks: [{raw: 客户A, kind: variant}, {raw: 客户 A, kind: variant}, {raw: Customer A, kind: variant}]
+  - field: clause
+    model: "人员1、Person 1、[客户_C]、客户_C、[金额_9]。"
+    expect: "人员1、Person 1、[客户_C]、客户_C、[金额_9]。"
+    marks: [{raw: 人员1, kind: variant}, {raw: Person 1, kind: variant}, {raw: "[客户_C]", kind: unknown}, {raw: 客户_C, kind: unknown}, {raw: "[金额_9]", kind: unknown}]
+  - field: text
+    model: "见[F1-P3]、F2-PG3-B5和F1-S1-E8；AF1-P3、F1-P3-X不算位置。"
+    expect: "见合同 第三条、F2-PG3-B5和F1-S1-E8；AF1-P3、F1-P3-X不算位置。"
+    locations: {F1-P3: 合同 第三条}
+    marks: [{raw: F2-PG3-B5, kind: note}, {raw: F1-S1-E8, kind: note}]

@@ -18,6 +18,7 @@ import yaml
 
 from app.redaction import outbound
 from app.redaction.engine import NodeIn, compute, outbound_text
+from app.redaction.restore import check
 
 GOLDEN = Path(__file__).resolve().parent / "fixtures" / "redaction_golden"
 SAMPLES = sorted(p.stem for p in GOLDEN.glob("*.txt"))
@@ -125,3 +126,18 @@ def test_mapping_restores_every_replacement(name):
     by_loc = {n.loc: n.text for n in nodes}
     for it in result.items:
         assert by_loc[it.loc][it.char_start:it.char_end] in values
+
+
+@pytest.mark.parametrize("name", [name for name in SAMPLES
+                                 if yaml.safe_load((GOLDEN / f"{name}.yaml").read_text(encoding="utf-8")).get("returns")])
+def test_model_returns(name):
+    _, ann, result, _, _ = load(name)
+    for sample in ann["returns"]:
+        checked = check(sample["model"], result.mapping, clause=sample["field"] == "clause",
+                        locations=sample.get("locations"))
+        assert checked.text == sample["expect"]
+        assert [(mark.raw, mark.kind) for mark in checked.marks] == [
+            (mark["raw"], mark["kind"]) for mark in sample["marks"]]
+        for counter in ("restored", "fixed", "removed"):
+            if counter in sample:
+                assert getattr(checked, counter) == sample[counter]
