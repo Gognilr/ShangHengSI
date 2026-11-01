@@ -1,0 +1,40 @@
+/* 动效令牌与通用过渡（V31-U1 第三节）。只动 transform 与 opacity；特效关闭时一律不动 */
+:root {
+  --si-ease: cubic-bezier(.2, .8, .2, 1);
+  --si-spring: linear(0, .22 7%, .58 15%, .9 25%, 1.06 35%, 1.08 42%, 1.03 55%, .99 68%, 1);
+  --si-dur-1: 160ms;
+  --si-dur-2: 320ms;
+  --si-dur-exit: 200ms;
+  --el-transition-duration: var(--si-dur-2);
+  --el-transition-duration-fast: var(--si-dur-1);
+}
+
+html[data-fx="off"] *, html[data-fx="off"] *::before, html[data-fx="off"] *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* 淡入淡出 */
+.si-fade-enter-active { transition: opacity var(--si-dur-2) var(--si-ease); }
+.si-fade-leave-active { transition: opacity var(--si-dur-exit) var(--si-ease); }
+.si-fade-enter-from, .si-fade-leave-to { opacity: 0; }
+
+/* 上移 8px 淡入 */
+.si-rise-enter-active { transition: opacity var(--si-dur-2) var(--si-ease), transform var(--si-dur-2) var(--si-spring); }
+.si-rise-leave-active { transition: opacity var(--si-dur-exit) var(--si-ease), transform var(--si-dur-exit) var(--si-ease); }
+.si-rise-enter-from, .si-rise-leave-to { opacity: 0; transform: translateY(8px); }
+
+/* 弹层：缩放淡入 */
+.si-pop-enter-active { transition: opacity var(--si-dur-2) var(--si-ease), transform var(--si-dur-2) var(--si-spring); }
+.si-pop-leave-active { transition: opacity var(--si-dur-exit) var(--si-ease), transform var(--si-dur-exit) var(--si-ease); }
+.si-pop-enter-from, .si-pop-leave-to { opacity: 0; transform: scale(.96); }
+
+/* 列表增删与移位（TransitionGroup） */
+.si-list-enter-active, .si-list-move { transition: opacity var(--si-dur-2) var(--si-ease), transform var(--si-dur-2) var(--si-spring); }
+.si-list-leave-active { transition: opacity var(--si-dur-exit) var(--si-ease), transform var(--si-dur-exit) var(--si-ease); position: absolute; }
+.si-list-enter-from { opacity: 0; transform: translateY(14px) scale(.98); }
+.si-list-leave-to { opacity: 0; transform: scale(.96); }
+
+/* 路由进入：只有进入动画，旧页面立即移除（3.2 第 3 条） */
+.si-page-enter-active { transition: opacity 240ms var(--si-ease), transform 240ms var(--si-ease); }
+.si-page-enter-from { opacity: 0; transform: translateY(6px); }

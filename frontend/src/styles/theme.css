@@ -1,44 +1,245 @@
-:root {
-  /* 字号、行高与字重成组使用。 */
-  --si-font-h2: 600 18px/1.45 var(--el-font-family);
-  --si-font-h4: 600 15px/1.5 var(--el-font-family);
-  --si-font-body: 400 14px/1.6 var(--el-font-family);
-  --si-font-display: 600 32px/1.3 var(--el-font-family);
-  --si-font-title-lg: 600 30px/1.3 var(--el-font-family);
-  --si-font-title: 600 24px/1.35 var(--el-font-family);
-  --si-font-h3: 600 16px/1.5 var(--el-font-family);
-  --si-font-reading: 400 15px/1.8 var(--el-font-family);
-  --si-font-meta: 400 13px/1.5 var(--el-font-family);
-  --si-font-caption: 400 12px/1.6 var(--el-font-family);
-  --si-font-stat: 600 24px/1.3 var(--el-font-family);
-  --el-color-primary: #173B68;
-  --el-color-primary-light-3: #5D7695;
-  --el-color-primary-light-5: #8B9DB4;
-  --el-color-primary-light-7: #B9C4D2;
-  --el-color-primary-light-8: #D1D8E1;
-  --el-color-primary-light-9: #E8EBF0;
-  --el-color-primary-dark-2: #122F53;
-  --el-color-success: #067647;
-  --el-color-success-light-3: #519F7E;
-  --el-color-success-light-5: #82BAA3;
-  --el-color-success-light-7: #B4D6C8;
-  --el-color-success-light-8: #CDE4DA;
-  --el-color-success-light-9: #E6F1ED;
-  --el-color-success-dark-2: #055E39;
-  --el-color-warning: #B54708;
-  --el-color-warning-light-3: #CB7E52;
-  --el-color-warning-light-5: #DAA384;
-  --el-color-warning-light-7: #E9C8B5;
-  --el-color-warning-light-8: #F0DACE;
-  --el-color-warning-light-9: #F8EDE6;
-  --el-color-warning-dark-2: #913906;
-  --el-color-danger: #B42318;
-  --el-color-danger-light-3: #CA655D;
-  --el-color-danger-light-5: #DA918C;
-  --el-color-danger-light-7: #E8BDBA;
-  --el-color-danger-light-8: #F0D3D1;
-  --el-color-danger-light-9: #F8E9E8;
-  --el-color-danger-dark-2: #901C13;
+/*
+ * 设计令牌（V31-U1 设计第一节）。全仓只有本文件可以写颜色值。
+ * A 浅色外壳与纸面 → B 夜幕外壳 → 特效级别 → C 映射与派生，顺序不可调换。
+ * C 块同时写在 :root 与 .si-paper 上：自定义属性在声明的元素上取值，纸面内的派生色才会按浅色重算。
+ */
+
+/* A 浅色外壳与纸面 */
+:root, .si-paper {
+  --si-bg-canvas: #F5F5F7;
+  --si-bg-side: #EEEEF1;
+  --si-surface-1: #FFFFFF;
+  --si-surface-2: #F2F2F5;
+  --si-surface-pop: #FFFFFF;
+  --si-field: #FFFFFF;
+  --si-hair: #E3E3E8;
+  --si-hair-strong: #D2D2D7;
+  --si-hair-faint: #ECECF0;
+  --si-ink-1: #1D1D1F;
+  --si-ink-2: #424245;
+  --si-ink-3: #6E6E73;
+  --si-ink-4: #8E8E93;
+  --si-ink-5: #B8B8BD;
+  --si-blue: #0071E3;
+  --si-blue-ink: #0066CC;
+  --si-cyan: #32ADE6;
+  --si-indigo: #5856D6;
+  --si-focus: #0071E3;
+  --si-danger: #D70015;
+  --si-warn: #C93400;
+  --si-ok: #248A3D;
+  --si-info: #6E6E73;
+  --si-danger-ink: #D70015;
+  --si-warn-ink: #C93400;
+  --si-ok-ink: #1E7B34;
+  --si-press: #000000;
+  --si-stage: #E8EAEE;
+  --si-island-bg: #1D1D1F;
+  --si-island-ink: #F5F5F7;
+  --si-toast-bg: #1D1D1F;
+  --si-toast-ink: #FFFFFF;
+  --si-mask: rgba(0, 0, 0, .32);
+  --si-scrollbar: #C7C7CC;
+  --si-text-reading: var(--si-paper-ink-2);
+  --si-shadow-1: 0 1px 2px rgba(16, 24, 40, .06);
+  --si-shadow-2: 0 8px 24px rgba(16, 24, 40, .08);
+  --si-shadow-3: 0 24px 60px rgba(16, 24, 40, .16);
+  --si-paper-shadow: 0 0 0 1px rgba(0, 0, 0, .08), 0 12px 40px rgba(0, 0, 0, .18);
+  --si-ambient: radial-gradient(900px 500px at 15% -10%, color-mix(in srgb, var(--si-blue) 7%, transparent), transparent 60%), radial-gradient(700px 500px at 100% 10%, color-mix(in srgb, var(--si-indigo) 5%, transparent), transparent 60%);
+  --si-glow-blue: 0 6px 20px color-mix(in srgb, var(--si-blue) 30%, transparent);
+  --si-blur: blur(20px) saturate(140%);
+  /* 替换类别（R3.md 5.4） */
+  --si-k-org: #2F5E9E;
+  --si-k-org-bg: #E8EEF7;
+  --si-k-person: #6941C6;
+  --si-k-person-bg: #F1ECFB;
+  --si-k-contact: #0E7C8A;
+  --si-k-contact-bg: #E5F4F6;
+  --si-k-id: #8A5A2B;
+  --si-k-id-bg: #F4EEE7;
+  --si-k-addr: #2E7D4F;
+  --si-k-addr-bg: #E9F4EC;
+  --si-k-amount: #9C6500;
+  --si-k-amount-bg: #FFF3D6;
+  --si-k-other: #667085;
+  --si-k-other-bg: #F0F1F3;
+  /* 两种外壳相同的取值 */
+  --si-paper: #FFFFFF;
+  --si-paper-ink: #1D1D1F;
+  --si-paper-ink-2: #333A45;
+  --si-cap-bg: #E8F1FC;
+  --si-cap-ink: #0066CC;
+  --si-code-bg: #0B1A2E;
+  --si-code-ink: #7CC4FF;
+  --si-brand-navy: #173B68;
+  --si-white: #FFFFFF;
+}
+
+/* B 夜幕外壳 */
+html[data-shell="night"] {
+  color-scheme: dark;
+  --si-bg-canvas: #090B10;
+  --si-bg-side: #0E1118;
+  --si-surface-1: #12161E;
+  --si-surface-2: #191E28;
+  --si-surface-pop: #1C212C;
+  --si-field: #0E1117;
+  --si-hair: #242A36;
+  --si-hair-strong: #303746;
+  --si-hair-faint: #1C212B;
+  --si-ink-1: #F2F5F9;
+  --si-ink-2: #C9D0DA;
+  --si-ink-3: #8D97A6;
+  --si-ink-4: #6B7586;
+  --si-ink-5: #4E5766;
+  --si-blue: #0A84FF;
+  --si-blue-ink: #4DA3FF;
+  --si-cyan: #64D2FF;
+  --si-indigo: #5E5CE6;
+  --si-focus: #64D2FF;
+  --si-danger: #FF453A;
+  --si-warn: #FF9F0A;
+  --si-ok: #30D158;
+  --si-info: #8E8E93;
+  --si-danger-ink: #FF6961;
+  --si-warn-ink: #FFB340;
+  --si-ok-ink: #30D158;
+  --si-press: #FFFFFF;
+  --si-stage: #0D1016;
+  --si-island-bg: #000000;
+  --si-island-ink: #F5F5F7;
+  --si-toast-bg: #F2F5F9;
+  --si-toast-ink: #0C1017;
+  --si-mask: rgba(0, 0, 0, .55);
+  --si-scrollbar: #3A4252;
+  --si-text-reading: var(--si-ink-2);
+  --si-shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --si-shadow-2: 0 8px 24px rgba(0, 0, 0, .35);
+  --si-shadow-3: 0 24px 60px rgba(0, 0, 0, .5);
+  --si-paper-shadow: 0 0 0 1px rgba(0, 0, 0, .12), 0 12px 40px rgba(0, 0, 0, .35);
+  --si-ambient: radial-gradient(900px 500px at 15% -10%, color-mix(in srgb, var(--si-blue) 14%, transparent), transparent 60%), radial-gradient(700px 500px at 100% 10%, color-mix(in srgb, var(--si-indigo) 10%, transparent), transparent 60%);
+  --si-glow-blue: 0 6px 20px color-mix(in srgb, var(--si-blue) 35%, transparent);
+  --si-k-org: color-mix(in srgb, #2F5E9E 50%, #FFFFFF);
+  --si-k-person: color-mix(in srgb, #6941C6 50%, #FFFFFF);
+  --si-k-contact: color-mix(in srgb, #0E7C8A 50%, #FFFFFF);
+  --si-k-id: color-mix(in srgb, #8A5A2B 50%, #FFFFFF);
+  --si-k-addr: color-mix(in srgb, #2E7D4F 50%, #FFFFFF);
+  --si-k-amount: color-mix(in srgb, #9C6500 50%, #FFFFFF);
+  --si-k-other: color-mix(in srgb, #667085 50%, #FFFFFF);
+  --si-k-org-bg: color-mix(in srgb, var(--si-k-org) 18%, var(--si-surface-1));
+  --si-k-person-bg: color-mix(in srgb, var(--si-k-person) 18%, var(--si-surface-1));
+  --si-k-contact-bg: color-mix(in srgb, var(--si-k-contact) 18%, var(--si-surface-1));
+  --si-k-id-bg: color-mix(in srgb, var(--si-k-id) 18%, var(--si-surface-1));
+  --si-k-addr-bg: color-mix(in srgb, var(--si-k-addr) 18%, var(--si-surface-1));
+  --si-k-amount-bg: color-mix(in srgb, var(--si-k-amount) 18%, var(--si-surface-1));
+  --si-k-other-bg: color-mix(in srgb, var(--si-k-other) 18%, var(--si-surface-1));
+}
+
+/* 特效级别（V31-U1 3.2 第 6 条）：精简与关闭时不用毛玻璃、辉光与氛围光 */
+html[data-fx="lite"], html[data-fx="off"] {
+  --si-ambient: none;
+  --si-glow-blue: none;
+  --si-blur: none;
+}
+
+/* C 映射与派生 */
+:root, .si-paper {
+  /* 字体与字号（V31-U1 1.4）：字重只用 400、500、600 */
+  --si-font-sans: "SI Sans", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --si-font-mono: "SI Mono", "Cascadia Mono", Consolas, monospace;
+  --si-font-display: 600 32px/1.25 var(--si-font-sans);
+  --si-font-title-lg: 600 28px/1.3 var(--si-font-sans);
+  --si-font-title: 600 22px/1.35 var(--si-font-sans);
+  --si-font-h2: 600 17px/1.45 var(--si-font-sans);
+  --si-font-h3: 600 15px/1.5 var(--si-font-sans);
+  --si-font-h4: 600 14px/1.5 var(--si-font-sans);
+  --si-font-label: 500 14px/1.4 var(--si-font-sans);
+  --si-font-label-sm: 500 12px/1.3 var(--si-font-sans);
+  --si-font-reading: 400 15px/1.8 var(--si-font-sans);
+  --si-font-body: 400 14px/1.6 var(--si-font-sans);
+  --si-font-meta: 400 13px/1.5 var(--si-font-sans);
+  --si-font-caption: 400 12px/1.6 var(--si-font-sans);
+  --si-font-code: 400 13px/1.5 var(--si-font-mono);
+  --si-font-code-sm: 500 12px/1.2 var(--si-font-mono);
+  --si-font-stat: 500 24px/1.2 var(--si-font-mono);
+  /* 圆角六级、控件尺寸（V31-U1 1.5） */
+  --si-radius-paper: 4px;
+  --si-radius-tag: 6px;
+  --si-radius-card: 12px;
+  --si-radius-pop: 16px;
+  --si-radius-sheet: 20px;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 20px;
+  --el-component-size-large: 44px;
+  --el-component-size: 36px;
+  --el-component-size-small: 28px;
+  --el-font-family: var(--si-font-sans);
+  /* 旧令牌（V31-U1 1.7） */
+  --si-focus-ring: var(--si-focus);
+  --si-stage-bg: var(--si-stage);
+  --si-shadow-pop: var(--si-shadow-3);
+  --si-card-hover-border: var(--si-hair-strong);
+  --si-brand-blue: var(--si-blue);
+  --si-brand-gradient: linear-gradient(135deg, var(--si-brand-navy) 0%, var(--si-blue) 55%, var(--si-cyan) 100%);
+  /* Element Plus：底色、文字、边框、填充、遮罩、阴影 */
+  --el-color-white: var(--si-white);
+  --el-bg-color: var(--si-surface-1);
+  --el-bg-color-page: var(--si-bg-canvas);
+  --el-bg-color-overlay: var(--si-surface-pop);
+  --el-text-color-primary: var(--si-ink-1);
+  --el-text-color-regular: var(--si-ink-2);
+  --el-text-color-secondary: var(--si-ink-3);
+  --el-text-color-placeholder: var(--si-ink-4);
+  --el-text-color-disabled: var(--si-ink-5);
+  --el-border-color: var(--si-hair-strong);
+  --el-border-color-light: var(--si-hair);
+  --el-border-color-lighter: var(--si-hair-faint);
+  --el-border-color-extra-light: var(--si-hair-faint);
+  --el-border-color-dark: color-mix(in srgb, var(--si-hair-strong) 80%, var(--si-ink-3));
+  --el-border-color-darker: color-mix(in srgb, var(--si-hair-strong) 60%, var(--si-ink-3));
+  --el-fill-color: var(--si-surface-2);
+  --el-fill-color-light: var(--si-surface-2);
+  --el-fill-color-lighter: color-mix(in srgb, var(--si-surface-2) 50%, var(--si-surface-1));
+  --el-fill-color-extra-light: color-mix(in srgb, var(--si-surface-2) 25%, var(--si-surface-1));
+  --el-fill-color-dark: color-mix(in srgb, var(--si-surface-2) 85%, var(--si-ink-3));
+  --el-fill-color-darker: color-mix(in srgb, var(--si-surface-2) 70%, var(--si-ink-3));
+  --el-fill-color-blank: var(--si-field);
+  --el-mask-color: var(--si-mask);
+  --el-mask-color-extra-light: color-mix(in srgb, var(--si-surface-1) 30%, transparent);
+  --el-box-shadow: var(--si-shadow-2);
+  --el-box-shadow-light: var(--si-shadow-1);
+  --el-box-shadow-lighter: var(--si-shadow-1);
+  --el-box-shadow-dark: var(--si-shadow-3);
+  /* Element Plus：状态色。light-N 为状态色 (100-10N)% 混入面板底色，dark-2 混入 --si-press */
+  --el-color-primary: var(--si-blue);
+  --el-color-primary-light-3: color-mix(in srgb, var(--si-blue) 70%, var(--si-surface-1));
+  --el-color-primary-light-5: color-mix(in srgb, var(--si-blue) 50%, var(--si-surface-1));
+  --el-color-primary-light-7: color-mix(in srgb, var(--si-blue) 30%, var(--si-surface-1));
+  --el-color-primary-light-8: color-mix(in srgb, var(--si-blue) 20%, var(--si-surface-1));
+  --el-color-primary-light-9: color-mix(in srgb, var(--si-blue) 10%, var(--si-surface-1));
+  --el-color-primary-dark-2: color-mix(in srgb, var(--si-blue) 82%, var(--si-press));
+  --el-color-success: var(--si-ok);
+  --el-color-success-light-3: color-mix(in srgb, var(--si-ok) 70%, var(--si-surface-1));
+  --el-color-success-light-5: color-mix(in srgb, var(--si-ok) 50%, var(--si-surface-1));
+  --el-color-success-light-7: color-mix(in srgb, var(--si-ok) 30%, var(--si-surface-1));
+  --el-color-success-light-8: color-mix(in srgb, var(--si-ok) 20%, var(--si-surface-1));
+  --el-color-success-light-9: color-mix(in srgb, var(--si-ok) 10%, var(--si-surface-1));
+  --el-color-success-dark-2: color-mix(in srgb, var(--si-ok) 82%, var(--si-press));
+  --el-color-warning: var(--si-warn);
+  --el-color-warning-light-3: color-mix(in srgb, var(--si-warn) 70%, var(--si-surface-1));
+  --el-color-warning-light-5: color-mix(in srgb, var(--si-warn) 50%, var(--si-surface-1));
+  --el-color-warning-light-7: color-mix(in srgb, var(--si-warn) 30%, var(--si-surface-1));
+  --el-color-warning-light-8: color-mix(in srgb, var(--si-warn) 20%, var(--si-surface-1));
+  --el-color-warning-light-9: color-mix(in srgb, var(--si-warn) 10%, var(--si-surface-1));
+  --el-color-warning-dark-2: color-mix(in srgb, var(--si-warn) 82%, var(--si-press));
+  --el-color-danger: var(--si-danger);
+  --el-color-danger-light-3: color-mix(in srgb, var(--si-danger) 70%, var(--si-surface-1));
+  --el-color-danger-light-5: color-mix(in srgb, var(--si-danger) 50%, var(--si-surface-1));
+  --el-color-danger-light-7: color-mix(in srgb, var(--si-danger) 30%, var(--si-surface-1));
+  --el-color-danger-light-8: color-mix(in srgb, var(--si-danger) 20%, var(--si-surface-1));
+  --el-color-danger-light-9: color-mix(in srgb, var(--si-danger) 10%, var(--si-surface-1));
+  --el-color-danger-dark-2: color-mix(in srgb, var(--si-danger) 82%, var(--si-press));
   --el-color-error: var(--el-color-danger);
   --el-color-error-light-3: var(--el-color-danger-light-3);
   --el-color-error-light-5: var(--el-color-danger-light-5);
@@ -46,39 +247,19 @@
   --el-color-error-light-8: var(--el-color-danger-light-8);
   --el-color-error-light-9: var(--el-color-danger-light-9);
   --el-color-error-dark-2: var(--el-color-danger-dark-2);
-  --el-color-info: #667085;
-  --el-color-info-light-3: #949BAA;
-  --el-color-info-light-5: #B2B8C2;
-  --el-color-info-light-7: #D1D4DA;
-  --el-color-info-light-8: #E0E2E7;
-  --el-color-info-light-9: #F0F1F3;
-  --el-color-info-dark-2: #525A6A;
-  --el-text-color-primary: #1D1D1F;
-  --el-text-color-regular: #344054;
-  --el-text-color-secondary: #667085;
-  --el-text-color-placeholder: #98A2B3;
-  --el-border-color: #D0D5DD;
-  --el-border-color-light: #E5E7EB;
-  --el-border-color-lighter: #EEF0F3;
-  --el-bg-color-page: #F8F9FA;
-  --el-fill-color-light: #F5F7FA;
-  --el-font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", sans-serif;
-  --el-component-size: 40px;
-  --el-component-size-small: 32px;
-  --el-border-radius-base: 8px;
-  --si-radius-card: 12px;
-  --si-cyan: #16B8CC;
-  --si-brand-blue: #1E6FB8;
-  --si-brand-gradient: linear-gradient(135deg, #173B68 0%, #1E6FB8 55%, #16B8CC 100%);
-  --si-shadow-pop: 0 12px 32px rgba(16,24,40,.12);
-  --si-text-reading: #333A45;
-  --si-focus-ring: var(--el-color-primary);
-  --si-stage-bg: #EDEFF2;
-  --si-paper-shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.05);
-  --si-card-hover-border: var(--el-border-color);
-  --si-scrollbar: #C9CED6;
-  --si-radius-paper: 4px;
+  --el-color-info: var(--si-info);
+  --el-color-info-light-3: color-mix(in srgb, var(--si-info) 70%, var(--si-surface-1));
+  --el-color-info-light-5: color-mix(in srgb, var(--si-info) 50%, var(--si-surface-1));
+  --el-color-info-light-7: color-mix(in srgb, var(--si-info) 30%, var(--si-surface-1));
+  --el-color-info-light-8: color-mix(in srgb, var(--si-info) 20%, var(--si-surface-1));
+  --el-color-info-light-9: color-mix(in srgb, var(--si-info) 10%, var(--si-surface-1));
+  --el-color-info-dark-2: color-mix(in srgb, var(--si-info) 82%, var(--si-press));
 }
+
+/* 纸面：任何外壳下都是白纸黑字 */
+.si-paper { color-scheme: light; background: var(--si-paper); color: var(--si-paper-ink); }
+
+/* 以下为组件全局外观，V31-U1-02 移到 skin.css */
 html body { font: var(--si-font-body); color: var(--el-text-color-primary); text-autospace: normal; -webkit-font-smoothing: antialiased; }
 * { scrollbar-width: thin; scrollbar-color: var(--si-scrollbar) transparent; }
 :focus-visible { outline: 2px solid var(--si-focus-ring); outline-offset: 2px; }
@@ -97,21 +278,4 @@ html body { font: var(--si-font-body); color: var(--el-text-color-primary); text
 .el-button.is-link { height: auto; }
 .el-select__wrapper { min-height: var(--el-component-size); }
 .el-select--small .el-select__wrapper { min-height: var(--el-component-size-small); }
-.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner { transition: color 150ms, background-color 150ms, border-color 150ms; }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
-:root {
-  --si-k-org-bg: #E8EEF7;
-  --si-k-org: #2F5E9E;
-  --si-k-person-bg: #F1ECFB;
-  --si-k-person: #6941C6;
-  --si-k-contact-bg: #E5F4F6;
-  --si-k-contact: #0E7C8A;
-  --si-k-id-bg: #F4EEE7;
-  --si-k-id: #8A5A2B;
-  --si-k-addr-bg: #E9F4EC;
-  --si-k-addr: #2E7D4F;
-  --si-k-amount-bg: #FFF3D6;
-  --si-k-amount: #9C6500;
-  --si-k-other-bg: #F0F1F3;
-  --si-k-other: #667085;
-}
+.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner { transition: color var(--si-dur-1), background-color var(--si-dur-1), border-color var(--si-dur-1); }

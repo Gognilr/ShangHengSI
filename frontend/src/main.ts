@@ -1,13 +1,16 @@
 import ElementPlus from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import 'element-plus/dist/index.css'
+import '@/styles/fonts.css'
 import '@/styles/theme.css'
 import '@/styles/common.css'
+import '@/styles/motion.css'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import { setHttpHooks } from '@/api/http'
 import App from './App.vue'
 import { HOME_PATH, router } from './router'
+import { useAppearanceStore } from './stores/appearance'
 import { useAuthStore } from './stores/auth'
 
 const app = createApp(App)
@@ -15,6 +18,7 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
+useAppearanceStore(pinia).init()
 
 const auth = useAuthStore(pinia)
 setHttpHooks({
