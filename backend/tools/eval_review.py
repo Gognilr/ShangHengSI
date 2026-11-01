@@ -50,7 +50,7 @@ def probe_options(*, copy_rule=False, bracket_codes=False):
                 if bracket_codes:
                     for code in ("我方", "客户_A", "人员_1"):
                         line = line.replace(f"“{code}”", f"“[{code}]”")
-                if copy_rule:
+                if copy_rule and COPY_RULE not in line:
                     line += COPY_RULE
                 lines[i] = line
         return version, "\n".join(lines)
@@ -59,7 +59,7 @@ def probe_options(*, copy_rule=False, bracket_codes=False):
         if copy_rule or bracket_codes:
             stack.enter_context(patch.object(prompt, "load_system_template", template))
         if bracket_codes:
-            formats = {k: f"[{v}]" if k in ("PERSON", "PROJECT", "REFNO") else v
+            formats = {k: f"[{v}]" if k in ("PERSON", "PROJECT", "REFNO") and not v.startswith('[') else v
                        for k, v in placeholders._NUMBERED.items()}
             org = placeholders.Allocator.org
             def bracket_org(self, key, role):

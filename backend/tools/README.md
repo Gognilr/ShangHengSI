@@ -69,6 +69,7 @@ python tools/eval_review.py tests/fixtures/docx --username evaluator --output /e
 三个评测进程依次运行，其他配置一致：A 不加开关，B 加 `--copy-rule`，C 加 `--copy-rule --bracket-codes`。
 两个开关仅用 `unittest.mock.patch` 临时替换提示词第 2 条、代号格式、分配器与 `outbound.OUR_CODE` 绑定，退出即恢复；产品代码与库中全局配置不改。
 `--bracket-codes` 单独使用时只改变代号和示例，不隐含 `--copy-rule`。
+产品采用新格式后，开关不会再套一层括号或重复追加照抄句。重现 R-02 的旧格式 A/B 与新格式 C 三组时使用提交 `a7c96cd`；R-03 之后的默认基线已是新格式与新提示词，不能当作原三组对比。
 
 各组加 `--return-probe` 后，只输出数字与最多十个代号写法，另建同名 `.json` 保存数字、样本摘要、任务和轮次 ID，便于合并首份试跑和剩余样本。
 JSON 每完成一份即刷新，不含问题正文和已还原文字。报告与 JSON 都拒绝覆盖。常规模式仍输出原有详细报告。

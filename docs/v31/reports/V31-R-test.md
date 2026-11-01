@@ -99,3 +99,10 @@
 - 助手只给已结束回复补标记，`content` 与 `get_delta` 的流式结果保持原样；翻译、比对等附加结果不检查。前端展示仍留 U3/U4。
 - **范围例外 V31Q-10（用户已同意）**：范围外改 `chat/router.py`，原因是响应模型会过滤字段；仅导入共用 `MarkOut` 并在 `ChatMessageOut` 增加默认空 `marks`，用户消息为空列表，路由、权限和其余字段不动。助手消息接口直接返回字典，无需扩范围；由 Opus 批次审核补设计。
 - 新增 6 条代表性用例全部通过；既有导出 15 项、接口抽查 3 项通过。最终相关 `test_runs_api.py test_chat.py test_report_docx.py test_annotated_export.py test_revised_export.py test_assistant_chat.py test_restore.py test_redaction_golden.py test_a03_outbound.py` 共 **372 通过、0 失败**，567.53 秒；A-03 残留计数 0。仅既有弃用警告。未跑全量，留 R-05；未新增真实模型调用、下载或正式服务器操作。
+
+## V31-R-05（2026-11-01，进行中）
+
+- 集中预检修正评测开关的重复应用：产品已采用新格式与照抄句后，`--bracket-codes` 不再把 `[人员_1]` 再包成 `[[人员_1]]`，`--copy-rule` 不再重复追加同一句。进程内格式、规则只出现一次及退出恢复检查通过，未调用模型；README 注明 R-02 原三组须在 `a7c96cd` 重现。
+- 集中前端构建通过。唯一一次整仓全量已启动，包含本批修改的全部测试、回程 golden 与 A-03，结果待补；保留命名容器 `aireview-v31r-full-20261101`。
+- 独立本机 compose（app/worker/pgvector 数据库/模拟模型）通过实际 HTTP API 完成上传、解析、审核、问题采纳、追问和三种导出。结果：completed 1 轮、问题 4、标记 3（variant/unknown/note 各 1）；追问标记 2；报告黄标提醒 3、批注版提醒 3；修订写入 1、转批注 3，接受视图无比例注记。仅本地模拟发送 2、error/blocked 0、真实模型调用 0；不做浏览器检查。
+- 模拟环境首次因临时初始化脚本漏加模块路径退出，修正后完整流程成功；首次脚本与日志、成功导出及数字证据均保留在仓库外。只停止本次创建的 compose 服务，保留容器、数据卷和文件；未连接正式服务器，未下载文件或新增真实调用。
