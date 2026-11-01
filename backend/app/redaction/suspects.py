@@ -14,7 +14,7 @@ from app.redaction import parties as P
 from app.redaction.detect import _QTY_UNIT_RE
 from app.redaction.dictionaries import (
     RESOURCES_DIR, _country_index, _term_pattern, common_terms, cn_surnames, en_words,
-    public_institution_spans, zh_words, zh_legal_finance,
+    public_institution_spans, zh_words, zh_legal_finance, chem_names,
 )
 
 ORG_SUFFIX = "org_suffix"
@@ -334,6 +334,7 @@ _TRADE = re.compile(r'(?<![A-Za-z0-9_])(?:EXW|FCA|FAS|FOB|CFR|CIF|CPT|CIP|DAP|DP
 def _plain_pattern() -> re.Pattern:
     terms = [line.strip() for line in (RESOURCES_DIR / 'plain_terms.txt').read_text(encoding='utf-8').splitlines()
              if line.strip() and not line.startswith('#')]
+    terms += list(chem_names())
     return re.compile('|'.join(_term_pattern(t) for t in sorted(terms, key=len, reverse=True)), re.I)
 
 

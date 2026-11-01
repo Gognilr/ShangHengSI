@@ -323,6 +323,7 @@ def compute(
     main_prefix: str | None = None,
     exclusions: Sequence[str] = (),
     keeps: Sequence[str] = (),
+    prior_suspects: Sequence[SuspectOut] = (),
     ner_cache: dict[str, dict] | None = None,
     style: str = "review",
     pinned: dict[str, str] | None = None,
@@ -700,6 +701,12 @@ def compute(
         if not any((s.loc, s.char_start, s.char_end) ==
                    (suspect.loc, suspect.char_start, suspect.char_end) for s in found):
             found.append(suspect)
+    # 正文未变时，其他位置的人工替换不能通过改变 NER 上下文撤销已有不确定项。
+    for s in prior_suspects:
+        if (s.loc in locs and 0 <= s.char_start < s.char_end <= len(nodes[locs[s.loc]].text)
+                and not _overlaps(occupied[locs[s.loc]], s.char_start, s.char_end)
+                and not any((x.loc, x.char_start, x.char_end) == (s.loc, s.char_start, s.char_end) for x in found)):
+            found.append(SuspectOut(s.loc, s.char_start, s.char_end, s.reason))
     kept = {P.normalize(t) for t in keeps}
     uncertain = {}
     for suspect in found:
@@ -1023,6 +1030,9 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
                                                        RedactionSuspect.decision == 'ignore'))]
     result = compute(nodes, task.stance, terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
                      keeps=[*user_keeps, *memory.values()],
+                     prior_suspects=[SuspectOut(r.loc, r.char_start, r.char_end, r.reason) for r in db.scalars(
+                         select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
+                                                       RedactionSuspect.decision.in_(['pending', 'ignore'])))],
                      mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
                      exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
                          select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],

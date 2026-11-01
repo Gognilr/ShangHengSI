@@ -114,7 +114,16 @@ def hanzi_pinyin() -> dict[str, tuple[str, ...]]:
 @lru_cache(maxsize=1)
 def en_words() -> frozenset[str]:
     """SCOWL size 50 普通词；来源及完整许可见 en_words.README.md。"""
-    return frozenset((RESOURCES_DIR / 'en_words.txt').read_text(encoding='utf-8').splitlines())
+    return frozenset(
+        word for name in ('en_words.txt', 'chem_words_en.txt')
+        for word in (RESOURCES_DIR / name).read_text(encoding='utf-8').splitlines()
+        if word and not word.startswith('#'))
+
+
+@lru_cache(maxsize=1)
+def chem_names() -> frozenset[str]:
+    """官方危险化学品目录的品名、别名；仅用于实体识别与不确定项。"""
+    return frozenset((RESOURCES_DIR / 'chem_names.txt').read_text(encoding='utf-8').splitlines())
 
 
 @lru_cache(maxsize=1)

@@ -92,6 +92,9 @@ def test_persisted_cache_hits_and_only_changed_node_recomputed(db_sessionmaker, 
         engine.apply_party_changes(db, current, [])
         assert calls == []
         assert {r.loc: (r.data_enc, r.updated_at) for r in rows} == old
+        suspect = db.scalar(select(models.RedactionSuspect).where(
+            models.RedactionSuspect.task_id == task.id, models.RedactionSuspect.loc == 'F1-P3'))
+        engine.decide_suspect(db, current, suspect.id, decision='ignore', category=None, user_id=user.id)
         engine.add_user_term(db, current, loc='F1-P3', char_start=0, char_end=4, category='CUSTOM')
         assert len(calls) == 1
         assert calls[0].startswith(' ' * 4)

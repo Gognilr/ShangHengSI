@@ -1,0 +1,27 @@
+description: 化工采购邮件与技术协议摘录（全部虚构，V31-S-01a）
+stance: other
+must_replace:
+- {text: '苏(宁)危化经字[2023]00123', category: IDNO}
+- {text: '粤WH安许证字[2024]00321', category: IDNO}
+- {text: DEMO-LIC-2025-007, category: IDNO}
+- {text: FICT-PMT-2025-008, category: IDNO}
+must_suspect:
+- 澄川石化
+- 澜岳化工
+must_keep:
+- 氢氧化钠
+- 乙二醇
+- 聚丙烯
+- 甲苯
+- 二甲苯
+- 柴油
+- Sodium Hydroxide
+- Ethylene Glycol
+- Polypropylene
+- Toluene
+- Xylene
+- 1310-73-2
+- UN 1823
+- NaOH
+- C2H6O2
+- GB/T 209-2018

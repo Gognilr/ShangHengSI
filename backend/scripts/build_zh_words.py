@@ -23,19 +23,20 @@ def build(source: Path, output: Path) -> None:
         }:
             words.add(word)
     legal = set()
-    for name in ('THUOCL_law.txt', 'THUOCL_caijing.txt'):
+    suffixes = tuple((output / 'industry_words.txt').read_text(encoding='utf-8').splitlines()) + ('公司', '集团', '股份', '控股', '银行', '证券', '保险', '药业', '化纤')
+    for name in ('THUOCL_law.txt',):
         for line in (source / name).read_text(encoding='utf-8').splitlines():
             word = line.split()[0]
-            if re.fullmatch(r'[一-鿿]{2,8}', word):
+            if re.fullmatch(r'[一-鿿]{2,8}', word) and not word.endswith(suffixes):
                 legal.add(word)
     configs = (
         ('zh_words', words, EXCLUDED_WORDS, ['dict.txt'], 'jieba-LICENSE',
          'https://github.com/fxsjy/jieba/tree/v0.42.1',
          'jieba v0.42.1 主词典（不取 extra_dict）；2～4 个汉字、词频 ≥ 1000，'
          '词性排除 nr / nrfg / nrt / ns / nt / nz / j。'),
-        ('zh_legal_finance', legal, EXCLUDED_LEGAL, ['THUOCL_law.txt', 'THUOCL_caijing.txt'],
+        ('zh_legal_finance', legal, EXCLUDED_LEGAL, ['THUOCL_law.txt'],
          'THUOCL-LICENSE', f'https://github.com/thunlp/THUOCL/tree/{THU_COMMIT}',
-         '法律与财经词表只取第一列，保留 2～8 个汉字；不取地名词库。'),
+         '只取法律词表第一列，保留 2～8 个汉字；不取财经与地名词库。剔除末尾为 industry_words.txt 中行业词或公司、集团、股份、控股、银行、证券、保险、药业、化纤的词。'),
     )
     for name, terms, excluded, inputs, license_name, url, rule in configs:
         data = ''.join(t + '\n' for t in sorted(terms - excluded)).encode('utf-8')

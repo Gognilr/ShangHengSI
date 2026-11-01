@@ -1,0 +1,9 @@
+化工采购往来邮件（全部虚构）
+本次请澄川石化复核技术附件，随后交澜岳化工确认包装。
+品名为氢氧化钠、乙二醇、聚丙烯、甲苯、二甲苯、柴油。
+Sodium Hydroxide; Ethylene Glycol; Polypropylene; Toluene; Xylene.
+CAS 1310-73-2，UN 1823，危险货物类别 8，NaOH，C2H6O2，GB/T 209-2018。
+危险化学品经营许可证：苏(宁)危化经字[2023]00123。
+安全生产许可证编号：粤WH安许证字[2024]00321。
+License No.: DEMO-LIC-2025-007.
+Permit No.: FICT-PMT-2025-008.

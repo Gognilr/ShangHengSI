@@ -91,6 +91,14 @@ _BANK_CODE = re.compile(
     r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9]{6,15})(?![A-Za-z0-9])"
 )
 
+# V31-S-01a：只按证照标签取值，括号为编号的一部分；不吞下一句或下一行。
+_LICENSE = re.compile(
+    r'(?:非药品类易制毒化学品经营备案证明|危险化学品经营许可证|危险化学品安全使用许可证|'
+    r'安全生产许可证|危险化学品登记证|全国工业产品生产许可证|排污许可证|道路运输经营许可证|'
+    r'食品经营许可证|药品经营许可证|许可证)(?:编号|号码|号)?|备案编号|证书编号|'
+    r'(?<![A-Za-z])(?i:License|Permit|Certificate)\s+No\.?(?![A-Za-z])')
+_LICENSE_VALUE = re.compile(r'[ \t]*[:：]?[ \t]*([^\\\r\n，。；;！!？?：:.]{4,40})(?=$|[\\\r\n，。；;！!？?：:.])')
+
 
 def _norm_key(value: str) -> str:
     return re.sub(r"[\s\-]", "", value).upper()
@@ -131,6 +139,13 @@ def find_formatted(text: str) -> list[Hit]:
     for m in _LABELED_ID.finditer(text):
         if sum(c.isdigit() for c in m.group(1)) >= 2:
             add(m.start(1), m.end(1), "IDNO")
+    for label in _LICENSE.finditer(text):
+        m = _LICENSE_VALUE.match(text, label.end())
+        if m:
+            value = m.group(1).strip().rstrip('.')
+            if 4 <= len(value) <= 40 and any(c.isdigit() for c in value):
+                start = m.start(1) + len(m.group(1)) - len(m.group(1).lstrip())
+                add(start, start + len(value), 'IDNO')
     for m in _IM.finditer(text):
         add(m.start(1), m.end(1), "IM")
     for m in _IM_NO_COLON.finditer(text):

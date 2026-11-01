@@ -4,11 +4,10 @@
 原文件位于该版本的 data/ 目录。
 
 - `THUOCL_law.txt`：SHA-256 `8ef1a5f41052ac95dedde88b167c5031a43b3e0211bf128b6125736cc76ef7b2`；9896 行。
-- `THUOCL_caijing.txt`：SHA-256 `68e63d2009e59c6f388eeaa789d19b6a681657de3e8e56cc3479b21cd8548542`；3830 行。
 
-生成口径：法律与财经词表只取第一列，保留 2～8 个汉字；不取地名词库。合并去重，按 Unicode 排序，UTF-8、LF，每行一个词、末尾换行。
+生成口径：只取法律词表第一列，保留 2～8 个汉字；不取财经与地名词库。剔除末尾为 industry_words.txt 中行业词或公司、集团、股份、控股、银行、证券、保险、药业、化纤的词。合并去重，按 Unicode 排序，UTF-8、LF，每行一个词、末尾换行。
 生成：`python backend/scripts/build_zh_words.py --source <原文件与许可目录> --out backend/resources`。
-结果：9926 行，144161 字节；SHA-256 `bd443f75bbd997614d436e159811a7f2138eef645ccf334d9ab7d78f8a61e627`。
+结果：6117 行，104664 字节；SHA-256 `0d72c0dc79953f30f9e376f8db63155d3999cd048d4aa04f609253a7ce33b3e0`。
 只按 V31-S.md 1.2 过滤实体识别与疑似，不撤销规则、词条、签约方等已有替换。
 
 ## 剔除表
