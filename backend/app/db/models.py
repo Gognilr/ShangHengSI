@@ -461,13 +461,14 @@ class RedactionTerm(Base):
     __table_args__ = (
         UniqueConstraint("kind", "term_hash"),
         enum_check("kind", ["learned", "custom"]),
-        enum_check("category", ["ORG", "PERSON", "CUSTOM"]),
+        enum_check("category", ["ORG", "PERSON", "CUSTOM", "PROJECT", "ADDR", "REFNO", "ACCOUNT", "IDNO", "IM", "NAME", "TERM"]),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     kind: Mapped[str] = mapped_column(String(8), nullable=False)
     term_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     term_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    alias_of: Mapped[Optional[str]] = mapped_column(CHAR(64))
     category: Mapped[str] = mapped_column(String(10), nullable=False)
     is_our_party: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))

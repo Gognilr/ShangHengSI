@@ -75,6 +75,7 @@ class Term:
     kind: str  # learned / custom
     category: str  # ORG / PERSON / CUSTOM
     is_our_party: bool = False
+    alias_of: str | None = None  # 内存中为启用主写法的文字，库中存其 hash。
 
 
 @dataclass(frozen=True)
@@ -348,7 +349,10 @@ def compute(
 
     # 第 1 步的词条也作为对象登记（已记住的公司名、用户补充的公司名同时是 ORG 主体，Q-54）
     for t in terms:
-        ent = entity(t.text, t.category)
+        ent = entity(t.alias_of or t.text, t.category)
+        if t.alias_of and P.normalize(t.text) != ent.key:
+            ent.aliases.append(t.text)
+            ent.alias_src[t.text] = ('term', P.normalize(t.text))
         ent.from_term = True
         ent.term_our = ent.term_our or t.is_our_party
     for u in user_terms:
@@ -510,7 +514,7 @@ def compute(
         cands += [_Span(i, start, end, 'ORG', key, 'party')
                   for index, start, end, key in cross_parts if index == i]
         for candidate in cands:
-            if candidate.detected_by != 'user':
+            if candidate.detected_by not in ('user', 'term'):
                 continue
             surface = text[candidate.start:candidate.end]
             if candidate.category == 'AMOUNT':
@@ -926,8 +930,16 @@ def _texts_with_note(rows: list[DocNode], task: Task) -> dict[str, str]:
 
 def _load_terms(db: Session) -> list[Term]:
     """启用中的已记住名称与自定义敏感词，解密到内存（18.12），不写日志。"""
-    rows = db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True)).order_by(RedactionTerm.created_at))
-    return [Term(crypto.decrypt_text(r.term_enc), r.kind, r.category, r.is_our_party) for r in rows]
+    rows = list(db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True)).order_by(
+        RedactionTerm.created_at, RedactionTerm.id)))
+    texts = {r.id: crypto.decrypt_text(r.term_enc) for r in rows}
+    primary = {r.term_hash: texts[r.id] for r in rows if r.kind == 'learned' and not r.alias_of}
+    for r in rows:
+        if r.alias_of:
+            # 主行已删或关闭时，同组启用别名仍共用首个有效写法，不恢复关闭行。
+            primary.setdefault(r.alias_of, texts[r.id])
+    return [Term(texts[r.id], r.kind, r.category, r.is_our_party,
+                 primary.get(r.alias_of) if r.alias_of else None) for r in rows]
 
 
 def _user_terms(db: Session, task_id: uuid.UUID, texts: dict[str, str]) -> list[UserTerm]:
@@ -975,10 +987,12 @@ def _load_full_map(db: Session, task_id: uuid.UUID) -> dict[str, str]:
     return json.loads(crypto.decrypt_text(row.map_enc))
 
 
-def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut]) -> None:
+def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut], texts: dict[str, str]) -> None:
     """与上次相同位置、相同原因的疑似遗漏保留原 id 和决定；不再出现的删除；新出现的为 pending（设计 M4.md 第四节）。"""
     old = {(r.loc, r.char_start, r.char_end, r.reason): r
            for r in db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id))}
+    ignored = {P.normalize(texts.get(r.loc, '')[r.char_start:r.char_end]): r
+               for r in old.values() if r.decision == 'ignore'}
     user_items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task_id,
                                                            RedactionItem.detected_by == 'user')))
     seen: set[tuple[str, int, int, str]] = set()
@@ -989,8 +1003,11 @@ def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut]) ->
         seen.add(key)
         row = old.get(key)
         if row is None:
+            kept = ignored.get(P.normalize(texts.get(s.loc, '')[s.char_start:s.char_end]))
             db.add(RedactionSuspect(task_id=task_id, loc=s.loc, char_start=s.char_start, char_end=s.char_end,
-                                    reason=s.reason, decision="pending"))
+                                    reason=s.reason, decision='ignore' if kept else 'pending',
+                                    decided_by=kept.decided_by if kept else None,
+                                    decided_at=kept.decided_at if kept else None))
         elif row.decision == "replace":
             # 选了“替换”却仍被列出，说明文字没有被替换掉：退回待处理，不能当作已处理而外发
             row.decision, row.category, row.decided_by, row.decided_at = "pending", None, None, None
@@ -1064,7 +1081,7 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
                              category=i.category, placeholder=i.placeholder, detected_by=i.detected_by)
                for i in result.items)
     _write_map(db, task.id, result.mapping)
-    _write_suspects(db, task.id, result.suspects)
+    _write_suspects(db, task.id, result.suspects, texts)
 
     # 签约方：沿用原来的行（id 不变），先把代号改成临时值，避免交换代号时触发唯一约束
     for row in existing.values():
@@ -1370,37 +1387,53 @@ def term_hash(text: str) -> str:
 
 
 def learn_confirmed_names(db: Session, task: Task, user_id: uuid.UUID | None) -> None:
-    """确认发送时写入已记住的名称（9.10、Q-73）。不提交。
-
-    签约方列表中每一方的主要名称（对照表中该代号的值）+ 用户词条中类别为公司、人名的文字，写入 redaction_terms
-    （kind=learned）；已存在时不重复插入，被勾选为我方的名称把 is_our_party 置 true（只升不降）。
-    """
+    """V31-S-03a：确认后记住主体及用户明确替换（除金额），默认不确定项不学习。不提交。"""
+    from app.redaction import dictionaries as D
     mapping = load_redaction_map(db, task.id)
-    names: dict[str, list] = {}  # term_hash → [文字, 类别, 是否我方]
+    full = _load_full_map(db, task.id)
+    texts = _texts_with_note(_body_rows(db, task.id), task)
+    common = {P.normalize(t) for t in D.zh_words() | D.en_words() | D.common_terms()
+              | D.zh_legal_finance() | D.chem_names()}
+    common.update(P.normalize(t) for t in (D.RESOURCES_DIR / 'plain_terms.txt').read_text(
+        encoding='utf-8').splitlines() if t and not t.startswith('#'))
+    names: dict[str, list] = {}
 
-    def add(text: str, category: str, our: bool) -> None:
-        if not text.strip():
+    def add(text: str, category: str, our: bool, alias_of: str | None = None) -> None:
+        text = text.strip()
+        if (not 2 <= len(text) <= 100 or P.normalize(text) in common
+                or re.fullmatch(r'[\d\W_]+', text) and sum(c.isdigit() for c in text) < 8):
             return
-        entry = names.setdefault(term_hash(text), [text, category, False])
+        entry = names.setdefault(term_hash(text), [text, category, False, alias_of])
         entry[2] = entry[2] or our
 
+    items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id).order_by(RedactionItem.id)))
+    explicit = {P.normalize(text[s:e]) for text in texts.values() for _, s, e in P.find_aliases(text)}
     for p in db.scalars(select(Party).where(Party.task_id == task.id).order_by(Party.code)):
         name = mapping.get(p.code)
         if name is not None:
             add(name, "ORG", p.is_our_party)
-    items = list(db.scalars(select(RedactionItem).where(
-        RedactionItem.task_id == task.id, RedactionItem.detected_by == "user",
-        RedactionItem.category.in_(("ORG", "OUR", "PERSON"))).order_by(RedactionItem.id)))
-    if items:
-        texts = _node_texts(_body_rows(db, task.id))
-        for it in items:
-            add(texts.get(it.loc, "")[it.char_start:it.char_end].strip(),
-                "PERSON" if it.category == "PERSON" else "ORG", it.category == "OUR")
-    for h, (text, category, our) in names.items():
+            for key, surface in full.items():
+                if not key.startswith(p.code + '#') or P.normalize(surface) == P.normalize(name):
+                    continue
+                if (P.normalize(surface) in explicit or P.bilingual_links([name, surface])
+                        or any(it.placeholder == p.code and it.detected_by in ('party', 'alias')
+                               and texts.get(it.loc, '')[it.char_start:it.char_end] == surface for it in items)):
+                    add(surface, 'ORG', p.is_our_party, term_hash(name))
+    for it in items:
+        if it.detected_by == 'user' and it.category != 'AMOUNT':
+            add(texts.get(it.loc, '')[it.char_start:it.char_end],
+                'ORG' if it.category in ('ORG', 'OUR') else it.category, it.category == 'OUR')
+    existing_hashes = set(db.scalars(select(RedactionTerm.term_hash)))
+    for h, (text, category, our, alias_of) in names.items():
+        if h in existing_hashes:
+            if our:
+                db.execute(update(RedactionTerm).where(RedactionTerm.kind == 'learned', RedactionTerm.term_hash == h,
+                                                       RedactionTerm.is_our_party.is_(False)).values(is_our_party=True))
+            continue
         # 并发确认的两个任务写入同一名称时不报错（唯一约束 kind + term_hash）
         db.execute(pg_insert(RedactionTerm).values(
             kind="learned", term_enc=crypto.encrypt_text(text), term_hash=h, category=category,
-            is_our_party=our, created_by=user_id, created_at=utcnow(),
+            is_our_party=our, alias_of=alias_of, created_by=user_id, created_at=utcnow(),
         ).on_conflict_do_nothing(index_elements=["kind", "term_hash"]))
         if our:
             db.execute(update(RedactionTerm).where(RedactionTerm.kind == "learned", RedactionTerm.term_hash == h,

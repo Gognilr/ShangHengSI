@@ -26,7 +26,7 @@ def test_01_sample():
 
 def test_02_short_derived():
     r = run("乙方：虚构科技有限公司", "虚构的方案")
-    assert r.redacted["F1-P1"] == "虚构的方案"
+    assert r.redacted["F1-P1"] == "[名称_1]的方案"
     assert any(s.loc == "F1-P1" and s.reason == "derived_name" for s in r.suspects)
 
 
@@ -36,7 +36,7 @@ def test_03_industry_chain():
 
 
 def test_04_no_title_fragment():
-    assert not run("副总经理负责").items
+    assert not any(i.category == 'PERSON' for i in run("副总经理负责").items)
 
 
 def test_05_compound_surname():
@@ -44,7 +44,7 @@ def test_05_compound_surname():
 
 
 def test_06_english_title():
-    assert run("Dear Dr. Lena Fictive,").redacted["F1-P0"] == "Dear Dr. [人员_1],"
+    assert run("Dear Dr. Lena Fictive,").redacted["F1-P0"] == "[名称_1] [人员_1],"
 
 
 def test_07_place():

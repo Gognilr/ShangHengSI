@@ -218,9 +218,9 @@ def test_t53_13_ambiguity_in_reverse_direction():
 
 
 @pytest.mark.usefixtures('env')
-def test_t53_13_alias_not_learned(alice, ready_task, db_sessionmaker):
+def test_t53_13_bilingual_alias_learned(alice, ready_task, db_sessionmaker):
     from app.db.models import RedactionTerm, Task
-    from app.redaction.engine import learn_confirmed_names
+    from app.redaction.engine import learn_confirmed_names, term_hash
     from app.security.crypto import decrypt_text
     user = alice[0]
     chinese, english = '澄川虚构碳材料股份有限公司', 'Chengchuan Fictive Carbon Materials Co., Ltd.'
@@ -233,7 +233,9 @@ def test_t53_13_alias_not_learned(alice, ready_task, db_sessionmaker):
     with db_sessionmaker() as db:
         learn_confirmed_names(db, db.get(Task, task.id), user.id)
         names = [decrypt_text(r.term_enc) for r in db.scalars(select(RedactionTerm))]
-        assert chinese in names and english not in names
+        assert chinese in names and english in names
+        row = db.scalar(select(RedactionTerm).where(RedactionTerm.term_hash == term_hash(english)))
+        assert row.alias_of is not None
 
 
 @pytest.mark.parametrize('text', ['Kinematic Viscosity', 'Document Title'])

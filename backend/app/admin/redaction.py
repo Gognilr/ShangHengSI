@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, StringConstraints
 from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session as DbSession
+from sqlalchemy.orm import Session as DbSession, object_session
 
 from app.admin.settings_store import get_setting, set_setting
 from app.audit import service as audit
@@ -104,6 +104,7 @@ class TermRow(BaseModel):
     kind: str
     term: str
     category: str
+    alias_of: str | None = None
     is_our_party: bool
     enabled: bool
     hit_count: int
@@ -181,10 +182,13 @@ def delete_our_party(tid: str, request: Request, admin: User = Depends(require_b
 
 
 def _row(t: RedactionTerm, name: Optional[str]) -> TermRow:
+    db = object_session(t)
+    primary = db.scalar(select(RedactionTerm.term_enc).where(RedactionTerm.kind == 'learned',
+                        RedactionTerm.term_hash == t.alias_of)) if db is not None and t.alias_of else None
     return TermRow(
         id=t.id, kind=t.kind, term=crypto.decrypt_text(t.term_enc), category=t.category,
         is_our_party=t.is_our_party, enabled=t.enabled, hit_count=t.hit_count, last_hit_at=t.last_hit_at,
-        created_by_name=name, created_at=t.created_at,
+        created_by_name=name, created_at=t.created_at, alias_of=crypto.decrypt_text(primary) if primary else None,
     )
 
 
