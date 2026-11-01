@@ -10,14 +10,14 @@ from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
 from app.admin.settings_store import get_setting, set_setting
 from app.audit import service as audit
 from app.db.base import utcnow
-from app.db.models import RedactionTerm, User
+from app.db.models import KeepTerm, RedactionTerm, User
 from app.db.session import get_db
 from app.redaction import parties
 from app.redaction.engine import term_hash
@@ -30,6 +30,61 @@ from app.security.sessions import client_ip
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_biz_admin)])
 
 PAGE_SIZE = 20
+
+
+@router.get('/keep-terms')
+def list_keep_terms(q: str = Query('', max_length=100), page: int = Query(1, ge=1, le=100000),
+                    db: DbSession = Depends(get_db)) -> dict:
+    groups = {}
+    for row in db.scalars(select(KeepTerm).order_by(KeepTerm.created_at.desc(), KeepTerm.id)):
+        group = groups.setdefault(row.term_hash, {'term_hash': row.term_hash, 'term': crypto.decrypt_text(row.term_enc),
+                                  'users': set(), 'approved': False, 'hit_count': 0, 'last_hit_at': None})
+        if row.user_id is None:
+            group['approved'] = True
+        else:
+            group['users'].add(row.user_id)
+        group['hit_count'] += row.hit_count
+        if row.last_hit_at and (group['last_hit_at'] is None or row.last_hit_at > group['last_hit_at']):
+            group['last_hit_at'] = row.last_hit_at
+    items = []
+    for group in groups.values():
+        users = len(group.pop('users'))
+        group['status'] = '已认可' if group.pop('approved') else ('已共享' if users >= 2 else '个人')
+        group['users'] = users
+        if parties.normalize(q) in parties.normalize(group['term']):
+            items.append(group)
+    return {'items': items[(page - 1) * PAGE_SIZE:page * PAGE_SIZE], 'total': len(items), 'page': page, 'page_size': PAGE_SIZE}
+
+
+def _keep_row(db, digest):
+    row = db.scalar(select(KeepTerm).where(KeepTerm.term_hash == digest))
+    if row is None:
+        raise NotFoundError('KEEP_TERM_NOT_FOUND', '术语不存在')
+    return row
+
+
+@router.post('/keep-terms/{term_hash}/approve')
+def approve_keep_term(term_hash: str, request: Request, admin: User = Depends(require_biz_admin),
+                      db: DbSession = Depends(get_db)) -> dict:
+    from sqlalchemy.dialects.postgresql import insert
+    row = _keep_row(db, term_hash)
+    db.execute(insert(KeepTerm).values(id=uuid.uuid4(), term_hash=row.term_hash, term_enc=row.term_enc,
+               user_id=None, approved_by=admin.id, created_at=utcnow()).on_conflict_do_nothing())
+    audit.record(db, 'setting_update', user_id=admin.id, target_type='setting', target_id='keep_terms',
+                 detail={'op': 'approve', 'count': 1}, ip=client_ip(request))
+    db.commit()
+    return {'approved': True}
+
+
+@router.delete('/keep-terms/{term_hash}', status_code=204)
+def delete_keep_term(term_hash: str, request: Request, admin: User = Depends(require_biz_admin),
+                     db: DbSession = Depends(get_db)) -> Response:
+    _keep_row(db, term_hash)
+    count = db.execute(delete(KeepTerm).where(KeepTerm.term_hash == term_hash)).rowcount
+    audit.record(db, 'setting_update', user_id=admin.id, target_type='setting', target_id='keep_terms',
+                 detail={'op': 'delete', 'count': count}, ip=client_ip(request))
+    db.commit()
+    return Response(status_code=204)
 
 
 class MaskQuantity(BaseModel):

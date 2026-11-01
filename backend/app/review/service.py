@@ -269,6 +269,8 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
         raise _conflict("OUTBOUND_BLOCKED", f"出口复检发现未脱敏的信息，已拦截，未发送（{format_reasons(reasons)}）")
     # 9.10：预检通过后写入已记住的名称，与轮次创建同一事务；预检拦截时不写入（Q-73 ①）
     learn_confirmed_names(db, task, user.id)
+    from app.redaction.keep_terms import remember
+    remember(db, task, user.id)
 
     run_no = (db.scalar(select(func.max(ReviewRun.run_no)).where(ReviewRun.task_id == task.id)) or 0) + 1
     run = ReviewRun(

@@ -435,6 +435,24 @@ class RedactionSuspect(Base):
 
 
 # ---- 18.12 redaction_terms ----
+class KeepTerm(Base):
+    """V31-S-03：明确保留过的术语，正文加密，哈希只用于匹配。"""
+    __tablename__ = 'keep_terms'
+    __table_args__ = (
+        UniqueConstraint('term_hash', 'user_id'),
+        Index('uq_keep_terms_shared', 'term_hash', unique=True, postgresql_where=text('user_id IS NULL')),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    term_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    term_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey('users.id', ondelete='CASCADE'))
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey('users.id', ondelete='SET NULL'))
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default='0')
+    last_hit_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    created_at: Mapped[datetime] = _ts_now()
+
+
 class RedactionTerm(Base):
     __tablename__ = "redaction_terms"
     __table_args__ = (

@@ -40,3 +40,8 @@ plain_uncertain:
 - Graphitized Aggregate
 - Pitch Binder
 - Needle Coke Fines
+
+# V31Q-18：已保留文字仍在助手历史映射中的 MAP@7 复现，由 A-03 走接口和模拟网关。
+history_keep:
+  text: Recarburizer Blend
+  code: "[[NAME_7]]"

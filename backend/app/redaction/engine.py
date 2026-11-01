@@ -143,6 +143,7 @@ class RedactionResult:
     ner_cache: dict[str, dict] = field(default_factory=dict)
     ner_cache_hits: int = 0
     ner_cache_misses: int = 0
+    kept_memory: set[str] = field(default_factory=set)
 
 
 class RedactionInputError(ValueError):
@@ -1010,15 +1011,22 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
             cached[loc] = json.loads(crypto.decrypt_text(row.data_enc))
         except (crypto.DecryptionError, UnicodeError, ValueError, TypeError):
             pass  # 不记录密文、键或节点文字；同一事务中以重算结果覆盖。
-    result = compute(nodes, task.stance, terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
-                     keeps=[texts.get(r.loc, '')[r.char_start:r.char_end] for r in db.scalars(
+    from app.redaction import keep_terms
+    memory = keep_terms.effective(db, task.owner_id)
+    user_keeps = [texts.get(r.loc, '')[r.char_start:r.char_end] for r in db.scalars(
                          select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
-                                                       RedactionSuspect.decision == 'ignore'))],
+                                                       RedactionSuspect.decision == 'ignore'))]
+    result = compute(nodes, task.stance, terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
+                     keeps=[*user_keeps, *memory.values()],
                      mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
                      exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
                          select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
                      main_prefix=_main_prefix(db, task.id), ner_cache=cached, style=style,
                      pinned=_load_full_map(db, task.id) if pin else None, ratio=style == "review")
+    user_keys = {P.normalize(t) for t in user_keeps}
+    result.kept_memory = {term_hash(texts[s.loc][s.char_start:s.char_end]) for s in result.suspects
+                          if P.normalize(texts[s.loc][s.char_start:s.char_end]) in memory
+                          and P.normalize(texts[s.loc][s.char_start:s.char_end]) not in user_keys}
 
     for loc, entry in result.ner_cache.items():
         if cached.get(loc) != entry:
@@ -1092,12 +1100,16 @@ def redact_task(db: Session, task: Task, style: str = "review", pin: bool = Fals
         existing = _existing_parties(db, task)
         result = _run(db, task, _current_overrides(existing) if existing else None, existing, style=style, pin=True)
         _count_hits(db, result.matched_terms)
+        from app.redaction.keep_terms import count_hits
+        count_hits(db, task.owner_id, result.kept_memory)
         return
     db.execute(delete(Party).where(Party.task_id == task.id))
     db.execute(delete(RedactionSuspect).where(RedactionSuspect.task_id == task.id))
     db.flush()
     result = _run(db, task, None, {}, style=style, pin=pin)
     _count_hits(db, result.matched_terms)
+    from app.redaction.keep_terms import count_hits
+    count_hits(db, task.owner_id, result.kept_memory)
 
 
 def _existing_parties(db: Session, task: Task) -> dict[str, Party]:
@@ -1283,6 +1295,8 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
     start, end = _strip_span(text, row.char_start, row.char_end)
     if end <= start:
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确")
+    from app.redaction.keep_terms import forget_personal
+    forget_personal(db, user_id, text[start:end])
     _add_term(db, task, text, row.loc, start, end, category)  # type: ignore[arg-type]
     if remember:
         _remember_custom(db, text[start:end], user_id)
@@ -1300,6 +1314,8 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
     rows = _body_rows(db, task.id)
     order = {r.loc: k for k, r in enumerate(rows)}
     texts = _texts_with_note(rows, task)
+    from app.redaction.keep_terms import effective
+    memory = effective(db, task.owner_id)
     items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id)))
     suspects = sorted(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id)),
                       key=lambda r: (order.get(r.loc, len(order)), r.char_start, r.id))
@@ -1321,7 +1337,7 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
             "category": S.default_category(t[r.char_start:r.char_end], r.reason),
             "placeholder": next((i.placeholder for i in items if i.loc == r.loc and i.char_start <= r.char_start
                                  and i.char_end >= r.char_end), None),
-            "kept_by": 'user' if r.decision == 'ignore' else None,
+            "kept_by": 'user' if r.decision == 'ignore' else ('memory' if key in memory else None),
             "text": t[r.char_start:r.char_end],
             "occurrences": 1,
             "before": _flat(t[max(0, r.char_start - CONTEXT_CHARS):r.char_start]),
@@ -1425,8 +1441,37 @@ def load_redaction_map(db: Session, task_id: uuid.UUID) -> dict[str, str]:
 
 
 def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
-    """对照表中的全部真实值，含简称和共用代号类别的值（用于出口复检，M2-09）。"""
-    return list(dict.fromkeys(_load_full_map(db, task_id).values()))
+    """V31Q-18：复检当前出口；明确保留且不再被当前替换引用的历史值只供还原。"""
+    from app.redaction import keep_terms
+    from app.redaction.recheck import _AMOUNT_VALUE, _NUMERIC_VALUE, _decimal, _digits, _text_pattern, _value_positions
+    values = list(dict.fromkeys(_load_full_map(db, task_id).values()))
+    task = db.get(Task, task_id)
+    if task is None:
+        return values
+    texts = _texts_with_note(_body_rows(db, task.id), task)
+    memory = keep_terms.effective(db, task.owner_id)  # 每次调用现查本人当前生效的记忆，不缓存豁免。
+    kept = []
+    for row in db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id)):
+        word = texts.get(row.loc, '')[row.char_start:row.char_end].strip()
+        if word and (row.decision == 'ignore' or row.decision == 'pending' and P.normalize(word) in memory):
+            kept.append(word)
+    if not kept:
+        return values
+    active = [texts.get(i.loc, '')[i.char_start:i.char_end] for i in db.scalars(
+        select(RedactionItem).where(RedactionItem.task_id == task_id))]
+
+    def same(value, word):
+        # 复用复检的数字与文字比较；fullmatch / 数字整串相等，不把包含关系当作相等。
+        value, word = value.strip(), word.strip()
+        if _NUMERIC_VALUE.fullmatch(value) and _NUMERIC_VALUE.fullmatch(word):
+            if _AMOUNT_VALUE.fullmatch(value) and _AMOUNT_VALUE.fullmatch(word) and _decimal(value) == _decimal(word):
+                return True
+            if len(_digits(value)) >= 8 and _digits(value) == _digits(word):
+                return True
+        return _text_pattern(value).fullmatch(word) is not None
+
+    return [value for value in values if not any(same(value, word) for word in kept)
+            or any(same(value, surface) or _value_positions(surface, value) for surface in active)]
 
 
 def load_placeholders(db: Session, task_id: uuid.UUID) -> list[str]:

@@ -161,6 +161,8 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
             file.confirmed_at = now
             count += 1
     engine.learn_confirmed_names(db, task, user.id)
+    from app.redaction.keep_terms import remember
+    remember(db, task, user.id)
     task.status, task.last_activity_at = "active", now
     audit.record(db, "assistant_files_confirm", user_id=user.id, target_type="task", target_id=str(task.id),
                  detail={"files": count}, ip=ip)
