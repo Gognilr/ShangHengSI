@@ -1,22 +1,26 @@
-# 前端界面规范（第二版）
+# 前端界面规范（第三版）
+
+**2026-11 起按 V3.1 光幕方向**（V3Q-28；V31-U1-05 合并第 1～5、9～13 节，设计与取值见 docs/v31/design/V31-U1.md）。首页、确认页、结果页与其余页面在 V31-U2～U4 重做，各批设计文档中针对具体页面的写法优先于本文件；U2～U4 完成前，未重做的页面仍保留第二版的布局，只按本版换了颜色、字体与组件外观。
 
 本文件是全部前端任务（`frontend/` 下的页面、组件、样式）共同遵守的界面约定，由 Opus 制定，经用户确认后生效。不论任务由 Sonnet 5.5 还是 GPT-6.1 Sol 执行，都按本规范实现；Opus 评审前端提交时也按本规范逐条检查。
 
 * 第二版（R3-00，2026-10-23）采用“商衡SI”品牌视觉，依据用户提供的设计资料与 docs/design/R3.md。视觉目标见 docs/design/ui-preview.html。R3 各任务完成前，代码中仍有第一版的写法；改到哪个页面，就按第二版重写哪个页面。
 * 2026-10-26 起按 V2-U 修订（第 2.2、2.3、3、4、5、6、11 节，用户已确认，V2Q-101～V2Q-108），视觉目标以 docs/v2/design/V2-U.md 为准；ui-preview.html 中与之不一致处以 V2-U 为准。V2-U 各任务完成前，代码中仍有修订前的写法。
-* 2026-10-30 起按 V3-A 修订（V3-A-09 合并：侧栏主布局、Lucide 图标、可拖动分栏、`EmptyState` / `TableSkeleton` / 行尾“⋯”、设置分节与未保存提示栏、全局搜索、工作文件夹，第 1、2、4、5、9 节），设计见 docs/v3/design/V3-A.md；ui-preview.html 中的顶栏布局已不再适用。
+* 2026-10-30 起按 V3-A 修订（V3-A-09 合并：侧栏主布局、Lucide 图标、可拖动分栏、`EmptyState` / `TableSkeleton` / 行尾“⋯”、设置分节与未保存提示栏、全局搜索、工作文件夹，第 1、2、4、5、9 节），设计见 docs/v3/design/V3-A.md；ui-preview.html 中的顶栏布局已不再适用。V3.1 起 ui-preview.html 只作历史参考。
 * 与 docs/SPEC.md 冲突时以 SPEC 为准；与里程碑设计文档（docs/design/Mx.md、Rx.md）冲突时，以设计文档中针对具体页面的写法为准。
 * 遇到本规范没写到的界面细节：先找已按第二版改过的页面中最接近的写法照做；仍然没有的，选 Element Plus 默认的做法，并在完成报告中写明。不要自己发明新的视觉样式。
 * 修改本规范只能由 Opus 在 Mx-00 / Rx-00 中进行，或经用户同意后修改。
 
 ## 一、总体原则
 
-1. **沉稳、克制、清楚**。大面积中性色，小面积品牌深海蓝；靠留白和分组建立层次，不靠颜色堆砌。不做插画、3D、粒子、光效和装饰动画。品牌渐变只用于 Logo 和登录页的短横线。
-2. **Element Plus + 品牌主题**。组件仍然只用 Element Plus；品牌色、字体、尺寸、圆角通过 `src/styles/theme.css` 覆盖 Element Plus 的 CSS 变量实现（取值见 R3.md 第二节）。不引入其他 UI 库、CSS 框架或外部字体。
-3. **颜色只用变量**。页面和组件中只写 `var(--el-…)` 或 `var(--si-…)`；十六进制颜色和 rgb 值只允许出现在 `theme.css`。青蓝（`--si-cyan`）不作为白底上的文字颜色。
-4. **只做桌面端**。`body` 最小宽度 1280px（SPEC 21），不做手机适配。媒体查询只允许用于登录页窄窗口时隐藏左半、`SiLogo` 窄窗口时隐藏副标，以及 `prefers-reduced-motion`；`SettingSection` 在容器较窄时改为上下排列，用容器查询。
-5. **信息优先**。问题、结论、拦截原因、错误原因、提交条件放在显眼的位置，说明性文字用次要颜色和小字号。
-6. **不增加 SPEC 没有的菜单、页面、按钮或功能**（CLAUDE.md）。觉得缺少什么，在完成报告中提出，不要自行加上。
+1. **光只表示两件事**：“已在本机保护”和“AI 正在工作”。其余靠表面层次（3.2）与留白建立秩序，不靠颜色堆砌；不做插画、3D、粒子。品牌渐变只用于 Logo 和登录页的短横线。
+2. **两种外壳，纸面始终白纸黑字**。外壳“夜幕”（默认）/“浅色”覆盖导航、页面底、面板、表单、表格、弹层；显示文件正文的区域是纸面（`.si-paper`），任何外壳下都是白底深色字。
+3. **Element Plus 深度换肤，不换组件库**。组件只用 Element Plus，外观由 `skin.css` 统一；字体本地托管（SI Sans、SI Mono，第十节），不访问任何外部网站；不引入其他 UI 库、CSS 框架或动画库。
+4. **颜色只用变量**。页面和组件中只写 `var(--el-…)` 或 `var(--si-…)`；十六进制颜色和 rgb 值只允许出现在 `theme.css`，派生色用 `color-mix()` 写成 theme.css 中的令牌。青色（`--si-cyan`）只作光效点缀，不作文字色。
+5. **只做桌面端，1366×768 为验收基准**。验收视口为 1366×640（Edge 标签页最大化后的可视区）；`body` 最小宽度 1280px（SPEC 21），不做手机适配。媒体查询只允许用于登录页窄窗口时隐藏左半、`SiLogo` 窄窗口时隐藏副标；`SettingSection` 在容器较窄时改为上下排列，用容器查询。减少动态效果按 `html[data-fx]` 判断（第十三节），不在组件里另写 `prefers-reduced-motion`。
+6. **动效分三层，从不推迟结果出现**（第十二节）。
+7. **信息优先**。问题、结论、拦截原因、错误原因、提交条件放在显眼的位置，说明性文字用次要颜色和小字号。
+8. **不增加 SPEC 没有的菜单、页面、按钮或功能**（CLAUDE.md）。觉得缺少什么，在完成报告中提出，不要自行加上。
 
 ## 二、页面骨架
 
@@ -24,14 +28,15 @@
 
 左侧侧栏 + 右侧主区域（`grid-template-columns: auto 1fr; height: 100vh`），设计见 V3-A 第二节。
 
-* **侧栏**：白底、右边框 1px `--el-border-color-light`，内部纵向排列：`SiLogo`（nav 尺寸，不显示副标）、“新建会话”（普通按钮）、菜单“智能助手”“智能审核”“审核历史”、“搜索”（右侧小字 `Ctrl K`）、近期会话（`SidebarSessions`，自己滚动）；底部为“设置”（仅管理员可见）、用户区（首字圆形 + 显示名 + 下拉：修改密码、退出）和收起 / 展开按钮。选中项：`--el-color-primary-light-9` 底 + 主色文字 + 600 字重，圆角 `--el-border-radius-base`；`/review/:id` 归“智能审核”。
+* **侧栏**：`--si-bg-side` 底、右边框 1px `--si-hair-faint`，内部纵向排列：`SiLogo`（nav 尺寸，不显示副标）、“新建会话”（默认按钮外观）、菜单“智能助手”“智能审核”“审核历史”、“搜索”（右侧小字 `Ctrl K`）、近期会话（`SidebarSessions`，自己滚动）；底部为“设置”（仅管理员可见）、用户区（首字圆形 + 显示名 + 下拉：外观、修改密码、退出）和收起 / 展开按钮。菜单文字 `--si-font-label`；选中项为蓝色渐变浅底 + 左侧 3px `--si-blue` 竖条（完整特效带辉光），圆角 `--el-border-radius-base`；`/review/:id` 归“智能审核”。
+* **主区域底色**：`--si-bg-canvas`；完整特效下 `.main` 叠一层固定不动的 `--si-ambient` 氛围光。路由切换只有进入动画（`si-page`），旧页面立即移除。
 * **宽度**：默认 232px，右边缘 `SplitHandle` 可拖宽 200～320px，双击恢复；收起为 64px 图标窄栏（只显示图标与用户首字，每个图标有右侧 `el-tooltip` 与 `aria-label`，不显示近期会话，不可拖宽）。
 * **主区域**：顶部为管理员提醒条（浅警告底），下方为页面；`.main` 为 `height: 100vh; overflow-y: auto`，页面在其中滚动。需要占满高度的页面（审核结果、智能助手）根元素用 `height: 100%`，由主区域提供高度，不按视口减去固定值计算。须修改初始密码时主区域只显示“请先修改初始密码”。
 * 默认首页为智能助手（`/assistant`）。
 
 ### 2.2 页面容器
 
-每个页面的根元素是 `<div class="page …">`，水平居中，上内边距 32px、下内边距 48px、左右 32px。宽度只用下面三档（`styles/common.css`）：
+每个页面的根元素是 `<div class="page …">`，水平居中，内边距 24px 32px 40px（上、左右、下）。宽度只用下面三档（`styles/common.css`）：
 
 | 类 | 最大宽度 | 用在什么页面 |
 |-|-|-|
@@ -49,58 +54,85 @@
 
 * 设置各页顶部用 `PageHeader`（`--si-font-title` 标题 + 一行 14px 次要色说明 + 右侧插槽放该页已有的主按钮），标题与说明见 R3.md 第四节。智能审核、审核历史不用页面标题（侧栏选中项已说明位置）；审核结果页用工具条（V2-U 第四节）。
 * 设置各页的内容用 `SettingSection` 分节：两列网格，左 240px（标题 15px / 600 + 一两行次要色说明），右侧为字段；节与节之间 1px `--el-border-color-lighter` 分隔线、上下各 24px，不在面板里再套卡片；放表格的节用 `stacked`（标题与说明在上、内容占满宽度）。表单与服务端值不同时页面底部出现粘底 `UnsavedBar`（“有未保存的修改”·“放弃”“保存”），各节不再单独放“保存”；有未保存修改时切换设置分类、离开页面与关闭标签页都提醒。立即生效的控件（第七节第 5 条）不进入未保存状态。
-* 内容放在**面板** `.panel` 中：白底、1px `--el-border-color-light` 边框、`--si-radius-card`（12px）圆角、内边距 24px 32px，无阴影。面板之间 16px（`.panel + .panel`）。需要 Element Plus 卡片能力时可用 `el-card shadow="never"`，theme.css 已把它统一成同样的外观。
-* 面板标题 18px / 600，下间距 16px；标题后可跟 13px 次要色说明，右侧可放该面板的次要操作。带编号的面板（确认脱敏）在标题前加 26px 圆形序号徽标。
-* 面板内的分组标题 15px / 600；组与组之间 32px，用 1px `--el-border-color-lighter` 分隔线隔开。
+* 内容放在**面板** `.panel` 中：第 1 层表面（`--si-surface-1` 底、1px `--si-hair` 边框）、`--si-radius-card`（12px）圆角、内边距 20px 24px，无阴影。面板之间 16px（`.panel + .panel`）。需要 Element Plus 卡片能力时可用 `el-card shadow="never"`，theme.css 已把它统一成同样的外观。
+* 面板标题 `--si-font-h2`，下间距 16px；标题后可跟 `--si-font-meta` 次要色说明，右侧可放该面板的次要操作。带编号的面板（确认脱敏）在标题前加 26px 圆形序号徽标。
+* 面板内的分组标题 `--si-font-h4`；组与组之间 32px，用 1px `--si-hair-faint` 分隔线隔开。
 
 ## 三、字号、颜色与间距
 
 ### 3.1 字号、行高、字重（只用这几档）
 
-| 令牌 | 字号 / 行高 / 字重 | 用途 |
+| 令牌 | 字重 字号 / 行高 | 用途 |
 |-|-|-|
-| `--si-font-display` | 32px / 1.3 / 600 | 登录页品牌主张 |
-| `--si-font-title-lg` | 30px / 1.3 / 600 | 登录页“欢迎登录” |
-| `--si-font-title` | 24px / 1.35 / 600 | 页面标题（设置各页的 PageHeader） |
-| `--si-font-h2` | 18px / 1.45 / 600 | 面板标题、结果页文件名、对话框与抽屉标题 |
-| `--si-font-h3` | 16px / 1.5 / 600 | 问题卡片标题、选项卡片标题、审核中页标题 |
-| `--si-font-h4` | 15px / 1.5 / 600 | 面板内分组标题 |
-| `--si-font-reading` | 15px / 1.8 / 400 | 原文阅读区正文 |
-| `--si-font-body` | 14px / 1.6 / 400 | 界面正文、表单、表格内容 |
-| `--si-font-meta` | 13px / 1.5 / 400 | 元信息、标签列、表头、面板标题旁说明 |
-| `--si-font-caption` | 12px / 1.6 / 400 | 提示文字 `.hint`、固定声明、图例 |
-| `--si-font-stat` | 24px / 1.3 / 600 | 统计块数字 |
+| `--si-font-display` | 600 32px / 1.25 | 登录页品牌主张 |
+| `--si-font-title-lg` | 600 28px / 1.3 | 登录页“欢迎登录” |
+| `--si-font-title` | 600 22px / 1.35 | 页面标题（设置各页的 PageHeader） |
+| `--si-font-h2` | 600 17px / 1.45 | 面板标题、结果页文件名、对话框与抽屉标题 |
+| `--si-font-h3` | 600 15px / 1.5 | 问题卡片标题、选项卡片标题 |
+| `--si-font-h4` | 600 14px / 1.5 | 面板内分组标题 |
+| `--si-font-label` | 500 14px / 1.4 | 按钮、菜单、选项卡、分段、表单标签 |
+| `--si-font-label-sm` | 500 12px / 1.3 | 标签、胶囊、灵动岛 |
+| `--si-font-reading` | 400 15px / 1.8 | 原文阅读区正文 |
+| `--si-font-body` | 400 14px / 1.6 | 界面正文、表单、表格内容 |
+| `--si-font-meta` | 400 13px / 1.5 | 元信息、表头、面板标题旁说明 |
+| `--si-font-caption` | 400 12px / 1.6 | 提示文字 `.hint`、固定声明、图例 |
+| `--si-font-code` | 400 13px / 1.5 等宽 | 正文中的代号（`.code`） |
+| `--si-font-code-sm` | 500 12px / 1.2 等宽 | 胶囊中的代号、计数、外发回执数字 |
+| `--si-font-stat` | 500 24px / 1.2 等宽 | 统计块数字 |
 
-总则：字号、行高、字重成对取值，写 `font: var(--si-font-…)`，不单独指定其中一项；字重只用 400、600（Windows 的微软雅黑没有中等字重，500 会显示成 400）；新增档位须同时给出行高和用途，并经 Opus 修改本表。
+总则：字号、行高、字重成对取值，写 `font: var(--si-font-…)`，不单独指定其中一项；字重只用 400、500、600（自带字体有中等字重）：标题 600，按钮、菜单、选项卡、分段、表单标签、标签与胶囊 500，正文 400。代号、计数、编号用等宽。新增档位须同时给出行高和用途，并经 Opus 修改本表。
 
-### 3.2 颜色
+字体族：`--si-font-sans`（SI Sans，回落微软雅黑、苹方）、`--si-font-mono`（SI Mono，回落 Cascadia Mono、Consolas）；`--el-font-family` 指向 `--si-font-sans`。等宽字体只含拉丁字母、数字与常用符号，代号中的中文自动回落到 SI Sans。
+
+### 3.2 颜色与表面层次
+
+令牌与两种外壳的取值见 V31-U1.md 1.2；页面中按用途取用：
 
 | 用途 | 变量 |
 |-|-|
-| 正文 | `--el-text-color-primary`（默认） |
-| 表单值、表格正文 | `--el-text-color-regular` |
-| 次要文字、提示、标签列 | `--el-text-color-secondary` |
-| 主按钮、选中、链接、序号徽标文字 | `--el-color-primary` |
-| 选中行、主文件行、序号徽标底、修改建议块底色 | `--el-color-primary-light-9` |
-| 警告文字（如文件警告“检测到修订痕迹……”） | `--el-color-warning` |
-| 只读文本块与引用块底色、表头底色 | `--el-fill-color-light` |
-| 引用左边框 | `--el-border-color`，3px 实线 |
-| 面板边框 | `--el-border-color-light` |
-| 页面底色 | `--el-bg-color-page` |
-| 对照视图与手动补充中的替换类别 | `--si-k-*`（R3.md 5.4） |
-| 原文阅读区正文 | `--si-text-reading` |
-| 焦点外环 | `--si-focus-ring` |
-| 原文阅读区底色、纸张阴影 | `--si-stage-bg`、`--si-paper-shadow` |
+| 主区域底色 / 侧栏底色 | `--si-bg-canvas`（= `--el-bg-color-page`）/ `--si-bg-side` |
+| 面板、卡片、表格 / 悬停、表头、只读块 / 弹层 | `--si-surface-1`（= `--el-bg-color`）/ `--si-surface-2`（= `--el-fill-color-light`）/ `--si-surface-pop` |
+| 输入框底 | `--si-field` |
+| 面板边框 / 输入框边框 / 分隔线 | `--si-hair` / `--si-hair-strong` / `--si-hair-faint` |
+| 标题与正文 / 表单值与表格正文 / 次要文字与表头 / 占位 / 不可用 | `--si-ink-1` ～ `--si-ink-5` |
+| 主按钮、选中、开关 | `--si-blue`（= `--el-color-primary`） |
+| 链接、浅底上的主色文字 | `--si-blue-ink` |
+| 焦点外环 | `--si-focus`（= `--si-focus-ring`） |
+| 高 / 中风险、失败、警告 | `--si-danger` / `--si-warn`；作文字时用 `--si-danger-ink` / `--si-warn-ink` |
+| 已完成、本机保护指示点 | `--si-ok`（不用于风险等级） |
+| 低风险、中性状态 | `--si-info` |
+| 选中行、修改建议块底色 | `--el-color-primary-light-9`（主色 10% 混合当前面板色） |
+| 纸面 | `.si-paper`（`--si-paper`、`--si-paper-ink`、`--si-paper-ink-2`），外围 `.si-stage`，阴影 `--si-paper-shadow` |
+| 纸面上“已在本机保护”的护盾胶囊 / AI 视野中的代号胶囊 | `--si-cap-bg` + `--si-cap-ink` / `--si-code-bg` + `--si-code-ink` |
+| 灵动岛与悬停提示 / 短提示（与外壳反色） | `--si-island-*` / `--si-toast-*` |
+| 对照视图与手动补充中的替换类别 | `--si-k-*`（R3.md 5.4，夜幕下自动提亮） |
+| 只作光效点缀 / 只用于“AI 正在工作” | `--si-cyan` / `--si-indigo` |
 
-### 3.3 间距、圆角
+`--si-brand-navy` 只用于 Logo，不作主色。白字不得放在夜幕的 `--si-danger`、`--si-warn` 实心底上。
 
-间距只用 4、8、12、16、20、24、32、48px。常用：面板之间 16px；面板内边距 24px 32px；分组之间 32px；筛选栏控件之间 8～12px；表单项之间 20px；操作区上间距 24px。
+**表面层次**（由下到上；夜幕越上越亮，浅色靠阴影）：
 
-圆角分五级：纸张与行内高亮 4px（`--si-radius-paper`）；小标签 6px；按钮、输入框、下拉框、统计块、文件徽标 8px（`--el-border-radius-base`）；面板、卡片、上传区、对照区、对话框、抽屉 12px（`--si-radius-card`）；圆形 50%。
+| 层 | 底 | 边界 | 用于 |
+|-|-|-|-|
+| 0 画布 | `--si-bg-canvas`（完整特效叠 `--si-ambient`） | — | 主区域 |
+| 0′ 侧栏 | `--si-bg-side` | 右侧 1px `--si-hair-faint` | 侧栏 |
+| 1 面板 | `--si-surface-1` | 1px `--si-hair`，无阴影 | `.panel`、`.si-card`、`el-card`、表格 |
+| 2 浮起 | `--si-surface-2` | 1px `--si-hair-strong` + `--si-shadow-1` | 悬停卡片、选中行、只读块 |
+| 3 弹层 | `--si-surface-pop` | 1px `--si-hair-strong` + `--si-shadow-3`；完整特效加 `--si-blur` 毛玻璃 | 下拉、弹出框、对话框、抽屉 |
+
+纸面不属于这五层：白底、`--si-paper-shadow`，放在 `.si-stage` 上；纸面内的 Element Plus 组件与标签自动按浅色显示，挂到弹层的内容按外壳显示。
+
+### 3.3 间距、圆角、阴影、控件尺寸
+
+间距只用 4、8、12、16、20、24、32、48px。常用：面板之间 16px；面板内边距 20px 24px；分组之间 32px；筛选栏控件之间 8～12px；表单项之间 20px；操作区上间距 24px。
+
+圆角六级：纸面与行内高亮 4px（`--si-radius-paper`）；标签与胶囊 6px（`--si-radius-tag`）；按钮、输入框、下拉框、分段、统计块、文件徽标 8px（`--el-border-radius-base`）；面板、卡片、上传区、对照区 12px（`--si-radius-card`）；弹层、对话框、抽屉、提示 16px（`--si-radius-pop`，下拉菜单 12px）；登录卡片与外发确认卡 20px（`--si-radius-sheet`）；圆形 50%，灵动岛与开关全圆角。
+
+阴影三级：`--si-shadow-1`（浮起）、`--si-shadow-2`（悬停卡片、粘底栏）、`--si-shadow-3`（弹层）。光效 `--si-glow-blue`（主按钮、选中菜单）与 `--si-blur`（弹层毛玻璃）只在完整特效，精简与关闭时为 `none`。
 
 数字：需要纵向对齐的数字（表格、分页、统计、时间、条款号）加 `.num` 或使用已全局等宽的组件（`el-table`、`el-pagination`、`.stat-value`）；正文中的数字不设等宽。
 
-控件高度：默认 40px（`--el-component-size`）；表格内的小控件 32px（`size="small"`）；登录页输入框和按钮 52px。
+控件高度：默认 36px（`--el-component-size`）；表格内的小控件 28px（`size="small"`）；登录页输入框和按钮 44px（现登录页仍为 52px，V31-U4 重做时改）。
 
 ## 四、组件用法
 
@@ -118,7 +150,7 @@
 | 键值信息 | 3 列网格（标签 12px 次要色在上，值 14px 在下） | 只用于设置页；结果页元信息为工具条第二行的一行文字，用“ · ”分隔；不用 `el-descriptions border` |
 | 统计数字 | 统计块（1px 边框、8px 圆角，标签 `--si-font-meta` + 数字 `--si-font-stat`） | 用于脱敏摘要、本月用量、系统状态、等级计数；数字按接口原样显示 |
 | 表单 | `el-form label-width="110px"` 或标签在上（`label-position="top"`，设置页两列 / 三列网格） | 多行输入写 `maxlength` 和 `show-word-limit` |
-| 2～4 个选项的单选 | `el-radio-group` + `el-radio-button`，样式为分段按钮 | 如业务立场、文件来源 |
+| 2～4 个选项的单选 | 新页面用 `SiSegmented`；未重做的页面保留 `el-radio-group` + `el-radio-button`（skin.css 已改为分段外观） | 如业务立场、文件来源、外观设置 |
 | 需要解释后果的单选 | `el-radio-group` + 带边框的 `el-radio`，内容为卡片（标题 + 说明） | 如外发策略；保持方向键切换 |
 | 可选可输入的值 | `el-select filterable allow-create default-first-option` | 如签约方的国家、类型（Q-50 ②） |
 | 筛选栏 | 一行 `display:flex; gap:8px`（列表页放在表格面板的顶部一行） | 下拉框用 `clearable`，占位文字写“全部类别”“全部处理状态”。同一个筛选条件只能有一个入口（结果页的等级只由计数块筛选） |
@@ -126,15 +158,21 @@
 | 标签页 | `el-tabs`（下划线式） | 结果页：问题清单 \| 本地校验 \| 审核要求逐条结论，数量写在标签名里 |
 | 折叠内容 | `el-collapse` | 默认收起，展开时才加载内容（如本地校验结果） |
 | 原文与外发文本对照 | `RedactionCompare` | 只在确认脱敏和重新审核确认中使用（R3.md 第五节） |
-| 粘底操作栏 | `position: sticky; bottom: 0` 的白色条 | 只用于确认脱敏（列出提交条件 + 主按钮）；结果页的操作在工具条 |
+| 粘底操作栏 | `position: sticky; bottom: 0` 的面板色条（`--si-surface-1`，上边框 `--si-hair`，`--si-shadow-2`） | 只用于确认脱敏（列出提交条件 + 主按钮）；结果页的操作在工具条 |
 | 侧边说明 | `el-drawer`，从右侧打开，宽 560px | 审核要求抽屉（SPEC 6.5） |
 | 对话框 | `el-dialog` | 表单类宽 480px，内容较多的宽 640px；主按钮放右边，“取消”在它左边；提交中显示 loading |
 | 删除等不可恢复的操作 | `ElMessageBox.confirm(…, { type: 'warning' })` | 写明删除什么、会连带删除什么、“无法恢复”；确定按钮文字写动作，如“删除” |
-| 操作完成的短反馈 | `ElMessage.success` / `ElMessage.error` | 显示在右下角（`App.vue` 的 `el-config-provider` 统一设置 `placement: 'bottom-right'`）。只用于用户刚刚点击的操作。不要在页面加载时弹出 |
+| 操作完成的短反馈 | `ElMessage.success` / `ElMessage.error` | 显示在右下角（`App.vue` 的 `el-config-provider` 统一设置 `placement: 'bottom-right'`），反色胶囊。只用于用户刚刚点击的操作。不要在页面加载时弹出 |
+| 可撤销的操作反馈 | `SiToast` + `utils/toast.ts` 的 `toast(text, { action, duration })` | 如“已删除 · 撤销”；同时只显示一条，新的替换旧的；右下角反色胶囊，带操作按钮与倒计时条，悬停或聚焦时暂停计时。不带操作的仍用 `ElMessage` |
 | 需要用户看到并处理的状态 | `el-alert :closable="false" show-icon` | 持续显示，不要用会自动消失的提示代替。例外：管理员提醒条提供“本次收起”，只在当前页面会话的内存中生效，刷新即恢复（SPEC 6.7） |
 | 整页的结果状态 | `el-result` | 如解析失败（带“重新上传”按钮） |
 | 没有内容 | `EmptyState`（表格内用 `compact`） | Lucide 图标（48px、次要色）+ 标题（15px / 600）+ 一句原因（14px 次要色）+ 可选操作插槽，必要时给出已有页面的入口（如“去新建审核”）。页面级与表格内一律用它；对话框、预览、对照等区块内部的小空状态可沿用 `el-empty`（`:image-size="48"`） |
-| 小标签 | `el-tag size="small"` | 颜色见第五节 |
+| 小标签 | `el-tag size="small"` | 颜色见第五节。三种 `effect` 已统一：`light` 为浅底胶囊，`dark` 为浅底胶囊加色点（严重程度），`plain` 为透明底加状态色细边 |
+| 纸面 | `.si-paper`，外围 `.si-stage` | 只用于显示文件正文的区块：`DocPreview`、`RedactionCompare` 两栏正文、`ManualRedactDialog` 原文段落、确认页“查看将发送的文本”。对话、问题卡片、结果摘要不是纸面 |
+| 卡片 | `.si-card`（第 1 层），可点击的加 `.si-card--interactive` | 悬停升到第 2 层并上移 2px，不改变布局 |
+| 灵动岛 | `SiIsland` | `state`（idle / busy / done / error）、`text`、`progress`（0～1，`null` 为不确定）、`actionLabel`，事件 `action`；`role="status"`。用于本机处理与审核状态（V31-U2～U3 接入） |
+| 滚动数字 | `SiCount` | 只用于整数计数，不用于金额；完整特效逐位滚动，精简淡入，关闭直接显示 |
+| 外观设置 | `AppearanceDialog` | 用户菜单“外观”打开，见第十三节 |
 | 用户首字 | `<span class="avatar">` | 不用 `el-avatar` |
 
 图标：只用 `@lucide/vue`（本地打包，精确版本见 package.json），默认 16px、线宽 1.75（`:size="16" :stroke-width="1.75"`）、继承文字色，不另写颜色；`el-icon` 内的 Lucide 图标由 `common.css` 定为 16px，上传区中央图标 24px，`EmptyState` 图标 48px。Element Plus 组件内部自带的图标（下拉箭头、关闭等）不处理。图标旁必须有文字；侧栏窄栏、纯图标按钮（如发送、停止、“⋯”）与输入框前置图标例外，须有悬停提示或 `aria-label`。
@@ -147,10 +185,10 @@
 
 | 枚举 | 对应 |
 |-|-|
-| 严重程度 | 高 `danger`、中 `warning`、低 `info`，用 `effect="dark"`；问题卡片左侧色条与等级计数的圆点用同一颜色 |
+| 严重程度 | 高 `danger`、中 `warning`、低 `info`，用 `effect="dark"`，显示为浅底胶囊加色点（底为状态色 16% 混合面板色，文字 `--si-*-ink`，6px 圆点，高 22px）；问题卡片左侧色条、等级计数的圆点与文档光谱条用同一状态色 |
 | 审核要求结论 | 有问题 `danger`、未发现问题 `success`、不适用 `info`、无法判断 `warning` |
 | 引用状态 | 引用已校验 `success`、待核实 `warning`、缺失型 `info`，用 `effect="plain"` |
-| 问题类别 | 表格中一律 `info` 标签；问题卡片中为纯文字（卡片中只有等级用实心标签） |
+| 问题类别 | 表格中一律 `info` 标签；问题卡片中为纯文字（卡片中只有等级用胶囊标签） |
 | 轮次状态 | 已完成 `success`、部分完成 `warning`、已被拦截 `warning`、失败 `danger`、排队中和审核中 `info` |
 | 任务处理状态（审核历史状态列、助手文件面板） | 浅底标签（默认 `effect`）：解析中、排队中、审核中 `info`；待确认 `warning`；已审核、本地校验完成 `primary`（不用绿色，避免读成“审核通过”）；文件已确认脱敏 `success`；失败 `danger`；只读、已过期为 `info` + `effect="plain"` |
 | 制裁结论 | 文字显示，不加标签颜色；“高风险（建议合规人员或律师确认）”用 `--el-color-danger` 文字。下方固定声明不可省略 |
@@ -200,7 +238,7 @@
 
 1. 不使用 `v-html`、`innerHTML`、`ElMessageBox` 的 `dangerouslyUseHTMLString`。外发文本、原文、原文引用、模型返回的文字都按纯文本显示（文本插值、`<pre>` 或 `white-space: pre-wrap`）。需要高亮片段时，拆成片段数组逐个插值。
 2. 不用 `console.log` 等输出任何内容；提交的代码中不留 `console.*`。
-3. 本地存储（`localStorage`）只能存界面偏好：上次的立场和来源（Q-51）、登录页记住的用户名（`si.login.username`，SPEC 6.1）、侧栏收起与宽度（`si.sidebar.collapsed`、`si.sidebar.width`）、审核结果左栏宽度（`si.review.leftWidth`）。工作文件夹的授权句柄存本浏览器 IndexedDB（库 `si`、表 `prefs`、键 `workFolder`）。不得存密码、文件内容、名称、问题、对照表、文件夹路径、文件名或任何接口返回的业务数据。读写包在 try/catch 中，读不到按默认值。
+3. 本地存储（`localStorage`）只能存界面偏好：上次的立场和来源（Q-51）、登录页记住的用户名（`si.login.username`，SPEC 6.1）、侧栏收起与宽度（`si.sidebar.collapsed`、`si.sidebar.width`）、审核结果左栏宽度（`si.review.leftWidth`）、外观设置（`si.appearance`，第十三节）。工作文件夹的授权句柄存本浏览器 IndexedDB（库 `si`、表 `prefs`、键 `workFolder`）。不得存密码、文件内容、名称、问题、对照表、文件夹路径、文件名或任何接口返回的业务数据。读写包在 try/catch 中，读不到按默认值。
 4. URL 中只放 ID 和页码、日期等筛选条件，不放文件名、公司名等文字。
 5. 所有请求经 `api/http.ts` 发出，不在组件中直接用 `fetch`。每个后端资源在 `api/` 下一个文件，接口类型与后端返回字段同名。
 6. 前端检查（文件数量、大小、扩展名、必填项）只是提示，后端一定会再检查；不要因为前端检查过就省略对接口错误的处理。
@@ -211,9 +249,13 @@
 1. 组件一律 `<script setup lang="ts">`，样式一律 `<style scoped>`。不写内联 `style`（动态尺寸等必要情况除外）。覆盖 Element Plus 组件内部样式时用 `:deep()`，并只在该组件的 scoped 样式中写。
 2. `views/` 放页面，`components/` 放页面拆出来的子组件，`components/brand/` 放品牌组件。单个 `.vue` 文件超过约 400 行，或一个区块有自己的加载、保存逻辑时，拆成子组件。
 3. 样式文件：
-   * `styles/theme.css`：只放设计令牌（覆盖 Element Plus 变量、`--si-*` 变量）和 Element Plus 组件的全局外观统一（卡片、对话框、抽屉、表格表头、焦点）。全仓只有这里可以写十六进制颜色。
-   * `styles/common.css`：页面容器 `.page` 及宽度类、`.panel`、`.gap`（16px）、`.hint`、`.actions`、`.filters`、`.stat`、`.avatar` 等多个页面共用的写法。
-   * 在 `main.ts` 中依次引入 Element Plus 样式、`theme.css`、`common.css`。
+   * `styles/fonts.css`：SI Sans、SI Mono 的 `@font-face`，由 `frontend/scripts/build_fonts.py` 生成，不手改；字体文件在 `assets/fonts/`，来源与 SHA-256 见同目录 `SOURCES.md`，OFL 全文在 `public/licenses/`。
+   * `styles/theme.css`：只放设计令牌，分三块且顺序固定：A 浅色外壳与纸面、B 夜幕外壳（只覆盖随外壳变化的令牌）、C 映射与派生（Element Plus 变量、旧令牌、`color-mix()` 派生色，同时写在 `:root` 与 `.si-paper` 上）。全仓只有这里可以写十六进制颜色。
+   * `styles/skin.css`：Element Plus 组件的全局外观（按钮、输入、标签、表格、选项卡、弹层、对话框等），只用变量。
+   * `styles/common.css`：页面容器 `.page` 及宽度类、`.panel`、`.si-card`、`.si-stage`、`.gap`（16px）、`.hint`、`.actions`、`.filters`、`.stat`、`.code`、`.avatar` 等多个页面共用的写法。
+   * `styles/motion.css`：动效令牌与通用过渡类（第十二节）。
+   * 在 `main.ts` 中依次引入 Element Plus 样式、`fonts.css`、`theme.css`、`skin.css`、`common.css`、`motion.css`。
+   * 基础组件放在 `components/ui/`（`SiSegmented`、`SiIsland`、`SiToast`、`SiCount`），每个不超过约 200 行，在关闭特效下可用、键盘可操作、有 `aria-*`。
 4. 枚举翻译、标签颜色、替换类别颜色组只在 `labels.ts` 定义；接口调用只在 `api/` 定义；时间格式只在 `utils/time.ts` 定义；可以脱离界面测试的逻辑（如对照配对）放在 `utils/`。
 5. 不新增依赖。确实需要时，按任务说明添加并锁定精确版本。
 6. 导出文件一律经 `utils/save.ts` 的 `saveBlob(blob, filename)` 保存，不在组件中自行创建下载链接。
@@ -223,9 +265,9 @@
 完成前端任务时逐项检查，并在完成报告中写明检查结果。
 
 1. `npm --prefix frontend run build` 通过（含 vue-tsc 类型检查）。
-2. 在浏览器中打开本任务涉及的每个页面（http://localhost:5173，需先启动整套系统；模型用模拟服务，见 deploy/docker-compose.mock.yml），按窗口 1280×800、1366×768、1440×900、1920×1080 各看一遍：
+2. 在浏览器中打开本任务涉及的每个页面（http://localhost:5173，需先启动整套系统；模型用模拟服务，见 deploy/docker-compose.mock.yml），夜幕与浅色两种外壳 × 完整与精简特效，按视口 1366×640、1440×900、1920×1080 各看一遍，另在 1280×800 看一遍无横向滚动：
    * 没有横向滚动条，没有文字溢出、重叠或被截断；粘底操作栏不遮挡内容；
-   * 宽度、间距、字号、颜色符合第二、三节，与 docs/design/ui-preview.html 中对应页面的观感一致；
+   * 宽度、间距、字号、颜色符合第二、三节，与所在批次设计文档中对应页面的观感一致；没有白块“闪”出夜幕，纸面为白底，弹层与提示可读；
    * 第六节中与本页相关的每种状态都看过（至少：加载中、正常、没有数据、出错）；
    * 用 Tab 键走一遍：焦点外环可见，顺序合理；
    * 浏览器控制台没有报错（未登录时 `/auth/me` 的 401 除外）。
@@ -234,3 +276,26 @@
 5. 在完成报告中附上主要页面的截图；无法截图的，说明看过哪些页面和状态。
 
 Opus 评审前端任务和里程碑验收时，按本规范逐条检查，并在浏览器中截图核对。
+
+## 十二、动效
+
+| 层 | 时长 | 缓动 | 动什么 | 例 |
+|-|-|-|-|-|
+| 微交互 | 120～200ms（`--si-dur-1` 160ms） | `--si-ease` | 颜色、底色、透明度；按下 `scale(.97)` | 按钮、开关、悬停、选项卡 |
+| 结构过渡 | 240～450ms（`--si-dur-2` 320ms，离开 `--si-dur-exit` 200ms） | 进入 `--si-spring`，离开 `--si-ease` | 位移与透明度 | 页面进入、抽屉、弹层、列表增删、定位原文、分段滑块、灵动岛变形 |
+| 品牌时刻 | 0.8～2.5s，可循环 | 自定 | 位移、透明度、旋转 | 登录开场、本地扫描、AI 视野切换、审核中、AI 生成中 |
+
+1. 循环动画只在系统等待期间出现（解析中、审核中、生成中），等待结束即停；页面隐藏时暂停。组件用 `utils/motion.ts` 的 `useLoop(active)` 判断此刻是否播放。
+2. 结构过渡与品牌时刻只动 `transform`、`opacity`；不动画 `width`、`height`、`top/left`、`box-shadow`、`filter`。例外只有三处单个小元素：灵动岛宽度、分段控件选中块宽度、开关底色。
+3. **动画从不推迟结果出现**：结果就绪即可操作，仪式是叠加层，就绪时 200ms 内淡出；路由切换只有进入动画，不用 `mode="out-in"`。
+4. 每个品牌时刻在精简特效下有静态替代（定格的最终画面 + 文字进度），在关闭特效下只有文字与已用时间；进度信息在三个级别中完全相同。
+5. 通用过渡类在 `motion.css`：`si-fade`、`si-rise`、`si-pop`、`si-list`（含 `-move`）、`si-page`；JS 驱动的动画取时长用 `motionMs(layer)`（关闭时为 0）。品牌时刻开始时调用 `watchFrames()`，用于自动降级。
+6. `html[data-fx="off"]` 关闭全部 `transition` 与 `animation`；`html[data-fx="lite"]` 时 `--si-blur`、`--si-glow-blue`、`--si-ambient` 为 `none`，品牌时刻用静态替代，微交互与结构过渡保留。
+7. **性能预算**：字体首次打开常用页面 ≤ 2 MB；不引入动画库；完整特效下开发机品牌时刻 ≥ 55 帧，精简特效在 Edge `--disable-gpu` 下 ≥ 30 帧；毛玻璃只在完整特效、同屏最多 3 处、不放在会滚动的容器上；辉光只用于静止元素；悬停效果不改变布局；大表格（> 100 行）行内不加过渡。
+
+## 十三、外观设置
+
+* **入口**：侧栏用户菜单“修改密码”之上的“外观”，打开 `AppearanceDialog`（宽 420px）：外壳“夜幕 / 浅色”，特效“自动 / 完整 / 精简 / 关闭”，下方一行说明自动档当前结果与原因（手动时写“已按你的选择固定，不再自动调整”）。修改立即生效，不进入未保存状态。登录页不放入口，按已保存的设置显示。
+* **存储**：`localStorage` 键 `si.appearance`，值 `{"shell":"night","fx":"auto"}`；只存本浏览器，不发送到服务器。读不到按默认（夜幕、自动）。
+* **首屏不闪**：`index.html` 的 `<head>` 内联脚本在样式生效前写 `<html>` 的 `data-shell` 与 `data-fx`；之后由 `stores/appearance.ts` 接管。页面和组件按 `data-shell`、`data-fx` 或 `useFx()` 判断，不各自读存储。
+* **自动档**按顺序判定，命中即停：系统设置了减少动态效果 → 关闭；WebGL 检测为软件渲染（远程桌面或无显卡）→ 精简；处理器核心 ≤ 2 → 精简；品牌时刻开始后 1.5 秒内平均帧间隔 > 34ms → 本次打开期间降为精简（不写存储）；否则完整。用户手动选择的级别优先于以上全部。
