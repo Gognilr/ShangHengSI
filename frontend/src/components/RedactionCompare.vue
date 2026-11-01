@@ -227,14 +227,14 @@ onBeforeUnmount(() => {
         <div v-if="'hidden' in entry" class="fold-row"><el-button link type="primary" @click="expanded.add(entry.index)">已隐藏 {{ entry.hidden }} 段无替换的段落 · 展开</el-button></div>
         <div v-else class="compare-row" :class="{ 'has-suspect': entry.row.hasPendingSuspect, 'is-flashing': flashLoc === entry.row.loc }" :data-loc="entry.row.loc">
           <div class="location">{{ entry.row.label }}<span v-if="entry.row.hasPendingSuspect" class="pending-label">待处理</span></div>
-          <div class="original-cell">
+          <div class="original-cell si-paper">
             <template v-if="!nodeErrors[fileSeq(entry.row.loc)]">
               <p v-for="(segments, index) in entry.row.left" :key="index" class="compare-original" :data-loc="entry.row.kind === 'header' ? undefined : originalLoc(entry.row, index)"><template v-for="(seg, i) in segments" :key="i"><el-popover v-if="seg.placeholder || seg.suspect" trigger="hover" :width="240" :disabled="!editable || saving || !originalItem(entry.row, segments, i, index)"><template #reference><span class="segment" :class="[kind(seg), { replaced: seg.placeholder, suspect: seg.suspect, linked: linked(entry.row, seg) }]" :title="seg.suspect ? '待处理' : seg.placeholder" :tabindex="seg.placeholder ? 0 : undefined" @mouseenter="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @mouseleave="hovered = null" @focus="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @blur="hovered = null">{{ seg.text }}</span></template><el-button link type="primary" :loading="saving" @click="revokeItem(originalItem(entry.row, segments, i, index))">撤销（不是敏感信息）</el-button></el-popover><template v-else>{{ seg.text }}</template></template></p>
               <span v-if="!entry.row.left.length" class="hint">—</span>
             </template>
             <span v-else class="hint">原文读取失败</span>
           </div>
-          <div class="outbound-cell">
+          <div class="outbound-cell si-paper">
             <div v-if="entry.row.kind === 'grouped'" class="hint">报价明细已汇总发送</div>
             <p v-if="entry.row.right !== null" class="outbound-text"><template v-for="(seg, i) in entry.row.right" :key="i"><el-popover v-if="seg.placeholder || seg.suspect" trigger="hover" :width="240" :disabled="!originalText(entry.row, seg.placeholder) && (!editable || saving || !outboundItem(entry.row, entry.row.right, i))"><template #reference><span class="segment" :class="[kind(seg), { placeholder: seg.placeholder, suspect: seg.suspect, linked: linked(entry.row, seg) }]" :title="seg.suspect ? '待处理' : undefined" :tabindex="seg.placeholder ? 0 : undefined" @mouseenter="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @mouseleave="hovered = null" @focus="hovered = seg.placeholder ? { loc: entry.row.loc, kind: entry.row.kind, placeholder: seg.placeholder } : null" @blur="hovered = null">{{ seg.text }}</span></template><p v-if="originalText(entry.row, seg.placeholder)" class="popover-original">原文：{{ originalText(entry.row, seg.placeholder) }}</p><el-button v-if="editable && outboundItem(entry.row, entry.row.right, i)" link type="primary" :loading="saving" :disabled="saving" @click="revokeItem(outboundItem(entry.row, entry.row.right, i))">撤销（不是敏感信息）</el-button></el-popover><template v-else>{{ seg.text }}</template></template></p>
             <span v-else class="hint">—（不发送）</span>
@@ -268,7 +268,7 @@ onBeforeUnmount(() => {
 .compare-row { border-top: 1px solid var(--el-border-color-lighter); border-left: 3px solid transparent; }
 .compare-row > div + div { border-left: 1px solid var(--el-border-color-lighter); }
 .has-suspect { border-left-color: var(--el-color-warning); }
-.is-flashing { background: var(--el-color-warning-light-9); }
+.is-flashing, .is-flashing .si-paper { background: var(--el-color-warning-light-9); }
 .location { font-size: 12px; color: var(--el-text-color-secondary); overflow-wrap: anywhere; }
 .pending-label { display: block; margin-top: 8px; color: var(--el-color-warning); }
 .compare-original, .outbound-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; font-size: 14px; }

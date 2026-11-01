@@ -109,7 +109,7 @@ async function submit() {
   justify-content: center;
   position: relative;
   padding: 64px 0 96px;
-  background: var(--el-bg-color-page);
+  background: var(--si-bg-canvas);
 }
 .login-shell { width: calc(100% - 128px); max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 1px 408px; gap: 64px; align-items: center; }
 .brand-area { min-width: 0; }
@@ -122,7 +122,6 @@ h2 { font: var(--si-font-display); margin: 0 0 20px; }
 h1 { font: var(--si-font-title-lg); margin: 0 0 4px; }
 .subtitle { color: var(--el-text-color-secondary); margin: 0 0 32px; }
 .login-form :deep(.el-input) { --el-input-height: 52px; }
-.login-form :deep(.el-input__wrapper:focus-within) { outline: 2px solid var(--si-focus-ring); outline-offset: 2px; }
 .login-form :deep(.el-form-item) { margin-bottom: 24px; }
 .remember-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 20px; }
 .error { margin-bottom: 16px; }

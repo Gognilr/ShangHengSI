@@ -258,24 +258,3 @@ html[data-fx="lite"], html[data-fx="off"] {
 
 /* 纸面：任何外壳下都是白纸黑字 */
 .si-paper { color-scheme: light; background: var(--si-paper); color: var(--si-paper-ink); }
-
-/* 以下为组件全局外观，V31-U1-02 移到 skin.css */
-html body { font: var(--si-font-body); color: var(--el-text-color-primary); text-autospace: normal; -webkit-font-smoothing: antialiased; }
-* { scrollbar-width: thin; scrollbar-color: var(--si-scrollbar) transparent; }
-:focus-visible { outline: 2px solid var(--si-focus-ring); outline-offset: 2px; }
-.el-textarea__inner:focus-visible { outline: 2px solid var(--si-focus-ring); outline-offset: 2px; }
-.el-card { --el-card-border-radius: var(--si-radius-card); --el-card-border-color: var(--el-border-color-light); box-shadow: none; }
-.el-dialog, .el-message-box { --el-dialog-border-radius: var(--si-radius-card); --el-messagebox-border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-pop); }
-.el-dialog__title, .el-drawer__title { font: var(--si-font-h2); }
-.el-dialog__body, .el-drawer__body { font: var(--si-font-body); }
-.el-drawer { border-radius: var(--si-radius-card) 0 0 var(--si-radius-card); box-shadow: var(--si-shadow-pop); }
-.el-table { --el-table-header-bg-color: var(--el-fill-color-light); }
-.el-table, .el-pagination, .stat-value, .num { font-variant-numeric: tabular-nums; }
-.el-table th.el-table__cell { font: var(--si-font-meta); color: var(--el-text-color-secondary); }
-/* Element Plus 的按钮尺寸在组件中写死，需同步映射到主题尺寸令牌。 */
-.el-button { --el-button-size: var(--el-component-size); height: var(--el-button-size); }
-.el-button--small { --el-button-size: var(--el-component-size-small); }
-.el-button.is-link { height: auto; }
-.el-select__wrapper { min-height: var(--el-component-size); }
-.el-select--small .el-select__wrapper { min-height: var(--el-component-size-small); }
-.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner { transition: color var(--si-dur-1), background-color var(--si-dur-1), border-color var(--si-dur-1); }

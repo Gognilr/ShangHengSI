@@ -208,7 +208,7 @@ async function submit() {
       <el-tab-pane v-for="f in sortedFiles" :key="f.id" :label="f.original_name" :name="f.id" />
     </el-tabs>
 
-    <div v-if="states[activeId]" v-loading="states[activeId].loading" class="body" @mouseup="onMouseUp">
+    <div v-if="states[activeId]" v-loading="states[activeId].loading" class="body si-paper" @mouseup="onMouseUp">
       <el-alert v-if="states[activeId].error" type="error" show-icon :closable="false" :title="states[activeId].error" />
       <el-empty
         v-else-if="!states[activeId].loading && !states[activeId].available"
@@ -265,9 +265,9 @@ async function submit() {
   flex: 1 1 auto;
   overflow: auto;
   padding: 24px;
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 12px;
+  background: var(--si-paper);
+  border: 1px solid var(--si-hair);
+  border-radius: var(--si-radius-paper);
 }
 .node {
   display: flex;

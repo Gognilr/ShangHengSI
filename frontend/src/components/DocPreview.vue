@@ -379,7 +379,7 @@ onBeforeUnmount(() => {
     <span class="hint" :class="{ locating: highlightLabel && hasHighlight }">{{ highlightLabel && hasHighlight ? `正在定位：${highlightLabel}` : '点击左侧问题可定位原文' }}</span>
     </div>
 
-    <div ref="body" v-loading="!state || state.loading" class="doc-preview__body">
+    <div ref="body" v-loading="!state || state.loading" class="doc-preview__body si-stage">
       <template v-if="state && !state.loading">
         <el-alert v-if="state.error" type="error" :closable="false" show-icon :title="state.error" />
         <template v-else>
@@ -402,7 +402,7 @@ onBeforeUnmount(() => {
           <el-empty v-if="!state.nodes.length && !state.pdfPages.length && !state.imageUrl" description="没有可显示的内容" />
 
           <!-- DOCX -->
-          <div v-else-if="kind === 'docx'" class="docx">
+          <div v-else-if="kind === 'docx'" class="docx si-paper">
             <template v-for="(it, i) in docxItems" :key="i">
               <p
                 v-if="it.type === 'p'"
@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
             <el-tabs v-if="sheets.length" v-model="currentSheetKey">
               <el-tab-pane v-for="s in sheets" :key="s.key" :label="s.label" :name="s.key" />
             </el-tabs>
-            <div v-if="currentSheet" class="sheet-wrap">
+            <div v-if="currentSheet" class="sheet-wrap si-paper">
               <table class="grid">
                 <thead>
                   <tr>
@@ -470,7 +470,7 @@ onBeforeUnmount(() => {
             <div
               v-for="p in state.pdfPages"
               :key="p.num"
-              class="pdf-page"
+              class="pdf-page si-paper"
               :data-page="p.num"
               :style="{ aspectRatio: `${p.w} / ${p.h}` }"
             >
@@ -488,7 +488,7 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- 图片 -->
-          <div v-else-if="kind === 'image' && state.imageUrl" class="img-wrap">
+          <div v-else-if="kind === 'image' && state.imageUrl" class="img-wrap si-paper">
             <img
               :src="state.imageUrl"
               class="img-wrap__img"
@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- 原件不可用时：按节点文字显示 -->
-          <div v-else-if="showFallback || kind === 'other'" class="docx">
+          <div v-else-if="showFallback || kind === 'other'" class="docx si-paper">
             <p v-for="n in state.nodes" :key="n.loc" :data-loc="n.loc" class="docx__p" :class="{ 'is-highlight': hl.has(n.loc) }">
               <span class="docx__no">{{ nodeLabel(n) }}</span>{{ n.text }}
             </p>
@@ -531,7 +531,7 @@ onBeforeUnmount(() => {
 .doc-preview__toolbar > .hint { margin-left: auto; }
 .doc-preview__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .locating { color: var(--el-color-primary); }
-.docx { background: var(--el-bg-color); padding: 48px; border-radius: var(--si-radius-paper); box-shadow: var(--si-paper-shadow); min-height: 100%; max-width: calc(40em + 96px); margin: 0 auto; box-sizing: border-box; font: var(--si-font-reading); color: var(--si-text-reading); }
+.docx { background: var(--si-paper); padding: 48px; border-radius: var(--si-radius-paper); box-shadow: var(--si-paper-shadow); min-height: 100%; max-width: calc(40em + 96px); margin: 0 auto; box-sizing: border-box; font: var(--si-font-reading); color: var(--si-paper-ink-2); }
 
 .doc-preview__body {
   flex: 1;
@@ -540,7 +540,7 @@ onBeforeUnmount(() => {
   position: relative;
   padding: 24px;
   box-sizing: border-box;
-  background: var(--si-stage-bg);
+  background: var(--si-stage);
 }
 
 .docx__p {
@@ -589,7 +589,7 @@ onBeforeUnmount(() => {
 
 .sheet-wrap {
   overflow-x: auto;
-  background: var(--el-bg-color);
+  background: var(--si-paper);
   padding: 16px;
   border-radius: var(--si-radius-paper);
   box-shadow: var(--si-paper-shadow);
@@ -600,7 +600,7 @@ onBeforeUnmount(() => {
   position: relative;
   width: 100%;
   margin-bottom: 8px;
-  background: var(--el-bg-color);
+  background: var(--si-paper);
   border-radius: var(--si-radius-paper);
   box-shadow: var(--si-paper-shadow);
 }
@@ -618,7 +618,7 @@ onBeforeUnmount(() => {
 
 .img-wrap {
   position: relative;
-  background: var(--el-bg-color);
+  background: var(--si-paper);
   border-radius: var(--si-radius-paper);
   box-shadow: var(--si-paper-shadow);
 }
