@@ -42,6 +42,10 @@ returns:
     model: "供应商B、人员9、编号9、Customer_B。"
     expect: "供应商B、人员9、编号9、Customer_B。"
     marks: [{raw: Customer_B, kind: unknown}]
+  - field: clause
+    model: "OUR LIABILITY under ISO_9001 is limited."
+    expect: "OUR LIABILITY under ISO_9001 is limited."
+    marks: []
   - field: text
     model: "F1-P3【主体说明】"
     expect: "F1-P3【主体说明】"

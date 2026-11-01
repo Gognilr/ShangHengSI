@@ -11,6 +11,7 @@ from app.db.models import AssistantMessage, LlmModel, Party, RedactionMap, Redac
 from app.llm import gateway, usage
 from app.models_api import select_model
 from app.redaction import engine
+from app.redaction.placeholders import NEUTRAL
 from app.redaction.restore import check
 from app.review.service import MarkOut
 from app.security.errors import AppError, NotFoundError
@@ -91,8 +92,10 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             "marks": []}
     if message.role == "assistant":
         if message.status not in ('queued', 'streaming'):
+            # 与 incremental() 用同一份助手代号表，标记位置才与 content 一致（设计 V31-R 4.6）。
+            neutral = {code: value for code, value in mapping.items() if NEUTRAL.fullmatch(code)}
             result['marks'] = [MarkOut.model_validate(mark).model_dump()
-                               for mark in check(message.content_redacted, mapping).marks]
+                               for mark in check(message.content_redacted, neutral).marks]
         from app.redaction.restore import restore
         if message.template == "translate":
             result["translation"] = {loc: restore(text, mapping) for loc, text in message.extras.get("translation", {}).items()}

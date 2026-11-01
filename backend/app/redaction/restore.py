@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 
-from app.redaction.placeholders import FIXED, NEUTRAL, NUMBERED_LABELS, ROLE_LABELS
+from app.redaction.placeholders import _NEUTRAL_LABELS, FIXED, NEUTRAL, NUMBERED_LABELS, ROLE_LABELS
 
 
 def _variants(code: str) -> list[str]:
@@ -113,7 +113,9 @@ def _candidates() -> re.Pattern:
     neutral = r"[\[［【]\[(?:OUR|[A-Z]+_\d+)\][\]］】]"
     bracket = r"[\[［【〔][^\[\]［］【】〔〕\r\n]+[\]］】〕]"
     bare = rf"(?<![{_ASCII_WORD}]){label}[ \t]*[_＿]?[ \t]*(?:[A-ZＡ-Ｚ]+|[QＱ]?[0-9０-９]+)(?![{_ASCII_WORD}])"
-    bare_neutral = rf"(?<![{_ASCII_WORD}])(?:OUR|[A-Z]+_\d+)(?![{_ASCII_WORD}])"
+    # 不带括号的助手代号只认助手类别；大写 OUR、ISO_9001 等普通英文不算候选。
+    tags = "|".join(sorted(set(_NEUTRAL_LABELS.values()), key=len, reverse=True))
+    bare_neutral = rf"(?<![{_ASCII_WORD}])(?:{tags})_\d+(?![{_ASCII_WORD}])"
     return re.compile("|".join((
         _RATIO, r"【主体说明】|【报价明细表：[^】]*】", neutral, _LOCATION.pattern,
         bracket, bare, bare_neutral, "我方",
@@ -165,7 +167,7 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
             restored += 1
         elif NEUTRAL.fullmatch(raw) or re.fullmatch(r"[\[［【]\[(?:OUR|[A-Z]+_\d+)\][\]］】]", raw):
             kind = "unknown"
-        elif (re.fullmatch(r"\[?(?:OUR|[A-Z]+_\d+)\]?", raw)
+        elif (assistant and re.fullmatch(r"\[?(?:OUR|[A-Z]+_\d+)\]?", raw)
               and _identity(raw) not in lookup):
             code = "[[" + raw.strip("[]") + "]]"
             kind = "variant" if code in mapping else "unknown"
