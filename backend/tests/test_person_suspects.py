@@ -78,7 +78,7 @@ def test_design_11_6_body_note_gateway_logs(db_sessionmaker, alice, ready_task, 
     with db_sessionmaker() as db:
         mapping = load_redaction_map(db, task.id)
     code = next(k for k, v in mapping.items() if v == '陆虚岚')
-    assert code.startswith('人员_') and code in value and '陆虚岚' not in value
+    assert code.startswith('[人员_') and code in value and '陆虚岚' not in value
     assert recheck(value, real_values=mapping.values(), terms=[]) == []
     _, requests = complete(db_sessionmaker, c, h, task, llm)
     assert requests and all('陆虚岚' not in req.content.decode() for req in requests)

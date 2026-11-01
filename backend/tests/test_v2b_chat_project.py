@@ -80,7 +80,7 @@ def test_project_preview_and_send_do_not_expose_tail(alice, ready_task, db_sessi
     preview = client.post(task_url(task, '/chat/preview'), headers=headers, json={'message': MESSAGE})
     assert preview.status_code == 200, preview.text
     body = preview.json()
-    assert body['redacted'] == '项目名称：[项目_Q1]；我方负责验收。'
+    assert body['redacted'] == '项目名称：[项目_Q1]；[我方]负责验收。'
     assert body['suspects'] == []
     requests = llm('normal')
     sent = client.post(task_url(task, '/chat'), headers=headers, json={'message': MESSAGE, 'decisions': []})

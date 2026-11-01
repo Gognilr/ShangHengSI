@@ -69,7 +69,7 @@ def test_project_containing_our_party_has_one_complete_reversible_span():
     item = items[0]
     assert (item.category, item.char_start, item.char_end) == ('PROJECT', 5, 5 + len(project))
     assert result.redacted['F1-P3'] == f'项目名称：{item.placeholder}'
-    assert result.redacted['F1-P1'] == '买方：我方'
-    assert result.redacted['F1-P4'] == '我方应按期验收。'
+    assert result.redacted['F1-P1'] == '买方：[我方]'
+    assert result.redacted['F1-P4'] == '[我方]应按期验收。'
     for node in nodes:
         assert restore(result.redacted[node.loc], result.mapping) == node.text

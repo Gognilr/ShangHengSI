@@ -36,7 +36,7 @@ def test_04_short_suffix_noise(text):
 
 def test_05_short_suffix_name():
     r = compute([NodeIn("F1-P1", "Partner: Nordic Fictive Systems AB")], "sales")
-    assert r.mapping["公司_A"] == "Nordic Fictive Systems AB"
+    assert r.mapping["[公司_A]"] == "Nordic Fictive Systems AB"
 
 
 def test_06_cyrillic_chat():

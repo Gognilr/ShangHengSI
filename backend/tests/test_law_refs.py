@@ -29,7 +29,7 @@ def test_t45_disabled_and_local_only(db_sessionmaker,monkeypatch):
     monkeypatch.setattr(retrieve.engine,'embed',lambda *a:pytest.fail('不得加载引擎'))
     with db_sessionmaker() as db:
         retrieve.prepare(db,c,None,{})
-        assert build_user_message(c)==original and '【参考法条】' not in original
+        assert build_user_message(c)==original and '\n【参考法条】\n' not in original
         set_setting(db,'laws.refs_enabled',True,None)
         c.task.policy='local_only'
         retrieve.prepare(db,c,None,{})
@@ -167,7 +167,8 @@ def test_t44a_9_null_reference_snapshot_and_report(monkeypatch):
     finding = SimpleNamespace(seq=1, severity='low', category='legal', locs=[], missing=True,
         quote=None, title='示例问题', problem='需确认。', impact=None, basis=None, suggestion=None,
         suggested_text=None, law_refs=[ref], law_unverified=False, source='model',
-        cite_status='missing', handling_status='pending', handling_note=None, location=None)
+        cite_status='missing', handling_status='pending', handling_note=None, location=None,
+        marks={}, unresolved=0)
     detail = SimpleNamespace(template=None, coverage=None, findings=[finding],
         sanctions=SimpleNamespace(level='attention', reasons=[]), requirement_results=[])
     monkeypatch.setattr(report_docx, 'run_detail', lambda *args: detail)
