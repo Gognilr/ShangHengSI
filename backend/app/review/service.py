@@ -303,9 +303,14 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
     task.latest_run_id = run.id
     task.error_message = None
     audit.record(db, "run_create", user_id=user.id, target_type="run", target_id=str(run.id),
-                 detail={"run_no": run_no, "requirements": len(ctx.requirements)}, ip=ip)
+                 detail={"run_no": run_no, "requirements": len(ctx.requirements), "confirm": _confirm_stats(db, task)}, ip=ip)
     db.commit()
     return run
+
+
+def _confirm_stats(db, task):
+    from app.redaction.stats import finish
+    return finish(db, task)
 
 
 # ---------------------------------------------------------------- 轮次列表与详情

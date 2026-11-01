@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.db.models import Party, RedactionItem, RedactionSuspect, Task, User
 from app.db.session import get_db
-from app.redaction import engine
+from app.redaction import engine, stats
 from app.security.deps import current_user, owned_redaction_task as owned_task
 from app.security.errors import AppError, NotFoundError
 from app.audit import service as audit
@@ -163,6 +163,7 @@ def put_parties(
         for p in body.items
     ])
     result = _party_list(db, locked)
+    stats.operation(locked)
     db.commit()
     return result
 
@@ -209,6 +210,7 @@ def decide_suspects_batch(
         db.rollback()
         raise _input_error(exc) from None
     # 忽略分支只更新决定；整批结束后统一刷新一次摘要和列表，不逐项重算。
+    stats.operation(locked)
     result = _redaction(db, locked)
     db.commit()
     return result
@@ -229,6 +231,7 @@ def decide_suspect(
     except engine.RedactionInputError as exc:
         db.rollback()  # 不保留本次的任何修改（也释放任务行锁）
         raise _input_error(exc) from None
+    stats.operation(locked)
     result = _redaction(db, locked)
     db.commit()
     return result
@@ -245,6 +248,7 @@ def manual_redaction(
     except engine.RedactionInputError as exc:
         db.rollback()  # 不保留本次的任何修改（也释放任务行锁）
         raise _input_error(exc) from None
+    stats.operation(locked)
     result = _redaction(db, locked)
     db.commit()
     return result
@@ -267,6 +271,7 @@ def revoke_redaction(body: RevokeRedaction, task: Task = Depends(owned_task), us
         raise _input_error(exc) from None
     audit.record(db, "redaction_revoke", user_id=user.id, target_type="task", target_id=str(task.id),
                  detail={"category": category})
+    stats.operation(locked)
     result = _redaction(db, locked)
     db.commit()
     return result

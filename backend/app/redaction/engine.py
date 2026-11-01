@@ -972,6 +972,8 @@ def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut]) ->
     """与上次相同位置、相同原因的疑似遗漏保留原 id 和决定；不再出现的删除；新出现的为 pending（设计 M4.md 第四节）。"""
     old = {(r.loc, r.char_start, r.char_end, r.reason): r
            for r in db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id))}
+    user_items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task_id,
+                                                           RedactionItem.detected_by == 'user')))
     seen: set[tuple[str, int, int, str]] = set()
     for s in found:
         key = (s.loc, s.char_start, s.char_end, s.reason)
@@ -987,7 +989,10 @@ def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut]) ->
             row.decision, row.category, row.decided_by, row.decided_at = "pending", None, None, None
     for key, row in old.items():
         if key not in seen:
-            db.delete(row)
+            # V31Q-21：保留仍由用户词条覆盖的 replace 行供按组统计；不再覆盖时正常清除。
+            if not (row.decision == 'replace' and any(i.loc == row.loc and i.char_start <= row.char_start
+                                                     and i.char_end >= row.char_end for i in user_items)):
+                db.delete(row)
     db.flush()
 
 
@@ -1269,7 +1274,7 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
     ignore：本条及本任务中文字相同（规范形式）的全部原因 pending 疑似遗漏都置 ignore（V2Q-145）。
     """
     row = db.get(RedactionSuspect, suspect_id)
-    if row is None or row.task_id != task.id:
+    if row is None or row.task_id != task.id or row.decision == 'replace':
         raise RedactionInputError(404, "SUSPECT_NOT_FOUND", "疑似遗漏不存在")
     if decision not in ("replace", "ignore", "reset") or (decision == "replace" and category not in (*USER_CATEGORIES, 'NAME', 'TERM')):
         raise RedactionInputError(422, "VALIDATION_ERROR", "处理方式或类别不正确")
@@ -1322,6 +1327,8 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
     out = []
     groups = {}
     for r in suspects:
+        if r.decision == 'replace':
+            continue  # 已处理替换沿用原有列表行为；其来源行只参与本地数量统计。
         t = texts.get(r.loc, "")
         key = P.normalize(t[r.char_start:r.char_end])
         if key in groups:

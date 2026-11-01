@@ -24,6 +24,7 @@ from app.parsing import docx, image, legacy, pdf, xlsx
 from app.parsing.doctype import detect_doc_type
 from app.parsing.model import MAX_OCR_PAGES_PER_TASK, ParsedFile, ParseError
 from app.redaction.engine import redact_task
+from app.redaction import stats
 from app.security import crypto
 from app.tasks import storage
 from app.worker import job_handler
@@ -148,7 +149,7 @@ def parse_task(db: Session, task_id: uuid.UUID, file_ids: list[str] | None = Non
             task.last_completed_at = utcnow()  # 原件保留期清理据此计算到期时间（M7-06、Q-109）
         else:
             redact_task(db, task)
-            task.status = "awaiting_confirm"
+            stats.enter(task)
         task.error_message = None
         # 保存点隔离向量失败；清掉旧缓存，避免重解析失败后沿用旧原文向量。
         db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == task.id))

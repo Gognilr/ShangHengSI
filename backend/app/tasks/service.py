@@ -19,7 +19,7 @@ from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import DocNode, Job, LlmCall, RedactionItem, RedactionSuspect, ReviewRun, Task, TaskFile, User
-from app.redaction import engine
+from app.redaction import engine, stats
 from app.security import crypto
 from app.security.errors import AppError, NotFoundError
 from app.tasks import filecheck, storage
@@ -78,6 +78,7 @@ def add_files(db, task, uploads) -> TaskDetail:
         db.flush()
         jobs.enqueue(db, 'parse', {'task_id': str(task.id), 'file_ids': [str(f.id) for f in added]})
         task.last_activity_at = utcnow()
+        stats.operation(task)
         result = task_detail(db, task)
         db.commit()
         return result
@@ -115,6 +116,7 @@ def delete_file(db, task, file, user, ip) -> TaskDetail:
     engine._run(db, task, engine._current_overrides(existing) if any(p.confirmed for p in existing.values()) else None, existing)
     jobs.enqueue(db, 'parse', {'task_id': str(task.id), 'file_ids': []})
     task.last_activity_at = utcnow()
+    stats.operation(task)
     audit.record(db, 'task_file_delete', user_id=user.id, target_type='task', target_id=str(task.id), detail={'files': 1}, ip=ip)
     result = task_detail(db, task)
     db.commit()
@@ -141,7 +143,7 @@ def proceed(db, task, body) -> TaskDetail:
         task.status, task.last_completed_at = 'completed_local', utcnow()
     else:
         recompute_task(db, task)
-        task.status = 'awaiting_confirm'
+        stats.enter(task)
     owner = db.get(User, task.owner_id)
     owner.last_stance, owner.last_source = body.stance, body.source
     task.last_activity_at = utcnow()
@@ -535,7 +537,7 @@ def patch_task(db: DbSession, task: Task, patch: TaskPatch) -> TaskDetail:
             task.user_note_enc = crypto.encrypt_text(note) if note else None
             task.user_note_redacted = None
     engine.apply_party_changes(db, task, [])
-    task.status = "awaiting_confirm"
+    stats.enter(task)
     task.last_activity_at = utcnow()
     db.flush()
     result = task_detail(db, task)

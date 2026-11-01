@@ -68,6 +68,9 @@ def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_s
         run.failed_chunks = failed
     run.coverage = None if status == "blocked" else coverage  # blocked 未发送；其他带结果的终态写入覆盖说明
     task.status = task_status
+    if task_status == 'awaiting_confirm':
+        from app.redaction.stats import enter
+        enter(task)
     task.last_activity_at = utcnow()
     db.commit()
     logger.info("run %s 结束 状态=%s", run_id, status)

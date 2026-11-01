@@ -18,6 +18,7 @@ from app.security.deps import current_user, owned_task, owned_task_file
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service
+from app.redaction import stats
 from app.tasks.schemas import PreviewNodes, TaskCreated, TaskDetail, TaskFileOut, TaskPage, TaskPatch
 
 router = APIRouter(prefix="/tasks")
@@ -61,6 +62,7 @@ def patch_file_type(
         jobs.enqueue(db, 'parse', {'task_id': str(task.id), 'file_ids': []})
     db.flush()
     result = next(f for f in service.task_detail(db, locked).files if f.id == file.id)
+    stats.operation(locked)
     db.commit()
     return result
 

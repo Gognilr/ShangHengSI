@@ -32,6 +32,12 @@ router = APIRouter(prefix="/admin", dependencies=[Depends(require_biz_admin)])
 PAGE_SIZE = 20
 
 
+@router.get('/redaction/stats')
+def redaction_stats(days: int = Query(30, ge=1, le=365), db: DbSession = Depends(get_db)) -> dict:
+    from app.redaction.stats import aggregate
+    return aggregate(db, days)
+
+
 @router.get('/keep-terms')
 def list_keep_terms(q: str = Query('', max_length=100), page: int = Query(1, ge=1, le=100000),
                     db: DbSession = Depends(get_db)) -> dict:

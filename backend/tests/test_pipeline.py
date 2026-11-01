@@ -419,7 +419,8 @@ def text_task(db_sessionmaker, make_task):
 
 
 def suspects_of(db, task_id):
-    return list(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id)
+    # V31Q-21：已处理来源行留库统计，但沿用原有疑似列表语义。
+    return list(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id, RedactionSuspect.decision != 'replace')
                            .order_by(RedactionSuspect.loc, RedactionSuspect.char_start)))
 
 

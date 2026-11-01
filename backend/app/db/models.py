@@ -260,6 +260,8 @@ class Task(Base):
     policy: Mapped[str] = mapped_column(String(12), nullable=False)
     user_note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     user_note_redacted: Mapped[Optional[str]] = mapped_column(Text)
+    confirm_ops: Mapped[int] = mapped_column(Integer, nullable=False, server_default='0')
+    awaiting_since: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
     # Q-04：latest_run_id 与 review_runs.task_id 构成循环外键，这里不加外键
