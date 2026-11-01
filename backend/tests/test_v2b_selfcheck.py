@@ -316,7 +316,8 @@ def test_v2q173_f8_shared_english_brand_is_not_assigned_but_suspected():
     lines = ['卖方 Seller: Velmora Fictive Trading Co., Ltd.', '买方 Buyer: Velmora Northwind Industries Ltd.',
              'Velmora shall deliver.']
     result = compute([NodeIn(f'F1-P{i + 1}', t) for i, t in enumerate(lines)], 'other')
-    assert not any(i.loc == 'F1-P3' for i in result.items)
+    assert all(i.category == 'NAME' and i.detected_by == 'uncertain' for i in result.items if i.loc == 'F1-P3')
+    assert result.redacted['F1-P3'] == '[名称_1] shall deliver.'
     assert any(s.loc == 'F1-P3' and lines[2][s.char_start:s.char_end] == 'Velmora' for s in result.suspects)
     chat = _redact('Velmora shall deliver.', {'卖方_A': 'Velmora Fictive Trading Co., Ltd.',
                                               '买方_B': 'Velmora Northwind Industries Ltd.'}, [])

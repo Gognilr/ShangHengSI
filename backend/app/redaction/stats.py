@@ -39,7 +39,7 @@ def finish(db, task) -> dict:
                   kept_memory=sum(v['kept_by'] == 'memory' for v in views),
                   replaced_user=sum('replace' in decisions for decisions in groups.values()), manual=len(user_words - from_suspects),
                   files=db.scalar(select(func.count()).select_from(TaskFile).where(TaskFile.task_id == task.id)))
-    # V31Q-23：向量保留与术语记忆分开，只有实际命中时才增加内部审计字段。
+    # V31Q-29：向量保留与术语记忆分开，只有实际命中时才增加内部审计字段。
     vector_count = sum(v['kept_by'] == 'vector' for v in views)
     if vector_count:
         result['kept_vector'] = vector_count

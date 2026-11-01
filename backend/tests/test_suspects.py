@@ -302,8 +302,8 @@ def test_r4_person_narrative_all_occurrences():
     result = compute(nodes, ann['stance'])
     names = []
     for n in nodes:
-        occupied = [(i.char_start, i.char_end) for i in result.items if i.loc == n.loc]
-        names.extend(n.text[s.start:s.end] for s in find_suspects(n.text, occupied) if s.reason == 'person_name')
+        names.extend(n.text[s.char_start:s.char_end] for s in result.suspects
+                     if s.loc == n.loc and s.reason == 'person_name')
     # V2Q-44：只对林虚接受真实 NER 的更严格替换，其余姓名仍逐项比较。
     if '林虚' not in names:
         assert any(i.detected_by == 'ner' and i.category == 'PERSON'

@@ -46,14 +46,15 @@ def world(db_sessionmaker, make_user, login, ready_task, llm):  # noqa: F811
     r = c.post(f"{API_PREFIX}/tasks/{task.id}/chat", json={"message": QUESTION}, headers=h)
     assert r.status_code == 200, r.text
     with db_sessionmaker() as db:
-        real = [v for v in load_real_values(db, task.id) if len(v) >= 4]
+        all_real = load_real_values(db, task.id)
+        real = [v for v in all_real if len(v) >= 4]
         finding = db.scalar(select(Finding).where(Finding.task_id == task.id))
         run_id = finding.run_id
         call_ids = list(db.scalars(select(LlmCall.id).order_by(LlmCall.id)))
     assert REAL_BUYER_NAME in real and REAL_OUR_NAME in real
     make_user("root", role="admin")
     admin, admin_csrf = login("root")
-    return {"task": task, "run_id": run_id, "finding_id": finding.id, "real": real, "calls": call_ids,
+    return {"task": task, "run_id": run_id, "finding_id": finding.id, "real": real, "all_real": all_real, "calls": call_ids,
             "admin": admin, "admin_h": {"X-CSRF-Token": admin_csrf}}
 
 
@@ -85,7 +86,7 @@ def test_learned_names_are_the_only_place_admin_sees_names(world):
     """SPEC 15.4 / Q-21：已记住的名称按原样显示，这是管理接口中唯一出现名称明文的地方。"""
     items = world["admin"].get(f"{API_PREFIX}/admin/terms?kind=learned").json()["items"]
     shown = {i["term"] for i in items}
-    assert shown <= set(world["real"])  # 只有名称本身，不含正文、问题或对话
+    assert shown <= set(world["all_real"])  # V31-S-03a 同样记住 FMT 等短简称；不含正文、问题或对话。
 
 
 def test_admin_gets_404_on_task_endpoints(world):

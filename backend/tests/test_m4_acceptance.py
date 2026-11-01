@@ -80,7 +80,8 @@ def test_t08_manual_org_auto_replaced_in_second_task(db_sessionmaker, alice, llm
         f"货物由{name}负责运输，运费由买方承担。",
     ]))
     t1 = upload_and_parse(c, h, db_sessionmaker, first)
-    assert name in outbound(c, t1)  # 自动识别不了
+    settle_suspects(c, h, t1, [])  # V31-S：先保留默认替换的不确定片段，再手动补充完整名称。
+    assert name in outbound(c, t1)
     fid = c.get(f"{API_PREFIX}/tasks/{t1}").json()["files"][0]["id"]
     node = next(n for n in c.get(url(t1, f"files/{fid}/nodes")).json()["items"] if name in (n["text"] or ""))
     start = node["text"].index(name)

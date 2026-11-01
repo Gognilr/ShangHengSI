@@ -31,7 +31,8 @@ def test_r4_not_a_name(text):
 def test_r4_body_institution_is_only_suspect():
     text = "由江北市虚构大学负责组织验收"
     r = compute([NodeIn("F1-P1", text)], "sales")
-    assert r.redacted["F1-P1"] == text
+    assert r.redacted["F1-P1"] == '由[名称_1]负责组织验收'
+    assert not r.parties  # 不确定项默认替换，仍不登记为签约方。
     assert [(text[s.char_start:s.char_end], s.reason) for s in r.suspects] == [("江北市虚构大学", "before_company")]
 
 

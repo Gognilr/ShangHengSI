@@ -46,6 +46,9 @@ def build(source: Path, output: Path) -> None:
             f'{len((source / f).read_text(encoding="utf-8").splitlines())} 行。'
             for f in inputs)
         excluded_text = '、'.join(sorted(excluded)) or '无（已有 golden 未出现回退）。'
+        if name == 'zh_legal_finance':
+            excluded_text = ('不取财经词表；法律词中末尾等于 industry_words.txt 的行业词，或公司、集团、股份、控股、银行、证券、保险、药业、化纤的词均剔除，不逐词列举。'
+                             '额外 golden 回退剔除：' + excluded_text)
         license_text = (source / license_name).read_text(encoding='utf-8')
         readme = f'''# 中文词库：{name}（V31-S-01）
 

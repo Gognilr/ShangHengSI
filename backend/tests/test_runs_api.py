@@ -26,7 +26,7 @@ from app.main import API_PREFIX
 from app.redaction.engine import load_redaction_map
 from app.review import job
 from app.review.service import _View
-from app.security.crypto import decrypt_text
+from app.security.crypto import decrypt_text, encrypt_text
 from app.tasks import pipeline
 from tests.mock_llm import build_reply
 from tests.review_support import configure_model, REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task, sample  # noqa: F401
@@ -79,14 +79,17 @@ def test_v2c_confirm_activity_only_on_success(alice, db_sessionmaker, ready_task
     with db_sessionmaker() as db:
         db.get(Task, task.id).last_activity_at = before
         if outcome == "pending_success":
-            db.add(RedactionSuspect(task_id=task.id, loc="F1-P2", char_start=0, char_end=2, reason="org_suffix"))
+            word = 'Zevlora Fictive Review'
+            current = db.get(Task, task.id)
+            current.user_note_enc, current.user_note_redacted = encrypt_text(word), word
+            db.add(RedactionSuspect(task_id=task.id, loc='NOTE', char_start=0, char_end=len(word), reason='capitalized'))
         elif outcome == "OUTBOUND_BLOCKED":
             db.scalar(select(DocNode).where(DocNode.task_id == task.id)).redacted_text = "联系电话 13800138000"
         elif outcome == "TASK_STATE_CONFLICT":
             db.get(Task, task.id).status = "reviewing"
         db.commit()
     r = post_run(c, h, task.id)
-    assert r.status_code == (201 if outcome in ("success", "pending_success") else 409)
+    assert r.status_code == (201 if outcome in ("success", "pending_success") else 409), r.text
     if outcome not in ("success", "pending_success"):
         assert r.json()["code"] == outcome
     with db_sessionmaker() as db:
@@ -178,7 +181,8 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
         # 9.10：确认发送时写入签约方名称（kind=learned），我方标记 is_our_party（Q-73）
         learned = {(decrypt_text(t.term_enc), t.category, t.is_our_party, t.created_by)
                    for t in db.scalars(select(RedactionTerm).where(RedactionTerm.kind == "learned"))}
-        assert learned == {(REAL_OUR_NAME, "ORG", True, user.id), (REAL_BUYER_NAME, "ORG", False, user.id)}
+        assert learned == {(REAL_OUR_NAME, "ORG", True, user.id), (REAL_BUYER_NAME, "ORG", False, user.id),
+                           ('星河公司', 'ORG', True, user.id), ('FMT', 'ORG', False, user.id)}
         assert "付款" not in str(log.detail)
     assert requests == []  # 确认发送本身不调用模型，由 worker 执行
     detail = c.get(f"{API_PREFIX}/tasks/{task.id}").json()
@@ -234,15 +238,19 @@ def test_409_local_only_and_a04_zero_model_calls(db_sessionmaker, alice, ready_t
     assert count(db_sessionmaker, ReviewRun) == 0 and count(db_sessionmaker, Job) == 0
 
 
-def test_409_suspects_pending(db_sessionmaker, alice, ready_task):
+def test_pending_suspects_send_without_manual_handling(db_sessionmaker, alice, ready_task):
     user, c, h = alice
     task = ready_task(user)
     with db_sessionmaker() as db:
-        db.add(RedactionSuspect(task_id=task.id, loc="F1-P2", char_start=0, char_end=2, reason="org_suffix"))
+        word = 'Zevlora Fictive Review'
+        current = db.get(Task, task.id)
+        current.user_note_enc, current.user_note_redacted = encrypt_text(word), word
+        db.add(RedactionSuspect(task_id=task.id, loc='NOTE', char_start=0, char_end=len(word), reason='capitalized'))
         db.add(RedactionSuspect(task_id=task.id, loc="F1-P3", char_start=0, char_end=2, reason="capitalized",
                                 decision="ignore"))
         db.commit()
-    assert post_run(c, h, task.id).status_code == 201
+    r = post_run(c, h, task.id)
+    assert r.status_code == 201, r.text
 
 
 def test_409_our_party_required(db_sessionmaker, alice, ready_task):
