@@ -94,25 +94,25 @@ def test_parse_ai_task(db_sessionmaker, make_task):
         assert {n.loc[:3] for n in nodes} == {"F1-", "F2-"}
         p2 = next(n for n in nodes if n.loc == "F1-P2")
         assert crypto.decrypt_text(p2.text_enc) == "合同编号：HT-2026-0088"
-        assert p2.redacted_text == "合同编号：编号_1"
+        assert p2.redacted_text == "合同编号：[编号_1]"
         # 两个文件中的同一公司同一代号
-        assert next(n for n in nodes if n.loc == "F2-P2").redacted_text == "Seller: 我方"
-        assert next(n for n in nodes if n.loc == "F2-P3").redacted_text == "Buyer: 客户_A"
+        assert next(n for n in nodes if n.loc == "F2-P2").redacted_text == "Seller: [我方]"
+        assert next(n for n in nodes if n.loc == "F2-P3").redacted_text == "Buyer: [客户_A]"
         parties = db.scalars(select(Party).where(Party.task_id == task.id)).all()
         assert {(p.code, p.role_label, p.is_our_party, p.confirmed) for p in parties} == {
-            ("我方", "卖方", True, False), ("客户_A", "买方", False, False)}
+            ("[我方]", "卖方", True, False), ("[客户_A]", "买方", False, False)}
         assert count(db, RedactionItem, task.id) > 20
         # 对照表加密存储，密文中没有明文
         row = db.get(RedactionMap, task.id)
         assert "星河".encode() not in row.map_enc and b"FICTAEAD" not in row.map_enc
         mapping = engine.load_redaction_map(db, task.id)
-        assert mapping["客户_A"] == "Fictional Metals Trading FZE" and "[电话]" not in mapping
+        assert mapping["[客户_A]"] == "Fictional Metals Trading FZE" and "[电话]" not in mapping
         assert all("#" not in k for k in mapping)
         assert {"FMT", "13800138000"} <= set(engine.load_real_values(db, task.id))
 
         out = engine.build_outbound_text(db, t)
-        assert out.splitlines()[0] == "【主体说明】我方=卖方；客户_A：阿联酋，贸易商"
-        assert "[F1-P2] 合同编号：编号_1" in out and "[F2-T1-R2-C4] USD [单价_" in out
+        assert out.splitlines()[0] == "【主体说明】[我方]=卖方；[客户_A]：阿联酋，贸易商"
+        assert "[F1-P2] 合同编号：[编号_1]" in out and "[F2-T1-R2-C4] USD [单价_" in out
         for value in ("星河", "Fictional Metals", "FMT", "13800138000", "FICTAEAD", "400,000.00", "HT-2026-0088"):
             assert value not in out
         summary = engine.redaction_summary(db, t)
@@ -189,7 +189,7 @@ def test_apply_party_changes(db_sessionmaker, make_task):
         t = db.get(Task, task.id)
         before = {p.role_label: p for p in db.scalars(select(Party).where(Party.task_id == task.id))}
         ids = {k: p.id for k, p in before.items()}
-        assert before["卖方"].code == "我方"
+        assert before["卖方"].code == "[我方]"
         engine.apply_party_changes(db, t, [
             PartyChange(ids["买方"], is_our_party=True),
             PartyChange(ids["乙方"], country="德国", org_type="贸易商"),
@@ -199,17 +199,17 @@ def test_apply_party_changes(db_sessionmaker, make_task):
         t = db.get(Task, task.id)
         after = {p.role_label: p for p in db.scalars(select(Party).where(Party.task_id == task.id))}
         assert {k: p.id for k, p in after.items()} == ids  # 行不变，只改代号和属性
-        assert after["买方"].code == "我方" and not after["卖方"].is_our_party
-        assert after["卖方"].code == "卖方_A"  # 字母按首次出现重新分配
+        assert after["买方"].code == "[我方]" and not after["卖方"].is_our_party
+        assert after["卖方"].code == "[卖方_A]"  # 字母按首次出现重新分配
         assert (after["乙方"].country, after["乙方"].org_type) == ("德国", "贸易商")
         assert all(p.confirmed for p in after.values())
         out = engine.build_outbound_text(db, t)
-        assert "[F1-P3] Buyer: 我方 (hereinafter referred to as \"我方\")" in out
-        assert "[F1-P2] Seller: 卖方_A (the \"Seller\")" in out
+        assert "[F1-P3] Buyer: [我方] (hereinafter referred to as \"[我方]\")" in out
+        assert "[F1-P2] Seller: [卖方_A] (the \"Seller\")" in out
         mapping = engine.load_redaction_map(db, task.id)
-        assert mapping["我方"] == "Example Industrial Trading LLC"
+        assert mapping["[我方]"] == "Example Industrial Trading LLC"
         items = db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == "F1-P3"))
-        assert {(i.category, i.placeholder) for i in items} == {("OUR", "我方")}
+        assert {(i.category, i.placeholder) for i in items} == {("OUR", "[我方]")}
         # 恰好一方为我方；不存在的签约方报错
         with pytest.raises(ValueError):
             engine.apply_party_changes(db, t, [PartyChange(ids["买方"], is_our_party=False)])
@@ -490,21 +490,21 @@ def test_replace_suspect_becomes_user_term(db_sessionmaker, text_task):
     with db_sessionmaker() as db:
         out = outbound(db, task.id)
         # 全文替换：两处 Northwind 都换成同一代号，被替换的疑似遗漏不再列出
-        assert "[F1-P2] 货物由 公司_A 承运，收款 [敏感词_1]。" in out and "[F1-P3] 公司_A 另行通知。" in out
+        assert "[F1-P2] 货物由 [公司_A] 承运，收款 [敏感词_1]。" in out and "[F1-P3] [公司_A] 另行通知。" in out
         assert {r.reason for r in suspects_of(db, task.id)} == {"before_company"}
         parties = db.scalars(select(Party).where(Party.task_id == task.id)).all()
-        assert {(p.code, p.role_label) for p in parties} == {("我方", "卖方"), ("公司_A", "其他")}
+        assert {(p.code, p.role_label) for p in parties} == {("[我方]", "卖方"), ("[公司_A]", "其他")}
         items = db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id,
                                                        RedactionItem.detected_by == "user")).all()
         assert {(i.loc, i.category) for i in items} == {("F1-P2", "ORG"), ("F1-P3", "ORG"), ("F1-P2", "CUSTOM")}
         # 用户词条在重算后保留（设为我方也不丢）
-        a = next(p for p in parties if p.code == "公司_A")
+        a = next(p for p in parties if p.code == "[公司_A]")
         engine.apply_party_changes(db, db.get(Task, task.id), [PartyChange(a.id, is_our_party=True)])
         db.commit()
     with db_sessionmaker() as db:
         out = outbound(db, task.id)
-        assert "[F1-P2] 货物由 我方 承运，收款 [敏感词_1]。" in out and "Northwind" not in out
-        assert engine.load_redaction_map(db, task.id)["我方"] == "Northwind Fictive Holdings"
+        assert "[F1-P2] 货物由 [我方] 承运，收款 [敏感词_1]。" in out and "Northwind" not in out
+        assert engine.load_redaction_map(db, task.id)["[我方]"] == "Northwind Fictive Holdings"
 
 
 def test_decide_suspect_errors(db_sessionmaker, text_task):
@@ -550,7 +550,7 @@ def test_add_user_term_validation(db_sessionmaker, text_task):
         engine.add_user_term(db, t, loc="F1-P2", char_start=3, char_end=20, category="PERSON")
         db.commit()
     with db_sessionmaker() as db:
-        assert "[F1-P2] 请联系 人员_1 确认  。" in outbound(db, task.id)
+        assert "[F1-P2] 请联系 [人员_1] 确认  。" in outbound(db, task.id)
         item = db.scalar(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.detected_by == "user"))
         assert (item.char_start, item.char_end, item.category) == (4, 19, "PERSON")
     with db_sessionmaker() as db:
@@ -570,11 +570,11 @@ def test_manual_org_without_parties_can_become_our_party(db_sessionmaker, text_t
         db.commit()
     with db_sessionmaker() as db:
         (p,) = db.scalars(select(Party).where(Party.task_id == task.id)).all()
-        assert (p.code, p.role_label, p.is_our_party, p.country) == ("公司_A", "其他", False, "国家未知")
+        assert (p.code, p.role_label, p.is_our_party, p.country) == ("[公司_A]", "其他", False, "国家未知")
         engine.apply_party_changes(db, db.get(Task, task.id), [PartyChange(p.id, is_our_party=True)])
         db.commit()
     with db_sessionmaker() as db:
-        assert "[F1-P1] 本协议由我方与对方共同签署。" in outbound(db, task.id)
+        assert "[F1-P1] 本协议由[我方]与对方共同签署。" in outbound(db, task.id)
 
 
 def test_learn_confirmed_names_and_second_task(db_sessionmaker, text_task):

@@ -21,8 +21,8 @@ def run(stance, terms=True):
 
 
 @pytest.mark.parametrize("stance,code,description", [
-    ("purchase", "供应商_A", "我方=甲方（采购方）"), ("sales", "客户_A", "我方=甲方（销售方）"),
-    ("other", "公司_A", "我方=甲方")])
+    ("purchase", "[供应商_A]", "[我方]=甲方（采购方）"), ("sales", "[客户_A]", "[我方]=甲方（销售方）"),
+    ("other", "[公司_A]", "[我方]=甲方")])
 def test_01_02_03_stance(stance, code, description):
     r = run(stance)
     assert next(p for p in r.parties if p.is_our_party).role_label == "甲方"
@@ -62,8 +62,8 @@ def test_06_api(admin, make_user, login):
 
 
 def test_07_stance_recomputed():
-    assert run("purchase").redacted["F1-P2"] == "乙方：供应商_A"
-    assert run("sales").redacted["F1-P2"] == "乙方：客户_A"
+    assert run("purchase").redacted["F1-P2"] == "乙方：[供应商_A]"
+    assert run("sales").redacted["F1-P2"] == "乙方：[客户_A]"
 
 
 @pytest.mark.usefixtures("env")
@@ -80,10 +80,10 @@ def test_preset_parse_and_stance_change(admin, alice, ready_task, db_sessionmake
     task = ready_task(user, files=[("虚构采购.docx", data.getvalue())], stance="purchase")
     with db_sessionmaker() as db:
         task = db.get(Task, task.id)
-        assert "我方=甲方（采购方）；供应商_A：乙方，中国" in build_outbound(db, task).text
+        assert "[我方]=甲方（采购方）；[供应商_A]：乙方，中国" in build_outbound(db, task).text
         task.stance = "sales"
         apply_party_changes(db, task, [])
-        assert "我方=甲方（销售方）；客户_A：乙方，中国" in build_outbound(db, task).text
+        assert "[我方]=甲方（销售方）；[客户_A]：乙方，中国" in build_outbound(db, task).text
 
 
 @pytest.mark.parametrize("labels", [("甲方", "乙方"), ("其他", "其他")])

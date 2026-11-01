@@ -560,7 +560,7 @@ def make_full_task(sm, owner, files_dir, title="待删.docx"):
         db.flush()
         fid = db.scalars(select(TaskFile.id).where(TaskFile.task_id == t.id)).first()
         db.add(DocNode(task_id=t.id, file_id=fid, loc="F1-P1", ord=1, kind="paragraph", part="body"))
-        db.add(Party(task_id=t.id, code="客户_A", role_label="买方"))
+        db.add(Party(task_id=t.id, code="[客户_A]", role_label="买方"))
         db.add(RedactionMap(task_id=t.id, map_enc=b"x" * 40))
         run = ReviewRun(task_id=t.id, run_no=1, status="completed", stance="sales", source="outgoing",
                         main_doc_type="contract", created_by=owner.id, queued_at=now)
@@ -731,7 +731,7 @@ def test_rerun_recomputes_roles_and_keeps_old_runs(db_sessionmaker, rerun_user, 
     user, c, h = rerun_user
     task = ready_task(user, user_note="旧的补充说明")
     set_our_party(c, h, task.id, REAL_BUYER_NAME)  # 我方实际是买方，立场却选成了销售
-    assert parties_of(c, task.id)[REAL_OUR_NAME]["code"] == "卖方_A"
+    assert parties_of(c, task.id)[REAL_OUR_NAME]["code"] == "[卖方_A]"
     llm("normal")
     first = review_once(db_sessionmaker, c, h, task.id)
     with db_sessionmaker() as db:
@@ -748,10 +748,10 @@ def test_rerun_recomputes_roles_and_keeps_old_runs(db_sessionmaker, rerun_user, 
     assert d == c.get(f"{API_PREFIX}/tasks/{task.id}").json()
     # 我方选择保留，对方的代号按新立场生成：卖方 → 供应商
     ps = parties_of(c, task.id)
-    assert ps[REAL_BUYER_NAME]["is_our_party"] and ps[REAL_BUYER_NAME]["code"] == "我方"
-    assert ps[REAL_OUR_NAME]["code"] == "供应商_A"
+    assert ps[REAL_BUYER_NAME]["is_our_party"] and ps[REAL_BUYER_NAME]["code"] == "[我方]"
+    assert ps[REAL_OUR_NAME]["code"] == "[供应商_A]"
     outbound = c.get(f"{API_PREFIX}/tasks/{task.id}/redaction/outbound").json()["text"]
-    assert "供应商_A" in outbound and "卖方_A" not in outbound
+    assert "[供应商_A]" in outbound and "[卖方_A]" not in outbound
     with db_sessionmaker() as db:
         t = db.get(Task, task.id)
         assert t.high_count == 3 and t.latest_run_id == uuid.UUID(first)

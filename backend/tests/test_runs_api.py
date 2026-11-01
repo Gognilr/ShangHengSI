@@ -145,7 +145,7 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
         run = db.get(ReviewRun, uuid.UUID(body["id"]))
         assert (run.stance, run.source, run.user_note, run.main_doc_type) == (
             "sales", "outgoing", "请重点检查付款条款", "contract")
-        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-4", "2026.11-1")
+        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-5", "2026.11-1")
         assert run.company_req_version is None and run.created_by == user.id
         queued = db.scalars(select(Job).where(Job.type == "review")).one()
         assert (queued.status, queued.payload) == ("queued", {"task_id": str(task.id), "run_id": body["id"]})
@@ -325,13 +325,13 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
         status, payload = build_reply(body)
         out = json.loads(payload["choices"][0]["message"]["content"])
         base = out["findings"][0]
-        out["doc_summary"] = "我方向客户_A销售金属制品"
-        out["sanctions"] = {"level": "需注意", "reasons": ["客户_A位于需关注地区"]}
-        out["requirement_results"][1]["note"] = "客户_A条款齐全"
+        out["doc_summary"] = "[我方]向[客户_A]销售金属制品"
+        out["sanctions"] = {"level": "需注意", "reasons": ["[客户_A]位于需关注地区"]}
+        out["requirement_results"][1]["note"] = "[客户_A]条款齐全"
         out["findings"] = [
             {**base, "title": "低风险问题", "severity": "低", "locs": ["F1-P2"], "quote": "合同编号"},
-            {**base, "title": "高风险问题", "severity": "高", "problem": "客户_A未提供保函", "impact": "我方承担风险",
-             "suggestion": "要求客户_A提供保函", "suggested_text": "客户_A应在 30 日内提供保函", "basis": "通行商业惯例"},
+            {**base, "title": "高风险问题", "severity": "高", "problem": "[客户_A]未提供保函", "impact": "[我方]承担风险",
+             "suggestion": "要求[客户_A]提供保函", "suggested_text": "[客户_A]应在 30 日内提供保函", "basis": "通行商业惯例"},
             {**base, "title": "缺失型问题", "severity": "高", "missing": True, "locs": [], "quote": None},
             {**base, "title": "编造引用", "severity": "中", "quote": "这是一段原文中不存在的编造引用"},
         ]
@@ -352,7 +352,7 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert d["coverage"]["summary"].startswith("本次按 ")
     assert isinstance(d["coverage"]["notes"], list)
     assert "requirements" not in d["coverage"] and "星河虚构进出口有限公司" not in str(d["coverage"])
-    assert d["prompt_version"] == "2026.11-4" and d["builtin_req_version"] == "2026.11-1"
+    assert d["prompt_version"] == "2026.11-5" and d["builtin_req_version"] == "2026.11-1"
     assert d["queued_at"].endswith("Z") or "+00:00" in d["queued_at"]
     assert d["doc_summary"] == f"{REAL_OUR_NAME}向{REAL_BUYER_NAME}销售金属制品"
     assert d["sanctions"] == {"level": "attention", "reasons": [f"{REAL_BUYER_NAME}位于需关注地区"]}
@@ -378,7 +378,7 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert (fake["cite_status"], fake["quote"]) == ("unverified", None)
     assert all(f["handling_status"] == "pending" and f["handling_note"] is None for f in d["findings"])
     # 返回内容里不应出现代号形式
-    assert "客户_A" not in r.text
+    assert "[客户_A]" not in r.text
     # 任务列表里的高风险数
     assert c.get(f"{API_PREFIX}/tasks").json()["items"][0]["high_count"] == 2
 
@@ -667,7 +667,7 @@ def test_coverage_unable_note_restores_codes(db_sessionmaker, alice, ready_task,
     def handler(request: httpx.Request) -> httpx.Response:
         status, payload = build_reply(json.loads(request.content))
         out = json.loads(payload["choices"][0]["message"]["content"])
-        out["requirement_results"][1].update(verdict="unable", note="需核实客户_A的资质")
+        out["requirement_results"][1].update(verdict="unable", note="需核实[客户_A]的资质")
         payload["choices"][0]["message"]["content"] = json.dumps(out, ensure_ascii=False)
         return httpx.Response(status, json=payload)
 
@@ -679,7 +679,7 @@ def test_coverage_unable_note_restores_codes(db_sessionmaker, alice, ready_task,
     assert d["requirement_results"][1]["note"] == f"需核实{REAL_BUYER_NAME}的资质"
     assert f"无法判断的审核要求：{req_id}（需核实{REAL_BUYER_NAME}的资质）" in d["coverage"]["notes"]
     with db_sessionmaker() as db:  # 数据库中仍只存代号
-        assert db.get(ReviewRun, uuid.UUID(rid)).coverage["unable"] == [{"req_id": req_id, "note": "需核实客户_A的资质"}]
+        assert db.get(ReviewRun, uuid.UUID(rid)).coverage["unable"] == [{"req_id": req_id, "note": "需核实[客户_A]的资质"}]
 
 
 # ---------------------------------------------------------------- GET /requirements（M5-06）

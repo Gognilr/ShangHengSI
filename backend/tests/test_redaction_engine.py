@@ -60,58 +60,58 @@ def test_contract_codes_are_consistent():
     r, text = run(sample_nodes("contract_basic"))
     red = r.redacted
     # 全称和简称同一代号；我方按立场预选为卖方
-    assert red["F1-P4"] == "卖方：我方（以下简称“我方”）"
-    assert red["F1-P9"] == '买方：客户_A（hereinafter referred to as "客户_A"）'
-    assert red["F1-P2"] == "合同编号：编号_1"
+    assert red["F1-P4"] == "卖方：[我方]（以下简称“[我方]”）"
+    assert red["F1-P9"] == '买方：[客户_A]（hereinafter referred to as "[客户_A]"）'
+    assert red["F1-P2"] == "合同编号：[编号_1]"
     assert red["F1-P7"] == "电话：[电话]，[电话]"
     # 账号、SWIFT 带序号（Q-59）：IBAN 与本地账号写法不同，视为不同账号
     assert red["F1-P19"] == "开户行账号：[账号_1]" and red["F1-P21"] == "IBAN: [账号_2]" and red["F1-P20"] == "SWIFT: [SWIFT_1]"
-    assert red["F1-P10"] == "Address: [地址：阿联酋]" and red["F1-P11"] == "Contact: 人员_2, [电话]"
-    assert red["F1-P6"] == "联系人：人员_1" and red["F1-P26"] == "法定代表人（签字）：人员_3"
+    assert red["F1-P10"] == "Address: [地址：阿联酋]" and red["F1-P11"] == "Contact: [人员_2], [电话]"
+    assert red["F1-P6"] == "联系人：[人员_1]" and red["F1-P26"] == "法定代表人（签字）：[人员_3]"
     # 单价与金额分开编号，币种保留；同一数值同一代号（大写与小写）
     assert red["F1-P15"] == "2.1 单价为 USD [单价_1]/MT CIF Jebel Ali Port，合同总价 Total Amount: USD [金额_1]。"
     assert red["F1-P17"] == "2.3 人民币参考价：人民币[金额_3]（¥[金额_3]）。"
     # 金额比例（9.6）：合同总价本身不加，同币种的其他金额加，不同币种的不加
     assert red["F1-P16"].startswith("2.2 预付款为合同总价的 30%，即 USD [金额_2]（=合同总价的 30.0%），")
-    assert text.splitlines()[0] == "【主体说明】我方=卖方；客户_A：阿联酋，贸易商"
+    assert text.splitlines()[0] == "【主体说明】[我方]=卖方；[客户_A]：阿联酋，贸易商"
     assert {(p.code, p.role_label, p.country, p.is_our_party) for p in r.parties} == {
-        ("我方", "卖方", "中国", True), ("客户_A", "买方", "阿联酋", False)}
+        ("[我方]", "卖方", "中国", True), ("[客户_A]", "买方", "阿联酋", False)}
     # 对照表：唯一代号 → 主要写法；其他写法和共用代号的值以“代号#n”保存
-    assert r.mapping["我方"] == "星河虚构进出口有限公司"
-    assert r.mapping["客户_A"] == "Fictional Metals Trading FZE"
-    assert r.mapping["客户_A#1"] == "FMT" and r.mapping["我方#1"] == "星河公司"
+    assert r.mapping["[我方]"] == "星河虚构进出口有限公司"
+    assert r.mapping["[客户_A]"] == "Fictional Metals Trading FZE"
+    assert r.mapping["[客户_A]#1"] == "FMT" and r.mapping["[我方]#1"] == "星河公司"
     assert r.mapping["[金额_3]"] == "捌拾万元整" and r.mapping["[金额_3]#1"] == "800,000.00"
     assert r.mapping["[账号_1]"] == "6222 0000 1111 2222 333" and r.mapping["[SWIFT_1]"] == "FICTAEAD"
-    assert r.mapping["人员_3"] == "吴虚构"
+    assert r.mapping["[人员_3]"] == "吴虚构"
     assert "[地址：阿联酋]" not in r.mapping  # 地址不能唯一还原，真实值只用于出口复检
     assert r.mapping["[地址：阿联酋]#1"] == "Plot 12, Jebel Ali Free Zone, Dubai, United Arab Emirates"
     assert {r.mapping[k] for k in r.mapping if k.startswith("[电话]#")} == {"13800138000", "021-12345678", "+971 4 123 4567"}
     assert "[电话]" not in r.mapping  # 共用代号不能唯一还原
     # 替换记录的位置和来源
     by = {(i.loc, i.placeholder): i.detected_by for i in r.items}
-    assert by[("F1-P4", "我方")] in ("party", "alias") and by[("F1-P2", "编号_1")] == "regex"
+    assert by[("F1-P4", "[我方]")] in ("party", "alias") and by[("F1-P2", "[编号_1]")] == "regex"
     assert by[("F1-P15", "[单价_1]")] == "amount"
 
 
 def test_stance_decides_roles_and_our_party():
     r, _ = run(sample_nodes("contract_basic"), stance="purchase")
-    assert {(p.code, p.role_label) for p in r.parties} == {("供应商_A", "卖方"), ("我方", "买方")}
+    assert {(p.code, p.role_label) for p in r.parties} == {("[供应商_A]", "卖方"), ("[我方]", "买方")}
     r, text = run(sample_nodes("contract_basic"), stance="other")
-    assert {(p.code, p.is_our_party) for p in r.parties} == {("卖方_A", False), ("买方_B", False)}
-    assert "我方" not in text.splitlines()[0]
+    assert {(p.code, p.is_our_party) for p in r.parties} == {("[卖方_A]", False), ("[买方_B]", False)}
+    assert "[我方]" not in text.splitlines()[0]
 
 
 def test_parties_labels_sample():
     r, text = run(sample_nodes("parties_labels"))
     parties = {p.role_label: p for p in r.parties}
-    assert parties["卖方"].code == "我方"
-    assert parties["买方"].code == "客户_A" and parties["买方"].org_type == "贸易商"
-    assert (parties["收货人"].code, parties["收货人"].country) == ("收货人_B", "沙特阿拉伯")
-    assert (parties["通知方"].code, parties["通知方"].org_type) == ("通知方_C", "货代")
+    assert parties["卖方"].code == "[我方]"
+    assert parties["买方"].code == "[客户_A]" and parties["买方"].org_type == "贸易商"
+    assert (parties["收货人"].code, parties["收货人"].country) == ("[收货人_B]", "沙特阿拉伯")
+    assert (parties["通知方"].code, parties["通知方"].org_type) == ("[通知方_C]", "货代")
     assert parties["受益人"].org_type == "银行"
-    assert parties["甲方"].code.startswith("公司_") and parties["乙方"].code.startswith("公司_")
+    assert parties["甲方"].code.startswith("[公司_") and parties["乙方"].code.startswith("[公司_")
     # (the "Seller") 中的 Seller 是通用角色词，不替换；EIT、新材料公司是简称，替换
-    assert r.redacted["F1-P2"] == 'Seller: 我方 (the "Seller")'
+    assert r.redacted["F1-P2"] == 'Seller: [我方] (the "Seller")'
     assert "EIT" not in text and "新材料公司" not in text
     assert r.redacted["F1-P9"] == "The Buyer shall pay the Seller within 30 days after B/L date."
 
@@ -208,29 +208,29 @@ def test_letters_by_first_appearance_and_overrides():
     )
     r, _ = run(nodes)
     codes = {p.key: p.code for p in r.parties}
-    assert codes[normalize("Alpha Trading LLC")] == "客户_A"
-    assert codes[normalize("Beta Logistics Co., Ltd.")] == "收货人_B"
-    assert codes[normalize("星河虚构进出口有限公司")] == "我方"
+    assert codes[normalize("Alpha Trading LLC")] == "[客户_A]"
+    assert codes[normalize("Beta Logistics Co., Ltd.")] == "[收货人_B]"
+    assert codes[normalize("星河虚构进出口有限公司")] == "[我方]"
     # 大小写、空格不同的写法同一代号，写法记入对照表
-    assert r.redacted["F1-P4"] == "收货人_B 与 客户_A 共同确认。"
+    assert r.redacted["F1-P4"] == "[收货人_B] 与 [客户_A] 共同确认。"
     assert "ALPHA TRADING  LLC" in r.mapping.values()
     # 用户把买方改为我方：代号重算，字母按首次出现重新分配
     overrides = {p.key: PartyOverride(p.key == normalize("Alpha Trading LLC"), p.country, p.org_type) for p in r.parties}
     overrides[normalize("Beta Logistics Co., Ltd.")].country = "土耳其"
     r2, text2 = run(nodes, overrides=overrides)
     codes2 = {p.key: p.code for p in r2.parties}
-    assert codes2[normalize("Alpha Trading LLC")] == "我方"
-    assert codes2[normalize("星河虚构进出口有限公司")] == "卖方_B"
-    assert text2.splitlines()[0] == "【主体说明】我方=买方；收货人_A：土耳其，货代；卖方_B：中国"
+    assert codes2[normalize("Alpha Trading LLC")] == "[我方]"
+    assert codes2[normalize("星河虚构进出口有限公司")] == "[卖方_B]"
+    assert text2.splitlines()[0] == "【主体说明】[我方]=买方；[收货人_A]：土耳其，货代；[卖方_B]：中国"
     with pytest.raises(ValueError):
         compute(nodes, "sales", overrides={k: PartyOverride(True, None, None) for k in overrides})
 
 
 def test_v2_party_description_omits_unknown_fields():
-    p = outbound.PartyInfo('客户_A', '买方', '国家未知', '类型未知', False)
-    assert outbound.party_description([p]) == '【主体说明】客户_A'
+    p = outbound.PartyInfo('[客户_A]', '买方', '国家未知', '类型未知', False)
+    assert outbound.party_description([p]) == '【主体说明】[客户_A]'
     p.country = '中国'
-    assert outbound.party_description([p]) == '【主体说明】客户_A：中国'
+    assert outbound.party_description([p]) == '【主体说明】[客户_A]：中国'
 
 
 def test_terms_step_one():
@@ -242,8 +242,8 @@ def test_terms_step_one():
     nodes = nodes_of("本项目即 secret  project PHOENIX，由 Gamma Holdings Limited 负责，联系人 Zhang Wei。",
                      "买方：Delta Trading LLC")
     r, text = run(nodes, terms=terms)
-    assert r.redacted["F1-P1"] == "本项目即 [敏感词_1]，由 我方 负责，联系人 人员_1。"
-    assert r.mapping["[敏感词_1]"] == "Secret Project Phoenix" and r.mapping["人员_1"] == "Zhang Wei"
+    assert r.redacted["F1-P1"] == "本项目即 [敏感词_1]，由 [我方] 负责，联系人 [人员_1]。"
+    assert r.mapping["[敏感词_1]"] == "Secret Project Phoenix" and r.mapping["[人员_1]"] == "Zhang Wei"
     assert {i.detected_by for i in r.items if i.loc == "F1-P1"} == {"term"}
     assert "Delta Trading LLC" not in text
 
@@ -252,7 +252,7 @@ def test_other_org_names_in_text():
     nodes = nodes_of("本合同由星河虚构进出口有限公司与上海示例物流有限公司签订，货物经 Example Shipping Co., Ltd. 承运。")
     r, text = run(nodes, stance="other")
     # 向前取汉字遇到“由、与”等边界词即停止（Q-56），“本合同由”“与”保留
-    assert r.redacted["F1-P1"] == "本合同由公司_A与公司_B签订，货物经 公司_C 承运。"
+    assert r.redacted["F1-P1"] == "本合同由[公司_A]与[公司_B]签订，货物经 [公司_C] 承运。"
     assert {p.org_type for p in r.parties} == {"类型未知", "货代"}
     assert find_other_org_names("由星河虚构进出口有限公司提供") == [(1, 12)]
     # 宽泛后缀（公司、厂）在正文中不自动替换
@@ -282,7 +282,7 @@ def test_chinese_org_name_start_boundary():
     assert names("由甲示例有限公司向乙示例有限公司交付") == ["甲示例有限公司", "乙示例有限公司"]
     # 完整流程：只替换公司名
     r, text = run(nodes_of("货物由恒远虚构物流（深圳）有限公司代为装运，并委托星河虚构贸易有限公司办理。"), stance="other")
-    assert r.redacted["F1-P1"] == "货物由公司_A代为装运，并委托公司_B办理。"
+    assert r.redacted["F1-P1"] == "货物由[公司_A]代为装运，并委托[公司_B]办理。"
 
 
 def test_english_org_name_after_chinese_punctuation():
@@ -444,7 +444,7 @@ def test_fill_brackets_party_name():
     nodes = [NodeIn("F1-P1", "甲方：【青岚虚构石化股份有限公司】"), NodeIn("F1-P2", "乙方： 〖 远川虚构通信有限公司〗")]
     result = compute(nodes, "purchase")
     assert {result.mapping[p.code] for p in result.parties} == {"青岚虚构石化股份有限公司", "远川虚构通信有限公司"}
-    assert result.redacted["F1-P1"] == "甲方：【公司_A】"
+    assert result.redacted["F1-P1"] == "甲方：【[公司_A]】"
 
 
 def test_org_name_extends_to_last_suffix():
@@ -481,8 +481,8 @@ def test_org_name_extends_to_last_suffix():
     # 完整流程：签约方与正文同一代号，名称后半不留在正文
     r, text = run(nodes_of("乙方：【恒岳虚构集团山东有限公司德州分公司】",
                            "本合同由甲方与恒岳虚构集团山东有限公司德州分公司签订。"), stance="purchase")
-    assert r.redacted["F1-P1"] == "乙方：【公司_A】"
-    assert r.redacted["F1-P2"] == "本合同由甲方与公司_A签订。"
+    assert r.redacted["F1-P1"] == "乙方：【[公司_A]】"
+    assert r.redacted["F1-P2"] == "本合同由甲方与[公司_A]签订。"
     assert "分公司" not in text
 
 
@@ -511,7 +511,7 @@ def test_bank_label_value_without_company_suffix():
     r, text = run(nodes_of("乙方：远川虚构通信有限公司", "开户银行：示例行虚构园区支行",
                            "货款汇入示例行虚构园区支行，以银行到账日为准。"), stance="purchase")
     bank = next(p for p in r.parties if p.role_label == "银行")
-    assert bank.code.startswith("银行_") and bank.org_type == "银行" and bank.country == "中国"
+    assert bank.code.startswith("[银行_") and bank.org_type == "银行" and bank.country == "中国"
     assert r.redacted["F1-P2"] == f"开户银行：{bank.code}"
     assert r.redacted["F1-P3"] == f"货款汇入{bank.code}，以银行到账日为准。"
     assert "虚构园区" not in text
@@ -524,24 +524,24 @@ def test_broad_suffix_name_with_alias():
         return r.redacted["F1-P1"], [p.code for p in r.parties], [text[s.char_start:s.char_end] for s in r.suspects]
 
     red, codes, sus = one("由示例通信集团公司（以下简称“示例通信”）负责，示例通信应按期交付。")
-    assert (red, codes, sus) == ("由公司_A（以下简称“公司_A”）负责，公司_A应按期交付。", ["公司_A"], [])
+    assert (red, codes, sus) == ("由[公司_A]（以下简称“[公司_A]”）负责，[公司_A]应按期交付。", ["[公司_A]"], [])
     # 名称起点与疑似遗漏相同：“的”、边界词处截断
     assert one("我单位对于所申请的示例通信集团公司（以下简称“示例通信”）的入网资质")[0] == \
-        "我单位对于所申请的公司_A（以下简称“公司_A”）的入网资质"
-    assert one("配套设备由远山虚构机械厂（下称“远山厂”）生产，远山厂负责。")[0] == "配套设备由公司_A（下称“公司_A”）生产，公司_A负责。"
-    assert one("示例虚构研究所 （以下简称\"示例所\"）提供数据。")[0] == "公司_A （以下简称\"公司_A\"）提供数据。"
+        "我单位对于所申请的[公司_A]（以下简称“[公司_A]”）的入网资质"
+    assert one("配套设备由远山虚构机械厂（下称“远山厂”）生产，远山厂负责。")[0] == "配套设备由[公司_A]（下称“[公司_A]”）生产，[公司_A]负责。"
+    assert one("示例虚构研究所 （以下简称\"示例所\"）提供数据。")[0] == "[公司_A] （以下简称\"[公司_A]\"）提供数据。"
     # 泛称、泛指词：不登记
     for text in ("本公司（以下简称“我方”）保证。", "由我公司（以下简称“乙方”）负责。", "该研究院（以下简称“研究院”）"):
         assert one(text)[:2] == (text, []), text
     # 简称为通用角色词：名称照常登记，简称不替换
-    assert one("示例通信集团公司（以下简称“乙方”）负责，乙方应按期交付。")[0] == "公司_A（以下简称“乙方”）负责，乙方应按期交付。"
+    assert one("示例通信集团公司（以下简称“乙方”）负责，乙方应按期交付。")[0] == "[公司_A]（以下简称“乙方”）负责，乙方应按期交付。"
     # Q-142：简称为“集团、研究院”等普通词时同样不替换
-    assert one("由示例集团（以下简称“集团”）统一采购，集团公司负责。")[0] == "由公司_A（以下简称“集团”）统一采购，集团公司负责。"
+    assert one("由示例集团（以下简称“集团”）统一采购，集团公司负责。")[0] == "由[公司_A]（以下简称“集团”）统一采购，集团公司负责。"
     # 不带简称、简称结构前有其他文字：仍只是疑似遗漏（Q-137 ①）
     assert one("示例科技公司负责安装。")[1:] == ([], ["示例科技公司"])
     assert one("示例科技公司负责安装（以下简称“安装”）")[1] == []
     # 明确后缀的名称不受影响
-    assert one("星河虚构有限公司（以下简称“星河”）负责")[0] == "公司_A（以下简称“公司_A”）负责"
+    assert one("星河虚构有限公司（以下简称“星河”）负责")[0] == "[公司_A]（以下简称“[公司_A]”）负责"
 
 
 @pytest.mark.parametrize("text,value", [
@@ -579,15 +579,15 @@ def test_user_terms_three_categories_full_text():
     nodes = nodes_of("本项目由 Bluefin Example 负责，项目代号 ALPHA-7。", "联络人 王示例 与 BLUEFIN  EXAMPLE 确认 alpha-7。")
     r, text = run(nodes, stance="other", user_terms=[
         UserTerm("Bluefin Example", "ORG"), UserTerm("王示例", "PERSON"), UserTerm("ALPHA-7", "CUSTOM")])
-    assert r.redacted["F1-P1"] == "本项目由 公司_A 负责，项目代号 [敏感词_1]。"
-    assert r.redacted["F1-P2"] == "联络人 人员_1 与 公司_A 确认 [敏感词_1]。"  # 英文不区分大小写、忽略多余空格
+    assert r.redacted["F1-P1"] == "本项目由 [公司_A] 负责，项目代号 [敏感词_1]。"
+    assert r.redacted["F1-P2"] == "联络人 [人员_1] 与 [公司_A] 确认 [敏感词_1]。"  # 英文不区分大小写、忽略多余空格
     assert {i.detected_by for i in r.items} == {"user"}
     # 公司名登记为一方（角色“其他”），出现在签约方列表中，可以设为我方（Q-54）
-    assert [(p.code, p.role_label) for p in r.parties] == [("公司_A", "其他")]
-    assert r.mapping["公司_A"] == "Bluefin Example" and r.mapping["公司_A#1"] == "BLUEFIN  EXAMPLE"
+    assert [(p.code, p.role_label) for p in r.parties] == [("[公司_A]", "其他")]
+    assert r.mapping["[公司_A]"] == "Bluefin Example" and r.mapping["[公司_A]#1"] == "BLUEFIN  EXAMPLE"
     r2, text2 = run(nodes, stance="other", user_terms=[UserTerm("Bluefin Example", "ORG")],
                     overrides={normalize("Bluefin Example"): PartyOverride(True, None, None)})
-    assert r2.redacted["F1-P1"].startswith("本项目由 我方 负责") and text2.splitlines()[0] == "【主体说明】我方"
+    assert r2.redacted["F1-P1"].startswith("本项目由 [我方] 负责") and text2.splitlines()[0] == "【主体说明】[我方]"
     # 用户选中的数字串在字母后面也能替换（OCR 文字中常见）
     r3, _ = run(nodes_of("A/C6217000012345678 请核对"), user_terms=[UserTerm("6217000012345678", "CUSTOM")])
     assert r3.redacted["F1-P1"] == "A/C[敏感词_1] 请核对"
@@ -596,18 +596,18 @@ def test_user_terms_three_categories_full_text():
 def test_no_half_name_left():
     full = "Aurora Fictive Energy Co., Ltd."
     nodes = nodes_of(f"收函方：{full}", "抄送：Aurora Fictive 财务部", f"再次确认 {full} 的地址")
-    # 用户选中名称的前半；全称也在文中：前半作为全称的简称，同一代号，不出现“公司_C Fictive Energy”这类结果
+    # 用户选中名称的前半；全称也在文中：前半作为全称的简称，同一代号，不出现“[公司_C] Fictive Energy”这类结果
     r, text = run(nodes, stance="other", user_terms=[UserTerm("Aurora Fictive", "ORG")])
-    assert r.redacted["F1-P1"] == "收函方：公司_A"
-    assert r.redacted["F1-P2"] == "抄送：公司_A 财务部"
-    assert r.redacted["F1-P3"] == "再次确认 公司_A 的地址"
+    assert r.redacted["F1-P1"] == "收函方：[公司_A]"
+    assert r.redacted["F1-P2"] == "抄送：[公司_A] 财务部"
+    assert r.redacted["F1-P3"] == "再次确认 [公司_A] 的地址"
     assert len(r.parties) == 1 and item_at(r, "F1-P2", nodes[1].text, "Aurora Fictive").detected_by == "user"
     for word in ("Aurora", "Fictive", "Energy"):
         assert word not in text
     # 已记住的名称是名称的一部分、全称未带标签出现在正文中：同样整体替换
     nodes = nodes_of(f"货物由 {full} 发运。", "Aurora Fictive 负责清关。")
     r, text = run(nodes, stance="other", terms=[Term("Aurora Fictive", "learned", "ORG")])
-    assert r.redacted["F1-P1"] == "货物由 公司_A 发运。" and r.redacted["F1-P2"] == "公司_A 负责清关。"
+    assert r.redacted["F1-P1"] == "货物由 [公司_A] 发运。" and r.redacted["F1-P2"] == "[公司_A] 负责清关。"
     assert r.matched_terms == {normalize("Aurora Fictive")}
 
 
@@ -615,12 +615,12 @@ def test_persons_collected_then_full_text():
     nodes = nodes_of("联系人：张示例", "Attn: Mr. Kevin Lee", "张示例将于下周到访，Kevin Lee 负责接待；Leeds 和 lee 不是人名。",
                      "Contact: Fictive Trading LLC")
     r, text = run(nodes, stance="other")
-    assert r.redacted["F1-P1"] == "联系人：人员_1"
-    assert r.redacted["F1-P2"] == "Attn: Mr. 人员_2"
-    assert r.redacted["F1-P3"] == "人员_1将于下周到访，人员_2 负责接待；Leeds 和 lee 不是人名。"
-    assert r.redacted["F1-P4"] == "Contact: 公司_A"  # 标签后是公司名称：已按第 2 步替换，不再当人名
+    assert r.redacted["F1-P1"] == "联系人：[人员_1]"
+    assert r.redacted["F1-P2"] == "Attn: Mr. [人员_2]"
+    assert r.redacted["F1-P3"] == "[人员_1]将于下周到访，[人员_2] 负责接待；Leeds 和 lee 不是人名。"
+    assert r.redacted["F1-P4"] == "Contact: [公司_A]"  # 标签后是公司名称：已按第 2 步替换，不再当人名
     assert {i.detected_by for i in r.items if i.category == "PERSON"} == {"person"}
-    assert r.mapping["人员_2"] == "Kevin Lee"
+    assert r.mapping["[人员_2]"] == "Kevin Lee"
 
 
 def test_addresses_segments_country_and_repeat():
@@ -633,7 +633,7 @@ def test_addresses_segments_country_and_repeat():
     )
     r, text = run(nodes)
     # 与公司名重叠的部分已替换，剩下的各段用同一代号
-    assert r.redacted["F1-P2"] == "地址：[地址：中国]我方[地址：中国]，电话：[电话]"
+    assert r.redacted["F1-P2"] == "地址：[地址：中国][我方][地址：中国]，电话：[电话]"
     assert r.redacted["F1-P3"] == "Address: Dubai"  # 只有城市名，保留（9.2 保留国家和港口）
     assert r.redacted["F1-P4"] == "Registered Address: [地址：德国]"
     assert r.redacted["F1-P5"] == "Documents to be sent to [地址：德国] by courier."  # 同一地址在别处也替换

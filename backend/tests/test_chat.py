@@ -480,7 +480,7 @@ def test_chat_code_format():
 
     assert chat_code("ORG", 1) == "[公司_Q1]" and chat_code("ADDR", 3, "阿联酋") == "[地址_Q3：阿联酋]"
     assert chat_number("[公司_Q12]") == 12 and chat_number("[地址_Q3：阿联酋]") == 3
-    for code in ("客户_A", "[金额_1]", "[账号_2]", "人员_1", "[电话]", "[地址：阿联酋]", "我方"):
+    for code in ("[客户_A]", "[金额_1]", "[账号_2]", "[人员_1]", "[电话]", "[地址：阿联酋]", "[我方]"):
         assert chat_number(code) is None  # 解析时分配的代号不会被当成追问代号
 
 

@@ -150,7 +150,7 @@ def test_get_parties_summary_outbound(db_sessionmaker, alice, ready_task):
     text = r.json()["text"]
     assert "【主体说明】" in text and "[F1-" in text
     assert REAL_OUR_NAME not in text and REAL_BUYER_NAME not in text
-    assert "我方" in text and "客户_A" in text
+    assert "[我方]" in text and "[客户_A]" in text
     with db_sessionmaker() as db:
         assert text == engine.build_outbound_text(db, db.get(Task, task.id))
         assert list(db.scalars(select(LlmCall))) == []
@@ -176,17 +176,17 @@ def test_put_rebuilds_codes_map_nodes_and_persists(db_sessionmaker, alice, ready
     assert {p["id"] for p in after} == {p["id"] for p in before}
     assert sum(p["is_our_party"] for p in after) == 1
     changed = next(p for p in after if p["id"] == buyer["id"])
-    assert (changed["code"], changed["country"], changed["org_type"]) == ("我方", "土耳其", "虚构自定义类型")
+    assert (changed["code"], changed["country"], changed["org_type"]) == ("[我方]", "土耳其", "虚构自定义类型")
     assert parties(c, task) == after
     text = c.get(url(task, "redaction/outbound")).json()["text"]
-    assert "我方=买方" in text and "德国，货代" in text
+    assert "[我方]=买方" in text and "德国，货代" in text
     assert REAL_OUR_NAME not in text and REAL_BUYER_NAME not in text
     with db_sessionmaker() as db:
-        assert engine.load_redaction_map(db, task.id)["我方"] == REAL_BUYER_NAME
+        assert engine.load_redaction_map(db, task.id)["[我方]"] == REAL_BUYER_NAME
         assert all(p.confirmed for p in db.scalars(select(Party).where(Party.task_id == task.id)))
         buyer_nodes = [n for n in db.scalars(select(DocNode).where(DocNode.task_id == task.id))
                        if n.text_enc and REAL_BUYER_NAME in decrypt_text(n.text_enc)]
-        assert buyer_nodes and all("我方" in n.redacted_text for n in buyer_nodes)
+        assert buyer_nodes and all("[我方]" in n.redacted_text for n in buyer_nodes)
     # 同样的完整列表可重复提交。
     assert c.put(url(task, "parties"), json=body, headers=h).status_code == 200
 
@@ -417,7 +417,7 @@ def test_ignore_then_replace_and_send(db_sessionmaker, alice, ready_task, llm):
     assert [v["reason"] for v in r.json()["suspects"]] == ["long_digits"]
     assert r.json()["summary"]["ORG"] >= 3
     names = {p["name"]: p["code"] for p in parties(c, task)}
-    assert names["Northwind Fictive Holdings"] == "公司_B"
+    assert names["Northwind Fictive Holdings"] == "[公司_B]"
     sid = r.json()["suspects"][0]["id"]
     r = c.post(url(task, f"redaction/suspects/{sid}"), json={"decision": "replace", "category": "CUSTOM"}, headers=h)
     assert r.status_code == 200 and r.json()["suspects"] == []
@@ -561,10 +561,10 @@ def test_q54_manual_party_then_our_party_and_send(db_sessionmaker, alice, ready_
     assert r.status_code == 200, r.text
     items = parties(c, task)
     assert [(p["name"], p["code"], p["role_label"], p["is_our_party"]) for p in items] == [
-        ("远景示例科技", "公司_A", "其他", False)]
+        ("远景示例科技", "[公司_A]", "其他", False)]
     r = c.put(url(task, "parties"), json=payload(items, items[0]["id"]), headers=h)
     assert r.status_code == 200, r.text
-    assert "本备忘录由我方与对方共同确认。" in c.get(url(task, "redaction/outbound")).json()["text"]
+    assert "本备忘录由[我方]与对方共同确认。" in c.get(url(task, "redaction/outbound")).json()["text"]
     llm("normal")
     assert c.post(url(task, "runs"), headers=h).status_code == 201
 
@@ -586,7 +586,7 @@ def test_t08_learned_name_replaced_in_second_task(db_sessionmaker, alice, ready_
     assert learned == {REAL_OUR_NAME: True, REAL_BUYER_NAME: False, "青松示例贸易": False}
     second = suspect_task(ready_task, user, "通知", "青松示例贸易将于下月到访。")
     out = c.get(url(second, "redaction/outbound")).json()["text"]
-    assert "青松示例贸易" not in out and "[F1-P2] 公司_A将于下月到访。" in out
+    assert "青松示例贸易" not in out and "[F1-P2] [公司_A]将于下月到访。" in out
     with db_sessionmaker() as db:
         items = db.scalars(select(RedactionItem).where(RedactionItem.task_id == second.id)).all()
         assert {i.detected_by for i in items} == {"term"}

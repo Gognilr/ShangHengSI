@@ -436,19 +436,19 @@ def test_restore_is_not_stored(db_sessionmaker, owner, ready_task, llm):
     task = ready_task(owner)
 
     def mutate(output, messages):
-        output["doc_summary"] = "我方与客户_A签订销售合同"
-        output["findings"][0]["problem"] = "客户_A的付款方式对我方不利"
-        output["sanctions"] = {"level": "需注意", "reasons": ["客户_A所在地区需关注"]}
+        output["doc_summary"] = "[我方]与[客户_A]签订销售合同"
+        output["findings"][0]["problem"] = "[客户_A]的付款方式对[我方]不利"
+        output["sanctions"] = {"level": "需注意", "reasons": ["[客户_A]所在地区需关注"]}
 
     llm(handler=custom_reply(mutate))
     run = new_run(db_sessionmaker, task, owner)
     run_job(db_sessionmaker, run.id)
     with db_sessionmaker() as db:
         r = db.get(ReviewRun, run.id)
-        assert r.doc_summary == "我方与客户_A签订销售合同" and r.sanctions_level == "attention"
-        assert db.scalar(select(Finding.problem).where(Finding.run_id == r.id)) == "客户_A的付款方式对我方不利"
+        assert r.doc_summary == "[我方]与[客户_A]签订销售合同" and r.sanctions_level == "attention"
+        assert db.scalar(select(Finding.problem).where(Finding.run_id == r.id)) == "[客户_A]的付款方式对[我方]不利"
         mapping = engine.load_redaction_map(db, task.id)
-        assert mapping["客户_A"] == REAL_BUYER_NAME and db.scalar(select(func.count()).select_from(Party)) == 2
+        assert mapping["[客户_A]"] == REAL_BUYER_NAME and db.scalar(select(func.count()).select_from(Party)) == 2
         detail = service.run_detail(db, r)
     assert detail.doc_summary == f"{REAL_OUR_NAME}与{REAL_BUYER_NAME}签订销售合同"
     assert detail.sanctions.level == "attention" and detail.sanctions.reasons == [f"{REAL_BUYER_NAME}所在地区需关注"]

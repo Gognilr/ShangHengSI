@@ -22,18 +22,18 @@ def report_case(make_user, ready_task, db_sessionmaker):
         run = ReviewRun(task_id=task.id, run_no=2, status="completed", stance="purchase", source="incoming",
                         main_doc_type="contract", model_name="mock-model", builtin_req_version="2026.11-1",
                         company_req_version=3, created_by=user.id, finished_at=datetime(2026, 10, 20, 0, 12, tzinfo=timezone.utc),
-                        doc_summary="我方与客户_A订立合同", sanctions_level="attention", sanctions_reasons=["客户_A需核实"])
+                        doc_summary="[我方]与[客户_A]订立合同", sanctions_level="attention", sanctions_reasons=["[客户_A]需核实"])
         db.add(run)
         db.flush()
         db.add_all([
             Finding(run_id=run.id, task_id=task.id, seq=2, title="虚构问题", category="commercial", severity="low",
                     locs=["F1-P2"], cite_status="verified", quote_snapshot_enc=encrypt_text("星河虚构进出口有限公司快照"),
-                    problem="客户_A需要明确义务\x01", impact="影响我方付款", basis="通行商业惯例",
-                    suggestion="请客户_A补充", suggested_text="客户_A应按期交货", handling_status="adopted", handling_note="虚构处理备注"),
+                    problem="[客户_A]需要明确义务\x01", impact="影响我方付款", basis="通行商业惯例",
+                    suggestion="请[客户_A]补充", suggested_text="[客户_A]应按期交货", handling_status="adopted", handling_note="虚构处理备注"),
             Finding(run_id=run.id, task_id=task.id, seq=1, title="缺失项", category="legal", severity="high",
                     locs=[], missing=True, cite_status="missing", problem="需补充约定", handling_status="pending"),
             RequirementResult(run_id=run.id, req_id="C-06", req_source="builtin", req_text="虚构要求快照",
-                              verdict="issue", note="客户_A需补充"),
+                              verdict="issue", note="[客户_A]需补充"),
         ])
         db.get(Task, task.id).status = "reviewed"
         db.get(Task, task.id).latest_run_id = run.id
@@ -73,7 +73,7 @@ def test_report_sections_restore_snapshot_and_layout(report_case, db_sessionmake
     for value in (DECLARATION, SANCTIONS_NOTE, "星河虚构进出口有限公司快照", "Fictional Metals Trading FZE需要明确义务",
                   "虚构要求快照", "已采纳", "虚构处理备注", "公司补充要求 第 3 版", "第 2 轮", "2026-10-20 08:12", "对我方的影响：", "依据：", "建议措辞："):
         assert value in text
-    assert "客户_A" not in text and "\x01" not in text and "审核通过" not in text and "无风险" not in text
+    assert "[客户_A]" not in text and "\x01" not in text and "审核通过" not in text and "无风险" not in text
     assert filename.startswith("审核报告_销售合同_") and filename.endswith(".docx")
     section = doc.sections[0]
     assert abs(section.page_width.cm - 29.7) < .01 and abs(section.page_height.cm - 21) < .01

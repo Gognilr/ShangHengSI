@@ -28,7 +28,7 @@ def sources(db, task, other):
         db.add(f); db.flush()
         db.add(DocNode(task_id=source.id, file_id=f.id, loc='F1-P1', ord=1, kind='paragraph', part='body',
                        text_enc=crypto.encrypt_text('虚构来源买方按约验收交付物。')))
-        engine.write_full_map(db, source.id, {'客户_A': '虚构来源买方'})
+        engine.write_full_map(db, source.id, {'[客户_A]': '虚构来源买方'})
         db.add(TaskClauseVector(task_id=source.id, file_seq=1, first_loc='F1-P1', locs=['F1-P1'],
                                 embedding=vector(), model='test'))
         ids.append(source.id)
@@ -49,7 +49,7 @@ def test_t51_7_8_9_history_owner_codes_and_labels(conversation, db_sessionmaker,
         assert len(items) == 1 and items[0]['task_id'] == str(ids[0])
         assert items[0]['label'] == '合同，2026-05'
         assert '[[ORG_' in items[0]['text']
-        for secret in ('虚构来源买方', '秘密历史', '虚构秘密标题', '客户_A'):
+        for secret in ('虚构来源买方', '秘密历史', '虚构秘密标题', '[客户_A]'):
             assert secret not in str(items)
         assert '虚构来源买方' in engine.load_redaction_map(db, task.id).values()
         assert '查询敏感原文' not in caplog.text

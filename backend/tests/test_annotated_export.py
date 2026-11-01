@@ -44,20 +44,20 @@ def case(make_user, db_sessionmaker):
         for n in parse_docx(data, 1).nodes:
             db.add(DocNode(task_id=task.id, file_id=file.id, loc=n.loc, ord=n.ord, kind=n.kind, part=n.part,
                            text_enc=crypto.encrypt_text(n.text)))
-        db.add(RedactionMap(task_id=task.id, map_enc=crypto.encrypt_text(json.dumps({"客户_A": "星河虚构公司"}))))
+        db.add(RedactionMap(task_id=task.id, map_enc=crypto.encrypt_text(json.dumps({"[客户_A]": "星河虚构公司"}))))
         run = ReviewRun(task_id=task.id, run_no=1, status="completed", stance="sales", source="outgoing",
                         main_doc_type="contract", created_by=user.id)
         db.add(run)
         db.flush()
-        for seq, loc, quote, status in [(1, "F1-P1", "客户_A应按期交货", "pending"),
+        for seq, loc, quote, status in [(1, "F1-P1", "[客户_A]应按期交货", "pending"),
                                          (2, "F1-P2", "不存在的原文", "pending"),
-                                         (3, "F1-P1", "客户_A", "ignored")]:
-            db.add(Finding(task_id=task.id, run_id=run.id, seq=seq, title="客户_A的义务", category="legal",
+                                         (3, "F1-P1", "[客户_A]", "ignored")]:
+            db.add(Finding(task_id=task.id, run_id=run.id, seq=seq, title="[客户_A]的义务", category="legal",
                            severity="high", locs=[loc], cite_status="unverified", quote_model=quote,
-                           problem="客户_A责任不明确", suggestion="请客户_A明确", suggested_text="客户_A应及时履行",
+                           problem="[客户_A]责任不明确", suggestion="请[客户_A]明确", suggested_text="[客户_A]应及时履行",
                            basis="虚构合同依据", handling_status=status))
         db.add(LocalFinding(task_id=task.id, file_id=file.id, check_code="L-08", severity="medium",
-                            locs=["F1-P1"], detail_enc=crypto.encrypt_text("客户_A的交期需核对"), ai_summary="虚构校验"))
+                            locs=["F1-P1"], detail_enc=crypto.encrypt_text("[客户_A]的交期需核对"), ai_summary="虚构校验"))
         db.commit()
     return user, task.id, run.id, file.id, data
 
@@ -75,7 +75,7 @@ def test_comments_restore_body_headers_and_audit(case, login, db_sessionmaker):
     assert len(doc.comments) == 3
     assert all(c.author == "商衡SI" and c.initials == "SI" for c in doc.comments)
     text = "\n".join(c.text for c in doc.comments)
-    assert "星河虚构公司" in text and "客户_A" not in text
+    assert "星河虚构公司" in text and "[客户_A]" not in text
     assert "问题 3" not in text and "未能精确定位" in text and "本地校验" in text
     comments = list(doc.comments)
     assert "问题 1" in comments[0].text and "问题 2" in comments[1].text

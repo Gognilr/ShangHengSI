@@ -28,7 +28,7 @@ def test_builtin_version_readable():
 
 def test_system_template_version_and_placeholder():
     version, body = load_system_template()
-    assert version == "2026.11-4"  # V2-E-05/06：法条依据及公司范本；仅同步提示词版本（V2Q-96）。
+    assert version == "2026.11-5"  # V2-E-05/06：法条依据及公司范本；仅同步提示词版本（V2Q-96）。
     assert body.startswith("你是企业商务文件审核助手")
     assert body.count("{JSON_SCHEMA}") == 1
     # front matter 不应出现在正文中

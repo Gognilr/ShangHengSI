@@ -4,7 +4,7 @@
 """
 import re
 
-OUR_CODE = "我方"
+OUR_CODE = "[我方]"
 
 # 不区分对象、所有命中共用一个代号的类别
 FIXED = {
@@ -26,9 +26,9 @@ def address_code(country: str) -> str:
 
 # 按对象编号的类别
 _NUMBERED = {
-    "PROJECT": "项目_{}",
-    "PERSON": "人员_{}",
-    "REFNO": "编号_{}",
+    "PROJECT": "[项目_{}]",
+    "PERSON": "[人员_{}]",
+    "REFNO": "[编号_{}]",
     "ACCOUNT": "[账号_{}]",  # Q-59：同一账号同一代号，可唯一还原
     "SWIFT": "[SWIFT_{}]",
     "AMOUNT": "[金额_{}]",
@@ -102,7 +102,7 @@ class Allocator:
 
     def org(self, key: str, role: str) -> str:
         if ("ORG", key) not in self._codes:
-            self._codes[("ORG", key)] = f"{role}_{letters(self._org_letters)}"
+            self._codes[("ORG", key)] = f"[{role}_{letters(self._org_letters)}]"
             self._org_letters += 1
         return self._codes[("ORG", key)]
 

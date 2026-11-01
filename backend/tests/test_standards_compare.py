@@ -104,7 +104,7 @@ def test_t46_own_preset_and_log_privacy(db_sessionmaker,integration,caplog):
         ctx=ReviewContext(task,'sales','incoming',None,'contract',[],[],'','')
         ctx.template_candidates=[dict(score=1,loc='F1-P1',locs=['F1-P1'],document_title='交付',title='交付',text=own+'依约交付。',stance='',acceptable='',escalate='')]
         compare.prepare(db,ctx,None)
-        assert '我方依约交付。' in ctx.template_section and own not in ctx.template_section
+        assert '[我方]依约交付。' in ctx.template_section and own not in ctx.template_section
         mapping=load_redaction_map(db,task.id)
         assert own in restore(ctx.template_section,mapping)
         assert own not in caplog.text

@@ -32,7 +32,7 @@ def test_02_short_derived():
 
 def test_03_industry_chain():
     r = run("乙方：东方虚构国际贸易有限公司", "东方虚构的报价，东方红")
-    assert r.redacted["F1-P1"] == "公司_A的报价，东方红"
+    assert r.redacted["F1-P1"] == "[公司_A]的报价，东方红"
 
 
 def test_04_no_title_fragment():
@@ -40,11 +40,11 @@ def test_04_no_title_fragment():
 
 
 def test_05_compound_surname():
-    assert run("请欧阳总监确认").redacted["F1-P0"] == "请人员_1确认"
+    assert run("请欧阳总监确认").redacted["F1-P0"] == "请[人员_1]确认"
 
 
 def test_06_english_title():
-    assert run("Dear Dr. Lena Fictive,").redacted["F1-P0"] == "Dear Dr. 人员_1,"
+    assert run("Dear Dr. Lena Fictive,").redacted["F1-P0"] == "Dear Dr. [人员_1],"
 
 
 def test_07_place():
@@ -53,7 +53,7 @@ def test_07_place():
 
 
 def test_09_chat_existing():
-    assert _redact("澄川虚构的报价是否偏高？", {"公司_A": "澄川虚构信息技术有限公司"}, []).text == "公司_A的报价是否偏高？"
+    assert _redact("澄川虚构的报价是否偏高？", {"[公司_A]": "澄川虚构信息技术有限公司"}, []).text == "[公司_A]的报价是否偏高？"
 
 
 @pytest.mark.usefixtures("env")

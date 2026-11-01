@@ -37,7 +37,7 @@ returns:
     expect: "刘示例, RFQ-2026-0715, 700。"
     marks: []
     restored: 3
-    fixed: 2
+    fixed: 3
   - field: clause
     model: "供应商B、人员9、编号9、Customer_B。"
     expect: "供应商B、人员9、编号9、Customer_B。"

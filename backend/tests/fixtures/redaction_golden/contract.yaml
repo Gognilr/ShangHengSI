@@ -46,7 +46,7 @@ must_keep:
   - 适用中华人民共和国法律
 returns:
   - field: text
-    model: "客户_A与我方核对[金额_1]。"
+    model: "[客户_A]与[我方]核对[金额_1]。"
     expect: "Orion Fictive Trading L.L.C.与北辰虚构新材料有限公司核对625,000.00。"
     marks: []
     restored: 3

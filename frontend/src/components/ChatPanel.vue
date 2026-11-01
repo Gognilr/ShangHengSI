@@ -35,7 +35,7 @@ const allDecided = computed(() => decisions.value.every(d => d.choice === 'keep'
 
 // Q-160：预览没有代号位置表，只按既有格式着色；文字始终来自服务端，不在前端生成或替换代号。
 function segments(data: ChatPreview): CompareSeg[] {
-  const parts = data.redacted.split(/(\[(?:[^\[\]\n]+_Q\d+(?:：[^\[\]\n]*)?|账号_\d+|SWIFT_\d+|金额_\d+|单价_\d+|数量_\d+|敏感词_\d+|电话|邮箱|网址|证件号|邮编|地址：[^\[\]\n]+)\]|(?:客户|供应商|买方|卖方|公司|收货人|通知方|受益人|银行)_[A-Z]+|人员_\d+|编号_\d+|我方)/g)
+  const parts = data.redacted.split(/(\[(?:[^\[\]\n]+_Q\d+(?:：[^\[\]\n]*)?|(?:客户|供应商|买方|卖方|公司|其他|收货人|通知方|受益人|银行)_[A-Z]+|(?:人员|项目|编号)_\d+|我方|账号_\d+|SWIFT_\d+|金额_\d+|单价_\d+|数量_\d+|敏感词_\d+|电话|邮箱|网址|证件号|邮编|地址：[^\[\]\n]+)\]|(?:客户|供应商|买方|卖方|公司|收货人|通知方|受益人|银行)_[A-Z]+|人员_\d+|项目_\d+|编号_\d+|我方)/g)
   return markPending(parts.map((text, i) => ({ text, placeholder: i % 2 ? text : undefined })).filter(seg => !!seg.text),
     data.suspects.map(s => ({ text: s.text, decision: 'pending' })))
 }

@@ -8,6 +8,7 @@ from app.review.clauses import first_level
 from app.security import crypto
 from app.standards.service import clauses,decoded
 from app.redaction.outbound import escape_document_tags
+from app.redaction.placeholders import OUR_CODE
 
 CLAUSE_PAIR_MIN=0.70
 
@@ -77,11 +78,11 @@ def prepare(db,ctx,chunk):
     db.scalar(select(Task).where(Task.id==ctx.task.id).with_for_update())
     db.scalar(select(RedactionMap).where(RedactionMap.task_id==ctx.task.id).with_for_update())
     mapping=_load_full_map(db,ctx.task.id);terms=_terms(db)
-    # 预置我方主体未在当前文件出现时，也按“我方”脱敏；多写法按既有#序号格式入图。
+    # 预置我方主体未在当前文件出现时，也按我方代号脱敏；多写法按既有#序号格式入图。
     for own in db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True),RedactionTerm.is_our_party.is_(True))):
         value=crypto.decrypt_text(own.term_enc)
         if value not in mapping.values():
-            key='我方' if '我方' not in mapping else f'我方#{len(mapping)+1}'
+            key=OUR_CODE if OUR_CODE not in mapping else f'{OUR_CODE}#{len(mapping)+1}'
             mapping[key]=value
     output=[];suspect=False
     for i,p in enumerate(chosen,1):

@@ -180,5 +180,5 @@ def test_t46_run_selection_and_worker(db_sessionmaker,make_user,env,ready_task,l
         assert (reviews.run_detail(db,run).template is not None)==use_template
     import json
     sent=json.loads(requests[0].content)['messages'][1]['content']
-    assert ('【公司范本对照】' in sent)==use_template
+    assert ('\n【公司范本对照】\n' in sent)==use_template
     assert '旧提示' not in sent

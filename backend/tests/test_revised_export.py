@@ -40,13 +40,13 @@ def prepare(sm, rid):
     with sm() as db:
         rows = list(db.scalars(select(Finding).where(Finding.run_id == rid).order_by(Finding.seq)))
         rows[0].handling_status = "adopted"
-        rows[0].suggested_text = "客户_A应在十日内交货"
+        rows[0].suggested_text = "[客户_A]应在十日内交货"
         rows[1].handling_status = "adopted"
         rows[1].missing = True
         rows[1].suggested_text = "双方协商解决争议。"
         for seq, quote, suggested, status in [
             (4, "找不到", "补充条款", "adopted"),
-            (5, "未约定", "客户_C承担责任", "adopted"),
+            (5, "未约定", "[客户_C]承担责任", "adopted"),
             (6, "未约定", "不应写入", "pending"),
         ]:
             db.add(Finding(task_id=rows[0].task_id, run_id=rid, seq=seq, title="虚构问题", category="legal",
@@ -125,8 +125,8 @@ def test_ordered_changes_ignore_inserted_quote(case, login, db_sessionmaker):
     prepare(db_sessionmaker, rid)
     with db_sessionmaker() as db:
         rows = {f.seq: f for f in db.scalars(select(Finding).where(Finding.run_id == rid))}
-        rows[1].quote_model = "客户_A"
-        rows[1].suggested_text = "客户_A按期交货"
+        rows[1].quote_model = "[客户_A]"
+        rows[1].suggested_text = "[客户_A]按期交货"
         rows[4].locs, rows[4].quote_model, rows[4].suggested_text = ["F1-P1"], "按期交货", "及时交货"
         rows[5].missing, rows[5].suggested_text = True, "新增第一行。\n新增第二行。"
         db.commit()

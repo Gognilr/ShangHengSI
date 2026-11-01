@@ -9,10 +9,10 @@ from app.redaction.suspects import find_suspects
 
 
 @pytest.mark.parametrize("text,stance,role,code", [
-    ("采购人：江北市第一虚构人民医院", "sales", "买方", "客户_A"),
-    ("承包人：青岚虚构建设工程有限公司", "purchase", "卖方", "供应商_A"),
-    ("监理单位：东川市虚构工程咨询事务所", "sales", "监理方", "公司_A"),
-    ("甲方：东川市虚构区教育局", "sales", "甲方", "公司_A"),
+    ("采购人：江北市第一虚构人民医院", "sales", "买方", "[客户_A]"),
+    ("承包人：青岚虚构建设工程有限公司", "purchase", "卖方", "[供应商_A]"),
+    ("监理单位：东川市虚构工程咨询事务所", "sales", "监理方", "[公司_A]"),
+    ("甲方：东川市虚构区教育局", "sales", "甲方", "[公司_A]"),
 ])
 def test_r4_labeled_parties(text, stance, role, code):
     r = compute([NodeIn("F1-P1", text)], stance)
@@ -43,7 +43,7 @@ def test_r4_institution_alias():
     text = "江北市第一虚构人民医院（以下简称“江北医院”）……江北医院应……"
     r = compute([NodeIn("F1-P1", text)], "sales")
     assert len(r.parties) == 1
-    assert r.redacted["F1-P1"] == "公司_A（以下简称“公司_A”）……公司_A应……"
+    assert r.redacted["F1-P1"] == "[公司_A]（以下简称“[公司_A]”）……[公司_A]应……"
 
 
 def test_r4_chat_uses_shared_institution_rules():

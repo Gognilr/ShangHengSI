@@ -35,7 +35,7 @@ returns:
     model: "Payment by Customer_A to [我方] via [电话], [邮箱], [网址], [证件号], [邮编], [联系方式], [地址：德国]."
     expect: "Payment by Delta Mock Industries GmbH to Haiyue Fictive Carbon Co., Ltd. via [电话], [邮箱], [网址], [证件号], [邮编], [联系方式], [地址：德国]."
     marks: [{raw: "[电话]", kind: shared}, {raw: "[邮箱]", kind: shared}, {raw: "[网址]", kind: shared}, {raw: "[证件号]", kind: shared}, {raw: "[邮编]", kind: shared}, {raw: "[联系方式]", kind: shared}, {raw: "[地址：德国]", kind: shared}]
-    fixed: 2
+    fixed: 1
   - field: text
     model: "[电话] [地址：德国] ( =合同总价的 30.0%) 【主体说明】 【报价明细表：单价×数量】"
     expect: "[电话] [地址：德国] ( =合同总价的 30.0%) 【主体说明】 【报价明细表：单价×数量】"

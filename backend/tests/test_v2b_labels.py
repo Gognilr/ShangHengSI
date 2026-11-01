@@ -28,7 +28,7 @@ def test_01_all_thirteen_labels():
 
 def test_02_customs_whole_value():
     r = result("报关单号：222120260000123456")
-    assert r.redacted["F1-P1"] in ("报关单号：编号_1", "报关单号：[证件号]")
+    assert r.redacted["F1-P1"] in ("报关单号：[编号_1]", "报关单号：[证件号]")
 
 
 @pytest.mark.parametrize("value", ["见附件", "待定", "另行约定", "同上"])
@@ -37,7 +37,7 @@ def test_03_project_empty_values(value):
 
 
 def test_04_project_semicolon():
-    assert result("项目名称：东川市虚构管网改造工程；工期 90 天").redacted["F1-P1"] == "项目名称：项目_1；工期 90 天"
+    assert result("项目名称：东川市虚构管网改造工程；工期 90 天").redacted["F1-P1"] == "项目名称：[项目_1]；工期 90 天"
 
 
 def test_05_repeated_im_mapping():
@@ -67,8 +67,8 @@ def test_note_uses_same_rules():
 
 def test_project_unique_and_information_boundary():
     r = result("项目名称：东川虚构项目 联系人：张示例")
-    assert r.redacted["F1-P1"] == "项目名称：项目_1 联系人：人员_1"
-    assert r.mapping["项目_1"] == "东川虚构项目"
+    assert r.redacted["F1-P1"] == "项目名称：[项目_1] 联系人：[人员_1]"
+    assert r.mapping["[项目_1]"] == "东川虚构项目"
 
 
 @pytest.mark.parametrize("label", ["护照号", "护照号码", "Passport No", "营业执照注册号", "注册号", "工商注册号",
