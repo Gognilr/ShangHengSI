@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import WorkFolderBar from '@/components/WorkFolderBar.vue'
-import { Upload } from '@lucide/vue'
+import { Trash2, Upload } from '@lucide/vue'
 import { ElMessage } from 'element-plus'
-import type { UploadFile } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { redactionApi } from '@/api/redaction'
-import { runsApi, type RunDetail } from '@/api/runs'
+import { RUN_ERROR_MESSAGES, runsApi, type RunDetail } from '@/api/runs'
 import {
   ALLOWED_EXTS,
   MAX_FILE_MB,
   MAX_FILES,
   MAX_NOTE_LENGTH,
+  TASK_ERROR_MESSAGES,
   checkFiles,
   tasksApi,
+  type TaskFile,
   type Policy,
   type Source,
   type Stance,
@@ -25,10 +26,13 @@ import {
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmStep from '@/components/ConfirmStep.vue'
 import StepBar from '@/components/StepBar.vue'
+import SiIsland from '@/components/ui/SiIsland.vue'
+import SiSegmented from '@/components/ui/SiSegmented.vue'
+import { usePendingDeletes } from '@/composables/usePendingDeletes'
+import { useLoop } from '@/utils/motion'
 import { formatDateTime } from '@/utils/time'
 import { useAuthStore } from '@/stores/auth'
 import {
-  POLICY_OPTIONS,
   SOURCE_OPTIONS,
   STANCE_OPTIONS,
   runStatusLabel,
@@ -45,17 +49,24 @@ const task = ref<TaskDetail | null>(null)
 const loadError = ref('')
 const activeRun = ref<RunDetail | null>(null)
 
-// ---- 第一步表单 ----
-const files = ref<File[]>([])
-const mainIndex = ref(0)
+// ---- 第一步：拖入即解析（V31-U2 第二节） ----
 const stance = ref<Stance>('sales')
 const source = ref<Source>('outgoing')
 const policy = ref<Policy>('ai')
 const userNote = ref('')
+const noteOpen = ref(false)
+const prefsLoaded = ref(false)
 const reqDrawer = ref(false)
 const submitting = ref(false)
+const proceeding = ref(false)
 const formError = ref('')
 const duplicateFile = ref<DuplicateFile | null>(null)
+const dupFiles = ref<File[]>([])
+const picker = ref<HTMLInputElement>()
+const pending = usePendingDeletes()
+const hidden = ref<Set<string>>(new Set())
+let hydratedId = ''
+let taskDeletion: Promise<unknown> | null = null
 
 const modelItems = ref<AvailableModel[]>([])
 const modelId = ref<number>()
@@ -77,7 +88,7 @@ async function loadModels() {
 watch(() => route.query.model_id, () => { void loadModels() })
 
 // 立场和来源默认为该用户上次的选择。接口没有返回 last_stance / last_source，
-// 所以在浏览器里按用户记一份（open_questions Q-51）。
+// 所以在浏览器里按用户记一份（open_questions Q-51）；proceed 成功时才保存。
 function prefKey(): string {
   return `aireview:last-choice:${auth.user?.id ?? ''}`
 }
@@ -88,6 +99,7 @@ function loadPrefs() {
     const p = JSON.parse(raw) as { stance?: string; source?: string }
     if (p.stance && p.stance in STANCE_OPTIONS) stance.value = p.stance as Stance
     if (p.source && p.source in SOURCE_OPTIONS) source.value = p.source as Source
+    prefsLoaded.value = true
   } catch {
     // 浏览器禁用本地存储时使用内置默认值
   }
@@ -100,60 +112,74 @@ function savePrefs() {
   }
 }
 
-function fileKey(f: File) {
-  return `${f.name}|${f.size}|${f.lastModified}`
+function errText(e: unknown, fallback: string): string {
+  if (!(e instanceof ApiError)) return fallback
+  return TASK_ERROR_MESSAGES[e.code] ?? RUN_ERROR_MESSAGES[e.code] ?? e.message
 }
 
-// 拖入、点击选择与从工作文件夹选择走同一段代码，数量与大小检查不变
-function addFile(raw: File) {
-  if (files.value.some((f) => fileKey(f) === fileKey(raw))) return
-  if (files.value.length >= MAX_FILES) {
-    formError.value = `每个任务最多 ${MAX_FILES} 个文件`
-    return
-  }
-  files.value = [...files.value, raw]
+const visibleFiles = computed(() => (task.value?.files ?? []).filter(f => !hidden.value.has(f.id)))
+const parsingCount = computed(() => visibleFiles.value.filter(f => f.parse_state === 'parsing').length)
+const failedCount = computed(() => visibleFiles.value.filter(f => f.parse_state === 'failed').length)
+const doneCount = computed(() => visibleFiles.value.filter(f => f.parse_state === 'done').length)
+const loop = useLoop(computed(() => parsingCount.value > 0))
+
+const island = computed<{ state: 'idle' | 'busy' | 'done' | 'error'; text: string }>(() => {
+  const n = visibleFiles.value.length
+  if (!n) return { state: 'idle', text: '把合同、报价单拖到左侧' }
+  if (parsingCount.value || task.value?.busy) return { state: 'busy', text: `本机正在解析 ${parsingCount.value || n} 个文件` }
+  if (failedCount.value) return { state: 'error', text: `${failedCount.value} 个文件解析失败，可删除后继续` }
+  return { state: 'done', text: `${n} 个文件已在本机就绪` }
+})
+const canProceed = computed(() => {
+  if (!visibleFiles.value.length || proceeding.value || submitting.value) return false
+  if (policy.value === 'ai') return doneCount.value >= 1
+  return doneCount.value === visibleFiles.value.length && !task.value?.busy
+})
+const proceedHint = computed(() => {
+  if (!visibleFiles.value.length) return '先拖入文件'
+  if (canProceed.value) return ''
+  if (policy.value === 'ai') return '正在解析，至少一份完成后可以继续'
+  return '还有文件正在解析'
+})
+
+function onPick(event: Event) {
+  const input = event.target as HTMLInputElement
+  const list = Array.from(input.files ?? [])
+  input.value = ''
+  if (list.length) void handleAdd(list)
+}
+
+async function handleAdd(list: File[], allowDuplicate = false) {
+  if (submitting.value || proceeding.value) return
   formError.value = ''
-}
-function onFileChange(uf: UploadFile) {
-  if (uf.raw) addFile(uf.raw)
-}
-
-function removeFile(index: number) {
-  files.value = files.value.filter((_, i) => i !== index)
-  if (mainIndex.value === index) mainIndex.value = 0
-  else if (mainIndex.value > index) mainIndex.value -= 1
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
-  return Math.max(1, Math.round(bytes / 1024)) + ' KB'
-}
-
-async function startParse(allowDuplicate = false) {
-  if (submitting.value) return
-  formError.value = checkFiles(files.value) ?? ''
-  if (formError.value) return
-  if (policy.value === 'ai' && (!modelId.value || modelError.value)) { formError.value = modelError.value || '请选择审核模型'; return }
+  // 等待中的“最后一个文件”删除会连任务一起删，新文件改建新草稿
+  if (pending.has('task')) { pending.flush(); await taskDeletion }
+  const known = new Set(visibleFiles.value.map(f => `${f.original_name}|${f.size_bytes}`))
+  const fresh = allowDuplicate ? list : list.filter(f => !known.has(`${f.name}|${f.size}`))
+  if (!fresh.length) return
+  if (visibleFiles.value.length + fresh.length > MAX_FILES) { formError.value = `每个任务最多 ${MAX_FILES} 个文件`; return }
+  const problem = checkFiles(fresh)
+  if (problem) { formError.value = problem; return }
   submitting.value = true
   try {
-    const { id } = await tasksApi.create({
-      files: files.value,
-      mainIndex: mainIndex.value,
-      stance: stance.value,
-      source: source.value,
-      policy: policy.value,
-      userNote: userNote.value,
-      allowDuplicate,
-    })
-    savePrefs()
-    await router.replace({ name: 'review-new', query: { task: id, ...(policy.value === 'ai' && modelId.value ? { model_id: String(modelId.value) } : {}) } })
+    if (!task.value) {
+      const { id } = await tasksApi.create({
+        files: fresh, mainIndex: 0, stance: stance.value, source: source.value, policy: policy.value,
+        userNote: userNote.value, allowDuplicate, draft: true,
+      })
+      hydratedId = id
+      await router.replace({ name: 'review-new', query: { task: id, ...(policy.value === 'ai' && modelId.value ? { model_id: String(modelId.value) } : {}) } })
+    } else {
+      applyTask(await tasksApi.addFiles(task.value.id, fresh))
+    }
   } catch (e) {
     if (e instanceof ApiError && e.code === 'DUPLICATE_FILE' && e.data && typeof e.data === 'object') {
       const old = e.data as Partial<DuplicateFile>
       if (typeof old.task_id === 'string' && typeof old.created_at === 'string' && typeof old.title === 'string') {
+        dupFiles.value = fresh
         duplicateFile.value = old as DuplicateFile
       } else formError.value = e.message
-    } else formError.value = e instanceof ApiError ? e.message : '提交失败，请重试'
+    } else formError.value = errText(e, '上传失败，请重试')
   } finally {
     submitting.value = false
   }
@@ -167,7 +193,89 @@ function openPrevious() {
 
 function continueDuplicate() {
   duplicateFile.value = null
-  void startParse(true)
+  void handleAdd(dupFiles.value, true)
+}
+
+function show(id: string) {
+  const next = new Set(hidden.value)
+  next.delete(id)
+  hidden.value = next
+}
+
+function removeOne(file: TaskFile) {
+  const t = task.value
+  if (!t) return
+  hidden.value = new Set(hidden.value).add(file.id)
+  if (visibleFiles.value.length === 0) {
+    pending.schedule('task', () => {
+      taskDeletion = tasksApi.remove(t.id).then(async () => {
+        if (taskId.value === t.id) { task.value = null; await router.replace({ name: 'review-new' }) }
+      })
+      return taskDeletion
+    }, {
+      label: `已移除 ${file.original_name}，本次草稿将删除`,
+      onUndo: () => show(file.id),
+      onError: () => { show(file.id); formError.value = '删除失败，请重试' },
+    })
+    return
+  }
+  pending.schedule(file.id, async ({ keepalive }) => {
+    const next = await tasksApi.removeFile(t.id, file.id, { keepalive })
+    show(file.id)
+    if (taskId.value === t.id) applyTask(next)
+  }, {
+    label: `已删除 ${file.original_name}`,
+    onUndo: () => show(file.id),
+    onError: (e) => { show(file.id); formError.value = errText(e, '删除失败，请重试') },
+  })
+}
+
+async function makeMain(file: TaskFile) {
+  if (!task.value) return
+  try {
+    await tasksApi.setMain(task.value.id, file.id)
+    await refreshTask()
+  } catch (e) { formError.value = errText(e, '设置失败，请重试') }
+}
+
+async function proceed() {
+  const t = task.value
+  if (!t || !canProceed.value) return
+  if (policy.value === 'ai' && (!modelId.value || modelError.value)) { formError.value = modelError.value || '请选择审核模型'; return }
+  pending.flush()
+  proceeding.value = true
+  formError.value = ''
+  try {
+    const next = await tasksApi.proceed(t.id, { stance: stance.value, source: source.value, policy: policy.value, user_note: userNote.value.trim() || null })
+    savePrefs()
+    applyTask(next)
+  } catch (e) {
+    formError.value = errText(e, '操作失败，请重试')
+    void refreshTask()
+  } finally {
+    proceeding.value = false
+  }
+}
+
+// 整个面板接受拖入
+const dragging = ref(false)
+let dragDepth = 0
+const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')
+function onDragEnter(e: DragEvent) { if (hasFiles(e)) { dragDepth += 1; dragging.value = true } }
+function onDragLeave(e: DragEvent) { if (hasFiles(e)) { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) dragging.value = false } }
+function onDrop(e: DragEvent) {
+  dragDepth = 0
+  dragging.value = false
+  const list = Array.from(e.dataTransfer?.files ?? [])
+  if (list.length) void handleAdd(list)
+}
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+  return Math.max(1, Math.round(bytes / 1024)) + ' KB'
+}
+function fileMeta(f: TaskFile): string {
+  return f.page_count ? `${f.page_count} 页` : `${f.paragraph_count} 段`
 }
 
 // ---- 轮询：解析中、审核中每 3 秒读取一次任务（离开页面即停止） ----
@@ -189,7 +297,21 @@ function startPolling() {
 function applyTask(t: TaskDetail) {
   const prev = task.value?.status
   task.value = t
+  if (t.status === 'draft' && hydratedId !== t.id) {
+    hydratedId = t.id
+    stance.value = t.stance
+    source.value = t.source
+    policy.value = t.policy
+    userNote.value = t.user_note ?? ''
+    noteOpen.value = !!userNote.value
+    prefsLoaded.value = false
+  }
   switch (t.status) {
+    case 'draft':
+      step.value = 0
+      if (t.busy || t.files.some(f => f.parse_state === 'parsing')) startPollingIfNeeded()
+      else stopPolling()
+      break
     case 'parsing':
       step.value = 0
       startPollingIfNeeded()
@@ -254,7 +376,7 @@ const taskId = computed(() => (typeof route.query.task === 'string' ? route.quer
 async function enter() {
   stopPolling()
   loadError.value = ''
-  task.value = null
+  if (task.value?.id !== taskId.value) task.value = null
   activeRun.value = null
   if (!taskId.value) {
     step.value = 0
@@ -273,8 +395,6 @@ watch(taskId, () => void enter())
 onBeforeUnmount(() => { stopPolling(); if (clockTimer) clearInterval(clockTimer) })
 
 async function startOver() {
-  files.value = []
-  mainIndex.value = 0
   userNote.value = ''
   formError.value = ''
   await router.replace({ name: 'review-new' })
@@ -304,7 +424,6 @@ const elapsed = computed(() => {
 
 const stanceOptions = toOptions(STANCE_OPTIONS)
 const sourceOptions = toOptions(SOURCE_OPTIONS)
-const policyOptions = toOptions(POLICY_OPTIONS)
 
 const runText = computed(() => {
   const latest = task.value?.latest_run
@@ -362,58 +481,64 @@ function fileBadge(name: string): string {
           <template #extra><el-button type="primary" @click="startOver">重新上传</el-button></template>
         </el-result>
       </div>
-      <el-form v-else label-width="110px" @submit.prevent="startParse()">
-        <section class="form-group">
-          <h2>审核文件</h2>
-          <p class="hint">上传商务文件，本地脱敏并经确认后，由 AI 进行初审</p>
-          <WorkFolderBar @add="(list: File[]) => list.forEach(addFile)" />
-          <el-upload drag multiple :auto-upload="false" :show-file-list="false" :accept="ALLOWED_EXTS.map(ext => `.${ext}`).join(',')" @change="onFileChange">
-            <div class="upload-icon"><Upload :size="24" :stroke-width="1.75" /></div>
-            <div class="el-upload__text">将文件拖到此处，或 <em>点击选择</em></div>
-            <template #tip>
-              <div class="format-tags"><el-tag v-for="ext in ALLOWED_EXTS" :key="ext" type="info" size="small" effect="plain">{{ ext.toUpperCase() }}</el-tag></div>
-              <p class="hint upload-limit">最多 {{ MAX_FILES }} 个文件，单个不超过 {{ MAX_FILE_MB }} MB</p>
-            </template>
-          </el-upload>
-          <el-radio-group v-if="files.length" v-model="mainIndex" class="file-list" aria-label="主文件选择">
-            <div v-for="(f, i) in files" :key="fileKey(f)" class="file-row" :class="{ 'is-main': mainIndex === i }">
-              <span class="file-badge" :class="`file-badge--${fileBadge(f.name).toLowerCase()}`">{{ fileBadge(f.name) }}</span>
-              <span class="file-name" :title="f.name">{{ f.name }}</span>
-              <el-radio :value="i" :aria-label="`${f.name}，设为主文件`">主文件</el-radio>
-              <span class="file-size">{{ formatSize(f.size) }}</span>
-              <el-button link type="danger" @click="removeFile(i)">移除</el-button>
+      <div v-else class="home" :class="{ 'is-dragging': dragging }" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
+        <div class="home-grid">
+          <div class="drop-col">
+            <WorkFolderBar @add="(list: File[]) => handleAdd(list)" />
+            <input ref="picker" type="file" multiple hidden :accept="ALLOWED_EXTS.map(ext => `.${ext}`).join(',')" @change="onPick">
+            <button v-if="!visibleFiles.length" type="button" class="dropzone" :disabled="submitting" @click="picker?.click()">
+              <span class="upload-icon"><Upload :size="24" :stroke-width="1.75" /></span>
+              <span class="drop-title">将文件拖到此处，或 <em>点击选择</em></span>
+              <span class="drop-sub">拖入后立即在本机解析，最多 {{ MAX_FILES }} 个文件，单个不超过 {{ MAX_FILE_MB }} MB</span>
+              <span class="format-tags"><el-tag v-for="ext in ALLOWED_EXTS" :key="ext" type="info" size="small" effect="plain">{{ ext.toUpperCase() }}</el-tag></span>
+            </button>
+            <div v-else class="file-box">
+              <TransitionGroup name="si-list" tag="ul" class="file-list">
+                <li v-for="f in visibleFiles" :key="f.id" class="file-row" :class="{ 'is-main': f.is_main, 'is-parsing': f.parse_state === 'parsing' }">
+                  <span class="file-badge" :class="`file-badge--${fileBadge(f.original_name).toLowerCase()}`">{{ fileBadge(f.original_name) }}</span>
+                  <span class="file-main">
+                    <span class="file-name" :title="f.original_name">{{ f.original_name }}<em v-if="f.is_main" class="main-tag">主文件</em></span>
+                    <span class="file-state" :class="`is-${f.parse_state}`">
+                      <template v-if="f.parse_state === 'parsing'">解析中</template>
+                      <template v-else-if="f.parse_state === 'failed'">解析失败：{{ f.parse_error || '文件无法解析' }}</template>
+                      <template v-else>{{ formatSize(f.size_bytes) }} · {{ fileMeta(f) }}</template>
+                    </span>
+                  </span>
+                  <el-button v-if="!f.is_main && f.parse_state === 'done'" link type="primary" @click="makeMain(f)">设为主文件</el-button>
+                  <button type="button" class="icon-btn" :aria-label="`删除 ${f.original_name}`" @click="removeOne(f)"><Trash2 :size="16" :stroke-width="1.75" /></button>
+                  <span v-if="f.parse_state === 'parsing' && loop" class="scan" aria-hidden="true" />
+                </li>
+              </TransitionGroup>
+              <button type="button" class="add-more" :disabled="submitting" @click="picker?.click()"><Upload :size="16" :stroke-width="1.75" />继续拖入，或点击选择</button>
             </div>
-          </el-radio-group>
-        </section>
-        <section class="form-group settings-group">
-          <h2>审核设置</h2>
-          <el-form-item label="业务立场">
-            <el-radio-group v-model="stance" class="segmented" aria-label="业务立场"><el-radio-button v-for="o in stanceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio-button></el-radio-group>
-          </el-form-item>
-          <el-form-item label="文件来源">
-            <el-radio-group v-model="source" class="segmented" aria-label="文件来源"><el-radio-button v-for="o in sourceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio-button></el-radio-group>
-          </el-form-item>
-          <el-form-item v-if="policy === 'ai'" label="审核模型">
-            <span v-if="modelItems.length === 1">{{ modelItems[0]!.display_name }}</span>
-            <el-select v-else v-model="modelId" placeholder="选择审核模型" aria-label="审核模型" :loading="modelsLoading" :disabled="!modelItems.length"><el-option class="model-option" v-for="model in modelItems" :key="model.id" :value="model.id" :label="model.display_name"><span>{{ model.display_name }}</span><small v-if="model.description" class="model-description">{{ model.description }}</small></el-option></el-select>
-            <p v-if="modelError" class="hint">{{ modelError }}</p>
-          </el-form-item>
-          <el-form-item label="外发策略" class="policy-item">
-            <el-radio-group v-model="policy" class="policy-cards" aria-label="外发策略">
-              <el-radio v-for="o in policyOptions" :key="o.value" :value="o.value" border :aria-label="o.label">
-                <span class="policy-title">{{ o.label }}</span>
-                <span class="policy-description">{{ o.value === 'ai' ? '名称、联系方式、账号等敏感信息先在本机替换为代号，确认外发文本后，才发送给云端模型审核。' : '文件不离开本系统，只做金额、日期等本地校验，不产生 AI 审核意见。' }}</span>
-              </el-radio>
-            </el-radio-group>
-          </el-form-item>
-        </section>
-        <section class="form-group">
-          <div class="group-heading"><h2>补充说明</h2><el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button></div>
-          <el-input v-model="userNote" type="textarea" aria-label="本次补充说明" :rows="3" :maxlength="MAX_NOTE_LENGTH" show-word-limit placeholder="如：这是给土耳其客户的报价，请重点看付款条款" />
-        </section>
-        <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" class="gap" />
-        <div class="parse-actions"><span class="hint">{{ files.length ? '解析完成后自动进入下一步' : '请先选择要审核的文件' }}</span><el-button type="primary" native-type="submit" :loading="submitting" :disabled="!files.length">开始解析</el-button></div>
-      </el-form>
+          </div>
+          <div class="settings-col">
+            <div class="settings-head"><h2>审核设置</h2><span v-if="prefsLoaded" class="hint">沿用上次选择</span></div>
+            <div class="setting"><span class="setting-label">业务立场</span><SiSegmented v-model="stance" :options="stanceOptions" ariaLabel="业务立场" /></div>
+            <div class="setting"><span class="setting-label">文件来源</span><SiSegmented v-model="source" :options="sourceOptions" ariaLabel="文件来源" /></div>
+            <div v-if="policy === 'ai'" class="setting">
+              <span class="setting-label">审核模型</span>
+              <span v-if="modelItems.length === 1">{{ modelItems[0]!.display_name }}</span>
+              <el-select v-else v-model="modelId" placeholder="选择审核模型" aria-label="审核模型" :loading="modelsLoading" :disabled="!modelItems.length"><el-option class="model-option" v-for="model in modelItems" :key="model.id" :value="model.id" :label="model.display_name"><span>{{ model.display_name }}</span><small v-if="model.description" class="model-description">{{ model.description }}</small></el-option></el-select>
+              <p v-if="modelError" class="hint">{{ modelError }}</p>
+            </div>
+            <div class="setting">
+              <el-checkbox :model-value="policy === 'local_only'" @update:model-value="(v: unknown) => policy = v ? 'local_only' : 'ai'">不外发，仅本地校验</el-checkbox>
+              <p class="hint policy-note">{{ policy === 'ai' ? '名称、联系方式、账号等先在本机替换为代号，确认后才发送给云端模型审核。' : '文件不离开本系统，只做金额、日期等本地校验，不产生 AI 审核意见。' }}</p>
+            </div>
+            <div class="setting">
+              <el-input v-if="noteOpen" v-model="userNote" type="textarea" aria-label="本次补充说明" :rows="3" :maxlength="MAX_NOTE_LENGTH" show-word-limit placeholder="如：这是给土耳其客户的报价，请重点看付款条款" />
+              <div class="note-links"><el-button v-if="!noteOpen" link type="primary" @click="noteOpen = true">＋ 添加补充说明</el-button><el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button></div>
+            </div>
+          </div>
+        </div>
+        <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" class="home-error" />
+        <div class="home-foot">
+          <SiIsland :state="island.state" :text="island.text" />
+          <div class="foot-right"><span v-if="proceedHint" class="hint">{{ proceedHint }}</span><el-button type="primary" :loading="proceeding" :disabled="!canProceed" @click="proceed">{{ policy === 'ai' ? '下一步：确认脱敏' : '完成本地校验' }}</el-button></div>
+        </div>
+        <div v-if="dragging" class="drop-veil" aria-hidden="true">松开即开始解析</div>
+      </div>
     </section>
 
     <section v-else-if="step === 1 && task" class="confirm-step">
@@ -454,38 +579,52 @@ function fileBadge(name: string): string {
 .block { margin-bottom: 16px; }
 .center { text-align: center; padding: 48px 0; }
 .center > .el-icon { color: var(--el-color-primary); }
-.form-group + .form-group { margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--el-border-color-lighter); }
 h2 { margin: 0 0 16px; font: var(--si-font-h4); }
-.group-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.group-heading h2 { margin: 0; }
-.upload-icon { width: 44px; height: 44px; display: grid; place-items: center; margin: 0 auto 16px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 12px; }
-:deep(.el-upload-dragger) { border: 1.5px dashed var(--el-border-color); border-radius: var(--si-radius-card); padding: 32px 24px; }
-:deep(.el-upload-dragger:hover), :deep(.el-upload-dragger.is-dragover) { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
-.format-tags { display: flex; justify-content: center; gap: 4px; margin-top: 12px; flex-wrap: wrap; }
-.upload-limit { text-align: center; margin: 8px 0 0; }
-.file-list { display: block; width: 100%; margin-top: 16px; }
-.file-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--el-border-color-light); border-radius: 8px; font-size: 14px; }
+.home { position: relative; }
+.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; }
+.drop-col { display: flex; flex-direction: column; min-height: 320px; min-width: 0; }
+.dropzone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 280px; padding: 24px; border: 1.5px dashed var(--el-border-color); border-radius: var(--si-radius-card); background: transparent; color: inherit; font: var(--si-font-body); cursor: pointer; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
+.dropzone:hover:not(:disabled) { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.dropzone:focus-visible, .add-more:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
+.upload-icon { width: 44px; height: 44px; display: grid; place-items: center; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 12px; }
+.drop-title em { color: var(--el-color-primary); font-style: normal; }
+.drop-sub { color: var(--si-ink-3); font: var(--si-font-caption); }
+.format-tags { display: flex; justify-content: center; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.file-box { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.file-list { position: relative; flex: 1; margin: 0; padding: 0; list-style: none; overflow-y: auto; }
+.file-row { position: relative; display: flex; align-items: center; gap: 12px; padding: 8px 12px; overflow: hidden; border: 1px solid var(--el-border-color-light); border-radius: 8px; }
 .file-row + .file-row { margin-top: 8px; }
 .file-row.is-main { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); }
 .file-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; font-size: 12px; font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
 .file-badge--xls { background: var(--el-color-success-light-9); color: var(--el-color-success); }
 .file-badge--pdf { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
 .file-badge--img { background: var(--el-color-info-light-9); color: var(--el-color-info); }
-.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-row :deep(.el-radio) { margin: 0; flex: none; }
+.file-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-body); }
+.main-tag { margin-left: 8px; padding: 0 6px; border-radius: 4px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); font-style: normal; }
+.file-state { color: var(--si-ink-3); font: var(--si-font-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-state.is-failed { color: var(--el-color-danger); }
+.icon-btn { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.icon-btn:hover { background: var(--si-surface-2); color: var(--el-color-danger); }
+.scan { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; overflow: hidden; }
+.scan::after { content: ''; position: absolute; top: 0; left: 0; width: 30%; height: 100%; background: var(--si-cyan); animation: home-scan 1.2s linear infinite; }
+@keyframes home-scan { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.add-more { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border: 1.5px dashed var(--el-border-color); border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
+.add-more:hover:not(:disabled) { border-color: var(--el-color-primary); color: var(--el-color-primary); }
+.settings-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.settings-head { display: flex; align-items: baseline; justify-content: space-between; }
+.settings-head h2 { margin: 0; }
+.setting { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.setting-label { color: var(--si-ink-3); font: var(--si-font-label-sm); }
+.setting :deep(.el-select) { width: 100%; }
+.policy-note { margin: 0; }
+.note-links { display: flex; gap: 16px; }
+.home-error { margin-top: 16px; }
+.home-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--el-border-color-lighter); }
+.foot-right { display: flex; align-items: center; gap: 12px; }
+.is-dragging .drop-col { outline: 2px dashed var(--el-color-primary); outline-offset: 6px; border-radius: var(--si-radius-card); }
+.drop-veil { position: absolute; inset: -8px; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: var(--si-radius-card); background: color-mix(in srgb, var(--el-color-primary-light-9) 85%, transparent); color: var(--el-color-primary); font: var(--si-font-h4); pointer-events: none; }
 .file-size { flex: none; color: var(--el-text-color-secondary); font-size: 13px; }
-.segmented { padding: 4px; border: 1px solid var(--el-border-color-light); background: var(--el-fill-color-light); border-radius: 8px; }
-.segmented :deep(.el-radio-button__inner) { border: 0; border-radius: 6px; box-shadow: none; background: transparent; }
-.segmented :deep(.el-radio-button.is-active .el-radio-button__inner) { background: var(--el-bg-color); color: var(--el-color-primary); font-weight: 600; }
-.policy-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; }
-.policy-cards :deep(.el-radio) { margin: 0; padding: 16px; height: auto; align-items: flex-start; border-radius: var(--si-radius-card); white-space: normal; }
-.policy-cards :deep(.el-radio.is-checked) { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
-.policy-cards :deep(.el-radio__input) { margin-top: 4px; }
-.policy-cards :deep(.el-radio__label) { white-space: normal; padding-left: 12px; }
-.policy-title { display: block; font-size: 16px; font-weight: 600; line-height: 1.6; }
-.policy-description { display: block; margin-top: 8px; font-size: 13px; line-height: 1.8; color: var(--el-text-color-secondary); }
-.policy-item { margin-bottom: 0; }
-.parse-actions { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--el-border-color-lighter); }
 .processing { max-width: 560px; margin: 0 auto; }
 .processing h2 { font: var(--si-font-h3); }
 .processing p { margin: 12px 0; }
