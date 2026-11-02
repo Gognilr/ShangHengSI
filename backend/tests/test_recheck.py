@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.db.models import RedactionMap, RedactionTerm, Task
 from app.parsing.docx import parse_docx
 from app.redaction import outbound
-from app.redaction.engine import NodeIn, compute, outbound_text
+from app.redaction.engine import NodeIn, Term, compute, outbound_text
 from app.redaction.recheck import BlockReason, RecheckContext, recheck, recheck_context
 from app.review.requirements import load_system_template, select_builtin
 from app.security import crypto
@@ -207,7 +207,7 @@ def test_golden_persons_addresses_accounts_block(name):
         nodes = [NodeIn(*line.split(" ", 1)) for line in lines if line.strip()]
     else:
         nodes = [NodeIn(f"F1-P{i}", line) for i, line in enumerate(lines, start=1) if line.strip()]
-    r = compute(nodes, ann["stance"], main_prefix="F1-")
+    r = compute(nodes, ann["stance"], main_prefix="F1-", terms=[Term(**t) for t in ann.get('terms', [])])
     parties = [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in r.parties]
     text = outbound_text(nodes, parties, r.redacted)
     values = list(r.mapping.values())
