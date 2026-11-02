@@ -34,7 +34,7 @@ from app.db.models import (
 from app.models_api import select_model
 from app.llm.gateway import format_reasons
 from app.llm import gateway, usage
-from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map, load_date_pairs
+from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map, load_date_pairs, load_local_values
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import check, _LOCATION
 from app.review.coverage import describe
@@ -105,6 +105,7 @@ class FindingOut(BaseModel):
     missing: bool
     cite_status: str
     quote: str | None
+    quote_excerpt: str | None = None
     problem: str
     impact: str | None
     suggestion: str | None
@@ -330,15 +331,19 @@ class _View:
         self.task_id = task_id
         self.mapping = load_redaction_map(db, task_id)
         self.dates = load_date_pairs(db, task_id)
+        self.locals = {}
         self.file_names = dict(db.execute(select(TaskFile.seq, TaskFile.original_name)
                                           .where(TaskFile.task_id == task_id)).all())
 
     def text(self, value: str | None) -> str | None:
         return self.checked(value).text if value else value
 
-    def checked(self, value: str | None, *, clause=False):
+    def checked(self, value: str | None, *, clause=False, loc=None):
         locs = {m.group().strip('[]') for m in _LOCATION.finditer(value or '')}
-        return check(value, self.mapping, clause=clause, locations=self.readable(locs), dates=self.dates)
+        if loc and loc not in self.locals:
+            self.locals[loc] = load_local_values(self.db, self.task_id, loc)
+        return check(value, self.mapping, clause=clause, locations=self.readable(locs), dates=self.dates,
+                     local=self.locals.get(loc))
 
     def locations(self, findings: list[Finding]) -> dict[str, str]:
         return self.readable({f.locs[0] for f in findings if f.locs})
@@ -383,7 +388,7 @@ class _View:
     def finding(self, f: Finding, locations: dict[str, str]) -> FindingOut:
         quote = crypto.decrypt_text(f.quote_snapshot_enc) if f.quote_snapshot_enc is not None else None
         locs = [str(x) for x in (f.locs or [])]
-        checked = {key: self.checked(getattr(f, key), clause=key == 'suggested_text')
+        checked = {key: self.checked(getattr(f, key), clause=key == 'suggested_text', loc=locs[0] if locs else None)
                    for key in ('title', 'problem', 'impact', 'suggestion', 'suggested_text', 'basis')}
         marks = {key: list(value.marks) for key, value in checked.items() if value.marks}
         values = {key: value.text if getattr(f, key) is not None else None for key, value in checked.items()}
@@ -391,7 +396,8 @@ class _View:
             id=f.id, seq=f.seq, category=f.category, severity=f.severity,
             req_ids=[str(x) for x in (f.req_ids or [])], locs=locs,
             location=locations.get(locs[0]) if locs else None, missing=f.missing, cite_status=f.cite_status,
-            quote=quote, **values, marks=marks, unresolved=sum(len(v) for v in marks.values()),
+            quote=quote, quote_excerpt=crypto.decrypt_text(f.quote_orig_enc) if f.quote_orig_enc is not None else None,
+            **values, marks=marks, unresolved=sum(len(v) for v in marks.values()),
             handling_status=f.handling_status, handling_note=f.handling_note,
             law_refs=f.law_refs, law_unverified=f.law_unverified,
             source=f.source,

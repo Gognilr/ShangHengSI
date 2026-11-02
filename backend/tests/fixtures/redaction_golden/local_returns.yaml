@@ -1,0 +1,36 @@
+description: 共用代号唯一值就地还原；未知字面值改批注
+stance: sales
+must_replace:
+  - {text: 清原虚构有限公司, category: ORG}
+  - {text: '13812345678', category: PHONE}
+  - {text: '13912345678', category: PHONE}
+  - {text: '13712345678', category: PHONE}
+must_keep: []
+returns:
+  - field: clause
+    model: '联系电话：[电话]。'
+    local: {'[电话]': '13812345678'}
+    expect: '联系电话：13812345678。'
+    restored: 1
+    marks: []
+  - field: clause
+    model: '联系电话：[电话]。'
+    expect: '联系电话：[电话]。'
+    restored: 0
+    marks: [{raw: '[电话]', kind: shared}]
+  - field: clause
+    model: '请汇至账号：6222000011112222。'
+    expect: '请汇至账号：6222000011112222。'
+    marks: [{raw: '6222000011112222', kind: literal}]
+  - field: clause
+    model: '应支付人民币 1000 元。'
+    expect: '应支付人民币 1000 元。'
+    marks: [{raw: '1000', kind: literal}]
+  - field: clause
+    model: '账号 6222000011112222'
+    expect: '账号 6222000011112222'
+    marks: [{raw: '6222000011112222', kind: literal}]
+  - field: problem
+    model: '应支付人民币 1000 元。'
+    expect: '应支付人民币 1000 元。'
+    marks: []

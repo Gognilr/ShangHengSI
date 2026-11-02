@@ -123,9 +123,15 @@ def _candidates() -> re.Pattern:
 
 
 def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
-          locations: Mapping[str, str] | None = None, dates: Mapping[str, str] | None = None) -> Checked:
+          locations: Mapping[str, str] | None = None, dates: Mapping[str, str] | None = None,
+          local: dict[str, str] | None = None) -> Checked:
     """一次扫描模型原文；只有对照表里无歧义的代号才还原，标记位置按输出计算。"""
     text = text or ""
+    local_values = {}
+    for code, value in (local or {}).items():
+        identity = _identity(code)
+        if identity and identity[0] == 'shared':
+            local_values.setdefault(identity, set()).add(value)
     lookup: dict[tuple[str, str], set[str]] = {}
     exact: dict[str, str] = {}
     assistant: dict[str, str] = {}
@@ -148,6 +154,24 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
               and _identity(t[2]) is None and not NEUTRAL.fullmatch(t[2]) and t[2] not in assistant
               and not (assistant and re.fullmatch(r'\[?(?:OUR|[A-Z]+_\d+)\]?', t[2]))
               and not _LOCATION.fullmatch(t[2]) and t[2] != '【主体说明】' and not t[2].startswith('【报价明细表：'))]
+    if clause:
+        from app.redaction import detect
+        masked = list(text)
+        masked_codes = set()
+        for start, end, raw, token in tokens:
+            identity = _identity(raw)
+            # “账号 6222…”是字面值；无括号、无下划线且不在对照表的长号码不能当代号遮掉。
+            if (raw[0] in _LEFT or '_' in unicodedata.normalize('NFKC', raw) or identity in lookup
+                    or identity and identity[0] == 'shared' or re.fullmatch(_RATIO, raw)):
+                masked[start:end] = '\n' * (end - start)
+                masked_codes.add((start, end))
+        probe = ''.join(masked)
+        literals = [h for h in detect.find_formatted(probe)
+                    if h.category in ('ACCOUNT', 'SWIFT', 'PHONE', 'EMAIL', 'IDNO', 'IM', 'URL')]
+        literals += detect.find_amounts(probe)
+        tokens = [t for t in tokens if (t[0], t[1]) in masked_codes
+                  or not any(t[0] < h.end and h.start < t[1] for h in literals)]
+        tokens += [(h.start, h.end, text[h.start:h.end], 'literal') for h in literals]
     if dates is not None:
         from app.redaction.dates import find_dates
         tokens += [(h.start, h.end, text[h.start:h.end], 'date') for h in find_dates(text)]
@@ -163,7 +187,9 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
         size += len(prefix)
         replacement, kind = raw, None
         bracketed = raw[0] in _LEFT and raw[-1] in _RIGHT
-        if token == 'date':
+        if token == 'literal':
+            kind = 'literal'
+        elif token == 'date':
             if raw in dates:
                 replacement = dates[raw]
                 restored += 1
@@ -196,7 +222,12 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
                 family, _ = identity
                 values = lookup.get(identity, set())
                 if family == "shared":
-                    kind = "shared" if clause else None
+                    values = local_values.get(identity, set())
+                    if len(values) == 1:
+                        replacement = next(iter(values))
+                        restored += 1
+                    else:
+                        kind = "shared" if clause else None
                 elif family == "our" and not bracketed and "我方" not in exact:
                     pass
                 elif raw in exact:

@@ -154,7 +154,7 @@ def test_model_returns(name):
     for sample in ann["returns"]:
         pairs = {k.rsplit('#D', 1)[0]: v for k, v in result.mapping.items() if '#D' in k} if ann.get('must_shift') else None
         checked = check(sample["model"], result.mapping, clause=sample["field"] == "clause",
-                        locations=sample.get("locations"), dates=pairs)
+                        locations=sample.get("locations"), dates=pairs, local=sample.get('local'))
         assert checked.text == sample["expect"]
         assert [(mark.raw, mark.kind) for mark in checked.marks] == [
             (mark["raw"], mark["kind"]) for mark in sample["marks"]]

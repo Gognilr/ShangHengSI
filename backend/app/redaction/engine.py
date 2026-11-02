@@ -934,6 +934,40 @@ def _render(text: str, items: list[ItemOut], inserts: list[tuple[int, str]]) -> 
     return "".join(out)
 
 
+def redacted_to_original(text, items, inserts):
+    """与 _render 相同的编辑顺序；代号字符指向整段原文，比例字符指向空区间。"""
+    edits = [(it.char_start, it.char_end, it.placeholder, 1) for it in items]
+    for pos, extra in inserts:
+        inside = next((it for it in items if it.char_start < pos < it.char_end), None)
+        pos = inside.char_end if inside else pos
+        edits.append((pos, pos, extra, 0))
+    out, cur = [], 0
+    for start, end, value, order in sorted(edits, key=lambda e: (e[0], e[3])):
+        start = max(start, cur)
+        out.extend((i, i + 1) for i in range(cur, start))
+        out.extend([(start, end)] * len(value))
+        cur = max(cur, end)
+    out.extend((i, i + 1) for i in range(cur, len(text)))
+    return out
+
+
+def load_local_values(db, task_id, loc):
+    """共用代号只取本节点的唯一规范值，重复写法保留首次原文。"""
+    node = db.scalar(select(DocNode).where(DocNode.task_id == task_id, DocNode.loc == loc)) if loc else None
+    if node is None or not node.text_enc:
+        return {}
+    text = crypto.decrypt_text(node.text_enc)
+    grouped = {}
+    for item in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task_id,
+            RedactionItem.loc == loc).order_by(RedactionItem.char_start, RedactionItem.id)):
+        if item.category not in FIXED and item.category != ADDR:
+            continue
+        surface = text[item.char_start:item.char_end]
+        canonical = detect._norm_key(surface) if item.category in ('PHONE', 'IDNO', 'SWIFT', 'IM', 'POSTCODE') else P.normalize(surface)
+        grouped.setdefault(item.placeholder, {}).setdefault(canonical, surface)
+    return {code: next(iter(values.values())) for code, values in grouped.items() if len(values) == 1}
+
+
 def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], spans: list[_Span],
               main_prefix: str | None, *, style: str = "review", pinned: dict[str, str] | None = None,
               with_ratio: bool = True, date_shift_days: int = 0) -> RedactionResult:

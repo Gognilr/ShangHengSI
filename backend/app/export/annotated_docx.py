@@ -14,7 +14,7 @@ from app.checks.service import list_findings
 from app.db.models import DocNode, Finding, Task, TaskFile
 from app.export.docx_anchor import AnchorMismatch, MISMATCH, load_anchors, split_runs
 from app.export.report_docx import CATEGORY, CHECKS, SEVERITY, _clean
-from app.redaction.engine import load_redaction_map, load_date_pairs
+from app.redaction.engine import load_redaction_map, load_date_pairs, load_local_values
 from app.redaction.restore import restore, check
 from app.review.service import run_detail
 from app.security import crypto
@@ -134,7 +134,8 @@ def build_annotated(db, run, file: TaskFile):
     original, anchors = load_source(db, file)
     mapping = load_redaction_map(db, task.id)
     dates = load_date_pairs(db, task.id)
-    quotes = dict(db.execute(select(Finding.id, Finding.quote_model).where(Finding.run_id == run.id)).all())
+    quotes = {row.id: row for row in db.execute(select(Finding.id, Finding.quote_model, Finding.quote_orig_enc)
+                                               .where(Finding.run_id == run.id))}
     unanchored = 0
 
     def add(loc, quote, text, location, count_fallback=True):
@@ -154,8 +155,12 @@ def build_annotated(db, run, file: TaskFile):
         anchors.document.add_comment(runs, _clean(text), author="商衡SI", initials="SI")
 
     for f in findings:
-        add(f.locs[0] if f.locs else None, check(quotes.get(f.id) or "", mapping, dates=dates).text,
-            finding_text(f, run), f.location)
+        loc = f.locs[0] if f.locs else None
+        row = quotes[f.id]
+        quote = (crypto.decrypt_text(row.quote_orig_enc) if row.quote_orig_enc is not None else
+                 check(row.quote_model or '', mapping, dates=dates,
+                       local=load_local_values(db, task.id, loc)).text)
+        add(loc, quote, finding_text(f, run), f.location)
     for row in local:
         text = (f"【本地校验 · {SEVERITY.get(row['severity'], row['severity'])}】"
                 f"{CHECKS.get(row['check_code'], row['check_code'])}\n"

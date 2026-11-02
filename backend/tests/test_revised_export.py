@@ -55,6 +55,70 @@ def prepare(sm, rid):
         db.commit()
 
 
+def test_shared_quote_and_local_phone_revision(case, login, db_sessionmaker):
+    import json
+    from app.db.models import RedactionItem, ReviewRun, Task
+    from app.redaction import engine
+    from app.review.prompt import ReviewContext
+    from app.review.validate import load_node_views, validate_output
+    from app.review.job import _save
+    user, tid, rid, fid, _ = case
+    lines = ['联系电话：13812345678。', '备用联系电话：13912345678，另一电话：13712345678。']
+    source = Document()
+    for line in lines:
+        source.add_paragraph(line)
+    buffer = io.BytesIO()
+    source.save(buffer)
+    original = buffer.getvalue()
+    nodes = [engine.NodeIn(f'F1-P{i}', text) for i, text in enumerate(lines, 1)]
+    result = engine.compute(nodes, 'sales', ratio=False)
+    with db_sessionmaker() as db:
+        file = db.get(TaskFile, fid)
+        storage.delete_original(file.storage_key)
+        file.storage_key, file.sha256 = storage.save_original(original)
+        file.size_bytes = len(original)
+        db.execute(delete(DocNode).where(DocNode.file_id == fid))
+        db.execute(delete(Finding).where(Finding.run_id == rid))
+        for i, n in enumerate(nodes, 1):
+            db.add(DocNode(task_id=tid, file_id=fid, loc=n.loc, ord=i, kind='paragraph', part='body',
+                           text_enc=crypto.encrypt_text(n.text), redacted_text=result.redacted[n.loc]))
+        for item in result.items:
+            db.add(RedactionItem(task_id=tid, **vars(item)))
+        engine.write_full_map(db, tid, result.mapping)
+        db.flush()
+        assert engine.load_local_values(db, tid, 'F1-P1') == {'[电话]': '13812345678'}
+        assert engine.load_local_values(db, tid, 'F1-P2') == {}
+        task = db.get(Task, tid)
+        ctx = ReviewContext(task, 'sales', 'outgoing', None, 'contract', [], [], '', '')
+        raw = json.dumps({'doc_summary': '虚构测试', 'requirement_results': [], 'findings': [
+            dict(title='电话联系范围', category='商务', severity='低', req_ids=[], locs=['F1-P1'],
+                 missing=False, quote='联系电话：[电话]', problem='请限定用途',
+                 suggested_text='联系电话：[电话]，仅供履约联系'),
+            dict(title='双电话不可猜测', category='商务', severity='低', req_ids=[], locs=['F1-P2'],
+                 missing=False, quote='备用联系电话：[电话]', problem='请明确', suggested_text='请联系[电话]'),
+            dict(title='字面金额不写入', category='商务', severity='低', req_ids=[], locs=['F1-P2'],
+                 missing=True, quote=None, problem='请明确', suggested_text='应支付人民币 1000 元。'),
+        ]}, ensure_ascii=False)
+        review = validate_output(raw, ctx, load_node_views(db, tid))
+        assert review.findings[0].quote_original == '联系电话：13812345678'
+        db.commit()
+        _save(db, rid, ctx, review)
+        for row in db.scalars(select(Finding).where(Finding.run_id == rid)):
+            row.handling_status = 'adopted'
+        db.commit()
+        first = db.scalar(select(Finding).where(Finding.run_id == rid, Finding.seq == 1))
+        assert crypto.decrypt_text(first.quote_orig_enc) == '联系电话：13812345678'
+        assert '13812345678' not in first.quote_model
+    client, _ = login(user.username)
+    detail = client.get(f'/api/v1/runs/{rid}').json()
+    assert detail['findings'][0]['quote_excerpt'] == '联系电话：13812345678'
+    assert detail['findings'][0]['suggested_text'] == '联系电话：13812345678，仅供履约联系'
+    response = client.get(f'/api/v1/runs/{rid}/revised?file_seq=1')
+    assert response.status_code == 200, response.text
+    assert response.headers['X-SI-Revised'] == '1' and response.headers['X-SI-Commented'] == '2'
+    revised_docx.validate(original, response.content, ['联系电话：13812345678，仅供履约联系。', lines[1]])
+
+
 def test_unknown_shifted_date_becomes_comment(case, login, db_sessionmaker):
     from app.redaction.engine import _load_full_map, write_full_map
     user, tid, rid, _, _ = case

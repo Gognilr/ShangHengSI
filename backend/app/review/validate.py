@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DocNode, ReviewRun, TaskFile
+from app.db.models import DocNode, RedactionItem, ReviewRun, TaskFile
 from app.llm.gateway import call_model
 from app.parsing.model import with_clause_no
 from app.redaction.quotes import QuoteTable, summary_text
@@ -62,6 +62,7 @@ class DocNodeView:
     text: str  # 原文（解密后）
     clause_no: str | None = None
     target_loc: str | None = None  # 报价明细表汇总行：入库时换成的位置（表头行第一个单元格）
+    original_spans: list[tuple[int, int]] | None = None
 
 
 _SANCTIONS_RANK = {"high": 2, "attention": 1, "none": 0}
@@ -94,6 +95,7 @@ class FindingView:
     suggestion: str | None
     suggested_text: str | None
     basis: str | None
+    quote_original: str | None = None
     law_refs: list[dict] = field(default_factory=list)
     law_unverified: bool = False
     source: str = 'model'
@@ -178,6 +180,32 @@ def quote_matches(quote: str, text: str) -> bool:
     return False
 
 
+def _quote_original(quote, node):
+    """归一化后唯一的连续引用才映射；模糊、多处或不可重现时退回旧定位。"""
+    if not quote or node.target_loc:
+        return None
+    spans = node.original_spans
+    if spans is None and node.redacted_text == node.text:
+        spans = [(i, i + 1) for i in range(len(node.text))]
+    if spans is None or len(spans) != len(node.redacted_text):
+        return None
+    normalized, indices = [], []
+    for i, char in enumerate(node.redacted_text):
+        part = normalize_for_quote(char)
+        normalized.append(part)
+        indices.extend([i] * len(part))
+    normalized = ''.join(normalized)
+    q = normalize_for_quote(quote)
+    if not q or normalized != normalize_for_quote(node.redacted_text):
+        return None
+    occurrences = [m.start() for m in re.finditer('(?=' + re.escape(q) + ')', normalized)]
+    if len(occurrences) != 1:
+        return None
+    start = occurrences[0]
+    ranges = [spans[i] for i in indices[start:start + len(q)] if spans[i][0] < spans[i][1]]
+    return node.text[min(a for a, b in ranges):max(b for a, b in ranges)] if ranges else None
+
+
 def _cite_status(f: FindingOut, locs: list[str], nodes: dict[str, DocNodeView]) -> str:
     if f.missing:
         return "missing"
@@ -235,6 +263,7 @@ def _merge_duplicates(findings: list[FindingView]) -> list[FindingView]:
             same.severity = f.severity
         if _CITE_RANK[f.cite_status] > _CITE_RANK[same.cite_status]:
             same.cite_status, same.quote_model, same.quote_snapshot = f.cite_status, f.quote_model, f.quote_snapshot
+            same.quote_original = f.quote_original
             # 升级引用时，首个定位随快照一起采用已校验问题的位置（A-02）；其他位置仍保留。
             same.locs = list(dict.fromkeys(f.locs + same.locs))
     return out
@@ -270,16 +299,18 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
     for f in out.findings:
         locs = list(dict.fromkeys(loc.strip() for loc in f.locs if loc.strip() in allowed))  # 第 3 条
         status = _cite_status(f, locs, nodes)  # 第 4 条
-        snapshot = None
+        snapshot = original = None
         if status == "verified":  # 第 5 条：按第一个 loc 取原文快照
             first = nodes[locs[0]]
             snapshot = with_clause_no(first.text, first.clause_no)
+            original = _quote_original(f.quote, first)
         locs = list(dict.fromkeys(nodes[loc].target_loc or loc for loc in locs))  # 汇总行 → 表头行（Q-72 ⑥）
         findings.append(FindingView(
             title=f.title.strip()[:TITLE_MAX] or "未命名问题",
             category=map_category(f.category), severity=map_severity(f.severity),  # 第 2 条
             req_ids=[r for r in dict.fromkeys(x.strip() for x in f.req_ids) if r in sent],
             locs=locs, missing=f.missing, cite_status=status, quote_model=f.quote, quote_snapshot=snapshot,
+            quote_original=original,
             problem=f.problem, impact=f.impact, suggestion=f.suggestion, suggested_text=f.suggested_text,
             basis=f.basis,
             law_refs=[{k:r[k] for k in ('title','article_no','text')} for r in ctx.law_refs
@@ -353,7 +384,9 @@ def load_node_views(db: Session, task_id: uuid.UUID,
 
     汇总行按外发时的文字校验引用，原文快照为汇总行文字按对照表还原的结果，入库位置换成表头行第一个单元格。
     """
-    from app.redaction.engine import load_redaction_map  # 避免循环导入（engine 不依赖 review）
+    from app.redaction.engine import (load_redaction_map, NodeIn, _Span, _ratio_inserts, _main_prefix,
+                                      _render, redacted_to_original)
+    from app.redaction import detect
 
     rows = db.scalars(
         select(DocNode).join(TaskFile, TaskFile.id == DocNode.file_id)
@@ -361,6 +394,28 @@ def load_node_views(db: Session, task_id: uuid.UUID,
     )
     views = {r.loc: DocNodeView(r.loc, r.redacted_text or "", crypto.decrypt_text(r.text_enc) if r.text_enc else "",
                                 r.clause_no) for r in rows}
+    originals = [NodeIn(v.loc, v.text, v.clause_no) for v in views.values()]
+    by_loc, amount_spans = {}, []
+    for item in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task_id)
+                          .order_by(RedactionItem.char_start, RedactionItem.id)):
+        by_loc.setdefault(item.loc, []).append(item)
+    for i, node in enumerate(originals):
+        hits = detect.find_amounts(node.text) + detect.find_bare_amounts(node.text)
+        for item in by_loc.get(node.loc, ()):
+            if item.category == 'AMOUNT':
+                h = next((h for h in hits if h.category == 'AMOUNT'
+                          and (h.start, h.end) == (item.char_start, item.char_end)), None)
+                if h:
+                    amount_spans.append(_Span(i, h.start, h.end, h.category, h.key, 'amount', h.currency, h.value))
+    inserts = _ratio_inserts(originals, amount_spans, _main_prefix(db, task_id))
+    for i, node in enumerate(originals):
+        view, items = views[node.loc], by_loc.get(node.loc, [])
+        if any(not 0 <= it.char_start < it.char_end <= len(node.text) for it in items):
+            continue
+        for extra in ([], inserts.get(i, [])):
+            if _render(node.text, items, extra) == view.redacted_text:
+                view.original_spans = redacted_to_original(node.text, items, extra)
+                break
     if quote_tables:
         from app.checks.service import load_inputs, table_notes
 

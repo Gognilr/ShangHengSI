@@ -16,9 +16,10 @@ from app.db.models import Finding
 from app.export import annotated_docx as shared
 from app.export.docx_anchor import split_runs
 from app.export.report_docx import _clean
-from app.redaction.engine import load_redaction_map, load_date_pairs
+from app.redaction.engine import load_redaction_map, load_date_pairs, load_local_values
 from app.redaction.restore import check, restore
 from app.review.service import run_detail
+from app.security import crypto
 from app.security.errors import AppError
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ def build_revised(db, run, file):
     original, anchors = shared.load_source(db, file)
     mapping = load_redaction_map(db, run.task_id)
     dates = load_date_pairs(db, run.task_id)
-    raw = {row.id: row for row in db.execute(select(Finding.id, Finding.quote_model, Finding.suggested_text)
+    raw = {row.id: row for row in db.execute(select(Finding.id, Finding.quote_model, Finding.suggested_text, Finding.quote_orig_enc)
                                             .where(Finding.run_id == run.id))}
     document = anchors.document
     # 预期文本单独维护；不可从生成后的修订 XML 反推，避免校验成为自我比较。
@@ -113,9 +114,11 @@ def build_revised(db, run, file):
     revised = 0
     for f in findings:
         loc = f.locs[0] if f.locs else None
-        quote = check(raw[f.id].quote_model or "", mapping, dates=dates).text
+        local = load_local_values(db, run.task_id, loc)
+        quote = (crypto.decrypt_text(raw[f.id].quote_orig_enc) if raw[f.id].quote_orig_enc is not None
+                 else check(raw[f.id].quote_model or "", mapping, dates=dates, local=local).text)
         # run_detail 已还原展示文字；修订从库中原值还原一次，避免真实值被二次替换。
-        checked = check(raw[f.id].suggested_text, mapping, clause=True, dates=dates)
+        checked = check(raw[f.id].suggested_text, mapping, clause=True, dates=dates, local=local)
         text = checked.text
         if not text.strip() or checked.marks:
             fallbacks.append((f, loc, quote))

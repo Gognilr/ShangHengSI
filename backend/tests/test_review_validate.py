@@ -225,6 +225,24 @@ def test_long_title_truncated():
     assert len(v.findings[0].title) == 200
 
 
+def test_unique_quote_maps_placeholders_and_skips_ratio():
+    from app.redaction.engine import ItemOut, _render, redacted_to_original
+    from app.review.validate import _quote_original
+    text = '联系电话：13812345678，金额 1000 元。'
+    items = [ItemOut('F1-P1', 5, 16, 'PHONE', '[电话]', 'regex'),
+             ItemOut('F1-P1', 20, 24, 'AMOUNT', '[金额_1]', 'amount')]
+    inserts = [(26, '（=合同总价的 30.0%）')]
+    redacted = _render(text, items, inserts)
+    spans = redacted_to_original(text, items, inserts)
+    node = DocNodeView('F1-P1', redacted, text, original_spans=spans)
+    assert len(spans) == len(redacted)
+    assert _quote_original('联系电话：［电话］', node) == '联系电话：13812345678'
+    assert _quote_original('（=合同总价的 30.0%）', node) is None
+    duplicate = DocNodeView('F1-P1', redacted * 2, text * 2, original_spans=spans * 2)
+    assert _quote_original('联系电话：[电话]', duplicate) is None
+    assert _quote_original('无法定位的内容', node) is None
+
+
 # ---------------------------------------------------------------- review_once（经网关，需要数据库）
 
 

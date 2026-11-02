@@ -100,6 +100,7 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
             run_id=run.id, task_id=task.id, seq=seq, title=f.title, category=f.category, severity=f.severity,
             req_ids=f.req_ids, locs=f.locs, missing=f.missing, cite_status=f.cite_status, quote_model=f.quote_model,
             quote_snapshot_enc=crypto.encrypt_text(f.quote_snapshot) if f.quote_snapshot is not None else None,
+            quote_orig_enc=crypto.encrypt_text(f.quote_original) if f.quote_original is not None else None,
             problem=f.problem, impact=f.impact, suggestion=f.suggestion, suggested_text=f.suggested_text,
             basis=f.basis,
             law_refs=f.law_refs, law_unverified=f.law_unverified,
