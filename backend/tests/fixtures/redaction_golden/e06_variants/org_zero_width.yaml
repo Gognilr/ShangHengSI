@@ -1,0 +1,12 @@
+description: E-06 自写虚构变体，已知未达标；V31Q-64，不能视为通过样本。
+stance: sales
+category: ORG
+variant: zero_width
+canonical: 示例通信
+surface: 示​例​通​信
+paragraphs:
+- 买方：示​例​通​信。
+- 本文件记载的买方为示​例​通​信，请依约办理。
+- 附件信息：买方 示​例​通​信；本段内容全部虚构。
+expected: leaked
+question: V31Q-64

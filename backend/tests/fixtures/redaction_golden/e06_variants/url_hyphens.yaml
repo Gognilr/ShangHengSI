@@ -1,0 +1,12 @@
+description: E-06 自写虚构变体，已知未达标；V31Q-64，不能视为通过样本。
+stance: sales
+category: URL
+variant: hyphens
+canonical: www.haiyue-example.com
+surface: w-w-w-.-h-a-i-y-u-e---e-x-a-m-p-l-e-.-c-o-m
+paragraphs:
+- 网址：w-w-w-.-h-a-i-y-u-e---e-x-a-m-p-l-e-.-c-o-m。
+- 本文件记载的网址为w-w-w-.-h-a-i-y-u-e---e-x-a-m-p-l-e-.-c-o-m，请依约办理。
+- 附件信息：网址 w-w-w-.-h-a-i-y-u-e---e-x-a-m-p-l-e-.-c-o-m；本段内容全部虚构。
+expected: leaked
+question: V31Q-64

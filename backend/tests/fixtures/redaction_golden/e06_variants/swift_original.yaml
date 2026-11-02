@@ -1,0 +1,12 @@
+description: E-06 自写虚构变体，已知未达标；V31Q-64，不能视为通过样本。
+stance: sales
+category: SWIFT
+variant: original
+canonical: FICT000134
+surface: FICT000134
+paragraphs:
+- SWIFT：FICT000134。
+- 本文件记载的SWIFT为FICT000134，请依约办理。
+- 附件信息：SWIFT FICT000134；本段内容全部虚构。
+expected: leaked
+question: V31Q-64

@@ -1,0 +1,1232 @@
+{
+  "seed_count": 479,
+  "groups": 3883,
+  "rows": [
+    {
+      "category": "ACCOUNT",
+      "variant": "bidi",
+      "replaced": 45,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 45,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "chinese_digits",
+      "replaced": 0,
+      "blocked": 45,
+      "leaked": 0,
+      "total": 45,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "cyrillic",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 6,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "fullwidth",
+      "replaced": 15,
+      "blocked": 30,
+      "leaked": 0,
+      "total": 45,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "hyphens",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 45,
+      "leak_rate": 0.06666666666666667
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "lowercase",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "ocr",
+      "replaced": 15,
+      "blocked": 0,
+      "leaked": 30,
+      "total": 45,
+      "leak_rate": 0.6666666666666666
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "original",
+      "replaced": 45,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 45,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "spaces",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 45,
+      "leak_rate": 0.06666666666666667
+    },
+    {
+      "category": "ACCOUNT",
+      "variant": "zero_width",
+      "replaced": 45,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 45,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "bidi",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "chinese_digits",
+      "replaced": 60,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 60,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "cyrillic",
+      "replaced": 21,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 21,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "fullwidth",
+      "replaced": 54,
+      "blocked": 6,
+      "leaked": 0,
+      "total": 60,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "hyphens",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "lowercase",
+      "replaced": 21,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 21,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "ocr",
+      "replaced": 45,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 45,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "original",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "spaces",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "traditional",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 39,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ADDR",
+      "variant": "zero_width",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "bidi",
+      "replaced": 147,
+      "blocked": 0,
+      "leaked": 21,
+      "total": 168,
+      "leak_rate": 0.125
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "chinese_digits",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 147,
+      "total": 147,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "cyrillic",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 6,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "fullwidth",
+      "replaced": 105,
+      "blocked": 0,
+      "leaked": 48,
+      "total": 153,
+      "leak_rate": 0.3137254901960784
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "hyphens",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 168,
+      "total": 168,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "lowercase",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 3,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "ocr",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 129,
+      "total": 147,
+      "leak_rate": 0.8775510204081632
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "original",
+      "replaced": 147,
+      "blocked": 0,
+      "leaked": 21,
+      "total": 168,
+      "leak_rate": 0.125
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "spaces",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 168,
+      "total": 168,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "traditional",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 9,
+      "leak_rate": 0.3333333333333333
+    },
+    {
+      "category": "AMOUNT",
+      "variant": "zero_width",
+      "replaced": 147,
+      "blocked": 0,
+      "leaked": 21,
+      "total": 168,
+      "leak_rate": 0.125
+    },
+    {
+      "category": "EMAIL",
+      "variant": "bidi",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "EMAIL",
+      "variant": "cyrillic",
+      "replaced": 0,
+      "blocked": 18,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "EMAIL",
+      "variant": "fullwidth",
+      "replaced": 3,
+      "blocked": 15,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "EMAIL",
+      "variant": "hyphens",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 18,
+      "total": 18,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "EMAIL",
+      "variant": "original",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "EMAIL",
+      "variant": "spaces",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 18,
+      "total": 18,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "EMAIL",
+      "variant": "zero_width",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "IDNO",
+      "variant": "bidi",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 93,
+      "leak_rate": 0.06451612903225806
+    },
+    {
+      "category": "IDNO",
+      "variant": "chinese_digits",
+      "replaced": 9,
+      "blocked": 78,
+      "leaked": 6,
+      "total": 93,
+      "leak_rate": 0.06451612903225806
+    },
+    {
+      "category": "IDNO",
+      "variant": "cyrillic",
+      "replaced": 69,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 72,
+      "leak_rate": 0.041666666666666664
+    },
+    {
+      "category": "IDNO",
+      "variant": "fullwidth",
+      "replaced": 90,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 93,
+      "leak_rate": 0.03225806451612903
+    },
+    {
+      "category": "IDNO",
+      "variant": "hyphens",
+      "replaced": 81,
+      "blocked": 0,
+      "leaked": 12,
+      "total": 93,
+      "leak_rate": 0.12903225806451613
+    },
+    {
+      "category": "IDNO",
+      "variant": "lowercase",
+      "replaced": 69,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 72,
+      "leak_rate": 0.041666666666666664
+    },
+    {
+      "category": "IDNO",
+      "variant": "ocr",
+      "replaced": 81,
+      "blocked": 0,
+      "leaked": 12,
+      "total": 93,
+      "leak_rate": 0.12903225806451613
+    },
+    {
+      "category": "IDNO",
+      "variant": "original",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 93,
+      "leak_rate": 0.06451612903225806
+    },
+    {
+      "category": "IDNO",
+      "variant": "spaces",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 93,
+      "leak_rate": 0.06451612903225806
+    },
+    {
+      "category": "IDNO",
+      "variant": "traditional",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 6,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "IDNO",
+      "variant": "zero_width",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 93,
+      "leak_rate": 0.06451612903225806
+    },
+    {
+      "category": "IM",
+      "variant": "bidi",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "IM",
+      "variant": "chinese_digits",
+      "replaced": 45,
+      "blocked": 6,
+      "leaked": 0,
+      "total": 51,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "IM",
+      "variant": "cyrillic",
+      "replaced": 45,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 45,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "IM",
+      "variant": "fullwidth",
+      "replaced": 45,
+      "blocked": 6,
+      "leaked": 0,
+      "total": 51,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "IM",
+      "variant": "hyphens",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "IM",
+      "variant": "ocr",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "IM",
+      "variant": "original",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "IM",
+      "variant": "spaces",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 9,
+      "total": 51,
+      "leak_rate": 0.17647058823529413
+    },
+    {
+      "category": "IM",
+      "variant": "zero_width",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "ORG",
+      "variant": "bidi",
+      "replaced": 357,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 360,
+      "leak_rate": 0.008333333333333333
+    },
+    {
+      "category": "ORG",
+      "variant": "cyrillic",
+      "replaced": 114,
+      "blocked": 0,
+      "leaked": 63,
+      "total": 177,
+      "leak_rate": 0.3559322033898305
+    },
+    {
+      "category": "ORG",
+      "variant": "fullwidth",
+      "replaced": 81,
+      "blocked": 0,
+      "leaked": 102,
+      "total": 183,
+      "leak_rate": 0.5573770491803278
+    },
+    {
+      "category": "ORG",
+      "variant": "hyphens",
+      "replaced": 61,
+      "blocked": 0,
+      "leaked": 299,
+      "total": 360,
+      "leak_rate": 0.8305555555555556
+    },
+    {
+      "category": "ORG",
+      "variant": "lowercase",
+      "replaced": 105,
+      "blocked": 0,
+      "leaked": 78,
+      "total": 183,
+      "leak_rate": 0.4262295081967213
+    },
+    {
+      "category": "ORG",
+      "variant": "original",
+      "replaced": 357,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 360,
+      "leak_rate": 0.008333333333333333
+    },
+    {
+      "category": "ORG",
+      "variant": "spaces",
+      "replaced": 171,
+      "blocked": 0,
+      "leaked": 189,
+      "total": 360,
+      "leak_rate": 0.525
+    },
+    {
+      "category": "ORG",
+      "variant": "traditional",
+      "replaced": 150,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 156,
+      "leak_rate": 0.038461538461538464
+    },
+    {
+      "category": "ORG",
+      "variant": "zero_width",
+      "replaced": 357,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 360,
+      "leak_rate": 0.008333333333333333
+    },
+    {
+      "category": "PERSON",
+      "variant": "bidi",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PERSON",
+      "variant": "cyrillic",
+      "replaced": 63,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 63,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PERSON",
+      "variant": "fullwidth",
+      "replaced": 75,
+      "blocked": 6,
+      "leaked": 0,
+      "total": 81,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PERSON",
+      "variant": "hyphens",
+      "replaced": 171,
+      "blocked": 3,
+      "leaked": 9,
+      "total": 183,
+      "leak_rate": 0.04918032786885246
+    },
+    {
+      "category": "PERSON",
+      "variant": "lowercase",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 69,
+      "total": 75,
+      "leak_rate": 0.92
+    },
+    {
+      "category": "PERSON",
+      "variant": "original",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PERSON",
+      "variant": "spaces",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PERSON",
+      "variant": "traditional",
+      "replaced": 72,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 72,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PERSON",
+      "variant": "zero_width",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PHONE",
+      "variant": "bidi",
+      "replaced": 60,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 60,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PHONE",
+      "variant": "chinese_digits",
+      "replaced": 0,
+      "blocked": 60,
+      "leaked": 0,
+      "total": 60,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PHONE",
+      "variant": "fullwidth",
+      "replaced": 30,
+      "blocked": 30,
+      "leaked": 0,
+      "total": 60,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PHONE",
+      "variant": "hyphens",
+      "replaced": 30,
+      "blocked": 0,
+      "leaked": 30,
+      "total": 60,
+      "leak_rate": 0.5
+    },
+    {
+      "category": "PHONE",
+      "variant": "ocr",
+      "replaced": 21,
+      "blocked": 0,
+      "leaked": 39,
+      "total": 60,
+      "leak_rate": 0.65
+    },
+    {
+      "category": "PHONE",
+      "variant": "original",
+      "replaced": 60,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 60,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PHONE",
+      "variant": "spaces",
+      "replaced": 30,
+      "blocked": 0,
+      "leaked": 30,
+      "total": 60,
+      "leak_rate": 0.5
+    },
+    {
+      "category": "PHONE",
+      "variant": "zero_width",
+      "replaced": 60,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 60,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "bidi",
+      "replaced": 10,
+      "blocked": 2,
+      "leaked": 0,
+      "total": 12,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "chinese_digits",
+      "replaced": 3,
+      "blocked": 9,
+      "leaked": 0,
+      "total": 12,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "cyrillic",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "fullwidth",
+      "replaced": 3,
+      "blocked": 9,
+      "leaked": 0,
+      "total": 12,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "hyphens",
+      "replaced": 9,
+      "blocked": 2,
+      "leaked": 1,
+      "total": 12,
+      "leak_rate": 0.08333333333333333
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "lowercase",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "ocr",
+      "replaced": 9,
+      "blocked": 3,
+      "leaked": 0,
+      "total": 12,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "original",
+      "replaced": 10,
+      "blocked": 2,
+      "leaked": 0,
+      "total": 12,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "spaces",
+      "replaced": 9,
+      "blocked": 2,
+      "leaked": 1,
+      "total": 12,
+      "leak_rate": 0.08333333333333333
+    },
+    {
+      "category": "POSTCODE",
+      "variant": "zero_width",
+      "replaced": 10,
+      "blocked": 2,
+      "leaked": 0,
+      "total": 12,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PRICE",
+      "variant": "bidi",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PRICE",
+      "variant": "chinese_digits",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 33,
+      "total": 33,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "PRICE",
+      "variant": "fullwidth",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 15,
+      "total": 33,
+      "leak_rate": 0.45454545454545453
+    },
+    {
+      "category": "PRICE",
+      "variant": "hyphens",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 33,
+      "total": 33,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "PRICE",
+      "variant": "ocr",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 30,
+      "total": 33,
+      "leak_rate": 0.9090909090909091
+    },
+    {
+      "category": "PRICE",
+      "variant": "original",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PRICE",
+      "variant": "spaces",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 33,
+      "total": 33,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "PRICE",
+      "variant": "zero_width",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PROJECT",
+      "variant": "bidi",
+      "replaced": 10,
+      "blocked": 8,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PROJECT",
+      "variant": "hyphens",
+      "replaced": 14,
+      "blocked": 4,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PROJECT",
+      "variant": "original",
+      "replaced": 10,
+      "blocked": 8,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PROJECT",
+      "variant": "spaces",
+      "replaced": 10,
+      "blocked": 8,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PROJECT",
+      "variant": "traditional",
+      "replaced": 14,
+      "blocked": 4,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "PROJECT",
+      "variant": "zero_width",
+      "replaced": 10,
+      "blocked": 8,
+      "leaked": 0,
+      "total": 18,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "bidi",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "chinese_digits",
+      "replaced": 273,
+      "blocked": 18,
+      "leaked": 0,
+      "total": 291,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "cyrillic",
+      "replaced": 66,
+      "blocked": 216,
+      "leaked": 0,
+      "total": 282,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "fullwidth",
+      "replaced": 282,
+      "blocked": 9,
+      "leaked": 0,
+      "total": 291,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "hyphens",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "lowercase",
+      "replaced": 288,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 288,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "ocr",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "original",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "REFNO",
+      "variant": "spaces",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 252,
+      "total": 291,
+      "leak_rate": 0.865979381443299
+    },
+    {
+      "category": "REFNO",
+      "variant": "zero_width",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "SWIFT",
+      "variant": "bidi",
+      "replaced": 9,
+      "blocked": 0,
+      "leaked": 27,
+      "total": 36,
+      "leak_rate": 0.75
+    },
+    {
+      "category": "SWIFT",
+      "variant": "chinese_digits",
+      "replaced": 30,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 33,
+      "leak_rate": 0.09090909090909091
+    },
+    {
+      "category": "SWIFT",
+      "variant": "cyrillic",
+      "replaced": 30,
+      "blocked": 3,
+      "leaked": 0,
+      "total": 33,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "SWIFT",
+      "variant": "fullwidth",
+      "replaced": 36,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 36,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "SWIFT",
+      "variant": "hyphens",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 33,
+      "total": 36,
+      "leak_rate": 0.9166666666666666
+    },
+    {
+      "category": "SWIFT",
+      "variant": "lowercase",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 27,
+      "total": 33,
+      "leak_rate": 0.8181818181818182
+    },
+    {
+      "category": "SWIFT",
+      "variant": "ocr",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 30,
+      "total": 33,
+      "leak_rate": 0.9090909090909091
+    },
+    {
+      "category": "SWIFT",
+      "variant": "original",
+      "replaced": 9,
+      "blocked": 0,
+      "leaked": 27,
+      "total": 36,
+      "leak_rate": 0.75
+    },
+    {
+      "category": "SWIFT",
+      "variant": "spaces",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 36,
+      "leak_rate": 0.08333333333333333
+    },
+    {
+      "category": "SWIFT",
+      "variant": "zero_width",
+      "replaced": 9,
+      "blocked": 0,
+      "leaked": 27,
+      "total": 36,
+      "leak_rate": 0.75
+    },
+    {
+      "category": "URL",
+      "variant": "bidi",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "URL",
+      "variant": "cyrillic",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "URL",
+      "variant": "fullwidth",
+      "replaced": 0,
+      "blocked": 3,
+      "leaked": 0,
+      "total": 3,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "URL",
+      "variant": "hyphens",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 3,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "URL",
+      "variant": "original",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3,
+      "leak_rate": 0.0
+    },
+    {
+      "category": "URL",
+      "variant": "spaces",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 3,
+      "leak_rate": 1.0
+    },
+    {
+      "category": "URL",
+      "variant": "zero_width",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3,
+      "leak_rate": 0.0
+    }
+  ],
+  "a_leaked": 1907,
+  "total_leaked": 2389
+}

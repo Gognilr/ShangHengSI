@@ -1,0 +1,12 @@
+description: E-06 自写虚构变体，已知未达标；V31Q-64，不能视为通过样本。
+stance: sales
+category: SWIFT
+variant: hyphens
+canonical: FCBKCNBJ300
+surface: F-C-B-K-C-N-B-J-3-0-0
+paragraphs:
+- SWIFT：F-C-B-K-C-N-B-J-3-0-0。
+- 本文件记载的SWIFT为F-C-B-K-C-N-B-J-3-0-0，请依约办理。
+- 附件信息：SWIFT F-C-B-K-C-N-B-J-3-0-0；本段内容全部虚构。
+expected: leaked
+question: V31Q-64

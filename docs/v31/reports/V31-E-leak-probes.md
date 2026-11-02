@@ -1,0 +1,66 @@
+# 本地变体评测（数字）
+
+| 类别 | 变体 | 替换 | 拦截 | 泄露 | 分母 | 泄露率 |
+|-|-|-|-|-|-|-|
+| ACCOUNT | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| ACCOUNT | ocr | 0 | 0 | 3 | 3 | 1.000000 |
+| ACCOUNT | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | bidi | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | chinese_digits | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | cyrillic | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | fullwidth | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | lowercase | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | ocr | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | original | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | traditional | 0 | 0 | 3 | 3 | 1.000000 |
+| AMOUNT | zero_width | 0 | 0 | 3 | 3 | 1.000000 |
+| EMAIL | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| EMAIL | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | bidi | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | chinese_digits | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | cyrillic | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | fullwidth | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | lowercase | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | ocr | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | original | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | traditional | 0 | 0 | 3 | 3 | 1.000000 |
+| IDNO | zero_width | 0 | 0 | 3 | 3 | 1.000000 |
+| IM | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | bidi | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | cyrillic | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | fullwidth | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | lowercase | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | original | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | traditional | 0 | 0 | 3 | 3 | 1.000000 |
+| ORG | zero_width | 0 | 0 | 3 | 3 | 1.000000 |
+| PERSON | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| PERSON | lowercase | 0 | 0 | 3 | 3 | 1.000000 |
+| PHONE | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| PHONE | ocr | 0 | 0 | 3 | 3 | 1.000000 |
+| PHONE | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| POSTCODE | hyphens | 2 | 0 | 1 | 3 | 0.333333 |
+| POSTCODE | spaces | 2 | 0 | 1 | 3 | 0.333333 |
+| PRICE | chinese_digits | 0 | 0 | 3 | 3 | 1.000000 |
+| PRICE | fullwidth | 0 | 0 | 3 | 3 | 1.000000 |
+| PRICE | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| PRICE | ocr | 0 | 0 | 3 | 3 | 1.000000 |
+| PRICE | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| REFNO | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| SWIFT | bidi | 0 | 0 | 3 | 3 | 1.000000 |
+| SWIFT | chinese_digits | 0 | 0 | 3 | 3 | 1.000000 |
+| SWIFT | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| SWIFT | lowercase | 0 | 0 | 3 | 3 | 1.000000 |
+| SWIFT | ocr | 0 | 0 | 3 | 3 | 1.000000 |
+| SWIFT | original | 0 | 0 | 3 | 3 | 1.000000 |
+| SWIFT | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+| SWIFT | zero_width | 0 | 0 | 3 | 3 | 1.000000 |
+| URL | hyphens | 0 | 0 | 3 | 3 | 1.000000 |
+| URL | spaces | 0 | 0 | 3 | 3 | 1.000000 |
+
+种子：60；组：60；A 类泄露：132；全部泄露：176

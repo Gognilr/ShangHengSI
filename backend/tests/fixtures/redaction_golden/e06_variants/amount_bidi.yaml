@@ -1,0 +1,12 @@
+description: E-06 自写虚构变体，已知未达标；V31Q-64，不能视为通过样本。
+stance: sales
+category: AMOUNT
+variant: bidi
+canonical: '15'
+surface: 1‮5
+paragraphs:
+- 合同总价：1‮5。
+- 本文件记载的合同总价为1‮5，请依约办理。
+- 附件信息：合同总价 1‮5；本段内容全部虚构。
+expected: leaked
+question: V31Q-64

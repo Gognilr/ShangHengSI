@@ -1,0 +1,16 @@
+description: E-06 自写虚构变体，已知未达标；V31Q-64，不能视为通过样本。
+stance: sales
+category: ORG
+variant: spaces
+canonical: Anadolu Fictive Kimya Sanayi ve Ticaret A.Ş.
+surface: A n a d o l u   F i c t i v e   K i m y a   S a n a y i   v e   T i c a r
+  e t   A . Ş .
+paragraphs:
+- 买方：A n a d o l u   F i c t i v e   K i m y a   S a n a y i   v e   T i c a r e t   A
+  . Ş .。
+- 本文件记载的买方为A n a d o l u   F i c t i v e   K i m y a   S a n a y i   v e   T i c a
+  r e t   A . Ş .，请依约办理。
+- 附件信息：买方 A n a d o l u   F i c t i v e   K i m y a   S a n a y i   v e   T i c a
+  r e t   A . Ş .；本段内容全部虚构。
+expected: leaked
+question: V31Q-64

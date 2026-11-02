@@ -1,0 +1,12 @@
+description: E-06 自写虚构变体，已知未达标；V31Q-64，不能视为通过样本。
+stance: sales
+category: ORG
+variant: fullwidth
+canonical: Anadolu Fictive Kimya Sanayi ve Ticaret A.Ş.
+surface: Ａｎａｄｏｌｕ　Ｆｉｃｔｉｖｅ　Ｋｉｍｙａ　Ｓａｎａｙｉ　ｖｅ　Ｔｉｃａｒｅｔ　Ａ．Ş．
+paragraphs:
+- 买方：Ａｎａｄｏｌｕ　Ｆｉｃｔｉｖｅ　Ｋｉｍｙａ　Ｓａｎａｙｉ　ｖｅ　Ｔｉｃａｒｅｔ　Ａ．Ş．。
+- 本文件记载的买方为Ａｎａｄｏｌｕ　Ｆｉｃｔｉｖｅ　Ｋｉｍｙａ　Ｓａｎａｙｉ　ｖｅ　Ｔｉｃａｒｅｔ　Ａ．Ş．，请依约办理。
+- 附件信息：买方 Ａｎａｄｏｌｕ　Ｆｉｃｔｉｖｅ　Ｋｉｍｙａ　Ｓａｎａｙｉ　ｖｅ　Ｔｉｃａｒｅｔ　Ａ．Ş．；本段内容全部虚构。
+expected: leaked
+question: V31Q-64

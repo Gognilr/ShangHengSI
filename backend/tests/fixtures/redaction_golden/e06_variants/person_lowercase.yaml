@@ -1,0 +1,12 @@
+description: E-06 自写虚构变体，已知未达标；V31Q-64，不能视为通过样本。
+stance: sales
+category: PERSON
+variant: lowercase
+canonical: Bill
+surface: bill
+paragraphs:
+- 联系人：bill。
+- 本文件记载的联系人为bill，请依约办理。
+- 附件信息：联系人 bill；本段内容全部虚构。
+expected: leaked
+question: V31Q-64
