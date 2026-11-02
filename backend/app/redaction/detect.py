@@ -523,7 +523,8 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
     view = _unsigned_amount_view(text)
     hits = _find_amounts(view, column)
     # 短 OCR 数字仅在明确币种 / 金额列语境中核验，不放宽全局数字识别视图。
-    for match in re.finditer(r'(?:[0-9]|(?<![A-Za-z])[OoIl|SB])[0-9OoIl|SB,. \t]*', view):
+    # F1-S1-B2 等位置编号的尾部不能因紧随 USD 而被误认作金额；独立负数仍可识别。
+    for match in re.finditer(r'(?<![A-Za-z0-9])(?<![A-Za-z0-9]-)[0-9OoIl|SB][0-9OoIl|SB,. \t]*', view):
         token = match.group().rstrip()
         wrong = [i for i, c in enumerate(token) if c in 'OoIl|SB']
         if not wrong or len(wrong) > 2 or not any(c.isdigit() for c in token):
