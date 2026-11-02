@@ -1,6 +1,9 @@
+variant_seed: true
 description: 核心格式化代表：单处 OCR 明确金额、中文位权外币、分组 / 中文数字标签证件、IBAN；保留 HS、CAS 和普通词
 stance: sales
 must_replace:
+  - {text: 两千六百, category: AMOUNT}
+  - {text: 贰拾伍万, category: AMOUNT}
   - {text: '3.S', category: AMOUNT}
   - {text: '壹仟贰佰伍拾', category: PRICE}
   - {text: '柒仟捌佰', category: AMOUNT}

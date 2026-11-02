@@ -7,7 +7,7 @@ R1-03（design/R1.md 第三节，Q-134 ③）：一个表格可以有多个表�
 import re
 from typing import Protocol
 
-from app.redaction.detect import _NUM, amount_label_kind
+from app.redaction.detect import _NUM, amount_label_kind, numeric_cell_view
 
 _TABLE_LOC = re.compile(r"^(?P<table>.+-T\d+)-R(?P<row>\d+)-C(?P<col>\d+)$")  # DOCX、PDF 表格单元格
 _SHEET_LOC = re.compile(r"^(?P<table>F\d+-S\d+)-(?P<col>[A-Z]+)(?P<row>\d+)$")  # XLSX 单元格，整个工作表为一个表格
@@ -20,6 +20,11 @@ _CURRENCY_DECLARATION = re.compile(r'单位\s*[:：]?\s*(?:万?元|人民币)|�
 _QTY_HEADER = re.compile(r"数量|quantity|qty", re.IGNORECASE)
 _TOTAL_ROW = re.compile(r"合计|小计|总计|(?<![A-Za-z])(?:sub\s*)?total(?![A-Za-z])", re.IGNORECASE)
 _BARE_NUMBER = re.compile(rf'^\s*[-−－(（]?\s*(?:{_NUM})\s*[)）]?\s*$')
+
+
+def _numeric_cell(text: str) -> bool:
+    folded = numeric_cell_view(text)
+    return bool(_BARE_NUMBER.fullmatch(folded if folded is not None else text))
 
 
 class _Node(Protocol):
@@ -61,7 +66,7 @@ def _is_header(nodes: list[_Node], cells: list[tuple[int, str]]) -> bool:
     """表头行：有单价或金额表头，且没有纯数字单元格（“合计金额 | 222063”这样的合计行不是表头）。"""
     texts = [nodes[i].text for i, _ in cells]
     return (any(header_kind(t) in ("PRICE", "AMOUNT") for t in texts)
-            and not any(_BARE_NUMBER.match(t) for t in texts))
+            and not any(_numeric_cell(t) for t in texts))
 
 
 def _header_rows_all(nodes: list[_Node], rows: dict[int, list[tuple[int, str]]]) -> list[int]:
@@ -136,18 +141,18 @@ def table_hints(nodes: list[_Node], *, with_qty: bool = False) -> dict[int, str]
                         out[i] = cols[col]
             if declared:
                 for i, col in cells:
-                    if col not in excluded_cols and _BARE_NUMBER.fullmatch(nodes[i].text):
+                    if col not in excluded_cols and _numeric_cell(nodes[i].text):
                         out.setdefault(i, 'AMOUNT')
             if _is_total_row(nodes, cells):
                 for i, _col in cells:
-                    if _BARE_NUMBER.match(nodes[i].text):
+                    if _numeric_cell(nodes[i].text):
                         out[i] = "AMOUNT"
         # R4：仅认同一行紧邻左格；不跨空列、不覆盖已有表头提示。
         for cells in rows.values():
             by_col = {_col_number(col): i for i, col in cells}
             for col, i in by_col.items():
                 left = by_col.get(col - 1)
-                if i not in out and left is not None and re.fullmatch(rf"[ \t]*({_NUM})万?[ \t]*", nodes[i].text):
+                if i not in out and left is not None and (_numeric_cell(nodes[i].text) or re.fullmatch(rf"[ \t]*({_NUM})万?[ \t]*", nodes[i].text)):
                     kind = amount_label_kind(nodes[left].text)
                     if kind:
                         out[i] = kind

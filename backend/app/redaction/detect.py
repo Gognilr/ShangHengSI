@@ -426,7 +426,7 @@ def _find_bare_amounts(text: str) -> list[Hit]:
             continue
         num, scale = m.group("num"), m.group("scale")
         if not (len(num.split(".")[0].replace(",", "")) >= 3 or "," in num
-                or re.search(r"\.\d{2}$", num) or scale):
+                or re.search(r"\.\d{2}$", num) or scale or re.search(r'[十百千万亿拾佰仟]', num)):
             continue
         value = _decimal(num)
         if value is None and re.search(r'[零〇一二三四五六七八九两壹贰叁肆伍陆柒捌玖]', num):
@@ -538,6 +538,14 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
     return hits
 
 
+def numeric_cell_view(text: str) -> str | None:
+    """整格数字的 OCR 副本，只供表格金额语境判断，不放宽正文数字识别。"""
+    if (not re.fullmatch(r'\s*[-−－(（]?[0-9OoIl|SB][0-9OoIl|SB,. \t]*[)）]?\s*', text)
+            or not any(c.isdigit() for c in text) or sum(c in 'OoIl|SB' for c in text) > 2):
+        return None
+    return text.translate(str.maketrans('OoIl|SB', '0011158'))
+
+
 def _find_amounts(text: str, column: str | None = None) -> list[Hit]:
     """第 5 步：金额与单价。只替换数字部分，币种文字保留（9.2“币种保留”）。
 
@@ -585,12 +593,6 @@ def _find_amounts(text: str, column: str | None = None) -> list[Hit]:
                 value *= 10000
             hits.append(Hit(bare.start(1), bare.end(1), column, _amount_key(column, None, value, bare.group(1)),
                             None, value))
-        spelled = re.fullmatch(rf'\s*({_CN_NUMBER})\s*', text)
-        if spelled and re.search(r'[零〇一二三四五六七八九两壹贰叁肆伍陆柒捌玖]', spelled.group(1)):
-            value = chinese_upper_value(spelled.group(1).translate(_LOWER_TO_UPPER))
-            if value is not None and value > 0:
-                hits.append(Hit(spelled.start(1), spelled.end(1), column,
-                                _amount_key(column, None, value, spelled.group(1)), None, value))
     # 前置币种优先；扩展后置语法提供量级，保留原有命中的类别和区间。
     extended = list(_EXT_SUFFIX.finditer(text))
     prefixes = {m.span(1) for m in _PREFIX.finditer(text)}
@@ -635,7 +637,7 @@ def _find_amounts(text: str, column: str | None = None) -> list[Hit]:
         for match in re.finditer(pattern, text):
             if not re.search(r'[零〇一二三四五六七八九两壹贰叁肆伍陆柒捌玖]', match.group('num')):
                 continue  # 千/万等量级不能从相邻阿拉伯金额中单独截作另一笔钱。
-            if text[match.start('num'):].startswith('一元化'):
+            if text[match.start('num'):].startswith(('一元化', '二元结构')):
                 continue
             if match.start('num') and text[match.start('num') - 1] in '第每':
                 continue
@@ -646,7 +648,27 @@ def _find_amounts(text: str, column: str | None = None) -> list[Hit]:
                 start, end = match.span('num')
                 if not any(h.start <= start and end <= h.end and h.value == value for h in hits):
                     hits.append(Hit(start, end, cat, _amount_key(cat, currency, value, match.group('num')), currency, value))
-    unique = {(h.start, h.end): h for h in reversed(hits) if h.value != 0}
+    # V31Q-66：正文位权数字支持约数后缀、单位括号与填空括号；表格裸中文数字不猜金额。
+    contexts = (
+        rf'(?P<num>{cn}){_CLOSE}[ \t]*(?:[余多来]?元(?:左右)?|[（(][ \t]*元[ \t]*[）)])',
+        rf'(?:人民币|￥|¥|RMB)[ \t]*{_OPEN}(?P<num>{cn}){_CLOSE}',
+    )
+    for pattern in contexts:
+        for match in re.finditer(pattern, text, re.I):
+            num = match.group('num')
+            start, end = match.span('num')
+            if (not re.search(r'[十百千万亿拾佰仟]', num)
+                    or not (num.startswith(('十', '拾')) or re.search(r'[一二三四五六七八九两壹贰叁肆伍陆柒捌玖]', num))
+                    or start and text[start - 1] in '第每0123456789'):
+                continue
+            value = chinese_upper_value(num.translate(_LOWER_TO_UPPER))
+            if value is None or value <= 0 or any(h.start <= start and end <= h.end for h in hits):
+                continue
+            cat = category(match.end())
+            hits.append(Hit(start, end, cat, _amount_key(cat, 'CNY', value, num), 'CNY', value))
+    # 出口复检会把汉字数字归一为阿拉伯数字，普通词句在两份视图中都保留。
+    unique = {(h.start, h.end): h for h in reversed(hits) if h.value != 0
+              and not text[h.start:].startswith(('一元化', '二元结构', '1元化', '2元结构'))}
     return sorted(unique.values(), key=lambda h: (h.start, h.end))
 
 

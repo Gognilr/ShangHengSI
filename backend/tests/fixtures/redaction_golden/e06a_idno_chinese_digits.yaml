@@ -1,3 +1,4 @@
+variant_seed: true
 description: E-06a 核心变体回归：原 golden 语境的原写法与等价写法。
 stance: other
 loc_prefixed: true

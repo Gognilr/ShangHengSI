@@ -13,6 +13,7 @@ from app.redaction.engine import NodeIn, Term, compute, outbound_text
 from app.redaction.outbound import PartyInfo
 from app.redaction.normalize import _tables, normalize_value
 from app.redaction.recheck import recheck
+from app.redaction.tables import table_cell
 from app.parsing.model import strip_invisible
 
 GOLDEN = Path(__file__).resolve().parents[1] / 'tests/fixtures/redaction_golden'
@@ -108,7 +109,8 @@ def load_seeds():
             value, category = item['text'], item['category']
             target = next((i for i, node in enumerate(nodes) if value in node.text), None)
             seeds.setdefault((category, value), dict(category=category, value=value, nodes=nodes,
-                             target=target, stance=ann['stance'], terms=[Term(**t) for t in ann.get('terms', [])], source=path.stem))
+                             target=target, stance=ann['stance'], terms=[Term(**t) for t in ann.get('terms', [])], source=path.stem,
+                             original_only=ann.get('variant_seed', False) or item.get('variant_seed', False)))
     return list(seeds.values())
 
 
@@ -148,7 +150,7 @@ def evaluate(probe_dir=None, seeds=None):
     for seed in seeds:
         memo = {}  # 只复用本种子的等价输入，避免整批保留所有任务的节点与映射。
         category, value = seed['category'], seed['value']
-        forms = seed.get('forms') or variants(value, category)
+        forms = seed.get('forms') or ({'original': value} if seed.get('original_only') else variants(value, category))
         original = seed['nodes']
         target = seed['target']
         if target is None:
@@ -156,6 +158,9 @@ def evaluate(probe_dir=None, seeds=None):
             original = [NodeIn('F1-P1', f'{label}：{value}。')]
             target = 0
         max_file = max(int(re.match(r'F(\d+)', n.loc)[1]) for n in original)
+        cell = table_cell(original[target].loc)
+        capital_label = bool(cell and any('大写' in n.text and (other := table_cell(n.loc))
+                             and other[0] == cell[0] and (other[1] == cell[1] or other[2] == cell[2]) for n in original))
         for variant, surface in forms.items():
             replaced_value = value
             if category in ('AMOUNT', 'PRICE') and variant in ('chinese_upper', 'chinese_lower') and '元' in surface:
@@ -174,6 +179,9 @@ def evaluate(probe_dir=None, seeds=None):
                     if variant == 'chinese_lower':
                         surface = surface.translate(str.maketrans('壹贰叁肆伍陆柒捌玖拾佰仟', '一二三四五六七八九十百千'))
             tier = 'reference' if variant in reference else 'core'
+            if (category in ('AMOUNT', 'PRICE') and variant in ('chinese_upper', 'chinese_lower') and cell and not capital_label
+                    or category == 'IDNO' and variant in ('spaces', 'hyphens') and not re.search(r'[\s.\-]', value)):
+                tier = 'reference'
             for mode in ('pure', 'mixed'):
                 nodes, targets, needles = [], [], []
                 for copy in range(3):

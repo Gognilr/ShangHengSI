@@ -9,6 +9,7 @@ must_replace:
   - {text: '56,789.01', category: AMOUNT}
   - {text: '67890.12', category: AMOUNT}
   - {text: '78901.23', category: AMOUNT}
+  - {text: '2S700', category: AMOUNT, variant_seed: true}
 must_keep:
   - '7'
   - '8'
