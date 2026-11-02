@@ -70,6 +70,11 @@ class NodeIn:
     clause_no: str | None = None
 
 
+def _recognition_view(text: str) -> str:
+    """等长识别副本；原件、替换偏移与还原始终使用原文。"""
+    return detect.recognition_view(text)
+
+
 @dataclass(frozen=True)
 class Term:
     """已记住的名称（learned）或自定义敏感词（custom），已解密。"""
@@ -409,6 +414,13 @@ def compute(
     overrides 为 None 时按立场预选我方（销售选卖方、采购选买方，唯一时才选）。
     main_prefix 为主文件节点位置编号的前缀（如 "F1-"），确定合同总价时先在主文件中找（9.6）。
     """
+    original_nodes = nodes
+    nodes = [NodeIn(n.loc, _recognition_view(n.text), n.clause_no) for n in nodes]
+    terms = [Term(_recognition_view(t.text), t.kind, t.category, t.is_our_party,
+                  _recognition_view(t.alias_of) if t.alias_of else None) for t in terms]
+    user_terms = [UserTerm(_recognition_view(t.text), t.category) for t in user_terms]
+    exclusions = [_recognition_view(t) for t in exclusions]
+    keeps = [_recognition_view(t) for t in keeps]
     entities: dict[str, _Entity] = {}
     excluded = {P.normalize(value) for value in exclusions}
 
@@ -632,10 +644,11 @@ def compute(
             surface = text[hit.start:hit.end]
             unlabeled = (hit.category == 'ACCOUNT' and detect._IBAN.fullmatch(surface) is not None
                          or hit.category == 'IDNO' and (detect._ID_CARD.fullmatch(surface) is not None
-                                                       or detect._CREDIT_CODE.fullmatch(surface) is not None))
+                                                       or detect._CREDIT_CODE.fullmatch(surface) is not None
+                                                       or detect._OCR_CREDIT.fullmatch(surface) is not None))
             # 标签命中在裸号码前；同区间有标签时即使校验失败也继续替换。
             labeled = hit in cross_formatted or any(m.span(1) == (hit.start, hit.end)
-                          for pattern in (detect._LABELED_ID, detect._ACCOUNT, detect._ACCOUNT_SIMPLE, detect._LABELED_IBAN)
+                          for pattern in (detect._LABELED_ID, detect._GENERIC_ID, detect._ACCOUNT, detect._ACCOUNT_SIMPLE, detect._LABELED_IBAN)
                           for m in pattern.finditer(P.bilingual_label_text(text)))
             if hit.validated is False and unlabeled and not _overlaps(occ, hit.start, hit.end):
                 if not labeled:
@@ -804,6 +817,76 @@ def compute(
                  if not _overlaps(excluded_spans, m.start(), m.end())], occupied[i], spans, longest_first=True)
     ner_suspects = [s for s in ner_suspects if not _overlaps(occupied[locs[s.loc]], s.char_start, s.char_end)]
 
+    # 已识别值的等价写法在本任务传播，不把全部形近字放进首次识别。
+    from app.redaction.normalize import normalize_with_map, normalize_value
+    from app.redaction.recheck import _text_pattern
+    eligible = []
+    for i, node in enumerate(nodes):
+        residual = list(node.text)
+        for start, end in occupied[i]:
+            residual[start:end] = ' ' * (end - start)
+        if re.search(r'[A-Za-z0-9一-鿿]', ''.join(residual)):
+            eligible.append(i)
+    normalized_nodes = {(i, flag): normalize_with_map(nodes[i].text, preserve_case=flag)
+                        for i in eligible for flag in (False, True)}
+    money_nodes = {i for i in eligible if re.search(r'[叄貳陸萬億]|(?:[0-9].*[OoIl|SB]|[OoIl|SB].*[0-9])', nodes[i].text)}
+    propagated = set()
+    for source in list(spans):
+        if source.category not in ('ORG', 'PERSON', 'ADDR', 'NAME', 'TERM', 'ACCOUNT', 'PHONE', 'IDNO', 'REFNO', 'SWIFT', 'POSTCODE', 'AMOUNT', 'PRICE'):
+            continue
+        surface = nodes[source.node].text[source.start:source.end]
+        if source.category in ('AMOUNT', 'PRICE') and not money_nodes:
+            continue
+        numeric = source.category in ('ACCOUNT', 'PHONE', 'IDNO', 'REFNO', 'SWIFT', 'POSTCODE')
+        sensitive = P.single_english_word(surface) or surface.isascii() and surface.isupper() and len(surface) <= 6
+        key = (source.category, surface)
+        if key in propagated:
+            continue
+        propagated.add(key)
+        needle = normalize_value(surface, preserve_case=sensitive)
+        if numeric:
+            needle = re.sub(r'[\s.\-]', '', normalize_value(surface, preserve_case=True)).upper()
+            if len(needle) < 5:
+                continue
+            pattern = re.compile(r'(?<![A-Za-z0-9])' + r'[ \t.\-]*'.join(map(re.escape, needle)) + r'(?![A-Za-z0-9])', re.I)
+        elif source.category in ('AMOUNT', 'PRICE') and re.fullmatch(r'[\d,. \t]+', surface):
+            ocr = {'0': '[0Oo]', '1': '[1lI|]', '5': '[5S]', '8': '[8B]'}
+            pattern = re.compile(r'(?<![\d.,])' + ''.join(ocr.get(c, re.escape(c)) for c in surface) + r'(?![\d.,])')
+        else:
+            pattern = (re.compile(r'[ \t\u3000]*'.join(map(re.escape, needle)))
+                       if source.category == 'PERSON' and re.fullmatch(r'[一-鿿]{2,3}', needle)
+                       else _text_pattern(needle))
+        for i in money_nodes if source.category in ('AMOUNT', 'PRICE') else eligible:
+            node = nodes[i]
+            normalized = normalized_nodes[i, True if numeric or source.category in ('AMOUNT', 'PRICE') else sensitive]
+            for match in pattern.finditer(normalized.text):
+                start, end = normalized.index_map[match.start()], normalized.index_map[match.end() - 1] + 1
+                if source.category in ('AMOUNT', 'PRICE'):
+                    # 仅在原位置币种、量级和数值相同的金额语境传播，不把条款编号或普通数量当金额。
+                    candidate = node.text[:start] + surface + node.text[end:]
+                    hits = [*detect.find_amounts(candidate, hints.get(i)), *detect.find_bare_amounts(candidate)]
+                    if not any(h.start == start and h.end == start + len(surface)
+                               and h.value == source.value and h.currency == source.currency for h in hits):
+                        continue
+                if any(P.name_pattern(word).search(node.text[start:end]) for word in exclusions):
+                    continue
+                # 已知整串优先于同类自动识别出的半个名称；人工 / 词条决定仍优先。
+                contained = [s for s in spans if s.node == i and s.category == source.category
+                             and start <= s.start and s.end <= end and (s.start, s.end) != (start, end)
+                             and s.detected_by not in ('user', 'term')]
+                for partial in contained:
+                    spans.remove(partial)
+                    occupied[i].remove((partial.start, partial.end))
+                _accept([_Span(i, start, end, source.category, source.key, source.detected_by,
+                               source.currency, source.value, source.term)], occupied[i], spans)
+    # 主写法从原文片段取回；不把识别副本的半角/OCR 数字写进对照表。
+    for entity in entities.values():
+        for index, node in enumerate(nodes):
+            start = node.text.find(entity.name)
+            if start >= 0:
+                entity.name = original_nodes[index].text[start:start + len(entity.name)]
+                break
+    nodes = original_nodes
     spans.sort(key=lambda s: (s.node, s.start))
     _apply_ours(entities, stance, overrides, {s.key for s in spans})
     _assign_countries(entities, nodes, spans)
@@ -923,7 +1006,8 @@ def _ratio_inserts(nodes: list[NodeIn], spans: list[_Span], main_prefix: str | N
     """金额比例（9.6）：{节点下标: [(在原文中的插入位置, 比例文字)]}。比例只进入 redacted，不进入对照表和替换项。"""
     # 补充说明（NOTE）不参与金额比例（R4 4.1）：既不用来确定合同总价，自身金额也不加比例
     amounts = [ratio.AmountAt(s.node, detect.Hit(s.start, s.end, s.category, s.key, s.currency, s.value))
-               for s in spans if s.category == "AMOUNT" and nodes[s.node].loc != "NOTE"]
+               for s in spans if s.category == "AMOUNT" and nodes[s.node].loc != "NOTE"
+               and not nodes[s.node].text[:s.start].rstrip().endswith(('-', '−', '－', '(', '（'))]
     total = ratio.contract_total(nodes, amounts, main_prefix)
     out: dict[int, list[tuple[int, str]]] = {}
     if total is None:

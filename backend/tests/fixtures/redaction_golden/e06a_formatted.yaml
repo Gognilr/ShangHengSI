@@ -1,0 +1,18 @@
+description: 核心格式化代表：单处 OCR 明确金额、中文位权外币、分组 / 中文数字标签证件、IBAN；保留 HS、CAS 和普通词
+stance: sales
+must_replace:
+  - {text: '3.S', category: AMOUNT}
+  - {text: '壹仟贰佰伍拾', category: PRICE}
+  - {text: '柒仟捌佰', category: AMOUNT}
+  - {text: '2020 5432 1M', category: IDNO}
+  - {text: '二零二零五四三二一M', category: IDNO}
+  - {text: 'DE89-3704-0044-0532-0130-00', category: ACCOUNT}
+  - {text: 'gbB2west12345698765432', category: ACCOUNT}
+  - {text: '9l110101MA00000005', category: IDNO}
+  - {text: 'FCBKCNBJ300', category: SWIFT}
+must_keep:
+  - HS 27131200
+  - '1310-73-2'
+  - 千元
+  - 每百元营业收入的运输成本另行核算
+  - 一元化管理

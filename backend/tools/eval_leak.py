@@ -65,6 +65,12 @@ def variants(value, category):
             groups = [compact[i:i + 4] for i in range(0, len(compact), 4)]
         forms.update(spaces=' '.join(groups), hyphens='-'.join(groups),
                      chinese_digits=value.translate(str.maketrans('0123456789', '零一二三四五六七八九')))
+        if category == 'PHONE':
+            telephone = re.fullmatch(r'(\+\d{1,3}[ -]?)?\((\d{2,4})\)[ -]?(\d{3,4})[ -]?(\d{4})', value)
+            if telephone:
+                country, area, first, last = telephone.groups()
+                forms['spaces'] = f'{country or ""}({area}) {first} {last}'
+                forms['hyphens'] = f'{country or ""}({area}) {first}-{last}'
     if category == 'PERSON' and re.fullmatch(r'[一-鿿]{2,3}', value):
         forms.update(name_spaces=' '.join(value), name_fullspaces='\u3000'.join(value))
     if category in ('AMOUNT', 'PRICE'):
@@ -107,13 +113,22 @@ def load_seeds():
 
 
 def contains(text, values, codes):
+    from app.redaction.parties import single_english_word
     for code in sorted(set(codes), key=len, reverse=True):
         text = text.replace(code, '')
     text = re.sub(r'\[F\d+-[^\]]+\]', '', text)
-    normalized = normalize_value(text)
+    canonical = values[0]
+    sensitive = single_english_word(canonical) or canonical.isascii() and canonical.isupper() and len(canonical) <= 6
+    normalized = normalize_value(text, preserve_case=sensitive)
     compact = lambda s: re.sub(r'[\s\-‐‑–—,，.。:：()（）]', '', s)
-    return any((needle := normalize_value(value)) and
-               (needle in normalized or compact(needle) in compact(normalized)) for value in values)
+    for value in values:
+        needle = normalize_value(value, preserve_case=sensitive)
+        if sensitive and needle.isascii() and needle.isalpha():
+            if re.search(r'(?<![A-Za-z0-9])' + re.escape(needle) + r'(?![A-Za-z0-9])', normalized):
+                return True
+        elif needle and (needle in normalized or compact(needle) in compact(normalized)):
+            return True
+    return False
 
 
 def evaluate(probe_dir=None, seeds=None):
@@ -131,6 +146,7 @@ def evaluate(probe_dir=None, seeds=None):
     reference = {'cyrillic', 'lowercase', 'reference_spaces', 'reference_hyphens'}
     names = {'ORG', 'OUR', 'PERSON', 'ADDR'}
     for seed in seeds:
+        memo = {}  # 只复用本种子的等价输入，避免整批保留所有任务的节点与映射。
         category, value = seed['category'], seed['value']
         forms = seed.get('forms') or variants(value, category)
         original = seed['nodes']
@@ -141,6 +157,22 @@ def evaluate(probe_dir=None, seeds=None):
             target = 0
         max_file = max(int(re.match(r'F(\d+)', n.loc)[1]) for n in original)
         for variant, surface in forms.items():
+            replaced_value = value
+            if category in ('AMOUNT', 'PRICE') and variant in ('chinese_upper', 'chinese_lower') and '元' in surface:
+                # 小数改写为元角分时，一并改写紧随的千/万和币种单位，不能生成“叁元伍角千元”。
+                from app.redaction import detect
+                target_text = original[target].text
+                pos = target_text.find(value)
+                suffix = re.match(r'(千|万|百万|千万|亿)?(元|圆)', target_text[pos + len(value):]) if pos >= 0 else None
+                hit = next((h for h in detect.find_amounts(target_text)
+                            if h.start == pos and h.end >= pos + len(value) and h.value is not None), None)
+                if suffix and hit:
+                    replaced_value = value + suffix.group()
+                    surface = chinese_number(hit.value)
+                    if '元' not in surface:
+                        surface += '元整'
+                    if variant == 'chinese_lower':
+                        surface = surface.translate(str.maketrans('壹贰叁肆伍陆柒捌玖拾佰仟', '一二三四五六七八九十百千'))
             tier = 'reference' if variant in reference else 'core'
             for mode in ('pure', 'mixed'):
                 nodes, targets, needles = [], [], []
@@ -148,7 +180,7 @@ def evaluate(probe_dir=None, seeds=None):
                     transformed = mode == 'pure' or copy > 0
                     for index, n in enumerate(original):
                         loc = re.sub(r'^F(\d+)', lambda m: 'F' + str(int(m[1]) + copy * max_file), n.loc)
-                        text = n.text.replace(value, surface) if transformed else n.text
+                        text = n.text.replace(replaced_value, surface) if transformed else n.text
                         nodes.append(NodeIn(loc, strip_invisible(text), n.clause_no))
                         if index == target:
                             targets.append(loc)

@@ -1,0 +1,15 @@
+description: E-06a 单份虚构 XLSX：期间列、币种声明、负号和会计括号，排除数量比例与行次
+stance: other
+loc_prefixed: true
+must_replace:
+  - {text: '12,345.67', category: AMOUNT}
+  - {text: '23,456.78', category: AMOUNT}
+  - {text: '34,567.89', category: AMOUNT}
+  - {text: '45,678.90', category: AMOUNT}
+  - {text: '56,789.01', category: AMOUNT}
+  - {text: '67890.12', category: AMOUNT}
+  - {text: '78901.23', category: AMOUNT}
+must_keep:
+  - '7'
+  - '8'
+  - '5%'

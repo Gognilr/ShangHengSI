@@ -12,7 +12,7 @@ from tests.fixtures.docx.make_docx_fixtures import Doc
 ROOT = Path(__file__).resolve().parent
 
 
-def finance(path):
+def finance(path, boundary=False):
     book = Workbook()
     book.remove(book.active)
     for name, rows in (
@@ -28,9 +28,15 @@ def finance(path):
                    ('现金及现金等价物净增加额', 420000, 300000), ('期初现金及现金等价物余额', 200000, 100000),
                    ('期末现金及现金等价物余额', 620000, 400000)])):
         sheet = book.create_sheet(name)
-        sheet.append([name + '（人民币元）', '本期金额（人民币元）' if name != '资产负债表' else '期末余额（人民币元）',
-                      '上期金额（人民币元）' if name != '资产负债表' else '期初余额（人民币元）'])
+        sheet.append([name + '（单位：人民币元）',
+                      ('本期' if boundary else '本期金额（人民币元）') if name != '资产负债表' else ('期末' if boundary else '期末余额（人民币元）'),
+                      ('上期' if boundary else '上期金额（人民币元）') if name != '资产负债表' else ('期初' if boundary else '期初余额（人民币元）')])
         for row in rows:
+            if boundary and name == '现金流量表':
+                row = {'投资活动产生的现金流量净额': (row[0], -100000, -80000),
+                       '筹资活动产生的现金流量净额': (row[0], -60000, -20000),
+                       '现金及现金等价物净增加额': (row[0], 100000, 100000),
+                       '期末现金及现金等价物余额': (row[0], 300000, 200000)}.get(row[0], row)
             sheet.append(row)
     book.save(path)
 
@@ -106,7 +112,7 @@ def main():
             gold['relevant'].append('C-09')
         if index in (1, 4):
             attachment = f'{name}_finance.xlsx'
-            finance(ROOT / attachment)
+            finance(ROOT / attachment, boundary=index == 4)
             gold['attachments'] = [attachment]
         # 核对作者指定的位置确实指向对应条款，不从模型输出生成金标。
         nodes = {n.loc: n.text for n in parse_docx(payload, 1).nodes}

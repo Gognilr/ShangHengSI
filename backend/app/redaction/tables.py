@@ -14,9 +14,12 @@ _SHEET_LOC = re.compile(r"^(?P<table>F\d+-S\d+)-(?P<col>[A-Z]+)(?P<row>\d+)$")  
 HEADER_SCAN_ROWS = 20  # 第一个表头行只在每个表格的前 20 行中找（open_questions Q-65）
 _PRICE_HEADER = re.compile(r"单价|unit\s*price|price", re.IGNORECASE)
 _AMOUNT_HEADER = re.compile(r"金额|总价|总额|合计|小计|总计|期末余额|期初余额|年初余额|本年累计|上年同期|期末数|年初数|amount|total", re.IGNORECASE)
+_PERIOD_HEADER = re.compile(r'本期|上期|本年|上年|本月|期初|期末|年初|累计|current\s+period|prior\s+period|year-end', re.I)
+_EXCLUDED_HEADER = re.compile(r'数量|比例|率|%|％|行次|序号|附注|天数|人数|quantity|ratio|rate|index|note|days|headcount', re.I)
+_CURRENCY_DECLARATION = re.compile(r'单位\s*[:：]?\s*(?:万?元|人民币)|人民币|币种|(?<![A-Za-z])(?:USD|EUR|CNY|RMB|GBP|JPY|HKD)(?![A-Za-z])', re.I)
 _QTY_HEADER = re.compile(r"数量|quantity|qty", re.IGNORECASE)
 _TOTAL_ROW = re.compile(r"合计|小计|总计|(?<![A-Za-z])(?:sub\s*)?total(?![A-Za-z])", re.IGNORECASE)
-_BARE_NUMBER = re.compile(r"^\s*(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*$")
+_BARE_NUMBER = re.compile(rf'^\s*[-−－(（]?\s*(?:{_NUM})\s*[)）]?\s*$')
 
 
 class _Node(Protocol):
@@ -38,6 +41,8 @@ def header_kind(text: str) -> str | None:
         return "AMOUNT"
     if _QTY_HEADER.search(text):
         return "QTY"
+    if _PERIOD_HEADER.search(text) and not _EXCLUDED_HEADER.search(text):
+        return 'AMOUNT'
     return None
 
 
@@ -104,11 +109,17 @@ def table_hints(nodes: list[_Node], *, with_qty: bool = False) -> dict[int, str]
     合计行中的纯数字单元格一律为 AMOUNT（宁可多替换）。返回 {节点下标: 类别}。
     """
     out: dict[int, str] = {}
-    for rows in _rows(nodes).values():
+    for table, rows in _rows(nodes).items():
         headers = _header_rows_all(nodes, rows)
         header_set = set(headers)
         cols: dict[str, str] = {}
         current = None
+        first_ten = [i for row, cells in rows.items() if row <= 10 for i, _ in cells]
+        first_index = min((i for cells in rows.values() for i, _ in cells), default=0)
+        title = nodes[first_index - 1].text if first_index and table_cell(nodes[first_index - 1].loc) is None else ''
+        declared = bool(_CURRENCY_DECLARATION.search(title + ' ' + ' '.join(nodes[i].text for i in first_ten)))
+        excluded_cols = {col for row, cells in rows.items() if row <= 10
+                         for i, col in cells if _EXCLUDED_HEADER.search(nodes[i].text)}
         for row in sorted(rows):
             cells = rows[row]
             if row in header_set:
@@ -123,6 +134,10 @@ def table_hints(nodes: list[_Node], *, with_qty: bool = False) -> dict[int, str]
                 for i, col in cells:
                     if col in cols:
                         out[i] = cols[col]
+            if declared:
+                for i, col in cells:
+                    if col not in excluded_cols and _BARE_NUMBER.fullmatch(nodes[i].text):
+                        out.setdefault(i, 'AMOUNT')
             if _is_total_row(nodes, cells):
                 for i, _col in cells:
                     if _BARE_NUMBER.match(nodes[i].text):

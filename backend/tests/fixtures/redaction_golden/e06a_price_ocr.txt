@@ -1,0 +1,56 @@
+F1-P1 销售合同 / Sales Contract
+F1-P2 合同编号：SC-2026-0417
+F1-P3 签订日期：2026年4月17日
+F1-P4 卖方：北辰虚构新材料有限公司（以下简称“北辰公司”）
+F1-P5 注册地址：北京市朝阳区示例大街 18 号院 3 号楼
+F1-P6 统一社会信用代码：91110000MA01XYQABC
+F1-P7 电话：13900001234，010-87654321
+F1-P8 邮箱：sales@beichen-example.com
+F1-P9 联系人：陈示例经理
+F1-P10 买方：Orion Fictive Trading L.L.C.（hereinafter referred to as "Orion"）
+F1-P11 Address: Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates
+F1-P12 Tel: +971 4 555 0123
+F1-P13 Attn: Ms. Layla Example
+F1-P14 第1条 货物
+F1-P15 货物为针状石油焦，HS 编码 27131100，硫含量≤0.6%，灰分≤0.2%，粒度 6-25mm，数量 500 MT，允许溢短装 ±5%。
+F1-P16 第2条 价格与付款
+F1-P17 2.1 单价为 USD 1,250.00/MT FOB Qingdao Port，合同总价 USD 625,000.00。
+F1-P18 2.2 买方应在提单日后 30 天内以 T/T 方式付款，预付款为合同总价的 30%，即 USD 187,500.00。
+F1-P19 2.3 人民币参考价：人民币 4,500,000.00 元（大写：肆佰伍拾万元整）。
+F1-P20 2.4 Beneficiary Bank: Fictive Commercial Bank Ltd.
+F1-P21 2.5 收款账号：6222 0000 1111 2222 333，SWIFT: FCBKCNBJ300
+F1-P22 第3条 交货
+F1-P23 货物检验由 Meridian Fictive Inspection 负责，检验费用由卖方承担。
+F1-P24 装运港为青岛港，目的港为 Jebel Ali Port，最迟装运日期为 2026年6月30日，贸易术语为 FOB。
+F1-P25 第4条 违约责任
+F1-P26 逾期交货的，每逾期一周按延迟交货部分货款的 0.5% 向买方支付违约金，最高不超过 5%。
+F1-P27 第5条 适用法律与争议解决
+F1-P28 本合同适用中华人民共和国法律，争议提交上海国际仲裁中心仲裁。
+F21-P1 销售合同 / Sales Contract
+F21-P2 合同编号：SC-2026-0417
+F21-P3 签订日期：2026年4月17日
+F21-P4 卖方：北辰虚构新材料有限公司（以下简称“北辰公司”）
+F21-P5 注册地址：北京市朝阳区示例大街 18 号院 3 号楼
+F21-P6 统一社会信用代码：91110000MA01XYQABC
+F21-P7 电话：13900001234，010-87654321
+F21-P8 邮箱：sales@beichen-example.com
+F21-P9 联系人：陈示例经理
+F21-P10 买方：Orion Fictive Trading L.L.C.（hereinafter referred to as "Orion"）
+F21-P11 Address: Office 405, Fictive Tower, Business Bay, Dubai, United Arab Emirates
+F21-P12 Tel: +971 4 555 0123
+F21-P13 Attn: Ms. Layla Example
+F21-P14 第1条 货物
+F21-P15 货物为针状石油焦，HS 编码 27131100，硫含量≤0.6%，灰分≤0.2%，粒度 6-25mm，数量 500 MT，允许溢短装 ±5%。
+F21-P16 第2条 价格与付款
+F21-P17 2.1 单价为 USD l,250.00/MT FOB Qingdao Port，合同总价 USD 625,000.00。
+F21-P18 2.2 买方应在提单日后 30 天内以 T/T 方式付款，预付款为合同总价的 30%，即 USD 187,500.00。
+F21-P19 2.3 人民币参考价：人民币 4,500,000.00 元（大写：肆佰伍拾万元整）。
+F21-P20 2.4 Beneficiary Bank: Fictive Commercial Bank Ltd.
+F21-P21 2.5 收款账号：6222 0000 1111 2222 333，SWIFT: FCBKCNBJ300
+F21-P22 第3条 交货
+F21-P23 货物检验由 Meridian Fictive Inspection 负责，检验费用由卖方承担。
+F21-P24 装运港为青岛港，目的港为 Jebel Ali Port，最迟装运日期为 2026年6月30日，贸易术语为 FOB。
+F21-P25 第4条 违约责任
+F21-P26 逾期交货的，每逾期一周按延迟交货部分货款的 0.5% 向买方支付违约金，最高不超过 5%。
+F21-P27 第5条 适用法律与争议解决
+F21-P28 本合同适用中华人民共和国法律，争议提交上海国际仲裁中心仲裁。

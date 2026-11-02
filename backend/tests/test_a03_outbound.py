@@ -38,12 +38,19 @@ def _culprit(text, reason, values, terms) -> str:
 
 def _must_replace_present(sample_name: str, needle: str, text: str) -> bool:
     # V2Q-58：只排除该样本该标注与固定要求编号的碰撞，正文短串仍严格检查。
-    if sample_name == 'amounts_cn_forms.docx' and needle == '15':
+    if sample_name in ('amounts_cn_forms.docx', 'e06a_amount_original.docx',
+                       'e06a_amount_bidi.docx', 'e06a_amount_zero_width.docx') and needle == '15':
         text = text.replace('[C-15]', '')
+        # 派生样本复制成 DOCX 后第 15 段是位置编号，不能当作正文金额。
+        if sample_name.startswith('e06a_'):
+            import re
+            text = re.sub(r'\[F\d+-P15\]', '', text)
     return needle in text
 
 
 def test_v2q58_unredacted_body_still_fails():
+    assert not _must_replace_present('e06a_amount_original.docx', '15', '[F1-P15] [C-15] 条款')
+    assert _must_replace_present('e06a_amount_original.docx', '15', '[F1-P15] 正文金额15万欧元')
     assert not _must_replace_present('amounts_cn_forms.docx', '15', '[C-15] 质保期要求')
     with pytest.raises(AssertionError):
         assert not _must_replace_present('amounts_cn_forms.docx', '15', '[C-15] 正文金额15万欧元')
@@ -80,7 +87,7 @@ def test_a03_no_real_values_in_outbound_records(db_sessionmaker, alice, llm, mon
             # 长数字（账号等）换了分组写法也算出现
             problems += [f"{sample.name} {source}：含 must_replace {n!r}（去掉分隔符后）" for n in sample.must_replace
                          if sum(ch.isdigit() for ch in n) >= 8 and compact(n) in compact(text)]
-    assert problems == []
+    assert problems == [], '\n'.join(problems)
 
     # V31Q-18/20：golden 标注的历史映射复现，仍经过真实确认接口和模拟网关。
     import uuid

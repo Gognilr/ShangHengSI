@@ -1,0 +1,9 @@
+description: E-06a 核心变体回归：原 golden 语境的原写法与等价写法。
+stance: other
+loc_prefixed: true
+must_replace:
+- text: 粤WH安许证字[2024]00321
+  category: IDNO
+- text: 粤WH安许证字[二零二四]零零三二一
+  category: IDNO
+must_keep: []

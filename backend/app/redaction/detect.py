@@ -24,6 +24,25 @@ class Hit:
     validated: bool | None = None
 
 
+def recognition_view(text: str) -> str:
+    """等长规则 / 实体识别副本；不改原文与对照表。"""
+    text = ''.join(chr(ord(c) - 0xFEE0) if '\uff01' <= c <= '\uff5e' else ' ' if c == '\u3000' else c for c in text)
+    protected = None
+    def digits(match):
+        nonlocal protected
+        word = match.group()
+        count = sum(c in 'OoIl|SB' for c in word)
+        if sum(c.isdigit() for c in word) >= 6 and 0 < count <= 2:
+            if protected is None:
+                protected = [m.span() for pattern, validator in ((_CREDIT_CODE, validators.uscc), (_IBAN, validators.iban))
+                             for m in pattern.finditer(text) if validator(m.group())]
+            if any(start < match.end() and match.start() < end for start, end in protected):
+                return word  # 校验已通过的原代码不把合法字母误改为 OCR 数字。
+            return word.translate(str.maketrans('OoIl|SB', '0011158'))
+        return word
+    return re.sub(r'(?<![A-Za-z0-9])[0-9OoIl|SB][0-9OoIl|SB .\t,()（）-]*[0-9OoIl|SB](?![A-Za-z0-9])', digits, text)
+
+
 # ---------------------------------------------------------------- 第 4 步：格式化信息
 
 # 填空括号（Q-134 ①）：模板中用【】等括起填写内容；标签与值、币种与数字之间各允许一个。
@@ -38,7 +57,7 @@ _URL = re.compile(r"(?:https?://|www\.)[A-Za-z0-9\-._~:/?#\[\]@!$&'*+,;=%]+", re
 _URL_TRAILING = ".,;:!?'"
 # IBAN：连写，或每 4 位一组以空格分隔（最后一组须含数字，避免把后面的币种代码吞进来）
 _IBAN = re.compile(
-    r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?:[A-Z0-9]{11,30}|(?: [A-Z0-9]{4}){2,7}(?: (?=[A-Z0-9]{0,2}\d)[A-Z0-9]{1,3})?)"
+    r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?:[A-Z0-9]{11,30}|(?:[ .-][A-Z0-9]{4}){2,7}(?:[ .-](?=[A-Z0-9]{0,2}\d)[A-Z0-9]{1,3})?)"
     r"(?![A-Za-z0-9])", re.IGNORECASE
 )
 _LABELED_IBAN = re.compile(
@@ -55,6 +74,8 @@ _SWIFT = re.compile(
     r"([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)(?![A-Za-z0-9])", re.IGNORECASE
 )
 _CREDIT_CODE = re.compile(r"(?<![0-9A-Za-z])[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}(?![0-9A-Za-z])")
+_OCR_CREDIT = re.compile(r'(?<![A-Za-z0-9])[0-9A-HJ-NPQRTUWXYOoIl|SB]{2}[0-9OoIl|SB]{6}'
+                         r'[0-9A-HJ-NPQRTUWXYOoIl|]{10}(?![A-Za-z0-9])')
 _ID_CARD = re.compile(r"(?<![0-9A-Za-z])\d{17}[\dXx](?![0-9A-Za-z])")
 _REFNO = re.compile(
     r"(?:提单编号|提单号|信用证编号|信用证号|报关单编号|报关单号|项目编号|项目号|招标项目编号|招标编号|报价单号|报价编号|运单号|集装箱号|"
@@ -90,7 +111,8 @@ _IM = re.compile(
 _LABELED_ID = re.compile(
     r"(?:身份证号码|身份证号|证件号码|证件号|统一社会信用代码|护照号码|护照号|营业执照注册号|工商注册号|注册号|组织机构代码|纳税人识别号|税号|"
     r"(?<![A-Za-z])(?i:Passport\s+No\.?|Organization\s+Code|Tax\s+ID|VAT\s+No\.?|TIN|ИНН|КПП|ОГРН|UEN|ABN|EIN|CNPJ)(?![A-Za-z]))"
-    r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9\-]{5,30})(?![A-Za-z0-9\-])"
+    r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9]{1,4}(?:[ \t.\-](?:[A-Za-z0-9]*\d[A-Za-z0-9]*|[A-Z]{1,4})){1,8}"
+    r"|[A-Za-z0-9\-]{5,30})(?![A-Za-z0-9\-])"
 )
 _BANK_CODE = re.compile(
     r"(?:开户行行号|大额支付行号|联行号|行号|(?<![A-Za-z])(?i:CNAPS|Sort\s+Code|Routing\s+No\.?|ABA|IFSC)(?![A-Za-z]))"
@@ -104,15 +126,20 @@ _LICENSE = re.compile(
     r'食品经营许可证|药品经营许可证|许可证)(?:编号|号码|号)?|备案编号|证书编号|'
     r'(?<![A-Za-z])(?i:License|Permit|Certificate)\s+No\.?(?![A-Za-z])')
 _LICENSE_VALUE = re.compile(r'[ \t]*[:：]?[ \t]*([^\\\r\n，。；;！!？?：:.]{4,40})(?=$|[\\\r\n，。；;！!？?：:.])')
+_GENERIC_ID = re.compile(r'(?:证件号码|证件号|证照号|许可证编号|证书编号|资质证书编号)[ \t]*[:：]?[ \t]*'
+                         r'([^\\\r\n,，。；;！!？?：:]{5,60})')
+_LABELED_SWIFT = re.compile(r'(?i:SWIFT(?:[ \t]+Code)?|BIC|银行识别码)[ \t]*[:：]?[ \t]*'
+                           r'([A-Za-z0-9]{8,11})(?![A-Za-z0-9])')
 
 
 def _norm_key(value: str) -> str:
-    return re.sub(r"[\s\-]", "", value).upper()
+    return re.sub(r"[\s.\-]", "", value).upper()
 
 
 def find_formatted(text: str) -> list[Hit]:
     """第 4 步的全部命中（可能互相重叠，由调用方按顺序取舍）。顺序即优先级。"""
-    text = bilingual_label_text(text)
+    # 逐位中文数字只进入格式化号码规则，不进入名称 / 人名模型视图。
+    text = recognition_view(bilingual_label_text(text).translate(str.maketrans('〇零一二三四五六七八九', '00123456789')))
     hits: list[Hit] = []
 
     def add(start: int, end: int, category: str, key: str = "", validated: bool | None = None) -> None:
@@ -133,6 +160,11 @@ def find_formatted(text: str) -> list[Hit]:
         valid = validators.iban(m.group())
         if valid or m.group().isupper():
             add(m.start(), m.end(), "ACCOUNT", _norm_key(m.group()), valid)
+    for m in re.finditer(_IBAN.pattern.replace(r'\d{2}', '[0-9OoIl|SB]{2}'), text, re.IGNORECASE):
+        value = m.group()
+        corrected = value[:2] + value[2:4].translate(str.maketrans('OoIl|SB', '0011158')) + value[4:]
+        if sum(c.isdigit() for c in value) >= 6 and corrected != value and validators.iban(_norm_key(corrected)):
+            add(m.start(), m.end(), 'ACCOUNT', _norm_key(corrected), True)
     for m in _ACCOUNT.finditer(text):
         digits = re.sub(r"\D", "", m.group(1))
         if 8 <= len(digits) <= 30:
@@ -145,6 +177,14 @@ def find_formatted(text: str) -> list[Hit]:
         code = m.group(1).upper()
         add(m.start(1), m.end(1), "SWIFT", code[:8] if len(code) == 11 and code.endswith("XXX") else code,
             validators.bic(code))
+    for m in _LABELED_SWIFT.finditer(text):
+        code = m.group(1).upper()
+        add(m.start(1), m.end(1), 'SWIFT', code[:8] if len(code) == 11 and code.endswith('XXX') else code)
+    for m in _GENERIC_ID.finditer(text):
+        value = m.group(1).strip().rstrip('.')
+        if sum(c.isdigit() for c in value) >= 5:
+            start = m.start(1) + len(m.group(1)) - len(m.group(1).lstrip())
+            add(start, start + len(value), 'IDNO')
     for m in _BANK_CODE.finditer(text):
         add(m.start(1), m.end(1), "SWIFT", m.group(1).upper())
     for m in _LABELED_ID.finditer(text):
@@ -176,6 +216,12 @@ def find_formatted(text: str) -> list[Hit]:
     for pattern, validator in ((_CREDIT_CODE, validators.uscc), (_ID_CARD, validators.id_card)):
         for m in pattern.finditer(text):
             add(m.start(), m.end(), "IDNO", validated=validator(m.group()))
+    for m in _OCR_CREDIT.finditer(text):
+        raw = m.group()
+        letters = str.maketrans('OoIl|', '00111')
+        corrected = raw[:2].translate(letters) + raw[2:8].translate(str.maketrans('OoIl|SB', '0011158')) + raw[8:].translate(letters)
+        if corrected != raw and sum(c.isdigit() for c in raw) >= 6:
+            add(m.start(), m.end(), 'IDNO', validated=validators.uscc(corrected))
     for m in _POSTCODE.finditer(text):
         # 去掉末尾不含数字的词：“ZIP: 10001 New York”只取“10001”
         groups = m.group(1).split(" ")
@@ -201,7 +247,7 @@ def find_formatted(text: str) -> list[Hit]:
 
 # ---------------------------------------------------------------- 第 5 步：金额
 
-_NUM = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
+_NUM = r"\d{1,3}(?:[, \t]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
 # 币种 → 规范代码；同一数值、同一币种使用同一代号
 _CURRENCY = {
     "RMB": "CNY", "CNY": "CNY", "人民币": "CNY", "¥": "CNY", "￥": "CNY", "元": "CNY", "万元": "CNY", "亿元": "CNY",
@@ -262,7 +308,7 @@ def _prefix_of_next(text: str, end: int, unit: str | None, num: str) -> bool:
 
 def _decimal(num: str) -> Decimal | None:
     try:
-        return Decimal(num.replace(",", ""))
+        return Decimal(re.sub(r'[, \t]', '', num))
     except InvalidOperation:
         return None
 
@@ -331,6 +377,10 @@ _BARE_VALUE = re.compile(
     rf"(?P<num>{_NUM})(?![\d,.]*\d)(?P<scale>[万亿])?{_CLOSE}", re.IGNORECASE)
 _BARE_BAD_TAIL = re.compile(r"[A-Za-z0-9一-鿿%‰]")
 _BARE_SPACED_UNIT = re.compile(r"[ \t　]+(?:[A-Za-z%‰]|平方米|立方米|个月|小时|公斤|千克|天|日|月|年|周|台|套|件|个|只|项|条|次|批|吨|克|米|人|家|份|页)")
+_CN_NUMBER = r'[零〇一二三四五六七八九两十百千壹贰叁肆伍陆柒捌玖拾佰仟万亿]+'
+_OCR_NUM = r'[0-9OoIl|SB]{1,3}(?:[, \t][0-9OoIl|SB]{3})+(?:\.[0-9OoIl|SB]+)?|[0-9OoIl|SB]+(?:\.[0-9OoIl|SB]+)?'
+_BARE_CN_VALUE = re.compile(_BARE_VALUE.pattern.replace(f'(?P<num>{_NUM})', f'(?P<num>{_CN_NUMBER})'), re.I)
+_BARE_OCR_VALUE = re.compile(_BARE_VALUE.pattern.replace(f'(?P<num>{_NUM})', f'(?P<num>{_OCR_NUM})'), re.I)
 
 
 def amount_label_kind(text: str) -> str | None:
@@ -344,6 +394,19 @@ def amount_label_kind(text: str) -> str | None:
 
 
 def find_bare_amounts(text: str) -> list[Hit]:
+    return _find_bare_amounts(_unsigned_amount_view(text))
+
+
+def _unsigned_amount_view(text: str) -> str:
+    view = re.sub(r'[-−－](?=\d)', ' ', text).translate(str.maketrans('叄貳參陸萬億圓', '叁贰叁陆万亿元'))
+    chars = list(view)
+    # 只遮空数字的会计括号，保留“合同金额（元）”等既有单位标签。
+    for match in re.finditer(rf'[(（][ \t]*(?:{_NUM})[ \t]*[)）]', view):
+        chars[match.start()] = chars[match.end() - 1] = ' '
+    return ''.join(chars)
+
+
+def _find_bare_amounts(text: str) -> list[Hit]:
     """金额标签后的数字；只替换数字，保留单位与万/亿，币种规则优先（R4 3.2）。"""
     hits: list[Hit] = []
     existing = find_amounts(text)
@@ -352,7 +415,12 @@ def find_bare_amounts(text: str) -> list[Hit]:
             continue
         m = _BARE_VALUE.match(text, label.end())
         if m is None or _BARE_BAD_TAIL.match(text, m.end()) or _BARE_SPACED_UNIT.match(text, m.end()):
-            continue
+            m = next((candidate for pattern in (_BARE_CN_VALUE, _BARE_OCR_VALUE)
+                      if (candidate := pattern.match(text, label.end())) is not None
+                      and not _BARE_BAD_TAIL.match(text, candidate.end())
+                      and not _BARE_SPACED_UNIT.match(text, candidate.end())), None)
+            if m is None:
+                continue
         start, end = m.span("num")
         if any(h.start < end and start < h.end for h in existing):
             continue
@@ -361,6 +429,10 @@ def find_bare_amounts(text: str) -> list[Hit]:
                 or re.search(r"\.\d{2}$", num) or scale):
             continue
         value = _decimal(num)
+        if value is None and re.search(r'[零〇一二三四五六七八九两壹贰叁肆伍陆柒捌玖]', num):
+            value = chinese_upper_value(num.translate(_LOWER_TO_UPPER))
+        if value is None and sum(c in 'OoIl|SB' for c in num) <= 2 and any(c.isdigit() for c in num):
+            value = _decimal(num.translate(str.maketrans('OoIl|SB', '0011158')))
         if value is not None and scale:
             value *= Decimal(10000 if scale == "万" else 100000000)
         unit = m.group("unit")
@@ -447,6 +519,25 @@ def _english_amounts(text: str) -> list[Hit]:
 
 
 def find_amounts(text: str, column: str | None = None) -> list[Hit]:
+    # 符号与会计括号只在识别视图中遮空，命中仅覆盖绝对值，原文位置不变。
+    view = _unsigned_amount_view(text)
+    hits = _find_amounts(view, column)
+    # 短 OCR 数字仅在明确币种 / 金额列语境中核验，不放宽全局数字识别视图。
+    for match in re.finditer(r'(?:[0-9]|(?<![A-Za-z])[OoIl|SB])[0-9OoIl|SB,. \t]*', view):
+        token = match.group().rstrip()
+        wrong = [i for i, c in enumerate(token) if c in 'OoIl|SB']
+        if not wrong or len(wrong) > 2 or not any(c.isdigit() for c in token):
+            continue
+        corrected = token.translate(str.maketrans('OoIl|SB', '0011158'))
+        candidate = view[:match.start()] + corrected + view[match.start() + len(token):]
+        for hit in _find_amounts(candidate, column):
+            if ((hit.currency is not None or column in ('PRICE', 'AMOUNT'))
+                    and any(hit.start <= match.start() + i < hit.end for i in wrong)):
+                hits.append(hit)
+    return hits
+
+
+def _find_amounts(text: str, column: str | None = None) -> list[Hit]:
     """第 5 步：金额与单价。只替换数字部分，币种文字保留（9.2“币种保留”）。
 
     column 为表格列提示：PRICE（单价列）或 AMOUNT（金额列）；该列中带币种的金额按列归类，
@@ -493,6 +584,12 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
                 value *= 10000
             hits.append(Hit(bare.start(1), bare.end(1), column, _amount_key(column, None, value, bare.group(1)),
                             None, value))
+        spelled = re.fullmatch(rf'\s*({_CN_NUMBER})\s*', text)
+        if spelled and re.search(r'[零〇一二三四五六七八九两壹贰叁肆伍陆柒捌玖]', spelled.group(1)):
+            value = chinese_upper_value(spelled.group(1).translate(_LOWER_TO_UPPER))
+            if value is not None and value > 0:
+                hits.append(Hit(spelled.start(1), spelled.end(1), column,
+                                _amount_key(column, None, value, spelled.group(1)), None, value))
     # 前置币种优先；扩展后置语法提供量级，保留原有命中的类别和区间。
     extended = list(_EXT_SUFFIX.finditer(text))
     prefixes = {m.span(1) for m in _PREFIX.finditer(text)}
@@ -530,6 +627,24 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
         currency = _CURRENCY.get(m.group('unit'), 'CNY')
         cat = category(m.end())
         hits.append(Hit(m.start(), m.end(), cat, _amount_key(cat, currency, value, m.group()), currency, value))
+    cn = r'[零〇一二三四五六七八九两十百千壹贰叁肆伍陆柒捌玖拾佰仟万亿]+'
+    currencies = '|'.join(re.escape(c) for c in sorted(_CURRENCY, key=len, reverse=True))
+    for pattern, prefix in ((rf'(?P<currency>{currencies})[ \t]*(?P<num>{cn})(?=$|[ \t,，。；;:/（）()元圆])', True),
+                            (rf'(?P<num>{cn})[ \t]*(?P<currency>{currencies})(?![A-Za-z])', False)):
+        for match in re.finditer(pattern, text):
+            if not re.search(r'[零〇一二三四五六七八九两壹贰叁肆伍陆柒捌玖]', match.group('num')):
+                continue  # 千/万等量级不能从相邻阿拉伯金额中单独截作另一笔钱。
+            if text[match.start('num'):].startswith('一元化'):
+                continue
+            if match.start('num') and text[match.start('num') - 1] in '第每':
+                continue
+            value = chinese_upper_value(match.group('num').translate(_LOWER_TO_UPPER))
+            if value is not None and value > 0:
+                currency = _CURRENCY.get(match.group('currency').upper(), _CURRENCY.get(match.group('currency')))
+                cat = category(match.end())
+                start, end = match.span('num')
+                if not any(h.start <= start and end <= h.end and h.value == value for h in hits):
+                    hits.append(Hit(start, end, cat, _amount_key(cat, currency, value, match.group('num')), currency, value))
     unique = {(h.start, h.end): h for h in reversed(hits) if h.value != 0}
     return sorted(unique.values(), key=lambda h: (h.start, h.end))
 

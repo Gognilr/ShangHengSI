@@ -1,0 +1,20 @@
+F1-P1 Tel: +1 (713) 555-0142
+F1-P2 手机：138-1234-5678
+F1-P3 电话：0512-6688 1234
+F1-P4 传真：(021) 6688-1234
+F1-P5 Total Amount: USD 480,000.00 (Say US Dollars Four Hundred Eighty Thousand Only)
+F1-P6 The total price is USD 480,000 (four hundred eighty thousand US dollars).
+F1-P7 微信 zw_fictive88，QQ 12345678
+F1-P8 微信号lan_fictive01
+F1-P9 我司总经理孙明亮先生已同意，请采购总监周女士确认，由项目经理刘洋负责。
+F1-P10 本合同一式两份，双方各执一份，经理同意后生效。
+F21-P1 Tel: +1 (713) 555-0142
+F21-P2 手机：138-1234-5678
+F21-P3 电话：0512-6688 1234
+F21-P4 传真：(O21) 6688-1234
+F21-P5 Total Amount: USD 480,000.00 (Say US Dollars Four Hundred Eighty Thousand Only)
+F21-P6 The total price is USD 480,000 (four hundred eighty thousand US dollars).
+F21-P7 微信 zw_fictive88，QQ 12345678
+F21-P8 微信号lan_fictive01
+F21-P9 我司总经理孙明亮先生已同意，请采购总监周女士确认，由项目经理刘洋负责。
+F21-P10 本合同一式两份，双方各执一份，经理同意后生效。

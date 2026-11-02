@@ -37,6 +37,9 @@ def load(name: str):
         nodes = [NodeIn(*line.split(" ", 1)) for line in lines if line.strip()]
     else:
         nodes = [NodeIn(f"F1-P{i}", line) for i, line in enumerate(lines, start=1) if line.strip()]
+    if ann.get('parsed_text'):
+        from app.parsing.model import strip_invisible
+        nodes = [NodeIn(n.loc, strip_invisible(n.text), n.clause_no) for n in nodes]
     result = compute(nodes, ann["stance"], main_prefix="F1-", terms=[Term(**t) for t in ann.get('terms', [])],
                      date_shift_days=70 if ann.get('must_shift') else 0)
     parties = [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in result.parties]

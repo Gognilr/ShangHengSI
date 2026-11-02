@@ -1,0 +1,25 @@
+description: E-06a 等长识别、已知同值传播、标签值与大小写边界（全部虚构）
+stance: sales
+must_replace:
+  - {text: 澜溪虚构贸易有限公司, category: ORG}
+  - {text: 澜溪虛構貿易有限公司, category: ORG}
+  - {text: 周若林, category: PERSON}
+  - {text: 周 若 林, category: PERSON}
+  - {text: 周　若　林, category: PERSON}
+  - {text: '13900001234', category: PHONE}
+  - {text: '139 0000 1234', category: PHONE}
+  - {text: '139-0000-1234', category: PHONE}
+  - {text: '6222000011112222', category: ACCOUNT}
+  - {text: '6222 0000 1111 2222', category: ACCOUNT}
+  - {text: '6222.0000.1111.2222', category: ACCOUNT}
+  - {text: '6222O00011112222', category: ACCOUNT}
+  - {text: '苏(宁)危化经字[2023]00123', category: IDNO}
+  - {text: AB12CD34, category: SWIFT}
+  - {text: '1,160,000.00', category: AMOUNT}
+  - {text: '１，１６０，０００．００', category: AMOUNT}
+  - {text: '1 160 000.00', category: AMOUNT}
+  - {text: Long, category: PERSON}
+  - {text: '23456.70', category: AMOUNT}
+  - {text: '34567.80', category: AMOUNT}
+must_keep:
+  - long term supply

@@ -1,0 +1,18 @@
+F1-P1 化工采购往来邮件（全部虚构）
+F1-P2 本次请澄川石化复核技术附件，随后交澜岳化工确认包装。
+F1-P3 品名为氢氧化钠、乙二醇、聚丙烯、甲苯、二甲苯、柴油。
+F1-P4 Sodium Hydroxide; Ethylene Glycol; Polypropylene; Toluene; Xylene.
+F1-P5 CAS 1310-73-2，UN 1823，危险货物类别 8，NaOH，C2H6O2，GB/T 209-2018。
+F1-P6 危险化学品经营许可证：苏(宁)危化经字[2023]00123。
+F1-P7 安全生产许可证编号：粤WH安许证字[2024]00321。
+F1-P8 License No.: DEMO-LIC-2025-007.
+F1-P9 Permit No.: FICT-PMT-2025-008.
+F21-P1 化工采购往来邮件（全部虚构）
+F21-P2 本次请澄川石化复核技术附件，随后交澜岳化工确认包装。
+F21-P3 品名为氢氧化钠、乙二醇、聚丙烯、甲苯、二甲苯、柴油。
+F21-P4 Sodium Hydroxide; Ethylene Glycol; Polypropylene; Toluene; Xylene.
+F21-P5 CAS 1310-73-2，UN 1823，危险货物类别 8，NaOH，C2H6O2，GB/T 209-2018。
+F21-P6 危险化学品经营许可证：苏(宁)危化经字[2023]00123。
+F21-P7 安全生产许可证编号：粤​W​H​安​许​证​字​[​2​0​2​4​]​0​0​3​2​1。
+F21-P8 License No.: DEMO-LIC-2025-007.
+F21-P9 Permit No.: FICT-PMT-2025-008.

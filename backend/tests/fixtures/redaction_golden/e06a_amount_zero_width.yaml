@@ -1,0 +1,8 @@
+description: E-06a 核心变体回归：原 golden 语境的原写法与等价写法。
+stance: purchase
+loc_prefixed: true
+must_replace:
+- text: '15'
+  category: AMOUNT
+must_keep: []
+parsed_text: true

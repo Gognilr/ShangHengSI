@@ -1,0 +1,22 @@
+F1-P1 联系人 Contact：王立军
+F1-P2 授权代表 Authorized Representative：王立军
+F1-P3 开户行 Bank：中国工商银行苏州虚构支行
+F1-P4 合同编号 Contract No.：CCX-2026-0815
+F1-P5 From: Lorna Fictive <lorna@northwind-fictive.com>
+F1-P6 Thanks for your offer.
+F1-P7 Best regards,
+F1-P8 Lorna Fictive
+F1-P9 Account 072-123456-7
+F1-P10 ИНН 7701234567 КПП 770101001
+F1-P11 UEN 201912345K
+F21-P1 联系人 Contact：王立军
+F21-P2 授权代表 Authorized Representative：王立军
+F21-P3 开户行 Bank：中国工商银行苏州虚构支行
+F21-P4 合同编号 Contract No.：CCX-2026-0815
+F21-P5 From: Lorna Fictive <lorna@northwind-fictive.com>
+F21-P6 Thanks for your offer.
+F21-P7 Best regards,
+F21-P8 Lorna Fictive
+F21-P9 Account O72-123456-7
+F21-P10 ИНН 7701234567 КПП 770101001
+F21-P11 UEN 201912345K

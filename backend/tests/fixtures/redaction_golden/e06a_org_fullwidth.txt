@@ -1,0 +1,20 @@
+F1-P1 Buyer: Anadolu Fictive Kimya Sanayi ve Ticaret A.Ş.
+F1-P2 Consignee: ООО «Ромашка Фиктив»
+F1-P3 Notify Party: Wisla Fictive Trading Sp. z o.o.
+F1-P4 Agent: Vltava Fictive Logistics s.r.o.
+F1-P5 Supplier: Duna Fictive Chemicals Kft.
+F1-P6 Bank: Gulf Fictive Trading Co. W.L.L.
+F1-P7 Distributor: Lumiere Fictive Industries SARL
+F1-P8 Partner: Tevere Fictive Impianti S.p.A.
+F1-P9 Importer: PT Nusantara Fictive Kimia
+F1-P10 The goods shall be packed in jumbo bags.
+F21-P1 Buyer: Ａｎａｄｏｌｕ　Ｆｉｃｔｉｖｅ　Ｋｉｍｙａ　Ｓａｎａｙｉ　ｖｅ　Ｔｉｃａｒｅｔ　Ａ．Ş．
+F21-P2 Consignee: ООО «Ромашка Фиктив»
+F21-P3 Notify Party: Wisla Fictive Trading Sp. z o.o.
+F21-P4 Agent: Vltava Fictive Logistics s.r.o.
+F21-P5 Supplier: Duna Fictive Chemicals Kft.
+F21-P6 Bank: Gulf Fictive Trading Co. W.L.L.
+F21-P7 Distributor: Lumiere Fictive Industries SARL
+F21-P8 Partner: Tevere Fictive Impianti S.p.A.
+F21-P9 Importer: PT Nusantara Fictive Kimia
+F21-P10 The goods shall be packed in jumbo bags.
