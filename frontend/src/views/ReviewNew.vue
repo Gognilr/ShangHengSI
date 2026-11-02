@@ -578,7 +578,7 @@ function fileBadge(name: string): string {
 .block { margin-bottom: 16px; }
 .is-workbench { height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 16px; padding-bottom: 0; }
 .is-workbench :deep(.step-bar) { flex: none; margin-bottom: 0; }
-.confirm-step { flex: 1; min-height: 0; }
+.confirm-step { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .center { text-align: center; padding: 48px 0; }
 .center > .el-icon { color: var(--el-color-primary); }
 h2 { margin: 0 0 16px; font: var(--si-font-h4); }

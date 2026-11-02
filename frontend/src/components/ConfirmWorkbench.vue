@@ -565,7 +565,7 @@ useHotkeys({
 </template>
 
 <style scoped>
-.wb { display: flex; height: 100%; min-height: 0; padding: 12px 0 20px; }
+.wb { display: flex; flex: 1; min-height: 0; box-sizing: border-box; padding: 12px 0 20px; }
 .canvas { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .canvas-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
 .drop-veil { position: absolute; inset: 0; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: var(--si-radius-card); background: color-mix(in srgb, var(--el-color-primary-light-9) 85%, transparent); color: var(--el-color-primary); font: var(--si-font-h4); pointer-events: none; }

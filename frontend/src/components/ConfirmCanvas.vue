@@ -66,7 +66,6 @@ watch(() => sortedFiles.value.map(f => f.id).join(','), () => {
   if (!sortedFiles.value.some(f => f.id === activeId.value)) activeId.value = sortedFiles.value[0]?.id ?? ''
   void loadFile(activeId.value)
 }, { immediate: true })
-watch(activeId, id => { clearPick(); closePop(); void loadFile(id) }, { immediate: true })
 
 const replaceCount = (f: TaskFile) => props.items.filter(it => it.loc.startsWith(`F${f.seq}-`)).length
 
@@ -258,6 +257,7 @@ const pickError = ref('')
 const pickCategory = ref<UserCategory>('ORG')
 const pickSaving = ref(false)
 function clearPick() { pick.value = null; pickNotice.value = ''; pickError.value = '' }
+watch(activeId, id => { clearPick(); closePop(); void loadFile(id) }, { immediate: true })
 function onPaperMouseUp() {
   if (view.value !== 'orig' || pickSaving.value) return
   const result = readTextSelection(itemsByLoc.value)
