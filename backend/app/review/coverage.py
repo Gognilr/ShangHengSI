@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.models import DocNode, Task, TaskFile
 from app.parsing.model import LOW_OCR_CONF
 from app.review.prompt import ReviewContext
-from app.review.validate import ValidatedReview
+from app.review.validate import ValidatedReview, normalize_unable_reason
 
 _FILE_SEQ = re.compile(r"^F(\d+)-")
 _PART_LABELS = {
@@ -28,11 +28,13 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
     """只保存统计、位置编号和固定警告，不复制节点原文或审核文件名。"""
     requirement_counts = dict.fromkeys(_VERDICTS, 0)
     unable: list[dict] = []
+    unable_by_reason = dict.fromkeys(("redacted", "absent", "other"), 0)
     if review is not None:
         for result in review.requirement_results:
             if result.verdict in requirement_counts:
                 requirement_counts[result.verdict] += 1
             if result.verdict == "unable":
+                unable_by_reason[normalize_unable_reason(result.verdict, result.unable_reason)] += 1
                 unable.append({"req_id": result.req_id, "note": result.note})
 
     excluded: Counter[tuple[int, str]] = Counter()
@@ -78,6 +80,7 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
     return {
         "requirements": {"total": len(ctx.requirements), **requirement_counts},
         "unable": unable,
+        "unable_by_reason": unable_by_reason,
         "excluded": excluded_rows,
         "quote_tables": quote_tables,
         "ocr_low": ocr_low,

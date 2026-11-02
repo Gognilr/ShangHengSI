@@ -1,6 +1,6 @@
 # 内置审核要求（M2-06，SPEC 第 12 节）。文字与 docs/v2/SPEC-V2.md A 部分逐字一致（V2-Z 合并进 SPEC 第 12 节）。
 # text 既是界面显示的文字，也是发给模型的文字。修改内置要求须更新 version。
-version: "2026.11-1"
+version: "2026.11-2"
 requirements:
   # ---------- 12.1 通用（全部文件类型） ----------
   - {id: "G-01", doc_types: ["all"], stances: ["all"], sources: ["all"], dimension: "表述", text: "错别字、标点和用词错误；同一概念前后用词不一致；中英文版本内容不一致"}
@@ -35,6 +35,13 @@ requirements:
   - {id: "C-17", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "验收标准、程序与期限是否明确；“视为验收合格”的条件；验收与付款、质保起算的关系"}
   - {id: "C-18", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "是否允许分包或转包、是否须经我方书面同意；关键人员更换与履约资质要求"}
   - {id: "C-19", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "涉及现场施工、安装或驻场服务时，安全生产、现场管理与人身财产损害责任的划分；不涉及时判不适用"}
+  - {id: "C-20", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "是否约定独家供应、独家代理或排他合作；范围、地域、期限、最低采购或销售量及违反后果是否明确，对我方是否过苛；未约定时判不适用"}
+  - {id: "C-21", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "是否承诺给予对方不劣于第三方的价格或条件（最惠国、最优价格）；触发、核查与调整方式是否明确；未约定时判不适用"}
+  - {id: "C-22", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "商务", text: "合同到期是否自动续期；不续约的通知期限与方式、续期后的价格调整是否明确；未约定时判不适用"}
+  - {id: "C-23", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "是否排除间接损失、利润损失；责任上限的金额或比例是否明确，故意或重大过失、人身伤害、保密与知识产权违约是否作为上限的例外，双方是否对等"}
+  - {id: "C-24", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "合同权利义务能否未经我方同意转让；对方合并、分立或控制权变更时我方是否有解除或重新协商的权利"}
+  - {id: "C-25", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "对方是否有权审计、检查我方账簿、生产现场或数据；范围、频率、通知期、费用承担与保密要求是否明确；未约定时判不适用"}
+  - {id: "C-26", doc_types: ["contract"], stances: ["all"], sources: ["all"], dimension: "法律", text: "是否限制我方与对方的客户、供应商交易或聘用对方人员（竞业、不招揽）；范围、期限与对价是否合理；未约定时判不适用"}
   # ---------- 12.3 报价单（quotation） ----------
   - {id: "Q-01", doc_types: ["quotation"], stances: ["all"], sources: ["all"], dimension: "商务", text: "报价有效期是否明确"}
   - {id: "Q-02", doc_types: ["quotation"], stances: ["all"], sources: ["all"], dimension: "商务", text: "价格条款：是否含税及适用税率、币种是否明确；跨境报价还看贸易术语"}

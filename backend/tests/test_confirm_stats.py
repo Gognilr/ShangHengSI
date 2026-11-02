@@ -60,5 +60,7 @@ def test_admin_stats_ratios(make_user, login, db_sessionmaker):
     response = c.get(API_PREFIX + '/admin/redaction/stats', params={'days': 30})
     assert response.status_code == 200, response.text
     assert response.json() == dict(tasks=2, zero_ops_ratio=0.5, avg_ops=2, median_seconds=20,
-                                   avg_uncertain=4, kept_ratio=0.5, memory_ratio=0.25)
+                                   avg_uncertain=4, kept_ratio=0.5, memory_ratio=0.25,
+                                   unable_ratio=0, unable_by_reason=dict(redacted=0, absent=0, other=0),
+                                   redacted_top_requirements=[])
     assert c.get(API_PREFIX + '/admin/redaction/stats', params={'days': 0}).status_code == 422

@@ -13,22 +13,22 @@ def _ids(reqs):
 
 
 def test_counts_per_prefix_match_spec():
-    # 与 SPEC 第 12 节一致：G 12、C 14、Q 6、O 4、I 4、LT 4
+    # V31-E-05 补七条合同要求：G 12、C 26、Q 6、O 4、I 4、LT 4。
     from app.review.requirements import _builtin_data
 
     ids = [item["id"] for item in _builtin_data()["requirements"]]
     prefixes = Counter(i.rsplit("-", 1)[0] for i in ids)
-    assert prefixes == {"G": 12, "C": 19, "Q": 6, "O": 4, "I": 4, "LT": 4}
+    assert prefixes == {"G": 12, "C": 26, "Q": 6, "O": 4, "I": 4, "LT": 4}
     assert len(ids) == len(set(ids))
 
 
 def test_builtin_version_readable():
-    assert builtin_version() == "2026.11-1"
+    assert builtin_version() == "2026.11-2"
 
 
 def test_system_template_version_and_placeholder():
     version, body = load_system_template()
-    assert version == "2026.11-8"  # V2-E-05/06：法条依据及公司范本；仅同步提示词版本（V2Q-96）。
+    assert version == "2026.11-9"  # V31-E-05：增加无法判断原因。
     assert body.startswith("你是企业商务文件审核助手")
     assert body.count("{JSON_SCHEMA}") == 1
     # front matter 不应出现在正文中
@@ -151,6 +151,6 @@ def test_v2_requirement_texts_verbatim():
 def test_v2_contract_selection_count_and_order():
     assert _ids(select_builtin('contract', 'purchase', 'incoming')) == (
         [f'G-{i:02}' for i in range(1, 11)] + ['G-12'] +
-        [f'C-{i:02}' for i in range(1, 13)] + [f'C-{i:02}' for i in range(14, 20)])
+        [f'C-{i:02}' for i in range(1, 13)] + [f'C-{i:02}' for i in range(14, 27)])
     sales = _ids(select_builtin('contract', 'sales', 'outgoing'))
-    assert len(sales) == 29 and 'C-13' in sales and 'C-14' not in sales  # V2-A-09 补齐用例 4
+    assert len(sales) == 36 and 'C-13' in sales and 'C-14' not in sales  # E-05 增加七条合同要求

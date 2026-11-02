@@ -10,6 +10,7 @@ from app.checks.amounts import QuoteTableCheck, check_tables, check_uppercase
 from app.checks.consistency import check_consistency, compared_tables, contract_amount
 from app.checks.dates import check_dates
 from app.checks.content import check_content
+from app.checks.typos import check_typos
 from app.checks.installments import check_installments
 from app.checks.references import check_references
 from app.checks.model import CheckFile, CheckNode, CheckResult
@@ -35,10 +36,12 @@ def evaluate(nodes: list[CheckNode], files: list[CheckFile], today: date, laws: 
     results += check_uppercase(nodes)
     results += check_consistency(nodes, files, tables, aliases)
     results += check_content(nodes)
+    results += check_typos(nodes)
     results += check_dates(nodes, today)
     results += check_installments(nodes, files)
     results += check_references(nodes, laws=laws)
     order = {code: i for i, code in enumerate(("L-01", "L-02", "L-03", "L-INFO", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-13", "L-14", "L-15", "L-16", "L-17", "L-18", "L-19", "L-20", "L-21"))}
+    order['L-22'] = len(order)
     positions = {node.loc: i for i, node in enumerate(nodes)}
     results.sort(key=lambda r: (order[r.code], r.file_seq or 0, positions.get(r.locs[0], -1) if r.locs else -1))
     return Evaluation(results, tables)

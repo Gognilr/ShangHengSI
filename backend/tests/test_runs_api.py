@@ -174,7 +174,7 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
         run = db.get(ReviewRun, uuid.UUID(body["id"]))
         assert (run.stance, run.source, run.user_note, run.main_doc_type) == (
             "sales", "outgoing", "请重点检查付款条款", "contract")
-        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-8", "2026.11-1")
+        assert (run.model_name, run.prompt_version, run.builtin_req_version) == ("mock-model", "2026.11-9", "2026.11-2")
         assert run.company_req_version is None and run.created_by == user.id
         queued = db.scalars(select(Job).where(Job.type == "review")).one()
         assert (queued.status, queued.payload) == ("queued", {"task_id": str(task.id), "run_id": body["id"]})
@@ -376,16 +376,16 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert d["task_id"] == str(task.id) and d["status"] == "completed" and d["run_no"] == 1
     assert (d["stance"], d["source"], d["main_doc_type"], d["model_name"]) == ("sales", "outgoing", "contract", "mock-model")
     assert d["coverage"] is not None and d["queue_position"] is None and d["error_message"] is None
-    assert set(d["coverage"]) == {"summary", "notes"}
+    assert set(d["coverage"]) == {"summary", "notes", "unable_by_reason"}
     assert d["coverage"]["summary"].startswith("本次按 ")
     assert isinstance(d["coverage"]["notes"], list)
     assert "requirements" not in d["coverage"] and "星河虚构进出口有限公司" not in str(d["coverage"])
-    assert d["prompt_version"] == "2026.11-8" and d["builtin_req_version"] == "2026.11-1"
+    assert d["prompt_version"] == "2026.11-9" and d["builtin_req_version"] == "2026.11-2"
     assert d["queued_at"].endswith("Z") or "+00:00" in d["queued_at"]
     assert d["doc_summary"] == f"{REAL_OUR_NAME}向{REAL_BUYER_NAME}销售金属制品"
     assert d["sanctions"] == {"level": "attention", "reasons": [f"{REAL_BUYER_NAME}位于需关注地区"]}
     assert d["requirement_results"][1]["note"] == f"{REAL_BUYER_NAME}条款齐全"
-    assert set(d["requirement_results"][0]) == {"req_id", "req_source", "req_text", "dimension", "verdict", "note"}
+    assert set(d["requirement_results"][0]) == {"req_id", "req_source", "req_text", "dimension", "verdict", "note", "unable_reason"}
     # 严重程度高 → 低，同级按 seq
     assert [(f["title"], f["severity"], f["seq"]) for f in d["findings"]] == [
         ("高风险问题", "high", 2), ("缺失型问题", "high", 3), ("编造引用", "medium", 4), ("低风险问题", "low", 1)]
@@ -777,7 +777,7 @@ def test_requirements_any_type_returns_builtin_and_filtered_company(alice, db_se
     r = c.get(f"{API_PREFIX}/requirements", params={"stance": "sales", "source": "outgoing", "doc_type": ""})
     assert r.status_code == 200
     d = r.json()
-    assert d["builtin_version"] == "2026.11-1"
+    assert d["builtin_version"] == "2026.11-2"
     assert d["builtin"] and all(b["doc_types"] for b in d["builtin"])
     assert d["company_version"] == 1
     # 类型为空：不按类型筛选，停用的不返回，按 sort 排序

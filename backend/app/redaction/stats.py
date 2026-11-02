@@ -5,7 +5,7 @@ from statistics import median
 from sqlalchemy import func, select
 
 from app.db.base import utcnow
-from app.db.models import AuditLog, RedactionItem, RedactionSuspect, TaskFile
+from app.db.models import AuditLog, RedactionItem, RedactionSuspect, TaskFile, RequirementResult, ReviewRun
 
 
 def enter(task) -> None:
@@ -48,11 +48,31 @@ def finish(db, task) -> dict:
 
 
 def aggregate(db, days: int) -> dict:
+    from app.review.validate import normalize_unable_reason
+
+    # 按轮次创建时间计全部逐条结论；旧 unable 的空原因归 other，不复制要求文字。
+    counts = list(db.execute(select(RequirementResult.verdict, RequirementResult.unable_reason,
+                                   RequirementResult.req_id, func.count())
+                            .join(ReviewRun, ReviewRun.id == RequirementResult.run_id)
+                            .where(ReviewRun.queued_at >= utcnow() - timedelta(days=days))
+                            .group_by(RequirementResult.verdict, RequirementResult.unable_reason, RequirementResult.req_id)))
+    reasons = dict.fromkeys(('redacted', 'absent', 'other'), 0)
+    redacted = {}
+    total = sum(count for _, _, _, count in counts)
+    for verdict, reason, req_id, count in counts:
+        if verdict == 'unable':
+            reason = normalize_unable_reason(verdict, reason)
+            reasons[reason] += count
+            if reason == 'redacted':
+                redacted[req_id] = redacted.get(req_id, 0) + count
+    top = sorted(redacted.items(), key=lambda row: (-row[1], row[0]))[:5]
     rows = db.scalars(select(AuditLog.detail).where(AuditLog.action == 'run_create', AuditLog.created_at >= utcnow() - timedelta(days=days)))
     data = [row['confirm'] for row in rows if isinstance(row, dict) and isinstance(row.get('confirm'), dict)]
     n = len(data)
     uncertain = sum(r['uncertain'] for r in data)
-    return dict(tasks=n, zero_ops_ratio=sum(r['ops'] == 0 for r in data) / n if n else 0,
+    return dict(unable_ratio=sum(reasons.values()) / total if total else 0, unable_by_reason=reasons,
+                redacted_top_requirements=[dict(req_id=req_id, count=count) for req_id, count in top],
+                tasks=n, zero_ops_ratio=sum(r['ops'] == 0 for r in data) / n if n else 0,
                 avg_ops=sum(r['ops'] for r in data) / n if n else 0,
                 median_seconds=median(r['seconds'] for r in data) if n else 0,
                 avg_uncertain=uncertain / n if n else 0,

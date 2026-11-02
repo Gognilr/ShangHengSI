@@ -33,6 +33,7 @@ from app.review.validate import (
     ValidatedReview,
     load_node_views,
     merge_reviews,
+    normalize_unable_reason,
     review_once,
 )
 from app.security import crypto
@@ -96,7 +97,8 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
     run, task = found
     for rr in review.requirement_results:
         db.add(RequirementResult(run_id=run.id, req_id=rr.req_id, req_source=rr.req_source, req_text=rr.req_text,
-                                 dimension=rr.dimension, verdict=rr.verdict, note=rr.note))
+                                 dimension=rr.dimension, verdict=rr.verdict, note=rr.note,
+                                 unable_reason=normalize_unable_reason(rr.verdict, rr.unable_reason)))
     for seq, f in enumerate(review.findings, start=1):
         db.add(Finding(
             run_id=run.id, task_id=task.id, seq=seq, title=f.title, category=f.category, severity=f.severity,

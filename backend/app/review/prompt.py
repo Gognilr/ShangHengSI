@@ -26,7 +26,7 @@ DOC_TYPE_LABELS = {"contract": "合同", "quotation": "报价单", "order": "订
 JSON_SCHEMA_TEXT = (
     '{"doc_summary": "一句话概括文件内容（使用代号）", '
     '"requirement_results": [{"req_id": "审核要求编号，如 C-06", "verdict": "issue / ok / na / unable 之一", '
-    '"note": "简要说明"}], '
+    '"note": "简要说明", "unable_reason": "仅 unable 时填写 redacted / absent / other"}], '
     '"findings": [{"title": "问题标题", "category": "表述 / 逻辑 / 法律 / 合规与制裁 / 商务 之一", '
     '"severity": "高 / 中 / 低 之一", "req_ids": ["相关的审核要求编号"], "locs": ["位置编号，如 F1-P23"], '
     '"quote": "从 locs 第一个位置的原文中一字不差地摘录的连续片段，不超过 100 字，不跨段落，不加省略号；缺失型问题为 null", '

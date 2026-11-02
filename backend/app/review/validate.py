@@ -77,6 +77,7 @@ class RequirementResultView:
     verdict: str
     note: str | None
     returned: bool = True  # False：模型没有给出、按第 6 条补记的 unable
+    unable_reason: str | None = None
 
 
 @dataclass
@@ -144,6 +145,11 @@ def map_verdict(value: str) -> str | None:
     if v.lower() in VERDICTS:
         return v.lower()
     return _VERDICT_ALIASES.get(v)
+
+
+def normalize_unable_reason(verdict: str, reason: object) -> str | None:
+    """仅无法判断保留原因；旧数据、缺省和非法原因均归其他。"""
+    return (reason if reason in ("redacted", "absent", "other") else "other") if verdict == "unable" else None
 
 
 def map_sanctions(value: str) -> str | None:
@@ -280,7 +286,7 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
     sent = {r.id: r for r in ctx.requirements}
 
     # 第 6 条：每条发送的要求恰好一条结论；未发送的要求编号丢弃；同一要求多条时取 issue > unable > ok > na
-    verdicts: dict[str, tuple[str, str | None]] = {}
+    verdicts: dict[str, tuple[str, str | None, str | None]] = {}
     for rr in out.requirement_results:
         req_id = rr.req_id.strip()
         verdict = map_verdict(rr.verdict)
@@ -288,12 +294,12 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
             continue
         old = verdicts.get(req_id)
         if old is None or _VERDICT_RANK[verdict] > _VERDICT_RANK[old[0]]:
-            verdicts[req_id] = (verdict, rr.note)
+            verdicts[req_id] = (verdict, rr.note, normalize_unable_reason(verdict, rr.unable_reason))
     results = []
     for req in ctx.requirements:
         returned = req.id in verdicts
-        verdict, note = verdicts.get(req.id, ("unable", MISSING_NOTE))
-        results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, verdict, note, returned))
+        verdict, note, reason = verdicts.get(req.id, ("unable", MISSING_NOTE, "other"))
+        results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, verdict, note, returned, reason))
 
     findings = []
     for f in out.findings:
@@ -356,9 +362,10 @@ def merge_reviews(ctx: ReviewContext, outcomes: list[ChunkOutcome]) -> Validated
                 best = rr
         if best is None:
             results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, "unable", MISSING_NOTE,
-                                                 False))
+                                                 False, "other"))
         else:
-            results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, best.verdict, best.note))
+            results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, best.verdict, best.note,
+                                                 unable_reason=normalize_unable_reason(best.verdict, best.unable_reason)))
     levels = [r.sanctions_level for r in reviews if r.sanctions_level is not None]
     level = max(levels, key=lambda v: _SANCTIONS_RANK.get(v, -1)) if levels else None
     reasons = list(dict.fromkeys(x for r in reviews for x in r.sanctions_reasons))

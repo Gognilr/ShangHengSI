@@ -23,6 +23,7 @@ class RequirementResultOut(_Model):
     req_id: str
     verdict: str
     note: str | None = None
+    unable_reason: object = None  # 非字符串等非法值由 validate 归为 other，不使整轮失败。
 
 
 class FindingOut(_Model):

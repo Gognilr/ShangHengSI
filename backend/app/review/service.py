@@ -41,6 +41,7 @@ from app.redaction.engine import build_outbound, learn_confirmed_names, load_red
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import check, _LOCATION
 from app.review.coverage import describe
+from app.review.validate import normalize_unable_reason
 from app.review.prompt import ReviewContext, build_messages, note_requirement
 from app.review.requirements import Requirement, builtin_version, load_system_template, select_builtin
 from app.security import crypto
@@ -87,6 +88,7 @@ class RequirementResultOut(BaseModel):
     dimension: str | None
     verdict: str
     note: str | None
+    unable_reason: Literal["redacted", "absent", "other"] | None = None
 
 
 class MarkOut(BaseModel):
@@ -478,11 +480,14 @@ def _coverage(run: ReviewRun, view: _View) -> dict | None:
     ok = int(requirements.get("ok", 0))
     na = int(requirements.get("na", 0))
     unable = int(requirements.get("unable", 0))
+    reasons = raw.get("unable_by_reason", {"redacted": 0, "absent": 0, "other": unable})
     # 无法判断的原因是模型输出（使用代号），与审核要求列表一样还原为真实名称后显示
     raw = {**raw, "unable": [{**item, "note": view.text(item.get("note"))} for item in raw.get("unable", [])]}
     return {
         "summary": (f"本次按 {total} 条审核要求审核：有问题 {issue} 条，未发现问题 {ok} 条，"
-                    f"不适用 {na} 条，无法判断 {unable} 条"),
+                    f"不适用 {na} 条，无法判断 {unable} 条（信息已脱敏 {reasons['redacted']}、"
+                    f"文件未写 {reasons['absent']}、其他 {reasons['other']}）"),
+        "unable_by_reason": reasons,
         "notes": describe(raw, view.file_names),
     }
 
@@ -513,7 +518,8 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
         sanctions=Sanctions(level=run.sanctions_level,
                             reasons=[view.text(str(r)) or "" for r in (run.sanctions_reasons or [])]),
         requirement_results=[RequirementResultOut(req_id=r.req_id, req_source=r.req_source, req_text=view.text(r.req_text) or "",
-                                                  dimension=r.dimension, verdict=r.verdict, note=view.text(r.note))
+                                                  dimension=r.dimension, verdict=r.verdict, note=view.text(r.note),
+                                                  unable_reason=normalize_unable_reason(r.verdict, r.unable_reason))
                              for r in results],
         findings=[view.finding(f, locations) for f in findings],
     )
