@@ -4,6 +4,7 @@
 所有正则只在单个节点的原文上运行，不跨节点。
 """
 import re
+from functools import lru_cache
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -788,6 +789,34 @@ def _valid_signature_name(surface: str) -> bool:
     return bool(words) and words[-1].casefold() not in _EN_DEPARTMENT_WORDS and all(w.rstrip('.').casefold() not in _EN_STOP_WORDS | _EN_COMPANY_WORDS for w in words)
 
 
+def find_narrative_persons(text: str) -> list[Hit]:
+    """叙述结构只补不确定项；既有标签与高置信人名优先。"""
+    from app.redaction import suspects as S
+    from app.redaction.dictionaries import zh_words, zh_legal_finance
+    front = '由 请 经 与 交 向 给 联系 通知 委托 授权 安排 抄送'.split()
+    back = '负责 确认 签字 签署 联系 签收 回复 审核 审批 处理 表示 提出 同意 验收 沟通 协商 办理 核对'.split()
+    surname = '(?:' + '|'.join(sorted(map(re.escape, cn_surnames()), key=len, reverse=True)) + ')'
+    ending = r'(?=$|[^一-鿿]|' + '|'.join(back) + ')'
+    candidates = []
+    for m in re.finditer('(?:' + '|'.join(front) + ')(' + surname + r'[一-鿿]{1,2}?)' + ending, text):
+        if S._is_person_name(m[1]):
+            candidates.append((m.start(1), m.end(1), m[1]))
+    for m in re.finditer('(' + surname + r')(?:总|工|经理|主管|老师)' + ending, text):
+        candidates.append((m.start(), m.end(), m[1]))
+    labels = re.compile(r'(?:抄送|联系人|经办人|收件人|签字人)[ \t]*[:：][ \t]*([^\n；;。]+)')
+    for label in labels.finditer(text):
+        if not re.search('[、，/]', label[1]):
+            continue
+        for m in re.finditer(r'[^、，/]+', label[1]):
+            value = m.group().strip()
+            if S._is_person_name(value):
+                start = label.start(1) + m.start() + len(m.group()) - len(m.group().lstrip())
+                candidates.append((start, start + len(value), value))
+    plain = set(common_terms()) | zh_words() | zh_legal_finance()
+    return [Hit(a, b, 'PERSON', normalize(text[a:b])) for a, b, name in sorted(set(candidates))
+            if name not in plain and not S.plain_candidate(text, S.Suspect(a, b, 'person_name'))]
+
+
 def find_signature_persons(texts: list[str]) -> list[tuple[int, int, int]]:
     """落款后下一非空节点的独立姓名；正文、NOTE 与追问共用。"""
     signoff = re.compile(r'(?i)(?:Best regards|Kind regards|Regards|Sincerely|Yours faithfully|Yours sincerely|Thanks and regards|此致[ \t]*敬礼)[,，.!。 \t\r\n]*$')
@@ -843,6 +872,62 @@ def _extended_address_end(text: str, start: int, end: int, country: str | None) 
     return end
 
 
+@lru_cache(maxsize=1)
+def _admin_cities():
+    from app.redaction.dictionaries import RESOURCES_DIR
+    return frozenset(name for line in (RESOURCES_DIR / 'cn_admin_divisions.txt').read_text('utf-8').splitlines()
+                     for names, level, parent in [line.split('\t')] if int(level) <= 2
+                     for name in names.split('|') if len(name) >= 2)
+
+
+def is_admin_city(text: str) -> bool:
+    return text.strip() in _admin_cities()
+
+
+@lru_cache(maxsize=1)
+def _admin_trie():
+    from app.redaction.dictionaries import RESOURCES_DIR
+    root = {}
+    for line in (RESOURCES_DIR / 'cn_admin_divisions.txt').read_text('utf-8').splitlines():
+        names, level, parent = line.split('\t')
+        canonical = names.split('|')[0]
+        record = (int(level), parent, parent + '/' + canonical, canonical)
+        for name in names.split('|'):
+            if len(name) < 2:
+                continue
+            node = root
+            for char in name:
+                node = node.setdefault(char, {})
+            node.setdefault('', []).append(record)
+    return root
+
+
+def _admin_chains(text: str):
+    matches = {}
+    root = _admin_trie()
+    for start in range(len(text)):
+        node, end = root, start
+        while end < len(text) and text[end] in node:
+            node = node[text[end]]
+            end += 1
+            for record in node.get('', ()):
+                matches.setdefault(start, []).append((end, record))
+    chains = []
+    def extend(start, end, record, count):
+        if count >= 2:
+            chains.append((start, end, record[0], record[3]))
+        pos = end
+        while pos < len(text) and text[pos] in ' \t':
+            pos += 1
+        for nxt, child in matches.get(pos, ()):
+            if child[0] == record[0] + 1 and child[1] == record[2]:
+                extend(start, nxt, child, count + 1)
+    for start, values in matches.items():
+        for end, record in values:
+            extend(start, end, record, 1)
+    return sorted(chains, key=lambda c: (c[0], -c[1]))
+
+
 def find_addresses(text: str) -> list[Hit]:
     """第 7 步：地址标签（须有冒号）之后到行尾；遇到下一个信息标签、地址标签或带值的邮编标签时提前结束。key 为国家。"""
     text = bilingual_label_text(text)
@@ -860,13 +945,29 @@ def find_addresses(text: str) -> list[Hit]:
             end -= 1
         if end > start:
             hits.append(Hit(start, end, "ADDR", find_country(text[start:end]) or "国家未知"))
+    chains = _admin_chains(text)
     for m in _CN_UNLABELED_ADDRESS.finditer(text):
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             # 不把叙述前缀算进行政区名称，如“货物运至江苏省”“乙方在东川市”。
             head = re.match(r".*?(?:省|自治区|市|自治州|地区|区|县|旗)", m.group()).group()
             boundary = list(re.finditer(r"运至|送至|交至|寄往|寄至|发往|送往|位于|坐落于|在|至", head))
             start = m.start() + boundary[-1].end() if boundary else m.start()
+            connected = [c for c in chains if m.start() <= c[0] < c[1] <= m.end()]
+            if connected:
+                start = min(connected, key=lambda c: (-(c[1] - c[0]), c[0]))[0]
             hits.append(Hit(start, m.end(), "ADDR", "中国"))
+    for start, end, level, name in chains:
+        # 市辖区与城市名称保留；县、县级市、乡镇街道构成敏感地址。
+        if level < 3 or level == 3 and name.endswith('区'):
+            continue
+        tail = re.match(r'(?!的)[一-鿿0-9]{1,15}?(?:社区|工业园|开发区|园区|村)(?![一-鿿]*(?:合同|公司))', text[end:])
+        if tail:
+            end += tail.end()
+        road = re.match(r'(?!的)[一-鿿0-9]{1,15}?(?:大道|大街|路|街|巷|弄)[ \t]*\d{1,5}号(?:\d+(?:栋|楼|室))*', text[end:])
+        if road:
+            end += road.end()
+        if not any(h.start < end and start < h.end for h in hits):
+            hits.append(Hit(start, end, 'ADDR', '中国'))
     for m in _EN_UNLABELED_ADDRESS.finditer(text):
         surface = m.group()
         tail = surface.partition(',')[2]

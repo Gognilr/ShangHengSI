@@ -1,0 +1,20 @@
+description: 叙述人名三种结构与真实上下级区划链；不吞叙述尾部
+stance: sales
+must_replace:
+  - {text: 清原虚构有限公司, category: ORG}
+  - {text: 张总, category: PERSON}
+  - {text: 李工, category: PERSON}
+  - {text: 长兴县和平镇, category: ADDR}
+  - {text: 浙江省湖州市长兴县和平镇虚构村, category: ADDR}
+must_suspect:
+  - 陆虚岚
+  - 公冶工
+  - 何虚芳
+  - 欧阳虚明
+must_keep:
+  - 由于
+  - 请于周五确认
+  - 与其反复讨论
+  - 的工厂验收
+  - 杭州市
+  - 宁波市和平镇

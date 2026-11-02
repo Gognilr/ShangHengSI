@@ -48,7 +48,7 @@ for line in variants.splitlines():
 
 with zipfile.ZipFile(source / 'china_location.zip') as archive:
     locations = archive.read('china_location.txt').decode('utf-8')
-parents = {0: ['中国']}
+parents = {0: '中国'}
 divisions = set()
 for line in locations.splitlines():
     level = len(line) - len(line.lstrip('\t'))
@@ -59,10 +59,9 @@ for line in locations.splitlines():
     if level < 3 and len(fields) > 2:
         names += [s for s in re.split(r'[/、,，]', fields[2]) if s]
     names = list(dict.fromkeys(names))
-    for name in names:
-        for parent in parents.get(level, []):
-            divisions.add((name, str(level + 1), parent))
-    parents[level + 1] = names
+    parent = parents[level]
+    divisions.add(('|'.join(names), str(level + 1), parent))
+    parents[level + 1] = parent + '/' + names[0]
 
 outputs = []
 for name, data in [('confusables_ascii.json', confusables), ('t2s_chars.json', t2s)]:
@@ -83,7 +82,7 @@ readme = f'''# V31-P 外部数据
 
 形近字来源的版本目录返回 404，按设计指定 latest 入口读取后固定文件头版本与上述原件哈希，后续重生成使用同一原件，不自动更新。形近字仅收源为单个拉丁、希腊、西里尔、全角字符、目标为单个 ASCII 字母数字的条目（{len(confusables)} 条）；繁简仅唯一目标、单字对单字（{len(t2s)} 条）。两份 Unicode 数据均适用下附 Unicode License V3。
 
-行政区划仅省、市、县、乡镇街道，保留名称及别名、上级名称；每行三列制表符：名称、级别（1～4）、上级名称。同一真实父子关系按各自别名展开，去重；不含村级、电话区号或其他词典。共 {len(divisions)} 行。NOTICE：数据来自 dongrixinyu/JioNLP（作者 dongrixinyu），本项目仅作上述数据裁剪，依 Apache-2.0 使用，未取代码。上游没有独立 NOTICE 文件，本段保留来源与修改说明，许可证全文附后。
+行政区划仅省、市、县、乡镇街道，保留名称及别名、上级名称；每行三列制表符：名称（规范名在前，别名以 | 分隔）、级别（1～4）、上级规范名称的完整路径。完整路径区分不同地区的同名县镇，避免接出不存在的上下级链；不含村级、电话区号或其他词典。共 {len(divisions)} 行。NOTICE：数据来自 dongrixinyu/JioNLP（作者 dongrixinyu），本项目仅作上述数据裁剪，依 Apache-2.0 使用，未取代码。上游没有独立 NOTICE 文件，本段保留来源与修改说明，许可证全文附后。
 
 产物：
 

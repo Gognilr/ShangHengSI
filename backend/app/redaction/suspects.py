@@ -521,6 +521,12 @@ def _generic_reference(surface: str) -> bool:
 def plain_candidate(text: str, candidate: Suspect, *, header: bool = False) -> bool:
     """只过滤不确定项；称谓与角色词锚定的人名不使用常用词表。"""
     surface = text[candidate.start:candidate.end]
+    from app.redaction.detect import is_admin_city
+    if candidate.reason in (PERSON_NAME, 'person_like', 'ner') and is_admin_city(surface):
+        return True
+    if candidate.reason in (PERSON_NAME, 'person_like') and text[:candidate.start].endswith('请'):
+        if re.fullmatch(r'于(?:周[一二三四五六日天]|今日|明日|本周|下周)', surface):
+            return True  # “请于周五确认”中的时间介词不是于姓姓名。
     if header and candidate.reason in (CAPITALIZED, 'ner'):
         return True
     if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY, 'ner') and _generic_reference(surface):

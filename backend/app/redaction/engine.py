@@ -254,7 +254,7 @@ def _manual_amount(text: str) -> detect.Hit:
 def _is_place(text: str) -> bool:
     """整段只是国家、城市或港口名称（countries.yaml）。"""
     pattern, _mapping = _country_index()
-    return pattern.fullmatch(text.strip()) is not None
+    return pattern.fullmatch(text.strip()) is not None or detect.is_admin_city(text)
 
 
 def _free_segments(occupied: list[tuple[int, int]], start: int, end: int) -> list[tuple[int, int]]:
@@ -314,6 +314,70 @@ def _cached_entities(entry: object, key: str, length: int) -> list[ner.Entity] |
             return None
         result.append(ner.Entity(start, end, label, score))
     return result
+
+
+def _adjacent_information(nodes):
+    """只借紧邻标签识别值，返回本节点的精确位置；不改正文。"""
+    label = re.compile(r'(?i)(?:开户行账号|银行账号|银行帐号|账户号码|账号|帐号|户名|开户行|身份证号|证件号|联系人|经办人|收件人|电话|手机|传真|邮箱|电子邮箱|地址|注册地址|合同编号|订单编号|编号|SWIFT(?:\s+CODE)?|account(?:\s+(?:no\.?|number|name))?|bank|contact(?:\s+person)?|phone|tel|mobile|fax|e-?mail|address|IBAN|BIC|QQ|微信|wechat)\s*[:：]?\s*\Z')
+    def complete(value):
+        if label.fullmatch(value.strip()):
+            return True
+        prefix = value.strip().rstrip(':：').rstrip() + '：'
+        if detect._PERSON_LABEL.fullmatch(prefix) or detect._ADDRESS_LABEL.fullmatch(prefix):
+            return True
+        for pattern in (detect._ACCOUNT, detect._LABELED_IBAN, detect._SWIFT, detect._REFNO,
+                        detect._LABELED_ID, detect._BANK_CODE, detect._IM, detect._POSTCODE):
+            for probe in ('1234567890123456', 'ABC123456789', 'FICTCNBJ'):
+                if (m := pattern.match(prefix + probe)) and m.start(1) == len(prefix):
+                    return True
+        return detect._LICENSE.fullmatch(value.strip().rstrip(':：').rstrip()) is not None
+    def has_label(value):
+        return any(complete(m[1]) for m in re.finditer(r'([^\n:：]{1,35})[:：]', value))
+    cells = {}
+    for i, n in enumerate(nodes):
+        if cell := tables.table_cell(n.loc):
+            table, col, row = cell
+            cells.setdefault((table, row), {})[tables._col_number(col)] = i
+    headers = {}
+    borrowed = {}
+    for (table, row), columns in sorted(cells.items()):
+        texts = [nodes[i].text.strip() for i in columns.values() if nodes[i].text.strip()]
+        # 标签行必须全是列名，不能把“联系人 | 姓名”当作列头。
+        header_row = texts and any(complete(t) for t in texts) and all(
+            complete(t) or t in {'序号', '项目', '名称', '类别', '币种', '备注'} for t in texts)
+        if header_row:
+            for col, i in columns.items():
+                headers[table, col] = nodes[i].text if complete(nodes[i].text) else ''
+            continue
+        for col, i in columns.items():
+            if has_label(nodes[i].text) or complete(nodes[i].text):
+                continue
+            left = columns.get(col - 1)
+            borrowed[i] = (nodes[left].text if left is not None and complete(nodes[left].text)
+                           else headers.get((table, col), ''))
+    for i in range(1, len(nodes)):
+        previous, current = nodes[i - 1], nodes[i]
+        if (not tables.table_cell(previous.loc) and not tables.table_cell(current.loc)
+                and previous.loc.split('-', 1)[0] == current.loc.split('-', 1)[0]
+                and not has_label(current.text)):
+            m = re.search(r'([^\n:：]{1,35})[:：]\s*$', previous.text)
+            if m:
+                suffix = next((m[1][j:] for j in range(len(m[1])) if complete(m[1][j:])), None)
+                if suffix:
+                    borrowed[i] = suffix
+    out = {}
+    for i, prefix in borrowed.items():
+        if not prefix:
+            continue
+        prefix = prefix.strip().rstrip(':：') + '：'
+        # 户名可能是个人；公司仍由原有主体规则优先识别。
+        probe = ('联系人：' if prefix == '户名：' else prefix) + nodes[i].text
+        offset = len(probe) - len(nodes[i].text)
+        out[i] = [detect.Hit(h.start - offset, h.end - offset, h.category, h.key,
+                            h.currency, h.value, h.validated)
+                  for finder in (detect.find_formatted, detect.find_persons, detect.find_addresses)
+                  for h in finder(probe) if offset <= h.start < h.end <= len(probe)]
+    return out
 
 
 def compute(
@@ -503,6 +567,7 @@ def compute(
             a_pat = _user_pattern(a) if a_by in ("user", "derived") else _alias_pattern(a) if a_by == "alias" else P.name_pattern(a)
             pool.append((ent, a_pat, a_by, a_term))
 
+    adjacent = _adjacent_information(nodes)
     hints = tables.table_hints(nodes)
     qty_hints = tables.table_hints(nodes, with_qty=True) if mask_quantity else {}
     spans: list[_Span] = []
@@ -546,13 +611,14 @@ def compute(
             private_spans=[(c.start, c.end) for c in cands if c.category == 'ORG'],
             overrides=[(c.start, c.end) for c in cands if c.detected_by in ('user', 'term')]))
         _accept(cands, occ, spans, longest_first=True)
-        for hit in detect.find_formatted(text):  # 第 4 步：按 find_formatted 的顺序（即优先级）逐个取舍
+        cross_formatted = [h for h in adjacent.get(i, ()) if h.category not in ('PERSON', 'ADDR')]
+        for hit in [*cross_formatted, *detect.find_formatted(text)]:  # 第 4 步
             surface = text[hit.start:hit.end]
             unlabeled = (hit.category == 'ACCOUNT' and detect._IBAN.fullmatch(surface) is not None
                          or hit.category == 'IDNO' and (detect._ID_CARD.fullmatch(surface) is not None
                                                        or detect._CREDIT_CODE.fullmatch(surface) is not None))
             # 标签命中在裸号码前；同区间有标签时即使校验失败也继续替换。
-            labeled = any(m.span(1) == (hit.start, hit.end)
+            labeled = hit in cross_formatted or any(m.span(1) == (hit.start, hit.end)
                           for pattern in (detect._LABELED_ID, detect._ACCOUNT, detect._ACCOUNT_SIMPLE, detect._LABELED_IBAN)
                           for m in pattern.finditer(P.bilingual_label_text(text)))
             if hit.validated is False and unlabeled and not _overlaps(occ, hit.start, hit.end):
@@ -571,13 +637,24 @@ def compute(
                     occ, spans)
         occupied.append(occ)
 
+    # 已有强识别值回扫；电话和邮编不扩散，短数字仍保持原有边界。
+    repeats = {(nodes[s.node].text[s.start:s.end], s.category, s.key) for s in spans
+               if s.category in ('ACCOUNT', 'SWIFT', 'REFNO', 'IDNO', 'IM', 'EMAIL')}
+    for surface, category, key in sorted(repeats, key=lambda t: -len(t[0])):
+        compact = re.sub(r'[ \t-]', '', surface)
+        body = r'[ \t-]*'.join(map(re.escape, compact)) if compact.isdigit() and len(compact) >= 8 else re.escape(surface)
+        pattern = re.compile(r'(?<![A-Za-z0-9])' + body + r'(?![A-Za-z0-9])')
+        for i, n in enumerate(nodes):
+            _accept([_Span(i, m.start(), m.end(), category, key, 'regex') for m in pattern.finditer(n.text)], occupied[i], spans)
+
     # 第 6 步：先按标签或落款登记人名，再全文匹配；英文按规范形式一致替换并要求单词边界。
     persons: list[_Entity] = []
     signature_hits = {}
     for index, start, end in detect.find_signature_persons([n.text for n in nodes]):
         signature_hits.setdefault(index, []).append(detect.Hit(start, end, 'PERSON', P.normalize(nodes[index].text[start:end])))
     for i, n in enumerate(nodes):
-        for h in [*detect.find_persons(n.text), *signature_hits.get(i, ())]:
+        for h in [*detect.find_persons(n.text), *signature_hits.get(i, ()),
+                  *(h for h in adjacent.get(i, ()) if h.category == 'PERSON')]:
             if P.normalize(n.text[h.start:h.end]) in excluded:
                 continue
             if _overlaps(occupied[i], h.start, h.end):
@@ -608,7 +685,7 @@ def compute(
     # 第 7 步：地址。与已替换的文字重叠时只替换剩下的各段；只是国家、城市、港口名称的段保留（9.2 保留国家和港口）
     addresses: list[tuple[str, str]] = []  # (地址片段, 国家)
     for i, n in enumerate(nodes):
-        for h in detect.find_addresses(n.text):
+        for h in [*detect.find_addresses(n.text), *(h for h in adjacent.get(i, ()) if h.category == 'ADDR')]:
             for a, b in _free_segments(occupied[i], h.start, h.end):
                 a, b = _trim(n.text, a, b)
                 piece = n.text[a:b]
@@ -684,7 +761,7 @@ def compute(
             if _overlaps(occupied[i] + excluded_spans, hit.start, hit.end):
                 continue
             from app.redaction.dictionaries import is_known_place
-            if is_known_place(n.text[hit.start:hit.end]):
+            if is_known_place(n.text[hit.start:hit.end]) or detect.is_admin_city(n.text[hit.start:hit.end]):
                 continue
             if hit.score >= ner.HIGH:
                 surface = n.text[hit.start:hit.end]
@@ -733,6 +810,10 @@ def compute(
         found += [SuspectOut(n.loc, s.start, s.end, s.reason)
                             for s in S.find_suspects(n.text, occupied[i] + excluded_spans + checksum_spans, derived=short_derived,
                                                      lowercase_words=lowercase_words, header=n.loc in headers)]
+        for h in detect.find_narrative_persons(n.text):
+            if (not _overlaps(occupied[i] + excluded_spans, h.start, h.end)
+                    and not any(s.loc == n.loc and s.char_start < h.end and h.start < s.char_end for s in found)):
+                found.append(SuspectOut(n.loc, h.start, h.end, 'person_name'))
     for suspect in ner_suspects:
         text = nodes[locs[suspect.loc]].text[suspect.char_start:suspect.char_end]
         if S.common_english_fragment(text, lowercase_words):
