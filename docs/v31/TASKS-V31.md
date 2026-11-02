@@ -70,8 +70,9 @@
 | V31-P-06 | 集中测试（设计第六节） | GPT-6.1 Sol | medium | V31-P-05 | 待执行 |
 | V31-P-07 | 审核与规格合并（设计第七、八节） | Opus | high | V31-P-06 | 待执行 |
 | V31-E-00 | 细化回执与评测（含财务表格增强与本地计算问答 66～74、V31Q-26、V31Q-28） | Opus | high | V31-P 完成 | 待执行 |
-| V31-M-00 | 细化会议纪要：design/V31-M.md（转写容器、逐字稿节点与校对接口、同音纠正、纪要模板；拼音词典许可证） | Opus | high | V31-E 完成 | 待执行 |
+| V31-M-00 | 细化会议纪要：design/V31-M.md（转写容器、逐字稿节点与校对接口、同音纠正、纪要模板；拼音词典许可证；转写容器按 [design/local-models.md](design/local-models.md) 第四、五节写，V31Q-49） | Opus | high | V31-E 完成 | 待执行 |
 | V31-M-01 | 转写模型选型与整套容量实测（补充项 63，V31Q-27；下载前经用户确认，结果经用户确认后才接入） | Opus | high | V31-M-00 确认 | 待细化 |
+| V31-M-02 | 本地模型统一接入：deploy/models.yaml、build_release `--models`、线程与资源从 .env 读、compose profiles、`model-check` 与系统状态“本地模型”、运维说明一章（[design/local-models.md](design/local-models.md) 第九节，V31Q-49；在接入转写容器之前完成） | GPT-6.1 Sol | medium | V31-M-01 | 待细化 |
 | V31-U3-00 | 细化结果页与审核中 | Opus | high | V31-E 完成 | 待执行 |
 | V31-U4-00 | 细化其余页面与全站评审（含录音校对与会议纪要界面） | Opus | high | V31-U3、V31-M 完成 | 待执行 |
 | V31-Z-00 | 细化总审核与发布（含原 V3-Z 的全部内容，V3Q-29；测试环境按 V3Q-24） | Opus | high | V31-U4 完成 | 待执行 |

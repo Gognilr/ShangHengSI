@@ -112,6 +112,7 @@ V3 让审核结果能落到 Word 里，但不单独发布（V3Q-29），与 V3.1
 | AGENTS.md | 同 CLAUDE.md 的“当前阶段”、分工与问题编号（V31-00 确认时已改） |
 | docs/design/frontend.md | 第一节设计原则、3.1 字重、3.2 颜色、第五节风险标签、动效与外观设置的新规则，在 V31-U1 设计中写出、U1 审核时合并 |
 | docs/v3/PLAN.md 第八节 | “深色模式”不做的条目由 V3.1 光幕外壳取代（只改外壳，纸面仍为白底） |
+| CLAUDE.md、AGENTS.md、SPEC 第 3、20 节、运维说明 | V31-M 审核时：本地模型条款改为引用 deploy/models.yaml 与 [design/local-models.md](design/local-models.md)，发布包构建改为 `--models`，系统状态加“本地模型”（V31Q-49） |
 | CLAUDE.md、AGENTS.md、SPEC 第 3 节 | V31-M-01 选型经用户确认后：本地模型清单加转写一组（语音分段、转写、标点、说话人分段、声纹）；converter 可用 ffmpeg；新增转写容器（不接网络，只通过 /spool 交换）。批次顺序加 V31-M 已于 2026-11-02 改 |
 
 ## 七、文档结构
