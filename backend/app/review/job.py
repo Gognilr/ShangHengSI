@@ -229,7 +229,9 @@ def _review_chunk(db: Session, ctx: ReviewContext, run_id: uuid.UUID, chunk: Chu
 
 def _update_receipt(db: Session, run_id: uuid.UUID) -> None:
     """从网关记录重算，包含格式重试；worker 重入时不重复计数，失败或拦截同样保留证据。"""
-    run = db.get(ReviewRun, run_id)
+    # 模型调用期间用户可能已删除任务；重读并锁住仍存在的轮次，不更新会话中的旧对象。
+    run = db.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update()
+                    .execution_options(populate_existing=True))
     if run is None or run.receipt is None:
         return
     rows = list(db.scalars(select(LlmCall).where(LlmCall.run_id == run_id, LlmCall.purpose == 'review')
