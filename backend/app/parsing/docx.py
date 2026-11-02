@@ -517,6 +517,7 @@ class _Numbering:
 @dataclass
 class _Inline:
     parts: list[str] = field(default_factory=list)
+    length: int = 0
     rev: bool = False
     hidden_spans: list[list[int]] = field(default_factory=list)
     side: list[tuple] = field(default_factory=list)  # ("tb", 文字, 有修订) / ("cm", 批注 id)
@@ -978,12 +979,13 @@ class _DocxParser:
                 self._textbox(child, ctx)
             elif tag in _MATH_T:
                 ctx.parts.append(child.text or "")
+                ctx.length += len(child.text or "")
             else:  # 超链接、智能标记、简单域、自定义 XML、公式等容器
                 self._inline(child, ctx)
 
     def _run(self, r: etree._Element, ctx: _Inline) -> None:
         w = self.w
-        start = sum(map(len, ctx.parts))
+        start, part_start = ctx.length, len(ctx.parts)
         for c in r:
             tag = c.tag
             if tag == w.t:
@@ -1001,7 +1003,7 @@ class _DocxParser:
             elif tag in (w.drawing, w.pict, w.object, _MC_AC):
                 self._embedded(c, ctx)
             # 其余（delText、instrText 域代码、softHyphen、sym、脚注引用等）不计入
-        end = sum(map(len, ctx.parts))
+        end = ctx.length = start + sum(map(len, ctx.parts[part_start:]))
         if end > start and self._hidden_run(r):
             if ctx.hidden_spans and ctx.hidden_spans[-1][1] == start:
                 ctx.hidden_spans[-1][1] = end

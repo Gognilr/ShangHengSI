@@ -26,8 +26,8 @@ def check_content(nodes: list[CheckNode]) -> list[CheckResult]:
             continue
         sentences = []
         for start, end in matches:
-            left = max((m.end() for m in re.finditer(r'[。！？!?\n；;]', node.text[:start])), default=0)
-            following = re.search(r'[。！？!?\n；;]', node.text[end:])
+            left = max((m.end() for m in re.finditer(r'[。.！？!?\n；;]', node.text[:start])), default=0)
+            following = re.search(r'[。.！？!?\n；;]', node.text[end:])
             right = end + following.end() if following else len(node.text)
             sentence = node.text[left:right].strip()
             if any(a < end and start < b for a, b in (node.hidden_spans or [])):
