@@ -98,6 +98,7 @@ class MaskQuantity(BaseModel):
 
     mask_quantity: bool
     vector_assist: StrictBool | None = None
+    date_shift: StrictBool | None = None
 
 
 class TermRow(BaseModel):
@@ -212,7 +213,8 @@ def _audit(db: DbSession, admin: User, request: Request, term: RedactionTerm, **
 @router.get("/settings/redaction", response_model=MaskQuantity)
 def get_redaction(db: DbSession = Depends(get_db)) -> MaskQuantity:
     return MaskQuantity(mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
-                        vector_assist=bool(get_setting(db, 'redaction.vector_assist')))
+                        vector_assist=bool(get_setting(db, 'redaction.vector_assist')),
+                        date_shift=bool(get_setting(db, 'redaction.date_shift')))
 
 
 @router.put("/settings/redaction", response_model=MaskQuantity)
@@ -220,7 +222,8 @@ def put_redaction(
     body: MaskQuantity, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
 ) -> MaskQuantity:
     changed = []
-    for key, value in (('redaction.mask_quantity', body.mask_quantity), ('redaction.vector_assist', body.vector_assist)):
+    for key, value in (('redaction.mask_quantity', body.mask_quantity), ('redaction.vector_assist', body.vector_assist),
+                       ('redaction.date_shift', body.date_shift)):
         if value is not None and bool(get_setting(db, key)) != value:
             set_setting(db, key, value, admin.id)
             changed.append(key)

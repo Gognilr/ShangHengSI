@@ -18,10 +18,12 @@ import json
 import logging
 import math
 import re
+import secrets
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
+from datetime import date, timedelta
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -33,7 +35,7 @@ from app.db.models import (
     DocNode, Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionTerm, RedactionExclusion,
     NerNodeResult, Task, TaskFile,
 )
-from app.redaction import detect, ner, outbound, parties as P, quotes, ratio, suspects as S, tables
+from app.redaction import dates, detect, ner, outbound, parties as P, quotes, ratio, suspects as S, tables
 from app.redaction.dictionaries import _country_index
 from app.redaction.placeholders import (
     ADDR, BUYER, FIXED, OTHER, SELLER, Allocator, NeutralAllocator, chat_number, code_role,
@@ -330,6 +332,7 @@ def compute(
     style: str = "review",
     pinned: dict[str, str] | None = None,
     ratio: bool = True,
+    date_shift_days: int = 0,
 ) -> RedactionResult:
     """对正文节点执行 9.3 第 1–7 步、数量脱敏、疑似遗漏和金额比例。
 
@@ -623,6 +626,11 @@ def compute(
             _accept([_Span(i, m.start(), m.end(), ADDR, country, "address")
                      for pat, country in repeat for m in pat.finditer(n.text)], occupied[i], spans)
 
+    if date_shift_days and style == 'review':
+        for i, n in enumerate(nodes):
+            _accept([_Span(i, h.start, h.end, 'DATE', h.value.isoformat(), 'date')
+                     for h in dates.find_dates(n.text)], occupied[i], spans)
+
     # V2-B-01：项目名称在地址之后识别，共用对象代号。
     for i, n in enumerate(nodes):
         for h in detect.find_projects(n.text):
@@ -755,7 +763,7 @@ def compute(
                      if not _overlaps(excluded_spans, m.start(), m.end())], occupied[i], spans)
     spans.sort(key=lambda s: (s.node, s.start))
     result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
-                       with_ratio=ratio and style == "review")
+                       with_ratio=ratio and style == "review", date_shift_days=date_shift_days)
     result.suspects = found
     result.ner_cache = node_cache
     result.ner_cache_hits, result.ner_cache_misses = cache_hits, cache_misses
@@ -847,7 +855,7 @@ def _render(text: str, items: list[ItemOut], inserts: list[tuple[int, str]]) -> 
 
 def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], spans: list[_Span],
               main_prefix: str | None, *, style: str = "review", pinned: dict[str, str] | None = None,
-              with_ratio: bool = True) -> RedactionResult:
+              with_ratio: bool = True, date_shift_days: int = 0) -> RedactionResult:
     ours = [e for e in entities.values() if e.is_our]
     if len(ours) > 1:
         raise ValueError("我方只能有一个")
@@ -887,6 +895,9 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
                 codes[ent.key] = code
                 party_order.append(ent.key)
             remember(code, ent.name, surface)
+        elif category == 'DATE':
+            code = dates.render(surface, date.fromisoformat(s.key) + timedelta(days=date_shift_days))
+            mapping[f'{code}#D{sum(it.category == "DATE" for it in items) + 1}'] = surface
         elif category in FIXED:
             code = alloc.fixed(category, surface)
             remember(code, surface if style == "neutral" else None, surface)
@@ -995,7 +1006,8 @@ def _main_prefix(db: Session, task_id: uuid.UUID) -> str | None:
 
 def _write_map(db: Session, task_id: uuid.UUID, mapping: dict[str, str]) -> None:
     """重算脱敏时整体替换对照表，但保留追问写入的条目（chat_number 不为空的代号，Q-97），使旧对话仍可还原。"""
-    kept = {k: v for k, v in _load_full_map(db, task_id).items() if chat_number(k) is not None and k not in mapping}
+    kept = {k: v for k, v in _load_full_map(db, task_id).items()
+            if (chat_number(k) is not None or k.startswith('@')) and k not in mapping}
     write_full_map(db, task_id, {**mapping, **kept})
 
 
@@ -1069,6 +1081,11 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
         except (crypto.DecryptionError, UnicodeError, ValueError, TypeError):
             pass  # 不记录密文、键或节点文字；同一事务中以重算结果覆盖。
     from app.redaction import keep_terms
+    full_map = _load_full_map(db, task.id)
+    shift_days = 0
+    if style == 'review' and task.kind != 'assistant' and get_setting(db, 'redaction.date_shift'):
+        # 首次开启后的重算固定坐标，后续追问预览和发送使用同一个偏移。
+        shift_days = int(full_map.get('@date_shift_days') or 7 * secrets.choice((*range(-52, -7), *range(8, 53))))
     memory = keep_terms.effective(db, task.owner_id)
     user_keeps = [texts.get(r.loc, '')[r.char_start:r.char_end] for r in db.scalars(
                          select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
@@ -1080,10 +1097,12 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
                    mask_quantity=bool(get_setting(db, 'redaction.mask_quantity')),
                    exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
                        select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
-                   main_prefix=_main_prefix(db, task.id), style=style,
+                   main_prefix=_main_prefix(db, task.id), style=style, date_shift_days=shift_days,
                    pinned=_load_full_map(db, task.id) if pin else None, ratio=style == 'review')
     keeps = [*user_keeps, *memory.values()]
     result = compute(nodes, task.stance, **options, keeps=keeps, ner_cache=cached)
+    if shift_days:
+        result.mapping['@date_shift_days'] = str(shift_days)
     vector_words = []
     if get_setting(db, 'redaction.vector_assist'):
         try:
@@ -1094,6 +1113,8 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
             vector_words = []
         if vector_words:
             result = compute(nodes, task.stance, **options, keeps=[*keeps, *vector_words], ner_cache=result.ner_cache)
+            if shift_days:
+                result.mapping['@date_shift_days'] = str(shift_days)
             vector_keys = {P.normalize(word) for word in vector_words}
             for s in result.suspects:
                 if P.normalize(texts[s.loc][s.char_start:s.char_end]) in vector_keys and not any(
@@ -1527,6 +1548,7 @@ def build_outbound(db: Session, task: Task) -> OutboundBuild:
         [(n.loc, n.clause_no, redacted.get(n.loc, "")) for n in nodes],
         tables,
         table_notes=table_notes(*load_inputs(db, task.id)),
+        date_shifted=load_date_pairs(db, task.id) is not None,
     )
     return OutboundBuild(text, tables)
 
@@ -1546,14 +1568,23 @@ def redaction_summary(db: Session, task: Task) -> dict[str, int]:
 
 def load_redaction_map(db: Session, task_id: uuid.UUID) -> dict[str, str]:
     """{代号: 真实值}，只含能唯一还原的代号（用于还原）。"""
-    return {k: v for k, v in _load_full_map(db, task_id).items() if "#" not in k}
+    return {k: v for k, v in _load_full_map(db, task_id).items() if "#" not in k and not k.startswith('@')}
+
+
+def load_date_pairs(db: Session, task_id: uuid.UUID) -> dict[str, str] | None:
+    pairs: dict[str, set[str]] = {}
+    for key, value in _load_full_map(db, task_id).items():
+        if re.search(r'#D\d+$', key):
+            pairs.setdefault(key.rsplit('#D', 1)[0], set()).add(value)
+    # 写法碰撞时不能任取原文；让 check 将它标为未知日期。
+    return {key: next(iter(values)) for key, values in pairs.items() if len(values) == 1} if pairs else None
 
 
 def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
     """V31Q-18：复检当前出口；明确保留且不再被当前替换引用的历史值只供还原。"""
     from app.redaction import keep_terms
     from app.redaction.recheck import _AMOUNT_VALUE, _NUMERIC_VALUE, _decimal, _digits, _text_pattern, _value_positions
-    values = list(dict.fromkeys(_load_full_map(db, task_id).values()))
+    values = list(dict.fromkeys(v for k, v in _load_full_map(db, task_id).items() if not k.startswith('@')))
     task = db.get(Task, task_id)
     if task is None:
         return values
@@ -1585,4 +1616,4 @@ def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
 
 def load_placeholders(db: Session, task_id: uuid.UUID) -> list[str]:
     """对照表中的全部代号原文（去掉“#序号”），出口复检比对真实值前先遮盖它们（Q-134 ②）。"""
-    return list(dict.fromkeys(k.split("#", 1)[0] for k in _load_full_map(db, task_id)))
+    return list(dict.fromkeys(k.split("#", 1)[0] for k in _load_full_map(db, task_id) if not k.startswith('@')))

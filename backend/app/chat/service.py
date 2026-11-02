@@ -12,14 +12,15 @@ from dataclasses import dataclass
 
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
+from app.admin.settings_store import get_setting
 
 from app.db.base import utcnow
 from app.db.models import ChatMessage, LlmModel, Finding, RedactionMap, RedactionTerm, ReviewRun, Task, TaskFile, User
 from app.llm import gateway, usage
 from app.models_api import select_model
 from app.parsing.model import strip_invisible
-from app.redaction import detect, ner, parties, placeholders, recheck, suspects
-from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, write_full_map
+from app.redaction import dates, detect, ner, parties, placeholders, recheck, suspects
+from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, load_date_pairs, write_full_map
 from app.redaction.outbound import escape_document_tags
 from app.redaction.restore import check, restore, _LOCATION
 from app.review.service import _View, MarkOut
@@ -128,6 +129,9 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
             decisions: list[dict] | None = None, *, allocator=None) -> Redacted:
     """纯函数：按 full_map（本任务对照表）和 terms（(名称, 类别)）脱敏。已被前一步替换的文字不再参与后续识别。"""
     text = message.strip()
+    shift_days = int(full_map.get('@date_shift_days', '0'))
+    date_index = max((int(m[1]) for key in full_map if (m := re.search(r'#D(\d+)$', key))), default=0)
+    full_map = {k: v for k, v in full_map.items() if not k.startswith('@') and not re.search(r'#D\d+$', k)}
     accepted: list[_Span] = []
     new_entries: dict[str, str] = {}
     next_no = max((n for k in full_map if (n := placeholders.chat_number(k)) is not None), default=0) + 1
@@ -321,7 +325,9 @@ def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]]
     out.append(text[pos:])
     redacted = escape_document_tags("".join(out))
     used = {s.code for s in accepted}
-    return Redacted(redacted, redacted != text, {k: v for k, v in new_entries.items() if k.split('#', 1)[0] in used}, found)
+    recorded = {k: v for k, v in new_entries.items() if k.split('#', 1)[0] in used}
+    redacted, date_entries = dates.shift_text(redacted, shift_days, start_index=date_index)
+    return Redacted(redacted, redacted != text, {**recorded, **date_entries}, found)
 
 
 def _terms(db: Session) -> list[tuple[str, str]]:
@@ -331,8 +337,15 @@ def _terms(db: Session) -> list[tuple[str, str]]:
 
 def redact_question(db: Session, task: Task, message: str) -> tuple[str, bool]:
     """预览用：(代号形式的问题, 是否与原文不同)；不写对照表。"""
-    r = _redact(message, _load_full_map(db, task.id), _terms(db))
+    r = _redact(message, _question_map(db, task, _load_full_map(db, task.id)), _terms(db))
     return r.text, r.changed
+
+
+def _question_map(db, task, mapping):
+    # 开关只影响重算；已平移正文的追问继续沿用原坐标，关闭并重算后不再平移。
+    if not get_setting(db, 'redaction.date_shift') and not any(re.search(r'#D\d+$', k) for k in mapping):
+        return {k: v for k, v in mapping.items() if k != '@date_shift_days'}
+    return mapping
 
 
 def _redact_and_record(db: Session, task: Task, message: str, decisions: list[dict] | None = None) -> str:
@@ -342,7 +355,7 @@ def _redact_and_record(db: Session, task: Task, message: str, decisions: list[di
     """
     db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
     full_map = _load_full_map(db, task.id)
-    r = _redact(message, full_map, _terms(db), decisions=decisions or [])
+    r = _redact(message, _question_map(db, task, full_map), _terms(db), decisions=decisions or [])
     if r.new_entries:
         write_full_map(db, task.id, {**full_map, **r.new_entries})
     db.commit()
@@ -396,11 +409,11 @@ def build_messages(db: Session, task: Task, run: ReviewRun, question: str, chunk
 # ---------------------------------------------------------------- 对外函数
 
 
-def message_out(m: ChatMessage, mapping: dict[str, str], *, locations=None) -> dict:
-    checked = check(m.content_redacted, mapping, locations=locations) if m.role == 'assistant' else None
+def message_out(m: ChatMessage, mapping: dict[str, str], *, locations=None, dates=None) -> dict:
+    checked = check(m.content_redacted, mapping, locations=locations, dates=dates) if m.role == 'assistant' or dates is not None else None
     return {"id": m.id, "role": m.role,
             "content": checked.text if checked else restore(m.content_redacted, mapping),
-            "marks": [MarkOut.model_validate(mark).model_dump() for mark in checked.marks] if checked else [],
+            "marks": [MarkOut.model_validate(mark).model_dump() for mark in checked.marks] if checked and m.role == 'assistant' else [],
             "created_at": m.created_at}
 
 
@@ -416,7 +429,7 @@ def list_messages(db: Session, task: Task) -> dict:
     rows = list(db.scalars(select(ChatMessage).where(ChatMessage.task_id == task.id).order_by(ChatMessage.id)))
     locations = _locations(db, task, rows)
     return {"available": reason is None, "reason": reason,
-            "items": [message_out(m, mapping, locations=locations) for m in rows]}
+            "items": [message_out(m, mapping, locations=locations, dates=load_date_pairs(db, task.id)) for m in rows]}
 
 
 def preview(db: Session, task: Task, message: str) -> dict:
@@ -460,5 +473,5 @@ def send(db: Session, task: Task, user: User, message: str, decisions: list[dict
     db.commit()
     logger.info("task %s 追问已回复 llm_call=%s", task.id, result.llm_call_id)
     mapping = load_redaction_map(db, task.id)
-    return {"user": message_out(asked, mapping),
-            "assistant": message_out(answer, mapping, locations=_locations(db, task, [answer]))}
+    return {"user": message_out(asked, mapping, dates=load_date_pairs(db, task.id)),
+            "assistant": message_out(answer, mapping, locations=_locations(db, task, [answer]), dates=load_date_pairs(db, task.id))}

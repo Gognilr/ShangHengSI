@@ -1,0 +1,19 @@
+description: 日期采用固定偏移70天，关系与星期不变，编号及时间不参与平移
+stance: sales
+must_replace:
+  - {text: 清原虚构有限公司, category: ORG}
+  - {text: QT-20260305, category: REFNO}
+must_keep: ['10:00', '30天内']
+must_shift:
+  - {text: 2026年3月5日, shifted: 2026年5月14日}
+  - {text: 2026年4月5日, shifted: 2026年6月14日}
+  - {text: 'March 5, 2026', shifted: 'May 14, 2026'}
+  - {text: '20260305', shifted: '20260514'}
+returns:
+  - field: clause
+    model: '签约日期2026年5月14日，依据2025年1月1日的规定，建议2026年6月15日交付。'
+    expect: '签约日期2026年3月5日，依据2025年1月1日的规定，建议2026年6月15日交付。'
+    restored: 1
+    marks:
+      - {raw: 2025年1月1日, kind: date}
+      - {raw: 2026年6月15日, kind: date}

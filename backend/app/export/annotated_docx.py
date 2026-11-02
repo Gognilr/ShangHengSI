@@ -14,8 +14,8 @@ from app.checks.service import list_findings
 from app.db.models import DocNode, Finding, Task, TaskFile
 from app.export.docx_anchor import AnchorMismatch, MISMATCH, load_anchors, split_runs
 from app.export.report_docx import CATEGORY, CHECKS, SEVERITY, _clean
-from app.redaction.engine import load_redaction_map
-from app.redaction.restore import restore
+from app.redaction.engine import load_redaction_map, load_date_pairs
+from app.redaction.restore import restore, check
 from app.review.service import run_detail
 from app.security import crypto
 from app.security.errors import AppError
@@ -133,6 +133,7 @@ def build_annotated(db, run, file: TaskFile):
         raise AppError(409, "ANNOTATED_UNAVAILABLE", "本轮没有可批注的问题")
     original, anchors = load_source(db, file)
     mapping = load_redaction_map(db, task.id)
+    dates = load_date_pairs(db, task.id)
     quotes = dict(db.execute(select(Finding.id, Finding.quote_model).where(Finding.run_id == run.id)).all())
     unanchored = 0
 
@@ -153,7 +154,7 @@ def build_annotated(db, run, file: TaskFile):
         anchors.document.add_comment(runs, _clean(text), author="商衡SI", initials="SI")
 
     for f in findings:
-        add(f.locs[0] if f.locs else None, restore(quotes.get(f.id) or "", mapping),
+        add(f.locs[0] if f.locs else None, check(quotes.get(f.id) or "", mapping, dates=dates).text,
             finding_text(f, run), f.location)
     for row in local:
         text = (f"【本地校验 · {SEVERITY.get(row['severity'], row['severity'])}】"

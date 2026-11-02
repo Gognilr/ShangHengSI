@@ -16,7 +16,7 @@ from app.db.models import Finding
 from app.export import annotated_docx as shared
 from app.export.docx_anchor import split_runs
 from app.export.report_docx import _clean
-from app.redaction.engine import load_redaction_map
+from app.redaction.engine import load_redaction_map, load_date_pairs
 from app.redaction.restore import check, restore
 from app.review.service import run_detail
 from app.security.errors import AppError
@@ -76,6 +76,7 @@ def build_revised(db, run, file):
         raise AppError(409, "REVISED_UNAVAILABLE", "本轮没有已采纳且有建议条文的问题")
     original, anchors = shared.load_source(db, file)
     mapping = load_redaction_map(db, run.task_id)
+    dates = load_date_pairs(db, run.task_id)
     raw = {row.id: row for row in db.execute(select(Finding.id, Finding.quote_model, Finding.suggested_text)
                                             .where(Finding.run_id == run.id))}
     document = anchors.document
@@ -112,9 +113,9 @@ def build_revised(db, run, file):
     revised = 0
     for f in findings:
         loc = f.locs[0] if f.locs else None
-        quote = restore(raw[f.id].quote_model or "", mapping)
+        quote = check(raw[f.id].quote_model or "", mapping, dates=dates).text
         # run_detail 已还原展示文字；修订从库中原值还原一次，避免真实值被二次替换。
-        checked = check(raw[f.id].suggested_text, mapping, clause=True)
+        checked = check(raw[f.id].suggested_text, mapping, clause=True, dates=dates)
         text = checked.text
         if not text.strip() or checked.marks:
             fallbacks.append((f, loc, quote))

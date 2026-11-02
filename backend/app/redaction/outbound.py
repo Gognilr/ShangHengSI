@@ -66,7 +66,8 @@ def node_line(loc: str, clause_no: str | None, redacted_text: str) -> str:
 
 
 def build(parties: list[PartyInfo], nodes: list[tuple[str, str | None, str]],
-          quote_tables: Sequence[QuoteTable] = (), *, table_notes: dict[str, str] | None = None) -> str:
+          quote_tables: Sequence[QuoteTable] = (), *, table_notes: dict[str, str] | None = None,
+          date_shifted: bool = False) -> str:
     """nodes：[(loc, clause_no, redacted_text)]，已按文档顺序排列。
 
     quote_tables 中各表 row_locs 的节点不再单独成行，first_loc 处换成汇总行“[{表格位置}] 【报价明细表：…】”。
@@ -74,6 +75,8 @@ def build(parties: list[PartyInfo], nodes: list[tuple[str, str | None, str]],
     summary_at = {t.first_loc: t for t in quote_tables}
     skipped = {loc for t in quote_tables if not t.detailed for loc in t.row_locs}
     lines = [party_description(parties)]
+    if date_shifted:
+        lines.append('文中日期已整体平移，间隔、先后与星期不变；判断期限请用日期间的关系，不要以绝对日期判断法律、政策的生效时间。')
     for loc, clause_no, text in nodes:
         if loc in summary_at:
             t = summary_at[loc]

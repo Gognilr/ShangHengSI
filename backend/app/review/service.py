@@ -34,7 +34,7 @@ from app.db.models import (
 from app.models_api import select_model
 from app.llm.gateway import format_reasons
 from app.llm import gateway, usage
-from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map
+from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map, load_date_pairs
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import check, _LOCATION
 from app.review.coverage import describe
@@ -323,12 +323,13 @@ def list_runs(db: DbSession, task: Task) -> RunList:
 
 
 class _View:
-    """一个任务的还原上下文：对照表和文件名只读一次。"""
+    """一个任务共用的代号、日期还原与文件位置上下文。"""
 
     def __init__(self, db: DbSession, task_id: uuid.UUID):
         self.db = db
         self.task_id = task_id
         self.mapping = load_redaction_map(db, task_id)
+        self.dates = load_date_pairs(db, task_id)
         self.file_names = dict(db.execute(select(TaskFile.seq, TaskFile.original_name)
                                           .where(TaskFile.task_id == task_id)).all())
 
@@ -337,7 +338,7 @@ class _View:
 
     def checked(self, value: str | None, *, clause=False):
         locs = {m.group().strip('[]') for m in _LOCATION.finditer(value or '')}
-        return check(value, self.mapping, clause=clause, locations=self.readable(locs))
+        return check(value, self.mapping, clause=clause, locations=self.readable(locs), dates=self.dates)
 
     def locations(self, findings: list[Finding]) -> dict[str, str]:
         return self.readable({f.locs[0] for f in findings if f.locs})

@@ -55,6 +55,29 @@ def prepare(sm, rid):
         db.commit()
 
 
+def test_unknown_shifted_date_becomes_comment(case, login, db_sessionmaker):
+    from app.redaction.engine import _load_full_map, write_full_map
+    user, tid, rid, _, _ = case
+    with db_sessionmaker() as db:
+        mapping = _load_full_map(db, tid)
+        mapping.update({'@date_shift_days': '70', '2026年5月14日#D1': '2026年3月5日'})
+        write_full_map(db, tid, mapping)
+        row = db.scalar(select(Finding).where(Finding.run_id == rid, Finding.seq == 1))
+        row.handling_status = 'adopted'
+        row.suggested_text = '[客户_A]应于2026年6月15日交付。'
+        valid = db.scalar(select(Finding).where(Finding.run_id == rid, Finding.seq == 2))
+        valid.handling_status, valid.missing = 'adopted', True
+        valid.suggested_text = '双方应友好协商解决争议。'
+        db.commit()
+    client, _ = login(user.username)
+    response = client.get(f'/api/v1/runs/{rid}/revised?file_seq=1')
+    assert response.status_code == 200, response.text
+    assert response.headers['X-SI-Revised'] == '1' and response.headers['X-SI-Commented'] == '1'
+    document = Document(io.BytesIO(response.content))
+    assert '2026年6月15日' in '\n'.join(comment.text for comment in document.comments)
+    assert '2026年6月15日' not in ''.join(p.text for p in document.paragraphs)
+
+
 def test_revision_integrity_gate_and_ratio_removal(case, login, db_sessionmaker):
     user, _, rid, _, original = case
     prepare(db_sessionmaker, rid)

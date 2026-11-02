@@ -21,6 +21,7 @@ import yaml
 from app.redaction import outbound
 from app.redaction.engine import NodeIn, Term, compute, outbound_text
 from app.redaction.restore import check
+from app.redaction.dates import find_dates
 
 GOLDEN = Path(__file__).resolve().parent / "fixtures" / "redaction_golden"
 SAMPLES = sorted(p.stem for p in GOLDEN.glob("*.txt"))
@@ -36,7 +37,8 @@ def load(name: str):
         nodes = [NodeIn(*line.split(" ", 1)) for line in lines if line.strip()]
     else:
         nodes = [NodeIn(f"F1-P{i}", line) for i, line in enumerate(lines, start=1) if line.strip()]
-    result = compute(nodes, ann["stance"], main_prefix="F1-", terms=[Term(**t) for t in ann.get('terms', [])])
+    result = compute(nodes, ann["stance"], main_prefix="F1-", terms=[Term(**t) for t in ann.get('terms', [])],
+                     date_shift_days=70 if ann.get('must_shift') else 0)
     parties = [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in result.parties]
     # 逐节点的外发文本（不汇总报价明细表），用于逐条检查；另附实际外发的文本（报价明细表已汇总）
     text = outbound.build(parties, [(n.loc, n.clause_no, result.redacted[n.loc]) for n in nodes])
@@ -63,6 +65,15 @@ def test_golden_set_covers_all_doc_types():
 @pytest.mark.parametrize("name", SAMPLES)
 def test_must_replace_recall(name):
     nodes, ann, result, text, sent = load(name)
+    shifted = ann.get('must_shift', [])
+    before, after = [], []
+    for item in shifted:
+        assert item['text'] not in text and item['shifted'] in text
+        before.append(find_dates('日期' + item['text'])[0].value)
+        after.append(find_dates('日期' + item['shifted'])[0].value)
+    for i in range(len(before)):
+        for j in range(i):
+            assert before[i] - before[j] == after[i] - after[j]
     for item in ann["must_replace"]:
         found = list(occurrences(nodes, item["text"]))
         assert found, f"标注文字不在样本中：{item['text']}"  # 标注本身要正确
@@ -141,8 +152,9 @@ def test_mapping_restores_every_replacement(name):
 def test_model_returns(name):
     _, ann, result, _, _ = load(name)
     for sample in ann["returns"]:
+        pairs = {k.rsplit('#D', 1)[0]: v for k, v in result.mapping.items() if '#D' in k} if ann.get('must_shift') else None
         checked = check(sample["model"], result.mapping, clause=sample["field"] == "clause",
-                        locations=sample.get("locations"))
+                        locations=sample.get("locations"), dates=pairs)
         assert checked.text == sample["expect"]
         assert [(mark.raw, mark.kind) for mark in checked.marks] == [
             (mark["raw"], mark["kind"]) for mark in sample["marks"]]

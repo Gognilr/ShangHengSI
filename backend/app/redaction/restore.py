@@ -38,7 +38,7 @@ def restore(text: str, mapping: dict[str, str]) -> str:
         return text
     lookup = {}
     for code, value in mapping.items():
-        if "#" in code or not code:
+        if "#" in code or not code or code.startswith('@'):
             continue
         for variant in _variants(code):
             lookup[variant] = value
@@ -123,14 +123,14 @@ def _candidates() -> re.Pattern:
 
 
 def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
-          locations: Mapping[str, str] | None = None) -> Checked:
+          locations: Mapping[str, str] | None = None, dates: Mapping[str, str] | None = None) -> Checked:
     """一次扫描模型原文；只有对照表里无歧义的代号才还原，标记位置按输出计算。"""
     text = text or ""
     lookup: dict[tuple[str, str], set[str]] = {}
     exact: dict[str, str] = {}
     assistant: dict[str, str] = {}
     for code, value in mapping.items():
-        if not code or "#" in code:
+        if not code or "#" in code or code.startswith('@'):
             continue
         if NEUTRAL.fullmatch(code):
             assistant.update((variant, value) for variant in _variants(code))
@@ -143,14 +143,33 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
     chunks: list[str] = []
     marks: list[Mark] = []
     cursor = size = restored = fixed = removed = 0
-    for match in _candidates().finditer(text):
-        prefix = text[cursor:match.start()]
+    tokens = [(m.start(), m.end(), m.group(), 'code') for m in _candidates().finditer(text)]
+    tokens = [t for t in tokens if not (t[2][0] in _LEFT and t[2][-1] in _RIGHT
+              and _identity(t[2]) is None and not NEUTRAL.fullmatch(t[2]) and t[2] not in assistant
+              and not (assistant and re.fullmatch(r'\[?(?:OUR|[A-Z]+_\d+)\]?', t[2]))
+              and not _LOCATION.fullmatch(t[2]) and t[2] != '【主体说明】' and not t[2].startswith('【报价明细表：'))]
+    if dates is not None:
+        from app.redaction.dates import find_dates
+        tokens += [(h.start, h.end, text[h.start:h.end], 'date') for h in find_dates(text)]
+        if dates:
+            paired = re.compile(r'(?<![\dA-Za-z])(?:' + '|'.join(re.escape(k) for k in sorted(dates, key=len, reverse=True))
+                                + r')(?![\dA-Za-z])')
+            tokens += [(m.start(), m.end(), m.group(), 'date') for m in paired.finditer(text)]
+    for start, end, raw, token in sorted(set(tokens), key=lambda t: (t[0], -t[1], t[3])):
+        if start < cursor:
+            continue
+        prefix = text[cursor:start]
         chunks.append(prefix)
         size += len(prefix)
-        raw = match.group()
         replacement, kind = raw, None
         bracketed = raw[0] in _LEFT and raw[-1] in _RIGHT
-        if re.fullmatch(_RATIO, raw):
+        if token == 'date':
+            if raw in dates:
+                replacement = dates[raw]
+                restored += 1
+            else:
+                kind = 'date'
+        elif re.fullmatch(_RATIO, raw):
             if clause:
                 replacement = ""
                 removed += 1
@@ -197,6 +216,6 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
         if kind:
             marks.append(Mark(size, size + len(raw), kind, raw))
         size += len(replacement)
-        cursor = match.end()
+        cursor = end
     chunks.append(text[cursor:])
     return Checked("".join(chunks), tuple(marks), restored, fixed, removed)

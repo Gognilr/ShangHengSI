@@ -128,6 +128,27 @@ def test_a03_no_real_values_in_outbound_records(db_sessionmaker, alice, llm, mon
                 assert db.scalar(select(LlmCall.status).order_by(LlmCall.id.desc()).limit(1)) == 'sent'
 
 
+def test_unshifted_original_date_is_blocked(db_sessionmaker, make_user, ready_task, llm):
+    from app.admin.settings_store import set_setting
+    from app.db.models import LlmCall, LlmModel
+    from app.llm import gateway
+    from app.redaction.engine import load_real_values
+    owner = make_user('date_outbound')
+    with db_sessionmaker() as db:
+        set_setting(db, 'redaction.date_shift', True, owner.id)
+        db.commit()
+    task = ready_task(owner, user_note='签约日期2026年3月5日')
+    requests = llm('normal')
+    with db_sessionmaker() as db:
+        assert '2026年3月5日' in load_real_values(db, task.id)
+        with pytest.raises(gateway.GatewayError) as raised:
+            gateway.call_model(db, model_id=db.scalar(select(LlmModel.id)), purpose='assist',
+                               messages=[{'role': 'user', 'content': '混入原日期2026年3月5日'}],
+                               user_id=owner.id, task_id=task.id)
+        assert raised.value.code == 'BLOCKED' and requests == []
+        assert db.scalar(select(LlmCall.status).order_by(LlmCall.id.desc()).limit(1)) == 'blocked'
+
+
 def test_v31q20_another_current_replacement_still_blocks(db_sessionmaker, make_user, ready_task):
     """唯一追加反例：同一文字在本轮另一处仍被替换，不能从复检值中豁免。"""
     from app.db.models import DocNode, RedactionItem, RedactionSuspect
