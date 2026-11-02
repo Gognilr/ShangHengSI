@@ -13,7 +13,7 @@ from app.redaction.dictionaries import find_country
 from app.redaction.engine import load_redaction_map
 from app.security.errors import AppError
 
-VERSION = "assistant-2026.11-3"
+VERSION = "assistant-2026.11-4"
 _PATH = Path(__file__).resolve().parents[2] / "resources/prompts/assistant.md"
 _TYPES = {"contract": "合同", "quotation": "报价单", "order": "订单", "inquiry": "询价单", "letter": "函件"}
 _LABELS = {"NAME": "名称", "PROPN": "专有名词", "ORG": "企业", "PER": "人名", "PRJ": "项目", "REF": "编号", "TEL": "电话", "EMAIL": "邮箱",
@@ -90,12 +90,15 @@ def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, n
                     label += f"（{country}）"
         descriptions.append(f"{code}：{label}")
     system, options = system_prompt(), ""
+    from app.checks.service import local_summary
+    summary = local_summary(db, task)
+    local = ('【本地校验摘要】\n' + escape_document_tags(summary) + '\n') if summary else ''
     if user_message.template:
         from app.assistant.templates import instruction
         system += "\n\n" + instruction(user_message.template)
         labels = {"target": "目标语言", "focus": "侧重点", "tone": "语气", "language": "回复语言"}
         options = "【模板参数】\n" + "\n".join(f"{label}：{user_message.params[key]}" for key, label in labels.items() if key in user_message.params) + "\n"
     return [{"role": "system", "content": system},
-            {"role": "user", "content": options + "【代号说明】\n" + "\n".join(descriptions) + "\n" + block}] + [
+            {"role": "user", "content": options + "【代号说明】\n" + "\n".join(descriptions) + "\n" + local + block}] + [
                 {"role": m.role, "content": escape_document_tags(m.content_redacted)} for m in history
             ] + [{"role": "user", "content": escape_document_tags(user_message.content_redacted)}]

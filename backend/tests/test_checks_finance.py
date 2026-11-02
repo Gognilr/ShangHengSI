@@ -37,6 +37,22 @@ def test_financial_workbook_and_correct_guard():
     assert evaluate(inputs(correct), [CheckFile(1, True, 'xlsx', None, [])], date(2026, 11, 2)).results == []
 
 
+def test_financial_ratios():
+    from app.checks.ratios import calculate
+    parsed = parse_xlsx(fixture.make_workbook(False), 1)
+    text = calculate(inputs(parsed))
+    assert '毛利率：本期 40.0%' in text
+    assert '期间费用率：本期 15.0%' in text
+    assert '资产负债率：本期 60.0%（上期 62.5%）' in text
+    assert '净利率：本期 5.0%' in text
+    assert '经营现金流与净利润之比' not in text  # 样本未明确跨表金额单位，不猜比例尺。
+    assert '流动比率' not in text  # 未提供的科目不猜零。
+    from dataclasses import replace
+    nodes = inputs(parsed)
+    nodes = [replace(n, text=n.text + '（人民币元）') if n.loc in ('F1-S2-B1', 'F1-S3-B1') else n for n in nodes]
+    assert '经营现金流与净利润之比：本期 2.00倍' in calculate(nodes)
+
+
 def test_two_row_docx_quote_header():
     doc = Document(); t = doc.add_table(rows=4, cols=4)
     for row, values in zip(t.rows, [['项目', '数量', '单价', '金额'], ['', '吨', 'USD', 'USD'], ['甲材料', '2', '5', '11'], ['合计', '', '', '11']]):

@@ -197,6 +197,8 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
             current = file.original_name
             ocr_used += _parse_file(db, task, file, ocr_used)
         current = None
+        from app.checks.service import run_table_checks
+        run_table_checks(db, task)
         redact_task(db, task, style="neutral", pin=True)
         task.status, task.error_message = "awaiting_confirm", None
         db.commit()

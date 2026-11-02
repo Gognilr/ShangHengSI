@@ -89,13 +89,16 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             "model_id": message.model_id, "model_label": message.model_label,
             "tokens_in": message.tokens_in, "tokens_out": message.tokens_out,
             "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at,
-            "marks": []}
+            "marks": [], "calcs": []}
     if message.role == "assistant":
         if message.status not in ('queued', 'streaming'):
             # 与 incremental() 用同一份助手代号表，标记位置才与 content 一致（设计 V31-R 4.6）。
             neutral = {code: value for code, value in mapping.items() if NEUTRAL.fullmatch(code)}
             result['marks'] = [MarkOut.model_validate(mark).model_dump()
                                for mark in check(message.content_redacted, neutral).marks]
+            if '【算式】' in message.content_redacted:
+                from app.calc import add_to_message, code_context
+                add_to_message(result, message.content_redacted, neutral, **code_context(db, task, message.content_redacted, neutral))
         from app.redaction.restore import restore
         if message.template == "translate":
             result["translation"] = {loc: restore(text, mapping) for loc, text in message.extras.get("translation", {}).items()}
@@ -414,6 +417,8 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     db.delete(file)
     db.flush()
     engine.apply_party_changes(db, task, [])
+    from app.checks.service import run_table_checks
+    run_table_checks(db, task)
     remaining = _files(db, task)
     if not any(f.confirmed_at is None for f in remaining):
         task.status, task.error_message = "active", None

@@ -35,6 +35,7 @@ class ChatMessageOut(BaseModel):
     content: str
     created_at: datetime
     marks: list[MarkOut] = []
+    calcs: list[dict] = Field(default_factory=list)
 
 
 class ChatList(BaseModel):

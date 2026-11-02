@@ -54,6 +54,7 @@ class ReviewContext:
     company_profile: str
     outbound_text: str
     local_summary: str = ""  # M2 中本地校验摘要为空
+    ratios: str = ""
     prompt_version: str = field(default="")
     boundary_locs: set[str] = field(default_factory=set)  # 分段的首选切分点（M5）
     quote_tables: list[QuoteTable] = field(default_factory=list)  # 外发文本中被汇总的报价明细表（M5）
@@ -87,7 +88,8 @@ def chat_system_prompt() -> tuple[str, str]:
              if not line.startswith(("8.", "9.", "JSON 结构"))]
     while lines and not lines[-1].strip():
         lines.pop()
-    return version, "\n".join(lines + [CHAT_ANSWER_RULE])
+    from app.calc import INSTRUCTION
+    return version, "\n".join(lines + [INSTRUCTION, CHAT_ANSWER_RULE])
 
 
 def _requirement_line(req: Requirement) -> str:
@@ -132,6 +134,8 @@ def build_user_message(ctx: ReviewContext, chunk: Chunk | None = None) -> str:
         parts.append(parties)
     if ctx.local_summary and ctx.local_summary.strip():
         parts.append("【本地校验摘要】" + escape_document_tags(ctx.local_summary.strip()))
+    if ctx.ratios:
+        parts.append(ctx.ratios)
     parts.append(f"【待审核文件】\n<document>\n{body}\n</document>")
     if ctx.law_refs:
         from app.laws.retrieve import section

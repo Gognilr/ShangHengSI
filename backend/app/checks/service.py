@@ -78,6 +78,28 @@ def run_checks(db, task, today: date) -> None:
     db.flush()
 
 
+def run_table_checks(db, task) -> None:
+    """助手只核验表格，不推定会话文件有合同关系。"""
+    from app.checks.finance import check_finance
+    from app.checks.formula import check_formulas
+    nodes, files = load_inputs(db, task.id)
+    eligible = {f.seq for f in files if f.ext in ('xlsx', 'xls', 'docx', 'doc', 'pdf')}
+    nodes = [n for n in nodes if n.file_seq in eligible and table_cell(n.loc)]
+    table_files = {n.file_seq for n in nodes}
+    files = [f for f in files if f.seq in eligible and (f.ext in ('xls', 'xlsx') or f.seq in table_files)]
+    _, results = check_tables(nodes, files)
+    results += check_uppercase(nodes) + check_finance(nodes) + check_formulas(nodes)
+    db.execute(delete(LocalFinding).where(LocalFinding.task_id == task.id))
+    loc_files = dict(db.execute(select(DocNode.loc, DocNode.file_id).where(DocNode.task_id == task.id)).all())
+    file_ids = dict(db.execute(select(TaskFile.seq, TaskFile.id).where(TaskFile.task_id == task.id)).all())
+    for result in results:
+        file_id = loc_files.get(result.locs[0]) if result.locs else file_ids.get(result.file_seq)
+        db.add(LocalFinding(task_id=task.id, file_id=file_id,
+                            check_code=result.code, severity=result.severity, locs=result.locs,
+                            detail_enc=crypto.encrypt_text(result.detail), ai_summary=result.ai_summary))
+    db.flush()
+
+
 def table_notes(nodes, files) -> dict[str, str]:
     tables, _ = check_tables(nodes, files)
     cross = check_consistency(nodes, files, tables)

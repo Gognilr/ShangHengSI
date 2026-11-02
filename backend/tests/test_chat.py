@@ -38,6 +38,37 @@ def test_reply_integrity_marks(alice, db_sessionmaker, ready_task, llm):
     assert client.get(url(task)).json()['items'][-1]['marks'] == answer['marks']
 
 
+def test_local_summary_calc_and_redacted_history(alice, db_sessionmaker, ready_task, llm):
+    from app.db.models import LocalFinding
+    user, client, headers = alice
+    task = reviewed(db_sessionmaker, user, client, headers, ready_task, llm)
+    code = code_of(db_sessionmaker, task.id, '400,000.00')
+    with db_sessionmaker() as db:
+        db.add(LocalFinding(task_id=task.id, check_code='L-13', severity='high', locs=['F1-P1'],
+                            detail_enc=crypto.encrypt_text('真实金额只留本地'), ai_summary='F1-P1 报表勾稽不一致'))
+        db.commit()
+    requests = []
+    reply = f'【算式】调整额 = {code} / 3\n【算式】未知额 = [金额_999] + 1'
+    llm(handler=chat_reply(reply, requests))
+    response = client.post(url(task), headers=headers, json={'message': '请计算调整额'})
+    assert response.status_code == 200, response.text
+    answer = response.json()['assistant']
+    assert answer['calcs'][0]['result'] == '133333.33 USD'
+    assert answer['calcs'][1]['status'] == 'unknown_code'
+    mark = next(m for m in answer['marks'] if m['kind'] == 'calc')
+    assert answer['content'][mark['start']:mark['end']].startswith('【算式】未知额')
+    assert client.get(url(task)).json()['items'][-1]['calcs'] == answer['calcs']
+    assert 'F1-P1' in answer['calcs'][0]['expression']
+    llm(handler=chat_reply('请核实结果', requests))
+    assert client.post(url(task), headers=headers, json={'message': '请继续说明'}).status_code == 200
+    first = requests[0]['messages'][1]['content']
+    assert first.count('【本地校验摘要】') == 1
+    assert first.index('【本地校验摘要】') < first.index('【问题清单摘要】')
+    assert '真实金额只留本地' not in first and '400,000.00' not in first
+    assert any(m['role'] == 'assistant' and m['content'] == reply for m in requests[1]['messages'])
+    assert '133333.33' not in json.dumps(requests, ensure_ascii=False)
+
+
 @pytest.fixture
 def alice(make_user, login):
     user = make_user("alice")

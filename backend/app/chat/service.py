@@ -399,8 +399,15 @@ def _history(db: Session, task: Task) -> list[ChatMessage]:
 def build_messages(db: Session, task: Task, run: ReviewRun, question: str, chunk_chars: int = 60000) -> list[dict]:
     """system（模板第 1–7 条 + 自然语言回答）→ 外发文本与问题清单摘要 → 最近 10 条对话 → 新问题（均为代号形式）。"""
     _version, system = chat_system_prompt()
+    from app.checks.service import local_summary
+    from app.checks.ratios import section
+    summary = local_summary(db, task)
+    local = ('\n【本地校验摘要】\n' + escape_document_tags(summary)) if summary else ''
+    ratios = section(db, task)
+    if ratios:
+        local += '\n' + ratios
     messages = [{"role": "system", "content": system},
-                {"role": "user", "content": _document(db, task, chunk_chars) + "\n" + _findings_summary(db, run)}]
+                {"role": "user", "content": _document(db, task, chunk_chars) + local + "\n" + _findings_summary(db, run)}]
     messages += [{"role": m.role, "content": m.content_redacted} for m in _history(db, task)]
     messages.append({"role": "user", "content": question})
     return messages
@@ -409,12 +416,17 @@ def build_messages(db: Session, task: Task, run: ReviewRun, question: str, chunk
 # ---------------------------------------------------------------- 对外函数
 
 
-def message_out(m: ChatMessage, mapping: dict[str, str], *, locations=None, dates=None) -> dict:
+def message_out(m: ChatMessage, mapping: dict[str, str], *, locations=None, dates=None, calc_context=None) -> dict:
     checked = check(m.content_redacted, mapping, locations=locations, dates=dates) if m.role == 'assistant' or dates is not None else None
-    return {"id": m.id, "role": m.role,
+    result = {"id": m.id, "role": m.role,
             "content": checked.text if checked else restore(m.content_redacted, mapping),
             "marks": [MarkOut.model_validate(mark).model_dump() for mark in checked.marks] if checked and m.role == 'assistant' else [],
             "created_at": m.created_at}
+    from app.calc import add_to_message
+    result['calcs'] = []
+    if m.role == 'assistant':
+        add_to_message(result, m.content_redacted, mapping, **(calc_context or {}), locations=locations, dates=dates)
+    return result
 
 
 def _locations(db, task, messages):
@@ -428,8 +440,11 @@ def list_messages(db: Session, task: Task) -> dict:
     mapping = load_redaction_map(db, task.id)
     rows = list(db.scalars(select(ChatMessage).where(ChatMessage.task_id == task.id).order_by(ChatMessage.id)))
     locations = _locations(db, task, rows)
+    from app.calc import code_context
+    text = '\n'.join(m.content_redacted for m in rows if m.role == 'assistant')
+    calc_context = code_context(db, task, text, mapping) if '【算式】' in text else {}
     return {"available": reason is None, "reason": reason,
-            "items": [message_out(m, mapping, locations=locations, dates=load_date_pairs(db, task.id)) for m in rows]}
+            "items": [message_out(m, mapping, locations=locations, dates=load_date_pairs(db, task.id), calc_context=calc_context) for m in rows]}
 
 
 def preview(db: Session, task: Task, message: str) -> dict:
@@ -473,5 +488,8 @@ def send(db: Session, task: Task, user: User, message: str, decisions: list[dict
     db.commit()
     logger.info("task %s 追问已回复 llm_call=%s", task.id, result.llm_call_id)
     mapping = load_redaction_map(db, task.id)
+    from app.calc import code_context
+    calc_context = code_context(db, task, answer.content_redacted, mapping) if '【算式】' in answer.content_redacted else {}
     return {"user": message_out(asked, mapping, dates=load_date_pairs(db, task.id)),
-            "assistant": message_out(answer, mapping, locations=_locations(db, task, [answer]), dates=load_date_pairs(db, task.id))}
+            "assistant": message_out(answer, mapping, locations=_locations(db, task, [answer]), dates=load_date_pairs(db, task.id),
+                                     calc_context=calc_context)}

@@ -32,6 +32,26 @@ router = APIRouter(prefix="/admin", dependencies=[Depends(require_biz_admin)])
 PAGE_SIZE = 20
 
 
+class ReviewSettings(BaseModel):
+    send_ratios: StrictBool
+
+
+@router.get('/settings/review', response_model=ReviewSettings)
+def get_review_settings(db: DbSession = Depends(get_db)):
+    return ReviewSettings(send_ratios=bool(get_setting(db, 'review.send_ratios')))
+
+
+@router.put('/settings/review', response_model=ReviewSettings)
+def put_review_settings(body: ReviewSettings, request: Request,
+                        admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)):
+    if bool(get_setting(db, 'review.send_ratios')) != body.send_ratios:
+        set_setting(db, 'review.send_ratios', body.send_ratios, admin.id)
+        audit.record(db, 'setting_update', user_id=admin.id, target_type='setting', target_id='review',
+                     detail={'keys': ['review.send_ratios']}, ip=client_ip(request))
+        db.commit()
+    return get_review_settings(db)
+
+
 @router.get('/redaction/stats')
 def redaction_stats(days: int = Query(30, ge=1, le=365), db: DbSession = Depends(get_db)) -> dict:
     from app.redaction.stats import aggregate

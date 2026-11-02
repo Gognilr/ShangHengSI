@@ -53,7 +53,7 @@ def _tables(nodes):
     return grouped
 
 
-def check_finance(nodes):
+def check_finance(nodes, *, reports_out=None):
     results, reports = [], []
     for name, rows in _tables(nodes).items():
         candidates = []
@@ -192,4 +192,6 @@ def check_finance(nodes):
                 results.append(CheckResult('L-13', 'low', [a.loc, b.loc], a.file_seq,
                     f'{a.loc} 与 {b.loc} 跨表差额 {av-bv}，{reason}',
                     f'{name} 与 {other} 跨表勾稽不一致，差异约 {pct_diff(av, bv)}，{reason}'))
+    if reports_out is not None:
+        reports_out.extend(reports)
     return results

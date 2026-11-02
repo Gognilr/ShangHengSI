@@ -11,6 +11,7 @@ from app.db.models import AuditLog, DocNode, Job, LocalFinding, Task, TaskFile
 from app.main import API_PREFIX
 from app.tasks import pipeline, storage
 from tests.test_tasks_api import files_dir  # noqa: F401
+from tests.review_support import env  # noqa: F401
 
 BASE = API_PREFIX + "/assistant/sessions"
 
@@ -79,8 +80,33 @@ def test_t47_1_other_owner_hidden(files_dir, session_client, make_user, login, r
                      other.delete(url, headers=headers), upload(other, headers, tid),
                      other.get(url + f"/files/{uuid.uuid4()}/nodes"),
                      other.get(url + f"/files/{uuid.uuid4()}/raw"),
-                     other.get(url + "/messages"), other.get(url + "/messages/1/export?format=docx")]:
+                     other.get(url + "/local-findings"), other.get(url + "/messages"), other.get(url + "/messages/1/export?format=docx")]:
         assert response.status_code == 404, response.text
+
+
+def test_financial_table_checks_and_summary(env, files_dir, session_client, db_sessionmaker):
+    from pathlib import Path
+    from app.assistant.prompt import build_messages
+    from app.db.models import AssistantMessage
+    c, h, _ = session_client
+    tid = create(c, h)['id']
+    sample = Path(__file__).parent / 'fixtures/checks/financial.xlsx'
+    response = c.post(f'{BASE}/{tid}/files', headers=h, files=[('files', ('虚构报表.xlsx', sample.read_bytes()))])
+    assert response.status_code == 200, response.text
+    parse(db_sessionmaker, tid)
+    response = c.get(f'{BASE}/{tid}/local-findings')
+    assert response.status_code == 200
+    codes = {r['check_code'] for r in response.json()['items']}
+    assert {'L-13', 'L-14', 'L-15', 'L-16'} <= codes <= {'L-01', 'L-02', 'L-03', 'L-04', 'L-13', 'L-14', 'L-15', 'L-16', 'L-INFO'}
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        file = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id))
+        file.confirmed_at = utcnow()
+        message = AssistantMessage(task_id=task.id, role='user', status='done', content_redacted='分析报表', params={}, extras={})
+        db.add(message); db.flush()
+        first = build_messages(db, task, message)[1]['content']
+        assert first.index('【代号说明】') < first.index('【本地校验摘要】') < first.index('【文件1')
+        assert '[L-13]' in first and '显示值 102' not in first
 
 
 def test_t47_2_3_review_isolation(files_dir, session_client, db_sessionmaker):

@@ -241,6 +241,8 @@ def _update_receipt(db: Session, run_id: uuid.UUID) -> None:
     chars = sum(len(m['content']) for r in sent if r.request_text
                 for m in json.loads(r.request_text)['messages'])
     run.receipt = {**run.receipt, 'calls': len(sent), 'chars': chars,
+                   'ratios_sent': any('【本地财务比率】' in m['content'] for r in sent if r.request_text
+                                      for m in json.loads(r.request_text)['messages'] if m['role'] == 'user'),
                    'rechecks': len(sent) + blocked, 'blocked': blocked,
                    'sent_at': sent[0].created_at.isoformat() if sent else None}
     db.commit()

@@ -22,6 +22,20 @@ def _hdr(csrf):
     return {"X-CSRF-Token": csrf}
 
 
+def test_send_ratios_setting(admin, make_user, login, db_sessionmaker):
+    c, csrf = admin
+    path = API_PREFIX + '/admin/settings/review'
+    assert c.get(path).json() == {'send_ratios': False}
+    assert c.put(path, headers=_hdr(csrf), json={'send_ratios': True}).json() == {'send_ratios': True}
+    with db_sessionmaker() as db:
+        audit = db.scalar(select(AuditLog).where(AuditLog.action == 'setting_update', AuditLog.target_id == 'review'))
+        assert audit.detail == {'keys': ['review.send_ratios']}
+    make_user('ordinary-review')
+    ordinary, token = login('ordinary-review')
+    assert ordinary.get(path).status_code == 403
+    assert ordinary.put(path, headers=_hdr(token), json={'send_ratios': False}).status_code == 403
+
+
 @pytest.fixture
 def admin(make_user, login, env):  # noqa: F811
     make_user("boss", role="admin")

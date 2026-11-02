@@ -53,6 +53,12 @@ def outbound(response: Response, task: Task = Depends(owned_session), db: Sessio
     return {'text': engine.build_outbound_text(db, task), 'note': task.user_note_redacted}
 
 
+@router.get("/{id}/local-findings")
+def local_findings(task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    from app.checks.service import list_findings
+    return {'items': list_findings(db, task)}
+
+
 @router.patch("/{id}", response_model=SessionDetail)
 def patch(body: SessionPatch, task: Task = Depends(owned_session), db: Session = Depends(get_db)):
     return service.patch(db, task, body)
