@@ -5,6 +5,7 @@
 - 日志与审计只写数量、轮次号、类别等非敏感信息，不写名称、原文、金额。
 - 出参模型就定义在本文件（任务文件范围内没有单独的 schemas 文件）。
 """
+import json
 import re
 import uuid
 from typing import Literal
@@ -22,7 +23,9 @@ from app.db.models import (
     DocNode,
     Finding,
     Job,
+    LlmCall,
     Party,
+    RedactionItem,
     RedactionSuspect,
     RequirementResult,
     RequirementVersion,
@@ -126,6 +129,8 @@ class Progress(BaseModel):
 
 
 class RunDetail(BaseModel):
+    receipt: dict | None = None
+    restore_stats: dict[str, int] = {}
     template: dict | None = None
     id: uuid.UUID
     task_id: uuid.UUID
@@ -285,7 +290,7 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
         model_id=model.id, model_label=model.display_name, model_name=model.model_name,
         prompt_version=load_system_template()[0], builtin_req_version=builtin_version(),
         company_req_version=db.scalar(select(func.max(RequirementVersion.version))),
-        created_by=user.id, queued_at=utcnow(),
+        created_by=user.id, queued_at=utcnow(), receipt=_receipt(db, task, model.display_name),
     )
     db.add(run)
     if use_template:
@@ -314,6 +319,46 @@ def _confirm_stats(db, task):
     return finish(db, task)
 
 
+def _receipt(db, task, model_label):
+    from app.parsing.docx import WARN_COMMENTS, WARN_HEADER_FOOTER
+    from app.parsing.xlsx import WARN_HIDDEN_SHEET
+    from app.redaction.engine import suspect_views
+
+    protected = dict(db.execute(select(RedactionItem.category, func.count()).where(
+        RedactionItem.task_id == task.id).group_by(RedactionItem.category)).all())
+    files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)))
+    not_sent = dict(images=0, comments=0, headers_footers=0, hidden_sheets=0)
+    for file in files:
+        # V31Q-57：无精确数量的旧警告按含该类内容的文件计数，不猜对象数量。
+        warnings = file.warnings or []
+        for key, warning in [('comments', WARN_COMMENTS), ('headers_footers', WARN_HEADER_FOOTER),
+                             ('hidden_sheets', WARN_HIDDEN_SHEET)]:
+            not_sent[key] += int(warning in warnings)
+        for warning in warnings:
+            match = re.search(r'文件中有 (\d+) 个图片或嵌入对象', warning)
+            if match:
+                not_sent['images'] += int(match[1])
+    return dict(model=model_label, protected=protected, protected_total=sum(protected.values()),
+                kept=sum(v['kept_by'] is not None for v in suspect_views(db, task)),
+                date_shifted=load_date_pairs(db, task.id) is not None,
+                ratios_sent=False, files=len(files), not_sent=not_sent,
+                sent_at=None, calls=0, chars=0, rechecks=0, blocked=0)
+
+
+def sent_text(db, run, user, ip):
+    rows = list(db.scalars(select(LlmCall).where(LlmCall.run_id == run.id, LlmCall.status == 'sent')
+                           .order_by(LlmCall.created_at, LlmCall.id)))
+    audit.record(db, 'view_sent', user_id=user.id, target_type='run', target_id=str(run.id), ip=ip)
+    db.commit()
+    if any(row.request_text is None for row in rows):
+        return {'available': False}
+    items = []
+    for seq, row in enumerate(rows, 1):
+        text = '\n'.join(m['content'] for m in json.loads(row.request_text)['messages'] if m['role'] == 'user')
+        items.append(dict(seq=seq, chars=len(text), text=text))
+    return items
+
+
 # ---------------------------------------------------------------- 轮次列表与详情
 
 
@@ -332,6 +377,7 @@ class _View:
         self.mapping = load_redaction_map(db, task_id)
         self.dates = load_date_pairs(db, task_id)
         self.locals = {}
+        self.restore_stats = dict(restored=0, marked=0)
         self.file_names = dict(db.execute(select(TaskFile.seq, TaskFile.original_name)
                                           .where(TaskFile.task_id == task_id)).all())
 
@@ -342,8 +388,11 @@ class _View:
         locs = {m.group().strip('[]') for m in _LOCATION.finditer(value or '')}
         if loc and loc not in self.locals:
             self.locals[loc] = load_local_values(self.db, self.task_id, loc)
-        return check(value, self.mapping, clause=clause, locations=self.readable(locs), dates=self.dates,
-                     local=self.locals.get(loc))
+        result = check(value, self.mapping, clause=clause, locations=self.readable(locs), dates=self.dates,
+                       local=self.locals.get(loc))
+        self.restore_stats['restored'] += result.restored
+        self.restore_stats['marked'] += len(result.marks)
+        return result
 
     def locations(self, findings: list[Finding]) -> dict[str, str]:
         return self.readable({f.locs[0] for f in findings if f.locs})
@@ -449,7 +498,8 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
         queue_position = jobs.queue_position(db, job_id)
     from app.standards.service import snapshot
     summary = view.checked(run.doc_summary)
-    return RunDetail(
+    detail = RunDetail(
+        receipt=run.receipt,
         template=snapshot(db,run),
         id=run.id, task_id=run.task_id, run_no=run.run_no, status=run.status, error_message=run.error_message,
         stance=run.stance, source=run.source, user_note=view.text(run.user_note), main_doc_type=run.main_doc_type,
@@ -465,6 +515,8 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
                              for r in results],
         findings=[view.finding(f, locations) for f in findings],
     )
+    detail.restore_stats = view.restore_stats
+    return detail
 
 
 # ---------------------------------------------------------------- 修改问题处理状态

@@ -55,6 +55,8 @@ def test_return_integrity_marks(alice, ready_task, llm, db_sessionmaker):
     assert finding['unresolved'] == 3 and '合同总价的' not in finding['suggested_text']
     assert finding['marks']['suggested_text'][0]['kind'] == 'shared'
     assert data['doc_summary_marks'] == [{'start': 2, 'end': 8, 'kind': 'unknown'}]
+    assert data['restore_stats']['restored'] >= 1
+    assert data['restore_stats']['marked'] >= 4
     assert all(set(m) == {'start', 'end', 'kind'} for marks in finding['marks'].values() for m in marks)
 
 
@@ -449,8 +451,51 @@ def test_run_detail_shows_blocked_reason_and_queue_position(db_sessionmaker, ali
     execute(db_sessionmaker, rid)
     d = c.get(f"{API_PREFIX}/runs/{rid}").json()
     assert d["status"] == "blocked" and d["error_message"].startswith("出口复检发现未脱敏的信息")
+    assert d['receipt']['blocked'] == d['receipt']['rechecks'] == 1
+    assert d['receipt']['calls'] == d['receipt']['chars'] == 0
+    assert d['receipt']['sent_at'] is None
     assert REAL_OUR_NAME not in json.dumps(d, ensure_ascii=False)
     assert c.get(f"{API_PREFIX}/tasks/{task.id}").json()["status"] == "awaiting_confirm"
+
+
+def test_receipt_and_actual_sent_text(db_sessionmaker, alice, ready_task, llm, make_user, login):
+    from tests.acceptance_support import outbound_records
+    from app.redaction.recheck import recheck
+
+    user, c, h = alice
+    task = ready_task(user)
+    requests = llm('normal')
+    with db_sessionmaker() as db:
+        file = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id))
+        file.warnings = ['批注未参与 AI 审核', '页眉页脚未参与 AI 审核',
+                         '文件中有 3 个图片或嵌入对象未参与 AI 审核；如有扫描附件，请另存为 PDF 或图片一并上传']
+        db.commit()
+    rid = post_run(c, h, task.id).json()['id']
+    execute(db_sessionmaker, rid)
+    receipt = c.get(f'{API_PREFIX}/runs/{rid}').json()['receipt']
+    assert receipt['protected_total'] == sum(receipt['protected'].values()) > 0
+    assert receipt['calls'] == receipt['rechecks'] == len(requests) >= 1
+    assert receipt['blocked'] == 0 and receipt['sent_at']
+    assert receipt['not_sent'] == dict(images=3, comments=1, headers_footers=1, hidden_sheets=0)
+    assert receipt['ratios_sent'] is False
+    assert receipt['chars'] == sum(len(m['content']) for r in requests for m in json.loads(r.content)['messages'])
+    actual = c.get(f'{API_PREFIX}/runs/{rid}/sent').json()
+    records = outbound_records(db_sessionmaker, requests)
+    assert len(actual) == len(records)
+    for seq, (item, record) in enumerate(zip(actual, records), 1):
+        expected = '\n'.join(m['content'] for m in json.loads(requests[seq - 1].content)['messages'] if m['role'] == 'user')
+        assert item == dict(seq=seq, chars=len(expected), text=expected)
+        assert recheck(item['text'], real_values=record.real_values, terms=record.terms) == []
+    make_user('bob')
+    other, _ = login('bob')
+    assert other.get(f'{API_PREFIX}/runs/{rid}/sent').status_code == 404
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.action == 'view_sent')) == 1
+        db.execute(update(LlmCall).where(LlmCall.run_id == uuid.UUID(rid)).values(request_text=None))
+        db.get(ReviewRun, uuid.UUID(rid)).receipt = None
+        db.commit()
+    assert c.get(f'{API_PREFIX}/runs/{rid}/sent').json() == {'available': False}
+    assert c.get(f'{API_PREFIX}/runs/{rid}').json()['receipt'] is None
 
 
 # ---------------------------------------------------------------- 修改问题处理状态
@@ -658,6 +703,7 @@ def test_t12_chunked_review_through_api(db_sessionmaker, alice, llm):
     settle_suspects(c, h, tid, contract.must_suspect)
     run = confirm_and_review(c, h, db_sessionmaker, tid)
     assert run["chunk_count"] >= 2 and len(requests) == run["chunk_count"]
+    assert run['receipt']['calls'] == run['receipt']['rechecks'] == len(requests)
     assert run["status"] in ("completed", "partial") and run["progress"] is None
     assert all(f"分段：第 {i}/{run['chunk_count']} 段" in json.loads(q.content)["messages"][1]["content"]
                for i, q in enumerate(requests, start=1))

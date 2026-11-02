@@ -28,6 +28,7 @@ DEFAULTS: dict[str, Any] = {
     "redaction.date_shift": False,
     "redaction.vector_assist": True,
     "review.company_profile": "",
+    "review.send_ratios": False,
     "backup.time": "02:00",
     "backup.keep": 7,
     "retention.original_days": 30,

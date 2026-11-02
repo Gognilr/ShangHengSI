@@ -290,6 +290,8 @@ def test_bad_output_twice_fails_and_counts_tokens(db_sessionmaker, owner, ready_
     assert len(requests) == 2  # 重试 1 次
     r = get_run(db_sessionmaker, run.id)
     assert (r.status, r.error_message) == ("failed", job.MSG_BAD_OUTPUT)
+    assert r.receipt['calls'] == r.receipt['rechecks'] == 2
+    assert r.receipt['blocked'] == 0 and r.receipt['sent_at']
     assert r.tokens_in > 0 and r.tokens_out > 0
     with db_sessionmaker() as db:
         assert db.get(Task, task.id).status == "reviewed" and db.get(Task, task.id).high_count == 0
@@ -595,6 +597,7 @@ def test_block_in_second_chunk_stops_run(db_sessionmaker, owner, ready_task, llm
     assert r.status == "blocked" and r.error_message.startswith("出口复检发现未脱敏的信息")
     assert [chunk_of(q) for q in requests] == [1]  # 第 3 段及以后没有发送
     assert [c.status for c in llm_calls(db_sessionmaker)] == ["sent", "blocked"]
+    assert r.receipt['calls'] == r.receipt['blocked'] == 1 and r.receipt['rechecks'] == 2
     with db_sessionmaker() as db:
         assert db.get(Task, task.id).status == "awaiting_confirm"
         assert db.scalar(select(func.count()).select_from(Finding)) == 0

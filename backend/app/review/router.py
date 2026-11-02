@@ -57,6 +57,12 @@ def get_run(run: ReviewRun = Depends(owned_run), db: DbSession = Depends(get_db)
     return service.run_detail(db, run)
 
 
+@router.get("/runs/{rid}/sent")
+def sent_text(request: Request, run: ReviewRun = Depends(owned_run),
+              user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    return service.sent_text(db, run, user, client_ip(request))
+
+
 @router.patch("/findings/{fid}", response_model=FindingOut)
 def patch_finding(
     patch: FindingPatch,

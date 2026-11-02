@@ -331,6 +331,8 @@ class DocNode(Base):
     clause_no: Mapped[Optional[str]] = mapped_column(String(32))
     text_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     redacted_text: Mapped[Optional[str]] = mapped_column(Text)
+    hidden_spans: Mapped[Optional[Any]] = mapped_column(JSONB)
+    formula_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     page: Mapped[Optional[int]] = mapped_column(Integer)
     bbox: Mapped[Optional[Any]] = mapped_column(JSONB)
     sheet: Mapped[Optional[str]] = mapped_column(String(100))
@@ -484,7 +486,7 @@ class LocalFinding(Base):
     __table_args__ = (
         enum_check(
             "check_code",
-            ["L-01", "L-02", "L-03", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-12", "L-INFO"],
+            [f"L-{i:02}" for i in range(1, 23)] + ["L-INFO"],
         ),
         enum_check("severity", SEVERITIES),
     )
@@ -534,6 +536,7 @@ class ReviewRun(Base):
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     failed_chunks: Mapped[Any] = _jsonb_list()
     coverage: Mapped[Optional[Any]] = mapped_column(JSONB)
+    receipt: Mapped[Optional[Any]] = mapped_column(JSONB)
     doc_summary: Mapped[Optional[str]] = mapped_column(Text)
     sanctions_level: Mapped[Optional[str]] = mapped_column(String(10))
     sanctions_reasons: Mapped[Any] = _jsonb_list()
@@ -553,6 +556,7 @@ class RequirementResult(Base):
         UniqueConstraint("run_id", "req_id"),
         enum_check("req_source", ["builtin", "company", "note"]),
         enum_check("verdict", ["issue", "ok", "na", "unable"]),
+        enum_check("unable_reason", ["redacted", "absent", "other"]),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -564,6 +568,7 @@ class RequirementResult(Base):
     req_text: Mapped[str] = mapped_column(Text, nullable=False)
     dimension: Mapped[Optional[str]] = mapped_column(String(16))
     verdict: Mapped[str] = mapped_column(String(8), nullable=False)
+    unable_reason: Mapped[Optional[str]] = mapped_column(String(10))
     note: Mapped[Optional[str]] = mapped_column(Text)
 
 

@@ -9,16 +9,18 @@ worker 取到 review 任务后：run=running → 拼接上下文 → review_once
 - 分段审核（M5，设计 docs/design/M5.md 第一至三节）：外发文本超过分段长度时逐段调用；任一段被拦截立即整轮 blocked；
   其他失败的分段跳过并记入 failed_chunks，全部失败为 failed，部分失败为 partial；每段结束后更新进度。
 """
+import json
 import logging
 import uuid
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.llm.gateway import load_model
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import Finding, RequirementResult, ReviewRun, Task
+from app.db.models import Finding, LlmCall, RequirementResult, ReviewRun, Task
 from app.llm.gateway import GatewayError, format_reasons
 from app.review.chunking import Chunk, effective_limit, outbound_lines, split_chunks
 from app.review.coverage import build_coverage
@@ -220,7 +222,26 @@ def _review_chunk(db: Session, ctx: ReviewContext, run_id: uuid.UUID, chunk: Chu
         return ChunkOutcome(chunk, None, str(exc))
     except OutputError as exc:
         return ChunkOutcome(chunk, None, MSG_BAD_OUTPUT, exc.tokens_in, exc.tokens_out)
+    finally:
+        _update_receipt(db, run_id)
     return ChunkOutcome(chunk, review)
+
+
+def _update_receipt(db: Session, run_id: uuid.UUID) -> None:
+    """从网关记录重算，包含格式重试；worker 重入时不重复计数，失败或拦截同样保留证据。"""
+    run = db.get(ReviewRun, run_id)
+    if run is None or run.receipt is None:
+        return
+    rows = list(db.scalars(select(LlmCall).where(LlmCall.run_id == run_id, LlmCall.purpose == 'review')
+                           .order_by(LlmCall.created_at, LlmCall.id)))
+    sent = [r for r in rows if r.status == 'sent']
+    blocked = sum(r.status == 'blocked' for r in rows)
+    chars = sum(len(m['content']) for r in sent if r.request_text
+                for m in json.loads(r.request_text)['messages'])
+    run.receipt = {**run.receipt, 'calls': len(sent), 'chars': chars,
+                   'rechecks': len(sent) + blocked, 'blocked': blocked,
+                   'sent_at': sent[0].created_at.isoformat() if sent else None}
+    db.commit()
 
 
 @job_handler("review")
