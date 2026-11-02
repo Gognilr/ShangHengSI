@@ -91,7 +91,7 @@ def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list
             task_id=task.id, file_id=f.id, loc=n.loc, ord=n.ord, kind=n.kind, part=n.part,
             parent_loc=n.parent_loc, clause_no=n.clause_no, text_enc=crypto.encrypt_text(n.text),
             page=n.page, bbox=n.bbox, sheet=n.sheet, cell_ref=n.cell_ref, ocr_conf=n.ocr_conf,
-            has_revision=n.has_revision,
+            has_revision=n.has_revision, hidden_spans=n.hidden_spans,
         )
         for n in parsed.nodes
     )

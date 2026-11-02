@@ -88,7 +88,7 @@ def test_parse_ai_task(db_sessionmaker, make_task):
         t = db.get(Task, task.id)
         assert (t.status, t.error_message) == ("awaiting_confirm", None)
         f1, f2 = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)).all()
-        assert (f1.doc_type, f1.doc_type_source, f1.parser_version, f1.has_revisions) == ("contract", "auto", "docx-1", False)
+        assert (f1.doc_type, f1.doc_type_source, f1.parser_version, f1.has_revisions) == ("contract", "auto", "docx-2", False)
         assert f2.doc_type == "quotation"
         nodes = db.scalars(select(DocNode).where(DocNode.task_id == task.id)).all()
         assert {n.loc[:3] for n in nodes} == {"F1-", "F2-"}
@@ -257,7 +257,7 @@ def test_parse_all_five_formats(db_sessionmaker, make_task):
         t = db.get(Task, task.id)
         assert (t.status, t.error_message) == ("awaiting_confirm", None)
         files = db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)).all()
-        assert [f.parser_version for f in files] == ["docx-1", "xlsx-1", "pdf-1", "image-1", "image-1"]
+        assert [f.parser_version for f in files] == ["docx-2", "xlsx-1", "pdf-1", "image-1", "image-1"]
         assert [f.page_count for f in files][1:] == [None, 2, 1, 1]
         assert files[1].doc_type == "quotation" and files[2].doc_type == "contract"
         assert all(f.doc_type_source == "auto" for f in files)
@@ -713,7 +713,8 @@ def test_parse_legacy_formats_match_manifest(db_sessionmaker, make_task, spool):
         for seq, (f, (_, _, key)) in enumerate(zip(files, names), start=1):
             want = samples[key]
             base = "docx" if want["parse_as"] == "docx" else "xlsx"
-            assert f.parser_version == f"{base}-1+lo25.2"
+            version = 'docx-2' if base == 'docx' else 'xlsx-1'
+            assert f.parser_version == f"{version}+lo25.2"
             assert f.warnings == want["warnings"] + [_legacy_warning(f.ext, base)]
             assert f.has_revisions == want["has_revisions"] and f.page_count == want["page_count"]
             got = _node_view(db, task.id, seq)

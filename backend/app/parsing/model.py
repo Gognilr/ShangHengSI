@@ -31,8 +31,16 @@ class ParsedNode:
     cell_ref: str | None = None
     ocr_conf: float | None = None
     has_revision: bool = False
+    hidden_spans: list[list[int]] | None = None
 
     def __post_init__(self) -> None:
+        if self.hidden_spans:
+            # 区间以最终节点文字为坐标，零宽字符清理不能使位置漂移。
+            offsets = [0]
+            for char in self.text:
+                offsets.append(offsets[-1] + len(strip_invisible(char)))
+            self.hidden_spans = [[offsets[a], offsets[b]] for a, b in self.hidden_spans
+                                 if offsets[a] < offsets[b]] or None
         self.text = strip_invisible(self.text)
 
 

@@ -24,7 +24,7 @@ from lxml import etree
 
 from app.parsing.model import ParsedFile, ParsedNode, ParseError
 
-PARSER_VERSION = "docx-1"
+PARSER_VERSION = "docx-2"
 
 # 与上传检查（SPEC 17.6）相同的解压上限；这里再查一次，不依赖调用方
 MAX_ARCHIVE_BYTES = 200 * 1024 * 1024
@@ -304,6 +304,8 @@ class _StyleInfo:
     num_id: str | None
     ilvl: int | None
     outline: int | None
+    rpr: etree._Element | None = None
+    ppr: etree._Element | None = None
 
 
 _HEADING_NAME = re.compile(r"^(heading\s*[1-9]|title|标题(\s*[1-9])?)$", re.IGNORECASE)
@@ -328,6 +330,7 @@ class _Styles:
                 num_id=_child_val(num_pr, w.numId, w.val),
                 ilvl=_int(_child_val(num_pr, w.ilvl, w.val), None),
                 outline=_int(_child_val(ppr, w.outlineLvl, w.val), None),
+                rpr=st.find(w.rPr), ppr=ppr,
             )
             if st.get(w.type) == "paragraph" and st.get(w.default) in ("1", "true", "on"):
                 self.default_para = sid
@@ -515,6 +518,7 @@ class _Numbering:
 class _Inline:
     parts: list[str] = field(default_factory=list)
     rev: bool = False
+    hidden_spans: list[list[int]] = field(default_factory=list)
     side: list[tuple] = field(default_factory=list)  # ("tb", 文字, 有修订) / ("cm", 批注 id)
 
 
@@ -528,6 +532,7 @@ class _Para:
     clause: str | None = None
     heading: bool = False
     paragraphs: list[etree._Element] = field(default_factory=list)
+    hidden_spans: list[list[int]] = field(default_factory=list)
 
 
 @dataclass
@@ -573,6 +578,15 @@ class _DocxParser:
             return next((target for _rid, typ, target in rels if typ.endswith("/" + kind)), None)
 
         self.styles = _Styles(self.pkg.xml(first("styles")), w)
+        self.theme_colors = {}
+        theme = self.pkg.xml(first("theme"))
+        if theme is not None:
+            for scheme in theme.iter():
+                if isinstance(scheme.tag, str) and etree.QName(scheme).localname == 'clrScheme':
+                    for color in scheme:
+                        if len(color):
+                            self.theme_colors[etree.QName(color).localname] = (
+                                color[0].get('lastClr') or color[0].get('val') or '').upper()
         self.numbering = _Numbering(self.pkg.xml(first("numbering")), w, self.styles)
         comments_root = self.pkg.xml(first("comments"))
         if comments_root is not None:
@@ -590,7 +604,7 @@ class _DocxParser:
                 if story is None:
                     continue
                 items, side = self._flatten(story)
-                for text, rev in items:
+                for text, rev, _hidden in items:
                     n += 1
                     nodes.append(self._node(f"{self.f}-{prefix}{n}", "paragraph", part, text, rev=rev))
                 nodes.extend(self._side_nodes(side, None))
@@ -695,8 +709,8 @@ class _DocxParser:
             self.emitted_comments.add(cid)
             texts, side = self._flatten(self.comments[cid])
             if texts:
-                out.append(self._node("", "paragraph", "comment", "\n".join(t for t, _ in texts), parent=parent,
-                                      rev=any(r for _, r in texts)))
+                out.append(self._node("", "paragraph", "comment", "\n".join(t for t, _, _ in texts), parent=parent,
+                                      rev=any(r for _, r, _ in texts)))
             out.extend(self._side_nodes(side, parent))
         return out
 
@@ -757,6 +771,8 @@ class _DocxParser:
         """段落标记被删除的段落（carry）并入下一段。"""
         if carry is None:
             return para
+        para.hidden_spans = carry.hidden_spans + [[a + len(carry.text), b + len(carry.text)]
+                                                  for a, b in para.hidden_spans]
         para.text = carry.text + para.text
         para.rev = True
         para.side = carry.side + para.side
@@ -794,6 +810,7 @@ class _DocxParser:
             kind = "heading" if para.heading else "list_item" if para.numbered else "paragraph"
             out.append(self._node(loc, kind, "body", text, clause=para.clause or manual_clause_no(text),
                                   rev=para.rev))
+            out[-1] = replace(out[-1], text=text, hidden_spans=self._trim_hidden(para))
             if self.track:
                 self.node_paragraphs[loc] = para.paragraphs
         out.extend(self._side_nodes(para.side, loc))
@@ -815,12 +832,15 @@ class _DocxParser:
         carry: _Para | None = None
 
         paragraphs: list[etree._Element] = []
+        hidden: list[list[int]] = []
 
         def take(para: _Para) -> None:
             nonlocal rev
             if self.track:
                 paragraphs.extend(para.paragraphs)
             if para.text.strip():
+                offset = sum(len(t) + 1 for t in texts)
+                hidden.extend([[a + offset, b + offset] for a, b in (self._trim_hidden(para) or [])])
                 texts.append(para.text.strip())
             rev = rev or para.rev
             side.extend(para.side)
@@ -842,8 +862,11 @@ class _DocxParser:
                 if len(prefix) + _ROW_COL_RESERVE > MAX_LOC_LENGTH:
                     # 嵌套过深，loc 会超出字段长度：文字并入本单元格，不丢内容
                     items, sub_side = self._flatten_table(blk)
-                    texts.extend(t for t, _ in items)
-                    rev = rev or any(r for _, r in items)
+                    for t, _, spans in items:
+                        offset = sum(len(text) + 1 for text in texts)
+                        hidden.extend([[a + offset, b + offset] for a, b in spans])
+                        texts.append(t)
+                    rev = rev or any(r for _, r, _ in items)
                     side.extend(sub_side)
                     if self.track:
                         paragraphs.extend(p for p in blk.iter(w.p)
@@ -855,21 +878,23 @@ class _DocxParser:
         text = "\n".join(texts)
         if text:
             out.append(self._node(loc, "table_cell", "body", text, parent=parent, rev=rev))
+            # ParsedNode 统一清理零宽字符并换算区间。
+            out[-1] = replace(out[-1], text=text, hidden_spans=hidden or None)
             if self.track:
                 self.node_paragraphs[loc] = paragraphs
         out.extend(self._side_nodes(side, loc if text else parent))
         out.extend(nested)
 
-    def _flatten(self, container: etree._Element) -> tuple[list[tuple[str, bool]], list[tuple]]:
-        """非正文内容（页眉页脚、批注、文本框）：按顺序取出每个非空段落 (文字, 有修订)，表格逐格展开。"""
+    def _flatten(self, container: etree._Element) -> tuple[list[tuple[str, bool, list]], list[tuple]]:
+        """顺序取出非空段落 (文字, 有修订, 隐藏区间)，表格逐格展开；也用于过深表格降级。"""
         w = self.w
-        items: list[tuple[str, bool]] = []
+        items: list[tuple[str, bool, list]] = []
         side: list[tuple] = []
         carry: _Para | None = None
 
         def take(para: _Para) -> None:
             if para.text.strip():
-                items.append((para.text.strip(), para.rev))
+                items.append((para.text.strip(), para.rev, self._trim_hidden(para) or []))
             side.extend(para.side)
 
         for blk in self._items(container, (w.p, w.tbl)):
@@ -891,13 +916,13 @@ class _DocxParser:
             take(carry)
         return items, side
 
-    def _flatten_table(self, tbl: etree._Element) -> tuple[list[tuple[str, bool]], list[tuple]]:
-        items: list[tuple[str, bool]] = []
+    def _flatten_table(self, tbl: etree._Element) -> tuple[list[tuple[str, bool, list]], list[tuple]]:
+        items: list[tuple[str, bool, list]] = []
         side: list[tuple] = []
         for tr, row_inserted in self._rows(tbl):
             for tc, _col, cell_inserted in self._cells(tr):
                 sub_items, sub_side = self._flatten(tc)
-                items.extend((t, r or row_inserted or cell_inserted) for t, r in sub_items)
+                items.extend((t, r or row_inserted or cell_inserted, h) for t, r, h in sub_items)
                 side.extend(sub_side)
         return items, side
 
@@ -915,7 +940,7 @@ class _DocxParser:
         ctx = _Inline()
         self._inline(p, ctx)
         para = _Para(text="".join(ctx.parts), rev=ctx.rev or mark_deleted or mark_inserted,
-                     mark_deleted=mark_deleted, side=ctx.side)
+                     mark_deleted=mark_deleted, side=ctx.side, hidden_spans=ctx.hidden_spans)
         if self.track and body:
             para.paragraphs = [p]
         if para.rev:
@@ -958,6 +983,7 @@ class _DocxParser:
 
     def _run(self, r: etree._Element, ctx: _Inline) -> None:
         w = self.w
+        start = sum(map(len, ctx.parts))
         for c in r:
             tag = c.tag
             if tag == w.t:
@@ -975,6 +1001,57 @@ class _DocxParser:
             elif tag in (w.drawing, w.pict, w.object, _MC_AC):
                 self._embedded(c, ctx)
             # 其余（delText、instrText 域代码、softHyphen、sym、脚注引用等）不计入
+        end = sum(map(len, ctx.parts))
+        if end > start and self._hidden_run(r):
+            if ctx.hidden_spans and ctx.hidden_spans[-1][1] == start:
+                ctx.hidden_spans[-1][1] = end
+            else:
+                ctx.hidden_spans.append([start, end])
+
+    @staticmethod
+    def _trim_hidden(para: _Para) -> list[list[int]] | None:
+        left = len(para.text) - len(para.text.lstrip())
+        right = len(para.text.rstrip())
+        spans = [[max(a, left) - left, min(b, right) - left] for a, b in para.hidden_spans
+                 if max(a, left) < min(b, right)]
+        return spans or None
+
+    def _hidden_run(self, r: etree._Element) -> bool:
+        w = self.w
+        q = lambda name: f'{{{etree.QName(r).namespace}}}{name}'
+        p = next((a for a in r.iterancestors() if a.tag == w.p), None)
+        ppr = p.find(w.pPr) if p is not None else None
+        direct = r.find(w.rPr)
+        char = self.styles.chain(_child_val(direct, q('rStyle'), w.val))
+        paragraph = self.styles.chain(self.styles.para_style(ppr))
+        props = [direct, *(s.rpr for s in char), *(s.rpr for s in paragraph)]
+
+        def effective(name):
+            return next((el for pr in props if pr is not None
+                         and (el := pr.find(q(name))) is not None), None)
+
+        vanish, size, color = (effective(k) for k in ('vanish', 'sz', 'color'))
+        if vanish is not None and (vanish.get(w.val) or 'true').lower() not in ('0', 'false', 'off'):
+            return True
+        if size is not None and 0 < _int(size.get(w.val), 0) <= 4:
+            return True
+        if color is None:
+            return False
+        theme = color.get(q('themeColor'))
+        names = {'background1': 'lt1', 'background2': 'lt2', 'text1': 'dk1', 'text2': 'dk2',
+                 'light1': 'lt1', 'light2': 'lt2', 'dark1': 'dk1', 'dark2': 'dk2'}
+        value = self.theme_colors.get(names.get(theme, theme)) if theme else color.get(w.val, '').upper()
+        # 主题有明暗变换时只认能明确得到白色的情况。
+        shade = color.get(q('themeShade'))
+        tint = color.get(q('themeTint'))
+        white = value == 'FFFFFF' and (not shade or shade.upper() == 'FF')
+        if value and tint and tint.upper() == 'FF':
+            white = True
+        if not white:
+            return False
+        backgrounds = [*props, ppr, *(s.ppr for s in paragraph)]
+        return not any(pr is not None and any(pr.find(q(k)) is not None for k in ('shd', 'highlight'))
+                       for pr in backgrounds)
 
     def _embedded(self, el: etree._Element, ctx: _Inline, *, object_preview: bool = False) -> None:
         """图形、VML、OLE 对象：只取其中的文本框；遇到图片或嵌入对象记下以便提示。"""
@@ -1002,5 +1079,5 @@ class _DocxParser:
 
     def _textbox(self, txbx: etree._Element, ctx: _Inline) -> None:
         items, side = self._flatten(txbx)
-        ctx.side.append(("tb", "\n".join(t for t, _ in items), any(r for _, r in items)))
+        ctx.side.append(("tb", "\n".join(t for t, _, _ in items), any(r for _, r, _ in items)))
         ctx.side.extend(side)

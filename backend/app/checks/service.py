@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from app.checks.amounts import QuoteTableCheck, check_tables, check_uppercase
 from app.checks.consistency import check_consistency, compared_tables, contract_amount
 from app.checks.dates import check_dates
+from app.checks.content import check_content
 from app.checks.installments import check_installments
 from app.checks.references import check_references
 from app.checks.model import CheckFile, CheckNode, CheckResult
@@ -24,14 +25,16 @@ class Evaluation:
     tables: list[QuoteTableCheck]
 
 
-def evaluate(nodes: list[CheckNode], files: list[CheckFile], today: date, laws: LawIndex | None = None) -> Evaluation:
+def evaluate(nodes: list[CheckNode], files: list[CheckFile], today: date, laws: LawIndex | None = None,
+             aliases=()) -> Evaluation:
     tables, results = check_tables(nodes, files)
     results += check_uppercase(nodes)
-    results += check_consistency(nodes, files, tables)
+    results += check_consistency(nodes, files, tables, aliases)
+    results += check_content(nodes)
     results += check_dates(nodes, today)
     results += check_installments(nodes, files)
     results += check_references(nodes, laws=laws)
-    order = {code: i for i, code in enumerate(("L-01", "L-02", "L-03", "L-INFO", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11"))}
+    order = {code: i for i, code in enumerate(("L-01", "L-02", "L-03", "L-INFO", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-17", "L-18", "L-19", "L-20", "L-21"))}
     positions = {node.loc: i for i, node in enumerate(nodes)}
     results.sort(key=lambda r: (order[r.code], r.file_seq or 0, positions.get(r.locs[0], -1) if r.locs else -1))
     return Evaluation(results, tables)
@@ -42,7 +45,8 @@ def load_inputs(db, task_id: uuid.UUID) -> tuple[list[CheckNode], list[CheckFile
     seqs = {f.id: f.seq for f in files}
     rows = db.scalars(select(DocNode).join(TaskFile, TaskFile.id == DocNode.file_id)
                       .where(DocNode.task_id == task_id, DocNode.part == "body").order_by(TaskFile.seq, DocNode.ord))
-    nodes = [CheckNode(n.loc, crypto.decrypt_text(n.text_enc) if n.text_enc else "", seqs[n.file_id], n.clause_no) for n in rows]
+    nodes = [CheckNode(n.loc, crypto.decrypt_text(n.text_enc) if n.text_enc else "", seqs[n.file_id], n.clause_no,
+                       n.hidden_spans) for n in rows]
     return nodes, [CheckFile(f.seq, f.is_main, f.ext, f.doc_type, list(f.warnings or [])) for f in files]
 
 
@@ -54,7 +58,10 @@ def run_checks(db, task, today: date) -> None:
         nodes = [n for n in nodes if n.file_seq in parsed]
         files = [f for f in files if f.seq in parsed]
     titles = {title for node in nodes for title in re.findall(r'《([^《》]+)》', node.text)}
-    evaluation = evaluate(nodes, files, today, laws=load_laws(db, titles))
+    from app.redaction.engine import _load_terms
+    aliases = [(term.text, term.alias_of) for term in (_load_terms(db) if len(files) >= 2 else [])
+               if term.kind == 'learned' and term.alias_of]
+    evaluation = evaluate(nodes, files, today, laws=load_laws(db, titles), aliases=aliases)
     file_ids = dict(db.execute(select(TaskFile.seq, TaskFile.id).where(TaskFile.task_id == task.id)).all())
     loc_files = dict(db.execute(select(DocNode.loc, DocNode.file_id).where(DocNode.task_id == task.id)).all())
     db.execute(delete(LocalFinding).where(LocalFinding.task_id == task.id))

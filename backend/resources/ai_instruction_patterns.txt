@@ -1,0 +1,21 @@
+# 开发方起草；仅本地识别，中文与英文各 10 条。命中只提示，不改正文。
+忽略(?:以上|之前|前面|先前|此前)(?:的)?(?:所有|全部)?(?:审核)?(?:要求|指令|提示)
+无视(?:以上|之前|前面|先前)(?:的)?(?:所有|全部)?(?:要求|指令|提示)
+你(?:现在)?是一个
+(?:请你|你应当|你现在)(?:扮演|充当)|(?:扮演|充当)(?:一个)?(?:AI|人工智能|审核助手)
+不要(?:报告|指出)
+只(?:输出|回答)[：:\s“"']*(?:无问题|没有问题|审核通过)
+系统提示词
+忘记(?:以上|之前)(?:的)?(?:要求|指令|提示)
+将(?:以上|之前)(?:的)?(?:要求|指令|提示)(?:全部)?作废
+(?:向|给)(?:AI|人工智能|模型|助手)(?:的)?指令
+\bignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions\b
+\byou\s+are\s+(?:now\s+)?(?:an?|the)\s+(?:AI|assistant|model)\b
+\bdisregard\s+(?:all\s+)?(?:previous|prior|above)\s+(?:instructions|prompts|requirements)\b
+\bdo\s+not\s+(?:flag|report|mention)\b
+\bsystem\s+prompt\b
+\boutput\s+only\b
+\bforget\s+(?:all\s+)?(?:previous|prior|above)\s+instructions\b
+\bact\s+as\s+(?:an?\s+)?(?:AI|assistant|model)\b
+\boverride\s+(?:all\s+)?(?:previous|prior|system)\s+instructions\b
+\brespond\s+only\s+with\b
