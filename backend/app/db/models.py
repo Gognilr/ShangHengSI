@@ -42,7 +42,7 @@ SEVERITIES = ["high", "medium", "low"]
 # 9.2 代码列
 REDACTION_CATEGORIES = [
     "OUR", "ORG", "PERSON", "PHONE", "EMAIL", "URL", "ADDR", "POSTCODE", "ACCOUNT",
-    "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM", "IM", "PROJECT", "NAME", "TERM",
+    "SWIFT", "IDNO", "REFNO", "AMOUNT", "PRICE", "QTY", "CUSTOM", "IM", "PROJECT", "NAME", "TERM", "DATE",
 ]
 
 
@@ -372,7 +372,7 @@ class RedactionItem(Base):
         enum_check("category", REDACTION_CATEGORIES),
         enum_check(
             "detected_by",
-            ["term", "party", "alias", "regex", "amount", "person", "address", "user", "derived", "ner", "uncertain"],
+            ["term", "party", "alias", "regex", "amount", "person", "address", "user", "derived", "ner", "uncertain", "date"],
         ),
         Index("ix_redaction_items_task_id_loc", "task_id", "loc"),
     )
@@ -416,7 +416,7 @@ class RedactionExclusion(Base):
 class RedactionSuspect(Base):
     __tablename__ = "redaction_suspects"
     __table_args__ = (
-        enum_check("reason", ["org_suffix", "capitalized", "long_digits", "before_company", "person_name", "derived_name", "person_like", "ner"]),
+        enum_check("reason", ["org_suffix", "capitalized", "long_digits", "before_company", "person_name", "derived_name", "person_like", "ner", "checksum_fail"]),
         enum_check("decision", ["pending", "replace", "ignore"]),
         enum_check("category", REDACTION_CATEGORIES),
         # decision=replace 时 category 必填
@@ -600,6 +600,7 @@ class Finding(Base):
     law_unverified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('false'))
     source: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'model'"))
     quote_snapshot_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    quote_orig_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     problem: Mapped[str] = mapped_column(Text, nullable=False)
     impact: Mapped[Optional[str]] = mapped_column(Text)
     suggestion: Mapped[Optional[str]] = mapped_column(Text)

@@ -29,6 +29,8 @@ _MASK = "\x00"
 
 def default_category(text: str, reason: str) -> str:
     """V31-S-02：只给不确定项分配默认类别，不判定签约方。"""
+    if reason == 'checksum_fail':
+        return 'ACCOUNT' if re.match(r'^[A-Za-z]{2}\d{2}', text) else 'IDNO'
     if reason == LONG_DIGITS:
         return 'REFNO'
     if re.search(r'[一-鿿]', text):

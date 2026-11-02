@@ -504,6 +504,7 @@ def compute(
     qty_hints = tables.table_hints(nodes, with_qty=True) if mask_quantity else {}
     spans: list[_Span] = []
     occupied: list[list[tuple[int, int]]] = []
+    checksum_suspects: list[SuspectOut] = []
     for i, n in enumerate(nodes):
         text = n.text
         occ: list[tuple[int, int]] = []
@@ -543,6 +544,20 @@ def compute(
             overrides=[(c.start, c.end) for c in cands if c.detected_by in ('user', 'term')]))
         _accept(cands, occ, spans, longest_first=True)
         for hit in detect.find_formatted(text):  # 第 4 步：按 find_formatted 的顺序（即优先级）逐个取舍
+            surface = text[hit.start:hit.end]
+            unlabeled = (hit.category == 'ACCOUNT' and detect._IBAN.fullmatch(surface) is not None
+                         or hit.category == 'IDNO' and (detect._ID_CARD.fullmatch(surface) is not None
+                                                       or detect._CREDIT_CODE.fullmatch(surface) is not None))
+            # 标签命中在裸号码前；同区间有标签时即使校验失败也继续替换。
+            labeled = any(m.span(1) == (hit.start, hit.end)
+                          for pattern in (detect._LABELED_ID, detect._ACCOUNT, detect._ACCOUNT_SIMPLE, detect._LABELED_IBAN)
+                          for m in pattern.finditer(P.bilingual_label_text(text)))
+            if hit.validated is False and unlabeled and not _overlaps(occ, hit.start, hit.end):
+                if not labeled:
+                    if not any(s.loc == n.loc and s.char_start == hit.start and s.char_end == hit.end
+                               for s in checksum_suspects):
+                        checksum_suspects.append(SuspectOut(n.loc, hit.start, hit.end, 'checksum_fail', hit.category))
+                    continue
             _accept([_Span(i, hit.start, hit.end, hit.category, hit.key, "regex")], occ, spans)
         amounts = [_Span(i, h.start, h.end, h.category, h.key, "amount", h.currency, h.value)
                    for h in amount_hits]
@@ -689,14 +704,17 @@ def compute(
                 ent.confirmed = o.confirmed
     if style not in ("review", "neutral"):
         raise ValueError("未知代号样式")
-    found: list[SuspectOut] = []
+    found: list[SuspectOut] = [s for s in checksum_suspects
+                             if not _overlaps(occupied[locs[s.loc]], s.char_start, s.char_end)]
 
     # 疑似遗漏：全部替换项确定之后，在每个节点未替换的文字上识别（9.5）
     lowercase_words = S.lowercase_evidence('\n'.join(n.text for n in nodes))
     for i, n in enumerate(nodes):
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
+        checksum_spans = [(s.char_start, s.char_end) for s in found
+                          if s.loc == n.loc and s.reason == 'checksum_fail']
         found += [SuspectOut(n.loc, s.start, s.end, s.reason)
-                            for s in S.find_suspects(n.text, occupied[i] + excluded_spans, derived=short_derived,
+                            for s in S.find_suspects(n.text, occupied[i] + excluded_spans + checksum_spans, derived=short_derived,
                                                      lowercase_words=lowercase_words, header=n.loc in headers)]
     for suspect in ner_suspects:
         text = nodes[locs[suspect.loc]].text[suspect.char_start:suspect.char_end]
@@ -1447,8 +1465,12 @@ def learn_confirmed_names(db: Session, task: Task, user_id: uuid.UUID | None) ->
                         or any(it.placeholder == p.code and it.detected_by in ('party', 'alias')
                                and texts.get(it.loc, '')[it.char_start:it.char_end] == surface for it in items)):
                     add(surface, 'ORG', p.is_our_party, term_hash(name))
+    checksum_words = {P.normalize(texts.get(r.loc, '')[r.char_start:r.char_end]) for r in db.scalars(
+        select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
+                                      RedactionSuspect.reason == 'checksum_fail'))}
     for it in items:
-        if it.detected_by == 'user' and it.category != 'AMOUNT':
+        if (it.detected_by == 'user' and it.category != 'AMOUNT'
+                and P.normalize(texts.get(it.loc, '')[it.char_start:it.char_end]) not in checksum_words):
             add(texts.get(it.loc, '')[it.char_start:it.char_end],
                 'ORG' if it.category in ('ORG', 'OUR') else it.category, it.category == 'OUR')
     existing_hashes = set(db.scalars(select(RedactionTerm.term_hash)))

@@ -15,7 +15,7 @@ def eligible(text: str, reason: str) -> bool:
     return (2 <= len(text.strip()) <= 50 and S.default_category(text, reason) in ('NAME', 'TERM')
             and not P._EN_SUFFIX_RE.search(text)
             and not any(suffix in text for suffix in (*P._BROAD_SUFFIXES, '股份有限公司', '有限责任公司', '有限公司'))
-            and not S._is_person_name(text.strip()) and reason not in ('person_name', 'person_like'))
+            and not S._is_person_name(text.strip()) and reason not in ('person_name', 'person_like', 'checksum_fail'))
 
 
 def blocked(db) -> set[str]:

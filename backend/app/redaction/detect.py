@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 
 from app.redaction.dictionaries import common_terms, find_country, cn_surnames
 from app.redaction.parties import normalize, bilingual_label_text
+from app.redaction import validators
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,7 @@ class Hit:
     key: str  # 同一对象的标识：key 相同的命中使用同一代号（编号、账号、SWIFT、金额、单价）
     currency: str | None = None  # 规范币种代码（CNY、USD…），未知为 None；只有 find_amounts 填写
     value: Decimal | None = None  # 换算后的数值（“万元”已乘 10000），无法解析为 None；只有 find_amounts 填写
+    validated: bool | None = None
 
 
 # ---------------------------------------------------------------- 第 4 步：格式化信息
@@ -36,8 +38,11 @@ _URL_TRAILING = ".,;:!?'"
 # IBAN：连写，或每 4 位一组以空格分隔（最后一组须含数字，避免把后面的币种代码吞进来）
 _IBAN = re.compile(
     r"(?<![A-Za-z0-9])[A-Z]{2}\d{2}(?:[A-Z0-9]{11,30}|(?: [A-Z0-9]{4}){2,7}(?: (?=[A-Z0-9]{0,2}\d)[A-Z0-9]{1,3})?)"
-    r"(?![A-Za-z0-9])"
+    r"(?![A-Za-z0-9])", re.IGNORECASE
 )
+_LABELED_IBAN = re.compile(
+    r'(?:IBAN(?:\s*(?:No\.?|number))?|银行账号|收款账号|付款账号|账号|帐号|账户|帐户|account\s*(?:no\.?|number))'
+    r'\s*[:：]?\s*' + _OPEN + '(' + _IBAN.pattern + ')', re.IGNORECASE)
 _ACCOUNT = re.compile(
     r"(?:开户行账号|银行账号|收款账号|付款账号|账号|帐号|账户|帐户|(?i:account\s*(?:no\.?|number)|a/c\s*no\.?|a/c))"
     r"\s*[:：]?\s*" + _OPEN + r"(\d[\d \-]{6,45}\d)(?![\d])"
@@ -82,7 +87,7 @@ _IM = re.compile(
     r"[ \t]*[:：][ \t]*" + _OPEN + r"([A-Za-z0-9_.+\-]{3,40})(?![A-Za-z0-9_.+\-])"
 )
 _LABELED_ID = re.compile(
-    r"(?:护照号码|护照号|营业执照注册号|工商注册号|注册号|组织机构代码|纳税人识别号|税号|"
+    r"(?:身份证号码|身份证号|证件号码|证件号|统一社会信用代码|护照号码|护照号|营业执照注册号|工商注册号|注册号|组织机构代码|纳税人识别号|税号|"
     r"(?<![A-Za-z])(?i:Passport\s+No\.?|Organization\s+Code|Tax\s+ID|VAT\s+No\.?|TIN|ИНН|КПП|ОГРН|UEN|ABN|EIN|CNPJ)(?![A-Za-z]))"
     r"\s*[:：]?\s*" + _OPEN + r"([A-Za-z0-9\-]{5,30})(?![A-Za-z0-9\-])"
 )
@@ -109,8 +114,8 @@ def find_formatted(text: str) -> list[Hit]:
     text = bilingual_label_text(text)
     hits: list[Hit] = []
 
-    def add(start: int, end: int, category: str, key: str = "") -> None:
-        hits.append(Hit(start, end, category, key))
+    def add(start: int, end: int, category: str, key: str = "", validated: bool | None = None) -> None:
+        hits.append(Hit(start, end, category, key, validated=validated))
 
     for m in _EMAIL.finditer(text):
         add(m.start(), m.end(), "EMAIL")
@@ -121,8 +126,12 @@ def find_formatted(text: str) -> list[Hit]:
         add(m.start(), end, "URL")
     # 账号、SWIFT 按对象编号（Q-59）：账号的 key 为去掉空格和短横线后的大写字符（IBAN 与本地写法视为不同账号）；
     # SWIFT 的 key 为大写代码，11 位且末尾为 XXX 时与前 8 位视为同一代码
+    for m in _LABELED_IBAN.finditer(text):
+        add(m.start(1), m.end(1), 'ACCOUNT', _norm_key(m.group(1)), validators.iban(m.group(1)))
     for m in _IBAN.finditer(text):
-        add(m.start(), m.end(), "ACCOUNT", _norm_key(m.group()))
+        valid = validators.iban(m.group())
+        if valid or m.group().isupper():
+            add(m.start(), m.end(), "ACCOUNT", _norm_key(m.group()), valid)
     for m in _ACCOUNT.finditer(text):
         digits = re.sub(r"\D", "", m.group(1))
         if 8 <= len(digits) <= 30:
@@ -133,12 +142,16 @@ def find_formatted(text: str) -> list[Hit]:
             add(m.start(1), m.end(1), 'ACCOUNT', _norm_key(m.group(1)))
     for m in _SWIFT.finditer(text):
         code = m.group(1).upper()
-        add(m.start(1), m.end(1), "SWIFT", code[:8] if len(code) == 11 and code.endswith("XXX") else code)
+        add(m.start(1), m.end(1), "SWIFT", code[:8] if len(code) == 11 and code.endswith("XXX") else code,
+            validators.bic(code))
     for m in _BANK_CODE.finditer(text):
         add(m.start(1), m.end(1), "SWIFT", m.group(1).upper())
     for m in _LABELED_ID.finditer(text):
         if sum(c.isdigit() for c in m.group(1)) >= 2:
-            add(m.start(1), m.end(1), "IDNO")
+            value = m.group(1)
+            valid = (validators.id_card(value) if _ID_CARD.fullmatch(value) else
+                     validators.uscc(value) if _CREDIT_CODE.fullmatch(value) else None)
+            add(m.start(1), m.end(1), "IDNO", validated=valid)
     for label in _LICENSE.finditer(text):
         m = _LICENSE_VALUE.match(text, label.end())
         if m:
@@ -154,14 +167,14 @@ def find_formatted(text: str) -> list[Hit]:
         if (re.fullmatch(r'\d{5,11}', value) if label in ('qq', 'qq号')
                 else any(c.isdigit() or c == '_' for c in value)):
             add(m.start(1), m.end(1), 'IM')
-    for m in _CREDIT_CODE.finditer(text):
-        add(m.start(), m.end(), "IDNO")
-    for m in _ID_CARD.finditer(text):
-        add(m.start(), m.end(), "IDNO")
     for m in _REFNO.finditer(text):
         value = m.group(1).rstrip(".")
         if any(c.isdigit() for c in value):
             add(m.start(1), m.start(1) + len(value), "REFNO", _norm_key(value))
+    # 标签强于号码形状，订单编号等先占位；无标签的校验失败项由引擎列为不确定项。
+    for pattern, validator in ((_CREDIT_CODE, validators.uscc), (_ID_CARD, validators.id_card)):
+        for m in pattern.finditer(text):
+            add(m.start(), m.end(), "IDNO", validated=validator(m.group()))
     for m in _POSTCODE.finditer(text):
         # 去掉末尾不含数字的词：“ZIP: 10001 New York”只取“10001”
         groups = m.group(1).split(" ")
