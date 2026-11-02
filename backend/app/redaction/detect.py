@@ -531,7 +531,7 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
             continue
         corrected = token.translate(str.maketrans('OoIl|SB', '0011158'))
         candidate = view[:match.start()] + corrected + view[match.start() + len(token):]
-        for hit in _find_amounts(candidate, column):
+        for hit in _find_amounts(_unsigned_amount_view(candidate), column):
             if ((hit.currency is not None or column in ('PRICE', 'AMOUNT'))
                     and any(hit.start <= match.start() + i < hit.end for i in wrong)):
                 hits.append(hit)
