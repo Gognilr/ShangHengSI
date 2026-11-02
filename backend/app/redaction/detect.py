@@ -51,7 +51,7 @@ _ACCOUNT_SIMPLE = re.compile(r'(?<![A-Za-z])(?i:Account|A/C|Acct\.?)[ \t]+'
     + _OPEN + r'(\d[\d -]{6,45}\d)(?!\d)')
 _SWIFT = re.compile(
     r"(?i:swift(?:\s*/\s*bic)?(?:\s*code)?|bic(?:\s*code)?)\s*[:：]?\s*" + _OPEN +
-    r"([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)(?![A-Za-z0-9])"
+    r"([A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)(?![A-Za-z0-9])", re.IGNORECASE
 )
 _CREDIT_CODE = re.compile(r"(?<![0-9A-Za-z])[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}(?![0-9A-Za-z])")
 _ID_CARD = re.compile(r"(?<![0-9A-Za-z])\d{17}[\dXx](?![0-9A-Za-z])")

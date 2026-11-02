@@ -577,7 +577,16 @@ def compute(
         for h in [*detect.find_persons(n.text), *signature_hits.get(i, ())]:
             if P.normalize(n.text[h.start:h.end]) in excluded:
                 continue
-            if _overlaps(occupied[i], h.start, h.end):  # 标签后是公司名称等已替换的文字
+            if _overlaps(occupied[i], h.start, h.end):
+                # V31Q-45：已有替换保留，只在原位补姓名残片；独立键保证还原为残片原文。
+                for start, end in _free_segments(occupied[i], h.start, h.end):
+                    while start < end and n.text[start].isspace():
+                        start += 1
+                    while end > start and n.text[end - 1].isspace():
+                        end -= 1
+                    if start < end and any(ch.isalpha() for ch in n.text[start:end]):
+                        _accept([_Span(i, start, end, 'PERSON', f'person-fragment:{i}:{start}:{end}', 'person')],
+                                occupied[i], spans)
                 continue
             name = n.text[h.start:h.end]
             existing = entities.get(P.normalize(name))

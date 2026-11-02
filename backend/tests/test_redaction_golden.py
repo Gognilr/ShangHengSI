@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 from app.redaction import outbound
-from app.redaction.engine import NodeIn, compute, outbound_text
+from app.redaction.engine import NodeIn, Term, compute, outbound_text
 from app.redaction.restore import check
 
 GOLDEN = Path(__file__).resolve().parent / "fixtures" / "redaction_golden"
@@ -36,7 +36,7 @@ def load(name: str):
         nodes = [NodeIn(*line.split(" ", 1)) for line in lines if line.strip()]
     else:
         nodes = [NodeIn(f"F1-P{i}", line) for i, line in enumerate(lines, start=1) if line.strip()]
-    result = compute(nodes, ann["stance"], main_prefix="F1-")
+    result = compute(nodes, ann["stance"], main_prefix="F1-", terms=[Term(**t) for t in ann.get('terms', [])])
     parties = [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in result.parties]
     # 逐节点的外发文本（不汇总报价明细表），用于逐条检查；另附实际外发的文本（报价明细表已汇总）
     text = outbound.build(parties, [(n.loc, n.clause_no, result.redacted[n.loc]) for n in nodes])

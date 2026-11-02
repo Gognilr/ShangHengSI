@@ -10,6 +10,7 @@ from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import StandardTemplate,StandardClause,TaskClauseVector,TaskFile
 from app.parsing.docx import parse_docx
+from app.parsing.model import strip_invisible
 from app.review.clauses import first_level
 from app.security import crypto
 from app.security.errors import AppError,NotFoundError
@@ -64,6 +65,7 @@ def update_clause(db,tid,cid,values,user_id):
     clause=db.scalar(select(StandardClause).where(StandardClause.template_id==tid,StandardClause.id==cid))
     if clause is None:raise NotFoundError('TEMPLATE_CLAUSE_NOT_FOUND','范本条款不存在')
     for name,value in values.items():
+        value = strip_invisible(value) if value else value
         setattr(clause,name+'_enc',crypto.encrypt_text(value) if value else None)
     db.flush();rehash(db,row)
     audit.record(db,'template_clause_update',user_id=user_id,target_type='template',target_id=str(tid),detail={'clause_id':str(cid)})

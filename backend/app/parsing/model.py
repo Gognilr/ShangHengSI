@@ -6,9 +6,14 @@
 from dataclasses import dataclass
 
 
+INVISIBLE = dict.fromkeys(
+    [*range(0x200B, 0x2010), *range(0x202A, 0x202F), *range(0x2060, 0x2065),
+     *range(0x2066, 0x206A), 0x061C, 0xFEFF, 0x00AD, *range(0xE0000, 0xE0080)])
+
+
 def strip_invisible(text: str) -> str:
     """删除复制文本中妨碍名称匹配的零宽字符（V2-F-01）。"""
-    return text.translate(dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad")))
+    return text.translate(INVISIBLE)
 
 
 @dataclass

@@ -75,6 +75,20 @@ def test_short_caps_alias_is_case_sensitive_and_word_bounded():
     assert check("交给 FMT 处理", ["FMT"]) == [("MAP", 3)]
 
 
+def test_hardening_normalized_and_rescanned_representatives():
+    for text, values in [('臺灣虛構公司', ['台湾虚构公司']), ('王\u200b某某', ['王某某']),
+                         ('一三九一二三四五六七八', ['13912345678']),
+                         ('账号 6222-0000-1111-2222', ['6222000011112222']),
+                         ('6222 O000 l111 2222', ['6222000011112222'])]:
+        assert 'MAP' in cats(text, values)
+    for text, category in [('gb82west12345698765432', 'ACCOUNT'), ('联系人：王某某', 'PERSON'),
+                           ('地址：浙江省杭州市虚构路18号', 'ADDR'), ('SWIFT: FICTCNBJ', 'SWIFT'),
+                           ('SWIFT: FIC\u200bTCNBJ', 'SWIFT'),
+                           ('正文\U000e0061', 'INVISIBLE')]:
+        assert category in cats(text)
+    assert check('中华人民共和国国务院颁布条例，[金额_10]') == []
+
+
 def test_short_numeric_values_need_currency():
     # Q-19：短数字只在前后不是数字、且紧挨币种或单位时才算
     assert check("数量 100 MT，期限 100 天", ["100"]) == []
@@ -106,13 +120,14 @@ def test_placeholders_masked_only_for_real_values():
 
 
 def test_postcode_real_values_block_and_code_passes():
-    """R1-11（Q-139 ①）：邮编真实值在对照表中时拦截；代号“[邮编]”本身不拦截；重扫不加邮编（无标签的 6 位数字太常见）。"""
+    """V31-P-02：有标签邮编也重扫；无标签六位数字和代号仍保留。"""
     text = "补充：邮编 251500，Post Code sw1a  1aa"
-    assert check(text, ["251500", "SW1A 1AA"]) == [("MAP", text.index("251500")), ("MAP", text.index("sw1a"))]
+    assert check(text, ["251500", "SW1A 1AA"]) == [
+        (category, text.index(value)) for value in ('251500', 'sw1a') for category in ('MAP', 'POSTCODE')]
     sent = "通讯地址：[地址：中国] 邮政编码：【[邮编]】"
     assert recheck(sent, real_values=["251500", "邮编"], terms=[], placeholders=["[地址：中国]", "[邮编]"]) == []
     assert check(sent, ["251500"]) == []
-    assert check("邮编：251500，批次 330512") == []
+    assert check("邮编：251500，批次 330512") == [('POSTCODE', 3)]
 
 
 def test_numeric_values_rewritten_forms():
@@ -145,8 +160,8 @@ def test_rescan_unreplaced_formatted_info():
     assert cats("金额 USD 1,250.00") == {"AMOUNT"}
     assert cats("人民币捌拾万元整") == {"AMOUNT"}
     assert cats("50万元") == {"AMOUNT"}
-    # 9.8 只列电话、邮箱、账号、证件号、带币种金额：网址、SWIFT、编号、无币种数字不拦截
-    assert check("网址 www.example.com，SWIFT: ABCDCNBJ，合同号：HT-1，数量 320 MT，硫含量≤0.5%，HS 27131200") == []
+    # V31-P-02 扩至全部格式化类别；无币种数字、规格与 HS 不拦。
+    assert cats("网址 www.example.com，SWIFT: ABCDCNBJ，合同号：HT-1，数量 320 MT，硫含量≤0.5%，HS 27131200") == {'URL', 'SWIFT', 'REFNO'}
 
 
 def test_placeholders_and_prompts_pass():
@@ -253,5 +268,7 @@ def test_single_english_word_value_is_case_sensitive():
     """V2Q-173：单词英文姓名脱敏时区分大小写，复检一致，小写普通词不拦截；原大小写仍拦截。"""
     text = "人员_1 will sign; it is a long-term deal. Please grant a bill of lading."
     assert recheck(text, real_values=["Long", "Grant", "Bill"], terms=[]) == []
-    assert [r.category for r in recheck("Mr. Long agrees.", real_values=["Long"], terms=[])] == ["MAP"]
+    assert 'MAP' in cats('Lоng', ['Long'])  # 西里尔小写 о。
+    assert check('long', ['Long']) == []
+    assert cats("Mr. Long agrees.", ["Long"]) == {'MAP', 'PERSON'}
     assert [r.category for r in recheck("LORNA FICTIVE agrees.", real_values=["Lorna Fictive"], terms=[])] == ["MAP"]

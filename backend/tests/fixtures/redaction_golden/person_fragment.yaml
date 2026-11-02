@@ -1,0 +1,15 @@
+description: 人名部分被既有词条占位后，残片仅原位替换，独立代号逐字还原（V31Q-45）
+stance: sales
+terms:
+  - {text: FICTIVE, kind: learned, category: ORG}
+must_replace:
+  - {text: 清原虚构有限公司, category: ORG}
+  - {text: JANE, category: PERSON}
+  - {text: FICTIVE, category: ORG}
+must_keep: []
+returns:
+  - field: clause
+    model: '联系人：[人员_1] [公司_A]'
+    expect: '联系人：JANE FICTIVE'
+    restored: 2
+    marks: []

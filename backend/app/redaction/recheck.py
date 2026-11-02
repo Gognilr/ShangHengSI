@@ -12,6 +12,7 @@
 """
 import re
 import uuid
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -21,10 +22,11 @@ from sqlalchemy.orm import Session
 
 from app.db.models import RedactionTerm
 from app.redaction import detect
+from app.redaction.normalize import normalize_with_map, normalize_value
 from app.redaction.parties import name_pattern, single_english_word
 from app.security import crypto
 
-_RESCAN_CATEGORIES = {"PHONE", "EMAIL", "ACCOUNT", "IDNO"}
+_RESCAN_CATEGORIES = {"PHONE", "EMAIL", "ACCOUNT", "IDNO", "SWIFT", "URL", "IM", "POSTCODE", "REFNO"}
 _NUMERIC_VALUE = re.compile(r"^[+\d][\d\s,.\-]*$")
 _AMOUNT_VALUE = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
 # 数字前不能是下划线：代号“[金额_10]”的序号不是数字类真实值
@@ -61,11 +63,11 @@ class RecheckContext:
         return f"RecheckContext(real_values={len(self.real_values)}, terms={len(self.terms)})"
 
 
-def _mask_placeholders(text: str, placeholders: Iterable[str]) -> str:
+def _mask_placeholders(text: str, placeholders: Iterable[str], *, mask: str = '\x00') -> str:
     """把代号原文换成等长的不可匹配字符，位置不变。只用于对照表真实值和词条的比对：
     代号“[电话]”中的“电话”二字不是外发的真实值（B-04）。格式化信息与金额的重扫仍在原文上做。"""
     for code in sorted({p for p in placeholders if p}, key=len, reverse=True):
-        text = text.replace(code, "\x00" * len(code))
+        text = text.replace(code, mask * len(code))
     return text
 
 
@@ -141,18 +143,87 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str],
     """返回全部拦截原因（按位置排序、去重）；空列表表示可以发送。
 
     placeholders 为本任务对照表中的代号原文：比对真实值、词条前先遮盖（只遮盖这些确切的代号，默认不遮盖）。"""
-    reasons: set[BlockReason] = set()
-    masked = _mask_placeholders(text, placeholders)
-    for value in dict.fromkeys(real_values):
-        reasons.update(BlockReason("MAP", p) for p in _value_positions(masked, value))
-    for term in dict.fromkeys(terms):
-        reasons.update(BlockReason("TERM", p) for p in _value_positions(masked, term))
-    for hit in detect.find_formatted(text):
-        if hit.category in _RESCAN_CATEGORIES:
-            reasons.add(BlockReason(hit.category, hit.start))
-    for hit in detect.find_amounts(text):
-        reasons.add(BlockReason("AMOUNT", hit.start))
+    codes = list(placeholders)
+    reasons: set[BlockReason] = {BlockReason('INVISIBLE', i) for i, c in enumerate(text)
+                                if 0xE0000 <= ord(c) <= 0xE007F}
+    normalized = normalize_with_map(text)
+    preserving = normalize_with_map(text, preserve_case=True)
+    masked = _mask_placeholders(normalized.text, (normalize_value(p) for p in codes))
+    preserving_masked = _mask_placeholders(preserving.text, (normalize_value(p, preserve_case=True) for p in codes))
+    original_masked = _mask_placeholders(text, codes)
+    for category, values in (('MAP', real_values), ('TERM', terms)):
+        for value in dict.fromkeys(values):
+            # Unicode 的 ASCII I→l 等映射会使原有英文大小写比较失配；保留原文通路，只增不减。
+            reasons.update(BlockReason(category, p) for p in _value_positions(original_masked, value))
+            sensitive = single_english_word(value) or value.isascii() and value.isupper() and len(value) <= 6
+            view, compared = (preserving, preserving_masked) if sensitive else (normalized, masked)
+            needle = normalize_value(value, preserve_case=sensitive)
+            positions = _value_positions(compared, needle)
+            reasons.update(BlockReason(category, view.index_map[p]) for p in positions)
+            reasons.update(BlockReason(category, preserving.index_map[p])
+                           for p in _compact_positions(preserving_masked, normalize_value(value, preserve_case=True)))
+    # 原文、归一化文本分别重扫；同一原文位置的同类原因去重。
+    for scanned, indices, is_normalized in ((text, range(len(text)), False),
+                                           (preserving.text, preserving.index_map, True)):
+        # ASCII 称谓 / 标签不能被 I→l 变成新的单词；完整归一化扫描仍保留，另补语境稳定的扫描。
+        contextual = ''.join(_context_char(text[indices[i]], c) for i, c in enumerate(scanned)) if is_normalized else scanned
+        for candidate in dict.fromkeys((scanned, contextual)):
+            for hit in detect.find_formatted(candidate):
+                if hit.category in _RESCAN_CATEGORIES:
+                    reasons.add(BlockReason(hit.category, indices[hit.start]))
+        for hit in detect.find_amounts(scanned):
+            if is_normalized and text[indices[hit.start]:].startswith('一元化'):
+                continue  # 原文的普通词“一元化”不能因单字数字归一而变成“1 元”。
+            reasons.add(BlockReason('AMOUNT', indices[hit.start]))
+        # 人名语境中的“第二张工作表”不能因“二→2”凭空产生“张工”；姓名中的“一、三”等仍是汉字。
+        people_text = _mask_code_syntax(_mask_placeholders(contextual, codes, mask='\n'))
+        for finder in (detect.find_persons, detect.find_addresses):
+            for hit in finder(people_text):
+                reasons.add(BlockReason(hit.category, indices[hit.start]))
     return sorted(reasons, key=lambda r: (r.position, r.category))
+
+
+def _context_char(original: str, normalized: str) -> str:
+    ch = unicodedata.normalize('NFKC', original)
+    return ch if len(ch) == 1 and (ch in '〇零一二三四五六七八九' or ch.isascii() and ch.isalpha()) else normalized
+
+
+def _mask_code_syntax(text: str) -> str:
+    """只遮盖合法代号，普通方括号内的真实值仍接受重扫。"""
+    from app.redaction.restore import _identity
+    from app.redaction.placeholders import NEUTRAL
+    def mask(match):
+        raw = match.group()
+        identity = _identity(raw)
+        if identity and identity[0] == 'shared' and identity[1].startswith('地址:'):
+            country = raw[1:-1].split('：' if '：' in raw else ':', 1)[-1]
+            if detect.find_country(country) != country and country != '国家未知':
+                identity = None
+        return '\n' * len(raw) if NEUTRAL.fullmatch(raw) or identity else raw
+    return re.sub(r'\[\[(?:OUR|[A-Z]+_\d+)\]\]|[\[［【][^\[\]［］【】\r\n]+[\]］】]', mask, text)
+
+
+def _compact_positions(text: str, value: str) -> list[int]:
+    target = re.sub(r'[\s-]', '', value).upper()
+    if (len(target) < 3 or not target.isascii() or not target.isalnum()
+            or not (any(c.isdigit() for c in target) or detect.validators.bic(target))):
+        return []
+    # 短纯数字仍按原币种 / 数字边界规则处理，不能把代号序号或期限拦下。
+    if target.isdigit() and len(target) < _LONG_DIGITS:
+        return []
+    out = []
+    ocr = str.maketrans({'O': '0', 'L': '1', 'I': '1', '|': '1', 'S': '5', 'B': '8'})
+    for match in re.finditer(r'[A-Za-z0-9|]+(?:[\s-]+[A-Za-z0-9|]+)*', text):
+        positions = [i for i in range(match.start(), match.end()) if not text[i].isspace() and text[i] != '-']
+        compact = ''.join(text[i] for i in positions).upper()
+        variants = [compact]
+        if target.isdigit() and sum(c.isdigit() for c in compact) > len(compact) / 2:
+            variants.append(compact.translate(ocr))
+        for variant in variants:
+            start = variant.find(target)
+            if start >= 0:
+                out.append(positions[start])
+    return out
 
 
 def recheck_context(db: Session, task_id: uuid.UUID | None, extra_task_ids: Iterable[uuid.UUID] = ()) -> RecheckContext:
