@@ -24,7 +24,7 @@ import {
   type DuplicateFile,
 } from '@/api/tasks'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
-import ConfirmStep from '@/components/ConfirmStep.vue'
+import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 import StepBar from '@/components/StepBar.vue'
 import SiIsland from '@/components/ui/SiIsland.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
@@ -456,7 +456,7 @@ function fileBadge(name: string): string {
 }
 </script>
 <template>
-  <div class="page" :class="step === 1 ? 'page--wide' : 'page--standard'">
+  <div class="page" :class="step === 1 ? 'page--split is-workbench' : 'page--standard'">
     <StepBar :active="step" :status="stepStatus" />
     <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" class="block" />
 
@@ -543,8 +543,7 @@ function fileBadge(name: string): string {
 
     <section v-else-if="step === 1 && task" class="confirm-step">
       <el-alert v-if="modelError" :title="modelError" type="error" :closable="false" show-icon class="gap" />
-      <p v-else-if="modelId" class="hint">审核模型：{{ modelItems.find(m => m.id === modelId)?.display_name }}</p>
-      <ConfirmStep v-if="!modelsLoading && !modelError" :key="`${task.id}:${modelId ?? ''}`" :task="task" :model-id="modelId" @confirmed="refreshTask" @stale="refreshTask" />
+      <ConfirmWorkbench v-if="!modelsLoading && !modelError" :key="`${task.id}:${modelId ?? ''}`" :task="task" :model-id="modelId" :model-name="modelItems.find(m => m.id === modelId)?.display_name" @confirmed="refreshTask" @stale="refreshTask" />
     </section>
     <section v-else-if="step === 2 && task" class="panel">
       <div class="processing">
@@ -577,6 +576,9 @@ function fileBadge(name: string): string {
 .model-option { height: auto; min-height: 40px; padding-top: 8px; padding-bottom: 8px; font: var(--si-font-body); }
 .model-description { display: block; color: var(--el-text-color-secondary); font: var(--si-font-caption); overflow-wrap: anywhere; }
 .block { margin-bottom: 16px; }
+.is-workbench { height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 16px; padding-bottom: 0; }
+.is-workbench :deep(.step-bar) { flex: none; margin-bottom: 0; }
+.confirm-step { flex: 1; min-height: 0; }
 .center { text-align: center; padding: 48px 0; }
 .center > .el-icon { color: var(--el-color-primary); }
 h2 { margin: 0 0 16px; font: var(--si-font-h4); }

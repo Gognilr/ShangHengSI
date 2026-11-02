@@ -8,7 +8,7 @@ import { assistantStatusLabel, statusTag } from '@/utils/labels'
 import EmptyState from '@/components/EmptyState.vue'
 import WorkFolderBar from '@/components/WorkFolderBar.vue'
 import { FileText } from '@lucide/vue'
-import ConfirmStep from '@/components/ConfirmStep.vue'
+import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 const props = defineProps<{ session: Session }>()
 const emit = defineEmits<{ refresh: [] }>()
 const upload = ref<HTMLInputElement>(), busy = ref(false), error = ref(''), confirmOpen = ref(false), outboundOpen = ref(false), outbound = ref('')
@@ -68,7 +68,7 @@ function confirmed() { confirmOpen.value = false; emit('refresh') }
     <EmptyState v-if="!session.files.length" compact :icon="FileText" title="还没有文件" description="加入文件后，在本机解析与脱敏。" />
     <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="confirmOpen = true">确认脱敏（{{ pending.length }} 个文件）</el-button>
     <div class="session-settings"><label>我方立场</label><el-select :model-value="session.stance" :disabled="!canStance || busy" @change="stance"><el-option label="销售" value="sales" /><el-option label="采购" value="purchase" /><el-option label="其他" value="other" /></el-select><p class="hint">第一个文件确认后不能修改立场</p><p>本会话代号 <span class="num">{{ session.code_count }}</span> 个</p><el-button :disabled="busy || session.status === 'parsing'" @click="showOutbound">查看外发文本</el-button><p class="hint">发给模型的只有脱敏后的文字，回复在本机还原</p></div>
-    <el-dialog v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmStep :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
+    <el-dialog v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
   </aside>
 </template>
@@ -85,6 +85,6 @@ h3 { font: var(--si-font-h3); }
 .warning { color: var(--el-color-warning); font: var(--si-font-caption); }
 .session-settings { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--el-border-color-light); }
 .session-settings label { display: block; margin-bottom: 8px; }
-.confirmation { max-width: 1200px; margin: auto; }
+.confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 65vh; overflow-y: auto; font: var(--si-font-body); }
 </style>
