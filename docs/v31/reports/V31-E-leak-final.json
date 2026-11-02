@@ -1,0 +1,2929 @@
+{
+  "code_commit": "83d77f2",
+  "seed_count": 530,
+  "groups": 8354,
+  "a_leaked": 0,
+  "total_leaked": 2587,
+  "rows": [
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "bidi",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "chinese_digits",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "fullwidth",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "hyphens",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "ocr",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "original",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "spaces",
+      "replaced": 15,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 15
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "zero_width",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ADDR",
+      "variant": "bidi",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ADDR",
+      "variant": "fullwidth",
+      "replaced": 60,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 60
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ADDR",
+      "variant": "original",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ADDR",
+      "variant": "traditional",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 39
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ADDR",
+      "variant": "zero_width",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "bidi",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "chinese_lower",
+      "replaced": 97,
+      "blocked": 2,
+      "leaked": 0,
+      "total": 99
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "chinese_upper",
+      "replaced": 88,
+      "blocked": 2,
+      "leaked": 0,
+      "total": 90
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "fullwidth",
+      "replaced": 171,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 171
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "ocr",
+      "replaced": 165,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 165
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "original",
+      "replaced": 222,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 222
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "spaces",
+      "replaced": 78,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 78
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "traditional",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 6
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "zero_width",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "EMAIL",
+      "variant": "bidi",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "EMAIL",
+      "variant": "fullwidth",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "EMAIL",
+      "variant": "original",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "EMAIL",
+      "variant": "zero_width",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "bidi",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "chinese_digits",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "fullwidth",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "hyphens",
+      "replaced": 9,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 9
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "ocr",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "original",
+      "replaced": 120,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 120
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "spaces",
+      "replaced": 48,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 48
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "zero_width",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IM",
+      "variant": "bidi",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IM",
+      "variant": "fullwidth",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IM",
+      "variant": "original",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "IM",
+      "variant": "zero_width",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "bidi",
+      "replaced": 357,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 357
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "fullwidth",
+      "replaced": 180,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 180
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "original",
+      "replaced": 372,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 372
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "traditional",
+      "replaced": 156,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 156
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "zero_width",
+      "replaced": 357,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 357
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "bidi",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "fullwidth",
+      "replaced": 81,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 81
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "name_fullspaces",
+      "replaced": 99,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 99
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "name_spaces",
+      "replaced": 99,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 99
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "original",
+      "replaced": 192,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 192
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "traditional",
+      "replaced": 72,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 72
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "zero_width",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "bidi",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "chinese_digits",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "fullwidth",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "hyphens",
+      "replaced": 45,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 45
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "ocr",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "original",
+      "replaced": 69,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 69
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "spaces",
+      "replaced": 54,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 54
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "zero_width",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "bidi",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "chinese_digits",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "fullwidth",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "hyphens",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "ocr",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "original",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "spaces",
+      "replaced": 9,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 9
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "zero_width",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "bidi",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "chinese_lower",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "chinese_upper",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "fullwidth",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "ocr",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "original",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "spaces",
+      "replaced": 15,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 15
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "zero_width",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PROJECT",
+      "variant": "bidi",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PROJECT",
+      "variant": "original",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PROJECT",
+      "variant": "traditional",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "PROJECT",
+      "variant": "zero_width",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "bidi",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "chinese_digits",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "fullwidth",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "hyphens",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "ocr",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "original",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "spaces",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "zero_width",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "bidi",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "fullwidth",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "ocr",
+      "replaced": 30,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 30
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "original",
+      "replaced": 48,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 48
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "zero_width",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "URL",
+      "variant": "bidi",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "URL",
+      "variant": "fullwidth",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "URL",
+      "variant": "original",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "core",
+      "mode": "mixed",
+      "category": "URL",
+      "variant": "zero_width",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "bidi",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "chinese_digits",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "fullwidth",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "hyphens",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "ocr",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "original",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "spaces",
+      "replaced": 15,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 15
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "zero_width",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ADDR",
+      "variant": "bidi",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ADDR",
+      "variant": "fullwidth",
+      "replaced": 60,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 60
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ADDR",
+      "variant": "original",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ADDR",
+      "variant": "traditional",
+      "replaced": 33,
+      "blocked": 3,
+      "leaked": 3,
+      "total": 39
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ADDR",
+      "variant": "zero_width",
+      "replaced": 66,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 66
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "bidi",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "chinese_lower",
+      "replaced": 96,
+      "blocked": 3,
+      "leaked": 0,
+      "total": 99
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "chinese_upper",
+      "replaced": 87,
+      "blocked": 3,
+      "leaked": 0,
+      "total": 90
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "fullwidth",
+      "replaced": 171,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 171
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "ocr",
+      "replaced": 165,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 165
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "original",
+      "replaced": 222,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 222
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "spaces",
+      "replaced": 78,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 78
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "traditional",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 6
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "zero_width",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "EMAIL",
+      "variant": "bidi",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "EMAIL",
+      "variant": "fullwidth",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "EMAIL",
+      "variant": "original",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "EMAIL",
+      "variant": "zero_width",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "bidi",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "chinese_digits",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "fullwidth",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "hyphens",
+      "replaced": 9,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 9
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "ocr",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "original",
+      "replaced": 120,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 120
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "spaces",
+      "replaced": 48,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 48
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "zero_width",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IM",
+      "variant": "bidi",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IM",
+      "variant": "fullwidth",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IM",
+      "variant": "original",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "IM",
+      "variant": "zero_width",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "bidi",
+      "replaced": 357,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 357
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "fullwidth",
+      "replaced": 180,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 180
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "original",
+      "replaced": 372,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 372
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "traditional",
+      "replaced": 153,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 156
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "zero_width",
+      "replaced": 357,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 357
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "bidi",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "fullwidth",
+      "replaced": 81,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 81
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "name_fullspaces",
+      "replaced": 93,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 99
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "name_spaces",
+      "replaced": 93,
+      "blocked": 0,
+      "leaked": 6,
+      "total": 99
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "original",
+      "replaced": 192,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 192
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "traditional",
+      "replaced": 72,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 72
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "zero_width",
+      "replaced": 183,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 183
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "bidi",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "chinese_digits",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "fullwidth",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "hyphens",
+      "replaced": 45,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 45
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "ocr",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "original",
+      "replaced": 69,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 69
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "spaces",
+      "replaced": 54,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 54
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "zero_width",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "bidi",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "chinese_digits",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "fullwidth",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "hyphens",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "ocr",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "original",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "spaces",
+      "replaced": 9,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 9
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "zero_width",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "bidi",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "chinese_lower",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "chinese_upper",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "fullwidth",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "ocr",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "original",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "spaces",
+      "replaced": 15,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 15
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "zero_width",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PROJECT",
+      "variant": "bidi",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PROJECT",
+      "variant": "original",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PROJECT",
+      "variant": "traditional",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "PROJECT",
+      "variant": "zero_width",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "bidi",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "chinese_digits",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "fullwidth",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "hyphens",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "ocr",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "original",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "spaces",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 234,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "zero_width",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "bidi",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "fullwidth",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "ocr",
+      "replaced": 30,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 30
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "original",
+      "replaced": 48,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 48
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "zero_width",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "URL",
+      "variant": "bidi",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "URL",
+      "variant": "fullwidth",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "URL",
+      "variant": "original",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "core",
+      "mode": "pure",
+      "category": "URL",
+      "variant": "zero_width",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "cyrillic",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 6
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "reference_hyphens",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ACCOUNT",
+      "variant": "reference_spaces",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 42
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ADDR",
+      "variant": "cyrillic",
+      "replaced": 21,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 21
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ADDR",
+      "variant": "reference_hyphens",
+      "replaced": 50,
+      "blocked": 0,
+      "leaked": 16,
+      "total": 66
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ADDR",
+      "variant": "reference_spaces",
+      "replaced": 56,
+      "blocked": 0,
+      "leaked": 10,
+      "total": 66
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "chinese_lower",
+      "replaced": 53,
+      "blocked": 0,
+      "leaked": 22,
+      "total": 75
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "chinese_upper",
+      "replaced": 53,
+      "blocked": 0,
+      "leaked": 22,
+      "total": 75
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "cyrillic",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 6
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "reference_hyphens",
+      "replaced": 109,
+      "blocked": 2,
+      "leaked": 72,
+      "total": 183
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "AMOUNT",
+      "variant": "reference_spaces",
+      "replaced": 113,
+      "blocked": 0,
+      "leaked": 70,
+      "total": 183
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "EMAIL",
+      "variant": "cyrillic",
+      "replaced": 6,
+      "blocked": 12,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "EMAIL",
+      "variant": "reference_hyphens",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 12,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "EMAIL",
+      "variant": "reference_spaces",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 12,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "cyrillic",
+      "replaced": 69,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 69
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "hyphens",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 39
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "reference_hyphens",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "reference_spaces",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "IDNO",
+      "variant": "spaces",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 39
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "IM",
+      "variant": "cyrillic",
+      "replaced": 19,
+      "blocked": 26,
+      "leaked": 0,
+      "total": 45
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "IM",
+      "variant": "reference_hyphens",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "IM",
+      "variant": "reference_spaces",
+      "replaced": 21,
+      "blocked": 0,
+      "leaked": 30,
+      "total": 51
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "cyrillic",
+      "replaced": 174,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 174
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "lowercase",
+      "replaced": 177,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 177
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "reference_hyphens",
+      "replaced": 167,
+      "blocked": 0,
+      "leaked": 190,
+      "total": 357
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "ORG",
+      "variant": "reference_spaces",
+      "replaced": 237,
+      "blocked": 0,
+      "leaked": 120,
+      "total": 357
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "cyrillic",
+      "replaced": 63,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 63
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "lowercase",
+      "replaced": 58,
+      "blocked": 0,
+      "leaked": 8,
+      "total": 66
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "reference_hyphens",
+      "replaced": 135,
+      "blocked": 2,
+      "leaked": 46,
+      "total": 183
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PERSON",
+      "variant": "reference_spaces",
+      "replaced": 173,
+      "blocked": 4,
+      "leaked": 6,
+      "total": 183
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "reference_hyphens",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PHONE",
+      "variant": "reference_spaces",
+      "replaced": 57,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 57
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "cyrillic",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "reference_hyphens",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "POSTCODE",
+      "variant": "reference_spaces",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "chinese_lower",
+      "replaced": 7,
+      "blocked": 0,
+      "leaked": 8,
+      "total": 15
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "chinese_upper",
+      "replaced": 7,
+      "blocked": 0,
+      "leaked": 8,
+      "total": 15
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "reference_hyphens",
+      "replaced": 23,
+      "blocked": 0,
+      "leaked": 10,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PRICE",
+      "variant": "reference_spaces",
+      "replaced": 23,
+      "blocked": 0,
+      "leaked": 10,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PROJECT",
+      "variant": "reference_hyphens",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "PROJECT",
+      "variant": "reference_spaces",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "cyrillic",
+      "replaced": 282,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 282
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "reference_hyphens",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "REFNO",
+      "variant": "reference_spaces",
+      "replaced": 289,
+      "blocked": 2,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "cyrillic",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "lowercase",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "reference_hyphens",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "SWIFT",
+      "variant": "reference_spaces",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "URL",
+      "variant": "cyrillic",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "URL",
+      "variant": "reference_hyphens",
+      "replaced": 1,
+      "blocked": 0,
+      "leaked": 2,
+      "total": 3
+    },
+    {
+      "tier": "reference",
+      "mode": "mixed",
+      "category": "URL",
+      "variant": "reference_spaces",
+      "replaced": 1,
+      "blocked": 0,
+      "leaked": 2,
+      "total": 3
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "cyrillic",
+      "replaced": 3,
+      "blocked": 3,
+      "leaked": 0,
+      "total": 6
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "reference_hyphens",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 42
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ACCOUNT",
+      "variant": "reference_spaces",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 42
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ADDR",
+      "variant": "cyrillic",
+      "replaced": 21,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 21
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ADDR",
+      "variant": "reference_hyphens",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 24,
+      "total": 66
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ADDR",
+      "variant": "reference_spaces",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 15,
+      "total": 66
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "chinese_lower",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 33,
+      "total": 75
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "chinese_upper",
+      "replaced": 42,
+      "blocked": 0,
+      "leaked": 33,
+      "total": 75
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "cyrillic",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 6
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "reference_hyphens",
+      "replaced": 72,
+      "blocked": 3,
+      "leaked": 108,
+      "total": 183
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "AMOUNT",
+      "variant": "reference_spaces",
+      "replaced": 78,
+      "blocked": 0,
+      "leaked": 105,
+      "total": 183
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "EMAIL",
+      "variant": "cyrillic",
+      "replaced": 0,
+      "blocked": 18,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "EMAIL",
+      "variant": "reference_hyphens",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 18,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "EMAIL",
+      "variant": "reference_spaces",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 18,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "cyrillic",
+      "replaced": 66,
+      "blocked": 3,
+      "leaked": 0,
+      "total": 69
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "hyphens",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 39
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "reference_hyphens",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "reference_spaces",
+      "replaced": 87,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 87
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "IDNO",
+      "variant": "spaces",
+      "replaced": 39,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 39
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "IM",
+      "variant": "cyrillic",
+      "replaced": 6,
+      "blocked": 33,
+      "leaked": 6,
+      "total": 45
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "IM",
+      "variant": "reference_hyphens",
+      "replaced": 51,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 51
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "IM",
+      "variant": "reference_spaces",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 45,
+      "total": 51
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "cyrillic",
+      "replaced": 60,
+      "blocked": 0,
+      "leaked": 114,
+      "total": 174
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "lowercase",
+      "replaced": 84,
+      "blocked": 0,
+      "leaked": 93,
+      "total": 177
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "reference_hyphens",
+      "replaced": 75,
+      "blocked": 0,
+      "leaked": 282,
+      "total": 357
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "ORG",
+      "variant": "reference_spaces",
+      "replaced": 177,
+      "blocked": 0,
+      "leaked": 180,
+      "total": 357
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "cyrillic",
+      "replaced": 51,
+      "blocked": 6,
+      "leaked": 6,
+      "total": 63
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "lowercase",
+      "replaced": 27,
+      "blocked": 0,
+      "leaked": 39,
+      "total": 66
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "reference_hyphens",
+      "replaced": 111,
+      "blocked": 0,
+      "leaked": 72,
+      "total": 183
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PERSON",
+      "variant": "reference_spaces",
+      "replaced": 162,
+      "blocked": 0,
+      "leaked": 21,
+      "total": 183
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "reference_hyphens",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 24,
+      "total": 57
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PHONE",
+      "variant": "reference_spaces",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 24,
+      "total": 57
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "cyrillic",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "reference_hyphens",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "POSTCODE",
+      "variant": "reference_spaces",
+      "replaced": 12,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 12
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "chinese_lower",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 12,
+      "total": 15
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "chinese_upper",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 12,
+      "total": 15
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "reference_hyphens",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 15,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PRICE",
+      "variant": "reference_spaces",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 15,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PROJECT",
+      "variant": "reference_hyphens",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "PROJECT",
+      "variant": "reference_spaces",
+      "replaced": 18,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 18
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "cyrillic",
+      "replaced": 48,
+      "blocked": 222,
+      "leaked": 12,
+      "total": 282
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "reference_hyphens",
+      "replaced": 291,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 291
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "REFNO",
+      "variant": "reference_spaces",
+      "replaced": 30,
+      "blocked": 0,
+      "leaked": 261,
+      "total": 291
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "cyrillic",
+      "replaced": 21,
+      "blocked": 12,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "lowercase",
+      "replaced": 33,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "reference_hyphens",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 33,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "SWIFT",
+      "variant": "reference_spaces",
+      "replaced": 6,
+      "blocked": 0,
+      "leaked": 27,
+      "total": 33
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "URL",
+      "variant": "cyrillic",
+      "replaced": 3,
+      "blocked": 0,
+      "leaked": 0,
+      "total": 3
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "URL",
+      "variant": "reference_hyphens",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 3
+    },
+    {
+      "tier": "reference",
+      "mode": "pure",
+      "category": "URL",
+      "variant": "reference_spaces",
+      "replaced": 0,
+      "blocked": 0,
+      "leaked": 3,
+      "total": 3
+    }
+  ]
+}
