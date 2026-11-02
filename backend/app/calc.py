@@ -83,6 +83,8 @@ def evaluate(text: str, mapping: dict[str, str], *, labels=None, currencies_by_c
                 entries = lookup.get(identity, [])
                 if len(entries) != 1: raise CalcError('unknown_code')
                 code, surface = entries[0]
+                if restore.check(token.group(), {code: surface}).text != surface:
+                    raise CalcError('unknown_code')
                 value = _number(surface)
                 if value is None: raise CalcError('unparsable')
                 key = f'v{len(values)}'; values[key] = value

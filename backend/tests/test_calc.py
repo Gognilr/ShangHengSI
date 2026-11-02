@@ -17,6 +17,7 @@ def test_gross_margin_and_variants():
 def test_unknown_code():
     row, = evaluate('【算式】合计 = [金额_9] + 1', {'[金额_1]': '2'})
     assert row['status'] == 'unknown_code' and row['result'] == ''
+    assert evaluate('【算式】合计 = 金额1 + 1', {'[金额_1]': '2'})[0]['status'] == 'unknown_code'
 
 
 def test_mixed_currency():
