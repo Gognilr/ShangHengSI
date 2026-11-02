@@ -77,7 +77,7 @@ def test_product_rounding_and_total_include_rounded_rows():
 @pytest.mark.parametrize(("total", "codes"), [("30", []), ("30.01", []), ("30.02", ["L-02"])])
 def test_total_check(total, codes):
     tables, results = run([["项目", "数量", "单价", "金额"], ["甲", "2", "5", "10"],
-                           ["小计", "4", "5", "20"], ["", "合计", "", total], ["忽略", "9", "9", "0"]])
+                           ["乙", "4", "5", "20"], ["", "合计", "", total], ["忽略", "9", "9", "0"]])
     assert [r.code for r in results] == codes
     assert tables[0].total_ok == (not codes)
     if codes:
@@ -117,8 +117,8 @@ def test_incomplete_structure_and_header_scan_bounds():
     tables, results = run([["单价", "金额"], ["520", "52000"]])
     assert not tables[0].recognized and [r.code for r in results] == ["L-INFO"]
     assert results[0].locs == ["F1-T1-R1-C1"]
-    assert run([["数量", "单价", "金额"], ["1", "1", "1"]], start=20)[0][0].recognized
-    tables, results = run([["数量", "单价", "金额"], ["1", "1", "1"]], start=21)
+    assert run([["数量", "单价", "金额"], ["1", "1", "1"]], start=10)[0][0].recognized
+    tables, results = run([["数量", "单价", "金额"], ["1", "1", "1"]], start=11)
     assert not tables and [r.code for r in results] == ["L-INFO"] and not results[0].locs
 
 

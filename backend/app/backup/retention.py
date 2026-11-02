@@ -103,7 +103,7 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
                         if file.converted_storage_key:
                             storage.delete_original(file.converted_storage_key)
                         file.original_deleted_at = now
-                    db.execute(update(DocNode).where(DocNode.task_id == tid).values(text_enc=None))
+                    db.execute(update(DocNode).where(DocNode.task_id == tid).values(text_enc=None, formula_enc=None))
                     db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == tid))
                     task.user_note_enc = None
                     if task.status == "awaiting_confirm":

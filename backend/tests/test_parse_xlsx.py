@@ -93,6 +93,12 @@ def test_cell_limit():
     with pytest.raises(ParseError) as e:
         parse_xlsx(to_bytes(wb), 1)
     assert str(e.value) == MSG_TOO_MANY_CELLS
+    # 数字另计，不再占用两万文字单元格额度。
+    wb = Workbook()
+    for i in range(1, 100002):
+        wb.active.cell(i, 1, i)
+    with pytest.raises(ParseError, match="数字单元格超过 100000"):
+        parse_xlsx(to_bytes(wb), 1)
 
 
 def test_cell_limit_boundary_ok():

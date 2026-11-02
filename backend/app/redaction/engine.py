@@ -760,6 +760,8 @@ def compute(
     node_cache, same_compute = {}, {}
     cache_hits = cache_misses = 0
     for i, n in enumerate(nodes):
+        if re.fullmatch(r"\s*[-+（(]?(?:\d[\d,，]*(?:\.\d+)?|\.\d+)[%％]?\s*[)）]?\s*", n.text):
+            continue  # 纯数字节点仍执行前面的金额与编号规则，不运行名称识别。
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         residual = P.bilingual_label_text(ner.mask(n.text, occupied[i]))
         key = ner.cache_key(residual, context=context)
@@ -820,6 +822,8 @@ def compute(
     # 疑似遗漏：全部替换项确定之后，在每个节点未替换的文字上识别（9.5）
     lowercase_words = S.lowercase_evidence('\n'.join(n.text for n in nodes))
     for i, n in enumerate(nodes):
+        if re.fullmatch(r"\s*[-+（(]?(?:\d[\d,，]*(?:\.\d+)?|\.\d+)[%％]?\s*[)）]?\s*", n.text):
+            continue
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         checksum_spans = [(s.char_start, s.char_end) for s in found
                           if s.loc == n.loc and s.reason == 'checksum_fail']

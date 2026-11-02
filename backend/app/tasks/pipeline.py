@@ -92,6 +92,7 @@ def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list
             parent_loc=n.parent_loc, clause_no=n.clause_no, text_enc=crypto.encrypt_text(n.text),
             page=n.page, bbox=n.bbox, sheet=n.sheet, cell_ref=n.cell_ref, ocr_conf=n.ocr_conf,
             has_revision=n.has_revision, hidden_spans=n.hidden_spans,
+            formula_enc=crypto.encrypt_text(n.formula) if n.formula else None,
         )
         for n in parsed.nodes
     )

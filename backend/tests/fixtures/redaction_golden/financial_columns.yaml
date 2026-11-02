@@ -1,0 +1,14 @@
+description: 财务余额表头沿用金额规则，纯数字不作为名称识别
+stance: neutral
+loc_prefixed: true
+must_replace:
+  - {text: "12345.67", category: AMOUNT}
+  - {text: "23456.78", category: AMOUNT}
+  - {text: "34567.89", category: AMOUNT}
+  - {text: "45678.91", category: AMOUNT}
+must_keep:
+  - 项目
+  - 期末余额
+  - 年初余额
+  - 货币资金
+  - 库存材料

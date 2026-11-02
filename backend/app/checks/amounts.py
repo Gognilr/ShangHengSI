@@ -7,7 +7,7 @@ from app.checks.model import CheckFile, CheckNode, CheckResult, SEVERITY
 from app.checks.numbers import CENT, money, parse_number, parse_rate, pct_diff, rounded
 from app.parsing.xlsx import WARN_FORMULA
 from app.redaction.detect import _CURRENCY
-from app.redaction.tables import HEADER_SCAN_ROWS, table_cell
+from app.redaction.tables import table_cell
 
 XLSX_EXTS = frozenset({"xlsx", "xls", "et"})  # 解析为 xlsx 的格式（xls、et 经 converter 转换）
 
@@ -96,6 +96,7 @@ class _Table:
     def data_rows(self) -> list[int]:
         # Q-91：保留金额/单价有文字但都无法解析的行，必须报告无法核验，不能静默忽略。
         return [r for r in sorted(self.rows) if r > self.header and (self.total_row is None or r < self.total_row)
+                and not any(n.text.strip().endswith("小计") for n in self.rows[r].values())
                 and (self.text(r, "price").strip() or self.text(r, self.amount).strip())]
 
 
@@ -109,16 +110,18 @@ def _scan_tables(nodes: list[CheckNode]) -> list[_Table]:
     out = []
     for name, (seq, rows) in grouped.items():
         candidates = []
-        for row in sorted(r for r in rows if r <= HEADER_SCAN_ROWS):
+        for row in sorted(r for r in rows if r <= 10):
             columns = {}
-            for col, node in sorted(rows[row].items()):
-                kind = column_kind(node.text)
+            from app.checks.finance import merged_header
+            labels, header_end = merged_header(rows, row)
+            for col, label in sorted(labels.items()):
+                kind = column_kind(label)
                 if kind:
                     columns.setdefault(kind, col)
             amount = any(k in columns for k in _AMOUNTS)
             complete = "qty" in columns and "price" in columns and amount
             if "price" in columns or ("qty" in columns and amount):
-                candidates.append((complete, row, columns))
+                candidates.append((complete, header_end, columns))
         if not candidates:
             continue
         _, header, columns = next((x for x in candidates if x[0]), candidates[0])
@@ -197,7 +200,8 @@ def _check_table(table: _Table) -> tuple[QuoteTableCheck, list[CheckResult]]:
                                        [table.node(row, k).loc for k in (table.amount, "qty", "price")], detail,
                                        f"{table.name} 第 {row} 行：数量×单价与金额不一致，差异约 {pct_diff(actual, expected)}"))
         tax_results += _tax_checks(table, row)
-    if total is not None and amounts and all(x is not None for x in amounts):
+    has_subtotals = any(any(n.text.strip().endswith("小计") for n in row.values()) for row in table.rows.values())
+    if total is not None and amounts and not has_subtotals and all(x is not None for x in amounts):
         expected, actual = rounded(sum((rounded(x) for x in amounts), Decimal(0))), rounded(total)
         info.total_ok = abs(actual - expected) <= CENT
         if not info.total_ok:

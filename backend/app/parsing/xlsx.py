@@ -13,10 +13,10 @@ from openpyxl.utils.cell import get_column_letter
 
 from app.parsing.model import MAX_XLSX_CELLS, ParsedFile, ParsedNode, ParseError
 
-PARSER_VERSION = "xlsx-1"
+PARSER_VERSION = "xlsx-2"
 
 MSG_CORRUPT = "XLSX 文件无法读取，可能已损坏或已加密"
-MSG_TOO_MANY_CELLS = "单个 XLSX 的非空单元格超过 20000 个"
+MSG_TOO_MANY_CELLS = "单个 XLSX 的文字单元格超过 20000 个"
 MSG_EMPTY = "未能从文件中读取到内容"
 WARN_FORMULA = "含未计算的公式，相关金额无法核验"
 WARN_HIDDEN_ROWCOL = "含隐藏的行或列，已按正常内容审核"
@@ -100,6 +100,7 @@ def parse_xlsx(data: bytes, file_seq: int) -> ParsedFile:
 
     has_uncached = has_hidden_rowcol = has_hidden_sheet = False
     nodes: list[ParsedNode] = []
+    text_count = numeric_count = 0
 
     for idx, ws in enumerate(wb_val.worksheets, start=1):
         wf = wb_formula[ws.title]
@@ -112,13 +113,23 @@ def parse_xlsx(data: bytes, file_seq: int) -> ParsedFile:
             formula_cell = wf._cells.get((row, col))
             if formula_cell is not None and formula_cell.data_type == "f" and cell.value is None:
                 has_uncached = True
-                continue
             text = cell_text(cell.value, cell.number_format)
-            if not text:
+            is_formula = formula_cell is not None and formula_cell.data_type == "f"
+            if not text and not is_formula:
                 continue
-            if len(nodes) >= MAX_XLSX_CELLS:
+            numeric = cell.data_type == "n" and isinstance(cell.value, (int, float, Decimal)) and not isinstance(cell.value, bool)
+            numeric_count += int(numeric)
+            text_count += int(not numeric and bool(text))
+            if text_count > MAX_XLSX_CELLS:
                 raise ParseError(MSG_TOO_MANY_CELLS)
+            if numeric_count > 100000:
+                raise ParseError("单个 XLSX 的数字单元格超过 100000 个")
             ref = f"{get_column_letter(col)}{row}"
+            formula = None
+            if is_formula:
+                raw = formula_cell.value
+                # 数组 / 数据表公式仍保存为文字，由本地求值器明确列为不支持。
+                formula = raw if isinstance(raw, str) else "{" + (getattr(raw, "text", None) or "不支持的数组公式") + "}"
             nodes.append(
                 ParsedNode(
                     loc=f"F{file_seq}-S{idx}-{ref}",
@@ -128,6 +139,7 @@ def parse_xlsx(data: bytes, file_seq: int) -> ParsedFile:
                     text=text,
                     sheet=ws.title,
                     cell_ref=ref,
+                    formula=formula,
                 )
             )
 

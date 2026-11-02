@@ -28,13 +28,17 @@ class Evaluation:
 def evaluate(nodes: list[CheckNode], files: list[CheckFile], today: date, laws: LawIndex | None = None,
              aliases=()) -> Evaluation:
     tables, results = check_tables(nodes, files)
+    from app.checks.finance import check_finance
+    from app.checks.formula import check_formulas
+    results += check_finance(nodes)
+    results += check_formulas(nodes)
     results += check_uppercase(nodes)
     results += check_consistency(nodes, files, tables, aliases)
     results += check_content(nodes)
     results += check_dates(nodes, today)
     results += check_installments(nodes, files)
     results += check_references(nodes, laws=laws)
-    order = {code: i for i, code in enumerate(("L-01", "L-02", "L-03", "L-INFO", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-17", "L-18", "L-19", "L-20", "L-21"))}
+    order = {code: i for i, code in enumerate(("L-01", "L-02", "L-03", "L-INFO", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-13", "L-14", "L-15", "L-16", "L-17", "L-18", "L-19", "L-20", "L-21"))}
     positions = {node.loc: i for i, node in enumerate(nodes)}
     results.sort(key=lambda r: (order[r.code], r.file_seq or 0, positions.get(r.locs[0], -1) if r.locs else -1))
     return Evaluation(results, tables)
@@ -46,7 +50,8 @@ def load_inputs(db, task_id: uuid.UUID) -> tuple[list[CheckNode], list[CheckFile
     rows = db.scalars(select(DocNode).join(TaskFile, TaskFile.id == DocNode.file_id)
                       .where(DocNode.task_id == task_id, DocNode.part == "body").order_by(TaskFile.seq, DocNode.ord))
     nodes = [CheckNode(n.loc, crypto.decrypt_text(n.text_enc) if n.text_enc else "", seqs[n.file_id], n.clause_no,
-                       n.hidden_spans) for n in rows]
+                       n.hidden_spans, crypto.decrypt_text(n.formula_enc) if n.formula_enc else None,
+                       n.sheet, n.cell_ref) for n in rows]
     return nodes, [CheckFile(f.seq, f.is_main, f.ext, f.doc_type, list(f.warnings or [])) for f in files]
 
 

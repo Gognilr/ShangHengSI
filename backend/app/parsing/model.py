@@ -32,6 +32,7 @@ class ParsedNode:
     ocr_conf: float | None = None
     has_revision: bool = False
     hidden_spans: list[list[int]] | None = None
+    formula: str | None = None
 
     def __post_init__(self) -> None:
         if self.hidden_spans:
@@ -56,7 +57,7 @@ class ParsedFile:
 # 解析限制与阈值（SPEC 8.5、8.7）
 MAX_PDF_PAGES = 200  # 单个 PDF 的页数上限
 MAX_OCR_PAGES_PER_TASK = 100  # 整个任务合计的 OCR 页数上限
-MAX_XLSX_CELLS = 20000  # 单个 XLSX 的非空单元格上限
+MAX_XLSX_CELLS = 20000  # 单个 XLSX 的文字单元格上限；数字另限 100000
 LOW_OCR_CONF = 0.80  # 块平均置信度低于此值为低置信
 
 

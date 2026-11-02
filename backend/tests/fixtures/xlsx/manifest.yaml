@@ -253,7 +253,7 @@ samples:
     - 1.25%
   formula_uncached:
     file: formula_uncached.xlsx
-    description: B4、B5 是没有缓存值的公式：不出节点，整个文件加一条警告（只加一次）；其余单元格正常。
+    description: B4、B5 是没有缓存值的公式：出空文字节点并保留公式，整个文件加一条警告（只加一次）；其余单元格正常。
     page_count: null
     sheets:
     - index: 1
@@ -290,13 +290,19 @@ samples:
       sheet: 汇总
       text: 合计
       part: body
+    - loc: F1-S1-B4
+      sheet: 汇总
+      text: ''
+      part: body
     - loc: F1-S1-A5
       sheet: 汇总
       text: 折合人民币
       part: body
-    no_node_locs:
-    - F1-S1-B4
-    - F1-S1-B5
+    - loc: F1-S1-B5
+      sheet: 汇总
+      text: ''
+      part: body
+    no_node_locs: []
     must_replace:
     - text: USD 400000
       category: AMOUNT
