@@ -1749,6 +1749,19 @@ def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
             or any(same(value, surface) or _value_positions(surface, value) for surface in active)]
 
 
+def load_kept_values(db: Session, task_id: uuid.UUID) -> list[str]:
+    """V31Q-51：本任务用户明确保留的不确定项与撤销的自动替换原文，出口重扫不再拦截同一段文字。"""
+    task = db.get(Task, task_id)
+    if task is None:
+        return []
+    texts = _texts_with_note(_body_rows(db, task.id), task)
+    kept = [texts.get(r.loc, '')[r.char_start:r.char_end].strip() for r in db.scalars(
+        select(RedactionSuspect).where(RedactionSuspect.task_id == task_id, RedactionSuspect.decision == 'ignore'))]
+    kept += [crypto.decrypt_text(e.text_enc) for e in db.scalars(
+        select(RedactionExclusion).where(RedactionExclusion.task_id == task_id))]
+    return [value for value in dict.fromkeys(kept) if value]
+
+
 def load_placeholders(db: Session, task_id: uuid.UUID) -> list[str]:
     """对照表中的全部代号原文（去掉“#序号”），出口复检比对真实值前先遮盖它们（Q-134 ②）。"""
     return list(dict.fromkeys(k.split("#", 1)[0] for k in _load_full_map(db, task_id) if not k.startswith('@')))

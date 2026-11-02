@@ -27,7 +27,9 @@ def retrieve(db, task, query, *, vector=None):
         if not nodes:
             continue
         text = '\n'.join(decrypt_text(node.text_enc) for node in nodes)
-        protected = protect(db, task, text, full_source=engine._load_full_map(db, source.id), extra_task_ids=[source.id])
+        # 日期偏移等以 @ 开头的特殊键不是真实值（V31-P-07）。
+        source_map = {k: v for k, v in engine._load_full_map(db, source.id).items() if not k.startswith('@')}
+        protected = protect(db, task, text, full_source=source_map, extra_task_ids=[source.id])
         if protected is None:
             continue
         file = db.get(TaskFile, nodes[0].file_id)

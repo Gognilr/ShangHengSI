@@ -89,6 +89,16 @@ def test_hardening_normalized_and_rescanned_representatives():
     assert check('中华人民共和国国务院颁布条例，[金额_10]') == []
 
 
+def test_user_kept_text_skips_rescan_only():
+    # V31Q-51：明确保留 / 撤销的原文不被重扫拦截；对照表真实值照拦。
+    def found(text, **kw):
+        return {r.category for r in recheck(text, real_values=kw.pop('values', []), terms=[], **kw)}
+    assert 'IDNO' in found('批次 123456789012345678')
+    assert 'IDNO' not in found('批次 123456789012345678', kept=['123456789012345678'])
+    assert 'PERSON' not in found('联系人：王某某', kept=['王某某'])
+    assert 'MAP' in found('联系人：王某某', kept=['王某某'], values=['王某某'])
+
+
 def test_short_numeric_values_need_currency():
     # Q-19：短数字只在前后不是数字、且紧挨币种或单位时才算
     assert check("数量 100 MT，期限 100 天", ["100"]) == []

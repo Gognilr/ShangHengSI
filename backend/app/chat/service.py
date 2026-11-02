@@ -435,7 +435,7 @@ def list_messages(db: Session, task: Task) -> dict:
 def preview(db: Session, task: Task, message: str) -> dict:
     message = strip_invisible(message)
     _require(db, task)
-    r = _redact(message, _load_full_map(db, task.id), _terms(db))
+    r = _redact(message, _question_map(db, task, _load_full_map(db, task.id)), _terms(db))
     return {"redacted": r.text, "changed": r.changed, "suspects": r.suspects}
 
 

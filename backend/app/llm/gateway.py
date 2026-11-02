@@ -207,7 +207,7 @@ def _call_config(
     # 2. 出口复检
     ctx = recheck_context(db, task_id, extra_task_ids=extra_task_ids)
     reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values, terms=ctx.terms,
-                      placeholders=ctx.placeholders)
+                      placeholders=ctx.placeholders, kept=ctx.kept)
     if reasons:
         call_id = recorder.write(status="blocked", request_text=None, block_reason=format_reasons(reasons))
         logger.warning("llm_call %s 出口复检拦截 purpose=%s 命中=%s", call_id, purpose, len(reasons))
@@ -348,7 +348,7 @@ def stream_model(db: Session, *, model_id: int, purpose: str, messages: list[dic
                                           "purpose": purpose, "model_id": cfg.id, "model_name": cfg.name[:100]})
     ctx = recheck_context(db, task_id, extra_task_ids=extra_task_ids)
     reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values,
-                      terms=ctx.terms, placeholders=ctx.placeholders)
+                      terms=ctx.terms, placeholders=ctx.placeholders, kept=ctx.kept)
     if reasons:
         cid = recorder.write(status="blocked", request_text=None, block_reason=format_reasons(reasons))
         logger.warning("llm_call %s 出口复检拦截 purpose=assist 命中=%s", cid, len(reasons))

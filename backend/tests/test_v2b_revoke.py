@@ -1,5 +1,6 @@
 """V2-B-05：第五节 #1～8，真实接口与模拟网关，全部使用虚构文字。"""
 import io
+import json
 import uuid
 
 import pytest
@@ -10,7 +11,7 @@ from app.db.models import AuditLog, RedactionItem, RedactionTerm, Task
 from app.redaction.engine import _load_full_map
 from app.security import crypto
 from tests.review_support import env, llm, ready_task  # noqa: F401
-from tests.test_user_note_redaction import alice, task_url  # noqa: F401
+from tests.test_user_note_redaction import alice, complete, task_url  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
 
@@ -74,16 +75,14 @@ def test_03_manual_term_removed(db_sessionmaker, alice, ready_task):
         assert db.execute(text("SELECT count(*) FROM redaction_exclusions")).scalar() == 0
 
 
-def test_04_revoked_person_rescan_blocks_not_learned(db_sessionmaker, alice, ready_task, llm):
+def test_04_confirm_sends_original_not_learned(db_sessionmaker, alice, ready_task, llm):
     user, c, h = alice
     task = make_task(ready_task, user)
     target = next(i for i in items(c, task)["items"] if i["loc"] == "F1-P2")
     assert revoke(c, h, task, target).status_code == 200
-    # V31-P-02：撤销不豁免出口人名重扫，仍是明确标签人名时拦住且不学习。
-    requests = llm('normal')
-    response = c.post(task_url(task, '/runs'), headers=h)
-    assert response.status_code == 409 and response.json()['code'] == 'OUTBOUND_BLOCKED'
-    assert requests == []
+    # V31Q-51：撤销是用户决定，出口重扫不拦同一段原文。
+    _, requests = complete(db_sessionmaker, c, h, task, llm)
+    assert any("周示例" in json.dumps(json.loads(r.content), ensure_ascii=False) for r in requests)
     with db_sessionmaker() as db:
         assert "周示例" not in {crypto.decrypt_text(t.term_enc) for t in db.scalars(select(RedactionTerm))}
 

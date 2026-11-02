@@ -152,7 +152,7 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     if count > 1:
         raise AppError(409, "OUR_PARTY_REQUIRED", "我方最多只能选择一方")
     ctx = recheck_context(db, task.id)
-    reasons = recheck(engine.build_outbound_text(db, task), real_values=ctx.real_values, terms=ctx.terms, placeholders=ctx.placeholders)
+    reasons = recheck(engine.build_outbound_text(db, task), real_values=ctx.real_values, terms=ctx.terms, placeholders=ctx.placeholders, kept=ctx.kept)
     if reasons:
         raise AppError(409, "OUTBOUND_BLOCKED", gateway.MESSAGES["BLOCKED"] + f"（{gateway.format_reasons(reasons)}）")
     now, count = utcnow(), 0

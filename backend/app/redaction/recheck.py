@@ -58,6 +58,7 @@ class RecheckContext:
     real_values: list[str] = field(default_factory=list)
     terms: list[str] = field(default_factory=list)
     placeholders: list[str] = field(default_factory=list)  # 本任务对照表中的代号原文（Q-134 ②）
+    kept: list[str] = field(default_factory=list)  # 本任务用户明确保留 / 撤销的原文，只豁免重扫（V31Q-51）
 
     def __repr__(self) -> str:  # 防止真实值被意外打印进日志
         return f"RecheckContext(real_values={len(self.real_values)}, terms={len(self.terms)})"
@@ -138,12 +139,18 @@ def _value_positions(text: str, value: str) -> list[int]:
     return [m.start() for m in _text_pattern(value).finditer(text)]
 
 
-def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str],
+def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept: Iterable[str] = (),
             placeholders: Iterable[str] = ()) -> list[BlockReason]:
     """返回全部拦截原因（按位置排序、去重）；空列表表示可以发送。
 
     placeholders 为本任务对照表中的代号原文：比对真实值、词条前先遮盖（只遮盖这些确切的代号，默认不遮盖）。"""
     codes = list(placeholders)
+    kept_keys = {k for k in map(_kept_key, kept) if k}
+
+    def allowed(surface: str) -> bool:
+        # 用户在本任务明确保留的整段原文不由重扫拦截；对照表与词条比对不豁免。
+        return bool(kept_keys) and _kept_key(surface) in kept_keys
+
     reasons: set[BlockReason] = {BlockReason('INVISIBLE', i) for i, c in enumerate(text)
                                 if 0xE0000 <= ord(c) <= 0xE007F}
     normalized = normalize_with_map(text)
@@ -169,7 +176,7 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str],
         contextual = ''.join(_context_char(text[indices[i]], c) for i, c in enumerate(scanned)) if is_normalized else scanned
         for candidate in dict.fromkeys((scanned, contextual)):
             for hit in detect.find_formatted(candidate):
-                if hit.category in _RESCAN_CATEGORIES:
+                if hit.category in _RESCAN_CATEGORIES and not allowed(candidate[hit.start:hit.end]):
                     reasons.add(BlockReason(hit.category, indices[hit.start]))
         for hit in detect.find_amounts(scanned):
             if is_normalized and text[indices[hit.start]:].startswith('一元化'):
@@ -179,8 +186,13 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str],
         people_text = _mask_code_syntax(_mask_placeholders(contextual, codes, mask='\n'))
         for finder in (detect.find_persons, detect.find_addresses):
             for hit in finder(people_text):
-                reasons.add(BlockReason(hit.category, indices[hit.start]))
+                if not allowed(people_text[hit.start:hit.end]):
+                    reasons.add(BlockReason(hit.category, indices[hit.start]))
     return sorted(reasons, key=lambda r: (r.position, r.category))
+
+
+def _kept_key(value: str) -> str:
+    return re.sub(r'[\s\-]', '', normalize_value(value, preserve_case=True)).upper()
 
 
 def _context_char(original: str, normalized: str) -> str:
@@ -228,7 +240,7 @@ def _compact_positions(text: str, value: str) -> list[int]:
 
 def recheck_context(db: Session, task_id: uuid.UUID | None, extra_task_ids: Iterable[uuid.UUID] = ()) -> RecheckContext:
     """汇集对照表真实值（有任务时）与启用中的已记住名称、自定义敏感词。"""
-    from app.redaction.engine import load_placeholders, load_real_values  # 避免循环导入
+    from app.redaction.engine import load_kept_values, load_placeholders, load_real_values  # 避免循环导入
 
     values = load_real_values(db, task_id) if task_id is not None else []
     codes = load_placeholders(db, task_id) if task_id is not None else []
@@ -237,4 +249,5 @@ def recheck_context(db: Session, task_id: uuid.UUID | None, extra_task_ids: Iter
             values.extend(load_real_values(db, extra_id))
             codes.extend(load_placeholders(db, extra_id))
     rows = db.scalars(select(RedactionTerm.term_enc).where(RedactionTerm.enabled.is_(True)))
-    return RecheckContext(real_values=values, terms=[crypto.decrypt_text(blob) for blob in rows], placeholders=codes)
+    return RecheckContext(real_values=values, terms=[crypto.decrypt_text(blob) for blob in rows], placeholders=codes,
+                          kept=load_kept_values(db, task_id) if task_id is not None else [])
