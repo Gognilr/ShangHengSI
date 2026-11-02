@@ -63,7 +63,8 @@ def test_shared_quote_and_local_phone_revision(case, login, db_sessionmaker):
     from app.review.validate import load_node_views, validate_output
     from app.review.job import _save
     user, tid, rid, fid, _ = case
-    lines = ['联系电话：13812345678。', '备用联系电话：13912345678，另一电话：13712345678。']
+    lines = ['联系电话：13812345678。', '备用联系电话：13912345678，另一电话：13712345678。',
+             '微信：fictive-id1，微信：fictiveid1。']
     source = Document()
     for line in lines:
         source.add_paragraph(line)
@@ -88,6 +89,7 @@ def test_shared_quote_and_local_phone_revision(case, login, db_sessionmaker):
         db.flush()
         assert engine.load_local_values(db, tid, 'F1-P1') == {'[电话]': '13812345678'}
         assert engine.load_local_values(db, tid, 'F1-P2') == {}
+        assert engine.load_local_values(db, tid, 'F1-P3') == {}  # 标识中的短横线有意义，不把两账号合成唯一值。
         task = db.get(Task, tid)
         ctx = ReviewContext(task, 'sales', 'outgoing', None, 'contract', [], [], '', '')
         raw = json.dumps({'doc_summary': '虚构测试', 'requirement_results': [], 'findings': [
@@ -116,7 +118,7 @@ def test_shared_quote_and_local_phone_revision(case, login, db_sessionmaker):
     response = client.get(f'/api/v1/runs/{rid}/revised?file_seq=1')
     assert response.status_code == 200, response.text
     assert response.headers['X-SI-Revised'] == '1' and response.headers['X-SI-Commented'] == '2'
-    revised_docx.validate(original, response.content, ['联系电话：13812345678，仅供履约联系。', lines[1]])
+    revised_docx.validate(original, response.content, ['联系电话：13812345678，仅供履约联系。', *lines[1:]])
 
 
 def test_unknown_shifted_date_becomes_comment(case, login, db_sessionmaker):

@@ -2,6 +2,7 @@ description: 紧邻标签与列头预登记、格式化值全文回扫，不跨�
 loc_prefixed: true
 stance: sales
 must_replace:
+  - {text: 星河虚构营业部, category: ORG, detected_by: party}
   - {text: 清原虚构有限公司, category: ORG}
   - {text: '1234 5678 9012 3456', category: ACCOUNT}
   - {text: '1234567890123456', category: ACCOUNT}

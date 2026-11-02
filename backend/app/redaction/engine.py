@@ -320,6 +320,8 @@ def _adjacent_information(nodes):
     """只借紧邻标签识别值，返回本节点的精确位置；不改正文。"""
     label = re.compile(r'(?i)(?:开户行账号|银行账号|银行帐号|账户号码|账号|帐号|户名|开户行|身份证号|证件号|联系人|经办人|收件人|电话|手机|传真|邮箱|电子邮箱|地址|注册地址|合同编号|订单编号|编号|SWIFT(?:\s+CODE)?|account(?:\s+(?:no\.?|number|name))?|bank|contact(?:\s+person)?|phone|tel|mobile|fax|e-?mail|address|IBAN|BIC|QQ|微信|wechat)\s*[:：]?\s*\Z')
     def complete(value):
+        if P._LABEL_CANON.get(value.strip().rstrip(':：').rstrip().casefold()) == '银行':
+            return True
         if label.fullmatch(value.strip()):
             return True
         prefix = value.strip().rstrip(':：').rstrip() + '：'
@@ -377,6 +379,10 @@ def _adjacent_information(nodes):
                             h.currency, h.value, h.validated)
                   for finder in (detect.find_formatted, detect.find_persons, detect.find_addresses)
                   for h in finder(probe) if offset <= h.start < h.end <= len(probe)]
+        if P._LABEL_CANON.get(prefix[:-1].casefold()) == '银行':
+            out[i] += [detect.Hit(start - offset, end - offset, 'ORG', P.normalize(probe[start:end]))
+                       for role, start, end in P.find_labeled_parties(probe)
+                       if role == '银行' and offset <= start < end <= len(probe)]
     return out
 
 
@@ -438,8 +444,19 @@ def compute(
         cross_parts += [(first, a, b, ent.key), (second, c, d, ent.key)]
 
     # 第 2 步：签约方信息块
+    adjacent = _adjacent_information(nodes)
     public_parties = set()
     for i, n in enumerate(nodes):
+        for h in adjacent.get(i, ()):
+            if h.category != 'ORG':
+                continue
+            name = n.text[h.start:h.end]
+            ent = entity(name, 'ORG')
+            public_parties.add(P.normalize(name))
+            if ent.role_label == OTHER:
+                ent.role_label = '银行'
+            if ent.block_node is None:
+                ent.block_node = i
         for label, s, e in P.find_labeled_parties(n.text):
             public_parties.add(P.normalize(n.text[s:e]))
             if any(index == i and start <= s and e <= end for index, start, end, _ in cross_parts):
@@ -567,7 +584,6 @@ def compute(
             a_pat = _user_pattern(a) if a_by in ("user", "derived") else _alias_pattern(a) if a_by == "alias" else P.name_pattern(a)
             pool.append((ent, a_pat, a_by, a_term))
 
-    adjacent = _adjacent_information(nodes)
     hints = tables.table_hints(nodes)
     qty_hints = tables.table_hints(nodes, with_qty=True) if mask_quantity else {}
     spans: list[_Span] = []
@@ -611,7 +627,7 @@ def compute(
             private_spans=[(c.start, c.end) for c in cands if c.category == 'ORG'],
             overrides=[(c.start, c.end) for c in cands if c.detected_by in ('user', 'term')]))
         _accept(cands, occ, spans, longest_first=True)
-        cross_formatted = [h for h in adjacent.get(i, ()) if h.category not in ('PERSON', 'ADDR')]
+        cross_formatted = [h for h in adjacent.get(i, ()) if h.category not in ('PERSON', 'ADDR', 'ORG')]
         for hit in [*cross_formatted, *detect.find_formatted(text)]:  # 第 4 步
             surface = text[hit.start:hit.end]
             unlabeled = (hit.category == 'ACCOUNT' and detect._IBAN.fullmatch(surface) is not None
@@ -953,17 +969,21 @@ def redacted_to_original(text, items, inserts):
 
 def load_local_values(db, task_id, loc):
     """共用代号只取本节点的唯一规范值，重复写法保留首次原文。"""
-    node = db.scalar(select(DocNode).where(DocNode.task_id == task_id, DocNode.loc == loc)) if loc else None
-    if node is None or not node.text_enc:
+    if not loc:
         return {}
-    text = crypto.decrypt_text(node.text_enc)
+    items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task_id,
+        RedactionItem.loc == loc, RedactionItem.category.in_([*FIXED, ADDR]))
+        .order_by(RedactionItem.char_start, RedactionItem.id)))
+    if not items:
+        return {}  # 普通问题不需要节点原文；清理后的报告继续只用引用快照。
+    encrypted = db.scalar(select(DocNode.text_enc).where(DocNode.task_id == task_id, DocNode.loc == loc))
+    if encrypted is None:
+        return {}
+    text = crypto.decrypt_text(encrypted)
     grouped = {}
-    for item in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task_id,
-            RedactionItem.loc == loc).order_by(RedactionItem.char_start, RedactionItem.id)):
-        if item.category not in FIXED and item.category != ADDR:
-            continue
+    for item in items:
         surface = text[item.char_start:item.char_end]
-        canonical = detect._norm_key(surface) if item.category in ('PHONE', 'IDNO', 'SWIFT', 'IM', 'POSTCODE') else P.normalize(surface)
+        canonical = detect._norm_key(surface) if item.category in ('PHONE', 'IDNO', 'POSTCODE') else P.normalize(surface)
         grouped.setdefault(item.placeholder, {}).setdefault(canonical, surface)
     return {code: next(iter(values.values())) for code, values in grouped.items() if len(values) == 1}
 

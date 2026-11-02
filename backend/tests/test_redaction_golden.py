@@ -82,6 +82,8 @@ def test_must_replace_recall(name):
             covering = [i for i in result.items if i.loc == loc and i.char_start <= start and i.char_end >= end]
             assert covering, f"漏替换：{item['text']}（{loc}）"
             assert covering[0].category in allowed, f"类别不符：{item['text']} → {covering[0].category}"
+            if item.get('detected_by'):
+                assert covering[0].detected_by == item['detected_by']
         assert item["text"] not in text, f"外发文本仍含：{item['text']}"
         assert item["text"] not in sent, f"外发文本仍含：{item['text']}"
 
