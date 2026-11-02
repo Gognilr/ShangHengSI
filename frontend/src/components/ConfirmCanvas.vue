@@ -420,7 +420,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
 @keyframes cv-flip { from { transform: rotateX(90deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes cv-fade { from { opacity: 0; } to { opacity: 1; } }
 
-.pop, .pickbar { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 420px; padding: 8px 10px; border-radius: 10px; background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-2, 0 8px 24px rgba(0, 0, 0, .18)); }
+.pop, .pickbar { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 420px; padding: 8px 10px; border-radius: 10px; background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-2); }
 .pop { width: 268px; }
 .pop-text { flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; font: var(--si-font-body); }
 .code-tag { padding: 0 6px; border-radius: 4px; background: var(--si-code-bg); color: var(--si-code-ink); font-family: var(--si-font-mono); font-size: 12px; }

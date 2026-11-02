@@ -153,7 +153,7 @@ async function handleAdd(list: File[], allowDuplicate = false) {
   if (submitting.value || proceeding.value) return
   formError.value = ''
   // 等待中的“最后一个文件”删除会连任务一起删，新文件改建新草稿
-  if (pending.has('task')) { pending.flush(); await taskDeletion }
+  if (pending.has('task')) { await pending.flush(); await taskDeletion }
   const known = new Set(visibleFiles.value.map(f => `${f.original_name}|${f.size_bytes}`))
   const fresh = allowDuplicate ? list : list.filter(f => !known.has(`${f.name}|${f.size}`))
   if (!fresh.length) return
@@ -242,10 +242,11 @@ async function proceed() {
   const t = task.value
   if (!t || !canProceed.value) return
   if (policy.value === 'ai' && (!modelId.value || modelError.value)) { formError.value = modelError.value || '请选择审核模型'; return }
-  pending.flush()
   proceeding.value = true
   formError.value = ''
   try {
+    // 撤销期内的删除先真删，再按服务器上的文件前进；删后后台重算，回到等待状态由用户再点
+    if (pending.size()) { await pending.flush(); await refreshTask(); return }
     const next = await tasksApi.proceed(t.id, { stance: stance.value, source: source.value, policy: policy.value, user_note: userNote.value.trim() || null })
     savePrefs()
     applyTask(next)

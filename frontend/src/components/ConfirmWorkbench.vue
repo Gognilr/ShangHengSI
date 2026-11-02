@@ -366,13 +366,17 @@ const canConfirm = computed(() =>
   && !savingParties.value && !deciding.value && !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value)
 const confirmBox = ref<HTMLElement>()
 const confirmFlash = ref(false)
+// Ctrl+Enter 只聚焦按钮（3.6）。部分环境会把同一次按键再作为 Enter 送到新聚焦的按钮上，
+// 聚焦后 600ms 内的点击一律忽略，保证快捷键本身永不外发（V31-U2-05 曾误发一次）。
+let focusedByHotkeyAt = 0
 
 async function confirmSend() {
-  if (!canConfirm.value) return
+  if (!canConfirm.value || Date.now() - focusedByHotkeyAt < 600) return
   submitError.value = ''
   submitting.value = true
-  pendingDeletes.flush()
   try {
+    // 撤销期内删除的文件仍在服务器上：先真删并等重算完成，用户看到更新后的回执再确认
+    if (pendingDeletes.size()) { await pendingDeletes.flush(); return }
     if (assistant.value) await assistantApi.confirm(props.task.id)
     else await runsApi.create(props.task.id, !skipTemplate.value, props.modelId)
     emit('confirmed')
@@ -403,6 +407,7 @@ useHotkeys({
   b: () => { const s = selectedSuspect.value; if (s) void keepOne(s) },
   t: () => { const s = selectedSuspect.value; if (s) void restoreOne(s) },
   'ctrl+enter': () => {
+    focusedByHotkeyAt = Date.now()
     confirmBox.value?.querySelector('button')?.focus()
     confirmFlash.value = true
     setTimeout(() => { confirmFlash.value = false }, 700)

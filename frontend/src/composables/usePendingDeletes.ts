@@ -18,12 +18,12 @@ interface Pending {
 export function usePendingDeletes() {
   const pending = new Map<string, Pending>()
 
-  function execute(key: string, keepalive = false) {
+  function execute(key: string, keepalive = false): Promise<void> {
     const item = pending.get(key)
-    if (!item) return
+    if (!item) return Promise.resolve()
     pending.delete(key)
     clearTimeout(item.timer)
-    item.run({ keepalive }).catch((e) => item.onError?.(e))
+    return item.run({ keepalive }).then(() => undefined, (e) => item.onError?.(e))
   }
 
   function schedule(key: string, run: Pending['run'], options: { label: string; onUndo: () => void; onError?: (e: unknown) => void }) {
@@ -46,16 +46,18 @@ export function usePendingDeletes() {
     })
   }
 
-  function flush(opts: { keepalive?: boolean } = {}) {
-    const hadPending = pending.size > 0
-    for (const key of [...pending.keys()]) execute(key, opts.keepalive ?? false)
-    if (hadPending) dismissToast()
+  /** 立即执行全部等待中的删除；返回的 Promise 在删除请求都结束后完成（提交、前进前须等待）。 */
+  function flush(opts: { keepalive?: boolean } = {}): Promise<void> {
+    if (!pending.size) return Promise.resolve()
+    const runs = [...pending.keys()].map(key => execute(key, opts.keepalive ?? false))
+    dismissToast()
+    return Promise.all(runs).then(() => undefined)
   }
 
   const onUnload = () => flush({ keepalive: true })
   onMounted(() => window.addEventListener('beforeunload', onUnload))
-  onBeforeUnmount(() => { window.removeEventListener('beforeunload', onUnload); flush() })
-  onBeforeRouteLeave(() => { flush() })
+  onBeforeUnmount(() => { window.removeEventListener('beforeunload', onUnload); void flush() })
+  onBeforeRouteLeave(() => { void flush() })
 
-  return { schedule, flush, has: (key: string) => pending.has(key) }
+  return { schedule, flush, has: (key: string) => pending.has(key), size: () => pending.size }
 }
