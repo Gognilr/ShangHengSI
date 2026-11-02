@@ -1,0 +1,57 @@
+doc_type: quotation
+expected_issues:
+- id: cn_06-1
+  req_ids:
+  - Q-01
+  locs:
+  - F1-P5
+  keywords:
+  - 有效期
+  severity_min: medium
+- id: cn_06-2
+  req_ids:
+  - Q-02
+  locs:
+  - F1-P6
+  keywords:
+  - 税率
+  - 币种
+  severity_min: medium
+- id: cn_06-3
+  req_ids:
+  - Q-03
+  locs:
+  - F1-P7
+  keywords:
+  - 付款
+  severity_min: medium
+- id: cn_06-4
+  req_ids:
+  - Q-04
+  locs:
+  - F1-P8
+  keywords:
+  - 交货
+  - 前提
+  severity_min: medium
+- id: cn_06-5
+  req_ids:
+  - Q-06
+  locs:
+  - F1-P9
+  keywords:
+  - 无条件
+  - 承诺
+  severity_min: high
+verdicts:
+  Q-01: issue
+  Q-02: issue
+  Q-03: issue
+  Q-04: issue
+  Q-06: issue
+relevant:
+- Q-01
+- Q-02
+- Q-03
+- Q-04
+- Q-06

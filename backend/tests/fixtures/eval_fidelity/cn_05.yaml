@@ -1,0 +1,48 @@
+doc_type: order
+expected_issues:
+- id: cn_05-1
+  req_ids:
+  - O-01
+  locs:
+  - F1-P5
+  keywords:
+  - 型号
+  - 不一致
+  severity_min: medium
+- id: cn_05-2
+  req_ids:
+  - O-02
+  locs:
+  - F1-P6
+  keywords:
+  - 交货地点
+  - 收货人
+  severity_min: medium
+- id: cn_05-3
+  req_ids:
+  - O-03
+  locs:
+  - F1-P7
+  keywords:
+  - 退货
+  - 冲突
+  severity_min: medium
+- id: cn_05-4
+  req_ids:
+  - O-04
+  locs:
+  - F1-P8
+  keywords:
+  - 签发
+  - 授权
+  severity_min: medium
+verdicts:
+  O-01: issue
+  O-02: issue
+  O-03: issue
+  O-04: issue
+relevant:
+- O-01
+- O-02
+- O-03
+- O-04

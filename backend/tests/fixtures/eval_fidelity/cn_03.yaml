@@ -1,0 +1,72 @@
+doc_type: contract
+expected_issues:
+- id: cn_03-1
+  req_ids:
+  - C-06
+  locs:
+  - F1-P5
+  keywords:
+  - 违约金
+  - 上限
+  severity_min: high
+- id: cn_03-2
+  req_ids:
+  - C-02
+  locs:
+  - F1-P6
+  keywords:
+  - 付款
+  - 期限
+  severity_min: medium
+- id: cn_03-3
+  req_ids:
+  - C-22
+  locs:
+  - F1-P7
+  keywords:
+  - 续期
+  - 续约
+  severity_min: medium
+- id: cn_03-4
+  req_ids:
+  - C-24
+  locs:
+  - F1-P8
+  keywords:
+  - 转让
+  - 控制权
+  severity_min: medium
+- id: cn_03-5
+  req_ids:
+  - C-25
+  locs:
+  - F1-P9
+  keywords:
+  - 审计
+  - 保密
+  severity_min: high
+- id: cn_03-6
+  req_ids:
+  - C-26
+  locs:
+  - F1-P10
+  keywords:
+  - 永久
+  - 对价
+  severity_min: high
+verdicts:
+  C-06: issue
+  C-02: issue
+  C-22: issue
+  C-24: issue
+  C-25: issue
+  C-26: issue
+  C-09: ok
+relevant:
+- C-06
+- C-02
+- C-22
+- C-24
+- C-25
+- C-26
+- C-09

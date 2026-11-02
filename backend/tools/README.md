@@ -1,6 +1,6 @@
 # 开发期审核效果评测
 
-`eval_review.py` 对目录第一层的 DOCX 按文件名排序逐份评测，每份文件是一个独立任务、没有附件。只使用虚构样本。PDF、XLSX 和图片的评测留到支持这些格式后；非 DOCX 文件忽略，目录没有 DOCX 时拒绝运行。
+`eval_review.py` 对目录第一层的 DOCX 按文件名排序逐份评测，每份文件是一个独立任务。只使用虚构样本；`--gold` 可读取同名 YAML 中列出的 XLSX 附件。非 DOCX 主文件忽略，目录没有 DOCX 时拒绝运行。
 
 脚本复用上传检查、原件加密保存、`parse_task`（解析与脱敏）、`create_run`（我方与出口预检）、`run_review`（网关与输出校验）、`run_detail`（还原）。全部模型请求仍由 `app/llm/gateway.py` 发出，调用上限、出口复检、调用记录与重试规则均生效。不提供绕过检查的选项。
 
@@ -102,6 +102,24 @@ docker exec aireview-eval-r02-runner python tools/eval_review.py tests/fixtures/
 连接失败或模型名不符时停下交用户处理。按 `docs/v31/design/V31-R.md` 2.5 比较 B/A 与 C/B，不能用单份试跑替代三组结论。
 
 ## 输出和退出码
+
+### V31-E-06 金标、重复与注入对照
+
+Docker 内运行 `python tests/fixtures/eval_fidelity/make_samples.py` 生成 8 份虚构 DOCX（中文 6、英文 2；合同 6、订单 1、报价单 1）、2 份财务 XLSX 附件及 3 份注入版。同名 YAML 人工指定问题、位置、关键词、最低严重度、确定结论和相关要求；`attachments` 只允许样本目录内的 XLSX。`doc_type` 经现有文件类型确认流程设置。
+
+```sh
+python tools/eval_review.py tests/fixtures/eval_fidelity --username evaluator --gold --pair tests/fixtures/eval_fidelity tests/fixtures/eval_fidelity/injected --output /eval/mock.md
+python tools/eval_review.py tests/fixtures/eval_fidelity --username evaluator --gold --repeat 2 --date-shift --send-ratios --output /eval/options.md
+python tools/eval_leak.py --output /eval/leak.md --failures /eval/leak-failures.json
+```
+
+审核命令使用专用库中配置的模型；E-06 只配置本地 `mock_llm_server.py`，真实模型按 E-07 另行取得用户同意。日期平移和财务比率默认强制关闭；开关只覆盖当前会话读取，退出均不写全局设置。重复次数至少 1；同名 JSON 逐样本刷新。`--pair` 对注入目录的每份 DOCX 找同名干净版，各独立审核一次。
+
+金标模式只写数字、固定枚举与要求编号，不写文件名、任务 ID、模型回复或还原文本。问题命中要求编号相交，且首个位置在金标位置内或还原后问题文字含金标关键词；最低严重度另计，不改变命中定义。ok/na 在一致率中视为相同。偷懒率分母为全部 relevant 要求数，分子为金标 issue 而模型为 ok/na/unable。样本缺少金标要求结论时计失败，不能靠遗漏降低偷懒率。均值按成功样本轮次取算术平均；附逐次均值、分母和三类无法判断数量，失败不记作零分。注入分母为两次要求编号并集，缺失结论也算变化。
+
+`failure_code`：0 完成、1 解析失败、2 缺少我方、3 预检拦截、4 审核拦截、5 审核失败、6 内部异常、7 其他失败、8 要求集与金标不匹配。退出码沿用 0/1/2；模拟数字不代表真实模型质量。普通详情报告、`--return-probe` 保持兼容，不与 `--gold` 混用。
+
+泄露工具离线读取 golden 全集去重的 must_replace，按适用类别生成确有变化的变体，每组放入三个固定段落。复用 compute、outbound_text（与业务 build_outbound 同用 outbound.build）和 recheck，只带实际识别产生的映射，不人为注入金标或禁用实体识别。逐段按归一化 / 紧凑形是否残留及整任务复检是否拦截计数；规范值和变体值都检查，避免 OCR 变体未归一时被误计为替换。A 类泄露非零退出 1；原值诊断仅存仓库外，汇总报告只记数字。按任务卡范围修复，其余记问题交 Opus，不放宽检查让数字归零。
 
 `--output` 为必填，使用 UTF-8 Markdown，父目录必须已存在，目标文件必须不存在。常规模式报告含每份样本的文件摘要、任务与轮次 ID、状态、模型和提示词/要求版本、四种结论的数量、逐条要求结论，以及问题的类别、严重程度、要求编号、位置、引用状态、引用、影响与建议等完整文字。未能解析、预检拦截、达到调用上限、模型调用/校验失败的样本也会记录状态和通用错误码，并继续下一份。`partial` 明确标记缺失结论，不算整份执行失败。
 

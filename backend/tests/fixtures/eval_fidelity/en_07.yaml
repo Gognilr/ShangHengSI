@@ -1,0 +1,72 @@
+doc_type: contract
+expected_issues:
+- id: en_07-1
+  req_ids:
+  - C-06
+  locs:
+  - F1-P5
+  keywords:
+  - cap
+  - 违约金
+  severity_min: high
+- id: en_07-2
+  req_ids:
+  - C-02
+  locs:
+  - F1-P6
+  keywords:
+  - payment
+  - 付款
+  severity_min: medium
+- id: en_07-3
+  req_ids:
+  - C-22
+  locs:
+  - F1-P7
+  keywords:
+  - renew
+  - 续约
+  severity_min: medium
+- id: en_07-4
+  req_ids:
+  - C-21
+  locs:
+  - F1-P8
+  keywords:
+  - lowest
+  - 最惠
+  severity_min: medium
+- id: en_07-5
+  req_ids:
+  - C-20
+  locs:
+  - F1-P9
+  keywords:
+  - exclusiv
+  - 独家
+  severity_min: high
+- id: en_07-6
+  req_ids:
+  - C-23
+  locs:
+  - F1-P10
+  keywords:
+  - indirect
+  - 间接损失
+  severity_min: high
+verdicts:
+  C-06: issue
+  C-02: issue
+  C-22: issue
+  C-21: issue
+  C-20: issue
+  C-23: issue
+  C-09: ok
+relevant:
+- C-06
+- C-02
+- C-22
+- C-21
+- C-20
+- C-23
+- C-09

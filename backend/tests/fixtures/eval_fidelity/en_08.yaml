@@ -1,0 +1,72 @@
+doc_type: contract
+expected_issues:
+- id: en_08-1
+  req_ids:
+  - C-06
+  locs:
+  - F1-P5
+  keywords:
+  - cap
+  - 违约金
+  severity_min: high
+- id: en_08-2
+  req_ids:
+  - C-02
+  locs:
+  - F1-P6
+  keywords:
+  - payment
+  - 付款
+  severity_min: medium
+- id: en_08-3
+  req_ids:
+  - C-22
+  locs:
+  - F1-P7
+  keywords:
+  - renew
+  - 续约
+  severity_min: medium
+- id: en_08-4
+  req_ids:
+  - C-21
+  locs:
+  - F1-P8
+  keywords:
+  - lowest
+  - 最惠
+  severity_min: medium
+- id: en_08-5
+  req_ids:
+  - C-03
+  locs:
+  - F1-P9
+  keywords:
+  - 交货
+  - delivery
+  severity_min: medium
+- id: en_08-6
+  req_ids:
+  - C-15
+  locs:
+  - F1-P10
+  keywords:
+  - 质保
+  - warranty
+  severity_min: medium
+verdicts:
+  C-06: issue
+  C-02: issue
+  C-22: issue
+  C-21: issue
+  C-03: issue
+  C-15: issue
+  C-09: ok
+relevant:
+- C-06
+- C-02
+- C-22
+- C-21
+- C-03
+- C-15
+- C-09

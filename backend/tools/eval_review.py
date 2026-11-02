@@ -194,14 +194,15 @@ def _execute_job(db: Session, task_id, kind: str, handler) -> None:
 
 
 def evaluate_sample(db: Session, user: User, path: Path, *, stance: str, source: str,
-                    return_probe: bool = False) -> dict:
+                    return_probe: bool = False, attachments=(), doc_type=None) -> dict:
     """每份 DOCX 独立建任务；不猜测我方，沿用解析预选与确认发送的全部检查。"""
     result = {"sample": path.name, "sha256": None,
               "status": "failed", "error": None, "detail": None}
     try:
         with ExitStack() as stack:
             f = stack.enter_context(path.open("rb"))
-            uploads = check_uploads([(path.name, f)], 0, get_settings().max_upload_mb * 1024 * 1024)
+            files = [(path.name, f)] + [(a.name, stack.enter_context(a.open('rb'))) for a in attachments]
+            uploads = check_uploads(files, 0, get_settings().max_upload_mb * 1024 * 1024)
             result["sha256"] = hashlib.file_digest(f, "sha256").hexdigest()
             f.seek(0)
             task = create_task(db, user, uploads, main_index=0, stance=stance, source=source,
@@ -212,6 +213,12 @@ def evaluate_sample(db: Session, user: User, path: Path, *, stance: str, source:
         if task.status != "awaiting_confirm":
             result.update(status=task.status, error="PARSE_FAILED")
             return result
+        if doc_type is not None:
+            # 金标明确文件类型时走已有文件类型确认，避免标题推断影响要求集。
+            from app.db.models import TaskFile
+            from app.tasks.router import FileTypePatch, patch_file_type
+            main = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(True)))
+            patch_file_type(FileTypePatch(doc_type=doc_type), file=main, task=task, db=db)
         run = create_run(db, task, user, None)
         result["run_id"] = str(run.id)
         from app.review import validate
@@ -305,15 +312,27 @@ def main(argv=None) -> int:
     parser.add_argument("--copy-rule", action="store_true", help="评测进程内在第 2 条追加代号照抄规则")
     parser.add_argument("--bracket-codes", action="store_true", help="评测进程内使用方括号代号与提示词示例")
     parser.add_argument("--return-probe", action="store_true", help="只写回程数字报告及同名 JSON，不写模型正文")
+    parser.add_argument('--gold', action='store_true', help='读取同名 YAML 金标，只写数字报告')
+    parser.add_argument('--date-shift', action='store_true', help='本评测会话临时启用日期平移')
+    parser.add_argument('--send-ratios', action='store_true', help='本评测会话临时启用财务比率')
+    parser.add_argument('--repeat', type=int, default=1, help='每份样本重复次数，至少 1')
+    parser.add_argument('--pair', nargs=2, type=Path, metavar=('CLEAN', 'INJECTED'), help='同名干净 / 注入样本对照')
     args = parser.parse_args(argv)
     try:
         require_development()
+        if args.repeat < 1:
+            raise ValueError('重复次数至少为 1')
         if not args.samples.is_dir():
             raise ValueError("样本目录不存在")
         paths = sorted((p for p in args.samples.iterdir() if p.is_file() and p.suffix.lower() == ".docx"),
                        key=lambda p: p.name)
         if not paths:
             raise ValueError("样本目录中没有 DOCX 文件")
+        if args.gold or args.pair:
+            from tools.fidelity_metrics import run
+            return run(args, paths)
+        if args.date_shift or args.send_ratios or args.repeat != 1:
+            raise ValueError('日期、比率与重复评测须使用 --gold')
         with probe_options(copy_rule=args.copy_rule, bracket_codes=args.bracket_codes), \
                 EvaluationSession(bind=get_engine(), expire_on_commit=False,
                                   extra_params=args.extra_params) as db:
