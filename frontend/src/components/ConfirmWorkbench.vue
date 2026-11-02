@@ -17,8 +17,7 @@ import {
 import { RUN_ERROR_MESSAGES, runsApi } from '@/api/runs'
 import { MAX_FILES, TASK_ERROR_MESSAGES, checkFiles, tasksApi, type TaskDetail, type TaskFile } from '@/api/tasks'
 import LocalFindings from '@/components/LocalFindings.vue'
-import ManualRedactDialog from '@/components/ManualRedactDialog.vue'
-import RedactionCompare from '@/components/RedactionCompare.vue'
+import ConfirmCanvas from '@/components/ConfirmCanvas.vue'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import SiCount from '@/components/ui/SiCount.vue'
@@ -273,7 +272,7 @@ const suspectsOpen = ref(false)
 const selectedId = ref<number | null>(null)
 const checked = ref<number[]>([])
 const locked = computed(() => deciding.value || waiting.value)
-const compare = ref<InstanceType<typeof RedactionCompare>>()
+const canvas = ref<InstanceType<typeof ConfirmCanvas>>()
 watch(suspects, (rows) => {
   const ids = new Set(rows.map(s => s.id))
   checked.value = checked.value.filter(id => ids.has(id))
@@ -330,7 +329,7 @@ async function resetChecked() {
 }
 function selectSuspect(s: Suspect) {
   selectedId.value = s.id
-  void compare.value?.locate(s.loc)
+  void canvas.value?.locate(s.loc, s.text)
 }
 async function stepSuspect(delta: 1 | -1) {
   const list = suspects.value
@@ -354,7 +353,6 @@ function onManualDone(info: RedactionInfo, action: 'add' | 'revoke') {
   ElMessage.success(action === 'revoke' ? '已撤销，脱敏结果已更新' : '已设为敏感信息')
   void afterChange(info)
 }
-const manualOpen = ref(false)
 
 // ---- 外发回执 ----
 const replacedTotal = computed(() => Object.values(summary.value).reduce((sum, n) => sum + n, 0))
@@ -387,6 +385,8 @@ const RAIL_MIN = 340, RAIL_MAX = 480, RAIL_DEFAULT = 380, RAIL_KEY = 'si.confirm
 const railWidth = ref(readStoredWidth(RAIL_KEY, RAIL_MIN, RAIL_MAX, RAIL_DEFAULT))
 const helpOpen = ref(false)
 const HOTKEYS = [
+  ['V', '切换“原文 / AI 视野”'],
+  ['[ / ]', '上一个 / 下一个文件页签'],
   ['J / K', '下一个 / 上一个不确定项'],
   ['B', '保留选中的不确定项的原文'],
   ['T', '把选中的不确定项改回替换'],
@@ -395,6 +395,9 @@ const HOTKEYS = [
   ['?', '显示本说明'],
 ]
 useHotkeys({
+  v: () => canvas.value?.toggleView(),
+  '[': () => canvas.value?.switchFile(-1),
+  ']': () => canvas.value?.switchFile(1),
   j: () => void stepSuspect(1),
   k: () => void stepSuspect(-1),
   b: () => { const s = selectedSuspect.value; if (s) void keepOne(s) },
@@ -404,7 +407,7 @@ useHotkeys({
     confirmFlash.value = true
     setTimeout(() => { confirmFlash.value = false }, 700)
   },
-  escape: () => { helpOpen.value = false; selectedId.value = null },
+  escape: () => { helpOpen.value = false; selectedId.value = null; canvas.value?.cancel() },
   '?': () => { helpOpen.value = true },
 }, { enabled: computed(() => !assistant.value) })
 </script>
@@ -415,14 +418,9 @@ useHotkeys({
       <div class="canvas-bar">
         <span class="hint">{{ assistant ? '' : '按 ? 查看快捷键' }}</span>
         <SiIsland v-if="island" :state="island.state" :text="island.text" />
-        <el-button :disabled="loading || waiting" @click="manualOpen = true">在原文中选择并补充</el-button>
       </div>
       <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
-      <!-- U2-04 以单画布取代此处的对照区 -->
-      <div class="canvas-body">
-        <RedactionCompare ref="compare" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :outbound-text="outboundText" :note="task.user_note" :outbound-note="outboundNote" :items="redactedItems" :suspects="suspects" :loading="outboundLoading" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" />
-      </div>
-      <p class="canvas-foot hint">{{ replacedTotal }} 处已在本机保护 · 划选文字可补充</p>
+      <ConfirmCanvas ref="canvas" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" @keep="keepOne" @restore="restoreOne" @replace="replaceOne" />
       <div v-if="dragging" class="drop-veil" aria-hidden="true">松开加入本任务</div>
     </div>
     <SplitHandle v-model="railWidth" reverse :min="RAIL_MIN" :max="RAIL_MAX" :default-value="RAIL_DEFAULT" :storage-key="RAIL_KEY" label="调整回执栏宽度" />
@@ -560,7 +558,6 @@ useHotkeys({
       <p v-if="outboundNote" class="hint">{{ outboundNote }}</p>
       <pre class="outbound">{{ outboundText }}</pre>
     </el-drawer>
-    <ManualRedactDialog v-model="manualOpen" :task-id="task.id" :node-loader="nodeLoader" :files="visibleFiles" :items="redactedItems" @done="onManualDone" @stale="emit('stale')" />
     <el-dialog v-model="helpOpen" title="键盘快捷键" width="480px" append-to-body>
       <table class="keys"><tbody><tr v-for="[key, text] in HOTKEYS" :key="key"><th>{{ key }}</th><td>{{ text }}</td></tr></tbody></table>
     </el-dialog>
@@ -571,8 +568,6 @@ useHotkeys({
 .wb { display: flex; height: 100%; min-height: 0; padding: 12px 0 20px; }
 .canvas { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .canvas-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
-.canvas-body { flex: 1; min-height: 0; overflow-y: auto; }
-.canvas-foot { flex: none; margin: 0; }
 .drop-veil { position: absolute; inset: 0; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: var(--si-radius-card); background: color-mix(in srgb, var(--el-color-primary-light-9) 85%, transparent); color: var(--el-color-primary); font: var(--si-font-h4); pointer-events: none; }
 .rail { flex: 0 0 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); }
 .rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px; display: flex; flex-direction: column; gap: 4px; }

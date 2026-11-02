@@ -52,7 +52,7 @@ export function splitOutbound(text: string, items: RedactionItemPos[]): CompareS
 }
 
 export function markPending(segments: CompareSeg[], suspects: Pick<Suspect, 'decision' | 'text'>[]): CompareSeg[] {
-  const texts = [...new Set(suspects.filter(s => s.decision === 'pending' && s.text).map(s => s.text))]
+  const texts = [...new Set(suspects.filter(s => s.decision === 'ignore' && s.text).map(s => s.text))]
   return segments.flatMap(seg => {
     if (seg.placeholder || !texts.length) return [seg]
     const spans: Array<[number, number]> = []
@@ -127,7 +127,7 @@ export function buildCompareRows(outboundText: string, nodes: PreviewNode[], ite
         label: line.header ? '主体说明' : tableNote ? '报价明细表说明' : exact ? nodeLabel(exact.node) : line.loc ?? '—',
         left, right,
         hasRedaction: left.some(segs => segs.some(seg => !!seg.placeholder)) || right.some(seg => !!seg.placeholder),
-        hasPendingSuspect: rowSuspects.some(s => s.decision === 'pending'),
+        hasPendingSuspect: rowSuspects.some(s => s.decision === 'ignore'),
       },
     })
   }
@@ -135,7 +135,7 @@ export function buildCompareRows(outboundText: string, nodes: PreviewNode[], ite
     if (used.has(node.loc)) return
     const left = [original(node)]
     const row: CompareRow = { kind: 'not_sent', loc: node.loc, label: nodeLabel(node), left, right: null,
-      hasRedaction: left[0]!.some(seg => !!seg.placeholder), hasPendingSuspect: suspects.some(s => s.loc === node.loc && s.decision === 'pending') }
+      hasRedaction: left[0]!.some(seg => !!seg.placeholder), hasPendingSuspect: suspects.some(s => s.loc === node.loc && s.decision === 'ignore') }
     const before = rows.findIndex(entry => entry.anchor !== null && entry.anchor > index)
     rows.splice(before < 0 ? rows.length : before, 0, { row, anchor: index })
   })
@@ -152,5 +152,5 @@ export function buildNoteRow(note: string, outboundNote: string | null, items: R
   const invalid = outboundNote === null || right.map(seg => seg.text).join('') !== outboundNote
   if (invalid) right = [{ text: outboundNote ?? '' }]
   return { kind: invalid ? 'unmatched' : 'pair', loc: 'NOTE', label: '本次补充说明', left: [left], right,
-    hasRedaction: [...left, ...right].some(seg => !!seg.placeholder), hasPendingSuspect: noteSuspects.some(s => s.decision === 'pending') }
+    hasRedaction: [...left, ...right].some(seg => !!seg.placeholder), hasPendingSuspect: noteSuspects.some(s => s.decision === 'ignore') }
 }
