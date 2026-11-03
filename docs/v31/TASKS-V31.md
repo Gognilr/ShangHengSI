@@ -4,12 +4,11 @@
 
 ## 当前进度（只保留最近 3 条，每条不超过 400 字；更早的移到本文件末尾“归档”）
 
+- 2026-11-03（GPT-6.1 Sol）：**V31-M-04 已完成**：独立 transcriber 服务、按需加载/空闲释放、内存等待与解析让路、独立 worker 队列、失败重试、加密逐字稿节点与预览字段已接入。相关后端 52 通过、断网模拟协议 2 通过；真实镜像构建与冒烟留 M-07。V31Q-77 记录接入口径。按用户要求继续 M-05～M-07，末尾交 Opus（任务表为 M-08，用户称 M09）。
+
 - 2026-11-03（GPT-6.1 Sol）：**V31-M-03 已完成**：迁移 0034、录音上传与分块加密、converter 解码、回放副本及删除/保留期/恢复/密钥更换适配完成。首轮 71 通过、1 个测试字段误写已修，随后相关 164、最终代表 2 通过。用户同意下载后新 converter 镜像构建成功，断网全套 22 通过，含真实 5 秒音频解码。V31Q-76 记录接入口径。未跑全量、未调用真实模型；下一任务 V31-M-04（GPT-6.1 Sol，high）。
 
 - 2026-11-03（GPT-6.1 Sol）：**V31-M-02 已完成**：统一八项清单、--models、线程变量、asr compose 骨架、model-check / local_models 与运维章已实现；用户同意后补齐官方许可文本、来源与哈希。首轮78通过/13失败/3跳过，路径和CRLF修正后受影响三文件54通过，发布旧三场景另3通过；实际断网清单检查通过。未跑全量、未构建发布包（M-07）。V31Q-75记录接入口径，详见reports/V31-M-test.md。下一任务V31-M-03（GPT-6.1 Sol，high）。
-
-- 2026-11-03（Opus 5.5）：**V31-M-01 已完成，选型已定（V31Q-73、74）**：转写一组选 FireRedVAD + FireRedASR2-AED INT8 + FireRedPunc INT8（仓库外导出）+ pyannote segmentation-3.0 + 3D-Speaker CAM++，均 Apache-2.0 / MIT，镜像不装 torch；淘汰 SenseVoice、Paraformer（FunASR 协议可撤销）。开发机 8 核：3 小时录音 50 分钟（实时率 0.28），4 GB 内完成；解码器须单线程；自写贪心解码取得字级置信度。用户定：1 小时会议 1 小时内处理完即可，不再录音与虚拟机实测，效果评测并入 V31-Z。已改 CLAUDE.md、SPEC 第 3 节，MANIFEST 入 transcriber/models/asr/，接入要点见 reports/V31-M-01.md 第三节。下一任务 V31-M-02（GPT-6.1 Sol，medium），在此停下。
-
 
 ## 一、执行规则
 
@@ -85,7 +84,7 @@
 | V31-M-01 | 转写模型选型与整套容量实测，选型确认后改 CLAUDE.md、AGENTS.md、SPEC 第 3 节（设计第一节，补充项 63，V31Q-27；下载前、测试虚拟机实测前各经用户同意，用户安排虚构脚本录音） | Opus | high | V31-M-00 确认 | 已完成（2026-11-03，V31Q-73、V31Q-74） |
 | V31-M-02 | 本地模型统一接入：deploy/models.yaml、build_release `--models`、线程与资源从 .env 读、compose profiles、`model-check` 与系统状态“本地模型”、运维说明一章（设计第二节，[design/local-models.md](design/local-models.md) 第九节，V31Q-49） | GPT-6.1 Sol | medium | V31-M-01 选型确认 | 已完成 |
 | V31-M-03 | 迁移 0034、录音上传与分块加密、converter 解码、回放副本（设计第三节） | GPT-6.1 Sol | high | V31-M-02 | 已完成 |
-| V31-M-04 | transcriber 容器、worker 转写任务、逐字稿节点（设计第四节） | GPT-6.1 Sol | high | V31-M-03 | 待执行 |
+| V31-M-04 | transcriber 容器、worker 转写任务、逐字稿节点（设计第四节） | GPT-6.1 Sol | high | V31-M-03 | 已完成 |
 | V31-M-05 | 校对接口、同音纠正（开工前下载拼音数据）、发言人代号、口语金额、逐字稿外发格式（设计第五节） | GPT-6.1 Sol | high | V31-M-04 | 待执行 |
 | V31-M-06 | 会议纪要模板、纪要与逐字稿 Word（设计第六节） | GPT-6.1 Sol | medium | V31-M-05 | 待执行 |
 | V31-M-07 | 集中测试（设计第七节） | GPT-6.1 Sol | medium | V31-M-06 | 待执行 |
@@ -214,3 +213,6 @@
 - 2026-11-02（GPT-6.1 Sol）：**V31-P-05 已完成**：唯一引用保存加密原文片段，新增 quote_excerpt；共用代号按第一节点唯一值还原，字面值条文改批注。相关首轮 356 通过，修正新增测试事务准备后定向 8、最终 87 通过；完整 A-03 4 通过，外发问题 0。V31Q-50 记录重现与去重口径。未跑全量、未调用真实模型。下一任务 V31-P-06（GPT-6.1 Sol，medium）。
 
 - 2026-11-03（Opus 5.5）：**V31-M-00 已完成，用户已确认（V31Q-69～72 按建议）**：写 design/V31-M.md。录音只在智能助手加入（≤500 MB、≤3 小时），分块加密上传，converter 加 ffmpeg 解码为 16 kHz PCM 与回放副本，原件解码后删除；transcriber 独立容器（无网络、只挂 /spool、4 GB / 8 CPU、用时加载、等内存、解析时让路）；逐字稿节点 F{n}-U{k} 带时间与发言人；校对：参会人名单、改名进对照表、改字、Unihan 拼音同音建议、点句回放；口语金额；会议纪要模板与逐字稿 Word。拆为 M-01（Opus 选型实测）、M-02～M-07（GPT-6.1 Sol）、M-08（Opus）。下一任务 V31-M-01（Opus，high），先列候选模型待用户同意下载。
+
+- 2026-11-03（Opus 5.5）：**V31-M-01 已完成，选型已定（V31Q-73、74）**：转写一组选 FireRedVAD + FireRedASR2-AED INT8 + FireRedPunc INT8（仓库外导出）+ pyannote segmentation-3.0 + 3D-Speaker CAM++，均 Apache-2.0 / MIT，镜像不装 torch；淘汰 SenseVoice、Paraformer（FunASR 协议可撤销）。开发机 8 核：3 小时录音 50 分钟（实时率 0.28），4 GB 内完成；解码器须单线程；自写贪心解码取得字级置信度。用户定：1 小时会议 1 小时内处理完即可，不再录音与虚拟机实测，效果评测并入 V31-Z。已改 CLAUDE.md、SPEC 第 3 节，MANIFEST 入 transcriber/models/asr/，接入要点见 reports/V31-M-01.md 第三节。下一任务 V31-M-02（GPT-6.1 Sol，medium），在此停下。
+

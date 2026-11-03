@@ -465,3 +465,19 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
         storage.delete_original(media_key)
     db.commit()
     return result
+
+
+def retranscribe(db, task, file):
+    task = lock(db, task)
+    _writable(db, task)
+    db.refresh(file)
+    if not file.media or file.media.get('stage') != 'failed' or file.confirmed_at is not None:
+        raise AppError(409, 'FILE_NOT_FAILED', '只能重试转写失败的录音')
+    if not file.media_storage_key:
+        raise AppError(409, 'MEDIA_UNAVAILABLE', '回放副本不可用，请重新加入录音')
+    file.media = {**file.media, 'stage': 'queued', 'progress': 0, 'error': None}
+    file.parse_error = None
+    task.status, task.error_message = 'parsing', None
+    jobs.enqueue(db, 'transcribe', {'task_id': str(task.id), 'file_id': str(file.id)})
+    db.commit()
+    return detail(db, task)

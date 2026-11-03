@@ -25,10 +25,14 @@ def decode(db, task, file):
     outputs = {ext: spool / 'out' / f'{token}.{ext}' for ext in ('wav', 'ogg', 'json', 'err')}
     pcm = spool / 'asr' / 'pending' / f'{file.id.hex}.wav'
     key, committed = None, False
+    previous_key = file.media_storage_key
     try:
         with open(part, 'wb') as out:
-            for chunk in crypto.decrypt_stream(storage._path(file.storage_key)):
-                out.write(chunk)
+            if file.media_storage_key:
+                out.write(storage.load_original(file.media_storage_key))
+            else:
+                for chunk in crypto.decrypt_stream(storage._path(file.storage_key)):
+                    out.write(chunk)
         os.replace(part, src)
         # 最长录音的解码预算另留排队余量；不占转写并发。
         deadline = time.monotonic() + 1320
@@ -51,6 +55,8 @@ def decode(db, task, file):
         db.commit()  # 先持久化回放副本，再删除录音原件；original_deleted_at 留给保留期。
         committed = True
         storage.delete_original(file.storage_key)
+        if previous_key:
+            storage.delete_original(previous_key)
         return pcm
     except BaseException:
         if key and not committed:

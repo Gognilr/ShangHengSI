@@ -89,6 +89,11 @@ def nodes(file: TaskFile = Depends(owned_file), task: Task = Depends(owned_sessi
     return tasks.preview_nodes(db, task, file)
 
 
+@router.post('/{id}/files/{fid}/retranscribe', response_model=SessionDetail)
+def retranscribe(file: TaskFile = Depends(owned_file), task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    return service.retranscribe(db, task, file)
+
+
 @router.get("/{id}/files/{fid}/raw")
 def raw(file: TaskFile = Depends(owned_file)):
     data, media_type = tasks.load_raw(file)

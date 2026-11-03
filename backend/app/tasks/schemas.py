@@ -66,6 +66,10 @@ class PreviewNode(BaseModel):
     kind: str
     part: str
     text: str | None
+    t_start_ms: int | None = None
+    t_end_ms: int | None = None
+    speaker: int | None = None
+    low_conf_spans: list[list[int]] | None = None
     clause_no: str | None
     page: int | None
     bbox: list[float] | None

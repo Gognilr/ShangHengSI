@@ -89,6 +89,7 @@ services:
       EMBED_THREADS: ${EMBED_THREADS:-8}
       WORKER_REVIEW_CONCURRENCY: ${WORKER_REVIEW_CONCURRENCY:-8}
       WORKER_PARSE_CONCURRENCY: ${WORKER_PARSE_CONCURRENCY:-2}
+      WORKER_TRANSCRIBE_CONCURRENCY: ${WORKER_TRANSCRIBE_CONCURRENCY:-1}
       CONVERT_SPOOL_DIR: /spool
       LAWSYNC_PROXY: ${LAWSYNC_PROXY:-}
     volumes:
@@ -134,9 +135,14 @@ services:
       timeout: 5s
       retries: 3
 
-  # M-02 先接统一骨架，容器实现与镜像构建入口在 M-04 完成。
+  # 转写与主线独立，只通过共享内存盘交换文件。
   transcriber:
     image: aireview-transcriber:${APP_VERSION:-dev}
+    # build-begin
+    build:
+      context: ../transcriber
+      target: runtime
+    # build-end
     profiles: [asr]
     logging: *logging
     restart: unless-stopped

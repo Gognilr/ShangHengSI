@@ -13,6 +13,7 @@ import os
 import signal
 import threading
 import time
+from pathlib import Path
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -52,6 +53,45 @@ def job_handler(type: str):
 
 
 _ocr_lock = threading.Lock()
+_parse_lock = threading.Lock()
+_parse_active = 0
+
+
+@contextmanager
+def parsing_priority(enabled):
+    """解析并发共用计数；只在全部结束时取消让路。"""
+    global _parse_active
+    if not enabled:
+        yield
+        return
+    path = Path(get_settings().convert_spool_dir) / 'asr/pause'
+    done = threading.Event()
+    def touch():
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(mode=0o660)
+        except OSError:
+            pass  # asr 未启用时不影响解析
+    with _parse_lock:
+        _parse_active += 1
+        touch()
+    def refresh():
+        while not done.wait(30):
+            touch()
+    thread = threading.Thread(target=refresh, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        done.set()
+        thread.join()
+        with _parse_lock:
+            _parse_active -= 1
+            if not _parse_active:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
 
 def ocr_slot() -> ContextManager:
@@ -153,7 +193,8 @@ def process_job(
         error_code = "NO_HANDLER"
     else:
         try:
-            with _heartbeating(session_factory, job_id, heartbeat_seconds):
+            with _heartbeating(session_factory, job_id, heartbeat_seconds), parsing_priority(
+                    job_type in ('parse', 'law_import', 'kb_import')):
                 with session_factory() as db:
                     handler(db, payload)
         except Exception as exc:  # noqa: BLE001  只记录类名，不记录消息内容
@@ -205,6 +246,7 @@ def run_worker(
     review_concurrency: int = 8,
     parse_concurrency: int = 2,
     assist_concurrency: int = 4,
+    transcribe_concurrency: int = 1,
     idle_seconds: float = IDLE_SECONDS,
     heartbeat_seconds: float = HEARTBEAT_SECONDS,
     periodic_tick_seconds: float = PERIODIC_TICK_SECONDS,
@@ -214,6 +256,7 @@ def run_worker(
     groups = (("review", review_concurrency, ("review",)),
               ("parse", parse_concurrency, ("parse", "law_import")),
               ("assist", assist_concurrency, ("assist",)),
+              ("transcribe", transcribe_concurrency, ("transcribe",)),
               ("maintenance", 1, ("backup", "retention", "law_embed", "law_sync", "template_embed")))
     threads = []
     for group, concurrency, types in groups:
@@ -263,19 +306,21 @@ def main() -> None:
     import app.standards.job  # noqa: F401  注册范本向量化
     import app.assistant.job  # noqa: F401  注册助手流式生成
     import app.kb.job  # noqa: F401  注册知识库解析
+    import app.parsing.transcribe  # noqa: F401  注册独立转写队列
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     logger.info("worker 启动，版本 %s，审核并发 %s，解析并发 %s，助手并发 %s，维护并发 1",
                 settings.app_version, settings.worker_review_concurrency, settings.worker_parse_concurrency,
                 settings.worker_assist_concurrency)
-    pool_size = settings.worker_review_concurrency + settings.worker_parse_concurrency + settings.worker_assist_concurrency + 2
+    pool_size = settings.worker_review_concurrency + settings.worker_parse_concurrency + settings.worker_assist_concurrency + settings.worker_transcribe_concurrency + 2
     factory = sessionmaker(bind=get_engine(pool_size=pool_size, max_overflow=pool_size), expire_on_commit=False)
     with factory() as db:
         app.laws.job.enqueue_embed(db)
         db.commit()
     run_worker(factory, _stop, review_concurrency=settings.worker_review_concurrency,
-               parse_concurrency=settings.worker_parse_concurrency, assist_concurrency=settings.worker_assist_concurrency)
+               parse_concurrency=settings.worker_parse_concurrency, assist_concurrency=settings.worker_assist_concurrency,
+               transcribe_concurrency=settings.worker_transcribe_concurrency)
     logger.info("worker 已退出")
 
 

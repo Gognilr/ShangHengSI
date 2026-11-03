@@ -48,6 +48,7 @@ class Settings:
     max_audio_mb: int = 500
     lawsync_proxy: str = ""
     worker_assist_concurrency: int = 4
+    worker_transcribe_concurrency: int = 1
 
 
 def load_settings() -> Settings:
@@ -62,6 +63,7 @@ def load_settings() -> Settings:
         worker_review_concurrency=_concurrency_env("WORKER_REVIEW_CONCURRENCY", 8),
         worker_parse_concurrency=_concurrency_env("WORKER_PARSE_CONCURRENCY", 2),
         worker_assist_concurrency=_concurrency_env("WORKER_ASSIST_CONCURRENCY", 4),
+        worker_transcribe_concurrency=_concurrency_env("WORKER_TRANSCRIBE_CONCURRENCY", 1),
         tz=os.environ.get("TZ", "Asia/Shanghai"),
         max_audio_mb=_int_env("MAX_AUDIO_MB", 500),
         max_upload_mb=_int_env("MAX_UPLOAD_MB", 30),

@@ -21,3 +21,8 @@ Docker Python 3.12 + aireview-db:dev：crypto / migrations / assistant_sessions 
 用户已同意下载 Debian ffmpeg 与依赖，`aireview-converter:m03` 构建成功（ffmpeg 锁定 `7:7.1.5-0+deb13u1`；来源：[Debian 官方包](https://packages.debian.org/trixie/amd64/ffmpeg)）。新镜像在断网、只读、非 root、去能力条件下运行 converter 全部用例，22 通过（16.606 秒）。新增真实用例用 lavfi sine 生成 5 秒 WAV，验证解码结果时长 5000 ms、PCM 为 16 kHz / 单声道 / 16 位、回放副本为 Ogg Opus、输入和工作目录已清理；旧格式转换回归通过。上传、数据库与加密保存由前述模拟协议用例验证；本次不声称已走通 M-04 的真实转写或整套会议纪要流程。
 
 运维说明已补齐 ffmpeg 版本、镜像内许可路径、Debian 源码来源、1 GiB 内存盘与录音保留方式。未跑整仓全量、未调用真实模型、未连接正式服务器；本次测试容器使用 --rm，退出后已移除。M-03 已完成，下一任务 V31-M-04（GPT-6.1 Sol，high）。
+## M-04 容器、转写任务与节点（2026-11-03）
+
+实现独立 transcriber（无网络、只挂内存盘）、MANIFEST 启动校验、用时加载与空闲五分钟释放、内存等待、解析让路、逐段进度、超时与输出过期清理。推理由 M-01 脚本接入固定模型名；VAD 后处理取本机已下载的 FireRedVAD 源码，保留版权行；AED 解码器固定单线程，字级低置信区间按加标点后坐标输出。worker 独立 transcribe 组、回放重解码与失败重试接口、加密 utterance 节点及预览字段已接入。每次投递随机交换 id，避免重启读取旧结果。
+
+Docker Python 3.12 + aireview-db:dev：test_transcribe / test_worker / test_assistant_sessions 共 52 通过。既有 worker 测试只调整新增线程和连接池数量；两个新增代表用例覆盖模拟结果写节点、时间排序、加密原文、重复投递、失败重试、本人隔离与服务不可用。既有 asr-eval:m01 镜像断网挂载当前 transcriber 源码，标准库协议测试 2 通过，覆盖暂停、交换、进度、清理与超时；未构建新镜像、未进行真实模型推理，完整构建与断网冒烟在 M-07。测试容器均已自动移除，未跑全量。V31Q-77 记录重试/版本/会话完成口径。

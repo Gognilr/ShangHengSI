@@ -106,6 +106,15 @@ def finalize_failed(db: Session, job_type: str, payload: object) -> None:
             for file in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.parser_version.is_(None))):
                 if str(file.id) in selected:
                     file.parse_error = file.parse_error or PARSE_INTERNAL_MSG
+    elif job_type == 'transcribe':
+        task_id, file_id = _uuid(payload, 'task_id'), _uuid(payload, 'file_id')
+        task = db.get(Task, task_id, with_for_update=True) if task_id else None
+        file = db.get(TaskFile, file_id) if file_id else None
+        if (task is not None and file is not None and file.task_id == task.id and not file.parser_version
+                and (file.media or {}).get('stage') != 'failed'):
+            file.media = {**(file.media or {}), 'stage': 'failed', 'error': 'transcribe_failed'}
+            file.parse_error = file.parse_error or '录音转写失败，可稍后重试'
+            task.status, task.error_message = 'parse_failed', file.parse_error
     elif job_type == "review":
         run_id = _uuid(payload, "run_id")
         run = db.get(ReviewRun, run_id, with_for_update=True) if run_id else None

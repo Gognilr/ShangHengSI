@@ -564,6 +564,7 @@ def preview_nodes(db: DbSession, task: Task, file: TaskFile) -> PreviewNodes:
             kind=r.kind,
             part=r.part,
             text=crypto.decrypt_text(r.text_enc) if r.text_enc is not None else None,
+            t_start_ms=r.t_start_ms, t_end_ms=r.t_end_ms, speaker=r.speaker, low_conf_spans=r.low_conf_spans,
             clause_no=r.clause_no,
             page=r.page,
             bbox=[float(v) for v in r.bbox] if r.bbox else None,
