@@ -45,7 +45,27 @@ class Handler(BaseHTTPRequestHandler):
         if MODE == "timeout":
             time.sleep(float(os.environ.get("MOCK_LLM_DELAY", "600")))
         status, payload = build_reply(body, MODE)
-        self._send(status, payload)
+        if status == 200 and body.get("stream"):
+            self._stream(payload)
+        else:
+            self._send(status, payload)
+
+    def _stream(self, payload: dict) -> None:
+        # 智能助手走流式：按 OpenAI SSE 格式分段返回同一内容
+        content = payload["choices"][0]["message"]["content"]
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.end_headers()
+        for i in range(0, len(content), 40):
+            chunk = {"id": payload["id"], "object": "chat.completion.chunk", "model": payload["model"],
+                     "choices": [{"index": 0, "delta": {"content": content[i:i + 40]}, "finish_reason": None}]}
+            self.wfile.write(f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode("utf-8"))
+            self.wfile.flush()
+            time.sleep(0.05)
+        done = {"id": payload["id"], "object": "chat.completion.chunk", "model": payload["model"],
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": payload["usage"]}
+        self.wfile.write(f"data: {json.dumps(done, ensure_ascii=False)}\n\ndata: [DONE]\n\n".encode("utf-8"))
+        self.wfile.flush()
 
     def log_message(self, fmt: str, *args) -> None:  # 只记请求行，不记内容
         sys.stderr.write(f"mock-llm {self.address_string()} {fmt % args}\n")
