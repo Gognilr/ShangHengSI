@@ -1,0 +1,18 @@
+{
+  "success": 1,
+  "files": 2,
+  "receipt_calls": 1,
+  "restore_count": 1,
+  "sent_items": 1,
+  "calc_ok": 1,
+  "revised_count": 1,
+  "commented_count": 0,
+  "mock": {
+    "review": 1,
+    "chat": 2,
+    "local_summary": 3,
+    "ratios": 3,
+    "computed_result_seen": 0,
+    "real_literal_seen": 0
+  }
+}
