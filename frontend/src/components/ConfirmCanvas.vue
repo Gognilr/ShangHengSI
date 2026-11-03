@@ -62,6 +62,11 @@ const activeId = ref('')
 const active = computed(() => states[activeId.value])
 const lastFileId = computed(() => sortedFiles.value[sortedFiles.value.length - 1]?.id ?? '')
 const view = ref<'orig' | 'ai' | 'raw'>('orig')
+function utteranceLabel(node: PreviewNode) {
+  const file = activeFile.value as (TaskFile & { speakers?: Record<string, string | null> }) | undefined
+  return file?.speakers?.[String(node.speaker)] || '发言人 ' + node.speaker
+}
+function stamp(ms = 0) { const s = Math.floor(ms/1000); return [Math.floor(s/3600), Math.floor(s/60)%60,s%60].map(v => String(v).padStart(2,'0')).join(':') }
 const activeFile = computed(() => sortedFiles.value.find(f => f.id === activeId.value))
 // 原件视图：PDF 或图片且原件未删除
 const rawAvailable = (f: TaskFile | undefined) => !!f && !f.original_deleted_at && ['pdf', 'jpg', 'jpeg', 'png'].includes(f.ext.toLowerCase().replace(/^\./, ''))
@@ -447,6 +452,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp">
         <template v-for="(b, bi) in blocks" :key="bi">
           <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv)]" :data-node="b.nv.node.loc">
+            <div v-if="b.nv.node.kind === 'utterance'" class="utterance-meta"><span :class="{ code: view === 'ai' && b.nv.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nv.node.speaker_code : utteranceLabel(b.nv.node) }}</span> · {{ stamp(b.nv.node.t_start_ms ?? 0) }}</div>
             <button v-if="b.nv.tags" type="button" class="ann-tag" :data-fid="b.nv.tags[0]!.id">{{ tagText(b.nv.tags) }}</button>
             <div v-if="b.nv.node.loc === 'NOTE'" class="side-label">本次补充说明</div>
             <span v-else-if="b.nv.node.part !== 'body'" class="side-label">{{ b.nv.node.part }}</span>
@@ -507,6 +513,8 @@ defineExpose({ locate, switchFile, toggleView, cancel })
 </template>
 
 <style scoped>
+.utterance-meta { color: var(--si-paper-ink-2); font: var(--si-font-meta); margin-bottom: 4px; }
+.kind-utterance { content-visibility: auto; contain-intrinsic-size: auto 80px; }
 .cv { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .cv-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .spacer { flex: 1; }

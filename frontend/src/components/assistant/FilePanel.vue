@@ -4,6 +4,7 @@ import { ElMessageBox } from 'element-plus'
 import { assistantApi, confirmationTask, type Session, type SessionFile } from '@/api/assistant'
 import { saveBlob } from '@/utils/save'
 import type { LocalFinding } from '@/api/localFindings'
+import TranscriptEditor from './TranscriptEditor.vue'
 import MediaRow from './MediaRow.vue'
 import LocalCheckList from '@/components/result/LocalCheckList.vue'
 import ZoneHeader from '@/components/ui/ZoneHeader.vue'
@@ -17,6 +18,8 @@ import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 const props = defineProps<{ session: Session }>()
 const emit = defineEmits<{ refresh: []; transcript: [file: SessionFile] }>()
 const upload = ref<HTMLInputElement>(), busy = ref(false), error = ref(''), confirmOpen = ref(false), outboundOpen = ref(false), outbound = ref('')
+const transcriptFile = ref<SessionFile | null>(null)
+const currentTranscript = computed(() => props.session.files.find(f => f.id === transcriptFile.value?.id) ?? transcriptFile.value)
 const uploadProgress = ref<number | null>(null), localOpen = ref(false), findings = ref<LocalFinding[]>([])
 const audioExts = ['mp3','m4a','wav','amr','aac','mp4']
 const accept = computed(() => '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png' + (props.session.asr_enabled ? ',.mp3,.m4a,.wav,.amr,.aac,.mp4' : ''))
@@ -96,7 +99,7 @@ function confirmed() { confirmOpen.value = false; emit('refresh') }
     <template v-if="session.status === 'parsing'"><h3>正在本机解析文件</h3><el-progress :percentage="100" :indeterminate="true" :show-text="false" /><p class="hint num">已用 {{ elapsed }} 秒</p><p class="hint">在本机读取正文并识别敏感信息，可以离开页面稍后继续。</p></template>
     <el-alert v-if="session.error_message" :title="session.error_message" type="error" :closable="false" />
     <div v-for="file in session.files" :key="file.id" class="file-row">
-      <span class="file-badge">{{ file.media ? '音频' : file.ext.toUpperCase() }}</span><div class="file-info"><div class="file-name">{{ file.original_name }}</div><MediaRow v-if="file.media" :file="file" :busy="busy" @transcript="emit('transcript', file)" @retry="retryMedia(file)" @download="downloadTranscript(file)" /><el-tag v-else size="small" :type="statusTag(file.confirmed_at ? 'confirmed' : session.status).type" :effect="statusTag(file.confirmed_at ? 'confirmed' : session.status).effect">{{ file.confirmed_at ? '已确认' : assistantStatusLabel(session.status) }}</el-tag><p v-for="warning in file.warnings" :key="warning" class="warning">{{ warning }}</p></div>
+      <span class="file-badge">{{ file.media ? '音频' : file.ext.toUpperCase() }}</span><div class="file-info"><div class="file-name">{{ file.original_name }}</div><MediaRow v-if="file.media" :file="file" :busy="busy" @transcript="transcriptFile = file" @retry="retryMedia(file)" @download="downloadTranscript(file)" /><el-tag v-else size="small" :type="statusTag(file.confirmed_at ? 'confirmed' : session.status).type" :effect="statusTag(file.confirmed_at ? 'confirmed' : session.status).effect">{{ file.confirmed_at ? '已确认' : assistantStatusLabel(session.status) }}</el-tag><p v-for="warning in file.warnings" :key="warning" class="warning">{{ warning }}</p></div>
       <el-button v-if="!file.confirmed_at && session.status !== 'parsing'" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
     </div>
     <EmptyState v-if="!session.files.length" compact :icon="FileText" title="还没有文件" description="加入文件后，在本机解析与脱敏。" />
@@ -104,6 +107,7 @@ function confirmed() { confirmOpen.value = false; emit('refresh') }
     <div v-if="findings.length" class="session-settings"><ZoneHeader kind="local" :count="certain.length" /><p>高 {{ counts[0] }} · 中 {{ counts[1] }} · 低 {{ counts[2] }}</p><p v-if="unverified" class="hint">无法核验 {{ unverified }} 项</p><el-button link @click="localOpen = true">查看</el-button><p class="hint">发给模型的只有不含金额的摘要</p></div>
     <div class="session-settings"><h3>会话设置</h3><label>我方立场</label><el-select :model-value="session.stance" :disabled="!canStance || busy" @change="stance"><el-option label="销售" value="sales" /><el-option label="采购" value="purchase" /><el-option label="其他" value="other" /></el-select><p class="hint">第一个文件确认后不能修改立场</p><p>本会话代号 <span class="num">{{ session.code_count }}</span> 个</p><el-button :disabled="busy || session.status === 'parsing'" @click="showOutbound">查看外发文本</el-button><p class="hint">发给模型的只有脱敏后的文字，回复在本机还原</p></div>
     <el-drawer v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
+    <el-dialog :model-value="!!transcriptFile" :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></el-dialog>
     <el-dialog v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
   </aside>

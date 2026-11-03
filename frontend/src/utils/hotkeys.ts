@@ -5,13 +5,13 @@ import { onBeforeUnmount, onMounted, type Ref } from 'vue'
  * 焦点在输入控件、下拉、可编辑区，或页面上有打开的对话框、抽屉时不触发（Esc 除外），
  * 避免打字或操作弹层时误触。组件卸载时自动解绑。
  */
-export function useHotkeys(map: Record<string, (event: KeyboardEvent) => void>, options: { enabled?: Ref<boolean> } = {}): void {
+export function useHotkeys(map: Record<string, (event: KeyboardEvent) => void>, options: { enabled?: Ref<boolean>; withinDialog?: boolean } = {}): void {
   const handler = (event: KeyboardEvent) => {
     if (event.isComposing || options.enabled?.value === false) return
     const key = keyName(event)
     const run = map[key]
     if (!run) return
-    if (key !== 'escape' && (typingTarget(event.target) || overlayOpen())) return
+    if (key !== 'escape' && (typingTarget(event.target) || (!options.withinDialog && overlayOpen()))) return
     event.preventDefault()
     run(event)
   }
