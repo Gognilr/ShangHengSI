@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, type InputInstance } from 'element-plus'
 import { MessageSquare } from '@lucide/vue'
 import { chatApi, type ChatMessage, type ChatPreview, type ChatDecision } from '@/api/chat'
 import { ApiError } from '@/api/http'
+import CalcResult from '@/components/result/CalcResult.vue'
+import MarkedText from '@/components/result/MarkedText.vue'
+import { calcLines, sliceMarks, unresolvedCount } from '@/utils/marks'
 import { formatDateTime } from '@/utils/time'
 import { markPending, type CompareSeg } from '@/utils/compare'
 import { USER_CATEGORY_OPTIONS, suspectReasonLabel, toOptions } from '@/utils/labels'
@@ -26,6 +29,13 @@ const confirmation = ref<ChatPreview | null>(null)
 const decisions = ref<Array<{ choice: '' | 'replace' | 'keep'; category: UserCategory | '' }>>([])
 const skipConfirm = ref(false)
 const messageList = ref<HTMLElement>()
+const input = ref<InputInstance>()
+// 回复按【算式】行切段：算式行换成本机计算卡片，其余段带“未能还原”标记；calc 标记由卡片表达，不重复下划线
+function replySegs(item: ChatMessage) {
+  const marks = (item.marks ?? []).filter(m => m.kind !== 'calc')
+  return calcLines(item.content, item.calcs).map(seg => ({ ...seg, marks: sliceMarks(marks, seg.start, Array.from(seg.text).length) }))
+}
+const hasCalcs = computed(() => items.value.some(item => item.calcs?.length))
 let pendingMessage = ''
 let active = true
 let previewVersion = 0
@@ -130,10 +140,13 @@ function cancelConfirm() {
   busy.value = false
 }
 
-/** 结果页预填追问（V31-U3 3.3、3.5）：打开抽屉，把文字追加到输入框末尾；U3-04 完善光标与预览。 */
+/** 结果页预填追问（V31-U3 4.1）：打开抽屉，文字放进输入框末尾（已有内容时换行追加），光标置于末尾，并触发常驻预览。 */
 async function openWith(text: string) {
-  message.value = message.value.trim() ? `${message.value}\n${text}` : text
+  message.value = message.value.trim() ? `${message.value.replace(/\s+$/, '')}\n${text}` : text
   await show()
+  await nextTick()
+  const area = input.value?.textarea
+  if (area) { area.focus(); area.setSelectionRange(area.value.length, area.value.length); area.scrollTop = area.scrollHeight }
 }
 defineExpose({ openWith, available })
 
@@ -223,7 +236,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
     </span>
   </el-tooltip>
 
-  <el-drawer v-model="open" title="追问" size="480px" direction="rtl" append-to-body
+  <el-drawer v-model="open" title="追问" size="560px" direction="rtl" append-to-body
     :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy"
     @opened="scrollToLatest">
     <div class="chat-panel">
@@ -231,12 +244,17 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
       <el-alert v-else-if="!loading && !available" type="warning" :closable="false" show-icon :title="reason" />
       <div ref="messageList" v-loading="loading" class="messages" aria-live="polite">
         <el-empty v-if="!loading && !error && !items.length" description="暂无对话记录" />
-        <div v-for="item in items" :key="item.id" class="message" :class="{ 'message--user': item.role === 'user' }">
+        <div v-for="item in items" :key="item.id" class="message" :class="item.role === 'user' ? 'mine' : 'reply'">
           <div class="hint">{{ item.role === 'user' ? '我' : '回复' }} · {{ formatDateTime(item.created_at) }}</div>
-          <div class="message-content">{{ item.content }}</div>
+          <div v-if="item.role === 'user'" class="message-content">{{ item.content }}</div>
+          <div v-else class="message-content">
+            <template v-for="(seg, i) in replySegs(item)" :key="i"><CalcResult v-if="seg.calc" :calc="seg.calc" /><MarkedText v-else :text="seg.text" :marks="seg.marks" /></template>
+            <p v-if="unresolvedCount(item.marks)" class="unresolved">有 {{ unresolvedCount(item.marks) }} 处未能还原，已原样标出</p>
+          </div>
         </div>
       </div>
-      <el-input v-model="message" type="textarea" :rows="4" :maxlength="1000" show-word-limit
+      <p v-if="hasCalcs" class="hint calc-hint">回复中【算式】由本机计算，结果不发送给模型</p>
+      <el-input ref="input" v-model="message" type="textarea" :rows="4" :maxlength="1000" show-word-limit
         aria-label="追问问题" placeholder="输入要追问的问题，Ctrl+Enter 发送"
         :disabled="loading || !available || !!error || busy || disabled"
         @keydown.ctrl.enter.prevent="submit" />
@@ -290,11 +308,15 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 .suspect-decision :deep(.el-select) { width: 160px; margin-left: 12px; }
 .context { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
 .chat-confirm-body { max-height: calc(100vh - 200px); overflow-y: auto; }
-.messages { flex: 1; min-height: 120px; overflow-y: auto; margin-bottom: 16px; padding: 12px; background: var(--el-fill-color-light); border-radius: 12px; }
-.message { max-width: 90%; margin-bottom: 16px; }
-.message--user { margin-left: auto; text-align: right; }
-.message-content { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; padding: 12px 16px; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); text-align: left; font: var(--si-font-body); }
-.message--user .message-content { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-8); }
+.messages { flex: 1; min-height: 120px; overflow-y: auto; margin-bottom: 12px; padding: 0 4px; }
+/* 用户消息靠右气泡；回复满宽、无边框无底色（同助手，frontend.md 2.2） */
+.message { padding: 12px 0; }
+.mine { display: flex; flex-direction: column; align-items: flex-end; }
+.mine .message-content { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--el-color-primary-light-9); border-radius: var(--si-radius-card); font: var(--si-font-body); }
+.message-content { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.reply .message-content { font: var(--si-font-reading); color: var(--si-text-reading); }
+.unresolved { margin: 6px 0 0; font: var(--si-font-caption); color: var(--si-warn-ink); white-space: normal; }
+.calc-hint { margin: 0 0 6px; }
 .redacted {
   margin: 0 0 12px;
   padding: 12px;

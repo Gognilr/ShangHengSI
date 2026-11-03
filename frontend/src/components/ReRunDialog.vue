@@ -5,13 +5,12 @@ import { ApiError } from '@/api/http'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { runsApi } from '@/api/runs'
 import { MAX_NOTE_LENGTH, tasksApi, type Source, type Stance, type TaskDetail } from '@/api/tasks'
+import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
-import { redactionApi, type RedactionInfo } from '@/api/redaction'
-import RedactionCompare from './RedactionCompare.vue'
 
 /**
- * 重新审核对话框（SPEC 6.3、7.4，设计 docs/design/M5.md 第七节）。
- * 默认取任务当前的立场、来源和本次补充说明；确定后任务回到待确认，跳到新建审核页的第二步再次确认发送。
+ * 重新审核对话框（SPEC 6.3、7.4；V31-U3 4.2）。
+ * 默认取任务当前的立场、来源和本次补充说明；确定后任务回到待确认，到确认页按新设置重新计算替换，再次确认后发送。
  */
 const props = defineProps<{ modelValue: boolean; task: TaskDetail }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
@@ -19,30 +18,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const router = useRouter()
 const submitting = ref(false)
 const errorText = ref('')
-const comparison = ref<RedactionInfo>({ items: [], summary: {}, suspects: [] })
-const outboundText = ref('')
-const previewLoading = ref(false)
-const previewError = ref('')
-let previewVersion = 0
-async function loadComparison() {
-  const current = ++previewVersion
-  previewLoading.value = true
-  previewError.value = ''
-  outboundText.value = ''
-  try {
-    const [info, outbound] = await Promise.all([redactionApi.redaction(props.task.id), redactionApi.outbound(props.task.id)])
-    if (current !== previewVersion) return
-    comparison.value = info
-    outboundText.value = outbound.text
-  } catch (e) {
-    if (current === previewVersion) previewError.value = e instanceof ApiError ? e.message : '加载失败，请关闭后重试'
-  } finally { if (current === previewVersion) previewLoading.value = false }
-}
-const form = reactive<{ stance: Stance; source: Source; userNote: string }>({
-  stance: 'sales',
-  source: 'outgoing',
-  userNote: '',
-})
+const form = reactive<{ stance: Stance; source: Source; userNote: string }>({ stance: 'sales', source: 'outgoing', userNote: '' })
 
 const modelItems = ref<AvailableModel[]>([])
 const modelId = ref<number>()
@@ -62,8 +38,8 @@ async function loadModels() {
   finally { if (version === modelsVersion) modelsLoading.value = false }
 }
 
-const stanceOptions = toOptions(STANCE_OPTIONS)
-const sourceOptions = toOptions(SOURCE_OPTIONS)
+const stanceOptions = toOptions(STANCE_OPTIONS) as { value: Stance; label: string }[]
+const sourceOptions = toOptions(SOURCE_OPTIONS) as { value: Source; label: string }[]
 
 const visible = computed({
   get: () => props.modelValue,
@@ -71,35 +47,23 @@ const visible = computed({
 })
 
 // 每次打开都按任务当前值重新填写
-watch(
-  () => props.modelValue,
-  (open) => {
-    if (open) {
-      form.stance = props.task.stance
-      form.source = props.task.source
-      form.userNote = props.task.user_note ?? ''
-      errorText.value = ''
-      modelId.value = undefined
-      void loadModels()
-      void loadComparison()
-    } else {
-      previewVersion++
-      modelsVersion++
-    }
-  },
-  { immediate: true },
-)
+watch(() => props.modelValue, (open) => {
+  if (open) {
+    form.stance = props.task.stance
+    form.source = props.task.source
+    form.userNote = props.task.user_note ?? ''
+    errorText.value = ''
+    modelId.value = undefined
+    void loadModels()
+  } else modelsVersion++
+}, { immediate: true })
 
 async function submit() {
   if (!modelId.value || modelsLoading.value) return
   errorText.value = ''
   submitting.value = true
   try {
-    await tasksApi.patch(props.task.id, {
-      stance: form.stance,
-      source: form.source,
-      user_note: form.userNote.trim(),
-    })
+    await tasksApi.patch(props.task.id, { stance: form.stance, source: form.source, user_note: form.userNote.trim() })
     visible.value = false
     await router.push({ name: 'review-new', query: { task: props.task.id, model_id: String(modelId.value) } })
   } catch (e) {
@@ -111,45 +75,24 @@ async function submit() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="重新审核" width="640px" top="24px" class="rerun-dialog" :close-on-click-modal="false" append-to-body>
+  <el-dialog v-model="visible" title="重新审核" width="560px" :close-on-click-modal="false" append-to-body>
     <el-form label-width="96px" @submit.prevent="submit">
-      <el-form-item label="立场">
-        <el-radio-group v-model="form.stance">
-          <el-radio v-for="o in stanceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item label="来源">
-        <el-radio-group v-model="form.source">
-          <el-radio v-for="o in sourceOptions" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
-        </el-radio-group>
-      </el-form-item>
+      <el-form-item label="立场"><SiSegmented v-model="form.stance" :options="stanceOptions" ariaLabel="立场" /></el-form-item>
+      <el-form-item label="来源"><SiSegmented v-model="form.source" :options="sourceOptions" ariaLabel="来源" /></el-form-item>
       <el-form-item label="审核模型">
         <span v-if="modelItems.length === 1">{{ modelItems[0]!.display_name }}</span>
         <el-select v-else v-model="modelId" :loading="modelsLoading" :disabled="!modelItems.length" aria-label="审核模型" placeholder="选择审核模型"><el-option class="model-option" v-for="model in modelItems" :key="model.id" :value="model.id" :label="model.display_name"><span>{{ model.display_name }}</span><small v-if="model.description" class="model-description">{{ model.description }}</small></el-option></el-select>
         <p class="hint">换一个模型重新审核，可以对照两轮结果</p>
       </el-form-item>
       <el-form-item label="本次补充说明">
-        <el-input
-          v-model="form.userNote"
-          type="textarea"
-          :rows="4"
-          :maxlength="MAX_NOTE_LENGTH"
-          show-word-limit
-        />
+        <el-input v-model="form.userNote" type="textarea" :rows="4" :maxlength="MAX_NOTE_LENGTH" show-word-limit />
       </el-form-item>
     </el-form>
-    <p class="hint">确定后将按新的设置重新生成外发文本，需在第二步再次确认发送。之前的审核结果会保留。</p>
-    <section class="current-comparison">
-      <h3>当前任务的原文与外发文本对照</h3>
-      <!-- Q-149：当前预览只读；编辑表单后仍由既有 PATCH 流程重算，再在第二步确认。 -->
-      <p class="hint">以下为当前任务的文本；尚未应用本次修改的设置。</p>
-      <el-alert v-if="previewError" type="error" :closable="false" show-icon :title="previewError" />
-      <RedactionCompare v-if="modelValue" :task-id="task.id" :files="task.files" :outbound-text="outboundText" :items="comparison.items" :suspects="comparison.suspects" :loading="previewLoading" :editable="false" />
-    </section>
+    <p class="hint">确定后回到确认页：按新设置重新计算替换，再次确认后发送。之前的审核结果会保留。</p>
     <el-alert v-if="errorText" type="error" :closable="false" show-icon :title="errorText" class="gap" />
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :loading="submitting" :disabled="!modelId || modelsLoading" @click="submit">确定</el-button>
+      <el-button type="primary" :loading="submitting" :disabled="!modelId || modelsLoading" @click="submit">回到确认页</el-button>
     </template>
   </el-dialog>
 </template>
@@ -157,10 +100,4 @@ async function submit() {
 <style scoped>
 .model-option { height: auto; min-height: 40px; padding-top: 8px; padding-bottom: 8px; font: var(--si-font-body); }
 .model-description { display: block; color: var(--el-text-color-secondary); font: var(--si-font-caption); overflow-wrap: anywhere; }
-/* el-dialog 的根节点被 Teleport 移出组件，按唯一类名限定才能命中。 */
-:global(.rerun-dialog) { max-height: calc(100vh - 48px); margin-bottom: 24px; display: flex; flex-direction: column; }
-:global(.rerun-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; flex: 1 1 auto; }
-:global(.rerun-dialog .el-dialog__header), :global(.rerun-dialog .el-dialog__footer) { flex: none; }
-.current-comparison { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--el-border-color-light); }
-h3 { margin: 0 0 12px; font: var(--si-font-h2); }
 </style>
