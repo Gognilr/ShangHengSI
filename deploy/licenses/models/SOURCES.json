@@ -1,0 +1,97 @@
+{
+  "retrieved_on": "2026-11-03",
+  "scope": "仅官方许可证文本；不含模型或录音",
+  "requests": [
+    {
+      "name": "ner",
+      "url": "https://huggingface.co/urchade/gliner_multi-v2.1/raw/443d26d654e0324125a96bebd8e796c14ff2efe6/LICENSE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "embedding",
+      "url": "https://huggingface.co/BAAI/bge-m3/raw/5617a9f61b028005a4858fdac845db406aefb181/LICENSE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "embedding-upstream",
+      "url": "https://raw.githubusercontent.com/FlagOpen/FlagEmbedding/master/LICENSE",
+      "size": 1065,
+      "sha256": "587a673933425dbc36ec61268d3b954051b2d3ef3c9b322ede357976055ffdd5"
+    },
+    {
+      "name": "ocr",
+      "url": "https://raw.githubusercontent.com/RapidAI/RapidOCR/v1.4.4/LICENSE",
+      "size": 11422,
+      "sha256": "3e0af25fdd06aa9586ae97adb00ea927ebe5a3805ac77d2d3a81ce5f55693333"
+    },
+    {
+      "name": "asr",
+      "url": "https://raw.githubusercontent.com/FireRedTeam/FireRedASR2S/main/LICENSE",
+      "size": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "name": "asr-punc",
+      "url": "https://huggingface.co/FireRedTeam/FireRedPunc/raw/e448fd967f44182a1c323cc30f5d89f2400c28da/LICENSE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "lert",
+      "url": "https://huggingface.co/hfl/chinese-lert-base/raw/main/LICENSE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "asr-spk",
+      "url": "https://raw.githubusercontent.com/modelscope/3D-Speaker/main/LICENSE",
+      "size": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "name": "ner-upstream",
+      "url": "https://raw.githubusercontent.com/urchade/GLiNER/main/LICENSE",
+      "size": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "name": "lert-upstream",
+      "url": "https://raw.githubusercontent.com/ymcui/Chinese-BERT-wwm/master/LICENSE",
+      "size": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "name": "ner-NOTICE",
+      "url": "https://raw.githubusercontent.com/urchade/GLiNER/main/NOTICE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "embedding-NOTICE",
+      "url": "https://raw.githubusercontent.com/FlagOpen/FlagEmbedding/master/NOTICE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "ocr-NOTICE",
+      "url": "https://raw.githubusercontent.com/RapidAI/RapidOCR/v1.4.4/NOTICE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "asr-NOTICE",
+      "url": "https://raw.githubusercontent.com/FireRedTeam/FireRedASR2S/main/NOTICE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "asr-spk-NOTICE",
+      "url": "https://raw.githubusercontent.com/modelscope/3D-Speaker/main/NOTICE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "lert-NOTICE",
+      "url": "https://raw.githubusercontent.com/ymcui/Chinese-BERT-wwm/master/NOTICE",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "name": "vad-NOTICE",
+      "url": "https://raw.githubusercontent.com/FireRedTeam/FireRedVAD/c30ec49e8cc69642b0ee65362eba11b9d11c6e54/NOTICE",
+      "error": "HTTP Error 404: Not Found"
+    }
+  ]
+}

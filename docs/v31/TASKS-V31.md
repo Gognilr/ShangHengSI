@@ -4,7 +4,7 @@
 
 ## 当前进度（只保留最近 3 条，每条不超过 400 字；更早的移到本文件末尾“归档”）
 
-- 2026-11-03（GPT-6.1 Sol）：**V31-M-02 实现与定向验证完成，许可证待补，任务仍待执行**：统一清单、--models、线程变量、asr compose 骨架、model-check / local_models 与运维章已实现。首轮78通过/13失败/3跳过，路径和CRLF修正后受影响三文件54通过；真实断网清单检查通过。未跑全量、未构建发布包。bge-m3 MIT及上游署名/NOTICE待用户同意下载官方小文本，未标完成、不进入M-03；见reports/V31-M-test.md、V31Q-75。
+- 2026-11-03（GPT-6.1 Sol）：**V31-M-02 已完成**：统一八项清单、--models、线程变量、asr compose 骨架、model-check / local_models 与运维章已实现；用户同意后补齐官方许可文本、来源与哈希。首轮78通过/13失败/3跳过，路径和CRLF修正后受影响三文件54通过，发布旧三场景另3通过；实际断网清单检查通过。未跑全量、未构建发布包（M-07）。V31Q-75记录接入口径，详见reports/V31-M-test.md。下一任务V31-M-03（GPT-6.1 Sol，high）。
 
 - 2026-11-03（Opus 5.5）：**V31-M-01 已完成，选型已定（V31Q-73、74）**：转写一组选 FireRedVAD + FireRedASR2-AED INT8 + FireRedPunc INT8（仓库外导出）+ pyannote segmentation-3.0 + 3D-Speaker CAM++，均 Apache-2.0 / MIT，镜像不装 torch；淘汰 SenseVoice、Paraformer（FunASR 协议可撤销）。开发机 8 核：3 小时录音 50 分钟（实时率 0.28），4 GB 内完成；解码器须单线程；自写贪心解码取得字级置信度。用户定：1 小时会议 1 小时内处理完即可，不再录音与虚拟机实测，效果评测并入 V31-Z。已改 CLAUDE.md、SPEC 第 3 节，MANIFEST 入 transcriber/models/asr/，接入要点见 reports/V31-M-01.md 第三节。下一任务 V31-M-02（GPT-6.1 Sol，medium），在此停下。
 
@@ -82,7 +82,7 @@
 | V31-E-09 | 审核与规格合并（设计第九、十节） | Opus | high | V31-E-08 | 已完成 |
 | V31-M-00 | 细化会议纪要：[design/V31-M.md](design/V31-M.md)（转写容器、逐字稿节点与校对接口、同音纠正、纪要模板；拼音词典许可证；转写容器按 [design/local-models.md](design/local-models.md) 第四、五节写，V31Q-49；V31Q-69～72） | Opus | high | V31-E 完成 | 已完成（2026-11-03 用户确认） |
 | V31-M-01 | 转写模型选型与整套容量实测，选型确认后改 CLAUDE.md、AGENTS.md、SPEC 第 3 节（设计第一节，补充项 63，V31Q-27；下载前、测试虚拟机实测前各经用户同意，用户安排虚构脚本录音） | Opus | high | V31-M-00 确认 | 已完成（2026-11-03，V31Q-73、V31Q-74） |
-| V31-M-02 | 本地模型统一接入：deploy/models.yaml、build_release `--models`、线程与资源从 .env 读、compose profiles、`model-check` 与系统状态“本地模型”、运维说明一章（设计第二节，[design/local-models.md](design/local-models.md) 第九节，V31Q-49） | GPT-6.1 Sol | medium | V31-M-01 选型确认 | 待执行 |
+| V31-M-02 | 本地模型统一接入：deploy/models.yaml、build_release `--models`、线程与资源从 .env 读、compose profiles、`model-check` 与系统状态“本地模型”、运维说明一章（设计第二节，[design/local-models.md](design/local-models.md) 第九节，V31Q-49） | GPT-6.1 Sol | medium | V31-M-01 选型确认 | 已完成 |
 | V31-M-03 | 迁移 0034、录音上传与分块加密、converter 解码、回放副本（设计第三节） | GPT-6.1 Sol | high | V31-M-02 | 待执行 |
 | V31-M-04 | transcriber 容器、worker 转写任务、逐字稿节点（设计第四节） | GPT-6.1 Sol | high | V31-M-03 | 待执行 |
 | V31-M-05 | 校对接口、同音纠正（开工前下载拼音数据）、发言人代号、口语金额、逐字稿外发格式（设计第五节） | GPT-6.1 Sol | high | V31-M-04 | 待执行 |
