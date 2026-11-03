@@ -4,6 +4,8 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import History from '@/views/History.vue'
 import Assistant from '@/views/Assistant.vue'
+import Meeting from '@/views/Meeting.vue'
+import Translate from '@/views/Translate.vue'
 import Login from '@/views/Login.vue'
 import ReviewNew from '@/views/ReviewNew.vue'
 import ReviewResult from '@/views/ReviewResult.vue'
@@ -44,6 +46,11 @@ export const router = createRouter({
         { path: 'history', name: 'history', component: History },
         { path: 'assistant', name: 'assistant', component: Assistant },
         { path: 'assistant/:sessionId', name: 'assistant-session', component: Assistant },
+        // 会议纪要与翻译是侧栏独立菜单（V31-U5），底层沿用助手会话
+        { path: 'meeting', name: 'meeting', component: Meeting },
+        { path: 'meeting/:sessionId', name: 'meeting-session', component: Meeting },
+        { path: 'translate', name: 'translate', component: Translate },
+        { path: 'translate/:sessionId', name: 'translate-session', component: Translate },
         {
           path: 'settings',
           component: SettingsLayout,

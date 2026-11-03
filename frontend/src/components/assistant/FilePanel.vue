@@ -131,7 +131,7 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
   </div>
   </el-drawer>
     <el-drawer append-to-body v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
-    <el-dialog append-to-body :model-value="!!transcriptFile" :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></el-dialog>
+    <el-dialog append-to-body :model-value="!!transcriptFile" :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><div class="transcript-frame"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></div></el-dialog>
     <el-dialog append-to-body v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
   </div>
@@ -150,5 +150,6 @@ h3 { font: var(--si-font-h3); }
 .session-settings { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--el-border-color-light); }
 .session-settings label { display: block; margin-bottom: 8px; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
+.transcript-frame { height: calc(100vh - 100px); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 65vh; overflow-y: auto; font: var(--si-font-body); }
 </style>

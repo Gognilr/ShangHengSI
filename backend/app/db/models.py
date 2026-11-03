@@ -242,6 +242,7 @@ class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         enum_check("kind", ["review", "assistant"]),
+        enum_check("purpose", ["chat", "meeting", "translate"]),
         enum_check("stance", STANCES),
         enum_check("source", SOURCES),
         enum_check("policy", ["ai", "local_only"]),
@@ -256,6 +257,8 @@ class Task(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     kind: Mapped[str] = mapped_column(String(10), nullable=False, server_default="review")
+    # 助手会话的入口（V31-U5）：对话、会议纪要、翻译；审核任务恒为 chat
+    purpose: Mapped[str] = mapped_column(String(10), nullable=False, server_default="chat")
     stance: Mapped[str] = mapped_column(String(10), nullable=False)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     policy: Mapped[str] = mapped_column(String(12), nullable=False)

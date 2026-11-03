@@ -18,7 +18,8 @@ export const useSessionsStore = defineStore('sessions', () => {
     loading.value = true
     try {
       const results = []
-      for (let p = 1; p <= pages; p++) results.push(await assistantApi.list(p))
+      // 侧栏只列智能助手的对话；会议纪要、翻译在各自页面列出
+      for (let p = 1; p <= pages; p++) results.push(await assistantApi.list(p, '', 'chat'))
       if (current !== version) return
       // 空会话（没有文件、标题仍是“新会话”）不列出：V31-U5 起不再产生，旧数据也不打扰
       items.value = results.flatMap(result => result.items).filter(item => item.file_count > 0 || item.title !== '新会话')
@@ -33,7 +34,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     const current = ++version, next = page.value + 1
     loading.value = true
     try {
-      const result = await assistantApi.list(next)
+      const result = await assistantApi.list(next, '', 'chat')
       if (current !== version) return
       const seen = new Set(items.value.map(item => item.id))
       items.value = [...items.value, ...result.items.filter(item => !seen.has(item.id))]

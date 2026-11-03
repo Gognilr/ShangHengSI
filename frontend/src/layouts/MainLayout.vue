@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, Sun } from '@lucide/vue'
+import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, Languages, MessageSquare, Mic, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, Sun } from '@lucide/vue'
 import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
@@ -43,10 +43,12 @@ function toggleCollapsed() {
 const menus = [
   { path: '/assistant', label: '智能助手', icon: MessageSquare },
   { path: '/review/new', label: '智能审核', icon: FileSearch },
+  { path: '/meeting', label: '会议纪要', icon: Mic },
+  { path: '/translate', label: '翻译', icon: Languages },
   { path: '/history', label: '审核历史', icon: HistoryIcon },
 ]
 // 选中规则沿用原顶栏：/review/:id 归“智能审核”，设置页不选中菜单。
-const activeMenu = computed(() => route.path.startsWith('/settings') ? '' : route.path.startsWith('/assistant') ? '/assistant' : (route.path.startsWith('/history') ? '/history' : '/review/new'))
+const activeMenu = computed(() => route.path.startsWith('/settings') ? '' : ['/assistant', '/meeting', '/translate', '/history'].find(p => route.path.startsWith(p)) ?? '/review/new')
 const displayName = computed(() => auth.user?.display_name ?? '')
 const initial = computed(() => Array.from(displayName.value)[0] ?? '')
 

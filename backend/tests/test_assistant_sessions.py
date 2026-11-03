@@ -69,6 +69,9 @@ def test_t47_4_create_defaults_and_audit(files_dir, session_client, db_sessionma
         assert task.kind == "assistant" and task.owner_id == owner.id
         logs = db.scalars(select(AuditLog).where(AuditLog.action == "assistant_session_create")).all()
         assert len(logs) == 1 and logs[0].target_id == data["id"]
+    meeting = c.post(BASE, headers=h, json={'purpose': 'meeting'}).json()
+    assert [i['id'] for i in c.get(BASE, params={'purpose': 'meeting'}).json()['items']] == [meeting['id']]
+    assert data['id'] in [i['id'] for i in c.get(BASE, params={'purpose': 'chat'}).json()['items']]
 
 
 @pytest.mark.parametrize("role", ["user", "admin"])

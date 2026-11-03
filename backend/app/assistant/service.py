@@ -55,7 +55,8 @@ def choose_model(db: Session, task: Task, model_id=None, template=None):
 def _item(task: Task, files: list[TaskFile], *, generating: bool = False) -> SessionItem:
     return SessionItem(id=task.id, title=task.title, status=task.status, file_count=len(files),
                        last_activity_at=task.last_activity_at,
-                       original_deleted=any(f.original_deleted_at is not None for f in files), generating=generating)
+                       original_deleted=any(f.original_deleted_at is not None for f in files), generating=generating,
+                       purpose=task.purpose)
 
 
 def detail(db: Session, task: Task) -> SessionDetail:
@@ -88,9 +89,9 @@ def detail(db: Session, task: Task) -> SessionDetail:
                          participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled())
 
 
-def create(db: Session, user: User, ip: str | None) -> SessionDetail:
+def create(db: Session, user: User, ip: str | None, purpose: str = 'chat') -> SessionDetail:
     task = Task(kind="assistant", owner_id=user.id, title="新会话", stance="other", source="incoming",
-                policy="ai", status="active", last_activity_at=utcnow())
+                policy="ai", status="active", last_activity_at=utcnow(), purpose=purpose)
     db.add(task)
     db.flush()
     audit.record(db, "assistant_session_create", user_id=user.id, target_type="task", target_id=str(task.id), ip=ip)
@@ -341,8 +342,10 @@ def retry(db: Session, task: Task, user: User, mid: int) -> dict:
     return result
 
 
-def list_sessions(db: Session, user: User, q: str | None, page: int) -> SessionPage:
+def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: str | None = None) -> SessionPage:
     conditions = [Task.owner_id == user.id, Task.kind == "assistant"]
+    if purpose:
+        conditions.append(Task.purpose == purpose)
     if q and q.strip():
         conditions.append(Task.title.ilike(tasks._like_pattern(q.strip()), escape="\\"))
     total = db.scalar(select(func.count()).select_from(Task).where(*conditions)) or 0

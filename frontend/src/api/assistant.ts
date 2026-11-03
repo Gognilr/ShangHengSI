@@ -16,8 +16,10 @@ export interface Suggestion { loc: string; start: number; end: number; from: str
 export const ASSISTANT_ERROR_MESSAGES: Record<string, string> = { ASR_DISABLED: '录音转写未启用，请联系管理员' }
 export interface SessionItem {
   id: string; title: string; status: string; file_count: number; last_activity_at: string
-  original_deleted: boolean; generating?: boolean
+  original_deleted: boolean; generating?: boolean; purpose: Purpose
 }
+/** 会话的入口（V31-U5）：智能助手、会议纪要、翻译各列自己的记录 */
+export type Purpose = 'chat' | 'meeting' | 'translate'
 export interface Session extends SessionItem {
   stance: Stance; source: Source; policy: 'ai' | 'local_only'; error_message: string | null
   created_at: string; files: SessionFile[]; can_send: boolean; send_reason: string | null; code_count: number
@@ -47,8 +49,8 @@ export interface MessageInput {
 }
 const base = '/assistant/sessions'
 export const assistantApi = {
-  list: (page = 1, q = '') => http.get<SessionPage>(base, { page, q }),
-  create: () => http.post<Session>(base),
+  list: (page = 1, q = '', purpose: Purpose | '' = '') => http.get<SessionPage>(base, { page, q, purpose }),
+  create: (purpose: Purpose = 'chat') => http.post<Session>(base, { purpose }),
   get: (id: string) => http.get<Session>(`${base}/${id}`),
   patch: (id: string, body: { title?: string; stance?: Stance; source?: Source }) => http.patch<Session>(`${base}/${id}`, body),
   remove: (id: string) => http.delete<void>(`${base}/${id}`),

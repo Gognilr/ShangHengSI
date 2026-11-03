@@ -29,6 +29,12 @@ class SessionItem(BaseModel):
     last_activity_at: UtcDatetime
     original_deleted: bool
     generating: bool = False
+    purpose: Literal['chat', 'meeting', 'translate'] = 'chat'
+
+
+class SessionCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    purpose: Literal['chat', 'meeting', 'translate'] = 'chat'
 
 
 class SessionPage(BaseModel):

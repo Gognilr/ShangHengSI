@@ -53,7 +53,8 @@ watch(() => props.template, template => {
 // ---- 附件 ----
 const picker = ref<HTMLInputElement>(), pickAccept = ref('')
 const DOC = '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png', AUDIO = '.mp3,.m4a,.wav,.amr,.aac,.mp4'
-const accept = computed(() => pickAccept.value || DOC + (props.asrEnabled ? ',' + AUDIO : ''))
+// 智能助手只收文档；会议录音在“会议纪要”菜单
+const accept = computed(() => pickAccept.value || DOC)
 function pick(kind: 'doc' | 'audio' | 'any' = 'any') { pickAccept.value = kind === 'audio' ? AUDIO : kind === 'doc' ? DOC : ''; void nextTick(() => picker.value?.click()) }
 function picked(event: Event) {
   const input = event.target as HTMLInputElement, files = Array.from(input.files ?? [])
@@ -185,9 +186,9 @@ defineExpose({ pick, attach })
           <el-select v-if="template === 'reply'" v-model="language" size="small" class="param" aria-label="回复语言"><el-option v-for="option in ['中文','英文','同来函']" :key="option" :label="option" :value="option" /></el-select>
           <span v-if="template === 'translate'" class="hint where">云端 · 脱敏后发送</span>
         </div>
-        <el-input v-model="text" type="textarea" :autosize="{ minRows: session ? 1 : 3, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="session ? '继续提问…' : '提问，或把合同、报价单、会议录音拖到这里'" aria-label="问题或来函" @keydown="onKeydown" />
+        <el-input v-model="text" type="textarea" :autosize="{ minRows: session ? 1 : 3, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="session ? '继续提问…' : '提问，或把合同、报价单拖到这里'" aria-label="问题或来函" @keydown="onKeydown" />
         <div class="bar">
-          <el-tooltip content="加入文件或录音" placement="top"><el-button text circle aria-label="加入文件或录音" :disabled="!!session && (session.files.length >= 10 || !!session.generating)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" /></el-button></el-tooltip>
+          <el-tooltip content="加入文件" placement="top"><el-button text circle aria-label="加入文件" :disabled="!!session && (session.files.length >= 10 || !!session.generating)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" /></el-button></el-tooltip>
           <input ref="picker" class="file-input" type="file" multiple :accept="accept" @change="picked">
           <el-select v-model="modelId" class="model-select" size="small" aria-label="助手模型" placeholder="选择模型" :loading="modelLoading" :disabled="sending || busy || generating !== null" @visible-change="$event && loadModels(modelId)"><el-option v-for="model in allowedModels" :key="model.id" :value="model.id" :label="model.display_name" /></el-select>
           <el-select v-if="files.length" v-model="fileIds" multiple collapse-tags size="small" class="files-select" placeholder="不使用文件" aria-label="使用的文件"><el-option v-for="file in files" :key="file.id" :label="`文件 ${file.seq}：${file.original_name}`" :value="file.id" /></el-select>

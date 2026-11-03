@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from sqlalchemy.orm import Session
 
 from app.assistant import service
-from app.assistant.schemas import AssistantPreviewNode, AssistantPreviewNodes, MessageIn, SessionDetail, SessionPage, SessionPatch
+from app.assistant.schemas import AssistantPreviewNode, AssistantPreviewNodes, MessageIn, SessionCreate, SessionDetail, SessionPage, SessionPatch
 from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import _parse_id, current_user, load_owned_task
@@ -51,14 +51,15 @@ def owned_file(fid: str, task: Task = Depends(owned_session), db: Session = Depe
 
 
 @router.post("", response_model=SessionDetail, status_code=201)
-def create(request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return service.create(db, user, client_ip(request))
+def create(request: Request, body: SessionCreate | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return service.create(db, user, client_ip(request), (body or SessionCreate()).purpose)
 
 
 @router.get("", response_model=SessionPage)
 def list_sessions(q: str | None = Query(None, max_length=100), page: int = Query(1, ge=1, le=100000),
+                  purpose: Literal['chat', 'meeting', 'translate'] | None = Query(None),
                   user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return service.list_sessions(db, user, q, page)
+    return service.list_sessions(db, user, q, page, purpose)
 
 
 @router.get("/{id}", response_model=SessionDetail)
