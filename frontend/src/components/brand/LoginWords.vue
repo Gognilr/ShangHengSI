@@ -19,7 +19,8 @@ function setup() {
   canvas.value.getContext('2d')?.scale(dpr,dpr)
   family = getComputedStyle(canvas.value).fontFamily
   color = getComputedStyle(canvas.value).getPropertyValue('--si-ink-4').trim()
-  dots = Array.from({ length: Math.floor(width*height/5200) }, (_,i) => ({x: (i*137.5)%width,y: (i*83.3)%height,size:12+i%7,alpha:0.07+(i%9)*0.02,char:letters[i%letters.length]!}))
+  // R2 低差异序列：均匀散开，不排成斜线（固定步长取模会连成一行行“乱码”）
+  dots = Array.from({ length: Math.floor(width*height/5200) }, (_,i) => ({x: (0.5+i*0.7548776662)%1*width,y: (0.5+i*0.5698402910)%1*height,size:12+i*5%7,alpha:0.07+(i*4%9)*0.02,char:letters[i*7%letters.length]!}))
   draw()
 }
 function animate(now: number) { draw(now); if (running.value) frame = requestAnimationFrame(animate) }

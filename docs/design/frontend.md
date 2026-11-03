@@ -50,7 +50,7 @@
 
 确认脱敏（第二步）同为工作台（`ConfirmWorkbench`）：高度占满、整页不滚动，左为画布、右为回执栏（340～480px，默认 380px，`si.confirm.rightWidth`），两栏各自滚动，外发回执卡粘在回执栏底部。智能助手的确认脱敏对话框用同一组件（`mode="assistant"`）。
 
-智能助手页为对话区（自适应）+ 文件面板（320px）两栏；对话内容最大宽度 760px、水平居中，正文 `--si-font-reading`；用户消息为靠右气泡（浅主色底、`--si-radius-card`、最大宽度 80%），助手回复满宽无底色，回复操作在悬停或聚焦时显示（最后一条始终显示）。
+智能助手页为对话区（自适应）+ 文件面板（320px）两栏；对话内容最大宽度 760px、水平居中，正文 `--si-font-reading`；用户消息为靠右气泡（浅主色底、`--si-radius-card`、最大宽度 80%），助手回复满宽无底色，回复操作在悬停或聚焦时显示（最后一条始终显示）。文件面板自上而下分节：文件（加入文件、上传进度、工作文件夹、各文件行；录音行见 SPEC 13A 第 7 条）、本地校验卡片（有结果时）、会话设置（立场、代号数、查看外发文本）（V31-U4）。
 
 ### 2.3 页面内的结构
 
@@ -159,7 +159,7 @@
 | 分页 | `el-pagination` | 在表格面板内底部：左侧“共 N 条”，右侧页码；每页条数固定，不提供切换 |
 | 标签页 | `el-tabs`（下划线式） | 结果页不再用标签页，改为问题栏的分段控件：AI 建议 {n} \| 本地计算 {m} \| 逐条结论 |
 | 折叠内容 | `el-collapse` | 默认收起，展开时才加载内容（如本地校验结果） |
-| 确认脱敏工作台 | `ConfirmWorkbench`（回执栏）+ `ConfirmCanvas`（画布：文件页签、原文 / AI 视野、胶囊、划选补充、`locate`） | 只在确认脱敏（审核与助手两种模式）；划选的码点偏移换算用 `composables/useTextSelection.ts` |
+| 确认脱敏工作台 | `ConfirmWorkbench`（回执栏）+ `ConfirmCanvas`（画布：文件页签、原文 / AI 视野、胶囊、划选补充、`locate`；utterance 节点每句上方一行“发言人 · 时间”，AI 视野用 `speaker_code`） | 只在确认脱敏（审核与助手两种模式）；划选的码点偏移换算用 `composables/useTextSelection.ts` |
 | 外发回执卡 | 回执栏底部粘底卡片（`--si-surface-2` 底），列出提交条件 + 满宽 44px 主按钮 | 只用于确认脱敏；“查看将发送的全文”抽屉（640px）原样显示外发文本 |
 | 结果页画布 | `result/ResultCanvas`（`ConfirmCanvas mode="result"`）+ `result/DocSpectrum` | 只读：原文 / AI 视野 / 原件、问题标注与“问题 03”标签、划选“追问这段”；右缘 8px 光谱条按节点序号标出问题、本地校验与替换，`aria-hidden` |
 | 原件显示 | `DocPreview` | 只显示 PDF 页面与图片原件（pdfjs 与 bbox 高亮），节点内容一律由画布渲染 |
@@ -172,7 +172,10 @@
 | 导出 | `result/ExportButton` | 分体按钮：主按钮导出报告，菜单为批注版、修订版；不可用项禁用并写原因；保存经 `saveBlob` |
 | 审核中 | `result/ReviewCeremony` | 新建审核第三步；四步只按真实数据，舞台为品牌时刻（第十二节） |
 | 延迟删除 | `composables/usePendingDeletes.ts` | 5 秒撤销后真删；离开路由、卸载时立即执行，关闭标签页用 keepalive；提交或前进前 `await flush()` |
-| 页面快捷键 | `utils/hotkeys.ts` 的 `useHotkeys` | 只在确认脱敏使用，键见“键盘操作” |
+| 页面快捷键 | `utils/hotkeys.ts` 的 `useHotkeys` | 确认脱敏使用，键见“键盘操作”；逐字稿校对对话框只注册空格（播放 / 暂停，`withinDialog`） |
+| 逐字稿校对 | `assistant/TranscriptEditor`（全屏 `el-dialog`，挂到 body） | 只在助手录音行打开；纸面逐字稿 + 320px 侧栏（名单、发言人、同音建议、导出、去确认脱敏）；句块 `content-visibility: auto`，句内容 `v-memo`，发言人下拉点击才建立；回放副本用 Blob URL，关闭即释放；已确认只读 |
+| 录音行 | `assistant/MediaRow` | 文件面板内；各阶段文字见 SPEC 13A 第 7 条；转写中行底 2px 扫描光条（`useLoop`） |
+| 设置分节导航 | `SettingsLayout` + `SettingSection`（`inject` 登记锚点，`utils/settingSections.ts`） | 一页 ≥ 4 节时内容区顶部粘顶一行文字按钮，可横向滚动；点击平滑滚动（关闭特效时直接跳），`IntersectionObserver` 高亮当前节 |
 | 侧边说明 | `el-drawer`，从右侧打开，宽 560px | 审核要求抽屉（SPEC 6.5） |
 | 对话框 | `el-dialog` | 表单类宽 480px，内容较多的宽 640px；主按钮放右边，“取消”在它左边；提交中显示 loading |
 | 删除等不可恢复的操作 | `ElMessageBox.confirm(…, { type: 'warning' })` | 写明删除什么、会连带删除什么、“无法恢复”；确定按钮文字写动作，如“删除” |
@@ -302,7 +305,7 @@
    * 第六节中与本页相关的每种状态都看过（至少：加载中、正常、没有数据、出错）；
    * 用 Tab 键走一遍：焦点外环可见，顺序合理；
    * 浏览器控制台没有报错（未登录时 `/auth/me` 的 401 除外）。
-3. 整仓挂载运行 `tests/test_frontend_style.py` 与 `tests/test_forbidden_words.py` 通过（命令见 docs/v2/design/V2-U.md 共同约定第 5 条）。
+3. 整仓挂载运行 `tests/test_frontend_style.py` 通过（命令见 docs/v2/design/V2-U.md 共同约定第 5 条；禁用词由第 4 条的搜索检查）。
 4. 搜索本任务改动的代码，确认：除 `theme.css` 外没有十六进制颜色；没有 `v-html`、`console.`、“审核通过”“无风险”“已安全”。
 5. 在完成报告中附上主要页面的截图；无法截图的，说明看过哪些页面和状态。
 
@@ -321,6 +324,7 @@ Opus 评审前端任务和里程碑验收时，按本规范逐条检查，并在
 3. **动画从不推迟结果出现**：结果就绪即可操作，仪式是叠加层，就绪时 200ms 内淡出；路由切换只有进入动画，不用 `mode="out-in"`。
 4. 每个品牌时刻在精简特效下有静态替代（定格的最终画面 + 文字进度），在关闭特效下只有文字与已用时间；进度信息在三个级别中完全相同。
    * **审核中舞台**（`ReviewCeremony`，V31-U3 5.3）：完整——文件缩略扫描一次、8～12 个无字胶囊飞入本机保险箱且 `SiCount` 滚到保护数、复检完成时闸门亮起、“只含代号 · 加密传输”轨道胶囊循环、模型圆点光环呼吸（排队时灰色不动）；精简——同一舞台的静态画面（数字直接显示、闸门只描边、轨道为静态虚线）；关闭——不显示舞台，只有四步文字与已用时间。舞台元素 ≤ 30 个，胶囊不写任何文字或代号；完成即跳结果页，不等动画。
+   * **登录漂浮文字**（`brand/LoginWords`，V31-U4 4.1）：完整——左侧品牌区 `<canvas>` 上合同常用字缓慢上浮（页面隐藏停绘，开始时 `watchFrames()`）；精简——同一画面的静态一帧；关闭——纯底色。散布用低差异序列（R2），不用固定步长取模（会连成斜行，像乱码）；字色 `--si-ink-4`，不承载信息。
 5. 通用过渡类在 `motion.css`：`si-fade`、`si-rise`、`si-pop`、`si-list`（含 `-move`）、`si-page`；JS 驱动的动画取时长用 `motionMs(layer)`（关闭时为 0）。品牌时刻开始时调用 `watchFrames()`，用于自动降级。
 6. `html[data-fx="off"]` 关闭全部 `transition` 与 `animation`；`html[data-fx="lite"]` 时 `--si-blur`、`--si-glow-blue`、`--si-ambient` 为 `none`，品牌时刻用静态替代，微交互与结构过渡保留。
 7. **性能预算**：字体首次打开常用页面 ≤ 2 MB；不引入动画库；完整特效下开发机品牌时刻 ≥ 55 帧，精简特效在 Edge `--disable-gpu` 下 ≥ 30 帧；毛玻璃只在完整特效、同屏最多 3 处、不放在会滚动的容器上；辉光只用于静止元素；悬停效果不改变布局；大表格（> 100 行）行内不加过渡。

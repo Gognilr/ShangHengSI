@@ -160,15 +160,8 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
     original_masked = _mask_placeholders(text, codes)
     for category, values in (('MAP', real_values), ('TERM', terms)):
         for value in dict.fromkeys(values):
-            # Unicode 的 ASCII I→l 等映射会使原有英文大小写比较失配；保留原文通路，只增不减。
-            reasons.update(BlockReason(category, p) for p in _value_positions(original_masked, value))
-            sensitive = single_english_word(value) or value.isascii() and value.isupper() and len(value) <= 6
-            view, compared = (preserving, preserving_masked) if sensitive else (normalized, masked)
-            needle = normalize_value(value, preserve_case=sensitive)
-            positions = _value_positions(compared, needle)
-            reasons.update(BlockReason(category, view.index_map[p]) for p in positions)
-            reasons.update(BlockReason(category, preserving.index_map[p])
-                           for p in _compact_positions(preserving_masked, normalize_value(value, preserve_case=True)))
+            reasons.update(BlockReason(category, p) for p in
+                           _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked))
     # 原文、归一化文本分别重扫；同一原文位置的同类原因去重。
     for scanned, indices, is_normalized in ((text, range(len(text)), False),
                                            (preserving.text, preserving.index_map, True)):
@@ -189,6 +182,26 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
                 if not allowed(people_text[hit.start:hit.end]):
                     reasons.add(BlockReason(hit.category, indices[hit.start]))
     return sorted(reasons, key=lambda r: (r.position, r.category))
+
+
+def _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked) -> set[int]:
+    """对照表真实值 / 词条在原文中的命中位置（原文、归一化、紧凑三条通路）。"""
+    # Unicode 的 ASCII I→l 等映射会使原有英文大小写比较失配；保留原文通路，只增不减。
+    out = set(_value_positions(original_masked, value))
+    sensitive = single_english_word(value) or value.isascii() and value.isupper() and len(value) <= 6
+    view, compared = (preserving, preserving_masked) if sensitive else (normalized, masked)
+    out.update(view.index_map[p] for p in _value_positions(compared, normalize_value(value, preserve_case=sensitive)))
+    out.update(preserving.index_map[p]
+               for p in _compact_positions(preserving_masked, normalize_value(value, preserve_case=True)))
+    return out
+
+
+def matching_terms(text: str, terms: Iterable[str]) -> list[str]:
+    """出口复检的词条比对规则，只返回命中的词条（管理员提醒用；不做格式化信息与人名重扫）。"""
+    normalized = normalize_with_map(text)
+    preserving = normalize_with_map(text, preserve_case=True)
+    return [value for value in dict.fromkeys(terms)
+            if _match_positions(value, text, normalized, normalized.text, preserving, preserving.text)]
 
 
 def _kept_key(value: str) -> str:

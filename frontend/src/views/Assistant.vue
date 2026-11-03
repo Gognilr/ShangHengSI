@@ -19,7 +19,9 @@ let active = true, version = 0, polling = false, timer: ReturnType<typeof setTim
 function failure(e: unknown) { return e instanceof ApiError ? e.status === 404 ? '会话不存在或已被删除' : e.message : '加载失败，请刷新页面后重试' }
 function schedule() {
   clearTimeout(timer)
-  if (!document.hidden && active && session.value && (session.value.status === 'parsing' || messages.value.some(m => ['queued', 'streaming'].includes(m.status)))) timer = setTimeout(poll, 3000)
+  // 回复生成中每秒取增量；只有解析 / 转写时才放慢到 3 秒
+  const streaming = messages.value.some(m => ['queued', 'streaming'].includes(m.status))
+  if (!document.hidden && active && session.value && (session.value.status === 'parsing' || streaming)) timer = setTimeout(poll, streaming ? 1000 : 3000)
 }
 async function load() {
   const current = ++version, selected = id.value

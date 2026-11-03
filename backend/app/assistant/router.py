@@ -10,7 +10,7 @@ from app.assistant.schemas import AssistantPreviewNode, AssistantPreviewNodes, M
 from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import _parse_id, current_user, load_owned_task
-from app.security.errors import NotFoundError
+from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service as tasks
 from pydantic import BaseModel, Field
@@ -109,8 +109,15 @@ def nodes(file: TaskFile = Depends(owned_file), task: Task = Depends(owned_sessi
     from app.assistant.meeting import speaker_code
     preview = tasks.preview_nodes(db, task, file)
     memo = {}
+
+    def code(node):
+        # 改名后尚未重算出代号时只显示不出代号，不让整份逐字稿读不出来（外发时仍会拦截）
+        try:
+            return speaker_code(db, task, file, node, memo)
+        except AppError:
+            return None
     return AssistantPreviewNodes(text_available=preview.text_available, items=[
-        AssistantPreviewNode(**node.model_dump(), speaker_code=speaker_code(db, task, file, node, memo)
+        AssistantPreviewNode(**node.model_dump(), speaker_code=code(node)
                              if node.kind == 'utterance' and preview.text_available else None)
         for node in preview.items])
 

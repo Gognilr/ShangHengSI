@@ -229,7 +229,6 @@ onMounted(() => {
   <div class="settings-page">
     <PageHeader title="审核要求" description="内置要求只读；公司补充要求只能增加审核内容，不能取消内置要求" />
     <div class="panel setting-panel">
-      <SettingSection title="发送本地财务比率" description="可选择把本机计算的比率用于模型分析，默认关闭。"><RatioSetting /></SettingSection>
       <SettingSection title="公司说明" description="简述公司主营与出口合规情况，随每次审核发送给模型。">
       <el-alert v-if="profileError" type="error" :closable="false" show-icon :title="profileError" />
       <div v-loading="profileLoading">
@@ -306,6 +305,7 @@ onMounted(() => {
         </el-table-column>
       </el-table>
     </SettingSection>
+      <SettingSection title="发送本地财务比率" description="可选择把本机计算的比率用于模型分析，默认关闭。"><RatioSetting /></SettingSection>
       <SettingSection title="版本历史" description="公司说明与补充要求每次修改的记录。" stacked>
       <el-alert v-if="versionsError" type="error" :closable="false" show-icon :title="versionsError" />
       <el-table v-loading="versionsLoading" :data="versions" size="small" max-height="320" empty-text="尚无修改记录">

@@ -91,13 +91,11 @@ def _lawsync_alerts(db):
 
 def _prompt_term_alerts(db: Session) -> list[dict]:
     """沿用出口复检的词条匹配规则，提醒中只给数量。"""
-    from app.redaction.recheck import recheck, recheck_context
+    from app.redaction.recheck import matching_terms, recheck_context
     from app.review.prompt import fixed_prompt_text
 
-    fixed = fixed_prompt_text(db)
-    terms = recheck_context(db, None).terms
-    count = sum(any(r.category == "TERM" for r in recheck(fixed, real_values=[], terms=[term]))
-                for term in terms)
+    # 只做词条比对：逐词调用完整复检会对整段提示文字重扫一次，词条多时 /auth/me 要十几秒。
+    count = len(matching_terms(fixed_prompt_text(db), recheck_context(db, None).terms))
     if not count:
         return []
     return [{"code": "PROMPT_TERM_CONFLICT", "message":
