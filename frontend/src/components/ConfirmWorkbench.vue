@@ -426,7 +426,7 @@ useHotkeys({
         <SiIsland v-if="island" :state="island.state" :text="island.text" />
       </div>
       <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
-      <ConfirmCanvas ref="canvas" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" @keep="keepOne" @restore="restoreOne" @replace="replaceOne" />
+      <ConfirmCanvas ref="canvas" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" @keep="keepOne" @restore="restoreOne" @replace="replaceOne" />
       <div v-if="dragging" class="drop-veil" aria-hidden="true">松开加入本任务</div>
     </div>
     <SplitHandle v-model="railWidth" reverse :min="RAIL_MIN" :max="RAIL_MAX" :default-value="RAIL_DEFAULT" :storage-key="RAIL_KEY" label="调整回执栏宽度" />

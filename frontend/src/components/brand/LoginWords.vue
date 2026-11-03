@@ -3,13 +3,13 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useFx, useLoop, watchFrames } from '@/utils/motion'
 const canvas = ref<HTMLCanvasElement>(), fx = useFx(), running = useLoop(ref(true))
 const letters = '合同履行责任义务期限付款交付保密争议权利约定通知商务审核'
-let frame = 0, resize: ResizeObserver | undefined, stopFrames = () => {}, color = '', width = 0, height = 0
+let frame = 0, resize: ResizeObserver | undefined, stopFrames = () => {}, color = '', family = '', width = 0, height = 0
 let dots: { x: number; y: number; size: number; alpha: number; char: string }[] = []
 function draw(time = 0) {
   const ctx = canvas.value?.getContext('2d'); if (!ctx) return
   ctx.clearRect(0,0,width,height)
   if (fx.value === 'off') return
-  for (const dot of dots) { ctx.globalAlpha = dot.alpha; ctx.fillStyle = color; ctx.font = `${dot.size}px ${getComputedStyle(canvas.value!).fontFamily}`; ctx.fillText(dot.char,dot.x, (dot.y - time * 0.006 % height + height) % height) }
+  for (const dot of dots) { ctx.globalAlpha = dot.alpha; ctx.fillStyle = color; ctx.font = `${dot.size}px ${family}`; ctx.fillText(dot.char,dot.x, (dot.y - time * 0.006 % height + height) % height) }
   ctx.globalAlpha = 1
 }
 function setup() {
@@ -17,6 +17,7 @@ function setup() {
   width = canvas.value.clientWidth; height = canvas.value.clientHeight
   const dpr = window.devicePixelRatio || 1; canvas.value.width = width*dpr; canvas.value.height = height*dpr
   canvas.value.getContext('2d')?.scale(dpr,dpr)
+  family = getComputedStyle(canvas.value).fontFamily
   color = getComputedStyle(canvas.value).getPropertyValue('--si-ink-4').trim()
   dots = Array.from({ length: Math.floor(width*height/5200) }, (_,i) => ({x: (i*137.5)%width,y: (i*83.3)%height,size:12+i%7,alpha:0.07+(i%9)*0.02,char:letters[i%letters.length]!}))
   draw()

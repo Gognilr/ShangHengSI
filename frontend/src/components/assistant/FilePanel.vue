@@ -44,7 +44,7 @@ const timer = setInterval(() => { now.value = Date.now() }, 1000)
 onBeforeUnmount(() => clearInterval(timer))
 const elapsed = computed(() => Math.max(0, Math.floor((now.value - parsingStart.value) / 1000)))
 const pending = computed(() => props.session.files.filter(file => !file.confirmed_at))
-const canUpload = computed(() => props.session.status === 'active' && !props.session.generating && !props.session.original_deleted && props.session.files.length < 10)
+const canUpload = computed(() => !busy.value && props.session.status === 'active' && !props.session.generating && !props.session.original_deleted && props.session.files.length < 10)
 const canStance = computed(() => props.session.status === 'active' && !props.session.files.some(file => file.confirmed_at) && !props.session.original_deleted)
 const task = computed(() => confirmationTask(props.session))
 async function perform(action: () => Promise<unknown>) {
@@ -94,9 +94,9 @@ function confirmed() { confirmOpen.value = false; emit('refresh') }
     <div v-if="uploadProgress !== null" role="status"><el-progress :percentage="uploadProgress" /><p class="hint">正在上传 {{ uploadProgress }}%</p></div>
     <WorkFolderBar :disabled="!canUpload" @add="addList" />
     <p v-if="!session.asr_enabled && !session.files.some(f => f.media)" class="hint">录音转写未启用</p>
-    <p v-if="!canUpload" class="hint">{{ session.original_deleted ? '原件已按保留期限删除，本会话只能查看' : session.status !== 'active' ? '处理完成后可以继续加入文件' : session.generating ? '回复完成后可以继续加入文件' : '每会话最多 10 个文件' }}</p>
+    <p v-if="!canUpload" class="hint">{{ session.original_deleted ? '原件已按保留期限删除，本会话只能查看' : session.status !== 'active' ? '处理完成后可以继续加入文件' : session.generating ? '回复完成后可以继续加入文件' : busy ? '正在处理，请稍候' : '每会话最多 10 个文件' }}</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <template v-if="session.status === 'parsing'"><h3>正在本机解析文件</h3><el-progress :percentage="100" :indeterminate="true" :show-text="false" /><p class="hint num">已用 {{ elapsed }} 秒</p><p class="hint">在本机读取正文并识别敏感信息，可以离开页面稍后继续。</p></template>
+    <template v-if="session.status === 'parsing' && session.files.some(f => !f.media)"><h3>正在本机解析文件</h3><el-progress :percentage="100" :indeterminate="true" :show-text="false" /><p class="hint num">已用 {{ elapsed }} 秒</p><p class="hint">在本机读取正文并识别敏感信息，可以离开页面稍后继续。</p></template>
     <el-alert v-if="session.error_message" :title="session.error_message" type="error" :closable="false" />
     <div v-for="file in session.files" :key="file.id" class="file-row">
       <span class="file-badge">{{ file.media ? '音频' : file.ext.toUpperCase() }}</span><div class="file-info"><div class="file-name">{{ file.original_name }}</div><MediaRow v-if="file.media" :file="file" :busy="busy" @transcript="transcriptFile = file" @retry="retryMedia(file)" @download="downloadTranscript(file)" /><el-tag v-else size="small" :type="statusTag(file.confirmed_at ? 'confirmed' : session.status).type" :effect="statusTag(file.confirmed_at ? 'confirmed' : session.status).effect">{{ file.confirmed_at ? '已确认' : assistantStatusLabel(session.status) }}</el-tag><p v-for="warning in file.warnings" :key="warning" class="warning">{{ warning }}</p></div>
@@ -106,10 +106,10 @@ function confirmed() { confirmOpen.value = false; emit('refresh') }
     <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="confirmOpen = true">确认脱敏（{{ pending.length }} 个文件）</el-button>
     <div v-if="findings.length" class="session-settings"><ZoneHeader kind="local" :count="certain.length" /><p>高 {{ counts[0] }} · 中 {{ counts[1] }} · 低 {{ counts[2] }}</p><p v-if="unverified" class="hint">无法核验 {{ unverified }} 项</p><el-button link @click="localOpen = true">查看</el-button><p class="hint">发给模型的只有不含金额的摘要</p></div>
     <div class="session-settings"><h3>会话设置</h3><label>我方立场</label><el-select :model-value="session.stance" :disabled="!canStance || busy" @change="stance"><el-option label="销售" value="sales" /><el-option label="采购" value="purchase" /><el-option label="其他" value="other" /></el-select><p class="hint">第一个文件确认后不能修改立场</p><p>本会话代号 <span class="num">{{ session.code_count }}</span> 个</p><el-button :disabled="busy || session.status === 'parsing'" @click="showOutbound">查看外发文本</el-button><p class="hint">发给模型的只有脱敏后的文字，回复在本机还原</p></div>
-    <el-drawer v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
-    <el-dialog :model-value="!!transcriptFile" :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></el-dialog>
-    <el-dialog v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
-    <el-dialog v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
+    <el-drawer append-to-body v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
+    <el-dialog append-to-body :model-value="!!transcriptFile" :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></el-dialog>
+    <el-dialog append-to-body v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
+    <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
   </aside>
 </template>
 <style scoped>
