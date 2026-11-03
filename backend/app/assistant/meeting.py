@@ -16,11 +16,15 @@ def unpack(blob, default):
     return json.loads(crypto.decrypt_text(blob)) if blob else default
 
 
-def names(db, task):
-    values = unpack(task.participants_enc, [])
+def speaker_values(db, task):
+    values = []
     for blob in db.scalars(select(TaskFile.speakers_enc).where(TaskFile.task_id == task.id)):
         values += [v for v in unpack(blob, {}).values() if v]
     return list(dict.fromkeys(values))
+
+
+def names(db, task):
+    return list(dict.fromkeys(unpack(task.participants_enc, []) + speaker_values(db, task)))
 
 
 def speaker_names(file):
@@ -32,14 +36,19 @@ def stamp(ms):
     return f'{seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02}'
 
 
-def line(db, task, file, node):
+def line(db, task, file, node, memo=None):
     if node.kind != 'utterance':
         return f'⟦{node.loc}⟧{node.redacted_text or ""}'
-    name = speaker_names(file).get(str(node.speaker))
+    # 长录音逐句调用：对照表与发言人名每次构建只解密一次。
+    memo = {} if memo is None else memo
+    if file.id not in memo:
+        memo[file.id] = speaker_names(file)
+    name = memo[file.id].get(str(node.speaker))
     label = f'发言人{node.speaker}'
     if name:
-        mapping = engine.load_redaction_map(db, task.id)
-        label = next((code for code, value in mapping.items() if value == name and code.startswith('[[PER_')), None)
+        if 'map' not in memo:
+            memo['map'] = engine.load_redaction_map(db, task.id)
+        label = next((code for code, value in memo['map'].items() if value == name and code.startswith('[[PER_')), None)
         if label is None:
             raise AppError(409, 'SPEAKER_NOT_REDACTED', '请重新确认发言人的脱敏')
     return f'[{node.loc}] 【{label}｜{stamp(node.t_start_ms)}】{node.redacted_text or ""}'

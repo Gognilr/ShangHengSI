@@ -5,4 +5,7 @@ must_replace:
   - {text: 两百多万, category: AMOUNT}
   - {text: 八千块, category: AMOUNT}
   - {text: 三个亿, category: AMOUNT}
-must_keep: [万一, 千万别, 一亿人, 三万次, 五万台]
+  - {text: 一万一千块, category: AMOUNT}
+  - {text: 一亿两千万, category: AMOUNT}
+  - {text: 零点五个亿, category: AMOUNT}
+must_keep: [万一, 千万别, 一亿人, 三万次, 五万台, 这一块, 一块儿, 千万要]

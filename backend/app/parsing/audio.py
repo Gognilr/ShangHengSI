@@ -46,7 +46,8 @@ def decode(db, task, file):
         duration = json.loads(outputs['json'].read_text())['duration_ms']
         if not isinstance(duration, int) or not 0 < duration <= 10800000:
             raise ParseError('录音时长无效')
-        key, _ = storage.save_original(outputs['ogg'].read_bytes())
+        # 重转只取 PCM，回放副本保持不变，避免有损副本反复重编码。
+        key = previous_key or storage.save_original(outputs['ogg'].read_bytes())[0]
         pcm.parent.mkdir(parents=True, exist_ok=True)
         os.replace(outputs['wav'], pcm)
         file.media_storage_key = key
@@ -55,11 +56,9 @@ def decode(db, task, file):
         db.commit()  # 先持久化回放副本，再删除录音原件；original_deleted_at 留给保留期。
         committed = True
         storage.delete_original(file.storage_key)
-        if previous_key:
-            storage.delete_original(previous_key)
         return pcm
     except BaseException:
-        if key and not committed:
+        if key and key != previous_key and not committed:
             storage.delete_original(key)
         pcm.unlink(missing_ok=True)
         raise

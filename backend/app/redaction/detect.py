@@ -641,6 +641,9 @@ def _find_amounts(text: str, column: str | None = None) -> list[Hit]:
                 continue
             if match.start('num') and text[match.start('num') - 1] in '第每':
                 continue
+            if match.group('currency') == '块' and (match.group('num') == '一' or text.startswith('儿', match.end())
+                                                    or text[match.start('num') - 1:match.start('num')] in ('这', '那', '哪')):
+                continue  # “这一块”“一块儿”“一块去”是量词或副词，不是一元；复检共用本函数（V31-M-08）。
             value = chinese_upper_value(match.group('num').translate(_LOWER_TO_UPPER))
             if value is not None and value > 0:
                 currency = _CURRENCY.get(match.group('currency').upper(), _CURRENCY.get(match.group('currency')))

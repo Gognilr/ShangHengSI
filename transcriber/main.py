@@ -47,8 +47,11 @@ def cleanup_outputs():
 
 def _heartbeat(interval):
     while True:
-        (ROOT / 'transcriber.alive').touch(mode=0o660)
-        cleanup_outputs()
+        try:
+            (ROOT / 'transcriber.alive').touch(mode=0o660)
+            cleanup_outputs()
+        except OSError:
+            pass  # 一次失败不终止心跳；内存盘恢复后继续。
         time.sleep(interval)
 
 
@@ -169,8 +172,10 @@ def main():
         Engine(str(MODELS), int(os.environ.get('ASR_THREADS', '8'))).smoke()
         return
     service = Service(args.fake)
-    start_heartbeat()
+    heartbeat = start_heartbeat()
     while True:
+        if not heartbeat.is_alive():
+            heartbeat = start_heartbeat()
         service.tick()
         time.sleep(.2)
 

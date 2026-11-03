@@ -1722,8 +1722,9 @@ def learn_confirmed_names(db: Session, task: Task, user_id: uuid.UUID | None) ->
         entry[2] = entry[2] or our
 
     if task.kind == 'assistant':
-        from app.assistant.meeting import names as meeting_names
-        for name in meeting_names(db, task):
+        # 发言人名以代号外发，等同确认的替换；只在名单中的名字按正文替换项照常学习（设计 5.2）。
+        from app.assistant.meeting import speaker_values
+        for name in speaker_values(db, task):
             add(name, 'PERSON', False)
 
     items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id).order_by(RedactionItem.id)))

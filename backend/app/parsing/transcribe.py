@@ -48,10 +48,13 @@ def exchange(db, file, pcm):
     if not alive(spool):
         raise RuntimeError('unavailable')
     # 每次投递使用新 id；重启后的旧结果不会被误采纳。
-    token = uuid.uuid4().hex
+    token = f'{file.id.hex}-{uuid.uuid4().hex[:12]}'
     base = spool / 'asr'
     for sub in ('in', 'out', 'progress'):
         (base / sub).mkdir(parents=True, exist_ok=True)
+    # worker 重启前投递的同一文件请求：删除请求即让 transcriber 在下一个段落边界放弃，不重复占用转写。
+    for stale in (base / 'in').glob(f'{file.id.hex}-*'):
+        stale.unlink(missing_ok=True)
     src = base / 'in' / f'{token}.wav'
     req = src.with_suffix('.json')
     result, error = base / 'out' / f'{token}.json', base / 'out' / f'{token}.err'

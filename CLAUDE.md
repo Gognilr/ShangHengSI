@@ -11,7 +11,7 @@
 
 * 不得增加 SPEC 没有的菜单、页面或功能。左侧侧栏只有"智能助手""智能审核""审核历史"三个菜单（另有新建会话、搜索、近期会话，SPEC 1.6、6.9），侧栏底部"设置"只对系统管理员、业务管理员可见（SPEC 1.3）。
 * 界面视觉以 docs/design/frontend.md（第二版，商衡SI 品牌主题）为准：十六进制颜色只写在 frontend/src/styles/theme.css，页面和组件只用 CSS 变量。
-* 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务（向量检索只用 PostgreSQL 的 pgvector 扩展，V2-E）、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。本地模型只允许 SPEC 第 3 节列出的实体识别模型、向量模型各一个，以及转写一组（语音分段、转写、标点、说话人分段、声纹各一个，V31-M），用 onnxruntime（转写一组的说话人分离另用 sherpa-onnx）在 CPU 上离线运行；更换或新增须经选型报告和我确认（docs/v31/design/local-models.md 第七节）。实体识别模型已确认为 urchade/gliner_multi-v2.1（Apache-2.0，FP32 ONNX，文件与 SHA-256 见 docs/v2/design/V2-B.md 6.2）；向量模型已确认为 BAAI/bge-m3（MIT，由官方 ONNX 量化的 INT8 ONNX，只用稠密向量，文件与 SHA-256 见 docs/v2/reports/V2-E-04a.md 第六节）。转写一组已确认为 FireRedVAD、FireRedASR2-AED INT8、FireRedPunc INT8、pyannote segmentation-3.0、3D-Speaker CAM++（Apache-2.0 / MIT，文件与 SHA-256 见 transcriber/models/asr/MANIFEST.sha256 与 docs/v31/reports/V31-M-01.md），只在 transcriber 容器中运行。任何镜像不得安装 torch、transformers、gliner、sentencepiece（导出 ONNX 只在仓库外的一次性容器中做）；模型文件不进仓库。LibreOffice 与 ffmpeg（录音解码，V31Q-71）只允许在 converter 容器中使用，不得进入 backend 镜像；converter 与 transcriber 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
+* 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务（向量检索只用 PostgreSQL 的 pgvector 扩展，V2-E）、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。本地模型只允许 SPEC 第 3 节列出的实体识别模型、向量模型各一个，以及转写一组（语音分段、转写、标点、说话人分段、声纹各一个，V31-M），用 onnxruntime（转写一组的说话人分离另用 sherpa-onnx）在 CPU 上离线运行；本地模型的唯一清单是 deploy/models.yaml（接入、放置与资源按 docs/v31/design/local-models.md），更换或新增须经选型报告和我确认（该规范第七节）。实体识别模型已确认为 urchade/gliner_multi-v2.1（Apache-2.0，FP32 ONNX，文件与 SHA-256 见 docs/v2/design/V2-B.md 6.2）；向量模型已确认为 BAAI/bge-m3（MIT，由官方 ONNX 量化的 INT8 ONNX，只用稠密向量，文件与 SHA-256 见 docs/v2/reports/V2-E-04a.md 第六节）。转写一组已确认为 FireRedVAD、FireRedASR2-AED INT8、FireRedPunc INT8、pyannote segmentation-3.0、3D-Speaker CAM++（Apache-2.0 / MIT，文件与 SHA-256 见 transcriber/models/asr/MANIFEST.sha256 与 docs/v31/reports/V31-M-01.md），只在 transcriber 容器中运行。任何镜像不得安装 torch、transformers、gliner、sentencepiece（导出 ONNX 只在仓库外的一次性容器中做）；模型文件不进仓库。LibreOffice 与 ffmpeg（录音解码，V31Q-71）只允许在 converter 容器中使用，不得进入 backend 镜像；converter 与 transcriber 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
 * 只有两处可以访问外网：① 模型网关 backend/app/llm/gateway.py，依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls，任何模型调用不得绕过网关；② 法规同步 backend/app/lawsync/client.py（V2-E），只访问固定的国家法律法规数据库域名（flk.npc.gov.cn）及其全文文件存储域名（flkoss.obs-bj2.cucloud.cn），只下载公开的法规目录与全文，请求中不含任何任务数据，默认关闭，同步结果经业务管理员确认才生效。其他代码不得访问外网。
 * 发给模型的只有脱敏后的正文文本与用户消息，以及本地检索得到的公开法条原文、经过脱敏的公司范本条款（V2-E）、经过脱敏的公司知识库片段与本人历史合同条款（V2-D），全部经过出口复检；智能助手的流式发送也在网关内；不发图片、录音、声纹和原文件。外发策略为 local\_only 的任务绝不调用模型。
 * 原件永远不改：批注版、修订版、报告等导出一律在服务器内存中生成新文件，服务器不保留导出文件；模型从不接收或产出文件（V3.0）。
@@ -130,7 +130,7 @@ docker run --rm -v "${PWD}/offline-ca:/out" aireview-backend:dev python -m app.c
 **构建发布包**（在 Git Bash 中执行；脚本要求 git 工作区干净，有未跟踪文件时先 `git clone` 到仓库外的目录，在 clone 中执行）：
 
 ```bash
-bash deploy/scripts/build_release.sh 1.0.1 --out ../release
+bash deploy/scripts/build_release.sh 1.0.1 --models <离线模型目录> --out ../release
 ```
 
 产出 `aireview-{版本}.tar.gz`（四个镜像、compose、脚本、运维说明、SHA256SUMS，归档内属主为 root）。服务器上的解包、安装、升级、备份与恢复见 docs/ops/运维说明.md。
