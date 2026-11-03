@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ChevronsUpDown, FileSearch, HistoryIcon, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings } from '@lucide/vue'
+import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings } from '@lucide/vue'
+import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 import GlobalSearch from '@/components/GlobalSearch.vue'
@@ -20,6 +21,7 @@ const route = useRoute()
 const router = useRouter()
 
 const appearanceOpen = ref(false)
+const alertsOpen = ref(false)
 const pwdOpen = ref(false)
 // 须改密期间对话框始终打开且不可关闭
 const pwdVisible = computed(() => pwdOpen.value || auth.mustChangePassword)
@@ -113,6 +115,15 @@ async function onCommand(cmd: string) {
       </div>
 
       <div class="block bottom">
+        <!-- 管理员提醒（SPEC 6.7）：侧栏一行，点开弹层逐条处理，不占主区域 -->
+        <el-popover v-if="auth.isAdmin && auth.visibleAlerts.length" v-model:visible="alertsOpen" trigger="click" placement="right-end" :width="340" :show-arrow="false" :offset="12">
+          <template #reference>
+            <button type="button" class="item alert-item" :aria-label="`提醒 ${auth.visibleAlerts.length} 条`" :aria-expanded="alertsOpen">
+              <span class="bell"><Bell :size="16" :stroke-width="1.75" /><span class="bell-dot" aria-hidden="true" /></span><span class="label">提醒</span><span class="label alert-count num">{{ auth.visibleAlerts.length }}</span>
+            </button>
+          </template>
+          <AlertList @navigate="alertsOpen = false" />
+        </el-popover>
         <el-tooltip v-if="auth.isAdmin" content="设置" placement="right" :disabled="!collapsed">
           <router-link to="/settings" class="item" :class="{ selected: route.path.startsWith('/settings') }" :aria-current="route.path.startsWith('/settings') ? 'page' : undefined" :aria-label="collapsed ? '设置' : undefined">
             <Settings :size="16" :stroke-width="1.75" /><span class="label">设置</span>
@@ -143,20 +154,6 @@ async function onCommand(cmd: string) {
     </aside>
 
     <div class="content">
-      <!-- 管理员提醒条（SPEC 6.7），沿用登录状态返回的提醒内容。 -->
-      <div v-if="auth.isAdmin && auth.visibleAlerts.length" class="alerts">
-        <el-alert
-          v-for="a in auth.visibleAlerts"
-          :key="JSON.stringify([a.code, a.message])"
-          type="warning"
-          show-icon
-          :closable="true"
-          close-text="本次收起"
-          @close="auth.dismissAlert(a)"
-          :title="a.message"
-        />
-      </div>
-
       <main class="main">
         <p v-if="auth.mustChangePassword" class="must-change">请先修改初始密码</p>
         <router-view v-else v-slot="{ Component }">
@@ -229,6 +226,10 @@ async function onCommand(cmd: string) {
 .item:active:not(:disabled), .new-session:active:not(:disabled) { transform: scale(.97); }
 .new-session { justify-content: center; border: 1px solid var(--si-hair-strong); background: color-mix(in srgb, var(--si-ink-1) 8%, transparent); color: var(--si-ink-1); }
 .new-session:hover:not(:disabled) { background: color-mix(in srgb, var(--si-ink-1) 14%, transparent); }
+/* 提醒：铃铛右上角琥珀色点，计数靠右；收起时只剩带点的铃铛 */
+.bell { position: relative; display: grid; place-items: center; }
+.bell-dot { position: absolute; top: -2px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--si-warn); box-shadow: 0 0 0 2px var(--si-bg-side); }
+.alert-count { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 10px; background: color-mix(in srgb, var(--si-warn) 18%, transparent); color: var(--si-warn-ink); font: var(--si-font-caption); line-height: 20px; text-align: center; }
 kbd { margin-left: auto; font: var(--si-font-caption); color: var(--si-ink-4); }
 
 .user-row { display: flex; align-items: center; gap: 4px; }
@@ -248,12 +249,6 @@ kbd { margin-left: auto; font: var(--si-font-caption); color: var(--si-ink-4); }
 .collapsed .user { justify-content: center; padding: 0; }
 
 .content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.alerts {
-  flex-shrink: 0;
-  background: var(--el-color-warning-light-9);
-  border-bottom: 1px solid var(--el-color-warning-light-7);
-}
-.alerts :deep(.el-alert) { padding: 8px 32px; border: 0; border-radius: 0; box-sizing: border-box; }
 
 .main {
   flex: 1;
