@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import shutil
-import threading
+import multiprocessing
 import time
 from pathlib import Path
 
@@ -43,6 +43,20 @@ def cleanup_outputs():
                 path.unlink(missing_ok=True)
         except FileNotFoundError:
             pass  # worker 可以同时取走输出。
+
+
+def _heartbeat(interval):
+    while True:
+        (ROOT / 'transcriber.alive').touch(mode=0o660)
+        cleanup_outputs()
+        time.sleep(interval)
+
+
+def start_heartbeat(interval=5):
+    # 说话人处理等原生调用可能长时间占住 GIL，不能用同进程 Python 线程续心跳。
+    process = multiprocessing.Process(target=_heartbeat, args=(interval,), daemon=True)
+    process.start()
+    return process
 
 
 def pause(progress, deadline):
@@ -155,12 +169,7 @@ def main():
         Engine(str(MODELS), int(os.environ.get('ASR_THREADS', '8'))).smoke()
         return
     service = Service(args.fake)
-    def beat():
-        while True:
-            (ROOT / 'transcriber.alive').touch(mode=0o660)
-            cleanup_outputs()  # 长录音处理期间也清理无人领取的旧输出。
-            time.sleep(5)
-    threading.Thread(target=beat, daemon=True).start()
+    start_heartbeat()
     while True:
         service.tick()
         time.sleep(.2)

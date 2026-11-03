@@ -5,10 +5,23 @@ import threading
 import time
 import unittest
 import wave
+import ctypes
+import multiprocessing
 from pathlib import Path
 from unittest.mock import patch
 
 import main
+
+
+def observe_heartbeat(path, output, ready):
+    seen = set()
+    deadline = time.monotonic() + 1.5
+    ready.set()
+    while time.monotonic() < deadline:
+        if path.exists():
+            seen.add(path.stat().st_mtime_ns)
+        time.sleep(.03)
+    output.write_text(str(len(seen)))
 
 
 class ExchangeTest(unittest.TestCase):
@@ -49,6 +62,26 @@ class ExchangeTest(unittest.TestCase):
                     main.Service(fake=True)
             with self.assertRaises(TimeoutError):
                 main.pause(Path(directory) / 'progress', time.monotonic() - 1)
+
+    def test_heartbeat_survives_native_gil_hold(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(main, 'ROOT', Path(directory)):
+            (main.ROOT / 'asr/out').mkdir(parents=True)
+            heartbeat = main.start_heartbeat(.05)
+            ready = multiprocessing.Event()
+            output = main.ROOT / 'observed'
+            observer = multiprocessing.Process(target=observe_heartbeat,
+                         args=(main.ROOT / 'transcriber.alive', output, ready))
+            observer.start()
+            try:
+                self.assertTrue(ready.wait(3))
+                # PyDLL 调用保留 GIL，复现长原生调用阻塞 Python 线程的情形。
+                ctypes.PyDLL(None).usleep(2_000_000)
+                observer.join(3)
+                self.assertGreater(int(output.read_text()), 10)
+            finally:
+                heartbeat.terminate(); heartbeat.join(3)
+                if observer.is_alive():
+                    observer.terminate(); observer.join(3)
 
 
 if __name__ == '__main__':
