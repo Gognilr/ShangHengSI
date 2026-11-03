@@ -4,6 +4,7 @@ import { Lock, User } from '@lucide/vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
+import LoginWords from '@/components/brand/LoginWords.vue'
 import SiLogo from '@/components/brand/SiLogo.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -72,7 +73,7 @@ async function submit() {
   <div class="login-page">
     <div class="login-shell">
       <section class="brand-area" aria-label="商衡SI">
-        <SiLogo size="hero" show-tagline />
+        <LoginWords /><SiLogo size="hero" show-tagline />
         <div class="brand-rule" />
         <h2>让敏感信息受到保护<br />让商业决策更有依据</h2>
         <p class="brand-description">面向企业商务、合同与法律文件，提供本地脱敏与 AI 智能初审。</p>
@@ -108,11 +109,12 @@ async function submit() {
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: 64px 0 96px;
+  padding: 32px 0 64px;
   background: var(--si-bg-canvas);
 }
-.login-shell { width: calc(100% - 128px); max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 1px 408px; gap: 64px; align-items: center; }
-.brand-area { min-width: 0; }
+.login-shell { width: calc(100% - 128px); max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 1px 400px; gap: 64px; align-items: center; }
+.brand-area { min-width: 0; position: relative; padding: 24px 0; }
+.brand-area > :not(canvas) { position: relative; }
 .brand-rule { width: 32px; height: 3px; margin: 32px 0; background: var(--si-brand-gradient); }
 h2 { font: var(--si-font-display); margin: 0 0 20px; }
 .brand-description { max-width: 440px; font-size: 15px; color: var(--el-text-color-secondary); margin: 0; }
@@ -121,11 +123,12 @@ h2 { font: var(--si-font-display); margin: 0 0 20px; }
 .divider { align-self: stretch; background: var(--el-border-color-light); }
 h1 { font: var(--si-font-title-lg); margin: 0 0 4px; }
 .subtitle { color: var(--el-text-color-secondary); margin: 0 0 32px; }
-.login-form :deep(.el-input) { --el-input-height: 52px; }
+.login-form { width: 400px; box-sizing: border-box; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); }
+.login-form :deep(.el-input) { --el-input-height: 44px; }
 .login-form :deep(.el-form-item) { margin-bottom: 24px; }
 .remember-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 20px; }
 .error { margin-bottom: 16px; }
-.submit { width: 100%; height: 52px; }
+.submit { width: 100%; height: 44px; }
 .account-help { font-size: 13px; color: var(--el-text-color-secondary); margin: 20px 0 0; line-height: 1.8; }
 footer { position: absolute; bottom: 24px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--el-text-color-secondary); }
 @media (max-width: 1099px) {

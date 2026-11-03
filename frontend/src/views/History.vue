@@ -87,7 +87,7 @@ function search() {
 
 function open(row: TaskListItem) {
   // 未完成的任务由结果页转到新建审核页对应的步骤
-  void router.push({ name: 'review-result', params: { taskId: row.id } })
+  void router.push(row.status === 'draft' ? { name: 'review-new', query: { task: row.id } } : { name: 'review-result', params: { taskId: row.id } })
 }
 
 async function remove(row: TaskListItem) {
@@ -109,6 +109,7 @@ async function remove(row: TaskListItem) {
   }
 }
 
+function expiring(value: string | null) { if (!value) return false; const remaining = new Date(value).getTime() - Date.now(); return remaining >= 0 && remaining <= 7 * 86400000 }
 onMounted(load)
 </script>
 
@@ -126,7 +127,7 @@ onMounted(load)
         end-placeholder="结束日期"
         @change="search"
       />
-      <el-button type="primary" @click="search">查询</el-button>
+      <el-button @click="search">查询</el-button><el-button class="new-review" type="primary" @click="router.push({ name: 'review-new' })">新建审核</el-button>
     </div>
 
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />
@@ -145,13 +146,13 @@ onMounted(load)
         <template #default="{ row }">{{ stanceLabel(row.stance) }}</template>
       </el-table-column>
       <el-table-column label="状态" width="130">
-        <template #default="{ row }"><el-tag size="small" :type="statusTag(row.status).type" :effect="statusTag(row.status).effect">{{ statusLabel(row.status) }}</el-tag></template>
+        <template #default="{ row }"><el-tag class="status-pill" disable-transitions size="small" :type="statusTag(row.status).type" :effect="statusTag(row.status).effect">{{ statusLabel(row.status) }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="高风险问题数" width="120" align="center"><template #default="{ row }"><span class="num" :class="{ 'high-count': row.high_count > 0 }">{{ row.high_count }}</span></template></el-table-column>
-      <el-table-column label="保留至" width="110"><template #default="{ row }"><span class="num">{{ row.task_expires_at ? formatDate(row.task_expires_at) : '永久' }}</span></template></el-table-column>
+      <el-table-column label="高风险问题数" width="120" align="center"><template #default="{ row }"><span class="num" :class="{ 'high-count': row.high_count > 0 }">{{ row.high_count || '—' }}</span></template></el-table-column>
+      <el-table-column label="保留至" width="110"><template #default="{ row }"><span class="num" :class="{ expiring: expiring(row.task_expires_at) }">{{ row.task_expires_at ? formatDate(row.task_expires_at) : '永久' }}</span></template></el-table-column>
       <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="open(row)">打开</el-button>
+          <el-button link type="primary" @click="open(row)">{{ row.status === 'draft' ? '继续' : '打开' }}</el-button>
           <RowMore>
             <el-dropdown-item v-if="['reviewed', 'completed_local'].includes(row.status)" :disabled="!!exporting" @click="exportReport(row)">导出报告</el-dropdown-item>
             <el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item>
@@ -173,12 +174,15 @@ onMounted(load)
 </template>
 
 <style scoped>
+.new-review { margin-left: auto; }
+.expiring { color: var(--si-warn-ink); }
+.status-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 4px; }
 .filters {
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
 .q {
-  width: 320px;
+  width: 240px;
 }
 .pager {
   display: flex;
