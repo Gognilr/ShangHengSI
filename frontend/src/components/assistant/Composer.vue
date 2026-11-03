@@ -51,7 +51,7 @@ watch(() => props.session.id, () => { text.value = ''; useHistory.value = false;
 watch(() => props.session.kb_enabled, value => { useKb.value = !!value })
 watch(() => files.value.map(f => f.id).join(','), () => { fileIds.value = files.value.map(f => f.id) })
 const limits = computed(() => props.template === 'translate' ? [1, 1] : props.template === 'summary' || props.template === 'minutes' ? [1, 3] : props.template === 'reply' ? [0, 3] : props.template ? [2, 6] : [0, 10])
-const reason = computed(() => modelLoading.value ? '正在加载模型列表' : modelError.value ? modelError.value : !modelId.value ? '没有可用的助手模型，请联系管理员' : !props.session.can_send ? props.session.send_reason ?? '当前不能发送' : fileIds.value.length < limits.value[0]! || fileIds.value.length > limits.value[1]! ? props.template === 'minutes' ? '请选择 1～3 个已确认的录音' : `请选择 ${limits.value[0]}～${limits.value[1]} 个已确认文件` : !text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length) ? '请输入问题或粘贴来函' : '')
+const reason = computed(() => modelLoading.value ? '正在加载模型列表' : modelError.value ? modelError.value : !modelId.value ? '没有可用的助手模型，请联系管理员' : !props.session.can_send ? props.session.send_reason ?? '当前不能发送' : fileIds.value.length < limits.value[0]! || fileIds.value.length > limits.value[1]! ? props.template === 'minutes' ? '请选择 1～3 个已确认的录音' : limits.value[0] === limits.value[1] ? `请选择 ${limits.value[0]} 个已确认文件` : `请选择 ${limits.value[0]}～${limits.value[1]} 个已确认文件` : !text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length) ? '请输入问题或粘贴来函' : '')
 let pending: MessageInput | null = null
 function input(): MessageInput {
   const params: Record<string, unknown> = props.template === 'translate'
