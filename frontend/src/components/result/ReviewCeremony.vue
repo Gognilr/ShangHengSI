@@ -158,7 +158,7 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
 .step-label { font: var(--si-font-label); }
 .step-text { flex-basis: 100%; padding-left: 30px; font: var(--si-font-caption); }
 .step.done { color: var(--el-text-color-primary); }
-.step.done .mark { border-color: var(--el-color-primary); background: var(--el-color-primary); color: var(--si-paper); }
+.step.done .mark { border-color: var(--el-color-primary); background: var(--el-color-primary); color: var(--si-white); }
 .step.active { color: var(--el-text-color-primary); }
 .step.active .mark { border-color: var(--el-color-primary); color: var(--el-color-primary); }
 .step.active .step-text { color: var(--el-color-primary); }

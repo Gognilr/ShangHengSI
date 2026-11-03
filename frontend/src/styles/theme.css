@@ -1,7 +1,8 @@
 /*
  * 设计令牌（V31-U1 设计第一节）。全仓只有本文件可以写颜色值。
  * A 浅色外壳与纸面 → B 夜幕外壳 → 特效级别 → C 映射与派生，顺序不可调换。
- * C 块同时写在 :root 与 .si-paper 上：自定义属性在声明的元素上取值，纸面内的派生色才会按浅色重算。
+ * C 块同时写在 :root 与 .si-paper 上：自定义属性在声明的元素上取值，纸面内的派生色才会按所在外壳重算。
+ * 纸面跟随外壳：浅色外壳为白纸黑字，夜幕外壳为暗纸浅字（V31Q-86，2026-11-03 用户决定）。
  */
 
 /* A 浅色外壳与纸面 */
@@ -63,7 +64,7 @@
   --si-k-amount-bg: #FFF3D6;
   --si-k-other: #667085;
   --si-k-other-bg: #F0F1F3;
-  /* 两种外壳相同的取值 */
+  /* 纸面（夜幕在 B 块改为暗纸） */
   --si-paper: #FFFFFF;
   --si-paper-ink: #1D1D1F;
   --si-paper-ink-2: #333A45;
@@ -71,12 +72,13 @@
   --si-cap-ink: #0066CC;
   --si-code-bg: #0B1A2E;
   --si-code-ink: #7CC4FF;
+  /* 两种外壳相同的取值 */
   --si-brand-navy: #173B68;
   --si-white: #FFFFFF;
 }
 
-/* B 夜幕外壳 */
-html[data-shell="night"] {
+/* B 夜幕外壳（纸面上重新声明，压过 A 块写在 .si-paper 上的浅色值） */
+html[data-shell="night"], html[data-shell="night"] .si-paper {
   color-scheme: dark;
   --si-bg-canvas: #090B10;
   --si-bg-side: #0E1118;
@@ -116,7 +118,14 @@ html[data-shell="night"] {
   --si-shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
   --si-shadow-2: 0 8px 24px rgba(0, 0, 0, .35);
   --si-shadow-3: 0 24px 60px rgba(0, 0, 0, .5);
-  --si-paper-shadow: 0 0 0 1px rgba(0, 0, 0, .12), 0 12px 40px rgba(0, 0, 0, .35);
+  --si-paper-shadow: 0 0 0 1px rgba(255, 255, 255, .07), 0 12px 40px rgba(0, 0, 0, .45);
+  --si-paper: #1C212B;
+  --si-paper-ink: #E6EAF0;
+  --si-paper-ink-2: #C9D0DA;
+  --si-cap-bg: #16314F;
+  --si-cap-ink: #8CC8FF;
+  --si-code-bg: #0B1A2E;
+  --si-code-ink: #7CC4FF;
   --si-ambient: radial-gradient(900px 500px at 15% -10%, color-mix(in srgb, var(--si-blue) 14%, transparent), transparent 60%), radial-gradient(700px 500px at 100% 10%, color-mix(in srgb, var(--si-indigo) 10%, transparent), transparent 60%);
   --si-glow-blue: 0 6px 20px color-mix(in srgb, var(--si-blue) 35%, transparent);
   --si-k-org: color-mix(in srgb, #2F5E9E 50%, #FFFFFF);
@@ -175,7 +184,7 @@ html[data-fx="lite"], html[data-fx="off"] {
   --el-component-size: 36px;
   --el-component-size-small: 28px;
   --el-font-family: var(--si-font-sans);
-  /* V31-U3 1.3：AI 分区色；纸面问题标注底（纸面始终白底）；未能还原标记底 */
+  /* V31-U3 1.3：AI 分区色；纸面问题标注底（随纸面底色）；未能还原标记底 */
   --si-ai: var(--si-indigo);
   --si-hl-high: color-mix(in srgb, var(--si-danger) 14%, var(--si-paper));
   --si-hl-medium: color-mix(in srgb, var(--si-warn) 16%, var(--si-paper));
@@ -262,5 +271,6 @@ html[data-fx="lite"], html[data-fx="off"] {
   --el-color-info-dark-2: color-mix(in srgb, var(--si-info) 82%, var(--si-press));
 }
 
-/* 纸面：任何外壳下都是白纸黑字 */
+/* 纸面：浅色外壳白纸黑字，夜幕外壳暗纸浅字 */
 .si-paper { color-scheme: light; background: var(--si-paper); color: var(--si-paper-ink); }
+html[data-shell="night"] .si-paper { color-scheme: dark; }

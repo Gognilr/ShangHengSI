@@ -543,7 +543,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
 .local-bar { --bar: var(--si-ink-3); }
 td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 .ann-tag { float: right; margin: 0 0 4px 8px; padding: 0 6px; border: 0; border-radius: var(--si-radius-tag); background: var(--si-surface-2); color: var(--si-ink-2); font: var(--si-font-label-sm); line-height: 20px; cursor: pointer; }
-.ann-hit > .ann-tag { background: var(--el-color-primary); color: var(--si-paper); }
+.ann-hit > .ann-tag { background: var(--el-color-primary); color: var(--si-white); }
 :deep(.ann) { color: inherit; border-radius: 2px; cursor: pointer; }
 :deep(.ann-high) { background: var(--si-hl-high); box-shadow: inset 0 -2px 0 var(--si-danger); }
 :deep(.ann-medium) { background: var(--si-hl-medium); box-shadow: inset 0 -2px 0 var(--si-warn); }

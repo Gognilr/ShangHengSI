@@ -49,7 +49,7 @@
 .code { font: var(--si-font-code); }
 .avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; background: color-mix(in srgb, var(--si-blue) 16%, var(--si-surface-1)); color: var(--si-blue-ink); display: inline-grid; place-items: center; font-size: 13px; font-weight: 600; }
 
-/* 纸面与外围：合同正文区在任何外壳下都是白纸黑字（令牌见 theme.css 的 .si-paper；阴影与圆角由使用处加） */
+/* 纸面与外围：浅色外壳白纸黑字、夜幕外壳暗纸浅字（令牌见 theme.css 的 .si-paper；阴影与圆角由使用处加） */
 .si-stage { background: var(--si-stage); }
 
 /* Lucide 图标统一 16px（V3-A-01）：Element Plus 的 .el-icon svg 按 1em 取宽高，会盖掉图标自身的 size */
