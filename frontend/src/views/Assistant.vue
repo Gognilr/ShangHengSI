@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { MessagesSquare } from '@lucide/vue'
+import { Files } from '@lucide/vue'
 import { assistantApi, type Session, type SessionItem, type Message, type Template } from '@/api/assistant'
 import { ApiError } from '@/api/http'
-import EmptyState from '@/components/EmptyState.vue'
 import { useSessionsStore } from '@/stores/sessions'
 import Conversation from '@/components/assistant/Conversation.vue'
-import Composer from '@/components/assistant/Composer.vue'
+import Composer, { type ComposerStart } from '@/components/assistant/Composer.vue'
 import FilePanel from '@/components/assistant/FilePanel.vue'
-import { needsUpload } from '@/utils/assistantTemplates'
 const route = useRoute(), router = useRouter(), sessions = useSessionsStore()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), template = ref<Template | null>(null)
@@ -26,7 +24,8 @@ function schedule() {
 }
 async function load() {
   const current = ++version, selected = id.value
-  clearTimeout(timer); session.value = null; messages.value = []; offsets.clear(); template.value = null
+  clearTimeout(timer); session.value = null; messages.value = []; offsets.clear(); drawerOpen.value = false
+  template.value = carryTemplate; carryTemplate = null
   loading.value = !!selected; error.value = ''
   if (!selected || !active || current !== version) { loading.value = false; return }
   try {
@@ -34,6 +33,7 @@ async function load() {
     if (!active || current !== version) return
     session.value = detail
     messages.value = response.items.map(item => ['queued', 'streaming'].includes(item.status) ? { ...item, content: '' } : item)
+    void nextTick(() => { initial.value = null })
   } catch (e) { if (active && current === version) error.value = failure(e) }
   finally { if (active && current === version) { loading.value = false; schedule() } }
 }
@@ -86,13 +86,41 @@ async function refresh() {
     error.value = ''; void sessions.refresh(); schedule()
   } catch (e) { if (active && current === version) error.value = failure(e) }
 }
-async function create() {
+// 首页：第一次发送、加入文件或选模板时才建会话（不再先建空会话，V31-U5 2.1）
+const initial = ref<{ text: string; autoSend: boolean; modelId?: number } | null>(null), homeUpload = ref<number | null>(null)
+let carryTemplate: Template | null = null
+async function start(payload: ComposerStart) {
   if (working.value) return
-  working.value = true
-  try { const result = await assistantApi.create(); await router.push(`/assistant/${result.id}`); void sessions.refresh() }
-  catch (e) { error.value = failure(e) }
+  working.value = true; error.value = ''
+  try {
+    const created = await assistantApi.create()
+    if (payload.files.length) {
+      homeUpload.value = 0
+      try { await assistantApi.addFiles(created.id, payload.files, (loaded, total) => { homeUpload.value = Math.round(loaded / total * 100) }) }
+      finally { homeUpload.value = null }
+    }
+    carryTemplate = payload.template
+    initial.value = { text: payload.text, modelId: payload.modelId, autoSend: !!payload.text.trim() || (!!payload.template && payload.files.length > 0) }
+    await router.push(`/assistant/${created.id}`)
+    void sessions.refresh()
+  } catch (e) { error.value = failure(e) }
   finally { working.value = false }
 }
+// 第一句问题作为会话标题（P4）
+async function sent(text: string) {
+  await refresh()
+  if (session.value && session.value.title === '新会话' && text.trim()) {
+    try { session.value = await assistantApi.patch(id.value, { title: text.trim().replace(/\s+/g, ' ').slice(0, 20) }); void sessions.refresh() } catch { /* 标题不影响使用 */ }
+  }
+}
+const filePanel = ref<InstanceType<typeof FilePanel>>(), drawerOpen = ref(false)
+const uploading = computed(() => homeUpload.value ?? filePanel.value?.uploadProgress ?? null)
+function openFile(file: { id: string; media: unknown; confirmed_at: string | null }) {
+  const target = session.value?.files.find(f => f.id === file.id)
+  if (!target) return
+  if (target.media) filePanel.value?.openTranscript(target); else filePanel.value?.openConfirm()
+}
+function addFiles(files: File[]) { void filePanel.value?.addList(files) }
 async function remove(item: SessionItem) {
   try { await ElMessageBox.confirm(`将删除“${item.title}”及其文件、消息与对照表，无法恢复。`, '删除会话', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }) }
   catch { return }
@@ -113,36 +141,37 @@ const generating = computed(() => messages.value.find(m => m.role === 'assistant
 // 在侧栏改名后同步标题
 watch(() => sessions.items.find(item => item.id === id.value)?.title, title => { if (title && session.value) session.value.title = title })
 watch(id, load, { immediate: true })
-// 选了模板而会话里没有可用文件时，直接打开文件选择框（会议纪要只收录音），不让用户自己去右栏找（V31Q-92）
-const filePanel = ref<InstanceType<typeof FilePanel>>()
-function chooseTemplate(value: Template | null) {
-  template.value = value
-  if (session.value && needsUpload(session.value, value)) void filePanel.value?.pick(value === 'minutes' ? 'audio' : 'doc')
-}
 function visibility() { if (document.hidden) clearTimeout(timer); else void poll() }
 onMounted(() => document.addEventListener('visibilitychange', visibility))
 onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); active = false; ++version; clearTimeout(timer); offsets.clear() })
 </script>
 <template>
   <div class="page page--split assistant-page">
-    <main v-loading="loading" class="dialogue" :class="{ wide: !session }">
+    <main v-loading="loading" class="dialogue">
       <el-alert v-if="error" type="error" :closable="false" :title="error" />
       <template v-if="session">
-        <div class="toolbar"><el-button class="title" link @click="rename">{{ session.title }}</el-button><el-button link type="danger" :disabled="working" @click="remove(session)">删除会话</el-button></div>
-        <Conversation :asr-enabled="session.asr_enabled" :messages="messages" :session-id="id" :template="template" @template="chooseTemplate" @stop="stop" @retry="retry" />
-        <Composer :key="id" :template="template" :session="session" :generating="generating" @update:template="chooseTemplate" @sent="refresh" @stop="stop" @add="filePanel?.pick($event)" @confirm="filePanel?.openConfirm()" />
+        <div class="toolbar">
+          <el-button class="title" link @click="rename">{{ session.title }}</el-button>
+          <el-button size="small" @click="drawerOpen = true"><Files :size="14" :stroke-width="1.75" /><span class="files-label">文件 {{ session.files.length }}</span></el-button>
+          <el-button link type="danger" :disabled="working" @click="remove(session)">删除会话</el-button>
+        </div>
+        <Conversation :messages="messages" :session-id="id" @stop="stop" @retry="retry" />
+        <Composer :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!messages.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" />
       </template>
-      <EmptyState v-else-if="!loading" class="empty" :icon="MessagesSquare" title="开始一个新会话" description="可以直接提问，也可以先加入文件。发给模型的只有脱敏后的文字，回复在本机还原。"><el-button type="primary" :loading="working" @click="create">新建会话</el-button></EmptyState>
+      <div v-else-if="!loading && !id" class="home">
+        <h1>今天要处理什么？</h1>
+        <Composer v-model:template="template" :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
+      </div>
     </main>
-    <FilePanel v-if="session" ref="filePanel" :key="id" class="file-sidebar" :session="session" @refresh="refresh" />
+    <FilePanel v-if="session" ref="filePanel" :key="id" v-model:open="drawerOpen" :session="session" @refresh="refresh" />
   </div>
 </template>
 <style scoped>
-.assistant-page { height: 100%; box-sizing: border-box; padding-top: 20px; padding-bottom: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; overflow: hidden; }
-.dialogue, .file-sidebar { min-width: 0; min-height: 0; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
-.dialogue { display: flex; flex-direction: column; overflow: hidden; }
-.toolbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--el-border-color-light); }
-.title { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; font: var(--si-font-h2); }
-.dialogue.wide { grid-column: 1 / -1; }
-.empty { flex: 1; }
+.assistant-page { height: 100%; box-sizing: border-box; padding-top: 20px; padding-bottom: 20px; overflow: hidden; }
+.dialogue { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
+.toolbar { display: flex; gap: 12px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--el-border-color-light); }
+.title { flex: 1; min-width: 0; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: left; font: var(--si-font-h2); }
+.files-label { margin-left: 6px; }
+.home { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 8vh; }
+.home h1 { margin: 0 0 20px; text-align: center; font: var(--si-font-title-lg); color: var(--si-ink-1); }
 </style>

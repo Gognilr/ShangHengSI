@@ -64,7 +64,7 @@ async function copy() {
     <p v-if="count" class="warning">有 {{ count }} 处未能还原，已原样标出</p>
     <el-alert v-if="message.error" :title="message.error" type="error" :closable="false" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <p v-if="message.role === 'assistant' && message.extras.kb_sent !== undefined" class="hint">附带公司知识库片段 {{ message.extras.kb_sent }} 段（{{ message.extras.kb_dropped ?? 0 }} 段因含疑似敏感信息未发送）</p>
+    <p v-if="message.role === 'assistant' && (Number(message.extras.kb_sent) > 0 || Number(message.extras.kb_dropped) > 0)" class="hint">附带公司知识库片段 {{ message.extras.kb_sent }} 段（{{ message.extras.kb_dropped ?? 0 }} 段因含疑似敏感信息未发送）</p>
     <p v-for="source in message.extras.history_sources" :key="source.task_id" class="hint"><router-link :to="`/review/${source.task_id}`" target="_blank" rel="noopener">来自 {{ source.month }} 的一份合同</router-link></p>
     <p v-if="message.role === 'assistant' && message.model_label" class="hint">{{ message.model_label }}</p>
     <div v-if="message.role === 'assistant'" class="message-actions" :class="{ 'on-hover': !pending && message.status !== 'failed' && !last }">

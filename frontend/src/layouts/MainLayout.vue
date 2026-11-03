@@ -10,7 +10,6 @@ import GlobalSearch from '@/components/GlobalSearch.vue'
 import SidebarSessions from '@/components/SidebarSessions.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import SiLogo from '@/components/brand/SiLogo.vue'
-import { assistantApi } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import { useAppearanceStore } from '@/stores/appearance'
 import { useAuthStore } from '@/stores/auth'
@@ -65,7 +64,8 @@ const creating = ref(false)
 async function createSession() {
   if (creating.value) return
   creating.value = true
-  try { const result = await assistantApi.create(); await router.push(`/assistant/${result.id}`); await sessions.refresh() }
+  // V31-U5：回到助手首页，第一次发送或加入文件时才建会话
+  try { await router.push('/assistant') }
   catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '新建会话失败，请稍后重试') }
   finally { creating.value = false }
 }

@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { ArrowDown } from '@lucide/vue'
-import type { Message, Template } from '@/api/assistant'
+import type { Message } from '@/api/assistant'
 import MessageItem from './MessageItem.vue'
-import TemplatePicker from './TemplatePicker.vue'
-const props = defineProps<{ messages: Message[]; sessionId: string; template: Template | null; asrEnabled?: boolean }>()
-const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; template: [value: Template | null] }>()
+const props = defineProps<{ messages: Message[]; sessionId: string }>()
+const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number] }>()
 const area = ref<HTMLElement>()
 // 自动跟随：离底部 80px 以内视为在底部；用户向上滚动即停止跟随，点“回到底部”恢复
 const following = ref(true)
@@ -24,7 +23,7 @@ const lastReply = () => [...props.messages].reverse().find(m => m.role === 'assi
   <div class="conversation-wrap">
     <div ref="area" class="conversation" @scroll.passive="onScroll">
       <div class="reading">
-        <template v-if="!messages.length"><p class="empty-hint">加入文件并确认脱敏后提问，或选择一个模板开始</p><TemplatePicker :asr-enabled="asrEnabled" :cards="true" :model-value="template" @update:model-value="emit('template', $event)" /></template>
+        <p v-if="!messages.length" class="empty-hint">可以直接提问；文件加入后在本机解析与脱敏，发给模型的只有脱敏后的文字。</p>
         <MessageItem v-for="message in messages" :key="message.id" :message="message" :session-id="sessionId" :last="message.id === lastReply()" @stop="emit('stop', $event)" @retry="emit('retry', $event)" />
       </div>
     </div>
@@ -35,6 +34,6 @@ const lastReply = () => [...props.messages].reverse().find(m => m.role === 'assi
 .conversation-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .conversation { flex: 1; min-height: 0; overflow-y: auto; padding: 0 24px 24px; }
 .reading { max-width: 760px; margin: 0 auto; }
-.empty-hint { margin: 24px 0; color: var(--el-text-color-secondary); font: var(--si-font-body); }
+.empty-hint { margin: 32px 0; text-align: center; color: var(--el-text-color-secondary); font: var(--si-font-body); }
 .to-bottom { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); box-shadow: var(--el-box-shadow-light); }
 </style>

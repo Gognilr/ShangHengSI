@@ -8,6 +8,8 @@ export const useSessionsStore = defineStore('sessions', () => {
   const total = ref(0)
   const page = ref(1)
   const loading = ref(false)
+  // 首页（还没有会话）据此决定是否收录音、列“会议纪要”
+  const asrEnabled = ref(false)
   let version = 0
 
   /** 重新取第 1 页到当前已加载的页数。 */
@@ -18,7 +20,9 @@ export const useSessionsStore = defineStore('sessions', () => {
       const results = []
       for (let p = 1; p <= pages; p++) results.push(await assistantApi.list(p))
       if (current !== version) return
-      items.value = results.flatMap(result => result.items)
+      // 空会话（没有文件、标题仍是“新会话”）不列出：V31-U5 起不再产生，旧数据也不打扰
+      items.value = results.flatMap(result => result.items).filter(item => item.file_count > 0 || item.title !== '新会话')
+      asrEnabled.value = !!results[0]?.asr_enabled
       total.value = results[results.length - 1]?.total ?? 0
     } catch { /* 侧栏列表失败不打断页面，下次刷新再取 */ }
     finally { if (current === version) loading.value = false }
@@ -40,5 +44,5 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   function clear(): void { ++version; items.value = []; total.value = 0; page.value = 1; loading.value = false }
 
-  return { items, total, loading, refresh, loadMore, clear }
+  return { items, total, loading, asrEnabled, refresh, loadMore, clear }
 })

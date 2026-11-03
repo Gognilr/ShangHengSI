@@ -1,28 +1,22 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+// 模板快捷标签（V31-U5 2.1）：点一下进入输入框，再点取消；未启用转写时“会议纪要”置灰并写原因
 import type { Template } from '@/api/assistant'
 import { ASSISTANT_TEMPLATE } from '@/utils/labels'
-const props = defineProps<{ modelValue: Template | null; cards?: boolean; asrEnabled?: boolean }>()
-// 下拉只列可用模板；卡片把未启用转写的“会议纪要”置灰并写原因，让用户知道有这个功能（V31Q-92）
-const templates = computed(() => Object.fromEntries(Object.entries(ASSISTANT_TEMPLATE).filter(([key]) => key !== 'minutes' || props.asrEnabled)))
+defineProps<{ modelValue: Template | null; chips?: boolean; asrEnabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: Template | null] }>()
 const descriptions: Record<string, string> = { translate: '分段翻译并核对原文', summary: '提取文件中的重点', reply: '根据来函起草回复', crosscheck: '核对多份文件的一致性', compare: '对齐报价项目，在本地比较价格', minutes: '把录音整理为议题、决议与待办' }
 </script>
 <template>
-  <div v-if="cards" class="template-cards" aria-label="选择模板">
-    <el-button v-for="(label, key) in ASSISTANT_TEMPLATE" :key="key" :type="modelValue === key ? 'primary' : 'default'" :plain="modelValue === key" :disabled="key === 'minutes' && !asrEnabled" @click="emit('update:modelValue', modelValue === key ? null : key as Template)">
-      <span>{{ label }}<span class="description">{{ key === 'minutes' && !asrEnabled ? '录音转写未启用，请联系管理员' : descriptions[key] }}</span></span>
-    </el-button>
+  <div class="template-chips" role="group" aria-label="模板">
+    <el-tooltip v-for="(label, key) in ASSISTANT_TEMPLATE" :key="key" :content="key === 'minutes' && !asrEnabled ? '录音转写未启用，请联系管理员' : descriptions[key]" placement="bottom">
+      <button type="button" class="chip" :class="{ active: modelValue === key }" :disabled="key === 'minutes' && !asrEnabled" :aria-pressed="modelValue === key" @click="emit('update:modelValue', modelValue === key ? null : key as Template)">{{ label }}</button>
+    </el-tooltip>
   </div>
-  <!-- 输入框下方一行用下拉选择，清空即不用模板 -->
-  <el-select v-else class="template-select" :model-value="modelValue ?? undefined" clearable placeholder="不用模板" aria-label="选择模板" @update:model-value="emit('update:modelValue', ($event || null) as Template | null)">
-    <el-option v-for="(label, key) in templates" :key="key" :value="key" :label="label" />
-  </el-select>
 </template>
 <style scoped>
-.template-cards :deep(.el-button) { margin-left: 0; }
-.template-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.template-cards :deep(.el-button) { height: auto; min-height: 80px; padding: 16px; white-space: normal; }
-.description { display: block; font: var(--si-font-meta); color: var(--el-text-color-secondary); margin-top: 8px; }
-.template-select { width: 128px; }
+.template-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.chip { padding: 5px 14px; border: 1px solid var(--si-hair-strong); border-radius: 16px; background: transparent; color: var(--si-ink-2); font: var(--si-font-label); cursor: pointer; transition: background-color var(--si-dur-1) var(--si-ease), color var(--si-dur-1) var(--si-ease), border-color var(--si-dur-1) var(--si-ease); }
+.chip:hover:not(:disabled) { background: var(--si-surface-2); color: var(--si-ink-1); }
+.chip.active { border-color: var(--si-blue); background: color-mix(in srgb, var(--si-blue) 12%, transparent); color: var(--si-blue-ink); }
+.chip:disabled { cursor: not-allowed; opacity: .5; }
 </style>

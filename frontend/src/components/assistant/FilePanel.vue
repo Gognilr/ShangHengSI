@@ -15,8 +15,9 @@ import EmptyState from '@/components/EmptyState.vue'
 import WorkFolderBar from '@/components/WorkFolderBar.vue'
 import { FileText } from '@lucide/vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
-const props = defineProps<{ session: Session }>()
-const emit = defineEmits<{ refresh: []; transcript: [file: SessionFile] }>()
+// V31-U5：不再常驻右栏，改为标题栏“文件 N”打开的抽屉；确认、校对与上传由输入框直接调用（defineExpose）
+const props = defineProps<{ session: Session; open: boolean }>()
+const emit = defineEmits<{ refresh: []; 'update:open': [value: boolean] }>()
 const upload = ref<HTMLInputElement>(), busy = ref(false), error = ref(''), confirmOpen = ref(false), outboundOpen = ref(false), outbound = ref('')
 const transcriptFile = ref<SessionFile | null>(null)
 const currentTranscript = computed(() => props.session.files.find(f => f.id === transcriptFile.value?.id) ?? transcriptFile.value)
@@ -103,11 +104,14 @@ async function pick(kind: 'doc' | 'audio') {
   pickAccept.value = kind === 'audio' ? audioAccept : ''
   await nextTick(); upload.value?.click()
 }
+function openTranscript(file: SessionFile) { transcriptFile.value = file }
 function openConfirm() { const audio = pending.value.find(f => f.media?.stage === 'done'); if (audio) transcriptFile.value = audio; else confirmOpen.value = true }
-defineExpose({ pick, openConfirm })
+defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgress })
 </script>
 <template>
-  <aside class="files" @dragover.prevent @drop.prevent="canUpload && addList(Array.from($event.dataTransfer?.files ?? []))">
+  <div class="file-host">
+  <el-drawer :model-value="open" title="本会话文件" size="400px" append-to-body @update:model-value="emit('update:open', $event)">
+  <div class="files" @dragover.prevent @drop.prevent="canUpload && addList(Array.from($event.dataTransfer?.files ?? []))">
     <div class="file-heading"><h2>文件（{{ session.files.length }}）</h2><el-button size="small" :disabled="!canUpload" :loading="busy" @click="upload?.click()">加入文件</el-button><input ref="upload" class="file-input" type="file" multiple :accept="pickAccept || accept" @change="added"></div>
     <div v-if="uploadProgress !== null" role="status"><el-progress :percentage="uploadProgress" /><p class="hint">正在上传 {{ uploadProgress }}%</p></div>
     <WorkFolderBar :disabled="!canUpload" @add="addList" />
@@ -124,14 +128,16 @@ defineExpose({ pick, openConfirm })
     <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="confirmOpen = true">确认脱敏（{{ pending.length }} 个文件）</el-button>
     <div v-if="findings.length" class="session-settings"><ZoneHeader kind="local" :count="certain.length" /><p>高 {{ counts[0] }} · 中 {{ counts[1] }} · 低 {{ counts[2] }}</p><p v-if="unverified" class="hint">无法核验 {{ unverified }} 项</p><el-button link @click="localOpen = true">查看</el-button><p class="hint">发给模型的只有不含金额的摘要</p></div>
     <div class="session-settings"><h3>会话设置</h3><label>我方立场</label><el-select :model-value="session.stance" :disabled="!canStance || busy" @change="stance"><el-option label="销售" value="sales" /><el-option label="采购" value="purchase" /><el-option label="其他" value="other" /></el-select><p class="hint">第一个文件确认后不能修改立场</p><p>本会话代号 <span class="num">{{ session.code_count }}</span> 个</p><el-button :disabled="busy || session.status === 'parsing'" @click="showOutbound">查看外发文本</el-button><p class="hint">发给模型的只有脱敏后的文字，回复在本机还原</p></div>
+  </div>
+  </el-drawer>
     <el-drawer append-to-body v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
     <el-dialog append-to-body :model-value="!!transcriptFile" :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></el-dialog>
     <el-dialog append-to-body v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
-  </aside>
+  </div>
 </template>
 <style scoped>
-.files { padding: 20px 16px; overflow-y: auto; min-height: 0; }
+.files { min-height: 0; }
 .file-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 h2 { font: var(--si-font-h2); margin: 0; }
 h3 { font: var(--si-font-h3); }
