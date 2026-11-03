@@ -1,7 +1,6 @@
 # 商衡SI · 企业安全脱敏与智能审查平台（V2.1）
 
-完整开发规格在 docs/SPEC.md。开始任何工作前，先阅读与当前任务相关的章节。
-本文件只列每次会话都必须遵守的要点；与 SPEC 冲突时，以 SPEC 为准。
+系统目前的做法记录在 docs/SPEC.md，开始工作前先读相关章节。**SPEC 只是现状记录，不是永久规范**（用户 2026-11-04）：有更好的设计就直接提出并取代其中的条目，必要时整节删除，不得以“SPEC 这么写”为由照做别扭的设计或拒绝改进；改动后同步更新 SPEC。下列安全要点是产品目标本身，不在此列。
 
 ## 项目一句话
 
@@ -9,7 +8,7 @@
 
 ## 必须遵守
 
-* 不得增加 SPEC 没有的菜单、页面或功能。左侧侧栏只有"智能助手""智能审核""审核历史"三个菜单（另有新建会话、搜索、近期会话，SPEC 1.6、6.9），侧栏底部"设置"对所有人可见，第一个分页“个人”（外观、修改密码），管理分页只对系统管理员、业务管理员可见（SPEC 1.3，V31Q-95）。
+* 新增侧栏菜单或页面先给出方案经我确认（防止功能膨胀，不是因为 SPEC 没写）。左侧侧栏只有"智能助手""智能审核""审核历史"三个菜单（另有新建会话、搜索、近期会话，SPEC 1.6、6.9），侧栏底部"设置"对所有人可见，第一个分页“个人”（外观、修改密码），管理分页只对系统管理员、业务管理员可见（SPEC 1.3，V31Q-95）。
 * 界面视觉以 docs/design/frontend.md（第二版，商衡SI 品牌主题）为准：十六进制颜色只写在 frontend/src/styles/theme.css，页面和组件只用 CSS 变量。
 * 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务（向量检索只用 PostgreSQL 的 pgvector 扩展，V2-E）、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、任何本地大模型。本地模型只允许 SPEC 第 3 节列出的实体识别模型、向量模型各一个，以及转写一组（语音分段、转写、标点、说话人分段、声纹各一个，V31-M），用 onnxruntime（转写一组的说话人分离另用 sherpa-onnx）在 CPU 上离线运行；本地模型的唯一清单是 deploy/models.yaml（接入、放置与资源按 docs/v31/design/local-models.md），更换或新增须经选型报告和我确认（该规范第七节）。实体识别模型已确认为 urchade/gliner_multi-v2.1（Apache-2.0，FP32 ONNX，文件与 SHA-256 见 docs/v2/design/V2-B.md 6.2）；向量模型已确认为 BAAI/bge-m3（MIT，由官方 ONNX 量化的 INT8 ONNX，只用稠密向量，文件与 SHA-256 见 docs/v2/reports/V2-E-04a.md 第六节）。转写一组已确认为 FireRedVAD、FireRedASR2-AED INT8、FireRedPunc INT8、pyannote segmentation-3.0、3D-Speaker CAM++（Apache-2.0 / MIT，文件与 SHA-256 见 transcriber/models/asr/MANIFEST.sha256 与 docs/v31/reports/V31-M-01.md），只在 transcriber 容器中运行。任何镜像不得安装 torch、transformers、gliner、sentencepiece（导出 ONNX 只在仓库外的一次性容器中做）；模型文件不进仓库。LibreOffice 与 ffmpeg（录音解码，V31Q-71）只允许在 converter 容器中使用，不得进入 backend 镜像；converter 与 transcriber 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
 * 只有两处可以访问外网：① 模型网关 backend/app/llm/gateway.py，依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls，任何模型调用不得绕过网关；② 法规同步 backend/app/lawsync/client.py（V2-E），只访问固定的国家法律法规数据库域名（flk.npc.gov.cn）及其全文文件存储域名（flkoss.obs-bj2.cucloud.cn），只下载公开的法规目录与全文，请求中不含任何任务数据，默认关闭，同步结果经业务管理员确认才生效。其他代码不得访问外网。
@@ -21,7 +20,7 @@
 * 金额计算用 Decimal（ROUND\_HALF\_UP），不得用浮点数。
 * 数据库结构变更只能通过 Alembic 迁移。
 * 界面文字用简体中文；数据库时间存 UTC，界面按 Asia/Shanghai 显示。
-* 遇到 SPEC 未写明的细节：选最简单、最安全的做法，并记录到 docs/open\_questions.md。
+* 遇到 SPEC 未写明的细节：选体验最好且安全的做法，并记录到 docs/open\_questions.md。
 * 冲突时的优先级：安全 > 正确性 > 简洁 > 性能。
 * **永不过度设计、过度测试**（用户 2026-10-30 定为长期规则）：这是局域网内单机使用的小工具，出口在网络层只放行模型地址，其他端口由用户关闭。精力放在主线：脱敏、还原、审核结果的正确性。
   * 设计和修复只做真正影响使用的部分，不为假想的攻击或运维事故加防线、开关、自检或"测试门"。
@@ -33,7 +32,7 @@
 
 ## 当前阶段：V3.1 开发（2026-11-01 起）
 
-V1.0 标签 `v1.0.0`（011d417）；V2.0 于 2026-10-30 完成总审核（V2-Z-05）并合并规格（V2-Z-06），标签 `v2.0.0`；修复批次 V2-F 于同日完成（V2-F-06），标签 `v2.1.0`。V3（V3-A 界面与安装、V3-B 多模型、V3-C 批注版、V3-D 修订版）于 2026-11-01 完成并已合并进 docs/SPEC.md，**不单独发布**（V3Q-29）：原 V3-Z 的回归、演练、总审核、版本号、标签与正式安装全部并入 V31-Z，V3.1 完成后统一发布为 V3.1。docs/SPEC.md 是唯一开发依据；docs/v2/、docs/v3/ 下的设计、问题与报告作为细节和历史保留。
+V1.0 标签 `v1.0.0`（011d417）；V2.0 于 2026-10-30 完成总审核（V2-Z-05）并合并规格（V2-Z-06），标签 `v2.0.0`；修复批次 V2-F 于同日完成（V2-F-06），标签 `v2.1.0`。V3（V3-A 界面与安装、V3-B 多模型、V3-C 批注版、V3-D 修订版）于 2026-11-01 完成并已合并进 docs/SPEC.md，**不单独发布**（V3Q-29）：原 V3-Z 的回归、演练、总审核、版本号、标签与正式安装全部并入 V31-Z，V3.1 完成后统一发布为 V3.1。docs/SPEC.md 是当前的开发依据（可随更好的设计改写）；docs/v2/、docs/v3/ 下的设计、问题与报告作为细节和历史保留。
 
 * V3.1 规划（V31-00）已于 2026-11-01 经我确认。V3.1 的全部文档在 docs/v31/：PLAN.md（范围、批次、分工）、TASKS-V31.md（执行规则与任务清单）、open\_questions.md、design/V31-x.md（各批设计与任务卡）。批次串行：V31-R 回程完整性 → V31-U1 光幕基础 → V31-S 减负与草稿任务 → V31-U2 首页与确认页 → V31-P 脱敏加固 → V31-E 回执与评测 → V31-M 会议纪要 → V31-U3 结果页与审核中 → V31-U4 其余页面与评审 → V31-Z 总审核与发布。
 * 分工：界面批次（V31-U1～U4）由 Opus 写设计、做全局基础并审核，Sonnet 实现页面；其余批次由 GPT-6.1 Sol 实现，Opus 细化与审核。
