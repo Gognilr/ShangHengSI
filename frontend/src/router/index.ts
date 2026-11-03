@@ -16,6 +16,7 @@ import Templates from '@/views/settings/Templates.vue'
 import Knowledge from '@/views/settings/Knowledge.vue'
 import SettingsLayout from '@/views/settings/SettingsLayout.vue'
 import Users from '@/views/settings/Users.vue'
+import Personal from '@/views/settings/Personal.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -46,9 +47,10 @@ export const router = createRouter({
         {
           path: 'settings',
           component: SettingsLayout,
-          meta: { admin: true },
           children: [
-            { path: '', redirect: '/settings/users' },
+            // 设置对所有人可见，“个人”在最前；管理分页仍按角色校验（V31Q-95）
+            { path: '', redirect: '/settings/personal' },
+            { path: 'personal', name: 'settings-personal', component: Personal },
             { path: 'users', name: 'settings-users', component: Users, meta: { adminScope: 'sys' } },
             { path: 'model', name: 'settings-model', component: Model, meta: { adminScope: 'sys' } },
             { path: 'requirements', name: 'settings-requirements', component: Requirements, meta: { adminScope: 'biz' } },
@@ -92,7 +94,7 @@ router.beforeEach(async (to) => {
   }
 
   if ((to.meta.adminScope === 'sys' && !auth.canSysAdmin) || (to.meta.adminScope === 'biz' && !auth.canBizAdmin)) {
-    return { path: auth.canSysAdmin ? '/settings/users' : '/settings/requirements' }
+    return { path: '/settings/personal' }
   }
 
   return true

@@ -4,11 +4,12 @@ import { settingSectionsKey, type SettingAnchor } from '@/utils/settingSections'
 import { useFx } from '@/utils/motion'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { User, Cpu, List, Lock, Database } from '@lucide/vue'
+import { User, Cpu, List, Lock, Database, UserRound } from '@lucide/vue'
 
 // 设置页导航与路由一一对应，分页权限由路由角色守卫校验。
 const auth = useAuthStore()
 const tabs = computed(() => [
+  { name: 'personal', label: '个人', icon: UserRound, scope: 'all' },
   { name: 'users', label: '账号', icon: User, scope: 'sys' },
   { name: 'model', label: '模型', icon: Cpu, scope: 'sys' },
   { name: 'requirements', label: '审核要求', icon: List, scope: 'biz' },
@@ -17,7 +18,7 @@ const tabs = computed(() => [
   { name: 'knowledge', label: '知识库', icon: List, scope: 'biz' },
   { name: 'redaction', label: '脱敏', icon: Lock, scope: 'biz' },
   { name: 'data', label: '数据', icon: Database, scope: 'sys' },
-].filter(tab => tab.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin))
+].filter(tab => tab.scope === 'all' || (tab.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin)))
 
 const anchors = ref<SettingAnchor[]>([]), activeSection = ref(''), root = ref<HTMLElement>(), fx = useFx()
 let observer: IntersectionObserver | undefined

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings } from '@lucide/vue'
+import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, MessageSquare, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, Sun } from '@lucide/vue'
 import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
@@ -12,10 +12,15 @@ import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import SiLogo from '@/components/brand/SiLogo.vue'
 import { assistantApi } from '@/api/assistant'
 import { ApiError } from '@/api/http'
+import { useAppearanceStore } from '@/stores/appearance'
 import { useAuthStore } from '@/stores/auth'
 import { useSessionsStore } from '@/stores/sessions'
 
 const auth = useAuthStore()
+const appearance = useAppearanceStore()
+// 外壳一键切换（V31Q-95）：与“设置 · 个人 · 外观”同一份设置
+const shellNext = computed(() => appearance.shell === 'night' ? '浅色' : '夜幕')
+function toggleShell() { appearance.shell = appearance.shell === 'night' ? 'light' : 'night' }
 const sessions = useSessionsStore()
 const route = useRoute()
 const router = useRouter()
@@ -124,7 +129,7 @@ async function onCommand(cmd: string) {
           </template>
           <AlertList @navigate="alertsOpen = false" />
         </el-popover>
-        <el-tooltip v-if="auth.isAdmin" content="设置" placement="right" :disabled="!collapsed">
+        <el-tooltip content="设置" placement="right" :disabled="!collapsed">
           <router-link to="/settings" class="item" :class="{ selected: route.path.startsWith('/settings') }" :aria-current="route.path.startsWith('/settings') ? 'page' : undefined" :aria-label="collapsed ? '设置' : undefined">
             <Settings :size="16" :stroke-width="1.75" /><span class="label">设置</span>
           </router-link>
@@ -142,6 +147,11 @@ async function onCommand(cmd: string) {
               </el-dropdown-menu>
             </template>
           </el-dropdown>
+          <el-tooltip :content="`切换到${shellNext}`" placement="top">
+            <button type="button" class="toggle" :aria-label="`切换到${shellNext}外壳`" @click="toggleShell">
+              <Sun v-if="appearance.shell === 'night'" :size="16" :stroke-width="1.75" /><Moon v-else :size="16" :stroke-width="1.75" />
+            </button>
+          </el-tooltip>
           <el-tooltip :content="collapsed ? '展开侧栏' : '收起侧栏'" placement="right">
             <button type="button" class="toggle" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!collapsed" @click="toggleCollapsed">
               <PanelLeftOpen v-if="collapsed" :size="16" :stroke-width="1.75" /><PanelLeftClose v-else :size="16" :stroke-width="1.75" />

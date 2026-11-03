@@ -33,13 +33,13 @@ const staticEntries = computed<Entry[]>(() => {
     { key: 'p-history', group: '页面', label: '审核历史', icon: HistoryIcon, run: go('/history') },
   ]
   const settings = [
-    { name: 'users', label: '账号', scope: 'sys' }, { name: 'model', label: '模型', scope: 'sys' },
+    { name: 'personal', label: '个人（外观、修改密码）', scope: 'all' }, { name: 'users', label: '账号', scope: 'sys' }, { name: 'model', label: '模型', scope: 'sys' },
     { name: 'requirements', label: '审核要求', scope: 'biz' }, { name: 'laws', label: '法规库', scope: 'biz' },
     { name: 'templates', label: '公司范本', scope: 'biz' }, { name: 'knowledge', label: '知识库', scope: 'biz' },
     { name: 'redaction', label: '脱敏', scope: 'biz' }, { name: 'data', label: '数据', scope: 'sys' },
   ]
   for (const s of settings) {
-    if (s.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin) list.push({ key: `p-set-${s.name}`, group: '页面', label: `设置 · ${s.label}`, icon: Settings, run: go(`/settings/${s.name}`) })
+    if (s.scope === 'all' || (s.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin)) list.push({ key: `p-set-${s.name}`, group: '页面', label: `设置 · ${s.label}`, icon: Settings, run: go(`/settings/${s.name}`) })
   }
   return list
 })
