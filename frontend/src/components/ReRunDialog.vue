@@ -82,7 +82,7 @@ async function submit() {
       <el-form-item label="审核模型">
         <span v-if="modelItems.length === 1">{{ modelItems[0]!.display_name }}</span>
         <el-select v-else v-model="modelId" :loading="modelsLoading" :disabled="!modelItems.length" aria-label="审核模型" placeholder="选择审核模型"><el-option class="model-option" v-for="model in modelItems" :key="model.id" :value="model.id" :label="model.display_name"><span>{{ model.display_name }}</span><small v-if="model.description" class="model-description">{{ model.description }}</small></el-option></el-select>
-        <p class="hint">换一个模型重新审核，可以对照两轮结果</p>
+        <p class="hint model-hint">换一个模型重新审核，可以对照两轮结果</p>
       </el-form-item>
       <el-form-item label="本次补充说明">
         <el-input v-model="form.userNote" type="textarea" :rows="4" :maxlength="MAX_NOTE_LENGTH" show-word-limit />
@@ -98,6 +98,7 @@ async function submit() {
 </template>
 
 <style scoped>
+.model-hint { flex-basis: 100%; margin: 4px 0 0; }
 .model-option { height: auto; min-height: 40px; padding-top: 8px; padding-bottom: 8px; font: var(--si-font-body); }
 .model-description { display: block; color: var(--el-text-color-secondary); font: var(--si-font-caption); overflow-wrap: anywhere; }
 </style>

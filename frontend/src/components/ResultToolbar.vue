@@ -36,12 +36,12 @@ const details = computed(() => {
       <el-button link type="primary" @click="$router.push('/history')">← 审核历史</el-button>
       <span class="separator" aria-hidden="true"></span>
       <span class="file-badge">{{ badge }}</span>
-      <div class="file-name" :title="mainFile?.original_name ?? task.title">{{ mainFile?.original_name ?? task.title }}</div>
-      <span v-if="task.files.length > 1" class="hint nowrap">另有 {{ task.files.length - 1 }} 个附件</span>
-      <el-tag v-if="run" :type="RUN_STATUS_TAG[run.status] ?? 'info'" size="small">{{ runStatusLabel(run.status) }}</el-tag>
+      <div class="file-name" :title="`${mainFile?.original_name ?? task.title}${task.files.length > 1 ? `（另有 ${task.files.length - 1} 个附件）` : ''}`">{{ mainFile?.original_name ?? task.title }}</div>
+      <span v-if="task.files.length > 1" class="hint nowrap attachments">另有 {{ task.files.length - 1 }} 个附件</span>
+      <el-tag v-if="run" :type="RUN_STATUS_TAG[run.status] ?? 'info'" size="small" disable-transitions>{{ runStatusLabel(run.status) }}</el-tag>
       <span v-else class="hint nowrap">{{ statusLabel(task.status) }}</span>
       <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
-        <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮 · ${formatDateTime(item.finished_at ?? item.queued_at)} · ${runStatusLabel(item.status)}`" />
+        <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮`">第 {{ item.run_no }} 轮 · {{ formatDateTime(item.finished_at ?? item.queued_at) }} · {{ runStatusLabel(item.status) }}</el-option>
       </el-select>
       <ReceiptStrip v-if="run && task.policy === 'ai'" :run="run" :file-names="task.files.map(f => f.original_name)" />
       <div class="actions">
@@ -65,13 +65,15 @@ const details = computed(() => {
 
 <style scoped>
 .toolbar { flex: none; padding: 6px 0 8px; border-bottom: 1px solid var(--si-hair); }
-.top { display: flex; align-items: center; gap: 10px; min-height: 48px; }
+.top { display: flex; align-items: center; gap: 10px; min-height: 48px; container: result-toolbar / inline-size; }
 .separator { flex: none; width: 1px; height: 24px; background: var(--si-hair); }
 .file-badge { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font: var(--si-font-label-sm); }
-.file-name { min-width: 80px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h2); }
+.file-name { min-width: 120px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h2); }
 .nowrap { white-space: nowrap; }
-.round-select { flex: none; width: 200px; }
-.actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.round-select { flex: none; width: 112px; }
+/* 工具条较窄时附件数只放在文件名的悬停提示里，保证右侧操作不被挤出 */
+@container result-toolbar (max-width: 1200px) { .attachments { display: none; } }
+.actions { display: flex; align-items: center; gap: 8px; margin: 0 0 0 auto; }
 .actions :deep(.el-button + .el-button) { margin-left: 0; }
 .details { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-3); font: var(--si-font-caption); }
 .warning { color: var(--si-warn-ink); }

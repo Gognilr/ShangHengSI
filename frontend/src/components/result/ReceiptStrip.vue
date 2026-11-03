@@ -38,7 +38,7 @@ function openSent() {
         <button type="button" class="strip" aria-haspopup="dialog">
           <ShieldCheck class="icon" :size="14" :stroke-width="1.75" aria-hidden="true" />
           <span>已保护 {{ receipt.protected_total }}</span><span class="dot">·</span>
-          <span>复检 {{ receipt.rechecks }} 次 · 拦截 {{ receipt.blocked }}</span><span class="dot">·</span>
+          <span class="recheck">复检 {{ receipt.rechecks }} 次 · 拦截 {{ receipt.blocked }}</span><span class="dot recheck">·</span>
           <span>还原 {{ ratio }}</span>
         </button>
       </template>
@@ -74,6 +74,8 @@ function openSent() {
 .strip:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 .icon { color: var(--el-color-primary); }
 .dot { color: var(--si-ink-3); }
+/* 工具条较窄（1440 宽及以下、侧栏展开）时只留保护数与还原比例，复检与拦截在弹层中 */
+@container result-toolbar (max-width: 1200px) { .recheck { display: none; } }
 .rows { display: grid; grid-template-columns: 84px 1fr; gap: 6px 10px; margin: 0; font: var(--si-font-meta); }
 .rows dt { color: var(--si-ink-3); }
 .rows dd { margin: 0; color: var(--el-text-color-primary); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }

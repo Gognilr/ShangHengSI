@@ -33,7 +33,13 @@ const input = ref<InputInstance>()
 // 回复按【算式】行切段：算式行换成本机计算卡片，其余段带“未能还原”标记；calc 标记由卡片表达，不重复下划线
 function replySegs(item: ChatMessage) {
   const marks = (item.marks ?? []).filter(m => m.kind !== 'calc')
-  return calcLines(item.content, item.calcs).map(seg => ({ ...seg, marks: sliceMarks(marks, seg.start, Array.from(seg.text).length) }))
+  const segs = calcLines(item.content, item.calcs)
+  return segs.map((seg, i) => {
+    // 卡片本身占一块，紧跟其后的换行不再显示，否则多出一个空行
+    const skip = i > 0 && segs[i - 1]!.calc && seg.text.startsWith('\n') ? 1 : 0
+    const text = seg.text.slice(skip)
+    return { ...seg, text, marks: sliceMarks(marks, seg.start + skip, Array.from(text).length) }
+  })
 }
 const hasCalcs = computed(() => items.value.some(item => item.calcs?.length))
 let pendingMessage = ''
@@ -141,12 +147,22 @@ function cancelConfirm() {
 }
 
 /** 结果页预填追问（V31-U3 4.1）：打开抽屉，文字放进输入框末尾（已有内容时换行追加），光标置于末尾，并触发常驻预览。 */
-async function openWith(text: string) {
-  message.value = message.value.trim() ? `${message.value.replace(/\s+$/, '')}\n${text}` : text
-  await show()
-  await nextTick()
+// 抽屉打开动画结束时会把焦点移到抽屉本身，所以在 opened 之后再把光标放回输入框
+let focusInputOnOpen = false
+function focusInput() {
   const area = input.value?.textarea
   if (area) { area.focus(); area.setSelectionRange(area.value.length, area.value.length); area.scrollTop = area.scrollHeight }
+}
+async function openWith(text: string) {
+  message.value = message.value.trim() ? `${message.value.replace(/\s+$/, '')}\n${text}` : text
+  focusInputOnOpen = !open.value
+  await show()
+  await nextTick()
+  focusInput()
+}
+function onOpened() {
+  void scrollToLatest()
+  if (focusInputOnOpen) { focusInputOnOpen = false; focusInput() }
 }
 defineExpose({ openWith, available })
 
@@ -238,7 +254,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 
   <el-drawer v-model="open" title="追问" size="560px" direction="rtl" append-to-body
     :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy"
-    @opened="scrollToLatest">
+    @opened="onOpened">
     <div class="chat-panel">
       <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" />
       <el-alert v-else-if="!loading && !available" type="warning" :closable="false" show-icon :title="reason" />

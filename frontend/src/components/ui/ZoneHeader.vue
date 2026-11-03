@@ -25,6 +25,6 @@ const title = computed(() => props.small && props.kind === 'local' ? '本机计�
 .zone-ai .icon { color: var(--si-ai); }
 .zone-unverified, .zone-unverified .icon { color: var(--si-ink-3); }
 .count { color: var(--si-ink-3); font-variant-numeric: tabular-nums; }
-.actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.actions { display: flex; align-items: center; gap: 8px; margin: 0 0 0 auto; }
 .actions:empty { display: none; }
 </style>
