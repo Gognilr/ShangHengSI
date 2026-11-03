@@ -5,6 +5,10 @@ import { saveBlob } from '@/utils/save'
 import type { Message } from '@/api/assistant'
 import { assistantApi } from '@/api/assistant'
 import { ApiError } from '@/api/http'
+import CalcResult from '@/components/result/CalcResult.vue'
+import ZoneHeader from '@/components/ui/ZoneHeader.vue'
+import { markTokens, unresolvedCount } from '@/utils/marks'
+import { markKindLabel } from '@/utils/labels'
 import { inline, markdown } from '@/utils/markdown'
 import { formatDateTime } from '@/utils/time'
 import { assistantStatusLabel } from '@/utils/labels'
@@ -12,9 +16,15 @@ import CompareTable from './CompareTable.vue'
 import TranslationView from './TranslationView.vue'
 const props = defineProps<{ message: Message; sessionId: string; last?: boolean }>()
 const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number] }>()
-const parsed = computed(() => markdown(props.message.content))
+const tokens = computed(() => markTokens(props.message.content, props.message.marks))
+const tokenSet = computed(() => new Set(tokens.value.keys()))
+const count = computed(() => unresolvedCount(props.message.marks))
+const parsed = computed(() => {
+  const calcs = [...(props.message.calcs ?? [])].sort((a,b) => a.line_start - b.line_start)
+  let index = 0
+  return markdown(props.message.content).map(block => ({ ...block, calc: block.kind === 'paragraph' && block.text.startsWith('【算式】') ? calcs[index++] : undefined }))
+})
 const pending = computed(() => ['queued', 'streaming'].includes(props.message.status))
-const unknown = computed(() => /\[\[[^\]\n]+\]\]/.test(props.message.content))
 const hasTable = computed(() => !!props.message.compare || parsed.value.some(block => block.kind === 'table'))
 const downloading = ref(false), error = ref('')
 async function download(format: 'docx' | 'xlsx', variant = 'translation') {
@@ -39,17 +49,19 @@ async function copy() {
 <template>
   <article class="message" :class="message.role === 'user' ? 'mine' : 'reply'">
     <div class="hint meta">{{ message.role === 'user' ? '你' : '助手' }} · <span class="num">{{ formatDateTime(message.created_at) }}</span><template v-if="message.role === 'assistant' && !pending"> · {{ assistantStatusLabel(message.status) }}</template></div>
+    <ZoneHeader v-if="message.role === 'assistant'" kind="ai" />
     <CompareTable v-if="message.compare" :comparison="message.compare" />
     <TranslationView v-else-if="message.template === 'translate' && message.role === 'assistant'" :message="message" :session-id="sessionId" />
     <div v-else class="markdown">
       <template v-for="(block, index) in parsed" :key="index">
-        <hr v-if="block.kind === 'rule'">
-        <div v-else-if="block.kind === 'table'" class="table-scroll"><table><thead><tr><th v-for="(header, col) in block.headers" :key="col"><template v-for="(part, pi) in inline(header)" :key="pi"><el-tag v-if="part.unknown" type="warning" size="small">{{ part.text }}</el-tag><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></th></tr></thead><tbody><tr v-for="(row, ri) in block.rows" :key="ri"><td v-for="(cell, ci) in row" :key="ci"><template v-for="(part, pi) in inline(cell)" :key="pi"><el-tag v-if="part.unknown" type="warning" size="small">{{ part.text }}</el-tag><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></td></tr></tbody></table></div>
-        <p v-else :class="{ heading: block.kind === 'heading', list: block.kind === 'list' }"><span v-if="block.kind === 'list'">• </span><template v-for="(part, pi) in inline(block.text)" :key="pi"><el-tag v-if="part.unknown" type="warning" size="small">{{ part.text }}</el-tag><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></p>
+        <CalcResult v-if="block.calc" :calc="block.calc" />
+        <hr v-else-if="block.kind === 'rule'">
+        <div v-else-if="block.kind === 'table'" class="table-scroll"><table><thead><tr><th v-for="(header, col) in block.headers" :key="col"><template v-for="(part, pi) in inline(header, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></th></tr></thead><tbody><tr v-for="(row, ri) in block.rows" :key="ri"><td v-for="(cell, ci) in row" :key="ci"><template v-for="(part, pi) in inline(cell, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></td></tr></tbody></table></div>
+        <p v-else :class="{ heading: block.kind === 'heading', list: block.kind === 'list' }"><span v-if="block.kind === 'list'">• </span><template v-for="(part, pi) in inline(block.text, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></p>
       </template>
     </div>
     <p v-if="pending" class="generating" role="status">正在生成…</p>
-    <p v-if="unknown" class="warning">回复中有无法还原的代号</p>
+    <p v-if="count" class="warning">有 {{ count }} 处未能还原，已原样标出</p>
     <el-alert v-if="message.error" :title="message.error" type="error" :closable="false" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <p v-if="message.role === 'assistant' && message.extras.kb_sent !== undefined" class="hint">附带公司知识库片段 {{ message.extras.kb_sent }} 段（{{ message.extras.kb_dropped ?? 0 }} 段因含疑似敏感信息未发送）</p>
@@ -86,5 +98,5 @@ th { background: var(--el-fill-color-light); }
 /* 悬停该条回复或键盘聚焦其中时显示操作；保持占位，不跳动 */
 .message-actions.on-hover { opacity: 0; transition: opacity 150ms; }
 .reply:hover .message-actions.on-hover, .reply:focus-within .message-actions.on-hover { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .message-actions.on-hover { transition: none; } }
+.si-unresolved { color: inherit; background: var(--si-unresolved-bg); text-decoration: underline dashed 1px var(--si-warn-ink); text-underline-offset: 3px; cursor: help; }
 </style>

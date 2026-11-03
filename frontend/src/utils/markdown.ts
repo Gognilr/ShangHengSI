@@ -1,11 +1,21 @@
 /** 最小 Markdown 子集；结果只用模板文本节点渲染。 */
-export interface Inline { text: string; bold: boolean; unknown: boolean }
+export interface Inline { text: string; bold: boolean; mark?: string }
 export type Block = { kind: 'heading' | 'paragraph' | 'list'; text: string; level: number }
   | { kind: 'table'; headers: string[]; rows: string[][] } | { kind: 'rule' }
-export function inline(text: string): Inline[] {
+export function inline(text: string, tokens: ReadonlySet<string> = new Set()): Inline[] {
   return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).flatMap(piece => {
     const bold = piece.startsWith('**'), value = bold ? piece.slice(2, -2) : piece
-    return value.split(/(\[\[[^\]\n]+\]\])/g).filter(Boolean).map(part => ({ text: part, bold, unknown: part.startsWith('[[') }))
+    const out: Inline[] = []
+    const sorted = [...tokens].filter(Boolean).sort((a,b) => b.length - a.length)
+    let cursor = 0, plain = 0
+    while (cursor < value.length) {
+      const token = sorted.find(t => value.startsWith(t, cursor))
+      if (!token) { cursor++; continue }
+      if (cursor > plain) out.push({ text: value.slice(plain, cursor), bold })
+      out.push({ text: token, bold, mark: token }); cursor += token.length; plain = cursor
+    }
+    if (plain < value.length) out.push({ text: value.slice(plain), bold })
+    return out
   })
 }
 function cells(line: string) { return line.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|')) }

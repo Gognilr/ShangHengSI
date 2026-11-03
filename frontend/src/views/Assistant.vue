@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { MessagesSquare } from '@lucide/vue'
@@ -19,7 +19,7 @@ let active = true, version = 0, polling = false, timer: ReturnType<typeof setTim
 function failure(e: unknown) { return e instanceof ApiError ? e.status === 404 ? '会话不存在或已被删除' : e.message : '加载失败，请刷新页面后重试' }
 function schedule() {
   clearTimeout(timer)
-  if (active && session.value && (session.value.status === 'parsing' || messages.value.some(m => ['queued', 'streaming'].includes(m.status)))) timer = setTimeout(poll, 1000)
+  if (!document.hidden && active && session.value && (session.value.status === 'parsing' || messages.value.some(m => ['queued', 'streaming'].includes(m.status)))) timer = setTimeout(poll, 3000)
 }
 async function load() {
   const current = ++version, selected = id.value
@@ -110,7 +110,9 @@ const generating = computed(() => messages.value.find(m => m.role === 'assistant
 // 在侧栏改名后同步标题
 watch(() => sessions.items.find(item => item.id === id.value)?.title, title => { if (title && session.value) session.value.title = title })
 watch(id, load, { immediate: true })
-onBeforeUnmount(() => { active = false; ++version; clearTimeout(timer); offsets.clear() })
+function visibility() { if (document.hidden) clearTimeout(timer); else void poll() }
+onMounted(() => document.addEventListener('visibilitychange', visibility))
+onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); active = false; ++version; clearTimeout(timer); offsets.clear() })
 </script>
 <template>
   <div class="page page--split assistant-page">
@@ -118,7 +120,7 @@ onBeforeUnmount(() => { active = false; ++version; clearTimeout(timer); offsets.
       <el-alert v-if="error" type="error" :closable="false" :title="error" />
       <template v-if="session">
         <div class="toolbar"><el-button class="title" link @click="rename">{{ session.title }}</el-button><el-button link type="danger" :disabled="working" @click="remove(session)">删除会话</el-button></div>
-        <Conversation :messages="messages" :session-id="id" :template="template" @template="template = $event" @stop="stop" @retry="retry" />
+        <Conversation :asr-enabled="session.asr_enabled" :messages="messages" :session-id="id" :template="template" @template="template = $event" @stop="stop" @retry="retry" />
         <Composer :key="id" v-model:template="template" :session="session" :generating="generating" @sent="refresh" @stop="stop" />
       </template>
       <EmptyState v-else-if="!loading" class="empty" :icon="MessagesSquare" title="开始一个新会话" description="可以直接提问，也可以先加入文件。发给模型的只有脱敏后的文字，回复在本机还原。"><el-button type="primary" :loading="working" @click="create">新建会话</el-button></EmptyState>

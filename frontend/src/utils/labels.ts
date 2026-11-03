@@ -229,7 +229,7 @@ export const OUTBOUND_STATUS_TAG: Record<string, TagType> = { sent: 'success', b
 export const LLM_PURPOSE: Dict = { review: '审核', chat: '追问', test: '连接测试', assist: '智能助手' }
 export const llmPurposeLabel = pick(LLM_PURPOSE)
 
-export const ASSISTANT_TEMPLATE: Dict = { translate: '翻译', summary: '摘要', reply: '起草回复', crosscheck: '单证核对', compare: '比价' }
+export const ASSISTANT_TEMPLATE: Dict = { translate: '翻译', summary: '摘要', reply: '起草回复', crosscheck: '单证核对', compare: '比价', minutes: '会议纪要' }
 export const ASSISTANT_STATUS: Dict = { active: '可继续', parsing: '解析中', parse_failed: '解析失败', awaiting_confirm: '待确认', queued: '排队中', streaming: '生成中', done: '已完成', stopped: '已停止', failed: '失败' }
 export const assistantStatusLabel = pick(ASSISTANT_STATUS)
 export const KB_STATUS: Dict = { parsing: '解析中', ready: '可用', failed: '解析失败' }

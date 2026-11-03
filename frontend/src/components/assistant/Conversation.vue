@@ -4,7 +4,7 @@ import { ArrowDown } from '@lucide/vue'
 import type { Message, Template } from '@/api/assistant'
 import MessageItem from './MessageItem.vue'
 import TemplatePicker from './TemplatePicker.vue'
-const props = defineProps<{ messages: Message[]; sessionId: string; template: Template | null }>()
+const props = defineProps<{ messages: Message[]; sessionId: string; template: Template | null; asrEnabled?: boolean }>()
 const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; template: [value: Template | null] }>()
 const area = ref<HTMLElement>()
 // 自动跟随：离底部 80px 以内视为在底部；用户向上滚动即停止跟随，点“回到底部”恢复
@@ -24,7 +24,7 @@ const lastReply = () => [...props.messages].reverse().find(m => m.role === 'assi
   <div class="conversation-wrap">
     <div ref="area" class="conversation" @scroll.passive="onScroll">
       <div class="reading">
-        <template v-if="!messages.length"><p class="empty-hint">加入文件并确认脱敏后提问，或选择一个模板开始</p><TemplatePicker :cards="true" :model-value="template" @update:model-value="emit('template', $event)" /></template>
+        <template v-if="!messages.length"><p class="empty-hint">加入文件并确认脱敏后提问，或选择一个模板开始</p><TemplatePicker :asr-enabled="asrEnabled" :cards="true" :model-value="template" @update:model-value="emit('template', $event)" /></template>
         <MessageItem v-for="message in messages" :key="message.id" :message="message" :session-id="sessionId" :last="message.id === lastReply()" @stop="emit('stop', $event)" @retry="emit('retry', $event)" />
       </div>
     </div>

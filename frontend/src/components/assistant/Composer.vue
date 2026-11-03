@@ -46,12 +46,12 @@ const useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = 
 const preview = ref<ChatPreview | null>(null)
 const decisions = ref<{ decision: '' | 'replace' | 'keep'; category: UserCategory | '' }[]>([])
 const confirmed = computed(() => decisions.value.every(d => d.decision === 'keep' || (d.decision === 'replace' && d.category)))
-const files = computed(() => props.session.files.filter(f => f.confirmed_at))
+const files = computed(() => props.session.files.filter(f => f.confirmed_at && (props.template !== 'minutes' || f.media?.stage === 'done')))
 watch(() => props.session.id, () => { text.value = ''; useHistory.value = false; useKb.value = !!props.session.kb_enabled; fileIds.value = files.value.map(f => f.id) }, { immediate: true })
 watch(() => props.session.kb_enabled, value => { useKb.value = !!value })
 watch(() => files.value.map(f => f.id).join(','), () => { fileIds.value = files.value.map(f => f.id) })
-const limits = computed(() => props.template === 'translate' ? [1, 1] : props.template === 'summary' ? [1, 3] : props.template === 'reply' ? [0, 3] : props.template ? [2, 6] : [0, 10])
-const reason = computed(() => modelLoading.value ? '正在加载模型列表' : modelError.value ? modelError.value : !modelId.value ? '没有可用的助手模型，请联系管理员' : !props.session.can_send ? props.session.send_reason ?? '当前不能发送' : fileIds.value.length < limits.value[0]! || fileIds.value.length > limits.value[1]! ? `请选择 ${limits.value[0]}～${limits.value[1]} 个已确认文件` : !text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length) ? '请输入问题或粘贴来函' : '')
+const limits = computed(() => props.template === 'translate' ? [1, 1] : props.template === 'summary' || props.template === 'minutes' ? [1, 3] : props.template === 'reply' ? [0, 3] : props.template ? [2, 6] : [0, 10])
+const reason = computed(() => modelLoading.value ? '正在加载模型列表' : modelError.value ? modelError.value : !modelId.value ? '没有可用的助手模型，请联系管理员' : !props.session.can_send ? props.session.send_reason ?? '当前不能发送' : fileIds.value.length < limits.value[0]! || fileIds.value.length > limits.value[1]! ? props.template === 'minutes' ? '请选择 1～3 个已确认的录音' : `请选择 ${limits.value[0]}～${limits.value[1]} 个已确认文件` : !text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length) ? '请输入问题或粘贴来函' : '')
 let pending: MessageInput | null = null
 function input(): MessageInput {
   const params: Record<string, unknown> = props.template === 'translate'
@@ -101,7 +101,7 @@ async function send() {
   <div class="composer">
     <p v-if="session.original_deleted" class="hint">原件已按保留期限删除，本会话只能查看</p>
     <template v-else>
-      <div v-if="files.length || template === 'translate' || template === 'summary' || template === 'reply'" class="parameters">
+      <div v-if="files.length || template === 'translate' || template === 'summary' || template === 'reply' || template === 'minutes'" class="parameters">
         <el-select v-model="fileIds" multiple collapse-tags collapse-tags-tooltip placeholder="使用的文件" aria-label="使用的文件"><el-option v-for="file in files" :key="file.id" :label="`文件 ${file.seq}：${file.original_name}`" :value="file.id" /></el-select>
         <el-select v-if="template === 'translate'" v-model="target" aria-label="目标语言"><el-option v-for="option in ['中文','英文','日文','韩文','俄文','西班牙文','法文','德文','阿拉伯文']" :key="option" :label="option" :value="option" /></el-select>
         <el-select v-if="template === 'summary'" v-model="focus" aria-label="侧重点"><el-option v-for="option in ['全部','义务与期限','金额与付款','风险']" :key="option" :label="option" :value="option" /></el-select>
@@ -115,7 +115,7 @@ async function send() {
       </div>
       <div class="options">
         <el-select v-model="modelId" class="model-select" size="small" aria-label="助手模型" placeholder="选择模型" :loading="modelLoading" :disabled="modelLoading || !allowedModels.length || sending || busy || generating !== null"><el-option v-for="model in allowedModels" :key="model.id" :value="model.id" :label="model.display_name" /></el-select>
-        <TemplatePicker :model-value="template" @update:model-value="emit('update:template', $event)" />
+        <TemplatePicker :asr-enabled="session.asr_enabled" :model-value="template" @update:model-value="emit('update:template', $event)" />
         <el-checkbox v-if="session.kb_enabled" v-model="useKb">附带公司知识库</el-checkbox><el-checkbox v-model="useHistory">参考我的历史合同</el-checkbox>
         <span class="keys">Enter 发送，Shift+Enter 换行</span>
       </div>

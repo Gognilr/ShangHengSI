@@ -10,7 +10,7 @@ import { localCheckLabel, SEVERITY_ORDER, SEVERITY_TAG, severityLabel } from '@/
  * 本地校验列表（V31-U3 第二节，审核任务与助手会话共用）：本地计算 · 结果确定 与 无法核验（L-INFO）分两组。
  * loader 只在 loadKey 变化时调用，父级不必保证 loader 是同一个函数。
  */
-const props = defineProps<{ loader: () => Promise<{ items: LocalFinding[] }>; loadKey: string }>()
+const props = defineProps<{ loader: () => Promise<{ items: LocalFinding[] }>; loadKey: string; readonlyLocations?: boolean }>()
 const emit = defineEmits<{
   (e: 'count', count: number | null): void
   (e: 'select', locs: string[]): void
@@ -65,7 +65,7 @@ defineExpose({ reload: load })
             <el-tag :type="SEVERITY_TAG[f.severity] ?? 'info'" size="small" round>{{ severityLabel(f.severity) }}</el-tag>
             <span class="name">{{ localCheckLabel(f.check_code) }}</span>
           </div>
-          <el-button v-if="f.locs.length" link type="primary" class="location" @click="emit('select', [...f.locs])">{{ f.location || '定位' }}</el-button>
+          <el-button v-if="f.locs.length && !readonlyLocations" link type="primary" class="location" @click="emit('select', [...f.locs])">{{ f.location || '定位' }}</el-button>
           <div v-else-if="f.location" class="location plain">{{ f.location }}</div>
           <p class="detail">{{ f.detail }}</p>
         </li>
@@ -76,7 +76,7 @@ defineExpose({ reload: load })
           <ZoneHeader kind="unverified" :count="unverified.length"><el-button link size="small" @click="showUnverified = false">收起</el-button></ZoneHeader>
           <ul class="cards">
             <li v-for="f in unverified" :key="f.id" class="card muted">
-              <el-button v-if="f.locs.length" link type="primary" class="location" @click="emit('select', [...f.locs])">{{ f.location || '定位' }}</el-button>
+              <el-button v-if="f.locs.length && !readonlyLocations" link type="primary" class="location" @click="emit('select', [...f.locs])">{{ f.location || '定位' }}</el-button>
               <div v-else-if="f.location" class="location plain">{{ f.location }}</div>
               <p class="detail">{{ f.detail }}</p>
             </li>
