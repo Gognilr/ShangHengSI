@@ -41,7 +41,11 @@ def pause(progress, deadline):
         if time.monotonic() >= deadline:
             raise TimeoutError
         p = ROOT / 'asr/pause'
-        if not p.exists() or time.time() - p.stat().st_mtime > 600:
+        try:
+            paused = time.time() - p.stat().st_mtime <= 600
+        except FileNotFoundError:
+            paused = False
+        if not paused:
             return
         time.sleep(1)
 
@@ -67,6 +71,10 @@ class Service:
         self.fake, self.engine, self.last_used = fake, None, time.monotonic()
         for sub in ('in', 'work', 'out', 'progress'):
             (ROOT / 'asr' / sub).mkdir(parents=True, exist_ok=True)
+        # 单进程服务重启后不接续半个任务，worker 会从回放副本重新投递。
+        for path in (ROOT / 'asr/work').iterdir():
+            if path.is_dir():
+                shutil.rmtree(path)
 
     def tick(self):
         base = ROOT / 'asr'
@@ -106,7 +114,11 @@ class Service:
                 from inference import Engine
                 if self.engine is None:
                     self.engine = Engine(str(MODELS), int(os.environ.get('ASR_THREADS', '8')))
-                result = self.engine.run(str(wav), speakers, lambda: pause(progress, deadline),
+                def boundary():
+                    if not req.exists():
+                        raise RuntimeError('cancelled')
+                    pause(progress, deadline)
+                result = self.engine.run(str(wav), speakers, boundary,
                                          lambda ms: write(progress, str(ms)))
             if time.monotonic() >= deadline:
                 raise TimeoutError

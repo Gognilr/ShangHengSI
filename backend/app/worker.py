@@ -286,6 +286,8 @@ def _handle_signal(signum: int, _frame: object) -> None:
 
 
 def main() -> None:
+    # worker、converter、transcriber 使用不同 uid、同一 spool 组。
+    os.umask(0o007)
     setup_logging()
     settings = get_settings()
     if "WORKER_CONCURRENCY" in os.environ:

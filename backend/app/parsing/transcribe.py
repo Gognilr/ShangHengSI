@@ -128,7 +128,8 @@ def handle_transcribe(db, payload):
         db.expire_all()
         task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
         file = db.get(TaskFile, file_id)
-        if task is None or file is None or file.original_deleted_at is not None:
+        if (task is None or file is None or file.original_deleted_at is not None
+                or file.confirmed_at is not None or file.parser_version):
             db.rollback()
             return
         save_nodes(db, task, file, result)

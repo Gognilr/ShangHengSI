@@ -19,7 +19,7 @@ from app import worker
 from app.checks.service import run_checks
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import DocNode, Task, TaskFile, TaskClauseVector
+from app.db.models import DocNode, Job, Task, TaskFile, TaskClauseVector
 from app.parsing import docx, image, legacy, pdf, xlsx
 from app.parsing.doctype import detect_doc_type
 from app.parsing.model import MAX_OCR_PAGES_PER_TASK, ParsedFile, ParseError
@@ -192,14 +192,20 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
                 # 只检查旧 PDF 的扫描页数，不重新解析、不运行 OCR、不改旧节点。
                 # 不能按 OCR 节点计页：空白扫描页可能没有节点，却仍消耗页数预算。
                 ocr_used += len(pdf.inspect_pdf(storage.load_original(old.storage_key)).scanned_pages)
-        db.execute(delete(DocNode).where(DocNode.task_id == task.id, DocNode.file_id.in_([f.id for f in files])))
+        db.execute(delete(DocNode).where(DocNode.task_id == task.id,
+                                        DocNode.file_id.in_([f.id for f in files if not f.parser_version])))
         for file in files:
+            if file.parser_version:
+                continue  # worker 重启后保留已完成文件，不覆盖先前的逐字稿。
             current = file.original_name
             if file.ext in filecheck.AUDIO_EXTS:
                 from app.parsing.audio import decode
                 if not file.media_storage_key:
                     decode(db, task, file)
-                jobs.enqueue(db, 'transcribe', {'task_id': str(task.id), 'file_id': str(file.id)})
+                queued = db.scalar(select(Job.id).where(Job.type == 'transcribe',
+                                   Job.payload['file_id'].astext == str(file.id), Job.status.in_(('queued', 'running'))).limit(1))
+                if not queued and (file.media or {}).get('stage') != 'failed':
+                    jobs.enqueue(db, 'transcribe', {'task_id': str(task.id), 'file_id': str(file.id)})
                 db.commit()
             else:
                 ocr_used += _parse_file(db, task, file, ocr_used)

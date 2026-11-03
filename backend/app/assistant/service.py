@@ -462,6 +462,8 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     remaining = _files(db, task)
     if not any(f.confirmed_at is None for f in remaining):
         task.status, task.error_message = "active", None
+    elif all(f.parser_version for f in remaining if f.confirmed_at is None):
+        task.status, task.error_message = 'awaiting_confirm', None
     task.last_activity_at = utcnow()
     result = detail(db, task)
     storage.delete_original(key)
