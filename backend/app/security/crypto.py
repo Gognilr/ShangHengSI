@@ -110,3 +110,78 @@ def encrypt_to_file(path: str | Path, data: bytes, *, key: bytes | None = None) 
 
 def decrypt_file(path: str | Path, *, key: bytes | None = None) -> bytes:
     return decrypt(Path(path).read_bytes(), key=key)
+
+
+# 录音流格式独立于既有整文件格式；随机流标识同时绑定全部块，防止跨文件拼接。
+STREAM_MAGIC = b"SIASR02\x00"
+STREAM_CHUNK = 4 * 1024 * 1024
+
+
+def encrypt_stream(path, chunks, *, key=None):
+    """逐块加密并原子保存；空输入也写一个认证的末块。"""
+    import struct
+    target = Path(path)
+    tmp = target.with_name(target.name + ".tmp")
+    header = STREAM_MAGIC + os.urandom(16)
+    aead = AESGCM(key if key is not None else get_master_key())
+    try:
+        with open(tmp, "wb") as out:
+            os.chmod(tmp, 0o600)
+            out.write(header)
+            index = 0
+            # 不预读下一块：显式空末块使每次只保留一块明文。
+            for chunk in chunks:
+                if not chunk:
+                    continue
+                if len(chunk) > STREAM_CHUNK:
+                    raise ValueError("录音块过大")
+                nonce = os.urandom(NONCE_SIZE)
+                aad = header + struct.pack(">QB", index, 0)
+                blob = aead.encrypt(nonce, chunk, aad)
+                out.write(struct.pack(">IB", len(blob), 0) + nonce + blob)
+                index += 1
+            nonce = os.urandom(NONCE_SIZE)
+            blob = aead.encrypt(nonce, b"", header + struct.pack(">QB", index, 1))
+            out.write(struct.pack(">IB", len(blob), 1) + nonce + blob)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp, target)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def decrypt_stream(path, *, key=None):
+    """迭代解密；调用方须读完才可发布结果，失败须删除已写明文。"""
+    import struct
+    aead = AESGCM(key if key is not None else get_master_key())
+    with open(path, "rb") as src:
+        header = src.read(len(STREAM_MAGIC) + 16)
+        if len(header) != len(STREAM_MAGIC) + 16 or not header.startswith(STREAM_MAGIC):
+            raise DecryptionError("录音密文格式错误")
+        index = 0
+        while True:
+            record = src.read(5)
+            if len(record) != 5:
+                raise DecryptionError("录音密文不完整")
+            size, final = struct.unpack(">IB", record)
+            if final not in (0, 1) or not TAG_SIZE <= size <= STREAM_CHUNK + TAG_SIZE:
+                raise DecryptionError("录音密文格式错误")
+            nonce, blob = src.read(NONCE_SIZE), src.read(size)
+            if len(nonce) != NONCE_SIZE or len(blob) != size:
+                raise DecryptionError("录音密文不完整")
+            try:
+                plain = aead.decrypt(nonce, blob, header + struct.pack(">QB", index, final))
+            except InvalidTag:
+                raise DecryptionError("录音解密失败") from None
+            if final:
+                if plain or src.read(1):
+                    raise DecryptionError("录音密文格式错误")
+                return
+            yield plain
+            index += 1
+
+
+def is_stream(path):
+    with open(path, "rb") as src:
+        return src.read(len(STREAM_MAGIC)) == STREAM_MAGIC

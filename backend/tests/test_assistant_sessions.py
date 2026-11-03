@@ -423,3 +423,70 @@ def test_assistant_parties_allow_zero_and_review_still_requires_one(files_dir, s
     parse(db_sessionmaker, tid)
     response = c.put(API_PREFIX + f"/tasks/{tid}/parties", headers=h, json={"items": []})
     assert response.status_code == 200 and response.json()["items"] == []
+
+
+def test_audio_upload_and_decode(files_dir, session_client, db_sessionmaker, monkeypatch, tmp_path):
+    import threading
+    import time
+    import wave
+    from app.config import get_settings
+    from app.parsing.audio import decode
+    c, h, _ = session_client
+    tid = create(c, h)['id']
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b'\0\0' * 80000)
+    data = buf.getvalue()
+    def put(payload=data):
+        return c.post(f'{BASE}/{tid}/files', headers=h, files=[('files', ('虚构会议.wav', payload))])
+    monkeypatch.delenv('COMPOSE_PROFILES', raising=False)
+    assert put().json()['code'] == 'ASR_DISABLED'
+    monkeypatch.setenv('COMPOSE_PROFILES', 'asr')
+    assert put(b'not audio').status_code == 422
+    result = put()
+    assert result.status_code == 200, result.text
+    fid = result.json()['files'][0]['id']
+    assert result.json()['files'][0]['media']['stage'] == 'decoding'
+    spool = tmp_path / 'spool'
+    spool.mkdir()
+    monkeypatch.setenv('CONVERT_SPOOL_DIR', str(spool))
+    get_settings.cache_clear()
+    # 模拟 converter 协议；真实 ffmpeg 音频转换由 converter 自身用例覆盖。
+    for name in ('in','out'):
+        (spool / name).mkdir()
+    (spool / 'converter.alive').touch()
+    failures = []
+    def converter():
+        try:
+            deadline = time.monotonic() + 5
+            while not list((spool / 'in').glob('*.audio')):
+                assert time.monotonic() < deadline
+                time.sleep(.01)
+            src = next((spool / 'in').glob('*.audio'))
+            assert src.read_bytes() == data
+            token = src.stem
+            (spool / 'out' / f'{token}.wav').write_bytes(data)
+            (spool / 'out' / f'{token}.ogg').write_bytes(b'OggS-fictional')
+            (spool / 'out' / f'{token}.json').write_text('{"duration_ms":5000}')
+            src.unlink()
+        except BaseException as exc:
+            failures.append(exc)
+    thread = threading.Thread(target=converter)
+    thread.start()
+    try:
+        with db_sessionmaker() as db:
+            file = db.get(TaskFile, uuid.UUID(fid))
+            key = file.storage_key
+            pcm = decode(db, db.get(Task, uuid.UUID(tid)), file)
+            assert pcm.read_bytes() == data
+            assert storage.load_original(file.media_storage_key) == b'OggS-fictional'
+            assert not storage._path(key).exists()
+            assert file.original_deleted_at is None
+            assert file.media['stage'] == 'queued'
+    finally:
+        thread.join(6)
+        get_settings.cache_clear()
+    assert not failures

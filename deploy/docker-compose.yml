@@ -22,7 +22,9 @@ x-backend: &backend
     LOCAL_MODELS_FILE: /etc/aireview/models.yaml
     COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
     CONVERT_SPOOL_DIR: /spool
+    TMPDIR: /spool
     TZ: Asia/Shanghai
+    MAX_AUDIO_MB: ${MAX_AUDIO_MB:-500}
     MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-30}
     APP_VERSION: ${APP_VERSION:-dev}
   depends_on:
@@ -69,7 +71,7 @@ services:
       - ../transcriber/models/asr/MANIFEST.sha256:/etc/aireview/model-manifests/asr.sha256:ro
       - files_data:/data/files
       - ./secrets:/run/secrets:ro
-      - convert_spool:/spool:ro
+      - convert_spool:/spool
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 3).close()"]
       interval: 10s
@@ -169,6 +171,7 @@ services:
     restart: unless-stopped
     command: ["/bin/sh", "/etc/caddy/fragments/start.sh"]
     environment:
+      MAX_AUDIO_MB: ${MAX_AUDIO_MB:-500}
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
     ports:
       - "${HTTP_PORT:-80}:80"
@@ -194,4 +197,4 @@ volumes:
     driver_opts:
       type: tmpfs
       device: tmpfs
-      o: size=512m,uid=10001,gid=10001,mode=0770
+      o: size=1g,uid=10001,gid=10001,mode=0770

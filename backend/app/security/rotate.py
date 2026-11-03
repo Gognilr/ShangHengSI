@@ -128,6 +128,22 @@ def rotate_key(engine, files_dir, old_key, new_key, *, batch_size=500):
     _rotate_database(engine, old_key, new_key, batch_size)
     for path, location in originals:
         try:
+            if crypto.is_stream(path):
+                try:
+                    for _ in crypto.decrypt_stream(path, key=new_key):
+                        pass
+                    continue
+                except crypto.DecryptionError:
+                    pass
+                replacement = path.with_name('.rotate-' + path.name)
+                try:
+                    crypto.encrypt_stream(replacement, crypto.decrypt_stream(path, key=old_key), key=new_key)
+                    info = path.stat()
+                    os.chown(replacement, info.st_uid, info.st_gid)
+                    os.replace(replacement, path)
+                finally:
+                    replacement.unlink(missing_ok=True)
+                continue
             changed = _rotate_blob(path.read_bytes(), old_key, new_key, location)
             if changed is not None:
                 _replace_original(path, changed)
@@ -150,7 +166,11 @@ def verify_key(engine, files_dir, key):
         if number >= 20:
             break
         try:
-            crypto.decrypt_file(path, key=key)
+            if crypto.is_stream(path):
+                for _ in crypto.decrypt_stream(path, key=key):
+                    pass
+            else:
+                crypto.decrypt_file(path, key=key)
         except (crypto.DecryptionError, OSError):
             raise RotationError(f"原件抽查失败：{location}") from None
 

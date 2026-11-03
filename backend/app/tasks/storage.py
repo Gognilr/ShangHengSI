@@ -38,3 +38,21 @@ def load_original(storage_key: str) -> bytes:
 def delete_original(storage_key: str) -> None:
     """删除原件文件；文件不存在不报错。"""
     _path(storage_key).unlink(missing_ok=True)
+
+
+def save_audio(source):
+    """录音按块保存，返回随机存储键和原文摘要。"""
+    key = uuid.uuid4().hex
+    Path(get_settings().files_dir).mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    source.seek(0)
+    def chunks():
+        while chunk := source.read(crypto.STREAM_CHUNK):
+            digest.update(chunk)
+            yield chunk
+    crypto.encrypt_stream(_path(key), chunks())
+    return key, digest.hexdigest()
+
+
+def delete_pending_audio(file_id):
+    (Path(get_settings().convert_spool_dir) / 'asr' / 'pending' / f'{file_id.hex}.wav').unlink(missing_ok=True)

@@ -16,6 +16,8 @@
 日志只写 id、kind、耗时和结果代码，不写文件内容。
 """
 import os
+import json
+import math
 import re
 import shutil
 import signal
@@ -36,14 +38,14 @@ STALE_SECONDS = 600  # in/ 与 out/ 中超过 10 分钟的文件（worker 已放
 ALIVE_MAX_AGE = 30  # --check 的心跳期限
 ALIVE = "converter.alive"
 
-NAME_RE = re.compile(r"\A([0-9a-f]{32})\.(doc|xls|rtf)\Z")  # \Z：不接受末尾换行
+NAME_RE = re.compile(r"\A([0-9a-f]{32})\.(doc|xls|rtf|audio)\Z")  # \Z：不接受末尾换行
 # kind → (结果扩展名, LibreOffice 导出过滤器)
 FILTERS = {
     "doc": ("docx", "docx:MS Word 2007 XML"),
     "rtf": ("docx", "docx:MS Word 2007 XML"),
     "xls": ("xlsx", "xlsx:Calc MS Excel 2007 XML"),
 }
-ERROR_CODES = ("TIMEOUT", "FAILED", "NO_OUTPUT", "TOO_LARGE", "BAD_OUTPUT")
+ERROR_CODES = ("TIMEOUT", "FAILED", "NO_OUTPUT", "TOO_LARGE", "BAD_OUTPUT", "TOO_LONG", "NO_AUDIO")
 
 _stop = False
 
@@ -194,6 +196,8 @@ def convert_one(spool: Path, name: str) -> str | None:
     """转换 in/ 中的一个文件，返回结果代码（OK 或错误代码）；文件已被 worker 撤回时返回 None。"""
     m = NAME_RE.match(name)
     file_id, kind = m.group(1), m.group(2)
+    if kind == "audio":
+        return convert_audio(spool, file_id, name)
     ext, filt = FILTERS[kind]
     work = spool / "work" / file_id
     profile = TMP / f"lo-{file_id}"
@@ -229,6 +233,93 @@ def convert_one(spool: Path, name: str) -> str | None:
     finally:
         _remove(work)
         _remove(profile)
+
+
+
+def run_audio_command(cmd, spool, deadline):
+    """音频子进程不输出原文；运行中持续更新心跳。"""
+    with subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL, start_new_session=True) as proc:
+        try:
+            while proc.poll() is None:
+                heartbeat(spool)
+                if _stop or time.monotonic() >= deadline:
+                    _kill_group(proc)
+                    proc.wait()
+                    return "TIMEOUT"
+                time.sleep(0.1)
+            return "OK" if proc.returncode == 0 else "FAILED"
+        finally:
+            _kill_group(proc)
+
+
+def convert_audio(spool, file_id, name):
+    work = spool / 'work' / file_id
+    _remove(work)
+    work.mkdir()
+    src = work / 'src.audio'
+    try:
+        try:
+            os.rename(spool / 'in' / name, src)
+        except FileNotFoundError:
+            return None
+        # probe 输出只写内存盘，日志从不包含媒体元数据。
+        probe = work / 'probe.json'
+        cmd = ['ffprobe', '-v', 'error', '-protocol_whitelist', 'file,pipe',
+               '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', str(src)]
+        with open(probe, 'wb') as out:
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out,
+                                    stderr=subprocess.DEVNULL, start_new_session=True)
+            deadline = time.monotonic() + 120
+            try:
+                while proc.poll() is None:
+                    heartbeat(spool)
+                    if _stop or time.monotonic() >= deadline:
+                        _kill_group(proc)
+                        proc.wait()
+                        raise TimeoutError
+                    time.sleep(0.1)
+                if proc.returncode:
+                    raise ValueError
+            finally:
+                _kill_group(proc)
+        info = json.loads(probe.read_text())
+        if not any(stream.get('codec_type') == 'audio' for stream in info.get('streams', [])):
+            code = 'NO_AUDIO'
+        else:
+            duration = float(info.get('format', {}).get('duration', 0))
+            if not math.isfinite(duration) or duration <= 0:
+                code = 'FAILED'
+            elif duration > 10800:
+                code = 'TOO_LONG'
+            else:
+                deadline = time.monotonic() + duration / 10 + 120
+                base = ['ffmpeg', '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
+                        '-i', str(src), '-map', '0:a:0', '-vn', '-ac', '1', '-ar', '16000',
+                        '-t', '10800']
+                code = run_audio_command(base + ['-c:a', 'pcm_s16le', str(work / 'out.wav')], spool, deadline)
+                if code == 'OK':
+                    code = run_audio_command(base + ['-c:a', 'libopus', '-b:a', '24k', str(work / 'out.ogg')], spool, deadline)
+                if code == 'OK':
+                    # json 是发布完成标志，两个输出已完整可读后才出现。
+                    src.unlink()
+                    for ext in ('wav', 'ogg'):
+                        os.replace(work / f'out.{ext}', spool / 'out' / f'{file_id}.{ext}')
+                    meta = work / 'meta.json'
+                    meta.write_text(json.dumps({'duration_ms': round(duration * 1000)}))
+                    os.replace(meta, spool / 'out' / f'{file_id}.json')
+        if code != 'OK':
+            _publish_error(spool, file_id, code)
+        log(f'id={file_id} kind=audio result={code}')
+        return code
+    except TimeoutError:
+        _publish_error(spool, file_id, 'TIMEOUT')
+        return 'TIMEOUT'
+    except Exception:
+        _publish_error(spool, file_id, 'FAILED')
+        return 'FAILED'
+    finally:
+        _remove(work)
 
 
 def recover(spool: Path) -> None:

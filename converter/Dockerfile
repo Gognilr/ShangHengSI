@@ -13,8 +13,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 锁定版本（Q-143 ④）：从镜像源下架时改用 snapshot.debian.org 的同一版本，不跟随升级。
 # 不装字体（只取文字、不排版）、不装 Java、不装 python3-uno。
 ARG LO_VERSION=4:25.2.3-2+deb13u8
+# Debian trixie 官方包（packages.debian.org/trixie/ffmpeg）。
+ARG FFMPEG_VERSION=7:7.1.5-0+deb13u1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        ffmpeg=${FFMPEG_VERSION} \
         libreoffice-writer-nogui=${LO_VERSION} \
         libreoffice-calc-nogui=${LO_VERSION} \
     && rm -rf /var/lib/apt/lists/*

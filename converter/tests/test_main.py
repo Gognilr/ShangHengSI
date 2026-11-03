@@ -241,6 +241,23 @@ class ProtocolTests(SpoolCase):
             self.assertEqual((self.spool / name).stat().st_mode & 0o777, 0o770)
 
 
+class AudioConversionTests(SpoolCase):
+    def test_generated_five_second_audio(self):
+        import json
+        import wave
+        src = self.tmp / 'tone.wav'
+        subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-f', 'lavfi', '-i',
+                        'sine=frequency=440:duration=5', str(src)], check=True)
+        file_id = self.put('audio', src.read_bytes())
+        self.assertEqual(main.run_once(self.spool), 'OK')
+        meta = json.loads((self.spool / 'out' / f'{file_id}.json').read_text())
+        self.assertEqual(meta['duration_ms'], 5000)
+        with wave.open(str(self.spool / 'out' / f'{file_id}.wav')) as wav:
+            self.assertEqual((wav.getnchannels(), wav.getframerate(), wav.getsampwidth()), (1, 16000, 2))
+        self.assertEqual((self.spool / 'out' / f'{file_id}.ogg').read_bytes()[:4], b'OggS')
+        self.assert_clean(file_id)
+
+
 class HeartbeatTests(SpoolCase):
     def test_each_loop_updates_heartbeat(self):
         alive = self.spool / main.ALIVE

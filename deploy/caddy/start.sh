@@ -13,5 +13,7 @@ if [ -n "$(ls -A /run/site-ca 2>/dev/null)" ]; then
     [ -s /etc/caddy/fragments/public/index.html ] || { echo '错误：缺少证书下载说明页，请按运维说明生成。' >&2; exit 1; }
     CADDY_CA_MODE=custom
 fi
+MAX_AUDIO_BODY_MB=$(( ${MAX_AUDIO_MB:-500} + 20 ))
+export MAX_AUDIO_BODY_MB
 export CADDY_CA_MODE
 exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile

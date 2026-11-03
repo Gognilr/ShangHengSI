@@ -599,6 +599,9 @@ def delete_task(db: DbSession, task: Task, user: User | None, ip: str | None) ->
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)))
     for file in files:
         storage.delete_original(file.storage_key)
+        storage.delete_pending_audio(file.id)
+        if file.media_storage_key:
+            storage.delete_original(file.media_storage_key)
         if file.converted_storage_key:
             storage.delete_original(file.converted_storage_key)
     # 还在排队的 parse / review 任务没有意义了；正在运行的由处理函数发现任务已删除后自行结束

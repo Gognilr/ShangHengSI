@@ -15,6 +15,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    SmallInteger,
     Date,
     ForeignKey,
     Index,
@@ -258,6 +259,7 @@ class Task(Base):
     stance: Mapped[str] = mapped_column(String(10), nullable=False)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     policy: Mapped[str] = mapped_column(String(12), nullable=False)
+    participants_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     user_note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     user_note_redacted: Mapped[Optional[str]] = mapped_column(Text)
     confirm_ops: Mapped[int] = mapped_column(Integer, nullable=False, server_default='0')
@@ -278,7 +280,7 @@ class TaskFile(Base):
     __tablename__ = "task_files"
     __table_args__ = (
         UniqueConstraint("task_id", "seq"),
-        enum_check("ext", ["docx", "pdf", "xlsx", "jpg", "png", "doc", "xls", "wps", "et", "rtf"]),
+        enum_check("ext", ["docx", "pdf", "xlsx", "jpg", "png", "doc", "xls", "wps", "et", "rtf", "mp3", "m4a", "wav", "amr", "aac", "mp4"]),
         enum_check("doc_type", DOC_TYPES),
         enum_check("doc_type_source", ["auto", "user"]),
     )
@@ -292,6 +294,9 @@ class TaskFile(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     sha256: Mapped[str] = mapped_column(CHAR(64), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    media: Mapped[Optional[Any]] = mapped_column(JSONB)
+    media_storage_key: Mapped[Optional[str]] = mapped_column(String(64))
+    speakers_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     converted_storage_key: Mapped[Optional[str]] = mapped_column(String(64))
     doc_type: Mapped[Optional[str]] = mapped_column(String(12))
     doc_type_source: Mapped[Optional[str]] = mapped_column(String(6))
@@ -312,7 +317,7 @@ class DocNode(Base):
         UniqueConstraint("task_id", "loc"),
         enum_check(
             "kind",
-            ["heading", "paragraph", "list_item", "table_cell", "sheet_cell", "ocr_block"],
+            ["heading", "paragraph", "list_item", "table_cell", "sheet_cell", "ocr_block", "utterance"],
         ),
         enum_check("part", ["body", "header", "footer", "comment", "textbox", "hidden_sheet"]),
         Index("ix_doc_nodes_file_id_ord", "file_id", "ord"),
@@ -331,6 +336,10 @@ class DocNode(Base):
     clause_no: Mapped[Optional[str]] = mapped_column(String(32))
     text_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     redacted_text: Mapped[Optional[str]] = mapped_column(Text)
+    t_start_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    t_end_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    speaker: Mapped[Optional[int]] = mapped_column(SmallInteger)
+    low_conf_spans: Mapped[Optional[Any]] = mapped_column(JSONB)
     hidden_spans: Mapped[Optional[Any]] = mapped_column(JSONB)
     formula_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     page: Mapped[Optional[int]] = mapped_column(Integer)
@@ -625,7 +634,7 @@ class AssistantMessage(Base):
     model_label: Mapped[Optional[str]] = mapped_column(String(40))
     __table_args__ = (
         enum_check("role", ["user", "assistant"]),
-        enum_check("template", ["translate", "summary", "reply", "crosscheck", "compare"]),
+        enum_check("template", ["translate", "summary", "reply", "crosscheck", "compare", "minutes"]),
         enum_check("status", ["queued", "streaming", "done", "failed", "stopped"]),
         CheckConstraint("role <> 'user' OR status = 'done'", name="user_done"),
         Index("ix_assistant_messages_task_id_id", "task_id", "id"),
@@ -725,7 +734,7 @@ class LlmCall(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist", "kb_import"]),
+        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist", "kb_import", "transcribe"]),
         enum_check("status", ["queued", "running", "done", "failed"]),
         Index("ix_jobs_status_run_after", "status", "run_after"),
     )

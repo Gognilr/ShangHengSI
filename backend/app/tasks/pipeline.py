@@ -26,7 +26,7 @@ from app.parsing.model import MAX_OCR_PAGES_PER_TASK, ParsedFile, ParseError
 from app.redaction.engine import redact_task
 from app.redaction import stats
 from app.security import crypto
-from app.tasks import storage
+from app.tasks import storage, filecheck
 from app.worker import job_handler
 
 logger = logging.getLogger("app.tasks.pipeline")
@@ -195,7 +195,15 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
         db.execute(delete(DocNode).where(DocNode.task_id == task.id, DocNode.file_id.in_([f.id for f in files])))
         for file in files:
             current = file.original_name
-            ocr_used += _parse_file(db, task, file, ocr_used)
+            if file.ext in filecheck.AUDIO_EXTS:
+                from app.parsing.audio import decode
+                if not file.media_storage_key:
+                    decode(db, task, file)
+            else:
+                ocr_used += _parse_file(db, task, file, ocr_used)
+        if any(f.media and f.media.get('stage') != 'done' for f in files + old_files):
+            db.commit()
+            return  # M-04 接手 queued PCM 后才可进入确认脱敏。
         current = None
         from app.checks.service import run_table_checks
         run_table_checks(db, task)
@@ -204,6 +212,10 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
         db.commit()
     except ParseError as exc:
         db.rollback()
+        for file in files:
+            if file.ext in filecheck.AUDIO_EXTS and file.original_name == current:
+                file.media = {**(file.media or {}), 'stage': 'failed', 'error': 'decode_failed'}
+                file.parse_error = str(exc)
         _fail(db, task_id, current, str(exc))
         logger.info("task %s 解析失败", task_id)
     except Exception:

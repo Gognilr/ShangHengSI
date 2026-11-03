@@ -16,6 +16,7 @@ class SessionPatch(BaseModel):
 
 
 class SessionFile(TaskFileOut):
+    media: dict | None = None
     confirmed_at: UtcDatetime | None
 
 

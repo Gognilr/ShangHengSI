@@ -104,7 +104,10 @@ def assert_rotated(data):
 def test_v2c07_rotate_all_and_verify(rotation, capsys, caplog):
     from app.security import rotate
     d = rotation
+    audio = d['files'] / ('f' * 32)
+    crypto.encrypt_stream(audio, [b'fictional-audio'], key=d['old'])
     rotate.rotate_key(d["engine"], d["files"], d["old"], d["new"])
+    assert list(crypto.decrypt_stream(audio, key=d['new'])) == [b'fictional-audio']
     assert_rotated(d)
     rotate.verify_key(d["engine"], d["files"], d["new"])
     with pytest.raises(rotate.RotationError):

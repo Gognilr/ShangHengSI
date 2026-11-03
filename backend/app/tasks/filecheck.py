@@ -127,3 +127,18 @@ def check_rtf(f: BinaryIO, name: str) -> None:
     f.seek(0)
     if f.read(len(RTF_MAGIC)) != RTF_MAGIC:
         raise _mismatch(name)
+
+
+AUDIO_EXTS = frozenset(('mp3', 'm4a', 'wav', 'amr', 'aac', 'mp4'))
+
+
+def check_audio(head, ext, name):
+    ok = {
+        'mp3': head.startswith(b'ID3') or (len(head) >= 2 and head[0] == 255 and head[1] & 224 == 224),
+        'wav': head.startswith(b'RIFF') and head[8:12] == b'WAVE',
+        'm4a': head[4:8] == b'ftyp', 'mp4': head[4:8] == b'ftyp',
+        'amr': head.startswith(b'#!AMR'),
+        'aac': head[:2] in (b'\xff\xf1', b'\xff\xf9'),
+    }[ext]
+    if not ok:
+        raise _mismatch(name)

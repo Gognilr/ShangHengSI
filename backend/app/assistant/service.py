@@ -7,7 +7,7 @@ from app.admin.settings_store import get_setting
 from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, LlmModel, Party, RedactionMap, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
+from app.db.models import Job, AssistantMessage, LlmModel, Party, RedactionMap, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
 from app.llm import gateway, usage
 from app.models_api import select_model
 from app.redaction import engine
@@ -15,7 +15,7 @@ from app.redaction.placeholders import NEUTRAL
 from app.redaction.restore import check
 from app.review.service import MarkOut
 from app.security.errors import AppError, NotFoundError
-from app.tasks import service as tasks, storage
+from app.tasks import service as tasks, storage, filecheck
 from app.assistant.schemas import SessionDetail, SessionFile, SessionItem, SessionPage, SessionPatch
 
 
@@ -58,12 +58,23 @@ def detail(db: Session, task: Task) -> SessionDetail:
     # 复用节点和表格统计的既有序列化，不改变审核接口的响应形状。
     preview = tasks.task_detail(db, task)
     confirmed = {f.id: f.confirmed_at for f in files}
+    media = {}
+    for file in files:
+        if file.media is None:
+            media[file.id] = None
+            continue
+        job_id = db.scalar(select(Job.id).where(Job.type == 'transcribe',
+                           Job.payload['file_id'].astext == str(file.id), Job.status.in_(('queued', 'running')))
+                           .order_by(Job.id.desc()).limit(1))
+        ahead = db.scalar(select(func.count()).select_from(Job).where(Job.type == 'transcribe',
+                          Job.status.in_(('queued', 'running')), Job.id < job_id)) if job_id else 0
+        media[file.id] = {**file.media, 'queue_position': ahead}
     reason = availability(db, task)
     generating = bool(db.scalar(select(exists().where(AssistantMessage.task_id == task.id,
                        AssistantMessage.role == 'assistant', AssistantMessage.status.in_(('queued', 'streaming'))))))
     return SessionDetail(**_item(task, files, generating=generating).model_dump(), stance=task.stance, source=task.source, policy=task.policy,
                          error_message=task.error_message, created_at=task.created_at,
-                         files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id]) for f in preview.files],
+                         files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id], media=media[f.id]) for f in preview.files],
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')))
 
@@ -371,19 +382,42 @@ def add_files(db: Session, task: Task, raw: list) -> SessionDetail:
     files = _files(db, task)
     if len(files) + len(raw) > tasks.MAX_FILES or len(raw) > 5:
         raise AppError(422, "TOO_MANY_FILES", "每次最多加入 5 个文件，会话合计最多 10 个文件")
-    uploads = tasks.check_uploads(raw, 0, get_settings().max_upload_mb * 1024 * 1024)
+    import os
+    audio_count, uploads = 0, []
+    if not raw:
+        raise AppError(422, 'NO_FILES', '请至少选择一个文件')
+    for name, source in raw:
+        cleaned = tasks.clean_filename(name)
+        ext = cleaned.rsplit('.', 1)[-1].lower()
+        if ext not in filecheck.AUDIO_EXTS:
+            uploads.append(tasks.inspect_upload(name, source, get_settings().max_upload_mb * 1024 * 1024))
+            continue
+        if 'asr' not in os.environ.get('COMPOSE_PROFILES', '').split(','):
+            raise AppError(422, 'ASR_DISABLED', '录音转写未启用，请联系管理员')
+        audio_count += 1
+        if audio_count > 1:
+            raise AppError(422, 'TOO_MANY_AUDIO', '一次最多加入 1 个录音')
+        source.seek(0, 2)
+        size = source.tell()
+        if size > get_settings().max_audio_mb * 1024 * 1024:
+            raise AppError(422, 'FILE_TOO_LARGE', '录音超过大小限制')
+        source.seek(0)
+        filecheck.check_audio(source.read(12), ext, cleaned)
+        source.seek(0)
+        uploads.append(tasks.CheckedUpload(name=cleaned, ext=ext, size=size, file=source))
     saved = []
     try:
         rows = []
         # 只允许移除未确认文件；已发送文件仍在会话中，其位置序号保持不变。
         seq = max([f.seq for f in files] + [0])
         for up in uploads:
-            data = up.file.read()
-            key, digest = storage.save_original(data)
+            audio = up.ext in filecheck.AUDIO_EXTS
+            key, digest = storage.save_audio(up.file) if audio else storage.save_original(up.file.read())
             saved.append(key)
             seq += 1
             row = TaskFile(task_id=task.id, seq=seq, is_main=not files and not rows, original_name=up.name,
-                           ext=up.ext, size_bytes=len(data), sha256=digest, storage_key=key)
+                           ext=up.ext, size_bytes=up.size, sha256=digest, storage_key=key,
+                           media={"stage": "decoding", "progress": 0, "error": None} if audio else None)
             db.add(row)
             rows.append(row)
         db.flush()
@@ -414,6 +448,7 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     for model in (RedactionItem, RedactionSuspect, RedactionExclusion):
         db.execute(delete(model).where(model.task_id == task.id, model.loc.like(prefix)))
     key = file.storage_key
+    media_key = file.media_storage_key
     db.delete(file)
     db.flush()
     engine.apply_party_changes(db, task, [])
@@ -425,5 +460,8 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     task.last_activity_at = utcnow()
     result = detail(db, task)
     storage.delete_original(key)
+    storage.delete_pending_audio(file.id)
+    if media_key:
+        storage.delete_original(media_key)
     db.commit()
     return result

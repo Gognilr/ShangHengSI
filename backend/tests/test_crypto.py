@@ -236,3 +236,22 @@ def test_gen_key_produces_different_keys(tmp_path):
     cli.main(["gen-key", "--out", str(a)])
     cli.main(["gen-key", "--out", str(b)])
     assert a.read_bytes() != b.read_bytes()
+
+
+def test_audio_stream_authentication(tmp_path):
+    from app.security import crypto
+    import os
+    key = os.urandom(32)
+    path = tmp_path / 'audio'
+    chunks = [b'a' * crypto.STREAM_CHUNK, b'final']
+    crypto.encrypt_stream(path, iter(chunks), key=key)
+    assert list(crypto.decrypt_stream(path, key=key)) == chunks
+    original = path.read_bytes()
+    damaged = bytearray(original)
+    damaged[100] ^= 1
+    path.write_bytes(damaged)
+    with pytest.raises(crypto.DecryptionError):
+        list(crypto.decrypt_stream(path, key=key))
+    path.write_bytes(original[:-33])
+    with pytest.raises(crypto.DecryptionError):
+        list(crypto.decrypt_stream(path, key=key))

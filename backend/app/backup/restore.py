@@ -265,17 +265,20 @@ def prepare(tar_path: str | Path, work_dir: str | Path) -> dict:
                 raise RestoreError("备份来自更新的系统版本，请先升级到不低于备份时的版本再恢复")
 
             key_checked = False
-            if file_ms:
-                blob = tar.extractfile(file_ms[0]).read()
-                try:
-                    crypto.decrypt(blob)
-                except crypto.DecryptionError:
-                    raise RestoreError("当前主密钥与备份不匹配，恢复需要备份时使用的主密钥") from None
-                key_checked = True
-
             new_dir.mkdir(mode=0o700)
             for m in file_ms:
-                _copy_member(tar, m, new_dir / m.name.split("/", 1)[1])
+                target = new_dir / m.name.split("/", 1)[1]
+                _copy_member(tar, m, target)
+                if not key_checked:
+                    try:
+                        if crypto.is_stream(target):
+                            for _ in crypto.decrypt_stream(target):
+                                pass
+                        else:
+                            crypto.decrypt_file(target)
+                    except crypto.DecryptionError:
+                        raise RestoreError("当前主密钥与备份不匹配，恢复需要备份时使用的主密钥") from None
+                    key_checked = True
             _fsync_dir(new_dir)
     except BaseException:
         shutil.rmtree(new_dir, ignore_errors=True)
@@ -452,7 +455,8 @@ def verify(expect_files: int) -> dict:
     files_dir = _files_dir()
     present = set(_original_names(files_dir))
     with get_sessionmaker()() as db:
-        keys = db.scalars(select(TaskFile.storage_key).where(TaskFile.original_deleted_at.is_(None))).all()
+        rows = db.execute(select(TaskFile.storage_key, TaskFile.media_storage_key).where(TaskFile.original_deleted_at.is_(None))).all()
+        keys = [media or original for original, media in rows]
     missing = sum(1 for k in keys if k not in present)
     result = {"files": len(present), "expected": expect_files, "records": len(keys), "missing": missing,
               "ok": len(present) == expect_files and missing == 0}
