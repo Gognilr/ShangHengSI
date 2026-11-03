@@ -8,11 +8,12 @@ import ResultSummary from '@/components/ResultSummary.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import DocPreview from '@/components/DocPreview.vue'
 import FindingCard from '@/components/FindingCard.vue'
-import LocalFindings from '@/components/LocalFindings.vue'
+import LocalCheckList from '@/components/result/LocalCheckList.vue'
 import ReRunDialog from '@/components/ReRunDialog.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import { ApiError } from '@/api/http'
+import { localFindingsApi } from '@/api/localFindings'
 import { reportApi } from '@/api/report'
 import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
 import { tasksApi, type TaskDetail } from '@/api/tasks'
@@ -33,6 +34,8 @@ const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const task = ref<TaskDetail | null>(null)
+// 本地校验列表的加载函数（只在 task.id 变化时由 LocalCheckList 调用）
+const loadLocal = () => localFindingsApi.list(task.value!.id)
 const expiryWarnings = computed(() => {
   const current = task.value
   if (!current) return []
@@ -292,7 +295,7 @@ const reqVersion = computed(() => {
     <div :ref="bindSplit" class="split">
       <div class="left" :style="{ flexBasis: `${leftWidth}px` }">
         <ResultSummary v-if="task.status === 'completed_local'" :run="null" local :counts="[]" :severity="fSeverity" />
-        <section v-if="task.status === 'completed_local'" class="panel gap"><h2 class="local-title">本地校验结果</h2><LocalFindings :task-id="task.id" @select="onLocalSelect" /></section>
+        <section v-if="task.status === 'completed_local'" class="panel gap"><h2 class="local-title">本地校验结果</h2><LocalCheckList :loader="loadLocal" :load-key="task.id" @select="onLocalSelect" /></section>
 
         <el-alert v-if="runError" type="error" show-icon :closable="false" :title="runError" class="gap" />
         <div v-loading="runLoading" class="run-content">
@@ -345,7 +348,7 @@ const reqVersion = computed(() => {
             </el-tab-pane>
 
             <el-tab-pane label="本地校验" name="local" lazy>
-              <LocalFindings :task-id="task.id" @select="onLocalSelect" />
+              <LocalCheckList :loader="loadLocal" :load-key="task.id" @select="onLocalSelect" />
             </el-tab-pane>
             <el-tab-pane label="审核要求逐条结论" name="requirements">
               <el-table :data="run.requirement_results" size="small">

@@ -16,7 +16,7 @@ import {
 } from '@/api/redaction'
 import { RUN_ERROR_MESSAGES, runsApi } from '@/api/runs'
 import { MAX_FILES, TASK_ERROR_MESSAGES, checkFiles, tasksApi, type TaskDetail, type TaskFile } from '@/api/tasks'
-import LocalFindings from '@/components/LocalFindings.vue'
+import LocalCheckList from '@/components/result/LocalCheckList.vue'
 import ConfirmCanvas from '@/components/ConfirmCanvas.vue'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
@@ -57,6 +57,7 @@ const outboundLoading = ref(false)
 const outboundError = ref('')
 const blockedReason = ref('')
 const localCount = ref<number | null>(null)
+const loadLocal = () => localFindingsApi.list(props.task.id)
 const loading = ref(true)
 const loadError = ref('')
 const deciding = ref(false)
@@ -558,7 +559,7 @@ useHotkeys({
     </aside>
 
     <RequirementsDrawer v-model="reqDrawer" :stance="task.stance" :source="task.source" :doc-type="mainDocType" :user-note="task.user_note" />
-    <el-drawer v-model="localDrawer" title="本地校验结果" size="560px" append-to-body><LocalFindings :task-id="task.id" @count="localCount = $event" /></el-drawer>
+    <el-drawer v-model="localDrawer" title="本地校验结果" size="560px" append-to-body><LocalCheckList :loader="loadLocal" :load-key="task.id" @count="localCount = $event" /></el-drawer>
     <el-drawer v-model="outboundDrawer" title="将发送的全文" size="640px" append-to-body>
       <p v-if="outboundNote" class="hint">{{ outboundNote }}</p>
       <pre class="outbound">{{ outboundText }}</pre>
