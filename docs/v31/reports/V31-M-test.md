@@ -12,10 +12,12 @@
 
 V31Q-75 记录清单格式、重型校验口径、缓存与冒烟入口。用户已同意仅下载官方许可证小文本，八项 LICENSE 已齐，标点底座另附 LERT-LICENSE。bge-m3、GLiNER 等固定权重仓库未提供独立 LICENSE，采用对应官方项目原文，来源区别、下载日期、SHA-256 与 NOTICE 404 记录见 deploy/licenses/models/README.md、SOURCES.json；未自行补写版权行。M-02 已完成。此次收尾只修改许可正文与文档，不重复运行已通过的代码测试。
 
-## M-03 录音上传、加密保存与解码（2026-11-03，待真实解码验证）
+## M-03 录音上传、加密保存与解码（2026-11-03，已完成）
 
 已实现迁移 0034（含 M-04～06 所需字段）、助手专用六类录音检查、默认 500 MB / 单次 1 个限制、asr 未启用拒绝、4 MiB AES-GCM 流式保存、converter 音轨解码协议、加密回放副本与原件删除。会话返回 media，解码成功先停在 queued / parsing，转写任务由 M-04 接入。保留期、任务/文件删除、备份恢复核对与主密钥更换已适配；回放副本按原件层处理。V31Q-76 记表名、上传内存盘、PCM 交接与删除标记口径。
 
 Docker Python 3.12 + aireview-db:dev：crypto / migrations / assistant_sessions / retention 首轮 71 通过、1 失败（新增测试误用 error.code，当前统一响应为 code，已修正）；随后录音代表流程、rotate_key / backup_restore / upload_checks / legacy 164 通过。代表流程使用虚构 5 秒 WAV 和模拟 converter JSON，验证未启用拒绝、坏文件头拒绝、上传分块加密、PCM、加密回放和原件删除。分块用例验证篡改与截断拒绝。旧 converter 镜像挂载当前代码，协议、心跳与真实 LibreOffice 回归 21 通过。最终新增录音流程与分块密文轮换复核 2 通过，重复轮换跳过已完成流密文。compose config --quiet 通过。
 
-真实 ffmpeg 用例已写（lavfi sine 生成 5 秒 WAV → 16 kHz 单声道 PCM + Opus），尚未执行：需用户同意下载 Debian ffmpeg 与依赖后构建 converter 镜像。Dockerfile 按 Debian trixie 官方包锁定 7:7.1.5-0+deb13u1，来源：https://packages.debian.org/trixie/amd64/ffmpeg 。不以模拟协议代表真实音频解码通过。未跑全量、未调用真实模型、未连接正式服务器；M-03 暂不标完成、不进入 M-04。
+用户已同意下载 Debian ffmpeg 与依赖，`aireview-converter:m03` 构建成功（ffmpeg 锁定 `7:7.1.5-0+deb13u1`；来源：[Debian 官方包](https://packages.debian.org/trixie/amd64/ffmpeg)）。新镜像在断网、只读、非 root、去能力条件下运行 converter 全部用例，22 通过（16.606 秒）。新增真实用例用 lavfi sine 生成 5 秒 WAV，验证解码结果时长 5000 ms、PCM 为 16 kHz / 单声道 / 16 位、回放副本为 Ogg Opus、输入和工作目录已清理；旧格式转换回归通过。上传、数据库与加密保存由前述模拟协议用例验证；本次不声称已走通 M-04 的真实转写或整套会议纪要流程。
+
+运维说明已补齐 ffmpeg 版本、镜像内许可路径、Debian 源码来源、1 GiB 内存盘与录音保留方式。未跑整仓全量、未调用真实模型、未连接正式服务器；本次测试容器使用 --rm，退出后已移除。M-03 已完成，下一任务 V31-M-04（GPT-6.1 Sol，high）。
