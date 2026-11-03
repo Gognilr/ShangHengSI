@@ -1,6 +1,6 @@
 # V3.1 待确认问题
 
-编号 **V31Q-01 起**，按出现顺序递增，不复用。下一个编号：**V31Q-81**。
+编号 **V31Q-01 起**，按出现顺序递增，不复用。下一个编号：**V31Q-82**。
 
 V3.1 的依据性决定已在 docs/v3/open\_questions.md 记录：V3Q-26（不确定项默认替换、人工可选）、V3Q-27（V3.1 单独发版与第一阶段范围）、V3Q-28（光幕视觉方向）、V3Q-29（V3.0 不单独发布，原 V3-Z 并入 V31-Z）。
 
@@ -14,6 +14,7 @@ V3.1 的依据性决定已在 docs/v3/open\_questions.md 记录：V3Q-26（不�
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V31Q-81 | V31-U3 与 V31-U4 能否合并规划 | 按建议（用户 2026-11-03 确认）：只合并细化。V31-U3-00 一次写 design/V31-U3.md 与 V31-U4.md，第〇节共用（本地计算 / AI 建议分区、本机计算结果、本地校验卡片等共用组件在 U3 做好、U4 复用），一次确认；删除 V31-U4-00。实现、集中测试与审核仍按 U3 → U4 串行分批，全站设计评审在 U4 最后。改变 V31Q-01“每批各自 -00”的写法，串行不变 | 2026-11-03 |
 | V31Q-80 | 录音的内存盘 /spool（1 GiB）在多个长录音同时排队时可能写满（每个等待转写的 3 小时 PCM 约 346 MB，解码中的一个约 0.9 GB，上传缓冲也在 /spool） | 按建议（用户 2026-11-03 确认）：convert\_spool 提到 **2 GiB**（tmpfs 只占实际写入的内存）；已改 compose、SPEC 20.2 与运维说明；V31-Z 演练时记一次峰值 | 2026-11-03 |
 | V31Q-74 | V31-M-01 是否还要录音实测与测试虚拟机繁忙场景实测 | 用户 2026-11-03 决定：**不再单独实测**，开发机初测已证明可行；服务器配置优于开发机。转写可以排队等待，不要求实时，**1 小时会议在 1 小时内处理完即满足需求**（实时率 ≤ 1，取代 design/V31-M.md 1.4 第 1 条的 ≤ 0.5）。字错率、INT8 与 FP32 对照、脱敏召回、发言人归属错误、低置信阈值标定、繁忙场景对主线的影响，并入 V31-Z 的真实业务场景测试，有问题再解决。选型按首选定为 FireRedVAD + FireRedASR2-AED INT8 + FireRedPunc INT8 + pyannote segmentation-3.0 + 3D-Speaker CAM++（reports/V31-M-01.md） | 2026-11-03 |
 | V31Q-73 | 转写候选与下载（V31-M-01，design/V31-M.md 1.1；V31Q-06 下载前确认） | 按建议（用户 2026-11-03 确认）：淘汰 SenseVoice-Small 与 Paraformer：FunASR 模型协议 1.1 写“仅作为参考和学习使用”、修订版自动生效、“诋毁”即终止授权，属可撤销许可（同 V31Q-11 MiSans）。转写备选改为同系的 FireRedASR2-CTC（Apache-2.0）。同意下载 A 组（sherpa-onnx 转换的 FireRedASR2-AED / CTC INT8、FireRedVAD 官方 ONNX、silero-vad、pyannote segmentation-3.0、3D-Speaker CAM++ 与 ERes2NetV2、sherpa-onnx 2.0.1 与 kaldi-native-fbank）与 B 组（FireRedPunc 与 chinese-lert-base 权重用于导出 ONNX；FireRedASR2-AED 原始权重仅用于 FP32 字错率对照；均在仓库外一次性 torch 容器处理，镜像不装 torch） | 2026-11-03 |
