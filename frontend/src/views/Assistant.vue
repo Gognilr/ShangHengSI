@@ -10,6 +10,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import Conversation from '@/components/assistant/Conversation.vue'
 import Composer from '@/components/assistant/Composer.vue'
 import FilePanel from '@/components/assistant/FilePanel.vue'
+import { needsUpload } from '@/utils/assistantTemplates'
 const route = useRoute(), router = useRouter(), sessions = useSessionsStore()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), template = ref<Template | null>(null)
@@ -112,6 +113,12 @@ const generating = computed(() => messages.value.find(m => m.role === 'assistant
 // 在侧栏改名后同步标题
 watch(() => sessions.items.find(item => item.id === id.value)?.title, title => { if (title && session.value) session.value.title = title })
 watch(id, load, { immediate: true })
+// 选了模板而会话里没有可用文件时，直接打开文件选择框（会议纪要只收录音），不让用户自己去右栏找（V31Q-92）
+const filePanel = ref<InstanceType<typeof FilePanel>>()
+function chooseTemplate(value: Template | null) {
+  template.value = value
+  if (session.value && needsUpload(session.value, value)) void filePanel.value?.pick(value === 'minutes' ? 'audio' : 'doc')
+}
 function visibility() { if (document.hidden) clearTimeout(timer); else void poll() }
 onMounted(() => document.addEventListener('visibilitychange', visibility))
 onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); active = false; ++version; clearTimeout(timer); offsets.clear() })
@@ -122,12 +129,12 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
       <el-alert v-if="error" type="error" :closable="false" :title="error" />
       <template v-if="session">
         <div class="toolbar"><el-button class="title" link @click="rename">{{ session.title }}</el-button><el-button link type="danger" :disabled="working" @click="remove(session)">删除会话</el-button></div>
-        <Conversation :asr-enabled="session.asr_enabled" :messages="messages" :session-id="id" :template="template" @template="template = $event" @stop="stop" @retry="retry" />
-        <Composer :key="id" v-model:template="template" :session="session" :generating="generating" @sent="refresh" @stop="stop" />
+        <Conversation :asr-enabled="session.asr_enabled" :messages="messages" :session-id="id" :template="template" @template="chooseTemplate" @stop="stop" @retry="retry" />
+        <Composer :key="id" :template="template" :session="session" :generating="generating" @update:template="chooseTemplate" @sent="refresh" @stop="stop" @add="filePanel?.pick($event)" @confirm="filePanel?.openConfirm()" />
       </template>
       <EmptyState v-else-if="!loading" class="empty" :icon="MessagesSquare" title="开始一个新会话" description="可以直接提问，也可以先加入文件。发给模型的只有脱敏后的文字，回复在本机还原。"><el-button type="primary" :loading="working" @click="create">新建会话</el-button></EmptyState>
     </main>
-    <FilePanel v-if="session" :key="id" class="file-sidebar" :session="session" @refresh="refresh" />
+    <FilePanel v-if="session" ref="filePanel" :key="id" class="file-sidebar" :session="session" @refresh="refresh" />
   </div>
 </template>
 <style scoped>

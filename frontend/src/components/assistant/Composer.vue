@@ -9,8 +9,9 @@ import type { UserCategory } from '@/api/redaction'
 import { ApiError } from '@/api/http'
 import { USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 import TemplatePicker from './TemplatePicker.vue'
+import { TEMPLATE_LIMITS, needsUpload, usableFiles } from '@/utils/assistantTemplates'
 const props = defineProps<{ session: Session; template: Template | null; generating: number | null }>()
-const emit = defineEmits<{ 'update:template': [value: Template | null]; sent: []; stop: [mid: number] }>()
+const emit = defineEmits<{ 'update:template': [value: Template | null]; sent: []; stop: [mid: number]; add: [kind: 'doc' | 'audio']; confirm: [] }>()
 const modelItems = ref<AvailableModel[]>([])
 const modelId = ref<number>()
 const modelError = ref('')
@@ -46,11 +47,13 @@ const useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = 
 const preview = ref<ChatPreview | null>(null)
 const decisions = ref<{ decision: '' | 'replace' | 'keep'; category: UserCategory | '' }[]>([])
 const confirmed = computed(() => decisions.value.every(d => d.decision === 'keep' || (d.decision === 'replace' && d.category)))
-const files = computed(() => props.session.files.filter(f => f.confirmed_at && (props.template !== 'minutes' || f.media?.stage === 'done')))
+const files = computed(() => usableFiles(props.session, props.template))
+// 原因旁的下一步：待确认时直接确认脱敏，文件不够时直接加入文件（V31Q-92）
+const nextStep = computed(() => props.session.status === 'awaiting_confirm' ? 'confirm' : needsUpload(props.session, props.template) ? (props.template === 'minutes' ? 'audio' : 'doc') : null)
 watch(() => props.session.id, () => { text.value = ''; useHistory.value = false; useKb.value = !!props.session.kb_enabled; fileIds.value = files.value.map(f => f.id) }, { immediate: true })
 watch(() => props.session.kb_enabled, value => { useKb.value = !!value })
 watch(() => files.value.map(f => f.id).join(','), () => { fileIds.value = files.value.map(f => f.id) })
-const limits = computed(() => props.template === 'translate' ? [1, 1] : props.template === 'summary' || props.template === 'minutes' ? [1, 3] : props.template === 'reply' ? [0, 3] : props.template ? [2, 6] : [0, 10])
+const limits = computed(() => props.template ? TEMPLATE_LIMITS[props.template] : [0, 10])
 const reason = computed(() => modelLoading.value ? '正在加载模型列表' : modelError.value ? modelError.value : !modelId.value ? '没有可用的助手模型，请联系管理员' : !props.session.can_send ? props.session.send_reason ?? '当前不能发送' : fileIds.value.length < limits.value[0]! || fileIds.value.length > limits.value[1]! ? props.template === 'minutes' ? '请选择 1～3 个已确认的录音' : limits.value[0] === limits.value[1] ? `请选择 ${limits.value[0]} 个已确认文件` : `请选择 ${limits.value[0]}～${limits.value[1]} 个已确认文件` : !text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length) ? '请输入问题或粘贴来函' : '')
 let pending: MessageInput | null = null
 function input(): MessageInput {
@@ -119,7 +122,7 @@ async function send() {
         <el-checkbox v-if="session.kb_enabled" v-model="useKb">附带公司知识库</el-checkbox><el-checkbox v-model="useHistory">参考我的历史合同</el-checkbox>
         <span class="keys">Enter 发送，Shift+Enter 换行</span>
       </div>
-      <p v-if="reason && (text.trim() || template || !session.can_send)" class="hint">{{ reason }}</p><el-alert v-if="error && !open" :title="error" type="error" :closable="false" />
+      <div v-if="reason && (text.trim() || template || !session.can_send)" class="reason"><p class="hint">{{ reason }}</p><el-button v-if="nextStep === 'confirm'" size="small" type="primary" @click="emit('confirm')">确认脱敏</el-button><el-button v-else-if="nextStep" size="small" type="primary" @click="emit('add', nextStep)">{{ nextStep === 'audio' ? '加入录音' : '加入文件' }}</el-button></div><el-alert v-if="error && !open" :title="error" type="error" :closable="false" />
     </template>
     <el-dialog v-model="open" title="确认发送内容" width="640px" :close-on-click-modal="false" :close-on-press-escape="!sending" :show-close="!sending" append-to-body>
       <p class="hint">发给模型的只有脱敏后的文字，请核对后发送。</p><pre>{{ preview?.redacted }}</pre>
@@ -137,6 +140,8 @@ async function send() {
 .composer { padding: 12px 24px 16px; border-top: 1px solid var(--el-border-color-light); background: var(--el-bg-color); }
 .composer > * { max-width: 760px; margin-left: auto; margin-right: auto; }
 .parameters { display: flex; gap: 8px; margin-bottom: 8px; }
+.reason { display: flex; align-items: center; gap: 12px; }
+.reason .hint { margin: 8px 0; }
 .parameters :deep(.el-select) { min-width: 0; flex: 1; }
 .input-box { position: relative; }
 .input-box :deep(.el-textarea__inner) { padding: 10px 52px 10px 12px; font: var(--si-font-body); resize: none; }

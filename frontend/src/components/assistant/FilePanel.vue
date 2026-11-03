@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, ref, onBeforeUnmount, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { assistantApi, confirmationTask, type Session, type SessionFile } from '@/api/assistant'
 import { saveBlob } from '@/utils/save'
@@ -22,7 +22,12 @@ const transcriptFile = ref<SessionFile | null>(null)
 const currentTranscript = computed(() => props.session.files.find(f => f.id === transcriptFile.value?.id) ?? transcriptFile.value)
 const uploadProgress = ref<number | null>(null), localOpen = ref(false), findings = ref<LocalFinding[]>([])
 const audioExts = ['mp3','m4a','wav','amr','aac','mp4']
-const accept = computed(() => '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png' + (props.session.asr_enabled ? ',.mp3,.m4a,.wav,.amr,.aac,.mp4' : ''))
+const docAccept = '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png', audioAccept = '.mp3,.m4a,.wav,.amr,.aac,.mp4'
+const accept = computed(() => docAccept + (props.session.asr_enabled ? ',' + audioAccept : ''))
+// 从模板卡片或输入区“加入录音”打开时只收录音
+const pickAccept = ref('')
+// 本页加入的文件解析 / 转写完成后，直接打开校对或确认脱敏，不让用户自己去找按钮（V31Q-92）
+const guided = ref(false)
 const certain = computed(() => findings.value.filter(f => f.check_code !== 'L-INFO'))
 const unverified = computed(() => findings.value.length - certain.value.length)
 const counts = computed(() => ['high','medium','low'].map(level => certain.value.filter(f => f.severity === level).length))
@@ -65,13 +70,13 @@ async function addList(files: File[]) {
   if (files.filter(f => audioExts.includes(f.name.split('.').pop()?.toLowerCase() ?? '')).length > 1) { error.value = '一次最多加入 1 个录音'; return }
   if (files.length && canUpload.value) {
     uploadProgress.value = 0
-    try { await perform(() => assistantApi.addFiles(props.session.id, files, (loaded,total) => { uploadProgress.value = Math.round(loaded / total * 100) })) }
+    try { await perform(() => assistantApi.addFiles(props.session.id, files, (loaded,total) => { uploadProgress.value = Math.round(loaded / total * 100) })); if (!error.value) guided.value = true }
     finally { uploadProgress.value = null }
   }
 }
 async function added(event: Event) {
   const input = event.target as HTMLInputElement, files = Array.from(input.files ?? [])
-  input.value = ''
+  input.value = ''; pickAccept.value = ''
   await addList(files)
 }
 async function remove(file: SessionFile) {
@@ -87,13 +92,26 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
 async function retryMedia(file: SessionFile) { await perform(() => assistantApi.retranscribe(props.session.id, file.id)) }
 async function downloadTranscript(file: SessionFile) { await perform(async () => { const data = await assistantApi.transcript(props.session.id, file.id); await saveBlob(data.blob, data.filename) }) }
 function confirmed() { confirmOpen.value = false; emit('refresh') }
+watch(() => props.session.status, status => {
+  if (!guided.value || status !== 'awaiting_confirm') return
+  guided.value = false
+  const audio = pending.value.find(f => f.media?.stage === 'done')
+  if (audio) transcriptFile.value = audio; else confirmOpen.value = true
+})
+async function pick(kind: 'doc' | 'audio') {
+  if (!canUpload.value) return
+  pickAccept.value = kind === 'audio' ? audioAccept : ''
+  await nextTick(); upload.value?.click()
+}
+function openConfirm() { const audio = pending.value.find(f => f.media?.stage === 'done'); if (audio) transcriptFile.value = audio; else confirmOpen.value = true }
+defineExpose({ pick, openConfirm })
 </script>
 <template>
   <aside class="files" @dragover.prevent @drop.prevent="canUpload && addList(Array.from($event.dataTransfer?.files ?? []))">
-    <div class="file-heading"><h2>文件（{{ session.files.length }}）</h2><el-button size="small" :disabled="!canUpload" :loading="busy" @click="upload?.click()">加入文件</el-button><input ref="upload" class="file-input" type="file" multiple :accept="accept" @change="added"></div>
+    <div class="file-heading"><h2>文件（{{ session.files.length }}）</h2><el-button size="small" :disabled="!canUpload" :loading="busy" @click="upload?.click()">加入文件</el-button><input ref="upload" class="file-input" type="file" multiple :accept="pickAccept || accept" @change="added"></div>
     <div v-if="uploadProgress !== null" role="status"><el-progress :percentage="uploadProgress" /><p class="hint">正在上传 {{ uploadProgress }}%</p></div>
     <WorkFolderBar :disabled="!canUpload" @add="addList" />
-    <p v-if="!session.asr_enabled && !session.files.some(f => f.media)" class="hint">录音转写未启用</p>
+    <p v-if="session.asr_enabled" class="hint">可加入文档或会议录音</p><p v-else-if="!session.files.some(f => f.media)" class="hint">录音转写未启用</p>
     <p v-if="!canUpload" class="hint">{{ session.original_deleted ? '原件已按保留期限删除，本会话只能查看' : session.status !== 'active' ? '处理完成后可以继续加入文件' : session.generating ? '回复完成后可以继续加入文件' : busy ? '正在处理，请稍候' : '每会话最多 10 个文件' }}</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="session.status === 'parsing' && session.files.some(f => !f.media)"><h3>正在本机解析文件</h3><el-progress :percentage="100" :indeterminate="true" :show-text="false" /><p class="hint num">已用 {{ elapsed }} 秒</p><p class="hint">在本机读取正文并识别敏感信息，可以离开页面稍后继续。</p></template>
