@@ -9,13 +9,15 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import KeepTerms from '@/components/settings/KeepTerms.vue'
+import RedactionStats from '@/components/settings/RedactionStats.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 // ---- ① 数量脱敏 ----
-const maskQuantity = ref(false)
+const maskQuantity = ref(false), dateShift = ref(true), vectorAssist = ref(true)
 const maskLoading = ref(false)
 const tableMax = useTableMaxHeight(360)
 const loadedOnce = ref({ custom: false, learned: false, our: false })
@@ -25,7 +27,7 @@ async function loadMask() {
   maskLoading.value = true
   maskError.value = ''
   try {
-    maskQuantity.value = (await adminRedactionApi.getSetting()).mask_quantity
+    const setting = await adminRedactionApi.getSetting(); maskQuantity.value = setting.mask_quantity; dateShift.value = setting.date_shift; vectorAssist.value = setting.vector_assist
   } catch (e) {
     maskError.value = `加载失败：${errText(e, '请刷新页面')}`
   } finally {
@@ -47,6 +49,12 @@ async function toggleMask(value: string | number | boolean) {
   }
 }
 
+async function toggleExtra(key: 'date_shift' | 'vector_assist', value: string | number | boolean) {
+  maskLoading.value = true
+  try { const result = await adminRedactionApi.saveSetting(maskQuantity.value, { [key]: value === true }); dateShift.value = result.date_shift; vectorAssist.value = result.vector_assist; ElMessage.success('已保存') }
+  catch (e) { ElMessage.error(errText(e, '保存失败，请稍后重试')); await loadMask() }
+  finally { maskLoading.value = false }
+}
 // ---- ② 自定义敏感词 ----
 const custom = ref<TermRow[]>([])
 const customLoading = ref(false)
@@ -210,9 +218,9 @@ onMounted(() => {
   <div class="settings-page">
     <PageHeader title="脱敏规则" description="新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算" />
     <div class="panel setting-panel">
-      <SettingSection title="数量脱敏" description="开启后数量也会替换为代号，只影响之后解析的文件。">
+      <SettingSection title="识别与替换" description="设置只影响之后解析与重新计算的任务。">
         <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
-        <el-switch :model-value="maskQuantity" :loading="maskLoading" @change="toggleMask" />
+        <div class="switch-row"><div><h3>数量脱敏</h3><p class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</p></div><el-switch :model-value="maskQuantity" :loading="maskLoading" aria-label="数量脱敏" @change="toggleMask" /></div><div class="switch-row"><div><h3>日期整体平移</h3><p class="hint">发给模型的日期整体平移同一天数，回来后在本机换回；只影响之后重新计算的任务</p></div><el-switch :model-value="dateShift" :loading="maskLoading" aria-label="日期整体平移" @change="toggleExtra('date_shift', $event)" /></div><div class="switch-row"><div><h3>向量辅助判断</h3><p class="hint">用本机向量模型判断不确定项是否为普通术语，判断为普通术语的默认保留原文</p></div><el-switch :model-value="vectorAssist" :loading="maskLoading" aria-label="向量辅助判断" @change="toggleExtra('vector_assist', $event)" /></div>
       </SettingSection>
       <SettingSection title="我方主体" description="预置本公司的完整名称，之后新解析的文件出现该名称时可预选我方主体。" stacked>
         <div class="filters">
@@ -267,7 +275,7 @@ onMounted(() => {
       <TableSkeleton v-if="!loadedOnce.learned" :columns="['1fr', '80px', '90px', '120px', '170px', '90px', '70px']" />
       <el-table v-else v-loading="learnedLoading" :data="learned" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="没有已记住的名称" description="确认脱敏时选择“记住”后会出现在这里。" /></template>
-        <el-table-column prop="term" label="名称" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="term" label="名称" min-width="240" show-overflow-tooltip /><el-table-column label="主写法" min-width="160" show-overflow-tooltip><template #default="{row}">{{ row.alias_of || '—' }}</template></el-table-column>
         <el-table-column label="类别" width="80">
           <template #default="{ row }">{{ row.category === 'PERSON' ? '人名' : '公司' }}</template>
         </el-table-column>
@@ -297,11 +305,14 @@ onMounted(() => {
         @current-change="loadLearned"
       />
       </SettingSection>
-    </div>
-  </div>
-</template>
+<SettingSection title="术语记忆" description="用户在确认页保留原文的词；带企业后缀、人名结构、已记住的敏感名称永不进入。" stacked><KeepTerms /></SettingSection>
+<SettingSection title="脱敏操作统计" description="汇总确认任务的操作与无法判断情况。" stacked><RedactionStats /></SettingSection>
+</div></div></template>
 
 <style scoped>
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.switch-row h3 { font: var(--si-font-h3); margin: 0 0 4px; }
+.switch-row .hint { margin: 0; }
 h3 {
   margin: 0 0 16px;
   font: var(--si-font-h2);

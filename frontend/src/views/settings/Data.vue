@@ -437,6 +437,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
         <div class="stat"><div class="stat-label">备份盘剩余空间</div><div class="stat-value">{{ formatBytes(status.backup_free_bytes) }}</div></div>
       </div>
       <template v-if="status">
+        <h3>本地模型</h3><el-table :data="status.local_models" size="small"><el-table-column prop="purpose" label="用途" min-width="120" /><el-table-column prop="version" label="版本" min-width="180" show-overflow-tooltip /><el-table-column label="校验" width="90"><template #default="{row}">{{ ['sha256_verified','package_verified','container_verified'].includes(row.verification) ? '通过' : '未通过' }}</template></el-table-column><el-table-column label="状态" width="90"><template #default="{row}"><span :class="{ warning: row.status === 'unavailable' }">{{ row.status === 'enabled' ? '已启用' : row.status === 'disabled' ? '未启用' : '不可用' }}</span></template></el-table-column></el-table>
         <p class="hint">存储用量统计时间：{{ formatDateTime(status.storage_measured_at) }}</p>
         <p v-if="status.backup_stats_at" class="hint">备份三项（{{ formatDateTime(status.backup_stats_at) }} 备份时统计）</p>
         <p v-if="status.estimate_reason" class="hint">{{ estimateReasons[status.estimate_reason] }}</p>

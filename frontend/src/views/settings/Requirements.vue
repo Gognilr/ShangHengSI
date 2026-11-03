@@ -15,6 +15,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
+import RatioSetting from '@/components/settings/RatioSetting.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import UnsavedBar from '@/components/UnsavedBar.vue'
 import { useUnsaved } from '@/utils/unsaved'
@@ -228,6 +229,7 @@ onMounted(() => {
   <div class="settings-page">
     <PageHeader title="审核要求" description="内置要求只读；公司补充要求只能增加审核内容，不能取消内置要求" />
     <div class="panel setting-panel">
+      <SettingSection title="发送本地财务比率" description="可选择把本机计算的比率用于模型分析，默认关闭。"><RatioSetting /></SettingSection>
       <SettingSection title="公司说明" description="简述公司主营与出口合规情况，随每次审核发送给模型。">
       <el-alert v-if="profileError" type="error" :closable="false" show-icon :title="profileError" />
       <div v-loading="profileLoading">
