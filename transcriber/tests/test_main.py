@@ -44,8 +44,9 @@ class ExchangeTest(unittest.TestCase):
 
     def test_timeout_and_fake_restricted(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(main, 'ROOT', Path(directory)):
-            with self.assertRaises(ValueError):
-                main.Service(fake=True)
+            with patch.object(Path, 'exists', return_value=False):
+                with self.assertRaises(ValueError):
+                    main.Service(fake=True)
             with self.assertRaises(TimeoutError):
                 main.pause(Path(directory) / 'progress', time.monotonic() - 1)
 

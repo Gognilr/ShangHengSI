@@ -24,7 +24,7 @@ host_path() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else 
 export MSYS_NO_PATHCONV=1
 [ -z "$(git -C "$(host_path "$repo")" status --porcelain)" ] || die '工作区不干净，请先提交或使用干净的隔离源码副本'
 # 模型清单使用 YAML 的 JSON 子集，构建机只需 Python 3.11+ 标准库。
-model_commands="$(python3 "$(host_path "$ROOT/scripts/prepare_models.py")" "$(host_path "$repo")" "$(host_path "$models")")" || die '离线模型校验失败'
+model_commands="$(python3 "$(host_path "$ROOT/scripts/prepare_models.py")" "$(host_path "$repo")" "$(host_path "$models")" | tr -d '\r')" || die '离线模型校验失败'
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 package="$out/aireview-$version"

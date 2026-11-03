@@ -36,6 +36,15 @@ def alive():
         return False
 
 
+def cleanup_outputs():
+    for path in (ROOT / 'asr/out').iterdir():
+        try:
+            if time.time() - path.stat().st_mtime > 600:
+                path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass  # worker 可以同时取走输出。
+
+
 def pause(progress, deadline):
     while True:
         if time.monotonic() >= deadline:
@@ -78,9 +87,7 @@ class Service:
 
     def tick(self):
         base = ROOT / 'asr'
-        for path in (base / 'out').iterdir():
-            if time.time() - path.stat().st_mtime > 600:
-                path.unlink(missing_ok=True)
+        cleanup_outputs()
         requests = sorted((p for p in (base / 'in').glob('*.json') if not p.name.endswith('.fake.json')),
                           key=lambda p: p.stat().st_mtime)
         if not requests:
@@ -151,6 +158,7 @@ def main():
     def beat():
         while True:
             (ROOT / 'transcriber.alive').touch(mode=0o660)
+            cleanup_outputs()  # 长录音处理期间也清理无人领取的旧输出。
             time.sleep(5)
     threading.Thread(target=beat, daemon=True).start()
     while True:
