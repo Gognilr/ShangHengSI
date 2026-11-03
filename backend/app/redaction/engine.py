@@ -68,6 +68,7 @@ class NodeIn:
     loc: str
     text: str
     clause_no: str | None = None
+    kind: str | None = None
 
 
 def _recognition_view(text: str) -> str:
@@ -415,7 +416,7 @@ def compute(
     main_prefix 为主文件节点位置编号的前缀（如 "F1-"），确定合同总价时先在主文件中找（9.6）。
     """
     original_nodes = nodes
-    nodes = [NodeIn(n.loc, _recognition_view(n.text), n.clause_no) for n in nodes]
+    nodes = [NodeIn(n.loc, _recognition_view(n.text), n.clause_no, n.kind) for n in nodes]
     terms = [Term(_recognition_view(t.text), t.kind, t.category, t.is_our_party,
                   _recognition_view(t.alias_of) if t.alias_of else None) for t in terms]
     user_terms = [UserTerm(_recognition_view(t.text), t.category) for t in user_terms]
@@ -605,6 +606,9 @@ def compute(
         text = n.text
         occ: list[tuple[int, int]] = []
         amount_hits = [*detect.find_amounts(text, hints.get(i)), *detect.find_bare_amounts(text)]
+        if n.kind == 'utterance' or re.fullmatch(r'F\d+-U\d+', n.loc):
+            from app.assistant.spoken_amount import find_amounts
+            amount_hits += find_amounts(text)
         cands = [_Span(i, m.start(), m.end(), ent.category, ent.key, by, term=term)
                  for ent, pat, by, term in pool for m in pat.finditer(text)
                  if not (by == 'derived' and re.fullmatch(r'[A-Za-z]+', m.group())
@@ -1290,10 +1294,15 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     pin = task.kind == "assistant" if pin is None else pin
     rows = _body_rows(db, task.id)
     texts = _texts_with_note(rows, task)
-    nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no) for r in rows]
+    nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no, r.kind) for r in rows]
     if texts.get("NOTE"):
         nodes.append(NodeIn("NOTE", texts["NOTE"], None))
     user_terms = _user_terms(db, task.id, texts)
+    meeting_names = []
+    if task.kind == 'assistant':
+        from app.assistant.meeting import names
+        meeting_names = names(db, task)
+        user_terms += [UserTerm(name, 'PERSON') for name in meeting_names]
     seen = {(P.normalize(u.text), u.category) for u in user_terms}
     user_terms += [u for u in extra_terms if (P.normalize(u.text), u.category) not in seen]
     cached_rows = {r.loc: r for r in db.scalars(select(NerNodeResult).where(NerNodeResult.task_id == task.id))}
@@ -1363,6 +1372,13 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
             db.delete(row)
     logger.debug('实体识别缓存：命中=%d，重算=%d', result.ner_cache_hits, result.ner_cache_misses)
 
+    if meeting_names:
+        # 姓名可以只存在于发言人标签中，没有正文区间；仍分配同一 PERSON 对照表代号。
+        allocator = NeutralAllocator()
+        allocator.seed({**full_map, **result.mapping})
+        for name in meeting_names:
+            code = allocator.numbered('PERSON', name)
+            result.mapping[code] = name
     for r in rows:
         r.redacted_text = result.redacted[r.loc]
     task.user_note_redacted = result.redacted.get("NOTE")
@@ -1705,6 +1721,11 @@ def learn_confirmed_names(db: Session, task: Task, user_id: uuid.UUID | None) ->
         entry = names.setdefault(term_hash(text), [text, category, False, alias_of])
         entry[2] = entry[2] or our
 
+    if task.kind == 'assistant':
+        from app.assistant.meeting import names as meeting_names
+        for name in meeting_names(db, task):
+            add(name, 'PERSON', False)
+
     items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id).order_by(RedactionItem.id)))
     explicit = {P.normalize(text[s:e]) for text in texts.values() for _, s, e in P.find_aliases(text)}
     for p in db.scalars(select(Party).where(Party.task_id == task.id).order_by(Party.code)):
@@ -1764,7 +1785,9 @@ def build_outbound(db: Session, task: Task) -> OutboundBuild:
     redacted = {r.loc: r.redacted_text or "" for r in rows}
     if task.kind == "assistant":
         # 会话保留逐节点文本：不添加审核专用比例、报价汇总及本地校验说明。
-        return OutboundBuild("\n".join(f"⟦{n.loc}⟧{redacted[n.loc]}" for n in nodes), [])
+        from app.assistant.meeting import line
+        files = {f.id:f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
+        return OutboundBuild("\n".join(line(db, task, files[r.file_id], r) for r in rows), [])
     tables = quotes.find_quote_tables(nodes, redacted)
     text = outbound.build(
         [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party, stance=task.stance) for p in parties],
@@ -1822,6 +1845,9 @@ def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
         return values
     active = [texts.get(i.loc, '')[i.char_start:i.char_end] for i in db.scalars(
         select(RedactionItem).where(RedactionItem.task_id == task_id))]
+    if task.kind == 'assistant':
+        from app.assistant.meeting import names
+        active += names(db, task)
 
     def same(value, word):
         # 复用复检的数字与文字比较；fullmatch / 数字整串相等，不把包含关系当作相等。

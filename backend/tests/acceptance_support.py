@@ -43,6 +43,7 @@ class Sample:
     stance: str = "sales"
     must_replace: list[str] = field(default_factory=list)
     must_suspect: list[str] = field(default_factory=list)
+    utterance: bool = False
 
 
 # ---------------------------------------------------------------- 样本
@@ -113,7 +114,8 @@ def golden_samples() -> list[Sample]:
             name, data = f"{txt.stem}.docx", _docx_bytes(lines)
         # must_suspect 也是敏感项：用户选“替换”后同样不得外发
         suspects = list(ann.get("must_suspect", []))
-        out.append(Sample(name, data, ann["stance"], [i["text"] for i in ann["must_replace"]] + suspects, suspects))
+        out.append(Sample(name, data, ann["stance"], [i["text"] for i in ann["must_replace"]] + suspects, suspects,
+                          ann.get('loc_prefixed', False) and all(re.fullmatch(r'F\d+-U\d+', loc) for loc, _ in pairs)))
     return out
 
 
@@ -149,6 +151,14 @@ def upload_and_parse(c, h, db_sessionmaker, sample: Sample, *, source: str = "ou
     task_id = uuid.UUID(r.json()["id"])
     with db_sessionmaker() as db:  # 代替 worker 执行 parse
         pipeline.parse_task(db, task_id)
+        if sample.utterance:
+            # 逐字稿金标用虚构 DOCX 承载文字；此处模拟转写器节点类型，仍经真实脱敏与网关流程。
+            from app.db.models import DocNode
+            from app.redaction.engine import redact_task
+            for node in db.scalars(select(DocNode).where(DocNode.task_id == task_id)):
+                node.kind = 'utterance'
+            db.flush()
+            redact_task(db, db.get(Task, task_id))
         db.execute(update(Job).where(Job.payload["task_id"].astext == str(task_id)).values(status="done"))
         db.commit()
         status = db.get(Task, task_id).status

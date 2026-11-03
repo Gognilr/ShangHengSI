@@ -14,6 +14,27 @@ from app.security.errors import NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service as tasks
 from app.tasks.schemas import PreviewNodes
+from pydantic import BaseModel, Field
+
+
+class ParticipantsIn(BaseModel):
+    names: list[str] = Field(max_length=30)
+
+
+class UtteranceIn(BaseModel):
+    text: str | None = Field(None, min_length=1, max_length=2000)
+    speaker: int | None = Field(None, ge=1, le=255)
+
+
+class SuggestionIn(BaseModel):
+    loc: str
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+    to: str
+
+
+class ApplyIn(BaseModel):
+    items: list[SuggestionIn] = Field(max_length=10000)
 
 router = APIRouter(prefix="/assistant/sessions")
 
@@ -92,6 +113,57 @@ def nodes(file: TaskFile = Depends(owned_file), task: Task = Depends(owned_sessi
 @router.post('/{id}/files/{fid}/retranscribe', response_model=SessionDetail)
 def retranscribe(file: TaskFile = Depends(owned_file), task: Task = Depends(owned_session), db: Session = Depends(get_db)):
     return service.retranscribe(db, task, file)
+
+
+@router.put('/{id}/participants')
+def participants(body: ParticipantsIn, request: Request, task: Task = Depends(owned_session),
+                 user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.assistant import meeting
+    return meeting.participants(db, task, body.names, user, client_ip(request))
+
+
+@router.put('/{id}/files/{fid}/speakers')
+def speakers(body: dict[str, str | None], request: Request, file: TaskFile = Depends(owned_file),
+             task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.assistant import meeting
+    return meeting.speakers(db, task, file, body, user, client_ip(request))
+
+
+@router.patch('/{id}/files/{fid}/utterances/{loc}')
+def utterance(loc: str, body: UtteranceIn, request: Request, file: TaskFile = Depends(owned_file),
+              task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.assistant import meeting
+    return meeting.edit(db, task, file, loc, body.text, body.speaker, user, client_ip(request))
+
+
+@router.get('/{id}/files/{fid}/suggestions')
+def suggestions(file: TaskFile = Depends(owned_file), task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    from app.assistant import meeting
+    return meeting.suggestions(db, task, file)
+
+
+@router.post('/{id}/files/{fid}/suggestions/apply')
+def apply_suggestions(body: ApplyIn, request: Request, file: TaskFile = Depends(owned_file),
+                      task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.assistant import meeting
+    return meeting.apply(db, task, file, body.items, user, client_ip(request))
+
+
+@router.get('/{id}/files/{fid}/audio')
+def audio(request: Request, file: TaskFile = Depends(owned_file), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.audit import service as audit
+    from app.security import crypto
+    from app.tasks import storage
+    from app.security.errors import AppError
+    if not file.media_storage_key or file.original_deleted_at is not None:
+        raise AppError(404, 'MEDIA_UNAVAILABLE', '回放副本不可用')
+    try:
+        data = storage.load_original(file.media_storage_key)
+    except FileNotFoundError:
+        raise AppError(404, 'MEDIA_UNAVAILABLE', '回放副本不可用') from None
+    audit.record(db, 'audio_play', user_id=user.id, target_type='file', target_id=str(file.id), ip=client_ip(request))
+    db.commit()
+    return Response(content=data, media_type='audio/ogg', headers={'Cache-Control':'no-store'})
 
 
 @router.get("/{id}/files/{fid}/raw")

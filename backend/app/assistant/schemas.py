@@ -18,6 +18,7 @@ class SessionPatch(BaseModel):
 class SessionFile(TaskFileOut):
     media: dict | None = None
     confirmed_at: UtcDatetime | None
+    speakers: dict[str, str | None] | None = None
 
 
 class SessionItem(BaseModel):
@@ -49,6 +50,7 @@ class SessionDetail(SessionItem):
     send_reason: str | None
     code_count: int
     kb_enabled: bool = False
+    participants: list[str] = Field(default_factory=list)
 
 
 class MessageDecision(BaseModel):

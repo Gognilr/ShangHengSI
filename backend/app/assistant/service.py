@@ -54,6 +54,7 @@ def _item(task: Task, files: list[TaskFile], *, generating: bool = False) -> Ses
 
 
 def detail(db: Session, task: Task) -> SessionDetail:
+    from app.assistant.meeting import unpack
     files = _files(db, task)
     # 复用节点和表格统计的既有序列化，不改变审核接口的响应形状。
     preview = tasks.task_detail(db, task)
@@ -74,9 +75,12 @@ def detail(db: Session, task: Task) -> SessionDetail:
                        AssistantMessage.role == 'assistant', AssistantMessage.status.in_(('queued', 'streaming'))))))
     return SessionDetail(**_item(task, files, generating=generating).model_dump(), stance=task.stance, source=task.source, policy=task.policy,
                          error_message=task.error_message, created_at=task.created_at,
-                         files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id], media=media[f.id]) for f in preview.files],
+                         files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id], media=media[f.id],
+                                            speakers=unpack(next(row.speakers_enc for row in files if row.id == f.id), {})
+                                            if media[f.id] is not None else None) for f in preview.files],
                          can_send=reason is None, send_reason=reason,
-                         code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')))
+                         code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
+                         participants=unpack(task.participants_enc, []))
 
 
 def create(db: Session, user: User, ip: str | None) -> SessionDetail:

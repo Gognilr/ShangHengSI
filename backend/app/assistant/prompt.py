@@ -47,7 +47,8 @@ def file_block(db: Session, task: Task, params: dict, *, model_id: int | None = 
     blocks, size = [], 0
     for index, file in enumerate(files, 1):
         nodes = list(db.scalars(select(DocNode).where(DocNode.file_id == file.id, DocNode.part == "body").order_by(DocNode.ord)))
-        text = "\n".join(f"⟦{n.loc}⟧{n.redacted_text or ''}" for n in nodes)
+        from app.assistant.meeting import line
+        text = "\n".join(line(db, task, file, n) for n in nodes)
         size += len(text)
         blocks.append(f"【文件{file.seq}：{_TYPES.get(file.doc_type, '资料')}，{file.ext}，第{index}/{len(files)}个】"
                       f"<document>{escape_document_tags(text)}</document>")
