@@ -14,10 +14,6 @@ const popOpen = ref(false)
 const receipt = computed(() => props.run.receipt)
 const restored = computed(() => props.run.restore_stats.restored ?? 0)
 const marked = computed(() => props.run.restore_stats.marked ?? 0)
-const ratio = computed(() => {
-  const total = restored.value + marked.value
-  return total ? `${Math.round(restored.value * 100 / total)}%` : '—'
-})
 const categories = computed(() => Object.entries(receipt.value?.protected ?? {}).filter(([, n]) => n > 0))
 const notSent = computed(() => {
   const parts = [`原件 · ${props.fileNames.join('、')}`]
@@ -37,9 +33,11 @@ function openSent() {
       <template #reference>
         <button type="button" class="strip" aria-haspopup="dialog">
           <ShieldCheck class="icon" :size="14" :stroke-width="1.75" aria-hidden="true" />
-          <span>已保护 {{ receipt.protected_total }}</span><span class="dot">·</span>
-          <span class="recheck">复检 {{ receipt.rechecks }} 次 · 拦截 {{ receipt.blocked }}</span><span class="dot recheck">·</span>
-          <span>还原 {{ ratio }}</span>
+          <span>已保护 {{ receipt.protected_total }}</span><span class="dot recheck">·</span>
+          <span class="recheck">复检 {{ receipt.rechecks }} 次 · 拦截 {{ receipt.blocked }}</span>
+          <!-- V31Q-87：只写计数。比例会把“模型只提到一个文件中没有的代号”显示成“还原 0%”，像是还原失败 -->
+          <template v-if="restored"><span class="dot">·</span><span>还原 {{ restored }}</span></template>
+          <template v-if="marked"><span class="dot">·</span><span class="marked">标出 {{ marked }}</span></template>
         </button>
       </template>
       <dl class="rows">
@@ -60,7 +58,8 @@ function openSent() {
         <dt>出口复检</dt>
         <dd>{{ receipt.rechecks }} 次 · 拦截 {{ receipt.blocked }} 次</dd>
         <dt>本机还原</dt>
-        <dd>已还原 {{ restored }} 处，标出 {{ marked }} 处<template v-if="marked > 0">，见问题中的虚线标记</template></dd>
+        <dd v-if="restored || marked">已还原 {{ restored }} 处<template v-if="marked > 0">；标出 {{ marked }} 处模型写法无法对应到原文，见虚线标记</template></dd>
+        <dd v-else>模型回复中没有代号，无需还原</dd>
       </dl>
       <el-button link type="primary" class="sent-link" @click="openSent">查看本轮实际发送的文字</el-button>
     </el-popover>
@@ -74,7 +73,8 @@ function openSent() {
 .strip:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 .icon { color: var(--el-color-primary); }
 .dot { color: var(--si-ink-3); }
-/* 工具条较窄（1440 宽及以下、侧栏展开）时只留保护数与还原比例，复检与拦截在弹层中 */
+.marked { color: var(--si-warn-ink); }
+/* 工具条较窄（1440 宽及以下、侧栏展开）时只留保护数与还原、标出计数，复检与拦截在弹层中 */
 @container result-toolbar (max-width: 1200px) { .recheck { display: none; } }
 .rows { display: grid; grid-template-columns: 84px 1fr; gap: 6px 10px; margin: 0; font: var(--si-font-meta); }
 .rows dt { color: var(--si-ink-3); }
