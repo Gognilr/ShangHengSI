@@ -1,25 +1,33 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ChevronDown, Download } from '@lucide/vue'
+import { Ellipsis, Trash2 } from '@lucide/vue'
 import type { TaskDetail } from '@/api/tasks'
 import type { RunDetail, RunListItem } from '@/api/runs'
+import ExportButton from '@/components/result/ExportButton.vue'
+import ReceiptStrip from '@/components/result/ReceiptStrip.vue'
 import { TEMPLATE_STATE, RUN_STATUS_TAG, docTypeLabel, runStatusLabel, sourceLabel, stanceLabel, statusLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
 
-const props = defineProps<{ task: TaskDetail; run: RunDetail | null; rounds: RunListItem[]; selectedRun: string; reqVersion: string; warnings: string[]; exportReason: string; exporting: boolean; deleting: boolean }>()
-const emit = defineEmits<{ selectRun: [id: string]; exportReport: []; exportAnnotated: [seq: number]; exportRevised: [seq: number] }>()
-const annotatedFiles = computed(() => props.run && ['completed', 'partial'].includes(props.run.status)
-  ? props.task.files.filter(file => file.annotatable) : [])
+/** 结果页工具条（V31-U3 3.2）：第一行文件、轮次、回执与操作；第二行次要信息，单行省略、悬停看全文。 */
+const props = defineProps<{ task: TaskDetail; run: RunDetail | null; rounds: RunListItem[]; selectedRun: string; reqVersion: string; warnings: string[]; exportReason: string; exporting: string; savedTick: number; deleting: boolean }>()
+const emit = defineEmits<{ selectRun: [id: string]; exportReport: []; exportAnnotated: [seq: number]; exportRevised: [seq: number]; remove: [] }>()
 
-function exportCommand(command: string | number) {
-  if (command === 'report') emit('exportReport')
-  else if (typeof command === 'number') emit('exportAnnotated', command)
-  else if (command.startsWith('revised:')) emit('exportRevised', Number(command.slice(8)))
-}
-
-function badge(ext: string) {
+const mainFile = computed(() => props.task.files.find(f => f.is_main) ?? props.task.files[0])
+const badge = computed(() => {
+  const ext = mainFile.value?.ext ?? ''
   return ['docx', 'doc', 'wps', 'rtf'].includes(ext) ? 'DOC' : ['xlsx', 'xls', 'et'].includes(ext) ? 'XLS' : ext === 'pdf' ? 'PDF' : 'IMG'
-}
+})
+const modelText = computed(() => props.run?.model_label ? `${props.run.model_label}（${props.run.model_name ?? '—'}）` : props.run?.model_name ?? '—')
+const details = computed(() => {
+  const r = props.run
+  const parts = [
+    docTypeLabel(r?.main_doc_type ?? mainFile.value?.doc_type),
+    `${stanceLabel(r?.stance ?? props.task.stance)} / ${sourceLabel(r?.source ?? props.task.source)}`,
+  ]
+  if (r) parts.push(`审核于 ${formatDateTime(r.finished_at)}`, `模型 ${modelText.value}`, `要求 ${props.reqVersion}`)
+  if (r?.template) parts.push(`本轮对照公司范本：${r.template.name}${TEMPLATE_STATE[r.template.status] ?? ''}`)
+  return parts.join(' · ')
+})
 </script>
 
 <template>
@@ -27,59 +35,45 @@ function badge(ext: string) {
     <div class="top">
       <el-button link type="primary" @click="$router.push('/history')">← 审核历史</el-button>
       <span class="separator" aria-hidden="true"></span>
-      <span class="file-badge">{{ badge((task.files.find(f => f.is_main) ?? task.files[0])?.ext ?? '') }}</span>
-      <div class="file-name" :title="(task.files.find(f => f.is_main) ?? task.files[0])?.original_name ?? task.title">{{ (task.files.find(f => f.is_main) ?? task.files[0])?.original_name ?? task.title }}</div>
-      <span v-if="task.files.length > 1" class="hint">另有 {{ task.files.length - 1 }} 个附件</span>
+      <span class="file-badge">{{ badge }}</span>
+      <div class="file-name" :title="mainFile?.original_name ?? task.title">{{ mainFile?.original_name ?? task.title }}</div>
+      <span v-if="task.files.length > 1" class="hint nowrap">另有 {{ task.files.length - 1 }} 个附件</span>
       <el-tag v-if="run" :type="RUN_STATUS_TAG[run.status] ?? 'info'" size="small">{{ runStatusLabel(run.status) }}</el-tag>
-      <span v-else class="hint">{{ statusLabel(task.status) }}</span>
+      <span v-else class="hint nowrap">{{ statusLabel(task.status) }}</span>
       <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
         <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮 · ${formatDateTime(item.finished_at ?? item.queued_at)} · ${runStatusLabel(item.status)}`" />
       </el-select>
-      <span v-else-if="run" class="hint">第 {{ run.run_no }} 轮</span>
+      <ReceiptStrip v-if="run && task.policy === 'ai'" :run="run" :file-names="task.files.map(f => f.original_name)" />
       <div class="actions">
         <slot name="before-export" />
-        <el-dropdown trigger="click" :disabled="!!exportReason || exporting || deleting" @command="exportCommand">
-          <el-button :loading="exporting" :disabled="!!exportReason || deleting">
-            <template #icon><Download :size="16" :stroke-width="1.75" /></template>
-            导出<ChevronDown :size="16" :stroke-width="1.75" />
-          </el-button>
+        <ExportButton :task="task" :run="run" :export-reason="exportReason" :exporting="exporting" :deleting="deleting" :saved-tick="savedTick"
+          @report="emit('exportReport')" @annotated="emit('exportAnnotated', $event)" @revised="emit('exportRevised', $event)" />
+        <slot />
+        <el-dropdown trigger="click" placement="bottom-end" :disabled="deleting" @command="emit('remove')">
+          <el-button text :loading="deleting" aria-label="更多操作"><Ellipsis :size="16" :stroke-width="1.75" /></el-button>
           <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="report">审核报告</el-dropdown-item>
-              <template v-for="file in annotatedFiles" :key="file.id">
-                <el-dropdown-item :command="file.seq">
-                  <span class="export-file" :title="`批注版：${file.original_name}`">批注版：{{ file.original_name }}</span>
-                </el-dropdown-item>
-                <el-dropdown-item v-if="!file.has_revisions" :command="`revised:${file.seq}`">
-                  <span class="export-file" :title="`修订版：${file.original_name}`">修订版：{{ file.original_name }}</span>
-                </el-dropdown-item>
-              </template>
-              <el-dropdown-item disabled divided><span class="export-hint">批注版、修订版支持 Word 与 WPS 文字文件，修订版只写已采纳的问题；PDF、图片、表格只能导出审核报告</span></el-dropdown-item>
-            </el-dropdown-menu>
+            <el-dropdown-menu><el-dropdown-item command="remove" class="danger-item"><Trash2 :size="14" :stroke-width="1.75" />删除任务</el-dropdown-item></el-dropdown-menu>
           </template>
         </el-dropdown>
-        <slot />
       </div>
     </div>
-    <div class="details">
-      <span>{{ docTypeLabel(run?.main_doc_type ?? (task.files.find(f => f.is_main) ?? task.files[0])?.doc_type) }} · {{ stanceLabel(run?.stance ?? task.stance) }} / {{ sourceLabel(run?.source ?? task.source) }} · 审核于 {{ formatDateTime(run?.finished_at) }} · 模型 {{ run?.model_label ? `${run.model_label}（${run.model_name ?? '—'}）` : run?.model_name ?? '—' }} · 要求 {{ reqVersion }}<template v-if="run?.template"> · 本轮对照公司范本：{{ run.template.name }}{{ TEMPLATE_STATE[run.template.status] ?? '' }}</template><template v-for="warning in warnings" :key="warning"> · <span class="warning">{{ warning }}</span></template></span>
-      <span v-if="exportReason" class="hint">{{ exportReason }}</span>
+    <div class="details" :title="[details, ...warnings].join(' · ')">
+      {{ details }}<template v-for="warning in warnings" :key="warning"> · <span class="warning">{{ warning }}</span></template>
     </div>
   </header>
 </template>
 
 <style scoped>
-.toolbar { flex: none; padding: 12px 0; border-bottom: 1px solid var(--el-border-color-light); background: var(--el-bg-color); }
-.top, .details { display: flex; align-items: center; gap: 12px; }
-.top { flex-wrap: wrap; }
-.separator { width: 1px; height: 24px; background: var(--el-border-color-light); }
-.file-badge { flex: none; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 8px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font: var(--si-font-caption); }
-.file-name { min-width: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h2); }
-.round-select { width: 200px; }
-.actions { display: flex; align-items: center; gap: 8px; margin: 0 0 0 auto; }
+.toolbar { flex: none; padding: 6px 0 8px; border-bottom: 1px solid var(--si-hair); }
+.top { display: flex; align-items: center; gap: 10px; min-height: 48px; }
+.separator { flex: none; width: 1px; height: 24px; background: var(--si-hair); }
+.file-badge { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font: var(--si-font-label-sm); }
+.file-name { min-width: 80px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h2); }
+.nowrap { white-space: nowrap; }
+.round-select { flex: none; width: 200px; }
+.actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .actions :deep(.el-button + .el-button) { margin-left: 0; }
-.details { justify-content: space-between; flex-wrap: wrap; margin-top: 8px; color: var(--el-text-color-secondary); font: var(--si-font-meta); }
-.warning { color: var(--el-color-warning); }
-.export-file { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.export-hint { max-width: 360px; white-space: normal; color: var(--el-text-color-secondary); font: var(--si-font-caption); }
+.details { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-3); font: var(--si-font-caption); }
+.warning { color: var(--si-warn-ink); }
+.danger-item { gap: 6px; color: var(--el-color-danger); }
 </style>

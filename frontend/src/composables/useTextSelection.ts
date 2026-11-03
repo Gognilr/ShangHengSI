@@ -38,3 +38,15 @@ export function readTextSelection(itemsByLoc: Map<string, RedactionItemPos[]>): 
   if (len < 2 || len > 100) return { notice: '请选择 2–100 个字符' }
   return { selection: { loc, start, end, text: picked, rect: range.getBoundingClientRect() } }
 }
+
+/** 结果页“追问这段”的划选（V31-U3 3.3）：选区在同一个 .txt 内且非空白；选中文字是真实原文，照常经追问的脱敏与确认。 */
+export function readAskSelection(): { loc: string; text: string; rect: DOMRect } | null {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null
+  const range = sel.getRangeAt(0)
+  const holder = (n: Node) => (n.nodeType === 1 ? (n as Element) : n.parentElement)?.closest<HTMLElement>('.txt') ?? null
+  const a = holder(range.startContainer)
+  if (!a || a !== holder(range.endContainer)) return null
+  const text = range.toString().trim()
+  return text ? { loc: a.dataset.loc ?? '', text, rect: range.getBoundingClientRect() } : null
+}

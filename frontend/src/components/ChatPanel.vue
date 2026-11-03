@@ -130,6 +130,13 @@ function cancelConfirm() {
   busy.value = false
 }
 
+/** 结果页预填追问（V31-U3 3.3、3.5）：打开抽屉，把文字追加到输入框末尾；U3-04 完善光标与预览。 */
+async function openWith(text: string) {
+  message.value = message.value.trim() ? `${message.value}\n${text}` : text
+  await show()
+}
+defineExpose({ openWith, available })
+
 async function submit() {
   if (!canSend.value) return
   busy.value = true

@@ -53,3 +53,33 @@ export function sliceMarks(marks: readonly Mark[] | undefined, start: number, le
   return (marks ?? []).filter(mark => mark.start >= start && mark.end <= start + length)
     .map(mark => ({ ...mark, start: mark.start - start, end: mark.end - start }))
 }
+
+/** 问题引用片段在节点原文中的码点区间；片段为空、不存在或出现多次时返回 null（V31-U3 3.3）。 */
+export function excerptRange(text: string, excerpt: string | null | undefined): [number, number] | null {
+  if (!excerpt) return null
+  const at = text.indexOf(excerpt)
+  if (at < 0 || text.indexOf(excerpt, at + 1) >= 0) return null
+  const start = Array.from(text.slice(0, at)).length
+  return [start, start + Array.from(excerpt).length]
+}
+
+/**
+ * 把码点区间 [start, end) 叠加到已切好的段上：普通段按区间拆开，其余段（胶囊、保留文字）整段打上同一标注。
+ * 已有标注的段保持不变（先叠加的优先）。段文字按原文计长度，胶囊的文字就是原文。
+ */
+export function overlayRange<S extends { text: string; k: string; hl?: H }, H>(segs: S[], start: number, end: number, hl: H): S[] {
+  const out: S[] = []
+  let pos = 0
+  for (const seg of segs) {
+    const chars = Array.from(seg.text)
+    const from = pos, to = pos + chars.length
+    pos = to
+    if (seg.hl !== undefined || to <= start || from >= end) { out.push(seg); continue }
+    if (seg.k !== 'plain') { out.push({ ...seg, hl }); continue }
+    const a = Math.max(start, from) - from, b = Math.min(end, to) - from
+    if (a > 0) out.push({ ...seg, text: chars.slice(0, a).join('') })
+    out.push({ ...seg, text: chars.slice(a, b).join(''), hl })
+    if (b < chars.length) out.push({ ...seg, text: chars.slice(b).join('') })
+  }
+  return out
+}

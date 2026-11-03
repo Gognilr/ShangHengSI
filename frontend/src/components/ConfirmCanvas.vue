@@ -5,15 +5,21 @@ import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode, type PreviewNodes } from '@/api/preview'
 import { REDACTION_ERROR_MESSAGES, redactionApi, type RedactionInfo, type RedactionItemPos, type Suspect, type SuspectCategory, type UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
+import DocPreview from '@/components/DocPreview.vue'
+import DocSpectrum, { type SpectrumTick } from '@/components/result/DocSpectrum.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
-import { readTextSelection, type TextSelection } from '@/composables/useTextSelection'
-import { MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, toOptions } from '@/utils/labels'
+import { readAskSelection, readTextSelection, type TextSelection } from '@/composables/useTextSelection'
+import { MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, SEVERITY_ORDER, toOptions } from '@/utils/labels'
+import { excerptRange, overlayRange } from '@/utils/marks'
 import { useFx } from '@/utils/motion'
 
 /**
  * 单画布“原文 / AI 视野”（V31-U2 第四节）：一张纸面显示当前文件的原文，替换处为胶囊；
  * AI 视野显示模型将看到的代号。所有原文与代号都按纯文本渲染。
+ * mode=result（V31-U3 3.3）：只读；纸面上标出问题与本地校验位置，右缘光谱条，划选只能“追问这段”，可切到“原件”。
  */
+/** 纸面上的一条问题标注：挂在第一个 loc 的节点上。 */
+export interface CanvasAnnotation { id: string; no: string; severity: string; loc: string; excerpt: string | null }
 const props = defineProps<{
   taskId: string
   files: TaskFile[]
@@ -24,7 +30,15 @@ const props = defineProps<{
   locked: boolean
   protectedCount: number
   nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes>
+  mode?: 'confirm' | 'result'
+  annotations?: CanvasAnnotation[]
+  localLocs?: string[]
+  selectedFindingId?: string
+  aiView?: boolean
+  askEnabled?: boolean
+  rawHighlight?: string[]
 }>()
+const isResult = computed(() => props.mode === 'result')
 const emit = defineEmits<{
   done: [info: RedactionInfo, action: 'add' | 'revoke']
   busy: [value: boolean]
@@ -32,6 +46,8 @@ const emit = defineEmits<{
   keep: [s: Suspect]
   restore: [s: Suspect]
   replace: [s: Suspect, category?: SuspectCategory]
+  select: [findingId: string]
+  ask: [prefill: string]
 }>()
 
 const fx = useFx()
@@ -45,8 +61,16 @@ const sortedFiles = computed(() => [...props.files].sort((a, b) => Number(b.is_m
 const activeId = ref('')
 const active = computed(() => states[activeId.value])
 const lastFileId = computed(() => sortedFiles.value[sortedFiles.value.length - 1]?.id ?? '')
-const view = ref<'orig' | 'ai'>('orig')
-const viewOptions = [{ value: 'orig', label: '原文' }, { value: 'ai', label: 'AI 视野' }]
+const view = ref<'orig' | 'ai' | 'raw'>('orig')
+const activeFile = computed(() => sortedFiles.value.find(f => f.id === activeId.value))
+// 原件视图：PDF 或图片且原件未删除
+const rawAvailable = (f: TaskFile | undefined) => !!f && !f.original_deleted_at && ['pdf', 'jpg', 'jpeg', 'png'].includes(f.ext.toLowerCase().replace(/^\./, ''))
+const viewOptions = computed(() => [
+  { value: 'orig' as const, label: '原文' },
+  ...(props.aiView === false ? [] : [{ value: 'ai' as const, label: 'AI 视野' }]),
+  ...(isResult.value && rawAvailable(activeFile.value) ? [{ value: 'raw' as const, label: '原件' }] : []),
+])
+watch(viewOptions, opts => { if (!opts.some(o => o.value === view.value)) view.value = 'orig' })
 
 async function loadFile(id: string) {
   if (!id || states[id]) return
@@ -71,8 +95,10 @@ const replaceCount = (f: TaskFile) => props.items.filter(it => it.loc.startsWith
 
 // ---- 分段：替换项、不确定项、保留文字 ----
 type Kind = 'plain' | 'cap' | 'unc' | 'kept'
-interface Seg { text: string; k: Kind; item?: RedactionItemPos; sid?: number; i: number }
-interface NodeView { node: PreviewNode; segs: Seg[]; changed: boolean }
+interface Hl { fid: string; sev: string }
+interface Seg { text: string; k: Kind; item?: RedactionItemPos; sid?: number; i: number; hl?: Hl }
+/** bar：没能标出片段的问题按最高等级画左侧竖条；tags：挂在本节点的问题。 */
+interface NodeView { node: PreviewNode; segs: Seg[]; changed: boolean; bar?: string; local?: boolean; tags?: CanvasAnnotation[] }
 type Block =
   | { t: 'node'; nv: NodeView }
   | { t: 'table'; key: string; rows: { r: number; cells: NodeView[] }[] }
@@ -140,6 +166,25 @@ function cellPos(n: PreviewNode): { key: string; r: number; c: number } | null {
 }
 
 const unfolded = ref(new Set<string>())
+const annByLoc = computed(() => {
+  const m = new Map<string, CanvasAnnotation[]>()
+  for (const a of props.annotations ?? []) m.set(a.loc, [...(m.get(a.loc) ?? []), a])
+  for (const list of m.values()) list.sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9))
+  return m
+})
+const localSet = computed(() => new Set(props.localLocs ?? []))
+function annotate(nv: NodeView): NodeView {
+  const anns = annByLoc.value.get(nv.node.loc)
+  if (localSet.value.has(nv.node.loc)) nv.local = true
+  if (!anns) return nv
+  nv.tags = anns
+  for (const a of anns) {
+    const range = excerptRange(nv.node.text ?? '', a.excerpt)
+    if (range) nv.segs = overlayRange(nv.segs, range[0], range[1], { fid: a.id, sev: a.severity })
+    else nv.bar ??= a.severity
+  }
+  return nv
+}
 const noteNode = computed<PreviewNode | null>(() => props.note
   ? { loc: 'NOTE', kind: 'note', part: 'body', text: props.note, clause_no: null, page: null, bbox: null, sheet: null, cell_ref: null, ocr_conf: null, parent_loc: null } : null)
 
@@ -151,7 +196,8 @@ const blocks = computed<Block[]>(() => {
   const flat: Block[] = []
   for (const node of nodes) {
     const segs = buildSegs(node.loc, node.text ?? '', counter)
-    const nv: NodeView = { node, segs, changed: segs.some(s => s.k !== 'plain') }
+    const base: NodeView = { node, segs, changed: segs.some(s => s.k !== 'plain') }
+    const nv = isResult.value ? annotate(base) : base
     const pos = cellPos(node)
     const last = flat[flat.length - 1]
     if (pos) {
@@ -164,7 +210,9 @@ const blocks = computed<Block[]>(() => {
   }
   if (nodes.length <= FOLD_LIMIT || unfolded.value.has(activeId.value)) return flat
   // 长文档：只显示有替换或保留文字的块，其余折叠
-  const changed = (b: Block) => b.t === 'node' ? b.nv.changed : b.t === 'table' ? b.rows.some(r => r.cells.some(c => c.changed)) : false
+  // 结果页另外保留有问题标注或本地校验位置的块
+  const keep = (nv: NodeView) => nv.changed || !!nv.tags || !!nv.local
+  const changed = (b: Block) => b.t === 'node' ? keep(b.nv) : b.t === 'table' ? b.rows.some(r => r.cells.some(keep)) : false
   const out: Block[] = []
   let run = 0
   let runId = ''
@@ -181,11 +229,13 @@ const blocks = computed<Block[]>(() => {
 
 // ---- 渲染：原文 / AI 视野 ----
 const selectedPlaceholder = computed(() => props.suspects.find(s => s.id === props.selectedSuspectId)?.placeholder ?? null)
-const NodeText: FunctionalComponent<{ nv: NodeView; ai: boolean; selId: number | null; selPh: string | null }> = ({ nv, ai, selId, selPh }) => {
+const NodeText: FunctionalComponent<{ nv: NodeView; ai: boolean; selId: number | null; selPh: string | null; selFid?: string }> = ({ nv, ai, selId, selPh, selFid }) => {
   const kids: Array<VNode | string> = nv.segs.map((g) => {
-    if (g.k === 'plain') return g.text
+    const ann = g.hl && !ai ? ['ann', `ann-${g.hl.sev}`, { on: g.hl.fid === selFid }] : []
+    if (g.k === 'plain') return ann.length ? h('mark', { class: ann, 'data-fid': g.hl!.fid }, g.text) : g.text
     const selected = g.k === 'kept' ? g.sid === selId : !!selPh && g.item?.placeholder === selPh
-    const attrs: Record<string, unknown> = { 'data-seg': g.k, style: { '--i': Math.min(g.i, 40) }, class: [g.k, { sel: selected }] }
+    const attrs: Record<string, unknown> = { 'data-seg': g.k, style: { '--i': Math.min(g.i, 40) }, class: [g.k, { sel: selected }, ...ann] }
+    if (ann.length) attrs['data-fid'] = g.hl!.fid
     if (g.item) attrs['data-item'] = `${g.item.loc}|${g.item.char_start}|${g.item.char_end}`
     if (g.sid !== undefined) attrs['data-sid'] = g.sid
     if (g.k === 'kept') return h('span', attrs, g.text)
@@ -195,7 +245,9 @@ const NodeText: FunctionalComponent<{ nv: NodeView; ai: boolean; selId: number |
   })
   return h('span', { class: ai ? 'ai-txt' : 'txt', 'data-loc': nv.node.loc }, kids)
 }
-NodeText.props = ['nv', 'ai', 'selId', 'selPh']
+NodeText.props = ['nv', 'ai', 'selId', 'selPh', 'selFid']
+const nodeClass = (nv: NodeView) => [nv.bar ? `ann-bar ann-bar-${nv.bar}` : '', { 'local-bar': nv.local && !nv.bar, 'ann-hit': nv.tags?.some(a => a.id === props.selectedFindingId) }]
+const tagText = (tags: CanvasAnnotation[]) => `问题 ${tags.map(a => a.no).join(' · ')}`
 
 const flipping = ref(false)
 let flipTimer: ReturnType<typeof setTimeout> | undefined
@@ -216,6 +268,8 @@ const pop = ref<Pop | null>(null)
 const closePop = () => { pop.value = null }
 function onPaperClick(event: MouseEvent) {
   if (window.getSelection() && !window.getSelection()!.isCollapsed) return
+  const fidEl = isResult.value ? (event.target as HTMLElement).closest<HTMLElement>('[data-fid]') : null
+  if (fidEl && !(event.target as HTMLElement).closest('[data-seg]')) { closePop(); emit('select', fidEl.dataset.fid!); return }
   const el = (event.target as HTMLElement).closest<HTMLElement>('[data-seg]')
   if (!el || !wrap.value) { closePop(); return }
   const seg = el.dataset.seg as Pop['seg']
@@ -258,7 +312,35 @@ const pickCategory = ref<UserCategory>('ORG')
 const pickSaving = ref(false)
 function clearPick() { pick.value = null; pickNotice.value = ''; pickError.value = '' }
 watch(activeId, id => { clearPick(); closePop(); void loadFile(id) }, { immediate: true })
+// 结果页“追问这段”（V31-U3 3.3）：预填“关于“{选中文字}”（{可读位置}）：”
+const ask = ref<{ loc: string; text: string } | null>(null)
+function readableLoc(loc: string): string {
+  const file = sortedFiles.value.find(f => loc.startsWith(`F${f.seq}-`))
+  const node = active.value?.nodes.find(n => n.loc === loc)
+  const where = node?.clause_no ? `第 ${node.clause_no} 条` : node?.page != null ? `第 ${node.page} 页` : node?.cell_ref ? `${node.sheet ?? ''} ${node.cell_ref}`.trim() : ''
+  return [file?.original_name, where].filter(Boolean).join(' ')
+}
+function onAskMouseUp() {
+  ask.value = null
+  if (view.value !== 'orig' || !props.askEnabled || !wrap.value) return
+  const s = readAskSelection()
+  if (!s) return
+  const outer = wrap.value.getBoundingClientRect()
+  ask.value = { loc: s.loc, text: s.text }
+  pickPos.value = { left: Math.max(8, Math.min(s.rect.left - outer.left, outer.width - 160)), top: Math.max(4, s.rect.top - outer.top - 44) }
+}
+function submitAsk() {
+  const a = ask.value
+  if (!a) return
+  const chars = Array.from(a.text)
+  const quoted = chars.length > 60 ? `${chars.slice(0, 60).join('')}…` : a.text
+  const where = readableLoc(a.loc)
+  ask.value = null
+  window.getSelection()?.removeAllRanges()
+  emit('ask', `关于“${quoted}”${where ? `（${where}）` : ''}：`)
+}
 function onPaperMouseUp() {
+  if (isResult.value) { onAskMouseUp(); return }
   if (view.value !== 'orig' || pickSaving.value) return
   const result = readTextSelection(itemsByLoc.value)
   clearPick()
@@ -287,9 +369,11 @@ async function submitPick() {
 }
 
 // ---- 定位（4.4） ----
-async function locate(loc: string, text?: string) {
+async function locate(loc: string, text?: string, findingId?: string) {
   const file = loc === 'NOTE' ? sortedFiles.value[sortedFiles.value.length - 1] : sortedFiles.value.find(f => loc.startsWith(`F${f.seq}-`))
   if (!file) return
+  // 原件视图下只切页签，由原件视图按 bbox 高亮
+  if (view.value === 'raw' && rawAvailable(file)) { activeId.value = file.id; return }
   if (view.value !== 'orig') view.value = 'orig'
   activeId.value = file.id
   await loadFile(file.id)
@@ -299,8 +383,9 @@ async function locate(loc: string, text?: string) {
   const node = box?.querySelector<HTMLElement>(`[data-node="${CSS.escape(loc)}"]`)
   if (!box || !node) return
   box.scrollTop += node.getBoundingClientRect().top - box.getBoundingClientRect().top - 80
+  const marked = findingId ? node.querySelector<HTMLElement>(`[data-fid="${CSS.escape(findingId)}"]:not(.ann-tag)`) : null
   const candidates = Array.from(node.querySelectorAll<HTMLElement>('[data-seg]'))
-  const target = (text ? candidates.find(el => el.textContent === text) : undefined) ?? candidates[0] ?? node
+  const target = marked ?? (findingId ? node : undefined) ?? (text ? candidates.find(el => el.textContent === text) : undefined) ?? candidates[0] ?? node
   target.classList.add('flash')
   setTimeout(() => target.classList.remove('flash'), 1600)
 }
@@ -310,7 +395,34 @@ function switchFile(delta: 1 | -1) {
   if (list.length > 1 && index >= 0) activeId.value = list[(index + delta + list.length) % list.length]!.id
 }
 function toggleView() { view.value = view.value === 'orig' ? 'ai' : 'orig' }
-function cancel() { closePop(); clearPick(); window.getSelection()?.removeAllRanges() }
+function cancel() { closePop(); clearPick(); ask.value = null; window.getSelection()?.removeAllRanges() }
+
+// ---- 光谱条（结果页）：刻度位置 = 块序号 ÷ 当前渲染的块数 ----
+const ticks = computed<SpectrumTick[]>(() => {
+  if (!isResult.value) return []
+  const list = blocks.value
+  const out: SpectrumTick[] = []
+  list.forEach((b, i) => {
+    const pos = (i + 0.5) / list.length
+    const views = b.t === 'node' ? [b.nv] : b.t === 'table' ? b.rows.flatMap(r => r.cells) : []
+    let cap = false
+    for (const nv of views) {
+      for (const a of nv.tags ?? []) out.push({ pos, kind: (['high', 'medium', 'low'].includes(a.severity) ? a.severity : 'low') as SpectrumTick['kind'], loc: nv.node.loc, fid: a.id })
+      if (nv.local) out.push({ pos, kind: 'local', loc: nv.node.loc })
+      if (!cap && nv.changed) { cap = true; out.push({ pos, kind: 'cap', loc: nv.node.loc }) }
+    }
+  })
+  return out
+})
+function onTick(t: SpectrumTick) {
+  void locate(t.loc, undefined, t.fid)
+  if (t.fid) emit('select', t.fid)
+}
+function onSeek(ratio: number) {
+  const box = scroller.value
+  if (box) box.scrollTop = ratio * box.scrollHeight - box.clientHeight / 2
+}
+function onStageScroll() { closePop(); ask.value = null }
 defineExpose({ locate, switchFile, toggleView, cancel })
 </script>
 
@@ -326,30 +438,40 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       <SiSegmented v-model="view" :options="viewOptions" size="small" ariaLabel="原文或 AI 视野" />
     </div>
 
-    <div ref="scroller" v-loading="active?.loading" class="stage si-stage" @scroll.passive="closePop">
+    <DocPreview v-if="view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? []" />
+    <div v-else class="stage-wrap">
+    <div ref="scroller" v-loading="active?.loading" class="stage si-stage" :class="{ 'with-spectrum': isResult }" @scroll.passive="onStageScroll">
       <el-alert v-if="active?.error" type="error" show-icon :closable="false" :title="active.error" />
       <el-empty v-else-if="active && !active.loading && !active.available" description="原文已按保留期清理" />
       <el-empty v-else-if="active && !active.loading && !blocks.length" description="没有可显示的正文" />
       <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp">
         <template v-for="(b, bi) in blocks" :key="bi">
-          <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }]" :data-node="b.nv.node.loc">
+          <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv)]" :data-node="b.nv.node.loc">
+            <button v-if="b.nv.tags" type="button" class="ann-tag" :data-fid="b.nv.tags[0]!.id">{{ tagText(b.nv.tags) }}</button>
             <div v-if="b.nv.node.loc === 'NOTE'" class="side-label">本次补充说明</div>
             <span v-else-if="b.nv.node.part !== 'body'" class="side-label">{{ b.nv.node.part }}</span>
             <span v-if="b.nv.node.clause_no && b.nv.node.part === 'body'" class="clause">{{ b.nv.node.clause_no }}</span>
-            <NodeText :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" />
+            <NodeText :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" />
           </div>
           <table v-else-if="b.t === 'table'" class="tbl">
-            <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc"><NodeText :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" /></td></tr></tbody>
+            <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc" :class="nodeClass(c)" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"><NodeText :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>
           </table>
-          <button v-else type="button" class="fold" @click="unfolded = new Set(unfolded).add(activeId)">{{ b.n }} 段未改动 · 展开</button>
+          <button v-else type="button" class="fold" @click="unfolded = new Set(unfolded).add(activeId)">{{ b.n }} 段{{ isResult ? '无标注' : '未改动' }} · 展开</button>
         </template>
       </div>
     </div>
+    <DocSpectrum v-if="isResult && blocks.length" :ticks="ticks" :scroller="scroller" @pick="onTick" @seek="onSeek" />
+    </div>
 
-    <p class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
+    <p v-if="!isResult" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
+    <p v-else-if="view !== 'raw'" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护${askEnabled ? ' · 划选文字可追问' : ''}` : '这是模型看到的样子 · 结论已在本机还原' }}</p>
 
     <div v-if="pop" class="pop" :style="{ left: `${pop.left}px`, top: `${pop.top}px` }" role="dialog" @click.stop>
-      <template v-if="pop.suspect">
+      <template v-if="isResult">
+        <p v-if="pop.seg === 'kept'" class="pop-text">{{ pop.suspect?.text }} · 保留原文，未替换</p>
+        <p v-else-if="pop.item" class="pop-text">{{ REDACTION_CATEGORY[pop.item.category] ?? pop.item.category }} · <span class="code-tag">{{ pop.item.placeholder }}</span></p>
+      </template>
+      <template v-else-if="pop.suspect">
         <p class="pop-text">{{ pop.suspect.text }}</p>
         <template v-if="pop.seg === 'kept'">
           <el-button size="small" :disabled="locked" @click="popRestore">{{ pop.suspect.kept_by === 'user' || pop.suspect.decision === 'ignore' ? '改回替换' : '替换' }}</el-button>
@@ -368,6 +490,9 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       </template>
     </div>
 
+    <div v-if="ask" class="pickbar" :style="{ left: `${pickPos.left}px`, top: `${pickPos.top}px` }">
+      <el-button type="primary" size="small" @mousedown.prevent @click="submitAsk">追问这段</el-button>
+    </div>
     <div v-if="pick || pickNotice || pickError" class="pickbar" :style="{ left: `${pickPos.left}px`, top: `${pickPos.top}px` }">
       <template v-if="pick">
         <span class="pick-label">补充脱敏</span>
@@ -392,7 +517,9 @@ defineExpose({ locate, switchFile, toggleView, cancel })
 .tab:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-n { flex: none; padding: 0 6px; border-radius: 999px; background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-label-sm); }
+.stage-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
 .stage { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; border-radius: var(--si-radius-card); }
+.stage.with-spectrum { padding-right: 24px; }
 .paper { max-width: 760px; margin: 0 auto; padding: 40px 48px; border-radius: var(--si-radius-paper); box-shadow: var(--si-paper-shadow); font: var(--si-font-reading); }
 .paper.fx-lite.ai { animation: cv-fade 160ms var(--si-ease); }
 .node { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; content-visibility: auto; contain-intrinsic-size: auto 48px; }
@@ -406,6 +533,24 @@ defineExpose({ locate, switchFile, toggleView, cancel })
 .fold { display: block; width: 100%; margin: 8px 0; padding: 6px; border: 1px dashed var(--si-hair-strong); border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label-sm); cursor: pointer; }
 .fold:hover { color: var(--el-color-primary); border-color: var(--el-color-primary); }
 .cv-foot { flex: none; margin: 0; }
+
+/* 结果页问题标注（V31-U3 3.3）：片段用等级底色与底线，找不到片段时整段左侧竖条；本地校验位置为灰色竖条 */
+.node { position: relative; }
+.ann-bar, .local-bar { box-shadow: inset 3px 0 0 var(--bar); padding-left: 10px; margin-left: -13px; }
+.ann-bar-high { --bar: var(--si-danger); }
+.ann-bar-medium { --bar: var(--si-warn); }
+.ann-bar-low { --bar: var(--si-info); }
+.local-bar { --bar: var(--si-ink-3); }
+td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
+.ann-tag { float: right; margin: 0 0 4px 8px; padding: 0 6px; border: 0; border-radius: var(--si-radius-tag); background: var(--si-surface-2); color: var(--si-ink-2); font: var(--si-font-label-sm); line-height: 20px; cursor: pointer; }
+.ann-hit > .ann-tag { background: var(--el-color-primary); color: var(--si-paper); }
+:deep(.ann) { color: inherit; border-radius: 2px; cursor: pointer; }
+:deep(.ann-high) { background: var(--si-hl-high); box-shadow: inset 0 -2px 0 var(--si-danger); }
+:deep(.ann-medium) { background: var(--si-hl-medium); box-shadow: inset 0 -2px 0 var(--si-warn); }
+:deep(.ann-low) { background: var(--si-hl-low); box-shadow: inset 0 -2px 0 var(--si-info); }
+:deep(.ann-high.on) { background: color-mix(in srgb, var(--si-danger) 28%, var(--si-paper)); }
+:deep(.ann-medium.on) { background: color-mix(in srgb, var(--si-warn) 30%, var(--si-paper)); }
+:deep(.ann-low.on) { background: color-mix(in srgb, var(--si-info) 30%, var(--si-paper)); }
 
 /* 胶囊：括号内的内容仍是原文本身，图标用伪元素，不进入文字内容 */
 :deep(.cap), :deep(.unc) { padding: 0 4px; border-radius: 4px; background: var(--si-cap-bg); color: var(--si-cap-ink); cursor: pointer; }
