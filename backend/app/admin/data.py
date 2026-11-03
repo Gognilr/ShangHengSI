@@ -319,6 +319,7 @@ def get_outbound(log_id: str, db: DbSession = Depends(get_db)) -> OutboundDetail
 
 
 class SystemStatus(BaseModel):
+    local_models: list[dict] = []
     assistant_sessions: int = 0
     version: str
     queued_jobs: int
@@ -422,7 +423,8 @@ def system_status(db: DbSession = Depends(get_db)) -> SystemStatus:
     s = get_settings()
     queued = db.scalar(select(func.count()).select_from(Job).where(Job.status == "queued")) or 0
     sessions = db.scalar(select(func.count()).select_from(Task).where(Task.kind == 'assistant')) or 0
-    return SystemStatus(version=s.app_version, queued_jobs=int(queued), assistant_sessions=sessions, **_storage_snapshot(db))
+    from app.local_models import inspect_models
+    return SystemStatus(local_models=inspect_models(cached=True), version=s.app_version, queued_jobs=int(queued), assistant_sessions=sessions, **_storage_snapshot(db))
 
 
 # ---------------------------------------------------------------- 只读审计日志

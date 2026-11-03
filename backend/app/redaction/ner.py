@@ -1,5 +1,6 @@
 """离线 GLiNER markerV0 推理（V2-B 6.2/6.3）。不下载文件，不记录输入。"""
 import hashlib
+import os
 import json
 import re
 import threading
@@ -67,7 +68,7 @@ def check(*, load: bool = False) -> None:
     except (OSError, ValueError):
         raise RuntimeError('实体识别模型文件缺失或 SHA-256 校验失败') from None
     if load:
-        _threads = 8
+        _threads = max(1, int(os.environ.get('NER_THREADS', '8')))
         _get_model()
 
 

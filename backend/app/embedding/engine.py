@@ -1,5 +1,6 @@
 """bge-m3 INT8 离线推理；不下载文件，不记录输入和向量。"""
 import hashlib
+import os
 import threading
 from pathlib import Path
 from typing import Literal
@@ -40,7 +41,7 @@ def check(load: bool = False):
     except (OSError, ValueError):
         raise RuntimeError('向量模型文件缺失或 SHA-256 校验失败') from None
     if load:
-        _threads = 8
+        _threads = max(1, int(os.environ.get('EMBED_THREADS', '8')))
         _get_model()
 
 

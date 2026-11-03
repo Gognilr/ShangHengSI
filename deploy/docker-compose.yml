@@ -1,4 +1,4 @@
-# 5 个服务：db / app / worker / converter / web（SPEC 4、20.2）。
+# 主线五个服务，转写容器通过 asr profile 启用。
 # 用法：复制 .env.example 为 .env 并填写，准备 secrets/ 下的密钥文件，然后
 #   docker compose up -d
 name: aireview
@@ -19,6 +19,9 @@ x-backend: &backend
     FILES_DIR: /data/files
     BACKUP_DIR: /backup
     OCR_MODEL_DIR: /usr/local/lib/python3.12/site-packages/rapidocr_onnxruntime/models
+    LOCAL_MODELS_FILE: /etc/aireview/models.yaml
+    COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
+    CONVERT_SPOOL_DIR: /spool
     TZ: Asia/Shanghai
     MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-30}
     APP_VERSION: ${APP_VERSION:-dev}
@@ -62,8 +65,11 @@ services:
       - -c
       - alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --no-access-log
     volumes:
+      - ./models.yaml:/etc/aireview/models.yaml:ro
+      - ../transcriber/models/asr/MANIFEST.sha256:/etc/aireview/model-manifests/asr.sha256:ro
       - files_data:/data/files
       - ./secrets:/run/secrets:ro
+      - convert_spool:/spool:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 3).close()"]
       interval: 10s
@@ -77,11 +83,15 @@ services:
     command: ["python", "-m", "app.worker"]
     environment:
       <<: *backend-env
+      NER_THREADS: ${NER_THREADS:-8}
+      EMBED_THREADS: ${EMBED_THREADS:-8}
       WORKER_REVIEW_CONCURRENCY: ${WORKER_REVIEW_CONCURRENCY:-8}
       WORKER_PARSE_CONCURRENCY: ${WORKER_PARSE_CONCURRENCY:-2}
       CONVERT_SPOOL_DIR: /spool
       LAWSYNC_PROXY: ${LAWSYNC_PROXY:-}
     volumes:
+      - ./models.yaml:/etc/aireview/models.yaml:ro
+      - ../transcriber/models/asr/MANIFEST.sha256:/etc/aireview/model-manifests/asr.sha256:ro
       - files_data:/data/files
       - ${BACKUP_HOST_DIR:-./backup}:/backup
       - ./secrets:/run/secrets:ro
@@ -118,6 +128,33 @@ services:
     healthcheck:
       # 心跳文件 30 秒内更新过
       test: ["CMD", "python", "/srv/converter/main.py", "--check"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # M-02 先接统一骨架，容器实现与镜像构建入口在 M-04 完成。
+  transcriber:
+    image: aireview-transcriber:${APP_VERSION:-dev}
+    profiles: [asr]
+    logging: *logging
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    user: "10003:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=64m]
+    environment:
+      CONVERT_SPOOL_DIR: /spool
+      ASR_THREADS: ${ASR_THREADS:-8}
+      ASR_MEM: ${ASR_MEM:-4g}
+    volumes: [convert_spool:/spool]
+    mem_limit: ${ASR_MEM:-4g}
+    cpus: ${ASR_CPUS:-8}
+    cpu_shares: 256
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "/srv/transcriber/main.py", "--check"]
       interval: 15s
       timeout: 5s
       retries: 3

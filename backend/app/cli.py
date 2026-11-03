@@ -269,7 +269,22 @@ def main(argv: list[str] | None = None) -> int:
     p_verify = sub.add_parser("verify-key", help="抽查加密列与原件能否用给定主密钥解密")
     p_verify.add_argument("--key-file", required=True, help="待验证主密钥文件")
 
+    p_check = sub.add_parser("model-check", help="离线核对本地模型；重型组只读清单与心跳")
+    p_check.add_argument("model", nargs="?", help="模型 id，省略时列出全部")
+    p_check.add_argument("--smoke", action="store_true", help="运行轻量模型的断网推理冒烟")
+
     args = parser.parse_args(argv)
+
+    if args.command == "model-check":
+        import json
+        from app.local_models import inspect_models
+        try:
+            rows = inspect_models(args.model, smoke=args.smoke)
+        except (OSError, ValueError):
+            print("本地模型清单不可用或模型 id 不存在", file=sys.stderr)
+            return 1
+        print(json.dumps(rows, ensure_ascii=False))
+        return int(any(r["status"] == "unavailable" for r in rows))
 
     if args.command in ("rotate-key", "verify-key"):
         from app.security.rotate import command

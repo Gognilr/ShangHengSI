@@ -1,0 +1,190 @@
+[
+  {
+    "id": "ner",
+    "purpose": "脱敏实体识别",
+    "image": "backend",
+    "dir": "backend/models/ner",
+    "source": "huggingface.co/urchade/gliner_multi-v2.1@443d26d654e0324125a96bebd8e796c14ff2efe6",
+    "convert": "仓库外导出 FP32 ONNX，见 docs/v2/design/V2-B.md 6.2",
+    "license": "Apache-2.0",
+    "runtime": "onnxruntime",
+    "size_mb": 1175,
+    "resources": {
+      "threads_env": "NER_THREADS",
+      "threads_default": 8,
+      "mem_gb": 2.5
+    },
+    "thresholds": "1 万字 ≤ 15 秒，追问 500 字 ≤ 3 秒",
+    "approved": "V2Q-37",
+    "smoke": "python -m app.cli model-check ner --smoke"
+  },
+  {
+    "id": "embedding",
+    "purpose": "本地稠密向量检索",
+    "image": "backend",
+    "dir": "backend/models/embedding",
+    "source": "huggingface.co/BAAI/bge-m3@5617a9f61b028005a4858fdac845db406aefb181",
+    "convert": "官方 ONNX 动态量化 INT8，见 docs/v2/reports/V2-E-04a.md",
+    "license": "MIT",
+    "runtime": "onnxruntime",
+    "size_mb": 544,
+    "resources": {
+      "threads_env": "EMBED_THREADS",
+      "threads_default": 8,
+      "mem_gb": 1.5
+    },
+    "thresholds": "1 万字 ≤ 5 秒",
+    "approved": "V2-E-04a",
+    "smoke": "python -m app.cli model-check embedding --smoke"
+  },
+  {
+    "id": "ocr",
+    "purpose": "扫描件文字识别",
+    "image": "backend",
+    "dir": null,
+    "source": "rapidocr-onnxruntime==1.4.4",
+    "convert": "随锁定的 pip 包分发",
+    "license": "Apache-2.0",
+    "runtime": "onnxruntime",
+    "size_mb": 16,
+    "resources": {},
+    "thresholds": "断网 OCR 冒烟",
+    "approved": "SPEC 第 3 节",
+    "smoke": "python -m app.cli model-check ocr --smoke"
+  },
+  {
+    "id": "asr-vad",
+    "group": "asr",
+    "purpose": "录音语音分段",
+    "image": "transcriber",
+    "dir": "transcriber/models/asr",
+    "files": [
+      "vad.onnx",
+      "vad_cmvn.ark"
+    ],
+    "source": "github.com/FireRedTeam/FireRedVAD@c30ec49e8cc69642b0ee65362eba11b9d11c6e54",
+    "convert": "见 docs/v31/reports/V31-M-01.md 第三节",
+    "license": "Apache-2.0",
+    "runtime": "onnxruntime",
+    "size_mb": 3,
+    "resources": {
+      "cpus_env": "ASR_CPUS",
+      "threads_env": "ASR_THREADS",
+      "threads_default": 8,
+      "mem_env": "ASR_MEM",
+      "mem_default": "4g",
+      "mem_gb": 4
+    },
+    "thresholds": "整组 1 小时录音 ≤ 1 小时（V31Q-74）",
+    "approved": "V31Q-73、74（2026-11-03）",
+    "smoke": "python /srv/transcriber/main.py --smoke"
+  },
+  {
+    "id": "asr",
+    "group": "asr",
+    "purpose": "录音转写",
+    "image": "transcriber",
+    "dir": "transcriber/models/asr",
+    "files": [
+      "asr_encoder.int8.onnx",
+      "asr_decoder.int8.onnx",
+      "asr_tokens.txt"
+    ],
+    "source": "github.com/k2-fsa/sherpa-onnx/releases/asr-models/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26",
+    "convert": "见 docs/v31/reports/V31-M-01.md 第三节",
+    "license": "Apache-2.0",
+    "runtime": "onnxruntime",
+    "size_mb": 1179,
+    "resources": {
+      "cpus_env": "ASR_CPUS",
+      "threads_env": "ASR_THREADS",
+      "threads_default": 8,
+      "mem_env": "ASR_MEM",
+      "mem_default": "4g",
+      "mem_gb": 4
+    },
+    "thresholds": "整组 1 小时录音 ≤ 1 小时（V31Q-74）",
+    "approved": "V31Q-73、74（2026-11-03）",
+    "smoke": "python /srv/transcriber/main.py --smoke"
+  },
+  {
+    "id": "asr-punc",
+    "group": "asr",
+    "purpose": "转写加标点",
+    "image": "transcriber",
+    "dir": "transcriber/models/asr",
+    "files": [
+      "punc.int8.onnx",
+      "punc_vocab.txt",
+      "punc_out_dict"
+    ],
+    "source": "huggingface.co/FireRedTeam/FireRedPunc@e448fd967f44182a1c323cc30f5d89f2400c28da",
+    "convert": "transcriber/scripts/export_punc_onnx.py",
+    "license": "Apache-2.0",
+    "runtime": "onnxruntime",
+    "size_mb": 98,
+    "resources": {
+      "cpus_env": "ASR_CPUS",
+      "threads_env": "ASR_THREADS",
+      "threads_default": 8,
+      "mem_env": "ASR_MEM",
+      "mem_default": "4g",
+      "mem_gb": 4
+    },
+    "thresholds": "整组 1 小时录音 ≤ 1 小时（V31Q-74）",
+    "approved": "V31Q-73、74（2026-11-03）",
+    "smoke": "python /srv/transcriber/main.py --smoke"
+  },
+  {
+    "id": "asr-seg",
+    "group": "asr",
+    "purpose": "说话人分段",
+    "image": "transcriber",
+    "dir": "transcriber/models/asr",
+    "files": [
+      "seg.onnx"
+    ],
+    "source": "github.com/k2-fsa/sherpa-onnx/releases/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0",
+    "convert": "见 docs/v31/reports/V31-M-01.md 第三节",
+    "license": "MIT",
+    "runtime": "sherpa-onnx",
+    "size_mb": 6,
+    "resources": {
+      "cpus_env": "ASR_CPUS",
+      "threads_env": "ASR_THREADS",
+      "threads_default": 8,
+      "mem_env": "ASR_MEM",
+      "mem_default": "4g",
+      "mem_gb": 4
+    },
+    "thresholds": "整组 1 小时录音 ≤ 1 小时（V31Q-74）",
+    "approved": "V31Q-73、74（2026-11-03）",
+    "smoke": "python /srv/transcriber/main.py --smoke"
+  },
+  {
+    "id": "asr-spk",
+    "group": "asr",
+    "purpose": "声纹聚类",
+    "image": "transcriber",
+    "dir": "transcriber/models/asr",
+    "files": [
+      "spk.onnx"
+    ],
+    "source": "github.com/k2-fsa/sherpa-onnx/releases/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx",
+    "convert": "见 docs/v31/reports/V31-M-01.md 第三节",
+    "license": "Apache-2.0",
+    "runtime": "sherpa-onnx",
+    "size_mb": 27,
+    "resources": {
+      "cpus_env": "ASR_CPUS",
+      "threads_env": "ASR_THREADS",
+      "threads_default": 8,
+      "mem_env": "ASR_MEM",
+      "mem_default": "4g",
+      "mem_gb": 4
+    },
+    "thresholds": "整组 1 小时录音 ≤ 1 小时（V31Q-74）",
+    "approved": "V31Q-73、74（2026-11-03）",
+    "smoke": "python /srv/transcriber/main.py --smoke"
+  }
+]
