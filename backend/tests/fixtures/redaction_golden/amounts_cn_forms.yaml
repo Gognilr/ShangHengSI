@@ -10,6 +10,7 @@ must_replace:
   - {text: "68", category: AMOUNT}
   - {text: "9,350.00", category: AMOUNT}
   - {text: 三万五千, category: AMOUNT}
+  - {text: 陆万陆仟陆佰壹拾捌元玖角, category: AMOUNT}
   - {text: "56,000", category: AMOUNT}
   - {text: "1,250", category: AMOUNT}
   - {text: "7,800", category: AMOUNT}

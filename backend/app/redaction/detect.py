@@ -646,7 +646,8 @@ def _find_amounts(text: str, column: str | None = None) -> list[Hit]:
                 currency = _CURRENCY.get(match.group('currency').upper(), _CURRENCY.get(match.group('currency')))
                 cat = category(match.end())
                 start, end = match.span('num')
-                if not any(h.start <= start and end <= h.end and h.value == value for h in hits):
+                # 完整大写金额可能还含元、角、分；不能再把其中整数部分登记为较短金额。
+                if not any(h.start <= start and end <= h.end for h in hits):
                     hits.append(Hit(start, end, cat, _amount_key(cat, currency, value, match.group('num')), currency, value))
     # V31Q-66：正文位权数字支持约数后缀、单位括号与填空括号；表格裸中文数字不猜金额。
     contexts = (
