@@ -54,12 +54,16 @@ def parse(sm, tid):
         pipeline.handle_parse(db, job.payload)
 
 
-def test_t47_4_create_defaults_and_audit(files_dir, session_client, db_sessionmaker):
+def test_t47_4_create_defaults_and_audit(files_dir, session_client, db_sessionmaker, monkeypatch):
+    monkeypatch.setenv('COMPOSE_PROFILES', 'asr')
     c, h, owner = session_client
     data = create(c, h)
     assert (data["title"], data["status"], data["stance"], data["source"], data["policy"]) == (
         "新会话", "active", "other", "incoming", "ai")
     assert data["files"] == [] and data["code_count"] == 0
+    assert data['asr_enabled'] is True and c.get(BASE).json()['asr_enabled'] is True
+    monkeypatch.setenv('COMPOSE_PROFILES', '')
+    assert c.get(f"{BASE}/{data['id']}").json()['asr_enabled'] is False and c.get(BASE).json()['asr_enabled'] is False
     with db_sessionmaker() as db:
         task = db.get(Task, uuid.UUID(data["id"]))
         assert task.kind == "assistant" and task.owner_id == owner.id

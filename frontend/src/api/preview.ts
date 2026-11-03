@@ -6,6 +6,12 @@ export interface PreviewNode {
   part: string
   /** 解密后的原文；保留期清理后为 null。 */
   text: string | null
+  t_start_ms?: number | null
+  t_end_ms?: number | null
+  speaker?: number | null
+  low_conf_spans?: number[][] | null
+  /** 仅助手逐字稿提供；与实际外发的发言人写法一致。 */
+  speaker_code?: string | null
   clause_no: string | null
   page: number | null
   /** [x0, top, x1, bottom]；PDF 为 PDF 点，图片为原图像素，原点在左上角。 */

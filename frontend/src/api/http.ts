@@ -131,7 +131,39 @@ async function requestDownload(path: string): Promise<{ blob: Blob; filename: st
   throw new ApiError(res.status, code, message)
 }
 
+/** 助手大文件上传；与普通请求共用 Cookie、CSRF 和会话失效处理。 */
+export function postFormWithProgress<T>(path: string, form: FormData, onProgress: (loaded: number, total: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', API_PREFIX + path)
+    xhr.withCredentials = true
+    xhr.setRequestHeader('Accept', 'application/json')
+    if (csrfToken) xhr.setRequestHeader('X-CSRF-Token', csrfToken)
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total)
+    }
+    xhr.onerror = () => reject(new ApiError(0, 'NETWORK_ERROR', '无法连接服务器，请检查网络后重试'))
+    xhr.onabort = xhr.onerror
+    xhr.onload = () => {
+      let data: { code?: string; message?: string } | undefined
+      try { data = JSON.parse(xhr.responseText) } catch { /* 网关可能返回非 JSON 错误页。 */ }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (xhr.status === 204) resolve(undefined as T)
+        else if (data !== undefined) resolve(data as T)
+        else reject(new ApiError(xhr.status, 'HTTP_ERROR', '服务器响应无法读取，请重试'))
+        return
+      }
+      const code = data?.code ?? 'HTTP_ERROR'
+      if (xhr.status === 401) hooks.onUnauthorized()
+      if (xhr.status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') hooks.onPasswordChangeRequired()
+      reject(new ApiError(xhr.status, code, data?.message ?? `请求失败（${xhr.status}）`, data))
+    }
+    xhr.send(form)
+  })
+}
+
 export const http = {
+  postFormWithProgress,
   getBlob: async (path: string) => (await requestDownload(path)).blob,
   getDownload: (path: string) => requestDownload(path),
   get: <T>(path: string, query?: RequestOptions['query'], opts?: Pick<RequestOptions, 'silent401'>) =>

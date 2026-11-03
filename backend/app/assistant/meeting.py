@@ -39,6 +39,11 @@ def stamp(ms):
 def line(db, task, file, node, memo=None):
     if node.kind != 'utterance':
         return f'⟦{node.loc}⟧{node.redacted_text or ""}'
+    label = speaker_code(db, task, file, node, memo)
+    return f'[{node.loc}] 【{label}｜{stamp(node.t_start_ms)}】{node.redacted_text or ""}'
+
+
+def speaker_code(db, task, file, node, memo=None):
     # 长录音逐句调用：对照表与发言人名每次构建只解密一次。
     memo = {} if memo is None else memo
     if file.id not in memo:
@@ -51,7 +56,7 @@ def line(db, task, file, node, memo=None):
         label = next((code for code, value in memo['map'].items() if value == name and code.startswith('[[PER_')), None)
         if label is None:
             raise AppError(409, 'SPEAKER_NOT_REDACTED', '请重新确认发言人的脱敏')
-    return f'[{node.loc}] 【{label}｜{stamp(node.t_start_ms)}】{node.redacted_text or ""}'
+    return label
 
 
 def editable(db, task, file=None):

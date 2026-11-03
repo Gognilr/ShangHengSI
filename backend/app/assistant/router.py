@@ -6,14 +6,13 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from sqlalchemy.orm import Session
 
 from app.assistant import service
-from app.assistant.schemas import MessageIn, SessionDetail, SessionPage, SessionPatch
+from app.assistant.schemas import AssistantPreviewNode, AssistantPreviewNodes, MessageIn, SessionDetail, SessionPage, SessionPatch
 from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import _parse_id, current_user, load_owned_task
 from app.security.errors import NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service as tasks
-from app.tasks.schemas import PreviewNodes
 from pydantic import BaseModel, Field
 
 
@@ -105,9 +104,15 @@ def remove_file(file: TaskFile = Depends(owned_file), task: Task = Depends(owned
     return service.remove_file(db, task, file)
 
 
-@router.get("/{id}/files/{fid}/nodes", response_model=PreviewNodes)
+@router.get("/{id}/files/{fid}/nodes", response_model=AssistantPreviewNodes)
 def nodes(file: TaskFile = Depends(owned_file), task: Task = Depends(owned_session), db: Session = Depends(get_db)):
-    return tasks.preview_nodes(db, task, file)
+    from app.assistant.meeting import speaker_code
+    preview = tasks.preview_nodes(db, task, file)
+    memo = {}
+    return AssistantPreviewNodes(text_available=preview.text_available, items=[
+        AssistantPreviewNode(**node.model_dump(), speaker_code=speaker_code(db, task, file, node, memo)
+                             if node.kind == 'utterance' and preview.text_available else None)
+        for node in preview.items])
 
 
 @router.post('/{id}/files/{fid}/retranscribe', response_model=SessionDetail)

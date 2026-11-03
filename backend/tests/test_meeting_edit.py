@@ -30,6 +30,7 @@ def test_meeting_edit_and_outbound(env, session_client, db_sessionmaker, make_us
         db.get(Task, tid).status = 'awaiting_confirm'
         db.commit()
     url = f'{BASE}/{tid}'
+    assert c.get(url+f'/files/{fid}/nodes').json()['items'][0]['speaker_code'] == '发言人1'
     r = c.put(url+'/participants', headers=headers, json={'names':['张伟']})
     assert r.status_code == 200, r.text
     r = c.put(url+f'/files/{fid}/speakers', headers=headers, json={'1':'张伟'})
@@ -47,6 +48,7 @@ def test_meeting_edit_and_outbound(env, session_client, db_sessionmaker, make_us
         sent = engine.build_outbound_text(db, task)
         assert '张伟' not in sent and '三十五万' not in sent
         assert '[[PER_' in sent and '00:00:01' in sent
+        assert c.get(url+f'/files/{fid}/nodes').json()['items'][0]['speaker_code'] in sent
         from app.redaction.recheck import recheck
         assert recheck(sent, real_values=engine.load_real_values(db, tid), terms=[],
                        placeholders=engine.load_placeholders(db, tid)) == []
@@ -55,7 +57,7 @@ def test_meeting_edit_and_outbound(env, session_client, db_sessionmaker, make_us
     assert r.content == b'OggS-fictional' and r.headers['cache-control'] == 'no-store'
     make_user('meeting_outsider')
     other, csrf = login('meeting_outsider')
-    for path in ('audio', 'suggestions'):
+    for path in ('audio', 'suggestions', 'nodes'):
         assert other.get(url+f'/files/{fid}/{path}').status_code == 404
     response = c.post(url+'/confirm', headers=headers)
     assert response.status_code == 200, response.text

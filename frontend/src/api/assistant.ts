@@ -1,10 +1,19 @@
 import { http } from './http'
 import type { TaskDetail, TaskFile, Source, Stance } from './tasks'
 import type { PreviewNodes } from './preview'
-import type { ChatDecision, ChatPreview } from './chat'
+import type { Calc, ChatDecision, ChatPreview } from './chat'
+import type { Mark } from './runs'
+import type { LocalFinding } from './localFindings'
 
-export type Template = 'translate' | 'summary' | 'reply' | 'crosscheck' | 'compare'
-export interface SessionFile extends TaskFile { confirmed_at: string | null }
+export type Template = 'translate' | 'summary' | 'reply' | 'crosscheck' | 'compare' | 'minutes'
+export interface Media {
+  stage: 'decoding' | 'queued' | 'waiting_memory' | 'transcribing' | 'done' | 'failed'
+  progress: number; duration_ms?: number; error: 'unavailable' | 'timeout' | 'transcribe_failed' | 'decode_failed' | null
+  queue_position: number
+}
+export interface SessionFile extends TaskFile { confirmed_at: string | null; media: Media | null; speakers: Record<string, string | null> | null }
+export interface Suggestion { loc: string; start: number; end: number; from: string; to: string }
+export const ASSISTANT_ERROR_MESSAGES: Record<string, string> = { ASR_DISABLED: '录音转写未启用，请联系管理员' }
 export interface SessionItem {
   id: string; title: string; status: string; file_count: number; last_activity_at: string
   original_deleted: boolean; generating?: boolean
@@ -13,8 +22,9 @@ export interface Session extends SessionItem {
   stance: Stance; source: Source; policy: 'ai' | 'local_only'; error_message: string | null
   created_at: string; files: SessionFile[]; can_send: boolean; send_reason: string | null; code_count: number
   kb_enabled?: boolean
+  participants: string[]; asr_enabled: boolean
 }
-export interface SessionPage { items: SessionItem[]; total: number; page: number; page_size: number; kb_enabled?: boolean }
+export interface SessionPage { items: SessionItem[]; total: number; page: number; page_size: number; kb_enabled?: boolean; asr_enabled: boolean }
 export interface Quote { file: number; unit_price: string | null; amount: string | null; currency: string | null; difference_pct: string | null; status: string; qty: string }
 export interface Comparison {
   notice: string; notes: string; suppliers: { file: number; name: string; terms: string }[]
@@ -22,6 +32,7 @@ export interface Comparison {
   totals: Record<string, { amount: string | null; currency: string | null; status: string }>
 }
 export interface Message {
+  marks: Mark[]; calcs: Calc[]
   model_id: number | null; model_label: string | null
   id: number; role: 'user' | 'assistant'; content: string; status: string; template: Template | null
   params: Record<string, unknown>; created_at: string; error: string | null; error_code: string | null
@@ -41,10 +52,19 @@ export const assistantApi = {
   get: (id: string) => http.get<Session>(`${base}/${id}`),
   patch: (id: string, body: { title?: string; stance?: Stance; source?: Source }) => http.patch<Session>(`${base}/${id}`, body),
   remove: (id: string) => http.delete<void>(`${base}/${id}`),
-  addFiles: (id: string, files: File[]) => {
+  addFiles: (id: string, files: File[], onProgress: (loaded: number, total: number) => void = () => {}) => {
     const form = new FormData(); files.forEach(file => form.append('files', file, file.name))
-    return http.postForm<Session>(`${base}/${id}/files`, form)
+    return http.postFormWithProgress<Session>(`${base}/${id}/files`, form, onProgress)
   },
+  localFindings: (id: string) => http.get<{ items: LocalFinding[] }>(`${base}/${id}/local-findings`),
+  participants: (id: string, names: string[]) => http.put<{ names: string[] }>(`${base}/${id}/participants`, { names }),
+  speakers: (id: string, fid: string, map: Record<string, string | null>) => http.put<Record<string, string | null>>(`${base}/${id}/files/${fid}/speakers`, map),
+  utterance: (id: string, fid: string, loc: string, body: { text?: string; speaker?: number }) => http.patch<{ ok: boolean }>(`${base}/${id}/files/${fid}/utterances/${encodeURIComponent(loc)}`, body),
+  suggestions: (id: string, fid: string) => http.get<Suggestion[]>(`${base}/${id}/files/${fid}/suggestions`),
+  applySuggestions: (id: string, fid: string, items: Omit<Suggestion, 'from'>[]) => http.post<{ ok: boolean }>(`${base}/${id}/files/${fid}/suggestions/apply`, { items }),
+  audio: (id: string, fid: string) => http.getBlob(`${base}/${id}/files/${fid}/audio`),
+  transcript: (id: string, fid: string) => http.getDownload(`${base}/${id}/files/${fid}/transcript`),
+  retranscribe: (id: string, fid: string) => http.post<Session>(`${base}/${id}/files/${fid}/retranscribe`),
   removeFile: (id: string, fid: string) => http.delete<Session>(`${base}/${id}/files/${fid}`),
   nodes: (id: string, fid: string) => http.get<PreviewNodes>(`${base}/${id}/files/${fid}/nodes`),
   confirm: (id: string) => http.post<Session>(`${base}/${id}/confirm`),

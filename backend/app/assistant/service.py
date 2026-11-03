@@ -1,4 +1,5 @@
 """会话 CRUD：任务行锁串行化文件修改，审计只写标识和数量。"""
+import os
 from sqlalchemy import delete, exists, func, select
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,10 @@ from app.review.service import MarkOut
 from app.security.errors import AppError, NotFoundError
 from app.tasks import service as tasks, storage, filecheck
 from app.assistant.schemas import SessionDetail, SessionFile, SessionItem, SessionPage, SessionPatch
+
+
+def asr_enabled() -> bool:
+    return 'asr' in os.environ.get('COMPOSE_PROFILES', '').split(',')
 
 
 def _files(db: Session, task: Task):
@@ -80,7 +85,7 @@ def detail(db: Session, task: Task) -> SessionDetail:
                                             if media[f.id] is not None else None) for f in preview.files],
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
-                         participants=unpack(task.participants_enc, []))
+                         participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled())
 
 
 def create(db: Session, user: User, ip: str | None) -> SessionDetail:
@@ -348,7 +353,7 @@ def list_sessions(db: Session, user: User, q: str | None, page: int) -> SessionP
         AssistantMessage.task_id.in_([task.id for task in rows]), AssistantMessage.role == 'assistant',
         AssistantMessage.status.in_(('queued', 'streaming')))))
     return SessionPage(items=[_item(t, _files(db, t), generating=t.id in generating) for t in rows], total=total, page=page,
-                       kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')))
+                       kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')), asr_enabled=asr_enabled())
 
 
 def lock(db: Session, task: Task) -> Task:
@@ -387,7 +392,6 @@ def add_files(db: Session, task: Task, raw: list) -> SessionDetail:
     files = _files(db, task)
     if len(files) + len(raw) > tasks.MAX_FILES or len(raw) > 5:
         raise AppError(422, "TOO_MANY_FILES", "每次最多加入 5 个文件，会话合计最多 10 个文件")
-    import os
     audio_count, uploads = 0, []
     if not raw:
         raise AppError(422, 'NO_FILES', '请至少选择一个文件')
@@ -397,7 +401,7 @@ def add_files(db: Session, task: Task, raw: list) -> SessionDetail:
         if ext not in filecheck.AUDIO_EXTS:
             uploads.append(tasks.inspect_upload(name, source, get_settings().max_upload_mb * 1024 * 1024))
             continue
-        if 'asr' not in os.environ.get('COMPOSE_PROFILES', '').split(','):
+        if not asr_enabled():
             raise AppError(422, 'ASR_DISABLED', '录音转写未启用，请联系管理员')
         audio_count += 1
         if audio_count > 1:

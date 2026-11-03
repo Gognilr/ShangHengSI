@@ -112,6 +112,7 @@ export const adminRequirementsApi = {
 
 // ---- 脱敏（设置 - 脱敏） ----
 export interface TermRow {
+  alias_of: string | null
   id: string
   kind: 'learned' | 'custom'
   term: string
@@ -131,13 +132,33 @@ export interface TermPage {
   page_size: number
 }
 
+export interface RedactionSettings { mask_quantity: boolean; vector_assist: boolean; date_shift: boolean }
+export interface KeepTerm {
+  term_hash: string; term: string; users: number; status: '个人' | '已共享' | '已认可'
+  hit_count: number; last_hit_at: string | null
+}
+export interface RedactionStats {
+  tasks: number; zero_ops_ratio: number; avg_ops: number; median_seconds: number; avg_uncertain: number
+  kept_ratio: number; memory_ratio: number; unable_ratio: number
+  unable_by_reason: { redacted: number; absent: number; other: number }
+  redacted_top_requirements: { req_id: string; count: number }[]
+}
+export const adminApi = {
+  keepTerms: ({ q = '', page = 1 }: { q?: string; page?: number } = {}) => http.get<{ items: KeepTerm[]; total: number; page: number; page_size: number }>('/admin/keep-terms', { q, page }),
+  approveKeepTerm: (hash: string) => http.post<{ approved: boolean }>(`/admin/keep-terms/${hash}/approve`),
+  removeKeepTerm: (hash: string) => http.delete<void>(`/admin/keep-terms/${hash}`),
+  redactionStats: (days: number) => http.get<RedactionStats>('/admin/redaction/stats', { days }),
+  reviewSettings: () => http.get<{ send_ratios: boolean }>('/admin/settings/review'),
+  saveReviewSettings: (body: { send_ratios: boolean }) => http.put<{ send_ratios: boolean }>('/admin/settings/review', body),
+}
+
 export const adminRedactionApi = {
   ourParties: () => http.get<{ items: TermRow[] }>('/admin/our-parties'),
   addOurParty: (name: string) => http.post<TermRow>('/admin/our-parties', { name }),
   removeOurParty: (id: string) => http.delete<void>(`/admin/our-parties/${id}`),
-  getSetting: () => http.get<{ mask_quantity: boolean }>('/admin/settings/redaction'),
-  saveSetting: (maskQuantity: boolean) =>
-    http.put<{ mask_quantity: boolean }>('/admin/settings/redaction', { mask_quantity: maskQuantity }),
+  getSetting: () => http.get<RedactionSettings>('/admin/settings/redaction'),
+  saveSetting: (maskQuantity: boolean, extra: Partial<Omit<RedactionSettings, 'mask_quantity'>> = {}) =>
+    http.put<RedactionSettings>('/admin/settings/redaction', { mask_quantity: maskQuantity, ...extra }),
   terms: (kind: 'learned' | 'custom', q: string, page: number) =>
     http.get<TermPage>('/admin/terms', { kind, q: q || undefined, page }),
   addTerm: (term: string) => http.post<TermRow>('/admin/terms', { term }),
@@ -223,6 +244,7 @@ export interface AuditQuery {
 }
 
 export interface SystemStatus {
+  local_models: { id: string; purpose: string; version: string; verification: string; status: 'enabled' | 'disabled' | 'unavailable' }[]
   assistant_sessions: number
   version: string
   queued_jobs: number

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
-from app.tasks.schemas import TaskFileOut, UtcDatetime
+from app.tasks.schemas import PreviewNode, TaskFileOut, UtcDatetime
 from app.parsing.model import strip_invisible
 
 
@@ -37,6 +37,7 @@ class SessionPage(BaseModel):
     page: int
     page_size: int = 30
     kb_enabled: bool = False
+    asr_enabled: bool = False
 
 
 class SessionDetail(SessionItem):
@@ -51,6 +52,16 @@ class SessionDetail(SessionItem):
     code_count: int
     kb_enabled: bool = False
     participants: list[str] = Field(default_factory=list)
+    asr_enabled: bool = False
+
+
+class AssistantPreviewNode(PreviewNode):
+    speaker_code: str | None = None
+
+
+class AssistantPreviewNodes(BaseModel):
+    text_available: bool
+    items: list[AssistantPreviewNode]
 
 
 class MessageDecision(BaseModel):
