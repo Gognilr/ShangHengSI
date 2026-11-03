@@ -36,6 +36,8 @@ const annotationNotice = ref('')
 const rerunOpen = ref(false)
 // 刚完成的轮次第一次打开（审核中跳转时在路由 state 中带 fresh）
 const fresh = !!(history.state as { fresh?: boolean } | null)?.fresh
+// 只在第一次打开时生效：之后刷新或从历史返回不再播放
+if (fresh) history.replaceState({ ...history.state, fresh: false }, '')
 let loadVersion = 0
 let runVersion = 0
 

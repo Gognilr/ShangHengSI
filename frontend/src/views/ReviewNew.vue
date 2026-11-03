@@ -6,7 +6,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { modelsApi, type AvailableModel } from '@/api/models'
-import { redactionApi } from '@/api/redaction'
 import { RUN_ERROR_MESSAGES, runsApi, type RunDetail } from '@/api/runs'
 import {
   ALLOWED_EXTS,
@@ -26,6 +25,7 @@ import {
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 import StepBar from '@/components/StepBar.vue'
+import ReviewCeremony from '@/components/result/ReviewCeremony.vue'
 import SiIsland from '@/components/ui/SiIsland.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { usePendingDeletes } from '@/composables/usePendingDeletes'
@@ -35,7 +35,6 @@ import { useAuthStore } from '@/stores/auth'
 import {
   SOURCE_OPTIONS,
   STANCE_OPTIONS,
-  runStatusLabel,
   toOptions,
 } from '@/utils/labels'
 
@@ -331,9 +330,9 @@ function applyTask(t: TaskDetail) {
       step.value = 0
       break
     default:
-      // reviewed / completed_local：进入结果页
+      // reviewed / completed_local：进入结果页；从审核中完成的带 fresh（V31-U3 5.2，不等动画）
       stopPolling()
-      void router.replace({ name: 'review-result', params: { taskId: t.id } })
+      void router.replace({ name: 'review-result', params: { taskId: t.id }, ...(prev === 'reviewing' ? { state: { fresh: true } } : {}) })
   }
 }
 
@@ -406,18 +405,10 @@ const parseFailed = computed(() => task.value?.status === 'parse_failed')
 const stepStatus = computed(() => (parseFailed.value ? 'error' : 'process'))
 const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
-const replacementCount = ref<number | null>(null)
-watch([() => task.value?.id, () => task.value?.status], async ([id, status]) => {
-  replacementCount.value = null
-  if (!id || status !== 'reviewing') return
-  try {
-    const info = await redactionApi.redaction(id)
-    if (task.value?.id === id && task.value.status === 'reviewing') replacementCount.value = Object.values(info.summary).reduce((sum, n) => sum + n, 0)
-  } catch { /* 摘要不可用不影响审核轮询。 */ }
-})
-const queued = computed(() => (activeRun.value?.id === task.value?.latest_run?.id ? activeRun.value?.status : task.value?.latest_run?.status) === 'queued')
+// 第三步只用最新轮次的详情；仪式自己计已用时间
+const ceremonyRun = computed(() => activeRun.value?.id === task.value?.latest_run?.id ? activeRun.value : null)
 const elapsed = computed(() => {
-  const start = parsing.value ? task.value?.created_at : queued.value ? activeRun.value?.queued_at : activeRun.value?.started_at
+  const start = parsing.value ? task.value?.created_at : null
   if (!start) return ''
   const seconds = Math.max(0, Math.floor((now.value - Date.parse(start)) / 1000))
   return Number.isFinite(seconds) ? `已用 ${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒` : ''
@@ -426,28 +417,6 @@ const elapsed = computed(() => {
 const stanceOptions = toOptions(STANCE_OPTIONS)
 const sourceOptions = toOptions(SOURCE_OPTIONS)
 
-const runText = computed(() => {
-  const latest = task.value?.latest_run
-  const run = activeRun.value?.id === latest?.id ? activeRun.value : latest
-  if (!run) return '正在提交'
-  if (run.status === 'queued') {
-    const pos = activeRun.value?.queue_position ?? task.value?.queue_position
-    return pos != null ? `排队中，前面还有 ${pos - 1} 个任务` : '排队中'
-  }
-  const progress = activeRun.value?.id === latest?.id ? activeRun.value?.progress : null
-  if (run.status === 'running' && progress && progress.total > 1) {
-    // 最后一段已结束、结果尚在写入时仍显示最后一段，不出现 N+1/N。
-    return `审核中 第 ${Math.min(progress.done + 1, progress.total)}/${progress.total} 段`
-  }
-  return runStatusLabel(run.status)
-})
-
-const runProgress = computed(() => {
-  const run = activeRun.value
-  const progress = run?.id === task.value?.latest_run?.id ? run?.progress : null
-  return run?.status === 'running' && progress && progress.total > 1
-    ? Math.min(progress.done, progress.total) / progress.total * 100 : null
-})
 function fileBadge(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
   if (['docx', 'doc', 'wps', 'rtf'].includes(ext)) return 'DOC'
@@ -546,21 +515,8 @@ function fileBadge(name: string): string {
       <el-alert v-if="modelError" :title="modelError" type="error" :closable="false" show-icon class="gap" />
       <ConfirmWorkbench v-if="!modelsLoading && !modelError" :key="`${task.id}:${modelId ?? ''}`" :task="task" :model-id="modelId" :model-name="modelItems.find(m => m.id === modelId)?.display_name" @confirmed="refreshTask" @stale="refreshTask" />
     </section>
-    <section v-else-if="step === 2 && task" class="panel">
-      <div class="processing">
-        <h2>{{ queued ? runText : '正在审核' }}</h2>
-        <p v-if="!queued && runText !== '审核中'">{{ runText }}<template v-if="elapsed"> · {{ elapsed }}</template></p>
-        <p v-else-if="elapsed" class="num">{{ elapsed }}</p>
-        <el-progress v-if="!queued && runProgress !== null" :percentage="runProgress" :show-text="false" :stroke-width="8" class="run-progress" />
-        <ul class="completed-steps">
-          <li>✓ 已在本机完成文件解析</li>
-          <li v-if="replacementCount !== null">✓ 已在本机替换敏感信息 {{ replacementCount }} 处</li>
-          <li>✓ 外发文本已经确认，并通过发送前检查</li>
-          <li>○ {{ queued ? '等待云端模型审核' : '云端模型审核中' }}</li>
-        </ul>
-        <p class="hint">审核完成后会自动跳转到结果页，也可以离开页面，稍后从审核历史进入。</p>
-        <div class="actions"><el-button @click="router.push('/history')">返回审核历史</el-button></div>
-      </div>
+    <section v-else-if="step === 2 && task" class="panel ceremony-panel">
+      <ReviewCeremony :task="task" :run="ceremonyRun" />
     </section>
     <RequirementsDrawer v-model="reqDrawer" :stance="stance" :source="source" :user-note="userNote" />
     <el-dialog :model-value="duplicateFile !== null" title="重复文件" width="480px" :close-on-click-modal="false" @close="duplicateFile = null">
@@ -628,11 +584,7 @@ h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .is-dragging .drop-col { outline: 2px dashed var(--el-color-primary); outline-offset: 6px; border-radius: var(--si-radius-card); }
 .drop-veil { position: absolute; inset: -8px; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: var(--si-radius-card); background: color-mix(in srgb, var(--el-color-primary-light-9) 85%, transparent); color: var(--el-color-primary); font: var(--si-font-h4); pointer-events: none; }
 .file-size { flex: none; color: var(--el-text-color-secondary); font-size: 13px; }
-.processing { max-width: 560px; margin: 0 auto; }
-.processing h2 { font: var(--si-font-h3); }
-.processing p { margin: 12px 0; }
-.completed-steps { list-style: none; margin: 20px 0; padding: 0; }
-.completed-steps li + li { margin-top: 8px; }
-.run-progress, .progress-indeterminate { margin: 16px 0; }
+.ceremony-panel { overflow: hidden; }
+.progress-indeterminate { margin: 16px 0; }
 @media (prefers-reduced-motion: reduce) { .progress-indeterminate :deep(.el-progress-bar__inner--indeterminate) { width: 50% !important; left: 25% !important; animation: none !important; } }
 </style>
