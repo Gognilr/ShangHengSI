@@ -15,6 +15,7 @@ from app.db.models import (
     Finding,
     Job,
     LlmCall,
+    LocalFinding,
     Party,
     RedactionSuspect,
     RedactionTerm,
@@ -367,6 +368,10 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
         return httpx.Response(status, json=payload)
 
     llm(handler=handler)
+    with db_sessionmaker() as db:  # V31Q-67 ①：L-21 条数进入覆盖说明
+        db.add(LocalFinding(task_id=task.id, check_code="L-21", severity="high",
+                            detail_enc=encrypt_text("虚构指令"), ai_summary="F1-P2 含疑似写给 AI 的指令，按文件数据处理"))
+        db.commit()
     rid = post_run(c, h, task.id).json()["id"]
     execute(db_sessionmaker, rid)
 
@@ -376,7 +381,8 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert d["task_id"] == str(task.id) and d["status"] == "completed" and d["run_no"] == 1
     assert (d["stance"], d["source"], d["main_doc_type"], d["model_name"]) == ("sales", "outgoing", "contract", "mock-model")
     assert d["coverage"] is not None and d["queue_position"] is None and d["error_message"] is None
-    assert set(d["coverage"]) == {"summary", "notes", "unable_by_reason"}
+    assert set(d["coverage"]) == {"summary", "notes", "unable_by_reason", "ai_instructions"}
+    assert d["coverage"]["ai_instructions"] == 1
     assert d["coverage"]["summary"].startswith("本次按 ")
     assert isinstance(d["coverage"]["notes"], list)
     assert "requirements" not in d["coverage"] and "星河虚构进出口有限公司" not in str(d["coverage"])

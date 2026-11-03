@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import DocNode, Task, TaskFile
+from app.db.models import DocNode, LocalFinding, Task, TaskFile
 from app.parsing.model import LOW_OCR_CONF
 from app.review.prompt import ReviewContext
 from app.review.validate import ValidatedReview, normalize_unable_reason
@@ -21,6 +21,11 @@ _PART_LABELS = {
 _PART_ORDER = {part: index for index, part in enumerate(_PART_LABELS)}
 _LABEL_ORDER = {label: index for index, label in enumerate(_PART_LABELS.values())}
 _VERDICTS = ("issue", "ok", "na", "unable")
+
+
+def ai_instruction_notice(count: int) -> str:
+    """L-21 命中时结果页与报告首页的固定提醒（V31Q-67 ①），前端 labels.ts 用同一句。"""
+    return f"文件含疑似写给 AI 的指令（{count} 处），结论可能受其影响，请人工核对相关条款"
 
 
 def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: ValidatedReview | None,
@@ -72,6 +77,10 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
         for warning in file.warnings or []:
             warnings.append({"file": file.seq, "text": str(warning)})
 
+    # V31Q-67 ①：L-21 只计数量，结果页与报告首页据此加固定提醒
+    ai_instructions = len(db.scalars(select(LocalFinding.id).where(
+        LocalFinding.task_id == task.id, LocalFinding.check_code == "L-21")).all())
+
     is_chunked = chunk_count > 1
     failed = [
         {key: chunk.get(key) for key in ("index", "first_loc", "last_loc", "reason")}
@@ -92,6 +101,7 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
         "sanctions_offline": True,
         "law_refs": dict(ctx.law_stats),
         "template": dict(ctx.template_stats),
+        "ai_instructions": ai_instructions,
     }
 
 

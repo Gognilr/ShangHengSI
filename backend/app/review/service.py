@@ -488,6 +488,7 @@ def _coverage(run: ReviewRun, view: _View) -> dict | None:
                     f"不适用 {na} 条，无法判断 {unable} 条（信息已脱敏 {reasons['redacted']}、"
                     f"文件未写 {reasons['absent']}、其他 {reasons['other']}）"),
         "unable_by_reason": reasons,
+        "ai_instructions": int(raw.get("ai_instructions", 0)),
         "notes": describe(raw, view.file_names),
     }
 

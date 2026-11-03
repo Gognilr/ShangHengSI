@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.checks.service import list_findings
 from app.db.models import ReviewRun, Task, TaskFile, User
+from app.review.coverage import ai_instruction_notice
 from app.review.prompt import DOC_TYPE_LABELS, SOURCE_LABELS, STANCE_LABELS
 from app.review.service import run_detail
 
@@ -188,6 +189,8 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     _heading(doc, "二 覆盖说明与限制事项")
     if detail.coverage:
         doc.add_paragraph(text(detail.coverage["summary"]))
+        if detail.coverage.get("ai_instructions"):
+            _font(doc.add_paragraph().add_run(ai_instruction_notice(detail.coverage["ai_instructions"])), 10.5, True)
         for note in detail.coverage["notes"]:
             doc.add_paragraph(text(note))
     else:

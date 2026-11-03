@@ -102,6 +102,18 @@ def test_report_sections_restore_snapshot_and_layout(report_case, db_sessionmake
     assert issues.cell(1, 2).text == "法律" and issues.cell(2, 2).text == "商务"
 
 
+def test_report_ai_instruction_notice(report_case, db_sessionmaker):
+    user, _, run = report_case
+    with db_sessionmaker() as db:
+        db.get(ReviewRun, run.id).coverage = {"requirements": {"total": 1, "issue": 1, "ok": 0, "na": 0, "unable": 0},
+                                              "ai_instructions": 2}
+        db.commit()
+        _, data = build_run_report(db, db.get(ReviewRun, run.id), user)
+    doc, _ = contents(data)
+    notice = "文件含疑似写给 AI 的指令（2 处），结论可能受其影响，请人工核对相关条款"
+    assert any(p.text == notice and all(r.bold for r in p.runs) for p in doc.paragraphs)
+
+
 def test_category_labels_follow_spec():
     # SPEC 11.3：表述 / 逻辑 / 法律 / 合规与制裁 / 商务
     assert CATEGORY == {"wording": "表述", "logic": "逻辑", "legal": "法律", "compliance": "合规与制裁", "commercial": "商务"}

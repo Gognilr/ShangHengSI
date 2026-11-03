@@ -1,5 +1,11 @@
 import { http } from './http'
 
+/** 回程文字中未能还原的标记（SPEC 9.9），位置为码点下标。 */
+export type MarkKind = 'variant' | 'unknown' | 'shared' | 'note' | 'date' | 'literal' | 'calc'
+export interface Mark { start: number; end: number; kind: MarkKind }
+export type MarkedField = 'title' | 'problem' | 'impact' | 'suggestion' | 'suggested_text' | 'basis'
+export type UnableReason = 'redacted' | 'absent' | 'other'
+
 export interface RunCreated {
   id: string
   run_no: number
@@ -24,6 +30,7 @@ export interface RequirementResult {
   dimension: string | null
   verdict: string
   note: string | null
+  unable_reason: UnableReason | null
 }
 
 export type HandlingStatus = 'pending' | 'adopted' | 'ignored'
@@ -50,7 +57,39 @@ export interface Finding {
   basis: string | null
   handling_status: HandlingStatus
   handling_note: string | null
+  quote_excerpt: string | null
+  marks: Partial<Record<MarkedField, Mark[]>>
+  unresolved: number
 }
+
+/** 外发回执（SPEC 18.29）：只有数字、布尔与模型显示名；旧轮次为 null。 */
+export interface RunReceipt {
+  model: string | null
+  protected: Record<string, number>
+  protected_total: number
+  kept: number
+  date_shifted: boolean
+  ratios_sent: boolean
+  files: number
+  not_sent: { images: number; comments: number; headers_footers: number; hidden_sheets: number }
+  sent_at: string | null
+  calls: number
+  chars: number
+  rechecks: number
+  blocked: number
+}
+
+export interface Coverage {
+  summary: string
+  notes: string[]
+  unable_by_reason?: Record<UnableReason, number>
+  /** V31Q-67 ①：L-21 条数，旧轮次没有 */
+  ai_instructions?: number
+}
+
+/** 本轮实际发送的文字；外发记录正文已按保留期清理时为 { available: false }。 */
+export interface SentItem { seq: number; chars: number; text: string }
+export type SentText = SentItem[] | { available: false }
 
 export interface RunDetail {
   template: { name: string; status: string } | null
@@ -75,8 +114,11 @@ export interface RunDetail {
   queue_position: number | null
   chunk_count: number
   progress: { done: number; total: number } | null
-  coverage: { summary: string; notes: string[] } | null
+  coverage: Coverage | null
   doc_summary: string | null
+  doc_summary_marks: Mark[]
+  receipt: RunReceipt | null
+  restore_stats: { restored?: number; marked?: number }
   sanctions: { level: string | null; reasons: string[] }
   requirement_results: RequirementResult[]
   findings: Finding[]
@@ -86,6 +128,7 @@ export const runsApi = {
   create: (taskId: string, useTemplate = true, modelId?: number) => http.post<RunCreated>(`/tasks/${taskId}/runs`, { use_template: useTemplate, model_id: modelId }),
   list: (taskId: string) => http.get<{ items: RunListItem[] }>(`/tasks/${taskId}/runs`),
   get: (runId: string) => http.get<RunDetail>(`/runs/${runId}`),
+  sent: (runId: string) => http.get<SentText>(`/runs/${runId}/sent`),
   patchFinding: (findingId: string, body: { handling_status?: HandlingStatus; handling_note?: string | null }) =>
     http.patch<Finding>(`/findings/${findingId}`, body),
 }

@@ -73,8 +73,49 @@ export const LOCAL_CHECK: Dict = {
   'L-05': '跨文件金额', 'L-06': '币种一致', 'L-07': '报价有效期',
   'L-08': '交期与签约日', 'L-INFO': '提示',
   'L-09': '分期金额', 'L-10': '废止法律', 'L-11': '增值税税率',
+  'L-13': '报表勾稽', 'L-14': '分级合计', 'L-15': '公式重算', 'L-16': '疑似手填',
+  'L-17': '收款账号不一致', 'L-18': '签约方名称不一致', 'L-19': '编号、单价、数量不一致',
+  'L-20': '隐藏文字', 'L-21': '疑似写给 AI 的指令',
 }
 export const localCheckLabel = pick(LOCAL_CHECK)
+
+/** “未能还原”标记的提示（V31-U3 0.4）。 */
+export const MARK_KIND: Dict = {
+  variant: '代号写法有变化，无法确定指哪个对象，未还原',
+  unknown: '模型提到了文件中没有的对象',
+  shared: '共用代号，此处可能对应多个值，未还原',
+  note: '系统标记，不是合同文字',
+  date: '模型写的日期，未能对应到原文日期，请核对',
+  literal: '模型自己写的账号、金额等，不是来自文件，请核对',
+  calc: '算式未能在本机计算',
+}
+export const markKindLabel = pick(MARK_KIND)
+
+/** 无法判断的原因（SPEC 11.6）。 */
+export const UNABLE_REASON: Dict = { redacted: '信息已脱敏', absent: '文件未写', other: '其他' }
+export const unableReasonLabel = pick(UNABLE_REASON)
+
+/** 本机计算未计算的原因（SPEC 13）。 */
+export const CALC_STATUS: Dict = {
+  unknown_code: '算式含文件中没有的代号，未计算',
+  unparsable: '算式无法解析，未计算',
+  currency_mixed: '算式含两种币种，未计算',
+  div_zero: '除数为 0，未计算',
+}
+export const calcStatusLabel = pick(CALC_STATUS)
+
+/** L-21 命中时结果页的固定提醒，与报告首页同一句（V31Q-67 ①，后端 review/coverage.ai_instruction_notice）。 */
+export function aiInstructionNotice(count: number): string {
+  return `文件含疑似写给 AI 的指令（${count} 处），结论可能受其影响，请人工核对相关条款`
+}
+
+/** 外发回执中“不发送”的各项（SPEC 18.29）。 */
+export const NOT_SENT: Dict = {
+  images: '图片与嵌入对象',
+  comments: '批注',
+  headers_footers: '页眉页脚',
+  hidden_sheets: '隐藏工作表',
+}
 /** 严重程度排序用：高 → 低。 */
 export const SEVERITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
 
