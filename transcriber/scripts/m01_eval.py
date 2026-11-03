@@ -265,6 +265,26 @@ def assign_speaker(seg, turns):
     return who + 1
 
 
+ANON_PEAK = [0]
+
+
+def sample_anon():
+    """每 0.5 秒读一次 cgroup 的 anon（不含页缓存），记峰值。"""
+    import threading
+
+    def run():
+        while True:
+            try:
+                for line in open("/sys/fs/cgroup/memory.stat"):
+                    if line.startswith("anon "):
+                        ANON_PEAK[0] = max(ANON_PEAK[0], int(line.split()[1]))
+                        break
+            except OSError:
+                return
+            time.sleep(0.5)
+    threading.Thread(target=run, daemon=True).start()
+
+
 def peak_mem():
     for p in ("/sys/fs/cgroup/memory.peak", "/sys/fs/cgroup/memory/memory.max_usage_in_bytes"):
         if os.path.exists(p):
@@ -284,10 +304,18 @@ def main():
     ap.add_argument("--embed", default="3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx")
     ap.add_argument("--dec-threads", type=int, default=0)
     ap.add_argument("--no-diar", action="store_true")
+    ap.add_argument("--diar-only", action="store_true")
     a = ap.parse_args()
 
+    sample_anon()
     t0 = time.time()
     samples = read_wav(a.wav)
+    if a.diar_only:
+        t = time.time()
+        turns = diarize(samples, a.models, a.threads, a.speakers, a.embed)
+        print(json.dumps({"diar_s": round(time.time() - t, 1), "turns": len(turns),
+                          "anon_peak": ANON_PEAK[0], "peak_mem": peak_mem()}))
+        return
     dur = len(samples) / 16000
     timing = {}
 
@@ -330,7 +358,7 @@ def main():
     total = time.time() - t0
     result = {"duration_ms": int(dur * 1000), "asr": a.asr, "vad": a.vad, "threads": a.threads, "dec_threads": a.dec_threads,
               "embed": a.embed, "segments": out, "timing_s": timing, "total_s": round(total, 1),
-              "rtf": round(total / dur, 3), "peak_mem": peak_mem(), "num_segments": len(segs),
+              "rtf": round(total / dur, 3), "peak_mem": peak_mem(), "anon_peak": ANON_PEAK[0], "num_segments": len(segs),
               "max_seg_s": round(max((e - s for s, e in segs), default=0) / 16000, 1)}
     json.dump(result, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(json.dumps({k: v for k, v in result.items() if k != "segments"}, ensure_ascii=False))

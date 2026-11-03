@@ -81,7 +81,7 @@
 | V31-E-08 | 集中测试（设计第八节） | GPT-6.1 Sol | medium | V31-E-07 | 已完成 |
 | V31-E-09 | 审核与规格合并（设计第九、十节） | Opus | high | V31-E-08 | 已完成 |
 | V31-M-00 | 细化会议纪要：[design/V31-M.md](design/V31-M.md)（转写容器、逐字稿节点与校对接口、同音纠正、纪要模板；拼音词典许可证；转写容器按 [design/local-models.md](design/local-models.md) 第四、五节写，V31Q-49；V31Q-69～72） | Opus | high | V31-E 完成 | 已完成（2026-11-03 用户确认） |
-| V31-M-01 | 转写模型选型与整套容量实测，选型确认后改 CLAUDE.md、AGENTS.md、SPEC 第 3 节（设计第一节，补充项 63，V31Q-27；下载前、测试虚拟机实测前各经用户同意，用户安排虚构脚本录音） | Opus | high | V31-M-00 确认 | 待执行 |
+| V31-M-01 | 转写模型选型与整套容量实测，选型确认后改 CLAUDE.md、AGENTS.md、SPEC 第 3 节（设计第一节，补充项 63，V31Q-27；下载前、测试虚拟机实测前各经用户同意，用户安排虚构脚本录音） | Opus | high | V31-M-00 确认 | 进行中（候选已下载、开发机初测完成，等录音，见 reports/V31-M-01.md） |
 | V31-M-02 | 本地模型统一接入：deploy/models.yaml、build_release `--models`、线程与资源从 .env 读、compose profiles、`model-check` 与系统状态“本地模型”、运维说明一章（设计第二节，[design/local-models.md](design/local-models.md) 第九节，V31Q-49） | GPT-6.1 Sol | medium | V31-M-01 选型确认 | 待执行 |
 | V31-M-03 | 迁移 0034、录音上传与分块加密、converter 解码、回放副本（设计第三节） | GPT-6.1 Sol | high | V31-M-02 | 待执行 |
 | V31-M-04 | transcriber 容器、worker 转写任务、逐字稿节点（设计第四节） | GPT-6.1 Sol | high | V31-M-03 | 待执行 |
