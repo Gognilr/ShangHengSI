@@ -122,6 +122,7 @@ Oct 10, 2026 · @Obi Bello
 |PDF 解析|pdfplumber|文字版 PDF 的文本、坐标和表格|
 |OCR|RapidOCR（onnxruntime CPU 推理，使用 PaddleOCR 中英文模型，Apache 2.0）|扫描件和图片；模型文件打包进镜像。扫描页渲染使用 pdfplumber 自带的 pypdfium2|
 |旧格式转换|LibreOffice 25.2（headless，Debian 软件包 libreoffice-writer-nogui、libreoffice-calc-nogui，锁定版本）|只在 converter 容器中运行，把 DOC、WPS、RTF 转为 DOCX，XLS、ET 转为 XLSX（8.8）|
+|录音解码|ffmpeg（Debian 软件包，锁定版本，V31Q-71）|只在 converter 容器中运行，把录音解码为 16 kHz 单声道 PCM 与回放副本|
 |OLE 结构检查|olefile|上传检查中读取 DOC、XLS、WPS、ET 的目录（17.6）|
 |报告导出|python-docx||
 |加密|cryptography（AES-256-GCM、scrypt）|原件、对照表、敏感字段、备份|
@@ -129,12 +130,13 @@ Oct 10, 2026 · @Obi Bello
 |模型调用|httpx|只允许在模型网关与法规同步客户端（lawsync/client.py）中使用|
 |本地实体识别|`urchade/gliner_multi-v2.1`（Apache-2.0，固定提交 443d26d654e0324125a96bebd8e796c14ff2efe6；分词文件来自 microsoft/mdeberta-v3-base，MIT）导出的 FP32 ONNX（SHA-256 d3f51a308a876e09209321cc466dffcc4b1ca8f4877144d24b08ae3f7c8dabd0）|只用于脱敏识别（9.3 第 8 步）；6 个文件的清单与 SHA-256 见 docs/v2/design/V2-B.md 6.2。资源门槛：1 万字识别 ≤ 15 秒，追问 500 字 ≤ 3 秒、1,000 字 ≤ 6 秒（热态 p95），单进程内存增加 ≤ 2.5 GB，镜像增加 ≤ 1.5 GB|
 |向量检索|pgvector（HNSW、余弦距离）+ `BAAI/bge-m3`（MIT，固定提交 5617a9f61b028005a4858fdac845db406aefb181）官方 FP32 ONNX 动态量化的 INT8 ONNX（SHA-256 63e806d9763c82e8ffb55e32d577a64cacf2a57be1ac0d803f118cf770cb399d）|只用稠密向量（1024 维，CLS 池化后 L2 归一化，最多 512 个 token）；两个文件的清单与 SHA-256 见 docs/v2/reports/V2-E-04a.md 第六节。资源门槛：1 万字向量化 ≤ 5 秒（worker 8 线程），单进程内存增加 ≤ 1.5 GB，镜像增加 ≤ 1.5 GB|
+|录音转写（V3.1，V31-M）|FireRedVAD（语音分段，官方 ONNX）、FireRedASR2-AED INT8（转写，sherpa-onnx 转换的 ONNX）、FireRedPunc INT8（标点，仓库外一次性容器导出）、pyannote segmentation-3.0（说话人分段，MIT）、3D-Speaker CAM++（声纹）；除注明外均为 Apache-2.0|只在 transcriber 容器中运行（不接网络、只挂 /spool，用时加载）；推理用 onnxruntime、kaldi-native-fbank、numpy，说话人分离用 sherpa-onnx 2.0.1；10 个文件的 SHA-256 见 transcriber/models/asr/MANIFEST.sha256，来源与选型见 docs/v31/reports/V31-M-01.md（V31Q-73）。资源门槛：1 小时录音 1 小时内处理完（V31Q-74），容器内存 ≤ 4 GB（`ASR_MEM`），镜像约 1.5 GB；录音与声纹永不外发|
 |反向代理|Caddy 2|提供前端静态文件、HTTPS、转发 /api|
 |部署|Docker + Docker Compose v2|运行在 PVE 中的 Ubuntu Server 26.04 LTS 虚拟机（见 20.1）|
 
 所有第三方库在 requirements.txt 和 package-lock.json 中锁定精确版本；所有 Docker 镜像使用固定版本标签。
 
-**不得引入：** Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务、PyMuPDF（AGPL 许可）、Presidio、PaddleOCR / paddlepaddle、任何本地大模型；除上表的实体识别模型与向量模型各一个外，不得引入其他本地模型。两个本地模型用 onnxruntime 在 CPU 上离线运行，推理只用 onnxruntime、numpy、tokenizers；后端镜像不得安装 torch、transformers、gliner、sentencepiece；模型文件不进仓库，构建时放入镜像并校验 SHA-256。LibreOffice 只允许在 converter 容器中使用，不得进入 backend 镜像。
+**不得引入：** Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务、PyMuPDF（AGPL 许可）、Presidio、PaddleOCR / paddlepaddle、任何本地大模型；除上表的实体识别模型、向量模型各一个与录音转写一组外，不得引入其他本地模型。本地模型在 CPU 上离线运行：实体识别与向量模型推理只用 onnxruntime、numpy、tokenizers；转写一组只用 onnxruntime、kaldi-native-fbank、numpy 与 sherpa-onnx。任何镜像不得安装 torch、transformers、gliner、sentencepiece；模型文件不进仓库，构建时放入镜像并校验 SHA-256。LibreOffice 与 ffmpeg 只允许在 converter 容器中使用，不得进入 backend 镜像；converter 与 transcriber 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
 
 **脱敏词表与参照数据**（V3.1，V31-S）：backend/resources/ 下的 zh\_words.txt（jieba v0.42.1 主词典的 2～4 字常用词，排除专名词性，MIT）、zh\_legal\_finance.txt（只取 THUOCL 法律词表，剔除以行业词或企业、金融后缀结尾的词，MIT；不取财经词表，因混有上市公司简称）、chem\_names.txt（《危险化学品目录（2015 版）》品名与别名，政府规范性文件）、plain\_terms.txt 与 chem\_words\_en.txt（行业缩写、单位、参数名与英文化工常用词，开发方起草、待业务人员审阅）、uncertain\_reference.npz（虚构样本的向量与标签，不含文字）。只取数据文件，不引入对方的包，不在运行时下载；来源、SHA-256、生成口径与剔除表见同名 README，生成脚本在 backend/scripts/。用途见 9.5、9.10。
 
