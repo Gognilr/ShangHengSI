@@ -13,6 +13,7 @@ _RULES = {
     "reply": ({"file_ids", "tone", "language"}, 0, 3),
     "crosscheck": ({"file_ids"}, 2, 6),
     "compare": ({"file_ids"}, 2, 6),
+    "minutes": ({"file_ids"}, 1, 3),
 }
 
 
@@ -59,6 +60,8 @@ def prepare(template: str, params: dict, files: dict[str, int], message: str = "
         default = f"根据文件 {listed} 起草回复"
     elif template == "crosscheck":
         default = f"核对文件 {ranged} 之间是否一致"
+    elif template == 'minutes':
+        default = f'把录音 {listed} 整理为会议纪要'
     else:
         default = f"比较文件 {ranged} 的报价"
     return Prepared(result, message.strip() or default)
@@ -68,7 +71,9 @@ def instruction(template: str) -> str:
     if template not in _RULES:
         _bad()
     text = RESOURCE.read_text(encoding="utf-8")
-    return text.split(f"## {template}\n", 1)[1].split("\n## ", 1)[0].strip()
+    # 模板自身可含中文二级标题，只以已登记的英文模板名作为分界。
+    return re.split(r'\n## (?:' + '|'.join(_RULES) + r')\n',
+                    text.split(f"## {template}\n", 1)[1], maxsplit=1)[0].strip()
 
 
 def draft_only(text: str) -> str:

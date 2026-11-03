@@ -203,6 +203,8 @@ def generate(db, task, mid, format, variant, user, ip):
             report_docx._table(doc, headers, rows, [26.7 / len(headers)] * len(headers))
             doc.add_paragraph('价格未发送给模型')
         else:
+            if row.template == 'minutes':
+                report_docx._heading(doc, '会议纪要')
             _markdown_doc(doc, view['content'])
         output = io.BytesIO(); doc.save(output); data = output.getvalue()
         media = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -212,3 +214,27 @@ def generate(db, task, mid, format, variant, user, ip):
                  detail={'message_id': row.id, 'format': format}, ip=ip)
     db.commit()
     return data, media, filename
+
+
+def transcript(db, task, file, user, ip):
+    from app.assistant.meeting import speaker_names, stamp
+    if not file.media or file.media.get('stage') != 'done' or file.original_deleted_at is not None:
+        raise AppError(409, 'TRANSCRIPT_UNAVAILABLE', '逐字稿暂不可用')
+    nodes = list(db.scalars(select(DocNode).where(DocNode.file_id == file.id, DocNode.kind == 'utterance')
+                           .order_by(DocNode.ord)))
+    if any(n.text_enc is None for n in nodes):
+        raise AppError(409, 'TRANSCRIPT_UNAVAILABLE', '逐字稿已按保留期限删除')
+    doc = _document()
+    doc.sections[0].header.paragraphs[0].clear()
+    report_docx._font(doc.sections[0].header.paragraphs[0].add_run('商衡SI 会议逐字稿'), 9)
+    report_docx._heading(doc, file.original_name)
+    names = speaker_names(file)
+    for node in nodes:
+        name = names.get(str(node.speaker)) or f'发言人{node.speaker}'
+        report_docx._font(doc.add_paragraph().add_run(report_docx._clean(
+            f'【{name} {stamp(node.t_start_ms)}】{crypto.decrypt_text(node.text_enc)}')), 10.5)
+    output = io.BytesIO()
+    doc.save(output)
+    audit.record(db, 'transcript_export', user_id=user.id, target_type='file', target_id=str(file.id), ip=ip)
+    db.commit()
+    return output.getvalue()

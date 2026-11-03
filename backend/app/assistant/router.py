@@ -166,6 +166,16 @@ def audio(request: Request, file: TaskFile = Depends(owned_file), user: User = D
     return Response(content=data, media_type='audio/ogg', headers={'Cache-Control':'no-store'})
 
 
+@router.get('/{id}/files/{fid}/transcript')
+def transcript(request: Request, format: Literal['docx'] = 'docx', file: TaskFile = Depends(owned_file),
+               task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.assistant.export import transcript as generate_transcript
+    data = generate_transcript(db, task, file, user, client_ip(request))
+    return Response(content=data, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    headers={'Content-Disposition':f"attachment; filename*=UTF-8''{quote('逐字稿.docx')}",
+                             'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff'})
+
+
 @router.get("/{id}/files/{fid}/raw")
 def raw(file: TaskFile = Depends(owned_file)):
     data, media_type = tasks.load_raw(file)

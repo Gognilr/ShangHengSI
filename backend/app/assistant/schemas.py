@@ -65,7 +65,7 @@ class MessageIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: int | None = Field(None, gt=0)
     message: str = Field(default="", max_length=4000)
-    template: Literal["translate", "summary", "reply", "crosscheck", "compare"] | None = None
+    template: Literal["translate", "summary", "reply", "crosscheck", "compare", "minutes"] | None = None
     params: dict = Field(default_factory=dict)
     decisions: list[MessageDecision] = Field(default_factory=list)
     use_kb: StrictBool = False

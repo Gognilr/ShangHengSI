@@ -13,7 +13,7 @@ from app.redaction.dictionaries import find_country
 from app.redaction.engine import load_redaction_map
 from app.security.errors import AppError
 
-VERSION = "assistant-2026.11-4"
+VERSION = "assistant-2026.11-5"
 _PATH = Path(__file__).resolve().parents[2] / "resources/prompts/assistant.md"
 _TYPES = {"contract": "合同", "quotation": "报价单", "order": "订单", "inquiry": "询价单", "letter": "函件"}
 _LABELS = {"NAME": "名称", "PROPN": "专有名词", "ORG": "企业", "PER": "人名", "PRJ": "项目", "REF": "编号", "TEL": "电话", "EMAIL": "邮箱",
@@ -50,7 +50,10 @@ def file_block(db: Session, task: Task, params: dict, *, model_id: int | None = 
         from app.assistant.meeting import line
         text = "\n".join(line(db, task, file, n) for n in nodes)
         size += len(text)
-        blocks.append(f"【文件{file.seq}：{_TYPES.get(file.doc_type, '资料')}，{file.ext}，第{index}/{len(files)}个】"
+        from app.assistant.meeting import stamp
+        label = '录音逐字稿' if file.media else _TYPES.get(file.doc_type, '资料')
+        duration = f'，录音时长{stamp(file.media.get("duration_ms"))}' if file.media else ''
+        blocks.append(f"【文件{file.seq}：{label}，{file.ext}，第{index}/{len(files)}个{duration}】"
                       f"<document>{escape_document_tags(text)}</document>")
     limit = select_model(db, model_id, "assist").chunk_chars
     if size > limit:

@@ -193,7 +193,8 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
 def _validate_input(db: Session, task: Task, body):
     if body.template is not None:
         from app.assistant.templates import prepare
-        files = {str(f.id): f.seq for f in _files(db, task) if f.confirmed_at is not None}
+        files = {str(f.id): f.seq for f in _files(db, task) if f.confirmed_at is not None and
+                 (body.template != 'minutes' or f.ext in filecheck.AUDIO_EXTS and (f.media or {}).get('stage') == 'done')}
         result = prepare(body.template, body.params, files, body.message)
         return result.message, result.params
     if set(body.params) - {"file_ids"}:
