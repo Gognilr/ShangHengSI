@@ -51,6 +51,10 @@ def test_financial_ratios():
     nodes = inputs(parsed)
     nodes = [replace(n, text=n.text + '（人民币元）') if n.loc in ('F1-S2-B1', 'F1-S3-B1') else n for n in nodes]
     assert '经营现金流与净利润之比：本期 2.00倍' in calculate(nodes)
+    # V31Q-68：简短期间列头“期末 / 期初”“本期 / 上期”同样识别报表。
+    short = parse_xlsx((Path(__file__).parent / 'fixtures/eval_fidelity/cn_04_finance.xlsx').read_bytes(), 1)
+    text = calculate(inputs(short))
+    assert '资产负债率：本期 60.0%（上期 50.0%）' in text and '毛利率：本期 50.0%（上期 50.0%）' in text
 
 
 def test_two_row_docx_quote_header():

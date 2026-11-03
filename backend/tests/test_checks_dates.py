@@ -2,6 +2,8 @@
 from datetime import date
 from pathlib import Path
 
+import re
+
 import pytest
 import yaml
 
@@ -71,5 +73,6 @@ def test_date_fixture_manifest_and_safe_summary():
         assert [{"code": r.code, "locs": r.locs} for r in results] == [
             r for r in entry["expected"] if r["code"] in ("L-07", "L-08")]
         for result in results:
-            assert result.detail == result.ai_summary
+            # V31-E-09：日期平移开启时原日期是真实值，摘要只写天数。
+            assert not re.search(r"\d{4}-\d{2}-\d{2}", result.ai_summary) and "天" in result.ai_summary
             assert recheck(result.ai_summary, real_values=["800000", "星河虚构进出口有限公司"], terms=[]) == []

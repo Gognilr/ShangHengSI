@@ -12,6 +12,7 @@ from app.checks.numbers import pct_diff
 from app.redaction.tables import table_cell, _col_number
 
 FIN_COLUMNS = ('期末余额', '期初余额', '年初余额', '本期金额', '上期金额', '本年累计', '上年同期', '期末数', '年初数', '行次')
+SHORT_PERIODS = r'本期|上期|期末|期初|年初'
 
 
 def merged_header(rows, row):
@@ -60,7 +61,9 @@ def check_finance(nodes, *, reports_out=None):
         for row in sorted(r for r in rows if r <= 10):
             labels, end = merged_header(rows, row)
             # 普通数字明细不当表头；财务列和月份列、合计列都可使用。
-            if any(re.search('|'.join(FIN_COLUMNS[:-1]) + r'|合计|总计|Total|数量|单价|金额|amount|price', t, re.I) for t in labels.values()) and all(numeric(n.text) is None for n in rows[row].values()):
+            # 简短期间列头只认整格（V31Q-68），与脱敏的期间金额列一致。
+            if any(re.search('|'.join(FIN_COLUMNS[:-1]) + r'|合计|总计|Total|数量|单价|金额|amount|price', t, re.I)
+                   or re.fullmatch(SHORT_PERIODS, t.strip()) for t in labels.values()) and all(numeric(n.text) is None for n in rows[row].values()):
                 candidates.append((row, end, labels))
         if not candidates:
             continue
@@ -72,10 +75,11 @@ def check_finance(nodes, *, reports_out=None):
                          text_cols[0] if text_cols else min(columns))
         data = {r: cells for r, cells in rows.items() if r > header}
         seq = next(iter(rows[header].values())).file_seq
-        def report(code, target, actual, expected, description, severity='high', tolerance=Decimal('.01')):
+        def report(code, target, actual, expected, description, severity='high', tolerance=Decimal('.01'), title=''):
             if abs(actual - expected) > tolerance:
+                # 列头可能合并了“编制单位：××公司”等上行文字，只写进加密的详细说明，摘要靠位置区分列。
                 results.append(CheckResult(code, severity, [target.loc], seq,
-                    f'{target.loc} {description}：显示值 {actual}，计算值 {expected}',
+                    f'{target.loc} {title}{description}：显示值 {actual}，计算值 {expected}',
                     f'{target.loc} {description}不一致，差异约 {pct_diff(actual, expected)}'))
         # 明细行与小计独立累积；报表的“资产合计”等不在这里猜层级。
         for col in columns:
@@ -144,7 +148,7 @@ def check_finance(nodes, *, reports_out=None):
                 actual, *parts = values
                 expected = sum((v * sign for v, (_, sign) in zip(parts, terms)), Decimal(0))
                 tolerance = Decimal(1) if all(v == v.to_integral_value() for v in [actual, expected]) else Decimal('.01')
-                report('L-13', cells[0], actual, expected, f'{title} {target}勾稽', tolerance=tolerance)
+                report('L-13', cells[0], actual, expected, f'{target}勾稽', tolerance=tolerance, title=title + ' ')
             if kind == 'balance':
                 equation('资产总计', [('负债和所有者权益总计', 1)])
                 equation('负债和所有者权益总计', [('负债合计', 1), ('所有者权益合计', 1)])

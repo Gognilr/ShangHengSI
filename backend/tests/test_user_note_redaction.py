@@ -243,6 +243,9 @@ def test_r4_note_log_safety(db_sessionmaker, alice, ready_task, llm, caplog):
 def test_r4_note_keeps_document_codes_and_clears_note(db_sessionmaker, alice, ready_task):
     """NOTE 末尾分配代号，清空说明时不残留伪节点或原文。"""
     user, c, h = alice
+    with db_sessionmaker() as db:  # 两个任务的日期偏移各自随机，本例只比较代号，关闭平移
+        settings_store.set_setting(db, "redaction.date_shift", False, None)
+        db.commit()
     baseline = ready_task(user)
     task = ready_task(user, user_note=NOTE)
     with db_sessionmaker() as db:

@@ -52,12 +52,15 @@ def check_dates(nodes: list[CheckNode], today: date) -> list[CheckResult]:
     for node, value in _labelled(nodes, "expiry"):
         if value < today:
             text = f"{node.loc}：报价有效期截止 {value.isoformat()}，早于今天（{today.isoformat()}）"
-            results.append(CheckResult("L-07", SEVERITY["L-07"], [node.loc], node.file_seq, text, text))
+            # 摘要外发，只写天数：日期平移开启时原日期是对照表中的真实值。
+            summary = f"{node.loc}：报价有效期截止日早于今天，已过 {(today - value).days} 天"
+            results.append(CheckResult("L-07", SEVERITY["L-07"], [node.loc], node.file_seq, text, summary))
     signing = _labelled(nodes, "signing")
     if len({value for _, value in signing}) == 1:
         signed_node, signed = signing[0]
         for node, value in _labelled(nodes, "delivery"):
             if value < signed:
                 text = f"{node.loc}：交货日期 {value.isoformat()} 早于签约日期 {signed.isoformat()}（{signed_node.loc}）"
-                results.append(CheckResult("L-08", SEVERITY["L-08"], [node.loc, signed_node.loc], node.file_seq, text, text))
+                summary = f"{node.loc}：交货日期早于签约日期（{signed_node.loc}）{(signed - value).days} 天"
+                results.append(CheckResult("L-08", SEVERITY["L-08"], [node.loc, signed_node.loc], node.file_seq, text, summary))
     return results

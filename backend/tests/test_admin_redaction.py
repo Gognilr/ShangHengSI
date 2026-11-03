@@ -82,9 +82,9 @@ def test_permissions(make_user, login, api):
 
 def test_mask_quantity_toggle_and_audit(admin, db_sessionmaker):
     c, csrf = admin
-    assert c.get(SETTING).json() == {"mask_quantity": False, "vector_assist": True, "date_shift": False}
-    assert c.put(SETTING, json={"mask_quantity": True}, headers=_hdr(csrf)).json() == {"mask_quantity": True, "vector_assist": True, "date_shift": False}
-    assert c.get(SETTING).json() == {"mask_quantity": True, "vector_assist": True, "date_shift": False}
+    assert c.get(SETTING).json() == {"mask_quantity": False, "vector_assist": True, "date_shift": True}
+    assert c.put(SETTING, json={"mask_quantity": True}, headers=_hdr(csrf)).json() == {"mask_quantity": True, "vector_assist": True, "date_shift": True}
+    assert c.get(SETTING).json() == {"mask_quantity": True, "vector_assist": True, "date_shift": True}
     c.put(SETTING, json={"mask_quantity": True}, headers=_hdr(csrf))  # 没有变化，不写审计
     c.put(SETTING, json={"mask_quantity": False}, headers=_hdr(csrf))
     assert _audits(db_sessionmaker) == [

@@ -101,6 +101,10 @@ def _split_outbound(outbound_text: str) -> tuple[str, str]:
     """外发文本的第一行是【主体说明】，其余是正文各行。"""
     head, _, rest = outbound_text.partition("\n")
     if head.startswith("【主体说明】"):
+        # 日期平移说明是系统说明，随【主体说明】放在 <document> 之外，分段时每段都带。
+        note, _, after = rest.partition("\n")
+        if note.startswith("文中日期已整体平移"):
+            return head + "\n" + note, after
         return head, rest
     return "", outbound_text
 
