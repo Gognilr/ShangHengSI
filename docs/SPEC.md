@@ -1851,7 +1851,7 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 |db|自建 aireview-db 镜像（postgres:16.15 + pgvector，版本锁定）|卷 db\_data；只在内部网络，不暴露端口|
 |app|自建 backend 镜像|uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2；卷 files\_data:/data/files；只读挂载密钥文件|
 |worker|同 backend 镜像|python -m app.worker；卷 files\_data:/data/files、/data/apps/aireview/backup:/backup、convert\_spool:/spool；镜像内含 postgresql-client、RapidOCR 模型文件、实体识别模型与向量模型文件|
-|converter|自建 converter 镜像（LibreOffice）|network\_mode: none；只读根文件系统；非 root（uid 10002）；去掉全部 capability；限制内存 1.5 GiB、2 CPU；只挂载内存盘卷 convert\_spool:/spool（tmpfs，V3.1 起 1 GiB）；worker 与 app（录音上传缓冲）同时挂载该卷；V3.1 起另含 ffmpeg|
+|converter|自建 converter 镜像（LibreOffice）|network\_mode: none；只读根文件系统；非 root（uid 10002）；去掉全部 capability；限制内存 1.5 GiB、2 CPU；只挂载内存盘卷 convert\_spool:/spool（tmpfs，V3.1 起 2 GiB，V31Q-80）；worker 与 app（录音上传缓冲）同时挂载该卷；V3.1 起另含 ffmpeg|
 |transcriber（V3.1，`asr` profile）|自建 transcriber 镜像（转写一组模型，第 3 节）|network\_mode: none；只读根文件系统；非 root（uid 10003）；去掉全部 capability；只挂载 convert\_spool:/spool，不挂原件卷、主密钥、数据库；内存 `ASR_MEM`（默认 4g）、CPU `ASR_CPUS`、cpu\_shares 256；模型用时加载、空闲 5 分钟释放；健康检查读心跳|
 |web|caddy:2（固定小版本标签）|提供前端构建产物，/api 转发到 app:8000；监听 443 / 80；上传大小限制 320 MB（V3.1：助手加入文件的路径为 `MAX_AUDIO_MB` + 20 MB）；用 IP 访问时配置 default\_sni；只读挂载 secrets/ca/ 用于签发站点证书（20.4）|
 
