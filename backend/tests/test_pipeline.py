@@ -252,6 +252,9 @@ def test_parse_all_five_formats(db_sessionmaker, make_task):
         ("扫描件.jpg", fixture("images/quotation_lowq.jpg")),
     ])
     with db_sessionmaker() as db:
+        # E-09 已将日期平移默认开启；本用例明确关闭，只核对解析与表格数字保留。
+        set_setting(db, 'redaction.date_shift', False, None)
+        db.commit()
         pipeline.parse_task(db, task.id)
     with db_sessionmaker() as db:
         t = db.get(Task, task.id)

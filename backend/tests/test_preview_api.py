@@ -75,7 +75,8 @@ def test_nodes_sorted_decrypted_with_all_fields(files_dir, make_user, login, db_
     assert second["text"] == "第二段" and second["bbox"] == [10.5, 20.0, 30.0, 40.0]
     assert (second["page"], second["kind"], second["part"], second["ocr_conf"]) == (1, "ocr_block", "body", pytest.approx(0.93, abs=1e-3))
     assert set(first) == {"loc", "kind", "part", "text", "clause_no", "page", "bbox", "sheet", "cell_ref",
-                          "ocr_conf", "parent_loc"}
+                          "ocr_conf", "parent_loc", "t_start_ms", "t_end_ms", "speaker", "low_conf_spans"}
+    assert all(first[field] is None for field in ('t_start_ms', 't_end_ms', 'speaker', 'low_conf_spans'))
 
 
 @pytest.mark.parametrize("status", ["parsing", "parse_failed"])
