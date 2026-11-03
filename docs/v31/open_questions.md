@@ -1,6 +1,6 @@
 # V3.1 待确认问题
 
-编号 **V31Q-01 起**，按出现顺序递增，不复用。下一个编号：**V31Q-73**。
+编号 **V31Q-01 起**，按出现顺序递增，不复用。下一个编号：**V31Q-74**。
 
 V3.1 的依据性决定已在 docs/v3/open\_questions.md 记录：V3Q-26（不确定项默认替换、人工可选）、V3Q-27（V3.1 单独发版与第一阶段范围）、V3Q-28（光幕视觉方向）、V3Q-29（V3.0 不单独发布，原 V3-Z 并入 V31-Z）。
 
@@ -14,6 +14,7 @@ V3.1 的依据性决定已在 docs/v3/open\_questions.md 记录：V3Q-26（不�
 
 | 编号 | 问题 | 决定 | 日期 |
 |-|-|-|-|
+| V31Q-73 | 转写候选与下载（V31-M-01，design/V31-M.md 1.1；V31Q-06 下载前确认） | 按建议（用户 2026-11-03 确认）：淘汰 SenseVoice-Small 与 Paraformer：FunASR 模型协议 1.1 写“仅作为参考和学习使用”、修订版自动生效、“诋毁”即终止授权，属可撤销许可（同 V31Q-11 MiSans）。转写备选改为同系的 FireRedASR2-CTC（Apache-2.0）。同意下载 A 组（sherpa-onnx 转换的 FireRedASR2-AED / CTC INT8、FireRedVAD 官方 ONNX、silero-vad、pyannote segmentation-3.0、3D-Speaker CAM++ 与 ERes2NetV2、sherpa-onnx 2.0.1 与 kaldi-native-fbank）与 B 组（FireRedPunc 与 chinese-lert-base 权重用于导出 ONNX；FireRedASR2-AED 原始权重仅用于 FP32 字错率对照；均在仓库外一次性 torch 容器处理，镜像不装 torch） | 2026-11-03 |
 | V31Q-72 | 逐字稿校对的范围与“只本地使用” | 按建议（用户 2026-11-03 确认）：第一版只做：参会人名单、发言人改名、改一句的文字与发言人、采纳同音纠正建议、点句回放；不做拆句、并句、改时间、局部重转写。参会人与发言人名字登记为本会话 PERSON 词条（与划选补充同一机制），外发时发言人写代号。助手会话没有“不外发”策略，PLAN 65 的“local\_only 只出逐字稿”改为：逐字稿 Word 在确认前后都可导出，用户不发给模型也能只用转写（design/V31-M.md 5.1、6.2） | 2026-11-03 |
 | V31Q-71 | converter 加 ffmpeg 解码录音 | 按建议（用户 2026-11-03 确认）：用 Debian 软件包 ffmpeg（锁定版本，与 LibreOffice 同法），在 converter 现有的无网络、只读、非 root 容器中运行，协议白名单只放 file / pipe、按时长设超时；不新建解码容器。许可：Debian 构建为 GPL，发布包只在公司内部分发，源码可从 Debian 获取，仓库只有 Dockerfile 不含二进制；运维说明写明。需改 CLAUDE.md“LibreOffice 只允许在 converter”一句为“LibreOffice、ffmpeg 只允许在 converter”，在 M-01 选型确认后由 Opus 一并改（design/V31-M.md 3.3） | 2026-11-03 |
 | V31Q-70 | 同音纠正用的拼音数据（PLAN 补充项 64：拼音词典许可证在 M-00 核实） | 按建议（用户 2026-11-03 确认）：用 Unicode 17.0.0 Unihan 的 `Unihan_Readings.txt`（与 V31-P 已用的 Unihan_Variants 同一版本、同一许可 Unicode License V3，可商用、随附许可文本），取 kMandarin、kHanyuPinyin、kXHC1983 合并为每字的无声调读音集合，只取数据文件、记来源与 SHA-256，下载前经你确认。备选 mozillazg/pinyin-data（MIT，本身由 Unihan 等整理而来）；不引入 pypinyin 包（V31Q-06）。匹配只做等长、读音有交集、排除常用词，不做 n/l、zh/z 等模糊音（design/V31-M.md 5.4） | 2026-11-03 |
