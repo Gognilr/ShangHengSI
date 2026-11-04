@@ -27,6 +27,9 @@ def atomic(path, value):
     tmp.replace(path)
 
 def probe(label):
+    cached = ROOT / (label + '-mainline.json')
+    if cached.exists():
+        return json.loads(cached.read_text())
     results = {}
     for mode in ('body', 'question'):
         atomic(ROOT / ('probe-request-' + mode + '.json'), {'label': label})
@@ -95,6 +98,7 @@ def run():
                 # 并发探针与万字单独运行分别计时，避免将混合耗时当作单跑速度。
                 results = []
                 error = []
+                probe_reused = (ROOT / (label + '-mainline.json')).exists()
                 stop_load = threading.Event()
                 def concurrent_load():
                     try:
@@ -114,15 +118,25 @@ def run():
                     worker.join()
                 if error:
                     raise RuntimeError('translation load failed: ' + ','.join(error))
-                start = time.monotonic()
-                atomic(ROOT / 'status.json', {'phase': 'translation', 'label': label})
+                gate = results[0]
+                failures = []
+                if max(row['ner_seconds'] for row in gate['body']['rows']) > 15:
+                    failures.append('NER_OVER_15_SECONDS')
+                if max(row['question_seconds'] for row in gate['question']['rows']) > 3:
+                    failures.append('QUESTION_OVER_3_SECONDS')
+                # 用户 2026-11-04 同意：已不达标的配置不再跑万字长测，仍做质量抽查。
+                skipped = bool(failures and (ROOT / 'skip-failed-long').exists())
                 rows = []
-                for index, paragraph in enumerate(chunks):
-                    output, usage = translate(paragraph, '英语')
-                    rows.append({'source': paragraph, 'translation': output, 'usage': usage})
-                    atomic(ROOT / (label + '-progress.json'), {'completed': index + 1,
-                        'total': len(chunks), 'elapsed_seconds': time.monotonic() - start})
-                seconds = time.monotonic() - start
+                seconds = None
+                if not skipped:
+                    start = time.monotonic()
+                    atomic(ROOT / 'status.json', {'phase': 'translation', 'label': label})
+                    for index, paragraph in enumerate(chunks):
+                        output, usage = translate(paragraph, '英语')
+                        rows.append({'source': paragraph, 'translation': output, 'usage': usage})
+                        atomic(ROOT / (label + '-progress.json'), {'completed': index + 1,
+                            'total': len(chunks), 'elapsed_seconds': time.monotonic() - start})
+                    seconds = time.monotonic() - start
                 quality = []
                 if threads == 6:
                     atomic(ROOT / 'status.json', {'phase': 'quality', 'label': label})
@@ -134,7 +148,9 @@ def run():
                 status = Path(f'/proc/{server.pid}/status').read_text().splitlines()
                 rss_peak = next(int(line.split()[1]) * 1024 for line in status if line.startswith('VmHWM:'))
                 atomic(ROOT / (label + '.json'), {'model': filename, 'threads': threads,
-                    'chars': len(full), 'load_seconds': load_seconds, 'seconds': seconds,
+                    'chars': 0 if skipped else len(full), 'planned_chars': len(full),
+                    'load_seconds': load_seconds, 'seconds': seconds,
+                    'long_skipped': skipped, 'gate_failures': failures, 'probe_reused': probe_reused,
                     'rows': rows, 'quality': quality, 'mainline': results, 'probe_errors': error,
                     'server_peak_rss_bytes': rss_peak,
                     'container_cumulative_peak_bytes': int(Path('/sys/fs/cgroup/memory.peak').read_text())})
