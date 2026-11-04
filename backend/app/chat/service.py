@@ -127,6 +127,14 @@ class Redacted:
 
 def _redact(message: str, full_map: dict[str, str], terms: list[tuple[str, str]],
             decisions: list[dict] | None = None, *, allocator=None) -> Redacted:
+    # 审核追问与助手消息共用此处；本地翻译在段落边界让路（V31-U5 5.2）。
+    from app.assistant.local_translation import priority
+    with priority():
+        return _redact_text(message, full_map, terms, decisions, allocator=allocator)
+
+
+def _redact_text(message: str, full_map: dict[str, str], terms: list[tuple[str, str]],
+                 decisions: list[dict] | None = None, *, allocator=None) -> Redacted:
     """纯函数：按 full_map（本任务对照表）和 terms（(名称, 类别)）脱敏。已被前一步替换的文字不再参与后续识别。"""
     text = message.strip()
     shift_days = int(full_map.get('@date_shift_days', '0'))

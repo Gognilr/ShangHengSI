@@ -146,7 +146,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
         </div>
       </div>
       <p v-if="step === 'failed'" class="hint">{{ session.error_message || '文件解析失败，请删除后重新上传' }}</p>
-      <p v-if="engine === 'local'" class="hint">离线译稿须人工核对。当前测试机万字约需 65 分钟，可离开页面后从“最近的翻译”继续查看。</p>
+      <p v-if="engine === 'local'" class="hint">本地翻译较慢（万字约一小时），可以离开本页，稍后从“最近的翻译”回来查看；译稿须逐段核对。</p>
       <div class="reading">
         <p v-if="!results.length && step === 'ready'" class="hint ready-hint"><Languages :size="16" :stroke-width="1.75" />选择目标语言后点“开始翻译”。</p>
         <MessageItem v-for="m in [...results].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />

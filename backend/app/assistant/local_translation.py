@@ -90,11 +90,7 @@ def queue(db, task, source):
     return reply
 
 
-def send(db, task, user, body):
-    from app.assistant import service
-    db.scalar(select(User).where(User.id == user.id).with_for_update())
-    task = service.lock(db, task)
-    service._writable(db, task)
+def _busy(db, task, user):
     if db.scalar(select(AssistantMessage.id).where(AssistantMessage.task_id == task.id,
                                                   AssistantMessage.status.in_(('queued', 'streaming'))).limit(1)):
         raise AppError(409, 'SESSION_BUSY', '上一条回复尚未完成')
@@ -103,6 +99,37 @@ def send(db, task, user, body):
                               AssistantMessage.status.in_(('queued', 'streaming')))) or 0
     if active >= 2:
         raise AppError(409, 'SESSION_BUSY', '你已有两条回复正在生成，请稍后再发送')
+
+
+def _locked(db, task, user):
+    from app.assistant import service
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    task = service.lock(db, task)
+    service._writable(db, task)
+    _busy(db, task, user)
+    return task
+
+
+def retry(db, task, user, source):
+    """失败后重试：沿用原用户消息，只新建一条译稿回复。"""
+    from app.assistant import service
+    if source.role != 'user' or not local(source.template, source.params):
+        raise AppError(409, 'SESSION_BUSY', '原始消息不存在')
+    task = _locked(db, task, user)
+    if not enabled():
+        raise AppError(409, 'MT_DISABLED', '本地翻译未启用，请联系管理员')
+    source_file(db, task, source.params)
+    if not alive():
+        raise AppError(409, 'MT_UNAVAILABLE', '本地翻译暂不可用，请稍后再试')
+    reply = queue(db, task, source)
+    response = {'user': service.message_out(db, task, source), 'assistant': service.message_out(db, task, reply)}
+    db.commit()
+    return response
+
+
+def send(db, task, user, body):
+    from app.assistant import service
+    task = _locked(db, task, user)
     text, params = validate(db, task, body)
     if not alive():
         raise AppError(409, 'MT_UNAVAILABLE', '本地翻译暂不可用，请稍后再试')

@@ -56,3 +56,34 @@ def test_local_translation_encrypted_and_excluded_from_cloud(conversation, db_se
         source = db.get(AssistantMessage, followup.json()['user']['id'])
         messages = prompt.build_messages(db, db.get(Task, uuid.UUID(tid)), source)
         assert translated not in json.dumps(messages) and '100000' not in json.dumps(messages)
+
+
+def test_local_translation_retry_reuses_source(conversation, db_sessionmaker, monkeypatch):
+    c, h, tid, _ = conversation
+    monkeypatch.setenv('COMPOSE_PROFILES', 'mt')
+    monkeypatch.setattr(mt, 'alive', lambda: True)
+    with db_sessionmaker() as db:
+        file = db.scalar(select(TaskFile).where(TaskFile.task_id == uuid.UUID(tid)))
+        file.parser_version, fid = 'docx-test', str(file.id)
+        db.commit()
+    outcomes = [mt.AppError(409, 'MT_UNAVAILABLE', '本地翻译暂不可用，请稍后再试'), 'Done.']
+
+    def exchange(text, target, cancelled):
+        value = outcomes.pop(0) if len(outcomes) > 1 else outcomes[0]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(mt, 'exchange', exchange)
+    first = send(conversation, '', template='translate', params={'engine': 'local', 'file_id': fid, 'target': '英文'}).json()
+    with db_sessionmaker() as db:
+        handle_translate(db, db.scalar(select(Job).where(Job.type == 'translate')).payload)
+        assert db.get(AssistantMessage, first['assistant']['id']).status == 'failed'
+    again = c.post(f"{BASE}/{tid}/messages/{first['assistant']['id']}/retry", headers=h)
+    assert again.status_code in (200, 201), again.text
+    assert again.json()['user']['id'] == first['user']['id']
+    with db_sessionmaker() as db:
+        job = db.scalars(select(Job).where(Job.type == 'translate').order_by(Job.id.desc())).first()
+        handle_translate(db, job.payload)
+        assert db.get(AssistantMessage, again.json()['assistant']['id']).status == 'done'
+        assert db.scalar(select(func.count()).select_from(AssistantMessage).where(AssistantMessage.role == 'user')) == 1

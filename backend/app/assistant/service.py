@@ -247,9 +247,7 @@ def _question(db: Session, task: Task, text: str, decisions=None):
     mapping = engine._load_full_map(db, task.id)
     alloc = NeutralAllocator()
     alloc.seed(mapping)
-    from app.assistant.local_translation import priority
-    with priority():
-        return _redact(text, mapping, _terms(db), decisions=decisions, allocator=alloc)
+    return _redact(text, mapping, _terms(db), decisions=decisions, allocator=alloc)
 
 
 def preview(db: Session, task: Task, body) -> dict:
@@ -367,10 +365,7 @@ def retry(db: Session, task: Task, user: User, mid: int) -> dict:
         raise AppError(409, "SESSION_BUSY", "只能重试失败的回复")
     from app.assistant import local_translation as mt
     if mt.local(previous.template, previous.params):
-        source = owned_message(db, task, int(previous.extras.get('user_message_id', 0)))
-        from app.assistant.schemas import MessageIn
-        return mt.send(db, task, user, MessageIn(template='translate', params={k: v for k, v in source.params.items() if k != 'file_ids'},
-                                                message=mt.payload(source).get('content', '')))
+        return mt.retry(db, task, user, owned_message(db, task, int(previous.extras.get('user_message_id', 0))))
     model = select_model(db, previous.model_id, "assist", structured=previous.template == "compare")
     _require_send(db, task, model.id)
     source = owned_message(db, task, int(previous.extras.get("user_message_id", 0)))
