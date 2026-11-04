@@ -37,6 +37,9 @@ if printf '%s\n' "$model_commands" | grep -q '^transcriber'; then
   docker build -t "aireview-transcriber:$version" "$(host_path "$repo/transcriber")"
 fi
 # 每项按清单断网冒烟。转写在独立镜像内执行，不在 worker 加载。
+if printf '%s\n' "$model_commands" | grep -q '^translator'; then
+  docker build -t "aireview-translator:$version" "$(host_path "$repo/translator")"
+fi
 while IFS=$'\t' read -r model_image smoke; do
   docker run --rm --network none -v "$(host_path "$ROOT/models.yaml"):/etc/aireview/models.yaml:ro" -e LOCAL_MODELS_FILE=/etc/aireview/models.yaml "aireview-$model_image:$version" sh -ec "$smoke"
 done <<< "$model_commands"
@@ -49,13 +52,17 @@ images=("aireview-backend:$version" "aireview-web:$version" "aireview-converter:
 if printf '%s\n' "$model_commands" | grep -q '^transcriber'; then
   images+=("aireview-transcriber:$version")
 fi
+if printf '%s\n' "$model_commands" | grep -q '^translator'; then
+  images+=("aireview-translator:$version")
+fi
 docker save -o "$(host_path "$package/images/aireview-images-$version.tar")" "${images[@]}"
 docker image inspect --format '{{index .RepoTags 0}} {{.Id}}' "${images[@]}" > "$package/images/images.txt"
-sed -e '/# build-begin/,/# build-end/d' -e 's|../transcriber/models/asr/MANIFEST.sha256|./model-manifests/asr.sha256|g' "$ROOT/docker-compose.yml" > "$package/docker-compose.yml"
+sed -e '/# build-begin/,/# build-end/d' -e 's|../transcriber/models/asr/MANIFEST.sha256|./model-manifests/asr.sha256|g' -e 's|../translator/models/mt/MANIFEST.sha256|./model-manifests/mt.sha256|g' "$ROOT/docker-compose.yml" > "$package/docker-compose.yml"
 cp "$ROOT/Caddyfile" "$ROOT/.env.example" "$ROOT/models.yaml" "$package/"
 mkdir -p "$package/licenses" "$package/model-manifests"
 cp -R "$ROOT/licenses/models" "$package/licenses/"
 cp "$repo/transcriber/models/asr/MANIFEST.sha256" "$package/model-manifests/asr.sha256"
+cp "$repo/translator/models/mt/MANIFEST.sha256" "$package/model-manifests/mt.sha256"
 # 未启用 asr 的构建，安装时同样默认关闭，避免请求不存在的镜像。
 if ! printf '%s\n' "$model_commands" | grep -q '^transcriber'; then
   sed -i 's/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=/' "$package/.env.example"

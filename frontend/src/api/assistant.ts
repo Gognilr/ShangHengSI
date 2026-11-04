@@ -24,9 +24,9 @@ export interface Session extends SessionItem {
   stance: Stance; source: Source; policy: 'ai' | 'local_only'; error_message: string | null
   created_at: string; files: SessionFile[]; can_send: boolean; send_reason: string | null; code_count: number
   kb_enabled?: boolean
-  participants: string[]; asr_enabled: boolean
+  participants: string[]; asr_enabled: boolean; mt_enabled: boolean
 }
-export interface SessionPage { items: SessionItem[]; total: number; page: number; page_size: number; kb_enabled?: boolean; asr_enabled: boolean }
+export interface SessionPage { items: SessionItem[]; total: number; page: number; page_size: number; kb_enabled?: boolean; asr_enabled: boolean; mt_enabled: boolean }
 export interface Quote { file: number; unit_price: string | null; amount: string | null; currency: string | null; difference_pct: string | null; status: string; qty: string }
 export interface Comparison {
   notice: string; notes: string; suppliers: { file: number; name: string; terms: string }[]

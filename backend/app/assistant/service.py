@@ -24,6 +24,11 @@ def asr_enabled() -> bool:
     return 'asr' in os.environ.get('COMPOSE_PROFILES', '').split(',')
 
 
+def mt_enabled() -> bool:
+    from app.assistant.local_translation import enabled
+    return enabled()
+
+
 def _files(db: Session, task: Task):
     return list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
 
@@ -38,7 +43,7 @@ def availability(db: Session, task: Task) -> str | None:
                                        AssistantMessage.status.in_(("queued", "streaming"))))):
         return "上一条回复尚未完成"
     # 详情尚未指定本次模型，具体用途、结构化能力和配额在发送时检查。
-    if not db.scalar(select(exists().where(LlmModel.enabled.is_(True), LlmModel.for_assist.is_(True)))):
+    if not (task.purpose == 'translate' and mt_enabled()) and not db.scalar(select(exists().where(LlmModel.enabled.is_(True), LlmModel.for_assist.is_(True)))):
         return gateway.MESSAGES["NOT_CONFIGURED"]
     return None
 
@@ -85,7 +90,7 @@ def detail(db: Session, task: Task) -> SessionDetail:
                                             if media[f.id] is not None else None) for f in preview.files],
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
-                         participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled())
+                         participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled(), mt_enabled=mt_enabled())
 
 
 def create(db: Session, user: User, ip: str | None, purpose: str = 'chat') -> SessionDetail:
@@ -101,6 +106,14 @@ def create(db: Session, user: User, ip: str | None, purpose: str = 'chat') -> Se
 
 def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
     from app.assistant.stream import incremental
+    from app.assistant import local_translation as mt
+    if mt.local(message.template, message.params):
+        value = mt.payload(message)
+        return dict(id=message.id, role=message.role, content=value.get('content', ''), status=message.status,
+                    template=message.template, params=message.params, extras=message.extras,
+                    model_id=None, model_label=message.model_label, tokens_in=0, tokens_out=0,
+                    error_code=message.error_code, error=error_text(message.error_code), created_at=message.created_at,
+                    marks=[], calcs=[], translation=value.get('translation', {}), translation_notice=mt.NOTICE)
     mapping = _message_mapping(db, task, message)
     content, _ = incremental(message.content_redacted, mapping, 0,
                               finished=message.status not in ("queued", "streaming"))
@@ -151,7 +164,7 @@ def _decimal_strings(value):
 
 
 def error_text(code: str | None) -> str | None:
-    return {"MODEL_NOT_ALLOWED": "所选模型不可用于本次操作，请换一个模型或联系管理员",
+    return {"MT_DISABLED": "本地翻译未启用，请联系管理员", "MT_UNAVAILABLE": "本地翻译暂不可用，请稍后重试", "MT_TIMEOUT": "本段翻译超时，请稍后重试", "MODEL_NOT_ALLOWED": "所选模型不可用于本次操作，请换一个模型或联系管理员",
             "ASSIST_INTERRUPTED": "服务重启，回复中断，请重试", "ASSIST_TOO_LONG": "所选文件过长，请减少使用的文件",
             "ASSIST_QUOTA": "翻译调用次数不足，请明天再试或联系管理员",
             "SESSION_READONLY": "原件已按保留期限删除，本会话只能查看"}.get(code, gateway.MESSAGES.get(code)) if code else None
@@ -196,6 +209,9 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
 
 
 def _validate_input(db: Session, task: Task, body):
+    from app.assistant import local_translation as mt
+    if mt.local(body.template, body.params):
+        return mt.validate(db, task, body)
     if body.template is not None:
         from app.assistant.templates import prepare
         requested = [body.params.get('file_id')] if body.template == 'translate' else body.params.get('file_ids', [])
@@ -231,13 +247,18 @@ def _question(db: Session, task: Task, text: str, decisions=None):
     mapping = engine._load_full_map(db, task.id)
     alloc = NeutralAllocator()
     alloc.seed(mapping)
-    return _redact(text, mapping, _terms(db), decisions=decisions, allocator=alloc)
+    from app.assistant.local_translation import priority
+    with priority():
+        return _redact(text, mapping, _terms(db), decisions=decisions, allocator=alloc)
 
 
 def preview(db: Session, task: Task, body) -> dict:
     from app.assistant.prompt import selected_files
     _writable(db, task)
     text, params = _validate_input(db, task, body)
+    from app.assistant import local_translation as mt
+    if mt.local(body.template, params):
+        return {'redacted': text, 'changed': False, 'suspects': []}
     selected_files(db, task, params)
     result = _question(db, task, text)
     return {"redacted": result.text, "changed": result.changed, "suspects": result.suspects}
@@ -272,6 +293,9 @@ def _queue_reply(db: Session, task: Task, user_message: AssistantMessage, model:
 
 
 def send(db: Session, task: Task, user: User, body) -> dict:
+    from app.assistant import local_translation as mt
+    if mt.local(body.template, body.params):
+        return mt.send(db, task, user, body)
     from app.assistant.prompt import selected_files
     db.scalar(select(User).where(User.id == user.id).with_for_update())
     task = lock(db, task)
@@ -304,6 +328,12 @@ def list_messages(db: Session, task: Task, after_id: int) -> dict:
 def get_delta(db: Session, task: Task, mid: int, offset: int) -> dict:
     from app.assistant.stream import incremental
     row = owned_message(db, task, mid)
+    from app.assistant import local_translation as mt
+    if mt.local(row.template, row.params):
+        content = mt.payload(row).get('content', '')
+        if offset > len(content):
+            raise AppError(422, 'VALIDATION_ERROR', '消息偏移量不正确')
+        return dict(status=row.status, text_from_offset=content[offset:], offset=len(content), error=error_text(row.error_code))
     text, new_offset = incremental(row.content_redacted, _message_mapping(db, task, row), offset,
                                    finished=row.status not in ("queued", "streaming"))
     if offset > new_offset:
@@ -335,6 +365,12 @@ def retry(db: Session, task: Task, user: User, mid: int) -> dict:
     previous = owned_message(db, task, mid)
     if previous.role != "assistant" or previous.status != "failed":
         raise AppError(409, "SESSION_BUSY", "只能重试失败的回复")
+    from app.assistant import local_translation as mt
+    if mt.local(previous.template, previous.params):
+        source = owned_message(db, task, int(previous.extras.get('user_message_id', 0)))
+        from app.assistant.schemas import MessageIn
+        return mt.send(db, task, user, MessageIn(template='translate', params={k: v for k, v in source.params.items() if k != 'file_ids'},
+                                                message=mt.payload(source).get('content', '')))
     model = select_model(db, previous.model_id, "assist", structured=previous.template == "compare")
     _require_send(db, task, model.id)
     source = owned_message(db, task, int(previous.extras.get("user_message_id", 0)))
@@ -361,7 +397,7 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
         AssistantMessage.task_id.in_([task.id for task in rows]), AssistantMessage.role == 'assistant',
         AssistantMessage.status.in_(('queued', 'streaming')))))
     return SessionPage(items=[_item(t, _files(db, t), generating=t.id in generating) for t in rows], total=total, page=page,
-                       kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')), asr_enabled=asr_enabled())
+                       kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')), asr_enabled=asr_enabled(), mt_enabled=mt_enabled())
 
 
 def lock(db: Session, task: Task) -> Task:

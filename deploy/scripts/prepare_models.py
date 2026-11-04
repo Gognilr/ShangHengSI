@@ -35,6 +35,14 @@ def main():
                     if hashlib.file_digest(stream, 'sha256').hexdigest() != digest:
                         raise ValueError('复制后模型 SHA-256 校验失败')
             copied.add(model['dir'])
+        if model['id'] == 'mt':
+            archive = source / 'mt/llama.cpp.tar.gz'
+            with archive.open('rb') as stream:
+                if hashlib.file_digest(stream, 'sha256').hexdigest() != '1688a167a8edd9499cdd0c19b8bd044f0fa184b466981977bbf2222d884953a4':
+                    raise ValueError('llama.cpp 固定源码校验失败')
+            vendor = repo / 'translator/vendor'
+            vendor.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(archive, vendor / 'llama.cpp.tar.gz')
         print(model['image'] + '\t' + model['smoke'])
 
 

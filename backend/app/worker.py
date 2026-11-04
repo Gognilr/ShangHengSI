@@ -257,6 +257,7 @@ def run_worker(
               ("parse", parse_concurrency, ("parse", "law_import")),
               ("assist", assist_concurrency, ("assist",)),
               ("transcribe", transcribe_concurrency, ("transcribe",)),
+              ("translate", 1, ("translate",)),
               ("maintenance", 1, ("backup", "retention", "law_embed", "law_sync", "template_embed")))
     threads = []
     for group, concurrency, types in groups:
@@ -309,13 +310,14 @@ def main() -> None:
     import app.assistant.job  # noqa: F401  注册助手流式生成
     import app.kb.job  # noqa: F401  注册知识库解析
     import app.parsing.transcribe  # noqa: F401  注册独立转写队列
+    import app.assistant.local_translation  # noqa: F401  注册独立翻译队列
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     logger.info("worker 启动，版本 %s，审核并发 %s，解析并发 %s，助手并发 %s，维护并发 1",
                 settings.app_version, settings.worker_review_concurrency, settings.worker_parse_concurrency,
                 settings.worker_assist_concurrency)
-    pool_size = settings.worker_review_concurrency + settings.worker_parse_concurrency + settings.worker_assist_concurrency + settings.worker_transcribe_concurrency + 2
+    pool_size = settings.worker_review_concurrency + settings.worker_parse_concurrency + settings.worker_assist_concurrency + settings.worker_transcribe_concurrency + 3
     factory = sessionmaker(bind=get_engine(pool_size=pool_size, max_overflow=pool_size), expire_on_commit=False)
     with factory() as db:
         app.laws.job.enqueue_embed(db)

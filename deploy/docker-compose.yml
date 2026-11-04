@@ -69,6 +69,7 @@ services:
     volumes:
       - ./models.yaml:/etc/aireview/models.yaml:ro
       - ../transcriber/models/asr/MANIFEST.sha256:/etc/aireview/model-manifests/asr.sha256:ro
+      - ../translator/models/mt/MANIFEST.sha256:/etc/aireview/model-manifests/mt.sha256:ro
       - files_data:/data/files
       - ./secrets:/run/secrets:ro
       - convert_spool:/spool
@@ -95,6 +96,7 @@ services:
     volumes:
       - ./models.yaml:/etc/aireview/models.yaml:ro
       - ../transcriber/models/asr/MANIFEST.sha256:/etc/aireview/model-manifests/asr.sha256:ro
+      - ../translator/models/mt/MANIFEST.sha256:/etc/aireview/model-manifests/mt.sha256:ro
       - files_data:/data/files
       - ${BACKUP_HOST_DIR:-./backup}:/backup
       - ./secrets:/run/secrets:ro
@@ -191,6 +193,38 @@ services:
       - caddy_config:/config
     depends_on:
       - app
+
+  translator:
+    image: aireview-translator:${APP_VERSION:-dev}
+    # build-begin
+    build:
+      context: ../translator
+      target: runtime
+    # build-end
+    profiles: [mt]
+    logging: *logging
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    user: "10004:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp:size=64m]
+    environment:
+      CONVERT_SPOOL_DIR: /spool
+      MT_THREADS: ${MT_THREADS:-4}
+      MT_MEM: ${MT_MEM:-12g}
+    volumes: [convert_spool:/spool]
+    mem_limit: ${MT_MEM:-12g}
+    cpus: ${MT_CPUS:-8}
+    cpuset: ${MT_CPUSET:-8-15}
+    cpu_shares: 256
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "/srv/translator/main.py", "--check"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
 volumes:
   db_data:

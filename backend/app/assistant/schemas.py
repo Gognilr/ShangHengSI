@@ -44,6 +44,7 @@ class SessionPage(BaseModel):
     page_size: int = 30
     kb_enabled: bool = False
     asr_enabled: bool = False
+    mt_enabled: bool = False
 
 
 class SessionDetail(SessionItem):
@@ -59,6 +60,7 @@ class SessionDetail(SessionItem):
     kb_enabled: bool = False
     participants: list[str] = Field(default_factory=list)
     asr_enabled: bool = False
+    mt_enabled: bool = False
 
 
 class AssistantPreviewNode(PreviewNode):

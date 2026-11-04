@@ -20,7 +20,7 @@ watch(variant, async value => {
 </script>
 <template>
   <div>
-    <p class="hint">名称、地址、金额按原文写法还原，请核对</p>
+    <p class="hint">{{ message.translation_notice ?? '名称、地址、金额按原文写法还原，请核对' }}</p>
     <el-radio-group v-model="variant" size="small"><el-radio-button value="translation">译文</el-radio-button><el-radio-button value="bilingual">对照</el-radio-button></el-radio-group>
     <p v-if="message.extras.segments_total" class="hint num">第 {{ message.extras.segments_done ?? 0 }} / {{ message.extras.segments_total }} 段</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />

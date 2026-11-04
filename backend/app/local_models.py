@@ -74,7 +74,7 @@ def inspect_models(model_id: str | None = None, *, smoke: bool = False, cached: 
                     if len(entries[name]) != 64 or len(bytes.fromhex(entries[name])) != 32:
                         raise ValueError
                 verification = 'manifest_only'
-                alive = Path(os.environ.get('CONVERT_SPOOL_DIR', '/spool')) / 'transcriber.alive'
+                alive = Path(os.environ.get('CONVERT_SPOOL_DIR', '/spool')) / ('translator.alive' if group == 'mt' else 'transcriber.alive')
                 ok = enabled and 0 <= time.time() - alive.stat().st_mtime <= 30
                 if ok:
                     verification = 'container_verified'

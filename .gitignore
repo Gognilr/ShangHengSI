@@ -38,3 +38,4 @@ transcriber/models/asr/*
 !transcriber/models/asr/MANIFEST.sha256
 translator/models/mt/*
 !translator/models/mt/MANIFEST.sha256
+translator/vendor/*

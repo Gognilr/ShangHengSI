@@ -189,6 +189,7 @@
   },
   {
     "id": "mt",
+    "group": "mt",
     "purpose": "本地翻译（译稿须人工核对）",
     "image": "translator",
     "dir": "translator/models/mt",

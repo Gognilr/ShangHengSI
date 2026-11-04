@@ -631,7 +631,7 @@ class Finding(Base):
 
 # ---- 18.17 chat_messages ----
 class AssistantMessage(Base):
-    """会话消息仅保存代号文本，随所属任务删除。"""
+    """云端消息保存代号文本，本地译稿用主密钥加密，随所属任务删除。"""
     __tablename__ = "assistant_messages"
     model_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("llm_models.id"))
     model_label: Mapped[Optional[str]] = mapped_column(String(40))
@@ -650,6 +650,7 @@ class AssistantMessage(Base):
     template: Mapped[Optional[str]] = mapped_column(String(20))
     params: Mapped[Any] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     content_redacted: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    local_result_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     status: Mapped[str] = mapped_column(String(10), nullable=False)
     error_code: Mapped[Optional[str]] = mapped_column(String(40))
     extras: Mapped[Any] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
@@ -737,7 +738,7 @@ class LlmCall(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist", "kb_import", "transcribe"]),
+        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist", "kb_import", "transcribe", "translate"]),
         enum_check("status", ["queued", "running", "done", "failed"]),
         Index("ix_jobs_status_run_after", "status", "run_after"),
     )

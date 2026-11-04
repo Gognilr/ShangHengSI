@@ -8,7 +8,7 @@ from app.security.errors import AppError
 RESOURCE = Path(__file__).resolve().parents[2] / "resources/prompts/assistant_templates.md"
 TARGETS = ("中文", "英文", "日文", "韩文", "俄文", "西班牙文", "法文", "德文", "阿拉伯文")
 _RULES = {
-    "translate": ({"file_id", "target"}, 1, 1),
+    "translate": ({"file_id", "target", "engine"}, 1, 1),
     "summary": ({"file_ids", "focus"}, 1, 3),
     "reply": ({"file_ids", "tone", "language"}, 0, 3),
     "crosscheck": ({"file_ids"}, 2, 6),
@@ -44,6 +44,8 @@ def prepare(template: str, params: dict, files: dict[str, int], message: str = "
     listed = "、".join(str(seq) for seq in seqs)
     ranged = f"{seqs[0]}～{seqs[-1]}" if len(seqs) > 1 and seqs == list(range(seqs[0], seqs[-1] + 1)) else listed
     if template == "translate":
+        if params.get('engine', 'cloud') not in ('local', 'cloud'):
+            _bad()
         if params.get("target") not in TARGETS:
             _bad()
         default = f"把文件 {listed} 翻译为{params['target']}"

@@ -70,7 +70,8 @@ def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, n
     block = file_block(db, task, user_message.params, model_id=model_id) if nodes is None else (
         "【翻译分段】<document>\n" + escape_document_tags("\n".join(f"⟦{loc}⟧ {text}" for loc, text in nodes)) + "\n</document>")
     history = [] if user_message.template == "translate" else list(reversed(list(db.scalars(select(AssistantMessage).where(
-        AssistantMessage.task_id == task.id, AssistantMessage.id < user_message.id, AssistantMessage.status == "done")
+        AssistantMessage.task_id == task.id, AssistantMessage.id < user_message.id, AssistantMessage.status == "done",
+        AssistantMessage.local_result_enc.is_(None))
         .order_by(AssistantMessage.id.desc()).limit(10)))))
     refs = references or {}
     reference_blocks = []

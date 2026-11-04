@@ -16,27 +16,31 @@ const route = useRoute(), router = useRouter()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), recent = ref<SessionItem[]>([])
 const loading = ref(false), error = ref(''), uploading = ref<number | null>(null), dragging = ref(false)
+const engine = ref<'local' | 'cloud'>('cloud'), mtAvailable = ref(false)
+let enginePicked = false
+const localAvailable = computed(() => session.value?.mt_enabled ?? mtAvailable.value)
 const LANGS = ['英文', '中文', '日文', '韩文', '俄文', '西班牙文', '法文', '德文', '阿拉伯文']
 const target = ref(typeof route.query.to === 'string' && LANGS.includes(route.query.to) ? route.query.to : '英文')
 const DOC = '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png', picker = ref<HTMLInputElement>()
-let timer: ReturnType<typeof setTimeout> | undefined, version = 0
+let timer: ReturnType<typeof setTimeout> | undefined, version = 0, autoOpened = false
 
 const file = computed(() => session.value?.files[0] ?? null)
 const results = computed(() => messages.value.filter(m => m.role === 'assistant' && m.template === 'translate'))
 const running = computed(() => results.value.some(m => ['queued', 'streaming'].includes(m.status)))
 const step = computed(() => !file.value ? 'empty' : session.value?.status === 'parsing' ? 'parsing' : session.value?.status === 'parse_failed' ? 'failed'
-  : !file.value.confirmed_at ? 'confirm' : 'ready')
+  : engine.value === 'local' && file.value.parse_state === 'done' ? 'ready' : !file.value.confirmed_at ? 'confirm' : 'ready')
 
 function failure(e: unknown) { return e instanceof ApiError ? (e.status === 404 ? '翻译记录不存在或已被删除' : e.message) : '加载失败，请刷新页面后重试' }
 async function load() {
   const current = ++version
   clearTimeout(timer); error.value = ''
-  if (!id.value) { session.value = null; messages.value = []; try { recent.value = (await assistantApi.list(1, '', 'translate')).items } catch (e) { error.value = failure(e) } return }
+  if (!id.value) { session.value = null; messages.value = []; try { const list = await assistantApi.list(1, '', 'translate'); recent.value = list.items; mtAvailable.value = list.mt_enabled; if (!enginePicked) { engine.value = list.mt_enabled ? 'local' : 'cloud'; enginePicked = true } } catch (e) { error.value = failure(e) } return }
   loading.value = !session.value
   try {
     const [detail, list] = await Promise.all([assistantApi.get(id.value), assistantApi.messages(id.value)])
     if (current !== version) return
     session.value = detail; messages.value = list.items
+    if (!enginePicked) { engine.value = detail.mt_enabled ? 'local' : 'cloud'; enginePicked = true }
   } catch (e) { if (current === version) error.value = failure(e) }
   finally { if (current === version) { loading.value = false; schedule() } }
 }
@@ -44,7 +48,7 @@ function schedule() {
   clearTimeout(timer)
   if (!document.hidden && (session.value?.status === 'parsing' || running.value)) timer = setTimeout(load, running.value ? 1000 : 2000)
 }
-watch(id, () => { session.value = null; autoOpened = false; void load() }, { immediate: true })
+watch(id, () => { session.value = null; autoOpened = false; enginePicked = false; void load() }, { immediate: true })
 function visibility() { if (!document.hidden) void load() }
 document.addEventListener('visibilitychange', visibility)
 onBeforeUnmount(() => { clearTimeout(timer); ++version; document.removeEventListener('visibilitychange', visibility) })
@@ -68,8 +72,8 @@ function drop(event: DragEvent) { dragging.value = false; void upload(Array.from
 
 // 解析完成后自动打开确认脱敏（只打开一次，关掉后可点按钮再开）
 const confirmOpen = ref(false), task = computed(() => session.value ? confirmationTask(session.value) : null)
-let autoOpened = false
-watch(step, value => { if (value === 'confirm' && !autoOpened) { autoOpened = true; confirmOpen.value = true } })
+watch(step, value => { if (value === 'confirm' && engine.value === 'cloud' && !autoOpened) { autoOpened = true; confirmOpen.value = true } })
+watch(engine, value => { enginePicked = true; if (value === 'local') confirmOpen.value = false })
 function confirmed() { confirmOpen.value = false; void load() }
 
 const models = ref<AvailableModel[]>([]), modelId = ref<number>(), sending = ref(false)
@@ -77,7 +81,7 @@ void (async () => { try { models.value = (await modelsApi.list('assist')).items;
 async function start() {
   if (!session.value || !file.value || sending.value) return
   sending.value = true; error.value = ''
-  const body = { model_id: modelId.value, message: '', template: 'translate' as const, params: { file_id: file.value.id, target: target.value }, use_kb: false, use_history: false }
+  const body = { model_id: engine.value === 'cloud' ? modelId.value : undefined, message: '', template: 'translate' as const, params: { file_id: file.value.id, target: target.value, engine: engine.value }, use_kb: false, use_history: false }
   try {
     const preview = await assistantApi.preview(session.value.id, body)
     if (preview.suspects.length) { error.value = '本次请求中有需要确认的内容，请在智能助手中打开继续'; return }
@@ -99,9 +103,9 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 <template>
   <div v-if="!id" class="page page--standard translate-home">
     <h1>翻译</h1>
-    <p class="lede">文件在本机解析并脱敏后发给云端模型翻译，名称、金额回来后在本机还原。本地离线翻译（不外发）接入后可在这里选择。</p>
+    <p class="lede">本地翻译只在本机处理原文；云端翻译须先确认脱敏。译稿请逐段核对名称、金额和业务条件。</p>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
-    <div class="setup"><span class="label">译成</span><el-select v-model="target" aria-label="目标语言" class="lang"><el-option v-for="l in LANGS" :key="l" :value="l" :label="l" /></el-select><span class="hint where">云端 · 脱敏后发送</span></div>
+    <div class="setup"><span class="label">译成</span><el-select v-model="target" aria-label="目标语言" class="lang"><el-option v-for="l in LANGS" :key="l" :value="l" :label="l" /></el-select><span class="hint where">{{ localAvailable ? '本地 · 不外发' : '云端 · 脱敏后发送（本地未启用）' }}</span></div>
     <div class="drop" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
       <UploadCloud :size="28" :stroke-width="1.5" />
       <p class="drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : '拖入要翻译的文件，或点击选择' }}</p>
@@ -122,18 +126,27 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     </div>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
     <div v-if="session" class="body">
+      <div class="setup">
+        <el-radio-group v-model="engine" :disabled="running" aria-label="翻译方式">
+          <el-radio-button value="local" :disabled="!localAvailable">本地 · 不外发</el-radio-button>
+          <el-radio-button value="cloud">云端 · 脱敏后发送</el-radio-button>
+        </el-radio-group>
+        <span v-if="!localAvailable" class="hint">本地翻译未启用，请联系管理员</span>
+      </div>
       <div class="steps">
         <div class="step" :class="{ done: step !== 'parsing' && step !== 'empty', active: step === 'parsing' }"><span class="n">1</span>本机解析{{ step === 'parsing' ? '中…' : step === 'failed' ? '失败' : '' }}</div>
-        <div class="step" :class="{ done: step === 'ready', active: step === 'confirm' }"><span class="n">2</span>确认脱敏<el-button v-if="step === 'confirm'" size="small" type="primary" @click="confirmOpen = true">去确认</el-button></div>
+        <div class="step" :class="{ done: step === 'ready', active: step === 'confirm' }"><span class="n">2</span>{{ engine === 'local' ? '原文留在本机，无需确认脱敏' : '确认脱敏' }}<el-button v-if="step === 'confirm'" size="small" type="primary" @click="confirmOpen = true">去确认</el-button></div>
         <div class="step" :class="{ active: step === 'ready' }"><span class="n">3</span>翻译
           <template v-if="step === 'ready'">
             <el-select v-model="target" size="small" class="lang" aria-label="目标语言"><el-option v-for="l in LANGS" :key="l" :value="l" :label="`译成${l}`" /></el-select>
-            <el-select v-model="modelId" size="small" class="model" aria-label="翻译用的模型"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
-            <el-button size="small" type="primary" :loading="sending || running" @click="start">{{ results.length ? '重新翻译' : '开始翻译' }}</el-button>
+            <el-select v-if="engine === 'cloud'" v-model="modelId" size="small" class="model" aria-label="翻译用的模型"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
+            <el-button size="small" type="primary" :loading="sending || running" :disabled="engine === 'cloud' && !modelId" @click="start">{{ results.length ? '重新翻译' : '开始翻译' }}</el-button>
+            <span v-if="engine === 'cloud' && !modelId" class="hint">尚未配置云端模型，请联系管理员</span>
           </template>
         </div>
       </div>
       <p v-if="step === 'failed'" class="hint">{{ session.error_message || '文件解析失败，请删除后重新上传' }}</p>
+      <p v-if="engine === 'local'" class="hint">离线译稿须人工核对。当前测试机万字约需 65 分钟，可离开页面后从“最近的翻译”继续查看。</p>
       <div class="reading">
         <p v-if="!results.length && step === 'ready'" class="hint ready-hint"><Languages :size="16" :stroke-width="1.75" />选择目标语言后点“开始翻译”。</p>
         <MessageItem v-for="m in [...results].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />

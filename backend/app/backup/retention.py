@@ -63,7 +63,8 @@ def _layer_conditions(layer: str) -> list:
                  or_(Task.status != "active", ~exists().where(TaskFile.task_id == Task.id))))]
     return [or_(and_(Task.kind == "review", or_(Task.status.in_(ELIGIBLE_STATUS),
                 and_(Task.status == "awaiting_confirm", Task.latest_run_id.is_not(None)))),
-                and_(Task.kind == "assistant", Task.status == "active"))]
+                and_(Task.kind == "assistant", or_(Task.status == "active", and_(Task.status == 'awaiting_confirm',
+                    exists().where(AssistantMessage.task_id == Task.id, AssistantMessage.local_result_enc.is_not(None))))))]
 
 
 def run_retention(db: Session, now: datetime | None = None) -> dict:
@@ -113,7 +114,7 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
                     task.participants_enc = None
                     if task.status == "awaiting_confirm":
                         # 原件已删，不能再提交；回到重新审核前的已审核状态，旧结果照常可看。
-                        task.status = "reviewed"
+                        task.status = "active" if task.kind == 'assistant' else "reviewed"
                     db.commit()
                     counts["tasks"] += 1
                     counts["files"] += len(files)
