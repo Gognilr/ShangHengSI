@@ -7,5 +7,3 @@ FROM python:3.12.15-slim-trixie
 COPY --from=build /src/build/bin/llama-server /src/build/bin/llama-cli /src/build/bin/llama-bench /usr/local/bin/
 COPY --from=build /usr/lib/x86_64-linux-gnu/libgomp.so.1 /usr/lib/x86_64-linux-gnu/
 ENTRYPOINT []
-
-

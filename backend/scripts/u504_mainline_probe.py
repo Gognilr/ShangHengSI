@@ -74,4 +74,3 @@ while not (root / 'probe-stop').exists():
     tmp = target.with_suffix('.tmp')
     tmp.write_text(json.dumps(result))
     tmp.replace(target)
-
