@@ -36,3 +36,5 @@ backend/models/embedding/*
 !backend/models/embedding/MANIFEST.sha256
 transcriber/models/asr/*
 !transcriber/models/asr/MANIFEST.sha256
+translator/models/mt/*
+!translator/models/mt/MANIFEST.sha256

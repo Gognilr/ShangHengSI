@@ -186,5 +186,21 @@
     "thresholds": "整组 1 小时录音 ≤ 1 小时（V31Q-74）",
     "approved": "V31Q-73、74（2026-11-03）",
     "smoke": "python /srv/transcriber/main.py --smoke"
+  },
+  {
+    "id": "mt",
+    "purpose": "本地翻译（译稿须人工核对）",
+    "image": "translator",
+    "dir": "translator/models/mt",
+    "files": ["HY-MT2-7B-Q6_K.gguf"],
+    "source": "huggingface.co/tencent/Hy-MT2-7B-GGUF@ab8472660ac61fac25f1af43fac2599d52a8a775",
+    "convert": "官方 Q6_K GGUF；见 docs/v31/reports/V31-U5-04.md",
+    "license": "Apache-2.0",
+    "runtime": "llama.cpp@8642541b255bfb5dc39cd351a178be09013a55d6",
+    "size_mb": 6165,
+    "resources": {"cpus_env": "MT_CPUS", "threads_env": "MT_THREADS", "threads_default": 4, "mem_env": "MT_MEM", "mem_default": "12g", "mem_gb": 12},
+    "thresholds": "翻译运行时万字 NER ≤ 15 秒、500 字追问脱敏 ≤ 3 秒；万字翻译约 65 分钟，人工核对",
+    "approved": "V31Q-100（2026-11-04 用户确认）",
+    "smoke": "python /srv/translator/main.py --smoke"
   }
 ]
