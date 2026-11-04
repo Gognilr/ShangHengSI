@@ -44,3 +44,46 @@ Particle Size
 Real Density
 Bulk Density
 Moisture Content
+
+# 英文星期与月份（大小写不限，V31-U5-05）
+Monday
+Tuesday
+Wednesday
+Thursday
+Friday
+Saturday
+Sunday
+January
+February
+March
+April
+May
+June
+July
+August
+September
+October
+November
+December
+Mon
+Tue
+Tues
+Wed
+Thu
+Thur
+Thurs
+Fri
+Sat
+Sun
+Jan
+Feb
+Mar
+Apr
+Jun
+Jul
+Aug
+Sep
+Sept
+Oct
+Nov
+Dec

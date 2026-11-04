@@ -67,6 +67,32 @@ def run(sm, tid):
         handle_assist(db, job.payload)
 
 
+def test_u5_chat_during_new_file_parse(conversation, db_sessionmaker, monkeypatch):
+    from tests.test_assistant_sessions import document
+    from app.tasks.pipeline import handle_parse
+    c, h, tid, _ = conversation
+    before = None
+    with db_sessionmaker() as db:
+        before = engine._load_full_map(db, uuid.UUID(tid))
+    response = c.post(f'{BASE}/{tid}/files', headers=h,
+                      files=[('files', ('新增B.docx', document('新增资料内容仅属于B文件')))])
+    assert response.status_code == 200, response.text
+    bid = response.json()['files'][-1]['id']
+    blocked = send(conversation, template='summary', params={'file_ids': [bid]})
+    assert blocked.status_code == 422 and blocked.json()['code'] == 'FILE_NOT_CONFIRMED'
+    assert '新增B.docx' in blocked.json()['message']
+    requests = install(monkeypatch)
+    assert send(conversation).status_code == 201
+    run(db_sessionmaker, tid)
+    outbound = requests[0].content.decode()
+    assert '[[ORG_1]]' in outbound and '新增资料内容' not in outbound
+    with db_sessionmaker() as db:
+        job = db.scalar(select(Job).where(Job.type == 'parse', Job.payload['task_id'].astext == tid))
+        handle_parse(db, job.payload)
+        after = engine._load_full_map(db, uuid.UUID(tid))
+        assert all(after[code] == text for code, text in before.items())
+
+
 def test_finished_integrity_marks_preserve_delta(conversation, db_sessionmaker, monkeypatch):
     client, _, tid, _ = conversation
     install(monkeypatch, chunks=('你好 [[ORG_1]]，', '[[ORG_9]]'))
@@ -133,7 +159,6 @@ def test_t49_2_11_12_busy_and_length(conversation, db_sessionmaker):
         task = db.get(Task, uuid.UUID(tid))
         task.status = "awaiting_confirm"
         db.commit()
-    assert send(conversation).status_code == 409
     with db_sessionmaker() as db:
         db.get(Task, uuid.UUID(tid)).status = "active"
         configure_model(db, "model.chunk_chars", 1, None)

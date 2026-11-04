@@ -1,0 +1,24 @@
+description: 英文星期月份大小写均为普通日历词（V31-U5-05）
+stance: other
+must_replace: []
+must_suspect: []
+must_keep:
+- MONDAY
+- Tuesday
+- wednesday
+- THURSDAY
+- Friday
+- Saturday
+- SUNDAY
+- JANUARY
+- February
+- march
+- APRIL
+- May
+- June
+- JULY
+- August
+- September
+- OCTOBER
+- November
+- DECEMBER

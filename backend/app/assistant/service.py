@@ -31,8 +31,7 @@ def _files(db: Session, task: Task):
 def availability(db: Session, task: Task) -> str | None:
     if db.scalar(select(exists().where(TaskFile.task_id == task.id, TaskFile.original_deleted_at.is_not(None)))):
         return "原件已按保留期限删除，本会话只能查看"
-    reasons = {"parsing": "文件正在解析，完成后可以继续", "parse_failed": "有文件解析失败，请移除后继续",
-               "awaiting_confirm": "请先确认新加入文件的脱敏"}
+    reasons = {"parse_failed": "有文件解析失败，请移除后继续"}
     if task.status in reasons:
         return reasons[task.status]
     if db.scalar(select(exists().where(AssistantMessage.task_id == task.id, AssistantMessage.role == "assistant",
@@ -199,6 +198,12 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
 def _validate_input(db: Session, task: Task, body):
     if body.template is not None:
         from app.assistant.templates import prepare
+        requested = [body.params.get('file_id')] if body.template == 'translate' else body.params.get('file_ids', [])
+        if isinstance(requested, list):
+            for file in _files(db, task):
+                if str(file.id) in requested and file.confirmed_at is None:
+                    reason = '录音正在本机转写' if file.media and not file.parser_version else f'{file.original_name} 尚未确认脱敏'
+                    raise AppError(422, 'FILE_NOT_CONFIRMED', reason)
         files = {str(f.id): f.seq for f in _files(db, task) if f.confirmed_at is not None and
                  (body.template != 'minutes' or f.ext in filecheck.AUDIO_EXTS and (f.media or {}).get('stage') == 'done')}
         result = prepare(body.template, body.params, files, body.message)
@@ -389,7 +394,7 @@ def patch(db: Session, task: Task, body: SessionPatch) -> SessionDetail:
 def add_files(db: Session, task: Task, raw: list) -> SessionDetail:
     task = lock(db, task)
     _writable(db, task)
-    if task.status != "active" or db.scalar(select(exists().where(
+    if task.status not in ("active", "parsing", "awaiting_confirm") or db.scalar(select(exists().where(
             AssistantMessage.task_id == task.id, AssistantMessage.status.in_(("queued", "streaming"))))):
         raise AppError(409, "SESSION_BUSY", "会话正在处理，请稍后再加文件")
     files = _files(db, task)

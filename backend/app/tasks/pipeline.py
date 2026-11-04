@@ -184,6 +184,11 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
     """与审核解析隔离：保留旧节点，不运行合同校验或合同向量。"""
     task_id, current = task.id, None
     try:
+        # 与发送、加文件共用任务行锁；脱敏完成处还会重新锁定并读取全部批次。
+        task = db.scalar(select(Task).where(Task.id == task_id).with_for_update()
+                         .execution_options(populate_existing=True))
+        if task is None:
+            return
         ocr_used = 0
         for old in old_files:
             if old.ext in ("png", "jpg"):

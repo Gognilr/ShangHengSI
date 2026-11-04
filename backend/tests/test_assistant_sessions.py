@@ -180,11 +180,11 @@ def test_t47_7_count_and_busy(files_dir, session_client, db_sessionmaker):
     c, h, _ = session_client
     tid = create(c, h)["id"]
     assert upload(c, h, tid, tuple(f"资料{i}.docx" for i in range(5))).status_code == 200
-    assert upload(c, h, tid).json()["code"] == "SESSION_BUSY"
+    assert upload(c, h, tid).status_code == 200
     with db_sessionmaker() as db:
         db.get(Task, uuid.UUID(tid)).status = "active"
         db.commit()
-    assert upload(c, h, tid, tuple(f"资料{i}.docx" for i in range(5))).status_code == 200
+    assert upload(c, h, tid, tuple(f"资料{i}.docx" for i in range(4))).status_code == 200
     with db_sessionmaker() as db:
         db.get(Task, uuid.UUID(tid)).status = "active"
         db.commit()

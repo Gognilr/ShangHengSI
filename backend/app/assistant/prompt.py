@@ -36,6 +36,11 @@ def selected_files(db: Session, task: Task, params: dict) -> list[TaskFile]:
             ids = {uuid.UUID(fid) for fid in selected}
         except (ValueError, TypeError, AttributeError):
             raise AppError(422, "VALIDATION_ERROR", "所选文件不正确") from None
+        pending = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.id.in_(ids),
+                                                  TaskFile.confirmed_at.is_(None)).order_by(TaskFile.seq).limit(1))
+        if pending is not None:
+            reason = '录音正在本机转写' if pending.media and not pending.parser_version else f'{pending.original_name} 尚未确认脱敏'
+            raise AppError(422, 'FILE_NOT_CONFIRMED', reason)
         if len(ids) != len(selected) or not ids <= {f.id for f in files}:
             raise AppError(422, "VALIDATION_ERROR", "所选文件不正确")
         files = [f for f in files if f.id in ids]
