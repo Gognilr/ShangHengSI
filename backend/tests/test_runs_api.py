@@ -17,6 +17,7 @@ from app.db.models import (
     LlmCall,
     LocalFinding,
     Party,
+    RedactionItem,
     RedactionSuspect,
     RedactionTerm,
     ReviewRun,
@@ -284,13 +285,43 @@ def test_409_outbound_blocked_names_category_and_position_only(db_sessionmaker, 
     r = post_run(c, h, task.id)
     assert (r.status_code, r.json()["code"]) == (409, "OUTBOUND_BLOCKED")
     message = r.json()["message"]
-    assert "MAP@" in message and "PHONE@" in message
+    assert "已替换的内容在别处仍是原文" in message and "电话未替换" in message and "@" not in message
     assert REAL_OUR_NAME not in message and "13800138000" not in message
     with db_sessionmaker() as db:
         assert db.get(Task, task.id).status == "awaiting_confirm"
     assert count(db_sessionmaker, ReviewRun) == 0 and count(db_sessionmaker, Job) == 0
     assert requests == [] and count(db_sessionmaker, LlmCall) == 0  # 预检不产生外发记录
     assert count(db_sessionmaker, RedactionTerm) == 0  # 预检拦截时不写入已记住的名称（Q-73 ①）
+
+
+def test_leaks_locate_preview_and_keep(db_sessionmaker, alice, ready_task):
+    """V31-U5F-02：拦截清单落到段落、给出原文位置与预览；电话可确认发送，对照表真实值不可豁免。"""
+    user, c, h = alice
+    task = ready_task(user)
+    with db_sessionmaker() as db:
+        node = next(n for n in db.scalars(select(DocNode).where(DocNode.task_id == task.id))
+                    if n.text_enc is not None and REAL_OUR_NAME in decrypt_text(n.text_enc))
+        loc, text = node.loc, decrypt_text(node.text_enc) + "，联系电话 13912345678"
+        # 模拟本段漏替换：原文与外发文本相同，本段没有替换项
+        node.text_enc, node.redacted_text = encrypt_text(text), text
+        db.execute(RedactionItem.__table__.delete().where(RedactionItem.task_id == task.id, RedactionItem.loc == loc))
+        db.commit()
+    url = f"{API_PREFIX}/tasks/{task.id}/redaction/leaks"
+    body = c.get(url, headers=h).json()
+    by = {(x["category"], x["text"]): x for x in body["items"]}
+    assert body["other"] == 0
+    name, phone = by[("MAP", REAL_OUR_NAME)], by[("PHONE", "13912345678")]
+    assert (name["loc"], text[name["char_start"]:name["char_end"]], name["text"]) == (loc, REAL_OUR_NAME, REAL_OUR_NAME)
+    assert name["keepable"] is False and name["replace_category"] == "ORG"
+    assert phone["text"] == "13912345678" and phone["before"].endswith("联系电话 ") and phone["keepable"]
+    spot = {k: phone[k] for k in ("loc", "char_start", "char_end")}
+    assert "PHONE" not in {x["category"] for x in c.post(f"{url}/keep", json=spot, headers=h).json()["items"]}
+    r = c.post(f"{url}/keep", json={k: name[k] for k in ("loc", "char_start", "char_end")}, headers=h)
+    assert (r.status_code, r.json()["code"]) == (422, "NOT_KEEPABLE")
+    r = c.post(f"{API_PREFIX}/tasks/{task.id}/redaction/manual", headers=h,
+               json={**{k: name[k] for k in ("loc", "char_start", "char_end")}, "category": "ORG"})
+    assert r.status_code == 200
+    assert REAL_OUR_NAME not in {x["text"] for x in c.get(url, headers=h).json()["items"]}
 
 
 def test_precheck_also_covers_user_note(db_sessionmaker, alice, ready_task):
@@ -674,7 +705,7 @@ def test_t07_precheck_blocks_real_name_in_xlsx(db_sessionmaker, alice, ready_tas
         db.commit()
     r = post_run(c, h, task.id)
     assert (r.status_code, r.json()["code"]) == (409, "OUTBOUND_BLOCKED")
-    assert "MAP@" in r.json()["message"] and REAL_BUYER_NAME not in r.json()["message"]
+    assert "已替换的内容在别处仍是原文" in r.json()["message"] and REAL_BUYER_NAME not in r.json()["message"]
     with db_sessionmaker() as db:
         assert db.get(Task, task.id).status == "awaiting_confirm"
     assert requests == [] and count(db_sessionmaker, LlmCall) == 0 and count(db_sessionmaker, ReviewRun) == 0

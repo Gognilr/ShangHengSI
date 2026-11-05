@@ -35,7 +35,7 @@ from app.db.models import (
     User,
 )
 from app.models_api import select_model
-from app.llm.gateway import format_reasons
+from app.llm.gateway import describe_reasons
 from app.llm import gateway, usage
 from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map, load_date_pairs, load_local_values
 from app.redaction.recheck import recheck, recheck_context
@@ -282,7 +282,7 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
     reasons = recheck("\n".join(m["content"] for m in build_messages(ctx)), real_values=rc.real_values,
                       terms=rc.terms, placeholders=rc.placeholders, kept=rc.kept)
     if reasons:  # 只报类别和位置，不报真实值
-        raise _conflict("OUTBOUND_BLOCKED", f"出口复检发现未脱敏的信息，已拦截，未发送（{format_reasons(reasons)}）")
+        raise _conflict("OUTBOUND_BLOCKED", f"出口复检发现未脱敏的信息，已拦截，未发送（{describe_reasons(reasons)}）")
     # 9.10：预检通过后写入已记住的名称，与轮次创建同一事务；预检拦截时不写入（Q-73 ①）
     learn_confirmed_names(db, task, user.id)
     from app.redaction.keep_terms import remember

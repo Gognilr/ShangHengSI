@@ -244,7 +244,7 @@ export const AUDIT_ACTION: Dict = {
   user_create: '创建账号', user_update: '修改账号',
   setting_update: '修改设置', task_create: '创建审核任务', task_delete: '删除审核任务',
   run_create: '确认发送', backup_run: '执行备份', retention_run: '执行保留期清理',
-  redaction_revoke: '撤销替换', report_export: '导出报告', restore_run: '恢复备份',
+  redaction_revoke: '撤销替换', redaction_keep: '确认可发送', report_export: '导出报告', restore_run: '恢复备份',
   law_import_upload: '上传法规导入文件', law_import_apply: '确认法规更新',
   law_import_discard: '放弃法规更新', law_sync_run: '执行法规同步',
   law_update: '修改法规信息',

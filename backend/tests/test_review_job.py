@@ -249,7 +249,7 @@ def test_t07_gateway_block_returns_task_to_awaiting_confirm(db_sessionmaker, own
         r = db.get(ReviewRun, run.id)
         t = db.get(Task, task.id)
         assert r.status == "blocked" and r.finished_at is not None
-        assert r.error_message.startswith("出口复检发现未脱敏的信息，已拦截，未发送（MAP@")
+        assert r.error_message.startswith("出口复检发现未脱敏的信息，已拦截，未发送（已替换的内容在别处仍是原文")
         assert REAL_OUR_NAME not in r.error_message
         assert t.status == "awaiting_confirm"
         assert db.scalar(select(func.count()).select_from(Finding)) == 0

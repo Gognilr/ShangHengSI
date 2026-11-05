@@ -102,6 +102,24 @@ def format_reasons(reasons: list[BlockReason]) -> str:
     return "；".join(f"{r.category}@{r.position}" for r in reasons)
 
 
+# 拦截原因的中文说明（V31-U5F-02）：给用户看，只有类别和次数
+REASON_LABELS = {
+    "MAP": "已替换的内容在别处仍是原文", "TERM": "敏感词未替换", "AMOUNT": "金额未替换", "PHONE": "电话未替换",
+    "EMAIL": "邮箱未替换", "ACCOUNT": "账号未替换", "IDNO": "证件号未替换", "SWIFT": "银行代码未替换",
+    "URL": "网址未替换", "IM": "联系方式未替换", "POSTCODE": "邮编未替换", "REFNO": "编号未替换",
+    "PERSON": "人名未替换", "ADDR": "地址未替换", "INVISIBLE": "含不可见字符",
+}
+
+
+def describe_reasons(reasons: list[BlockReason]) -> str:
+    """如 “金额未替换 2 处、人名未替换 1 处”。"""
+    counts: dict[str, int] = {}
+    for r in reasons:
+        label = REASON_LABELS.get(r.category, "未脱敏的信息")
+        counts[label] = counts.get(label, 0) + 1
+    return "、".join(f"{label} {n} 处" for label, n in counts.items())
+
+
 class _Recorder:
     """用独立会话写 llm_calls 并立即提交。"""
 

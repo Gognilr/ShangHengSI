@@ -109,6 +109,24 @@ class OutboundOut(BaseModel):
     note: str | None
 
 
+class LeakOut(BaseModel):
+    loc: str
+    char_start: int
+    char_end: int
+    category: str
+    label: str
+    replace_category: str | None
+    keepable: bool
+    before: str
+    text: str
+    after: str
+
+
+class LeakList(BaseModel):
+    items: list[LeakOut]
+    other: int  # 落不到段落的命中数（主体说明、报价汇总等附加内容）
+
+
 def _party_list(db: DbSession, task: Task) -> PartyList:
     mapping = engine.load_redaction_map(db, task.id)
     return PartyList(items=[
@@ -258,6 +276,36 @@ def manual_redaction(
 @router.get("/redaction/outbound", response_model=OutboundOut)
 def get_outbound(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> OutboundOut:
     return OutboundOut(text=engine.build_outbound_text(db, task), note=task.user_note_redacted)
+
+
+def _leaks(db: DbSession, task: Task) -> LeakList:
+    from app.redaction import leaks
+    items, other = leaks.find_leaks(db, task)
+    return LeakList(items=[LeakOut(**vars(x)) for x in items], other=other)
+
+
+@router.get("/redaction/leaks", response_model=LeakList)
+def get_leaks(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> LeakList:
+    """出口复检会拦下的位置与本机预览（V31-U5F-02），只返回给任务所有者。"""
+    return _leaks(db, task)
+
+
+@router.post("/redaction/leaks/keep", response_model=LeakList)
+def keep_leak(body: RevokeRedaction, task: Task = Depends(owned_task), user: User = Depends(current_user),
+              db: DbSession = Depends(get_db)) -> LeakList:
+    from app.redaction import leaks
+    locked = _lock_awaiting(db, task)
+    try:
+        category = leaks.keep(db, locked, loc=body.loc, char_start=body.char_start, char_end=body.char_end,
+                              user_id=user.id)
+    except engine.RedactionInputError as exc:
+        db.rollback()
+        raise _input_error(exc) from None
+    audit.record(db, "redaction_keep", user_id=user.id, target_type="task", target_id=str(task.id),
+                 detail={"category": category})
+    result = _leaks(db, locked)
+    db.commit()
+    return result
 
 
 @router.post("/redaction/revoke", response_model=RedactionOut)

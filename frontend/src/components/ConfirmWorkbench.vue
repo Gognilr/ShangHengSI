@@ -17,6 +17,7 @@ import {
 import { RUN_ERROR_MESSAGES, runsApi } from '@/api/runs'
 import { MAX_FILES, TASK_ERROR_MESSAGES, checkFiles, tasksApi, type TaskDetail, type TaskFile } from '@/api/tasks'
 import LocalCheckList from '@/components/result/LocalCheckList.vue'
+import LeakPanel from '@/components/LeakPanel.vue'
 import ConfirmCanvas from '@/components/ConfirmCanvas.vue'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
@@ -56,6 +57,14 @@ const outboundNote = ref<string | null>(null)
 const outboundLoading = ref(false)
 const outboundError = ref('')
 const blockedReason = ref('')
+/** 出口复检拦截清单（V31-U5F-02）：提交被拦或上次轮次被拦时显示 */
+const leaksShown = ref(false)
+const leakPanel = ref<InstanceType<typeof LeakPanel>>()
+function showLeaks(summary: string) {
+  blockedReason.value = summary
+  leaksShown.value = true
+  void nextTick(() => leakPanel.value?.reload())
+}
 const localCount = ref<number | null>(null)
 const loadLocal = () => localFindingsApi.list(props.task.id)
 const loading = ref(true)
@@ -89,8 +98,8 @@ async function loadOutbound() {
 async function loadBlocked() {
   const run = props.task.latest_run
   if (run?.status !== 'blocked') return
-  try { blockedReason.value = (await runsApi.get(run.id)).error_message ?? '出口复检发现未脱敏的信息，已拦截，未发送' }
-  catch { blockedReason.value = '出口复检发现未脱敏的信息，已拦截，未发送' }
+  try { showLeaks((await runsApi.get(run.id)).error_message ?? '') }
+  catch { showLeaks('') }
 }
 async function loadLocalCount() {
   if (assistant.value) return
@@ -111,6 +120,7 @@ onMounted(() => void loadAll())
 /** 替换、保留、手动补充成功后：以返回值刷新，并重读签约方（可能出现新的方）和外发文本。 */
 async function afterChange(info: RedactionInfo) {
   applyRedaction(info)
+  if (leaksShown.value) void leakPanel.value?.reload()
   try {
     const [p] = await Promise.all([redactionApi.parties(props.task.id), loadOutbound()])
     parties.value = p.items
@@ -119,8 +129,9 @@ async function afterChange(info: RedactionInfo) {
 function handleError(e: unknown) {
   if (e instanceof ApiError) {
     const base = TASK_ERROR_MESSAGES[e.code] ?? RUN_ERROR_MESSAGES[e.code] ?? REDACTION_ERROR_MESSAGES[e.code] ?? e.message
-    // OUTBOUND_BLOCKED 的 message 带类别和位置，不含真实值，可以一并显示
-    submitError.value = e.code === 'OUTBOUND_BLOCKED' && e.message ? `${base}：${e.message}` : base
+    // 出口复检拦截：改为逐条列出的拦截清单，可定位、就地处理
+    if (e.code === 'OUTBOUND_BLOCKED') { submitError.value = ''; showLeaks(e.message); return }
+    submitError.value = base
     if (e.code === 'TASK_STATE_CONFLICT') emit('stale')
   } else submitError.value = '操作失败，请重试'
 }
@@ -433,7 +444,7 @@ useHotkeys({
     <aside v-loading="loading" class="rail" :style="{ flexBasis: `${railWidth}px` }">
       <div class="rail-scroll">
         <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" />
-        <el-alert v-if="blockedReason" type="warning" show-icon :closable="false" title="上次提交被拦截，未发送给模型" :description="`${blockedReason}。请检查签约方和外发文本后重新提交。`" />
+        <LeakPanel v-if="leaksShown" ref="leakPanel" :task-id="task.id" :files="files" :locked="locked" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" />
 
         <section class="sec">
           <h3>签约方与我方<span class="sum">{{ parties.length ? `${parties.length} 方` : '' }}</span></h3>

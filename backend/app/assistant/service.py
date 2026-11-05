@@ -190,7 +190,7 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     ctx = recheck_context(db, task.id)
     reasons = recheck(engine.build_outbound_text(db, task), real_values=ctx.real_values, terms=ctx.terms, placeholders=ctx.placeholders, kept=ctx.kept)
     if reasons:
-        raise AppError(409, "OUTBOUND_BLOCKED", gateway.MESSAGES["BLOCKED"] + f"（{gateway.format_reasons(reasons)}）")
+        raise AppError(409, "OUTBOUND_BLOCKED", gateway.MESSAGES["BLOCKED"] + f"（{gateway.describe_reasons(reasons)}）")
     now, count = utcnow(), 0
     for file in _files(db, task):
         if file.confirmed_at is None:

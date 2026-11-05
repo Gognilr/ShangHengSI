@@ -58,8 +58,8 @@ def test_real_values_block_with_position_only():
     text = "客户_A 即 Fictional  metals TRADING fze，简称 FMT。"
     reasons = recheck(text, real_values=["Fictional Metals Trading FZE", "FMT"], terms=[])
     assert reasons == [BlockReason("MAP", text.index("Fictional")), BlockReason("MAP", text.index("FMT"))]
-    # 拦截原因只有类别和位置
-    assert set(vars(reasons[0])) == {"category", "position"}
+    # 拦截原因只有类别和位置（结束位置供本机定位，V31-U5F-02）
+    assert set(vars(reasons[0])) == {"category", "position", "end"}
     assert "Fictional" not in repr(reasons)
 
 

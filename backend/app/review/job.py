@@ -25,7 +25,7 @@ from app.llm.gateway import load_model
 from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import Finding, LlmCall, RequirementResult, ReviewRun, Task
-from app.llm.gateway import GatewayError, format_reasons
+from app.llm.gateway import GatewayError, describe_reasons
 from app.review.chunking import Chunk, effective_limit, outbound_lines, split_chunks
 from app.review.coverage import build_coverage
 from app.review.prompt import ReviewContext, build_messages, split_outbound
@@ -224,7 +224,7 @@ def _prepare_chunks(db: Session, ctx: ReviewContext, chunks: list[Chunk],
 
 
 def _blocked(db: Session, run_id: uuid.UUID, exc: GatewayError) -> None:
-    message = f"出口复检发现未脱敏的信息，已拦截，未发送（{format_reasons(exc.reasons)}）"
+    message = f"出口复检发现未脱敏的信息，已拦截，未发送（{describe_reasons(exc.reasons)}）"
     _finish(db, run_id, status="blocked", message=message, task_status="awaiting_confirm")
 
 

@@ -52,6 +52,7 @@ _BIG_AMOUNT = Decimal(10000)  # 不小于此数值的金额真实值，不论是
 class BlockReason:
     category: str  # MAP / TERM / PHONE / EMAIL / ACCOUNT / IDNO / AMOUNT
     position: int  # 在被检查文本中的字符位置，不记真实值
+    end: int = field(default=-1, compare=False)  # 命中结束位置（约数），只供本机定位预览（V31-U5F-02）
 
 
 @dataclass
@@ -159,7 +160,7 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
         # 用户在本任务明确保留的整段原文不由重扫拦截；对照表与词条比对不豁免。
         return bool(kept_keys) and _kept_key(surface) in kept_keys
 
-    reasons: set[BlockReason] = {BlockReason('INVISIBLE', i) for i, c in enumerate(text)
+    reasons: set[BlockReason] = {BlockReason('INVISIBLE', i, i + 1) for i, c in enumerate(text)
                                 if 0xE0000 <= ord(c) <= 0xE007F}
     normalized = normalize_with_map(text)
     preserving = normalize_with_map(text, preserve_case=True)
@@ -168,7 +169,7 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
     original_masked = _mask_placeholders(text, codes)
     for category, values in (('MAP', real_values), ('TERM', terms)):
         for value in dict.fromkeys(values):
-            reasons.update(BlockReason(category, p) for p in
+            reasons.update(BlockReason(category, p, p + len(value)) for p in
                            _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked))
     # 原文、归一化文本分别重扫；同一原文位置的同类原因去重。
     for scanned, indices, is_normalized in ((text, range(len(text)), False),
@@ -178,17 +179,17 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
         for candidate in dict.fromkeys((scanned, contextual)):
             for hit in detect.find_formatted(candidate):
                 if hit.category in _RESCAN_CATEGORIES and not allowed(candidate[hit.start:hit.end]):
-                    reasons.add(BlockReason(hit.category, indices[hit.start]))
+                    reasons.add(BlockReason(hit.category, indices[hit.start], indices[hit.end - 1] + 1))
         for hit in detect.find_amounts(scanned):
             if is_normalized and text[indices[hit.start]:].startswith('一元化'):
                 continue  # 原文的普通词“一元化”不能因单字数字归一而变成“1 元”。
-            reasons.add(BlockReason('AMOUNT', indices[hit.start]))
+            reasons.add(BlockReason('AMOUNT', indices[hit.start], indices[hit.end - 1] + 1))
         # 人名语境中的“第二张工作表”不能因“二→2”凭空产生“张工”；姓名中的“一、三”等仍是汉字。
         people_text = _mask_code_syntax(_mask_placeholders(contextual, codes, mask='\n'))
         for finder in (detect.find_persons, detect.find_addresses):
             for hit in finder(people_text):
                 if not allowed(people_text[hit.start:hit.end]):
-                    reasons.add(BlockReason(hit.category, indices[hit.start]))
+                    reasons.add(BlockReason(hit.category, indices[hit.start], indices[hit.end - 1] + 1))
     return sorted(reasons, key=lambda r: (r.position, r.category))
 
 
