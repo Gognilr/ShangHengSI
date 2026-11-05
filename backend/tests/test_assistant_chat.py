@@ -262,6 +262,14 @@ def test_t49_14_user_daily_cap(conversation, db_sessionmaker, monkeypatch):
     assert r.status_code == 409 and r.json()["code"] == "USER_CAP_REACHED"
 
 
+@pytest.fixture
+def no_refresh(monkeypatch):
+    """闸门本身的测试：模拟“重算也修不好”的外发文本，关掉确认前的自动重算（V31-U5F-02）。"""
+    from app.redaction import engine
+    monkeypatch.setattr(engine, "refresh_if_blocked", lambda db, task: None)
+
+
+@pytest.mark.usefixtures("no_refresh")
 def test_t49_16_confirm_guards_and_activity(conversation, db_sessionmaker):
     from app.db.models import Party, RedactionTerm
     c, h, tid, _ = conversation

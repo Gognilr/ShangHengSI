@@ -262,8 +262,9 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
         raise _conflict('FILES_PARSING', '还有文件正在解析，请稍候')
     if db.scalar(select(exists().where(TaskFile.task_id == task.id, TaskFile.parse_error.is_not(None)))):
         raise _conflict('FILE_PARSE_FAILED', '请先删除解析失败的文件')
-    from app.redaction.engine import ensure_default_replacements
+    from app.redaction.engine import ensure_default_replacements, refresh_if_blocked
     ensure_default_replacements(db, task)
+    refresh_if_blocked(db, task)
     our = db.scalar(select(func.count()).select_from(Party)
                     .where(Party.task_id == task.id, Party.is_our_party.is_(True)))
     if our != 1:

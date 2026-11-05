@@ -184,6 +184,7 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     if task.status != "awaiting_confirm":
         raise AppError(409, "SESSION_BUSY", "当前会话状态不能确认脱敏")
     engine.ensure_default_replacements(db, task)
+    engine.refresh_if_blocked(db, task)
     count = db.scalar(select(func.count()).select_from(Party).where(Party.task_id == task.id, Party.is_our_party.is_(True))) or 0
     if count > 1:
         raise AppError(409, "OUR_PARTY_REQUIRED", "我方最多只能选择一方")

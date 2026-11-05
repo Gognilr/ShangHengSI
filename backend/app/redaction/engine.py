@@ -1521,6 +1521,18 @@ def ensure_default_replacements(db: Session, task: Task) -> None:
         _run(db, task, _current_overrides(existing), existing)
 
 
+def refresh_if_blocked(db: Session, task: Task) -> None:
+    """确认发送前：已存的脱敏结果过不了出口复检时，按当前规则重算一次（保留用户决定）。
+    脱敏规则升级后旧任务的结果不会自动更新，重算后自检闭环保证正文通过复检（V31-U5F-02）。调用方持有任务行锁。"""
+    from app.redaction.recheck import recheck, recheck_context
+    ctx = recheck_context(db, task.id)
+    if recheck(build_outbound_text(db, task), real_values=ctx.real_values, terms=ctx.terms,
+               placeholders=ctx.placeholders, kept=ctx.kept):
+        existing = _existing_parties(db, task)
+        _run(db, task, _current_overrides(existing), existing)
+        db.flush()
+
+
 def redact_task(db: Session, task: Task, style: str = "review", pin: bool = False) -> None:
     """parse 阶段的脱敏：写 parties、redaction_items、redaction_maps、redaction_suspects 和正文节点的 redacted_text，
     并统计已记住名称、自定义敏感词的命中次数（只在这里统计，第二步重算不计数）。不提交。"""

@@ -69,11 +69,19 @@ def alice(make_user, login):
     return user, client, {"X-CSRF-Token": csrf}
 
 
+@pytest.fixture
+def no_refresh(monkeypatch):
+    """闸门本身的测试：模拟“重算也修不好”的外发文本，关掉确认前的自动重算（V31-U5F-02）。"""
+    from app.redaction import engine
+    monkeypatch.setattr(engine, "refresh_if_blocked", lambda db, task: None)
+
+
 def post_run(client, headers, task_id):
     return client.post(f"{API_PREFIX}/tasks/{task_id}/runs", headers=headers)
 
 
 @pytest.mark.parametrize("outcome", ["success", "pending_success", "OUTBOUND_BLOCKED", "TASK_STATE_CONFLICT"])
+@pytest.mark.usefixtures("no_refresh")
 def test_v2c_confirm_activity_only_on_success(alice, db_sessionmaker, ready_task, outcome):
     from datetime import timedelta
     from app.db.base import utcnow
@@ -274,6 +282,7 @@ def test_409_our_party_required(db_sessionmaker, alice, ready_task):
     assert post_run(c, h, task.id).json()["code"] == "OUR_PARTY_REQUIRED"
 
 
+@pytest.mark.usefixtures("no_refresh")
 def test_409_outbound_blocked_names_category_and_position_only(db_sessionmaker, alice, ready_task, llm):
     user, c, h = alice
     task = ready_task(user)
@@ -322,6 +331,21 @@ def test_leaks_locate_preview_and_keep(db_sessionmaker, alice, ready_task):
                json={**{k: name[k] for k in ("loc", "char_start", "char_end")}, "category": "ORG"})
     assert r.status_code == 200
     assert REAL_OUR_NAME not in {x["text"] for x in c.get(url, headers=h).json()["items"]}
+
+
+def test_stale_redaction_refreshed_on_confirm(db_sessionmaker, alice, ready_task, llm):
+    """V31-U5F-02：已存结果过期（规则升级前算出、含漏替换）时，确认发送先按当前规则重算，再复检发出。"""
+    user, c, h = alice
+    task = ready_task(user)
+    llm("normal")
+    with db_sessionmaker() as db:
+        node = next(n for n in db.scalars(select(DocNode).where(DocNode.task_id == task.id))
+                    if n.text_enc is not None and REAL_OUR_NAME in decrypt_text(n.text_enc))
+        node.redacted_text = decrypt_text(node.text_enc)
+        db.commit()
+    assert post_run(c, h, task.id).status_code == 201
+    with db_sessionmaker() as db:
+        assert REAL_OUR_NAME not in (db.get(DocNode, node.id).redacted_text or "")
 
 
 def test_precheck_also_covers_user_note(db_sessionmaker, alice, ready_task):
@@ -693,6 +717,7 @@ def test_location_shows_page_and_cell(db_sessionmaker, alice, ready_task):
     }
 
 
+@pytest.mark.usefixtures("no_refresh")
 def test_t07_precheck_blocks_real_name_in_xlsx(db_sessionmaker, alice, ready_task, llm):
     """T-07（M3 重跑）：XLSX 单元格的外发文本中混入真实名称，确认发送时预检拦截，不调用模型。"""
     user, c, h = alice
