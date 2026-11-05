@@ -1,4 +1,6 @@
 """FastAPI 入口。所有路由统一挂载在 /api/v1 下（SPEC 19.1）。"""
+import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -65,6 +67,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     ner.check()
     from app.embedding import engine
     engine.check()
+    # 后台预热（V31-U5F-03 测试机实测）：确认页第一次决定要用实体识别与向量模型，冷加载在测试机上约 40 秒。
+    # 启动后在后台线程加载，不阻塞启动；失败只记一条警告，第一次使用时照常再加载。
+    def warm() -> None:
+        try:
+            ner._get_model()
+            engine._get_model()
+        except Exception:
+            logging.getLogger("app.main").warning("本地模型预热失败，将在第一次使用时加载")
+    threading.Thread(target=warm, name="model-warmup", daemon=True).start()
     yield
 
 

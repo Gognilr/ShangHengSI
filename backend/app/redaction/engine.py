@@ -267,9 +267,12 @@ def to_original(segments, start: int, end: int) -> tuple[int, int] | None:
 
 
 def _closure_spans(nodes, result, spans, occupied, *, terms, kept) -> list[_Span]:
-    from app.redaction.recheck import recheck
-    values = [v for k, v in result.mapping.items() if not k.startswith('@')]
+    from app.redaction.recheck import present_values, recheck
     codes = [k for k in result.mapping if '#' not in k and not k.startswith('@')]
+    # 全文预筛：脱敏后全文中不可能出现的真实值 / 词条不再逐段比对（长文档逐段 × 全部值，V31-U5F-03 测试机实测）
+    texts = [result.redacted.get(n.loc) or '' for n in nodes]
+    values = present_values((v for k, v in result.mapping.items() if not k.startswith('@')), texts)
+    terms = present_values(terms, texts)
     items: dict[str, list] = {}
     for item in result.items:
         items.setdefault(item.loc, []).append(item)
@@ -277,7 +280,8 @@ def _closure_spans(nodes, result, spans, occupied, *, terms, kept) -> list[_Span
     out: list[_Span] = []
     for i, n in enumerate(nodes):
         redacted = result.redacted.get(n.loc) or ''
-        reasons = recheck(redacted, real_values=values, terms=terms, placeholders=codes, kept=kept) if redacted else []
+        reasons = recheck(redacted, real_values=values, terms=terms, placeholders=codes, kept=kept,
+                          cache=True) if redacted else []
         if not reasons:
             continue
         segments = align_segments(n.text, redacted, items.get(n.loc, ()))

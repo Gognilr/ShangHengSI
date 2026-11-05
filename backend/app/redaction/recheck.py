@@ -10,9 +10,11 @@
 避免“数量 100 MT”被金额 100 误拦。长数字（账号、电话等）去掉空格和短横线后再比较一次，防止换了写法漏过。
 同一数值换了千分位写法（“USD 400000”对“400,000.00”）且带币种时，按数值相等拦截。
 """
+import hashlib
 import re
 import uuid
 import unicodedata
+from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -155,33 +157,59 @@ def _value_positions(text: str, value: str) -> list[int]:
 
 
 def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept: Iterable[str] = (),
-            placeholders: Iterable[str] = ()) -> list[BlockReason]:
+            placeholders: Iterable[str] = (), cache: bool = False) -> list[BlockReason]:
     """返回全部拦截原因（按位置排序、去重）；空列表表示可以发送。
 
-    placeholders 为本任务对照表中的代号原文：比对真实值、词条前先遮盖（只遮盖这些确切的代号，默认不遮盖）。"""
+    placeholders 为本任务对照表中的代号原文：比对真实值、词条前先遮盖（只遮盖这些确切的代号，默认不遮盖）。
+    cache=True（脱敏自检闭环逐段调用，V31-U5F-03）：格式化信息、金额、人名、地址的重扫结论按“文本 + 文中出现的代号
+    + 保留项”的摘要缓存在进程内，只存类别与位置，不存原文；同样的输入结论相同。网关发送前的复检不用缓存。"""
     codes = list(placeholders)
     kept_keys = {k for k in map(_kept_key, kept) if k}
+    reasons: set[BlockReason] = {BlockReason('INVISIBLE', i, i + 1) for i, c in enumerate(text)
+                                if 0xE0000 <= ord(c) <= 0xE007F}
+    normalized = normalize_with_map(text)
+    preserving = normalize_with_map(text, preserve_case=True)
+    values = [(c, v) for c, vs in (('MAP', real_values), ('TERM', terms)) for v in dict.fromkeys(vs)]
+    if values:
+        masked = _mask_placeholders(normalized.text, (normalize_value(p) for p in codes))
+        preserving_masked = _mask_placeholders(preserving.text, (normalize_value(p, preserve_case=True) for p in codes))
+        original_masked = _mask_placeholders(text, codes)
+        for category, value in values:
+            reasons.update(BlockReason(category, p, p + len(value)) for p in
+                           _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked))
+    reasons.update(_rescan(text, preserving, codes, kept_keys, cache))
+    return sorted(reasons, key=lambda r: (r.position, r.category))
+
+
+_RESCAN_CACHE: 'OrderedDict[bytes, tuple[BlockReason, ...]]' = OrderedDict()
+_RESCAN_CACHE_MAX = 50000
+
+
+def _rescan(text: str, preserving, codes: list[str], kept_keys: set[str], cache: bool) -> tuple[BlockReason, ...]:
+    """原文、归一化文本分别重扫格式化信息、金额、人名与地址；同一原文位置的同类原因去重。"""
+    passes = []
+    for scanned, indices, is_normalized in ((text, range(len(text)), False),
+                                           (preserving.text, preserving.index_map, True)):
+        # ASCII 称谓 / 标签不能被 I→l 变成新的单词；完整归一化扫描仍保留，另补语境稳定的扫描。
+        contextual = ''.join(_context_char(text[indices[i]], c) for i, c in enumerate(scanned)) if is_normalized else scanned
+        passes.append((scanned, indices, contextual))
+    key = None
+    if cache:
+        # 代号遮盖只影响文中出现的代号：只把出现的代号计入摘要，其他段落的决定不会让本段缓存失效
+        present = sorted({c for c in codes if c and any(c in s for _, _, s in passes)})
+        digest = hashlib.sha256('\x00'.join([text, '\x01'.join(present), '\x01'.join(sorted(kept_keys))]).encode())
+        key = digest.digest()
+        hit = _RESCAN_CACHE.get(key)
+        if hit is not None:
+            _RESCAN_CACHE.move_to_end(key)
+            return hit
 
     def allowed(surface: str) -> bool:
         # 用户在本任务明确保留的整段原文不由重扫拦截；对照表与词条比对不豁免。
         return bool(kept_keys) and _kept_key(surface) in kept_keys
 
-    reasons: set[BlockReason] = {BlockReason('INVISIBLE', i, i + 1) for i, c in enumerate(text)
-                                if 0xE0000 <= ord(c) <= 0xE007F}
-    normalized = normalize_with_map(text)
-    preserving = normalize_with_map(text, preserve_case=True)
-    masked = _mask_placeholders(normalized.text, (normalize_value(p) for p in codes))
-    preserving_masked = _mask_placeholders(preserving.text, (normalize_value(p, preserve_case=True) for p in codes))
-    original_masked = _mask_placeholders(text, codes)
-    for category, values in (('MAP', real_values), ('TERM', terms)):
-        for value in dict.fromkeys(values):
-            reasons.update(BlockReason(category, p, p + len(value)) for p in
-                           _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked))
-    # 原文、归一化文本分别重扫；同一原文位置的同类原因去重。
-    for scanned, indices, is_normalized in ((text, range(len(text)), False),
-                                           (preserving.text, preserving.index_map, True)):
-        # ASCII 称谓 / 标签不能被 I→l 变成新的单词；完整归一化扫描仍保留，另补语境稳定的扫描。
-        contextual = ''.join(_context_char(text[indices[i]], c) for i, c in enumerate(scanned)) if is_normalized else scanned
+    reasons: set[BlockReason] = set()
+    for scanned, indices, contextual in passes:
         for candidate in dict.fromkeys((scanned, contextual)):
             for hit in detect.find_formatted(candidate):
                 if hit.category in _RESCAN_CATEGORIES and not allowed(candidate[hit.start:hit.end]):
@@ -198,7 +226,35 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
                     continue  # 与脱敏相同：只有国家、城市或港口名称的地址保留（V31-U5F-02）
                 if not allowed(surface):
                     reasons.add(BlockReason(hit.category, indices[hit.start], indices[hit.end - 1] + 1))
-    return sorted(reasons, key=lambda r: (r.position, r.category))
+    out = tuple(reasons)
+    if key is not None:
+        _RESCAN_CACHE[key] = out
+        if len(_RESCAN_CACHE) > _RESCAN_CACHE_MAX:
+            _RESCAN_CACHE.popitem(last=False)
+    return out
+
+
+# 预筛用的“骨架”：归一化后去掉空白与 - . ,，再做 OCR 折叠。三条比对通路（原文、归一化的名称正则，去分隔符的紧凑比对）
+# 命中时，值的骨架一定是文本骨架的子串，所以骨架不在全文中的值在任何一段都不会命中。
+_SKELETON_DROP = re.compile(r"[\s\-.,]")
+_OCR_FOLD = str.maketrans({'o': '0', 'l': '1', 'i': '1', '|': '1', 's': '5', 'b': '8'})
+
+
+def _skeleton(text: str) -> str:
+    return _SKELETON_DROP.sub('', normalize_with_map(text).text).translate(_OCR_FOLD)
+
+
+def present_values(values: Iterable[str], texts: Iterable[str]) -> list[str]:
+    """逐段复检前的全文预筛（V31-U5F-03）：去掉在全部文本中都不可能命中的真实值 / 词条，结果只少筛不多筛。
+    数字类值有千分位、小数位与按数值比对的写法，一律保留；网关发送前的复检仍用完整列表。"""
+    doc = '\x01'.join(_skeleton(t) for t in texts)
+    out = []
+    for value in dict.fromkeys(values):
+        stripped = value.strip()
+        skeleton = _skeleton(stripped)
+        if _NUMERIC_VALUE.match(stripped) or not skeleton or skeleton in doc:
+            out.append(value)
+    return out
 
 
 def _place_only(surface: str) -> bool:
