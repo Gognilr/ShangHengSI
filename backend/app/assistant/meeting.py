@@ -84,7 +84,7 @@ def valid_name(value):
 def recompute(db, task, old_names=()):
     # 移除撤销名单的本会话词条；仍在其他名单或发言人中使用的姓名继续生效。
     removed = set(old_names) - set(names(db, task))
-    texts = engine._texts_with_note(engine._body_rows(db, task.id), task)
+    texts = engine.task_texts(db, task)
     for item in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id,
                               RedactionItem.detected_by == 'user', RedactionItem.category == 'PERSON')):
         if texts.get(item.loc, '')[item.char_start:item.char_end] in removed:

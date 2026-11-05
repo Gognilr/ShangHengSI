@@ -34,7 +34,7 @@ def effective(db, user_id: uuid.UUID) -> dict[str, str]:
 
 def remember(db, task, user_id: uuid.UUID) -> None:
     from app.redaction import engine
-    texts = engine._texts_with_note(engine._body_rows(db, task.id), task)
+    texts = engine.task_texts(db, task)
     excluded = blocked(db)
     for row in db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
                                                       RedactionSuspect.decision == 'ignore')):

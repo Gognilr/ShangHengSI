@@ -21,15 +21,17 @@ import math
 import re
 import secrets
 import uuid
+from collections import OrderedDict
 from collections.abc import Sequence
 from functools import lru_cache
 from dataclasses import dataclass, field
 from decimal import Decimal
 from datetime import date, timedelta
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import bindparam, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.admin.settings_store import get_setting
 from app.db.base import utcnow
@@ -1364,6 +1366,51 @@ def _texts_with_note(rows: list[DocNode], task: Task) -> dict[str, str]:
     return texts
 
 
+def task_texts(db: Session, task: Task) -> dict[str, str]:
+    """同 _texts_with_note(_body_rows(…))，只取位置与密文、不建 ORM 对象：长文档一次决定要读好几遍正文，
+    ORM 每遍约多 60 ms（V31-U5F-03 续）。"""
+    texts = {loc: crypto.decrypt_text(enc) if enc is not None else "" for loc, enc in db.execute(
+        select(DocNode.loc, DocNode.text_enc)
+        .join(TaskFile, TaskFile.id == DocNode.file_id)
+        .where(DocNode.task_id == task.id, DocNode.part == "body")
+        .order_by(TaskFile.seq, DocNode.ord))}
+    if task.user_note_enc is not None:
+        texts["NOTE"] = crypto.decrypt_text(task.user_note_enc)
+    return texts
+
+
+_NER_ENTRIES: 'OrderedDict[tuple, dict | None]' = OrderedDict()
+_NER_ENTRIES_MAX = 100000
+
+
+def _ner_entries(db: Session, task_id: uuid.UUID) -> tuple[dict[str, uuid.UUID], dict[str, dict]]:
+    """各段实体识别缓存：({loc: 行 id}, {loc: 解密后的内容})。解密结果按（行 id, 更新时间）缓存在进程内，
+    只含位置、类别、分数与缓存键摘要，不含原文；每次决定只取回、解密变了的行（V31-U5F-03 续）。
+    解密失败的行没有内容，由本次重算覆盖。返回的内容只读。"""
+    rows = db.execute(select(NerNodeResult.id, NerNodeResult.loc, NerNodeResult.updated_at)
+                      .where(NerNodeResult.task_id == task_id)).all()
+    missing = [rid for rid, _loc, at in rows if (rid, at) not in _NER_ENTRIES]
+    fetched = {}
+    for start in range(0, len(missing), 1000):
+        for rid, at, blob in db.execute(select(NerNodeResult.id, NerNodeResult.updated_at, NerNodeResult.data_enc)
+                                        .where(NerNodeResult.id.in_(missing[start:start + 1000]))):
+            try:
+                entry = json.loads(crypto.decrypt_text(blob))
+            except (crypto.DecryptionError, UnicodeError, ValueError, TypeError):
+                entry = None  # 不记录密文、键或节点文字；同一事务中以重算结果覆盖。
+            fetched[rid] = entry
+            _NER_ENTRIES[rid, at] = entry
+            if len(_NER_ENTRIES) > _NER_ENTRIES_MAX:
+                _NER_ENTRIES.popitem(last=False)
+    ids, entries = {}, {}
+    for rid, loc, at in rows:
+        ids[loc] = rid
+        entry = fetched[rid] if rid in fetched else _NER_ENTRIES.get((rid, at))
+        if entry is not None:
+            entries[loc] = entry
+    return ids, entries
+
+
 def _load_terms(db: Session) -> list[Term]:
     """启用中的已记住名称与自定义敏感词，解密到内存（18.12），不写日志。"""
     rows = list(db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True)).order_by(
@@ -1462,7 +1509,11 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
          style: str | None = None, pin: bool | None = None) -> RedactionResult:
     style = style or ("neutral" if task.kind == "assistant" else "review")
     pin = task.kind == "assistant" if pin is None else pin
-    rows = _body_rows(db, task.id)
+    rows = db.execute(
+        select(DocNode.id, DocNode.loc, DocNode.text_enc, DocNode.clause_no, DocNode.kind, DocNode.redacted_text)
+        .join(TaskFile, TaskFile.id == DocNode.file_id)
+        .where(DocNode.task_id == task.id, DocNode.part == "body")
+        .order_by(TaskFile.seq, DocNode.ord)).all()
     texts = _texts_with_note(rows, task)
     nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no, r.kind) for r in rows]
     if texts.get("NOTE"):
@@ -1475,13 +1526,7 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
         user_terms += [UserTerm(name, 'PERSON') for name in meeting_names]
     seen = {(P.normalize(u.text), u.category) for u in user_terms}
     user_terms += [u for u in extra_terms if (P.normalize(u.text), u.category) not in seen]
-    cached_rows = {r.loc: r for r in db.scalars(select(NerNodeResult).where(NerNodeResult.task_id == task.id))}
-    cached = {}
-    for loc, row in cached_rows.items():
-        try:
-            cached[loc] = json.loads(crypto.decrypt_text(row.data_enc))
-        except (crypto.DecryptionError, UnicodeError, ValueError, TypeError):
-            pass  # 不记录密文、键或节点文字；同一事务中以重算结果覆盖。
+    cached_ids, cached = _ner_entries(db, task.id)
     from app.redaction import keep_terms
     full_map = _load_full_map(db, task.id)
     shift_days = 0
@@ -1529,17 +1574,19 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
                           and P.normalize(texts[s.loc][s.char_start:s.char_end]) not in user_keys
                           and not any(i.loc == s.loc and i.char_start < s.char_end and i.char_end > s.char_start for i in result.items)}
 
+    changed = []
     for loc, entry in result.ner_cache.items():
         if cached.get(loc) != entry:
-            row = cached_rows.get(loc)
-            if row is None:
-                row = NerNodeResult(task_id=task.id, loc=loc)
-                db.add(row)
-            row.data_enc = crypto.encrypt_text(json.dumps(entry, ensure_ascii=False))
-            row.updated_at = utcnow()
-    for loc, row in cached_rows.items():
-        if loc not in result.ner_cache:
-            db.delete(row)
+            blob = crypto.encrypt_text(json.dumps(entry, ensure_ascii=False))
+            if loc in cached_ids:
+                changed.append({'id': cached_ids[loc], 'data_enc': blob, 'updated_at': utcnow()})
+            else:
+                db.add(NerNodeResult(task_id=task.id, loc=loc, data_enc=blob, updated_at=utcnow()))
+    if changed:
+        db.execute(update(NerNodeResult), changed)
+    stale = [rid for loc, rid in cached_ids.items() if loc not in result.ner_cache]
+    if stale:
+        db.execute(delete(NerNodeResult).where(NerNodeResult.id.in_(stale)))
     logger.debug('实体识别缓存：命中=%d，重算=%d', result.ner_cache_hits, result.ner_cache_misses)
 
     if meeting_names:
@@ -1549,8 +1596,7 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
         for name in meeting_names:
             code = allocator.numbered('PERSON', name)
             result.mapping[code] = name
-    for r in rows:
-        r.redacted_text = result.redacted[r.loc]
+    _write_redacted(db, {r.id: result.redacted[r.loc] for r in rows if r.redacted_text != result.redacted[r.loc]})
     task.user_note_redacted = result.redacted.get("NOTE")
     db.execute(delete(RedactionItem).where(RedactionItem.task_id == task.id))
     db.add_all(RedactionItem(task_id=task.id, loc=i.loc, char_start=i.char_start, char_end=i.char_end,
@@ -1579,6 +1625,19 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     return result
 
 
+def _write_redacted(db: Session, changed: dict[int, str]) -> None:
+    """只写回脱敏文本变了的段（长文档一次决定通常只变几段，不再整份载入、刷新 ORM 对象，V31-U5F-03 续）；
+    本会话已载入的同一行同步新值，之后的 ORM 读取不会拿到旧文本。"""
+    if not changed:
+        return
+    table = DocNode.__table__
+    db.execute(table.update().where(table.c.id == bindparam('b_id')).values(redacted_text=bindparam('b_text')),
+               [{'b_id': node_id, 'b_text': text} for node_id, text in changed.items()])
+    for obj in list(db.identity_map.values()):
+        if isinstance(obj, DocNode) and obj.id in changed:
+            set_committed_value(obj, 'redacted_text', changed[obj.id])
+
+
 def _count_hits(db: Session, matched: set[str]) -> None:
     """命中计数（9.10、18.12、Q-73 ④）：每个命中的已记住名称、自定义敏感词 hit_count + 1，记下命中时间。"""
     if not matched:
@@ -1593,11 +1652,10 @@ def _count_hits(db: Session, matched: set[str]) -> None:
 def _vector_kept_spans(db: Session, task: Task) -> set[tuple[str, int, int]]:
     """本机向量判断保留的位置（存在加密的节点缓存中，V31Q-29）。"""
     spans = set()
-    for cached in db.scalars(select(NerNodeResult).where(NerNodeResult.task_id == task.id)):
+    for loc, data in _ner_entries(db, task.id)[1].items():
         try:
-            data = json.loads(crypto.decrypt_text(cached.data_enc))
-            spans.update((cached.loc, start, end) for start, end in data.get('vector_kept', []))
-        except (crypto.DecryptionError, UnicodeError, ValueError, TypeError, AttributeError):
+            spans.update((loc, start, end) for start, end in data.get('vector_kept', []))
+        except (ValueError, TypeError, AttributeError):
             pass
     return spans
 
@@ -1613,7 +1671,7 @@ def ensure_default_replacements(db: Session, task: Task) -> None:
                                                for i in items)]
     if uncovered:
         from app.redaction.keep_terms import effective
-        texts = _texts_with_note(_body_rows(db, task.id), task)
+        texts = task_texts(db, task)
         memory = effective(db, task.owner_id)
         uncovered = [s for s in uncovered if P.normalize(texts.get(s.loc, "")[s.char_start:s.char_end]) not in memory]
     if uncovered:
@@ -1748,7 +1806,7 @@ def revoke_redaction(db: Session, task: Task, *, loc: str, char_start: int, char
                      RedactionItem.char_start == char_start, RedactionItem.char_end == char_end))
     if item is None or not (item.detected_by == "user" or item.detected_by == "person" and item.category == "PERSON"):
         raise RedactionInputError(422, "NOT_REVOCABLE", "该替换项不能撤销")
-    texts = _texts_with_note(_body_rows(db, task.id), task)
+    texts = task_texts(db, task)
     surface = texts.get(loc, "")[char_start:char_end]
     if not surface:
         raise RedactionInputError(422, "NOT_REVOCABLE", "该替换项不能撤销")
@@ -1818,7 +1876,7 @@ def decide_suspect(db: Session, task: Task, suspect_id: int, *, decision: str, c
         raise RedactionInputError(422, "VALIDATION_ERROR", "处理方式或类别不正确")
     if remember and (decision != "replace" or category != "CUSTOM" or user_id is None):
         raise RedactionInputError(422, "VALIDATION_ERROR", "只有其他类别的替换可以选择以后自动替换")
-    texts = _texts_with_note(_body_rows(db, task.id), task)
+    texts = task_texts(db, task)
     text = texts.get(row.loc, "")
     now = utcnow()
     if decision in ('ignore', 'reset'):
@@ -1854,9 +1912,8 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
 
     text 为疑似遗漏的原文，before / after 为同一节点中前后各最多 30 个字符的原文（换行换成空格），只用于第二步显示。
     """
-    rows = _body_rows(db, task.id)
-    order = {r.loc: k for k, r in enumerate(rows)}
-    texts = _texts_with_note(rows, task)
+    texts = task_texts(db, task)
+    order = {loc: k for k, loc in enumerate(loc for loc in texts if loc != "NOTE" or task.user_note_enc is None)}
     from app.redaction.keep_terms import effective
     memory = effective(db, task.owner_id)
     vector_spans = _vector_kept_spans(db, task)
@@ -1905,7 +1962,7 @@ def learn_confirmed_names(db: Session, task: Task, user_id: uuid.UUID | None) ->
     from app.redaction import dictionaries as D
     mapping = load_redaction_map(db, task.id)
     full = _load_full_map(db, task.id)
-    texts = _texts_with_note(_body_rows(db, task.id), task)
+    texts = task_texts(db, task)
     common = {P.normalize(t) for t in D.zh_words() | D.en_words() | D.common_terms()
               | D.zh_legal_finance() | D.chem_names()}
     common.update(P.normalize(t) for t in (D.RESOURCES_DIR / 'plain_terms.txt').read_text(
@@ -2034,7 +2091,7 @@ def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
     task = db.get(Task, task_id)
     if task is None:
         return values
-    texts = _texts_with_note(_body_rows(db, task.id), task)
+    texts = task_texts(db, task)
     memory = keep_terms.effective(db, task.owner_id)  # 每次调用现查本人当前生效的记忆，不缓存豁免。
     kept = []
     for row in db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id)):
@@ -2068,7 +2125,7 @@ def load_kept_values(db: Session, task_id: uuid.UUID) -> list[str]:
     task = db.get(Task, task_id)
     if task is None:
         return []
-    texts = _texts_with_note(_body_rows(db, task.id), task)
+    texts = task_texts(db, task)
     kept = [texts.get(r.loc, '')[r.char_start:r.char_end].strip() for r in db.scalars(
         select(RedactionSuspect).where(RedactionSuspect.task_id == task_id, RedactionSuspect.decision == 'ignore'))]
     kept += [crypto.decrypt_text(e.text_enc) for e in db.scalars(

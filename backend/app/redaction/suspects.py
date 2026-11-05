@@ -256,6 +256,7 @@ class _Words:
         return word in self.common or word in self.extra
 
 
+@lru_cache(maxsize=8)
 def lowercase_evidence(text: str) -> frozenset[str]:
     """本次正文中完整的小写单词；不从大小写混合的名称中截取。"""
     return frozenset(w.removesuffix("'s").removesuffix('’s').strip('-') for w in
@@ -487,6 +488,12 @@ def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), low
     occupied 为该节点已被替换的区间 [(start, end)]。同一位置命中多条规则时只保留一条，
     优先级 org_suffix > before_company > capitalized > person_name > long_digits；互相重叠的候选取较长的。
     """
+    return list(_find_suspects(text, tuple(sorted(set(occupied))), tuple(derived), lowercase_words, header))
+
+
+@lru_cache(maxsize=32768)
+def _find_suspects(text: str, occupied: tuple, derived: tuple, lowercase_words: frozenset, header: bool) -> tuple[Suspect, ...]:
+    # 结果只取决于参数与固定词表（遮盖与区间顺序无关）：一次决定后没变的段直接复用（V31-U5F-03 续）；只在进程内、有上限。
     masked = _mask(text, [*occupied, *public_institution_spans(text), *plain_content_spans(text)])
     cands: list[Suspect] = []
     cands += _chinese_suffix_candidates(masked)
@@ -512,7 +519,7 @@ def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), low
     for c in sorted(cands, key=lambda c: (-(c.end - c.start), _PRIORITY[c.reason], c.start)):
         if not any(c.start < k.end and k.start < c.end for k in chosen):
             chosen.append(c)
-    return sorted(chosen, key=lambda c: c.start)
+    return tuple(sorted(chosen, key=lambda c: c.start))
 
 
 # V31-S-08：指代与职能泛称（贵公司、该厂、财务部）不是名称；默认替换会让模型分不清条款主体。

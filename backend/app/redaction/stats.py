@@ -21,7 +21,7 @@ def operation(task) -> None:
 
 def finish(db, task) -> dict:
     from app.redaction import engine, parties as P
-    texts = engine._texts_with_note(engine._body_rows(db, task.id), task)
+    texts = engine.task_texts(db, task)
     rows = list(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id)))
     views = engine.suspect_views(db, task)
     groups = {}

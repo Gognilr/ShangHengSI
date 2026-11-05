@@ -227,7 +227,8 @@ def _allowed(hits, kept_keys) -> set[BlockReason]:
     return reasons
 
 
-_SEGMENT_CACHE: 'OrderedDict[bytes, tuple]' = OrderedDict()
+_SEP, _SEP2, _SEP3 = '\x00', '\x01', '\x02'
+_SEGMENT_CACHE: 'OrderedDict[bytes | tuple, tuple]' = OrderedDict()
 _SEGMENT_CACHE_MAX = 50000
 
 
@@ -261,8 +262,23 @@ class SegmentChecker:
         self.kept = {_digest(k) for k in map(_kept_key, kept) if k}
         self.values = [(c, v, _skeleton(v.strip()), _numeric_like(v.strip()))
                        for c, vs in (('MAP', real_values), ('TERM', terms)) for v in dict.fromkeys(vs)]
+        # 整轮指纹：同一组代号与值下段文字相同即可直接复用，不再逐段计算段内代号与可能命中的值
+        self.fingerprint = hashlib.sha256(_SEP.join([_SEP2.join(self.codes), _SEP2.join(
+            c + _SEP3 + v for c, v, _s, _n in self.values)]).encode()).digest()
 
     def __call__(self, text: str) -> list[BlockReason]:
+        whole = (self.fingerprint, text)
+        hit = _SEGMENT_CACHE.get(whole)
+        if hit is None:
+            hit = self._segment(text)
+            _SEGMENT_CACHE[whole] = hit
+            if len(_SEGMENT_CACHE) > _SEGMENT_CACHE_MAX:
+                _SEGMENT_CACHE.popitem(last=False)
+        reasons = set(hit[0])
+        reasons.update(_allowed(hit[1], self.kept))
+        return sorted(reasons, key=lambda r: (r.position, r.category))
+
+    def _segment(self, text: str) -> tuple:
         normalized, preserving, skeleton, contextual = _segment_view(text)
         present = [i for i, (c, lo, up) in enumerate(zip(self.codes, self.lower, self.upper))
                    if c in text or c in contextual or lo in normalized.text or up in preserving.text]
@@ -282,9 +298,7 @@ class SegmentChecker:
                 _SEGMENT_CACHE.popitem(last=False)
         else:
             _SEGMENT_CACHE.move_to_end(key)
-        reasons = set(hit[0])
-        reasons.update(_allowed(hit[1], self.kept))
-        return sorted(reasons, key=lambda r: (r.position, r.category))
+        return hit
 
 
 # 预筛用的“骨架”：归一化后去掉空白与 - . ,，再做 OCR 折叠。三条比对通路（原文、归一化的名称正则，去分隔符的紧凑比对）
