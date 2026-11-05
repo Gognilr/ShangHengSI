@@ -30,18 +30,34 @@ const reviewText = computed(() => {
     return pos != null ? `排队中，前面还有 ${Math.max(0, pos - 1)} 个` : '排队中'
   }
   const p = props.run?.progress
-  if (p && p.total > 1) return p.sent ? `已发出 ${p.sent}/${p.total} 段 · 已收到 ${p.done} 段` : `准备 ${p.total} 段`
+  // 流式接收的字数（V31-U5F-03）：让人看到模型在出字，而不是卡住
+  const got = p?.received ? `已收到约 ${p.received.toLocaleString('zh-CN')} 字` : ''
+  if (p && p.total > 1) {
+    if (!p.sent) return `准备 ${p.total} 段`
+    const head = p.sent < p.total ? `已发出 ${p.sent}/${p.total} 段` : `已回复 ${p.done}/${p.total} 段`
+    return got ? `${head} · ${got}` : `${head} · 等待回复`
+  }
+  if (got) return got
   return sentCount.value ? `已发送，等待 ${modelName.value} 回复` : `${modelName.value} 审核中`
 })
+const recheckText = computed(() => {
+  const total = props.run?.progress?.total ?? 0
+  const blocked = receipt.value?.blocked ?? 0
+  return total > 1 ? `已复检 ${Math.min(sentCount.value, total)}/${total} 段，拦截 ${blocked}` : `通过，拦截 ${blocked}`
+})
+// 每步固定两行：标题 + 说明。完成的步骤保留说明（如“通过”），未开始的显示“等待”，四步基线一致（V31-U5F-03 问题 4）
 const steps = computed(() => {
   const list = [
-    { label: '本地识别', done: true, text: receipt.value ? `已在本机保护 ${receipt.value.protected_total} 处` : '' },
-    { label: '出口复检', done: recheckDone.value, text: '发送前检查中' },
-    { label: '模型审核', done: reviewDone.value, text: reviewText.value },
-    { label: '本地还原', done: restoreDone.value, text: '在本机还原代号' },
+    { label: '本地识别', done: true, active: '', fin: receipt.value ? `已在本机保护 ${receipt.value.protected_total} 处` : '完成' },
+    { label: '出口复检', done: recheckDone.value, active: '发送前检查中', fin: recheckText.value },
+    { label: '模型审核', done: reviewDone.value, active: reviewText.value, fin: status.value === 'failed' ? '未完成' : '已返回' },
+    { label: '本地还原', done: restoreDone.value, active: '在本机还原代号', fin: '已还原' },
   ]
   const current = list.findIndex(s => !s.done)
-  return list.map((s, i) => ({ ...s, state: s.done ? 'done' : i === current ? 'active' : 'wait', text: s.done ? (i === 0 ? s.text : '') : i === current ? s.text : '' }))
+  return list.map((s, i) => {
+    const state = s.done ? 'done' : i === current ? 'active' : 'wait'
+    return { label: s.label, state, text: state === 'done' ? s.fin : state === 'active' ? s.active : '等待' }
+  })
 })
 
 // 已用时间：排队从 queued_at，运行从 started_at；不显示预计剩余时间
@@ -102,7 +118,7 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
       <li v-for="(s, i) in steps" :key="s.label" class="step" :class="s.state">
         <span class="mark">{{ s.state === 'done' ? '✓' : i + 1 }}</span>
         <span class="step-label">{{ s.label }}</span>
-        <span v-if="s.text" class="step-text">{{ s.text }}</span>
+        <span class="step-text" :title="s.text">{{ s.text }}</span>
       </li>
     </ol>
     <div class="foot">
@@ -155,10 +171,10 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
 .model-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; font: var(--si-font-label-sm); color: var(--el-text-color-primary); }
 /* 四步与说明：三个特效级别完全相同 */
 .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0; padding: 0; list-style: none; }
-.step { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--si-ink-3); }
+.step { display: grid; grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: 22px 18px; align-items: center; column-gap: 8px; row-gap: 4px; color: var(--si-ink-3); }
 .mark { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--si-hair-strong); border-radius: 50%; font: var(--si-font-label-sm); }
 .step-label { font: var(--si-font-label); }
-.step-text { flex-basis: 100%; padding-left: 30px; font: var(--si-font-caption); }
+.step-text { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-caption); }
 .step.done { color: var(--el-text-color-primary); }
 .step.done .mark { border-color: var(--el-color-primary); background: var(--el-color-primary); color: var(--si-white); }
 .step.active { color: var(--el-text-color-primary); }

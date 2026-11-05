@@ -8,7 +8,9 @@ import { localFindingsApi } from '@/api/localFindings'
 import {
   REDACTION_ERROR_MESSAGES,
   redactionApi,
+  type ManualInput,
   type Party,
+  type RedactionItemPos,
   type RedactionInfo,
   type Suspect,
   type SuspectCategory,
@@ -69,8 +71,6 @@ const localCount = ref<number | null>(null)
 const loadLocal = () => localFindingsApi.list(props.task.id)
 const loading = ref(true)
 const loadError = ref('')
-const deciding = ref(false)
-const savingParties = ref(false)
 const submitting = ref(false)
 const submitError = ref('')
 const skipTemplate = ref(false)
@@ -117,7 +117,7 @@ async function loadAll(silent = false) {
 }
 onMounted(() => void loadAll())
 
-/** 替换、保留、手动补充成功后：以返回值刷新，并重读签约方（可能出现新的方）和外发文本。 */
+/** 拦截清单处理成功后：以返回值刷新，并重读签约方（可能出现新的方）和外发文本。 */
 async function afterChange(info: RedactionInfo) {
   applyRedaction(info)
   if (leaksShown.value) void leakPanel.value?.reload()
@@ -125,6 +125,62 @@ async function afterChange(info: RedactionInfo) {
     const [p] = await Promise.all([redactionApi.parties(props.task.id), loadOutbound()])
     parties.value = p.items
   } catch (e) { handleError(e) }
+}
+
+// ---- 保存队列（V31-U5F-03，设计 1.2 第 1 条）----
+// 改我方、处理不确定项、手动补充与撤销：界面先按预期变化，请求按顺序在后台保存，不锁页面。
+// 队列清空时用最后一次返回值与服务器对齐；任何一次失败都整体回读服务器状态（即回滚）并提示。
+// 只有“确认发送”等队列清空。
+const saving = ref(0)
+let tail: Promise<void> = Promise.resolve()
+let latest: RedactionInfo | null = null
+let partiesTouched = false
+let failed: unknown = null
+function enqueue<T>(save: () => Promise<T>, done?: (r: T) => void): Promise<void> {
+  saving.value += 1
+  submitError.value = ''
+  tail = tail.then(async () => {
+    try { done?.(await save()) } catch (e) { failed ??= e }
+    if (saving.value === 1) await settle()
+    saving.value -= 1
+  })
+  return tail
+}
+async function settle() {
+  const error = failed
+  const info = latest
+  const touched = partiesTouched
+  failed = null
+  latest = null
+  partiesTouched = false
+  try {
+    const [p] = await Promise.all([
+      redactionApi.parties(props.task.id),
+      error || !info || touched ? loadSummary() : Promise.resolve(applyRedaction(info)),
+      loadOutbound(),
+    ])
+    parties.value = p.items
+    if (leaksShown.value) void leakPanel.value?.reload()
+  } catch { /* 网络中断：保持当前显示，下一次操作或刷新时对齐 */ }
+  if (error) {
+    handleError(error)
+    ElMessage.error({ message: `保存失败，已恢复为服务器上的结果${submitError.value ? `：${submitError.value}` : ''}`, duration: 6000 })
+  }
+}
+const decide = (save: () => Promise<RedactionInfo>) => enqueue(save, (info) => { latest = info })
+/** 乐观改写不确定项的显示状态（保留 / 改回替换），代号与位置等服务器返回后对齐。 */
+function patchSuspects(ids: number[], kept: boolean, category?: string) {
+  const set = new Set(ids)
+  const placeholders = new Set<string>()
+  suspects.value = suspects.value.map((s) => {
+    if (!set.has(s.id)) return s
+    if (kept && s.placeholder) placeholders.add(s.placeholder)
+    return kept
+      ? { ...s, decision: 'ignore', kept_by: 'user' as const, placeholder: null }
+      : { ...s, decision: 'pending', kept_by: null, category: category ?? s.category }
+  })
+  // 保留：画布上这些不确定项的胶囊立即还原为原文
+  if (placeholders.size) redactedItems.value = redactedItems.value.filter(it => !(it.detected_by === 'uncertain' && placeholders.has(it.placeholder)))
 }
 function handleError(e: unknown) {
   if (e instanceof ApiError) {
@@ -246,22 +302,17 @@ function countryOptions(p: Party): string[] {
   set.add(UNKNOWN_COUNTRY)
   return [...set]
 }
-/** 完整列表提交（后端要求）；成功后用返回值刷新，代号和外发文本随之重算。 */
-async function saveParties(next: Party[]) {
-  savingParties.value = true
-  try {
-    const res = await redactionApi.saveParties(props.task.id, next.map(p => ({
-      id: p.id,
-      is_our_party: p.is_our_party,
-      country: (p.country ?? '').trim() || UNKNOWN_COUNTRY,
-      org_type: (p.org_type ?? '').trim() || '类型未知',
-    })))
-    parties.value = res.items
-    await Promise.all([loadSummary(), loadOutbound()])
-  } catch (e) {
-    handleError(e)
-    try { parties.value = (await redactionApi.parties(props.task.id)).items } catch { /* 保持当前显示 */ }
-  } finally { savingParties.value = false }
+/** 完整列表提交（后端要求）：界面先改、后台保存；队列清空后代号和外发文本随之对齐。 */
+function saveParties(next: Party[]) {
+  if (locked.value) return
+  parties.value = next
+  partiesTouched = true
+  void enqueue(() => redactionApi.saveParties(props.task.id, next.map(p => ({
+    id: p.id,
+    is_our_party: p.is_our_party,
+    country: (p.country ?? '').trim() || UNKNOWN_COUNTRY,
+    org_type: (p.org_type ?? '').trim() || '类型未知',
+  }))))
 }
 function setOur(id: string) { void saveParties(parties.value.map(p => ({ ...p, is_our_party: p.id === id }))) }
 function setField(id: string, field: 'country' | 'org_type', value: string) {
@@ -283,7 +334,8 @@ const suspectSummary = computed(() => {
 const suspectsOpen = ref(false)
 const selectedId = ref<number | null>(null)
 const checked = ref<number[]>([])
-const locked = computed(() => deciding.value || waiting.value)
+// 后台保存不锁页面；只有加文件重新计算期间锁住
+const locked = computed(() => waiting.value)
 const canvas = ref<InstanceType<typeof ConfirmCanvas>>()
 watch(suspects, (rows) => {
   const ids = new Set(rows.map(s => s.id))
@@ -296,35 +348,29 @@ const keepIds = computed(() => suspects.value.filter(s => checked.value.includes
 const resetIds = computed(() => suspects.value.filter(s => checked.value.includes(s.id) && isKept(s)).map(s => s.id))
 const overLimit = computed(() => keepIds.value.length > 200 || resetIds.value.length > 200)
 
-async function act(fn: () => Promise<RedactionInfo>): Promise<boolean> {
-  if (locked.value) return false
-  deciding.value = true
-  submitError.value = ''
-  try {
-    await afterChange(await fn())
-    return true
-  } catch (e) {
-    handleError(e)
-    try { await loadSummary() } catch { /* 保持当前显示 */ }
-    return false
-  } finally { deciding.value = false }
-}
 function shortText(text: string): string { return Array.from(text).length > 12 ? `${Array.from(text).slice(0, 12).join('')}…` : text }
-async function resetOne(s: Suspect) { await act(() => redactionApi.decideSuspect(props.task.id, s.id, 'reset', null)) }
-async function keepOne(s: Suspect) {
-  if (isKept(s)) return
-  if (await act(() => redactionApi.decideSuspect(props.task.id, s.id, 'ignore', null))) {
-    toast(`已保留“${shortText(s.text)}”`, { action: { label: '撤销', onClick: () => void resetOne(s) } })
-  }
+function resetOne(s: Suspect) {
+  if (locked.value) return
+  patchSuspects([s.id], false)
+  void decide(() => redactionApi.decideSuspect(props.task.id, s.id, 'reset', null))
 }
-async function replaceOne(s: Suspect, category?: SuspectCategory) {
-  await act(() => redactionApi.decideSuspect(props.task.id, s.id, 'replace', category ?? (s.category as SuspectCategory | null) ?? 'ORG'))
+function keepOne(s: Suspect) {
+  if (locked.value || isKept(s)) return
+  patchSuspects([s.id], true)
+  void decide(() => redactionApi.decideSuspect(props.task.id, s.id, 'ignore', null))
+  toast(`已保留“${shortText(s.text)}”`, { action: { label: '撤销', onClick: () => resetOne(s) } })
+}
+function replaceOne(s: Suspect, category?: SuspectCategory) {
+  if (locked.value) return
+  const cat = category ?? (s.category as SuspectCategory | null) ?? 'ORG'
+  patchSuspects([s.id], false, cat)
+  void decide(() => redactionApi.decideSuspect(props.task.id, s.id, 'replace', cat))
 }
 /** T 键与行内按钮：保留中的改回替换（用户保留 → reset；记忆或本机判断保留 → 按默认类别替换）。 */
-async function restoreOne(s: Suspect) {
+function restoreOne(s: Suspect) {
   if (!isKept(s)) return
-  if (s.kept_by === 'memory' || s.kept_by === 'vector') await replaceOne(s)
-  else await resetOne(s)
+  if (s.kept_by === 'memory' || s.kept_by === 'vector') replaceOne(s)
+  else resetOne(s)
 }
 async function keepChecked() {
   const ids = [...keepIds.value]
@@ -332,12 +378,15 @@ async function keepChecked() {
   try {
     await ElMessageBox.confirm(`所选 ${ids.length} 组将按原文发送给模型。请确认其中没有公司名、人名等敏感信息。`, '保留所选', { type: 'warning', confirmButtonText: '保留原文', cancelButtonText: '取消' })
   } catch { return }
-  await act(() => redactionApi.batchSuspects(props.task.id, ids, 'ignore'))
+  if (locked.value) return
+  patchSuspects(ids, true)
+  void decide(() => redactionApi.batchSuspects(props.task.id, ids, 'ignore'))
 }
-async function resetChecked() {
+function resetChecked() {
   const ids = [...resetIds.value]
-  if (!ids.length || ids.length > 200) return
-  await act(() => redactionApi.batchSuspects(props.task.id, ids, 'reset'))
+  if (locked.value || !ids.length || ids.length > 200) return
+  patchSuspects(ids, false)
+  void decide(() => redactionApi.batchSuspects(props.task.id, ids, 'reset'))
 }
 function selectSuspect(s: Suspect) {
   selectedId.value = s.id
@@ -360,10 +409,17 @@ const liveText = computed(() => {
   const index = suspects.value.findIndex(item => item.id === s.id) + 1
   return `第 ${index} 组，共 ${suspects.value.length} 组：${s.text}，${isKept(s) ? '保留原文' : '已替换'}`
 })
-function onManualDone(info: RedactionInfo, action: 'add' | 'revoke') {
-  submitError.value = ''
-  ElMessage.success(action === 'revoke' ? '已撤销，脱敏结果已更新' : '已设为敏感信息')
-  void afterChange(info)
+/** 划选补充：画布上立即出现胶囊（代号等服务器分配），后台保存。 */
+function onManual(input: ManualInput) {
+  if (locked.value) return
+  redactedItems.value = [...redactedItems.value, { ...input, placeholder: '…', can_revoke: false, detected_by: 'manual' }]
+  void decide(() => redactionApi.manual(props.task.id, input))
+}
+/** 撤销误识别：先去掉这一处胶囊，保存后同一文字在全文恢复原样。 */
+function onRevoke(item: RedactionItemPos) {
+  if (locked.value) return
+  redactedItems.value = redactedItems.value.filter(it => it !== item)
+  void decide(() => redactionApi.revoke(props.task.id, { loc: item.loc, char_start: item.char_start, char_end: item.char_end }))
 }
 
 // ---- 外发回执 ----
@@ -373,9 +429,10 @@ const outboundLength = computed(() => outboundText.value.length)
 const reqDrawer = ref(false)
 const localDrawer = ref(false)
 const outboundDrawer = ref(false)
+// 后台保存中也可以点；点击后先等保存队列清空，有失败则停在本页（已回滚并提示）
 const canConfirm = computed(() =>
   (assistant.value ? ourCount.value <= 1 : ourCount.value === 1)
-  && !savingParties.value && !deciding.value && !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value)
+  && !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value)
 const confirmBox = ref<HTMLElement>()
 const confirmFlash = ref(false)
 // Ctrl+Enter 只聚焦按钮（3.6）。部分环境会把同一次按键再作为 Enter 送到新聚焦的按钮上，
@@ -387,6 +444,11 @@ async function confirmSend() {
   submitError.value = ''
   submitting.value = true
   try {
+    // 先等后台保存全部完成；有失败时界面已回滚并提示，停在本页
+    if (saving.value) {
+      await tail
+      if (submitError.value || !canConfirm.value) return
+    }
     // 撤销期内删除的文件仍在服务器上：先真删并等重算完成，用户看到更新后的回执再确认
     if (pendingDeletes.size()) { await pendingDeletes.flush(); return }
     if (assistant.value) await assistantApi.confirm(props.task.id)
@@ -432,36 +494,38 @@ useHotkeys({
 <template>
   <div class="wb" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
     <div class="canvas">
-      <div class="canvas-bar">
-        <span class="hint">{{ assistant ? '' : '按 ? 查看快捷键' }}</span>
-        <SiIsland v-if="island" :state="island.state" :text="island.text" />
-      </div>
+      <ConfirmCanvas ref="canvas" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @manual="onManual" @revoke="onRevoke" @keep="keepOne" @restore="restoreOne" @replace="replaceOne">
+        <template #bar>
+          <SiIsland v-if="island" :state="island.state" :text="island.text" />
+          <span v-else-if="saving" class="hint saving" aria-live="polite">正在后台保存…</span>
+          <button v-if="!assistant" type="button" class="hint keys-link" @click="helpOpen = true">按 ? 查看快捷键</button>
+        </template>
+      </ConfirmCanvas>
       <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
-      <ConfirmCanvas ref="canvas" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @done="onManualDone" @busy="deciding = $event" @stale="emit('stale')" @keep="keepOne" @restore="restoreOne" @replace="replaceOne" />
       <div v-if="dragging" class="drop-veil" aria-hidden="true">松开加入本任务</div>
     </div>
     <SplitHandle v-model="railWidth" reverse :min="RAIL_MIN" :max="RAIL_MAX" :default-value="RAIL_DEFAULT" :storage-key="RAIL_KEY" label="调整回执栏宽度" />
     <aside v-loading="loading" class="rail" :style="{ flexBasis: `${railWidth}px` }">
       <div class="rail-scroll">
         <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" />
-        <LeakPanel v-if="leaksShown" ref="leakPanel" :task-id="task.id" :files="files" :locked="locked" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" />
+        <LeakPanel v-if="leaksShown" ref="leakPanel" :task-id="task.id" :files="files" :locked="locked || saving > 0" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" />
 
         <section class="sec">
           <h3>签约方与我方<span class="sum">{{ parties.length ? `${parties.length} 方` : '' }}</span></h3>
-          <p v-if="assistant" class="hint">会话可以不设置我方，最多选择一方。<el-button link :disabled="savingParties" @click="setOur('')">不设我方</el-button></p>
+          <p v-if="assistant" class="hint">会话可以不设置我方，最多选择一方。<el-button link :disabled="waiting" @click="setOur('')">不设我方</el-button></p>
           <p v-if="!loading && !parties.length" class="warn">未识别到签约方：在原文中选中我方名称、类别选“公司”后再设为我方</p>
           <ul class="rows">
             <li v-for="p in parties" :key="p.id" class="party" :class="{ our: p.is_our_party }">
               <div class="party-line">
-                <el-radio :model-value="ourId" :value="p.id" :disabled="savingParties || waiting" :aria-label="`设 ${p.name} 为我方`" @change="setOur(p.id)"><span class="sr-only">我方</span></el-radio>
+                <el-radio :model-value="ourId" :value="p.id" :disabled="waiting" :aria-label="`设 ${p.name} 为我方`" @change="setOur(p.id)"><span class="sr-only">我方</span></el-radio>
                 <span class="party-name" :title="p.name">{{ p.name }}</span>
                 <span class="code">{{ p.code }}</span>
                 <span class="hint">{{ p.role_label }}</span>
                 <el-button link type="primary" @click="editingParty = editingParty === p.id ? '' : p.id">{{ editingParty === p.id ? '收起' : '编辑' }}</el-button>
               </div>
               <div v-if="editingParty === p.id" class="party-edit">
-                <el-select :model-value="p.country ?? UNKNOWN_COUNTRY" filterable allow-create default-first-option size="small" :disabled="savingParties" aria-label="国家" @change="(v: string) => setField(p.id, 'country', v)"><el-option v-for="c in countryOptions(p)" :key="c" :label="c" :value="c" /></el-select>
-                <el-select :model-value="p.org_type ?? '类型未知'" filterable allow-create default-first-option size="small" :disabled="savingParties" aria-label="类型" @change="(v: string) => setField(p.id, 'org_type', v)"><el-option v-for="t in ORG_TYPES" :key="t" :label="t" :value="t" /></el-select>
+                <el-select :model-value="p.country ?? UNKNOWN_COUNTRY" filterable allow-create default-first-option size="small" :disabled="waiting" aria-label="国家" @change="(v: string) => setField(p.id, 'country', v)"><el-option v-for="c in countryOptions(p)" :key="c" :label="c" :value="c" /></el-select>
+                <el-select :model-value="p.org_type ?? '类型未知'" filterable allow-create default-first-option size="small" :disabled="waiting" aria-label="类型" @change="(v: string) => setField(p.id, 'org_type', v)"><el-option v-for="t in ORG_TYPES" :key="t" :label="t" :value="t" /></el-select>
               </div>
             </li>
           </ul>
@@ -560,7 +624,7 @@ useHotkeys({
           <li v-else :class="{ met: ourCount === 1 }">{{ ourCount === 1 ? '✓ 已选择我方' : !parties.length ? '未识别到签约方，暂时不能提交 AI 审核' : '请先选择哪一方是我方' }}</li>
           <li v-if="waiting || parsingFiles">文件正在解析，请稍候</li>
           <li v-if="failedFiles">有解析失败的文件，请先删除</li>
-          <li v-if="savingParties || deciding">正在保存修改……</li>
+          <li v-if="saving" class="met">修改正在后台保存，确认发送时会等保存完成</li>
           <li v-if="loading">正在读取脱敏信息……</li>
         </ul>
         <div ref="confirmBox" class="confirm-btn" :class="{ flash: confirmFlash }">
@@ -582,11 +646,17 @@ useHotkeys({
 </template>
 
 <style scoped>
-.wb { display: flex; flex: 1; min-height: 0; box-sizing: border-box; padding: 12px 0 20px; }
-.canvas { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.canvas-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
+/* 工作台（V31-U5F-03 问题 2B）：高度固定为容器（可视区），左侧文档、右侧栏各自滚动。
+   height: 100% 让块级容器（助手、会议纪要、翻译的全屏对话框）里同样固定高度，不再随文档拉伸 */
+.wb { display: flex; flex: 1; height: 100%; min-height: 0; box-sizing: border-box; padding: 12px 0 20px; overflow: hidden; }
+.canvas { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.canvas :deep(.stage) { padding-top: 2px; }
+.keys-link { flex: none; padding: 0; border: 0; background: transparent; cursor: pointer; white-space: nowrap; }
+.keys-link:hover { color: var(--el-color-primary); }
+.saving { white-space: nowrap; }
 .drop-veil { position: absolute; inset: 0; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: var(--si-radius-card); background: color-mix(in srgb, var(--el-color-primary-light-9) 85%, transparent); color: var(--el-color-primary); font: var(--si-font-h4); pointer-events: none; }
-.rail { flex: 0 0 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); }
+/* 右栏顶端与纸面顶端对齐：让出页签行（32px）、间距（8px）与纸面上方 2px；“即将发送”与确认按钮固定在栏底 */
+.rail { flex: 0 0 auto; min-width: 0; min-height: 0; margin-top: 42px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); }
 .rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px; display: flex; flex-direction: column; gap: 4px; }
 .sec { padding: 12px 0; }
 .sec + .sec { border-top: 1px solid var(--el-border-color-lighter); }

@@ -41,7 +41,12 @@ const emit = defineEmits<{
 
 const fx = useFx()
 const categoryOptions = toOptions(CATEGORY_OPTIONS)
-const handlingOptions = toOptions(HANDLING_OPTIONS)
+// 处理状态计数切换（V31-U5F-03 问题 7）：计数随等级、类别筛选变化
+const handlingCounts = computed(() => {
+  const list = (props.run?.findings ?? []).filter(f => (!severity.value || f.severity === severity.value) && (!category.value || f.category === category.value))
+  const n = (s: string) => list.filter(f => f.handling_status === s).length
+  return [{ value: '', label: `全部 ${list.length}` }, ...Object.entries(HANDLING_OPTIONS).map(([value, label]) => ({ value, label: `${label} ${n(value)}` }))]
+})
 const localCount = ref<number | null>(null)
 const zoneOptions = computed(() => [
   { value: 'ai' as const, label: `AI 建议 ${props.run?.findings.length ?? 0}` },
@@ -87,8 +92,8 @@ watch(() => props.selectedId, async (id) => {
         <template v-if="run">
           <ZoneHeader kind="ai" :count="findings.length">
             <el-select v-model="category" clearable placeholder="类别" size="small" class="filter"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
-            <el-select v-model="handling" clearable placeholder="处理状态" size="small" class="filter"><el-option v-for="o in handlingOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
           </ZoneHeader>
+          <div class="handling-switch"><SiSegmented v-model="handling" :options="handlingCounts" size="small" ariaLabel="按处理状态筛选" /></div>
           <TransitionGroup name="si-list" tag="div" class="cards" :appear="stagger">
             <FindingCard v-for="(f, i) in findings" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled"
               :style="stagger && i < 12 ? { transitionDelay: `${i * 30}ms` } : undefined"
@@ -121,5 +126,8 @@ watch(() => props.selectedId, async (id) => {
 .zone-switch :deep(.si-segmented button) { flex: 1; }
 .zone { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 16px 16px; }
 .filter { width: 104px; }
+.handling-switch { margin: 4px 0 8px; }
+.handling-switch :deep(.si-segmented) { display: flex; width: 100%; }
+.handling-switch :deep(.si-segmented button) { flex: 1; }
 .cards { position: relative; display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 </style>

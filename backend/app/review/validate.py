@@ -439,7 +439,8 @@ def retry_message(error: OutputError) -> str:
 
 
 def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uuid.UUID,
-                chunk: Chunk | None = None, nodes: dict[str, DocNodeView] | None = None, on_send=None) -> ValidatedReview:
+                chunk: Chunk | None = None, nodes: dict[str, DocNodeView] | None = None, on_send=None,
+                on_delta=None) -> ValidatedReview:
     """调用模型并校验；输出无法解析或不符合结构时重试 1 次，仍失败抛出 OutputError。网关错误（GatewayError）原样抛出。
 
     chunk 为分段审核的一段（只有 1 段时传 None，消息与 M2 相同）；nodes 可由调用方预先加载，分段时各段共用。
@@ -451,7 +452,7 @@ def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uui
     call_ids: list[int] = []
     for attempt in range(2):
         result = call_model(db, model_id=run.model_id, purpose="review", messages=messages, user_id=user_id, task_id=ctx.task.id,
-                            task_title=ctx.task.title, run_id=run.id, on_send=on_send)
+                            task_title=ctx.task.title, run_id=run.id, on_send=on_send, on_delta=on_delta)
         tokens_in += result.tokens_in
         tokens_out += result.tokens_out
         call_ids.append(result.llm_call_id)

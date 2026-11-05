@@ -77,15 +77,14 @@ async function copy(text: string) {
 </script>
 
 <template>
-  <article class="card" :class="[`severity-${f.severity}`, { selected }]">
+  <article class="card" :class="[`severity-${f.severity}`, `h-${status}`, { selected }]">
     <div class="head" role="button" tabindex="0" :aria-expanded="!!selected" @click="emit('select', f)" @keydown.enter.self.prevent="emit('select', f)" @keydown.space.self.prevent="emit('select', f)">
       <span class="no">{{ no }}</span>
       <div class="main">
-        <div class="title"><MarkedText :text="f.title" :marks="f.marks.title" /><span v-if="f.unresolved > 0" class="unresolved">{{ f.unresolved }} 处未能还原</span></div>
+        <div class="title"><span v-if="status === 'adopted'" class="h-tag h-tag--adopted">✓ 已采纳</span><span v-else-if="status === 'ignored'" class="h-tag h-tag--ignored">已忽略</span><MarkedText :text="f.title" :marks="f.marks.title" /><span v-if="f.unresolved > 0" class="unresolved">{{ f.unresolved }} 处未能还原</span></div>
         <div class="meta">{{ meta }}</div>
       </div>
       <el-tag :type="SEVERITY_TAG[f.severity] ?? 'info'" size="small" round>{{ severityLabel(f.severity) }}</el-tag>
-      <i class="dot" :class="`dot-${f.handling_status}`" :title="HANDLING_OPTIONS[f.handling_status]" />
     </div>
 
     <div v-if="selected" class="body">
@@ -130,6 +129,15 @@ async function copy(text: string) {
 .card.severity-medium::before { background: var(--si-warn); }
 .card:hover { border-color: var(--si-card-hover-border); }
 .card.selected { border-color: var(--el-color-primary); box-shadow: 0 0 0 1px var(--el-color-primary); }
+/* 处理状态（V31-U5F-03 问题 7）：已采纳绿色条并降亮，已忽略整卡变灰；选中时恢复全亮便于阅读 */
+.card.h-adopted::before { background: var(--si-ok); }
+.card.h-ignored::before { background: var(--si-ink-3); }
+.card.h-adopted:not(.selected) .head { opacity: .72; }
+.card.h-ignored:not(.selected) .head { opacity: .55; filter: grayscale(1); }
+.card.h-ignored:not(.selected) .title { color: var(--si-ink-3); }
+.h-tag { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: var(--si-radius-tag); font: var(--si-font-label-sm); line-height: 20px; vertical-align: 1px; }
+.h-tag--adopted { background: var(--el-color-success-light-9); color: var(--si-ok-ink); }
+.h-tag--ignored { background: var(--si-surface-2); color: var(--si-ink-3); }
 .head { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px 10px 16px; cursor: pointer; border-radius: var(--si-radius-card); }
 .head:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }
 .no { flex: none; padding-top: 1px; font: var(--si-font-code-sm); color: var(--si-ink-3); }
@@ -137,9 +145,6 @@ async function copy(text: string) {
 .title { font: var(--si-font-h4); color: var(--el-text-color-primary); overflow-wrap: anywhere; }
 .unresolved { margin-left: 6px; font: var(--si-font-label-sm); color: var(--si-warn-ink); }
 .meta { margin-top: 2px; font: var(--si-font-caption); color: var(--si-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dot { flex: none; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; }
-.dot-adopted { background: var(--el-color-primary); }
-.dot-ignored { background: var(--si-ink-3); }
 .body { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 12px 16px; }
 .quote { margin: 0; padding: 6px 12px; border-left: 3px solid var(--si-hair-strong); background: var(--si-surface-2); color: var(--si-ink-2); font: var(--si-font-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 .row { display: flex; flex-direction: column; gap: 2px; }

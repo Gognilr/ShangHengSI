@@ -54,6 +54,9 @@ export interface RedactionInfo {
   items: RedactionItemPos[]
 }
 
+/** 划选补充脱敏的位置与类别 */
+export interface ManualInput { loc: string; char_start: number; char_end: number; category: UserCategory }
+
 /** 确认脱敏页的十类；追问界面仍只提供既有三类。 */
 export type UserCategory = 'ORG' | 'PERSON' | 'IM' | 'ACCOUNT' | 'IDNO' | 'REFNO' | 'ADDR' | 'AMOUNT' | 'PROJECT' | 'CUSTOM'
 /** 不确定项“替换”可用的类别：手动补充的十类加默认类别 NAME、TERM。 */

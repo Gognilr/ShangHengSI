@@ -113,7 +113,7 @@ export interface RunDetail {
   finished_at: string | null
   queue_position: number | null
   chunk_count: number
-  progress: { done: number; total: number; sent?: number } | null  // sent：已复检并发出的分段数
+  progress: { done: number; total: number; sent?: number; received?: number } | null  // sent：已复检并发出的分段数；received：已流式收到的回复字数
   coverage: Coverage | null
   doc_summary: string | null
   doc_summary_marks: Mark[]

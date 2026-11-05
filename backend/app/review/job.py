@@ -13,6 +13,7 @@ import copy
 import json
 import logging
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -49,6 +50,7 @@ MSG_LOCAL_ONLY = "该任务的外发策略为不外发，未调用模型"
 MSG_BAD_OUTPUT = "模型返回的内容不符合要求，请稍后重新审核"
 MSG_INTERNAL = jobs.REVIEW_INTERNAL_MSG
 CHUNK_PARALLEL = 3  # 一轮最多同时发送的分段数（V31-U5F-01）
+PROGRESS_WRITE_S = 1.0  # 流式接收字数写入进度的最短间隔（V31-U5F-03）
 
 
 def _reload(db: Session, run_id: uuid.UUID) -> tuple[ReviewRun, Task] | None:
@@ -263,19 +265,30 @@ def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, Rev
     sent: set[int] = set()
     done = 0
     blocked: list[GatewayError] = []
+    received: dict[int, int] = {}  # 各段本次尝试已流式收到的字数（V31-U5F-03）
+    last_write = 0.0
 
     def write_progress() -> None:  # 调用方持有 lock：按顺序写，旧的计数不会覆盖新的
+        nonlocal last_write
+        last_write = time.monotonic()
         with Session(bind=bind) as s:
             row = s.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update())
             if row is not None and row.status == "running":
                 row.chunk_count = total
-                row.coverage = {"progress": {"done": done, "total": total, "sent": len(sent)}}
+                row.coverage = {"progress": {"done": done, "total": total, "sent": len(sent),
+                                             "received": sum(received.values())}}
             s.commit()
 
     def mark_sent(index: int) -> None:
         with lock:
             if index not in sent:
                 sent.add(index)
+                write_progress()
+
+    def mark_received(index: int, chars: int) -> None:
+        with lock:
+            received[index] = chars
+            if time.monotonic() - last_write >= PROGRESS_WRITE_S:  # 节流：最多每秒写一次
                 write_progress()
 
     def one(chunk: Chunk, snapshot: ReviewContext) -> ChunkOutcome | None:
@@ -291,7 +304,8 @@ def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, Rev
             part = chunk if chunk.total > 1 else None
             try:
                 review = review_once(s, snapshot, run=row, user_id=row.created_by, chunk=part, nodes=nodes,
-                                     on_send=lambda: mark_sent(chunk.index))
+                                     on_send=lambda: mark_sent(chunk.index),
+                                     on_delta=lambda n: mark_received(chunk.index, n))
                 outcome = ChunkOutcome(chunk, review)
             except GatewayError as exc:
                 if exc.code == "BLOCKED":

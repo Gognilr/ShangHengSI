@@ -159,3 +159,23 @@ def test_inter_delta_timeout_keeps_first_delta(env, db_sessionmaker, monkeypatch
         assert caught.value.code == "TIMEOUT"
         row = db.scalar(select(LlmCall))
         assert row.status == "error" and row.response_text == "first"
+
+
+def test_review_streams_through_call_model(env, db_sessionmaker, monkeypatch):
+    """V31-U5F-03：审核传 on_delta 时流式接收、回调累计字数；记录与非流式相同。整段 JSON 回复同样可用。"""
+    requests = transport(monkeypatch, ("{\"a\":", "1}"))
+    seen = []
+    with db_sessionmaker() as db:
+        result = gateway.call_model(db, model_id=1, purpose="review", messages=[{"role": "user", "content": "普通问题"}],
+                                    on_delta=seen.append)
+        row = db.scalar(select(LlmCall))
+        assert (row.status, row.response_text, row.tokens_in, row.tokens_out) == ("sent", '{"a":1}', 12, 7)
+    assert result.content == '{"a":1}' and seen == [5, 7]
+    assert json.loads(requests[0].content)["stream"] is True
+    monkeypatch.setattr(gateway, "TRANSPORT", httpx.MockTransport(lambda r: httpx.Response(200, json={
+        "choices": [{"message": {"content": "整段"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}})))
+    seen.clear()
+    with db_sessionmaker() as db:
+        assert gateway.call_model(db, model_id=2, purpose="review", messages=[{"role": "user", "content": "问题"}],
+                                  on_delta=seen.append).content == "整段"
+    assert seen == [2]

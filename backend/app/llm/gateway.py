@@ -6,6 +6,7 @@ call_model() 依次执行：读取模型 → 调用上限检查 → 出口复检
 - 请求体：model、messages、temperature、max_tokens，json_mode 开启时加 response_format，再合并附加请求参数。
   附加请求参数不能覆盖 messages（否则可绕过出口复检），该键被忽略。
 - llm_calls 用独立的数据库会话写入并立即提交：调用方回滚自己的事务时，外发记录仍然保留。
+- 审核调用传 on_delta 时流式接收（V31-U5F-03），只改接收方式，上限、复检、记录与重试不变。
 - API 密钥只出现在请求头中；写入 llm_calls 的文字中若出现密钥原文一律替换为 ***；日志只写记录 id、用途、状态、耗时。
 """
 import json
@@ -175,12 +176,14 @@ def call_model(db: Session, *, model_id: int, purpose: str, messages: list[dict]
                user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
                task_title: str | None = None, run_id: uuid.UUID | None = None,
                json_mode: bool | None = None, timeout_s: float | None = None,
-               retry: bool = True, extra_task_ids=(), on_send=None) -> ModelResult:
-    """on_send：出口复检通过、即将发出时调用（审核中进度用，V31-U5F-01），不改变检查顺序。"""
+               retry: bool = True, extra_task_ids=(), on_send=None, on_delta=None) -> ModelResult:
+    """on_send：出口复检通过、即将发出时调用（审核中进度用，V31-U5F-01），不改变检查顺序。
+    on_delta：给出时流式接收回复，以本次尝试累计收到的字数回调（审核中“已收到约 n 字”，V31-U5F-03）；
+    上限检查、出口复检、记录与重试和非流式完全相同。"""
     return _call_config(db, cfg=load_model(db, model_id), purpose=purpose, messages=messages,
                         user_id=user_id, task_id=task_id, task_title=task_title, run_id=run_id,
                         json_mode=json_mode, timeout_s=timeout_s, retry=retry, extra_task_ids=extra_task_ids,
-                        on_send=on_send)
+                        on_send=on_send, on_delta=on_delta)
 
 
 def precheck(db: Session, *, model_id: int, purpose: str, messages: list[dict], user_id: uuid.UUID | None = None,
@@ -215,6 +218,7 @@ def _call_config(
     retry: bool = True,
     extra_task_ids=(),
     on_send=None,
+    on_delta=None,
 ) -> ModelResult:
     """调用模型。成功返回 ModelResult；失败抛出 GatewayError（code 见 MESSAGES）。
 
@@ -257,8 +261,11 @@ def _call_config(
     body = _build_body(cfg, messages, cfg.json_mode if json_mode is None else json_mode)
     if purpose == "assist":
         body["stream"] = False
+        on_delta = None
         if json_mode is True:
             body["response_format"] = {"type": "json_object"}
+    elif on_delta is not None:
+        body["stream"], body["stream_options"] = True, {"include_usage": True}
     request_text = json.dumps(body, ensure_ascii=False)
     url = cfg.base_url.rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {cfg.api_key}", "Content-Type": "application/json"}
@@ -267,7 +274,7 @@ def _call_config(
         if attempt:
             time.sleep(RETRY_DELAYS[attempt - 1])
         started = time.monotonic()
-        outcome = _send_once(cfg, url, headers, request_text)
+        outcome = _send_once(cfg, url, headers, request_text, on_delta)
         duration = int((time.monotonic() - started) * 1000)
         if isinstance(outcome, _Failure):
             kept = outcome.response_text[:_RESPONSE_KEEP_CHARS] if outcome.response_text else None
@@ -296,8 +303,12 @@ class _Failure:
     response_text: str | None = None
 
 
-def _send_once(cfg: _Config, url: str, headers: dict, request_text: str) -> tuple[str, int, int] | _Failure:
-    """发送一次。4xx（408、429 等除外）不重试：密钥错误、参数错误重试也不会成功。"""
+def _send_once(cfg: _Config, url: str, headers: dict, request_text: str,
+               on_delta=None) -> tuple[str, int, int] | _Failure:
+    """发送一次。4xx（408、429 等除外）不重试：密钥错误、参数错误重试也不会成功。
+    on_delta 不为空时请求体已带 stream=true，改为流式接收，每收到一段回复就以本次累计字数回调（V31-U5F-03）。"""
+    if on_delta is not None:
+        return _send_stream(cfg, url, headers, request_text, on_delta)
     try:
         with httpx.Client(timeout=cfg.timeout_s, transport=TRANSPORT, trust_env=False,
                           follow_redirects=False) as client:
@@ -314,6 +325,82 @@ def _send_once(cfg: _Config, url: str, headers: dict, request_text: str) -> tupl
         return _parse_response(resp)
     except (ValueError, KeyError, IndexError, TypeError):
         return _Failure(GatewayError("BAD_RESPONSE"), True, resp.text)
+
+
+def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
+                 on_delta) -> tuple[str, int, int] | _Failure:
+    """流式发送一次（审核用）：失败分类与 _send_once 相同。服务端忽略 stream、直接返回整段 JSON（application/json）时按普通回复解析。
+    两段数据之间超过 cfg.timeout_s 或总时长超过 max(STREAM_TOTAL_SECONDS, cfg.timeout_s) 记为超时。"""
+    parts: list[str] = []
+    tokens_in = tokens_out = 0
+    received = 0
+    started = time.monotonic()
+
+    def notify(n: int) -> None:  # 进度回调失败不能影响发送与记录
+        try:
+            on_delta(n)
+        except Exception:
+            logger.warning("流式进度回调失败（已忽略）")
+
+    total_s = max(STREAM_TOTAL_SECONDS, cfg.timeout_s)
+    try:
+        with httpx.Client(timeout=cfg.timeout_s, transport=TRANSPORT, trust_env=False,
+                          follow_redirects=False) as client:
+            with client.stream("POST", url, content=request_text.encode("utf-8"), headers=headers) as resp:
+                if resp.status_code != 200:
+                    resp.read()
+                    retry = resp.status_code >= 500 or resp.status_code in _RETRYABLE_STATUS
+                    return _Failure(GatewayError("HTTP_ERROR", f"{MESSAGES['HTTP_ERROR']}（HTTP {resp.status_code}）",
+                                                 detail=_error_detail(resp.text, cfg.api_key)), retry, resp.text)
+                if "application/json" in resp.headers.get("content-type", ""):
+                    resp.read()
+                    try:
+                        content, tokens_in, tokens_out = _parse_response(resp)
+                    except (ValueError, KeyError, IndexError, TypeError):
+                        return _Failure(GatewayError("BAD_RESPONSE"), True, resp.text)
+                    notify(len(content))
+                    return content, tokens_in, tokens_out
+                complete = False
+                pending: list[str] = []
+                lines = resp.iter_lines()
+                for line in lines:
+                    if time.monotonic() - started > total_s:
+                        return _Failure(GatewayError("TIMEOUT"), True, "".join(parts) or None)
+                    if line.startswith("data:"):
+                        pending.append(line[5:].lstrip(" "))
+                        continue
+                    if line or not pending:
+                        continue
+                    data, pending = "\n".join(pending), []
+                    if data == "[DONE]":
+                        complete = True
+                        break
+                    payload = json.loads(data)
+                    if not isinstance(payload, dict) or "error" in payload:
+                        raise ValueError("event")
+                    use = payload.get("usage") or {}
+                    tokens_in = int(use.get("prompt_tokens") or tokens_in)
+                    tokens_out = int(use.get("completion_tokens") or tokens_out)
+                    for choice in payload.get("choices") or []:
+                        piece = (choice.get("delta") or {}).get("content")
+                        if piece:
+                            if not isinstance(piece, str):
+                                raise ValueError("content")
+                            parts.append(piece)
+                            received += len(piece)
+                            notify(received)
+                        if choice.get("finish_reason") is not None:
+                            complete = True  # 继续读到 [DONE]，用量常在最后一个事件中
+                if not complete:
+                    return _Failure(GatewayError("BAD_RESPONSE"), True, "".join(parts) or None)
+    except httpx.TimeoutException:
+        return _Failure(GatewayError("TIMEOUT"), True, "".join(parts) or None)
+    except httpx.HTTPError as exc:
+        return _Failure(GatewayError("HTTP_ERROR", f"{MESSAGES['HTTP_ERROR']}（{type(exc).__name__}）"), True,
+                        "".join(parts) or None)
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+        return _Failure(GatewayError("BAD_RESPONSE"), True, "".join(parts) or None)
+    return "".join(parts), tokens_in, tokens_out
 
 
 _DETAIL_MAX = 300

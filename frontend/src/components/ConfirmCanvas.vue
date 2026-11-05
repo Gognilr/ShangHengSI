@@ -3,7 +3,7 @@ import { ElMessageBox } from 'element-plus'
 import { computed, h, nextTick, reactive, ref, watch, type FunctionalComponent, type VNode } from 'vue'
 import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode, type PreviewNodes } from '@/api/preview'
-import { REDACTION_ERROR_MESSAGES, redactionApi, type RedactionInfo, type RedactionItemPos, type Suspect, type SuspectCategory, type UserCategory } from '@/api/redaction'
+import type { ManualInput, RedactionItemPos, Suspect, SuspectCategory, UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
 import DocPreview from '@/components/DocPreview.vue'
 import DocSpectrum, { type SpectrumTick } from '@/components/result/DocSpectrum.vue'
@@ -39,10 +39,10 @@ const props = defineProps<{
   rawHighlight?: string[]
 }>()
 const isResult = computed(() => props.mode === 'result')
+// 手动补充与撤销只发事件，由确认工作台乐观更新并放进保存队列（V31-U5F-03）
 const emit = defineEmits<{
-  done: [info: RedactionInfo, action: 'add' | 'revoke']
-  busy: [value: boolean]
-  stale: []
+  manual: [input: ManualInput]
+  revoke: [item: RedactionItemPos]
   keep: [s: Suspect]
   restore: [s: Suspect]
   replace: [s: Suspect, category?: SuspectCategory]
@@ -244,8 +244,7 @@ const NodeText: FunctionalComponent<{ nv: NodeView; ai: boolean; selId: number |
     if (g.item) attrs['data-item'] = `${g.item.loc}|${g.item.char_start}|${g.item.char_end}`
     if (g.sid !== undefined) attrs['data-sid'] = g.sid
     if (g.k === 'kept') return h('span', attrs, g.text)
-    if (ai) { attrs.class = [g.k === 'unc' ? 'code unc' : 'code', { sel: selected }]; return h('span', attrs, g.item!.placeholder) }
-    attrs.title = g.k === 'unc' ? `不确定是否敏感，已默认替换为 ${g.item!.placeholder}` : `${REDACTION_CATEGORY[g.item!.category] ?? g.item!.category} · 发送为 ${g.item!.placeholder}`
+    if (ai) { attrs.class = [g.k === 'unc' ? 'code unc' : 'code', { sel: selected }]; attrs['data-orig'] = g.text; return h('span', attrs, g.item!.placeholder) }
     return h('span', attrs, g.text)
   })
   return h('span', { class: ai ? 'ai-txt' : 'txt', 'data-loc': nv.node.loc }, kids)
@@ -299,23 +298,15 @@ async function popRevoke() {
   try {
     await ElMessageBox.confirm('撤销后，同一文字将在全文恢复原样。确认它不是敏感信息后再撤销。', '撤销误识别', { type: 'warning', confirmButtonText: '撤销', cancelButtonText: '取消' })
   } catch { return }
-  emit('busy', true)
-  try {
-    emit('done', await redactionApi.revoke(props.taskId, { loc: item.loc, char_start: item.char_start, char_end: item.char_end }), 'revoke')
-  } catch (e) {
-    pickError.value = e instanceof ApiError ? REDACTION_ERROR_MESSAGES[e.code] ?? e.message : '撤销失败，请重试'
-    if (e instanceof ApiError && e.code === 'TASK_STATE_CONFLICT') emit('stale')
-  } finally { emit('busy', false) }
+  emit('revoke', item)
 }
 
 // ---- 划选补充脱敏 ----
 const pick = ref<TextSelection | null>(null)
 const pickPos = ref({ left: 0, top: 0 })
 const pickNotice = ref('')
-const pickError = ref('')
 const pickCategory = ref<UserCategory>('ORG')
-const pickSaving = ref(false)
-function clearPick() { pick.value = null; pickNotice.value = ''; pickError.value = '' }
+function clearPick() { pick.value = null; pickNotice.value = '' }
 watch(activeId, id => { clearPick(); closePop(); void loadFile(id) }, { immediate: true })
 // 结果页“追问这段”（V31-U3 3.3）：预填“关于“{选中文字}”（{可读位置}）：”
 const ask = ref<{ loc: string; text: string } | null>(null)
@@ -346,7 +337,7 @@ function submitAsk() {
 }
 function onPaperMouseUp() {
   if (isResult.value) { onAskMouseUp(); return }
-  if (view.value !== 'orig' || pickSaving.value) return
+  if (view.value !== 'orig') return
   const result = readTextSelection(itemsByLoc.value)
   clearPick()
   if (!result || !wrap.value) return
@@ -356,21 +347,12 @@ function onPaperMouseUp() {
   pick.value = s
   pickPos.value = { left: Math.max(8, Math.min(s.rect.left - outer.left, outer.width - 420)), top: Math.max(4, s.rect.top - outer.top - 48) }
 }
-async function submitPick() {
+function submitPick() {
   const s = pick.value
   if (!s || props.locked) return
-  pickSaving.value = true
-  pickError.value = ''
-  emit('busy', true)
-  try {
-    const info = await redactionApi.manual(props.taskId, { loc: s.loc, char_start: s.start, char_end: s.end, category: pickCategory.value })
-    window.getSelection()?.removeAllRanges()
-    clearPick()
-    emit('done', info, 'add')
-  } catch (e) {
-    pickError.value = e instanceof ApiError ? REDACTION_ERROR_MESSAGES[e.code] ?? e.message : '操作失败，请重试'
-    if (e instanceof ApiError && e.code === 'TASK_STATE_CONFLICT') emit('stale')
-  } finally { pickSaving.value = false; emit('busy', false) }
+  window.getSelection()?.removeAllRanges()
+  clearPick()
+  emit('manual', { loc: s.loc, char_start: s.start, char_end: s.end, category: pickCategory.value })
 }
 
 // ---- 定位（4.4） ----
@@ -427,7 +409,29 @@ function onSeek(ratio: number) {
   const box = scroller.value
   if (box) box.scrollTop = ratio * box.scrollHeight - box.clientHeight / 2
 }
-function onStageScroll() { closePop(); ask.value = null }
+function onStageScroll() { closePop(); ask.value = null; tip.value = null }
+
+// ---- 悬停胶囊（V31-U5F-03 问题 8）：AI 视野悬停代号显示“原文：…”，原文视图悬停显示代号；只在本机浏览器显示 ----
+interface Tip { left: number; top: number; label: string; text: string; ai: boolean }
+const tip = ref<Tip | null>(null)
+function onPaperOver(event: MouseEvent) {
+  const el = (event.target as HTMLElement).closest<HTMLElement>('[data-item]')
+  if (!el || !wrap.value || pop.value) { tip.value = null; return }
+  const [loc, s, e] = el.dataset.item!.split('|')
+  const item = props.items.find(it => it.loc === loc && it.char_start === Number(s) && it.char_end === Number(e))
+  if (!item) { tip.value = null; return }
+  const box = el.getBoundingClientRect()
+  const outer = wrap.value.getBoundingClientRect()
+  const ai = view.value === 'ai'
+  const above = box.top - outer.top - 34
+  tip.value = {
+    left: Math.max(8, Math.min(box.left - outer.left, outer.width - 320)),
+    top: above >= 0 ? above : box.bottom - outer.top + 6,
+    ai,
+    label: ai ? '原文' : item.detected_by === 'uncertain' ? '不确定是否敏感，已默认发送为' : `${REDACTION_CATEGORY[item.category] ?? item.category} · 发送为`,
+    text: ai ? (el.dataset.orig ?? '') : item.placeholder,
+  }
+}
 defineExpose({ locate, switchFile, toggleView, cancel })
 </script>
 
@@ -441,6 +445,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       </div>
       <span v-else class="spacer" />
       <SiSegmented v-model="view" :options="viewOptions" size="small" ariaLabel="原文或 AI 视野" />
+      <div v-if="$slots.bar" class="cv-extra"><slot name="bar" /></div>
     </div>
 
     <DocPreview v-if="view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? []" />
@@ -449,7 +454,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       <el-alert v-if="active?.error" type="error" show-icon :closable="false" :title="active.error" />
       <el-empty v-else-if="active && !active.loading && !active.available" description="原文已按保留期清理" />
       <el-empty v-else-if="active && !active.loading && !blocks.length" description="没有可显示的正文" />
-      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp">
+      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null">
         <template v-for="(b, bi) in blocks" :key="bi">
           <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv)]" :data-node="b.nv.node.loc">
             <div v-if="b.nv.node.kind === 'utterance'" class="utterance-meta"><span :class="{ code: view === 'ai' && b.nv.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nv.node.speaker_code : utteranceLabel(b.nv.node) }}</span> · {{ stamp(b.nv.node.t_start_ms ?? 0) }}</div>
@@ -496,18 +501,20 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       </template>
     </div>
 
+    <div v-if="tip && !pop" class="tip" :style="{ left: `${tip.left}px`, top: `${tip.top}px` }" aria-hidden="true">
+      <span class="tip-label">{{ tip.label }}{{ tip.ai ? '：' : '' }}</span><span :class="tip.ai ? 'tip-orig' : 'code-tag'">{{ tip.text }}</span>
+    </div>
     <div v-if="ask" class="pickbar" :style="{ left: `${pickPos.left}px`, top: `${pickPos.top}px` }">
       <el-button type="primary" size="small" @mousedown.prevent @click="submitAsk">追问这段</el-button>
     </div>
-    <div v-if="pick || pickNotice || pickError" class="pickbar" :style="{ left: `${pickPos.left}px`, top: `${pickPos.top}px` }">
+    <div v-if="pick || pickNotice" class="pickbar" :style="{ left: `${pickPos.left}px`, top: `${pickPos.top}px` }">
       <template v-if="pick">
         <span class="pick-label">补充脱敏</span>
         <el-select v-model="pickCategory" size="small" class="pick-cat" aria-label="类别"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
-        <el-button type="primary" size="small" :loading="pickSaving" :disabled="locked" @click="submitPick">设为敏感信息</el-button>
+        <el-button type="primary" size="small" :disabled="locked" @click="submitPick">设为敏感信息</el-button>
         <span v-if="locked" class="pick-note">正在重新计算，请稍候</span>
       </template>
       <span v-if="pickNotice" class="pick-note">{{ pickNotice }}</span>
-      <span v-if="pickError" class="pick-err">{{ pickError }}</span>
     </div>
   </div>
 </template>
@@ -516,12 +523,14 @@ defineExpose({ locate, switchFile, toggleView, cancel })
 .utterance-meta { color: var(--si-paper-ink-2); font: var(--si-font-meta); margin-bottom: 4px; }
 .kind-utterance { content-visibility: auto; contain-intrinsic-size: auto 80px; }
 .cv { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
-.cv-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cv-bar { flex: none; height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cv-extra { flex: none; display: flex; align-items: center; gap: 12px; }
 .spacer { flex: 1; }
-.tabs { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; }
-.tab { flex: none; max-width: 220px; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
+/* 文件页签（V31-U5F-03 问题 6）：选中为主色文字 + 加粗 + 下划线，未选中为次要色；确认页与结果页同款 */
+.tabs { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tab { flex: none; max-width: 220px; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; transition: color var(--si-dur-1) var(--si-ease), border-color var(--si-dur-1) var(--si-ease); }
 .tab:hover { color: var(--si-ink-1); }
-.tab.on { background: var(--si-surface-2); color: var(--si-ink-1); }
+.tab.on { border-bottom-color: var(--el-color-primary); color: var(--el-color-primary); font-weight: 600; }
 .tab:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-n { flex: none; padding: 0 6px; border-radius: 999px; background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-label-sm); }
@@ -575,10 +584,13 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 
 .pop, .pickbar { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 420px; padding: 8px 10px; border-radius: 10px; background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-2); }
 .pop { width: 268px; }
+.tip { position: absolute; z-index: 19; display: flex; align-items: center; gap: 6px; max-width: 312px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-2); pointer-events: none; white-space: nowrap; }
+.tip-label { flex: none; color: var(--si-ink-3); font: var(--si-font-label-sm); }
+.tip-orig { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-radius: 4px; background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-label); }
+.tip .code-tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pop-text { flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; font: var(--si-font-body); }
 .code-tag { padding: 0 6px; border-radius: 4px; background: var(--si-code-bg); color: var(--si-code-ink); font-family: var(--si-font-mono); font-size: 12px; }
 .pick-label { font: var(--si-font-label-sm); color: var(--si-ink-3); }
 .pick-cat { width: 110px; }
 .pick-note { color: var(--el-color-warning); font: var(--si-font-caption); }
-.pick-err { color: var(--el-color-danger); font: var(--si-font-caption); }
 </style>
