@@ -12,6 +12,7 @@ from functools import lru_cache
 
 from app.redaction import parties as P
 from app.redaction.detect import _QTY_UNIT_RE
+from app.redaction.memo import by_text
 from app.redaction.dictionaries import (
     RESOURCES_DIR, _country_index, common_terms, cn_surnames, cn_surname_pattern, en_words, literal_trie_pattern,
     public_institution_spans, zh_words, zh_legal_finance, chem_names,
@@ -352,6 +353,7 @@ def _plain_pattern() -> re.Pattern:
     return re.compile(literal_trie_pattern(terms), re.I)  # 与按长度倒序的选择支结果相同（V31-U5F-01）
 
 
+@by_text
 def plain_content_spans(text: str) -> list[tuple[int, int]]:
     """标准、化学式、贸易术语和行业参数的偏移；只用于不确定项过滤。"""
     return [m.span() for pattern in (_STANDARD, _TRADE, _plain_pattern()) for m in pattern.finditer(text)] + [

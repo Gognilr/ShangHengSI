@@ -16,6 +16,7 @@ import unicodedata
 from functools import lru_cache
 
 from app.redaction.dictionaries import find_country, find_org_type, _country_index, common_terms, RESOURCES_DIR, en_words, public_institution_spans
+from app.redaction.memo import by_text
 from app.redaction.placeholders import BUYER, OTHER, SELLER
 
 # ---------------------------------------------------------------- 标签
@@ -505,6 +506,7 @@ def _bank_value(text: str, pos: int) -> tuple[int, int] | None:
     return start, best
 
 
+@by_text
 def find_labeled_parties(text: str) -> list[tuple[str, int, int]]:
     """节点原文中“标签：名称”形式的签约方：[(规范化标签, start, end)]。
     开户行标签取不到带企业后缀的名称时，再按银行类结尾取值（R1-12）。"""
@@ -535,6 +537,7 @@ def find_labeled_parties(text: str) -> list[tuple[str, int, int]]:
     return out
 
 
+@by_text
 def find_aliases(text: str) -> list[tuple[int, int, int]]:
     """简称结构：[(结构起点, 简称 start, 简称 end)]。由调用方判断结构前面紧挨着哪个名称。"""
     out = []
@@ -551,6 +554,7 @@ def find_aliases(text: str) -> list[tuple[int, int, int]]:
 _BROAD_SUFFIXES = tuple(sorted(("集团公司", "研究院", "研究所", "集团", "公司", "厂", *INSTITUTION_TEXT_SUFFIXES), key=len, reverse=True))
 
 
+@by_text
 def find_broad_suffix_before_alias(text: str) -> list[tuple[int, int]]:
     """正文中以宽泛后缀（公司、集团、厂、研究院、研究所）结尾、后面紧跟简称结构（中间只允许空白）的位置：
     [(后缀 start, 后缀 end)]。以“有限公司”等明确后缀结尾的由 find_other_org_names 负责，不在此列；
@@ -590,6 +594,7 @@ def _name_start_after_boundary(text: str, start: int, suffix_start: int, min_han
     return start
 
 
+@by_text
 def find_other_org_names(text: str) -> list[tuple[int, int]]:
     """正文中未带标签的企业名称：[(start, end)]。"""
     out = [m.span() for m in _PREFIXED_ORG.finditer(text)]

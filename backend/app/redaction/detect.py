@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from app.redaction.dictionaries import common_terms, find_country, cn_surnames, cn_surname_pattern
 from app.redaction.parties import normalize, bilingual_label_text
 from app.redaction import validators
+from app.redaction.memo import by_text
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,7 @@ def _norm_key(value: str) -> str:
     return re.sub(r"[\s.\-]", "", value).upper()
 
 
+@by_text
 def find_formatted(text: str) -> list[Hit]:
     """第 4 步的全部命中（可能互相重叠，由调用方按顺序取舍）。顺序即优先级。"""
     # 逐位中文数字只进入格式化号码规则，不进入名称 / 人名模型视图。
@@ -395,6 +397,7 @@ def amount_label_kind(text: str) -> str | None:
     return None
 
 
+@by_text
 def find_bare_amounts(text: str) -> list[Hit]:
     return _find_bare_amounts(_unsigned_amount_view(text))
 
@@ -527,6 +530,7 @@ def _shift(hit: Hit, offset: int) -> Hit:
     return dataclasses.replace(hit, start=hit.start + offset, end=hit.end + offset)
 
 
+@by_text
 def find_amounts(text: str, column: str | None = None) -> list[Hit]:
     # 符号与会计括号只在识别视图中遮空，命中仅覆盖绝对值，原文位置不变。
     view = _unsigned_amount_view(text)
@@ -749,6 +753,7 @@ def _strip_cn_titles(run: str) -> str:
     return run
 
 
+@by_text
 def find_persons(text: str) -> list[Hit]:
     """第 6 步：人名标签之后的人名。中文 2–4 个汉字（去掉末尾称谓后），英文 1–3 个首字母大写的单词。
 
@@ -944,6 +949,7 @@ def _valid_signature_name(surface: str) -> bool:
     return bool(words) and words[-1].casefold() not in _EN_DEPARTMENT_WORDS and all(w.rstrip('.').casefold() not in _EN_STOP_WORDS | _EN_COMPANY_WORDS for w in words)
 
 
+@by_text
 def find_narrative_persons(text: str) -> list[Hit]:
     """叙述结构只补不确定项；既有标签与高置信人名优先。"""
     from app.redaction import suspects as S
@@ -1083,6 +1089,7 @@ def _admin_chains(text: str):
     return sorted(chains, key=lambda c: (c[0], -c[1]))
 
 
+@by_text
 def find_addresses(text: str) -> list[Hit]:
     """第 7 步：地址标签（须有冒号）之后到行尾；遇到下一个信息标签、地址标签或带值的邮编标签时提前结束。key 为国家。"""
     text = bilingual_label_text(text)
@@ -1154,6 +1161,7 @@ _PROJECT_LABEL = re.compile(r"(?:项目名称|工程名称|项目全称|(?<![A-Z
 _PROJECT_EMPTY = frozenset({"见附件", "另行约定", "待定", "同上"})
 
 
+@by_text
 def find_projects(text: str) -> list[Hit]:
     """项目名称在地址之后识别；保留信息标签和句尾分隔符。"""
     hits = []
@@ -1190,6 +1198,7 @@ def _qty_key(unit: str, num: str) -> str:
     return f"QTY|{unit.casefold()}|{shown}"
 
 
+@by_text
 def find_quantities(text: str, column: str | None = None) -> list[Hit]:
     """数字（可含千分位和小数）后紧跟计量单位；只替换数字，单位保留。column="QTY" 时整格只有一个数字也算数量。"""
     hits = [Hit(m.start(1), m.end(1), "QTY", _qty_key(m.group(2), m.group(1))) for m in _QTY.finditer(text)]

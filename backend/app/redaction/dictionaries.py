@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from app.redaction.memo import by_text
+
 RESOURCES_DIR = Path(__file__).resolve().parents[2] / "resources"
 
 _DEFAULT_ORG_TYPE = "类型未知"
@@ -182,6 +184,7 @@ def _public_institution_pattern() -> re.Pattern:
                       + r'|[一-鿿]{2,12}(?:人民法院|仲裁委员会|仲裁院|仲裁中心)', re.I)
 
 
+@by_text
 def public_institution_spans(text: str) -> list[tuple[int, int]]:
     """已知公共机构与法院 / 仲裁机构规则；偏移相对原文。"""
     return [m.span() for m in _public_institution_pattern().finditer(text)]
@@ -196,6 +199,7 @@ def _place_keys(terms: tuple[str, ...]) -> frozenset[str]:
     return frozenset(_place_key(term) for term in terms)
 
 
+@lru_cache(maxsize=32768)
 def is_known_place(text: str) -> bool:
     """仅整段规范形式完全匹配现有地名词条；不判断子串（V2Q-171）。"""
     return _place_key(text) in _place_keys(tuple(_country_index()[1]))
