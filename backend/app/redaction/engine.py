@@ -13,6 +13,7 @@ redact_task() 等函数负责读写数据库，不提交事务，由调用方提
 用户词条（手动补充、疑似遗漏选“替换”）不另建表：就是本任务 detected_by="user" 的替换项，每次重算前从原文中取回（Q-70 ②）。
 真实值不写日志，parties 表不存名称。
 """
+import bisect
 import hashlib
 import json
 import logging
@@ -21,6 +22,7 @@ import re
 import secrets
 import uuid
 from collections.abc import Sequence
+from functools import lru_cache
 from dataclasses import dataclass, field
 from decimal import Decimal
 from datetime import date, timedelta
@@ -37,6 +39,7 @@ from app.db.models import (
 )
 from app.redaction import dates, detect, ner, outbound, parties as P, quotes, ratio, suspects as S, tables
 from app.redaction.dictionaries import _country_index
+from app.redaction.memo import by_text
 from app.redaction.placeholders import (
     ADDR, BUYER, FIXED, OTHER, SELLER, Allocator, NeutralAllocator, chat_number, code_role,
 )
@@ -201,6 +204,41 @@ class _Span:
     term: str | None = None  # 由已记住名称、自定义敏感词命中时，为该词条的规范形式（命中计数用）
 
 
+_UTTERANCE_LOC = re.compile(r'F\d+-U\d+')
+_NUMBER_ONLY = re.compile(r"\s*[-+（(]?(?:\d[\d,，]*(?:\.\d+)?|\.\d+)[%％]?\s*[)）]?\s*")
+
+
+class _Joined:
+    """各段以 \\x00 连接的全文。名称、编号与金额的匹配正则不匹配 \\x00，也没有行首行尾断言，命中不会跨段；
+    在全文上匹配一次再按段分组，与逐段 finditer 的命中和顺序相同（长文档“词条 × 全部段”，V31-U5F-03 续）。"""
+
+    def __init__(self, texts: list[str]):
+        self.texts = texts
+        self.offsets, pos = [], 0
+        for text in texts:
+            self.offsets.append(pos)
+            pos += len(text) + 1
+        self.text = '\x00'.join(texts)
+
+    def by_node(self, pattern: re.Pattern) -> dict[int, list[tuple[int, int]]]:
+        out: dict[int, list[tuple[int, int]]] = {}
+        if '\x00' in pattern.pattern or pattern.fullmatch('') is not None:
+            for i, text in enumerate(self.texts):
+                if found := [m.span() for m in pattern.finditer(text)]:
+                    out[i] = found
+            return out
+        for m in pattern.finditer(self.text):
+            k = bisect.bisect_right(self.offsets, m.start()) - 1
+            out.setdefault(k, []).append((m.start() - self.offsets[k], m.end() - self.offsets[k]))
+        return out
+
+
+@lru_cache(maxsize=4)
+def _table_hints(cells: tuple[tuple[str, str], ...], with_qty: bool) -> dict[int, str]:
+    """表格列提示只取决于各段位置与文字；同一份正文重算时复用（只读）。"""
+    return tables.table_hints([NodeIn(loc, text) for loc, text in cells], with_qty=with_qty)
+
+
 def _overlaps(occupied: list[tuple[int, int]], start: int, end: int) -> bool:
     return any(start < e and s < end for s, e in occupied)
 
@@ -267,12 +305,13 @@ def to_original(segments, start: int, end: int) -> tuple[int, int] | None:
 
 
 def _closure_spans(nodes, result, spans, occupied, *, terms, kept) -> list[_Span]:
-    from app.redaction.recheck import present_values, recheck
+    from app.redaction.recheck import SegmentChecker, present_values
     codes = [k for k in result.mapping if '#' not in k and not k.startswith('@')]
     # 全文预筛：脱敏后全文中不可能出现的真实值 / 词条不再逐段比对（长文档逐段 × 全部值，V31-U5F-03 测试机实测）
     texts = [result.redacted.get(n.loc) or '' for n in nodes]
-    values = present_values((v for k, v in result.mapping.items() if not k.startswith('@')), texts)
-    terms = present_values(terms, texts)
+    check = SegmentChecker(
+        real_values=present_values((v for k, v in result.mapping.items() if not k.startswith('@')), texts),
+        terms=present_values(terms, texts), placeholders=codes, kept=kept)
     items: dict[str, list] = {}
     for item in result.items:
         items.setdefault(item.loc, []).append(item)
@@ -280,8 +319,7 @@ def _closure_spans(nodes, result, spans, occupied, *, terms, kept) -> list[_Span
     out: list[_Span] = []
     for i, n in enumerate(nodes):
         redacted = result.redacted.get(n.loc) or ''
-        reasons = recheck(redacted, real_values=values, terms=terms, placeholders=codes, kept=kept,
-                          cache=True) if redacted else []
+        reasons = check(redacted) if redacted else []
         if not reasons:
             continue
         segments = align_segments(n.text, redacted, items.get(n.loc, ()))
@@ -371,6 +409,7 @@ def _trim(text: str, start: int, end: int) -> tuple[int, int]:
     return start, end
 
 
+@by_text
 def _broad_names_with_alias(text: str) -> list[tuple[int, int]]:
     """第 2 步：以宽泛后缀结尾、紧跟简称结构的名称（R1-13，Q-139 ③）。名称起点与疑似遗漏相同（边界词、“的并且或”、
     最多 10 个汉字）；不足 2 个汉字、泛称或前面紧挨泛指词（本公司、由我公司）时不登记。"""
@@ -405,25 +444,35 @@ def _cached_entities(entry: object, key: str, length: int) -> list[ner.Entity] |
     return result
 
 
+_ADJACENT_LABEL = re.compile(r'(?i)(?:开户行账号|银行账号|银行帐号|账户号码|账号|帐号|户名|开户行|身份证号|证件号|联系人|经办人|收件人|电话|手机|传真|邮箱|电子邮箱|地址|注册地址|合同编号|订单编号|编号|SWIFT(?:\s+CODE)?|account(?:\s+(?:no\.?|number|name))?|bank|contact(?:\s+person)?|phone|tel|mobile|fax|e-?mail|address|IBAN|BIC|QQ|微信|wechat)\s*[:：]?\s*\Z')
+
+
+@lru_cache(maxsize=32768)
+def _complete_label(value):
+    """整段就是一个信息标签（只看固定正则与标签表，按文字缓存，V31-U5F-03 续）。"""
+    if P._LABEL_CANON.get(value.strip().rstrip(':：').rstrip().casefold()) == '银行':
+        return True
+    if _ADJACENT_LABEL.fullmatch(value.strip()):
+        return True
+    prefix = value.strip().rstrip(':：').rstrip() + '：'
+    if detect._PERSON_LABEL.fullmatch(prefix) or detect._ADDRESS_LABEL.fullmatch(prefix):
+        return True
+    for pattern in (detect._ACCOUNT, detect._LABELED_IBAN, detect._SWIFT, detect._REFNO,
+                    detect._LABELED_ID, detect._BANK_CODE, detect._IM, detect._POSTCODE):
+        for probe in ('1234567890123456', 'ABC123456789', 'FICTCNBJ'):
+            if (m := pattern.match(prefix + probe)) and m.start(1) == len(prefix):
+                return True
+    return detect._LICENSE.fullmatch(value.strip().rstrip(':：').rstrip()) is not None
+
+
+@lru_cache(maxsize=32768)
+def _has_label(value):
+    return any(_complete_label(m[1]) for m in re.finditer(r'([^\n:：]{1,35})[:：]', value))
+
+
 def _adjacent_information(nodes):
     """只借紧邻标签识别值，返回本节点的精确位置；不改正文。"""
-    label = re.compile(r'(?i)(?:开户行账号|银行账号|银行帐号|账户号码|账号|帐号|户名|开户行|身份证号|证件号|联系人|经办人|收件人|电话|手机|传真|邮箱|电子邮箱|地址|注册地址|合同编号|订单编号|编号|SWIFT(?:\s+CODE)?|account(?:\s+(?:no\.?|number|name))?|bank|contact(?:\s+person)?|phone|tel|mobile|fax|e-?mail|address|IBAN|BIC|QQ|微信|wechat)\s*[:：]?\s*\Z')
-    def complete(value):
-        if P._LABEL_CANON.get(value.strip().rstrip(':：').rstrip().casefold()) == '银行':
-            return True
-        if label.fullmatch(value.strip()):
-            return True
-        prefix = value.strip().rstrip(':：').rstrip() + '：'
-        if detect._PERSON_LABEL.fullmatch(prefix) or detect._ADDRESS_LABEL.fullmatch(prefix):
-            return True
-        for pattern in (detect._ACCOUNT, detect._LABELED_IBAN, detect._SWIFT, detect._REFNO,
-                        detect._LABELED_ID, detect._BANK_CODE, detect._IM, detect._POSTCODE):
-            for probe in ('1234567890123456', 'ABC123456789', 'FICTCNBJ'):
-                if (m := pattern.match(prefix + probe)) and m.start(1) == len(prefix):
-                    return True
-        return detect._LICENSE.fullmatch(value.strip().rstrip(':：').rstrip()) is not None
-    def has_label(value):
-        return any(complete(m[1]) for m in re.finditer(r'([^\n:：]{1,35})[:：]', value))
+    complete, has_label = _complete_label, _has_label
     cells = {}
     for i, n in enumerate(nodes):
         if cell := tables.table_cell(n.loc):
@@ -680,22 +729,25 @@ def compute(
             a_pat = _user_pattern(a) if a_by in ("user", "derived") else _alias_pattern(a) if a_by == "alias" else P.name_pattern(a)
             pool.append((ent, a_pat, a_by, a_term))
 
-    hints = tables.table_hints(nodes)
-    qty_hints = tables.table_hints(nodes, with_qty=True) if mask_quantity else {}
+    cells = tuple((n.loc, n.text) for n in nodes)
+    hints = _table_hints(cells, False)
+    qty_hints = _table_hints(cells, True) if mask_quantity else {}
     spans: list[_Span] = []
     occupied: list[list[tuple[int, int]]] = []
     checksum_suspects: list[SuspectOut] = []
+    joined = _Joined([n.text for n in nodes])
+    pool_hits = [joined.by_node(pat) for _ent, pat, _by, _term in pool]
     for i, n in enumerate(nodes):
         text = n.text
         occ: list[tuple[int, int]] = []
         amount_hits = [*detect.find_amounts(text, hints.get(i)), *detect.find_bare_amounts(text)]
-        if n.kind == 'utterance' or re.fullmatch(r'F\d+-U\d+', n.loc):
+        if n.kind == 'utterance' or _UTTERANCE_LOC.fullmatch(n.loc):
             from app.assistant.spoken_amount import find_amounts
             amount_hits += find_amounts(text)
-        cands = [_Span(i, m.start(), m.end(), ent.category, ent.key, by, term=term)
-                 for ent, pat, by, term in pool for m in pat.finditer(text)
-                 if not (by == 'derived' and re.fullmatch(r'[A-Za-z]+', m.group())
-                         and not detect.english_alias_allowed(text, m.start(), m.end()))]
+        cands = [_Span(i, s, e, ent.category, ent.key, by, term=term)
+                 for (ent, _pat, by, term), found in zip(pool, pool_hits) for s, e in found.get(i, ())
+                 if not (by == 'derived' and re.fullmatch(r'[A-Za-z]+', text[s:e])
+                         and not detect.english_alias_allowed(text, s, e))]
         cands += [_Span(i, start, end, 'ORG', key, 'party')
                   for index, start, end, key in cross_parts if index == i]
         for candidate in cands:
@@ -860,7 +912,7 @@ def compute(
     node_cache, same_compute = {}, {}
     cache_hits = cache_misses = 0
     for i, n in enumerate(nodes):
-        if re.fullmatch(r"\s*[-+（(]?(?:\d[\d,，]*(?:\.\d+)?|\.\d+)[%％]?\s*[)）]?\s*", n.text):
+        if _NUMBER_ONLY.fullmatch(n.text):
             continue  # 纯数字节点仍执行前面的金额与编号规则，不运行名称识别。
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         residual = P.bilingual_label_text(ner.mask(n.text, occupied[i]))
@@ -905,8 +957,8 @@ def compute(
     ner_suspects = [s for s in ner_suspects if not _overlaps(occupied[locs[s.loc]], s.char_start, s.char_end)]
 
     # 已识别值的等价写法在本任务传播，不把全部形近字放进首次识别。
-    from app.redaction.normalize import normalize_with_map, normalize_value
-    from app.redaction.recheck import _text_pattern
+    from app.redaction.normalize import normalize_value
+    from app.redaction.recheck import _normalized, _text_pattern
     eligible = []
     for i, node in enumerate(nodes):
         residual = list(node.text)
@@ -914,9 +966,32 @@ def compute(
             residual[start:end] = ' ' * (end - start)
         if re.search(r'[A-Za-z0-9一-鿿]', ''.join(residual)):
             eligible.append(i)
-    normalized_nodes = {(i, flag): normalize_with_map(nodes[i].text, preserve_case=flag)
-                        for i in eligible for flag in (False, True)}
+    normalized_nodes = {(i, flag): _normalized(nodes[i].text, flag) for i in eligible for flag in (False, True)}
     money_nodes = {i for i in eligible if re.search(r'[叄貳陸萬億]|(?:[0-9].*[OoIl|SB]|[OoIl|SB].*[0-9])', nodes[i].text)}
+    money_order = list(money_nodes)
+    joined: dict[tuple[bool, bool], tuple[str, list[int]]] = {}
+
+    def matches(order: list[int], flag: bool, pattern: re.Pattern, surface: str):
+        """(段下标, 归一化段, 段内起点, 段内终点)，与逐段 finditer 的命中和顺序相同：各段以 \\x00 连接后整体匹配一次，
+        传播用的正则不匹配 \\x00、没有行首行尾断言，命中不会跨段（长文档逐值 × 逐段，V31-U5F-03 续）。"""
+        if '\x00' in surface or pattern.fullmatch('') is not None:
+            for i in order:
+                normalized = normalized_nodes[i, flag]
+                for m in pattern.finditer(normalized.text):
+                    yield i, normalized, m.start(), m.end()
+            return
+        key = (order is money_order, flag)
+        if key not in joined:
+            offsets, pos = [], 0
+            for i in order:
+                offsets.append(pos)
+                pos += len(normalized_nodes[i, flag].text) + 1
+            joined[key] = ('\x00'.join(normalized_nodes[i, flag].text for i in order), offsets)
+        text, offsets = joined[key]
+        for m in pattern.finditer(text):
+            k = bisect.bisect_right(offsets, m.start()) - 1
+            yield order[k], normalized_nodes[order[k], flag], m.start() - offsets[k], m.end() - offsets[k]
+
     propagated = set()
     for source in list(spans):
         if source.category not in ('ORG', 'PERSON', 'ADDR', 'NAME', 'TERM', 'ACCOUNT', 'PHONE', 'IDNO', 'REFNO', 'SWIFT', 'POSTCODE', 'AMOUNT', 'PRICE'):
@@ -943,29 +1018,29 @@ def compute(
             pattern = (re.compile(r'[ \t\u3000]*'.join(map(re.escape, needle)))
                        if source.category == 'PERSON' and re.fullmatch(r'[一-鿿]{2,3}', needle)
                        else _text_pattern(needle))
-        for i in money_nodes if source.category in ('AMOUNT', 'PRICE') else eligible:
+        order = money_order if source.category in ('AMOUNT', 'PRICE') else eligible
+        flag = True if numeric or source.category in ('AMOUNT', 'PRICE') else sensitive
+        for i, normalized, m_start, m_end in matches(order, flag, pattern, surface):
             node = nodes[i]
-            normalized = normalized_nodes[i, True if numeric or source.category in ('AMOUNT', 'PRICE') else sensitive]
-            for match in pattern.finditer(normalized.text):
-                start, end = normalized.index_map[match.start()], normalized.index_map[match.end() - 1] + 1
-                if source.category in ('AMOUNT', 'PRICE'):
-                    # 仅在原位置币种、量级和数值相同的金额语境传播，不把条款编号或普通数量当金额。
-                    candidate = node.text[:start] + surface + node.text[end:]
-                    hits = [*detect.find_amounts(candidate, hints.get(i)), *detect.find_bare_amounts(candidate)]
-                    if not any(h.start == start and h.end == start + len(surface)
-                               and h.value == source.value and h.currency == source.currency for h in hits):
-                        continue
-                if any(P.name_pattern(word).search(node.text[start:end]) for word in exclusions):
+            start, end = normalized.index_map[m_start], normalized.index_map[m_end - 1] + 1
+            if source.category in ('AMOUNT', 'PRICE'):
+                # 仅在原位置币种、量级和数值相同的金额语境传播，不把条款编号或普通数量当金额。
+                candidate = node.text[:start] + surface + node.text[end:]
+                hits = [*detect.find_amounts(candidate, hints.get(i)), *detect.find_bare_amounts(candidate)]
+                if not any(h.start == start and h.end == start + len(surface)
+                           and h.value == source.value and h.currency == source.currency for h in hits):
                     continue
-                # 已知整串优先于同类自动识别出的半个名称；人工 / 词条决定仍优先。
-                contained = [s for s in spans if s.node == i and s.category == source.category
-                             and start <= s.start and s.end <= end and (s.start, s.end) != (start, end)
-                             and s.detected_by not in ('user', 'term')]
-                for partial in contained:
-                    spans.remove(partial)
-                    occupied[i].remove((partial.start, partial.end))
-                _accept([_Span(i, start, end, source.category, source.key, source.detected_by,
-                               source.currency, source.value, source.term)], occupied[i], spans)
+            if any(P.name_pattern(word).search(node.text[start:end]) for word in exclusions):
+                continue
+            # 已知整串优先于同类自动识别出的半个名称；人工 / 词条决定仍优先。
+            contained = [s for s in spans if s.node == i and s.category == source.category
+                         and start <= s.start and s.end <= end and (s.start, s.end) != (start, end)
+                         and s.detected_by not in ('user', 'term')]
+            for partial in contained:
+                spans.remove(partial)
+                occupied[i].remove((partial.start, partial.end))
+            _accept([_Span(i, start, end, source.category, source.key, source.detected_by,
+                           source.currency, source.value, source.term)], occupied[i], spans)
     # 主写法从原文片段取回；不把识别副本的半角/OCR 数字写进对照表。
     for entity in entities.values():
         for index, node in enumerate(nodes):
@@ -992,7 +1067,7 @@ def compute(
     # 疑似遗漏：全部替换项确定之后，在每个节点未替换的文字上识别（9.5）
     lowercase_words = S.lowercase_evidence('\n'.join(n.text for n in nodes))
     for i, n in enumerate(nodes):
-        if re.fullmatch(r"\s*[-+（(]?(?:\d[\d,，]*(?:\.\d+)?|\.\d+)[%％]?\s*[)）]?\s*", n.text):
+        if _NUMBER_ONLY.fullmatch(n.text):
             continue
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         checksum_spans = [(s.char_start, s.char_end) for s in found
@@ -1024,14 +1099,15 @@ def compute(
         surface = nodes[locs[suspect.loc]].text[suspect.char_start:suspect.char_end]
         suspect.category = S.default_category(surface, suspect.reason)
         uncertain.setdefault(P.normalize(surface), (surface, suspect.category))
+    original_joined = _Joined([n.text for n in nodes])
+    excluded_by_node = [[m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
+                        for n in nodes]
     for key, (surface, category) in sorted(uncertain.items(), key=lambda pair: -len(pair[1][0])):
         if key in kept:
             continue
-        for i, n in enumerate(nodes):
-            excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
-            _accept([_Span(i, m.start(), m.end(), category, key, 'uncertain')
-                     for m in P.name_pattern(surface).finditer(n.text)
-                     if not _overlaps(excluded_spans, m.start(), m.end())], occupied[i], spans)
+        for i, at in original_joined.by_node(P.name_pattern(surface)).items():
+            _accept([_Span(i, s, e, category, key, 'uncertain')
+                     for s, e in at if not _overlaps(excluded_by_node[i], s, e)], occupied[i], spans)
     spans.sort(key=lambda s: (s.node, s.start))
     result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
                        with_ratio=ratio and style == "review", date_shift_days=date_shift_days)

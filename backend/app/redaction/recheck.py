@@ -156,82 +156,135 @@ def _value_positions(text: str, value: str) -> list[int]:
     return [m.start() for m in _text_pattern(value).finditer(text)]
 
 
+_INVISIBLE_TAG = re.compile('[\U000E0000-\U000E007F]')
+
+
 def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept: Iterable[str] = (),
-            placeholders: Iterable[str] = (), cache: bool = False) -> list[BlockReason]:
+            placeholders: Iterable[str] = ()) -> list[BlockReason]:
     """返回全部拦截原因（按位置排序、去重）；空列表表示可以发送。
 
-    placeholders 为本任务对照表中的代号原文：比对真实值、词条前先遮盖（只遮盖这些确切的代号，默认不遮盖）。
-    cache=True（脱敏自检闭环逐段调用，V31-U5F-03）：格式化信息、金额、人名、地址的重扫结论按“文本 + 文中出现的代号
-    + 保留项”的摘要缓存在进程内，只存类别与位置，不存原文；同样的输入结论相同。网关发送前的复检不用缓存。"""
+    placeholders 为本任务对照表中的代号原文：比对真实值、词条前先遮盖（只遮盖这些确切的代号，默认不遮盖）。"""
     codes = list(placeholders)
     kept_keys = {k for k in map(_kept_key, kept) if k}
-    reasons: set[BlockReason] = {BlockReason('INVISIBLE', i, i + 1) for i, c in enumerate(text)
-                                if 0xE0000 <= ord(c) <= 0xE007F}
     normalized = _normalized(text, False)
     preserving = _normalized(text, True)
-    values = [(c, v) for c, vs in (('MAP', real_values), ('TERM', terms)) for v in dict.fromkeys(vs)]
+    reasons = _value_reasons(text, normalized, preserving, codes, [
+        (c, v) for c, vs in (('MAP', real_values), ('TERM', terms)) for v in dict.fromkeys(vs)])
+    reasons.update(_allowed(_rescan_hits(text, preserving, _contextual(text, preserving), codes), kept_keys))
+    return sorted(reasons, key=lambda r: (r.position, r.category))
+
+
+def _value_reasons(text, normalized, preserving, codes, values, normalized_codes=None) -> set[BlockReason]:
+    """不可见字符，以及对照表真实值 / 词条（按给定顺序，先命中的决定 end）的命中。"""
+    reasons = {BlockReason('INVISIBLE', m.start(), m.end()) for m in _INVISIBLE_TAG.finditer(text)}
     if values:
-        masked = _mask_placeholders(normalized.text, (normalize_value(p) for p in codes))
-        preserving_masked = _mask_placeholders(preserving.text, (normalize_value(p, preserve_case=True) for p in codes))
+        lower, upper = normalized_codes or ([normalize_value(p) for p in codes],
+                                            [normalize_value(p, preserve_case=True) for p in codes])
+        masked = _mask_placeholders(normalized.text, lower)
+        preserving_masked = _mask_placeholders(preserving.text, upper)
         original_masked = _mask_placeholders(text, codes)
         for category, value in values:
             reasons.update(BlockReason(category, p, p + len(value)) for p in
                            _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked))
-    reasons.update(_rescan(text, preserving, codes, kept_keys, cache))
-    return sorted(reasons, key=lambda r: (r.position, r.category))
+    return reasons
 
 
-_RESCAN_CACHE: 'OrderedDict[bytes, tuple[BlockReason, ...]]' = OrderedDict()
-_RESCAN_CACHE_MAX = 50000
+def _contextual(text: str, preserving) -> str:
+    # ASCII 称谓 / 标签不能被 I→l 变成新的单词；完整归一化扫描仍保留，另补语境稳定的扫描。
+    return ''.join(_context_char(text[preserving.index_map[i]], c) for i, c in enumerate(preserving.text))
 
 
-def _rescan(text: str, preserving, codes: list[str], kept_keys: set[str], cache: bool) -> tuple[BlockReason, ...]:
-    """原文、归一化文本分别重扫格式化信息、金额、人名与地址；同一原文位置的同类原因去重。"""
-    passes = []
-    for scanned, indices, is_normalized in ((text, range(len(text)), False),
-                                           (preserving.text, preserving.index_map, True)):
-        # ASCII 称谓 / 标签不能被 I→l 变成新的单词；完整归一化扫描仍保留，另补语境稳定的扫描。
-        contextual = ''.join(_context_char(text[indices[i]], c) for i, c in enumerate(scanned)) if is_normalized else scanned
-        passes.append((scanned, indices, contextual))
-    key = None
-    if cache:
-        # 代号遮盖只影响文中出现的代号：只把出现的代号计入摘要，其他段落的决定不会让本段缓存失效
-        present = sorted({c for c in codes if c and any(c in s for _, _, s in passes)})
-        digest = hashlib.sha256('\x00'.join([text, '\x01'.join(present), '\x01'.join(sorted(kept_keys))]).encode())
-        key = digest.digest()
-        hit = _RESCAN_CACHE.get(key)
-        if hit is not None:
-            _RESCAN_CACHE.move_to_end(key)
-            return hit
-
-    def allowed(surface: str) -> bool:
-        # 用户在本任务明确保留的整段原文不由重扫拦截；对照表与词条比对不豁免。
-        return bool(kept_keys) and _kept_key(surface) in kept_keys
-
-    reasons: set[BlockReason] = set()
-    for scanned, indices, contextual in passes:
-        for candidate in dict.fromkeys((scanned, contextual)):
+def _rescan_hits(text: str, preserving, contextual: str, codes: list[str]) -> tuple[tuple, ...]:
+    """原文、归一化文本分别重扫格式化信息、金额、人名与地址，按生成顺序返回
+    (类别, 原文起点, 原文终点, 保留键)；保留键为 None 的（金额）不受保留项豁免。"""
+    hits = []
+    for scanned, indices, view in ((text, range(len(text)), text), (preserving.text, preserving.index_map, contextual)):
+        for candidate in dict.fromkeys((scanned, view)):
             for hit in detect.find_formatted(candidate):
-                if hit.category in _RESCAN_CATEGORIES and not allowed(candidate[hit.start:hit.end]):
-                    reasons.add(BlockReason(hit.category, indices[hit.start], indices[hit.end - 1] + 1))
+                if hit.category in _RESCAN_CATEGORIES:
+                    hits.append((hit.category, indices[hit.start], indices[hit.end - 1] + 1,
+                                 _kept_key(candidate[hit.start:hit.end])))
         # 金额扫语境视图：中文数字保持原样，与脱敏识别看到的一致（“一块”“一元化”不会被归一成“1块”“1元化”，V31-U5F-02）。
-        for hit in detect.find_amounts(contextual):
-            reasons.add(BlockReason('AMOUNT', indices[hit.start], indices[hit.end - 1] + 1))
+        for hit in detect.find_amounts(view):
+            hits.append(('AMOUNT', indices[hit.start], indices[hit.end - 1] + 1, None))
         # 人名语境中的“第二张工作表”不能因“二→2”凭空产生“张工”；姓名中的“一、三”等仍是汉字。
-        people_text = _mask_code_syntax(_mask_placeholders(contextual, codes, mask='\n'))
+        people_text = _mask_code_syntax(_mask_placeholders(view, codes, mask='\n'))
         for finder in (detect.find_persons, detect.find_addresses):
             for hit in finder(people_text):
                 surface = people_text[hit.start:hit.end]
                 if finder is detect.find_addresses and _place_only(surface):
                     continue  # 与脱敏相同：只有国家、城市或港口名称的地址保留（V31-U5F-02）
-                if not allowed(surface):
-                    reasons.add(BlockReason(hit.category, indices[hit.start], indices[hit.end - 1] + 1))
-    out = tuple(reasons)
-    if key is not None:
-        _RESCAN_CACHE[key] = out
-        if len(_RESCAN_CACHE) > _RESCAN_CACHE_MAX:
-            _RESCAN_CACHE.popitem(last=False)
-    return out
+                hits.append((hit.category, indices[hit.start], indices[hit.end - 1] + 1, _kept_key(surface)))
+    return tuple(hits)
+
+
+def _allowed(hits, kept_keys) -> set[BlockReason]:
+    """用户在本任务明确保留的整段原文不由重扫拦截；对照表与词条比对不豁免。同一位置同类先出现的决定 end。"""
+    reasons: set[BlockReason] = set()
+    for category, start, end, key in hits:
+        if key is None or key not in kept_keys:
+            reasons.add(BlockReason(category, start, end))
+    return reasons
+
+
+_SEGMENT_CACHE: 'OrderedDict[bytes, tuple]' = OrderedDict()
+_SEGMENT_CACHE_MAX = 50000
+
+
+@lru_cache(maxsize=32768)
+def _segment_view(text: str):
+    normalized, preserving = _normalized(text, False), _normalized(text, True)
+    return normalized, preserving, _skeleton(text), _contextual(text, preserving)
+
+
+def _digest(value: str) -> bytes:
+    return hashlib.blake2b(value.encode(), digest_size=16).digest()
+
+
+def _numeric_like(value: str) -> bool:
+    return any(_NUMERIC_VALUE.match(v) for v in (value, normalize_value(value), normalize_value(value, preserve_case=True)))
+
+
+class SegmentChecker:
+    """脱敏自检闭环的逐段复检（V31-U5F-02、03）：每段结论与 recheck(段文字, …) 相同。
+
+    一轮之内真实值、词条、代号、保留项只预处理一次。每段只比对可能命中本段的值：非数字的值骨架不在本段骨架中时
+    任何通路都不会命中（同 present_values），数字类值一律比对。比对与重扫命中按“段文字 + 段内出现的代号 +
+    可能命中的值”的摘要缓存在进程内，只存类别、位置与保留键摘要，不存原文；决定一个不确定项后整份重算时，
+    没变的段直接复用（V31-U5F-03 续）。网关发送前的复检不走这里。"""
+
+    def __init__(self, *, real_values: Iterable[str], terms: Iterable[str], placeholders: Iterable[str],
+                 kept: Iterable[str]):
+        self.codes = list(placeholders)
+        self.lower = [normalize_value(p) for p in self.codes]
+        self.upper = [normalize_value(p, preserve_case=True) for p in self.codes]
+        self.kept = {_digest(k) for k in map(_kept_key, kept) if k}
+        self.values = [(c, v, _skeleton(v.strip()), _numeric_like(v.strip()))
+                       for c, vs in (('MAP', real_values), ('TERM', terms)) for v in dict.fromkeys(vs)]
+
+    def __call__(self, text: str) -> list[BlockReason]:
+        normalized, preserving, skeleton, contextual = _segment_view(text)
+        present = [i for i, (c, lo, up) in enumerate(zip(self.codes, self.lower, self.upper))
+                   if c in text or c in contextual or lo in normalized.text or up in preserving.text]
+        values = [(c, v) for c, v, skel, numeric in self.values if numeric or not skel or skel in skeleton]
+        key = hashlib.sha256('\x00'.join([text, '\x01'.join(self.codes[i] for i in present),
+                                           '\x01'.join(f'{c}\x02{v}' for c, v in values)]).encode()).digest()
+        hit = _SEGMENT_CACHE.get(key)
+        if hit is None:
+            codes = [self.codes[i] for i in present]
+            reasons = _value_reasons(text, normalized, preserving, codes, values,
+                                     ([self.lower[i] for i in present], [self.upper[i] for i in present]))
+            hits = tuple((c, s, e, None if k is None else _digest(k))
+                         for c, s, e, k in _rescan_hits(text, preserving, contextual, codes))
+            hit = (tuple(sorted(reasons, key=lambda r: (r.position, r.category))), hits)
+            _SEGMENT_CACHE[key] = hit
+            if len(_SEGMENT_CACHE) > _SEGMENT_CACHE_MAX:
+                _SEGMENT_CACHE.popitem(last=False)
+        else:
+            _SEGMENT_CACHE.move_to_end(key)
+        reasons = set(hit[0])
+        reasons.update(_allowed(hit[1], self.kept))
+        return sorted(reasons, key=lambda r: (r.position, r.category))
 
 
 # 预筛用的“骨架”：归一化后去掉空白与 - . ,，再做 OCR 折叠。三条比对通路（原文、归一化的名称正则，去分隔符的紧凑比对）
@@ -240,14 +293,14 @@ _SKELETON_DROP = re.compile(r"[\s\-.,]")
 _OCR_FOLD = str.maketrans({'o': '0', 'l': '1', 'i': '1', '|': '1', 's': '5', 'b': '8'})
 
 
-@lru_cache(maxsize=16384)
+@lru_cache(maxsize=32768)
 def _skeleton(text: str) -> str:
     return _SKELETON_DROP.sub('', _normalized(text, False).text).translate(_OCR_FOLD)
 
 
-@lru_cache(maxsize=16384)
+@lru_cache(maxsize=32768)
 def _normalized(text: str, preserve_case: bool):
-    """复检对象（脱敏后的文本）的归一化结果。闭环逐段、逐轮复检时同一段文本反复出现，按文本缓存；
+    """复检对象与脱敏等价写法传播所用段文字的归一化结果。逐段、逐轮重算时同一段文字反复出现，按文本缓存；
     只在进程内、有上限，不写日志、不持久化。返回值只读。"""
     return normalize_with_map(text, preserve_case=preserve_case)
 
