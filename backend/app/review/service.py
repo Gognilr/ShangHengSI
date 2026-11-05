@@ -262,10 +262,9 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
         raise _conflict('FILES_PARSING', '还有文件正在解析，请稍候')
     if db.scalar(select(exists().where(TaskFile.task_id == task.id, TaskFile.parse_error.is_not(None)))):
         raise _conflict('FILE_PARSE_FAILED', '请先删除解析失败的文件')
-    from app.redaction.engine import ensure_default_replacements, refresh_if_blocked
-    ensure_default_replacements(db, task)
-    refresh_if_blocked(db, task)
-    our = db.scalar(select(func.count()).select_from(Party)
+    from app.redaction import engine as redaction_engine
+    redaction_engine.ensure_default_replacements(db, task)
+    our =db.scalar(select(func.count()).select_from(Party)
                     .where(Party.task_id == task.id, Party.is_our_party.is_(True)))
     if our != 1:
         raise _conflict("OUR_PARTY_REQUIRED", "请先确认哪一方是我方")
@@ -278,11 +277,19 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
     if reached:
         raise _conflict(reached, gateway.MESSAGES[reached])
 
-    ctx = build_context(db, task, stance=task.stance, source=task.source, user_note=task.user_note_redacted,
-                        main_doc_type=main.doc_type)
-    rc = recheck_context(db, task.id)
-    reasons = recheck("\n".join(m["content"] for m in build_messages(ctx)), real_values=rc.real_values,
-                      terms=rc.terms, placeholders=rc.placeholders, kept=rc.kept)
+    def precheck():
+        ctx = build_context(db, task, stance=task.stance, source=task.source, user_note=task.user_note_redacted,
+                            main_doc_type=main.doc_type)
+        rc = recheck_context(db, task.id)
+        return ctx, recheck("\n".join(m["content"] for m in build_messages(ctx)), real_values=rc.real_values,
+                            terms=rc.terms, placeholders=rc.placeholders, kept=rc.kept)
+
+    ctx, reasons = precheck()
+    if reasons:
+        # 已存结果过不了复检（如规则升级前的旧结果）：按当前规则重算一次再查（V31-U5F-02）。
+        # 先查后重算，正常情况下外发全文只扫一遍（V31-U5F-03 测试机：10 万字每遍 2～4 秒）
+        redaction_engine.refresh_if_blocked(db, task)
+        ctx, reasons = precheck()
     if reasons:  # 只报类别和位置，不报真实值
         raise _conflict("OUTBOUND_BLOCKED", f"出口复检发现未脱敏的信息，已拦截，未发送（{describe_reasons(reasons)}）")
     # 9.10：预检通过后写入已记住的名称，与轮次创建同一事务；预检拦截时不写入（Q-73 ①）

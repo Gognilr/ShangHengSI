@@ -184,12 +184,18 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     if task.status != "awaiting_confirm":
         raise AppError(409, "SESSION_BUSY", "当前会话状态不能确认脱敏")
     engine.ensure_default_replacements(db, task)
-    engine.refresh_if_blocked(db, task)
-    count = db.scalar(select(func.count()).select_from(Party).where(Party.task_id == task.id, Party.is_our_party.is_(True))) or 0
+    count =db.scalar(select(func.count()).select_from(Party).where(Party.task_id == task.id, Party.is_our_party.is_(True))) or 0
     if count > 1:
         raise AppError(409, "OUR_PARTY_REQUIRED", "我方最多只能选择一方")
-    ctx = recheck_context(db, task.id)
-    reasons = recheck(engine.build_outbound_text(db, task), real_values=ctx.real_values, terms=ctx.terms, placeholders=ctx.placeholders, kept=ctx.kept)
+    def precheck():
+        ctx = recheck_context(db, task.id)
+        return recheck(engine.build_outbound_text(db, task), real_values=ctx.real_values, terms=ctx.terms,
+                       placeholders=ctx.placeholders, kept=ctx.kept)
+
+    reasons = precheck()
+    if reasons:  # 先查后重算（V31-U5F-02/03）：过不了复检才按当前规则重算一次再查，正常情况下只扫一遍
+        engine.refresh_if_blocked(db, task)
+        reasons = precheck()
     if reasons:
         raise AppError(409, "OUTBOUND_BLOCKED", gateway.MESSAGES["BLOCKED"] + f"（{gateway.describe_reasons(reasons)}）")
     now, count = utcnow(), 0
