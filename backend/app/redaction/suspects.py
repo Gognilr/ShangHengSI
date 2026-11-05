@@ -13,7 +13,7 @@ from functools import lru_cache
 from app.redaction import parties as P
 from app.redaction.detect import _QTY_UNIT_RE
 from app.redaction.dictionaries import (
-    RESOURCES_DIR, _country_index, _term_pattern, common_terms, cn_surnames, en_words,
+    RESOURCES_DIR, _country_index, common_terms, cn_surnames, cn_surname_pattern, en_words, literal_trie_pattern,
     public_institution_spans, zh_words, zh_legal_finance, chem_names,
 )
 
@@ -237,10 +237,22 @@ def _is_place(text: str) -> bool:
     return pattern.fullmatch(text) is not None
 
 
+@lru_cache(maxsize=1)
 def _excluder() -> _Excluder:
     terms = frozenset(t.casefold() for t in common_terms())
     longest = max((t.count(" ") + 1 for t in terms), default=1)
     return _Excluder(terms, max(longest, 4))
+
+
+class _Words:
+    """两个词表的并集视图，只用于 in 判断：逐段把几万词的常用词表与正文小写词做集合并太慢（V31-U5F-01）。"""
+    __slots__ = ('common', 'extra')
+
+    def __init__(self, common, extra):
+        self.common, self.extra = common, extra
+
+    def __contains__(self, word) -> bool:
+        return word in self.common or word in self.extra
 
 
 def lowercase_evidence(text: str) -> frozenset[str]:
@@ -254,7 +266,7 @@ def common_english_fragment(text: str, lowercase_words=frozenset()) -> bool:
     if not re.fullmatch(r"[A-Za-z\s'’.-]+", text):
         return False
     tokens = re.findall(r"[A-Za-z]+(?:['’][A-Za-z]+)?(?:-[A-Za-z]+)*", text)
-    known = en_words() | lowercase_words
+    known = _Words(en_words(), lowercase_words)
     return bool(tokens) and all(
         t.casefold().removesuffix("'s").removesuffix('’s') in known
         or all(w in known for w in t.casefold().split('-')) for t in tokens
@@ -264,7 +276,7 @@ def common_english_fragment(text: str, lowercase_words=frozenset()) -> bool:
 def _capitalized_candidates(text: str, lowercase_words=frozenset()) -> list[Suspect]:
     excl = _excluder()
     out: list[Suspect] = []
-    extra_words = en_words() | lowercase_words
+    extra_words = _Words(en_words(), lowercase_words)
     for words in _capitalized_runs(text):
         while words and re.fullmatch(r'[A-Z]\.', words[0].group()):
             words = words[1:]
@@ -337,7 +349,7 @@ def _plain_pattern() -> re.Pattern:
     terms = [line.strip() for line in (RESOURCES_DIR / 'plain_terms.txt').read_text(encoding='utf-8').splitlines()
              if line.strip() and not line.startswith('#')]
     terms += list(chem_names())
-    return re.compile('|'.join(_term_pattern(t) for t in sorted(terms, key=len, reverse=True)), re.I)
+    return re.compile(literal_trie_pattern(terms), re.I)  # 与按长度倒序的选择支结果相同（V31-U5F-01）
 
 
 def plain_content_spans(text: str) -> list[tuple[int, int]]:
@@ -480,7 +492,7 @@ def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), low
     cands += _capitalized_candidates(masked, lowercase_words)
     cands += _person_candidates(masked)
     # 新旧叙述人名规则重叠时保持既有 person_name 原因（V2Q-34），新增命中才用 person_like。
-    surname = "|".join(map(re.escape, cn_surnames()))
+    surname = cn_surname_pattern()
     trigger = "与|和|由|请|致|联系|经|向|给|找|跟|同|派|委托|授权|通知|抄送"
     end = "沟通|协商|确认|同意|说|称|表示|负责|签字|签署|联系|提出|认为|回复|反馈|处理|商定"
     pat = re.compile(rf"(?:{trigger})((?:{surname})[一-鿿]{{1,2}}?)(?=$|[^一-鿿]|{end})")

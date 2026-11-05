@@ -3,12 +3,13 @@
 只做识别，返回在节点原文中的位置；代号分配和替换在 engine.py。
 所有正则只在单个节点的原文上运行，不跨节点。
 """
+import dataclasses
 import re
 from functools import lru_cache
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
-from app.redaction.dictionaries import common_terms, find_country, cn_surnames
+from app.redaction.dictionaries import common_terms, find_country, cn_surnames, cn_surname_pattern
 from app.redaction.parties import normalize, bilingual_label_text
 from app.redaction import validators
 
@@ -518,6 +519,13 @@ def _english_amounts(text: str) -> list[Hit]:
     return hits
 
 
+_OCR_WINDOW = 200
+
+
+def _shift(hit: Hit, offset: int) -> Hit:
+    return dataclasses.replace(hit, start=hit.start + offset, end=hit.end + offset)
+
+
 def find_amounts(text: str, column: str | None = None) -> list[Hit]:
     # 符号与会计括号只在识别视图中遮空，命中仅覆盖绝对值，原文位置不变。
     view = _unsigned_amount_view(text)
@@ -530,11 +538,15 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
         if not wrong or len(wrong) > 2 or not any(c.isdigit() for c in token):
             continue
         corrected = token.translate(str.maketrans('OoIl|SB', '0011158'))
-        candidate = view[:match.start()] + corrected + view[match.start() + len(token):]
+        # 只在该处前后 _OCR_WINDOW 字内重新识别：命中必须覆盖被纠正的字符，只取决于附近的币种与单位；
+        # 整段重扫会使长文本（出口复检的全文）随这类写法的个数成倍变慢（V31-U5F-01）。
+        lo = max(0, match.start() - _OCR_WINDOW)
+        hi = min(len(view), match.start() + len(token) + _OCR_WINDOW)
+        candidate = view[lo:match.start()] + corrected + view[match.start() + len(token):hi]
         for hit in _find_amounts(_unsigned_amount_view(candidate), column):
             if ((hit.currency is not None or column in ('PRICE', 'AMOUNT'))
-                    and any(hit.start <= match.start() + i < hit.end for i in wrong)):
-                hits.append(hit)
+                    and any(hit.start + lo <= match.start() + i < hit.end + lo for i in wrong)):
+                hits.append(_shift(hit, lo) if lo else hit)
     return hits
 
 
@@ -805,10 +817,10 @@ def find_persons(text: str) -> list[Hit]:
             hits.append(Hit(span[0], span[1], "PERSON", normalize(text[span[0]:span[1]])))
     # V2-B-03：独立称谓入口；原有标签识别的结果不变。
     titles = "总经理 副总经理 董事长 总监 经理 主任 主管 总工 工程师 律师 会计 老师 先生 女士 小姐 局长 处长 科长 院长 校长 书记 部长 总 工".split()
-    pattern = re.compile("(?:" + "|".join(map(re.escape, cn_surnames())) + ")(?:"
+    pattern = re.compile("(?:" + cn_surname_pattern() + ")(?:"
                          + "|".join(sorted(titles, key=len, reverse=True)) + ")")
     left = ("请", "由", "与", "和", "及", "致", "向", "给", "找", "跟", "同", "经", "抄送", "联系", "通知", "委托", "授权", "尊敬的", "亲爱的")
-    full_name = re.compile('(?:' + '|'.join(map(re.escape, cn_surnames())) + r')[一-鿿]{1,2}?(?=先生|女士|小姐)')
+    full_name = re.compile('(?:' + cn_surname_pattern() + r')[一-鿿]{1,2}?(?=先生|女士|小姐)')
     for m in full_name.finditer(text):
         if m.start() and re.match(r'[一-鿿]', text[m.start() - 1]) and not text[:m.start()].endswith(left):
             continue
@@ -843,7 +855,7 @@ def find_persons(text: str) -> list[Hit]:
     # V2-B-16：职务前置只接受明确的人名终点，避免把谓语当姓名。
     roles = '副董事长 董事长 副总经理 总经理 副总裁 总裁 总监 经理 主任 主管 部长 处长 科长 厂长 总工 工程师 会计 出纳 法务 采购 销售 业务员 专员 助理 秘书 代表'.split()
     endings = '沟通 协商 确认 同意 说 称 表示 负责 签字 签署 联系 提出 认为 回复 反馈 处理 商定 已 于 在 对 将'.split()
-    surname = '(?:' + '|'.join(map(re.escape, cn_surnames())) + ')'
+    surname = '(?:' + cn_surname_pattern() + ')'
     role = '(?:' + '|'.join(sorted(roles, key=len, reverse=True)) + ')'
     rule = re.compile(role + '(' + surname + r'[一-鿿]{1,2}?)(?=先生|女士|小姐|[^一-鿿]|$|' + '|'.join(endings) + ')')
     for m in rule.finditer(text):
@@ -937,7 +949,7 @@ def find_narrative_persons(text: str) -> list[Hit]:
     from app.redaction.dictionaries import zh_words, zh_legal_finance
     front = '由 请 经 与 交 向 给 联系 通知 委托 授权 安排 抄送'.split()
     back = '负责 确认 签字 签署 联系 签收 回复 审核 审批 处理 表示 提出 同意 验收 沟通 协商 办理 核对'.split()
-    surname = '(?:' + '|'.join(sorted(map(re.escape, cn_surnames()), key=len, reverse=True)) + ')'
+    surname = '(?:' + cn_surname_pattern() + ')'
     ending = r'(?=$|[^一-鿿]|' + '|'.join(back) + ')'
     candidates = []
     for m in re.finditer('(?:' + '|'.join(front) + ')(' + surname + r'[一-鿿]{1,2}?)' + ending, text):

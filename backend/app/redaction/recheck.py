@@ -16,6 +16,7 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -118,10 +119,17 @@ def _numeric_positions(text: str, value: str) -> list[int]:
         # 数值 ≥ 10000 的金额：换了千分位、小数位写法也拦截，不要求带币种（Q-134 ③，宁可误拦）。
         # 小于 10000 的（含带小数的单价）仍须带币种：条款编号“1.8”“2.3”与单价同值时会拦死且用户无法处理（R1-03 实测）
         any_form = target is not None and target >= _BIG_AMOUNT
-        for m in _NUMBER_IN_TEXT.finditer(text):
-            if _decimal(m.group(1)) == target and (any_form or _has_currency(text, m.start(1), m.end(1))):
-                out.append(m.start(1))
+        for start, end, number in _numbers(text):
+            if number == target and (any_form or _has_currency(text, start, end)):
+                out.append(start)
     return out
+
+
+@lru_cache(maxsize=8)
+def _numbers(text: str) -> tuple[tuple[int, int, Decimal | None], ...]:
+    """文本中全部数字及其数值。每个金额真实值都要与全文数字比对，只解析一次（V31-U5F-01）。
+    只在进程内按文本缓存最近几份，不写日志、不持久化。"""
+    return tuple((m.start(1), m.end(1), _decimal(m.group(1))) for m in _NUMBER_IN_TEXT.finditer(text))
 
 
 def _text_pattern(value: str) -> re.Pattern:

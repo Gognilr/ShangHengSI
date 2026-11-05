@@ -27,6 +27,36 @@ def _term_pattern(term: str) -> str:
     return body
 
 
+def literal_trie_pattern(terms) -> str:
+    """把大量字面词条拼成前缀树形式的正则（配合 re.I 使用），与“按长度倒序的选择支 + _term_pattern”结果相同：
+    同一位置取最长的词条，词条首尾是英文字母或数字时要求两侧不是英文字母或数字。
+    几千个词条的普通选择支每个位置都要逐支尝试，前缀树只走一条路径（V31-U5F-01）。"""
+    def key(ch: str) -> str:  # re.I 下大小写同一分支，否则较短的分支会先于较长的命中
+        low = ch.lower()
+        return low if len(low) == 1 else ch
+
+    def build(node: dict) -> str:
+        alts = [re.escape(ch) + build(child) for ch, child in sorted(node.items()) if ch]
+        if '' in node:  # 词条在此结束，排在最后：先试更长的词条
+            alts.append(node[''])
+        if len(alts) == 1 and '' not in node:
+            return alts[0]
+        return '(?:' + '|'.join(alts) + ')'
+
+    groups = ({}, {})  # 首字符是英文字母或数字的一组，要求前面不是英文字母或数字
+    for term in dict.fromkeys(t for t in terms if t):
+        node = groups[0 if term[0].isascii() and term[0].isalnum() else 1]
+        for ch in term:
+            node = node.setdefault(key(ch), {})
+        node[''] = r'(?![A-Za-z0-9])' if term[-1].isascii() and term[-1].isalnum() else ''
+    parts = []
+    if groups[0]:
+        parts.append(r'(?<![A-Za-z0-9])' + build(groups[0]))
+    if groups[1]:
+        parts.append(build(groups[1]))
+    return '|'.join(parts) or r'(?!)'
+
+
 @lru_cache(maxsize=1)
 def _country_index() -> tuple[re.Pattern, dict[str, str]]:
     """返回 (合并后的正则, 小写词条到国家名的映射)。
@@ -101,6 +131,12 @@ def cn_surnames() -> tuple[str, ...]:
     with open(RESOURCES_DIR / "cn_surnames.txt", encoding="utf-8") as f:
         terms = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
     return tuple(sorted(terms, key=len, reverse=True))
+
+
+@lru_cache(maxsize=1)
+def cn_surname_pattern() -> str:
+    """姓氏的正则选择支（已转义、复姓优先）。各识别规则逐段调用，只拼一次（V31-U5F-01）。"""
+    return "|".join(map(re.escape, cn_surnames()))
 
 
 @lru_cache(maxsize=1)

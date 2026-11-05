@@ -480,7 +480,7 @@ def test_startup_ignores_legacy_variable_and_warns_once(monkeypatch, caplog):
     warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
     assert warnings == ["已改为 WORKER_REVIEW_CONCURRENCY / WORKER_PARSE_CONCURRENCY"]
     assert "invalid-ignored-secret" not in caplog.text
-    assert pool_options == [{"pool_size": 18, "max_overflow": 18}]
+    assert pool_options == [{"pool_size": 42, "max_overflow": 42}]  # 审核 8 × (1 + 3 个分段线程)，V31-U5F-01
     assert calls[0][1] == {"review_concurrency": 8, "parse_concurrency": 2, "assist_concurrency": 4, 'transcribe_concurrency': 1}
     assert startup == [{'load': True}, 'enqueue', 'commit']
 

@@ -9,14 +9,18 @@ worker 取到 review 任务后：run=running → 拼接上下文 → review_once
 - 分段审核（M5，设计 docs/design/M5.md 第一至三节）：外发文本超过分段长度时逐段调用；任一段被拦截立即整轮 blocked；
   其他失败的分段跳过并记入 failed_chunks，全部失败为 failed，部分失败为 partial；每段结束后更新进度。
 """
+import copy
 import json
 import logging
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.llm import gateway, usage
 from app.llm.gateway import load_model
 from app.db import jobs
 from app.db.base import utcnow
@@ -24,7 +28,7 @@ from app.db.models import Finding, LlmCall, RequirementResult, ReviewRun, Task
 from app.llm.gateway import GatewayError, format_reasons
 from app.review.chunking import Chunk, effective_limit, outbound_lines, split_chunks
 from app.review.coverage import build_coverage
-from app.review.prompt import ReviewContext, split_outbound
+from app.review.prompt import ReviewContext, build_messages, split_outbound
 from app.review.service import build_context
 from app.review.validate import (
     ChunkOutcome,
@@ -44,6 +48,7 @@ logger = logging.getLogger("app.review.job")
 MSG_LOCAL_ONLY = "该任务的外发策略为不外发，未调用模型"
 MSG_BAD_OUTPUT = "模型返回的内容不符合要求，请稍后重新审核"
 MSG_INTERNAL = jobs.REVIEW_INTERNAL_MSG
+CHUNK_PARALLEL = 3  # 一轮最多同时发送的分段数（V31-U5F-01）
 
 
 def _reload(db: Session, run_id: uuid.UUID) -> tuple[ReviewRun, Task] | None:
@@ -171,14 +176,12 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
         start_templates(db,ctx,run,nodes)
         if not _set_progress(db, run_id, 0, total):
             return
-        outcomes: list[ChunkOutcome] = []
-        for chunk in chunks:
-            outcome = _review_chunk(db, ctx, run_id, chunk, nodes)
-            if outcome is None:  # 出口复检拦截：整轮 blocked，剩余分段不发送（_review_chunk 已处理）
-                return
-            outcomes.append(outcome)
-            if not _set_progress(db, run_id, chunk.index, total):
-                return  # 轮次或任务已被删除
+        prepared = _prepare_chunks(db, ctx, chunks, nodes)
+        if total > 1 and not _precheck_all(db, run_id, prepared):
+            return  # 某段复检命中：整轮 blocked，一段都没有发送
+        outcomes = _send_chunks(db, run_id, prepared, nodes, total)
+        if outcomes is None:  # 网关拦截（已置 blocked），或轮次 / 任务已删除
+            return
     except Exception:
         _finish(db, run_id, status="failed", message=MSG_INTERNAL, task_status="reviewed")
         raise  # job 记为 failed，last_error 只有异常类名
@@ -205,28 +208,115 @@ def _set_progress(db: Session, run_id: uuid.UUID, done: int, total: int) -> bool
     return True
 
 
-def _review_chunk(db: Session, ctx: ReviewContext, run_id: uuid.UUID, chunk: Chunk,
-                  nodes: dict[str, DocNodeView]) -> ChunkOutcome | None:
-    """审核一段（只有 1 段时消息与不分段相同）。网关拦截时把整轮置为 blocked 并返回 None；其他失败返回失败的结果。"""
+def _prepare_chunks(db: Session, ctx: ReviewContext, chunks: list[Chunk],
+                    nodes: dict[str, DocNodeView]) -> list[tuple[Chunk, ReviewContext]]:
+    """逐段准备法条与范本（按段序，统计累加在共用的 ctx 上），返回每段的上下文快照，供并发发送使用。"""
+    from app.laws.retrieve import prepare
+    from app.standards.compare import prepare as prepare_template
+    prepared = []
+    for chunk in chunks:
+        part = chunk if chunk.total > 1 else None
+        prepare(db, ctx, part, nodes)
+        prepare_template(db, ctx, part)
+        prepared.append((chunk, copy.copy(ctx)))  # 每段重新赋值 law_refs / template_section，浅拷贝即可
+    db.commit()  # 范本准备可能锁住任务行与对照表，并发发送前释放
+    return prepared
+
+
+def _blocked(db: Session, run_id: uuid.UUID, exc: GatewayError) -> None:
+    message = f"出口复检发现未脱敏的信息，已拦截，未发送（{format_reasons(exc.reasons)}）"
+    _finish(db, run_id, status="blocked", message=message, task_status="awaiting_confirm")
+
+
+def _precheck_all(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, ReviewContext]]) -> bool:
+    """分段并发发送前，先对每一段的完整消息做出口复检：任何一段命中，整轮不发（V31-U5F-01）。"""
     run = db.get(ReviewRun, run_id)
-    try:
-        from app.laws.retrieve import prepare
-        prepare(db,ctx,chunk if chunk.total>1 else None,nodes)
-        from app.standards.compare import prepare as prepare_template
-        prepare_template(db,ctx,chunk if chunk.total>1 else None)
-        review = review_once(db, ctx, run=run, user_id=run.created_by, chunk=chunk if chunk.total > 1 else None,
-                             nodes=nodes)
-    except GatewayError as exc:
-        if exc.code == "BLOCKED":
-            message = f"出口复检发现未脱敏的信息，已拦截，未发送（{format_reasons(exc.reasons)}）"
-            _finish(db, run_id, status="blocked", message=message, task_status="awaiting_confirm")
+    for chunk, snapshot in prepared:
+        try:
+            gateway.precheck(db, model_id=run.model_id, purpose="review", messages=build_messages(snapshot, chunk),
+                             user_id=run.created_by, task_id=snapshot.task.id, task_title=snapshot.task.title,
+                             run_id=run_id)
+        except GatewayError as exc:
+            _update_receipt(db, run_id)
+            _blocked(db, run_id, exc)
+            return False
+    return True
+
+
+def _parallel(db: Session, run: ReviewRun, total: int) -> int:
+    """接近调用上限时逐段发送，保证超限的分段准确地记为失败（并发会在记录前同时通过上限检查）。"""
+    if total <= 1:
+        return 1
+    left = [v for v in usage.remaining_calls(db, run.created_by, run.model_id).values() if v is not None]
+    return CHUNK_PARALLEL if all(v >= 2 * total for v in left) else 1  # 2 倍：每段可能有一次格式重试
+
+
+def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, ReviewContext]],
+                 nodes: dict[str, DocNodeView], total: int) -> list[ChunkOutcome] | None:
+    """各段经网关发送（每次发送前网关照常上限检查、出口复检、记录），最多 CHUNK_PARALLEL 段同时进行。
+    进度在复检通过、即将发出时就写入（sent），收到回复后写 done，界面据此如实显示（V31-U5F-01）。"""
+    bind = db.get_bind()
+    run = db.get(ReviewRun, run_id)
+    parallel = _parallel(db, run, total)
+    lock = threading.Lock()
+    stop = threading.Event()
+    sent: set[int] = set()
+    done = 0
+    blocked: list[GatewayError] = []
+
+    def write_progress() -> None:  # 调用方持有 lock：按顺序写，旧的计数不会覆盖新的
+        with Session(bind=bind) as s:
+            row = s.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update())
+            if row is not None and row.status == "running":
+                row.chunk_count = total
+                row.coverage = {"progress": {"done": done, "total": total, "sent": len(sent)}}
+            s.commit()
+
+    def mark_sent(index: int) -> None:
+        with lock:
+            if index not in sent:
+                sent.add(index)
+                write_progress()
+
+    def one(chunk: Chunk, snapshot: ReviewContext) -> ChunkOutcome | None:
+        nonlocal done
+        if stop.is_set():
             return None
-        return ChunkOutcome(chunk, None, str(exc))
-    except OutputError as exc:
-        return ChunkOutcome(chunk, None, MSG_BAD_OUTPUT, exc.tokens_in, exc.tokens_out)
-    finally:
-        _update_receipt(db, run_id)
-    return ChunkOutcome(chunk, review)
+        with Session(bind=bind, expire_on_commit=False) as s:
+            row = s.get(ReviewRun, run_id)
+            task = s.get(Task, snapshot.task.id)
+            if row is None or task is None:
+                return None
+            snapshot.task = task  # 各线程只用自己会话中的对象
+            part = chunk if chunk.total > 1 else None
+            try:
+                review = review_once(s, snapshot, run=row, user_id=row.created_by, chunk=part, nodes=nodes,
+                                     on_send=lambda: mark_sent(chunk.index))
+                outcome = ChunkOutcome(chunk, review)
+            except GatewayError as exc:
+                if exc.code == "BLOCKED":
+                    stop.set()
+                    blocked.append(exc)
+                    return None
+                outcome = ChunkOutcome(chunk, None, str(exc))
+            except OutputError as exc:
+                outcome = ChunkOutcome(chunk, None, MSG_BAD_OUTPUT, exc.tokens_in, exc.tokens_out)
+            finally:
+                _update_receipt(s, run_id)
+            with lock:
+                done += 1
+                write_progress()
+            return outcome
+
+    with ThreadPoolExecutor(max_workers=parallel, thread_name_prefix="review-chunk") as pool:
+        futures = [pool.submit(one, chunk, snapshot) for chunk, snapshot in prepared]
+        results = [f.result() for f in futures]
+    if blocked:
+        _blocked(db, run_id, blocked[0])
+        return None
+    if any(r is None for r in results) or _reload(db, run_id) is None:
+        return None  # 轮次或任务已被删除
+    return results
 
 
 def _update_receipt(db: Session, run_id: uuid.UUID) -> None:

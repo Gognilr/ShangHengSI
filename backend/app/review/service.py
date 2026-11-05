@@ -128,6 +128,7 @@ class FindingOut(BaseModel):
 class Progress(BaseModel):
     done: int
     total: int
+    sent: int = 0  # 已通过出口复检并发出的分段数（V31-U5F-01）
 
 
 class RunDetail(BaseModel):
@@ -464,7 +465,7 @@ def _progress(run: ReviewRun) -> Progress | None:
     p = run.coverage.get("progress")
     if not isinstance(p, dict):
         return None
-    return Progress(done=int(p.get("done", 0)), total=int(p.get("total", run.chunk_count)))
+    return Progress(done=int(p.get("done", 0)), total=int(p.get("total", run.chunk_count)), sent=int(p.get("sent", 0)))
 
 
 def _coverage(run: ReviewRun, view: _View) -> dict | None:

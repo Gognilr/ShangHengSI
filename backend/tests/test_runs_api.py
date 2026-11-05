@@ -711,8 +711,10 @@ def test_t12_chunked_review_through_api(db_sessionmaker, alice, llm):
     assert run["chunk_count"] >= 2 and len(requests) == run["chunk_count"]
     assert run['receipt']['calls'] == run['receipt']['rechecks'] == len(requests)
     assert run["status"] in ("completed", "partial") and run["progress"] is None
-    assert all(f"分段：第 {i}/{run['chunk_count']} 段" in json.loads(q.content)["messages"][1]["content"]
-               for i, q in enumerate(requests, start=1))
+    # 分段并发发送（V31-U5F-01），请求顺序不定：每段恰好发送一次
+    assert sorted(next(i for i in range(1, run["chunk_count"] + 1)
+                       if f"分段：第 {i}/{run['chunk_count']} 段" in json.loads(q.content)["messages"][1]["content"])
+                  for q in requests) == list(range(1, run["chunk_count"] + 1))
     sent = json.loads(requests[0].content)["messages"][1]["content"].split("【审核要求】\n")[1].split("\n【")[0]
     assert len(run["requirement_results"]) == len(sent.splitlines())
     assert len({f["locs"][0] for f in run["findings"] if f["locs"]}) == run["chunk_count"]

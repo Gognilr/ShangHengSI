@@ -511,7 +511,7 @@ def test_t12_chunked_review_success(db_sessionmaker, owner, ready_task, llm):
     run_job(db_sessionmaker, run.id)
     r = get_run(db_sessionmaker, run.id)
     n = r.chunk_count
-    assert n >= 3 and [chunk_of(q) for q in requests] == list(range(1, n + 1))
+    assert n >= 3 and sorted(chunk_of(q) for q in requests) == list(range(1, n + 1))  # 分段并发发送，顺序不定
     assert r.status in ("completed", "partial") and r.failed_chunks == []
     assert r.coverage["chunked"] is True and r.coverage["no_cross_chunk_check"] is True
     with db_sessionmaker() as db:
@@ -527,7 +527,7 @@ def test_t12_chunked_review_success(db_sessionmaker, owner, ready_task, llm):
         assert db.get(Task, task.id).status == "reviewed"
     # 每段的正文互不重叠，拼起来就是完整外发文本的正文
     docs = [json.loads(q.content)["messages"][1]["content"].split("<document>\n")[1].split("\n</document>")[0]
-            for q in requests]
+            for q in sorted(requests, key=chunk_of)]
     with db_sessionmaker() as db:
         full = engine.build_outbound_text(db, db.get(Task, task.id))
     assert "\n".join(docs) == full.split("\n", 1)[1]
@@ -595,9 +595,9 @@ def test_block_in_second_chunk_stops_run(db_sessionmaker, owner, ready_task, llm
     run_job(db_sessionmaker, run.id)
     r = get_run(db_sessionmaker, run.id)
     assert r.status == "blocked" and r.error_message.startswith("出口复检发现未脱敏的信息")
-    assert [chunk_of(q) for q in requests] == [1]  # 第 3 段及以后没有发送
-    assert [c.status for c in llm_calls(db_sessionmaker)] == ["sent", "blocked"]
-    assert r.receipt['calls'] == r.receipt['blocked'] == 1 and r.receipt['rechecks'] == 2
+    assert requests == []  # V31-U5F-01：发送前先复检全部分段，任何一段命中则一段都不发
+    assert [c.status for c in llm_calls(db_sessionmaker)] == ["blocked"]
+    assert r.receipt['calls'] == 0 and r.receipt['blocked'] == r.receipt['rechecks'] == 1
     with db_sessionmaker() as db:
         assert db.get(Task, task.id).status == "awaiting_confirm"
         assert db.scalar(select(func.count()).select_from(Finding)) == 0
@@ -619,7 +619,8 @@ def test_cap_reached_mid_run(db_sessionmaker, owner, ready_task, llm):
     assert {f["reason"] for f in r.failed_chunks} == {"已达本月调用上限，请联系管理员"}
 
 
-def test_progress_visible_while_running(db_sessionmaker, owner, ready_task, llm):
+def test_progress_visible_while_running(db_sessionmaker, owner, ready_task, llm, monkeypatch):
+    monkeypatch.setattr(job, "CHUNK_PARALLEL", 1)  # 逐段发送时进度按段递增
     task = chunked_task(db_sessionmaker, owner, ready_task)
     seen = []
     holder = {}
@@ -627,7 +628,7 @@ def test_progress_visible_while_running(db_sessionmaker, owner, ready_task, llm)
     def handler(request: httpx.Request) -> httpx.Response:
         with db_sessionmaker() as db:
             d = service.run_detail(db, db.get(ReviewRun, holder["run_id"]))
-            seen.append((chunk_of(request), d.progress.done, d.progress.total, d.chunk_count, d.coverage))
+            seen.append((chunk_of(request), d.progress.done, d.progress.sent, d.progress.total, d.chunk_count, d.coverage))
         status, payload = build_reply(json.loads(request.content))
         return httpx.Response(status, json=payload)
 
@@ -636,7 +637,7 @@ def test_progress_visible_while_running(db_sessionmaker, owner, ready_task, llm)
     holder["run_id"] = run.id
     run_job(db_sessionmaker, run.id)
     n = get_run(db_sessionmaker, run.id).chunk_count
-    assert seen == [(i, i - 1, n, n, None) for i in range(1, n + 1)]
+    assert seen == [(i, i - 1, i, n, n, None) for i in range(1, n + 1)]  # 发出时 sent 已计入
     with db_sessionmaker() as db:
         d = service.run_detail(db, db.get(ReviewRun, run.id))
         assert d.progress is None and d.chunk_count == n

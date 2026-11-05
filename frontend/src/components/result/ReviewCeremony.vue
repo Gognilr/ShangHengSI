@@ -21,15 +21,17 @@ const queued = computed(() => status.value === 'queued')
 const modelName = computed(() => props.run?.model_label ?? props.run?.model_name ?? receipt.value?.model ?? '模型')
 const reviewDone = computed(() => ['completed', 'partial', 'failed'].includes(status.value))
 const restoreDone = computed(() => ['completed', 'partial'].includes(status.value))
-// 旧轮次没有回执时，轮次进入运行即视为已通过出口复检
-const recheckDone = computed(() => receipt.value ? receipt.value.rechecks >= 1 : !queued.value)
+// 复检通过、发出第一段即打勾（进度 sent，V31-U5F-01）；旧轮次没有回执时，进入运行即视为已通过
+const sentCount = computed(() => props.run?.progress?.sent ?? 0)
+const recheckDone = computed(() => sentCount.value >= 1 || (receipt.value ? receipt.value.rechecks >= 1 : !queued.value))
 const reviewText = computed(() => {
   if (queued.value) {
     const pos = props.run?.queue_position ?? props.task.queue_position
     return pos != null ? `排队中，前面还有 ${Math.max(0, pos - 1)} 个` : '排队中'
   }
   const p = props.run?.progress
-  return p && p.total > 1 ? `第 ${Math.min(p.done + 1, p.total)}/${p.total} 段` : `${modelName.value} 审核中`
+  if (p && p.total > 1) return p.sent ? `已发出 ${p.sent}/${p.total} 段 · 已收到 ${p.done} 段` : `准备 ${p.total} 段`
+  return sentCount.value ? `已发送，等待 ${modelName.value} 回复` : `${modelName.value} 审核中`
 })
 const steps = computed(() => {
   const list = [
@@ -83,7 +85,7 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
       </div>
       <div class="gate" :class="{ lit: recheckDone }">
         <ShieldCheck :size="26" :stroke-width="1.5" />
-        <span class="caption">复检 {{ receipt?.rechecks ?? 0 }} 次 · 拦截 {{ receipt?.blocked ?? 0 }}</span>
+        <span class="caption">复检 {{ Math.max(receipt?.rechecks ?? 0, sentCount) }} 次 · 拦截 {{ receipt?.blocked ?? 0 }}</span>
       </div>
       <div class="track" :class="{ moving: looping }">
         <span class="track-label">只含代号 · 加密传输</span>

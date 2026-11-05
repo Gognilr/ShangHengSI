@@ -157,10 +157,29 @@ def call_model(db: Session, *, model_id: int, purpose: str, messages: list[dict]
                user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
                task_title: str | None = None, run_id: uuid.UUID | None = None,
                json_mode: bool | None = None, timeout_s: float | None = None,
-               retry: bool = True, extra_task_ids=()) -> ModelResult:
+               retry: bool = True, extra_task_ids=(), on_send=None) -> ModelResult:
+    """on_send：出口复检通过、即将发出时调用（审核中进度用，V31-U5F-01），不改变检查顺序。"""
     return _call_config(db, cfg=load_model(db, model_id), purpose=purpose, messages=messages,
                         user_id=user_id, task_id=task_id, task_title=task_title, run_id=run_id,
-                        json_mode=json_mode, timeout_s=timeout_s, retry=retry, extra_task_ids=extra_task_ids)
+                        json_mode=json_mode, timeout_s=timeout_s, retry=retry, extra_task_ids=extra_task_ids,
+                        on_send=on_send)
+
+
+def precheck(db: Session, *, model_id: int, purpose: str, messages: list[dict], user_id: uuid.UUID | None = None,
+             task_id: uuid.UUID | None = None, task_title: str | None = None, run_id: uuid.UUID | None = None) -> None:
+    """只做出口复检、不发送：分段审核在发出任何一段之前先查全部分段，任一段命中即整轮不发（V31-U5F-01）。
+    拦截与网关发送前的复检相同：记一条 blocked 的 llm_calls 并抛出 GatewayError("BLOCKED")。真正发送时网关仍会再复检。"""
+    cfg = load_model(db, model_id)
+    ctx = recheck_context(db, task_id)
+    reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values, terms=ctx.terms,
+                      placeholders=ctx.placeholders, kept=ctx.kept)
+    if reasons:
+        recorder = _Recorder(db, cfg.api_key, {"user_id": user_id, "task_id": task_id, "task_title": task_title,
+                                               "run_id": run_id, "purpose": purpose, "model_id": cfg.id,
+                                               "model_name": cfg.name[:100]})
+        call_id = recorder.write(status="blocked", request_text=None, block_reason=format_reasons(reasons))
+        logger.warning("llm_call %s 出口复检拦截（发送前预检） purpose=%s 命中=%s", call_id, purpose, len(reasons))
+        raise GatewayError("BLOCKED", reasons=reasons, llm_call_id=call_id)
 
 
 def _call_config(
@@ -177,6 +196,7 @@ def _call_config(
     timeout_s: float | None = None,
     retry: bool = True,
     extra_task_ids=(),
+    on_send=None,
 ) -> ModelResult:
     """调用模型。成功返回 ModelResult；失败抛出 GatewayError（code 见 MESSAGES）。
 
@@ -214,6 +234,8 @@ def _call_config(
         raise GatewayError("BLOCKED", reasons=reasons, llm_call_id=call_id)
 
     # 3. 发送，失败重试
+    if on_send is not None:
+        on_send()
     body = _build_body(cfg, messages, cfg.json_mode if json_mode is None else json_mode)
     if purpose == "assist":
         body["stream"] = False

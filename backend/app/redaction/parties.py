@@ -83,8 +83,9 @@ def _bilingual_label_patterns():
     patterns = []
     for cn, en in sorted(set(pairs), key=lambda pair: -(len(pair[0]) + len(pair[1]))):
         latin = re.escape(en).replace(r'\ ', r'[ \t]+').replace(r'\.', r'\.?')
-        patterns.append(re.compile(rf'(?P<cn>{re.escape(cn)})[ \t]+(?P<en>{latin})(?=[ \t]*[:：])'
-            rf'|(?P<enfirst>{latin})[ \t]*(?P<cnlast>{re.escape(cn)})(?=[ \t]*[:：])', re.I))
+        # 中文标签是两种写法都必需的字面量，用它先做子串预筛（遮盖只改英文部分，预筛结果不变）
+        patterns.append((cn, re.compile(rf'(?P<cn>{re.escape(cn)})[ \t]+(?P<en>{latin})(?=[ \t]*[:：])'
+            rf'|(?P<enfirst>{latin})[ \t]*(?P<cnlast>{re.escape(cn)})(?=[ \t]*[:：])', re.I)))
     return tuple(patterns)
 
 
@@ -92,7 +93,12 @@ def bilingual_label_text(text: str) -> str:
     """识别时用等长空白遮盖双语标签的英文部分，原文、值及偏移不变。"""
     if not re.search(r'[:：]', text) or not re.search(r'[一-鿿]', text) or not re.search(r'[A-Za-z]', text):
         return text
-    for pattern in _bilingual_label_patterns():
+    if '\n' in text:
+        # 标签各部分只含空格与制表符，命中不会跨行；逐行处理与整段相同，长文本（出口复检全文）不必每条规则重建全文
+        return '\n'.join(bilingual_label_text(line) for line in text.split('\n'))
+    for cn, pattern in _bilingual_label_patterns():
+        if cn not in text:
+            continue
         matches = list(pattern.finditer(text))
         if matches:
             chars = list(text)
@@ -341,6 +347,7 @@ def bilingual_links(names: list[str]) -> dict[str, str]:
             and sum(c == cn for e, c in pairs) == 1}
 
 
+@lru_cache(maxsize=8192)  # 纯函数；重算与复检对同一批名称反复构建（V31-U5F-01）
 def name_pattern(surface: str, *, case_sensitive: bool = False) -> re.Pattern:
     """名称的匹配正则：英文不区分大小写、忽略多余空格（句点、逗号后的空格可有可无）；首尾是英文字母或数字时要求单词边界。"""
     s = re.sub(r"([.,])\s+", r"\1", surface.strip())
