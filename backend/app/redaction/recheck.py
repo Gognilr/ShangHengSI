@@ -69,9 +69,15 @@ class RecheckContext:
 def _mask_placeholders(text: str, placeholders: Iterable[str], *, mask: str = '\x00') -> str:
     """把代号原文换成等长的不可匹配字符，位置不变。只用于对照表真实值和词条的比对：
     代号“[电话]”中的“电话”二字不是外发的真实值（B-04）。格式化信息与金额的重扫仍在原文上做。"""
-    for code in sorted({p for p in placeholders if p}, key=len, reverse=True):
-        text = text.replace(code, mask * len(code))
-    return text
+    pattern = _codes_pattern(tuple(sorted({p for p in placeholders if p}, key=lambda p: (-len(p), p))))
+    return pattern.sub(lambda m: mask * len(m.group()), text) if pattern else text
+
+
+@lru_cache(maxsize=32)
+def _codes_pattern(codes: tuple[str, ...]) -> re.Pattern | None:
+    """一次遮盖全部代号（长的优先）。代号带方括号、互不重叠，与逐个替换结果相同；
+    长文档逐段复检时不再按代号数逐个扫全文（V31-U5F-03）。"""
+    return re.compile('|'.join(map(re.escape, codes))) if codes else None
 
 
 def _digits(s: str) -> str:

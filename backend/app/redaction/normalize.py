@@ -39,5 +39,8 @@ def normalize_with_map(text: str, *, preserve_case: bool = False) -> NormText:
     return NormText(''.join(chunks), indices)
 
 
+@lru_cache(maxsize=8192)
 def normalize_value(value: str, *, preserve_case: bool = False) -> str:
+    """单个值（对照表真实值、代号、词条）的归一化。出口复检逐段调用时同一批值会反复出现，
+    长文档的脱敏自检要调用上百万次（V31-U5F-03 测试机实测），按值缓存；只在进程内、有上限，不写日志、不持久化。"""
     return normalize_with_map(value, preserve_case=preserve_case).text

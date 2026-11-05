@@ -382,12 +382,18 @@ def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
                     tokens_in = int(use.get("prompt_tokens") or tokens_in)
                     tokens_out = int(use.get("completion_tokens") or tokens_out)
                     for choice in payload.get("choices") or []:
-                        piece = (choice.get("delta") or {}).get("content")
+                        delta = choice.get("delta") or {}
+                        piece = delta.get("content")
                         if piece:
                             if not isinstance(piece, str):
                                 raise ValueError("content")
                             parts.append(piece)
                             received += len(piece)
+                            notify(received)
+                        # 推理模型先流式输出思考内容（测试机实测约 2 分钟）：只计字数让用户看到在出字，不保存、不记录
+                        thinking = delta.get("reasoning_content")
+                        if isinstance(thinking, str) and thinking:
+                            received += len(thinking)
                             notify(received)
                         if choice.get("finish_reason") is not None:
                             complete = True  # 继续读到 [DONE]，用量常在最后一个事件中
