@@ -266,7 +266,8 @@ _PREFIX = re.compile(
 _SUFFIX = re.compile(
     # 后置币种不含“人民币”：避免把“2.3 人民币参考价”这类条款编号当成金额
     # 数字前不能是下划线或字母：外发文本中代号“[金额_1]元”的序号不是金额（出口复检的重扫用同一函数）
-    rf"(?<![\d.,_A-Za-z])({_NUM}){_CLOSE}\s?(万美元|万元|亿元|美元|欧元|英镑|日元|港元|港币|元|(?:{_CODES})(?![A-Za-z]))"
+    # 逗号只在紧跟数字时才算千分位：识别视图把全角“，”变成半角，“计算,10元”的 10 仍是金额（V31-U5F-02）
+    rf"(?<![\d._A-Za-z])(?<!\d,)({_NUM}){_CLOSE}\s?(万美元|万元|亿元|美元|欧元|英镑|日元|港元|港币|元|(?:{_CODES})(?![A-Za-z]))"
 )
 _FOLLOWED_BY_NUMBER = re.compile(r"\s?\d")
 _PREFIX_WORDS = {"美元", "欧元", "英镑", "日元", "港元", "港币", "美金", *_CODES.split("|")}
@@ -290,10 +291,10 @@ _SCALE = {'千': Decimal(1000), '万': Decimal(10000), '百万': Decimal(1000000
 _MONEY_UNIT = rf"美元|美金|欧元|英镑|日元|港元|港币|元|(?:{_CODES})(?![A-Za-z])"
 _MONEY_TAIL = (rf"(?P<before>[余多])?(?P<scale>千万|百万|千|万|亿)?(?P<after>[余多])?"
                rf"(?P<unit>{_MONEY_UNIT})")
-_EXT_SUFFIX = re.compile(rf"(?<![第\d.,_A-Za-z])(?P<num>{_NUM})(?![\d,.]*\d)[ \t]*"
+_EXT_SUFFIX = re.compile(rf"(?<![第\d._A-Za-z])(?<!\d,)(?P<num>{_NUM})(?![\d,.]*\d)[ \t]*"
                          rf"(?:{_MONEY_TAIL}|(?P<block>块)(?=钱|整|[^一-鿿]|$)|"
                          rf"[（(][ \t]*(?P<br_scale>千万|百万|千|万|亿)?(?P<br_unit>{_MONEY_UNIT})[ \t]*[）)])")
-_LOWER_CN = re.compile(rf"(?<![第每\d.,_零壹贰叁肆伍陆柒捌玖拾佰仟一二三四五六七八九两〇十百千万亿])"
+_LOWER_CN = re.compile(rf"(?<!\d,)(?<![第每\d._零壹贰叁肆伍陆柒捌玖拾佰仟一二三四五六七八九两〇十百千万亿])"
                        rf"(?P<num>[一二三四五六七八九两〇零十百千万亿]+)(?P<unit>{_MONEY_UNIT}|圆)整?")
 _LOWER_TO_UPPER = str.maketrans('一二三四五六七八九两〇十百千', '壹贰叁肆伍陆柒捌玖贰零拾佰仟')
 
@@ -1178,7 +1179,7 @@ _QTY_UNITS = (
 _QTY_UNIT_RE = "|".join(sorted(_QTY_UNITS, key=len, reverse=True))
 # “3 个工作日”“2个月”是期限不是数量
 _QTY = re.compile(
-    rf"(?<![\d.,])({_NUM})[ \t]?((?i:{_QTY_UNIT_RE}))(?![A-Za-z])"
+    rf"(?<![\d.])(?<!\d,)({_NUM})[ \t]?((?i:{_QTY_UNIT_RE}))(?![A-Za-z])"
     r"(?!月|工作日|营业日|自然日|银行日|工作|星期|周|日|天|小时|季度|年|百分点)"
 )
 

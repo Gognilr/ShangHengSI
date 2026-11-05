@@ -50,35 +50,6 @@ def _code_category(code: str) -> str:
     return _LABEL_CATEGORY.get(label, "CUSTOM")
 
 
-def _align(original: str, redacted: str, items: list[RedactionItem]) -> list[tuple[int, int, int]]:
-    """原文与脱敏文本中相同的片段：(原文起点, 脱敏文本起点, 长度)。代号后可能附有比例说明，按片段查找跳过。"""
-    segments, pos, cursor = [], 0, 0
-    for item in sorted(items, key=lambda i: i.char_start):
-        if item.char_start < pos:
-            continue
-        gap = original[pos:item.char_start]
-        index = redacted.find(gap, cursor) if gap else cursor
-        if index < 0:
-            return segments
-        segments.append((pos, index, len(gap)))
-        cursor = index + len(gap)
-        if redacted.startswith(item.placeholder, cursor):
-            cursor += len(item.placeholder)
-        pos = item.char_end
-    tail = original[pos:]
-    index = redacted.find(tail, cursor) if tail else -1
-    if index >= 0:
-        segments.append((pos, index, len(tail)))
-    return segments
-
-
-def _to_original(segments, start: int, end: int) -> tuple[int, int] | None:
-    for o, r, n in segments:
-        if r <= start < r + n:
-            return o + start - r, o + min(max(end, start + 1), r + n) - r
-    return None
-
-
 def find_leaks(db: Session, task: Task) -> tuple[list[Leak], int]:
     """(可定位的命中, 无法落到段落的命中数)。后者来自主体说明、报价汇总等附加内容。"""
     ctx = recheck_context(db, task.id)
@@ -103,10 +74,10 @@ def find_leaks(db: Session, task: Task) -> tuple[list[Leak], int]:
         if not reasons:
             continue
         original = texts.get(loc, "")
-        segments = _align(original, text, items[loc])
+        segments = engine.align_segments(original, text, items[loc])
         seen = set()
         for reason in reasons:
-            span = _to_original(segments, reason.position, reason.end if reason.end > 0 else reason.position + 1)
+            span = engine.to_original(segments, reason.position, reason.end if reason.end > 0 else reason.position + 1)
             if span is None or (span, reason.category) in seen:
                 continue
             seen.add((span, reason.category))

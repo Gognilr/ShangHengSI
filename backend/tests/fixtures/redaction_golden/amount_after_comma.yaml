@@ -1,0 +1,8 @@
+description: 中文逗号后紧跟的小额单价（V31-U5F-02 用户样本复现）：识别视图把全角“，”换成半角后，“计算,9875元”的 9875 曾被当成千分位的后半段而漏替换，出口复检却拦截；“300版”是数量，保留
+stance: purchase
+must_replace:
+  - {text: 青岚虚构传媒股份有限公司, category: ORG}
+  - {text: 澄川虚构数字出版有限公司, category: ORG}
+  - {text: "9875", category: AMOUNT}
+must_keep:
+  - 按300版计算

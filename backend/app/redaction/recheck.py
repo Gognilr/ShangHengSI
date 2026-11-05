@@ -31,7 +31,7 @@ _RESCAN_CATEGORIES = {"PHONE", "EMAIL", "ACCOUNT", "IDNO", "SWIFT", "URL", "IM",
 _NUMERIC_VALUE = re.compile(r"^[+\d][\d\s,.\-]*$")
 _AMOUNT_VALUE = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
 # 数字前不能是下划线：代号“[金额_10]”的序号不是数字类真实值
-_NUMBER_IN_TEXT = re.compile(r"(?<![\d.,_])(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\d])")
+_NUMBER_IN_TEXT = re.compile(r"(?<![\d._])(?<!\d,)(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?![\d])")
 # 币种与数字之间可隔一个填空括号：“人民币【123456】元”（Q-134 ①，与 detect.FILL_OPEN / FILL_CLOSE 相同）
 _CURRENCY_BEFORE = re.compile(
     r"(?:US\$|HK\$|RMB|CNY|USD|EUR|JPY|GBP|HKD|AED|SAR|TRY|INR|AUD|CAD|CHF|SGD|KRW|RUB|人民币|美元|欧元|[¥￥$€£])\s?"
@@ -188,9 +188,19 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
         people_text = _mask_code_syntax(_mask_placeholders(contextual, codes, mask='\n'))
         for finder in (detect.find_persons, detect.find_addresses):
             for hit in finder(people_text):
-                if not allowed(people_text[hit.start:hit.end]):
+                surface = people_text[hit.start:hit.end]
+                if finder is detect.find_addresses and _place_only(surface):
+                    continue  # 与脱敏相同：只有国家、城市或港口名称的地址保留（V31-U5F-02）
+                if not allowed(surface):
                     reasons.add(BlockReason(hit.category, indices[hit.start], indices[hit.end - 1] + 1))
     return sorted(reasons, key=lambda r: (r.position, r.category))
+
+
+def _place_only(surface: str) -> bool:
+    """地址命中去掉已遮盖的代号后，剩下的每段都只是国家、城市或港口名称（与 engine 识别地址时的判断相同）。"""
+    from app.redaction.engine import _ADDRESS_EDGE, _WORD_CHAR, _is_place
+    pieces = [piece.strip(_ADDRESS_EDGE) for piece in surface.splitlines()]
+    return all(not _WORD_CHAR.search(piece) or _is_place(piece) for piece in pieces)
 
 
 def _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked) -> set[int]:

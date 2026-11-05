@@ -236,6 +236,82 @@ def _user_pattern(text: str) -> re.Pattern:
     return re.compile(body, pat.flags)
 
 
+def align_segments(original: str, redacted: str, items) -> list[tuple[int, int, int]]:
+    """原文与脱敏文本中相同的片段：(原文起点, 脱敏文本起点, 长度)。代号后可能附有比例说明，按片段查找跳过。"""
+    segments, pos, cursor = [], 0, 0
+    for item in sorted(items, key=lambda i: i.char_start):
+        if item.char_start < pos:
+            continue
+        gap = original[pos:item.char_start]
+        index = redacted.find(gap, cursor) if gap else cursor
+        if index < 0:
+            return segments
+        segments.append((pos, index, len(gap)))
+        cursor = index + len(gap)
+        if redacted.startswith(item.placeholder, cursor):
+            cursor += len(item.placeholder)
+        pos = item.char_end
+    tail = original[pos:]
+    index = redacted.find(tail, cursor) if tail else -1
+    if index >= 0:
+        segments.append((pos, index, len(tail)))
+    return segments
+
+
+def to_original(segments, start: int, end: int) -> tuple[int, int] | None:
+    """脱敏文本中的区间换回原文区间；落在代号或附加说明里的返回 None。"""
+    for o, r, n in segments:
+        if r <= start < r + n:
+            return o + start - r, o + min(max(end, start + 1), r + n) - r
+    return None
+
+
+def _closure_spans(nodes, result, spans, occupied, *, terms, kept) -> list[_Span]:
+    from app.redaction.recheck import recheck
+    values = [v for k, v in result.mapping.items() if not k.startswith('@')]
+    codes = [k for k in result.mapping if '#' not in k and not k.startswith('@')]
+    items: dict[str, list] = {}
+    for item in result.items:
+        items.setdefault(item.loc, []).append(item)
+    known = {P.normalize(nodes[s.node].text[s.start:s.end]): s for s in spans}
+    out: list[_Span] = []
+    for i, n in enumerate(nodes):
+        redacted = result.redacted.get(n.loc) or ''
+        reasons = recheck(redacted, real_values=values, terms=terms, placeholders=codes, kept=kept) if redacted else []
+        if not reasons:
+            continue
+        segments = align_segments(n.text, redacted, items.get(n.loc, ()))
+        for reason in reasons:
+            span = to_original(segments, reason.position, reason.end if reason.end > 0 else reason.position + 1)
+            if span is not None:
+                _accept([c for c in [_closure_span(i, n.text, *span, reason.category, known)] if c], occupied[i], out)
+    return out
+
+
+def _closure_span(i: int, text: str, start: int, end: int, category: str, known: dict) -> _Span | None:
+    """复检命中的区间改用识别器在原文上的完整命中（取得类别、键、币种和数值），找不到时按命中文字补。"""
+    surface = text[start:end]
+    if category in ('MAP', 'TERM'):
+        ref = known.get(P.normalize(surface))
+        if ref is not None:
+            return _Span(i, start, end, ref.category, ref.key, 'recheck', ref.currency, ref.value)
+        return _Span(i, start, end, 'CUSTOM', P.normalize(surface), 'recheck')
+    if category == 'AMOUNT':
+        hit = next((h for h in detect.find_amounts(text) if h.start < end and start < h.end), None)
+        if hit is None:
+            hit = _manual_amount(surface)
+            hit = detect.Hit(start + hit.start, start + hit.end, 'AMOUNT', hit.key, hit.currency, hit.value)
+        return _Span(i, hit.start, hit.end, 'AMOUNT', hit.key, 'recheck', hit.currency, hit.value)
+    if category == 'ADDR':
+        return _Span(i, start, end, 'ADDR', detect.find_country(surface) or COUNTRY_UNKNOWN, 'recheck')
+    if category == 'INVISIBLE':
+        return None
+    hit = next((h for h in detect.find_formatted(text) if h.category == category and h.start < end and start < h.end), None)
+    if hit is not None:
+        return _Span(i, hit.start, hit.end, hit.category, hit.key, 'recheck')
+    return _Span(i, start, end, category, P.normalize(surface), 'recheck')
+
+
 def _manual_amount(text: str) -> detect.Hit:
     """选区内的相对替换区间；纯数字保持未知币种（V2Q-42、57）。"""
     stripped = text.strip()
@@ -589,7 +665,7 @@ def compute(
         by = "term" if ent.from_term else "user" if ent.from_user else "party"
         pattern = _user_pattern if by == "user" else P.name_pattern
         for surface in ent.surfaces:
-            pat = (re.compile(r'(?<![\d.,])' + re.escape(surface) + r'(?![\d.,])')
+            pat = (re.compile(r'(?<![\d.])(?<!\d,)' + re.escape(surface) + r'(?![\d.,])')
                    if by == 'user' and ent.category == 'AMOUNT' else pattern(surface))
             pool.append((ent, pat, by, ent.key if ent.from_term else None))
         for a in ent.aliases:
@@ -855,7 +931,7 @@ def compute(
             pattern = re.compile(r'(?<![A-Za-z0-9])' + r'[ \t.\-]*'.join(map(re.escape, needle)) + r'(?![A-Za-z0-9])', re.I)
         elif source.category in ('AMOUNT', 'PRICE') and re.fullmatch(r'[\d,. \t]+', surface):
             ocr = {'0': '[0Oo]', '1': '[1lI|]', '5': '[5S]', '8': '[8B]'}
-            pattern = re.compile(r'(?<![\d.,])' + ''.join(ocr.get(c, re.escape(c)) for c in surface) + r'(?![\d.,])')
+            pattern = re.compile(r'(?<![\d.])(?<!\d,)' + ''.join(ocr.get(c, re.escape(c)) for c in surface) + r'(?![\d.,])')
         else:
             pattern = (re.compile(r'[ \t\u3000]*'.join(map(re.escape, needle)))
                        if source.category == 'PERSON' and re.fullmatch(r'[一-鿿]{2,3}', needle)
@@ -952,6 +1028,17 @@ def compute(
     spans.sort(key=lambda s: (s.node, s.start))
     result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
                        with_ratio=ratio and style == "review", date_shift_days=date_shift_days)
+    # 自检闭环（V31-U5F-02）：用出口复检的同一套规则检查本次产出，漏网的按原位置补替换后重排，
+    # 保证脱敏产出的正文本身一定通过出口复检；识别与复检两套规则今后再有出入，也不会变成拦截。
+    for _ in range(3):
+        extra = _closure_spans(nodes, result, spans, occupied, terms=[t.text for t in terms],
+                               kept=[*keeps, *exclusions])
+        if not extra:
+            break
+        spans.extend(extra)
+        spans.sort(key=lambda s: (s.node, s.start))
+        result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
+                           with_ratio=ratio and style == "review", date_shift_days=date_shift_days)
     result.suspects = found
     result.ner_cache = node_cache
     result.ner_cache_hits, result.ner_cache_misses = cache_hits, cache_misses

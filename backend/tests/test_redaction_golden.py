@@ -22,6 +22,7 @@ from app.redaction import outbound
 from app.redaction.engine import NodeIn, Term, compute, outbound_text
 from app.redaction.restore import check
 from app.redaction.dates import find_dates
+from app.redaction.recheck import recheck
 
 GOLDEN = Path(__file__).resolve().parent / "fixtures" / "redaction_golden"
 SAMPLES = sorted(p.stem for p in GOLDEN.glob("*.txt"))
@@ -166,3 +167,15 @@ def test_model_returns(name):
         for counter in ("restored", "fixed", "removed"):
             if counter in sample:
                 assert getattr(checked, counter) == sample[counter]
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_outbound_passes_recheck_without_closure(name):
+    """V31-U5F-02：识别与出口复检一致——不靠自检闭环补替换，外发文本就能通过出口复检。
+    闭环补上的项（detected_by=recheck）说明两套规则有出入：生产中已自动补替换，测试中要暴露出来修识别。"""
+    _, ann, result, _, sent = load(name)
+    closure = sorted((i.loc, i.category) for i in result.items if i.detected_by == "recheck")
+    assert closure == [], f"识别漏掉、靠出口复检补上：{closure}"
+    values = [v for k, v in result.mapping.items() if not k.startswith("@")]
+    codes = [k for k in result.mapping if "#" not in k and not k.startswith("@")]
+    assert recheck(sent, real_values=values, terms=[t["text"] for t in ann.get("terms", [])], placeholders=codes) == []
