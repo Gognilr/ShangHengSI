@@ -1514,13 +1514,36 @@ def _count_hits(db: Session, matched: set[str]) -> None:
                    .values(hit_count=RedactionTerm.hit_count + 1, last_hit_at=utcnow()))
 
 
+def _vector_kept_spans(db: Session, task: Task) -> set[tuple[str, int, int]]:
+    """本机向量判断保留的位置（存在加密的节点缓存中，V31Q-29）。"""
+    spans = set()
+    for cached in db.scalars(select(NerNodeResult).where(NerNodeResult.task_id == task.id)):
+        try:
+            data = json.loads(crypto.decrypt_text(cached.data_enc))
+            spans.update((cached.loc, start, end) for start, end in data.get('vector_kept', []))
+        except (crypto.DecryptionError, UnicodeError, ValueError, TypeError, AttributeError):
+            pass
+    return spans
+
+
 def ensure_default_replacements(db: Session, task: Task) -> None:
-    """V31Q-16：升级前留下的 pending 在确认时补算，不能只移除旧发送闸门。"""
+    """V31Q-16：升级前留下的 pending 在确认时补算，不能只移除旧发送闸门。
+    按记忆或本机判断保留的 pending 本来就不替换（与页面 kept_by 判断相同），不算“未补算”；
+    否则带这类保留项的任务每次确认都要整份重算（V31-U5F-03 测试机：10 万字一次 45～67 秒）。"""
     items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id)))
     pending = db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
                                                      RedactionSuspect.decision == 'pending'))
-    if any(not any(i.loc == s.loc and i.char_start <= s.char_start and i.char_end >= s.char_end
-                   for i in items) for s in pending):
+    uncovered = [s for s in pending if not any(i.loc == s.loc and i.char_start <= s.char_start and i.char_end >= s.char_end
+                                               for i in items)]
+    if uncovered:
+        from app.redaction.keep_terms import effective
+        texts = _texts_with_note(_body_rows(db, task.id), task)
+        memory = effective(db, task.owner_id)
+        uncovered = [s for s in uncovered if P.normalize(texts.get(s.loc, "")[s.char_start:s.char_end]) not in memory]
+    if uncovered:
+        vector_spans = _vector_kept_spans(db, task)
+        uncovered = [s for s in uncovered if (s.loc, s.char_start, s.char_end) not in vector_spans]
+    if uncovered:
         existing = _existing_parties(db, task)
         _run(db, task, _current_overrides(existing), existing)
 
@@ -1760,13 +1783,7 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
     texts = _texts_with_note(rows, task)
     from app.redaction.keep_terms import effective
     memory = effective(db, task.owner_id)
-    vector_spans = set()
-    for cached in db.scalars(select(NerNodeResult).where(NerNodeResult.task_id == task.id)):
-        try:
-            data = json.loads(crypto.decrypt_text(cached.data_enc))
-            vector_spans.update((cached.loc, start, end) for start, end in data.get('vector_kept', []))
-        except (crypto.DecryptionError, UnicodeError, ValueError, TypeError, AttributeError):
-            pass
+    vector_spans = _vector_kept_spans(db, task)
     items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id)))
     suspects = sorted(db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task.id)),
                       key=lambda r: (order.get(r.loc, len(order)), r.char_start, r.id))
