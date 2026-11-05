@@ -299,7 +299,10 @@ def _closure_span(i: int, text: str, start: int, end: int, category: str, known:
     if category == 'AMOUNT':
         hit = next((h for h in detect.find_amounts(text) if h.start < end and start < h.end), None)
         if hit is None:
-            hit = _manual_amount(surface)
+            try:
+                hit = _manual_amount(surface)
+            except RedactionInputError:  # 闭环不能让脱敏失败：取不到数值时按原文补替换
+                return _Span(i, start, end, 'CUSTOM', P.normalize(surface), 'recheck')
             hit = detect.Hit(start + hit.start, start + hit.end, 'AMOUNT', hit.key, hit.currency, hit.value)
         return _Span(i, hit.start, hit.end, 'AMOUNT', hit.key, 'recheck', hit.currency, hit.value)
     if category == 'ADDR':

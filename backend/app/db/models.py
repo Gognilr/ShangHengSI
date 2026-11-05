@@ -386,7 +386,7 @@ class RedactionItem(Base):
         enum_check("category", REDACTION_CATEGORIES),
         enum_check(
             "detected_by",
-            ["term", "party", "alias", "regex", "amount", "person", "address", "user", "derived", "ner", "uncertain", "date"],
+            ["term", "party", "alias", "regex", "amount", "person", "address", "user", "derived", "ner", "uncertain", "date", "recheck"],
         ),
         Index("ix_redaction_items_task_id_loc", "task_id", "loc"),
     )

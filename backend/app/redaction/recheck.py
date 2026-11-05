@@ -180,9 +180,8 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
             for hit in detect.find_formatted(candidate):
                 if hit.category in _RESCAN_CATEGORIES and not allowed(candidate[hit.start:hit.end]):
                     reasons.add(BlockReason(hit.category, indices[hit.start], indices[hit.end - 1] + 1))
-        for hit in detect.find_amounts(scanned):
-            if is_normalized and text[indices[hit.start]:].startswith('一元化'):
-                continue  # 原文的普通词“一元化”不能因单字数字归一而变成“1 元”。
+        # 金额扫语境视图：中文数字保持原样，与脱敏识别看到的一致（“一块”“一元化”不会被归一成“1块”“1元化”，V31-U5F-02）。
+        for hit in detect.find_amounts(contextual):
             reasons.add(BlockReason('AMOUNT', indices[hit.start], indices[hit.end - 1] + 1))
         # 人名语境中的“第二张工作表”不能因“二→2”凭空产生“张工”；姓名中的“一、三”等仍是汉字。
         people_text = _mask_code_syntax(_mask_placeholders(contextual, codes, mask='\n'))
