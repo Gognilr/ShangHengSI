@@ -45,9 +45,20 @@ def cache_context() -> bytes:
             + (RESOURCES_DIR / 'chem_words_en.txt').read_bytes() + Path(__file__).read_bytes())
 
 
+_PREFIX: tuple[bytes, object] | None = None
+
+
 def cache_key(residual: str, *, context: bytes | None = None) -> str:
-    """残余文本的摘要只用于内存比对，持久化时必须连实体一起加密。"""
-    return hashlib.sha256((cache_context() if context is None else context) + residual.encode('utf-8')).hexdigest()
+    """残余文本的摘要只用于内存比对，持久化时必须连实体一起加密。
+    摘要与 sha256(context + residual) 相同；同一份 context（一次重算内共用）只哈希一次，逐段复制哈希状态（V31-U5F-03）。"""
+    global _PREFIX
+    ctx = cache_context() if context is None else context
+    prefix = _PREFIX
+    if prefix is None or prefix[0] is not ctx:
+        prefix = _PREFIX = (ctx, hashlib.sha256(ctx))
+    digest = prefix[1].copy()
+    digest.update(residual.encode('utf-8'))
+    return digest.hexdigest()
 
 
 def check(*, load: bool = False) -> None:

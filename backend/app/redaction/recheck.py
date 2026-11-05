@@ -167,8 +167,8 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
     kept_keys = {k for k in map(_kept_key, kept) if k}
     reasons: set[BlockReason] = {BlockReason('INVISIBLE', i, i + 1) for i, c in enumerate(text)
                                 if 0xE0000 <= ord(c) <= 0xE007F}
-    normalized = normalize_with_map(text)
-    preserving = normalize_with_map(text, preserve_case=True)
+    normalized = _normalized(text, False)
+    preserving = _normalized(text, True)
     values = [(c, v) for c, vs in (('MAP', real_values), ('TERM', terms)) for v in dict.fromkeys(vs)]
     if values:
         masked = _mask_placeholders(normalized.text, (normalize_value(p) for p in codes))
@@ -240,8 +240,16 @@ _SKELETON_DROP = re.compile(r"[\s\-.,]")
 _OCR_FOLD = str.maketrans({'o': '0', 'l': '1', 'i': '1', '|': '1', 's': '5', 'b': '8'})
 
 
+@lru_cache(maxsize=16384)
 def _skeleton(text: str) -> str:
-    return _SKELETON_DROP.sub('', normalize_with_map(text).text).translate(_OCR_FOLD)
+    return _SKELETON_DROP.sub('', _normalized(text, False).text).translate(_OCR_FOLD)
+
+
+@lru_cache(maxsize=16384)
+def _normalized(text: str, preserve_case: bool):
+    """复检对象（脱敏后的文本）的归一化结果。闭环逐段、逐轮复检时同一段文本反复出现，按文本缓存；
+    只在进程内、有上限，不写日志、不持久化。返回值只读。"""
+    return normalize_with_map(text, preserve_case=preserve_case)
 
 
 def present_values(values: Iterable[str], texts: Iterable[str]) -> list[str]:
