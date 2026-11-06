@@ -147,7 +147,7 @@ async function changeSyncEnabled(value: string | number | boolean) {
   if (value) {
     // 开启后会访问外网，须明确确认；其余改动即保存
     try {
-      await ElMessageBox.confirm('开启后，系统会定期访问国家法律法规数据库（flk.npc.gov.cn），只下载公开的法规目录与全文，请求中不含任何任务数据。同步结果需业务管理员确认后才生效。网络出口须放行该域名。', '开启法规库自动更新', { type: 'warning', confirmButtonText: '确认开启', cancelButtonText: '取消' })
+      await ElMessageBox.confirm('开启后，系统会定期访问国家法律法规数据库（flk.npc.gov.cn 及其全文文件存储 flkoss.obs-bj2.cucloud.cn），只下载公开的法规目录与全文，请求中不含任何任务数据。同步结果需有“法规库”权限的管理员确认后才生效。网络出口须放行这两个域名。', '开启法规库自动更新', { type: 'warning', confirmButtonText: '确认开启', cancelButtonText: '取消' })
     } catch { syncForm.enabled = false; return }
   }
   syncSave.schedule(0)

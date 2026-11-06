@@ -121,9 +121,12 @@ def test_t53_13_ner_kept(text, score):
     assert ner.keep_entity(text, ner.Entity(0, len(text), 'ORG', score))
 
 
-def test_t53_14_15_lowercase_evidence(monkeypatch):
+def test_t53_14_15_lowercase_evidence(monkeypatch, request):
     # V2Q-169：仅本用例隔离后续 B-14 词表，保留 B-12 的原输入及全部断言。
     monkeypatch.setattr(suspects, 'en_words', lambda: frozenset(), raising=False)
+    # find_suspects 按段文字缓存（V31-U5F-03），换了词表须清缓存，前后都清，免得结果串到其他用例
+    suspects._find_suspects.cache_clear()
+    request.addfinalizer(suspects._find_suspects.cache_clear)
     nodes = [NodeIn('F1-P1', 'B. Feedstock Base'), NodeIn('F1-P2', 'feedstock base')]
     assert not compute(nodes, 'other').suspects
     text = 'B. Velmora Base'

@@ -333,7 +333,7 @@ def test_system_status(admin, dirs, db_sessionmaker):
     from app.admin import data
     c, _ = admin
     d = c.get(A + "/system/status").json()
-    assert {m["id"] for m in d["local_models"]} == {"ner", "embedding", "ocr", "asr-vad", "asr", "asr-punc", "asr-seg", "asr-spk"}
+    assert {m["id"] for m in d["local_models"]} == {"ner", "embedding", "ocr", "asr-vad", "asr", "asr-punc", "asr-seg", "asr-spk", "mt"}
     assert d["version"] == "9.9.9-test" and d["queued_jobs"] == 0 and d["data_free_bytes"] is None
     assert d["estimated_days"] is None and d["estimate_reason"] == "insufficient_history"
     (dirs / "files").mkdir()

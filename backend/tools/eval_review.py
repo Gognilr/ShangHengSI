@@ -145,9 +145,10 @@ def EvaluationSession(*args, extra_params=None, **kwargs):
     from app.llm import gateway
     original = gateway.load_model
     with Session(*args, **kwargs) as db:
+        # 审核分段并发（V31-U5F-01）时各段用自己的会话，故不再限定 session is db；补丁只在本评测进程的上下文内生效
         def load_model(session, model_id):
             cfg = original(session, model_id)
-            if session is db and extra_params:
+            if extra_params:
                 return replace(cfg, extra_params={**cfg.extra_params, **extra_params})
             return cfg
         with patch.object(gateway, "load_model", load_model):
