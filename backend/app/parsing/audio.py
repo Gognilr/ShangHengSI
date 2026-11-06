@@ -51,7 +51,9 @@ def decode(db, task, file):
         pcm.parent.mkdir(parents=True, exist_ok=True)
         os.replace(outputs['wav'], pcm)
         file.media_storage_key = key
-        file.media = {'duration_ms': duration, 'speakers': None, 'stage': 'queued', 'progress': 0, 'error': None}
+        marks = (file.media or {}).get('marks')  # 现场录音的打点，保留到转写完成
+        file.media = {'duration_ms': duration, 'speakers': None, 'stage': 'queued', 'progress': 0, 'error': None,
+                      **({'marks': marks} if marks else {})}
         file.doc_type, file.doc_type_source = 'letter', 'auto'
         db.commit()  # 先持久化回放副本，再删除录音原件；original_deleted_at 留给保留期。
         committed = True

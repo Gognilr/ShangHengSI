@@ -17,7 +17,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import MediaRow from '@/components/assistant/MediaRow.vue'
 import MessageItem from '@/components/assistant/MessageItem.vue'
 import TranscriptEditor from '@/components/assistant/TranscriptEditor.vue'
-import MeetingRecorder from '@/components/meeting/MeetingRecorder.vue'
+import MeetingRecorder, { type Recorded } from '@/components/meeting/MeetingRecorder.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 
 const route = useRoute(), router = useRouter()
@@ -61,7 +61,8 @@ document.addEventListener('visibilitychange', visibility)
 onBeforeUnmount(() => { clearTimeout(timer); ++version; document.removeEventListener('visibilitychange', visibility) })
 
 // ---- 加入录音：没有会议记录时先建一条 ----
-async function upload(files: File[]) {
+const recorder = ref<InstanceType<typeof MeetingRecorder>>()
+async function upload(files: File[], recorded?: Recorded) {
   const file = files[0]
   if (!file) return
   const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
@@ -70,9 +71,13 @@ async function upload(files: File[]) {
   error.value = ''; uploading.value = 0
   try {
     const target = session.value?.id ?? (await assistantApi.create('meeting')).id
-    await assistantApi.addFiles(target, [file], (loaded, total) => { uploading.value = Math.round(loaded / total * 100) })
+    // 现场录音时填的主题与参会人：尽力而为，失败不挡上传（会后仍可在逐字稿页修改）
+    if (recorded?.topic) await assistantApi.patch(target, { title: recorded.topic }).catch(() => undefined)
+    if (recorded?.participants.length) await assistantApi.participants(target, recorded.participants).catch(() => undefined)
+    await assistantApi.addFiles(target, [file], (loaded, total) => { uploading.value = Math.round(loaded / total * 100) }, recorded?.marks)
+    if (recorded) await recorder.value?.settle(true)  // 上传成功才清掉本机保存的录音
     if (target !== id.value) await router.push(`/meeting/${target}`); else await load()
-  } catch (e) { error.value = failure(e) }
+  } catch (e) { error.value = failure(e); if (recorded) await recorder.value?.settle(false) }
   finally { uploading.value = null }
 }
 function picked(event: Event) { const input = event.target as HTMLInputElement, files = Array.from(input.files ?? []); input.value = ''; void upload(files) }
@@ -130,7 +135,11 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
       </div>
       <input ref="picker" class="file-input" type="file" :accept="AUDIO" @change="picked">
       <div class="or"><span>或</span></div>
-      <MeetingRecorder @recorded="upload([$event])" />
+      <MeetingRecorder ref="recorder" @recorded="upload([$event.file], $event)" />
+      <div v-if="uploading !== null" class="upload-progress" role="status">
+        <el-progress :percentage="uploading" :show-text="false" />
+        <p class="hint">{{ uploading < 100 ? `正在上传录音 ${uploading}%` : '上传完成，正在提交转写……' }}</p>
+      </div>
     </template>
     <section v-if="recent.length" class="recent">
       <h2>最近的会议</h2>
@@ -183,6 +192,8 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .drop-title { margin: 4px 0 0; font: var(--si-font-h3); color: var(--si-ink-1); }
 .drop .hint { margin: 0; }
 .file-input { display: none; }
+.upload-progress { width: min(460px, 100%); margin: 12px auto 0; }
+.upload-progress .hint { margin: 4px 0 0; text-align: center; }
 .or { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: var(--si-ink-4); font: var(--si-font-caption); }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--si-hair); }
 .recent { margin-top: 32px; }

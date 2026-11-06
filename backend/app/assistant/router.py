@@ -1,8 +1,9 @@
 """全部会话接口校验本人及 assistant kind，复用既有预览与删除。"""
+import json
 from urllib.parse import quote
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.assistant import service
@@ -23,6 +24,11 @@ class ParticipantsIn(BaseModel):
 class UtteranceIn(BaseModel):
     text: str | None = Field(None, min_length=1, max_length=2000)
     speaker: int | None = Field(None, ge=1, le=255)
+
+
+class SpeakerIn(BaseModel):
+    locs: list[str] = Field(min_length=1, max_length=500)
+    speaker: int = Field(ge=1, le=255)
 
 
 class SuggestionIn(BaseModel):
@@ -94,10 +100,23 @@ def delete(request: Request, task: Task = Depends(owned_session), user: User = D
 
 
 @router.post("/{id}/files", response_model=SessionDetail)
-def add_files(files: list[UploadFile] | None = File(None), task: Task = Depends(owned_session),
-              db: Session = Depends(get_db)):
+def add_files(files: list[UploadFile] | None = File(None), marks: str | None = Form(None, max_length=4000),
+              task: Task = Depends(owned_session), db: Session = Depends(get_db)):
     raw = [(f.filename, f.file) for f in files or [] if f.filename]
-    return service.add_files(db, task, raw)
+    return service.add_files(db, task, raw, _marks(marks))
+
+
+def _marks(value):
+    # 现场录音的打点（毫秒偏移），随录音文件的 media 保存；格式不对时按没有处理，不挡上传
+    if not value:
+        return None
+    try:
+        values = json.loads(value)
+    except ValueError:
+        return None
+    if not isinstance(values, list) or len(values) > 200 or any(type(v) is not int or not 0 <= v <= 10800000 for v in values):
+        return None
+    return sorted(set(values))
 
 
 @router.delete("/{id}/files/{fid}", response_model=SessionDetail)
@@ -147,6 +166,13 @@ def utterance(loc: str, body: UtteranceIn, request: Request, file: TaskFile = De
               task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
     from app.assistant import meeting
     return meeting.edit(db, task, file, loc, body.text, body.speaker, user, client_ip(request))
+
+
+@router.post('/{id}/files/{fid}/utterances-speaker')
+def utterances_speaker(body: SpeakerIn, request: Request, file: TaskFile = Depends(owned_file),
+                       task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.assistant import meeting
+    return meeting.set_speaker(db, task, file, body.locs, body.speaker, user, client_ip(request))
 
 
 @router.get('/{id}/files/{fid}/suggestions')

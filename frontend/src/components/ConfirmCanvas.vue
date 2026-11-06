@@ -12,6 +12,7 @@ import { readAskSelection, readTextSelection, type TextSelection } from '@/compo
 import { MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, SEVERITY_ORDER, toOptions } from '@/utils/labels'
 import { excerptRange, overlayRange } from '@/utils/marks'
 import { useFx } from '@/utils/motion'
+import { sameParagraph } from '@/utils/transcript'
 
 /**
  * 单画布“原文 / AI 视野”（V31-U2 第四节）：一张纸面显示当前文件的原文，替换处为胶囊；
@@ -106,6 +107,7 @@ interface Seg { text: string; k: Kind; item?: RedactionItemPos; sid?: number; i:
 interface NodeView { node: PreviewNode; segs: Seg[]; changed: boolean; bar?: string; local?: boolean; tags?: CanvasAnnotation[] }
 type Block =
   | { t: 'node'; nv: NodeView }
+  | { t: 'para'; nvs: NodeView[] }
   | { t: 'table'; key: string; rows: { r: number; cells: NodeView[] }[] }
   | { t: 'fold'; id: string; n: number }
 
@@ -211,21 +213,25 @@ const blocks = computed<Block[]>(() => {
         if (row) row.cells.push(nv)
         else last.rows.push({ r: pos.r, cells: [nv] })
       } else flat.push({ t: 'table', key: pos.key, rows: [{ r: pos.r, cells: [nv] }] })
+    } else if (node.kind === 'utterance') {
+      // 逐字稿按合并稿显示（V31-U5F-05）：同一发言人间隔不足 30 秒的句子并成一段，脱敏仍按句
+      if (last?.t === 'para' && sameParagraph(last.nvs[last.nvs.length - 1]!.node, node)) last.nvs.push(nv)
+      else flat.push({ t: 'para', nvs: [nv] })
     } else flat.push({ t: 'node', nv })
   }
   if (nodes.length <= FOLD_LIMIT || unfolded.value.has(activeId.value)) return flat
   // 长文档：只显示有替换或保留文字的块，其余折叠
   // 结果页另外保留有问题标注或本地校验位置的块
   const keep = (nv: NodeView) => nv.changed || !!nv.tags || !!nv.local
-  const changed = (b: Block) => b.t === 'node' ? keep(b.nv) : b.t === 'table' ? b.rows.some(r => r.cells.some(keep)) : false
+  const changed = (b: Block) => b.t === 'node' ? keep(b.nv) : b.t === 'para' ? b.nvs.some(keep) : b.t === 'table' ? b.rows.some(r => r.cells.some(keep)) : false
   const out: Block[] = []
   let run = 0
   let runId = ''
   const close = () => { if (run) { out.push({ t: 'fold', id: runId, n: run }); run = 0 } }
   for (const b of flat) {
     if (changed(b)) { close(); out.push(b) } else {
-      if (!run) runId = b.t === 'node' ? b.nv.node.loc : b.t === 'table' ? b.key : ''
-      run += b.t === 'table' ? b.rows.reduce((s, r) => s + r.cells.length, 0) : 1
+      if (!run) runId = b.t === 'node' ? b.nv.node.loc : b.t === 'para' ? b.nvs[0]!.node.loc : b.t === 'table' ? b.key : ''
+      run += b.t === 'table' ? b.rows.reduce((s, r) => s + r.cells.length, 0) : b.t === 'para' ? b.nvs.length : 1
     }
   }
   close()
@@ -391,7 +397,7 @@ const ticks = computed<SpectrumTick[]>(() => {
   const out: SpectrumTick[] = []
   list.forEach((b, i) => {
     const pos = (i + 0.5) / list.length
-    const views = b.t === 'node' ? [b.nv] : b.t === 'table' ? b.rows.flatMap(r => r.cells) : []
+    const views = b.t === 'node' ? [b.nv] : b.t === 'para' ? b.nvs : b.t === 'table' ? b.rows.flatMap(r => r.cells) : []
     let cap = false
     for (const nv of views) {
       for (const a of nv.tags ?? []) out.push({ pos, kind: (['high', 'medium', 'low'].includes(a.severity) ? a.severity : 'low') as SpectrumTick['kind'], loc: nv.node.loc, fid: a.id })
@@ -463,6 +469,10 @@ defineExpose({ locate, switchFile, toggleView, cancel })
             <span v-else-if="b.nv.node.part !== 'body'" class="side-label">{{ b.nv.node.part }}</span>
             <span v-if="b.nv.node.clause_no && b.nv.node.part === 'body'" class="clause">{{ b.nv.node.clause_no }}</span>
             <NodeText :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" />
+          </div>
+          <div v-else-if="b.t === 'para'" class="node kind-utterance">
+            <div class="utterance-meta"><span :class="{ code: view === 'ai' && b.nvs[0]!.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nvs[0]!.node.speaker_code : utteranceLabel(b.nvs[0]!.node) }}</span> · {{ stamp(b.nvs[0]!.node.t_start_ms ?? 0) }}</div>
+            <span v-for="nv in b.nvs" :key="nv.node.loc" class="sent" :data-node="nv.node.loc" :class="nodeClass(nv)"><NodeText :nv="nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></span>
           </div>
           <table v-else-if="b.t === 'table'" class="tbl">
             <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc" :class="nodeClass(c)" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"><NodeText :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>

@@ -429,7 +429,7 @@ def patch(db: Session, task: Task, body: SessionPatch) -> SessionDetail:
     return result
 
 
-def add_files(db: Session, task: Task, raw: list) -> SessionDetail:
+def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None) -> SessionDetail:
     task = lock(db, task)
     _writable(db, task)
     if task.status not in ("active", "parsing", "awaiting_confirm") or db.scalar(select(exists().where(
@@ -472,7 +472,8 @@ def add_files(db: Session, task: Task, raw: list) -> SessionDetail:
             seq += 1
             row = TaskFile(task_id=task.id, seq=seq, is_main=not files and not rows, original_name=up.name,
                            ext=up.ext, size_bytes=up.size, sha256=digest, storage_key=key,
-                           media={"stage": "decoding", "progress": 0, "error": None} if audio else None)
+                           media={"stage": "decoding", "progress": 0, "error": None,
+                                  **({"marks": marks} if marks else {})} if audio else None)
             db.add(row)
             rows.append(row)
         db.flush()

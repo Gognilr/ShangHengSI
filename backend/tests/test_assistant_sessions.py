@@ -459,7 +459,7 @@ def test_audio_upload_and_decode(files_dir, session_client, db_sessionmaker, mon
     assert put().json()['code'] == 'ASR_DISABLED'
     monkeypatch.setenv('COMPOSE_PROFILES', 'asr')
     assert put(b'not audio').status_code == 422
-    result = put()
+    result = c.post(f'{BASE}/{tid}/files', headers=h, files=[('files', ('虚构会议.wav', data))], data={'marks': '[2000, 500]'})  # V31-U5F-05：现场录音打点
     assert result.status_code == 200, result.text
     fid = result.json()['files'][0]['id']
     assert result.json()['files'][0]['media']['stage'] == 'decoding'
@@ -499,6 +499,7 @@ def test_audio_upload_and_decode(files_dir, session_client, db_sessionmaker, mon
             assert not storage._path(key).exists()
             assert file.original_deleted_at is None
             assert file.media['stage'] == 'queued'
+            assert file.media['marks'] == [500, 2000]  # 打点随录音保留到解码之后
     finally:
         thread.join(6)
         get_settings.cache_clear()

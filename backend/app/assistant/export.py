@@ -217,7 +217,7 @@ def generate(db, task, mid, format, variant, user, ip):
 
 
 def transcript(db, task, file, user, ip):
-    from app.assistant.meeting import speaker_names, stamp
+    from app.assistant.meeting import join_sentences, paragraphs, speaker_names, stamp
     if not file.media or file.media.get('stage') != 'done' or file.original_deleted_at is not None:
         raise AppError(409, 'TRANSCRIPT_UNAVAILABLE', '逐字稿暂不可用')
     nodes = list(db.scalars(select(DocNode).where(DocNode.file_id == file.id, DocNode.kind == 'utterance')
@@ -229,10 +229,13 @@ def transcript(db, task, file, user, ip):
     report_docx._font(doc.sections[0].header.paragraphs[0].add_run('商衡SI 会议逐字稿'), 9)
     report_docx._heading(doc, file.original_name)
     names = speaker_names(file)
-    for node in nodes:
+    # 与发给模型的文字同一份合并稿：同一发言人间隔不足 30 秒的句子合成一段
+    for group in paragraphs(nodes):
+        node = group[0]
         name = names.get(str(node.speaker)) or f'发言人{node.speaker}'
+        text = join_sentences([crypto.decrypt_text(n.text_enc) for n in group])
         report_docx._font(doc.add_paragraph().add_run(report_docx._clean(
-            f'【{name} {stamp(node.t_start_ms)}】{crypto.decrypt_text(node.text_enc)}')), 10.5)
+            f'【{name} {stamp(node.t_start_ms)}】{text}')), 10.5)
     output = io.BytesIO()
     doc.save(output)
     audit.record(db, 'transcript_export', user_id=user.id, target_type='file', target_id=str(file.id), ip=ip)

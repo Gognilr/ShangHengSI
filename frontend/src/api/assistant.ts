@@ -10,6 +10,8 @@ export interface Media {
   stage: 'decoding' | 'queued' | 'waiting_memory' | 'transcribing' | 'done' | 'failed'
   progress: number; duration_ms?: number; error: 'unavailable' | 'timeout' | 'transcribe_failed' | 'decode_failed' | null
   queue_position: number
+  /** 现场录音时的打点（毫秒偏移），转写后在逐字稿对应位置显示“标记” */
+  marks?: number[]
 }
 export interface SessionFile extends TaskFile { confirmed_at: string | null; media: Media | null; speakers: Record<string, string | null> | null }
 export interface Suggestion { loc: string; start: number; end: number; from: string; to: string }
@@ -54,14 +56,16 @@ export const assistantApi = {
   get: (id: string) => http.get<Session>(`${base}/${id}`),
   patch: (id: string, body: { title?: string; stance?: Stance; source?: Source }) => http.patch<Session>(`${base}/${id}`, body),
   remove: (id: string) => http.delete<void>(`${base}/${id}`),
-  addFiles: (id: string, files: File[], onProgress: (loaded: number, total: number) => void = () => {}) => {
+  addFiles: (id: string, files: File[], onProgress: (loaded: number, total: number) => void = () => {}, marks: number[] = []) => {
     const form = new FormData(); files.forEach(file => form.append('files', file, file.name))
+    if (marks.length) form.append('marks', JSON.stringify(marks))
     return http.postFormWithProgress<Session>(`${base}/${id}/files`, form, onProgress)
   },
   localFindings: (id: string) => http.get<{ items: LocalFinding[] }>(`${base}/${id}/local-findings`),
   participants: (id: string, names: string[]) => http.put<{ names: string[] }>(`${base}/${id}/participants`, { names }),
   speakers: (id: string, fid: string, map: Record<string, string | null>) => http.put<Record<string, string | null>>(`${base}/${id}/files/${fid}/speakers`, map),
   utterance: (id: string, fid: string, loc: string, body: { text?: string; speaker?: number }) => http.patch<{ ok: boolean }>(`${base}/${id}/files/${fid}/utterances/${encodeURIComponent(loc)}`, body),
+  utterancesSpeaker: (id: string, fid: string, locs: string[], speaker: number) => http.post<{ ok: boolean }>(`${base}/${id}/files/${fid}/utterances-speaker`, { locs, speaker }),
   suggestions: (id: string, fid: string) => http.get<Suggestion[]>(`${base}/${id}/files/${fid}/suggestions`),
   applySuggestions: (id: string, fid: string, items: Omit<Suggestion, 'from'>[]) => http.post<{ ok: boolean }>(`${base}/${id}/files/${fid}/suggestions/apply`, { items }),
   audio: (id: string, fid: string) => http.getBlob(`${base}/${id}/files/${fid}/audio`),

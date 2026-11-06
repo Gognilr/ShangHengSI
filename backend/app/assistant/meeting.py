@@ -36,11 +36,54 @@ def stamp(ms):
     return f'{seconds//3600:02}:{seconds//60%60:02}:{seconds%60:02}'
 
 
+GAP_MS = 30000  # 同一发言人两句相隔不足 30 秒并入同一段（V31-U5F-05）；前端 utils/transcript.ts 同一规则
+
+
+def paragraphs(rows):
+    """把按文件、顺序排好的节点分组：同一文件同一发言人、间隔不足 GAP_MS 的连续句子成一段，其余各自成段。
+    只在显示与输出层合并；脱敏、编辑、定位仍按句（loc）进行。"""
+    groups = []
+    for row in rows:
+        last = groups[-1][-1] if groups else None
+        if (last is not None and row.kind == 'utterance' and last.kind == 'utterance' and last.file_id == row.file_id
+                and last.speaker == row.speaker and (row.t_start_ms or 0) - (last.t_end_ms or 0) < GAP_MS):
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+    return groups
+
+
+def join_sentences(parts):
+    # 中文句子直接相接；两侧都是西文字符时补一个空格，避免英文句子粘在一起
+    out = ''
+    for part in parts:
+        if out and part and out[-1].isascii() and not out[-1].isspace() and part[0].isascii() and not part[0].isspace():
+            out += ' '
+        out += part
+    return out
+
+
 def line(db, task, file, node, memo=None):
     if node.kind != 'utterance':
         return f'⟦{node.loc}⟧{node.redacted_text or ""}'
     label = speaker_code(db, task, file, node, memo)
     return f'[{node.loc}] 【{label}｜{stamp(node.t_start_ms)}】{node.redacted_text or ""}'
+
+
+def render(db, task, files, rows, memo=None):
+    """发给模型与出口复检的逐字稿文字：合并后的段落，每段一行（脱敏后的文字）。
+    files 为 {file_id: TaskFile}；外发构建与提示词构建必须都走这里，复检看到的与发出的一致。"""
+    memo = {} if memo is None else memo
+    lines = []
+    for group in paragraphs(rows):
+        first = group[0]
+        if first.kind != 'utterance':
+            lines.append(line(db, task, files[first.file_id], first, memo))
+            continue
+        label = speaker_code(db, task, files[first.file_id], first, memo)
+        text = join_sentences([n.redacted_text or '' for n in group])
+        lines.append(f'[{first.loc}] 【{label}｜{stamp(first.t_start_ms)}】{text}')
+    return '\n'.join(lines)
 
 
 def speaker_code(db, task, file, node, memo=None):
@@ -142,8 +185,22 @@ def change(db, task, file, loc, text=None, speaker=None):
 def edit(db, task, file, loc, text, speaker, user, ip):
     task = editable(db, task, file)
     change(db, task, file, loc, text, speaker)
-    recompute(db, task)
+    # 只改发言人时识别结果与对照表都不变（发言人姓名按文件登记，与句子归属无关），不必重算（V31-U5F-05 快速路径）
+    if text is not None:
+        recompute(db, task)
     audit.record(db, 'utterance_edit', user_id=user.id, target_type='file', target_id=str(file.id), detail={'loc':loc}, ip=ip)
+    db.commit()
+    return {'ok':True}
+
+
+def set_speaker(db, task, file, locs, speaker, user, ip):
+    """一个段落（多句）一起改发言人，一次请求、不重算。"""
+    task = editable(db, task, file)
+    if not isinstance(locs, list) or not 1 <= len(locs) <= 500 or len(set(locs)) != len(locs):
+        raise AppError(422, 'VALIDATION_ERROR', '句子数量不正确')
+    for loc in locs:
+        change(db, task, file, loc, None, speaker)
+    audit.record(db, 'utterance_edit', user_id=user.id, target_type='file', target_id=str(file.id), detail={'locs':len(locs)}, ip=ip)
     db.commit()
     return {'ok':True}
 

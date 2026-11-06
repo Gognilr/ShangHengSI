@@ -52,8 +52,8 @@ def file_block(db: Session, task: Task, params: dict, *, model_id: int | None = 
     blocks, size, memo = [], 0, {}
     for index, file in enumerate(files, 1):
         nodes = list(db.scalars(select(DocNode).where(DocNode.file_id == file.id, DocNode.part == "body").order_by(DocNode.ord)))
-        from app.assistant.meeting import line
-        text = "\n".join(line(db, task, file, n, memo) for n in nodes)
+        from app.assistant.meeting import render
+        text = render(db, task, {file.id: file}, nodes, memo)
         size += len(text)
         from app.assistant.meeting import stamp
         label = '录音逐字稿' if file.media else _TYPES.get(file.doc_type, '资料')

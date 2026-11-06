@@ -2042,9 +2042,9 @@ def build_outbound(db: Session, task: Task) -> OutboundBuild:
     redacted = {r.loc: r.redacted_text or "" for r in rows}
     if task.kind == "assistant":
         # 会话保留逐节点文本：不添加审核专用比例、报价汇总及本地校验说明。
-        from app.assistant.meeting import line
+        from app.assistant.meeting import render
         files = {f.id:f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
-        return OutboundBuild("\n".join(line(db, task, files[r.file_id], r) for r in rows), [])
+        return OutboundBuild(render(db, task, files, rows), [])
     tables = quotes.find_quote_tables(nodes, redacted)
     text = outbound.build(
         [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party, stance=task.stance) for p in parties],
