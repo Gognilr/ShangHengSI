@@ -5,12 +5,13 @@ from sqlalchemy import select
 
 from app.db.session import get_db
 from app.db.models import KbDoc
-from app.security.deps import require_biz_admin
+from app.security.permissions import require
 from app.security.errors import AppError
 from app.admin.settings_store import get_setting, set_setting
 from app.kb import service
 
-router = APIRouter(prefix='/admin/kb', dependencies=[Depends(require_biz_admin)])
+_perm = require("content.kb")
+router = APIRouter(prefix='/admin/kb', dependencies=[Depends(_perm)])
 
 
 class Patch(BaseModel):
@@ -38,14 +39,14 @@ def listing(db=Depends(get_db)):
 
 
 @router.patch('/settings')
-def settings(body: Switch, db=Depends(get_db), user=Depends(require_biz_admin)):
+def settings(body: Switch, db=Depends(get_db), user=Depends(_perm)):
     set_setting(db, 'assistant.kb_enabled', body.enabled, user.id)
     db.commit()
     return {'enabled': body.enabled}
 
 
 @router.post('', status_code=201)
-def upload(file: UploadFile = File(...), db=Depends(get_db), user=Depends(require_biz_admin)):
+def upload(file: UploadFile = File(...), db=Depends(get_db), user=Depends(_perm)):
     row = service.create(db, file, user)
     result = service.view(db, row)
     db.commit()
@@ -58,7 +59,7 @@ def chunks(id: str, db=Depends(get_db)):
 
 
 @router.patch('/{id}')
-def patch(id: str, body: Patch, db=Depends(get_db), user=Depends(require_biz_admin)):
+def patch(id: str, body: Patch, db=Depends(get_db), user=Depends(_perm)):
     values = body.model_dump(exclude_unset=True)
     if not values or any(value is None for value in values.values()):
         raise AppError(422, 'VALIDATION_ERROR', '请输入修改内容')
@@ -70,7 +71,7 @@ def patch(id: str, body: Patch, db=Depends(get_db), user=Depends(require_biz_adm
 
 
 @router.delete('/{id}')
-def delete(id: str, db=Depends(get_db), user=Depends(require_biz_admin)):
+def delete(id: str, db=Depends(get_db), user=Depends(_perm)):
     service.remove(db, service.load(db, id, locked=True), user)
     db.commit()
     return {'ok': True}

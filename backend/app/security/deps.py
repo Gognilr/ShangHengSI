@@ -4,7 +4,8 @@
   管理员也一样，没有任何例外；“不存在”与“不是你的”对外完全相同，不暴露对象是否存在。
 - 以 run_id、finding_id 访问时，先查出所属任务再校验归属。
 - 路径中的 id 不是合法 UUID 时同样返回 404，不返回 422。
-- 设置类接口按职责挂 require_sys_admin 或 require_biz_admin，无权限返回 403。
+- 设置类接口按权限点挂 permissions.require(...)，无权限返回 403（V31-U5F-07，不再按角色名判断）。
+  权限只决定能否维护公共设置，不放宽任何任务内容的归属校验。
 
 依赖的参数名与 SPEC 19 节的路径参数一致：/tasks/{id}、/tasks/{id}/files/{fid}、/runs/{rid}、/findings/{fid}。
 """
@@ -22,24 +23,6 @@ from app.security.sessions import AuthContext, require_auth
 def current_user(ctx: AuthContext = Depends(require_auth)) -> User:
     """已登录且无须改密的当前用户。"""
     return ctx.user
-
-
-def require_admin(user: User = Depends(current_user)) -> User:
-    if user.role != "admin":
-        raise AppError(403, "FORBIDDEN", "需要管理员权限")
-    return user
-
-
-def require_sys_admin(user: User = Depends(current_user)) -> User:
-    if user.role not in ("sys_admin", "admin"):
-        raise AppError(403, "FORBIDDEN", "需要系统管理员权限")
-    return user
-
-
-def require_biz_admin(user: User = Depends(current_user)) -> User:
-    if user.role not in ("biz_admin", "admin"):
-        raise AppError(403, "FORBIDDEN", "需要业务管理员权限")
-    return user
 
 
 def _parse_id(raw: str) -> uuid.UUID | None:

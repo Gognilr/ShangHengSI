@@ -1,6 +1,6 @@
 /** 管理接口（SPEC 19.7）：设置页各标签页的函数按页面分段追加，互不改动。 */
 import { http } from './http'
-import type { Role } from './auth'
+import type { Perm } from '@/utils/permissions'
 
 export interface LawsyncSettings {
   enabled: boolean; interval: 'monthly' | 'weekly'; last_run_at: string | null
@@ -19,10 +19,13 @@ export interface UserRow {
   id: string
   username: string
   display_name: string
-  role: Role
+  role_ids: number[]
   status: UserStatus
   must_change_password: boolean
   last_login_at: string | null
+  last_login_ip: string | null
+  /** 在线会话数 */
+  online: number
   created_at: string
 }
 
@@ -30,12 +33,12 @@ export interface UserCreateBody {
   username: string
   display_name: string
   password: string
-  role: Role
+  role_ids: number[]
 }
 
 export interface UserPatchBody {
   display_name?: string
-  role?: Role
+  role_ids?: number[]
   status?: UserStatus
 }
 
@@ -45,6 +48,18 @@ export const adminUsersApi = {
   update: (id: string, body: UserPatchBody) => http.patch<UserRow>(`/admin/users/${id}`, body),
   resetPassword: (id: string, newPassword: string) =>
     http.post<void>(`/admin/users/${id}/reset-password`, { new_password: newPassword }),
+  forceLogout: (id: string) => http.post<void>(`/admin/users/${id}/logout`),
+}
+
+// ---- 角色（设置 - 角色，V31-U5F-07） ----
+export interface PermissionDef { code: Perm; name: string; group: string }
+export interface RoleRow { id: number; name: string; builtin: 'user' | 'biz_admin' | 'sys_admin' | null; permissions: Perm[]; users: number }
+export interface RoleBody { name: string; permissions: Perm[] }
+export const adminRolesApi = {
+  list: () => http.get<{ items: RoleRow[]; permissions: PermissionDef[] }>('/admin/roles'),
+  create: (body: RoleBody) => http.post<RoleRow>('/admin/roles', body),
+  update: (id: number, body: RoleBody) => http.put<RoleRow>(`/admin/roles/${id}`, body),
+  delete: (id: number) => http.delete<void>(`/admin/roles/${id}`),
 }
 
 // ---- 模型（设置 - 模型） ----

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { SETTING_TABS } from '@/utils/permissions'
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { FileSearch, FilePlus, History as HistoryIcon, MessageSquare, MessageSquarePlus, Search, Settings } from '@lucide/vue'
@@ -26,20 +27,14 @@ let version = 0
 const staticEntries = computed<Entry[]>(() => {
   const go = (path: string) => () => void router.push(path)
   const list: Entry[] = [
-    { key: 'a-review', group: '操作', label: '新建审核', icon: FilePlus, run: go('/review/new') },
-    { key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
-    { key: 'p-assistant', group: '页面', label: '智能助手', icon: MessageSquare, run: go('/assistant') },
-    { key: 'p-review', group: '页面', label: '智能审核', icon: FileSearch, run: go('/review/new') },
+    ...(auth.can('use.review') ? [{ key: 'a-review', group: '操作', label: '新建审核', icon: FilePlus, run: go('/review/new') }] : []),
+    ...(auth.can('use.assistant') ? [{ key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
+      { key: 'p-assistant', group: '页面', label: '智能助手', icon: MessageSquare, run: go('/assistant') }] : []),
+    ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '智能审核', icon: FileSearch, run: go('/review/new') }] : []),
     { key: 'p-history', group: '页面', label: '审核历史', icon: HistoryIcon, run: go('/history') },
   ]
-  const settings = [
-    { name: 'personal', label: '个人（外观、修改密码）', scope: 'all' }, { name: 'users', label: '账号', scope: 'sys' }, { name: 'model', label: '模型', scope: 'sys' },
-    { name: 'requirements', label: '审核要求', scope: 'biz' }, { name: 'laws', label: '法规库', scope: 'biz' },
-    { name: 'templates', label: '公司范本', scope: 'biz' }, { name: 'knowledge', label: '知识库', scope: 'biz' },
-    { name: 'redaction', label: '脱敏', scope: 'biz' }, { name: 'data', label: '数据', scope: 'sys' },
-  ]
-  for (const s of settings) {
-    if (s.scope === 'all' || (s.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin)) list.push({ key: `p-set-${s.name}`, group: '页面', label: `设置 · ${s.label}`, icon: Settings, run: go(`/settings/${s.name}`) })
+  for (const s of SETTING_TABS) {
+    if (auth.can(...s.perms)) list.push({ key: `p-set-${s.name}`, group: '页面', label: `设置 · ${s.search ?? s.label}`, icon: Settings, run: go(`/settings/${s.name}`) })
   }
   return list
 })

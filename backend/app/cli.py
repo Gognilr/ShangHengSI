@@ -54,6 +54,7 @@ def create_admin(username: str, display_name: str) -> str:
     from app.db.models import User
     from app.db.session import get_sessionmaker
     from app.security.passwords import hash_password
+    from app.security.permissions import assign_legacy_role
 
     password = random_password()
     with get_sessionmaker()() as db:
@@ -64,13 +65,14 @@ def create_admin(username: str, display_name: str) -> str:
             username=username,
             display_name=display_name,
             password_hash=hash_password(password),
-            role="admin",
             must_change_password=True,
             created_at=now,
             updated_at=now,
         )
         db.add(user)
         db.flush()
+        # 命令行建的首个管理员兼任全部三个内置角色
+        assign_legacy_role(db, user, "admin")
         audit.record(
             db, "user_create", target_type="user", target_id=str(user.id), detail={"role": "admin", "via": "cli"}
         )

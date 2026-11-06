@@ -15,11 +15,12 @@ from app.db.models import LAW_STATUSES, Law, LawImport, LawImportFile, User
 from app.db.session import get_db
 from app.laws import imports
 from app.security import crypto
-from app.security.deps import require_biz_admin
+from app.security.permissions import require
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 
-router = APIRouter(prefix='/admin', dependencies=[Depends(require_biz_admin)])
+_perm = require("content.laws")
+router = APIRouter(prefix='/admin', dependencies=[Depends(_perm)])
 LawStatus = Literal['not_yet', 'valid', 'amended', 'repealed']
 
 
@@ -35,7 +36,7 @@ def get_law_settings(db: Session = Depends(get_db)):
 
 
 @router.put('/settings/laws')
-def put_law_settings(body: LawSettings, request: Request, admin: User = Depends(require_biz_admin),
+def put_law_settings(body: LawSettings, request: Request, admin: User = Depends(_perm),
                      db: Session = Depends(get_db)):
     from app.admin.settings_store import set_setting
     set_setting(db,'laws.refs_enabled',body.refs_enabled,admin.id)
@@ -65,7 +66,7 @@ def record_audit(db, request, user, action, target, detail):
 
 @router.post('/law-imports', status_code=202)
 def upload_import(request: Request, kind: Literal['catalog', 'fulltext'] = Form(...), status: LawStatus | None = Form(None),
-                  files: list[UploadFile] = File(...), admin: User = Depends(require_biz_admin),
+                  files: list[UploadFile] = File(...), admin: User = Depends(_perm),
                   db: Session = Depends(get_db)):
     if kind == 'catalog' and status is None:
         raise AppError(422, 'LAW_IMPORT_STATUS', '请选择目录的时效性')
@@ -116,7 +117,7 @@ def get_import(iid: uuid.UUID, db: Session = Depends(get_db)):
 
 
 @router.post('/law-imports/{iid}/apply')
-def apply_import(iid: uuid.UUID, request: Request, admin: User = Depends(require_biz_admin),
+def apply_import(iid: uuid.UUID, request: Request, admin: User = Depends(_perm),
                  db: Session = Depends(get_db)):
     row = imports.apply(db, iid, admin.id)
     record_audit(db, request, admin, 'law_import_apply', iid,
@@ -126,7 +127,7 @@ def apply_import(iid: uuid.UUID, request: Request, admin: User = Depends(require
 
 
 @router.post('/law-imports/{iid}/discard')
-def discard_import(iid: uuid.UUID, request: Request, admin: User = Depends(require_biz_admin),
+def discard_import(iid: uuid.UUID, request: Request, admin: User = Depends(_perm),
                    db: Session = Depends(get_db)):
     row = imports.discard(db, iid, admin.id)
     record_audit(db, request, admin, 'law_import_discard', iid, {'kind': row.kind})
@@ -160,7 +161,7 @@ class LawPatch(BaseModel):
 
 
 @router.patch('/laws/{law_id}')
-def patch_law(law_id: int, body: LawPatch, request: Request, admin: User = Depends(require_biz_admin),
+def patch_law(law_id: int, body: LawPatch, request: Request, admin: User = Depends(_perm),
               db: Session = Depends(get_db)):
     imports.lock(db)
     row = db.get(Law, law_id, with_for_update=True)

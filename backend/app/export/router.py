@@ -11,14 +11,16 @@ from app.export.annotated_docx import build_annotated
 from app.export.revised_docx import build_revised
 from app.db.session import get_db
 from app.export.report_docx import build_local_report, build_run_report
+from app.security.permissions import require
 from app.security.deps import current_user, owned_run, owned_task
 from app.security.errors import AppError
 
+_export = require("use.export")
 router = APIRouter()
 CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-@router.get("/runs/{rid}/annotated")
+@router.get("/runs/{rid}/annotated", dependencies=[Depends(_export)])
 def annotated(file_seq: int = Query(..., ge=1), run: ReviewRun = Depends(owned_run),
               user: User = Depends(current_user), db: Session = Depends(get_db)):
     file = db.scalar(select(TaskFile).where(TaskFile.task_id == run.task_id, TaskFile.seq == file_seq))
@@ -34,7 +36,7 @@ def annotated(file_seq: int = Query(..., ge=1), run: ReviewRun = Depends(owned_r
     return response
 
 
-@router.get("/runs/{rid}/revised")
+@router.get("/runs/{rid}/revised", dependencies=[Depends(_export)])
 def revised(file_seq: int = Query(..., ge=1), run: ReviewRun = Depends(owned_run),
             user: User = Depends(current_user), db: Session = Depends(get_db)):
     file = db.scalar(select(TaskFile).where(TaskFile.task_id == run.task_id, TaskFile.seq == file_seq))
@@ -55,7 +57,7 @@ def _response(filename, content):
                     headers={"Content-Disposition": f"attachment; filename=\"report.docx\"; filename*=UTF-8''{quote(filename, safe='')}"})
 
 
-@router.get("/runs/{rid}/report")
+@router.get("/runs/{rid}/report", dependencies=[Depends(_export)])
 def run_report(run: ReviewRun = Depends(owned_run), user: User = Depends(current_user), db: Session = Depends(get_db)):
     if run.status in ("queued", "running", "blocked"):
         raise AppError(409, "REPORT_UNAVAILABLE", "该轮次尚未完成，无法导出")
@@ -65,7 +67,7 @@ def run_report(run: ReviewRun = Depends(owned_run), user: User = Depends(current
     return _response(filename, content)
 
 
-@router.get("/tasks/{id}/report")
+@router.get("/tasks/{id}/report", dependencies=[Depends(_export)])
 def local_report(task: Task = Depends(owned_task), user: User = Depends(current_user), db: Session = Depends(get_db)):
     if task.status != "completed_local":
         raise AppError(409, "REPORT_UNAVAILABLE", "该任务尚未完成本地校验，无法导出")

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { authApi, type AdminAlert, type User } from '@/api/auth'
 import { ApiError, setCsrfToken } from '@/api/http'
+import type { Perm } from '@/utils/permissions'
 
 /** 登录状态。会话本身在服务端（HttpOnly Cookie），这里只保存当前用户和 CSRF 令牌。 */
 export const useAuthStore = defineStore('auth', () => {
@@ -15,9 +16,11 @@ export const useAuthStore = defineStore('auth', () => {
   const loaded = ref(false)
 
   const isLoggedIn = computed(() => user.value !== null)
-  const canSysAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'sys_admin')
-  const canBizAdmin = computed(() => user.value?.role === 'admin' || user.value?.role === 'biz_admin')
-  const isAdmin = computed(() => canSysAdmin.value || canBizAdmin.value)
+  // 权限点（V31-U5F-07）：持有任一即可；空列表表示所有登录用户
+  const perms = computed(() => new Set(user.value?.permissions ?? []))
+  function can(...codes: Perm[]): boolean { return codes.length === 0 || codes.some(c => perms.value.has(c)) }
+  // 有任何管理权限（非“使用”类）即可看到管理员提醒
+  const isAdmin = computed(() => [...perms.value].some(p => !p.startsWith('use.')))
   const mustChangePassword = computed(() => user.value?.must_change_password === true)
 
   function clear(): void {
@@ -78,8 +81,7 @@ export const useAuthStore = defineStore('auth', () => {
     loaded,
     isLoggedIn,
     isAdmin,
-    canSysAdmin,
-    canBizAdmin,
+    can,
     mustChangePassword,
     clear,
     refresh,

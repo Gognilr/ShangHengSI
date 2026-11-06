@@ -116,7 +116,10 @@ def _cached_hash(password: str) -> str:
 
 @pytest.fixture
 def make_user(db_sessionmaker):
-    """创建用户：make_user("alice", role="admin", must_change_password=True, status="disabled")。"""
+    """创建用户：make_user("alice", role="admin", must_change_password=True, status="disabled")。
+
+    role 取 user / biz_admin / sys_admin / admin，按 permissions.LEGACY_ROLES 兼任内置角色。
+    """
     from app.db.base import utcnow
     from app.db.models import User
 
@@ -133,14 +136,18 @@ def make_user(db_sessionmaker):
             username=username,
             display_name=username,
             password_hash=_cached_hash(password),
-            role=role,
             status=status,
             must_change_password=must_change_password,
             created_at=now,
             updated_at=now,
         )
+        from app.security.permissions import assign_legacy_role
+
         with db_sessionmaker() as s:
             s.add(user)
+            s.flush()
+            # role 沿用改版前的单一角色写法，按迁移 0038 的对应关系兼任内置角色
+            assign_legacy_role(s, user, role)
             s.commit()
         return user
 

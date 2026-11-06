@@ -23,9 +23,11 @@ from app.review.requirements import (
 )
 from app.review.service import FindingOut, FindingPatch, RunCreated, RunDetail, RunList
 from app.security.errors import AppError
+from app.security.permissions import require
 from app.security.deps import current_user, owned_finding, owned_run, owned_task
 from app.security.sessions import client_ip
 
+_review = require("use.review")
 router = APIRouter()
 
 
@@ -34,7 +36,7 @@ class RunIn(BaseModel):
     model_id: int | None = Field(None, gt=0)
 
 
-@router.post("/tasks/{id}/runs", status_code=status.HTTP_201_CREATED, response_model=RunCreated)
+@router.post("/tasks/{id}/runs", status_code=status.HTTP_201_CREATED, response_model=RunCreated, dependencies=[Depends(_review)])
 def create_run(
     request: Request,
     body: RunIn | None = Body(None),

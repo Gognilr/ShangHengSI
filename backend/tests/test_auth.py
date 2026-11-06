@@ -50,7 +50,7 @@ def test_login_sets_secure_cookie_and_stores_only_hash(api, make_user, db_sessio
     assert r.status_code == 200
     body = r.json()
     assert body["user"]["username"] == "alice"
-    assert body["user"]["role"] == "user"
+    assert body["user"]["roles"] == ["普通用户"]
     assert body["user"]["must_change_password"] is False
     assert re.fullmatch(r"[0-9a-f]{64}", body["csrf_token"])
 
@@ -86,7 +86,7 @@ def test_me_returns_user_and_csrf(login, make_user):
     assert r.status_code == 200
     body = r.json()
     assert body["user"]["username"] == "bob"
-    assert body["user"]["role"] == "admin"
+    assert body["user"]["roles"] == ["普通用户", "业务管理员", "系统管理员"]
     assert body["csrf_token"] == csrf
     assert body["alerts"] == []
 
@@ -409,7 +409,9 @@ def test_create_admin_command(cli_db, api, db_sessionmaker, capsys):
     password = re.search(r"只显示这一次，首次登录须修改）：(\S+)", out).group(1)
 
     u = _user(db_sessionmaker, "root_admin")
-    assert u.role == "admin"
+    from app.security.permissions import user_permissions, CODES
+    with db_sessionmaker() as s:
+        assert user_permissions(s, u.id) == set(CODES)
     assert u.must_change_password is True
     assert u.display_name == "管理员"
     assert password not in u.password_hash

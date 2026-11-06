@@ -142,10 +142,10 @@ def test_t43_failure_alert_and_no_pending(db_sessionmaker,monkeypatch):
         assert get_setting(db,'lawsync.last_status')['ok'] is False
         assert not db.scalar(select(LawImport))
         assert not db.scalar(select(Law))
-        assert 'LAWSYNC_FAILED' in [a['code'] for a in admin_alerts(db,'sys_admin')]
-        assert 'LAWSYNC_FAILED' not in [a['code'] for a in admin_alerts(db,'biz_admin')]
+        assert 'LAWSYNC_FAILED' in [a['code'] for a in admin_alerts(db,{'sys.lawsync'})]
+        assert 'LAWSYNC_FAILED' not in [a['code'] for a in admin_alerts(db,{'content.laws'})]
         set_setting(db,'lawsync.enabled',False,None)
-        assert 'LAWSYNC_FAILED' not in [a['code'] for a in admin_alerts(db,'sys_admin')]
+        assert 'LAWSYNC_FAILED' not in [a['code'] for a in admin_alerts(db,{'sys.lawsync'})]
 
 
 def test_t43_schedule_disabled_pending_and_dedup(db_sessionmaker):

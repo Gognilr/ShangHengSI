@@ -26,11 +26,14 @@ from app.config import get_settings
 from app.db.base import utcnow
 from app.db.models import BackupRecord, Job, LlmCall, Task, TaskFile, User
 from app.db.session import get_db
-from app.security.deps import require_sys_admin
+from app.security.deps import current_user
+from app.security.permissions import require
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 
-router = APIRouter(prefix="/admin", dependencies=[Depends(require_sys_admin)])
+_data = require("sys.data")
+_sync = require("sys.lawsync")
+router = APIRouter(prefix="/admin")
 
 PAGE_SIZE = 20
 _TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
@@ -42,15 +45,15 @@ class LawsyncSettingsIn(BaseModel):
     interval: Literal['monthly', 'weekly']
 
 
-@router.get('/settings/lawsync')
+@router.get('/settings/lawsync', dependencies=[Depends(_sync)])
 def get_lawsync(db: DbSession = Depends(get_db)):
     return {name: get_setting(db, 'lawsync.'+name) for name in
             ('enabled', 'interval', 'last_run_at', 'last_status')}
 
 
-@router.put('/settings/lawsync')
+@router.put('/settings/lawsync', dependencies=[Depends(_sync)])
 def put_lawsync(body: LawsyncSettingsIn, request: Request,
-                admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+                admin: User = Depends(current_user), db: DbSession = Depends(get_db)):
     from app.laws import imports
     imports.lock(db)
     for name, value in body.model_dump().items():
@@ -61,8 +64,8 @@ def put_lawsync(body: LawsyncSettingsIn, request: Request,
     return get_lawsync(db)
 
 
-@router.post('/lawsync/run', status_code=202)
-def run_lawsync(request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+@router.post('/lawsync/run', status_code=202, dependencies=[Depends(_sync)])
+def run_lawsync(request: Request, admin: User = Depends(current_user), db: DbSession = Depends(get_db)):
     from app.lawsync.job import enqueue
     enqueue(db)
     db.commit()
@@ -127,14 +130,14 @@ def _backup_settings(db: DbSession) -> BackupSettings:
                           dir=get_settings().backup_dir)
 
 
-@router.get("/settings/backup", response_model=BackupSettings)
+@router.get("/settings/backup", response_model=BackupSettings, dependencies=[Depends(_data)])
 def get_backup_settings(db: DbSession = Depends(get_db)) -> BackupSettings:
     return _backup_settings(db)
 
 
-@router.put("/settings/backup", response_model=BackupSettings)
+@router.put("/settings/backup", response_model=BackupSettings, dependencies=[Depends(_data)])
 def put_backup_settings(
-    body: BackupSettingsIn, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)
+    body: BackupSettingsIn, request: Request, admin: User = Depends(current_user), db: DbSession = Depends(get_db)
 ) -> BackupSettings:
     value = body.time.strip()
     if not _TIME.fullmatch(value):
@@ -151,9 +154,9 @@ def put_backup_settings(
     return _backup_settings(db)
 
 
-@router.post("/backup/run", status_code=202)
+@router.post("/backup/run", status_code=202, dependencies=[Depends(_data)])
 def run_backup_now(
-    request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)
+    request: Request, admin: User = Depends(current_user), db: DbSession = Depends(get_db)
 ) -> dict:
     if enqueue_backup(db, trigger="manual", user_id=admin.id) is None:
         db.rollback()
@@ -162,7 +165,7 @@ def run_backup_now(
     return {"queued": True}
 
 
-@router.get("/backup/records", response_model=BackupRecords)
+@router.get("/backup/records", response_model=BackupRecords, dependencies=[Depends(_data)])
 def backup_records(db: DbSession = Depends(get_db)) -> BackupRecords:
     rows = db.scalars(select(BackupRecord).order_by(BackupRecord.id.desc()).limit(20)).all()
     items = [BackupRow.of(r) for r in rows]
@@ -187,15 +190,15 @@ class RetentionSettings(BaseModel):
     unfinished_days: int
 
 
-@router.get("/settings/retention", response_model=RetentionSettings)
+@router.get("/settings/retention", response_model=RetentionSettings, dependencies=[Depends(_data)])
 def get_retention(db: DbSession = Depends(get_db)) -> RetentionSettings:
     return RetentionSettings(**{name: int(get_setting(db, "retention." + name) or 0)
                                 for name in RetentionSettings.model_fields})
 
 
-@router.put("/settings/retention", response_model=RetentionSettings)
+@router.put("/settings/retention", response_model=RetentionSettings, dependencies=[Depends(_data)])
 def put_retention(
-    body: RetentionSettings, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)
+    body: RetentionSettings, request: Request, admin: User = Depends(current_user), db: DbSession = Depends(get_db)
 ) -> RetentionSettings:
     values = body.model_dump()
     if any(value not in (0, 30, 90, 180, 365) for value in values.values()):
@@ -259,7 +262,7 @@ def _outbound_fields(call: LlmCall, user_name: Optional[str]) -> dict:
     )
 
 
-@router.get("/outbound-logs", response_model=OutboundPage)
+@router.get("/outbound-logs", response_model=OutboundPage, dependencies=[Depends(_data)])
 def list_outbound(
     purpose: Optional[Literal['review', 'chat', 'test', 'assist']] = Query(None),
     user_id: Optional[uuid.UUID] = Query(None),
@@ -294,7 +297,7 @@ def list_outbound(
                         total=total, page=page, page_size=PAGE_SIZE)
 
 
-@router.get("/outbound-logs/{log_id}", response_model=OutboundDetail)
+@router.get("/outbound-logs/{log_id}", response_model=OutboundDetail, dependencies=[Depends(_data)])
 def get_outbound(log_id: str, db: DbSession = Depends(get_db)) -> OutboundDetail:
     not_found = NotFoundError("OUTBOUND_LOG_NOT_FOUND", "外发记录不存在")
     if not log_id.isdigit() or int(log_id) > 2**63 - 1:
@@ -418,7 +421,7 @@ def _storage_snapshot(db: DbSession) -> dict:
         return dict(value)
 
 
-@router.get("/system/status", response_model=SystemStatus)
+@router.get("/system/status", response_model=SystemStatus, dependencies=[Depends(_data)])
 def system_status(db: DbSession = Depends(get_db)) -> SystemStatus:
     s = get_settings()
     queued = db.scalar(select(func.count()).select_from(Job).where(Job.status == "queued")) or 0
@@ -448,7 +451,7 @@ class AuditPage(BaseModel):
     page_size: int
 
 
-@router.get("/audit-logs", response_model=AuditPage)
+@router.get("/audit-logs", response_model=AuditPage, dependencies=[Depends(_data)])
 def audit_logs(
     user_id: Optional[uuid.UUID] = Query(None), action: Optional[str] = Query(None, max_length=100),
     date_from: Optional[date] = Query(None, alias="from"), date_to: Optional[date] = Query(None, alias="to"),

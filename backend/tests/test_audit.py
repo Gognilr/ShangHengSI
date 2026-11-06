@@ -75,7 +75,7 @@ def test_setting_and_account_changes_are_audited(admin, make_user, db_sessionmak
     u = make_user("alice")
     # 账号变更
     assert c.post(f"{API_PREFIX}/admin/users", headers=_hdr(csrf), json={
-        "username": "carol", "display_name": DISPLAY, "password": NEW_PASSWORD, "role": "user"}).status_code == 201
+        "username": "carol", "display_name": DISPLAY, "password": NEW_PASSWORD, "role_ids": [1]}).status_code == 201
     assert c.patch(f"{API_PREFIX}/admin/users/{u.id}", headers=_hdr(csrf), json={"display_name": DISPLAY}).status_code == 200
     assert c.post(f"{API_PREFIX}/admin/users/{u.id}/reset-password", headers=_hdr(csrf),
                   json={"new_password": NEW_PASSWORD}).status_code == 204

@@ -76,7 +76,7 @@ async function runSync() {
     syncTimer = setInterval(() => { void loadSync(true) }, 3000)
   } catch (e) { syncRunning.value = false; syncError.value = e instanceof ApiError ? e.message : '同步未能开始，请稍后重试' }
 }
-onMounted(() => { void loadSync() })
+onMounted(() => { if (auth.can('sys.lawsync')) void loadSync() })
 onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
@@ -305,11 +305,14 @@ function searchAudit() {
 }
 
 onMounted(async () => {
+  // 分区按权限点显示（V31-U5F-07）：法规同步开关与数据维护可分给不同角色
+  if (!auth.can('sys.data')) return
   void loadBackup()
   void loadRetention()
   void loadLogs()
   void loadStatus()
   void loadAudit()
+  if (!auth.can('sys.accounts')) return
   try {
     users.value = (await adminUsersApi.list()).items
   } catch {
@@ -329,7 +332,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
   <div class="settings-page">
     <PageHeader title="数据与系统" description="系统状态、数据保留、备份与外发记录" />
     <div class="panel setting-panel">
-      <SettingSection title="备份" description="每天定时备份数据，超出份数的最旧备份自动删除。">
+      <SettingSection v-if="auth.can('sys.data')" title="备份" description="每天定时备份数据，超出份数的最旧备份自动删除。">
       <el-alert v-if="backupError" type="error" :closable="false" show-icon :title="backupError" />
       <div v-loading="backupLoading">
         <el-form label-width="110px" @submit.prevent>
@@ -363,7 +366,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
         </div>
       </div>
     </SettingSection>
-      <SettingSection title="备份记录" description="最近 20 条备份的结果。" stacked>
+      <SettingSection v-if="auth.can('sys.data')" title="备份记录" description="最近 20 条备份的结果。" stacked>
         <el-table :data="records?.items ?? []" size="small">
           <template #empty><EmptyState compact title="尚无备份记录" /></template>
           <el-table-column label="开始时间" width="170" class-name="num">
@@ -392,7 +395,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
         </el-table>
       </SettingSection>
 
-      <SettingSection title="数据保留" description="原件、审核结果和各类记录的保留期限。">
+      <SettingSection v-if="auth.can('sys.data')" title="数据保留" description="原件、审核结果和各类记录的保留期限。">
       <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
       <el-form label-width="110px" @submit.prevent>
         <el-form-item v-for="field in retentionFields" :key="field.key" :label="field.label">
@@ -408,7 +411,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
       </div>
     </SettingSection>
 
-      <SettingSection v-loading="syncLoading" title="法规库自动更新" description="定期从官方数据库拉取公开法规，变更经业务管理员确认后生效。">
+      <SettingSection v-if="auth.can('sys.lawsync')" v-loading="syncLoading" title="法规库自动更新" description="定期从官方数据库拉取公开法规，变更经业务管理员确认后生效。">
       <el-alert v-if="syncError" :title="syncError" type="error" :closable="false" show-icon />
       <el-form label-width="110px">
         <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规库自动更新" /></el-form-item>
@@ -422,7 +425,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
       <div class="actions"><el-button :disabled="!syncSettings?.enabled || syncSaving || syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" :loading="syncRunning" @click="runSync">立即同步</el-button></div>
     </SettingSection>
 
-      <SettingSection v-loading="statusLoading" title="系统状态" description="版本、任务队列与存储占用。">
+      <SettingSection v-if="auth.can('sys.data')" v-loading="statusLoading" title="系统状态" description="版本、任务队列与存储占用。">
       <el-alert v-if="statusError" type="error" :closable="false" show-icon :title="statusError" />
       <div v-if="status" class="system-stats">
         <div class="stat"><div class="stat-label">版本号</div><div class="stat-value">{{ status.version }}</div></div>
@@ -444,7 +447,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
       </template>
     </SettingSection>
 
-      <SettingSection title="外发记录" description="每次发给模型的记录，均为脱敏后的内容。" stacked>
+      <SettingSection v-if="auth.can('sys.data')" title="外发记录" description="每次发给模型的记录，均为脱敏后的内容。" stacked>
       <div class="filters">
         <el-select v-model="filters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="search">
           <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
@@ -502,7 +505,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
       <div class="hint">点击一行查看外发文本和返回内容（均为脱敏后的内容）。</div>
     </SettingSection>
 
-      <SettingSection title="审计日志" description="关键操作的记录，用于追溯。" stacked>
+      <SettingSection v-if="auth.can('sys.data')" title="审计日志" description="关键操作的记录，用于追溯。" stacked>
       <div class="filters">
         <el-select v-model="auditFilters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="searchAudit">
           <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />

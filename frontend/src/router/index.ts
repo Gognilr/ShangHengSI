@@ -19,6 +19,8 @@ import Knowledge from '@/views/settings/Knowledge.vue'
 import SettingsLayout from '@/views/settings/SettingsLayout.vue'
 import Users from '@/views/settings/Users.vue'
 import Personal from '@/views/settings/Personal.vue'
+import Roles from '@/views/settings/Roles.vue'
+import { SETTING_TABS, type Perm } from '@/utils/permissions'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -26,11 +28,17 @@ declare module 'vue-router' {
     public?: boolean
     /** 仅管理员可访问 */
     admin?: boolean
-    adminScope?: 'sys' | 'biz'
+    /** 持有任一权限点才能进入（V31-U5F-07）；设置分页按 SETTING_TABS 自动填写 */
+    perms?: Perm[]
   }
 }
 
 export const HOME_PATH = '/assistant'
+
+/** 首页：智能助手；没有该权限时依次退到智能审核、会议纪要，最后是翻译（本地翻译人人可用） */
+function homeFor(can: (...p: Perm[]) => boolean): string {
+  return can('use.assistant') ? '/assistant' : can('use.review') ? '/review/new' : can('use.meeting') ? '/meeting' : '/translate'
+}
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -41,13 +49,13 @@ export const router = createRouter({
       component: MainLayout,
       children: [
         { path: '', redirect: HOME_PATH },
-        { path: 'review/new', name: 'review-new', component: ReviewNew },
+        { path: 'review/new', name: 'review-new', component: ReviewNew, meta: { perms: ['use.review'] } },
         { path: 'review/:taskId', name: 'review-result', component: ReviewResult },
         { path: 'history', name: 'history', component: History },
-        { path: 'assistant', name: 'assistant', component: Assistant },
+        { path: 'assistant', name: 'assistant', component: Assistant, meta: { perms: ['use.assistant'] } },
         { path: 'assistant/:sessionId', name: 'assistant-session', component: Assistant },
         // 会议纪要与翻译是侧栏独立菜单（V31-U5），底层沿用助手会话
-        { path: 'meeting', name: 'meeting', component: Meeting },
+        { path: 'meeting', name: 'meeting', component: Meeting, meta: { perms: ['use.meeting'] } },
         { path: 'meeting/:sessionId', name: 'meeting-session', component: Meeting },
         { path: 'translate', name: 'translate', component: Translate },
         { path: 'translate/:sessionId', name: 'translate-session', component: Translate },
@@ -58,14 +66,15 @@ export const router = createRouter({
             // 设置对所有人可见，“个人”在最前；管理分页仍按角色校验（V31Q-95）
             { path: '', redirect: '/settings/personal' },
             { path: 'personal', name: 'settings-personal', component: Personal },
-            { path: 'users', name: 'settings-users', component: Users, meta: { adminScope: 'sys' } },
-            { path: 'model', name: 'settings-model', component: Model, meta: { adminScope: 'sys' } },
-            { path: 'requirements', name: 'settings-requirements', component: Requirements, meta: { adminScope: 'biz' } },
-            { path: 'laws', name: 'settings-laws', component: Laws, meta: { adminScope: 'biz' } },
-            { path: 'templates', name: 'settings-templates', component: Templates, meta: { adminScope: 'biz' } },
-            { path: 'knowledge', name: 'settings-knowledge', component: Knowledge, meta: { adminScope: 'biz' } },
-            { path: 'redaction', name: 'settings-redaction', component: Redaction, meta: { adminScope: 'biz' } },
-            { path: 'data', name: 'settings-data', component: Data, meta: { adminScope: 'sys' } },
+            { path: 'users', name: 'settings-users', component: Users },
+            { path: 'roles', name: 'settings-roles', component: Roles },
+            { path: 'model', name: 'settings-model', component: Model },
+            { path: 'requirements', name: 'settings-requirements', component: Requirements },
+            { path: 'laws', name: 'settings-laws', component: Laws },
+            { path: 'templates', name: 'settings-templates', component: Templates },
+            { path: 'knowledge', name: 'settings-knowledge', component: Knowledge },
+            { path: 'redaction', name: 'settings-redaction', component: Redaction },
+            { path: 'data', name: 'settings-data', component: Data },
           ],
         },
       ],
@@ -81,7 +90,7 @@ router.beforeEach(async (to) => {
 
   if (to.meta.public) {
     // 已登录再访问登录页，回到首页
-    return auth.isLoggedIn ? { path: HOME_PATH } : true
+    return auth.isLoggedIn ? { path: homeFor(auth.can) } : true
   }
 
   // 未登录：去登录页，登录后回到原来要去的地方
@@ -89,19 +98,23 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } }
   }
 
-  // 强制改密：只能停留在首页，由主布局弹出不可关闭的改密对话框
-  if (auth.mustChangePassword && to.path !== HOME_PATH) {
-    return { path: HOME_PATH }
+  // 强制改密：只能停留在首页，由主布局弹出不可关闭的改密对话框（不再按权限跳转）
+  if (auth.mustChangePassword) {
+    return to.path === HOME_PATH ? true : { path: HOME_PATH }
   }
 
   // 非管理员不能进入管理员页面
   if (to.meta.admin && !auth.isAdmin) {
     ElMessage.error('没有权限访问该页面')
-    return { path: HOME_PATH }
+    return { path: homeFor(auth.can) }
   }
 
-  if ((to.meta.adminScope === 'sys' && !auth.canSysAdmin) || (to.meta.adminScope === 'biz' && !auth.canBizAdmin)) {
-    return { path: '/settings/personal' }
+  const tab = to.path.startsWith('/settings/') ? SETTING_TABS.find(t => to.path === `/settings/${t.name}`) : undefined
+  const perms = tab?.perms ?? to.meta.perms ?? []
+  if (!auth.can(...perms)) {
+    if (tab) return { path: '/settings/personal' }
+    const home = homeFor(auth.can)
+    return to.path === home ? true : { path: home }
   }
 
   return true

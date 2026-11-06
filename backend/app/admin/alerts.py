@@ -64,16 +64,23 @@ def _cap_alerts(db: Session) -> list[dict]:
     return alerts
 
 
-def admin_alerts(db: Session, role: str = "admin") -> list[dict]:
-    if role == "biz_admin":
-        return [*_prompt_term_alerts(db), *_law_import_alerts(db)]
-    if role not in ("sys_admin", "admin"):
-        return []
-    retention = [{"code": "RETENTION_REVIEW", "message":
-                  "数据保留已改为分层设置，新增的保留项暂为永久，请在设置 → 数据中确认"}] \
-        if get_setting(db, "retention.review_pending") else []
-    return [*_backup_alerts(db), *_cap_alerts(db), *_prompt_term_alerts(db), *retention, *_lawsync_alerts(db),
-            *(_law_import_alerts(db) if role == 'admin' else [])]
+def admin_alerts(db: Session, perms: set[str]) -> list[dict]:
+    """按权限点给提醒（V31-U5F-07）：没有任何管理权限的人没有提醒。"""
+    alerts: list[dict] = []
+    if "sys.data" in perms:
+        alerts += _backup_alerts(db)
+        if get_setting(db, "retention.review_pending"):
+            alerts.append({"code": "RETENTION_REVIEW", "message":
+                           "数据保留已改为分层设置，新增的保留项暂为永久，请在设置 → 数据中确认"})
+    if "sys.models" in perms:
+        alerts += _cap_alerts(db)
+    if any(not p.startswith("use.") for p in perms):  # 会让全部审核被拦，任何管理者都应看到
+        alerts += _prompt_term_alerts(db)
+    if "sys.lawsync" in perms:
+        alerts += _lawsync_alerts(db)
+    if "content.laws" in perms:
+        alerts += _law_import_alerts(db)
+    return alerts
 
 
 def _law_import_alerts(db: Session) -> list[dict]:

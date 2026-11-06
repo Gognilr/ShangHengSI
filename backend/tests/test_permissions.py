@@ -19,8 +19,8 @@ from app.security.deps import (
     owned_run,
     owned_task,
     owned_task_file,
-    require_admin,
 )
+from app.security.permissions import require
 
 BASE = f"{API_PREFIX}/_test"
 
@@ -58,7 +58,7 @@ def routes(db_app):
     r.add_api_route("/runs/{rid}/report", run_ok, methods=["GET"])
     r.add_api_route("/findings/{fid}", finding_ok, methods=["PATCH"])
 
-    admin = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
+    admin = APIRouter(prefix="/admin", dependencies=[Depends(require("sys.accounts"))])
 
     @admin.get("/ping")
     def admin_ping(user: User = Depends(current_user)):

@@ -202,7 +202,6 @@ class LawImportFile(Base):
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        enum_check("role", ["user", "sys_admin", "biz_admin", "admin"]),
         enum_check("status", ["active", "disabled"]),
         enum_check("last_stance", STANCES),
         enum_check("last_source", SOURCES),
@@ -212,7 +211,6 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     display_name: Mapped[str] = mapped_column(String(50), nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    role: Mapped[str] = mapped_column(String(10), nullable=False)
     status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="active")
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
@@ -220,8 +218,30 @@ class User(Base):
     last_stance: Mapped[Optional[str]] = mapped_column(String(10))
     last_source: Mapped[Optional[str]] = mapped_column(String(10))
     last_login_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    last_login_ip: Mapped[Optional[str]] = mapped_column(INET)
     created_at: Mapped[datetime] = _ts_now()
     updated_at: Mapped[datetime] = _ts_updated()
+
+
+# ---- 角色与权限点（V31-U5F-07）：权限点固定在 app/security/permissions.py ----
+class Role(Base):
+    __tablename__ = "roles"
+    __table_args__ = (enum_check("builtin", ["user", "biz_admin", "sys_admin"]),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
+    # 内置角色的标识；自定义角色为空
+    builtin: Mapped[Optional[str]] = mapped_column(String(10), unique=True)
+    permissions: Mapped[list] = _jsonb_list()
+    created_at: Mapped[datetime] = _ts_now()
+    updated_at: Mapped[datetime] = _ts_updated()
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role_id: Mapped[int] = mapped_column(Integer, ForeignKey("roles.id"), primary_key=True, index=True)
 
 
 # ---- 18.4 sessions ----
@@ -235,6 +255,12 @@ class Session(Base):
     last_seen_at: Mapped[datetime] = _ts_now()
     expires_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, nullable=False)
     ip: Mapped[Optional[str]] = mapped_column(INET)
+    # 登录设备（V31-U5F-07）：对外引用会话只用 id，不暴露令牌哈希
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, unique=True, server_default=text("gen_random_uuid()"))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(300))
+    # 本账号在新 IP 登录时给其他在线会话的提醒，本会话关闭提醒后清空
+    notice_ip: Mapped[Optional[str]] = mapped_column(INET)
+    notice_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
 
 
 # ---- 18.5 tasks ----

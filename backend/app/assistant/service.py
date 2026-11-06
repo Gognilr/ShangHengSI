@@ -94,6 +94,9 @@ def detail(db: Session, task: Task) -> SessionDetail:
 
 
 def create(db: Session, user: User, ip: str | None, purpose: str = 'chat') -> SessionDetail:
+    from app.security import permissions
+    if purpose != 'translate':  # 翻译页可只用本地翻译，云端发送时再校验
+        permissions.ensure(db, user, permissions.PURPOSE_PERM[purpose])
     task = Task(kind="assistant", owner_id=user.id, title="新会话", stance="other", source="incoming",
                 policy="ai", status="active", last_activity_at=utcnow(), purpose=purpose)
     db.add(task)
@@ -302,6 +305,8 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     if mt.local(body.template, body.params):
         return mt.send(db, task, user, body)
     from app.assistant.prompt import selected_files
+    from app.security import permissions
+    permissions.ensure_cloud_send(db, user, task.purpose, body.template)
     db.scalar(select(User).where(User.id == user.id).with_for_update())
     task = lock(db, task)
     model = choose_model(db, task, body.model_id, body.template)
@@ -373,6 +378,8 @@ def retry(db: Session, task: Task, user: User, mid: int) -> dict:
     from app.assistant import local_translation as mt
     if mt.local(previous.template, previous.params):
         return mt.retry(db, task, user, owned_message(db, task, int(previous.extras.get('user_message_id', 0))))
+    from app.security import permissions
+    permissions.ensure_cloud_send(db, user, task.purpose, previous.template)
     model = select_model(db, previous.model_id, "assist", structured=previous.template == "compare")
     _require_send(db, task, model.id)
     source = owned_message(db, task, int(previous.extras.get("user_message_id", 0)))

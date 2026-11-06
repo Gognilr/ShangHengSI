@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.parsing.model import strip_invisible
 from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
+from app.security.permissions import require
 from app.security.deps import current_user, owned_task, owned_task_file
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
@@ -21,6 +22,7 @@ from app.tasks import service
 from app.redaction import stats
 from app.tasks.schemas import PreviewNodes, TaskCreated, TaskDetail, TaskFileOut, TaskPage, TaskPatch
 
+_review = require("use.review")
 router = APIRouter(prefix="/tasks")
 
 
@@ -67,7 +69,7 @@ def patch_file_type(
     return result
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=TaskCreated)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=TaskCreated, dependencies=[Depends(_review)])
 def create_task(
     request: Request,
     files: list[UploadFile] | None = File(None),

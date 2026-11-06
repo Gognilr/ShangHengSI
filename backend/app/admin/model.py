@@ -20,11 +20,12 @@ from app.db.session import get_db
 from app.llm import gateway
 from app.llm.usage import monthly_usage
 from app.security import crypto
-from app.security.deps import require_sys_admin
+from app.security.permissions import require
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 
-router = APIRouter(prefix="/admin", dependencies=[Depends(require_sys_admin)])
+_perm = require("sys.models")
+router = APIRouter(prefix="/admin", dependencies=[Depends(_perm)])
 _PRICE = re.compile(r"\d{1,8}(\.\d{1,4})?")
 _KEY_CHARS = re.compile(r"[\x21-\x7e]{8,500}")
 _EXTRA_MSG = "附加请求参数须为 JSON 对象，且不能包含 messages"
@@ -206,19 +207,19 @@ def list_models(db: DbSession = Depends(get_db)):
 
 
 @router.post("/models", status_code=201)
-def create(body: ModelIn, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+def create(body: ModelIn, request: Request, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
     if db.scalar(select(func.count()).select_from(LlmModel)) >= 10:
         raise AppError(409, "MODEL_LIMIT", "最多配置 10 个模型（含停用）")
     return _save(db, None, body, request, admin)
 
 
 @router.put("/models/{mid}")
-def update(mid: int, body: ModelIn, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+def update(mid: int, body: ModelIn, request: Request, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
     return _save(db, _get(db, mid), body, request, admin)
 
 
 @router.post("/models/{mid}/test")
-def test(mid: int, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+def test(mid: int, request: Request, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
     row = _get(db, mid)
     # 停用模型仍允许管理员测试连接。
     cfg = gateway._Config(id=row.id, base_url=row.base_url, api_key=crypto.decrypt_text(row.api_key_enc),
@@ -233,7 +234,7 @@ def test(mid: int, request: Request, admin: User = Depends(require_sys_admin), d
 
 
 @router.post("/models/{mid}/default")
-def default(mid: int, body: DefaultIn, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+def default(mid: int, body: DefaultIn, request: Request, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
     from app.models_api import select_model
     row = select_model(db, mid, body.purpose)
     key = f"model.default_{body.purpose}_id"
@@ -244,7 +245,7 @@ def default(mid: int, body: DefaultIn, request: Request, admin: User = Depends(r
 
 
 @router.post("/models/{mid}/enabled")
-def enabled(mid: int, body: EnabledIn, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+def enabled(mid: int, body: EnabledIn, request: Request, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
     row = _get(db, mid)
     if not body.enabled and any(get_setting(db, f"model.default_{p}_id") == mid for p in ("review", "assist")):
         raise AppError(409, "DEFAULT_IN_USE", "默认模型不能停用，请先更换默认模型")
@@ -255,7 +256,7 @@ def enabled(mid: int, body: EnabledIn, request: Request, admin: User = Depends(r
 
 
 @router.delete("/models/{mid}", status_code=204)
-def delete(mid: int, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+def delete(mid: int, request: Request, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
     row = _get(db, mid)
     if _used(db, mid):
         raise AppError(409, "MODEL_IN_USE", "已被调用过的模型只能停用")
@@ -274,7 +275,7 @@ def delete(mid: int, request: Request, admin: User = Depends(require_sys_admin),
 
 
 @router.put("/settings/user-daily-cap")
-def daily(body: DailyCapIn, request: Request, admin: User = Depends(require_sys_admin), db: DbSession = Depends(get_db)):
+def daily(body: DailyCapIn, request: Request, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
     set_setting(db, "model.user_daily_cap", body.value, admin.id)
     _audit(db, request, admin, "all", ["model.user_daily_cap"])
     db.commit()

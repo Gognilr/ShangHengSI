@@ -13,6 +13,10 @@ import KeepTerms from '@/components/settings/KeepTerms.vue'
 import RedactionStats from '@/components/settings/RedactionStats.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
+import { useAuthStore } from '@/stores/auth'
+
+// 各分区按权限点显示（V31-U5F-07）
+const auth = useAuthStore()
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
@@ -207,10 +211,9 @@ async function removeOurParty(row: TermRow) {
 }
 
 onMounted(() => {
-  void loadMask()
-  void loadCustom()
-  void loadLearned()
-  void loadOurParties()
+  if (auth.can('redaction.words')) { void loadMask(); void loadCustom() }
+  if (auth.can('redaction.names')) void loadLearned()
+  if (auth.can('redaction.parties')) void loadOurParties()
 })
 </script>
 
@@ -218,11 +221,11 @@ onMounted(() => {
   <div class="settings-page">
     <PageHeader title="脱敏规则" description="新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算" />
     <div class="panel setting-panel">
-      <SettingSection title="识别与替换" description="设置只影响之后解析与重新计算的任务。">
+      <SettingSection v-if="auth.can('redaction.words')" title="识别与替换" description="设置只影响之后解析与重新计算的任务。">
         <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
         <div class="switch-row"><div><h3>数量脱敏</h3><p class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</p></div><el-switch :model-value="maskQuantity" :loading="maskLoading" aria-label="数量脱敏" @change="toggleMask" /></div><div class="switch-row"><div><h3>日期整体平移</h3><p class="hint">发给模型的日期整体平移同一天数，回来后在本机换回；只影响之后重新计算的任务</p></div><el-switch :model-value="dateShift" :loading="maskLoading" aria-label="日期整体平移" @change="toggleExtra('date_shift', $event)" /></div><div class="switch-row"><div><h3>向量辅助判断</h3><p class="hint">用本机向量模型判断不确定项是否为普通术语，判断为普通术语的默认保留原文</p></div><el-switch :model-value="vectorAssist" :loading="maskLoading" aria-label="向量辅助判断" @change="toggleExtra('vector_assist', $event)" /></div>
       </SettingSection>
-      <SettingSection title="我方主体" description="预置本公司的完整名称，之后新解析的文件出现该名称时可预选我方主体。" stacked>
+      <SettingSection v-if="auth.can('redaction.parties')" title="我方主体" description="预置本公司的完整名称，之后新解析的文件出现该名称时可预选我方主体。" stacked>
         <div class="filters">
         <el-input v-model="ourName" maxlength="100" class="term-input" placeholder="输入我方完整公司名称" aria-label="我方主体名称" :disabled="ourAdding" @keyup.enter="addOurParty" />
         <el-button type="primary" :loading="ourAdding" @click="addOurParty">添加我方主体</el-button>
@@ -237,7 +240,7 @@ onMounted(() => {
         <el-table-column label="操作" width="70"><template #default="{ row }"><RowMore :disabled="!!ourRemoving"><el-dropdown-item class="danger-item" @click="removeOurParty(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
       </SettingSection>
-      <SettingSection title="自定义敏感词" description="需要替换的公司内部词汇；新增、停用、删除只影响之后解析的文件。" stacked>
+      <SettingSection v-if="auth.can('redaction.words')" title="自定义敏感词" description="需要替换的公司内部词汇；新增、停用、删除只影响之后解析的文件。" stacked>
         <div class="filters">
         <el-input v-model="newTerm" maxlength="100" placeholder="输入需要替换的敏感词（2–100 个字符）" class="term-input" @keyup.enter="addTerm" />
         <el-button type="primary" :loading="adding" @click="addTerm">添加</el-button>
@@ -266,7 +269,7 @@ onMounted(() => {
         </el-table-column>
       </el-table>
       </SettingSection>
-      <SettingSection title="已记住的名称" description="确认脱敏时记住的公司和人名。" stacked>
+      <SettingSection v-if="auth.can('redaction.names')" title="已记住的名称" description="确认脱敏时记住的公司和人名。" stacked>
         <div class="filters">
         <el-input v-model="learnedQuery" clearable placeholder="搜索名称" class="learned-query" @keyup.enter="searchLearned" @clear="searchLearned"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
         <el-button @click="searchLearned">搜索</el-button>
@@ -305,8 +308,8 @@ onMounted(() => {
         @current-change="loadLearned"
       />
       </SettingSection>
-<SettingSection title="术语记忆" description="用户在确认页保留原文的词；带企业后缀、人名结构、已记住的敏感名称永不进入。" stacked><KeepTerms /></SettingSection>
-<SettingSection title="脱敏操作统计" description="汇总确认任务的操作与无法判断情况。" stacked><RedactionStats /></SettingSection>
+<SettingSection v-if="auth.can('content.terms')" title="术语记忆" description="用户在确认页保留原文的词；带企业后缀、人名结构、已记住的敏感名称永不进入。" stacked><KeepTerms /></SettingSection>
+<SettingSection v-if="auth.can('redaction.names', 'redaction.words', 'redaction.parties')" title="脱敏操作统计" description="汇总确认任务的操作与无法判断情况。" stacked><RedactionStats /></SettingSection>
 </div></div></template>
 
 <style scoped>

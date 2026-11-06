@@ -4,21 +4,13 @@ import { settingSectionsKey, type SettingAnchor } from '@/utils/settingSections'
 import { useFx } from '@/utils/motion'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { User, Cpu, List, Lock, Database, UserRound } from '@lucide/vue'
+import { User, Cpu, List, Lock, Database, UserRound, ShieldCheck } from '@lucide/vue'
+import { SETTING_TABS } from '@/utils/permissions'
 
-// 设置页导航与路由一一对应，分页权限由路由角色守卫校验。
+// 设置页导航与路由一一对应，分页按权限点显示，路由守卫再校验（V31-U5F-07）。
 const auth = useAuthStore()
-const tabs = computed(() => [
-  { name: 'personal', label: '个人', icon: UserRound, scope: 'all' },
-  { name: 'users', label: '账号', icon: User, scope: 'sys' },
-  { name: 'model', label: '模型', icon: Cpu, scope: 'sys' },
-  { name: 'requirements', label: '审核要求', icon: List, scope: 'biz' },
-  { name: 'laws', label: '法规库', icon: List, scope: 'biz' },
-  { name: 'templates', label: '公司范本', icon: List, scope: 'biz' },
-  { name: 'knowledge', label: '知识库', icon: List, scope: 'biz' },
-  { name: 'redaction', label: '脱敏', icon: Lock, scope: 'biz' },
-  { name: 'data', label: '数据', icon: Database, scope: 'sys' },
-].filter(tab => tab.scope === 'all' || (tab.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin)))
+const ICONS = { personal: UserRound, users: User, roles: ShieldCheck, model: Cpu, redaction: Lock, data: Database } as Record<string, typeof List>
+const tabs = computed(() => SETTING_TABS.filter(t => auth.can(...t.perms)).map(t => ({ ...t, icon: ICONS[t.name] ?? List })))
 
 const anchors = ref<SettingAnchor[]>([]), activeSection = ref(''), root = ref<HTMLElement>(), fx = useFx()
 let observer: IntersectionObserver | undefined

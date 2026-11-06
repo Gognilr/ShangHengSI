@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from fastapi import Depends, Request, Response
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.db.base import utcnow
@@ -50,11 +50,20 @@ def client_ip(request: Request) -> str | None:
         return None
 
 
-def new_session(db: DbSession, user_id: uuid.UUID, ip: str | None) -> tuple[str, UserSession]:
-    """创建会话，返回（令牌明文，会话行）。令牌明文只用于写 Cookie，不落库。"""
+def new_session(db: DbSession, user_id: uuid.UUID, ip: str | None,
+                user_agent: str | None = None) -> tuple[str, UserSession]:
+    """创建会话，返回（令牌明文，会话行）。令牌明文只用于写 Cookie，不落库。
+
+    本账号其他在线会话的 IP 都与这次不同时，给它们留新 IP 提醒（V31-U5F 7.2）。
+    """
     token = secrets.token_urlsafe(32)
     now = utcnow()
+    others = db.scalars(select(UserSession).where(UserSession.user_id == user_id, UserSession.expires_at > now)).all()
+    if ip and others and all(str(o.ip) != ip for o in others if o.ip):
+        for other in others:
+            other.notice_ip, other.notice_at = ip, now
     row = UserSession(
+        id=uuid.uuid4(),
         token_hash=hash_token(token),
         user_id=user_id,
         csrf_token=secrets.token_hex(32),
@@ -62,6 +71,7 @@ def new_session(db: DbSession, user_id: uuid.UUID, ip: str | None) -> tuple[str,
         last_seen_at=now,
         expires_at=now + IDLE_TIMEOUT,
         ip=ip,
+        user_agent=(user_agent or "")[:300] or None,
     )
     db.add(row)
     return token, row
@@ -79,8 +89,11 @@ def delete_user_sessions(db: DbSession, user_id: uuid.UUID, *, keep_token_hash: 
     db.execute(stmt)
 
 
-def load_session(db: DbSession, token: str | None) -> AuthContext | None:
-    """按令牌取有效会话并顺延过期时间；过期、账号不存在或已停用时删除会话并返回 None。"""
+def load_session(db: DbSession, token: str | None, *, touch: bool = True) -> AuthContext | None:
+    """按令牌取有效会话并顺延过期时间；过期、账号不存在或已停用时删除会话并返回 None。
+
+    touch=False 只查不顺延（页面定时查询登录提醒用，不让开着的页面永不过期）。
+    """
     if not token:
         return None
     row = db.get(UserSession, hash_token(token))
@@ -96,9 +109,10 @@ def load_session(db: DbSession, token: str | None) -> AuthContext | None:
         delete_user_sessions(db, row.user_id)
         db.commit()
         return None
-    row.last_seen_at = now
-    row.expires_at = now + IDLE_TIMEOUT
-    db.commit()
+    if touch:
+        row.last_seen_at = now
+        row.expires_at = now + IDLE_TIMEOUT
+        db.commit()
     return AuthContext(user=user, session=row)
 
 

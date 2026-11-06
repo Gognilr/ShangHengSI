@@ -9,12 +9,13 @@ from app.audit import service as audit
 from app.config import get_settings
 from app.db.models import StandardTemplate,DOC_TYPES,STANCES,User
 from app.db.session import get_db
-from app.security.deps import require_biz_admin
+from app.security.permissions import require
 from app.security.errors import AppError
 from app.security.crypto import encrypt_text
 from app.standards import service
 
-router=APIRouter(prefix='/admin/templates',dependencies=[Depends(require_biz_admin)])
+_perm = require("content.templates")
+router=APIRouter(prefix='/admin/templates',dependencies=[Depends(_perm)])
 
 
 class TemplateIn(BaseModel):
@@ -56,7 +57,7 @@ def listing(db:Session=Depends(get_db)):
 
 @router.post('',status_code=201)
 def upload(name:str=Form(...),doc_types:str=Form(...),stances:str=Form(...),file:UploadFile=File(...),
-           admin:User=Depends(require_biz_admin),db:Session=Depends(get_db)):
+           admin:User=Depends(_perm),db:Session=Depends(get_db)):
     try:values=TemplateIn(name=name,doc_types=json.loads(doc_types),stances=json.loads(stances)).model_dump()
     except (ValueError,TypeError):raise AppError(422,'VALIDATION_ERROR','请填写范本名称、文件类型和立场') from None
     limit=get_settings().max_upload_mb*1024*1024
@@ -73,7 +74,7 @@ def detail(tid:uuid.UUID,db:Session=Depends(get_db)):
 
 
 @router.patch('/{tid}')
-def patch(tid:uuid.UUID,body:TemplatePatch,admin:User=Depends(require_biz_admin),db:Session=Depends(get_db)):
+def patch(tid:uuid.UUID,body:TemplatePatch,admin:User=Depends(_perm),db:Session=Depends(get_db)):
     row=service.load(db,tid,True)
     values=body.model_dump(exclude_unset=True)
     try:
@@ -88,13 +89,13 @@ def patch(tid:uuid.UUID,body:TemplatePatch,admin:User=Depends(require_biz_admin)
 
 
 @router.delete('/{tid}',status_code=204)
-def remove(tid:uuid.UUID,admin:User=Depends(require_biz_admin),db:Session=Depends(get_db)):
+def remove(tid:uuid.UUID,admin:User=Depends(_perm),db:Session=Depends(get_db)):
     db.delete(service.load(db,tid,True))
     audit.record(db,'template_delete',user_id=admin.id,target_type='template',target_id=str(tid),detail={})
     db.commit()
 
 
 @router.patch('/{tid}/clauses/{cid}')
-def patch_clause(tid:uuid.UUID,cid:uuid.UUID,body:ClausePatch,admin:User=Depends(require_biz_admin),db:Session=Depends(get_db)):
+def patch_clause(tid:uuid.UUID,cid:uuid.UUID,body:ClausePatch,admin:User=Depends(_perm),db:Session=Depends(get_db)):
     c=service.update_clause(db,tid,cid,body.model_dump(exclude_unset=True),admin.id)
     db.commit();return dict(id=c.id,seq=c.seq,**service.decoded(c))

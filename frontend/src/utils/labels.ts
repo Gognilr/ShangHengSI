@@ -184,8 +184,6 @@ export const MANUAL_CATEGORY_OPTIONS: Dict = {
 }
 
 /** 账号角色、状态（设置 - 账号）。 */
-export const ROLE_OPTIONS: Dict = { user: '普通用户', sys_admin: '系统管理员', biz_admin: '业务管理员', admin: '系统与业务管理员' }
-export const roleLabel = pick(ROLE_OPTIONS)
 export const USER_STATUS: Dict = { active: '启用中', disabled: '已停用' }
 export const userStatusLabel = pick(USER_STATUS)
 
@@ -241,7 +239,7 @@ export const AUDIT_ACTION: Dict = {
   assistant_session_create: '创建会话', assistant_session_delete: '删除会话', assistant_files_confirm: '确认会话脱敏',
   assistant_export: '导出会话回复', kb_upload: '上传知识库文档', kb_update: '修改知识库文档', kb_delete: '删除知识库文档',
   login: '登录', login_failed: '登录失败', password_change: '修改密码',
-  user_create: '创建账号', user_update: '修改账号',
+  user_create: '创建账号', user_update: '修改账号', session_end: '退出登录设备', role_create: '新建角色', role_update: '修改角色', role_delete: '删除角色',
   setting_update: '修改设置', task_create: '创建审核任务', task_delete: '删除审核任务',
   run_create: '确认发送', backup_run: '执行备份', retention_run: '执行保留期清理',
   redaction_revoke: '撤销替换', redaction_keep: '确认可发送', report_export: '导出报告', restore_run: '恢复备份',

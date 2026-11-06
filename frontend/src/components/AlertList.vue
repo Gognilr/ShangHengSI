@@ -3,21 +3,17 @@
 import { computed } from 'vue'
 import type { AdminAlert } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { SETTING_TABS } from '@/utils/permissions'
 
 const emit = defineEmits<{ navigate: [] }>()
 const auth = useAuthStore()
-const TARGET: Record<string, { path: string; scope: 'sys' | 'biz' }> = {
-  BACKUP_FAILED: { path: '/settings/data', scope: 'sys' },
-  BACKUP_SPACE_LOW: { path: '/settings/data', scope: 'sys' },
-  RETENTION_REVIEW: { path: '/settings/data', scope: 'sys' },
-  LAWSYNC_FAILED: { path: '/settings/laws', scope: 'biz' },
-  LAW_IMPORT_PENDING: { path: '/settings/laws', scope: 'biz' },
-  CALL_CAP_NEAR: { path: '/settings/model', scope: 'sys' },
-  PROMPT_TERM_CONFLICT: { path: '/settings/redaction', scope: 'biz' },
+const TARGET: Record<string, string> = {
+  BACKUP_FAILED: 'data', BACKUP_SPACE_LOW: 'data', RETENTION_REVIEW: 'data', LAWSYNC_FAILED: 'data',
+  LAW_IMPORT_PENDING: 'laws', CALL_CAP_NEAR: 'model', PROMPT_TERM_CONFLICT: 'redaction',
 }
 function target(alert: AdminAlert) {
-  const t = TARGET[alert.code ?? '']
-  return t && (t.scope === 'sys' ? auth.canSysAdmin : auth.canBizAdmin) ? t.path : null
+  const tab = SETTING_TABS.find(t => t.name === TARGET[alert.code ?? ''])
+  return tab && auth.can(...tab.perms) ? `/settings/${tab.name}` : null
 }
 const items = computed(() => auth.visibleAlerts.map(alert => ({ alert, to: target(alert), key: JSON.stringify([alert.code, alert.message]) })))
 </script>

@@ -4,7 +4,7 @@ import threading
 import pytest
 from sqlalchemy import select
 
-from app.db.models import AuditLog, User
+from app.db.models import AuditLog, Role, User, UserRole
 from app.db.models import Session as UserSession
 from app.main import API_PREFIX
 from tests.conftest import DEFAULT_PASSWORD
@@ -18,6 +18,10 @@ def _hdr(csrf):
     return {"X-CSRF-Token": csrf}
 
 
+# 内置角色在每个测试的空库里按 user、biz_admin、sys_admin 顺序建成 1、2、3（RESTART IDENTITY）
+U, ADMIN = [1], [1, 2, 3]
+
+
 @pytest.fixture
 def admin(make_user, login):
     make_user("boss", role="admin")
@@ -25,7 +29,7 @@ def admin(make_user, login):
 
 
 def _create(c, csrf, **over):
-    body = {"username": "carol", "display_name": "卡罗尔", "password": NEW_PASSWORD, "role": "user"}
+    body = {"username": "carol", "display_name": "卡罗尔", "password": NEW_PASSWORD, "role_ids": U}
     body.update(over)
     return c.post(USERS, json=body, headers=_hdr(csrf))
 
@@ -61,7 +65,8 @@ def test_list_sorted_by_created_and_has_fields(admin, make_user):
     items = c.get(USERS).json()["items"]
     assert [i["username"] for i in items] == ["boss", "zed"]
     assert set(items[0]) == {
-        "id", "username", "display_name", "role", "status", "must_change_password", "last_login_at", "created_at",
+        "id", "username", "display_name", "role_ids", "status", "must_change_password", "last_login_at",
+        "last_login_ip", "online", "created_at",
     }
     assert "password_hash" not in items[0]
 
@@ -72,12 +77,12 @@ def test_create_user_must_change_password_and_audit(admin, db_sessionmaker, logi
     assert r.status_code == 201
     body = r.json()
     assert body["must_change_password"] is True
-    assert body["role"] == "user" and body["status"] == "active"
+    assert body["role_ids"] == U and body["status"] == "active"
     # 新账号可以登录，但须先改密
     c2, csrf2 = login("carol", NEW_PASSWORD)
     assert c2.get(f"{API_PREFIX}/tasks").json()["code"] == "PASSWORD_CHANGE_REQUIRED"
     details = _audits(db_sessionmaker, "user_create")
-    assert details == [{"role": "user"}]
+    assert details == [{"role_ids": U}]
     assert NEW_PASSWORD not in str(_audits(db_sessionmaker, "user_create"))
 
 
@@ -92,7 +97,8 @@ def test_create_user_must_change_password_and_audit(admin, db_sessionmaker, logi
         {"display_name": ""},
         {"display_name": "   "},
         {"display_name": "x" * 51},
-        {"role": "root"},
+        {"role_ids": []},
+        {"role_ids": [999]},
         {"extra": 1},
     ],
 )
@@ -100,7 +106,7 @@ def test_create_validation(admin, over):
     c, csrf = admin
     r = _create(c, csrf, **over)
     assert r.status_code == 422
-    assert r.json()["code"] == "VALIDATION_ERROR"
+    assert r.json()["code"] in ("VALIDATION_ERROR", "ROLE_NOT_FOUND")
 
 
 @pytest.mark.parametrize("username", ["a", "a" * 50, "Bob_1.x@corp-2"])
@@ -137,7 +143,7 @@ def test_create_duplicate_username(admin):
 
 def test_create_requires_csrf(admin):
     c, _ = admin
-    r = c.post(USERS, json={"username": "x", "display_name": "x", "password": NEW_PASSWORD, "role": "user"})
+    r = c.post(USERS, json={"username": "x", "display_name": "x", "password": NEW_PASSWORD, "role_ids": U})
     assert r.status_code == 403
 
 
@@ -147,14 +153,14 @@ def test_create_requires_csrf(admin):
 def test_patch_display_name_role_status_and_audit(admin, make_user, db_sessionmaker):
     c, csrf = admin
     u = make_user("alice")
-    r = c.patch(f"{USERS}/{u.id}", json={"display_name": "艾丽丝", "role": "admin"}, headers=_hdr(csrf))
+    r = c.patch(f"{USERS}/{u.id}", json={"display_name": "艾丽丝", "role_ids": ADMIN}, headers=_hdr(csrf))
     assert r.status_code == 200
-    assert r.json()["display_name"] == "艾丽丝" and r.json()["role"] == "admin"
+    assert r.json()["display_name"] == "艾丽丝" and r.json()["role_ids"] == ADMIN
     r = c.patch(f"{USERS}/{u.id}", json={"status": "disabled"}, headers=_hdr(csrf))
     assert r.json()["status"] == "disabled"
     details = _audits(db_sessionmaker)
     assert details == [
-        {"fields": ["display_name", "role"], "role": "admin"},
+        {"fields": ["display_name", "roles"], "role_ids": ADMIN},
         {"fields": ["status"], "status": "disabled"},
     ]
     assert "艾丽丝" not in str(details)
@@ -163,12 +169,12 @@ def test_patch_display_name_role_status_and_audit(admin, make_user, db_sessionma
 def test_patch_without_change_writes_no_audit(admin, make_user, db_sessionmaker):
     c, csrf = admin
     u = make_user("alice")
-    r = c.patch(f"{USERS}/{u.id}", json={"role": "user", "status": "active", "display_name": "alice"}, headers=_hdr(csrf))
+    r = c.patch(f"{USERS}/{u.id}", json={"role_ids": U, "status": "active", "display_name": "alice"}, headers=_hdr(csrf))
     assert r.status_code == 200
     assert _audits(db_sessionmaker) == []
 
 
-@pytest.mark.parametrize("body", [{"role": "root"}, {"status": "gone"}, {"display_name": ""}, {"username": "x"}])
+@pytest.mark.parametrize("body", [{"role_ids": "root"}, {"status": "gone"}, {"display_name": ""}, {"username": "x"}])
 def test_patch_validation(admin, make_user, body):
     c, csrf = admin
     u = make_user("alice")
@@ -179,7 +185,7 @@ def test_patch_validation(admin, make_user, body):
 @pytest.mark.parametrize("uid", ["not-a-uuid", "00000000-0000-0000-0000-000000000000"])
 def test_user_not_found(admin, uid):
     c, csrf = admin
-    assert c.patch(f"{USERS}/{uid}", json={"role": "user"}, headers=_hdr(csrf)).json()["code"] == "USER_NOT_FOUND"
+    assert c.patch(f"{USERS}/{uid}", json={"role_ids": U}, headers=_hdr(csrf)).json()["code"] == "USER_NOT_FOUND"
     r = c.post(f"{USERS}/{uid}/reset-password", json={"new_password": NEW_PASSWORD}, headers=_hdr(csrf))
     assert r.status_code == 404 and r.json()["code"] == "USER_NOT_FOUND"
 
@@ -214,10 +220,10 @@ def test_enable_clears_lock(admin, make_user, db_sessionmaker):
 def test_self_change_rejected_but_display_name_allowed(admin, db_sessionmaker):
     c, csrf = admin
     me = _row(db_sessionmaker, "boss")
-    for body in ({"role": "user"}, {"status": "disabled"}):
+    for body in ({"role_ids": U}, {"status": "disabled"}):
         r = c.patch(f"{USERS}/{me.id}", json=body, headers=_hdr(csrf))
         assert r.status_code == 409 and r.json()["code"] == "SELF_CHANGE"
-    r = c.patch(f"{USERS}/{me.id}", json={"display_name": "老板", "role": "admin"}, headers=_hdr(csrf))
+    r = c.patch(f"{USERS}/{me.id}", json={"display_name": "老板", "role_ids": ADMIN}, headers=_hdr(csrf))
     assert r.status_code == 200 and r.json()["display_name"] == "老板"
 
 
@@ -225,7 +231,7 @@ def test_admin_can_demote_another_admin_when_still_one_left(make_user, login):
     make_user("boss", role="admin")
     other = make_user("admin2", role="admin")
     c, csrf = login("boss")
-    assert c.patch(f"{USERS}/{other.id}", json={"role": "user"}, headers=_hdr(csrf)).status_code == 200
+    assert c.patch(f"{USERS}/{other.id}", json={"role_ids": U}, headers=_hdr(csrf)).status_code == 200
 
 
 def _direct_patch(sm, target_id, body, operator):
@@ -239,16 +245,18 @@ def _direct_patch(sm, target_id, body, operator):
         return update_user(str(target_id), UserPatchIn(**body), request, operator, s)
 
 
-@pytest.mark.parametrize("body", [{"status": "disabled"}, {"role": "user"}])
+@pytest.mark.parametrize("body", [{"status": "disabled"}, {"role_ids": U}])
 def test_last_admin_error_when_no_other_active_admin(make_user, db_sessionmaker, body):
     solo = make_user("solo", role="admin")
     make_user("off", role="admin", status="disabled")  # 停用的管理员不算
-    stale_operator = User(id=__import__("uuid").uuid4(), username="x", display_name="x", role="admin")
+    stale_operator = User(id=__import__("uuid").uuid4(), username="x", display_name="x")
     with pytest.raises(Exception) as ei:
         _direct_patch(db_sessionmaker, solo.id, body, stale_operator)
     assert ei.value.code == "LAST_ADMIN" and ei.value.status == 409
     row = _row(db_sessionmaker, "solo")
-    assert row.role == "admin" and row.status == "active"
+    assert row.status == "active"
+    with db_sessionmaker() as s:
+        assert sorted(s.scalars(select(UserRole.role_id).where(UserRole.user_id == row.id))) == ADMIN
 
 
 def test_concurrent_demotion_only_one_succeeds(make_user, login):
@@ -262,7 +270,7 @@ def test_concurrent_demotion_only_one_succeeds(make_user, login):
 
     def run(name, client, csrf, target):
         barrier.wait()
-        results[name] = client.patch(f"{USERS}/{target.id}", json={"role": "user"}, headers=_hdr(csrf))
+        results[name] = client.patch(f"{USERS}/{target.id}", json={"role_ids": U}, headers=_hdr(csrf))
 
     t1 = threading.Thread(target=run, args=("a", ca, csrf_a, b))
     t2 = threading.Thread(target=run, args=("b", cb, csrf_b, a))
@@ -319,3 +327,37 @@ def test_audit_never_contains_passwords(admin, make_user, db_sessionmaker):
         dump = " ".join(f"{r.action} {r.target_type} {r.target_id} {r.detail}" for r in s.scalars(select(AuditLog)))
     for secret in (NEW_PASSWORD, DEFAULT_PASSWORD, "艾丽丝"):
         assert secret not in dump
+
+
+# ---------------------------------------------------------------- 登录设备（V31-U5F-07）
+
+
+def test_devices_new_ip_notice_and_force_logout(admin, make_user, login, new_client, db_sessionmaker):
+    """登录设备只列本人；新 IP 登录提醒其他页面；退出其他设备与管理员强制下线；改密退出其他设备。"""
+    c, csrf = admin
+    u = make_user("alice")
+    first, first_csrf = login("alice")
+    second = new_client()
+    r = second.post(f"{API_PREFIX}/auth/login", json={"username": "alice", "password": DEFAULT_PASSWORD},
+                    headers={"X-Forwarded-For": "172.16.9.9"})
+    second_csrf = r.json()["csrf_token"]
+    devices = first.get(f"{API_PREFIX}/auth/sessions").json()
+    assert len(devices) == 2 and sum(d["current"] for d in devices) == 1
+    assert first.get(f"{API_PREFIX}/auth/notice").json()["ip"] == "172.16.9.9"
+    assert second.get(f"{API_PREFIX}/auth/notice").json()["ip"] is None
+    # 别人的会话 id 一律 404
+    boss_device = c.get(f"{API_PREFIX}/auth/sessions").json()[0]["id"]
+    assert first.delete(f"{API_PREFIX}/auth/sessions/{boss_device}", headers=_hdr(first_csrf)).status_code == 404
+    # 用户列表显示最近登录 IP 与在线数
+    row = next(i for i in c.get(USERS).json()["items"] if i["username"] == "alice")
+    assert row["last_login_ip"] == "172.16.9.9" and row["online"] == 2
+    assert second.post(f"{API_PREFIX}/auth/sessions/logout-others", headers=_hdr(second_csrf)).status_code == 204
+    assert first.get(ME).status_code == 401
+    assert c.post(f"{USERS}/{u.id}/logout", headers=_hdr(csrf)).status_code == 204
+    assert second.get(ME).status_code == 401
+    # 改密后其他设备退出
+    a, a_csrf = login("alice")
+    b, _ = login("alice")
+    assert a.post(f"{API_PREFIX}/auth/password", json={"old_password": DEFAULT_PASSWORD, "new_password": NEW_PASSWORD},
+                  headers=_hdr(a_csrf)).status_code == 204
+    assert b.get(ME).status_code == 401 and a.get(ME).status_code == 200

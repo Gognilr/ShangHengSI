@@ -1,7 +1,10 @@
 """认证接口的入参与出参（SPEC 19.2）。"""
 import uuid
+from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session as DbSession
 
 from app.db.models import User
 from app.security.passwords import MAX_LENGTH
@@ -22,18 +25,39 @@ class UserOut(BaseModel):
     id: uuid.UUID
     username: str
     display_name: str
-    role: str
+    # 所兼角色的名称与合并后的权限点（V31-U5F-07）；界面按权限点显示菜单与分区
+    roles: list[str]
+    permissions: list[str]
     must_change_password: bool
 
     @classmethod
-    def of(cls, user: User) -> "UserOut":
+    def of(cls, db: DbSession, user: User) -> "UserOut":
+        from app.security.permissions import CODES, user_permissions, user_roles
+
+        perms = user_permissions(db, user.id)
         return cls(
             id=user.id,
             username=user.username,
             display_name=user.display_name,
-            role=user.role,
+            roles=[r.name for r in user_roles(db, user.id)],
+            permissions=[c for c in CODES if c in perms],
             must_change_password=user.must_change_password,
         )
+
+
+class DeviceOut(BaseModel):
+    id: uuid.UUID
+    ip: Optional[str]
+    browser: str
+    created_at: datetime
+    last_seen_at: datetime
+    current: bool
+
+
+class NoticeOut(BaseModel):
+    # 本账号刚在别的 IP 登录（V31-U5F 7.2）；没有提醒时为空
+    ip: Optional[str] = None
+    at: Optional[datetime] = None
 
 
 class LoginOut(BaseModel):

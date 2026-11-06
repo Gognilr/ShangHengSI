@@ -23,11 +23,21 @@ from app.redaction import parties
 from app.redaction.engine import term_hash
 from app.redaction.recheck import recheck
 from app.security import crypto
-from app.security.deps import require_biz_admin
+from app.security.deps import current_user
+from app.security import permissions
+from app.security.permissions import require
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 
-router = APIRouter(prefix="/admin", dependencies=[Depends(require_biz_admin)])
+_req = require("content.requirements")
+_any = require("redaction.names", "redaction.words", "redaction.parties")
+_terms = require("content.terms")
+_parties = require("redaction.parties")
+_words = require("redaction.words")
+_names_or_words = require("redaction.names", "redaction.words")
+# /terms 按种类再细分：learned 为已记住的名称，custom 为自定义敏感词
+_TERM_PERM = {"learned": "redaction.names", "custom": "redaction.words"}
+router = APIRouter(prefix="/admin")
 
 PAGE_SIZE = 20
 
@@ -36,14 +46,14 @@ class ReviewSettings(BaseModel):
     send_ratios: StrictBool
 
 
-@router.get('/settings/review', response_model=ReviewSettings)
+@router.get('/settings/review', response_model=ReviewSettings, dependencies=[Depends(_req)])
 def get_review_settings(db: DbSession = Depends(get_db)):
     return ReviewSettings(send_ratios=bool(get_setting(db, 'review.send_ratios')))
 
 
-@router.put('/settings/review', response_model=ReviewSettings)
+@router.put('/settings/review', response_model=ReviewSettings, dependencies=[Depends(_req)])
 def put_review_settings(body: ReviewSettings, request: Request,
-                        admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)):
+                        admin: User = Depends(current_user), db: DbSession = Depends(get_db)):
     if bool(get_setting(db, 'review.send_ratios')) != body.send_ratios:
         set_setting(db, 'review.send_ratios', body.send_ratios, admin.id)
         audit.record(db, 'setting_update', user_id=admin.id, target_type='setting', target_id='review',
@@ -52,13 +62,13 @@ def put_review_settings(body: ReviewSettings, request: Request,
     return get_review_settings(db)
 
 
-@router.get('/redaction/stats')
+@router.get('/redaction/stats', dependencies=[Depends(_any)])
 def redaction_stats(days: int = Query(30, ge=1, le=365), db: DbSession = Depends(get_db)) -> dict:
     from app.redaction.stats import aggregate
     return aggregate(db, days)
 
 
-@router.get('/keep-terms')
+@router.get('/keep-terms', dependencies=[Depends(_terms)])
 def list_keep_terms(q: str = Query('', max_length=100), page: int = Query(1, ge=1, le=100000),
                     db: DbSession = Depends(get_db)) -> dict:
     groups = {}
@@ -89,8 +99,8 @@ def _keep_row(db, digest):
     return row
 
 
-@router.post('/keep-terms/{term_hash}/approve')
-def approve_keep_term(term_hash: str, request: Request, admin: User = Depends(require_biz_admin),
+@router.post('/keep-terms/{term_hash}/approve', dependencies=[Depends(_terms)])
+def approve_keep_term(term_hash: str, request: Request, admin: User = Depends(current_user),
                       db: DbSession = Depends(get_db)) -> dict:
     from sqlalchemy.dialects.postgresql import insert
     row = _keep_row(db, term_hash)
@@ -102,8 +112,8 @@ def approve_keep_term(term_hash: str, request: Request, admin: User = Depends(re
     return {'approved': True}
 
 
-@router.delete('/keep-terms/{term_hash}', status_code=204)
-def delete_keep_term(term_hash: str, request: Request, admin: User = Depends(require_biz_admin),
+@router.delete('/keep-terms/{term_hash}', status_code=204, dependencies=[Depends(_terms)])
+def delete_keep_term(term_hash: str, request: Request, admin: User = Depends(current_user),
                      db: DbSession = Depends(get_db)) -> Response:
     _keep_row(db, term_hash)
     count = db.execute(delete(KeepTerm).where(KeepTerm.term_hash == term_hash)).rowcount
@@ -159,7 +169,7 @@ class OurPartyIn(BaseModel):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=100)]
 
 
-@router.get("/our-parties")
+@router.get("/our-parties", dependencies=[Depends(_parties)])
 def list_our_parties(db: DbSession = Depends(get_db)) -> dict:
     rows = db.execute(select(RedactionTerm, User.display_name).outerjoin(User, User.id == RedactionTerm.created_by)
                       .where(RedactionTerm.kind == "learned", RedactionTerm.is_our_party.is_(True))
@@ -167,8 +177,8 @@ def list_our_parties(db: DbSession = Depends(get_db)) -> dict:
     return {"items": [_row(t, name) for t, name in rows]}
 
 
-@router.post("/our-parties", response_model=TermRow, status_code=201)
-def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(require_biz_admin),
+@router.post("/our-parties", response_model=TermRow, status_code=201, dependencies=[Depends(_parties)])
+def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(current_user),
                      db: DbSession = Depends(get_db)) -> TermRow:
     from app.review.prompt import fixed_prompt_text
     if any(r.category == "MAP" for r in recheck(fixed_prompt_text(db), real_values=[body.name], terms=[])):
@@ -191,8 +201,8 @@ def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(r
     return _row(row, admin.display_name)
 
 
-@router.delete("/our-parties/{tid}", status_code=204)
-def delete_our_party(tid: str, request: Request, admin: User = Depends(require_biz_admin),
+@router.delete("/our-parties/{tid}", status_code=204, dependencies=[Depends(_parties)])
+def delete_our_party(tid: str, request: Request, admin: User = Depends(current_user),
                      db: DbSession = Depends(get_db)) -> Response:
     row = _load(db, tid)
     if row.kind != "learned" or not row.is_our_party:
@@ -230,16 +240,16 @@ def _audit(db: DbSession, admin: User, request: Request, term: RedactionTerm, **
                  detail={"kind": term.kind, **detail}, ip=client_ip(request))
 
 
-@router.get("/settings/redaction", response_model=MaskQuantity)
+@router.get("/settings/redaction", response_model=MaskQuantity, dependencies=[Depends(_words)])
 def get_redaction(db: DbSession = Depends(get_db)) -> MaskQuantity:
     return MaskQuantity(mask_quantity=bool(get_setting(db, "redaction.mask_quantity")),
                         vector_assist=bool(get_setting(db, 'redaction.vector_assist')),
                         date_shift=bool(get_setting(db, 'redaction.date_shift')))
 
 
-@router.put("/settings/redaction", response_model=MaskQuantity)
+@router.put("/settings/redaction", response_model=MaskQuantity, dependencies=[Depends(_words)])
 def put_redaction(
-    body: MaskQuantity, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
+    body: MaskQuantity, request: Request, admin: User = Depends(current_user), db: DbSession = Depends(get_db)
 ) -> MaskQuantity:
     changed = []
     for key, value in (('redaction.mask_quantity', body.mask_quantity), ('redaction.vector_assist', body.vector_assist),
@@ -254,13 +264,16 @@ def put_redaction(
     return get_redaction(db)
 
 
-@router.get("/terms", response_model=TermPage)
+@router.get("/terms", response_model=TermPage, dependencies=[Depends(_names_or_words)])
 def list_terms(
     kind: Literal["learned", "custom"],
+    request: Request,
     q: str = Query("", max_length=100),
     page: int = Query(1, ge=1, le=100000),
+    admin: User = Depends(current_user),
     db: DbSession = Depends(get_db),
 ) -> TermPage:
+    permissions.check(request, db, admin, _TERM_PERM[kind])
     rows = db.execute(
         select(RedactionTerm, User.display_name)
         .outerjoin(User, User.id == RedactionTerm.created_by)
@@ -275,9 +288,9 @@ def list_terms(
     return TermPage(items=items[start:start + PAGE_SIZE], total=len(items), page=page, page_size=PAGE_SIZE)
 
 
-@router.post("/terms", response_model=TermRow, status_code=status.HTTP_201_CREATED)
+@router.post("/terms", response_model=TermRow, status_code=status.HTTP_201_CREATED, dependencies=[Depends(_words)])
 def create_term(
-    body: TermIn, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
+    body: TermIn, request: Request, admin: User = Depends(current_user), db: DbSession = Depends(get_db)
 ) -> TermRow:
     digest = term_hash(body.term)
     if db.scalar(select(RedactionTerm.id).where(RedactionTerm.kind == "custom", RedactionTerm.term_hash == digest)):
@@ -303,12 +316,13 @@ def create_term(
     return _row(row, admin.display_name)
 
 
-@router.patch("/terms/{tid}", response_model=TermRow)
+@router.patch("/terms/{tid}", response_model=TermRow, dependencies=[Depends(_names_or_words)])
 def patch_term(
-    tid: str, body: TermPatch, request: Request, admin: User = Depends(require_biz_admin),
+    tid: str, body: TermPatch, request: Request, admin: User = Depends(current_user),
     db: DbSession = Depends(get_db),
 ) -> TermRow:
     row = _load(db, tid)
+    permissions.check(request, db, admin, _TERM_PERM[row.kind])
     if row.kind != "custom":
         raise AppError(409, "TERM_NOT_EDITABLE", "已记住的名称不能停用，只能删除")
     if row.enabled != body.enabled:
@@ -319,11 +333,12 @@ def patch_term(
     return _row(row, name)
 
 
-@router.delete("/terms/{tid}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/terms/{tid}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(_names_or_words)])
 def delete_term(
-    tid: str, request: Request, admin: User = Depends(require_biz_admin), db: DbSession = Depends(get_db)
+    tid: str, request: Request, admin: User = Depends(current_user), db: DbSession = Depends(get_db)
 ) -> Response:
     row = _load(db, tid)
+    permissions.check(request, db, admin, _TERM_PERM[row.kind])
     _audit(db, admin, request, row, op="delete")
     db.delete(row)
     db.commit()

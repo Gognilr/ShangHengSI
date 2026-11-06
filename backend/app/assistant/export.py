@@ -182,6 +182,8 @@ def _xlsx(view):
 
 
 def generate(db, task, mid, format, variant, user, ip):
+    from app.security.permissions import ensure
+    ensure(db, user, 'use.export')
     row = service.owned_message(db, task, mid)
     if row.role != 'assistant' or row.status not in ('done', 'stopped'):
         raise AppError(409, 'ASSIST_EXPORT_UNAVAILABLE', '回复完成或停止后才能导出')
@@ -217,6 +219,8 @@ def generate(db, task, mid, format, variant, user, ip):
 
 
 def transcript(db, task, file, user, ip):
+    from app.security.permissions import ensure
+    ensure(db, user, 'use.export')
     from app.assistant.meeting import join_sentences, paragraphs, speaker_names, stamp
     if not file.media or file.media.get('stage') != 'done' or file.original_deleted_at is not None:
         raise AppError(409, 'TRANSCRIPT_UNAVAILABLE', '逐字稿暂不可用')

@@ -9,9 +9,11 @@ from sqlalchemy.orm import Session as DbSession
 from app.chat import service
 from app.db.models import Task, User
 from app.db.session import get_db
+from app.security.permissions import require
 from app.security.deps import current_user, owned_task
 from app.review.service import MarkOut
 
+_review = require("use.review")
 router = APIRouter()
 
 Question = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=service.MAX_CHARS)]
@@ -72,7 +74,7 @@ def preview_chat(body: ChatIn, task: Task = Depends(owned_task), db: DbSession =
     return service.preview(db, task, body.message)
 
 
-@router.post("/tasks/{id}/chat", response_model=ChatReply)
+@router.post("/tasks/{id}/chat", response_model=ChatReply, dependencies=[Depends(_review)])
 def send_chat(body: ChatIn, task: Task = Depends(owned_task), user: User = Depends(current_user),
               db: DbSession = Depends(get_db)) -> dict:
     return service.send(db, task, user, body.message, decisions=[d.model_dump() for d in body.decisions])

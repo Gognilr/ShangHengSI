@@ -58,11 +58,15 @@ def migrated(db_url):
 # ---------------------------------------------------------------- CHECK 约束与数据行为
 
 
-def _insert_user(conn) -> str:
+def _insert_user(conn, role: str = "user") -> str:
+    # 0038 之前 users 有 role 列（V31-U5F-07 改为 user_roles）
+    legacy = conn.execute("SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='role'"
+                          ).fetchone() is not None
+    cols, vals = ("role, ", "%s, ") if legacy else ("", "")
+    args = (f"u_{uuid.uuid4().hex[:8]}", role) if legacy else (f"u_{uuid.uuid4().hex[:8]}",)
     return conn.execute(
-        "INSERT INTO users (username, display_name, password_hash, role, created_at, updated_at) "
-        "VALUES (%s, 'x', 'h', 'user', now(), now()) RETURNING id",
-        (f"u_{uuid.uuid4().hex[:8]}",),
+        f"INSERT INTO users (username, display_name, password_hash, {cols}created_at, updated_at) "
+        f"VALUES (%s, 'x', 'h', {vals}now(), now()) RETURNING id", args,
     ).fetchone()[0]
 
 
@@ -340,6 +344,34 @@ def test_v3b_models_upgrade(configured):
                 assert rows[0][1:] == ("x"*40, blob, Decimal("0.25"), True, True, True, True)
             else:
                 assert rows == []
+    finally:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+
+
+def test_u5f07_roles_migration_keeps_permissions():
+    """0038：原单一角色迁入内置角色，权限不变；降级还原原角色。"""
+    from app.security.permissions import BUILTIN, LEGACY_ROLES
+    name = "aireview_test_" + uuid.uuid4().hex[:10]
+    with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
+        admin.execute(f'CREATE DATABASE "{name}"')
+    url = _url_for(name)
+    cfg = _alembic(url)
+    try:
+        command.upgrade(cfg, "0037")
+        with psycopg.connect(url, autocommit=True) as conn:
+            ids = {role: str(_insert_user(conn, role)) for role in LEGACY_ROLES}
+        command.upgrade(cfg, "0038")
+        with psycopg.connect(url, autocommit=True) as conn:
+            for role, uid in ids.items():
+                rows = conn.execute("SELECT r.builtin, r.permissions FROM user_roles ur JOIN roles r ON r.id = ur.role_id "
+                                    "WHERE ur.user_id = %s", (uid,)).fetchall()
+                assert sorted(b for b, _ in rows) == sorted(LEGACY_ROLES[role])
+                assert {p for _, perms in rows for p in perms} == {p for k in LEGACY_ROLES[role] for p in BUILTIN[k][1]}
+        command.downgrade(cfg, "0037")
+        with psycopg.connect(url, autocommit=True) as conn:
+            back = dict(conn.execute("SELECT id::text, role FROM users").fetchall())
+            assert back == {uid: role for role, uid in ids.items()}
     finally:
         with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')

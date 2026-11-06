@@ -62,7 +62,7 @@ async function submit() {
   submitting.value = true
   try {
     await auth.changePassword(form.oldPassword, form.newPassword)
-    ElMessage.success('密码已修改')
+    ElMessage.success('密码已修改，其他设备上的登录已全部退出')
     visible.value = false
   } catch (e) {
     errorText.value = e instanceof ApiError ? e.message : '修改失败，请稍后重试'

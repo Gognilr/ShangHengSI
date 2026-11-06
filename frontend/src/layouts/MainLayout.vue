@@ -7,6 +7,8 @@ import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 import GlobalSearch from '@/components/GlobalSearch.vue'
+import LoginNotice from '@/components/LoginNotice.vue'
+import type { Perm } from '@/utils/permissions'
 import SidebarSessions from '@/components/SidebarSessions.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import SiLogo from '@/components/brand/SiLogo.vue'
@@ -40,13 +42,15 @@ function toggleCollapsed() {
   try { localStorage.setItem('si.sidebar.collapsed', collapsed.value ? '1' : '0') } catch { /* 只影响下次打开 */ }
 }
 
-const menus = [
-  { path: '/assistant', label: '智能助手', icon: MessageSquare },
-  { path: '/review/new', label: '智能审核', icon: FileSearch },
-  { path: '/meeting', label: '会议纪要', icon: Mic },
+// 菜单按权限点显示（V31-U5F-07）；翻译可只用本地翻译、审核历史是本人的记录，人人可见
+const MENUS: { path: string; label: string; icon: typeof MessageSquare; perm?: Perm }[] = [
+  { path: '/assistant', label: '智能助手', icon: MessageSquare, perm: 'use.assistant' },
+  { path: '/review/new', label: '智能审核', icon: FileSearch, perm: 'use.review' },
+  { path: '/meeting', label: '会议纪要', icon: Mic, perm: 'use.meeting' },
   { path: '/translate', label: '翻译', icon: Languages },
   { path: '/history', label: '审核历史', icon: HistoryIcon },
 ]
+const menus = computed(() => MENUS.filter(m => !m.perm || auth.can(m.perm)))
 // 选中规则沿用原顶栏：/review/:id 归“智能审核”，设置页不选中菜单。
 const activeMenu = computed(() => route.path.startsWith('/settings') ? '' : ['/assistant', '/meeting', '/translate', '/history'].find(p => route.path.startsWith(p)) ?? '/review/new')
 const displayName = computed(() => auth.user?.display_name ?? '')
@@ -96,7 +100,7 @@ async function onCommand(cmd: string) {
     <aside class="sidebar" :style="{ width: `${collapsed ? 64 : width}px` }" aria-label="主导航">
       <div class="brand"><SiLogo :mark-only="collapsed" /></div>
 
-      <div class="block">
+      <div v-if="auth.can('use.assistant')" class="block">
         <el-tooltip content="新建会话" placement="right" :disabled="!collapsed">
           <button type="button" class="new-session" :disabled="creating || auth.mustChangePassword" :aria-label="collapsed ? '新建会话' : undefined" @click="createSession">
             <Plus :size="16" :stroke-width="1.75" /><span class="label">新建会话</span>
@@ -166,6 +170,7 @@ async function onCommand(cmd: string) {
     </aside>
 
     <div class="content">
+      <LoginNotice v-if="!auth.mustChangePassword" />
       <main class="main">
         <p v-if="auth.mustChangePassword" class="must-change">请先修改初始密码</p>
         <router-view v-else v-slot="{ Component }">
