@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   adminRequirementsApi,
   type CompanyReqBody,
@@ -17,8 +17,8 @@ import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import RatioSetting from '@/components/settings/RatioSetting.vue'
 import SettingSection from '@/components/SettingSection.vue'
-import UnsavedBar from '@/components/UnsavedBar.vue'
-import { useUnsaved } from '@/utils/unsaved'
+import SaveState from '@/components/SaveState.vue'
+import { useAutoSave } from '@/utils/autosave'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 
 const MAX_ITEMS = 100
@@ -192,12 +192,15 @@ async function loadProfile() {
 
 const profileDirty = () => !profileLoading.value && profile.value !== profileBase.value
 async function saveProfile() {
-  profile.value = profileBase.value = (await adminRequirementsApi.saveProfile(profile.value.trim())).text
+  if (!profileDirty()) return
+  const text = profile.value.trim()
+  profileBase.value = (await adminRequirementsApi.saveProfile(text)).text
+  if (profile.value.trim() === text) profile.value = profileBase.value
   await Promise.all([loadList(), loadVersions()])
 }
-const { dirty, saving, saveAll, discardAll } = useUnsaved([
-  { dirty: profileDirty, save: saveProfile, discard: () => { profile.value = profileBase.value } },
-])
+// 公司说明：停顿 1 秒或离开输入框后自动保存（V31-U5F-06 17）
+const profileSave = useAutoSave(saveProfile)
+watch(profile, () => { if (profileDirty()) profileSave.schedule() })
 
 // ---- ④ 版本历史 ----
 const versions = ref<RequirementVersionRow[]>([])
@@ -239,8 +242,9 @@ onMounted(() => {
           maxlength="300"
           show-word-limit
           placeholder="如公司主营产品、主要用途和市场、出口合规要求。可为空。"
+          @blur="profileSave.flush()"
         />
-        <div class="hint tip">公司说明会随每次审核发送给模型，请勿写入具体客户名称、电话、账号或金额。</div>
+        <div class="hint tip">公司说明会随每次审核发送给模型，请勿写入具体客户名称、电话、账号或金额。<SaveState :status="profileSave.status.value" :message="profileSave.message.value" @retry="profileSave.retry()" /></div>
       </div>
     </SettingSection>
       <SettingSection title="内置要求" description="只读；按文件类型查看系统自带的审核要求。" stacked>
@@ -326,7 +330,6 @@ onMounted(() => {
       </el-table>
     </SettingSection>
     </div>
-    <UnsavedBar :dirty="dirty" :saving="saving" @save="saveAll" @discard="discardAll" />
 
     <el-dialog v-model="dialog" :title="editing ? `编辑 ${editing.code}` : '新增公司补充要求'" width="640px" :close-on-click-modal="false">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">

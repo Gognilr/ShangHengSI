@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   adminDataApi,
   adminUsersApi,
@@ -13,14 +13,12 @@ import {
   type UserRow,
 } from '@/api/admin'
 import { ApiError } from '@/api/http'
-import { lawsyncApi, type LawsyncSettings } from '@/api/admin'
-import { LAWSYNC_INTERVAL } from '@/utils/labels'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import SettingSection from '@/components/SettingSection.vue'
-import UnsavedBar from '@/components/UnsavedBar.vue'
-import { useUnsaved } from '@/utils/unsaved'
+import SaveState from '@/components/SaveState.vue'
+import { useAutoSave } from '@/utils/autosave'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import {
   BACKUP_STATUS_TAG,
@@ -40,44 +38,6 @@ import { formatDateTime } from '@/utils/time'
 import PageHeader from '@/components/PageHeader.vue'
 
 const auth = useAuthStore()
-const syncSettings = ref<LawsyncSettings | null>(null)
-const syncForm = reactive({ enabled: false, interval: 'monthly' as 'monthly' | 'weekly' })
-const syncError = ref('')
-const syncLoading = ref(false)
-const syncSaving = ref(false)
-const syncRunning = ref(false)
-let syncTimer: ReturnType<typeof setInterval> | null = null
-let syncBaseline: string | null = null
-async function loadSync(silent = false) {
-  if (syncLoading.value) return
-  syncLoading.value = true
-  try {
-    const result = await lawsyncApi.get()
-    syncSettings.value = result
-    if (!silent) { Object.assign(syncForm, { enabled: result.enabled, interval: result.interval }); syncError.value = '' }
-    if (syncRunning.value && result.last_run_at !== syncBaseline) {
-      if (syncTimer) clearInterval(syncTimer)
-      syncTimer = null; syncRunning.value = false; await auth.refresh()
-    }
-  } catch (e) { if (!silent) syncError.value = `加载法规更新设置失败：${e instanceof ApiError ? e.message : '请求未完成'}。请刷新页面后重试。` }
-  finally { syncLoading.value = false }
-}
-const syncDirty = () => !!syncSettings.value && (syncForm.enabled !== syncSettings.value.enabled || syncForm.interval !== syncSettings.value.interval)
-function discardSync() { if (syncSettings.value) Object.assign(syncForm, { enabled: syncSettings.value.enabled, interval: syncSettings.value.interval }) }
-async function saveSync() {
-  syncSaving.value = true; syncError.value = ''
-  try { syncSettings.value = await lawsyncApi.save(syncForm.enabled, syncForm.interval); await auth.refresh() }
-  finally { syncSaving.value = false }
-}
-async function runSync() {
-  syncRunning.value = true; syncError.value = ''; syncBaseline = syncSettings.value?.last_run_at ?? null
-  try {
-    await lawsyncApi.run(); ElMessage.success('同步已入队，结果需业务管理员确认')
-    syncTimer = setInterval(() => { void loadSync(true) }, 3000)
-  } catch (e) { syncRunning.value = false; syncError.value = e instanceof ApiError ? e.message : '同步未能开始，请稍后重试' }
-}
-onMounted(() => { if (auth.can('sys.lawsync')) void loadSync() })
-onBeforeUnmount(() => { if (syncTimer) clearInterval(syncTimer) })
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 /** 字节数显示为 MB / GB，保留 1 位小数。 */
@@ -95,6 +55,7 @@ const backupLoading = ref(false)
 const backupError = ref('')
 const backupBase = reactive({ time: '02:00', keep: 7 })
 const backupStarting = ref(false)
+let backupLoaded = false
 
 async function loadBackup() {
   backupLoading.value = true
@@ -103,6 +64,7 @@ async function loadBackup() {
     const [s, r] = await Promise.all([adminDataApi.getBackupSettings(), adminDataApi.backupRecords()])
     backup.time = backupBase.time = s.time
     backup.keep = backupBase.keep = s.keep
+    backupLoaded = true
     records.value = r
   } catch (e) {
     backupError.value = `加载失败：${errText(e, '请刷新页面')}`
@@ -111,14 +73,17 @@ async function loadBackup() {
   }
 }
 
-const backupDirty = () => backup.time !== backupBase.time || backup.keep !== backupBase.keep
-function discardBackup() { backup.time = backupBase.time; backup.keep = backupBase.keep }
+const backupDirty = () => backupLoaded && typeof backup.keep === 'number' && !!backup.time && (backup.time !== backupBase.time || backup.keep !== backupBase.keep)
 async function saveBackup() {
+  if (!backupDirty()) return
   const s = await adminDataApi.saveBackupSettings(backup.time, backup.keep)
-  backup.time = backupBase.time = s.time
-  backup.keep = backupBase.keep = s.keep
+  backupBase.time = s.time
+  backupBase.keep = s.keep
   await auth.refresh()
 }
+// 时间选择改动即保存，份数停顿 1 秒后保存（V31-U5F-06 17）
+const backupSave = useAutoSave(saveBackup)
+watch(() => [backup.time, backup.keep] as const, ([time], [oldTime]) => { if (backupDirty()) backupSave.schedule(time !== oldTime ? 0 : 1000) })
 
 // 点击“立即备份”后每 3 秒刷新记录，直到出现新的、已结束的记录；离开页面停止（SPEC 21）
 let timer: ReturnType<typeof setInterval> | null = null
@@ -189,12 +154,25 @@ async function loadRetention() {
   }
 }
 
-const retentionDirty = () => retentionLoaded.value && retentionFields.some(field => retention[field.key] !== retentionBase[field.key])
-function discardRetention() { Object.assign(retention, retentionBase) }
+// 缩短保留期会删数据，须二次确认；其余档位改动即保存（V31-U5F-06 17）
+const days = (n: number) => (n === 0 ? Infinity : n)
 async function saveRetention() {
-  Object.assign(retention, await adminDataApi.saveRetention({ ...retention }))
-  Object.assign(retentionBase, retention)
+  const saved = await adminDataApi.saveRetention({ ...retention })
+  Object.assign(retention, saved)
+  Object.assign(retentionBase, saved)
   await auth.refresh()
+}
+const retentionSave = useAutoSave(saveRetention)
+async function changeRetention(key: keyof RetentionSettings) {
+  if (retention[key] === retentionBase[key]) return
+  if (days(retention[key]) < days(retentionBase[key])) {
+    const label = retentionFields.find(f => f.key === key)?.label ?? ''
+    const to = retention[key] === 0 ? '永久' : `${retention[key]} 天`
+    try {
+      await ElMessageBox.confirm(`将“${label}”的保留期缩短为 ${to}，超期的数据会在之后的清理中删除，无法恢复。`, '缩短保留期', { type: 'warning', confirmButtonText: '确认缩短', cancelButtonText: '取消' })
+    } catch { retention[key] = retentionBase[key]; return }
+  }
+  retentionSave.schedule(0)
 }
 
 // ---- ③ 外发记录 ----
@@ -321,11 +299,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(stopPolling)
-const { dirty, saving, saveAll, discardAll } = useUnsaved([
-  { dirty: backupDirty, save: saveBackup, discard: discardBackup },
-  { dirty: retentionDirty, save: saveRetention, discard: discardRetention },
-  { dirty: syncDirty, save: saveSync, discard: discardSync },
-])
 </script>
 
 <template>
@@ -342,6 +315,7 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
           <el-form-item label="保留份数">
             <el-input-number v-model="backup.keep" :min="1" :max="60" />
             <span class="hint inline">1–60 份，超出的最旧备份会被自动删除</span>
+            <SaveState :status="backupSave.status.value" :message="backupSave.message.value" @retry="backupSave.retry()" />
           </el-form-item>
           <el-form-item label="备份目录">
             <span>{{ records?.dir ?? '—' }}</span>
@@ -399,30 +373,17 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
       <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
       <el-form label-width="110px" @submit.prevent>
         <el-form-item v-for="field in retentionFields" :key="field.key" :label="field.label">
-          <el-select v-model="retention[field.key]" :disabled="!retentionLoaded" class="retention-select" :aria-label="field.label">
+          <el-select v-model="retention[field.key]" :disabled="!retentionLoaded" class="retention-select" :aria-label="field.label" @change="changeRetention(field.key)">
             <el-option v-if="!retentionOptions.includes(retention[field.key])" :value="retention[field.key]" :label="`${retention[field.key]} 天（旧版设置）`" />
             <el-option v-for="days in retentionOptions" :key="days" :value="days" :label="days === 0 ? '永久' : `${days} 天`" />
           </el-select>
-          <span v-if="!retentionOptions.includes(retention[field.key])" class="hint inline">请改选一个档位后保存</span>
+          <span v-if="!retentionOptions.includes(retention[field.key])" class="hint inline">请改选一个档位</span>
         </el-form-item>
       </el-form>
+      <SaveState :status="retentionSave.status.value" :message="retentionSave.message.value" @retry="retentionSave.retry()" />
       <div class="hint">
         原件到期后不能重新审核和追问；审核结果到期后整个任务删除。未完成任务按无活动时间清理。旧备份中的数据会保留至备份被轮换删除。
       </div>
-    </SettingSection>
-
-      <SettingSection v-if="auth.can('sys.lawsync')" v-loading="syncLoading" title="法规库自动更新" description="定期从官方数据库拉取公开法规，变更经业务管理员确认后生效。">
-      <el-alert v-if="syncError" :title="syncError" type="error" :closable="false" show-icon />
-      <el-form label-width="110px">
-        <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规库自动更新" /></el-form-item>
-        <el-form-item label="更新频率"><el-select v-model="syncForm.interval" :disabled="!syncSettings || syncSaving || syncRunning" aria-label="法规更新频率"><el-option v-for="(label, value) in LAWSYNC_INTERVAL" :key="value" :value="value" :label="label" /></el-select></el-form-item>
-        <el-form-item label="上次运行">{{ formatDateTime(syncSettings?.last_run_at) }}</el-form-item>
-        <el-form-item label="运行结果">{{ syncRunning ? '已入队，等待同步结果' : !syncSettings?.last_status ? '尚未运行' : syncSettings.last_status.ok ? '已生成待确认更新' : '同步失败，可改用手动导入' }}</el-form-item>
-      </el-form>
-      <p class="hint">默认关闭。只从官方数据库拉取公开法规，目录与全文变更经业务管理员确认后才生效。</p>
-      <p v-if="!syncSettings?.enabled" class="hint">请先开启并保存设置，再立即同步。</p>
-      <p v-else-if="syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" class="hint">设置已修改，请先在页面底部保存后同步。</p>
-      <div class="actions"><el-button :disabled="!syncSettings?.enabled || syncSaving || syncForm.enabled !== syncSettings.enabled || syncForm.interval !== syncSettings.interval" :loading="syncRunning" @click="runSync">立即同步</el-button></div>
     </SettingSection>
 
       <SettingSection v-if="auth.can('sys.data')" v-loading="statusLoading" title="系统状态" description="版本、任务队列与存储占用。">
@@ -529,7 +490,6 @@ const { dirty, saving, saveAll, discardAll } = useUnsaved([
       <el-pagination v-if="auditTotal > 20" v-model:current-page="auditPage" class="pager" :page-size="20" :total="auditTotal" layout="total, prev, pager, next" @current-change="loadAudit" />
     </SettingSection>
     </div>
-    <UnsavedBar :dirty="dirty" :saving="saving" @save="saveAll" @discard="discardAll" />
     <el-drawer v-model="drawer" title="外发记录详情" direction="rtl" size="560px">
       <el-alert v-if="detailError" type="error" :closable="false" show-icon :title="detailError" />
       <div v-loading="detailLoading">

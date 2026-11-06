@@ -13,9 +13,9 @@ export const SETTING_TABS: { name: string; label: string; search?: string; perms
   { name: 'roles', label: '角色', search: '角色与权限', perms: ['sys.accounts'] },
   { name: 'model', label: '模型', perms: ['sys.models'] },
   { name: 'requirements', label: '审核要求', perms: ['content.requirements'] },
-  { name: 'laws', label: '法规库', perms: ['content.laws'] },
+  { name: 'laws', label: '法规库', perms: ['content.laws', 'sys.lawsync'] },
   { name: 'templates', label: '公司范本', perms: ['content.templates'] },
   { name: 'knowledge', label: '知识库', perms: ['content.kb'] },
   { name: 'redaction', label: '脱敏', perms: ['redaction.names', 'redaction.words', 'redaction.parties', 'content.terms'] },
-  { name: 'data', label: '数据', perms: ['sys.data', 'sys.lawsync'] },
+  { name: 'data', label: '数据', perms: ['sys.data'] },
 ]

@@ -8,10 +8,10 @@
     <script>
       // 外观设置（V31-U1 3.3）：样式生效前先写外壳与特效，避免首屏闪烁；之后由 stores/appearance.ts 接管
       (function () {
-        var shell = 'night', fx = 'auto'
+        var shell = 'light', fx = 'auto'
         try {
           var v = JSON.parse(localStorage.getItem('si.appearance') || '{}')
-          if (v.shell === 'light') shell = 'light'
+          if (v.shell === 'night') shell = 'night'
           if (v.fx === 'full' || v.fx === 'lite' || v.fx === 'off') fx = v.fx
         } catch (e) {}
         if (fx === 'auto') fx = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'off' : 'full'

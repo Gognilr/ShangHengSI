@@ -8,9 +8,16 @@ import SettingSection from '@/components/SettingSection.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import { ApiError } from '@/api/http'
 import { lawsApi, type LawRow, type LawImport } from '@/api/laws'
-import { LAW_STATUS, LAW_IMPORT_STATUS, LAW_IMPORT_KIND, LAW_SOURCE, LAW_FIELD, toOptions } from '@/utils/labels'
+import { lawsyncApi, type LawsyncSettings } from '@/api/admin'
+import { useAuthStore } from '@/stores/auth'
+import { useAutoSave } from '@/utils/autosave'
+import SaveState from '@/components/SaveState.vue'
+import { LAW_STATUS, LAWSYNC_INTERVAL, LAW_IMPORT_STATUS, LAW_IMPORT_KIND, LAW_SOURCE, LAW_FIELD, toOptions } from '@/utils/labels'
 import { formatDate, formatDateTime } from '@/utils/time'
 
+const auth = useAuthStore()
+const canLaws = computed(() => auth.can('content.laws'))
+const canSync = computed(() => auth.can('sys.lawsync'))
 const rows = ref<LawRow[]>([])
 const records = ref<LawImport[]>([])
 const counts = ref<Record<string, number>>({})
@@ -44,11 +51,13 @@ async function load(silent = false) {
   loading.value = true
   if (!silent) error.value = ''
   try {
-    const [list, imports, settings] = await Promise.all([lawsApi.list(filter), lawsApi.imports(), lawsApi.settings()])
-    if (!active) return
-    rows.value = list.items; total.value = list.total; counts.value = list.counts
-    records.value = imports.items; enabled.value = settings.refs_enabled; settingsLoaded.value = true; error.value = ''
-    if (detailOpen.value && detail.value?.status === 'parsing') await loadDetail(detail.value.id)
+    if (canLaws.value) {
+      const [list, imports, settings] = await Promise.all([lawsApi.list(filter), lawsApi.imports(), lawsApi.settings()])
+      if (!active) return
+      rows.value = list.items; total.value = list.total; counts.value = list.counts
+      records.value = imports.items; enabled.value = settings.refs_enabled; settingsLoaded.value = true; error.value = ''
+      if (detailOpen.value && detail.value?.status === 'parsing') await loadDetail(detail.value.id)
+    }
   } catch (e) { if (!silent) error.value = `加载失败：${err(e)}。请刷新页面后重试。` }
   finally {
     loading.value = false
@@ -109,27 +118,81 @@ function changeValue(key: string, value: unknown) {
   if (key === 'effective_on') return formatDate(String(value))
   return String(value)
 }
+// ---- 法规库自动更新（V31-U5F-06 18）：开关与频率用 sys.lawsync，确认变更用 content.laws ----
+const sync = ref<LawsyncSettings | null>(null)
+const syncForm = reactive({ enabled: false, interval: 'monthly' as 'monthly' | 'weekly' })
+const syncError = ref('')
+const syncRunning = ref(false)
+let syncTimer: ReturnType<typeof setInterval> | null = null
+let syncBaseline: string | null = null
+const pendingSync = computed(() => records.value.find(r => r.kind === 'sync' && r.status === 'pending') ?? null)
+async function loadSync(silent = false) {
+  try {
+    const result = await lawsyncApi.get()
+    sync.value = result
+    if (!silent) { Object.assign(syncForm, { enabled: result.enabled, interval: result.interval }); syncError.value = '' }
+    if (syncRunning.value && result.last_run_at !== syncBaseline) {
+      if (syncTimer) clearInterval(syncTimer)
+      syncTimer = null; syncRunning.value = false; await auth.refresh(); void load(true)
+    }
+  } catch (e) { if (!silent) syncError.value = `加载自动更新设置失败：${err(e)}。请刷新页面后重试。` }
+}
+async function saveSync() {
+  if (!sync.value || (syncForm.enabled === sync.value.enabled && syncForm.interval === sync.value.interval)) return
+  sync.value = await lawsyncApi.save(syncForm.enabled, syncForm.interval)
+  await auth.refresh()
+}
+const syncSave = useAutoSave(saveSync)
+async function changeSyncEnabled(value: string | number | boolean) {
+  if (value) {
+    // 开启后会访问外网，须明确确认；其余改动即保存
+    try {
+      await ElMessageBox.confirm('开启后，系统会定期访问国家法律法规数据库（flk.npc.gov.cn），只下载公开的法规目录与全文，请求中不含任何任务数据。同步结果需业务管理员确认后才生效。网络出口须放行该域名。', '开启法规库自动更新', { type: 'warning', confirmButtonText: '确认开启', cancelButtonText: '取消' })
+    } catch { syncForm.enabled = false; return }
+  }
+  syncSave.schedule(0)
+}
+async function runSync() {
+  syncRunning.value = true; syncError.value = ''; syncBaseline = sync.value?.last_run_at ?? null
+  try {
+    await lawsyncApi.run(); ElMessage.success('同步已入队，完成后在下方确认变更')
+    syncTimer = setInterval(() => { void loadSync(true) }, 3000)
+  } catch (e) { syncRunning.value = false; syncError.value = err(e) }
+}
 onMounted(() => {
   void load()
+  if (canSync.value) void loadSync()
   timer = setInterval(() => { if (pending.value && !saving.value) void load(true) }, 3000)
 })
-onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
+onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syncTimer) clearInterval(syncTimer) })
 </script>
 
 <template>
   <div>
     <PageHeader title="法规库" description="导入官方法规目录与全文，预览差异并确认生效。" />
     <div class="panel setting-panel">
-      <SettingSection title="审核时附带相关法条" description="审核时把检索到的法条原文一并发给模型。">
+      <SettingSection v-if="canSync" title="自动更新" description="定期从国家法律法规数据库拉取公开法规；变更经业务管理员确认后才生效。默认关闭。">
+        <el-alert v-if="syncError" :title="syncError" type="error" :closable="false" show-icon class="gap" />
+        <el-form label-width="110px" @submit.prevent>
+          <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!sync || syncRunning" aria-label="法规库自动更新" @change="changeSyncEnabled" /></el-form-item>
+          <el-form-item label="更新频率"><el-select v-model="syncForm.interval" :disabled="!sync || syncRunning" aria-label="法规更新频率" @change="syncSave.schedule(0)"><el-option v-for="(label, value) in LAWSYNC_INTERVAL" :key="value" :value="value" :label="label" /></el-select><SaveState :status="syncSave.status.value" :message="syncSave.message.value" @retry="syncSave.retry()" /></el-form-item>
+          <el-form-item label="上次运行">{{ formatDateTime(sync?.last_run_at) }}</el-form-item>
+          <el-form-item label="运行结果">{{ syncRunning ? '已入队，等待同步结果' : !sync?.last_status ? '尚未运行' : sync.last_status.ok ? '已生成待确认更新' : '同步失败，可改用手动导入' }}</el-form-item>
+          <el-form-item v-if="canLaws && pendingSync" label="待确认"><el-button type="primary" @click="loadDetail(pendingSync.id)">查看并确认变更</el-button></el-form-item>
+        </el-form>
+        <p v-if="!canLaws" class="hint">变更需由有“法规库内容”权限的管理员确认。</p>
+        <el-button :disabled="!sync?.enabled || syncSave.status.value === 'saving'" :loading="syncRunning" @click="runSync">立即同步</el-button>
+      </SettingSection>
+      <SettingSection v-if="canLaws" title="审核时附带相关法条" description="审核时把检索到的法条原文一并发给模型。">
         <el-switch :model-value="enabled" :disabled="saving || loading || !settingsLoaded" aria-label="审核时附带相关法条" @change="saveSetting" />
         <p class="hint">开启后每次审核约多 5 千个 token，默认关闭，评测确认效果后再开启。</p>
       </SettingSection>
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
-      <SettingSection title="导入目录与全文" description="导入官方导出的法规目录与全文，预览差异后确认生效。">
+      <SettingSection v-if="canLaws" title="导入目录与全文" description="导入官方导出的法规目录与全文，预览差异后确认生效。">
         <el-button :disabled="pending || saving" @click="openUpload('catalog')">导入目录</el-button><el-button :disabled="pending || saving" @click="openUpload('fulltext')">导入全文</el-button>
         <p v-if="pending" class="hint">有一项更新正在解析或等待确认，请处理后再导入。</p>
       </SettingSection>
-      <SettingSection title="导入记录" description="每次导入与自动同步的结果。" stacked>
+      <SettingSection v-if="canLaws" title="导入记录" description="每次导入与自动同步的结果。" stacked>
         <el-table :data="records">
         <template #empty><EmptyState compact title="尚无导入或同步记录" /></template>
         <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
@@ -139,7 +202,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
       </el-table>
       </SettingSection>
-      <SettingSection v-loading="loading" title="法规列表" description="按标题、分类、时效性查找法规。" stacked>
+      <SettingSection v-if="canLaws" v-loading="loading" title="法规列表" description="按标题、分类、时效性查找法规。" stacked>
       <div class="counts">
         <span v-for="o in toOptions(LAW_STATUS)" :key="o.value">{{ o.label }} <b class="num">{{ counts[o.value] ?? 0 }}</b></span>
         <span>总数 <b class="num">{{ counts.total ?? 0 }}</b></span><span>本页有全文 <b class="num">{{ fulltextCount }}</b></span>

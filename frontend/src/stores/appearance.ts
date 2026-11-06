@@ -14,11 +14,11 @@ function readStored(): { shell: Shell; fx: FxChoice } {
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { shell?: unknown; fx?: unknown }
     return {
-      shell: SHELLS.includes(value.shell as Shell) ? value.shell as Shell : 'night',
+      shell: SHELLS.includes(value.shell as Shell) ? value.shell as Shell : 'light',
       fx: CHOICES.includes(value.fx as FxChoice) ? value.fx as FxChoice : 'auto',
     }
   } catch {
-    return { shell: 'night', fx: 'auto' }
+    return { shell: 'light', fx: 'auto' }
   }
 }
 

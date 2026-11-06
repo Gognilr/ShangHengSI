@@ -8,7 +8,7 @@ import { SETTING_TABS } from '@/utils/permissions'
 const emit = defineEmits<{ navigate: [] }>()
 const auth = useAuthStore()
 const TARGET: Record<string, string> = {
-  BACKUP_FAILED: 'data', BACKUP_SPACE_LOW: 'data', RETENTION_REVIEW: 'data', LAWSYNC_FAILED: 'data',
+  BACKUP_FAILED: 'data', BACKUP_SPACE_LOW: 'data', RETENTION_REVIEW: 'data', LAWSYNC_FAILED: 'laws',
   LAW_IMPORT_PENDING: 'laws', CALL_CAP_NEAR: 'model', PROMPT_TERM_CONFLICT: 'redaction',
 }
 function target(alert: AdminAlert) {
