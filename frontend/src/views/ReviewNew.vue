@@ -29,6 +29,7 @@ import ReviewCeremony from '@/components/result/ReviewCeremony.vue'
 import SiIsland from '@/components/ui/SiIsland.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { usePendingDeletes } from '@/composables/usePendingDeletes'
+import { usePasteFiles } from '@/composables/usePasteFiles'
 import { useLoop } from '@/utils/motion'
 import { formatDateTime } from '@/utils/time'
 import { useAuthStore } from '@/stores/auth'
@@ -269,6 +270,9 @@ function onDrop(e: DragEvent) {
   const list = Array.from(e.dataTransfer?.files ?? [])
   if (list.length) void handleAdd(list)
 }
+
+// V31-U5F-04：上传区可见时 Ctrl+V 粘贴文件
+usePasteFiles(list => void handleAdd(list), () => step.value === 0 && !parsing.value && !parseFailed.value && !submitting.value)
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'

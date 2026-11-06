@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 翻译（V31-U5，侧栏独立菜单）：拖入文件 → 本机解析与确认脱敏 → 开始翻译 → 导出译文或双语 Word
 // 底层沿用智能助手会话（purpose=translate）的翻译模板；本地离线翻译接入后在此选择“本地 · 不外发”（V31-U5-06）
+import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
+import { usePasteFiles } from '@/composables/usePasteFiles'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
@@ -69,6 +71,7 @@ async function upload(files: File[]) {
 }
 function picked(event: Event) { const input = event.target as HTMLInputElement, files = Array.from(input.files ?? []); input.value = ''; void upload(files) }
 function drop(event: DragEvent) { dragging.value = false; void upload(Array.from(event.dataTransfer?.files ?? [])) }
+usePasteFiles(files => void upload(files), () => !id.value && uploading.value === null)
 
 // 解析完成后自动打开确认脱敏（只打开一次，关掉后可点按钮再开）
 const confirmOpen = ref(false), task = computed(() => session.value ? confirmationTask(session.value) : null)
@@ -152,7 +155,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
         <MessageItem v-for="m in [...results].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />
       </div>
     </div>
-    <el-dialog v-if="task" v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close append-to-body :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="load" /></div></el-dialog>
+    <el-dialog v-if="task" v-model="confirmOpen" fullscreen destroy-on-close append-to-body :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回翻译" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="load" /></div></el-dialog>
   </div>
 </template>
 

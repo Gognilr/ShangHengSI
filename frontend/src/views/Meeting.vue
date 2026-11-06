@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 会议纪要（V31-U5，侧栏独立菜单）：录音或上传 → 本机转写 → 校对与确认脱敏 → 生成纪要 → 导出
 // 底层沿用智能助手的会话接口（purpose=meeting）；录音与逐字稿只在本机，生成纪要时才发脱敏后的文字
+import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
+import { usePasteFiles } from '@/composables/usePasteFiles'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
@@ -75,6 +77,7 @@ async function upload(files: File[]) {
 }
 function picked(event: Event) { const input = event.target as HTMLInputElement, files = Array.from(input.files ?? []); input.value = ''; void upload(files) }
 function drop(event: DragEvent) { dragging.value = false; void upload(Array.from(event.dataTransfer?.files ?? [])) }
+usePasteFiles(files => void upload(files), () => !id.value && asrEnabled.value && uploading.value === null)
 
 // ---- 确认脱敏与生成纪要 ----
 const confirmOpen = ref(false), task = computed(() => session.value ? confirmationTask(session.value) : null)
@@ -168,7 +171,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
         </div>
       </div>
     </template>
-    <el-dialog v-if="task" v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close append-to-body :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="load" /></div></el-dialog>
+    <el-dialog v-if="task" v-model="confirmOpen" fullscreen destroy-on-close append-to-body :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回会议纪要" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="load" /></div></el-dialog>
   </div>
 </template>
 

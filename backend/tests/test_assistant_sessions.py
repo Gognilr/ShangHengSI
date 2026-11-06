@@ -202,12 +202,18 @@ def test_t47_8_remove_confirmed_or_unconfirmed(files_dir, session_client, db_ses
         db.get(TaskFile, uuid.UUID(keep["id"])).confirmed_at = utcnow()
         key = db.get(TaskFile, uuid.UUID(remove["id"])).storage_key
         db.commit()
-    r = c.delete(f"{BASE}/{tid}/files/{keep['id']}", headers=h)
-    assert r.status_code == 409 and r.json()["code"] == "FILE_CONFIRMED"
     r = c.delete(f"{BASE}/{tid}/files/{remove['id']}", headers=h)
     assert r.status_code == 200 and r.json()["status"] == "active"
     with pytest.raises(FileNotFoundError):
         storage.load_original(key)
+    # V31-U5F-04：已确认的文件也能移除，对照表保留，历史回复仍能还原
+    from app.redaction.engine import load_redaction_map
+    with db_sessionmaker() as db:
+        before = load_redaction_map(db, uuid.UUID(tid))
+    r = c.delete(f"{BASE}/{tid}/files/{keep['id']}", headers=h)
+    assert r.status_code == 200 and r.json()["files"] == []
+    with db_sessionmaker() as db:
+        assert load_redaction_map(db, uuid.UUID(tid)).items() >= before.items()
 
 
 def test_t47_9_failed_batch_preserves_old_file_and_message(files_dir, session_client, db_sessionmaker):

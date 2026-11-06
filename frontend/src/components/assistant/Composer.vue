@@ -3,7 +3,8 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { modelsApi, type AvailableModel } from '@/api/models'
-import { ArrowUp, FileAudio, FileText, Paperclip, Square, X } from '@lucide/vue'
+import { ArrowUp, Check, FileAudio, FileText, Loader2, Paperclip, Square, X } from '@lucide/vue'
+import { pastedFiles } from '@/composables/usePasteFiles'
 import { assistantApi, type Session, type SessionFile, type Template, type MessageInput } from '@/api/assistant'
 import type { ChatPreview, ChatDecision } from '@/api/chat'
 import type { UserCategory } from '@/api/redaction'
@@ -20,7 +21,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   'update:template': [value: Template | null]; sent: [text: string]; stop: [mid: number]
-  start: [payload: ComposerStart]; files: [files: File[]]; open: [file: SessionFile]; remove: [file: SessionFile]; confirm: []
+  start: [payload: ComposerStart]; files: [files: File[]]; open: [file: SessionFile]; remove: [file: SessionFile]; confirm: []; retry: [file: SessionFile]
 }>()
 
 const init = props.initial
@@ -69,11 +70,21 @@ function chip(file: SessionFile) {
     const label = { decoding: '解码中', queued: '排队转写', waiting_memory: '等待内存', transcribing: `转写 ${m.duration_ms ? Math.min(99, Math.floor(m.progress / m.duration_ms * 100)) : 0}%`, done: file.confirmed_at ? '已确认' : '请校对', failed: '转写失败' }[m.stage]
     return { label, tone: m.stage === 'failed' ? 'danger' : file.confirmed_at ? 'ok' : m.stage === 'done' ? 'warn' : 'busy', openable: m.stage === 'done' }
   }
+  if (file.parse_state === 'failed') return { label: '解析失败', tone: 'danger', openable: false }
+  if (file.parse_state === 'parsing') return { label: '本机解析中', tone: 'busy', openable: false }
   if (file.confirmed_at) return { label: '已确认', tone: 'ok', openable: false }
-  if (props.session?.status === 'parsing') return { label: '解析中', tone: 'busy', openable: false }
-  if (props.session?.status === 'parse_failed') return { label: '解析失败', tone: 'danger', openable: false }
   return { label: '待确认', tone: 'warn', openable: true }
 }
+// V31-U5F-04：已确认、本模板可用的文件，点标签切换“本次提问是否使用”（默认全选）；待确认的点标签去确认
+const usable = computed(() => new Set(files.value.map(f => f.id)))
+function selectable(file: SessionFile) { return !!file.confirmed_at && usable.value.has(file.id) }
+function clickChip(file: SessionFile) {
+  if (selectable(file)) {
+    fileIds.value = fileIds.value.includes(file.id) ? fileIds.value.filter(id => id !== file.id) : [...fileIds.value, file.id]
+  } else emit('open', file)
+}
+const failures = computed(() => (props.session?.files ?? []).filter(f => f.parse_error || f.media?.stage === 'failed'))
+const removable = (_file: SessionFile) => props.session?.status !== 'parsing' && !props.session?.generating
 
 // ---- 模板 ----
 const target = ref('英文'), focus = ref('全部'), tone = ref('正式'), language = ref('同来函'), fileIds = ref<string[]>([])
@@ -161,6 +172,8 @@ async function send() {
 }
 const dragging = ref(false)
 function drop(event: DragEvent) { dragging.value = false; const list = Array.from(event.dataTransfer?.files ?? []); if (list.length) attach(list) }
+// V31-U5F-04：输入框里 Ctrl+V 粘贴文件（资源管理器复制的文件、截图）与拖入相同；只有文字时照常粘贴
+function paste(event: ClipboardEvent) { const list = pastedFiles(event); if (!list.length) return; event.preventDefault(); attach(list) }
 defineExpose({ pick, attach })
 </script>
 
@@ -168,16 +181,27 @@ defineExpose({ pick, attach })
   <div class="composer">
     <p v-if="session?.original_deleted" class="hint">原件已按保留期限删除，本会话只能查看</p>
     <template v-else>
-      <div class="box" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
+      <div class="box" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop" @paste="paste">
         <div v-if="session?.files.length || uploading !== null && uploading !== undefined" class="chips">
-          <span v-for="file in session?.files ?? []" :key="file.id" class="chip" :class="`chip--${chip(file).tone}`">
-            <button type="button" class="chip-main" :disabled="!chip(file).openable && !(file.media && file.confirmed_at)" :title="file.media?.error ? '转写失败，可在文件抽屉中重试' : undefined" @click="emit('open', file)">
-              <component :is="file.media ? FileAudio : FileText" :size="14" :stroke-width="1.75" /><span class="chip-name">{{ file.original_name }}</span><span class="chip-state">{{ chip(file).label }}</span>
+          <span v-for="file in session?.files ?? []" :key="file.id" class="chip" :class="[`chip--${chip(file).tone}`, { 'chip--picked': selectable(file) && fileIds.includes(file.id), 'chip--unpicked': selectable(file) && !fileIds.includes(file.id) }]">
+            <button type="button" class="chip-main" :disabled="!selectable(file) && !chip(file).openable && !(file.media && file.confirmed_at)"
+                    :aria-pressed="selectable(file) ? fileIds.includes(file.id) : undefined"
+                    :title="file.parse_error ?? (file.media?.error ? '转写失败，可在文件抽屉中重试' : selectable(file) ? (fileIds.includes(file.id) ? '本次提问使用此文件，点击取消' : '本次提问不使用此文件，点击使用') : undefined)" @click="clickChip(file)">
+              <Check v-if="selectable(file) && fileIds.includes(file.id)" :size="14" :stroke-width="2" class="chip-check" />
+              <component :is="file.media ? FileAudio : FileText" v-else :size="14" :stroke-width="1.75" />
+              <span class="chip-name">{{ file.original_name }}</span>
+              <Loader2 v-if="chip(file).tone === 'busy'" :size="12" :stroke-width="2" class="spin" aria-hidden="true" />
+              <span class="chip-state">{{ chip(file).label }}</span>
             </button>
-            <button v-if="!file.confirmed_at && session?.status !== 'parsing'" type="button" class="chip-x" :aria-label="`移除 ${file.original_name}`" @click="emit('remove', file)"><X :size="12" :stroke-width="2" /></button>
+            <button v-if="removable(file)" type="button" class="chip-x" :aria-label="`从会话移除 ${file.original_name}`" :title="'从会话移除'" @click="emit('remove', file)"><X :size="12" :stroke-width="2" /></button>
           </span>
-          <span v-if="uploading !== null && uploading !== undefined" class="chip chip--busy"><span class="chip-main">正在上传 {{ uploading }}%</span></span>
+          <span v-if="uploading !== null && uploading !== undefined" class="chip chip--busy"><span class="chip-main"><Loader2 :size="12" :stroke-width="2" class="spin" aria-hidden="true" />正在上传 {{ uploading }}%</span></span>
         </div>
+        <p v-for="file in failures" :key="`f-${file.id}`" class="failure" role="alert">
+          <span class="failure-text">{{ file.original_name }}：{{ file.parse_error ?? file.media?.error ?? '处理失败' }}</span>
+          <el-button v-if="file.media" link size="small" type="primary" @click="emit('retry', file)">重试</el-button>
+          <el-button v-else-if="removable(file)" link size="small" type="danger" @click="emit('remove', file)">移除</el-button>
+        </p>
         <div v-if="template" class="template-row">
           <span class="template-tag">{{ ASSISTANT_TEMPLATE[template] }}<button type="button" class="chip-x" aria-label="取消模板" @click="emit('update:template', null)"><X :size="12" :stroke-width="2" /></button></span>
           <el-select v-if="template === 'translate'" v-model="target" size="small" class="param" aria-label="目标语言"><el-option v-for="option in ['中文','英文','日文','韩文','俄文','西班牙文','法文','德文','阿拉伯文']" :key="option" :label="`译成${option}`" :value="option" /></el-select>
@@ -186,12 +210,11 @@ defineExpose({ pick, attach })
           <el-select v-if="template === 'reply'" v-model="language" size="small" class="param" aria-label="回复语言"><el-option v-for="option in ['中文','英文','同来函']" :key="option" :label="option" :value="option" /></el-select>
           <span v-if="template === 'translate'" class="hint where">云端 · 脱敏后发送</span>
         </div>
-        <el-input v-model="text" type="textarea" :autosize="{ minRows: session ? 1 : 3, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="session ? '继续提问…' : '提问，或把合同、报价单拖到这里'" aria-label="问题或来函" @keydown="onKeydown" />
+        <el-input v-model="text" type="textarea" :autosize="{ minRows: showTemplates ? 3 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="showTemplates ? '提问，或把合同、报价单拖到这里、粘贴进来' : '继续提问…'" aria-label="问题或来函" @keydown="onKeydown" />
         <div class="bar">
           <el-tooltip content="加入文件" placement="top"><el-button text circle aria-label="加入文件" :disabled="!!session && (session.files.length >= 10 || !!session.generating)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" /></el-button></el-tooltip>
           <input ref="picker" class="file-input" type="file" multiple :accept="accept" @change="picked">
           <el-select v-model="modelId" class="model-select" size="small" aria-label="助手模型" placeholder="选择模型" :loading="modelLoading" :disabled="sending || busy || generating !== null" @visible-change="$event && loadModels(modelId)"><el-option v-for="model in allowedModels" :key="model.id" :value="model.id" :label="model.display_name" /></el-select>
-          <el-select v-if="files.length" v-model="fileIds" multiple collapse-tags size="small" class="files-select" placeholder="不使用文件" aria-label="使用的文件"><el-option v-for="file in files" :key="file.id" :label="`文件 ${file.seq}：${file.original_name}`" :value="file.id" /></el-select>
           <el-checkbox v-if="session?.kb_enabled" v-model="useKb" size="small">知识库</el-checkbox><el-checkbox v-model="useHistory" size="small">参考历史合同</el-checkbox>
           <el-button v-if="generating !== null" class="send" circle aria-label="停止生成" title="停止生成" @click="emit('stop', generating)"><Square :size="14" :stroke-width="2" fill="currentColor" /></el-button>
           <el-button v-else class="send" type="primary" circle aria-label="发送" :title="reason || '发送（Enter）'" :disabled="!!reason && !processing" :loading="busy || sending" @click="submit"><ArrowUp v-if="!busy && !sending" :size="16" :stroke-width="2" /></el-button>
@@ -239,7 +262,14 @@ defineExpose({ pick, attach })
 .bar { display: flex; align-items: center; gap: 8px; }
 .bar :deep(.el-checkbox) { margin-right: 0; }
 .model-select { width: 150px; }
-.files-select { width: 180px; }
+.chip--picked { background: color-mix(in srgb, var(--si-blue) 12%, var(--si-surface-2)); }
+.chip--picked .chip-name, .chip-check { color: var(--si-blue-ink); }
+.chip--unpicked .chip-name { color: var(--si-ink-3); text-decoration: line-through; }
+.failure { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--si-danger-ink); font: var(--si-font-caption); }
+.failure-text { min-width: 0; overflow-wrap: anywhere; }
+.spin { animation: chip-spin 1s linear infinite; }
+@keyframes chip-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .send { margin-left: auto; width: 32px; height: 32px; }
 .file-input { display: none; }
 .status { margin: 6px 0 0; }

@@ -497,8 +497,7 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     if task.status == "parsing":
         raise AppError(409, "SESSION_BUSY", "文件正在解析，请稍后移除")
     db.refresh(file)
-    if file.confirmed_at is not None:
-        raise AppError(409, "FILE_CONFIRMED", "已确认的文件不能移除")
+    # V31-U5F-04：已确认的文件也可移除；后续提问不再使用它，已有问答与对照表保留（历史回复仍能还原）。
     prefix = f"F{file.seq}-%"
     for model in (RedactionItem, RedactionSuspect, RedactionExclusion):
         db.execute(delete(model).where(model.task_id == task.id, model.loc.like(prefix)))

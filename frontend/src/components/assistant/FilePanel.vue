@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
 import { computed, nextTick, ref, onBeforeUnmount, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { assistantApi, confirmationTask, type Session, type SessionFile } from '@/api/assistant'
@@ -81,7 +82,10 @@ async function added(event: Event) {
   await addList(files)
 }
 async function remove(file: SessionFile) {
-  try { await ElMessageBox.confirm(`将移除“${file.original_name}”及其解析与脱敏数据，无法恢复。`, '移除文件', { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' }) }
+  const message = file.confirmed_at
+    ? `移除“${file.original_name}”后，后续提问不再使用它；已有的问答和代号对照保留，历史回复仍能还原。`
+    : `将移除“${file.original_name}”及其解析与脱敏数据，无法恢复。`
+  try { await ElMessageBox.confirm(message, '从会话移除文件', { type: 'warning', confirmButtonText: '移除', cancelButtonText: '取消' }) }
   catch { return }
   await perform(() => assistantApi.removeFile(props.session.id, file.id))
 }
@@ -106,7 +110,7 @@ async function pick(kind: 'doc' | 'audio') {
 }
 function openTranscript(file: SessionFile) { transcriptFile.value = file }
 function openConfirm() { const audio = pending.value.find(f => f.media?.stage === 'done'); if (audio) transcriptFile.value = audio; else confirmOpen.value = true }
-defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgress })
+defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgress, retryMedia })
 </script>
 <template>
   <div class="file-host">
@@ -122,7 +126,7 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
     <el-alert v-if="session.error_message" :title="session.error_message" type="error" :closable="false" />
     <div v-for="file in session.files" :key="file.id" class="file-row">
       <span class="file-badge">{{ file.media ? '音频' : file.ext.toUpperCase() }}</span><div class="file-info"><div class="file-name">{{ file.original_name }}</div><MediaRow v-if="file.media" :file="file" :busy="busy" @transcript="transcriptFile = file" @retry="retryMedia(file)" @download="downloadTranscript(file)" /><el-tag v-else size="small" :type="statusTag(file.confirmed_at ? 'confirmed' : session.status).type" :effect="statusTag(file.confirmed_at ? 'confirmed' : session.status).effect">{{ file.confirmed_at ? '已确认' : assistantStatusLabel(session.status) }}</el-tag><p v-for="warning in file.warnings" :key="warning" class="warning">{{ warning }}</p></div>
-      <el-button v-if="!file.confirmed_at && session.status !== 'parsing'" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
+      <el-button v-if="session.status !== 'parsing' && !session.generating" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
     </div>
     <EmptyState v-if="!session.files.length" compact :icon="FileText" title="还没有文件" description="加入文件后，在本机解析与脱敏。" />
     <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="confirmOpen = true">确认脱敏（{{ pending.length }} 个文件）</el-button>
@@ -131,8 +135,8 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
   </div>
   </el-drawer>
     <el-drawer append-to-body v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
-    <el-dialog append-to-body :model-value="!!transcriptFile" :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><div class="transcript-frame"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></div></el-dialog>
-    <el-dialog append-to-body v-model="confirmOpen" title="确认脱敏" fullscreen destroy-on-close :close-on-click-modal="false"><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
+    <el-dialog append-to-body :model-value="!!transcriptFile" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><template #header="{ close }"><DialogBackHeader :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" back="返回对话" @close="close" /></template><div class="transcript-frame"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></div></el-dialog>
+    <el-dialog append-to-body v-model="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
   </div>
 </template>

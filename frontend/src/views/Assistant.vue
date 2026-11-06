@@ -137,6 +137,8 @@ async function rename() {
 async function stop(mid: number) { try { await assistantApi.stop(id.value, mid); await refresh() } catch (e) { error.value = failure(e) } }
 async function retry(mid: number) { try { await assistantApi.retry(id.value, mid); await refresh() } catch (e) { error.value = failure(e) } }
 // 本会话正在生成的回复（输入框的发送按钮原位变为停止）
+// V31-U5F-04：只加了文件、还没发出第一条消息时保持首页布局（输入框不动，文件标签在框内），发出后才转为对话布局
+const homeLike = computed(() => !!session.value && !messages.value.length)
 const generating = computed(() => messages.value.find(m => m.role === 'assistant' && ['queued', 'streaming'].includes(m.status))?.id ?? null)
 // 在侧栏改名后同步标题
 watch(() => sessions.items.find(item => item.id === id.value)?.title, title => { if (title && session.value) session.value.title = title })
@@ -147,16 +149,17 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 </script>
 <template>
   <div class="page page--split assistant-page">
-    <main v-loading="loading" class="dialogue">
+    <main v-loading="loading" class="dialogue" :class="{ 'is-home': homeLike || (!session && !id) }">
       <el-alert v-if="error" type="error" :closable="false" :title="error" />
       <template v-if="session">
-        <div class="toolbar">
+        <h1 v-if="homeLike" class="home-title">今天要处理什么？</h1>
+        <div v-else class="toolbar">
           <el-button class="title" link @click="rename">{{ session.title }}</el-button>
           <el-button size="small" @click="drawerOpen = true"><Files :size="14" :stroke-width="1.75" /><span class="files-label">文件 {{ session.files.length }}</span></el-button>
           <el-button link type="danger" :disabled="working" @click="remove(session)">删除会话</el-button>
         </div>
-        <Conversation :messages="messages" :session-id="id" @stop="stop" @retry="retry" />
-        <Composer :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!messages.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" />
+        <Transition name="rise"><Conversation v-if="!homeLike" :messages="messages" :session-id="id" @stop="stop" @retry="retry" /></Transition>
+        <Composer :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!messages.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
       </template>
       <div v-else-if="!loading && !id" class="home">
         <h1>今天要处理什么？</h1>
@@ -173,5 +176,10 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .title { flex: 1; min-width: 0; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: left; font: var(--si-font-h2); }
 .files-label { margin-left: 6px; }
 .home { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 8vh; }
-.home h1 { margin: 0 0 20px; text-align: center; font: var(--si-font-title-lg); color: var(--si-ink-1); }
+.home h1, .home-title { margin: 0 0 20px; text-align: center; font: var(--si-font-title-lg); color: var(--si-ink-1); }
+/* 首页布局：标题与输入框居中，位置与未建会话时相同 */
+.dialogue.is-home { justify-content: center; padding-bottom: 8vh; }
+.rise-enter-active { transition: opacity var(--si-dur-2, 240ms) var(--si-ease), transform var(--si-dur-2, 240ms) var(--si-ease); }
+.rise-enter-from { opacity: 0; transform: translateY(12px); }
+@media (prefers-reduced-motion: reduce) { .rise-enter-active { transition: none; } }
 </style>
