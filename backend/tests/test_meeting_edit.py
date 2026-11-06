@@ -86,6 +86,10 @@ def test_merged_paragraphs_in_outbound_word_and_speaker_batch(env, session_clien
     from app.assistant.router import _marks
     assert meeting.join_sentences(['你好。', '再见。']) == '你好。再见。'
     assert meeting.join_sentences(['Hello.', 'World']) == 'Hello. World'
+    # 句末无标点时补逗号，不能拼出跨句的金额、人名
+    assert meeting.join_sentences(['预算三百', '万元整。']) == '预算三百，万元整。'
+    assert meeting.join_sentences(['Call John', 'Smith later']) == 'Call John, Smith later'
+    assert recheck(meeting.join_sentences(['预算三百', '万元整。']), real_values=[], terms=[]) == []
     assert _marks('[3000, 1000, 1000]') == [1000, 3000] and _marks('[-1]') is None and _marks('x') is None
     c, headers, _ = session_client
     tid = uuid.UUID(create(c, headers)['id'])

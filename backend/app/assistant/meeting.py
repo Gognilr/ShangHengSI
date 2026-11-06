@@ -53,12 +53,20 @@ def paragraphs(rows):
     return groups
 
 
+_SENTENCE_END = set('。！？；，、：…,.!?;:')
+
+
 def join_sentences(parts):
-    # 中文句子直接相接；两侧都是西文字符时补一个空格，避免英文句子粘在一起
+    """中文句子直接相接；两侧都是西文字符时补一个空格。上一句末尾没有标点时先补逗号：
+    脱敏按句识别，相接后不能拼出跨句的金额、人名或号码（如“三百”+“万元”），否则出口复检会拦、
+    自检闭环按句补不到，会话就发不出去（V31-U5F-05 审核）。"""
     out = ''
     for part in parts:
-        if out and part and out[-1].isascii() and not out[-1].isspace() and part[0].isascii() and not part[0].isspace():
-            out += ' '
+        if out and part:
+            if out[-1] not in _SENTENCE_END and not out[-1].isspace():
+                out += ',' if out[-1].isascii() and part[0].isascii() else '，'
+            if out[-1].isascii() and part[0].isascii() and not part[0].isspace():
+                out += ' '
         out += part
     return out
 
