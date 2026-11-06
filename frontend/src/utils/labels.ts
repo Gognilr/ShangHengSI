@@ -154,6 +154,7 @@ export const REDACTION_CATEGORY: Dict = {
   AMOUNT: '金额',
   PRICE: '单价',
   QTY: '数量',
+  DATE: '日期（已平移）',
   CUSTOM: '敏感词',
   NAME: '名称（不确定）',
   TERM: '专有名词（不确定）',

@@ -159,7 +159,9 @@ async function settle() {
       error || !info || touched ? loadSummary() : Promise.resolve(applyRedaction(info)),
       loadOutbound(),
     ])
-    parties.value = p.items
+    // 服务器按代号排序，改我方后代号变化会让刚点的那一行跳位；保持界面原有顺序
+    const order = new Map(parties.value.map((x, i) => [x.id, i]))
+    parties.value = [...p.items].sort((a, b) => (order.get(a.id) ?? order.size) - (order.get(b.id) ?? order.size))
     if (leaksShown.value) void leakPanel.value?.reload()
   } catch { /* 网络中断：保持当前显示，下一次操作或刷新时对齐 */ }
   if (error) {
