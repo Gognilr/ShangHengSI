@@ -289,8 +289,11 @@ function fileBadge(name: string): string {
   if (['docx', 'doc', 'wps', 'rtf'].includes(ext)) return 'DOC'
   if (['xlsx', 'xls', 'et'].includes(ext)) return 'XLS'
   if (ext === 'pdf') return 'PDF'
+  if (AUDIO_EXTS.includes(ext)) return '音频'
   return 'IMG'
 }
+const AUDIO_EXTS = ['mp3', 'm4a', 'wav', 'amr', 'aac', 'mp4']
+const badgeClass = (name: string) => ({ DOC: 'doc', XLS: 'xls', PDF: 'pdf', 音频: 'audio' } as Record<string, string>)[fileBadge(name)] ?? 'img'
 const parsingFiles = computed(() => visibleFiles.value.some(f => f.parse_state === 'parsing'))
 const failedFiles = computed(() => visibleFiles.value.some(f => f.parse_state === 'failed'))
 
@@ -575,15 +578,15 @@ useHotkeys({
           <ul class="rows">
             <li v-for="f in visibleFiles" :key="f.id" class="file">
               <div class="file-line">
-                <span class="badge" :class="`badge--${fileBadge(f.original_name).toLowerCase()}`">{{ fileBadge(f.original_name) }}</span>
+                <span class="badge" :class="`badge--${badgeClass(f.original_name)}`">{{ fileBadge(f.original_name) }}</span>
                 <span class="file-name" :title="f.original_name">{{ f.original_name }}<em v-if="f.is_main" class="main-tag">主文件</em></span>
                 <el-dropdown v-if="canEditFiles" trigger="click" :disabled="waiting">
                   <button type="button" class="icon-btn" :aria-label="`${f.original_name} 的更多操作`"><Ellipsis :size="16" :stroke-width="1.75" /></button>
                   <template #dropdown><el-dropdown-menu><el-dropdown-item :disabled="f.is_main || f.parse_state !== 'done'" @click="setMain(f)">设为主文件</el-dropdown-item><el-dropdown-item :disabled="visibleFiles.length <= 1" @click="removeFile(f)">删除</el-dropdown-item></el-dropdown-menu></template>
                 </el-dropdown>
               </div>
-              <div class="file-line sub">
-                <el-select class="doc-type" :disabled="assistant" :model-value="f.doc_type ?? undefined" placeholder="请选择" size="small" :aria-label="`${f.original_name} 的文件类型`" @change="(v: string) => changeDocType(f.id, v)"><el-option v-for="o in docTypeOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
+              <div v-if="!assistant" class="file-line sub">
+                <el-select class="doc-type" :model-value="f.doc_type ?? undefined" placeholder="请选择" size="small" :aria-label="`${f.original_name} 的文件类型`" @change="(v: string) => changeDocType(f.id, v)"><el-option v-for="o in docTypeOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
                 <span class="hint">{{ docTypeSourceLabel(f.doc_type_source) }}</span>
               </div>
               <div class="hint">{{ fileMeta(f) }}<template v-if="f.parse_state === 'parsing'"> · 解析中</template></div>
@@ -695,7 +698,7 @@ h3.clickable:focus-visible { outline: 2px solid var(--si-focus); outline-offset:
 .badge { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; font-size: 11px; font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
 .badge--xls { background: var(--el-color-success-light-9); color: var(--el-color-success); }
 .badge--pdf { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
-.badge--img { background: var(--el-color-info-light-9); color: var(--el-color-info); }
+.badge--img, .badge--audio { background: var(--el-color-info-light-9); color: var(--el-color-info); }
 .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .main-tag { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); font-style: normal; }
 .doc-type { flex: 1; min-width: 0; }

@@ -454,6 +454,8 @@ def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None
         if ext not in filecheck.AUDIO_EXTS:
             uploads.append(tasks.inspect_upload(name, source, get_settings().max_upload_mb * 1024 * 1024))
             continue
+        if task.purpose != 'meeting':  # V31Q-98：录音只在“会议纪要”中转写（V31-U5-07）
+            raise AppError(422, 'AUDIO_MEETING_ONLY', '录音请到“会议纪要”中处理')
         if not asr_enabled():
             raise AppError(422, 'ASR_DISABLED', '录音转写未启用，请联系管理员')
         audio_count += 1

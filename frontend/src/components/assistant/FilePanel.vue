@@ -25,7 +25,7 @@ const currentTranscript = computed(() => props.session.files.find(f => f.id === 
 const uploadProgress = ref<number | null>(null), localOpen = ref(false), findings = ref<LocalFinding[]>([])
 const audioExts = ['mp3','m4a','wav','amr','aac','mp4']
 const docAccept = '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png', audioAccept = '.mp3,.m4a,.wav,.amr,.aac,.mp4'
-const accept = computed(() => docAccept + (props.session.asr_enabled ? ',' + audioAccept : ''))
+const accept = computed(() => docAccept + (props.session.asr_enabled && props.session.purpose === 'meeting' ? ',' + audioAccept : ''))
 // 从模板卡片或输入区“加入录音”打开时只收录音
 const pickAccept = ref('')
 // 本页加入的文件解析 / 转写完成后，直接打开校对或确认脱敏，不让用户自己去找按钮（V31Q-92）
@@ -65,6 +65,7 @@ async function addList(files: File[]) {
   if (files.length > 5 || files.length + props.session.files.length > 10) { error.value = '每次最多加入 5 个文件，会话合计最多 10 个文件'; return }
   for (const file of files) {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+    if (audioExts.includes(ext) && props.session.purpose !== 'meeting') { error.value = '录音请到“会议纪要”中处理'; return }
     if (!accept.value.split(',').includes('.' + ext)) { error.value = '不支持该文件格式'; return }
     if (audioExts.includes(ext) && !props.session.asr_enabled) { error.value = '录音转写未启用，请联系管理员'; return }
     if (file.size > (audioExts.includes(ext) ? 500 : 30) * 1024 * 1024) { error.value = audioExts.includes(ext) ? '录音单个不能超过 500 MB' : '文档单个不能超过 30 MB'; return }
@@ -119,7 +120,7 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
     <div class="file-heading"><h2>文件（{{ session.files.length }}）</h2><el-button size="small" :disabled="!canUpload" :loading="busy" @click="upload?.click()">加入文件</el-button><input ref="upload" class="file-input" type="file" multiple :accept="pickAccept || accept" @change="added"></div>
     <div v-if="uploadProgress !== null" role="status"><el-progress :percentage="uploadProgress" /><p class="hint">正在上传 {{ uploadProgress }}%</p></div>
     <WorkFolderBar :disabled="!canUpload" @add="addList" />
-    <p v-if="session.asr_enabled" class="hint">可加入文档或会议录音</p><p v-else-if="!session.files.some(f => f.media)" class="hint">录音转写未启用</p>
+    <p v-if="session.purpose !== 'meeting'" class="hint">录音请到“会议纪要”中处理</p>
     <p v-if="!canUpload" class="hint">{{ session.original_deleted ? '原件已按保留期限删除，本会话只能查看' : session.status !== 'active' ? '处理完成后可以继续加入文件' : session.generating ? '回复完成后可以继续加入文件' : busy ? '正在处理，请稍候' : '每会话最多 10 个文件' }}</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="session.status === 'parsing' && session.files.some(f => !f.media)"><h3>正在本机解析文件</h3><el-progress :percentage="100" :indeterminate="true" :show-text="false" /><p class="hint num">已用 {{ elapsed }} 秒</p><p class="hint">在本机读取正文并识别敏感信息，可以离开页面稍后继续。</p></template>

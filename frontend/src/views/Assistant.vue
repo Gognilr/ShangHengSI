@@ -91,6 +91,7 @@ const initial = ref<{ text: string; autoSend: boolean; modelId?: number } | null
 let carryTemplate: Template | null = null
 async function start(payload: ComposerStart) {
   if (working.value) return
+  if (payload.files.some(f => /\.(mp3|m4a|wav|amr|aac|mp4)$/i.test(f.name))) { error.value = '录音请到“会议纪要”中处理'; return }
   working.value = true; error.value = ''
   try {
     const created = await assistantApi.create()

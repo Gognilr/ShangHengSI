@@ -445,7 +445,8 @@ def test_audio_upload_and_decode(files_dir, session_client, db_sessionmaker, mon
     from app.config import get_settings
     from app.parsing.audio import decode
     c, h, _ = session_client
-    tid = create(c, h)['id']
+    chat = create(c, h)['id']
+    tid = c.post(BASE, headers=h, json={'purpose': 'meeting'}).json()['id']
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as wav:
         wav.setnchannels(1)
@@ -456,6 +457,7 @@ def test_audio_upload_and_decode(files_dir, session_client, db_sessionmaker, mon
     def put(payload=data):
         return c.post(f'{BASE}/{tid}/files', headers=h, files=[('files', ('虚构会议.wav', payload))])
     monkeypatch.delenv('COMPOSE_PROFILES', raising=False)
+    assert c.post(f'{BASE}/{chat}/files', headers=h, files=[('files', ('虚构会议.wav', data))]).json()['code'] == 'AUDIO_MEETING_ONLY'
     assert put().json()['code'] == 'ASR_DISABLED'
     monkeypatch.setenv('COMPOSE_PROFILES', 'asr')
     assert put(b'not audio').status_code == 422
