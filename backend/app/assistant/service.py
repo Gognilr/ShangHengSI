@@ -126,6 +126,8 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             "tokens_in": message.tokens_in, "tokens_out": message.tokens_out,
             "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at,
             "marks": [], "calcs": []}
+    if message.role == "user":
+        result["sent"] = message.content_redacted  # 实际发给模型的提问文字（只含代号），供“查看实际发送内容”
     if message.role == "assistant":
         if message.status not in ('queued', 'streaming'):
             # 与 incremental() 用同一份助手代号表，标记位置才与 content 一致（设计 V31-R 4.6）。

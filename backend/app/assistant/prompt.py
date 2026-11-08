@@ -101,7 +101,8 @@ def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, n
         descriptions.append(f"{code}：{label}")
     system, options = system_prompt(), ""
     from app.checks.service import local_summary
-    summary = local_summary(db, task)
+    confirmed = db.scalars(select(TaskFile.id).where(TaskFile.task_id == task.id, TaskFile.confirmed_at.is_not(None)))
+    summary = local_summary(db, task, file_ids=list(confirmed))
     local = ('【本地校验摘要】\n' + escape_document_tags(summary) + '\n') if summary else ''
     if user_message.template:
         from app.assistant.templates import instruction

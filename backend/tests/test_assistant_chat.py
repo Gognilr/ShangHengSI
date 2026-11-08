@@ -106,6 +106,7 @@ def test_finished_integrity_marks_preserve_delta(conversation, db_sessionmaker, 
     answer = messages[-1]
     assert answer['content'] == delta['text_from_offset'] == '你好 ' + REAL + '，[[ORG_9]]'
     assert messages[-2]['marks'] == []
+    assert messages[-2]['sent'] == '说明术语' and 'sent' not in answer  # “查看实际发送内容”只在用户消息上
     assert [answer['content'][m['start']:m['end']] for m in answer['marks']] == ['[[ORG_9]]']
     assert 'marks' not in delta
 

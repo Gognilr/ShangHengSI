@@ -60,6 +60,10 @@ async function copy() {
         <p v-else :class="{ heading: block.kind === 'heading', list: block.kind === 'list' }"><span v-if="block.kind === 'list'">• </span><template v-for="(part, pi) in inline(block.text, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></p>
       </template>
     </div>
+    <details v-if="message.role === 'user' && message.sent" class="sent">
+      <summary class="hint">查看实际发送内容</summary>
+      <pre>{{ message.sent }}</pre>
+    </details>
     <p v-if="pending" class="generating" role="status">正在生成…</p>
     <p v-if="count" class="warning">有 {{ count }} 处未能还原，已原样标出</p>
     <el-alert v-if="message.error" :title="message.error" type="error" :closable="false" />
@@ -82,6 +86,10 @@ async function copy() {
 .mine .markdown p:first-child { margin-top: 0; }
 .mine .markdown p:last-child { margin-bottom: 0; }
 .meta { margin-bottom: 4px; }
+/* 用户消息下的“查看实际发送内容”：只读，代号文本原样显示 */
+.sent { max-width: 80%; margin-top: 4px; text-align: right; }
+.sent summary { cursor: pointer; }
+.sent pre { margin: 6px 0 0; padding: 8px 12px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-meta); color: var(--el-text-color-secondary); background: var(--el-fill-color-light); border-radius: var(--el-border-radius-base); }
 .markdown { font: var(--si-font-reading); color: var(--si-text-reading); overflow-wrap: anywhere; white-space: pre-wrap; }
 .markdown p { margin: 12px 0; }
 .heading { font: var(--si-font-h3); }

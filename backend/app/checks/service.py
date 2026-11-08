@@ -125,8 +125,12 @@ def table_notes(nodes, files) -> dict[str, str]:
     return notes
 
 
-def local_summary(db, task) -> str:
-    rows = db.scalars(select(LocalFinding).where(LocalFinding.task_id == task.id,LocalFinding.check_code!='L-12').order_by(LocalFinding.id))
+def local_summary(db, task, file_ids=None) -> str:
+    """file_ids 给定时只取这些文件的结果（助手：解析期间可提问，未确认文件的校验摘要不外发）。"""
+    query = select(LocalFinding).where(LocalFinding.task_id == task.id, LocalFinding.check_code != 'L-12')
+    if file_ids is not None:
+        query = query.where(LocalFinding.file_id.in_(list(file_ids)))
+    rows = db.scalars(query.order_by(LocalFinding.id))
     return "\n".join(f"[{r.check_code}] {r.ai_summary}" for r in rows)
 
 

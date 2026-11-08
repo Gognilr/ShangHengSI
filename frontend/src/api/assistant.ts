@@ -43,6 +43,8 @@ export interface Message {
   extras: { segments_total?: number; segments_done?: number; kb_sent?: number; kb_dropped?: number
     history_sources?: { task_id: string; month: string }[]; translation_unaligned?: number[] }
   translation?: Record<string, string>; translation_notice?: string; compare?: Comparison; draft?: string
+  /** 用户消息：实际发给模型的提问文字（只含代号）；本地翻译的消息没有 */
+  sent?: string
 }
 export interface MessageInput {
   model_id?: number

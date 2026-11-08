@@ -1,6 +1,6 @@
 # 前端界面规范（第三版）
 
-**2026-11 起按 V3.1 光幕方向**（V3Q-28；V31-U1-05 合并第 1～5、9～13 节，设计与取值见 docs/v31/design/V31-U1.md；V31-U2-06 合并首页与确认脱敏工作台；V31-U3-07 合并结果页工作台、审核中与两种结论的分区、未能还原标记）。首页、确认页、结果页、审核中已重做，其余页面在 V31-U4 重做，各批设计文档中针对具体页面的写法优先于本文件；U2～U4 完成前，未重做的页面仍保留第二版的布局，只按本版换了颜色、字体与组件外观。
+**2026-11 起按 V3.1 光幕方向**（V3Q-28；V31-U1-05 合并第 1～5、9～13 节，设计与取值见 docs/v31/design/V31-U1.md；V31-U2-06 合并首页与确认脱敏工作台；V31-U3-07 合并结果页工作台、审核中与两种结论的分区、未能还原标记；V31-U5-09 合并智能助手单栏与文件抽屉、会议纪要与翻译页、设置自动保存）。首页、确认页、结果页、审核中已重做，其余页面在 V31-U4 重做，各批设计文档中针对具体页面的写法优先于本文件；U2～U4 完成前，未重做的页面仍保留第二版的布局，只按本版换了颜色、字体与组件外观。
 
 本文件是全部前端任务（`frontend/` 下的页面、组件、样式）共同遵守的界面约定，由 Opus 制定，经用户确认后生效。不论任务由 Sonnet 5.5 还是 GPT-6.1 Sol 执行，都按本规范实现；Opus 评审前端提交时也按本规范逐条检查。
 
@@ -28,7 +28,7 @@
 
 左侧侧栏 + 右侧主区域（`grid-template-columns: auto 1fr; height: 100vh`），设计见 V3-A 第二节。
 
-* **侧栏**：`--si-bg-side` 底、右边框 1px `--si-hair-faint`，内部纵向排列：`SiLogo`（nav 尺寸，不显示副标）、“新建会话”（默认按钮外观）、菜单“智能助手”“智能审核”“审核历史”、“搜索”（右侧小字 `Ctrl K`）、近期会话（`SidebarSessions`，自己滚动）；底部为“设置”（仅管理员可见）、用户区（首字圆形 + 显示名 + 下拉：外观、修改密码、退出）和收起 / 展开按钮。菜单文字 `--si-font-label`；选中项为蓝色渐变浅底 + 左侧 3px `--si-blue` 竖条（完整特效带辉光），圆角 `--el-border-radius-base`；`/review/:id` 归“智能审核”。
+* **侧栏**：`--si-bg-side` 底、右边框 1px `--si-hair-faint`，内部纵向排列：`SiLogo`（nav 尺寸，不显示副标）、“新建会话”（默认按钮外观，回到智能助手首页、不建会话）、菜单“智能助手”“智能审核”“会议纪要”“翻译”“审核历史”、“搜索”（右侧小字 `Ctrl K`）、近期会话（`SidebarSessions`，只列智能助手会话，自己滚动）；底部为“设置”（所有人可见）、用户区（首字圆形 + 显示名 + 下拉：外观、修改密码、退出）和收起 / 展开按钮。菜单文字 `--si-font-label`；选中项为蓝色渐变浅底 + 左侧 3px `--si-blue` 竖条（完整特效带辉光），圆角 `--el-border-radius-base`；`/review/:id` 归“智能审核”，`/meeting/:id`、`/translate/:id` 归各自菜单。
 * **主区域底色**：`--si-bg-canvas`；完整特效下 `.main` 叠一层固定不动的 `--si-ambient` 氛围光。路由切换只有进入动画（`si-page`），旧页面立即移除。
 * **宽度**：默认 232px，右边缘 `SplitHandle` 可拖宽 200～320px，双击恢复；收起为 64px 图标窄栏（只显示图标与用户首字，每个图标有右侧 `el-tooltip` 与 `aria-label`，不显示近期会话，不可拖宽）。
 * **主区域**：只有页面（管理员提醒在侧栏底部，`AlertList` 弹层，V31Q-96）；`.main` 为 `height: 100vh; overflow-y: auto`，页面在其中滚动。需要占满高度的页面（审核结果、智能助手）根元素用 `height: 100%`，由主区域提供高度，不按视口减去固定值计算。须修改初始密码时主区域只显示“请先修改初始密码”。
@@ -50,12 +50,14 @@
 
 确认脱敏（第二步）同为工作台（`ConfirmWorkbench`）：高度占满、整页不滚动，左为画布、右为回执栏（340～480px，默认 380px，`si.confirm.rightWidth`），两栏各自滚动，外发回执卡粘在回执栏底部。智能助手的确认脱敏对话框用同一组件（`mode="assistant"`）。
 
-智能助手页为对话区（自适应）+ 文件面板（320px）两栏；对话内容最大宽度 760px、水平居中，正文 `--si-font-reading`；用户消息为靠右气泡（浅主色底、`--si-radius-card`、最大宽度 80%），助手回复满宽无底色，回复操作在悬停或聚焦时显示（最后一条始终显示）。文件面板自上而下分节：文件（加入文件、上传进度、工作文件夹、各文件行；录音行见 SPEC 13A 第 7 条）、本地校验卡片（有结果时）、会话设置（立场、代号数、查看外发文本）（V31-U4）。
+智能助手页为单栏（V31-U5）：首页（无会话）主区域垂直居中“今天要处理什么？”+ 输入框（`Composer`，最大宽 760px）+ 快捷标签；对话页顶部一行标题栏（会话名可点改名、“文件 {n}”、“删除会话”），下为对话内容（最大宽度 760px、水平居中，正文 `--si-font-reading`），底部为输入框。用户消息为靠右气泡（浅主色底、`--si-radius-card`、最大宽度 80%），下方可展开“查看实际发送内容”（只读代号文字）；助手回复满宽无底色，回复操作在悬停或聚焦时显示（最后一条始终显示）。会话文件放在右侧抽屉（`FilePanel`，`el-drawer`）：文件（加入文件、上传进度、工作文件夹、各文件行）、本地校验卡片（有结果时）、会话设置（立场、代号数、查看外发文本）；不再有常驻右栏。
+
+会议纪要页（`views/Meeting.vue`）与翻译页（`views/Translate.vue`）：首页用 `.page--standard`，为拖入区与“最近的…”列表；单个会议 / 翻译页用 `.page--split`；单个会议页自上而下为录音行（`MediaRow`）、铺满主区域的逐字稿校对（`TranscriptEditor`）与生成纪要操作，确认脱敏用全屏对话框（`ConfirmWorkbench mode="assistant"`，带 `DialogBackHeader`）；单个翻译页为三步条（本机解析 → 确认脱敏 / 原文留在本机 → 开始翻译）与译文 / 对照结果。
 
 ### 2.3 页面内的结构
 
 * 设置各页顶部用 `PageHeader`（`--si-font-title` 标题 + 一行 14px 次要色说明 + 右侧插槽放该页已有的主按钮），标题与说明见 R3.md 第四节。智能审核、审核历史不用页面标题（侧栏选中项已说明位置）；审核结果页用工具条（V2-U 第四节）。
-* 设置各页的内容用 `SettingSection` 分节：两列网格，左 240px（标题 15px / 600 + 一两行次要色说明），右侧为字段；节与节之间 1px `--el-border-color-lighter` 分隔线、上下各 24px，不在面板里再套卡片；放表格的节用 `stacked`（标题与说明在上、内容占满宽度）。表单与服务端值不同时页面底部出现粘底 `UnsavedBar`（“有未保存的修改”·“放弃”“保存”），各节不再单独放“保存”；有未保存修改时切换设置分类、离开页面与关闭标签页都提醒。立即生效的控件（第七节第 5 条）不进入未保存状态。
+* 设置各页的内容用 `SettingSection` 分节：两列网格，左 240px（标题 15px / 600 + 一两行次要色说明），右侧为字段；节与节之间 1px `--el-border-color-lighter` 分隔线、上下各 24px，不在面板里再套卡片；放表格的节用 `stacked`（标题与说明在上、内容占满宽度）。设置改为自动保存（V31-U5F-06，`utils/autosave.ts` 的 `useAutoSave`）：开关、下拉改动立即保存，文字输入停顿 1 秒后保存，离开页面时把等待中的保存立即发出；保存状态在字段旁用 `SaveState` 显示“保存中… / 已保存 / 保存失败 · 重试”。缩短保留期、模型密钥、改密码、开启法规同步等仍须二次确认。不设“保存”按钮与未保存提示栏。
 * 内容放在**面板** `.panel` 中：第 1 层表面（`--si-surface-1` 底、1px `--si-hair` 边框）、`--si-radius-card`（12px）圆角、内边距 20px 24px，无阴影。面板之间 16px（`.panel + .panel`）。需要 Element Plus 卡片能力时可用 `el-card shadow="never"`，theme.css 已把它统一成同样的外观。
 * 面板标题 `--si-font-h2`，下间距 16px；标题后可跟 `--si-font-meta` 次要色说明，右侧可放该面板的次要操作。回执栏各节标题 `--si-font-h4`、右侧一行摘要，不加序号徽标。
 * 面板内的分组标题 `--si-font-h4`；组与组之间 32px，用 1px `--si-hair-faint` 分隔线隔开。
@@ -146,9 +148,9 @@
 | 步骤 | `StepBar` | 只在新建审核页使用；取值与原 `el-steps` 相同 |
 | 数据列表 | `el-table`（不加 `border`） | 表头浅灰底、只有横线。页面主列表默认尺寸；面板内的小表 `size="small"` 并包一层 12px 圆角边框容器。空数据用 `#empty` 插槽放紧凑的 `EmptyState` 写明原因。时间列宽 170px，操作列放最右。表头固定：设 `max-height`（面板可用高度，至少 480px），表体滚动。行尾常用的一两个操作直接显示为文字按钮，其余收进最后的“⋯”（`RowMore`，`MoreHorizontal` 图标，`aria-label="更多操作"`），删除放在下拉最后、危险色（各表的分法见 V3-A 4.4 与 V3Q-09）。文件名、会话标题、法规名称、范本名称等长名称列加 `show-overflow-tooltip`。首次加载用同形状的 `TableSkeleton`，之后的翻页、筛选用 `v-loading` |
 | 可拖动分栏 | `SplitHandle` | 属性为最小值、最大值、默认值与偏好键名；`role="separator"`、`aria-orientation="vertical"`、`aria-label`、`tabindex="0"`，←/→ 每次 16px，双击恢复默认。用于侧栏宽度、审核结果两栏与确认脱敏回执栏 |
-| 设置分节 | `SettingSection`（含 `stacked`）、`UnsavedBar` | 见 2.3；统一保存时依次调用各有改动的节原有的保存接口，某一节失败即停下并显示错误，已保存的节恢复为干净状态 |
+| 设置分节 | `SettingSection`（含 `stacked`）、`SaveState` + `useAutoSave` | 见 2.3 |
 | 全局搜索 | `GlobalSearch` | 侧栏“搜索”或 Ctrl+K 打开；`el-dialog` 宽 640px、顶部 15vh、无标题栏；分组：操作、页面（本地过滤）、审核、会话（接口结果，标题 + 次要色日期）；↑/↓、Enter、Esc；输入 300ms 后请求 |
-| 工作文件夹 | `WorkFolderBar`、`WorkFolderPicker`；`utils/workFolder.ts`、`utils/save.ts` | 入口一行“工作文件夹：{文件夹名} · 更换 · 不使用”，放在新建审核上传区上方与助手文件面板“加入文件”旁；浏览器不支持时不显示。所有导出经 `saveBlob` 保存（写入文件夹不覆盖，否则普通下载）。规则见 SPEC 6.9 |
+| 工作文件夹 | `WorkFolderBar`、`WorkFolderPicker`；`utils/workFolder.ts`、`utils/save.ts` | 入口一行“工作文件夹：{文件夹名} · 更换 · 不使用”，放在新建审核上传区上方与助手文件抽屉“加入文件”旁；浏览器不支持时不显示。所有导出经 `saveBlob` 保存（写入文件夹不覆盖，否则普通下载）。规则见 SPEC 6.9 |
 | 键值信息 | 3 列网格（标签 12px 次要色在上，值 14px 在下） | 只用于设置页；结果页元信息为工具条第二行的一行文字，用“ · ”分隔；不用 `el-descriptions border` |
 | 统计数字 | 统计块（1px 边框、8px 圆角，标签 `--si-font-meta` + 数字 `--si-font-stat`） | 用于脱敏摘要、本月用量、系统状态、等级计数；数字按接口原样显示 |
 | 表单 | `el-form label-width="110px"` 或标签在上（`label-position="top"`，设置页两列 / 三列网格） | 多行输入写 `maxlength` 和 `show-word-limit` |
@@ -172,9 +174,11 @@
 | 导出 | `result/ExportButton` | 分体按钮：主按钮导出报告，菜单为批注版、修订版；不可用项禁用并写原因；保存经 `saveBlob` |
 | 审核中 | `result/ReviewCeremony` | 新建审核第三步；四步只按真实数据，舞台为品牌时刻（第十二节） |
 | 延迟删除 | `composables/usePendingDeletes.ts` | 5 秒撤销后真删；离开路由、卸载时立即执行，关闭标签页用 keepalive；提交或前进前 `await flush()` |
-| 页面快捷键 | `utils/hotkeys.ts` 的 `useHotkeys` | 确认脱敏使用，键见“键盘操作”；逐字稿校对对话框只注册空格（播放 / 暂停，`withinDialog`） |
-| 逐字稿校对 | `assistant/TranscriptEditor`（全屏 `el-dialog`，挂到 body） | 只在助手录音行打开；纸面逐字稿 + 320px 侧栏（名单、发言人、同音建议、导出、去确认脱敏）；句块 `content-visibility: auto`，句内容 `v-memo`，发言人下拉点击才建立；回放副本用 Blob URL，关闭即释放；已确认只读 |
-| 录音行 | `assistant/MediaRow` | 文件面板内；各阶段文字见 SPEC 13A 第 7 条；转写中行底 2px 扫描光条（`useLoop`） |
+| 页面快捷键 | `utils/hotkeys.ts` 的 `useHotkeys` | 确认脱敏使用，键见“键盘操作”；逐字稿校对只注册空格（播放 / 暂停，`withinDialog`） |
+| 逐字稿校对 | `assistant/TranscriptEditor`（会议页内铺满主区域） | 只在会议纪要页；纸面逐字稿 + 320px 侧栏（名单、发言人、同音建议、导出、去确认脱敏）；句块 `content-visibility: auto`，句内容 `v-memo`，发言人下拉点击才建立；回放副本用 Blob URL，离开页面即释放；已确认只读 |
+| 录音行 | `assistant/MediaRow` | 会议纪要页；各阶段文字见 SPEC 13A 第 7 条；转写中行底 2px 扫描光条（`useLoop`） |
+| 输入框 | `assistant/Composer` | 智能助手首页与对话页共用：上方附件标签（状态、点“待确认”打开确认、点选 = 本次使用、× 移出）与模板标签（参数就地选、× 取消，发送后清除），中间多行输入（Enter 发送、Shift+Enter 换行、组字不处理），下方模型下拉、知识库 / 历史合同勾选与发送 / 停止；整页拖入高亮“松开即加入”；文件处理中显示“…后自动发送 · 取消”；有疑似项时才弹“确认发送内容” |
+| 现场录音 | `meeting/MeetingRecorder` | 会议纪要首页：设置（麦克风、试音波形、主题、参会人）→ 录音条（计时、波形、暂停 / 继续、打点、停止并转写、放弃）；分片每 2 秒写 `utils/recordingStore.ts`（IndexedDB），上传成功才清除；规则见 SPEC 13A 第 7 条 |
 | 设置分节导航 | `SettingsLayout` + `SettingSection`（`inject` 登记锚点，`utils/settingSections.ts`） | 一页 ≥ 4 节时内容区顶部粘顶一行文字按钮，可横向滚动；点击平滑滚动（关闭特效时直接跳），`IntersectionObserver` 高亮当前节 |
 | 侧边说明 | `el-drawer`，从右侧打开，宽 560px | 审核要求抽屉（SPEC 6.5） |
 | 对话框 | `el-dialog` | 表单类宽 480px，内容较多的宽 640px；主按钮放右边，“取消”在它左边；提交中显示 loading |
@@ -209,7 +213,7 @@
 | 引用状态 | 引用已校验 `success`、待核实 `warning`、缺失型 `info`，用 `effect="plain"` |
 | 问题类别 | 表格中一律 `info` 标签；问题卡片中为纯文字（卡片中只有等级用胶囊标签） |
 | 轮次状态 | 已完成 `success`、部分完成 `warning`、已被拦截 `warning`、失败 `danger`、排队中和审核中 `info` |
-| 任务处理状态（审核历史状态列、助手文件面板） | 浅底标签（默认 `effect`）：解析中、排队中、审核中 `info`；待确认 `warning`；已审核、本地校验完成 `primary`（不用绿色，避免读成“审核通过”）；文件已确认脱敏 `success`；失败 `danger`；只读、已过期为 `info` + `effect="plain"` |
+| 任务处理状态（审核历史状态列、助手附件标签与文件抽屉） | 浅底标签（默认 `effect`）：解析中、排队中、审核中 `info`；待确认 `warning`；已审核、本地校验完成 `primary`（不用绿色，避免读成“审核通过”）；文件已确认脱敏 `success`；失败 `danger`；只读、已过期为 `info` + `effect="plain"` |
 | 制裁结论 | 文字显示，不加标签颜色；“高风险（建议合规人员或律师确认）”用 `--el-color-danger` 文字。下方固定声明不可省略 |
 | 替换类别（对照视图） | `labels.ts` 的 `REDACTION_KIND` 映射到 `--si-k-*` 颜色组 |
 | 画布胶囊（确认脱敏） | 确定替换：护盾胶囊（`--si-cap-bg` / `--si-cap-ink`，带盾形图标）；不确定项默认替换（`detected_by=uncertain`）：同底色、1px 虚线边框、无图标；保留原文的不确定项：普通文字加 1px 点状下划线（`--si-ink-3`）；AI 视野中替换处为代号胶囊（`--si-code-bg` / `--si-code-ink`，等宽，不确定项仍为虚线） |
@@ -272,7 +276,7 @@
 
 1. 不使用 `v-html`、`innerHTML`、`ElMessageBox` 的 `dangerouslyUseHTMLString`。外发文本、原文、原文引用、模型返回的文字都按纯文本显示（文本插值、`<pre>` 或 `white-space: pre-wrap`）。需要高亮片段时，拆成片段数组逐个插值。
 2. 不用 `console.log` 等输出任何内容；提交的代码中不留 `console.*`。
-3. 本地存储（`localStorage`）只能存界面偏好：上次的立场和来源（Q-51）、登录页记住的用户名（`si.login.username`，SPEC 6.1）、侧栏收起与宽度（`si.sidebar.collapsed`、`si.sidebar.width`）、审核结果问题栏宽度（`si.review.findingsWidth`）、外观设置（`si.appearance`，第十三节）。工作文件夹的授权句柄存本浏览器 IndexedDB（库 `si`、表 `prefs`、键 `workFolder`）。不得存密码、文件内容、名称、问题、对照表、文件夹路径、文件名或任何接口返回的业务数据。读写包在 try/catch 中，读不到按默认值。
+3. 本地存储（`localStorage`）只能存界面偏好：上次的立场和来源（Q-51）、登录页记住的用户名（`si.login.username`，SPEC 6.1）、侧栏收起与宽度（`si.sidebar.collapsed`、`si.sidebar.width`）、审核结果问题栏宽度（`si.review.findingsWidth`）、外观设置（`si.appearance`，第十三节）。工作文件夹的授权句柄存本浏览器 IndexedDB（库 `si`、表 `prefs`、键 `workFolder`）。唯一例外是现场录音的防丢分片（IndexedDB 库 `si-recording`，上传成功或放弃即清除，界面写明“保存到本机浏览器”，V31Q-106）。其余不得存密码、文件内容、名称、问题、对照表、文件夹路径、文件名或任何接口返回的业务数据。读写包在 try/catch 中，读不到按默认值。
 4. URL 中只放 ID 和页码、日期等筛选条件，不放文件名、公司名等文字。
 5. 所有请求经 `api/http.ts` 发出，不在组件中直接用 `fetch`。每个后端资源在 `api/` 下一个文件，接口类型与后端返回字段同名。
 6. 前端检查（文件数量、大小、扩展名、必填项）只是提示，后端一定会再检查；不要因为前端检查过就省略对接口错误的处理。
@@ -332,6 +336,6 @@ Opus 评审前端任务和里程碑验收时，按本规范逐条检查，并在
 ## 十三、外观设置
 
 * **入口**：侧栏用户菜单“修改密码”之上的“外观”，打开 `AppearanceDialog`（宽 420px）：外壳“夜幕 / 浅色”，特效“自动 / 完整 / 精简 / 关闭”，下方一行说明自动档当前结果与原因（手动时写“已按你的选择固定，不再自动调整”）。修改立即生效，不进入未保存状态。登录页不放入口，按已保存的设置显示。
-* **存储**：`localStorage` 键 `si.appearance`，值 `{"shell":"night","fx":"auto"}`；只存本浏览器，不发送到服务器。读不到按默认（夜幕、自动）。
+* **存储**：`localStorage` 键 `si.appearance`，值 `{"shell":"light","fx":"auto"}`；只存本浏览器，不发送到服务器。读不到按默认（浅色、自动，V31-U5F-06）。
 * **首屏不闪**：`index.html` 的 `<head>` 内联脚本在样式生效前写 `<html>` 的 `data-shell` 与 `data-fx`；之后由 `stores/appearance.ts` 接管。页面和组件按 `data-shell`、`data-fx` 或 `useFx()` 判断，不各自读存储。
 * **自动档**按顺序判定，命中即停：系统设置了减少动态效果 → 关闭；WebGL 检测为软件渲染（远程桌面或无显卡）→ 精简；处理器核心 ≤ 2 → 精简；品牌时刻开始后 1.5 秒内平均帧间隔 > 34ms → 本次打开期间降为精简（不写存储）；否则完整。用户手动选择的级别优先于以上全部。

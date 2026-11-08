@@ -109,6 +109,7 @@ async function start(payload: ComposerStart) {
 }
 // 第一句问题作为会话标题（P4）
 async function sent(text: string) {
+  template.value = null  // 模板只作用于这一条；追问回到自由对话，需要时再点快捷标签（U5-09）
   await refresh()
   if (session.value && session.value.title === '新会话' && text.trim()) {
     try { session.value = await assistantApi.patch(id.value, { title: text.trim().replace(/\s+/g, ' ').slice(0, 20) }); void sessions.refresh() } catch { /* 标题不影响使用 */ }
