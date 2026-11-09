@@ -34,3 +34,14 @@
 * 已退出的容器：`aireview-eval-e07-runner`、`aireview-e07-db`
 * 网络：`aireview-e08retry-20261027`、`aireview-m508qa`、`aireview-v2f_default`、`aireview-v31s-check_default`、`aireview-z03_default`
 * 数据卷：`aireview-e07-db-data`、`aireview-eval-data`、`aireview-eval-r02-data`（可能与 Z-02 评测有关，不建议删）
+
+## 五、V31-Z-03 候选包与测试机演练
+
+2026-11-09 · 按 [V31-Z.md](../design/V31-Z.md) 第三节和 V31Q-109 执行，当前完成预检。
+
+* 只读核对测试机 `172.16.11.252`。28 vCPU、来宾可见内存约 33 GiB、交换区 4 GiB，`/data` 独立挂载、余约 284 GiB，Docker 数据在 `/data/docker`。`aireview-u5-main` 正在使用 8080/8443。演练拟用独立项目 `aireview-z03-20261109` 和 18080/18443，预检时端口空闲。现有实例保持运行。
+* `5104d09` 增加安装脚本的 HTTP/HTTPS 端口参数，证书下载页和 Caddy 跳转取对应的 HTTPS 端口。Docker 中 `tests/test_scripts.py` 1 通过。渲染 Compose 配置核对三个离线容器均为 `network_mode: none`，Caddy 配置解析确认跳转含 18443。以上为本机构建前验证。
+* 候选源固定在仓库外的干净 clone，快照 `ddf4246c42e03424e12d09f88fc91a77c046c1b1` 基于 `7e5d791`，含工作区内 V31Q-113～115 相关既有代码与上述端口修复。原工作区未提交的改动仍单独保留。已核对本地 Hy-MT2 权重和 llama.cpp 源码归档的 SHA-256，容量样本 `cat180.wav` 已在仓库外找到。
+* 运维说明已更新服务和镜像清单、独立端口安装、换主密钥与通用升级步骤。第 13 节配置仍为演练前参考，等待两档容量数据后定稿。
+
+待完成候选包构建与包内校验、独立安装和业务走查、员工电脑及远程桌面人工检查、两档容量实测、备份恢复与换密钥、rc1 → rc2 升级、清理与交接。构建和本地模型断网推理等待用户确认。Z-01 转入的浏览器补查仍待实跑。
