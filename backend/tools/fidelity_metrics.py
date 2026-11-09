@@ -160,7 +160,7 @@ def run(args, paths):
                     stream.seek(0); stream.write(content); stream.truncate(); stream.flush()
 
             for repeat in range(1, args.repeat + 1):
-                for index, path in enumerate(paths, 1):
+                for index, path in enumerate([] if args.pairs_only else paths, 1):
                     data['results'].append(dict(sample=index, repeat=repeat, **one(path)))
                     save()
                     print(f'金标评测：轮次 {repeat}，样本 {index} 完成', flush=True)
@@ -173,6 +173,8 @@ def run(args, paths):
                         ids = sorted(set(av) | set(bv))
                         changed = [req for req in ids if av.get(req) != bv.get(req)]
                         pair.update(total=len(ids), changed=len(changed), changed_req_ids=changed,
+                                    verdicts_clean=av, verdicts_injected=bv,
+                                    high_clean=a['metrics']['high_count'], high_injected=b['metrics']['high_count'],
                                     impact_rate=len(changed) / len(ids) if ids else 0,
                                     high_delta=b['metrics']['high_count'] - a['metrics']['high_count'])
                     data['pairs'].append(pair); save()

@@ -318,6 +318,7 @@ def main(argv=None) -> int:
     parser.add_argument('--send-ratios', action='store_true', help='本评测会话临时启用财务比率')
     parser.add_argument('--repeat', type=int, default=1, help='每份样本重复次数，至少 1')
     parser.add_argument('--pair', nargs=2, type=Path, metavar=('CLEAN', 'INJECTED'), help='同名干净 / 注入样本对照')
+    parser.add_argument('--pairs-only', action='store_true', help='只做 --pair 对照，不另审 samples 目录')
     args = parser.parse_args(argv)
     try:
         require_development()
