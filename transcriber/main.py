@@ -86,7 +86,7 @@ def wait_memory(progress, deadline):
             return
         write(progress, 'waiting_memory')
         if time.monotonic() >= deadline:
-            raise TimeoutError
+            raise TimeoutError('memory')
         time.sleep(min(30, max(0, deadline - time.monotonic())))
 
 
@@ -148,7 +148,8 @@ class Service:
                 raise TimeoutError
             write(base / 'out' / f'{token}.json', json.dumps(result, ensure_ascii=False))
         except Exception as exc:
-            write(base / 'out' / f'{token}.err', 'TIMEOUT' if isinstance(exc, TimeoutError) else 'FAILED')
+            code = ('TIMEOUT_MEMORY' if str(exc) == 'memory' else 'TIMEOUT') if isinstance(exc, TimeoutError) else 'FAILED'
+            write(base / 'out' / f'{token}.err', code)
         finally:
             req.unlink(missing_ok=True)
             req.with_suffix('.fake.json').unlink(missing_ok=True)

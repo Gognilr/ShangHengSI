@@ -8,7 +8,7 @@ const media = computed(() => props.file.media!)
 const loop = useLoop(computed(() => media.value.stage === 'transcribing'))
 function stamp(ms = 0) { const s = Math.floor(ms / 1000); return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(v => String(v).padStart(2, '0')).join(':') }
 const progress = computed(() => media.value.duration_ms ? Math.min(100, Math.max(0, media.value.progress / media.value.duration_ms * 100)) : 0)
-const failure = computed(() => ({ unavailable: '转写服务暂不可用，可稍后重试', timeout: '转写超时', transcribe_failed: '转写失败', decode_failed: '无法解码该录音' })[media.value.error ?? 'transcribe_failed'])
+const failure = computed(() => ({ unavailable: '转写服务暂不可用，可稍后重试', timeout: '转写超时', memory_timeout: '服务器空闲内存不足，稍后点重试转写',transcribe_failed: '转写失败', decode_failed: '无法解码该录音' })[media.value.error ?? 'transcribe_failed'])
 </script>
 <template>
   <div class="media-row">

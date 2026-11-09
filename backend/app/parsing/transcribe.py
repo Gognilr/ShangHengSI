@@ -85,7 +85,8 @@ def exchange(db, file, pcm):
             db.commit()
             time.sleep(POLL_SECONDS)
         if error.exists():
-            raise RuntimeError('timeout' if error.read_text().strip() == 'TIMEOUT' else 'transcribe_failed')
+            flag = error.read_text().strip()
+            raise RuntimeError({'TIMEOUT': 'timeout', 'TIMEOUT_MEMORY': 'memory_timeout'}.get(flag, 'transcribe_failed'))
         return json.loads(result.read_text(encoding='utf-8'))
     finally:
         for path in (src, req, req.with_suffix('.part'), result, error, progress):
@@ -142,7 +143,7 @@ def handle_transcribe(db, payload):
         db.rollback()
         file, task = db.get(TaskFile, file_id), db.get(Task, task_id)
         if file is not None and task is not None:
-            code = str(exc) if isinstance(exc, RuntimeError) and str(exc) in ('unavailable', 'timeout') else 'transcribe_failed'
+            code = str(exc) if isinstance(exc, RuntimeError) and str(exc) in ('unavailable', 'timeout', 'memory_timeout') else 'transcribe_failed'
             file.media = {**(file.media or {}), 'stage': 'failed', 'error': code}
             file.parse_error = UNAVAILABLE if code == 'unavailable' else '录音转写失败，可稍后重试'
             task.status, task.error_message = 'parse_failed', file.parse_error

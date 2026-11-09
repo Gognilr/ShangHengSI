@@ -8,7 +8,7 @@ import type { LocalFinding } from './localFindings'
 export type Template = 'translate' | 'summary' | 'reply' | 'crosscheck' | 'compare' | 'minutes'
 export interface Media {
   stage: 'decoding' | 'queued' | 'waiting_memory' | 'transcribing' | 'done' | 'failed'
-  progress: number; duration_ms?: number; error: 'unavailable' | 'timeout' | 'transcribe_failed' | 'decode_failed' | null
+  progress: number; duration_ms?: number; error: 'unavailable' | 'timeout' | 'memory_timeout' | 'transcribe_failed' | 'decode_failed' | null
   queue_position: number
   /** 现场录音时的打点（毫秒偏移），转写后在逐字稿对应位置显示“标记” */
   marks?: number[]
