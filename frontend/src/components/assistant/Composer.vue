@@ -214,7 +214,13 @@ defineExpose({ pick, attach })
         <div class="bar">
           <el-tooltip content="加入文件" placement="top"><el-button text circle aria-label="加入文件" :disabled="!!session && (session.files.length >= 10 || !!session.generating)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" /></el-button></el-tooltip>
           <input ref="picker" class="file-input" type="file" multiple :accept="accept" @change="picked">
-          <el-select v-model="modelId" class="model-select" size="small" aria-label="助手模型" placeholder="选择模型" :loading="modelLoading" :disabled="sending || busy || generating !== null" @visible-change="$event && loadModels(modelId)"><el-option v-for="model in allowedModels" :key="model.id" :value="model.id" :label="model.display_name" /></el-select>
+          <el-select
+            v-model="modelId" class="model-select" size="small" aria-label="助手模型" placeholder="选择模型"
+            :loading="modelLoading" :disabled="allowedModels.length === 1 || sending || busy || generating !== null"
+            @visible-change="$event && loadModels(modelId)"
+          >
+            <el-option v-for="model in allowedModels" :key="model.id" :value="model.id" :label="model.display_name" />
+          </el-select>
           <el-checkbox v-if="session?.kb_enabled" v-model="useKb" size="small">知识库</el-checkbox><el-checkbox v-model="useHistory" size="small">参考历史合同</el-checkbox>
           <el-button v-if="generating !== null" class="send" circle aria-label="停止生成" title="停止生成" @click="emit('stop', generating)"><Square :size="14" :stroke-width="2" fill="currentColor" /></el-button>
           <el-button v-else class="send" type="primary" circle aria-label="发送" :title="reason || '发送（Enter）'" :disabled="!!reason && !processing" :loading="busy || sending" @click="submit"><ArrowUp v-if="!busy && !sending" :size="16" :stroke-width="2" /></el-button>
