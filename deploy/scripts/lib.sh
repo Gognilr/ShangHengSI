@@ -205,13 +205,17 @@ check_site_ca() {
 }
 
 prepare_cert_page() {
-  local site="$1" fingerprint tmp
+  local site="$1" fingerprint tmp https_port
   check_site_ca
   [[ "$site" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die '证书下载页需要固定 IPv4 私网地址'
   fingerprint="$(cat "$ROOT/secrets/ca/root.sha256")"
   [[ "$fingerprint" =~ ^([0-9A-F]{2}:){31}[0-9A-F]{2}$ ]] || die 'root.sha256 指纹格式不正确'
   mkdir -p "$ROOT/caddy/public"
   tmp="$(mktemp "$ROOT/caddy/public/.index.XXXXXX")"
+  https_port="$(env_get HTTPS_PORT)"
+  if [ -n "$https_port" ] && [ "$https_port" != 443 ]; then
+    site="$site:$https_port"
+  fi
   sed -e "s/@@FINGERPRINT@@/$fingerprint/g" -e "s/@@SITE@@/$site/g" \
     "$ROOT/caddy/cert.html.template" > "$tmp"
   chmod 644 "$tmp"

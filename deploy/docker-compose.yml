@@ -181,6 +181,7 @@ services:
     environment:
       MAX_AUDIO_MB: ${MAX_AUDIO_MB:-500}
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"

@@ -4,14 +4,20 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT/scripts/lib.sh"
 
 usage() {
-  info '用法：sudo ./scripts/install.sh [--site <服务器IP或内网域名>] [--admin admin] [--backup-dir /data/apps/aireview/backup] [--yes]'
+  info '用法：sudo ./scripts/install.sh [--site <服务器IP>] [--admin admin] [--backup-dir /data/apps/aireview/backup] [--http-port 80] [--https-port 443] [--yes]'
 }
-site="" admin=admin backup_dir="$ROOT/backup" stage="前置检查"
+site="" admin=admin backup_dir="$ROOT/backup" http_port=80 https_port=443 stage="前置检查"
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --site|--admin|--backup-dir)
+    --site|--admin|--backup-dir|--http-port|--https-port)
       [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != --* ]] || die "$1 缺少参数值"
-      case "$1" in --site) site="$2" ;; --admin) admin="$2" ;; --backup-dir) backup_dir="$2" ;; esac
+      case "$1" in
+        --site) site="$2" ;;
+        --admin) admin="$2" ;;
+        --backup-dir) backup_dir="$2" ;;
+        --http-port) http_port="$2" ;;
+        --https-port) https_port="$2" ;;
+      esac
       shift 2 ;;
     --yes) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -39,7 +45,11 @@ fi
 [[ "$site" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "访问地址须为证书对应的固定 IPv4 私网地址"
 [[ "$admin" =~ ^[a-zA-Z0-9_.@-]{1,50}$ ]] || die "管理员用户名格式不正确"
 [[ "$backup_dir" =~ ^/[a-zA-Z0-9_./-]+$ ]] || die "备份目录须为不含空格和插值字符的绝对路径"
-[ -z "$(ss -H -ltn '( sport = :80 or sport = :443 )')" ] || die "80 或 443 端口已被占用"
+for port in "$http_port" "$https_port"; do
+  [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$port" -le 65535 ] || die "监听端口须为 1～65535 的整数"
+done
+[ "$http_port" != "$https_port" ] || die "HTTP 与 HTTPS 端口不能相同"
+[ -z "$(ss -H -ltn "( sport = :$http_port or sport = :$https_port )")" ] || die "HTTP 或 HTTPS 端口已被占用"
 group_entry="$(getent group aireview || true)"
 if [ -n "$group_entry" ]; then
   [ "$(printf '%s' "$group_entry" | cut -d: -f3)" = 10001 ] || die "aireview 组的 gid 不是 10001"
@@ -61,9 +71,9 @@ chmod 600 "$ROOT/.env"
 env_set POSTGRES_PASSWORD "$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 env_set APP_VERSION "$version"
 env_set SITE_ADDRESS "$site"
+env_set HTTP_PORT "$http_port"
+env_set HTTPS_PORT "$https_port"
 prepare_cert_page "$site"
-env_set HTTP_PORT 80
-env_set HTTPS_PORT 443
 env_set BACKUP_HOST_DIR "$backup_dir"
 docker run --rm --pull never -v "$ROOT/secrets:/out" "aireview-backend:$version" python -m app.cli gen-key --out /out/master_key </dev/null
 docker run --rm --pull never -v "$ROOT/secrets:/out" "aireview-backend:$version" python -c 'import os,secrets; f=os.open("/out/backup_password",os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600); os.write(f,secrets.token_hex(16).encode()); os.fsync(f); os.close(f)' </dev/null
@@ -74,9 +84,9 @@ stage="启动服务"
 compose up -d --no-build --pull never </dev/null
 wait_healthy app 300
 require_running worker
-check_https "$site"
+check_https "$site:$https_port"
 stage="创建管理员"
 compose exec -T app python -m app.cli create-admin --username "$admin" </dev/null
-info "安装完成，访问 https://$site/"
+info "安装完成，访问 https://$site:$https_port/"
 info '首次登录修改密码 → 设置 - 模型填写接口与密钥 → 设置 - 数据确认备份时间并点一次“立即备份” → 配置异地拉取（必做）。'
 info "启动 / 停止 / 状态：cd $ROOT；docker compose up -d / docker compose stop / docker compose ps"

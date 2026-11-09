@@ -24,7 +24,7 @@ http://{$SITE_ADDRESS:localhost} {
 		respond "页面不存在" 404
 	}
 	handle {
-		redir https://{$SITE_ADDRESS:localhost}{uri} 308
+		redir https://{$SITE_ADDRESS:localhost}:{$HTTPS_PORT:443}{uri} 308
 	}
 }
 
