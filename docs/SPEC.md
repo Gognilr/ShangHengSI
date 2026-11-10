@@ -1,22 +1,20 @@
-# 商衡SI（企业安全脱敏与智能审查平台）· V2.1 开发规格说明
+# 商衡SI（企业安全脱敏与智能审查平台）· V3.1 规格说明
 
 Oct 10, 2026 · @Obi Bello
 
 ## 0\. 文档说明
 
-本文档是当前版本（V2.1）的唯一开发依据，供开发人员或开发用的大模型（以下统称“实现方”）直接照此实现。V2 各批的设计细节见 docs/v2/design/V2-A、V2-B、V2-C、V2-E、V2-U、V2-D、V2-Z、V2-F.md；本文件写结论，字段、阈值等细节以对应设计文档为准。
+本文档记录当前版本（V3.1）系统的做法，供开发人员或开发用的大模型（以下统称“实现方”）照此理解与修改系统。它是现状记录，不是永久规范：有更好的设计时直接提出并取代其中的条目（必要时整节删除），改动后同步更新本文档。V2、V3、V3.1 各批的设计细节与问题记录见 docs/v2/、docs/v3/、docs/v31/ 下的设计文档与 open\_questions；本文件写结论，字段、阈值等细节以对应设计文档为准。
 
 **实现规则：**
 
-1. 不得增加本文档没有的菜单、页面或功能。
-2. 本文档写明的技术选型不得替换。确需替换时，先列出原因，经产品负责人确认。
-3. 遇到未写明的细节，按“最简单、最安全”的方式实现，并把决定记录在代码注释和第 24 节“待确认问题”中。
-4. 冲突时的优先级：安全 > 正确性 > 简洁 > 性能。
-5. “必须”“不得”为强制要求；“建议”可按实际情况调整。
+1. 新增侧栏菜单或页面先给出方案，经产品负责人确认（防止功能膨胀）。
+2. 第 3 节的技术选型与“不得引入”清单不得自行替换；本地模型的更换或新增须经选型报告和产品负责人确认。
+3. 安全要点（外网出口只有模型网关与法规同步、出口复检、owner 校验、主密钥加密、日志不含原文）是产品目标本身，任何改动不得削弱。
+4. 遇到未写明的细节，选体验最好且安全的做法，并记录到当前版本的 open\_questions。
+5. 冲突时的优先级：安全 > 正确性 > 简洁 > 性能。
 
 **约定：** 界面文字一律使用简体中文；代码标识符使用英文；时间在数据库中以 UTC 存储，界面按 Asia/Shanghai 显示；金额计算一律使用十进制精确计算，不得使用浮点数。
-
-**开发顺序：** 严格按第 22 节的里程碑推进，每个里程碑完成后对照第 23 节验收，再进入下一个。
 
 **变更记录：**
 
@@ -32,6 +30,7 @@ Oct 10, 2026 · @Obi Bello
 |2026-10-30|V2.0：合并 docs/v2/SPEC-V2.md 的 A（审核效果）、B（脱敏增强与本地实体识别模型）、C（角色拆分、分层保留、并发与限额、主密钥更换）、E（法规库、pgvector 与公司范本）、U（界面改进）、D（智能助手与知识库）、Z（自建根证书）各部分；问题记录见 docs/v2/open\_questions.md|产品负责人|
 |2026-10-30|V2.1：合并 V2-F 修复批次：零宽字符清除（9.3）、疑似遗漏减负（9.5）、多选忽略（6.2、19.4）、PDF 图文混排页 OCR（8.5）、测试用例 T-57～T-60（23.2）。设计见 docs/v2/design/V2-F.md，取舍见 V2Q-180～186|产品负责人|
 |2026-10-30|V3-A 界面与安装（版本号仍为 V2.1，V3-Z 统一改为 V3.0）：侧栏主布局与默认首页改为智能助手（1.6、6.9）、Lucide 图标（3）、全局搜索与工作文件夹（6.9、19.3）、助手输入框 Enter 打开发送确认（13A）、安装到桌面（20.4）、T-61（23.2）。设计见 docs/v3/design/V3-A.md，取舍见 docs/v3/open\_questions.md V3Q-08、V3Q-09|产品负责人|
+|2026-11-10|V3.1 发布：V3-A～D 与 V31-R～U5 合并完成，V31-Z 总审核通过（docs/v31/reports/V31-Z-04.md）；实体识别速度门槛按测试机实测改写（3，V31Q-118）；硬件建议与升级演练（20.1、20.5）；浏览器范围为 Windows 10 / 11 的最新版 Edge（21，V31Q-117）|产品负责人|
 
 ## 1\. 产品概述
 
@@ -137,7 +136,7 @@ V3.1（V31-U5F-07，V31Q-107）起**按角色授权，人只挑角色**，一人
 |加密|cryptography（AES-256-GCM、scrypt）|原件、对照表、敏感字段、备份|
 |密码哈希|argon2-cffi（argon2id）||
 |模型调用|httpx|只允许在模型网关与法规同步客户端（lawsync/client.py）中使用|
-|本地实体识别|`urchade/gliner_multi-v2.1`（Apache-2.0，固定提交 443d26d654e0324125a96bebd8e796c14ff2efe6；分词文件来自 microsoft/mdeberta-v3-base，MIT）导出的 FP32 ONNX（SHA-256 d3f51a308a876e09209321cc466dffcc4b1ca8f4877144d24b08ae3f7c8dabd0）|只用于脱敏识别（9.3 第 8 步）；6 个文件的清单与 SHA-256 见 docs/v2/design/V2-B.md 6.2。资源门槛：1 万字识别 ≤ 15 秒，追问 500 字 ≤ 3 秒、1,000 字 ≤ 6 秒（热态 p95），单进程内存增加 ≤ 2.5 GB，镜像增加 ≤ 1.5 GB|
+|本地实体识别|`urchade/gliner_multi-v2.1`（Apache-2.0，固定提交 443d26d654e0324125a96bebd8e796c14ff2efe6；分词文件来自 microsoft/mdeberta-v3-base，MIT）导出的 FP32 ONNX（SHA-256 d3f51a308a876e09209321cc466dffcc4b1ca8f4877144d24b08ae3f7c8dabd0）|只用于脱敏识别（9.3 第 8 步）；6 个文件的清单与 SHA-256 见 docs/v2/design/V2-B.md 6.2。资源门槛：1 万字识别开发机（16 核）≤ 15 秒，测试机（28 vCPU、8 线程、空闲）实测约 32 秒，提速另开优化任务（V31Q-118）；追问 500 字 ≤ 3 秒、1,000 字 ≤ 6 秒（热态 p95），单进程内存增加 ≤ 2.5 GB，镜像增加 ≤ 1.5 GB|
 |向量检索|pgvector（HNSW、余弦距离）+ `BAAI/bge-m3`（MIT，固定提交 5617a9f61b028005a4858fdac845db406aefb181）官方 FP32 ONNX 动态量化的 INT8 ONNX（SHA-256 63e806d9763c82e8ffb55e32d577a64cacf2a57be1ac0d803f118cf770cb399d）|只用稠密向量（1024 维，CLS 池化后 L2 归一化，最多 512 个 token）；两个文件的清单与 SHA-256 见 docs/v2/reports/V2-E-04a.md 第六节。资源门槛：1 万字向量化 ≤ 5 秒（worker 8 线程），单进程内存增加 ≤ 1.5 GB，镜像增加 ≤ 1.5 GB|
 |录音转写（V3.1，V31-M）|FireRedVAD（语音分段，官方 ONNX）、FireRedASR2-AED INT8（转写，sherpa-onnx 转换的 ONNX）、FireRedPunc INT8（标点，仓库外一次性容器导出）、pyannote segmentation-3.0（说话人分段，MIT）、3D-Speaker CAM++（声纹）；除注明外均为 Apache-2.0|只在 transcriber 容器中运行（不接网络、只挂 /spool，用时加载）；推理用 onnxruntime、kaldi-native-fbank、numpy，说话人分离用 sherpa-onnx 2.0.1；10 个文件的 SHA-256 见 transcriber/models/asr/MANIFEST.sha256，来源与选型见 docs/v31/reports/V31-M-01.md（V31Q-73）。资源门槛：1 小时录音 1 小时内处理完（V31Q-74），容器内存 ≤ 4 GB（`ASR_MEM`），镜像约 1.5 GB；录音与声纹永不外发|
 |本地翻译（V3.1，V31-U5）|腾讯 Hy-MT2-7B Q6_K（Apache-2.0），固定提交 ab8472660ac61fac25f1af43fac2599d52a8a775；llama.cpp（MIT）固定提交 8642541b255bfb5dc39cd351a178be09013a55d6，CPU、4 线程|只在断网 translator 容器运行，通过 /spool 交换原文与译文；SHA-256 见 translator/models/mt/MANIFEST.sha256；8 CPU / 12 GiB，实测万字约 65 分钟、峰值 RSS 9.12 GiB，主线并发通过本轮三次观测；离线译稿须人工逐段核对，不作为可直接签署的合同成品（V31Q-100）|
@@ -1909,7 +1908,7 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 ### 20.1 宿主与虚拟机
 
 * 宿主：PVE（Proxmox VE）。虚拟机快照用于升级、恢复前的回退点；宿主存储加密由 IT 按公司规定处理。
-* 虚拟机：Ubuntu Server 26.04 LTS，x86\_64，10 vCPU、15 GiB 内存；固定内网 IP；开机自动启动。
+* 虚拟机：Ubuntu Server 26.04 LTS，x86\_64；固定内网 IP；开机自动启动。只运行主线（不启用 asr、mt）时 10 vCPU、15 GiB 可用；启用录音转写与本地翻译（`COMPOSE_PROFILES=asr,mt`）按 V31-Z-03 实测用 28 vCPU、38 GiB：整套满负载（3 小时转写、万字本地翻译、两份解析、追问与助手同时）最低可用内存 18～21 GiB、无 OOM。内存建议固定；若开 balloon，下限不低于 32 GiB（16 GiB 未测）。推荐值：`APP_WORKERS=1`、`NER_THREADS=8`、`ASR_CPUS=8`、`ASR_THREADS=8`、`MT_THREADS=4`、`MT_CPUS=8`、`MT_MEM=12g`、`MT_CPUSET` 留空。
 * 磁盘：根分区 32 GiB，只放系统；数据盘 344 GiB 挂载在 /data（ext4，写入 /etc/fstab）。**业务数据、Docker 数据、备份一律放在 /data 下**：安装目录 /data/apps/aireview，备份目录 /data/apps/aireview/backup（映射为 worker 容器的 /backup）。
 * Docker：Docker Engine 29 与 Compose v2 已由 IT 安装；data-root 为 /data/docker，containerd 镜像存储为 /data/containerd；daemon 级日志轮转、镜像加速器与 live-restore 由 IT 配置，部署脚本不得修改。部署脚本运行前检查 /data 已挂载、Docker 与 containerd 的存储都不在根分区。
 * 网络与防火墙：UFW 由 IT 配置；只有 web 容器发布 443 和 80（80 跳转到 443），db、app、worker 不发布端口。Docker 发布的端口和容器出站流量不经过 UFW 规则，需要限制时在 DOCKER-USER 链中配置（运维说明给出示例，由 IT 决定是否启用）。SSH 用于运维和异地备份的 SFTP 拉取。
@@ -1923,6 +1922,7 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 |worker|同 backend 镜像|python -m app.worker；卷 files\_data:/data/files、/data/apps/aireview/backup:/backup、convert\_spool:/spool；镜像内含 postgresql-client、RapidOCR 模型文件、实体识别模型与向量模型文件|
 |converter|自建 converter 镜像（LibreOffice）|network\_mode: none；只读根文件系统；非 root（uid 10002）；去掉全部 capability；限制内存 1.5 GiB、2 CPU；只挂载内存盘卷 convert\_spool:/spool（tmpfs，V3.1 起 2 GiB，V31Q-80）；worker 与 app（录音上传缓冲）同时挂载该卷；V3.1 起另含 ffmpeg|
 |transcriber（V3.1，`asr` profile）|自建 transcriber 镜像（转写一组模型，第 3 节）|network\_mode: none；只读根文件系统；非 root（uid 10003）；去掉全部 capability；只挂载 convert\_spool:/spool，不挂原件卷、主密钥、数据库；内存 `ASR_MEM`（默认 4g）、CPU `ASR_CPUS`、cpu\_shares 256；模型用时加载、空闲 5 分钟释放；健康检查读心跳|
+|translator（V3.1，`mt` profile）|自建 translator 镜像（llama.cpp 与 Hy-MT2-7B Q6\_K，第 3 节）|network\_mode: none；只读根文件系统；非 root（uid 10004）；去掉全部 capability；只挂载 convert\_spool:/spool，不挂原件卷、主密钥、数据库；线程 `MT_THREADS`（默认 4）、内存 `MT_MEM`（默认 12g）、CPU `MT_CPUS`、cpu\_shares 256；健康检查|
 |web|caddy:2（固定小版本标签）|提供前端构建产物，/api 转发到 app:8000；监听 443 / 80；上传大小限制 320 MB（V3.1：助手加入文件的路径为 `MAX_AUDIO_MB` + 20 MB）；用 IP 访问时配置 default\_sni；只读挂载 secrets/ca/ 用于签发站点证书（20.4）|
 
 所有服务 restart: unless-stopped；db 配置健康检查，app 和 worker 在 db 健康后启动。worker 停机宽限 40 秒，启动时立即处理上次退出时中断的任务（V31Q-113）。web 开启 zstd / gzip 压缩，并加 nosniff、禁止嵌入与 no-referrer 响应头（V31Q-114）。translator 的 CPU 绑定 `MT_CPUSET` 默认不设。app 启动时执行 alembic upgrade head。
@@ -1962,7 +1962,7 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 * 镜像在开发机上构建并通过测试后用 docker save 导出，拷入虚拟机用 docker load 导入（虚拟机虽可访问外网，仍不在其上构建或拉取镜像，保证部署的就是测试过的镜像）。运行时不从网络下载任何模型或依赖。
 * install.sh：首次部署。生成密钥文件，导入镜像，检查 secrets/ca/ 的中间证书、中间私钥、根证书齐全且服务器上不存在根私钥，生成证书下载页，启动服务，执行数据库迁移，创建初始管理员（随机密码只显示一次，首次登录强制修改）。secrets/ca/ 与主密钥一样不进备份，以后升级原样保留；恢复到新机器时由保管人提供。发布包不含证书与私钥。
 * 发布包构建（V3.1）：`build_release.sh 版本 --models 离线模型目录 [--out 目录]`，模型以仓库清单与 MANIFEST 校验后放入镜像，各镜像按清单断网冒烟；包内附 models.yaml、模型许可证与校验清单；`COMPOSE_PROFILES` 含 asr 时增加 transcriber 镜像。安装后用 `python -m app.cli model-check` 核对；系统状态另列“本地模型”（id、用途、来源版本、校验结果、启用状态；转写只读清单与心跳）。
-* upgrade.sh：提示先在 PVE 中为虚拟机创建快照，导入新镜像，随版本替换 compose、models.yaml、模型校验清单与许可证；Caddyfile 与 caddy/ 片段有变化时另存 .new 由 IT 比较；重启服务（自动执行迁移）（V31Q-113）。
+* upgrade.sh：提示先在 PVE 中为虚拟机创建快照，导入新镜像，随版本替换 compose、models.yaml、模型校验清单与许可证；Caddyfile 与 caddy/ 片段有变化时另存 .new 由 IT 比较；重启服务（自动执行迁移）（V31Q-113）。3.1 起用 upgrade.sh 升级，候选版 rc1 → rc5 已在测试机演练；没有 2.x 正式安装，2.x → 3.1 未演练。
 * backup\_now.sh：手动触发备份。
 * rotate\_key.sh：主密钥更换（17.3）。
 * restore.sh：见 16.3。
@@ -1978,7 +1978,7 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 |录音限制（V3.1）|仅智能助手；单个 ≤ 500 MB、≤ 3 小时，每次 1 个；同时转写 1 个，其余排队|
 |worker 并发|审核 8 个、解析 2 个（OCR 1 个）、转写 1 个、备份与清理 1 个，环境变量可调|
 |前端轮询|任务进行中每 3 秒一次，结束后停止|
-|浏览器|最新版 Chrome、Edge；桌面端，最小宽度 1280 像素；以 1366×768 为验收基准（Edge 标签页最大化后的可视区约 1366×640，首页、确认页、结果页按此视口验收“一屏可完成”）；界面另在 1280×800、1440×900、1920×1080 下验证，不做手机、平板适配|
+|浏览器|Windows 10 / 11 上的最新版 Edge（Chrome 同内核亦可）；构建目标约为 Chromium 107，更旧的浏览器（如 Windows 7 的 Chrome 75）不支持，打开时提示改用 Edge（V31Q-117）；桌面端，最小宽度 1280 像素；以 1366×768 为验收基准（Edge 标签页最大化后的可视区约 1366×640，首页、确认页、结果页按此视口验收“一屏可完成”）；界面另在 1280×800、1440×900、1920×1080 下验证，不做手机、平板适配|
 |时间|数据库存 UTC，界面按 Asia/Shanghai 显示|
 |日志|输出到标准输出，Docker 日志轮转（单文件 50 MB，保留 5 个）|
 |可用性|工作时间可用，不要求高可用；服务器重启后自动恢复|
