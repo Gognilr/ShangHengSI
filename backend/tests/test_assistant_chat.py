@@ -150,7 +150,8 @@ def test_t49_1_3_15_17_send_restore_outbound_and_logs(conversation, db_sessionma
         assert secret not in outbound and secret not in caplog.text
     with db_sessionmaker() as db:
         call = db.scalar(select(LlmCall))
-        assert (call.purpose, call.task_id, call.task_title) == ("assist", uuid.UUID(tid), "虚构敏感会话标题")
+        # 会话标题未脱敏，外发记录只写用途（V31Q-113）
+        assert (call.purpose, call.task_id, call.task_title) == ("assist", uuid.UUID(tid), "智能助手")
         assert REAL not in "".join(db.scalars(select(AssistantMessage.content_redacted)))
 
 

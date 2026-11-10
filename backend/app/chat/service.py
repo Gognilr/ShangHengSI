@@ -9,6 +9,7 @@
 import logging
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
@@ -115,6 +116,30 @@ class _Span:
 
 def _norm(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip()).casefold()
+
+
+_LOW_ORG_GENERIC = frozenset({"海运", "空运", "陆运", "铁运", "快递", "物流", "货代", "银行", "保险", "海关", "税务", "法院"})
+
+
+def _low_org_candidate(surface: str) -> bool:
+    """助手提问里实体识别低分的公司简称（“宁德时代”0.17、“中石化”0.34），V31Q-114 R4：用户自由输入里没登记过的简称
+    只能靠模型，低分的中文短名也列为不确定项、发送前由用户决定。常用词、法律词、地名、行业词与泛称不列。"""
+    from app.redaction import dictionaries as D, suspects as S
+    if not re.fullmatch(r'[一-鿿]{2,8}', surface) or surface[0] in '我你他她它本贵该此其各':
+        return False
+    if (surface in D.zh_words() or surface in D.zh_legal_finance() or surface in D.common_terms()
+            or surface.casefold() in ner._stopwords() or surface in _LOW_ORG_GENERIC
+            or D.is_known_place(surface) or parties.is_place_chain(surface)
+            or parties._strip_industry(surface) == ''):
+        return False
+    head = re.sub(r'(?:公司|集团|厂)$', '', surface)
+    return head == surface or head not in S._GENERIC_BEFORE_COMPANY  # “物流公司”“保险公司”是泛称
+
+
+@lru_cache(maxsize=8192)
+def _derived_names(name: str) -> tuple[list[str], list[str]]:
+    """已记住名称的字号派生结果按名称缓存（每条消息都要对全部启用名称派生一次）。"""
+    return parties.derived_names(name)
 
 
 @dataclass
@@ -246,6 +271,17 @@ def _redact_text(message: str, full_map: dict[str, str], terms: list[tuple[str, 
         auto, short = parties.derived_names(value)
         short_derived.extend(short)
         derived += [(key.split('#', 1)[0], alias) for alias in auto]
+    # V31Q-114 R2：已记住的公司名称同样派生字号（“宁德时代”），与审核正文一致；只在字号出现时才分配代号，二字字号列为不确定项。
+    known_values = {_norm(value) for _, value in mapping}
+    for term, category in terms:
+        if category not in ('ORG', 'OUR') or _norm(term) in known_values:
+            continue
+        auto, short = _derived_names(term)
+        short_derived.extend(alias for alias in short if alias in text)
+        present = [alias for alias in auto if _value_spans(text, alias)]
+        if present:
+            code = code_for(term, 'ORG')
+            derived += [(code, alias) for alias in present]
     # 两个以上主体派生出同一英文字号时不归任何一方，只列疑似（V2Q-173）
     owners = {}
     for code, alias in derived:
@@ -265,7 +301,10 @@ def _redact_text(message: str, full_map: dict[str, str], terms: list[tuple[str, 
                 remember_alias(code, text[start:end])
 
     # 4. 9.3 第 4～7 步：格式化信息、金额、人名、地址
-    for find in (detect.find_formatted, detect.find_amounts, detect.find_bare_amounts, detect.find_persons, detect.find_addresses, detect.find_projects):
+    # V31Q-114 R3：用户打字就是口语，助手消息与追问也用逐字稿的口语金额与口语单价（“380万”“每吨4800”），只增不减。
+    from app.assistant import spoken_amount
+    for find in (detect.find_formatted, detect.find_amounts, detect.find_bare_amounts, spoken_amount.find_amounts,
+                 spoken_amount.find_unit_prices, spoken_amount.find_spoken_refs, detect.find_persons, detect.find_addresses, detect.find_projects):
         for hit in find(text):
             if hit.category == 'PROJECT':
                 # V2Q-50：与正文相同，完整包含的任何类别均让位；部分交叉仍先到先得。
@@ -300,7 +339,8 @@ def _redact_text(message: str, full_map: dict[str, str], terms: list[tuple[str, 
             surface = text[hit.start:hit.end]
             country = detect.find_country(surface) if hit.label == 'ADDR' else None
             take(hit.start, hit.end, code_for(surface, hit.label, country))
-        elif hit.score >= ner.MEDIUM:
+        elif hit.score >= ner.MEDIUM or (hit.label == 'ORG' and hit.score >= ner.LOW_ORG
+                                         and _low_org_candidate(text[hit.start:hit.end])):
             model_suspects.append({'start': hit.start, 'end': hit.end,
                                    'text': text[hit.start:hit.end], 'reason': 'ner'})
 

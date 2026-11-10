@@ -99,7 +99,7 @@ async function operate(row: ModelRow, action: 'test' | 'review' | 'assist' | 'en
     <PageHeader title="模型接口" description="管理审核与助手使用的模型、调用参数和费用上限" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap"><el-button link type="primary" @click="load">重新加载</el-button></el-alert>
     <div v-loading="loading" class="panel">
-      <SettingSection title="全部模型" description="个人每日调用上限跨模型合计，按上海时间每天统计。" stacked>
+      <SettingSection title="全部模型" description="个人每日调用上限跨模型合计，按上海时间每天统计；按实际调用模型的次数计，一份长文档分段审核或格式重试会计多次。" stacked>
         <el-form label-position="top" @submit.prevent>
           <el-form-item label="个人每日调用上限"><div class="cap-controls"><el-input-number v-model="dailyCap" :min="0" :precision="0" :disabled="!data" aria-label="个人每日调用上限" @blur="capSave.flush()" /><span class="hint">0 表示不限</span><SaveState :status="capSave.status.value" :message="capSave.message.value" @retry="capSave.retry()" /></div></el-form-item>
         </el-form>

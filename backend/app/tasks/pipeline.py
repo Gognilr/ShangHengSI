@@ -12,10 +12,11 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app import worker
+from app.config import get_settings
 from app.checks.service import run_checks
 from app.db import jobs
 from app.db.base import utcnow
@@ -206,7 +207,10 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
             if file.ext in filecheck.AUDIO_EXTS:
                 from app.parsing.audio import decode
                 if not file.media_storage_key:
-                    decode(db, task, file)
+                    # 前面已有转写在排队或进行时先不留 PCM，轮到时再解码（V31Q-114）
+                    busy = db.scalar(select(func.count()).select_from(Job).where(
+                        Job.type == 'transcribe', Job.status.in_(('queued', 'running')))) or 0
+                    decode(db, task, file, pcm_now=busy < get_settings().worker_transcribe_concurrency)
                 queued = db.scalar(select(Job.id).where(Job.type == 'transcribe',
                                    Job.payload['file_id'].astext == str(file.id), Job.status.in_(('queued', 'running'))).limit(1))
                 if not queued and (file.media or {}).get('stage') != 'failed':

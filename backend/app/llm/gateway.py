@@ -121,6 +121,10 @@ def describe_reasons(reasons: list[BlockReason]) -> str:
     return "、".join(f"{label} {n} 处" for label, n in counts.items())
 
 
+ASSIST_TITLES = {"chat": "智能助手", "meeting": "会议纪要", "translate": "翻译"}
+REVIEW_TITLE = "智能审核"
+
+
 class _Recorder:
     """用独立会话写 llm_calls 并立即提交。"""
 
@@ -145,7 +149,11 @@ class _Recorder:
                 from app.db.models import Task
                 # 与会话删除使用同一任务行锁：删除中或删除后落下的调用记录不能重新留下标题。
                 task = s.scalar(select(Task).where(Task.id == base["task_id"]).with_for_update())
-                base["task_title"] = task.title if task is not None else None
+                # 会话标题取自用户第一句原话或会议主题，未脱敏；外发记录只写用途（V31Q-113）。
+                base["task_title"] = ASSIST_TITLES.get(task.purpose, "智能助手") if task is not None else None
+            elif base.get("task_id") is not None:
+                # 审核任务的主文件名常含对方公司名，管理员只应看到脱敏后的外发内容：同样只写用途（V31Q-115）
+                base["task_title"] = REVIEW_TITLE
             row = LlmCall(**base, **fields)
             s.add(row)
             s.commit()
@@ -186,10 +194,19 @@ def call_model(db: Session, *, model_id: int, purpose: str, messages: list[dict]
                         on_send=on_send, on_delta=on_delta)
 
 
+def _refuse_local_only(db: Session, task_id: uuid.UUID | None) -> None:
+    """外发策略为不外发的任务一律不调用模型，不论用途（V31Q-114：原先只在助手用途检查，审核与追问靠调用方）。"""
+    from app.db.models import Task
+    task = db.get(Task, task_id) if task_id is not None else None
+    if task is not None and task.policy == "local_only":
+        raise GatewayError("BLOCKED")
+
+
 def precheck(db: Session, *, model_id: int, purpose: str, messages: list[dict], user_id: uuid.UUID | None = None,
              task_id: uuid.UUID | None = None, task_title: str | None = None, run_id: uuid.UUID | None = None) -> None:
     """只做出口复检、不发送：分段审核在发出任何一段之前先查全部分段，任一段命中即整轮不发（V31-U5F-01）。
     拦截与网关发送前的复检相同：记一条 blocked 的 llm_calls 并抛出 GatewayError("BLOCKED")。真正发送时网关仍会再复检。"""
+    _refuse_local_only(db, task_id)
     cfg = load_model(db, model_id)
     ctx = recheck_context(db, task_id)
     reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values, terms=ctx.terms,
@@ -226,11 +243,8 @@ def _call_config(
     """
     if purpose not in ("review", "chat", "test", "assist"):
         raise ValueError("purpose")
+    _refuse_local_only(db, task_id)
     if purpose == "assist":
-        from app.db.models import Task
-        task = db.get(Task, task_id) if task_id is not None else None
-        if task is not None and task.policy == "local_only":
-            raise GatewayError("BLOCKED")
         retry = False  # 比价由用户手动重试，不能因 JSON 对齐失败或网络错误重复计费。
     if not all(isinstance(m.get("content"), str) and isinstance(m.get("role"), str) for m in messages):
         raise ValueError("messages")

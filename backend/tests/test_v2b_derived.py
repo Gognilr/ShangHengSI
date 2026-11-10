@@ -26,7 +26,8 @@ def test_01_sample():
 
 def test_02_short_derived():
     r = run("乙方：虚构科技有限公司", "虚构的方案")
-    assert r.redacted["F1-P1"] == "[名称_1]的方案"
+    # V31Q-114 R6：二字字号仍列为不确定项，默认替换时沿用主体代号（原为单独的 [名称_1]）
+    assert r.redacted["F1-P1"] == "[公司_A]的方案"
     assert any(s.loc == "F1-P1" and s.reason == "derived_name" for s in r.suspects)
 
 

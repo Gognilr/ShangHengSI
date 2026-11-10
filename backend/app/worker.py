@@ -17,6 +17,7 @@ from pathlib import Path
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import ContextManager
 
 from sqlalchemy import delete, func
@@ -322,6 +323,11 @@ def main() -> None:
     pool_size = settings.worker_review_concurrency * (1 + CHUNK_PARALLEL) + settings.worker_parse_concurrency + settings.worker_assist_concurrency + settings.worker_transcribe_concurrency + 3
     factory = sessionmaker(bind=get_engine(pool_size=pool_size, max_overflow=pool_size), expire_on_commit=False)
     with factory() as db:
+        # 只有一个 worker 容器：启动时仍为 running 的任务都是上次退出时中断的，立即按心跳超时规则处理，
+        # 不再等 15 分钟（V31Q-113）。助手回复照旧记为中断，审核与转写重新入队。
+        n = jobs.requeue_stale(db, stale_after=timedelta(0))
+        if n:
+            logger.warning("上次退出时中断的任务 %s 个，已按次数重新入队或置为失败", n)
         app.laws.job.enqueue_embed(db)
         db.commit()
     run_worker(factory, _stop, review_concurrency=settings.worker_review_concurrency,

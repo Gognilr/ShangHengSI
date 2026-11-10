@@ -468,6 +468,8 @@ def test_startup_ignores_legacy_variable_and_warns_once(monkeypatch, caplog):
     startup = []
     monkeypatch.setattr(embedding_engine, 'check', lambda **kw: startup.append(kw))
     monkeypatch.setattr(law_job, 'enqueue_embed', lambda db: startup.append('enqueue'))
+    # 启动时立即处理上次退出时中断的任务，不等 15 分钟心跳超时（V31Q-113）
+    monkeypatch.setattr(worker.jobs, 'requeue_stale', lambda db, stale_after: startup.append(('recover', stale_after)) or 0)
     monkeypatch.setattr(worker.signal, "signal", lambda *args: None)
     pool_options = []
     monkeypatch.setattr(session, "get_engine", lambda **kw: pool_options.append(kw) or "engine")
@@ -482,7 +484,7 @@ def test_startup_ignores_legacy_variable_and_warns_once(monkeypatch, caplog):
     assert "invalid-ignored-secret" not in caplog.text
     assert pool_options == [{"pool_size": 42, "max_overflow": 42}]  # 审核 8 × (1 + 3 个分段线程)，V31-U5F-01
     assert calls[0][1] == {"review_concurrency": 8, "parse_concurrency": 2, "assist_concurrency": 4, 'transcribe_concurrency': 1}
-    assert startup == [{'load': True}, 'enqueue', 'commit']
+    assert startup == [{'load': True}, ('recover', timedelta(0)), 'enqueue', 'commit']
 
 
 def test_law_embed_runs_in_maintenance_group(handlers, db_sessionmaker):

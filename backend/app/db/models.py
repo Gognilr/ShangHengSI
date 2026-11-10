@@ -650,9 +650,20 @@ class Finding(Base):
     suggested_text: Mapped[Optional[str]] = mapped_column(Text)
     basis: Mapped[Optional[str]] = mapped_column(Text)
     handling_status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
-    handling_note: Mapped[Optional[str]] = mapped_column(String(500))
+    # 用户自由填写的处理备注，主密钥加密（V31Q-114）；handling_note 属性透明加解密
+    handling_note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
     updated_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+
+    @property
+    def handling_note(self) -> Optional[str]:
+        from app.security import crypto
+        return crypto.decrypt_text(self.handling_note_enc) if self.handling_note_enc is not None else None
+
+    @handling_note.setter
+    def handling_note(self, value: Optional[str]) -> None:
+        from app.security import crypto
+        self.handling_note_enc = crypto.encrypt_text(value) if value else None
 
 
 # ---- 18.17 chat_messages ----

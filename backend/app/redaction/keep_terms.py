@@ -15,7 +15,9 @@ def eligible(text: str, reason: str) -> bool:
     return (2 <= len(text.strip()) <= 50 and S.default_category(text, reason) in ('NAME', 'TERM')
             and not P._EN_SUFFIX_RE.search(text)
             and not any(suffix in text for suffix in (*P._BROAD_SUFFIXES, '股份有限公司', '有限责任公司', '有限公司'))
-            and not S._is_person_name(text.strip()) and reason not in ('person_name', 'person_like', 'checksum_fail'))
+            and not S._is_person_name(text.strip())
+            # derived_name 是已识别主体全称派生的字号，不能被记忆或向量辅助自动保留（V31Q-114 R6）
+            and reason not in ('person_name', 'person_like', 'checksum_fail', 'derived_name'))
 
 
 def blocked(db) -> set[str]:

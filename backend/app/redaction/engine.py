@@ -688,6 +688,8 @@ def compute(
 
     # V2-B-03：派生别名归原主体，只将完整名称记入名称库。
     short_derived: list[str] = []
+    # 二字字号 → 派生它的主体；两个主体派生出同一字号时为 None（V31Q-114 R6）
+    short_owner: dict[str, str | None] = {}
     derived_auto = {}
     for ent in entities.values():
         if ent.category == "ORG":
@@ -695,6 +697,9 @@ def compute(
             for full_name in [ent.name, *ent.surfaces, *ent.aliases]:
                 auto, short = P.derived_names(full_name)
                 short_derived.extend(short)
+                for alias in short:
+                    k = P.normalize(alias)
+                    short_owner[k] = ent.key if short_owner.get(k, ent.key) == ent.key else None
                 derived_auto[ent.key] += auto
     # 两个以上主体派生出同一英文字号时不归任何一方，只列疑似（V2Q-173）
     owners = {}
@@ -744,8 +749,11 @@ def compute(
         occ: list[tuple[int, int]] = []
         amount_hits = [*detect.find_amounts(text, hints.get(i)), *detect.find_bare_amounts(text)]
         if n.kind == 'utterance' or _UTTERANCE_LOC.fullmatch(n.loc):
-            from app.assistant.spoken_amount import find_amounts
-            amount_hits += find_amounts(text)
+            from app.assistant.spoken_amount import find_amounts, find_spoken_refs, find_unit_prices
+            amount_hits += [*find_amounts(text), *find_unit_prices(text)]
+            spoken_refs = find_spoken_refs(text)  # 口述编号（V31Q-114 R7）
+        else:
+            spoken_refs = []
         cands = [_Span(i, s, e, ent.category, ent.key, by, term=term)
                  for (ent, _pat, by, term), found in zip(pool, pool_hits) for s, e in found.get(i, ())
                  if not (by == 'derived' and re.fullmatch(r'[A-Za-z]+', text[s:e])
@@ -798,6 +806,7 @@ def compute(
                         checksum_suspects.append(SuspectOut(n.loc, hit.start, hit.end, 'checksum_fail', hit.category))
                     continue
             _accept([_Span(i, hit.start, hit.end, hit.category, hit.key, "regex")], occ, spans)
+        _accept([_Span(i, h.start, h.end, 'REFNO', h.key, 'regex') for h in spoken_refs], occ, spans)
         amounts = [_Span(i, h.start, h.end, h.category, h.key, "amount", h.currency, h.value)
                    for h in amount_hits]
         _accept(amounts, occ, spans)
@@ -1100,15 +1109,17 @@ def compute(
     for suspect in found:
         surface = nodes[locs[suspect.loc]].text[suspect.char_start:suspect.char_end]
         suspect.category = S.default_category(surface, suspect.reason)
-        uncertain.setdefault(P.normalize(surface), (surface, suspect.category))
+        # 主体派生、因太短只列为不确定项的字号，默认替换时沿用该主体的代号，模型能看懂指的是谁（V31Q-114 R6）
+        owner = short_owner.get(P.normalize(surface)) if suspect.reason == 'derived_name' else None
+        uncertain.setdefault(P.normalize(surface), (surface, suspect.category, owner if owner in entities else None))
     original_joined = _Joined([n.text for n in nodes])
     excluded_by_node = [[m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
                         for n in nodes]
-    for key, (surface, category) in sorted(uncertain.items(), key=lambda pair: -len(pair[1][0])):
+    for key, (surface, category, owner) in sorted(uncertain.items(), key=lambda pair: -len(pair[1][0])):
         if key in kept:
             continue
         for i, at in original_joined.by_node(P.name_pattern(surface)).items():
-            _accept([_Span(i, s, e, category, key, 'uncertain')
+            _accept([_Span(i, s, e, 'ORG', owner, 'uncertain') if owner else _Span(i, s, e, category, key, 'uncertain')
                      for s, e in at if not _overlaps(excluded_by_node[i], s, e)], occupied[i], spans)
     spans.sort(key=lambda s: (s.node, s.start))
     result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,

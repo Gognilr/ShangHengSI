@@ -247,9 +247,9 @@ def derived_names(name: str) -> tuple[list[str], list[str]]:
     if not is_chinese_name(name):
         suffix = _EN_SUFFIX_RE.search(name)
         if suffix:
-            industry = {'industries', 'industry', 'trading', 'technology', 'technologies', 'international',
+            industry = {'industries', 'industry', 'industrial', 'trading', 'technology', 'technologies', 'international',
                 'group', 'holdings', 'logistics', 'engineering', 'chemical', 'chemicals', 'materials',
-                'manufacturing', 'global', 'enterprises', 'corporation'}
+                'manufacturing', 'global', 'enterprises', 'corporation', 'import', 'export', 'shipping'}
             words = [word for word in re.findall(r'[A-Za-z]+', name[:suffix.start()])
                      if word.casefold() not in industry]
             # 国内企业英文名常以省市拼音开头（Jiangsu Velmora …），跳过开头的地名再取字号（V2Q-173）
@@ -261,6 +261,12 @@ def derived_names(name: str) -> tuple[list[str], list[str]]:
                 if (len(brand) >= 4 and brand[0].isupper() and brand.casefold() not in en_words()
                         and not _country_index()[0].fullmatch(brand)):
                     return [brand], []
+                # 首词太短或是常用词时取前两个词（“Al Noor”“Bright Ocean”），V31Q-114 R6
+                if len(words) >= 2:
+                    phrase = " ".join(words[:2])
+                    if (all(w[0].isupper() for w in words[:2]) and len(phrase) >= 6
+                            and phrase not in common_terms() and not _country_index()[0].fullmatch(phrase)):
+                        return [phrase], []
         return [], []
     body = re.sub(rf"(?:{_CN_SUFFIX}|{_CN_BRANCH_SUFFIX})+$", "", name)
     brand = body
@@ -594,6 +600,119 @@ def _name_start_after_boundary(text: str, start: int, suffix_start: int, min_han
     return start
 
 
+# 正文企业名称起点的字号校验（V31Q-114 R1）：字号里常有单字边界字（晟和、华为、大同、万向），按最后一个边界切会把
+# 字号切掉、原文外发，而对照表里只有切剩的“通信设备有限公司”，出口复检也拦不住。切点之后只剩地名与行业词时，
+# 说明边界字是字号的一部分：改从更早的行政区划或更早的边界起算（宁多勿漏）。
+# 行业词在 industry_words.txt 之外补常见行业，只用于这里的判断，不改变字号派生（derived_names）。
+_BRAND_INDUSTRY_EXTRA = (
+    "零部件", "部件", "配件", "阀门", "阀业", "轴承", "管道", "管业", "钢管", "轮胎", "陶瓷", "船务", "船舶", "航运", "货运",
+    "运输", "仓储", "商贸", "工贸", "经贸", "进出口", "外贸", "发展", "控股", "股份", "管理", "文化", "传媒", "广告", "农业",
+    "物业", "置业", "地产", "房地产", "数码", "互联网", "互联", "信息", "精工", "工业", "商务", "酒店", "餐饮", "电器", "家电",
+    "照明", "玻璃", "塑料", "塑业", "纸业", "印染", "制药", "药业", "饮料", "酒业", "木业", "石材", "水泥", "涂料", "线缆",
+    "电缆", "光伏", "储能", "电池", "金属", "铝业", "铜业", "钢结构", "机床", "工具", "泵业", "电机", "液压", "紧固件",
+    "标准件", "设计", "教育", "培训", "安防", "消防", "净化", "水处理", "节能", "光学", "激光", "测控", "系统", "集成",
+    "供应链管理", "新材料", "材料", "制品", "用品", "器材", "装备", "装饰", "家居", "纺织品", "化纤", "复合材料",
+)
+
+
+@lru_cache(maxsize=1)
+def _brand_industry() -> tuple[str, ...]:
+    return tuple(sorted(set(industry_words()) | set(_BRAND_INDUSTRY_EXTRA), key=len, reverse=True))
+
+
+@lru_cache(maxsize=1)
+def _cn_place_names() -> frozenset[str]:
+    """省、市、县三级行政区划的名称与简称（不少于 2 字），加 countries.yaml 中的中国地名。"""
+    names = {p for p, country in _country_index()[1].items() if country == "中国" and re.fullmatch(r"[一-鿿]{2,}", p)}
+    for line in (RESOURCES_DIR / "cn_admin_divisions.txt").read_text("utf-8").splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 2 and parts[1].isdigit() and int(parts[1]) <= 3:
+            names.update(n for n in parts[0].split("|") if len(n) >= 2)
+    return frozenset(names)
+
+
+def _place_prefix(s: str) -> str:
+    for k in range(min(len(s), 9), 1, -1):
+        if s[:k] in _cn_place_names():
+            return s[:k]
+    return ""
+
+
+def is_place_chain(s: str) -> bool:
+    """整段都是省、市、县名连写（“厦门海沧”“江苏常州”）。县级以下的地址链由地址规则先行替换，剩下的属保留的地名。"""
+    s = s.strip()
+    while s and (place := _place_prefix(s)):
+        s = s[len(place):]
+    return not s
+
+
+def _strip_industry(s: str) -> str:
+    while (word := next((w for w in _brand_industry() if s.endswith(w)), None)):
+        s = s[:-len(word)]
+    return s
+
+
+def _has_brand(body: str) -> bool:
+    """body（后缀之前的部分）去掉开头的行政区划与结尾的行业词后，还剩至少 2 个汉字的字号。"""
+    s = re.sub(r"[（(][^（()）]*[）)]", "", body)
+    while (place := _place_prefix(s)) and len(_strip_industry(s[len(place):])) >= 2:
+        s = s[len(place):]
+    return sum(1 for c in _strip_industry(s) if _CN_CHAR.match(c)) >= 2
+
+
+def _org_name_start(text: str, start: int, suffix_start: int) -> int:
+    """正文企业名称的起点（V31Q-114 R1）。最后一个边界之后有字号时与 _name_start_after_boundary 相同；
+    没有字号时，依次试：最后一个多字边界之后、最晚一个后面能接出字号的行政区划（后面紧跟边界字的不算），
+    以及更早的边界；都不行时返回 start（整段，宁多勿漏）。"""
+    run = text[start:suffix_start]
+    blocked = _protected_mask(run)
+    depth = 0
+    cuts: list[int] = []
+    strong = 0
+    in_paren = []
+    for i, ch in enumerate(run):
+        if ch in "（(":
+            depth += 1
+        elif ch in "）)":
+            depth = max(0, depth - 1)
+        elif depth == 0 and not blocked[i]:
+            for word in _CN_BOUNDARY_WORDS:
+                if run.startswith(word, i):
+                    cuts.append(i + len(word))
+                    if len(word) > 1:
+                        strong = i + len(word)
+                    break
+        in_paren.append(depth > 0)
+
+    def enough(pos: int) -> bool:
+        return sum(1 for c in run[pos:] if _CN_CHAR.match(c)) >= 2
+
+    if not cuts:
+        return start
+    last = cuts[-1]
+    if not enough(last):
+        return start  # 边界词之后不足 2 个汉字：沿用原做法整段处理（“本合同由某有限公司”）
+    if _has_brand(run[last:]):
+        return start + last
+    for pos in range(min(last, len(run)) - 1, strong - 1, -1):
+        place = _place_prefix(run[pos:])
+        if not place or in_paren[pos]:
+            continue
+        rest = run[pos + len(place):]
+        if any(rest.startswith(w) for w in _CN_BOUNDARY_WORDS) and not _protected_mask(rest[:2])[0]:
+            continue  # “在上海与宏达……”：地名后紧跟边界字，地名不是名称开头
+        if _has_brand(run[pos:]):
+            # 连着的上级地名一并算进名称（“宁波大同化工”从宁波起，大同是字号）
+            while (prev := next((q for q in range(max(strong, pos - 9), pos)
+                                 if len(_place_prefix(run[q:])) == pos - q), None)) is not None and _has_brand(run[prev:]):
+                pos = prev
+            return start + pos
+    for cut in reversed(cuts[:-1]):
+        if enough(cut) and _has_brand(run[cut:]):
+            return start + cut
+    return start
+
+
 @by_text
 def find_other_org_names(text: str) -> list[tuple[int, int]]:
     """正文中未带标签的企业名称：[(start, end)]。"""
@@ -609,7 +728,7 @@ def find_other_org_names(text: str) -> list[tuple[int, int]]:
                and (_CN_CHAR.match(text[start - 1]) or text[start - 1] in "（）()")):
             start -= 1
         last_end = m.end()
-        cut = _name_start_after_boundary(text, start, m.start())
+        cut = _org_name_start(text, start, m.start())
         if cut > start:
             start = cut
         else:  # 没有可用的边界词：沿用 M2 的做法，只去掉开头的虚词

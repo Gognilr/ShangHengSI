@@ -1,0 +1,11 @@
+description: V31Q-114 R6：英文名称首词太短时取前两词作字号（Al Noor），正文简称换成该主体代号；中文二字字号沿用主体代号的断言见 test_v2b_derived.test_02_short_derived
+stance: purchase
+must_replace:
+  - {text: 江苏澜川新材料科技有限公司, category: ORG}
+  - {text: 宁波鼎晟化工贸易有限公司, category: ORG}
+  - {text: Al Noor Trading FZE, category: ORG}
+  - {text: Al Noor, category: ORG}
+must_keep:
+  - 应于月底前交货
+  - 收货后付款
+  - shall open the L/C within 7 days after signing

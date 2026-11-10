@@ -32,6 +32,15 @@ http://{$SITE_ADDRESS:localhost} {
 {$SITE_ADDRESS:localhost} {
 	import /etc/caddy/fragments/{$CADDY_CA_MODE:development}.tls
 
+	# 压缩（主包约 1.4 MB）与基本安全响应头（V31Q-114）；接口自带的 CSP（原件预览的 sandbox）不覆盖
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		?Content-Security-Policy "frame-ancestors 'none'"
+	}
+
 	# /api 转发给 app；上传大小限制 320 MB（SPEC 20.2）
 	@audio_upload path_regexp audio_upload ^/api/v1/assistant/sessions/[^/]+/files$
 	handle @audio_upload {

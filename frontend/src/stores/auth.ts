@@ -30,7 +30,7 @@ export const useAuthStore = defineStore('auth', () => {
     setCsrfToken('')
   }
 
-  /** 向服务端确认当前登录状态；未登录不算错误。 */
+  /** 向服务端确认当前登录状态；未登录不算错误。连不上服务器（502、断网等）时抛出，loaded 保持不变。 */
   async function refresh(): Promise<void> {
     try {
       const me = await authApi.me()
@@ -39,15 +39,37 @@ export const useAuthStore = defineStore('auth', () => {
       alerts.value = me.alerts
       setCsrfToken(me.csrf_token)
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
-        clear()
-      } else {
-        throw e
+      if (!(e instanceof ApiError && e.status === 401)) throw e
+      clear()
+    }
+    loaded.value = true
+  }
+
+  // 首次打开时服务器暂不可用（启动、升级、重启中）：显示提示并每 5 秒重试，恢复后继续原来的导航（V31Q-113）
+  const unavailable = ref(false)
+  let wake: (() => void) | null = null
+  let loading: Promise<void> | null = null
+  function load(): Promise<void> {
+    loading ??= retryUntilLoaded().finally(() => { loading = null })
+    return loading
+  }
+  async function retryUntilLoaded(): Promise<void> {
+    for (;;) {
+      try {
+        await refresh()
+        unavailable.value = false
+        return
+      } catch {
+        unavailable.value = true
+        await new Promise<void>(resolve => {
+          const timer = setTimeout(resolve, 5000)
+          wake = () => { clearTimeout(timer); resolve() }
+        })
+        wake = null
       }
-    } finally {
-      loaded.value = true
     }
   }
+  function retryNow(): void { wake?.() }
 
   async function login(username: string, password: string): Promise<void> {
     clear()
@@ -79,6 +101,9 @@ export const useAuthStore = defineStore('auth', () => {
     visibleAlerts,
     dismissAlert,
     loaded,
+    unavailable,
+    load,
+    retryNow,
     isLoggedIn,
     isAdmin,
     can,

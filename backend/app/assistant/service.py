@@ -511,10 +511,13 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     db.refresh(file)
     # V31-U5F-04：已确认的文件也可移除；后续提问不再使用它，已有问答与对照表保留（历史回复仍能还原）。
     prefix = f"F{file.seq}-%"
-    for model in (RedactionItem, RedactionSuspect, RedactionExclusion):
+    from app.db.models import NerNodeResult, TaskClauseVector
+    for model in (RedactionItem, RedactionSuspect, RedactionExclusion, NerNodeResult):
         db.execute(delete(model).where(model.task_id == task.id, model.loc.like(prefix)))
+    db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == task.id, TaskClauseVector.file_seq == file.seq))
     key = file.storage_key
     media_key = file.media_storage_key
+    converted_key = file.converted_storage_key  # 旧格式转换结果同样删除（V31Q-114），否则文件行删除后再也找不到它
     db.delete(file)
     db.flush()
     engine.apply_party_changes(db, task, [])
@@ -531,6 +534,8 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     storage.delete_pending_audio(file.id)
     if media_key:
         storage.delete_original(media_key)
+    if converted_key:
+        storage.delete_original(converted_key)
     db.commit()
     return result
 

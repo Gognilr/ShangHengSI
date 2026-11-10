@@ -18,6 +18,8 @@ from app.redaction.dictionaries import RESOURCES_DIR, zh_legal_finance, chem_nam
 MODEL_DIR = Path(__file__).resolve().parents[2] / 'models/ner'
 STOPWORDS_FILE = Path(__file__).resolve().parents[2] / 'resources/ner_stopwords.txt'
 MEDIUM = 0.4
+# 助手与追问里没登记过的中文公司简称，低于中置信也列为不确定项（V31Q-114 R4，chat.service._low_org_candidate）
+LOW_ORG = 0.15
 HIGH = 0.95
 LABELS = ('PERSON', 'ORG', 'ADDR')
 FILES = ('model.onnx', 'tokenizer.json', 'tokenizer_config.json',
@@ -170,8 +172,21 @@ def raw_recognize(text: str) -> list[Entity]:
     return sorted(output.values(), key=lambda e: (e.start, e.end, e.label))
 
 
+# V31Q-114 R5：实体前面带合同角色词时去掉角色词（“乙方宁波XX”只取名称，“甲方二号厂房”只看“二号厂房”）
+_ROLE_PREFIX = re.compile(r"(?:甲方|乙方|丙方|双方|对方|我方|贵方|买方|卖方|供方|需方)(?:的)?")
+# 地名或序号加厂房、仓库等设施的是地点，不是名称（“常州工厂”“二号厂房”）
+_FACILITY = re.compile(r"(?:[一二三四五六七八九十\d]+号?)?(?:工厂|厂房|厂区|车间|仓库|库房|堆场|码头|工地|现场|办公室)")
+
+
+def _trim_role(text: str, entity: Entity) -> Entity:
+    m = _ROLE_PREFIX.match(text, entity.start)
+    if m and m.end() < entity.end:
+        return Entity(m.end(), entity.end, entity.label, entity.score)
+    return entity
+
+
 def recognize(text: str) -> list[Entity]:
-    return [e for e in raw_recognize(text) if keep_entity(text, e)]
+    return [e for e in (_trim_role(text, e) for e in raw_recognize(text)) if keep_entity(text, e)]
 
 
 def mask(text: str, occupied: list[tuple[int, int]]) -> str:
@@ -204,6 +219,18 @@ def keep_entity(text: str, entity: Entity) -> bool:
         return False
     if entity.label == 'ORG' and re.match(r'(?i:FOB|CIF|CFR|EXW|FCA|CPT|CIP|DAP|DPU|DDP|FAS)\b', surface):
         return False
+    if _ROLE_PREFIX.fullmatch(surface):
+        return False
+    if re.fullmatch(r'[一二三四五六七八九十百零〇\d]+(?:号|号楼|栋|层|期|区|线|车间)?', surface):
+        return False  # 序号（“二号”“三期”）不是名称
+    from app.redaction.parties import is_place_chain
+    if re.fullmatch(r'[一-鿿]{2,}', surface) and is_place_chain(surface):
+        return False  # 地名连写（“厦门海沧”）按 9.2 保留；县级以下的地址链已由地址规则先行替换
+    facility = _FACILITY.search(surface)
+    if facility and facility.end() == len(surface):
+        head = surface[:facility.start()]
+        if not head or is_place_chain(head):
+            return False
     return (len(surface) >= 2 and surface.casefold() not in _stopwords()
             and surface not in zh_legal_finance()
             and surface not in chem_names()

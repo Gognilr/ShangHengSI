@@ -45,7 +45,7 @@ def _paragraph_text(p, accept=True):
 
 
 def _views(data):
-    root = etree.fromstring(shared._parts(data)["word/document.xml"])
+    root = shared.safe_xml(shared._parts(data)["word/document.xml"])
     rejected = "".join(e.text or "" for e in root.iter() if e.tag in _TEXT and not any(
         a.tag == qn("w:ins") or (a.tag == qn("w:p") and _inserted_paragraph(a))
         for a in e.iterancestors()))

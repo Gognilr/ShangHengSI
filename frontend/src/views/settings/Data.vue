@@ -440,7 +440,7 @@ onBeforeUnmount(stopPolling)
         <el-table-column label="用户" width="110">
           <template #default="{ row }">{{ row.user_name ?? '—' }}</template>
         </el-table-column>
-        <el-table-column label="任务主文件名" min-width="160" show-overflow-tooltip>
+        <el-table-column label="任务" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ row.task_title ?? '—' }}</template>
         </el-table-column>
         <el-table-column label="用途" width="90">
@@ -497,7 +497,7 @@ onBeforeUnmount(stopPolling)
           <el-descriptions border size="small" :column="1">
             <el-descriptions-item label="时间">{{ formatDateTime(detail.created_at) }}</el-descriptions-item>
             <el-descriptions-item label="用户">{{ detail.user_name ?? '—' }}</el-descriptions-item>
-            <el-descriptions-item label="任务主文件名">{{ detail.task_title ?? '—' }}</el-descriptions-item>
+            <el-descriptions-item label="任务">{{ detail.task_title ?? '—' }}</el-descriptions-item>
             <el-descriptions-item label="用途 / 模型">{{ llmPurposeLabel(detail.purpose) }} / {{ detail.model_name }}</el-descriptions-item>
             <el-descriptions-item label="状态">{{ outboundStatusLabel(detail.status) }}</el-descriptions-item>
           </el-descriptions>

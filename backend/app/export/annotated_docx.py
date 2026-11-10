@@ -35,8 +35,14 @@ def _parts(data):
         return {name: archive.read(name) for name in archive.namelist()}
 
 
+def safe_xml(xml: bytes):
+    """与解析时相同的加固解析器（V31Q-114）：不解析实体、不加载 DTD、不访问网络。"""
+    return etree.fromstring(xml, etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False,
+                                                 huge_tree=False))
+
+
 def _text(xml):
-    root = etree.fromstring(xml)
+    root = safe_xml(xml)
     return "".join(e.text or "" for e in root.iter()
                    if e.tag in {_W + "t", _W + "delText", _W + "instrText"})
 

@@ -45,9 +45,30 @@ stage="更新部署文件"
 cp "$ROOT/docker-compose.yml" "$ROOT/VERSION" "$ROOT/.env.example" "$target/"
 cp -R "$ROOT/scripts/." "$target/scripts/"
 if [ -d "$ROOT/docs" ]; then mkdir -p "$target/docs"; cp -R "$ROOT/docs/." "$target/docs/"; fi
+# 模型清单与镜像中的模型一一对应，不允许现场修改，随版本整体替换（V31Q-113）。
+cp "$ROOT/models.yaml" "$target/"
+mkdir -p "$target/model-manifests"
+cp -R "$ROOT/model-manifests/." "$target/model-manifests/"
+if [ -d "$ROOT/licenses" ]; then mkdir -p "$target/licenses"; cp -R "$ROOT/licenses/." "$target/licenses/"; fi
 if ! cmp -s "$ROOT/Caddyfile" "$target/Caddyfile"; then
   cp "$ROOT/Caddyfile" "$target/Caddyfile.new"
   info 'Caddyfile 有变化，已另存 Caddyfile.new，请人工比较并保留公司证书配置。'
+fi
+# caddy/ 片段：新增的直接放入；有变化的另存 .new，由 IT 按运维说明第 11 节比较后替换（保留 public/）。
+caddy_changed=()
+for file in "$ROOT"/caddy/*; do
+  [ -f "$file" ] || continue
+  name="$(basename "$file")"
+  if [ ! -e "$target/caddy/$name" ]; then
+    mkdir -p "$target/caddy"
+    cp "$file" "$target/caddy/$name"
+  elif ! cmp -s "$file" "$target/caddy/$name"; then
+    cp "$file" "$target/caddy/$name.new"
+    caddy_changed+=("$name")
+  fi
+done
+if [ "${#caddy_changed[@]}" -gt 0 ]; then
+  info "caddy/ 片段有变化：${caddy_changed[*]}；已另存为同名 .new，请按运维说明第 11 节比较后替换并重启 web。"
 fi
 ROOT="$target"
 env_set APP_VERSION "$version"

@@ -20,7 +20,7 @@ logger = logging.getLogger("app.parsing.legacy")
 CONVERTER_TAG = "lo25.2"  # 写入 parser_version，如 docx-1+lo25.2
 ALIVE = "converter.alive"
 ALIVE_MAX_AGE = 30  # 心跳期限（秒）
-WAIT_SECONDS = 120.0  # 含排队的最长等待
+WAIT_SECONDS = 300.0  # 含排队的最长等待；converter 正在解码的长录音可能占用几分钟（V31Q-114）
 POLL_SECONDS = 0.2
 
 # 上传扩展名 → (交给 converter 的类型, 结果扩展名)；wps 按 doc、et 按 xls

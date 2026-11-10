@@ -2,25 +2,10 @@ import { ElMessage } from 'element-plus'
 import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { useAuthStore } from '@/stores/auth'
-import History from '@/views/History.vue'
 import Assistant from '@/views/Assistant.vue'
-import Meeting from '@/views/Meeting.vue'
-import Translate from '@/views/Translate.vue'
 import Login from '@/views/Login.vue'
-import ReviewNew from '@/views/ReviewNew.vue'
-import ReviewResult from '@/views/ReviewResult.vue'
-import Data from '@/views/settings/Data.vue'
-import Model from '@/views/settings/Model.vue'
-import Redaction from '@/views/settings/Redaction.vue'
-import Requirements from '@/views/settings/Requirements.vue'
-import Laws from '@/views/settings/Laws.vue'
-import Templates from '@/views/settings/Templates.vue'
-import Knowledge from '@/views/settings/Knowledge.vue'
-import SettingsLayout from '@/views/settings/SettingsLayout.vue'
-import Users from '@/views/settings/Users.vue'
-import Personal from '@/views/settings/Personal.vue'
-import Roles from '@/views/settings/Roles.vue'
 import { SETTING_TABS, type Perm } from '@/utils/permissions'
+// 首屏只带登录页、主布局与智能助手首页，其余页面按路由懒加载（V31Q-114）
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -49,32 +34,32 @@ export const router = createRouter({
       component: MainLayout,
       children: [
         { path: '', redirect: HOME_PATH },
-        { path: 'review/new', name: 'review-new', component: ReviewNew, meta: { perms: ['use.review'] } },
-        { path: 'review/:taskId', name: 'review-result', component: ReviewResult },
-        { path: 'history', name: 'history', component: History },
+        { path: 'review/new', name: 'review-new', component: () => import('@/views/ReviewNew.vue'), meta: { perms: ['use.review'] } },
+        { path: 'review/:taskId', name: 'review-result', component: () => import('@/views/ReviewResult.vue') },
+        { path: 'history', name: 'history', component: () => import('@/views/History.vue') },
         { path: 'assistant', name: 'assistant', component: Assistant, meta: { perms: ['use.assistant'] } },
         { path: 'assistant/:sessionId', name: 'assistant-session', component: Assistant },
         // 会议纪要与翻译是侧栏独立菜单（V31-U5），底层沿用助手会话
-        { path: 'meeting', name: 'meeting', component: Meeting, meta: { perms: ['use.meeting'] } },
-        { path: 'meeting/:sessionId', name: 'meeting-session', component: Meeting },
-        { path: 'translate', name: 'translate', component: Translate },
-        { path: 'translate/:sessionId', name: 'translate-session', component: Translate },
+        { path: 'meeting', name: 'meeting', component: () => import('@/views/Meeting.vue'), meta: { perms: ['use.meeting'] } },
+        { path: 'meeting/:sessionId', name: 'meeting-session', component: () => import('@/views/Meeting.vue') },
+        { path: 'translate', name: 'translate', component: () => import('@/views/Translate.vue') },
+        { path: 'translate/:sessionId', name: 'translate-session', component: () => import('@/views/Translate.vue') },
         {
           path: 'settings',
-          component: SettingsLayout,
+          component: () => import('@/views/settings/SettingsLayout.vue'),
           children: [
             // 设置对所有人可见，“个人”在最前；管理分页仍按角色校验（V31Q-95）
             { path: '', redirect: '/settings/personal' },
-            { path: 'personal', name: 'settings-personal', component: Personal },
-            { path: 'users', name: 'settings-users', component: Users },
-            { path: 'roles', name: 'settings-roles', component: Roles },
-            { path: 'model', name: 'settings-model', component: Model },
-            { path: 'requirements', name: 'settings-requirements', component: Requirements },
-            { path: 'laws', name: 'settings-laws', component: Laws },
-            { path: 'templates', name: 'settings-templates', component: Templates },
-            { path: 'knowledge', name: 'settings-knowledge', component: Knowledge },
-            { path: 'redaction', name: 'settings-redaction', component: Redaction },
-            { path: 'data', name: 'settings-data', component: Data },
+            { path: 'personal', name: 'settings-personal', component: () => import('@/views/settings/Personal.vue') },
+            { path: 'users', name: 'settings-users', component: () => import('@/views/settings/Users.vue') },
+            { path: 'roles', name: 'settings-roles', component: () => import('@/views/settings/Roles.vue') },
+            { path: 'model', name: 'settings-model', component: () => import('@/views/settings/Model.vue') },
+            { path: 'requirements', name: 'settings-requirements', component: () => import('@/views/settings/Requirements.vue') },
+            { path: 'laws', name: 'settings-laws', component: () => import('@/views/settings/Laws.vue') },
+            { path: 'templates', name: 'settings-templates', component: () => import('@/views/settings/Templates.vue') },
+            { path: 'knowledge', name: 'settings-knowledge', component: () => import('@/views/settings/Knowledge.vue') },
+            { path: 'redaction', name: 'settings-redaction', component: () => import('@/views/settings/Redaction.vue') },
+            { path: 'data', name: 'settings-data', component: () => import('@/views/settings/Data.vue') },
           ],
         },
       ],
@@ -86,7 +71,8 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   // 首次导航时向服务端确认登录状态（刷新页面后恢复登录）
-  if (!auth.loaded) await auth.refresh()
+  // 服务器暂不可用时在这里等待并自动重试（App 显示提示），不让首次导航失败成白屏
+  if (!auth.loaded) await auth.load()
 
   if (to.meta.public) {
     // 已登录再访问登录页，回到首页
@@ -118,4 +104,12 @@ router.beforeEach(async (to) => {
   }
 
   return true
+})
+
+// 升级后旧页面再去取已不存在的懒加载分块会失败：整页重新加载到目标地址，取到新版本
+router.onError((error, to) => {
+  const message = String((error as { message?: unknown })?.message ?? error)
+  if (/dynamically imported module|Importing a module script failed|error loading dynamically/i.test(message)) {
+    window.location.assign(to.fullPath)
+  }
 })

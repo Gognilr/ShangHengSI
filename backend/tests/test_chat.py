@@ -696,3 +696,30 @@ def test_r4_duplicate_decisions_do_not_write_or_send(db_sessionmaker, alice, rea
     assert requests == [] and chat_calls(db_sessionmaker) == [] and message_count(db_sessionmaker) == 0
     with db_sessionmaker() as db:
         assert load_redaction_map(db, task.id) == mapping
+
+
+@pytest.mark.parametrize("message,terms,expected", [
+    # R2：已记住的公司名称派生的字号同样替换，代号还原为全称
+    ("远方虚构那边的货款还没付", [("远方虚构贸易有限公司", "ORG")], "[公司_Q1]那边的货款还没付"),
+    # R3：口语金额与口语单价
+    ("货款还有380万没付，对方报价每吨4800", [], "货款还有[金额_Q1]没付，对方报价每吨[单价_Q2]"),
+    ("每台2个配件，每吨含水12%以下，千万别忘了", [], "每台2个配件，每吨含水12%以下，千万别忘了"),
+    # R7：口述编号
+    ("合同编号是HT二零二六零零八八", [], "[编号_Q1]"),
+])
+def test_v31q114_question_redaction(message, terms, expected):
+    result = service._redact(message, {}, terms)
+    assert expected in result.text
+    if terms:
+        assert result.new_entries == {"[公司_Q1]": terms[0][0]}
+
+
+def test_v31q114_low_score_short_org_names_listed(monkeypatch):
+    """R4：实体识别低分的中文公司简称列为不确定项，泛称与行业词不列。"""
+    from app.redaction import ner
+    text = "上周和澜鹰谈了合同，海运提单也到了，物流公司说下周送货。"
+    fake = [ner.Entity(text.index("澜鹰"), text.index("澜鹰") + 2, "ORG", 0.2),
+            ner.Entity(text.index("海运"), text.index("海运") + 2, "ORG", 0.36),
+            ner.Entity(text.index("物流公司"), text.index("物流公司") + 4, "ORG", 0.2)]
+    monkeypatch.setattr(ner, "raw_recognize", lambda residual: fake)
+    assert [s["text"] for s in service._redact(text, {}, []).suspects] == ["澜鹰"]

@@ -70,7 +70,7 @@ fi
 # 只列出模板与片段，绝不复制生成的下载页、证书或 secrets/。
 mkdir -p "$package/caddy"
 cp "$ROOT/caddy/"{development.global,development.tls,custom.global,custom.tls,start.sh,cert.html.template} "$package/caddy/"
-cp "$ROOT/scripts/"{lib.sh,install.sh,upgrade.sh,backup_now.sh,restore.sh} "$package/scripts/"
+cp "$ROOT/scripts/"{lib.sh,install.sh,upgrade.sh,backup_now.sh,restore.sh,rotate_key.sh} "$package/scripts/"
 chmod +x "$package/scripts/"*.sh
 if [ -f "$repo/docs/ops/运维说明.md" ]; then cp "$repo/docs/ops/运维说明.md" "$package/docs/"; else info '警告：M8-04 运维说明尚未生成'; fi
 printf '%s\n' "$version" > "$package/VERSION"

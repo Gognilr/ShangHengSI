@@ -35,6 +35,8 @@ POLL_SECONDS = 0.5
 TIMEOUT_SECONDS = 60  # 单个文件的转换上限
 MAX_OUTPUT_BYTES = 100 * 1024 * 1024
 STALE_SECONDS = 600  # in/ 与 out/ 中超过 10 分钟的文件（worker 已放弃）删除
+# 录音的 worker 等待上限是 22 分钟（backend parsing/audio.py）；排在长录音后面的录音不能在 10 分钟时被当作已放弃删掉
+AUDIO_STALE_SECONDS = 1500
 ALIVE_MAX_AGE = 30  # --check 的心跳期限
 ALIVE = "converter.alive"
 
@@ -94,12 +96,14 @@ def cleanup_stale(spool: Path, now: float | None = None) -> None:
                 mtime = entry.stat(follow_symlinks=False).st_mtime
             except FileNotFoundError:
                 continue
-            if now - mtime > STALE_SECONDS:
+            limit = AUDIO_STALE_SECONDS if entry.name.endswith((".audio", ".wav", ".ogg", ".json")) else STALE_SECONDS
+            if now - mtime > limit:
                 _remove(Path(entry.path))
 
 
 def pick(spool: Path) -> str | None:
-    """in/ 中最早的一个合规文件名；不合规的名称、符号链接和目录一律忽略。"""
+    """in/ 中最早的一个合规文件名；不合规的名称、符号链接和目录一律忽略。
+    旧格式文件先于录音（V31Q-114）：录音解码要几分钟，worker 等旧格式转换只有几分钟，不能排在录音后面超时。"""
     found = []
     for entry in os.scandir(spool / "in"):
         if not NAME_RE.match(entry.name):
@@ -109,8 +113,8 @@ def pick(spool: Path) -> str | None:
         except FileNotFoundError:
             continue
         if stat.S_ISREG(st.st_mode):
-            found.append((st.st_mtime, entry.name))
-    return min(found)[1] if found else None
+            found.append((entry.name.endswith(".audio"), st.st_mtime, entry.name))
+    return min(found)[2] if found else None
 
 
 def _kill_group(proc: subprocess.Popen) -> None:

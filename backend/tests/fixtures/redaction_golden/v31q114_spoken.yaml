@@ -1,0 +1,11 @@
+description: V31Q-114 R3、R7：逐字稿里口述的编号（中文数字）与口语单价（每吨四千八、每吨4600）替换；天数与百分比保留
+stance: sales
+loc_prefixed: true
+must_replace:
+  - {text: 两百八十万, category: AMOUNT}
+  - {text: RH二零二六零三一五, category: REFNO}
+  - {text: 四千八, category: PRICE}
+  - {text: "4600", category: PRICE}
+must_keep:
+  - 交货期还是三十天
+  - 质保金百分之五

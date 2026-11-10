@@ -64,9 +64,11 @@ _GENERIC_INSTITUTION = frozenset({
 _GENERIC_BEFORE_COMPANY = frozenset({
     "本", "贵", "我", "我方", "该", "对方", "双方", "各", "其", "任何", "子", "分", "母", "总", "关联", "船", "保险", "物流",
     "货运", "运输", "快递", "航空", "代理", "代理出口", "出口代理",
+    "其他", "其它", "其余", "上述", "前述", "相关", "有关", "第三方", "外部",  # V31Q-114 R5：“另行向其他公司采购”
+    "我们", "你们", "他们", "咱们", "贵方", "我单位", "本单位",
 })
 # “公司 / 厂”前紧挨这些泛指词时不列（“仅本公司”“由我公司负责”），不论再往前有多少汉字（R1-07）
-_GENERIC_BEFORE_WORD = ("我方", "对方", "双方", "任何", "本", "贵", "我", "该", "其", "此", "各")
+_GENERIC_BEFORE_WORD = ("我方", "对方", "双方", "任何", "其他", "其它", "上述", "相关", "本", "贵", "我", "该", "其", "此", "各")
 # 单字泛指词前面还是汉字时，只有这些虚词才算泛指（“仅本公司”）；“资本公司”“日本公司”仍列（R1-10）
 _GENERIC_LEAD = "由向与和及仅限经在为对从给被的是即凡如若将并或且以于至同跟让请致按据凭归属非除每"
 _MAX_NAME_HAN = 10
@@ -100,14 +102,33 @@ def _walk_back(text: str, pos: int) -> int:
     return start
 
 
-def _cn_name_span(text: str, pos: int) -> tuple[int, int] | None:
-    """pos 为企业后缀的起点；返回名称部分 (start, pos)，已按 2.2 的边界词截取；不足 2 个汉字或为泛称时 None。"""
+# “公司 / 厂”前向前取字时遇到即停（V31Q-114 R5）：合同角色词与表示运送、到达的动词说明前面是条款叙述
+# （“将货物运至甲方常州工厂”“应派技术人员到甲方工厂”），不是名称。只用多字词，避免切进字号（“至诚”“到家”）。
+_CLAUSE_STOP_WORDS = (
+    "甲方", "乙方", "丙方", "双方", "对方", "我方", "贵方", "买方", "卖方", "供方", "需方", "各方", "本方",
+    "运至", "运往", "运到", "送至", "送往", "送到", "发往", "发至", "交至", "交到", "卸至", "卸到", "派往", "前往", "到达",
+)
+# 地名之后只剩这些字时是地点（“常州工厂”“二号厂”），不列
+_FACILITY_REST = re.compile(r"(?:[一二三四五六七八九十\d]+号?)?(?:工|加工|总|分|新|老|生产|制造)?")
+
+
+def _cn_name_span(text: str, pos: int, *, clause: bool = False) -> tuple[int, int] | None:
+    """pos 为企业后缀的起点；返回名称部分 (start, pos)，已按 2.2 的边界词截取；不足 2 个汉字或为泛称时 None。
+    clause=True（单独的“公司、厂”与机构后缀）时另在角色词、运送动词处截断，只剩地名加泛称时不列。"""
     start = _walk_back(text, pos)
     start = P._name_start_after_boundary(text, start, pos, min_han=0)
+    if clause:
+        run = text[start:pos]
+        cut = max((run.rfind(w) + len(w) for w in _CLAUSE_STOP_WORDS if w in run), default=0)
+        start += cut
     run = text[start:pos]
     han = "".join(c for c in run if _HAN.match(c))
     if len(han) < 2 or han in _GENERIC_BEFORE_COMPANY:
         return None
+    if clause:
+        place = P._place_prefix(han)
+        if _FACILITY_REST.fullmatch(han[len(place):]):
+            return None
     return start, pos
 
 
@@ -140,13 +161,13 @@ def _chinese_suffix_candidates(text: str) -> list[Suspect]:
                 continue
         if _generic_before(text[:m.start()]):
             continue
-        span = _cn_name_span(text, m.start())
+        span = _cn_name_span(text, m.start(), clause=True)
         if span is not None:
             out.append(Suspect(span[0], m.end(), BEFORE_COMPANY))
     for m in _INSTITUTION_WORD.finditer(text):
         if _generic_before(text[:m.start()]):
             continue
-        span = _cn_name_span(text, m.start())
+        span = _cn_name_span(text, m.start(), clause=True)
         if span is not None and text[span[0]:m.start()] not in _GENERIC_INSTITUTION:
             out.append(Suspect(span[0], m.end(), BEFORE_COMPANY))
     return out

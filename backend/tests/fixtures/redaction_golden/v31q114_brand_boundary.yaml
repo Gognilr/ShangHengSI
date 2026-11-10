@@ -1,0 +1,16 @@
+description: V31Q-114 R1：字号里有“和、为、及、同”等单字边界字时，正文企业名称不能从边界字处截断（截断后字号原文外发，复检也拦不住）
+stance: sales
+must_replace:
+  - {text: 上海晟和精密部件有限公司, category: ORG}
+  - {text: 无锡德为机械有限公司, category: ORG}
+  - {text: 成都中和环保科技有限公司, category: ORG}
+  - {text: 天津海及船务有限公司, category: ORG}
+  - {text: 德为精工机械有限公司, category: ORG}
+  - {text: 宁波大同化工有限公司, category: ORG}
+must_keep:
+  - 采购部
+  - 签订了供货合同
+  - 负责运输
+  - 于月底前回复
+  - 签订了补充协议
+  - 与甲方共同履行

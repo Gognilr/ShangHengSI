@@ -25,6 +25,12 @@ def month_start(now: datetime | None = None) -> datetime:
     return local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
+def day_start() -> datetime:
+    """今天 0 点（本地时区，与月份统计同一时区）对应的时刻。"""
+    tz = ZoneInfo(get_settings().tz or "Asia/Shanghai")
+    return utcnow().astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def monthly_sent_calls(db: Session, model_id: int | None = None, now: datetime | None = None) -> int:
     return db.scalar(
         select(func.count()).select_from(LlmCall)
@@ -43,7 +49,7 @@ def cap_reached(db: Session, user_id: uuid.UUID | None, purpose: str, model_id: 
     daily_cap = int(get_setting(db, "model.user_daily_cap") or 0)
     if not daily_cap or user_id is None:
         return None
-    start = utcnow().astimezone(ZoneInfo("Asia/Shanghai")).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = day_start()
     used = db.scalar(select(func.count()).select_from(LlmCall).where(
         LlmCall.user_id == user_id, LlmCall.status == "sent", LlmCall.purpose != "test",
         LlmCall.created_at >= start)) or 0
@@ -72,7 +78,7 @@ def remaining_calls(db: Session, user_id: uuid.UUID, model_id: int) -> dict[str,
     """翻译分段预检的剩余调用数；None 表示该项不限次数，网关发送前仍再次检查。"""
     cap = db.get(LlmModel, model_id).monthly_call_cap
     daily = int(get_setting(db, "model.user_daily_cap") or 0)
-    start = utcnow().astimezone(ZoneInfo("Asia/Shanghai")).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = day_start()
     used = db.scalar(select(func.count()).select_from(LlmCall).where(
         LlmCall.user_id == user_id, LlmCall.status == "sent", LlmCall.purpose != "test", LlmCall.created_at >= start)) or 0
     return {"monthly": max(0, cap - monthly_sent_calls(db, model_id)) if cap else None,

@@ -1,4 +1,4 @@
-"""录音经 converter 解码；明文仅留在共享内存盘。"""
+"""录音经 converter 解码；明文仅留在共享内存盘，待转写 PCM 只为即将开始的转写准备。"""
 import json
 import os
 import time
@@ -15,7 +15,12 @@ MESSAGES = {'TOO_LONG': '录音超过 3 小时', 'NO_AUDIO': '文件中没有音
             'TIMEOUT': '录音解码超时'}
 
 
-def decode(db, task, file):
+def decode(db, task, file, *, pcm_now: bool = True):
+    """解码录音：生成回放副本与时长；pcm_now 时另留下待转写 PCM 并删除录音原件。
+
+    V31Q-114：转写一次一个，3 小时录音的 PCM 约 345 MB。前面已有转写在排队时解析只做回放副本与时长、保留加密原件，
+    PCM 等轮到转写时再从原件解码（handle_transcribe），内存盘里不会堆积多份 PCM；原件仍在时总从原件解码，不用有损的回放副本。
+    """
     spool = Path(get_settings().convert_spool_dir)
     if not _alive(spool):
         raise ParseError('文件转换服务不可用，请联系管理员')
@@ -28,11 +33,11 @@ def decode(db, task, file):
     previous_key = file.media_storage_key
     try:
         with open(part, 'wb') as out:
-            if file.media_storage_key:
-                out.write(storage.load_original(file.media_storage_key))
-            else:
+            if storage._path(file.storage_key).exists():
                 for chunk in crypto.decrypt_stream(storage._path(file.storage_key)):
                     out.write(chunk)
+            else:
+                out.write(storage.load_original(file.media_storage_key))
         os.replace(part, src)
         # 最长录音的解码预算另留排队余量；不占转写并发。
         deadline = time.monotonic() + 1320
@@ -48,8 +53,9 @@ def decode(db, task, file):
             raise ParseError('录音时长无效')
         # 重转只取 PCM，回放副本保持不变，避免有损副本反复重编码。
         key = previous_key or storage.save_original(outputs['ogg'].read_bytes())[0]
-        pcm.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(outputs['wav'], pcm)
+        if pcm_now:
+            pcm.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(outputs['wav'], pcm)
         file.media_storage_key = key
         marks = (file.media or {}).get('marks')  # 现场录音的打点，保留到转写完成
         file.media = {'duration_ms': duration, 'speakers': None, 'stage': 'queued', 'progress': 0, 'error': None,
@@ -57,6 +63,8 @@ def decode(db, task, file):
         file.doc_type, file.doc_type_source = 'letter', 'auto'
         db.commit()  # 先持久化回放副本，再删除录音原件；original_deleted_at 留给保留期。
         committed = True
+        if not pcm_now:
+            return None  # 原件留到轮到转写时再解码
         storage.delete_original(file.storage_key)
         return pcm
     except BaseException:

@@ -45,6 +45,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
       POSTGRES_DB: aireview
       TZ: Asia/Shanghai
+    # worker 连接池最多约 84、app 每进程 15：默认 100 个连接在多份长文档并发审核时会用尽（V31Q-114）
+    command: ["postgres", "-c", "max_connections=200"]
     volumes:
       - db_data:/var/lib/postgresql/data
     # 只在内部网络，不暴露端口
@@ -65,7 +67,8 @@ services:
     command:
       - sh
       - -c
-      - alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --no-access-log
+      # 进程数默认 1（V31Q-114）：每个进程各加载一份实体识别与向量模型（约 2.4 GiB），确认页的分段缓存也按进程各存一份
+      - alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${APP_WORKERS:-1} --no-access-log
     volumes:
       - ./models.yaml:/etc/aireview/models.yaml:ro
       - ../transcriber/models/asr/MANIFEST.sha256:/etc/aireview/model-manifests/asr.sha256:ro
@@ -84,6 +87,8 @@ services:
     <<: *backend
     logging: *logging
     command: ["python", "-m", "app.worker"]
+    # 收到停止信号后最多等 30 秒让在途任务收尾（worker.JOIN_TIMEOUT_SECONDS）；Docker 默认 10 秒即强制结束
+    stop_grace_period: 40s
     environment:
       <<: *backend-env
       NER_THREADS: ${NER_THREADS:-8}
@@ -218,7 +223,8 @@ services:
     volumes: [convert_spool:/spool]
     mem_limit: ${MT_MEM:-12g}
     cpus: ${MT_CPUS:-8}
-    cpuset: ${MT_CPUSET:-8-15}
+    # 可选的 CPU 绑定（如 8-15）；默认不绑定，CPU 少于 16 核的机器写 8-15 会起不来（V31Q-114）
+    cpuset: ${MT_CPUSET:-}
     cpu_shares: 256
     pids_limit: 128
     healthcheck:
