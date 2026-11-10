@@ -2098,11 +2098,20 @@ def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
     """V31Q-18：复检当前出口；明确保留且不再被当前替换引用的历史值只供还原。"""
     from app.redaction import keep_terms
     from app.redaction.recheck import _AMOUNT_VALUE, _NUMERIC_VALUE, _decimal, _digits, _text_pattern, _value_positions
-    values = list(dict.fromkeys(v for k, v in _load_full_map(db, task_id).items() if not k.startswith('@')))
+    full_map = _load_full_map(db, task_id)
+    values = list(dict.fromkeys(v for k, v in full_map.items() if not k.startswith('@')))
     task = db.get(Task, task_id)
     if task is None:
         return values
     texts = task_texts(db, task)
+    # V31Q-119：追问中按“替换”决定新增的代号（[类别_Qn]）只管本条问题与回复还原；同一文字在文件正文中照常出现
+    # （审核时已随正文外发）时不据此拦截正文，否则该任务以后的追问与重新审核都会被拦截。问题里的同一文字仍按对照表替换。
+    body = '\n'.join(texts.values())
+    question_only = {v for k, v in full_map.items()
+                     if v and chat_number(k.split('#', 1)[0]) is not None and _value_positions(body, v)}
+    question_only -= {v for k, v in full_map.items() if not k.startswith('@') and chat_number(k.split('#', 1)[0]) is None}
+    if question_only:
+        values = [v for v in values if v not in question_only]
     memory = keep_terms.effective(db, task.owner_id)  # 每次调用现查本人当前生效的记忆，不缓存豁免。
     kept = []
     for row in db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id)):

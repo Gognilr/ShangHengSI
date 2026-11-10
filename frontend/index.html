@@ -23,6 +23,14 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      // 浏览器过旧（如 Windows 7 的 Chrome 75）时脚本会语法报错而白屏：先给出提示（V31Q-117，构建目标约为 Chromium 107）
+      (function () {
+        if (typeof Array.prototype.findLast === 'function' && typeof structuredClone === 'function') return
+        document.getElementById('app').innerHTML = '<p style="margin:48px auto;max-width:520px;font-size:16px;line-height:1.8">'
+          + '当前浏览器版本过低，无法使用商衡SI。<br>请在 Windows 10 / 11 上用最新版 Microsoft Edge 打开本页面。</p>'
+      })()
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
