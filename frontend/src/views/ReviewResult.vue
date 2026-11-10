@@ -193,10 +193,15 @@ function exportError(e: unknown) {
 }
 async function exportReport() {
   if (!task.value || exporting.value || exportReason.value) return
-  exporting.value = localOnly.value ? '本地校验报告' : '审核报告'
+  const taskId = task.value.id
+  const runId = run.value?.id
+  const isLocal = localOnly.value
+  if (!isLocal && !runId) return
+  exporting.value = isLocal ? '本地校验报告' : '审核报告'
   try {
-    const saved = localOnly.value ? await reportApi.local(task.value.id) : run.value ? await reportApi.run(run.value.id) : false
-    if (!saved) ElMessage.success('报告已下载')
+    const result = runId && !isLocal ? await reportApi.run(runId) : await reportApi.local(taskId)
+    if (result === 'cancelled') return
+    if (result === 'downloaded') ElMessage.success('报告已下载')
     savedTick.value++
   } catch (e) { exportError(e) } finally { exporting.value = '' }
 }
@@ -210,8 +215,8 @@ async function exportAnnotated(seq: number) {
   } catch { return }
   exporting.value = '批注版'
   try {
-    const { total, unanchored } = await reportApi.annotated(runId, seq)
-    if (task.value?.id !== taskId || run.value?.id !== runId) return
+    const { saveResult, total, unanchored } = await reportApi.annotated(runId, seq)
+    if (saveResult === 'cancelled' || task.value?.id !== taskId || run.value?.id !== runId) return
     annotationNotice.value = unanchored > 0 ? `共 ${total} 条批注，其中 ${unanchored} 条未能精确定位，已挂在所在段落开头。` : ''
     if (!unanchored) ElMessage.success(`已生成批注版，共 ${total} 条批注`)
     savedTick.value++
@@ -228,8 +233,8 @@ async function exportRevised(seq: number) {
   } catch { return }
   exporting.value = '修订版'
   try {
-    const { revised, commented } = await reportApi.revised(runId, seq)
-    if (task.value?.id !== taskId || run.value?.id !== runId) return
+    const { saveResult, revised, commented } = await reportApi.revised(runId, seq)
+    if (saveResult === 'cancelled' || task.value?.id !== taskId || run.value?.id !== runId) return
     annotationNotice.value = commented > 0 ? `共 ${revised} 处修订；另有 ${commented} 条已采纳的问题未能写成修订，已作为批注附上，请人工修改。` : ''
     if (!commented) ElMessage.success(`已生成修订版，共 ${revised} 处修订`)
     savedTick.value++

@@ -1,8 +1,7 @@
 import { saveBlob } from '@/utils/save'
 import { http } from './http'
 
-/** 下载并保存报告；返回 true 表示已写入工作文件夹（已提示，调用方不必再提示“已下载”）。 */
-async function download(path: string): Promise<boolean> {
+async function download(path: string) {
   const { blob, filename } = await http.getDownload(path)
   return saveBlob(blob, filename)
 }
@@ -15,18 +14,20 @@ function countHeader(headers: Headers, name: string): number {
 export const reportApi = {
   run: (runId: string) => download(`/runs/${runId}/report`),
   local: (taskId: string) => download(`/tasks/${taskId}/report`),
-  async revised(runId: string, fileSeq: number): Promise<{ revised: number; commented: number }> {
+  async revised(runId: string, fileSeq: number) {
     const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/revised?file_seq=${fileSeq}`)
-    await saveBlob(blob, filename)
+    const saveResult = await saveBlob(blob, filename)
     return {
+      saveResult,
       revised: countHeader(headers, 'X-SI-Revised'),
       commented: countHeader(headers, 'X-SI-Commented'),
     }
   },
-  async annotated(runId: string, fileSeq: number): Promise<{ total: number; unanchored: number }> {
+  async annotated(runId: string, fileSeq: number) {
     const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/annotated?file_seq=${fileSeq}`)
-    await saveBlob(blob, filename)
+    const saveResult = await saveBlob(blob, filename)
     return {
+      saveResult,
       total: countHeader(headers, 'X-SI-Total'),
       unanchored: countHeader(headers, 'X-SI-Unanchored'),
     }
