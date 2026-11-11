@@ -11,6 +11,8 @@ import statistics
 import time
 from pathlib import Path
 
+INITIAL_BYTES = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+
 import numpy as np
 import yaml
 from docx import Document
@@ -195,7 +197,6 @@ def main():
         parser.error("--repeats 须为正数")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     os.environ["NER_THREADS"] = str(args.threads)
-    initial_bytes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     ner.check(load=True)
     model = ner._get_model()
     report = {
@@ -216,8 +217,9 @@ def main():
         print(json.dumps({name: {key: value for key, value in metrics.items()
                                  if key not in ("words", "spans")}}), flush=True)
     peak_bytes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
-    report.update(peak_bytes=peak_bytes, increase_bytes=peak_bytes - initial_bytes,
-                  memory_passed=peak_bytes - initial_bytes <= 2_500_000_000)
+    report.update(initial_bytes=INITIAL_BYTES, peak_bytes=peak_bytes,
+                  increase_bytes=peak_bytes - INITIAL_BYTES,
+                  memory_passed=peak_bytes - INITIAL_BYTES <= 2_500_000_000)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     passed = report["memory_passed"] and all(sample["parity"]["passed"] for sample in report["samples"].values())
     return 0 if passed else 1
