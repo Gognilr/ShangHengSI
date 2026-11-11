@@ -5,8 +5,8 @@ import { ElMessage } from 'element-plus'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ArrowUp, Check, FileAudio, FileText, Loader2, Paperclip, Square, X } from '@lucide/vue'
 import { pastedFiles } from '@/composables/usePasteFiles'
-import { assistantApi, type Session, type SessionFile, type Template, type MessageInput } from '@/api/assistant'
-import type { ChatPreview, ChatDecision } from '@/api/chat'
+import { assistantApi, type AssistantPreview, type Session, type SessionFile, type Template, type MessageInput } from '@/api/assistant'
+import type { ChatDecision } from '@/api/chat'
 import type { UserCategory } from '@/api/redaction'
 import { ApiError } from '@/api/http'
 import { ASSISTANT_TEMPLATE, USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
@@ -100,7 +100,7 @@ const limits = computed(() => props.template ? TEMPLATE_LIMITS[props.template] :
 const text = ref(''), useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
 const resume = ref(false)
 watch(() => props.session?.kb_enabled, value => { useKb.value = !!value }, { immediate: true })
-const preview = ref<ChatPreview | null>(null)
+const preview = ref<AssistantPreview | null>(null)
 const decisions = ref<{ decision: '' | 'replace' | 'keep'; category: UserCategory | '' }[]>([])
 const confirmed = computed(() => decisions.value.every(d => d.decision === 'keep' || (d.decision === 'replace' && d.category)))
 const processing = computed(() => !!props.session && (props.session.status === 'parsing' || props.session.status === 'awaiting_confirm'))
@@ -236,6 +236,7 @@ defineExpose({ pick, attach })
       <div v-for="(suspect, index) in preview?.suspects" :key="index" class="suspect">
         <p>{{ suspect.text }}</p><el-radio-group v-model="decisions[index]!.decision"><el-radio value="replace">替换</el-radio><el-radio value="keep">不替换</el-radio></el-radio-group>
         <el-select v-if="decisions[index]!.decision === 'replace'" v-model="decisions[index]!.category" aria-label="替换类别"><el-option v-for="option in toOptions(USER_CATEGORY_OPTIONS)" :key="option.value" :value="option.value" :label="option.label" /></el-select>
+        <p v-if="suspect.in_files && decisions[index]!.decision === 'replace'" class="hint">文件中的同一文字也会替换</p>
       </div>
       <el-alert v-if="error" :title="error" type="error" :closable="false" />
       <template #footer><el-button :disabled="sending" @click="open = false">取消</el-button><el-button type="primary" :disabled="!confirmed" :loading="sending" @click="send">确认发送</el-button></template>

@@ -25,6 +25,14 @@ def system_prompt() -> str:
     return _PATH.read_text(encoding="utf-8").strip()
 
 
+def fixed_prompt_text() -> str:
+    from app.assistant.templates import RESOURCE
+    return "\n".join((system_prompt(), RESOURCE.read_text(encoding="utf-8"), *_TYPES.values(), *_LABELS.values(),
+                      "【文件：资料，录音逐字稿，录音时长】【翻译分段】【公司知识库片段】【我的历史合同条款】",
+                      "【模板参数】目标语言：侧重点：语气：回复语言：【代号说明】【本地校验摘要】",
+                      "我方 敏感信息 <document></document>"))
+
+
 def selected_files(db: Session, task: Task, params: dict) -> list[TaskFile]:
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.confirmed_at.is_not(None))
                             .order_by(TaskFile.seq)))

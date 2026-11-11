@@ -188,6 +188,8 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     _writable(db, task)
     if task.status != "awaiting_confirm":
         raise AppError(409, "SESSION_BUSY", "当前会话状态不能确认脱敏")
+    db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
+    _cover_session_values(db, task, user, ip=ip)
     engine.ensure_default_replacements(db, task)
     count =db.scalar(select(func.count()).select_from(Party).where(Party.task_id == task.id, Party.is_our_party.is_(True))) or 0
     if count > 1:
@@ -271,7 +273,18 @@ def preview(db: Session, task: Task, body) -> dict:
         return {'redacted': text, 'changed': False, 'suspects': []}
     selected_files(db, task, params)
     result = _question(db, task, text)
+    uncovered = engine.uncovered_session_values(db, task, [item["text"] for item in result.suspects])
+    for item in result.suspects:
+        item["in_files"] = item["text"] in uncovered
     return {"redacted": result.text, "changed": result.changed, "suspects": result.suspects}
+
+
+def _cover_session_values(db: Session, task: Task, user: User,
+                          extra: tuple[engine.UserTerm, ...] = (), *, ip: str | None = None) -> None:
+    count = engine.cover_session_values(db, task, extra)
+    if count:
+        audit.record(db, "assistant_session_terms", user_id=user.id, target_type="task",
+                     target_id=str(task.id), detail={"count": count}, ip=ip)
 
 
 def _require_send(db: Session, task: Task, model_id: int):
@@ -316,9 +329,14 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     text, params = _validate_input(db, task, body)
     _preflight(db, task, body.template, params, model.id)
     db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
+    # 先按当前对照表验证疑似项区间；重算文件前固定消息已分配的代号。
     result = _question(db, task, text, decisions=[d.model_dump() for d in body.decisions])
+    chosen = {(d.start, d.end): d.category for d in body.decisions if d.decision == "replace"}
+    extra = tuple(engine.UserTerm(s["text"], chosen[s["start"], s["end"]]) for s in result.suspects
+                  if (s["start"], s["end"]) in chosen)
     if result.new_entries:
         engine.write_full_map(db, task.id, {**engine._load_full_map(db, task.id), **result.new_entries})
+    _cover_session_values(db, task, user, extra)
     params = {**params, "file_ids": [str(f.id) for f in selected_files(db, task, params)]}
     params.update(use_kb=body.use_kb, use_history=body.use_history)
     row = AssistantMessage(task_id=task.id, role="user", content_redacted=result.text, status="done",

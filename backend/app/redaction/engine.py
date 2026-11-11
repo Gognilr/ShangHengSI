@@ -43,7 +43,7 @@ from app.redaction import dates, detect, ner, outbound, parties as P, quotes, ra
 from app.redaction.dictionaries import _country_index
 from app.redaction.memo import by_text
 from app.redaction.placeholders import (
-    ADDR, BUYER, FIXED, OTHER, SELLER, Allocator, NeutralAllocator, chat_number, code_role,
+    ADDR, BUYER, FIXED, NEUTRAL_CATEGORIES, OTHER, SELLER, Allocator, NeutralAllocator, chat_number, code_role,
 )
 from app.redaction.recheck import recheck
 from app.security import crypto
@@ -577,7 +577,7 @@ def compute(
         ent.from_term = True
         ent.term_our = ent.term_our or t.is_our_party
     for u in user_terms:
-        if u.category == 'AMOUNT':
+        if u.category == 'AMOUNT' and style != 'neutral':
             _manual_amount(u.text)
         ent = entity(u.text, u.category)
         ent.from_user = not ent.from_term
@@ -765,7 +765,13 @@ def compute(
                 continue
             surface = text[candidate.start:candidate.end]
             if candidate.category == 'AMOUNT':
-                manual = _manual_amount(surface)
+                try:
+                    manual = _manual_amount(surface)
+                except RedactionInputError:
+                    if style != 'neutral' or candidate.detected_by != 'user':
+                        raise
+                    # 会话对照表可能包含口语金额，沿用原代号并替换整个匹配区间。
+                    continue
                 candidate.start += manual.start
                 candidate.end = candidate.start + manual.end - manual.start
                 candidate.value = manual.value
@@ -1445,7 +1451,8 @@ def _user_terms(db: Session, task_id: uuid.UUID, texts: dict[str, str]) -> list[
     for r in rows:
         text = texts.get(r.loc, "")[r.char_start:r.char_end]
         category = "ORG" if r.category == "OUR" else r.category
-        if not text.strip() or category not in (*USER_CATEGORIES, 'NAME', 'TERM'):
+        categories = NEUTRAL_CATEGORIES.values() if r.placeholder.startswith('[[') else (*USER_CATEGORIES, 'NAME', 'TERM')
+        if not text.strip() or category not in categories:
             continue
         key = (P.normalize(text), category)
         if key not in seen:
@@ -1480,6 +1487,55 @@ def _load_full_map(db: Session, task_id: uuid.UUID) -> dict[str, str]:
     if row is None:
         return {}
     return json.loads(crypto.decrypt_text(row.map_enc))
+
+
+def uncovered_session_values(db: Session, task: Task, values: Sequence[str]) -> set[str]:
+    """只读检查会话文件中尚未替换的同一文字。"""
+    if not values:
+        return set()
+    texts = task_texts(db, task)
+    if not texts:
+        return set()
+    covered: dict[str, list[tuple[int, int]]] = {}
+    for loc, start, end in db.execute(select(RedactionItem.loc, RedactionItem.char_start, RedactionItem.char_end)
+                                     .where(RedactionItem.task_id == task.id)):
+        covered.setdefault(loc, []).append((start, end))
+    kept = {P.normalize(value) for value in load_kept_values(db, task.id, texts=texts)}
+    locs = [loc for loc in texts if loc != "NOTE"]
+    joined = _Joined([_recognition_view(texts[loc]) for loc in locs])
+    uncovered = set()
+    for value in values:
+        if not value.strip() or P.normalize(value) in kept:
+            continue
+        matches = joined.by_node(_user_pattern(_recognition_view(value)))
+        for index, spans in matches.items():
+            ranges = covered.get(locs[index], ())
+            if any(not any(start <= a and b <= end for start, end in ranges) for a, b in spans):
+                uncovered.add(value)
+                break
+    return uncovered
+
+
+def cover_session_values(db: Session, task: Task, extra: Sequence[UserTerm] = ()) -> int:
+    """调用方已持有助手任务行与对照表的锁。"""
+    from app.assistant.prompt import fixed_prompt_text
+    from app.security.errors import AppError
+
+    candidates = {value: UserTerm(value, NeutralAllocator.category(code))
+                  for code, value in _load_full_map(db, task.id).items()
+                  if value.strip() and not code.startswith('@') and not re.search(r'#D\d+$', code)}
+    candidates.update((term.text, term) for term in extra)
+    uncovered = uncovered_session_values(db, task, [term.text for term in candidates.values()])
+    terms = [term for term in candidates.values() if term.text in uncovered]
+    kept = {P.normalize(value) for value in load_kept_values(db, task.id)} if extra else set()
+    guarded = [term.text for term in (*extra, *terms) if P.normalize(term.text) not in kept]
+    if guarded and any(r.category == "MAP" for r in recheck(fixed_prompt_text(), real_values=guarded, terms=[])):
+        raise AppError(422, "TERM_IN_PROMPT", "所选文字在助手提示中也会出现，请改选“不替换”")
+    if not terms:
+        return 0
+    existing = _existing_parties(db, task)
+    _run(db, task, _current_overrides(existing), existing, terms)
+    return len(terms)
 
 
 def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut], texts: dict[str, str]) -> None:
@@ -2140,12 +2196,13 @@ def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
             or any(same(value, surface) or _value_positions(surface, value) for surface in active)]
 
 
-def load_kept_values(db: Session, task_id: uuid.UUID) -> list[str]:
+def load_kept_values(db: Session, task_id: uuid.UUID, *, texts: dict[str, str] | None = None) -> list[str]:
     """V31Q-51：本任务用户明确保留的不确定项与撤销的自动替换原文，出口重扫不再拦截同一段文字。"""
     task = db.get(Task, task_id)
     if task is None:
         return []
-    texts = task_texts(db, task)
+    if texts is None:
+        texts = task_texts(db, task)
     kept = [texts.get(r.loc, '')[r.char_start:r.char_end].strip() for r in db.scalars(
         select(RedactionSuspect).where(RedactionSuspect.task_id == task_id, RedactionSuspect.decision == 'ignore'))]
     kept += [crypto.decrypt_text(e.text_enc) for e in db.scalars(

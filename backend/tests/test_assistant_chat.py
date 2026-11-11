@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.admin.settings_store import set_setting
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, AuditLog, DocNode, Job, LlmCall, RedactionSuspect, Task, TaskFile
+from app.db.models import AssistantMessage, AuditLog, DocNode, Job, LlmCall, RedactionItem, RedactionSuspect, Task, TaskFile
 from app.llm import gateway
 from app.main import API_PREFIX
 from app.redaction import engine, ner
@@ -39,7 +39,13 @@ def conversation(env, make_user, login, db_sessionmaker, monkeypatch):
         db.add(DocNode(task_id=task.id, file_id=f.id, loc="F1-P1", ord=1, kind="paragraph", part="body",
                        text_enc=crypto.encrypt_text(REAL + "；电话：13800138001；金额：100000"),
                        redacted_text="[[ORG_1]]；电话：[[TEL_1]]；金额：[[AMT_1]]"))
-        engine.write_full_map(db, task.id, {"[[ORG_1]]": REAL, "[[TEL_1]]": "13800138001", "[[AMT_1]]": "100000"})
+        mapping = {"[[ORG_1]]": REAL, "[[TEL_1]]": "13800138001", "[[AMT_1]]": "100000"}
+        original = REAL + "；电话：13800138001；金额：100000"
+        for (code, word), category in zip(mapping.items(), ("ORG", "PHONE", "AMOUNT")):
+            start = original.index(word)
+            db.add(RedactionItem(task_id=task.id, loc="F1-P1", char_start=start,
+                                 char_end=start + len(word), category=category, placeholder=code, detected_by="regex"))
+        engine.write_full_map(db, task.id, mapping)
         db.commit()
     return c, h, tid, user
 
@@ -65,6 +71,78 @@ def run(sm, tid):
     with sm() as db:
         job = db.scalar(select(Job).where(Job.type == "assist", Job.payload["task_id"].astext == tid).order_by(Job.id.desc()))
         handle_assist(db, job.payload)
+
+
+@pytest.mark.parametrize("case", ["replace", "legacy", "confirm"])
+def test_session_terms_cover_files(conversation, db_sessionmaker, monkeypatch, case):
+    c, h, tid, _ = conversation
+    name, code = ("青弧蓝榆" if case == "confirm" else "星海公司"), "[[ORG_2]]"
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        file = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id))
+        db.add(DocNode(task_id=task.id, file_id=file.id, loc="F1-P2", ord=2, kind="paragraph", part="body",
+                       text_enc=crypto.encrypt_text(name), redacted_text=name))
+        old = {**engine._load_full_map(db, task.id), "[[PER_8]]": "虚构王经理"}
+        if case != "replace":
+            old[code] = name
+            db.add(AssistantMessage(task_id=task.id, role="assistant", status="done",
+                                    content_redacted=f"{code}由[[PER_8]]负责"))
+        engine.write_full_map(db, task.id, old)
+        if case == "confirm":
+            file.confirmed_at = None
+            task.status = "awaiting_confirm"
+        db.commit()
+    requests = install(monkeypatch, (f"{code}由[[PER_8]]负责",))
+    if case == "replace":
+        message = name + "负责什么？"
+        preview = c.post(f"{BASE}/{tid}/preview", headers=h, json={"message": message}).json()
+        suspect, = preview["suspects"]
+        assert suspect["text"] == name and suspect["in_files"] is True
+        response = send(conversation, message, decisions=[dict(start=suspect["start"], end=suspect["end"],
+                                                               decision="replace", category="ORG")])
+    else:
+        if case == "confirm":
+            response = c.post(f"{BASE}/{tid}/confirm", headers=h)
+            assert response.status_code == 200, response.text
+        response = send(conversation)
+    assert response.status_code == 201, response.text
+    run(db_sessionmaker, tid)
+    outbound = json.loads(requests[0].content)["messages"]
+    assert code in outbound[1]["content"] and name not in str(outbound)
+    if case == "replace":
+        assert outbound[-1]["content"] == code + "负责什么？"
+        assert send(conversation).status_code == 201
+    mid = response.json()["assistant"]["id"]
+    assert c.get(f"{BASE}/{tid}/messages/{mid}").json()["text_from_offset"] == f"{name}由虚构王经理负责"
+    with db_sessionmaker() as db:
+        task_id = uuid.UUID(tid)
+        mapping = engine._load_full_map(db, task_id)
+        assert mapping[code] == name and all(mapping[k] == value for k, value in old.items())
+        assert db.scalar(select(RedactionItem).where(RedactionItem.task_id == task_id,
+                                                    RedactionItem.loc == "F1-P2")).detected_by == "user"
+        log = db.scalar(select(AuditLog).where(AuditLog.action == "assistant_session_terms"))
+        assert log.detail == {"count": 1}
+
+
+def test_session_terms_respect_keep_and_fixed_prompt(conversation, db_sessionmaker, monkeypatch):
+    from app.security.errors import AppError
+    _, _, tid, _ = conversation
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        file = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id))
+        word = "商务助手"
+        db.add(DocNode(task_id=task.id, file_id=file.id, loc="F1-P2", ord=2, kind="paragraph", part="body",
+                       text_enc=crypto.encrypt_text(word), redacted_text=word))
+        db.flush()
+        assert engine.cover_session_values(db, task) == 0
+        with pytest.raises(AppError) as error:
+            engine.cover_session_values(db, task, [engine.UserTerm(word, "CUSTOM")])
+        assert (error.value.status, error.value.code) == (422, "TERM_IN_PROMPT")
+        db.add(RedactionSuspect(task_id=task.id, loc="F1-P2", char_start=0, char_end=len(word),
+                                reason="ner", decision="ignore"))
+        db.flush()
+        monkeypatch.setattr(engine, "_run", lambda *a, **kw: pytest.fail("明确保留的文字不能触发重算"))
+        assert engine.cover_session_values(db, task, [engine.UserTerm(word, "CUSTOM")]) == 0
 
 
 def test_u5_chat_during_new_file_parse(conversation, db_sessionmaker, monkeypatch):

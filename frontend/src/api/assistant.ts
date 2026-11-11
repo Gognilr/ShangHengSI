@@ -2,6 +2,10 @@ import { http } from './http'
 import type { TaskDetail, TaskFile, Source, Stance } from './tasks'
 import type { PreviewNodes } from './preview'
 import type { Calc, ChatDecision, ChatPreview } from './chat'
+
+export type AssistantPreview = Omit<ChatPreview, 'suspects'> & {
+  suspects: (ChatPreview['suspects'][number] & { in_files: boolean })[]
+}
 import type { Mark } from './runs'
 import type { LocalFinding } from './localFindings'
 
@@ -77,7 +81,7 @@ export const assistantApi = {
   nodes: (id: string, fid: string) => http.get<PreviewNodes>(`${base}/${id}/files/${fid}/nodes`),
   confirm: (id: string) => http.post<Session>(`${base}/${id}/confirm`),
   outbound: (id: string) => http.get<{ text: string; note: string | null }>(`${base}/${id}/outbound`),
-  preview: (id: string, body: MessageInput) => http.post<ChatPreview>(`${base}/${id}/preview`, body),
+  preview: (id: string, body: MessageInput) => http.post<AssistantPreview>(`${base}/${id}/preview`, body),
   send: (id: string, body: MessageInput) => http.post<{ user: Message; assistant: Message }>(`${base}/${id}/messages`, body),
   messages: (id: string, after_id = 0) => http.get<{ items: Message[] }>(`${base}/${id}/messages`, { after_id }),
   delta: (id: string, mid: number, offset: number) => http.get<{ status: string; text_from_offset: string; offset: number; error: string | null; compare?: Comparison }>(`${base}/${id}/messages/${mid}`, { offset }),

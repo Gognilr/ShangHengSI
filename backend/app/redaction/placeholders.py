@@ -132,6 +132,7 @@ _NEUTRAL_LABELS = {
     "EMAIL": "EMAIL", "URL": "URL", "POSTCODE": "ZIP", "ACCOUNT": "ACCT", "SWIFT": "SWIFT",
     "AMOUNT": "AMT", "PRICE": "PRICE", "QTY": "QTY", "CUSTOM": "TERM", "IM": "IM", "IDNO": "ID", "ADDR": "ADDR",
 }
+NEUTRAL_CATEGORIES = {label: category for category, label in _NEUTRAL_LABELS.items()}
 
 
 class NeutralAllocator:
@@ -148,15 +149,23 @@ class NeutralAllocator:
         return normalize(key)
 
     def seed(self, pinned: dict[str, str]) -> None:
-        categories = {label: category for category, label in _NEUTRAL_LABELS.items()}
         for entry, value in pinned.items():
             code = entry.split("#", 1)[0]
             match = re.fullmatch(r"\[\[([A-Z]+)_(\d+)\]\]", code)
-            if not match or match[1] not in categories:
+            if not match or match[1] not in NEUTRAL_CATEGORIES:
                 continue
-            category, number = categories[match[1]], int(match[2])
+            category, number = NEUTRAL_CATEGORIES[match[1]], int(match[2])
             self._counters[category] = max(self._counters.get(category, 0), number)
             self._codes.setdefault((category, self._normalize(value)), code)
+
+    @staticmethod
+    def category(entry: str) -> str:
+        code = entry.split("#", 1)[0]
+        if code == "[[OUR]]":
+            return "ORG"
+        if NEUTRAL.fullmatch(code):
+            return NEUTRAL_CATEGORIES.get(code[2:-2].rsplit("_", 1)[0], "CUSTOM")
+        return "CUSTOM"
 
     def numbered(self, category: str, key: str) -> str:
         identity = (category, self._normalize(key))
