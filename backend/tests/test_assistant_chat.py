@@ -118,6 +118,7 @@ def test_session_terms_cover_files(conversation, db_sessionmaker, monkeypatch, c
         task_id = uuid.UUID(tid)
         mapping = engine._load_full_map(db, task_id)
         assert mapping[code] == name and all(mapping[k] == value for k, value in old.items())
+        assert db.scalar(select(DocNode.redacted_text).where(DocNode.task_id == task_id, DocNode.loc == "F1-P2")) == code
         assert db.scalar(select(RedactionItem).where(RedactionItem.task_id == task_id,
                                                     RedactionItem.loc == "F1-P2")).detected_by == "user"
         log = db.scalar(select(AuditLog).where(AuditLog.action == "assistant_session_terms"))
