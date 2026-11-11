@@ -15,7 +15,10 @@ const gradientId = `si-logo-${useId()}`
         <rect x="2" y="28" width="3.5" height="3.5" rx=".8" fill="var(--si-cyan)" opacity=".6" />
         <path d="M34 26.5 l1.6 4 4 1.5 -4 1.5 -1.6 4 -1.6 -4 -4 -1.5 4 -1.5 z" fill="var(--si-white)" />
       </svg>
-      <span v-if="!markOnly" class="wordmark">商衡<b>SI</b></span>
+      <span v-if="!markOnly" class="wordmark">
+        <span class="wordmark-name">商衡</span>
+        <span v-if="size === 'hero'" class="wordmark-english" lang="en">Secure Intelligence</span>
+      </span>
     </span>
     <span v-if="showTagline && !markOnly" class="tagline">企业安全脱敏与智能审查平台</span>
   </span>
@@ -24,15 +27,16 @@ const gradientId = `si-logo-${useId()}`
 <style scoped>
 .si-logo { --si-logo-start: var(--si-brand-navy); display: inline-flex; align-items: center; gap: 12px; white-space: nowrap; }
 .mark { display: inline-flex; align-items: center; gap: 8px; }
-svg { width: 28px; height: 28px; flex: none; }
+svg { width: 24px; height: 24px; flex: none; }
 /* 夜幕外壳下深海蓝不可见，图形起点改用主色 */
 :global(html[data-shell="night"]) .si-logo { --si-logo-start: var(--si-blue); }
-.wordmark { color: var(--si-ink-1); font-size: 20px; font-weight: 700; letter-spacing: .5px; }
-.wordmark b { background: linear-gradient(135deg, var(--si-logo-start) 0%, var(--si-blue) 55%, var(--si-cyan) 100%); background-clip: text; -webkit-background-clip: text; color: transparent; }
+.wordmark { display: flex; flex-direction: column; gap: 4px; }
+.wordmark-name { color: var(--si-ink-1); font-size: 18px; font-weight: 600; line-height: 1.2; letter-spacing: 1.5px; }
+.wordmark-english { color: var(--si-blue-ink); font-size: 16px; font-weight: 500; line-height: 1.25; }
 .tagline { border-left: 1px solid var(--si-hair); padding-left: 12px; color: var(--si-ink-3); font-size: 13px; }
 .si-logo--hero { flex-direction: column; align-items: flex-start; }
 .si-logo--hero svg { width: 76px; height: 76px; }
-.si-logo--hero .wordmark { font-size: 48px; }
+.si-logo--hero .wordmark-name { font-size: 48px; letter-spacing: 3px; }
 .si-logo--hero .tagline { border: 0; padding: 0; font-size: 16px; letter-spacing: 3px; }
 @media (max-width: 1439px) { .si-logo--nav .tagline { display: none; } }
 </style>
