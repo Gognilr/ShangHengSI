@@ -50,6 +50,40 @@ def conversation(env, make_user, login, db_sessionmaker, monkeypatch):
     return c, h, tid, user
 
 
+def test_keep_and_revoke_preserve_history(conversation, db_sessionmaker):
+    _, _, tid, user = conversation
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        node = db.scalar(select(DocNode).where(DocNode.task_id == task.id))
+        word = '青弧蓝榆'
+        node.text_enc = crypto.encrypt_text(word)
+        db.query(RedactionItem).filter(RedactionItem.task_id == task.id).delete()
+        engine.write_full_map(db, task.id, {'[[CUSTOM_1]]': word})
+        suspect = RedactionSuspect(task_id=task.id, loc=node.loc, char_start=0, char_end=len(word),
+                                    reason='capitalized', decision='ignore', decided_by=user.id)
+        db.add(suspect)
+        db.flush()
+        engine._run(db, task, None, {})
+        assert engine.task_texts(db, task)[node.loc] == word
+        db.refresh(node)
+        assert node.redacted_text == word
+        assert word not in engine.load_real_values(db, task.id)
+        assert engine._load_full_map(db, task.id)['[[CUSTOM_1]]'] == word
+        # 再设为敏感词时恢复替换；随后撤销，历史代号仍可还原。
+        engine.add_user_term(db, task, loc=node.loc, char_start=0, char_end=len(word), category='CUSTOM')
+        assert word in engine.load_real_values(db, task.id)
+        engine.revoke_redaction(db, task, loc=node.loc, char_start=0, char_end=len(word), user_id=user.id)
+        db.refresh(node)
+        assert node.redacted_text == word
+        assert word not in engine.load_real_values(db, task.id)
+        assert engine.cover_session_values(db, task) == 0
+        assert engine._load_full_map(db, task.id)['[[CUSTOM_1]]'] == word
+        engine.add_user_term(db, task, loc=node.loc, char_start=0, char_end=len(word), category='CUSTOM')
+        db.refresh(node)
+        assert word not in node.redacted_text
+        assert word in engine.load_real_values(db, task.id)
+
+
 def install(monkeypatch, chunks=("你好 [[OR", "G_1]]"), error=None):
     requests = []
 

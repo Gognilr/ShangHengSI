@@ -311,8 +311,12 @@ def _closure_spans(nodes, result, spans, occupied, *, terms, kept) -> list[_Span
     codes = [k for k in result.mapping if '#' not in k and not k.startswith('@')]
     # 全文预筛：脱敏后全文中不可能出现的真实值 / 词条不再逐段比对（长文档逐段 × 全部值，V31-U5F-03 测试机实测）
     texts = [result.redacted.get(n.loc) or '' for n in nodes]
+    # 历史代号继续用于还原；明确保留且当前已无替换引用的值不再补替换。
+    active = [nodes[s.node].text[s.start:s.end] for s in spans]
+    values = _current_real_values(
+        [v for k, v in result.mapping.items() if not k.startswith('@')], kept, active)
     check = SegmentChecker(
-        real_values=present_values((v for k, v in result.mapping.items() if not k.startswith('@')), texts),
+        real_values=present_values(values, texts),
         terms=present_values(terms, texts), placeholders=codes, kept=kept)
     items: dict[str, list] = {}
     for item in result.items:
@@ -1878,10 +1882,10 @@ def revoke_redaction(db: Session, task: Task, *, loc: str, char_start: int, char
     if not surface:
         raise RedactionInputError(422, "NOT_REVOCABLE", "该替换项不能撤销")
     category = item.category
-    if item.detected_by == "person":
+    if item.detected_by == "person" or task.kind == "assistant":
         db.add(RedactionExclusion(task_id=task.id, loc=loc, text_enc=crypto.encrypt_text(surface),
                                  category=category, created_by=user_id))
-    else:
+    if item.detected_by == "user":
         # 用户词条全文生效，同词同类的全部来源一并移除，防止重算从其他位置重新取回。
         for row in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id,
                               RedactionItem.detected_by == "user", RedactionItem.category == category)):
@@ -2153,7 +2157,7 @@ def load_date_pairs(db: Session, task_id: uuid.UUID) -> dict[str, str] | None:
 def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
     """V31Q-18：复检当前出口；明确保留且不再被当前替换引用的历史值只供还原。"""
     from app.redaction import keep_terms
-    from app.redaction.recheck import _AMOUNT_VALUE, _NUMERIC_VALUE, _decimal, _digits, _text_pattern, _value_positions
+    from app.redaction.recheck import _value_positions
     full_map = _load_full_map(db, task_id)
     values = list(dict.fromkeys(v for k, v in full_map.items() if not k.startswith('@')))
     task = db.get(Task, task_id)
@@ -2169,7 +2173,7 @@ def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
     if question_only:
         values = [v for v in values if v not in question_only]
     memory = keep_terms.effective(db, task.owner_id)  # 每次调用现查本人当前生效的记忆，不缓存豁免。
-    kept = []
+    kept = load_kept_values(db, task_id, texts=texts)
     for row in db.scalars(select(RedactionSuspect).where(RedactionSuspect.task_id == task_id)):
         word = texts.get(row.loc, '')[row.char_start:row.char_end].strip()
         if word and (row.decision == 'ignore' or row.decision == 'pending' and P.normalize(word) in memory):
@@ -2181,6 +2185,13 @@ def load_real_values(db: Session, task_id: uuid.UUID) -> list[str]:
     if task.kind == 'assistant':
         from app.assistant.meeting import names
         active += names(db, task)
+
+    return _current_real_values(values, kept, active)
+
+
+def _current_real_values(values, kept, active):
+    """只排除明确保留且未被当前替换引用的历史值；当前敏感值仍按原规则检查。"""
+    from app.redaction.recheck import _AMOUNT_VALUE, _NUMERIC_VALUE, _decimal, _digits, _text_pattern, _value_positions
 
     def same(value, word):
         # 复用复检的数字与文字比较；fullmatch / 数字整串相等，不把包含关系当作相等。

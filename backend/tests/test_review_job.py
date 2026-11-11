@@ -289,7 +289,8 @@ def test_bad_output_twice_fails_and_counts_tokens(db_sessionmaker, owner, ready_
     run_job(db_sessionmaker, run.id)
     assert len(requests) == 2  # 重试 1 次
     r = get_run(db_sessionmaker, run.id)
-    assert (r.status, r.error_message) == ("failed", job.MSG_BAD_OUTPUT)
+    assert r.status == "failed" and r.error_message.startswith(job.MSG_BAD_OUTPUT)
+    assert '已自动纠正重试 1 次' in r.error_message
     assert r.receipt['calls'] == r.receipt['rechecks'] == 2
     assert r.receipt['blocked'] == 0 and r.receipt['sent_at']
     assert r.tokens_in > 0 and r.tokens_out > 0
@@ -555,7 +556,7 @@ def test_bad_output_chunk_counts_tokens(db_sessionmaker, owner, ready_task, llm)
     run = new_run(db_sessionmaker, task, owner)
     run_job(db_sessionmaker, run.id)
     r = get_run(db_sessionmaker, run.id)
-    assert r.status == "partial" and r.failed_chunks[0]["reason"] == job.MSG_BAD_OUTPUT
+    assert r.status == "partial" and r.failed_chunks[0]["reason"].startswith(job.MSG_BAD_OUTPUT)
     calls = llm_calls(db_sessionmaker)
     assert r.tokens_in == sum(c.tokens_in for c in calls) and r.tokens_out == sum(c.tokens_out for c in calls)
 

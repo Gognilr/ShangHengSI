@@ -314,7 +314,9 @@ def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, Rev
                     return None
                 outcome = ChunkOutcome(chunk, None, str(exc))
             except OutputError as exc:
-                outcome = ChunkOutcome(chunk, None, MSG_BAD_OUTPUT, exc.tokens_in, exc.tokens_out)
+                # 只展示固定分类，不展示模型文字或可能含有输入值的校验异常。
+                message = f"{MSG_BAD_OUTPUT}（已自动纠正重试 1 次；{exc.public_reason}）"
+                outcome = ChunkOutcome(chunk, None, message, exc.tokens_in, exc.tokens_out)
             finally:
                 _update_receipt(s, run_id)
             with lock:

@@ -54,6 +54,10 @@ class OutputError(Exception):
     tokens_out: int = 0
     llm_call_ids: list[int] = []
 
+    def __init__(self, message: str, *, public_reason: str = "输出未通过校验"):
+        super().__init__(message)
+        self.public_reason = public_reason
+
 
 @dataclass
 class DocNodeView:
@@ -233,17 +237,21 @@ def strip_fence(raw: str) -> str:
 
 
 def parse_output(raw: str) -> ModelOutput:
+    if not raw or not raw.strip():
+        raise OutputError("模型未返回正文", public_reason="模型未返回正文，请检查思考模式及输出长度设置")
     try:
         data = json.loads(strip_fence(raw))
     except json.JSONDecodeError as exc:
-        raise OutputError(f"输出不是合法的 JSON（第 {exc.lineno} 行第 {exc.colno} 列）") from None
+        raise OutputError(f"输出不是合法的 JSON（第 {exc.lineno} 行第 {exc.colno} 列）",
+                          public_reason="返回内容不是完整、合法的 JSON") from None
     if not isinstance(data, dict):
-        raise OutputError("输出必须是一个 JSON 对象")
+        raise OutputError("输出必须是一个 JSON 对象", public_reason="返回内容不是要求的 JSON 对象")
     try:
         return ModelOutput.model_validate(data)
     except ValidationError as exc:
         problems = "；".join(f"{'.'.join(str(p) for p in e['loc'])}：{e['msg']}" for e in exc.errors()[:10])
-        raise OutputError(f"输出不符合规定结构：{problems}") from None
+        raise OutputError(f"输出不符合规定结构：{problems}",
+                          public_reason="返回内容缺少必填字段或字段类型不符合要求") from None
 
 
 def _similar(a: str, b: str) -> float:

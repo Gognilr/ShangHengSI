@@ -49,7 +49,7 @@ const handlingCounts = computed(() => {
 })
 const localCount = ref<number | null>(null)
 const zoneOptions = computed(() => [
-  { value: 'ai' as const, label: `AI 建议 ${props.run?.findings.length ?? 0}` },
+  { value: 'ai' as const, label: props.run?.status === 'failed' ? 'AI 建议 · 未取得' : `AI 建议 ${props.run?.findings.length ?? 0}` },
   { value: 'local' as const, label: `本地计算 ${localCount.value ?? '—'}` },
   { value: 'req' as const, label: '逐条结论' },
 ])
@@ -89,7 +89,8 @@ watch(() => props.selectedId, async (id) => {
       <div v-if="!localOnly && run" class="zone-switch"><SiSegmented v-model="zone" :options="zoneOptions" ariaLabel="问题分区" /></div>
 
       <div v-show="!localOnly && zone === 'ai'" ref="aiEl" class="zone">
-        <template v-if="run">
+        <EmptyState v-if="run?.status === 'failed'" title="未取得有效 AI 结论" description="模型审核未完成，请重新审核。本地校验结果可切换到“本地计算”查看。" />
+        <template v-else-if="run">
           <ZoneHeader kind="ai" :count="findings.length">
             <el-select v-model="category" clearable placeholder="类别" size="small" class="filter"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
           </ZoneHeader>
@@ -108,7 +109,8 @@ watch(() => props.selectedId, async (id) => {
         <LocalCheckList :loader="localLoader" :load-key="taskId" @count="localCount = $event" @select="emit('localSelect', $event)" />
       </div>
       <div v-show="!localOnly && zone === 'req'" ref="reqEl" class="zone">
-        <template v-if="run">
+        <EmptyState v-if="run?.status === 'failed'" title="未取得逐条审核结论" description="本次审核失败，请重新审核后查看。" />
+        <template v-else-if="run">
           <ZoneHeader kind="ai" :count="run.requirement_results.length" />
           <RequirementList :items="run.requirement_results" :ask-enabled="askEnabled" @ask="emit('ask', $event)" />
         </template>

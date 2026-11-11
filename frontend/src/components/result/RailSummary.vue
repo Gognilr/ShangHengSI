@@ -24,7 +24,8 @@ watch(() => props.run?.id, () => { detailsOpen.value = false })
   <section class="rail-summary" :class="{ open: detailsOpen }">
     <p v-if="localOnly" class="local">未做 AI 审核 · 仅本地校验</p>
     <template v-else-if="run">
-      <div class="line1">
+      <p v-if="run.status === 'failed'" class="local">本次审核失败，未取得有效 AI 结论</p>
+      <div v-else class="line1">
         <span class="total"><b>{{ run.findings.length }}</b>处问题</span>
         <div class="counts" aria-label="按问题等级筛选">
           <button v-for="c in counts" :key="c.value" type="button" class="count" :class="[`sev-${c.value}`, { active: severity === c.value }]" :aria-pressed="severity === c.value" @click="severity = severity === c.value ? '' : c.value"><i />{{ c.label }} {{ c.count }}</button>
@@ -37,7 +38,8 @@ watch(() => props.run?.id, () => { detailsOpen.value = false })
           <p class="hint">未联网核查，基于模型自身知识，需合规人员确认最新制裁与出口管制规定</p>
         </el-popover>
       </div>
-      <p v-if="run.coverage?.summary" class="coverage" :title="run.coverage.summary">{{ run.coverage.summary }}</p>
+      <p v-if="run.status === 'failed'" class="hint">请重新审核；本地校验结果可在“本地计算”中查看。</p>
+      <p v-else-if="run.coverage?.summary" class="coverage" :title="run.coverage.summary">{{ run.coverage.summary }}</p>
       <button v-if="aiInstructions > 0" type="button" class="ai-notice" @click="emit('aiNotice')">
         <TriangleAlert :size="14" :stroke-width="1.75" aria-hidden="true" /><span>{{ aiInstructionNotice(aiInstructions) }}</span>
       </button>

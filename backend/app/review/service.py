@@ -494,7 +494,8 @@ def _coverage(run: ReviewRun, view: _View) -> dict | None:
     # 无法判断的原因是模型输出（使用代号），与审核要求列表一样还原为真实名称后显示
     raw = {**raw, "unable": [{**item, "note": view.text(item.get("note"))} for item in raw.get("unable", [])]}
     return {
-        "summary": (f"本次按 {total} 条审核要求审核：有问题 {issue} 条，未发现问题 {ok} 条，"
+        "summary": (f"本次计划审核 {total} 条要求，审核失败，未取得有效 AI 结论" if run.status == 'failed' else
+                    f"本次按 {total} 条审核要求审核：有问题 {issue} 条，未发现问题 {ok} 条，"
                     f"不适用 {na} 条，无法判断 {unable} 条（信息已脱敏 {reasons['redacted']}、"
                     f"文件未写 {reasons['absent']}、其他 {reasons['other']}）"),
         "unable_by_reason": reasons,

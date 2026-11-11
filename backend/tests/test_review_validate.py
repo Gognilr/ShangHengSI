@@ -60,6 +60,19 @@ def reply(ctx, mode="normal") -> str:
 # ---------------------------------------------------------------- T-10、T-11、A-07
 
 
+@pytest.mark.parametrize('raw, reason', [
+    ('', '模型未返回正文，请检查思考模式及输出长度设置'),
+    ('敏感样本非JSON', '返回内容不是完整、合法的 JSON'),
+    ('[]', '返回内容不是要求的 JSON 对象'),
+    ('{"findings":[{"title":"敏感样本"}]}', '返回内容缺少必填字段或字段类型不符合要求'),
+])
+def test_output_failure_public_reason(raw, reason):
+    from app.review.validate import parse_output
+    with pytest.raises(OutputError) as error:
+        parse_output(raw)
+    assert error.value.public_reason == reason
+
+
 @pytest.mark.parametrize("mode", [m for m in MODES if m not in ("non_json", "http_500", "timeout")])
 def test_a07_one_result_per_sent_requirement(mode):
     ctx, nodes = sample("contract_basic")

@@ -140,7 +140,10 @@ function enqueue<T>(save: () => Promise<T>, done?: (r: T) => void): Promise<void
   saving.value += 1
   submitError.value = ''
   tail = tail.then(async () => {
-    try { done?.(await save()) } catch (e) { failed ??= e }
+    try {
+      const result = await save()
+      done?.(result)
+    } catch (e) { failed ??= e }
     if (saving.value === 1) await settle()
     saving.value -= 1
   })
