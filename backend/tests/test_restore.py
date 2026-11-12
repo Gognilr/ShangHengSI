@@ -112,3 +112,13 @@ def test_check_assistant_matches_finished_stream():
     assert (checked.restored, checked.fixed) == (4, 0)
     assert [(m.raw, m.kind) for m in checked.marks] == [
         ("[ORG_1]", "variant"), ("ORG_1", "variant"), ("[[ORG_9]]", "unknown")]
+
+
+def test_assistant_case_and_fullwidth_variants():
+    # V312Q-02：大小写、全角双括号变体能唯一对应就还原并标 variant，对不上标 unknown，不猜真实值
+    mapping = {"[[ORG_1]]": "虚构公司"}
+    checked = check("[[org_1]]、［［ORG_1］］、[[org_9]]", mapping)
+    assert checked.text == "虚构公司、虚构公司、[[org_9]]"
+    assert [(m.raw, m.kind) for m in checked.marks] == [
+        ("[[org_1]]", "variant"), ("［［ORG_1］］", "variant"), ("[[org_9]]", "unknown")]
+    assert all(checked.text[m.start:m.end] in ("虚构公司", "[[org_9]]") for m in checked.marks)

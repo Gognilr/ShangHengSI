@@ -81,6 +81,17 @@ _LOC = r"F\d+(?:-[A-Z]{1,2}\d+){1,4}"
 _LOCATION = re.compile(rf"(?<![A-Za-z0-9-])(?:\[{_LOC}\]|{_LOC})(?![A-Za-z0-9-])")
 _RATIO = r"[（(]\s*=合同总价的\s*\d+(?:\.\d+)?\s*%\s*[）)]"
 _SHARED = frozenset(code[1:-1] for code in FIXED.values())
+# 助手中性代号的候选写法：外层括号、全角双括号、大小写变体；还原与流式暂扣共用这一份定义。
+_NEUTRAL_VARIANT = re.compile(r"[\[［【][\[［][ \t]*(?i:OUR|[A-Z]+_\d+)[ \t]*[\]］][\]］】]")
+NEUTRAL_OPEN = re.compile(r"[\[［【][\[［]")
+NEUTRAL_CLOSE = re.compile(r"[\]］][\]］】]")
+
+
+def _neutral_form(raw: str) -> str | None:
+    """把助手代号的变体写法归一为 [[ORG_1]] 形式；不是该文法返回 None。"""
+    if not _NEUTRAL_VARIANT.fullmatch(raw):
+        return None
+    return "[[" + re.sub(r"[\s\[\]［］【】]", "", raw).upper() + "]]"
 
 
 def _identity(raw: str) -> tuple[str, str] | None:
@@ -110,7 +121,7 @@ def _candidates() -> re.Pattern:
     labels += ["(?i:" + r"[ \t]*".join(map(re.escape, name.split())) + ")" for name in _ENGLISH]
     label = "(?:" + "|".join(sorted(labels, key=len, reverse=True)) + ")"
     # 助手只接受 restore() 已支持的外层括号变体，不扩展自动修正。
-    neutral = r"[\[［【]\[(?:OUR|[A-Z]+_\d+)\][\]］】]"
+    neutral = _NEUTRAL_VARIANT.pattern
     bracket = r"[\[［【〔][^\[\]［］【】〔〕\r\n]+[\]］】〕]"
     bare = rf"(?<![{_ASCII_WORD}]){label}[ \t]*[_＿]?[ \t]*(?:[A-ZＡ-Ｚ]+|[QＱ]?[0-9０-９]+)(?![{_ASCII_WORD}])"
     # 不带括号的助手代号只认助手类别；大写 OUR、ISO_9001 等普通英文不算候选。
@@ -152,6 +163,7 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
     tokens = [(m.start(), m.end(), m.group(), 'code') for m in _candidates().finditer(text)]
     tokens = [t for t in tokens if not (t[2][0] in _LEFT and t[2][-1] in _RIGHT
               and _identity(t[2]) is None and not NEUTRAL.fullmatch(t[2]) and t[2] not in assistant
+              and not _NEUTRAL_VARIANT.fullmatch(t[2])
               and not (assistant and re.fullmatch(r'\[?(?:OUR|[A-Z]+_\d+)\]?', t[2]))
               and not _LOCATION.fullmatch(t[2]) and t[2] != '【主体说明】' and not t[2].startswith('【报价明细表：'))]
     if clause:
@@ -210,8 +222,15 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
         elif raw in assistant:
             replacement = assistant[raw]
             restored += 1
-        elif NEUTRAL.fullmatch(raw) or re.fullmatch(r"[\[［【]\[(?:OUR|[A-Z]+_\d+)\][\]］】]", raw):
-            kind = "unknown"
+        elif _neutral_form(raw):
+            # 变体写法只在对照表里能唯一对应时还原并标出；对不上的标 unknown，不猜真实值。
+            canonical = _neutral_form(raw)
+            if canonical in assistant:
+                replacement = assistant[canonical]
+                restored += 1
+                kind = "variant"
+            else:
+                kind = "unknown"
         elif (assistant and re.fullmatch(r"\[?(?:OUR|[A-Z]+_\d+)\]?", raw)
               and _identity(raw) not in lookup):
             code = "[[" + raw.strip("[]") + "]]"
@@ -245,7 +264,7 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
                     kind = "variant" if values else "unknown"
         chunks.append(replacement)
         if kind:
-            marks.append(Mark(size, size + len(raw), kind, raw))
+            marks.append(Mark(size, size + len(replacement), kind, raw))
         size += len(replacement)
         cursor = end
     chunks.append(text[cursor:])

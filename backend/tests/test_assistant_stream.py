@@ -56,3 +56,15 @@ def test_finished_reply_keeps_text_after_unclosed_brackets():
     rest, final = incremental(text, mapping, offset, finished=True)
     assert streaming + rest == "虚构企业 的写法 a[[0] 后续说明" and final == len(streaming + rest)
     assert incremental("已停止[[OR", mapping, 0, finished=True) == ("已停止[[OR", 7)
+
+
+def test_outer_bracket_variants_are_withheld_and_streaming_equals_whole():
+    # V312Q-03：外层括号变体的未闭合前缀暂扣；任意分片的流式拼接等于整段还原
+    from app.assistant.stream import incremental
+    mapping = {"[[ORG_1]]": "虚构公司"}
+    for full in ("开头［[ORG_1]】结尾", "开头［［org_1］］结尾", "开头【[ORG_1]]结尾"):
+        whole = incremental(full, mapping, 0, finished=True)[0]
+        for split in range(1, len(full)):
+            first, offset = incremental(full[:split], mapping, 0)
+            second, _ = incremental(full, mapping, offset)
+            assert first + second == whole, (full, split)
