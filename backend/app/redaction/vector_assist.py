@@ -23,23 +23,26 @@ def reference():
         return data['vectors'], data['ordinary']
 
 
-def keep_words(nodes, found, existing: set[str]) -> list[str]:
+def keep_spans(nodes, found, existing: set[str]) -> set[tuple[str, int, int]]:
+    """逐个出现位置判断：上下文取该位置前后各 40 字，结果只作用于该位置 (loc, 起, 止)。"""
     flat = '\n'.join(n.text for n in nodes)
     texts = {n.loc: n.text for n in nodes}
-    words, contexts, seen = [], [], set(existing)
+    offsets, at = {}, 0
+    for n in nodes:
+        offsets[n.loc] = at
+        at += len(n.text) + 1
+    words, contexts = [], []
     for item in found:
         word = texts[item.loc][item.char_start:item.char_end]
-        key = parties.normalize(word)
-        if key in seen:
+        if parties.normalize(word) in existing:
             continue
-        seen.add(key)
         if not (item.category == 'TERM' or item.category == 'NAME' and keep_terms.eligible(word, item.reason)):
             continue
-        start = flat.index(word)
-        words.append(word)
+        start = offsets[item.loc] + item.char_start
+        words.append((item.loc, item.char_start, item.char_end))
         contexts.append(flat[max(0, start - 40):start] + '【' + word + '】' + flat[start + len(word):start + len(word) + 40])
     if not words:
-        return []
+        return set()
     digests = [hashlib.sha256(context.encode('utf-8')).hexdigest() for context in contexts]
     missing = [i for i, digest in enumerate(digests) if digest not in _DECIDED]
     if missing:
@@ -55,4 +58,4 @@ def keep_words(nodes, found, existing: set[str]) -> list[str]:
     for digest in digests:
         if digest in _DECIDED:
             _DECIDED.move_to_end(digest)
-    return [word for word, digest in zip(words, digests) if _DECIDED.get(digest)]
+    return {span for span, digest in zip(words, digests) if _DECIDED.get(digest)}
