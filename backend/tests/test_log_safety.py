@@ -105,8 +105,8 @@ def test_logs_do_not_contain_text_names_amounts_or_key(db_sessionmaker, alice, l
     tid2 = upload_and_parse(c, h, db_sessionmaker, basic)
     original = service.build_outbound
 
-    def leaky(db, task):
-        built = original(db, task)
+    def leaky(db, task, *args, **kwargs):
+        built = original(db, task, *args, **kwargs)
         built.text += "\n[F1-P99] 星河虚构进出口有限公司 USD 400,000.00 13800138000"
         return built
 
