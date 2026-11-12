@@ -84,15 +84,20 @@ def detail(task: Task = Depends(owned_session), db: Session = Depends(get_db)):
 
 
 @router.get("/{id}/outbound")
-def outbound(response: Response, mode: Literal['assist', 'review'] = 'assist', task: Task = Depends(owned_session),
-             db: Session = Depends(get_db)):
-    """mode=review：会话发起审核时的外发正文（含【主体说明】、报价汇总，V32-A-02），供审核确认页查看。"""
+def outbound(response: Response, mode: Literal['assist', 'review'] = 'assist',
+             stance: Literal['sales', 'purchase', 'other'] | None = None,
+             file_ids: list[str] | None = Query(None, max_length=10),
+             task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    """mode=review：会话发起审核时的外发正文（含【主体说明】、报价汇总，V32-A-02），供审核确认页查看。
+    stance、file_ids 为确认页当前所选（V32-B-01 评审），使预览与实际发送一致；file_ids 只认本会话已确认的文件。"""
     from app.redaction import engine
     response.headers['Cache-Control'] = 'no-store'
     ids = None
     if mode == 'review':  # 只含已确认的文件，与发起审核时默认的文件范围一致
         ids = [str(f.id) for f in task_files(db, task) if f.confirmed_at is not None and not f.media]
-    return {'text': engine.build_outbound(db, task, mode, file_ids=ids).text, 'note': task.user_note_redacted,
+        if file_ids:
+            ids = [fid for fid in ids if fid in set(file_ids)]
+    return {'text': engine.build_outbound(db, task, mode, file_ids=ids, stance=stance).text, 'note': task.user_note_redacted,
             'material_version': task.material_version}
 
 

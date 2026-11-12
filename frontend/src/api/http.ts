@@ -43,7 +43,7 @@ interface RequestOptions {
   body?: unknown
   /** multipart 表单；浏览器自动生成 Content-Type 和分隔符，不能手动设置。 */
   form?: FormData
-  query?: Record<string, string | number | undefined>
+  query?: Record<string, string | number | string[] | undefined>
   /** 为 true 时 401 不触发全局跳转（用于登录请求和启动时探测登录状态）。 */
   silent401?: boolean
   /** 关闭标签页时仍须发出的请求（V31-U2 延迟删除），透传给 fetch。 */
@@ -55,7 +55,8 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
   if (opts.query) {
     const params = new URLSearchParams()
     for (const [k, v] of Object.entries(opts.query)) {
-      if (v !== undefined && v !== '') params.set(k, String(v))
+      if (Array.isArray(v)) v.forEach(item => params.append(k, item))  // 列表参数重复键名（FastAPI list[str]）
+      else if (v !== undefined && v !== '') params.set(k, String(v))
     }
     const qs = params.toString()
     if (qs) url += '?' + qs

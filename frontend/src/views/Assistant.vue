@@ -197,15 +197,16 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
             <el-button link size="small" aria-label="解除讨论锚点" title="解除后回到普通对话" @click="anchor = null"><X :size="14" :stroke-width="2" />解除</el-button>
           </div>
           <Transition name="rise"><Conversation v-if="!homeLike" :messages="shown" :session-id="anchor ? `${id}:${anchor.id}` : id" :hint="anchor ? '围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。' : undefined" @stop="stop" @retry="retry" /></Transition>
-          <Composer :key="id" v-model:template="template" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!messages.length && !anchor" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
         </template>
-        <ReviewPane v-else :key="id" :session="session" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @discuss="discuss" />
+        <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
+        <Composer v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!messages.length && !anchor" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
+        <ReviewPane v-if="mode === 'review'" :key="id" :session="session" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @discuss="discuss" />
       </template>
       <div v-else-if="!loading && !id" class="home">
         <div v-if="canReview" class="mode-row"><SiSegmented v-model="modeModel" :options="modeOptions" ariaLabel="工作台视图" /></div>
         <h1>{{ mode === 'review' ? '上传材料，发起全面审核' : '今天要处理什么？' }}</h1>
-        <Composer v-if="mode === 'ask'" v-model:template="template" :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
-        <div v-else class="review-home">
+        <Composer v-show="mode === 'ask'" v-model:template="template" :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
+        <div v-if="mode === 'review'" class="review-home">
           <input ref="reviewPicker" type="file" multiple hidden accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png" @change="reviewPicked">
           <button type="button" class="dropzone" :class="{ 'is-dragging': reviewDragging }" :disabled="working" @click="reviewPicker?.click()" @dragover.prevent="reviewDragging = true" @dragleave="reviewDragging = false" @drop.prevent="reviewDrop">
             <span class="upload-icon"><Upload :size="24" :stroke-width="1.75" /></span>

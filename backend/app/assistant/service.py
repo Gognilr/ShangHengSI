@@ -503,7 +503,8 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
     from app.db.models import ReviewRun
     size = tasks.PAGE_SIZE
     conds = [Task.owner_id == user.id, (Task.kind == "review") | ((Task.kind == "assistant") & (Task.purpose == "chat"))]
-    # 没有发过消息、没有文件的空会话不列（与侧栏一致）
+    # 没有发过消息、没有文件的空会话不列
+    # 日期筛选按“最近活动”，与列表显示和排序一致（V32-B-01 评审）
     conds.append((Task.kind == "review") | (Task.title != "新会话") | exists().where(TaskFile.task_id == Task.id))
     if q and q.strip():
         pattern = tasks._like_pattern(q.strip())
@@ -511,9 +512,9 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
             TaskFile.task_id == Task.id, TaskFile.original_name.ilike(pattern, escape="\\")))
     tz = tasks._tz()
     if date_from is not None:
-        conds.append(Task.created_at >= datetime.combine(date_from, time.min, tz))
+        conds.append(Task.last_activity_at >= datetime.combine(date_from, time.min, tz))
     if date_to is not None:
-        conds.append(Task.created_at < datetime.combine(date_to + timedelta(days=1), time.min, tz))
+        conds.append(Task.last_activity_at < datetime.combine(date_to + timedelta(days=1), time.min, tz))
     main_doc_type = select(TaskFile.doc_type).where(TaskFile.task_id == Task.id, TaskFile.is_main).scalar_subquery()
     total = db.scalar(select(func.count()).select_from(Task).where(*conds)) or 0
     rows = db.execute(select(Task, main_doc_type.label("doc_type")).where(*conds)

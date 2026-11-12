@@ -78,7 +78,8 @@ export const assistantApi = {
   history: (query: { page?: number; q?: string; from?: string; to?: string }) => http.get<HistoryPage>(`${base}/history`, query),
   runs: (id: string) => http.get<{ items: RunListItem[] }>(`${base}/${id}/runs`),
   createRun: (id: string, body: SessionRunInput) => http.post<RunCreated>(`${base}/${id}/runs`, body),
-  outboundReview: (id: string) => http.get<{ text: string; note: string | null; material_version: number }>(`${base}/${id}/outbound`, { mode: 'review' }),
+  outboundReview: (id: string, query: { stance?: Stance; file_ids?: string[] } = {}) =>
+    http.get<{ text: string; note: string | null; material_version: number }>(`${base}/${id}/outbound`, { mode: 'review', ...query }),
   raw: (id: string, fid: string) => http.getBlob(`${base}/${id}/files/${fid}/raw`),
   create: (purpose: Purpose = 'chat') => http.post<Session>(base, { purpose }),
   get: (id: string) => http.get<Session>(`${base}/${id}`),

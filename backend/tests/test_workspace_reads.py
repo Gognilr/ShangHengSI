@@ -21,6 +21,12 @@ def test_history_merges_sessions_and_reviews_and_redaction_reads(files_dir, env,
     assert c.get(f"{BASE}/history", params={"q": "虚构合同"}).json()["total"] == 1
     assert c.get(f"{BASE}/history", params={"q": "不存在的名字"}).json()["total"] == 0
 
+    # 确认页预览按所选立场与文件生成，与实际发送一致
+    fid = detail["files"][0]["id"]
+    sales = c.get(f"{BASE}/{tid}/outbound", params={"mode": "review", "stance": "sales", "file_ids": [fid]}).json()["text"]
+    purchase = c.get(f"{BASE}/{tid}/outbound", params={"mode": "review", "stance": "purchase"}).json()["text"]
+    assert "卖方" in sales.split("\n")[0] and "买方" in purchase.split("\n")[0]
+
     # 已确认的会话：GET /redaction 只读放行，修改类接口仍 409
     r = c.get(f"{API_PREFIX}/tasks/{tid}/redaction")
     assert r.status_code == 200 and r.json()["summary"]

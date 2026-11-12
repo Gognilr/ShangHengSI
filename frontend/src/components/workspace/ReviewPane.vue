@@ -122,14 +122,22 @@ async function loadModels() {
 const subjects = ref<string[]>([])
 const previewVersion = ref<number | null>(null)
 const previewError = ref('')
+// 按当前所选的立场与文件取预览，与实际发送一致；所选变化时重取，取到之前不能确认
+let previewSeq = 0
 async function loadPreview() {
-  previewError.value = ''
+  const current = ++previewSeq
+  previewError.value = ''; previewVersion.value = null
   try {
-    const data = await assistantApi.outboundReview(props.session.id)
+    const data = await assistantApi.outboundReview(props.session.id, { stance: stance.value, file_ids: picked.value })
+    if (current !== previewSeq) return
     previewVersion.value = data.material_version
     const line = /【主体说明】([^\n]*)/.exec(data.text)?.[1] ?? ''
     subjects.value = line && line !== '无' ? line.split('；').filter(Boolean) : []
-  } catch (e) { previewError.value = e instanceof ApiError ? e.message : '读取本轮发送内容失败，请刷新页面' }
+  } catch (e) {
+    if (current !== previewSeq) return
+    previewError.value = e instanceof ApiError && e.code === 'OUR_PARTY_REQUIRED' ? '请先在“材料”中确认哪一方是我方'
+      : e instanceof ApiError ? e.message : '读取本轮发送内容失败，请刷新页面'
+  }
 }
 
 const stage = computed<'loading' | 'running' | 'result' | 'local' | 'setup'>(() => {
@@ -139,8 +147,8 @@ const stage = computed<'loading' | 'running' | 'result' | 'local' | 'setup'>(() 
   return rounds.value.length && !composing.value ? 'result' : 'setup'
 })
 const canConfigure = computed(() => stage.value === 'setup' && ['active', 'awaiting_confirm'].includes(props.session.status))
-watch([stage, () => props.session.material_version, () => confirmedFiles.value.length], ([s]) => {
-  if (s === 'setup' && confirmedFiles.value.length) { void loadModels(); void loadPreview() }
+watch([stage, () => props.session.material_version, () => confirmedFiles.value.length, stance, () => picked.value.join(',')], ([s]) => {
+  if (s === 'setup' && picked.value.length) { void loadModels(); void loadPreview() }
 }, { immediate: true })
 
 const blocker = computed(() => {
