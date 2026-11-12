@@ -194,33 +194,68 @@ def _execute_job(db: Session, task_id, kind: str, handler) -> None:
         raise
 
 
+def _prepare_session(db: Session, user: User, path: Path, attachments, doc_type, stance, source):
+    """V32-A-03：走会话路径（中性代号）建任务、解析、确认，返回 (task, run)。"""
+    from app.assistant import service as assistant
+    from app.db.models import Task, TaskFile
+    from app.review.service import SessionRunIn, create_session_run
+    created = assistant.create(db, user, None, 'chat')
+    task = db.get(Task, created.id)
+    # 评测代用户选定立场，使解析预选我方与审核任务一致（界面上由用户在确认页选我方）
+    task.stance, task.source = stance, source
+    db.commit()
+    with ExitStack() as stack:
+        files = [(path.name, stack.enter_context(path.open("rb")))] +                 [(a.name, stack.enter_context(a.open("rb"))) for a in attachments]
+        assistant.add_files(db, task, files)
+    ids = [str(f.id) for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))]
+    _execute_job(db, task.id, "parse", lambda: parse_task(db, task.id, ids))
+    db.refresh(task)
+    if task.status != "awaiting_confirm":
+        return task, None
+    main = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(True)))
+    if doc_type is not None:
+        from app.tasks.router import FileTypePatch, patch_file_type
+        patch_file_type(FileTypePatch(doc_type=doc_type), file=main, task=task, db=db)
+    assistant.confirm(db, task, user, None)
+    run = create_session_run(db, task, user, None, SessionRunIn(stance=stance, source=source))
+    return task, run
+
+
 def evaluate_sample(db: Session, user: User, path: Path, *, stance: str, source: str,
-                    return_probe: bool = False, attachments=(), doc_type=None) -> dict:
+                    return_probe: bool = False, attachments=(), doc_type=None, session=False) -> dict:
     """每份 DOCX 独立建任务；不猜测我方，沿用解析预选与确认发送的全部检查。"""
     result = {"sample": path.name, "sha256": None,
               "status": "failed", "error": None, "detail": None}
     try:
-        with ExitStack() as stack:
-            f = stack.enter_context(path.open("rb"))
-            files = [(path.name, f)] + [(a.name, stack.enter_context(a.open('rb'))) for a in attachments]
-            uploads = check_uploads(files, 0, get_settings().max_upload_mb * 1024 * 1024)
-            result["sha256"] = hashlib.file_digest(f, "sha256").hexdigest()
-            f.seek(0)
-            task = create_task(db, user, uploads, main_index=0, stance=stance, source=source,
-                               policy="ai", user_note=None, ip=None)
-        result["task_id"] = str(task.id)
-        _execute_job(db, task.id, "parse", lambda: parse_task(db, task.id))
-        db.refresh(task)
-        if task.status != "awaiting_confirm":
-            result.update(status=task.status, error="PARSE_FAILED")
-            return result
-        if doc_type is not None:
-            # 金标明确文件类型时走已有文件类型确认，避免标题推断影响要求集。
-            from app.db.models import TaskFile
-            from app.tasks.router import FileTypePatch, patch_file_type
-            main = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(True)))
-            patch_file_type(FileTypePatch(doc_type=doc_type), file=main, task=task, db=db)
-        run = create_run(db, task, user, None)
+        if session:
+            result["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+            task, run = _prepare_session(db, user, path, attachments, doc_type, stance, source)
+            result["task_id"] = str(task.id)
+            if run is None:
+                result.update(status=task.status, error="PARSE_FAILED")
+                return result
+        else:
+            with ExitStack() as stack:
+                f = stack.enter_context(path.open("rb"))
+                files = [(path.name, f)] + [(a.name, stack.enter_context(a.open('rb'))) for a in attachments]
+                uploads = check_uploads(files, 0, get_settings().max_upload_mb * 1024 * 1024)
+                result["sha256"] = hashlib.file_digest(f, "sha256").hexdigest()
+                f.seek(0)
+                task = create_task(db, user, uploads, main_index=0, stance=stance, source=source,
+                                   policy="ai", user_note=None, ip=None)
+            result["task_id"] = str(task.id)
+            _execute_job(db, task.id, "parse", lambda: parse_task(db, task.id))
+            db.refresh(task)
+            if task.status != "awaiting_confirm":
+                result.update(status=task.status, error="PARSE_FAILED")
+                return result
+            if doc_type is not None:
+                # 金标明确文件类型时走已有文件类型确认，避免标题推断影响要求集。
+                from app.db.models import TaskFile
+                from app.tasks.router import FileTypePatch, patch_file_type
+                main = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(True)))
+                patch_file_type(FileTypePatch(doc_type=doc_type), file=main, task=task, db=db)
+            run = create_run(db, task, user, None)
         result["run_id"] = str(run.id)
         from app.review import validate
         original_validate = validate.validate_output
@@ -316,6 +351,7 @@ def main(argv=None) -> int:
     parser.add_argument('--gold', action='store_true', help='读取同名 YAML 金标，只写数字报告')
     parser.add_argument('--date-shift', action='store_true', help='本评测会话临时启用日期平移')
     parser.add_argument('--send-ratios', action='store_true', help='本评测会话临时启用财务比率')
+    parser.add_argument('--session', action='store_true', help='V32-A-03：走会话审核路径（中性代号），须与 --gold 同用')
     parser.add_argument('--repeat', type=int, default=1, help='每份样本重复次数，至少 1')
     parser.add_argument('--pair', nargs=2, type=Path, metavar=('CLEAN', 'INJECTED'), help='同名干净 / 注入样本对照')
     parser.add_argument('--pairs-only', action='store_true', help='只做 --pair 对照，不另审 samples 目录')

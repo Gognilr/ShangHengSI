@@ -127,7 +127,7 @@ def run(args, paths):
             target = (path.parent / attachment).resolve()
             if target.suffix.lower() != '.xlsx' or not target.is_file() or not target.is_relative_to(path.parent.resolve()):
                 raise ValueError('附件必须是样本目录内的 XLSX')
-    data = dict(settings=dict(date_shift=int(args.date_shift), send_ratios=int(args.send_ratios)), results=[], pairs=[])
+    data = dict(settings=dict(session=int(args.session), date_shift=int(args.date_shift), send_ratios=int(args.send_ratios)), results=[], pairs=[])
     with EvaluationSession(bind=get_engine(), expire_on_commit=False, extra_params=args.extra_params) as db, \
             probe_options(copy_rule=args.copy_rule, bracket_codes=args.bracket_codes), \
             settings_override(db, date_shift=args.date_shift, send_ratios=args.send_ratios):
@@ -138,7 +138,7 @@ def run(args, paths):
             def one(path):
                 result = evaluate_sample(db, user, path, stance=args.stance, source=args.source,
                                          attachments=[path.parent / a for a in golds[path].get('attachments', [])],
-                                         doc_type=golds[path]['doc_type'])
+                                         doc_type=golds[path]['doc_type'], session=args.session)
                 completed = result['status'] in ('completed', 'partial') and result['detail'] is not None
                 row = dict(completed=completed, failure_code=0 if completed else
                            {'PARSE_FAILED': 1, 'OUR_PARTY_REQUIRED': 2, 'OUTBOUND_BLOCKED': 3,

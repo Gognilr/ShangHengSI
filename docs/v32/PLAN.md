@@ -34,7 +34,7 @@
 | V32-A-00 | 四项缺陷修复：V312Q-01～04（按 docs/v312/PLAN.md 第一节） | Sonnet | high | V311-Z | — | 已完成（2026-11-12，报告 docs/v32/reports/V32-A-00.md） |
 | V32-A-01 | 数据与文件不变式 | Sonnet | high | A-00 | — | 已完成（2026-11-12，报告 docs/v32/reports/V32-A-01.md） |
 | V32-A-02 | 会话发起审核（后端） | Opus | high | A-01 | Opus 新会话安全复核 | 已完成（2026-11-12，报告 docs/v32/reports/V32-A-02.md），待安全复核 |
-| V32-A-03 | 中性代号审核对照评测（真实模型） | Sonnet | high | A-02 | 用户录入密钥；结果交 Opus | 待执行 |
+| V32-A-03 | 中性代号审核对照评测（真实模型） | Sonnet | high | A-02 | 用户录入密钥；结果交 Opus | 完成，达标（报告 reports/V32-A-03.md） |
 | V32-B-01 | 工作台界面与侧栏 | Sonnet | high | A-03 达标 | Opus 评审，用户看界面 | 待执行 |
 | V32-B-02 | 按问题讨论 | Sonnet | high | B-01 | — | 待执行 |
 | V32-B-03 | 讨论稿保存、采纳与导出 | Opus | high | B-02 | 回程复核 | 待执行 |
