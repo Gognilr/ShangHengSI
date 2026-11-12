@@ -1,13 +1,14 @@
 """全部会话接口校验本人及 assistant kind，复用既有预览与删除。"""
 import json
 from urllib.parse import quote
+from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.assistant import service
-from app.assistant.schemas import AssistantPreviewNode, AssistantPreviewNodes, MessageIn, SessionCreate, SessionDetail, SessionPage, SessionPatch
+from app.assistant.schemas import AssistantPreviewNode, AssistantPreviewNodes, HistoryPage, MessageIn, SessionCreate, SessionDetail, SessionPage, SessionPatch
 from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import _parse_id, current_user, load_owned_task
@@ -67,6 +68,14 @@ def list_sessions(q: str | None = Query(None, max_length=100), page: int = Query
                   purpose: Literal['chat', 'meeting', 'translate'] | None = Query(None),
                   user: User = Depends(current_user), db: Session = Depends(get_db)):
     return service.list_sessions(db, user, q, page, purpose)
+
+
+@router.get("/history", response_model=HistoryPage)
+def history(q: str | None = Query(None, max_length=100), page: int = Query(1, ge=1, le=100000),
+            date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
+            user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """历史记录合并列表（V32-B-01）：须声明在 /{id} 之前。"""
+    return service.history(db, user, q, date_from, date_to, page)
 
 
 @router.get("/{id}", response_model=SessionDetail)

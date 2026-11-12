@@ -3,14 +3,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { ApiError } from '@/api/http'
-import { previewApi, type PreviewNode } from '@/api/preview'
+import { previewApi, type PreviewNode, type PreviewNodes } from '@/api/preview'
 import type { TaskFile } from '@/api/tasks'
 
 /**
  * 原件视图（V31-U3 3.3）：只显示 PDF 页面与图片，按 loc 的 bbox 高亮并滚动到第一个；文字视图由画布负责。
  * 原件一律先取 Blob（PDF 转 ArrayBuffer，图片用 object URL），不把接口地址交给 pdfjs 或 img。
  */
-const props = defineProps<{ taskId: string; file: TaskFile; highlight: string[] }>()
+/** nodeLoader / rawLoader：工作台会话改读 /assistant/sessions/{id}/files/…（V32-B-01） */
+const props = defineProps<{ taskId: string; file: TaskFile; highlight: string[]; nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes>; rawLoader?: (taskId: string, fileId: string) => Promise<Blob> }>()
 
 interface PdfPage { num: number; w: number; h: number }
 interface FileState { loading: boolean; error: string; nodes: PreviewNode[]; imageUrl: string; imgW: number; imgH: number; pdfPages: PdfPage[] }
@@ -31,7 +32,7 @@ async function loadFile(file: TaskFile) {
   const st = reactive<FileState>({ loading: true, error: '', nodes: [], imageUrl: '', imgW: 0, imgH: 0, pdfPages: [] })
   states[file.id] = st
   try {
-    const [res, blob] = await Promise.all([previewApi.nodes(props.taskId, file.id), previewApi.raw(props.taskId, file.id)])
+    const [res, blob] = await Promise.all([(props.nodeLoader ?? previewApi.nodes)(props.taskId, file.id), (props.rawLoader ?? previewApi.raw)(props.taskId, file.id)])
     st.nodes = res.items
     if (file.ext.toLowerCase().replace(/^\./, '') === 'pdf') await openPdf(file.id, st, await blob.arrayBuffer())
     else st.imageUrl = URL.createObjectURL(blob)

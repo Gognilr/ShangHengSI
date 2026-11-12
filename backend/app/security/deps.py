@@ -51,6 +51,14 @@ def owned_task(id: str, user: User = Depends(current_user), db: DbSession = Depe
     return load_owned_task(db, user, id, kind)
 
 
+def owned_readable_task(id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> Task:  # noqa: A002
+    """只读取脱敏结果用：审核任务，或本人的工作台会话（purpose=chat）在任何状态都放行；修改类接口的限制不变（V32-B-01）。"""
+    task = load_owned_task(db, user, id, None)
+    if task.kind == "review" or (task.kind == "assistant" and task.purpose == "chat"):
+        return task
+    raise NotFoundError("TASK_NOT_FOUND", "任务不存在")
+
+
 def owned_redaction_task(id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> Task:
     task = load_owned_task(db, user, id, None)
     if task.kind == "assistant" and task.status != "awaiting_confirm":

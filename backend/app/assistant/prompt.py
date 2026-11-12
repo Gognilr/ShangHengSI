@@ -14,7 +14,7 @@ from app.redaction import engine
 from app.redaction.engine import load_redaction_map
 from app.security.errors import AppError
 
-VERSION = "assistant-2026.11-6"
+VERSION = "assistant-2026.11-7"
 _PATH = Path(__file__).resolve().parents[2] / "resources/prompts/assistant.md"
 _TYPES = {"contract": "合同", "quotation": "报价单", "order": "订单", "inquiry": "询价单", "letter": "函件"}
 _LABELS = {"NAME": "名称", "PROPN": "专有名词", "ORG": "企业", "PER": "人名", "PRJ": "项目", "REF": "编号", "TEL": "电话", "EMAIL": "邮箱",
@@ -27,6 +27,11 @@ DATE_SHIFT_NOTE = ("文中日期已整体平移，间隔、先后与星期不变
                    "不要以绝对日期判断法律、政策的生效时间。引用日期照抄原写法，不要自行算出新的绝对日期。")
 
 
+def _discuss_text() -> tuple[str, ...]:
+    from app.assistant import context
+    return (*context.LABELS, context.DISCUSS_NOTE)
+
+
 def system_prompt() -> str:
     return _PATH.read_text(encoding="utf-8").strip()
 
@@ -36,7 +41,7 @@ def fixed_prompt_text() -> str:
     return "\n".join((system_prompt(), RESOURCE.read_text(encoding="utf-8"), *_TYPES.values(), *_LABELS.values(),
                       "【文件：资料，录音逐字稿，录音时长】【翻译分段】【公司知识库片段】【我的历史合同条款】",
                       "【模板参数】目标语言：侧重点：语气：回复语言：【代号说明】【本地校验摘要】",
-                      "我方 敏感信息 <document></document>", DATE_SHIFT_NOTE))
+                      "我方 敏感信息 <document></document>", DATE_SHIFT_NOTE, *_discuss_text()))
 
 
 def selected_files(db: Session, task: Task, params: dict) -> list[TaskFile]:
@@ -81,12 +86,17 @@ def file_block(db: Session, task: Task, params: dict, *, model_id: int | None = 
 
 
 def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, nodes=None, references=None, model_id: int | None = None) -> list[dict]:
-    block = file_block(db, task, user_message.params, model_id=model_id) if nodes is None else (
-        "【翻译分段】<document>\n" + escape_document_tags("\n".join(f"⟦{loc}⟧ {text}" for loc, text in nodes)) + "\n</document>")
-    history = [] if user_message.template == "translate" else list(reversed(list(db.scalars(select(AssistantMessage).where(
-        AssistantMessage.task_id == task.id, AssistantMessage.id < user_message.id, AssistantMessage.status == "done",
-        AssistantMessage.local_result_enc.is_(None))
-        .order_by(AssistantMessage.id.desc()).limit(10)))))
+    anchored = user_message.finding_id is not None
+    if anchored:  # 按问题讨论：只给该问题的结论与相关原文，不给整份文件，也不混入普通对话（V32-B-02）
+        from app.assistant import context
+        block, history = context.build(db, task, user_message, model_id=model_id)
+    else:
+        block = file_block(db, task, user_message.params, model_id=model_id) if nodes is None else (
+            "【翻译分段】<document>\n" + escape_document_tags("\n".join(f"⟦{loc}⟧ {text}" for loc, text in nodes)) + "\n</document>")
+        history = [] if user_message.template == "translate" else list(reversed(list(db.scalars(select(AssistantMessage).where(
+            AssistantMessage.task_id == task.id, AssistantMessage.id < user_message.id, AssistantMessage.status == "done",
+            AssistantMessage.finding_id.is_(None), AssistantMessage.local_result_enc.is_(None))
+            .order_by(AssistantMessage.id.desc()).limit(10)))))
     refs = references or {}
     reference_blocks = []
     for index, item in enumerate(refs.get('kb', []), 1):
@@ -120,7 +130,10 @@ def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, n
         system += "\n\n" + DATE_SHIFT_NOTE
     from app.checks.service import local_summary
     confirmed = db.scalars(select(TaskFile.id).where(TaskFile.task_id == task.id, TaskFile.confirmed_at.is_not(None)))
-    summary = local_summary(db, task, file_ids=list(confirmed))
+    summary = None if anchored else local_summary(db, task, file_ids=list(confirmed))
+    if anchored:
+        from app.assistant import context
+        system += "\n\n" + context.DISCUSS_NOTE
     local = ('【本地校验摘要】\n' + escape_document_tags(summary) + '\n') if summary else ''
     if user_message.template:
         from app.assistant.templates import instruction

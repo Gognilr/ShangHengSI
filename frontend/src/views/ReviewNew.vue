@@ -447,8 +447,8 @@ function fileBadge(name: string): string {
             <span class="file-size num">{{ formatSize(file.size_bytes) }}</span>
           </div>
         </div>
-        <p class="hint">解析完成后会自动进入下一步，也可以离开页面，稍后从审核历史进入。</p>
-        <div class="actions"><el-button @click="router.push('/history')">返回审核历史</el-button></div>
+        <p class="hint">解析完成后会自动进入下一步，也可以离开页面，稍后从历史记录进入。</p>
+        <div class="actions"><el-button @click="router.push('/history')">返回历史记录</el-button></div>
       </div>
       <div v-else-if="parseFailed" class="center">
         <el-result icon="error" title="解析失败" :sub-title="task?.error_message ?? '文件无法解析'">

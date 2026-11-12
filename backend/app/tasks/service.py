@@ -392,20 +392,22 @@ def list_tasks(
         .offset((page - 1) * PAGE_SIZE)
         .limit(PAGE_SIZE)
     ).all()
-    items = [
-        TaskListItem(
-            id=t.id,
-            title=t.title,
-            doc_type=doc_type,
-            stance=t.stance,
-            status=t.status,
-            high_count=t.high_count,
-            created_at=t.created_at,
-            **_expiry_fields(db, t),
-        )
-        for t, doc_type in rows
-    ]
+    items = [list_row(db, t, doc_type) for t, doc_type in rows]
     return TaskPage(items=items, total=total, page=page, page_size=PAGE_SIZE)
+
+
+def list_row(db: DbSession, t: Task, doc_type: str | None) -> TaskListItem:
+    """列表行构造；合并历史（assistant/service.history）复用。"""
+    return TaskListItem(
+        id=t.id,
+        title=t.title,
+        doc_type=doc_type,
+        stance=t.stance,
+        status=t.status,
+        high_count=t.high_count,
+        created_at=t.created_at,
+        **_expiry_fields(db, t),
+    )
 
 
 # ---------------------------------------------------------------- 详情

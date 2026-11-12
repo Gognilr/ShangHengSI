@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { redactionApi, type RedactionInfo } from '@/api/redaction'
+import type { PreviewNodes } from '@/api/preview'
 import type { TaskDetail } from '@/api/tasks'
 import ConfirmCanvas, { type CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
 
@@ -16,6 +17,9 @@ const props = defineProps<{
   selectedFindingId: string
   rawHighlight: string[]
   askEnabled: boolean
+  /** 工作台会话：节点与原件走会话接口（V32-B-01）；不传为审核任务 */
+  nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes>
+  rawLoader?: (taskId: string, fileId: string) => Promise<Blob>
 }>()
 const emit = defineEmits<{ select: [findingId: string]; ask: [prefill: string] }>()
 
@@ -41,6 +45,6 @@ defineExpose({
   <ConfirmCanvas ref="canvas" mode="result" :task-id="task.id" :files="task.files" :items="info.items" :suspects="info.suspects"
     :note="note" :selected-suspect-id="null" locked :protected-count="protectedCount"
     :annotations="annotations" :local-locs="localLocs" :selected-finding-id="selectedFindingId"
-    :ai-view="task.policy === 'ai'" :ask-enabled="askEnabled" :raw-highlight="rawHighlight"
+    :ai-view="task.policy === 'ai'" :ask-enabled="askEnabled" :raw-highlight="rawHighlight" :node-loader="nodeLoader" :raw-loader="rawLoader"
     @select="emit('select', $event)" @ask="emit('ask', $event)" />
 </template>

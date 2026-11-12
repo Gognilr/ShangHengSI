@@ -51,7 +51,7 @@ const timer = setInterval(() => { now.value = Date.now() }, 1000)
 onBeforeUnmount(() => clearInterval(timer))
 const elapsed = computed(() => Math.max(0, Math.floor((now.value - parsingStart.value) / 1000)))
 const pending = computed(() => props.session.files.filter(file => !file.confirmed_at))
-const canUpload = computed(() => !busy.value && props.session.status === 'active' && !props.session.generating && !props.session.original_deleted && props.session.files.length < 10)
+const canUpload = computed(() => !busy.value && props.session.status === 'active' && !props.session.generating && !props.session.review_running && !props.session.original_deleted && props.session.files.length < 10)
 const canStance = computed(() => props.session.status === 'active' && !props.session.files.some(file => file.confirmed_at) && !props.session.original_deleted)
 const task = computed(() => confirmationTask(props.session))
 async function perform(action: () => Promise<unknown>) {
@@ -121,13 +121,13 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
     <div v-if="uploadProgress !== null" role="status"><el-progress :percentage="uploadProgress" /><p class="hint">正在上传 {{ uploadProgress }}%</p></div>
     <WorkFolderBar :disabled="!canUpload" @add="addList" />
     <p v-if="session.purpose !== 'meeting'" class="hint">录音请到“会议纪要”中处理</p>
-    <p v-if="!canUpload" class="hint">{{ session.original_deleted ? '原件已按保留期限删除，本会话只能查看' : session.status !== 'active' ? '处理完成后可以继续加入文件' : session.generating ? '回复完成后可以继续加入文件' : busy ? '正在处理，请稍候' : '每会话最多 10 个文件' }}</p>
+    <p v-if="!canUpload" class="hint">{{ session.original_deleted ? '原件已按保留期限删除，本会话只能查看' : session.status !== 'active' ? '处理完成后可以继续加入文件' : session.generating ? '回复完成后可以继续加入文件' : session.review_running ? '审核进行中，完成后可以继续加入文件' : busy ? '正在处理，请稍候' : '每会话最多 10 个文件' }}</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="session.status === 'parsing' && session.files.some(f => !f.media)"><h3>正在本机解析文件</h3><el-progress :percentage="100" :indeterminate="true" :show-text="false" /><p class="hint num">已用 {{ elapsed }} 秒</p><p class="hint">在本机读取正文并识别敏感信息，可以离开页面稍后继续。</p></template>
     <el-alert v-if="session.error_message" :title="session.error_message" type="error" :closable="false" />
     <div v-for="file in session.files" :key="file.id" class="file-row">
       <span class="file-badge">{{ file.media ? '音频' : file.ext.toUpperCase() }}</span><div class="file-info"><div class="file-name">{{ file.original_name }}</div><MediaRow v-if="file.media" :file="file" :busy="busy" @transcript="transcriptFile = file" @retry="retryMedia(file)" @download="downloadTranscript(file)" /><el-tag v-else size="small" :type="statusTag(file.confirmed_at ? 'confirmed' : session.status).type" :effect="statusTag(file.confirmed_at ? 'confirmed' : session.status).effect">{{ file.confirmed_at ? '已确认' : assistantStatusLabel(session.status) }}</el-tag><p v-for="warning in file.warnings" :key="warning" class="warning">{{ warning }}</p></div>
-      <el-button v-if="session.status !== 'parsing' && !session.generating" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
+      <el-button v-if="session.status !== 'parsing' && !session.generating && !session.review_running" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
     </div>
     <EmptyState v-if="!session.files.length" compact :icon="FileText" title="还没有文件" description="加入文件后，在本机解析与脱敏。" />
     <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="confirmOpen = true">确认脱敏（{{ pending.length }} 个文件）</el-button>

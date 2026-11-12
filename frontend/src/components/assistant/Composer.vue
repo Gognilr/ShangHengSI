@@ -9,6 +9,7 @@ import { assistantApi, type AssistantPreview, type Session, type SessionFile, ty
 import type { ChatDecision } from '@/api/chat'
 import type { UserCategory } from '@/api/redaction'
 import { ApiError } from '@/api/http'
+import { useAuthStore } from '@/stores/auth'
 import { ASSISTANT_TEMPLATE, USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 import { TEMPLATE_LIMITS, usableFiles } from '@/utils/assistantTemplates'
 import TemplatePicker from './TemplatePicker.vue'
@@ -18,13 +19,19 @@ const props = defineProps<{
   session: Session | null; template: Template | null; generating: number | null
   asrEnabled: boolean; showTemplates?: boolean; uploading?: number | null
   initial?: { text: string; autoSend: boolean; modelId?: number } | null
+  /** 讨论锚点：设置后消息带 finding_id，只围绕该问题讨论（V32-B-02） */
+  anchor?: { id: string } | null
 }>()
 const emit = defineEmits<{
   'update:template': [value: Template | null]; sent: [text: string]; stop: [mid: number]
-  start: [payload: ComposerStart]; files: [files: File[]]; open: [file: SessionFile]; remove: [file: SessionFile]; confirm: []; retry: [file: SessionFile]
+  start: [payload: ComposerStart]; busy: []; files: [files: File[]]; open: [file: SessionFile]; remove: [file: SessionFile]; confirm: []; retry: [file: SessionFile]
 }>()
 
 const init = props.initial
+const auth = useAuthStore()
+// 只有“智能审核”权限的人不能直接提问，只能在审核问题上讨论（V32-B-01 4）
+const canAsk = computed(() => auth.can('use.assistant'))
+const canSend = computed(() => canAsk.value || !!props.anchor)
 // ---- 模型 ----
 const modelItems = ref<AvailableModel[]>([]), modelId = ref<number>(), modelError = ref(''), modelLoading = ref(false)
 const allowedModels = computed(() => modelItems.value.filter(m => props.template !== 'compare' || m.structured_ok))
@@ -33,6 +40,7 @@ function selectAvailable(preferred?: number | null) {
     ?? allowedModels.value.find(m => m.is_default)?.id ?? allowedModels.value[0]?.id
 }
 async function loadModels(preferred?: number | null) {
+  if (!canSend.value) return
   modelLoading.value = !modelItems.value.length; modelError.value = ''
   try { modelItems.value = (await modelsApi.list('assist')).items; if (!allowedModels.value.some(m => m.id === modelId.value)) selectAvailable(preferred) }
   catch (e) { modelError.value = e instanceof ApiError ? e.message : '模型列表加载失败，请刷新页面' }
@@ -45,6 +53,7 @@ onMounted(async () => {
   await loadModels(init?.modelId ?? preferred)
   if (init) { text.value = init.text; if (init.autoSend) { await nextTick(); void submit() } }
 })
+watch(() => !!props.anchor, anchored => { if (anchored && !modelItems.value.length) void loadModels() })
 watch(() => props.template, template => {
   if (modelLoading.value || !modelItems.value.length || allowedModels.value.some(m => m.id === modelId.value)) return
   selectAvailable()
@@ -84,7 +93,7 @@ function clickChip(file: SessionFile) {
   } else emit('open', file)
 }
 const failures = computed(() => (props.session?.files ?? []).filter(f => f.parse_error || f.media?.stage === 'failed'))
-const removable = (_file: SessionFile) => props.session?.status !== 'parsing' && !props.session?.generating
+const removable = (_file: SessionFile) => props.session?.status !== 'parsing' && !props.session?.generating && !props.session?.review_running
 
 // ---- 模板 ----
 const target = ref('英文'), focus = ref('全部'), tone = ref('正式'), language = ref('同来函'), fileIds = ref<string[]>([])
@@ -105,6 +114,8 @@ const decisions = ref<{ decision: '' | 'replace' | 'keep'; category: UserCategor
 const confirmed = computed(() => decisions.value.every(d => d.decision === 'keep' || (d.decision === 'replace' && d.category)))
 const processing = computed(() => !!props.session && (props.session.status === 'parsing' || props.session.status === 'awaiting_confirm'))
 const reason = computed(() => {
+  if (!canSend.value) return '你没有“智能助手”权限，只能在审核结果的问题上讨论'
+  if (props.session?.review_running) return '审核进行中，完成后再发送'
   if (modelLoading.value) return '正在加载模型列表'
   if (modelError.value) return modelError.value
   if (!modelId.value) return '没有可用的助手模型，请联系管理员'
@@ -118,6 +129,7 @@ const reason = computed(() => {
 })
 const waitingText = computed(() => !resume.value || !props.session ? '' : props.session.status === 'parsing' ? '文件处理完成后自动发送' : props.session.status === 'awaiting_confirm' ? '确认脱敏后自动发送' : '')
 function input(): MessageInput {
+  if (props.anchor) return { model_id: modelId.value, message: text.value, template: null, params: {}, use_kb: useKb.value && !!props.session?.kb_enabled, use_history: useHistory.value, finding_id: props.anchor.id }
   const params: Record<string, unknown> = props.template === 'translate' ? { file_id: fileIds.value[0], target: target.value } : { file_ids: [...fileIds.value] }
   if (props.template === 'summary') params.focus = focus.value
   if (props.template === 'reply') Object.assign(params, { tone: tone.value, language: language.value })
@@ -136,10 +148,11 @@ async function submit() {
   busy.value = true; error.value = ''; pending = input()
   try {
     preview.value = await assistantApi.preview(props.session.id, pending)
+    pending.expected_material_version = preview.value.material_version
     decisions.value = preview.value.suspects.map(() => ({ decision: '', category: '' }))
     if (preview.value.suspects.length) open.value = true
     else await send()
-  } catch (e) { error.value = e instanceof ApiError ? e.message : '发送失败，请重试' }
+  } catch (e) { error.value = e instanceof ApiError ? e.message : '发送失败，请重试'; if (e instanceof ApiError && e.code === 'SESSION_BUSY') emit('busy') }
   finally { busy.value = false }
 }
 // 处理完成：待确认时打开确认，可发送时继续发送
@@ -163,8 +176,10 @@ async function send() {
   try { await assistantApi.send(props.session.id, { ...pending, decisions: selected }); open.value = false; const sentText = text.value; text.value = ''; pending = null; emit('sent', sentText) }
   catch (e) {
     error.value = e instanceof ApiError ? e.message : '发送失败，请重试'
-    if (e instanceof ApiError && e.code === 'CHAT_SUSPECTS_PENDING' && pending) {
-      try { preview.value = await assistantApi.preview(props.session.id, pending); decisions.value = preview.value.suspects.map(() => ({ decision: '', category: '' })); open.value = true }
+    if (e instanceof ApiError && e.code === 'SESSION_BUSY') { open.value = false; emit('busy') }
+    // 材料有变化（V32-A-01）：重新取预览，让用户核对后再确认发送
+    if (e instanceof ApiError && ['CHAT_SUSPECTS_PENDING', 'MATERIAL_CHANGED'].includes(e.code) && pending) {
+      try { preview.value = await assistantApi.preview(props.session.id, pending); pending.expected_material_version = preview.value.material_version; decisions.value = preview.value.suspects.map(() => ({ decision: '', category: '' })); open.value = true }
       catch (freshError) { error.value = freshError instanceof ApiError ? freshError.message : '预览更新失败，请取消后重试' }
     }
   }
@@ -182,7 +197,7 @@ defineExpose({ pick, attach })
     <p v-if="session?.original_deleted" class="hint">原件已按保留期限删除，本会话只能查看</p>
     <template v-else>
       <div class="box" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop" @paste="paste">
-        <div v-if="session?.files.length || uploading !== null && uploading !== undefined" class="chips">
+        <div v-if="!anchor && (session?.files.length || uploading !== null && uploading !== undefined)" class="chips">
           <span v-for="file in session?.files ?? []" :key="file.id" class="chip" :class="[`chip--${chip(file).tone}`, { 'chip--picked': selectable(file) && fileIds.includes(file.id), 'chip--unpicked': selectable(file) && !fileIds.includes(file.id) }]">
             <button type="button" class="chip-main" :disabled="!selectable(file) && !chip(file).openable && !(file.media && file.confirmed_at)"
                     :aria-pressed="selectable(file) ? fileIds.includes(file.id) : undefined"
@@ -197,7 +212,7 @@ defineExpose({ pick, attach })
           </span>
           <span v-if="uploading !== null && uploading !== undefined" class="chip chip--busy"><span class="chip-main"><Loader2 :size="12" :stroke-width="2" class="spin" aria-hidden="true" />正在上传 {{ uploading }}%</span></span>
         </div>
-        <p v-for="file in failures" :key="`f-${file.id}`" class="failure" role="alert">
+        <p v-for="file in anchor ? [] : failures" :key="`f-${file.id}`" class="failure" role="alert">
           <span class="failure-text">{{ file.original_name }}：{{ file.parse_error ?? file.media?.error ?? '处理失败' }}</span>
           <el-button v-if="file.media" link size="small" type="primary" @click="emit('retry', file)">重试</el-button>
           <el-button v-else-if="removable(file)" link size="small" type="danger" @click="emit('remove', file)">移除</el-button>
@@ -210,9 +225,9 @@ defineExpose({ pick, attach })
           <el-select v-if="template === 'reply'" v-model="language" size="small" class="param" aria-label="回复语言"><el-option v-for="option in ['中文','英文','同来函']" :key="option" :label="option" :value="option" /></el-select>
           <span v-if="template === 'translate'" class="hint where">云端 · 脱敏后发送</span>
         </div>
-        <el-input v-model="text" type="textarea" :autosize="{ minRows: showTemplates ? 3 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="showTemplates ? '提问，或把合同、报价单拖到这里、粘贴进来' : '继续提问…'" aria-label="问题或来函" @keydown="onKeydown" />
+        <el-input v-model="text" type="textarea" :autosize="{ minRows: showTemplates ? 3 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="anchor ? '就这个问题继续讨论，例如：怎么改更稳妥？' : showTemplates ? '提问，或把合同、报价单拖到这里、粘贴进来' : '继续提问…'" aria-label="问题或来函" @keydown="onKeydown" />
         <div class="bar">
-          <el-tooltip content="加入文件" placement="top"><el-button text circle aria-label="加入文件" :disabled="!!session && (session.files.length >= 10 || !!session.generating)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" /></el-button></el-tooltip>
+          <el-tooltip content="加入文件" placement="top"><el-button text circle aria-label="加入文件" :disabled="!!session && (session.files.length >= 10 || !!session.generating || session.review_running)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" /></el-button></el-tooltip>
           <input ref="picker" class="file-input" type="file" multiple :accept="accept" @change="picked">
           <el-select
             v-model="modelId" class="model-select" size="small" aria-label="助手模型" placeholder="选择模型"

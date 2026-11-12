@@ -24,6 +24,7 @@ const props = defineProps<{
   findings: Finding[]
   selectedId: string
   askEnabled: boolean
+  discussEnabled?: boolean
   localLoader: () => Promise<{ items: LocalFinding[] }>
   fresh: boolean
 }>()
@@ -36,6 +37,7 @@ const emit = defineEmits<{
   localSelect: [locs: string[]]
   updated: [f: Finding]
   ask: [prefill: string]
+  discuss: [f: Finding]
   aiNotice: []
 }>()
 
@@ -96,9 +98,9 @@ watch(() => props.selectedId, async (id) => {
           </ZoneHeader>
           <div class="handling-switch"><SiSegmented v-model="handling" :options="handlingCounts" size="small" ariaLabel="按处理状态筛选" /></div>
           <TransitionGroup name="si-list" tag="div" class="cards" :appear="stagger">
-            <FindingCard v-for="(f, i) in findings" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled"
+            <FindingCard v-for="(f, i) in findings" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled" :discuss-enabled="discussEnabled"
               :style="stagger && i < 12 ? { transitionDelay: `${i * 30}ms` } : undefined"
-              @select="emit('select', $event)" @updated="emit('updated', $event)" @ask="emit('ask', $event)" />
+              @select="emit('select', $event)" @updated="emit('updated', $event)" @ask="emit('ask', $event)" @discuss="emit('discuss', $event)" />
           </TransitionGroup>
           <EmptyState v-if="!findings.length" :icon="ListChecks"
             :title="run.findings.length ? '没有符合筛选条件的问题' : '本次没有列出问题条目'"

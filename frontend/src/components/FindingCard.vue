@@ -9,11 +9,12 @@ import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { CITE_TAG, HANDLING_OPTIONS, SEVERITY_TAG, categoryLabel, citeStatusLabel, severityLabel, toOptions } from '@/utils/labels'
 
 /** 问题卡片（V31-U3 3.5）：收起为一行摘要，选中时展开全文；模型文字一律经 MarkedText 纯文本渲染。 */
-const props = defineProps<{ finding: Finding; no: string; selected?: boolean; askEnabled?: boolean }>()
+const props = defineProps<{ finding: Finding; no: string; selected?: boolean; askEnabled?: boolean; discussEnabled?: boolean }>()
 const emit = defineEmits<{
   (e: 'updated', f: Finding): void
   (e: 'select', f: Finding): void
   (e: 'ask', prefill: string): void
+  (e: 'discuss', f: Finding): void
 }>()
 
 const f = computed(() => props.finding)
@@ -115,6 +116,7 @@ async function copy(text: string) {
       <div class="handling">
         <SiSegmented :model-value="status" :options="handlingOptions" size="small" ariaLabel="处理状态" @update:model-value="setStatus($event as HandlingStatus)" />
         <el-button v-if="askEnabled" link type="primary" size="small" @click="emit('ask', `关于问题 ${no}「${f.title}」：`)">追问此问题</el-button>
+        <el-button v-if="discussEnabled" link type="primary" size="small" @click="emit('discuss', f)">继续讨论</el-button>
       </div>
       <el-input v-if="editingNote" ref="noteInput" v-model="note" size="small" maxlength="500" placeholder="备注（选填）" :disabled="saving" @blur="saveNote" @keyup.enter="saveNote" />
       <div v-else class="note"><span v-if="f.handling_note">备注：{{ f.handling_note }}</span><el-button link type="primary" size="small" :disabled="saving" @click="editNote">{{ f.handling_note ? '修改' : '+ 添加备注' }}</el-button></div>

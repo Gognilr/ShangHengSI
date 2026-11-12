@@ -27,11 +27,11 @@ let version = 0
 const staticEntries = computed<Entry[]>(() => {
   const go = (path: string) => () => void router.push(path)
   const list: Entry[] = [
-    ...(auth.can('use.review') ? [{ key: 'a-review', group: '操作', label: '新建审核', icon: FilePlus, run: go('/review/new') }] : []),
-    ...(auth.can('use.assistant') ? [{ key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
-      { key: 'p-assistant', group: '页面', label: '智能助手', icon: MessageSquare, run: go('/assistant') }] : []),
-    ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '智能审核', icon: FileSearch, run: go('/review/new') }] : []),
-    { key: 'p-history', group: '页面', label: '审核历史', icon: HistoryIcon, run: go('/history') },
+    ...(auth.can('use.review') ? [{ key: 'a-review', group: '操作', label: '新建审核', icon: FilePlus, run: go('/assistant?mode=review') }] : []),
+    ...(auth.can('use.assistant', 'use.review') ? [{ key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
+      { key: 'p-assistant', group: '页面', label: '工作台', icon: MessageSquare, run: go('/assistant') }] : []),
+    ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '智能审核', icon: FileSearch, run: go('/assistant?mode=review') }] : []),
+    { key: 'p-history', group: '页面', label: '历史记录', icon: HistoryIcon, run: go('/history') },
   ]
   for (const s of SETTING_TABS) {
     if (auth.can(...s.perms)) list.push({ key: `p-set-${s.name}`, group: '页面', label: `设置 · ${s.search ?? s.label}`, icon: Settings, run: go(`/settings/${s.name}`) })

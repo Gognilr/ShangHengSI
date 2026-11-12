@@ -33,7 +33,7 @@ const details = computed(() => {
 <template>
   <header class="toolbar">
     <div class="top">
-      <el-button link type="primary" @click="$router.push('/history')">← 审核历史</el-button>
+      <el-button link type="primary" @click="$router.push('/history')">← 历史记录</el-button>
       <span class="separator" aria-hidden="true"></span>
       <span class="file-badge">{{ badge }}</span>
       <div class="file-name" :title="`${mainFile?.original_name ?? task.title}${task.files.length > 1 ? `（另有 ${task.files.length - 1} 个附件）` : ''}`">{{ mainFile?.original_name ?? task.title }}</div>

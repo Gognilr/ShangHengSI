@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import Assistant from '@/views/Assistant.vue'
 import Login from '@/views/Login.vue'
 import { SETTING_TABS, type Perm } from '@/utils/permissions'
-// 首屏只带登录页、主布局与智能助手首页，其余页面按路由懒加载（V31Q-114）
+// 首屏只带登录页、主布局与工作台首页，其余页面按路由懒加载（V31Q-114）
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -20,9 +20,9 @@ declare module 'vue-router' {
 
 export const HOME_PATH = '/assistant'
 
-/** 首页：智能助手；没有该权限时依次退到智能审核、会议纪要，最后是翻译（本地翻译人人可用） */
+/** 首页：工作台（持有智能助手或智能审核任一权限即可）；否则退到会议纪要，最后是翻译（本地翻译人人可用） */
 function homeFor(can: (...p: Perm[]) => boolean): string {
-  return can('use.assistant') ? '/assistant' : can('use.review') ? '/review/new' : can('use.meeting') ? '/meeting' : '/translate'
+  return can('use.assistant', 'use.review') ? '/assistant' : can('use.meeting') ? '/meeting' : '/translate'
 }
 
 export const router = createRouter({
@@ -34,11 +34,13 @@ export const router = createRouter({
       component: MainLayout,
       children: [
         { path: '', redirect: HOME_PATH },
-        { path: 'review/new', name: 'review-new', component: () => import('@/views/ReviewNew.vue'), meta: { perms: ['use.review'] } },
+        // /review/new 并入工作台的审核设置；带 task 的是未完成的旧审核任务（草稿、待确认、审核中），仍用原页面接着做（V32Q-08）
+        { path: 'review/new', name: 'review-new', component: () => import('@/views/ReviewNew.vue'), meta: { perms: ['use.review'] },
+          beforeEnter: to => typeof to.query.task === 'string' && to.query.task ? true : { path: '/assistant', query: { mode: 'review' }, replace: true } },
         { path: 'review/:taskId', name: 'review-result', component: () => import('@/views/ReviewResult.vue') },
         { path: 'history', name: 'history', component: () => import('@/views/History.vue') },
-        { path: 'assistant', name: 'assistant', component: Assistant, meta: { perms: ['use.assistant'] } },
-        { path: 'assistant/:sessionId', name: 'assistant-session', component: Assistant },
+        { path: 'assistant', name: 'assistant', component: Assistant, meta: { perms: ['use.assistant', 'use.review'] } },
+        { path: 'assistant/:sessionId', name: 'assistant-session', component: Assistant, meta: { perms: ['use.assistant', 'use.review'] } },
         // 会议纪要与翻译是侧栏独立菜单（V31-U5），底层沿用助手会话
         { path: 'meeting', name: 'meeting', component: () => import('@/views/Meeting.vue'), meta: { perms: ['use.meeting'] } },
         { path: 'meeting/:sessionId', name: 'meeting-session', component: () => import('@/views/Meeting.vue') },

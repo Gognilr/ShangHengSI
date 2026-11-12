@@ -123,7 +123,7 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
     </ol>
     <div class="foot">
       <span class="num">{{ elapsed }}<template v-if="elapsed"> · </template>可以离开页面，完成后自动打开结果</span>
-      <el-button @click="$router.push('/history')">返回审核历史</el-button>
+      <el-button @click="$router.push('/history')">返回历史记录</el-button>
     </div>
     <div class="foot hint">
       <span class="not-sent">不发送：{{ notSent }}</span>

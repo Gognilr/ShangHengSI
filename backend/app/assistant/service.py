@@ -17,7 +17,7 @@ from app.redaction.restore import check
 from app.review.service import MarkOut
 from app.security.errors import AppError, NotFoundError
 from app.tasks import service as tasks, storage, filecheck
-from app.assistant.schemas import SessionDetail, SessionFile, SessionItem, SessionPage, SessionPatch
+from app.assistant.schemas import HistoryItem, HistoryPage, SessionDetail, SessionFile, SessionItem, SessionPage, SessionPatch
 
 
 def asr_enabled() -> bool:
@@ -140,7 +140,7 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
                     template=message.template, params=message.params, extras=message.extras,
                     model_id=None, model_label=message.model_label, tokens_in=0, tokens_out=0,
                     error_code=message.error_code, error=error_text(message.error_code), created_at=message.created_at,
-                    marks=[], calcs=[], translation=value.get('translation', {}), translation_notice=mt.NOTICE)
+                    finding_id=None, marks=[], calcs=[], translation=value.get('translation', {}), translation_notice=mt.NOTICE)
     mapping = _message_mapping(db, task, message)
     dates = engine.load_date_pairs(db, task.id)  # 平移的会话：提问与回复里的日期按还原对显示（V32-A-02）
     content, _ = incremental(message.content_redacted, mapping, 0,
@@ -150,7 +150,7 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             "model_id": message.model_id, "model_label": message.model_label,
             "tokens_in": message.tokens_in, "tokens_out": message.tokens_out,
             "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at,
-            "marks": [], "calcs": []}
+            "finding_id": str(message.finding_id) if message.finding_id else None, "marks": [], "calcs": []}
     if message.role == "user":
         result["sent"] = message.content_redacted  # 实际发给模型的提问文字（只含代号），供“查看实际发送内容”
     if message.role == "assistant":
@@ -284,7 +284,7 @@ def _validate_input(db: Session, task: Task, body):
                  (body.template != 'minutes' or f.ext in filecheck.AUDIO_EXTS and (f.media or {}).get('stage') == 'done')}
         result = prepare(body.template, body.params, files, body.message)
         return result.message, result.params
-    if set(body.params) - {"file_ids"}:
+    if set(body.params) - {"file_ids"} or (body.finding_id and body.params):
         raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
     text = body.message.strip()
     if not 1 <= len(text) <= 4000:
@@ -292,8 +292,11 @@ def _validate_input(db: Session, task: Task, body):
     return text, body.params
 
 
-def _preflight(db: Session, task: Task, template, params, model_id: int):
-    if template == "translate":
+def _preflight(db: Session, task: Task, template, params, model_id: int, finding_id=None):
+    if finding_id is not None:  # 按问题讨论：上下文放不下时发送前就拒绝（V32-B-02）
+        from app.assistant import context
+        context.build_for(db, task, finding_id, None, model_id=model_id)
+    elif template == "translate":
         from app.assistant.translate import require_quota, task_segments
         require_quota(len(task_segments(db, task, params)), usage.remaining_calls(db, task.owner_id, model_id))
     else:
@@ -313,11 +316,15 @@ def _question(db: Session, task: Task, text: str, decisions=None):
 def preview(db: Session, task: Task, body) -> dict:
     from app.assistant.prompt import selected_files
     _writable(db, task)
+    if body.finding_id:
+        from app.assistant import context
+        context.owned_finding(db, task, body.finding_id)
     text, params = _validate_input(db, task, body)
     from app.assistant import local_translation as mt
     if mt.local(body.template, params):
         return {'redacted': text, 'changed': False, 'suspects': []}
-    selected_files(db, task, params)
+    if not body.finding_id:
+        selected_files(db, task, params)
     result = _question(db, task, text)
     uncovered = engine.uncovered_session_values(db, task, [item["text"] for item in result.suspects])
     for item in result.suspects:
@@ -354,7 +361,7 @@ def _require_send(db: Session, task: Task, model_id: int):
 def _queue_reply(db: Session, task: Task, user_message: AssistantMessage, model: LlmModel) -> AssistantMessage:
     reply = AssistantMessage(task_id=task.id, role="assistant", status="queued", template=user_message.template,
                              params=user_message.params, extras={"user_message_id": user_message.id},
-                             model_id=model.id, model_label=model.display_name)
+                             finding_id=user_message.finding_id, model_id=model.id, model_label=model.display_name)
     db.add(reply)
     db.flush()
     jobs.enqueue(db, "assist", {"task_id": str(task.id), "message_id": reply.id})
@@ -368,14 +375,21 @@ def send(db: Session, task: Task, user: User, body) -> dict:
         return mt.send(db, task, user, body)
     from app.assistant.prompt import selected_files
     from app.security import permissions
-    permissions.ensure_cloud_send(db, user, task.purpose, body.template)
+    if body.finding_id:
+        from app.assistant import context
+        if body.template is not None:
+            raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
+        permissions.ensure(db, user, "use.review")  # 问题来自审核，讨论按审核权限
+        context.owned_finding(db, task, body.finding_id)
+    else:
+        permissions.ensure_cloud_send(db, user, task.purpose, body.template)
     db.scalar(select(User).where(User.id == user.id).with_for_update())
     task = lock(db, task)
     tasks.check_material(task, body.expected_material_version)
     model = choose_model(db, task, body.model_id, body.template)
     _require_send(db, task, model.id)
     text, params = _validate_input(db, task, body)
-    _preflight(db, task, body.template, params, model.id)
+    _preflight(db, task, body.template, params, model.id, body.finding_id)
     db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
     # 先按当前对照表验证疑似项区间；重算文件前固定消息已分配的代号。
     result = _question(db, task, text, decisions=[d.model_dump() for d in body.decisions])
@@ -385,10 +399,12 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     if result.new_entries:
         engine.write_full_map(db, task.id, {**engine._load_full_map(db, task.id), **result.new_entries})
     _cover_session_values(db, task, user, extra)
-    params = {**params, "file_ids": [str(f.id) for f in selected_files(db, task, params)]}
+    if not body.finding_id:
+        params = {**params, "file_ids": [str(f.id) for f in selected_files(db, task, params)]}
     params.update(use_kb=body.use_kb, use_history=body.use_history)
     row = AssistantMessage(task_id=task.id, role="user", content_redacted=result.text, status="done",
-                           params=params, template=body.template, material_version=task.material_version)
+                           params=params, template=body.template, material_version=task.material_version,
+                           finding_id=body.finding_id)
     db.add(row)
     db.flush()
     reply = _queue_reply(db, task, row, model)
@@ -448,13 +464,16 @@ def retry(db: Session, task: Task, user: User, mid: int) -> dict:
     if mt.local(previous.template, previous.params):
         return mt.retry(db, task, user, owned_message(db, task, int(previous.extras.get('user_message_id', 0))))
     from app.security import permissions
-    permissions.ensure_cloud_send(db, user, task.purpose, previous.template)
+    if previous.finding_id:
+        permissions.ensure(db, user, "use.review")
+    else:
+        permissions.ensure_cloud_send(db, user, task.purpose, previous.template)
     model = select_model(db, previous.model_id, "assist", structured=previous.template == "compare")
     _require_send(db, task, model.id)
     source = owned_message(db, task, int(previous.extras.get("user_message_id", 0)))
     if source.role != "user":
         raise AppError(409, "SESSION_BUSY", "原始消息不存在")
-    _preflight(db, task, source.template, source.params, model.id)
+    _preflight(db, task, source.template, source.params, model.id, source.finding_id)
     reply = _queue_reply(db, task, source, model)
     result = {"user": message_out(db, task, source), "assistant": message_out(db, task, reply)}
     db.commit()
@@ -476,6 +495,40 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
         AssistantMessage.status.in_(('queued', 'streaming')))))
     return SessionPage(items=[_item(t, _files(db, t), generating=t.id in generating) for t in rows], total=total, page=page,
                        kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')), asr_enabled=asr_enabled(), mt_enabled=mt_enabled())
+
+
+def history(db: Session, user: User, q: str | None, date_from, date_to, page: int) -> HistoryPage:
+    """历史记录（V32-B-01）：本人的工作台会话与旧审核任务合并，按最近活动倒序一页返回；会议纪要、翻译不在其中。"""
+    from datetime import datetime, time, timedelta
+    from app.db.models import ReviewRun
+    size = tasks.PAGE_SIZE
+    conds = [Task.owner_id == user.id, (Task.kind == "review") | ((Task.kind == "assistant") & (Task.purpose == "chat"))]
+    # 没有发过消息、没有文件的空会话不列（与侧栏一致）
+    conds.append((Task.kind == "review") | (Task.title != "新会话") | exists().where(TaskFile.task_id == Task.id))
+    if q and q.strip():
+        pattern = tasks._like_pattern(q.strip())
+        conds.append(Task.title.ilike(pattern, escape="\\") | exists().where(
+            TaskFile.task_id == Task.id, TaskFile.original_name.ilike(pattern, escape="\\")))
+    tz = tasks._tz()
+    if date_from is not None:
+        conds.append(Task.created_at >= datetime.combine(date_from, time.min, tz))
+    if date_to is not None:
+        conds.append(Task.created_at < datetime.combine(date_to + timedelta(days=1), time.min, tz))
+    main_doc_type = select(TaskFile.doc_type).where(TaskFile.task_id == Task.id, TaskFile.is_main).scalar_subquery()
+    total = db.scalar(select(func.count()).select_from(Task).where(*conds)) or 0
+    rows = db.execute(select(Task, main_doc_type.label("doc_type")).where(*conds)
+                      .order_by(Task.last_activity_at.desc(), Task.id.desc()).offset((page - 1) * size).limit(size)).all()
+    ids = [t.id for t, _ in rows]
+    runs = dict(db.execute(select(ReviewRun.task_id, func.count()).where(ReviewRun.task_id.in_(ids))
+                           .group_by(ReviewRun.task_id)).all()) if ids else {}
+    files = dict(db.execute(select(TaskFile.task_id, func.count()).where(TaskFile.task_id.in_(ids))
+                            .group_by(TaskFile.task_id)).all()) if ids else {}
+    items = []
+    for t, doc_type in rows:
+        row = tasks.list_row(db, t, doc_type)
+        items.append(HistoryItem(**row.model_dump(), kind="review" if t.kind == "review" else "session",
+                                 last_activity_at=t.last_activity_at, run_count=runs.get(t.id, 0), file_count=files.get(t.id, 0)))
+    return HistoryPage(items=items, total=total, page=page, page_size=size)
 
 
 def lock(db: Session, task: Task) -> Task:

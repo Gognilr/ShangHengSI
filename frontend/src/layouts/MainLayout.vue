@@ -42,17 +42,26 @@ function toggleCollapsed() {
   try { localStorage.setItem('si.sidebar.collapsed', collapsed.value ? '1' : '0') } catch { /* 只影响下次打开 */ }
 }
 
-// 菜单按权限点显示（V31-U5F-07）；翻译可只用本地翻译、审核历史是本人的记录，人人可见
-const MENUS: { path: string; label: string; icon: typeof MessageSquare; perm?: Perm }[] = [
-  { path: '/assistant', label: '智能助手', icon: MessageSquare, perm: 'use.assistant' },
-  { path: '/review/new', label: '智能审核', icon: FileSearch, perm: 'use.review' },
-  { path: '/meeting', label: '会议纪要', icon: Mic, perm: 'use.meeting' },
-  { path: '/translate', label: '翻译', icon: Languages },
-  { path: '/history', label: '审核历史', icon: HistoryIcon },
+// 菜单按权限点显示（V31-U5F-07）；翻译可只用本地翻译、历史记录是本人的记录，人人可见
+// V3.2：“工作台”（原智能助手）承担提问与全面审核；“智能审核”暂留一个版本，直达工作台的审核设置（不在点击时建会话）
+const MENUS: { key: string; to: string; label: string; icon: typeof MessageSquare; perms?: Perm[] }[] = [
+  { key: 'workbench', to: '/assistant', label: '工作台', icon: MessageSquare, perms: ['use.assistant', 'use.review'] },
+  { key: 'review', to: '/assistant?mode=review', label: '智能审核', icon: FileSearch, perms: ['use.review'] },
+  { key: 'meeting', to: '/meeting', label: '会议纪要', icon: Mic, perms: ['use.meeting'] },
+  { key: 'translate', to: '/translate', label: '翻译', icon: Languages },
+  { key: 'history', to: '/history', label: '历史记录', icon: HistoryIcon },
 ]
-const menus = computed(() => MENUS.filter(m => !m.perm || auth.can(m.perm)))
-// 选中规则沿用原顶栏：/review/:id 归“智能审核”，设置页不选中菜单。
-const activeMenu = computed(() => route.path.startsWith('/settings') ? '' : ['/assistant', '/meeting', '/translate', '/history'].find(p => route.path.startsWith(p)) ?? '/review/new')
+const menus = computed(() => MENUS.filter(m => !m.perms || auth.can(...m.perms)))
+// 选中规则：“智能审核”只在尚未进入具体会话的审核设置页选中；旧审核任务页（/review/:id）归“历史记录”，设置页不选中菜单。
+const activeMenu = computed(() => {
+  const path = route.path
+  if (path.startsWith('/settings')) return ''
+  if (path === '/assistant' && route.query.mode === 'review') return 'review'
+  if (path.startsWith('/assistant')) return 'workbench'
+  if (path.startsWith('/meeting')) return 'meeting'
+  if (path.startsWith('/translate')) return 'translate'
+  return 'history'
+})
 const displayName = computed(() => auth.user?.display_name ?? '')
 const initial = computed(() => Array.from(displayName.value)[0] ?? '')
 
@@ -100,7 +109,7 @@ async function onCommand(cmd: string) {
     <aside class="sidebar" :style="{ width: `${collapsed ? 64 : width}px` }" aria-label="主导航">
       <div class="brand"><SiLogo :mark-only="collapsed" /></div>
 
-      <div v-if="auth.can('use.assistant')" class="block">
+      <div v-if="auth.can('use.assistant', 'use.review')" class="block">
         <el-tooltip content="新建会话" placement="right" :disabled="!collapsed">
           <button type="button" class="new-session" :disabled="creating || auth.mustChangePassword" :aria-label="collapsed ? '新建会话' : undefined" @click="createSession">
             <Plus :size="16" :stroke-width="1.75" /><span class="label">新建会话</span>
@@ -109,8 +118,8 @@ async function onCommand(cmd: string) {
       </div>
 
       <nav class="block menu" aria-label="菜单">
-        <el-tooltip v-for="m in menus" :key="m.path" :content="m.label" placement="right" :disabled="!collapsed">
-          <router-link :to="m.path" class="item" :class="{ selected: activeMenu === m.path }" :aria-current="activeMenu === m.path ? 'page' : undefined" :aria-label="collapsed ? m.label : undefined">
+        <el-tooltip v-for="m in menus" :key="m.key" :content="m.label" placement="right" :disabled="!collapsed">
+          <router-link :to="m.to" class="item" :class="{ selected: activeMenu === m.key }" :aria-current="activeMenu === m.key ? 'page' : undefined" :aria-label="collapsed ? m.label : undefined">
             <component :is="m.icon" :size="16" :stroke-width="1.75" /><span class="label">{{ m.label }}</span>
           </router-link>
         </el-tooltip>

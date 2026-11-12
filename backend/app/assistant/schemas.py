@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
-from app.tasks.schemas import PreviewNode, TaskFileOut, UtcDatetime
+from app.tasks.schemas import PreviewNode, TaskFileOut, TaskListItem, UtcDatetime
 from app.parsing.model import strip_invisible
 
 
@@ -63,7 +63,6 @@ class SessionDetail(SessionItem):
     mt_enabled: bool = False
     material_version: int = 0
     review_running: bool = False  # 会话发起的审核排队或进行中（V32-A-02）
-    review_running: bool = False  # 会话发起的审核排队或进行中（V32-A-02）
 
 
 class AssistantPreviewNode(PreviewNode):
@@ -93,8 +92,24 @@ class MessageIn(BaseModel):
     use_kb: StrictBool = False
     use_history: StrictBool = False
     expected_material_version: int | None = Field(None, ge=0)
+    finding_id: uuid.UUID | None = None  # 按问题讨论：该问题必须属于本会话（V32-B-02）
 
     @field_validator("message", mode="before")
     @classmethod
     def trim_message(cls, value):
         return strip_invisible(value).strip() if isinstance(value, str) else value
+
+
+class HistoryItem(TaskListItem):
+    """历史记录行（V32-B-01）：kind 区分工作台会话与旧审核任务；会话的 run_count 为已发起的审核轮数。"""
+    kind: Literal['session', 'review']
+    last_activity_at: UtcDatetime
+    run_count: int = 0
+    file_count: int = 0
+
+
+class HistoryPage(BaseModel):
+    items: list[HistoryItem]
+    total: int
+    page: int
+    page_size: int

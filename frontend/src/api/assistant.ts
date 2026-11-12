@@ -1,12 +1,13 @@
 import { http } from './http'
-import type { TaskDetail, TaskFile, Source, Stance } from './tasks'
+import type { TaskDetail, TaskFile, TaskListItem, Source, Stance } from './tasks'
 import type { PreviewNodes } from './preview'
 import type { Calc, ChatDecision, ChatPreview } from './chat'
 
 export type AssistantPreview = Omit<ChatPreview, 'suspects'> & {
+  material_version?: number
   suspects: (ChatPreview['suspects'][number] & { in_files: boolean })[]
 }
-import type { Mark } from './runs'
+import type { Mark, RunCreated, RunListItem } from './runs'
 import type { LocalFinding } from './localFindings'
 
 export type Template = 'translate' | 'summary' | 'reply' | 'crosscheck' | 'compare' | 'minutes'
@@ -20,6 +21,14 @@ export interface Media {
 export interface SessionFile extends TaskFile { confirmed_at: string | null; media: Media | null; speakers: Record<string, string | null> | null }
 export interface Suggestion { loc: string; start: number; end: number; from: string; to: string }
 export const ASSISTANT_ERROR_MESSAGES: Record<string, string> = { ASR_DISABLED: '录音转写未启用，请联系管理员' }
+/** 历史记录行（V32-B-01）：工作台会话与旧审核任务合并列出 */
+export interface HistoryItem extends TaskListItem { kind: 'session' | 'review'; last_activity_at: string; run_count: number; file_count: number }
+export interface HistoryPage { items: HistoryItem[]; total: number; page: number; page_size: number }
+/** 会话发起审核（V32-A-02）；file_ids 不传为全部已确认文件 */
+export interface SessionRunInput {
+  stance: Stance; source: Source; model_id?: number; user_note?: string | null
+  file_ids?: string[]; main_file_id?: string; expected_material_version?: number; use_template?: boolean
+}
 export interface SessionItem {
   id: string; title: string; status: string; file_count: number; last_activity_at: string
   original_deleted: boolean; generating?: boolean; purpose: Purpose
@@ -31,6 +40,10 @@ export interface Session extends SessionItem {
   created_at: string; files: SessionFile[]; can_send: boolean; send_reason: string | null; code_count: number
   kb_enabled?: boolean
   participants: string[]; asr_enabled: boolean; mt_enabled: boolean
+  /** 影响外发正文的提交次数；发送与发起审核时带上，不一致返回 409 MATERIAL_CHANGED（V32-A-01） */
+  material_version: number
+  /** 会话发起的审核排队或进行中（V32-A-02） */
+  review_running: boolean
 }
 export interface SessionPage { items: SessionItem[]; total: number; page: number; page_size: number; kb_enabled?: boolean; asr_enabled: boolean; mt_enabled: boolean }
 export interface Quote { file: number; unit_price: string | null; amount: string | null; currency: string | null; difference_pct: string | null; status: string; qty: string }
@@ -49,15 +62,24 @@ export interface Message {
   translation?: Record<string, string>; translation_notice?: string; compare?: Comparison; draft?: string
   /** 用户消息：实际发给模型的提问文字（只含代号）；本地翻译的消息没有 */
   sent?: string
+  /** 按问题讨论：消息所属的审核问题（V32-B-02）；普通对话为 null */
+  finding_id?: string | null
 }
 export interface MessageInput {
+  expected_material_version?: number
   model_id?: number
   message: string; template?: Template | null; params: Record<string, unknown>
   use_kb: boolean; use_history: boolean; decisions?: ChatDecision[]
+  finding_id?: string
 }
 const base = '/assistant/sessions'
 export const assistantApi = {
   list: (page = 1, q = '', purpose: Purpose | '' = '') => http.get<SessionPage>(base, { page, q, purpose }),
+  history: (query: { page?: number; q?: string; from?: string; to?: string }) => http.get<HistoryPage>(`${base}/history`, query),
+  runs: (id: string) => http.get<{ items: RunListItem[] }>(`${base}/${id}/runs`),
+  createRun: (id: string, body: SessionRunInput) => http.post<RunCreated>(`${base}/${id}/runs`, body),
+  outboundReview: (id: string) => http.get<{ text: string; note: string | null; material_version: number }>(`${base}/${id}/outbound`, { mode: 'review' }),
+  raw: (id: string, fid: string) => http.getBlob(`${base}/${id}/files/${fid}/raw`),
   create: (purpose: Purpose = 'chat') => http.post<Session>(base, { purpose }),
   get: (id: string) => http.get<Session>(`${base}/${id}`),
   patch: (id: string, body: { title?: string; stance?: Stance; source?: Source }) => http.patch<Session>(`${base}/${id}`, body),

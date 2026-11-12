@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.db.models import Party, RedactionItem, RedactionSuspect, Task, User
 from app.db.session import get_db
 from app.redaction import engine, stats
-from app.security.deps import current_user, owned_party_task, owned_redaction_task as owned_task
+from app.security.deps import current_user, owned_party_task, owned_readable_task, owned_redaction_task as owned_task
 from app.security.errors import AppError, NotFoundError
 from app.audit import service as audit
 
@@ -203,7 +203,7 @@ def _redaction(db: DbSession, task: Task) -> RedactionOut:
 
 
 @router.get("/redaction", response_model=RedactionOut)
-def get_redaction(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> RedactionOut:
+def get_redaction(task: Task = Depends(owned_readable_task), db: DbSession = Depends(get_db)) -> RedactionOut:
     return _redaction(db, task)
 
 

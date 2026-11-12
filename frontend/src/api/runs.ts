@@ -143,4 +143,7 @@ export const RUN_ERROR_MESSAGES: Record<string, string> = {
   FILE_PARSE_FAILED: '请先删除解析失败的文件',
   OUR_PARTY_REQUIRED: '请先选择哪一方是我方',
   OUTBOUND_BLOCKED: '外发文本中发现未脱敏的敏感信息，已阻止发送',
+  MATERIAL_CHANGED: '材料有变化，请重新核对后再确认',
+  SESSION_BUSY: '审核进行中，完成后再操作',
+  FILE_IN_USE: '该文件已用于审核，不能移除；可在发送时不选它',
 }

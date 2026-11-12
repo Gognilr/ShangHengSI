@@ -31,3 +31,15 @@ ReviewRun 不加列：会话轮次的 `file_ids` 第一个元素就是主文件�
 ## V32Q-07 local_only 会话发起审核（V32-A-02）
 
 会话目前都以 policy=ai 创建。若为 local_only，发起审核返回 409 LOCAL_ONLY、零外发，本地校验结果照常从 /local-findings 查看（解析时已按审核任务的规则跑 run_checks）。
+
+## V32Q-08 /review/new 只在没有 task 时重定向（V32-B-01）
+
+计划写“旧路由 /review/new 重定向到工作台，带原 query 丢弃”。但带 `?task=` 的是**未完成的旧审核任务**（草稿、待确认、审核中），历史记录里的“继续”和结果页对未完成任务的跳转都走这里；一律重定向会让这些任务无法继续。所以只在没有 task 参数时重定向到 `/assistant?mode=review`，带 task 的仍用原 ReviewNew 页面接着做；这类任务做完（或删除）后不再有入口，ReviewNew 随“智能审核”快捷入口一并去留。
+
+## V32Q-09 工作台默认视图（V32-B-01）
+
+进入 `/assistant/:id` 且没有 `mode` 参数时默认“直接提问”；只有“智能审核”权限、没有“智能助手”权限的用户默认“全面审核”（提问框对他们禁用）。历史记录里发起过审核的会话带 `?mode=review` 打开。切换视图写入 URL 的 `mode`，刷新后保持。
+
+## V32Q-10 确认页只显示主体说明与补充说明字数（V32-B-01）
+
+“本轮发送的内容”取 `GET /outbound?mode=review` 的外发正文，只截【主体说明】一行，不展示全文；补充说明在发起审核时才写入并脱敏，发起前只能显示字数。点“确认发送并开始审核”即同意发送。预览带回的 material_version 作为 expected_material_version；409 MATERIAL_CHANGED 时重新取预览，请用户核对后再点。

@@ -31,6 +31,7 @@ const props = defineProps<{
   locked: boolean
   protectedCount: number
   nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes>
+  rawLoader?: (taskId: string, fileId: string) => Promise<Blob>
   mode?: 'confirm' | 'result'
   annotations?: CanvasAnnotation[]
   localLocs?: string[]
@@ -454,7 +455,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       <div v-if="$slots.bar" class="cv-extra"><slot name="bar" /></div>
     </div>
 
-    <DocPreview v-if="view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? []" />
+    <DocPreview v-if="view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? []" :node-loader="nodeLoader" :raw-loader="rawLoader" />
     <div v-else class="stage-wrap">
     <div ref="scroller" v-loading="active?.loading" class="stage si-stage" :class="{ 'with-spectrum': isResult }" @scroll.passive="onStageScroll">
       <el-alert v-if="active?.error" type="error" show-icon :closable="false" :title="active.error" />
