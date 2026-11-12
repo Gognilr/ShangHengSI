@@ -1678,6 +1678,8 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
                for i in result.items)
     _write_map(db, task.id, result.mapping)
     _write_suspects(db, task.id, result.suspects, texts)
+    # 外发正文可能因此变化：材料版本 +1，已打开的预览据此失效（V32-A-01）
+    task.material_version = (task.material_version or 0) + 1
 
     # 签约方：沿用原来的行（id 不变），先把代号改成临时值，避免交换代号时触发唯一约束
     for row in existing.values():

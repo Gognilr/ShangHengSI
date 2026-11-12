@@ -90,7 +90,8 @@ def detail(db: Session, task: Task) -> SessionDetail:
                                             if media[f.id] is not None else None) for f in preview.files],
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
-                         participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled(), mt_enabled=mt_enabled())
+                         participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled(), mt_enabled=mt_enabled(),
+                         material_version=task.material_version)
 
 
 def create(db: Session, user: User, ip: str | None, purpose: str = 'chat') -> SessionDetail:
@@ -214,6 +215,7 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     from app.redaction.keep_terms import remember
     remember(db, task, user.id)
     task.status, task.last_activity_at = "active", now
+    task.material_version = (task.material_version or 0) + 1
     audit.record(db, "assistant_files_confirm", user_id=user.id, target_type="task", target_id=str(task.id),
                  detail={"files": count}, ip=ip)
     db.flush()
@@ -276,7 +278,8 @@ def preview(db: Session, task: Task, body) -> dict:
     uncovered = engine.uncovered_session_values(db, task, [item["text"] for item in result.suspects])
     for item in result.suspects:
         item["in_files"] = item["text"] in uncovered
-    return {"redacted": result.text, "changed": result.changed, "suspects": result.suspects}
+    return {"redacted": result.text, "changed": result.changed, "suspects": result.suspects,
+            "material_version": task.material_version}
 
 
 def _cover_session_values(db: Session, task: Task, user: User,
@@ -324,6 +327,7 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     permissions.ensure_cloud_send(db, user, task.purpose, body.template)
     db.scalar(select(User).where(User.id == user.id).with_for_update())
     task = lock(db, task)
+    tasks.check_material(task, body.expected_material_version)
     model = choose_model(db, task, body.model_id, body.template)
     _require_send(db, task, model.id)
     text, params = _validate_input(db, task, body)
@@ -340,7 +344,7 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     params = {**params, "file_ids": [str(f.id) for f in selected_files(db, task, params)]}
     params.update(use_kb=body.use_kb, use_history=body.use_history)
     row = AssistantMessage(task_id=task.id, role="user", content_redacted=result.text, status="done",
-                           params=params, template=body.template)
+                           params=params, template=body.template, material_version=task.material_version)
     db.add(row)
     db.flush()
     reply = _queue_reply(db, task, row, model)
@@ -493,7 +497,7 @@ def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None
     try:
         rows = []
         # 只允许移除未确认文件；已发送文件仍在会话中，其位置序号保持不变。
-        seq = max([f.seq for f in files] + [0])
+        seq = max([task.last_file_seq or 0] + [f.seq for f in files])  # 高水位：移除后再上传不复用序号
         for up in uploads:
             audio = up.ext in filecheck.AUDIO_EXTS
             key, digest = storage.save_audio(up.file) if audio else storage.save_original(up.file.read())
@@ -505,6 +509,7 @@ def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None
                                   **({"marks": marks} if marks else {})} if audio else None)
             db.add(row)
             rows.append(row)
+        task.last_file_seq = seq
         db.flush()
         if task.title == "新会话":
             task.title = uploads[0].name
@@ -521,12 +526,21 @@ def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None
         raise
 
 
+def _file_in_use(db: Session, task: Task, file: TaskFile) -> bool:
+    """被任一审核轮次引用；file_ids 为空的旧轮次视为引用全部文件。"""
+    from app.db.models import ReviewRun
+    runs = db.scalars(select(ReviewRun.file_ids).where(ReviewRun.task_id == task.id)).all()
+    return any(not ids or str(file.id) in ids for ids in runs)
+
+
 def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     task = lock(db, task)
     _writable(db, task)
     if task.status == "parsing":
         raise AppError(409, "SESSION_BUSY", "文件正在解析，请稍后移除")
     db.refresh(file)
+    if _file_in_use(db, task, file):
+        raise AppError(409, "FILE_IN_USE", "该文件已用于审核，不能移除；可在发送时不选它")
     # V31-U5F-04：已确认的文件也可移除；后续提问不再使用它，已有问答与对照表保留（历史回复仍能还原）。
     prefix = f"F{file.seq}-%"
     from app.db.models import NerNodeResult, TaskClauseVector

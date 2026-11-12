@@ -292,6 +292,9 @@ class Task(Base):
     user_note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     user_note_redacted: Mapped[Optional[str]] = mapped_column(Text)
     confirm_ops: Mapped[int] = mapped_column(Integer, nullable=False, server_default='0')
+    # V32-A-01：外发材料版本（影响外发正文的提交 +1）与文件序号高水位（序号只增，不复用）
+    material_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default='0')
+    last_file_seq: Mapped[int] = mapped_column(Integer, nullable=False, server_default='0')
     awaiting_since: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     error_message: Mapped[Optional[str]] = mapped_column(Text)
@@ -563,6 +566,9 @@ class ReviewRun(Base):
     stance: Mapped[str] = mapped_column(String(10), nullable=False)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     user_note: Mapped[Optional[str]] = mapped_column(Text)  # 本轮补充说明的代号快照（R4）
+    material_version: Mapped[Optional[int]] = mapped_column(Integer)
+    # 本轮审核使用的文件；空表示旧轮次的“全部文件”
+    file_ids: Mapped[Optional[Any]] = mapped_column(JSONB)
     main_doc_type: Mapped[str] = mapped_column(String(12), nullable=False)
     model_name: Mapped[Optional[str]] = mapped_column(String(100))
     prompt_version: Mapped[Optional[str]] = mapped_column(String(20))
@@ -650,6 +656,10 @@ class Finding(Base):
     suggested_text: Mapped[Optional[str]] = mapped_column(Text)
     basis: Mapped[Optional[str]] = mapped_column(Text)
     handling_status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
+    # 讨论修改稿（代号文本），原 suggested_text 不变（V32）
+    discussed_text: Mapped[Optional[str]] = mapped_column(Text)
+    discussed_message_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    discussed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     # 用户自由填写的处理备注，主密钥加密（V31Q-114）；handling_note 属性透明加解密
     handling_note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
@@ -689,6 +699,8 @@ class AssistantMessage(Base):
     content_redacted: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     local_result_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     status: Mapped[str] = mapped_column(String(10), nullable=False)
+    material_version: Mapped[Optional[int]] = mapped_column(Integer)
+    finding_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("findings.id", ondelete="SET NULL"))
     error_code: Mapped[Optional[str]] = mapped_column(String(40))
     extras: Mapped[Any] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, server_default=_ZERO)

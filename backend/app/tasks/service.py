@@ -43,6 +43,12 @@ def task_busy(db, task_id) -> bool:
                                                Job.status.in_(['queued', 'running'])))))
 
 
+def check_material(task: Task, expected: int | None) -> None:
+    """预览后材料又变化时拒绝发送；旧客户端不传 expected 时不校验（V32-A-01）。"""
+    if expected is not None and task.material_version != expected:
+        raise AppError(409, 'MATERIAL_CHANGED', '材料已变化，请重新预览后再发送')
+
+
 def lock_files(db, task: Task, *, main_change: bool = True) -> Task:
     locked = db.scalar(select(Task).where(Task.id == task.id).with_for_update().execution_options(populate_existing=True))
     if locked is None:
@@ -60,7 +66,8 @@ def add_files(db, task, uploads) -> TaskDetail:
     hashes = {f.sha256 for f in old}
     saved, added = [], []
     try:
-        seq = max(f.seq for f in old)
+        # 序号取高水位，删除文件后再上传也不复用（V32-A-01）
+        seq = max(task.last_file_seq or 0, max((f.seq for f in old), default=0))
         for up in uploads:
             up.file.seek(0)
             data = up.file.read()
@@ -75,6 +82,7 @@ def add_files(db, task, uploads) -> TaskDetail:
                            ext=up.ext, size_bytes=len(data), sha256=digest, storage_key=key)
             db.add(row)
             added.append(row)
+        task.last_file_seq = seq
         db.flush()
         jobs.enqueue(db, 'parse', {'task_id': str(task.id), 'file_ids': [str(f.id) for f in added]})
         task.last_activity_at = utcnow()

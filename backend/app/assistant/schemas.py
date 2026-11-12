@@ -61,6 +61,7 @@ class SessionDetail(SessionItem):
     participants: list[str] = Field(default_factory=list)
     asr_enabled: bool = False
     mt_enabled: bool = False
+    material_version: int = 0
 
 
 class AssistantPreviewNode(PreviewNode):
@@ -89,6 +90,7 @@ class MessageIn(BaseModel):
     decisions: list[MessageDecision] = Field(default_factory=list)
     use_kb: StrictBool = False
     use_history: StrictBool = False
+    expected_material_version: int | None = Field(None, ge=0)
 
     @field_validator("message", mode="before")
     @classmethod
