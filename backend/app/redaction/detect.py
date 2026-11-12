@@ -127,7 +127,10 @@ _LICENSE = re.compile(
     r'安全生产许可证|危险化学品登记证|全国工业产品生产许可证|排污许可证|道路运输经营许可证|'
     r'食品经营许可证|药品经营许可证|许可证)(?:编号|号码|号)?|备案编号|证书编号|'
     r'(?<![A-Za-z])(?i:License|Permit|Certificate)\s+No\.?(?![A-Za-z])')
-_LICENSE_VALUE = re.compile(r'[ \t]*[:：]?[ \t]*([^\\\r\n，。；;！!？?：:.]{4,40})(?=$|[\\\r\n，。；;！!？?：:.])')
+# 识别副本已把全角标点折成半角：截止符须含半角逗号，否则“许可证，并在……”会把逗号后的整句当成编号（V321Q-01）。
+_LICENSE_VALUE = re.compile(r'[ \t]*([:：]?)[ \t]*([^\\\r\n,，、。；;！!？?：:.]{4,40})(?=$|[\\\r\n,，、。；;！!？?：:.])')
+# 标签后没有冒号、也没有“编号 / 号码 / 号”时，后面多半是条款叙述：含这些虚词的不是编号
+_LICENSE_PROSE = re.compile(r'[的应须并且或后内前至于为在和与及]')
 _GENERIC_ID = re.compile(r'(?:证件号码|证件号|证照号|许可证编号|证书编号|资质证书编号)[ \t]*[:：]?[ \t]*'
                          r'([^\\\r\n,，。；;！!？?：:]{5,60})')
 _LABELED_SWIFT = re.compile(r'(?i:SWIFT(?:[ \t]+Code)?|BIC|银行识别码)[ \t]*[:：]?[ \t]*'
@@ -142,7 +145,8 @@ def _norm_key(value: str) -> str:
 def find_formatted(text: str) -> list[Hit]:
     """第 4 步的全部命中（可能互相重叠，由调用方按顺序取舍）。顺序即优先级。"""
     # 逐位中文数字只进入格式化号码规则，不进入名称 / 人名模型视图。
-    text = recognition_view(bilingual_label_text(text).translate(str.maketrans('〇零一二三四五六七八九', '00123456789')))
+    plain = bilingual_label_text(text)  # 与下面的 text 等长，中文数字保持原样（V321Q-01）
+    text = recognition_view(plain.translate(str.maketrans('〇零一二三四五六七八九', '00123456789')))
     hits: list[Hit] = []
 
     def add(start: int, end: int, category: str, key: str = "", validated: bool | None = None) -> None:
@@ -199,9 +203,15 @@ def find_formatted(text: str) -> list[Hit]:
     for label in _LICENSE.finditer(text):
         m = _LICENSE_VALUE.match(text, label.end())
         if m:
-            value = m.group(1).strip().rstrip('.')
-            if 4 <= len(value) <= 40 and any(c.isdigit() for c in value):
-                start = m.start(1) + len(m.group(1)) - len(m.group(1).lstrip())
+            value = m.group(2).strip().rstrip('.')
+            start = m.start(2) + len(m.group(2)) - len(m.group(2).lstrip())
+            # 明确的写法（冒号，或“编号 / 号码 / 号”、英文 No.）照常取值，逐位中文数字也算；
+            # 标签后直接接文字时，须有原文里的阿拉伯数字、且不含叙述虚词（“第三方”“三日内”不算数字，V321Q-01）。
+            explicit = (bool(m.group(1)) or label.group().endswith(('编号', '号码', '号'))
+                        or not re.search(r'[一-鿿]', label.group()))
+            digits = value if explicit else plain[start:start + len(value)]
+            if (4 <= len(value) <= 40 and any(c.isdigit() for c in digits)
+                    and (explicit or not _LICENSE_PROSE.search(value))):
                 add(start, start + len(value), 'IDNO')
     for m in _IM.finditer(text):
         add(m.start(1), m.end(1), "IM")
