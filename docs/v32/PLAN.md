@@ -33,7 +33,7 @@
 | V32-00 | 本计划 | Opus | high | 第 11 节决定 | 用户确认 | 已完成（2026-11-12 用户确认） |
 | V32-A-00 | 四项缺陷修复：V312Q-01～04（按 docs/v312/PLAN.md 第一节） | Sonnet | high | V311-Z | — | 已完成（2026-11-12，报告 docs/v32/reports/V32-A-00.md） |
 | V32-A-01 | 数据与文件不变式 | Sonnet | high | A-00 | — | 已完成（2026-11-12，报告 docs/v32/reports/V32-A-01.md） |
-| V32-A-02 | 会话发起审核（后端） | Opus | high | A-01 | Opus 新会话安全复核 | 已完成（2026-11-12，报告 docs/v32/reports/V32-A-02.md），待安全复核 |
+| V32-A-02 | 会话发起审核（后端） | Opus | high | A-01 | Opus 新会话安全复核（须在 B-03 开工前完成） | 已完成（2026-11-12，报告 docs/v32/reports/V32-A-02.md），待安全复核 |
 | V32-A-03 | 中性代号审核对照评测（真实模型） | Sonnet | high | A-02 | 用户录入密钥；结果交 Opus | 完成，达标（报告 reports/V32-A-03.md） |
 | V32-B-01 | 工作台界面与侧栏 | Sonnet | high | A-03 达标 | Opus 评审，用户看界面 | 待执行 |
 | V32-B-02 | 按问题讨论 | Sonnet | high | B-01 | — | 待执行 |
@@ -97,14 +97,20 @@
 
 ### V32-B-01 工作台界面与侧栏
 
-**文件范围：** router/index.ts、MainLayout 与侧栏组件、views/Assistant.vue、views/History.vue、components/assistant/*、components/result/*（复用，不改结构）、frontend/src/api 中会话与轮次的接口、Login.vue 不动。
+**文件范围：** router/index.ts、MainLayout 与侧栏组件、views/Assistant.vue、views/History.vue、views/ReviewNew.vue（只改路由，不删文件）、components/assistant/*、components/result/*（复用；可加属性注入数据加载函数，不改结构）、frontend/src/api 中会话、轮次与历史的接口、Login.vue 不动。后端只限下列读取入口（2026-11-12 Opus 开工前评审补入）：security/deps.py、redaction/router.py、assistant/router.py、assistant/service.py（历史合并列表）、tasks/service.py（复用列表行构造）。
 
-1. **侧栏（用户 2026-11-12 确认）：** “智能助手”改名“工作台”；“智能审核”保留，作为直达工作台审核设置的快捷入口（新建一个会话并打开审核设置），下一版本再评估是否去掉；“审核历史”改名“历史记录”，同时列出会话与旧审核任务。会议纪要、翻译不变。
+1. **侧栏（用户 2026-11-12 确认）：** “智能助手”改名“工作台”；“智能审核”保留，作为直达工作台审核设置的快捷入口，下一版本再评估是否去掉；“审核历史”改名“历史记录”，同时列出会话与旧审核任务。会议纪要、翻译不变。
+   * 快捷入口只跳到新建工作台视图并预选“全面审核”，**不在点击时建会话**；首次加文件或发送时才创建（设计 3.1），避免近期列表出现空会话。
+   * 旧路由 /review/new 重定向到同一视图（带原 query 无意义，直接丢弃）。ReviewNew.vue 暂留，随快捷入口去留一并决定。
 2. **工作台：** 顶部为标题、材料按钮、“直接提问 / 全面审核”切换。切换只改视图，不外发、不清空输入。
-   * 全面审核首次进入显示设置（主文件、立场、来源、模型、补充说明），主按钮“确认发送并开始审核”。确认页只列本轮新增发送的内容（补充说明、主体说明），已确认文件不再要求核对（第 11 节 R4）。
-   * 审核结果复用现有结果页的左原文、右问题清单组件。
-3. **旧数据：** 旧审核任务在历史记录中点击后打开原结果页（/review/:taskId），旧链接全部可用。
+   * 全面审核首次进入显示设置（主文件、立场、来源、模型、补充说明），主按钮“确认发送并开始审核”。确认页只列本轮新增发送的内容（补充说明、主体说明），已确认文件不再要求核对（第 11 节 R4）；数据取 `GET /assistant/sessions/{id}/outbound?mode=review`，不展示全文。
+   * 审核结果复用现有结果页的左原文、右问题清单组件。轮次、导出、问题处理按 run id / finding id 读写（/runs/{rid}…、PATCH /findings/{fid}），已可用于会话轮次，不改。
+   * **结果画布的读取入口（后端补）：** `ResultCanvas` 现在读 `GET /tasks/{id}/redaction`，其依赖 owned_redaction_task 对已确认（active）的会话返回 409；节点与原件走 `/tasks/{id}/files/...`，只认 kind=review。做法：GET /redaction（只读）对本人的 purpose=chat 会话在任何状态都放行，修改类接口的限制不变；`ResultCanvas` 加属性把会话的 `/assistant/sessions/{id}/files/{fid}/nodes|raw` 加载函数传给 `ConfirmCanvas.nodeLoader`（及原件视图）。
+   * **新增错误码的界面处理：** 发送与发起审核都带 expected_material_version；409 MATERIAL_CHANGED → 重新取预览后再确认；SessionDetail.review_running 为真或收到 409 SESSION_BUSY → 锁定输入与材料操作，显示“审核进行中”，轮询轮次状态直到结束；409 FILE_IN_USE → 提示“该文件已用于审核，不能移除；可在发送时不选它”。
+3. **旧数据与历史记录：** 旧审核任务在历史记录中点击后打开原结果页（/review/:taskId），旧链接全部可用。
+   * 历史记录用**后端合并列表**（一个分页接口，按最近活动倒序，行带 kind 区分“会话 / 审核任务”，沿用现有搜索与日期筛选；会议纪要、翻译不在其中，保持各自页面）。不在前端合并两个分页列表（翻页与筛选会错乱）。接口与 owner 校验同现有列表。
 4. **权限：** 没有 use.review 的用户看不到“全面审核”切换。只有 use.review 的用户，在没有锚定问题时提问框禁用并说明原因。
+   * 路由守卫：/assistant 与 /assistant/:sessionId 改为持有 use.assistant 或 use.review 任一即可进入；homeFor 的回退顺序改为“任一即进工作台”；侧栏“工作台”菜单同样按任一权限显示。
 5. 按 frontend.md 第十一节验收；用浏览器在 http://localhost:5173 走一遍主线并截图。
 
 **停点：** 完成后交 Opus 评审界面，用户看过后再继续。
