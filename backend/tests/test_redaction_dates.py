@@ -48,8 +48,11 @@ def test_switch_off_and_assistant_keep_existing_output():
     before = compute(nodes, 'sales')
     off = compute(nodes, 'sales', date_shift_days=0)
     assert before.redacted == off.redacted and before.mapping == off.mapping
+    assert not any(it.category == 'DATE' for it in compute(nodes, 'sales', style='neutral').items)
+    # V32-A-02：平移的会话同样平移日期，日期对写入对照表
     neutral = compute(nodes, 'sales', style='neutral', date_shift_days=70)
-    assert not any(it.category == 'DATE' for it in neutral.items)
+    assert sum(it.category == 'DATE' for it in neutral.items) == 2
+    assert sorted(v for k, v in neutral.mapping.items() if '#D' in k) == ['2026-03-05', '2026年4月5日']
 
 
 def test_persisted_shift_and_preview_use_same_coordinate(db_sessionmaker, make_user, ready_task, monkeypatch):

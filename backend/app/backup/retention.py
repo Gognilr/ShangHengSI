@@ -14,7 +14,7 @@ from app.audit import service as audit
 from app.backup.service import local_tz
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, AuditLog, DocNode, Job, LlmCall, Task, TaskFile, TaskClauseVector
+from app.db.models import AssistantMessage, AuditLog, DocNode, Job, LlmCall, ReviewRun, Task, TaskFile, TaskClauseVector
 from app.tasks import storage
 from app.tasks.service import delete_task
 from app.worker import job_handler, register_periodic
@@ -63,8 +63,10 @@ def _layer_conditions(layer: str) -> list:
                  or_(Task.status != "active", ~exists().where(TaskFile.task_id == Task.id))))]
     return [or_(and_(Task.kind == "review", or_(Task.status.in_(ELIGIBLE_STATUS),
                 and_(Task.status == "awaiting_confirm", Task.latest_run_id.is_not(None)))),
-                and_(Task.kind == "assistant", or_(Task.status == "active", and_(Task.status == 'awaiting_confirm',
-                    exists().where(AssistantMessage.task_id == Task.id, AssistantMessage.local_result_enc.is_not(None))))))]
+                and_(Task.kind == "assistant", or_(Task.status == "active", and_(Task.status == 'awaiting_confirm', or_(
+                    exists().where(AssistantMessage.task_id == Task.id, AssistantMessage.local_result_enc.is_not(None)),
+                    # 发起过审核的会话按原件层、结果层计算（V32-A-02）
+                    exists().where(ReviewRun.task_id == Task.id))))))]
 
 
 def run_retention(db: Session, now: datetime | None = None) -> dict:

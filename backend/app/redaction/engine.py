@@ -893,7 +893,7 @@ def compute(
             _accept([_Span(i, m.start(), m.end(), ADDR, country, "address")
                      for pat, country in repeat for m in pat.finditer(n.text)], occupied[i], spans)
 
-    if date_shift_days and style == 'review':
+    if date_shift_days:  # 审核任务与平移的会话（V32-A-02）
         for i, n in enumerate(nodes):
             _accept([_Span(i, h.start, h.end, 'DATE', h.value.isoformat(), 'date')
                      for h in dates.find_dates(n.text)], occupied[i], spans)
@@ -1307,7 +1307,7 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
         if category == "ORG":
             ent = entities[s.key]
             if ent.is_our:
-                category, code = "OUR", alloc.our()
+                category, code = "OUR", alloc.our(ent.key)
             else:
                 role = code_role(ent.role_label, stance, ent.org_type)
                 if len(counterpart) == 1 and ent.key in counterpart:
@@ -1319,7 +1319,12 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
             remember(code, ent.name, surface)
         elif category == 'DATE':
             code = dates.render(surface, date.fromisoformat(s.key) + timedelta(days=date_shift_days))
-            mapping[f'{code}#D{sum(it.category == "DATE" for it in items) + 1}'] = surface
+            if style == "neutral":
+                # 会话的对照表只增：同一对日期不重复记，新的一对接在已有序号之后，旧消息的日期照常还原
+                if not any(k.startswith(code + '#D') and v == surface for k, v in mapping.items()):
+                    mapping[f'{code}#D{_date_index(mapping) + 1}'] = surface
+            else:
+                mapping[f'{code}#D{sum(it.category == "DATE" for it in items) + 1}'] = surface
         elif category in FIXED:
             code = alloc.fixed(category, surface)
             remember(code, surface if style == "neutral" else None, surface)
@@ -1354,6 +1359,17 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
         for k in party_order
     ]
     return RedactionResult(parties=parties, items=items, mapping=mapping, redacted=redacted)
+
+
+def _date_index(mapping: dict[str, str]) -> int:
+    return max((int(m[1]) for key in mapping if (m := re.search(r'#D(\d+)$', key))), default=0)
+
+
+def new_shift_days(db: Session) -> int:
+    """按全局开关决定一次平移天数：关闭时为 0（之后固定，不中途开启）。"""
+    if not get_setting(db, 'redaction.date_shift'):
+        return 0
+    return 7 * secrets.choice((*range(-52, -7), *range(8, 53)))
 
 
 def outbound_text(nodes: list[NodeIn], parties: list[outbound.PartyInfo], redacted: dict[str, str]) -> str:
@@ -1606,6 +1622,14 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     if style == 'review' and task.kind != 'assistant' and get_setting(db, 'redaction.date_shift'):
         # 首次开启后的重算固定坐标，后续追问预览和发送使用同一个偏移。
         shift_days = int(full_map.get('@date_shift_days') or 7 * secrets.choice((*range(-52, -7), *range(8, 53))))
+    elif task.kind == 'assistant' and task.purpose == 'chat':
+        # 会话只在首次脱敏时按开关决定并写入，之后固定；对照表非空且没有该键的旧会话永不平移（V32-A-02）
+        if '@date_shift_days' in full_map:
+            shift_days = int(full_map['@date_shift_days'] or 0)
+        elif not full_map:
+            shift_days = new_shift_days(db)
+            full_map = {'@date_shift_days': str(shift_days)}
+            write_full_map(db, task.id, full_map)
     memory = keep_terms.effective(db, task.owner_id)
     user_keeps = [texts.get(r.loc, '')[r.char_start:r.char_end] for r in db.scalars(
                          select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
@@ -2107,26 +2131,46 @@ class OutboundBuild:
     quote_tables: list[quotes.QuoteTable]  # 本次识别出的报价明细表（M5：分段、覆盖说明、汇总行位置映射）
 
 
-def build_outbound(db: Session, task: Task) -> OutboundBuild:
-    """9.7 外发文本：【主体说明】+ 各正文节点一行；报价明细表整表换成一行汇总（需要解密原文识别表格）。"""
+def build_outbound(db: Session, task: Task, mode: str | None = None, *, file_ids: Sequence[str] | None = None,
+                   stance: str | None = None) -> OutboundBuild:
+    """9.7 外发文本：【主体说明】+ 各正文节点一行；报价明细表整表换成一行汇总（需要解密原文识别表格）。
+
+    mode 按本次操作选择（V32-A-02）：'review' 审核（会话发起的审核同样适用），'assist' 助手问答。
+    不传时审核任务为 review、会话为 assist。file_ids 只取这些文件（会话审核轮次所选文件），stance 为本轮立场。
+    """
     from app.checks.service import load_inputs, table_notes
 
-    parties = list(db.scalars(select(Party).where(Party.task_id == task.id)))
+    mode = mode or ("assist" if task.kind == "assistant" else "review")
     rows = _body_rows(db, task.id)
+    if mode == "assist":
+        # 会话问答保留逐节点文本：不添加报价汇总及本地校验说明。
+        from app.assistant.meeting import render
+        files = {f.id:f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
+        return OutboundBuild(render(db, task, files, rows), [])
+    if file_ids is not None:
+        chosen = {uuid.UUID(str(fid)) for fid in file_ids}
+        rows = [r for r in rows if r.file_id in chosen]
+    parties = list(db.scalars(select(Party).where(Party.task_id == task.id)))
     texts = _node_texts(rows)
     nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no) for r in rows]
     redacted = {r.loc: r.redacted_text or "" for r in rows}
     if task.kind == "assistant":
-        # 会话保留逐节点文本：不添加审核专用比例、报价汇总及本地校验说明。
-        from app.assistant.meeting import render
-        files = {f.id:f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
-        return OutboundBuild(render(db, task, files, rows), [])
+        # 会话的主体可能只出现在未选的文件里：只说明本轮正文用到的代号，我方始终说明
+        body = "\n".join(redacted.values())
+        parties = [p for p in parties if p.is_our_party or p.code in body]
     tables = quotes.find_quote_tables(nodes, redacted)
+    seqs = None if file_ids is None else {f.seq for f in db.scalars(select(TaskFile).where(
+        TaskFile.task_id == task.id, TaskFile.id.in_([uuid.UUID(str(fid)) for fid in file_ids])))}
+    check_nodes, check_files = load_inputs(db, task.id)
+    if seqs is not None:
+        check_nodes = [n for n in check_nodes if n.file_seq in seqs]
+        check_files = [f for f in check_files if f.seq in seqs]
     text = outbound.build(
-        [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party, stance=task.stance) for p in parties],
+        [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party, stance=stance or task.stance)
+         for p in parties],
         [(n.loc, n.clause_no, redacted.get(n.loc, "")) for n in nodes],
         tables,
-        table_notes=table_notes(*load_inputs(db, task.id)),
+        table_notes=table_notes(check_nodes, check_files),
         date_shifted=load_date_pairs(db, task.id) is not None,
     )
     return OutboundBuild(text, tables)

@@ -202,15 +202,24 @@ def collect_requirements(db: DbSession, *, doc_type: str, stance: str, source: s
 
 
 def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_note: str | None,
-                  main_doc_type: str) -> ReviewContext:
-    """拼出一次审核的上下文。预检（创建轮次时）和 review 处理函数用同一个函数，保证检查的就是将要发送的内容。"""
+                  main_doc_type: str, file_ids: list[str] | None = None) -> ReviewContext:
+    """拼出一次审核的上下文。预检（创建轮次时）和 review 处理函数用同一个函数，保证检查的就是将要发送的内容。
+
+    file_ids 为会话审核轮次所选文件（第一个是主文件，V32-A-02）；None 表示审核任务的全部文件。
+    """
     from app.checks.service import local_summary
     from app.checks.ratios import section
 
-    attachments = list(db.scalars(
-        select(TaskFile.doc_type).where(TaskFile.task_id == task.id, TaskFile.is_main.is_(False))
-        .order_by(TaskFile.seq)))
-    built = build_outbound(db, task)
+    files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
+    if file_ids is None:
+        attachments = [f.doc_type for f in files if not f.is_main]
+        seqs = ids = None
+    else:
+        chosen = {str(fid) for fid in file_ids}
+        attachments = [f.doc_type for f in files if str(f.id) in chosen and str(f.id) != str(file_ids[0])]
+        ids = [f.id for f in files if str(f.id) in chosen]
+        seqs = {f.seq for f in files if str(f.id) in chosen}
+    built = build_outbound(db, task, "review", file_ids=file_ids, stance=stance)
     return ReviewContext(
         task=task, stance=stance, source=source, user_note=user_note, main_doc_type=main_doc_type,
         attachment_types=[t for t in attachments if t],
@@ -218,14 +227,14 @@ def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_n
                                           user_note=user_note),
         company_profile=str(get_setting(db, "review.company_profile") or ""),
         outbound_text=built.text,
-        local_summary=local_summary(db, task),
-        ratios=section(db, task),
-        boundary_locs=chunk_boundaries(db, task.id),
+        local_summary=local_summary(db, task, file_ids=ids),
+        ratios=section(db, task, seqs),
+        boundary_locs=chunk_boundaries(db, task.id, seqs),
         quote_tables=built.quote_tables,
     )
 
 
-def chunk_boundaries(db: DbSession, task_id: uuid.UUID) -> set[str]:
+def chunk_boundaries(db: DbSession, task_id: uuid.UUID, seqs: set[int] | None = None) -> set[str]:
     """分段的首选切分点（设计 docs/design/M5.md 第二节）：每个文件的第一个正文节点、标题、一级条款（clause_no 不含“.”）。"""
     rows = db.execute(
         select(DocNode.loc, DocNode.kind, DocNode.clause_no, TaskFile.seq)
@@ -234,6 +243,8 @@ def chunk_boundaries(db: DbSession, task_id: uuid.UUID) -> set[str]:
     out: set[str] = set()
     seen_files: set[int] = set()
     for loc, kind, clause_no, seq in rows:
+        if seqs is not None and seq not in seqs:
+            continue
         if seq not in seen_files or kind == "heading" or (clause_no and "." not in clause_no):
             out.add(loc)
         seen_files.add(seq)
@@ -272,14 +283,103 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
     if main is None or main.doc_type is None:
         raise _conflict("TASK_STATE_CONFLICT", "文件类型尚未识别，不能提交审核")
 
+    run = _launch(db, task, user, ip, stance=task.stance, source=task.source, user_note=task.user_note_redacted,
+                  main_doc_type=main.doc_type, model_id=model_id, use_template=use_template)
+    task.status = "reviewing"
+    for file in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.confirmed_at.is_(None))):
+        file.confirmed_at = task.last_activity_at
+    db.commit()
+    return run
+
+
+class SessionRunIn(BaseModel):
+    """POST /assistant/sessions/{id}/runs（V32-A-02）。file_ids 不传为全部已确认文件；main_file_id 不传时取会话主文件。"""
+    model_config = {"extra": "forbid"}
+    stance: Literal["sales", "purchase", "other"]
+    source: Literal["incoming", "outgoing"]
+    model_id: int | None = Field(None, gt=0)
+    user_note: str | None = Field(None, max_length=2000)
+    file_ids: list[str] | None = Field(None, min_length=1, max_length=10)
+    main_file_id: str | None = None
+    expected_material_version: int | None = None
+    use_template: bool = True
+
+
+def session_review_active(db: DbSession, task_id: uuid.UUID) -> bool:
+    """会话的“审核进行中”：存在排队或进行中的轮次（会话的 task.status 不进入 reviewing）。"""
+    return bool(db.scalar(select(exists().where(ReviewRun.task_id == task_id,
+                                                ReviewRun.status.in_(("queued", "running"))))))
+
+
+def create_session_run(db: DbSession, task: Task, user: User, ip: str | None, body: SessionRunIn) -> ReviewRun:
+    """会话发起审核：复用审核任务的预检与入队；会话状态保持 active / awaiting_confirm，不重复确认文件。"""
+    from app.assistant import service as assistant
+    from app.assistant.prompt import selected_files
+    from app.db.models import AssistantMessage
+    from app.redaction import engine as redaction_engine
+    from app.tasks.service import check_material, set_user_note, task_busy
+    task = assistant.lock(db, task)
+    if task.kind != "assistant" or task.purpose != "chat":
+        from app.security.errors import NotFoundError
+        raise NotFoundError("TASK_NOT_FOUND", "任务不存在")
+    if task.policy == "local_only":
+        raise _conflict("LOCAL_ONLY", "该会话的外发策略为不外发，不能提交 AI 审核，可查看本地校验结果")
+    assistant._writable(db, task)  # 原件层到期后禁止审核
+    check_material(task, body.expected_material_version)
+    if task.status not in ("active", "awaiting_confirm") or task_busy(db, task.id):
+        raise _conflict("FILES_PARSING" if task.status == "parsing" else "SESSION_BUSY",
+                        "还有文件正在解析，请稍候" if task.status == "parsing" else "当前会话状态不能发起审核")
+    if session_review_active(db, task.id):
+        raise _conflict("SESSION_BUSY", "审核进行中，完成后再发起")
+    if db.scalar(select(exists().where(AssistantMessage.task_id == task.id, AssistantMessage.role == "assistant",
+                                       AssistantMessage.status.in_(("queued", "streaming"))))):
+        raise _conflict("SESSION_BUSY", "回复生成中，完成后再发起审核")
+    files = selected_files(db, task, {} if body.file_ids is None else {"file_ids": body.file_ids})
+    files = [f for f in files if not f.media]  # 录音逐字稿不参与审核
+    if not files:
+        raise AppError(422, "NO_FILES", "请先加入并确认要审核的文件")
+    main = next((f for f in files if str(f.id) == body.main_file_id), None) if body.main_file_id else (
+        next((f for f in files if f.is_main), files[0]))
+    if main is None:
+        raise AppError(422, "VALIDATION_ERROR", "主文件不在所选文件中")
+    if main.doc_type is None:
+        raise _conflict("TASK_STATE_CONFLICT", "文件类型尚未识别，不能提交审核")
+    note = (body.user_note or "").strip() or None
+    current = crypto.decrypt_text(task.user_note_enc) if task.user_note_enc is not None else None
+    if note != current:
+        # 补充说明随本轮外发：写入后按会话规则重算（代号只增），材料版本随之 +1
+        set_user_note(db, task, note)
+        existing = redaction_engine._existing_parties(db, task)
+        redaction_engine._run(db, task, redaction_engine._current_overrides(existing)
+                              if any(p.confirmed for p in existing.values()) else None, existing)
+    # 立场只影响主体说明里的角色文字，不改代号；记为会话当前立场
+    task.stance, task.source = body.stance, body.source
+    redaction_engine.ensure_default_replacements(db, task)
+    our = db.scalar(select(func.count()).select_from(Party)
+                    .where(Party.task_id == task.id, Party.is_our_party.is_(True)))
+    if our != 1:
+        raise _conflict("OUR_PARTY_REQUIRED", "请先确认哪一方是我方")
+    file_ids = [str(main.id)] + [str(f.id) for f in files if f.id != main.id]  # 第一个是主文件
+    run = _launch(db, task, user, ip, stance=body.stance, source=body.source, user_note=task.user_note_redacted,
+                  main_doc_type=main.doc_type, model_id=body.model_id, use_template=body.use_template,
+                  file_ids=file_ids)
+    db.commit()
+    return run
+
+
+def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: str, source: str,
+            user_note: str | None, main_doc_type: str, model_id: int | None, use_template: bool,
+            file_ids: list[str] | None = None) -> ReviewRun:
+    """审核任务与会话共用：模型与上限 → 预检出口复检 → 记住名称 → 建轮次 → 入队（不提交，不改任务状态）。"""
+    from app.redaction import engine as redaction_engine
     model = select_model(db, model_id, "review")
     reached = usage.cap_reached(db, user.id, "review", model.id)
     if reached:
         raise _conflict(reached, gateway.MESSAGES[reached])
 
     def precheck():
-        ctx = build_context(db, task, stance=task.stance, source=task.source, user_note=task.user_note_redacted,
-                            main_doc_type=main.doc_type)
+        ctx = build_context(db, task, stance=stance, source=source, user_note=user_note,
+                            main_doc_type=main_doc_type, file_ids=file_ids)
         rc = recheck_context(db, task.id)
         return ctx, recheck("\n".join(m["content"] for m in build_messages(ctx)), real_values=rc.real_values,
                             terms=rc.terms, placeholders=rc.placeholders, kept=rc.kept)
@@ -299,32 +399,29 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
 
     run_no = (db.scalar(select(func.max(ReviewRun.run_no)).where(ReviewRun.task_id == task.id)) or 0) + 1
     run = ReviewRun(
-        task_id=task.id, run_no=run_no, status="queued", stance=task.stance, source=task.source,
-        user_note=task.user_note_redacted, main_doc_type=main.doc_type,
+        task_id=task.id, run_no=run_no, status="queued", stance=stance, source=source,
+        user_note=user_note, main_doc_type=main_doc_type,
         model_id=model.id, model_label=model.display_name, model_name=model.model_name,
         prompt_version=load_system_template()[0], builtin_req_version=builtin_version(),
         company_req_version=db.scalar(select(func.max(RequirementVersion.version))),
-        created_by=user.id, queued_at=utcnow(), receipt=_receipt(db, task, model.display_name),
+        created_by=user.id, queued_at=utcnow(), receipt=_receipt(db, task, model.display_name, file_ids),
+        file_ids=file_ids, material_version=task.material_version,
     )
     db.add(run)
     if use_template:
         from app.standards.service import choose
-        template=choose(db,task,main.doc_type)
+        template=choose(db,task,main_doc_type)
         if template:
             run.template_id=template.id
             run.template_name_snapshot_enc=template.name_enc
             run.template_hash=template.content_hash
     db.flush()
     jobs.enqueue(db, "review", {"task_id": str(task.id), "run_id": str(run.id)})
-    task.status = "reviewing"
     task.last_activity_at = utcnow()
-    for file in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.confirmed_at.is_(None))):
-        file.confirmed_at = task.last_activity_at
     task.latest_run_id = run.id
     task.error_message = None
     audit.record(db, "run_create", user_id=user.id, target_type="run", target_id=str(run.id),
                  detail={"run_no": run_no, "requirements": len(ctx.requirements), "confirm": _confirm_stats(db, task)}, ip=ip)
-    db.commit()
     return run
 
 
@@ -333,7 +430,7 @@ def _confirm_stats(db, task):
     return finish(db, task)
 
 
-def _receipt(db, task, model_label):
+def _receipt(db, task, model_label, file_ids=None):
     from app.parsing.docx import WARN_COMMENTS, WARN_HEADER_FOOTER
     from app.parsing.xlsx import WARN_HIDDEN_SHEET
     from app.redaction.engine import suspect_views
@@ -341,6 +438,8 @@ def _receipt(db, task, model_label):
     protected = dict(db.execute(select(RedactionItem.category, func.count()).where(
         RedactionItem.task_id == task.id).group_by(RedactionItem.category)).all())
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)))
+    if file_ids is not None:
+        files = [f for f in files if str(f.id) in {str(fid) for fid in file_ids}]
     not_sent = dict(images=0, comments=0, headers_footers=0, hidden_sheets=0)
     for file in files:
         # V31Q-57：无精确数量的旧警告按含该类内容的文件计数，不猜对象数量。

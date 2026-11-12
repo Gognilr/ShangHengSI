@@ -44,6 +44,8 @@ _LABEL_CATEGORY = {**{fmt.strip("[]").split("_", 1)[0]: cat for cat, fmt in PH._
 
 
 def _code_category(code: str) -> str:
+    if PH.NEUTRAL.fullmatch(code.split("#", 1)[0]):  # 会话的中性代号（含旧会话的 [[OUR]]）
+        return PH.NeutralAllocator.category(code)
     label = code.strip("[]").split("_", 1)[0].split("：", 1)[0]
     if code == PH.OUR_CODE or label in PH.ROLE_LABELS:
         return "ORG"

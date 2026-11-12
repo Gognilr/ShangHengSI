@@ -62,6 +62,8 @@ class SessionDetail(SessionItem):
     asr_enabled: bool = False
     mt_enabled: bool = False
     material_version: int = 0
+    review_running: bool = False  # 会话发起的审核排队或进行中（V32-A-02）
+    review_running: bool = False  # 会话发起的审核排队或进行中（V32-A-02）
 
 
 class AssistantPreviewNode(PreviewNode):

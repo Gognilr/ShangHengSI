@@ -24,7 +24,7 @@ from app.review.requirements import (
 from app.review.service import FindingOut, FindingPatch, RunCreated, RunDetail, RunList
 from app.security.errors import AppError
 from app.security.permissions import require
-from app.security.deps import current_user, owned_finding, owned_run, owned_task
+from app.security.deps import current_user, load_owned_task, owned_finding, owned_run, owned_task
 from app.security.sessions import client_ip
 
 _review = require("use.review")
@@ -47,6 +47,24 @@ def create_run(
     run = service.create_run(db, task, user, client_ip(request),use_template=body.use_template if body else True,
                              model_id=body.model_id if body else None)
     return RunCreated(id=run.id, run_no=run.run_no, status=run.status)
+
+
+def _owned_session(id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> Task:  # noqa: A002
+    return load_owned_task(db, user, id, "assistant")
+
+
+@router.post("/assistant/sessions/{id}/runs", status_code=status.HTTP_201_CREATED, response_model=RunCreated,
+             dependencies=[Depends(_review)])
+def create_session_run(request: Request, body: service.SessionRunIn, task: Task = Depends(_owned_session),
+                       user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> RunCreated:
+    """会话发起审核（V32-A-02）：要求“智能审核”权限，只接受工作台会话（purpose=chat）。"""
+    run = service.create_session_run(db, task, user, client_ip(request), body)
+    return RunCreated(id=run.id, run_no=run.run_no, status=run.status)
+
+
+@router.get("/assistant/sessions/{id}/runs", response_model=RunList)
+def list_session_runs(task: Task = Depends(_owned_session), db: DbSession = Depends(get_db)) -> RunList:
+    return service.list_runs(db, task)
 
 
 @router.get("/tasks/{id}/runs", response_model=RunList)

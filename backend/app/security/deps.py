@@ -55,7 +55,23 @@ def owned_redaction_task(id: str, user: User = Depends(current_user), db: DbSess
     task = load_owned_task(db, user, id, None)
     if task.kind == "assistant" and task.status != "awaiting_confirm":
         raise AppError(409, "TASK_STATE_CONFLICT", "当前任务状态不允许修改")
+    if task.kind == "assistant":
+        # 会话审核进行中不改脱敏：轮次在后台按当时的正文外发（V32-A-02）
+        from app.assistant.service import REVIEW_BUSY, review_active
+        if review_active(db, task):
+            raise AppError(409, "SESSION_BUSY", REVIEW_BUSY)
     return task
+
+
+def owned_party_task(id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> Task:  # noqa: A002
+    """/tasks/{id}/parties：工作台会话确认文件后仍可查看、修改我方（会话不分配我方代号，改我方不改任何代号，V32-A-02）。"""
+    task = load_owned_task(db, user, id, None)
+    if task.kind == "assistant" and task.purpose == "chat" and task.status == "active":
+        from app.assistant.service import REVIEW_BUSY, review_active
+        if review_active(db, task):
+            raise AppError(409, "SESSION_BUSY", REVIEW_BUSY)
+        return task
+    return owned_redaction_task(id, user, db)
 
 
 def owned_task_file(

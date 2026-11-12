@@ -35,9 +35,9 @@ def finish(db, task_id):
     if any(f.media and f.media.get('stage') == 'failed' for f in pending):
         task.status = 'parse_failed'
     elif all(f.parser_version for f in pending):
-        from app.checks.service import run_table_checks
         from app.redaction.engine import redact_task
-        run_table_checks(db, task)
+        from app.tasks.pipeline import session_checks
+        session_checks(db, task)
         redact_task(db, task, style='neutral', pin=True)
         task.status, task.error_message = 'awaiting_confirm', None
     db.commit()

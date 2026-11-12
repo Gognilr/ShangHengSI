@@ -77,10 +77,11 @@ def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_s
     if failed is not None:
         run.failed_chunks = failed
     run.coverage = None if status == "blocked" else coverage  # blocked 未发送；其他带结果的终态写入覆盖说明
-    task.status = task_status
-    if task_status == 'awaiting_confirm':
-        from app.redaction.stats import enter
-        enter(task)
+    if task.kind != "assistant":  # 会话的状态不随审核轮次变化（V32-A-02）
+        task.status = task_status
+        if task_status == 'awaiting_confirm':
+            from app.redaction.stats import enter
+            enter(task)
     task.last_activity_at = utcnow()
     db.commit()
     logger.info("run %s 结束 状态=%s", run_id, status)
@@ -131,10 +132,11 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
     run.status = "partial" if failed or unable else "completed"
     run.error_message = _partial_message(failed) if failed else None
     run.finished_at = now
-    task.status = "reviewed"
-    task.high_count = high
+    if task.kind != "assistant":  # 会话的状态不随审核轮次变化（V32-A-02）
+        task.status = "reviewed"
+        task.high_count = high
+        task.last_completed_at = now
     task.error_message = None
-    task.last_completed_at = now
     task.last_activity_at = now
     try:
         db.commit()
@@ -168,7 +170,7 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
     ctx: ReviewContext | None = None
     try:
         ctx = build_context(db, task, stance=run.stance, source=run.source, user_note=run.user_note,
-                            main_doc_type=run.main_doc_type)
+                            main_doc_type=run.main_doc_type, file_ids=run.file_ids)
         _, body = split_outbound(ctx.outbound_text)
         chunks = split_chunks(outbound_lines(body, ctx.boundary_locs),
                               effective_limit(model.chunk_chars))

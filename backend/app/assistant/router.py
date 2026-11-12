@@ -11,6 +11,7 @@ from app.assistant.schemas import AssistantPreviewNode, AssistantPreviewNodes, M
 from app.db.models import Task, TaskFile, User
 from app.db.session import get_db
 from app.security.deps import _parse_id, current_user, load_owned_task
+from app.assistant.service import _files as task_files
 from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service as tasks
@@ -74,10 +75,16 @@ def detail(task: Task = Depends(owned_session), db: Session = Depends(get_db)):
 
 
 @router.get("/{id}/outbound")
-def outbound(response: Response, task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+def outbound(response: Response, mode: Literal['assist', 'review'] = 'assist', task: Task = Depends(owned_session),
+             db: Session = Depends(get_db)):
+    """mode=review：会话发起审核时的外发正文（含【主体说明】、报价汇总，V32-A-02），供审核确认页查看。"""
     from app.redaction import engine
     response.headers['Cache-Control'] = 'no-store'
-    return {'text': engine.build_outbound_text(db, task), 'note': task.user_note_redacted}
+    ids = None
+    if mode == 'review':  # 只含已确认的文件，与发起审核时默认的文件范围一致
+        ids = [str(f.id) for f in task_files(db, task) if f.confirmed_at is not None and not f.media]
+    return {'text': engine.build_outbound(db, task, mode, file_ids=ids).text, 'note': task.user_note_redacted,
+            'material_version': task.material_version}
 
 
 @router.get("/{id}/local-findings")

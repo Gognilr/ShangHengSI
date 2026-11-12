@@ -42,10 +42,26 @@ def availability(db: Session, task: Task) -> str | None:
     if db.scalar(select(exists().where(AssistantMessage.task_id == task.id, AssistantMessage.role == "assistant",
                                        AssistantMessage.status.in_(("queued", "streaming"))))):
         return "上一条回复尚未完成"
+    if review_active(db, task):
+        return REVIEW_BUSY
     # 详情尚未指定本次模型，具体用途、结构化能力和配额在发送时检查。
     if not (task.purpose == 'translate' and mt_enabled()) and not db.scalar(select(exists().where(LlmModel.enabled.is_(True), LlmModel.for_assist.is_(True)))):
         return gateway.MESSAGES["NOT_CONFIGURED"]
     return None
+
+
+REVIEW_BUSY = "审核进行中，完成后再发送"
+
+
+def review_active(db: Session, task: Task) -> bool:
+    """会话发起的审核轮次排队或进行中（V32-A-02）：期间不发送消息、不改材料，外发正文保持一致。"""
+    from app.review.service import session_review_active
+    return task.purpose == 'chat' and session_review_active(db, task.id)
+
+
+def _not_reviewing(db: Session, task: Task) -> None:
+    if review_active(db, task):
+        raise AppError(409, "SESSION_BUSY", REVIEW_BUSY)
 
 
 def choose_model(db: Session, task: Task, model_id=None, template=None):
@@ -91,17 +107,24 @@ def detail(db: Session, task: Task) -> SessionDetail:
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
                          participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled(), mt_enabled=mt_enabled(),
-                         material_version=task.material_version)
+                         material_version=task.material_version, review_running=review_active(db, task))
 
 
 def create(db: Session, user: User, ip: str | None, purpose: str = 'chat') -> SessionDetail:
     from app.security import permissions
-    if purpose != 'translate':  # 翻译页可只用本地翻译，云端发送时再校验
+    if purpose == 'chat':
+        # 工作台：持有提问或审核任一权限即可新建、加文件、确认（V32-A-02）；提问与审核各自在发送时校验
+        if not permissions.user_permissions(db, user.id) & {'use.assistant', 'use.review'}:
+            raise AppError(403, "FORBIDDEN", "没有此项权限，请联系系统管理员")
+    elif purpose != 'translate':  # 翻译页可只用本地翻译，云端发送时再校验
         permissions.ensure(db, user, permissions.PURPOSE_PERM[purpose])
     task = Task(kind="assistant", owner_id=user.id, title="新会话", stance="other", source="incoming",
                 policy="ai", status="active", last_activity_at=utcnow(), purpose=purpose)
     db.add(task)
     db.flush()
+    if purpose == 'chat':
+        # 日期是否平移在会话开始时按全局开关决定，之后固定；问答与审核共用同一坐标（V32-A-02）
+        engine.write_full_map(db, task.id, {'@date_shift_days': str(engine.new_shift_days(db))})
     audit.record(db, "assistant_session_create", user_id=user.id, target_type="task", target_id=str(task.id), ip=ip)
     result = detail(db, task)
     db.commit()
@@ -119,8 +142,9 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
                     error_code=message.error_code, error=error_text(message.error_code), created_at=message.created_at,
                     marks=[], calcs=[], translation=value.get('translation', {}), translation_notice=mt.NOTICE)
     mapping = _message_mapping(db, task, message)
+    dates = engine.load_date_pairs(db, task.id)  # 平移的会话：提问与回复里的日期按还原对显示（V32-A-02）
     content, _ = incremental(message.content_redacted, mapping, 0,
-                              finished=message.status not in ("queued", "streaming"))
+                              finished=message.status not in ("queued", "streaming"), dates=dates)
     result = {"id": message.id, "role": message.role, "content": content, "status": message.status,
             "template": message.template, "params": message.params, "extras": message.extras,
             "model_id": message.model_id, "model_label": message.model_label,
@@ -134,13 +158,15 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             # 与 incremental() 用同一份助手代号表，标记位置才与 content 一致（设计 V31-R 4.6）。
             neutral = {code: value for code, value in mapping.items() if NEUTRAL.fullmatch(code)}
             result['marks'] = [MarkOut.model_validate(mark).model_dump()
-                               for mark in check(message.content_redacted, neutral).marks]
+                               for mark in check(message.content_redacted, neutral, dates=dates).marks]
             if '【算式】' in message.content_redacted:
                 from app.calc import add_to_message, code_context
                 add_to_message(result, message.content_redacted, neutral, **code_context(db, task, message.content_redacted, neutral))
         from app.redaction.restore import restore
         if message.template == "translate":
-            result["translation"] = {loc: restore(text, mapping) for loc, text in message.extras.get("translation", {}).items()}
+            shift = _shift_days(db, task)
+            result["translation"] = {loc: dates_unshift(restore(text, mapping), shift)
+                                     for loc, text in message.extras.get("translation", {}).items()}
             result["translation_notice"] = "名称、地址、金额按原文写法还原，请核对"
         elif message.template == "compare" and message.extras.get("compare"):
             from app.assistant.compare import calculate
@@ -156,6 +182,23 @@ def _message_mapping(db: Session, task: Task, message: AssistantMessage) -> dict
         from app.assistant.translate import target_mapping
         return target_mapping(engine._load_full_map(db, task.id), message.params["target"])
     return engine.load_redaction_map(db, task.id)
+
+
+def _shift_days(db: Session, task: Task) -> int:
+    return int(engine._load_full_map(db, task.id).get('@date_shift_days') or 0)
+
+
+def dates_unshift(text: str, days: int) -> str:
+    """译文中的日期都来自原文：按平移天数整体移回，换了写法（如中译英）的日期同样正确（V32-A-02）。"""
+    if not days:
+        return text
+    from datetime import timedelta
+    from app.redaction import dates
+    out, cursor = [], 0
+    for hit in dates.find_dates(text):
+        out += [text[cursor:hit.start], dates.render(hit.style, hit.value - timedelta(days=days))]
+        cursor = hit.end
+    return ''.join(out) + text[cursor:]
 
 
 def _decimal_strings(value):
@@ -187,6 +230,7 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     from app.redaction.recheck import recheck, recheck_context
     task = lock(db, task)
     _writable(db, task)
+    _not_reviewing(db, task)
     if task.status != "awaiting_confirm":
         raise AppError(409, "SESSION_BUSY", "当前会话状态不能确认脱敏")
     db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
@@ -369,7 +413,8 @@ def get_delta(db: Session, task: Task, mid: int, offset: int) -> dict:
             raise AppError(422, 'VALIDATION_ERROR', '消息偏移量不正确')
         return dict(status=row.status, text_from_offset=content[offset:], offset=len(content), error=error_text(row.error_code))
     text, new_offset = incremental(row.content_redacted, _message_mapping(db, task, row), offset,
-                                   finished=row.status not in ("queued", "streaming"))
+                                   finished=row.status not in ("queued", "streaming"),
+                                   dates=engine.load_date_pairs(db, task.id))
     if offset > new_offset:
         raise AppError(422, "VALIDATION_ERROR", "消息偏移量不正确")
     result = {"status": row.status, "text_from_offset": text, "offset": new_offset, "error": error_text(row.error_code)}
@@ -450,6 +495,7 @@ def patch(db: Session, task: Task, body: SessionPatch) -> SessionDetail:
         raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
     if fields & {"stance", "source"}:
         _writable(db, task)
+        _not_reviewing(db, task)
         if task.status != "active" or any(f.confirmed_at is not None for f in _files(db, task)):
             raise AppError(409, "SESSION_BUSY", "确认文件后不能修改立场或来源")
     for name in fields:
@@ -463,6 +509,7 @@ def patch(db: Session, task: Task, body: SessionPatch) -> SessionDetail:
 def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None) -> SessionDetail:
     task = lock(db, task)
     _writable(db, task)
+    _not_reviewing(db, task)
     if task.status not in ("active", "parsing", "awaiting_confirm") or db.scalar(select(exists().where(
             AssistantMessage.task_id == task.id, AssistantMessage.status.in_(("queued", "streaming"))))):
         raise AppError(409, "SESSION_BUSY", "会话正在处理，请稍后再加文件")
@@ -536,6 +583,7 @@ def _file_in_use(db: Session, task: Task, file: TaskFile) -> bool:
 def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     task = lock(db, task)
     _writable(db, task)
+    _not_reviewing(db, task)
     if task.status == "parsing":
         raise AppError(409, "SESSION_BUSY", "文件正在解析，请稍后移除")
     db.refresh(file)
@@ -553,8 +601,8 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     db.delete(file)
     db.flush()
     engine.apply_party_changes(db, task, [])
-    from app.checks.service import run_table_checks
-    run_table_checks(db, task)
+    from app.tasks.pipeline import session_checks
+    session_checks(db, task)
     remaining = _files(db, task)
     if not any(f.confirmed_at is None for f in remaining):
         task.status, task.error_message = "active", None

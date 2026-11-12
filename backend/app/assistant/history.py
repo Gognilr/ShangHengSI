@@ -1,7 +1,7 @@
 """只检索本人原件仍在的审核条款；来源名称不进入外发。"""
-from sqlalchemy import select, exists
+from sqlalchemy import or_, select, exists
 
-from app.db.models import Task, TaskFile, DocNode, TaskClauseVector
+from app.db.models import ReviewRun, Task, TaskFile, DocNode, TaskClauseVector
 from app.embedding import engine as embedding
 from app.kb.retrieve import protect
 from app.redaction import engine
@@ -15,12 +15,19 @@ def retrieve(db, task, query, *, vector=None):
     vector = embedding.embed([query], 'query')[0] if vector is None else vector
     distance = TaskClauseVector.embedding.cosine_distance(vector)
     deleted = exists().where(TaskFile.task_id == Task.id, TaskFile.original_deleted_at.is_not(None))
+    # 会话里审核过的文件也算历史合同（V32-A-02）；本会话自身不检索
+    reviewed = exists().where(ReviewRun.task_id == Task.id)
     rows = db.execute(select(TaskClauseVector, Task).join(Task, Task.id == TaskClauseVector.task_id)
-        .where(Task.owner_id == task.owner_id, Task.kind == 'review', ~deleted,
-               TaskClauseVector.embedding.is_not(None), 1 - distance >= CLAUSE_PAIR_MIN)
-        .order_by(distance, TaskClauseVector.id).limit(3)).all()
+        .where(Task.owner_id == task.owner_id, Task.id != task.id,
+               or_(Task.kind == 'review', (Task.kind == 'assistant') & reviewed),
+               ~deleted, TaskClauseVector.embedding.is_not(None), 1 - distance >= CLAUSE_PAIR_MIN)
+        .order_by(distance, TaskClauseVector.id).limit(10)).all()
     out = []
     for clause, source in rows:
+        if len(out) >= 3:
+            break
+        if source.kind == 'assistant' and not _reviewed_file(db, source, clause.file_seq):
+            continue
         nodes = db.scalars(select(DocNode).join(TaskFile).where(DocNode.task_id == source.id,
              TaskFile.seq == clause.file_seq, DocNode.part == 'body', DocNode.loc.in_(clause.locs))
              .order_by(DocNode.ord)).all()
@@ -37,6 +44,13 @@ def retrieve(db, task, query, *, vector=None):
         out.append({'task_id': str(source.id), 'label': f'{_TYPES.get(file.doc_type, "合同")}，{month}',
                     'month': month, 'text': protected})
     return out
+
+
+def _reviewed_file(db, source, seq) -> bool:
+    """会话里只有被审核轮次选用过的文件计入；file_ids 为空的轮次视为全部文件。"""
+    file_id = db.scalar(select(TaskFile.id).where(TaskFile.task_id == source.id, TaskFile.seq == seq))
+    return any(not ids or str(file_id) in ids
+               for ids in db.scalars(select(ReviewRun.file_ids).where(ReviewRun.task_id == source.id)))
 
 
 def prepare(db, task, user_message):

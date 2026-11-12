@@ -26,8 +26,9 @@ def test_t48_2_3_neutral_unique_roundtrip_and_no_ratios():
              NodeIn("F1-P5", "地址：上海市浦东新区示例路456号", None),
              NodeIn("F1-P6", "合同总价人民币100000元，首付款人民币30000元", None)]
     result = neutral(nodes)
-    assert "[[OUR]]" in result.redacted["F1-P1"]
-    assert "[[ORG_1]]" in result.redacted["F1-P2"]
+    # V32-A-02：会话不分配 [[OUR]]，我方也用 ORG 代号
+    assert "[[ORG_1]]" in result.redacted["F1-P1"] and "[[OUR]]" not in result.mapping
+    assert "[[ORG_2]]" in result.redacted["F1-P2"]
     assert "[[TEL_1]]" in result.redacted["F1-P3"] and "[[TEL_2]]" in result.redacted["F1-P3"]
     assert "[[ADDR_1]]" in result.redacted["F1-P4"] and "[[ADDR_2]]" in result.redacted["F1-P5"]
     assert not any("%" in text for text in result.redacted.values())
@@ -63,8 +64,10 @@ def test_t48_7_change_org_to_our_keeps_historical_mapping():
     first = neutral([node])
     result = neutral([node], pinned=first.mapping,
                      overrides={normalize("虚构星河贸易有限公司"): PartyOverride(True, "中国", "企业", True)})
-    assert "[[OUR]]" in result.redacted[node.loc]
-    assert result.mapping["[[ORG_1]]"] == result.mapping["[[OUR]]"] == "虚构星河贸易有限公司"
+    # V32-A-02：改为我方不改代号；旧会话已有的 [[OUR]] 仍归原主体
+    assert result.redacted[node.loc] == first.redacted[node.loc] == "买方：[[ORG_1]]"
+    legacy = neutral([node], pinned={"[[OUR]]": "虚构星河贸易有限公司"})
+    assert legacy.redacted[node.loc] == "买方：[[OUR]]"
 
 
 def test_t48_8_9_question_allocator_injection_and_review_unchanged():

@@ -73,11 +73,14 @@ def calculate(nodes):
                      + ('）' if len(periods) == 2 else '') for label, periods in rows.items())
 
 
-def section(db, task):
+def section(db, task, file_seqs=None):
+    """审核外发的【本地财务比率】；会话发起的审核同样计算，file_seqs 只取本轮所选文件（V32-A-02）。"""
     from app.admin.settings_store import get_setting
     from app.checks.service import load_inputs
-    if task.kind != 'review' or not get_setting(db, 'review.send_ratios'):
+    if task.kind == 'assistant' and task.purpose != 'chat' or not get_setting(db, 'review.send_ratios'):
         return ''
     nodes, _ = load_inputs(db, task.id)
+    if file_seqs is not None:
+        nodes = [n for n in nodes if n.file_seq in file_seqs]
     text = calculate(nodes)
     return '【本地财务比率】\n' + text if text else ''

@@ -10,15 +10,21 @@ from app.db.models import AssistantMessage, DocNode, Party, Task, TaskFile
 from app.redaction.outbound import escape_document_tags
 from app.redaction.placeholders import NEUTRAL
 from app.redaction.dictionaries import find_country
+from app.redaction import engine
 from app.redaction.engine import load_redaction_map
 from app.security.errors import AppError
 
-VERSION = "assistant-2026.11-5"
+VERSION = "assistant-2026.11-6"
 _PATH = Path(__file__).resolve().parents[2] / "resources/prompts/assistant.md"
 _TYPES = {"contract": "合同", "quotation": "报价单", "order": "订单", "inquiry": "询价单", "letter": "函件"}
 _LABELS = {"NAME": "名称", "PROPN": "专有名词", "ORG": "企业", "PER": "人名", "PRJ": "项目", "REF": "编号", "TEL": "电话", "EMAIL": "邮箱",
            "URL": "网址", "ZIP": "邮编", "ACCT": "账号", "SWIFT": "银行代码", "AMT": "金额", "PRICE": "单价",
            "QTY": "数量", "TERM": "敏感词", "IM": "联系方式", "ID": "证件号", "ADDR": "地址"}
+
+
+# 与审核外发的平移说明同义（redaction/outbound.build）
+DATE_SHIFT_NOTE = ("文中日期已整体平移，间隔、先后与星期不变；判断期限请用日期间的关系，"
+                   "不要以绝对日期判断法律、政策的生效时间。引用日期照抄原写法，不要自行算出新的绝对日期。")
 
 
 def system_prompt() -> str:
@@ -30,7 +36,7 @@ def fixed_prompt_text() -> str:
     return "\n".join((system_prompt(), RESOURCE.read_text(encoding="utf-8"), *_TYPES.values(), *_LABELS.values(),
                       "【文件：资料，录音逐字稿，录音时长】【翻译分段】【公司知识库片段】【我的历史合同条款】",
                       "【模板参数】目标语言：侧重点：语气：回复语言：【代号说明】【本地校验摘要】",
-                      "我方 敏感信息 <document></document>"))
+                      "我方 敏感信息 <document></document>", DATE_SHIFT_NOTE))
 
 
 def selected_files(db: Session, task: Task, params: dict) -> list[TaskFile]:
@@ -101,13 +107,17 @@ def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, n
             party = parties.get(code)
             if party:
                 country = find_country(party.country or "")
-                label += "（" + "，".join(filter(None, (party.role_label, country))) + "）"
+                # 会话不另设我方代号，我方只作为角色写在说明里（V32-A-02）
+                label += "（" + "，".join(filter(None, ("我方" if party.is_our_party else None,
+                                                     party.role_label, country))) + "）"
             elif code.startswith("[[ADDR_"):
                 country = find_country(mapping.get(code, ""))
                 if country:
                     label += f"（{country}）"
         descriptions.append(f"{code}：{label}")
     system, options = system_prompt(), ""
+    if int(engine._load_full_map(db, task.id).get('@date_shift_days') or 0):
+        system += "\n\n" + DATE_SHIFT_NOTE
     from app.checks.service import local_summary
     confirmed = db.scalars(select(TaskFile.id).where(TaskFile.task_id == task.id, TaskFile.confirmed_at.is_not(None)))
     summary = local_summary(db, task, file_ids=list(confirmed))

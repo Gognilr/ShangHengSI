@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.db.models import Party, RedactionItem, RedactionSuspect, Task, User
 from app.db.session import get_db
 from app.redaction import engine, stats
-from app.security.deps import current_user, owned_redaction_task as owned_task
+from app.security.deps import current_user, owned_party_task, owned_redaction_task as owned_task
 from app.security.errors import AppError, NotFoundError
 from app.audit import service as audit
 
@@ -137,17 +137,18 @@ def _party_list(db: DbSession, task: Task) -> PartyList:
 
 
 @router.get("/parties", response_model=PartyList)
-def get_parties(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> PartyList:
+def get_parties(task: Task = Depends(owned_party_task), db: DbSession = Depends(get_db)) -> PartyList:
     return _party_list(db, task)
 
 
-def _lock_awaiting(db: DbSession, task: Task) -> Task:
+def _lock_awaiting(db: DbSession, task: Task, *, party: bool = False) -> Task:
     """与确认发送共用任务行锁，等待后重读状态，防止已开始审核时继续修改。"""
     locked = db.scalar(select(Task).where(Task.id == task.id).with_for_update()
                        .execution_options(populate_existing=True))
     if locked is None:
         raise NotFoundError("TASK_NOT_FOUND", "任务不存在")
-    if locked.status != "awaiting_confirm":
+    if locked.status != "awaiting_confirm" and not (party and locked.kind == "assistant" and locked.purpose == "chat"
+                                                     and locked.status == "active"):
         raise AppError(409, "TASK_STATE_CONFLICT", "当前任务状态不允许修改")
     return locked
 
@@ -160,9 +161,9 @@ def _input_error(exc: engine.RedactionInputError) -> AppError:
 
 @router.put("/parties", response_model=PartyList)
 def put_parties(
-    body: PartyUpdates, task: Task = Depends(owned_task), db: DbSession = Depends(get_db),
+    body: PartyUpdates, task: Task = Depends(owned_party_task), db: DbSession = Depends(get_db),
 ) -> PartyList:
-    locked = _lock_awaiting(db, task)
+    locked = _lock_awaiting(db, task, party=True)
     if not body.items and locked.kind != "assistant":
         raise AppError(422, "OUR_PARTY_REQUIRED", "必须恰好一方为我方")
     ids = [p.id for p in body.items]

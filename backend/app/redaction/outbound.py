@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from app.parsing.model import with_clause_no
-from app.redaction.placeholders import OTHER, OUR_CODE
+from app.redaction.placeholders import NEUTRAL, OTHER, OUR_CODE
 from app.redaction.quotes import QuoteTable, summary_text
 
 _DOCUMENT_TAG = re.compile(r"<\s*/?\s*document\b[^<>]*>", re.IGNORECASE)
@@ -26,6 +26,9 @@ class PartyInfo:
     stance: str | None = None  # V2-B-04：只用于甲乙方我方说明；旧调用保持兼容。
 
 
+_STANCE_ROLE = {"sales": "卖方", "purchase": "买方"}
+
+
 def escape_document_tags(text: str) -> str:
     """把 <document>、</document>（含大小写、空格变体）中的尖括号换成全角。"""
     return _DOCUMENT_TAG.sub(lambda m: m.group().replace("<", "＜").replace(">", "＞"), text)
@@ -40,6 +43,13 @@ def party_description(parties: list[PartyInfo]) -> str:
     """【主体说明】[我方]=卖方；[客户_A]：阿联酋，贸易商；[收货人_B]：土耳其，货代"""
     parts = []
     for p in sorted(parties, key=lambda p: (not p.is_our_party, _letter_order(p.code))):
+        if p.is_our_party and NEUTRAL.fullmatch(p.code):
+            # 会话的我方只是主体说明里的角色，不另设代号（V32-A-02）：[[ORG_1]]：我方，卖方
+            fields = ["我方"] + ([p.role_label] if p.role_label != OTHER else [])
+            if p.role_label in (OTHER, "甲方", "乙方") and p.stance in _STANCE_ROLE:
+                fields.append(_STANCE_ROLE[p.stance])
+            parts.append(f"{p.code}：{'，'.join(fields)}")
+            continue
         if p.is_our_party:
             desc = OUR_CODE if p.role_label == OTHER else f"{OUR_CODE}={p.role_label}"
             if p.role_label in ("甲方", "乙方") and p.stance in ("purchase", "sales"):

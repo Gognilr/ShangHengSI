@@ -235,6 +235,21 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
         raise
 
 
+def session_checks(db: Session, task: Task) -> None:
+    """会话文件的本地校验：工作台会话与审核任务一致（合同校验 + 条款向量，V32-A-02），会议纪要、翻译只核验表格。"""
+    if task.purpose != 'chat':
+        from app.checks.service import run_table_checks
+        run_table_checks(db, task)
+        return
+    run_checks(db, task, datetime.now(ZoneInfo("Asia/Shanghai")).date())
+    try:
+        with db.begin_nested():
+            from app.review.clauses import store_vectors
+            store_vectors(db, task)
+    except Exception:
+        logger.warning('任务条款向量计算失败 task=%s', task.id)
+
+
 def recompute_task(db: Session, task: Task):
     """草稿与未提交任务共用：保留用户决定，按当前主文件统一重算。"""
     from app.redaction import engine

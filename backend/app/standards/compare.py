@@ -78,17 +78,23 @@ def prepare(db,ctx,chunk):
     db.scalar(select(Task).where(Task.id==ctx.task.id).with_for_update())
     db.scalar(select(RedactionMap).where(RedactionMap.task_id==ctx.task.id).with_for_update())
     mapping=_load_full_map(db,ctx.task.id);terms=_terms(db)
+    allocator=None
+    if ctx.task.kind=='assistant':
+        # 会话用中性代号且不分配我方代号（V32-A-02）：预置我方名称按 ORG 续号，与问答共用同一套代号
+        from app.redaction.placeholders import NeutralAllocator
+        allocator=NeutralAllocator();allocator.seed(mapping)
     # 预置我方主体未在当前文件出现时，也按我方代号脱敏；多写法按既有#序号格式入图。
     for own in db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True),RedactionTerm.is_our_party.is_(True))):
         value=crypto.decrypt_text(own.term_enc)
         if value not in mapping.values():
-            key=OUR_CODE if OUR_CODE not in mapping else f'{OUR_CODE}#{len(mapping)+1}'
+            code=allocator.numbered('ORG',value) if allocator else OUR_CODE
+            key=code if code not in mapping else f'{code}#{len(mapping)+1}'
             mapping[key]=value
     output=[];suspect=False
     for i,p in enumerate(chosen,1):
         raw=f"范本条款：{p['text']}"
         raw+=''.join(f'\n{label}：{p[key]}' for key,label in [('stance','标准立场'),('acceptable','可接受范围'),('escalate','需上报的情形')] if p[key])
-        redacted=_redact(raw,mapping,terms)
+        redacted=_redact(raw,mapping,terms,allocator=allocator)
         suspect=suspect or bool(redacted.suspects)
         mapping.update(redacted.new_entries)
         output.append(f"[T{i}] 本文件位置：{p['loc']}（{p['document_title']}）\n{redacted.text}")

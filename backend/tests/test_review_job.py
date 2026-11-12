@@ -575,7 +575,7 @@ def test_all_chunks_fail(db_sessionmaker, owner, ready_task, llm):
     assert len(r.coverage["failed_chunks"]) == r.chunk_count
     with db_sessionmaker() as db:
         detail = service.run_detail(db, db.get(ReviewRun, run.id))
-        assert "有问题 0 条" in detail.coverage["summary"]
+        assert "审核失败，未取得有效 AI 结论" in detail.coverage["summary"]  # V311-FIX-01 改了失败轮次的说明
         assert any("审核失败" in note for note in detail.coverage["notes"])
         assert db.scalar(select(func.count()).select_from(RequirementResult)) == 0
 

@@ -121,7 +121,7 @@ class Allocator:
     def address(self, country: str, key: str) -> str:
         return address_code(country)
 
-    def our(self) -> str:
+    def our(self, key: str | None = None) -> str:
         return OUR_CODE
 
 
@@ -152,6 +152,10 @@ class NeutralAllocator:
         for entry, value in pinned.items():
             code = entry.split("#", 1)[0]
             match = re.fullmatch(r"\[\[([A-Z]+)_(\d+)\]\]", code)
+            if code == "[[OUR]]":
+                # 旧会话已分配的 [[OUR]] 继续代表同一主体，新会话不再分配（V32-A-02）
+                self._codes.setdefault(("ORG", self._normalize(value)), code)
+                continue
             if not match or match[1] not in NEUTRAL_CATEGORIES:
                 continue
             category, number = NEUTRAL_CATEGORIES[match[1]], int(match[2])
@@ -184,5 +188,6 @@ class NeutralAllocator:
     def address(self, country: str, key: str) -> str:
         return self.numbered("ADDR", key)
 
-    def our(self) -> str:
-        return "[[OUR]]"
+    def our(self, key: str | None = None) -> str:
+        """会话不再分配 [[OUR]]：我方用该主体的 ORG 代号，“我方”只写在主体说明里（V32-A-02）。"""
+        return self.numbered("ORG", key) if key is not None else "[[OUR]]"
