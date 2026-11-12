@@ -205,7 +205,8 @@ def _prepare_session(db: Session, user: User, path: Path, attachments, doc_type,
     task.stance, task.source = stance, source
     db.commit()
     with ExitStack() as stack:
-        files = [(path.name, stack.enter_context(path.open("rb")))] +                 [(a.name, stack.enter_context(a.open("rb"))) for a in attachments]
+        files = [(path.name, stack.enter_context(path.open("rb")))] + \
+                [(a.name, stack.enter_context(a.open("rb"))) for a in attachments]
         assistant.add_files(db, task, files)
     ids = [str(f.id) for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))]
     _execute_job(db, task.id, "parse", lambda: parse_task(db, task.id, ids))
