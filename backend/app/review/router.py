@@ -93,6 +93,17 @@ def patch_finding(
     return service.update_finding(db, finding, user, patch)
 
 
+@router.put("/findings/{fid}/draft", response_model=FindingOut, dependencies=[Depends(_review)])
+def put_finding_draft(
+    body: service.DraftIn,
+    finding: Finding = Depends(owned_finding),
+    user: User = Depends(current_user),
+    db: DbSession = Depends(get_db),
+) -> FindingOut:
+    """讨论稿保存为该问题的修改建议（V32-B-03）：只用于工作台会话的轮次。"""
+    return service.save_draft(db, finding, user, body)
+
+
 # ---------------------------------------------------------------- 审核要求（抽屉，M5-06）
 
 

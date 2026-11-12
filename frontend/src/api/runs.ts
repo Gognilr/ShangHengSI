@@ -3,7 +3,7 @@ import { http } from './http'
 /** 回程文字中未能还原的标记（SPEC 9.9），位置为码点下标。 */
 export type MarkKind = 'variant' | 'unknown' | 'shared' | 'note' | 'date' | 'literal' | 'calc'
 export interface Mark { start: number; end: number; kind: MarkKind }
-export type MarkedField = 'title' | 'problem' | 'impact' | 'suggestion' | 'suggested_text' | 'basis'
+export type MarkedField = 'title' | 'problem' | 'impact' | 'suggestion' | 'suggested_text' | 'basis' | 'discussed_text'
 export type UnableReason = 'redacted' | 'absent' | 'other'
 
 export interface RunCreated {
@@ -57,6 +57,10 @@ export interface Finding {
   basis: string | null
   handling_status: HandlingStatus
   handling_note: string | null
+  /** 讨论修改稿（已还原，V32-B-03）；use_discussed 为真时采纳与修订版取它 */
+  discussed_text?: string | null
+  discussed_at?: string | null
+  use_discussed?: boolean
   quote_excerpt: string | null
   marks: Partial<Record<MarkedField, Mark[]>>
   unresolved: number
@@ -129,8 +133,11 @@ export const runsApi = {
   list: (taskId: string) => http.get<{ items: RunListItem[] }>(`/tasks/${taskId}/runs`),
   get: (runId: string) => http.get<RunDetail>(`/runs/${runId}`),
   sent: (runId: string) => http.get<SentText>(`/runs/${runId}/sent`),
-  patchFinding: (findingId: string, body: { handling_status?: HandlingStatus; handling_note?: string | null }) =>
+  patchFinding: (findingId: string, body: { handling_status?: HandlingStatus; handling_note?: string | null; use_discussed?: boolean }) =>
     http.patch<Finding>(`/findings/${findingId}`, body),
+  /** 讨论稿保存为该问题的修改建议（V32-B-03）：text 为用户核对后的文字，服务器本地脱敏后存代号文本；空文字表示删除 */
+  saveDraft: (findingId: string, body: { text: string; message_id?: number }) =>
+    http.put<Finding>(`/findings/${findingId}/draft`, body),
 }
 
 /** 确认发送时后端返回的 409 / 422 错误码对应的中文提示（设计八）。 */

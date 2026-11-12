@@ -13,6 +13,7 @@ import ReviewPane from '@/components/workspace/ReviewPane.vue'
 import Conversation from '@/components/assistant/Conversation.vue'
 import Composer, { type ComposerStart } from '@/components/assistant/Composer.vue'
 import FilePanel from '@/components/assistant/FilePanel.vue'
+import DraftDialog from '@/components/workspace/DraftDialog.vue'
 const route = useRoute(), router = useRouter(), sessions = useSessionsStore(), auth = useAuthStore()
 // 工作台两种视图（V32-B-01）：直接提问 / 全面审核。切换只改视图，不外发、不清空输入；没有“智能审核”权限的人看不到审核视图
 const canReview = computed(() => auth.can('use.review'))
@@ -30,6 +31,9 @@ interface Anchor { id: string; no: string; title: string; runNo: number }
 const anchor = ref<Anchor | null>(null)
 const shown = computed(() => messages.value.filter(m => anchor.value ? m.finding_id === anchor.value.id : !m.finding_id))
 function discuss(next: Anchor) { anchor.value = next; modeModel.value = 'ask' }
+// 讨论回复保存为该问题的修改建议（V32-B-03）；回到审核结果时问题卡重新读取，显示二选一
+const draftOpen = ref(false), draftMessage = ref<Message | null>(null)
+function openDraft(message: Message) { draftMessage.value = message; draftOpen.value = true }
 const offsets = new Map<number, number>()
 let active = true, version = 0, polling = false, timer: ReturnType<typeof setTimeout> | undefined
 function failure(e: unknown) { return e instanceof ApiError ? e.status === 404 ? '会话不存在或已被删除' : e.message : '加载失败，请刷新页面后重试' }
@@ -196,7 +200,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
             <el-button link type="primary" size="small" @click="modeModel = 'review'">回到审核结果</el-button>
             <el-button link size="small" aria-label="解除讨论锚点" title="解除后回到普通对话" @click="anchor = null"><X :size="14" :stroke-width="2" />解除</el-button>
           </div>
-          <Transition name="rise"><Conversation v-if="!homeLike" :messages="shown" :session-id="anchor ? `${id}:${anchor.id}` : id" :hint="anchor ? '围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。' : undefined" @stop="stop" @retry="retry" /></Transition>
+          <Transition name="rise"><Conversation v-if="!homeLike" :messages="shown" :session-id="anchor ? `${id}:${anchor.id}` : id" :hint="anchor ? '围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。' : undefined" :draftable="!!anchor && !session.original_deleted" @draft="openDraft" @stop="stop" @retry="retry" /></Transition>
         </template>
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
         <Composer v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!messages.length && !anchor" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
@@ -217,6 +221,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         </div>
       </div>
     </main>
+    <DraftDialog v-model:open="draftOpen" :anchor="anchor" :message="draftMessage" />
     <FilePanel v-if="session" ref="filePanel" :key="id" v-model:open="drawerOpen" :session="session" @refresh="refresh" />
   </div>
 </template>

@@ -14,8 +14,8 @@ import { formatDateTime } from '@/utils/time'
 import { assistantStatusLabel } from '@/utils/labels'
 import CompareTable from './CompareTable.vue'
 import TranslationView from './TranslationView.vue'
-const props = defineProps<{ message: Message; sessionId: string; last?: boolean }>()
-const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number] }>()
+const props = defineProps<{ message: Message; sessionId: string; last?: boolean; draftable?: boolean }>()
+const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message] }>()
 const tokens = computed(() => markTokens(props.message.content, props.message.marks))
 const tokenSet = computed(() => new Set(tokens.value.keys()))
 const count = computed(() => unresolvedCount(props.message.marks))
@@ -76,6 +76,10 @@ async function copy() {
       <el-button v-else-if="message.status === 'failed'" size="small" @click="emit('retry', message.id)">重试</el-button>
       <template v-else><el-button link @click="copy">复制</el-button><el-button link :loading="downloading" @click="download('docx')">导出 Word</el-button><el-button v-if="message.template === 'translate'" link :disabled="downloading" @click="download('docx', 'bilingual')">导出对照 Word</el-button><el-button v-if="hasTable" link :disabled="downloading" @click="download('xlsx')">导出 Excel</el-button></template>
     </div>
+    <!-- 按问题讨论的回复：保存为该问题的修改建议（V32-B-03） -->
+    <div v-if="draftable && message.role === 'assistant' && message.finding_id && !pending && message.status !== 'failed'" class="draft-action">
+      <el-button size="small" type="primary" plain @click="emit('draft', message)">保存到该问题的修改建议</el-button>
+    </div>
   </article>
 </template>
 <style scoped>
@@ -102,6 +106,7 @@ th { background: var(--el-fill-color-light); }
 .warning { color: var(--el-color-warning); font: var(--si-font-meta); }
 .generating { margin: 4px 0 0; font: var(--si-font-meta); color: var(--el-text-color-secondary); }
 .message-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.draft-action { margin-top: 8px; }
 .message-actions :deep(.el-button) { margin-left: 0; }
 /* 悬停该条回复或键盘聚焦其中时显示操作；保持占位，不跳动 */
 .message-actions.on-hover { opacity: 0; transition: opacity 150ms; }

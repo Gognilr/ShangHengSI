@@ -2,7 +2,7 @@
 import json
 import uuid
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from app.db.models import AssistantMessage, DocNode, Finding, LlmModel
 from app.main import API_PREFIX
@@ -71,3 +71,80 @@ def test_discuss_one_finding(files_dir, model, make_user, login, db_sessionmaker
         db.commit()
     r = c.post(f"{BASE}/{tid}/messages", headers=h, json={"message": "放不下", "finding_id": a})
     assert r.status_code == 409 and r.json()["code"] == "CONTEXT_TOO_LONG"
+
+
+def test_draft_adopt_and_export_mainline(files_dir, model, make_user, login, db_sessionmaker):
+    """V32-B-03 主线：上传 → 确认 → 问答 → 审核 → 讨论 → 保存讨论稿 → 采纳 → 导出修订版；含未知代号的讨论稿降为批注。"""
+    import re
+    from app.db.models import LlmCall
+    from tests.test_session_review import BUYER, _code
+    seen, reply = model
+    user = make_user("draft")
+    c, csrf = login(user.username)
+    h = {"X-CSRF-Token": csrf}
+    tid, detail = _session(c, h, db_sessionmaker)  # 文件只上传、确认这一次
+    buyer = _code(db_sessionmaker, tid, BUYER)
+
+    def calls():
+        with db_sessionmaker() as db:
+            return db.scalar(select(func.count()).select_from(LlmCall))
+
+    _ask(c, h, db_sessionmaker, seen, tid, "合同是谁和谁签的？")
+    before = calls()
+    assert c.get(f"{BASE}/{tid}/outbound", params={"mode": "review"}).status_code == 200  # 切到全面审核：零模型调用
+    assert calls() == before
+    rid = c.post(f"{BASE}/{tid}/runs", headers=h, json={"stance": "sales", "source": "outgoing"}).json()["id"]
+    with db_sessionmaker() as db:
+        review_job.run_review(db, uuid.UUID(rid))
+        rows = list(db.scalars(select(Finding).where(Finding.run_id == uuid.UUID(rid)).order_by(Finding.seq)))
+        rows.append(Finding(**{k: getattr(rows[0], k) for k in ("run_id", "task_id", "title", "category", "severity",
+                                                               "cite_status", "problem")}, seq=99))
+        db.add(rows[-1])
+        nodes = [n for n in db.scalars(select(DocNode).where(DocNode.task_id == uuid.UUID(tid), DocNode.part == "body")
+                                       .order_by(DocNode.ord)) if n.redacted_text and "[[" not in n.redacted_text
+                 and len(n.redacted_text) >= 8]
+        # 两个问题各指向一段不含代号的正文，引用该段开头几个字
+        quotes = []
+        for f, n in zip(rows[:2], nodes[:2]):
+            f.locs, f.missing, f.quote_orig_enc, f.quote_model = [n.loc], False, None, n.redacted_text[:6]
+            quotes.append(n.redacted_text[:6])
+        db.commit()
+        a, b = str(rows[0].id), str(rows[1].id)
+
+    # 讨论：模型把条文放在固定标记内；界面取标记内的已还原文字给用户核对
+    reply[0] = f"建议改为：\n【修改条文】{buyer}应在十日内付款。【/修改条文】\n理由：明确期限。"
+    msg, _ = _ask(c, h, db_sessionmaker, seen, tid, "这条怎么改？", a)
+    shown = c.get(f"{BASE}/{tid}/messages").json()["items"][-1]
+    assert shown["id"] == msg["assistant"]["id"] and BUYER in shown["content"]
+    draft = re.search(r"【修改条文】(.*?)【/修改条文】", shown["content"], re.S).group(1).strip()
+    model_calls = calls()
+
+    r = c.put(f"{API_PREFIX}/findings/{a}/draft", headers=h, json={"text": draft, "message_id": shown["id"]})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["discussed_text"] == f"{BUYER}应在十日内付款。" and out["use_discussed"] and not out["unresolved"]
+    with db_sessionmaker() as db:
+        row = db.get(Finding, uuid.UUID(a))
+        assert row.discussed_text == f"{buyer}应在十日内付款。" and BUYER not in row.discussed_text  # 代号文本入库
+        original_suggested = row.suggested_text
+    # 别的问题的消息不能挂到这个问题上
+    assert c.put(f"{API_PREFIX}/findings/{b}/draft", headers=h,
+                 json={"text": "x", "message_id": shown["id"]}).status_code == 404
+    # 第二个问题：手工整理的稿里有未知代号，界面标出，导出降为批注
+    r = c.put(f"{API_PREFIX}/findings/{b}/draft", headers=h, json={"text": "由[[ORG_9]]承担全部责任。"})
+    assert r.status_code == 200 and r.json()["unresolved"] == 1
+    for fid in (a, b):
+        assert c.patch(f"{API_PREFIX}/findings/{fid}", headers=h, json={"handling_status": "adopted"}).status_code == 200
+
+    r = c.get(f"{API_PREFIX}/runs/{rid}/revised", params={"file_seq": 1})
+    assert r.status_code == 200, r.text
+    assert r.headers["X-SI-Revised"] == "1" and r.headers["X-SI-Commented"] == "1"
+    from app.export.revised_docx import _views
+    text = "".join(_views(r.content)[1])
+    assert f"{BUYER}应在十日内付款。" in text and "[[ORG_9]]" not in text  # 修订（接受视图）只含合格的讨论稿
+    # 改回原审核建议：原 suggested_text 未被覆盖
+    r = c.patch(f"{API_PREFIX}/findings/{a}", headers=h, json={"use_discussed": False})
+    assert r.status_code == 200 and r.json()["use_discussed"] is False
+    with db_sessionmaker() as db:
+        assert db.get(Finding, uuid.UUID(a)).suggested_text == original_suggested
+    assert calls() == model_calls  # 保存、采纳、导出零模型调用

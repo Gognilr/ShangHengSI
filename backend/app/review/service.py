@@ -121,6 +121,9 @@ class FindingOut(BaseModel):
     source: str = 'model'
     handling_status: str
     handling_note: str | None
+    discussed_text: str | None = None  # 讨论修改稿（已还原），V32-B-03
+    discussed_at: UtcDatetime | None = None
+    use_discussed: bool = False  # 采纳与修订版取讨论修改稿
     marks: dict[str, list[MarkOut]] = {}
     unresolved: int = 0
 
@@ -168,6 +171,21 @@ class RunDetail(BaseModel):
 class FindingPatch(BaseModel):
     handling_status: Literal["pending", "adopted", "ignored"] | None = None
     handling_note: str | None = Field(None, max_length=500)  # 出现且为空表示清除备注
+    use_discussed: bool | None = None  # 二选一：原审核建议 / 讨论修改稿（V32-B-03）
+
+
+class DraftIn(BaseModel):
+    """PUT /findings/{fid}/draft：用户核对、编辑后的建议条文（真实文字），本地脱敏后存代号文本；text 为空表示删除。"""
+    model_config = {"extra": "forbid"}
+    text: str | None = Field(None, max_length=4000)
+    message_id: int | None = Field(None, gt=0)
+
+
+def chosen_text(f) -> tuple[str | None, str]:
+    """采纳与导出使用的建议条文及其字段名：选了讨论修改稿且有内容时取讨论稿，否则取原审核建议。"""
+    if f.use_discussed and f.discussed_text:
+        return f.discussed_text, "discussed_text"
+    return f.suggested_text, "suggested_text"
 
 
 # ---------------------------------------------------------------- 审核上下文
@@ -550,8 +568,9 @@ class _View:
     def finding(self, f: Finding, locations: dict[str, str]) -> FindingOut:
         quote = crypto.decrypt_text(f.quote_snapshot_enc) if f.quote_snapshot_enc is not None else None
         locs = [str(x) for x in (f.locs or [])]
-        checked = {key: self.checked(getattr(f, key), clause=key == 'suggested_text', loc=locs[0] if locs else None)
-                   for key in ('title', 'problem', 'impact', 'suggestion', 'suggested_text', 'basis')}
+        checked = {key: self.checked(getattr(f, key), clause=key in ('suggested_text', 'discussed_text'),
+                                     loc=locs[0] if locs else None)
+                   for key in ('title', 'problem', 'impact', 'suggestion', 'suggested_text', 'basis', 'discussed_text')}
         marks = {key: list(value.marks) for key, value in checked.items() if value.marks}
         values = {key: value.text if getattr(f, key) is not None else None for key, value in checked.items()}
         return FindingOut(
@@ -561,6 +580,7 @@ class _View:
             quote=quote, quote_excerpt=crypto.decrypt_text(f.quote_orig_enc) if f.quote_orig_enc is not None else None,
             **values, marks=marks, unresolved=sum(len(v) for v in marks.values()),
             handling_status=f.handling_status, handling_note=f.handling_note,
+            discussed_at=f.discussed_at, use_discussed=bool(f.use_discussed and f.discussed_text),
             law_refs=f.law_refs, law_unverified=f.law_unverified,
             source=f.source,
         )
@@ -645,8 +665,12 @@ def update_finding(db: DbSession, finding: Finding, user: User, patch: FindingPa
     fields = patch.model_fields_set
     if "handling_status" in fields and patch.handling_status is None:
         raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
-    if not fields & {"handling_status", "handling_note"}:
+    if not fields & {"handling_status", "handling_note", "use_discussed"}:
         raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
+    if "use_discussed" in fields:
+        if patch.use_discussed is None or (patch.use_discussed and not finding.discussed_text):
+            raise AppError(422, "VALIDATION_ERROR", "该问题还没有讨论修改稿")
+        finding.use_discussed = patch.use_discussed
     if "handling_status" in fields:
         finding.handling_status = patch.handling_status
     if "handling_note" in fields:
@@ -654,6 +678,47 @@ def update_finding(db: DbSession, finding: Finding, user: User, patch: FindingPa
         finding.handling_note = note or None
     finding.updated_by = user.id
     finding.updated_at = utcnow()
+    db.commit()
+    view = _View(db, finding.task_id)
+    return view.finding(finding, view.locations([finding]))
+
+
+def save_draft(db: DbSession, finding: Finding, user: User, body: DraftIn) -> FindingOut:
+    """讨论稿存为该问题的修改建议（V32-B-03）。
+
+    用户核对后的文字是真实文字：与提问相同，按本会话对照表与识别规则在本地脱敏，新代号只增写入对照表，
+    以代号文本存入 discussed_text；原 suggested_text 不变。导出时与原建议走同一条还原与 clause 校验路径。
+    """
+    from app.assistant import service as assistant
+    from app.db.models import AssistantMessage, RedactionMap
+    from app.redaction import engine
+    task = assistant.lock(db, db.get(Task, finding.task_id))
+    if task.kind != "assistant" or task.purpose != "chat":
+        from app.security.errors import NotFoundError
+        raise NotFoundError("FINDING_NOT_FOUND", "问题不存在")
+    assistant._writable(db, task)
+    text = (body.text or "").strip()
+    if not text:
+        finding.discussed_text = finding.discussed_message_id = finding.discussed_at = None
+        finding.use_discussed = False
+    else:
+        if body.message_id is not None:
+            message = db.get(AssistantMessage, body.message_id)
+            if (message is None or message.task_id != task.id or message.role != "assistant"
+                    or message.finding_id != finding.id):
+                from app.security.errors import NotFoundError
+                raise NotFoundError("MESSAGE_NOT_FOUND", "消息不存在")
+        db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
+        result = assistant._question(db, task, text)
+        if result.new_entries:
+            engine.write_full_map(db, task.id, {**engine._load_full_map(db, task.id), **result.new_entries})
+        finding.discussed_text = result.text
+        finding.discussed_message_id = body.message_id
+        finding.discussed_at = utcnow()
+        finding.use_discussed = True  # 刚保存的讨论稿默认作为采纳来源，可在问题卡改回原审核建议
+    finding.updated_by = user.id
+    finding.updated_at = utcnow()
+    task.last_activity_at = utcnow()
     db.commit()
     view = _View(db, finding.task_id)
     return view.finding(finding, view.locations([finding]))

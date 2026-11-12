@@ -219,7 +219,11 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
             problem.append([(f'注：本问题有 {finding.unresolved} 处文字未能还原（已标黄），请核对。', False)])
         suggestion = ([_marked(finding.suggestion, finding.marks.get('suggestion', ()))] if finding.suggestion else [])
         if finding.suggested_text:
-            suggestion.append([('建议措辞：', False)] + _marked(finding.suggested_text, finding.marks.get('suggested_text', ())))
+            label = '原审核建议措辞：' if finding.use_discussed else '建议措辞：'
+            suggestion.append([(label, False)] + _marked(finding.suggested_text, finding.marks.get('suggested_text', ())))
+        if finding.use_discussed and finding.discussed_text:  # V32-B-03：所选的讨论修改稿
+            suggestion.append([('讨论修改稿（已选用）：', False)]
+                              + _marked(finding.discussed_text, finding.marks.get('discussed_text', ())))
         handling = HANDLING.get(finding.handling_status, finding.handling_status)
         if finding.handling_note:
             handling += "\n" + _clean(finding.handling_note)

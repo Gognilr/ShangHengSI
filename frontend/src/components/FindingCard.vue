@@ -34,7 +34,7 @@ const editingNote = ref(false)
 const noteInput = ref<InputInstance>()
 watch(() => props.finding, (v) => { status.value = v.handling_status; note.value = v.handling_note ?? '' })
 
-async function save(body: { handling_status?: HandlingStatus; handling_note?: string | null }) {
+async function save(body: { handling_status?: HandlingStatus; handling_note?: string | null; use_discussed?: boolean }) {
   saving.value = true
   try {
     emit('updated', await runsApi.patchFinding(props.finding.id, body))
@@ -49,6 +49,13 @@ function setStatus(value: HandlingStatus) {
   if (saving.value || value === props.finding.handling_status) return
   status.value = value
   void save({ handling_status: value })
+}
+// 讨论修改稿（V32-B-03）：与原审核建议二选一，采纳与修订版取所选文本；原建议不被覆盖
+const sourceOptions = [{ value: 'review', label: '原审核建议' }, { value: 'discussed', label: '讨论修改稿' }]
+function setSource(value: string) {
+  const wanted = value === 'discussed'
+  if (saving.value || wanted === !!props.finding.use_discussed) return
+  void save({ use_discussed: wanted })
 }
 async function editNote() { editingNote.value = true; await nextTick(); noteInput.value?.focus() }
 function saveNote() {
@@ -96,11 +103,23 @@ async function copy(text: string) {
       <div v-if="f.suggestion" class="row"><span class="label">修改建议</span><MarkedText class="text" :text="f.suggestion" :marks="f.marks.suggestion" /></div>
       <div v-if="f.suggested_text" class="replacement">
         <div class="replacement-head">
-          <span class="label">可直接替换的措辞</span>
+          <span class="label">{{ f.discussed_text ? '原审核建议的措辞' : '可直接替换的措辞' }}</span>
           <span v-if="f.marks.suggested_text?.length" class="copy-warn">含未能还原的写法，复制后请核对</span>
           <el-button link size="small" @click="copy(f.suggested_text)"><template #icon><Copy :size="14" :stroke-width="1.75" /></template>复制</el-button>
         </div>
         <MarkedText class="text" :text="f.suggested_text" :marks="f.marks.suggested_text" />
+      </div>
+      <div v-if="f.discussed_text" class="replacement discussed" :class="{ chosen: f.use_discussed }">
+        <div class="replacement-head">
+          <span class="label">讨论修改稿</span>
+          <span v-if="f.marks.discussed_text?.length" class="copy-warn">含未能还原的写法，导出时转为批注</span>
+          <el-button link size="small" @click="copy(f.discussed_text)"><template #icon><Copy :size="14" :stroke-width="1.75" /></template>复制</el-button>
+        </div>
+        <MarkedText class="text" :text="f.discussed_text" :marks="f.marks.discussed_text" />
+      </div>
+      <div v-if="f.discussed_text" class="source">
+        <span class="label">采纳与修订版使用</span>
+        <SiSegmented :model-value="f.use_discussed ? 'discussed' : 'review'" :options="sourceOptions" size="small" ariaLabel="采纳时使用的建议" @update:model-value="setSource(String($event))" />
       </div>
       <div v-if="f.basis" class="row basis"><span class="label">依据</span><MarkedText class="text" :text="f.basis" :marks="f.marks.basis" /></div>
       <el-collapse v-if="f.law_refs?.length">
@@ -155,6 +174,9 @@ async function copy(text: string) {
 .replacement { padding: 8px 12px; border: 1px solid var(--si-hair-strong); border-radius: 8px; background: var(--el-color-primary-light-9); }
 .replacement-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .replacement-head .el-button { margin-left: auto; }
+.replacement.discussed { background: var(--si-surface-2); }
+.replacement.discussed.chosen { border-color: var(--el-color-primary); }
+.source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .copy-warn { font: var(--si-font-caption); color: var(--si-warn-ink); }
 .basis .text, .muted { color: var(--si-ink-3); font: var(--si-font-meta); }
 .muted { margin: 0; }

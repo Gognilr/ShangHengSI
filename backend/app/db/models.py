@@ -660,6 +660,8 @@ class Finding(Base):
     discussed_text: Mapped[Optional[str]] = mapped_column(Text)
     discussed_message_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     discussed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    # 采纳与修订版取讨论修改稿（V32-B-03）；false 取原审核建议
+    use_discussed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     # 用户自由填写的处理备注，主密钥加密（V31Q-114）；handling_note 属性透明加解密
     handling_note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)

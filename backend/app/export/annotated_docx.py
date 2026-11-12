@@ -109,7 +109,9 @@ def load_source(db, file):
 def finding_text(f, run):
     lines = [f"【{SEVERITY.get(f.severity, f.severity)} · {CATEGORY.get(f.category, f.category)}】{f.title}",
              f"问题：{f.problem}", f"建议：{f.suggestion or '—'}"]
-    if f.suggested_text:
+    if f.use_discussed and f.discussed_text:  # 选了讨论修改稿时批注写所选文本（V32-B-03）
+        lines.append(f"建议条文（讨论修改稿）：{f.discussed_text}")
+    elif f.suggested_text:
         lines.append(f"建议条文：{f.suggested_text}")
     if f.basis:
         lines.append(f"依据：{f.basis}")
