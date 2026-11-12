@@ -5,6 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+from docx.enum.text import WD_COLOR_INDEX
 from openpyxl import Workbook
 from sqlalchemy import select
 
@@ -51,10 +52,41 @@ def blocks(text):
         i += 1
 
 
-def _inline(paragraph, text):
+class _Flags:
+    """回复里未能还原的代号：按展示文字在导出正文中标黄并计数，样式与审核报告一致。"""
+
+    def __init__(self, view):
+        content = view.get('content', '')
+        words = {content[m['start']:m['end']] for m in view.get('marks', ())}
+        words.discard('')
+        self.pattern = re.compile('|'.join(re.escape(w) for w in sorted(words, key=len, reverse=True))) if words else None
+        self.count = 0
+
+    def split(self, text):
+        """返回 [(文字, 是否标黄)]。"""
+        if not self.pattern or not text:
+            return [(report_docx._clean(text), False)]
+        parts, cursor = [], 0
+        for m in self.pattern.finditer(text):
+            if cursor < m.start():
+                parts.append((report_docx._clean(text[cursor:m.start()]), False))
+            parts.append((report_docx._clean(m.group()), True))
+            self.count += 1
+            cursor = m.end()
+        if cursor < len(text):
+            parts.append((report_docx._clean(text[cursor:]), False))
+        return parts
+
+
+def _inline(paragraph, text, flags=None):
     for index, part in enumerate(re.split(r'\*\*(.+?)\*\*', text)):
-        if part:
-            report_docx._font(paragraph.add_run(report_docx._clean(part)), 10.5, index % 2 == 1)
+        if not part:
+            continue
+        for piece, flagged in (flags.split(part) if flags else [(report_docx._clean(part), False)]):
+            run = paragraph.add_run(piece)
+            report_docx._font(run, 10.5, index % 2 == 1)
+            if flagged:
+                run.font.highlight_color = WD_COLOR_INDEX.YELLOW
 
 
 def _document():
@@ -66,16 +98,20 @@ def _document():
     return doc
 
 
-def _markdown_doc(doc, content):
+def _markdown_doc(doc, content, flags=None):
     for kind, value in blocks(content):
         if kind == 'table':
             headers, rows = value
+            if flags:
+                rows = [[flags.split(cell) for cell in row] for row in rows]
             report_docx._table(doc, headers, rows, [26.7 / len(headers)] * len(headers))
         elif kind == 'heading':
             report_docx._heading(doc, value)
         else:
             p = doc.add_paragraph()
-            _inline(p, ('• ' if kind == 'list' else '') + value)
+            _inline(p, ('• ' if kind == 'list' else '') + value, flags)
+    if flags and flags.count:
+        doc.add_paragraph().add_run(f'含 {flags.count} 处未能还原的代号（已标黄），请核对。')
 
 
 def _translation_doc(db, task, row, view, doc, variant):
@@ -188,6 +224,7 @@ def generate(db, task, mid, format, variant, user, ip):
     if row.role != 'assistant' or row.status not in ('done', 'stopped'):
         raise AppError(409, 'ASSIST_EXPORT_UNAVAILABLE', '回复完成或停止后才能导出')
     view = service.message_out(db, task, row)
+    flags = _Flags(view)
     if row.template == 'reply':
         view['content'] = view.get('draft', '')
         if not view['content'].strip():
@@ -207,7 +244,7 @@ def generate(db, task, mid, format, variant, user, ip):
         else:
             if row.template == 'minutes':
                 report_docx._heading(doc, '会议纪要')
-            _markdown_doc(doc, view['content'])
+            _markdown_doc(doc, view['content'], flags)
         output = io.BytesIO(); doc.save(output); data = output.getvalue()
         media = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     title = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]', '_', task.title[:20])

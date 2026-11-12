@@ -190,3 +190,14 @@ def test_translation_word_tables_and_original_deleted(conversation, db_sessionma
         db.commit()
     doc = Document(io.BytesIO(c.get(url(tid, mid, variant='bilingual')).content))
     assert len(doc.tables[0].rows) == 6 and doc.tables[0].cell(1, 0).text == '原文已按保留期限删除'
+
+
+def test_unresolved_codes_are_highlighted_and_counted(conversation, db_sessionmaker):
+    # V312Q-04：未还原的代号在 DOCX 正文与表格中标黄，文末提示数量
+    c, _, tid, _ = conversation
+    mid = message(db_sessionmaker, tid, content_redacted='正文 [[ORG_9]] 与 [[ORG_1]]\n\n| 主体 |\n|---|\n| [[ORG_9]] |')
+    doc = Document(io.BytesIO(c.get(url(tid, mid)).content))
+    runs = [r for p in doc.paragraphs for r in p.runs] + [r for t in doc.tables for row in t.rows for cell in row.cells
+                                                          for p in cell.paragraphs for r in p.runs]
+    assert [r.text for r in runs if r.font.highlight_color] == ['[[ORG_9]]', '[[ORG_9]]']
+    assert any('含 2 处未能还原的代号' in p.text for p in doc.paragraphs)
