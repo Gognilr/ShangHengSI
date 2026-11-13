@@ -48,8 +48,36 @@ def _covered(surface: str) -> bool:
     return bool(surface) and bool(_HAN.fullmatch(surface)) and all(w for _, _, w in _tokens(surface))
 
 
+def short_name_slot(text: str, start: int, end: int) -> bool:
+    """短值须独占名称标签到行尾，后续仍须实体识别的同区间证据。"""
+    return bool(re.search(r'(?:名称|姓名|联系人|代表|经办人|负责人|签字|签名|抄送|收件人|单位|公司|厂名)'
+                          r'(?:[（(][^）)\n]{0,12}[）)])?[ \t]*[:：][ \t]*$', text[:start])
+                and re.fullmatch(r'[一-鿿]{2,4}', text[start:end])
+                and not text[end:].strip(' \t。.;；\r\n'))
+
+
+def independent_org(text: str) -> tuple[int, int] | None:
+    """整行地名加短机构名是强槽位；不把叙述句或公共机构登记成私有名称。"""
+    from app.redaction import parties as P
+    surface = text.strip(' \t\r\n。.;；')
+    place = P._place_prefix(surface)
+    if not place:
+        match = re.match(r'[一-鿿]{2,7}?(?:市|县|区)', surface)
+        place = match.group() if match else ''
+    tail = surface[len(place):]
+    suffixes = '|'.join(sorted((*P._INSTITUTION_SUFFIXES, '厂'), key=len, reverse=True))
+    if (place and re.fullmatch(r'[一-鿿]{2,10}(?:' + suffixes + ')', tail)
+            and not re.search(r'的|在|于|应|须|负责|提供|按照|根据', tail)
+            and not P.public_preservation_spans(surface)):
+        start = text.index(surface)
+        return start, start + len(surface)
+    return None
+
+
 def name_slot(text: str, start: int, end: int) -> bool:
-    """B-02 最小名称槽位：名称标签、签字落款与独立企业名；B-04 再扩充。"""
+    """名称标签、签字落款、地名与独立机构名的证据，优先于普通词解释。"""
+    if (span := independent_org(text)) and span[0] <= start < end <= span[1]:
+        return True
     head = text[:start]
     if re.search(r'(?:名称|姓名|联系人|代表|经办人|负责人|签字|签名|抄送|收件人|单位|公司|厂名)'
                  r'(?:[（(][^）)\n]{0,12}[）)])?\s*[:：]\s*$', head):

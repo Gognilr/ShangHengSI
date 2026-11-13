@@ -1,0 +1,19 @@
+description: 无门牌号地址、楼宇楼层、门牌尾部与独立楼盘候选
+stance: purchase
+must_replace:
+  - {text: "海州市云山区青云街明月路岚汐大厦六层", category: ADDR}
+  - {text: "岚汐大厦六层", category: ADDR}
+  - {text: "海州市云山区青云路328号创意产业园5栋2单元301室", category: ADDR}
+  - {text: "海州市云山区青云路328号6栋2单元301室", category: ADDR}
+  - {text: "76543210987654321", category: REFNO}
+  - {text: "87654321098765432", category: REFNO}
+  - {text: "海州市虚构档案服务中心", category: ORG}
+  - {text: "海州市云山区至善路自在大厦六层", category: ADDR}
+must_suspect:
+  - "锦绣华庭小区"
+  - "岚汐花园"
+  - "澄岑大厦"
+  - "岚汐广场"
+must_keep:
+  - "按合同约定提供服务。"
+  - "北京市道路施工按合同约定执行。"

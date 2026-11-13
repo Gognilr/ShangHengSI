@@ -1,5 +1,4 @@
 description: 虚构名称槽位与整段地址
-pending: B-04
 stance: purchase
 must_replace:
   - {text: "林虚", category: PERSON}

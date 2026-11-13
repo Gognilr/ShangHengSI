@@ -225,6 +225,10 @@ def find_formatted(text: str) -> list[Hit]:
         value = m.group(1).rstrip(".")
         if any(c.isdigit() for c in value):
             add(m.start(1), m.start(1) + len(value), "REFNO", _norm_key(value))
+    # 名称未知的“×号”仍是编号槽位；保留账号、证件等已知类别的优先级。
+    for m in re.finditer(r'[一-鿿]{0,12}(?:编号|号码|号)[ \t]*[:：][ \t]*(\d{8,30})(?![A-Za-z0-9])', text):
+        if not any(h.start < m.end(1) and m.start(1) < h.end for h in hits):
+            add(m.start(1), m.end(1), 'REFNO', _norm_key(m.group(1)))
     # 标签强于号码形状，订单编号等先占位；无标签的校验失败项由引擎列为不确定项。
     for pattern, validator in ((_CREDIT_CODE, validators.uscc), (_ID_CARD, validators.id_card)):
         for m in pattern.finditer(text):
@@ -1032,6 +1036,23 @@ _CN_UNLABELED_ADDRESS = re.compile(
     r"[一-鿿0-9]{1,20}(?:大道|大街|胡同|路|街|道|巷|弄)[ \t]*\d{1,5}[ \t]*号"
     r"(?:[ \t]*[A-Za-z0-9一二三四五六七八九十\-]{1,10}[ \t]*(?:号楼|单元|栋|幢|座|楼|层|室))*"
 )
+# 无门牌号时要求行政区起头，并有道路或楼宇加楼层；名称组件不跨标点或叙述虚词。
+_CN_ADDRESS_NAME = r'[一-鿿A-Za-z0-9]{1,15}?'
+_CN_FLOOR = r'[ \t]*[A-Za-z0-9一二三四五六七八九十百零〇\-]{1,10}[ \t]*(?:号楼|单元|栋|幢|座|楼|层|室)'
+_CN_BUILDING = _CN_ADDRESS_NAME + r'(?:产业园|科技园|工业园|小区|花园|大厦|广场|园)'
+_CN_CONTINUOUS_ADDRESS = re.compile(
+    r'(?:[一-鿿]{2,7}?(?:省|自治区|市|自治州|地区)|[一-鿿]{1,7}?(?:区|县))'
+    r'(?:[一-鿿]{1,7}?(?:市|区|县))?'
+    r'(?:(?:' + _CN_ADDRESS_NAME + r'(?:大道|大街|路|街|巷|弄)){1,3}'
+    r'(?:[ \t]*\d{1,5}[ \t]*号)?(?:' + _CN_BUILDING + r')?(?:' + _CN_FLOOR + r')*'
+    r'|' + _CN_BUILDING + r'(?:' + _CN_FLOOR + r')+)(?![一-鿿A-Za-z0-9])')
+_CN_COMMA_BUILDING = re.compile(r'(?:^|[,，])[ \t]*(' + _CN_BUILDING + r'(?:' + _CN_FLOOR + r')+)')
+_CN_BUILDING_ONLY = re.compile(r'(?<![一-鿿])([一-鿿]{2,12}?(?:小区|花园|大厦|广场))(?![一-鿿])')
+
+
+def building_candidates(text: str) -> list[tuple[int, int]]:
+    """只有楼盘后缀时沿用后缀型待判断项，不提升为确定地址。"""
+    return [m.span(1) for m in _CN_BUILDING_ONLY.finditer(text)]
 # V2Q-45：无标签英文地址须有门牌+道路词，或套间/楼层+逗号分隔的城市/国家；
 # 仅接受同一行内的地址组成部分，不把独立地名、港口或后续叙述并入地址。
 _EN_UNIT = r"(?i:Suite|Floor|Unit|Room)[ \t]+[A-Za-z0-9-]{1,10}"
@@ -1049,6 +1070,10 @@ def _extended_address_end(text: str, start: int, end: int, country: str | None) 
         r'(?:[ \t]*\d+(?:号楼|单元|栋|幢|层|楼|室))+')
     if country == '中国' and (tail := cn_tail.match(text, end)):
         end = tail.end()
+    if country == '中国':
+        tail = re.match(r'(?:' + _CN_FLOOR + r')+', text[end:])
+        if tail:
+            end += tail.end()
     if tail := re.match(r'[ \t]*#\d{2}-\d{2,4}(?!\d)', text[end:]):
         end += tail.end()
     if tail := re.match(r',[ \t]*([A-Z][A-Za-z]+(?:[ \t]+[A-Z][A-Za-z]+)*)[ \t]+\d{4,6}(?!\d)', text[end:]):
@@ -1134,6 +1159,19 @@ def find_addresses(text: str) -> list[Hit]:
         if end > start:
             hits.append(Hit(start, end, "ADDR", find_country(text[start:end]) or "国家未知"))
     chains = _admin_chains(text)
+    for pattern in (_CN_CONTINUOUS_ADDRESS, _CN_COMMA_BUILDING):
+        for m in pattern.finditer(text):
+            start, end = m.span(1) if pattern is _CN_COMMA_BUILDING else m.span()
+            if pattern is _CN_CONTINUOUS_ADDRESS:
+                # 只在行政区之前剥离叙述，不能把“至善路”“自在大厦”中的字当边界。
+                head = re.match(r'.*?(?:省|自治区|市|自治州|地区|区|县)', text[start:end]).group()
+                boundary = list(re.finditer(r'运至|送至|交至|寄往|寄至|发往|送往|位于|坐落于|在|至', head))
+                if boundary:
+                    start += boundary[-1].end()
+            if any(h.start <= start and end <= h.end for h in hits):
+                continue
+            hits = [h for h in hits if not (start <= h.start and h.end <= end)]
+            hits.append(Hit(start, end, 'ADDR', '中国'))
     for m in _CN_UNLABELED_ADDRESS.finditer(text):
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             # 不把叙述前缀算进行政区名称，如“货物运至江苏省”“乙方在东川市”。

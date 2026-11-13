@@ -39,7 +39,7 @@ from app.db.models import (
     DocNode, Party, RedactionItem, RedactionMap, RedactionSuspect, RedactionTerm, RedactionExclusion,
     NerNodeResult, Task, TaskFile,
 )
-from app.redaction import dates, detect, ner, outbound, parties as P, quotes, ratio, suspects as S, tables
+from app.redaction import dates, detect, ner, outbound, parties as P, plain, quotes, ratio, suspects as S, tables
 from app.redaction.dictionaries import _country_index
 from app.redaction.memo import by_text
 from app.redaction.placeholders import (
@@ -916,6 +916,12 @@ def compute(
 
     # 模型只读取规则未替换的文字；等长空白保持原文偏移。
     auto_kept: list[SuspectOut] = []
+    for i, n in enumerate(nodes):
+        if slot := plain.independent_org(n.text):
+            start, end = slot
+            if not _overlaps(occupied[i], start, end):
+                ent = entity(n.text[start:end], 'ORG')
+                _accept([_Span(i, start, end, 'ORG', ent.key, 'regex')], occupied[i], spans)
 
     def ordinary(loc: str, text: str, candidate: S.Suspect) -> bool:
         reason = S.ordinary_reason(text, candidate)
@@ -966,7 +972,8 @@ def compute(
             from app.redaction.dictionaries import is_known_place
             if is_known_place(n.text[hit.start:hit.end]) or detect.is_admin_city(n.text[hit.start:hit.end]):
                 continue
-            if hit.score >= ner.HIGH:
+            if hit.score >= ner.HIGH or (hit.score >= ner.MEDIUM and hit.label in ('ORG', 'PERSON')
+                                         and plain.short_name_slot(n.text, hit.start, hit.end)):
                 surface = n.text[hit.start:hit.end]
                 if hit.label in ('ORG', 'PERSON'):
                     ent = entity(surface, hit.label)
@@ -1113,6 +1120,10 @@ def compute(
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         checksum_spans = [(s.char_start, s.char_end) for s in found
                           if s.loc == n.loc and s.reason == 'checksum_fail']
+        # 无行政区、道路与楼层的楼盘名仅有后缀证据，沿用后缀型不确定名称。
+        for start, end in detect.building_candidates(n.text):
+            if not _overlaps(occupied[i] + excluded_spans, start, end):
+                found.append(SuspectOut(n.loc, start, end, 'org_suffix'))
         plain_candidates = []
         found += [SuspectOut(n.loc, s.start, s.end, s.reason)
                             for s in S.find_suspects(n.text, occupied[i] + excluded_spans + checksum_spans, derived=short_derived,
