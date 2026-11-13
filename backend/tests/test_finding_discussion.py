@@ -46,7 +46,27 @@ def test_discuss_one_finding(files_dir, model, make_user, login, db_sessionmaker
     assert last_text and head_text and last_text != head_text
 
     # 后部条款的问题：上下文含该条款与问题结论，不含开头；整份文件不外发
+    reply[0] = f'请核对{nodes[-1].loc}。'
     msg, sent = _ask(c, h, db_sessionmaker, seen, tid, "这条怎么改？", a)
+    shown = c.get(f'{BASE}/{tid}/messages').json()['items'][-1]
+    assert '虚构合同.docx' in shown['content'] and not shown['marks']
+    delta = c.get(f'{BASE}/{tid}/messages/{shown["id"]}', params={'offset': 0}).json()
+    assert delta['text_from_offset'] == shown['content']
+    from types import SimpleNamespace
+    from app.assistant.service import _incremental, _discussion_check
+    from app.db.models import Task
+    from app.security.errors import AppError
+    import pytest
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        partial = SimpleNamespace(content_redacted='请核对F1-P', finding_id=uuid.UUID(a))
+        prefix, offset = _incremental(db, task, partial, {}, 0, finished=False, dates=None)
+        partial.content_redacted = reply[0]
+        tail, _ = _incremental(db, task, partial, {}, offset, finished=True, dates=None)
+        assert prefix + tail == shown['content']
+        with pytest.raises(AppError) as blocked_input:
+            _discussion_check(db, task, uuid.UUID(a), {}, '联系电话13800138000', None)
+        assert blocked_input.value.code == 'DISCUSSION_INPUT_BLOCKED'
     assert msg["user"]["finding_id"] == a and msg["assistant"]["finding_id"] == a
     assert "【审核问题】" in sent and "A问题：后部条款" in sent and last_text in sent
     assert head_text not in sent or head_text in last_text
@@ -64,6 +84,22 @@ def test_discuss_one_finding(files_dir, model, make_user, login, db_sessionmaker
     r = c.post(f"{BASE}/{other}/messages", headers=h, json={"message": "x", "finding_id": a})
     assert r.status_code == 404
     assert c.post(f"{BASE}/{tid}/messages", headers=h, json={"message": "x", "finding_id": str(uuid.uuid4())}).status_code == 404
+
+    # 模型建议条文命中复检：发送前明确来源，可去掉后通过原网关发送。
+    with db_sessionmaker() as db:
+        db.get(Finding, uuid.UUID(b)).suggested_text = '联系电话13800138000。'
+        db.commit()
+    body = {'message': '如何修改？', 'finding_id': b}
+    blocked = c.post(f'{BASE}/{tid}/preview', headers=h, json=body)
+    assert blocked.status_code == 409 and blocked.json()['code'] == 'DISCUSSION_ADVICE_BLOCKED'
+    assert '电话' in blocked.json()['message'] and '13800138000' not in blocked.json()['message']
+    assert c.post(f'{BASE}/{tid}/messages', headers=h, json=body).json()['code'] == 'DISCUSSION_ADVICE_BLOCKED'
+    from app.assistant.job import handle_assist
+    r = c.post(f'{BASE}/{tid}/messages', headers=h, json={**body, 'params': {'omit_finding_advice': True}})
+    assert r.status_code == 201, r.text
+    with db_sessionmaker() as db:
+        handle_assist(db, _job(db_sessionmaker, 'assist', tid).payload)
+    assert '13800138000' not in json.dumps(seen[-1]['messages'])
 
     # 问题与条款放不下：发送前拒绝，不截断
     with db_sessionmaker() as db:

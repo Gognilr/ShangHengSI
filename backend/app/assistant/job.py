@@ -38,6 +38,8 @@ def handle_assist(db: Session, payload: dict) -> None:
         select_model(db, model_id, "assist", structured=row.template == "compare")
         owner_id, title = task.owner_id, task.title
         template, params = user_row.template, user_row.params
+        if user_row.finding_id:
+            service._discussion_check(db, task, user_row.finding_id, params, user_row.content_redacted, model_id)
         from app.assistant.history import prepare
         references, reference_metadata = prepare(db, task, user_row)
         row.extras = {**row.extras, **reference_metadata}
@@ -144,6 +146,8 @@ def handle_assist(db: Session, payload: dict) -> None:
         if row is not None:
             row.content_redacted = content or row.content_redacted
             row.status, row.error_code = "failed", exc.code
+            if isinstance(exc, AppError) and exc.code.startswith('DISCUSSION_'):
+                row.extras = {**row.extras, 'discussion_error': exc.message}
             if compare_tokens is not None:
                 row.tokens_in, row.tokens_out = compare_tokens
             db.commit()

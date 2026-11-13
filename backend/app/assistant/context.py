@@ -22,6 +22,7 @@ CATEGORY = {"wording": "措辞", "logic": "逻辑", "legal": "法律", "complian
 LABELS = ("【审核问题】", "【问题相关原文】", "标题：", "位置：", "问题：", "影响：", "审核建议：", "建议条文：", "依据：",
           "（缺失型问题，无对应原文）", *CATEGORY.values())
 DISCUSS_NOTE = ("本次对话围绕【审核问题】中的一个问题展开：先对照【问题相关原文】回答，不要泛泛展开其他条款；"
+                "不要在回复中写分节名或位置编号，请用自然语言说明对应条款；"
                 "用户要求改写时给出完整的替换条文，并说明改动理由；替换条文本身放在【修改条文】与【/修改条文】之间，"
                 "标记内只写可直接替换原文的条文，不写说明。")
 
@@ -51,7 +52,7 @@ def _related(db: Session, finding: Finding) -> list[DocNode]:
     return sorted(found.values(), key=lambda n: (seqs.get(n.file_id, 0), n.ord))
 
 
-def finding_block(db: Session, task: Task, finding: Finding) -> str:
+def finding_block(db: Session, task: Task, finding: Finding, *, omit_advice: bool = False) -> str:
     from app.assistant.meeting import render
     nodes = _related(db, finding)
     files = {f.id: f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
@@ -62,7 +63,7 @@ def finding_block(db: Session, task: Task, finding: Finding) -> str:
                          ("建议条文：", finding.suggested_text), ("依据：", finding.basis)):
         if value:
             lines.append(label + value)
-    text = "【审核问题】\n" + escape_document_tags("\n".join(lines))
+    text = "【审核问题】\n" + escape_document_tags("\n".join(lines) if not omit_advice else f"位置：{where}（本轮未附问题结论与建议条文）")
     if nodes:
         text += "\n【问题相关原文】<document>" + escape_document_tags(render(db, task, files, nodes, {})) + "</document>"
     return text
@@ -85,13 +86,14 @@ def anchored_history(db: Session, task: Task, user_message: AssistantMessage, bu
 
 def build(db: Session, task: Task, user_message: AssistantMessage, *, model_id: int | None = None) -> tuple[str, list[AssistantMessage]]:
     """返回（问题上下文，该问题下的历史消息）；问题与条款超出预算时 CONTEXT_TOO_LONG。"""
-    return build_for(db, task, user_message.finding_id, user_message, model_id=model_id)
+    return build_for(db, task, user_message.finding_id, user_message, model_id=model_id,
+                     omit_advice=user_message.params.get('omit_finding_advice', False))
 
 
 def build_for(db: Session, task: Task, finding_id: uuid.UUID, user_message: AssistantMessage | None, *,
-              model_id: int | None = None) -> tuple[str, list[AssistantMessage]]:
+              model_id: int | None = None, omit_advice: bool = False) -> tuple[str, list[AssistantMessage]]:
     finding = owned_finding(db, task, finding_id)
-    block = finding_block(db, task, finding)
+    block = finding_block(db, task, finding, omit_advice=omit_advice)
     limit = select_model(db, model_id, "assist").chunk_chars
     question = len(user_message.content_redacted) if user_message is not None else 0
     if len(block) + question > limit:

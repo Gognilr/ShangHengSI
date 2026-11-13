@@ -143,13 +143,13 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
                     finding_id=None, marks=[], calcs=[], translation=value.get('translation', {}), translation_notice=mt.NOTICE)
     mapping = _message_mapping(db, task, message)
     dates = engine.load_date_pairs(db, task.id)  # 平移的会话：提问与回复里的日期按还原对显示（V32-A-02）
-    content, _ = incremental(message.content_redacted, mapping, 0,
+    content, _ = _incremental(db, task, message, mapping, 0,
                               finished=message.status not in ("queued", "streaming"), dates=dates)
     result = {"id": message.id, "role": message.role, "content": content, "status": message.status,
             "template": message.template, "params": message.params, "extras": message.extras,
             "model_id": message.model_id, "model_label": message.model_label,
             "tokens_in": message.tokens_in, "tokens_out": message.tokens_out,
-            "error_code": message.error_code, "error": error_text(message.error_code), "created_at": message.created_at,
+            "error_code": message.error_code, "error": message.extras.get('discussion_error') or error_text(message.error_code), "created_at": message.created_at,
             "finding_id": str(message.finding_id) if message.finding_id else None, "marks": [], "calcs": []}
     if message.role == "user":
         result["sent"] = message.content_redacted  # 实际发给模型的提问文字（只含代号），供“查看实际发送内容”
@@ -158,7 +158,8 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             # 与 incremental() 用同一份助手代号表，标记位置才与 content 一致（设计 V31-R 4.6）。
             neutral = {code: value for code, value in mapping.items() if NEUTRAL.fullmatch(code)}
             result['marks'] = [MarkOut.model_validate(mark).model_dump()
-                               for mark in check(message.content_redacted, neutral, dates=dates).marks]
+                               for mark in check(message.content_redacted, neutral, dates=dates,
+                                                 locations=_discussion_locations(db, task) if message.finding_id else None).marks]
             if '【算式】' in message.content_redacted:
                 from app.calc import add_to_message, code_context
                 add_to_message(result, message.content_redacted, neutral, **code_context(db, task, message.content_redacted, neutral))
@@ -175,6 +176,25 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             from app.assistant.templates import draft_only
             result["draft"] = draft_only(content)
     return result
+
+
+def _discussion_locations(db, task):
+    from app.db.models import DocNode
+    from app.review.service import _View
+    return _View(db, task.id).readable(db.scalars(select(DocNode.loc).where(DocNode.task_id == task.id)))
+
+
+def _incremental(db, task, message, mapping, offset, *, finished, dates):
+    import re
+    from app.assistant.stream import incremental
+    raw = message.content_redacted
+    if message.finding_id and not finished:
+        # 位置编号可能拆在任一流式片段处，暂扣末尾候选，避免已显示前缀缩短。
+        raw = re.sub(r'\[?F\d*(?:-[A-Z]*\d*)?$', '', raw)
+    text, _ = incremental(raw, mapping, 0, finished=finished, dates=dates)
+    if message.finding_id:
+        text = check(text, {}, locations=_discussion_locations(db, task)).text
+    return text[offset:], len(text)
 
 
 def _message_mapping(db: Session, task: Task, message: AssistantMessage) -> dict:
@@ -284,7 +304,8 @@ def _validate_input(db: Session, task: Task, body):
                  (body.template != 'minutes' or f.ext in filecheck.AUDIO_EXTS and (f.media or {}).get('stage') == 'done')}
         result = prepare(body.template, body.params, files, body.message)
         return result.message, result.params
-    if set(body.params) - {"file_ids"} or (body.finding_id and body.params):
+    allowed = {'omit_finding_advice'} if body.finding_id else {'file_ids'}
+    if set(body.params) - allowed or ('omit_finding_advice' in body.params and type(body.params['omit_finding_advice']) is not bool):
         raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
     text = body.message.strip()
     if not 1 <= len(text) <= 4000:
@@ -295,7 +316,8 @@ def _validate_input(db: Session, task: Task, body):
 def _preflight(db: Session, task: Task, template, params, model_id: int, finding_id=None):
     if finding_id is not None:  # 按问题讨论：上下文放不下时发送前就拒绝（V32-B-02）
         from app.assistant import context
-        context.build_for(db, task, finding_id, None, model_id=model_id)
+        context.build_for(db, task, finding_id, None, model_id=model_id,
+                          omit_advice=params.get('omit_finding_advice', False))
     elif template == "translate":
         from app.assistant.translate import require_quota, task_segments
         require_quota(len(task_segments(db, task, params)), usage.remaining_calls(db, task.owner_id, model_id))
@@ -313,6 +335,27 @@ def _question(db: Session, task: Task, text: str, decisions=None):
     return _redact(text, mapping, _terms(db), decisions=decisions, allocator=alloc)
 
 
+def _discussion_check(db, task, finding_id, params, question, model_id):
+    from app.assistant import context
+    from app.redaction.recheck import recheck, recheck_context
+    ctx = recheck_context(db, task.id)
+    def reasons(text):
+        return recheck(text, real_values=ctx.real_values, terms=ctx.terms,
+                       placeholders=ctx.placeholders, kept=ctx.kept)
+    hits = reasons(question)
+    if hits:
+        raise AppError(409, 'DISCUSSION_INPUT_BLOCKED', '你的输入含未脱敏信息：' + gateway.describe_reasons(hits) + '。请返回输入框修改。')
+    block, _ = context.build_for(db, task, finding_id, None, model_id=model_id,
+                                 omit_advice=params.get('omit_finding_advice', False))
+    hits = reasons(block)
+    if hits:
+        reduced = context.finding_block(db, task, context.owned_finding(db, task, finding_id), omit_advice=True)
+        removable = not params.get('omit_finding_advice') and not reasons(reduced)
+        raise AppError(409, 'DISCUSSION_ADVICE_BLOCKED' if removable else 'DISCUSSION_CONTEXT_BLOCKED',
+                       '问题结论与相关条款含未脱敏信息：' + gateway.describe_reasons(hits)
+                       + ('。可不带该问题的结论与建议条文发送。' if removable else '。请核对材料中的脱敏结果。'))
+
+
 def preview(db: Session, task: Task, body) -> dict:
     from app.assistant.prompt import selected_files
     _writable(db, task)
@@ -326,6 +369,8 @@ def preview(db: Session, task: Task, body) -> dict:
     if not body.finding_id:
         selected_files(db, task, params)
     result = _question(db, task, text)
+    if body.finding_id:
+        _discussion_check(db, task, body.finding_id, params, result.text, body.model_id)
     uncovered = engine.uncovered_session_values(db, task, [item["text"] for item in result.suspects])
     for item in result.suspects:
         item["in_files"] = item["text"] in uncovered
@@ -393,6 +438,8 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     db.scalar(select(RedactionMap).where(RedactionMap.task_id == task.id).with_for_update())
     # 先按当前对照表验证疑似项区间；重算文件前固定消息已分配的代号。
     result = _question(db, task, text, decisions=[d.model_dump() for d in body.decisions])
+    if body.finding_id:
+        _discussion_check(db, task, body.finding_id, params, result.text, model.id)
     chosen = {(d.start, d.end): d.category for d in body.decisions if d.decision == "replace"}
     extra = tuple(engine.UserTerm(s["text"], chosen[s["start"], s["end"]]) for s in result.suspects
                   if (s["start"], s["end"]) in chosen)
@@ -428,12 +475,13 @@ def get_delta(db: Session, task: Task, mid: int, offset: int) -> dict:
         if offset > len(content):
             raise AppError(422, 'VALIDATION_ERROR', '消息偏移量不正确')
         return dict(status=row.status, text_from_offset=content[offset:], offset=len(content), error=error_text(row.error_code))
-    text, new_offset = incremental(row.content_redacted, _message_mapping(db, task, row), offset,
+    text, new_offset = _incremental(db, task, row, _message_mapping(db, task, row), offset,
                                    finished=row.status not in ("queued", "streaming"),
                                    dates=engine.load_date_pairs(db, task.id))
     if offset > new_offset:
         raise AppError(422, "VALIDATION_ERROR", "消息偏移量不正确")
-    result = {"status": row.status, "text_from_offset": text, "offset": new_offset, "error": error_text(row.error_code)}
+    result = {"status": row.status, "text_from_offset": text, "offset": new_offset,
+              "error": row.extras.get('discussion_error') or error_text(row.error_code)}
     if row.template == "compare" and row.role == "assistant" and row.extras.get("compare"):
         result["compare"] = message_out(db, task, row)["compare"]
     return result

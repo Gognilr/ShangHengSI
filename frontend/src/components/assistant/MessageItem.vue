@@ -22,7 +22,11 @@ const count = computed(() => unresolvedCount(props.message.marks))
 const parsed = computed(() => {
   const calcs = [...(props.message.calcs ?? [])].sort((a,b) => a.line_start - b.line_start)
   let index = 0
-  return markdown(props.message.content).map(block => ({ ...block, calc: block.kind === 'paragraph' && block.text.startsWith('【算式】') ? calcs[index++] : undefined }))
+  return props.message.content.split(/(【修改条文】[\s\S]*?(?:【\/修改条文】|$))/g).flatMap(segment => {
+    const clause = segment.startsWith('【修改条文】')
+    const text = clause ? segment.replace(/^【修改条文】/, '').replace(/【\/修改条文】$/, '') : segment
+    return markdown(text).map(block => ({ ...block, clause, calc: block.kind === 'paragraph' && block.text.startsWith('【算式】') ? calcs[index++] : undefined }))
+  })
 })
 const pending = computed(() => ['queued', 'streaming'].includes(props.message.status))
 const hasTable = computed(() => !!props.message.compare || parsed.value.some(block => block.kind === 'table'))
@@ -57,7 +61,7 @@ async function copy() {
         <CalcResult v-if="block.calc" :calc="block.calc" />
         <hr v-else-if="block.kind === 'rule'">
         <div v-else-if="block.kind === 'table'" class="table-scroll"><table><thead><tr><th v-for="(header, col) in block.headers" :key="col"><template v-for="(part, pi) in inline(header, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></th></tr></thead><tbody><tr v-for="(row, ri) in block.rows" :key="ri"><td v-for="(cell, ci) in row" :key="ci"><template v-for="(part, pi) in inline(cell, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></td></tr></tbody></table></div>
-        <p v-else :class="{ heading: block.kind === 'heading', list: block.kind === 'list' }"><span v-if="block.kind === 'list'">• </span><template v-for="(part, pi) in inline(block.text, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></p>
+        <p v-else :class="{ clause: block.clause, heading: block.kind === 'heading', list: block.kind === 'list' }"><span v-if="block.kind === 'list'">• </span><template v-for="(part, pi) in inline(block.text, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></p>
       </template>
     </div>
     <details v-if="message.role === 'user' && message.sent" class="sent">
@@ -97,6 +101,7 @@ async function copy() {
 .markdown { font: var(--si-font-reading); color: var(--si-text-reading); overflow-wrap: anywhere; white-space: pre-wrap; }
 .markdown p { margin: 12px 0; }
 .heading { font: var(--si-font-h3); }
+.clause { padding: 12px 16px; border-left: 3px solid var(--si-blue); background: var(--el-color-primary-light-9); border-radius: var(--si-radius-paper); }
 strong { font-weight: 600; }
 .list { padding-left: 16px; }
 .table-scroll { overflow-x: auto; }

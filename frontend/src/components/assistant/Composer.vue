@@ -108,6 +108,14 @@ const limits = computed(() => props.template ? TEMPLATE_LIMITS[props.template] :
 // ---- 发送：待确认时自动引导确认，处理中时等完成，消息无疑似项时直接发送 ----
 const text = ref(''), useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
 const resume = ref(false)
+const omitAdvice = ref(false), blockedCode = ref('')
+const questionInput = ref<{ focus: () => void }>()
+watch(() => props.anchor?.id, () => { omitAdvice.value = false; blockedCode.value = '' })
+function failDiscussion(e: unknown) {
+  blockedCode.value = e instanceof ApiError ? e.code : ''
+  if (blockedCode.value.startsWith('DISCUSSION_')) { open.value = false; void nextTick(() => questionInput.value?.focus()) }
+}
+function withoutAdvice() { omitAdvice.value = true; blockedCode.value = ''; void submit() }
 watch(() => props.session?.kb_enabled, value => { useKb.value = !!value }, { immediate: true })
 const preview = ref<AssistantPreview | null>(null)
 const decisions = ref<{ decision: '' | 'replace' | 'keep'; category: UserCategory | '' }[]>([])
@@ -129,7 +137,7 @@ const reason = computed(() => {
 })
 const waitingText = computed(() => !resume.value || !props.session ? '' : props.session.status === 'parsing' ? '文件处理完成后自动发送' : props.session.status === 'awaiting_confirm' ? '确认脱敏后自动发送' : '')
 function input(): MessageInput {
-  if (props.anchor) return { model_id: modelId.value, message: text.value, template: null, params: {}, use_kb: useKb.value && !!props.session?.kb_enabled, use_history: useHistory.value, finding_id: props.anchor.id }
+  if (props.anchor) return { model_id: modelId.value, message: text.value, template: null, params: omitAdvice.value ? { omit_finding_advice: true } : {}, use_kb: useKb.value && !!props.session?.kb_enabled, use_history: useHistory.value, finding_id: props.anchor.id }
   const params: Record<string, unknown> = props.template === 'translate' ? { file_id: fileIds.value[0], target: target.value } : { file_ids: [...fileIds.value] }
   if (props.template === 'summary') params.focus = focus.value
   if (props.template === 'reply') Object.assign(params, { tone: tone.value, language: language.value })
@@ -152,7 +160,7 @@ async function submit() {
     decisions.value = preview.value.suspects.map(() => ({ decision: '', category: '' }))
     if (preview.value.suspects.length) open.value = true
     else await send()
-  } catch (e) { error.value = e instanceof ApiError ? e.message : '发送失败，请重试'; if (e instanceof ApiError && e.code === 'SESSION_BUSY') emit('busy') }
+  } catch (e) { failDiscussion(e); error.value = e instanceof ApiError ? e.message : '发送失败，请重试'; if (e instanceof ApiError && e.code === 'SESSION_BUSY') emit('busy') }
   finally { busy.value = false }
 }
 // 处理完成：待确认时打开确认，可发送时继续发送
@@ -173,8 +181,9 @@ async function send() {
     start: suspect.start, end: suspect.end, decision: decisions.value[index]!.decision as 'replace' | 'keep',
     ...(decisions.value[index]!.category ? { category: decisions.value[index]!.category as UserCategory } : {}),
   }))
-  try { await assistantApi.send(props.session.id, { ...pending, decisions: selected }); open.value = false; const sentText = text.value; text.value = ''; pending = null; emit('sent', sentText) }
+  try { await assistantApi.send(props.session.id, { ...pending, decisions: selected }); open.value = false; const sentText = text.value; text.value = ''; pending = null; blockedCode.value = ''; omitAdvice.value = false; emit('sent', sentText) }
   catch (e) {
+    failDiscussion(e)
     error.value = e instanceof ApiError ? e.message : '发送失败，请重试'
     if (e instanceof ApiError && e.code === 'SESSION_BUSY') { open.value = false; emit('busy') }
     // 材料有变化（V32-A-01）：重新取预览，让用户核对后再确认发送
@@ -225,7 +234,7 @@ defineExpose({ pick, attach })
           <el-select v-if="template === 'reply'" v-model="language" size="small" class="param" aria-label="回复语言"><el-option v-for="option in ['中文','英文','同来函']" :key="option" :label="option" :value="option" /></el-select>
           <span v-if="template === 'translate'" class="hint where">云端 · 脱敏后发送</span>
         </div>
-        <el-input v-model="text" type="textarea" :autosize="{ minRows: showTemplates ? 3 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="anchor ? '就这个问题继续讨论，例如：怎么改更稳妥？' : showTemplates ? '提问，或把合同、报价单拖到这里、粘贴进来' : '继续提问…'" aria-label="问题或来函" @keydown="onKeydown" />
+        <el-input ref="questionInput" v-model="text" type="textarea" :autosize="{ minRows: showTemplates ? 3 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="anchor ? '就这个问题继续讨论，例如：怎么改更稳妥？' : showTemplates ? '提问，或把合同、报价单拖到这里、粘贴进来' : '继续提问…'" aria-label="问题或来函" @keydown="onKeydown" />
         <div class="bar">
           <el-tooltip content="加入文件" placement="top"><el-button text circle aria-label="加入文件" :disabled="!!session && (session.files.length >= 10 || !!session.generating || session.review_running)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" /></el-button></el-tooltip>
           <input ref="picker" class="file-input" type="file" multiple :accept="accept" @change="picked">
@@ -244,6 +253,8 @@ defineExpose({ pick, attach })
       <p v-if="waitingText" class="hint status" role="status">{{ waitingText }} · <el-button link size="small" @click="resume = false">取消</el-button></p>
       <p v-else-if="reason && (text.trim() || template)" class="hint status">{{ reason }}</p>
       <el-alert v-if="error && !open" :title="error" type="error" :closable="false" />
+      <el-button v-if="blockedCode === 'DISCUSSION_ADVICE_BLOCKED'" :disabled="busy || sending" @click="withoutAdvice">不带该问题的结论与建议条文发送</el-button>
+      <p v-if="omitAdvice && anchor" class="hint">本轮只附相关原文，不附问题结论与建议条文。</p>
       <TemplatePicker v-if="showTemplates" class="quick" chips :asr-enabled="asrEnabled" :model-value="template" @update:model-value="chooseTemplate" />
     </template>
     <el-dialog v-model="open" title="确认发送内容" width="640px" :close-on-click-modal="false" :close-on-press-escape="!sending" :show-close="!sending" append-to-body>
