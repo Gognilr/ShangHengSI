@@ -11,7 +11,6 @@ import { ApiError } from '@/api/http'
 import { requirementsApi, type BuiltinRequirement } from '@/api/requirements'
 import { DOC_TYPE_OPTIONS, STANCE_OPTIONS, SOURCE_OPTIONS, docTypeLabel, stanceLabel, sourceLabel, toOptions } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
-import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
@@ -230,7 +229,6 @@ onMounted(() => {
 
 <template>
   <div class="settings-page">
-    <PageHeader title="审核要求" description="内置要求只读；公司补充要求只能增加审核内容，不能取消内置要求" />
     <div class="panel setting-panel">
       <SettingSection title="公司说明" description="简述公司主营与出口合规情况，随每次审核发送给模型。">
       <el-alert v-if="profileError" type="error" :closable="false" show-icon :title="profileError" />
@@ -266,7 +264,7 @@ onMounted(() => {
         </el-table-column>
       </el-table>
     </SettingSection>
-      <SettingSection title="公司补充要求" description="在内置要求之外增加本公司的审核内容。" stacked>
+      <SettingSection title="公司补充要求" description="在内置要求之外增加本公司的审核内容；只能增加，不能取消内置要求。" stacked>
       <div class="hint tip">补充要求只能增加审核内容，不能取消内置要求。请勿在补充要求中写入具体客户名称。</div>
       <h4>各组合生效条数</h4>
       <el-table v-loading="listLoading" :data="comboRows" size="small" class="combo-table">

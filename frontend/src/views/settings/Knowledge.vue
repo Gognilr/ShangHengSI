@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
-import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
@@ -85,14 +84,13 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
 </script>
 <template>
   <div>
-    <PageHeader title="公司知识库" description="上传公司制度、流程与产品资料。员工在智能助手中勾选后，相关片段经脱敏后随问题发送给模型。"><el-button type="primary" :disabled="saving || uploading" @click="openUpload">上传文档</el-button></PageHeader>
     <div v-loading="loading" class="panel setting-panel">
-      <SettingSection title="知识库开关" description="关闭后智能助手不检索知识库。">
+      <SettingSection title="知识库开关" description="关闭后工作台不检索知识库。开启时，员工勾选后相关片段经脱敏随问题发送给模型。">
         <span>在智能助手中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" />
         <p class="hint">关闭后不会检索知识库；只有启用且解析完成的文档参与检索。</p>
       </SettingSection>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="gap" />
-      <SettingSection title="资料列表" description="只有启用且解析完成的文档参与检索。" stacked>
+      <SettingSection title="资料列表" description="只有启用且解析完成的文档参与检索。" stacked><template #actions><el-button type="primary" :disabled="saving || uploading" @click="openUpload">上传文档</el-button></template>
         <TableSkeleton v-if="!loaded" :columns="['1fr', '90px', '80px', '80px', '1fr', '170px', '160px']" />
       <el-table v-else :data="rows" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚无知识库文档" description="点击右上角“上传文档”，可上传公司制度、流程与产品资料。" /></template>

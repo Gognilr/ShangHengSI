@@ -5,7 +5,6 @@ import { adminRedactionApi, type TermRow } from '@/api/admin'
 import { ApiError } from '@/api/http'
 import { formatDateTime } from '@/utils/time'
 import { Search } from '@lucide/vue'
-import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
@@ -219,7 +218,6 @@ onMounted(() => {
 
 <template>
   <div class="settings-page">
-    <PageHeader title="脱敏规则" description="新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算" />
     <div class="panel setting-panel">
       <SettingSection v-if="auth.can('redaction.words')" title="识别与替换" description="设置只影响之后解析与重新计算的任务。">
         <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />

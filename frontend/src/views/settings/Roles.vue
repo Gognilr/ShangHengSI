@@ -6,7 +6,6 @@ import { Plus } from '@lucide/vue'
 import { adminRolesApi, type PermissionDef, type RoleRow } from '@/api/admin'
 import { ApiError } from '@/api/http'
 import type { Perm } from '@/utils/permissions'
-import PageHeader from '@/components/PageHeader.vue'
 import RowMore from '@/components/RowMore.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
@@ -101,11 +100,8 @@ async function remove(row: RoleRow) {
 
 <template>
   <div class="settings-page">
-    <PageHeader title="角色" description="按角色授权，人只挑角色；任何角色都不能查看他人的审核与会话内容">
-      <el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新建角色</el-button>
-    </PageHeader>
     <div class="panel setting-panel">
-      <SettingSection title="角色列表" description="权限点由系统固定；一个人兼多个角色时权限取并集。" stacked>
+      <SettingSection title="角色列表" description="权限点由系统固定；一个人兼多个角色时权限取并集。任何角色都不能查看他人的审核与会话内容。" stacked><template #actions><el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新建角色</el-button></template>
         <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="gap" />
         <TableSkeleton v-if="!loaded" :columns="['160px', '1fr', '80px', '100px']" />
         <el-table v-else v-loading="loading" :data="roles">

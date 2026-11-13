@@ -35,7 +35,6 @@ import {
   auditTargetLabel,
 } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
-import PageHeader from '@/components/PageHeader.vue'
 
 const auth = useAuthStore()
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -303,7 +302,6 @@ onBeforeUnmount(stopPolling)
 
 <template>
   <div class="settings-page">
-    <PageHeader title="数据与系统" description="系统状态、数据保留、备份与外发记录" />
     <div class="panel setting-panel">
       <SettingSection v-if="auth.can('sys.data')" title="备份" description="每天定时备份数据，超出份数的最旧备份自动删除。">
       <el-alert v-if="backupError" type="error" :closable="false" show-icon :title="backupError" />

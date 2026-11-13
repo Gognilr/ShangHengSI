@@ -56,8 +56,8 @@
 
 ### 2.3 页面内的结构
 
-* 设置各页顶部用 `PageHeader`（`--si-font-title` 标题 + 一行 14px 次要色说明 + 右侧插槽放该页已有的主按钮），标题与说明见 R3.md 第四节。智能审核、审核历史不用页面标题（侧栏选中项已说明位置）；审核结果页用工具条（V2-U 第四节）。
-* 设置各页的内容用 `SettingSection` 分节：两列网格，左 240px（标题 15px / 600 + 一两行次要色说明），右侧为字段；节与节之间 1px `--el-border-color-lighter` 分隔线、上下各 24px，不在面板里再套卡片；放表格的节用 `stacked`（标题与说明在上、内容占满宽度）。设置改为自动保存（V31-U5F-06，`utils/autosave.ts` 的 `useAutoSave`）：开关、下拉改动立即保存，文字输入停顿 1 秒后保存，离开页面时把等待中的保存立即发出；保存状态在字段旁用 `SaveState` 显示“保存中… / 已保存 / 保存失败 · 重试”。缩短保留期、模型密钥、改密码、开启法规同步等仍须二次确认。不设“保存”按钮与未保存提示栏。
+* 设置区是一张占满主区域高度的卡（`SettingsLayout`，V321Q-48）：左列导航 220px（每项一个图标，选中为浅主色底、字重不变），右列内容，只有右列滚动。设置各页不用页面标题（导航选中项已说明位置），页面主按钮放在第一个列表分节标题行右端（`SettingSection` 的 `#actions` 插槽）。列表页同样不用页面标题；审核结果页用工具条（V2-U 第四节）。
+* 设置各页的内容用 `SettingSection` 分节：两列网格，左 200px（标题 15px / 600 + 一两行次要色说明），右侧为字段，键值与简单控件用行式写法（`.si-rows` / `.si-row`：左标签 72px、右值或控件、行间细线）；节与节之间 1px `--el-border-color-lighter` 分隔线、上下各 24px，不在面板里再套卡片；放表格的节用 `stacked`（标题与说明在上、内容占满宽度）。设置改为自动保存（V31-U5F-06，`utils/autosave.ts` 的 `useAutoSave`）：开关、下拉改动立即保存，文字输入停顿 1 秒后保存，离开页面时把等待中的保存立即发出；保存状态在字段旁用 `SaveState` 显示“保存中… / 已保存 / 保存失败 · 重试”。缩短保留期、模型密钥、改密码、开启法规同步等仍须二次确认。不设“保存”按钮与未保存提示栏。
 * 内容放在**面板** `.panel` 中：第 1 层表面（`--si-surface-1` 底、1px `--si-hair` 边框）、`--si-radius-card`（12px）圆角、内边距 20px 24px，无阴影。面板之间 16px（`.panel + .panel`）。需要 Element Plus 卡片能力时可用 `el-card shadow="never"`，theme.css 已把它统一成同样的外观。
 * 面板标题 `--si-font-h2`，下间距 16px；标题后可跟 `--si-font-meta` 次要色说明，右侧可放该面板的次要操作。回执栏各节标题 `--si-font-h4`、右侧一行摘要，不加序号徽标。
 * 面板内的分组标题 `--si-font-h4`；组与组之间 32px，用 1px `--si-hair-faint` 分隔线隔开。
@@ -132,7 +132,7 @@
 
 圆角六级：纸面与行内高亮 4px（`--si-radius-paper`）；标签与胶囊 6px（`--si-radius-tag`）；按钮、输入框、下拉框、分段、统计块、文件徽标 8px（`--el-border-radius-base`）；面板、卡片、上传区、对照区 12px（`--si-radius-card`）；弹层、对话框、抽屉、提示 16px（`--si-radius-pop`，下拉菜单 12px）；登录卡片与外发确认卡 20px（`--si-radius-sheet`）；圆形 50%，灵动岛与开关全圆角。
 
-阴影三级：`--si-shadow-1`（浮起）、`--si-shadow-2`（悬停卡片、粘底栏）、`--si-shadow-3`（弹层）。光效 `--si-glow-blue`（主按钮、选中菜单）与 `--si-blur`（弹层毛玻璃）只在完整特效，精简与关闭时为 `none`。
+阴影三级：`--si-shadow-1`（浮起）、`--si-shadow-2`（悬停卡片、粘底栏）、`--si-shadow-3`（弹层）。光效 `--si-glow-blue`（主按钮、选中菜单）与氛围光是不动的装饰，三档特效都保留；`--si-blur`（弹层毛玻璃）只在完整特效（V321Q-49）。浅色外壳的面板带 `--si-panel-shadow`，夜幕不加。
 
 数字：需要纵向对齐的数字（表格、分页、统计、时间、条款号）加 `.num` 或使用已全局等宽的组件（`el-table`、`el-pagination`、`.stat-value`）；正文中的数字不设等宽。
 
@@ -142,7 +142,6 @@
 
 | 场景 | 用什么 | 约定 |
 |-|-|-|
-| 页面标题 | `PageHeader` | 见 2.3 |
 | 内容容器 | `.panel` 或 `el-card shadow="never"` | 见 2.3 |
 | 品牌标识 | `brand/SiLogo` | 不在其他地方另画 Logo。SiLogo 的字标字号与字重属于品牌图形，不受 3.1 限制 |
 | 步骤 | `StepBar` | 只在新建审核页使用；取值与原 `el-steps` 相同 |
@@ -276,7 +275,7 @@
 
 1. 不使用 `v-html`、`innerHTML`、`ElMessageBox` 的 `dangerouslyUseHTMLString`。外发文本、原文、原文引用、模型返回的文字都按纯文本显示（文本插值、`<pre>` 或 `white-space: pre-wrap`）。需要高亮片段时，拆成片段数组逐个插值。
 2. 不用 `console.log` 等输出任何内容；提交的代码中不留 `console.*`。
-3. 本地存储（`localStorage`）只能存界面偏好：上次的立场和来源（Q-51）、登录页记住的用户名（`si.login.username`，SPEC 6.1）、侧栏收起与宽度（`si.sidebar.collapsed`、`si.sidebar.width`）、审核结果问题栏宽度（`si.review.findingsWidth`）、外观设置（`si.appearance`，第十三节）。工作文件夹的授权句柄存本浏览器 IndexedDB（库 `si`、表 `prefs`、键 `workFolder`）。唯一例外是现场录音的防丢分片（IndexedDB 库 `si-recording`，上传成功或放弃即清除，界面写明“保存到本机浏览器”，V31Q-106）。其余不得存密码、文件内容、名称、问题、对照表、文件夹路径、文件名或任何接口返回的业务数据。读写包在 try/catch 中，读不到按默认值。
+3. 本地存储（`localStorage`）只能存界面偏好：上次的立场和来源（Q-51）、登录页记住的用户名（`si.login.username`，SPEC 6.1；密码只交给浏览器密码管理器，不进本地存储）、侧栏收起与宽度（`si.sidebar.collapsed`、`si.sidebar.width`）、审核结果问题栏宽度（`si.review.findingsWidth`）、外观设置（`si.appearance`，第十三节）。工作文件夹的授权句柄存本浏览器 IndexedDB（库 `si`、表 `prefs`、键 `workFolder`）。唯一例外是现场录音的防丢分片（IndexedDB 库 `si-recording`，上传成功或放弃即清除，界面写明“保存到本机浏览器”，V31Q-106）。其余不得存密码、文件内容、名称、问题、对照表、文件夹路径、文件名或任何接口返回的业务数据。读写包在 try/catch 中，读不到按默认值。
 4. URL 中只放 ID 和页码、日期等筛选条件，不放文件名、公司名等文字。
 5. 所有请求经 `api/http.ts` 发出，不在组件中直接用 `fetch`。每个后端资源在 `api/` 下一个文件，接口类型与后端返回字段同名。
 6. 前端检查（文件数量、大小、扩展名、必填项）只是提示，后端一定会再检查；不要因为前端检查过就省略对接口错误的处理。
@@ -330,7 +329,7 @@ Opus 评审前端任务和里程碑验收时，按本规范逐条检查，并在
    * **审核中舞台**（`ReviewCeremony`，V31-U3 5.3）：完整——文件缩略扫描一次、8～12 个无字胶囊飞入本机保险箱且 `SiCount` 滚到保护数、复检完成时闸门亮起、“只含代号 · 加密传输”轨道胶囊循环、模型圆点光环呼吸（排队时灰色不动）；精简——同一舞台的静态画面（数字直接显示、闸门只描边、轨道为静态虚线）；关闭——不显示舞台，只有四步文字与已用时间。舞台元素 ≤ 30 个，胶囊不写任何文字或代号；完成即跳结果页，不等动画。
    * **登录漂浮文字**（`brand/LoginWords`，V31-U4 4.1）：完整——左侧品牌区 `<canvas>` 上合同常用字缓慢上浮（页面隐藏停绘，开始时 `watchFrames()`）；精简——同一画面的静态一帧；关闭——纯底色。散布用低差异序列（R2），不用固定步长取模（会连成斜行，像乱码）；字色 `--si-ink-4`，不承载信息。
 5. 通用过渡类在 `motion.css`：`si-fade`、`si-rise`、`si-pop`、`si-list`（含 `-move`）、`si-page`；JS 驱动的动画取时长用 `motionMs(layer)`（关闭时为 0）。品牌时刻开始时调用 `watchFrames()`，用于自动降级。
-6. `html[data-fx="off"]` 关闭全部 `transition` 与 `animation`；`html[data-fx="lite"]` 时 `--si-blur`、`--si-glow-blue`、`--si-ambient` 为 `none`，品牌时刻用静态替代，微交互与结构过渡保留。
+6. `html[data-fx="off"]` 关闭全部 `transition` 与 `animation`；`html[data-fx="lite"]` 与 `off` 时 `--si-blur` 为 `none`（辉光与氛围光保留），品牌时刻用静态替代，微交互与结构过渡保留。
 7. **性能预算**：字体首次打开常用页面 ≤ 2 MB；不引入动画库；完整特效下开发机品牌时刻 ≥ 55 帧，精简特效在 Edge `--disable-gpu` 下 ≥ 30 帧；毛玻璃只在完整特效、同屏最多 3 处、不放在会滚动的容器上；辉光只用于静止元素；悬停效果不改变布局；大表格（> 100 行）行内不加过渡。
 
 ## 十三、外观设置

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules, InputInstance } from 'element-plus'
-import { Lock, User } from '@lucide/vue'
+import { Lock, ShieldCheck, User } from '@lucide/vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
@@ -29,9 +29,22 @@ try {
 } catch {
   // 本地存储不可用时按未记住处理，不影响登录。
 }
-onMounted(() => {
+// 记住密码（V321Q-50）：密码只交给浏览器自带的密码管理器保存，本系统不把密码写进本地存储。
+// 需要 Edge / Chrome，且页面证书受信任（导入根证书后）；不满足时只记住用户名。
+type PasswordCredentialCtor = new (data: { id: string; password: string }) => Credential
+const PasswordCred = (window as unknown as { PasswordCredential?: PasswordCredentialCtor }).PasswordCredential
+// 根证书下载页由 Caddy 在 http 的 /cert/ 提供（SPEC 20.4）
+const certUrl = `http://${location.hostname}/cert/`
+onMounted(async () => {
   if (remember.value) passwordRef.value?.focus()
   else usernameRef.value?.focus()
+  if (!remember.value || !PasswordCred) return
+  try {
+    const saved = await navigator.credentials.get({ password: true, mediation: 'optional' } as CredentialRequestOptions) as (Credential & { password?: string }) | null
+    if (saved?.password && !form.password) { form.username = saved.id; form.password = saved.password }
+  } catch {
+    // 浏览器不提供已保存的密码时照常手动输入。
+  }
 })
 
 const rules: FormRules = {
@@ -52,6 +65,9 @@ async function submit() {
   try {
     const username = form.username.trim()
     await auth.login(username, form.password)
+    if (remember.value && PasswordCred) {
+      try { await navigator.credentials.store(new PasswordCred({ id: username, password: form.password })) } catch { /* 浏览器拒绝保存时只记住用户名 */ }
+    }
     // 仅在登录成功后保存或删除用户名，失败时不改变已记住的值。
     try {
       if (remember.value) localStorage.setItem(USERNAME_KEY, username)
@@ -90,11 +106,12 @@ async function submit() {
           <el-form-item label="密码" prop="password">
             <el-input ref="passwordRef" v-model="form.password" aria-label="密码" type="password" show-password autocomplete="current-password"><template #prefix><Lock :size="16" :stroke-width="1.75" /></template></el-input>
           </el-form-item>
-          <div class="remember-row"><el-checkbox v-model="remember">记住我</el-checkbox><span class="hint">仅记住用户名</span></div>
+          <div class="remember-row"><el-checkbox v-model="remember">记住用户名和密码</el-checkbox><span class="hint">密码由浏览器保存</span></div>
           <el-alert v-if="errorText" type="error" :closable="false" show-icon :title="errorText" class="error" />
           <el-button type="primary" native-type="submit" :loading="submitting" class="submit">登录</el-button>
         </el-form>
         <p class="account-help">账号由管理员统一分发，忘记密码请联系管理员重置</p>
+        <a class="cert-link" :href="certUrl" target="_blank" rel="noopener"><ShieldCheck :size="16" :stroke-width="1.75" /><span>下载根证书</span><span class="hint">浏览器提示“不安全”时安装</span></a>
       </section>
     </div>
     <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V3.1.1</footer>
@@ -130,6 +147,9 @@ h1 { font: var(--si-font-title-lg); margin: 0 0 4px; }
 .error { margin-bottom: 16px; }
 .submit { width: 100%; height: 44px; }
 .account-help { font-size: 13px; color: var(--el-text-color-secondary); margin: 20px 0 0; line-height: 1.8; }
+.cert-link { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding: 10px 12px; border: 1px solid var(--si-hair); border-radius: var(--el-border-radius-base); color: var(--si-blue-ink); font: var(--si-font-label); text-decoration: none; white-space: nowrap; transition: background-color var(--si-dur-1) var(--si-ease), border-color var(--si-dur-1) var(--si-ease); }
+.cert-link:hover { background: var(--si-surface-2); border-color: var(--si-hair-strong); }
+.cert-link .hint { margin-left: auto; }
 footer { position: absolute; bottom: 24px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--el-text-color-secondary); }
 @media (max-width: 1099px) {
   .brand-area, .divider { display: none; }

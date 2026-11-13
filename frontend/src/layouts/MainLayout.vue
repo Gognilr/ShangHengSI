@@ -281,8 +281,8 @@ kbd { margin-left: auto; font: var(--si-font-caption); color: var(--si-ink-4); }
   min-height: 0;
   overflow-y: auto;
 }
-/* 完整特效下叠氛围光：背景属于 .main 自身，不随内容滚动，不动画 */
-:global(html[data-fx="full"]) .main { background-image: var(--si-ambient); background-repeat: no-repeat; }
+/* 氛围光：背景属于 .main 自身，不随内容滚动，不动画；三档特效都显示 */
+.main { background-image: var(--si-ambient); background-repeat: no-repeat; }
 .main :deep(.confirm-actions) { bottom: 0; }
 .must-change { margin: 0; padding: 48px 32px; text-align: center; color: var(--si-ink-3); }
 </style>

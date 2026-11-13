@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
-import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
@@ -92,12 +91,9 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 
 <template>
   <div>
-    <PageHeader title="公司范本" description="维护公司标准合同，审核时按文件类型和立场选择合适的范本。">
-      <el-button type="primary" :disabled="rows.length >= 50 || saving" @click="open()">上传公司范本</el-button>
-    </PageHeader>
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
     <div v-loading="loading" class="panel setting-panel">
-      <SettingSection title="范本列表" description="审核时按文件类型和立场选择合适的范本。" stacked>
+      <SettingSection title="范本列表" description="审核时按文件类型和立场选择合适的范本。" stacked><template #actions><el-button type="primary" :disabled="rows.length >= 50 || saving" @click="open()">上传公司范本</el-button></template>
         <p class="hint">最多 50 份，含停用范本。只有启用且向量准备完成的范本参与选择；更换文件请删除后重新上传。</p>
         <TableSkeleton v-if="!loaded" :columns="['1fr', '130px', '100px', '80px', '100px', '80px', '160px']" />
       <el-table v-else :data="rows" :max-height="tableMax">

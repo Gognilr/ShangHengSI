@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
-import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import SettingSection from '@/components/SettingSection.vue'
@@ -169,7 +168,6 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
 
 <template>
   <div>
-    <PageHeader title="法规库" description="导入官方法规目录与全文，预览差异并确认生效。" />
     <div class="panel setting-panel">
       <SettingSection v-if="canSync" title="自动更新" description="定期从国家法律法规数据库拉取公开法规；变更经业务管理员确认后才生效。默认关闭。">
         <el-alert v-if="syncError" :title="syncError" type="error" :closable="false" show-icon class="gap" />

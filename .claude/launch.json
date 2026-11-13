@@ -23,7 +23,7 @@
       ],
       "port": 5173,
       "env": {
-        "VITE_DEV_PROXY": "https://172.16.11.252:8443"
+        "VITE_DEV_PROXY": "https://172.16.11.252"
       }
     }
   ]

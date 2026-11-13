@@ -20,25 +20,21 @@ const fxHint = computed(() => {
 </script>
 
 <template>
-  <div class="appearance">
-    <div class="row">
-      <span class="label">外壳</span>
-      <SiSegmented v-model="store.shell" :options="shellOptions" ariaLabel="外壳" />
+  <div class="si-rows">
+    <div class="si-row">
+      <span class="si-row-label">外壳</span>
+      <div class="si-row-value"><SiSegmented v-model="store.shell" :options="shellOptions" ariaLabel="外壳" /></div>
     </div>
-    <div class="row">
-      <span class="label">特效</span>
-      <div class="control">
+    <div class="si-row">
+      <span class="si-row-label">特效</span>
+      <div class="si-row-value">
         <SiSegmented v-model="store.fxChoice" :options="fxOptions" ariaLabel="特效" />
         <p class="hint">{{ fxHint }}</p>
       </div>
     </div>
-    <p class="hint note">外观只保存在本浏览器；文件纸面跟随外壳。侧栏底部的太阳 / 月亮按钮可一键切换外壳。</p>
   </div>
 </template>
 
 <style scoped>
-.row { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
-.label { flex: none; width: 40px; padding-top: 5px; font: var(--si-font-label); color: var(--si-ink-2); }
-.control .hint { margin: 8px 0 0; }
-.note { margin: 8px 0 0; }
+.hint { margin: 8px 0 0; }
 </style>

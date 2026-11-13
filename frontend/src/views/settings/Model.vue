@@ -4,7 +4,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@lucide/vue'
 import { adminModelApi, type ModelBody, type ModelList, type ModelRow, type ModelTests } from '@/api/admin'
 import { ApiError } from '@/api/http'
-import PageHeader from '@/components/PageHeader.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import ModelEditDrawer from '@/components/ModelEditDrawer.vue'
 import RowMore from '@/components/RowMore.vue'
@@ -96,7 +95,6 @@ async function operate(row: ModelRow, action: 'test' | 'review' | 'assist' | 'en
 
 <template>
   <div class="settings-page">
-    <PageHeader title="模型接口" description="管理审核与助手使用的模型、调用参数和费用上限" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap"><el-button link type="primary" @click="load">重新加载</el-button></el-alert>
     <div v-loading="loading" class="panel">
       <SettingSection title="全部模型" description="个人每日调用上限跨模型合计，按上海时间每天统计；按实际调用模型的次数计，一份长文档分段审核或格式重试会计多次。" stacked>
