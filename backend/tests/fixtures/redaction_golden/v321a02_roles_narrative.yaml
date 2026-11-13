@@ -1,0 +1,16 @@
+description: V321-A-02：签约方标签保留；角色词不触发方姓姓名；品牌并列不独自触发人名，真实叙述人名仍列出。
+stance: purchase
+must_replace:
+  - {text: 澄川虚构设备租赁有限公司, category: ORG}
+  - {text: 云岫虚构技术有限公司, category: ORG}
+must_keep:
+  - 出租方
+  - 承租方
+  - 受托方
+  - 由委托方承担
+  - 奥的斯和通力
+  - 奥的斯与通力
+must_suspect:
+  - 欧阳虚明
+  - 陆虚岚
+  - 何虚芳

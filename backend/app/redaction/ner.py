@@ -14,6 +14,7 @@ import onnxruntime as ort
 from tokenizers import Tokenizer
 
 from app.redaction.dictionaries import RESOURCES_DIR, zh_legal_finance, chem_names
+from app.redaction.parties import PARTY_LABEL_WORDS
 
 MODEL_DIR = Path(__file__).resolve().parents[2] / 'models/ner'
 STOPWORDS_FILE = Path(__file__).resolve().parents[2] / 'resources/ner_stopwords.txt'
@@ -44,7 +45,8 @@ def cache_context() -> bytes:
     return ((MODEL_DIR / 'MANIFEST.sha256').read_bytes() + STOPWORDS_FILE.read_bytes()
             + (RESOURCES_DIR / 'zh_legal_finance.txt').read_bytes()
             + (RESOURCES_DIR / 'chem_names.txt').read_bytes()
-            + (RESOURCES_DIR / 'chem_words_en.txt').read_bytes() + Path(__file__).read_bytes())
+            + (RESOURCES_DIR / 'chem_words_en.txt').read_bytes() + Path(__file__).read_bytes()
+            + '\n'.join(sorted(PARTY_LABEL_WORDS)).encode('utf-8'))
 
 
 _PREFIX: tuple[bytes, object] | None = None
@@ -205,6 +207,12 @@ def _stopwords():
 
 def keep_entity(text: str, entity: Entity) -> bool:
     surface = text[entity.start:entity.end].strip()
+    if surface.casefold() in PARTY_LABEL_WORDS:
+        return False
+    if surface.startswith('方') and any(
+        label.endswith('方') and text[:entity.start].endswith(label[:-1]) for label in PARTY_LABEL_WORDS
+    ):
+        return False  # 标签末字不能成为“方承担”等实体片段的起点（V321Q-04）。
     if re.fullmatch(r'[a-z\s-]+', surface):
         return False
     if re.fullmatch(r'(?:GB(?:/[TZ])?|YB/T|HG/T|SH/T|JB/T|T/[A-Z]+|ASTM|ISO|IEC|EN|DIN|JIS|BS|API)(?:\s+[A-Z0-9][A-Z0-9 ./-]*)?', surface):

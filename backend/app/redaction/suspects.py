@@ -525,7 +525,7 @@ def _find_suspects(text: str, occupied: tuple, derived: tuple, lowercase_words: 
     surname = cn_surname_pattern()
     trigger = "与|和|由|请|致|联系|经|向|给|找|跟|同|派|委托|授权|通知|抄送"
     end = "沟通|协商|确认|同意|说|称|表示|负责|签字|签署|联系|提出|认为|回复|反馈|处理|商定"
-    pat = re.compile(rf"(?:{trigger})((?:{surname})[一-鿿]{{1,2}}?)(?=$|[^一-鿿]|{end})")
+    pat = re.compile(rf"(?:{trigger})(?!方)((?:{surname})[一-鿿]{{1,2}}?)(?=$|[^一-鿿]|{end})")
     for m in pat.finditer(masked):
         if _is_person_name(m.group(1)) and not _is_place(m.group(1)) and not any(s.start == m.start(1) and s.end == m.end(1) for s in cands):
             cands.append(Suspect(m.start(1), m.end(1), "person_like"))
@@ -563,6 +563,27 @@ def _generic_reference(surface: str) -> bool:
 def plain_candidate(text: str, candidate: Suspect, *, header: bool = False) -> bool:
     """只过滤不确定项；称谓与角色词锚定的人名不使用常用词表。"""
     surface = text[candidate.start:candidate.end]
+    if surface.casefold() in P.PARTY_LABEL_WORDS:
+        return True
+    if candidate.reason in (PERSON_NAME, 'person_like', 'ner') and surface.startswith('方') and any(
+        label.endswith('方') and text[:candidate.start].endswith(label[:-1]) for label in P.PARTY_LABEL_WORDS
+    ):
+        return True  # 标签末字不能成为叙述人名的起点；标签规则也共用此过滤。
+    if (candidate.reason in (PERSON_NAME, 'person_like') and candidate.start > 0
+            and text[candidate.start - 1] in '和与' and not text[candidate.end:].startswith(_PERSON_TITLES)):
+        # V321Q-04：并列连接词不能独自证明后一项是人名；句首或“请与”仍可引出姓名。
+        head = text[:candidate.start - 1]
+        # 前一项带称谓时，姓名在称谓之前（“陆虚岚经理和何虚芳”）。
+        for title in _PERSON_TITLES:
+            if head.endswith(title):
+                head = head[:-len(title)]
+                break
+        previous = re.search(r'[一-鿿]{2,}$', head)
+        if previous and not any(
+            _is_person_name(head[s:]) and _person_left_ok(head, s) and head[s:] not in zh_words()
+            for s in range(max(previous.start(), len(head) - 4), len(head))
+        ):
+            return True
     from app.redaction.detect import is_admin_city
     if candidate.reason in (PERSON_NAME, 'person_like', 'ner') and is_admin_city(surface):
         return True

@@ -41,6 +41,8 @@ _LABELS: list[tuple[str, list[str]]] = [
     ("检验方", ["检验方", "检验机构", "Inspection Party"]),
 ]
 _LABEL_CANON = {word.casefold(): canon for canon, words in _LABELS for word in words}
+# V321-A-02：识别结果与不确定项共用签约方标签，不另维护一份角色词表。
+PARTY_LABEL_WORDS = frozenset(_LABEL_CANON)
 _LABEL_WORDS = sorted(_LABEL_CANON, key=len, reverse=True)
 _LABEL_RE = re.compile(
     r"(?:^|(?<=[\s,，;；。、(（]))(?i:("
