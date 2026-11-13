@@ -227,6 +227,8 @@ def find_formatted(text: str) -> list[Hit]:
             add(m.start(1), m.start(1) + len(value), "REFNO", _norm_key(value))
     # 名称未知的“×号”仍是编号槽位；保留账号、证件等已知类别的优先级。
     for m in re.finditer(r'[一-鿿]{0,12}(?:编号|号码|号)[ \t]*[:：][ \t]*(\d{8,30})(?![A-Za-z0-9])', text):
+        if re.search(r'(?:电话|手机|传真)(?:号码|号)[ \t]*[:：][ \t]*$', text[:m.start(1)]):
+            continue  # 电话形状在后面的既有规则识别，不让通用编号改变其类别。
         if not any(h.start < m.end(1) and m.start(1) < h.end for h in hits):
             add(m.start(1), m.end(1), 'REFNO', _norm_key(m.group(1)))
     # 标签强于号码形状，订单编号等先占位；无标签的校验失败项由引擎列为不确定项。

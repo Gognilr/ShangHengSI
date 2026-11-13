@@ -9,6 +9,8 @@ must_replace:
   - {text: "87654321098765432", category: REFNO}
   - {text: "海州市虚构档案服务中心", category: ORG}
   - {text: "海州市云山区至善路自在大厦六层", category: ADDR}
+  - {text: "13800138000", category: PHONE}
+  - {text: "010-12345678", category: PHONE}
 must_suspect:
   - "锦绣华庭小区"
   - "岚汐花园"
