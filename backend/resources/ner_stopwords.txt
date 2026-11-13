@@ -104,3 +104,8 @@ umpire laboratory
 敬启者
 此致
 敬礼
+# V321-B-05：英文合同通用角色。
+Provider
+Service Provider
+Licensor
+Licensee

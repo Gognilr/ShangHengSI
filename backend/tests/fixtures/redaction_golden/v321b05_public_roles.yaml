@@ -1,0 +1,19 @@
+description: 公共机构及英文合同通用定义词
+stance: other
+must_replace:
+  - {text: "Aurora Fictive Services Ltd.", category: ORG}
+  - {text: "Boreal Fictive Software Ltd.", category: ORG}
+  - {text: "Cedar Fictive Technology Ltd.", category: ORG}
+must_keep:
+  - "Provider"
+  - "Licensor"
+  - "Licensee"
+  - "Service Provider"
+  - "London Court of International Arbitration"
+  - "香港国际仲裁中心"
+  - "中国质量认证中心"
+  - "China National Accreditation Service for Conformity Assessment"
+  - "国家工信部"
+  - "PC站"
+  - "MySQL"
+  - "微信站"

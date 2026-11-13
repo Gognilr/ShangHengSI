@@ -20,3 +20,20 @@ LCIA
 ISO
 ASTM
 IEC
+# V321-B-05：常见仲裁、检验与认证机构；显式签约主体仍优先替换。
+London Court of International Arbitration
+伦敦国际仲裁院
+Hong Kong International Arbitration Centre
+香港国际仲裁中心
+International Chamber of Commerce International Court of Arbitration
+国际商会国际仲裁院
+China International Economic and Trade Arbitration Commission
+上海国际经济贸易仲裁委员会
+Shanghai International Economic and Trade Arbitration Commission
+中国质量认证中心
+China Quality Certification Centre
+中国特种设备检测研究院
+China Certification & Inspection Group
+中国合格评定国家认可委员会
+China National Accreditation Service for Conformity Assessment
+国家工信部
