@@ -64,6 +64,8 @@ def test_discuss_one_finding(files_dir, model, make_user, login, db_sessionmaker
         partial.content_redacted = reply[0]
         tail, _ = _incremental(db, task, partial, {}, offset, finished=True, dates=None)
         assert prefix + tail == shown['content']
+        partial.content_redacted = '请核对F1-T1-R'
+        assert _incremental(db, task, partial, {}, 0, finished=False, dates=None)[0] == '请核对'
         with pytest.raises(AppError) as blocked_input:
             _discussion_check(db, task, uuid.UUID(a), {}, '联系电话13800138000', None)
         assert blocked_input.value.code == 'DISCUSSION_INPUT_BLOCKED'

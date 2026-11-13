@@ -190,7 +190,8 @@ def _incremental(db, task, message, mapping, offset, *, finished, dates):
     raw = message.content_redacted
     if message.finding_id and not finished:
         # 位置编号可能拆在任一流式片段处，暂扣末尾候选，避免已显示前缀缩短。
-        raw = re.sub(r'\[?F\d*(?:-[A-Z]*\d*)?$', '', raw)
+        # 表格位置有多段（F1-T2-R3-C4），每段都可能未写完。
+        raw = re.sub(r'\[?F\d*(?:-[A-Z]{0,2}\d*)*$', '', raw)
     text, _ = incremental(raw, mapping, 0, finished=finished, dates=dates)
     if message.finding_id:
         text = check(text, {}, locations=_discussion_locations(db, task)).text
