@@ -1,0 +1,111 @@
+{
+  "task": "V321-B-07",
+  "checked_at": "2026-11-13",
+  "status": "pending_user_download_and_offline_inference_confirmation",
+  "destination": "E:\\aireview-eval\\v321b07",
+  "metadata_sources": [
+    "https://huggingface.co/api/models/knowledgator/gliner-x-small?blobs=true",
+    "https://huggingface.co/api/models/knowledgator/gliner-x-base?blobs=true"
+  ],
+  "total_bytes": 1929255213,
+  "models": [
+    {
+      "id": "knowledgator/gliner-x-small",
+      "revision": "d51a0984d11084a55f9df3899d9dbf7704f580f5",
+      "files": [
+        {
+          "path": "README.md",
+          "bytes": 35497,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/README.md"
+        },
+        {
+          "path": "added_tokens.json",
+          "bytes": 45,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/added_tokens.json"
+        },
+        {
+          "path": "gliner_config.json",
+          "bytes": 3541,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/gliner_config.json"
+        },
+        {
+          "path": "onnx/model.onnx",
+          "bytes": 688773285,
+          "upstream_sha256": "6b349feedf138431e22be9bc26221511e2774503517c8713c0531bee499d4164",
+          "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/onnx/model.onnx"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "bytes": 416,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/special_tokens_map.json"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 16335050,
+          "upstream_sha256": "619d3790cf59a0e50afdf04239db19093568fbd8d806963e35d54a8fb71d099c",
+          "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/tokenizer.json"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 19602,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/tokenizer_config.json"
+        }
+      ],
+      "total_bytes": 705167436
+    },
+    {
+      "id": "knowledgator/gliner-x-base",
+      "revision": "a6c7a8fbfe2066c68d12c0480418504fde6d91d1",
+      "files": [
+        {
+          "path": "README.md",
+          "bytes": 35480,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/README.md"
+        },
+        {
+          "path": "added_tokens.json",
+          "bytes": 45,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/added_tokens.json"
+        },
+        {
+          "path": "gliner_config.json",
+          "bytes": 3525,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/gliner_config.json"
+        },
+        {
+          "path": "onnx/model.onnx",
+          "bytes": 1207693659,
+          "upstream_sha256": "246b9511bbf8de02cc2da177c446073d4f64dfcb5e9a9ce9e525a5dd02d04aad",
+          "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/onnx/model.onnx"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "bytes": 416,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/special_tokens_map.json"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 16335050,
+          "upstream_sha256": "619d3790cf59a0e50afdf04239db19093568fbd8d806963e35d54a8fb71d099c",
+          "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/tokenizer.json"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 19602,
+          "upstream_sha256": null,
+          "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/tokenizer_config.json"
+        }
+      ],
+      "total_bytes": 1224087777
+    }
+  ]
+}
