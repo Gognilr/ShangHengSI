@@ -190,8 +190,8 @@ def test_create_run_success(db_sessionmaker, alice, ready_task, llm):
         assert (queued.status, queued.payload) == ("queued", {"task_id": str(task.id), "run_id": body["id"]})
         log = db.scalars(select(AuditLog).where(AuditLog.action == "run_create")).one()
         assert log.target_id == body["id"] and log.detail["run_no"] == 1 and log.user_id == user.id
-        # 9.10：确认发送时写入签约方名称（kind=learned），我方标记 is_our_party（Q-73）
-        learned = {(decrypt_text(t.term_enc), t.category, t.is_our_party, t.created_by)
+        # 确认发送时写入签约方名称；我方选择只记在当前用户下。
+        learned = {(decrypt_text(t.term_enc), t.category, str(user.id) in t.our_party_user_ids, t.created_by)
                    for t in db.scalars(select(RedactionTerm).where(RedactionTerm.kind == "learned"))}
         assert learned == {(REAL_OUR_NAME, "ORG", True, user.id), (REAL_BUYER_NAME, "ORG", False, user.id),
                            ('星河公司', 'ORG', True, user.id), ('FMT', 'ORG', False, user.id)}

@@ -1498,7 +1498,7 @@ def _ner_entries(db: Session, task_id: uuid.UUID) -> tuple[dict[str, uuid.UUID],
     return ids, entries
 
 
-def _load_terms(db: Session) -> list[Term]:
+def _load_terms(db: Session, user_id: uuid.UUID | None = None) -> list[Term]:
     """启用中的已记住名称与自定义敏感词，解密到内存（18.12），不写日志。"""
     rows = list(db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True)).order_by(
         RedactionTerm.created_at, RedactionTerm.id)))
@@ -1508,7 +1508,10 @@ def _load_terms(db: Session) -> list[Term]:
         if r.alias_of:
             # 主行已删或关闭时，同组启用别名仍共用首个有效写法，不恢复关闭行。
             primary.setdefault(r.alias_of, texts[r.id])
-    return [Term(texts[r.id], r.kind, r.category, r.is_our_party,
+    # 旧学习记录只属于原记录人；没有记录人的旧值不提升为公司预置。
+    return [Term(texts[r.id], r.kind, r.category,
+                 r.is_company_our_party or (user_id is not None and (
+                     str(user_id) in r.our_party_user_ids or (r.is_our_party and r.created_by == user_id))),
                  primary.get(r.alias_of) if r.alias_of else None) for r in rows]
 
 
@@ -1682,7 +1685,7 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     user_keeps = [texts.get(r.loc, '')[r.char_start:r.char_end] for r in db.scalars(
                          select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
                                                        RedactionSuspect.decision == 'ignore'))]
-    options = dict(terms=_load_terms(db), overrides=overrides, user_terms=user_terms,
+    options = dict(terms=_load_terms(db, task.owner_id), overrides=overrides, user_terms=user_terms,
                    prior_suspects=[SuspectOut(r.loc, r.char_start, r.char_end, r.reason) for r in db.scalars(
                        select(RedactionSuspect).where(RedactionSuspect.task_id == task.id,
                                                      RedactionSuspect.decision.in_(["pending", "ignore"])))],
@@ -2158,18 +2161,26 @@ def learn_confirmed_names(db: Session, task: Task, user_id: uuid.UUID | None) ->
     for h, (text, category, our, alias_of) in names.items():
         if h in existing_hashes:
             if our:
-                db.execute(update(RedactionTerm).where(RedactionTerm.kind == 'learned', RedactionTerm.term_hash == h,
-                                                       RedactionTerm.is_our_party.is_(False)).values(is_our_party=True))
+                _remember_our_party(db, h, user_id)
             continue
         # 并发确认的两个任务写入同一名称时不报错（唯一约束 kind + term_hash）
         db.execute(pg_insert(RedactionTerm).values(
             kind="learned", term_enc=crypto.encrypt_text(text), term_hash=h, category=category,
-            is_our_party=our, alias_of=alias_of, created_by=user_id, created_at=utcnow(),
+            is_our_party=False, alias_of=alias_of, created_by=user_id, created_at=utcnow(),
         ).on_conflict_do_nothing(index_elements=["kind", "term_hash"]))
         if our:
-            db.execute(update(RedactionTerm).where(RedactionTerm.kind == "learned", RedactionTerm.term_hash == h,
-                                                   RedactionTerm.is_our_party.is_(False)).values(is_our_party=True))
+            _remember_our_party(db, h, user_id)
     db.flush()
+
+
+def _remember_our_party(db: Session, digest: str, user_id: uuid.UUID | None) -> None:
+    if user_id is None:
+        return
+    # 原子追加，两个用户同时确认同名主体时各自的选择均保留。
+    db.execute(update(RedactionTerm).where(
+        RedactionTerm.kind == 'learned', RedactionTerm.term_hash == digest,
+        ~RedactionTerm.our_party_user_ids.contains([str(user_id)]),
+    ).values(our_party_user_ids=RedactionTerm.our_party_user_ids + [str(user_id)]))
 
 
 # ---------------------------------------------------------------- 外发文本与查询

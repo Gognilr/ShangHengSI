@@ -196,7 +196,7 @@ async function addOurParty() {
 async function removeOurParty(row: TermRow) {
   if (ourRemoving.value) return
   try {
-    await ElMessageBox.confirm(`将删除「${row.term}」的已记住名称及我方预置。已解析任务不受影响，删除后无法恢复。`,
+    await ElMessageBox.confirm(`将取消「${row.term}」的公司我方预置，已记住名称和本人选择保留。已解析任务不受影响。`,
       '删除我方主体', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
   } catch { return }
   ourRemoving.value = row.id
@@ -223,7 +223,7 @@ onMounted(() => {
         <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
         <div class="switch-row"><div><h3>数量脱敏</h3><p class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</p></div><el-switch :model-value="maskQuantity" :loading="maskLoading" aria-label="数量脱敏" @change="toggleMask" /></div><div class="switch-row"><div><h3>日期整体平移</h3><p class="hint">发给模型的日期整体平移同一天数，回来后在本机换回；只影响之后重新计算的任务</p></div><el-switch :model-value="dateShift" :loading="maskLoading" aria-label="日期整体平移" @change="toggleExtra('date_shift', $event)" /></div>
       </SettingSection>
-      <SettingSection v-if="auth.can('redaction.parties')" title="我方主体" description="预置本公司的完整名称，之后新解析的文件出现该名称时可预选我方主体。" stacked>
+      <SettingSection v-if="auth.can('redaction.parties')" title="我方主体" description="管理员预置的公司名称对所有人有效；审核时选择的我方只为选择者本人记住。" stacked>
         <div class="filters">
         <el-input v-model="ourName" maxlength="100" class="term-input" placeholder="输入我方完整公司名称" aria-label="我方主体名称" :disabled="ourAdding" @keyup.enter="addOurParty" />
         <el-button type="primary" :loading="ourAdding" @click="addOurParty">添加我方主体</el-button>
@@ -280,7 +280,7 @@ onMounted(() => {
         <el-table-column label="类别" width="80">
           <template #default="{ row }">{{ row.category === 'PERSON' ? '人名' : '公司' }}</template>
         </el-table-column>
-        <el-table-column label="是否我方" width="90">
+        <el-table-column label="公司预置" width="90">
           <template #default="{ row }">{{ row.is_our_party ? '是' : '否' }}</template>
         </el-table-column>
         <el-table-column label="记录人" width="120">

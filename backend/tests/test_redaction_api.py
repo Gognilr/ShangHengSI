@@ -627,7 +627,7 @@ def test_t08_learned_name_replaced_in_second_task(db_sessionmaker, alice, ready_
     llm("normal")
     assert c.post(url(first, "runs"), headers=h).status_code == 201
     with db_sessionmaker() as db:
-        learned = {decrypt_text(t.term_enc): t.is_our_party
+        learned = {decrypt_text(t.term_enc): str(user.id) in t.our_party_user_ids
                    for t in db.scalars(select(RedactionTerm).where(RedactionTerm.kind == "learned"))}
     assert learned == {REAL_OUR_NAME: True, REAL_BUYER_NAME: False, "青松示例贸易": False}
     second = suspect_task(ready_task, user, "通知", "青松示例贸易将于下月到访。")

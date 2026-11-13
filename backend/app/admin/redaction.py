@@ -171,7 +171,7 @@ class OurPartyIn(BaseModel):
 @router.get("/our-parties", dependencies=[Depends(_parties)])
 def list_our_parties(db: DbSession = Depends(get_db)) -> dict:
     rows = db.execute(select(RedactionTerm, User.display_name).outerjoin(User, User.id == RedactionTerm.created_by)
-                      .where(RedactionTerm.kind == "learned", RedactionTerm.is_our_party.is_(True))
+                      .where(RedactionTerm.kind == "learned", RedactionTerm.is_company_our_party.is_(True))
                       .order_by(RedactionTerm.created_at.desc(), RedactionTerm.id)).all()
     return {"items": [_row(t, name) for t, name in rows]}
 
@@ -186,10 +186,10 @@ def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(c
     row = db.scalar(select(RedactionTerm).where(RedactionTerm.kind == "learned", RedactionTerm.term_hash == digest).with_for_update())
     if row is None:
         row = RedactionTerm(kind="learned", category="ORG", term_hash=digest, term_enc=crypto.encrypt_text(body.name),
-                            is_our_party=True, enabled=True, hit_count=0, created_by=admin.id, created_at=utcnow())
+                            is_company_our_party=True, enabled=True, hit_count=0, created_by=admin.id, created_at=utcnow())
         db.add(row)
     else:
-        row.category, row.is_our_party, row.created_by = "ORG", True, admin.id
+        row.category, row.is_company_our_party, row.enabled = "ORG", True, True
     try:
         db.flush()
     except IntegrityError:
@@ -204,10 +204,10 @@ def create_our_party(body: OurPartyIn, request: Request, admin: User = Depends(c
 def delete_our_party(tid: str, request: Request, admin: User = Depends(current_user),
                      db: DbSession = Depends(get_db)) -> Response:
     row = _load(db, tid)
-    if row.kind != "learned" or not row.is_our_party:
+    if row.kind != "learned" or not row.is_company_our_party:
         raise NotFoundError("TERM_NOT_FOUND", "我方主体不存在")
     _audit(db, admin, request, row, op="delete")
-    db.delete(row)
+    row.is_company_our_party = False
     db.commit()
     return Response(status_code=204)
 
@@ -218,7 +218,7 @@ def _row(t: RedactionTerm, name: Optional[str]) -> TermRow:
                         RedactionTerm.term_hash == t.alias_of)) if db is not None and t.alias_of else None
     return TermRow(
         id=t.id, kind=t.kind, term=crypto.decrypt_text(t.term_enc), category=t.category,
-        is_our_party=t.is_our_party, enabled=t.enabled, hit_count=t.hit_count, last_hit_at=t.last_hit_at,
+        is_our_party=t.is_company_our_party, enabled=t.enabled, hit_count=t.hit_count, last_hit_at=t.last_hit_at,
         created_by_name=name, created_at=t.created_at, alias_of=crypto.decrypt_text(primary) if primary else None,
     )
 

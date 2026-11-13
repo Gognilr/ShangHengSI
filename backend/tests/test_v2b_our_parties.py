@@ -91,3 +91,43 @@ def test_multiple_presets_ambiguous_not_selected(labels):
     nodes = [NodeIn("F1-P1", labels[0] + "：" + OUR), NodeIn("F1-P2", labels[1] + "：" + OTHER)]
     r = compute(nodes, "purchase", terms=[Term(n, "learned", "ORG", True) for n in (OUR, OTHER)])
     assert not any(p.is_our_party for p in r.parties)
+
+
+def test_personal_learning_and_company_preset(admin, alice, ready_task, db_sessionmaker, make_user):
+    from app.redaction.engine import _load_terms, learn_confirmed_names, _remember_our_party, term_hash
+    from app.db.models import RedactionTerm
+    from app.security.crypto import encrypt_text
+    from sqlalchemy import select
+    user, _, _ = alice
+    other = make_user('our_other')
+    task = ready_task(user)
+    with db_sessionmaker() as db:
+        learn_confirmed_names(db, db.get(Task, task.id), user.id)
+        db.commit()
+        personal = [t.text for t in _load_terms(db, user.id) if t.is_our_party]
+        assert personal and not any(t.is_our_party for t in _load_terms(db, other.id))
+        # 同一名称由第二个人选择，不覆盖首个选择者。
+        _remember_our_party(db, term_hash(personal[0]), other.id)
+        db.commit()
+        assert any(t.text == personal[0] and t.is_our_party for t in _load_terms(db, other.id))
+        assert any(t.text == personal[0] and t.is_our_party for t in _load_terms(db, user.id))
+        legacy = RedactionTerm(kind='learned', term_enc=encrypt_text(OUR), term_hash=term_hash(OUR),
+                               category='ORG', is_our_party=True, created_by=user.id)
+        db.add(legacy); db.commit()
+        assert next(t for t in _load_terms(db, user.id) if t.text == OUR).is_our_party
+        assert not next(t for t in _load_terms(db, other.id) if t.text == OUR).is_our_party
+        nodes = [NodeIn('F1-P1', '甲方：' + OUR)]
+        assert compute(nodes, 'other', terms=_load_terms(db, user.id)).parties[0].is_our_party
+        assert not compute(nodes, 'other', terms=_load_terms(db, other.id)).parties[0].is_our_party
+    c, csrf = admin
+    url = API_PREFIX + '/admin/our-parties'
+    assert c.get(url).json()['items'] == []
+    row = c.post(url, headers={'X-CSRF-Token': csrf}, json={'name': OUR})
+    assert row.status_code == 201, row.text
+    with db_sessionmaker() as db:
+        assert next(t for t in _load_terms(db, other.id) if t.text == OUR).is_our_party
+        assert compute(nodes, 'other', terms=_load_terms(db, other.id)).parties[0].is_our_party
+    assert c.delete(url + '/' + row.json()['id'], headers={'X-CSRF-Token': csrf}).status_code == 204
+    with db_sessionmaker() as db:
+        assert next(t for t in _load_terms(db, user.id) if t.text == OUR).is_our_party
+        assert not next(t for t in _load_terms(db, other.id) if t.text == OUR).is_our_party

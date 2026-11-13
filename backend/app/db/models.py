@@ -514,6 +514,8 @@ class RedactionTerm(Base):
     alias_of: Mapped[Optional[str]] = mapped_column(CHAR(64))
     category: Mapped[str] = mapped_column(String(10), nullable=False)
     is_our_party: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    is_company_our_party: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    our_party_user_ids: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     hit_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     last_hit_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)

@@ -602,7 +602,7 @@ def test_learn_confirmed_names_and_second_task(db_sessionmaker, text_task):
         db.commit()
     with db_sessionmaker() as db:
         rows = db.scalars(select(RedactionTerm).where(RedactionTerm.kind == "learned")).all()
-        got = {(crypto.decrypt_text(r.term_enc), r.category, r.is_our_party) for r in rows}
+        got = {(crypto.decrypt_text(r.term_enc), r.category, str(task.owner_id) in r.our_party_user_ids) for r in rows}
         assert got == {("星河虚构进出口有限公司", "ORG", True), ("Orion Fictive Trading LLC", "ORG", False),
                        ("Bluefin Example", "ORG", False), ("王示例", "PERSON", False)}
         assert all(r.term_hash == engine.term_hash(crypto.decrypt_text(r.term_enc)) for r in rows)
@@ -624,7 +624,7 @@ def test_learn_confirmed_names_and_second_task(db_sessionmaker, text_task):
     with db_sessionmaker() as db:
         assert db.scalar(select(RedactionTerm.hit_count).where(
             RedactionTerm.term_hash == engine.term_hash("Bluefin Example"))) == 1
-    # 我方只升不降：另一个任务把 Orion 设为我方后 is_our_party=true；之后不是我方也不改回
+    # 本人我方记忆只升不降：后续未选为我方不清除既有本人选择。
     third = text_task("买方：Orion Fictive Trading LLC", stance="purchase")
     with db_sessionmaker() as db:
         t3 = db.get(Task, third.id)
@@ -633,8 +633,8 @@ def test_learn_confirmed_names_and_second_task(db_sessionmaker, text_task):
         engine.learn_confirmed_names(db, t3, t3.owner_id)
         engine.learn_confirmed_names(db, db.get(Task, task.id), None)
         db.commit()
-        assert db.scalar(select(RedactionTerm.is_our_party).where(
-            RedactionTerm.term_hash == engine.term_hash("orion fictive trading llc"))) is True
+        assert str(t3.owner_id) in db.scalar(select(RedactionTerm.our_party_user_ids).where(
+            RedactionTerm.term_hash == engine.term_hash("orion fictive trading llc")))
 
 
 def test_mask_quantity_setting(db_sessionmaker, text_task):
