@@ -1,0 +1,12 @@
+stance: other
+loc_prefixed: true
+must_replace:
+  - text: 沈柏宁
+    category: PERSON
+  - text: 周示例
+    category: PERSON
+must_keep:
+  - MySQL
+  - 技术服务
+  - 上海港
+  - FOB

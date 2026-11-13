@@ -45,7 +45,7 @@
 | V321-D-03 | 按维度并发、文件在前 | Q-21 | Opus，high | Sol 6.1，xhigh | — | D-02 | 评测达标 | 待执行 |
 | V321-D-04 | 问题逐条显示 | Q-22 | Sonnet，high | Terra，high | — | D-03 | — | 待执行 |
 | V321-D-05 | 轮询空转 | Q-23 | Sonnet，medium | Terra，low | — | D-04 | — | 待执行 |
-| V321-D-06 | 扫描件解析提速 | Q-24 | Opus，high | Sol 6.1，high | — | B-06 | golden 不变或改动经确认 | 待执行 |
+| V321-D-06 | 扫描件解析提速 | Q-24 | Opus，high | Sol 6.1，high | — | B-06 | golden 不变或改动经确认 | 进行中（2026-11-14，GPT-6.1 Sol；离线评测完成，120 字窗提速约 20% 但误替换 1/69→2/69，待用户确认是否采用；候选未采用，报告 reports/V321-D-06.md） |
 | V321-E-01 | 就地反馈与保留标记 | Q-27 | Sonnet，medium | Terra，medium | — | C-03 | — | 待执行 |
 | V321-E-02 | 讨论侧栏与讨论稿反馈 | Q-28、33 | 方案 Opus，实现 Sonnet | 方案 Sol 6.1 high，实现 Terra high | — | E-01 | 方案先给用户看 | 待执行 |
 | V321-E-03 | 审核进行中与完成提示 | Q-29 | Sonnet，medium | Terra，medium | — | D-04 | — | 待执行 |
