@@ -1,6 +1,8 @@
 description: 公共机构及英文合同通用定义词
 stance: other
 must_replace:
+  - {text: "岚汐集团有限公司", category: ORG}
+  - {text: "HYGFYL Fictive Services Ltd.", category: ORG}
   - {text: "Aurora Fictive Services Ltd.", category: ORG}
   - {text: "Boreal Fictive Software Ltd.", category: ORG}
   - {text: "Cedar Fictive Technology Ltd.", category: ORG}
