@@ -8,6 +8,36 @@ THU_COMMIT = 'a30ce79d895d01ab5132a5c74c29703ff7efb4cc'
 # golden 若出现回退，在此剔除并同步 README 的剔除表。
 EXCLUDED_WORDS = set()
 EXCLUDED_LEGAL = set()
+# B-02：单字只收虚词与构词成分，不靠逐字拆开解释姓名。
+PLAIN_SINGLE = frozenset('的了是在不和与及或等其此该本我你他她它们对于由从被把将这那应可按使到全各方人者员组站以为经向给让所之并且而也都仍仅再已未无有一套级虚')
+
+
+def build_plain(source: Path, output: Path) -> None:
+    rows = set()
+    for line in (source / 'dict.txt').read_text(encoding='utf-8').splitlines():
+        word, freq, pos = line.split()
+        if (re.fullmatch(r'[一-鿿]{1,8}', word) and not pos.startswith(('nr', 'ns', 'nt', 'nz'))
+                and (word in PLAIN_SINGLE if len(word) == 1 else int(freq) >= 5)):
+            rows.add((word, pos))
+    data = ''.join(f'{word}\t{pos}\n' for word, pos in sorted(rows)).encode('utf-8')
+    (output / 'zh_plain_words.txt').write_bytes(data)
+    license_text = (source / 'jieba-LICENSE').read_text(encoding='utf-8')
+    (output / 'zh_plain_words.README.md').write_text(f'''# 普通词库（V321-B-02）
+
+来源：https://github.com/fxsjy/jieba/tree/v0.42.1 ，只取 jieba/dict.txt；沿用 V31Q-15 来源，用户 2026-11-13 同意下载固定版本词典及许可。
+输入 SHA-256：`{digest((source / 'dict.txt').read_bytes())}`。
+口径：1～8 个汉字；排除 nr / ns / nt / nz 及其子类；多字词频 ≥ 5（首次 50，按基准只校准一次）。普通简称 j 仍收，如“研发”；专名词性仍不收。
+单字只收白名单与上游词典的交集：{''.join(sorted(PLAIN_SINGLE))}。保留词性，每行“词\\t词性”，UTF-8、LF、Unicode 排序。
+结果：{len(rows)} 行；SHA-256 `{digest(data)}`。
+生成：`python scripts/build_zh_words.py --plain-only --source <词典及许可目录> --out resources`（Docker 内）。
+旧 zh_words.txt 及其用途不变。本词库只解释不确定候选及标签人名取值，不改变出口复检，也不撤销已有强识别。
+
+## 上游许可全文
+
+```text
+{license_text.rstrip()}
+```
+''', encoding='utf-8', newline='\n')
 
 
 def digest(data: bytes) -> str:
@@ -83,5 +113,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--plain-only', action='store_true', help='只生成 B-02 普通词库，保留旧词库')
     args = parser.parse_args()
-    build(args.source, args.out)
+    if args.plain_only:
+        build_plain(args.source, args.out)
+    else:
+        build(args.source, args.out)

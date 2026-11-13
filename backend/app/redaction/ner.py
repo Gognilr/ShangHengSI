@@ -45,6 +45,8 @@ def cache_context() -> bytes:
     return ((MODEL_DIR / 'MANIFEST.sha256').read_bytes() + STOPWORDS_FILE.read_bytes()
             + (RESOURCES_DIR / 'zh_legal_finance.txt').read_bytes()
             + (RESOURCES_DIR / 'chem_names.txt').read_bytes()
+            + (RESOURCES_DIR / 'zh_plain_words.txt').read_bytes()
+            + (Path(__file__).parent / 'plain.py').read_bytes()
             + (RESOURCES_DIR / 'chem_words_en.txt').read_bytes() + Path(__file__).read_bytes()
             + '\n'.join(sorted(PARTY_LABEL_WORDS)).encode('utf-8'))
 

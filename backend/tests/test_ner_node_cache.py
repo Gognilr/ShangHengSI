@@ -61,7 +61,7 @@ def test_manifest_and_stopwords_invalidate_all_nodes(monkeypatch, tmp_path, chan
 def fixture_task(ready_task, user):
     doc = Document()
     for value in ('买方：江北市虚构医院', '卖方：澄川虚构信息技术有限公司',
-                  '星际探针需要复核。', '联系人：周示例', '固定的虚构记录。'):
+                  '岚汐探针需要复核。', '联系人：周示例', '固定的虚构记录。'):
         doc.add_paragraph(value)
     data = io.BytesIO()
     doc.save(data)
@@ -75,7 +75,7 @@ def test_persisted_cache_hits_and_only_changed_node_recomputed(db_sessionmaker, 
     calls = []
     def recognize(text):
         calls.append(text)
-        return [ner.Entity(0, 4, 'ORG', 0.7)] if text.startswith('星际探针') else []
+        return [ner.Entity(0, 4, 'ORG', 0.7)] if text.startswith('岚汐探针') else []
     monkeypatch.setattr(ner, 'recognize', recognize)
     task = fixture_task(ready_task, user)
     model = models.NerNodeResult
@@ -85,7 +85,7 @@ def test_persisted_cache_hits_and_only_changed_node_recomputed(db_sessionmaker, 
         before = json.loads(crypto.decrypt_text(next(r for r in rows if r.loc == 'F1-P3').data_enc))
         assert set(before) == {'key', 'entities'}
         assert before['entities'] == [[0, 4, 'ORG', 0.7]]
-        assert '星际探针' not in json.dumps(before, ensure_ascii=False)
+        assert '岚汐探针' not in json.dumps(before, ensure_ascii=False)
         old = {r.loc: (r.data_enc, r.updated_at) for r in rows}
         calls.clear()
         current = db.get(models.Task, task.id)
@@ -102,7 +102,7 @@ def test_persisted_cache_hits_and_only_changed_node_recomputed(db_sessionmaker, 
             model.task_id == task.id, model.loc == 'F1-P3'))))
         assert set(payload) == {'key', 'entities'} and len(payload['key']) == 64
         assert payload['entities'] == []
-        assert '星际探针' not in json.dumps(payload, ensure_ascii=False)
+        assert '岚汐探针' not in json.dumps(payload, ensure_ascii=False)
         assert payload['key'].encode() not in db.scalar(select(model.data_enc).where(
             model.task_id == task.id, model.loc == 'F1-P3'))
         db.rollback()
@@ -135,7 +135,7 @@ def test_bad_cache_is_recomputed_without_content_logs(db_sessionmaker, alice, re
         engine.apply_party_changes(db, db.get(models.Task, task.id), [])
         assert len(calls) == 1
         assert set(json.loads(crypto.decrypt_text(row.data_enc))) == {'key', 'entities'}
-        assert '星际探针' not in caplog.text and 'broken' not in caplog.text
+        assert '岚汐探针' not in caplog.text and 'broken' not in caplog.text
 
 
 @pytest.mark.usefixtures('env')

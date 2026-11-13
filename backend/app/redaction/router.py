@@ -70,10 +70,22 @@ class SuspectView(BaseModel):
     kept_by: str | None
 
 
+class AutoKeptView(BaseModel):
+    loc: str
+    char_start: int
+    char_end: int
+    reason: str
+    category: str
+    text: str
+    before: str
+    after: str
+
+
 class RedactionOut(BaseModel):
     summary: dict[str, int]
     suspects: list[SuspectView]
     items: list[RedactionItemOut]
+    auto_kept: list[AutoKeptView] = Field(default_factory=list)
 
 
 UserCategory = Literal["ORG", "PERSON", "IM", "ACCOUNT", "IDNO", "REFNO", "ADDR", "AMOUNT", "PROJECT", "CUSTOM"]
@@ -194,6 +206,7 @@ def _redaction(db: DbSession, task: Task) -> RedactionOut:
     return RedactionOut(
         summary=engine.redaction_summary(db, task),
         suspects=[SuspectView(**v) for v in engine.suspect_views(db, task)],
+        auto_kept=[AutoKeptView(**v) for v in engine.auto_kept_views(db, task)],
         items=[RedactionItemOut(loc=r.loc, char_start=r.char_start, char_end=r.char_end,
                                 category=r.category, placeholder=r.placeholder, detected_by=r.detected_by,
                                 can_revoke=task.status == 'awaiting_confirm' and r.category != 'AMOUNT')

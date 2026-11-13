@@ -11,6 +11,7 @@ from datetime import date
 from functools import lru_cache
 
 from app.redaction import parties as P
+from app.redaction import plain
 from app.redaction.detect import _QTY_UNIT_RE
 from app.redaction.memo import by_text
 from app.redaction.dictionaries import (
@@ -505,13 +506,22 @@ def _mask(text: str, occupied: list[tuple[int, int]]) -> str:
     return "".join(chars)
 
 
-def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), lowercase_words=frozenset(), header: bool = False) -> list[Suspect]:
+def find_suspects(text: str, occupied: list[tuple[int, int]], *, derived=(), lowercase_words=frozenset(), header: bool = False,
+                  auto_kept: list[Suspect] | None = None) -> list[Suspect]:
     """节点原文中未被替换的疑似遗漏，按位置排序。
 
     occupied 为该节点已被替换的区间 [(start, end)]。同一位置命中多条规则时只保留一条，
     优先级 org_suffix > before_company > capitalized > person_name > long_digits；互相重叠的候选取较长的。
     """
-    return list(_find_suspects(text, tuple(sorted(set(occupied))), tuple(derived), lowercase_words, header))
+    found = _find_suspects(text, tuple(sorted(set(occupied))), tuple(derived), lowercase_words, header)
+    out = []
+    for candidate in found:
+        if ordinary_reason(text, candidate):
+            if auto_kept is not None:
+                auto_kept.append(candidate)
+        else:
+            out.append(candidate)
+    return out
 
 
 @lru_cache(maxsize=32768)
@@ -537,7 +547,7 @@ def _find_suspects(text: str, occupied: tuple, derived: tuple, lowercase_words: 
     # 否则单位被遮盖后，前面的数量会反被当成长串敏感数字。
     cands += _long_digit_candidates(masked, context=text)
     cands = [c for c in cands if c.end > c.start and _MASK not in masked[c.start:c.end]]
-    cands = [c for c in cands if not plain_candidate(text, c, header=header)]
+    cands = [c for c in cands if not plain_candidate(text, c, header=header, explain=False)]
     chosen: list[Suspect] = []
     for c in sorted(cands, key=lambda c: (-(c.end - c.start), _PRIORITY[c.reason], c.start)):
         if not any(c.start < k.end and k.start < c.end for k in chosen):
@@ -562,9 +572,19 @@ def _generic_reference(surface: str) -> bool:
     return bool(m) and (not m[1] or m[1] in zh_words() or m[1][0] in '已向与和及对由给从被把请经')
 
 
-def plain_candidate(text: str, candidate: Suspect, *, header: bool = False) -> bool:
+def ordinary_reason(text: str, candidate: Suspect) -> str | None:
+    if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY):
+        return plain.company_explanation(text, candidate.start, candidate.end)
+    if candidate.reason in (PERSON_NAME, 'person_like', 'ner'):
+        return plain.explanation(text, candidate.start, candidate.end)
+    return None  # 派生字号、长数字、校验不过的号码不经过解释器。
+
+
+def plain_candidate(text: str, candidate: Suspect, *, header: bool = False, explain: bool = True) -> bool:
     """只过滤不确定项；称谓与角色词锚定的人名不使用常用词表。"""
     surface = text[candidate.start:candidate.end]
+    if explain and ordinary_reason(text, candidate):
+        return True
     if surface.casefold() in P.PARTY_LABEL_WORDS:
         return True
     if candidate.reason in (PERSON_NAME, 'person_like', 'ner') and surface.startswith('方') and any(

@@ -764,6 +764,18 @@ def _strip_cn_titles(run: str) -> str:
 
 
 @by_text
+def plain_person_values(text: str) -> list[Hit]:
+    """标签后被词典解释的短值，给引擎记入自动保留清单。"""
+    from app.redaction.plain import explanation
+    out = []
+    for label in _PERSON_LABEL.finditer(bilingual_label_text(text)):
+        value = re.match(r'[一-鿿]{2,4}(?![一-鿿])', text[label.end():])
+        if value and explanation(value.group(), 0, len(value.group()), slot=False):
+            out.append(Hit(label.end(), label.end() + value.end(), 'PERSON', normalize(value.group())))
+    return out
+
+
+@by_text
 def find_persons(text: str) -> list[Hit]:
     """第 6 步：人名标签之后的人名。中文 2–4 个汉字（去掉末尾称谓后），英文 1–3 个首字母大写的单词。
 
@@ -800,6 +812,10 @@ def find_persons(text: str) -> list[Hit]:
             run = _strip_cn_titles(run)
             if (2 <= len(run) <= 4 and run[-1] not in _CN_NOT_PERSON_END and run not in _CN_NOT_PERSON
                     and "公司" not in run):
+                from app.redaction.plain import explanation
+                # 标签值仍先过普通词校验，不把“补充协议”等条款用语全文传播。
+                if explanation(run, 0, len(run), slot=False):
+                    continue
                 span = (pos, pos + len(run))
         else:
             while (t := _EN_TITLES.match(text, pos)):

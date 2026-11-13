@@ -158,6 +158,7 @@ class RedactionResult:
     ner_cache_hits: int = 0
     ner_cache_misses: int = 0
     kept_memory: set[str] = field(default_factory=set)
+    auto_kept: list[SuspectOut] = field(default_factory=list)
 
 
 class RedactionInputError(ValueError):
@@ -431,7 +432,8 @@ def _broad_names_with_alias(text: str) -> list[tuple[int, int]]:
 
 def _cached_entities(entry: object, key: str, length: int) -> list[ner.Entity] | None:
     """持久化内容校验失败视为未命中，不让损坏数据改变替换位置。"""
-    if (not isinstance(entry, dict) or set(entry) not in ({'key', 'entities'}, {'key', 'entities', 'vector_kept'})
+    if (not isinstance(entry, dict) or not {'key', 'entities'} <= set(entry)
+            or not set(entry) <= {'key', 'entities', 'vector_kept', 'auto_kept'}
             or entry['key'] != key):
         return None
     values = entry['entities']
@@ -913,6 +915,15 @@ def compute(
             _accept([_Span(i, h.start, h.end, h.category, h.key, "regex")], occupied[i], spans)
 
     # 模型只读取规则未替换的文字；等长空白保持原文偏移。
+    auto_kept: list[SuspectOut] = []
+
+    def ordinary(loc: str, text: str, candidate: S.Suspect) -> bool:
+        reason = S.ordinary_reason(text, candidate)
+        if reason:
+            auto_kept.append(SuspectOut(loc, candidate.start, candidate.end, reason,
+                                       S.default_category(text[candidate.start:candidate.end], candidate.reason)))
+        return bool(reason)
+
     ner_suspects = []
     ner_names: dict[str, tuple[str, str]] = {}  # 实体键 → (首个高置信文字, 类别)
     locs = {n.loc: i for i, n in enumerate(nodes)}
@@ -966,6 +977,8 @@ def compute(
                 _accept([_Span(i, hit.start, hit.end, hit.label, key, 'ner')], occupied[i], spans)
             elif hit.score >= ner.MEDIUM:
                 candidate = S.Suspect(hit.start, hit.end, 'ner')
+                if ordinary(n.loc, n.text, candidate):
+                    continue
                 if (not S.plain_candidate(n.text, candidate, header=n.loc in headers)
                         and not any(a <= hit.start and hit.end <= b for a, b in
                                     [*S.public_institution_spans(n.text), *S.plain_content_spans(n.text)])):
@@ -1100,9 +1113,16 @@ def compute(
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         checksum_spans = [(s.char_start, s.char_end) for s in found
                           if s.loc == n.loc and s.reason == 'checksum_fail']
+        plain_candidates = []
         found += [SuspectOut(n.loc, s.start, s.end, s.reason)
                             for s in S.find_suspects(n.text, occupied[i] + excluded_spans + checksum_spans, derived=short_derived,
-                                                     lowercase_words=lowercase_words, header=n.loc in headers)]
+                                                     lowercase_words=lowercase_words, header=n.loc in headers,
+                                                     auto_kept=plain_candidates)]
+        for candidate in plain_candidates:
+            ordinary(n.loc, n.text, candidate)
+        for h in detect.plain_person_values(n.text):
+            if not _overlaps(occupied[i] + excluded_spans, h.start, h.end):
+                auto_kept.append(SuspectOut(n.loc, h.start, h.end, 'ordinary_label_value', 'PERSON'))
         for h in detect.find_narrative_persons(n.text):
             if (not _overlaps(occupied[i] + excluded_spans, h.start, h.end)
                     and not any(s.loc == n.loc and s.char_start < h.end and h.start < s.char_end for s in found)):
@@ -1119,6 +1139,8 @@ def compute(
     for s in prior_suspects:
         if (s.loc in locs and 0 <= s.char_start < s.char_end <= len(nodes[locs[s.loc]].text)
                 and not _overlaps(occupied[locs[s.loc]], s.char_start, s.char_end)
+                and not ordinary(s.loc, nodes[locs[s.loc]].text,
+                                 S.Suspect(s.char_start, s.char_end, s.reason))
                 and not any((x.loc, x.char_start, x.char_end) == (s.loc, s.char_start, s.char_end) for x in found)):
             found.append(SuspectOut(s.loc, s.char_start, s.char_end, s.reason))
     kept = {P.normalize(t) for t in keeps}
@@ -1155,6 +1177,16 @@ def compute(
         result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
                            with_ratio=ratio and style == "review", date_shift_days=date_shift_days)
     result.suspects = found
+    # 自动保留不写对照表、不加入出口豁免。若更高优先级在别处登记同词并回扫替换，以替换为准。
+    unique_kept = {(s.loc, s.char_start, s.char_end): s for s in auto_kept
+                   if not any(i.loc == s.loc and i.char_start < s.char_end and s.char_start < i.char_end
+                              for i in result.items)}
+    result.auto_kept = list(unique_kept.values())
+    for loc, entry in node_cache.items():
+        kept_at = [[s.char_start, s.char_end, s.reason, s.category]
+                   for s in result.auto_kept if s.loc == loc]
+        if kept_at:
+            entry['auto_kept'] = kept_at
     result.ner_cache = node_cache
     result.ner_cache_hits, result.ner_cache_misses = cache_hits, cache_misses
     result.matched_terms = {s.term for s in spans if s.term}
@@ -2056,6 +2088,27 @@ def suspect_views(db: Session, task: Task) -> list[dict]:
             "after": _flat(t[r.char_end:r.char_end + CONTEXT_CHARS]),
         })
         groups[key] = out[-1]
+    return out
+
+
+def auto_kept_views(db: Session, task: Task) -> list[dict]:
+    """解释器位置随 NER 缓存加密保存；只在本人的确认接口还原上下文。"""
+    texts = task_texts(db, task)
+    items = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id)))
+    out = []
+    for loc, data in _ner_entries(db, task.id)[1].items():
+        text = texts.get(loc, '')
+        for value in data.get('auto_kept', []):
+            if not isinstance(value, list) or len(value) != 4:
+                continue
+            start, end, reason, category = value
+            if type(start) is not int or type(end) is not int or not isinstance(reason, str) or not isinstance(category, str):
+                continue
+            if (0 <= start < end <= len(text) and not any(
+                    i.loc == loc and i.char_start < end and start < i.char_end for i in items)):
+                out.append(dict(loc=loc, char_start=start, char_end=end, reason=reason, category=category,
+                                text=text[start:end], before=_flat(text[max(0, start - CONTEXT_CHARS):start]),
+                                after=_flat(text[end:end + CONTEXT_CHARS])))
     return out
 
 

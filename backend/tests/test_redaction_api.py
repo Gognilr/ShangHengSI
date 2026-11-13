@@ -349,6 +349,30 @@ def redaction(client, task):
     return r.json()
 
 
+def test_auto_kept_is_persisted_owner_only_and_can_be_replaced(alice, make_user, login, ready_task, db_sessionmaker):
+    user, c, h = alice
+    task = suspect_task(ready_task, user, '签名：补充协议。', '双方签订补充协议。')
+    data = redaction(c, task)
+    kept = next(v for v in data['auto_kept'] if v['text'] == '补充协议')
+    assert kept['reason'] == 'ordinary_label_value'
+    assert not data['suspects'] and not data['items']
+    with db_sessionmaker() as db:
+        assert '补充协议' not in engine.load_redaction_map(db, task.id).values()
+    assert '补充协议' in c.get(url(task, 'redaction/outbound')).json()['text']
+    make_user('bob')
+    other, _ = login('bob')
+    assert other.get(url(task, 'redaction')).status_code == 404
+    # 重新取接口仍能读到加密缓存里的位置；用户改为替换沿用现有手动词条接口。
+    assert redaction(c, task)['auto_kept'] == data['auto_kept']
+    response = c.post(url(task, 'redaction/manual'), headers=h,
+                      json={k: kept[k] for k in ('loc', 'char_start', 'char_end')} | {'category': 'CUSTOM'})
+    assert response.status_code == 200, response.text
+    assert not response.json()['auto_kept']
+    assert '补充协议' not in c.get(url(task, 'redaction/outbound')).json()['text']
+    with db_sessionmaker() as db:
+        assert '补充协议' in engine.load_redaction_map(db, task.id).values()
+
+
 def node_loc(client, task, needle):
     """正文中含 needle 的节点 loc 与 needle 在节点原文中的位置。"""
     r = client.get(f"{API_PREFIX}/tasks/{task.id}/files/{file_id(client, task)}/nodes")
@@ -630,7 +654,12 @@ def test_new_mutations_only_awaiting_confirm(db_sessionmaker, alice, ready_task,
               c.post(url(task, "redaction/manual"),
                      json={"loc": loc, "char_start": start, "char_end": end, "category": "CUSTOM"}, headers=h)]:
         assert (r.status_code, r.json()["code"]) == (409, "TASK_STATE_CONFLICT")
-    assert redaction(c, task) == before
+    after = redaction(c, task)
+    # A-03 已使 can_revoke 随任务状态变化；被拒绝的请求不应改变实际脱敏结果。
+    assert not any(item['can_revoke'] for item in after['items'])
+    for item in before['items']:
+        item['can_revoke'] = False
+    assert after == before
 
 
 @pytest.mark.parametrize("role", ["user", "admin"])
