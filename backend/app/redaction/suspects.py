@@ -433,6 +433,8 @@ _PERSON_EXCLUDE = frozenset("的了是在不和有与及或等其此该本我你
                              # R4-09 验收补充（Q-163）：常见词“马上、施工方、费用、管理、车间”等
                              "上下方向时未重服付复贴能燃碎区落猫皮油间报请色材合理列根释除用卡辆属氏电客问州")
 _PERSON_NOT_NAME = frozenset("总 工 董 某 老 师 姐 哥 叔 姨".split())
+# 叙述人名后面的动作词：出现时前面的“与、和”是介词（与某人协商），不是并列。
+_NARRATIVE_END = "沟通|协商|确认|同意|说|称|表示|负责|签字|签署|联系|提出|认为|回复|反馈|处理|商定"
 _PERSON_TITLES = tuple(sorted("副总经理 总经理 董事长 工程师 会计师 先生 女士 小姐 经理 总监 主任 董事 总裁 总工 律师 老师 博士 教授 部长 处长 科长 厂长 局长 院长 校长 书记 主管 专员 助理 秘书 同志".split(), key=len, reverse=True))
 _PERSON_VERBS = tuple(sorted("表示 提到 提出 告知 告诉 通知 确认 同意 答应 承诺 要求 建议 反馈 回复 认为 指出 负责 签字 签署 签收 来电 致电 联系 沟通 商量 协商 洽谈".split(), key=len, reverse=True))
 _PERSON_ROLES = tuple(sorted("法定代表人 法人代表 项目经理 联系人 对接人 负责人 经办人 收件人 签收人 业务员 跟单员 采购员 销售员 代理人 担保人".split(), key=len, reverse=True))
@@ -524,7 +526,7 @@ def _find_suspects(text: str, occupied: tuple, derived: tuple, lowercase_words: 
     # 新旧叙述人名规则重叠时保持既有 person_name 原因（V2Q-34），新增命中才用 person_like。
     surname = cn_surname_pattern()
     trigger = "与|和|由|请|致|联系|经|向|给|找|跟|同|派|委托|授权|通知|抄送"
-    end = "沟通|协商|确认|同意|说|称|表示|负责|签字|签署|联系|提出|认为|回复|反馈|处理|商定"
+    end = _NARRATIVE_END
     pat = re.compile(rf"(?:{trigger})(?!方)((?:{surname})[一-鿿]{{1,2}}?)(?=$|[^一-鿿]|{end})")
     for m in pat.finditer(masked):
         if _is_person_name(m.group(1)) and not _is_place(m.group(1)) and not any(s.start == m.start(1) and s.end == m.end(1) for s in cands):
@@ -570,7 +572,8 @@ def plain_candidate(text: str, candidate: Suspect, *, header: bool = False) -> b
     ):
         return True  # 标签末字不能成为叙述人名的起点；标签规则也共用此过滤。
     if (candidate.reason in (PERSON_NAME, 'person_like') and candidate.start > 0
-            and text[candidate.start - 1] in '和与' and not text[candidate.end:].startswith(_PERSON_TITLES)):
+            and text[candidate.start - 1] in '和与' and not text[candidate.end:].startswith(_PERSON_TITLES)
+            and not re.match(_NARRATIVE_END, text[candidate.end:])):
         # V321Q-04：并列连接词不能独自证明后一项是人名；句首或“请与”仍可引出姓名。
         head = text[:candidate.start - 1]
         # 前一项带称谓时，姓名在称谓之前（“陆虚岚经理和何虚芳”）。
