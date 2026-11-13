@@ -1,4 +1,4 @@
-"""B-06：真实解析接口、追问确认链与模型来源不可撤销；云模型只用模拟网关。"""
+"""B-06：真实解析接口、追问确认链与模型来源撤销；云模型只用模拟网关。"""
 import io
 import json
 
@@ -31,9 +31,10 @@ def test_real_model_body_note_chat_preview_and_send(alice, ready_task, db_sessio
                                                                  RedactionItem.detected_by == 'ner')))
         assert model_items and any(i.loc == 'NOTE' for i in model_items)
         target = {k: getattr(model_items[0], k) for k in ('loc', 'char_start', 'char_end')}
-    denied = client.post(task_url(task, '/redaction/revoke'), headers=headers,
+    revoked = client.post(task_url(task, '/redaction/revoke'), headers=headers,
                          json={k: target[k] for k in ('loc', 'char_start', 'char_end')})
-    assert (denied.status_code, denied.json()['code']) == (422, 'NOT_REVOCABLE')
+    assert revoked.status_code == 200, revoked.text
+    assert not any(all(i[k] == target[k] for k in target) for i in revoked.json()['items'])
     settle_suspects(client, headers, task.id, [])
     complete(db_sessionmaker, client, headers, task, llm)
     message = '经与王建国沟通……'

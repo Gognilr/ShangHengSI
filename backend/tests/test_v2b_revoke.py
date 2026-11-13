@@ -9,6 +9,8 @@ from sqlalchemy import select, text
 
 from app.db.models import AuditLog, RedactionItem, RedactionTerm, Task
 from app.redaction.engine import _load_full_map
+from app.redaction import engine
+from app.redaction.recheck import recheck, recheck_context
 from app.security import crypto
 from tests.review_support import env, llm, ready_task  # noqa: F401
 from tests.test_user_note_redaction import alice, complete, task_url  # noqa: F401
@@ -54,12 +56,18 @@ def test_01_revoke_person_everywhere_encrypted_audit(db_sessionmaker, alice, rea
 
 
 @pytest.mark.parametrize("category", ["OUR", "ACCOUNT", "AMOUNT"])
-def test_02_forbidden_categories(alice, ready_task, category):
+def test_02_automatic_categories_revocable(alice, ready_task, category):
     user, c, h = alice
     task = make_task(ready_task, user)
     target = next(i for i in items(c, task)["items"] if i["category"] == category)
     r = revoke(c, h, task, target)
-    assert (r.status_code, r.json()["code"]) == (422, "NOT_REVOCABLE")
+    assert target['can_revoke'] is True
+    assert r.status_code == 200, r.text
+    assert not any(i['loc'] == target['loc'] and i['char_start'] == target['char_start']
+                   and i['char_end'] == target['char_end'] for i in r.json()['items'])
+    if category == 'OUR':
+        assert c.get(task_url(task, '/parties')).json()['items'] == []
+        assert '我方' not in c.get(task_url(task, '/redaction/outbound')).json()['text']
 
 
 def test_03_manual_term_removed(db_sessionmaker, alice, ready_task):
@@ -72,7 +80,7 @@ def test_03_manual_term_removed(db_sessionmaker, alice, ready_task):
     r = revoke(c, h, task, target)
     assert r.status_code == 200 and not any(i["loc"] == "F1-P7" for i in r.json()["items"])
     with db_sessionmaker() as db:
-        assert db.execute(text("SELECT count(*) FROM redaction_exclusions")).scalar() == 0
+        assert db.execute(text("SELECT count(*) FROM redaction_exclusions")).scalar() == 1
 
 
 def test_04_confirm_sends_original_not_learned(db_sessionmaker, alice, ready_task, llm):
@@ -139,7 +147,7 @@ def test_csrf_and_repeated_request(alice, ready_task):
     assert (r.status_code, r.json()["code"]) == (422, "NOT_REVOCABLE")
 
 
-def test_remembered_person_not_revocable(db_sessionmaker, alice, ready_task):
+def test_remembered_person_revocation_keeps_global_term(db_sessionmaker, alice, ready_task):
     from app.db.base import utcnow
     from app.redaction.engine import term_hash
     user, c, h = alice
@@ -151,4 +159,91 @@ def test_remembered_person_not_revocable(db_sessionmaker, alice, ready_task):
     task = make_task(ready_task, user)
     target = next(i for i in items(c, task)["items"] if i["loc"] == "F1-P2")
     r = revoke(c, h, task, target)
-    assert (r.status_code, r.json()["code"]) == (422, "NOT_REVOCABLE")
+    assert r.status_code == 200, r.text
+    assert not any(i['loc'] == 'F1-P2' for i in r.json()['items'])
+    with db_sessionmaker() as db:
+        assert db.scalar(select(RedactionTerm)).enabled is True
+    other = make_task(ready_task, user)
+    assert any(i['loc'] == 'F1-P2' for i in items(c, other)['items'])
+
+
+def test_address_revoke_survives_recompute_and_outbound(db_sessionmaker, alice, ready_task, llm):
+    user, c, h = alice
+    doc = Document()
+    doc.add_paragraph('卖方：星河虚构进出口有限公司')
+    address = '南京市鼓楼区虚构路123号'
+    doc.add_paragraph('地址：' + address)
+    stream = io.BytesIO()
+    doc.save(stream)
+    task = ready_task(user, files=[('虚构地址.docx', stream.getvalue())])
+    target = next(i for i in items(c, task)['items'] if i['category'] == 'ADDR')
+    assert revoke(c, h, task, target).status_code == 200
+    with db_sessionmaker() as db:
+        current = db.get(Task, task.id)
+        engine.apply_party_changes(db, current, [])
+        ctx = recheck_context(db, task.id)
+        outbound = engine.build_outbound_text(db, current)
+        assert address in outbound
+        assert not recheck(outbound, real_values=ctx.real_values, terms=ctx.terms,
+                           placeholders=ctx.placeholders, kept=ctx.kept)
+        db.commit()
+    _, requests = complete(db_sessionmaker, c, h, task, llm)
+    assert any(address in json.dumps(json.loads(r.content), ensure_ascii=False) for r in requests)
+
+
+def test_recheck_revocation_and_active_map_still_blocks(db_sessionmaker, alice, ready_task, monkeypatch):
+    # 模拟识别与复检的出入，让原有闭环补替换真实运行，再从同一接口撤销。
+    user, c, h = alice
+    from app.redaction import detect, ner
+    monkeypatch.setattr(ner, 'recognize', lambda text: [])
+    original = detect.find_addresses
+    skipped = False
+    def miss_once(text):
+        nonlocal skipped
+        if '虚构路123号' in text and not skipped:
+            skipped = True
+            return []
+        return original(text)
+    monkeypatch.setattr(detect, 'find_addresses', miss_once)
+    doc = Document()
+    doc.add_paragraph('卖方：星河虚构进出口有限公司')
+    address = '南京市鼓楼区虚构路123号'
+    doc.add_paragraph('地址：' + address)
+    stream = io.BytesIO()
+    doc.save(stream)
+    task = ready_task(user, files=[('虚构自检.docx', stream.getvalue())])
+    target = next(i for i in items(c, task)['items'] if i['detected_by'] == 'recheck')
+    monkeypatch.setattr(detect, 'find_addresses', original)
+    assert revoke(c, h, task, target).status_code == 200
+    assert address in c.get(task_url(task, '/redaction/outbound')).json()['text']
+    # 对照表值仍被另一处当前替换引用时，既有第 1 道 MAP 不受 kept 豁免。
+    with db_sessionmaker() as db:
+        mapping = engine._load_full_map(db, task.id)
+        mapping['[地址：中国]#99'] = address
+        engine.write_full_map(db, task.id, mapping)
+        db.add(RedactionItem(task_id=task.id, loc='F1-P2', char_start=3, char_end=len('地址：' + address),
+                             category='ADDR', placeholder='[地址：中国]', detected_by='address'))
+        db.flush()
+        ctx = recheck_context(db, task.id)
+        assert any(r.category == 'MAP' for r in recheck(address, real_values=ctx.real_values,
+                   terms=ctx.terms, placeholders=ctx.placeholders, kept=ctx.kept))
+
+
+def test_workspace_party_revoke_preserves_history_and_removes_subject(db_sessionmaker, alice, ready_task):
+    user, c, h = alice
+    task = make_task(ready_task, user)
+    with db_sessionmaker() as db:
+        current = db.get(Task, task.id)
+        current.kind, current.purpose = 'assistant', 'chat'
+        engine.apply_party_changes(db, current, [])
+        db.commit()
+        before = engine._load_full_map(db, task.id)
+    party = c.get(task_url(task, '/parties')).json()['items'][0]
+    target = next(i for i in items(c, task)['items'] if i['placeholder'] == party['code'])
+    assert target['placeholder'].startswith('[[ORG_')
+    assert revoke(c, h, task, target).status_code == 200
+    assert c.get(task_url(task, '/parties')).json()['items'] == []
+    with db_sessionmaker() as db:
+        assert engine._load_full_map(db, task.id).items() >= before.items()
+        assert party['name'] not in engine.load_real_values(db, task.id)
+        assert party['name'] in engine.build_outbound_text(db, db.get(Task, task.id))

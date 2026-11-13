@@ -72,9 +72,9 @@ def test_revocability_is_authoritative_per_source(alice, ready_task, monkeypatch
     task = ready_task(user, files=[('虚构说明.docx',stream.getvalue())])
     items = client.get(task_url(task,'/redaction')).json()['items']
     by_loc = {i['loc']: i for i in items}
-    assert by_loc['F1-P1']['can_revoke'] is False
+    assert by_loc['F1-P1']['can_revoke'] is True
     assert by_loc['F1-P2']['can_revoke'] is True
-    assert by_loc['F1-P3']['can_revoke'] is False
+    assert by_loc['F1-P3']['can_revoke'] is True
     manual = client.post(task_url(task,'/redaction/manual'), headers=headers,
         json={'loc':'F1-P4','char_start':0,'char_end':4,'category':'PROJECT'})
     assert manual.status_code == 200, manual.text

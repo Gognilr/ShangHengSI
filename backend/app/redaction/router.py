@@ -196,8 +196,7 @@ def _redaction(db: DbSession, task: Task) -> RedactionOut:
         suspects=[SuspectView(**v) for v in engine.suspect_views(db, task)],
         items=[RedactionItemOut(loc=r.loc, char_start=r.char_start, char_end=r.char_end,
                                 category=r.category, placeholder=r.placeholder, detected_by=r.detected_by,
-                                can_revoke=task.status == 'awaiting_confirm' and
-                                (r.detected_by == 'user' or r.detected_by == 'person' and r.category == 'PERSON'))
+                                can_revoke=task.status == 'awaiting_confirm')
                for r in rows],
     )
 

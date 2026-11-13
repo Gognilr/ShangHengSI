@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ElMessageBox } from 'element-plus'
 import { computed, h, nextTick, reactive, ref, watch, type FunctionalComponent, type VNode } from 'vue'
 import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode, type PreviewNodes } from '@/api/preview'
@@ -298,13 +297,10 @@ function onPaperClick(event: MouseEvent) {
 function popKeep() { const s = pop.value?.suspect; closePop(); if (s) emit('keep', s) }
 function popRestore() { const s = pop.value?.suspect; closePop(); if (s) emit('restore', s) }
 function popReplace(c: UserCategory) { const s = pop.value?.suspect; closePop(); if (s) emit('replace', s, c) }
-async function popRevoke() {
+function popRevoke() {
   const item = pop.value?.item
   closePop()
   if (!item) return
-  try {
-    await ElMessageBox.confirm('撤销后，同一文字将在全文恢复原样。确认它不是敏感信息后再撤销。', '撤销误识别', { type: 'warning', confirmButtonText: '撤销', cancelButtonText: '取消' })
-  } catch { return }
   emit('revoke', item)
 }
 
@@ -508,7 +504,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       </template>
       <template v-else-if="pop.item">
         <p class="pop-text">{{ REDACTION_CATEGORY[pop.item.category] ?? pop.item.category }} · <span class="code-tag">{{ pop.item.placeholder }}</span></p>
-        <el-button v-if="pop.item.can_revoke" size="small" :disabled="locked" @click="popRevoke">撤销（不是敏感信息）</el-button>
+        <el-button v-if="pop.item.can_revoke" size="small" :disabled="locked" @click="popRevoke">{{ pop.item.detected_by === 'recheck' ? '不敏感，可以发送' : '撤销（不是敏感信息）' }}</el-button>
       </template>
     </div>
 

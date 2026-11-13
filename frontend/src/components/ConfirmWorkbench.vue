@@ -424,7 +424,16 @@ function onManual(input: ManualInput) {
   void decide(() => redactionApi.manual(props.task.id, input))
 }
 /** 撤销误识别：先去掉这一处胶囊，保存后同一文字在全文恢复原样。 */
-function onRevoke(item: RedactionItemPos) {
+async function onRevoke(item: RedactionItemPos) {
+  if (locked.value) return
+  const party = parties.value.find(p => p.code === item.placeholder)
+  try {
+    await ElMessageBox.confirm(party
+      ? '撤销后会把该主体从签约方里去掉，同一文字将恢复原文。若其他替换仍引用该主体，出口复检仍可能拦截，请检查后再发送。'
+      : '撤销后，同一文字将在全文恢复原样。确认它不是敏感信息后再撤销。', party ? '撤销签约方替换' : '撤销误识别', {
+      type: 'warning', confirmButtonText: party ? '移出签约方并撤销' : '撤销', cancelButtonText: '取消',
+    })
+  } catch { return }
   if (locked.value) return
   redactedItems.value = redactedItems.value.filter(it => it !== item)
   void decide(() => redactionApi.revoke(props.task.id, { loc: item.loc, char_start: item.char_start, char_end: item.char_end }))

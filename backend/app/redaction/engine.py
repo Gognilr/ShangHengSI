@@ -1071,6 +1071,12 @@ def compute(
                 entity.name = original_nodes[index].text[start:start + len(entity.name)]
                 break
     nodes = original_nodes
+    # V321-A-03：明确撤销的整段文字适用于全部自动来源；新手动补充仍可重新设为敏感信息。
+    # 只比整段，不按包含关系移除其他敏感值；仍被其他替换引用的真实值继续由出口复检拦截。
+    def revoked(s: _Span) -> bool:
+        return s.detected_by != 'user' and P.normalize(_recognition_view(nodes[s.node].text[s.start:s.end])) in excluded
+
+    spans = [s for s in spans if not revoked(s)]
     spans.sort(key=lambda s: (s.node, s.start))
     _apply_ours(entities, stance, overrides, {s.key for s in spans})
     _assign_countries(entities, nodes, spans)
@@ -1141,6 +1147,7 @@ def compute(
     for _ in range(3):
         extra = _closure_spans(nodes, result, spans, occupied, terms=[t.text for t in terms],
                                kept=[*keeps, *exclusions])
+        extra = [s for s in extra if not revoked(s)]
         if not extra:
             break
         spans.extend(extra)
@@ -1904,16 +1911,15 @@ def revoke_redaction(db: Session, task: Task, *, loc: str, char_start: int, char
     """精确命中可撤销项后重算；调用方持有任务行锁，审计与重算同事务。"""
     item = db.scalar(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == loc,
                      RedactionItem.char_start == char_start, RedactionItem.char_end == char_end))
-    if item is None or not (item.detected_by == "user" or item.detected_by == "person" and item.category == "PERSON"):
+    if item is None:
         raise RedactionInputError(422, "NOT_REVOCABLE", "该替换项不能撤销")
     texts = task_texts(db, task)
     surface = texts.get(loc, "")[char_start:char_end]
     if not surface:
         raise RedactionInputError(422, "NOT_REVOCABLE", "该替换项不能撤销")
     category = item.category
-    if item.detected_by == "person" or task.kind == "assistant":
-        db.add(RedactionExclusion(task_id=task.id, loc=loc, text_enc=crypto.encrypt_text(surface),
-                                 category=category, created_by=user_id))
+    db.add(RedactionExclusion(task_id=task.id, loc=loc, text_enc=crypto.encrypt_text(surface),
+                             category=category, created_by=user_id))
     if item.detected_by == "user":
         # 用户词条全文生效，同词同类的全部来源一并移除，防止重算从其他位置重新取回。
         for row in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id,
