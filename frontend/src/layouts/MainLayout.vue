@@ -107,7 +107,7 @@ async function onCommand(cmd: string) {
 <template>
   <div class="layout" :class="{ collapsed }">
     <aside class="sidebar" :style="{ width: `${collapsed ? 64 : width}px` }" aria-label="主导航">
-      <div class="brand"><SiLogo :mark-only="collapsed" /></div>
+      <div class="brand"><SiLogo :mark-only="collapsed" /><el-tooltip v-if="!collapsed" content="收起侧栏" placement="right"><button type="button" class="toggle collapse" aria-label="收起侧栏" aria-expanded="true" @click="toggleCollapsed"><PanelLeftClose :size="16" :stroke-width="1.75" /></button></el-tooltip></div>
 
       <div v-if="auth.can('use.assistant', 'use.review')" class="block">
         <el-tooltip content="新建会话" placement="right" :disabled="!collapsed">
@@ -167,10 +167,8 @@ async function onCommand(cmd: string) {
               <Sun v-if="appearance.shell === 'night'" :size="16" :stroke-width="1.75" /><Moon v-else :size="16" :stroke-width="1.75" />
             </button>
           </el-tooltip>
-          <el-tooltip :content="collapsed ? '展开侧栏' : '收起侧栏'" placement="right">
-            <button type="button" class="toggle" :aria-label="collapsed ? '展开侧栏' : '收起侧栏'" :aria-expanded="!collapsed" @click="toggleCollapsed">
-              <PanelLeftOpen v-if="collapsed" :size="16" :stroke-width="1.75" /><PanelLeftClose v-else :size="16" :stroke-width="1.75" />
-            </button>
+          <el-tooltip v-if="collapsed" content="展开侧栏" placement="right">
+            <button type="button" class="toggle" aria-label="展开侧栏" aria-expanded="false" @click="toggleCollapsed"><PanelLeftOpen :size="16" :stroke-width="1.75" /></button>
           </el-tooltip>
         </div>
       </div>
@@ -217,7 +215,8 @@ async function onCommand(cmd: string) {
 }
 .resize { position: absolute; top: 0; bottom: 0; right: -4px; z-index: 2; }
 
-.brand { flex: none; display: flex; align-items: center; height: 56px; padding: 0 20px; }
+.brand { flex: none; display: flex; align-items: center; height: 56px; padding: 0 12px 0 20px; }
+.collapse { margin-left: auto; }
 .collapsed .brand { justify-content: center; padding: 0; }
 .block { flex: none; padding: 4px 8px; }
 .menu { display: flex; flex-direction: column; gap: 2px; padding-bottom: 12px; border-bottom: 1px solid var(--si-hair-faint); }

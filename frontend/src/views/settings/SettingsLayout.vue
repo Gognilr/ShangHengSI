@@ -11,6 +11,9 @@ import { SETTING_TABS } from '@/utils/permissions'
 const auth = useAuthStore()
 const ICONS = { personal: UserRound, users: Users, roles: ShieldCheck, model: Cpu, requirements: ListChecks, laws: Scale, templates: FileStack, knowledge: LibraryBig, redaction: EyeOff, data: Database } as Record<string, typeof List>
 const tabs = computed(() => SETTING_TABS.filter(t => auth.can(...t.perms)).map(t => ({ ...t, icon: ICONS[t.name] ?? List })))
+// 导航分三组（V321Q-51）；没有可见项的组不显示
+const GROUPS = [{ label: '我的', names: ['personal'] }, { label: '内容', names: ['requirements', 'laws', 'templates', 'knowledge', 'redaction'] }, { label: '系统', names: ['users', 'roles', 'model', 'data'] }]
+const groups = computed(() => GROUPS.map(g => ({ label: g.label, items: g.names.flatMap(n => tabs.value.filter(t => t.name === n)) })).filter(g => g.items.length))
 
 const anchors = ref<SettingAnchor[]>([]), activeSection = ref(''), root = ref<HTMLElement>(), fx = useFx()
 let observer: IntersectionObserver | undefined
@@ -40,9 +43,12 @@ const activeTab = computed(() => {
   <div class="page page--wide settings">
     <div class="panel shell">
       <nav class="settings-nav" aria-label="设置导航">
-        <router-link v-for="t in tabs" :key="t.name" :to="`/settings/${t.name}`" class="nav-item" :class="{ selected: activeTab === t.name }" :aria-current="activeTab === t.name ? 'page' : undefined">
-          <component :is="t.icon" :size="16" :stroke-width="1.75" /><span>{{ t.label }}</span>
-        </router-link>
+        <template v-for="g in groups" :key="g.label">
+          <p class="nav-group">{{ g.label }}</p>
+          <router-link v-for="t in g.items" :key="t.name" :to="`/settings/${t.name}`" class="nav-item" :class="{ selected: activeTab === t.name }" :aria-current="activeTab === t.name ? 'page' : undefined">
+            <component :is="t.icon" :size="16" :stroke-width="1.75" /><span>{{ t.label }}</span>
+          </router-link>
+        </template>
       </nav>
       <div ref="root" class="settings-content">
         <nav v-if="anchors.length >= 4" class="section-nav" aria-label="本页分节"><el-button v-for="section in anchors" :key="section.id" text :type="activeSection === section.id ? 'primary' : 'default'" :aria-current="activeSection === section.id ? 'location' : undefined" @click="jump(section)">{{ section.title }}</el-button></nav>
@@ -58,6 +64,8 @@ const activeTab = computed(() => {
 .settings { height: 100%; box-sizing: border-box; padding-bottom: 24px; }
 .shell { height: 100%; box-sizing: border-box; padding: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); overflow: hidden; }
 .settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px; overflow-y: auto; border-right: 1px solid var(--si-hair-faint); background: color-mix(in srgb, var(--si-surface-2) 50%, var(--si-surface-1)); }
+.nav-group { flex: none; margin: 12px 0 2px; padding: 0 12px; font: var(--si-font-caption); color: var(--si-ink-4); }
+.nav-group:first-child { margin-top: 0; }
 .nav-item { flex: none; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: var(--el-border-radius-base); color: var(--si-ink-2); font: var(--si-font-label); text-decoration: none; transition: background-color var(--si-dur-1) var(--si-ease), color var(--si-dur-1) var(--si-ease); }
 .nav-item svg { flex: none; color: var(--si-ink-3); transition: color var(--si-dur-1) var(--si-ease); }
 .nav-item:hover { background: var(--si-surface-2); color: var(--si-ink-1); }
