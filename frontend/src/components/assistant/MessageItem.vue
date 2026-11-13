@@ -109,7 +109,7 @@ th { background: var(--el-fill-color-light); }
 .draft-action { margin-top: 8px; }
 .message-actions :deep(.el-button) { margin-left: 0; }
 /* 悬停该条回复或键盘聚焦其中时显示操作；保持占位，不跳动 */
-.message-actions.on-hover { opacity: 0; transition: opacity 150ms; }
+.message-actions.on-hover { opacity: 0; transition: opacity var(--si-dur-1) var(--si-ease); }
 .reply:hover .message-actions.on-hover, .reply:focus-within .message-actions.on-hover { opacity: 1; }
 .si-unresolved { color: inherit; background: var(--si-unresolved-bg); text-decoration: underline dashed 1px var(--si-warn-ink); text-underline-offset: 3px; cursor: help; }
 </style>

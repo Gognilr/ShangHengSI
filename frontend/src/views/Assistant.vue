@@ -249,5 +249,4 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .dialogue.is-home { justify-content: center; padding-bottom: 8vh; }
 .rise-enter-active { transition: opacity var(--si-dur-2, 240ms) var(--si-ease), transform var(--si-dur-2, 240ms) var(--si-ease); }
 .rise-enter-from { opacity: 0; transform: translateY(12px); }
-@media (prefers-reduced-motion: reduce) { .rise-enter-active { transition: none; } }
 </style>

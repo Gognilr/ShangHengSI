@@ -65,12 +65,13 @@ function onCommand(item: SessionItem, cmd: string) { if (cmd === 'rename') renam
 ul { margin: 0; padding: 0; list-style: none; }
 .row { position: relative; display: flex; align-items: center; border-radius: var(--el-border-radius-base); }
 .row:hover { background: var(--el-fill-color-light); }
-.row.current { background: var(--el-color-primary-light-9); }
+.row { transition: background-color var(--si-dur-1) var(--si-ease); }
+.row.current { background: color-mix(in srgb, var(--si-blue) 12%, transparent); }
 .link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 4px 6px 12px; color: var(--el-text-color-regular); text-decoration: none; font: var(--si-font-body); }
-.row.current .link { color: var(--el-color-primary); font-weight: 600; }
+.row.current .link { color: var(--si-ink-1); }
 .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--el-color-primary); }
-.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--el-text-color-secondary); cursor: pointer; opacity: 0; }
+.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--el-text-color-secondary); cursor: pointer; opacity: 0; transition: opacity var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
 .row:hover .more, .row:focus-within .more, .more[aria-expanded="true"] { opacity: 1; }
 .more:hover { background: var(--el-fill-color); color: var(--el-text-color-primary); }
 .empty { margin: 0; padding: 6px 12px; font: var(--si-font-meta); color: var(--el-text-color-placeholder); }

@@ -144,7 +144,7 @@ async function copy(text: string) {
 </template>
 
 <style scoped>
-.card { position: relative; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); transition: border-color 150ms, box-shadow 150ms; }
+.card { position: relative; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); transition: border-color var(--si-dur-1) var(--si-ease), box-shadow var(--si-dur-1) var(--si-ease); }
 .card::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 2px 2px 0; background: var(--si-info); }
 .card.severity-high::before { background: var(--si-danger); }
 .card.severity-medium::before { background: var(--si-warn); }

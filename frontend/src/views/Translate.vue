@@ -105,19 +105,19 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 
 <template>
   <div v-if="!id" class="page page--standard translate-home">
-    <h1>翻译</h1>
-    <p class="lede">本地翻译只在本机处理原文；云端翻译须先确认脱敏。译稿请逐段核对名称、金额和业务条件。</p>
+    <h1 class="entry-title">要翻译什么文件？</h1>
+    <p class="entry-lede">本地翻译只在本机处理原文；云端翻译须先确认脱敏。译稿请逐段核对名称、金额和业务条件。</p>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
     <div class="setup"><span class="label">译成</span><el-select v-model="target" aria-label="目标语言" class="lang"><el-option v-for="l in LANGS" :key="l" :value="l" :label="l" /></el-select><span class="hint where">{{ localAvailable ? '本地 · 不外发' : '云端 · 脱敏后发送（本地未启用）' }}</span></div>
-    <div class="drop" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
+    <div class="si-drop" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
       <UploadCloud :size="28" :stroke-width="1.5" />
-      <p class="drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : '拖入要翻译的文件，或点击选择' }}</p>
+      <p class="si-drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : '拖入要翻译的文件，或点击选择' }}</p>
       <p class="hint">Word、PDF、Excel、WPS、图片，单个不超过 30 MB</p>
     </div>
     <input ref="picker" class="file-input" type="file" :accept="DOC" @change="picked">
     <section v-if="recent.length" class="recent">
       <h2>最近的翻译</h2>
-      <router-link v-for="item in recent" :key="item.id" :to="`/translate/${item.id}`" class="recent-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
+      <router-link v-for="item in recent" :key="item.id" :to="`/translate/${item.id}`" class="list-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
     </section>
   </div>
 
@@ -161,23 +161,15 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 
 
 <style scoped>
-.translate-home h1 { margin: 24px 0 4px; font: var(--si-font-title-lg); }
-.lede { margin: 0 0 20px; color: var(--si-ink-3); }
 .setup { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.translate-home .setup { justify-content: center; }
 .setup .label { font: var(--si-font-label); color: var(--si-ink-2); }
 .lang { width: 140px; }
 .model { width: 150px; }
 .where { margin: 0; }
-.drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px; border: 1.5px dashed var(--si-hair-strong); border-radius: var(--si-radius-card); background: var(--si-surface-1); color: var(--si-ink-3); cursor: pointer; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
-.drop:hover, .drop.dragging { border-color: var(--si-blue); background: color-mix(in srgb, var(--si-blue) 6%, var(--si-surface-1)); }
-.drop-title { margin: 4px 0 0; font: var(--si-font-h3); color: var(--si-ink-1); }
-.drop .hint { margin: 0; }
 .file-input { display: none; }
 .recent { margin-top: 32px; }
 .recent h2 { font: var(--si-font-h3); margin: 0 0 8px; }
-.recent-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: var(--el-border-radius-base); color: var(--si-ink-1); text-decoration: none; }
-.recent-row:hover { background: var(--si-surface-2); }
-.recent-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .translate-page { height: 100%; box-sizing: border-box; padding-top: 16px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
 .toolbar { display: flex; align-items: center; gap: 12px; }
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

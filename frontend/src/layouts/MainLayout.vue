@@ -250,8 +250,8 @@ async function onCommand(cmd: string) {
 .item.selected::before { content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--si-blue); box-shadow: var(--si-glow-blue); }
 .item:disabled, .new-session:disabled { cursor: not-allowed; opacity: .6; }
 .item:active:not(:disabled), .new-session:active:not(:disabled) { transform: scale(.97); }
-.new-session { justify-content: center; border: 1px solid var(--si-hair-strong); background: color-mix(in srgb, var(--si-ink-1) 8%, transparent); color: var(--si-ink-1); }
-.new-session:hover:not(:disabled) { background: color-mix(in srgb, var(--si-ink-1) 14%, transparent); }
+.new-session { justify-content: center; border: 1px solid color-mix(in srgb, var(--si-blue) 35%, transparent); background: color-mix(in srgb, var(--si-blue) 8%, transparent); color: var(--si-blue-ink); }
+.new-session:hover:not(:disabled) { background: color-mix(in srgb, var(--si-blue) 14%, transparent); border-color: color-mix(in srgb, var(--si-blue) 55%, transparent); }
 /* 提醒：铃铛右上角琥珀色点，计数靠右；收起时只剩带点的铃铛 */
 .bell { position: relative; display: grid; place-items: center; }
 .bell-dot { position: absolute; top: -2px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--si-warn); box-shadow: 0 0 0 2px var(--si-bg-side); }

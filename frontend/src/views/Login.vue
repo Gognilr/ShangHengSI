@@ -93,9 +93,8 @@ async function submit() {
         <div class="brand-rule" />
         <h2>让敏感信息受到保护<br />让商业决策更有依据</h2>
         <p class="brand-description">面向企业商务、合同与法律文件，提供本地脱敏与 AI 智能初审。</p>
-        <div class="brand-tags"><span>安全脱敏</span><span>智能审查</span><span>局域网部署</span></div>
+        <ul class="brand-tags"><li>安全脱敏</li><li>智能审查</li><li>局域网部署</li></ul>
       </section>
-      <div class="divider" aria-hidden="true" />
       <section class="login-form" aria-labelledby="login-title">
         <h1 id="login-title">欢迎登录</h1>
         <p class="subtitle">请使用内部分发的账号登录</p>
@@ -129,30 +128,30 @@ async function submit() {
   padding: 32px 0 64px;
   background: var(--si-bg-canvas);
 }
-.login-shell { width: calc(100% - 128px); max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 1px 400px; gap: 64px; align-items: center; }
+.login-shell { width: calc(100% - 128px); max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 64px; align-items: center; }
 .brand-area { min-width: 0; position: relative; padding: 24px 0; }
 .brand-area > :not(canvas) { position: relative; }
 .brand-rule { width: 32px; height: 3px; margin: 32px 0; background: var(--si-brand-gradient); }
 h2 { font: var(--si-font-display); margin: 0 0 20px; }
-.brand-description { max-width: 440px; font-size: 15px; color: var(--el-text-color-secondary); margin: 0; }
-.brand-tags { display: flex; gap: 12px; margin-top: 32px; }
-.brand-tags span { padding: 4px 12px; border: 1px solid var(--el-border-color-light); border-radius: 6px; color: var(--el-text-color-secondary); background: var(--el-bg-color); font-size: 13px; }
-.divider { align-self: stretch; background: var(--el-border-color-light); }
+.brand-description { max-width: 440px; font: var(--si-font-reading); color: var(--el-text-color-secondary); margin: 0; }
+.brand-tags { display: flex; gap: 24px; margin: 32px 0 0; padding: 0; list-style: none; }
+.brand-tags li { display: flex; align-items: center; gap: 8px; color: var(--si-ink-2); font: var(--si-font-label); }
+.brand-tags li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--si-blue); box-shadow: var(--si-glow-blue); }
 h1 { font: var(--si-font-title-lg); margin: 0 0 4px; }
 .subtitle { color: var(--el-text-color-secondary); margin: 0 0 32px; }
-.login-form { width: 400px; box-sizing: border-box; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); }
+.login-form { width: 400px; box-sizing: border-box; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-2); }
 .login-form :deep(.el-input) { --el-input-height: 44px; }
 .login-form :deep(.el-form-item) { margin-bottom: 24px; }
 .remember-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 20px; }
 .error { margin-bottom: 16px; }
 .submit { width: 100%; height: 44px; }
-.account-help { font-size: 13px; color: var(--el-text-color-secondary); margin: 20px 0 0; line-height: 1.8; }
+.account-help { font: var(--si-font-meta); color: var(--el-text-color-secondary); margin: 20px 0 0; }
 .cert-link { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding: 10px 12px; border: 1px solid var(--si-hair); border-radius: var(--el-border-radius-base); color: var(--si-blue-ink); font: var(--si-font-label); text-decoration: none; white-space: nowrap; transition: background-color var(--si-dur-1) var(--si-ease), border-color var(--si-dur-1) var(--si-ease); }
 .cert-link:hover { background: var(--si-surface-2); border-color: var(--si-hair-strong); }
 .cert-link .hint { margin-left: auto; }
-footer { position: absolute; bottom: 24px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--el-text-color-secondary); }
+footer { position: absolute; bottom: 24px; left: 0; right: 0; text-align: center; font: var(--si-font-caption); color: var(--el-text-color-secondary); }
 @media (max-width: 1099px) {
-  .brand-area, .divider { display: none; }
+  .brand-area { display: none; }
   .login-shell { display: block; width: 408px; }
 }
 </style>

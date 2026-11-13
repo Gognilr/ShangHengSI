@@ -368,7 +368,7 @@ onMounted(() => {
     <el-dialog :model-value="viewing !== null" :title="viewing ? `第 ${viewing.version} 版` : ''" width="640px" @close="viewing = null">
       <template v-if="viewing">
         <h3 class="first">当时启用的公司补充要求（{{ viewing.snapshot.requirements.length }} 条）</h3>
-        <el-empty v-if="!viewing.snapshot.requirements.length" description="当时没有启用的补充要求" :image-size="48" />
+        <EmptyState v-if="!viewing.snapshot.requirements.length" compact title="当时没有启用的补充要求" />
         <ul class="snapshot">
           <li v-for="r in viewing.snapshot.requirements" :key="r.code">
             <b>{{ r.code }}</b>　{{ r.text }}

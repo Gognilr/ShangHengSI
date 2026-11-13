@@ -291,7 +291,6 @@ defineExpose({ pick, attach })
 .failure-text { min-width: 0; overflow-wrap: anywhere; }
 .spin { animation: chip-spin 1s linear infinite; }
 @keyframes chip-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 .send { margin-left: auto; width: 32px; height: 32px; }
 .file-input { display: none; }
 .status { margin: 6px 0 0; }

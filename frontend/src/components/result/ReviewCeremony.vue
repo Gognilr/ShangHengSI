@@ -182,5 +182,4 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
 .step.active .step-text { color: var(--el-color-primary); }
 .foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; font: var(--si-font-meta); }
 .not-sent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (prefers-reduced-motion: reduce) { .scan, .fly, .track .lane, .model .halo { display: none; } }
 </style>

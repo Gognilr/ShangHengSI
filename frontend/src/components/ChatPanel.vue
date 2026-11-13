@@ -4,6 +4,7 @@ import { ElMessage, type InputInstance } from 'element-plus'
 import { MessageSquare } from '@lucide/vue'
 import { chatApi, type ChatMessage, type ChatPreview, type ChatDecision } from '@/api/chat'
 import { ApiError } from '@/api/http'
+import EmptyState from '@/components/EmptyState.vue'
 import CalcResult from '@/components/result/CalcResult.vue'
 import MarkedText from '@/components/result/MarkedText.vue'
 import { calcLines, sliceMarks, unresolvedCount } from '@/utils/marks'
@@ -259,7 +260,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
       <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" />
       <el-alert v-else-if="!loading && !available" type="warning" :closable="false" show-icon :title="reason" />
       <div ref="messageList" v-loading="loading" class="messages" aria-live="polite">
-        <el-empty v-if="!loading && !error && !items.length" description="暂无对话记录" />
+        <EmptyState v-if="!loading && !error && !items.length" compact title="暂无对话记录" />
         <div v-for="item in items" :key="item.id" class="message" :class="item.role === 'user' ? 'mine' : 'reply'">
           <div class="hint">{{ item.role === 'user' ? '我' : '回复' }} · {{ formatDateTime(item.created_at) }}</div>
           <div v-if="item.role === 'user'" class="message-content">{{ item.content }}</div>

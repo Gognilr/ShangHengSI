@@ -64,7 +64,7 @@ onBeforeUnmount(() => { if (dragging.value) onUp() })
 
 <style scoped>
 .split-handle { position: relative; width: 8px; flex: none; cursor: col-resize; touch-action: none; }
-.split-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background-color 150ms; }
+.split-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; transition: background-color var(--si-dur-1) var(--si-ease); }
 .split-handle:hover::after, .split-handle.dragging::after, .split-handle:focus-visible::after { background: var(--el-color-primary); }
 .split-handle:focus-visible { outline: none; }
 .split-handle.disabled { cursor: default; pointer-events: none; }

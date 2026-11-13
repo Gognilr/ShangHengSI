@@ -86,7 +86,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
   <div>
     <div v-loading="loading" class="panel setting-panel">
       <SettingSection title="知识库开关" description="关闭后工作台不检索知识库。开启时，员工勾选后相关片段经脱敏随问题发送给模型。">
-        <span>在智能助手中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" />
+        <span>在工作台中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" />
         <p class="hint">关闭后不会检索知识库；只有启用且解析完成的文档参与检索。</p>
       </SettingSection>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="gap" />

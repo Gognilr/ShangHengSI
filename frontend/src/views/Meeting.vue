@@ -123,14 +123,14 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 <template>
   <!-- 首页：录音或上传，下面是最近的会议 -->
   <div v-if="!id" class="page page--standard meeting-home">
-    <h1>会议纪要</h1>
-    <p class="lede">录音在本机转写，不出服务器；生成纪要时只把校对并确认脱敏后的文字发给模型。</p>
+    <h1 class="entry-title">录一场会，或上传录音</h1>
+    <p class="entry-lede">录音在本机转写，不出服务器；生成纪要时只把校对并确认脱敏后的文字发给模型。</p>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
     <EmptyState v-if="!asrEnabled" :icon="Mic" title="录音转写未启用" description="请联系系统管理员启用本机转写后再使用会议纪要。" />
     <template v-else>
-      <div class="drop" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
+      <div class="si-drop" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
         <UploadCloud :size="28" :stroke-width="1.5" />
-        <p class="drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : '拖入会议录音，或点击选择' }}</p>
+        <p class="si-drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : '拖入会议录音，或点击选择' }}</p>
         <p class="hint">mp3、m4a、wav、amr、aac、mp4，单个不超过 500 MB、3 小时</p>
       </div>
       <input ref="picker" class="file-input" type="file" :accept="AUDIO" @change="picked">
@@ -143,7 +143,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     </template>
     <section v-if="recent.length" class="recent">
       <h2>最近的会议</h2>
-      <router-link v-for="item in recent" :key="item.id" :to="`/meeting/${item.id}`" class="recent-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
+      <router-link v-for="item in recent" :key="item.id" :to="`/meeting/${item.id}`" class="list-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
     </section>
   </div>
 
@@ -185,12 +185,6 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 </template>
 
 <style scoped>
-.meeting-home h1 { margin: 24px 0 4px; font: var(--si-font-title-lg); }
-.lede { margin: 0 0 24px; color: var(--si-ink-3); }
-.drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px; border: 1.5px dashed var(--si-hair-strong); border-radius: var(--si-radius-card); background: var(--si-surface-1); color: var(--si-ink-3); cursor: pointer; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
-.drop:hover, .drop.dragging { border-color: var(--si-blue); background: color-mix(in srgb, var(--si-blue) 6%, var(--si-surface-1)); }
-.drop-title { margin: 4px 0 0; font: var(--si-font-h3); color: var(--si-ink-1); }
-.drop .hint { margin: 0; }
 .file-input { display: none; }
 .upload-progress { width: min(460px, 100%); margin: 12px auto 0; }
 .upload-progress .hint { margin: 4px 0 0; text-align: center; }
@@ -198,9 +192,6 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--si-hair); }
 .recent { margin-top: 32px; }
 .recent h2 { font: var(--si-font-h3); margin: 0 0 8px; }
-.recent-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: var(--el-border-radius-base); color: var(--si-ink-1); text-decoration: none; }
-.recent-row:hover { background: var(--si-surface-2); }
-.recent-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meeting-page { height: 100%; box-sizing: border-box; padding-top: 16px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
 .toolbar { display: flex; align-items: center; gap: 12px; }
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

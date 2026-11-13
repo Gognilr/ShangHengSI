@@ -590,5 +590,4 @@ h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .file-size { flex: none; color: var(--el-text-color-secondary); font-size: 13px; }
 .ceremony-panel { overflow: hidden; }
 .progress-indeterminate { margin: 16px 0; }
-@media (prefers-reduced-motion: reduce) { .progress-indeterminate :deep(.el-progress-bar__inner--indeterminate) { width: 50% !important; left: 25% !important; animation: none !important; } }
 </style>
