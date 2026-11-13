@@ -1,0 +1,649 @@
+{
+  "source_commit": "866b96104d881f9017198918acdd33b947ab126f",
+  "source_tar_sha256": "00207f40b0d024985d8bd3720b01ce719bdae46d56a7404b9814bfbf98980111",
+  "image": "sha256:63a124a4f96c77a05dbb40bf17815fd62d4a1a7abca8dc70dc8755b2364cbf1d",
+  "environment": {
+    "python": "3.12.15",
+    "onnxruntime": "1.31.0",
+    "numpy": "2.5.4",
+    "tokenizers": "0.22.2",
+    "network": "none",
+    "cpu_quota": 4,
+    "threads": 4,
+    "docker_cpus": 16,
+    "docker_memory_bytes": 16606961664,
+    "torch": false,
+    "transformers": false,
+    "gliner": false,
+    "sentencepiece": false,
+    "stanza": false
+  },
+  "support_files_sha256": {
+    "adapter.py": "f3afe6699f13e70a155e800aadb05c57c7d5046fb6ed550d4ea729315fa17788",
+    "evaluate.py": "7ed94aa00405b411c906e62da01c19a72ee54b3d72e88936e294b8c76b8e19aa",
+    "benchmark.py": "93adeb37bb6005231d39304847c59467c8fecdb022e373eb86adb755b826209c",
+    "summarize.py": "202127ebf28bae49b67c2dcdab36cb4c2ebbc979c353aa1b58348eeaae255812",
+    "run.ps1": "856e070e7cb01a1f9943f81a59782c85f8ebdce59a89d35a194457caf05563ea",
+    "run-benchmark.ps1": "99072efcfe4a8d28b649b941c1e15194071869cdf70f412a7a56ea3e994042fd",
+    "README.md": "ef94312a7d74165e47f6d291d1889e30355a1935a07bdfefb93eca1eb903527e"
+  },
+  "models": {
+    "baseline": {
+      "golden_exit": 0,
+      "precision_exit": 0,
+      "resources_exit": 0,
+      "golden": {
+        "passed": 680,
+        "failed": 0,
+        "skipped": 0,
+        "failed_cases": []
+      },
+      "precision": {
+        "false_replacements": {
+          "count": 1,
+          "total": 69
+        },
+        "required_replaced": {
+          "count": 5,
+          "total": 5
+        },
+        "correct_sure_replaced": {
+          "count": 80,
+          "total": 80
+        },
+        "new_replacement_terms": 2
+      },
+      "segment_timing": {
+        "calls": 659,
+        "total_s": 36.50079102595919,
+        "p50_s": 0.042952918010996655,
+        "p95_s": 0.1384130090009421
+      },
+      "resources": {
+        "model": "baseline",
+        "threads": 4,
+        "cpu_quota": 4,
+        "meta": {
+          "cold_load_s": 19.378805915999692,
+          "preprocessing": "product-char-split"
+        },
+        "measurements": {
+          "500": {
+            "seconds": [
+              0.8818657349911518,
+              0.7871418169816025,
+              0.8291513300209772,
+              0.848893799004145,
+              0.8456631459994242,
+              0.844910283019999,
+              0.8278623159858398,
+              0.8854235209873877,
+              0.8905699349998031,
+              0.8773594409867655,
+              0.8055582089873496,
+              0.8543555120122619,
+              0.8460789179953281,
+              0.9392946310108528,
+              0.8220864709874149,
+              0.8022693360107951,
+              0.8719800370163284,
+              0.8101939400075935,
+              0.8846773830009624,
+              0.7970898369967472
+            ],
+            "p50": 0.8458710319973761,
+            "p95": 0.8905699349998031,
+            "entities": 17
+          },
+          "1000": {
+            "seconds": [
+              1.3359618629910983,
+              1.307721358985873,
+              1.3733679610013496,
+              1.309840459987754,
+              1.3824738269904628,
+              1.3704667539859656,
+              1.3086568159924354,
+              1.3537468280119356,
+              1.325528250017669,
+              1.3193464709911495,
+              1.3105748539965134,
+              1.3705676879908424,
+              1.2867037149844691,
+              1.3067305459990166,
+              1.2987802190182265,
+              1.2920678190130275,
+              1.2596905549871735,
+              1.3506885250099003,
+              1.273278864013264,
+              1.273376016994007
+            ],
+            "p50": 1.3102076569921337,
+            "p95": 1.3733679610013496,
+            "entities": 35
+          },
+          "10000": {
+            "seconds": [
+              10.488013571011834,
+              10.83709815799375,
+              11.15772097298759
+            ],
+            "p50": 10.83709815799375,
+            "p95": 11.15772097298759,
+            "entities": 213
+          }
+        },
+        "baseline_peak_bytes": 17715200,
+        "peak_bytes": 2011168768,
+        "increase_bytes": 1993453568
+      },
+      "benchmark": {
+        "chars": 195,
+        "errors": 0,
+        "errors_per_1000_chars": 0.0
+      }
+    },
+    "gliner-x-small": {
+      "golden_exit": 1,
+      "precision_exit": 0,
+      "resources_exit": 0,
+      "golden": {
+        "passed": 655,
+        "failed": 25,
+        "skipped": 0,
+        "failed_cases": [
+          "tests/test_redaction_golden.py::test_must_replace_recall[narrative]",
+          "tests/test_redaction_golden.py::test_must_replace_recall[uncertain_generic]",
+          "tests/test_redaction_golden.py::test_must_replace_recall[uncertain_letter]",
+          "tests/test_redaction_golden.py::test_must_replace_recall[uncertain_mail]",
+          "tests/test_redaction_golden.py::test_must_replace_recall[uncertain_purchase]",
+          "tests/test_redaction_golden.py::test_must_replace_recall[uncertain_quotation]",
+          "tests/test_redaction_golden.py::test_must_replace_recall[uncertain_technical]",
+          "tests/test_redaction_golden.py::test_must_replace_recall[uncertain_xlsx]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[cases_addresses]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[cases_english_province_brand]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[contract]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[postcode]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[uncertain_chemical]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[v321a02_roles_narrative]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[v321b04_addresses]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[en_spec_suspects]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[real_feedback_bilingual]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_chemical]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_letter]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_mail]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_purchase]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_quotation]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_technical]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_xlsx]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[v321a02_roles_narrative]"
+        ]
+      },
+      "precision": {
+        "false_replacements": {
+          "count": 2,
+          "total": 69
+        },
+        "required_replaced": {
+          "count": 4,
+          "total": 5
+        },
+        "correct_sure_replaced": {
+          "count": 79,
+          "total": 80
+        },
+        "new_replacement_terms": 17
+      },
+      "segment_timing": {
+        "calls": 659,
+        "total_s": 18.26348221526132,
+        "p50_s": 0.01965456598554738,
+        "p95_s": 0.07996816199738532
+      },
+      "resources": {
+        "model": "gliner-x-small",
+        "threads": 4,
+        "cpu_quota": 4,
+        "meta": {
+          "cold_load_s": 8.943257581995567,
+          "preprocessing": "product-char-split-not-official-stanza",
+          "inputs": [
+            {
+              "name": "input_ids",
+              "shape": [
+                "batch_size",
+                "sequence_length"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "attention_mask",
+              "shape": [
+                "batch_size",
+                "sequence_length"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "words_mask",
+              "shape": [
+                "batch_size",
+                "sequence_length"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "text_lengths",
+              "shape": [
+                "batch_size",
+                "value"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "span_idx",
+              "shape": [
+                "batch_size",
+                "num_spans",
+                "idx"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "span_mask",
+              "shape": [
+                "batch_size",
+                "num_spans"
+              ],
+              "type": "tensor(bool)"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "logits",
+              "shape": [
+                "batch_size",
+                "sequence_length",
+                "num_spans",
+                "num_classes"
+              ],
+              "type": "tensor(float)"
+            }
+          ]
+        },
+        "measurements": {
+          "500": {
+            "seconds": [
+              0.4011751920043025,
+              0.38829710200661793,
+              0.3808023530000355,
+              0.3532062180165667,
+              0.3690835190063808,
+              0.3639487150066998,
+              0.38178270499338396,
+              0.35935964301461354,
+              0.36469310297979973,
+              0.3672264519846067,
+              0.3414801580074709,
+              0.34893137199105695,
+              0.35477489000186324,
+              0.3478533739980776,
+              0.3589164389995858,
+              0.3817312709870748,
+              0.3318343060091138,
+              0.3535364489944186,
+              0.3586556130030658,
+              0.3904102169908583
+            ],
+            "p50": 0.36165417901065666,
+            "p95": 0.3904102169908583,
+            "entities": 62
+          },
+          "1000": {
+            "seconds": [
+              0.5555980259960052,
+              0.5410814920032863,
+              0.5601122770167422,
+              0.6175405189860612,
+              0.6205969460133929,
+              0.553532001998974,
+              0.5747159110032953,
+              0.6182318639766891,
+              0.6196081530069932,
+              0.6043097039801069,
+              0.5559961030085105,
+              0.5769008650095202,
+              0.5900976019911468,
+              0.6094532260030974,
+              0.5801231559889857,
+              0.6089005329995416,
+              0.6243051110068336,
+              0.6105716149904765,
+              0.5932036869926378,
+              0.5947609060094692
+            ],
+            "p50": 0.5939822965010535,
+            "p95": 0.6205969460133929,
+            "entities": 89
+          },
+          "10000": {
+            "seconds": [
+              5.108918500016443,
+              5.045153177983593,
+              4.905810829019174
+            ],
+            "p50": 5.045153177983593,
+            "p95": 5.108918500016443,
+            "entities": 735
+          }
+        },
+        "baseline_peak_bytes": 17453056,
+        "peak_bytes": 1272614912,
+        "increase_bytes": 1255161856
+      },
+      "benchmark": {
+        "chars": 195,
+        "errors": 0,
+        "errors_per_1000_chars": 0.0
+      },
+      "downloads": {
+        "id": "knowledgator/gliner-x-small",
+        "revision": "d51a0984d11084a55f9df3899d9dbf7704f580f5",
+        "files": [
+          {
+            "path": "README.md",
+            "bytes": 35497,
+            "sha256": "c015408fd8fc8837f382c530741a297dfa59615494f74dc2c9e29d79e95bc470",
+            "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/README.md"
+          },
+          {
+            "path": "added_tokens.json",
+            "bytes": 45,
+            "sha256": "93afe6f29473301199fb234b4f0c4c21cde56a912c62f3ffc0b6993015028157",
+            "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/added_tokens.json"
+          },
+          {
+            "path": "gliner_config.json",
+            "bytes": 3541,
+            "sha256": "f8e7758e503d37be53b70910c7d3cebf327fe7f23c8f65f355c9941878940206",
+            "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/gliner_config.json"
+          },
+          {
+            "path": "onnx/model.onnx",
+            "bytes": 688773285,
+            "sha256": "6b349feedf138431e22be9bc26221511e2774503517c8713c0531bee499d4164",
+            "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/onnx/model.onnx"
+          },
+          {
+            "path": "special_tokens_map.json",
+            "bytes": 416,
+            "sha256": "80f4c6c5cf3867d7669ff8aa8f6aebb8a7499322e62d7faae06262d6014edd61",
+            "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/special_tokens_map.json"
+          },
+          {
+            "path": "tokenizer.json",
+            "bytes": 16335050,
+            "sha256": "619d3790cf59a0e50afdf04239db19093568fbd8d806963e35d54a8fb71d099c",
+            "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/tokenizer.json"
+          },
+          {
+            "path": "tokenizer_config.json",
+            "bytes": 19602,
+            "sha256": "08540ea44a5b8bf6a155e89902698c642d623657996c6e4d898236b159589404",
+            "url": "https://huggingface.co/knowledgator/gliner-x-small/resolve/d51a0984d11084a55f9df3899d9dbf7704f580f5/tokenizer_config.json"
+          }
+        ],
+        "total_bytes": 705167436.0
+      }
+    },
+    "gliner-x-base": {
+      "golden_exit": 1,
+      "precision_exit": 0,
+      "resources_exit": 0,
+      "golden": {
+        "passed": 659,
+        "failed": 21,
+        "skipped": 0,
+        "failed_cases": [
+          "tests/test_redaction_golden.py::test_must_replace_recall[narrative]",
+          "tests/test_redaction_golden.py::test_must_replace_recall[uncertain_generic]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[cases_addresses]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[cases_formats]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[en_spec_suspects]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[narrative]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[quotation_xlsx]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[signature_blocks]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[v321a02_roles_narrative]",
+          "tests/test_redaction_golden.py::test_must_keep_not_replaced[v321q01_license_clause]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[contract]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[names_derived_persons]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[narrative]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[persons_narrative]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_letter]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_mail]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_purchase]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_quotation]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_technical]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[uncertain_xlsx]",
+          "tests/test_redaction_golden.py::test_must_suspect_listed[v321a02_roles_narrative]"
+        ]
+      },
+      "precision": {
+        "false_replacements": {
+          "count": 3,
+          "total": 69
+        },
+        "required_replaced": {
+          "count": 5,
+          "total": 5
+        },
+        "correct_sure_replaced": {
+          "count": 79,
+          "total": 80
+        },
+        "new_replacement_terms": 33
+      },
+      "segment_timing": {
+        "calls": 659,
+        "total_s": 35.07588644337375,
+        "p50_s": 0.03903469498618506,
+        "p95_s": 0.14231294699129649
+      },
+      "resources": {
+        "model": "gliner-x-base",
+        "threads": 4,
+        "cpu_quota": 4,
+        "meta": {
+          "cold_load_s": 13.518365208990872,
+          "preprocessing": "product-char-split-not-official-stanza",
+          "inputs": [
+            {
+              "name": "input_ids",
+              "shape": [
+                "batch_size",
+                "sequence_length"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "attention_mask",
+              "shape": [
+                "batch_size",
+                "sequence_length"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "words_mask",
+              "shape": [
+                "batch_size",
+                "sequence_length"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "text_lengths",
+              "shape": [
+                "batch_size",
+                "value"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "span_idx",
+              "shape": [
+                "batch_size",
+                "num_spans",
+                "idx"
+              ],
+              "type": "tensor(int64)"
+            },
+            {
+              "name": "span_mask",
+              "shape": [
+                "batch_size",
+                "num_spans"
+              ],
+              "type": "tensor(bool)"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "logits",
+              "shape": [
+                "batch_size",
+                "sequence_length",
+                "num_spans",
+                "num_classes"
+              ],
+              "type": "tensor(float)"
+            }
+          ]
+        },
+        "measurements": {
+          "500": {
+            "seconds": [
+              0.6926414410118014,
+              0.7240567120024934,
+              0.7134772989957128,
+              0.6809682849852834,
+              0.7751291690219659,
+              0.6581463739858009,
+              0.7204238699923735,
+              0.7123571390111465,
+              0.7492413950094488,
+              0.6816139300062787,
+              0.6869710570026655,
+              0.7568045050138608,
+              0.7027383140230086,
+              0.6694359210086986,
+              0.7618300630128942,
+              0.7209432109957561,
+              0.7355595330009237,
+              0.7110079900012352,
+              0.6980170610186178,
+              0.7506285299896263
+            ],
+            "p50": 0.7129172190034296,
+            "p95": 0.7618300630128942,
+            "entities": 51
+          },
+          "1000": {
+            "seconds": [
+              1.053400180011522,
+              1.10547878901707,
+              1.1273328899987973,
+              1.1019506709999405,
+              1.1615937309979927,
+              1.1011581830098294,
+              1.1311224170203786,
+              1.1503641059971415,
+              1.1725156159955077,
+              1.1511928149848245,
+              1.0645895290072076,
+              1.0933177589904517,
+              1.146958914003335,
+              1.1563764450256713,
+              1.2374773060146254,
+              1.1279456170159392,
+              1.0323067359859124,
+              1.0340063920011744,
+              1.1060655759938527,
+              1.0849450780078769
+            ],
+            "p50": 1.116699232996325,
+            "p95": 1.1725156159955077,
+            "entities": 80
+          },
+          "10000": {
+            "seconds": [
+              9.117378848022781,
+              9.597477479983354,
+              9.907043529994553
+            ],
+            "p50": 9.597477479983354,
+            "p95": 9.907043529994553,
+            "entities": 692
+          }
+        },
+        "baseline_peak_bytes": 17534976,
+        "peak_bytes": 2050273280,
+        "increase_bytes": 2032738304
+      },
+      "benchmark": {
+        "chars": 195,
+        "errors": 0,
+        "errors_per_1000_chars": 0.0
+      },
+      "downloads": {
+        "id": "knowledgator/gliner-x-base",
+        "revision": "a6c7a8fbfe2066c68d12c0480418504fde6d91d1",
+        "files": [
+          {
+            "path": "README.md",
+            "bytes": 35480,
+            "sha256": "73aa5a0356fa0ac74a0b3b8ca76b29b9ddf5247bb359ca84415fa727e465eba2",
+            "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/README.md"
+          },
+          {
+            "path": "added_tokens.json",
+            "bytes": 45,
+            "sha256": "93afe6f29473301199fb234b4f0c4c21cde56a912c62f3ffc0b6993015028157",
+            "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/added_tokens.json"
+          },
+          {
+            "path": "gliner_config.json",
+            "bytes": 3525,
+            "sha256": "70bdc897e45538685f79309af9dc97e5d35eeee3f2c385db75d5865689613c14",
+            "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/gliner_config.json"
+          },
+          {
+            "path": "onnx/model.onnx",
+            "bytes": 1207693659,
+            "sha256": "246b9511bbf8de02cc2da177c446073d4f64dfcb5e9a9ce9e525a5dd02d04aad",
+            "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/onnx/model.onnx"
+          },
+          {
+            "path": "special_tokens_map.json",
+            "bytes": 416,
+            "sha256": "80f4c6c5cf3867d7669ff8aa8f6aebb8a7499322e62d7faae06262d6014edd61",
+            "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/special_tokens_map.json"
+          },
+          {
+            "path": "tokenizer.json",
+            "bytes": 16335050,
+            "sha256": "619d3790cf59a0e50afdf04239db19093568fbd8d806963e35d54a8fb71d099c",
+            "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/tokenizer.json"
+          },
+          {
+            "path": "tokenizer_config.json",
+            "bytes": 19602,
+            "sha256": "08540ea44a5b8bf6a155e89902698c642d623657996c6e4d898236b159589404",
+            "url": "https://huggingface.co/knowledgator/gliner-x-base/resolve/a6c7a8fbfe2066c68d12c0480418504fde6d91d1/tokenizer_config.json"
+          }
+        ],
+        "total_bytes": 1224087777.0
+      }
+    }
+  }
+}
