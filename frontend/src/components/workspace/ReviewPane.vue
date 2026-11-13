@@ -299,7 +299,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
               </div>
               <div class="setting">
                 <el-input v-if="noteOpen" v-model="note" type="textarea" aria-label="本次补充说明" :rows="3" :maxlength="MAX_NOTE_LENGTH" show-word-limit placeholder="如：这是给土耳其客户的报价，请重点看付款条款" />
-                <div class="links"><el-button v-if="!noteOpen" link type="primary" @click="noteOpen = true">＋ 添加补充说明</el-button><el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button></div>
+                <div class="links"><el-button v-if="!noteOpen" link type="primary" @click="noteOpen = true">＋ 添加补充说明</el-button><el-button link type="primary" :disabled="!stance" @click="reqDrawer = true">查看审核要求</el-button></div>
               </div>
             </div>
           </div>
