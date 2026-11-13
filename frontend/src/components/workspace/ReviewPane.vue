@@ -5,6 +5,7 @@ import { FileUp, ShieldCheck } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { assistantApi, confirmationTask, type Session, type SessionFile } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
+import { redactionApi, type Party } from '@/api/redaction'
 import { RUN_ERROR_MESSAGES, runsApi, type RunDetail, type RunListItem } from '@/api/runs'
 import { MAX_NOTE_LENGTH, type Source, type Stance } from '@/api/tasks'
 import EmptyState from '@/components/EmptyState.vue'
@@ -86,22 +87,58 @@ watch(() => confirmedFiles.value.map(f => f.id).join(','), () => {
 }, { immediate: true })
 watch(picked, ids => { if (!ids.includes(mainId.value)) mainId.value = ids[0] ?? '' })
 
-// 会话的立场、来源只是建会话时的占位值；默认与原审核页一致（销售、我方发出），再被上次选择覆盖
-const stance = ref<Stance>('sales')
+const stance = ref<Stance | ''>('')
 const source = ref<Source>('outgoing')
 const note = ref('')
 const noteOpen = ref(false)
 const reqDrawer = ref(false)
 const stanceOptions = toOptions(STANCE_OPTIONS)
 const sourceOptions = toOptions(SOURCE_OPTIONS)
-// 立场、来源沿用该用户上次审核时的选择（与原审核页同一份本地记录）
+// 文件来源沿用上次选择；立场由本次我方标签带出或由用户选择。
 const prefKey = () => `aireview:last-choice:${auth.user?.id ?? ''}`
 try {
   const saved = JSON.parse(localStorage.getItem(prefKey()) ?? 'null') as { stance?: string; source?: string } | null
-  if (saved?.stance && saved.stance in STANCE_OPTIONS) stance.value = saved.stance as Stance
   if (saved?.source && saved.source in SOURCE_OPTIONS) source.value = saved.source as Source
 } catch { /* 浏览器禁用本地存储时用默认值 */ }
 function savePrefs() { try { localStorage.setItem(prefKey(), JSON.stringify({ stance: stance.value, source: source.value })) } catch { /* 忽略 */ } }
+
+const parties = ref<Party[]>([])
+const partiesLoading = ref(false), partiesSaving = ref(false), partiesError = ref('')
+const ourParty = computed(() => parties.value.find(p => p.is_our_party))
+const inferredStance = computed<Stance | ''>(() => ourParty.value?.role_label === '买方' ? 'purchase' : ourParty.value?.role_label === '卖方' ? 'sales' : '')
+const autoStance = ref(false)
+let partiesSeq = 0
+let lastOur = ''
+async function loadParties() {
+  const current = ++partiesSeq
+  partiesLoading.value = true; partiesError.value = ''
+  try {
+    const result = await redactionApi.parties(props.session.id)
+    if (current !== partiesSeq) return
+    parties.value = result.items
+    const key = `${ourParty.value?.id ?? ''}:${ourParty.value?.role_label ?? ''}`
+    if (key !== lastOur) {
+      lastOur = key
+      stance.value = inferredStance.value
+      autoStance.value = !!stance.value
+    }
+  } catch (e) { if (current === partiesSeq) partiesError.value = e instanceof ApiError ? e.message : '主体加载失败，请刷新页面' }
+  finally { if (current === partiesSeq) partiesLoading.value = false }
+}
+async function selectOur(id: string) {
+  if (partiesSaving.value) return
+  partiesSaving.value = true; partiesError.value = ''; previewVersion.value = null
+  try {
+    const result = await redactionApi.saveParties(props.session.id, parties.value.map(p => ({ id: p.id, is_our_party: p.id === id, country: p.country?.trim() || '国家未知', org_type: p.org_type?.trim() || '类型未知' })))
+    parties.value = result.items
+    lastOur = `${ourParty.value?.id ?? ''}:${ourParty.value?.role_label ?? ''}`
+    stance.value = inferredStance.value; autoStance.value = !!stance.value
+    emit('refresh')
+    if (stance.value) await loadPreview()
+  } catch (e) { await loadParties(); partiesError.value = e instanceof ApiError ? e.message : '我方保存失败，请重试' }
+  finally { partiesSaving.value = false }
+}
+function chooseStance(value: string) { if (value in STANCE_OPTIONS) { stance.value = value as Stance; autoStance.value = false } }
 
 const models = ref<AvailableModel[]>([])
 const modelId = ref<number>()
@@ -127,6 +164,7 @@ let previewSeq = 0
 async function loadPreview() {
   const current = ++previewSeq
   previewError.value = ''; previewVersion.value = null
+  if (!stance.value) { subjects.value = []; return }
   try {
     const data = await assistantApi.outboundReview(props.session.id, { stance: stance.value, file_ids: picked.value })
     if (current !== previewSeq) return
@@ -135,7 +173,7 @@ async function loadPreview() {
     subjects.value = line && line !== '无' ? line.split('；').filter(Boolean) : []
   } catch (e) {
     if (current !== previewSeq) return
-    previewError.value = e instanceof ApiError && e.code === 'OUR_PARTY_REQUIRED' ? '请先在“材料”中确认哪一方是我方'
+    previewError.value = e instanceof ApiError && e.code === 'OUR_PARTY_REQUIRED' ? '请在下方主体说明中选择我方'
       : e instanceof ApiError ? e.message : '读取本轮发送内容失败，请刷新页面'
   }
 }
@@ -147,6 +185,9 @@ const stage = computed<'loading' | 'running' | 'result' | 'local' | 'setup'>(() 
   return rounds.value.length && !composing.value ? 'result' : 'setup'
 })
 const canConfigure = computed(() => stage.value === 'setup' && ['active', 'awaiting_confirm'].includes(props.session.status))
+watch(() => [props.session.id, props.session.status, props.session.material_version, stage.value].join(':'), () => {
+  if (stage.value === 'setup' && ['active', 'awaiting_confirm'].includes(props.session.status)) void loadParties()
+}, { immediate: true })
 watch([stage, () => props.session.material_version, () => confirmedFiles.value.length, stance, () => picked.value.join(',')], ([s]) => {
   if (s === 'setup' && picked.value.length) { void loadModels(); void loadPreview() }
 }, { immediate: true })
@@ -158,6 +199,10 @@ const blocker = computed(() => {
   if (!confirmedFiles.value.length) return '请先确认脱敏'
   if (!picked.value.length) return '请至少选择一个文件'
   if (!mainId.value) return '请选择主文件'
+  if (partiesLoading.value || partiesSaving.value) return '正在读取或保存主体信息'
+  if (partiesError.value) return partiesError.value
+  if (!ourParty.value) return '请在主体说明中选择我方'
+  if (!stance.value) return '请选择业务立场'
   if (modelsLoading.value) return '正在加载模型列表'
   if (modelError.value) return modelError.value
   if (!modelId.value) return '请选择审核模型'
@@ -167,7 +212,7 @@ const blocker = computed(() => {
 const submitting = ref(false)
 const formError = ref('')
 async function start() {
-  if (blocker.value || submitting.value) return
+  if (blocker.value || submitting.value || !stance.value) return
   submitting.value = true; formError.value = ''
   try {
     const trimmed = note.value.trim()
@@ -182,7 +227,7 @@ async function start() {
     formError.value = e instanceof ApiError ? RUN_ERROR_MESSAGES[code] ?? e.message : '发起审核失败，请重试'
     if (code === 'MATERIAL_CHANGED') { await loadPreview(); formError.value = '材料有变化，已更新下方“本轮发送的内容”，请核对后再确认' }
     if (['MATERIAL_CHANGED', 'SESSION_BUSY', 'TASK_STATE_CONFLICT', 'FILES_PARSING'].includes(code)) emit('refresh')
-    if (code === 'OUR_PARTY_REQUIRED') ElMessage.warning('请在“材料”中确认哪一方是我方')
+    if (code === 'OUR_PARTY_REQUIRED') ElMessage.warning('请在主体说明中选择我方')
   } finally { submitting.value = false }
 }
 function badge(file: SessionFile) { return file.ext.toUpperCase().slice(0, 4) }
@@ -242,7 +287,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
             </div>
             <div class="col">
               <h2>审核设置</h2>
-              <div class="setting"><span class="setting-label">业务立场</span><SiSegmented v-model="stance" :options="stanceOptions" ariaLabel="业务立场" /></div>
+              <div class="setting"><span class="setting-label">业务立场</span><SiSegmented :model-value="stance" :options="stanceOptions" ariaLabel="业务立场" @update:model-value="chooseStance" /><p v-if="autoStance" class="hint">按我方为{{ ourParty?.role_label }}带出</p><p v-else-if="inferredStance && stance && stance !== inferredStance" class="hint">所选立场与我方的{{ ourParty?.role_label }}标签不一致，请核对。</p></div>
               <div class="setting"><span class="setting-label">文件来源</span><SiSegmented v-model="source" :options="sourceOptions" ariaLabel="文件来源" /></div>
               <div class="setting">
                 <span class="setting-label">审核模型</span>
@@ -262,6 +307,8 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
           <div class="sent" aria-label="本轮发送的内容">
             <div class="sent-head"><ShieldCheck :size="16" :stroke-width="1.75" /><h2>本轮发送的内容</h2></div>
             <p class="hint">已确认的 {{ picked.length }} 个文件按已核对的脱敏结果发送，不再逐个核对；本轮新增发送的只有：</p>
+            <div v-if="parties.length" class="setting"><span class="setting-label">选择我方</span><el-radio-group :model-value="ourParty?.id ?? ''" :disabled="partiesLoading || partiesSaving || submitting" @update:model-value="selectOur(String($event))"><el-radio v-for="p in parties" :key="p.id" :value="p.id">{{ p.name }}（{{ p.role_label }}，{{ p.code }}）</el-radio></el-radio-group></div>
+            <p v-if="partiesError" class="hint">{{ partiesError }}</p>
             <ul>
               <li><strong>主体说明</strong>：<template v-if="subjects.length"><span v-for="s in subjects" :key="s" class="subject">{{ s }}</span></template><template v-else>无</template></li>
               <li><strong>补充说明</strong>：<template v-if="note.trim()">{{ note.trim().length }} 字，发送前在本机脱敏</template><template v-else>未填写</template></li>
@@ -276,7 +323,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
         </template>
       </div>
     </section>
-    <RequirementsDrawer v-model="reqDrawer" :stance="stance" :source="source" :user-note="note" />
+    <RequirementsDrawer v-if="stance" v-model="reqDrawer" :stance="stance" :source="source" :user-note="note" />
   </div>
 </template>
 

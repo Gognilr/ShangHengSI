@@ -16,8 +16,12 @@ import EmptyState from '@/components/EmptyState.vue'
 import WorkFolderBar from '@/components/WorkFolderBar.vue'
 import { FileText } from '@lucide/vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
+import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 // V31-U5：不再常驻右栏，改为标题栏“文件 N”打开的抽屉；确认、校对与上传由输入框直接调用（defineExpose）
 const props = defineProps<{ session: Session; open: boolean }>()
+const route = useRoute(), auth = useAuthStore()
+const reviewMode = computed(() => auth.can('use.review') && (route.query.mode === 'review' || !auth.can('use.assistant')))
 const emit = defineEmits<{ refresh: []; 'update:open': [value: boolean] }>()
 const upload = ref<HTMLInputElement>(), busy = ref(false), error = ref(''), confirmOpen = ref(false), outboundOpen = ref(false), outbound = ref('')
 const transcriptFile = ref<SessionFile | null>(null)
@@ -137,7 +141,7 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
   </el-drawer>
     <el-drawer append-to-body v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
     <el-dialog append-to-body :model-value="!!transcriptFile" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><template #header="{ close }"><DialogBackHeader :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" back="返回对话" @close="close" /></template><div class="transcript-frame"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></div></el-dialog>
-    <el-dialog append-to-body v-model="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
+    <el-dialog append-to-body v-model="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" :require-our-party="reviewMode" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
   </div>
 </template>

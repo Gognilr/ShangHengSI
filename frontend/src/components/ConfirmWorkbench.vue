@@ -31,7 +31,7 @@ import { useHotkeys } from '@/utils/hotkeys'
 import { DOC_TYPE_OPTIONS, KEPT_BY, MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, suspectReasonLabel, toOptions } from '@/utils/labels'
 import { toast } from '@/utils/toast'
 
-const props = withDefaults(defineProps<{ task: TaskDetail; modelId?: number; modelName?: string; mode?: 'review' | 'assistant' }>(), { mode: 'review' })
+const props = withDefaults(defineProps<{ task: TaskDetail; modelId?: number; modelName?: string; mode?: 'review' | 'assistant'; requireOurParty?: boolean }>(), { mode: 'review', requireOurParty: false })
 const emit = defineEmits<{
   /** 已提交确认发送，父页面应刷新任务状态 */
   (e: 'confirmed'): void
@@ -448,7 +448,7 @@ const localDrawer = ref(false)
 const outboundDrawer = ref(false)
 // 后台保存中也可以点；点击后先等保存队列清空，有失败则停在本页（已回滚并提示）
 const canConfirm = computed(() =>
-  (assistant.value ? ourCount.value <= 1 : ourCount.value === 1)
+  (assistant.value && !props.requireOurParty ? ourCount.value <= 1 : ourCount.value === 1)
   && !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value)
 const confirmBox = ref<HTMLElement>()
 const confirmFlash = ref(false)
@@ -529,7 +529,7 @@ useHotkeys({
 
         <section class="sec">
           <h3>签约方与我方<span class="sum">{{ parties.length ? `${parties.length} 方` : '' }}</span></h3>
-          <p v-if="assistant" class="hint">会话可以不设置我方，最多选择一方。<el-button link :disabled="waiting" @click="setOur('')">不设我方</el-button></p>
+          <p v-if="assistant && !requireOurParty" class="hint">会话可以不设置我方，最多选择一方。<el-button link :disabled="waiting" @click="setOur('')">不设我方</el-button></p>
           <p v-if="!loading && !parties.length" class="warn">未识别到签约方：在原文中选中我方名称、类别选“公司”后再设为我方</p>
           <ul class="rows">
             <li v-for="p in parties" :key="p.id" class="party" :class="{ our: p.is_our_party }">
@@ -637,7 +637,7 @@ useHotkeys({
         <el-button link type="primary" :disabled="!outboundText" @click="outboundDrawer = true">查看将发送的全文</el-button>
         <el-alert v-if="submitError" type="error" show-icon :closable="false" :title="submitError" class="receipt-alert" />
         <ul class="conditions" aria-label="提交条件" aria-live="polite">
-          <li v-if="assistant" :class="{ met: ourCount <= 1 }">{{ ourCount ? '已选择一方为我方' : '未设置我方，可以确认脱敏' }}</li>
+          <li v-if="assistant && !requireOurParty" :class="{ met: ourCount <= 1 }">{{ ourCount ? '已选择一方为我方' : '未设置我方，可以确认脱敏' }}</li>
           <li v-else :class="{ met: ourCount === 1 }">{{ ourCount === 1 ? '✓ 已选择我方' : !parties.length ? '未识别到签约方，暂时不能提交 AI 审核' : '请先选择哪一方是我方' }}</li>
           <li v-if="waiting || parsingFiles">文件正在解析，请稍候</li>
           <li v-if="failedFiles">有解析失败的文件，请先删除</li>
