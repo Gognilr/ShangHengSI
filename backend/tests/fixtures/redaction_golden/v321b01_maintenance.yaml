@@ -1,0 +1,8 @@
+description: 多行业虚构基准：维保
+pending: B-02 / B-03 / B-05
+stance: purchase
+must_replace: []
+must_keep:
+  - "实际到厂"
+  - "检验机构"
+  - "经友好"

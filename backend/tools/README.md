@@ -140,3 +140,11 @@ E-07 的候选错字校验、词库、固定 50 处探针及 `eval_typos.py` 可
 ```powershell
 docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgres:test@aireview-test-db:5432/postgres -v "${PWD}/backend:/srv/backend" aireview-backend-test pytest -q
 ```
+
+### 脱敏精度与标注回归（V321-B-01）
+
+`eval_precision.py` 离线解析、识别并生成标注表，真实文件和输出目录均应放在仓库外。首次运行使用 `PYTHONPATH=/srv/backend python tools/eval_precision.py --out /out /in/文件1.docx ...`。重跑时按原顺序传入同一批文件，加 `--labels /in/标注表.xlsx`；工具检查文件序号及文件名，标准输出只给“不该换”“该换”“确定项”的仍替换行数和新出现的词数。对齐键为文件序号与规范化词；新识别的更长片段覆盖原词也计为仍替换。原表中“错”和地址整段备注不计入前三个分母，但仍用于判定是否为新词。新词明细在输出表的“新出现”页；所有表格、上下文及外发文本都可能含敏感内容，不得提交或贴到日志。
+
+结果表的“规则 / 类别”记录实际的识别来源、可用时的不确定项原因和类别，例如 `uncertain/person_name/PERSON`、`person/PERSON`。人名项另列在全文中可复现的候选入口（find_persons / find_signature_persons），不把它冒称为已保存的原始命中规则；引擎没有保存更细的正则名称。不同来源的同一词可能各占一行，新词计数按文件与词去重。DOC 等旧格式需运行 converter 并共享 `/spool`；模型文件需预先在本机备齐，不联网下载。
+
+虚构多行业样本的基线可用 `PYTHONPATH=/srv/backend python tools/eval_precision.py --golden v321b01_software v321b01_hr v321b01_lease v321b01_maintenance v321b01_service_en`。分子是标注的 `must_keep` 出现位置中被替换覆盖的个数，分母为样本正文字符数；这是标注位置的每千字误替换数，不代表未标注文字的完整误报率。`pending` 记录计划中负责消除失败的批次，golden 测试不会自动跳过这些断言。

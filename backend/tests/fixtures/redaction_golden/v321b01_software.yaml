@@ -1,0 +1,7 @@
+description: 多行业虚构基准：软件开发
+pending: B-02 / B-03 / B-05
+stance: purchase
+must_replace: []
+must_keep:
+  - "数据导入与导出"
+  - "技术培训"

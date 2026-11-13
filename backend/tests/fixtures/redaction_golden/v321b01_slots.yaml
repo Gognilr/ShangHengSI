@@ -1,0 +1,10 @@
+description: 虚构名称槽位与整段地址
+pending: B-04
+stance: purchase
+must_replace:
+  - {text: "林虚", category: PERSON}
+  - {text: "12345678901234567", category: REFNO}
+  - {text: "海州市虚构档案服务中心", category: ORG}
+  - {text: "海州市云山区青云街明月路虚构大厦六层", category: ADDR}
+  - {text: "虚构大厦六层", category: ADDR}
+must_keep: []

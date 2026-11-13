@@ -1,0 +1,10 @@
+description: 多行业虚构基准：人力资源系统实施
+pending: B-02 / B-03 / B-05
+stance: purchase
+must_replace: []
+must_keep:
+  - "项目组"
+  - "人力资源管理"
+  - "雇员"
+  - "手机站"
+  - "电子合同"

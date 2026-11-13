@@ -17,11 +17,12 @@ import sys
 import time
 from pathlib import Path
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
+import yaml
 
 from app.parsing import docx, image, legacy, pdf, xlsx
 from app.parsing.model import ParseError
-from app.redaction import engine, ner
+from app.redaction import detect, engine, ner
 from app.redaction import parties as P
 
 REASONS = {
@@ -71,19 +72,76 @@ def context(text: str, start: int, end: int, width: int = 18) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--out', required=True)
-    ap.add_argument('files', nargs='+')
+    ap.add_argument('--out')
+    ap.add_argument('--labels', help='上次评测的人工标注表')
+    ap.add_argument('--golden', nargs='+', metavar='样本名', help='计算虚构 golden 的每千字误替换数')
+    ap.add_argument('files', nargs='*')
     args = ap.parse_args()
+    if args.golden:
+        if args.files or args.labels:
+            ap.error('--golden 不能与真实文件或 --labels 同用')
+        root = Path(__file__).resolve().parents[1] / 'tests/fixtures/redaction_golden'
+        ner.check(load=True)
+        length = errors = 0
+        for name in args.golden:
+            if Path(name).name != name:
+                ap.error('样本名不能包含路径')
+            lines = (root / f'{name}.txt').read_text(encoding='utf-8').splitlines()
+            ann = yaml.safe_load((root / f'{name}.yaml').read_text(encoding='utf-8'))
+            nodes = [engine.NodeIn(f'F1-P{i}', line) for i, line in enumerate(lines, 1) if line.strip()]
+            result, _ = redact(nodes)
+            length += sum(len(n.text) for n in nodes)
+            for node in nodes:
+                for keep in ann['must_keep']:
+                    start = node.text.find(keep)
+                    while start >= 0:
+                        end = start + len(keep)
+                        errors += int(any(i.loc == node.loc and i.char_start < end and i.char_end > start
+                                          for i in result.items))
+                        start = node.text.find(keep, start + 1)
+        print(f'虚构样本：{length} 字，误替换 {errors} 处，每千字 {errors * 1000 / length:.2f}' if length else '虚构样本为空')
+        return
+    if not args.out or not args.files:
+        ap.error('文件评测需要 --out 和输入文件')
     out = Path(args.out)
+    if out.resolve().is_relative_to(Path(__file__).resolve().parents[2]):
+        ap.error('输出目录必须在仓库外')
     out.mkdir(parents=True, exist_ok=True)
     ner.check(load=True)
+
+    labels = []
+    if args.labels:
+        old = load_workbook(args.labels, read_only=True, data_only=True)
+        label_files = {}
+        for sheet, kind in ((old['不确定项'], 'uncertain'), (old['确定项'], 'sure')):
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                seq, filename, word, _, _, _, _, judgment = row[:8]
+                if not isinstance(seq, int) or not word:
+                    continue
+                if seq in label_files and label_files[seq] != filename:
+                    raise SystemExit('标注表中的文件序号不一致')
+                label_files[seq] = filename
+                judgment = str(judgment or '').strip()
+                group = ('keep' if judgment == '不该换' else 'replace' if judgment == '该换'
+                         else 'sure' if kind == 'sure' and not judgment else None)
+                labels.append((seq, P.normalize(str(word)), group))
+        old.close()
+        if set(label_files) != set(range(1, len(args.files) + 1)) or any(
+                Path(name).name != label_files[seq] for seq, name in enumerate(args.files, 1)):
+            raise SystemExit('输入文件与标注表的序号或文件名不一致')
+    baseline_keys = {(seq, word) for seq, word, _ in labels}
+    matches = set()
+    new_keys = set()
 
     book = Workbook()
     uncertain_sheet = book.active
     uncertain_sheet.title = '不确定项'
-    uncertain_sheet.append(['文件', '文件名', '被替换的词', '为什么被列出', '代号', '次数', '上下文（一处）', '你的判断（该换 / 不该换）'])
+    uncertain_sheet.append(['文件', '文件名', '被替换的词', '为什么被列出', '代号', '次数', '上下文（一处）', '你的判断（该换 / 不该换）', '规则 / 类别'])
     sure_sheet = book.create_sheet('确定项')
-    sure_sheet.append(['文件', '文件名', '被替换的词', '来源', '代号', '次数', '上下文（一处）', '替换错了的在这里写“错”'])
+    sure_sheet.append(['文件', '文件名', '被替换的词', '来源', '代号', '次数', '上下文（一处）', '替换错了的在这里写“错”', '规则 / 类别'])
+    new_sheet = book.create_sheet('新出现') if args.labels else None
+    if new_sheet:
+        new_sheet.append(['文件', '文件名', '被替换的词', '来源', '代号', '次数', '上下文（一处）', '你的判断', '规则 / 类别'])
     total = collections.Counter()
 
     for seq, name in enumerate(args.files, start=1):
@@ -91,15 +149,21 @@ def main() -> None:
         started = time.perf_counter()
         try:
             parsed = parse(path, seq)
-        except ParseError as exc:
-            print(f'文件 {seq}：解析失败（{exc}）', flush=True)
-            continue
+        except ParseError:
+            raise SystemExit(f'文件 {seq} 解析失败，评测未完成') from None
         parsed_s = time.perf_counter() - started
         nodes = [engine.NodeIn(n.loc, n.text, n.clause_no, n.kind) for n in parsed.nodes if n.part == 'body' and n.text.strip()]
         started = time.perf_counter()
         result, vector_kept = redact(nodes)
         redact_s = time.perf_counter() - started
         texts = {n.loc: n.text for n in nodes}
+        # 人名会全文传播；引擎不保存最初的命中规则，只列能在本文件复现的候选入口。
+        person_rules = collections.defaultdict(set)
+        for node in nodes:
+            for hit in detect.find_persons(node.text):
+                person_rules[P.normalize(node.text[hit.start:hit.end])].add('find_persons')
+        for index, start, end in detect.find_signature_persons([node.text for node in nodes]):
+            person_rules[P.normalize(nodes[index].text[start:end])].add('find_signature_persons')
         (out / f'{seq}-外发文本.txt').write_text(
             '\n'.join(f'[{n.loc}] {result.redacted[n.loc]}' for n in nodes), encoding='utf-8')
 
@@ -115,11 +179,26 @@ def main() -> None:
                        else SOURCES.get(item.detected_by, item.detected_by))
                 if item.detected_by == 'recheck':
                     why += f'（{item.category}）'
+                rule = item.detected_by
+                if item.detected_by == 'uncertain':
+                    rule += '/' + reason_of.get(key[1], 'unknown')
+                if item.detected_by == 'person' and person_rules.get(key[1]):
+                    rule += '/候选:' + ','.join(sorted(person_rules[key[1]]))
+                rule += '/' + item.category
                 rows[key] = [seq, path.name, surface, why, item.placeholder, 0,
-                             context(texts[item.loc], item.char_start, item.char_end), '']
+                             context(texts[item.loc], item.char_start, item.char_end), '', rule]
             rows[key][5] += 1
+            if args.labels:
+                normalized = P.normalize(surface)
+                if (seq, normalized) not in baseline_keys:
+                    new_keys.add((seq, normalized))
+                for label_seq, word, _ in labels:
+                    if label_seq == seq and word and word in normalized:
+                        matches.add((seq, word))
         for key, row in rows.items():
             (uncertain_sheet if key[0] else sure_sheet).append(row)
+            if new_sheet and (seq, key[1]) in new_keys:
+                new_sheet.append(row)
 
         by_source = collections.Counter(SOURCES.get(i.detected_by, i.detected_by) for i in result.items)
         by_reason = collections.Counter(row[3] for key, row in rows.items() if key[0])
@@ -129,17 +208,24 @@ def main() -> None:
         total.update({'文件': 1, '段': len(nodes), '字': sum(len(n.text) for n in nodes),
                       '不确定项（去重）': unique_uncertain, '确定项（去重）': len(rows) - unique_uncertain})
         total.update({f'自检补替换/{category}': count for category, count in by_recheck_category.items()})
-        print(f'文件 {seq}：段 {len(nodes)}，字 {sum(len(n.text) for n in nodes)}，OCR 页 {parsed.ocr_pages}，'
+        if not args.labels:
+            print(f'文件 {seq}：段 {len(nodes)}，字 {sum(len(n.text) for n in nodes)}，OCR 页 {parsed.ocr_pages}，'
               f'解析 {parsed_s:.1f}s，脱敏 {redact_s:.1f}s；替换处数按来源 {dict(by_source)}；'
               f'不确定项去重 {unique_uncertain} 个，按原因 {dict(by_reason)}；'
               f'自检补替换按类别 {dict(by_recheck_category)}；向量辅助保留 {vector_kept} 处', flush=True)
 
-    for sheet in (uncertain_sheet, sure_sheet):
-        for column, width in zip('ABCDEFGH', (6, 28, 30, 26, 16, 6, 60, 26)):
+    for sheet in book.worksheets:
+        for column, width in zip('ABCDEFGHI', (6, 28, 30, 26, 16, 6, 60, 26, 28)):
             sheet.column_dimensions[column].width = width
         sheet.freeze_panes = 'A2'
     book.save(out / '标注表.xlsx')
-    print('合计：', dict(total), file=sys.stdout, flush=True)
+    if args.labels:
+        for group, title in (('keep', '不该换仍被替换'), ('replace', '该换仍被替换'), ('sure', '确定项仍被替换')):
+            entries = [(seq, word) for seq, word, g in labels if g == group]
+            print(f'{title} {sum(key in matches for key in entries)}/{len(entries)}')
+        print(f'新出现的替换词 {len(new_keys)} 个')
+    else:
+        print('合计：', dict(total), file=sys.stdout, flush=True)
 
 
 if __name__ == '__main__':
