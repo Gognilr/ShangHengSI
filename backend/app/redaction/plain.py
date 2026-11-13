@@ -57,11 +57,14 @@ def name_slot(text: str, start: int, end: int) -> bool:
     if re.search(r'(?:先生|女士|经理|总监|主任|老师)', text[end:end + 3]):
         return True
     surface = text[start:end]
+    # 完整企业后缀本身就是名称证据，在叙述中也不能按“有限｜公司”等普通词拆开保留。
+    if re.search(r'(?:股份有限公司|有限责任公司|集团有限公司|有限公司|股份公司)$', surface):
+        return True
     # 地名开头、完整机构后缀与整段独立的名称不能被词典中的行业词保留。
     from app.redaction import parties as P
     if P._place_prefix(surface):
         return True
-    return bool(re.search(r'(?:有限公司|股份公司|研究院|研究所)$', surface)
+    return bool(re.search(r'(?:研究院|研究所)$', surface)
                 and not text[:start].strip() and not text[end:].strip(' 。；;\n'))
 
 
