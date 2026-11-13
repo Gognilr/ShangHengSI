@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 import numpy as np
 from sqlalchemy import select,delete
-from app.db.models import StandardTemplate,TaskClauseVector,LocalFinding,RedactionMap,RedactionTerm,Task,DocNode
+from app.db.models import StandardTemplate,TaskClauseVector,LocalFinding,RedactionMap,Task,DocNode
 from app.embedding import engine
 from app.review.clauses import first_level
 from app.security import crypto
@@ -67,7 +67,7 @@ def start(db,ctx,run,nodes):
 
 def prepare(db,ctx,chunk):
     from app.chat.service import _redact,_terms
-    from app.redaction.engine import _load_full_map,write_full_map
+    from app.redaction.engine import _load_full_map,write_full_map,_load_terms
     from app.redaction.recheck import recheck,recheck_context
     ctx.template_section=''
     pairs=[p for p in ctx.template_candidates if chunk is None or set(p['locs'])&set(chunk.locs)]
@@ -84,8 +84,10 @@ def prepare(db,ctx,chunk):
         from app.redaction.placeholders import NeutralAllocator
         allocator=NeutralAllocator();allocator.seed(mapping)
     # 预置我方主体未在当前文件出现时，也按我方代号脱敏；多写法按既有#序号格式入图。
-    for own in db.scalars(select(RedactionTerm).where(RedactionTerm.enabled.is_(True),RedactionTerm.is_our_party.is_(True))):
-        value=crypto.decrypt_text(own.term_enc)
+    for own in _load_terms(db, ctx.task.owner_id):
+        if not own.is_our_party:
+            continue
+        value=own.text
         if value not in mapping.values():
             code=allocator.numbered('ORG',value) if allocator else OUR_CODE
             key=code if code not in mapping else f'{code}#{len(mapping)+1}'

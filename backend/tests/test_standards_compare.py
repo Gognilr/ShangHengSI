@@ -88,7 +88,8 @@ def test_t46_section_blocked(db_sessionmaker,integration,monkeypatch):
         assert ctx.template_section=='' and ctx.template_stats['blocked'] is True
 
 
-def test_t46_own_preset_and_log_privacy(db_sessionmaker,integration,caplog):
+@pytest.mark.parametrize('scope', ['company', 'personal', 'other'])
+def test_t46_own_preset_and_log_privacy(db_sessionmaker,integration,caplog,make_user,scope):
     from app.standards import compare
     from app.db.models import Task,RedactionTerm
     from app.review.prompt import ReviewContext
@@ -96,15 +97,19 @@ def test_t46_own_preset_and_log_privacy(db_sessionmaker,integration,caplog):
     from app.security.crypto import encrypt_text
     from app.redaction.restore import restore
     own='示例我方制造有限公司'
+    creator = make_user('other_owner') if scope == 'other' else integration
     with db_sessionmaker() as db:
         task=Task(owner_id=integration.id,title='示例',stance='sales',source='incoming',policy='ai',status='reviewing')
         db.add(task);db.flush();write_full_map(db,task.id,{})
-        db.add(RedactionTerm(kind='custom',category='ORG',is_our_party=True,term_hash=term_hash(own),term_enc=encrypt_text(own)))
+        db.add(RedactionTerm(kind='learned',category='ORG',is_our_party=scope!='company',
+                            is_company_our_party=scope=='company',created_by=creator.id,
+                            term_hash=term_hash(own),term_enc=encrypt_text(own)))
         db.commit()
         ctx=ReviewContext(task,'sales','incoming',None,'contract',[],[],'','')
         ctx.template_candidates=[dict(score=1,loc='F1-P1',locs=['F1-P1'],document_title='交付',title='交付',text=own+'依约交付。',stance='',acceptable='',escalate='')]
         compare.prepare(db,ctx,None)
-        assert '[我方]依约交付。' in ctx.template_section and own not in ctx.template_section
+        assert own not in ctx.template_section
+        assert ('[我方]依约交付。' in ctx.template_section) == (scope != 'other')
         mapping=load_redaction_map(db,task.id)
         assert own in restore(ctx.template_section,mapping)
         assert own not in caplog.text

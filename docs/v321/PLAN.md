@@ -31,7 +31,7 @@
 | V321-A-02 | 标签词排除、叙述人名碰撞、识别与复检出入 | Q-03、04、10 | Opus，high | Sol，high | — | A-01 | — | 已完成（2026-11-13，GPT-6.1 Sol，报告 reports/V321-A-02.md；Q-10 具体规则待类别标注） |
 | V321-A-03 | 确定项可撤销 | Q-09 | Opus，high | Sol 6.1，xhigh | 另一家 | A-02 | 安全复核 | 已完成（2026-11-13，GPT-6.1 Sol；Claude Opus 安全复核通过，金额按复核改为不开放撤销；报告 reports/V321-A-03.md） |
 | V321-C-01 | 立场与我方：自动带出、必选、确认后可补选 | Q-12、26 | Sonnet，high | Terra，high | — | B-06 | — | 已完成（2026-11-13，GPT-6.1 Sol；定向回归及 Edge 代表性走查，待前端复核；报告 reports/V321-C-01.md） |
-| V321-C-02 | 我方只记到本人 | Q-13 | Opus，high | Sol 6.1，high | — | C-01 | — | 进行中（2026-11-13，GPT-6.1 Sol；主路径已实现，范本对照兼容需范围确认；报告 reports/V321-C-02.md） |
+| V321-C-02 | 我方只记到本人 | Q-13 | Opus，high | Sol 6.1，high | — | C-01 | — | 已完成（2026-11-13，GPT-6.1 Sol；本人选择及公司预置分开，含用户批准的范本路径修正；报告 reports/V321-C-02.md；C 批统一复核） |
 | V321-C-03 | 讨论拦截的出路、回复写法 | Q-14、15 | Opus，high | Sol 6.1，xhigh | 另一家 | C-02 | 回程复核 | 待执行 |
 | V321-B-01 | 精度基准、标注回归与本机评测工具 | Q-08、38、39 | Sonnet，high | Terra，high | — | A-03 | — | 已完成（2026-11-13，GPT-6.1 Sol，报告 reports/V321-B-01.md） |
 | V321-B-02 | 普通词解释器与三档处置 | Q-40～43 | Opus，high | Sol 6.1，xhigh | 另一家 | B-01 | 评测数字交用户 | 已完成（2026-11-13，GPT-6.1 Sol；标注误替换 13/69、应替换 5/5、正确确定项 80/80，核心泄漏不增加；Claude Opus 联合复核通过，修正标签人名一处退步，见 reports/V321-B-04.md 末节；报告 reports/V321-B-02.md） |
@@ -120,7 +120,7 @@
 
 ### V321-C-02 我方只记到本人
 
-* 文件：redaction/engine.py（learn_confirmed_names、_load_terms）、admin/redaction.py、设置页脱敏分页；必要时一个只加列的迁移。
+* 文件：redaction/engine.py（learn_confirmed_names、_load_terms）、admin/redaction.py、设置页脱敏分页；必要时一个只加列的迁移。用户本会话批准补充 standards/compare.py 及相关测试，统一范本对照的我方读取。
 * 做法：用户勾选的我方只对本人后续任务预选；全公司我方主体只来自业务管理员录入。已有的 is_our_party 学习记录保留为“本人”，不迁移为公司级。
 * 用例：甲用户选我方后，乙用户的新文件不预选；管理员录入的照常对所有人预选。
 * 记录到 open_questions：是否加“2 人以上选为我方时提示管理员”，本任务不做。
