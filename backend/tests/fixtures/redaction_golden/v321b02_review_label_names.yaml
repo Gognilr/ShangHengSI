@@ -1,0 +1,8 @@
+description: B-02～B-04 联合复核：标签后的姓氏起头普通词形仍是人名，条款用语仍保留
+stance: purchase
+must_replace:
+  - {text: "方圆", category: PERSON}
+  - {text: "万里", category: PERSON}
+  - {text: "夏天", category: PERSON}
+must_keep:
+  - "补充协议"
