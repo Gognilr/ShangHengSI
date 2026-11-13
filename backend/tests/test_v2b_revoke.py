@@ -55,7 +55,16 @@ def test_01_revoke_person_everywhere_encrypted_audit(db_sessionmaker, alice, rea
     assert "周示例" not in caplog.text
 
 
-@pytest.mark.parametrize("category", ["OUR", "ACCOUNT", "AMOUNT"])
+def test_02_amount_not_revocable(alice, ready_task):
+    user, c, h = alice
+    task = make_task(ready_task, user)
+    target = next(i for i in items(c, task)["items"] if i["category"] == "AMOUNT")
+    assert target["can_revoke"] is False
+    r = revoke(c, h, task, target)
+    assert (r.status_code, r.json()["code"]) == (422, "NOT_REVOCABLE")
+
+
+@pytest.mark.parametrize("category", ["OUR", "ACCOUNT"])
 def test_02_automatic_categories_revocable(alice, ready_task, category):
     user, c, h = alice
     task = make_task(ready_task, user)

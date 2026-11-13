@@ -1911,7 +1911,8 @@ def revoke_redaction(db: Session, task: Task, *, loc: str, char_start: int, char
     """精确命中可撤销项后重算；调用方持有任务行锁，审计与重算同事务。"""
     item = db.scalar(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == loc,
                      RedactionItem.char_start == char_start, RedactionItem.char_end == char_end))
-    if item is None:
+    # 金额不开放撤销：出口复检对金额不做保留豁免，撤销后无法发送（V321-A-03 复核）。
+    if item is None or item.category == "AMOUNT":
         raise RedactionInputError(422, "NOT_REVOCABLE", "该替换项不能撤销")
     texts = task_texts(db, task)
     surface = texts.get(loc, "")[char_start:char_end]
