@@ -1168,6 +1168,9 @@ def find_addresses(text: str) -> list[Hit]:
                 boundary = list(re.finditer(r'运至|送至|交至|寄往|寄至|发往|送往|位于|坐落于|在|至', head))
                 if boundary:
                     start += boundary[-1].end()
+            # “道路 + 空格 + 门牌号 + 叙述”可能只匹配到道路；让已有的完整门牌规则优先。
+            if any(old.start() <= start and end <= old.end() for old in _CN_UNLABELED_ADDRESS.finditer(text)):
+                continue
             if any(h.start <= start and end <= h.end for h in hits):
                 continue
             hits = [h for h in hits if not (start <= h.start and h.end <= end)]
