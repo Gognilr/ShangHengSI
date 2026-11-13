@@ -26,7 +26,6 @@ DEFAULTS: dict[str, Any] = {
     "model.user_daily_cap": 0,
     "redaction.mask_quantity": False,
     "redaction.date_shift": True,  # V31-E-09：E-07 评测 B 组不低于 A 组，默认开
-    "redaction.vector_assist": True,
     "review.company_profile": "",
     "review.send_ratios": False,
     "backup.time": "02:00",

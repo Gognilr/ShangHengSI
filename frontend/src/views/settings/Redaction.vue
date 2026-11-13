@@ -20,7 +20,7 @@ const auth = useAuthStore()
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
 
 // ---- ① 数量脱敏 ----
-const maskQuantity = ref(false), dateShift = ref(true), vectorAssist = ref(true)
+const maskQuantity = ref(false), dateShift = ref(true)
 const maskLoading = ref(false)
 const tableMax = useTableMaxHeight(360)
 const loadedOnce = ref({ custom: false, learned: false, our: false })
@@ -30,7 +30,7 @@ async function loadMask() {
   maskLoading.value = true
   maskError.value = ''
   try {
-    const setting = await adminRedactionApi.getSetting(); maskQuantity.value = setting.mask_quantity; dateShift.value = setting.date_shift; vectorAssist.value = setting.vector_assist
+    const setting = await adminRedactionApi.getSetting(); maskQuantity.value = setting.mask_quantity; dateShift.value = setting.date_shift
   } catch (e) {
     maskError.value = `加载失败：${errText(e, '请刷新页面')}`
   } finally {
@@ -52,9 +52,9 @@ async function toggleMask(value: string | number | boolean) {
   }
 }
 
-async function toggleExtra(key: 'date_shift' | 'vector_assist', value: string | number | boolean) {
+async function toggleExtra(key: 'date_shift', value: string | number | boolean) {
   maskLoading.value = true
-  try { const result = await adminRedactionApi.saveSetting(maskQuantity.value, { [key]: value === true }); dateShift.value = result.date_shift; vectorAssist.value = result.vector_assist; ElMessage.success('已保存') }
+  try { const result = await adminRedactionApi.saveSetting(maskQuantity.value, { [key]: value === true }); dateShift.value = result.date_shift; ElMessage.success('已保存') }
   catch (e) { ElMessage.error(errText(e, '保存失败，请稍后重试')); await loadMask() }
   finally { maskLoading.value = false }
 }
@@ -221,7 +221,7 @@ onMounted(() => {
     <div class="panel setting-panel">
       <SettingSection v-if="auth.can('redaction.words')" title="识别与替换" description="设置只影响之后解析与重新计算的任务。">
         <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
-        <div class="switch-row"><div><h3>数量脱敏</h3><p class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</p></div><el-switch :model-value="maskQuantity" :loading="maskLoading" aria-label="数量脱敏" @change="toggleMask" /></div><div class="switch-row"><div><h3>日期整体平移</h3><p class="hint">发给模型的日期整体平移同一天数，回来后在本机换回；只影响之后重新计算的任务</p></div><el-switch :model-value="dateShift" :loading="maskLoading" aria-label="日期整体平移" @change="toggleExtra('date_shift', $event)" /></div><div class="switch-row"><div><h3>向量辅助判断</h3><p class="hint">用本机向量模型判断不确定项是否为普通术语，判断为普通术语的默认保留原文</p></div><el-switch :model-value="vectorAssist" :loading="maskLoading" aria-label="向量辅助判断" @change="toggleExtra('vector_assist', $event)" /></div>
+        <div class="switch-row"><div><h3>数量脱敏</h3><p class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</p></div><el-switch :model-value="maskQuantity" :loading="maskLoading" aria-label="数量脱敏" @change="toggleMask" /></div><div class="switch-row"><div><h3>日期整体平移</h3><p class="hint">发给模型的日期整体平移同一天数，回来后在本机换回；只影响之后重新计算的任务</p></div><el-switch :model-value="dateShift" :loading="maskLoading" aria-label="日期整体平移" @change="toggleExtra('date_shift', $event)" /></div>
       </SettingSection>
       <SettingSection v-if="auth.can('redaction.parties')" title="我方主体" description="预置本公司的完整名称，之后新解析的文件出现该名称时可预选我方主体。" stacked>
         <div class="filters">

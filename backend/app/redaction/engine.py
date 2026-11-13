@@ -22,7 +22,7 @@ import re
 import secrets
 import uuid
 from collections import OrderedDict
-from collections.abc import Collection, Sequence
+from collections.abc import Sequence
 from functools import lru_cache
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -549,7 +549,6 @@ def compute(
     pinned: dict[str, str] | None = None,
     ratio: bool = True,
     date_shift_days: int = 0,
-    kept_spans: Collection[tuple[str, int, int]] = (),
 ) -> RedactionResult:
     """对正文节点执行 9.3 第 1–7 步、数量脱敏、疑似遗漏和金额比例。
 
@@ -1170,8 +1169,7 @@ def compute(
             continue
         for i, at in original_joined.by_node(P.name_pattern(surface)).items():
             _accept([_Span(i, s, e, 'ORG', owner, 'uncertain') if owner else _Span(i, s, e, category, key, 'uncertain')
-                     for s, e in at if not _overlaps(excluded_by_node[i], s, e)
-                     and (nodes[i].loc, s, e) not in kept_spans], occupied[i], spans)
+                     for s, e in at if not _overlaps(excluded_by_node[i], s, e)], occupied[i], spans)
     spans.sort(key=lambda s: (s.node, s.start))
     result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
                        with_ratio=ratio and style == "review", date_shift_days=date_shift_days)
@@ -1697,25 +1695,6 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     result = compute(nodes, task.stance, **options, keeps=keeps, ner_cache=cached)
     if shift_days:
         result.mapping['@date_shift_days'] = str(shift_days)
-    vector_kept = set()
-    if get_setting(db, 'redaction.vector_assist'):
-        try:
-            from app.redaction.vector_assist import keep_spans
-            vector_kept = keep_spans(nodes, result.suspects, {P.normalize(word) for word in keeps})
-        except Exception:
-            logger.warning('不确定项向量辅助不可用 task=%s', task.id)
-            vector_kept = set()
-        if vector_kept:
-            # 只保留被判断的那个出现位置；同一词在其他位置仍按其自身上下文判断，不全局传播。
-            result = compute(nodes, task.stance, **options, keeps=keeps, ner_cache=result.ner_cache,
-                             kept_spans=vector_kept)
-            if shift_days:
-                result.mapping['@date_shift_days'] = str(shift_days)
-            for s in result.suspects:
-                if (s.loc, s.char_start, s.char_end) in vector_kept and not any(
-                        i.loc == s.loc and i.char_start < s.char_end and i.char_end > s.char_start for i in result.items):
-                    # 仅记已保留区间，随节点缓存一起加密；不保存查询向量或文字。
-                    result.ner_cache[s.loc].setdefault('vector_kept', []).append([s.char_start, s.char_end])
     user_keys = {P.normalize(t) for t in user_keeps}
     result.kept_memory = {term_hash(texts[s.loc][s.char_start:s.char_end]) for s in result.suspects
                           if P.normalize(texts[s.loc][s.char_start:s.char_end]) in memory
@@ -1800,7 +1779,7 @@ def _count_hits(db: Session, matched: set[str]) -> None:
 
 
 def _vector_kept_spans(db: Session, task: Task) -> set[tuple[str, int, int]]:
-    """本机向量判断保留的位置（存在加密的节点缓存中，V31Q-29）。"""
+    """只读兼容旧任务的加密保留标记；B-06 后不再生成，重算按当前规则替换。"""
     spans = set()
     for loc, data in _ner_entries(db, task.id)[1].items():
         try:

@@ -147,7 +147,7 @@ export interface TermPage {
   page_size: number
 }
 
-export interface RedactionSettings { mask_quantity: boolean; vector_assist: boolean; date_shift: boolean }
+export interface RedactionSettings { mask_quantity: boolean; date_shift: boolean }
 export interface KeepTerm {
   term_hash: string; term: string; users: number; status: '个人' | '已共享' | '已认可'
   hit_count: number; last_hit_at: string | null

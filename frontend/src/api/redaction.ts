@@ -22,7 +22,7 @@ export interface Suspect {
   id: number
   loc: string
   reason: string
-  /** pending：默认替换（kept_by 为 memory / vector 时保留）；ignore：用户保留原文 */
+  /** pending：默认替换，术语记忆命中时保留；vector 仅兼容旧任务保留标记；ignore：用户保留原文 */
   decision: string
   /** 默认类别（NAME / TERM / REFNO），V31-S */
   category: string | null

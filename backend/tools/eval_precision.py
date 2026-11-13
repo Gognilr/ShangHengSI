@@ -53,17 +53,8 @@ def parse(path: Path, seq: int):
 
 
 def redact(nodes):
-    """与 engine._run 相同的两步：整体识别，再用向量辅助逐处保留。"""
-    result = engine.compute(nodes, 'purchase')
-    kept = set()
-    try:
-        from app.redaction.vector_assist import keep_spans
-        kept = keep_spans(nodes, result.suspects, set())
-    except Exception:  # noqa: BLE001  向量模型不可用时照常默认替换
-        kept = set()
-    if kept:
-        result = engine.compute(nodes, 'purchase', ner_cache=result.ner_cache, kept_spans=kept)
-    return result, len(kept)
+    """与 engine._run 相同，不再用向量辅助保留不确定项。"""
+    return engine.compute(nodes, 'purchase')
 
 
 def context(text: str, start: int, end: int, width: int = 18) -> str:
@@ -89,7 +80,7 @@ def main() -> None:
             lines = (root / f'{name}.txt').read_text(encoding='utf-8').splitlines()
             ann = yaml.safe_load((root / f'{name}.yaml').read_text(encoding='utf-8'))
             nodes = [engine.NodeIn(f'F1-P{i}', line) for i, line in enumerate(lines, 1) if line.strip()]
-            result, _ = redact(nodes)
+            result = redact(nodes)
             length += sum(len(n.text) for n in nodes)
             for node in nodes:
                 for keep in ann['must_keep']:
@@ -154,7 +145,7 @@ def main() -> None:
         parsed_s = time.perf_counter() - started
         nodes = [engine.NodeIn(n.loc, n.text, n.clause_no, n.kind) for n in parsed.nodes if n.part == 'body' and n.text.strip()]
         started = time.perf_counter()
-        result, vector_kept = redact(nodes)
+        result = redact(nodes)
         redact_s = time.perf_counter() - started
         texts = {n.loc: n.text for n in nodes}
         # 人名会全文传播；引擎不保存最初的命中规则，只列能在本文件复现的候选入口。
@@ -212,7 +203,7 @@ def main() -> None:
             print(f'文件 {seq}：段 {len(nodes)}，字 {sum(len(n.text) for n in nodes)}，OCR 页 {parsed.ocr_pages}，'
               f'解析 {parsed_s:.1f}s，脱敏 {redact_s:.1f}s；替换处数按来源 {dict(by_source)}；'
               f'不确定项去重 {unique_uncertain} 个，按原因 {dict(by_reason)}；'
-              f'自检补替换按类别 {dict(by_recheck_category)}；向量辅助保留 {vector_kept} 处', flush=True)
+              f'自检补替换按类别 {dict(by_recheck_category)}', flush=True)
 
     for sheet in book.worksheets:
         for column, width in zip('ABCDEFGHI', (6, 28, 30, 26, 16, 6, 60, 26, 28)):
