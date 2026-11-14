@@ -103,6 +103,7 @@ def test_shared_quote_and_local_phone_revision(case, login, db_sessionmaker):
         ]}, ensure_ascii=False)
         review = validate_output(raw, ctx, load_node_views(db, tid))
         assert review.findings[0].quote_original == '联系电话：13812345678'
+        db.get(ReviewRun, rid).status = "running"  # 模拟审核处理中的最终保存
         db.commit()
         _save(db, rid, ctx, review)
         for row in db.scalars(select(Finding).where(Finding.run_id == rid)):

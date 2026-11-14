@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, text
 
 from app.db import jobs
-from app.db.models import Job, ReviewRun, Task
+from app.db.models import Finding, Job, ReviewRun, Task
 
 
 def _add(sm, type="parse", payload=None, **kw) -> int:
@@ -282,3 +282,31 @@ def test_requeue_stale_finalizes_after_max_attempts(db_sessionmaker, make_user):
         with db_sessionmaker() as db:
             expected = "parsing" if attempt < 3 else "parse_failed"
             assert db.get(Task, tid).status == expected
+
+
+def test_review_heartbeat_failure_discards_only_provisional_findings(db_sessionmaker, make_user):
+    owner = make_user("alice")
+    tid = _task(db_sessionmaker, owner, status="reviewing")
+    rid = _run(db_sessionmaker, owner, tid, status="running")
+    other_tid = _task(db_sessionmaker, owner, status="reviewing")
+    other_rid = _run(db_sessionmaker, owner, other_tid, status="running")
+    with db_sessionmaker() as db:
+        for run_id, task_id, seq in ((rid, tid, -1), (rid, tid, 1), (other_rid, other_tid, -1)):
+            db.add(Finding(run_id=run_id, task_id=task_id, seq=seq, title="虚构问题", category="legal",
+                           severity="medium", cite_status="unverified", problem="虚构内容"))
+        db.commit()
+    before = datetime.now(timezone.utc) - timedelta(hours=1)
+    jid = _add(db_sessionmaker, "review", {"run_id": str(rid)}, status="running",
+               attempts=3, max_attempts=3, heartbeat_at=before)
+    with db_sessionmaker() as db:
+        assert jobs.requeue_stale(db) == 1
+        assert db.get(Job, jid).last_error == "HEARTBEAT_TIMEOUT"
+        assert db.get(ReviewRun, rid).status == "failed"
+        assert list(db.scalars(select(Finding.seq).where(Finding.run_id == rid))) == [1]
+        assert list(db.scalars(select(Finding.seq).where(Finding.run_id == other_rid))) == [-1]
+        # 旧 worker 即使迟到，也不能把失败轮次重新写成成功或改写进度。
+        from app.review import job as review_job
+        assert not review_job._set_progress(db, rid, 0, 1)
+        review_job._save(db, rid, None, None)
+        review_job._finish(db, rid, status="blocked", message="拦截", task_status="awaiting_confirm")
+        assert db.get(ReviewRun, rid, populate_existing=True).status == "failed"

@@ -70,6 +70,9 @@ def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_s
     if found is None:
         return
     run, task = found
+    if run.status not in ("queued", "running"):
+        db.rollback()
+        return
     db.execute(delete(Finding).where(Finding.run_id == run_id, Finding.seq < 0))
     run.status, run.error_message, run.finished_at = status, message, utcnow()
     run.tokens_in += tokens_in
@@ -105,6 +108,9 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
     if found is None:
         return
     run, task = found
+    if run.status != "running":  # 心跳最终失败后迟到的处理结果不得覆盖终态
+        db.rollback()
+        return
     db.execute(delete(Finding).where(Finding.run_id == run_id, Finding.seq < 0))
     for rr in review.requirement_results:
         db.add(RequirementResult(run_id=run.id, req_id=rr.req_id, req_source=rr.req_source, req_text=rr.req_text,
@@ -151,7 +157,7 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
 
 
 def run_review(db: Session, run_id: uuid.UUID) -> None:
-    run = db.get(ReviewRun, run_id)
+    run = db.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update())
     task = db.get(Task, run.task_id) if run is not None else None
     if run is None or task is None:  # 已删除
         return
@@ -215,6 +221,9 @@ def _set_progress(db: Session, run_id: uuid.UUID, done: int, total: int) -> bool
     if found is None:
         return False
     run, _ = found
+    if run.status != "running":
+        db.rollback()
+        return False
     run.chunk_count = total
     run.coverage = {"progress": {"done": done, "total": total}}
     db.commit()

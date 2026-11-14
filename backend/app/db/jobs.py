@@ -8,11 +8,11 @@ import platform
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, BackupRecord, Job, ReviewRun, Task, TaskFile
+from app.db.models import AssistantMessage, BackupRecord, Finding, Job, ReviewRun, Task, TaskFile
 
 # 心跳超过此时间未更新的 running 任务视为 worker 异常退出（SPEC 7.5）
 STALE_AFTER = timedelta(minutes=15)
@@ -119,6 +119,8 @@ def finalize_failed(db: Session, job_type: str, payload: object) -> None:
         run_id = _uuid(payload, "run_id")
         run = db.get(ReviewRun, run_id, with_for_update=True) if run_id else None
         if run is not None and run.status in ("queued", "running"):
+            # 轮次行锁与状态更新同事务，阻止并发流式回调在失败后再写入临时问题。
+            db.execute(delete(Finding).where(Finding.run_id == run.id, Finding.seq < 0))
             run.status, run.error_message, run.finished_at = "failed", REVIEW_INTERNAL_MSG, utcnow()
             task = db.get(Task, run.task_id, with_for_update=True)
             if task is not None and task.status == "reviewing":
