@@ -172,6 +172,18 @@ async function exportRevised(seq: number) {
   } catch (e) { exportError(e) } finally { exporting.value = '' }
 }
 
+// ---- 收尾（V321-E-05）：待处理归零后顶部给出下一步，不让人自己找导出入口 ----
+const doneRun = computed(() => !!run.value && ['completed', 'partial'].includes(run.value.status))
+const handled = computed(() => {
+  const list = run.value?.findings ?? []
+  return { total: list.length, pending: list.filter(f => f.handling_status === 'pending').length,
+    adopted: list.filter(f => f.handling_status === 'adopted').length, ignored: list.filter(f => f.handling_status === 'ignored').length }
+})
+const wrapUp = computed(() => doneRun.value && !props.session.review_running && handled.value.total > 0 && handled.value.pending === 0)
+const wrapUpClosed = ref('')
+const revisedFile = computed(() => task.value.files.find(f => f.annotatable && !f.has_revisions))
+const canRevise = computed(() => !!revisedFile.value && !exportReason.value && !!run.value?.findings.some(f => f.handling_status === 'adopted' && f.suggested_text))
+
 // ---- 头部说明 ----
 const modelText = computed(() => run.value?.model_label ? `${run.value.model_label}（${run.value.model_name ?? '—'}）` : run.value?.model_name ?? '—')
 const details = computed(() => {
@@ -229,6 +241,12 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
       </div>
       <div class="details" :title="details">{{ details }}</div>
     </header>
+    <div v-if="wrapUp && wrapUpClosed !== run?.id" class="wrap-up" role="status">
+      <span class="wrap-text">✓ {{ handled.total }} 条问题都处理完了（采纳 {{ handled.adopted }} · 忽略 {{ handled.ignored }}）</span>
+      <el-button v-if="canRevise" size="small" type="primary" :disabled="!!exporting" @click="exportRevised(revisedFile!.seq)">导出修订版</el-button>
+      <el-button size="small" :type="canRevise ? 'default' : 'primary'" :disabled="!!exporting || !!exportReason" @click="exportReport">导出报告</el-button>
+      <el-button size="small" link aria-label="关闭提示" @click="wrapUpClosed = run?.id ?? ''">×</el-button>
+    </div>
     <el-alert v-if="annotationNotice" type="warning" show-icon closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
     <div :ref="bindSplit" class="split">
       <div class="canvas-col">
@@ -266,6 +284,8 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 .actions { display: flex; align-items: center; gap: 8px; margin: 0 0 0 auto; }
 .actions :deep(.el-button + .el-button) { margin-left: 0; }
 .details { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-3); font: var(--si-font-caption); }
+.wrap-up { flex: none; display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 12px; border-radius: var(--si-radius-card); background: var(--el-color-success-light-9); color: var(--si-ok-ink); }
+.wrap-text { flex: 1; min-width: 0; font: var(--si-font-label); }
 .annotation-notice { flex: none; margin-top: 8px; }
 .split { display: flex; flex: 1; min-height: 0; gap: 12px; padding: 12px 0 16px; }
 .canvas-col { flex: 1; min-width: 420px; min-height: 0; display: flex; flex-direction: column; }

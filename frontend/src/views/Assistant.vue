@@ -23,7 +23,12 @@ const modeModel = computed<'ask' | 'review'>({
   get: () => mode.value,
   set: value => { void router.replace({ path: route.path, query: value === 'review' ? { mode: 'review' } : {} }) },
 })
-const modeOptions = [{ value: 'ask' as const, label: '直接提问' }, { value: 'review' as const, label: '全面审核' }]
+// 审核状态（V321-E-03）：页签小圆点、侧栏标记、浏览器标题三处同步；完成时人不在审核视图，页签与标题留“完成”提示，打开审核视图即清除
+const reviewDone = ref(false)
+const modeOptions = computed(() => [{ value: 'ask' as const, label: '直接提问' },
+  { value: 'review' as const, label: '全面审核', ...(session.value?.review_running ? { badge: 'busy' as const, badgeLabel: '审核进行中' } : reviewDone.value ? { badge: 'done' as const, badgeLabel: '审核已完成' } : {}) }])
+const baseTitle = document.title
+function syncTitle() { document.title = session.value?.review_running ? `（审核中）${baseTitle}` : reviewDone.value ? `（审核完成）${baseTitle}` : baseTitle }
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), template = ref<Template | null>(null)
 const loading = ref(false), error = ref(''), working = ref(false)
@@ -36,7 +41,15 @@ const threadOf = (findingId: string) => messages.value.filter(m => m.finding_id 
 function discuss(next: Anchor) { anchor.value = next }
 // 审核视图第一次打开后只隐藏不卸载：来回切换视图时原文、问题栏的滚动与选中都保留
 const reviewSeen = ref(mode.value === 'review')
-watch(mode, value => { if (value === 'review') reviewSeen.value = true })
+watch(mode, value => { if (value === 'review') { reviewSeen.value = true; reviewDone.value = false } })
+watch(() => session.value?.review_running, (running, was) => {
+  if (was && !running && session.value) { reviewDone.value = mode.value !== 'review' || document.hidden; void sessions.refresh() }
+  syncTitle()
+})
+watch(reviewDone, syncTitle)
+function seeResult() { modeModel.value = 'review' }
+// 本会话在侧栏的“审核完成”标记：打开即视为看过
+watch(() => [sessions.finished, id.value], () => { if (id.value) sessions.seen(id.value) }, { immediate: true })
 // 讨论回复保存为该问题的修改建议（V32-B-03）；保存结果直接回传给结果页更新该问题（V321-E-02）
 const draftOpen = ref(false), draftMessage = ref<Message | null>(null)
 let draftUpdate: ((finding: Finding) => void) | null = null
@@ -53,7 +66,7 @@ function schedule() {
 }
 async function load() {
   const current = ++version, selected = id.value
-  clearTimeout(timer); session.value = null; messages.value = []; offsets.clear(); drawerOpen.value = false; anchor.value = null
+  clearTimeout(timer); session.value = null; messages.value = []; offsets.clear(); drawerOpen.value = false; anchor.value = null; reviewDone.value = false; syncTitle()
   template.value = carryTemplate; carryTemplate = null
   loading.value = !!selected; error.value = ''
   if (!selected || !active || current !== version) { loading.value = false; return }
@@ -175,14 +188,17 @@ async function stop(mid: number) { try { await assistantApi.stop(id.value, mid);
 async function retry(mid: number) { try { await assistantApi.retry(id.value, mid); await refresh() } catch (e) { error.value = failure(e) } }
 // 本会话正在生成的回复（输入框的发送按钮原位变为停止）
 // V31-U5F-04：只加了文件、还没发出第一条消息时保持首页布局（输入框不动，文件标签在框内），发出后才转为对话布局
-const homeLike = computed(() => !!session.value && !shown.value.length && mode.value === 'ask')
+const homeLike = computed(() => !!session.value && !shown.value.length && mode.value === 'ask' && !session.value.review_running && !reviewDone.value)
 const generating = computed(() => messages.value.find(m => m.role === 'assistant' && ['queued', 'streaming'].includes(m.status))?.id ?? null)
 // 在侧栏改名后同步标题
 watch(() => sessions.items.find(item => item.id === id.value)?.title, title => { if (title && session.value) session.value.title = title })
 watch(id, load, { immediate: true })
-function visibility() { if (document.hidden) clearTimeout(timer); else void poll() }
+function visibility() {
+  if (document.hidden) clearTimeout(timer)
+  else { void poll(); if (reviewDone.value && mode.value === 'review') reviewDone.value = false }
+}
 onMounted(() => document.addEventListener('visibilitychange', visibility))
-onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); active = false; ++version; clearTimeout(timer); offsets.clear() })
+onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); document.title = baseTitle; active = false; ++version; clearTimeout(timer); offsets.clear() })
 </script>
 <template>
   <div class="page page--split assistant-page">
@@ -198,6 +214,11 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           <SiSegmented v-if="canReview" v-model="modeModel" :options="modeOptions" size="small" ariaLabel="工作台视图" />
           <el-button size="small" @click="drawerOpen = true"><Files :size="14" :stroke-width="1.75" /><span class="files-label">材料 {{ session.files.length }}</span></el-button>
           <el-button link type="danger" :disabled="working || session.review_running" @click="remove(session)">删除会话</el-button>
+        </div>
+        <div v-if="mode === 'ask' && (session.review_running || reviewDone)" class="review-note" role="status">
+          <span v-if="session.review_running">审核进行中，完成后可提问。进度与已出现的问题在“全面审核”里看。</span>
+          <span v-else>审核已完成，可以在“全面审核”里查看问题，也可以继续提问。</span>
+          <el-button size="small" type="primary" link @click="seeResult">{{ session.review_running ? '查看进度' : '查看结果' }}</el-button>
         </div>
         <Transition name="rise"><Conversation v-if="!homeLike" v-show="mode === 'ask'" :messages="shown" :session-id="id" @stop="stop" @retry="retry" /></Transition>
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
@@ -234,6 +255,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .dialogue { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
 .toolbar { display: flex; gap: 12px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--el-border-color-light); }
 .title { flex: 1; min-width: 0; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: left; font: var(--si-font-h2); }
+.review-note { display: flex; gap: 12px; align-items: center; justify-content: center; margin: 12px 20px 0; padding: 8px 12px; border-radius: var(--si-radius-card); background: var(--si-surface-1); border: 1px solid var(--si-hair); color: var(--si-ink-2); font: var(--si-font-body); }
 .files-label { margin-left: 6px; }
 .mode-row { display: flex; justify-content: center; margin-bottom: 16px; }
 .review-home { width: min(640px, calc(100% - 48px)); margin: 0 auto; }

@@ -189,6 +189,7 @@ async function copy(text: string) {
 .basis .text, .muted { color: var(--si-ink-3); font: var(--si-font-meta); }
 .muted { margin: 0; }
 .badges { display: flex; flex-wrap: wrap; gap: 6px; }
-.handling { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid var(--si-hair); }
+/* 处理按钮固定在卡片可见区的底边（V321-E-05）：长卡片不用滚到最底下才能采纳或忽略 */
+.handling { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--si-hair); background: var(--si-surface-1); }
 .note { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; font: var(--si-font-meta); }
 </style>

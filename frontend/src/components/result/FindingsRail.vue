@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { ListChecks } from '@lucide/vue'
+import { ApiError } from '@/api/http'
 import type { LocalFinding } from '@/api/localFindings'
-import type { Finding, RunDetail } from '@/api/runs'
+import { runsApi, type Finding, type HandlingStatus, type RunDetail } from '@/api/runs'
 import EmptyState from '@/components/EmptyState.vue'
 import FindingCard from '@/components/FindingCard.vue'
 import LocalCheckList from '@/components/result/LocalCheckList.vue'
@@ -65,6 +67,47 @@ onMounted(() => {
   setTimeout(() => { stagger.value = false }, 1200)
 })
 
+// 键盘处理（V321-E-05）：↑↓（或 K/J）切换问题，A 采纳，I 忽略；处理后自动跳到下一条待处理。
+// 在输入框、下拉、弹窗里不响应；讨论栏打开时问题栏隐藏，同样不响应。
+const rail = ref<HTMLElement>()
+let keyBusy = false
+function inField(target: EventTarget | null) {
+  const el = target as HTMLElement | null
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest('.si-segmented, .el-dialog, .el-drawer, .el-message-box, .el-select-dropdown'))
+}
+function step(delta: number) {
+  const list = props.findings
+  if (!list.length) return
+  const at = list.findIndex(f => f.id === props.selectedId)
+  const next = list[at < 0 ? (delta > 0 ? 0 : list.length - 1) : Math.min(list.length - 1, Math.max(0, at + delta))]
+  if (next && next.id !== props.selectedId) emit('select', next)
+}
+async function handle(status: HandlingStatus) {
+  const current = props.findings.find(f => f.id === props.selectedId)
+  if (!current || keyBusy) return
+  keyBusy = true
+  const list = props.findings, at = list.indexOf(current)
+  try {
+    // 已是该状态时不重复保存，只跳到下一条待处理
+    if (current.handling_status !== status) emit('updated', await runsApi.patchFinding(current.id, { handling_status: status }))
+    const next = [...list.slice(at + 1), ...list.slice(0, at)].find(f => f.handling_status === 'pending')
+    if (next) emit('select', next)
+  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '保存失败，请重试') }
+  finally { keyBusy = false }
+}
+function onKey(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return
+  if (props.localOnly || zone.value !== 'ai' || !props.run || props.runLoading || !rail.value?.offsetParent) return
+  if (inField(e.target) || document.body.classList.contains('el-popup-parent--hidden')) return
+  const key = e.key.toLowerCase()
+  if (key === 'arrowdown' || key === 'j') { e.preventDefault(); step(1) }
+  else if (key === 'arrowup' || key === 'k') { e.preventDefault(); step(-1) }
+  else if (key === 'a') { e.preventDefault(); void handle('adopted') }
+  else if (key === 'i') { e.preventDefault(); void handle('ignored') }
+}
+onMounted(() => document.addEventListener('keydown', onKey))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
+
 const aiEl = ref<HTMLElement>()
 const localEl = ref<HTMLElement>()
 const reqEl = ref<HTMLElement>()
@@ -79,7 +122,7 @@ watch(() => props.selectedId, async (id) => {
 </script>
 
 <template>
-  <aside class="rail">
+  <aside ref="rail" class="rail">
     <el-alert v-if="runError" type="error" show-icon :closable="false" :title="runError" class="alert" />
     <template v-if="run">
       <el-alert v-if="run.status === 'failed'" type="error" show-icon :closable="false" :title="run.error_message || '审核失败'" class="alert" />
@@ -97,6 +140,7 @@ watch(() => props.selectedId, async (id) => {
             <el-select v-model="category" clearable placeholder="类别" size="small" class="filter"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
           </ZoneHeader>
           <div class="handling-switch"><SiSegmented v-model="handling" :options="handlingCounts" size="small" ariaLabel="按处理状态筛选" /></div>
+          <p v-if="props.run?.status !== 'failed' && findings.length" class="keys hint">快捷键：<kbd>↑</kbd><kbd>↓</kbd> 切换 · <kbd>A</kbd> 采纳 · <kbd>I</kbd> 忽略</p>
           <TransitionGroup name="si-list" tag="div" class="cards" :appear="stagger">
             <FindingCard v-for="(f, i) in findings" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled" :discuss-enabled="discussEnabled"
               :style="stagger && i < 12 ? { transitionDelay: `${i * 30}ms` } : undefined"
@@ -133,5 +177,7 @@ watch(() => props.selectedId, async (id) => {
 .handling-switch { margin: 4px 0 8px; }
 .handling-switch :deep(.si-segmented) { display: flex; width: 100%; }
 .handling-switch :deep(.si-segmented button) { flex: 1; }
+.keys { margin: 0 0 4px; }
+.keys kbd { margin: 0 2px; padding: 0 5px; border: 1px solid var(--si-hair-strong); border-radius: 4px; background: var(--si-surface-2); font: var(--si-font-code-sm); }
 .cards { position: relative; display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 </style>

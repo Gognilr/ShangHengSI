@@ -39,9 +39,11 @@ function onCommand(item: SessionItem, cmd: string) { if (cmd === 'rename') renam
     <h2 class="heading">近期会话</h2>
     <ul v-if="store.items.length">
       <li v-for="item in store.items" :key="item.id" class="row" :class="{ current: item.id === current }">
-        <router-link :to="`/assistant/${item.id}`" class="link" :title="item.title" :aria-current="item.id === current ? 'page' : undefined">
+        <router-link :to="{ path: `/assistant/${item.id}`, query: item.run_count ? { mode: 'review' } : {} }" class="link" :title="item.title" :aria-current="item.id === current ? 'page' : undefined">
           <span v-if="item.generating" class="dot" aria-label="生成中"></span>
           <span class="title">{{ item.title }}</span>
+          <span v-if="item.reviewing" class="tag tag--busy">审核中</span>
+          <span v-else-if="store.finished.has(item.id) && item.id !== current" class="tag tag--done">审核完成</span>
         </router-link>
         <el-dropdown trigger="click" placement="bottom-end" @command="onCommand(item, $event)">
           <button type="button" class="more" aria-label="会话操作" :title="`“${item.title}”的操作`"><Ellipsis :size="16" :stroke-width="1.75" /></button>
@@ -70,6 +72,9 @@ ul { margin: 0; padding: 0; list-style: none; }
 .link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 4px 6px 12px; color: var(--el-text-color-regular); text-decoration: none; font: var(--si-font-body); }
 .row.current .link { color: var(--si-ink-1); }
 .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { flex: none; padding: 0 6px; border-radius: 4px; font: var(--si-font-label-sm); }
+.tag--busy { color: var(--si-blue-ink); background: color-mix(in srgb, var(--si-blue) 14%, transparent); }
+.tag--done { color: var(--el-color-success); background: var(--el-color-success-light-9); }
 .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--el-color-primary); }
 .more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--el-text-color-secondary); cursor: pointer; opacity: 0; transition: opacity var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
 .row:hover .more, .row:focus-within .more, .more[aria-expanded="true"] { opacity: 1; }

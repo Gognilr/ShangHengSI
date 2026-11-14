@@ -30,6 +30,9 @@ class SessionItem(BaseModel):
     original_deleted: bool
     generating: bool = False
     purpose: Literal['chat', 'meeting', 'translate'] = 'chat'
+    # 侧栏列表用（V321-E-03）：审核排队或进行中、已发起的轮数；单个会话详情里以 review_running 为准
+    reviewing: bool = False
+    run_count: int = 0
 
 
 class SessionCreate(BaseModel):
@@ -106,6 +109,10 @@ class HistoryItem(TaskListItem):
     last_activity_at: UtcDatetime
     run_count: int = 0
     file_count: int = 0
+    # 最新一轮（V321-E-04）：待处理问题数、可导出报告的轮次 id、审核排队或进行中；本轮高风险数沿用 high_count
+    pending_count: int = 0
+    latest_run_id: uuid.UUID | None = None
+    reviewing: bool = False
 
 
 class HistoryPage(BaseModel):

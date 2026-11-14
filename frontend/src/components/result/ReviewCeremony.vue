@@ -159,8 +159,8 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
       </li>
     </ol>
     <div class="foot">
-      <span class="num">{{ elapsed }}<template v-if="elapsed"> · </template>可以离开页面，完成后自动打开结果</span>
-      <el-button @click="$router.push('/history')">返回历史记录</el-button>
+      <span class="num">{{ elapsed }}<template v-if="elapsed"> · </template>可以离开页面，完成后在侧栏和页签上标出，回来即是结果</span>
+      <el-button @click="$router.push('/history')">稍后再看</el-button>
     </div>
     <div class="foot hint">
       <span class="not-sent">不发送：{{ notSent }}</span>

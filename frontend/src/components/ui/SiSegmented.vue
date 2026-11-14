@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 /** 分段控件（V31-U1 第五节）：role="radiogroup"，←/→ 切换并选中，选中块用 transform 与宽度滑动。 */
-interface Option { value: T; label: string; disabled?: boolean }
+interface Option { value: T; label: string; disabled?: boolean; badge?: 'busy' | 'done'; badgeLabel?: string }
 const props = withDefaults(defineProps<{ options: Option[]; size?: 'default' | 'small'; ariaLabel: string }>(), { size: 'default' })
 const model = defineModel<T>({ required: true })
 
@@ -68,7 +68,7 @@ watch(() => [model.value, props.options], () => { void nextTick(measure) }, { de
       :tabindex="tabbable(index) ? 0 : -1"
       :disabled="option.disabled"
       @click="model = option.value"
-    >{{ option.label }}</button>
+    >{{ option.label }}<i v-if="option.badge" class="badge" :class="`badge--${option.badge}`" role="img" :aria-label="option.badgeLabel ?? ''" /></button>
   </div>
 </template>
 
@@ -81,6 +81,11 @@ watch(() => [model.value, props.options], () => { void nextTick(measure) }, { de
 .si-segmented--small .option { padding: 0 10px; font: var(--si-font-label-sm); }
 .option:hover:not(:disabled) { color: var(--si-ink-1); }
 .option.selected { color: var(--si-ink-1); }
+.badge { display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 2px; border-radius: 50%; }
+.badge--busy { background: var(--el-color-primary); animation: seg-pulse 1.4s var(--si-ease) infinite; }
+.badge--done { background: var(--el-color-success); }
+@keyframes seg-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .badge--busy { animation: none; } }
 .option:disabled { color: var(--si-ink-5); cursor: not-allowed; }
 .option:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 </style>

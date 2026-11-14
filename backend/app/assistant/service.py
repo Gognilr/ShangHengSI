@@ -72,11 +72,12 @@ def choose_model(db: Session, task: Task, model_id=None, template=None):
     return select_model(db, model_id, "assist", structured=template == "compare")
 
 
-def _item(task: Task, files: list[TaskFile], *, generating: bool = False) -> SessionItem:
+def _item(task: Task, files: list[TaskFile], *, generating: bool = False, reviewing: bool = False,
+          run_count: int = 0) -> SessionItem:
     return SessionItem(id=task.id, title=task.title, status=task.status, file_count=len(files),
                        last_activity_at=task.last_activity_at,
                        original_deleted=any(f.original_deleted_at is not None for f in files), generating=generating,
-                       purpose=task.purpose)
+                       purpose=task.purpose, reviewing=reviewing, run_count=run_count)
 
 
 def detail(db: Session, task: Task) -> SessionDetail:
@@ -542,14 +543,20 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
     generating = set(db.scalars(select(AssistantMessage.task_id).where(
         AssistantMessage.task_id.in_([task.id for task in rows]), AssistantMessage.role == 'assistant',
         AssistantMessage.status.in_(('queued', 'streaming')))))
-    return SessionPage(items=[_item(t, _files(db, t), generating=t.id in generating) for t in rows], total=total, page=page,
+    from app.db.models import ReviewRun
+    ids = [t.id for t in rows]
+    run_stats = {tid: (n, active) for tid, n, active in db.execute(
+        select(ReviewRun.task_id, func.count(), func.bool_or(ReviewRun.status.in_(('queued', 'running'))))
+        .where(ReviewRun.task_id.in_(ids)).group_by(ReviewRun.task_id))} if ids else {}
+    return SessionPage(items=[_item(t, _files(db, t), generating=t.id in generating, run_count=run_stats.get(t.id, (0, False))[0],
+                                    reviewing=t.purpose == 'chat' and run_stats.get(t.id, (0, False))[1]) for t in rows], total=total, page=page,
                        kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')), asr_enabled=asr_enabled(), mt_enabled=mt_enabled())
 
 
 def history(db: Session, user: User, q: str | None, date_from, date_to, page: int) -> HistoryPage:
     """历史记录（V32-B-01）：本人的工作台会话与旧审核任务合并，按最近活动倒序一页返回；会议纪要、翻译不在其中。"""
     from datetime import datetime, time, timedelta
-    from app.db.models import ReviewRun
+    from app.db.models import Finding, ReviewRun
     size = tasks.PAGE_SIZE
     conds = [Task.owner_id == user.id, (Task.kind == "review") | ((Task.kind == "assistant") & (Task.purpose == "chat"))]
     # 没有发过消息、没有文件的空会话不列
@@ -573,11 +580,23 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
                            .group_by(ReviewRun.task_id)).all()) if ids else {}
     files = dict(db.execute(select(TaskFile.task_id, func.count()).where(TaskFile.task_id.in_(ids))
                             .group_by(TaskFile.task_id)).all()) if ids else {}
+    # 最新一轮：待处理数、轮次 id、是否进行中（会话行与旧审核任务行都带，行内导出报告用）
+    latest: dict = {}
+    for run in db.execute(select(ReviewRun.task_id, ReviewRun.id, ReviewRun.status).where(ReviewRun.task_id.in_(ids))
+                          .order_by(ReviewRun.run_no.desc())).all() if ids else []:
+        latest.setdefault(run.task_id, run)
+    pending = dict(db.execute(select(Finding.run_id, func.count()).where(
+        Finding.run_id.in_([r.id for r in latest.values()]), Finding.handling_status == 'pending')
+        .group_by(Finding.run_id)).all()) if latest else {}
     items = []
     for t, doc_type in rows:
         row = tasks.list_row(db, t, doc_type)
+        last = latest.get(t.id)
         items.append(HistoryItem(**row.model_dump(), kind="review" if t.kind == "review" else "session",
-                                 last_activity_at=t.last_activity_at, run_count=runs.get(t.id, 0), file_count=files.get(t.id, 0)))
+                                 last_activity_at=t.last_activity_at, run_count=runs.get(t.id, 0), file_count=files.get(t.id, 0),
+                                 pending_count=pending.get(last.id, 0) if last else 0,
+                                 latest_run_id=last.id if last and last.status in ("completed", "partial") else None,
+                                 reviewing=bool(last and last.status in ("queued", "running"))))
     return HistoryPage(items=items, total=total, page=page, page_size=size)
 
 

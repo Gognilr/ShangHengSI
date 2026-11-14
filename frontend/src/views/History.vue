@@ -32,25 +32,19 @@ const error = ref('')
 const exporting = ref('')
 
 async function exportReport(row: HistoryItem) {
-  if (exporting.value || row.kind !== 'review') return
+  if (exporting.value) return
   exporting.value = row.id
   try {
-    let result: SaveResult
-    if (row.status === 'completed_local') result = await reportApi.local(row.id)
-    else {
-      const detail = await tasksApi.get(row.id)
-      const latest = detail.latest_run
-      if (!latest || ['queued', 'running', 'blocked'].includes(latest.status)) {
-        ElMessage.error('最新轮次尚未完成，无法导出，请刷新列表')
-        return
-      }
-      result = await reportApi.run(latest.id)
-    }
+    // 会话与旧审核任务一样：导出最新一轮的报告；仅本地校验的旧任务导出本地报告
+    const result: SaveResult = row.status === 'completed_local' && row.kind === 'review' ? await reportApi.local(row.id)
+      : row.latest_run_id ? await reportApi.run(row.latest_run_id) : 'cancelled'
     if (result === 'downloaded') ElMessage.success('报告已下载')
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
   } finally { exporting.value = '' }
 }
+const canExport = (row: HistoryItem) => !row.reviewing && (!!row.latest_run_id || (row.kind === 'review' && row.status === 'completed_local'))
+const hasRun = (row: HistoryItem) => row.kind === 'review' ? row.status === 'reviewed' : row.run_count > 0
 
 const q = ref('')
 // 日期范围：YYYY-MM-DD（按 Asia/Shanghai 日界，由后端换算）
@@ -136,30 +130,31 @@ onMounted(load)
 
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />
 
-    <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['170px', '1fr', '90px', '110px', '80px', '130px', '120px', '110px', '180px']" />
+    <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['160px', '1fr', '80px', '100px', '70px', '130px', '80px', '80px', '110px', '120px']" />
     <el-table v-else v-loading="loading" :data="items" :max-height="tableMax">
       <template #empty><EmptyState :icon="FileSearch" title="没有历史记录" description="在工作台提问或完成审核后，记录会出现在这里。"><el-button @click="router.push('/assistant')">去工作台</el-button></EmptyState></template>
-      <el-table-column label="最近活动" width="170">
+      <el-table-column label="最近活动" width="160">
         <template #default="{ row }"><span class="num">{{ formatDateTime(row.last_activity_at) }}</span></template>
       </el-table-column>
-      <el-table-column prop="title" label="名称" min-width="160" show-overflow-tooltip><template #default="{ row }"><div class="file-cell"><span v-if="row.kind === 'review'" class="file-badge" :class="`badge-${fileBadge(row.title).toLowerCase()}`">{{ fileBadge(row.title) }}</span><span v-else class="file-badge badge-session"><MessageSquare :size="16" :stroke-width="1.75" /></span><span class="file-title">{{ row.title }}</span></div></template></el-table-column>
-      <el-table-column label="类型" width="90"><template #default="{ row }">{{ row.kind === 'session' ? '会话' : '审核任务' }}</template></el-table-column>
-      <el-table-column label="文件类型" width="110">
+      <el-table-column prop="title" label="名称" min-width="260" show-overflow-tooltip><template #default="{ row }"><div class="file-cell"><span v-if="row.kind === 'review'" class="file-badge" :class="`badge-${fileBadge(row.title).toLowerCase()}`">{{ fileBadge(row.title) }}</span><span v-else class="file-badge badge-session"><MessageSquare :size="16" :stroke-width="1.75" /></span><span class="file-title">{{ row.title }}</span></div></template></el-table-column>
+      <el-table-column label="类型" width="80"><template #default="{ row }">{{ row.kind === 'session' ? '会话' : '审核任务' }}</template></el-table-column>
+      <el-table-column label="文件类型" width="100">
         <template #default="{ row }">{{ docTypeLabel(row.doc_type) }}</template>
       </el-table-column>
-      <el-table-column label="立场" width="80">
+      <el-table-column label="立场" width="70">
         <template #default="{ row }">{{ row.kind === 'review' || row.run_count ? stanceLabel(row.stance) : '—' }}</template>
       </el-table-column>
       <el-table-column label="状态" width="130">
-        <template #default="{ row }"><span v-if="row.kind === 'session'" class="num">{{ row.run_count ? `已审核 ${row.run_count} 轮` : '对话' }}</span><el-tag v-else class="status-pill" disable-transitions size="small" :type="statusTag(row.status).type" :effect="statusTag(row.status).effect">{{ statusLabel(row.status) }}</el-tag></template>
+        <template #default="{ row }"><span v-if="row.reviewing" class="num busy">审核中</span><span v-else-if="row.kind === 'session'" class="num">{{ row.run_count ? `已审核 ${row.run_count} 轮` : '对话' }}</span><el-tag v-else class="status-pill" disable-transitions size="small" :type="statusTag(row.status).type" :effect="statusTag(row.status).effect">{{ statusLabel(row.status) }}</el-tag></template>
       </el-table-column>
-      <el-table-column label="高风险问题数" width="120" align="center"><template #default="{ row }"><span class="num" :class="{ 'high-count': row.high_count > 0 }">{{ row.kind === 'review' && row.high_count ? row.high_count : '—' }}</span></template></el-table-column>
+      <el-table-column label="高风险" width="80" align="center"><template #default="{ row }"><span class="num" :class="{ 'high-count': row.high_count > 0 }">{{ hasRun(row) ? row.high_count : '—' }}</span></template></el-table-column>
+      <el-table-column label="待处理" width="80" align="center"><template #default="{ row }"><span class="num" :class="{ 'pending-count': row.pending_count > 0 }">{{ hasRun(row) ? row.pending_count : '—' }}</span></template></el-table-column>
       <el-table-column label="保留至" width="110"><template #default="{ row }"><span class="num" :class="{ expiring: expiring(row.task_expires_at) }">{{ row.task_expires_at ? formatDate(row.task_expires_at) : row.kind === 'session' ? '—' : '永久' }}</span></template></el-table-column>
       <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="open(row)">{{ row.status === 'draft' ? '继续' : '打开' }}</el-button>
           <RowMore>
-            <el-dropdown-item v-if="row.kind === 'review' && ['reviewed', 'completed_local'].includes(row.status)" :disabled="!!exporting" @click="exportReport(row)">导出报告</el-dropdown-item>
+            <el-dropdown-item v-if="canExport(row)" :disabled="!!exporting" @click="exportReport(row)">导出最新一轮报告</el-dropdown-item>
             <el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item>
           </RowMore>
         </template>
@@ -206,4 +201,6 @@ onMounted(load)
 .badge-img { color: var(--el-color-info); background: var(--el-color-info-light-9); }
 .high-count { color: var(--el-color-danger); }
 .high-count { font-weight: 600; }
+.pending-count { color: var(--si-warn-ink); font-weight: 600; }
+.busy { color: var(--si-blue-ink); }
 </style>
