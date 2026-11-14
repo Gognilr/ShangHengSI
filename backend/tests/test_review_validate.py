@@ -432,3 +432,23 @@ def test_finding_stream_yields_only_complete_top_level_items():
     for char in raw:
         stream.feed(char)
     assert [item["title"] for item in seen] == ['甲"乙', '二']
+
+
+def test_f01_catch_all_finding_merged_into_other_group():
+    """V321Q-25：同一首位置、不同审核组，兜底项（G-02/G-11/G-12 或无要求）并入实质问题；两条实质问题不合并；未关联要求的一条也并入。"""
+    from app.review.requirements import Requirement
+    from app.review.validate import FindingView, _merge_cross_group
+
+    reqs = [Requirement(i, "builtin", d, "") for i, d in
+            (("G-02", "表述"), ("G-12", "商务"), ("C-07", "法律"), ("C-02", "商务"), ("C-16", "商务"))]
+
+    def f(title, req_ids, loc, severity="medium"):
+        return FindingView(title, "commercial", severity, req_ids, [loc], False, "verified", None, None,
+                           "", None, None, None, None)
+
+    out = _merge_cross_group([f("对方可单方解除", ["G-12"], "F1-P11", "high"), f("单方解除权", ["C-07"], "F1-P11"),
+                              f("预付无担保", ["C-02"], "F1-P7"), f("发票未约定", ["C-16"], "F1-P7"),
+                              f("期限含糊", ["G-02"], "F1-P6"), f("期限含糊又一条", [], "F1-P6")], reqs)
+    assert [(x.title, x.req_ids, x.severity) for x in out] == [
+        ("单方解除权", ["C-07", "G-12"], "high"), ("预付无担保", ["C-02"], "medium"),
+        ("发票未约定", ["C-16"], "medium"), ("期限含糊", ["G-02"], "medium")]

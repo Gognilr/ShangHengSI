@@ -283,6 +283,32 @@ def _merge_duplicates(findings: list[FindingView]) -> list[FindingView]:
     return out
 
 
+def _merge_cross_group(findings: list[FindingView], requirements) -> list[FindingView]:
+    """V321Q-25：四组并发互不可见，同一条款常被兜底要求再报一次。首个位置相同、来自不同审核组，
+    且其中一条只关联兜底要求（或未关联任何要求）时并为一条：保留实质问题的文字，合并要求与位置，取较高严重程度。"""
+    from app.review.requirements import CATCH_ALL, dimension_group
+    group = {r.id: dimension_group(r.dimension) for r in requirements}
+    groups = lambda f: {group.get(r, 3) for r in f.req_ids}
+    weak = lambda f: set(f.req_ids) <= CATCH_ALL
+    out: list[FindingView] = []
+    for f in findings:
+        i = next((i for i, g in enumerate(out) if f.locs and g.locs and f.locs[0] == g.locs[0]
+                  and not (groups(f) & groups(g)) and (weak(f) or weak(g))), None)
+        if i is None:
+            out.append(f)
+            continue
+        same = out[i]
+        if weak(same) and not weak(f):  # 实质问题后到：换成它的文字，原来的兜底项并入
+            out[i], f, same = f, same, f
+        same.req_ids += [r for r in f.req_ids if r not in same.req_ids]
+        same.locs += [loc for loc in f.locs if loc not in same.locs]
+        same.law_refs += [r for r in f.law_refs if r not in same.law_refs]
+        same.law_unverified = same.law_unverified or f.law_unverified
+        if _SEVERITY_RANK[f.severity] > _SEVERITY_RANK[same.severity]:
+            same.severity = f.severity
+    return out
+
+
 def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
                     chunk: Chunk | None = None) -> ValidatedReview:
     """按 11.4 校验并整理模型输出。nodes 为本任务的正文节点（loc → 视图，含报价明细表汇总行）。
@@ -385,7 +411,7 @@ def merge_reviews(ctx: ReviewContext, outcomes: list[ChunkOutcome]) -> Validated
     merged = ValidatedReview(
         doc_summary=reviews[0].doc_summary,
         requirement_results=results,
-        findings=_merge_duplicates([f for r in reviews for f in r.findings]),
+        findings=_merge_cross_group(_merge_duplicates([f for r in reviews for f in r.findings]), ctx.requirements),
         sanctions_level=level,
         sanctions_reasons=reasons,
     )

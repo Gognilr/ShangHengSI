@@ -1,0 +1,9 @@
+{
+  "note": "V321-F-01 数字证据（只有计数）。8 份虚构金标 × 两轮，deepseek-flash 开启思考 low，--gold --session --date-shift --repeat 2；基线取 D-03 评测库已存结果（审核提示词与内置要求自 D-03 未变），合并为本地确定性处理，按已存问题离线重算。",
+  "baseline_d03": {"findings": 389, "high": 165, "medium": 199, "low": 25, "missing": 141, "medium_share": 0.512, "jaccard_two_runs": 0.588, "issue_hits": "90/90", "severity_hits": "89/90", "verdict_agree": "102/102", "laziness": 0},
+  "baseline_plus_cross_group_merge": {"findings": 309, "high": 121, "medium": 164, "low": 24, "medium_share": 0.531, "jaccard_two_runs": 0.726, "issue_hits": "90/90", "severity_hits": "89/90", "verdict_agree": "102/102"},
+  "prompt_candidate_2026.11-11": {"findings": 317, "high": 143, "medium": 141, "low": 33, "missing": 106, "medium_share": 0.445, "jaccard_two_runs": 0.668, "issue_hits": "90/90", "severity_hits": "88/90", "verdict_agree": "102/102", "laziness": 0, "unable_rate": 0.0487},
+  "prompt_candidate_plus_merge": {"findings": 273, "medium_share": 0.451, "jaccard_two_runs": 0.665, "issue_hits": "90/90", "severity_hits": "89/90"},
+  "service_probe_purchase_incoming": {"current_prompt_findings": [25, 23], "current_plus_merge": [21, 16], "candidate_findings": [18, 17], "candidate_plus_merge": [15, 13], "C-04_verdict_all_runs": "na", "goods_only_findings": 0},
+  "calls": {"sent": 81, "tokens_in": 192651, "tokens_out": 504785, "blocked_or_retry": 0}
+}

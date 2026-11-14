@@ -21,15 +21,25 @@ class Requirement:
     text: str
 
 
+_GROUPS = {"表述": 0, "逻辑": 0, "法律": 1, "合规与制裁": 2}
+
+# 兜底类要求：含糊表述、超出能力的承诺、对我方不利或异常的条款。四组互不可见，兜底项常与别组的实质问题重复（V321Q-25）。
+CATCH_ALL = frozenset({"G-02", "G-11", "G-12"})
+
+
+def dimension_group(dimension: str | None) -> int:
+    """要求所属的审核组；公司、本次补充及未知维度归商务组（3）。"""
+    return _GROUPS.get(dimension, 3)
+
+
 def group_requirements(requirements: list[Requirement]) -> list[list[Requirement]]:
     """按维度分四组，保持组内顺序；公司、本次补充及未知维度归商务组，不遗漏或重复。
 
     每组均由调用方提供全文。没有要求时仍保留一次审核，以取得摘要与问题。
     """
     groups: list[list[Requirement]] = [[], [], [], []]
-    dimensions = {"表述": 0, "逻辑": 0, "法律": 1, "合规与制裁": 2}
     for req in requirements:
-        groups[dimensions.get(req.dimension, 3)].append(req)
+        groups[dimension_group(req.dimension)].append(req)
     return [group for group in groups if group] or [[]]
 
 
