@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { confirmOnce } from '@/utils/confirmOnce'
 import { Plus } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { assistantApi, confirmationTask, type Session } from '@/api/assistant'
@@ -146,7 +147,7 @@ async function exportAnnotated(seq: number) {
   if (!run.value || exporting.value || exportReason.value) return
   if (!['completed', 'partial'].includes(run.value.status) || !task.value.files.some(file => file.seq === seq && file.annotatable)) return
   const runId = run.value.id
-  try { await ElMessageBox.confirm('批注版含内部审核意见，请勿直接发给对方。', '导出批注版', { type: 'warning', confirmButtonText: '导出批注版', cancelButtonText: '取消' }) } catch { return }
+  if (!await confirmOnce('annotated', '批注版含内部审核意见，请勿直接发给对方。', '导出批注版', '导出批注版')) return
   exporting.value = '批注版'
   try {
     const { saveResult, total, unanchored } = await reportApi.annotated(runId, seq)
@@ -161,7 +162,7 @@ async function exportRevised(seq: number) {
   if (!['completed', 'partial'].includes(run.value.status)
     || !task.value.files.some(file => file.seq === seq && file.annotatable && !file.has_revisions)) return
   const runId = run.value.id
-  try { await ElMessageBox.confirm('修订版按已采纳的问题改写条款，请在 Word 中逐条核对后接受或拒绝；文件中如有批注，发给对方前请先删除。', '导出修订版', { type: 'warning', confirmButtonText: '导出修订版', cancelButtonText: '取消' }) } catch { return }
+  if (!await confirmOnce('revised', '修订版按已采纳的问题改写条款，请在 Word 中逐条核对后接受或拒绝；文件中如有批注，发给对方前请先删除。', '导出修订版', '导出修订版')) return
   exporting.value = '修订版'
   try {
     const { saveResult, revised, commented } = await reportApi.revised(runId, seq)

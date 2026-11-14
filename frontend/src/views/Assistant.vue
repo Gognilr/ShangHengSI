@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Files, Upload } from '@lucide/vue'
+import { Ellipsis, Files, Upload } from '@lucide/vue'
 import { assistantApi, type Session, type SessionItem, type Message, type Template } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import type { Finding } from '@/api/runs'
@@ -213,7 +213,10 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           <el-button class="title" link @click="rename">{{ session.title }}</el-button>
           <SiSegmented v-if="canReview" v-model="modeModel" :options="modeOptions" size="small" ariaLabel="工作台视图" />
           <el-button size="small" @click="drawerOpen = true"><Files :size="14" :stroke-width="1.75" /><span class="files-label">材料 {{ session.files.length }}</span></el-button>
-          <el-button link type="danger" :disabled="working || session.review_running" @click="remove(session)">删除会话</el-button>
+          <el-dropdown trigger="click" :disabled="working || session.review_running" @command="remove(session)">
+            <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
+            <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除会话</span></el-dropdown-item></el-dropdown-menu></template>
+          </el-dropdown>
         </div>
         <div v-if="mode === 'ask' && (session.review_running || reviewDone)" class="review-note" role="status">
           <span v-if="session.review_running">审核进行中，完成后可提问。进度与已出现的问题在“全面审核”里看。</span>
@@ -251,6 +254,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
   </div>
 </template>
 <style scoped>
+.danger-item { color: var(--el-color-danger); }
 .assistant-page { height: 100%; box-sizing: border-box; padding-top: 20px; padding-bottom: 20px; overflow: hidden; }
 .dialogue { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
 .toolbar { display: flex; gap: 12px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--el-border-color-light); }

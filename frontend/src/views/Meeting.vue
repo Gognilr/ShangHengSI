@@ -6,7 +6,7 @@ import { usePasteFiles } from '@/composables/usePasteFiles'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { ArrowLeft, Mic, UploadCloud } from '@lucide/vue'
+import { ArrowLeft, Ellipsis, Mic, UploadCloud } from '@lucide/vue'
 import { assistantApi, confirmationTask, type Message, type Session, type SessionItem } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ApiError } from '@/api/http'
@@ -153,7 +153,10 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
       <el-button text @click="router.push('/meeting')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="gap">全部会议</span></el-button>
       <h2 class="title">{{ session?.title }}</h2>
       <SiSegmented v-if="minutes.length" v-model="view" ariaLabel="查看" :options="[{ value: 'transcript', label: '逐字稿' }, { value: 'minutes', label: `会议纪要 ${minutes.length}` }]" />
-      <el-button link type="danger" @click="remove">删除</el-button>
+      <el-dropdown trigger="click" @command="remove">
+        <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
+        <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除会议记录</span></el-dropdown-item></el-dropdown-menu></template>
+      </el-dropdown>
     </div>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
     <template v-if="session && audio?.media">
@@ -185,6 +188,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 </template>
 
 <style scoped>
+.danger-item { color: var(--el-color-danger); }
 .file-input { display: none; }
 .upload-progress { width: min(460px, 100%); margin: 12px auto 0; }
 .upload-progress .hint { margin: 4px 0 0; text-align: center; }

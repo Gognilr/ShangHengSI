@@ -73,7 +73,8 @@ def authenticate(db: DbSession, username: str, password: str, ip: str | None) ->
 def change_password(db: DbSession, ctx: AuthContext, old_password: str, new_password: str, ip: str | None) -> None:
     """修改本人密码。成功后清除“须改密”标记，并让本人的其他会话失效（当前会话保留）。"""
     user = ctx.user
-    if not verify_password(user.password_hash, old_password):
+    # 首次登录或被重置须改密时，刚用初始密码登录过，免填原密码（V321Q-36）
+    if not user.must_change_password and not verify_password(user.password_hash, old_password):
         raise AppError(422, "WRONG_OLD_PASSWORD", "原密码不正确")
     validate_password_strength(new_password)
     if verify_password(user.password_hash, new_password):

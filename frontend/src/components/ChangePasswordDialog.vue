@@ -36,11 +36,11 @@ function validateConfirm(_rule: unknown, value: string, callback: (e?: Error) =>
   callback(value === form.newPassword ? undefined : new Error('两次输入的新密码不一致'))
 }
 
-const rules: FormRules = {
-  oldPassword: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
+const rules = computed<FormRules>(() => ({
+  oldPassword: props.forced ? [] : [{ required: true, message: '请输入原密码', trigger: 'blur' }],
   newPassword: [{ required: true, validator: validateNew, trigger: 'blur' }],
   confirm: [{ required: true, validator: validateConfirm, trigger: 'blur' }],
-}
+}))
 
 // 每次打开都清空上次的输入
 watch(
@@ -91,7 +91,7 @@ async function submit() {
       class="tip"
     />
     <el-form ref="formRef" :model="form" :rules="rules" label-width="96px" @submit.prevent="submit">
-      <el-form-item label="原密码" prop="oldPassword">
+      <el-form-item v-if="!forced" label="原密码" prop="oldPassword">
         <el-input v-model="form.oldPassword" type="password" show-password autocomplete="current-password" />
       </el-form-item>
       <el-form-item label="新密码" prop="newPassword">

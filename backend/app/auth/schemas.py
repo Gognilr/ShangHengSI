@@ -16,7 +16,7 @@ class LoginIn(BaseModel):
 
 
 class PasswordChangeIn(BaseModel):
-    old_password: str = Field(min_length=1, max_length=MAX_LENGTH)
+    old_password: str = Field(default="", max_length=MAX_LENGTH)
     # 长度和字符规则由 passwords.validate_password_strength 检查，以便返回明确的中文提示
     new_password: str = Field(max_length=MAX_LENGTH * 2)
 

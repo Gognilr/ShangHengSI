@@ -6,7 +6,7 @@ import { usePasteFiles } from '@/composables/usePasteFiles'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { ArrowLeft, Languages, UploadCloud } from '@lucide/vue'
+import { ArrowLeft, Ellipsis, Languages, UploadCloud } from '@lucide/vue'
 import { assistantApi, confirmationTask, type Message, type Session, type SessionItem } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ApiError } from '@/api/http'
@@ -125,7 +125,10 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     <div class="toolbar">
       <el-button text @click="router.push('/translate')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="gap">全部翻译</span></el-button>
       <h2 class="title">{{ file?.original_name ?? session?.title }}</h2>
-      <el-button link type="danger" @click="remove">删除</el-button>
+      <el-dropdown trigger="click" @command="remove">
+        <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
+        <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除翻译记录</span></el-dropdown-item></el-dropdown-menu></template>
+      </el-dropdown>
     </div>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
     <div v-if="session" class="body">
@@ -161,6 +164,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 
 
 <style scoped>
+.danger-item { color: var(--el-color-danger); }
 .setup { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .translate-home .setup { justify-content: center; }
 .setup .label { font: var(--si-font-label); color: var(--si-ink-2); }

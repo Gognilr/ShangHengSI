@@ -482,7 +482,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
             <button v-if="b.nv.tags" type="button" class="ann-tag" :data-fid="b.nv.tags[0]!.id">{{ tagText(b.nv.tags) }}</button>
             <div v-if="b.nv.node.loc === 'NOTE'" class="side-label">本次补充说明</div>
             <span v-else-if="b.nv.node.part !== 'body'" class="side-label">{{ b.nv.node.part }}</span>
-            <span v-if="b.nv.node.clause_no && b.nv.node.part === 'body'" class="clause">{{ b.nv.node.clause_no }}</span>
+            <span v-if="b.nv.node.clause_no && b.nv.node.part === 'body' && !(b.nv.node.text ?? '').trimStart().startsWith(b.nv.node.clause_no)" class="clause">{{ b.nv.node.clause_no }}</span>
             <NodeText :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" />
           </div>
           <div v-else-if="b.t === 'para'" class="node kind-utterance">
