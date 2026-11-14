@@ -229,6 +229,28 @@ def test_high_count_and_partial(db_sessionmaker, owner, ready_task, llm):
         assert db.get(Task, task.id).status == "reviewed"
 
 
+def test_f01_findings_ordered_by_severity_then_position(db_sessionmaker, owner, ready_task, llm):
+    """V321Q-25：入库序号按等级、再按原文位置；缺失类问题排在同级末尾。"""
+    task = ready_task(owner)
+
+    def mutate(output, messages):
+        base = output["findings"][0]
+        output["findings"] = [
+            {**base, "title": "低-P1", "severity": "低", "locs": ["F1-P1"]},
+            {**base, "title": "高-P3", "severity": "高", "locs": ["F1-P3"]},
+            {**base, "title": "中-缺失", "severity": "中", "locs": [], "missing": True},
+            {**base, "title": "高-缺失", "severity": "高", "locs": [], "missing": True},
+            {**base, "title": "高-P2", "severity": "高", "locs": ["F1-P2"]},
+        ]
+
+    llm(handler=custom_reply(mutate))
+    run = new_run(db_sessionmaker, task, owner)
+    run_job(db_sessionmaker, run.id)
+    with db_sessionmaker() as db:
+        rows = db.scalars(select(Finding).where(Finding.run_id == run.id).order_by(Finding.seq))
+        assert [f.title for f in rows] == ["高-P2", "高-P3", "高-缺失", "中-缺失", "低-P1"]
+
+
 def test_company_requirements_are_sent_and_get_results(db_sessionmaker, owner, ready_task, llm):
     task = ready_task(owner)
     with db_sessionmaker() as db:

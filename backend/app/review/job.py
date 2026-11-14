@@ -25,7 +25,7 @@ from app.llm import gateway, usage
 from app.llm.gateway import load_model
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import Finding, LlmCall, RequirementResult, ReviewRun, Task
+from app.db.models import DocNode, Finding, LlmCall, RequirementResult, ReviewRun, Task, TaskFile
 from app.llm.gateway import GatewayError, describe_reasons
 from app.review.chunking import Chunk, effective_limit, outbound_lines, split_chunks
 from app.review.coverage import build_coverage
@@ -101,6 +101,22 @@ def _partial_message(failed: list[dict]) -> str:
     return f"第 {'、'.join(str(f['index']) for f in failed)} 段审核失败，结果不完整"
 
 
+_SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
+
+
+def _ordered(db: Session, task_id: uuid.UUID, findings: list) -> list:
+    """问题按等级、再按原文位置（文件顺序、段落顺序）排序；缺失类问题排在同级末尾（V321Q-25）。
+
+    四组并发返回的先后不同，按位置排序后两次审核的列表顺序才可对照；入库序号即此顺序。
+    """
+    order = {loc: i for i, loc in enumerate(db.scalars(
+        select(DocNode.loc).join(TaskFile, TaskFile.id == DocNode.file_id)
+        .where(DocNode.task_id == task_id, DocNode.part == "body").order_by(TaskFile.seq, DocNode.ord)))}
+    last = len(order)
+    return sorted(findings, key=lambda f: (_SEVERITY_RANK.get(f.severity, 3),
+                                           min((order.get(loc, last) for loc in f.locs), default=last + 1)))
+
+
 def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedReview, *, chunk_count: int = 1,
           failed: list[dict] | None = None) -> None:
     failed = failed or []
@@ -116,6 +132,7 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
         db.add(RequirementResult(run_id=run.id, req_id=rr.req_id, req_source=rr.req_source, req_text=rr.req_text,
                                  dimension=rr.dimension, verdict=rr.verdict, note=rr.note,
                                  unable_reason=normalize_unable_reason(rr.verdict, rr.unable_reason)))
+    review.findings = _ordered(db, task.id, review.findings)
     for seq, f in enumerate(review.findings, start=1):
         db.add(Finding(
             run_id=run.id, task_id=task.id, seq=seq, title=f.title, category=f.category, severity=f.severity,
