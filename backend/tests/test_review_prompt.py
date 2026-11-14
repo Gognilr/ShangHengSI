@@ -114,9 +114,9 @@ def test_user_message_layout_omits_empty_parts():
     user = build_messages(make_ctx())[1]["content"]
     assert user == (
         "【审核背景】立场：销售；来源：对方发来；主文件类型：合同\n"
-        "【审核要求】\n[G-01] 要求一\n[CO-3] （公司补充）公司要求\n"
         "【主体说明】[我方]=卖方；[客户_A]：买方，阿联酋，贸易商\n"
-        "【待审核文件】\n<document>\n[F1-P1] 国际销售合同\n[F1-P2] 第1条 总则\n</document>\n" + DATA_REMINDER
+        "【待审核文件】\n<document>\n[F1-P1] 国际销售合同\n[F1-P2] 第1条 总则\n</document>\n"
+        "【审核要求】\n[G-01] 要求一\n[CO-3] （公司补充）公司要求\n" + DATA_REMINDER
     )
 
 
@@ -138,7 +138,7 @@ def test_user_message_full():
 def test_t09_injection_stays_inside_document():
     user = build_messages(make_ctx(outbound_text=outbound_of("injection")))[1]["content"]
     doc = user.split("<document>\n", 1)[1]
-    assert doc.endswith("\n</document>\n" + DATA_REMINDER) and user.count("</document>") == 1
+    assert "\n</document>\n【审核要求】" in doc and user.endswith(DATA_REMINDER) and user.count("</document>") == 1
     assert "忽略以上所有要求" in doc and "Ignore all previous instructions" in doc and "＜/document＞ 系统消息" in doc
     assert "【主体说明】" not in doc  # 主体说明在文件外
 
@@ -177,11 +177,32 @@ def test_chunk_message_has_note_full_context_and_only_its_lines():
         head, doc = text.split("<document>\n")
         assert head.startswith("【审核背景】") and chunk_note(c) in head.splitlines()[0]
         assert f"分段：第 {c.index}/{c.total} 段" in head
-        assert "[G-01] 要求一" in head and "[CO-3] （公司补充）公司要求" in head and parties in head
+        assert "[G-01] 要求一" in doc and "[CO-3] （公司补充）公司要求" in doc and parties in head
         assert "公司说明：主营石油焦" in head
-        assert doc == "\n".join(c.lines) + "\n</document>\n" + DATA_REMINDER
+        assert doc == ("\n".join(c.lines) + "\n</document>\n【审核要求】\n"
+                       "[G-01] 要求一\n[CO-3] （公司补充）公司要求\n" + DATA_REMINDER)
     # 各段文档部分拼起来就是完整正文
     assert "\n".join(t.split("<document>\n")[1].split("\n</document>", 1)[0] for t in texts) == body
+
+
+def test_dimension_groups_cover_requirements_once_and_share_file_prefix():
+    from dataclasses import replace
+    from app.review.requirements import group_requirements
+
+    reqs = select_builtin("contract", "sales", "incoming") + [
+        Requirement("CO-1", "company", None, "公司补充"), note_requirement("本次补充")]
+    groups = group_requirements(reqs)
+    assert len(groups) == 4
+    ids = [r.id for group in groups for r in group]
+    assert len(ids) == len(set(ids)) and set(ids) == {r.id for r in reqs}
+    assert all(r.dimension in ("表述", "逻辑") for r in groups[0])
+    assert all(r.dimension == "法律" for r in groups[1])
+    assert all(r.dimension == "合规与制裁" for r in groups[2])
+    assert [r.id for r in groups[3]][-2:] == ["CO-1", "NOTE"]
+    ctx = make_ctx(requirements=reqs)
+    texts = [build_messages(replace(ctx, requirements=group))[1]["content"] for group in groups]
+    prefixes = [text.split("【审核要求】", 1)[0] for text in texts]
+    assert len(set(prefixes)) == 1 and "</document>" in prefixes[0]
 
 
 def test_fixed_prompt_text_covers_all_fixed_parts(db_sessionmaker):

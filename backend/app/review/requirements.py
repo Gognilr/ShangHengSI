@@ -21,6 +21,18 @@ class Requirement:
     text: str
 
 
+def group_requirements(requirements: list[Requirement]) -> list[list[Requirement]]:
+    """按维度分四组，保持组内顺序；公司、本次补充及未知维度归商务组，不遗漏或重复。
+
+    每组均由调用方提供全文。没有要求时仍保留一次审核，以取得摘要与问题。
+    """
+    groups: list[list[Requirement]] = [[], [], [], []]
+    dimensions = {"表述": 0, "逻辑": 0, "法律": 1, "合规与制裁": 2}
+    for req in requirements:
+        groups[dimensions.get(req.dimension, 3)].append(req)
+    return [group for group in groups if group] or [[]]
+
+
 @lru_cache(maxsize=1)
 def _builtin_data() -> dict:
     with open(RESOURCES_DIR / "builtin_requirements.yaml", encoding="utf-8") as f:

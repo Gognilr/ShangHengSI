@@ -33,17 +33,18 @@ def test_cli_full_pipeline_and_temporary_parameters(cli, llm, db_sessionmaker):
         configure_model(db, "model.extra_params", {"seed": 7, "thinking": {"type": "enabled"}}, None)
         db.commit()
     assert eval_review.main(args + ["--extra-params", '{"thinking":{"type":"disabled"}}']) == 0
-    assert len(requests) == 1
-    body = json.loads(requests[0].content)
-    assert body["seed"] == 7
-    assert body["thinking"] == {"type": "disabled"}
-    assert "星河虚构" not in json.dumps(body, ensure_ascii=False)
+    assert len(requests) == 4  # V321-D-03：同一份虚构样本按四组审核。
+    for request in requests:
+        body = json.loads(request.content)
+        assert body["seed"] == 7
+        assert body["thinking"] == {"type": "disabled"}
+        assert "星河虚构" not in json.dumps(body, ensure_ascii=False)
     text = report.read_text(encoding="utf-8")
     assert "要求结论统计" in text and "各要求结论" in text and "问题清单" in text
     assert "C\\-01" in text and "prompt_version" in text and "2026" in text
     with db_sessionmaker() as db:
         assert db.get(LlmModel, 1).extra_params == {"seed": 7, "thinking": {"type": "enabled"}}
-        assert db.scalar(select(func.count()).select_from(LlmCall)) == 1
+        assert db.scalar(select(func.count()).select_from(LlmCall)) == 4
         assert set(db.scalars(select(Job.status))) == {"done"}
         assert db.scalar(select(Task.status)) == "reviewed"
 
@@ -81,7 +82,7 @@ def test_bad_sample_does_not_stop_later_samples(cli, llm):
     (directory / "00_bad.docx").write_bytes(b"not a docx")
     requests = llm()
     assert eval_review.main(args) == 1
-    assert len(requests) == 1
+    assert len(requests) == 4
     assert "样本总数：2" in report.read_text(encoding="utf-8")
 
 

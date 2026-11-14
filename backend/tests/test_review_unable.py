@@ -34,8 +34,10 @@ def test_unable_persistence_detail_and_stats(make_user, login, ready_task, llm, 
     task = ready_task(owner)
 
     def mutate(output, messages):
-        for row, reason in zip(output['requirement_results'], ('redacted', 'absent', None, {'invalid': True})):
-            row.update(verdict='unable', unable_reason=reason)
+        reasons = dict(zip(('G-01', 'G-02', 'G-03', 'G-04'), ('redacted', 'absent', None, {'invalid': True})))
+        for row in output['requirement_results']:
+            if row['req_id'] in reasons:
+                row.update(verdict='unable', unable_reason=reasons[row['req_id']])
     llm(handler=custom_reply(mutate))
     run = new_run(db_sessionmaker, task, owner)
     run_job(db_sessionmaker, run.id)

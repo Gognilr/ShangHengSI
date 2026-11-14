@@ -30,6 +30,7 @@ from app.llm.gateway import GatewayError, describe_reasons
 from app.review.chunking import Chunk, effective_limit, outbound_lines, split_chunks
 from app.review.coverage import build_coverage
 from app.review.prompt import ReviewContext, build_messages, split_outbound
+from app.review.requirements import Requirement, group_requirements
 from app.review.service import build_context
 from app.review.validate import (
     ChunkOutcome,
@@ -181,9 +182,14 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
         if not _set_progress(db, run_id, 0, total):
             return
         prepared = _prepare_chunks(db, ctx, chunks, nodes)
-        if total > 1 and not _precheck_all(db, run_id, prepared):
-            return  # 某段复检命中：整轮 blocked，一段都没有发送
-        outcomes = _send_chunks(db, run_id, prepared, nodes, total)
+        # 全文能放入管理员配置的长度时按维度并发；长文件保留原分段路径，避免超出模型上下文。
+        groups = group_requirements(ctx.requirements) if total == 1 else [ctx.requirements]
+        if len(groups) > 1:
+            outcomes = _send_dimensions(db, run_id, prepared[0], groups, nodes)
+        else:
+            if total > 1 and not _precheck_all(db, run_id, prepared):
+                return  # 某段复检命中：整轮 blocked，一段都没有发送
+            outcomes = _send_chunks(db, run_id, prepared, nodes, total)
         if outcomes is None:  # 网关拦截（已置 blocked），或轮次 / 任务已删除
             return
     except Exception:
@@ -248,20 +254,40 @@ def _precheck_all(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, Re
 
 
 def _parallel(db: Session, run: ReviewRun, total: int) -> int:
-    """接近调用上限时逐段发送，保证超限的分段准确地记为失败（并发会在记录前同时通过上限检查）。"""
-    if total <= 1:
-        return 1
-    left = [v for v in usage.remaining_calls(db, run.created_by, run.model_id).values() if v is not None]
-    return CHUNK_PARALLEL if all(v >= 2 * total for v in left) else 1  # 2 倍：每段可能有一次格式重试
+    """审核额度按轮计，各组与分段不再因本轮剩余名额而串行。"""
+    return min(CHUNK_PARALLEL, total)
+
+
+def _send_dimensions(db: Session, run_id: uuid.UUID, prepared: tuple[Chunk, ReviewContext],
+                     groups: list[list[Requirement]], nodes: dict[str, DocNodeView]) -> list[ChunkOutcome] | None:
+    """各组使用同一全文、法条与范本，先复检全部组，再并发；合并后仍记为一个全文结果。"""
+    chunk, ctx = prepared
+    requests = []
+    for index, requirements in enumerate(groups, 1):
+        snapshot = copy.copy(ctx)
+        snapshot.requirements = requirements
+        # total=1 保证提示词与引用校验均按全文；index 仅区分进度回调。
+        group_chunk = Chunk(index, 1, chunk.lines, chunk.first_loc, chunk.last_loc, chunk.locs)
+        requests.append((group_chunk, snapshot))
+    if not _precheck_all(db, run_id, requests):
+        return None
+    outcomes = _send_chunks(db, run_id, requests, nodes, len(requests), dimensions=True)
+    if outcomes is None:
+        return None
+    if all(o.review is None for o in outcomes):
+        return [ChunkOutcome(chunk, None, outcomes[0].error,
+                             sum(o.tokens_in for o in outcomes), sum(o.tokens_out for o in outcomes))]
+    # 失败组的要求由 merge_reviews 补 unable；成功组照常保留，不伪报“未做跨分段检查”。
+    return [ChunkOutcome(chunk, merge_reviews(ctx, outcomes))]
 
 
 def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, ReviewContext]],
-                 nodes: dict[str, DocNodeView], total: int) -> list[ChunkOutcome] | None:
-    """各段经网关发送（每次发送前网关照常上限检查、出口复检、记录），最多 CHUNK_PARALLEL 段同时进行。
+                 nodes: dict[str, DocNodeView], total: int, *, dimensions: bool = False) -> list[ChunkOutcome] | None:
+    """每次经网关上限检查、出口复检、记录；最多四个维度组或 CHUNK_PARALLEL 个分段同时进行。
     进度在复检通过、即将发出时就写入（sent），收到回复后写 done，界面据此如实显示（V31-U5F-01）。"""
     bind = db.get_bind()
     run = db.get(ReviewRun, run_id)
-    parallel = _parallel(db, run, total)
+    parallel = min(4, total) if dimensions else _parallel(db, run, total)
     lock = threading.Lock()
     stop = threading.Event()
     sent: set[int] = set()
@@ -276,8 +302,11 @@ def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, Rev
         with Session(bind=bind) as s:
             row = s.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update())
             if row is not None and row.status == "running":
-                row.chunk_count = total
-                row.coverage = {"progress": {"done": done, "total": total, "sent": len(sent),
+                row.chunk_count = 1 if dimensions else total
+                # 既有界面把 progress.total 称为“段”；维度组均看全文，聚合为一份文件的真实进度。
+                row.coverage = {"progress": {"done": int(done == total) if dimensions else done,
+                                             "total": 1 if dimensions else total,
+                                             "sent": int(bool(sent)) if dimensions else len(sent),
                                              "received": sum(received.values())}}
             s.commit()
 
@@ -305,9 +334,10 @@ def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, Rev
             snapshot.task = task  # 各线程只用自己会话中的对象
             part = chunk if chunk.total > 1 else None
             try:
-                review = review_once(s, snapshot, run=row, user_id=row.created_by, chunk=part, nodes=nodes,
-                                     on_send=lambda: mark_sent(chunk.index),
-                                     on_delta=lambda n: mark_received(chunk.index, n))
+                with usage.review_round(run_id):
+                    review = review_once(s, snapshot, run=row, user_id=row.created_by, chunk=part, nodes=nodes,
+                                         on_send=lambda: mark_sent(chunk.index),
+                                         on_delta=lambda n: mark_received(chunk.index, n))
                 outcome = ChunkOutcome(chunk, review)
             except GatewayError as exc:
                 if exc.code == "BLOCKED":

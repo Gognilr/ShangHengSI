@@ -26,6 +26,12 @@ from tests.mock_llm import build_content, build_reply
 from tests.review_support import configure_model, REAL_BUYER_NAME, REAL_OUR_NAME, env, llm, ready_task  # noqa: F401
 
 
+@pytest.fixture(autouse=True)
+def single_requirement_group(monkeypatch):
+    """原有单次与长文件分段用例保留原断言；四组并发的真实链路另见 test_review_dimensions。"""
+    monkeypatch.setattr(job, "group_requirements", lambda requirements: [requirements])
+
+
 def test_t45_review_refs_snapshot_and_dropped(db_sessionmaker,owner,ready_task,llm,monkeypatch):
     from app.laws import retrieve
     task=ready_task(owner)
@@ -628,18 +634,21 @@ def test_block_in_second_chunk_stops_run(db_sessionmaker, owner, ready_task, llm
         assert service.run_detail(db, db.get(ReviewRun, run.id)).coverage is None
 
 
-def test_cap_reached_mid_run(db_sessionmaker, owner, ready_task, llm):
+def test_monthly_cap_counts_chunked_round_once(db_sessionmaker, owner, ready_task, llm):
     task = chunked_task(db_sessionmaker, owner, ready_task)
     requests = llm("normal")
     with db_sessionmaker() as db:
-        configure_model(db, "model.monthly_call_cap", 2, None)
+        configure_model(db, "model.monthly_call_cap", 1, None)
         db.commit()
     run = new_run(db_sessionmaker, task, owner)
     run_job(db_sessionmaker, run.id)
     r = get_run(db_sessionmaker, run.id)
-    assert len(requests) == 2 and r.status == "partial"
-    assert [f["index"] for f in r.failed_chunks] == list(range(3, r.chunk_count + 1))
-    assert {f["reason"] for f in r.failed_chunks} == {"已达本月调用上限，请联系管理员"}
+    assert len(requests) == r.chunk_count and r.status == "completed" and r.failed_chunks == []
+    from app.llm import usage
+    with db_sessionmaker() as db:
+        assert usage.monthly_sent_calls(db, 1) == 1
+        assert usage.monthly_usage(db, 1)["calls"] == r.chunk_count
+        assert usage.cap_reached(db, owner.id, "review", 1) == "CAP_REACHED"
 
 
 def test_progress_visible_while_running(db_sessionmaker, owner, ready_task, llm, monkeypatch):
@@ -704,7 +713,7 @@ def test_q72_finding_on_quote_summary_line(db_sessionmaker, owner, ready_task, l
         assert not any("报价明细表" in note for note in detail.coverage["notes"])
 
 
-def test_v2c04_personal_cap_reached_on_second_chunk(db_sessionmaker,owner,ready_task,llm,monkeypatch):
+def test_personal_cap_counts_chunked_round_once(db_sessionmaker,owner,ready_task,llm,monkeypatch):
     from app.review.chunking import Chunk
     task = ready_task(owner)
     def two_chunks(lines,limit):
@@ -721,10 +730,10 @@ def test_v2c04_personal_cap_reached_on_second_chunk(db_sessionmaker,owner,ready_
     run = new_run(db_sessionmaker,task,owner)
     run_job(db_sessionmaker,run.id)
     result = get_run(db_sessionmaker,run.id)
-    assert result.chunk_count == 2 and result.status == "partial"
-    assert len(requests) == 1
-    assert result.failed_chunks[0]["index"] == 2
-    assert result.failed_chunks[0]["reason"] == "已达今日个人调用上限，请明天再试或联系管理员"
+    assert result.chunk_count == 2 and result.status == "completed" and result.failed_chunks == []
+    assert len(requests) == 2
     with db_sessionmaker() as db:
         calls = list(db.scalars(select(LlmCall)))
-        assert len(calls) == 2 and all(c.user_id == owner.id and c.status == "sent" for c in calls)
+        assert len(calls) == 3 and all(c.user_id == owner.id and c.status == "sent" for c in calls)
+        from app.llm import usage
+        assert usage.cap_reached(db, owner.id, "review", 1) == "USER_CAP_REACHED"

@@ -1,7 +1,7 @@
 """审核提示词拼接（SPEC 11.2，设计 docs/design/M2.md 第八节）。
 
 system 消息：resources/prompts/system.md 模板，{JSON_SCHEMA} 换成 11.3 的结构说明（JSON_SCHEMA_TEXT）。
-user 消息：【审核背景】【审核要求】【主体说明】【本地校验摘要】【待审核文件】依次拼接，空内容的部分省略。
+user 消息先放文件及共同上下文，最后放审核要求，使各维度请求共享文件前缀；空内容的部分省略。
 用户填写的补充说明、公司说明同样做 document 标签转义，外发文本已在构建时转义（SPEC 17.5）。
 修改 JSON_SCHEMA_TEXT 等于修改提示词，须同时更新 system.md 中的版本号。
 分段审核（M5，设计 docs/design/M5.md 第二节）时每段的消息只把 <document> 换成本段的行，并在【审核背景】末尾加分段说明；
@@ -133,8 +133,6 @@ def build_user_message(ctx: ReviewContext, chunk: Chunk | None = None) -> str:
         background.append(chunk_note(chunk))
         body = "\n".join(chunk.lines)
     parts = ["【审核背景】" + "；".join(background)]
-    if ctx.requirements:
-        parts.append("【审核要求】\n" + "\n".join(_requirement_line(r) for r in ctx.requirements))
     if parties:
         parts.append(parties)
     if ctx.local_summary and ctx.local_summary.strip():
@@ -147,6 +145,8 @@ def build_user_message(ctx: ReviewContext, chunk: Chunk | None = None) -> str:
         parts.append(section(ctx.law_refs))
     if ctx.template_section:
         parts.append(ctx.template_section)
+    if ctx.requirements:
+        parts.append("【审核要求】\n" + "\n".join(_requirement_line(r) for r in ctx.requirements))
     parts.append(DATA_REMINDER)
     return "\n".join(parts)
 

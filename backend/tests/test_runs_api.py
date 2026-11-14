@@ -543,8 +543,14 @@ def test_receipt_and_actual_sent_text(db_sessionmaker, alice, ready_task, llm, m
     actual = c.get(f'{API_PREFIX}/runs/{rid}/sent').json()
     records = outbound_records(db_sessionmaker, requests)
     assert len(actual) == len(records)
+    # 并发回复的落库顺序可与网络发出顺序不同，逐条按真实记录比对，并核对全部线上请求集合。
+    sent_texts = ['\n'.join(m['content'] for m in json.loads(r.content)['messages'] if m['role'] == 'user')
+                  for r in requests]
+    recorded_texts = ['\n'.join(m['content'] for m in json.loads(record.request_text)['messages'] if m['role'] == 'user')
+                      for record in records]
+    assert sorted(sent_texts) == sorted(recorded_texts)
     for seq, (item, record) in enumerate(zip(actual, records), 1):
-        expected = '\n'.join(m['content'] for m in json.loads(requests[seq - 1].content)['messages'] if m['role'] == 'user')
+        expected = recorded_texts[seq - 1]
         assert item == dict(seq=seq, chars=len(expected), text=expected)
         assert recheck(item['text'], real_values=record.real_values, terms=record.terms) == []
     make_user('bob')
@@ -803,7 +809,9 @@ def test_coverage_unable_note_restores_codes(db_sessionmaker, alice, ready_task,
     def handler(request: httpx.Request) -> httpx.Response:
         status, payload = build_reply(json.loads(request.content))
         out = json.loads(payload["choices"][0]["message"]["content"])
-        out["requirement_results"][1].update(verdict="unable", note="需核实[客户_A]的资质")
+        for result in out["requirement_results"]:
+            if result["req_id"] == "G-02":
+                result.update(verdict="unable", note="需核实[客户_A]的资质")
         payload["choices"][0]["message"]["content"] = json.dumps(out, ensure_ascii=False)
         return httpx.Response(status, json=payload)
 

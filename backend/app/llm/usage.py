@@ -3,11 +3,13 @@
 只统计 status=sent 的记录；月份按 Asia/Shanghai（配置项 TZ）计算。费用用 Decimal 估算，保留 2 位小数（ROUND_HALF_UP）。
 """
 from datetime import datetime
+from contextlib import contextmanager
+from contextvars import ContextVar
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import String, and_, case, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_setting
@@ -16,6 +18,28 @@ from app.db.base import utcnow
 from app.db.models import LlmCall, LlmModel
 
 _MILLION = Decimal(1_000_000)
+_review_round: ContextVar[uuid.UUID | None] = ContextVar("review_round", default=None)
+
+
+@contextmanager
+def review_round(run_id: uuid.UUID):
+    """审核线程的额度上下文；只影响额度检查，网关仍逐次复检并记录实际调用。"""
+    token = _review_round.set(run_id)
+    try:
+        yield
+    finally:
+        _review_round.reset(token)
+
+
+def _quota_calls(db: Session, start: datetime, *conditions) -> int:
+    """审核分组、分段及重试按轮占一次额度；其他用途和无轮次旧记录仍按请求计。
+
+    实际用量统计保持逐次请求计数，避免少报 token、费用或外发次数。
+    """
+    key = case((and_(LlmCall.purpose == "review", LlmCall.run_id.is_not(None)),
+                "run:" + cast(LlmCall.run_id, String)), else_="call:" + cast(LlmCall.id, String))
+    return db.scalar(select(func.count(func.distinct(key))).where(
+        LlmCall.status == "sent", LlmCall.created_at >= start, *conditions)) or 0
 
 
 def month_start(now: datetime | None = None) -> datetime:
@@ -32,27 +56,27 @@ def day_start() -> datetime:
 
 
 def monthly_sent_calls(db: Session, model_id: int | None = None, now: datetime | None = None) -> int:
-    return db.scalar(
-        select(func.count()).select_from(LlmCall)
-        .where(LlmCall.status == "sent", LlmCall.created_at >= month_start(now),
-               *([LlmCall.model_id == model_id] if model_id is not None else []))
-    ) or 0
+    """月度额度与告警用次数：审核按轮，其余按请求。用量页面使用 monthly_usage 的实际次数。"""
+    return _quota_calls(db, month_start(now), *([LlmCall.model_id == model_id] if model_id is not None else []))
 
 
 def cap_reached(db: Session, user_id: uuid.UUID | None, purpose: str, model_id: int) -> str | None:
     """只读上限预检，不预占名额；网关在发送前仍会再次检查。"""
     if purpose == "test":
         return None
+    run_id = _review_round.get() if purpose == "review" else None
+    if run_id is not None and db.scalar(select(LlmCall.id).where(
+        LlmCall.run_id == run_id, LlmCall.model_id == model_id, LlmCall.user_id == user_id,
+        LlmCall.purpose == "review", LlmCall.status == "sent").limit(1)) is not None:
+        return None  # 本轮已占用额度，后续分组、分段与格式重试继续经网关发送。
     cap = db.get(LlmModel, model_id).monthly_call_cap
-    if cap and monthly_sent_calls(db, model_id) >= cap:
+    if cap and _quota_calls(db, month_start(), LlmCall.model_id == model_id) >= cap:
         return "CAP_REACHED"
     daily_cap = int(get_setting(db, "model.user_daily_cap") or 0)
     if not daily_cap or user_id is None:
         return None
     start = day_start()
-    used = db.scalar(select(func.count()).select_from(LlmCall).where(
-        LlmCall.user_id == user_id, LlmCall.status == "sent", LlmCall.purpose != "test",
-        LlmCall.created_at >= start)) or 0
+    used = _quota_calls(db, start, LlmCall.user_id == user_id, LlmCall.purpose != "test")
     return "USER_CAP_REACHED" if used >= daily_cap else None
 
 
@@ -79,7 +103,6 @@ def remaining_calls(db: Session, user_id: uuid.UUID, model_id: int) -> dict[str,
     cap = db.get(LlmModel, model_id).monthly_call_cap
     daily = int(get_setting(db, "model.user_daily_cap") or 0)
     start = day_start()
-    used = db.scalar(select(func.count()).select_from(LlmCall).where(
-        LlmCall.user_id == user_id, LlmCall.status == "sent", LlmCall.purpose != "test", LlmCall.created_at >= start)) or 0
-    return {"monthly": max(0, cap - monthly_sent_calls(db, model_id)) if cap else None,
+    used = _quota_calls(db, start, LlmCall.user_id == user_id, LlmCall.purpose != "test")
+    return {"monthly": max(0, cap - _quota_calls(db, month_start(), LlmCall.model_id == model_id)) if cap else None,
             "daily": max(0, daily - used) if daily else None}
