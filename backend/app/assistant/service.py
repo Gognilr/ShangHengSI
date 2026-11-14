@@ -170,7 +170,9 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             neutral = {code: value for code, value in mapping.items() if NEUTRAL.fullmatch(code)}
             result['marks'] = [MarkOut.model_validate(mark).model_dump()
                                for mark in check(message.content_redacted, neutral, dates=dates,
-                                                 locations=_discussion_locations(db, task) if _located(message) else None).marks]
+                                                 locations=_discussion_locations(db, task) if _located(message) else None).marks
+                               # 译文行首的 ⟦F1-P1⟧ 是对齐用的分段标记，不算未能还原（V321-Z）
+                               if not (message.template == 'translate' and mark.kind == 'note')]
             if _located(message):
                 from app.assistant.sources import build
                 result['sources'], result['cites'] = build(db, task, message, content, _discussion_locations(db, task))

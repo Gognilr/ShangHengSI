@@ -26,8 +26,11 @@ const basisShort = computed(() => {
 })
 const meta = computed(() => [categoryLabel(f.value.category), f.value.location, basisShort.value && `依据 ${basisShort.value}`].filter(Boolean).join(' · '))
 
-const handlingOptions = toOptions(HANDLING_OPTIONS) as { value: HandlingStatus; label: string }[]
+// 按钮先写动作、做完才写状态（V321-Z）：选中的一段显示“已采纳 / 已忽略 / 待处理”，其余显示能做的动作
+const HANDLING_ACTIONS: Record<HandlingStatus, string> = { pending: '改回待处理', adopted: '采纳', ignored: '忽略' }
 const status = ref<HandlingStatus>(props.finding.handling_status)
+const handlingOptions = computed(() => (toOptions(HANDLING_OPTIONS) as { value: HandlingStatus; label: string }[])
+  .map(o => ({ value: o.value, label: o.value === status.value ? o.label : HANDLING_ACTIONS[o.value] })))
 const note = ref(props.finding.handling_note ?? '')
 const saving = ref(false)
 const savedMark = ref(false)

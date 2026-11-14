@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { assistantApi, type Message } from '@/api/assistant'
 import type { PreviewNode } from '@/api/preview'
 import { ApiError } from '@/api/http'
 const props = defineProps<{ message: Message; sessionId: string }>()
 const variant = ref('translation'), originals = ref<PreviewNode[]>([]), error = ref(''), loading = ref(false)
+// 译文视图不显示行首的分段标记 ⟦F1-P1⟧（只用于对齐，V321-Z）
+const plain = computed(() => props.message.content.replace(/^⟦[^⟧\r\n]+⟧[ \t]*/gm, ''))
 let active = true
 onBeforeUnmount(() => { active = false })
 watch(variant, async value => {
@@ -28,7 +30,7 @@ watch(variant, async value => {
     <div v-if="variant === 'bilingual'" v-loading="loading" class="bilingual">
       <div v-for="node in originals" :key="node.loc" class="translation-row"><p>{{ node.text ?? '原文已按保留期限删除' }}</p><p>{{ message.translation?.[node.loc] ?? '未完成翻译' }}</p></div>
     </div>
-    <pre v-else>{{ message.content }}</pre>
+    <pre v-else>{{ plain }}</pre>
   </div>
 </template>
 <style scoped>
