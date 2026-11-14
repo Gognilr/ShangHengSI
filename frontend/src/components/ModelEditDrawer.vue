@@ -111,7 +111,7 @@ async function save() {
         <el-form-item label="超时（秒）"><el-input-number v-model="form.timeout_s" :min="10" :max="600" /></el-form-item>
         <el-form-item label="JSON 输出模式"><el-switch v-model="form.json_mode" /></el-form-item>
       </div>
-      <el-form-item label="附加请求参数" prop="extra_text"><el-input v-model="form.extra_text" type="textarea" :rows="4" /><span class="hint">JSON 对象，不能包含 messages。</span></el-form-item>
+      <el-form-item label="附加请求参数" prop="extra_text"><el-input v-model="form.extra_text" type="textarea" :rows="4" /><span class="hint">JSON 对象，不能包含 messages。</span><span class="hint">DeepSeek deepseek-flash 审核推荐开启思考、使用 low 强度：<code>{"thinking":{"type":"enabled"},"reasoning_effort":"low"}</code>。填写并保存后生效。</span></el-form-item>
       <div class="fields">
         <el-form-item label="分段字符数"><el-input-number v-model="form.chunk_chars" :min="1000" :max="1000000" /></el-form-item>
         <el-form-item label="每月调用上限"><el-input-number v-model="form.monthly_call_cap" :min="0" :max="1000000000" /><span class="hint">0 表示不限</span></el-form-item>
