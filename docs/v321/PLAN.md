@@ -47,7 +47,7 @@
 | V321-D-05 | 轮询空转 | Q-23 | Sonnet，medium | Terra，low | — | D-04 | — | 已完成（2026-11-14，GPT-6.1 Sol；提交后通知唤醒，30 秒轮询兜底；报告 reports/V321-D-05.md） |
 | V321-D-06 | 扫描件解析提速 | Q-24 | Opus，high | Sol 6.1，high | — | B-06 | golden 不变或改动经确认 | 未达标，已结项（2026-11-14，GPT-6.1 Sol；用户确认保留现行识别，240/120 字窗均不采用；报告 reports/V321-D-06.md） |
 | V321-E-01 | 就地反馈与保留标记 | Q-27 | Sonnet，medium | Terra，medium | — | C-03 | — | 已完成（2026-11-14，Sonnet；保留原文就地提示并留浅色下划线，问题卡“已保存”就地显示；未做浏览器目测） |
-| V321-E-02 | 讨论侧栏与讨论稿反馈 | Q-28、33 | 方案 Opus，实现 Sonnet | 方案 Sol 6.1 high，实现 Terra high | — | E-01 | 方案先给用户看 | 已完成（2026-11-14，Opus；方案 design/E-02.md 经用户确认；讨论改在结果页右栏，视图不再重建，讨论稿就地反馈与“保存并采纳”；浏览器未走查；报告 reports/V321-E-02.md） |
+| V321-E-02 | 讨论侧栏与讨论稿反馈 | Q-28、33 | 方案 Opus，实现 Sonnet | 方案 Sol 6.1 high，实现 Terra high | — | E-01 | 方案先给用户看 | 已完成（2026-11-14，Opus；方案 design/E-02.md 经用户确认；讨论改在结果页右栏，视图不再重建，讨论稿就地反馈与“保存并采纳”；浏览器已走查；报告 reports/V321-E-02.md） |
 | V321-E-03 | 审核进行中与完成提示 | Q-29 | Sonnet，medium | Terra，medium | — | D-04 | — | 待执行 |
 | V321-E-04 | 历史记录 | Q-30 | Sonnet，medium | Terra，medium | — | E-03 | — | 待执行 |
 | V321-E-05 | 问题处理与收尾 | Q-31 | Sonnet，medium | Terra，medium | — | E-04 | — | 待执行 |
