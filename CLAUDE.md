@@ -1,4 +1,4 @@
-# 商衡SI · 企业安全脱敏与智能审查平台（V3.1.1）
+# 商衡SI · 企业安全脱敏与智能审查平台（V3.2.1）
 
 系统目前的做法记录在 docs/SPEC.md，开始工作前先读相关章节。**SPEC 只是现状记录，不是永久规范**（用户 2026-11-04）：有更好的设计就直接提出并取代其中的条目，必要时整节删除，不得以“SPEC 这么写”为由照做别扭的设计或拒绝改进；改动后同步更新 SPEC。下列安全要点是产品目标本身，不在此列。
 
@@ -8,7 +8,7 @@
 
 ## 必须遵守
 
-* 新增侧栏菜单或页面先给出方案经我确认（防止功能膨胀，不是因为 SPEC 没写）。左侧侧栏菜单为"智能助手""智能审核""会议纪要""翻译""审核历史"（会议纪要、翻译 2026-11-04 用户确认为独立菜单，V31Q-98）（另有新建会话、搜索、近期会话，SPEC 1.6、6.9），侧栏底部"设置"对所有人可见，第一个分页“个人”（外观、修改密码），管理分页只对系统管理员、业务管理员可见（SPEC 1.3，V31Q-95）。
+* 新增侧栏菜单或页面先给出方案经我确认（防止功能膨胀，不是因为 SPEC 没写）。左侧侧栏菜单为"工作台""智能审核""会议纪要""翻译""历史记录"（会议纪要、翻译 2026-11-04 用户确认为独立菜单，V31Q-98；V3.2 起"智能助手"改称工作台、"审核历史"改称历史记录）（另有新建会话、搜索、近期会话，SPEC 1.6、6.9），侧栏底部"设置"对所有人可见，第一个分页“个人”（外观、修改密码），管理分页只对系统管理员、业务管理员可见（SPEC 1.3，V31Q-95）。
 * 界面视觉以 docs/design/frontend.md（第二版，商衡SI 品牌主题）为准：十六进制颜色只写在 frontend/src/styles/theme.css，页面和组件只用 CSS 变量。
 * 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务（向量检索只用 PostgreSQL 的 pgvector 扩展，V2-E）、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、未经确认的本地大模型；本地大模型只允许 deploy/models.yaml 中经确认的翻译模型一个（Hy-MT2-7B Q6_K，llama.cpp CPU，V31Q-100）。本地模型只允许 SPEC 第 3 节列出的实体识别模型、向量模型各一个，以及转写一组（语音分段、转写、标点、说话人分段、声纹各一个，V31-M），用 onnxruntime（转写一组的说话人分离另用 sherpa-onnx）在 CPU 上离线运行；本地模型的唯一清单是 deploy/models.yaml（接入、放置与资源按 docs/v31/design/local-models.md），更换或新增须经选型报告和我确认（该规范第七节）。实体识别模型已确认为 urchade/gliner_multi-v2.1（Apache-2.0，FP32 ONNX，文件与 SHA-256 见 docs/v2/design/V2-B.md 6.2）；向量模型已确认为 BAAI/bge-m3（MIT，由官方 ONNX 量化的 INT8 ONNX，只用稠密向量，文件与 SHA-256 见 docs/v2/reports/V2-E-04a.md 第六节）。转写一组已确认为 FireRedVAD、FireRedASR2-AED INT8、FireRedPunc INT8、pyannote segmentation-3.0、3D-Speaker CAM++（Apache-2.0 / MIT，文件与 SHA-256 见 transcriber/models/asr/MANIFEST.sha256 与 docs/v31/reports/V31-M-01.md），只在 transcriber 容器中运行。任何镜像不得安装 torch、transformers、gliner、sentencepiece（导出 ONNX 只在仓库外的一次性容器中做）；模型文件不进仓库。LibreOffice 与 ffmpeg（录音解码，V31Q-71）只允许在 converter 容器中使用，不得进入 backend 镜像；converter、transcriber 与 translator 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
 * 只有两处可以访问外网：① 模型网关 backend/app/llm/gateway.py，依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls，任何模型调用不得绕过网关；② 法规同步 backend/app/lawsync/client.py（V2-E），只访问固定的国家法律法规数据库域名（flk.npc.gov.cn）及其全文文件存储域名（flkoss.obs-bj2.cucloud.cn），只下载公开的法规目录与全文，请求中不含任何任务数据，默认关闭，同步结果经业务管理员确认才生效。其他代码不得访问外网。
@@ -30,15 +30,11 @@
   * 脱敏行为按设计有意改变时，可以修改对应的旧测试，在报告中列出改动和原因。
   * 报告写短；整仓全量只在批次末跑一次。
 
-## 当前阶段：V3.2 统一工作台（计划 docs/v32/PLAN.md，2026-11-12 确认）
+## 当前阶段：V3.2.1 已发布，下一阶段待定
 
-**2026-11-13 起执行 V3.2.1 整改计划（docs/v321/PLAN.md，问题清单 docs/v321/open_questions.md）**：V32-A～B 已完成，V3.2 不单独发布，V32-Z 并入 V321-Z，以 3.2.1 一次发布（用户 2026-11-13）。批次顺序 A → B → C → D → E → F → Z（B 批 2026-11-13 按标注表细化并提前），下一个任务 V321-A-02。任务由 Claude 与 ChatGPT（GPT-6.1 Sol）共同分担，谁有额度谁做，每个任务两侧的可执行模型、推理强度与交叉复核见计划表和“两家分担的规则”（用户 2026-11-13）。真实合同只在本机评测，原文、名称、金额不进仓库、对话与日志。
+V3.2.1（含不单独发布的 V3.2；计划 docs/v32/PLAN.md、docs/v321/PLAN.md）已于 2026-11-15 由 V321-Z 复核、合并 SPEC、跑完整仓全量并构建发布包（报告 docs/v321/reports/V321-Z.md）。下一阶段的计划由 Opus 起草、经我确认后才开工；新问题先记入 docs/v321/open\_questions.md（V321Q-64 起）。任务继续由 Claude 与 ChatGPT（GPT-6.1 Sol）共同分担，谁有额度谁做（用户 2026-11-13）。真实合同只在本机评测，原文、名称、金额不进仓库、对话与日志。
 
-第一个任务 V32-A-00（V312Q-01～04 四项缺陷修复，按 docs/v312/PLAN.md 第一节执行；Sonnet，high，新会话）。设计以 docs/v312/unified-workspace-implementation.md 第 11 节为准；任务由 Sonnet 与 Opus 完成，分工见计划表。V3.1.2 不单独发布，四项修复并入 V3.2（用户 2026-11-12）。
-
-V3.1.1（docs/v311/PLAN.md）已于 2026-11-12 由 V311-Z（Opus）复核、合并 SPEC 并跑完整仓全量后结项：A-01（V31Q-120）与 V311-FIX-01 已完成，B-01（V31Q-118）未达标、保持现行实现。按用户 2026-11-12 决定**不打 v3.1.1 标签、不构建发布包、不升级服务器**；服务器保持 3.1.1 定点补丁（d619a09），下一次正式发布为 V3.2。以下为背景。
-
-V1.0 标签 `v1.0.0`；V2.0 `v2.0.0`；V2.1 `v2.1.0`。V3（V3-A～D）不单独发布（V3Q-29），与 V3.1（V31-R～U5）一起于 2026-11-10 经 V31-Z 总审核（docs/v31/reports/V31-Z-04.md）发布为 V3.1，标签 `v3.1.0`。docs/SPEC.md 记录当前做法（可随更好的设计改写）；docs/v2/、docs/v3/、docs/v31/、docs/v311/ 下的设计、问题与报告作为细节和历史保留。
+V1.0 标签 `v1.0.0`；V2.0 `v2.0.0`；V2.1 `v2.1.0`。V3（V3-A～D）不单独发布（V3Q-29），与 V3.1 一起发布为 V3.1，标签 `v3.1.0`；V3.1.1 只以定点补丁上过服务器，未打标签；V3.2 不单独发布，与 V3.2.1 一起发布为 3.2.1。docs/SPEC.md 记录当前做法（可随更好的设计改写）；docs/v2/、docs/v3/、docs/v31/、docs/v311/、docs/v32/、docs/v321/ 下的设计、问题与报告作为细节和历史保留。
 
 * 服务器 172.16.11.252：今后的正式服务器，2026-11-11 全新安装 3.1.0（docs/acceptance/V3.1安装记录.md），2026-11-11 以 3.1.1 定点补丁升级（d619a09，docs/acceptance/V3.1.1升级记录.md）。**我宣布正式启用之前没有生产数据，可以随意部署、测试、重装**（用户 2026-11-12）；宣布之后任何停服、删数据、升级或恢复操作先征得我同意。
 * 版本号随版本及时更新：SPEC 头部、CLAUDE.md 标题、登录页页脚（frontend/src/views/Login.vue）写当前版本；系统状态中的版本号由发布包构建时的 APP\_VERSION 写入。

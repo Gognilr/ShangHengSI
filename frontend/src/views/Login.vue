@@ -113,7 +113,7 @@ async function submit() {
         <a class="cert-link" :href="certUrl" target="_blank" rel="noopener"><ShieldCheck :size="16" :stroke-width="1.75" /><span>下载根证书</span><span class="hint">浏览器提示“不安全”时安装</span></a>
       </section>
     </div>
-    <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V3.1.1</footer>
+    <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V3.2.1</footer>
   </div>
 </template>
 
