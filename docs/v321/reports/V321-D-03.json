@@ -1,0 +1,306 @@
+{
+  "baseline": {
+    "statuses": {
+      "partial": 11,
+      "completed": 5
+    },
+    "valid": {
+      "n": 16,
+      "issue_hits": 90,
+      "issue_total": 90,
+      "verdict_agree": 102,
+      "verdict_total": 102,
+      "mean_recall": 1.0,
+      "mean_agreement": 1.0,
+      "mean_unable_rate": 0.0460375816993464,
+      "mean_model_wall_s": 70.75825,
+      "mean_wall_s": 73.793,
+      "mean_tokens_in": 2946.625,
+      "mean_tokens_out": 13778.0625
+    },
+    "paired": {
+      "n": 16,
+      "issue_hits": 90,
+      "issue_total": 90,
+      "verdict_agree": 102,
+      "verdict_total": 102,
+      "mean_recall": 1.0,
+      "mean_agreement": 1.0,
+      "mean_unable_rate": 0.0460375816993464,
+      "mean_model_wall_s": 70.75825,
+      "mean_wall_s": 73.793,
+      "mean_tokens_in": 2946.625,
+      "mean_tokens_out": 13778.0625
+    },
+    "rounds": [
+      {
+        "n": 8,
+        "issue_hits": 45,
+        "issue_total": 45,
+        "verdict_agree": 51,
+        "verdict_total": 51,
+        "mean_recall": 1.0,
+        "mean_agreement": 1.0,
+        "mean_unable_rate": 0.049019607843137254,
+        "mean_model_wall_s": 71.503625,
+        "mean_wall_s": 76.14025,
+        "mean_tokens_in": 2946.625,
+        "mean_tokens_out": 14619.75
+      },
+      {
+        "n": 8,
+        "issue_hits": 45,
+        "issue_total": 45,
+        "verdict_agree": 51,
+        "verdict_total": 51,
+        "mean_recall": 1.0,
+        "mean_agreement": 1.0,
+        "mean_unable_rate": 0.043055555555555555,
+        "mean_model_wall_s": 70.012875,
+        "mean_wall_s": 71.44575,
+        "mean_tokens_in": 2946.625,
+        "mean_tokens_out": 12936.375
+      }
+    ],
+    "validation_failures": 0,
+    "calls": {
+      "sent": 16
+    },
+    "totals": {
+      "tokens_in": 47146,
+      "tokens_out": 220449,
+      "calls": 16,
+      "min_wall_s": 17.902,
+      "max_wall_s": 119.863,
+      "under_60": 5,
+      "lazy_count": 0
+    }
+  },
+  "parallel": {
+    "statuses": {
+      "partial": 6,
+      "completed": 10
+    },
+    "valid": {
+      "n": 16,
+      "issue_hits": 90,
+      "issue_total": 90,
+      "verdict_agree": 102,
+      "verdict_total": 102,
+      "mean_recall": 1.0,
+      "mean_agreement": 1.0,
+      "mean_unable_rate": 0.030126633986928105,
+      "mean_model_wall_s": 54.9552204375,
+      "mean_wall_s": 58.3143125,
+      "mean_tokens_in": 8788,
+      "mean_tokens_out": 25781.25
+    },
+    "paired": {
+      "n": 16,
+      "issue_hits": 90,
+      "issue_total": 90,
+      "verdict_agree": 102,
+      "verdict_total": 102,
+      "mean_recall": 1.0,
+      "mean_agreement": 1.0,
+      "mean_unable_rate": 0.030126633986928105,
+      "mean_model_wall_s": 54.9552204375,
+      "mean_wall_s": 58.3143125,
+      "mean_tokens_in": 8788,
+      "mean_tokens_out": 25781.25
+    },
+    "rounds": [
+      {
+        "n": 8,
+        "issue_hits": 45,
+        "issue_total": 45,
+        "verdict_agree": 51,
+        "verdict_total": 51,
+        "mean_recall": 1.0,
+        "mean_agreement": 1.0,
+        "mean_unable_rate": 0.013888888888888888,
+        "mean_model_wall_s": 59.546992625,
+        "mean_wall_s": 64.65350000000001,
+        "mean_tokens_in": 8788,
+        "mean_tokens_out": 26399
+      },
+      {
+        "n": 8,
+        "issue_hits": 45,
+        "issue_total": 45,
+        "verdict_agree": 51,
+        "verdict_total": 51,
+        "mean_recall": 1.0,
+        "mean_agreement": 1.0,
+        "mean_unable_rate": 0.04636437908496732,
+        "mean_model_wall_s": 50.363448250000005,
+        "mean_wall_s": 51.975125,
+        "mean_tokens_in": 8788,
+        "mean_tokens_out": 25163.5
+      }
+    ],
+    "validation_failures": 0,
+    "calls": {
+      "sent": 64
+    },
+    "totals": {
+      "tokens_in": 140608,
+      "tokens_out": 412500,
+      "calls": 64,
+      "min_wall_s": 20.582,
+      "max_wall_s": 106.933,
+      "under_60": 9,
+      "lazy_count": 0
+    }
+  },
+  "gold_conclusion_changes": [],
+  "prefix_reuse": [
+    {
+      "sample": 1,
+      "repeat": 1,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 2,
+      "repeat": 1,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 3,
+      "repeat": 1,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 4,
+      "repeat": 1,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 5,
+      "repeat": 1,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 6,
+      "repeat": 1,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 7,
+      "repeat": 1,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 8,
+      "repeat": 1,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 1,
+      "repeat": 2,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 2,
+      "repeat": 2,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 3,
+      "repeat": 2,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 4,
+      "repeat": 2,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 5,
+      "repeat": 2,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 6,
+      "repeat": 2,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 7,
+      "repeat": 2,
+      "prefixes": 1,
+      "groups": 4
+    },
+    {
+      "sample": 8,
+      "repeat": 2,
+      "prefixes": 1,
+      "groups": 4
+    }
+  ],
+  "evaluation": {
+    "model": "deepseek-flash",
+    "thinking": "enabled",
+    "reasoning_effort": "low",
+    "max_tokens": 32000,
+    "timeout_s": 180,
+    "chunk_chars": 60000,
+    "json_mode": true,
+    "session": true,
+    "date_shift": true,
+    "send_ratios": false,
+    "samples": 8,
+    "repeats": 2
+  },
+  "changes_pct": {
+    "mean_model_wall_s": -22.333833245593272,
+    "mean_wall_s": -20.975820877318995,
+    "mean_tokens_in": 198.2395113053069,
+    "mean_tokens_out": 87.11810895036946
+  },
+  "request_audit": {
+    "samples": 16,
+    "file_hashes_match": true,
+    "files": 20,
+    "min_concurrent": 4,
+    "group_counts": [
+      4
+    ],
+    "shared_prefix_counts": [
+      1
+    ],
+    "params_low": 64
+  },
+  "candidate_source_hashes": [
+    {
+      "path": "backend/app/review/job.py",
+      "sha256": "154d2d222596e087c9f836c096c844a8c65ac3786dc3be78ca4d4cce78a282fd"
+    },
+    {
+      "path": "backend/app/review/prompt.py",
+      "sha256": "ab3f47b4ab7ae0bdfe8c78e00536754adc51918abd5930bd955c4c046264b137"
+    },
+    {
+      "path": "backend/app/review/requirements.py",
+      "sha256": "0373c3bebfe735ce40a7674f501fc72920941ab0b1a9817472b81962649b9b22"
+    },
+    {
+      "path": "backend/app/llm/usage.py",
+      "sha256": "3008d3aed84287c0b2c45dcab6f6a1789686c975fe899d7f618f1b31b8f4ca54"
+    }
+  ]
+}
