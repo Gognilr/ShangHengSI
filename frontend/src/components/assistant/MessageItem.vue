@@ -2,14 +2,14 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { saveBlob } from '@/utils/save'
-import type { Message } from '@/api/assistant'
+import type { Message, MessageSource } from '@/api/assistant'
 import { assistantApi } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import CalcResult from '@/components/result/CalcResult.vue'
 import ZoneHeader from '@/components/ui/ZoneHeader.vue'
 import { markTokens, unresolvedCount } from '@/utils/marks'
-import { markKindLabel } from '@/utils/labels'
-import { inline, markdown } from '@/utils/markdown'
+import { markdown } from '@/utils/markdown'
+import InlineText from './InlineText.vue'
 import { formatDateTime } from '@/utils/time'
 import { useStale } from '@/utils/stale'
 import { assistantStatusLabel } from '@/utils/labels'
@@ -17,9 +17,14 @@ import CompareTable from './CompareTable.vue'
 import TranslationView from './TranslationView.vue'
 /** savedNo：这条回复已保存为问题 savedNo 的修改建议（V321-E-02） */
 const props = defineProps<{ message: Message; sessionId: string; last?: boolean; draftable?: boolean; savedNo?: string; reading?: boolean }>()
-const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message] }>()
+const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message]; cite: [message: Message, source: MessageSource] }>()
 const tokens = computed(() => markTokens(props.message.content, props.message.marks))
-const tokenSet = computed(() => new Set(tokens.value.keys()))
+// 回复依据（V321-E-13）：锚点只来自后端 cites（本地登记过的 id），模型自写的编号对不上就是普通文字
+const cites = computed(() => new Map((props.message.cites ?? []).map(c => [c.token, c.ref])))
+const sourceMap = computed(() => new Map((props.message.sources ?? []).map(src => [src.ref, src])))
+const sources = computed(() => props.message.sources ?? [])
+const kindLabel = { para: '原文', kb: '知识库', history: '历史合同', law: '法条' } as const
+function cite(source: MessageSource) { emit('cite', props.message, source) }
 const count = computed(() => unresolvedCount(props.message.marks))
 const parsed = computed(() => {
   const calcs = [...(props.message.calcs ?? [])].sort((a,b) => a.line_start - b.line_start)
@@ -72,8 +77,8 @@ async function copy() {
         <CalcResult v-if="block.calc" :calc="block.calc" />
         <hr v-else-if="block.kind === 'rule'">
         <pre v-else-if="block.kind === 'code'" class="code">{{ block.text }}</pre>
-        <div v-else-if="block.kind === 'table'" class="table-scroll"><table><thead><tr><th v-for="(header, col) in block.headers" :key="col"><template v-for="(part, pi) in inline(header, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></th></tr></thead><tbody><tr v-for="(row, ri) in block.rows" :key="ri"><td v-for="(cell, ci) in row" :key="ci"><template v-for="(part, pi) in inline(cell, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template></td></tr></tbody></table></div>
-        <p v-else :class="{ clause: block.clause, heading: block.kind === 'heading', list: block.kind === 'list' }" :style="block.kind === 'list' && block.level ? { marginLeft: `${block.level * 20}px` } : undefined"><span v-if="block.kind === 'list'">{{ block.order ? `${block.order}. ` : '• ' }}</span><template v-for="(part, pi) in inline(block.text, tokenSet)" :key="pi"><mark v-if="part.mark" class="si-unresolved" tabindex="0" :title="markKindLabel(tokens.get(part.mark)!)">{{ part.text }}</mark><strong v-else-if="part.bold">{{ part.text }}</strong><span v-else>{{ part.text }}</span></template><i v-if="streaming && index === parsed.length - 1" class="cursor" aria-hidden="true" /></p>
+        <div v-else-if="block.kind === 'table'" class="table-scroll"><table><thead><tr><th v-for="(header, col) in block.headers" :key="col"><InlineText :text="header" :tokens="tokens" :cites="cites" :sources="sourceMap" @cite="cite" /></th></tr></thead><tbody><tr v-for="(row, ri) in block.rows" :key="ri"><td v-for="(cell, ci) in row" :key="ci"><InlineText :text="cell" :tokens="tokens" :cites="cites" :sources="sourceMap" @cite="cite" /></td></tr></tbody></table></div>
+        <p v-else :class="{ clause: block.clause, heading: block.kind === 'heading', list: block.kind === 'list' }" :style="block.kind === 'list' && block.level ? { marginLeft: `${block.level * 20}px` } : undefined"><span v-if="block.kind === 'list'">{{ block.order ? `${block.order}. ` : '• ' }}</span><InlineText :text="block.text" :tokens="tokens" :cites="cites" :sources="sourceMap" @cite="cite" /><i v-if="streaming && index === parsed.length - 1" class="cursor" aria-hidden="true" /></p>
       </template>
       <p v-if="streaming && parsed[parsed.length - 1]?.kind !== 'paragraph' && parsed[parsed.length - 1]?.kind !== 'heading' && parsed[parsed.length - 1]?.kind !== 'list'"><i class="cursor" aria-hidden="true" /></p>
     </div>
@@ -85,8 +90,11 @@ async function copy() {
     <p v-if="count" class="warning">有 {{ count }} 处未能还原，已原样标出</p>
     <el-alert v-if="message.error" :title="message.error" type="error" :closable="false" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <p v-if="message.role === 'assistant' && (Number(message.extras.kb_sent) > 0 || Number(message.extras.kb_dropped) > 0)" class="hint">附带公司知识库片段 {{ message.extras.kb_sent }} 段（{{ message.extras.kb_dropped ?? 0 }} 段因含疑似敏感信息未发送）</p>
-    <p v-for="source in message.extras.history_sources" :key="source.task_id" class="hint"><router-link :to="`/review/${source.task_id}`" target="_blank" rel="noopener">来自 {{ source.month }} 的一份合同</router-link></p>
+    <div v-if="sources.length" class="sources" role="group" aria-label="回复依据">
+      <span class="hint">依据</span>
+      <button v-for="source in sources" :key="source.ref" type="button" class="source" :class="{ uncited: !source.cited }" :title="source.cited ? '' : '已附带发送，回复中未引用'" @click="cite(source)"><span class="source-kind">{{ kindLabel[source.kind] }}{{ source.kind === 'kb' ? ' ' + source.ref.slice(2) : source.kind === 'history' ? ' ' + source.ref.slice(1) : '' }}</span>{{ source.kind === 'kb' || source.kind === 'history' ? source.label.replace(/^[^·]+· /, '') : source.label }}</button>
+    </div>
+    <p v-if="message.role === 'assistant' && Number(message.extras.kb_dropped) > 0" class="hint">另有 {{ message.extras.kb_dropped }} 段知识库片段因含疑似敏感信息未发送</p>
     <p v-if="message.role === 'assistant' && message.model_label" class="hint">{{ message.model_label }}</p>
     <div v-if="message.role === 'assistant'" class="message-actions" :class="{ 'on-hover': !pending && message.status !== 'failed' && !last }">
       <el-button v-if="pending" size="small" @click="emit('stop', message.id)">停止</el-button>
@@ -136,4 +144,12 @@ th { background: var(--el-fill-color-light); }
 .message-actions.on-hover { opacity: 0; transition: opacity var(--si-dur-1) var(--si-ease); }
 .reply:hover .message-actions.on-hover, .reply:focus-within .message-actions.on-hover { opacity: 1; }
 .si-unresolved { color: inherit; background: var(--si-unresolved-bg); text-decoration: underline dashed 1px var(--si-warn-ink); text-underline-offset: 3px; cursor: help; }
+/* 依据行（V321-E-13）：引用过的在前；附带发送但未引用的用次要色 */
+.sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; }
+.source { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 8px; border: 1px solid var(--el-border-color-light); border-radius: var(--el-border-radius-base); background: none; font: var(--si-font-meta); color: var(--el-text-color-regular); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source:hover { border-color: var(--si-blue); color: var(--si-blue); }
+.source:focus-visible { outline: 2px solid var(--si-blue); outline-offset: 1px; }
+.source.uncited { color: var(--el-text-color-secondary); border-style: dashed; }
+.source-kind { font: var(--si-font-caption); color: var(--si-blue); }
+.uncited .source-kind { color: var(--el-text-color-secondary); }
 </style>

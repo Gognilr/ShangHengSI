@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { Ellipsis, Files, Upload } from '@lucide/vue'
-import { assistantApi, type Session, type SessionItem, type Message, type Template } from '@/api/assistant'
+import { assistantApi, type Session, type SessionItem, type Message, type MessageSource, type Template } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import type { Finding } from '@/api/runs'
 import { useAuthStore } from '@/stores/auth'
@@ -158,6 +158,11 @@ async function sent(text: string) {
   }
 }
 const filePanel = ref<InstanceType<typeof FilePanel>>(), drawerOpen = ref(false)
+// 回复依据（V321-E-13）：原文段落在讨论栏旁的原文画布定位，直接提问时打开“查看原文”；其余依据在依据抽屉中看原文
+function cite(message: Message, source: MessageSource, locate?: (loc: string) => void) {
+  if (source.kind === 'para') { if (locate) locate(source.ref); else void filePanel.value?.locate(source.ref) }
+  else void filePanel.value?.showSource(message.id, source)
+}
 // 审核视图首页（还没有会话）：拖入、点选或粘贴文件才建会话，不在进入页面时建空会话（V32-B-01 1）
 const reviewPicker = ref<HTMLInputElement>(), reviewDragging = ref(false)
 function reviewFiles(list: File[]) { if (list.length && !working.value) void start({ text: '', template: null, files: list }) }
@@ -223,13 +228,13 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           <span v-else>审核已完成，可以在“全面审核”里查看问题，也可以继续提问。</span>
           <el-button size="small" type="primary" link @click="seeResult">{{ session.review_running ? '查看进度' : '查看结果' }}</el-button>
         </div>
-        <Transition name="rise"><Conversation v-if="!homeLike" v-show="mode === 'ask'" :messages="shown" :session-id="id" :reading="session?.status === 'parsing'" @stop="stop" @retry="retry" /></Transition>
+        <Transition name="rise"><Conversation v-if="!homeLike" v-show="mode === 'ask'" :messages="shown" :session-id="id" :reading="session?.status === 'parsing'" @cite="cite" @stop="stop" @retry="retry" /></Transition>
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
         <Composer v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!shown.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
         <ReviewPane v-if="reviewSeen" v-show="mode === 'review'" :key="id" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null">
-          <template #discussion="{ finding, no, update }">
+          <template #discussion="{ finding, no, update, locate }">
             <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。"
-              :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @stop="stop" @retry="retry" />
+              :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource) => cite(m, src, locate)" @stop="stop" @retry="retry" />
             <Composer :key="`${id}:${finding.id}`" :template="null" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="false" @sent="sent" @stop="stop" @busy="refresh" @confirm="filePanel?.openConfirm()" />
           </template>
         </ReviewPane>

@@ -1,20 +1,21 @@
 /** 最小 Markdown 子集；结果只用模板文本节点渲染。 */
-export interface Inline { text: string; bold: boolean; mark?: string }
+/** mark：未能还原标记的原样文字；cite：回复依据的 ref（V321-E-13），只来自后端 cites */
+export interface Inline { text: string; bold: boolean; mark?: string; cite?: string }
 /** list 的 level 为缩进层级（0～3），order 为有序列表的编号；code 为围栏代码块（V321-E-12） */
 export type Block = { kind: 'heading' | 'paragraph'; text: string; level: number }
   | { kind: 'list'; text: string; level: number; order?: number } | { kind: 'code'; text: string }
   | { kind: 'table'; headers: string[]; rows: string[][] } | { kind: 'rule' }
-export function inline(text: string, tokens: ReadonlySet<string> = new Set()): Inline[] {
+export function inline(text: string, tokens: ReadonlySet<string> = new Set(), cites: ReadonlyMap<string, string> = new Map()): Inline[] {
   return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).flatMap(piece => {
     const bold = piece.startsWith('**'), value = bold ? piece.slice(2, -2) : piece
     const out: Inline[] = []
-    const sorted = [...tokens].filter(Boolean).sort((a,b) => b.length - a.length)
+    const sorted = [...tokens, ...cites.keys()].filter(Boolean).sort((a,b) => b.length - a.length)
     let cursor = 0, plain = 0
     while (cursor < value.length) {
       const token = sorted.find(t => value.startsWith(t, cursor))
       if (!token) { cursor++; continue }
       if (cursor > plain) out.push({ text: value.slice(plain, cursor), bold })
-      out.push({ text: token, bold, mark: token }); cursor += token.length; plain = cursor
+      out.push(tokens.has(token) ? { text: token, bold, mark: token } : { text: token, bold, cite: cites.get(token) }); cursor += token.length; plain = cursor
     }
     if (plain < value.length) out.push({ text: value.slice(plain), bold })
     return out

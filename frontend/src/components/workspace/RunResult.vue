@@ -85,6 +85,8 @@ const localLocs = computed(() => zone.value === 'local' ? localItems.value.flatM
 watch(() => props.selectedRun, id => { void loadRun(id) }, { immediate: true })
 
 const canvas = ref<InstanceType<typeof ResultCanvas>>()
+// 讨论回复的原文依据在左侧画布定位（V321-E-13）
+function locateLoc(loc: string) { void canvas.value?.locate(loc) }
 function onSelect(f: Finding) {
   if (selectedId.value === f.id) { selectedId.value = ''; return }
   selectedId.value = f.id
@@ -270,7 +272,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
           <div class="discuss-card">
             <FindingCard :finding="discussed" :no="noOf(discussed.id)" :selected="cardOpen" @select="cardOpen = !cardOpen" @updated="onUpdated" />
           </div>
-          <div class="discuss-body"><slot name="discussion" :finding="discussed" :no="noOf(discussed.id)" :update="onUpdated" /></div>
+          <div class="discuss-body"><slot name="discussion" :finding="discussed" :no="noOf(discussed.id)" :update="onUpdated" :locate="locateLoc" /></div>
         </section>
       </div>
     </div>

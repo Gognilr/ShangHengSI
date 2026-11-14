@@ -2,7 +2,8 @@
 import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
 import { computed, nextTick, ref, onBeforeUnmount, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { assistantApi, confirmationTask, type Session, type SessionFile } from '@/api/assistant'
+import { assistantApi, confirmationTask, type MessageSource, type Session, type SessionFile, type SourceDetail } from '@/api/assistant'
+import ResultCanvas from '@/components/result/ResultCanvas.vue'
 import { saveBlob } from '@/utils/save'
 import type { LocalFinding } from '@/api/localFindings'
 import TranscriptEditor from './TranscriptEditor.vue'
@@ -115,7 +116,26 @@ async function pick(kind: 'doc' | 'audio') {
 }
 function openTranscript(file: SessionFile) { transcriptFile.value = file }
 function openConfirm() { const audio = pending.value.find(f => f.media?.stage === 'done'); if (audio) transcriptFile.value = audio; else confirmOpen.value = true }
-defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgress, retryMedia })
+// 回复依据（V321-E-13）：原文段落在只读画布中定位并闪烁高亮；知识库、历史合同、法条在“依据”抽屉中显示原文
+const readerOpen = ref(false), reader = ref<InstanceType<typeof ResultCanvas>>()
+const nodeLoader = (_id: string, fid: string) => assistantApi.nodes(props.session.id, fid)
+const rawLoader = (_id: string, fid: string) => assistantApi.raw(props.session.id, fid)
+async function locate(loc: string) {
+  readerOpen.value = true
+  await nextTick()
+  await reader.value?.locate(loc)
+}
+const sourceOpen = ref(false), sourceLoading = ref(false), sourceError = ref(''), source = ref<SourceDetail | null>(null), sourceLabel = ref('')
+let sourceVersion = 0
+async function showSource(mid: number, item: MessageSource) {
+  const version = ++sourceVersion
+  sourceOpen.value = true; sourceLabel.value = item.label; source.value = null; sourceError.value = ''; sourceLoading.value = true
+  try { const data = await assistantApi.source(props.session.id, mid, item.ref); if (version === sourceVersion) source.value = data }
+  catch (e) { if (version === sourceVersion) sourceError.value = e instanceof ApiError ? e.message : '依据读取失败，请重试' }
+  finally { if (version === sourceVersion) sourceLoading.value = false }
+}
+const sourceKind = { para: '原文', kb: '公司知识库', history: '我的历史合同', law: '法条' } as const
+defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgress, retryMedia, locate, showSource })
 </script>
 <template>
   <div class="file-host">
@@ -143,6 +163,14 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
     <el-dialog append-to-body :model-value="!!transcriptFile" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><template #header="{ close }"><DialogBackHeader :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" back="返回对话" @close="close" /></template><div class="transcript-frame"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></div></el-dialog>
     <el-dialog append-to-body v-model="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" :require-our-party="reviewMode" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
+    <el-dialog append-to-body v-model="readerOpen" fullscreen :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="查看原文" back="返回对话" @close="close" /></template><div class="reader-frame"><ResultCanvas ref="reader" :key="`${session.id}:${session.material_version}`" :task="task" :note="null" :annotations="[]" :local-locs="[]" selected-finding-id="" :raw-highlight="[]" :ask-enabled="false" :node-loader="nodeLoader" :raw-loader="rawLoader" /></div></el-dialog>
+    <el-drawer append-to-body v-model="sourceOpen" :title="source ? sourceKind[source.kind] : '依据'" size="480px">
+      <div v-loading="sourceLoading" class="source-body">
+        <el-alert v-if="sourceError" :title="sourceError" type="error" :closable="false" />
+        <template v-else-if="source"><h3>{{ source.title }}</h3><p class="source-text">{{ source.text }}</p><router-link v-if="source.link" :to="source.link" target="_blank" rel="noopener">打开这份合同</router-link><p v-if="source.kind !== 'law'" class="hint">这是本机保存的原文，发给模型的是脱敏后的文字。</p></template>
+        <p v-else-if="!sourceLoading" class="hint">{{ sourceLabel }}</p>
+      </div>
+    </el-drawer>
   </div>
 </template>
 <style scoped>
@@ -160,5 +188,8 @@ h3 { font: var(--si-font-h3); }
 .session-settings label { display: block; margin-bottom: 8px; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
 .transcript-frame { height: calc(100vh - 100px); }
+.reader-frame { height: calc(100vh - 100px); max-width: 1200px; margin: auto; }
+.source-body { min-height: 120px; }
+.source-text { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-reading); color: var(--si-text-reading); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 65vh; overflow-y: auto; font: var(--si-font-body); }
 </style>

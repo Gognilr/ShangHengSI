@@ -67,13 +67,17 @@ export interface Message {
   id: number; role: 'user' | 'assistant'; content: string; status: string; template: Template | null
   params: Record<string, unknown>; created_at: string; error: string | null; error_code: string | null
   extras: { segments_total?: number; segments_done?: number; kb_sent?: number; kb_dropped?: number
-    history_sources?: { task_id: string; month: string }[]; translation_unaligned?: number[] }
+    translation_unaligned?: number[] }
+  /** 回复依据（V321-E-13）：只含本地登记过的来源；cites 为正文中渲染成锚点的原样文字 */
+  sources?: MessageSource[]; cites?: { token: string; ref: string }[]
   translation?: Record<string, string>; translation_notice?: string; compare?: Comparison; draft?: string
   /** 用户消息：实际发给模型的提问文字（只含代号）；本地翻译的消息没有 */
   sent?: string
   /** 按问题讨论：消息所属的审核问题（V32-B-02）；普通对话为 null */
   finding_id?: string | null
 }
+export interface MessageSource { ref: string; kind: 'para' | 'kb' | 'history' | 'law'; label: string; cited: boolean }
+export interface SourceDetail { kind: MessageSource['kind']; title: string; text: string; link: string | null }
 export interface MessageInput {
   expected_material_version?: number
   model_id?: number
@@ -119,6 +123,7 @@ export const assistantApi = {
   send: (id: string, body: MessageInput) => http.post<{ user: Message; assistant: Message }>(`${base}/${id}/messages`, body),
   messages: (id: string, after_id = 0) => http.get<{ items: Message[] }>(`${base}/${id}/messages`, { after_id }),
   delta: (id: string, mid: number, offset: number) => http.get<{ status: string; text_from_offset: string; offset: number; error: string | null; compare?: Comparison }>(`${base}/${id}/messages/${mid}`, { offset }),
+  source: (id: string, mid: number, ref: string) => http.get<SourceDetail>(`${base}/${id}/messages/${mid}/sources/${encodeURIComponent(ref)}`),
   stop: (id: string, mid: number) => http.post<Message>(`${base}/${id}/messages/${mid}/stop`),
   retry: (id: string, mid: number) => http.post<{ user: Message; assistant: Message }>(`${base}/${id}/messages/${mid}/retry`),
   download: (id: string, mid: number, format: 'docx' | 'xlsx', variant = 'translation') => http.getDownload(`${base}/${id}/messages/${mid}/export?format=${format}&variant=${variant}`),
