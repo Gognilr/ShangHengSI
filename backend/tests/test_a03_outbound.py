@@ -72,8 +72,8 @@ def test_a03_no_real_values_in_outbound_records(db_sessionmaker, alice, llm, mon
         from app.db.models import LlmCall
         assert set(db.scalars(select(LlmCall.task_title).distinct())) == {"智能审核"}
     records = outbound_records(db_sessionmaker, requests)
-    # 每个样本恰好发送一次，且全部 sent（被出口复检拦截的会是 blocked）
-    assert sorted(r.task_id for r in records) == sorted(task_of)
+    # 每个样本都发送了（D-03 起每轮按维度组发送多次，每条记录都逐条复检），且全部 sent（被出口复检拦截的会是 blocked）
+    assert {r.task_id for r in records} == set(task_of)
     assert {r.status for r in records} == {"sent"}
     assert sum(len(r.real_values) for r in records) > 200 and any(r.terms for r in records)
 

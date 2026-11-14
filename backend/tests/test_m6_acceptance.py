@@ -136,7 +136,7 @@ def test_a03_local_check_samples_outbound_clean(db_sessionmaker, make_user, logi
         assert confirm_and_review(c, h, db_sessionmaker, tid)["status"] == "completed", f.name
         task_of[tid] = f.name
     records = outbound_records(db_sessionmaker, requests)
-    assert sorted(r.task_id for r in records) == sorted(task_of) and {r.status for r in records} == {"sent"}
+    assert {r.task_id for r in records} == set(task_of) and {r.status for r in records} == {"sent"}  # D-03：每轮按维度组多次发送
     with db_sessionmaker() as db:
         details = {}
         for f in db.scalars(select(LocalFinding)):

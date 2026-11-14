@@ -36,7 +36,9 @@ REQ_LINE = re.compile(r"^\[([A-Z]{1,2}-\d+|CO-\d+|NOTE)\]", re.MULTILINE)
 DOC_LINE = re.compile(r"^\[(F\d+-[^\]]+)\] ?(.*)$", re.MULTILINE)
 
 
-def test_all_samples_verified_locations_coverage_and_requirement_identity(db_sessionmaker, make_user, login, llm):
+def test_all_samples_verified_locations_coverage_and_requirement_identity(db_sessionmaker, make_user, login, llm, monkeypatch):
+    from app.review import job as review_job  # 单组：本用例只验证其他行为（V321-Z；D-03 后的写法同 test_review_job）
+    monkeypatch.setattr(review_job, "group_requirements", lambda requirements: [requirements])
     make_user("m5-acceptance")
     c, token = login("m5-acceptance")
     h = {"X-CSRF-Token": token}

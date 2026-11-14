@@ -35,9 +35,10 @@ def test_history_merges_sessions_and_reviews_and_redaction_reads(files_dir, env,
     assert r.status_code == 200 and r.json()["summary"]
     assert c.post(f"{API_PREFIX}/tasks/{tid}/redaction/manual", headers=h,
                   json={"loc": "F1-P1", "char_start": 0, "char_end": 1, "category": "CUSTOM"}).status_code == 409
-    # 会议纪要不开放；别人的会话与历史一律 404 / 看不到
-    assert c.get(f"{API_PREFIX}/tasks/{meeting}/redaction").status_code == 404
+    # 本人的会议纪要、翻译也可只读（确认页要读，V321-E-08）；别人的会话与历史一律 404 / 看不到
+    assert c.get(f"{API_PREFIX}/tasks/{meeting}/redaction").status_code == 200
     c2, _ = login(other.username)
+    assert c2.get(f"{API_PREFIX}/tasks/{meeting}/redaction").status_code == 404
     assert c2.get(f"{API_PREFIX}/tasks/{tid}/redaction").status_code == 404
     assert c2.get(f"{BASE}/history").json()["total"] == 0
 

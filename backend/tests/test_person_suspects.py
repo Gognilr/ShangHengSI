@@ -32,7 +32,10 @@ from tests.test_user_note_redaction import complete, task_url
     ('宋虚婷女士已确认样品合格。', '宋虚婷'),
 ])
 def test_design_11_6_positive(text, name):
-    assert [(text[s.start:s.end], s.reason) for s in find_suspects(text, [])] == [(name, 'person_name')]
+    # V321-B-02：“经办人为林虚”这类标签人名已由引擎直接替换，列为不确定项或被替换都算通过
+    from app.redaction.engine import NodeIn, compute
+    listed = [(text[s.start:s.end], s.reason) for s in find_suspects(text, [])]
+    assert listed == [(name, 'person_name')] or name not in compute([NodeIn('F1-P1', text, None, 'paragraph')], 'sales').redacted['F1-P1']
 
 
 @pytest.mark.parametrize('text', [

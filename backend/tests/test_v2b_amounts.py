@@ -167,8 +167,10 @@ def test_selection_entrypoints(surface, entry, db_sessionmaker, alice, ready_tas
 
 
 @pytest.mark.usefixtures('env')
-def test_amounts_fixture_wire_diagnostic(db_sessionmaker, alice, llm):
+def test_amounts_fixture_wire_diagnostic(db_sessionmaker, alice, llm, monkeypatch):
     """V2Q-58：实测固定编号中的短串与正文金额脱敏，A-03 仅按授权同步。"""
+    from app.review import job as review_job  # 单组：本用例只看一条外发记录（V321-Z；D-03 后的写法同 test_review_job）
+    monkeypatch.setattr(review_job, "group_requirements", lambda requirements: [requirements])
     import re
     from tests.acceptance_support import golden_samples, run_sample, outbound_records
     client, headers = alice[1:]

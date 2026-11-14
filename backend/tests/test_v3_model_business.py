@@ -48,7 +48,9 @@ def test_review_disabled_submit_and_queued_execution(env, second, make_user, log
         assert list(db.scalars(select(LlmCall))) == []
 
 
-def test_chat_falls_back_to_review_default(env, second, make_user, ready_task, llm, db_sessionmaker):
+def test_chat_falls_back_to_review_default(env, second, make_user, ready_task, llm, db_sessionmaker, monkeypatch):
+    from app.review import job as review_job  # 单组：本用例只验证其他行为（V321-Z；D-03 后的写法同 test_review_job）
+    monkeypatch.setattr(review_job, "group_requirements", lambda requirements: [requirements])
     from app.chat.service import send
     owner = make_user("selected_chat")
     task = ready_task(owner)

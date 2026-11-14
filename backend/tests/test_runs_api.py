@@ -447,9 +447,9 @@ def test_run_detail_restores_names_and_sorts_findings(db_sessionmaker, alice, re
     assert d["sanctions"] == {"level": "attention", "reasons": [f"{REAL_BUYER_NAME}位于需关注地区"]}
     assert d["requirement_results"][1]["note"] == f"{REAL_BUYER_NAME}条款齐全"
     assert set(d["requirement_results"][0]) == {"req_id", "req_source", "req_text", "dimension", "verdict", "note", "unable_reason"}
-    # 严重程度高 → 低，同级按 seq
+    # 严重程度高 → 低，同级按原文位置、缺失类排末尾；入库序号即此顺序（V321-F-01）
     assert [(f["title"], f["severity"], f["seq"]) for f in d["findings"]] == [
-        ("高风险问题", "high", 2), ("缺失型问题", "high", 3), ("编造引用", "medium", 4), ("低风险问题", "low", 1)]
+        ("高风险问题", "high", 1), ("缺失型问题", "high", 2), ("编造引用", "medium", 3), ("低风险问题", "low", 4)]
     high = d["findings"][0]
     assert high["problem"] == f"{REAL_BUYER_NAME}未提供保函" and high["impact"] == f"{REAL_OUR_NAME}承担风险"
     assert high["suggestion"] == f"要求{REAL_BUYER_NAME}提供保函"

@@ -36,9 +36,11 @@ def outbound(c, task_id) -> str:
     return r.json()["text"]
 
 
-def test_t06_contract_all_categories(db_sessionmaker, alice, llm):
+def test_t06_contract_all_categories(db_sessionmaker, alice, llm, monkeypatch):
     """合同含公司名、简称、人名、电话、邮箱、账号、SWIFT、地址、金额：外发文本中全部替换；
     【主体说明】含国家和类型；金额附比例。"""
+    from app.review import job as review_job  # 单组：本用例只验证其他行为（V321-Z；D-03 后的写法同 test_review_job）
+    monkeypatch.setattr(review_job, "group_requirements", lambda requirements: [requirements])
     c, h = alice
     manifest = yaml.safe_load((FIXTURES / "docx" / "manifest.yaml").read_text(encoding="utf-8"))
     expected = manifest["samples"]["contract_basic"]["must_replace"]
@@ -70,8 +72,10 @@ def test_t06_contract_all_categories(db_sessionmaker, alice, llm):
     assert [i["text"] for i in expected if i["text"] in sent.request_text] == []
 
 
-def test_t08_manual_org_auto_replaced_in_second_task(db_sessionmaker, alice, llm):
+def test_t08_manual_org_auto_replaced_in_second_task(db_sessionmaker, alice, llm, monkeypatch):
     """第一个任务中手动补充一个公司名，确认发送后第二个任务（另一个文件）自动识别并替换该名称。"""
+    from app.review import job as review_job  # 单组：本用例只验证其他行为（V321-Z；D-03 后的写法同 test_review_job）
+    monkeypatch.setattr(review_job, "group_requirements", lambda requirements: [requirements])
     c, h = alice
     requests = llm("normal")
     name = "青松示例物流"

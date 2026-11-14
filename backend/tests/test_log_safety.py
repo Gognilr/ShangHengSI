@@ -62,6 +62,8 @@ def _secrets(db_sessionmaker) -> set[str]:
 
 
 def test_logs_do_not_contain_text_names_amounts_or_key(db_sessionmaker, alice, llm, monkeypatch, caplog):
+    from app.review import job as review_job  # 单组：本用例只验证其他行为（V321-Z；D-03 后的写法同 test_review_job）
+    monkeypatch.setattr(review_job, "group_requirements", lambda requirements: [requirements])
     c, h = alice
     caplog.set_level(logging.DEBUG)
     golden = {s.name: s for s in golden_samples()}

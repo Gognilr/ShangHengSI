@@ -207,6 +207,6 @@ def test_kb_old_conversion_and_pdf_ocr_share_parser(monkeypatch):
         yield
     monkeypatch.setattr(worker, 'ocr_slot', locked)
     monkeypatch.setattr(pdf, 'inspect_pdf', lambda data: SimpleNamespace(scanned_pages=[1]))
-    monkeypatch.setattr(pdf, 'parse_pdf', lambda data, seq: ParsedFile([], 1, False, [], 1))
+    monkeypatch.setattr(pdf, 'parse_pdf', lambda data, seq, **kwargs: ParsedFile([], 1, False, [], 1))  # V321-E-06 增加 on_ocr 回调
     _parse_bytes('pdf', b'fictional', 1, 0)
     assert calls == ['doc', 'lock']

@@ -52,8 +52,10 @@ def complete(sm, client, headers, task, llm):
     return rid, requests
 
 
-def test_r4_note_outbound_and_storage(db_sessionmaker, alice, ready_task, llm):
+def test_r4_note_outbound_and_storage(db_sessionmaker, alice, ready_task, llm, monkeypatch):
     """4.6 #1、#2：NOTE 与外发记录均为代号；逐表逐列检查数据库无三处原文。"""
+    from app.review import job as review_job  # 单组：本用例只验证其他行为（V321-Z；D-03 后的写法同 test_review_job）
+    monkeypatch.setattr(review_job, "group_requirements", lambda requirements: [requirements])
     user, c, h = alice
     task = ready_task(user, user_note=NOTE)
     preview = c.get(task_url(task, "/redaction/outbound")).json()
@@ -162,8 +164,10 @@ def test_r4_note_result_report_and_retention(db_sessionmaker, alice, ready_task,
         assert NOTE in "\n".join(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
 
 
-def test_r4_empty_note_keeps_original_messages(db_sessionmaker, alice, ready_task, llm):
+def test_r4_empty_note_keeps_original_messages(db_sessionmaker, alice, ready_task, llm, monkeypatch):
     """4.6 #7：空说明沿用未修改的 prompt 构建结果，正文及节点不出现 NOTE。"""
+    from app.review import job as review_job  # 单组：本用例只验证其他行为（V321-Z；D-03 后的写法同 test_review_job）
+    monkeypatch.setattr(review_job, "group_requirements", lambda requirements: [requirements])
     user, c, h = alice
     task = ready_task(user)
     with db_sessionmaker() as db:

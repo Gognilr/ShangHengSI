@@ -20,8 +20,10 @@ def found(text: str, occupied=()) -> list[tuple[str, str]]:
 @pytest.mark.parametrize("suffix", ["股份有限公司", "有限责任公司", "集团有限公司", "有限公司", "集团", "研究院", "研究所"])
 def test_org_suffix_chinese(suffix):
     name = f"恒远示例{suffix}"
-    assert found(f"请联系{name}确认") == [(name, "org_suffix")]
-    assert found(f"{name}。") == [(name, "org_suffix")]
+    for text in (f"请联系{name}确认", f"{name}。"):
+        # V321-B-02/B-04：完整企业后缀是名称证据，可能直接成为确定项；列为不确定项或被替换都算通过
+        redacted = compute([NodeIn("F1-P1", text, None, "paragraph")], "sales").redacted["F1-P1"]
+        assert found(text) == [(name, "org_suffix")] or name not in redacted
 
 
 def test_org_suffix_chinese_boundary_words_and_length():
