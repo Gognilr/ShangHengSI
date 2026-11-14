@@ -8,7 +8,7 @@ import platform
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
@@ -35,6 +35,8 @@ def enqueue(db: Session, type: str, payload: dict, *, run_after: datetime | None
         job.run_after = run_after
     db.add(job)
     db.flush()
+    # 通知随业务事务提交；回滚时不会唤醒 worker，也不发送任务内容。
+    db.execute(text("SELECT pg_notify('jobs_ready', '')"))
     return job
 
 

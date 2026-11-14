@@ -30,7 +30,7 @@ from app.security.crypto import check_master_key
 
 logger = logging.getLogger("app.worker")
 
-IDLE_SECONDS = 2  # 队列为空时的轮询间隔
+IDLE_SECONDS = 30  # 通知丢失或延迟任务到期时的兜底轮询间隔
 HEARTBEAT_SECONDS = 60  # 处理期间的心跳间隔
 PERIODIC_TICK_SECONDS = 5  # 检查定时工作是否到期的间隔
 JOIN_TIMEOUT_SECONDS = 30  # 收到停止信号后，等待正在处理的任务的最长时间
@@ -156,6 +156,39 @@ def run_periodic(session_factory: sessionmaker[Session], *, force: bool = False)
 # ---------------------------------------------------------------- 处理任务
 
 
+class _Wakeup:
+    def __init__(self) -> None:
+        self.condition = threading.Condition()
+        self.generation = 0
+
+    def notify(self) -> None:
+        with self.condition:
+            self.generation += 1
+            self.condition.notify_all()
+
+
+def _listen_jobs(session_factory: sessionmaker[Session], stop: threading.Event, wakeup: _Wakeup) -> None:
+    """独立连接接收通知；断线时重试，工作线程仍靠轮询兜底。"""
+    while not stop.is_set():
+        try:
+            with session_factory() as db:
+                engine = db.get_bind()
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                conn = connection.connection.driver_connection
+                connection.exec_driver_sql("LISTEN jobs_ready")
+                try:
+                    # 监听建立后立即检查队列，避免启动或重连期间错过通知。
+                    wakeup.notify()
+                    while not stop.is_set():
+                        for _ in conn.notifies(timeout=1, stop_after=1):
+                            wakeup.notify()
+                finally:
+                    connection.exec_driver_sql("UNLISTEN jobs_ready")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("队列监听失败: %s", type(exc).__name__)
+            stop.wait(2)
+
+
 @contextmanager
 def _heartbeating(session_factory: sessionmaker[Session], job_id: int, interval: float) -> Iterator[None]:
     done = threading.Event()
@@ -218,11 +251,14 @@ def _worker_loop(
     stop: threading.Event,
     idle_seconds: float,
     heartbeat_seconds: float,
+    wakeup: _Wakeup,
     types: tuple[str, ...],
 ) -> None:
     # 知识库复用解析组，不增加线程；启动分组参数保留，领取时扩展解析任务类型。
     claim_types = (*types, "kb_import") if "parse" in types else types
     while not stop.is_set():
+        with wakeup.condition:
+            generation = wakeup.generation
         try:
             with session_factory() as db:
                 job = jobs.claim(db, worker_id, claim_types)
@@ -232,7 +268,10 @@ def _worker_loop(
             stop.wait(idle_seconds)
             continue
         if claimed is None:
-            stop.wait(idle_seconds)
+            with wakeup.condition:
+                wakeup.condition.wait_for(
+                    lambda: stop.is_set() or wakeup.generation != generation, timeout=idle_seconds
+                )
             continue
         try:
             process_job(session_factory, *claimed, heartbeat_seconds=heartbeat_seconds)
@@ -261,22 +300,31 @@ def run_worker(
               ("translate", 1, ("translate",)),
               ("maintenance", 1, ("backup", "retention", "law_embed", "law_sync", "template_embed")))
     threads = []
+    wakeup = _Wakeup()
+    listener = None
     for group, concurrency, types in groups:
         for i in range(concurrency):
             threads.append(threading.Thread(
                 target=_worker_loop,
-                args=(session_factory, jobs.make_worker_id(len(threads)), stop, idle_seconds, heartbeat_seconds, types),
+                args=(session_factory, jobs.make_worker_id(len(threads)), stop, idle_seconds, heartbeat_seconds, wakeup, types),
                 name=f"worker-{group}-{i}",
                 daemon=True,
             ))
+    if not stop.is_set():
+        listener = threading.Thread(target=_listen_jobs, args=(session_factory, stop, wakeup),
+                                    name="worker-listener", daemon=True)
+        listener.start()
     for t in threads:
         t.start()
     while not stop.is_set():
         run_periodic(session_factory)
         stop.wait(periodic_tick_seconds)
+    wakeup.notify()
     deadline = time.monotonic() + join_timeout
     for t in threads:
         t.join(max(0.0, deadline - time.monotonic()))
+    if listener is not None:
+        listener.join(max(0.0, deadline - time.monotonic()))
 
 
 # ---------------------------------------------------------------- 入口

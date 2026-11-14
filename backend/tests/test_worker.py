@@ -66,6 +66,19 @@ def _enqueue(sm, type="parse", payload=None) -> int:
 # ---------------------------------------------------------------- 分派
 
 
+def test_committed_enqueue_wakes_idle_worker(handlers, db_sessionmaker):
+    seen = threading.Event()
+    handlers["parse"] = lambda db, payload: seen.set()
+    with _Running(db_sessionmaker, parse_concurrency=1, idle_seconds=20):
+        # 等待监听建立与初次空队列检查，然后验证提交才触发处理。
+        time.sleep(1.5)
+        with db_sessionmaker() as db:
+            jobs.enqueue(db, "parse", {"task_id": "fictional"})
+            assert not seen.wait(0.3)
+            db.commit()
+        assert seen.wait(5)
+
+
 def test_job_handler_registers_and_rejects_duplicate(handlers):
     @worker.job_handler("parse")
     def h(db, payload):
