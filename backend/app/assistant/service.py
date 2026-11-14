@@ -170,7 +170,10 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             neutral = {code: value for code, value in mapping.items() if NEUTRAL.fullmatch(code)}
             result['marks'] = [MarkOut.model_validate(mark).model_dump()
                                for mark in check(message.content_redacted, neutral, dates=dates,
-                                                 locations=_discussion_locations(db, task) if message.finding_id else None).marks]
+                                                 locations=_discussion_locations(db, task) if _located(message) else None).marks]
+            if _located(message):
+                from app.assistant.sources import build
+                result['sources'], result['cites'] = build(db, task, message, content, _discussion_locations(db, task))
             if '【算式】' in message.content_redacted:
                 from app.calc import add_to_message, code_context
                 add_to_message(result, message.content_redacted, neutral, **code_context(db, task, message.content_redacted, neutral))
@@ -192,21 +195,32 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
 def _discussion_locations(db, task):
     from app.db.models import DocNode
     from app.review.service import _View
-    return _View(db, task.id).readable(db.scalars(select(DocNode.loc).where(DocNode.task_id == task.id)))
+    # 列表接口逐条输出消息：同一请求内只算一次（普通问答也换位置后调用变多，V321-E-13）
+    cache = db.info.setdefault('assistant_locations', {})
+    key = (task.id, task.material_version)
+    if key not in cache:
+        cache[key] = _View(db, task.id).readable(db.scalars(select(DocNode.loc).where(DocNode.task_id == task.id)))
+    return cache[key]
 
 
 def _incremental(db, task, message, mapping, offset, *, finished, dates):
     import re
     from app.assistant.stream import incremental
     raw = message.content_redacted
-    if message.finding_id and not finished:
+    located = _located(message)
+    if located and not finished:
         # 位置编号可能拆在任一流式片段处，暂扣末尾候选，避免已显示前缀缩短。
         # 表格位置有多段（F1-T2-R3-C4），每段都可能未写完。
         raw = re.sub(r'\[?F\d*(?:-[A-Z]{0,2}\d*)*$', '', raw)
     text, _ = incremental(raw, mapping, 0, finished=finished, dates=dates)
-    if message.finding_id:
+    if located:
         text = check(text, {}, locations=_discussion_locations(db, task)).text
     return text[offset:], len(text)
+
+
+def _located(message) -> bool:
+    """回复里的段落编号在本机换成可读位置：讨论与普通问答都换（V321-E-13）；翻译、对照表另有结构。"""
+    return bool(message.finding_id) or (message.role == 'assistant' and message.template not in ('translate', 'compare'))
 
 
 def _message_mapping(db: Session, task: Task, message: AssistantMessage) -> dict:

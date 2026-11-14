@@ -75,6 +75,6 @@ def retrieve(db, task, query, *, vector=None):
             dropped += 1; continue
         if size + len(protected) > 4000:
             continue
-        items.append({'text': protected})
+        items.append({'text': protected, 'chunk_id': item.id})
         size += len(protected)
     return items, dropped

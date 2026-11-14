@@ -85,9 +85,9 @@ def test_t51_worker_references_outbound_and_extras(conversation, db_sessionmaker
     from app.assistant.job import handle_assist
     from app.admin.settings_store import set_setting
     from app.embedding import engine as embedding
-    from tests.test_assistant_chat import install, REAL
+    from tests.test_assistant_chat import install, REAL, BASE
     monkeypatch.setattr(embedding, 'embed', lambda texts, kind: [vector() for _ in texts])
-    requests = install(monkeypatch, ['[[ORG_1]]按制度处理'])
+    requests = install(monkeypatch, ['[[ORG_1]]按制度处理[KB1][KB7]，见[F1-P1]'])
     other = make_user('history_other')
     with db_sessionmaker() as db:
         task = db.get(Task, uuid.UUID(conversation[2]))
@@ -106,7 +106,17 @@ def test_t51_worker_references_outbound_and_extras(conversation, db_sessionmaker
         handle_assist(db, {'task_id': str(task.id), 'message_id': mid})
         db.refresh(reply)
         assert reply.status == 'done' and reply.extras['kb_sent'] == 1 and reply.extras['kb_dropped'] == 0
-        assert reply.extras['history_sources'] == [{'task_id': str(ids[0]), 'month': '2026-05'}]
+        assert [r['ref'] for r in reply.extras['refs']] == ['KB1', 'H1'] and reply.extras['refs'][1]['task_id'] == str(ids[0])
+    # 引用只认本地登记的编号（V321-E-13）：[KB7] 未登记，不成锚点；依据原文只放行本会话本条回复
+    c, h, tid, _ = conversation
+    view = next(m for m in c.get(f'{BASE}/{tid}/messages', headers=h).json()['items'] if m['id'] == mid)
+    assert {x['token']: x['ref'] for x in view['cites']} == {'[KB1]': 'KB1', view['sources'][0]['label']: 'F1-P1'}
+    assert [(x['ref'], x['cited']) for x in view['sources']] == [('F1-P1', True), ('KB1', True), ('H1', False)]
+    assert '[F1-P1]' not in view['content'] and '[KB7]' in view['content']
+    detail = c.get(f'{BASE}/{tid}/messages/{mid}/sources/KB1', headers=h).json()
+    assert detail['title'] == '虚构秘密知识库文件名' and REAL in detail['text']
+    assert c.get(f'{BASE}/{tid}/messages/{mid}/sources/H1', headers=h).json()['link'] == f'/review/{ids[0]}'
+    assert c.get(f'{BASE}/{tid}/messages/{mid}/sources/KB7', headers=h).status_code == 404
     outbound = json.dumps(json.loads(requests[0].content)['messages'], ensure_ascii=False)
     assert '【公司知识库片段】[KB1]' in outbound and '【我的历史合同条款】[H1] 合同，2026-05' in outbound
     for secret in (REAL, '虚构来源买方', '秘密历史', '虚构秘密标题', '虚构秘密知识库文件名'):

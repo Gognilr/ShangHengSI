@@ -294,6 +294,13 @@ def delta(mid: int, offset: int = Query(0, ge=0), task: Task = Depends(owned_ses
     return service.get_delta(db, task, mid, offset)
 
 
+@router.get("/{id}/messages/{mid}/sources/{ref}")
+def source(mid: int, ref: str, task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    """回复依据原文（V321-E-13）：只放行该回复登记过的依据。"""
+    from app.assistant.sources import detail
+    return detail(db, task, service.owned_message(db, task, mid), ref)
+
+
 @router.post("/{id}/messages/{mid}/stop")
 def stop(mid: int, task: Task = Depends(owned_session), db: Session = Depends(get_db)):
     return service.stop(db, task, mid)

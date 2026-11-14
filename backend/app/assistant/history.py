@@ -42,7 +42,7 @@ def retrieve(db, task, query, *, vector=None):
         file = db.get(TaskFile, nodes[0].file_id)
         month = source.created_at.strftime('%Y-%m')
         out.append({'task_id': str(source.id), 'label': f'{_TYPES.get(file.doc_type, "合同")}，{month}',
-                    'month': month, 'text': protected})
+                    'month': month, 'text': protected, 'file_seq': clause.file_seq, 'locs': list(clause.locs)})
     return out
 
 
@@ -69,6 +69,9 @@ def prepare(db, task, user_message):
             refs['kb'], dropped = kb_retrieve(db, task, query, vector=vector)
         if use_history:
             refs['history'] = retrieve(db, task, query, vector=vector)
+    # 引用登记只存本地 id（V321-E-13）：编号与 prompt.build_messages 中的 [KBn]、[Hn] 一一对应
     metadata = {'kb_sent': len(refs['kb']), 'kb_dropped': dropped,
-                'history_sources': [{key: item[key] for key in ('task_id', 'month')} for item in refs['history']]}
+                'refs': [{'ref': f'KB{i}', 'kind': 'kb', 'chunk_id': item['chunk_id']} for i, item in enumerate(refs['kb'], 1)]
+                + [{'ref': f'H{i}', 'kind': 'history', 'task_id': item['task_id'], 'file_seq': item['file_seq'],
+                    'locs': item['locs'], 'label': item['label']} for i, item in enumerate(refs['history'], 1)]}
     return refs, metadata
