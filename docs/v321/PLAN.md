@@ -56,12 +56,12 @@
 | V321-E-08 | 条款号重复与小处 | Q-35、36 | Sonnet，medium | Terra，low | — | E-07 | — | 待执行 |
 | V321-E-09 | 设置外框、个人页样板、静态装饰与浅色层次、登录页证书入口与记住密码（docs/v321/ui-polish.md） | Q-48～50 | Fable，low | Sol，medium | — | — | 方案 A 用户已确认 | 已完成（2026-11-13） |
 | V321-E-10 | 其余设置页走查修正 | Q-48 | Fable，low | Sol，medium | — | E-09 | 导航分组先确认 | 已完成（2026-11-13，含导航分组） |
-| V321-E-11 | 全局推广：选中态、动效令牌、加载态、共用件、登录页与入口页 | ui-polish G3～G11 | Fable，low | Sol，medium | — | E-10 | 收起按钮换位置先确认 | 已完成一部分（2026-11-13）：选中态、动效令牌、加载态、空状态、入口页、登录页、拖入区与列表行；文件徽标与代号胶囊共用件并入 E-04～E-07；收起按钮已移到 Logo 行 |
-| V321-E-12 | 回复 Markdown 补缺、输入框草稿保留 | Q-57、59 | Sonnet，medium | Terra，medium | — | E-08 | — | 待执行 |
+| V321-E-11 | 全局推广：选中态、动效令牌、加载态、共用件、登录页与入口页 | ui-polish G3～G11、Q-60 | Fable，low | Sol，medium | — | E-10 | 收起按钮换位置先确认 | 已完成一部分（2026-11-13）：选中态、动效令牌、加载态、空状态、入口页、登录页、拖入区与列表行；文件徽标与代号胶囊共用件并入 E-04～E-07；收起按钮已移到 Logo 行；余项 Q-60（加载指示延迟出现）待执行 |
+| V321-E-12 | 回复 Markdown 补缺、输入框草稿保留、等待写法 | Q-57、59、61、62 | Sonnet，medium | Terra，medium | — | E-08 | — | 待执行 |
 | V321-E-13 | 回复依据可定位 | Q-58 | Opus，high | Sol 6.1，high | 另一家 | E-12 | 引用结构先给用户看 | 待执行 |
 | V321-F-01 | 审核结果稳定与主次 | Q-25 | Opus，high | Sol 6.1，high | — | D-03 | 评测达标 | 待执行 |
 | V321-F-02 | 金额关系、审核算式、旧代号冻结 | Q-16、17、18 | Opus，high | Sol 6.1，high | — | F-01 | 评测达标 | 待执行 |
-| V321-Z | 复核、SPEC、版本号、全量、发布包、服务器 | Q-37 | Opus，xhigh（新会话） | Sol 6.1，xhigh（新会话） | 本身即复核 | 全部 | 推送标签前问用户 | 待执行 |
+| V321-Z | 复核、SPEC、版本号、全量、发布包、服务器 | Q-37、63 | Opus，xhigh（新会话） | Sol 6.1，xhigh（新会话） | 本身即复核 | 全部 | 推送标签前问用户 | 待执行 |
 
 **两家分担的规则（用户 2026-11-13）：**
 
@@ -263,7 +263,7 @@
 * **E-07 确认页右栏与分组。** 文件：ConfirmWorkbench.vue、redaction/router.py（不确定项带分组提示）、keep_terms 的反馈。分组用 B-02 的三档：“待判断”逐条列出，“已自动保留 n 个普通词”折叠成一行，展开可逐个改成替换。
 * **E-08 条款号与小处。** 文件：ConfirmCanvas.vue、Assistant.vue、ExportButton.vue、Translate.vue、GlobalSearch.vue、ChangePasswordDialog.vue 与对应接口。
 
-* **E-12 Markdown 补缺与草稿保留**（2026-11-14 加入）。文件：utils/markdown.ts、MessageItem.vue、Composer.vue、新的 stores/drafts.ts。markdown.ts 补有序列表编号、两级缩进、围栏代码块，仍只用文本节点渲染，新块里的未能还原标记照常标出；审核结果页若用同一解析器一并受益，不另改。草稿按会话 id 存 Pinia 内存，发送成功才清，不写 localStorage。
+* **E-12 Markdown 补缺与草稿保留**（2026-11-14 加入）。文件：utils/markdown.ts、MessageItem.vue、Composer.vue、新的 stores/drafts.ts。markdown.ts 补有序列表编号、两级缩进、围栏代码块，仍只用文本节点渲染，新块里的未能还原标记照常标出；审核结果页若用同一解析器一并受益，不另改。草稿按会话 id 存 Pinia 内存，发送成功才清，不写 localStorage。等待写法：回复按 Q-62 把 queued 与 streaming 分开写、输出中用正文末尾光标代替单独一行“正在生成…”；解析阶段（ParsePhase.vue）与会议转写（MediaRow.vue）按 Q-61 补“耗时较长”提示。
 * **E-13 回复依据可定位**（2026-11-14 加入）。文件：assistant/history.py（引用元数据）、assistant/service.py（消息输出）、MessageItem.vue、FilePanel.vue（defineExpose 增加定位）、Assistant.vue。引用 id 只取本地检索结果（法条、知识库片段、本人历史合同、本会话原文段落），模型正文里的编号只在与本地 id 对得上时才渲染成锚点；点锚点打开文件抽屉或法条并定位高亮。引用元数据只是本地 id 与标题，不改外发内容与出口复检。先把引用结构与锚点写法给用户看。
 
 E 批按 docs/design/frontend.md 验收，每个任务结束在 http://localhost:5173 走一遍相关步骤并截图。
