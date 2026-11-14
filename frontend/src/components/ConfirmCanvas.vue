@@ -271,7 +271,7 @@ watch(view, () => {
 })
 
 // ---- 点击胶囊 ----
-interface Pop { left: number; top: number; seg: 'cap' | 'unc' | 'kept'; item?: RedactionItemPos; suspect?: Suspect }
+interface Pop { left: number; top: number; wordHeight: number; seg: 'cap' | 'unc' | 'kept'; item?: RedactionItemPos; suspect?: Suspect }
 const wrap = ref<HTMLElement>()
 const scroller = ref<HTMLElement>()
 const pop = ref<Pop | null>(null)
@@ -285,7 +285,7 @@ function onPaperClick(event: MouseEvent) {
   const seg = el.dataset.seg as Pop['seg']
   const box = el.getBoundingClientRect()
   const outer = wrap.value.getBoundingClientRect()
-  const base = { left: Math.max(8, Math.min(box.left - outer.left, outer.width - 276)), top: box.bottom - outer.top + 4, seg }
+  const base = { left: Math.max(8, Math.min(box.left - outer.left, outer.width - 276)), top: box.bottom - outer.top + 4, wordHeight: box.height, seg }
   if (seg === 'kept') {
     pop.value = { ...base, suspect: props.suspects.find(s => s.id === Number(el.dataset.sid)) }
     return
@@ -294,7 +294,25 @@ function onPaperClick(event: MouseEvent) {
   const item = props.items.find(it => it.loc === loc && it.char_start === Number(s) && it.char_end === Number(e))
   pop.value = { ...base, item, suspect: item ? suspectByPlaceholder.value.get(item.placeholder) : undefined }
 }
-function popKeep() { const s = pop.value?.suspect; closePop(); if (s) emit('keep', s) }
+// 就地反馈（V321-E-01）：保留后在该词上方显示“已保留 · 撤销”，5 秒后消失
+interface KeptNote { left: number; top: number; suspect: Suspect }
+const keptNote = ref<KeptNote | null>(null)
+let keptTimer: ReturnType<typeof setTimeout> | undefined
+function clearKeptNote() { clearTimeout(keptTimer); keptNote.value = null }
+function popKeep() {
+  const p = pop.value
+  closePop()
+  if (!p?.suspect) return
+  emit('keep', p.suspect)
+  keptNote.value = { left: p.left, top: Math.max(4, p.top - 4 - p.wordHeight - 34), suspect: p.suspect }
+  clearTimeout(keptTimer)
+  keptTimer = setTimeout(() => { keptNote.value = null }, 5000)
+}
+function undoKept() {
+  const s = keptNote.value?.suspect
+  clearKeptNote()
+  if (s) emit('restore', s)
+}
 function popRestore() { const s = pop.value?.suspect; closePop(); if (s) emit('restore', s) }
 function popReplace(c: UserCategory) { const s = pop.value?.suspect; closePop(); if (s) emit('replace', s, c) }
 function popRevoke() {
@@ -412,7 +430,7 @@ function onSeek(ratio: number) {
   const box = scroller.value
   if (box) box.scrollTop = ratio * box.scrollHeight - box.clientHeight / 2
 }
-function onStageScroll() { closePop(); ask.value = null; tip.value = null }
+function onStageScroll() { closePop(); ask.value = null; tip.value = null; clearKeptNote() }
 
 // ---- 悬停胶囊（V31-U5F-03 问题 8）：AI 视野悬停代号显示“原文：…”，原文视图悬停显示代号；只在本机浏览器显示 ----
 interface Tip { left: number; top: number; label: string; text: string; ai: boolean }
@@ -508,6 +526,10 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       </template>
     </div>
 
+    <div v-if="keptNote" class="tip kept-note" :style="{ left: `${keptNote.left}px`, top: `${keptNote.top}px` }" role="status">
+      <span class="tip-label">已保留“{{ Array.from(keptNote.suspect.text).slice(0, 8).join('') }}”</span>
+      <el-button link type="primary" size="small" @click="undoKept">撤销</el-button>
+    </div>
     <div v-if="tip && !pop" class="tip" :style="{ left: `${tip.left}px`, top: `${tip.top}px` }" aria-hidden="true">
       <span class="tip-label">{{ tip.label }}{{ tip.ai ? '：' : '' }}</span><span :class="tip.ai ? 'tip-orig' : 'code-tag'">{{ tip.text }}</span>
     </div>
@@ -582,7 +604,8 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 :deep(.unc) { border: 1px dashed var(--si-cap-ink); }
 :deep(.code) { padding: 0 4px; border-radius: 4px; background: var(--si-code-bg); color: var(--si-code-ink); font-family: var(--si-font-mono); font-size: .9em; cursor: pointer; }
 :deep(.code.unc) { border: 1px dashed var(--si-code-ink); }
-:deep(.kept) { text-decoration: underline dotted var(--si-ink-3); text-underline-offset: 3px; cursor: pointer; }
+/* 保留过的词留浅色下划线，点它可改回替换（V321-E-01） */
+:deep(.kept) { text-decoration: underline solid color-mix(in srgb, var(--si-ink-3) 55%, transparent); text-decoration-thickness: 2px; text-underline-offset: 3px; cursor: pointer; }
 :deep(.sel) { outline: 2px solid var(--el-color-primary); outline-offset: 1px; }
 :deep(.flash) { outline: 2px solid var(--si-focus); outline-offset: 2px; }
 .fx-full.flipping :deep(.cap), .fx-full.flipping :deep(.unc), .fx-full.flipping :deep(.code) { display: inline-block; animation: cv-flip 320ms var(--si-spring) both; animation-delay: calc(var(--i, 0) * 12ms); }
@@ -592,6 +615,7 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 .pop, .pickbar { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 420px; padding: 8px 10px; border-radius: 10px; background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-2); }
 .pop { width: 268px; }
 .tip { position: absolute; z-index: 19; display: flex; align-items: center; gap: 6px; max-width: 312px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-2); pointer-events: none; white-space: nowrap; }
+.tip.kept-note { pointer-events: auto; }
 .tip-label { flex: none; color: var(--si-ink-3); font: var(--si-font-label-sm); }
 .tip-orig { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-radius: 4px; background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-label); }
 .tip .code-tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

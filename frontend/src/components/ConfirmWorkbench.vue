@@ -362,10 +362,11 @@ function resetOne(s: Suspect) {
   patchSuspects([s.id], false)
   void decide(() => redactionApi.decideSuspect(props.task.id, s.id, 'reset', null))
 }
-function keepOne(s: Suspect) {
+function keepOne(s: Suspect, inline = false) {
   if (locked.value || isKept(s)) return
   patchSuspects([s.id], true)
   void decide(() => redactionApi.decideSuspect(props.task.id, s.id, 'ignore', null))
+  if (inline) return // 画布已在该词上方就地提示
   toast(`已保留“${shortText(s.text)}”`, { action: { label: '撤销', onClick: () => resetOne(s) } })
 }
 function replaceOne(s: Suspect, category?: SuspectCategory) {
@@ -511,7 +512,7 @@ useHotkeys({
 <template>
   <div class="wb" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
     <div class="canvas">
-      <ConfirmCanvas ref="canvas" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @manual="onManual" @revoke="onRevoke" @keep="keepOne" @restore="restoreOne" @replace="replaceOne">
+      <ConfirmCanvas ref="canvas" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @manual="onManual" @revoke="onRevoke" @keep="s => keepOne(s, true)" @restore="restoreOne" @replace="replaceOne">
         <template #bar>
           <SiIsland v-if="island" :state="island.state" :text="island.text" />
           <span v-else-if="saving" class="hint saving" aria-live="polite">正在后台保存…</span>

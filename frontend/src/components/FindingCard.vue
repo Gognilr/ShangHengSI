@@ -30,6 +30,8 @@ const handlingOptions = toOptions(HANDLING_OPTIONS) as { value: HandlingStatus; 
 const status = ref<HandlingStatus>(props.finding.handling_status)
 const note = ref(props.finding.handling_note ?? '')
 const saving = ref(false)
+const savedMark = ref(false)
+let savedTimer: ReturnType<typeof setTimeout> | undefined
 const editingNote = ref(false)
 const noteInput = ref<InputInstance>()
 watch(() => props.finding, (v) => { status.value = v.handling_status; note.value = v.handling_note ?? '' })
@@ -38,7 +40,9 @@ async function save(body: { handling_status?: HandlingStatus; handling_note?: st
   saving.value = true
   try {
     emit('updated', await runsApi.patchFinding(props.finding.id, body))
-    ElMessage.success('已保存')
+    savedMark.value = true // 就地反馈（V321-E-01）：显示在处理状态旁，不再弹全局提示
+    clearTimeout(savedTimer)
+    savedTimer = setTimeout(() => { savedMark.value = false }, 1600)
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? e.message : '保存失败，请重试')
     status.value = props.finding.handling_status
@@ -134,6 +138,7 @@ async function copy(text: string) {
       </div>
       <div class="handling">
         <SiSegmented :model-value="status" :options="handlingOptions" size="small" ariaLabel="处理状态" @update:model-value="setStatus($event as HandlingStatus)" />
+        <span v-if="saving || savedMark" class="saved-mark" role="status">{{ saving ? '保存中…' : '✓ 已保存' }}</span>
         <el-button v-if="askEnabled" link type="primary" size="small" @click="emit('ask', `关于问题 ${no}「${f.title}」：`)">追问此问题</el-button>
         <el-button v-if="discussEnabled" link type="primary" size="small" @click="emit('discuss', f)">继续讨论</el-button>
       </div>
@@ -170,6 +175,7 @@ async function copy(text: string) {
 .quote { margin: 0; padding: 6px 12px; border-left: 3px solid var(--si-hair-strong); background: var(--si-surface-2); color: var(--si-ink-2); font: var(--si-font-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 .row { display: flex; flex-direction: column; gap: 2px; }
 .label { font: var(--si-font-label-sm); color: var(--si-ink-3); }
+.saved-mark { font: var(--si-font-label-sm); color: var(--si-ok-ink); }
 .text { font: var(--si-font-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 .replacement { padding: 8px 12px; border: 1px solid var(--si-hair-strong); border-radius: 8px; background: var(--el-color-primary-light-9); }
 .replacement-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
