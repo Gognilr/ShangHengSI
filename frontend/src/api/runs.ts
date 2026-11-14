@@ -60,6 +60,8 @@ export interface Finding {
   /** 讨论修改稿（已还原，V32-B-03）；use_discussed 为真时采纳与修订版取它 */
   discussed_text?: string | null
   discussed_at?: string | null
+  /** 讨论稿来自哪条回复（V321-E-02） */
+  discussed_message_id?: number | null
   use_discussed?: boolean
   quote_excerpt: string | null
   marks: Partial<Record<MarkedField, Mark[]>>

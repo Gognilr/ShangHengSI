@@ -2,9 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Files, Upload, X } from '@lucide/vue'
+import { Files, Upload } from '@lucide/vue'
 import { assistantApi, type Session, type SessionItem, type Message, type Template } from '@/api/assistant'
 import { ApiError } from '@/api/http'
+import type { Finding } from '@/api/runs'
 import { useAuthStore } from '@/stores/auth'
 import { useSessionsStore } from '@/stores/sessions'
 import { usePasteFiles } from '@/composables/usePasteFiles'
@@ -26,14 +27,20 @@ const modeOptions = [{ value: 'ask' as const, label: '直接提问' }, { value: 
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), template = ref<Template | null>(null)
 const loading = ref(false), error = ref(''), working = ref(false)
-// 按问题讨论（V32-B-02）：锚点只存在于本页，切换会话即清除；有锚点时只显示该问题下的对话，普通对话与各问题互不混入
+// 按问题讨论（V32-B-02）：锚点只存在于本页，切换会话即清除。讨论在审核结果页右栏进行（V321-E-02），
+// “直接提问”只显示普通对话；按问题的对话只在该问题的讨论栏里出现，互不混入
 interface Anchor { id: string; no: string; title: string; runNo: number }
 const anchor = ref<Anchor | null>(null)
-const shown = computed(() => messages.value.filter(m => anchor.value ? m.finding_id === anchor.value.id : !m.finding_id))
-function discuss(next: Anchor) { anchor.value = next; modeModel.value = 'ask' }
-// 讨论回复保存为该问题的修改建议（V32-B-03）；回到审核结果时问题卡重新读取，显示二选一
+const shown = computed(() => messages.value.filter(m => !m.finding_id))
+const threadOf = (findingId: string) => messages.value.filter(m => m.finding_id === findingId)
+function discuss(next: Anchor) { anchor.value = next }
+// 审核视图第一次打开后只隐藏不卸载：来回切换视图时原文、问题栏的滚动与选中都保留
+const reviewSeen = ref(mode.value === 'review')
+watch(mode, value => { if (value === 'review') reviewSeen.value = true })
+// 讨论回复保存为该问题的修改建议（V32-B-03）；保存结果直接回传给结果页更新该问题（V321-E-02）
 const draftOpen = ref(false), draftMessage = ref<Message | null>(null)
-function openDraft(message: Message) { draftMessage.value = message; draftOpen.value = true }
+let draftUpdate: ((finding: Finding) => void) | null = null
+function openDraft(message: Message, update: (finding: Finding) => void) { draftMessage.value = message; draftUpdate = update; draftOpen.value = true }
 const offsets = new Map<number, number>()
 let active = true, version = 0, polling = false, timer: ReturnType<typeof setTimeout> | undefined
 function failure(e: unknown) { return e instanceof ApiError ? e.status === 404 ? '会话不存在或已被删除' : e.message : '加载失败，请刷新页面后重试' }
@@ -168,7 +175,7 @@ async function stop(mid: number) { try { await assistantApi.stop(id.value, mid);
 async function retry(mid: number) { try { await assistantApi.retry(id.value, mid); await refresh() } catch (e) { error.value = failure(e) } }
 // 本会话正在生成的回复（输入框的发送按钮原位变为停止）
 // V31-U5F-04：只加了文件、还没发出第一条消息时保持首页布局（输入框不动，文件标签在框内），发出后才转为对话布局
-const homeLike = computed(() => !!session.value && !messages.value.length && mode.value === 'ask' && !anchor.value)
+const homeLike = computed(() => !!session.value && !shown.value.length && mode.value === 'ask')
 const generating = computed(() => messages.value.find(m => m.role === 'assistant' && ['queued', 'streaming'].includes(m.status))?.id ?? null)
 // 在侧栏改名后同步标题
 watch(() => sessions.items.find(item => item.id === id.value)?.title, title => { if (title && session.value) session.value.title = title })
@@ -192,19 +199,16 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           <el-button size="small" @click="drawerOpen = true"><Files :size="14" :stroke-width="1.75" /><span class="files-label">材料 {{ session.files.length }}</span></el-button>
           <el-button link type="danger" :disabled="working || session.review_running" @click="remove(session)">删除会话</el-button>
         </div>
-        <template v-if="mode === 'ask'">
-          <div v-if="anchor" class="anchor" role="status">
-            <span class="anchor-tag">讨论问题</span>
-            <span class="anchor-title" :title="anchor.title">问题 {{ anchor.no }}「{{ anchor.title }}」</span>
-            <span class="anchor-run">第 {{ anchor.runNo }} 轮审核</span>
-            <el-button link type="primary" size="small" @click="modeModel = 'review'">回到审核结果</el-button>
-            <el-button link size="small" aria-label="解除讨论锚点" title="解除后回到普通对话" @click="anchor = null"><X :size="14" :stroke-width="2" />解除</el-button>
-          </div>
-          <Transition name="rise"><Conversation v-if="!homeLike" :messages="shown" :session-id="anchor ? `${id}:${anchor.id}` : id" :hint="anchor ? '围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。' : undefined" :draftable="!!anchor && !session.original_deleted" @draft="openDraft" @stop="stop" @retry="retry" /></Transition>
-        </template>
+        <Transition name="rise"><Conversation v-if="!homeLike" v-show="mode === 'ask'" :messages="shown" :session-id="id" @stop="stop" @retry="retry" /></Transition>
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
-        <Composer v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!messages.length && !anchor" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
-        <ReviewPane v-if="mode === 'review'" :key="id" :session="session" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @discuss="discuss" />
+        <Composer v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!shown.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
+        <ReviewPane v-if="reviewSeen" v-show="mode === 'review'" :key="id" :session="session" :discuss-id="anchor?.id" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @discuss="discuss" @close-discuss="anchor = null">
+          <template #discussion="{ finding, no, update }">
+            <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。"
+              :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @stop="stop" @retry="retry" />
+            <Composer :key="`${id}:${finding.id}`" :template="null" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="false" @sent="sent" @stop="stop" @busy="refresh" @confirm="filePanel?.openConfirm()" />
+          </template>
+        </ReviewPane>
       </template>
       <div v-else-if="!loading && !id" class="home">
         <div v-if="canReview" class="mode-row"><SiSegmented v-model="modeModel" :options="modeOptions" ariaLabel="工作台视图" /></div>
@@ -221,7 +225,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         </div>
       </div>
     </main>
-    <DraftDialog v-model:open="draftOpen" :anchor="anchor" :message="draftMessage" />
+    <DraftDialog v-model:open="draftOpen" :anchor="anchor" :message="draftMessage" @saved="draftUpdate?.($event)" />
     <FilePanel v-if="session" ref="filePanel" :key="id" v-model:open="drawerOpen" :session="session" @refresh="refresh" />
   </div>
 </template>
@@ -231,10 +235,6 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .toolbar { display: flex; gap: 12px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--el-border-color-light); }
 .title { flex: 1; min-width: 0; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: left; font: var(--si-font-h2); }
 .files-label { margin-left: 6px; }
-.anchor { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 8px 20px; border-bottom: 1px solid var(--el-border-color-light); background: var(--si-surface-2); font: var(--si-font-caption); }
-.anchor-tag { padding: 1px 8px; border-radius: var(--el-border-radius-base); background: color-mix(in srgb, var(--si-blue) 14%, transparent); color: var(--si-blue-ink); font: var(--si-font-label); }
-.anchor-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-1); }
-.anchor-run { color: var(--si-ink-3); }
 .mode-row { display: flex; justify-content: center; margin-bottom: 16px; }
 .review-home { width: min(640px, calc(100% - 48px)); margin: 0 auto; }
 .dropzone { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 200px; padding: 24px; box-sizing: border-box; border: 1.5px dashed var(--el-border-color); border-radius: var(--si-radius-card); background: transparent; color: inherit; font: var(--si-font-body); cursor: pointer; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }

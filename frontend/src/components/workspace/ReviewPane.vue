@@ -21,8 +21,8 @@ import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
  * 工作台“全面审核”视图（V32-B-01 2）：设置 → 审核中 → 结果，三种状态按会话数据决定。
  * 文件只上传一次、只确认一次；这里的“确认发送”只列本轮新增发送的内容（补充说明、主体说明），已确认文件不再逐个核对。
  */
-const props = defineProps<{ session: Session; fresh?: boolean }>()
-const emit = defineEmits<{ refresh: []; confirm: []; add: []; pick: []; discuss: [anchor: { id: string; no: string; title: string; runNo: number }] }>()
+const props = defineProps<{ session: Session; fresh?: boolean; discussId?: string }>()
+const emit = defineEmits<{ refresh: []; confirm: []; add: []; pick: []; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: [] }>()
 const auth = useAuthStore()
 
 // ---- 轮次 ----
@@ -253,7 +253,10 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
 
     <!-- 结果 -->
     <RunResult v-else-if="stage === 'result'" :session="session" :rounds="rounds" :selected-run="selectedRun" :fresh="freshRun"
-      @select-run="selectedRun = $event; freshRun = false" @new-round="newRound" @discuss="emit('discuss', $event)" />
+      :discuss-id="discussId" @select-run="selectedRun = $event; freshRun = false" @new-round="newRound" @discuss="emit('discuss', $event)" @close-discuss="emit('closeDiscuss')">
+      <!-- 讨论区由工作台提供（消息与轮询只在工作台一处），这里原样转给结果页右栏（V321-E-02） -->
+      <template #discussion="slotProps"><slot name="discussion" v-bind="slotProps" /></template>
+    </RunResult>
 
     <!-- 设置 -->
     <section v-else class="setup">

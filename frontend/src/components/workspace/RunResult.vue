@@ -7,6 +7,7 @@ import { assistantApi, confirmationTask, type Session } from '@/api/assistant'
 import { reportApi } from '@/api/report'
 import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
 import type { CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
+import FindingCard from '@/components/FindingCard.vue'
 import ExportButton from '@/components/result/ExportButton.vue'
 import FindingsRail, { type Zone } from '@/components/result/FindingsRail.vue'
 import ReceiptStrip from '@/components/result/ReceiptStrip.vue'
@@ -20,8 +21,9 @@ import { formatDateTime } from '@/utils/time'
  * 轮次、导出、问题处理都按 run id / finding id 读写，与审核任务相同，只有节点与原件改读会话接口。
  * 本组件只管一个会话的结果；发起新一轮、会话级的状态由父级 ReviewPane 管。
  */
-const props = defineProps<{ session: Session; rounds: RunListItem[]; selectedRun: string; fresh: boolean }>()
-const emit = defineEmits<{ selectRun: [id: string]; newRound: []; discuss: [anchor: { id: string; no: string; title: string; runNo: number }] }>()
+/** discussId：正在讨论的问题；讨论替换右侧问题栏，问题栏只隐藏不卸载（V321-E-02）。讨论区内容由工作台经插槽 discussion 提供。 */
+const props = defineProps<{ session: Session; rounds: RunListItem[]; selectedRun: string; fresh: boolean; discussId?: string }>()
+const emit = defineEmits<{ selectRun: [id: string]; newRound: []; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: [] }>()
 
 const task = computed(() => confirmationTask(props.session))
 // 节点与原件走会话接口（审核任务的 /tasks/{id}/files/… 只认 kind=review）
@@ -92,6 +94,7 @@ function onCanvasSelect(id: string) {
   const f = run.value?.findings.find(item => item.id === id)
   if (!f) return
   zone.value = 'ai'; selectedId.value = id; rawHighlight.value = [...f.locs]
+  if (discussing.value && discussEnabled.value) onDiscuss(f)  // 讨论中点了另一处标注：右栏切到该问题
 }
 function onLocalSelect(locs: string[]) {
   selectedId.value = ''; rawHighlight.value = [...locs]
@@ -104,7 +107,19 @@ function onAiNotice() {
 }
 // 继续讨论：交给工作台切到提问视图并锚定该问题（V32-B-02）；审核中或原件已删除时不开放
 const discussEnabled = computed(() => !props.session.review_running && !props.session.original_deleted && !!run.value && ['completed', 'partial'].includes(run.value.status))
-function onDiscuss(f: Finding) { if (run.value) emit('discuss', { id: f.id, no: noOf(f.id), title: f.title, runNo: run.value.run_no }) }
+function onDiscuss(f: Finding) {
+  if (!run.value) return
+  selectedId.value = f.id; rawHighlight.value = [...f.locs]
+  if (f.locs[0]) void canvas.value?.locate(f.locs[0], f.id)
+  cardOpen.value = false
+  emit('discuss', { id: f.id, no: noOf(f.id), title: f.title, runNo: run.value.run_no })
+}
+// 讨论右栏：顶部是该问题的卡片（默认收起，点开看全文），下面是对话
+const discussed = computed(() => props.discussId ? run.value?.findings.find(f => f.id === props.discussId) ?? null : null)
+const discussing = computed(() => !!discussed.value)
+const cardOpen = ref(false)
+// 换了轮次、问题不在本轮时退出讨论
+watch(() => [props.discussId, run.value?.id] as const, ([fid]) => { if (fid && run.value && !discussed.value) emit('closeDiscuss') })
 function onUpdated(updated: Finding) {
   if (run.value) run.value = { ...run.value, findings: run.value.findings.map(f => f.id === updated.id ? updated : f) }
 }
@@ -224,10 +239,20 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
       </div>
       <SplitHandle v-model="railWidth" reverse :min="RAIL_MIN" :max="railMax" :default-value="railDefault" :storage-key="RAIL_KEY" label="调整问题栏宽度" />
       <div class="rail-col" :style="{ flexBasis: `${railWidth}px` }">
-        <FindingsRail v-model:severity="fSeverity" v-model:category="fCategory" v-model:handling="fHandling" v-model:zone="zone"
+        <FindingsRail v-show="!discussing" v-model:severity="fSeverity" v-model:category="fCategory" v-model:handling="fHandling" v-model:zone="zone"
           :task-id="session.id" :run="run" :run-loading="runLoading" :run-error="runError" :local-only="false" :findings="findings"
           :selected-id="selectedId" :ask-enabled="false" :discuss-enabled="discussEnabled" :local-loader="localLoader" :fresh="fresh"
           @select="onSelect" @discuss="onDiscuss" @local-select="onLocalSelect" @updated="onUpdated" @ai-notice="onAiNotice" />
+        <section v-if="discussed" class="discuss" aria-label="讨论问题">
+          <header class="discuss-head">
+            <el-button link type="primary" size="small" @click="emit('closeDiscuss')">← 返回问题列表</el-button>
+            <span class="discuss-title">讨论问题 {{ noOf(discussed.id) }}</span>
+          </header>
+          <div class="discuss-card">
+            <FindingCard :finding="discussed" :no="noOf(discussed.id)" :selected="cardOpen" @select="cardOpen = !cardOpen" @updated="onUpdated" />
+          </div>
+          <div class="discuss-body"><slot name="discussion" :finding="discussed" :no="noOf(discussed.id)" :update="onUpdated" /></div>
+        </section>
       </div>
     </div>
   </div>
@@ -244,5 +269,11 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 .annotation-notice { flex: none; margin-top: 8px; }
 .split { display: flex; flex: 1; min-height: 0; gap: 12px; padding: 12px 0 16px; }
 .canvas-col { flex: 1; min-width: 420px; min-height: 0; display: flex; flex-direction: column; }
-.rail-col { flex: 0 0 auto; min-width: 400px; min-height: 0; }
+.rail-col { flex: 0 0 auto; min-width: 400px; min-height: 0; display: flex; flex-direction: column; }
+.rail-col > :deep(.rail) { flex: 1; }
+.discuss { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); overflow: hidden; }
+.discuss-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--si-hair); }
+.discuss-title { color: var(--si-ink-3); font: var(--si-font-label-sm); }
+.discuss-card { flex: none; max-height: 45%; overflow-y: auto; padding: 8px 12px; border-bottom: 1px solid var(--si-hair); }
+.discuss-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 </style>

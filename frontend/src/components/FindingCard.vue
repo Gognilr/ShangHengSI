@@ -93,7 +93,7 @@ async function copy(text: string) {
     <div class="head" role="button" tabindex="0" :aria-expanded="!!selected" @click="emit('select', f)" @keydown.enter.self.prevent="emit('select', f)" @keydown.space.self.prevent="emit('select', f)">
       <span class="no">{{ no }}</span>
       <div class="main">
-        <div class="title"><span v-if="status === 'adopted'" class="h-tag h-tag--adopted">✓ 已采纳</span><span v-else-if="status === 'ignored'" class="h-tag h-tag--ignored">已忽略</span><MarkedText :text="f.title" :marks="f.marks.title" /><span v-if="f.unresolved > 0" class="unresolved">{{ f.unresolved }} 处未能还原</span></div>
+        <div class="title"><span v-if="status === 'adopted'" class="h-tag h-tag--adopted">✓ 已采纳</span><span v-else-if="status === 'ignored'" class="h-tag h-tag--ignored">已忽略</span><span v-if="f.discussed_text" class="h-tag d-tag" :class="{ on: f.use_discussed }" :title="f.use_discussed ? '采纳与修订版使用讨论修改稿' : '有讨论修改稿，当前使用原审核建议'">讨论稿</span><MarkedText :text="f.title" :marks="f.marks.title" /><span v-if="f.unresolved > 0" class="unresolved">{{ f.unresolved }} 处未能还原</span></div>
         <div class="meta">{{ meta }}</div>
       </div>
       <el-tag :type="SEVERITY_TAG[f.severity] ?? 'info'" size="small" round>{{ severityLabel(f.severity) }}</el-tag>
@@ -164,6 +164,8 @@ async function copy(text: string) {
 .h-tag { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: var(--si-radius-tag); font: var(--si-font-label-sm); line-height: 20px; vertical-align: 1px; }
 .h-tag--adopted { background: var(--el-color-success-light-9); color: var(--si-ok-ink); }
 .h-tag--ignored { background: var(--si-surface-2); color: var(--si-ink-3); }
+.d-tag { background: var(--si-surface-2); color: var(--si-ink-2); }
+.d-tag.on { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
 .head { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px 10px 16px; cursor: pointer; border-radius: var(--si-radius-card); }
 .head:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }
 .no { flex: none; padding-top: 1px; font: var(--si-font-code-sm); color: var(--si-ink-3); }

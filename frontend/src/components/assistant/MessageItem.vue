@@ -14,7 +14,8 @@ import { formatDateTime } from '@/utils/time'
 import { assistantStatusLabel } from '@/utils/labels'
 import CompareTable from './CompareTable.vue'
 import TranslationView from './TranslationView.vue'
-const props = defineProps<{ message: Message; sessionId: string; last?: boolean; draftable?: boolean }>()
+/** savedNo：这条回复已保存为问题 savedNo 的修改建议（V321-E-02） */
+const props = defineProps<{ message: Message; sessionId: string; last?: boolean; draftable?: boolean; savedNo?: string }>()
 const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message] }>()
 const tokens = computed(() => markTokens(props.message.content, props.message.marks))
 const tokenSet = computed(() => new Set(tokens.value.keys()))
@@ -82,7 +83,8 @@ async function copy() {
     </div>
     <!-- 按问题讨论的回复：保存为该问题的修改建议（V32-B-03） -->
     <div v-if="draftable && message.role === 'assistant' && message.finding_id && !pending && message.status !== 'failed'" class="draft-action">
-      <el-button size="small" type="primary" plain @click="emit('draft', message)">保存到该问题的修改建议</el-button>
+      <template v-if="savedNo !== undefined"><span class="draft-saved" role="status">✓ 已保存为问题 {{ savedNo }} 的修改建议</span><el-button link type="primary" size="small" @click="emit('draft', message)">重新保存</el-button></template>
+      <el-button v-else size="small" type="primary" plain @click="emit('draft', message)">保存到该问题的修改建议</el-button>
     </div>
   </article>
 </template>
@@ -111,7 +113,8 @@ th { background: var(--el-fill-color-light); }
 .warning { color: var(--el-color-warning); font: var(--si-font-meta); }
 .generating { margin: 4px 0 0; font: var(--si-font-meta); color: var(--el-text-color-secondary); }
 .message-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.draft-action { margin-top: 8px; }
+.draft-action { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.draft-saved { color: var(--si-ok-ink); font: var(--si-font-label-sm); }
 .message-actions :deep(.el-button) { margin-left: 0; }
 /* 悬停该条回复或键盘聚焦其中时显示操作；保持占位，不跳动 */
 .message-actions.on-hover { opacity: 0; transition: opacity var(--si-dur-1) var(--si-ease); }

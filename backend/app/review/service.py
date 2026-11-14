@@ -123,6 +123,7 @@ class FindingOut(BaseModel):
     handling_note: str | None
     discussed_text: str | None = None  # 讨论修改稿（已还原），V32-B-03
     discussed_at: UtcDatetime | None = None
+    discussed_message_id: int | None = None  # 讨论稿来自哪条回复，对话里据此标“已保存”（V321-E-02）
     use_discussed: bool = False  # 采纳与修订版取讨论修改稿
     marks: dict[str, list[MarkOut]] = {}
     unresolved: int = 0
@@ -580,7 +581,7 @@ class _View:
             quote=quote, quote_excerpt=crypto.decrypt_text(f.quote_orig_enc) if f.quote_orig_enc is not None else None,
             **values, marks=marks, unresolved=sum(len(v) for v in marks.values()),
             handling_status=f.handling_status, handling_note=f.handling_note,
-            discussed_at=f.discussed_at, use_discussed=bool(f.use_discussed and f.discussed_text),
+            discussed_at=f.discussed_at, discussed_message_id=f.discussed_message_id if f.discussed_text else None, use_discussed=bool(f.use_discussed and f.discussed_text),
             law_refs=f.law_refs, law_unverified=f.law_unverified,
             source=f.source,
         )

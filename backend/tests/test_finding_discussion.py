@@ -161,6 +161,7 @@ def test_draft_adopt_and_export_mainline(files_dir, model, make_user, login, db_
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["discussed_text"] == f"{BUYER}应在十日内付款。" and out["use_discussed"] and not out["unresolved"]
+    assert out["discussed_message_id"] == shown["id"]
     with db_sessionmaker() as db:
         row = db.get(Finding, uuid.UUID(a))
         assert row.discussed_text == f"{buyer}应在十日内付款。" and BUYER not in row.discussed_text  # 代号文本入库
