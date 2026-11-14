@@ -44,7 +44,7 @@
 | V321-D-02 | 输出瘦身 | Q-20 | Sonnet，high | Terra，high | — | D-01 | — | 已完成（2026-11-14，GPT-6.1 Sol；真实 low 两轮质量门槛通过，JSON 字数 −8.22%、要求结论 −25.55%，模型耗时 +25.33%，未取得提速收益；报告 reports/V321-D-02.md） |
 | V321-D-03 | 按维度并发、文件在前 | Q-21 | Opus，high | Sol 6.1，xhigh | — | D-02 | 评测达标 | 已完成（2026-11-14，GPT-6.1 Sol；真实 low 两轮命中 90/90、结论一致 102/102，端到端均值 73.79→58.31 秒，输入/输出 token +198.24% / +87.12%；报告 reports/V321-D-03.md） |
 | V321-D-04 | 问题逐条显示 | Q-22 | Sonnet，high | Terra，high | — | D-03 | — | 已完成（2026-11-14，GPT-6.1 Sol；流式问题只读展示，失败清理及迟到回调保护；报告 reports/V321-D-04.md） |
-| V321-D-05 | 轮询空转 | Q-23 | Sonnet，medium | Terra，low | — | D-04 | — | 待执行 |
+| V321-D-05 | 轮询空转 | Q-23 | Sonnet，medium | Terra，low | — | D-04 | — | 已完成（2026-11-14，GPT-6.1 Sol；提交后通知唤醒，30 秒轮询兜底；报告 reports/V321-D-05.md） |
 | V321-D-06 | 扫描件解析提速 | Q-24 | Opus，high | Sol 6.1，high | — | B-06 | golden 不变或改动经确认 | 未达标，已结项（2026-11-14，GPT-6.1 Sol；用户确认保留现行识别，240/120 字窗均不采用；报告 reports/V321-D-06.md） |
 | V321-E-01 | 就地反馈与保留标记 | Q-27 | Sonnet，medium | Terra，medium | — | C-03 | — | 待执行 |
 | V321-E-02 | 讨论侧栏与讨论稿反馈 | Q-28、33 | 方案 Opus，实现 Sonnet | 方案 Sol 6.1 high，实现 Terra high | — | E-01 | 方案先给用户看 | 待执行 |
