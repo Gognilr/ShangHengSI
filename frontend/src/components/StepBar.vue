@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Check, X } from '@lucide/vue'
-withDefaults(defineProps<{ active: number; status?: 'wait' | 'process' | 'finish' | 'error' | 'success' }>(), { status: 'process' })
-const titles = ['上传与设置', '确认脱敏', '审核中']
+withDefaults(defineProps<{ active: number; status?: 'wait' | 'process' | 'finish' | 'error' | 'success'; titles?: string[]; ariaLabel?: string }>(),
+  { status: 'process', titles: () => ['上传与设置', '确认脱敏', '审核中'], ariaLabel: '审核步骤' })
 </script>
 <template>
-  <ol class="step-bar" aria-label="审核步骤">
+  <ol class="step-bar" :aria-label="ariaLabel">
     <li v-for="(title, index) in titles" :key="title" :class="{ done: index < active, current: index === active, error: index === active && status === 'error' }" :aria-current="index === active ? 'step' : undefined">
       <span class="number"><el-icon v-if="index < active"><Check :size="16" :stroke-width="1.75" /></el-icon><el-icon v-else-if="index === active && status === 'error'"><X :size="16" :stroke-width="1.75" /></el-icon><span v-else>{{ index + 1 }}</span></span>
       <span>{{ title }}</span>

@@ -158,6 +158,15 @@ function onSelect(f: Finding) {
   rawHighlight.value = [...f.locs]
   if (f.locs[0]) void canvas.value?.locate(f.locs[0], f.id)
 }
+// 从全局搜索的“问题”结果进来：问题加载后选中并定位（只处理一次）
+let focusDone = false
+watch(() => run.value?.findings, list => {
+  const fid = route.query.finding
+  if (focusDone || typeof fid !== 'string' || !list?.length) return
+  const f = list.find(item => item.id === fid)
+  if (!f) return
+  focusDone = true; onSelect(f)
+}, { immediate: true })
 function onCanvasSelect(id: string) {
   const f = run.value?.findings.find(item => item.id === id)
   if (!f) return

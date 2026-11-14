@@ -247,7 +247,7 @@ onMounted(() => {
     </SettingSection>
       <SettingSection title="内置要求" description="只读；按文件类型查看系统自带的审核要求。" stacked>
       <div class="filters">
-        <el-select v-model="builtinType" clearable placeholder="全部文件类型" class="type-filter" @change="loadBuiltin">
+        <el-select aria-label="全部文件类型" v-model="builtinType" clearable placeholder="全部文件类型" class="type-filter" @change="loadBuiltin">
           <el-option v-for="o in toOptions(DOC_TYPE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
         <span class="hint version">内置要求版本：{{ builtinVersion || '—' }}，共 {{ builtin.length }} 条</span>

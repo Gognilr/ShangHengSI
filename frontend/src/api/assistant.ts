@@ -100,6 +100,7 @@ export const assistantApi = {
     if (marks.length) form.append('marks', JSON.stringify(marks))
     return http.postFormWithProgress<Session>(`${base}/${id}/files`, form, onProgress)
   },
+  addText: (id: string, text: string) => http.post<Session>(`${base}/${id}/text`, { text }),
   localFindings: (id: string) => http.get<{ items: LocalFinding[] }>(`${base}/${id}/local-findings`),
   participants: (id: string, names: string[]) => http.put<{ names: string[] }>(`${base}/${id}/participants`, { names }),
   speakers: (id: string, fid: string, map: Record<string, string | null>) => http.put<Record<string, string | null>>(`${base}/${id}/files/${fid}/speakers`, map),

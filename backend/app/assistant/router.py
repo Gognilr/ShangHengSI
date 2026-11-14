@@ -1,4 +1,5 @@
 """全部会话接口校验本人及 assistant kind，复用既有预览与删除。"""
+import io
 import json
 from urllib.parse import quote
 from datetime import date
@@ -139,6 +140,28 @@ def _marks(value):
     if not isinstance(values, list) or len(values) > 200 or any(type(v) is not int or not 0 <= v <= 10800000 for v in values):
         return None
     return sorted(set(values))
+
+
+class PastedText(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+
+
+@router.post("/{id}/text", response_model=SessionDetail)
+def add_pasted_text(body: PastedText, task: Task = Depends(owned_session), db: Session = Depends(get_db)):
+    """翻译页粘贴文字（V321Q-36）：在内存里生成 docx 当作原件，之后与上传文件走同一流程。"""
+    if task.purpose != "translate":
+        raise AppError(422, "TEXT_TRANSLATE_ONLY", "粘贴文字只用于翻译")
+    paragraphs = [line.strip() for line in body.text.splitlines() if line.strip()]
+    if not paragraphs:
+        raise AppError(422, "NO_TEXT", "请输入要翻译的文字")
+    from docx import Document
+    doc = Document()
+    for line in paragraphs:
+        doc.add_paragraph(line)
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return service.add_files(db, task, [(f"粘贴的文字（{sum(len(x) for x in paragraphs)} 字）.docx", buffer)])
 
 
 @router.delete("/{id}/files/{fid}", response_model=SessionDetail)

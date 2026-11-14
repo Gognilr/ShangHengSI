@@ -137,7 +137,7 @@ watch(() => props.selectedId, async (id) => {
         <EmptyState v-if="run?.status === 'failed'" title="未取得有效 AI 结论" description="模型审核未完成，请重新审核。本地校验结果可切换到“本地计算”查看。" />
         <template v-else-if="run">
           <ZoneHeader kind="ai" :count="findings.length">
-            <el-select v-model="category" clearable placeholder="类别" size="small" class="filter"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
+            <el-select aria-label="类别" v-model="category" clearable placeholder="类别" size="small" class="filter"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
           </ZoneHeader>
           <div class="handling-switch"><SiSegmented v-model="handling" :options="handlingCounts" size="small" ariaLabel="按处理状态筛选" /></div>
           <p v-if="props.run?.status !== 'failed' && findings.length" class="keys hint">快捷键：<kbd>↑</kbd><kbd>↓</kbd> 切换 · <kbd>A</kbd> 采纳 · <kbd>I</kbd> 忽略</p>

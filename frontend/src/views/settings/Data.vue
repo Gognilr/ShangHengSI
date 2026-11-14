@@ -408,7 +408,7 @@ onBeforeUnmount(stopPolling)
 
       <SettingSection v-if="auth.can('sys.data')" title="外发记录" description="每次发给模型的记录，均为脱敏后的内容。" stacked>
       <div class="filters">
-        <el-select v-model="filters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="search">
+        <el-select aria-label="全部用户" v-model="filters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="search">
           <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
         </el-select>
         <el-date-picker
@@ -424,7 +424,7 @@ onBeforeUnmount(stopPolling)
         <el-select v-model="filters.purpose" clearable placeholder="全部用途" aria-label="外发用途" class="status-filter" @change="search">
           <el-option v-for="o in toOptions(LLM_PURPOSE)" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
-        <el-select v-model="filters.status" clearable placeholder="全部状态" class="status-filter" @change="search">
+        <el-select aria-label="全部状态" v-model="filters.status" clearable placeholder="全部状态" class="status-filter" @change="search">
           <el-option v-for="o in toOptions(OUTBOUND_STATUS)" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
       </div>
@@ -466,10 +466,10 @@ onBeforeUnmount(stopPolling)
 
       <SettingSection v-if="auth.can('sys.data')" title="审计日志" description="关键操作的记录，用于追溯。" stacked>
       <div class="filters">
-        <el-select v-model="auditFilters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="searchAudit">
+        <el-select aria-label="全部用户" v-model="auditFilters.user_id" clearable filterable placeholder="全部用户" class="user-filter" @change="searchAudit">
           <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
         </el-select>
-        <el-select v-model="auditFilters.action" clearable placeholder="全部动作" class="status-filter" @change="searchAudit">
+        <el-select aria-label="全部动作" v-model="auditFilters.action" clearable placeholder="全部动作" class="status-filter" @change="searchAudit">
           <el-option v-for="option in toOptions(AUDIT_ACTION)" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
         <el-date-picker v-model="auditFilters.range" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" class="date-filter" @change="searchAudit" />

@@ -506,3 +506,13 @@ def test_audio_upload_and_decode(files_dir, session_client, db_sessionmaker, mon
         thread.join(6)
         get_settings.cache_clear()
     assert not failures
+
+
+def test_pasted_text_becomes_docx_for_translate_only(session_client, files_dir):  # noqa: F811
+    c, h, _ = session_client
+    tid = c.post(BASE, headers=h, json={'purpose': 'translate'}).json()['id']
+    r = c.post(f"{BASE}/{tid}/text", headers=h, json={'text': '第一段\n\n第二段'})
+    assert r.status_code == 200, r.text
+    assert r.json()['files'][0]['original_name'] == '粘贴的文字（6 字）.docx'
+    chat = create(c, h)
+    assert c.post(f"{BASE}/{chat['id']}/text", headers=h, json={'text': 'x'}).status_code == 422
