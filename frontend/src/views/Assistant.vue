@@ -159,9 +159,9 @@ async function sent(text: string) {
 }
 const filePanel = ref<InstanceType<typeof FilePanel>>(), drawerOpen = ref(false)
 // 回复依据（V321-E-13）：原文段落在讨论栏旁的原文画布定位，直接提问时打开“查看原文”；其余依据在依据抽屉中看原文
-function cite(message: Message, source: MessageSource, locate?: (loc: string) => void) {
+function cite(message: Message, source: MessageSource, anchor: HTMLElement, locate?: (loc: string) => void) {
   if (source.kind === 'para') { if (locate) locate(source.ref); else void filePanel.value?.locate(source.ref) }
-  else void filePanel.value?.showSource(message.id, source)
+  else void filePanel.value?.showSource(message.id, source, anchor)
 }
 // 审核视图首页（还没有会话）：拖入、点选或粘贴文件才建会话，不在进入页面时建空会话（V32-B-01 1）
 const reviewPicker = ref<HTMLInputElement>(), reviewDragging = ref(false)
@@ -234,7 +234,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         <ReviewPane v-if="reviewSeen" v-show="mode === 'review'" :key="id" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null">
           <template #discussion="{ finding, no, update, locate }">
             <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。"
-              :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource) => cite(m, src, locate)" @stop="stop" @retry="retry" />
+              :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource, el: HTMLElement) => cite(m, src, el, locate)" @stop="stop" @retry="retry" />
             <Composer :key="`${id}:${finding.id}`" :template="null" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="false" @sent="sent" @stop="stop" @busy="refresh" @confirm="filePanel?.openConfirm()" />
           </template>
         </ReviewPane>

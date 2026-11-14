@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
-import { computed, nextTick, ref, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, ref, onBeforeUnmount, onMounted, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { assistantApi, confirmationTask, type MessageSource, type Session, type SessionFile, type SourceDetail } from '@/api/assistant'
 import ResultCanvas from '@/components/result/ResultCanvas.vue'
@@ -125,16 +125,26 @@ async function locate(loc: string) {
   await nextTick()
   await reader.value?.locate(loc)
 }
+// 依据就地浮在被点的锚点旁（一条法条或片段很短，不用整列抽屉遮住讨论与原文）；点外面或 Esc 关闭
 const sourceOpen = ref(false), sourceLoading = ref(false), sourceError = ref(''), source = ref<SourceDetail | null>(null), sourceLabel = ref('')
+const sourceAnchor = ref<HTMLElement>()
 let sourceVersion = 0
-async function showSource(mid: number, item: MessageSource) {
+async function showSource(mid: number, item: MessageSource, anchor: HTMLElement) {
   const version = ++sourceVersion
-  sourceOpen.value = true; sourceLabel.value = item.label; source.value = null; sourceError.value = ''; sourceLoading.value = true
+  if (sourceOpen.value && sourceAnchor.value === anchor) { sourceOpen.value = false; return }
+  sourceAnchor.value = anchor; sourceOpen.value = true; sourceLabel.value = item.label; source.value = null; sourceError.value = ''; sourceLoading.value = true
   try { const data = await assistantApi.source(props.session.id, mid, item.ref); if (version === sourceVersion) source.value = data }
   catch (e) { if (version === sourceVersion) sourceError.value = e instanceof ApiError ? e.message : '依据读取失败，请重试' }
   finally { if (version === sourceVersion) sourceLoading.value = false }
 }
 const sourceKind = { para: '原文', kb: '公司知识库', history: '我的历史合同', law: '法条' } as const
+function closeOutside(event: Event) {
+  const target = event.target as Element | null
+  if (sourceOpen.value && !target?.closest('.source-pop') && !sourceAnchor.value?.contains(target)) sourceOpen.value = false
+}
+function closeOnEscape(event: KeyboardEvent) { if (event.key === 'Escape' && sourceOpen.value) { sourceOpen.value = false; sourceAnchor.value?.focus() } }
+onMounted(() => { document.addEventListener('mousedown', closeOutside, true); document.addEventListener('keydown', closeOnEscape) })
+onBeforeUnmount(() => { document.removeEventListener('mousedown', closeOutside, true); document.removeEventListener('keydown', closeOnEscape) })
 defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgress, retryMedia, locate, showSource })
 </script>
 <template>
@@ -164,13 +174,13 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
     <el-dialog append-to-body v-model="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" :require-our-party="reviewMode" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
     <el-dialog append-to-body v-model="readerOpen" fullscreen :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="查看原文" back="返回对话" @close="close" /></template><div class="reader-frame"><ResultCanvas ref="reader" :key="`${session.id}:${session.material_version}`" :task="task" :note="null" :annotations="[]" :local-locs="[]" selected-finding-id="" :raw-highlight="[]" :ask-enabled="false" :node-loader="nodeLoader" :raw-loader="rawLoader" /></div></el-dialog>
-    <el-drawer append-to-body v-model="sourceOpen" :title="source ? sourceKind[source.kind] : '依据'" size="480px">
-      <div v-loading="sourceLoading" class="source-body">
+    <el-popover :visible="sourceOpen" :virtual-ref="sourceAnchor" virtual-triggering placement="bottom-start" :width="380" popper-class="source-pop">
+      <div v-loading="sourceLoading" class="source-body" role="dialog" :aria-label="source ? sourceKind[source.kind] : '依据'">
         <el-alert v-if="sourceError" :title="sourceError" type="error" :closable="false" />
-        <template v-else-if="source"><h3>{{ source.title }}</h3><p class="source-text">{{ source.text }}</p><router-link v-if="source.link" :to="source.link" target="_blank" rel="noopener">打开这份合同</router-link><p v-if="source.kind !== 'law'" class="hint">这是本机保存的原文，发给模型的是脱敏后的文字。</p></template>
+        <template v-else-if="source"><p class="source-kind">{{ sourceKind[source.kind] }}</p><p class="source-title">{{ source.title }}</p><p class="source-text">{{ source.text }}</p><div v-if="source.link || source.kind !== 'law'" class="source-foot"><span v-if="source.kind !== 'law'" class="hint">本机原文，发给模型的是脱敏后的文字</span><router-link v-if="source.link" :to="source.link" target="_blank" rel="noopener">打开这份合同</router-link></div></template>
         <p v-else-if="!sourceLoading" class="hint">{{ sourceLabel }}</p>
       </div>
-    </el-drawer>
+    </el-popover>
   </div>
 </template>
 <style scoped>
@@ -189,7 +199,10 @@ h3 { font: var(--si-font-h3); }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
 .transcript-frame { height: calc(100vh - 100px); }
 .reader-frame { height: calc(100vh - 100px); max-width: 1200px; margin: auto; }
-.source-body { min-height: 120px; }
-.source-text { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-reading); color: var(--si-text-reading); }
+.source-body { min-height: 48px; }
+.source-kind { margin: 0; font: var(--si-font-caption); color: var(--si-blue); }
+.source-title { margin: 2px 0 8px; font: var(--si-font-body); font-weight: 600; color: var(--el-text-color-primary); }
+.source-text { margin: 0; max-height: 240px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-body); color: var(--si-text-reading); }
+.source-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--el-border-color-lighter); font: var(--si-font-meta); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 65vh; overflow-y: auto; font: var(--si-font-body); }
 </style>

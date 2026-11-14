@@ -17,14 +17,14 @@ import CompareTable from './CompareTable.vue'
 import TranslationView from './TranslationView.vue'
 /** savedNo：这条回复已保存为问题 savedNo 的修改建议（V321-E-02） */
 const props = defineProps<{ message: Message; sessionId: string; last?: boolean; draftable?: boolean; savedNo?: string; reading?: boolean }>()
-const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message]; cite: [message: Message, source: MessageSource] }>()
+const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message]; cite: [message: Message, source: MessageSource, anchor: HTMLElement] }>()
 const tokens = computed(() => markTokens(props.message.content, props.message.marks))
 // 回复依据（V321-E-13）：锚点只来自后端 cites（本地登记过的 id），模型自写的编号对不上就是普通文字
 const cites = computed(() => new Map((props.message.cites ?? []).map(c => [c.token, c.ref])))
 const sourceMap = computed(() => new Map((props.message.sources ?? []).map(src => [src.ref, src])))
 const sources = computed(() => props.message.sources ?? [])
 const kindLabel = { para: '原文', kb: '知识库', history: '历史合同', law: '法条' } as const
-function cite(source: MessageSource) { emit('cite', props.message, source) }
+function cite(source: MessageSource, anchor: HTMLElement) { emit('cite', props.message, source, anchor) }
 const count = computed(() => unresolvedCount(props.message.marks))
 const parsed = computed(() => {
   const calcs = [...(props.message.calcs ?? [])].sort((a,b) => a.line_start - b.line_start)
@@ -92,7 +92,7 @@ async function copy() {
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <div v-if="sources.length" class="sources" role="group" aria-label="回复依据">
       <span class="hint">依据</span>
-      <button v-for="source in sources" :key="source.ref" type="button" class="source" :class="{ uncited: !source.cited }" :title="source.cited ? '' : '已附带发送，回复中未引用'" @click="cite(source)"><span class="source-kind">{{ kindLabel[source.kind] }}{{ source.kind === 'kb' ? ' ' + source.ref.slice(2) : source.kind === 'history' ? ' ' + source.ref.slice(1) : '' }}</span>{{ source.kind === 'kb' || source.kind === 'history' ? source.label.replace(/^[^·]+· /, '') : source.label }}</button>
+      <button v-for="source in sources" :key="source.ref" type="button" class="source" :class="{ uncited: !source.cited }" :title="source.cited ? '' : '已附带发送，回复中未引用'" @click="cite(source, $event.currentTarget as HTMLElement)"><span class="source-kind">{{ kindLabel[source.kind] }}{{ source.kind === 'kb' ? ' ' + source.ref.slice(2) : source.kind === 'history' ? ' ' + source.ref.slice(1) : '' }}</span>{{ source.kind === 'kb' || source.kind === 'history' ? source.label.replace(/^[^·]+· /, '') : source.label }}</button>
     </div>
     <p v-if="message.role === 'assistant' && Number(message.extras.kb_dropped) > 0" class="hint">另有 {{ message.extras.kb_dropped }} 段知识库片段因含疑似敏感信息未发送</p>
     <p v-if="message.role === 'assistant' && message.model_label" class="hint">{{ message.model_label }}</p>
