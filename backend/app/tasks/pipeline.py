@@ -21,7 +21,7 @@ from app.checks.service import run_checks
 from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import DocNode, Job, Task, TaskFile, TaskClauseVector
-from app.parsing import docx, image, legacy, pdf, xlsx
+from app.parsing import docx, image, legacy, pdf, progress, xlsx
 from app.parsing.doctype import detect_doc_type
 from app.parsing.model import MAX_OCR_PAGES_PER_TASK, ParsedFile, ParseError
 from app.redaction.engine import redact_task
@@ -43,14 +43,18 @@ def _check_ocr_budget(used: int, need: int) -> None:
         raise ParseError(MSG_OCR_BUDGET)
 
 
-def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int) -> tuple[ParsedFile, str]:
-    """按扩展名分派解析器，返回 (解析结果, parser_version)。ocr_used 为本任务此前已 OCR 的页数。"""
+def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int, report=None) -> tuple[ParsedFile, str]:
+    """按扩展名分派解析器，返回 (解析结果, parser_version)。ocr_used 为本任务此前已 OCR 的页数。
+    report(stage, done, total) 上报解析阶段（V321-E-06），不传则不上报。"""
+    say = report or (lambda *_: None)
     if ext == "docx":
         return docx.parse_docx(data, seq), docx.PARSER_VERSION
     if ext == "xlsx":
         return xlsx.parse_xlsx(data, seq), xlsx.PARSER_VERSION
     if ext in legacy.LEGACY_EXTS:  # 不占 OCR 名额；转换结果只在内存中解析，不保存
+        say('converting')
         converted = legacy.convert(data, ext)
+        say('reading')
         if legacy.result_ext(ext) == "docx":
             parsed, version = docx.parse_docx(converted, seq), docx.PARSER_VERSION
         else:
@@ -63,10 +67,12 @@ def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int) -> tuple[Parsed
             return pdf.parse_pdf(data, seq), pdf.PARSER_VERSION
         _check_ocr_budget(ocr_used, need)
         with worker.ocr_slot():
-            return pdf.parse_pdf(data, seq), pdf.PARSER_VERSION
+            say('ocr', 0, need)
+            return pdf.parse_pdf(data, seq, on_ocr=lambda done: say('ocr', done, max(need, done))), pdf.PARSER_VERSION
     if ext in ("jpg", "png"):
         _check_ocr_budget(ocr_used, 1)
         with worker.ocr_slot():
+            say('ocr', 0, 1)
             return image.parse_image(data, seq), image.PARSER_VERSION
     raise ValueError("unexpected ext")  # 上传检查只放行以上各种（tasks.service.EXT_MAP），走内部错误
 
@@ -74,9 +80,17 @@ def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int) -> tuple[Parsed
 def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list[str] | None = None) -> int:
     """解析一个文件并写入节点和解析信息，返回本文件 OCR 的页数。"""
     data = storage.load_original(f.storage_key)
+
+    def report(stage: str, done: int | None = None, total: int | None = None) -> None:
+        progress.file(db, task.id, f.id, stage, done, total)
+
+    report('reading')
     if f.ext in ("doc", "wps", "rtf") and task.kind == "review":
+        if not f.converted_storage_key:
+            report('converting')
         converted = (storage.load_original(f.converted_storage_key) if f.converted_storage_key
                      else legacy.convert(data, f.ext))
+        report('reading')
         parsed, version = _parse_bytes("docx", converted, f.seq, ocr_used)
         parsed.warnings.append(legacy.converted_warning(f.ext))
         version += f"+{legacy.CONVERTER_TAG}"
@@ -86,7 +100,7 @@ def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list
             if saved is not None:
                 saved.append(f.converted_storage_key)
     else:
-        parsed, version = _parse_bytes(f.ext, data, f.seq, ocr_used)
+        parsed, version = _parse_bytes(f.ext, data, f.seq, ocr_used, report)
     db.add_all(
         DocNode(
             task_id=task.id, file_id=f.id, loc=n.loc, ord=n.ord, kind=n.kind, part=n.part,
@@ -106,6 +120,7 @@ def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list
         f.doc_type = detect_doc_type(f.original_name, head)
         f.doc_type_source = "auto"
     db.flush()
+    report('done')
     return parsed.ocr_pages
 
 
@@ -139,12 +154,15 @@ def parse_task(db: Session, task_id: uuid.UUID, file_ids: list[str] | None = Non
     current: str | None = None
     ocr_used = 0
     saved: list[str] = []
+    task_id_ = task.id
+    progress.start(db, task_id_, [f.id for f in files])
     try:
         db.execute(delete(DocNode).where(DocNode.task_id == task.id))
         for f in files:
             current = f.original_name
             ocr_used += _parse_file(db, task, f, ocr_used, saved)
         current = None
+        progress.phase(db, task_id_, 'detect')
         run_checks(db, task, datetime.now(ZoneInfo("Asia/Shanghai")).date())
         if task.policy == "local_only":
             task.status = "completed_local"  # 不外发：不产生任何脱敏数据（M6 起在此之前做本地校验）
@@ -174,6 +192,8 @@ def parse_task(db: Session, task_id: uuid.UUID, file_ids: list[str] | None = Non
             storage.delete_original(key)
         _fail(db, task_id, current, MSG_INTERNAL)
         raise  # job 记为 failed，last_error 只有异常类名
+    finally:
+        progress.finish(task_id_)
 
 
 @job_handler("parse")
@@ -191,6 +211,7 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
         if task is None:
             return
         ocr_used = 0
+        progress.start(db, task_id, [f.id for f in files if not f.parser_version])
         for old in old_files:
             if old.ext in ("png", "jpg"):
                 ocr_used += 1
@@ -220,6 +241,7 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
                 ocr_used += _parse_file(db, task, file, ocr_used)
         db.commit()
         from app.parsing.transcribe import finish
+        progress.phase(db, task_id, 'detect')
         finish(db, task_id)
     except ParseError as exc:
         db.rollback()
@@ -233,6 +255,8 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
         db.rollback()
         _fail(db, task_id, current, MSG_INTERNAL)
         raise
+    finally:
+        progress.finish(task_id)
 
 
 def session_checks(db: Session, task: Task) -> None:

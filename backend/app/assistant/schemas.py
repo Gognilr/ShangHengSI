@@ -66,6 +66,7 @@ class SessionDetail(SessionItem):
     mt_enabled: bool = False
     material_version: int = 0
     review_running: bool = False  # 会话发起的审核排队或进行中（V32-A-02）
+    parse_progress: dict | None = None  # 解析阶段：{phase, files: {文件 id: {stage, done, total}}}（V321-E-06）
 
 
 class AssistantPreviewNode(PreviewNode):

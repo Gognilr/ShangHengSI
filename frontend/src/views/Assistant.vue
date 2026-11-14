@@ -223,7 +223,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         <Transition name="rise"><Conversation v-if="!homeLike" v-show="mode === 'ask'" :messages="shown" :session-id="id" @stop="stop" @retry="retry" /></Transition>
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
         <Composer v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!shown.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
-        <ReviewPane v-if="reviewSeen" v-show="mode === 'review'" :key="id" :session="session" :discuss-id="anchor?.id" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @discuss="discuss" @close-discuss="anchor = null">
+        <ReviewPane v-if="reviewSeen" v-show="mode === 'review'" :key="id" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null">
           <template #discussion="{ finding, no, update }">
             <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。"
               :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @stop="stop" @retry="retry" />

@@ -77,7 +77,7 @@ async function addList(files: File[]) {
   if (files.filter(f => audioExts.includes(f.name.split('.').pop()?.toLowerCase() ?? '')).length > 1) { error.value = '一次最多加入 1 个录音'; return }
   if (files.length && canUpload.value) {
     uploadProgress.value = 0
-    try { await perform(() => assistantApi.addFiles(props.session.id, files, (loaded,total) => { uploadProgress.value = Math.round(loaded / total * 100) })); if (!error.value) guided.value = true }
+    try { await perform(() => assistantApi.addFiles(props.session.id, files, (loaded,total) => { uploadProgress.value = Math.round(loaded / total * 100) })); if (!error.value && !reviewMode.value) guided.value = true }  // 审核视图里确认页内嵌在页面中，不弹全屏（V321-E-06）
     finally { uploadProgress.value = null }
   }
 }

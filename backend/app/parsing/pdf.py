@@ -214,7 +214,7 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
     return confs
 
 
-def parse_pdf(data: bytes, file_seq: int) -> ParsedFile:
+def parse_pdf(data: bytes, file_seq: int, on_ocr=None) -> ParsedFile:
     nodes: list[ParsedNode] = []
     scanned: list[int] = []
     mixed: list[int] = []
@@ -238,6 +238,8 @@ def parse_pdf(data: bytes, file_seq: int) -> ParsedFile:
                     pdfium_doc = pypdfium2.PdfDocument(data)
                 (scanned if is_scanned else mixed).append(page_no)
                 confs = _parse_scanned_page(pdfium_doc, page_no, file_seq, nodes)
+                if on_ocr is not None:
+                    on_ocr(len(scanned) + len(mixed))  # 已 OCR 的页数（V321-E-06）
                 if not confs:
                     empty.append(page_no)
                 elif any(c < LOW_OCR_CONF for c in confs):

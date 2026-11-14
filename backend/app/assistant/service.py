@@ -108,7 +108,17 @@ def detail(db: Session, task: Task) -> SessionDetail:
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
                          participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled(), mt_enabled=mt_enabled(),
-                         material_version=task.material_version, review_running=review_active(db, task))
+                         material_version=task.material_version, review_running=review_active(db, task),
+                         parse_progress=_parse_progress(db, task))
+
+
+def _parse_progress(db: Session, task: Task) -> dict | None:
+    """解析中的会话：取正在执行的 parse 任务的阶段上报；还在排队时为空对象（V321-E-06）。"""
+    if task.status != 'parsing':
+        return None
+    row = db.execute(select(Job.status, Job.progress).where(Job.type == 'parse', Job.payload['task_id'].astext == str(task.id),
+                     Job.status.in_(('queued', 'running'))).order_by(Job.id.desc()).limit(1)).first()
+    return (row.progress if row else None) or {}
 
 
 def create(db: Session, user: User, ip: str | None, purpose: str = 'chat') -> SessionDetail:
@@ -249,6 +259,14 @@ def owned_message(db: Session, task: Task, mid: int) -> AssistantMessage:
 
 
 def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetail:
+    task = confirm_files(db, task, user, ip)
+    result = detail(db, task)
+    db.commit()
+    return result
+
+
+def confirm_files(db: Session, task: Task, user: User, ip: str | None) -> Task:
+    """确认脱敏的全部检查与写入，不提交；供“确认并发起审核”在同一事务里接着发起（V321-E-06）。"""
     from app.redaction.recheck import recheck, recheck_context
     task = lock(db, task)
     _writable(db, task)
@@ -285,9 +303,7 @@ def confirm(db: Session, task: Task, user: User, ip: str | None) -> SessionDetai
     audit.record(db, "assistant_files_confirm", user_id=user.id, target_type="task", target_id=str(task.id),
                  detail={"files": count}, ip=ip)
     db.flush()
-    result = detail(db, task)
-    db.commit()
-    return result
+    return task
 
 
 def _validate_input(db: Session, task: Task, body):

@@ -30,6 +30,8 @@ export interface HistoryPage { items: HistoryItem[]; total: number; page: number
 export interface SessionRunInput {
   stance: Stance; source: Source; model_id?: number; user_note?: string | null
   file_ids?: string[]; main_file_id?: string; expected_material_version?: number; use_template?: boolean
+  /** 同一事务里先确认待确认的文件再发起（V321-E-06） */
+  confirm_pending?: boolean
 }
 export interface SessionItem {
   id: string; title: string; status: string; file_count: number; last_activity_at: string
@@ -48,7 +50,10 @@ export interface Session extends SessionItem {
   material_version: number
   /** 会话发起的审核排队或进行中（V32-A-02） */
   review_running: boolean
+  /** 解析阶段（V321-E-06）：整批阶段与每个文件的阶段；OCR 时 done / total 为页数。排队中为空对象，不在解析时为 null */
+  parse_progress?: ParseProgress | null
 }
+export interface ParseProgress { phase?: 'files' | 'detect'; files?: Record<string, { stage: string; done: number | null; total: number | null }> }
 export interface SessionPage { items: SessionItem[]; total: number; page: number; page_size: number; kb_enabled?: boolean; asr_enabled: boolean; mt_enabled: boolean }
 export interface Quote { file: number; unit_price: string | null; amount: string | null; currency: string | null; difference_pct: string | null; status: string; qty: string }
 export interface Comparison {
@@ -82,8 +87,9 @@ export const assistantApi = {
   history: (query: { page?: number; q?: string; from?: string; to?: string }) => http.get<HistoryPage>(`${base}/history`, query),
   runs: (id: string) => http.get<{ items: RunListItem[] }>(`${base}/${id}/runs`),
   createRun: (id: string, body: SessionRunInput) => http.post<RunCreated>(`${base}/${id}/runs`, body),
-  outboundReview: (id: string, query: { stance?: Stance; file_ids?: string[] } = {}) =>
-    http.get<{ text: string; note: string | null; material_version: number }>(`${base}/${id}/outbound`, { mode: 'review', ...query }),
+  outboundReview: (id: string, query: { stance?: Stance; file_ids?: string[]; include_pending?: boolean } = {}) =>
+    http.get<{ text: string; note: string | null; material_version: number }>(`${base}/${id}/outbound`,
+      { mode: 'review', ...query, include_pending: query.include_pending ? 'true' : undefined }),
   raw: (id: string, fid: string) => http.getBlob(`${base}/${id}/files/${fid}/raw`),
   create: (purpose: Purpose = 'chat') => http.post<Session>(base, { purpose }),
   get: (id: string) => http.get<Session>(`${base}/${id}`),

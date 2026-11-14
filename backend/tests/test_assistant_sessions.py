@@ -380,7 +380,7 @@ def test_assistant_ocr_budget_counts_old_empty_scanned_pages(files_dir, session_
     monkeypatch.setattr(pipeline.pdf, "inspect_pdf", lambda data: SimpleNamespace(scanned_pages=list(range(1, 101))))
     seen = []
 
-    def parse_bytes(ext, data, seq, used):
+    def parse_bytes(ext, data, seq, used, report=None):
         seen.append(used)
         pipeline._check_ocr_budget(used, 1)
         return ParsedFile([ParsedNode(f"F{seq}-P1", 1, "paragraph", "body", "文字")], 1, False, [], 1), "test"

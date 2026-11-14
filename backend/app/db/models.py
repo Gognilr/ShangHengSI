@@ -806,6 +806,7 @@ class Job(Base):
     locked_by: Mapped[Optional[str]] = mapped_column(String(64))
     heartbeat_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     last_error: Mapped[Optional[str]] = mapped_column(Text)
+    progress: Mapped[Optional[Any]] = mapped_column(JSONB)  # 解析阶段上报（V321-E-06），不含文件名与正文
     created_at: Mapped[datetime] = _ts_now()
     finished_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
 

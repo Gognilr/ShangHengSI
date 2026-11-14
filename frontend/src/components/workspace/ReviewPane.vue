@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { FileUp, ShieldCheck } from '@lucide/vue'
+import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
+import ParsePhase from '@/components/workspace/ParsePhase.vue'
 import { ApiError } from '@/api/http'
 import { assistantApi, confirmationTask, type Session, type SessionFile } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
@@ -18,11 +20,12 @@ import { useAuthStore } from '@/stores/auth'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
 
 /**
- * 工作台“全面审核”视图（V32-B-01 2）：设置 → 审核中 → 结果，三种状态按会话数据决定。
- * 文件只上传一次、只确认一次；这里的“确认发送”只列本轮新增发送的内容（补充说明、主体说明），已确认文件不再逐个核对。
+ * 工作台“全面审核”视图（V32-B-01 2）：解析 → 确认 → 审核中 → 结果，按会话数据决定。
+ * 文件只上传一次、只确认一次（V321-E-06）：有待确认的文件时，确认页内嵌在本视图，立场、来源、模型在右栏底部，
+ * 一个主按钮“确认并开始审核”同时完成确认与发起；没有待确认文件（已确认过）时才是设置页，只列本轮新增发送的内容。
  */
-const props = defineProps<{ session: Session; fresh?: boolean; discussId?: string }>()
-const emit = defineEmits<{ refresh: []; confirm: []; add: []; pick: []; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: [] }>()
+const props = defineProps<{ session: Session; fresh?: boolean; discussId?: string; active?: boolean }>()
+const emit = defineEmits<{ refresh: []; confirm: []; add: []; pick: []; remove: [file: SessionFile]; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: [] }>()
 const auth = useAuthStore()
 
 // ---- 轮次 ----
@@ -75,15 +78,17 @@ const ceremonyTask = computed(() => ({ ...confirmationTask(props.session), statu
 const files = computed(() => props.session.files.filter(f => !f.media))
 const confirmedFiles = computed(() => files.value.filter(f => !!f.confirmed_at))
 const pendingFiles = computed(() => files.value.filter(f => !f.confirmed_at))
+// 可参与本轮的文件：已确认的，加上已解析、待确认的（确认页里一并勾选）
+const candidates = computed(() => files.value.filter(f => !!f.confirmed_at || f.parse_state === 'done'))
 const picked = ref<string[]>([])
 const mainId = ref('')
 const known = new Set<string>()
-watch(() => confirmedFiles.value.map(f => f.id).join(','), () => {
-  const ids = confirmedFiles.value.map(f => f.id)
+watch(() => candidates.value.map(f => f.id).join(','), () => {
+  const ids = candidates.value.map(f => f.id)
   // 新确认的文件默认选中；已不存在的去掉
   picked.value = [...picked.value.filter(id => ids.includes(id)), ...ids.filter(id => !picked.value.includes(id) && !known.has(id))]
   ids.forEach(id => known.add(id))
-  if (!picked.value.includes(mainId.value)) mainId.value = confirmedFiles.value.find(f => picked.value.includes(f.id) && f.is_main)?.id ?? picked.value[0] ?? ''
+  if (!picked.value.includes(mainId.value)) mainId.value = candidates.value.find(f => picked.value.includes(f.id) && f.is_main)?.id ?? picked.value[0] ?? ''
 }, { immediate: true })
 watch(picked, ids => { if (!ids.includes(mainId.value)) mainId.value = ids[0] ?? '' })
 
@@ -104,7 +109,10 @@ function savePrefs() { try { localStorage.setItem(prefKey(), JSON.stringify({ st
 
 const parties = ref<Party[]>([])
 const partiesLoading = ref(false), partiesSaving = ref(false), partiesError = ref('')
-const ourParty = computed(() => parties.value.find(p => p.is_our_party))
+const setupOur = computed(() => parties.value.find(p => p.is_our_party))
+// 确认页里的我方由工作台提供（只选一次）
+const confirmOur = ref<Party | null>(null)
+const ourParty = computed(() => stage.value === 'confirm' ? confirmOur.value ?? undefined : setupOur.value)
 const inferredStance = computed<Stance | ''>(() => ourParty.value?.role_label === '买方' ? 'purchase' : ourParty.value?.role_label === '卖方' ? 'sales' : '')
 const autoStance = ref(false)
 let partiesSeq = 0
@@ -178,18 +186,27 @@ async function loadPreview() {
   }
 }
 
-const stage = computed<'loading' | 'running' | 'result' | 'local' | 'setup'>(() => {
+const stage = computed<'loading' | 'running' | 'result' | 'local' | 'parsing' | 'confirm' | 'setup'>(() => {
   if (props.session.review_running) return 'running'
   if (props.session.policy === 'local_only') return 'local'
   if (!roundsLoaded.value) return 'loading'
+  const reading = !(rounds.value.length && !composing.value)  // 正在看结果时，新加的文件不打断阅读，点“新一轮”再进入
+  if (reading && !props.session.original_deleted) {
+    if (props.session.status === 'parse_failed' && pendingFiles.value.length) return 'parsing'
+    if (props.session.status === 'parsing' && files.value.length) return 'parsing'
+    if (props.session.status === 'awaiting_confirm' && pendingFiles.value.length) return 'confirm'
+  }
   return rounds.value.length && !composing.value ? 'result' : 'setup'
 })
+// 在审核视图里新加了文件（结果页上直接加文件）：自动进入新一轮，看解析与确认
+watch(() => pendingFiles.value.length, count => { if (count && props.active && rounds.value.length && !props.session.review_running) composing.value = true })
 const canConfigure = computed(() => stage.value === 'setup' && ['active', 'awaiting_confirm'].includes(props.session.status))
 watch(() => [props.session.id, props.session.status, props.session.material_version, stage.value].join(':'), () => {
   if (stage.value === 'setup' && ['active', 'awaiting_confirm'].includes(props.session.status)) void loadParties()
 }, { immediate: true })
 watch([stage, () => props.session.material_version, () => confirmedFiles.value.length, stance, () => picked.value.join(',')], ([s]) => {
   if (s === 'setup' && picked.value.length) { void loadModels(); void loadPreview() }
+  if (s === 'confirm') void loadModels()
 }, { immediate: true })
 
 const blocker = computed(() => {
@@ -209,6 +226,33 @@ const blocker = computed(() => {
   if (previewVersion.value === null) return previewError.value || '正在读取本轮发送内容'
   return ''
 })
+// ---- 确认页（有待确认文件）：确认 + 发起一次完成（V321-E-06）----
+watch(confirmOur, party => {
+  const key = `${party?.id ?? ''}:${party?.role_label ?? ''}`
+  if (key === lastOur) return
+  lastOur = key
+  stance.value = inferredStance.value; autoStance.value = !!stance.value
+})
+const confirmBlocker = computed(() => {
+  if (props.session.generating) return '回复生成中，完成后再发起审核'
+  if (!picked.value.length) return '请至少选择一个文件'
+  if (!mainId.value) return '请选择主文件'
+  if (!stance.value) return '请选择业务立场'
+  if (modelsLoading.value) return '正在加载模型列表'
+  if (modelError.value) return modelError.value
+  if (!modelId.value) return '请选择审核模型'
+  return ''
+})
+const modelName = computed(() => models.value.find(m => m.id === modelId.value)?.display_name)
+async function submitConfirm() {
+  if (!stance.value) return
+  const trimmed = note.value.trim()
+  await assistantApi.createRun(props.session.id, {
+    stance: stance.value, source: source.value, model_id: modelId.value, user_note: trimmed || null,
+    file_ids: picked.value, main_file_id: mainId.value, expected_material_version: previewVersion.value ?? undefined, confirm_pending: true,
+  })
+  savePrefs()
+}
 const submitting = ref(false)
 const formError = ref('')
 async function start() {
@@ -251,6 +295,33 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
       <LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations />
     </section>
 
+    <!-- 解析阶段 -->
+    <ParsePhase v-else-if="stage === 'parsing'" :session="session" @remove="emit('remove', $event)" />
+
+    <!-- 确认页（内嵌）：确认脱敏 + 审核设置，一个主按钮 -->
+    <section v-else-if="stage === 'confirm'" class="confirm-stage">
+      <div v-if="rounds.length" class="back"><el-button link type="primary" @click="backToResult">← 返回第 {{ [...rounds].sort((a, b) => b.run_no - a.run_no)[0]?.run_no }} 轮结果</el-button></div>
+      <ConfirmWorkbench :key="`${session.id}:${pendingFiles.map(f => f.id).join(',')}`" class="confirm-wb" :task="confirmationTask(session)" mode="session-review" require-our-party
+        v-model:picked="picked" v-model:main-id="mainId" :stance="stance" :file-ids="picked" :model-name="modelName" :blocker="confirmBlocker" :submit="submitConfirm"
+        @our="confirmOur = $event" @preview="previewVersion = $event" @confirmed="emit('refresh')" @stale="emit('refresh')">
+        <template #settings>
+          <div class="cs">
+            <div class="cs-row"><span class="setting-label">业务立场</span><SiSegmented :model-value="stance" :options="stanceOptions" size="small" ariaLabel="业务立场" @update:model-value="chooseStance" /></div>
+            <p v-if="autoStance" class="hint cs-hint">按我方为{{ ourParty?.role_label }}带出</p>
+            <p v-else-if="inferredStance && stance && stance !== inferredStance" class="hint cs-hint">所选立场与我方的{{ ourParty?.role_label }}标签不一致，请核对。</p>
+            <div class="cs-row"><span class="setting-label">文件来源</span><SiSegmented v-model="source" :options="sourceOptions" size="small" ariaLabel="文件来源" /></div>
+            <div class="cs-row">
+              <span class="setting-label">审核模型</span>
+              <span v-if="models.length === 1" class="cs-model">{{ models[0]!.display_name }}</span>
+              <el-select v-else v-model="modelId" size="small" placeholder="选择审核模型" aria-label="审核模型" :loading="modelsLoading" :disabled="!models.length"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
+            </div>
+            <el-input v-if="noteOpen" v-model="note" type="textarea" aria-label="本次补充说明" :rows="2" :maxlength="MAX_NOTE_LENGTH" show-word-limit placeholder="如：这是给土耳其客户的报价，请重点看付款条款" />
+            <div class="links"><el-button v-if="!noteOpen" link type="primary" size="small" @click="noteOpen = true">＋ 添加补充说明</el-button><el-button link type="primary" size="small" :disabled="!stance" @click="reqDrawer = true">查看审核要求</el-button></div>
+          </div>
+        </template>
+      </ConfirmWorkbench>
+    </section>
+
     <!-- 结果 -->
     <RunResult v-else-if="stage === 'result'" :session="session" :rounds="rounds" :selected-run="selectedRun" :fresh="freshRun"
       :discuss-id="discussId" @select-run="selectedRun = $event; freshRun = false" @new-round="newRound" @discuss="emit('discuss', $event)" @close-discuss="emit('closeDiscuss')">
@@ -265,13 +336,6 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
           <el-button type="primary" @click="emit('pick')">加入文件</el-button>
         </EmptyState>
         <template v-else>
-          <el-alert v-if="session.status === 'parsing'" type="info" :closable="false" show-icon title="文件正在本机解析，完成后即可确认脱敏" />
-          <el-alert v-else-if="!confirmedFiles.length" type="warning" :closable="false" show-icon title="还没有已确认脱敏的文件">
-            <template #default><el-button type="primary" size="small" @click="emit('confirm')">确认脱敏（{{ pendingFiles.length }} 个文件）</el-button></template>
-          </el-alert>
-          <el-alert v-else-if="pendingFiles.length" type="warning" :closable="false" show-icon :title="`另有 ${pendingFiles.length} 个文件尚未确认脱敏，不会参与本轮审核`">
-            <template #default><el-button size="small" @click="emit('confirm')">去确认</el-button></template>
-          </el-alert>
           <div v-if="rounds.length" class="back"><el-button link type="primary" @click="backToResult">← 返回第 {{ [...rounds].sort((a, b) => b.run_no - a.run_no)[0]?.run_no }} 轮结果</el-button></div>
 
           <div class="grid">
@@ -335,6 +399,15 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
 .center { padding: 32px; }
 .running { flex: 1; min-height: 0; overflow: hidden; margin: 0 20px 16px; }
 .local { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.confirm-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.confirm-stage > .back { padding: 8px 20px 0; margin: 0; }
+.confirm-wb { flex: 1; min-height: 0; }
+.cs { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px solid var(--si-hair); }
+.cs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cs-row :deep(.el-select) { width: 200px; }
+.cs-model { font: var(--si-font-body); }
+.cs-hint { margin: -4px 0 0; text-align: right; }
+.cs :deep(.el-textarea) { width: 100%; }
 .setup { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; }
 .setup-inner { display: flex; flex-direction: column; gap: 16px; max-width: 920px; margin: 0 auto; }
 .back { margin-bottom: -4px; }

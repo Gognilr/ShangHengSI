@@ -322,6 +322,7 @@ class SessionRunIn(BaseModel):
     main_file_id: str | None = None
     expected_material_version: int | None = None
     use_template: bool = True
+    confirm_pending: bool = False  # 同一事务里先确认待确认的文件再发起（V321-E-06）
 
 
 def session_review_active(db: DbSession, task_id: uuid.UUID) -> bool:
@@ -353,6 +354,9 @@ def create_session_run(db: DbSession, task: Task, user: User, ip: str | None, bo
     if db.scalar(select(exists().where(AssistantMessage.task_id == task.id, AssistantMessage.role == "assistant",
                                        AssistantMessage.status.in_(("queued", "streaming"))))):
         raise _conflict("SESSION_BUSY", "回复生成中，完成后再发起审核")
+    if body.confirm_pending and task.status == "awaiting_confirm":
+        # 确认与发起同一事务：任何一步失败都整体回滚，不会留下“已确认、没发起”的半截状态
+        task = assistant.confirm_files(db, task, user, ip)
     files = selected_files(db, task, {} if body.file_ids is None else {"file_ids": body.file_ids})
     files = [f for f in files if not f.media]  # 录音逐字稿不参与审核
     if not files:

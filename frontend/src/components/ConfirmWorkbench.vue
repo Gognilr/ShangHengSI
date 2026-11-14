@@ -17,6 +17,7 @@ import {
   type UserCategory,
 } from '@/api/redaction'
 import { RUN_ERROR_MESSAGES, runsApi } from '@/api/runs'
+import type { Stance } from '@/api/tasks'
 import { MAX_FILES, TASK_ERROR_MESSAGES, checkFiles, tasksApi, type TaskDetail, type TaskFile } from '@/api/tasks'
 import LocalCheckList from '@/components/result/LocalCheckList.vue'
 import LeakPanel from '@/components/LeakPanel.vue'
@@ -31,14 +32,33 @@ import { useHotkeys } from '@/utils/hotkeys'
 import { DOC_TYPE_OPTIONS, KEPT_BY, MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, suspectReasonLabel, toOptions } from '@/utils/labels'
 import { toast } from '@/utils/toast'
 
-const props = withDefaults(defineProps<{ task: TaskDetail; modelId?: number; modelName?: string; mode?: 'review' | 'assistant'; requireOurParty?: boolean }>(), { mode: 'review', requireOurParty: false })
+/**
+ * mode：review 审核任务；assistant 会话只确认；session-review 会话的“全面审核”确认页（V321-E-06）——
+ * 右栏底部由父页面经 settings 插槽放审核设置，主按钮为“确认并开始审核”，由 submit 完成确认 + 发起。
+ */
+const props = withDefaults(defineProps<{
+  task: TaskDetail; modelId?: number; modelName?: string; mode?: 'review' | 'assistant' | 'session-review'; requireOurParty?: boolean
+  /** session-review：当前立场与所选文件，用于取审核外发正文预览 */
+  stance?: string; fileIds?: string[]; picked?: string[]; mainId?: string
+  /** session-review：父页面的提交（确认 + 发起）；抛出的 ApiError 按错误码在本页显示 */
+  submit?: () => Promise<void>
+  /** session-review：父页面的未满足条件，非空时不能提交 */
+  blocker?: string
+}>(), { mode: 'review', requireOurParty: false })
 const emit = defineEmits<{
+  (e: 'update:picked', ids: string[]): void
+  (e: 'update:mainId', id: string): void
+  /** 当前我方变化（含首次加载） */
+  (e: 'our', party: Party | null): void
+  /** session-review：外发预览的材料版本，提交时作为 expected_material_version */
+  (e: 'preview', version: number): void
   /** 已提交确认发送，父页面应刷新任务状态 */
   (e: 'confirmed'): void
   /** 任务状态已变化（如 409），父页面应刷新任务 */
   (e: 'stale'): void
 }>()
-const assistant = computed(() => props.mode === 'assistant')
+const sessionReview = computed(() => props.mode === 'session-review')
+const assistant = computed(() => props.mode !== 'review')
 const nodeLoader = computed(() => assistant.value ? assistantApi.nodes : undefined)
 const docTypeOptions = toOptions(DOC_TYPE_OPTIONS)
 const categoryOptions = toOptions(MANUAL_CATEGORY_OPTIONS)
@@ -86,9 +106,16 @@ async function loadOutbound() {
   outboundLoading.value = true
   outboundError.value = ''
   try {
-    const outbound = await redactionApi.outbound(props.task.id)
-    outboundText.value = outbound.text
-    outboundNote.value = outbound.note
+    if (sessionReview.value) {
+      const outbound = await assistantApi.outboundReview(props.task.id, { stance: (props.stance || undefined) as Stance | undefined, file_ids: props.fileIds, include_pending: true })
+      outboundText.value = outbound.text
+      outboundNote.value = outbound.note
+      emit('preview', outbound.material_version)
+    } else {
+      const outbound = await redactionApi.outbound(props.task.id)
+      outboundText.value = outbound.text
+      outboundNote.value = outbound.note
+    }
   } catch (e) {
     outboundText.value = ''
     outboundNote.value = null
@@ -194,6 +221,7 @@ function handleError(e: unknown) {
     if (e.code === 'OUTBOUND_BLOCKED') { submitError.value = ''; showLeaks(e.message); return }
     submitError.value = base
     if (e.code === 'TASK_STATE_CONFLICT') emit('stale')
+    if (e.code === 'MATERIAL_CHANGED') { submitError.value = '材料有变化，已更新本页，请核对后再确认'; void loadAll(true) }
   } else submitError.value = '操作失败，请重试'
 }
 
@@ -303,6 +331,9 @@ const failedFiles = computed(() => visibleFiles.value.some(f => f.parse_state ==
 // ---- 签约方 ----
 const ourCount = computed(() => parties.value.filter(p => p.is_our_party).length)
 const ourId = computed(() => parties.value.find(p => p.is_our_party)?.id ?? '')
+watch(() => { const p = parties.value.find(x => x.is_our_party); return p ? `${p.id}:${p.role_label}` : '' }, () => emit('our', parties.value.find(p => p.is_our_party) ?? null), { immediate: true })
+// session-review：立场或所选文件变化后重取审核外发预览，与实际发送一致
+watch(() => [props.stance, (props.fileIds ?? []).join(',')].join('|'), () => { if (sessionReview.value && !loading.value) void loadOutbound() })
 const editingParty = ref('')
 function countryOptions(p: Party): string[] {
   const set = new Set<string>()
@@ -450,7 +481,8 @@ const outboundDrawer = ref(false)
 // 后台保存中也可以点；点击后先等保存队列清空，有失败则停在本页（已回滚并提示）
 const canConfirm = computed(() =>
   (assistant.value && !props.requireOurParty ? ourCount.value <= 1 : ourCount.value === 1)
-  && !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value)
+  && !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value
+  && (!sessionReview.value || (!props.blocker && !outboundLoading.value && !!outboundText.value)))
 const confirmBox = ref<HTMLElement>()
 const confirmFlash = ref(false)
 // Ctrl+Enter 只聚焦按钮（3.6）。部分环境会把同一次按键再作为 Enter 送到新聚焦的按钮上，
@@ -469,7 +501,8 @@ async function confirmSend() {
     }
     // 撤销期内删除的文件仍在服务器上：先真删并等重算完成，用户看到更新后的回执再确认
     if (pendingDeletes.size()) { await pendingDeletes.flush(); return }
-    if (assistant.value) await assistantApi.confirm(props.task.id)
+    if (sessionReview.value) await props.submit?.()
+    else if (assistant.value) await assistantApi.confirm(props.task.id)
     else await runsApi.create(props.task.id, !skipTemplate.value, props.modelId)
     emit('confirmed')
   } catch (e) { handleError(e) }
@@ -506,7 +539,7 @@ useHotkeys({
   },
   escape: () => { helpOpen.value = false; selectedId.value = null; canvas.value?.cancel() },
   '?': () => { helpOpen.value = true },
-}, { enabled: computed(() => !assistant.value) })
+}, { enabled: computed(() => !assistant.value || sessionReview.value) })
 </script>
 
 <template>
@@ -516,7 +549,7 @@ useHotkeys({
         <template #bar>
           <SiIsland v-if="island" :state="island.state" :text="island.text" />
           <span v-else-if="saving" class="hint saving" aria-live="polite">正在后台保存…</span>
-          <button v-if="!assistant" type="button" class="hint keys-link" @click="helpOpen = true">按 ? 查看快捷键</button>
+          <button v-if="!assistant || sessionReview" type="button" class="hint keys-link" @click="helpOpen = true">按 ? 查看快捷键</button>
         </template>
       </ConfirmCanvas>
       <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
@@ -591,8 +624,9 @@ useHotkeys({
           <ul class="rows">
             <li v-for="f in visibleFiles" :key="f.id" class="file">
               <div class="file-line">
+                <el-checkbox v-if="sessionReview && visibleFiles.length > 1" :model-value="(picked ?? []).includes(f.id)" :disabled="f.parse_state !== 'done'" :aria-label="`审核 ${f.original_name}`" @change="(v: unknown) => emit('update:picked', v ? [...(picked ?? []), f.id] : (picked ?? []).filter(id => id !== f.id))" />
                 <span class="badge" :class="`badge--${badgeClass(f.original_name)}`">{{ fileBadge(f.original_name) }}</span>
-                <span class="file-name" :title="f.original_name">{{ f.original_name }}<em v-if="f.is_main" class="main-tag">主文件</em></span>
+                <span class="file-name" :title="f.original_name">{{ f.original_name }}<em v-if="sessionReview ? f.id === mainId : f.is_main" class="main-tag">主文件</em><el-button v-if="sessionReview && f.id !== mainId && (picked ?? []).includes(f.id)" link type="primary" size="small" @click="emit('update:mainId', f.id)">设为主文件</el-button></span>
                 <el-dropdown v-if="canEditFiles" trigger="click" :disabled="waiting">
                   <button type="button" class="icon-btn" :aria-label="`${f.original_name} 的更多操作`"><Ellipsis :size="16" :stroke-width="1.75" /></button>
                   <template #dropdown><el-dropdown-menu><el-dropdown-item :disabled="f.is_main || f.parse_state !== 'done'" @click="setMain(f)">设为主文件</el-dropdown-item><el-dropdown-item :disabled="visibleFiles.length <= 1" @click="removeFile(f)">删除</el-dropdown-item></el-dropdown-menu></template>
@@ -623,7 +657,8 @@ useHotkeys({
       </div>
 
       <div class="receipt">
-        <template v-if="!assistant">
+        <slot name="settings" />
+        <template v-if="!assistant || sessionReview">
           <h3 class="receipt-title">即将发送给 {{ modelName || '审核模型' }}</h3>
           <p class="hint">只发脱敏后的文字，结果在本机还原</p>
         </template>
@@ -634,19 +669,20 @@ useHotkeys({
         </div>
         <div v-if="categoryChips.length" class="chips"><span v-for="c in categoryChips" :key="c" class="chip">{{ c }}</span></div>
         <p class="hint">不发送：原件 · 图片 · 文件名</p>
-        <p class="hint">确认后本机再做一次出口复检，命中即拦截、不发送</p>
+        <p v-if="!sessionReview" class="hint">确认后本机再做一次出口复检，命中即拦截、不发送</p>
         <el-button link type="primary" :disabled="!outboundText" @click="outboundDrawer = true">查看将发送的全文</el-button>
         <el-alert v-if="submitError" type="error" show-icon :closable="false" :title="submitError" class="receipt-alert" />
         <ul class="conditions" aria-label="提交条件" aria-live="polite">
           <li v-if="assistant && !requireOurParty" :class="{ met: ourCount <= 1 }">{{ ourCount ? '已选择一方为我方' : '未设置我方，可以确认脱敏' }}</li>
           <li v-else :class="{ met: ourCount === 1 }">{{ ourCount === 1 ? '✓ 已选择我方' : !parties.length ? '未识别到签约方，暂时不能提交 AI 审核' : '请先选择哪一方是我方' }}</li>
+          <li v-if="sessionReview && blocker">{{ blocker }}</li>
           <li v-if="waiting || parsingFiles">文件正在解析，请稍候</li>
           <li v-if="failedFiles">有解析失败的文件，请先删除</li>
           <li v-if="saving" class="met">修改正在后台保存，确认发送时会等保存完成</li>
           <li v-if="loading">正在读取脱敏信息……</li>
         </ul>
         <div ref="confirmBox" class="confirm-btn" :class="{ flash: confirmFlash }">
-          <el-button type="primary" size="large" :disabled="!canConfirm" :loading="submitting" @click="confirmSend">{{ assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
+          <el-button type="primary" size="large" :disabled="!canConfirm" :loading="submitting" @click="confirmSend">{{ sessionReview ? '确认并开始审核' : assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
         </div>
       </div>
     </aside>
