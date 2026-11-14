@@ -28,7 +28,7 @@ def test_builtin_version_readable():
 
 def test_system_template_version_and_placeholder():
     version, body = load_system_template()
-    assert version == "2026.11-9"  # V31-E-05：增加无法判断原因。
+    assert version == "2026.11-10"  # V321-D-02：ok / na 只输出编号。
     assert body.startswith("你是企业商务文件审核助手")
     assert body.count("{JSON_SCHEMA}") == 1
     # front matter 不应出现在正文中

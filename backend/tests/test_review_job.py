@@ -89,6 +89,28 @@ def get_run(db_sessionmaker, run_id) -> ReviewRun:
         return db.get(ReviewRun, run_id)
 
 
+def test_compact_reply_persists_and_returns_existing_detail(db_sessionmaker, owner, ready_task, llm):
+    task = ready_task(owner)
+
+    def compact(output, messages):
+        rows = output["requirement_results"]
+        output["ok"] = [r["req_id"] for r in rows if r["verdict"] == "ok"]
+        output["na"] = []
+        output["requirement_results"] = [r for r in rows if r["verdict"] != "ok"]
+
+    requests = llm(handler=custom_reply(compact))
+    run = new_run(db_sessionmaker, task, owner)
+    run_job(db_sessionmaker, run.id)
+    assert len(requests) == 1
+    with db_sessionmaker() as db:
+        current = db.get(ReviewRun, run.id)
+        assert current.status == "completed"
+        detail = service.run_detail(db, current)
+        assert detail.requirement_results[0].verdict == "issue"
+        assert all(r.verdict == "ok" and r.note is None for r in detail.requirement_results[1:])
+        assert len(detail.findings) == 1
+
+
 @pytest.mark.parametrize("status", ["completed", "partial", "blocked", "failed"])
 def test_v2c_all_terminal_runs_update_activity(db_sessionmaker, owner, ready_task, llm, status):
     from datetime import timedelta

@@ -41,7 +41,7 @@
 | V321-B-06 | 向量辅助去留 | Q-06 | Opus，medium | Sol 6.1，medium | — | B-05 | 用户确认去留 | 已完成（2026-11-13，GPT-6.1 Sol；用户确认后删除辅助及专用参照，兼容旧缓存；定向回归 742+3 passed、前端构建通过，真实标注不退步；报告 reports/V321-B-06.md） |
 | V321-B-07 | 实体识别模型选型评测（仅在未达标时） | Q-47 | Opus，high | Sol 6.1，high | — | B-06 | 用户决定做不做；选型报告经确认 | 已完成（2026-11-13，GPT-6.1 Sol；本机选型评测两候选均退步，维持现行模型，未执行更换；报告 reports/V321-B-07.md） |
 | V321-D-01 | 思考量评测 | Q-19 | Sonnet，medium | Terra，medium | — | C-03 | 用户录入密钥；结果交用户 | 已完成（2026-11-14，GPT-6.1 Sol；真实 high / low 各两轮，召回持平、结论差异限 1 个样本，配对模型耗时减少 31.93%；推荐 low，报告 reports/V321-D-01.md；结果交用户） |
-| V321-D-02 | 输出瘦身 | Q-20 | Sonnet，high | Terra，high | — | D-01 | — | 待执行 |
+| V321-D-02 | 输出瘦身 | Q-20 | Sonnet，high | Terra，high | — | D-01 | — | 进行中（2026-11-14，GPT-6.1 Sol；实现与定向验证，真实评测待录入专用密钥，见 reports/V321-D-02.md） |
 | V321-D-03 | 按维度并发、文件在前 | Q-21 | Opus，high | Sol 6.1，xhigh | — | D-02 | 评测达标 | 待执行 |
 | V321-D-04 | 问题逐条显示 | Q-22 | Sonnet，high | Terra，high | — | D-03 | — | 待执行 |
 | V321-D-05 | 轮询空转 | Q-23 | Sonnet，medium | Terra，low | — | D-04 | — | 待执行 |
@@ -244,7 +244,7 @@
 评测都用 backend/tools/eval_review.py 与 eval_fidelity 的 8 份样本，口径同 V32-A-03；达标线统一为：问题召回与结论一致率不低于现行（允许 ±1 个样本的波动）。
 
 * **D-01 思考量评测。** 不改代码，只在评测库里给模型配低思考档的附加请求参数，各跑 2 轮，记耗时、输出 token、召回。达标则把推荐参数写进设置页该厂商的说明与运维文档。
-* **D-02 输出瘦身。** 文件：review/schema.py、review/validate.py、resources/prompts/system.md（升版本号）。ok / na 只列编号；其余结构不变。
+* **D-02 输出瘦身。** 文件：review/schema.py、review/validate.py、resources/prompts/system.md（升版本号）；用户 2026-11-14 批准补充 review/prompt.py，同步 JSON 结构说明。ok / na 只列编号；其余结构不变。
 * **D-03 按维度并发。** 文件：review/job.py、review/prompt.py、review/requirements.py、llm/usage.py。要求分组并发，每组看全文；消息改为文件在前、要求在后；合并沿用 merge_reviews；调用上限按轮计一次。评测对比单次调用，达标才合并；不达标保留 D-02 的结果。
 * **D-04 问题逐条显示。** 文件：llm/gateway.py（on_delta 已有）、review/job.py、review/validate.py、ReviewCeremony.vue、RunResult.vue。逐条校验落库，等待页左侧显示原文、右侧问题逐条出现。整轮结束后的合并、去重、覆盖说明不变。
 * **D-05 轮询空转。** 文件：db/jobs.py、worker.py。入队时 NOTIFY，worker LISTEN 唤醒，轮询保留作兜底。

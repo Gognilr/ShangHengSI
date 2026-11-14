@@ -91,6 +91,31 @@ def test_normal_reply_verified_with_snapshot():
     assert v.sanctions_level == "none" and v.doc_summary.startswith("模拟摘要")
 
 
+def test_compact_results_match_legacy_and_keep_conflict_priority():
+    ctx, nodes = sample("contract_basic")
+    legacy = json.loads(reply(ctx))
+    legacy["requirement_results"][-1].update(verdict="unable", note="需人工确认", unable_reason="absent")
+    expected = validate_output(json.dumps(legacy), ctx, nodes)
+    compact = dict(legacy, requirement_results=[r for r in legacy["requirement_results"] if r["verdict"] != "ok"],
+                   ok=[r["req_id"] for r in legacy["requirement_results"] if r["verdict"] == "ok"], na=[])
+    # 重复、未知编号与冲突仍按 issue > unable > ok > na 处理。
+    compact["ok"] += [ctx.requirements[0].id, "NOTE", compact["ok"][0], "UNKNOWN"]
+    compact["na"] = compact["ok"]
+    actual = validate_output(json.dumps(compact), ctx, nodes)
+    for result in expected.requirement_results:
+        if result.verdict == "ok":
+            result.note = None
+    assert actual == expected
+
+
+def test_compact_only_lists_preserve_missing_and_na():
+    ctx, nodes = sample("contract_basic")
+    output = dict(requirement_results=[], findings=[], ok=[ctx.requirements[0].id], na=[ctx.requirements[1].id])
+    results = validate_output(json.dumps(output), ctx, nodes).requirement_results
+    assert [(r.verdict, r.note, r.returned) for r in results[:3]] == [
+        ("ok", None, True), ("na", None, True), ("unable", MISSING_NOTE, False)]
+
+
 def test_a02_duplicate_promotion_keeps_verified_snapshot_at_first_location():
     """合并待核实与已校验问题后，首个定位必须仍对应已校验的原文快照。"""
     ctx, nodes = sample("contract_basic")

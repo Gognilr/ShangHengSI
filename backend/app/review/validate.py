@@ -24,7 +24,7 @@ from app.redaction.quotes import QuoteTable, summary_text
 from app.redaction.restore import restore
 from app.review.chunking import Chunk
 from app.review.prompt import ReviewContext, build_messages
-from app.review.schema import FindingOut, ModelOutput
+from app.review.schema import FindingOut, ModelOutput, RequirementResultOut
 from app.security import crypto
 
 CATEGORY_MAP = {"表述": "wording", "逻辑": "logic", "法律": "legal", "合规与制裁": "compliance", "商务": "commercial"}
@@ -295,7 +295,12 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
 
     # 第 6 条：每条发送的要求恰好一条结论；未发送的要求编号丢弃；同一要求多条时取 issue > unable > ok > na
     verdicts: dict[str, tuple[str, str | None, str | None]] = {}
-    for rr in out.requirement_results:
+    # 编号列表只在本地展开，后续覆盖统计、入库和分段合并仍使用同一结构；兼容旧模型回复。
+    rows = out.requirement_results + [
+        RequirementResultOut(req_id=req_id, verdict=verdict)
+        for verdict in ("ok", "na") for req_id in getattr(out, verdict)
+    ]
+    for rr in rows:
         req_id = rr.req_id.strip()
         verdict = map_verdict(rr.verdict)
         if req_id not in sent or verdict is None:

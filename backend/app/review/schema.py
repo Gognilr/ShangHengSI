@@ -61,6 +61,8 @@ class SanctionsOut(_Model):
 class ModelOutput(_Model):
     doc_summary: str = ""
     requirement_results: list[RequirementResultOut]
+    ok: list[str] = []
+    na: list[str] = []
     findings: list[FindingOut]
     sanctions: SanctionsOut | None = None
 
