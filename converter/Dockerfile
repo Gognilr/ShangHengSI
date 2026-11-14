@@ -10,9 +10,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HOME=/tmp \
     LANG=C.UTF-8
 
-# 锁定版本（Q-143 ④）：从镜像源下架时改用 snapshot.debian.org 的同一版本，不跟随升级。
+# 锁定版本（Q-143 ④）：不随源自动升级；旧版本被 Debian 安全更新替换下架时，显式改钉到新的安全更新版本（V321-Z：deb13u8 → deb13u9）。
 # 不装字体（只取文字、不排版）、不装 Java、不装 python3-uno。
-ARG LO_VERSION=4:25.2.3-2+deb13u8
+ARG LO_VERSION=4:25.2.3-2+deb13u9
 # Debian trixie 官方包（packages.debian.org/trixie/ffmpeg）。
 ARG FFMPEG_VERSION=7:7.1.5-0+deb13u1
 RUN apt-get update \
