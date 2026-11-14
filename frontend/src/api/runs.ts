@@ -6,10 +6,12 @@ export interface Mark { start: number; end: number; kind: MarkKind }
 export type MarkedField = 'title' | 'problem' | 'impact' | 'suggestion' | 'suggested_text' | 'basis' | 'discussed_text'
 export type UnableReason = 'redacted' | 'absent' | 'other'
 
+/** remembered：本次新写入术语记忆的词的哈希（V321-E-07） */
 export interface RunCreated {
   id: string
   run_no: number
   status: string
+  remembered?: string[]
 }
 
 export interface RunListItem {

@@ -174,6 +174,9 @@ export const SUSPECT_REASON: Dict = {
   long_digits: '长串数字',
   before_company: '“公司”“厂”前的文字',
 }
+/** 自动保留的普通词为何不替换（V321-E-07） */
+export const AUTO_KEPT_REASON: Dict = { ordinary_words: '由普通词组成', word_boundary: '切在词中间', generic_role: '合同角色词', clause_before_company: '叙述性文字', ordinary_label_value: '标签后的普通取值' }
+export const autoKeptReasonLabel = pick(AUTO_KEPT_REASON)
 export const suspectReasonLabel = pick(SUSPECT_REASON)
 
 /** 追问可选的替换类别，保持既有接口的三类。 */

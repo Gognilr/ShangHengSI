@@ -47,11 +47,14 @@ export interface RedactionItemPos {
   detected_by: string
 }
 
+/** 本机判断为普通词、已自动保留原文的位置（V321-B-02 三档之一），不替换、不写对照表 */
+export interface AutoKept { loc: string; char_start: number; char_end: number; reason: string; category: string; text: string; before: string; after: string }
 export interface RedactionInfo {
   /** {类别代码: 替换次数} */
   summary: Record<string, number>
   suspects: Suspect[]
   items: RedactionItemPos[]
+  auto_kept?: AutoKept[]
 }
 
 /** 划选补充脱敏的位置与类别 */
@@ -91,6 +94,8 @@ export interface Leak {
 export interface LeakList { items: Leak[]; other: number }
 
 export const redactionApi = {
+  /** 撤销“已记住”的保留词（只删本人的记忆行，V321-E-07） */
+  forgetKept: (taskId: string, hashes: string[]) => http.post<void>(`/tasks/${taskId}/redaction/forget-kept`, { hashes }),
   parties: (taskId: string) => http.get<{ items: Party[] }>(`/tasks/${taskId}/parties`),
   saveParties: (taskId: string, items: PartyUpdate[]) =>
     http.put<{ items: Party[] }>(`/tasks/${taskId}/parties`, { items }),

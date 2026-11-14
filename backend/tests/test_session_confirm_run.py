@@ -47,6 +47,8 @@ def test_confirm_pending_is_one_transaction(files_dir, model, make_user, login, 
     # 一次调用：文件已确认，且有一轮排队
     r = c.post(f"{BASE}/{tid}/runs", headers=h, json={**body, "expected_material_version": detail["material_version"]})
     assert r.status_code == 201, r.text
+    assert r.json()["remembered"] == []
+    assert c.post(f"{BASE}/{tid}/redaction/forget-kept".replace("/assistant/sessions", "/tasks"), headers=h, json={"hashes": ["0" * 64]}).status_code == 204
     done = c.get(f"{BASE}/{tid}").json()
     assert done["status"] == "active" and done["files"][0]["confirmed_at"] and done["review_running"] is True
     with db_sessionmaker() as db:

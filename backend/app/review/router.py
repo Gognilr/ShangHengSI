@@ -46,7 +46,7 @@ def create_run(
 ) -> RunCreated:
     run = service.create_run(db, task, user, client_ip(request),use_template=body.use_template if body else True,
                              model_id=body.model_id if body else None)
-    return RunCreated(id=run.id, run_no=run.run_no, status=run.status)
+    return RunCreated(id=run.id, run_no=run.run_no, status=run.status, remembered=task.__dict__.get('_remembered', []))
 
 
 def _owned_session(id: str, user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> Task:  # noqa: A002
@@ -59,7 +59,7 @@ def create_session_run(request: Request, body: service.SessionRunIn, task: Task 
                        user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> RunCreated:
     """会话发起审核（V32-A-02）：要求“智能审核”权限，只接受工作台会话（purpose=chat）。"""
     run = service.create_session_run(db, task, user, client_ip(request), body)
-    return RunCreated(id=run.id, run_no=run.run_no, status=run.status)
+    return RunCreated(id=run.id, run_no=run.run_no, status=run.status, remembered=task.__dict__.get('_remembered', []))
 
 
 @router.get("/assistant/sessions/{id}/runs", response_model=RunList)

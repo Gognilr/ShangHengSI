@@ -35,6 +35,7 @@ def effective(db, user_id: uuid.UUID) -> dict[str, str]:
 
 
 def remember(db, task, user_id: uuid.UUID) -> None:
+    """把用户保留原文的不确定项写入本人术语记忆。新写入的词的哈希累计在 task._remembered，供发起审核后提示并可撤销（V321-E-07）。"""
     from app.redaction import engine
     texts = engine.task_texts(db, task)
     excluded = blocked(db)
@@ -42,9 +43,12 @@ def remember(db, task, user_id: uuid.UUID) -> None:
                                                       RedactionSuspect.decision == 'ignore')):
         word = texts.get(row.loc, '')[row.char_start:row.char_end].strip()
         if eligible(word, row.reason) and P.normalize(word) not in excluded:
-            db.execute(insert(KeepTerm).values(id=uuid.uuid4(), term_hash=engine.term_hash(word),
+            digest = engine.term_hash(word)
+            added = db.execute(insert(KeepTerm).values(id=uuid.uuid4(), term_hash=digest,
                        term_enc=crypto.encrypt_text(word), user_id=user_id, created_at=utcnow())
-                       .on_conflict_do_nothing())
+                       .on_conflict_do_nothing()).rowcount
+            if added:
+                task.__dict__.setdefault('_remembered', []).append(digest)
     db.flush()
 
 

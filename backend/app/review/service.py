@@ -59,6 +59,7 @@ class RunCreated(BaseModel):
     id: uuid.UUID
     run_no: int
     status: str
+    remembered: list[str] = []  # 本次新写入术语记忆的词的哈希，用于“已记住 n 个词”与撤销（V321-E-07）
 
 
 class RunListItem(BaseModel):

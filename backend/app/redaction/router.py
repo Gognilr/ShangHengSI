@@ -286,6 +286,20 @@ def manual_redaction(
     return result
 
 
+class ForgetKept(BaseModel):
+    hashes: list[str] = Field(max_length=200)
+
+
+@router.post("/redaction/forget-kept", status_code=204)
+def forget_kept(body: ForgetKept, task: Task = Depends(owned_readable_task), user: User = Depends(current_user),
+                db: DbSession = Depends(get_db)) -> None:
+    """撤销“已记住”的保留词：只删本人的记忆行（V321-E-07）。"""
+    from sqlalchemy import delete
+    from app.db.models import KeepTerm
+    db.execute(delete(KeepTerm).where(KeepTerm.user_id == user.id, KeepTerm.term_hash.in_(body.hashes)))
+    db.commit()
+
+
 @router.get("/redaction/outbound", response_model=OutboundOut)
 def get_outbound(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> OutboundOut:
     return OutboundOut(text=engine.build_outbound_text(db, task), note=task.user_note_redacted)

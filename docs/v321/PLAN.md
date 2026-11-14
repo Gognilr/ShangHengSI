@@ -52,7 +52,7 @@
 | V321-E-04 | 历史记录 | Q-30 | Sonnet，medium | Terra，medium | — | E-03 | — | 已完成（2026-11-14） |
 | V321-E-05 | 问题处理与收尾 | Q-31 | Sonnet，medium | Terra，medium | — | E-04 | — | 已完成（2026-11-14） |
 | V321-E-06 | 上传到审核一步确认、解析阶段 | Q-32 | 方案 Opus，实现 Sonnet | 方案 Sol 6.1 high，实现 Terra high | — | E-05 | 方案先给用户看 | 已完成（2026-11-14，Opus 出方案、Sonnet 实现；方案 design/E-06.md 经用户确认；解析阶段、内嵌确认页、确认与发起一次调用；报告 reports/V321-E-06.md） |
-| V321-E-07 | 确认页右栏与不确定项分组 | Q-34 | Sonnet，high | Terra，high | — | B-02、E-06 | — | 待执行 |
+| V321-E-07 | 确认页右栏与不确定项分组 | Q-34 | Sonnet，high | Terra，high | — | B-02、E-06 | — | 已完成（2026-11-14，Sonnet；回执折叠、自动保留词折叠行与改为替换、已记住提示与撤销；报告 reports/V321-E-07.md） |
 | V321-E-08 | 条款号重复与小处 | Q-35、36 | Sonnet，medium | Terra，low | — | E-07 | — | 待执行 |
 | V321-E-09 | 设置外框、个人页样板、静态装饰与浅色层次、登录页证书入口与记住密码（docs/v321/ui-polish.md） | Q-48～50 | Fable，low | Sol，medium | — | — | 方案 A 用户已确认 | 已完成（2026-11-13） |
 | V321-E-10 | 其余设置页走查修正 | Q-48 | Fable，low | Sol，medium | — | E-09 | 导航分组先确认 | 已完成（2026-11-13，含导航分组） |

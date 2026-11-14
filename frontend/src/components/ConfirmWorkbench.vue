@@ -8,6 +8,7 @@ import { localFindingsApi } from '@/api/localFindings'
 import {
   REDACTION_ERROR_MESSAGES,
   redactionApi,
+  type AutoKept,
   type ManualInput,
   type Party,
   type RedactionItemPos,
@@ -16,7 +17,7 @@ import {
   type SuspectCategory,
   type UserCategory,
 } from '@/api/redaction'
-import { RUN_ERROR_MESSAGES, runsApi } from '@/api/runs'
+import { RUN_ERROR_MESSAGES, runsApi, type RunCreated } from '@/api/runs'
 import type { Stance } from '@/api/tasks'
 import { MAX_FILES, TASK_ERROR_MESSAGES, checkFiles, tasksApi, type TaskDetail, type TaskFile } from '@/api/tasks'
 import LocalCheckList from '@/components/result/LocalCheckList.vue'
@@ -29,7 +30,7 @@ import SiIsland from '@/components/ui/SiIsland.vue'
 import { usePendingDeletes } from '@/composables/usePendingDeletes'
 import { useTaskPoll } from '@/composables/useTaskPoll'
 import { useHotkeys } from '@/utils/hotkeys'
-import { DOC_TYPE_OPTIONS, KEPT_BY, MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, suspectReasonLabel, toOptions } from '@/utils/labels'
+import { DOC_TYPE_OPTIONS, KEPT_BY, autoKeptReasonLabel, MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, suspectReasonLabel, toOptions } from '@/utils/labels'
 import { toast } from '@/utils/toast'
 
 /**
@@ -41,7 +42,7 @@ const props = withDefaults(defineProps<{
   /** session-review：当前立场与所选文件，用于取审核外发正文预览 */
   stance?: string; fileIds?: string[]; picked?: string[]; mainId?: string
   /** session-review：父页面的提交（确认 + 发起）；抛出的 ApiError 按错误码在本页显示 */
-  submit?: () => Promise<void>
+  submit?: () => Promise<RunCreated | void>
   /** session-review：父页面的未满足条件，非空时不能提交 */
   blocker?: string
 }>(), { mode: 'review', requireOurParty: false })
@@ -74,6 +75,9 @@ const parties = ref<Party[]>([])
 const summary = ref<Record<string, number>>({})
 const suspects = ref<Suspect[]>([])
 const redactedItems = ref<RedactionInfo['items']>([])
+const autoKept = ref<AutoKept[]>([])
+const autoOpen = ref(false)
+const receiptOpen = ref(false)
 const outboundText = ref('')
 const outboundNote = ref<string | null>(null)
 const outboundLoading = ref(false)
@@ -100,6 +104,7 @@ function applyRedaction(info: RedactionInfo) {
   summary.value = info.summary
   suspects.value = info.suspects
   redactedItems.value = info.items
+  autoKept.value = info.auto_kept ?? []
 }
 async function loadSummary() { applyRedaction(await redactionApi.redaction(props.task.id)) }
 async function loadOutbound() {
@@ -449,6 +454,30 @@ const liveText = computed(() => {
   const index = suspects.value.findIndex(item => item.id === s.id) + 1
   return `第 ${index} 组，共 ${suspects.value.length} 组：${s.text}，${isKept(s) ? '保留原文' : '已替换'}`
 })
+/** 自动保留的普通词按文字合并，显示出现次数；“改为替换”按首个位置走手动补充（同一文字全文替换）。 */
+const autoGroups = computed(() => {
+  const map = new Map<string, { text: string; reason: string; category: string; count: number; first: AutoKept }>()
+  for (const a of autoKept.value) {
+    const hit = map.get(a.text)
+    if (hit) hit.count += 1
+    else map.set(a.text, { text: a.text, reason: a.reason, category: a.category, count: 1, first: a })
+  }
+  return [...map.values()]
+})
+const MANUAL_CATEGORIES = new Set(['ORG', 'PERSON', 'IM', 'ACCOUNT', 'IDNO', 'REFNO', 'ADDR', 'AMOUNT', 'PROJECT', 'CUSTOM'])
+function replaceAuto(group: { first: AutoKept; category: string }) {
+  const { loc, char_start, char_end } = group.first
+  onManual({ loc, char_start, char_end, category: (MANUAL_CATEGORIES.has(group.category) ? group.category : 'CUSTOM') as UserCategory })
+}
+/** 发送后提示新写入术语记忆的词数，可撤销（V321-E-07） */
+function rememberedToast(result?: RunCreated | void) {
+  const hashes = result?.remembered ?? []
+  if (!hashes.length) return
+  toast(`已记住 ${hashes.length} 个保留原文的词，下次自动保留`, {
+    duration: 8000,
+    action: { label: '撤销', onClick: () => { redactionApi.forgetKept(props.task.id, hashes).then(() => toast('已撤销，这些词下次仍会提示')).catch(() => ElMessage.error('撤销失败，可在“设置 → 术语记忆”中删除')) } },
+  })
+}
 /** 划选补充：画布上立即出现胶囊（代号等服务器分配），后台保存。 */
 function onManual(input: ManualInput) {
   if (locked.value) return
@@ -501,9 +530,9 @@ async function confirmSend() {
     }
     // 撤销期内删除的文件仍在服务器上：先真删并等重算完成，用户看到更新后的回执再确认
     if (pendingDeletes.size()) { await pendingDeletes.flush(); return }
-    if (sessionReview.value) await props.submit?.()
+    if (sessionReview.value) rememberedToast(await props.submit?.())
     else if (assistant.value) await assistantApi.confirm(props.task.id)
-    else await runsApi.create(props.task.id, !skipTemplate.value, props.modelId)
+    else rememberedToast(await runsApi.create(props.task.id, !skipTemplate.value, props.modelId))
     emit('confirmed')
   } catch (e) { handleError(e) }
   finally { submitting.value = false }
@@ -616,6 +645,20 @@ useHotkeys({
               </ul>
             </template>
           </template>
+          <div v-if="autoGroups.length" class="auto">
+            <h3 class="clickable auto-head" role="button" tabindex="0" :aria-expanded="autoOpen" @click="autoOpen = !autoOpen" @keydown.enter="autoOpen = !autoOpen">
+              <component :is="autoOpen ? ChevronDown : ChevronRight" :size="16" :stroke-width="1.75" />已自动保留 {{ autoGroups.length }} 个普通词<span class="sum">未替换，点开可改为替换</span>
+            </h3>
+            <ul v-if="autoOpen" class="rows suspects">
+              <li v-for="g in autoGroups" :key="g.text" class="suspect">
+                <span class="suspect-main">
+                  <span class="suspect-text" :title="g.text">{{ g.text }}</span>
+                  <span class="hint">{{ autoKeptReasonLabel(g.reason) }}<template v-if="g.count > 1"> · {{ g.count }} 处</template></span>
+                </span>
+                <span class="suspect-actions"><el-button link type="primary" :disabled="locked" @click="replaceAuto(g)">改为替换</el-button></span>
+              </li>
+            </ul>
+          </div>
           <div class="sr-only" aria-live="polite">{{ liveText }}</div>
         </section>
 
@@ -663,13 +706,15 @@ useHotkeys({
           <p class="hint">只发脱敏后的文字，结果在本机还原</p>
         </template>
         <h3 v-else class="receipt-title">本会话文件的脱敏结果</h3>
-        <div class="stats">
-          <div class="stat"><span class="stat-label">正文（只含代号）</span><SiCount :value="outboundLength" /></div>
-          <div class="stat"><span class="stat-label">已在本机保护</span><span><SiCount :value="replacedTotal" /> 处</span></div>
-        </div>
-        <div v-if="categoryChips.length" class="chips"><span v-for="c in categoryChips" :key="c" class="chip">{{ c }}</span></div>
-        <p class="hint">不发送：原件 · 图片 · 文件名</p>
-        <p v-if="!sessionReview" class="hint">确认后本机再做一次出口复检，命中即拦截、不发送</p>
+        <button type="button" class="stat-line" :aria-expanded="receiptOpen" @click="receiptOpen = !receiptOpen">
+          <component :is="receiptOpen ? ChevronDown : ChevronRight" :size="14" :stroke-width="1.75" />
+          <span>正文 <SiCount :value="outboundLength" /> 字 · 已在本机保护 <SiCount :value="replacedTotal" /> 处</span>
+        </button>
+        <template v-if="receiptOpen">
+          <div v-if="categoryChips.length" class="chips"><span v-for="c in categoryChips" :key="c" class="chip">{{ c }}</span></div>
+          <p class="hint">不发送：原件 · 图片 · 文件名</p>
+          <p v-if="!sessionReview" class="hint">确认后本机再做一次出口复检，命中即拦截、不发送</p>
+        </template>
         <el-button link type="primary" :disabled="!outboundText" @click="outboundDrawer = true">查看将发送的全文</el-button>
         <el-alert v-if="submitError" type="error" show-icon :closable="false" :title="submitError" class="receipt-alert" />
         <ul class="conditions" aria-label="提交条件" aria-live="polite">
@@ -742,6 +787,10 @@ h3.clickable:focus-visible { outline: 2px solid var(--si-focus); outline-offset:
 .suspect-actions { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
 .suspect-actions :deep(.el-button + .el-button), .suspect-actions :deep(.el-dropdown) { margin-left: 0; }
 .file { padding: 8px; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; display: flex; flex-direction: column; gap: 4px; }
+.stat-line { display: flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--si-ink-2); font: var(--si-font-body); cursor: pointer; text-align: left; }
+.stat-line:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 2px; border-radius: 4px; }
+.auto { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--si-hair); }
+.auto-head { margin: 0; }
 .file-line { display: flex; align-items: center; gap: 8px; }
 .file-line.sub { gap: 8px; }
 .badge { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; font-size: 11px; font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }

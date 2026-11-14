@@ -247,11 +247,12 @@ const modelName = computed(() => models.value.find(m => m.id === modelId.value)?
 async function submitConfirm() {
   if (!stance.value) return
   const trimmed = note.value.trim()
-  await assistantApi.createRun(props.session.id, {
+  const created = await assistantApi.createRun(props.session.id, {
     stance: stance.value, source: source.value, model_id: modelId.value, user_note: trimmed || null,
     file_ids: picked.value, main_file_id: mainId.value, expected_material_version: previewVersion.value ?? undefined, confirm_pending: true,
   })
   savePrefs()
+  return created
 }
 const submitting = ref(false)
 const formError = ref('')
