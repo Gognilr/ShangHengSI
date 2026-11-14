@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { Check, Loader, X } from '@lucide/vue'
 import type { Session, SessionFile } from '@/api/assistant'
+import { useStale } from '@/utils/stale'
 
 /**
  * 解析阶段（V321-E-06）：每个文件一行显示当前阶段，最后一行是整批的“识别敏感信息与本地校验”。
@@ -31,6 +32,15 @@ function text(row: { stage: string; done: number | null; total: number | null })
   return STAGE_TEXT[row.stage] ?? '处理中…'
 }
 const percent = (row: { done: number | null; total: number | null }) => row.total ? Math.round(((row.done ?? 0) / row.total) * 100) : 0
+// 同一阶段停留超过约 10 秒没有变化：补一句“耗时较长”（V321-E-12）；整页一条，按各行当前阶段取第一条在跑的
+const stageKey = computed(() => rows.value.map(r => `${r.stage}:${r.done}`).join(',') + (detecting.value ? ':d' : ''))
+const slow = useStale(stageKey, 10000)
+const slowText = computed(() => {
+  if (!slow.value || failed.value) return ''
+  if (rows.value.some(r => r.stage === 'ocr')) return '扫描件逐页识别，耗时较长'
+  if (rows.value.some(r => r.stage === 'converting')) return '旧格式需要先转换，耗时较长'
+  return detecting.value ? '内容较多，识别需要一些时间' : ''
+})
 const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
 </script>
 
@@ -61,6 +71,7 @@ const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
           </span>
         </li>
       </ul>
+      <p v-if="slowText" class="hint slow" role="status">{{ slowText }}</p>
       <p class="hint">文件不离开本机，可以离开页面，稍后回来继续。</p>
     </div>
   </section>

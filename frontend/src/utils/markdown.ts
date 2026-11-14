@@ -1,6 +1,8 @@
 /** 最小 Markdown 子集；结果只用模板文本节点渲染。 */
 export interface Inline { text: string; bold: boolean; mark?: string }
-export type Block = { kind: 'heading' | 'paragraph' | 'list'; text: string; level: number }
+/** list 的 level 为缩进层级（0～3），order 为有序列表的编号；code 为围栏代码块（V321-E-12） */
+export type Block = { kind: 'heading' | 'paragraph'; text: string; level: number }
+  | { kind: 'list'; text: string; level: number; order?: number } | { kind: 'code'; text: string }
   | { kind: 'table'; headers: string[]; rows: string[][] } | { kind: 'rule' }
 export function inline(text: string, tokens: ReadonlySet<string> = new Set()): Inline[] {
   return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).flatMap(piece => {
@@ -22,17 +24,22 @@ function cells(line: string) { return line.trim().replace(/^\||\|$/g, '').split(
 export function markdown(text: string): Block[] {
   const lines = text.split('\n'), out: Block[] = []
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!.trim()
+    const raw = lines[i]!, line = raw.trim()
     if (!line) continue
+    if (line.startsWith('```')) {
+      const body: string[] = []; i++
+      while (i < lines.length && !lines[i]!.trim().startsWith('```')) { body.push(lines[i]!); i++ }
+      out.push({ kind: 'code', text: body.join('\n') }); continue
+    }
     if (line.includes('|') && lines[i + 1] && cells(lines[i + 1]!).every(c => /^:?-{3,}:?$/.test(c))) {
       const headers = cells(line), rows: string[][] = []; i += 2
       while (i < lines.length && lines[i]!.includes('|') && lines[i]!.trim()) { rows.push(cells(lines[i]!)); i++ }
       i--; out.push({ kind: 'table', headers, rows }); continue
     }
-    const heading = /^(#{1,3})\s+(.+)$/.exec(line), list = /^(?:- |\d+\. )(.+)$/.exec(line)
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line), list = /^(?:[-*] |(\d+)\. )(.+)$/.exec(line)
     if (heading) out.push({ kind: 'heading', text: heading[2]!, level: heading[1]!.length })
     else if (/^-{3,}$/.test(line)) out.push({ kind: 'rule' })
-    else if (list) out.push({ kind: 'list', text: list[1]!, level: 0 })
+    else if (list) out.push({ kind: 'list', text: list[2]!, level: Math.min(3, Math.floor(raw.search(/\S/) / 2)), ...(list[1] ? { order: Number(list[1]) } : {}) })
     else out.push({ kind: 'paragraph', text: line, level: 0 })
   }
   return out

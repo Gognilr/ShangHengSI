@@ -10,6 +10,7 @@ import type { ChatDecision } from '@/api/chat'
 import type { UserCategory } from '@/api/redaction'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useDraftsStore } from '@/stores/drafts'
 import { ASSISTANT_TEMPLATE, USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 import { TEMPLATE_LIMITS, usableFiles } from '@/utils/assistantTemplates'
 import TemplatePicker from './TemplatePicker.vue'
@@ -106,7 +107,12 @@ function chooseTemplate(value: Template | null) {
 const limits = computed(() => props.template ? TEMPLATE_LIMITS[props.template] : [0, 10] as [number, number])
 
 // ---- 发送：待确认时自动引导确认，处理中时等完成，消息无疑似项时直接发送 ----
-const text = ref(''), useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
+// 草稿按会话（及讨论锚点）存内存，发送成功清空时随之清掉（V321-E-12）
+const drafts = useDraftsStore()
+const draftKey = props.session ? `${props.session.id}:${props.anchor?.id ?? ''}` : ''
+const text = ref(draftKey ? drafts.get(draftKey) : '')
+if (draftKey) watch(text, value => drafts.set(draftKey, value))
+const useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
 const resume = ref(false)
 const omitAdvice = ref(false), blockedCode = ref('')
 const questionInput = ref<{ focus: () => void }>()

@@ -2,12 +2,16 @@
 import { computed } from 'vue'
 import type { SessionFile } from '@/api/assistant'
 import { useLoop } from '@/utils/motion'
+import { useStale } from '@/utils/stale'
 const props = defineProps<{ file: SessionFile; busy: boolean }>()
 const emit = defineEmits<{ transcript: []; download: []; retry: [] }>()
 const media = computed(() => props.file.media!)
 const loop = useLoop(computed(() => media.value.stage === 'transcribing'))
 function stamp(ms = 0) { const s = Math.floor(ms / 1000); return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(v => String(v).padStart(2, '0')).join(':') }
 const progress = computed(() => media.value.duration_ms ? Math.min(100, Math.max(0, media.value.progress / media.value.duration_ms * 100)) : 0)
+// 同一阶段 10 秒没有变化时补一句“耗时较长”（V321-E-12）
+const stale = useStale(() => `${media.value.stage}:${media.value.queue_position ?? ''}:`, 10000)
+const slowText = computed(() => !stale.value ? '' : media.value.stage === 'transcribing' ? '录音较长，转写需要一些时间' : media.value.stage === 'decoding' ? '录音较大，解码需要一些时间' : '')
 const failure = computed(() => ({ unavailable: '转写服务暂不可用，可稍后重试', timeout: '转写超时', memory_timeout: '服务器空闲内存不足，稍后点重试转写',transcribe_failed: '转写失败', decode_failed: '无法解码该录音' })[media.value.error ?? 'transcribe_failed'])
 </script>
 <template>
@@ -19,6 +23,7 @@ const failure = computed(() => ({ unavailable: '转写服务暂不可用，可�
     <template v-else-if="media.stage === 'transcribing'"><el-progress :percentage="progress" :show-text="false" /><p class="num">本机转写中 {{ stamp(media.progress) }} / {{ stamp(media.duration_ms) }}</p><div class="scan" :class="{ running: loop }" /></template>
     <template v-else-if="media.stage === 'done'"><p>{{ file.confirmed_at ? '已确认' : '转写完成，请校对' }}</p><el-button :type="file.confirmed_at ? 'default' : 'primary'" :link="!!file.confirmed_at" size="small" @click="emit('transcript')">{{ file.confirmed_at ? '查看逐字稿' : '校对逐字稿' }}</el-button><el-button link :disabled="busy" @click="emit('download')">逐字稿 Word</el-button></template>
     <template v-else-if="media.stage === 'failed'"><p class="error">{{ failure }}</p><el-button v-if="media.error !== 'decode_failed'" link :disabled="busy" @click="emit('retry')">重新转写</el-button></template>
+    <p v-if="slowText" class="hint">{{ slowText }}</p>
   </div>
 </template>
 <style scoped>
