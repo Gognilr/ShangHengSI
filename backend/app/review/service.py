@@ -654,6 +654,11 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
                              for r in results],
         findings=[view.finding(f, locations) for f in findings],
     )
+    # 临时问题只供阅读：返回不可用于写接口或讨论的独立标识，最终合并后重新生成正式问题。
+    if run.status in ("queued", "running"):
+        for finding, output in zip(findings, detail.findings):
+            if finding.seq < 0:
+                output.id = uuid.uuid5(uuid.NAMESPACE_URL, "provisional-finding:" + str(finding.id))
     detail.restore_stats = view.restore_stats
     return detail
 
@@ -662,6 +667,8 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
 
 
 def update_finding(db: DbSession, finding: Finding, user: User, patch: FindingPatch) -> FindingOut:
+    if finding.seq < 0:
+        raise AppError(409, "REVIEW_IN_PROGRESS", "审核完成后才能处理问题")
     fields = patch.model_fields_set
     if "handling_status" in fields and patch.handling_status is None:
         raise AppError(422, "VALIDATION_ERROR", "请求参数不正确")
@@ -689,6 +696,8 @@ def save_draft(db: DbSession, finding: Finding, user: User, body: DraftIn) -> Fi
     用户核对后的文字是真实文字：与提问相同，按本会话对照表与识别规则在本地脱敏，新代号只增写入对照表，
     以代号文本存入 discussed_text；原 suggested_text 不变。导出时与原建议走同一条还原与 clause 校验路径。
     """
+    if finding.seq < 0:
+        raise AppError(409, "REVIEW_IN_PROGRESS", "审核完成后才能保存讨论稿")
     from app.assistant import service as assistant
     from app.db.models import AssistantMessage, RedactionMap
     from app.redaction import engine

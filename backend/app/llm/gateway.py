@@ -184,14 +184,14 @@ def call_model(db: Session, *, model_id: int, purpose: str, messages: list[dict]
                user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
                task_title: str | None = None, run_id: uuid.UUID | None = None,
                json_mode: bool | None = None, timeout_s: float | None = None,
-               retry: bool = True, extra_task_ids=(), on_send=None, on_delta=None) -> ModelResult:
+               retry: bool = True, extra_task_ids=(), on_send=None, on_delta=None, on_content=None, on_attempt=None) -> ModelResult:
     """on_send：出口复检通过、即将发出时调用（审核中进度用，V31-U5F-01），不改变检查顺序。
     on_delta：给出时流式接收回复，以本次尝试累计收到的字数回调（审核中“已收到约 n 字”，V31-U5F-03）；
     上限检查、出口复检、记录与重试和非流式完全相同。"""
     return _call_config(db, cfg=load_model(db, model_id), purpose=purpose, messages=messages,
                         user_id=user_id, task_id=task_id, task_title=task_title, run_id=run_id,
                         json_mode=json_mode, timeout_s=timeout_s, retry=retry, extra_task_ids=extra_task_ids,
-                        on_send=on_send, on_delta=on_delta)
+                        on_send=on_send, on_delta=on_delta, on_content=on_content, on_attempt=on_attempt)
 
 
 def _refuse_local_only(db: Session, task_id: uuid.UUID | None) -> None:
@@ -236,6 +236,8 @@ def _call_config(
     extra_task_ids=(),
     on_send=None,
     on_delta=None,
+    on_content=None,
+    on_attempt=None,
 ) -> ModelResult:
     """调用模型。成功返回 ModelResult；失败抛出 GatewayError（code 见 MESSAGES）。
 
@@ -287,8 +289,10 @@ def _call_config(
     for attempt in range(len(RETRY_DELAYS) + 1 if retry else 1):
         if attempt:
             time.sleep(RETRY_DELAYS[attempt - 1])
+        if on_attempt is not None:
+            on_attempt()
         started = time.monotonic()
-        outcome = _send_once(cfg, url, headers, request_text, on_delta)
+        outcome = _send_once(cfg, url, headers, request_text, on_delta, on_content) if on_content is not None else _send_once(cfg, url, headers, request_text, on_delta)
         duration = int((time.monotonic() - started) * 1000)
         if isinstance(outcome, _Failure):
             kept = outcome.response_text[:_RESPONSE_KEEP_CHARS] if outcome.response_text else None
@@ -318,11 +322,11 @@ class _Failure:
 
 
 def _send_once(cfg: _Config, url: str, headers: dict, request_text: str,
-               on_delta=None) -> tuple[str, int, int] | _Failure:
+               on_delta=None, on_content=None) -> tuple[str, int, int] | _Failure:
     """发送一次。4xx（408、429 等除外）不重试：密钥错误、参数错误重试也不会成功。
     on_delta 不为空时请求体已带 stream=true，改为流式接收，每收到一段回复就以本次累计字数回调（V31-U5F-03）。"""
     if on_delta is not None:
-        return _send_stream(cfg, url, headers, request_text, on_delta)
+        return _send_stream(cfg, url, headers, request_text, on_delta, on_content)
     try:
         with httpx.Client(timeout=cfg.timeout_s, transport=TRANSPORT, trust_env=False,
                           follow_redirects=False) as client:
@@ -342,7 +346,7 @@ def _send_once(cfg: _Config, url: str, headers: dict, request_text: str,
 
 
 def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
-                 on_delta) -> tuple[str, int, int] | _Failure:
+                 on_delta, on_content=None) -> tuple[str, int, int] | _Failure:
     """流式发送一次（审核用）：失败分类与 _send_once 相同。服务端忽略 stream、直接返回整段 JSON（application/json）时按普通回复解析。
     两段数据之间超过 cfg.timeout_s 或总时长超过 max(STREAM_TOTAL_SECONDS, cfg.timeout_s) 记为超时。"""
     parts: list[str] = []
@@ -373,6 +377,8 @@ def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
                     except (ValueError, KeyError, IndexError, TypeError):
                         return _Failure(GatewayError("BAD_RESPONSE"), True, resp.text)
                     notify(len(content))
+                    if on_content is not None:
+                        on_content(content)
                     return content, tokens_in, tokens_out
                 complete = False
                 pending: list[str] = []
@@ -402,6 +408,8 @@ def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
                             if not isinstance(piece, str):
                                 raise ValueError("content")
                             parts.append(piece)
+                            if on_content is not None:
+                                on_content(piece)
                             received += len(piece)
                             notify(received)
                         # 推理模型先流式输出思考内容（测试机实测约 2 分钟）：只计字数让用户看到在出字，不保存、不记录

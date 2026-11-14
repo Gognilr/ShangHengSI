@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Lock, ShieldCheck } from '@lucide/vue'
-import type { RunDetail } from '@/api/runs'
+import type { Finding, RunDetail } from '@/api/runs'
+import { assistantApi } from '@/api/assistant'
+import ResultCanvas from '@/components/result/ResultCanvas.vue'
+import MarkedText from '@/components/result/MarkedText.vue'
+import type { CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
 import type { TaskDetail } from '@/api/tasks'
 import SentDrawer from '@/components/result/SentDrawer.vue'
 import SiCount from '@/components/ui/SiCount.vue'
-import { NOT_SENT } from '@/utils/labels'
+import { NOT_SENT, severityLabel } from '@/utils/labels'
 import { useFx, useLoop, watchFrames } from '@/utils/motion'
 
 /**
@@ -14,6 +18,20 @@ import { useFx, useLoop, watchFrames } from '@/utils/motion'
  */
 const props = defineProps<{ task: TaskDetail; run: RunDetail | null }>()
 const fx = useFx()
+// 会话复用 task 外观，但节点必须通过会话接口读取。
+const isSession = computed(() => 'review_running' in props.task)
+const nodeLoader = (id: string, fid: string) => assistantApi.nodes(id, fid)
+const rawLoader = (id: string, fid: string) => assistantApi.raw(id, fid)
+const selected = ref('')
+const canvas = ref<InstanceType<typeof ResultCanvas>>()
+const findings = computed(() => props.run?.findings ?? [])
+const annotations = computed<CanvasAnnotation[]>(() => findings.value.filter(f => f.locs.length).map((f, i) =>
+  ({ id: f.id, no: String(i + 1).padStart(2, '0'), severity: f.severity, loc: f.locs[0]!, excerpt: f.quote_excerpt })))
+function selectFinding(f: Finding) {
+  selected.value = f.id
+  if (f.locs[0]) void canvas.value?.locate(f.locs[0], f.id)
+}
+function selectCanvas(id: string) { selected.value = id }
 
 const status = computed(() => props.run?.status ?? props.task.latest_run?.status ?? 'queued')
 const receipt = computed(() => props.run?.receipt ?? null)
@@ -114,6 +132,25 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
       </div>
     </div>
 
+    <div class="live-result">
+      <div class="live-canvas">
+        <ResultCanvas ref="canvas" :task="task" :note="run?.user_note ?? null" :annotations="annotations" :local-locs="[]"
+          :selected-finding-id="selected" :raw-highlight="[]" :ask-enabled="false"
+          :node-loader="isSession ? nodeLoader : undefined" :raw-loader="isSession ? rawLoader : undefined" @select="selectCanvas" />
+      </div>
+      <aside class="live-findings" aria-live="polite">
+        <h3>AI 建议 · 请核实</h3>
+        <p class="hint">审核中，问题会逐条出现；最终结果可能合并或调整。</p>
+        <p v-if="!findings.length" class="hint">正在等待模型返回问题。</p>
+        <article v-for="f in findings" :key="f.id" class="live-card" :class="{ selected: selected === f.id }">
+          <button type="button" class="live-title" @click="selectFinding(f)"><MarkedText :text="f.title" :marks="f.marks.title" /> · {{ severityLabel(f.severity) }}风险</button>
+          <span v-if="f.location" class="hint">{{ f.location }}</span>
+          <MarkedText :text="f.problem" :marks="f.marks.problem" />
+          <span v-if="f.suggestion" class="hint">建议：<MarkedText :text="f.suggestion" :marks="f.marks.suggestion" /></span>
+          <span v-if="f.unresolved" class="hint">有 {{ f.unresolved }} 处未能还原，已原样标出。</span>
+        </article>
+      </aside>
+    </div>
     <ol class="steps" aria-live="polite">
       <li v-for="(s, i) in steps" :key="s.label" class="step" :class="s.state">
         <span class="mark">{{ s.state === 'done' ? '✓' : i + 1 }}</span>
@@ -134,7 +171,16 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
 </template>
 
 <style scoped>
-.ceremony { display: flex; flex-direction: column; gap: 16px; }
+.ceremony { display: flex; flex-direction: column; gap: 16px; min-height: 0; height: 100%; overflow-y: auto; }
+.live-result { display: flex; gap: 12px; min-height: 300px; height: min(45vh, 540px); }
+.live-canvas { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.live-findings { flex: 0 0 40%; min-width: 0; overflow-y: auto; padding: 12px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); }
+.live-findings h3 { margin: 0 0 8px; font: var(--si-font-label); }
+.live-card { box-sizing: border-box; display: flex; flex-direction: column; width: 100%; gap: 6px; margin: 8px 0; padding: 12px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--el-text-color-primary); background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); font: inherit; }
+.live-card.selected { border-color: var(--el-color-primary); }
+.live-title { padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: var(--si-font-label); }
+.live-title:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
+@media (max-height: 900px) { .stage { display: none; } }
 .stage { position: relative; height: 260px; margin: -20px -24px 0; border-bottom: 1px solid var(--si-hair); overflow: hidden; color: var(--si-ink-2); }
 .caption { font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
 /* 文件缩略 */

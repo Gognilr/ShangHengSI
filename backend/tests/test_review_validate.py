@@ -422,3 +422,13 @@ def test_merge_sanctions_high_wins_and_none_ignored():
                for lv in ("无明显风险", "高风险", "看不懂")]
     m = merge_reviews(ctx, [ChunkOutcome(_chunk(i + 1, 3, ["F1-P1"]), r) for i, r in enumerate(reviews)])
     assert m.sanctions_level == "high"
+
+
+def test_finding_stream_yields_only_complete_top_level_items():
+    from app.review.validate import FindingStream
+    seen = []
+    stream = FindingStream(seen.append)
+    raw = '```json\n{"other":{"findings":[{"title":"忽略"}]},"findings":[{"title":"甲\\"乙","problem":"一"},{"title":"二","problem":"二"}],"ok":[]}\n```'
+    for char in raw:
+        stream.feed(char)
+    assert [item["title"] for item in seen] == ['甲"乙', '二']

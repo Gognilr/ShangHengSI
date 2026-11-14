@@ -451,9 +451,93 @@ def retry_message(error: OutputError) -> str:
     return f"你上一次的输出有问题：{error}。请重新输出，只输出一个符合规定结构的 JSON 对象，不要输出任何其他文字。"
 
 
+class FindingStream:
+    """增量读取顶层 findings 数组；只交付完整 JSON 项，不读取思考内容。"""
+    def __init__(self, emit):
+        self.buffer = ""
+        self.pos = 0
+        self.state = "start"
+        self.key = ""
+        self.emit = emit
+        self.decoder = json.JSONDecoder()
+
+    def feed(self, piece):
+        self.buffer += piece
+        while True:
+            text = self.buffer
+            i = self.pos
+            while i < len(text) and text[i].isspace():
+                i += 1
+            if self.state == "start" and text[i] == "`" and len(text) - i < 3:
+                return
+            if self.state == "start" and text[i:i + 3] == "```":
+                end = text.find("\n", i)
+                if end < 0:
+                    return
+                i = end + 1
+                while i < len(text) and text[i].isspace():
+                    i += 1
+            if i >= len(text):
+                self.pos = i
+                return
+            if self.state == "start":
+                if text[i] != "{":
+                    self.state = "done"
+                    return
+                self.pos, self.state = i + 1, "key"
+            elif self.state == "key":
+                if text[i] == "}":
+                    self.state = "done"
+                    return
+                try:
+                    key, end = self.decoder.raw_decode(text, i)
+                except ValueError:
+                    return
+                if not isinstance(key, str):
+                    self.state = "done"
+                    return
+                self.key, self.pos, self.state = key, end, "colon"
+            elif self.state == "colon":
+                if text[i] != ":":
+                    self.state = "done"
+                    return
+                self.pos, self.state = i + 1, "value"
+            elif self.state == "value":
+                if self.key == "findings" and text[i] == "[":
+                    self.pos, self.state = i + 1, "item"
+                else:
+                    try:
+                        _, end = self.decoder.raw_decode(text, i)
+                    except ValueError:
+                        return
+                    self.pos, self.state = end, "separator"
+            elif self.state == "item":
+                if text[i] == "]":
+                    self.pos, self.state = i + 1, "separator"
+                    continue
+                try:
+                    value, end = self.decoder.raw_decode(text, i)
+                except ValueError:
+                    return
+                self.pos, self.state = end, "item_separator"
+                if isinstance(value, dict):
+                    self.emit(value)
+            elif self.state in ("separator", "item_separator"):
+                if text[i] == ",":
+                    self.pos = i + 1
+                    self.state = "key" if self.state == "separator" else "item"
+                elif text[i] == "]" and self.state == "item_separator":
+                    self.pos, self.state = i + 1, "separator"
+                else:
+                    self.state = "done"
+                    return
+            else:
+                return
+
+
 def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uuid.UUID,
                 chunk: Chunk | None = None, nodes: dict[str, DocNodeView] | None = None, on_send=None,
-                on_delta=None) -> ValidatedReview:
+                on_delta=None, on_finding=None, on_reset=None) -> ValidatedReview:
     """调用模型并校验；输出无法解析或不符合结构时重试 1 次，仍失败抛出 OutputError。网关错误（GatewayError）原样抛出。
 
     chunk 为分段审核的一段（只有 1 段时传 None，消息与 M2 相同）；nodes 可由调用方预先加载，分段时各段共用。
@@ -463,9 +547,31 @@ def review_once(db: Session, ctx: ReviewContext, *, run: ReviewRun, user_id: uui
         nodes = load_node_views(db, ctx.task.id, ctx.quote_tables)
     tokens_in = tokens_out = 0
     call_ids: list[int] = []
+    stream = None
+    def reset_stream():
+        nonlocal stream
+        if on_reset is not None:
+            on_reset()
+        stream = FindingStream(emit_finding)
+
+    def emit_finding(item):
+        try:
+            raw = json.dumps({"requirement_results": [], "findings": [item]}, ensure_ascii=False)
+            finding = validate_output(raw, ctx, nodes, chunk).findings[0]
+        except (OutputError, IndexError):
+            return
+        from app.laws.retrieve import verify_findings
+        verify_findings(db, [finding])
+        on_finding(finding)
+
+    def feed_stream(piece):
+        if stream is not None:
+            stream.feed(piece)
+
     for attempt in range(2):
+        stream_args = {"on_content": feed_stream, "on_attempt": reset_stream} if on_finding is not None else {}
         result = call_model(db, model_id=run.model_id, purpose="review", messages=messages, user_id=user_id, task_id=ctx.task.id,
-                            task_title=ctx.task.title, run_id=run.id, on_send=on_send, on_delta=on_delta)
+                            task_title=ctx.task.title, run_id=run.id, on_send=on_send, on_delta=on_delta, **stream_args)
         tokens_in += result.tokens_in
         tokens_out += result.tokens_out
         call_ids.append(result.llm_call_id)

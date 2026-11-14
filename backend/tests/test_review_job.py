@@ -737,3 +737,78 @@ def test_personal_cap_counts_chunked_round_once(db_sessionmaker,owner,ready_task
         assert len(calls) == 3 and all(c.user_id == owner.id and c.status == "sent" for c in calls)
         from app.llm import usage
         assert usage.cap_reached(db, owner.id, "review", 1) == "USER_CAP_REACHED"
+
+
+def test_streamed_finding_is_readonly_then_replaced_by_final(db_sessionmaker, owner, ready_task, llm):
+    from app.security.errors import AppError
+    task = ready_task(owner)
+    run = new_run(db_sessionmaker, task, owner)
+    seen = []
+
+    class Stream(httpx.SyncByteStream):
+        def __init__(self, output):
+            self.output = output
+        def __iter__(self):
+            item = json.dumps(self.output.pop("findings")[0], ensure_ascii=False)
+            first = '{"findings":[' + item + ']'
+            tail = ',' + json.dumps(self.output, ensure_ascii=False)[1:]
+            def event(piece):
+                return ('data: ' + json.dumps({"choices": [{"delta": {"content": piece}}]}, ensure_ascii=False) + '\n\n').encode()
+            yield event(first)
+            with db_sessionmaker() as db:
+                current = db.get(ReviewRun, run.id)
+                temp = db.scalar(select(Finding).where(Finding.run_id == run.id))
+                assert current.status == 'running' and temp.seq < 0
+                detail = service.run_detail(db, current)
+                assert len(detail.findings) == 1 and detail.findings[0].id != temp.id
+                with pytest.raises(AppError) as exc:
+                    service.update_finding(db, temp, owner, service.FindingPatch(handling_status='adopted'))
+                assert exc.value.status == 409
+                seen.append(temp.id)
+            yield event(tail)
+            yield b'data: [DONE]\n\n'
+
+    def handler(request):
+        _, payload = build_reply(json.loads(request.content))
+        output = json.loads(payload['choices'][0]['message']['content'])
+        return httpx.Response(200, headers={'content-type': 'text/event-stream'}, stream=Stream(output))
+    llm(handler=handler)
+    run_job(db_sessionmaker, run.id)
+    with db_sessionmaker() as db:
+        current = db.get(ReviewRun, run.id)
+        result = list(db.scalars(select(Finding).where(Finding.run_id == run.id)))
+        assert current.status == 'completed' and len(result) == 1
+        assert seen and result[0].seq == 1 and result[0].id != seen[0]
+
+
+def test_format_retry_removes_previous_streamed_findings(db_sessionmaker, owner, ready_task, llm):
+    task = ready_task(owner)
+    run = new_run(db_sessionmaker, task, owner)
+    attempts = []
+    class Stream(httpx.SyncByteStream):
+        def __init__(self, output, attempt):
+            self.output, self.attempt = output, attempt
+        def __iter__(self):
+            with db_sessionmaker() as db:
+                assert not list(db.scalars(select(Finding).where(Finding.run_id == run.id)))
+            item = json.dumps(self.output['findings'][0], ensure_ascii=False)
+            content = '{"findings":[' + item + ']}' if self.attempt == 1 else json.dumps(self.output, ensure_ascii=False)
+            yield ('data: ' + json.dumps({'choices': [{'delta': {'content': content}}]}, ensure_ascii=False) + '\n\n').encode()
+            with db_sessionmaker() as db:
+                row = db.scalar(select(Finding).where(Finding.run_id == run.id))
+                assert row and row.seq < 0
+                attempts.append(row.id)
+            yield b'data: [DONE]\n\n'
+    calls = []
+    def handler(request):
+        _, payload = build_reply(json.loads(request.content))
+        output = json.loads(payload['choices'][0]['message']['content'])
+        calls.append(1)
+        return httpx.Response(200, headers={'content-type': 'text/event-stream'}, stream=Stream(output, len(calls)))
+    llm(handler=handler)
+    run_job(db_sessionmaker, run.id)
+    with db_sessionmaker() as db:
+        rows = list(db.scalars(select(Finding).where(Finding.run_id == run.id)))
+        assert len(attempts) == 2 and attempts[0] != attempts[1]
+        assert len(rows) == 1 and rows[0].seq == 1 and rows[0].id not in attempts
+        assert db.get(ReviewRun, run.id).status == 'completed'

@@ -18,7 +18,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.llm import gateway, usage
@@ -57,7 +57,7 @@ PROGRESS_WRITE_S = 1.0  # 流式接收字数写入进度的最短间隔（V31-U5
 def _reload(db: Session, run_id: uuid.UUID) -> tuple[ReviewRun, Task] | None:
     """放弃未提交的改动后重读轮次和任务；任一已被删除时返回 None。"""
     db.rollback()
-    run = db.get(ReviewRun, run_id, populate_existing=True)
+    run = db.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update().execution_options(populate_existing=True))
     task = db.get(Task, run.task_id, populate_existing=True) if run is not None else None
     return (run, task) if run is not None and task is not None else None
 
@@ -70,6 +70,7 @@ def _finish(db: Session, run_id: uuid.UUID, *, status: str, message: str, task_s
     if found is None:
         return
     run, task = found
+    db.execute(delete(Finding).where(Finding.run_id == run_id, Finding.seq < 0))
     run.status, run.error_message, run.finished_at = status, message, utcnow()
     run.tokens_in += tokens_in
     run.tokens_out += tokens_out
@@ -104,6 +105,7 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
     if found is None:
         return
     run, task = found
+    db.execute(delete(Finding).where(Finding.run_id == run_id, Finding.seq < 0))
     for rr in review.requirement_results:
         db.add(RequirementResult(run_id=run.id, req_id=rr.req_id, req_source=rr.req_source, req_text=rr.req_text,
                                  dimension=rr.dimension, verdict=rr.verdict, note=rr.note,
@@ -158,6 +160,7 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
     if task.policy != "ai":  # A-04：创建轮次的接口已拦截，这里是第二道防线
         _finish(db, run_id, status="failed", message=MSG_LOCAL_ONLY, task_status="reviewed")
         return
+    db.execute(delete(Finding).where(Finding.run_id == run_id, Finding.seq < 0))  # worker 重入清除上次未完成的临时问题
     run.status, run.started_at, run.finished_at, run.error_message = "running", utcnow(), None, None
     try:
         model = load_model(db, run.model_id)
@@ -326,6 +329,33 @@ def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, Rev
         nonlocal done
         if stop.is_set():
             return None
+        provisional_ids = []
+        def reset_findings():
+            with Session(bind=bind) as temp:
+                temp.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update())
+                if provisional_ids:
+                    temp.execute(delete(Finding).where(Finding.run_id == run_id, Finding.id.in_(provisional_ids), Finding.seq < 0))
+                    provisional_ids.clear()
+                temp.commit()
+
+        def save_finding(f):
+            with Session(bind=bind) as temp:
+                row = temp.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update())
+                if row is None or row.status != "running":
+                    return
+                lowest = temp.scalar(select(func.min(Finding.seq)).where(Finding.run_id == run_id)) or 0
+                item = Finding(run_id=run_id, task_id=snapshot.task.id, seq=min(lowest, 0) - 1,
+                    title=f.title, category=f.category, severity=f.severity, req_ids=f.req_ids, locs=f.locs,
+                    missing=f.missing, cite_status=f.cite_status, quote_model=f.quote_model,
+                    quote_snapshot_enc=crypto.encrypt_text(f.quote_snapshot) if f.quote_snapshot is not None else None,
+                    quote_orig_enc=crypto.encrypt_text(f.quote_original) if f.quote_original is not None else None,
+                    problem=f.problem, impact=f.impact, suggestion=f.suggestion, suggested_text=f.suggested_text,
+                    basis=f.basis, law_refs=f.law_refs, law_unverified=f.law_unverified, source=f.source)
+                temp.add(item)
+                temp.flush()
+                provisional_ids.append(item.id)
+                temp.commit()
+
         with Session(bind=bind, expire_on_commit=False) as s:
             row = s.get(ReviewRun, run_id)
             task = s.get(Task, snapshot.task.id)
@@ -337,15 +367,18 @@ def _send_chunks(db: Session, run_id: uuid.UUID, prepared: list[tuple[Chunk, Rev
                 with usage.review_round(run_id):
                     review = review_once(s, snapshot, run=row, user_id=row.created_by, chunk=part, nodes=nodes,
                                          on_send=lambda: mark_sent(chunk.index),
-                                         on_delta=lambda n: mark_received(chunk.index, n))
+                                         on_delta=lambda n: mark_received(chunk.index, n),
+                                         on_finding=save_finding, on_reset=reset_findings)
                 outcome = ChunkOutcome(chunk, review)
             except GatewayError as exc:
+                reset_findings()
                 if exc.code == "BLOCKED":
                     stop.set()
                     blocked.append(exc)
                     return None
                 outcome = ChunkOutcome(chunk, None, str(exc))
             except OutputError as exc:
+                reset_findings()
                 # 只展示固定分类，不展示模型文字或可能含有输入值的校验异常。
                 message = f"{MSG_BAD_OUTPUT}（已自动纠正重试 1 次；{exc.public_reason}）"
                 outcome = ChunkOutcome(chunk, None, message, exc.tokens_in, exc.tokens_out)
