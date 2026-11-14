@@ -10,7 +10,10 @@ tests/fixtures/redaction_golden/ 下每份虚构样本（.txt，每行一个正�
                   落在某个 must_replace 文字内部的出现（如地址中的国家名）不检查；
   must_suspect —— 必须列为疑似遗漏的文字（9.5、Q-69）：自动替换识别不了、需要用户在第二步处理的内容。
   plain_uncertain —— 普通内容但本地无法确定，允许列出；只校验标注存在，供过度替换统计与评测。
-每次修改识别规则或词典都必须通过。
+  returns      —— 模型回程写法的还原与标出。样本按审核任务旧风格代号（[电话]、[地址：中国] 等共用代号）计算，
+                  旧风格已冻结（V321Q-18）：现有条目只为旧任务的还原兼容保留，不再新增；
+                  新的回程用例写中性代号（[[AMT_1]] 等），放 tests/fixtures/return_probe/ 与会话审核测试。
+识别类标注（must_replace、must_keep 等）与代号风格无关，照常新增。每次修改识别规则或词典都必须通过。
 """
 from pathlib import Path
 from functools import cache
