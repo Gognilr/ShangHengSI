@@ -69,6 +69,8 @@
   --si-paper: #FFFFFF;
   --si-paper-ink: #1D1D1F;
   --si-paper-ink-2: #333A45;
+  /* 脱敏黑条（页面不存在页）：夜幕下取比暗纸更深的底，不变成白条 */
+  --si-redact-bar: #1D1D1F;
   --si-cap-bg: #E8F1FC;
   --si-cap-ink: #0066CC;
   --si-code-bg: #0B1A2E;
@@ -124,6 +126,7 @@ html[data-shell="night"], html[data-shell="night"] .si-paper {
   --si-paper: #1C212B;
   --si-paper-ink: #E6EAF0;
   --si-paper-ink-2: #C9D0DA;
+  --si-redact-bar: #090B10;
   --si-cap-bg: #16314F;
   --si-cap-ink: #8CC8FF;
   --si-code-bg: #0B1A2E;

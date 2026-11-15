@@ -19,3 +19,8 @@ export const SETTING_TABS: { name: string; label: string; search?: string; perms
   { name: 'redaction', label: '脱敏', perms: ['redaction.names', 'redaction.words', 'redaction.parties', 'content.terms'] },
   { name: 'data', label: '数据', perms: ['sys.data'] },
 ]
+
+/** 首页：工作台（持有智能助手或智能审核任一权限即可）；否则退到会议纪要，最后是翻译（本地翻译人人可用） */
+export function homeFor(can: (...p: Perm[]) => boolean): string {
+  return can('use.assistant', 'use.review') ? '/assistant' : can('use.meeting') ? '/meeting' : '/translate'
+}

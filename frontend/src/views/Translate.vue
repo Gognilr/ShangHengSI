@@ -10,6 +10,7 @@ import { ArrowLeft, Ellipsis, Languages, UploadCloud } from '@lucide/vue'
 import { assistantApi, confirmationTask, type Message, type Session, type SessionItem } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ApiError } from '@/api/http'
+import NotFound from '@/views/NotFound.vue'
 import { formatDateTime } from '@/utils/time'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
@@ -19,7 +20,7 @@ import MessageItem from '@/components/assistant/MessageItem.vue'
 const route = useRoute(), router = useRouter()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), recent = ref<SessionItem[]>([])
-const loading = ref(false), error = ref(''), uploading = ref<number | null>(null), dragging = ref(false)
+const loading = ref(false), error = ref(''), missing = ref(false), uploading = ref<number | null>(null), dragging = ref(false)
 const engine = ref<'local' | 'cloud'>('cloud'), mtAvailable = ref(false)
 let enginePicked = false
 const localAvailable = computed(() => session.value?.mt_enabled ?? mtAvailable.value)
@@ -40,7 +41,7 @@ const step = computed(() => !file.value ? 'empty' : session.value?.status === 'p
 function failure(e: unknown) { return e instanceof ApiError ? (e.status === 404 ? '翻译记录不存在或已被删除' : e.message) : '加载失败，请刷新页面后重试' }
 async function load() {
   const current = ++version
-  clearTimeout(timer); error.value = ''
+  clearTimeout(timer); error.value = ''; missing.value = false
   if (!id.value) { session.value = null; messages.value = []; try { const list = await assistantApi.list(1, '', 'translate'); recent.value = list.items; mtAvailable.value = list.mt_enabled; if (!enginePicked) { engine.value = list.mt_enabled ? 'local' : 'cloud'; enginePicked = true } } catch (e) { error.value = failure(e) } return }
   loading.value = !session.value
   try {
@@ -48,7 +49,10 @@ async function load() {
     if (current !== version) return
     session.value = detail; messages.value = list.items
     if (!enginePicked) { engine.value = detail.mt_enabled ? 'local' : 'cloud'; enginePicked = true }
-  } catch (e) { if (current === version) error.value = failure(e) }
+  } catch (e) {
+    // 不存在、已删除或不是本人的：整页显示“页面不存在”（V33-B-03）
+    if (current === version) { if (e instanceof ApiError && e.status === 404) missing.value = true; else error.value = failure(e) }
+  }
   finally { if (current === version) { loading.value = false; schedule() } }
 }
 function schedule() {
@@ -155,6 +159,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     </section>
   </div>
 
+  <NotFound v-else-if="missing" kind="content" />
   <div v-else v-loading="loading" class="page page--split translate-page">
     <div class="toolbar">
       <el-button text @click="router.push('/translate')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="gap">全部翻译</span></el-button>

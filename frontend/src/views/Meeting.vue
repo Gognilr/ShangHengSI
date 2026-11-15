@@ -10,6 +10,7 @@ import { ArrowLeft, Ellipsis, Mic, UploadCloud } from '@lucide/vue'
 import { assistantApi, confirmationTask, type Message, type Session, type SessionItem } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ApiError } from '@/api/http'
+import NotFound from '@/views/NotFound.vue'
 import { formatDateTime } from '@/utils/time'
 import { saveBlob } from '@/utils/save'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
@@ -23,7 +24,7 @@ import SiSegmented from '@/components/ui/SiSegmented.vue'
 const route = useRoute(), router = useRouter()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), recent = ref<SessionItem[]>([])
-const asrEnabled = ref(true), loading = ref(false), error = ref(''), uploading = ref<number | null>(null)
+const asrEnabled = ref(true), loading = ref(false), error = ref(''), missing = ref(false), uploading = ref<number | null>(null)
 const AUDIO = '.mp3,.m4a,.wav,.amr,.aac,.mp4', picker = ref<HTMLInputElement>(), dragging = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined, version = 0
 
@@ -38,14 +39,17 @@ async function loadRecent() {
 }
 async function load() {
   const current = ++version
-  clearTimeout(timer); error.value = ''
+  clearTimeout(timer); error.value = ''; missing.value = false
   if (!id.value) { session.value = null; messages.value = []; await loadRecent(); return }
   loading.value = !session.value
   try {
     const [detail, list] = await Promise.all([assistantApi.get(id.value), assistantApi.messages(id.value)])
     if (current !== version) return
     session.value = detail; messages.value = list.items; asrEnabled.value = detail.asr_enabled
-  } catch (e) { if (current === version) error.value = failure(e) }
+  } catch (e) {
+    // 不存在、已删除或不是本人的：整页显示“页面不存在”（V33-B-03）
+    if (current === version) { if (e instanceof ApiError && e.status === 404) missing.value = true; else error.value = failure(e) }
+  }
   finally { if (current === version) { loading.value = false; schedule() } }
 }
 // 解码 / 转写中每 3 秒、纪要生成中每秒刷新；页面隐藏时不刷新
@@ -148,6 +152,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
   </div>
 
   <!-- 单个会议：转写进度 → 校对 → 纪要 -->
+  <NotFound v-else-if="missing" kind="content" />
   <div v-else v-loading="loading" class="page page--split meeting-page">
     <div class="toolbar">
       <el-button text @click="router.push('/meeting')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="gap">全部会议</span></el-button>

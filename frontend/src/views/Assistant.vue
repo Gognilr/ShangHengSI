@@ -5,6 +5,7 @@ import { ElMessageBox } from 'element-plus'
 import { Ellipsis, Files, Upload } from '@lucide/vue'
 import { assistantApi, type Session, type SessionItem, type Message, type MessageSource, type Template } from '@/api/assistant'
 import { ApiError } from '@/api/http'
+import NotFound from '@/views/NotFound.vue'
 import type { Finding } from '@/api/runs'
 import { useAuthStore } from '@/stores/auth'
 import { useSessionsStore } from '@/stores/sessions'
@@ -32,6 +33,9 @@ function syncTitle() { document.title = session.value?.review_running ? `（审�
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), template = ref<Template | null>(null)
 const loading = ref(false), error = ref(''), working = ref(false)
+// 会话不存在、已删除或不是本人的：整页显示“页面不存在”（V33-B-03）
+const missing = ref(false)
+function gone(e: unknown) { return e instanceof ApiError && e.status === 404 }
 // 按问题讨论（V32-B-02）：锚点只存在于本页，切换会话即清除。讨论在审核结果页右栏进行（V321-E-02），
 // “直接提问”只显示普通对话；按问题的对话只在该问题的讨论栏里出现，互不混入
 interface Anchor { id: string; no: string; title: string; runNo: number }
@@ -68,7 +72,7 @@ async function load() {
   const current = ++version, selected = id.value
   clearTimeout(timer); session.value = null; messages.value = []; offsets.clear(); drawerOpen.value = false; anchor.value = null; reviewDone.value = false; syncTitle()
   template.value = carryTemplate; carryTemplate = null
-  loading.value = !!selected; error.value = ''
+  loading.value = !!selected; error.value = ''; missing.value = false
   if (!selected || !active || current !== version) { loading.value = false; return }
   try {
     const [detail, response] = await Promise.all([assistantApi.get(selected), assistantApi.messages(selected)])
@@ -76,7 +80,7 @@ async function load() {
     session.value = detail
     messages.value = response.items.map(item => ['queued', 'streaming'].includes(item.status) ? { ...item, content: '' } : item)
     void nextTick(() => { initial.value = null })
-  } catch (e) { if (active && current === version) error.value = failure(e) }
+  } catch (e) { if (active && current === version) { if (gone(e)) missing.value = true; else error.value = failure(e) } }
   finally { if (active && current === version) { loading.value = false; schedule() } }
 }
 async function poll() {
@@ -111,8 +115,8 @@ async function poll() {
     if (finished) void sessions.refresh()
   } catch (e) {
     if (active && current === version) {
+      if (gone(e)) { session.value = null; missing.value = true; return }
       error.value = failure(e)
-      if (e instanceof ApiError && e.status === 404) { session.value = null; return }
     }
   } finally { polling = false; if (active && current === version) schedule() }
 }
@@ -206,7 +210,8 @@ onMounted(() => document.addEventListener('visibilitychange', visibility))
 onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); document.title = baseTitle; active = false; ++version; clearTimeout(timer); offsets.clear() })
 </script>
 <template>
-  <div class="page page--split assistant-page">
+  <NotFound v-if="missing" kind="content" />
+  <div v-else class="page page--split assistant-page">
     <main v-loading="loading" class="dialogue" :class="{ 'is-home': (mode === 'ask' && homeLike) || (mode === 'ask' && !session && !id) }">
       <el-alert v-if="error" type="error" :closable="false" :title="error" />
       <template v-if="session">

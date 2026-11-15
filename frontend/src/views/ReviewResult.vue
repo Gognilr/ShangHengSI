@@ -11,6 +11,7 @@ import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import type { CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
 import FindingsRail, { type Zone } from '@/components/result/FindingsRail.vue'
 import ResultCanvas from '@/components/result/ResultCanvas.vue'
+import NotFound from '@/views/NotFound.vue'
 import { ApiError } from '@/api/http'
 import { localFindingsApi, type LocalFinding } from '@/api/localFindings'
 import { reportApi } from '@/api/report'
@@ -24,6 +25,8 @@ const router = useRouter()
 
 const loading = ref(true)
 const error = ref('')
+// 任务不存在、已删除或不是本人的：整页显示“页面不存在”（V33-B-03）
+const missing = ref(false)
 const task = ref<TaskDetail | null>(null)
 const run = ref<RunDetail | null>(null)
 const rounds = ref<RunListItem[]>([])
@@ -85,6 +88,7 @@ async function load() {
   const id = String(route.params.taskId)
   loading.value = true
   error.value = ''
+  missing.value = false
   annotationNotice.value = ''
   task.value = null
   run.value = null
@@ -111,7 +115,9 @@ async function load() {
     selectedRun.value = t.latest_run?.id ?? list.items[0]?.id ?? ''
     if (selectedRun.value) await selectRun(selectedRun.value)
   } catch (e) {
-    if (version === loadVersion) error.value = loadMessage(e)
+    if (version !== loadVersion) return
+    if (e instanceof ApiError && e.status === 404) missing.value = true
+    else error.value = loadMessage(e)
   } finally {
     if (version === loadVersion) loading.value = false
   }
@@ -294,7 +300,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page page--split">
+  <NotFound v-if="missing" kind="content" />
+  <div v-else class="page page--split">
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" />
     <template v-else-if="task">
       <ResultToolbar :task="task" :run="run" :rounds="rounds" :selected-run="selectedRun" :req-version="reqVersion" :warnings="expiryWarnings"

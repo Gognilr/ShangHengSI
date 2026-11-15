@@ -4,8 +4,9 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import Assistant from '@/views/Assistant.vue'
 import Login from '@/views/Login.vue'
-import { SETTING_TABS, type Perm } from '@/utils/permissions'
-// 首屏只带登录页、主布局与工作台首页，其余页面按路由懒加载（V31Q-114）
+import NotFound from '@/views/NotFound.vue'
+import { SETTING_TABS, homeFor, type Perm } from '@/utils/permissions'
+// 首屏只带登录页、主布局与工作台首页（工作台引用了页面不存在页，一并带上），其余页面按路由懒加载（V31Q-114）
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -19,11 +20,6 @@ declare module 'vue-router' {
 }
 
 export const HOME_PATH = '/assistant'
-
-/** 首页：工作台（持有智能助手或智能审核任一权限即可）；否则退到会议纪要，最后是翻译（本地翻译人人可用） */
-function homeFor(can: (...p: Perm[]) => boolean): string {
-  return can('use.assistant', 'use.review') ? '/assistant' : can('use.meeting') ? '/meeting' : '/translate'
-}
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -64,9 +60,10 @@ export const router = createRouter({
             { path: 'data', name: 'settings-data', component: () => import('@/views/settings/Data.vue') },
           ],
         },
+        // 未知地址在主框架内显示“页面不存在”（V33-B-03）；未登录时守卫先送去登录页
+        { path: ':pathMatch(.*)*', name: 'not-found', component: NotFound },
       ],
     },
-    { path: '/:pathMatch(.*)*', redirect: HOME_PATH },
   ],
 })
 

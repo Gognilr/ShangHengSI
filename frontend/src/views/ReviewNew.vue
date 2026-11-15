@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
+import NotFound from '@/views/NotFound.vue'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { RUN_ERROR_MESSAGES, runsApi, type RunDetail } from '@/api/runs'
 import {
@@ -46,7 +47,8 @@ const auth = useAuthStore()
 // ---- 步骤：0 上传与设置，1 确认脱敏，2 审核中 ----
 const step = ref(0)
 const task = ref<TaskDetail | null>(null)
-const loadError = ref('')
+// 任务不存在、已删除或不是本人的：整页显示“页面不存在”（V33-B-03）
+const missing = ref(false)
 const activeRun = ref<RunDetail | null>(null)
 
 // ---- 第一步：拖入即解析（V31-U2 第二节） ----
@@ -366,7 +368,7 @@ async function refreshTask() {
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
       stopPolling()
-      loadError.value = '任务不存在或已被删除'
+      missing.value = true
       task.value = null
     }
     // 其他错误（如网络中断）等待下一次轮询
@@ -379,7 +381,7 @@ const taskId = computed(() => (typeof route.query.task === 'string' ? route.quer
 
 async function enter() {
   stopPolling()
-  loadError.value = ''
+  missing.value = false
   if (task.value?.id !== taskId.value) task.value = null
   activeRun.value = null
   if (!taskId.value) {
@@ -430,11 +432,11 @@ function fileBadge(name: string): string {
 }
 </script>
 <template>
-  <div class="page" :class="step === 1 ? 'page--split is-workbench' : 'page--standard'">
+  <NotFound v-if="missing" kind="content" />
+  <div v-else class="page" :class="step === 1 ? 'page--split is-workbench' : 'page--standard'">
     <StepBar :active="step" :status="stepStatus" />
-    <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" class="block" />
 
-    <section v-if="step === 0 && !loadError" class="panel">
+    <section v-if="step === 0" class="panel">
       <div v-if="parsing" class="processing">
         <h2>正在本机解析文件</h2>
         <p v-if="elapsed" class="num">{{ elapsed }}</p>
@@ -536,7 +538,6 @@ function fileBadge(name: string): string {
 <style scoped>
 .model-option { height: auto; min-height: 40px; padding-top: 8px; padding-bottom: 8px; font: var(--si-font-body); }
 .model-description { display: block; color: var(--el-text-color-secondary); font: var(--si-font-caption); overflow-wrap: anywhere; }
-.block { margin-bottom: 16px; }
 .is-workbench { height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 16px; padding-bottom: 0; }
 .is-workbench :deep(.step-bar) { flex: none; margin-bottom: 0; }
 .confirm-step { flex: 1; min-height: 0; display: flex; flex-direction: column; }
