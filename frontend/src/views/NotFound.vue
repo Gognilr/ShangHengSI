@@ -25,15 +25,15 @@ onBeforeUnmount(() => { document.title = baseTitle })
 
 <template>
   <div class="page not-found">
-    <div class="sheet" aria-hidden="true">
-      <span class="stamp">查无此页</span>
-      <span class="line" style="width: 72%" />
-      <span class="line bar" style="width: 54%; --i: 0" />
-      <div class="code">4<span class="zero bar" style="--i: 1">[页面_1]</span>4</div>
-      <span class="line" style="width: 88%" />
-      <span class="line split"><span class="seg" style="width: 34%" /><span class="chip">[机构_1]</span><span class="seg" style="flex: 1" /></span>
-      <span class="line bar" style="width: 66%; --i: 2" />
-      <span class="line" style="width: 46%" />
+    <div class="si-sheet sheet" aria-hidden="true">
+      <span class="si-sheet-stamp stamp">查无此页</span>
+      <span class="si-sheet-line" style="width: 72%" />
+      <span class="si-sheet-line si-sheet-bar drop" style="width: 54%; --i: 0" />
+      <div class="code">4<span class="zero si-sheet-bar drop" style="--i: 1">[页面_1]</span>4</div>
+      <span class="si-sheet-line" style="width: 88%" />
+      <span class="si-sheet-line split"><span class="si-sheet-line" style="width: 34%" /><span class="si-sheet-chip">[机构_1]</span><span class="si-sheet-line" style="flex: 1" /></span>
+      <span class="si-sheet-line si-sheet-bar drop" style="width: 66%; --i: 2" />
+      <span class="si-sheet-line" style="width: 46%" />
     </div>
     <h1 class="title">{{ copy.title }}</h1>
     <p class="description">{{ copy.description }}</p>
@@ -49,19 +49,15 @@ onBeforeUnmount(() => { document.title = baseTitle })
 .not-found { display: flex; flex-direction: column; align-items: center; padding-top: 72px; text-align: center; }
 
 /* 一页被脱敏的文档：文字线 + 黑条 + 一处代号，中间是 4▮4 */
-.sheet { position: relative; display: flex; flex-direction: column; gap: 12px; width: 320px; padding: 28px 32px; background: var(--si-paper); box-shadow: var(--si-paper-shadow); border-radius: var(--si-radius-paper); }
-.line { display: block; height: 8px; border-radius: 2px; background: var(--si-hair-strong); }
+.sheet { width: 320px; }
 .split { display: flex; align-items: center; gap: 6px; height: auto; background: none; }
-.seg { height: 8px; border-radius: 2px; background: var(--si-hair-strong); }
-.chip { padding: 0 6px; border-radius: var(--si-radius-tag); background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-code-sm); }
-.bar { background: var(--si-redact-bar); }
 /* 404 是品牌图形（同 SiLogo），字号不在正文档位内 */
 .code { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 0; color: var(--si-paper-ink); font-family: var(--si-font-sans); font-size: 80px; font-weight: 600; line-height: 1; }
 .zero { display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 62px; border-radius: 3px; color: color-mix(in srgb, var(--si-white) 78%, transparent); font: var(--si-font-code-sm); font-weight: 400; }
-.stamp { position: absolute; top: -14px; right: -26px; padding: 3px 10px; border: 2px solid var(--si-danger); border-radius: 4px; color: var(--si-danger); font: var(--si-font-label); letter-spacing: 2px; opacity: .55; transform: rotate(-8deg); }
+.stamp { top: -14px; right: -26px; color: var(--si-danger); }
 
 /* 进入时黑条依次落下盖住文字线，只播一次；特效关闭时 motion.css 统一去掉动画，直接是终态 */
-.bar { animation: redact-drop 240ms var(--si-ease) backwards; animation-delay: calc(var(--i) * 80ms + 120ms); }
+.drop { animation: redact-drop 240ms var(--si-ease) backwards; animation-delay: calc(var(--i) * 80ms + 120ms); }
 @keyframes redact-drop { from { opacity: 0; transform: translateY(-6px); } }
 
 .title { margin: 32px 0 0; font: var(--si-font-title); color: var(--si-ink-1); }

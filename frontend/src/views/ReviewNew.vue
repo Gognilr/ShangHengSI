@@ -32,6 +32,7 @@ import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { usePendingDeletes } from '@/composables/usePendingDeletes'
 import { usePasteFiles } from '@/composables/usePasteFiles'
 import { useLoop } from '@/utils/motion'
+import SiScanDoc from '@/components/brand/SiScanDoc.vue'
 import { formatDateTime } from '@/utils/time'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -440,7 +441,7 @@ function fileBadge(name: string): string {
       <div v-if="parsing" class="processing">
         <h2>正在本机解析文件</h2>
         <p v-if="elapsed" class="num">{{ elapsed }}</p>
-        <el-progress class="progress-indeterminate" :percentage="100" :indeterminate="true" :show-text="false" :stroke-width="8" />
+        <div class="scan-wrap"><SiScanDoc :active="parsing" /></div>
         <p class="hint">本机正在读取正文与表格、识别扫描页文字、核对金额与日期、识别敏感信息；扫描件页数多时需要更长时间。</p>
         <div v-if="task?.files.length" class="file-list">
           <div v-for="file in task.files" :key="file.id" class="file-row">
@@ -590,5 +591,5 @@ h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .drop-veil { position: absolute; inset: -8px; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: var(--si-radius-card); background: color-mix(in srgb, var(--el-color-primary-light-9) 85%, transparent); color: var(--el-color-primary); font: var(--si-font-h4); pointer-events: none; }
 .file-size { flex: none; color: var(--el-text-color-secondary); font-size: 13px; }
 .ceremony-panel { overflow: hidden; }
-.progress-indeterminate { margin: 16px 0; }
+.scan-wrap { display: flex; justify-content: center; margin: 20px 0; }
 </style>

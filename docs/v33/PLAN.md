@@ -30,7 +30,7 @@
 | V33-C-02 | 采纳 / 忽略后收起并展开下一条 | Q-07 | Sonnet，low | Terra，low | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-C-02.md；用户当天提出） |
 | V33-C-03 | 工控技术词误识别与型号整体识别 | Q-08 | Opus，medium | Sol 6.1，medium | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-C-03.md；用户当天提出） |
 | V33-C-04 | 等待动画 A：渐变审阅光带 | Q-10 | Sonnet，low | Terra，low | 00 | — | 已完成（2026-11-15，Claude Sonnet；浅色 × 完整档目检通过，夜幕与三档逐一目检未做） |
-| V33-C-05 | 等待动画 B：逐行扫描文档（解析等待） | Q-10、Q-11 | Sonnet，medium | Terra，medium | 00 | — | 待执行（2026-11-15 用户确认） |
+| V33-C-05 | 等待动画 B：逐行扫描文档（解析等待） | Q-10、Q-11 | Sonnet，medium | Terra，medium | 00 | — | 已完成（2026-11-15，Claude Sonnet；浅色完整档目检，夜幕对比度、精简/关闭档、三处真实解析页未逐一看） |
 | V33-C-06 | 等待动画 C：墨点聚散（对话等待） | Q-10、Q-11 | Sonnet，medium | Terra，medium | C-04 | — | 待执行（2026-11-15 用户确认） |
 | V33-Z | 复核、SPEC、版本号、全量、增量发布包、服务器升级 | — | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部 | 推送标签前问用户 | 待执行 |
 

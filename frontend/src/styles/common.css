@@ -52,6 +52,13 @@
 /* 纸面与外围：浅色外壳白纸黑字、夜幕外壳暗纸浅字（令牌见 theme.css 的 .si-paper；阴影与圆角由使用处加） */
 .si-stage { background: var(--si-stage); }
 
+/* 一张被脱敏的小纸面（V33-C-05）：404 页（NotFound）与解析等待（SiScanDoc）共用；宽度、内边距与印章位置、颜色由使用处给 */
+.si-sheet { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 28px 32px; background: var(--si-paper); box-shadow: var(--si-paper-shadow); border-radius: var(--si-radius-paper); }
+.si-sheet-line { display: block; height: 8px; border-radius: 2px; background: var(--si-hair-strong); }
+.si-sheet-bar { background: var(--si-redact-bar); }
+.si-sheet-chip { padding: 0 6px; border-radius: var(--si-radius-tag); background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-code-sm); }
+.si-sheet-stamp { position: absolute; padding: 3px 10px; border: 2px solid currentColor; border-radius: 4px; font: var(--si-font-label); letter-spacing: 2px; opacity: .55; transform: rotate(-8deg); }
+
 /* Lucide 图标统一 16px（V3-A-01）：Element Plus 的 .el-icon svg 按 1em 取宽高，会盖掉图标自身的 size */
 .el-icon > svg.lucide {
   width: 16px;

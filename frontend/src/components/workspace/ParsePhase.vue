@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { Check, Loader, X } from '@lucide/vue'
+import { Check, X } from '@lucide/vue'
+import SiScanDoc from '@/components/brand/SiScanDoc.vue'
 import type { Session, SessionFile } from '@/api/assistant'
 import { useStale } from '@/utils/stale'
 
@@ -49,6 +50,7 @@ const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
     <div class="parse-card">
       <h2 v-if="!failed" role="status">正在本机解析<span class="num"> · 已用 {{ elapsed }} 秒</span></h2>
       <h2 v-else>解析未完成</h2>
+      <div v-if="!failed" class="scan-wrap"><SiScanDoc :active="true" /></div>
       <el-alert v-if="failed && session.error_message" type="error" show-icon :closable="false" :title="session.error_message" />
       <ul class="rows">
         <li v-for="r in rows" :key="r.file.id" class="row" :class="`row--${r.stage}`">
@@ -56,7 +58,7 @@ const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
           <span class="name" :title="r.file.original_name">{{ r.file.original_name }}</span>
           <span class="state">
             <Check v-if="r.stage === 'done'" :size="14" :stroke-width="2" />
-            <Loader v-else-if="!failed && r.stage !== 'waiting'" :size="14" :stroke-width="1.75" class="spin" />
+            <i v-else-if="!failed && r.stage !== 'waiting'" class="dot" />
             <span>{{ text(r) }}</span>
           </span>
           <el-progress v-if="r.stage === 'ocr' && r.total" class="bar" :percentage="percent(r)" :show-text="false" :stroke-width="4" />
@@ -66,7 +68,7 @@ const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
           <span class="badge badge--sys">本机</span>
           <span class="name">识别敏感信息与本地校验</span>
           <span class="state">
-            <Loader v-if="detecting" :size="14" :stroke-width="1.75" class="spin" />
+            <i v-if="detecting" class="dot" />
             <span>{{ detecting ? '识别中…' : '等待' }}</span>
           </span>
         </li>
@@ -90,7 +92,7 @@ h2 { margin: 0; font: var(--si-font-h3); color: var(--si-ink-1); }
 .state { display: inline-flex; align-items: center; gap: 6px; color: var(--si-ink-2); font: var(--si-font-caption); }
 .row--done .state { color: var(--el-color-success); }
 .bar { grid-column: 2 / 4; }
-.spin { animation: parse-spin 1.2s linear infinite; }
-@keyframes parse-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.scan-wrap { display: flex; justify-content: center; margin: 4px 0; }
+/* 进行中的行用静止圆点，页面上只有纸面一个在动的指示（V33-C-05） */
+.dot { width: 6px; height: 6px; margin: 0 4px; border-radius: 50%; background: var(--si-blue); }
 </style>
