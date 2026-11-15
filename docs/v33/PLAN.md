@@ -26,9 +26,10 @@
 | V33-B-01 | 会议纪要旧数据兼容验证 | Q-03 | Sonnet，medium | Terra，medium | 00 | — | 待执行 |
 | V33-B-02 | 真实模型下的回复依据锚点 | Q-04 | Opus，medium | Sol 6.1，medium | 00 | 用户录入密钥；结果交用户 | 待执行 |
 | V33-B-03 | 统一的“页面不存在”页 | Q-05 | Sonnet，low | Terra，low | 00 | — | 待执行（用户 2026-11-15 确认做） |
+| V33-C-01 | 未选必选项的提示与定位 | Q-06 | Sonnet，medium | Terra，medium | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-C-01.md；用户当天提出并确认方案，提前执行） |
 | V33-Z | 复核、SPEC、版本号、全量、增量发布包、服务器升级 | — | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部 | 推送标签前问用户 | 待执行 |
 
-执行顺序：**A-01 → A-02 → B-01 → B-02 → B-03 → Z**。B 批与 A 批没有依赖，额度紧张时可先做 B 批。
+执行顺序：**A-01 → A-02 → B-01 → B-02 → B-03 → Z**（C-01 由用户 2026-11-15 插入，已先做）。B 批与 A 批没有依赖，额度紧张时可先做 B 批。
 
 ## 一、A 批：发布改进
 
@@ -118,6 +119,14 @@
   * 不加侧栏菜单，不改各页就地的“不存在或已被删除”。
 * **文件：** frontend/src/router/index.ts（catch-all 由 redirect 改为该页）、新增 frontend/src/views/NotFound.vue。
 * **验收：** 按 frontend.md 自检；浏览器走 http://localhost:5173：打开 `/abc` 显示该页并能回到工作台；打开随机 id 的会话仍是就地提示；`npm run build` 通过。
+
+## 二之二、C 批：界面小改
+
+### V33-C-01 未选必选项的提示与定位（V33Q-06）
+
+* **文件：** 新增 frontend/src/utils/nudge.ts；frontend/src/styles/motion.css；ConfirmWorkbench.vue；workspace/ReviewPane.vue；docs/design/frontend.md 第七节第 4 条。
+* **做法：** 缺我方、业务立场、审核模型、文件时提交按钮不再变灰；未选的控件标“请选择”并加主色虚线框；点按钮滚到第一个缺项、聚焦、闪一次框；条件清单的未完成项可点。等待类条件照旧禁用。
+* **验收：** 浏览器走查“甲乙方合同（立场推不出）→ 直接点确认并开始审核”。
 
 ## 三、V33-Z 复核与发布
 

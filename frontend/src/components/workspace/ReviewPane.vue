@@ -18,6 +18,7 @@ import SiSegmented from '@/components/ui/SiSegmented.vue'
 import RunResult from '@/components/workspace/RunResult.vue'
 import { useAuthStore } from '@/stores/auth'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
+import { nudgeField } from '@/utils/nudge'
 
 /**
  * 工作台“全面审核”视图（V32-B-01 2）：解析 → 确认 → 审核中 → 结果，按会话数据决定。
@@ -209,23 +210,36 @@ watch([stage, () => props.session.material_version, () => confirmedFiles.value.l
   if (s === 'confirm') void loadModels()
 }, { immediate: true })
 
-const blocker = computed(() => {
-  if (props.session.original_deleted) return '原件已按保留期限删除，不能再审核'
-  if (props.session.generating) return '回复生成中，完成后再发起审核'
-  if (props.session.status === 'parsing') return '文件正在解析，请稍候'
-  if (!confirmedFiles.value.length) return '请先确认脱敏'
-  if (!picked.value.length) return '请至少选择一个文件'
-  if (!mainId.value) return '请选择主文件'
-  if (partiesLoading.value || partiesSaving.value) return '正在读取或保存主体信息'
-  if (partiesError.value) return partiesError.value
-  if (!ourParty.value) return '请在主体说明中选择我方'
-  if (!stance.value) return '请选择业务立场'
-  if (modelsLoading.value) return '正在加载模型列表'
-  if (modelError.value) return modelError.value
-  if (!modelId.value) return '请选择审核模型'
-  if (previewVersion.value === null) return previewError.value || '正在读取本轮发送内容'
-  return ''
+// 未满足的条件；field 表示缺的是用户该选的项：按钮保持可点，点击定位过去（V33-C-01）
+type Missing = 'files' | 'our' | 'stance' | 'model'
+interface Check { text: string; field?: Missing }
+const setupCheck = computed<Check>(() => {
+  if (props.session.original_deleted) return { text: '原件已按保留期限删除，不能再审核' }
+  if (props.session.generating) return { text: '回复生成中，完成后再发起审核' }
+  if (props.session.status === 'parsing') return { text: '文件正在解析，请稍候' }
+  if (!confirmedFiles.value.length) return { text: '请先确认脱敏' }
+  if (!picked.value.length) return { text: '请至少选择一个文件', field: 'files' }
+  if (!mainId.value) return { text: '请选择主文件', field: 'files' }
+  if (partiesLoading.value || partiesSaving.value) return { text: '正在读取或保存主体信息' }
+  if (partiesError.value) return { text: partiesError.value }
+  if (!ourParty.value) return { text: '请在主体说明中选择我方', field: parties.value.length ? 'our' : undefined }
+  if (!stance.value) return { text: '请选择业务立场', field: 'stance' }
+  if (modelsLoading.value) return { text: '正在加载模型列表' }
+  if (modelError.value) return { text: modelError.value }
+  if (!modelId.value) return { text: '请选择审核模型', field: 'model' }
+  if (previewVersion.value === null) return { text: previewError.value || '正在读取本轮发送内容' }
+  return { text: '' }
 })
+const blocker = computed(() => setupCheck.value.text)
+const fieldEls: Record<'setup' | 'confirm', Partial<Record<Missing, HTMLElement>>> = { setup: {}, confirm: {} }
+function fieldRef(where: 'setup' | 'confirm', field: Missing) {
+  return (el: unknown) => { fieldEls[where][field] = el instanceof HTMLElement ? el : undefined }
+}
+function onStartClick() {
+  const field = setupCheck.value.field
+  if (field) nudgeField(fieldEls.setup[field])
+  else void start()
+}
 // ---- 确认页（有待确认文件）：确认 + 发起一次完成（V321-E-06）----
 watch(confirmOur, party => {
   const key = `${party?.id ?? ''}:${party?.role_label ?? ''}`
@@ -233,16 +247,18 @@ watch(confirmOur, party => {
   lastOur = key
   stance.value = inferredStance.value; autoStance.value = !!stance.value
 })
-const confirmBlocker = computed(() => {
-  if (props.session.generating) return '回复生成中，完成后再发起审核'
-  if (!picked.value.length) return '请至少选择一个文件'
-  if (!mainId.value) return '请选择主文件'
-  if (!stance.value) return '请选择业务立场'
-  if (modelsLoading.value) return '正在加载模型列表'
-  if (modelError.value) return modelError.value
-  if (!modelId.value) return '请选择审核模型'
-  return ''
+const confirmCheck = computed<Check>(() => {
+  if (props.session.generating) return { text: '回复生成中，完成后再发起审核' }
+  if (!picked.value.length) return { text: '请至少选择一个文件' }
+  if (!mainId.value) return { text: '请选择主文件' }
+  if (!stance.value) return { text: '请选择业务立场', field: 'stance' }
+  if (modelsLoading.value) return { text: '正在加载模型列表' }
+  if (modelError.value) return { text: modelError.value }
+  if (!modelId.value) return { text: '请选择审核模型', field: 'model' }
+  return { text: '' }
 })
+const confirmBlocker = computed(() => confirmCheck.value.text)
+function nudgeConfirm() { const field = confirmCheck.value.field; if (field) nudgeField(fieldEls.confirm[field]) }
 const modelName = computed(() => models.value.find(m => m.id === modelId.value)?.display_name)
 async function submitConfirm() {
   if (!stance.value) return
@@ -303,18 +319,18 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
     <section v-else-if="stage === 'confirm'" class="confirm-stage">
       <div v-if="rounds.length" class="back"><el-button link type="primary" @click="backToResult">← 返回第 {{ [...rounds].sort((a, b) => b.run_no - a.run_no)[0]?.run_no }} 轮结果</el-button></div>
       <ConfirmWorkbench :key="`${session.id}:${pendingFiles.map(f => f.id).join(',')}`" class="confirm-wb" :task="confirmationTask(session)" mode="session-review" require-our-party
-        v-model:picked="picked" v-model:main-id="mainId" :stance="stance" :file-ids="picked" :model-name="modelName" :blocker="confirmBlocker" :submit="submitConfirm"
-        @our="confirmOur = $event" @preview="previewVersion = $event" @confirmed="emit('refresh')" @stale="emit('refresh')">
+        v-model:picked="picked" v-model:main-id="mainId" :stance="stance" :file-ids="picked" :model-name="modelName" :blocker="confirmBlocker" :blocker-choice="!!confirmCheck.field" :submit="submitConfirm"
+        @our="confirmOur = $event" @preview="previewVersion = $event" @confirmed="emit('refresh')" @stale="emit('refresh')" @nudge="nudgeConfirm">
         <template #settings>
           <div class="cs">
-            <div class="cs-row"><span class="setting-label">业务立场</span><SiSegmented :model-value="stance" :options="stanceOptions" size="small" ariaLabel="业务立场" @update:model-value="chooseStance" /></div>
+            <div :ref="fieldRef('confirm', 'stance')" class="cs-row"><span class="setting-label">业务立场<span v-if="!stance" class="si-required-tag">请选择</span></span><SiSegmented :class="{ 'si-required-empty': !stance }" :model-value="stance" :options="stanceOptions" size="small" ariaLabel="业务立场" @update:model-value="chooseStance" /></div>
             <p v-if="autoStance" class="hint cs-hint">按我方为{{ ourParty?.role_label }}带出</p>
             <p v-else-if="inferredStance && stance && stance !== inferredStance" class="hint cs-hint">所选立场与我方的{{ ourParty?.role_label }}标签不一致，请核对。</p>
             <div class="cs-row"><span class="setting-label">文件来源</span><SiSegmented v-model="source" :options="sourceOptions" size="small" ariaLabel="文件来源" /></div>
-            <div class="cs-row">
-              <span class="setting-label">审核模型</span>
+            <div :ref="fieldRef('confirm', 'model')" class="cs-row">
+              <span class="setting-label">审核模型<span v-if="!modelId && models.length > 1" class="si-required-tag">请选择</span></span>
               <span v-if="models.length === 1" class="cs-model">{{ models[0]!.display_name }}</span>
-              <el-select v-else v-model="modelId" size="small" placeholder="选择审核模型" aria-label="审核模型" :loading="modelsLoading" :disabled="!models.length"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
+              <el-select v-else v-model="modelId" :class="{ 'si-required-empty': !modelId && models.length > 1 }" size="small" placeholder="选择审核模型" aria-label="审核模型" :loading="modelsLoading" :disabled="!models.length"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
             </div>
             <el-input v-if="noteOpen" v-model="note" type="textarea" aria-label="本次补充说明" :rows="2" :maxlength="MAX_NOTE_LENGTH" show-word-limit placeholder="如：这是给土耳其客户的报价，请重点看付款条款" />
             <div class="links"><el-button v-if="!noteOpen" link type="primary" size="small" @click="noteOpen = true">＋ 添加补充说明</el-button><el-button link type="primary" size="small" :disabled="!stance" @click="reqDrawer = true">查看审核要求</el-button></div>
@@ -340,7 +356,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
           <div v-if="rounds.length" class="back"><el-button link type="primary" @click="backToResult">← 返回第 {{ [...rounds].sort((a, b) => b.run_no - a.run_no)[0]?.run_no }} 轮结果</el-button></div>
 
           <div class="grid">
-            <div class="col">
+            <div :ref="fieldRef('setup', 'files')" class="col">
               <h2>本轮审核的文件</h2>
               <el-checkbox-group v-model="picked" class="file-list">
                 <label v-for="f in confirmedFiles" :key="f.id" class="file-row" :class="{ 'is-main': f.id === mainId }">
@@ -355,12 +371,12 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
             </div>
             <div class="col">
               <h2>审核设置</h2>
-              <div class="setting"><span class="setting-label">业务立场</span><SiSegmented :model-value="stance" :options="stanceOptions" ariaLabel="业务立场" @update:model-value="chooseStance" /><p v-if="autoStance" class="hint">按我方为{{ ourParty?.role_label }}带出</p><p v-else-if="inferredStance && stance && stance !== inferredStance" class="hint">所选立场与我方的{{ ourParty?.role_label }}标签不一致，请核对。</p></div>
+              <div :ref="fieldRef('setup', 'stance')" class="setting"><span class="setting-label">业务立场<span v-if="!stance" class="si-required-tag">请选择</span></span><SiSegmented :class="{ 'si-required-empty': !stance }" :model-value="stance" :options="stanceOptions" ariaLabel="业务立场" @update:model-value="chooseStance" /><p v-if="autoStance" class="hint">按我方为{{ ourParty?.role_label }}带出</p><p v-else-if="inferredStance && stance && stance !== inferredStance" class="hint">所选立场与我方的{{ ourParty?.role_label }}标签不一致，请核对。</p></div>
               <div class="setting"><span class="setting-label">文件来源</span><SiSegmented v-model="source" :options="sourceOptions" ariaLabel="文件来源" /></div>
-              <div class="setting">
-                <span class="setting-label">审核模型</span>
+              <div :ref="fieldRef('setup', 'model')" class="setting">
+                <span class="setting-label">审核模型<span v-if="!modelId && models.length > 1" class="si-required-tag">请选择</span></span>
                 <span v-if="models.length === 1">{{ models[0]!.display_name }}</span>
-                <el-select v-else v-model="modelId" placeholder="选择审核模型" aria-label="审核模型" :loading="modelsLoading" :disabled="!models.length">
+                <el-select v-else v-model="modelId" :class="{ 'si-required-empty': !modelId && models.length > 1 }" placeholder="选择审核模型" aria-label="审核模型" :loading="modelsLoading" :disabled="!models.length">
                   <el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" />
                 </el-select>
                 <p v-if="modelError" class="hint">{{ modelError }}</p>
@@ -375,7 +391,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
           <div class="sent" aria-label="本轮发送的内容">
             <div class="sent-head"><ShieldCheck :size="16" :stroke-width="1.75" /><h2>本轮发送的内容</h2></div>
             <p class="hint">已确认的 {{ picked.length }} 个文件按已核对的脱敏结果发送，不再逐个核对；本轮新增发送的只有：</p>
-            <div v-if="parties.length" class="setting"><span class="setting-label">选择我方</span><el-radio-group :model-value="ourParty?.id ?? ''" :disabled="partiesLoading || partiesSaving || submitting" @update:model-value="selectOur(String($event))"><el-radio v-for="p in parties" :key="p.id" :value="p.id">{{ p.name }}（{{ p.role_label }}，{{ p.code }}）</el-radio></el-radio-group></div>
+            <div v-if="parties.length" :ref="fieldRef('setup', 'our')" class="setting"><span class="setting-label">选择我方<span v-if="!ourParty" class="si-required-tag">请选择</span></span><el-radio-group :class="{ 'si-required-empty': !ourParty }" :model-value="ourParty?.id ?? ''" :disabled="partiesLoading || partiesSaving || submitting" @update:model-value="selectOur(String($event))"><el-radio v-for="p in parties" :key="p.id" :value="p.id">{{ p.name }}（{{ p.role_label }}，{{ p.code }}）</el-radio></el-radio-group></div>
             <p v-if="partiesError" class="hint">{{ partiesError }}</p>
             <ul>
               <li><strong>主体说明</strong>：<template v-if="subjects.length"><span v-for="s in subjects" :key="s" class="subject">{{ s }}</span></template><template v-else>无</template></li>
@@ -386,7 +402,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
           <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" />
           <div class="foot">
             <span v-if="blocker" class="hint">{{ blocker }}</span>
-            <el-button type="primary" :loading="submitting" :disabled="!!blocker || !canConfigure" @click="start">确认发送并开始审核</el-button>
+            <el-button type="primary" :loading="submitting" :disabled="(!!blocker && !setupCheck.field) || !canConfigure" @click="onStartClick">确认发送并开始审核</el-button>
           </div>
         </template>
       </div>

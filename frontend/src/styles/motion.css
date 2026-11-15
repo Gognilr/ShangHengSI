@@ -38,3 +38,11 @@ html[data-fx="off"] *, html[data-fx="off"] *::before, html[data-fx="off"] *::aft
 /* 路由进入：只有进入动画，旧页面立即移除（3.2 第 3 条） */
 .si-page-enter-active { transition: opacity 240ms var(--si-ease), transform 240ms var(--si-ease); }
 .si-page-enter-from { opacity: 0; transform: translateY(6px); }
+
+/* 必选项（V33-C-01）：未选时静态主色虚线框；点提交时 nudgeField() 加 .si-nudge，外圈闪两下（只动 opacity） */
+.si-required-empty { outline: 1px dashed var(--el-color-primary); outline-offset: 2px; }
+.si-required-tag { margin-left: 6px; color: var(--el-color-primary); font: var(--si-font-caption); font-weight: 400; }
+.si-nudge { position: relative; }
+.si-nudge::after { content: ''; position: absolute; inset: -5px; border: 2px solid var(--si-focus); border-radius: 12px; pointer-events: none; opacity: 0; animation: si-nudge 1.1s var(--si-ease); }
+@keyframes si-nudge { 0%, 50% { opacity: 0; } 20%, 70% { opacity: 1; } 100% { opacity: 0; } }
+html[data-fx="off"] .si-nudge::after { opacity: 1; }

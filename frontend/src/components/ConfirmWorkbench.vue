@@ -32,6 +32,7 @@ import { useTaskPoll } from '@/composables/useTaskPoll'
 import { useHotkeys } from '@/utils/hotkeys'
 import { DOC_TYPE_OPTIONS, KEPT_BY, autoKeptReasonLabel, MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, suspectReasonLabel, toOptions } from '@/utils/labels'
 import { toast } from '@/utils/toast'
+import { nudgeField } from '@/utils/nudge'
 
 /**
  * mode：review 审核任务；assistant 会话只确认；session-review 会话的“全面审核”确认页（V321-E-06）——
@@ -45,6 +46,8 @@ const props = withDefaults(defineProps<{
   submit?: () => Promise<RunCreated | void>
   /** session-review：父页面的未满足条件，非空时不能提交 */
   blocker?: string
+  /** blocker 是用户还没选的项（立场、模型）：按钮保持可点，点击时发 nudge 由父页面定位（V33-C-01） */
+  blockerChoice?: boolean
 }>(), { mode: 'review', requireOurParty: false })
 const emit = defineEmits<{
   (e: 'update:picked', ids: string[]): void
@@ -57,6 +60,8 @@ const emit = defineEmits<{
   (e: 'confirmed'): void
   /** 任务状态已变化（如 409），父页面应刷新任务 */
   (e: 'stale'): void
+  /** blockerChoice 时点了提交：父页面定位到缺的那一项 */
+  (e: 'nudge'): void
 }>()
 const sessionReview = computed(() => props.mode === 'session-review')
 const assistant = computed(() => props.mode !== 'review')
@@ -508,10 +513,18 @@ const reqDrawer = ref(false)
 const localDrawer = ref(false)
 const outboundDrawer = ref(false)
 // 后台保存中也可以点；点击后先等保存队列清空，有失败则停在本页（已回滚并提示）
-const canConfirm = computed(() =>
-  (assistant.value && !props.requireOurParty ? ourCount.value <= 1 : ourCount.value === 1)
-  && !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value
-  && (!sessionReview.value || (!props.blocker && !outboundLoading.value && !!outboundText.value)))
+const ourMissing = computed(() => !(assistant.value && !props.requireOurParty ? ourCount.value <= 1 : ourCount.value === 1))
+// 缺的只是用户该选的项（我方、父页面的立场 / 模型）时按钮仍可点，点击定位到缺项（V33-C-01）；等待类条件照旧禁用
+const readyExceptChoices = computed(() =>
+  !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value
+  && (!sessionReview.value || ((!props.blocker || props.blockerChoice) && !outboundLoading.value && !!outboundText.value)))
+const canConfirm = computed(() => readyExceptChoices.value && !ourMissing.value && (!sessionReview.value || !props.blocker))
+const partiesSec = ref<HTMLElement>()
+function nudgeMissing() {
+  if (ourMissing.value) nudgeField(partiesSec.value)
+  else if (sessionReview.value && props.blocker && props.blockerChoice) emit('nudge')
+}
+function onConfirmClick() { if (canConfirm.value) void confirmSend(); else nudgeMissing() }
 const confirmBox = ref<HTMLElement>()
 const confirmFlash = ref(false)
 // Ctrl+Enter 只聚焦按钮（3.6）。部分环境会把同一次按键再作为 Enter 送到新聚焦的按钮上，
@@ -590,11 +603,11 @@ useHotkeys({
         <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" />
         <LeakPanel v-if="leaksShown" ref="leakPanel" :task-id="task.id" :files="files" :locked="locked || saving > 0" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" />
 
-        <section class="sec">
-          <h3>签约方与我方<span class="sum">{{ parties.length ? `${parties.length} 方` : '' }}</span></h3>
+        <section ref="partiesSec" class="sec">
+          <h3>签约方与我方<span v-if="ourMissing && parties.length" class="si-required-tag">请选择我方</span><span class="sum">{{ parties.length ? `${parties.length} 方` : '' }}</span></h3>
           <p v-if="assistant && !requireOurParty" class="hint">会话可以不设置我方，最多选择一方。<el-button link :disabled="waiting" @click="setOur('')">不设我方</el-button></p>
           <p v-if="!loading && !parties.length" class="warn">未识别到签约方：在原文中选中我方名称、类别选“公司”后再设为我方</p>
-          <ul class="rows">
+          <ul class="rows" :class="{ 'si-required-empty': ourMissing && parties.length }">
             <li v-for="p in parties" :key="p.id" class="party" :class="{ our: p.is_our_party }">
               <div class="party-line">
                 <el-radio :model-value="ourId" :value="p.id" :disabled="waiting" :aria-label="`设 ${p.name} 为我方`" @change="setOur(p.id)"><span class="sr-only">我方</span></el-radio>
@@ -719,15 +732,15 @@ useHotkeys({
         <el-alert v-if="submitError" type="error" show-icon :closable="false" :title="submitError" class="receipt-alert" />
         <ul class="conditions" aria-label="提交条件" aria-live="polite">
           <li v-if="assistant && !requireOurParty" :class="{ met: ourCount <= 1 }">{{ ourCount ? '已选择一方为我方' : '未设置我方，可以确认脱敏' }}</li>
-          <li v-else :class="{ met: ourCount === 1 }">{{ ourCount === 1 ? '✓ 已选择我方' : !parties.length ? '未识别到签约方，暂时不能提交 AI 审核' : '请先选择哪一方是我方' }}</li>
-          <li v-if="sessionReview && blocker">{{ blocker }}</li>
+          <li v-else :class="{ met: ourCount === 1 }"><template v-if="ourCount === 1">✓ 已选择我方</template><template v-else-if="!parties.length">未识别到签约方，暂时不能提交 AI 审核</template><button v-else type="button" class="cond-link" @click="nudgeField(partiesSec)">请先选择哪一方是我方</button></li>
+          <li v-if="sessionReview && blocker"><button v-if="blockerChoice" type="button" class="cond-link" @click="emit('nudge')">{{ blocker }}</button><template v-else>{{ blocker }}</template></li>
           <li v-if="waiting || parsingFiles">文件正在解析，请稍候</li>
           <li v-if="failedFiles">有解析失败的文件，请先删除</li>
           <li v-if="saving" class="met">修改正在后台保存，确认发送时会等保存完成</li>
           <li v-if="loading">正在读取脱敏信息……</li>
         </ul>
         <div ref="confirmBox" class="confirm-btn" :class="{ flash: confirmFlash }">
-          <el-button type="primary" size="large" :disabled="!canConfirm" :loading="submitting" @click="confirmSend">{{ sessionReview ? '确认并开始审核' : assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
+          <el-button type="primary" size="large" :disabled="!readyExceptChoices" :loading="submitting" @click="onConfirmClick">{{ sessionReview ? '确认并开始审核' : assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
         </div>
       </div>
     </aside>
@@ -813,6 +826,9 @@ h3.clickable:focus-visible { outline: 2px solid var(--si-focus); outline-offset:
 .receipt-alert { margin-top: 4px; }
 .conditions { margin: 0; padding: 0; list-style: none; font: var(--si-font-caption); color: var(--el-color-warning); }
 .conditions .met { color: var(--si-ink-2); }
+.cond-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.cond-link:hover { color: var(--el-color-primary); }
+.rows.si-required-empty { border-radius: 6px; }
 .confirm-btn :deep(.el-button) { width: 100%; height: 44px; }
 .confirm-btn.flash :deep(.el-button) { box-shadow: 0 0 0 3px var(--si-focus); }
 .outbound { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-reading); }
