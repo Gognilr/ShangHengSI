@@ -15,6 +15,7 @@ import LocalCheckList from '@/components/result/LocalCheckList.vue'
 import ReviewCeremony from '@/components/result/ReviewCeremony.vue'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
+import SiThinkingDots from '@/components/ui/SiThinkingDots.vue'
 import RunResult from '@/components/workspace/RunResult.vue'
 import { useAuthStore } from '@/stores/auth'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
@@ -272,9 +273,15 @@ async function submitConfirm() {
 }
 const submitting = ref(false)
 const formError = ref('')
+// 提交等待：按钮不转圈，旁边墨点 + 当前步骤 + 已用秒数
+const submitSeconds = ref(0)
+let submitTimer: number | undefined
+onBeforeUnmount(() => window.clearInterval(submitTimer))
 async function start() {
   if (blocker.value || submitting.value || !stance.value) return
   submitting.value = true; formError.value = ''
+  submitSeconds.value = 0
+  submitTimer = window.setInterval(() => { submitSeconds.value += 1 }, 1000)
   try {
     const trimmed = note.value.trim()
     await assistantApi.createRun(props.session.id, {
@@ -289,7 +296,7 @@ async function start() {
     if (code === 'MATERIAL_CHANGED') { await loadPreview(); formError.value = '材料有变化，已更新下方“本轮发送的内容”，请核对后再确认' }
     if (['MATERIAL_CHANGED', 'SESSION_BUSY', 'TASK_STATE_CONFLICT', 'FILES_PARSING'].includes(code)) emit('refresh')
     if (code === 'OUR_PARTY_REQUIRED') ElMessage.warning('请在主体说明中选择我方')
-  } finally { submitting.value = false }
+  } finally { submitting.value = false; window.clearInterval(submitTimer) }
 }
 function badge(file: SessionFile) { return file.ext.toUpperCase().slice(0, 4) }
 function newRound() { composing.value = true; note.value = ''; noteOpen.value = false; formError.value = '' }
@@ -401,8 +408,9 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
           </div>
           <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" />
           <div class="foot">
-            <span v-if="blocker" class="hint">{{ blocker }}</span>
-            <el-button type="primary" :loading="submitting" :disabled="(!!blocker && !setupCheck.field) || !canConfigure" @click="onStartClick">确认发送并开始审核</el-button>
+            <span v-if="submitting" class="hint submit-wait si-wait" role="status"><SiThinkingDots /><span><span class="si-shimmer">本机正在做出口复检，通过后交给模型</span>，已用 {{ submitSeconds }} 秒</span></span>
+            <span v-else-if="blocker" class="hint">{{ blocker }}</span>
+            <el-button type="primary" :disabled="submitting || (!!blocker && !setupCheck.field) || !canConfigure" @click="onStartClick">{{ submitting ? '正在提交…' : '确认发送并开始审核' }}</el-button>
           </div>
         </template>
       </div>
@@ -449,4 +457,5 @@ h2 { margin: 0; font: var(--si-font-h4); }
 .sent li { margin: 4px 0; overflow-wrap: anywhere; }
 .subject { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 4px; background: var(--si-surface-2); font: var(--si-font-caption); }
 .foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding-top: 12px; border-top: 1px solid var(--el-border-color-lighter); }
+.submit-wait { display: inline-flex; align-items: center; gap: 8px; }
 </style>

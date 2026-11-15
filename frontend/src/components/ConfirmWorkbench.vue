@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronRight, Ellipsis, Plus } from '@lucide/vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import { assistantApi } from '@/api/assistant'
 import { localFindingsApi } from '@/api/localFindings'
@@ -22,6 +22,7 @@ import type { Stance } from '@/api/tasks'
 import { MAX_FILES, TASK_ERROR_MESSAGES, checkFiles, tasksApi, type TaskDetail, type TaskFile } from '@/api/tasks'
 import LocalCheckList from '@/components/result/LocalCheckList.vue'
 import LeakPanel from '@/components/LeakPanel.vue'
+import SiThinkingDots from '@/components/ui/SiThinkingDots.vue'
 import ConfirmCanvas from '@/components/ConfirmCanvas.vue'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
@@ -535,10 +536,31 @@ const confirmFlash = ref(false)
 // 聚焦后 600ms 内的点击一律忽略，保证快捷键本身永不外发（V31-U2-05 曾误发一次）。
 let focusedByHotkeyAt = 0
 
+// 提交等待：按钮不转圈，按钮上方一行墨点 + 当前步骤 + 已用秒数（同一个等待只有这一个指示）
+const submitStep = ref<'saving' | 'files' | 'sending'>('sending')
+const submitSeconds = ref(0)
+let submitTimer: number | undefined
+// 出口复检约 1.2 秒 / 万字（V31-U5F 实测），加上建轮次的固定开销
+const expectSeconds = computed(() => Math.max(3, Math.ceil(outboundLength.value / 8000) + 2))
+const submitText = computed(() => {
+  if (submitStep.value === 'saving') return '正在等刚才的修改保存完成'
+  if (submitStep.value === 'files') return '正在删除文件并重新脱敏'
+  if (assistant.value && !sessionReview.value) return '正在确认脱敏结果'
+  return `本机正在对 ${outboundLength.value.toLocaleString('zh-CN')} 字做出口复检，通过后交给模型，约需 ${expectSeconds.value} 秒`
+})
+const submitSlow = computed(() => submitStep.value === 'sending' && submitSeconds.value > expectSeconds.value + 5)
+function startSubmitClock() {
+  submitSeconds.value = 0
+  submitTimer = window.setInterval(() => { submitSeconds.value += 1 }, 1000)
+}
+onBeforeUnmount(() => window.clearInterval(submitTimer))
+
 async function confirmSend() {
   if (!canConfirm.value || Date.now() - focusedByHotkeyAt < 600) return
   submitError.value = ''
   submitting.value = true
+  submitStep.value = saving.value ? 'saving' : pendingDeletes.size() ? 'files' : 'sending'
+  startSubmitClock()
   try {
     // 先等后台保存全部完成；有失败时界面已回滚并提示，停在本页
     if (saving.value) {
@@ -546,13 +568,14 @@ async function confirmSend() {
       if (submitError.value || !canConfirm.value) return
     }
     // 撤销期内删除的文件仍在服务器上：先真删并等重算完成，用户看到更新后的回执再确认
-    if (pendingDeletes.size()) { await pendingDeletes.flush(); return }
+    if (pendingDeletes.size()) { submitStep.value = 'files'; await pendingDeletes.flush(); return }
+    submitStep.value = 'sending'
     if (sessionReview.value) rememberedToast(await props.submit?.())
     else if (assistant.value) await assistantApi.confirm(props.task.id)
     else rememberedToast(await runsApi.create(props.task.id, !skipTemplate.value, props.modelId))
     emit('confirmed')
   } catch (e) { handleError(e) }
-  finally { submitting.value = false }
+  finally { submitting.value = false; window.clearInterval(submitTimer) }
 }
 
 // ---- 宽度与键盘（3.1、3.6） ----
@@ -744,8 +767,12 @@ useHotkeys({
           <li v-if="saving" class="met">修改正在后台保存，确认发送时会等保存完成</li>
           <li v-if="loading">正在读取脱敏信息……</li>
         </ul>
+        <p v-if="submitting" class="submit-wait si-wait" role="status">
+          <SiThinkingDots />
+          <span><span class="si-shimmer">{{ submitText }}</span>，已用 {{ submitSeconds }} 秒<template v-if="submitSlow">。比预计慢：可能在按最新规则重新脱敏，请不要关闭页面</template></span>
+        </p>
         <div ref="confirmBox" class="confirm-btn" :class="{ flash: confirmFlash }">
-          <el-button type="primary" size="large" :disabled="!readyExceptChoices || (leaksShown && leaksPending > 0)" :loading="submitting" @click="onConfirmClick">{{ sessionReview ? '确认并开始审核' : assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
+          <el-button type="primary" size="large" :disabled="submitting || !readyExceptChoices || (leaksShown && leaksPending > 0)" @click="onConfirmClick">{{ submitting ? '正在提交…' : sessionReview ? '确认并开始审核' : assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
         </div>
       </div>
     </aside>
@@ -835,6 +862,7 @@ h3.clickable:focus-visible { outline: 2px solid var(--si-focus); outline-offset:
 .cond-link:hover { color: var(--el-color-primary); }
 .rows.si-required-empty { border-radius: 6px; }
 .confirm-btn :deep(.el-button) { width: 100%; height: 44px; }
+.submit-wait { display: flex; align-items: center; gap: 8px; margin: 0; font: var(--si-font-caption); color: var(--si-ink-2); }
 .confirm-btn.flash :deep(.el-button) { box-shadow: 0 0 0 3px var(--si-focus); }
 .outbound { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-reading); }
 .keys { width: 100%; border-collapse: collapse; }
