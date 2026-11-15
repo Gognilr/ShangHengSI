@@ -4,6 +4,8 @@
 
 An AI-assisted first-pass reviewer for business documents (contracts, quotations, orders, inquiries and letters), designed to run inside a company LAN.
 
+**Current release: V3.2.1** (released 2026-11-15; includes V3.2, which was not released separately).
+
 Sensitive information never leaves the internal network: documents are parsed, checked and **redacted locally**. Only the redacted text is sent to a cloud LLM, and the results are restored to real names locally before they are shown.
 
 > ⚠️ This tool performs a **preliminary** review only. Its output does not replace review by legal, compliance or business professionals.
@@ -12,16 +14,36 @@ Sensitive information never leaves the internal network: documents are parsed, c
 
 ```text
 Upload → Local parsing & checks → Automatic redaction → User confirmation
-       → Cloud LLM review → Local restoration & issue list → Follow-up questions → Word report
+       → Cloud LLM review → Local restoration & issue list → Follow-up questions & discussion
+       → Word report / annotated copy / revised copy
 ```
 
 1. **Upload**: one or more files, with the stance (sales / purchase / other), source (sent by us / received) and outbound policy.
 2. **Local processing**: parsing into a unified document model, local consistency checks (amounts, totals, dates, currencies), and redaction of company names, people, amounts, accounts, phone numbers and more, replaced by codes such as `客户_A` (Customer A) or `[金额_1]` (Amount 1).
 3. **Confirmation**: the user confirms which party is "us", reviews the redaction summary and previews the exact text that will be sent.
 4. **AI review**: the LLM gives a verdict on every review requirement and lists issues with locations and verbatim quotes. Quotes are verified locally.
-5. **Results**: issues are shown with real names restored. Users can ask follow-up questions (also redacted before sending) and export a Word report.
+5. **Results**: issues are shown with real names restored, streamed in as the review progresses. Users can ask follow-up questions (also redacted before sending), discuss individual issues and adopt a discussion draft, and export a Word report, an annotated copy or a revised copy. Review replies carry citation anchors; clicking one shows the cited source (knowledge base, history or law) in a popover.
 
 Tasks with the policy `local_only` never call the model. Only local checks are performed.
+
+## Modules and highlights
+
+The sidebar has five entries:
+
+| Module | What it does |
+|-|-|
+| Workbench | The unified home (called "Assistant" before V3.2): start a review, ask questions about a document, and discuss issues in one session |
+| Smart Review | The document review flow described above |
+| Meeting Minutes | Transcribe meeting audio locally and generate minutes |
+| Translation | Translate documents and pasted text; runs locally |
+| History | All past review tasks and sessions (called "Review history" before V3.2) |
+
+Highlights of V3.2 / V3.2.1:
+
+- **Grouped parallel review**: review requirements are grouped by dimension and reviewed concurrently, so results arrive faster.
+- **Tighter redaction**: items carrying a label (such as a named contact person) and full company names are now replaced outright instead of being kept.
+- **Reversible redaction**: within a task, the user can exclude specific items from redaction when a name must stay readable.
+- **No-flash loading**: loading indicators appear only after a 300 ms delay, so fast operations do not flash a spinner.
 
 ## Security and privacy by design
 
@@ -42,7 +64,7 @@ Tasks with the policy `local_only` never call the model. Only local checks are p
 | Inquiry | Inquiry letters, RFQs |
 | Letter | Supply letters, commitment letters, notices, claims |
 
-V1.0 target formats are DOCX, PDF (text and scanned), XLSX, JPG and PNG. DOCX is implemented first; PDF, OCR and XLSX follow in Milestone 3.
+Supported formats are DOCX, PDF (text and scanned), XLSX, JPG and PNG. Legacy Office formats are converted locally by the offline converter service (see Architecture).
 
 Review dimensions: wording, logic, legal, compliance & sanctions, and commercial terms.
 
@@ -61,7 +83,7 @@ Review dimensions: wording, logic, legal, compliance & sanctions, and commercial
 
 ## Architecture
 
-Four containers on a single Ubuntu Server 24.04 VM:
+Seven services on a single Ubuntu Server 24.04 VM, defined in `deploy/docker-compose.yml`:
 
 ```text
 Browser (LAN, HTTPS)
@@ -71,6 +93,10 @@ Browser (LAN, HTTPS)
               └─> /data/files (encrypted originals, shared volume)
 worker    parsing, OCR, local checks, redaction, AI review, backup, cleanup
           └─> cloud LLM API (the only allowed outbound address)
+converter / transcriber / translator
+          offline helpers with no network access at all (network_mode: none);
+          they exchange files with the worker only through a shared /spool volume
+          (legacy-format conversion, audio transcription, local translation)
 ```
 
 ## Repository layout
@@ -78,8 +104,12 @@ worker    parsing, OCR, local checks, redaction, AI review, backup, cleanup
 ```text
 backend/    FastAPI app, worker, Alembic migrations, resources, tests
 frontend/   Vue 3 single-page app
+converter/  offline legacy-format conversion service (no network)
+transcriber/ offline audio transcription service (no network)
+translator/ offline local translation service (no network)
 deploy/     docker-compose.yml, Caddyfile, .env.example
-docs/       SPEC.md (full specification), TASKS.md (task list), open_questions.md, design/
+docs/       SPEC.md (full specification), TASKS.md (task list), open_questions.md, design/,
+            per-version folders (v2/ … v321/), acceptance/ (install & upgrade records), ops/
 ```
 
 ## Getting started (development)
@@ -119,11 +149,12 @@ docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgr
 
 ## Project status
 
-V1.0 is under active development, following milestones M1–M8 in [docs/SPEC.md](docs/SPEC.md) §22. See [docs/TASKS.md](docs/TASKS.md) for current progress.
+V3.2.1 is the current release (2026-11-15) and is deployed on the production server. The release report is [docs/v321/reports/V321-Z.md](docs/v321/reports/V321-Z.md) and the production upgrade record is in `docs/acceptance/`. See [docs/TASKS.md](docs/TASKS.md) for the task list.
 
 ## Documentation
 
 - [docs/SPEC.md](docs/SPEC.md): full product and development specification (Chinese)
 - [docs/TASKS.md](docs/TASKS.md): task breakdown and progress
 - [docs/open_questions.md](docs/open_questions.md): decisions on details not covered by the spec
+- `docs/acceptance/`: installation and upgrade records for the production server; `docs/ops/`: operations guide (install, upgrade, backup, restore)
 - [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md): rules for AI coding assistants working on this repository
