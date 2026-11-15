@@ -10,6 +10,7 @@ import ZoneHeader from '@/components/ui/ZoneHeader.vue'
 import { markTokens, unresolvedCount } from '@/utils/marks'
 import { markdown } from '@/utils/markdown'
 import InlineText from './InlineText.vue'
+import SiThinkingDots from '@/components/ui/SiThinkingDots.vue'
 import { formatDateTime } from '@/utils/time'
 import { useStale } from '@/utils/stale'
 import { assistantStatusLabel } from '@/utils/labels'
@@ -42,9 +43,10 @@ const slow = useStale(() => props.message.content.length === 0 && pending.value,
 const reading = computed(() => !!props.reading)
 const waiting = computed(() => {
   if (!pending.value || streaming.value) return ''
-  const base = reading.value ? '正在读取附件' : '等待模型响应'
-  return slow.value && !reading.value ? `${base}，模型响应较慢，可以先做别的` : base
+  return reading.value ? '正在读取附件' : '等待模型响应'
 })
+// 墨点与流光只给“等待模型”；10 秒后补的后半句不带流光（V33-C-06）
+const waitingTail = computed(() => (waiting.value && slow.value && !reading.value ? '，模型响应较慢，可以先做别的' : ''))
 const hasTable = computed(() => !!props.message.compare || parsed.value.some(block => block.kind === 'table'))
 const downloading = ref(false), error = ref('')
 async function download(format: 'docx' | 'xlsx', variant = 'translation') {
@@ -86,7 +88,7 @@ async function copy() {
       <summary class="hint">查看实际发送内容</summary>
       <pre>{{ message.sent }}</pre>
     </details>
-    <p v-if="waiting" class="generating" role="status">{{ waiting }}</p>
+    <p v-if="waiting" class="generating" role="status"><SiThinkingDots v-if="!reading" /><span><span :class="{ 'si-shimmer': !reading }">{{ waiting }}</span>{{ waitingTail }}</span></p>
     <p v-if="count" class="warning">有 {{ count }} 处未能还原，已原样标出</p>
     <el-alert v-if="message.error" :title="message.error" type="error" :closable="false" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
@@ -134,8 +136,7 @@ th { background: var(--el-fill-color-light); }
 .code { margin: 12px 0; padding: 10px 14px; overflow-x: auto; white-space: pre; font: var(--si-font-meta); background: var(--el-fill-color-light); border-radius: var(--el-border-radius-base); }
 .cursor { display: inline-block; width: 2px; height: 1.1em; margin-left: 2px; vertical-align: text-bottom; background: var(--si-blue); animation: cursor-blink 1s steps(1) infinite; }
 @keyframes cursor-blink { 50% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
-.generating { margin: 4px 0 0; font: var(--si-font-meta); color: var(--el-text-color-secondary); }
+.generating { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; font: var(--si-font-meta); color: var(--el-text-color-secondary); }
 .message-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .draft-action { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .draft-saved { color: var(--si-ok-ink); font: var(--si-font-label-sm); }

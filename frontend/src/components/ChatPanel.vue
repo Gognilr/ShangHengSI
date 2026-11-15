@@ -5,6 +5,7 @@ import { MessageSquare } from '@lucide/vue'
 import { chatApi, type ChatMessage, type ChatPreview, type ChatDecision } from '@/api/chat'
 import { ApiError } from '@/api/http'
 import EmptyState from '@/components/EmptyState.vue'
+import SiThinkingDots from '@/components/ui/SiThinkingDots.vue'
 import CalcResult from '@/components/result/CalcResult.vue'
 import MarkedText from '@/components/result/MarkedText.vue'
 import { calcLines, sliceMarks, unresolvedCount } from '@/utils/marks'
@@ -279,7 +280,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
         <p class="hint">将发送：</p>
         <pre class="redacted"><span v-for="(seg, index) in segments(preview)" :key="index" :class="{ placeholder: seg.placeholder, suspect: seg.suspect }">{{ seg.text }}</span></pre>
       </div>
-      <p v-if="sending" class="hint">正在等待回复，最长约 2 分钟</p>
+      <p v-if="sending" class="hint thinking"><SiThinkingDots /><span class="si-shimmer">正在等待回复，最长约 2 分钟</span></p>
       <div class="actions">
         <el-button type="primary" :loading="busy" :disabled="!canSend" @click="submit">发送</el-button>
       </div>
@@ -314,6 +315,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 </template>
 
 <style scoped>
+.thinking { display: flex; align-items: center; gap: 8px; }
 .chat-trigger { display: inline-block; }
 .chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .live-preview { flex-shrink: 0; max-height: 200px; overflow-y: auto; margin-top: 12px; }
