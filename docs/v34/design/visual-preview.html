@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="t-light">
+<head>
+<meta charset="utf-8">
+<title>商衡SI · 视觉第三版预览（素纸）</title>
+<meta name="viewport" content="width=1280">
+<style>
+/* ============ 令牌：与 visual.md 第二、三节一一对应 ============ */
+.t-light{
+  color-scheme:light;
+  --canvas:#FBFBFA; --side:#F4F4F2; --s2:#F1F1EE; --pop:#FFFFFF; --field:#FFFFFF; --stage:#F1F1EE;
+  --hair:#E6E6E2; --hair-strong:#D3D3CE; --hair-faint:#EEEEEA;
+  --ink-1:#1A1C20; --ink-2:#3A3D44; --ink-3:#646870; --ink-4:#8A8E96; --ink-5:#B9BCC2;
+  --on-brand:#FFFFFF; --accent:#9C5B34; --accent-2:#C99A5B;
+  --select:rgba(26,28,32,.06); --hover:rgba(26,28,32,.04); 
+  --danger:#C4262E; --danger-ink:#B3202A; --warn:#C28A00; --warn-ink:#7D5F00; --ok:#3A3D44; --ok-ink:#3A3D44; --info:#7A7E86;
+  --shadow-pop:0 0 0 1px rgba(26,28,32,.06),0 12px 32px rgba(26,28,32,.10);
+  --shadow-composer:0 1px 2px rgba(26,28,32,.04),0 6px 20px rgba(26,28,32,.05);
+}
+.t-night{
+  color-scheme:dark;
+  --canvas:#15171A; --side:#0F1113; --s2:#1D2024; --pop:#202328; --field:#1A1C20; --stage:#101214;
+  --hair:#2A2D32; --hair-strong:#383C42; --hair-faint:#212428;
+  --ink-1:#ECEEF1; --ink-2:#C5C9D0; --ink-3:#9096A0; --ink-4:#6C727C; --ink-5:#4C5159;
+  --on-brand:#FFFFFF; --accent:#D39A6A; --accent-2:#E6BE8A;
+  --select:rgba(236,238,241,.08); --hover:rgba(236,238,241,.05); 
+  --danger:#F0655C; --danger-ink:#FF8A80; --warn:#E6B43C; --warn-ink:#F0C75E; --ok:#C5C9D0; --ok-ink:#C5C9D0; --info:#8D939D;
+  --shadow-pop:0 0 0 1px rgba(255,255,255,.07),0 16px 40px rgba(0,0,0,.5);
+  --shadow-composer:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+}
+/* 主色：松针青（用户 2026-11-15 已定）；辅助色：松果赭 */
+.t-light{--brand:#1F5F58;--brand-ink:#1B564F;--brand-press:#184C46;--brand-tint:rgba(31,95,88,.09);--brand-2:#5FA89C}
+.t-night{--brand:#2F8177;--brand-ink:#7FCDBF;--brand-press:#296F66;--brand-tint:rgba(127,205,191,.13);--brand-2:#5DB3A5}
+.t-light{--logo-a:var(--brand)} .t-night{--logo-a:var(--brand-2)}
+:root{
+  --sans:"SI Sans","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;
+  --mono:"SI Mono","Cascadia Mono",Consolas,monospace;
+  --r-tag:6px; --r:8px; --r-card:10px; --r-pop:14px; --r-composer:16px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:400 14px/1.6 var(--sans);color:var(--ink-1);background:var(--canvas);min-width:1280px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+h1,h2,h3,p{margin:0}
+a{color:var(--brand-ink);text-decoration:none}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:4px}
+
+/* ============ 骨架 ============ */
+.app{display:grid;grid-template-columns:auto minmax(0,1fr);height:100vh}
+.side{width:240px;display:flex;flex-direction:column;background:var(--side);border-right:1px solid var(--hair-faint);min-height:0}
+.main{overflow-y:auto;background:var(--canvas);min-width:0}
+.brandrow{height:56px;display:flex;align-items:center;padding:0 10px 0 18px;flex:none}
+.brandrow .tg{margin-left:auto;width:30px;height:30px;display:grid;place-items:center;border-radius:var(--r);color:var(--ink-3)}
+.brandrow .tg:hover{background:var(--hover);color:var(--ink-1)}
+.logo{display:inline-flex;align-items:center;gap:9px;color:var(--ink-1)}
+.logo .wm{font:600 17px/1 var(--sans);letter-spacing:.14em}
+.logo .si{font:500 11px/1 var(--mono);color:var(--ink-3);letter-spacing:.06em;padding-left:8px;border-left:1px solid var(--hair-strong);margin-left:-2px}
+.nav{padding:4px 8px;display:flex;flex-direction:column;gap:1px}
+.it{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:var(--r);color:var(--ink-2);font:500 14px/1.4 var(--sans);width:100%;text-align:left}
+.it:hover{background:var(--hover);color:var(--ink-1)}
+.it.on{background:var(--select);color:var(--ink-1);font-weight:600}
+.it kbd{margin-left:auto;font:400 11px/1 var(--mono);color:var(--ink-4)}
+.grp{font:500 12px/1 var(--sans);color:var(--ink-3);letter-spacing:.08em;padding:14px 10px 6px}
+.recent{flex:1;min-height:0;overflow:auto;padding:4px 8px}
+.recent .it{font-weight:400;color:var(--ink-2);height:32px}
+.recent .it span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidefoot{padding:8px;border-top:1px solid var(--hair-faint);display:flex;flex-direction:column;gap:1px}
+.user{display:flex;align-items:center;gap:9px;height:40px;padding:0 8px;border-radius:var(--r);color:var(--ink-2)}
+.user:hover{background:var(--hover)}
+.av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--select);color:var(--ink-1);font:600 12px/1 var(--sans);flex:none}
+/* 收起窄栏 */
+.app.rail .side{width:64px}
+.app.rail .side .lb,.app.rail .grp,.app.rail .recent,.app.rail .logo .wm,.app.rail .logo .si,.app.rail kbd{display:none}
+.app.rail .it,.app.rail .user{justify-content:center;padding:0}
+.app.rail .brandrow{flex-direction:column;height:auto;padding:14px 0 6px;gap:8px}
+.app.rail .brandrow .tg{margin:0}
+.app.rail .nav .sep{display:block}
+.sep{display:none;height:1px;background:var(--hair);margin:8px 14px}
+
+.page{display:none;margin:0 auto;padding:32px 40px 56px}
+.page.show{display:block}
+.col{max-width:800px;margin:0 auto}
+.wide{max-width:1240px;margin:0 auto}
+.over{font:500 12px/1.3 var(--sans);color:var(--ink-3);letter-spacing:.08em}
+.meta{font:400 13px/1.5 var(--sans);color:var(--ink-3)}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+
+/* ============ 通用组件 ============ */
+.btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:var(--r);font:500 14px/1 var(--sans);border:1px solid var(--hair-strong);color:var(--ink-1);background:transparent}
+.btn:hover{background:var(--hover)}
+.btn.pri{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.btn.pri:hover{background:var(--brand-press);border-color:var(--brand-press)}
+.btn.txt{border-color:transparent;color:var(--brand-ink);padding:0 6px;height:28px}
+.btn.txt:hover{background:var(--brand-tint)}
+.inp{display:flex;align-items:center;gap:8px;height:34px;padding:0 11px;border:1px solid var(--hair-strong);border-radius:var(--r);background:var(--field);color:var(--ink-4);font-size:14px}
+.inp b{font-weight:400;color:var(--ink-1)}
+.seg{display:inline-flex;padding:2px;border-radius:var(--r);background:var(--s2);gap:2px}
+.seg button{height:28px;padding:0 12px;border-radius:6px;font:500 13px/1 var(--sans);color:var(--ink-3)}
+.seg button.on{background:var(--field);color:var(--ink-1);box-shadow:0 0 0 1px var(--hair)}
+.tabs{display:flex;gap:26px;border-bottom:1px solid var(--hair)}
+.tabs button{height:40px;font:500 14px/1 var(--sans);color:var(--ink-3);position:relative}
+.tabs button:hover{color:var(--ink-1)}
+.tabs button.on{color:var(--ink-1);font-weight:600}
+.tabs button.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--ink-1)}
+.tabs i{font:400 12px/1 var(--mono);font-style:normal;color:var(--ink-4);margin-left:5px}
+.dot{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2);white-space:nowrap}
+.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--info);flex:none}
+.dot.b::before{background:var(--brand)} .dot.w::before{background:var(--warn)} .dot.d::before{background:var(--danger)} .dot.o::before{background:none;width:8px;height:4px;border-radius:0;border-left:1.6px solid var(--ok);border-bottom:1.6px solid var(--ok);transform:translateY(-1.5px) rotate(-45deg)}
+.dot.run::before{background:transparent;box-shadow:0 0 0 1.5px var(--brand) inset}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{font:400 13px/1.4 var(--sans);color:var(--ink-3);text-align:left;padding:0 12px 10px;border-bottom:1px solid var(--hair-strong);white-space:nowrap}
+td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 12px;height:56px;border-bottom:1px solid var(--hair-faint);color:var(--ink-2);vertical-align:middle}
+tbody tr:hover td{background:var(--hover)}
+th.r,td.r{text-align:right} th.c,td.c{text-align:center}
+td:first-child,th:first-child{padding-left:4px} td:last-child,th:last-child{padding-right:4px}
+.rows{border-top:1px solid var(--hair)}
+.row{display:flex;align-items:center;gap:16px;height:44px;padding:0 4px;border-bottom:1px solid var(--hair-faint);color:var(--ink-1)}
+.row:hover{background:var(--hover)}
+.row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .st{width:230px;flex:none}
+.row .tm{width:120px;flex:none;text-align:right}
+
+/* ============ 工作台首页 ============ */
+.home{padding-top:44px}
+.greet{margin-bottom:18px;padding-left:2px}
+.greet h1{font:400 26px/1.4 var(--sans);letter-spacing:.03em}
+.composer{border:1px solid var(--hair-strong);border-radius:var(--r-composer);background:var(--field);box-shadow:var(--shadow-composer);padding:14px 14px 10px 16px}
+.composer:focus-within{border-color:var(--ink-4)}
+.composer textarea{display:block;width:100%;height:52px;border:0;outline:0;resize:none;background:transparent;font:400 15px/1.6 var(--sans);color:var(--ink-1)}
+.composer textarea::placeholder{color:var(--ink-4)}
+.cbar{display:flex;align-items:center;gap:6px;color:var(--ink-3);font-size:13px}
+.cbar .g{height:30px;padding:0 8px;border-radius:var(--r);display:inline-flex;align-items:center;gap:6px}
+.cbar .g:hover{background:var(--hover);color:var(--ink-1)}
+.cbar .send{margin-left:auto;width:32px;height:32px;border-radius:50%;background:var(--brand);color:var(--on-brand);display:grid;place-items:center}
+.chips{display:flex;align-items:center;gap:8px;margin-top:12px;padding-left:2px}
+.chip{height:30px;padding:0 12px;border-radius:15px;border:1px solid var(--hair);font:500 13px/1 var(--sans);color:var(--ink-2)}
+.chip:hover{border-color:var(--hair-strong);background:var(--hover);color:var(--ink-1)}
+.sech{display:flex;align-items:baseline;justify-content:space-between;margin:34px 0 10px;padding:0 2px}
+/* 四张入口：一条连续的格带，不是四张浮卡 */
+.entries{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--hair-strong);border-bottom:1px solid var(--hair)}
+.ent{position:relative;text-align:left;padding:16px 16px 14px;display:flex;flex-direction:column;gap:0;border-left:1px solid var(--hair-faint);transition:background-color .16s}
+.ent:first-child{border-left:0}
+.ent:hover{background:var(--hover)}
+.ent::before{content:"";position:absolute;left:0;right:0;top:-1px;height:2px;background:var(--brand);transform:scaleX(0);transform-origin:left;transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.ent:hover::before{transform:scaleX(1)}
+.ent .top{display:flex;justify-content:space-between;align-items:flex-start;height:46px}
+.ent .no{font:500 11px/1 var(--mono);color:var(--ink-4);letter-spacing:.06em}
+.ent svg.g{width:72px;height:44px;fill:none;stroke:var(--ink-5);stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}
+.ent svg.g .k{stroke:var(--ink-3)} .ent svg.g .ac{stroke:var(--accent);stroke-width:1.75}
+.ent h3{font:600 16px/1.4 var(--sans);margin-top:10px;display:flex;align-items:center;gap:6px}
+.ent h3 svg{opacity:0;transform:translateX(-4px);transition:.2s;color:var(--ink-3)}
+.ent:hover h3 svg{opacity:1;transform:none}
+.ent p{font:400 13px/1.55 var(--sans);color:var(--ink-3);margin-top:2px;min-height:40px}
+.ent .ft{font:400 12px/1.4 var(--sans);color:var(--ink-3);margin-top:8px}
+.ent .ft b{font-weight:500;color:var(--ink-2)}
+
+/* ============ 翻译首页 ============ */
+.entry h1{font:600 24px/1.35 var(--sans);margin-top:36px}
+.entry .lede{color:var(--ink-3);margin-top:6px;max-width:620px}
+.opts{display:flex;align-items:center;gap:12px;margin:26px 0 12px}
+.opts label{font:500 14px/1 var(--sans);color:var(--ink-2)}
+.drop{border:1px dashed var(--hair-strong);border-radius:var(--r-card);padding:44px 16px;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--ink-3);background:transparent;width:100%;transition:.16s}
+.drop:hover{border-color:var(--ink-3);border-style:solid;background:var(--hover)}
+.drop svg{width:22px;height:22px;color:var(--ink-3);margin-bottom:6px}
+.drop b{font:600 15px/1.5 var(--sans);color:var(--ink-1)}
+.drop span{font-size:12px}
+
+/* ============ 历史记录 ============ */
+.ph{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}
+.ph h1{font:600 20px/1.4 var(--sans)}
+.filters{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.fc{display:flex;align-items:center;gap:12px;min-width:0}
+.fc .ic{width:30px;height:30px;border-radius:7px;border:1px solid var(--hair);display:grid;place-items:center;color:var(--ink-3);flex:none;font:600 10px/1 var(--mono);letter-spacing:.02em}
+.fc .tt{min-width:0}
+.fc .tt b{display:block;font-weight:500;color:var(--ink-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fc .tt span{display:block;font-size:12px;line-height:1.4;color:var(--ink-3)}
+.hi{color:var(--danger-ink);font-weight:600} .pd{color:var(--warn-ink);font-weight:600} .zz{color:var(--ink-5)}
+.ops{display:flex;align-items:center;gap:2px;justify-content:flex-end}
+.ops .mo{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;color:var(--ink-3)}
+.ops .mo:hover{background:var(--hover);color:var(--ink-1)}
+.pager{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
+
+/* ============ 标书初审结果页 ============ */
+.crumb{display:flex;align-items:center;gap:8px;color:var(--ink-3);font-size:13px}
+.bh{display:flex;align-items:flex-end;gap:16px;margin:6px 0 18px}
+.bh h1{font:600 22px/1.35 var(--sans)}
+.bh .sp{margin-left:auto;display:flex;gap:8px}
+.steps{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);margin-bottom:6px}
+.step{display:flex;align-items:center;gap:8px;font:500 13px/1 var(--sans);color:var(--ink-3)}
+.step .n{width:20px;height:20px;border-radius:50%;border:1px solid var(--hair-strong);display:grid;place-items:center;font:500 11px/1 var(--mono)}
+.step.done{color:var(--ink-2)} .step.done .n{background:var(--select);border-color:transparent}
+.step.cur{color:var(--ink-1);font-weight:600} .step.cur .n{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.steps .ln{flex:1;height:1px;background:var(--hair);max-width:72px}
+.steps .prog{margin-left:auto;display:flex;gap:18px;font-size:13px}
+.figs{display:grid;grid-template-columns:repeat(4,1fr);margin:22px 0 26px}
+.fig{padding:2px 20px;border-left:1px solid var(--hair)}
+.fig:first-child{padding-left:4px;border-left:0}
+.fig .v{font:500 28px/1.2 var(--mono);color:var(--ink-1);display:flex;align-items:baseline;gap:8px}
+.fig .v small{font:400 13px/1 var(--sans);color:var(--ink-3)}
+.fig .v.d{color:var(--danger-ink)}
+.lv{display:inline-flex;gap:10px;font:500 13px/1 var(--sans)}
+.lv b{font-weight:600}
+.lv .s{color:var(--danger-ink)} .lv .m{color:var(--warn-ink)} .lv .l{color:var(--ink-3)}
+.two{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:48px;margin-top:30px}
+.sub{font:600 15px/1.5 var(--sans);margin-bottom:10px;display:flex;align-items:baseline;gap:10px}
+.pair{display:grid;grid-template-columns:76px repeat(3,1fr);border-top:1px solid var(--hair)}
+.pair>div{height:42px;display:flex;align-items:center;padding:0 10px;border-bottom:1px solid var(--hair-faint);font-size:13px;color:var(--ink-3)}
+.pair .hd{color:var(--ink-3);font-size:12px}
+.pair .rh{color:var(--ink-1);font-weight:500;padding-left:4px}
+.pair .na{color:var(--ink-5)}
+.cov{border-top:1px solid var(--hair)}
+.cov li{list-style:none;padding:10px 4px;border-bottom:1px solid var(--hair-faint);display:flex;gap:10px;color:var(--ink-2);font-size:13px}
+.cov ul{margin:0;padding:0}
+.cov li::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--ink-4);margin-top:8px;flex:none}
+.cov li.w::before{background:var(--warn)}
+.note{margin-top:28px;padding-top:14px;border-top:1px solid var(--hair);font-size:12px;color:var(--ink-3)}
+
+/* ============ 品牌标识页 ============ */
+.bgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:0;border-top:1px solid var(--hair-strong);margin-top:18px}
+.bopt{padding:20px 22px 24px;border-left:1px solid var(--hair)}
+.bopt:first-child{border-left:0;padding-left:4px}
+.bopt h3{font:600 16px/1.4 var(--sans);display:flex;align-items:center;gap:8px}
+.bopt h3 em{font:500 11px/1 var(--sans);font-style:normal;color:var(--brand-ink);border:1px solid currentColor;border-radius:4px;padding:3px 6px}
+.bopt p{font-size:13px;color:var(--ink-3);margin:6px 0 14px;min-height:62px}
+.tile{border:1px solid var(--hair);border-radius:var(--r-card);background:var(--canvas);color:var(--ink-1);margin-top:10px;overflow:hidden}
+.tile .ln{display:flex;align-items:center;gap:18px;padding:14px 16px;border-top:1px solid var(--hair-faint)}
+.tile .ln:first-child{border-top:0}
+.tile .cap{margin-left:auto;font-size:11px;color:var(--ink-4);white-space:nowrap}
+.railbox{width:44px;height:44px;border-radius:8px;background:var(--side);border:1px solid var(--hair-faint);display:grid;place-items:center}
+.tabx{white-space:nowrap;display:flex;align-items:center;gap:7px;height:28px;padding:0 10px;border-radius:8px 8px 0 0;background:var(--s2);font-size:12px;color:var(--ink-2);border:1px solid var(--hair);border-bottom:0}
+.hero{display:flex;align-items:center;gap:16px}
+.hero .wm{font:600 28px/1 var(--sans);letter-spacing:.14em}
+.hero .tg{font-size:11px;color:var(--ink-3);letter-spacing:.08em;margin-top:8px;white-space:nowrap}
+.login{display:grid;grid-template-columns:1.1fr 1fr;height:300px;border:1px solid var(--hair);border-radius:var(--r-card);overflow:hidden;background:var(--canvas);color:var(--ink-1)}
+.login .l{padding:36px 40px;background:var(--side);border-right:1px solid var(--hair-faint);display:flex;flex-direction:column;justify-content:space-between}
+.login .l h2{font:600 22px/1.4 var(--sans);margin-top:22px}
+.login .r{padding:44px 48px;display:flex;flex-direction:column;gap:12px;justify-content:center}
+.login .r h3{font:600 20px/1.3 var(--sans);margin-bottom:6px}
+.login .inp{height:40px}
+.login .btn{height:40px;justify-content:center}
+
+/* ============ 等待动效与色板（品牌页） ============ */
+.wait{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:8px}
+.wbox{border:1px solid var(--hair);border-radius:var(--r-card);overflow:hidden;position:relative;padding:22px 20px 18px}
+.band{position:absolute;left:0;right:0;top:0;height:2px;overflow:hidden}
+.band::before{content:"";position:absolute;inset:0;width:60%;background:linear-gradient(90deg,transparent,var(--brand),var(--brand-2),var(--accent-2),var(--accent),transparent);animation:sweep 2.2s cubic-bezier(.4,0,.2,1) infinite}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(170%)}}
+.dots{display:inline-flex;align-items:center;gap:5px;height:24px;margin-right:12px;vertical-align:middle}
+.dots i{border-radius:50%;animation:bob 1.6s ease-in-out infinite}
+.dots i:nth-child(1){width:5px;height:5px;background:var(--brand)}
+.dots i:nth-child(2){width:3px;height:3px;background:var(--accent-2);animation-delay:.15s}
+.dots i:nth-child(3){width:6px;height:6px;background:var(--brand-2);animation-delay:.3s}
+.dots i:nth-child(4){width:4px;height:4px;background:var(--accent);animation-delay:.45s}
+.dots i:nth-child(5){width:3px;height:3px;background:var(--ink-4);animation-delay:.6s}
+.dots i:nth-child(6){width:5px;height:5px;background:var(--brand);animation-delay:.75s}
+.dots i:nth-child(7){width:4px;height:4px;background:var(--accent-2);animation-delay:.9s}
+.dots i:nth-child(8){width:3px;height:3px;background:var(--brand-2);animation-delay:1.05s}
+@keyframes bob{0%,100%{transform:translateY(3px);opacity:.45}50%{transform:translateY(-3px);opacity:1}}
+.sw{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+.sw span{display:flex;flex-direction:column;justify-content:flex-end;width:118px;height:64px;border-radius:8px;padding:8px 10px;font:500 11px/1.4 var(--mono);color:#fff}
+
+/* ============ 预览控制条（不属于产品界面） ============ */
+.pv{position:fixed;right:20px;bottom:18px;display:flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;border-radius:22px;background:var(--pop);box-shadow:var(--shadow-pop);font-size:12px;color:var(--ink-3);z-index:9}
+.pv .seg{border-radius:14px}.pv .seg button{height:24px;border-radius:12px;padding:0 10px;font-size:12px}
+</style>
+</head>
+<body>
+
+<!-- 图标：线性 24 格、线宽 1.75，与 Lucide 同规格（实现时用 @lucide/vue，本文件为离线自绘） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></symbol>
+  <symbol id="i-lang" viewBox="0 0 24 24"><path d="M5 8l6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></symbol>
+  <symbol id="i-hist" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l4 2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+  <symbol id="i-set" viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.93 8.8l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+</svg>
+
+<div class="app" id="app">
+  <!-- ================= 侧栏 ================= -->
+  <aside class="side">
+    <div class="brandrow">
+      <span class="logo"><span data-logo data-size="24"></span><span class="wm">商衡</span><span class="si">SI</span></span>
+      <button class="tg" title="收起侧栏" onclick="rail()"><svg class="i"><use href="#i-panel"/></svg></button>
+    </div>
+    <nav class="nav">
+      <button class="it" data-go="home"><svg class="i"><use href="#i-plus"/></svg><span class="lb">新建会话</span></button>
+      <div class="sep"></div>
+      <button class="it on" data-go="home" data-nav><svg class="i"><use href="#i-home"/></svg><span class="lb">工作台</span></button>
+      <div class="grp">文件审查</div><div class="sep"></div>
+      <button class="it" data-nav><svg class="i"><use href="#i-file"/></svg><span class="lb">文件审核</span></button>
+      <button class="it" data-go="bid" data-nav><svg class="i"><use href="#i-scale"/></svg><span class="lb">标书初审</span></button>
+      <div class="grp">工具</div><div class="sep"></div>
+      <button class="it" data-nav><svg class="i"><use href="#i-mic"/></svg><span class="lb">会议纪要</span></button>
+      <button class="it" data-go="translate" data-nav><svg class="i"><use href="#i-lang"/></svg><span class="lb">翻译</span></button>
+      <div class="sep" style="display:block;margin:10px 10px"></div>
+      <button class="it" data-go="history" data-nav><svg class="i"><use href="#i-hist"/></svg><span class="lb">历史记录</span></button>
+      <button class="it"><svg class="i"><use href="#i-search"/></svg><span class="lb">搜索</span><kbd>Ctrl K</kbd></button>
+    </nav>
+    <div class="grp" style="padding-left:18px">近期会话</div>
+    <div class="recent">
+      <button class="it"><span>关于延期交货的回函</span></button>
+      <button class="it"><span>HT-2026-118 设备采购合同（修订稿）</span></button>
+      <button class="it"><span>三家报价单比价</span></button>
+      <button class="it"><span>物流服务框架协议付款条款</span></button>
+    </div>
+    <div class="sidefoot">
+      <button class="it" data-go="brand" data-nav><svg class="i"><use href="#i-set"/></svg><span class="lb">设置 · 品牌标识</span></button>
+      <div class="user"><span class="av">周</span><span class="lb">周敏 · 采购部</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ================= 工作台首页 ================= -->
+    <section class="page home show" id="p-home">
+      <div class="col">
+        <div class="greet"><h1>晚上好，周敏，今天还有哪项工作需要梳理？</h1></div>
+        <div class="composer">
+          <textarea placeholder="提问，或把合同、报价单拖到这里、粘贴进来"></textarea>
+          <div class="cbar">
+            <button class="g" title="加入文件"><svg class="i"><use href="#i-clip"/></svg></button>
+            <button class="g">DeepSeek <svg class="i" style="width:14px;height:14px"><use href="#i-down"/></svg></button>
+            <button class="g">参考历史合同</button>
+            <button class="send" title="发送"><svg class="i"><use href="#i-up"/></svg></button>
+          </div>
+        </div>
+        <div class="chips"><span class="over" style="margin-right:4px">常用</span><button class="chip">摘要</button><button class="chip">起草回复</button><button class="chip">单证核对</button><button class="chip">比价</button></div>
+
+        <div class="sech"><span class="over">办一件完整的事</span></div>
+        <div class="entries">
+          <button class="ent">
+            <div class="top"><svg class="g" viewBox="0 0 72 44"><rect class="k" x="6" y="3" width="30" height="38" rx="2"/><path d="M11 11h20M11 17h20M11 29h14M11 35h18"/><path class="ac" d="M11 23h20"/><path class="ac" d="M36 23h9"/><rect class="ac" x="45" y="17" width="20" height="12" rx="2"/></svg><span class="no">01</span></div>
+            <h3>文件审核 <svg class="i"><use href="#i-right"/></svg></h3>
+            <p>合同、报价单、订单、函件的全面审核，逐条给出依据。</p>
+            <div class="ft"><b>3</b> 条待处理</div>
+          </button>
+          <button class="ent" data-go="bid">
+            <div class="top"><svg class="g" viewBox="0 0 72 44"><rect class="k" x="5" y="3" width="17" height="34" rx="2"/><rect class="k" x="27" y="3" width="17" height="34" rx="2"/><rect class="k" x="49" y="3" width="17" height="34" rx="2"/><path d="M9 10h9M9 16h9M9 30h6M31 10h9M31 16h9M31 30h7M53 10h9M53 16h6M53 23h9M53 30h8"/><path class="ac" d="M9 23h9M31 23h9M13.5 38v3h22v-3"/></svg><span class="no">02</span></div>
+            <h3>标书初审 <svg class="i"><use href="#i-right"/></svg></h3>
+            <p>多家投标文件在本机比对，找出不符合项与串标线索。</p>
+            <div class="ft"><b>1</b> 个项目核对中</div>
+          </button>
+          <button class="ent">
+            <div class="top"><svg class="g" viewBox="0 0 72 44"><path class="k" d="M6 22v0M10 17v10M14 12v20M18 19v6M22 8v28M26 15v14M30 20v4"/><path class="ac" d="M36 22h7M40.5 19.5l2.5 2.5-2.5 2.5"/><path d="M52 18h14M52 24h10M52 30h14M52 36h8"/><path class="ac" d="M49 12h17"/></svg><span class="no">03</span></div>
+            <h3>会议纪要 <svg class="i"><use href="#i-right"/></svg></h3>
+            <p>录音在本机转写，校对后生成纪要与待办。</p>
+            <div class="ft">上次：周一 采购周会</div>
+          </button>
+          <button class="ent" data-go="translate">
+            <div class="top"><svg class="g" viewBox="0 0 72 44"><path class="k" d="M5 10h22M5 17h22M5 24h16M5 31h20"/><path d="M45 10h22M45 17h18M45 24h22M45 31h14"/><path class="ac" d="M32 18h8M37.5 15.5L40 18l-2.5 2.5M40 26h-8M34.5 23.5L32 26l2.5 2.5"/></svg><span class="no">04</span></div>
+            <h3>翻译 <svg class="i"><use href="#i-right"/></svg></h3>
+            <p>整份文件本地或云端翻译，版式与条款号保持不变。</p>
+            <div class="ft">本地模型 · 不外发</div>
+          </button>
+        </div>
+
+        <div class="sech"><span class="over">继续上次的工作</span><a class="meta" href="#" data-go="history">全部历史</a></div>
+        <div class="rows">
+          <a class="row" href="#"><span class="nm">HT-2026-118 设备采购合同（修订稿）</span><span class="st meta">文件审核 · <span class="pd">待处理 3</span></span><span class="tm meta num">昨天 17:42</span></a>
+          <a class="row" href="#" data-go="bid"><span class="nm">2026 年空压站节能改造设备招标</span><span class="st meta">标书初审 · 模型核对 3 / 4 家</span><span class="tm meta num">今天 10:20</span></a>
+          <a class="row" href="#"><span class="nm">关于延期交货的回函</span><span class="st meta">对话</span><span class="tm meta num">11-10 09:05</span></a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 翻译首页 ================= -->
+    <section class="page entry" id="p-translate">
+      <div class="col">
+        <h1>要翻译什么文件？</h1>
+        <p class="lede">本地翻译只在本机处理原文；云端翻译须先确认脱敏。译稿请逐段核对名称、金额和业务条件。</p>
+        <div class="opts">
+          <label>译成</label><span class="inp" style="width:140px"><b>英文</b><svg class="i" style="margin-left:auto"><use href="#i-down"/></svg></span>
+          <span class="seg"><button class="on">本地 · 不外发</button><button>云端 · 须确认脱敏</button></span>
+        </div>
+        <button class="drop"><svg class="i"><use href="#i-upload"/></svg><b>拖入要翻译的文件，或点击选择</b><span>Word、PDF、Excel、WPS、图片，单个不超过 30 MB</span></button>
+        <p style="margin-top:12px"><a href="#" style="font-weight:500">或粘贴文字翻译</a></p>
+        <div class="sech" style="margin-top:40px"><span class="over">最近的翻译</span></div>
+        <div class="rows">
+          <a class="row" href="#"><span class="nm">空压机技术协议（中译英）.docx</span><span class="st meta">本地 · 已完成</span><span class="tm meta num">2026-11-14 16:08</span></a>
+          <a class="row" href="#"><span class="nm">Supplier Quality Agreement v3.pdf</span><span class="st meta">云端 · 已完成</span><span class="tm meta num">2026-11-12 11:31</span></a>
+          <a class="row" href="#"><span class="nm">海运提单与装箱单.pdf</span><span class="st meta">本地 · 待确认</span><span class="tm meta num">2026-11-11 09:47</span></a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 历史记录 ================= -->
+    <section class="page" id="p-history">
+      <div class="wide">
+        <div class="ph"><h1>历史记录</h1><span class="meta">共 37 条 · 仅本人可见</span></div>
+        <div class="filters">
+          <span class="inp" style="width:240px"><svg class="i"><use href="#i-search"/></svg>按名称搜索</span>
+          <span class="seg"><button class="on">全部</button><button>文件审核</button><button>标书初审</button><button>会议纪要</button><button>翻译</button><button>对话</button></span>
+          <span class="inp" style="width:230px;margin-left:auto"><svg class="i"><use href="#i-cal"/></svg>开始日期　至　结束日期</span>
+        </div>
+        <table>
+          <colgroup><col><col style="width:150px"><col style="width:68px"><col style="width:68px"><col style="width:148px"><col style="width:104px"><col style="width:92px"></colgroup>
+          <thead><tr><th>名称</th><th>状态</th><th class="r">高风险</th><th class="r">待处理</th><th>最近活动</th><th>保留至</th><th></th></tr></thead>
+          <tbody>
+            <tr><td><div class="fc"><span class="ic">DOC</span><span class="tt"><b>HT-2026-118 设备采购合同（修订稿）.docx</b><span>文件审核 · 合同 · 采购</span></span></div></td><td><span class="dot b">已审核 2 轮</span></td><td class="r hi">6</td><td class="r pd">3</td><td class="num">2026-11-14 17:42</td><td class="num">2027-11-14</td><td><div class="ops"><button class="btn txt">打开</button><button class="mo" title="更多操作"><svg class="i"><use href="#i-more"/></svg></button></div></td></tr>
+            <tr><td><div class="fc"><span class="ic"><svg class="i"><use href="#i-scale"/></svg></span><span class="tt"><b>2026 年空压站节能改造设备招标</b><span>标书初审 · 4 家投标</span></span></div></td><td><span class="dot run">模型核对 3 / 4 家</span></td><td class="r hi">3</td><td class="r pd">11</td><td class="num">2026-11-15 10:20</td><td class="num">2027-11-15</td><td><div class="ops"><button class="btn txt">打开</button><button class="mo"><svg class="i"><use href="#i-more"/></svg></button></div></td></tr>
+            <tr><td><div class="fc"><span class="ic">PDF</span><span class="tt"><b>物流服务框架协议.pdf</b><span>文件审核 · 合同 · 销售</span></span></div></td><td><span class="dot b">已审核 1 轮</span></td><td class="r zz">0</td><td class="r pd">14</td><td class="num">2026-11-11 17:21</td><td class="num">2027-11-11</td><td><div class="ops"><button class="btn txt">打开</button><button class="mo"><svg class="i"><use href="#i-more"/></svg></button></div></td></tr>
+            <tr><td><div class="fc"><span class="ic"><svg class="i"><use href="#i-mic"/></svg></span><span class="tt"><b>采购周会 11 月第 2 周</b><span>会议纪要 · 48 分钟</span></span></div></td><td><span class="dot o">纪要已生成</span></td><td class="r zz">—</td><td class="r zz">—</td><td class="num">2026-11-10 15:02</td><td class="num">2026-12-10</td><td><div class="ops"><button class="btn txt">打开</button><button class="mo"><svg class="i"><use href="#i-more"/></svg></button></div></td></tr>
+            <tr><td><div class="fc"><span class="ic">XLS</span><span class="tt"><b>备件年度报价单（三家）.xlsx</b><span>文件审核 · 报价单 · 采购</span></span></div></td><td><span class="dot w">待确认脱敏</span></td><td class="r zz">—</td><td class="r zz">—</td><td class="num">2026-11-10 09:36</td><td class="num">2027-11-10</td><td><div class="ops"><button class="btn txt">继续</button><button class="mo"><svg class="i"><use href="#i-more"/></svg></button></div></td></tr>
+            <tr><td><div class="fc"><span class="ic"><svg class="i"><use href="#i-lang"/></svg></span><span class="tt"><b>空压机技术协议（中译英）.docx</b><span>翻译 · 本地</span></span></div></td><td><span class="dot o">已完成</span></td><td class="r zz">—</td><td class="r zz">—</td><td class="num">2026-11-14 16:08</td><td class="num">2026-12-14</td><td><div class="ops"><button class="btn txt">打开</button><button class="mo"><svg class="i"><use href="#i-more"/></svg></button></div></td></tr>
+            <tr><td><div class="fc"><span class="ic"><svg class="i"><use href="#i-msg"/></svg></span><span class="tt"><b>关于延期交货的回函</b><span>对话 · 2 个文件</span></span></div></td><td><span class="dot">对话</span></td><td class="r zz">—</td><td class="r zz">—</td><td class="num">2026-11-10 09:05</td><td class="num zz">—</td><td><div class="ops"><button class="btn txt">打开</button><button class="mo"><svg class="i"><use href="#i-more"/></svg></button></div></td></tr>
+          </tbody>
+        </table>
+        <div class="pager"><span class="meta">第 1 / 2 页</span><span style="display:flex;gap:6px"><button class="btn" style="height:30px">上一页</button><button class="btn" style="height:30px">下一页</button></span></div>
+      </div>
+    </section>
+
+    <!-- ================= 标书初审 · 结果页总览 ================= -->
+    <section class="page" id="p-bid">
+      <div class="wide">
+        <div class="crumb"><a href="#" style="color:inherit">标书初审</a><span>/</span><span>项目</span></div>
+        <div class="bh"><h1>2026 年空压站节能改造设备招标</h1><span class="meta">开标日期 2026-11-15 · 最高限价 1,400,000.00 元</span>
+          <span class="sp"><button class="btn">要求清单 42 条</button><button class="btn pri"><svg class="i"><use href="#i-dl"/></svg>导出初审疑点报告</button></span></div>
+        <div class="steps">
+          <span class="step done"><span class="n"><svg class="i" style="width:11px;height:11px;stroke-width:2.5"><use href="#i-check"/></svg></span>招标文件与要求</span><span class="ln"></span>
+          <span class="step done"><span class="n"><svg class="i" style="width:11px;height:11px;stroke-width:2.5"><use href="#i-check"/></svg></span>投标文件</span><span class="ln"></span>
+          <span class="step cur"><span class="n">3</span>初审结果</span><span class="ln"></span>
+          <span class="step"><span class="n">4</span>导出</span>
+          <span class="prog"><span class="dot o">本地检查 已完成</span><span class="dot run">扫描页识别 312 / 500</span><span class="dot run">模型核对 3 / 4 家</span></span>
+        </div>
+        <div class="tabs"><button class="on">总览</button><button>要求响应矩阵<i>42</i></button><button>各投标人<i>4</i></button><button>串标线索<i>11</i></button><button>报价分析</button></div>
+
+        <div class="figs">
+          <div class="fig"><div class="over">投标人</div><div class="v">4<small>家 · 9 个文件 · 1,180 页</small></div></div>
+          <div class="fig"><div class="over">疑似否决项</div><div class="v d">3<small>涉及 2 家</small></div></div>
+          <div class="fig"><div class="over">串标线索</div><div class="v">11<small><span class="lv"><span class="s">强 <b>2</b></span><span class="m">中 <b>3</b></span><span class="l">弱 <b>6</b></span></span></small></div></div>
+          <div class="fig"><div class="over">待人工核对</div><div class="v">11<small>已核实 4 · 已排除 2</small></div></div>
+        </div>
+
+        <table>
+          <colgroup><col><col style="width:104px"><col style="width:92px"><col style="width:104px"><col style="width:160px"><col style="width:176px"><col style="width:140px"></colgroup>
+          <thead><tr><th>投标人（按录入顺序）</th><th class="r">疑似否决项</th><th class="r">其他问题</th><th class="r">待人工核对</th><th class="r">含税总价（元）</th><th>与限价</th><th>涉及串标线索</th></tr></thead>
+          <tbody>
+            <tr><td><b style="font-weight:500;color:var(--ink-1)">青岚机电设备有限公司</b></td><td class="r hi">2</td><td class="r">5</td><td class="r">3</td><td class="r mono">1,286,000.00</td><td>低于限价</td><td><span class="lv"><span class="s">强 <b>1</b></span><span class="m">中 <b>1</b></span></span></td></tr>
+            <tr><td><b style="font-weight:500;color:var(--ink-1)">北序重工装备有限公司</b></td><td class="r zz">0</td><td class="r">3</td><td class="r">4</td><td class="r mono">1,301,500.00</td><td>低于限价</td><td><span class="lv"><span class="s">强 <b>2</b></span><span class="m">中 <b>2</b></span></span></td></tr>
+            <tr><td><b style="font-weight:500;color:var(--ink-1)">启澄自动化技术有限公司</b></td><td class="r hi">1</td><td class="r">2</td><td class="r">2</td><td class="r mono">1,420,000.00</td><td><span class="hi">▲ 超限价 20,000.00</span></td><td><span class="lv"><span class="m">中 <b>2</b></span><span class="l">弱 <b>2</b></span></span></td></tr>
+            <tr><td><b style="font-weight:500;color:var(--ink-1)">瀚屿工业技术有限公司</b><span class="meta" style="margin-left:10px">模型核对中</span></td><td class="r zz">0</td><td class="r">1</td><td class="r">2</td><td class="r mono">1,338,800.00</td><td>低于限价</td><td><span class="lv"><span class="s">强 <b>1</b></span><span class="l">弱 <b>4</b></span></span></td></tr>
+          </tbody>
+        </table>
+
+        <div class="two">
+          <div>
+            <div class="sub">两两关系<span class="meta" style="font-weight:400">点击单元格查看对照</span></div>
+            <div class="pair">
+              <div class="hd"></div><div class="hd">北序</div><div class="hd">启澄</div><div class="hd">瀚屿</div>
+              <div class="rh">青岚</div><div><span class="lv"><span class="s">强 <b>1</b></span><span class="m">中 <b>1</b></span></span></div><div><span class="lv"><span class="l">弱 <b>2</b></span></span></div><div class="na">—</div>
+              <div class="rh">北序</div><div class="na"></div><div><span class="lv"><span class="m">中 <b>2</b></span></span></div><div><span class="lv"><span class="s">强 <b>1</b></span><span class="l">弱 <b>2</b></span></span></div>
+              <div class="rh">启澄</div><div class="na"></div><div class="na"></div><div><span class="lv"><span class="l">弱 <b>2</b></span></span></div>
+            </div>
+          </div>
+          <div class="cov">
+            <div class="sub" style="margin-bottom:10px">覆盖说明<span class="meta" style="font-weight:400">没有列出，不等于没有问题</span></div>
+            <ul style="border-top:1px solid var(--hair)">
+              <li>9 个文件 1,180 页已比对；已剔除招标文件原文与格式范本 214 段。</li>
+              <li class="w">27 页扫描件识别置信度低，相关检查项标为“请人工查看”。</li>
+              <li class="w">瀚屿《技术标.pdf》第 40～52 页未能解析，未参与比对。</li>
+            </ul>
+          </div>
+        </div>
+        <p class="note">本页为初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。投标人按录入顺序排列，不排名、不推荐。预览中的公司名称与数据均为虚构。</p>
+      </div>
+    </section>
+
+    <!-- ================= 品牌标识 ================= -->
+    <section class="page" id="p-brand">
+      <div class="wide">
+        <div class="ph"><h1>品牌标识</h1><span class="meta">松鳞 · 松针青 + 松果赭（用户 2026-11-15 已定）；左浅色、右夜幕</span></div>
+        <div class="bgrid" id="bgrid"></div>
+        <div class="two" style="grid-template-columns:1fr 1fr;gap:24px;margin-top:8px">
+          <div><div class="sub" style="margin-top:22px">登录页（浅色）</div><div class="login t-light" data-login></div></div>
+          <div><div class="sub" style="margin-top:22px">登录页（夜幕）</div><div class="login t-night" data-login></div></div>
+        </div>
+        <div class="sub" style="margin-top:30px">主色与辅助色<span class="meta" style="font-weight:400">松青＝本机与确定；松果赭＝模型与进行中</span></div>
+        <div class="sw">
+          <span style="background:#1F5F58">主色 松针青<br>#1F5F58</span><span style="background:#2F8177">主色 夜幕<br>#2F8177</span>
+          <span style="background:#5FA89C">浅松青（动效）<br>#5FA89C</span>
+          <span style="background:#9C5B34">辅助 松果赭<br>#9C5B34</span><span style="background:#D39A6A;color:#1A1C20">辅助 夜幕<br>#D39A6A</span>
+          <span style="background:#C99A5B;color:#1A1C20">琥珀（动效）<br>#C99A5B</span>
+        </div>
+        <div class="sub" style="margin-top:30px">等待动效（只在系统工作时出现）<span class="meta" style="font-weight:400">多色，但全部由主色与辅助色派生</span></div>
+        <div class="wait">
+          <div class="wbox"><div class="band"></div><span class="meta">审阅光带：松青 → 浅松青 → 琥珀 → 松果赭，区块顶部 2px</span></div>
+          <div class="wbox"><span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="meta">对话墨点：松青、浅松青、琥珀、松果赭、墨灰混排 · 正在思考</span></div>
+        </div>
+        <div class="sub" style="margin-top:30px">现行标识（对照）</div>
+        <div style="display:flex;gap:12px">
+          <div class="tile t-light" style="margin:0;flex:1"><div class="ln"><span data-logo data-variant="0" data-size="56"></span><span data-logo data-variant="0" data-size="24"></span><span data-logo data-variant="0" data-size="16"></span><span class="cap">三色渐变 · 像素点 · 星芒，16px 下细节糊成一团</span></div></div>
+          <div class="tile t-night" style="margin:0;flex:1"><div class="ln"><span data-logo data-variant="0" data-size="56"></span><span data-logo data-variant="0" data-size="24"></span><span data-logo data-variant="0" data-size="16"></span><span class="cap">夜幕须换渐变起点，同一标识两种长相</span></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="pv">预览
+  <span class="seg" id="sw-shell"><button class="on" data-v="t-light">浅色</button><button data-v="t-night">夜幕</button></span>
+</div>
+
+<script>
+// 标识：3 松鳞（已定）；0 现行（仅作对照）。松青为主体、松果赭一片，无渐变，颜色取令牌。
+function logo(v, s) {
+  var a = 'width="' + s + '" height="' + s + '" viewBox="0 0 32 32" style="display:block;flex:none"';
+  var A = 'var(--logo-a)', B = 'var(--accent)';
+  var OUT = 'M16 3.2C23 7.9 26.6 13.6 26.6 18.7a10.6 10.6 0 0 1-21.2 0C5.4 13.6 9 7.9 16 3.2Z';
+  // 松鳞 · 小尺寸版（≤ 26px：标签页图标、侧栏、窄栏）：只留外形与那一片暖色鳞，线加粗
+  if (v == 3 && s <= 26) return '<svg ' + a + ' fill="none"><path d="' + OUT + '" stroke="' + A + '" stroke-width="2.8" stroke-linejoin="round"/>' +
+    '<path d="M16 13.2l5 4.9-5 4.9-5-4.9z" fill="' + B + '"/></svg>';
+  // 松鳞 · 完整版（≥ 32px：登录页、报告封面）：外形 + 两层鳞线 + 一片暖色鳞
+  if (v == 3) return '<svg ' + a + ' fill="none"><path d="' + OUT + '" stroke="' + A + '" stroke-width="2" stroke-linejoin="round"/>' +
+    '<path d="M12.4 9.3L16 12.3L19.6 9.3" stroke="' + A + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M9.4 13.6L16 19.1L22.6 13.6" stroke="' + A + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M16 20.3l3.5 3.3-3.5 3.3-3.5-3.3z" fill="' + B + '"/></svg>';
+  var id = 'g' + Math.random().toString(36).slice(2);
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 64 64" style="display:block;flex:none"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#173B68"/><stop offset=".55" stop-color="#0071E3"/><stop offset="1" stop-color="#32ADE6"/></linearGradient></defs>' +
+    '<g transform="skewX(-10) translate(6 0)"><path d="M48 12H28a10 10 0 0 0 0 20h8a10 10 0 0 1 0 20H16" fill="none" stroke="url(#' + id + ')" stroke-width="9" stroke-linecap="round"/></g>' +
+    '<rect x="3" y="17" width="5" height="5" rx="1.2" fill="#32ADE6" opacity=".9"/><rect x="9" y="24" width="4" height="4" rx="1" fill="#0071E3" opacity=".85"/><rect x="2" y="28" width="3.5" height="3.5" rx=".8" fill="#32ADE6" opacity=".6"/>' +
+    '<path d="M34 26.5l1.6 4 4 1.5-4 1.5-1.6 4-1.6-4-4-1.5 4-1.5z" fill="#fff"/></svg>';
+}
+var cur = 3;
+function paint() {
+  document.querySelectorAll('[data-logo]').forEach(function (e) {
+    e.innerHTML = logo(e.dataset.variant != null ? e.dataset.variant : cur, e.dataset.size || 24);
+    e.style.display = 'inline-flex';
+  });
+  document.querySelectorAll('[data-login]').forEach(function (e) {
+    e.innerHTML = '<div class="l"><div><div class="hero">' + logo(3, 56) + '<div><div class="wm" style="font-size:28px">商衡</div></div></div><h2>先在本机脱敏，再交给模型初审</h2><p class="meta" style="margin-top:6px">原件不出服务器 · 结果在本机还原</p></div><span class="meta" style="font-size:12px">企业安全脱敏与智能审查平台 · V3.4</span></div>' +
+      '<div class="r"><h3>登录</h3><span class="inp"><b>zhoumin</b></span><span class="inp">密码</span><button class="btn pri">登录</button></div>';
+  });
+}
+function tile(t) {
+  return '<div class="tile ' + t + '">' +
+    '<div class="ln"><span class="logo">' + logo(3, 24) + '<span class="wm">商衡</span><span class="si">SI</span></span><span class="cap">侧栏展开 · 小尺寸版 24px</span></div>' +
+    '<div class="ln"><span class="railbox">' + logo(3, 26) + '</span><span class="tabx">' + logo(3, 16) + '商衡SI · 工作台</span><span class="cap">窄栏 26px · 标签页 16px</span></div>' +
+    '<div class="ln"><span style="display:flex;align-items:flex-end;gap:14px">' + logo(3, 16) + logo(3, 20) + logo(3, 24) + '<i style="width:1px;height:40px;background:var(--hair)"></i>' + logo(3, 32) + logo(3, 48) + logo(3, 64) + '</span><span class="cap">左：小尺寸版 16 / 20 / 24　右：完整版 32 / 48 / 64</span></div>' +
+    '<div class="ln"><span class="hero">' + logo(3, 56) + '<span><div class="wm">商衡</div><div class="tg">企业安全脱敏与智能审查平台</div></span></span><span class="cap">登录页 · 完整版</span></div></div>';
+}
+document.getElementById('bgrid').innerHTML =
+  '<div class="bopt" style="grid-column:1/-1;padding-bottom:6px"><h3>松鳞<em>已定</em></h3><p style="min-height:0;max-width:820px">松果的外形如一面盾，鳞片层叠，其中一片填为松果赭——“守护之中，遮住该遮的那一处”。完整版（32px 及以上）有两层鳞线；小尺寸版（26px 及以下）只留外形与那一片暖色鳞并加粗线条，标签页 16px 下仍是一个清楚的轮廓加一个暖点。</p></div>' +
+  '<div class="bopt" style="padding-top:0">' + tile('t-light') + '</div><div class="bopt" style="padding-top:0;border-left:0">' + tile('t-night') + '</div>';
+paint();
+
+function go(p) {
+  document.querySelectorAll('.page').forEach(function (e) { e.classList.toggle('show', e.id == 'p-' + p); });
+  document.querySelectorAll('[data-nav]').forEach(function (e) { e.classList.toggle('on', e.dataset.go == p); });
+  document.querySelector('.main').scrollTop = 0;
+}
+document.addEventListener('click', function (ev) {
+  var t = ev.target.closest('[data-go]');
+  if (t) { ev.preventDefault(); go(t.dataset.go); }
+});
+function rail() { document.getElementById('app').classList.toggle('rail'); }
+function seg(id, fn) {
+  var box = document.getElementById(id);
+  box.addEventListener('click', function (ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    box.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x == b); });
+    fn(b.dataset.v);
+  });
+}
+seg('sw-shell', function (v) { document.documentElement.className = v; });
+</script>
+</body>
+</html>
