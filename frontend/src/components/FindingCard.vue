@@ -15,6 +15,8 @@ const emit = defineEmits<{
   (e: 'select', f: Finding): void
   (e: 'ask', prefill: string): void
   (e: 'discuss', f: Finding): void
+  /** 点了“采纳”或“忽略”并已保存：问题栏收起本条、展开下一条待处理（V33-C-02） */
+  (e: 'handled', f: Finding): void
 }>()
 
 const f = computed(() => props.finding)
@@ -42,7 +44,9 @@ watch(() => props.finding, (v) => { status.value = v.handling_status; note.value
 async function save(body: { handling_status?: HandlingStatus; handling_note?: string | null; use_discussed?: boolean }) {
   saving.value = true
   try {
-    emit('updated', await runsApi.patchFinding(props.finding.id, body))
+    const saved = await runsApi.patchFinding(props.finding.id, body)
+    emit('updated', saved)
+    if (body.handling_status === 'adopted' || body.handling_status === 'ignored') emit('handled', saved)
     savedMark.value = true // 就地反馈（V321-E-01）：显示在处理状态旁，不再弹全局提示
     clearTimeout(savedTimer)
     savedTimer = setTimeout(() => { savedMark.value = false }, 1600)

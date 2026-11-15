@@ -13,7 +13,7 @@ import RequirementList from '@/components/result/RequirementList.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import ZoneHeader from '@/components/ui/ZoneHeader.vue'
 import { CATEGORY_OPTIONS, HANDLING_OPTIONS, toOptions } from '@/utils/labels'
-import { useFx } from '@/utils/motion'
+import { motionMs, useFx } from '@/utils/motion'
 
 /** 问题栏（V31-U3 3.4～3.6）：压缩结论 + “AI 建议 | 本地计算 | 逐条结论”三个分区，各自滚动、切换时保持位置。 */
 export type Zone = 'ai' | 'local' | 'req'
@@ -95,6 +95,18 @@ async function handle(status: HandlingStatus) {
   } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '保存失败，请重试') }
   finally { keyBusy = false }
 }
+// 卡片上点了“采纳 / 忽略”：与快捷键 A / I 一致，展开下一条待处理；没有待处理时收起本条（V33-C-02）。
+// 稍等分段控件滑到新位置再切换，让用户看到点中的结果
+let handledTimer = 0
+function onHandled(f: Finding) {
+  window.clearTimeout(handledTimer)
+  handledTimer = window.setTimeout(() => {
+    if (props.selectedId !== f.id) return
+    const list = props.findings, at = list.findIndex(x => x.id === f.id)
+    const next = [...list.slice(at + 1), ...list.slice(0, at)].find(x => x.handling_status === 'pending')
+    emit('select', next ?? f) // 选中同一条即收起
+  }, motionMs('struct'))
+}
 function onKey(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return
   if (props.localOnly || zone.value !== 'ai' || !props.run || props.runLoading || !rail.value?.offsetParent) return
@@ -106,7 +118,7 @@ function onKey(e: KeyboardEvent) {
   else if (key === 'i') { e.preventDefault(); void handle('ignored') }
 }
 onMounted(() => document.addEventListener('keydown', onKey))
-onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
+onBeforeUnmount(() => { document.removeEventListener('keydown', onKey); window.clearTimeout(handledTimer) })
 
 const aiEl = ref<HTMLElement>()
 const localEl = ref<HTMLElement>()
@@ -144,7 +156,7 @@ watch(() => props.selectedId, async (id) => {
           <TransitionGroup name="si-list" tag="div" class="cards" :appear="stagger">
             <FindingCard v-for="(f, i) in findings" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled" :discuss-enabled="discussEnabled"
               :style="stagger && i < 12 ? { transitionDelay: `${i * 30}ms` } : undefined"
-              @select="emit('select', $event)" @updated="emit('updated', $event)" @ask="emit('ask', $event)" @discuss="emit('discuss', $event)" />
+              @select="emit('select', $event)" @updated="emit('updated', $event)" @handled="onHandled" @ask="emit('ask', $event)" @discuss="emit('discuss', $event)" />
           </TransitionGroup>
           <EmptyState v-if="!findings.length" :icon="ListChecks"
             :title="run.findings.length ? '没有符合筛选条件的问题' : '本次没有列出问题条目'"
