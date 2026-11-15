@@ -158,7 +158,7 @@ check_reused_images() {
     [ -n "${id:-}" ] || continue
     [[ "$id" =~ ^sha256:[0-9a-f]{64}$ ]] || die "reuse.txt 格式不正确"
     docker image inspect "$id" >/dev/null 2>&1 \
-      || die "此增量包需要服务器上已有 $from 的 $name 镜像（ID ${id#sha256:}，前 12 位 ${id:7:12}）；请改用完整包"
+      || die "此增量包需要服务器上已有 $from 的 $name 镜像（ID 前 12 位 ${id:7:12}）；请改用完整包"
   done < "$ROOT/images/reuse.txt"
 }
 
