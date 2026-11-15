@@ -37,7 +37,7 @@ onBeforeUnmount(() => stopFrames())
 .row .si-sheet-line { min-width: 0; }
 .si-sheet-chip { flex: none; line-height: 1.4; }
 .stamp { right: -14px; bottom: -12px; color: var(--si-ok); }
-.band { position: absolute; left: 0; right: 0; top: 0; height: 24px; margin-top: -24px; border-radius: inherit; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--si-blue) 22%, transparent) 85%, var(--si-blue)); opacity: 0; pointer-events: none; }
+.band { position: absolute; left: 0; right: 0; top: 0; height: 24px; margin-top: -24px; border-radius: inherit; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--si-brand-2) 28%, transparent) 70%, var(--si-brand) 96%, var(--si-accent-2)); opacity: 0; pointer-events: none; }
 
 /* 终态是默认样式（精简档定格于此）；.play 时循环 4.8s：扫描 0～60%，印章 66% 落下，92% 起整体淡出重来 */
 .b { position: relative; }
