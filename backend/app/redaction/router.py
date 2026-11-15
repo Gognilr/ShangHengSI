@@ -132,6 +132,7 @@ class LeakOut(BaseModel):
     before: str
     text: str
     after: str
+    section: str | None = None
 
 
 class LeakList(BaseModel):

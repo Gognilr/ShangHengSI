@@ -3,7 +3,7 @@
  *  预览是本人原文，只在本页显示；确认页与智能助手、会议纪要的确认页共用。 */
 import { computed, ref } from 'vue'
 import { ApiError } from '@/api/http'
-import { REDACTION_ERROR_MESSAGES, redactionApi, type Leak, type RedactionInfo } from '@/api/redaction'
+import { REDACTION_ERROR_MESSAGES, redactionApi, type Leak, type LeakList, type RedactionInfo } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
 import { MANUAL_CATEGORY_OPTIONS } from '@/utils/labels'
 
@@ -12,6 +12,8 @@ const emit = defineEmits<{
   (e: 'locate', loc: string, text: string): void
   /** 替换为代号成功：父组件按返回值刷新脱敏结果 */
   (e: 'changed', info: RedactionInfo): void
+  /** 还没处理的处数（加载成功后才报），父组件据此锁定确认按钮 */
+  (e: 'pending', n: number): void
 }>()
 
 const items = ref<Leak[]>([])
@@ -26,16 +28,30 @@ async function reload() {
   error.value = ''
   try {
     const list = await redactionApi.leaks(props.taskId)
-    items.value = list.items
-    other.value = list.other
+    apply(list)
     loaded.value = true
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : '加载失败，请重试'
   } finally { loading.value = false }
 }
+function apply(list: LeakList) {
+  items.value = list.items
+  other.value = list.other
+  emit('pending', list.items.length + list.other)
+}
 defineExpose({ reload })
 
-function where(loc: string): string {
+function where(x: Leak): string {
+  const place = x.loc === 'OUT' ? '' : at(x.loc)
+  return x.section ? [x.section === '正文' ? '正文与相邻段落' : x.section, place].filter(Boolean).join(' · ') : place
+}
+/** 不能就地处理时告诉用户去哪里改 */
+function fixHint(x: Leak): string {
+  if (x.section === '主体说明') return '这段由签约方的名称、国家、类型生成：请在下方“签约方与我方”中检查并修改'
+  if (x.section === '报价汇总') return '这段由原文的报价表生成：请在原文表格中删改后重新上传'
+  return '请在原文中删改这里后重新上传'
+}
+function at(loc: string): string {
   if (loc === 'NOTE') return '审核要求'
   const file = props.files.find(f => loc.startsWith(`F${f.seq}-`))
   const rest = loc.replace(/^F\d+-/, '')
@@ -64,9 +80,7 @@ async function keep(x: Leak) {
   busy.value = true
   error.value = ''
   try {
-    const list = await redactionApi.keepLeak(props.taskId, { loc: x.loc, char_start: x.char_start, char_end: x.char_end })
-    items.value = list.items
-    other.value = list.other
+    apply(await redactionApi.keepLeak(props.taskId, { loc: x.loc, char_start: x.char_start, char_end: x.char_end }))
   } catch (e) { fail(e) } finally { busy.value = false }
 }
 </script>
@@ -80,7 +94,8 @@ async function keep(x: Leak) {
       <li v-for="x in items" :key="key(x)" class="item">
         <div class="head">
           <span class="label">{{ x.label }}</span>
-          <button type="button" class="where" :title="'在原文中定位'" @click="emit('locate', x.loc, x.text)">{{ where(x.loc) || '定位' }}</button>
+          <button v-if="x.loc !== 'OUT'" type="button" class="where" :title="'在原文中定位'" @click="emit('locate', x.loc, x.text)">{{ where(x) || '定位' }}</button>
+          <span v-else class="where-static">{{ where(x) }}</span>
         </div>
         <p class="preview"><span class="ctx">{{ x.before }}</span><mark>{{ x.text }}</mark><span class="ctx">{{ x.after }}</span></p>
         <div class="ops">
@@ -88,10 +103,10 @@ async function keep(x: Leak) {
             替换为代号（{{ MANUAL_CATEGORY_OPTIONS[x.replace_category] }}）
           </el-button>
           <el-button v-if="x.keepable" size="small" :disabled="locked || busy" @click="keep(x)">不敏感，可以发送</el-button>
-          <span v-if="!x.replace_category && !x.keepable" class="hint">请在原文中删改这里后重新上传</span>
+          <span v-if="!x.replace_category && !x.keepable" class="hint">{{ fixHint(x) }}</span>
         </div>
       </li>
-      <li v-if="other" class="item other">另有 {{ other }} 处在主体说明、报价汇总等系统生成的内容中，请检查签约方的国家、类型后重试。</li>
+      <li v-if="other" class="item other">另有 {{ other }} 处在系统生成的内容中，请点“查看将发送的全文”查找。</li>
     </ul>
     <p v-if="error" class="err">{{ error }}</p>
     <p class="note">预览只在你的浏览器中显示，不写日志、不发送。</p>
@@ -109,6 +124,7 @@ h3 { margin: 0 0 4px; font: var(--si-font-h4); color: var(--el-color-warning-dar
 .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .label { font: var(--si-font-body); font-weight: 600; }
 .where { padding: 0; border: 0; background: none; color: var(--el-color-primary); font: var(--si-font-caption); cursor: pointer; text-align: right; }
+.where-static { font: var(--si-font-caption); color: var(--el-text-color-secondary); text-align: right; }
 .where:hover { text-decoration: underline; }
 .where:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 .preview { margin: 6px 0; font: var(--si-font-body); word-break: break-all; }

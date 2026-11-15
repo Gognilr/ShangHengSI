@@ -890,3 +890,19 @@ def test_requirements_validation(alice, params):
 def test_requirements_requires_login(new_client):
     r = new_client().get(f"{API_PREFIX}/requirements", params={"stance": "sales", "source": "outgoing"})
     assert r.status_code == 401
+
+
+def test_leaks_in_party_description_listed_and_keepable(db_sessionmaker, alice, ready_task):
+    """拦截只落在主体说明（系统生成）时也逐条列出所在区块，可确认发送，不再只给笼统的“另有 N 处”。"""
+    user, c, h = alice
+    task = ready_task(user)
+    with db_sessionmaker() as db:
+        party = db.scalars(select(Party).where(Party.task_id == task.id)).first()
+        party.country = "13912345678"
+        db.commit()
+    url = f"{API_PREFIX}/tasks/{task.id}/redaction/leaks"
+    body = c.get(url, headers=h).json()
+    [hit] = [x for x in body["items"] if x["category"] == "PHONE"]
+    assert (hit["section"], hit["loc"], hit["text"], hit["keepable"], body["other"]) == ("主体说明", "OUT", "13912345678", True, 0)
+    after = c.post(f"{url}/keep", json={k: hit[k] for k in ("loc", "char_start", "char_end")}, headers=h).json()
+    assert after["items"] == []

@@ -90,6 +90,8 @@ export interface Leak {
   before: string
   text: string
   after: string
+  /** 命中在系统生成的附加内容中：主体说明 / 报价汇总 / 正文（跨行上下文）/ 日期说明 */
+  section?: string | null
 }
 export interface LeakList { items: Leak[]; other: number }
 

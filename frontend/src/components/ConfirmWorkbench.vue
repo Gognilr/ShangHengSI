@@ -91,9 +91,13 @@ const blockedReason = ref('')
 /** 出口复检拦截清单（V31-U5F-02）：提交被拦或上次轮次被拦时显示 */
 const leaksShown = ref(false)
 const leakPanel = ref<InstanceType<typeof LeakPanel>>()
+/** 拦截清单中还没处理的处数：大于 0 时确认按钮锁定（再点也会被同样拦下），条件栏指向清单 */
+const leaksPending = ref(0)
+const leakBox = ref<HTMLElement>()
 function showLeaks(summary: string) {
   blockedReason.value = summary
   leaksShown.value = true
+  void nextTick(() => leakBox.value?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
   void nextTick(() => leakPanel.value?.reload())
 }
 const localCount = ref<number | null>(null)
@@ -601,7 +605,7 @@ useHotkeys({
     <aside v-loading="loading" class="rail" :style="{ flexBasis: `${railWidth}px` }">
       <div class="rail-scroll">
         <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" />
-        <LeakPanel v-if="leaksShown" ref="leakPanel" :task-id="task.id" :files="files" :locked="locked || saving > 0" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" />
+        <div v-if="leaksShown" ref="leakBox"><LeakPanel ref="leakPanel" :task-id="task.id" :files="files" :locked="locked || saving > 0" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" @pending="leaksPending = $event" /></div>
 
         <section ref="partiesSec" class="sec">
           <h3>签约方与我方<span v-if="ourMissing && parties.length" class="si-required-tag">请选择我方</span><span class="sum">{{ parties.length ? `${parties.length} 方` : '' }}</span></h3>
@@ -734,13 +738,14 @@ useHotkeys({
           <li v-if="assistant && !requireOurParty" :class="{ met: ourCount <= 1 }">{{ ourCount ? '已选择一方为我方' : '未设置我方，可以确认脱敏' }}</li>
           <li v-else :class="{ met: ourCount === 1 }"><template v-if="ourCount === 1">✓ 已选择我方</template><template v-else-if="!parties.length">未识别到签约方，暂时不能提交 AI 审核</template><button v-else type="button" class="cond-link" @click="nudgeField(partiesSec)">请先选择哪一方是我方</button></li>
           <li v-if="sessionReview && blocker"><button v-if="blockerChoice" type="button" class="cond-link" @click="emit('nudge')">{{ blocker }}</button><template v-else>{{ blocker }}</template></li>
+          <li v-if="leaksShown && leaksPending"><button type="button" class="cond-link" @click="nudgeField(leakBox)">出口复检拦下的 {{ leaksPending }} 处还没处理，处理后才能发送</button></li>
           <li v-if="waiting || parsingFiles">文件正在解析，请稍候</li>
           <li v-if="failedFiles">有解析失败的文件，请先删除</li>
           <li v-if="saving" class="met">修改正在后台保存，确认发送时会等保存完成</li>
           <li v-if="loading">正在读取脱敏信息……</li>
         </ul>
         <div ref="confirmBox" class="confirm-btn" :class="{ flash: confirmFlash }">
-          <el-button type="primary" size="large" :disabled="!readyExceptChoices" :loading="submitting" @click="onConfirmClick">{{ sessionReview ? '确认并开始审核' : assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
+          <el-button type="primary" size="large" :disabled="!readyExceptChoices || (leaksShown && leaksPending > 0)" :loading="submitting" @click="onConfirmClick">{{ sessionReview ? '确认并开始审核' : assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
         </div>
       </div>
     </aside>

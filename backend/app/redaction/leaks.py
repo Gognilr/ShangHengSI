@@ -3,6 +3,7 @@
 逐段对脱敏后的文本做与出口复检相同的检查，命中位置按“原文与脱敏文本逐段对齐”换回原文位置，
 再给出前后各 20 字的预览。预览只经 HTTPS 返回给任务所有者本人的浏览器，不写日志、不进 llm_calls。
 """
+import re
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
@@ -37,6 +38,23 @@ class Leak:
     before: str
     text: str
     after: str
+    section: str | None = None  # 命中在系统生成的附加内容中时：主体说明 / 报价汇总 / 日期说明；loc 为所在行的位置（如有）
+
+
+_LINE_LOC = re.compile(r"^\[([^\]]+)\] ")
+
+
+def _section(text: str, pos: int) -> tuple[str, str]:
+    """(所在行的 loc, 区块名)。外发文本第一行为主体说明，节点行与报价汇总行以“[loc] ”开头。"""
+    start = text.rfind("\n", 0, pos) + 1
+    stop = text.find("\n", pos)
+    line = text[start:stop if stop >= 0 else len(text)]
+    if start == 0:
+        return "", "主体说明"
+    m = _LINE_LOC.match(line)
+    if not m:
+        return "", "日期说明"
+    return m.group(1), "报价汇总" if line[m.end():].startswith("【报价明细表") else "正文"
 
 
 _LABEL_CATEGORY = {**{fmt.strip("[]").split("_", 1)[0]: cat for cat, fmt in PH._NUMBERED.items()},
@@ -94,8 +112,21 @@ def find_leaks(db: Session, task: Task) -> tuple[list[Leak], int]:
                               reason.category in KEEPABLE,
                               original[max(0, start - PREVIEW):start], surface, original[end:end + PREVIEW]))
     other = 0
-    if not leaks:  # 段落里查不到时，再看整段外发文本（主体说明、报价汇总等）
-        other = len(recheck(engine.build_outbound_text(db, task), **kw))
+    if not leaks:  # 段落里查不到时，再看整段外发文本（主体说明、报价汇总、跨行的上下文等），逐条列出所在区块
+        text = engine.build_outbound_text(db, task)
+        seen = set()
+        for reason in sorted(recheck(text, **kw), key=lambda r: r.position):
+            start = reason.position
+            end = reason.end if reason.end > start else start + 1
+            if (start, reason.category) in seen:
+                continue
+            seen.add((start, reason.category))
+            loc, section = _section(text, start)
+            # 代号原文不是用户的文字，预览中保留；只能确认可以发送，不能就地替换
+            leaks.append(Leak(loc or "OUT", start, end, reason.category,
+                              REASON_LABELS.get(reason.category, "未脱敏的信息"), None,
+                              reason.category in KEEPABLE, text[max(0, start - PREVIEW):start], text[start:end],
+                              text[end:end + PREVIEW], section))
     return leaks, other
 
 
