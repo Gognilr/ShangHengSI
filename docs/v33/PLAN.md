@@ -21,7 +21,7 @@
 | 编号 | 任务 | 问题 | Claude 侧 | ChatGPT 侧 | 依赖 | 停点 | 状态 |
 |-|-|-|-|-|-|-|-|
 | V33-00 | 本计划 | — | Opus | — | — | 用户确认 | 已完成（2026-11-15 用户确认） |
-| V33-A-01 | 构建脚本自动找 Python | Q-01 | Sonnet，medium | Terra，low | 00 | — | 待执行 |
+| V33-A-01 | 构建脚本自动找 Python | Q-01 | Sonnet，medium | Terra，low | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-A-01.md） |
 | V33-A-02 | 增量升级包 | Q-02 | Opus，high | Sol 6.1，high | A-01 | 服务器演练结果交用户 | 待执行 |
 | V33-B-01 | 会议纪要旧数据兼容验证 | Q-03 | Sonnet，medium | Terra，medium | 00 | — | 待执行 |
 | V33-B-02 | 真实模型下的回复依据锚点 | Q-04 | Opus，medium | Sol 6.1，medium | 00 | 用户录入密钥；结果交用户 | 待执行 |
