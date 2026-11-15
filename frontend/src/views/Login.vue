@@ -131,15 +131,15 @@ async function submit() {
 .login-shell { width: calc(100% - 128px); max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 64px; align-items: center; }
 .brand-area { min-width: 0; position: relative; padding: 24px 0; }
 .brand-area > :not(canvas) { position: relative; }
-.brand-rule { width: 32px; height: 3px; margin: 32px 0; background: var(--si-brand-gradient); }
+.brand-rule { width: 32px; height: 3px; margin: 32px 0; background: var(--si-brand); }
 h2 { font: var(--si-font-display); margin: 0 0 20px; }
 .brand-description { max-width: 440px; font: var(--si-font-reading); color: var(--el-text-color-secondary); margin: 0; }
 .brand-tags { display: flex; gap: 24px; margin: 32px 0 0; padding: 0; list-style: none; }
 .brand-tags li { display: flex; align-items: center; gap: 8px; color: var(--si-ink-2); font: var(--si-font-label); }
-.brand-tags li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--si-blue); box-shadow: var(--si-glow-blue); }
+.brand-tags li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--si-brand); }
 h1 { font: var(--si-font-title-lg); margin: 0 0 4px; }
 .subtitle { color: var(--el-text-color-secondary); margin: 0 0 32px; }
-.login-form { width: 400px; box-sizing: border-box; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-2); }
+.login-form { width: 400px; box-sizing: border-box; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: none; }
 .login-form :deep(.el-input) { --el-input-height: 44px; }
 .login-form :deep(.el-form-item) { margin-bottom: 24px; }
 .remember-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 20px; }

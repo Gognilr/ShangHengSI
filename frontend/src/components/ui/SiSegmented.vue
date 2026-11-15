@@ -75,15 +75,15 @@ watch(() => [model.value, props.options], () => { void nextTick(measure) }, { de
 <style scoped>
 .si-segmented { --seg-h: 28px; position: relative; display: inline-flex; gap: 2px; padding: 2px; background: var(--si-surface-2); border-radius: 10px; }
 .si-segmented--small { --seg-h: 24px; }
-.thumb { position: absolute; top: 2px; left: 0; height: var(--seg-h); border-radius: var(--el-border-radius-base); background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-1); opacity: 0; }
+.thumb { position: absolute; top: 2px; left: 0; height: var(--seg-h); border-radius: var(--el-border-radius-base); background: var(--si-field); box-shadow: 0 0 0 1px var(--si-hair); opacity: 0; }
 .thumb.ready { opacity: 1; transition: transform var(--si-dur-2) var(--si-spring), width var(--si-dur-2) var(--si-ease); }
 .option { position: relative; height: var(--seg-h); padding: 0 14px; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--si-ink-3); font: var(--si-font-label); white-space: nowrap; cursor: pointer; transition: color var(--si-dur-1) var(--si-ease); }
 .si-segmented--small .option { padding: 0 10px; font: var(--si-font-label-sm); }
 .option:hover:not(:disabled) { color: var(--si-ink-1); }
 .option.selected { color: var(--si-ink-1); }
 .badge { display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 2px; border-radius: 50%; }
-.badge--busy { background: var(--el-color-primary); animation: seg-pulse 1.4s var(--si-ease) infinite; }
-.badge--done { background: var(--el-color-success); }
+.badge--busy { background: var(--si-brand); animation: seg-pulse 1.4s var(--si-ease) infinite; }
+.badge--done { background: var(--si-ok); }
 @keyframes seg-pulse { 50% { opacity: 0.3; } }
 @media (prefers-reduced-motion: reduce) { .badge--busy { animation: none; } }
 .option:disabled { color: var(--si-ink-5); cursor: not-allowed; }

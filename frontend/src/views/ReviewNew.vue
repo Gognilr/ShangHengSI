@@ -572,7 +572,7 @@ h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .icon-btn { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--si-ink-3); cursor: pointer; }
 .icon-btn:hover { background: var(--si-surface-2); color: var(--el-color-danger); }
 .scan { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; overflow: hidden; }
-.scan::after { content: ''; position: absolute; top: 0; left: 0; width: 30%; height: 100%; background: var(--si-cyan); animation: home-scan 1.2s linear infinite; }
+.scan::after { content: ''; position: absolute; top: 0; left: 0; width: 30%; height: 100%; background: var(--si-brand-2); animation: home-scan 1.2s linear infinite; }
 @keyframes home-scan { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 .add-more { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border: 1.5px dashed var(--el-border-color); border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
 .add-more:hover:not(:disabled) { border-color: var(--el-color-primary); color: var(--el-color-primary); }

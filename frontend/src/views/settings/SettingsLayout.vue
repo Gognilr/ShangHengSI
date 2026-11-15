@@ -68,9 +68,8 @@ const activeTab = computed(() => {
 .nav-group:first-child { margin-top: 0; }
 .nav-item { flex: none; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: var(--el-border-radius-base); color: var(--si-ink-2); font: var(--si-font-label); text-decoration: none; transition: background-color var(--si-dur-1) var(--si-ease), color var(--si-dur-1) var(--si-ease); }
 .nav-item svg { flex: none; color: var(--si-ink-3); transition: color var(--si-dur-1) var(--si-ease); }
-.nav-item:hover { background: var(--si-surface-2); color: var(--si-ink-1); }
-.nav-item.selected { background: color-mix(in srgb, var(--si-blue) 12%, transparent); color: var(--si-ink-1); }
-.nav-item.selected svg { color: var(--si-blue-ink); }
+.nav-item:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
+.nav-item.selected { background: var(--si-select-bg); color: var(--si-ink-1); font-weight: 600; }
 .nav-item:focus-visible { outline-offset: -2px; }
 .settings-content { min-width: 0; overflow-y: auto; }
 .settings-body { padding: 0 32px 8px; }

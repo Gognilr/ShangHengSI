@@ -33,7 +33,7 @@ const pwdOpen = ref(false)
 const pwdVisible = computed(() => pwdOpen.value || auth.mustChangePassword)
 
 // 侧栏宽度与收起状态只存本浏览器（V3-A 〇.2）
-const SIDEBAR_MIN = 200, SIDEBAR_MAX = 320, SIDEBAR_DEFAULT = 232
+const SIDEBAR_MIN = 200, SIDEBAR_MAX = 320, SIDEBAR_DEFAULT = 240
 const width = ref(readStoredWidth('si.sidebar.width', SIDEBAR_MIN, SIDEBAR_MAX, SIDEBAR_DEFAULT))
 const collapsed = ref(readCollapsed())
 function readCollapsed() { try { return localStorage.getItem('si.sidebar.collapsed') === '1' } catch { return false } }
@@ -219,7 +219,7 @@ async function onCommand(cmd: string) {
 .collapse { margin-left: auto; }
 .collapsed .brand { justify-content: center; padding: 0; }
 .block { flex: none; padding: 4px 8px; }
-.menu { display: flex; flex-direction: column; gap: 2px; padding-bottom: 12px; border-bottom: 1px solid var(--si-hair-faint); }
+.menu { display: flex; flex-direction: column; gap: 2px; padding-bottom: 12px; }
 .recent { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 0; }
 .bottom { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; padding-bottom: 12px; border-top: 1px solid var(--si-hair-faint); }
 
@@ -242,15 +242,11 @@ async function onCommand(cmd: string) {
   transition: background-color var(--si-dur-1) var(--si-ease), color var(--si-dur-1) var(--si-ease), transform var(--si-dur-1) var(--si-ease);
 }
 .item svg, .new-session svg { flex: none; }
-.item:hover { background: var(--si-surface-2); color: var(--si-ink-1); }
-/* 选中：蓝色渐变浅底 + 左侧 3px 竖条（完整特效带辉光） */
-.item.selected { background: linear-gradient(90deg, color-mix(in srgb, var(--si-blue) 20%, transparent), color-mix(in srgb, var(--si-blue) 6%, transparent)); color: var(--si-ink-1); }
-.item.selected svg { color: var(--si-blue-ink); }
-.item.selected::before { content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--si-blue); box-shadow: var(--si-glow-blue); }
+.item:hover, .new-session:hover:not(:disabled) { background: var(--si-hover-bg); color: var(--si-ink-1); }
+/* 选中：中性灰底 + 字重 600，无竖条、无品牌色；图标保持墨色（V3.4 visual.md 第六节） */
+.item.selected { background: var(--si-select-bg); color: var(--si-ink-1); font-weight: 600; }
 .item:disabled, .new-session:disabled { cursor: not-allowed; opacity: .6; }
 .item:active:not(:disabled), .new-session:active:not(:disabled) { transform: scale(.97); }
-.new-session { justify-content: center; border: 1px solid color-mix(in srgb, var(--si-blue) 35%, transparent); background: color-mix(in srgb, var(--si-blue) 8%, transparent); color: var(--si-blue-ink); }
-.new-session:hover:not(:disabled) { background: color-mix(in srgb, var(--si-blue) 14%, transparent); border-color: color-mix(in srgb, var(--si-blue) 55%, transparent); }
 /* 提醒：铃铛右上角琥珀色点，计数靠右；收起时只剩带点的铃铛 */
 .bell { position: relative; display: grid; place-items: center; }
 .bell-dot { position: absolute; top: -2px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--si-warn); box-shadow: 0 0 0 2px var(--si-bg-side); }
@@ -260,12 +256,12 @@ kbd { margin-left: auto; font: var(--si-font-caption); color: var(--si-ink-4); }
 .user-row { display: flex; align-items: center; gap: 4px; }
 .user-row :deep(.el-dropdown) { flex: 1; min-width: 0; }
 .user { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 40px; padding: 0 8px; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--si-ink-2); font: var(--si-font-body); cursor: pointer; transition: background-color var(--si-dur-1) var(--si-ease); }
-.user:hover { background: var(--si-surface-2); }
-.avatar { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: color-mix(in srgb, var(--si-blue) 16%, var(--si-bg-side)); color: var(--si-blue-ink); font-weight: 600; }
+.user:hover { background: var(--si-hover-bg); }
+.avatar { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--si-select-bg); color: var(--si-ink-1); font-weight: 600; }
 .display-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .user svg { flex: none; color: var(--si-ink-3); }
 .toggle { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--si-ink-3); cursor: pointer; transition: background-color var(--si-dur-1) var(--si-ease), color var(--si-dur-1) var(--si-ease); }
-.toggle:hover { background: var(--si-surface-2); color: var(--si-ink-1); }
+.toggle:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 
 /* 收起为 64px 窄栏：只留图标，文字由悬停提示与 aria-label 提供 */
 .collapsed .label { display: none; }
@@ -280,8 +276,8 @@ kbd { margin-left: auto; font: var(--si-font-caption); color: var(--si-ink-4); }
   min-height: 0;
   overflow-y: auto;
 }
-/* 氛围光：背景属于 .main 自身，不随内容滚动，不动画；三档特效都显示 */
-.main { background-image: var(--si-ambient); background-repeat: no-repeat; }
+/* 主区域就是一张纸：只有一个底色，不加氛围光 */
+.main { background: var(--si-bg-canvas); }
 .main :deep(.confirm-actions) { bottom: 0; }
 .must-change { margin: 0; padding: 48px 32px; text-align: center; color: var(--si-ink-3); }
 </style>

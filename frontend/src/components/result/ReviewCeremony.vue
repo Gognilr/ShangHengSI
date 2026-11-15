@@ -187,7 +187,7 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
 .thumb { position: absolute; left: 5%; top: 60px; width: 96px; height: 128px; padding: 14px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; overflow: hidden; border-radius: var(--si-radius-paper); background: var(--si-paper); box-shadow: var(--si-paper-shadow); }
 .bar { height: 5px; border-radius: 3px; background: var(--si-hair-strong); }
 .bar.cap { background: var(--el-color-primary); width: 36% !important; }
-.scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--el-color-primary); box-shadow: var(--si-glow-blue); animation: scan 1.3s var(--si-ease) both; }
+.scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--el-color-primary); animation: scan 1.3s var(--si-ease) both; }
 @keyframes scan { from { transform: translateY(0); opacity: 1; } to { transform: translateY(126px); opacity: 0; } }
 /* 飞入保险箱的小胶囊：lane 与区间等宽，用 translateX(100%) 移动整段距离 */
 .fly { position: absolute; left: calc(5% + 96px); width: calc(22% - 96px); top: 60px; height: 128px; }
@@ -200,7 +200,7 @@ onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
 .vault { left: 30%; color: var(--el-color-primary); }
 .vault-n { font: var(--si-font-stat); color: var(--el-text-color-primary); }
 .gate { left: 50%; padding: 12px 14px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-card); background: var(--si-surface-1); color: var(--si-ink-3); transition: border-color var(--si-dur-2) var(--si-ease), box-shadow var(--si-dur-2) var(--si-ease); }
-.gate.lit { border-color: var(--el-color-primary); color: var(--el-color-primary); box-shadow: var(--si-glow-blue); }
+.gate.lit { border-color: var(--el-color-primary); color: var(--el-color-primary); }
 .track { position: absolute; left: calc(50% + 70px); right: calc(14% + 40px); top: 104px; height: 8px; border-top: 2px dashed var(--si-hair-strong); overflow: visible; }
 .track-label { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
 .track .lane { top: -5px; opacity: 0; }

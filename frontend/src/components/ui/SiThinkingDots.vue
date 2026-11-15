@@ -5,7 +5,7 @@ import { useFx, useLoop } from '@/utils/motion'
 // 组件存在即在等待（由所在处 v-if 控制）；完整：轨道循环（页面隐藏暂停）；精简：静态排布；关闭：不显示。
 // 位置、直径、颜色、轨道半径与摆角、周期均写死，是状态指示，不是数据视图。
 const fx = useFx(), playing = useLoop(ref(true))
-const COLORS = ['--si-blue', '--si-cyan', '--si-indigo', '--si-ink-4']
+const COLORS = ['--si-brand', '--si-brand-2', '--si-accent', '--si-ink-4']
 // [x, y, 直径, 颜色, 半径, 起角, 终角, 轨道周期s, 呼吸周期s]
 const DOTS: [number, number, number, number, number, number, number, number, number][] = [
   [10, 10, 5, 0, 7, -40, 140, 2.3, 1.9],

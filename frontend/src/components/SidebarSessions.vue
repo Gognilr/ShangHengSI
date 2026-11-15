@@ -63,18 +63,18 @@ function onCommand(item: SessionItem, cmd: string) { if (cmd === 'rename') renam
 
 <style scoped>
 .sessions { padding: 0 8px; }
-.heading { margin: 0; padding: 8px 12px 4px; font: var(--si-font-meta); color: var(--el-text-color-secondary); }
+.heading { margin: 0; padding: 12px 12px 6px; font: var(--si-font-overline); letter-spacing: .08em; color: var(--si-ink-3); }
 ul { margin: 0; padding: 0; list-style: none; }
 .row { position: relative; display: flex; align-items: center; border-radius: var(--el-border-radius-base); }
-.row:hover { background: var(--el-fill-color-light); }
+.row:hover { background: var(--si-hover-bg); }
 .row { transition: background-color var(--si-dur-1) var(--si-ease); }
-.row.current { background: color-mix(in srgb, var(--si-blue) 12%, transparent); }
+.row.current { background: var(--si-select-bg); }
 .link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 4px 6px 12px; color: var(--el-text-color-regular); text-decoration: none; font: var(--si-font-body); }
-.row.current .link { color: var(--si-ink-1); }
+.row.current .link { color: var(--si-ink-1); font-weight: 500; }
 .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag { flex: none; padding: 0 6px; border-radius: 4px; font: var(--si-font-label-sm); }
-.tag--busy { color: var(--si-blue-ink); background: color-mix(in srgb, var(--si-blue) 14%, transparent); }
-.tag--done { color: var(--el-color-success); background: var(--el-color-success-light-9); }
+.tag--busy { color: var(--si-blue-ink); background: var(--si-blue-tint); }
+.tag--done { color: var(--si-ink-3); background: transparent; }
 .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--el-color-primary); }
 .more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--el-text-color-secondary); cursor: pointer; opacity: 0; transition: opacity var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
 .row:hover .more, .row:focus-within .more, .more[aria-expanded="true"] { opacity: 1; }

@@ -13,16 +13,16 @@ withDefaults(defineProps<{ active: number; status?: 'wait' | 'process' | 'finish
   </ol>
 </template>
 <style scoped>
-.step-bar { display: flex; margin: 0 0 24px; padding: 0; list-style: none; }
-li { flex: 1; min-width: 0; display: flex; align-items: center; color: var(--el-text-color-secondary); }
+/* V3.4 visual.md 第五节：一行文字步骤，上下各一条细线；已完成灰底勾，当前松青实心序号 + 600 字，其余细线圈 */
+.step-bar { display: flex; margin: 0 0 24px; padding: 12px 0; border-top: 1px solid var(--si-hair); border-bottom: 1px solid var(--si-hair); list-style: none; font: var(--si-font-label); }
+li { flex: 1; min-width: 0; display: flex; align-items: center; color: var(--si-ink-3); }
 li:last-child { flex: none; }
-.connector { flex: 1; height: 1px; margin: 0 16px; background: var(--el-border-color); }
-.number { flex: none; width: 32px; height: 32px; margin-right: 12px; border: 1px solid var(--el-border-color); border-radius: 50%; background: var(--el-bg-color-page); display: grid; place-items: center; }
-.current { font-weight: 600; color: var(--el-color-primary); }
-.current .number { background: var(--el-color-primary); color: var(--el-color-white); border-color: var(--el-color-primary); box-shadow: 0 0 0 4px var(--el-color-primary-light-9); }
-.done { color: var(--el-color-primary); }
-.done .number { color: var(--el-color-primary); background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); }
-.done .connector { background: var(--el-color-primary); }
-.error { color: var(--el-color-danger); }
-.error .number { background: var(--el-color-danger); border-color: var(--el-color-danger); box-shadow: 0 0 0 4px var(--el-color-danger-light-9); }
+.connector { flex: 1; height: 1px; margin: 0 16px; background: var(--si-hair); }
+.number { flex: none; width: 24px; height: 24px; margin-right: 10px; border: 1px solid var(--si-hair-strong); border-radius: 50%; box-sizing: border-box; display: grid; place-items: center; font: var(--si-font-code-sm); }
+.current { font-weight: 600; color: var(--si-ink-1); }
+.current .number { background: var(--si-brand); color: var(--si-white); border-color: var(--si-brand); }
+.done { color: var(--si-ink-2); }
+.done .number { color: var(--si-ink-2); background: var(--si-surface-2); border-color: transparent; }
+.error { color: var(--si-danger-ink); }
+.error .number { background: var(--si-danger); color: var(--si-white); border-color: var(--si-danger); }
 </style>

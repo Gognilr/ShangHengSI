@@ -612,9 +612,9 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 @keyframes cv-flip { from { transform: rotateX(90deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes cv-fade { from { opacity: 0; } to { opacity: 1; } }
 
-.pop, .pickbar { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 420px; padding: 8px 10px; border-radius: 10px; background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-2); }
+.pop, .pickbar { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 420px; padding: 8px 10px; border-radius: 10px; background: var(--si-surface-pop); box-shadow: var(--si-shadow-3); }
 .pop { width: 268px; }
-.tip { position: absolute; z-index: 19; display: flex; align-items: center; gap: 6px; max-width: 312px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--si-surface-pop); box-shadow: 0 0 0 1px var(--si-hair-strong), var(--si-shadow-2); pointer-events: none; white-space: nowrap; }
+.tip { position: absolute; z-index: 19; display: flex; align-items: center; gap: 6px; max-width: 312px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--si-surface-pop); box-shadow: var(--si-shadow-3); pointer-events: none; white-space: nowrap; }
 .tip.kept-note { pointer-events: auto; }
 .tip-label { flex: none; color: var(--si-ink-3); font: var(--si-font-label-sm); }
 .tip-orig { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-radius: 4px; background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-label); }

@@ -1,56 +1,60 @@
 /*
  * 设计令牌（V31-U1 设计第一节）。全仓只有本文件可以写颜色值。
- * A 浅色外壳与纸面 → B 夜幕外壳 → 特效级别 → C 映射与派生，顺序不可调换。
+ * A 浅色外壳与纸面 → B 夜幕外壳 → C 映射与派生，顺序不可调换。
  * C 块同时写在 :root 与 .si-paper 上：自定义属性在声明的元素上取值，纸面内的派生色才会按所在外壳重算。
  * 纸面跟随外壳：浅色外壳为白纸黑字，夜幕外壳为暗纸浅字（V31Q-86，2026-11-03 用户决定）。
  */
 
-/* A 浅色外壳与纸面 */
+/* A 浅色外壳与纸面（V3.4 素纸：主区与面板同一张纸，层次靠细线与留白，docs/v34/design/visual.md 第二节） */
 :root, .si-paper {
-  --si-bg-canvas: #F5F5F7;
-  --si-bg-side: #EEEEF1;
-  --si-surface-1: #FFFFFF;
-  --si-surface-2: #F2F2F5;
+  --si-bg-canvas: #FBFBFA;
+  --si-bg-side: #F4F4F2;
+  --si-surface-1: #FBFBFA;
+  --si-surface-2: #F1F1EE;
   --si-surface-pop: #FFFFFF;
   --si-field: #FFFFFF;
-  --si-hair: #E3E3E8;
-  --si-hair-strong: #D2D2D7;
-  --si-hair-faint: #ECECF0;
-  --si-ink-1: #1D1D1F;
-  --si-ink-2: #424245;
-  --si-ink-3: #6E6E73;
-  --si-ink-4: #8E8E93;
-  --si-ink-5: #B8B8BD;
-  --si-blue: #0071E3;
-  --si-blue-ink: #0066CC;
-  --si-cyan: #32ADE6;
-  --si-indigo: #5856D6;
-  --si-focus: #0071E3;
-  --si-danger: #D70015;
-  --si-warn: #E59400;
-  --si-ok: #248A3D;
-  --si-info: #6E6E73;
-  --si-danger-ink: #D70015;
-  --si-warn-ink: #975A00;
-  --si-ok-ink: #1E7B34;
+  --si-hair: #E6E6E2;
+  --si-hair-strong: #D3D3CE;
+  --si-hair-faint: #EEEEEA;
+  --si-ink-1: #1A1C20;
+  --si-ink-2: #3A3D44;
+  --si-ink-3: #646870;
+  --si-ink-4: #8A8E96;
+  --si-ink-5: #B9BCC2;
+  /* 主色松针青、浅松青；辅助色松果赭、琥珀（只用于动效） */
+  --si-brand: #1F5F58;
+  --si-blue-ink: #1B564F;
+  --si-blue-press: #184C46;
+  --si-brand-2: #5FA89C;
+  --si-accent: #9C5B34;
+  --si-accent-2: #C99A5B;
+  --si-blue-tint: rgba(31, 95, 88, .09);
+  --si-select-bg: rgba(26, 28, 32, .06);
+  --si-hover-bg: rgba(26, 28, 32, .04);
+  --si-logo-a: #1F5F58;
+  --si-focus: #1F5F58;
+  --si-danger: #C4262E;
+  --si-warn: #C28A00;
+  /* 已完成用墨色对勾，不用绿色 */
+  --si-ok: #3A3D44;
+  --si-info: #7A7E86;
+  --si-danger-ink: #B3202A;
+  --si-warn-ink: #7D5F00;
+  --si-ok-ink: #3A3D44;
   --si-press: #000000;
-  --si-stage: #E8EAEE;
-  --si-island-bg: #1D1D1F;
-  --si-island-ink: #F5F5F7;
-  --si-toast-bg: #1D1D1F;
+  --si-stage: #F1F1EE;
+  --si-island-bg: #1A1C20;
+  --si-island-ink: #F4F4F2;
+  --si-toast-bg: #1A1C20;
   --si-toast-ink: #FFFFFF;
   --si-mask: rgba(0, 0, 0, .32);
-  --si-scrollbar: #C7C7CC;
+  --si-scrollbar: #C9CAC6;
   --si-text-reading: var(--si-paper-ink-2);
-  --si-shadow-1: 0 1px 2px rgba(16, 24, 40, .06);
-  --si-panel-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 4px 16px rgba(16, 24, 40, .04);
-  --si-shadow-2: 0 8px 24px rgba(16, 24, 40, .08);
-  --si-shadow-3: 0 24px 60px rgba(16, 24, 40, .16);
-  --si-paper-shadow: 0 0 0 1px rgba(0, 0, 0, .08), 0 12px 40px rgba(0, 0, 0, .18);
-  --si-ambient: radial-gradient(900px 500px at 15% -10%, color-mix(in srgb, var(--si-blue) 7%, transparent), transparent 60%), radial-gradient(700px 500px at 100% 10%, color-mix(in srgb, var(--si-indigo) 5%, transparent), transparent 60%);
-  --si-glow-blue: 0 6px 20px color-mix(in srgb, var(--si-blue) 30%, transparent);
-  --si-blur: blur(20px) saturate(140%);
-  /* 替换类别（R3.md 5.4） */
+  /* 阴影只属于浮层与首页输入框 */
+  --si-shadow-3: 0 0 0 1px rgba(26, 28, 32, .06), 0 12px 32px rgba(26, 28, 32, .10);
+  --si-shadow-composer: 0 1px 2px rgba(26, 28, 32, .04), 0 6px 20px rgba(26, 28, 32, .05);
+  --si-paper-shadow: 0 0 0 1px #E6E6E2;
+  /* 替换类别（R3.md 5.4）；“地址”由绿改橄榄，避开松青 */
   --si-k-org: #2F5E9E;
   --si-k-org-bg: #E8EEF7;
   --si-k-person: #6941C6;
@@ -59,85 +63,86 @@
   --si-k-contact-bg: #E5F4F6;
   --si-k-id: #8A5A2B;
   --si-k-id-bg: #F4EEE7;
-  --si-k-addr: #2E7D4F;
-  --si-k-addr-bg: #E9F4EC;
+  --si-k-addr: #6B6B2A;
+  --si-k-addr-bg: #F1F1E2;
   --si-k-amount: #9C6500;
   --si-k-amount-bg: #FFF3D6;
   --si-k-other: #667085;
   --si-k-other-bg: #F0F1F3;
   /* 纸面（夜幕在 B 块改为暗纸） */
   --si-paper: #FFFFFF;
-  --si-paper-ink: #1D1D1F;
+  --si-paper-ink: #1A1C20;
   --si-paper-ink-2: #333A45;
   /* 脱敏黑条（页面不存在页）：夜幕下取比暗纸更深的底，不变成白条 */
-  --si-redact-bar: #1D1D1F;
-  --si-cap-bg: #E8F1FC;
-  --si-cap-ink: #0066CC;
-  --si-code-bg: #0B1A2E;
-  --si-code-ink: #7CC4FF;
+  --si-redact-bar: #1A1C20;
+  --si-cap-bg: #E6EFED;
+  --si-cap-ink: #1B564F;
+  --si-code-bg: #ECECE8;
+  --si-code-ink: #1A1C20;
   /* 两种外壳相同的取值 */
-  --si-brand-navy: #173B68;
   --si-white: #FFFFFF;
 }
 
-/* B 夜幕外壳（纸面上重新声明，压过 A 块写在 .si-paper 上的浅色值） */
+/* B 夜幕外壳（中性炭灰；纸面上重新声明，压过 A 块写在 .si-paper 上的浅色值） */
 html[data-shell="night"], html[data-shell="night"] .si-paper {
   color-scheme: dark;
-  --si-bg-canvas: #090B10;
-  --si-bg-side: #0E1118;
-  --si-surface-1: #12161E;
-  --si-surface-2: #191E28;
-  --si-surface-pop: #1C212C;
-  --si-field: #0E1117;
-  --si-hair: #242A36;
-  --si-hair-strong: #303746;
-  --si-hair-faint: #1C212B;
-  --si-ink-1: #F2F5F9;
-  --si-ink-2: #C9D0DA;
-  --si-ink-3: #8D97A6;
-  --si-ink-4: #6B7586;
-  --si-ink-5: #4E5766;
-  --si-blue: #0A84FF;
-  --si-blue-ink: #4DA3FF;
-  --si-cyan: #64D2FF;
-  --si-indigo: #5E5CE6;
-  --si-focus: #64D2FF;
-  --si-danger: #FF453A;
-  --si-warn: #FF9F0A;
-  --si-ok: #30D158;
-  --si-info: #8E8E93;
-  --si-danger-ink: #FF6961;
-  --si-warn-ink: #FFB340;
-  --si-ok-ink: #30D158;
+  --si-bg-canvas: #15171A;
+  --si-bg-side: #0F1113;
+  --si-surface-1: #15171A;
+  --si-surface-2: #1D2024;
+  --si-surface-pop: #202328;
+  --si-field: #1A1C20;
+  --si-hair: #2A2D32;
+  --si-hair-strong: #383C42;
+  --si-hair-faint: #212428;
+  --si-ink-1: #ECEEF1;
+  --si-ink-2: #C5C9D0;
+  --si-ink-3: #9096A0;
+  --si-ink-4: #6C727C;
+  --si-ink-5: #4C5159;
+  --si-brand: #2F8177;
+  --si-blue-ink: #7FCDBF;
+  --si-blue-press: #296F66;
+  --si-brand-2: #5DB3A5;
+  --si-accent: #D39A6A;
+  --si-accent-2: #E6BE8A;
+  --si-blue-tint: rgba(127, 205, 191, .13);
+  --si-select-bg: rgba(236, 238, 241, .08);
+  --si-hover-bg: rgba(236, 238, 241, .05);
+  --si-logo-a: #5DB3A5;
+  --si-focus: #7FCDBF;
+  --si-danger: #F0655C;
+  --si-warn: #E6B43C;
+  --si-ok: #C5C9D0;
+  --si-info: #8D939D;
+  --si-danger-ink: #FF8A80;
+  --si-warn-ink: #F0C75E;
+  --si-ok-ink: #C5C9D0;
   --si-press: #FFFFFF;
-  --si-stage: #0D1016;
+  --si-stage: #101214;
   --si-island-bg: #000000;
-  --si-island-ink: #F5F5F7;
-  --si-toast-bg: #F2F5F9;
-  --si-toast-ink: #0C1017;
+  --si-island-ink: #ECEEF1;
+  --si-toast-bg: #ECEEF1;
+  --si-toast-ink: #15171A;
   --si-mask: rgba(0, 0, 0, .55);
-  --si-scrollbar: #3A4252;
+  --si-scrollbar: #3A3E45;
   --si-text-reading: var(--si-ink-2);
-  --si-shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
-  --si-panel-shadow: none;
-  --si-shadow-2: 0 8px 24px rgba(0, 0, 0, .35);
-  --si-shadow-3: 0 24px 60px rgba(0, 0, 0, .5);
-  --si-paper-shadow: 0 0 0 1px rgba(255, 255, 255, .07), 0 12px 40px rgba(0, 0, 0, .45);
-  --si-paper: #1C212B;
-  --si-paper-ink: #E6EAF0;
-  --si-paper-ink-2: #C9D0DA;
-  --si-redact-bar: #090B10;
-  --si-cap-bg: #16314F;
-  --si-cap-ink: #8CC8FF;
-  --si-code-bg: #0B1A2E;
-  --si-code-ink: #7CC4FF;
-  --si-ambient: radial-gradient(900px 500px at 15% -10%, color-mix(in srgb, var(--si-blue) 14%, transparent), transparent 60%), radial-gradient(700px 500px at 100% 10%, color-mix(in srgb, var(--si-indigo) 10%, transparent), transparent 60%);
-  --si-glow-blue: 0 6px 20px color-mix(in srgb, var(--si-blue) 35%, transparent);
+  --si-shadow-3: 0 0 0 1px rgba(255, 255, 255, .07), 0 16px 40px rgba(0, 0, 0, .5);
+  --si-shadow-composer: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  --si-paper-shadow: 0 0 0 1px #2A2D32;
+  --si-paper: #1D2024;
+  --si-paper-ink: #E6E9EE;
+  --si-paper-ink-2: #C5C9D0;
+  --si-redact-bar: #0F1113;
+  --si-cap-bg: #17302D;
+  --si-cap-ink: #7FCDBF;
+  --si-code-bg: #2A2D32;
+  --si-code-ink: #ECEEF1;
   --si-k-org: color-mix(in srgb, #2F5E9E 50%, #FFFFFF);
   --si-k-person: color-mix(in srgb, #6941C6 50%, #FFFFFF);
   --si-k-contact: color-mix(in srgb, #0E7C8A 50%, #FFFFFF);
   --si-k-id: color-mix(in srgb, #8A5A2B 50%, #FFFFFF);
-  --si-k-addr: color-mix(in srgb, #2E7D4F 50%, #FFFFFF);
+  --si-k-addr: color-mix(in srgb, #6B6B2A 50%, #FFFFFF);
   --si-k-amount: color-mix(in srgb, #9C6500 50%, #FFFFFF);
   --si-k-other: color-mix(in srgb, #667085 50%, #FFFFFF);
   --si-k-org-bg: color-mix(in srgb, var(--si-k-org) 18%, var(--si-surface-1));
@@ -149,22 +154,21 @@ html[data-shell="night"], html[data-shell="night"] .si-paper {
   --si-k-other-bg: color-mix(in srgb, var(--si-k-other) 18%, var(--si-surface-1));
 }
 
-/* 特效级别：精简与关闭时只去掉毛玻璃（耗性能）。氛围光与辉光是不动的装饰，属于外壳观感，三档都保留（V321Q-49） */
-html[data-fx="lite"], html[data-fx="off"] {
-  --si-blur: none;
-}
+/* 特效级别只影响运动（motion.css 与各等待动效）；静止的外观三档完全一样，不再有氛围光、辉光与毛玻璃（V3.4 visual.md 第八节） */
 
 /* C 映射与派生 */
 :root, .si-paper {
   /* 字体与字号（V31-U1 1.4）：字重只用 400、500、600 */
   --si-font-sans: "SI Sans", "Microsoft YaHei", "PingFang SC", sans-serif;
   --si-font-mono: "SI Mono", "Cascadia Mono", Consolas, monospace;
-  --si-font-display: 600 32px/1.25 var(--si-font-sans);
-  --si-font-title-lg: 600 28px/1.3 var(--si-font-sans);
-  --si-font-title: 600 22px/1.35 var(--si-font-sans);
+  --si-font-display: 600 30px/1.3 var(--si-font-sans);
+  --si-font-greeting: 400 26px/1.4 var(--si-font-sans);
+  --si-font-title-lg: 600 24px/1.35 var(--si-font-sans);
+  --si-font-title: 600 20px/1.4 var(--si-font-sans);
   --si-font-h2: 600 17px/1.45 var(--si-font-sans);
   --si-font-h3: 600 15px/1.5 var(--si-font-sans);
   --si-font-h4: 600 14px/1.5 var(--si-font-sans);
+  --si-font-overline: 500 12px/1.3 var(--si-font-sans);
   --si-font-label: 500 14px/1.4 var(--si-font-sans);
   --si-font-label-sm: 500 12px/1.3 var(--si-font-sans);
   --si-font-reading: 400 15px/1.8 var(--si-font-sans);
@@ -173,13 +177,13 @@ html[data-fx="lite"], html[data-fx="off"] {
   --si-font-caption: 400 12px/1.6 var(--si-font-sans);
   --si-font-code: 400 13px/1.5 var(--si-font-mono);
   --si-font-code-sm: 500 12px/1.2 var(--si-font-mono);
-  --si-font-stat: 500 24px/1.2 var(--si-font-mono);
+  --si-font-stat: 500 28px/1.2 var(--si-font-mono);
   /* 圆角六级、控件尺寸（V31-U1 1.5） */
-  --si-radius-paper: 4px;
+  --si-radius-paper: 3px;
   --si-radius-tag: 6px;
-  --si-radius-card: 12px;
-  --si-radius-pop: 16px;
-  --si-radius-sheet: 20px;
+  --si-radius-card: 10px;
+  --si-radius-pop: 14px;
+  --si-radius-sheet: 16px;
   --el-border-radius-base: 8px;
   --el-border-radius-small: 6px;
   --el-border-radius-round: 20px;
@@ -188,18 +192,17 @@ html[data-fx="lite"], html[data-fx="off"] {
   --el-component-size-small: 28px;
   --el-font-family: var(--si-font-sans);
   /* V31-U3 1.3：AI 分区色；纸面问题标注底（随纸面底色）；未能还原标记底 */
-  --si-ai: var(--si-indigo);
+  --si-ai: var(--si-accent);
   --si-hl-high: color-mix(in srgb, var(--si-danger) 14%, var(--si-paper));
   --si-hl-medium: color-mix(in srgb, var(--si-warn) 16%, var(--si-paper));
   --si-hl-low: color-mix(in srgb, var(--si-info) 16%, var(--si-paper));
   --si-unresolved-bg: color-mix(in srgb, var(--si-warn) 14%, transparent);
-  /* 旧令牌（V31-U1 1.7） */
+  /* 旧令牌名（V31-U1 1.7）：--si-blue 是 --si-brand 的旧名，新代码用 --si-brand */
+  --si-blue: var(--si-brand);
   --si-focus-ring: var(--si-focus);
   --si-stage-bg: var(--si-stage);
   --si-shadow-pop: var(--si-shadow-3);
   --si-card-hover-border: var(--si-hair-strong);
-  --si-brand-blue: var(--si-blue);
-  --si-brand-gradient: linear-gradient(135deg, var(--si-brand-navy) 0%, var(--si-blue) 55%, var(--si-cyan) 100%);
   /* Element Plus：底色、文字、边框、填充、遮罩、阴影 */
   --el-color-white: var(--si-white);
   --el-bg-color: var(--si-surface-1);
@@ -225,18 +228,18 @@ html[data-fx="lite"], html[data-fx="off"] {
   --el-fill-color-blank: var(--si-field);
   --el-mask-color: var(--si-mask);
   --el-mask-color-extra-light: color-mix(in srgb, var(--si-surface-1) 30%, transparent);
-  --el-box-shadow: var(--si-shadow-2);
-  --el-box-shadow-light: var(--si-shadow-1);
-  --el-box-shadow-lighter: var(--si-shadow-1);
+  --el-box-shadow: var(--si-shadow-3);
+  --el-box-shadow-light: none;
+  --el-box-shadow-lighter: none;
   --el-box-shadow-dark: var(--si-shadow-3);
   /* Element Plus：状态色。light-N 为状态色 (100-10N)% 混入面板底色，dark-2 混入 --si-press */
-  --el-color-primary: var(--si-blue);
-  --el-color-primary-light-3: color-mix(in srgb, var(--si-blue) 70%, var(--si-surface-1));
-  --el-color-primary-light-5: color-mix(in srgb, var(--si-blue) 50%, var(--si-surface-1));
-  --el-color-primary-light-7: color-mix(in srgb, var(--si-blue) 30%, var(--si-surface-1));
-  --el-color-primary-light-8: color-mix(in srgb, var(--si-blue) 20%, var(--si-surface-1));
-  --el-color-primary-light-9: color-mix(in srgb, var(--si-blue) 10%, var(--si-surface-1));
-  --el-color-primary-dark-2: color-mix(in srgb, var(--si-blue) 82%, var(--si-press));
+  --el-color-primary: var(--si-brand);
+  --el-color-primary-light-3: color-mix(in srgb, var(--si-brand) 70%, var(--si-surface-1));
+  --el-color-primary-light-5: color-mix(in srgb, var(--si-brand) 50%, var(--si-surface-1));
+  --el-color-primary-light-7: color-mix(in srgb, var(--si-brand) 30%, var(--si-surface-1));
+  --el-color-primary-light-8: color-mix(in srgb, var(--si-brand) 20%, var(--si-surface-1));
+  --el-color-primary-light-9: color-mix(in srgb, var(--si-brand) 10%, var(--si-surface-1));
+  --el-color-primary-dark-2: var(--si-blue-press);
   --el-color-success: var(--si-ok);
   --el-color-success-light-3: color-mix(in srgb, var(--si-ok) 70%, var(--si-surface-1));
   --el-color-success-light-5: color-mix(in srgb, var(--si-ok) 50%, var(--si-surface-1));

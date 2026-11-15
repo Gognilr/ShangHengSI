@@ -188,7 +188,7 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 .sent:hover, .sent:focus-visible { background: var(--si-surface-2); outline: none; }
 .sent.playing { background: color-mix(in srgb, var(--si-blue) 10%, transparent); }
 .sent.flash { background: var(--si-unresolved-bg); }
-.tip { position: absolute; left: 0; bottom: 100%; z-index: 3; display: none; align-items: center; gap: 8px; padding: 2px 8px; border: 1px solid var(--si-hair-strong); border-radius: 6px; background: var(--si-surface-1); font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; box-shadow: var(--si-shadow-1, none); }
+.tip { position: absolute; left: 0; bottom: 100%; z-index: 3; display: none; align-items: center; gap: 8px; padding: 2px 8px; border: 1px solid var(--si-hair-strong); border-radius: 6px; background: var(--si-surface-pop); font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
 .sent:hover > .tip, .sent:focus-visible > .tip { display: inline-flex; }
 .tplay { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--si-blue); cursor: pointer; font: inherit; }
 .edit-hint { display: inline-flex; align-items: center; gap: 4px; }

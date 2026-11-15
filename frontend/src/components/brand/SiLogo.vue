@@ -1,23 +1,21 @@
 <script setup lang="ts">
-import { useId } from 'vue'
 withDefaults(defineProps<{ size?: 'nav' | 'hero'; showTagline?: boolean; markOnly?: boolean }>(), { size: 'nav', showTagline: false, markOnly: false })
-const gradientId = `si-logo-${useId()}`
 </script>
 
 <template>
   <span class="si-logo" :class="`si-logo--${size}`">
     <span class="mark">
-      <svg viewBox="0 0 64 64" :aria-hidden="markOnly ? undefined : 'true'" :role="markOnly ? 'img' : undefined" :aria-label="markOnly ? '商衡SI' : undefined">
-        <defs><linearGradient :id="gradientId" x1="0" y1="0" x2="1" y2="1"><stop stop-color="var(--si-logo-start)" /><stop offset=".55" stop-color="var(--si-blue)" /><stop offset="1" stop-color="var(--si-cyan)" /></linearGradient></defs>
-        <g transform="skewX(-10) translate(6 0)"><path d="M48 12 H28 a10 10 0 0 0 0 20 H36 a10 10 0 0 1 0 20 H16" fill="none" :stroke="`url(#${gradientId})`" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" /></g>
-        <rect x="3" y="17" width="5" height="5" rx="1.2" fill="var(--si-cyan)" opacity=".9" />
-        <rect x="9" y="24" width="4" height="4" rx="1" fill="var(--si-blue)" opacity=".85" />
-        <rect x="2" y="28" width="3.5" height="3.5" rx=".8" fill="var(--si-cyan)" opacity=".6" />
-        <path d="M34 26.5 l1.6 4 4 1.5 -4 1.5 -1.6 4 -1.6 -4 -4 -1.5 4 -1.5 z" fill="var(--si-white)" />
+      <svg viewBox="0 0 32 32" fill="none" :aria-hidden="markOnly ? undefined : 'true'" :role="markOnly ? 'img' : undefined" :aria-label="markOnly ? '商衡SI' : undefined">
+        <path d="M16 3.2C23 7.9 26.6 13.6 26.6 18.7a10.6 10.6 0 0 1-21.2 0C5.4 13.6 9 7.9 16 3.2Z" stroke="var(--si-logo-a)" :stroke-width="size === 'hero' ? 2 : 2.8" stroke-linejoin="round" />
+        <template v-if="size === 'hero'">
+          <path d="M12.4 9.3L16 12.3L19.6 9.3M9.4 13.6L16 19.1L22.6 13.6" stroke="var(--si-logo-a)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M16 20.3l3.5 3.3-3.5 3.3-3.5-3.3Z" fill="var(--si-accent)" />
+        </template>
+        <path v-else d="M16 13.2l5 4.9-5 4.9-5-4.9Z" fill="var(--si-accent)" />
       </svg>
       <span v-if="!markOnly" class="wordmark">
         <span class="wordmark-name">商衡</span>
-        <span v-if="size === 'hero'" class="wordmark-english" lang="en">Secure Intelligence</span>
+        <span class="wordmark-si" lang="en">SI</span>
       </span>
     </span>
     <span v-if="showTagline && !markOnly" class="tagline">企业安全脱敏与智能审查平台</span>
@@ -25,18 +23,18 @@ const gradientId = `si-logo-${useId()}`
 </template>
 
 <style scoped>
-.si-logo { --si-logo-start: var(--si-brand-navy); display: inline-flex; align-items: center; gap: 12px; white-space: nowrap; }
-.mark { display: inline-flex; align-items: center; gap: 8px; }
+.si-logo { display: inline-flex; align-items: center; gap: 12px; white-space: nowrap; }
+.mark { display: inline-flex; align-items: center; gap: 10px; }
 svg { width: 24px; height: 24px; flex: none; }
-/* 夜幕外壳下深海蓝不可见，图形起点改用主色 */
-:global(html[data-shell="night"]) .si-logo { --si-logo-start: var(--si-blue); }
-.wordmark { display: flex; flex-direction: column; gap: 4px; }
-.wordmark-name { color: var(--si-ink-1); font-size: 18px; font-weight: 600; line-height: 1.2; letter-spacing: 1.5px; }
-.wordmark-english { color: var(--si-blue-ink); font-size: 16px; font-weight: 500; line-height: 1.25; }
-.tagline { border-left: 1px solid var(--si-hair); padding-left: 12px; color: var(--si-ink-3); font-size: 13px; }
-.si-logo--hero { flex-direction: column; align-items: flex-start; }
-.si-logo--hero svg { width: 76px; height: 76px; }
-.si-logo--hero .wordmark-name { font-size: 48px; letter-spacing: 3px; }
-.si-logo--hero .tagline { border: 0; padding: 0; font-size: 16px; letter-spacing: 3px; }
+.wordmark { display: inline-flex; align-items: center; gap: 10px; }
+.wordmark-name { color: var(--si-ink-1); font-size: 18px; font-weight: 600; line-height: 1.2; letter-spacing: .14em; }
+.wordmark-si { border-left: 1px solid var(--si-hair-strong); padding-left: 10px; color: var(--si-ink-3); font: var(--si-font-code-sm); letter-spacing: .06em; }
+.tagline { border-left: 1px solid var(--si-hair); padding-left: 12px; color: var(--si-ink-3); font: var(--si-font-meta); }
+.si-logo--hero { flex-direction: column; align-items: flex-start; gap: 16px; }
+.si-logo--hero .mark { gap: 16px; }
+.si-logo--hero svg { width: 64px; height: 64px; }
+.si-logo--hero .wordmark-name { font-size: 34px; }
+.si-logo--hero .wordmark-si { font-size: 16px; padding-left: 14px; }
+.si-logo--hero .tagline { border: 0; padding: 0; }
 @media (max-width: 1439px) { .si-logo--nav .tagline { display: none; } }
 </style>
