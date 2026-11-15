@@ -29,10 +29,10 @@
 | V33-C-01 | 未选必选项的提示与定位 | Q-06 | Sonnet，medium | Terra，medium | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-C-01.md；用户当天提出并确认方案，提前执行） |
 | V33-C-02 | 采纳 / 忽略后收起并展开下一条 | Q-07 | Sonnet，low | Terra，low | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-C-02.md；用户当天提出） |
 | V33-C-03 | 工控技术词误识别与型号整体识别 | Q-08 | Opus，medium | Sol 6.1，medium | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-C-03.md；用户当天提出） |
-| V33-C-04 | 等待动画 A：渐变审阅光带 | Q-10 | Sonnet，low | Terra，low | 00 | — | 已完成（2026-11-15，Claude Sonnet；浅色 × 完整档目检通过，夜幕与三档逐一目检未做） |
-| V33-C-05 | 等待动画 B：逐行扫描文档（解析等待） | Q-10、Q-11 | Sonnet，medium | Terra，medium | 00 | — | 已完成（2026-11-15，Claude Sonnet；浅色完整档目检，夜幕对比度、精简/关闭档、三处真实解析页未逐一看） |
-| V33-C-06 | 等待动画 C：墨点聚散（对话等待） | Q-10、Q-11 | Sonnet，medium | Terra，medium | C-04 | — | 已完成（2026-11-15，Claude Sonnet；组件单独挂载目检，真实对话等待、夜幕与三档未逐一看） |
-| V33-Z | 复核、SPEC、版本号、全量、增量发布包、服务器升级 | — | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部 | 推送标签前问用户 | 进行中（Codex，全量与前端通过、服务器已升 3.3.0；完整包归档收尾，reports/V33-Z.md） |
+| V33-C-04 | 等待动画 A：渐变审阅光带 | Q-10 | Sonnet，low | Terra，low | 00 | — | 已完成（2026-11-15，Claude Sonnet；Codex 在 V33-Z 补齐浅色/夜幕与三档、快速返回目检，reports/V33-Z.md） |
+| V33-C-05 | 等待动画 B：逐行扫描文档（解析等待） | Q-10、Q-11 | Sonnet，medium | Terra，medium | 00 | — | 已完成（2026-11-15，Claude Sonnet；Codex 在 V33-Z 补齐夜幕/三档与三处真实解析页，并修根样式冲突，reports/V33-Z.md） |
+| V33-C-06 | 等待动画 C：墨点聚散（对话等待） | Q-10、Q-11 | Sonnet，medium | Terra，medium | C-04 | — | 已完成（2026-11-15，Claude Sonnet；Codex 在 V33-Z 补齐真实对话/追问、夜幕/三档与快速连发，reports/V33-Z.md） |
+| V33-Z | 复核、SPEC、版本号、全量、增量发布包、服务器升级 | — | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部 | 推送标签前问用户 | 已完成（2026-11-15，Codex，reports/V33-Z.md；标签推送待用户确认） |
 
 执行顺序：**A-01 → A-02 → B-01 → B-02 → B-03 → Z**（C-01、C-02 由用户 2026-11-15 提出，已先做）。C-04～06（等待动画三案，用户 2026-11-15 确认放入 V3.3）按 C-04 → C-05 → C-06 在 Z 之前做；只改前端，增量包里只多重建 web 镜像。B 批与 A 批没有依赖，额度紧张时可先做 B 批。
 
