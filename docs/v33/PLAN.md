@@ -23,7 +23,7 @@
 | V33-00 | 本计划 | — | Opus | — | — | 用户确认 | 已完成（2026-11-15 用户确认） |
 | V33-A-01 | 构建脚本自动找 Python | Q-01 | Sonnet，medium | Terra，low | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-A-01.md） |
 | V33-A-02 | 增量升级包 | Q-02 | Opus，high | Sol 6.1，high | A-01 | 服务器演练结果交用户 | 已完成（2026-11-15，Claude Opus，reports/V33-A-02.md；演练结果待用户过目） |
-| V33-B-01 | 会议纪要旧数据兼容验证 | Q-03 | Sonnet，medium | Terra，medium | 00 | — | 待执行 |
+| V33-B-01 | 会议纪要旧数据兼容验证 | Q-03 | Sonnet，medium | Terra，medium | 00 | — | 已完成（2026-11-15，Claude Sonnet，reports/V33-B-01.md；全部通过，无代码改动） |
 | V33-B-02 | 真实模型下的回复依据锚点 | Q-04 | Opus，medium | Sol 6.1，medium | 00 | 用户录入密钥；结果交用户 | 待执行 |
 | V33-B-03 | 统一的“页面不存在”页 | Q-05 | Sonnet，low | Terra，low | 00 | — | 待执行（用户 2026-11-15 确认做） |
 | V33-C-01 | 未选必选项的提示与定位 | Q-06 | Sonnet，medium | Terra，medium | 00 | — | 已完成（2026-11-15，Claude Opus，reports/V33-C-01.md；用户当天提出并确认方案，提前执行） |
