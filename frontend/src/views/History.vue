@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
@@ -12,7 +12,7 @@ import TableSkeleton from '@/components/TableSkeleton.vue'
 import { docTypeLabel, stanceLabel, statusLabel, statusTag } from '@/utils/labels'
 import type { SaveResult } from '@/utils/save'
 import { useTableMaxHeight } from '@/utils/tableHeight'
-import { formatDate, formatDateTime } from '@/utils/time'
+import { formatDate, formatDateTimeMinute } from '@/utils/time'
 import { FileSearch, MessageSquare, Search } from '@lucide/vue'
 
 const router = useRouter()
@@ -80,6 +80,24 @@ function search() {
   page.value = 1
   void load()
 }
+// 输入即筛选：停顿 300ms 后查询；回车、清除、选日期立即查询
+let debounce: ReturnType<typeof setTimeout> | undefined
+function typing() { clearTimeout(debounce); debounce = setTimeout(search, 300) }
+onBeforeUnmount(() => clearTimeout(debounce))
+
+/** 名称第二行小字：类型 · 文件类型 · 立场（V34-A-05，原三列并入名称） */
+function subline(row: HistoryItem) {
+  const parts = [row.kind === 'session' ? '会话' : '审核任务']
+  if (row.doc_type) parts.push(docTypeLabel(row.doc_type))
+  if (row.kind === 'review' || row.run_count) parts.push(`${stanceLabel(row.stance)}立场`)
+  return parts.join(' · ')
+}
+/** 状态：圆点 + 文字（V34-A-05） */
+function statusView(row: HistoryItem): { text: string; tone: string } {
+  if (row.reviewing) return { text: '审核中', tone: 'busy' }
+  if (row.kind === 'session') return { text: row.run_count ? `已审核 ${row.run_count} 轮` : '对话', tone: row.run_count ? 'primary' : 'info' }
+  return { text: statusLabel(row.status), tone: statusTag(row.status).type }
+}
 
 function open(row: HistoryItem) {
   // 工作台会话回到工作台（发起过审核的直接看审核视图）；旧审核任务用原页面打开，未完成的由结果页转到对应步骤（V32-B-01）
@@ -112,10 +130,10 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page page--wide">
-    <section class="panel history-table">
+  <div class="page page--wide history-page">
+    <header class="head"><h1 class="entry-title">历史记录</h1><span class="hint">共 {{ total }} 条 · 仅本人可见</span></header>
     <div class="filters">
-      <el-input v-model="q" aria-label="按文件名搜索" clearable placeholder="按文件名搜索" class="q" @keyup.enter="search" @clear="search"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
+      <el-input v-model="q" aria-label="按文件名搜索" clearable placeholder="按文件名搜索" class="q" @input="typing" @keyup.enter="search" @clear="search"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
       <el-date-picker
         v-model="range"
         type="daterange"
@@ -125,32 +143,22 @@ onMounted(load)
         end-placeholder="结束日期"
         @change="search"
       />
-      <el-button @click="search">查询</el-button><el-button class="new-review" type="primary" @click="router.push('/review')">新建审核</el-button>
     </div>
 
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />
 
-    <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['160px', '1fr', '80px', '100px', '70px', '130px', '80px', '80px', '110px', '120px']" />
-    <el-table v-else v-loading="loading" :data="items" :max-height="tableMax">
+    <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['1fr', '150px', '68px', '68px', '148px', '104px', '92px']" />
+    <el-table v-else v-loading="loading" :data="items" :max-height="tableMax" class="history-table">
       <template #empty><EmptyState :icon="FileSearch" title="没有历史记录" description="在工作台提问或完成审核后，记录会出现在这里。"><el-button @click="router.push('/assistant')">去工作台</el-button></EmptyState></template>
-      <el-table-column label="最近活动" width="160">
-        <template #default="{ row }"><span class="num">{{ formatDateTime(row.last_activity_at) }}</span></template>
+      <el-table-column prop="title" label="名称" min-width="300"><template #default="{ row }"><div class="file-cell"><span v-if="row.kind === 'review'" class="file-badge">{{ fileBadge(row.title) }}</span><span v-else class="file-badge"><MessageSquare :size="16" :stroke-width="1.75" /></span><span class="file-text"><span class="file-title" :title="row.title">{{ row.title }}</span><span class="file-sub">{{ subline(row) }}</span></span></div></template></el-table-column>
+      <el-table-column label="状态" width="150">
+        <template #default="{ row }"><span class="status" :class="`tone-${statusView(row).tone}`"><i class="dot" />{{ statusView(row).text }}</span></template>
       </el-table-column>
-      <el-table-column prop="title" label="名称" min-width="260" show-overflow-tooltip><template #default="{ row }"><div class="file-cell"><span v-if="row.kind === 'review'" class="file-badge" :class="`badge-${fileBadge(row.title).toLowerCase()}`">{{ fileBadge(row.title) }}</span><span v-else class="file-badge badge-session"><MessageSquare :size="16" :stroke-width="1.75" /></span><span class="file-title">{{ row.title }}</span></div></template></el-table-column>
-      <el-table-column label="类型" width="80"><template #default="{ row }">{{ row.kind === 'session' ? '会话' : '审核任务' }}</template></el-table-column>
-      <el-table-column label="文件类型" width="100">
-        <template #default="{ row }">{{ docTypeLabel(row.doc_type) }}</template>
-      </el-table-column>
-      <el-table-column label="立场" width="70">
-        <template #default="{ row }">{{ row.kind === 'review' || row.run_count ? stanceLabel(row.stance) : '—' }}</template>
-      </el-table-column>
-      <el-table-column label="状态" width="130">
-        <template #default="{ row }"><span v-if="row.reviewing" class="num busy">审核中</span><span v-else-if="row.kind === 'session'" class="num">{{ row.run_count ? `已审核 ${row.run_count} 轮` : '对话' }}</span><el-tag v-else class="status-pill" disable-transitions size="small" :type="statusTag(row.status).type" :effect="statusTag(row.status).effect">{{ statusLabel(row.status) }}</el-tag></template>
-      </el-table-column>
-      <el-table-column label="高风险" width="80" align="center"><template #default="{ row }"><span class="num" :class="{ 'high-count': row.high_count > 0 }">{{ hasRun(row) ? row.high_count : '—' }}</span></template></el-table-column>
-      <el-table-column label="待处理" width="80" align="center"><template #default="{ row }"><span class="num" :class="{ 'pending-count': row.pending_count > 0 }">{{ hasRun(row) ? row.pending_count : '—' }}</span></template></el-table-column>
-      <el-table-column label="保留至" width="110"><template #default="{ row }"><span class="num" :class="{ expiring: expiring(row.task_expires_at) }">{{ row.task_expires_at ? formatDate(row.task_expires_at) : row.kind === 'session' ? '—' : '永久' }}</span></template></el-table-column>
-      <el-table-column label="操作" width="120" fixed="right">
+      <el-table-column label="高风险" width="68" align="right"><template #default="{ row }"><span class="num" :class="row.high_count > 0 && hasRun(row) ? 'high-count' : 'zero'">{{ hasRun(row) ? row.high_count : '—' }}</span></template></el-table-column>
+      <el-table-column label="待处理" width="68" align="right"><template #default="{ row }"><span class="num" :class="row.pending_count > 0 && hasRun(row) ? 'pending-count' : 'zero'">{{ hasRun(row) ? row.pending_count : '—' }}</span></template></el-table-column>
+      <el-table-column label="最近活动" width="148"><template #default="{ row }"><span class="num">{{ formatDateTimeMinute(row.last_activity_at) }}</span></template></el-table-column>
+      <el-table-column label="保留至" width="104"><template #default="{ row }"><span class="num" :class="{ expiring: expiring(row.task_expires_at) }">{{ row.task_expires_at ? formatDate(row.task_expires_at) : row.kind === 'session' ? '—' : '永久' }}</span></template></el-table-column>
+      <el-table-column label="" width="92" align="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="open(row)">{{ row.status === 'draft' ? '继续' : '打开' }}</el-button>
           <RowMore>
@@ -161,7 +169,7 @@ onMounted(load)
       </el-table-column>
     </el-table>
 
-    <div class="pager"><span class="hint">共 {{ total }} 条</span><el-pagination
+    <div class="pager"><el-pagination
       v-model:current-page="page"
       layout="prev, pager, next"
       :page-size="pageSize"
@@ -169,38 +177,31 @@ onMounted(load)
       hide-on-single-page
       @current-change="load"
     /></div>
-    </section>
   </div>
 </template>
 
 <style scoped>
-.new-review { margin-left: auto; }
-.expiring { color: var(--si-warn-ink); }
-.status-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 4px; }
-.filters {
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-.q {
-  width: 240px;
-}
-.pager {
-  display: flex;
-  margin-top: 20px;
-  align-items: center;
-  justify-content: space-between;
-}
-.history-table { padding: 20px 24px; }
-.history-table :deep(.el-table__row) { height: 52px; }
+.head { display: flex; align-items: baseline; gap: 16px; }
+.head .entry-title { margin: 0 0 16px; }
+.head .hint { margin: 0; }
+.filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.q { width: 260px; }
+.filters :deep(.el-date-editor) { width: 280px; }
+.pager { display: flex; margin-top: 20px; justify-content: flex-end; }
+.history-table :deep(.el-table__row) { height: 56px; }
 .file-cell { display: flex; gap: 12px; align-items: center; min-width: 0; }
-.file-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-badge { flex: none; width: 32px; height: 32px; display: grid; place-items: center; font-size: 12px; font-weight: 600; border-radius: 6px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
-.badge-xls { color: var(--el-color-success); background: var(--el-color-success-light-9); }
-.badge-pdf { color: var(--el-color-danger); background: var(--el-color-danger-light-9); }
-.badge-session { color: var(--si-blue-ink); background: color-mix(in srgb, var(--si-blue) 14%, transparent); }
-.badge-img { color: var(--el-color-info); background: var(--el-color-info-light-9); }
-.high-count { color: var(--el-color-danger); }
-.high-count { font-weight: 600; }
+.file-text { display: flex; flex-direction: column; min-width: 0; }
+.file-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-1); }
+.file-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-caption); color: var(--si-ink-3); }
+.file-badge { flex: none; width: 30px; height: 30px; display: grid; place-items: center; box-sizing: border-box; border: 1px solid var(--si-hair); border-radius: 6px; color: var(--si-ink-3); font: var(--si-font-caption); }
+.status { display: inline-flex; align-items: center; gap: 6px; color: var(--si-ink-2); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--si-ink-4); }
+.tone-primary .dot, .tone-success .dot { background: var(--si-ink-2); }
+.tone-busy .dot { background: transparent; border: 1.5px solid var(--si-brand); box-sizing: border-box; }
+.tone-warning .dot { background: var(--si-warn-ink); }
+.tone-danger .dot { background: var(--si-danger-ink); }
+.expiring { color: var(--si-warn-ink); }
+.zero { color: var(--si-ink-5); }
+.high-count { color: var(--si-danger-ink); font-weight: 600; }
 .pending-count { color: var(--si-warn-ink); font-weight: 600; }
-.busy { color: var(--si-blue-ink); }
 </style>

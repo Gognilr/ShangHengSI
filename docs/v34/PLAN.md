@@ -31,7 +31,7 @@
 | V34-A-02 | 品牌标识“松鳞”、favicon 与登录页 | Q-08 | Sonnet，medium | Terra，medium | A-01 | — | 已完成（2026-11-16，Codex；Claude Opus 5.5 复核并提交，reports/V34-A-02.md） |
 | V34-A-03 | 导航一事一入口与文件审核页 | Q-01 | Opus，medium | Sol 6.1，medium | A-01 | — | 已完成（2026-11-16，Claude Opus 5.5，reports/V34-A-03.md；另把设置移入账号菜单，Q-12） |
 | V34-A-04 | 工作台首页 | Q-01、06、09 | Opus，medium | Sol 6.1，medium | A-03 | 截图交用户 | 已完成（2026-11-16，Claude Opus 5.5，reports/V34-A-04.md；截图待用户确认，Q-14、15） |
-| V34-A-05 | 入口页与历史记录 | Q-07、08 | Sonnet，medium | Terra，medium | A-03 | — | 未开始 |
+| V34-A-05 | 入口页与历史记录 | Q-07、08 | Sonnet，medium | Terra，medium | A-03 | — | 已完成（2026-11-16，Claude Sonnet 5.5，reports/V34-A-05.md；类型分段留 B-07） |
 | V34-A-06 | 结果页、对话页、设置页去卡片化 | Q-08 | Sonnet，medium | Terra，medium | A-01 | — | 未开始 |
 | V34-A-07 | 等待动画改松青色系 | Q-08 | Sonnet，low | Terra，low | A-01 | — | 未开始 |
 | V34-A-08 | 单证核对改本地核对为主 | Q-09 | Opus，medium | Sol 6.1，medium | 00 | — | 未开始 |

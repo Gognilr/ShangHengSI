@@ -230,7 +230,7 @@ onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeM
 </template>
 
 <style scoped>
-.recorder { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+.recorder { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; }
 .recorder :deep(.el-button > span) { display: inline-flex; align-items: center; gap: 6px; }
 .saved { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: 520px; padding: 8px 12px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-card); background: var(--si-surface-1); font: var(--si-font-caption); }
 .saved-text { flex: 1; min-width: 160px; }

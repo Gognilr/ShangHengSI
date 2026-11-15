@@ -52,3 +52,9 @@ export function formatDate(value: string | Date | null | undefined): string {
   if (!d) return '—'
   return join(dateFormat.formatToParts(d))
 }
+
+/** 2026-10-15 17:30（到分钟，列表用）。 */
+export function formatDateTimeMinute(value: string | Date | null | undefined): string {
+  const full = formatDateTime(value)
+  return full === '—' ? full : full.slice(0, 16)
+}

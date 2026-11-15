@@ -146,7 +146,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
       </div>
     </template>
     <section v-if="recent.length" class="recent">
-      <h2>最近的会议</h2>
+      <div class="recent-head"><h2>最近的会议</h2><router-link to="/history" class="all">全部历史</router-link></div>
       <router-link v-for="item in recent" :key="item.id" :to="`/meeting/${item.id}`" class="list-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
     </section>
   </div>
@@ -195,12 +195,15 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 <style scoped>
 .danger-item { color: var(--el-color-danger); }
 .file-input { display: none; }
-.upload-progress { width: min(460px, 100%); margin: 12px auto 0; }
-.upload-progress .hint { margin: 4px 0 0; text-align: center; }
+.upload-progress { width: min(460px, 100%); margin: 12px 0 0; }
+.upload-progress .hint { margin: 4px 0 0; }
 .or { display: flex; align-items: center; gap: 12px; margin: 16px 0; color: var(--si-ink-4); font: var(--si-font-caption); }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--si-hair); }
 .recent { margin-top: 32px; }
-.recent h2 { font: var(--si-font-h3); margin: 0 0 8px; }
+.recent-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.recent h2 { margin: 0; font: var(--si-font-h3); }
+.all { font: var(--si-font-caption); color: var(--si-ink-3); text-decoration: none; }
+.all:hover { color: var(--si-ink-1); }
 .meeting-page { height: 100%; box-sizing: border-box; padding-top: 16px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
 .toolbar { display: flex; align-items: center; gap: 12px; }
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

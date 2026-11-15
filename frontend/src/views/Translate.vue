@@ -148,13 +148,13 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
       <p class="hint">Word、PDF、Excel、WPS、图片，单个不超过 30 MB</p>
     </div>
     <input ref="picker" class="file-input" type="file" :accept="DOC" @change="picked">
-    <div class="text-entry"><el-button link type="primary" @click="textOpen = true">或粘贴文字翻译</el-button></div>
+    <div class="text-entry"><el-button link type="primary" class="text-link" @click="textOpen = true">或粘贴文字翻译</el-button></div>
     <el-dialog v-model="textOpen" title="粘贴要翻译的文字" width="640px" append-to-body destroy-on-close>
       <el-input v-model="pasted" type="textarea" :rows="12" maxlength="20000" show-word-limit placeholder="把要翻译的文字粘贴到这里，最多 2 万字。空行分段，后续与上传文件相同：本机解析、确认脱敏、翻译。" aria-label="要翻译的文字" />
       <template #footer><el-button @click="textOpen = false">取消</el-button><el-button type="primary" :loading="uploading !== null" :disabled="!pasted.trim()" @click="uploadText">下一步</el-button></template>
     </el-dialog>
     <section v-if="recent.length" class="recent">
-      <h2>最近的翻译</h2>
+      <div class="recent-head"><h2>最近的翻译</h2><router-link to="/history" class="all">全部历史</router-link></div>
       <router-link v-for="item in recent" :key="item.id" :to="`/translate/${item.id}`" class="list-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
     </section>
   </div>
@@ -200,15 +200,18 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 <style scoped>
 .danger-item { color: var(--el-color-danger); }
 .setup { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.translate-home .setup { justify-content: center; }
 .setup .label { font: var(--si-font-label); color: var(--si-ink-2); }
 .lang { width: 140px; }
 .model { width: 150px; }
 .where { margin: 0; }
 .file-input { display: none; }
-.text-entry { text-align: center; margin-top: 8px; }
+.text-entry { margin-top: 8px; }
 .recent { margin-top: 32px; }
-.recent h2 { font: var(--si-font-h3); margin: 0 0 8px; }
+.recent-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.recent h2 { margin: 0; font: var(--si-font-h3); }
+.all { font: var(--si-font-caption); color: var(--si-ink-3); text-decoration: none; }
+.all:hover { color: var(--si-ink-1); }
+.text-link { padding-left: 0; }
 .translate-page { height: 100%; box-sizing: border-box; padding-top: 16px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
 .toolbar { display: flex; align-items: center; gap: 12px; }
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -86,8 +86,8 @@
 .si-drop.dragging { border-style: solid; border-color: var(--si-brand); background: var(--si-blue-tint); }
 .si-drop-title { margin: 4px 0 0; font: var(--si-font-h3); color: var(--si-ink-1); }
 .si-drop .hint { margin: 0; }
-.entry-title { margin: 32px 0 8px; text-align: center; font: var(--si-font-title-lg); color: var(--si-ink-1); }
-.entry-lede { margin: 0 auto 24px; max-width: 560px; text-align: center; color: var(--si-ink-3); }
+.entry-title { margin: 32px 0 8px; text-align: left; font: var(--si-font-title-lg); color: var(--si-ink-1); }
+.entry-lede { margin: 0 0 24px; max-width: 560px; text-align: left; color: var(--si-ink-3); }
 /* 列表行：44px、行间细线，悬停浅底 */
 .list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; box-sizing: border-box; border-bottom: 1px solid var(--si-hair-faint); color: var(--si-ink-1); text-decoration: none; transition: background-color var(--si-dur-1) var(--si-ease); }
 .list-row:hover { background: var(--si-hover-bg); }
