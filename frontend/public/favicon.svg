@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g transform="skewX(-10) translate(6 0)"><path d="M48 12H28a10 10 0 0 0 0 20h8a10 10 0 0 1 0 20H16" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <style>
+    :root { color: rgb(31, 95, 88); }
+    .scale { fill: rgb(156, 91, 52); }
+    @media (prefers-color-scheme: dark) {
+      :root { color: rgb(93, 179, 165); }
+      .scale { fill: rgb(211, 154, 106); }
+    }
+  </style>
+  <path d="M16 3.5C18.7 3.5 19.2 6.2 21.6 7.7C25 9.9 26.5 12.8 26.5 16.2C26.5 21.7 22.3 26.2 16 29C9.7 26.2 5.5 21.7 5.5 16.2C5.5 12.8 7 9.9 10.4 7.7C12.8 6.2 13.3 3.5 16 3.5Z" stroke="currentColor" stroke-width="2.8" stroke-linejoin="round" />
+  <path class="scale" d="M16 17.5l4.5 4-4.5 4-4.5-4Z" />
+</svg>

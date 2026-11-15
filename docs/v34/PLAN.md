@@ -28,7 +28,7 @@
 |-|-|-|-|-|-|-|-|
 | V34-00 | 本计划 | — | Opus | — | — | 用户确认 | 已确认（2026-11-16） |
 | V34-A-01 | 令牌、语义色与外壳 | Q-08 | Opus，medium | Sol 6.1，medium | 00 | — | 已完成（2026-11-16，Claude Opus 5.5，reports/V34-A-01.md） |
-| V34-A-02 | 品牌标识“松鳞”、favicon 与登录页 | Q-08 | Sonnet，medium | Terra，medium | A-01 | — | 未开始 |
+| V34-A-02 | 品牌标识“松鳞”、favicon 与登录页 | Q-08 | Sonnet，medium | Terra，medium | A-01 | — | 已完成（2026-11-16，Codex；Claude Opus 5.5 复核并提交，reports/V34-A-02.md） |
 | V34-A-03 | 导航一事一入口与文件审核页 | Q-01 | Opus，medium | Sol 6.1，medium | A-01 | — | 未开始 |
 | V34-A-04 | 工作台首页 | Q-01、06、09 | Opus，medium | Sol 6.1，medium | A-03 | 截图交用户 | 未开始 |
 | V34-A-05 | 入口页与历史记录 | Q-07、08 | Sonnet，medium | Terra，medium | A-03 | — | 未开始 |

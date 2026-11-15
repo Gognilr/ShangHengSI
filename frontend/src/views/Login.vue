@@ -89,14 +89,18 @@ async function submit() {
   <div class="login-page">
     <div class="login-shell">
       <section class="brand-area" aria-label="商衡SI">
-        <LoginWords /><SiLogo size="hero" show-tagline />
-        <div class="brand-rule" />
-        <h2>让敏感信息受到保护<br />让商业决策更有依据</h2>
-        <p class="brand-description">面向企业商务、合同与法律文件，提供本地脱敏与 AI 智能初审。</p>
-        <ul class="brand-tags"><li>安全脱敏</li><li>智能审查</li><li>局域网部署</li></ul>
+        <LoginWords class="brand-words" />
+        <div class="brand-copy">
+          <SiLogo size="hero" />
+          <div class="brand-rule" />
+          <h2>先在本机脱敏，<br />再交给模型初审</h2>
+          <p class="brand-description">面向商务、合同与法律文件的智能审查。</p>
+        </div>
+        <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V3.3.0</footer>
       </section>
+      <div class="login-pane">
       <section class="login-form" aria-labelledby="login-title">
-        <h1 id="login-title">欢迎登录</h1>
+        <h1 id="login-title">登录</h1>
         <p class="subtitle">请使用内部分发的账号登录</p>
         <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="submit">
           <el-form-item label="用户名" prop="username">
@@ -112,46 +116,41 @@ async function submit() {
         <p class="account-help">账号由管理员统一分发，忘记密码请联系管理员重置</p>
         <a class="cert-link" :href="certUrl" target="_blank" rel="noopener"><ShieldCheck :size="16" :stroke-width="1.75" /><span>下载根证书</span><span class="hint">浏览器提示“不安全”时安装</span></a>
       </section>
+      </div>
     </div>
-    <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V3.3.0</footer>
   </div>
 </template>
 
 <style scoped>
-.login-page {
-  min-height: 100vh;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  padding: 32px 0 64px;
-  background: var(--si-bg-canvas);
-}
-.login-shell { width: calc(100% - 128px); max-width: 1200px; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 64px; align-items: center; }
-.brand-area { min-width: 0; position: relative; padding: 24px 0; }
-.brand-area > :not(canvas) { position: relative; }
-.brand-rule { width: 32px; height: 3px; margin: 32px 0; background: var(--si-brand); }
-h2 { font: var(--si-font-display); margin: 0 0 20px; }
-.brand-description { max-width: 440px; font: var(--si-font-reading); color: var(--el-text-color-secondary); margin: 0; }
-.brand-tags { display: flex; gap: 24px; margin: 32px 0 0; padding: 0; list-style: none; }
-.brand-tags li { display: flex; align-items: center; gap: 8px; color: var(--si-ink-2); font: var(--si-font-label); }
-.brand-tags li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--si-brand); }
-h1 { font: var(--si-font-title-lg); margin: 0 0 4px; }
-.subtitle { color: var(--el-text-color-secondary); margin: 0 0 32px; }
-.login-form { width: 400px; box-sizing: border-box; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: none; }
-.login-form :deep(.el-input) { --el-input-height: 44px; }
+:global(body:has(.login-page)) { min-width: 0; }
+.login-page { min-height: 100vh; min-height: 100svh; background: var(--si-bg-canvas); }
+.login-shell { display: grid; grid-template-columns: 1fr 1fr; min-height: inherit; }
+.brand-area { min-width: 0; box-sizing: border-box; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 64px clamp(32px, 6vw, 112px) 112px; background: var(--si-bg-side); border-right: 1px solid var(--si-hair-faint); }
+.brand-words { --si-ink-4: var(--si-ink-5); }
+.brand-copy, footer { position: relative; }
+.brand-rule { width: 32px; height: 2px; margin: 32px 0; background: var(--si-logo-a); }
+h2 { font: var(--si-font-display); margin: 0 0 20px; color: var(--si-ink-1); }
+.brand-description { font: var(--si-font-reading); color: var(--si-ink-3); margin: 0; }
+.login-pane { display: flex; align-items: center; justify-content: center; padding: 40px 24px; box-sizing: border-box; min-width: 0; }
+.login-form { width: 320px; max-width: 100%; }
+h1 { font: var(--si-font-title-lg); margin: 0 0 8px; }
+.subtitle { color: var(--si-ink-3); margin: 0 0 32px; }
+.login-form :deep(.el-input) { --el-input-height: 40px; }
 .login-form :deep(.el-form-item) { margin-bottom: 24px; }
-.remember-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 20px; }
+.remember-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 8px; margin: -4px 0 20px; }
 .error { margin-bottom: 16px; }
-.submit { width: 100%; height: 44px; }
-.account-help { font: var(--si-font-meta); color: var(--el-text-color-secondary); margin: 20px 0 0; }
-.cert-link { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding: 10px 12px; border: 1px solid var(--si-hair); border-radius: var(--el-border-radius-base); color: var(--si-blue-ink); font: var(--si-font-label); text-decoration: none; white-space: nowrap; transition: background-color var(--si-dur-1) var(--si-ease), border-color var(--si-dur-1) var(--si-ease); }
-.cert-link:hover { background: var(--si-surface-2); border-color: var(--si-hair-strong); }
-.cert-link .hint { margin-left: auto; }
-footer { position: absolute; bottom: 24px; left: 0; right: 0; text-align: center; font: var(--si-font-caption); color: var(--el-text-color-secondary); }
-@media (max-width: 1099px) {
-  .brand-area { display: none; }
-  .login-shell { display: block; width: 408px; }
+.submit { width: 100%; height: 40px; }
+.account-help { font: var(--si-font-meta); color: var(--si-ink-3); margin: 20px 0 0; }
+.cert-link { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--si-hair); color: var(--si-blue-ink); font: var(--si-font-label); text-decoration: none; }
+.cert-link:hover > span:first-of-type { text-decoration: underline; }
+.cert-link .hint { font: var(--si-font-caption); color: var(--si-ink-3); }
+footer { position: absolute; bottom: 28px; left: clamp(32px, 6vw, 112px); right: 32px; font: var(--si-font-caption); color: var(--si-ink-3); }
+@media (max-width: 767px) {
+  .login-shell { grid-template-columns: 1fr; }
+  .brand-area { padding: 32px 24px; border-right: 0; border-bottom: 1px solid var(--si-hair-faint); }
+  .brand-rule { margin: 20px 0; }
+  h2 { font: var(--si-font-title-lg); margin-bottom: 12px; }
+  footer { position: relative; inset: auto; margin-top: 28px; }
+  .login-pane { padding: 40px 24px; }
 }
 </style>
