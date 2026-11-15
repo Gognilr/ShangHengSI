@@ -214,6 +214,9 @@ def _incremental(db, task, message, mapping, offset, *, finished, dates):
         # 位置编号可能拆在任一流式片段处，暂扣末尾候选，避免已显示前缀缩短。
         # 表格位置有多段（F1-T2-R3-C4），每段都可能未写完。
         raw = re.sub(r'\[?F\d*(?:-[A-Z]{0,2}\d*)*$', '', raw)
+    if located:
+        # 全角括号写法（【F1-P8】）按半角处理，同样换成可读位置（V33-B-02）
+        raw = re.sub(r'[【［]\s*(F\d+(?:-[A-Z]{1,2}\d+){1,4})\s*[】］]', r'[\1]', raw)
     text, _ = incremental(raw, mapping, 0, finished=finished, dates=dates)
     if located:
         text = check(text, {}, locations=_discussion_locations(db, task)).text

@@ -14,8 +14,10 @@ from app.redaction.restore import _LOCATION
 from app.security.crypto import decrypt_text
 from app.security.errors import NotFoundError
 
-_TAG = re.compile(r'[\[［【]\s*(KB|H)\s*(\d{1,2})\s*[\]］】]')
-_CITATION = re.compile(r'《([^》\n]{1,60})》\s*(第[零〇一二三四五六七八九十百千\d]+条(?:之[一二三四五六七八九十]+)?)')
+_TAG = re.compile(r'[\[［【]\s*(KB|H)\s*(\d{1,3})\s*[\]］】]')
+_NO = r'第[零〇一二三四五六七八九十百千\d]+条(?:之[一二三四五六七八九十]+)?'
+_CITATION = re.compile(rf'《([^》\n]{{1,60}})》\s*({_NO})((?:\s*[、和及与]\s*{_NO})*)')
+_MORE = re.compile(rf'\s*[、和及与]\s*({_NO})')
 _DIGITS = {c: i for i, c in enumerate('零一二三四五六七八九')} | {'〇': 0, '两': 2}
 _UNITS = {'十': 10, '百': 100, '千': 1000}
 
@@ -68,7 +70,8 @@ def build(db, task: Task, message: AssistantMessage, content: str, locations: di
             cite(m.group(), ref)
             if ref not in used:
                 used.append(ref)
-    for ref in used + [r for r in registered if r not in used]:  # 引用过的在前，附带未引用的在后
+    # 引用过的在前，附带未引用的在后；前几轮带来的编号（carried）只在本条写到时列出（V33-B-02）
+    for ref in used + [r for r in registered if r not in used and not registered[r].get('carried')]:
         item = registered[ref]
         if item['kind'] == 'kb':
             chunk = db.get(KbChunk, item['chunk_id'])
@@ -80,11 +83,14 @@ def build(db, task: Task, message: AssistantMessage, content: str, locations: di
     laws = _laws(db, message)
     cited_laws = set()
     for m in _CITATION.finditer(content):
-        key = (canonical(m[1].strip()), _article(m[2]))
-        law = next((r for r in laws if (canonical(r['title']), _article(r['article_no'])) == key), None)
-        if law:
-            cite(m.group(), law['ref'])
-            cited_laws.add(law['ref'])
+        title = canonical(m[1].strip())
+        # 连写的条号（《民法典》第六百二十条、第六百二十一条）：首条连书名号作锚点，后续条连分隔符作锚点（V33-B-02）
+        parts = [(m.group(0)[:m.end(2) - m.start(0)], m[2])] + [(x.group(0), x[1]) for x in _MORE.finditer(m[3] or '')]
+        for token, no in parts:
+            law = next((r for r in laws if (canonical(r['title']), _article(r['article_no'])) == (title, _article(no))), None)
+            if law:
+                cite(token.strip(), law['ref'])
+                cited_laws.add(law['ref'])
     for law in sorted(laws, key=lambda r: r['ref'] not in cited_laws):
         sources.append({'ref': law['ref'], 'kind': 'law', 'label': f'《{law["title"]}》{law["article_no"]}',
                         'cited': law['ref'] in cited_laws})

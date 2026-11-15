@@ -1,7 +1,9 @@
 """只检索本人原件仍在的审核条款；来源名称不进入外发。"""
+import re
+
 from sqlalchemy import or_, select, exists
 
-from app.db.models import ReviewRun, Task, TaskFile, DocNode, TaskClauseVector
+from app.db.models import AssistantMessage, ReviewRun, Task, TaskFile, DocNode, TaskClauseVector
 from app.embedding import engine as embedding
 from app.kb.retrieve import protect
 from app.redaction import engine
@@ -69,9 +71,36 @@ def prepare(db, task, user_message):
             refs['kb'], dropped = kb_retrieve(db, task, query, vector=vector)
         if use_history:
             refs['history'] = retrieve(db, task, query, vector=vector)
-    # 引用登记只存本地 id（V321-E-13）：编号与 prompt.build_messages 中的 [KBn]、[Hn] 一一对应
+    # 引用登记只存本地 id（V321-E-13）：编号与 prompt.build_messages 中的 [KBn]、[Hn] 一一对应。
+    # 编号在会话内固定（V33-B-02）：同一片段沿用前几轮的编号，新片段往后编，模型回指上一轮的编号也不会指错；
+    # 前几轮登记过的编号随本条带上（carried），本轮回复写到时同样能定位，没写到不列入依据。
+    earlier = {}
+    if user_message.id is not None:
+        for extras in db.scalars(select(AssistantMessage.extras).where(
+                AssistantMessage.task_id == task.id, AssistantMessage.role == 'assistant',
+                AssistantMessage.id < user_message.id).order_by(AssistantMessage.id)):
+            for item in (extras or {}).get('refs', []):
+                earlier[item['ref']] = {k: v for k, v in item.items() if k != 'carried'}
+    known = {_ref_key(item): ref for ref, item in earlier.items()}
+    registered = []
+    for kind, prefix, items in (('kb', 'KB', refs['kb']), ('history', 'H', refs['history'])):
+        for item in items:
+            entry = ({'kind': 'kb', 'chunk_id': item['chunk_id']} if kind == 'kb' else
+                     {'kind': 'history', 'task_id': item['task_id'], 'file_seq': item['file_seq'],
+                      'locs': item['locs'], 'label': item['label']})
+            ref = known.get(_ref_key(entry))
+            if ref is None:
+                used = [int(r[len(prefix):]) for r in known.values() if re.fullmatch(rf'{prefix}\d+', r)]
+                ref = known[_ref_key(entry)] = f'{prefix}{max(used, default=0) + 1}'
+            item['ref'] = ref
+            registered.append({'ref': ref, **entry})
+    current = {r['ref'] for r in registered}
     metadata = {'kb_sent': len(refs['kb']), 'kb_dropped': dropped,
-                'refs': [{'ref': f'KB{i}', 'kind': 'kb', 'chunk_id': item['chunk_id']} for i, item in enumerate(refs['kb'], 1)]
-                + [{'ref': f'H{i}', 'kind': 'history', 'task_id': item['task_id'], 'file_seq': item['file_seq'],
-                    'locs': item['locs'], 'label': item['label']} for i, item in enumerate(refs['history'], 1)]}
+                'refs': registered + [{**item, 'ref': ref, 'carried': True} for ref, item in earlier.items() if ref not in current]}
     return refs, metadata
+
+
+def _ref_key(item):
+    if item['kind'] == 'kb':
+        return ('kb', str(item['chunk_id']))
+    return ('history', str(item['task_id']), item['file_seq'], tuple(item['locs']))

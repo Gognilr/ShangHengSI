@@ -99,10 +99,11 @@ def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, n
             .order_by(AssistantMessage.id.desc()).limit(10)))))
     refs = references or {}
     reference_blocks = []
+    # 编号由 history.prepare 按会话固定分配（V33-B-02）
     for index, item in enumerate(refs.get('kb', []), 1):
-        reference_blocks.append(f'【公司知识库片段】[KB{index}] <document>{item["text"]}</document>')
+        reference_blocks.append(f'【公司知识库片段】[{item.get("ref", f"KB{index}")}] <document>{item["text"]}</document>')
     for index, item in enumerate(refs.get('history', []), 1):
-        reference_blocks.append(f'【我的历史合同条款】[H{index}] {item["label"]}：<document>{item["text"]}</document>')
+        reference_blocks.append(f'【我的历史合同条款】[{item.get("ref", f"H{index}")}] {item["label"]}：<document>{item["text"]}</document>')
     if reference_blocks:
         block += '\n' + '\n'.join(reference_blocks)
     used = set(NEUTRAL.findall("\n".join([block, user_message.content_redacted] + [m.content_redacted for m in history])))

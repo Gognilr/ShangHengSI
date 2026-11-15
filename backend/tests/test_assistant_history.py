@@ -96,6 +96,7 @@ def test_t51_worker_references_outbound_and_extras(conversation, db_sessionmaker
         doc = KbDoc(name_enc=crypto.encrypt_text('虚构秘密知识库文件名'), status='ready',
                     content_hash='9'*64, created_by=task.owner_id)
         db.add(doc); db.flush()
+        doc_id = doc.id
         db.add(KbChunk(doc_id=doc.id, seq=1, text_enc=crypto.encrypt_text(REAL+'应核对验收记录。'), embedding=vector()))
         user = AssistantMessage(task_id=task.id, role='user', status='done', content_redacted='说明验收要求',
                                 params={'use_kb': True, 'use_history': True})
@@ -121,6 +122,23 @@ def test_t51_worker_references_outbound_and_extras(conversation, db_sessionmaker
     assert '【公司知识库片段】[KB1]' in outbound and '【我的历史合同条款】[H1] 合同，2026-05' in outbound
     for secret in (REAL, '虚构来源买方', '秘密历史', '虚构秘密标题', '虚构秘密知识库文件名'):
         assert secret not in outbound
+    # 第二轮（V33-B-02）：编号在会话内固定，新片段往后编；回指上一轮的 [H1] 仍能定位；全角括号段落号也换成位置
+    requests = install(monkeypatch, ['上一轮[H1]，本轮[KB1][KB2]，见【F1-P1】'])
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        db.add(KbChunk(doc_id=doc_id, seq=2, text_enc=crypto.encrypt_text('虚构第二段制度。'), embedding=vector()))
+        user = AssistantMessage(task_id=task.id, role='user', status='done', content_redacted='再核对一次',
+                                params={'use_kb': True})
+        db.add(user); db.flush()
+        mid2 = _queue_reply(db, task, user, db.get(LlmModel, 1)).id
+        db.commit()
+        handle_assist(db, {'task_id': tid, 'message_id': mid2})
+    view = next(m for m in c.get(f'{BASE}/{tid}/messages', headers=h).json()['items'] if m['id'] == mid2)
+    assert [(x['ref'], x['cited']) for x in view['sources']] == [('F1-P1', True), ('H1', True), ('KB1', True), ('KB2', True)]
+    assert '【F1-P1】' not in view['content'] and '[H1]' in {x['token'] for x in view['cites']}
+    assert c.get(f'{BASE}/{tid}/messages/{mid2}/sources/H1', headers=h).json()['link'] == f'/review/{ids[0]}'
+    outbound = json.dumps(json.loads(requests[0].content)['messages'], ensure_ascii=False)
+    assert '【公司知识库片段】[KB1]' in outbound and '【公司知识库片段】[KB2]' in outbound
 
 
 def test_history_not_selected_no_engine(conversation, db_sessionmaker, monkeypatch):
