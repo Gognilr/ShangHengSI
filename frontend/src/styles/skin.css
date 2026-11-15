@@ -192,7 +192,7 @@ html body { font: var(--si-font-body); color: var(--el-text-color-primary); text
   font: var(--si-font-label-sm);
   color: var(--si-tag-ink);
   background-color: transparent;
-  border-color: var(--si-hair);
+  border-color: transparent;
 }
 .el-tag.el-tag--plain { border-color: var(--si-hair-strong); }
 .el-tag.el-tag--light::before, .el-tag.el-tag--dark::before { content: ""; flex: none; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--si-tag-c); }
