@@ -6,12 +6,13 @@ from app.redaction.dictionaries import RESOURCES_DIR
 
 WORDS_FILE = RESOURCES_DIR / 'zh_plain_words.txt'
 _HAN = re.compile(r'[一-鿿]+')
-_ROLE_SUFFIXES = ('委员会', '机构', '部门', '平台', '人员', '方', '人', '者', '员', '组', '站')
+_ROLE_SUFFIXES = ('委员会', '机构', '部门', '平台', '人员', '工程师', '顾问', '专家', '师傅', '班组长', '班长', '队长', '组长',
+                  '方', '人', '者', '员', '组', '站', '工')
 _COMPANY = re.compile(r'(?:公司|厂|集团)$')
 _MODIFIERS = re.compile(r'^(?:不同|全|各|权威|合理的)+')
 # 设备与部件名称（“汽阀总成”“透平控制器”）：产品名称按 9.2 保留，只用于实体识别的中置信结果
-_EQUIPMENT = re.compile(r'[一-鿿]{2,6}(?:总成|装置|系统|设备|机组|组件|部件|阀门|阀|泵|电机|电动缸|控制器|传感器|执行器|'
-                        r'变送器|仪表|控制柜|模块|热电阻|热电偶)')
+_EQUIPMENT = re.compile(r'[一-鿿]{2,6}(?:总成|装置|系统|设备|机组|组件|部件|阀门|门|阀|泵|电机|电动缸|器|机|炉|塔|罐|槽|仪表|'
+                        r'控制柜|柜|屏|模块|热电阻|热电偶|管道|管线|电缆|桥架|支架|法兰|平台|软件|终端|网关|云)')
 
 
 def equipment_name(text: str, start: int, end: int) -> bool:
@@ -151,6 +152,11 @@ def company_explanation(text: str, start: int, end: int) -> str | None:
     if not suffix:
         return None
     head = surface[:suffix.start()]
+    # “接受电厂”：后缀与前字组成普通词（电厂、工厂），前面是动词等叙述成分
+    tokens = _tokens(surface)
+    if (len(tokens) >= 2 and all(w for _, _, w in tokens) and tokens[-1][0] < suffix.start()
+            and any(pos.startswith(('v', 'p', 'd')) for pos in words()[tokens[-2][2]])):
+        return 'clause_before_company'
     # 截取名称时可能从“系统”的“统”开始，前段是否普通必须读整句边界。
     if head and explanation(text, start, start + suffix.start(), slot=False):
         last = _tokens(head)[-1][2]

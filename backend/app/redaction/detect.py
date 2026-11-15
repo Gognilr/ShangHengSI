@@ -771,8 +771,10 @@ def _strip_cn_titles(run: str) -> str:
 
 def _ordinary_label_value(value: str) -> bool:
     """标签人名取值是条款用语（补充协议）才不当人名；姓氏起头的普通词形（方圆、万里）仍是人名。"""
-    from app.redaction.plain import explanation
-    return (not value.startswith(cn_surnames())
+    from app.redaction.plain import explanation, surname_in_word
+    # 姓字与后文连成普通词的三字以上取值（“施工队长”）同样是职务用语；两字词形（方圆）仍按人名
+    surname_word = len(value) >= 3 and surname_in_word(value, 0)
+    return ((not value.startswith(cn_surnames()) or surname_word)
             and explanation(value, 0, len(value), slot=False) is not None)
 
 

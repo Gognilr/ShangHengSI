@@ -974,6 +974,8 @@ def compute(
             if hit.score >= ner.HIGH or (hit.score >= ner.MEDIUM and hit.label in ('ORG', 'PERSON')
                                          and plain.short_name_slot(n.text, hit.start, hit.end)):
                 surface = n.text[hit.start:hit.end]
+                if hit.label == 'ORG' and S.generic_reference(surface):
+                    continue  # 部门、泛称（设备部、该公司）高置信也不是机构名称
                 if hit.label in ('ORG', 'PERSON'):
                     ent = entity(surface, hit.label)
                     key = ent.key
@@ -986,11 +988,13 @@ def compute(
                 if _overlaps(occupied[i] + excluded_spans, start, end):
                     continue
                 candidate = S.Suspect(start, end, 'ner')
+                # 标准号、行业缩写与公共机构先静默排除，不进“已自动保留”清单
+                if any(a <= start and end <= b for a, b in
+                       [*S.public_institution_spans(n.text), *S.plain_content_spans(n.text)]):
+                    continue
                 if ordinary(n.loc, n.text, candidate):
                     continue
-                if (not S.plain_candidate(n.text, candidate, header=n.loc in headers)
-                        and not any(a <= start and end <= b for a, b in
-                                    [*S.public_institution_spans(n.text), *S.plain_content_spans(n.text)])):
+                if not S.plain_candidate(n.text, candidate, header=n.loc in headers):
                     ner_suspects.append(SuspectOut(n.loc, start, end, 'ner'))
     # V2-B-09：高置信的名称与签约方一样全文替换（含前面的节点），否则对照表中的真实值会被出口复检拦截。
     for i, n in enumerate(nodes):

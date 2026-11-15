@@ -354,7 +354,7 @@ _UNIT_AFTER = re.compile(rf"[ \t]?(?i:{_QTY_UNIT_RE})(?![A-Za-z])")
 _MIN_DIGITS = 8
 # V31-S-01：标准代号加编号，可含字母前缀、分级与年份；年份不再是必需项。
 _STANDARD = re.compile(
-    r'(?<![A-Za-z0-9_])(?:GB|GBJ|JB|HG|SH|YB|DL|NB|QB|JGJ|CJJ|SJ|YD|ISO|IEC|EN|ASTM|DIN|JIS|ANSI|API|BS|ASME|AWS|SAE|IEEE|GOST)'
+    r'(?<![A-Za-z0-9_])(?:GB|GBJ|JB|HG|SH|YB|DL|NB|QB|JGJ|CJJ|SJ|YD|TSG|JJG|JJF|CECS|HJ|AQ|GA|SY|JC|CJ|JTG|TB|MT|DB\d{2}|QC|WS|FZ|YS|ISO|IEC|EN|ASTM|DIN|JIS|ANSI|API|BS|ASME|AWS|SAE|IEEE|GOST|NFPA|NACE|MSS|UL)'
     r'(?:[ \t]*/[ \t]*[TZ])?[ \t]*(?:[A-Z][ \t]*)?\d+(?:[/.]\d+)*'
     r'(?:[-:]\d{4})?(?![A-Za-z0-9_/-])')
 # 元素符号严格区分大小写；不把 CNOOC 或产品牌号当作化学式。
@@ -564,8 +564,14 @@ _GENERIC_WHOLE = re.compile(
     r'|安全|审计|客服|外贸|进出口|业务|计划|设备)(?:部门|部|处|科|中心))')
 
 
-def _generic_reference(surface: str) -> bool:
+# 内部部门与班组（安环部、设备处、检修车间）：不是机构名称；银行营业部另由开户行规则处理
+_DEPARTMENT = re.compile(r'[一-鿿]{2,4}(?:部|处|科|室|车间|班组|工段)')
+
+
+def generic_reference(surface: str) -> bool:
     if _GENERIC_WHOLE.fullmatch(surface):
+        return True
+    if _DEPARTMENT.fullmatch(surface) and not surface.endswith(('营业部', '办事处')):
         return True
     m = _GENERIC_DEICTIC.fullmatch(surface)
     # 指代词前只允许为空、常用词或以虚词开头的动作（“已收到贵公司”）；“富贵公司”这类仍列出。
@@ -593,6 +599,8 @@ def ordinary_reason(text: str, candidate: Suspect) -> str | None:
         reason = plain.explanation(text, candidate.start, candidate.end)
         if reason is None and candidate.reason == 'ner' and plain.equipment_name(text, candidate.start, candidate.end):
             return 'equipment'
+        if reason is None and candidate.reason == 'ner' and re.fullmatch(r'[A-Z]{2,3}', text[candidate.start:candidate.end]):
+            return 'short_code'  # 实体识别中置信的两三个大写字母（WCB、OA）多是信号、材质、系统代号
         return reason
     return None  # 派生字号、长数字、校验不过的号码不经过解释器。
 
@@ -632,7 +640,7 @@ def plain_candidate(text: str, candidate: Suspect, *, header: bool = False, expl
             return True  # “请于周五确认”中的时间介词不是于姓姓名。
     if header and candidate.reason in (CAPITALIZED, 'ner'):
         return True
-    if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY, 'ner') and _generic_reference(surface):
+    if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY, 'ner') and generic_reference(surface):
         return True
     if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY):
         suffixes = (*P.INSTITUTION_TEXT_SUFFIXES, '股份有限公司', '有限责任公司', '集团有限公司',
