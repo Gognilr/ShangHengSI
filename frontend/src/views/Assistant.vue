@@ -17,6 +17,23 @@ import Composer, { type ComposerStart } from '@/components/assistant/Composer.vu
 import FilePanel from '@/components/assistant/FilePanel.vue'
 import DraftDialog from '@/components/workspace/DraftDialog.vue'
 const route = useRoute(), router = useRouter(), sessions = useSessionsStore(), auth = useAuthStore()
+// 问候只取北京时间和当前账号显示名，不发送到服务器（V33Q-14）。
+const hourFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', hourCycle: 'h23' })
+const greetingHour = ref(Number(hourFormat.format(new Date())))
+const greeting = computed(() => {
+  const hour = greetingHour.value
+  if (hour < 5 || hour >= 23) return { title: '夜深了', text: '先处理要紧的事，也记得早点休息。' }
+  if (hour < 8) return { title: '早上好', text: '新的一天，想先从哪项工作开始？' }
+  if (hour < 11) return { title: '上午好', text: '今天想先处理哪项工作？' }
+  if (hour < 14) return { title: '中午好', text: '接下来，想先处理哪份材料？' }
+  if (hour < 18) return { title: '下午好', text: '下午的工作，想先从哪件事开始？' }
+  return { title: '晚上好', text: '今天还有哪项工作需要梳理？' }
+})
+const greetingTitle = computed(() => {
+  const name = auth.user?.display_name?.trim() || auth.user?.username
+  return name ? `${greeting.value.title}，${name}` : greeting.value.title
+})
+const greetingTimer = setInterval(() => { if (!document.hidden) greetingHour.value = Number(hourFormat.format(new Date())) }, 60000)
 // 工作台两种视图（V32-B-01）：直接提问 / 全面审核。切换只改视图，不外发、不清空输入；没有“智能审核”权限的人看不到审核视图
 const canReview = computed(() => auth.can('use.review'))
 const mode = computed<'ask' | 'review'>(() => canReview.value && (route.query.mode === 'review' || !auth.can('use.assistant')) ? 'review' : 'ask')
@@ -203,11 +220,12 @@ const generating = computed(() => messages.value.find(m => m.role === 'assistant
 watch(() => sessions.items.find(item => item.id === id.value)?.title, title => { if (title && session.value) session.value.title = title })
 watch(id, load, { immediate: true })
 function visibility() {
+  greetingHour.value = Number(hourFormat.format(new Date()))
   if (document.hidden) clearTimeout(timer)
   else { void poll(); if (reviewDone.value && mode.value === 'review') reviewDone.value = false }
 }
 onMounted(() => document.addEventListener('visibilitychange', visibility))
-onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); document.title = baseTitle; active = false; ++version; clearTimeout(timer); offsets.clear() })
+onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); document.title = baseTitle; active = false; ++version; clearTimeout(timer); clearInterval(greetingTimer); offsets.clear() })
 </script>
 <template>
   <NotFound v-if="missing" kind="content" />
@@ -217,7 +235,8 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
       <template v-if="session">
         <template v-if="homeLike">
           <div v-if="canReview" class="mode-row"><SiSegmented v-model="modeModel" :options="modeOptions" ariaLabel="工作台视图" /></div>
-          <h1 class="home-title">今天要处理什么？</h1>
+          <h1 class="home-title greeting-title">{{ greetingTitle }}</h1>
+          <p class="home-lede">{{ greeting.text }}</p>
         </template>
         <div v-else class="toolbar">
           <el-button class="title" link @click="rename">{{ session.title }}</el-button>
@@ -246,7 +265,8 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
       </template>
       <div v-else-if="!loading && !id" class="home">
         <div v-if="canReview" class="mode-row"><SiSegmented v-model="modeModel" :options="modeOptions" ariaLabel="工作台视图" /></div>
-        <h1>{{ mode === 'review' ? '上传材料，发起全面审核' : '今天要处理什么？' }}</h1>
+        <h1 class="greeting-title">{{ greetingTitle }}</h1>
+        <p class="home-lede">{{ mode === 'review' ? '上传材料，确认脱敏后发起全面审核。' : greeting.text }}</p>
         <Composer v-show="mode === 'ask'" v-model:template="template" :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
         <div v-if="mode === 'review'" class="review-home">
           <input ref="reviewPicker" type="file" multiple hidden accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png" @change="reviewPicked">
@@ -281,6 +301,8 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .drop-sub { color: var(--si-ink-3); font: var(--si-font-caption); }
 .home { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 8vh; }
 .home h1, .home-title { margin: 0 0 20px; text-align: center; font: var(--si-font-title-lg); color: var(--si-ink-1); }
+.home .greeting-title, .greeting-title { max-width: 760px; margin: 0 auto 8px; padding: 0 24px; box-sizing: border-box; overflow-wrap: anywhere; }
+.home-lede { margin: 0 24px 24px; text-align: center; font: var(--si-font-body); color: var(--si-ink-3); }
 /* 首页布局：标题与输入框居中，位置与未建会话时相同 */
 .dialogue.is-home { justify-content: center; padding-bottom: 8vh; }
 .rise-enter-active { transition: opacity var(--si-dur-2, 240ms) var(--si-ease), transform var(--si-dur-2, 240ms) var(--si-ease); }

@@ -88,7 +88,7 @@ async function copy() {
       <summary class="hint">查看实际发送内容</summary>
       <pre>{{ message.sent }}</pre>
     </details>
-    <p v-if="waiting" class="generating" role="status"><SiThinkingDots v-if="!reading" /><span><span :class="{ 'si-shimmer': !reading }">{{ waiting }}</span>{{ waitingTail }}</span></p>
+    <p v-if="waiting" class="generating si-wait" role="status"><SiThinkingDots v-if="!reading" /><span><span :class="{ 'si-shimmer': !reading }">{{ waiting }}</span>{{ waitingTail }}</span></p>
     <p v-if="count" class="warning">有 {{ count }} 处未能还原，已原样标出</p>
     <el-alert v-if="message.error" :title="message.error" type="error" :closable="false" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" />

@@ -360,7 +360,9 @@ html body { font: var(--si-font-body); color: var(--el-text-color-primary); text
 .el-loading-spinner .circular { display: none; }
 .el-loading-spinner .el-loading-text { color: var(--si-ink-3); font: var(--si-font-meta); }
 @keyframes si-loading-bar { from { transform: translateX(-33.3333%); } to { transform: translateX(0); } }
-html[data-fx="off"] .el-loading-mask { opacity: 1; }
+/* 只延迟显示，不增加等待时长；关闭档也保留这次无位移的单帧显现。 */
+.si-wait { opacity: 0; animation: si-loading-in 1ms linear 300ms forwards; }
+html[data-fx="off"] .el-loading-mask, html[data-fx="off"] .si-wait { opacity: 0; animation: si-loading-in 1ms linear 300ms forwards !important; }
 html[data-fx="off"] .el-loading-mask::before { width: 100%; background: linear-gradient(90deg, var(--si-blue), var(--si-cyan), var(--si-indigo)); opacity: .5; animation: none; transform: none; }
 
 /* V33-C-04：文字流光，只定义，C-06 在“等待模型”文案一处使用。唯一用 background-position 的动画，周期与光带相同；两端同为 ink-1，循环无缝。 */

@@ -280,9 +280,9 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
         <p class="hint">将发送：</p>
         <pre class="redacted"><span v-for="(seg, index) in segments(preview)" :key="index" :class="{ placeholder: seg.placeholder, suspect: seg.suspect }">{{ seg.text }}</span></pre>
       </div>
-      <p v-if="sending" class="hint thinking"><SiThinkingDots /><span class="si-shimmer">正在等待回复，最长约 2 分钟</span></p>
+      <p v-if="sending" class="hint thinking si-wait"><SiThinkingDots /><span class="si-shimmer">正在等待回复，最长约 2 分钟</span></p>
       <div class="actions">
-        <el-button type="primary" :loading="busy" :disabled="!canSend" @click="submit">发送</el-button>
+        <el-button type="primary" :loading="busy && !sending" :disabled="!canSend" @click="submit">发送</el-button>
       </div>
     </div>
   </el-drawer>

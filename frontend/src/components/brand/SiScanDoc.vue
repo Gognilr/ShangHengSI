@@ -17,7 +17,7 @@ onBeforeUnmount(() => stopFrames())
 </script>
 
 <template>
-  <div v-if="shown" class="si-sheet scan" :class="{ play: playing }" aria-hidden="true">
+  <div v-if="shown" class="si-sheet scan-doc si-wait" :class="{ play: playing }" aria-hidden="true">
     <span class="si-sheet-stamp stamp">已脱敏</span>
     <span class="si-sheet-line" style="width: 78%" />
     <span class="si-sheet-line b b1" style="width: 56%" />
@@ -32,7 +32,7 @@ onBeforeUnmount(() => stopFrames())
 </template>
 
 <style scoped>
-.scan { gap: 10px; width: 200px; height: 150px; padding: 16px 18px; overflow: visible; box-sizing: border-box; }
+.scan-doc { gap: 10px; width: 200px; height: 150px; padding: 16px 18px; overflow: visible; box-sizing: border-box; }
 .row { display: flex; align-items: center; gap: 6px; }
 .row .si-sheet-line { min-width: 0; }
 .si-sheet-chip { flex: none; line-height: 1.4; }
