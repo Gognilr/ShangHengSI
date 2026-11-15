@@ -27,11 +27,14 @@ package_root="$ROOT"
 ROOT="$target"
 backup_dir="$(resolve_path "$(env_get BACKUP_HOST_DIR)")"
 old_version="$(env_get APP_VERSION)"
+profiles="$(env_get COMPOSE_PROFILES)"
 ROOT="$package_root"
 check_storage "$target" "$backup_dir"
 check_release
 version="$(release_version)"
 [ "$version" != "$old_version" ] || die "新版本号与已安装版本相同"
+# 增量包（V33-A-02）：在快照确认与备份之前核对沿用的镜像，缺失即停。
+check_reused_images
 confirm '升级前请先在 PVE 中为虚拟机创建快照。已创建请输入：已创建快照' '已创建快照'
 stage="升级前备份"
 if [ "$skip_backup" -eq 0 ]; then
@@ -40,7 +43,7 @@ else
   info '已指定 --skip-backup，跳过升级前备份。'
 fi
 stage="导入镜像"
-load_release_images "$version"
+load_release_images "$version" "$profiles"
 stage="更新部署文件"
 cp "$ROOT/docker-compose.yml" "$ROOT/VERSION" "$ROOT/.env.example" "$target/"
 cp -R "$ROOT/scripts/." "$target/scripts/"

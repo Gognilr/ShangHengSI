@@ -29,6 +29,7 @@ require_root
 require_cmd docker sha256sum findmnt ss getent groupadd chown chmod od tr awk mktemp curl hostname
 docker compose version >/dev/null 2>&1 || die "需要 Docker Compose v2"
 [ ! -e "$ROOT/.env" ] && [ ! -e "$ROOT/secrets/master_key" ] && [ ! -e "$ROOT/secrets/backup_password" ] || die "系统已安装，升级请用 upgrade.sh"
+! is_incremental_release || die "增量包只能用于升级，全新安装请用完整包"
 backup_dir="$(resolve_path "$backup_dir")"
 check_storage "$backup_dir"
 check_release
@@ -58,7 +59,7 @@ else
   groupadd --gid 10001 aireview
 fi
 stage="导入镜像"
-load_release_images "$version"
+load_release_images "$version" "$(sed -n 's/^COMPOSE_PROFILES=//p' "$ROOT/.env.example" | tail -n 1 | tr -d '\r"')"
 stage="生成配置与密钥"
 umask 077
 mkdir -p "$backup_dir" "$ROOT/secrets" "$ROOT/certs"

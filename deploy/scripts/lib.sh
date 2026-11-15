@@ -145,13 +145,41 @@ release_version() {
   printf '%s' "$version"
 }
 
+# V33-A-02：增量包沿用的镜像清单（images/reuse.txt，每行“镜像名 基准版本 镜像 ID”）。完整包没有该文件。
+is_incremental_release() {
+  [ -s "$ROOT/images/reuse.txt" ]
+}
+
+# 升级前置检查：服务器上必须已有每个沿用镜像的同一 ID，缺任何一个都不备份、不改文件。
+check_reused_images() {
+  local name from id
+  [ -f "$ROOT/images/reuse.txt" ] || return 0
+  while read -r name from id; do
+    [ -n "${id:-}" ] || continue
+    [[ "$id" =~ ^sha256:[0-9a-f]{64}$ ]] || die "reuse.txt 格式不正确"
+    docker image inspect "$id" >/dev/null 2>&1 \
+      || die "此增量包需要服务器上已有 $from 的 $name 镜像（ID ${id#sha256:}，前 12 位 ${id:7:12}）；请改用完整包"
+  done < "$ROOT/images/reuse.txt"
+}
+
+# 导入包内镜像，给沿用的镜像打上新版本标签，再按启用的 profile 核对所需镜像齐全（运行时禁止下载镜像）。
 load_release_images() {
-  local version="$1" archive image
+  local version="$1" profiles="${2:-}" archive image name from id
   archive="$ROOT/images/aireview-images-$version.tar"
-  [ -f "$archive" ] || die "缺少当前版本的离线镜像文件"
-  docker load -i "$archive" </dev/null >/dev/null 2>&1 || die "导入离线镜像失败；请检查磁盘空间与镜像包"
-  # R2：发布包增加 converter，运行时禁止下载镜像。
-  for image in "aireview-backend:$version" "aireview-web:$version" "aireview-converter:$version" "aireview-db:$version"; do
+  if [ -s "$ROOT/images/images.txt" ]; then
+    [ -f "$archive" ] || die "缺少当前版本的离线镜像文件"
+    docker load -i "$archive" </dev/null >/dev/null 2>&1 || die "导入离线镜像失败；请检查磁盘空间与镜像包"
+  fi
+  if [ -f "$ROOT/images/reuse.txt" ]; then
+    while read -r name from id; do
+      [ -n "${id:-}" ] || continue
+      docker tag "$id" "aireview-$name:$version" || die "给沿用的 $name 镜像打标签失败"
+    done < "$ROOT/images/reuse.txt"
+  fi
+  local required=("aireview-backend:$version" "aireview-web:$version" "aireview-converter:$version" "aireview-db:$version")
+  case ",$profiles," in *,asr,*) required+=("aireview-transcriber:$version") ;; esac
+  case ",$profiles," in *,mt,*) required+=("aireview-translator:$version") ;; esac
+  for image in "${required[@]}"; do
     docker image inspect "$image" >/dev/null 2>&1 || die "离线包缺少镜像 $image"
   done
 }
