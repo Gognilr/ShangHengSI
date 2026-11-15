@@ -99,12 +99,18 @@ const removable = (_file: SessionFile) => props.session?.status !== 'parsing' &&
 // ---- 模板 ----
 const target = ref('英文'), focus = ref('全部'), tone = ref('正式'), language = ref('同来函'), fileIds = ref<string[]>([])
 watch(() => files.value.map(f => f.id).join(','), () => { fileIds.value = files.value.map(f => f.id) }, { immediate: true })
-function chooseTemplate(value: Template | null) {
-  emit('update:template', value)
-  // 会话里还没有这个模板能用的文件时，直接打开选择框（会议纪要只收录音）
-  if (value && TEMPLATE_LIMITS[value][0] > 0 && !(props.session?.files.length)) pick(value === 'minutes' ? 'audio' : 'doc')
-}
+// 点快捷标签只选中模板，不弹系统文件窗口（V34Q-09）；所需文件数与“加入文件”在模板行就地显示
+function chooseTemplate(value: Template | null) { emit('update:template', value) }
 const limits = computed(() => props.template ? TEMPLATE_LIMITS[props.template] : [0, 10] as [number, number])
+const TEMPLATE_DESC: Partial<Record<Template, string>> = { translate: '分段翻译并核对原文', summary: '提取文件中的重点', reply: '根据来函起草回复', crosscheck: '核对多份单证的一致性', compare: '对齐报价项目，在本地比较价格', minutes: '把录音整理为议题、决议与待办' }
+const need = computed(() => {
+  if (!props.template) return ''
+  const [min, max] = limits.value, unit = props.template === 'minutes' ? '个录音' : '个文件'
+  return min === 0 ? `可附至多 ${max} ${unit}` : min === max ? `需要 ${min} ${unit}` : `需要 ${min}～${max} ${unit}`
+})
+// 文件不够时显示“加入文件”；文件还在处理时不显示（确认完成后会自动带上）
+const short = computed(() => !!props.template && !processing.value && (props.session ? files.value.length : 0) < limits.value[0])
+const canPick = computed(() => !props.session || (props.session.files.length < 10 && !props.session.generating && !props.session.review_running))
 
 // ---- 发送：待确认时自动引导确认，处理中时等完成，消息无疑似项时直接发送 ----
 // 草稿按会话（及讨论锚点）存内存，发送成功清空时随之清掉（V321-E-12）
@@ -238,7 +244,8 @@ defineExpose({ pick, attach })
           <el-select v-if="template === 'summary'" v-model="focus" size="small" class="param" aria-label="侧重点"><el-option v-for="option in ['全部','义务与期限','金额与付款','风险']" :key="option" :label="`侧重：${option}`" :value="option" /></el-select>
           <el-select v-if="template === 'reply'" v-model="tone" size="small" class="param" aria-label="回复语气"><el-option v-for="option in ['正式','简洁','友好坚定']" :key="option" :label="option" :value="option" /></el-select>
           <el-select v-if="template === 'reply'" v-model="language" size="small" class="param" aria-label="回复语言"><el-option v-for="option in ['中文','英文','同来函']" :key="option" :label="option" :value="option" /></el-select>
-          <span v-if="template === 'translate'" class="hint where">云端 · 脱敏后发送</span>
+          <span class="hint where">{{ TEMPLATE_DESC[template] }}<template v-if="template === 'translate'"> · 云端 · 脱敏后发送</template> · {{ need }}</span>
+          <el-button v-if="short && canPick" link size="small" type="primary" @click="pick(template === 'minutes' ? 'audio' : 'doc')">加入文件</el-button>
         </div>
         <el-input ref="questionInput" v-model="text" type="textarea" :autosize="{ minRows: showTemplates ? 3 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="anchor ? '就这个问题继续讨论，例如：怎么改更稳妥？' : showTemplates ? '提问，或把合同、报价单拖到这里、粘贴进来' : '继续提问…'" aria-label="问题或来函" @keydown="onKeydown" />
         <div class="bar">
@@ -279,8 +286,9 @@ defineExpose({ pick, attach })
 <style scoped>
 .composer { padding: 12px 24px 16px; }
 .composer > * { max-width: 760px; margin-left: auto; margin-right: auto; }
-.box { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 8px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-card); background: var(--si-surface-1); transition: border-color var(--si-dur-1) var(--si-ease); }
-.box:focus-within { border-color: var(--si-blue); }
+/* 一个容器：16px 圆角、细边、轻阴影；聚焦只把边框加深，不加蓝框（visual.md 第五节） */
+.box { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 10px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-sheet); background: var(--si-field); box-shadow: var(--si-shadow-composer); transition: border-color var(--si-dur-1) var(--si-ease); }
+.box:focus-within { border-color: var(--si-ink-4); }
 .box.dragging { border-color: var(--si-blue); border-style: dashed; background: color-mix(in srgb, var(--si-blue) 6%, var(--si-surface-1)); }
 .box :deep(.el-textarea__inner) { padding: 0; border: 0; box-shadow: none; background: transparent; font: var(--si-font-body); resize: none; }
 .chips, .template-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
@@ -295,7 +303,7 @@ defineExpose({ pick, attach })
 .chip--busy .chip-state, .chip--busy .chip-main { color: var(--si-blue-ink); }
 .chip-x { display: grid; place-items: center; width: 20px; height: 20px; margin-right: 4px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--si-ink-3); cursor: pointer; }
 .chip-x:hover { background: var(--si-surface-1); color: var(--si-ink-1); }
-.template-tag { display: inline-flex; align-items: center; gap: 2px; padding: 2px 0 2px 8px; border-radius: var(--el-border-radius-base); background: color-mix(in srgb, var(--si-blue) 14%, transparent); color: var(--si-blue-ink); font: var(--si-font-label); }
+.template-tag { display: inline-flex; align-items: center; gap: 2px; padding: 2px 0 2px 8px; border-radius: var(--el-border-radius-base); background: var(--si-select-bg); color: var(--si-ink-1); font: var(--si-font-label); }
 .param { width: 132px; }
 .where { margin: 0; }
 .bar { display: flex; align-items: center; gap: 8px; }
