@@ -30,12 +30,19 @@ export const router = createRouter({
       component: MainLayout,
       children: [
         { path: '', redirect: HOME_PATH },
-        // /review/new 并入工作台的审核设置；带 task 的是未完成的旧审核任务（草稿、待确认、审核中），仍用原页面接着做（V32Q-08）
+        // 文件审核首页（V34-A-03）：拖入文件即建会话，进入会话的审核视图
+        { path: 'review', name: 'review', component: () => import('@/views/Review.vue'), meta: { perms: ['use.review'] } },
+        // 带 task 的是未完成的旧审核任务（草稿、待确认、审核中），仍用原页面接着做（V32Q-08）；不带的回到文件审核首页
         { path: 'review/new', name: 'review-new', component: () => import('@/views/ReviewNew.vue'), meta: { perms: ['use.review'] },
-          beforeEnter: to => typeof to.query.task === 'string' && to.query.task ? true : { path: '/assistant', query: { mode: 'review' }, replace: true } },
+          beforeEnter: to => typeof to.query.task === 'string' && to.query.task ? true : { path: '/review', replace: true } },
         { path: 'review/:taskId', name: 'review-result', component: () => import('@/views/ReviewResult.vue') },
         { path: 'history', name: 'history', component: () => import('@/views/History.vue') },
-        { path: 'assistant', name: 'assistant', component: Assistant, meta: { perms: ['use.assistant', 'use.review'] } },
+        // 旧地址 /assistant?mode=review 与只有审核权限的人的工作台首页都转到文件审核首页（V34-A-03）
+        { path: 'assistant', name: 'assistant', component: Assistant, meta: { perms: ['use.assistant', 'use.review'] },
+          beforeEnter: to => {
+            const auth = useAuthStore()  // 须改密期间只停留在首页（见下方守卫），不转走
+            return !auth.mustChangePassword && (to.query.mode === 'review' || !auth.can('use.assistant')) ? { path: '/review', replace: true } : true
+          } },
         { path: 'assistant/:sessionId', name: 'assistant-session', component: Assistant, meta: { perms: ['use.assistant', 'use.review'] } },
         // 会议纪要与翻译是侧栏独立菜单（V31-U5），底层沿用助手会话
         { path: 'meeting', name: 'meeting', component: () => import('@/views/Meeting.vue'), meta: { perms: ['use.meeting'] } },

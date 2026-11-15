@@ -172,7 +172,7 @@ def _save(db, row, body, request, admin):
         structured_ok, tested_at = results["structured"]["ok"], utcnow()
     if body.for_review and not structured_ok:
         return JSONResponse(status_code=422, content={"code": "STRUCTURED_REQUIRED",
-                            "message": "该模型未通过结构化输出测试，不能用于智能审核", "tests": results})
+                            "message": "该模型未通过结构化输出测试，不能用于文件审核", "tests": results})
     if results is not None and not results["connection"]["ok"]:
         return JSONResponse(status_code=422, content={"code": "CONNECTION_FAILED",
                             "message": results["connection"]["message"], "tests": results})
@@ -230,7 +230,7 @@ def test(mid: int, request: Request, admin: User = Depends(_perm), db: DbSession
     _audit(db, request, admin, mid, ["structured_ok", "structured_tested_at"])
     db.commit()
     return {"tests": results, "structured_ok": row.structured_ok,
-            "message": "该模型不能继续用于智能审核，请修正后重新测试" if row.for_review and not row.structured_ok else None}
+            "message": "该模型不能继续用于文件审核，请修正后重新测试" if row.for_review and not row.structured_ok else None}
 
 
 @router.post("/models/{mid}/default")

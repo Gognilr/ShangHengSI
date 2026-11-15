@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, Languages, MessageSquare, Mic, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, Sun } from '@lucide/vue'
+import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, Languages, MessageSquare, Mic, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, Sun } from '@lucide/vue'
 import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
@@ -43,24 +43,31 @@ function toggleCollapsed() {
 }
 
 // 菜单按权限点显示（V31-U5F-07）；翻译可只用本地翻译、历史记录是本人的记录，人人可见
-// V3.2：“工作台”（原智能助手）承担提问与全面审核；“智能审核”暂留一个版本，直达工作台的审核设置（不在点击时建会话）
-const MENUS: { key: string; to: string; label: string; icon: typeof MessageSquare; perms?: Perm[] }[] = [
-  { key: 'workbench', to: '/assistant', label: '工作台', icon: MessageSquare, perms: ['use.assistant', 'use.review'] },
-  { key: 'review', to: '/assistant?mode=review', label: '智能审核', icon: FileSearch, perms: ['use.review'] },
-  { key: 'meeting', to: '/meeting', label: '会议纪要', icon: Mic, perms: ['use.meeting'] },
-  { key: 'translate', to: '/translate', label: '翻译', icon: Languages },
-  { key: 'history', to: '/history', label: '历史记录', icon: HistoryIcon },
+// V3.4 一事一入口（V34Q-01）：工作台｜文件审查｜工具｜历史记录、搜索；分组名在收起的窄栏里变为一条短线
+type Menu = { key: string; to: string; label: string; icon: typeof MessageSquare; perms?: Perm[] }
+const SECTIONS: { title: string; items: Menu[] }[] = [
+  { title: '', items: [{ key: 'workbench', to: '/assistant', label: '工作台', icon: MessageSquare, perms: ['use.assistant'] }] },
+  { title: '文件审查', items: [{ key: 'review', to: '/review', label: '文件审核', icon: FileSearch, perms: ['use.review'] }] },
+  { title: '工具', items: [
+    { key: 'meeting', to: '/meeting', label: '会议纪要', icon: Mic, perms: ['use.meeting'] },
+    { key: 'translate', to: '/translate', label: '翻译', icon: Languages },
+  ] },
+  { title: '', items: [{ key: 'history', to: '/history', label: '历史记录', icon: HistoryIcon }] },
 ]
-const menus = computed(() => MENUS.filter(m => !m.perms || auth.can(...m.perms)))
-// 选中规则：“智能审核”只在尚未进入具体会话的审核设置页选中；旧审核任务页（/review/:id）归“历史记录”，设置页不选中菜单。
+const sections = computed(() => SECTIONS.map(s => ({ ...s, items: s.items.filter(m => !m.perms || auth.can(...m.perms)) })).filter(s => s.items.length))
+// 选中按“这件事属于哪一类”（V34Q-01）：/review、旧审核任务页、发起过审核或打开过审核视图的会话 → 文件审核；
+// 其余工作台会话 → 工作台。会话内“审核结果 / 提问”是页内页签，打开过审核视图后不再随切换跳回。设置页、不存在页不选中菜单。
 const activeMenu = computed(() => {
   const path = route.path
-  if (path.startsWith('/settings')) return ''
-  if (path === '/assistant' && route.query.mode === 'review') return 'review'
-  if (path.startsWith('/assistant')) return 'workbench'
+  if (path === '/review' || path.startsWith('/review/')) return 'review'
+  if (path.startsWith('/assistant')) {
+    const sid = typeof route.params.sessionId === 'string' ? route.params.sessionId : ''
+    return sid && (route.query.mode === 'review' || sessions.isReview(sid)) ? 'review' : 'workbench'
+  }
   if (path.startsWith('/meeting')) return 'meeting'
   if (path.startsWith('/translate')) return 'translate'
-  return 'history'
+  if (path.startsWith('/history')) return 'history'
+  return ''
 })
 const displayName = computed(() => auth.user?.display_name ?? '')
 const initial = computed(() => Array.from(displayName.value)[0] ?? '')
@@ -91,8 +98,11 @@ watch(() => [auth.user?.id, auth.mustChangePassword] as const, ([id, mustChange]
   if (id && !mustChange) void sessions.refresh()
 }, { immediate: true })
 
+const inSettings = computed(() => route.path.startsWith('/settings'))
 async function onCommand(cmd: string) {
-  if (cmd === 'appearance') {
+  if (cmd === 'settings') {
+    await router.push('/settings')
+  } else if (cmd === 'appearance') {
     appearanceOpen.value = true
   } else if (cmd === 'password') {
     pwdOpen.value = true
@@ -118,11 +128,15 @@ async function onCommand(cmd: string) {
       </div>
 
       <nav class="block menu" aria-label="菜单">
-        <el-tooltip v-for="m in menus" :key="m.key" :content="m.label" placement="right" :disabled="!collapsed">
-          <router-link :to="m.to" class="item" :class="{ selected: activeMenu === m.key }" :aria-current="activeMenu === m.key ? 'page' : undefined" :aria-label="collapsed ? m.label : undefined">
-            <component :is="m.icon" :size="16" :stroke-width="1.75" /><span class="label">{{ m.label }}</span>
-          </router-link>
-        </el-tooltip>
+        <template v-for="(s, i) in sections" :key="s.title || i">
+          <div v-if="s.title" class="group" role="presentation"><span class="label">{{ s.title }}</span></div>
+          <div v-else-if="i > 0" class="rule" role="presentation" />
+          <el-tooltip v-for="m in s.items" :key="m.key" :content="m.label" placement="right" :disabled="!collapsed">
+            <router-link :to="m.to" class="item" :class="{ selected: activeMenu === m.key }" :aria-current="activeMenu === m.key ? 'page' : undefined" :aria-label="collapsed ? m.label : undefined">
+              <component :is="m.icon" :size="16" :stroke-width="1.75" /><span class="label">{{ m.label }}</span>
+            </router-link>
+          </el-tooltip>
+        </template>
         <el-tooltip content="搜索（Ctrl K）" placement="right" :disabled="!collapsed">
           <button type="button" class="item" :disabled="auth.mustChangePassword" :aria-label="collapsed ? '搜索' : undefined" aria-keyshortcuts="Control+K" @click="searchOpen = true">
             <Search :size="16" :stroke-width="1.75" /><span class="label">搜索</span><kbd class="label">Ctrl K</kbd>
@@ -144,19 +158,16 @@ async function onCommand(cmd: string) {
           </template>
           <AlertList @navigate="alertsOpen = false" />
         </el-popover>
-        <el-tooltip content="设置" placement="right" :disabled="!collapsed">
-          <router-link to="/settings" class="item" :class="{ selected: route.path.startsWith('/settings') }" :aria-current="route.path.startsWith('/settings') ? 'page' : undefined" :aria-label="collapsed ? '设置' : undefined">
-            <Settings :size="16" :stroke-width="1.75" /><span class="label">设置</span>
-          </router-link>
-        </el-tooltip>
         <div class="user-row">
           <el-dropdown trigger="click" placement="top-start" @command="onCommand">
-            <button type="button" class="user" :aria-label="`${displayName}，账号菜单`">
+            <button type="button" class="user" :class="{ selected: inSettings }" :aria-label="`${displayName}，账号菜单`">
               <span class="avatar">{{ initial }}</span><span class="label display-name">{{ displayName }}</span><ChevronsUpDown class="label" :size="16" :stroke-width="1.75" />
             </button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="appearance">外观</el-dropdown-item>
+                <!-- 设置收进账号菜单（V34-A-03 用户要求）：所有人可见，管理分页仍按角色显示 -->
+                <el-dropdown-item command="settings">设置</el-dropdown-item>
+                <el-dropdown-item command="appearance" divided>外观</el-dropdown-item>
                 <el-dropdown-item command="password">修改密码</el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出</el-dropdown-item>
               </el-dropdown-menu>
@@ -220,6 +231,10 @@ async function onCommand(cmd: string) {
 .collapsed .brand { justify-content: center; padding: 0; }
 .block { flex: none; padding: 4px 8px; }
 .menu { display: flex; flex-direction: column; gap: 2px; padding-bottom: 12px; }
+/* 分组名（visual.md 第六节）：小号次要色；收起为窄栏时变为一条短细线 */
+.group { padding: 14px 12px 4px; font: var(--si-font-overline); color: var(--si-ink-4); }
+.rule { height: 1px; margin: 8px 12px; background: var(--si-hair-faint); }
+.collapsed .group { padding: 0; height: 1px; margin: 10px 20px; background: var(--si-hair-faint); }
 .recent { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 0; }
 .bottom { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; padding-bottom: 12px; border-top: 1px solid var(--si-hair-faint); }
 
@@ -257,6 +272,7 @@ kbd { margin-left: auto; font: var(--si-font-caption); color: var(--si-ink-4); }
 .user-row :deep(.el-dropdown) { flex: 1; min-width: 0; }
 .user { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 40px; padding: 0 8px; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--si-ink-2); font: var(--si-font-body); cursor: pointer; transition: background-color var(--si-dur-1) var(--si-ease); }
 .user:hover { background: var(--si-hover-bg); }
+.user.selected { background: var(--si-select-bg); color: var(--si-ink-1); }
 .avatar { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--si-select-bg); color: var(--si-ink-1); font-weight: 600; }
 .display-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .user svg { flex: none; color: var(--si-ink-3); }

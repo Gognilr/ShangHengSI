@@ -30,7 +30,7 @@ const emit = defineEmits<{
 
 const init = props.initial
 const auth = useAuthStore()
-// 只有“智能审核”权限的人不能直接提问，只能在审核问题上讨论（V32-B-01 4）
+// 只有“文件审核”权限的人不能直接提问，只能在审核问题上讨论（V32-B-01 4）
 const canAsk = computed(() => auth.can('use.assistant'))
 const canSend = computed(() => canAsk.value || !!props.anchor)
 // ---- 模型 ----

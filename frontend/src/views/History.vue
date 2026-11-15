@@ -125,7 +125,7 @@ onMounted(load)
         end-placeholder="结束日期"
         @change="search"
       />
-      <el-button @click="search">查询</el-button><el-button class="new-review" type="primary" @click="router.push({ path: '/assistant', query: { mode: 'review' } })">新建审核</el-button>
+      <el-button @click="search">查询</el-button><el-button class="new-review" type="primary" @click="router.push('/review')">新建审核</el-button>
     </div>
 
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />

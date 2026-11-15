@@ -27,10 +27,10 @@ let version = 0
 const staticEntries = computed<Entry[]>(() => {
   const go = (path: string) => () => void router.push(path)
   const list: Entry[] = [
-    ...(auth.can('use.review') ? [{ key: 'a-review', group: '操作', label: '新建审核', icon: FilePlus, run: go('/assistant?mode=review') }] : []),
+    ...(auth.can('use.review') ? [{ key: 'a-review', group: '操作', label: '新建审核', icon: FilePlus, run: go('/review') }] : []),
     ...(auth.can('use.assistant', 'use.review') ? [{ key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
       { key: 'p-assistant', group: '页面', label: '工作台', icon: MessageSquare, run: go('/assistant') }] : []),
-    ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '智能审核', icon: FileSearch, run: go('/assistant?mode=review') }] : []),
+    ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '文件审核', icon: FileSearch, run: go('/review') }] : []),
     { key: 'p-history', group: '页面', label: '历史记录', icon: HistoryIcon, run: go('/history') },
   ]
   for (const s of SETTING_TABS) {

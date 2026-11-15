@@ -18,7 +18,7 @@ from app.security.sessions import AuthContext, require_auth
 
 # (代码, 名称, 组)；顺序即界面顺序
 PERMISSIONS: list[tuple[str, str, str]] = [
-    ("use.review", "智能审核", "使用"),
+    ("use.review", "文件审核", "使用"),
     ("use.assistant", "智能助手", "使用"),
     ("use.meeting", "会议纪要", "使用"),
     ("use.translate", "翻译（云端）", "使用"),

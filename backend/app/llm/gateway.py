@@ -122,7 +122,7 @@ def describe_reasons(reasons: list[BlockReason]) -> str:
 
 
 ASSIST_TITLES = {"chat": "智能助手", "meeting": "会议纪要", "translate": "翻译"}
-REVIEW_TITLE = "智能审核"
+REVIEW_TITLE = "文件审核"
 
 
 class _Recorder:

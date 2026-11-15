@@ -20,7 +20,7 @@ export const SETTING_TABS: { name: string; label: string; search?: string; perms
   { name: 'data', label: '数据', perms: ['sys.data'] },
 ]
 
-/** 首页：工作台（持有智能助手或智能审核任一权限即可）；否则退到会议纪要，最后是翻译（本地翻译人人可用） */
+/** 首页：工作台（智能助手权限）；只有文件审核权限的到文件审核首页；否则退到会议纪要，最后是翻译（本地翻译人人可用） */
 export function homeFor(can: (...p: Perm[]) => boolean): string {
-  return can('use.assistant', 'use.review') ? '/assistant' : can('use.meeting') ? '/meeting' : '/translate'
+  return can('use.assistant') ? '/assistant' : can('use.review') ? '/review' : can('use.meeting') ? '/meeting' : '/translate'
 }

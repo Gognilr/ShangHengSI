@@ -70,7 +70,7 @@ def test_a03_no_real_values_in_outbound_records(db_sessionmaker, alice, llm, mon
         assert db.scalar(select(RedactionTerm.id).where(RedactionTerm.kind == "learned")) is not None
         # 外发记录不写主文件名（常含对方公司名），只写用途（V31Q-115）
         from app.db.models import LlmCall
-        assert set(db.scalars(select(LlmCall.task_title).distinct())) == {"智能审核"}
+        assert set(db.scalars(select(LlmCall.task_title).distinct())) == {"文件审核"}
     records = outbound_records(db_sessionmaker, requests)
     # 每个样本都发送了（D-03 起每轮按维度组发送多次，每条记录都逐条复检），且全部 sent（被出口复检拦截的会是 blocked）
     assert {r.task_id for r in records} == set(task_of)

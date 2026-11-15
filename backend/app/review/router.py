@@ -57,7 +57,7 @@ def _owned_session(id: str, user: User = Depends(current_user), db: DbSession = 
              dependencies=[Depends(_review)])
 def create_session_run(request: Request, body: service.SessionRunIn, task: Task = Depends(_owned_session),
                        user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> RunCreated:
-    """会话发起审核（V32-A-02）：要求“智能审核”权限，只接受工作台会话（purpose=chat）。"""
+    """会话发起审核（V32-A-02）：要求“文件审核”权限，只接受工作台会话（purpose=chat）。"""
     run = service.create_session_run(db, task, user, client_ip(request), body)
     return RunCreated(id=run.id, run_no=run.run_no, status=run.status, remembered=task.__dict__.get('_remembered', []))
 

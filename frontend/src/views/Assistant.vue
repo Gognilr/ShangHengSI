@@ -2,14 +2,13 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Ellipsis, Files, Upload } from '@lucide/vue'
+import { Ellipsis, Files } from '@lucide/vue'
 import { assistantApi, type Session, type SessionItem, type Message, type MessageSource, type Template } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import NotFound from '@/views/NotFound.vue'
 import type { Finding } from '@/api/runs'
 import { useAuthStore } from '@/stores/auth'
 import { useSessionsStore } from '@/stores/sessions'
-import { usePasteFiles } from '@/composables/usePasteFiles'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import ReviewPane from '@/components/workspace/ReviewPane.vue'
 import Conversation from '@/components/assistant/Conversation.vue'
@@ -34,7 +33,7 @@ const greetingTitle = computed(() => {
   return name ? `${greeting.value.title}，${name}` : greeting.value.title
 })
 const greetingTimer = setInterval(() => { if (!document.hidden) greetingHour.value = Number(hourFormat.format(new Date())) }, 60000)
-// 工作台两种视图（V32-B-01）：直接提问 / 全面审核。切换只改视图，不外发、不清空输入；没有“智能审核”权限的人看不到审核视图
+// 工作台两种视图（V32-B-01）：直接提问 / 全面审核。切换只改视图，不外发、不清空输入；没有“文件审核”权限的人看不到审核视图；会话以外的审核首页在 /review（V34-A-03）
 const canReview = computed(() => auth.can('use.review'))
 const mode = computed<'ask' | 'review'>(() => canReview.value && (route.query.mode === 'review' || !auth.can('use.assistant')) ? 'review' : 'ask')
 const modeModel = computed<'ask' | 'review'>({
@@ -63,6 +62,10 @@ function discuss(next: Anchor) { anchor.value = next }
 // 审核视图第一次打开后只隐藏不卸载：来回切换视图时原文、问题栏的滚动与选中都保留
 const reviewSeen = ref(mode.value === 'review')
 watch(mode, value => { if (value === 'review') { reviewSeen.value = true; reviewDone.value = false } })
+// 侧栏高亮：打开过审核视图或发起过审核的会话归“文件审核”（V34-A-03）
+watch(() => [id.value, mode.value, session.value?.run_count, session.value?.review_running] as const, ([sid, m, runs, running]) => {
+  if (sid && (m === 'review' || runs || running)) sessions.markReview(sid)
+}, { immediate: true })
 watch(() => session.value?.review_running, (running, was) => {
   if (was && !running && session.value) { reviewDone.value = mode.value !== 'review' || document.hidden; void sessions.refresh() }
   syncTitle()
@@ -165,7 +168,7 @@ async function start(payload: ComposerStart) {
     }
     carryTemplate = payload.template
     initial.value = { text: payload.text, modelId: payload.modelId, autoSend: !!payload.text.trim() || (!!payload.template && payload.files.length > 0) }
-    await router.push({ path: `/assistant/${created.id}`, query: mode.value === 'review' && route.query.mode === 'review' ? { mode: 'review' } : {} })
+    await router.push(`/assistant/${created.id}`)
     void sessions.refresh()
   } catch (e) { error.value = failure(e) }
   finally { working.value = false }
@@ -184,12 +187,6 @@ function cite(message: Message, source: MessageSource, anchor: HTMLElement, loca
   if (source.kind === 'para') { if (locate) locate(source.ref); else void filePanel.value?.locate(source.ref) }
   else void filePanel.value?.showSource(message.id, source, anchor)
 }
-// 审核视图首页（还没有会话）：拖入、点选或粘贴文件才建会话，不在进入页面时建空会话（V32-B-01 1）
-const reviewPicker = ref<HTMLInputElement>(), reviewDragging = ref(false)
-function reviewFiles(list: File[]) { if (list.length && !working.value) void start({ text: '', template: null, files: list }) }
-function reviewPicked(event: Event) { const input = event.target as HTMLInputElement, list = Array.from(input.files ?? []); input.value = ''; reviewFiles(list) }
-function reviewDrop(event: DragEvent) { reviewDragging.value = false; reviewFiles(Array.from(event.dataTransfer?.files ?? [])) }
-usePasteFiles(reviewFiles, () => !id.value && mode.value === 'review' && !working.value)
 const uploading = computed(() => homeUpload.value ?? filePanel.value?.uploadProgress ?? null)
 function openFile(file: { id: string; media: unknown; confirmed_at: string | null }) {
   const target = session.value?.files.find(f => f.id === file.id)
@@ -264,19 +261,10 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         </ReviewPane>
       </template>
       <div v-else-if="!loading && !id" class="home">
-        <div v-if="canReview" class="mode-row"><SiSegmented v-model="modeModel" :options="modeOptions" ariaLabel="工作台视图" /></div>
+        <!-- 工作台首页只有提问；审核首页是 /review（V34-A-03），首页的改版在 A-04 -->
         <h1 class="greeting-title">{{ greetingTitle }}</h1>
-        <p class="home-lede">{{ mode === 'review' ? '上传材料，确认脱敏后发起全面审核。' : greeting.text }}</p>
-        <Composer v-show="mode === 'ask'" v-model:template="template" :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
-        <div v-if="mode === 'review'" class="review-home">
-          <input ref="reviewPicker" type="file" multiple hidden accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png" @change="reviewPicked">
-          <button type="button" class="dropzone" :class="{ 'is-dragging': reviewDragging }" :disabled="working" @click="reviewPicker?.click()" @dragover.prevent="reviewDragging = true" @dragleave="reviewDragging = false" @drop.prevent="reviewDrop">
-            <span class="upload-icon"><Upload :size="24" :stroke-width="1.75" /></span>
-            <span class="drop-title">将合同、报价单拖到此处，或 <em>点击选择</em></span>
-            <span class="drop-sub">文件在本机解析、确认脱敏后，才会发送给模型；也可以先直接提问</span>
-          </button>
-          <p v-if="homeUpload !== null" class="hint" role="status">正在上传 {{ homeUpload }}%</p>
-        </div>
+        <p class="home-lede">{{ greeting.text }}</p>
+        <Composer v-model:template="template" :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
       </div>
     </main>
     <DraftDialog v-model:open="draftOpen" :anchor="anchor" :message="draftMessage" @saved="draftUpdate?.($event)" />
@@ -292,13 +280,6 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .review-note { display: flex; gap: 12px; align-items: center; justify-content: center; margin: 12px 20px 0; padding: 8px 12px; border-radius: var(--si-radius-card); background: var(--si-surface-1); border: 1px solid var(--si-hair); color: var(--si-ink-2); font: var(--si-font-body); }
 .files-label { margin-left: 6px; }
 .mode-row { display: flex; justify-content: center; margin-bottom: 16px; }
-.review-home { width: min(640px, calc(100% - 48px)); margin: 0 auto; }
-.dropzone { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 200px; padding: 24px; box-sizing: border-box; border: 1.5px dashed var(--el-border-color); border-radius: var(--si-radius-card); background: transparent; color: inherit; font: var(--si-font-body); cursor: pointer; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
-.dropzone:hover:not(:disabled), .dropzone.is-dragging { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
-.dropzone:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
-.upload-icon { width: 44px; height: 44px; display: grid; place-items: center; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 12px; }
-.drop-title em { color: var(--el-color-primary); font-style: normal; }
-.drop-sub { color: var(--si-ink-3); font: var(--si-font-caption); }
 .home { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 8vh; }
 .home h1, .home-title { margin: 0 0 20px; text-align: center; font: var(--si-font-title-lg); color: var(--si-ink-1); }
 .home .greeting-title, .greeting-title { max-width: 760px; margin: 0 auto 8px; padding: 0 24px; box-sizing: border-box; overflow-wrap: anywhere; }

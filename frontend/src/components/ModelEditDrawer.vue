@@ -101,7 +101,7 @@ async function save() {
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" :disabled="saving" @submit.prevent="save">
       <el-form-item label="显示名称" prop="display_name"><el-input v-model="form.display_name" maxlength="40" show-word-limit /></el-form-item>
       <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="2" maxlength="200" show-word-limit /></el-form-item>
-      <div class="purposes"><el-checkbox v-model="form.for_review">可用于智能审核</el-checkbox><el-checkbox v-model="form.for_assist">可用于智能助手</el-checkbox></div>
+      <div class="purposes"><el-checkbox v-model="form.for_review">可用于文件审核</el-checkbox><el-checkbox v-model="form.for_assist">可用于智能助手</el-checkbox></div>
       <el-form-item label="接口地址" prop="base_url"><el-input v-model="form.base_url" maxlength="500" placeholder="https://api.example.com/v1" /></el-form-item>
       <el-form-item label="API 密钥" prop="api_key"><el-input v-model="form.api_key" type="password" show-password autocomplete="new-password" :placeholder="keyLast4 ? `已设置（末 4 位 ${keyLast4}），留空不修改` : '请输入 API 密钥'" maxlength="500" /></el-form-item>
       <el-form-item label="模型名称" prop="model_name"><el-input v-model="form.model_name" maxlength="100" /></el-form-item>

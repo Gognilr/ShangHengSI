@@ -12,6 +12,10 @@ export const useSessionsStore = defineStore('sessions', () => {
   const asrEnabled = ref(false)
   // 审核刚完成、还没打开看过的会话（侧栏显示“完成”）；只在本页面内存里
   const finished = ref<Set<string>>(new Set())
+  // 归入“文件审核”的会话（V34-A-03 侧栏高亮）：发起过审核，或本页面内打开过审核视图；打开过即不再随页签切换跳回工作台
+  const reviewTouched = ref<Set<string>>(new Set())
+  function markReview(id: string): void { if (!reviewTouched.value.has(id)) reviewTouched.value = new Set(reviewTouched.value).add(id) }
+  function isReview(id: string): boolean { return reviewTouched.value.has(id) || !!items.value.find(item => item.id === id)?.run_count }
   let version = 0
   let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -57,7 +61,7 @@ export const useSessionsStore = defineStore('sessions', () => {
     finally { if (current === version) loading.value = false }
   }
 
-  function clear(): void { ++version; clearTimeout(timer); finished.value = new Set(); items.value = []; total.value = 0; page.value = 1; loading.value = false }
+  function clear(): void { ++version; clearTimeout(timer); finished.value = new Set(); reviewTouched.value = new Set(); items.value = []; total.value = 0; page.value = 1; loading.value = false }
 
-  return { items, total, loading, asrEnabled, finished, refresh, loadMore, seen, clear }
+  return { items, total, loading, asrEnabled, finished, refresh, loadMore, seen, clear, markReview, isReview }
 })
