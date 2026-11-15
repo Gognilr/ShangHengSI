@@ -871,8 +871,11 @@ def find_persons(text: str) -> list[Hit]:
             continue
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             hits.append(Hit(m.start(), m.end(), 'PERSON', normalize(m.group())))
+    from app.redaction.plain import surname_in_word
     for m in pattern.finditer(text):
         if m.start() and re.match(r"[一-鿿]", text[m.start() - 1]) and not text[:m.start()].endswith(left):
+            continue
+        if surname_in_word(text, m.start()):  # “及施工图纸”“由管工负责”的姓字属于普通词
             continue
         if not any(h.start < m.end() and m.start() < h.end for h in hits):
             hits.append(Hit(m.start(), m.end(), "PERSON", normalize(m.group())))

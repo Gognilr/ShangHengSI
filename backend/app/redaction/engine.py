@@ -982,13 +982,16 @@ def compute(
                     key = detect.find_country(surface) or COUNTRY_UNKNOWN
                 _accept([_Span(i, hit.start, hit.end, hit.label, key, 'ner')], occupied[i], spans)
             elif hit.score >= ner.MEDIUM:
-                candidate = S.Suspect(hit.start, hit.end, 'ner')
+                start, end = S.model_token(n.text, hit.start, hit.end) or (hit.start, hit.end)
+                if _overlaps(occupied[i] + excluded_spans, start, end):
+                    continue
+                candidate = S.Suspect(start, end, 'ner')
                 if ordinary(n.loc, n.text, candidate):
                     continue
                 if (not S.plain_candidate(n.text, candidate, header=n.loc in headers)
-                        and not any(a <= hit.start and hit.end <= b for a, b in
+                        and not any(a <= start and end <= b for a, b in
                                     [*S.public_institution_spans(n.text), *S.plain_content_spans(n.text)])):
-                    ner_suspects.append(SuspectOut(n.loc, hit.start, hit.end, 'ner'))
+                    ner_suspects.append(SuspectOut(n.loc, start, end, 'ner'))
     # V2-B-09：高置信的名称与签约方一样全文替换（含前面的节点），否则对照表中的真实值会被出口复检拦截。
     for i, n in enumerate(nodes):
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]

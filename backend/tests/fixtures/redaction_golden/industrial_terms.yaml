@@ -1,0 +1,19 @@
+description: 工控合同的技术词（用户 2026-11-15 反馈）：施工不是“姓 + 工”称呼、DCS / PTO / PLC 是工控缩写、“IP55，PLC”不是英国公司、设备部件名不列；王工照常替换，英文 PLC 公司照常识别
+stance: purchase
+must_replace:
+  - {text: 青岚虚构热电有限公司, category: ORG}
+  - {text: 远川虚构动力设备有限公司, category: ORG}
+  - {text: 王工, category: PERSON}
+  - {text: Northwind Fictive Holdings PLC, category: ORG}
+must_keep:
+  - 出蓝图及施工图纸
+  - 对甲方施工进行指导
+  - 土建施工
+  - 进行DCS的组态工作
+  - 输出PTO脉冲指令
+  - 防护等级IP55，PLC控制电动缸行程
+  - （3）汽阀总成
+  - 旋转汽阀总成的手轮
+  - 现场由施工单位配合
+plain_uncertain:
+  - WZP-014S Pt100

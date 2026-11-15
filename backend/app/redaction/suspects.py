@@ -572,11 +572,28 @@ def _generic_reference(surface: str) -> bool:
     return bool(m) and (not m[1] or m[1] in zh_words() or m[1][0] in '已向与和及对由给从被把请经')
 
 
+_MODEL_TOKEN = re.compile(r'[A-Za-z0-9]+(?:[-./][A-Za-z0-9]+)*')
+
+
+def model_token(text: str, start: int, end: int) -> tuple[int, int] | None:
+    """实体识别切在型号中间（“WZP-014S”只取到 WZP）时取整个型号；空格后紧跟的含数字规格段（Pt100）并入。"""
+    whole = next((m for m in _MODEL_TOKEN.finditer(text) if m.start() <= start and end <= m.end()), None)
+    if whole is None or whole.span() == (start, end) and not re.match(r'[ 	][A-Za-z]*\d', text[end:]):
+        return None
+    a, b = whole.span()
+    while (nxt := re.compile(r'[ 	](' + _MODEL_TOKEN.pattern + ')').match(text, b)) and re.search(r'\d', nxt[1]):
+        b = nxt.end()
+    return (a, b) if re.search(r'\d', text[a:b]) else None
+
+
 def ordinary_reason(text: str, candidate: Suspect) -> str | None:
     if candidate.reason in (ORG_SUFFIX, BEFORE_COMPANY):
         return plain.company_explanation(text, candidate.start, candidate.end)
     if candidate.reason in (PERSON_NAME, 'person_like', 'ner'):
-        return plain.explanation(text, candidate.start, candidate.end)
+        reason = plain.explanation(text, candidate.start, candidate.end)
+        if reason is None and candidate.reason == 'ner' and plain.equipment_name(text, candidate.start, candidate.end):
+            return 'equipment'
+        return reason
     return None  # 派生字号、长数字、校验不过的号码不经过解释器。
 
 

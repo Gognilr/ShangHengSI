@@ -167,11 +167,13 @@ _EN_SUFFIX = (
     r"S\.A\.\s+de\s+C\.V\.|A\.Ş\.|A\.S\.|s\.r\.o\.|a\.s\.|Kft\.|Zrt\.|Nyrt\.|S\.R\.L\.|"
     r"S\.A\.R\.L\.|S\.A\.S\.|S\.p\.A\.|Ltda\.|W\.L\.L\.|ApS|A/S|Oy|AB|ASA|K\.K\.|Bhd\.|Est\.|SpA|WLL|SRL|SARL|"
     r"Co\.\s?,\s?Ltd\.?|Co\.\s?Limited|Company\s+Limited|Pte\.?\s?Ltd\.?|Pvt\.?\s?Ltd\.?|Sdn\.?\s?Bhd\.?|"
-    r"L\.L\.C\.?|FZ-LLC|LLC|LLP|PLC|Limited|Ltd\.?|Inc\.?|Corp\.?|Corporation|GmbH|S\.A\.|S\.r\.l\.|"
+    r"L\.L\.C\.?|FZ-LLC|LLC|LLP|Limited|Ltd\.?|Inc\.?|Corp\.?|Corporation|GmbH|S\.A\.|S\.r\.l\.|"
     r"B\.V\.|N\.V\.|FZCO|FZE|PJSC|JSC|OOO"
 )
-_EN_SUFFIX_RE = re.compile(rf"(?<![A-Za-z])(?:(?i:{_EN_SUFFIX})|AG)(?![A-Za-z])")
-_SUFFIX_RE = re.compile(rf"(?:{_CN_SUFFIX})|(?<![A-Za-z])(?:(?i:{_EN_SUFFIX})|AG)(?![A-Za-z])")
+# PLC 在技术文件中多为可编程控制器（“IP55，PLC 控制”）：只认紧跟在英文单词与一个空格之后的写法（Barclays PLC）
+_PLC = r"(?<=[A-Za-z][ 	])(?i:PLC)"
+_EN_SUFFIX_RE = re.compile(rf"(?<![A-Za-z])(?:(?i:{_EN_SUFFIX})|AG|{_PLC})(?![A-Za-z])")
+_SUFFIX_RE = re.compile(rf"(?:{_CN_SUFFIX})|(?<![A-Za-z])(?:(?i:{_EN_SUFFIX})|AG|{_PLC})(?![A-Za-z])")
 _NAME_FORBIDDEN = set("：:；;。，、“”\"「」『』\n\t")
 _CN_CHAR = re.compile(r"[一-鿿]")
 _EN_WORD_OK = re.compile(r"^(?:[A-ZÀ-ÖØ-Þ0-9][A-Za-zÀ-ÖØ-öø-ÿĀ-ſ0-9&'.\-]*|&|of|and|de|du|la|for|ve|z)$")

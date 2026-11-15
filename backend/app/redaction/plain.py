@@ -9,6 +9,13 @@ _HAN = re.compile(r'[一-鿿]+')
 _ROLE_SUFFIXES = ('委员会', '机构', '部门', '平台', '人员', '方', '人', '者', '员', '组', '站')
 _COMPANY = re.compile(r'(?:公司|厂|集团)$')
 _MODIFIERS = re.compile(r'^(?:不同|全|各|权威|合理的)+')
+# 设备与部件名称（“汽阀总成”“透平控制器”）：产品名称按 9.2 保留，只用于实体识别的中置信结果
+_EQUIPMENT = re.compile(r'[一-鿿]{2,6}(?:总成|装置|系统|设备|机组|组件|部件|阀门|阀|泵|电机|电动缸|控制器|传感器|执行器|'
+                        r'变送器|仪表|控制柜|模块|热电阻|热电偶)')
+
+
+def equipment_name(text: str, start: int, end: int) -> bool:
+    return bool(_EQUIPMENT.fullmatch(text[start:end])) and not name_slot(text, start, end)
 
 
 @lru_cache(maxsize=1)
@@ -118,6 +125,17 @@ def explanation(text: str, start: int, end: int, *, slot: bool = True) -> str | 
         if surface.endswith(suffix) and _covered(_MODIFIERS.sub('', surface[:-len(suffix)])):
             return 'generic_role'
     return None
+
+
+def surname_in_word(text: str, start: int) -> bool:
+    """“姓 + 称谓”的姓字与后文连成普通词时不是称呼：“施工图纸”的“施工”，“方经理”仍是称呼。"""
+    left, right = start, start + 1
+    while left and _HAN.fullmatch(text[left - 1]):
+        left -= 1
+    while right < len(text) and _HAN.fullmatch(text[right]):
+        right += 1
+    a = start - left
+    return any(w and x <= a and y - x >= 2 and y > a + 1 for x, y, w in _tokens(text[left:right]))
 
 
 def explains(text: str, start: int, end: int) -> bool:
