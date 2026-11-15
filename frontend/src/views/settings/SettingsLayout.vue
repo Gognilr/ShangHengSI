@@ -39,9 +39,9 @@ const activeTab = computed(() => {
 </script>
 
 <template>
-  <!-- 设置区是一张占满主区域高度的卡：左列导航、右列内容，只有右列滚动（V321Q-48） -->
+  <!-- 设置区不是卡片：左列导航、一条细线、右列内容，只有右列滚动（V321Q-48，V34-A-06） -->
   <div class="page page--wide settings">
-    <div class="panel shell">
+    <div class="shell">
       <nav class="settings-nav" aria-label="设置导航">
         <template v-for="g in groups" :key="g.label">
           <p class="nav-group">{{ g.label }}</p>
@@ -62,9 +62,9 @@ const activeTab = computed(() => {
 
 <style scoped>
 .settings { height: 100%; box-sizing: border-box; padding-bottom: 24px; }
-.shell { height: 100%; box-sizing: border-box; padding: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); overflow: hidden; }
-.settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px; overflow-y: auto; border-right: 1px solid var(--si-hair-faint); background: color-mix(in srgb, var(--si-surface-2) 50%, var(--si-surface-1)); }
-.nav-group { flex: none; margin: 12px 0 2px; padding: 0 12px; font: var(--si-font-caption); color: var(--si-ink-4); }
+.shell { height: 100%; box-sizing: border-box; padding: 0; display: grid; grid-template-columns: 200px minmax(0, 1fr); overflow: hidden; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 0 12px 0 0; overflow-y: auto; border-right: 1px solid var(--si-hair); background: transparent; }
+.nav-group { flex: none; margin: 12px 0 2px; padding: 0 12px; font: var(--si-font-overline); color: var(--si-ink-3); }
 .nav-group:first-child { margin-top: 0; }
 .nav-item { flex: none; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: var(--el-border-radius-base); color: var(--si-ink-2); font: var(--si-font-label); text-decoration: none; transition: background-color var(--si-dur-1) var(--si-ease), color var(--si-dur-1) var(--si-ease); }
 .nav-item svg { flex: none; color: var(--si-ink-3); transition: color var(--si-dur-1) var(--si-ease); }
@@ -72,9 +72,9 @@ const activeTab = computed(() => {
 .nav-item.selected { background: var(--si-select-bg); color: var(--si-ink-1); font-weight: 600; }
 .nav-item:focus-visible { outline-offset: -2px; }
 .settings-content { min-width: 0; overflow-y: auto; }
-.settings-body { padding: 0 32px 8px; }
+.settings-body { padding: 0 0 8px 32px; }
 /* 各页原来自带的面板在外框内不再画边框与底色 */
 .settings-body :deep(.panel) { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.section-nav { position: sticky; top: 0; z-index: 5; display: flex; overflow-x: auto; padding: 8px 20px; background: var(--si-surface-1); border-bottom: 1px solid var(--si-hair-faint); }
+.section-nav { position: sticky; top: 0; z-index: 5; display: flex; overflow-x: auto; padding: 8px 0 8px 32px; background: var(--si-bg-canvas); border-bottom: 1px solid var(--si-hair-faint); }
 .section-nav :deep(.el-button) { flex: none; margin: 0; }
 </style>

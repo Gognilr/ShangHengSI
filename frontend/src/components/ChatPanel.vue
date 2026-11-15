@@ -331,7 +331,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 /* 用户消息靠右气泡；回复满宽、无边框无底色（同助手，frontend.md 2.2） */
 .message { padding: 12px 0; }
 .mine { display: flex; flex-direction: column; align-items: flex-end; }
-.mine .message-content { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--el-color-primary-light-9); border-radius: var(--si-radius-card); font: var(--si-font-body); }
+.mine .message-content { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--si-surface-2); border-radius: 12px; font: var(--si-font-body); }
 .message-content { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .reply .message-content { font: var(--si-font-reading); color: var(--si-text-reading); }
 .unresolved { margin: 6px 0 0; font: var(--si-font-caption); color: var(--si-warn-ink); white-space: normal; }

@@ -178,7 +178,7 @@ watch(() => props.selectedId, async (id) => {
 </template>
 
 <style scoped>
-.rail { display: flex; flex-direction: column; min-height: 0; height: 100%; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); overflow: hidden; }
+.rail { display: flex; flex-direction: column; min-height: 0; height: 100%; border: 0; border-left: 1px solid var(--si-hair); border-radius: 0; background: transparent; overflow: hidden; }
 .alert { flex: none; margin: 12px 16px 0; width: auto; }
 .loading { padding: 16px; }
 .zone-switch { flex: none; padding: 10px 16px 0; }

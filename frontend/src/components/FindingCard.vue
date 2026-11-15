@@ -6,7 +6,7 @@ import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type HandlingStatus } from '@/api/runs'
 import MarkedText from '@/components/result/MarkedText.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
-import { CITE_TAG, HANDLING_OPTIONS, SEVERITY_TAG, categoryLabel, citeStatusLabel, severityLabel, toOptions } from '@/utils/labels'
+import { CITE_TAG, HANDLING_OPTIONS, categoryLabel, citeStatusLabel, severityLabel, toOptions } from '@/utils/labels'
 
 /** 问题卡片（V31-U3 3.5）：收起为一行摘要，选中时展开全文；模型文字一律经 MarkedText 纯文本渲染。 */
 const props = defineProps<{ finding: Finding; no: string; selected?: boolean; askEnabled?: boolean; discussEnabled?: boolean }>()
@@ -103,7 +103,7 @@ async function copy(text: string) {
         <div class="title"><span v-if="status === 'adopted'" class="h-tag h-tag--adopted">✓ 已采纳</span><span v-else-if="status === 'ignored'" class="h-tag h-tag--ignored">已忽略</span><span v-if="f.discussed_text" class="h-tag d-tag" :class="{ on: f.use_discussed }" :title="f.use_discussed ? '采纳与修订版使用讨论修改稿' : '有讨论修改稿，当前使用原审核建议'">讨论稿</span><MarkedText :text="f.title" :marks="f.marks.title" /><span v-if="f.unresolved > 0" class="unresolved">{{ f.unresolved }} 处未能还原</span></div>
         <div class="meta">{{ meta }}</div>
       </div>
-      <el-tag :type="SEVERITY_TAG[f.severity] ?? 'info'" size="small" round>{{ severityLabel(f.severity) }}</el-tag>
+      <span class="sev"><i aria-hidden="true" />{{ severityLabel(f.severity) }}</span>
     </div>
 
     <div v-if="selected" class="body">
@@ -156,15 +156,17 @@ async function copy(text: string) {
 </template>
 
 <style scoped>
-.card { position: relative; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); transition: border-color var(--si-dur-1) var(--si-ease), box-shadow var(--si-dur-1) var(--si-ease); }
-.card::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 2px 2px 0; background: var(--si-info); }
-.card.severity-high::before { background: var(--si-danger); }
-.card.severity-medium::before { background: var(--si-warn); }
-.card:hover { border-color: var(--si-card-hover-border); }
-.card.selected { border-color: var(--el-color-primary); box-shadow: 0 0 0 1px var(--el-color-primary); }
+.card { position: relative; border: 1px solid var(--si-hair); border-radius: 10px; background: transparent; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
+.card:hover { border-color: var(--si-hair-strong); background: var(--si-hover-bg); }
+.card.selected { border-color: var(--si-ink-3); background: transparent; }
+/* 等级：圆点 + 文字，不用彩色胶囊与竖条 */
+.sev { flex: none; display: inline-flex; align-items: center; gap: 6px; font: var(--si-font-label-sm); color: var(--si-ink-2); }
+.sev i { width: 6px; height: 6px; border-radius: 50%; background: var(--si-info); }
+.severity-high .sev { color: var(--si-danger-ink); }
+.severity-high .sev i { background: var(--si-danger); }
+.severity-medium .sev { color: var(--si-warn-ink); }
+.severity-medium .sev i { background: var(--si-warn); }
 /* 处理状态（V31-U5F-03 问题 7）：已采纳绿色条并降亮，已忽略整卡变灰；选中时恢复全亮便于阅读 */
-.card.h-adopted::before { background: var(--si-ok); }
-.card.h-ignored::before { background: var(--si-ink-3); }
 .card.h-adopted:not(.selected) .head { opacity: .72; }
 .card.h-ignored:not(.selected) .head { opacity: .55; filter: grayscale(1); }
 .card.h-ignored:not(.selected) .title { color: var(--si-ink-3); }
@@ -172,7 +174,7 @@ async function copy(text: string) {
 .h-tag--adopted { background: var(--el-color-success-light-9); color: var(--si-ok-ink); }
 .h-tag--ignored { background: var(--si-surface-2); color: var(--si-ink-3); }
 .d-tag { background: var(--si-surface-2); color: var(--si-ink-2); }
-.d-tag.on { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.d-tag.on { background: var(--si-select-bg); color: var(--si-ink-1); }
 .head { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px 10px 16px; cursor: pointer; border-radius: var(--si-radius-card); }
 .head:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }
 .no { flex: none; padding-top: 1px; font: var(--si-font-code-sm); color: var(--si-ink-3); }
@@ -186,17 +188,16 @@ async function copy(text: string) {
 .label { font: var(--si-font-label-sm); color: var(--si-ink-3); }
 .saved-mark { font: var(--si-font-label-sm); color: var(--si-ok-ink); }
 .text { font: var(--si-font-body); white-space: pre-wrap; overflow-wrap: anywhere; }
-.replacement { padding: 8px 12px; border: 1px solid var(--si-hair-strong); border-radius: 8px; background: var(--el-color-primary-light-9); }
+.replacement { padding: 8px 12px; border-radius: 8px; background: var(--si-surface-2); }
 .replacement-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .replacement-head .el-button { margin-left: auto; }
-.replacement.discussed { background: var(--si-surface-2); }
-.replacement.discussed.chosen { border-color: var(--el-color-primary); }
+.replacement.discussed.chosen { box-shadow: inset 0 0 0 1px var(--si-ink-3); }
 .source { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .copy-warn { font: var(--si-font-caption); color: var(--si-warn-ink); }
 .basis .text, .muted { color: var(--si-ink-3); font: var(--si-font-meta); }
 .muted { margin: 0; }
 .badges { display: flex; flex-wrap: wrap; gap: 6px; }
 /* 处理按钮固定在卡片可见区的底边（V321-E-05）：长卡片不用滚到最底下才能采纳或忽略 */
-.handling { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--si-hair); background: var(--si-surface-1); }
+.handling { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--si-hair); background: var(--si-bg-canvas); }
 .note { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; font: var(--si-font-meta); }
 </style>

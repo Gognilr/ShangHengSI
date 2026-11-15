@@ -114,7 +114,7 @@ async function copy() {
 .message { padding: 16px 0; }
 /* 用户消息：靠右气泡；助手回复：满宽、无边框无底色 */
 .mine { display: flex; flex-direction: column; align-items: flex-end; }
-.mine .markdown { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--el-color-primary-light-9); border-radius: var(--si-radius-card); }
+.mine .markdown { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--si-surface-2); border-radius: 12px; }
 .mine .markdown p:first-child { margin-top: 0; }
 .mine .markdown p:last-child { margin-bottom: 0; }
 .meta { margin-bottom: 4px; }
@@ -125,7 +125,7 @@ async function copy() {
 .markdown { font: var(--si-font-reading); color: var(--si-text-reading); overflow-wrap: anywhere; white-space: pre-wrap; }
 .markdown p { margin: 12px 0; }
 .heading { font: var(--si-font-h3); }
-.clause { padding: 12px 16px; border-left: 3px solid var(--si-blue); background: var(--el-color-primary-light-9); border-radius: var(--si-radius-paper); }
+.clause { padding: 12px 16px; border-left: 2px solid var(--si-hair-strong); background: var(--si-surface-2); border-radius: var(--si-radius-paper); }
 strong { font-weight: 600; }
 .list { padding-left: 16px; }
 .table-scroll { overflow-x: auto; }
