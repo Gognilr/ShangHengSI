@@ -12,6 +12,16 @@ export interface BidProject extends BidSummary {
   limits: { bid_files: number; tender_files: number; file_mb: number; pdf_pages: number; ocr_pages: number }
   requirements: { enabled: number; extract_state: BidExtractState }
   check: { state: null | 'running' | 'done' | 'failed'; error: string | null; ocr: { done: number; total: number } }
+  model: { state: BidModelState; error: string | null; done: number; total: number }
+}
+/** 模型核对（V34-B-05）：片段脱敏 → 待确认 → 发送中 → 完成 / 失败 */
+export type BidModelState = null | 'preparing' | 'awaiting' | 'running' | 'done' | 'failed'
+export interface BidSnippet { id: string; file: string; page: number | null; text: string; ai_text: string; requirements: string[] }
+export interface BidModelView {
+  state: BidModelState; error: string | null; progress: { done: number; total: number }
+  receipt: { snippets: number; chars: number; protected: number; calls: number; total_calls: number; remaining: { monthly: number | null; daily: number | null }; notes: string[] } | null
+  bidders: { id: string; name: string; code: string; snippets: BidSnippet[] }[]
+  requirements: { id: string; n: string; group: BidGroup; text: string; ai_text: string }[]
 }
 export type BidGroup = 'qualification' | 'substantive' | 'veto' | 'pricing' | 'validity' | 'signing' | 'format'
 export type BidMethod = 'local' | 'model' | 'manual'
@@ -49,7 +59,7 @@ export interface BidItem {
   requirement_id: string | null
 }
 export type BidVerdict = 'yes' | 'no' | 'missing' | 'unclear'
-export interface BidCell { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; review_status: string }
+export interface BidCell { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; review_status: string; cite: null | 'verified' | 'unverified' }
 export interface BidCheck {
   state: BidProject['check']['state']; error: string | null; coverage: string[]; items: BidItem[]
   steps: string[]; elapsed: Record<string, number>; cells: BidCell[]; pricing: Record<string, unknown> | null
@@ -100,4 +110,6 @@ export const bidApi = {
   confirm: (id: string) => http.post<BidRequirements>(`/bid/${id}/confirm`),
   startCheck: (id: string) => http.post<BidProject>(`/bid/${id}/check`),
   check: (id: string) => http.get<BidCheck>(`/bid/${id}/check`),
+  model: (id: string) => http.get<BidModelView>(`/bid/${id}/model`),
+  modelAction: (id: string, action: 'prepare' | 'confirm' | 'cancel') => http.post<BidModelView>(`/bid/${id}/model/${action}`),
 }

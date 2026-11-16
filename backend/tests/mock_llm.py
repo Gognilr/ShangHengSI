@@ -57,11 +57,25 @@ def _user_text(messages: list[dict]) -> str:
     return "\n".join(m.get("content", "") for m in messages if m.get("role") == "user")
 
 
+def _bid(text: str) -> str:
+    """标书模型核对（V34-B-05）：第二家的第一条要求判“疑似不响应”，其余“响应”，引文取所引片段前 12 字。"""
+    import re
+    reqs = re.findall(r"^\[(R\d+)\]", text, re.M)
+    snippets = dict(re.findall(r"^\[([A-Z]+\d+)\] (.+)$", text, re.M))
+    first = next(iter(snippets), "")
+    second = "[投标人B]" in text.split("\n", 1)[0]
+    items = [{"req": r, "verdict": "疑似不响应" if second and i == 0 else "响应", "snippet": first,
+              "quote": snippets.get(first, "")[:12], "reason": "模拟判断：依据所引片段", "conflict": ""} for i, r in enumerate(reqs)]
+    return json.dumps({"items": items}, ensure_ascii=False)
+
+
 def build_content(messages: list[dict], mode: str = "normal") -> str:
     """按模式生成 assistant 消息的 content。"""
     if mode == "non_json":
         return "好的，我已经审核完毕，整体没有问题。"
     text = _user_text(messages)
+    if "投标人代号：" in text:
+        return _bid(text)
     req_section = text.split("【审核要求】", 1)[1].split("【", 1)[0] if "【审核要求】" in text else ""
     req_ids = _REQ_LINE.findall(req_section)
     doc = text.split("<document>", 1)[1] if "<document>" in text else ""

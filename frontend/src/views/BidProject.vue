@@ -13,6 +13,7 @@ import BidderCard from '@/components/bid/BidderCard.vue'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 import BidRequirements from '@/components/bid/BidRequirements.vue'
 import BidClues from '@/components/bid/BidClues.vue'
+import BidModelCheck from '@/components/bid/BidModelCheck.vue'
 
 const route = useRoute(), router = useRouter(), id = computed(() => String(route.params.id))
 const project = ref<BidProject>(), loading = ref(false), error = ref(''), pending = ref(false), percent = ref<number | null>(null)
@@ -103,7 +104,12 @@ const startBlock = computed(() => {
   return ''
 })
 async function startCheck() { await mutate(() => bidApi.startCheck(id.value)); if (!error.value) step.value = 2 }
-const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}:${project.value?.check?.ocr?.done}`)
+const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}:${project.value?.check?.ocr?.done}:${project.value?.model?.state}:${project.value?.model?.done}`)
+const modelKey = computed(() => `${project.value?.model?.state}:${project.value?.model?.done}`)
+const modelNote = computed(() => {
+  const m = project.value?.model
+  return m?.state === 'running' ? ` · 模型核对 ${m.done} / ${m.total} 家` : m?.state === 'done' ? ` · 模型核对 ${m.total} 家已完成` : ''
+})
 const ocrNote = computed(() => {
   const o = project.value?.check?.ocr
   return o && o.total > o.done ? ` · 扫描页识别 ${o.done} / ${o.total}` : ''
@@ -292,7 +298,8 @@ async function removeProject() {
       <div v-else-if="step === 2 && (project.stage === 'checking' || project.stage === 'checked' || project.check?.state === 'failed')" class="result">
         <p class="result-status"><BidStatus v-if="project.stage === 'checking'" tone="run" :label="'正在本地检查，已完成的部分先显示' + ocrNote" />
           <BidStatus v-else-if="project.check?.state === 'failed'" tone="warn" :label="project.check.error ?? '本地检查失败'" />
-          <BidStatus v-else :tone="ocrNote ? 'run' : 'ok'" :label="'本地检查已完成' + ocrNote" /></p>
+          <BidStatus v-else :tone="ocrNote || project.model?.state === 'running' ? 'run' : 'ok'" :label="'本地检查已完成' + ocrNote + modelNote" /></p>
+        <BidModelCheck v-if="project.policy === 'ai' && project.stage === 'checked'" :project-id="id" :state-key="modelKey" @changed="load(false)" />
         <BidClues v-if="project.stage === 'checking' || project.stage === 'checked'" :project-id="id" :bidders="project.bidders" :files="project.files"
           :state-key="checkKey" :live="project.stage === 'checking'" />
       </div>

@@ -20,6 +20,7 @@ const typeLabel: Record<string, string> = {
   mixed: '混装', contact: '联系信息相同', props: '文件属性相同', image: '相同图片', similar: '相似段落', pricing: '报价规律',
   multi_total: '多个总价', sum_total: '合计与总价', ceiling: '超最高限价', uppercase: '大小写', row_calc: '分项计算', sum_rows: '合计计算',
   validity: '投标有效期', deposit: '保证金', cert_expired: '证书有效期', ai_instruction: '写给 AI 的指令',
+  model_response: '模型判断', deviation_conflict: '偏离表与正文',
 }
 const sectionLabel: Record<string, string> = { tech: '技术参数章节，已降一档', price: '报价章节，已升一档' }
 const stepsLeft = computed(() => props.live && data.value ? 3 - (data.value.steps?.length ?? 0) : 0)
