@@ -9,7 +9,7 @@ from sqlalchemy import delete, select, text
 
 from app.bid.service import LIMITS
 from app.db.base import utcnow
-from app.db.models import DocNode, Task, TaskFile
+from app.db.models import BidProject, DocNode, Task, TaskFile
 from app.parsing import pdf
 from app.parsing.model import ParseError
 from app.security import crypto
@@ -55,6 +55,14 @@ def _parse_one(db, file, used):
     return parsed, version, {"ocr_pages": parsed.ocr_pages}
 
 
+def _auto_extract(db, task):
+    """招标文件首次解析完成后自动做规则抽取；之后招标文件有变化只提示“重新抽取”，不覆盖用户的修改。"""
+    from app.bid import requirements
+    project = db.get(BidProject, task.id)
+    if project.parameters_enc is None and requirements.parsed_tender_ids(db, task.id):
+        requirements.extract(db, task)
+
+
 def parse_project(db, task_id):
     while True:
         db.execute(text(f"SELECT pg_advisory_xact_lock({_LOCK})"))
@@ -70,6 +78,7 @@ def parse_project(db, task_id):
                 db.commit()
                 continue
             failed = db.scalar(select(TaskFile.id).where(TaskFile.task_id == task_id, TaskFile.parse_error.is_not(None)).limit(1))
+            _auto_extract(db, task)
             task.status = "parse_failed" if failed else "draft"
             task.error_message = "部分文件尚未解析，请处理文件行中的提示" if failed else None
             task.last_activity_at = utcnow()

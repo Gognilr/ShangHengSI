@@ -264,7 +264,7 @@ def _outbound_fields(call: LlmCall, user_name: Optional[str]) -> dict:
 
 @router.get("/outbound-logs", response_model=OutboundPage, dependencies=[Depends(_data)])
 def list_outbound(
-    purpose: Optional[Literal['review', 'chat', 'test', 'assist']] = Query(None),
+    purpose: Optional[Literal['review', 'chat', 'test', 'assist', 'bid']] = Query(None),
     user_id: Optional[uuid.UUID] = Query(None),
     date_from: Optional[date] = Query(None, alias="from"),
     date_to: Optional[date] = Query(None, alias="to"),

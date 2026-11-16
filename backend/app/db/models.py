@@ -348,13 +348,17 @@ class TaskFile(Base):
 # ---- 标书初审（V34-B-01） ----
 class BidProject(Base):
     __tablename__ = "bid_projects"
-    __table_args__ = (enum_check("stage", ["preparing", "ready", "checking", "checked"]),)
+    __table_args__ = (enum_check("stage", ["preparing", "ready", "checking", "checked"]),
+                      enum_check("extract_state", ["redacting", "awaiting", "extracting", "done", "failed"]))
     task_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
     opening_date: Mapped[date] = mapped_column(Date, nullable=False)
     stage: Mapped[str] = mapped_column(String(12), nullable=False, server_default="preparing")
     parameters_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     pricing_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     requirements_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # 模型补充要求清单：本机脱敏 → 待确认 → 发送中 → 完成 / 失败（V34-B-02）
+    extract_state: Mapped[Optional[str]] = mapped_column(String(12))
+    extract_error: Mapped[Optional[str]] = mapped_column(String(200))
 
 
 class BidBidder(Base):
@@ -369,6 +373,10 @@ class BidBidder(Base):
 
 class BidRequirement(Base):
     __tablename__ = "bid_requirements"
+    __table_args__ = (CheckConstraint("\"group\" IN ('qualification', 'substantive', 'veto', 'pricing', 'validity', 'signing', 'format')",
+                                      name="group_valid"),
+                      enum_check("method", ["local", "model", "manual"]),
+                      enum_check("source", ["marked", "model", "default", "manual"]))
     id: Mapped[uuid.UUID] = uuid_pk()
     task_id: Mapped[uuid.UUID] = _task_fk()
     group: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -848,7 +856,7 @@ class LlmCall(Base):
     __tablename__ = "llm_calls"
     model_id: Mapped[Optional[int]] = mapped_column(Integer)
     __table_args__ = (
-        enum_check("purpose", ["review", "chat", "test", "assist"]),
+        enum_check("purpose", ["review", "chat", "test", "assist", "bid"]),
         enum_check("status", ["sent", "blocked", "error"]),
         Index("ix_llm_calls_created_at", text("created_at DESC")),
         Index("ix_llm_calls_user_id_created_at", "user_id", text("created_at DESC")),
@@ -877,7 +885,7 @@ class LlmCall(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
-        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist", "kb_import", "transcribe", "translate"]),
+        enum_check("type", ["parse", "review", "backup", "retention", "law_import", "law_embed", "law_sync", "template_embed", "assist", "kb_import", "transcribe", "translate", "bid"]),
         enum_check("status", ["queued", "running", "done", "failed"]),
         Index("ix_jobs_status_run_after", "status", "run_after"),
     )

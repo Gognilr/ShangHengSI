@@ -243,7 +243,7 @@ def _call_config(
 
     timeout_s 覆盖设置中的超时（追问固定 120 秒，SPEC 13）；retry=False 时失败不重试（追问由用户手动重试）。
     """
-    if purpose not in ("review", "chat", "test", "assist"):
+    if purpose not in ("review", "chat", "test", "assist", "bid"):
         raise ValueError("purpose")
     _refuse_local_only(db, task_id)
     if purpose == "assist":

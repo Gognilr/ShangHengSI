@@ -294,7 +294,7 @@ def run_worker(
 ) -> None:
     """启动并发线程，主线程负责定时工作；stop 置位后等待正在处理的任务结束再返回。"""
     groups = (("review", review_concurrency, ("review",)),
-              ("parse", parse_concurrency, ("parse", "law_import")),
+              ("parse", parse_concurrency, ("parse", "law_import", "bid")),
               ("assist", assist_concurrency, ("assist",)),
               ("transcribe", transcribe_concurrency, ("transcribe",)),
               ("translate", 1, ("translate",)),
@@ -360,6 +360,7 @@ def main() -> None:
     import app.kb.job  # noqa: F401  注册知识库解析
     import app.parsing.transcribe  # noqa: F401  注册独立转写队列
     import app.assistant.local_translation  # noqa: F401  注册独立翻译队列
+    import app.bid.extract  # noqa: F401  注册标书要求清单的脱敏与模型补充
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)

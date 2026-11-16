@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import BidBidder, BidProject, Job, Task, TaskFile
+from app.db.models import BidBidder, BidProject, BidRequirement, Job, Task, TaskFile
 from app.parsing.pdf import MSG_PASSWORD
 from app.security import crypto
 from app.security.errors import AppError, NotFoundError
@@ -69,6 +69,9 @@ def detail(db, task):
     return {"id": task.id, "title": task.title, "opening_date": project.opening_date, "policy": task.policy,
             "stage": project.stage, "status": task.status, "error_message": task.error_message,
             "last_activity_at": task.last_activity_at, "busy": busy(db, task), "limits": LIMITS,
+            "requirements": {"enabled": db.scalar(select(func.count()).select_from(BidRequirement).where(
+                                 BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))) or 0,
+                             "extract_state": project.extract_state},
             "bidders": [{"id": b.id, "name": crypto.decrypt_text(b.name_enc), "code": b.code, "seq": b.seq}
                         for b in db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))],
             "files": [{"id": f.id, "bidder_id": f.bidder_id, "name": f.original_name, "ext": f.ext,

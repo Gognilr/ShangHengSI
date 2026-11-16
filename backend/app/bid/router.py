@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.audit import service as audit
 from app.bid import service
-from app.bid.schemas import BidderInput, PasswordInput, ProjectInput
+from app.bid.schemas import BidderInput, ParametersInput, PasswordInput, ProjectInput, RequirementInput, RequirementPatch
 from app.db.base import utcnow
-from app.db.models import BidBidder, BidProject, Task, TaskFile, User
+from app.db.models import BidBidder, BidProject, BidRequirement, Task, TaskFile, User
 from app.db.session import get_db
 from app.parsing.pdf import PdfPasswordError, _open
 from app.parsing.model import ParseError
@@ -170,3 +170,146 @@ def reparse(task: Task = Depends(owned), db: Session = Depends(get_db)):
     service.queue_parse(db, task)
     db.commit()
     return service.detail(db, task)
+
+
+# ---------------------------------------------------------------- 第 1 步：招标文件与要求清单（V34-B-02）
+
+def _requirements(db, task):
+    from app.bid import extract, requirements as R
+    data = R.view(db, task)
+    data["receipt"] = extract.receipt(db, task)
+    data["stage"] = db.get(BidProject, task.id).stage
+    return data
+
+
+def _changed(db, task):
+    """改清单或参数：版本加一；已确认（待开标）的项目保持待开标，开标后由检查任务只重跑受影响的行。"""
+    db.get(BidProject, task.id).requirements_version += 1
+    task.last_activity_at = utcnow()
+
+
+@router.get("/{id}/tender")
+def tender_text(view: str = Query("original", pattern="^(original|ai)$"), task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """招标文件文字画布；AI 视野只给脱敏后的文字，未脱敏的行不返回内容。"""
+    from app.bid.requirements import markers, tender_nodes
+    from app.db.models import DocNode
+    files = {str(f.id): f.original_name for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id, TaskFile.bidder_id.is_(None)).order_by(TaskFile.seq))}
+    if view == "ai":
+        rows = db.execute(select(DocNode.file_id, DocNode.loc, DocNode.kind, DocNode.redacted_text).join(TaskFile, TaskFile.id == DocNode.file_id)
+                          .where(DocNode.task_id == task.id, DocNode.part == "body", TaskFile.bidder_id.is_(None))
+                          .order_by(TaskFile.seq, DocNode.ord)).all()
+        return {"files": files, "nodes": [{"file_id": str(f), "loc": loc, "kind": kind, "text": text} for f, loc, kind, text in rows if text is not None],
+                "markers": []}
+    nodes = tender_nodes(db, task.id)
+    return {"files": files, "nodes": [vars(n) for n in nodes],
+            "markers": [{"kind": k, "loc": n.loc, "start": s, "end": e} for k, n, s, e in markers(nodes)]}
+
+
+@router.get("/{id}/requirements")
+def requirements_view(task: Task = Depends(owned), db: Session = Depends(get_db)):
+    return _requirements(db, task)
+
+
+@router.put("/{id}/parameters")
+def save_parameters(body: ParametersInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import requirements as R
+    task = service.editable(db, task)
+    project = db.get(BidProject, task.id)
+    state = R.load_state(project)
+    state["values"], state["confirmed"] = body.model_dump(), True
+    R.save_state(project, state)
+    _changed(db, task)
+    db.commit()
+    return _requirements(db, task)
+
+
+@router.post("/{id}/requirements", status_code=201)
+def add_requirement(body: RequirementInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import requirements as R
+    task = service.editable(db, task)
+    known = {n.loc: n for n in R.tender_nodes(db, task.id)}
+    locs = []
+    for loc in body.locs:
+        node = known.get(loc.loc)
+        if node is None or node.file_id != loc.file_id or loc.end > len(node.text) or loc.start >= loc.end:
+            raise AppError(422, "INVALID_LOC", "所选原文位置无效，请重新划选")
+        locs.append(loc.model_dump())
+    R._add(db, task.id, R.next_seq(db, task.id), body.group, body.text, locs, body.method, "manual")
+    _changed(db, task)
+    db.commit()
+    return _requirements(db, task)
+
+
+@router.patch("/{id}/requirements/{rid}")
+def patch_requirement(rid: str, body: RequirementPatch, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import requirements as R
+    task = service.editable(db, task)
+    row = R.requirement(db, task, rid)
+    if body.group is not None:
+        row.group = body.group
+    if body.text is not None:
+        row.text_enc, row.redacted_text = crypto.encrypt_text(body.text), None  # 改过的文字由 B-05 发送前重新脱敏
+    if body.method is not None:
+        row.method = body.method
+    if body.enabled is not None:
+        row.enabled = body.enabled
+    _changed(db, task)
+    db.commit()
+    return _requirements(db, task)
+
+
+@router.delete("/{id}/requirements/{rid}")
+def delete_requirement(rid: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import requirements as R
+    task = service.editable(db, task)
+    db.delete(R.requirement(db, task, rid))
+    _changed(db, task)
+    db.commit()
+    return _requirements(db, task)
+
+
+@router.post("/{id}/requirements/extract")
+def reextract(task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """重新规则抽取：手工加入的行保留，其余按当前招标文件重建。"""
+    from app.bid import requirements as R
+    task = service.editable(db, task)
+    if not R.parsed_tender_ids(db, task.id):
+        raise AppError(422, "NO_TENDER", "请先加入并解析招标文件")
+    R.extract(db, task)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return _requirements(db, task)
+
+
+@router.post("/{id}/assist/{action}")
+def model_assist(action: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """模型补充：start 本机脱敏 → confirm 确认发送 → cancel 放弃。"""
+    from app.bid import extract
+    if action not in ("start", "confirm", "cancel"):
+        raise AppError(404, "NOT_FOUND", "接口不存在")
+    task = service.editable(db, task)
+    getattr(extract, action)(db, task)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return _requirements(db, task)
+
+
+@router.post("/{id}/confirm")
+def confirm_requirements(task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """确认关键参数与要求清单：项目进入“待开标”。"""
+    from app.bid import requirements as R
+    task = service.editable(db, task)
+    project = db.get(BidProject, task.id)
+    if not R.parsed_tender_ids(db, task.id):
+        raise AppError(422, "NO_TENDER", "请先加入并解析招标文件")
+    if project.extract_state in ("redacting", "extracting"):
+        raise AppError(409, "EXTRACT_BUSY", "模型补充正在进行，请完成后再确认")
+    if not db.scalar(select(func.count()).select_from(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))):
+        raise AppError(422, "NO_REQUIREMENTS", "要求清单为空，请至少保留一条要求")
+    state = R.load_state(project)
+    state["confirmed"] = True
+    R.save_state(project, state)
+    project.stage = "ready"
+    task.last_activity_at = utcnow()
+    db.commit()
+    return _requirements(db, task)

@@ -1439,6 +1439,11 @@ def outbound_text(nodes: list[NodeIn], parties: list[outbound.PartyInfo], redact
 # ---------------------------------------------------------------- 数据库
 
 
+def _scope(task: Task) -> tuple:
+    """标书项目只对招标文件整份脱敏；投标文件只对待发送片段脱敏（V34-B-05），不进入整份流程。"""
+    return (TaskFile.bidder_id.is_(None),) if task.kind == "bid" else ()
+
+
 def _body_rows(db: Session, task_id: uuid.UUID) -> list[DocNode]:
     return list(db.scalars(
         select(DocNode)
@@ -1466,7 +1471,7 @@ def task_texts(db: Session, task: Task) -> dict[str, str]:
     texts = {loc: crypto.decrypt_text(enc) if enc is not None else "" for loc, enc in db.execute(
         select(DocNode.loc, DocNode.text_enc)
         .join(TaskFile, TaskFile.id == DocNode.file_id)
-        .where(DocNode.task_id == task.id, DocNode.part == "body")
+        .where(DocNode.task_id == task.id, DocNode.part == "body", *_scope(task))
         .order_by(TaskFile.seq, DocNode.ord))}
     if task.user_note_enc is not None:
         texts["NOTE"] = crypto.decrypt_text(task.user_note_enc)
@@ -1659,7 +1664,7 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     rows = db.execute(
         select(DocNode.id, DocNode.loc, DocNode.text_enc, DocNode.clause_no, DocNode.kind, DocNode.redacted_text)
         .join(TaskFile, TaskFile.id == DocNode.file_id)
-        .where(DocNode.task_id == task.id, DocNode.part == "body")
+        .where(DocNode.task_id == task.id, DocNode.part == "body", *_scope(task))
         .order_by(TaskFile.seq, DocNode.ord)).all()
     texts = _texts_with_note(rows, task)
     nodes = [NodeIn(r.loc, texts[r.loc], r.clause_no, r.kind) for r in rows]
