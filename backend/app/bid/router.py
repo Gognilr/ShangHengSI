@@ -352,5 +352,28 @@ def check_result(task: Task = Depends(owned), db: Session = Depends(get_db)):
                        "bidder_ids": i.bidder_ids, "requirement_id": i.requirement_id, "source": i.source,
                        "review_status": i.review_status, **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items],
             "cells": [{"requirement_id": c.requirement_id, "bidder_id": c.bidder_id, "verdict": c.verdict, "locs": c.locs,
-                       "reason": crypto.decrypt_text(c.reason_enc) if c.reason_enc else None, "source": c.source,
+                       "reason": crypto.decrypt_text(c.reason_enc) if c.reason_enc else None, "source": c.source, "cite": c.cite,
                        "review_status": c.review_status} for c in cells]}
+
+
+# ---------------------------------------------------------------- 模型核对（V34-B-05）
+
+@router.get("/{id}/model")
+def model_view(task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """片段确认页：将发送的片段（原文与 AI 视野）、要求与回执。"""
+    from app.bid import model
+    return model.view(db, task)
+
+
+@router.post("/{id}/model/{action}")
+def model_action(action: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """prepare 准备（重新准备）片段 → confirm 确认并开始模型核对 → cancel 放弃。项目材料已锁定，不再改清单。"""
+    from app.bid import model
+    if action not in ("prepare", "confirm", "cancel"):
+        raise AppError(404, "NOT_FOUND", "接口不存在")
+    task = db.scalar(select(Task).where(Task.id == task.id).with_for_update(key_share=True).execution_options(populate_existing=True))
+    db.get(BidProject, task.id, populate_existing=True)
+    {"prepare": model.start, "confirm": model.confirm, "cancel": model.cancel}[action](db, task)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return model.view(db, task)

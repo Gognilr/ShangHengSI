@@ -350,7 +350,8 @@ class BidProject(Base):
     __tablename__ = "bid_projects"
     __table_args__ = (enum_check("stage", ["preparing", "ready", "checking", "checked"]),
                       enum_check("extract_state", ["redacting", "awaiting", "extracting", "done", "failed"]),
-                      enum_check("check_state", ["running", "done", "failed"]))
+                      enum_check("check_state", ["running", "done", "failed"]),
+                      enum_check("model_state", ["preparing", "awaiting", "running", "done", "failed"]))
     task_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
     opening_date: Mapped[date] = mapped_column(Date, nullable=False)
     stage: Mapped[str] = mapped_column(String(12), nullable=False, server_default="preparing")
@@ -364,6 +365,10 @@ class BidProject(Base):
     check_state: Mapped[Optional[str]] = mapped_column(String(12))
     check_error: Mapped[Optional[str]] = mapped_column(String(200))
     check_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    # 模型核对（V34-B-05）：片段脱敏 → 待确认 → 发送中 → 完成 / 失败；片段、批次与进度存加密 JSON
+    model_state: Mapped[Optional[str]] = mapped_column(String(12))
+    model_error: Mapped[Optional[str]] = mapped_column(String(200))
+    model_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
 
 
 class BidBidder(Base):
@@ -429,6 +434,7 @@ class BidCell(Base):
     source: Mapped[str] = mapped_column(String(8), nullable=False)
     review_status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
     note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    cite: Mapped[Optional[str]] = mapped_column(String(12))  # 模型判断的引文校验：verified / unverified（SPEC 11）
 
 
 class BidImage(Base):

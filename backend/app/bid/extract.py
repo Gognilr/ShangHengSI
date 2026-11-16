@@ -184,6 +184,10 @@ def _local_check(db, task, project):
         checks.run(db, task)
         project.check_state, project.check_error, project.stage = "done", None, "checked"
         db.commit()
+        # 外发策略允许时，用户看本地检查结果的同时在后台准备模型核对的片段（bid.md 3.2）
+        from app.bid import model
+        model.start(db, task, auto=True)
+        db.commit()
     except Exception:
         logger.warning("标书本地检查失败 task=%s", task.id)
         db.rollback()
@@ -202,6 +206,10 @@ def handle_bid(db, payload):
         return
     if payload.get("stage") == "check":
         _local_check(db, task, project)
+        return
+    if payload.get("stage") in ("snippets", "model"):
+        from app.bid import model
+        model.handle(db, task, project, payload["stage"])
         return
     if payload.get("stage") == "ocr":
         from app.bid.pipeline import ocr_project

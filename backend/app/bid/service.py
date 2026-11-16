@@ -73,6 +73,7 @@ def detail(db, task):
                                  BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))) or 0,
                              "extract_state": project.extract_state},
             "check": {"state": project.check_state, "error": project.check_error, "ocr": _ocr(files)},
+            "model": {"state": project.model_state, "error": project.model_error, **_model_progress(db, task)},
             "bidders": [{"id": b.id, "name": crypto.decrypt_text(b.name_enc), "code": b.code, "seq": b.seq}
                         for b in db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))],
             "files": [{"id": f.id, "bidder_id": f.bidder_id, "name": f.original_name, "ext": f.ext,
@@ -81,6 +82,11 @@ def detail(db, task):
                        "state": "failed" if f.parse_error else "done" if f.parser_version else "waiting",
                        "error": f.parse_error, "warnings": f.warnings,
                        "original_deleted": f.original_deleted_at is not None} for f in files]}
+
+
+def _model_progress(db, task):
+    from app.bid.model import progress
+    return progress(db, task)
 
 
 def _ocr(files):
