@@ -41,7 +41,7 @@
 | V34-B-04 | 本地检查二：相似段落、报价、确定性符合项 | Q-02 | Opus，high | Sol 6.1，high | B-02、B-03 | — | 已完成（2026-11-16，Claude Opus 5.5，reports/V34-B-04.md；Q-20，5 家 × 200 页 18 秒） |
 | V34-B-05 | 片段脱敏、模型核对与响应矩阵 | Q-02 | Opus，high | Sol 6.1，high（另一侧复核） | B-04 | — | 已完成（2026-11-16，Claude Opus 5.5 实现，reports/V34-B-05.md）；Codex 交叉复核未通过（3 项，Q-22，reports/V34-B-05-review.md），已修复（2026-11-16，Claude Opus 5.5，reports/V34-B-05-fix.md） |
 | V34-B-06 | 结果页五个页签与签章页速览 | Q-02 | Opus，medium | Sol 6.1，medium | B-05 | 截图交用户 | 已完成（2026-11-16，Claude Opus 5.5，reports/V34-B-06.md；Q-23；截图待用户确认） |
-| V34-B-07 | Word 报告、历史与搜索整合、golden 样本 | Q-02 | Sonnet，high | Terra，high | B-06 | — | 未开始 |
+| V34-B-07 | Word 报告、历史与搜索整合、golden 样本 | Q-02 | Sonnet，high | Terra，high | B-06 | — | 已完成（2026-11-16，Claude Sonnet 5.5，reports/V34-B-07.md；Q-24；Word 版式未在 Word 中目视） |
 | V34-B-08 | 真实标书本机评测与阈值校准 | Q-02 | Opus，high | Sol 6.1，high | B-07 | 用户提供文件与密钥；结果交用户 | 未开始 |
 | V34-Z | 复核、SPEC 与 frontend.md 第三版、版本号、全量、增量发布包、服务器升级 | — | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部 | 推送标签前问用户 | 未开始 |
 
