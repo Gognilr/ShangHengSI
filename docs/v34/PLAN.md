@@ -36,7 +36,7 @@
 | V34-A-07 | 等待动画改松青色系 | Q-08 | Sonnet，low | Terra，low | A-01 | — | 已完成（2026-11-16，Claude Sonnet 5.5，reports/V34-A-07.md；仅扫描带需改，动画未目视） |
 | V34-A-08 | 单证核对改本地核对为主 | Q-09 | Opus，medium | Sol 6.1，medium | 00 | — | 已完成（2026-11-16，Claude Opus 5.5，reports/V34-A-08.md；口径 Q-16） |
 | V34-B-01 | 标书项目：数据、权限、菜单、分组上传 | Q-02、03、04 | Opus，high | Sol 6.1，high | A-03 | — | 已完成（2026-11-16，Codex 实现，Claude Opus 5.5 复核补验，reports/V34-B-01.md） |
-| V34-B-02 | 招标文件、关键参数与要求清单 | Q-02 | Opus，high | Sol 6.1，high | B-01 | — | 未开始 |
+| V34-B-02 | 招标文件、关键参数与要求清单 | Q-02 | Opus，high | Sol 6.1，high | B-01 | — | 已完成（2026-11-16，Claude Opus 5.5，reports/V34-B-02.md；Q-18） |
 | V34-B-03 | 本地检查一：属性、图片、联系信息、混装 | Q-02 | Opus，medium | Sol 6.1，medium | B-01 | — | 未开始 |
 | V34-B-04 | 本地检查二：相似段落、报价、确定性符合项 | Q-02 | Opus，high | Sol 6.1，high | B-02、B-03 | — | 未开始 |
 | V34-B-05 | 片段脱敏、模型核对与响应矩阵 | Q-02 | Opus，high | Sol 6.1，high（另一侧复核） | B-04 | — | 未开始 |

@@ -167,8 +167,8 @@ def default_method(group, text, policy):
         return "local"
     if group == "signing":
         return "manual"
-    if group == "pricing" and re.search(r"限价|控制价|大写|小写|唯一|两个以上", text):
-        return "local"
+    if group in ("pricing", "veto") and re.search(r"限价|控制价|大写|小写|两个以上", text):
+        return "local"  # 超限价、大小写、多个报价都能本地算
     if group == "validity" and re.search(r"有效期|保证金", text) and re.search(r"\d|金额|天|日", text):
         return "local"
     return "manual" if policy == "local_only" else "model"
