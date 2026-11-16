@@ -1,0 +1,53 @@
+# V34-B-05 交叉复核；全部虚构。标注正确行为，已复现的问题由 strict xfail 保留。
+redaction:
+  - id: pinned_bidder
+    issue: V34Q-22-1
+    bidder: 虚构松青仪器有限公司
+    pinned:
+      '[[ORG_7]]': 虚构松青仪器有限公司
+    nodes:
+      F2-P1: 投标人：虚构松青仪器有限公司，提供三年质保服务。
+    contains: '[投标人A]'
+    preserve_map: true
+    returns:
+      model: '[[ORG_7]]提供三年质保服务。'
+      expect: 虚构松青仪器有限公司提供三年质保服务。
+  - id: fallback_numeric_boundary
+    issue: V34Q-22-2
+    bidder: 虚构松青仪器有限公司
+    pinned:
+      '[[AMT_1]]': '1000'
+    nodes:
+      F2-P1: 设备设计寿命不低于10000次循环。
+    contains: 设备设计寿命不低于10000次循环。
+    preserve_map: true
+  - id: stable_round_trip
+    bidder: 虚构松青仪器有限公司
+    pinned:
+      '[[TEL_1]]': 010-66668888
+    nodes:
+      F2-P1: 投标人：虚构松青仪器有限公司，虚构松青仪器提供三年质保服务，联系电话：010-66668888。
+    contains: '[投标人A]'
+    preserve_map: true
+    returns:
+      model: '［投标人A］提供三年质保服务。'
+      expect: 虚构松青仪器有限公司提供三年质保服务。
+
+# A-03 同时核对实际请求和 llm_calls.request_text，不能只依赖发送后的对照表自证。
+must_not_send:
+  - 虚构松青仪器有限公司
+  - 虚构鳞木科技有限公司
+  - 虚构赭石设备有限公司
+  - '2,616,000.00'
+  - '2,694,480.00'
+  - '4,180,000.00'
+  - '4,108,000.00'
+
+quotes:
+  source: '[投标人A]承诺提供三年免费质保并在两小时内响应。'
+  cases:
+    - quote: '[投标人A]承诺提供三年免费质保并在两小时内响应。'
+      cite: verified
+    - quote: '[投标人B]承诺提供三年免费质保并在两小时内响应。'
+      cite: unverified
+      issue: V34Q-22-3

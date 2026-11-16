@@ -369,6 +369,8 @@ class BidProject(Base):
     model_state: Mapped[Optional[str]] = mapped_column(String(12))
     model_error: Mapped[Optional[str]] = mapped_column(String(200))
     model_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    # 签章页速览的人工标注（V34-B-06）：{"文件id:页码或节点": stamped / missing / unclear}，不含原文
+    signing: Mapped[Optional[Any]] = mapped_column(JSONB)
 
 
 class BidBidder(Base):

@@ -2,13 +2,16 @@
 import json
 import re
 import uuid
+from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import numpy as np
 import pytest
+import yaml
 from sqlalchemy import select
 
-from app.db.models import DocNode, LlmCall, TaskFile
+from app.db.models import DocNode, LlmCall, Task, TaskFile
 from app.embedding import engine as embedding
 from app.security import crypto
 from tests.fixtures.bid.samples import BIDDERS, bid2, tender_with_logo
@@ -17,6 +20,7 @@ from tests.test_bid_checks import _jobs
 from tests.test_bid_projects import BODY, ROOT, drain, owner  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
+GOLDEN = yaml.safe_load((Path(__file__).parent / "fixtures/bid/model_review_golden.yaml").read_text(encoding="utf-8"))
 
 
 @pytest.fixture(autouse=True)
@@ -88,6 +92,16 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     with db_sessionmaker() as db:
         calls = db.scalars(select(LlmCall.purpose).where(LlmCall.task_id == uuid.UUID(base.rsplit("/", 1)[-1]))).all()
         assert calls.count("bid") == 3
+    # A-03：实际请求与外发记录都查，使用独立的 golden 标注和完整复检上下文。
+    from app.redaction.recheck import recheck, recheck_context
+    with db_sessionmaker() as db:
+        tid = uuid.UUID(base.rsplit("/", 1)[-1])
+        ctx = recheck_context(db, tid)
+        records = db.scalars(select(LlmCall).where(LlmCall.task_id == tid)).all()
+        for text in [*sent, *(r.request_text for r in records)]:
+            assert text and not any(value in text for value in GOLDEN["must_not_send"])
+            assert recheck(text, real_values=ctx.real_values, terms=ctx.terms,
+                           placeholders=ctx.placeholders, kept=ctx.kept) == []
 
 
 def test_recheck_blocks_name_left_in_snippet(owner, db_sessionmaker, llm):
@@ -96,10 +110,79 @@ def test_recheck_blocks_name_left_in_snippet(owner, db_sessionmaker, llm):
     base = _prepared(c, h, db_sessionmaker)
     tid = uuid.UUID(base.rsplit("/", 1)[-1])
     with db_sessionmaker() as db:
+        # 故意污染最后一家的一批，确认前两家也不能先发出去。
+        from app.bid import model
+        state = model._state(model._project(db, db.get(Task, tid)))
+        last = state["batches"][-1]
+        loc = next(s["locs"][0] for s in state["snippets"][last["bidder_id"]] if s["id"] in last["snippets"])
         node = db.scalars(select(DocNode).join(TaskFile, TaskFile.id == DocNode.file_id)
-                          .where(DocNode.task_id == tid, TaskFile.bidder_id.is_not(None), DocNode.redacted_text.is_not(None))).first()
+                          .where(DocNode.task_id == tid, DocNode.loc == loc)).one()
         node.redacted_text = crypto.decrypt_text(node.text_enc) + BIDDERS[2]
         db.commit()
     sent = llm()
     view = c.post(base + "/model/confirm", headers=h).json()
     assert view["state"] == "failed" and "出口复检拦截" in view["error"] and not sent
+    with db_sessionmaker() as db:
+        records = db.scalars(select(LlmCall).where(LlmCall.task_id == tid)).all()
+        assert len(records) == 1 and records[0].status == "blocked" and records[0].request_text is None
+
+
+@pytest.mark.parametrize("case", [pytest.param(case, id=case["id"],
+    marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason=case["issue"]) if case.get("issue") else ())
+    for case in GOLDEN["redaction"]])
+def test_snippet_redaction_golden(case, owner, db_sessionmaker):
+    """通过标书实际片段脱敏入口核对标注；不为每个识别样本另写测试函数。"""
+    from app.bid import model
+    from app.redaction import engine
+    from app.redaction.restore import restore
+    c, h, _ = owner
+    tid = uuid.UUID(c.post(ROOT, headers=h, json={**BODY, "policy": "ai"}).json()["id"])
+    with db_sessionmaker() as db:
+        task = db.get(Task, tid)
+        engine.write_full_map(db, tid, case["pinned"])
+        db.flush()
+        bidder = SimpleNamespace(id=uuid.uuid4(), code="A", name_enc=crypto.encrypt_text(case["bidder"]))
+        red, _, _ = model.redact(db, task, [bidder], case["nodes"], {})
+        mapping = engine.load_redaction_map(db, tid)
+        problems = []
+        if case["contains"] not in "\n".join(red.values()):
+            problems.append(f"片段不符：{red}")
+        if case.get("preserve_map"):
+            if not case["pinned"].items() <= mapping.items():
+                problems.append("片段准备删除或改写了已有对照表")
+        if sample := case.get("returns"):
+            if (actual := restore(sample["model"], mapping)) != sample["expect"]:
+                problems.append(f"还原不符：{actual}")
+        assert not problems, problems
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="V34Q-22-3：引文更换投标人代号仍被模糊匹配核实")
+def test_model_quote_golden(owner, db_sessionmaker):
+    """走 apply 的实际校验与写库路径，区分原样引文与改写投标人代号的引文。"""
+    from app.bid import model
+    from app.db.models import BidCell
+    c, h, _ = owner
+    base = _prepared(c, h, db_sessionmaker)
+    tid = uuid.UUID(base.rsplit("/", 1)[-1])
+    with db_sessionmaker() as db:
+        task = db.get(Task, tid)
+        state = model._state(model._project(db, task))
+        batch = state["batches"][0]
+        snippet = next(s for s in state["snippets"][batch["bidder_id"]] if s["id"] == batch["snippets"][0])
+        loc = snippet["locs"][0]
+        snippet["locs"] = [loc]
+        node = db.scalar(select(DocNode).where(DocNode.task_id == tid, DocNode.loc == loc))
+        node.redacted_text = GOLDEN["quotes"]["source"]
+        node.text_enc = crypto.encrypt_text(node.redacted_text.replace("[投标人A]", BIDDERS[0]))
+        db.flush()
+        rid = batch["reqs"][0]
+        results = []
+        for case in GOLDEN["quotes"]["cases"]:
+            model.apply(db, task, state, 0, [{"req": state["requirements"][rid]["n"], "verdict": "响应",
+                "snippet": snippet["id"], "quote": case["quote"], "reason": "[投标人A]承诺提供三年质保"}])
+            db.flush()
+            cell = db.scalar(select(BidCell).where(BidCell.requirement_id == uuid.UUID(rid),
+                                                   BidCell.bidder_id == uuid.UUID(batch["bidder_id"])))
+            assert crypto.decrypt_text(cell.reason_enc) == BIDDERS[0] + "承诺提供三年质保"
+            results.append(cell.cite)
+        assert results == [case["cite"] for case in GOLDEN["quotes"]["cases"]]

@@ -393,7 +393,13 @@ def _pricing_step(db, task, bidders, nodes, files):
         return _where(n.file_id, n.loc, n.page, n.text, s, e)
 
     items = [_item("clue", c["ids"], "pricing", c["level"], "（四）", c["title"], c["rows"]) for c in clues]
-    db.execute(delete(BidCell).where(BidCell.task_id == task.id, BidCell.source == "local"))
+    # 重跑保留同一单元格的核对状态与备注；人工核对行的单元格（verdict manual）由用户建立，不在此删除
+    # 方法已不是“人工核对”的行（返回修改材料时改过）去掉人工建立的单元格，免得与本地 / 模型判断冲突
+    db.execute(delete(BidCell).where(BidCell.task_id == task.id, BidCell.verdict == "manual", BidCell.requirement_id.in_(
+        select(BidRequirement.id).where(BidRequirement.task_id == task.id, BidRequirement.method != "manual"))))
+    kept = {(c.requirement_id, c.bidder_id): (c.review_status, c.note_enc) for c in db.scalars(select(BidCell).where(
+        BidCell.task_id == task.id, BidCell.source == "local", BidCell.verdict != "manual"))}
+    db.execute(delete(BidCell).where(BidCell.task_id == task.id, BidCell.source == "local", BidCell.verdict != "manual"))
     no_table = []
     for b in bidders:
         if facts[b.id]["main"] is None:
@@ -406,9 +412,10 @@ def _pricing_step(db, task, bidders, nodes, files):
         for kind, rows in kinds.items():
             verdict, reason, where = verdicts[kind]
             for r in rows:
+                status, note = kept.get((r.id, b.id), ("pending", None))
                 db.add(BidCell(task_id=task.id, requirement_id=r.id, bidder_id=b.id, verdict=verdict,
                                locs=[{"file_id": w["file_id"], "loc": w["loc"], "page": w["page"]} for w in where],
-                               reason_enc=crypto.encrypt_text(reason), source="local"))
+                               reason_enc=crypto.encrypt_text(reason), source="local", review_status=status, note_enc=note))
     notes = [f"{'、'.join(no_table)}未识别出报价表（需有数量、单价、金额列），未做分项计算与报价规律比对"] if no_table else []
     return items, notes
 
@@ -438,7 +445,8 @@ def _run_once(db, task):
     active = [b for b in bidders if nodes.get(b.id)]
     two = len(active) >= 2
     project = db.get(BidProject, task.id)
-    summary = {"steps": [], "elapsed": {}, "notes": {}}
+    from app.bid.results import signing_pages
+    summary = {"steps": [], "elapsed": {}, "notes": {}, "signing": signing_pages(active, nodes)}
     count = 0
 
     def save(name, started, items, notes=()):

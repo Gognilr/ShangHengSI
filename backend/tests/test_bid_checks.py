@@ -127,3 +127,41 @@ def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):
     assert len(calls) == 2 and project["check"]["ocr"] == {"done": 2, "total": 2}
     assert any("已用 OCR 识别" in w for f in project["files"] for w in f["warnings"])
     assert not any("识别中" in n for n in c.get(base + "/check").json()["coverage"])  # 重跑过检查
+
+
+def test_review_reopen_and_signing(owner, db_sessionmaker):
+    """V34-B-06：核对状态与备注在返回修改材料、重新初审后保留；单元格详情、人工核对单元格、签章页标注、两两比值。"""
+    c, h, _ = owner
+    base, _project, (a, b, x) = _checked(c, h, db_sessionmaker, [(f"投标文件{i}.docx", bid2(i)) for i in range(3)])
+    result = c.get(base + "/check").json()
+    item = next(i for i in result["items"] if i["type"] == "validity")
+    assert c.patch(f"{base}/items/{item['id']}", headers=h, json={"review_status": "verified", "note": "已核对原件第 3 页"}).json() == \
+        {"review_status": "verified", "note": "已核对原件第 3 页"}
+    cell = next(cl for cl in result["cells"] if cl["verdict"] == "no")
+    key = {"requirement_id": cell["requirement_id"], "bidder_id": cell["bidder_id"]}
+    assert c.put(base + "/cells", headers=h, json={**key, "review_status": "excluded"}).status_code == 200
+    detail = c.get(base + "/cell", headers=h, params=key).json()
+    assert detail["cell"]["review_status"] == "excluded" and detail["requirement"]["text"] and detail["places"][0]["text"]
+    manual = next(r for r in result["requirements"] if r["method"] == "manual")
+    assert c.put(base + "/cells", headers=h, json={"requirement_id": manual["id"], "bidder_id": a, "note": "签字齐全"}).status_code == 200
+    model_row = next((r for r in result["requirements"] if r["method"] == "model"), None)
+    if model_row:  # 模型判断行在没有结果前不能标注
+        assert c.put(base + "/cells", headers=h, json={"requirement_id": model_row["id"], "bidder_id": a, "note": "x"}).status_code == 409
+    assert any(p["n"] >= 5 and p["cv"] for p in result["pricing"]["pairs"])  # 未构成线索的一对也给比值
+    sign = result["signing"]
+    assert sign and all(s["title"] for s in sign)
+    s0 = sign[0]
+    assert c.put(base + "/signing", headers=h, json={"file_id": s0["file_id"], "page": s0["page"], "loc": s0["loc"], "mark": "missing"}).status_code == 200
+
+    assert c.post(base + "/reopen", headers=h).json()["stage"] == "ready"
+    assert c.post(base + "/check", headers=h).json()["stage"] == "checking"
+    _jobs(db_sessionmaker, base, "check")
+    again = c.get(base + "/check").json()
+    same = next(i for i in again["items"] if i["type"] == "validity")
+    assert same["review_status"] == "verified" and same["note"] == "已核对原件第 3 页"
+    by = {(cl["requirement_id"], cl["bidder_id"]): cl for cl in again["cells"]}
+    assert by[(cell["requirement_id"], cell["bidder_id"])]["review_status"] == "excluded"
+    assert by[(manual["id"], a)]["note"] == "签字齐全"
+    assert next(s for s in again["signing"] if s["loc"] == s0["loc"])["mark"] == "missing"
+    other = c.post(ROOT, headers=h, json=BODY).json()["id"]  # 别的项目的条目 404
+    assert c.patch(f"{ROOT}/{other}/items/{item['id']}", headers=h, json={"review_status": "pending"}).status_code == 404

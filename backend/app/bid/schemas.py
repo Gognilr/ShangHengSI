@@ -94,3 +94,21 @@ class RequirementPatch(BaseModel):
         if value is not None and not value.strip():
             raise ValueError("要求文字不能为空")
         return value.strip() if value else value
+
+
+class ReviewInput(BaseModel):
+    """核对状态与备注（V34-B-06）；只传要改的一项。"""
+    review_status: Literal["pending", "verified", "excluded"] | None = None
+    note: str | None = Field(None, max_length=500)
+
+
+class CellReviewInput(ReviewInput):
+    requirement_id: str
+    bidder_id: str
+
+
+class SigningInput(BaseModel):
+    file_id: str
+    page: int | None = None
+    loc: str | None = Field(None, max_length=64)
+    mark: Literal["stamped", "missing", "unclear"] | None = None

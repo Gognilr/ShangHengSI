@@ -103,10 +103,32 @@ def _tail(value):
     return int(q) % 10 if q == q.to_integral_value() else None
 
 
+def _vals(pairs, fixed):
+    vals = [(_value(a), _value(b)) for a, b in pairs if a[0] not in fixed]
+    return [(x, y) for x, y in vals if x is not None and y is not None and x > 0 and y > 0]
+
+
+def ratio_stats(pairs, fixed=frozenset()):
+    """两家对齐分项的单价比值统计（项数、平均比值、变异系数）；不足 5 项返回 None。报价分析页对每一对都展示。"""
+    vals = _vals(pairs, fixed)
+    n = len(vals)
+    if n < MIN_ITEMS:
+        return None
+    with localcontext() as ctx:
+        ctx.prec = 34
+        ratios = [x / y for x, y in vals]
+        if sum(ratios, Decimal(0)) < n:
+            ratios = [y / x for x, y in vals]
+        mean = sum(ratios, Decimal(0)) / n
+        var = sum(((r - mean) ** 2 for r in ratios), Decimal(0)) / n
+        cv = var.sqrt() / mean if mean else Decimal(0)
+    return {"n": n, "mean_ratio": str(mean.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)),
+            "cv": f"{(cv * 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}%"}
+
+
 def pattern(pairs, fixed=frozenset()):
     """比值恒定 / 等差 / 同一尾数习惯；返回 (等级, 说明, 统计) 或 None。"""
-    vals = [(_value(a), _value(b)) for a, b in pairs if a[0] not in fixed]
-    vals = [(x, y) for x, y in vals if x is not None and y is not None and x > 0 and y > 0]
+    vals = _vals(pairs, fixed)
     n = len(vals)
     if n < MIN_ITEMS:
         return None
@@ -175,10 +197,10 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None):
             continue
         pairs, how = align(ma[2], mb[2])
         found = pattern(pairs, fixed)
-        stat = {"a": str(a), "b": str(b), "aligned": len(pairs), "aligned_by": how}
+        stat = {"a": str(a), "b": str(b), "aligned": len(pairs), "aligned_by": how, **(ratio_stats(pairs, fixed) or {})}
         if found:
             level, label, numbers = found
-            stat |= numbers
+            stat |= numbers | {"level": level, "label": label}
             rows = [{"label": "分项单价", "value": f"对齐 {numbers['n']} 项（{'按行序' if how == 'row' else '按品名'}）",
                      "items": [{"name": x[1] or y[1], "left": money(_value(x)), "right": money(_value(y))}
                                for x, y in pairs[:20] if _value(x) is not None and _value(y) is not None]}]

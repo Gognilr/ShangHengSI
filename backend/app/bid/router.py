@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.audit import service as audit
 from app.bid import service
-from app.bid.schemas import BidderInput, ParametersInput, PasswordInput, ProjectInput, RequirementInput, RequirementPatch
+from app.bid.schemas import (BidderInput, CellReviewInput, ParametersInput, PasswordInput, ProjectInput, RequirementInput,
+                             RequirementPatch, ReviewInput, SigningInput)
 from app.db.base import utcnow
 from app.db.models import BidBidder, BidProject, BidRequirement, Task, TaskFile, User
 from app.db.session import get_db
@@ -338,22 +339,95 @@ def start_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
 
 @router.get("/{id}/check")
 def check_result(task: Task = Depends(owned), db: Session = Depends(get_db)):
-    from app.db.models import BidItem
+    """初审结果：条目（含核对状态与备注）、单元格、要求清单、报价分析、签章页速览与覆盖说明。"""
+    from app.bid import requirements as R
+    from app.bid.results import renderable, signing_key
+    from app.db.models import BidCell, BidItem
     project = db.get(BidProject, task.id)
     summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
     rank = {"veto": 0, "strong": 1, "general": 2, "medium": 3, "weak": 4, "hint": 5, "normal": 6}
     items = sorted(db.scalars(select(BidItem).where(BidItem.task_id == task.id)), key=lambda i: (rank.get(i.level, 9), i.type))
-    from app.db.models import BidCell
     cells = db.scalars(select(BidCell).where(BidCell.task_id == task.id))
+    reqs = db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))
+                      .order_by(BidRequirement.seq))
+    files = {str(f.id): f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
+    marks = project.signing or {}
+    values = R.load_state(project)["values"]
+
+    def note(row):
+        return crypto.decrypt_text(row.note_enc) if row.note_enc else None
     return {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
             "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}),
             "pricing": json.loads(crypto.decrypt_text(project.pricing_enc)) if project.pricing_enc else None,
+            "parameters": {"ceiling": values.get("ceiling"), "currency": values.get("currency")},
+            "requirements": [{"id": r.id, "group": r.group, "text": crypto.decrypt_text(r.text_enc), "method": r.method, "seq": r.seq}
+                             for r in reqs],
             "items": [{"id": i.id, "kind": i.kind, "type": i.type, "level": i.level, "article": i.article,
                        "bidder_ids": i.bidder_ids, "requirement_id": i.requirement_id, "source": i.source,
-                       "review_status": i.review_status, **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items],
+                       "review_status": i.review_status, "note": note(i), **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items],
             "cells": [{"requirement_id": c.requirement_id, "bidder_id": c.bidder_id, "verdict": c.verdict, "locs": c.locs,
                        "reason": crypto.decrypt_text(c.reason_enc) if c.reason_enc else None, "source": c.source, "cite": c.cite,
-                       "review_status": c.review_status} for c in cells]}
+                       "review_status": c.review_status, "note": note(c)} for c in cells],
+            "signing": [{**s, "file": files[s["file_id"]].original_name, "renderable": renderable(files[s["file_id"]]),
+                         "mark": marks.get(signing_key(s["file_id"], s["page"], s["loc"]))}
+                        for s in summary.get("signing", []) if s["file_id"] in files]}
+
+
+@router.patch("/{id}/items/{iid}")
+def review_item(iid: str, body: ReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import results
+    out = results.review_item(db, task, iid, body.review_status, body.note)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return out
+
+
+@router.put("/{id}/cells")
+def review_cell(body: CellReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import results
+    out = results.review_cell(db, task, body.requirement_id, body.bidder_id, body.review_status, body.note)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return out
+
+
+@router.get("/{id}/cell")
+def cell_detail(requirement_id: str, bidder_id: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """矩阵单元格抽屉：要求原文与出处、该家对应片段（含上下文）、判断理由、核对状态与备注。"""
+    from app.bid import results
+    return results.cell_detail(db, task, requirement_id, bidder_id)
+
+
+@router.put("/{id}/signing")
+def mark_signing(body: SigningInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """签章页速览的人工标注：已盖章 / 缺章 / 看不清，mark 为空即清除。"""
+    from app.bid import results
+    db.scalar(select(BidProject).where(BidProject.task_id == task.id).with_for_update().execution_options(populate_existing=True))
+    marks = results.set_signing(db, task, body.file_id, body.page, body.loc, body.mark)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return {"marks": marks}
+
+
+@router.get("/{id}/files/{fid}/page/{page}")
+def page_image(fid: str, page: int, width: int = Query(320, ge=120, le=1600), task: Task = Depends(owned),
+               db: Session = Depends(get_db)):
+    """投标文件某一页的图片（签章页缩略图、查看原件页），服务器内存中生成，不缓存。"""
+    from app.bid import results
+    return Response(content=results.page_image(db, task, fid, page, width), media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store"})
+
+
+@router.post("/{id}/reopen")
+def reopen(task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """返回修改材料：退回“待开标”，重新开始初审时沿用已有的核对状态与备注。"""
+    from app.bid import results
+    task = db.scalar(select(Task).where(Task.id == task.id).with_for_update(key_share=True).execution_options(populate_existing=True))
+    db.get(BidProject, task.id, populate_existing=True)
+    results.reopen(db, task)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return service.detail(db, task)
 
 
 # ---------------------------------------------------------------- 模型核对（V34-B-05）
