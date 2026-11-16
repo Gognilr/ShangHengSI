@@ -11,7 +11,7 @@ export interface BidProject extends BidSummary {
   policy: 'ai' | 'local_only'; busy: boolean; error_message: string | null; bidders: Bidder[]; files: BidFile[]
   limits: { bid_files: number; tender_files: number; file_mb: number; pdf_pages: number; ocr_pages: number }
   requirements: { enabled: number; extract_state: BidExtractState }
-  check: { state: null | 'running' | 'done' | 'failed'; error: string | null }
+  check: { state: null | 'running' | 'done' | 'failed'; error: string | null; ocr: { done: number; total: number } }
 }
 export type BidGroup = 'qualification' | 'substantive' | 'veto' | 'pricing' | 'validity' | 'signing' | 'format'
 export type BidMethod = 'local' | 'model' | 'manual'
@@ -32,18 +32,29 @@ export const bidGroupLabel: Record<BidGroup, string> = {
 }
 export const bidMethodLabel: Record<BidMethod, string> = { local: '本地规则', model: '模型判断', manual: '人工核对' }
 export const bidSourceLabel: Record<BidRequirement['source'], string> = { marked: '原文标记', model: '模型提取 · 请核对', default: '默认（第五十一条）', manual: '手工' }
-export type BidLevel = 'strong' | 'medium' | 'weak' | 'normal'
+export type BidLevel = 'strong' | 'medium' | 'weak' | 'normal' | 'veto' | 'general' | 'hint'
 export interface BidPlace { file_id: string; loc?: string; page: number | null; excerpt?: string; name?: string }
 export interface BidEvidenceRow {
   label: string; value?: string; count?: number; sha256?: string; width?: number; height?: number
   files?: Record<string, string>; places?: Record<string, BidPlace[]>
+  /** 相似段落：两家原文并列 */
+  chars?: number; sentences?: number; section?: string; level?: BidLevel
+  left?: { bidder_id: string; places: BidPlace[]; text: string }; right?: { bidder_id: string; places: BidPlace[]; text: string }
+  /** 报价规律：对齐的分项 */
+  items?: { name: string; left: string; right: string }[]
 }
 export interface BidItem {
   id: string; kind: 'issue' | 'clue' | 'normal_dup'; type: string; level: BidLevel; article: string | null; bidder_ids: string[]
-  source: 'local' | 'model'; review_status: 'pending' | 'verified' | 'excluded'; title: string; rows: BidEvidenceRow[]; normal: string
+  source: 'local' | 'model'; review_status: 'pending' | 'verified' | 'excluded'; title: string; rows: BidEvidenceRow[]; normal?: string
+  requirement_id: string | null
 }
-export interface BidCheck { state: BidProject['check']['state']; error: string | null; coverage: string[]; items: BidItem[] }
-export const bidLevelLabel: Record<BidLevel, string> = { strong: '强', medium: '中', weak: '弱', normal: '正常重复' }
+export type BidVerdict = 'yes' | 'no' | 'missing' | 'unclear'
+export interface BidCell { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; review_status: string }
+export interface BidCheck {
+  state: BidProject['check']['state']; error: string | null; coverage: string[]; items: BidItem[]
+  steps: string[]; elapsed: Record<string, number>; cells: BidCell[]; pricing: Record<string, unknown> | null
+}
+export const bidLevelLabel: Record<BidLevel, string> = { strong: '强', medium: '中', weak: '弱', normal: '正常重复', veto: '疑似否决项', general: '一般问题', hint: '提示' }
 export interface BidSettings { title: string; opening_date: string; policy: 'ai' | 'local_only' }
 export const bidStageLabel: Record<BidStage, string> = { preparing: '准备中', ready: '待开标', checking: '初审中', checked: '待核对' }
 export const bidPolicyLabel: Record<BidSettings['policy'], string> = { local_only: '只做本地检查', ai: '本机检查 + 模型核对' }

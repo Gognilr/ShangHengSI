@@ -179,7 +179,7 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None):
         if found:
             level, label, numbers = found
             stat |= numbers
-            rows = [{"label": label, "value": f"对齐 {numbers['n']} 项（{'按行序' if how == 'row' else '按品名'}）",
+            rows = [{"label": "分项单价", "value": f"对齐 {numbers['n']} 项（{'按行序' if how == 'row' else '按品名'}）",
                      "items": [{"name": x[1] or y[1], "left": money(_value(x)), "right": money(_value(y))}
                                for x, y in pairs[:20] if _value(x) is not None and _value(y) is not None]}]
             clues.append({"ids": (a, b), "level": level, "title": label, "rows": rows})

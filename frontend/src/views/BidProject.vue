@@ -57,7 +57,9 @@ function resetTimer() { if (timer) clearTimeout(timer); timer = undefined }
 function accept(data: BidProject) {
   project.value = data
   resetTimer()
-  if (data.busy || data.stage === 'checking') timer = setTimeout(() => void load(false), 1500)
+  // 扫描页延后识别：识别完成前继续轮询，结果随识别补上
+  const ocr = data.check?.ocr
+  if (data.busy || data.stage === 'checking' || (ocr && ocr.total > ocr.done)) timer = setTimeout(() => void load(false), data.busy || data.stage === 'checking' ? 1500 : 5000)
 }
 async function load(initial: boolean) {
   const current = generation, edit = edits
@@ -101,7 +103,11 @@ const startBlock = computed(() => {
   return ''
 })
 async function startCheck() { await mutate(() => bidApi.startCheck(id.value)); if (!error.value) step.value = 2 }
-const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}`)
+const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}:${project.value?.check?.ocr?.done}`)
+const ocrNote = computed(() => {
+  const o = project.value?.check?.ocr
+  return o && o.total > o.done ? ` · 扫描页识别 ${o.done} / ${o.total}` : ''
+})
 async function reparse() { await mutate(() => bidApi.parse(id.value)) }
 async function renameBidder(bidder: string, name: string) { await mutate(() => bidApi.renameBidder(id.value, bidder, name)) }
 async function removeBidder(bidder: string) { await mutate(() => bidApi.removeBidder(id.value, bidder)) }
@@ -284,10 +290,11 @@ async function removeProject() {
       </div>
 
       <div v-else-if="step === 2 && (project.stage === 'checking' || project.stage === 'checked' || project.check?.state === 'failed')" class="result">
-        <p class="result-status"><BidStatus v-if="project.stage === 'checking'" tone="run" label="正在本地检查：混装、联系信息、文件属性、相同图片" />
+        <p class="result-status"><BidStatus v-if="project.stage === 'checking'" tone="run" :label="'正在本地检查，已完成的部分先显示' + ocrNote" />
           <BidStatus v-else-if="project.check?.state === 'failed'" tone="warn" :label="project.check.error ?? '本地检查失败'" />
-          <BidStatus v-else tone="ok" label="本地检查一已完成；相似段落、报价与符合项检查随后补上" /></p>
-        <BidClues v-if="project.stage === 'checked'" :project-id="id" :bidders="project.bidders" :files="project.files" :state-key="checkKey" />
+          <BidStatus v-else :tone="ocrNote ? 'run' : 'ok'" :label="'本地检查已完成' + ocrNote" /></p>
+        <BidClues v-if="project.stage === 'checking' || project.stage === 'checked'" :project-id="id" :bidders="project.bidders" :files="project.files"
+          :state-key="checkKey" :live="project.stage === 'checking'" />
       </div>
       <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认要求清单、放齐投标文件后开始初审，这里会列出总览、要求响应、各家问题、串标线索与报价分析。" />
       <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成并逐条核对后，在这里导出交给评标委员会的《初审疑点报告》（Word）。" />
