@@ -4,6 +4,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { assistantApi, type HistoryItem, type SessionItem } from '@/api/assistant'
+import { bidApi } from '@/api/bid'
 import { useAuthStore } from '@/stores/auth'
 import { statusLabel } from '@/utils/labels'
 import EntryStrip, { type Entry } from './EntryStrip.vue'
@@ -12,16 +13,19 @@ const auth = useAuthStore(), router = useRouter()
 const canReview = computed(() => auth.can('use.review')), canMeeting = computed(() => auth.can('use.meeting')), canTranslate = computed(() => auth.can('use.translate'))
 const history = ref<HistoryItem[]>([]), meetings = ref<SessionItem[]>([]), translations = ref<SessionItem[]>([])
 const loaded = ref(false), asrEnabled = ref(false), mtEnabled = ref(false)
+const bidChecking = ref<number | null>(null)
 
 onMounted(async () => {
-  const [h, m, t] = await Promise.allSettled([
+  const [h, m, t, b] = await Promise.allSettled([
     assistantApi.history({ page: 1 }),
     canMeeting.value ? assistantApi.list(1, '', 'meeting') : Promise.reject(new Error('skip')),
     canTranslate.value ? assistantApi.list(1, '', 'translate') : Promise.reject(new Error('skip')),
+    auth.can('use.bid') ? bidApi.list() : Promise.reject(new Error('skip')),
   ])
   if (h.status === 'fulfilled') history.value = h.value.items
   if (m.status === 'fulfilled') { meetings.value = m.value.items.filter(i => i.file_count > 0 || i.title !== '新会话'); asrEnabled.value = m.value.asr_enabled }
   if (t.status === 'fulfilled') { translations.value = t.value.items.filter(i => i.file_count > 0 || i.title !== '新会话'); mtEnabled.value = t.value.mt_enabled }
+  if (b.status === 'fulfilled') bidChecking.value = b.value.checking_count
   loaded.value = true
 })
 
@@ -46,9 +50,8 @@ const entries = computed<Entry[]>(() => {
     const pending = reviews.value.reduce((sum, r) => sum + (!r.reviewing && r.latest_run_id ? r.pending_count : 0), 0)
     const status = !loaded.value ? '' : running ? `${running} 份审核中` : pending ? `${pending} 条待处理` : reviews.value[0] ? `上次：${when(reviews.value[0].last_activity_at)}` : '拖入文件即可开始'
     list.push({ key: 'review', to: '/review', title: '文件审核', desc: '合同、报价单、函件逐条初审，问题标在原文上', status })
-    // 标书初审在 V34-B-01 接入菜单与页面，此前入口只占位、不可点（V34Q-14）
-    list.push({ key: 'bid', to: '/bid', title: '标书初审', desc: '多家投标文件的资格、符合性审查与串标线索', status: '即将开放', disabled: true })
   }
+  if (auth.can('use.bid')) list.push({ key: 'bid', to: '/bid', title: '标书初审', desc: '多家投标文件的资格、符合性审查与串标线索', status: bidChecking.value === null ? '' : bidChecking.value ? `${bidChecking.value} 个项目初审中` : '新建项目即可开始' })
   if (canMeeting.value) {
     const last = meetings.value[0]
     list.push({ key: 'meeting', to: '/meeting', title: '会议纪要', desc: '录音在本机转写，整理成议题、决议与待办',

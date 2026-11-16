@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, Languages, MessageSquare, Mic, Moon, PanelLeftClose, PanelLeftOpen, Plus, Search, Sun } from '@lucide/vue'
+import { Bell, ChevronsUpDown, FileSearch, HistoryIcon, Languages, MessageSquare, Mic, Moon, PanelLeftClose, PanelLeftOpen, Plus, Scale, Search, Sun } from '@lucide/vue'
 import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
@@ -47,7 +47,10 @@ function toggleCollapsed() {
 type Menu = { key: string; to: string; label: string; icon: typeof MessageSquare; perms?: Perm[] }
 const SECTIONS: { title: string; items: Menu[] }[] = [
   { title: '', items: [{ key: 'workbench', to: '/assistant', label: '工作台', icon: MessageSquare, perms: ['use.assistant'] }] },
-  { title: '文件审查', items: [{ key: 'review', to: '/review', label: '文件审核', icon: FileSearch, perms: ['use.review'] }] },
+  { title: '文件审查', items: [
+    { key: 'review', to: '/review', label: '文件审核', icon: FileSearch, perms: ['use.review'] },
+    { key: 'bid', to: '/bid', label: '标书初审', icon: Scale, perms: ['use.bid'] },
+  ] },
   { title: '工具', items: [
     { key: 'meeting', to: '/meeting', label: '会议纪要', icon: Mic, perms: ['use.meeting'] },
     { key: 'translate', to: '/translate', label: '翻译', icon: Languages },
@@ -60,6 +63,7 @@ const sections = computed(() => SECTIONS.map(s => ({ ...s, items: s.items.filter
 const activeMenu = computed(() => {
   const path = route.path
   if (path === '/review' || path.startsWith('/review/')) return 'review'
+  if (path === '/bid' || path.startsWith('/bid/')) return 'bid'
   if (path.startsWith('/assistant')) {
     const sid = typeof route.params.sessionId === 'string' ? route.params.sessionId : ''
     return sid && (route.query.mode === 'review' || sessions.isReview(sid)) ? 'review' : 'workbench'

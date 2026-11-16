@@ -1,7 +1,7 @@
 // 权限点（V31-U5F-07）：与 backend/app/security/permissions.py 一致；界面按权限点显示菜单、分页与分区。
 // 后端每个接口仍会再校验，这里只决定显示什么。
 export type Perm =
-  | 'use.review' | 'use.assistant' | 'use.meeting' | 'use.translate' | 'use.export'
+  | 'use.review' | 'use.bid' | 'use.assistant' | 'use.meeting' | 'use.translate' | 'use.export'
   | 'content.requirements' | 'content.templates' | 'content.kb' | 'content.terms' | 'content.laws'
   | 'redaction.names' | 'redaction.words' | 'redaction.parties'
   | 'sys.accounts' | 'sys.models' | 'sys.data' | 'sys.lawsync'
@@ -20,7 +20,7 @@ export const SETTING_TABS: { name: string; label: string; search?: string; perms
   { name: 'data', label: '数据', perms: ['sys.data'] },
 ]
 
-/** 首页：工作台（智能助手权限）；只有文件审核权限的到文件审核首页；否则退到会议纪要，最后是翻译（本地翻译人人可用） */
+/** 首页按使用权限依次取工作台、文件审核、标书初审、会议纪要；最后是人人可用的本地翻译。 */
 export function homeFor(can: (...p: Perm[]) => boolean): string {
-  return can('use.assistant') ? '/assistant' : can('use.review') ? '/review' : can('use.meeting') ? '/meeting' : '/translate'
+  return can('use.assistant') ? '/assistant' : can('use.review') ? '/review' : can('use.bid') ? '/bid' : can('use.meeting') ? '/meeting' : '/translate'
 }
