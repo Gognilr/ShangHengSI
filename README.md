@@ -163,3 +163,12 @@ V3.3.0 is the current release (2026-11-15) and is deployed on the production ser
 - [docs/open_questions.md](docs/open_questions.md): decisions on details not covered by the spec
 - `docs/acceptance/`: installation and upgrade records for the production server; `docs/ops/`: operations guide (install, upgrade, backup, restore)
 - [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md): rules for AI coding assistants working on this repository
+
+## License
+
+This project's source code is released under the **Functional Source License 1.1 (FSL-1.1-ALv2)**; see [LICENSE](./LICENSE):
+
+- You may freely view, use and modify this source code for **non-competing purposes**, including deploying it inside your own organization;
+- Two years after each version is released, that version automatically converts to the Apache License 2.0;
+- Without the licensor's prior written authorization, you must not use this software to provide third parties with a product or service having the same or substantially similar functionality as this software; for competing commercial use, please apply for a commercial license as described in [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md);
+- The "商衡SI / ShangHengSI" name and logos are not covered by the source code license; see [TRADEMARK.md](./TRADEMARK.md).

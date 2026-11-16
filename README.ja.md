@@ -163,3 +163,12 @@ docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgr
 - [docs/open\_questions.md](docs/open_questions.md)：仕様に明記されていない細部とその決定
 - `docs/acceptance/`：本番サーバーの導入・アップグレード記録。`docs/ops/`：運用ガイド（導入、アップグレード、バックアップ、復旧）
 - [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md)：本リポジトリで作業する AI コーディングアシスタント向けのルール
+
+## ライセンス
+
+本プロジェクトのソースコードは **Functional Source License 1.1（FSL-1.1-ALv2）** のもとで公開されています。詳細は [LICENSE](./LICENSE) をご覧ください：
+
+- 本ソースコードは、ご自身の組織内でのデプロイを含め、**非競合目的**であれば自由に閲覧・使用・改変できます；
+- 各バージョンは、リリースから満2年が経過すると、自動的に Apache License 2.0 に移行します；
+- 権利者の事前の書面による許諾なく、本ソフトウェアをもとに、本ソフトウェアと同一または実質的に類似する機能を持つ製品・サービスを第三者に提供してはなりません。競合する商用利用については [COMMERCIAL_LICENSE.md](./COMMERCIAL_LICENSE.md) をご覧のうえ、商用ライセンスをお申し込みください；
+- 「商衡SI / ShangHengSI」の名称およびロゴは、ソースコードのライセンスには含まれません。[TRADEMARK.md](./TRADEMARK.md) をご覧ください。
