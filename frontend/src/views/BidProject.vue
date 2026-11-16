@@ -12,11 +12,13 @@ import BidStatus from '@/components/bid/BidStatus.vue'
 import BidderCard from '@/components/bid/BidderCard.vue'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 import BidRequirements from '@/components/bid/BidRequirements.vue'
+import BidClues from '@/components/bid/BidClues.vue'
 
 const route = useRoute(), router = useRouter(), id = computed(() => String(route.params.id))
 const project = ref<BidProject>(), loading = ref(false), error = ref(''), pending = ref(false), percent = ref<number | null>(null)
 const step = ref(0)
-const blocked = computed(() => pending.value)  // 解析期间仍可继续加文件、改名称，新文件由同一次解析接着处理
+const locked = computed(() => !!project.value && !['preparing', 'ready'].includes(project.value.stage))  // 开始初审后材料锁定
+const blocked = computed(() => pending.value || locked.value)  // 解析期间仍可继续加文件、改名称，新文件由同一次解析接着处理
 const tenderFiles = computed(() => project.value?.files.filter(f => !f.bidder_id) ?? [])
 const bidFiles = computed(() => project.value?.files.filter(f => f.bidder_id) ?? [])
 const filesOf = (bidder: string) => project.value?.files.filter(f => f.bidder_id === bidder) ?? []
@@ -36,7 +38,7 @@ const steps = computed(() => {
   return [
     { title: '招标文件与要求', done: tenderDone },
     { title: '投标文件', done: bidDone },
-    { title: '初审结果', done: false },
+    { title: '初审结果', done: p?.stage === 'checked' },
     { title: '导出', done: false },
   ]
 })
@@ -55,7 +57,7 @@ function resetTimer() { if (timer) clearTimeout(timer); timer = undefined }
 function accept(data: BidProject) {
   project.value = data
   resetTimer()
-  if (data.busy) timer = setTimeout(() => void load(false), 1500)
+  if (data.busy || data.stage === 'checking') timer = setTimeout(() => void load(false), 1500)
 }
 async function load(initial: boolean) {
   const current = generation, edit = edits
@@ -89,6 +91,17 @@ async function setPassword(fid: string, password: string) {
   await mutate(() => bidApi.password(id.value, fid, password))
   if (error.value) { rowErrors[fid] = error.value; error.value = '' }
 }
+// 开始初审：要求清单确认、文件解析完、至少一家有投标文件
+const startBlock = computed(() => {
+  const p = project.value
+  if (!p) return '…'
+  if (p.stage !== 'ready') return locked.value ? '' : '先在第 1 步确认关键参数与要求清单'
+  if (p.busy || p.files.some(f => f.state === 'waiting')) return '文件还在解析'
+  if (!bidFiles.value.some(f => f.state === 'done')) return '请先加入投标文件'
+  return ''
+})
+async function startCheck() { await mutate(() => bidApi.startCheck(id.value)); if (!error.value) step.value = 2 }
+const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}`)
 async function reparse() { await mutate(() => bidApi.parse(id.value)) }
 async function renameBidder(bidder: string, name: string) { await mutate(() => bidApi.renameBidder(id.value, bidder, name)) }
 async function removeBidder(bidder: string) { await mutate(() => bidApi.removeBidder(id.value, bidder)) }
@@ -261,9 +274,21 @@ async function removeProject() {
             <FolderOpen :size="18" :stroke-width="1.75" /><p class="si-drop-title">拖入更多投标人的文件夹</p>
           </div>
         </template>
+        <footer class="step-foot start">
+          <span v-if="startBlock" class="hint">{{ startBlock }}</span>
+          <span v-else-if="project.bidders.length < 2" class="hint">只有 1 家时只做符合性检查，不比对串标线索</span>
+          <el-button v-if="!locked" type="primary" :disabled="!!startBlock || pending" @click="startCheck">开始初审</el-button>
+          <el-button v-else @click="step = 2">查看初审结果</el-button>
+        </footer>
         <p class="hint limits num">单个文件 {{ project.limits.file_mb }} MB 以内 · PDF 不超过 {{ project.limits.pdf_pages }} 页 · 全项目扫描页与图片合计 {{ project.limits.ocr_pages }} 页 · 至少 2 家才比对串标线索</p>
       </div>
 
+      <div v-else-if="step === 2 && (project.stage === 'checking' || project.stage === 'checked' || project.check?.state === 'failed')" class="result">
+        <p class="result-status"><BidStatus v-if="project.stage === 'checking'" tone="run" label="正在本地检查：混装、联系信息、文件属性、相同图片" />
+          <BidStatus v-else-if="project.check?.state === 'failed'" tone="warn" :label="project.check.error ?? '本地检查失败'" />
+          <BidStatus v-else tone="ok" label="本地检查一已完成；相似段落、报价与符合项检查随后补上" /></p>
+        <BidClues v-if="project.stage === 'checked'" :project-id="id" :bidders="project.bidders" :files="project.files" :state-key="checkKey" />
+      </div>
       <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认要求清单、放齐投标文件后开始初审，这里会列出总览、要求响应、各家问题、串标线索与报价分析。" />
       <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成并逐条核对后，在这里导出交给评标委员会的《初审疑点报告》（Word）。" />
 
@@ -339,6 +364,8 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .bids .si-drop.slim { margin-top: 16px; }
 .si-drop.hero { padding: 56px 16px; }
 .limits { margin: 16px 0 0; }
+.step-foot.start { align-items: center; gap: 16px; margin-top: 24px; }
+.result-status { margin: 0 0 24px; }
 
 /* 页面至少占满主区域，声明贴底（内容长时随内容下移，至少留 48px） */
 .bid-project { display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; padding-bottom: 20px; }  /* 底边与侧栏底栏的账号行齐平 */
