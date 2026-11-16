@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import type { BidFile } from '@/api/bid'
-import { bidApi } from '@/api/bid'
+import { Lock, X } from '@lucide/vue'
+import { bidApi, formatSize, type BidFile } from '@/api/bid'
 import { ApiError } from '@/api/http'
+import BidStatus from './BidStatus.vue'
 
-const props = defineProps<{ projectId: string; files: BidFile[]; disabled: boolean; rowErrors?: Record<string, string> }>()
+// 文件行：类型徽标 · 名称与大小页数 · 状态 · 移除；需要密码时就地输入，密码默认遮盖、本人可显示
+const props = defineProps<{ projectId: string; files: BidFile[]; disabled: boolean; busy?: boolean; rowErrors?: Record<string, string> }>()
 const emit = defineEmits<{ password: [fid: string, password: string]; remove: [fid: string] }>()
 const passwords = reactive<Record<string, string>>({}), shown = reactive<Record<string, string>>({}), editing = reactive<Record<string, boolean>>({})
 const error = ref('')
@@ -13,27 +15,71 @@ async function reveal(fid: string) {
   try { shown[fid] = (await bidApi.reveal(props.projectId, fid)).password ?? '' }
   catch (e) { error.value = e instanceof ApiError ? e.message : '密码读取失败' }
 }
-function submit(fid: string) { emit('password', fid, passwords[fid] ?? ''); delete passwords[fid]; editing[fid] = false }
+function submit(fid: string) {
+  if (!passwords[fid]) return
+  emit('password', fid, passwords[fid]!); delete passwords[fid]; editing[fid] = false
+}
+function state(file: BidFile) {
+  if (file.original_deleted) return { tone: 'idle' as const, label: '原件已清理' }
+  if (file.state === 'done') return { tone: 'ok' as const, label: '已解析' }
+  if (file.state === 'failed') return { tone: 'warn' as const, label: file.needs_password ? '需要密码' : '待处理' }
+  return props.busy ? { tone: 'run' as const, label: '解析中' } : { tone: 'idle' as const, label: '待解析' }
+}
 </script>
+
 <template>
-  <div class="files">
-    <div v-for="file in files" :key="file.id" class="file">
-      <div class="line"><span class="format">{{ file.ext.toUpperCase() }}</span><span class="filename" :title="file.name">{{ file.name }}</span><span class="state"><span class="dot" :class="file.state" />{{ file.original_deleted ? '原件已清理' : file.state === 'done' ? `已解析${file.page_count ? ` · ${file.page_count} 页` : ''}` : file.state === 'failed' ? '待处理' : '待解析' }}</span><el-button text :disabled="disabled" @click="emit('remove', file.id)">移除</el-button></div>
-      <p v-if="rowErrors?.[file.id] || file.error" class="error" role="alert">{{ rowErrors?.[file.id] || file.error }}</p>
-      <div v-if="file.ext === 'pdf' && !file.original_deleted" class="password-row">
-        <template v-if="file.has_password"><span class="hint">PDF 密码</span><code>{{ file.id in shown ? shown[file.id] : '••••••••' }}</code><el-button text @click="reveal(file.id)">{{ file.id in shown ? '隐藏' : '显示' }}</el-button><el-button text :disabled="disabled" @click="editing[file.id] = !editing[file.id]">更换密码</el-button></template>
-        <template v-if="file.needs_password || editing[file.id]"><el-input v-model="passwords[file.id]" type="password" autocomplete="off" aria-label="PDF 打开密码" placeholder="投标方提供的 PDF 密码" :disabled="disabled" @keyup.enter="submit(file.id)" /><el-button :disabled="disabled" @click="submit(file.id)">验证并解析</el-button></template>
+  <ul class="bid-files">
+    <li v-for="file in files" :key="file.id" class="file">
+      <div class="line">
+        <span class="badge">{{ file.ext.toUpperCase().slice(0, 4) }}</span>
+        <div class="main">
+          <span class="filename" :title="file.name">{{ file.name }}</span>
+          <span class="sub num">
+            {{ formatSize(file.size_bytes) }}<template v-if="file.page_count"> · {{ file.page_count }} 页</template>
+            <template v-if="file.has_password && !editing[file.id]">
+              · <Lock :size="12" :stroke-width="1.75" class="lock" aria-hidden="true" />密码 <code>{{ file.id in shown ? shown[file.id] : '••••••' }}</code>
+              <button type="button" class="link" @click="reveal(file.id)">{{ file.id in shown ? '隐藏' : '显示' }}</button>
+              <button type="button" class="link" :disabled="disabled" @click="editing[file.id] = true">更换</button>
+            </template>
+          </span>
+        </div>
+        <BidStatus class="state" v-bind="state(file)" />
+        <el-button class="remove" text :disabled="disabled" :aria-label="`移除 ${file.name}`" title="移除" @click="emit('remove', file.id)"><X :size="16" :stroke-width="1.75" /></el-button>
       </div>
-      <p v-for="warning in file.warnings" :key="warning" class="hint warning">{{ warning }}</p>
-    </div>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
-  </div>
+      <div v-if="file.ext === 'pdf' && !file.original_deleted && (file.needs_password || editing[file.id])" class="detail password">
+        <span class="ask" :class="{ wrong: rowErrors?.[file.id] }"><Lock :size="14" :stroke-width="1.75" aria-hidden="true" />{{ rowErrors?.[file.id] || (editing[file.id] ? '输入新的打开密码' : '此 PDF 需要打开密码') }}</span>
+        <el-input v-model="passwords[file.id]" type="password" show-password autocomplete="off" aria-label="PDF 打开密码" placeholder="投标方提供的密码" :disabled="disabled" @keyup.enter="submit(file.id)" />
+        <el-button :disabled="disabled || !passwords[file.id]" @click="submit(file.id)">验证并解析</el-button>
+        <el-button v-if="editing[file.id]" text @click="editing[file.id] = false">取消</el-button>
+      </div>
+      <p v-else-if="rowErrors?.[file.id] || file.error" class="detail error" role="alert">{{ rowErrors?.[file.id] || file.error }}</p>
+      <p v-for="warning in file.warnings" :key="warning" class="detail hint">{{ warning }}</p>
+    </li>
+    <li v-if="error" class="detail error" role="alert">{{ error }}</li>
+  </ul>
 </template>
+
 <style scoped>
-.file { padding: 10px 0; border-bottom: 1px solid var(--si-hair-faint); }.file:last-child { border: 0; }
-.line { display: flex; align-items: center; gap: 10px; min-width: 0; }.format { font: var(--si-font-code-sm); color: var(--si-ink-3); flex: none; width: 38px; }
-.filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }.state { flex: none; font: var(--si-font-meta); color: var(--si-ink-2); }
-.dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: var(--si-info); }.dot.failed { background: var(--si-warn); }.dot.done { background: var(--si-ok); }
-.password-row { display: flex; align-items: center; gap: 10px; padding-left: 48px; flex-wrap: wrap; margin-top: 6px; }.password-row .el-input { width: 240px; }
-.error { color: var(--si-danger-ink); margin: 6px 0 0 48px; font: var(--si-font-meta); }.warning { margin: 4px 0 0 48px; }
+.bid-files { margin: 0; padding: 0; list-style: none; }
+.file { padding: 10px 0; border-top: 1px solid var(--si-hair-faint); }
+.file:first-child { border-top: 0; }
+.line { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.badge { flex: none; width: 34px; height: 30px; display: grid; place-items: center; border: 1px solid var(--si-hair); border-radius: 6px; font: var(--si-font-code-sm); font-size: 10px; color: var(--si-ink-3); }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-body); color: var(--si-ink-1); }
+.sub { display: flex; align-items: center; gap: 4px; font: var(--si-font-caption); color: var(--si-ink-3); }
+.sub code { font: var(--si-font-code-sm); color: var(--si-ink-2); }
+.lock { margin-left: 2px; }
+.link { padding: 0 2px; border: 0; background: none; color: var(--si-blue-ink); font: var(--si-font-caption); cursor: pointer; }
+.link:hover { text-decoration: underline; }
+.link:disabled { color: var(--si-ink-4); cursor: default; text-decoration: none; }
+.state { flex: none; width: 84px; }
+.remove { flex: none; color: var(--si-ink-4); }
+.remove:hover { color: var(--si-ink-1); }
+.detail { margin: 8px 0 0 46px; }
+.password { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.password .el-input { width: 220px; }
+.ask { display: inline-flex; align-items: center; gap: 6px; font: var(--si-font-meta); color: var(--si-warn-ink); }
+.error, .ask.wrong { color: var(--si-danger-ink); font: var(--si-font-meta); }
+.hint.detail { margin-top: 4px; }
 </style>

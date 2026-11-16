@@ -13,6 +13,18 @@ export interface BidProject extends BidSummary {
 }
 export interface BidSettings { title: string; opening_date: string; policy: 'ai' | 'local_only' }
 export const bidStageLabel: Record<BidStage, string> = { preparing: '准备中', ready: '待开标', checking: '初审中', checked: '待核对' }
+export const bidPolicyLabel: Record<BidSettings['policy'], string> = { local_only: '只做本地检查', ai: '本机检查 + 模型核对' }
+/** 列表与项目页共用的状态：文字 + 圆点色调（visual.md 第五节“圆点 + 文字”） */
+export function bidState(p: { stage: BidStage; status: string }): { label: string; tone: 'run' | 'warn' | 'ok' | 'idle' } {
+  if (p.status === 'parsing') return { label: '解析中', tone: 'run' }
+  if (p.status === 'parse_failed') return { label: '文件待处理', tone: 'warn' }
+  if (p.stage === 'checking') return { label: '初审中', tone: 'run' }
+  if (p.stage === 'checked') return { label: '待核对', tone: 'warn' }
+  return { label: bidStageLabel[p.stage], tone: p.stage === 'ready' ? 'ok' : 'idle' }
+}
+export function formatSize(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
 export const bidApi = {
   list: (page = 1) => http.get<{ items: BidSummary[]; total: number; checking_count: number }>('/bid', { page }),
   create: (body: BidSettings) => http.post<BidProject>('/bid', body),
