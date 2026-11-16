@@ -1,4 +1,4 @@
-# V34-B-05 交叉复核；全部虚构。标注正确行为，已复现的问题由 strict xfail 保留。
+# V34-B-05 交叉复核；全部虚构。标注正确行为；issue 为当初发现的问题编号（V34Q-22，已修复）。
 redaction:
   - id: pinned_bidder
     issue: V34Q-22-1

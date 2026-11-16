@@ -23,8 +23,9 @@ from app.llm import gateway
 from app.llm.usage import remaining_calls
 from app.redaction import parties as P
 from app.redaction.normalize import normalize_value
+from app.redaction.recheck import _digit_bounded
 from app.redaction.restore import restore
-from app.review.validate import quote_matches
+from app.review.validate import normalize_for_quote, quote_matches
 from app.security import crypto
 from app.security.errors import AppError
 
@@ -311,13 +312,21 @@ def _names(bidder):
     return full, sorted(short_names(full), key=len, reverse=True)
 
 
-def _sweep(text, pairs):
-    """兜底：把仍以原文出现的投标人名称、对照表中的真实值换成代号；返回 (文本, 替换数)。"""
+def _sweep(text, pairs, codes=None):
+    """兜底：把仍以原文出现的投标人名称、对照表中的真实值换成代号；返回 (文本, 替换数)。
+    数字开头或结尾的真实值按出口复检的数字边界匹配（旧金额 1000 不动“10000次”）；已有代号内部不替换。"""
     count = 0
     for value, code in pairs:
-        if value in text:
-            count += text.count(value)
-            text = text.replace(value, code)
+        if value not in text:
+            continue
+        inside = [m.span() for m in codes.finditer(text)] if codes is not None else []
+        digit = value[0].isdigit() or value[-1].isdigit()
+        hits = [m.span() for m in re.finditer(re.escape(value), text)
+                if not any(s < m.end() and m.start() < e for s, e in inside)
+                and (not digit or _digit_bounded(text, m.start(), m.end()))]
+        for start, end in reversed(hits):
+            text = text[:start] + code + text[end:]
+        count += len(hits)
     return text, count
 
 
@@ -344,19 +353,30 @@ def redact(db, task, bidders, nodes: dict, req_texts: dict):
         codes = [k for k, v in mapping.items() if "#" not in k and k.startswith("[[") and P.normalize(v) in wanted]
         surfaces = []
         for c in codes:
-            surfaces += [mapping.pop(c)] + [mapping.pop(k) for k in [k for k in mapping if k.startswith(c + "#")]]
+            aliases = [k for k in mapping if k.startswith(c + "#")]
+            surfaces += [mapping[c]] + [mapping[k] for k in aliases]
+            for k in [c, *aliases]:  # 对照表只增：已落库的旧代号保留（旧文本仍能还原），本次新建的才去掉
+                if k not in old:
+                    mapping.pop(k)
             texts = {loc: t.replace(c, code) for loc, t in texts.items()}
         mapping[code] = full
-        for n, value in enumerate(dict.fromkeys(v for v in [*surfaces, *short] if v != full), 1):
-            mapping[f"{code}#{n}"] = value
+        have = {v for k, v in mapping.items() if k.startswith(code + "#")}
+        seq = 0
+        for value in dict.fromkeys(v for v in [*surfaces, *short] if v != full and v not in have):
+            seq += 1
+            while f"{code}#{seq}" in mapping:
+                seq += 1
+            mapping[f"{code}#{seq}"] = value
         sweep += [(n, code) for n in (full, *short)]
     for key, value in old.items():  # 招标文件对照表中的真实值在片段里原样出现时也换成同一代号
         if not key.startswith("@") and "#D" not in key and len(value) >= 2 and not re.fullmatch(r"[\d.,，]{1,3}", value):
             sweep.append((value, key.split("#", 1)[0]))
     sweep.sort(key=lambda p: -len(p[0]))
+    marks = sorted({k.split("#", 1)[0] for k in mapping if not k.startswith("@")}, key=len, reverse=True)
+    marks = re.compile("|".join(map(re.escape, marks))) if marks else None
     protected = len(result.items)
     for loc in texts:
-        texts[loc], n = _sweep(texts[loc], sweep)
+        texts[loc], n = _sweep(texts[loc], sweep, marks)
         protected += n
     E.write_full_map(db, task.id, mapping)
     by_loc = {loc: texts[loc] for loc in nodes}
@@ -541,18 +561,22 @@ def apply(db, task, state, index, items):
         cited = [s.strip("[] ") for s in (raw_ids if isinstance(raw_ids, list) else re.split(r"[,，、\s]+", str(raw_ids)))]
         cited = [s for s in cited if s in snippets]
         quote = str(item.get("quote") or "").strip()
-        where, cite = [], None
+        where, cite, source = [], None, ""
         if verdict != "missing":
             cite = "unverified"
             for sid in cited:
-                hit = next((l for l in snippets[sid]["locs"] if l in nodes and quote and quote_matches(quote, nodes[l][1] or "")), None)
-                if hit is None and quote and quote_matches(quote, join(snippets[sid]["locs"], {l: v[1] for l, v in nodes.items()})):
-                    hit = snippets[sid]["locs"][0]
+                locs_ = snippets[sid]["locs"]
+                hit = next((l for l in locs_ if l in nodes and _cites(quote, nodes[l][1] or "")), None)
+                if hit is not None:
+                    source = nodes[hit][0]
+                elif _cites(quote, join(locs_, {l: v[1] for l, v in nodes.items()})):
+                    hit, source = locs_[0], join(locs_, {l: v[0] for l, v in nodes.items()})
                 if hit:
                     cite, where = "verified", [hit]
                     break
             if not where and cited:
                 where = [snippets[cited[0]]["locs"][0]]
+                source = nodes.get(where[0], ("", ""))[0]
         place = [{"file_id": snippets_file(snippets, l), "loc": l, "page": pages.get(l)} for l in where]
         reason = restore(str(item.get("reason") or "").strip(), mapping)[:500]
         cell = old_cells.pop((uuid.UUID(rid), bidder_uuid), None)
@@ -562,13 +586,17 @@ def apply(db, task, state, index, items):
         cell.verdict, cell.locs, cell.cite = verdict, place, cite
         cell.reason_enc = crypto.encrypt_text(reason or "（模型未给出理由）")
         written += 1
-        excerpt = restore(quote, mapping)[:200]
+        # 证据摘录优先取本机原文：还原后的引文逐字出现在原文中才用它，否则用所引节点的原文
+        excerpt = restore(quote, mapping)
+        if cite != "verified" or not excerpt or normalize_for_quote(excerpt) not in normalize_for_quote(source):
+            excerpt = source
+        excerpt = excerpt[:200]
         group = reqs[rid].group
         text = crypto.decrypt_text(reqs[rid].text_enc)
         rows = [{"label": "判断理由", "value": reason}] if reason else []
         if place:
             rows.append({"label": "所引片段" + ("（引文未能在片段中核实）" if cite == "unverified" else ""),
-                         "places": {bid: [{**place[0], "excerpt": excerpt or nodes.get(place[0]["loc"], ("", ""))[0][:120]}]}})
+                         "places": {bid: [{**place[0], "excerpt": excerpt}]}})
         if verdict == "no":
             _model_item(db, task, bid, rid, "model_response", "veto" if group in _VETO else "general",
                         _VETO.get(group), f"疑似未响应：{_short(text)}", rows + [{"label": "要求", "value": text}], old_items)
@@ -577,6 +605,16 @@ def apply(db, task, state, index, items):
             _model_item(db, task, bid, rid, "deviation_conflict", "general", None, f"偏离表与正文不一致：{_short(conflict)}",
                         [{"label": "说明", "value": conflict[:500]}] + rows[1:], old_items)
     return written
+
+
+_MARK = re.compile(r"\[\[[A-Z]+_\d+\]\]|\[投标人[A-Z]+\]")
+
+
+def _cites(quote, text):
+    """引文出自片段：整体相似，且引文中的代号（投标人、[[类别_n]]）都在片段中——换了代号的引文还原后会指向另一家。"""
+    if not quote or not quote_matches(quote, text):
+        return False
+    return set(_MARK.findall(normalize_for_quote(quote))) <= set(_MARK.findall(normalize_for_quote(text)))
 
 
 def snippets_file(snippets, loc):

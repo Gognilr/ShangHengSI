@@ -127,9 +127,7 @@ def test_recheck_blocks_name_left_in_snippet(owner, db_sessionmaker, llm):
         assert len(records) == 1 and records[0].status == "blocked" and records[0].request_text is None
 
 
-@pytest.mark.parametrize("case", [pytest.param(case, id=case["id"],
-    marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason=case["issue"]) if case.get("issue") else ())
-    for case in GOLDEN["redaction"]])
+@pytest.mark.parametrize("case", GOLDEN["redaction"], ids=[case["id"] for case in GOLDEN["redaction"]])
 def test_snippet_redaction_golden(case, owner, db_sessionmaker):
     """通过标书实际片段脱敏入口核对标注；不为每个识别样本另写测试函数。"""
     from app.bid import model
@@ -156,7 +154,6 @@ def test_snippet_redaction_golden(case, owner, db_sessionmaker):
         assert not problems, problems
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="V34Q-22-3：引文更换投标人代号仍被模糊匹配核实")
 def test_model_quote_golden(owner, db_sessionmaker):
     """走 apply 的实际校验与写库路径，区分原样引文与改写投标人代号的引文。"""
     from app.bid import model
