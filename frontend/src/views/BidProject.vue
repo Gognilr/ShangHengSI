@@ -263,7 +263,7 @@ async function removeProject() {
       <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认要求清单、放齐投标文件后开始初审，这里会列出总览、要求响应、各家问题、串标线索与报价分析。" />
       <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成并逐条核对后，在这里导出交给评标委员会的《初审疑点报告》（Word）。" />
 
-      <p class="declaration hint">本系统提供初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。</p>
+      <footer class="page-foot"><p class="declaration hint">本系统提供初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。</p></footer>
     </template>
 
     <input ref="picker" type="file" class="file-input" multiple :accept="target ? '.docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png' : '.docx,.doc,.wps,.rtf,.pdf'" @change="picked">
@@ -334,7 +334,10 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .si-drop.hero { padding: 56px 16px; }
 .limits { margin: 16px 0 0; }
 
-.declaration { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--si-hair); }
+/* 页面至少占满主区域，声明贴底（内容长时随内容下移，至少留 48px） */
+.bid-project { display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; padding-bottom: 20px; }  /* 底边与侧栏底栏的账号行齐平 */
+.page-foot { margin-top: auto; padding-top: 48px; }
+.declaration { margin: 0; padding-top: 16px; border-top: 1px solid var(--si-hair); }
 .file-input { display: none; }
 .dialog-lede { margin: 0 0 16px; font: var(--si-font-body); color: var(--si-ink-2); }
 .group-list { margin: 0; padding: 0; list-style: none; }
