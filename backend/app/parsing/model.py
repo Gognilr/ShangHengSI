@@ -3,7 +3,7 @@
 各格式的解析器（DOCX、XLSX、PDF、图片）都输出 ParsedFile；pipeline 把节点写入 doc_nodes。
 节点 text 是原文（入库时加密）；自动编号产生的编号只放在 clause_no，不放进 text。
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 INVISIBLE = dict.fromkeys(
@@ -52,6 +52,7 @@ class ParsedFile:
     has_revisions: bool
     warnings: list[str]
     ocr_pages: int = 0  # 本文件实际做了 OCR 的页数（图片记 1）
+    ocr_pending: list[int] = field(default_factory=list)  # 延后识别的页码（标书投标文件，V34-B-04）
 
 
 # 解析限制与阈值（SPEC 8.5、8.7）

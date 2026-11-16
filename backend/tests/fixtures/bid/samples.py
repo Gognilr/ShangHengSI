@@ -102,3 +102,75 @@ def bid(index):
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
+
+
+# B-04 虚构投标文件：甲乙共用一段自写的售后服务方案（相似段落，强）、乙的分项单价恒为甲的 1.03 倍（报价规律，强）；
+# 乙的大写金额写错、投标有效期 60 天（短于 90 天）；丙出现两个不同总价、都高于最高限价 380 万元、保证金不足、
+# 证书已过期。三家都照抄了招标文件的否决句与格式页，不应作为相似段落报出。
+PRICES = [120000, 85000, 64000, 230000, 47000, 98000]
+QTY = [5, 4, 10, 2, 6, 3]
+SERVICE = ("我方承诺在接到用户报修电话后两小时内响应，二十四小时内派遣具有五年以上经验的工程师到达现场排除故障。"
+           "设备质保期内所有零配件免费更换，质保期满后按成本价提供备品备件，并每季度上门进行一次预防性巡检与校准。"
+           "我方在本市设有常驻服务网点，配备专用检测车辆与常用备件库，保证关键备件四小时内送达现场，"
+           "并为用户操作人员提供不少于三次的现场培训，培训结束后发放操作手册与维护记录表。"
+           "项目验收后第一年内我方每月电话回访一次，收集设备运行数据并出具书面运行分析报告供用户存档备查。")
+
+
+def _quote_table(doc, prices):
+    table = doc.add_table(rows=len(prices) + 2, cols=5)
+    for i, text in enumerate(["序号", "货物名称", "数量", "单价（元）", "金额（元）"]):
+        table.cell(0, i).text = text
+    total = 0
+    for r, (price, qty) in enumerate(zip(prices, QTY), 1):
+        amount = price * qty
+        total += amount
+        for c, text in enumerate([str(r), f"示范仪器部件{r}", str(qty), f"{price:,.2f}", f"{amount:,.2f}"]):
+            table.cell(r, c).text = text
+    table.cell(len(prices) + 1, 0).text = "合计"
+    table.cell(len(prices) + 1, 4).text = f"{total:,.2f}"
+    return total
+
+
+def bid2(index):
+    doc = Document()
+    doc.add_paragraph(f"投标人：{BIDDERS[index]}")
+    doc.add_heading("第一章 投标函", level=1)
+    doc.add_paragraph("投标报价超过最高投标限价的，其投标将被否决。")  # 照抄招标文件
+    doc.add_paragraph("投标函：我方必须遵守招标文件的全部规定（此处为格式范本）。")
+    if index == 0:
+        doc.add_paragraph("投标总价：人民币 2,616,000.00 元（大写：贰佰陆拾壹万陆仟元整）。")
+        doc.add_paragraph("投标有效期为 90 日历天。投标保证金人民币 50,000.00 元已以电汇方式提交。")
+    elif index == 1:
+        doc.add_paragraph("投标总价：人民币 2,694,480.00 元（大写：贰佰陆拾玖万元整）。")
+        doc.add_paragraph("投标有效期为 60 日历天。投标保证金人民币 50,000.00 元已以银行保函方式提交。")
+    else:
+        doc.add_paragraph("投标总价：人民币 4,180,000.00 元。")
+        doc.add_paragraph("开标一览表中的投标报价：人民币 4,108,000.00 元。")
+        doc.add_paragraph("投标有效期为 90 日历天。投标保证金人民币 30,000.00 元已以电汇方式提交。")
+        doc.add_paragraph("ISO9001 质量管理体系认证证书，有效期至 2025年6月30日。")
+    doc.add_heading("第二章 分项报价表", level=1)
+    prices = PRICES if index == 0 else [p * 103 // 100 for p in PRICES] if index == 1 else \
+        [180000, 120000, 110000, 400000, 80000, 140000]
+    _quote_table(doc, prices)
+    doc.add_heading("第三章 售后服务方案", level=1)
+    if index in (0, 1):
+        doc.add_paragraph(SERVICE)
+    else:
+        doc.add_paragraph("本公司售后服务由总部客服中心统一受理，工作日八小时内回复，必要时安排厂家工程师远程指导处理，"
+                          "备件由厂家直接发货，一般七个工作日内到达，培训以视频课程为主。")
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
+def scan_bid(text):
+    """第 1 页有文字、第 2 页没有文字对象（按扫描页延后识别）的 PDF。"""
+    out = io.BytesIO()
+    c = Canvas(out)
+    for i in range(4):
+        c.drawString(30, 750 - 20 * i, f"{text} FICTIONAL TEXT PAGE LINE {i} FOR DEFERRED OCR TEST ONLY")
+    c.showPage()
+    c.rect(50, 50, 100, 100)
+    c.showPage()
+    c.save()
+    return out.getvalue()

@@ -72,7 +72,7 @@ def detail(db, task):
             "requirements": {"enabled": db.scalar(select(func.count()).select_from(BidRequirement).where(
                                  BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))) or 0,
                              "extract_state": project.extract_state},
-            "check": {"state": project.check_state, "error": project.check_error},
+            "check": {"state": project.check_state, "error": project.check_error, "ocr": _ocr(files)},
             "bidders": [{"id": b.id, "name": crypto.decrypt_text(b.name_enc), "code": b.code, "seq": b.seq}
                         for b in db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))],
             "files": [{"id": f.id, "bidder_id": f.bidder_id, "name": f.original_name, "ext": f.ext,
@@ -81,6 +81,13 @@ def detail(db, task):
                        "state": "failed" if f.parse_error else "done" if f.parser_version else "waiting",
                        "error": f.parse_error, "warnings": f.warnings,
                        "original_deleted": f.original_deleted_at is not None} for f in files]}
+
+
+def _ocr(files):
+    """投标文件扫描页的识别进度 {done, total}（延后识别，V34-B-04）。"""
+    from app.bid.checks import ocr_progress
+    done, total = ocr_progress({f.id: f for f in files})
+    return {"done": done, "total": total}
 
 
 def queue_parse(db, task):

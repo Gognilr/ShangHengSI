@@ -229,9 +229,26 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
     return confs
 
 
+def ocr_pages(data: bytes, file_seq: int, pages: list[int], existing: list[ParsedNode], *, password: str | None = None):
+    """延后识别（标书投标文件）：逐页 OCR，产出 (页码, 新节点, 置信度)。existing 为该文件已有的文字节点，用于去掉已有文字的区域。"""
+    import pypdfium2
+
+    doc = pypdfium2.PdfDocument(data, password=password)
+    try:
+        for page_no in pages:
+            nodes = [n for n in existing if n.page == page_no]
+            before = len(nodes)
+            confs = _parse_scanned_page(doc, page_no, file_seq, nodes)
+            yield page_no, nodes[before:], confs
+    finally:
+        doc.close()
+
+
 def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None = None,
-              max_pages: int | None = None) -> ParsedFile:
+              max_pages: int | None = None, defer_ocr: bool = False) -> ParsedFile:
+    """defer_ocr：扫描页与图文混排页不在此识别，页码放进 ocr_pending，由调用方随后用 ocr_pages 补上。"""
     nodes: list[ParsedNode] = []
+    pending: list[int] = []
     scanned: list[int] = []
     mixed: list[int] = []
     low_conf: list[int] = []
@@ -248,6 +265,9 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
                     _parse_text_page(page, page_no, file_seq, nodes)
                     if not _is_mixed(page):
                         continue
+                if defer_ocr:
+                    pending.append(page_no)
+                    continue
                 if pdfium_doc is None:
                     import pypdfium2
 
@@ -269,10 +289,12 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
                 pdfium_doc.close()
     if scanned or mixed:
         log.info("pdf ocr: pages=%d blocks=%d elapsed=%.1fs", len(scanned) + len(mixed), len(nodes), time.monotonic() - started)
-    if not nodes:
+    if not nodes and not pending:
         raise ParseError(MSG_NO_TEXT)
 
     warnings: list[str] = []
+    if pending:
+        warnings.append(f"{len(pending)} 页为扫描页或图文混排，正在后台识别")
     if scanned:
         warnings.append(f"第 {'、'.join(str(p) for p in scanned)} 页为扫描页，已用 OCR 识别")
     for p in mixed:
@@ -283,4 +305,5 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
         warnings.append(f"等 {len(low_conf) - MAX_LOW_CONF_PAGES} 页 OCR 识别置信度低，请核对原件")
     for p in empty:
         warnings.append(f"第 {p} 页未识别到文字")
-    return ParsedFile(nodes=nodes, page_count=page_count, has_revisions=False, warnings=warnings, ocr_pages=len(scanned) + len(mixed))
+    return ParsedFile(nodes=nodes, page_count=page_count, has_revisions=False, warnings=warnings, ocr_pages=len(scanned) + len(mixed),
+                      ocr_pending=pending)

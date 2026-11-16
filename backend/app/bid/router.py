@@ -341,9 +341,16 @@ def check_result(task: Task = Depends(owned), db: Session = Depends(get_db)):
     from app.db.models import BidItem
     project = db.get(BidProject, task.id)
     summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
-    rank = {"strong": 0, "medium": 1, "weak": 2, "normal": 3}
+    rank = {"veto": 0, "strong": 1, "general": 2, "medium": 3, "weak": 4, "hint": 5, "normal": 6}
     items = sorted(db.scalars(select(BidItem).where(BidItem.task_id == task.id)), key=lambda i: (rank.get(i.level, 9), i.type))
+    from app.db.models import BidCell
+    cells = db.scalars(select(BidCell).where(BidCell.task_id == task.id))
     return {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
+            "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}),
+            "pricing": json.loads(crypto.decrypt_text(project.pricing_enc)) if project.pricing_enc else None,
             "items": [{"id": i.id, "kind": i.kind, "type": i.type, "level": i.level, "article": i.article,
-                       "bidder_ids": i.bidder_ids, "source": i.source, "review_status": i.review_status,
-                       **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items]}
+                       "bidder_ids": i.bidder_ids, "requirement_id": i.requirement_id, "source": i.source,
+                       "review_status": i.review_status, **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items],
+            "cells": [{"requirement_id": c.requirement_id, "bidder_id": c.bidder_id, "verdict": c.verdict, "locs": c.locs,
+                       "reason": crypto.decrypt_text(c.reason_enc) if c.reason_enc else None, "source": c.source,
+                       "review_status": c.review_status} for c in cells]}

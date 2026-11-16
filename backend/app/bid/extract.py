@@ -203,6 +203,10 @@ def handle_bid(db, payload):
     if payload.get("stage") == "check":
         _local_check(db, task, project)
         return
+    if payload.get("stage") == "ocr":
+        from app.bid.pipeline import ocr_project
+        ocr_project(db, task_id)
+        return
     if payload.get("stage") == "redact":
         if project.extract_state != "redacting":
             return
