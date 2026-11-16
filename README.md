@@ -4,7 +4,7 @@
 
 An AI-assisted first-pass reviewer for business documents (contracts, quotations, orders, inquiries and letters), designed to run inside a company LAN.
 
-**Current release: V3.2.1** (released 2026-11-15; includes V3.2, which was not released separately).
+**Current release: V3.3.0** (released 2026-11-15).
 
 Sensitive information never leaves the internal network: documents are parsed, checked and **redacted locally**. Only the redacted text is sent to a cloud LLM, and the results are restored to real names locally before they are shown.
 
@@ -38,12 +38,17 @@ The sidebar has five entries:
 | Translation | Translate documents and pasted text; runs locally |
 | History | All past review tasks and sessions (called "Review history" before V3.2) |
 
-Highlights of V3.2 / V3.2.1:
+Highlights of V3.3.0:
 
-- **Grouped parallel review**: review requirements are grouped by dimension and reviewed concurrently, so results arrive faster.
-- **Tighter redaction**: items carrying a label (such as a named contact person) and full company names are now replaced outright instead of being kept.
-- **Reversible redaction**: within a task, the user can exclude specific items from redaction when a name must stay readable.
-- **No-flash loading**: loading indicators appear only after a 300 ms delay, so fast operations do not flash a spinner.
+- **Unified "page not found" view**: an unknown path no longer silently redirects home; it opens a "page not found" page inside the main frame, with a way back to the workbench.
+- **Three waiting indicators**: block loading uses a brand three-colour review band; file parsing shows a small sheet being scanned line by line and redacted as the scan passes; chat waits use gathering ink dots. All three appear only after a unified 300 ms delay, so fast operations never flash an indicator.
+- **Time-aware home greeting**: the home page greets the user by display name and time of day (Beijing time).
+- **Missing-choice guidance**: the submit button stays clickable when a required choice is missing; unchosen fields are marked with a dashed outline, and clicking scrolls to the first missing one.
+- **Adopt / ignore moves to the next finding**: after a finding is adopted or ignored it collapses and the next pending finding opens, the same behaviour as the A / I shortcut keys.
+- **Steadier citation anchors**: knowledge-base and history reference numbers stay stable within a session, and common citation variants are recognised and anchored. This was verified with a real model (19 calls, targets met). Meeting data created on V3.1.0 was likewise verified to upgrade cleanly, with no code change.
+- **Technical terms and model numbers**: industrial-control terms are no longer flagged by mistake, product model numbers are kept whole instead of being split, and technical-term handling is generalised across trades.
+- **Outbound-extra leak list**: leaks detected in outbound extras are listed by section, and confirmation stays locked until all of them are resolved.
+- **Incremental upgrade packages**: the release script finds a working Python 3.11+ on its own. An upgrade package can carry only the images whose source changed (the V3.3.0 incremental package is about 1.8 GB, vs about 9.4 GB for the full package), and a fresh install rejects incremental packages.
 
 ## Security and privacy by design
 
@@ -109,7 +114,7 @@ transcriber/ offline audio transcription service (no network)
 translator/ offline local translation service (no network)
 deploy/     docker-compose.yml, Caddyfile, .env.example
 docs/       SPEC.md (full specification), TASKS.md (task list), open_questions.md, design/,
-            per-version folders (v2/ … v321/), acceptance/ (install & upgrade records), ops/
+            per-version folders (v2/ … v33/), acceptance/ (install & upgrade records), ops/
 ```
 
 ## Getting started (development)
@@ -149,7 +154,7 @@ docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgr
 
 ## Project status
 
-V3.2.1 is the current release (2026-11-15) and is deployed on the production server. The release report is [docs/v321/reports/V321-Z.md](docs/v321/reports/V321-Z.md) and the production upgrade record is in `docs/acceptance/`. See [docs/TASKS.md](docs/TASKS.md) for the task list.
+V3.3.0 is the current release (2026-11-15) and is deployed on the production server. The release report is [docs/v33/reports/V33-Z.md](docs/v33/reports/V33-Z.md) and the production upgrade record is [docs/acceptance/V3.3.0升级记录.md](docs/acceptance/V3.3.0升级记录.md). See [docs/TASKS.md](docs/TASKS.md) for the task list.
 
 ## Documentation
 
