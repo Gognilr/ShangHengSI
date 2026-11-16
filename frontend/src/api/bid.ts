@@ -53,16 +53,38 @@ export interface BidEvidenceRow {
   /** 报价规律：对齐的分项 */
   items?: { name: string; left: string; right: string }[]
 }
-export interface BidItem {
+export interface BidItem extends BidReview {
   id: string; kind: 'issue' | 'clue' | 'normal_dup'; type: string; level: BidLevel; article: string | null; bidder_ids: string[]
-  source: 'local' | 'model'; review_status: 'pending' | 'verified' | 'excluded'; title: string; rows: BidEvidenceRow[]; normal?: string
+  source: 'local' | 'model'; title: string; rows: BidEvidenceRow[]; normal?: string
   requirement_id: string | null
 }
-export type BidVerdict = 'yes' | 'no' | 'missing' | 'unclear'
-export interface BidCell { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; review_status: string; cite: null | 'verified' | 'unverified' }
+export type BidVerdict = 'yes' | 'no' | 'missing' | 'unclear' | 'manual'
+export type BidReviewStatus = 'pending' | 'verified' | 'excluded'
+export const bidReviewLabel: Record<BidReviewStatus, string> = { pending: '待核对', verified: '已核实', excluded: '已排除' }
+export interface BidReview { review_status: BidReviewStatus; note: string | null }
+export interface BidCell extends BidReview { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; cite: null | 'verified' | 'unverified' }
+/** 报价分析（V34-B-04 计算，B-06 展示）：金额已格式化为字符串 */
+export interface BidPricing {
+  bidders: Record<string, { total: string | null; totals_found: string[]; currency: string | null; table: { name: string; rows: number; total: string | null } | null; over_ceiling: string | null }>
+  items: { name: string; prices: Record<string, string | null>; fixed: boolean }[]
+  pairs: { a: string; b: string; aligned: number; aligned_by: 'name' | 'row'; n?: number; mean_ratio?: string; cv?: string; level?: BidLevel; label?: string }[]
+  aligned_by: Record<string, 'name' | 'row'>; base?: string
+}
+export type BidSignMark = 'stamped' | 'missing' | 'unclear'
+export interface BidSigning { bidder_id: string; file_id: string; file: string; page: number | null; loc: string; title: string; renderable: boolean; mark: BidSignMark | null }
 export interface BidCheck {
   state: BidProject['check']['state']; error: string | null; coverage: string[]; items: BidItem[]
-  steps: string[]; elapsed: Record<string, number>; cells: BidCell[]; pricing: Record<string, unknown> | null
+  steps: string[]; elapsed: Record<string, number>; cells: BidCell[]; pricing: BidPricing | null
+  parameters: { ceiling: string | null; currency: string | null }
+  requirements: { id: string; group: BidGroup; text: string; method: BidMethod; seq: number }[]
+  signing: BidSigning[]
+}
+export interface BidCellPlace { file_id: string; file: string; page: number | null; renderable: boolean; before: string; text: string; after: string }
+export interface BidCellDetail {
+  requirement: { id: string; text: string; group: BidGroup; method: BidMethod; sources: { file: string; text: string }[] }
+  bidder: { id: string; name: string }
+  cell: (BidReview & { verdict: BidVerdict; source: 'local' | 'model'; cite: BidCell['cite']; reason: string | null }) | null
+  places: BidCellPlace[]
 }
 export const bidLevelLabel: Record<BidLevel, string> = { strong: '强', medium: '中', weak: '弱', normal: '正常重复', veto: '疑似否决项', general: '一般问题', hint: '提示' }
 export interface BidSettings { title: string; opening_date: string; policy: 'ai' | 'local_only' }
@@ -112,4 +134,11 @@ export const bidApi = {
   check: (id: string) => http.get<BidCheck>(`/bid/${id}/check`),
   model: (id: string) => http.get<BidModelView>(`/bid/${id}/model`),
   modelAction: (id: string, action: 'prepare' | 'confirm' | 'cancel') => http.post<BidModelView>(`/bid/${id}/model/${action}`),
+  reviewItem: (id: string, iid: string, body: Partial<BidReview>) => http.patch<BidReview>(`/bid/${id}/items/${iid}`, body),
+  reviewCell: (id: string, body: Partial<BidReview> & { requirement_id: string; bidder_id: string }) => http.put<BidReview>(`/bid/${id}/cells`, body),
+  cell: (id: string, requirement_id: string, bidder_id: string) => http.get<BidCellDetail>(`/bid/${id}/cell`, { requirement_id, bidder_id }),
+  sign: (id: string, s: Pick<BidSigning, 'file_id' | 'page' | 'loc'>, mark: BidSignMark | null) => http.put<{ marks: Record<string, string> }>(`/bid/${id}/signing`, { file_id: s.file_id, page: s.page, loc: s.loc, mark }),
+  reopen: (id: string) => http.post<BidProject>(`/bid/${id}/reopen`),
+  /** 投标文件页面图（cookie 会话，直接作 img 地址；服务器内存生成、不缓存） */
+  pageUrl: (id: string, fid: string, page: number, width = 320) => `/api/v1/bid/${id}/files/${fid}/page/${page}?width=${width}`,
 }

@@ -12,12 +12,12 @@ import BidStatus from '@/components/bid/BidStatus.vue'
 import BidderCard from '@/components/bid/BidderCard.vue'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 import BidRequirements from '@/components/bid/BidRequirements.vue'
-import BidClues from '@/components/bid/BidClues.vue'
+import BidResults from '@/components/bid/BidResults.vue'
 import BidModelCheck from '@/components/bid/BidModelCheck.vue'
 
 const route = useRoute(), router = useRouter(), id = computed(() => String(route.params.id))
 const project = ref<BidProject>(), loading = ref(false), error = ref(''), pending = ref(false), percent = ref<number | null>(null)
-const step = ref(0)
+const step = ref(0), reopened = ref(false)  // reopened：刚返回修改材料
 const locked = computed(() => !!project.value && !['preparing', 'ready'].includes(project.value.stage))  // 开始初审后材料锁定
 const blocked = computed(() => pending.value || locked.value)  // 解析期间仍可继续加文件、改名称，新文件由同一次解析接着处理
 const tenderFiles = computed(() => project.value?.files.filter(f => !f.bidder_id) ?? [])
@@ -73,10 +73,10 @@ async function load(initial: boolean) {
   } catch (e) { if (current === generation) error.value = e instanceof ApiError ? e.message : '项目读取失败' }
   finally { if (current === generation) loading.value = false }
 }
-watch(id, () => { generation++; resetTimer(); project.value = undefined; error.value = ''; step.value = 0; grouped.value = []; groupDialog.value = false; void load(true) }, { immediate: true })
+watch(id, () => { generation++; reopened.value = false; resetTimer(); project.value = undefined; error.value = ''; step.value = 0; grouped.value = []; groupDialog.value = false; void load(true) }, { immediate: true })
 onBeforeUnmount(() => { generation++; resetTimer() })
-async function mutate(action: () => Promise<BidProject>) {
-  if (blocked.value) return
+async function mutate(action: () => Promise<BidProject>, whenLocked = false) {
+  if (pending.value || (locked.value && !whenLocked)) return
   pending.value = true; error.value = ''; resetTimer(); edits++
   const current = generation
   try { const data = await action(); if (current === generation) accept(data) }
@@ -188,8 +188,17 @@ async function confirmGroups() {
   if (error.value) { groupError.value = error.value; error.value = '' }
   else { groupDialog.value = false; grouped.value = []; step.value = 1 }
 }
+// 返回修改材料（V34Q-19 留给 B-06）：退回“待开标”，重新初审时沿用核对状态与备注；模型核对需重新确认发送
+const reopenBlock = computed(() => ['preparing', 'running'].includes(project.value?.model.state ?? ''))
+async function reopen() {
+  if (!project.value || pending.value || reopenBlock.value) return
+  try { await ElMessageBox.confirm('项目将退回“待开标”，可以修改要求清单、增减投标文件，然后重新开始初审。已做的核对状态与备注会保留在相同的条目上；模型核对需要重新确认发送。', '返回修改材料', { confirmButtonText: '返回修改', cancelButtonText: '取消' }) }
+  catch { return }
+  await mutate(() => bidApi.reopen(id.value), true)
+  if (!error.value) { reopened.value = true; step.value = 1 }
+}
 async function removeProject() {
-  if (!project.value || blocked.value) return
+  if (!project.value || pending.value) return
   try { await ElMessageBox.confirm('将删除本项目的全部原件、密码与记录，且无法恢复。', '删除初审项目', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }) }
   catch { return }
   pending.value = true
@@ -212,8 +221,9 @@ async function removeProject() {
         </div>
         <div class="head-actions">
           <el-button :disabled="blocked" @click="openSettings"><Settings2 :size="16" :stroke-width="1.75" />项目设置</el-button>
-          <RowMore :disabled="blocked">
-            <el-dropdown-item :disabled="!project.files.length" @click="reparse">重新解析全部文件</el-dropdown-item>
+          <RowMore :disabled="pending">
+            <el-dropdown-item v-if="project.stage === 'checked'" :disabled="reopenBlock" @click="reopen">返回修改材料</el-dropdown-item>
+            <el-dropdown-item v-else :disabled="blocked || !project.files.length" @click="reparse">重新解析全部文件</el-dropdown-item>
             <el-dropdown-item divided class="danger-item" @click="removeProject">删除项目</el-dropdown-item>
           </RowMore>
         </div>
@@ -300,9 +310,9 @@ async function removeProject() {
           <BidStatus v-else-if="project.check?.state === 'failed'" tone="warn" :label="project.check.error ?? '本地检查失败'" />
           <BidStatus v-else :tone="ocrNote || project.model?.state === 'running' ? 'run' : 'ok'" :label="'本地检查已完成' + ocrNote + modelNote" /></p>
         <BidModelCheck v-if="project.policy === 'ai' && project.stage === 'checked'" :project-id="id" :state-key="modelKey" @changed="load(false)" />
-        <BidClues v-if="project.stage === 'checking' || project.stage === 'checked'" :project-id="id" :bidders="project.bidders" :files="project.files"
-          :state-key="checkKey" :live="project.stage === 'checking'" />
+        <BidResults v-if="project.stage === 'checking' || project.stage === 'checked'" :key="id" :project="project" :state-key="checkKey" :live="project.stage === 'checking'" />
       </div>
+      <EmptyState v-else-if="step === 2 && reopened" :icon="ScanSearch" title="正在修改材料" description="改好要求清单或投标文件后，在第 2 步重新开始初审。已做的核对状态与备注会保留在相同的条目上。" />
       <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认要求清单、放齐投标文件后开始初审，这里会列出总览、要求响应、各家问题、串标线索与报价分析。" />
       <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成并逐条核对后，在这里导出交给评标委员会的《初审疑点报告》（Word）。" />
 

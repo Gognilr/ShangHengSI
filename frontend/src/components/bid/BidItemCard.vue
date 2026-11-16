@@ -1,0 +1,94 @@
+<script setup lang="ts">
+import { inject, ref } from 'vue'
+import { ChevronRight } from '@lucide/vue'
+import type { BidItem, BidPlace } from '@/api/bid'
+import BidReviewBar from './BidReviewBar.vue'
+import { bidResultsKey, bidTypeLabel, levelTone, sameSpans } from './results'
+
+// 一条问题或线索：标题行（等级色点、类型、条文项、涉及投标人、核对状态），展开为证据、并排对照与核对栏
+const props = defineProps<{ item: BidItem; hideWho?: boolean }>()
+const ctx = inject(bidResultsKey)!
+const open = ref(false)
+const sectionLabel: Record<string, string> = { tech: '技术参数章节，已降一档', price: '报价章节，已升一档' }
+const statusMark: Record<string, string> = { verified: '已核实', excluded: '已排除' }
+
+function who() { return props.item.bidder_ids.map(id => ctx.names.value[id] ?? '已移除的投标人').join(' · ') }
+function place(p: BidPlace) { return (ctx.fileNames.value[p.file_id] ?? '文件') + (p.page ? ` 第 ${p.page} 页` : '') }
+function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderable.value[p.file_id]) }
+</script>
+
+<template>
+  <article class="item" :class="{ excluded: item.review_status === 'excluded' }">
+    <button type="button" class="head" :aria-expanded="open" @click="open = !open">
+      <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: open }" aria-hidden="true" />
+      <span class="title" :class="levelTone(item.level)">{{ item.title }}</span>
+      <span class="tag">{{ bidTypeLabel[item.type] ?? item.type }}<template v-if="item.source === 'model'"> · 模型</template></span>
+      <span v-if="item.article" class="tag">{{ item.kind === 'issue' ? '参照第五十一条' : '第四十条' }}{{ item.article }}</span>
+      <span class="tail"><span v-if="!hideWho" class="who">{{ who() }}</span><span v-if="statusMark[item.review_status]" class="status">{{ statusMark[item.review_status] }}</span></span>
+    </button>
+    <div v-if="open" class="detail">
+      <dl v-for="(row, index) in item.rows" :key="index">
+        <dt>{{ row.label }}<template v-if="row.count"> · {{ row.count }} 处</template>
+          <template v-if="row.chars"> · 约 {{ row.chars }} 字 · {{ row.sentences }} 句<template v-if="row.section && sectionLabel[row.section]">（{{ sectionLabel[row.section] }}）</template></template></dt>
+        <dd v-if="row.value" class="value">{{ row.value }}</dd>
+        <dd v-if="row.width" class="hint num">{{ row.width }} × {{ row.height }}</dd>
+        <dd v-for="(file, bidder) in row.files ?? {}" :key="'f' + bidder" class="hint">{{ ctx.names.value[bidder] }}：{{ file }}</dd>
+        <template v-for="(list, bidder) in row.places ?? {}" :key="'p' + bidder">
+          <dd v-for="(p, i) in list" :key="i">
+            <span class="hint">{{ ctx.names.value[bidder] }} · {{ place(p) }}<button v-if="p.page && ctx.renderable.value[p.file_id]" type="button" class="link" @click="ctx.openPage(p.file_id, p.page!)">查看原件页</button></span>
+            <span v-if="p.excerpt" class="excerpt">{{ p.excerpt }}</span>
+          </dd>
+        </template>
+        <!-- 并排对照：两张纸面，相同文字标出 -->
+        <dd v-if="row.left && row.right" class="pair">
+          <div v-for="[side, other] in [[row.left, row.right], [row.right, row.left]]" :key="side.bidder_id" class="sheet">
+            <span class="hint">{{ ctx.names.value[side.bidder_id] }} · {{ [...new Set(side.places.map(place))].join('、') }}
+              <button v-if="pageOf(side.places)" type="button" class="link" @click="ctx.openPage(pageOf(side.places)!.file_id, pageOf(side.places)!.page!)">查看原件页</button></span>
+            <p class="text"><template v-for="([t, same], k) in sameSpans(side.text, other.text)" :key="k"><mark v-if="same">{{ t }}</mark><template v-else>{{ t }}</template></template></p>
+          </div>
+        </dd>
+        <dd v-if="row.items?.length" class="prices">
+          <table>
+            <thead><tr><th>分项</th><th class="num">{{ ctx.names.value[item.bidder_ids[0]!] }}</th><th class="num">{{ ctx.names.value[item.bidder_ids[1]!] }}</th></tr></thead>
+            <tbody><tr v-for="(it, i) in row.items" :key="i"><td>{{ it.name }}</td><td class="num">{{ it.left }}</td><td class="num">{{ it.right }}</td></tr></tbody>
+          </table>
+        </dd>
+      </dl>
+      <p v-if="item.normal" class="hint">常见的正常原因：{{ item.normal }}</p>
+      <BidReviewBar class="bar" :review="item" :veto="item.level === 'veto'" @change="patch => ctx.reviewItem(item.id, patch)" />
+    </div>
+  </article>
+</template>
+
+<style scoped>
+.item { border-bottom: 1px solid var(--si-hair-faint); }
+.head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 0; border: 0; background: transparent; cursor: pointer; text-align: left; font: var(--si-font-body); color: var(--si-ink-1); }
+.chev { flex: none; color: var(--si-ink-4); transition: transform .15s; }
+.turned { transform: rotate(90deg); }
+.title { min-width: 0; overflow-wrap: anywhere; }
+.title.strong { color: var(--si-danger-ink); }
+.title.medium { color: var(--si-warn-ink); }
+.tag { flex: none; font: var(--si-font-meta); color: var(--si-ink-3); }
+.tail { margin-left: auto; flex: none; max-width: 45%; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.who { min-width: 0; font: var(--si-font-meta); color: var(--si-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status { flex: none; font: var(--si-font-label-sm); color: var(--si-ink-3); }
+.excluded .title, .excluded .tag { color: var(--si-ink-4); text-decoration: line-through; text-decoration-color: var(--si-ink-5); }
+.detail { padding: 0 0 16px 24px; }
+dl { margin: 0 0 10px; }
+dt { font: var(--si-font-label); color: var(--si-ink-2); }
+dd { margin: 4px 0 0; font: var(--si-font-body); color: var(--si-ink-1); display: flex; flex-direction: column; gap: 2px; }
+.value { font-weight: 600; }
+.excerpt { color: var(--si-ink-2); overflow-wrap: anywhere; }
+.link { margin-left: 8px; padding: 0; border: 0; background: transparent; font: var(--si-font-meta); color: var(--si-ink-2); text-decoration: underline; text-decoration-color: var(--si-hair-strong); text-underline-offset: 3px; cursor: pointer; }
+.link:hover { color: var(--si-ink-1); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.sheet { min-width: 0; padding: 12px 14px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-paper); }
+.sheet .text { margin: 6px 0 0; font: var(--si-font-body); color: var(--si-paper-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+mark { background: var(--si-hl-medium); color: inherit; border-radius: 2px; }
+.prices table { border-collapse: collapse; font: var(--si-font-meta); color: var(--si-ink-2); }
+.prices th, .prices td { padding: 4px 16px 4px 0; border-bottom: 1px solid var(--si-hair-faint); text-align: left; font-weight: normal; }
+.prices th { color: var(--si-ink-3); }
+.prices .num { text-align: right; }
+.hint { font: var(--si-font-meta); color: var(--si-ink-3); }
+.bar { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--si-hair); }
+</style>
