@@ -14,6 +14,8 @@ function countHeader(headers: Headers, name: string): number {
 export const reportApi = {
   run: (runId: string) => download(`/runs/${runId}/report`),
   local: (taskId: string) => download(`/tasks/${taskId}/report`),
+  /** 标书初审报告（V34-B-07）：full 全部初审内容，clues 只含串标线索 */
+  bid: (projectId: string, scope: 'full' | 'clues' = 'full') => download(`/bid/${projectId}/report?scope=${scope}`),
   async revised(runId: string, fileSeq: number) {
     const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/revised?file_seq=${fileSeq}`)
     const saveResult = await saveBlob(blob, filename)

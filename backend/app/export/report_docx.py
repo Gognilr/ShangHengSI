@@ -43,7 +43,7 @@ def _font(run, size, bold=False):
     run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "宋体")
 
 
-def _new_document():
+def _new_document(title_text="商务文件审核报告"):
     doc = Document()
     section = doc.sections[0]
     section.orientation = WD_ORIENT.LANDSCAPE
@@ -59,7 +59,7 @@ def _new_document():
     title_style = doc.styles["Title"]
     for border in list(title_style.element.xpath("./w:pPr/w:pBdr")):
         border.getparent().remove(border)
-    title_run = title.add_run("商务文件审核报告")
+    title_run = title.add_run(title_text)
     _font(title_run, 16, True)
     title_run.font.color.rgb = RGBColor(0, 0, 0)
     return doc

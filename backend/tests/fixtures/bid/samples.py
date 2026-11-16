@@ -16,9 +16,12 @@ def document():
     return out.getvalue()
 
 
-def pdf(*, encrypted=True, pages=1):
+def pdf(*, encrypted=True, pages=1, author=None):
     out = io.BytesIO()
     c = Canvas(out, encrypt=StandardEncryption(PASSWORD) if encrypted else None)
+    if author:
+        c.setAuthor(author)
+        c.setCreator(author)
     for _ in range(pages):
         c.drawString(30, 750, "FICTIONAL BID DOCUMENT FOR PASSWORD AND PAGE LIMIT TEST ONLY")
         c.showPage()
@@ -174,3 +177,32 @@ def scan_bid(text):
     c.showPage()
     c.save()
     return out.getvalue()
+
+
+# B-07 整套场景（bid.md 第六节）：三家各交两份 Word（bid / bid2 预埋的线索）；
+# 乙丙各交一份 PDF，原始文件标识相同；甲交一份带密码的 PDF。
+SHARED_PDF_ID = "00112233445566778899AABBCCDDEEFF"
+
+
+def pdf_with_id(text, ident=SHARED_PDF_ID):
+    """内容不同、trailer /ID 相同的 PDF（先复制再改内容的典型痕迹）。"""
+    import re
+    out = io.BytesIO()
+    c = Canvas(out)
+    c.setAuthor(text)  # 作者、创建者各不相同，只有文件标识相同
+    c.setCreator(text)
+    c.drawString(30, 750, text)
+    c.showPage()
+    c.save()
+    data = out.getvalue()
+    head, tail = data.rsplit(b"trailer", 1)
+    return head + b"trailer" + re.sub(rb"<[0-9a-fA-F]{32}>", b"<" + ident.lower().encode() + b">", tail)
+
+
+def scenario_uploads():
+    """[(投标人序号, 文件名, 内容)]"""
+    return [(i, f"投标文件{i}-{k}.docx", make(i)) for i in range(3) for k, make in enumerate((bid, bid2))] + [
+        (0, "甲方加密附件.pdf", pdf(encrypted=True, author="虚构甲方附件编制人")),
+        (1, "乙方附件.pdf", pdf_with_id("FICTIONAL ANNEX FROM BIDDER TWO ONLY")),
+        (2, "丙方附件.pdf", pdf_with_id("FICTIONAL ANNEX FROM BIDDER THREE ONLY")),
+    ]

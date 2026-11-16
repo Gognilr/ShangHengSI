@@ -231,3 +231,38 @@ def reopen(db, task):
         raise AppError(409, "MODEL_BUSY", "模型核对正在进行，请完成后再返回修改")
     project.stage, project.check_state, project.check_error = "ready", None, None
     project.model_state, project.model_error = None, None
+
+
+# ---------------------------------------------------------------- 初审结果（结果页与 Word 报告共用）
+
+def check_view(db, task):
+    """条目（含核对状态与备注）、单元格、要求清单、报价分析、签章页速览与覆盖说明。"""
+    from app.bid import requirements as R
+    project = db.get(BidProject, task.id)
+    summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
+    rank = {"veto": 0, "strong": 1, "general": 2, "medium": 3, "weak": 4, "hint": 5, "normal": 6}
+    items = sorted(db.scalars(select(BidItem).where(BidItem.task_id == task.id)), key=lambda i: (rank.get(i.level, 9), i.type))
+    cells = db.scalars(select(BidCell).where(BidCell.task_id == task.id))
+    reqs = db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))
+                      .order_by(BidRequirement.seq))
+    files = {str(f.id): f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
+    marks = project.signing or {}
+    values = R.load_state(project)["values"]
+
+    def note(row):
+        return crypto.decrypt_text(row.note_enc) if row.note_enc else None
+    return {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
+            "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}),
+            "pricing": json.loads(crypto.decrypt_text(project.pricing_enc)) if project.pricing_enc else None,
+            "parameters": {"ceiling": values.get("ceiling"), "currency": values.get("currency")},
+            "requirements": [{"id": r.id, "group": r.group, "text": crypto.decrypt_text(r.text_enc), "method": r.method, "seq": r.seq}
+                             for r in reqs],
+            "items": [{"id": i.id, "kind": i.kind, "type": i.type, "level": i.level, "article": i.article,
+                       "bidder_ids": i.bidder_ids, "requirement_id": i.requirement_id, "source": i.source,
+                       "review_status": i.review_status, "note": note(i), **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items],
+            "cells": [{"requirement_id": c.requirement_id, "bidder_id": c.bidder_id, "verdict": c.verdict, "locs": c.locs,
+                       "reason": crypto.decrypt_text(c.reason_enc) if c.reason_enc else None, "source": c.source, "cite": c.cite,
+                       "review_status": c.review_status, "note": note(c)} for c in cells],
+            "signing": [{**s, "file": files[s["file_id"]].original_name, "renderable": renderable(files[s["file_id"]]),
+                         "mark": marks.get(signing_key(s["file_id"], s["page"], s["loc"]))}
+                        for s in summary.get("signing", []) if s["file_id"] in files]}

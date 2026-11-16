@@ -340,37 +340,22 @@ def start_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
 @router.get("/{id}/check")
 def check_result(task: Task = Depends(owned), db: Session = Depends(get_db)):
     """初审结果：条目（含核对状态与备注）、单元格、要求清单、报价分析、签章页速览与覆盖说明。"""
-    from app.bid import requirements as R
-    from app.bid.results import renderable, signing_key
-    from app.db.models import BidCell, BidItem
-    project = db.get(BidProject, task.id)
-    summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
-    rank = {"veto": 0, "strong": 1, "general": 2, "medium": 3, "weak": 4, "hint": 5, "normal": 6}
-    items = sorted(db.scalars(select(BidItem).where(BidItem.task_id == task.id)), key=lambda i: (rank.get(i.level, 9), i.type))
-    cells = db.scalars(select(BidCell).where(BidCell.task_id == task.id))
-    reqs = db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))
-                      .order_by(BidRequirement.seq))
-    files = {str(f.id): f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
-    marks = project.signing or {}
-    values = R.load_state(project)["values"]
+    from app.bid import results
+    return results.check_view(db, task)
 
-    def note(row):
-        return crypto.decrypt_text(row.note_enc) if row.note_enc else None
-    return {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
-            "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}),
-            "pricing": json.loads(crypto.decrypt_text(project.pricing_enc)) if project.pricing_enc else None,
-            "parameters": {"ceiling": values.get("ceiling"), "currency": values.get("currency")},
-            "requirements": [{"id": r.id, "group": r.group, "text": crypto.decrypt_text(r.text_enc), "method": r.method, "seq": r.seq}
-                             for r in reqs],
-            "items": [{"id": i.id, "kind": i.kind, "type": i.type, "level": i.level, "article": i.article,
-                       "bidder_ids": i.bidder_ids, "requirement_id": i.requirement_id, "source": i.source,
-                       "review_status": i.review_status, "note": note(i), **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items],
-            "cells": [{"requirement_id": c.requirement_id, "bidder_id": c.bidder_id, "verdict": c.verdict, "locs": c.locs,
-                       "reason": crypto.decrypt_text(c.reason_enc) if c.reason_enc else None, "source": c.source, "cite": c.cite,
-                       "review_status": c.review_status, "note": note(c)} for c in cells],
-            "signing": [{**s, "file": files[s["file_id"]].original_name, "renderable": renderable(files[s["file_id"]]),
-                         "mark": marks.get(signing_key(s["file_id"], s["page"], s["loc"]))}
-                        for s in summary.get("signing", []) if s["file_id"] in files]}
+
+@router.get("/{id}/report", dependencies=[Depends(require("use.export"))])
+def report(scope: str = Query("full", pattern="^(full|clues)$"), task: Task = Depends(owned),
+           user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    """Word 报告（服务器内存生成、不留存）：full 全部初审内容，clues 只含串标线索。初审完成后可导出。"""
+    from app.export.bid_docx import build_bid_report
+    from app.export.router import _response
+    if db.get(BidProject, task.id).stage != "checked":
+        raise AppError(409, "REPORT_UNAVAILABLE", "初审完成后才能导出报告")
+    filename, content = build_bid_report(db, task, user, scope)
+    audit.record(db, "report_export", user_id=user.id, target_type="task", target_id=str(task.id), detail={"kind": "bid", "scope": scope})
+    db.commit()
+    return _response(filename, content)
 
 
 @router.patch("/{id}/items/{iid}")

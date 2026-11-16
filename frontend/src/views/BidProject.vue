@@ -14,6 +14,7 @@ import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 import BidRequirements from '@/components/bid/BidRequirements.vue'
 import BidResults from '@/components/bid/BidResults.vue'
 import BidModelCheck from '@/components/bid/BidModelCheck.vue'
+import BidExport from '@/components/bid/BidExport.vue'
 
 const route = useRoute(), router = useRouter(), id = computed(() => String(route.params.id))
 const project = ref<BidProject>(), loading = ref(false), error = ref(''), pending = ref(false), percent = ref<number | null>(null)
@@ -315,6 +316,7 @@ async function removeProject() {
       </div>
       <EmptyState v-else-if="step === 2 && reopened" :icon="ScanSearch" title="正在修改材料" description="改好要求清单或投标文件后，在第 2 步重新开始初审。已做的核对状态与备注会保留在相同的条目上。" />
       <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认要求清单、放齐投标文件后开始初审，这里会列出总览、要求响应、各家问题、串标线索与报价分析。" />
+      <BidExport v-else-if="step === 3 && project.stage === 'checked'" :key="id" :project="project" />
       <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成并逐条核对后，在这里导出交给评标委员会的《初审疑点报告》（Word）。" />
 
       <footer class="page-foot"><p class="declaration hint">本系统提供初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。</p></footer>
