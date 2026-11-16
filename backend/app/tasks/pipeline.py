@@ -135,6 +135,10 @@ def _fail(db: Session, task_id: uuid.UUID, file_name: str | None, reason: str) -
 
 def parse_task(db: Session, task_id: uuid.UUID, file_ids: list[str] | None = None) -> None:
     task = db.get(Task, task_id)
+    if task is not None and task.kind == 'bid':
+        from app.bid.pipeline import parse_project
+        parse_project(db, task_id)
+        return
     if task is not None and task.kind == 'review' and task.status in ('draft', 'awaiting_confirm') and file_ids is not None:
         if task.latest_run_id is None:
             _parse_draft(db, task, file_ids)

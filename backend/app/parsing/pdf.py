@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass
 
 import pdfplumber
+from pdfminer.pdfdocument import PDFPasswordIncorrect
 
 from app.parsing import ocr
 from app.parsing.docx import manual_clause_no
@@ -24,6 +25,11 @@ TEXT_PAGE_MIN_CHARS = 20  # SPEC 8.5，去掉空白后的字符数
 MSG_CORRUPT = "PDF 文件无法读取，可能已损坏或已加密"
 MSG_TOO_MANY_PAGES = "PDF 超过 200 页"
 MSG_NO_TEXT = "未能从文件中识别出文字"
+MSG_PASSWORD = "此 PDF 需要打开密码，请输入投标方提供的密码"
+
+
+class PdfPasswordError(ParseError):
+    """PDF 需要密码或密码不正确，不带出第三方异常内容。"""
 
 OCR_DPI = 200
 MAX_OCR_SIDE = 4000  # 渲染后长边上限（像素），超大页面降低渲染比例
@@ -40,15 +46,24 @@ class PdfInfo:
     scanned_pages: list[int]  # 需要 OCR 的页码（从 1 开始）
 
 
-def _open(data: bytes):
+def _open(data: bytes, password: str | None = None, max_pages: int | None = None):
+    pdf = None
     try:
-        pdf = pdfplumber.open(io.BytesIO(data))
+        pdf = pdfplumber.open(io.BytesIO(data), password=password)
         n = len(pdf.pages)
-    except Exception:  # noqa: BLE001 —— 任何读取失败（含需要密码）都只给固定提示，不带异常消息
+    except Exception as exc:  # noqa: BLE001 —— 任何读取失败都只给固定提示，不带异常消息
+        if pdf is not None:
+            pdf.close()
+        # pdfplumber 把 pdfminer 的异常包成 PdfminerException，原异常在 args[0]
+        wrong = isinstance(exc, PDFPasswordIncorrect) or any(isinstance(a, PDFPasswordIncorrect) for a in exc.args)
+        if wrong and password is not None:
+            # 既有审核 / 会话不传密码，仍沿用原提示；标书显式传空串检测加密。
+            raise PdfPasswordError(MSG_PASSWORD) from None
         raise ParseError(MSG_CORRUPT) from None
-    if n > MAX_PDF_PAGES:
+    limit = MAX_PDF_PAGES if max_pages is None else max_pages
+    if n > limit:
         pdf.close()
-        raise ParseError(MSG_TOO_MANY_PAGES)
+        raise ParseError(MSG_TOO_MANY_PAGES if max_pages is None else f"PDF 超过 {limit} 页")
     if n == 0:
         pdf.close()
         raise ParseError(MSG_CORRUPT)
@@ -85,9 +100,9 @@ def _is_mixed(page) -> bool:
     return area >= page.width * page.height * 0.5
 
 
-def inspect_pdf(data: bytes) -> PdfInfo:
+def inspect_pdf(data: bytes, *, password: str | None = None, max_pages: int | None = None) -> PdfInfo:
     """页数与需要 OCR 的页码。"""
-    with _open(data) as pdf:
+    with _open(data, password, max_pages) as pdf:
         try:
             scanned = []
             for i, raw in enumerate(pdf.pages, start=1):
@@ -214,14 +229,15 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
     return confs
 
 
-def parse_pdf(data: bytes, file_seq: int, on_ocr=None) -> ParsedFile:
+def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None = None,
+              max_pages: int | None = None) -> ParsedFile:
     nodes: list[ParsedNode] = []
     scanned: list[int] = []
     mixed: list[int] = []
     low_conf: list[int] = []
     empty: list[int] = []
     started = time.monotonic()
-    with _open(data) as pdf:
+    with _open(data, password, max_pages) as pdf:
         page_count = len(pdf.pages)
         pdfium_doc = None
         try:
@@ -235,7 +251,7 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None) -> ParsedFile:
                 if pdfium_doc is None:
                     import pypdfium2
 
-                    pdfium_doc = pypdfium2.PdfDocument(data)
+                    pdfium_doc = pypdfium2.PdfDocument(data, password=password)
                 (scanned if is_scanned else mixed).append(page_no)
                 confs = _parse_scanned_page(pdfium_doc, page_no, file_seq, nodes)
                 if on_ocr is not None:

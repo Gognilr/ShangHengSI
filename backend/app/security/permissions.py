@@ -19,6 +19,7 @@ from app.security.sessions import AuthContext, require_auth
 # (代码, 名称, 组)；顺序即界面顺序
 PERMISSIONS: list[tuple[str, str, str]] = [
     ("use.review", "文件审核", "使用"),
+    ("use.bid", "标书初审", "使用"),
     ("use.assistant", "智能助手", "使用"),
     ("use.meeting", "会议纪要", "使用"),
     ("use.translate", "翻译（云端）", "使用"),
@@ -44,7 +45,7 @@ SYSTEM = [c for c in CODES if c.startswith("sys.")]
 ROLE_USER, ROLE_BIZ, ROLE_SYS = "user", "biz_admin", "sys_admin"
 # 内置角色的默认值（第七节分工表）：业务管理员维护内容与脱敏，系统管理员管账号、模型、数据与法规同步开关
 BUILTIN: dict[str, tuple[str, list[str]]] = {
-    ROLE_USER: ("普通用户", USE),
+    ROLE_USER: ("普通用户", [c for c in USE if c != "use.bid"]),
     ROLE_BIZ: ("业务管理员", CONTENT),
     ROLE_SYS: ("系统管理员", SYSTEM),
 }

@@ -27,6 +27,7 @@ from app.redaction.router import router as redaction_router
 from app.security.errors import register_error_handlers
 from app.tasks.router import router as tasks_router
 from app.tasks.search import router as search_router
+from app.bid.router import router as bid_router
 
 API_PREFIX = "/api/v1"
 
@@ -42,6 +43,7 @@ def build_api_router() -> APIRouter:
     router.include_router(auth_router)
     router.include_router(assistant_router)
     router.include_router(tasks_router)
+    router.include_router(bid_router)
     router.include_router(search_router)
     router.include_router(review_router)
     router.include_router(redaction_router)

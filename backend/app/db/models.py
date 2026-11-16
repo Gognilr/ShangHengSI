@@ -267,7 +267,7 @@ class Session(Base):
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
-        enum_check("kind", ["review", "assistant"]),
+        enum_check("kind", ["review", "assistant", "bid"]),
         enum_check("purpose", ["chat", "meeting", "translate"]),
         enum_check("stance", STANCES),
         enum_check("source", SOURCES),
@@ -329,6 +329,9 @@ class TaskFile(Base):
     media: Mapped[Optional[Any]] = mapped_column(JSONB)
     media_storage_key: Mapped[Optional[str]] = mapped_column(String(64))
     speakers_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    bidder_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("bid_bidders.id", ondelete="CASCADE"))
+    password_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    meta_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     converted_storage_key: Mapped[Optional[str]] = mapped_column(String(64))
     doc_type: Mapped[Optional[str]] = mapped_column(String(12))
     doc_type_source: Mapped[Optional[str]] = mapped_column(String(6))
@@ -340,6 +343,89 @@ class TaskFile(Base):
     original_deleted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     created_at: Mapped[datetime] = _ts_now()
+
+
+# ---- 标书初审（V34-B-01） ----
+class BidProject(Base):
+    __tablename__ = "bid_projects"
+    __table_args__ = (enum_check("stage", ["preparing", "ready", "checking", "checked"]),)
+    task_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    opening_date: Mapped[date] = mapped_column(Date, nullable=False)
+    stage: Mapped[str] = mapped_column(String(12), nullable=False, server_default="preparing")
+    parameters_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    pricing_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    requirements_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+
+class BidBidder(Base):
+    __tablename__ = "bid_bidders"
+    __table_args__ = (UniqueConstraint("task_id", "seq"), UniqueConstraint("task_id", "code"))
+    id: Mapped[uuid.UUID] = uuid_pk()
+    task_id: Mapped[uuid.UUID] = _task_fk()
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    name_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    code: Mapped[str] = mapped_column(String(8), nullable=False)
+
+
+class BidRequirement(Base):
+    __tablename__ = "bid_requirements"
+    id: Mapped[uuid.UUID] = uuid_pk()
+    task_id: Mapped[uuid.UUID] = _task_fk()
+    group: Mapped[str] = mapped_column(String(32), nullable=False)
+    text_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    redacted_text: Mapped[Optional[str]] = mapped_column(Text)
+    locs: Mapped[Any] = _jsonb_list()
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=_TRUE)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class BidItem(Base):
+    __tablename__ = "bid_items"
+    __table_args__ = (enum_check("kind", ["issue", "clue", "normal_dup"]),
+                      enum_check("source", ["local", "model"]),
+                      enum_check("review_status", ["pending", "verified", "excluded"]))
+    id: Mapped[uuid.UUID] = uuid_pk()
+    task_id: Mapped[uuid.UUID] = _task_fk()
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    bidder_ids: Mapped[Any] = _jsonb_list()
+    requirement_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("bid_requirements.id", ondelete="SET NULL"))
+    type: Mapped[str] = mapped_column(String(40), nullable=False)
+    level: Mapped[str] = mapped_column(String(16), nullable=False)
+    article: Mapped[Optional[str]] = mapped_column(String(40))
+    evidence_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    source: Mapped[str] = mapped_column(String(8), nullable=False)
+    review_status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
+    note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+
+
+class BidCell(Base):
+    __tablename__ = "bid_cells"
+    __table_args__ = (UniqueConstraint("requirement_id", "bidder_id"),
+                      enum_check("source", ["local", "model"]),
+                      enum_check("review_status", ["pending", "verified", "excluded"]))
+    id: Mapped[uuid.UUID] = uuid_pk()
+    task_id: Mapped[uuid.UUID] = _task_fk()
+    requirement_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("bid_requirements.id", ondelete="CASCADE"), nullable=False)
+    bidder_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("bid_bidders.id", ondelete="CASCADE"), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(20), nullable=False)
+    locs: Mapped[Any] = _jsonb_list()
+    reason_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    source: Mapped[str] = mapped_column(String(8), nullable=False)
+    review_status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
+    note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+
+
+class BidImage(Base):
+    __tablename__ = "bid_images"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    file_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("task_files.id", ondelete="CASCADE"), nullable=False)
+    page: Mapped[Optional[int]] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)
 
 
 # ---- 18.7 doc_nodes ----
