@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.db.models import Finding, Task, User
 from app.db.session import get_db
 from app.security.deps import current_user
+from app.security.permissions import user_permissions
 from app.review.service import _View
 from app.tasks.service import _like_pattern
 
@@ -50,10 +51,17 @@ class FindingHit(BaseModel):
     title: str
 
 
+class BidHit(BaseModel):
+    id: uuid.UUID
+    title: str
+    last_activity_at: datetime
+
+
 class SearchResult(BaseModel):
     reviews: list[ReviewHit]
     sessions: list[SessionHit]
     findings: list[FindingHit] = []
+    bids: list[BidHit] = []  # 标书初审项目（V34-B-07）；只有 use.bid 的账号才会搜到
 
 
 @router.post("", response_model=SearchResult)
@@ -76,8 +84,10 @@ def search(body: SearchBody, user: User = Depends(current_user), db: DbSession =
     for finding, task in rows:
         view = views.setdefault(task.id, _View(db, task.id))
         hits.append(FindingHit(id=finding.id, task_id=task.id, task_title=task.title, kind=task.kind, title=view.text(finding.title) or finding.title))
+    can_bid = "use.bid" in user_permissions(db, user.id)
     return SearchResult(
         findings=hits,
+        bids=[BidHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at) for t in find("bid")] if can_bid else [],
         reviews=[ReviewHit(id=t.id, title=t.title, status=t.status, created_at=t.created_at) for t in find("review")],
         sessions=[SessionHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at) for t in find("assistant")],
     )

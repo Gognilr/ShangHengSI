@@ -596,15 +596,29 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
                        kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')), asr_enabled=asr_enabled(), mt_enabled=mt_enabled())
 
 
-def history(db: Session, user: User, q: str | None, date_from, date_to, page: int) -> HistoryPage:
-    """历史记录（V32-B-01）：本人的工作台会话与旧审核任务合并，按最近活动倒序一页返回；会议纪要、翻译不在其中。"""
+def history(db: Session, user: User, q: str | None, date_from, date_to, page: int, kind: str | None = None) -> HistoryPage:
+    """历史记录（V32-B-01）：本人的工作台会话、旧审核任务与（有权限时）标书初审项目合并，按最近活动倒序一页返回；会议纪要、翻译不在其中。
+    kind 筛选类型（V34-B-07）：review 文件审核（审核任务与发起过审核的会话）、chat 对话、bid 标书初审。"""
     from datetime import datetime, time, timedelta
-    from app.db.models import Finding, ReviewRun
+    from app.bid import service as bid_service
+    from app.db.models import BidItem, BidProject, Finding, ReviewRun
+    from app.security.permissions import user_permissions
+    from app.tasks.schemas import TaskListItem
     size = tasks.PAGE_SIZE
-    conds = [Task.owner_id == user.id, (Task.kind == "review") | ((Task.kind == "assistant") & (Task.purpose == "chat"))]
+    kinds = (Task.kind == "review") | ((Task.kind == "assistant") & (Task.purpose == "chat"))
+    if "use.bid" in user_permissions(db, user.id):
+        kinds |= Task.kind == "bid"
+    conds = [Task.owner_id == user.id, kinds]
+    reviewed = exists().where(ReviewRun.task_id == Task.id)
+    if kind == "review":
+        conds.append((Task.kind == "review") | ((Task.kind == "assistant") & reviewed))
+    elif kind == "chat":
+        conds.append((Task.kind == "assistant") & ~reviewed)
+    elif kind == "bid":
+        conds.append(Task.kind == "bid")
     # 没有发过消息、没有文件的空会话不列
     # 日期筛选按“最近活动”，与列表显示和排序一致（V32-B-01 评审）
-    conds.append((Task.kind == "review") | (Task.title != "新会话") | exists().where(TaskFile.task_id == Task.id))
+    conds.append((Task.kind != "assistant") | (Task.title != "新会话") | exists().where(TaskFile.task_id == Task.id))
     if q and q.strip():
         pattern = tasks._like_pattern(q.strip())
         conds.append(Task.title.ilike(pattern, escape="\\") | exists().where(
@@ -631,8 +645,17 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
     pending = dict(db.execute(select(Finding.run_id, func.count()).where(
         Finding.run_id.in_([r.id for r in latest.values()]), Finding.handling_status == 'pending')
         .group_by(Finding.run_id)).all()) if latest else {}
+    bid_ids = [t.id for t, _ in rows if t.kind == "bid"]
+    bids = bid_service.history_stats(db, bid_ids) if bid_ids else {}
     items = []
     for t, doc_type in rows:
+        if t.kind == "bid":
+            stage, veto, todo = bids.get(t.id, ("preparing", 0, 0))
+            row = TaskListItem(id=t.id, title=t.title, doc_type=None, stance=t.stance, status=t.status, high_count=veto,
+                               created_at=t.created_at, **bid_service.expiry(db, t, stage))
+            items.append(HistoryItem(**row.model_dump(), kind="bid", stage=stage, last_activity_at=t.last_activity_at,
+                                     file_count=files.get(t.id, 0), pending_count=todo, reviewing=stage == "checking"))
+            continue
         row = tasks.list_row(db, t, doc_type)
         last = latest.get(t.id)
         items.append(HistoryItem(**row.model_dump(), kind="review" if t.kind == "review" else "session",

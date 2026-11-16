@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Plus } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { bidApi, bidState, type BidSettings, type BidSummary } from '@/api/bid'
@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import BidStatus from '@/components/bid/BidStatus.vue'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 
-const router = useRouter(), auth = useAuthStore()
+const router = useRouter(), route = useRoute(), auth = useAuthStore()
 const items = ref<BidSummary[]>([]), total = ref(0), page = ref(1), loading = ref(true), error = ref('')
 const creating = ref(false), dialog = ref(false), dialogError = ref('')
 const STEPS = [
@@ -33,6 +33,8 @@ async function create(body: BidSettings) {
 }
 function openDialog() { dialogError.value = ''; dialog.value = true }
 onMounted(load)
+// 全局搜索的“新建标书初审”带 ?new=1 来：直接打开新建对话框，并去掉地址里的参数
+watch(() => route.query.new, value => { if (value) { openDialog(); void router.replace({ path: '/bid' }) } }, { immediate: true })
 watch(page, load)
 </script>
 

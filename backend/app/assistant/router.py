@@ -74,9 +74,10 @@ def list_sessions(q: str | None = Query(None, max_length=100), page: int = Query
 @router.get("/history", response_model=HistoryPage)
 def history(q: str | None = Query(None, max_length=100), page: int = Query(1, ge=1, le=100000),
             date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
+            kind: Literal['review', 'chat', 'bid'] | None = Query(None, alias="type"),
             user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """历史记录合并列表（V32-B-01）：须声明在 /{id} 之前。"""
-    return service.history(db, user, q, date_from, date_to, page)
+    """历史记录合并列表（V32-B-01）：须声明在 /{id} 之前；type 按类型筛选：文件审核、对话、标书初审（V34-B-07）。"""
+    return service.history(db, user, q, date_from, date_to, page, kind)
 
 
 @router.get("/{id}", response_model=SessionDetail)

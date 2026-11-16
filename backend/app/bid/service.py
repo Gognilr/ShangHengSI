@@ -150,3 +150,37 @@ def add_files(db, task, uploads, bidder_id=None, groups=None):
             storage.delete_original(key)
         raise
     return detail(db, task)
+
+
+# ---------------------------------------------------------------- 历史记录（V34-B-07）
+
+def history_stats(db, task_ids):
+    """{任务: (阶段, 疑似否决项数, 待核对的问题与线索数)}；已排除的不计，正常重复不计。"""
+    from app.db.models import BidItem
+    stages = dict(db.execute(select(BidProject.task_id, BidProject.stage).where(BidProject.task_id.in_(task_ids))).all())
+    base = (BidItem.task_id.in_(task_ids), BidItem.review_status != "excluded")
+    veto = dict(db.execute(select(BidItem.task_id, func.count()).where(*base, BidItem.kind == "issue", BidItem.level == "veto")
+                           .group_by(BidItem.task_id)).all())
+    todo = dict(db.execute(select(BidItem.task_id, func.count()).where(
+        *base, BidItem.kind != "normal_dup", BidItem.review_status == "pending").group_by(BidItem.task_id)).all())
+    return {i: (stages.get(i, "preparing"), veto.get(i, 0), todo.get(i, 0)) for i in task_ids}
+
+
+def expiry(db, task, stage):
+    """保留期显示：准备中 / 待开标按未完成层，已完成初审按结果层与原件层，初审中不删除（与 backup/retention.py 的分层一致）。"""
+    from datetime import timedelta
+    from app.admin.settings_store import get_setting
+    original = result = None
+    if stage == "checked":
+        result_days = int(get_setting(db, "retention.result_days") or 0)
+        original_days = int(get_setting(db, "retention.original_days") or 0)
+        if result_days:
+            result = task.last_activity_at + timedelta(days=result_days)
+        if original_days and db.scalar(select(func.count()).select_from(TaskFile).where(
+                TaskFile.task_id == task.id, TaskFile.original_deleted_at.is_(None))):
+            original = task.last_activity_at + timedelta(days=original_days)
+    elif stage in ("preparing", "ready") and task.status != "parsing":
+        days = int(get_setting(db, "retention.unfinished_days") or 0)
+        if days:
+            result = task.last_activity_at + timedelta(days=days)
+    return {"original_expires_at": original, "task_expires_at": result}

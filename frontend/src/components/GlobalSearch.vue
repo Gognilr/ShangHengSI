@@ -2,13 +2,13 @@
 import { SETTING_TABS } from '@/utils/permissions'
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
-import { AlertCircle, FileSearch, FilePlus, History as HistoryIcon, MessageSquare, MessageSquarePlus, Search, Settings } from '@lucide/vue'
+import { AlertCircle, FileSearch, FilePlus, History as HistoryIcon, MessageSquare, MessageSquarePlus, Scale, Search, Settings } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { searchApi, type SearchResult } from '@/api/search'
 import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/time'
 
-// 全局搜索（V3-A 6.2）：操作、页面在本地过滤；审核与会话来自接口（只含本人任务）
+// 全局搜索（V3-A 6.2）：操作、页面在本地过滤；审核、标书初审与会话来自接口（只含本人任务）
 const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{ 'new-session': [] }>()
 const router = useRouter()
@@ -17,7 +17,7 @@ const auth = useAuthStore()
 interface Entry { key: string; group: string; label: string; icon: Component; meta?: string; run: () => void }
 
 const query = ref('')
-const result = ref<SearchResult>({ reviews: [], sessions: [], findings: [] })
+const result = ref<SearchResult>({ reviews: [], sessions: [], findings: [], bids: [] })
 const searching = ref(false)
 const active = ref(0)
 const input = ref<{ focus: () => void } | null>(null)
@@ -28,9 +28,11 @@ const staticEntries = computed<Entry[]>(() => {
   const go = (path: string) => () => void router.push(path)
   const list: Entry[] = [
     ...(auth.can('use.review') ? [{ key: 'a-review', group: '操作', label: '新建审核', icon: FilePlus, run: go('/review') }] : []),
+    ...(auth.can('use.bid') ? [{ key: 'a-bid', group: '操作', label: '新建标书初审', icon: Scale, run: () => void router.push({ path: '/bid', query: { new: '1' } }) }] : []),
     ...(auth.can('use.assistant', 'use.review') ? [{ key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
       { key: 'p-assistant', group: '页面', label: '工作台', icon: MessageSquare, run: go('/assistant') }] : []),
     ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '文件审核', icon: FileSearch, run: go('/review') }] : []),
+    ...(auth.can('use.bid') ? [{ key: 'p-bid', group: '页面', label: '标书初审', icon: Scale, run: go('/bid') }] : []),
     { key: 'p-history', group: '页面', label: '历史记录', icon: HistoryIcon, run: go('/history') },
   ]
   for (const s of SETTING_TABS) {
@@ -43,9 +45,10 @@ const entries = computed<Entry[]>(() => {
   const q = query.value.trim().toLowerCase()
   const local = staticEntries.value.filter(e => !q || e.label.toLowerCase().includes(q))
   const reviews: Entry[] = result.value.reviews.map(r => ({ key: `r-${r.id}`, group: '审核', label: r.title, icon: FileSearch, meta: formatDate(r.created_at), run: () => void router.push({ name: 'review-result', params: { taskId: r.id } }) }))
+  const bids: Entry[] = result.value.bids.map(b => ({ key: `b-${b.id}`, group: '标书初审', label: b.title, icon: Scale, meta: formatDate(b.last_activity_at), run: () => void router.push(`/bid/${b.id}`) }))
   const sessions: Entry[] = result.value.sessions.map(s => ({ key: `s-${s.id}`, group: '会话', label: s.title, icon: MessageSquare, meta: formatDate(s.last_activity_at), run: () => void router.push(`/assistant/${s.id}`) }))
   const findings: Entry[] = result.value.findings.map(f => ({ key: `f-${f.id}`, group: '问题', label: f.title, icon: AlertCircle, meta: f.task_title, run: () => void router.push(f.kind === 'review' ? { name: 'review-result', params: { taskId: f.task_id }, query: { finding: f.id } } : { path: `/assistant/${f.task_id}`, query: { mode: 'review' } }) }))
-  return [...local.filter(e => e.group === '操作'), ...local.filter(e => e.group === '页面'), ...reviews, ...findings, ...sessions]
+  return [...local.filter(e => e.group === '操作'), ...local.filter(e => e.group === '页面'), ...reviews, ...bids, ...findings, ...sessions]
 })
 const groups = computed(() => {
   const out: { name: string; items: Entry[] }[] = []
@@ -59,7 +62,7 @@ const groups = computed(() => {
 const noResult = computed(() => query.value.trim().length > 0 && !searching.value && !entries.value.length)
 
 watch(open, value => {
-  if (value) { query.value = ''; result.value = { reviews: [], sessions: [], findings: [] }; active.value = 0; void nextTick(() => input.value?.focus()) }
+  if (value) { query.value = ''; result.value = { reviews: [], sessions: [], findings: [], bids: [] }; active.value = 0; void nextTick(() => input.value?.focus()) }
   else { clearTimeout(timer); ++version }
 })
 watch(query, value => {
@@ -67,13 +70,13 @@ watch(query, value => {
   const q = value.trim()
   active.value = 0
   const current = ++version
-  if (!q) { result.value = { reviews: [], sessions: [], findings: [] }; searching.value = false; return }
+  if (!q) { result.value = { reviews: [], sessions: [], findings: [], bids: [] }; searching.value = false; return }
   searching.value = true
   timer = setTimeout(async () => {
     try {
       const data = await searchApi.search(q.slice(0, 50))
       if (current === version) result.value = data
-    } catch { if (current === version) result.value = { reviews: [], sessions: [], findings: [] } }
+    } catch { if (current === version) result.value = { reviews: [], sessions: [], findings: [], bids: [] } }
     finally { if (current === version) searching.value = false }
   }, 300)
 })
@@ -97,7 +100,7 @@ function indexOf(entry: Entry) { return entries.value.findIndex(e => e.key === e
 <template>
   <el-dialog v-model="open" class="global-search" width="640px" top="15vh" :show-close="false" destroy-on-close append-to-body>
     <template #header><span class="sr-only">搜索</span></template>
-    <el-input ref="input" v-model="query" size="large" placeholder="搜索审核、问题、会话、页面或操作" aria-label="搜索" maxlength="50" @keydown="onKey">
+    <el-input ref="input" v-model="query" size="large" placeholder="搜索审核、标书、问题、会话、页面或操作" aria-label="搜索" maxlength="50" @keydown="onKey">
       <template #prefix><Search :size="16" :stroke-width="1.75" /></template>
     </el-input>
     <div class="results" role="listbox" aria-label="搜索结果">
@@ -111,7 +114,7 @@ function indexOf(entry: Entry) { return entries.value.findIndex(e => e.key === e
           </div>
         </div>
       </template>
-      <EmptyState v-else compact title="没有找到匹配的内容" description="可搜审核与会话标题、问题标题和描述（按主题词，如“违约金”；真实名称和金额搜不到）。" />
+      <EmptyState v-else compact title="没有找到匹配的内容" description="可搜审核、标书项目与会话标题、问题标题和描述（按主题词，如“违约金”；真实名称和金额搜不到）。" />
     </div>
   </el-dialog>
 </template>

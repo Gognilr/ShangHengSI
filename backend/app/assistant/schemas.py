@@ -106,7 +106,8 @@ class MessageIn(BaseModel):
 
 class HistoryItem(TaskListItem):
     """历史记录行（V32-B-01）：kind 区分工作台会话与旧审核任务；会话的 run_count 为已发起的审核轮数。"""
-    kind: Literal['session', 'review']
+    kind: Literal['session', 'review', 'bid']
+    stage: str | None = None  # 标书初审项目的阶段（V34-B-07）；高风险为疑似否决项数，待处理为待核对的问题与线索数
     last_activity_at: UtcDatetime
     run_count: int = 0
     file_count: int = 0
