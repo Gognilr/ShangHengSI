@@ -41,6 +41,11 @@ def test_date_boundaries_pairs_and_return_gate():
     assert dates.shift_text(text, 0) == (text, {})
     assert dates.find_dates('日期2026-03/05') == []
     assert [r.code for r in check_dates([CheckNode('F1-P1', '签约日期20260305，交付日期20260301', 1, None)], date(2026, 3, 1))] == ['L-08']
+    # letter 样本：2月3日 与 9月15日 相隔 32 周，平移 +32 周会造出原日期，出口复检必拦（V34Q-22 附）
+    from app.redaction.engine import shift_choices
+    letter = '于 2026年2月3日签订，请于 2026年9月15日前付款。'
+    assert '2026年9月15日' in dates.shift_text(letter, 224)[0]
+    assert {224, -224}.isdisjoint(shift_choices([letter])) and len(shift_choices([letter])) == 88
 
 
 def test_switch_off_and_assistant_keep_existing_output():
@@ -68,13 +73,13 @@ def test_persisted_shift_and_preview_use_same_coordinate(db_sessionmaker, make_u
     document.add_paragraph('卖方：清原虚构有限公司')
     document.add_paragraph('签约日期：2026-03-05。')
     stream = io.BytesIO(); document.save(stream)
-    monkeypatch.setattr(engine.secrets, 'choice', lambda choices: 10)
+    monkeypatch.setattr(engine.secrets, 'choice', lambda choices: 70)
     task = ready_task(owner, [('日期合同.docx', stream.getvalue())])
     with db_sessionmaker() as db:
         task = db.get(Task, task.id)
         assert engine._load_full_map(db, task.id)['@date_shift_days'] == '70'
         assert '文中日期已整体平移' in engine.build_outbound_text(db, task)
-        monkeypatch.setattr(engine.secrets, 'choice', lambda choices: -10)
+        monkeypatch.setattr(engine.secrets, 'choice', lambda choices: -70)
         engine.redact_task(db, task)
         assert engine._load_full_map(db, task.id)['@date_shift_days'] == '70'
         assert not any(k.startswith('@') for k in engine.load_redaction_map(db, task.id))

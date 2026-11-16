@@ -1420,11 +1420,20 @@ def _date_index(mapping: dict[str, str]) -> int:
     return max((int(m[1]) for key in mapping if (m := re.search(r'#D(\d+)$', key))), default=0)
 
 
-def new_shift_days(db: Session) -> int:
+def shift_choices(texts: Sequence[str] = ()) -> list[int]:
+    """可选的平移天数（±8～52 周）；去掉会把文中某个日期平移成另一个原日期的值（两日期恰好相隔整周时），
+    否则平移后的文字等于原日期，出口复检会拦下且用户无从处理（V34Q-22 附）。"""
+    seen = {h.value for t in texts for h in dates.find_dates(t or '')}
+    gaps = {abs((a - b).days) for a in seen for b in seen}
+    choices = [7 * w for w in (*range(-52, -7), *range(8, 53)) if abs(7 * w) not in gaps]
+    return choices or [7 * w for w in (*range(-52, -7), *range(8, 53))]
+
+
+def new_shift_days(db: Session, texts: Sequence[str] = ()) -> int:
     """按全局开关决定一次平移天数：关闭时为 0（之后固定，不中途开启）。"""
     if not get_setting(db, 'redaction.date_shift'):
         return 0
-    return 7 * secrets.choice((*range(-52, -7), *range(8, 53)))
+    return secrets.choice(shift_choices(texts))
 
 
 def outbound_text(nodes: list[NodeIn], parties: list[outbound.PartyInfo], redacted: dict[str, str]) -> str:
@@ -1684,7 +1693,7 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
     shift_days = 0
     if style == 'review' and task.kind != 'assistant' and get_setting(db, 'redaction.date_shift'):
         # 首次开启后的重算固定坐标，后续追问预览和发送使用同一个偏移。
-        shift_days = int(full_map.get('@date_shift_days') or 7 * secrets.choice((*range(-52, -7), *range(8, 53))))
+        shift_days = int(full_map.get('@date_shift_days') or secrets.choice(shift_choices(list(texts.values()))))
     elif task.kind == 'assistant' and task.purpose == 'chat':
         # 会话只在首次脱敏时按开关决定并写入，之后固定；对照表非空且没有该键的旧会话永不平移（V32-A-02）
         if '@date_shift_days' in full_map:
