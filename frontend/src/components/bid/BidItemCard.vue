@@ -12,6 +12,11 @@ const open = ref(false)
 const sectionLabel: Record<string, string> = { tech: '技术参数章节，已降一档', price: '报价章节，已升一档' }
 const statusMark: Record<string, string> = { verified: '已核实', excluded: '已排除' }
 
+// 条文项：线索存“（四）”，问题存“第五十一条（五）”或“（三）”
+function article() {
+  const a = props.item.article ?? ''
+  return props.item.kind === 'clue' ? `第四十条${a}` : a.startsWith('第') ? `参照${a}` : `参照第五十一条${a}`
+}
 function who() { return props.item.bidder_ids.map(id => ctx.names.value[id] ?? '已移除的投标人').join(' · ') }
 function place(p: BidPlace) { return (ctx.fileNames.value[p.file_id] ?? '文件') + (p.page ? ` 第 ${p.page} 页` : '') }
 function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderable.value[p.file_id]) }
@@ -23,7 +28,7 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
       <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: open }" aria-hidden="true" />
       <span class="title" :class="levelTone(item.level)">{{ item.title }}</span>
       <span class="tag">{{ bidTypeLabel[item.type] ?? item.type }}<template v-if="item.source === 'model'"> · 模型</template></span>
-      <span v-if="item.article" class="tag">{{ item.kind === 'issue' ? '参照第五十一条' : '第四十条' }}{{ item.article }}</span>
+      <span v-if="item.article" class="tag">{{ article() }}</span>
       <span class="tail"><span v-if="!hideWho" class="who">{{ who() }}</span><span v-if="statusMark[item.review_status]" class="status">{{ statusMark[item.review_status] }}</span></span>
     </button>
     <div v-if="open" class="detail">
