@@ -313,3 +313,37 @@ def confirm_requirements(task: Task = Depends(owned), db: Session = Depends(get_
     task.last_activity_at = utcnow()
     db.commit()
     return _requirements(db, task)
+
+
+@router.post("/{id}/check")
+def start_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """开始初审：本地检查在后台进行；开始后材料锁定。"""
+    from app.db import jobs
+    task = service.editable(db, task)
+    project = db.get(BidProject, task.id)
+    if project.stage != "ready":
+        raise AppError(409, "NOT_READY", "请先确认关键参数与要求清单")
+    if service.busy(db, task) or db.scalar(select(TaskFile.id).where(TaskFile.task_id == task.id, TaskFile.parser_version.is_(None),
+                                                                      TaskFile.parse_error.is_(None)).limit(1)):
+        raise AppError(409, "PARSING", "文件还在解析，请稍候")
+    if not db.scalar(select(TaskFile.id).where(TaskFile.task_id == task.id, TaskFile.bidder_id.is_not(None),
+                                               TaskFile.parser_version.is_not(None)).limit(1)):
+        raise AppError(422, "NO_BIDS", "请先加入并解析投标文件")
+    project.stage, project.check_state, project.check_error = "checking", "running", None
+    jobs.enqueue(db, "bid", {"task_id": str(task.id), "stage": "check"})
+    task.last_activity_at = utcnow()
+    db.commit()
+    return service.detail(db, task)
+
+
+@router.get("/{id}/check")
+def check_result(task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.db.models import BidItem
+    project = db.get(BidProject, task.id)
+    summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
+    rank = {"strong": 0, "medium": 1, "weak": 2, "normal": 3}
+    items = sorted(db.scalars(select(BidItem).where(BidItem.task_id == task.id)), key=lambda i: (rank.get(i.level, 9), i.type))
+    return {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
+            "items": [{"id": i.id, "kind": i.kind, "type": i.type, "level": i.level, "article": i.article,
+                       "bidder_ids": i.bidder_ids, "source": i.source, "review_status": i.review_status,
+                       **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items]}

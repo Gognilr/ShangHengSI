@@ -349,7 +349,8 @@ class TaskFile(Base):
 class BidProject(Base):
     __tablename__ = "bid_projects"
     __table_args__ = (enum_check("stage", ["preparing", "ready", "checking", "checked"]),
-                      enum_check("extract_state", ["redacting", "awaiting", "extracting", "done", "failed"]))
+                      enum_check("extract_state", ["redacting", "awaiting", "extracting", "done", "failed"]),
+                      enum_check("check_state", ["running", "done", "failed"]))
     task_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
     opening_date: Mapped[date] = mapped_column(Date, nullable=False)
     stage: Mapped[str] = mapped_column(String(12), nullable=False, server_default="preparing")
@@ -359,6 +360,10 @@ class BidProject(Base):
     # 模型补充要求清单：本机脱敏 → 待确认 → 发送中 → 完成 / 失败（V34-B-02）
     extract_state: Mapped[Optional[str]] = mapped_column(String(12))
     extract_error: Mapped[Optional[str]] = mapped_column(String(200))
+    # 本地检查（V34-B-03）：状态、失败提示、覆盖说明与计数（加密 JSON）
+    check_state: Mapped[Optional[str]] = mapped_column(String(12))
+    check_error: Mapped[Optional[str]] = mapped_column(String(200))
+    check_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
 
 
 class BidBidder(Base):
@@ -391,7 +396,8 @@ class BidRequirement(Base):
 
 class BidItem(Base):
     __tablename__ = "bid_items"
-    __table_args__ = (enum_check("kind", ["issue", "clue", "normal_dup"]),
+    __table_args__ = (Index("ix_bid_items_task_id", "task_id"),
+                      enum_check("kind", ["issue", "clue", "normal_dup"]),
                       enum_check("source", ["local", "model"]),
                       enum_check("review_status", ["pending", "verified", "excluded"]))
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -427,6 +433,7 @@ class BidCell(Base):
 
 class BidImage(Base):
     __tablename__ = "bid_images"
+    __table_args__ = (Index("ix_bid_images_file_id", "file_id"),)
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     file_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("task_files.id", ondelete="CASCADE"), nullable=False)
     page: Mapped[Optional[int]] = mapped_column(Integer)

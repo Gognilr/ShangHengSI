@@ -56,3 +56,49 @@ def tender():
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
+
+
+# B-03 虚构投标文件：招标代理电话与标识图片在招标文件中出现（基线，不报）；甲乙共用电话与项目经理、作者相同、
+# 授权委托书页同一张图片；丙的文件里出现甲的名称（混装）。
+BIDDERS = ("虚构松青仪器有限公司", "虚构鳞木科技有限公司", "虚构赭石设备有限公司")
+AGENT_PHONE = "010-66668888"
+
+
+def _png(seed):
+    import random
+    from PIL import Image
+    rnd = random.Random(seed)
+    im = Image.new("RGB", (96, 96))
+    im.putdata([(rnd.randrange(256), rnd.randrange(256), rnd.randrange(256)) for _ in range(96 * 96)])
+    out = io.BytesIO()
+    im.save(out, "PNG")
+    return out.getvalue()
+
+
+def tender_with_logo():
+    doc = Document(io.BytesIO(tender()))
+    doc.add_paragraph(f"招标代理联系电话：{AGENT_PHONE}")
+    doc.add_picture(io.BytesIO(_png(7)))
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
+def bid(index):
+    doc = Document()
+    name = BIDDERS[index]
+    doc.add_paragraph(f"投标人：{name}")
+    doc.add_paragraph(f"如有疑问请联系招标代理：{AGENT_PHONE}")
+    doc.add_picture(io.BytesIO(_png(7)))  # 从招标文件复制的标识
+    if index in (0, 1):
+        doc.core_properties.author = "虚构编制人"
+        doc.add_paragraph("项目经理：周示例")
+        doc.add_paragraph("联系电话：13912345678")
+        doc.add_paragraph("授权委托书（加盖公章）")
+        doc.add_picture(io.BytesIO(_png(11)))
+    else:
+        doc.add_paragraph("项目经理：吴虚构")
+        doc.add_paragraph(f"我方参考了{BIDDERS[0][:6]}的方案。")
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()

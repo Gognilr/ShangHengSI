@@ -175,12 +175,33 @@ def _fail(db, task_id, message):
         db.commit()
 
 
+def _local_check(db, task, project):
+    """本地检查一（B-03）：失败时退回“待开标”，可再次开始。"""
+    from app.bid import checks
+    if project.check_state != "running":
+        return
+    try:
+        checks.run(db, task)
+        project.check_state, project.check_error, project.stage = "done", None, "checked"
+        db.commit()
+    except Exception:
+        logger.warning("标书本地检查失败 task=%s", task.id)
+        db.rollback()
+        project = db.get(BidProject, task.id, populate_existing=True)
+        if project is not None:
+            project.check_state, project.check_error, project.stage = "failed", "本地检查中断，请重新开始初审", "ready"
+            db.commit()
+
+
 @job_handler("bid")
 def handle_bid(db, payload):
     task_id = uuid.UUID(str(payload["task_id"]))
     task = db.get(Task, task_id)
     project = db.get(BidProject, task_id) if task is not None else None
     if task is None or project is None or task.kind != "bid":
+        return
+    if payload.get("stage") == "check":
+        _local_check(db, task, project)
         return
     if payload.get("stage") == "redact":
         if project.extract_state != "redacting":

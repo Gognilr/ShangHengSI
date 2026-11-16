@@ -7,9 +7,10 @@ import json
 
 from sqlalchemy import delete, select, text
 
+from app.bid import fileprops
 from app.bid.service import LIMITS
 from app.db.base import utcnow
-from app.db.models import BidProject, DocNode, Task, TaskFile
+from app.db.models import BidImage, BidProject, DocNode, Task, TaskFile
 from app.parsing import pdf
 from app.parsing.model import ParseError
 from app.security import crypto
@@ -31,7 +32,7 @@ def _ocr_used(db, task_id):
 
 
 def _parse_one(db, file, used):
-    """解析一个文件，返回 (节点, parser_version, meta)。meta 与密码一样加密，不进日志或对外提示。"""
+    """解析一个文件，返回 (节点, parser_version, meta)；meta 含文件属性与图片哈希。meta 与密码一样加密，不进日志或对外提示。"""
     data = storage.load_original(file.storage_key)
     if file.ext == "pdf":
         password = crypto.decrypt_text(file.password_enc) if file.password_enc is not None else ""
@@ -39,20 +40,24 @@ def _parse_one(db, file, used):
         need = len(pdf.inspect_pdf(data, **options).scanned_pages)
         if used + need > LIMITS["ocr_pages"]:
             raise ParseError(_OCR_OVER)
-        with pdf._open(data, password, LIMITS["pdf_pages"]) as opened:
-            info = opened.metadata
         if need:
             from app.worker import ocr_slot
             with ocr_slot():
                 parsed = pdf.parse_pdf(data, file.seq, **options)
         else:
             parsed = pdf.parse_pdf(data, file.seq, **options)
-        return parsed, pdf.PARSER_VERSION, {"ocr_pages": parsed.ocr_pages, "pdf_info": info}
+        return parsed, pdf.PARSER_VERSION, _meta(file, data, parsed, password)
     if file.ext in ("jpg", "png") and used + 1 > LIMITS["ocr_pages"]:
         raise ParseError(_OCR_OVER)
     from app.tasks.pipeline import _parse_bytes
     parsed, version = _parse_bytes(file.ext, data, file.seq, 0)
-    return parsed, version, {"ocr_pages": parsed.ocr_pages}
+    return parsed, version, _meta(file, data, parsed)
+
+
+def _meta(file, data, parsed, password=None):
+    """文件属性与图片哈希（B-03 比对用）：属性随 meta 加密，图片只写哈希行。"""
+    props, images = fileprops.collect(file.ext, data, parsed.nodes, password)
+    return {"ocr_pages": parsed.ocr_pages, "props": props, "images": images}
 
 
 def _auto_extract(db, task):
@@ -85,6 +90,7 @@ def parse_project(db, task_id):
             db.commit()
             return
         db.execute(delete(DocNode).where(DocNode.file_id == file.id))
+        db.execute(delete(BidImage).where(BidImage.file_id == file.id))
         file.page_count, file.warnings = None, []
         try:
             if file.original_deleted_at is not None:
@@ -106,5 +112,7 @@ def parse_project(db, task_id):
                        for n in parsed.nodes)
             file.parser_version, file.page_count = version, parsed.page_count
             file.warnings, file.has_revisions = parsed.warnings, parsed.has_revisions
+            images = meta.pop("images")
             file.meta_enc = crypto.encrypt_text(json.dumps(meta, ensure_ascii=False, default=str))
+            db.add_all(BidImage(file_id=file.id, **image) for image in images)
         db.commit()
