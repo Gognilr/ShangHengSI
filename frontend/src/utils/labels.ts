@@ -228,7 +228,7 @@ export const backupTriggerLabel = pick(BACKUP_TRIGGER)
 export const OUTBOUND_STATUS: Dict = { sent: '已发送', blocked: '已拦截', error: '出错' }
 export const outboundStatusLabel = pick(OUTBOUND_STATUS)
 export const OUTBOUND_STATUS_TAG: Record<string, TagType> = { sent: 'success', blocked: 'warning', error: 'danger' }
-export const LLM_PURPOSE: Dict = { review: '审核', chat: '追问', test: '连接测试', assist: '智能助手' }
+export const LLM_PURPOSE: Dict = { review: '审核', chat: '追问', test: '连接测试', assist: '智能助手', bid: '标书初审' }
 export const llmPurposeLabel = pick(LLM_PURPOSE)
 
 export const ASSISTANT_TEMPLATE: Dict = { translate: '翻译', summary: '摘要', reply: '起草回复', crosscheck: '单证核对', compare: '比价', minutes: '会议纪要' }

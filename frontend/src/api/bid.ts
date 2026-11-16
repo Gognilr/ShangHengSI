@@ -10,7 +10,27 @@ export interface Bidder { id: string; name: string; code: string; seq: number }
 export interface BidProject extends BidSummary {
   policy: 'ai' | 'local_only'; busy: boolean; error_message: string | null; bidders: Bidder[]; files: BidFile[]
   limits: { bid_files: number; tender_files: number; file_mb: number; pdf_pages: number; ocr_pages: number }
+  requirements: { enabled: number; extract_state: BidExtractState }
 }
+export type BidGroup = 'qualification' | 'substantive' | 'veto' | 'pricing' | 'validity' | 'signing' | 'format'
+export type BidMethod = 'local' | 'model' | 'manual'
+export type BidExtractState = null | 'redacting' | 'awaiting' | 'extracting' | 'done' | 'failed'
+export interface BidLoc { file_id: string; loc: string; start: number; end: number }
+export interface BidRequirement { id: string; group: BidGroup; text: string; locs: BidLoc[]; method: BidMethod; enabled: boolean; source: 'marked' | 'model' | 'default' | 'manual'; seq: number; file: string | null }
+export interface BidParameters { ceiling: string | null; currency: 'CNY' | 'USD' | 'EUR' | 'HKD'; validity_days: number | null; deposit: string | null; deposit_forms: string; consortium: boolean | null; tax_included: boolean | null }
+export interface BidCount { total: number; covered: number; missing: (BidLoc & { text: string })[] }
+export interface BidRequirements {
+  parameters: BidParameters; parameter_sources: Record<string, { file_id: string; loc: string }>; parameters_confirmed: boolean
+  extracted: boolean; tender_changed: boolean; items: BidRequirement[]; counts: { star: BidCount; veto: BidCount }; version: number
+  extract_state: BidExtractState; extract_error: string | null; stage: BidStage
+  receipt: { chars: number; calls: number; protected: number; remaining: { monthly: number | null; daily: number | null } } | null
+}
+export interface BidTender { files: Record<string, string>; nodes: { file_id: string; loc: string; kind: string; text: string }[]; markers: { kind: 'star' | 'veto'; loc: string; start: number; end: number }[] }
+export const bidGroupLabel: Record<BidGroup, string> = {
+  qualification: '资格条件', substantive: '实质性条款（★）', veto: '否决条款', pricing: '报价要求', validity: '有效期与保证金', signing: '签章与格式页', format: '投标文件格式（范本）',
+}
+export const bidMethodLabel: Record<BidMethod, string> = { local: '本地规则', model: '模型判断', manual: '人工核对' }
+export const bidSourceLabel: Record<BidRequirement['source'], string> = { marked: '原文标记', model: '模型提取 · 请核对', default: '默认（第五十一条）', manual: '手工' }
 export interface BidSettings { title: string; opening_date: string; policy: 'ai' | 'local_only' }
 export const bidStageLabel: Record<BidStage, string> = { preparing: '准备中', ready: '待开标', checking: '初审中', checked: '待核对' }
 export const bidPolicyLabel: Record<BidSettings['policy'], string> = { local_only: '只做本地检查', ai: '本机检查 + 模型核对' }
@@ -45,4 +65,13 @@ export const bidApi = {
   password: (id: string, fid: string, password: string) => http.put<BidProject>(`/bid/${id}/files/${fid}/password`, { password }),
   reveal: (id: string, fid: string) => http.get<{ password: string | null }>(`/bid/${id}/files/${fid}/password`),
   parse: (id: string) => http.post<BidProject>(`/bid/${id}/parse`),
+  tender: (id: string, view: 'original' | 'ai' = 'original') => http.get<BidTender>(`/bid/${id}/tender`, { view }),
+  requirements: (id: string) => http.get<BidRequirements>(`/bid/${id}/requirements`),
+  parameters: (id: string, body: BidParameters) => http.put<BidRequirements>(`/bid/${id}/parameters`, body),
+  addRequirement: (id: string, body: { group: BidGroup; text: string; method: BidMethod; locs?: BidLoc[] }) => http.post<BidRequirements>(`/bid/${id}/requirements`, body),
+  patchRequirement: (id: string, rid: string, body: Partial<Pick<BidRequirement, 'group' | 'text' | 'method' | 'enabled'>>) => http.patch<BidRequirements>(`/bid/${id}/requirements/${rid}`, body),
+  removeRequirement: (id: string, rid: string) => http.delete<BidRequirements>(`/bid/${id}/requirements/${rid}`),
+  reextract: (id: string) => http.post<BidRequirements>(`/bid/${id}/requirements/extract`),
+  assist: (id: string, action: 'start' | 'confirm' | 'cancel') => http.post<BidRequirements>(`/bid/${id}/assist/${action}`),
+  confirm: (id: string) => http.post<BidRequirements>(`/bid/${id}/confirm`),
 }

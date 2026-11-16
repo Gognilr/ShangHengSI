@@ -11,6 +11,7 @@ import BidFiles from '@/components/bid/BidFiles.vue'
 import BidStatus from '@/components/bid/BidStatus.vue'
 import BidderCard from '@/components/bid/BidderCard.vue'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
+import BidRequirements from '@/components/bid/BidRequirements.vue'
 
 const route = useRoute(), router = useRouter(), id = computed(() => String(route.params.id))
 const project = ref<BidProject>(), loading = ref(false), error = ref(''), pending = ref(false), percent = ref<number | null>(null)
@@ -30,7 +31,7 @@ let generation = 0, edits = 0  // edits：轮询结果晚于修改返回时丢�
 // 四步条：前两步按材料是否齐全打勾；后两步在要求清单与初审完成后开放
 const steps = computed(() => {
   const p = project.value
-  const tenderDone = !!tenderFiles.value.length && tenderFiles.value.every(f => f.state === 'done')
+  const tenderDone = !!tenderFiles.value.length && tenderFiles.value.every(f => f.state === 'done') && p?.stage !== 'preparing'
   const bidDone = !!p && p.bidders.length > 0 && p.bidders.every(b => filesOf(b.id).length > 0) && bidFiles.value.every(f => f.state === 'done')
   return [
     { title: '招标文件与要求', done: tenderDone },
@@ -39,6 +40,8 @@ const steps = computed(() => {
     { title: '导出', done: false },
   ]
 })
+// 已解析的招标文件变化时，清单组件重新读取
+const tenderKey = computed(() => tenderFiles.value.filter(f => f.state === 'done').map(f => f.id).join(','))
 const parseNote = computed(() => {
   const files = project.value?.files ?? []
   if (!files.length) return null
@@ -203,7 +206,7 @@ async function removeProject() {
       <el-alert v-if="error" class="alert" :title="error" type="error" show-icon @close="error = ''" />
 
       <!-- 第 1 步：招标文件与要求 -->
-      <div v-if="step === 0" class="tender">
+      <div v-if="step === 0" :class="tenderKey ? 'tender-ready' : 'tender'">
         <section class="col">
           <div class="section-head"><h2 class="si-overline">招标文件</h2><span class="hint num">{{ tenderFiles.length }} / {{ project.limits.tender_files }}</span></div>
           <BidFiles v-if="tenderFiles.length" :project-id="id" :files="tenderFiles" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" @remove="removeFile" @password="setPassword" />
@@ -214,15 +217,16 @@ async function removeProject() {
             <p v-if="!tenderFiles.length" class="hint">Word 或 PDF；正文、答疑、补遗与澄清可分别加入，最多 {{ project.limits.tender_files }} 份</p>
           </div>
         </section>
-        <aside class="col next">
+        <BidRequirements v-if="tenderKey" class="requirements" :project-id="id" :policy="project.policy" :disabled="blocked" :tender-key="tenderKey" @changed="load(false)" />
+        <aside v-else class="col next">
           <div class="section-head"><h2 class="si-overline">关键参数与要求清单</h2></div>
-          <p class="next-lede">招标文件解析后，在这里核对最高限价、有效期、保证金等关键参数，并确认按哪些要求逐家检查。</p>
+          <p class="next-lede">招标文件解析后，系统自动抓出 ★ 条款、否决条款与关键参数（最高限价、有效期、保证金等），由你核对确认。</p>
           <ul class="groups">
             <li v-for="g in ['资格条件', '实质性条款（★）', '否决条款', '报价要求', '有效期与保证金', '签章与格式页']" :key="g"><ListChecks :size="14" :stroke-width="1.75" aria-hidden="true" />{{ g }}<span class="num">—</span></li>
           </ul>
-          <p class="hint">要求清单即将开放；现在可以先准备好投标文件。</p>
+          <p class="hint">{{ project.busy ? '正在解析招标文件…' : '加入招标文件后开始。' }}</p>
         </aside>
-        <footer class="step-foot"><el-button type="primary" @click="step = 1">下一步：投标文件</el-button></footer>
+        <footer class="step-foot"><el-button @click="step = 1">下一步：投标文件</el-button></footer>
       </div>
 
       <!-- 第 2 步：投标文件 -->
@@ -312,7 +316,9 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .section-head { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--si-hair-strong); }
 .section-head .si-overline { margin: 0; }
 .tender { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px 48px; }
-.tender .si-drop { margin-top: 16px; }
+.tender .si-drop, .tender-ready .si-drop { margin-top: 16px; }
+.tender-ready { display: flex; flex-direction: column; gap: 32px; }
+.tender-ready .step-foot { padding-top: 0; border-top: 0; }
 .si-drop.slim { flex-direction: row; justify-content: center; gap: 10px; padding: 14px 16px; }
 .si-drop.slim .si-drop-title { margin: 0; font: var(--si-font-label); color: var(--si-ink-2); }
 .si-drop[aria-disabled="true"] { opacity: .65; cursor: progress; }

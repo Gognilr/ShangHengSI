@@ -214,7 +214,7 @@ export interface OutboundRow {
   user_id: string | null
   user_name: string | null
   task_title: string | null
-  purpose: 'review' | 'chat' | 'test' | 'assist'
+  purpose: 'review' | 'chat' | 'test' | 'assist' | 'bid'
   model_name: string
   chars: number
   status: 'sent' | 'blocked' | 'error'
@@ -231,7 +231,7 @@ export interface OutboundDetail extends OutboundRow {
 }
 
 export interface OutboundQuery {
-  purpose?: 'review' | 'chat' | 'test' | 'assist'
+  purpose?: 'review' | 'chat' | 'test' | 'assist' | 'bid'
   user_id?: string
   from?: string
   to?: string
