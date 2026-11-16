@@ -32,7 +32,7 @@ const rows = computed(() => props.bidders.map(b => {
   return {
     bidder: b, veto: count(own, 'veto'), other: own.length - count(own, 'veto'), pending: pendingFor(b.id),
     total: price?.total ?? (price?.totals_found.length ? `${price.totals_found.length} 个不同总价` : '未识别'),
-    ceiling: over == null ? null : over.startsWith('-') ? '低于限价' : over === '0.00' ? '等于限价' : `▲ 超限价 ${over}`,
+    ceiling: over == null ? (price && !price.total && price.totals_found.length > 1 ? '多个总价，见报价分析' : null) : over.startsWith('-') ? '低于限价' : over === '0.00' ? '等于限价' : `▲ 超限价 ${over}`,
     clues: levels.map(level => ({ level, n: count(clues.value.filter(i => i.bidder_ids.includes(b.id)), level) })).filter(x => x.n),
   }
 }))
@@ -84,7 +84,7 @@ const levelText: Record<string, string> = { strong: '强', medium: '中', weak: 
     <div class="two">
       <section v-if="bidders.length > 1">
         <h3 class="sub">两两关系<span>点击单元格查看对照</span></h3>
-        <div class="tri" :style="{ gridTemplateColumns: `72px repeat(${bidders.length - 1}, minmax(0, 1fr))` }">
+        <div class="tri" :style="{ gridTemplateColumns: `112px repeat(${bidders.length - 1}, minmax(0, 1fr))` }">
           <span />
           <span v-for="b in bidders.slice(1)" :key="b.id" class="hd" :title="b.name">{{ short(b.name) }}</span>
           <template v-for="row in pairs" :key="row.a.id">

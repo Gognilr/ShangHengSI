@@ -10,8 +10,9 @@ const props = defineProps<{ bidders: Bidder[]; modelState: string | null }>()
 const ctx = inject(bidResultsKey)!
 const onlyProblems = ref(true)
 const order: BidGroup[] = ['veto', 'substantive', 'qualification', 'pricing', 'validity', 'signing']
-const cellMap = computed(() => new Map((ctx.data.value?.cells ?? []).map(c => [`${c.requirement_id}:${c.bidder_id}`, c])))
-const cellOf = (rid: string, bid: string) => cellMap.value.get(`${rid}:${bid}`)
+// 只缓存位置；取格子时经响应式数组读取，核对状态改动即时反映
+const cellIndex = computed(() => new Map((ctx.data.value?.cells ?? []).map((c, i) => [`${c.requirement_id}:${c.bidder_id}`, i])))
+const cellOf = (rid: string, bid: string) => { const i = cellIndex.value.get(`${rid}:${bid}`); return i === undefined ? undefined : ctx.data.value?.cells[i] }
 const problem = (c?: BidCell) => !!c && c.review_status !== 'excluded' && (c.verdict === 'no' || c.verdict === 'missing' || c.verdict === 'unclear' || c.cite === 'unverified')
 const all = computed(() => (ctx.data.value?.requirements ?? []).filter(r => order.includes(r.group))
   .sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || a.seq - b.seq))

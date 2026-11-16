@@ -72,7 +72,7 @@ h3.general { color: var(--si-warn-ink); }
 .error { margin: 0; color: var(--si-danger-ink); font: var(--si-font-meta); }
 .sheets { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 20px; }
 .sheet { margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.thumb { display: block; height: 250px; padding: 0; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-paper); overflow: hidden; cursor: zoom-in; }
+.thumb { display: block; box-sizing: border-box; height: 250px; padding: 0; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-paper); overflow: hidden; cursor: zoom-in; }
 .thumb img { width: 100%; height: 100%; object-fit: contain; object-position: top; display: block; }
 .thumb.word { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; padding: 16px; cursor: default; text-align: center; color: var(--si-paper-ink); font: var(--si-font-h4); }
 .thumb.word small { font: var(--si-font-meta); color: var(--si-paper-ink-2); }

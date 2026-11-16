@@ -69,7 +69,8 @@ async function load(initial: boolean) {
     const data = await bidApi.get(id.value)
     if (current !== generation || edit !== edits) return
     accept(data)
-    if (initial && data.bidders.length && !tenderFiles.value.length) step.value = 1
+    if (initial && (data.stage === 'checking' || data.stage === 'checked')) step.value = 2  // 已开始初审的项目直接看结果
+    else if (initial && data.bidders.length && !tenderFiles.value.length) step.value = 1
   } catch (e) { if (current === generation) error.value = e instanceof ApiError ? e.message : '项目读取失败' }
   finally { if (current === generation) loading.value = false }
 }

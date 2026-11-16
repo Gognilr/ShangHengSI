@@ -12,8 +12,15 @@ const params = computed(() => ctx.data.value?.parameters)
 const issues = computed(() => (ctx.data.value?.items ?? []).filter(i => i.kind === 'issue' && pricingTypes.has(i.type)))
 const cols = computed(() => props.bidders.filter(b => pricing.value?.bidders[b.id]))
 const name = (id: string) => ctx.names.value[id] ?? '已移除的投标人'
-function ceilingText(over: string | null | undefined) {
-  if (over == null) return params.value?.ceiling ? '—' : '未填最高限价'
+// 限价按千分位显示（关键参数中存的是不带分隔符的 Decimal 字符串）
+const ceiling = computed(() => {
+  const v = params.value?.ceiling
+  if (!v) return null
+  const [int, dec] = v.split('.')
+  return int!.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + (dec ?? '').padEnd(2, '0').slice(0, 2)
+})
+function ceilingText(over: string | null | undefined, multiple = false) {
+  if (over == null) return !params.value?.ceiling ? '未填最高限价' : multiple ? '多个总价，见下方问题' : '—'
   return over.startsWith('-') ? `低于限价 ${over.slice(1)}` : over === '0.00' ? '等于限价' : `▲ 超限价 ${over}`
 }
 </script>
@@ -22,19 +29,19 @@ function ceilingText(over: string | null | undefined) {
   <div class="pricing">
     <p v-if="!pricing" class="hint">报价检查还没有结果。</p>
     <template v-else>
-      <p class="meta">最高限价 <b class="num">{{ params?.ceiling ?? '未填写' }}</b><template v-if="params?.ceiling"> {{ params.currency ?? 'CNY' }}</template> · 金额按 Decimal 计算、四舍五入到分 · 投标人按录入顺序，不排序</p>
+      <p class="meta">最高限价 <b class="num">{{ ceiling ?? '未填写' }}</b><template v-if="params?.ceiling"> {{ params.currency ?? 'CNY' }}</template> · 金额按 Decimal 计算、四舍五入到分 · 投标人按录入顺序，不排序</p>
       <section>
         <h3 class="sub">各家报价</h3>
         <table>
-          <thead><tr><th>投标人</th><th class="r">投标总价</th><th class="r">报价表合计</th><th>与限价</th><th>报价表</th></tr></thead>
+          <thead><tr><th>投标人</th><th class="r">投标总价</th><th class="r">报价表合计</th><th>与限价</th><th>报价表分项</th></tr></thead>
           <tbody>
             <tr v-for="b in cols" :key="b.id">
               <td class="name">{{ b.name }}</td>
               <td class="r num"><template v-if="pricing.bidders[b.id]!.total">{{ pricing.bidders[b.id]!.total }}</template>
                 <span v-else-if="pricing.bidders[b.id]!.totals_found.length > 1" class="hi">{{ pricing.bidders[b.id]!.totals_found.join(' / ') }}</span><span v-else class="muted">未识别</span></td>
               <td class="r num">{{ pricing.bidders[b.id]!.table?.total ?? '—' }}</td>
-              <td :class="{ hi: ceilingText(pricing.bidders[b.id]!.over_ceiling).startsWith('▲') }">{{ ceilingText(pricing.bidders[b.id]!.over_ceiling) }}</td>
-              <td class="muted">{{ pricing.bidders[b.id]!.table ? `${pricing.bidders[b.id]!.table!.name || '报价表'} · ${pricing.bidders[b.id]!.table!.rows} 项` : '未识别出报价表' }}</td>
+              <td :class="{ hi: ceilingText(pricing.bidders[b.id]!.over_ceiling).startsWith('▲') }">{{ ceilingText(pricing.bidders[b.id]!.over_ceiling, pricing.bidders[b.id]!.totals_found.length > 1) }}</td>
+              <td class="muted">{{ pricing.bidders[b.id]!.table ? `${pricing.bidders[b.id]!.table!.rows} 项` : '未识别出报价表' }}</td>
             </tr>
           </tbody>
         </table>
