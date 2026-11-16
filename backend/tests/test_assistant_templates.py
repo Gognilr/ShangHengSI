@@ -139,3 +139,5 @@ def test_crosscheck_local_table_and_model_only_locates(conversation, db_sessionm
     with db_sessionmaker() as db:
         reply = db.get(AssistantMessage, mid)
         assert reply.status == "done" and "1000" not in reply.content_redacted and "1000" not in json.dumps(reply.extras)
+    for fmt in ("docx", "xlsx"):
+        assert c.get(f"{BASE}/{tid}/messages/{mid}/export", params={"format": fmt}).status_code == 200

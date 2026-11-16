@@ -15,6 +15,7 @@ import { formatDateTime } from '@/utils/time'
 import { useStale } from '@/utils/stale'
 import { assistantStatusLabel } from '@/utils/labels'
 import CompareTable from './CompareTable.vue'
+import CrosscheckTable from './CrosscheckTable.vue'
 import TranslationView from './TranslationView.vue'
 /** savedNo：这条回复已保存为问题 savedNo 的修改建议（V321-E-02） */
 const props = defineProps<{ message: Message; sessionId: string; last?: boolean; draftable?: boolean; savedNo?: string; reading?: boolean }>()
@@ -47,7 +48,7 @@ const waiting = computed(() => {
 })
 // 墨点与流光只给“等待模型”；10 秒后补的后半句不带流光（V33-C-06）
 const waitingTail = computed(() => (waiting.value && slow.value && !reading.value ? '，模型响应较慢，可以先做别的' : ''))
-const hasTable = computed(() => !!props.message.compare || parsed.value.some(block => block.kind === 'table'))
+const hasTable = computed(() => !!props.message.compare || !!props.message.crosscheck || parsed.value.some(block => block.kind === 'table'))
 const downloading = ref(false), error = ref('')
 async function download(format: 'docx' | 'xlsx', variant = 'translation') {
   downloading.value = true; error.value = ''
@@ -71,8 +72,9 @@ async function copy() {
 <template>
   <article class="message" :class="message.role === 'user' ? 'mine' : 'reply'">
     <div class="hint meta">{{ message.role === 'user' ? '你' : '助手' }} · <span class="num">{{ formatDateTime(message.created_at) }}</span><template v-if="message.role === 'assistant' && !pending"> · {{ assistantStatusLabel(message.status) }}</template></div>
-    <ZoneHeader v-if="message.role === 'assistant'" kind="ai" />
+    <ZoneHeader v-if="message.role === 'assistant'" :kind="message.crosscheck ? 'local' : 'ai'" />
     <CompareTable v-if="message.compare" :comparison="message.compare" />
+    <CrosscheckTable v-else-if="message.crosscheck" :result="message.crosscheck" />
     <TranslationView v-else-if="message.template === 'translate' && message.role === 'assistant'" :message="message" :session-id="sessionId" />
     <div v-else class="markdown">
       <template v-for="(block, index) in parsed" :key="index">

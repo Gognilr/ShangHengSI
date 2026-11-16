@@ -118,6 +118,7 @@ async function poll() {
       if (!active || current !== version) return
       item.content += delta.text_from_offset; item.status = delta.status; item.error = delta.error
       if (delta.compare) item.compare = delta.compare
+      if (delta.crosscheck) item.crosscheck = delta.crosscheck
       offsets.set(item.id, delta.offset)
       if (item.template === 'translate' && ['queued', 'streaming'].includes(delta.status)) {
         // 只补读当前译文的结构化进度，不重复拉取整段会话历史；正文仍按增量偏移追加。

@@ -184,10 +184,20 @@ def _comparison_rows(comparison):
     return headers, rows
 
 
+def _crosscheck_rows(result):
+    """单证核对（V34-A-08）：每个项目一行，各文件的值与结论。"""
+    headers = ['项目', *[f"文件 {f['file']} {f['name']}" for f in result['files']], '结论']
+    rows = [[row['label'], *['；'.join(v['text'] + (' *' if v.get('by') == 'model' else '') for v in row['values'].get(str(f['file']), []))
+                             or '未找到' for f in result['files']], row['status']] for row in result['rows']]
+    return headers, rows
+
+
 def _xlsx(view):
     comparison = view.get('compare')
     if comparison:
         headers, rows = _comparison_rows(comparison)
+    elif view.get('crosscheck'):
+        headers, rows = _crosscheck_rows(view['crosscheck'])
     else:
         first = next((value for kind, value in blocks(view['content']) if kind == 'table'), None)
         if first is None:
@@ -241,6 +251,12 @@ def generate(db, task, mid, format, variant, user, ip):
             rows = [values[:5] + [f'{values[5] * 100:.1f}%' if values[5] is not None else '—'] for values in rows]
             report_docx._table(doc, headers, rows, [26.7 / len(headers)] * len(headers))
             doc.add_paragraph('价格未发送给模型')
+        elif view.get('crosscheck'):
+            result = view['crosscheck']
+            headers, rows = _crosscheck_rows(result)
+            report_docx._table(doc, headers, rows, [26.7 / len(headers)] * len(headers))
+            for text in [*result['findings'], *result['notes'], result['notice']]:
+                doc.add_paragraph(report_docx._clean(text))
         else:
             if row.template == 'minutes':
                 report_docx._heading(doc, '会议纪要')

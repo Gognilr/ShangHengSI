@@ -102,7 +102,7 @@ watch(() => files.value.map(f => f.id).join(','), () => { fileIds.value = files.
 // 点快捷标签只选中模板，不弹系统文件窗口（V34Q-09）；所需文件数与“加入文件”在模板行就地显示
 function chooseTemplate(value: Template | null) { emit('update:template', value) }
 const limits = computed(() => props.template ? TEMPLATE_LIMITS[props.template] : [0, 10] as [number, number])
-const TEMPLATE_DESC: Partial<Record<Template, string>> = { translate: '分段翻译并核对原文', summary: '提取文件中的重点', reply: '根据来函起草回复', crosscheck: '核对多份单证的一致性', compare: '对齐报价项目，在本地比较价格', minutes: '把录音整理为议题、决议与待办' }
+const TEMPLATE_DESC: Partial<Record<Template, string>> = { translate: '分段翻译并核对原文', summary: '提取文件中的重点', reply: '根据来函起草回复', crosscheck: '在本机逐项核对多份单证是否一致', compare: '对齐报价项目，在本地比较价格', minutes: '把录音整理为议题、决议与待办' }
 const need = computed(() => {
   if (!props.template) return ''
   const [min, max] = limits.value, unit = props.template === 'minutes' ? '个录音' : '个文件'

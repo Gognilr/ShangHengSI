@@ -203,5 +203,7 @@ def _crosscheck(db: Session, task: Task, row: AssistantMessage, user_row: Assist
     row.local_result_enc = crypto.encrypt_text(json.dumps(result, ensure_ascii=False))
     row.content_redacted = crosscheck.summary(result)
     row.tokens_in, row.tokens_out = tokens
+    if tokens == (0, 0):
+        row.model_label = None  # 没有调用模型：回复下不显示模型名
     row.status = "stopped" if row.extras.get("stop_requested") else "done"
     db.commit()
