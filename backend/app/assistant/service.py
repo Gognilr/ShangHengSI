@@ -185,6 +185,9 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             result["translation"] = {loc: dates_unshift(restore(text, mapping), shift)
                                      for loc, text in message.extras.get("translation", {}).items()}
             result["translation_notice"] = "名称、地址、金额按原文写法还原，请核对"
+        elif message.template == "crosscheck" and message.role == "assistant" and message.local_result_enc:
+            from app.assistant.crosscheck import view
+            result["crosscheck"] = view(db, task, message)
         elif message.template == "compare" and message.extras.get("compare"):
             from app.assistant.compare import calculate
             result["compare"] = _decimal_strings(calculate(message.extras["compare"], mapping))
@@ -225,7 +228,7 @@ def _incremental(db, task, message, mapping, offset, *, finished, dates):
 
 def _located(message) -> bool:
     """回复里的段落编号在本机换成可读位置：讨论与普通问答都换（V321-E-13）；翻译、对照表另有结构。"""
-    return bool(message.finding_id) or (message.role == 'assistant' and message.template not in ('translate', 'compare'))
+    return bool(message.finding_id) or (message.role == 'assistant' and message.template not in ('translate', 'compare', 'crosscheck'))
 
 
 def _message_mapping(db: Session, task: Task, message: AssistantMessage) -> dict:
@@ -355,6 +358,9 @@ def _preflight(db: Session, task: Task, template, params, model_id: int, finding
         from app.assistant import context
         context.build_for(db, task, finding_id, None, model_id=model_id,
                           omit_advice=params.get('omit_finding_advice', False))
+    elif template == "crosscheck":
+        from app.assistant.prompt import selected_files
+        selected_files(db, task, params)  # 本机核对不受单次外发字数限制；超长时只是不请模型定位
     elif template == "translate":
         from app.assistant.translate import require_quota, task_segments
         require_quota(len(task_segments(db, task, params)), usage.remaining_calls(db, task.owner_id, model_id))
@@ -521,6 +527,8 @@ def get_delta(db: Session, task: Task, mid: int, offset: int) -> dict:
               "error": row.extras.get('discussion_error') or error_text(row.error_code)}
     if row.template == "compare" and row.role == "assistant" and row.extras.get("compare"):
         result["compare"] = message_out(db, task, row)["compare"]
+    if row.template == "crosscheck" and row.role == "assistant" and row.local_result_enc:
+        result["crosscheck"] = message_out(db, task, row)["crosscheck"]
     return result
 
 

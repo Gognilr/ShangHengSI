@@ -1,0 +1,39 @@
+{
+  "note": "虚构：发票、装箱单、提单三份；金额、重量、日期、单号写法不同但值相同，应判一致",
+  "files": {
+    "1": [
+      ["F1-P1", "COMMERCIAL INVOICE"],
+      ["F1-P2", "Invoice No.: INV-2026-0315    Invoice Date: March 5, 2026"],
+      ["F1-P3", "Contract No.: SC/26-008"],
+      ["F1-P4", "Shipper: 青岚示例贸易有限公司"],
+      ["F1-P5", "Consignee: Northwind Sample Trading Co., Ltd."],
+      ["F1-P6", "Port of Loading: Shanghai, China    Port of Destination: Hamburg"],
+      ["F1-T1-R1-C1", "品名"], ["F1-T1-R1-C2", "数量"], ["F1-T1-R1-C3", "金额"],
+      ["F1-T1-R2-C1", "不锈钢管 304"], ["F1-T1-R2-C2", "1,000 PCS"], ["F1-T1-R2-C3", "USD 12,500.00"],
+      ["F1-P7", "Gross Weight: 12.5 MT"]
+    ],
+    "2": [
+      ["F2-P1", "装箱单"],
+      ["F2-P2", "发票号：INV 2026 0315"],
+      ["F2-P3", "发票日期：2026年3月5日"],
+      ["F2-T1-R1-C1", "品名"], ["F2-T1-R1-C2", "数量"], ["F2-T1-R1-C3", "毛重(KGS)"], ["F2-T1-R1-C4", "件数"],
+      ["F2-T1-R2-C1", "不锈钢管 304"], ["F2-T1-R2-C2", "1000件"], ["F2-T1-R2-C3", "12,500.00"], ["F2-T1-R2-C4", "50 CTNS"],
+      ["F2-P4", "总金额：12500美元"]
+    ],
+    "3": [
+      ["F3-P1", "BILL OF LADING"],
+      ["F3-P2", "Shipper: 青岚示例贸易有限公司"],
+      ["F3-P3", "Consignee: NORTHWIND SAMPLE TRADING CO.,LTD"],
+      ["F3-P4", "Port of Loading: SHANGHAI"],
+      ["F3-P5", "Port of Discharge: HAMBURG PORT"],
+      ["F3-P6", "No. of Packages: 50 cartons"],
+      ["F3-P7", "Gross Weight: 12500 KGS"]
+    ]
+  },
+  "expect": {
+    "invoice_no": "一致", "invoice_date": "一致", "contract_no": "仅一份文件有", "shipper": "一致", "consignee": "一致",
+    "pol": "一致", "pod": "一致", "goods": "一致", "quantity": "一致", "amount": "一致", "currency": "一致",
+    "gross": "一致", "packages": "一致"
+  },
+  "findings": 0
+}

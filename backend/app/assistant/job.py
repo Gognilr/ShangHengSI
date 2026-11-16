@@ -51,6 +51,9 @@ def handle_assist(db: Session, payload: dict) -> None:
                           "translation": {}, "translation_unaligned": []}
         else:
             parts = [None]
+        if template == "crosscheck":
+            _crosscheck(db, task, row, user_row, references, model_id)
+            return
         if template == "compare":
             messages = prompt.build_messages(db, task, user_row, references=references, model_id=model_id)
             seqs = [file.seq for file in prompt.selected_files(db, task, params)]
@@ -159,3 +162,46 @@ def handle_assist(db: Session, payload: dict) -> None:
             row.status, row.error_code = "failed", "ASSIST_INTERRUPTED"
             db.commit()
         raise
+
+
+def _crosscheck(db: Session, task: Task, row: AssistantMessage, user_row: AssistantMessage, references, model_id) -> None:
+    """单证核对（V34-A-08）：结果表由本机生成；只有本机在某份文件中没找到的项目才请模型定位，模型不给结论。"""
+    import json
+    from app.assistant import crosscheck
+    from app.models_api import select_model
+    from app.redaction.restore import restore
+    from app.security import crypto
+    mid = row.id
+    files = prompt.selected_files(db, task, user_row.params)
+    result, redacted = crosscheck.local_result(db, task, files)
+    gaps = crosscheck.missing(result["rows"], result["files"])
+    tokens = (0, 0)
+    if gaps and not select_model(db, model_id, "assist").structured_ok:
+        result["notes"].append("当前模型不支持结构化输出，本机没找到的项目未请模型定位")
+    elif gaps:
+        try:
+            messages = prompt.build_messages(db, task, user_row, references=references, model_id=model_id)
+            messages[-1]["content"] += "\n" + crosscheck.request_text(gaps)
+            row.status = "streaming"
+            db.commit()
+            outcome = gateway.call_model(db, model_id=model_id, purpose="assist", messages=messages, user_id=task.owner_id,
+                                         task_id=task.id, task_title=task.title, json_mode=True, retry=False,
+                                         extra_task_ids=[uuid.UUID(item['task_id']) for item in references['history']])
+            tokens = (outcome.tokens_in, outcome.tokens_out)
+            mapping = engine.load_redaction_map(db, task.id)
+            shift = service._shift_days(db, task)
+            crosscheck.merge_located(result["rows"], gaps, outcome.content, redacted,
+                                     lambda text: service.dates_unshift(restore(text, mapping), shift))
+        except (gateway.GatewayError, AppError, ValueError, TypeError, KeyError, AttributeError):
+            db.rollback()
+            result["notes"].append("未能请模型定位本机没找到的项目，表中只有本机识别的结果")
+    row = db.scalar(select(AssistantMessage).where(AssistantMessage.id == mid).with_for_update()
+                    .execution_options(populate_existing=True))
+    if row is None:
+        db.rollback()
+        return
+    row.local_result_enc = crypto.encrypt_text(json.dumps(result, ensure_ascii=False))
+    row.content_redacted = crosscheck.summary(result)
+    row.tokens_in, row.tokens_out = tokens
+    row.status = "stopped" if row.extras.get("stop_requested") else "done"
+    db.commit()
