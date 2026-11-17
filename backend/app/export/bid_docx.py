@@ -489,7 +489,9 @@ def _pricing(doc, d: _Data, number="五"):
         lead += f"招标文件最高限价：{ceiling} {d.params.get('currency') or ''}。"
     if cmp := pricing.get("compare"):
         lead += (f"参加比较的 {cmp['n']} 家中，最高 {cmp['highest']}，最低 {cmp['lowest']}，平均 {cmp['mean']}"
-                 + (f"，最高比最低高 {cmp['spread_pct']}" if cmp.get("spread_pct") else "") + "；多个总价的投标人不参加比较。")
+                 + (f"，最高比最低高 {cmp['spread_pct']}" if cmp.get("spread_pct") else "") + "。")
+        if any((v or {}).get("not_compared") for v in pricing["bidders"].values()):
+            lead += "多个总价或币种不同的投标人未参加比较。"
     _para(doc, lead)
     rows = []
     for b in d.bidders:
@@ -508,11 +510,11 @@ def _pricing(doc, d: _Data, number="五"):
     for b in d.bidders:
         low = (pricing["bidders"].get(str(b.id)) or {}).get("low_price")
         if low:
-            _para(doc, f"· 异常低价提示：{d.name(b.id)} 的投标总价比其余 {low['others']} 家平均 {low['others_mean']} 低 {low['below_pct']}，"
+            _para(doc, f"· 异常低价提示：{d.name(b.id)}的投标总价比其余 {low['others']} 家平均 {low['others_mean']} 低 {low['below_pct']}，"
                        "参照第五十一条（五），请评标委员会核实是否低于成本。", indent=12)
     for t in pricing.get("total_patterns") or []:
         how = f"从低到高每家相差 {t['step']}" if t["kind"] == "diff" else f"从低到高每家约为前一家的 {t['step']} 倍"
-        _para(doc, f"· 总价规律：{'、'.join(d.name(i) for i in t['ids'])} 的投标总价{how}（第四十条（四）线索，见串标线索一节）。", indent=12)
+        _para(doc, f"· 总价规律：{'、'.join(d.name(i) for i in t['ids'])}的投标总价{how}（第四十条（四）线索，见串标线索一节）。", indent=12)
     items = pricing.get("items") or []
     if items:
         _sub(doc, f"分项对齐表（共 {len(items)} 项" + (f"，仅列前 {MAX_PRICE_ROWS} 项" if len(items) > MAX_PRICE_ROWS else "") + "）")
@@ -552,7 +554,8 @@ def _appendix(doc, d: _Data):
     _heading(doc, "附录二 要求清单全文")
     values = d.params
     forms = f"（{values['deposit_forms']}）" if values.get("deposit_forms") else ""
-    _para(doc, f"关键参数：最高限价 {_plain(values.get('ceiling'))} {values.get('currency') or ''}；投标有效期 {_plain(values.get('validity_days'))} 天；"
+    ceiling = f"最高限价 {values['ceiling']} {values.get('currency') or ''}；" if values.get("ceiling") else ""
+    _para(doc, f"关键参数：{ceiling}投标有效期 {_plain(values.get('validity_days'))} 天；"
                f"保证金 {_plain(values.get('deposit'))}{forms}；联合体 " + {True: "接受", False: "不接受"}.get(values.get("consortium"), "未填")
           + "；报价 " + {True: "含税", False: "不含税"}.get(values.get("tax_included"), "未填") + "。")
     all_reqs = sorted(d.db.scalars(select(BidRequirement).where(BidRequirement.task_id == d.task.id)), key=lambda r: (GROUP_ORDER.get(r.group, 9), r.seq))

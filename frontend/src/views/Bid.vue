@@ -41,7 +41,7 @@ watch(page, load)
 <template>
   <div class="page page--standard bid-home">
     <h1 class="entry-title">标书初审</h1>
-    <p class="entry-lede">招标文件与各家投标文件在本机比对，找出不符合项与串标线索；不打分、不排序、不推荐中标人。</p>
+    <p class="entry-lede">招标文件与各家投标文件在本机比对，找出不符合项与串标线索；不打分、不推荐中标人。</p>
     <div class="lead-actions">
       <el-button type="primary" @click="openDialog"><Plus :size="16" :stroke-width="1.75" />新建初审项目</el-button>
       <span v-if="auth.can('use.assistant')" class="aside">只是比较几份报价单？用<router-link to="/assistant">工作台的“比价”</router-link></span>

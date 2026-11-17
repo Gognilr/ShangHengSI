@@ -61,7 +61,7 @@ const lede = computed<LedePart[]>(() => {
   if (!parts.length) parts.push([(ceiling.value ? '各家报价未超限价，' : '') + '计算与大小写未见问题，分项价格之间未见规律'])
   // 高低差放在超限价之后、其他问题之前
   const over = ceiling.value ? rows.value.filter(r => r.ceiling.tone === 'over').length : 0
-  if (cmp.value?.spread_pct) parts.splice(over, 0, [`最高${marked('highest')}比最低${marked('lowest')}高 ${cmp.value.spread_pct}`])
+  if (cmp.value?.spread_pct) parts.splice(over, 0, [`报价最高的${marked('highest')}比最低的${marked('lowest')}高 ${cmp.value.spread_pct}`])
   return parts
 })
 </script>
@@ -81,7 +81,7 @@ const lede = computed<LedePart[]>(() => {
       <section class="bid-block">
         <h3 class="bid-title">各家报价</h3>
         <table class="bid-table">
-          <colgroup><col><col style="width:220px"><col style="width:150px"><col style="width:96px"><col v-if="ceiling" style="width:200px"><col style="width:150px"><col style="width:120px"><col style="width:88px"></colgroup>
+          <colgroup><col><col style="width:196px"><col style="width:132px"><col style="width:84px"><col v-if="ceiling" style="width:190px"><col style="width:132px"><col style="width:104px"><col style="width:76px"></colgroup>
           <thead><tr><th>投标人（按录入顺序）</th><th class="r">投标总价</th><th class="r">比最低价高</th><th class="r" title="与参加比较各家平均总价之差">偏离平均</th><th v-if="ceiling">与限价</th><th class="r">报价表合计</th><th>计算与大小写</th><th class="r">报价表分项</th></tr></thead>
           <tbody>
             <template v-for="r in rows" :key="r.bidder.id">
@@ -91,10 +91,10 @@ const lede = computed<LedePart[]>(() => {
                   <span v-if="r.p.mark" class="bid-mark">{{ markText[r.p.mark] }}</span><span v-if="r.p.low_price" class="bid-mark w">异常低价</span>
                   <small v-if="r.total.multi.length" :title="'出现的总价：' + r.total.multi.join('、')">{{ r.total.multi.length }} 个总价</small></td>
                 <td class="r num"><template v-if="r.p.above_lowest">{{ r.p.above_lowest }}<small>{{ r.p.above_lowest_pct }}</small></template>
-                  <span v-else-if="r.p.not_compared" class="bid-zero note">{{ r.p.not_compared }}</span><span v-else class="bid-zero">—</span></td>
+                  <span v-else-if="r.p.not_compared" class="bid-zero note" :title="r.p.not_compared">未参加比较</span><span v-else class="bid-zero">—</span></td>
                 <td class="r num"><span v-if="r.p.vs_mean && !r.p.not_compared" :class="{ 'low': r.p.low_price }">{{ r.p.vs_mean }}</span><span v-else class="bid-zero">—</span></td>
-                <td class="r num"><template v-if="r.p.table?.total">{{ r.p.table.total }}</template><span v-else class="bid-zero">—</span></td>
                 <td v-if="ceiling"><span :class="{ 'bid-over': r.ceiling.tone === 'over', 'bid-zero': r.ceiling.tone === 'none' }">{{ r.ceiling.text }}</span><span v-if="r.ceiling.diff" class="num bid-diff" :class="{ 'bid-over': r.ceiling.tone === 'over' }">{{ r.ceiling.diff }}</span></td>
+                <td class="r num"><template v-if="r.p.table?.total">{{ r.p.table.total }}</template><span v-else class="bid-zero">—</span></td>
                 <td>
                   <button v-if="r.issues.length" type="button" class="bid-link calc bad" :aria-expanded="expanded === r.bidder.id" @click="expanded = expanded === r.bidder.id ? null : r.bidder.id">
                     ✕ {{ r.issues.length }} 条<ChevronRight :size="13" :stroke-width="1.75" class="chev" :class="{ turned: expanded === r.bidder.id }" aria-hidden="true" /></button>
