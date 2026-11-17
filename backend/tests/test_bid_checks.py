@@ -55,6 +55,9 @@ def test_local_check_clues_and_baseline(owner, db_sessionmaker):
 def test_pdf_properties():
     props, _ = fileprops.collect("pdf", pdf(encrypted=False), [])
     assert props and len(props["pdf_id"]) == 32 and props.get("producer")
+    from app.bid.checks import _authors
+    assert _authors({'creator': 'Fictive PDF Writer', 'author': '虚构作者'}, 'pdf') == {'虚构作者'}
+    assert not _authors({'creator': 'Fictive PDF Writer'}, 'pdf')
 
 
 def _checked(c, h, sm, uploads):
@@ -161,6 +164,16 @@ def test_total_labels_fixture():
                          page=row[1], kind='table_cell' if len(row) > 2 else 'ocr_block')
                  for i, row in enumerate(case['nodes'])]
         assert {v for v, _c, _n in pricing.labelled_totals(nodes)} == {Decimal(v) for v in case['totals']}, case['name']
+        if case.get('separate_scopes'):
+            from datetime import date
+            from app.bid.compliance import evaluate
+            analysis, _, facts = pricing.analyze([0], {0: nodes}, Decimal('500000'), 'CNY')
+            assert facts[0]['separate_scopes'] and facts[0]['total'] is None
+            assert analysis['bidders']['0']['not_compared'] == '不同范围报价，未参加比较'
+            issues, verdicts = evaluate(0, nodes, facts[0], {'ceiling': '500000', 'currency': 'CNY'}, date(2026,11,17),
+                                        lambda n, *_: {'loc': n.loc})
+            assert not any(i['type'] == 'multi_total' and i['level'] == 'veto' for i in issues)
+            assert verdicts['multi_total'][0] == verdicts['ceiling'][0] == 'unclear'
 
 
 def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):

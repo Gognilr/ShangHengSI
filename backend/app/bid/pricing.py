@@ -134,6 +134,42 @@ def _name_col(table):
     return None
 
 
+def separate_quote_scopes(nodes, totals):
+    """只有明确标题能把每个金额分到不同范围时，才不按重复总价处理；不猜测合计。"""
+    def scope(text):
+        label = re.search(r'表[一二三四五六七八九十](?=[：:、\s）)]|$)', text)
+        if label:
+            return label[0]
+        if re.search(r'泵头|泵体', text):
+            return '泵头'
+        if '电机' in text:
+            return '电机'
+        return None
+
+    pages, at = {}, {}
+    current, last_file = None, None
+    for n in nodes:
+        if n.file_seq != last_file:
+            current, last_file = None, n.file_seq
+        short = len(n.text) < 160
+        heading = short and (_QUOTE_HEADING.search(n.text) or re.match(r'^表[一二三四五六七八九十][：:、\s]', n.text))
+        if heading or getattr(n, 'kind', '') == 'heading':
+            current = scope(n.text)
+            if current and getattr(n, 'page', None) is not None:
+                pages.setdefault((n.file_seq, n.page), set()).add(current)
+        at[id(n)] = current
+    by_value = {}
+    for value, _currency, n in totals:
+        own = re.search(r'表[一二三四五六七八九十](?=[：:、\s）)]|$)', n.text)
+        labels = pages.get((n.file_seq, getattr(n, 'page', None)), set())
+        found = own[0] if own else next(iter(labels)) if len(labels) == 1 else at.get(id(n)) if getattr(n, 'page', None) is None else None
+        by_value.setdefault(rounded(value), set())
+        if found:
+            by_value[rounded(value)].add(found)
+    values = list(by_value.values())
+    return len(values) > 1 and all(values) and all(not (a & b) for a, b in combinations(values, 2))
+
+
 def quote_tables(nodes):
     """已识别的报价表：[(表, 检查结果, 分项 [(键, 名称, 单价, 金额, node)])]；以及 L-01、L-02 结果。"""
     out, results = [], []
@@ -311,6 +347,7 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
         main = _main(tables)
         totals = labelled_totals(nodes)
         distinct = sorted({rounded(v) for v, _c, _n in totals})
+        separate_scopes = separate_quote_scopes(nodes, totals)
         total = distinct[0] if len(distinct) == 1 else None
         table_total = None
         if main is not None:
@@ -320,7 +357,7 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
         currency_found = next((c for _v, c, _n in totals if c), None)
         facts[b] = {"total": total if total is not None else (table_total if not distinct else None),
                     "currency": currency_found, "totals": totals, "distinct": distinct, "main": main,
-                    "table_total": table_total, "results": results}
+                    "table_total": table_total, "results": results, "separate_scopes": separate_scopes}
         row = {"total": money(facts[b]["total"]) if facts[b]["total"] is not None else None,
                "totals_found": [money(v) for v in distinct], "currency": currency_found,
                "table": None, "over_ceiling": None}
@@ -329,7 +366,7 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
                             "total": money(table_total) if table_total is not None else None}
         if ceiling is not None and facts[b]["total"] is not None and (currency_found in (None, currency)):
             row["over_ceiling"] = money(facts[b]["total"] - ceiling)
-        elif ceiling is not None and len(distinct) > 1 and (currency_found in (None, currency)):
+        elif ceiling is not None and len(distinct) > 1 and not separate_scopes and (currency_found in (None, currency)):
             # 多个不同总价：按最高者与限价比较（V34Q-25 第 4 条），over_ceiling 仍只表示唯一总价
             row["over_ceiling_max"] = money(distinct[-1] - ceiling)
         analysis["bidders"][str(b)] = row
@@ -339,7 +376,7 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
         f, row = facts[b], analysis["bidders"][str(b)]
         row["not_compared"] = None
         if len(f["distinct"]) > 1:
-            row["not_compared"] = "多个总价，未参加比较"
+            row["not_compared"] = "不同范围报价，未参加比较" if f['separate_scopes'] else "多个总价，未参加比较"
         elif f["total"] is not None and f["currency"] not in (None, currency or "CNY"):
             row["not_compared"] = f"币种为 {f['currency']}，未参加比较"
         elif f["total"] is not None:

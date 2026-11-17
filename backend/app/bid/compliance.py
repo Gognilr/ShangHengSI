@@ -102,8 +102,11 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
     if len(distinct) > 1:
         rows = [{"label": "投标总价", "value": money(v), "places": {b: [at(n)]}} for v, _c, n in totals]
         title = f"出现 {len(distinct)} 个不同的投标总价：" + "、".join(money(v) for v in distinct)
-        issues.append(_issue("multi_total", "veto", title, rows[:8], ARTICLE + "（四）", "multi_total"))
-        verdicts["multi_total"] = ("no", title, [r["places"][b][0] for r in rows[:4]])
+        separate = fact.get('separate_scopes', False)
+        if separate:
+            title += "；报价范围不同，需统一比较口径"
+        issues.append(_issue("multi_total", "hint" if separate else "veto", title, rows[:8], None if separate else ARTICLE + "（四）", "multi_total"))
+        verdicts["multi_total"] = ("unclear" if separate else "no", title, [r["places"][b][0] for r in rows[:4]])
     elif distinct:
         verdicts["multi_total"] = ("yes", f"投标总价 {money(distinct[0])}，未见其他不同总价", [at(totals[0][2])])
     else:
@@ -121,6 +124,8 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
     # 超最高限价（第五十一条（五））
     if ceiling is None:
         verdicts["ceiling"] = ("unclear", "关键参数未填写最高限价，无法本地比较", [])
+    elif fact.get('separate_scopes'):
+        verdicts["ceiling"] = ("unclear", "报价范围不同，需统一比较口径后核对最高限价", [])
     elif not candidates:
         verdicts["ceiling"] = ("missing", "未能确定投标总价", [])
     elif fact["currency"] not in (None, params.get("currency")):
