@@ -230,14 +230,16 @@ def _tool(props):
     return props.get("producer") or props.get("application")
 
 
-def _authors(props):
-    return {normalize_value(str(props[k])).strip() for k in ("creator", "last_modified_by", "author") if props.get(k)} - _GENERIC
+def _authors(props, ext=None):
+    # PDF Creator 是生成程序，Author 才是作者；Word creator 对应作者。
+    keys = ('author',) if ext == 'pdf' else ('creator', 'last_modified_by', 'author')
+    return {normalize_value(str(props[k])).strip() for k in keys if props.get(k)} - _GENERIC
 
 
 def check_props(bidders, files):
     per = _props(files)
     base_ids = {p.get(k) for _f, p in per.get(None, []) for k in ("pdf_id", "xmp_document_id", "xmp_original_id") if p.get(k)}
-    base_authors = set().union(*(_authors(p) for _f, p in per.get(None, []))) if per.get(None) else set()
+    base_authors = set().union(*(_authors(p, f.ext) for f, p in per.get(None, []))) if per.get(None) else set()
     base_rsids = set().union(*(set(p.get("rsids") or []) for _f, p in per.get(None, []))) if per.get(None) else set()
     base_company = {normalize_value(p.get("company", "")) for _f, p in per.get(None, [])}
     # 从招标文件（或其模板）另存的文件带着同一个创建时间，不算“同时生成”
@@ -261,7 +263,7 @@ def check_props(bidders, files):
                 for key, label in (("pdf_id", "PDF 原始文件标识"), ("xmp_document_id", "XMP 文档标识"), ("xmp_original_id", "XMP 原始文档标识")):
                     if pa.get(key) and pa.get(key) == pb.get(key) and pa[key] not in base_ids:
                         hit(label, pa[key], "strong", fa, fb)
-                for name in sorted((_authors(pa) & _authors(pb)) - base_authors):
+                for name in sorted((_authors(pa, fa.ext) & _authors(pb, fb.ext)) - base_authors):
                     hit("作者 / 最后保存者", name, "strong", fa, fb)
                 company = normalize_value(pa.get("company") or "")
                 if company and company not in _GENERIC and company == normalize_value(pb.get("company") or "") and company not in base_company:
@@ -286,7 +288,7 @@ def timeline(bidders, files):
     order = {b.id: k for k, b in enumerate(bidders)}
     base = per.get(None, [])
     base_ids = {p.get(k) for _f, p in base for k in ("pdf_id", "xmp_document_id", "xmp_original_id") if p.get(k)}
-    base_authors = set().union(*(_authors(p) for _f, p in base)) if base else set()
+    base_authors = set().union(*(_authors(p, f.ext) for f, p in base)) if base else set()
     base_times = [(_tool(p), _time(p.get("created"))) for _f, p in base]
     rows = [(f, p, _time(p.get("created")), _time(p.get("modified"))) for owner, found in per.items()
             if owner is None or owner in order for f, p in found]
@@ -304,7 +306,7 @@ def timeline(bidders, files):
         if fa.bidder_id is None or fb.bidder_id is None or fa.bidder_id == fb.bidder_id:
             continue
         same_id = any(pa.get(k) and pa.get(k) == pb.get(k) and pa[k] not in base_ids for k in ("pdf_id", "xmp_document_id", "xmp_original_id"))
-        same_author = bool((_authors(pa) & _authors(pb)) - base_authors)
+        same_author = bool((_authors(pa, fa.ext) & _authors(pb, fb.ext)) - base_authors)
         tool = _tool(pa)
         near = (tool and tool == _tool(pb) and ta and tb and abs(ta - tb) <= timedelta(minutes=10)
                 and not any(tool == bt and tt and abs(ta - tt) <= timedelta(minutes=10) for bt, tt in base_times))
