@@ -6,6 +6,7 @@
 只有唯一总价、币种一致的投标人参加比较。投标人仍按录入顺序排列，不提供按价格排序。
 """
 import re
+import unicodedata
 from collections import Counter
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from itertools import combinations
@@ -23,31 +24,106 @@ LOW_PRICE = Decimal("0.20")          # 低于其余各家平均 20% 以上：异
 TOTAL_DIFF_TOL = Decimal("1")        # 总价等差：相邻差额之差不超过 1 元
 TOTAL_RATIO_TOL = Decimal("0.00005")  # 总价等比：相邻比值之差不超过 0.00005
 _UPPER = re.compile(r"[零壹贰叁肆伍陆柒捌玖拾佰仟]")
-_TOTAL_LABEL = re.compile(r"(?<!不含税)(?<!分项)(?:投标总报价|投标总价|投标报价|报价总额|报价合计|总报价|投标价格|投标金额)")
+_TOTAL_LABEL = re.compile(r"(?<!不含税)(?<!分项)(?:投标报价总金额|投标总报价|投标总价|投标报价|报价总额|报价合计|总报价|总投标价|总计报价|投标价格|投标金额)")
+_QUOTE_HEADING = re.compile(r"投标函|投标书|(?:开标|投标)一览表|报价(?:文件|单|表|章节)")
+_SERVICE_LABEL = re.compile(r"报价(?!单位|人|有效|咨询|要求|文件|表|单)|小写|评价费(?:用)?|服务费|合同价|项目费用|费用报价|总价|合计|￥|¥")
+_NOT_TOTAL = re.compile(r"最高限价|控制价|保证金|不含税|分项|单价|历史合同|业绩合同")
+_BARE_MONEY = re.compile(r"^[\s:：()（）]*(?:小写[\s:：()（）]*)?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)(万?元|万)?[\s。；;()（）]*$")
 _NAME = re.compile(r"名称|品名|货物|设备|品目|项目|内容|规格|型号")
 _STRIP = re.compile(r"[\W_]+")
 
 
-def _lower_amounts(text):
-    return [h for h in find_amounts(text) if h.value is not None and not _UPPER.search(text[h.start:h.end])]
-
-
 def labelled_totals(nodes):
-    """[(值, 币种, node)]：标签后 40 字内的第一个小写金额；标签单独成格时取同行下一格。"""
-    out = []
+    """[(值, 币种, node)]：总价标签、报价页的服务费，支持表头同列与同页相邻节点。
+
+    宽泛标签仅用于有报价标题的页（无页码的 Word 用最近标题）；优先小写，无小写时取大写。
+    不把历史合同中的金额或不含税价当作本次报价，多个报价仍保留供人工核对。
+    """
+    out, column_hits, summarized = [], set(), set()
+    cells = {}
+    quote_pages = set()
+    for n in nodes:
+        cell = table_cell(n.loc)
+        if cell:
+            cells[(n.file_seq, *cell)] = n
+        if len(n.text) < 160 and _QUOTE_HEADING.search(n.text) and not re.search(r"\.{3}|…|目录|分项|备品备件", n.text):
+            quote_pages.add((n.file_seq, getattr(n, 'page', None)))
+
+    def amount(text, label, bare=False):
+        text = unicodedata.normalize('NFKC', text)
+        # 前置“人民币”被 OCR 拆开时恢复；不连接不同数字。
+        text = re.sub(r'人\s*民\s*币', '人民币', text)
+        text = re.sub(r'(?<=[零壹贰叁肆伍陆柒捌玖拾佰仟万亿])[_\s]+(?=[零壹贰叁肆伍陆柒捌玖拾佰仟万亿元圆整])', '', text)
+        inherited_wan = '万元' in label and not re.search(r'\d|[壹贰叁肆伍陆柒捌玖]', label)
+        hits = find_amounts(text)
+        lower = [h for h in hits if h.value is not None and not _UPPER.search(text[h.start:h.end])]
+        found = lower or [h for h in hits if h.value is not None]
+        if found:
+            h = found[0]
+            # 单位只写在表头时继承；数值自身有单位时以自身为准。
+            scale = 10000 if inherited_wan and h.currency is None and not re.search(r'万?元|万圆', text) else 1
+            return h.value * scale, h.currency
+        match = _BARE_MONEY.fullmatch(text) if bare else None
+        if match:
+            scale = 10000 if '万' in (match[2] or '') or inherited_wan else 1
+            return Decimal(match[1].replace(',', '')) * scale, 'CNY'
+        return None
+
+    section = None
     for i, n in enumerate(nodes):
-        text = n.text
-        for m in _TOTAL_LABEL.finditer(text):
-            tail = [h for h in _lower_amounts(text) if m.end() <= h.start <= m.end() + 40
-                    and not _TOTAL_LABEL.search(text[m.end():h.start])]
-            if tail:
-                out.append((tail[0].value, tail[0].currency, n))
-            elif not text[m.end():].strip(" :：（）()元人民币") and i + 1 < len(nodes) and nodes[i + 1].file_seq == n.file_seq:
+        text = unicodedata.normalize('NFKC', n.text)
+        if i == 0 or nodes[i - 1].file_seq != n.file_seq:
+            section = None
+        if getattr(n, 'kind', '') == 'heading':
+            section = bool(_QUOTE_HEADING.search(text))
+        in_quote = (n.file_seq, getattr(n, 'page', None)) in quote_pages if getattr(n, 'page', None) is not None else section
+        matches = list(_TOTAL_LABEL.finditer(text))
+        if in_quote:
+            matches += [m for m in _SERVICE_LABEL.finditer(text)
+                        if not any(s.start() <= m.start() < s.end() for s in matches)]
+        for m in sorted(matches, key=lambda m: m.start()):
+            if _NOT_TOTAL.search(text[max(0, m.start() - 6):m.end()]):
+                continue
+            if m.group() == '合计' and text[:m.start()].strip(' :()'):
+                continue
+            tail = text[m.end():]
+            # “报价含…税费”“总价的百分比”等说明不作为总价标签。
+            if re.match(r'\s*(?:含配套|有效|的|=)', tail):
+                continue
+            tail = re.split(r'不含税|保证金|最高限价', tail, maxsplit=1)[0]
+            label = text[:m.end()] + ('（万元）' if re.search(r'[（(]万元[）)]', tail[:8]) else '')
+            found = amount(tail[:100], label, bare=True)
+            target = n
+            cell = table_cell(n.loc)
+            if found is None and cell and not tail.strip(' :()万元人民币含税小写'):
+                table, col, row = cell
+                # 单独标签格优先同行右侧；列标题则取下一行同列。
+                right = sorted((k[2], v) for k, v in cells.items()
+                               if k[0] == n.file_seq and k[1] == table and k[3] == row and int(k[2]) > int(col))
+                candidates = [right[0][1]] if right else []
+                below = cells.get((n.file_seq, table, col, row + 1))
+                if below:
+                    candidates.append(below)
+                for candidate in candidates:
+                    found = amount(candidate.text, text, bare=True)
+                    if found:
+                        target = candidate
+                        if candidate is below:
+                            column_hits.add(id(candidate))
+                        break
+            if found is None and not cell and i + 1 < len(nodes):
                 nxt = nodes[i + 1]
-                hits = _lower_amounts(nxt.text)
-                if hits and (table_cell(nxt.loc) or len(nxt.text) <= 40):
-                    out.append((hits[0].value, hits[0].currency, nxt))
-    return out
+                if (nxt.file_seq == n.file_seq and getattr(nxt, 'page', None) == getattr(n, 'page', None)
+                        and not table_cell(nxt.loc) and not _NOT_TOTAL.search(tail)):
+                    found = amount((tail + '\n' + nxt.text)[:140], text, bare=True)
+                    target = nxt
+            if found:
+                out.append((*found, target))
+                if cell and target is not cells.get((n.file_seq, cell[0], cell[1], cell[2] + 1)):
+                    summarized.add((n.file_seq, cell[0]))
+    # 表中已有明确合计行时，列标题下第一项的“总价”属于分项金额。
+    return [(v, c, n) for v, c, n in out
+            if not (id(n) in column_hits and (n.file_seq, table_cell(n.loc)[0]) in summarized)]
 
 
 def _name_col(table):

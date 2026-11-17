@@ -147,6 +147,22 @@ def test_total_compare_low_price_and_pattern():
     assert not clues
 
 
+def test_total_labels_fixture():
+    """报价常见结构；不调用模型，金额与文本全部虚构。"""
+    import json
+    from decimal import Decimal
+    from pathlib import Path
+    from app.bid import pricing
+    from app.bid.compliance import BidNode
+
+    cases = json.loads((Path(__file__).parent / 'fixtures/bid/pricing_labels.json').read_text(encoding='utf-8'))
+    for case in cases:
+        nodes = [BidNode(row[2] if len(row) > 2 else f'F1-PG{row[1]}-B{i}', row[0], 1, None,
+                         page=row[1], kind='table_cell' if len(row) > 2 else 'ocr_block')
+                 for i, row in enumerate(case['nodes'])]
+        assert {v for v, _c, _n in pricing.labelled_totals(nodes)} == {Decimal(v) for v in case['totals']}, case['name']
+
+
 def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):
     """投标文件的扫描页延后识别：先出本地检查，识别后补入节点并重跑检查。"""
     from app.parsing import ocr as ocr_mod
