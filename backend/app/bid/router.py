@@ -1,13 +1,14 @@
 """标书项目接口；所有读写均需 use.bid，内容仍只本人可见。"""
 import json
+from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from sqlalchemy import func, select, update as sql_update
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
-from app.bid import service
-from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, ParametersInput, PasswordInput, ProjectInput, RequirementInput,
+from app.bid import folders, service
+from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, FolderInput, FolderPatch, ParametersInput, PlaceInput, PasswordInput, ProjectInput, RequirementInput,
                              RequirementPatch, ReviewInput, SigningInput)
 from app.db.base import utcnow
 from app.db.models import BidBidder, BidProject, BidRequirement, Task, TaskFile, User
@@ -29,26 +30,80 @@ def owned(id: str, user: User = Depends(require("use.bid")), db: Session = Depen
 
 
 @router.get("")
-def projects(page: int = Query(1, ge=1, le=100000), user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
-    where = (Task.owner_id == user.id, Task.kind == "bid")
+def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_length=100), category: int | None = None,
+             folder: str | None = Query(None, max_length=40), stage: str | None = Query(None, pattern="^(preparing|ready|checking|checked)$"),
+             date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
+             user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    """项目列表与搜索筛选（V34-B-01a）：名称包含、分类、文件夹（含子文件夹；none 为未归档）、阶段、开标日期区间。"""
+    base = (Task.owner_id == user.id, Task.kind == "bid")
+    where = list(base)
+    if q.strip():
+        where.append(Task.title.ilike(tasks._like_pattern(q.strip()), escape="\\"))
+    if category is not None:
+        where.append(BidProject.category_id == category)
+    if folder == "none":
+        where.append(BidProject.folder_id.is_(None))
+    elif folder:
+        where.append(BidProject.folder_id.in_(folders.subtree(db, user, folders.folder(db, user, folder).id)))
+    if stage:
+        where.append(BidProject.stage == stage)
+    if date_from:
+        where.append(BidProject.opening_date >= date_from)
+    if date_to:
+        where.append(BidProject.opening_date <= date_to)
     rows = db.execute(select(Task, BidProject).join(BidProject).where(*where)
                       .order_by(Task.last_activity_at.desc(), Task.id).offset((page - 1) * 20).limit(20)).all()
-    active = db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*where, BidProject.stage == "checking")) or 0
-    return {"items": [{"id": t.id, "title": t.title, "stage": p.stage, "status": t.status,
-                       "opening_date": p.opening_date, "last_activity_at": t.last_activity_at} for t, p in rows],
-            "total": db.scalar(select(func.count()).select_from(Task).where(*where)), "checking_count": active}
+    active = db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*base, BidProject.stage == "checking")) or 0
+    return {"items": [{"id": t.id, "title": t.title, "stage": p.stage, "status": t.status, "opening_date": p.opening_date,
+                       "last_activity_at": t.last_activity_at, "category_id": p.category_id, "folder_id": p.folder_id} for t, p in rows],
+            "total": db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*where)), "checking_count": active}
 
 
 @router.post("", status_code=201)
 def create(body: ProjectInput, request: Request, user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    category = folders.choose_category(db, body.category_id)
+    folder_id = folders.folder(db, user, body.folder_id).id if body.folder_id else None
     task = Task(owner_id=user.id, kind="bid", title=body.title, stance="purchase", source="incoming",
                 policy=body.policy, status="draft")
     db.add(task)
     db.flush()
-    db.add(BidProject(task_id=task.id, opening_date=body.opening_date))
+    db.add(BidProject(task_id=task.id, opening_date=body.opening_date, category_id=category, folder_id=folder_id))
     audit.record(db, "task_create", user_id=user.id, target_type="task", target_id=str(task.id), detail={"kind": "bid"}, ip=client_ip(request))
     db.commit()
     return service.detail(db, task)
+
+
+# ---------------------------------------------------------------- 文件夹与分类（V34-B-01a）；写在 /{id} 之前
+
+@router.get("/folders")
+def folder_tree(user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    return folders.tree(db, user)
+
+
+@router.post("/folders", status_code=201)
+def folder_create(body: FolderInput, user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    folders.create(db, user, body.name, body.parent_id)
+    db.commit()
+    return folders.tree(db, user)
+
+
+@router.patch("/folders/{fid}")
+def folder_rename(fid: str, body: FolderPatch, user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    folders.rename(db, user, fid, body.name)
+    db.commit()
+    return folders.tree(db, user)
+
+
+@router.delete("/folders/{fid}")
+def folder_delete(fid: str, user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    folders.remove(db, user, fid)
+    db.commit()
+    return folders.tree(db, user)
+
+
+@router.get("/categories")
+def category_list(db: Session = Depends(get_db)):
+    return {"items": folders.categories(db)}
 
 
 @router.get("/{id}")
@@ -57,12 +112,28 @@ def get(task: Task = Depends(owned), db: Session = Depends(get_db)):
 
 
 @router.patch("/{id}")
-def update(body: ProjectInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    task = service.editable(db, task)
-    task.title, task.policy, task.last_activity_at = body.title, body.policy, utcnow()
-    db.get(BidProject, task.id).opening_date = body.opening_date
+def update(body: ProjectInput, user: User = Depends(require("use.bid")), task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """名称、开标日期、外发策略只在开始初审前可改；分类与文件夹任何阶段都可改（只改请求中给出的项）。"""
+    project = db.get(BidProject, task.id)
+    if (body.title, body.opening_date, body.policy) != (task.title, project.opening_date, task.policy):
+        task = service.editable(db, task)
+        task.title, task.policy = body.title, body.policy
+        project.opening_date = body.opening_date
+    if "category_id" in body.model_fields_set:
+        project.category_id = folders.choose_category(db, body.category_id, project.category_id)
+    if "folder_id" in body.model_fields_set:
+        project.folder_id = folders.folder(db, user, body.folder_id).id if body.folder_id else None
+    task.last_activity_at = utcnow()
     db.commit()
     return service.detail(db, task)
+
+
+@router.put("/{id}/folder")
+def place(body: PlaceInput, user: User = Depends(require("use.bid")), task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """拖动归档；不改最近活动时间，免得列表顺序跟着跳。"""
+    db.get(BidProject, task.id).folder_id = folders.folder(db, user, body.folder_id).id if body.folder_id else None
+    db.commit()
+    return {"folder_id": db.get(BidProject, task.id).folder_id}
 
 
 @router.delete("/{id}", status_code=204)

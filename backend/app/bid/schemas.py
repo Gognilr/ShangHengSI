@@ -8,6 +8,9 @@ class ProjectInput(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     opening_date: date
     policy: Literal["ai", "local_only"] = "local_only"
+    # 分类与文件夹（V34-B-01a）；修改时只改请求中给出的项，开始初审后仍可改
+    category_id: int | None = None
+    folder_id: str | None = Field(None, max_length=40)
 
     @field_validator("title")
     @classmethod
@@ -15,6 +18,20 @@ class ProjectInput(BaseModel):
         if not value.strip():
             raise ValueError("项目名称不能为空")
         return value.strip()
+
+
+class FolderInput(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    parent_id: str | None = Field(None, max_length=40)
+
+
+class FolderPatch(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+
+
+class PlaceInput(BaseModel):
+    """拖动归档：folder_id 为空即移到“未归档”。"""
+    folder_id: str | None = Field(None, max_length=40)
 
 
 class BidderInput(BaseModel):

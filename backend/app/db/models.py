@@ -371,6 +371,29 @@ class BidProject(Base):
     model_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     # 签章页速览的人工标注（V34-B-06）：{"文件id:页码或节点": stamped / missing / unclear}，不含原文
     signing: Mapped[Optional[Any]] = mapped_column(JSONB)
+    # 个人文件夹与全公司分类（V34-B-01a）；删除文件夹时项目回到“未归档”
+    folder_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("bid_folders.id", ondelete="SET NULL"))
+    category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("bid_categories.id"))
+
+
+class BidCategory(Base):
+    """标书分类：业务管理员维护，停用后不能再选，已用的项目保留。"""
+    __tablename__ = "bid_categories"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=_TRUE)
+
+
+class BidFolder(Base):
+    """个人文件夹，最多三级；删除时子文件夹一并删除。"""
+    __tablename__ = "bid_folders"
+    __table_args__ = (Index("ix_bid_folders_owner_id", "owner_id"),)
+    id: Mapped[uuid.UUID] = uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("bid_folders.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(40), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class BidBidder(Base):

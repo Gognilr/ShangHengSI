@@ -199,7 +199,10 @@ def _clue_counts(items) -> str:
 def _cover(doc, d: _Data, scope: str):
     bidders = "、".join(d.names.values()) or "—"
     tenders = "\n".join(f.original_name for f in d.files if f.bidder_id is None) or "—"
-    rows = [("项目名称", d.task.title), ("开标日期", d.project.opening_date.isoformat()), ("初审人", d.user.display_name),
+    from app.bid.folders import category_name
+    category = category_name(d.db, d.project.category_id)
+    rows = [("项目名称", d.task.title), *([("项目分类", category)] if category else []),
+            ("开标日期", d.project.opening_date.isoformat()), ("初审人", d.user.display_name),
             ("生成时间", d.now.strftime("%Y-%m-%d %H:%M")), ("投标人", f"{len(d.bidders)} 家（按录入顺序）：{bidders}"),
             ("招标文件", tenders), ("要求清单", f"第 {d.project.requirements_version} 版，共 {len(d.reqs)} 条启用的要求"),
             ("报告范围", "全部初审内容" if scope == "full" else "只含串标线索")]

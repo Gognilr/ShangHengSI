@@ -367,7 +367,8 @@ def test_u5f07_roles_migration_keeps_permissions():
                 rows = conn.execute("SELECT r.builtin, r.permissions FROM user_roles ur JOIN roles r ON r.id = ur.role_id "
                                     "WHERE ur.user_id = %s", (uid,)).fetchall()
                 assert sorted(b for b, _ in rows) == sorted(LEGACY_ROLES[role])
-                assert {p for _, perms in rows for p in perms} == {p for k in LEGACY_ROLES[role] for p in BUILTIN[k][1]}
+                later = {"content.bid_categories"}  # 0049 才加入业务管理员
+                assert {p for _, perms in rows for p in perms} == {p for k in LEGACY_ROLES[role] for p in BUILTIN[k][1]} - later
         command.downgrade(cfg, "0037")
         with psycopg.connect(url, autocommit=True) as conn:
             back = dict(conn.execute("SELECT id::text, role FROM users").fetchall())

@@ -650,10 +650,10 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
     items = []
     for t, doc_type in rows:
         if t.kind == "bid":
-            stage, veto, todo = bids.get(t.id, ("preparing", 0, 0))
+            stage, veto, todo, category = bids.get(t.id, ("preparing", 0, 0, None))
             row = TaskListItem(id=t.id, title=t.title, doc_type=None, stance=t.stance, status=t.status, high_count=veto,
                                created_at=t.created_at, **bid_service.expiry(db, t, stage))
-            items.append(HistoryItem(**row.model_dump(), kind="bid", stage=stage, last_activity_at=t.last_activity_at,
+            items.append(HistoryItem(**row.model_dump(), kind="bid", stage=stage, category=category, last_activity_at=t.last_activity_at,
                                      file_count=files.get(t.id, 0), pending_count=todo, reviewing=stage == "checking"))
             continue
         row = tasks.list_row(db, t, doc_type)

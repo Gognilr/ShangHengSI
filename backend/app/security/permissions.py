@@ -29,6 +29,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("content.kb", "知识库（公共库）", "内容维护"),
     ("content.terms", "术语表", "内容维护"),
     ("content.laws", "法规库（含确认同步变更）", "内容维护"),
+    ("content.bid_categories", "标书分类", "内容维护"),
     ("redaction.names", "已记住的名称", "脱敏维护"),
     ("redaction.words", "自定义敏感词与识别设置", "脱敏维护"),
     ("redaction.parties", "我方主体", "脱敏维护"),

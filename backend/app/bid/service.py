@@ -67,7 +67,7 @@ def detail(db, task):
     project = db.get(BidProject, task.id)
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
     return {"id": task.id, "title": task.title, "opening_date": project.opening_date, "policy": task.policy,
-            "stage": project.stage, "status": task.status, "error_message": task.error_message,
+            "stage": project.stage, "status": task.status, "category_id": project.category_id, "folder_id": project.folder_id, "error_message": task.error_message,
             "last_activity_at": task.last_activity_at, "busy": busy(db, task), "limits": LIMITS,
             "requirements": {"enabled": db.scalar(select(func.count()).select_from(BidRequirement).where(
                                  BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))) or 0,
@@ -155,15 +155,17 @@ def add_files(db, task, uploads, bidder_id=None, groups=None):
 # ---------------------------------------------------------------- 历史记录（V34-B-07）
 
 def history_stats(db, task_ids):
-    """{任务: (阶段, 疑似否决项数, 待核对的问题与线索数)}；已排除的不计，正常重复不计。"""
-    from app.db.models import BidItem
+    """{任务: (阶段, 疑似否决项数, 待核对的问题与线索数, 分类名)}；已排除的不计，正常重复不计。"""
+    from app.db.models import BidCategory, BidItem
     stages = dict(db.execute(select(BidProject.task_id, BidProject.stage).where(BidProject.task_id.in_(task_ids))).all())
+    names = dict(db.execute(select(BidProject.task_id, BidCategory.name).join(BidCategory, BidCategory.id == BidProject.category_id)
+                            .where(BidProject.task_id.in_(task_ids))).all())
     base = (BidItem.task_id.in_(task_ids), BidItem.review_status != "excluded")
     veto = dict(db.execute(select(BidItem.task_id, func.count()).where(*base, BidItem.kind == "issue", BidItem.level == "veto")
                            .group_by(BidItem.task_id)).all())
     todo = dict(db.execute(select(BidItem.task_id, func.count()).where(
         *base, BidItem.kind != "normal_dup", BidItem.review_status == "pending").group_by(BidItem.task_id)).all())
-    return {i: (stages.get(i, "preparing"), veto.get(i, 0), todo.get(i, 0)) for i in task_ids}
+    return {i: (stages.get(i, "preparing"), veto.get(i, 0), todo.get(i, 0), names.get(i)) for i in task_ids}
 
 
 def expiry(db, task, stage):

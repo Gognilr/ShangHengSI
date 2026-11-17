@@ -10,6 +10,7 @@ from app.admin.model import router as admin_model_router
 from app.models_api import router as models_router
 from app.admin.laws import router as admin_laws_router
 from app.admin.standards import router as admin_standards_router
+from app.admin.bid_categories import router as admin_bid_categories_router
 from app.admin.data import router as admin_data_router
 from app.admin.redaction import router as admin_redaction_router
 from app.admin.requirements import router as admin_requirements_router
@@ -58,6 +59,7 @@ def build_api_router() -> APIRouter:
     router.include_router(admin_data_router)
     router.include_router(admin_laws_router)
     router.include_router(admin_standards_router)
+    router.include_router(admin_bid_categories_router)
     return router
 
 
