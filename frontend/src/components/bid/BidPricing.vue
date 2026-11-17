@@ -69,6 +69,9 @@ const colNote = computed(() => {
 })
 const lede = computed<LedePart[]>(() => {
   const parts: LedePart[] = []
+  const missing = rows.value.filter(r => !r.p.total && !r.p.totals_found.length).length
+  if (rows.value.length && missing === rows.value.length) return [[`${missing} 家未识别出投标总价，报价比较与规律检查未进行`]]
+  if (missing) parts.push([`${missing} 家未识别出投标总价，未参加总价比较与规律检查`])
   if (ceiling.value) rows.value.filter(r => r.ceiling.tone === 'over').forEach(r => parts.push([`${short(r.bidder.id)}的报价`, [`超限价 ${r.ceiling.diff} ${unit.value}`, 'd']]))
   rows.value.filter(r => r.p.low_price).forEach(r => parts.push([`${short(r.bidder.id)}的报价比其余各家平均低 ${r.p.low_price!.below_pct}（`, ['异常低价', 'w'], '），请核实是否低于成本']))
   patterns.value.forEach(t => parts.push([`${t.ids.map(short).join('、')}的投标总价`, [patternStep(t), 'w'], '（中）']))

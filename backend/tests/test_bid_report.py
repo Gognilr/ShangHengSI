@@ -53,6 +53,19 @@ def _text(content: bytes) -> str:
     return "\n".join(parts)
 
 
+def test_matrix_order_and_numbers():
+    from app.bid.results import matrix_group, matrix_requirements
+    reqs = [{'id': str(i), 'seq': i, 'group': group, 'method': method}
+            for i, group, method in [(1, 'qualification', 'model'), (2, 'veto', 'model'),
+                                      (3, 'veto', 'model'), (4, 'substantive', 'manual'), (5, 'veto', 'model'), (6, 'veto', 'model')]]
+    cells = [{'requirement_id':str(i), 'bidder_id':'A', 'verdict':v, 'cite':None, 'review_status':'pending'}
+             for i, v in [(1,'no'), (2,'yes'), (3,'missing'), (5,'no')]]
+    cells.append({'requirement_id':'6', 'bidder_id':'A', 'verdict':'no', 'cite':'unverified', 'review_status':'pending'})
+    ordered = matrix_requirements(reqs, cells, 1)
+    assert [r['seq'] for r in ordered] == [5, 3, 6, 2, 1, 4]
+    assert matrix_group(ordered[-1]) == '人工核对'
+
+
 def test_scenario_matches_golden(owner, db_sessionmaker):
     """预埋线索全部报出且等级正确，招标文件里就有的内容不报（基线剔除）。"""
     c, h, _ = owner

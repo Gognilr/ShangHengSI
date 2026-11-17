@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { Check, FileDown, FolderOpen, ListChecks, Plus, ScanSearch, Settings2, UploadCloud } from '@lucide/vue'
 import { ApiError } from '@/api/http'
+import { reportApi } from '@/api/report'
+import { useAuthStore } from '@/stores/auth'
 import { bidApi, bidPolicyLabel, bidState, type BidCategory, type BidProject, type BidSettings } from '@/api/bid'
 import RowMore from '@/components/RowMore.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -30,6 +32,14 @@ const bidFiles = computed(() => project.value?.files.filter(f => f.bidder_id) ??
 const filesOf = (bidder: string) => project.value?.files.filter(f => f.bidder_id === bidder) ?? []
 const rowErrors = reactive<Record<string, string>>({})  // 密码错误等提示显示在对应文件行，不只在页顶
 const adding = ref(false), newName = ref('')
+const auth = useAuthStore(), exporting = ref(false)
+async function exportReport() {
+  if (exporting.value) return
+  exporting.value = true
+  try { await reportApi.bid(id.value, 'full') }
+  catch (e) { error.value = e instanceof ApiError ? e.message : '导出失败，请重试' }
+  finally { exporting.value = false }
+}
 const picker = ref<HTMLInputElement>(), folders = ref<HTMLInputElement>(), target = ref<string>()
 const dragging = ref<'tender' | 'bulk' | null>(null), groupDialog = ref(false), settingsDialog = ref(false), settingsError = ref('')
 const grouped = ref<{ original: string; name: string; files: File[] }[]>([])
@@ -233,6 +243,7 @@ async function removeProject() {
           <p class="meta"><template v-if="categoryName"><span>{{ categoryName }}</span><i aria-hidden="true">·</i></template><span class="num">开标 {{ project.opening_date }}</span><i aria-hidden="true">·</i><BidStatus v-bind="bidState(project)" /><i aria-hidden="true">·</i><span>{{ bidPolicyLabel[project.policy] }}</span><i aria-hidden="true">·</i><span>仅本人可见</span></p>
         </div>
         <div class="head-actions">
+          <el-button v-if="step === 2 && project.stage === 'checked'" type="primary" :loading="exporting" :disabled="!auth.can('use.export')" @click="exportReport"><FileDown :size="16" :stroke-width="1.75" />导出初审疑点报告</el-button>
           <el-button :disabled="pending" @click="openSettings"><Settings2 :size="16" :stroke-width="1.75" />项目设置</el-button>
           <RowMore :disabled="pending">
             <el-dropdown-item v-if="project.stage === 'checked'" :disabled="reopenBlock" @click="reopen">返回修改材料</el-dropdown-item>
@@ -349,6 +360,7 @@ async function removeProject() {
 </template>
 
 <style scoped>
+:global(body:has(.bid-project)) { min-width: 0; }
 .breadcrumb { display: flex; gap: 8px; margin-bottom: 16px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .breadcrumb a { color: var(--si-ink-3); text-decoration: none; }
 .breadcrumb a:hover { color: var(--si-ink-1); }
@@ -360,6 +372,12 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .meta i { font-style: normal; color: var(--si-ink-5); }
 .head-actions { flex: none; display: flex; align-items: center; gap: 8px; }
 .head-actions .el-button svg { margin-right: 6px; }
+@media (max-width: 1100px) {
+  .head { flex-wrap: wrap; gap: 12px; }
+  .head-actions { margin-left: auto; }
+  .steps { flex-wrap: wrap; row-gap: 6px; }
+  .steps button { margin-right: 12px; }
+}
 :global(.danger-item) { color: var(--si-danger-ink) !important; }
 
 .steps { display: flex; align-items: center; gap: 4px; margin: 24px 0 28px; padding: 10px 0; border-top: 1px solid var(--si-hair); border-bottom: 1px solid var(--si-hair); }

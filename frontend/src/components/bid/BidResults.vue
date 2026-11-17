@@ -145,7 +145,7 @@ const notes = computed(() => {
   const base = d?.pricing?.base ? names.value[d.pricing.base] ?? '' : ''
   switch (tab.value) {
     case 'overview': return [...(d?.coverage ?? []), '没有列出的事项，不等于投标文件没有问题。']
-    case 'matrix': return ['实心符号为本地规则得出，空心符号为模型判断；“模型判断”行在模型核对完成前显示虚线点“未核对”。', '“人工核对”行需要对照原件，可在各投标人页逐家标注。']
+    case 'matrix': return ['✓ 表示响应；？表示无法判断或引文待核实；—表示不适用。', '“人工核对”行需要对照原件，可在各投标人页逐家标注。']
     case 'bidders': return ['签章页只看图核对，不识别印章内容；Word 文件没有页面图，请到原件核对。', '否决性结论须标为“已核实”，报告中才以肯定语气写出。']
     case 'clues': return ['“正常重复”为招标范本、厂家资料等共有内容，一般不是线索。', '线索按《招标投标法实施条例》第四十条的情形列出，仅供评标委员会核实。']
     default: return ['金额由本机计算，四舍五入到分；投标人按录入顺序排列，不按价格排序。',

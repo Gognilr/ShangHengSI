@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Pencil, Plus } from '@lucide/vue'
 import type { BidFile, Bidder } from '@/api/bid'
 import RowMore from '@/components/RowMore.vue'
@@ -9,6 +9,7 @@ import BidFiles from './BidFiles.vue'
 const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string> }>()
 const emit = defineEmits<{ rename: [name: string]; remove: []; pick: []; drop: [event: DragEvent]; password: [fid: string, password: string]; removeFile: [fid: string] }>()
 const editing = ref(false), name = ref(''), over = ref(false), input = ref<{ focus: () => void }>()
+const titleName = computed(() => /标书|报价文件|项目/.test(editing.value ? name.value : props.bidder.name))
 async function edit() { if (props.disabled) return; name.value = props.bidder.name; editing.value = true; await nextTick(); input.value?.focus() }
 function save() {
   const value = name.value.trim()
@@ -37,6 +38,7 @@ function drop(event: DragEvent) { over.value = false; emit('drop', event) }
         <el-dropdown-item :disabled="files.length > 0" @click="emit('remove')">{{ files.length ? '移除投标人（先移除文件）' : '移除投标人' }}</el-dropdown-item>
       </RowMore>
     </header>
+    <p v-if="titleName" class="hint">请填写投标单位全称，便于混装检查与投标人名称脱敏。</p>
     <BidFiles v-if="files.length" class="files" :project-id="projectId" :files="files" :disabled="disabled" :busy="busy" :row-errors="rowErrors" @remove="fid => emit('removeFile', fid)" @password="(fid, pw) => emit('password', fid, pw)" />
     <button v-else type="button" class="empty" :disabled="disabled" @click="emit('pick')">把这家的投标文件拖到这里，或点击选择</button>
   </section>

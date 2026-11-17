@@ -152,7 +152,7 @@ class _Data:
         self.clues = [i for i in self.items if i["kind"] == "clue"]
         self.normal = [i for i in self.items if i["kind"] == "normal_dup"]
         self.cells = {(str(c["requirement_id"]), str(c["bidder_id"])): c for c in self.view["cells"]}
-        self.reqs = sorted(self.view["requirements"], key=lambda r: (GROUP_ORDER.get(r["group"], 9), r["seq"]))
+        self.reqs = results.matrix_requirements(self.view["requirements"], self.view["cells"], len(self.bidders))
         self.params = R.load_state(self.project)["values"]
         self.models = sorted(db.scalars(select(LlmCall.model_name).where(
             LlmCall.task_id == task.id, LlmCall.purpose == "bid", LlmCall.status == "sent").distinct()))
@@ -311,10 +311,10 @@ def _coverage(doc, d: _Data):
 def _cell_text(d: _Data, req, bidder_id) -> str:
     cell = d.cells.get((str(req["id"]), str(bidder_id)))
     if cell is None:
-        return "未核对" if req["method"] == "model" else "—"
+        return "？"
     if cell["review_status"] == "excluded":
         return "已排除"
-    text = VERDICT.get(cell["verdict"], cell["verdict"])
+    text = {'yes': '✓', 'no': '不响应', 'missing': '未找到', 'unclear': '？', 'manual': '？'}.get(cell['verdict'], '？')
     if cell["source"] == "model":
         text += "（模型）"
     if cell["cite"] == "unverified":
@@ -333,8 +333,18 @@ def _problem(d: _Data, req) -> bool:
 
 
 def _matrix_table(doc, d: _Data, reqs):
-    rows = [(_clean(f"【{GROUP.get(r['group'], r['group'])}】{r['text']}"), *[_cell_text(d, r, b.id) for b in d.bidders]) for r in reqs]
-    _table(doc, ("要求", *[crypto.decrypt_text(b.name_enc) for b in d.bidders]), rows, _widths(9.5, len(d.bidders)))
+    for group in results.MATRIX_GROUPS:
+        grouped = [r for r in reqs if results.matrix_group(r) == group]
+        if not grouped:
+            continue
+        ids = {str(r['id']) for r in grouped}
+        cells = [c for c in d.view['cells'] if str(c['requirement_id']) in ids and c['review_status'] != 'excluded']
+        counts = [f"{label} {count}" for label, count in [('疑似不响应', sum(c['verdict'] == 'no' for c in cells)),
+                                                       ('未找到', sum(c['verdict'] == 'missing' for c in cells))] if count]
+        _sub(doc, f"{group} · {len(grouped)}" + ("　" + " · ".join(counts) if counts else ''))
+        rows = [(_clean(f"{r['seq']}. {r['text']}"),
+                 *[_cell_text(d, r, b.id) for b in d.bidders]) for r in grouped]
+        _table(doc, ("序号 · 要求", *[crypto.decrypt_text(b.name_enc) for b in d.bidders]), rows, _widths(9.5, len(d.bidders)))
 
 
 def _matrix(doc, d: _Data):
@@ -350,7 +360,7 @@ def _matrix(doc, d: _Data):
         for b in d.bidders:
             cell = d.cells.get((str(r["id"]), str(b.id)))
             if cell and cell["review_status"] != "excluded" and (cell["reason"] or cell["note"]) and _problem_cell(cell):
-                detail.append((_clean(_clip(r["text"], 60)), crypto.decrypt_text(b.name_enc), VERDICT.get(cell["verdict"], cell["verdict"]),
+                detail.append((_clean(f"{r['seq']}. " + _clip(r["text"], 60)), crypto.decrypt_text(b.name_enc), VERDICT.get(cell["verdict"], cell["verdict"]),
                                _lines(cell["reason"] and f"理由：{_clean(cell['reason'])}", cell["note"] and f"备注：{_clean(cell['note'])}"),
                                STATUS.get(cell["review_status"], "")))
     if detail:
@@ -541,7 +551,7 @@ def _file_props(f: TaskFile) -> str:
         return "—"
     props = (json.loads(crypto.decrypt_text(f.meta_enc)) or {}).get("props") or {}
     parts = []
-    for key, label in (("creator", "作者"), ("author", "作者"), ("last_modified_by", "最后保存者"), ("company", "公司"),
+    for key, label in (("creator", "创建程序" if f.ext == 'pdf' else "作者"), ("author", "作者"), ("last_modified_by", "最后保存者"), ("company", "公司"),
                        ("application", "软件"), ("producer", "生成软件"), ("created", "创建")):
         if props.get(key) and f"{label}：{props[key]}" not in parts:
             parts.append(f"{label}：{props[key]}")
@@ -563,7 +573,7 @@ def _appendix(doc, d: _Data):
           + "；报价 " + {True: "含税", False: "不含税"}.get(values.get("tax_included"), "未填") + "。")
     all_reqs = sorted(d.db.scalars(select(BidRequirement).where(BidRequirement.task_id == d.task.id)), key=lambda r: (GROUP_ORDER.get(r.group, 9), r.seq))
     _table(doc, ("分组", "要求", "检查方式", "来源", "启用"),
-           [(GROUP.get(r.group, r.group), crypto.decrypt_text(r.text_enc), METHOD.get(r.method, r.method), SOURCE.get(r.source, r.source),
+           [(GROUP.get(r.group, r.group), f"{r.seq}. " + crypto.decrypt_text(r.text_enc), METHOD.get(r.method, r.method), SOURCE.get(r.source, r.source),
              "是" if r.enabled else "否") for r in all_reqs], (3.5, 14.5, 3, 4, 1.7))
     _heading(doc, "附录三 文件清单与属性")
     owner = {str(b.id): crypto.decrypt_text(b.name_enc) for b in d.bidders}

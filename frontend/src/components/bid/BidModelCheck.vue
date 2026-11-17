@@ -5,12 +5,14 @@ import { ApiError } from '@/api/http'
 import { bidApi, bidGroupLabel, type BidModelView } from '@/api/bid'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import BidStatus from '@/components/bid/BidStatus.vue'
+import BidSentDrawer from './BidSentDrawer.vue'
 
 // 模型核对（bid.md 3.2）：本地检查完成后后台准备片段；这里给出“片段模式确认”——只显示将发送的片段，
 // 按投标人分页签，可切 AI 视野；一个按钮确认并开始。发送中显示“模型核对 n / N 家”，结果写入要求响应矩阵（B-06）。
 const props = defineProps<{ projectId: string; stateKey: string }>()
 const emit = defineEmits<{ changed: [] }>()
 const data = ref<BidModelView>(), error = ref(''), busy = ref(false), open = ref(false)
+const sentOpen = ref(false)
 const tab = ref(''), view = ref<'original' | 'ai'>('ai'), showReqs = ref(false)
 const viewOptions: { label: string; value: 'original' | 'ai' }[] = [{ label: 'AI 视野', value: 'ai' }, { label: '原文', value: 'original' }]
 const tabs = computed(() => data.value?.bidders.map(b => ({ value: b.id, label: `${b.name}（${b.code.slice(1, -1)}）` })) ?? [])
@@ -56,6 +58,7 @@ async function act(action: 'prepare' | 'confirm' | 'cancel') {
 
 <template>
   <section v-if="data" class="model-check" aria-label="模型核对">
+    <BidSentDrawer v-model="sentOpen" :project-id="projectId" />
     <div class="bar">
       <ShieldCheck :size="16" :stroke-width="1.75" aria-hidden="true" />
       <template v-if="!data.state">
@@ -72,7 +75,7 @@ async function act(action: 'prepare' | 'confirm' | 'cancel') {
           <el-button size="small" text :aria-expanded="open" @click="open = !open">{{ open ? '收起片段' : '查看将发送的片段' }}</el-button>
           <el-button v-if="data.state === 'failed'" size="small" text :loading="busy" @click="act('prepare')">重新准备</el-button>
           <el-button v-else size="small" text :disabled="busy" @click="act('cancel')">不发送</el-button>
-          <el-button size="small" type="primary" :loading="busy" :disabled="notEnough" @click="act('confirm')">{{ retry ? '继续未完成的部分' : '确认并开始模型核对' }}</el-button>
+          <el-button size="small" :loading="busy" :disabled="notEnough" @click="act('confirm')">{{ retry ? '继续未完成的部分' : '确认并开始模型核对' }}</el-button>
         </div>
         <p v-if="notEnough" class="error">剩余调用次数不足，请联系管理员。</p>
       </template>
@@ -85,6 +88,7 @@ async function act(action: 'prepare' | 'confirm' | 'cancel') {
         <BidStatus tone="ok" :label="`模型核对已完成 ${data.progress.total} 家，判断见各家问题与要求响应`" />
         <el-button class="again" size="small" text :loading="busy" @click="act('prepare')">重新准备</el-button>
       </template>
+      <el-button v-if="['done', 'running', 'failed'].includes(data.state ?? '')" text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
     </div>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <ul v-if="open && data.receipt?.notes.length" class="notes"><li v-for="note in data.receipt.notes" :key="note">{{ note }}</li></ul>

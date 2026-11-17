@@ -9,6 +9,7 @@ import {
 } from '@/api/bid'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import BidStatus from './BidStatus.vue'
+import BidSentDrawer from './BidSentDrawer.vue'
 import BidTenderText from './BidTenderText.vue'
 
 /** 第 1 步右半：关键参数、要求清单与完整性计数（bid.md 2.2）。快捷键：J / K 上下、X 停用、E 改文字。 */
@@ -20,6 +21,7 @@ const params = reactive<BidParameters>({ ceiling: null, currency: 'CNY', validit
 const paramsDirty = ref(false), paramError = ref('')
 const view = ref<'original' | 'ai'>('original'), focus = ref<BidLoc | null>(null)
 const current = ref<string | null>(null), editing = ref<string | null>(null), draft = ref('')
+const sentOpen = ref(false)
 const adding = ref<{ group: BidGroup; text: string; method: BidMethod; locs: BidLoc[] } | null>(null)
 const showMissing = ref<'star' | 'veto' | null>(null)
 let timer: ReturnType<typeof setTimeout> | undefined, generation = 0
@@ -209,8 +211,10 @@ const notEnough = computed(() => {
             </template>
             <template v-else-if="data.extract_state === 'extracting'"><BidStatus tone="run" label="模型补充中，结果会标为“模型提取 · 请核对”" /></template>
             <template v-else-if="data.extract_state === 'done'"><BidStatus tone="ok" :label="`模型补充已完成，新增 ${data.items.filter(i => i.source === 'model').length} 条，请核对`" /><el-button size="small" text :disabled="locked" @click="assist('cancel')">关闭</el-button></template>
+            <el-button v-if="data.extract_state === 'done' || data.extract_state === 'failed'" text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
           </div>
 
+          <BidSentDrawer v-model="sentOpen" :project-id="projectId" />
           <div v-if="adding" class="add-form">
             <el-input v-model="adding.text" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="2000" placeholder="要求文字" aria-label="新要求文字" autofocus />
             <div class="add-row">
@@ -229,7 +233,7 @@ const notEnough = computed(() => {
                 <el-switch :model-value="item.enabled" size="small" :disabled="locked" :aria-label="item.enabled ? '停用' : '启用'" @click.stop @update:model-value="(v: string | number | boolean) => patch(item, { enabled: !!v })" />
                 <div class="body">
                   <el-input v-if="editing === item.id" v-model="draft" type="textarea" :autosize="{ minRows: 1, maxRows: 6 }" maxlength="2000" autofocus @click.stop @keydown.enter.exact.prevent="saveEdit(item)" @keydown.esc="editing = null" @blur="saveEdit(item)" />
-                  <p v-else class="text">{{ item.text }}</p>
+                  <p v-else class="text"><span class="num">{{ item.seq }}.</span> {{ item.text }}</p>
                   <p class="meta">
                     <span :class="['source', item.source]">{{ bidSourceLabel[item.source] }}</span>
                     <span v-if="item.file" class="file" :title="item.file">{{ item.file }}</span>

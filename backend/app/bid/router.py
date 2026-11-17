@@ -511,6 +511,12 @@ def reopen(task: Task = Depends(owned), db: Session = Depends(get_db)):
 
 # ---------------------------------------------------------------- 模型核对（V34-B-05）
 
+@router.get("/{id}/sent")
+def sent(response: Response, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import results
+    response.headers['Cache-Control'] = 'no-store'
+    return results.sent_view(db, task)
+
 @router.get("/{id}/model")
 def model_view(task: Task = Depends(owned), db: Session = Depends(get_db)):
     """片段确认页：将发送的片段（原文与 AI 视野）、要求与回执。"""

@@ -29,7 +29,7 @@ watch(() => [props.requirementId, props.bidderId], load, { immediate: true })
   <p v-if="error" class="error" role="alert">{{ error }}</p>
   <div v-if="detail" class="body">
     <section>
-      <h3 class="si-overline">要求 · {{ bidGroupLabel[detail.requirement.group] }} · {{ bidMethodLabel[detail.requirement.method] }}</h3>
+      <h3 class="si-overline">要求 {{ detail.requirement.seq }} · {{ bidGroupLabel[detail.requirement.group] }} · {{ bidMethodLabel[detail.requirement.method] }}</h3>
       <p class="req">{{ detail.requirement.text }}</p>
       <p v-for="(s, i) in detail.requirement.sources" :key="i" class="source"><span class="hint">出处：{{ s.file }}</span>{{ s.text }}</p>
     </section>

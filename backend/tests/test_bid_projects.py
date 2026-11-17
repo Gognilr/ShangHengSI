@@ -67,12 +67,34 @@ def test_permissions_owner_and_cross_project_files(owner, make_user, login, db_s
     cb, tb = login(other.username)
     for method, path, body in [("GET", base, None), ("DELETE", base, None),
                                ("POST", base + "/bidders", {"name": "虚构乙"}),
-                               ("GET", base + "/files/invalid/password", None)]:
+                               ("GET", base + "/files/invalid/password", None), ("GET", base + "/sent", None)]:
         assert cb.request(method, path, headers={"X-CSRF-Token": tb}, json=body).status_code == 404
     assert c.get(ROOT).json()["total"] == 1 and cb.get(ROOT).json()["total"] == 0
     b1 = c.post(base + "/bidders", headers=h, json={"name": "虚构甲"}).json()["bidders"][0]["id"]
     second = create(c, h)
     assert c.post(second + "/files", headers=h, data={"bidder_id": b1}, files={"files": ("虚构.docx", document())}).status_code == 404
+
+
+def test_actual_sent_content(owner, db_sessionmaker):
+    from app.bid import extract, model
+    from app.db.models import LlmCall
+    c, h, user = owner
+    base = create(c, h)
+    tid = uuid.UUID(base.rsplit('/', 1)[-1])
+    body = '投标人代号：[投标人A]（第 2 / 3 批）\n[[ORG_1]] 提供备件'
+    with db_sessionmaker() as db:
+        for system, content, status in [(extract.SYSTEM, '[[NAME_1]] 必须供货', 'sent'), (model.SYSTEM, body, 'sent'),
+                                         (None, None, 'sent'), (None, None, 'blocked')]:
+            db.add(LlmCall(task_id=tid, user_id=user.id, purpose='bid', model_name='虚构模型', status=status,
+                           request_text=json.dumps({'messages': [{'role':'system','content':system}, {'role':'user','content':content}]})
+                           if system else None))
+        db.commit()
+    r = c.get(base + '/sent')
+    assert r.status_code == 200 and r.headers['cache-control'] == 'no-store'
+    rows = r.json()
+    assert len(rows) == 4 and rows[0]['purpose'] == '要求补充 第 1 次'
+    assert rows[1]['purpose'] == '模型核对 [投标人A] 第 2 / 3 批' and rows[1]['text'].endswith(body)
+    assert rows[1]['chars'] == len(rows[1]['text']) and rows[2]['text'] is None and rows[3]['status'] == 'blocked'
 
 
 def test_group_upload_parse_encryption_and_deletion(owner, db_sessionmaker, caplog):

@@ -103,7 +103,7 @@ export interface BidCheck {
 }
 export interface BidCellPlace { file_id: string; file: string; page: number | null; renderable: boolean; before: string; text: string; after: string }
 export interface BidCellDetail {
-  requirement: { id: string; text: string; group: BidGroup; method: BidMethod; sources: { file: string; text: string }[] }
+  requirement: { id: string; text: string; group: BidGroup; method: BidMethod; seq: number; sources: { file: string; text: string }[] }
   bidder: { id: string; name: string }
   cell: (BidReview & { verdict: BidVerdict; source: 'local' | 'model'; cite: BidCell['cite']; reason: string | null }) | null
   places: BidCellPlace[]
@@ -124,6 +124,7 @@ export function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 export const bidApi = {
+  sent: (id: string) => http.get<{ seq: number; purpose: string; created_at: string; status: 'sent' | 'blocked' | 'error'; chars: number | null; text: string | null }[]>(`/bid/${id}/sent`),
   list: (query: BidListQuery = {}) => http.get<{ items: BidSummary[]; total: number; checking_count: number }>('/bid', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
   folders: (query: Omit<BidListQuery, 'page' | 'folder'> = {}) => http.get<BidFolderTree>('/bid/folders', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
   createFolder: (name: string, parent_id: string | null) => http.post<BidFolderTree>('/bid/folders', { name, parent_id }),

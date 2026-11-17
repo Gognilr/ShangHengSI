@@ -6,7 +6,7 @@ import uuid
 
 from sqlalchemy import select
 
-from app.db.models import BidBidder, BidCell, BidItem, BidProject, BidRequirement, DocNode, TaskFile
+from app.db.models import BidBidder, BidCell, BidItem, BidProject, BidRequirement, DocNode, LlmCall, TaskFile
 from app.security import crypto
 from app.security.errors import AppError, NotFoundError
 from app.tasks import storage
@@ -170,7 +170,7 @@ def cell_detail(db, task, requirement_id, bidder_id):
             sources.append({"file": f.original_name, "text": ctx["text"]})
     cell = db.scalar(select(BidCell).where(BidCell.requirement_id == rid, BidCell.bidder_id == bid))
     out = {"requirement": {"id": str(req.id), "text": crypto.decrypt_text(req.text_enc), "group": req.group, "method": req.method,
-                           "sources": sources},
+                           "seq": req.seq, "sources": sources},
            "bidder": {"id": str(bid), "name": crypto.decrypt_text(bidder.name_enc)},
            "cell": None, "places": []}
     if cell is None:
@@ -250,6 +250,63 @@ def reopen(db, task):
 
 
 # ---------------------------------------------------------------- 初审结果（结果页与 Word 报告共用）
+
+MATRIX_GROUPS = ("否决条款", "★ / 实质性条款", "资格条件", "一般要求", "人工核对")
+
+
+def matrix_group(req):
+    if req['method'] == 'manual':
+        return MATRIX_GROUPS[4]
+    return {'veto': MATRIX_GROUPS[0], 'substantive': MATRIX_GROUPS[1],
+            'qualification': MATRIX_GROUPS[2]}.get(req['group'], MATRIX_GROUPS[3])
+
+
+def matrix_requirements(reqs, cells, bidder_count=None):
+    """页面与报告同一排序：轻重分组，组内疑似不响应、未找到、待核实、响应，序号稳定。"""
+    reqs = [r for r in reqs if r['group'] != 'format']
+    ranks, seen = {}, {}
+    bidder_count = bidder_count if bidder_count is not None else len({str(c['bidder_id']) for c in cells})
+    for c in cells:
+        key = str(c['requirement_id'])
+        seen.setdefault(key, set()).add(str(c['bidder_id']))
+        if c['review_status'] == 'excluded':
+            ranks.setdefault(key, 3)
+            continue
+        rank = {'no': 0, 'missing': 1, 'unclear': 2, 'manual': 2}.get(c['verdict'], 3)
+        if c['cite'] == 'unverified':
+            rank = 2
+        ranks[key] = min(rank, ranks.get(key, 3))
+    for r in reqs:
+        key = str(r['id'])
+        if len(seen.get(key, set())) < bidder_count:
+            ranks[key] = min(2, ranks.get(key, 3))
+    return sorted(reqs, key=lambda r: (MATRIX_GROUPS.index(matrix_group(r)), ranks.get(str(r['id']), 2), r['seq']))
+
+
+def sent_view(db, task):
+    """只读实际请求，不还原；本人权限由路由 owned 校验。"""
+    rows = db.scalars(select(LlmCall).where(LlmCall.task_id == task.id, LlmCall.purpose == 'bid').order_by(LlmCall.id))
+    out, counts = [], {}
+    for seq, row in enumerate(rows, 1):
+        text, purpose = row.request_text, '标书模型请求'
+        if text:
+            try:
+                messages = json.loads(text)['messages']
+                system = messages[0]['content']
+                body = '\n\n'.join(m['content'] for m in messages)
+                if system.startswith('你是招标文件整理助手'):
+                    purpose = '要求补充'
+                else:
+                    who = re.search(r'投标人代号：(\[投标人[A-Z]+\])(?:（第 (\d+) / (\d+) 批）)?', body)
+                    if who:
+                        purpose = f"模型核对 {who[1]}" + (f" 第 {who[2]} / {who[3]} 批" if who[2] else '')
+                text = body
+            except (ValueError, KeyError, TypeError, IndexError):
+                pass
+        counts[purpose] = counts.get(purpose, 0) + 1
+        out.append({'seq': seq, 'purpose': purpose + (f" 第 {counts[purpose]} 次" if purpose == '要求补充' else ''),
+                    'created_at': row.created_at, 'status': row.status, 'chars': len(text) if text is not None else None, 'text': text})
+    return out
 
 def check_view(db, task):
     """条目（含核对状态与备注）、单元格、要求清单、报价分析、签章页速览与覆盖说明。"""
