@@ -2,6 +2,8 @@
 
 报价表识别复用审核的 L-01、L-02（app.checks.amounts）；投标总价取“投标总价 / 投标报价”等标签后的小写金额。
 分项按品名归一化对齐（对不上且行数相同时按行序），两两计算单价比值的变异系数、差额与尾数习惯。
+各家总价另做比较（V34Q-27）：最高 / 最低 / 平均、比最低价高、偏离平均、异常低价提示与总价等差 / 等比线索；
+只有唯一总价、币种一致的投标人参加比较。投标人仍按录入顺序排列，不提供按价格排序。
 """
 import re
 from collections import Counter
@@ -16,6 +18,10 @@ from app.redaction.tables import table_cell
 
 MIN_ITEMS = 5
 CV_STRONG = Decimal("0.005")  # 比值的变异系数 < 0.5%
+# 以下三个阈值待 V34-B-08 用真实标书校准
+LOW_PRICE = Decimal("0.20")          # 低于其余各家平均 20% 以上：异常低价提示（参照第五十一条（五）低于成本）
+TOTAL_DIFF_TOL = Decimal("1")        # 总价等差：相邻差额之差不超过 1 元
+TOTAL_RATIO_TOL = Decimal("0.00005")  # 总价等比：相邻比值之差不超过 0.00005
 _UPPER = re.compile(r"[零壹贰叁肆伍陆柒捌玖拾佰仟]")
 _TOTAL_LABEL = re.compile(r"(?<!不含税)(?<!分项)(?:投标总报价|投标总价|投标报价|报价总额|报价合计|总报价|投标价格|投标金额)")
 _NAME = re.compile(r"名称|品名|货物|设备|品目|项目|内容|规格|型号")
@@ -156,9 +162,73 @@ def pattern(pairs, fixed=frozenset()):
     return None
 
 
-def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None):
-    """返回 (报价分析 JSON, 线索, 每家 {总价, 币种, 多个总价, 表, L 结果})。bidders 为按录入顺序的 id。"""
-    facts, analysis = {}, {"bidders": {}, "items": [], "pairs": [], "aligned_by": {}}
+def _pct(x, signed=False):
+    q = (x * 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return f"{'+' if signed and q > 0 else ''}{q}%"
+
+
+def _trim(x):
+    return f"{x:f}".rstrip("0").rstrip(".") if "." in f"{x:f}" else f"{x:f}"
+
+
+def compare(totals):
+    """各家总价比较。totals 为 {投标人: Decimal}（只含参加比较的，按录入顺序）。
+    返回 (汇总或 None, {投标人: 字段})；字段：mark 最高 / 最低、above_lowest(_pct) 比最低价高、vs_mean 偏离平均、
+    low_price 异常低价（低于其余各家平均 LOW_PRICE 以上，其余至少 2 家）。"""
+    if len(totals) < 2:
+        return None, {}
+    with localcontext() as ctx:
+        ctx.prec = 34
+        vals = {b: rounded(v) for b, v in totals.items()}
+        hi, lo = max(vals.values()), min(vals.values())
+        mean = sum(vals.values(), Decimal(0)) / len(vals)
+        out = {}
+        for b, v in vals.items():
+            row = {"mark": None if hi == lo else "highest" if v == hi else "lowest" if v == lo else None,
+                   "above_lowest": money(v - lo) if v != lo else None,
+                   "above_lowest_pct": _pct((v - lo) / lo) if v != lo and lo > 0 else None,
+                   "vs_mean": _pct((v - mean) / mean, signed=True) if mean > 0 else None, "low_price": None}
+            others = [w for o, w in vals.items() if o != b]
+            if len(others) >= 2:
+                other_mean = sum(others, Decimal(0)) / len(others)
+                if other_mean > 0 and v < other_mean * (1 - LOW_PRICE):
+                    row["low_price"] = {"others": len(others), "others_mean": money(other_mean),
+                                        "below_pct": _pct((other_mean - v) / other_mean)}
+            out[b] = row
+        summary = {"n": len(vals), "highest": money(hi), "lowest": money(lo), "mean": money(mean),
+                   "spread_pct": _pct((hi - lo) / lo) if lo > 0 else None}
+    return summary, out
+
+
+def total_patterns(totals):
+    """三家及以上总价从低到高呈等差或等比（第四十条（四）“投标报价呈规律性差异”）。
+    返回 [(投标人按金额升序, "diff" | "ratio", 显示用的差额或比值)]；已报的一组的子集不再重复报。"""
+    ordered = sorted(((rounded(v), b) for b, v in totals.items()), key=lambda x: x[0])
+    found = []
+    with localcontext() as ctx:
+        ctx.prec = 34
+        for size in range(len(ordered), 2, -1):
+            for combo in combinations(ordered, size):
+                ids = [b for _v, b in combo]
+                if any(set(ids) <= set(f[0]) for f in found):
+                    continue
+                vals = [v for v, _b in combo]
+                if vals[0] <= 0 or any(x == y for x, y in zip(vals, vals[1:])):
+                    continue
+                diffs = [y - x for x, y in zip(vals, vals[1:])]
+                ratios = [y / x for x, y in zip(vals, vals[1:])]
+                if max(diffs) - min(diffs) <= TOTAL_DIFF_TOL:
+                    found.append((ids, "diff", money(sum(diffs, Decimal(0)) / len(diffs))))
+                elif max(ratios) - min(ratios) <= TOTAL_RATIO_TOL:
+                    k = (sum(ratios, Decimal(0)) / len(ratios)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                    found.append((ids, "ratio", _trim(k)))
+    return found
+
+
+def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
+    """返回 (报价分析 JSON, 线索, 每家 {总价, 币种, 多个总价, 表, L 结果, 异常低价})。bidders 为按录入顺序的 id；
+    place(node) 给出证据位置（总价规律线索用，可省）。"""
+    facts, analysis = {}, {"bidders": {}, "items": [], "pairs": [], "aligned_by": {}, "compare": None, "total_patterns": []}
     for b in bidders:
         nodes = per_bidder_nodes.get(b, [])
         tables, results = quote_tables(nodes)
@@ -187,6 +257,23 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None):
             # 多个不同总价：按最高者与限价比较（V34Q-25 第 4 条），over_ceiling 仍只表示唯一总价
             row["over_ceiling_max"] = money(distinct[-1] - ceiling)
         analysis["bidders"][str(b)] = row
+    # 总价比较：只有唯一总价、币种与关键参数一致（或未写币种）的参加；多个总价的不参加
+    eligible = {}
+    for b in bidders:
+        f, row = facts[b], analysis["bidders"][str(b)]
+        row["not_compared"] = None
+        if len(f["distinct"]) > 1:
+            row["not_compared"] = "多个总价，未参加比较"
+        elif f["total"] is not None and f["currency"] not in (None, currency or "CNY"):
+            row["not_compared"] = f"币种为 {f['currency']}，未参加比较"
+        elif f["total"] is not None:
+            eligible[b] = f["total"]
+    summary, fields = compare(eligible)
+    analysis["compare"] = summary
+    for b in bidders:
+        analysis["bidders"][str(b)] |= fields.get(b, {"mark": None, "above_lowest": None, "above_lowest_pct": None,
+                                                     "vs_mean": None, "low_price": None})
+        facts[b]["low_price"] = fields.get(b, {}).get("low_price")
     # 各家都填同一价格的分项（多为招标文件给定的暂列金额、固定单价）不参与规律比对
     keyed = {b: {it[0]: _value(it) for it in facts[b]["main"][2] if it[0]} for b in bidders if facts[b]["main"]}
     fixed = set()
@@ -209,6 +296,19 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None):
                                for x, y in pairs[:20] if _value(x) is not None and _value(y) is not None]}]
             clues.append({"ids": (a, b), "level": level, "title": label, "rows": rows})
         analysis["pairs"].append(stat)
+    # 总价规律（三家及以上）：线索按录入顺序列投标人，证据按金额从低到高
+    order = {b: i for i, b in enumerate(bidders)}
+    for ids, how, step in total_patterns(eligible):
+        title = (f"{len(ids)} 家投标总价呈等差（从低到高每家相差 {step}）" if how == "diff"
+                 else f"{len(ids)} 家投标总价呈等比（从低到高每家约为前一家的 {step} 倍）")
+        places = {}
+        for b in ids:
+            f = facts[b]
+            node = f["totals"][0][2] if f["totals"] else (f["main"][2][0][4] if f["main"] and f["main"][2] else None)
+            places[str(b)] = [place(node)] if place and node is not None else []
+        rows = [{"label": "投标总价（从低到高）", "value": "、".join(money(eligible[b]) for b in ids), "places": places}]
+        clues.append({"ids": tuple(sorted(ids, key=order.get)), "level": "medium", "title": title, "rows": rows})
+        analysis["total_patterns"].append({"ids": [str(b) for b in ids], "kind": how, "step": step, "level": "medium"})
     # 分项对齐表（以第一家有报价表的为基准，最多 300 行）
     base = next((b for b in bidders if facts[b]["main"]), None)
     if base is not None:

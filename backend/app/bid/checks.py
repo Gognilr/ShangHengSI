@@ -25,7 +25,7 @@ from app.security import crypto
 logger = logging.getLogger(__name__)
 # 三步依次提交，前端轮询时先看到先完成的（bid.md 3.1“先出结果的先做”）
 STEPS = {"clues": ("mixed", "contact", "props", "image"),
-         "pricing": ("pricing", "multi_total", "sum_total", "ceiling", "uppercase", "row_calc", "sum_rows", "validity",
+         "pricing": ("pricing", "multi_total", "sum_total", "ceiling", "low_price", "uppercase", "row_calc", "sum_rows", "validity",
                      "deposit", "cert_expired", "ai_instruction"),
          "similar": ("similar",)}
 RANK = {"strong": 3, "medium": 2, "weak": 1, "normal": 0}
@@ -380,7 +380,8 @@ def _pricing_step(db, task, bidders, nodes, files):
     ceiling = Decimal(params["ceiling"]) if params.get("ceiling") else None
     per = {b.id: [compliance.BidNode(loc, text, files[file_id].seq, None, kind=kind, ocr_conf=conf, file_id=file_id, page=page)
                   for file_id, loc, page, text, kind, conf in nodes.get(b.id, [])] for b in bidders}
-    analysis, clues, facts = pricing.analyze([b.id for b in bidders], per, ceiling, params.get("currency"))
+    analysis, clues, facts = pricing.analyze([b.id for b in bidders], per, ceiling, params.get("currency"),
+                                             lambda n: _where(n.file_id, n.loc, n.page, n.text, 0, len(n.text)))
     project.pricing_enc = crypto.encrypt_text(json.dumps(analysis, ensure_ascii=False))
     kinds = {}
     for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True),

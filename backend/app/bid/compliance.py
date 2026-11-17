@@ -1,4 +1,4 @@
-"""确定性符合项（bid.md 3.1）：大小写、合计、多个总价、超最高限价、投标有效期、保证金、证书有效期与写给 AI 的指令。
+"""确定性符合项（bid.md 3.1）：大小写、合计、多个总价、超最高限价、异常低价提示、投标有效期、保证金、证书有效期与写给 AI 的指令。
 
 金额、天数与日期都在本机按关键参数比较（Decimal，ROUND_HALF_UP）；复用审核的 L-01、L-02、L-04、L-21。
 “本地规则”类要求按文字归到某项检查，每家写一个单元格（bid_cells，source local）：
@@ -134,6 +134,14 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
     else:
         verdicts["ceiling"] = ("yes", f"投标总价 {money(max(candidates))}，未超过最高限价 {money(ceiling)}",
                                [at(totals[0][2])] if totals else [])
+
+    # 异常低价（参照第五十一条（五）低于成本）：只提示，由评标委员会要求说明（V34Q-27）
+    if low := fact.get("low_price"):
+        where = [at(totals[0][2])] if totals else []
+        issues.append(_issue("low_price", "hint", f"投标总价 {money(total)} 比其余 {low['others']} 家平均 {low['others_mean']} 低 "
+                             f"{low['below_pct']}，请核实是否低于成本",
+                             [{"label": "投标总价", "value": money(total), "places": {b: where}},
+                              {"label": f"其余 {low['others']} 家平均", "value": low["others_mean"]}], ARTICLE + "（五）"))
 
     # 大小写（L-04）与分项计算（L-01、L-02）
     wrong_case = check_uppercase(nodes)

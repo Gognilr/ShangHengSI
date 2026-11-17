@@ -113,6 +113,33 @@ def test_local_check_two_similar_pricing_compliance(owner, db_sessionmaker):
     # 多个总价按最高者给出超限差额（V34Q-25），over_ceiling 仍为空
     assert pricing["bidders"][x]["over_ceiling"] is None and pricing["bidders"][x]["over_ceiling_max"] == "380,000.00"
     assert len(pricing["items"]) == 6 and pricing["items"][0]["prices"][b] == "123,600.00"
+    # 最高 / 最低（V34Q-27）：多个总价的一家不参加比较
+    assert pricing["bidders"][a]["mark"] == "lowest" and pricing["bidders"][b]["mark"] == "highest"
+    assert pricing["bidders"][b]["above_lowest"] == "78,480.00" and pricing["bidders"][b]["above_lowest_pct"] == "3.00%"
+    assert pricing["bidders"][x]["mark"] is None and pricing["bidders"][x]["not_compared"] == "多个总价，未参加比较"
+    assert pricing["compare"]["n"] == 2
+
+
+def test_total_compare_low_price_and_pattern():
+    """V34-B-06b：未填限价时也比较最高 / 最低；低于其余各家平均 20% 以上提示；三家总价等差、等比记线索。"""
+    from app.bid import pricing
+    from app.bid.compliance import BidNode
+
+    def run(totals):
+        nodes = {i: [BidNode(f"p{i}", f"投标总价：人民币 {t} 元。", i, None)] for i, t in enumerate(totals)}
+        return pricing.analyze(list(nodes), nodes, None, "CNY", lambda n: {"loc": n.loc})
+
+    analysis, clues, facts = run(["1,000,000.00", "1,100,000.00", "1,200,000.00", "700,000.00"])
+    rows = analysis["bidders"]
+    assert rows["2"]["mark"] == "highest" and rows["3"]["mark"] == "lowest" and rows["3"]["above_lowest"] is None
+    assert (rows["0"]["vs_mean"], rows["1"]["vs_mean"], rows["3"]["vs_mean"]) == ("0.00%", "+10.00%", "-30.00%")
+    assert rows["0"]["over_ceiling"] is None and "over_ceiling_max" not in rows["0"]  # 无限价不出限价字段
+    assert facts[3]["low_price"]["below_pct"] == "36.36%" and facts[0]["low_price"] is None
+    assert [c["ids"] for c in clues] == [(0, 1, 2)] and "相差 100,000.00" in clues[0]["title"]
+    _a, clues, _f = run(["1,000,000.00", "1,030,000.00", "1,060,900.00"])
+    assert len(clues) == 1 and "1.03 倍" in clues[0]["title"] and clues[0]["level"] == "medium"
+    _a, clues, _f = run(["1,000,000.00", "1,030,000.00", "1,070,000.00"])
+    assert not clues
 
 
 def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):
