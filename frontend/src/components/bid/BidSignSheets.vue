@@ -5,7 +5,8 @@ import { bidResultsKey } from './results'
 
 // 一家的签章页：缩略图（PDF 与图片）或一行（Word），每页 已盖章 / 缺章 / 看不清。各投标人页与逐条核对共用。
 // “本家全部已盖章”只标还没标注的页，先把例外页标为缺章或看不清再点（V34Q-27 第二部分第 6 条）。
-const props = defineProps<{ pages: BidSigning[] }>()
+// hideAll：逐条核对右栏已有“本家全部已盖章”（Y）
+const props = defineProps<{ pages: BidSigning[]; hideAll?: boolean }>()
 const ctx = inject(bidResultsKey)!
 const thumbs = computed(() => props.pages.filter(s => s.renderable && s.page))
 const lines = computed(() => props.pages.filter(s => !(s.renderable && s.page)))
@@ -18,7 +19,7 @@ defineExpose({ allStamped, left })
 
 <template>
   <div class="sign">
-    <p v-if="left.length" class="all">
+    <p v-if="left.length && !hideAll" class="all">
       <button type="button" class="act" @click="allStamped">本家全部已盖章</button>
       <span class="hint">把未标注的 {{ left.length }} 页标为已盖章；缺章、看不清的先单独标</span>
     </p>

@@ -14,6 +14,7 @@ const groups = computed(() => (Object.keys(stepGroupLabel) as StepGroup[])
   .map(g => ({ g, list: open.value.filter(s => s.group === g) })).filter(x => x.list.length))
 const more = ref<Set<StepGroup>>(new Set())
 const shown = (g: StepGroup, list: TodoStep[]) => more.value.has(g) ? list : list.slice(0, PER_GROUP)
+const units = computed(() => ctx.todos.value.filter(t => !t.done).length)
 const calc = computed(() => calcPending(ctx.data.value).length)
 const line = (s: TodoStep) => stepLine(s, ctx.shorts.value)
 const short = (id: string) => ctx.shorts.value[id] ?? ''
@@ -56,6 +57,7 @@ async function undo() { const u = last.value; last.value = null; await u?.undo()
         <button v-if="open.length" type="button" class="act primary" @click="ctx.focus()">逐条核对<ChevronRight :size="14" :stroke-width="1.75" aria-hidden="true" /></button>
       </span>
     </h3>
+    <p v-if="open.length" class="sum num">{{ units }} 项待核，合并为 {{ open.length }} 行：人工核对一条要求一行、各家并排，签章页一家一行</p>
     <p v-if="last" class="undo" role="status">{{ last.text }}<button type="button" class="link" @click="undo">撤销</button></p>
     <p v-if="!open.length" class="bid-empty">全部事项已核对。可以导出 Word 报告。</p>
     <div v-for="x in groups" :key="x.g" class="group">
@@ -93,6 +95,7 @@ async function undo() { const u = last.value; last.value = null; await u?.undo()
 .act { display: inline-flex; align-items: center; gap: 2px; padding: 3px 10px; border: 1px solid var(--si-hair-strong); border-radius: 8px; background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-2); cursor: pointer; white-space: nowrap; }
 .act:hover { color: var(--si-ink-1); background: var(--si-hover-bg); }
 .act.primary { border-color: var(--si-ink-1); color: var(--si-ink-1); font-weight: 600; }
+.sum { margin: -6px 0 10px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .undo { margin: 0 0 8px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .link { margin-left: 8px; padding: 0; border: 0; background: transparent; font: inherit; color: var(--si-ink-1); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .group + .group { margin-top: 12px; }

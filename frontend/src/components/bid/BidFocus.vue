@@ -112,7 +112,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <button type="button" class="link" @click="drawer = id">看要求出处</button>
           </li>
         </ul>
-        <BidSignSheets v-else :key="step.key" :pages="step.pages" />
+        <BidSignSheets v-else :key="step.key" :pages="step.pages" hide-all />
       </div>
 
       <aside class="right">
@@ -126,7 +126,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <BidReviewBar v-if="step.kind === 'item'" no-states :review="step.item" @change="patch => ctx.reviewItem((step as TodoStep & { kind: 'item' }).item.id, patch)" />
         <BidReviewBar v-else-if="step.kind === 'cell'" no-states :review="step.cell" @change="patch => ctx.reviewCell((step as TodoStep & { kind: 'cell' }).cell.requirement_id, (step as TodoStep & { kind: 'cell' }).cell.bidder_id, patch)" />
         <p v-if="step.kind === 'item' && step.item.level === 'veto'" class="hint">否决性结论须核实，报告中才以肯定语气写出。</p>
-        <p class="keys">Y 核实 · X 排除 · J 下一条 · K 上一条 · Esc 返回</p>
+        <p class="keys">Y {{ yesLabel }}<template v-if="noLabel"> · X {{ noLabel }}</template> · J 下一条 · K 上一条 · Esc 返回</p>
       </aside>
     </div>
     <BidCellDrawer v-if="drawer && step?.kind === 'manual'" :requirement-id="step.requirement.id" :bidder-id="drawer" @close="drawer = null" />

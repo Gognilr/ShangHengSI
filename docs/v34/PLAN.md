@@ -44,7 +44,7 @@
 | V34-B-07 | Word 报告、历史与搜索整合、golden 样本 | Q-02 | Sonnet，high | Terra，high | B-06 | — | 已完成（2026-11-16，Claude Sonnet 5.5，reports/V34-B-07.md；Q-24；Word 版式未在 Word 中目视） |
 | V34-B-06a | 结果页版式整理（B-06 截图反馈） | Q-25 | Opus，medium | Sol 6.1，medium | B-07 | 截图交用户 | 已完成（2026-11-17，Claude Opus 5.5，reports/V34-B-06a.md；Q-26；截图待用户确认） |
 | V34-B-06b | 报价区分最高最低、无限价隐藏、异常低价、总价规律 | Q-27 | Opus，high | Sol 6.1，high | B-06a | — | 已完成（2026-11-17，Claude Opus 5.5，reports/V34-B-06b.md；Q-28；截图待用户确认） |
-| V34-B-06c | 待你处理清单、结论列、逐条核对、批量确认 | Q-27 | Opus，medium | Sol 6.1，medium | B-06b | 截图交用户 | 未开始 |
+| V34-B-06c | 待你处理清单、结论列、逐条核对、批量确认 | Q-27 | Opus，medium | Sol 6.1，medium | B-06b | 截图交用户 | 已完成（2026-11-17，Claude Opus 5.5，reports/V34-B-06c.md；Q-29；截图待用户确认） |
 | V34-B-06d | 结果页图表：报价分布、比值曲线、线索关系图、文件时间线（甘特）、相似位置条、核对进度条 | Q-27 | Opus，medium | Sol 6.1，medium | B-06c | 截图交用户 | 未开始 |
 | V34-B-01a | 项目搜索与筛选、三级文件夹、分类与管理页维护 | Q-27 | Opus，high | Sol 6.1，high | B-06a | 截图交用户 | 未开始 |
 | V34-B-08 | 真实标书本机评测与阈值校准 | Q-02 | Opus，high | Sol 6.1，high | B-07 | 用户提供文件与密钥；结果交用户 | 未开始 |
