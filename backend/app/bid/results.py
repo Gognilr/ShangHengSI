@@ -281,4 +281,5 @@ def check_view(db, task):
                        "review_status": c.review_status, "note": note(c)} for c in cells],
             "signing": [{**s, "file": files[s["file_id"]].original_name, "renderable": renderable(files[s["file_id"]]),
                          "mark": marks.get(signing_key(s["file_id"], s["page"], s["loc"]))}
-                        for s in summary.get("signing", []) if s["file_id"] in files]}
+                        for s in summary.get("signing", []) if s["file_id"] in files],
+            "timeline": [{**t, "file": files[t["file_id"]].original_name} for t in summary.get("timeline", []) if t["file_id"] in files]}

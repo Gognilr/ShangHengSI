@@ -279,6 +279,51 @@ def check_props(bidders, files):
     return items
 
 
+def timeline(bidders, files):
+    """文件时间线（甘特图，V34-B-06d）：每个读到时间的文件一条“创建—最后修改”。group 相同的文件来自不同投标人、
+    文件标识或作者相同（已剔除招标文件中的）或同一软件 10 分钟内创建，与“文件属性相同”线索同一口径。"""
+    per = _props(files)
+    order = {b.id: k for k, b in enumerate(bidders)}
+    base = per.get(None, [])
+    base_ids = {p.get(k) for _f, p in base for k in ("pdf_id", "xmp_document_id", "xmp_original_id") if p.get(k)}
+    base_authors = set().union(*(_authors(p) for _f, p in base)) if base else set()
+    base_times = [(_tool(p), _time(p.get("created"))) for _f, p in base]
+    rows = [(f, p, _time(p.get("created")), _time(p.get("modified"))) for owner, found in per.items()
+            if owner is None or owner in order for f, p in found]
+    rows = [r for r in rows if r[2] or r[3]]
+    rows.sort(key=lambda r: (-1 if r[0].bidder_id is None else order[r[0].bidder_id], r[2] or r[3]))
+    parent = list(range(len(rows)))
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for i, j in combinations(range(len(rows)), 2):
+        (fa, pa, ta, _ma), (fb, pb, tb, _mb) = rows[i], rows[j]
+        if fa.bidder_id is None or fb.bidder_id is None or fa.bidder_id == fb.bidder_id:
+            continue
+        same_id = any(pa.get(k) and pa.get(k) == pb.get(k) and pa[k] not in base_ids for k in ("pdf_id", "xmp_document_id", "xmp_original_id"))
+        same_author = bool((_authors(pa) & _authors(pb)) - base_authors)
+        tool = _tool(pa)
+        near = (tool and tool == _tool(pb) and ta and tb and abs(ta - tb) <= timedelta(minutes=10)
+                and not any(tool == bt and tt and abs(ta - tt) <= timedelta(minutes=10) for bt, tt in base_times))
+        if same_id or same_author or near:
+            parent[root(i)] = root(j)
+    sizes = defaultdict(int)
+    for i in range(len(rows)):
+        sizes[root(i)] += 1
+    groups = {}
+    out = []
+    for i, (f, _p, created, modified) in enumerate(rows):
+        r = root(i)
+        group = groups.setdefault(r, len(groups) + 1) if sizes[r] > 1 else None
+        out.append({"bidder_id": str(f.bidder_id) if f.bidder_id else None, "file_id": str(f.id),
+                    "created": created.astimezone(timezone.utc).isoformat() if created else None,
+                    "modified": modified.astimezone(timezone.utc).isoformat() if modified else None, "group": group})
+    return out
+
+
 # ---------------------------------------------------------------- 相同图片
 
 def check_images(db, bidders, files):
@@ -425,7 +470,11 @@ def _similar_step(bidders, nodes):
     from app.bid import similar
     found, stats = similar.find([b.id for b in bidders], {b.id: [n[:5] for n in nodes.get(b.id, [])] for b in bidders},
                                 [n[:5] for n in nodes.get(None, [])])
-    return [_item("clue", f["ids"], "similar", f["level"], "（四）", f["title"], f["rows"]) for f in found], stats
+    items = []
+    for f in found:
+        items.append(_item("clue", f["ids"], "similar", f["level"], "（四）", f["title"], f["rows"]))
+        items[-1]["evidence"]["map"] = f["map"]
+    return items, stats
 
 
 def run(db, task):
@@ -468,6 +517,7 @@ def _run_once(db, task):
     started = time.monotonic()
     clues = (check_mixed(active, nodes) + check_contacts(active, nodes) + check_props(active, files)
              + check_images(db, active, files)) if two else []
+    summary["timeline"] = timeline(active, files)
     save("clues", started, clues)
     started = time.monotonic()
     items, notes = _pricing_step(db, task, active, nodes, files)

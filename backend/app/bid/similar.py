@@ -17,6 +17,7 @@ PAIR_DICE = 0.85  # 两家之间 Dice ≥ 0.85 视为近似句
 STRONG_RUN = 200  # 自写部分连续相同 ≥ 200 字为强
 STRONG_EXACT = 5  # 只有两家共有的完全相同句 ≥ 5 处为强
 MEDIUM_RUN = 80  # 合并后的段 ≥ 80 字为“长段相似”（中）
+MAP_SEGS = 300  # 位置条最多画的段数
 _SPLIT = re.compile(r"[^。；;！!？?\n]+[。；;！!？?]?")
 _STRIP = re.compile(r"[\W_]+")
 _LAW = re.compile(r"《[^《》]{2,40}(?:法|条例|规定|办法|细则|解释)》|第[一二三四五六七八九十百零\d]+条")
@@ -163,12 +164,32 @@ def _place(s):
     return {"file_id": str(s.file_id), "loc": s.loc, "page": s.page}
 
 
+def _map(a, b, graded, totals, starts):
+    """相似段落位置条：两家各一条轴（按句序，文件依次排列），每段给出两侧的句序范围与页码范围。"""
+    def side(seg, k):
+        ss = [m[k] for m in seg]
+        pages = [s.page for s in ss if s.page is not None]
+        return [min(s.index for s in ss), max(s.index for s in ss)], [min(pages), max(pages)] if pages else None, str(ss[0].file_id)
+    segs = []
+    for lv, length, _section, seg in sorted(graded, key=lambda g: min(m[0].index for m in g[3]))[:MAP_SEGS]:
+        (ia, pa, fa), (ib, pb, fb) = side(seg, 0), side(seg, 1)
+        segs.append({"level": lv, "chars": length, "a": ia, "b": ib, "pa": pa, "pb": pb, "fa": fa, "fb": fb})
+    return {"n": {str(a): totals[a], str(b): totals[b]}, "files": {str(a): starts[a], str(b): starts[b]}, "segs": segs}
+
+
 def find(bidders, nodes, tender_nodes):
     """返回 (线索列表, 统计)。bidders 为按录入顺序的 id；nodes {id: [(file_id, loc, page, text, kind)]}。"""
     tender = sentences(None, tender_nodes)
     pool, dropped = [], 0
+    totals, starts = {}, {}  # 位置条（V34-B-06d）：每家句子总数与各文件的起始句序号
     for b in bidders:
-        own, n = _drop_tender(sentences(b, nodes.get(b, [])), tender)
+        mine = sentences(b, nodes.get(b, []))
+        totals[b] = len(mine)
+        starts[b] = []
+        for x in mine:
+            if not starts[b] or starts[b][-1][0] != str(x.file_id):
+                starts[b].append([str(x.file_id), x.index])
+        own, n = _drop_tender(mine, tender)
         dropped += n
         pool += own
     for s in pool:
@@ -212,6 +233,6 @@ def find(bidders, nodes, tender_nodes):
         if only_two:
             title += f"，只有这两家共有的相同句 {only_two} 处"
         items.append({"ids": (a, b), "level": level, "title": title, "rows": rows,
-                      "more": max(0, len(graded) - len(rows))})
+                      "more": max(0, len(graded) - len(rows)), "map": _map(a, b, graded, totals, starts)})
     stats = {"sentences": len(pool), "dropped_tender": dropped}
     return items, stats

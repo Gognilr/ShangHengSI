@@ -96,6 +96,9 @@ def test_local_check_two_similar_pricing_compliance(owner, db_sessionmaker):
     assert similar["level"] == "strong" and similar["article"] == "（四）"
     assert not any(i["type"] == "similar" and x in i["bidder_ids"] for i in result["items"])  # 照抄招标文件的句子已剔除
     assert "两小时内响应" in similar["rows"][0]["left"]["text"]
+    seg = similar["map"]["segs"][0]  # 位置条（V34-B-06d）：两侧句序范围落在各自总句数内
+    assert 0 <= seg["a"][0] <= seg["a"][1] < similar["map"]["n"][a] and 0 <= seg["b"][0] <= seg["b"][1] < similar["map"]["n"][b]
+    assert {t["bidder_id"] for t in result["timeline"]} >= {a, b}
     assert clues[("pricing", (a, b))]["level"] == "strong" and "1.03" in clues[("pricing", (a, b))]["title"]
     assert not any(i["type"] == "pricing" and x in i["bidder_ids"] for i in result["items"])
     issues = {(i["type"], i["bidder_ids"][0]): i for i in result["items"] if i["kind"] == "issue"}
