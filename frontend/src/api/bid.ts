@@ -57,7 +57,15 @@ export interface BidItem extends BidReview {
   id: string; kind: 'issue' | 'clue' | 'normal_dup'; type: string; level: BidLevel; article: string | null; bidder_ids: string[]
   source: 'local' | 'model'; title: string; rows: BidEvidenceRow[]; normal?: string
   requirement_id: string | null
+  /** 相似段落位置条（V34-B-06d）：两家按句序的轴，文件依次排列；a / b 为句序范围，pa / pb 为页码范围 */
+  map?: BidSimilarMap
 }
+export interface BidSimilarMap {
+  n: Record<string, number>; files: Record<string, [string, number][]>
+  segs: { level: BidLevel; chars: number; a: [number, number]; b: [number, number]; pa: [number, number] | null; pb: [number, number] | null; fa: string; fb: string }[]
+}
+/** 文件时间线（甘特图）：bidder_id 为空是招标文件；group 相同的文件来自不同投标人且属性相关 */
+export interface BidTimelineFile { bidder_id: string | null; file_id: string; file: string; created: string | null; modified: string | null; group: number | null }
 export type BidVerdict = 'yes' | 'no' | 'missing' | 'unclear' | 'manual'
 export type BidReviewStatus = 'pending' | 'verified' | 'excluded'
 export const bidReviewLabel: Record<BidReviewStatus, string> = { pending: '待核对', verified: '已核实', excluded: '已排除' }
@@ -86,6 +94,7 @@ export interface BidCheck {
   parameters: { ceiling: string | null; currency: string | null }
   requirements: { id: string; group: BidGroup; text: string; method: BidMethod; seq: number }[]
   signing: BidSigning[]
+  timeline?: BidTimelineFile[]
 }
 export interface BidCellPlace { file_id: string; file: string; page: number | null; renderable: boolean; before: string; text: string; after: string }
 export interface BidCellDetail {

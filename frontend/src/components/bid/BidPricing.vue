@@ -4,6 +4,8 @@ import { ChevronRight } from '@lucide/vue'
 import type { Bidder, BidPricing } from '@/api/bid'
 import BidItemCard from './BidItemCard.vue'
 import BidLede from './BidLede.vue'
+import PriceStrip, { type PricePoint } from './charts/PriceStrip.vue'
+import RatioCurve from './charts/RatioCurve.vue'
 import { bidResultsKey, calcPending, ceilingView, confirmCalc, levelText, levelTone, markText, patternStep, pricingTypes, totalView, trimRatio, type LedePart } from './results'
 
 // 报价分析（V34Q-25 第 8 条）：限价 → 结论 → 各家报价（计算与大小写就地展开）→ 总价规律 → 两两比值（只列有规律的对）→ 分项对齐表。
@@ -33,6 +35,20 @@ const cmp = computed(() => pricing.value?.compare ?? null)
 const marked = (mark: 'highest' | 'lowest') => rows.value.filter(r => r.p.mark === mark).map(r => short(r.bidder.id)).join('、')
 const patterns = computed(() => pricing.value?.total_patterns ?? [])
 const calc = computed(() => calcPending(ctx.data.value).length)
+// 报价分布图：只画参加比较的各家（V34-B-06d）
+const points = computed<PricePoint[]>(() => rows.value.filter(r => r.p.total && !r.p.not_compared)
+  .map(r => ({ id: r.bidder.id, label: short(r.bidder.id), name: r.bidder.name, text: r.p.total!, mark: r.p.mark, low: !!r.p.low_price })))
+const stripCaption = computed(() => {
+  const c = cmp.value
+  if (!c) return ''
+  const parts = [`${c.n} 家总价在 ${c.lowest}～${c.highest} ${unit.value}之间` + (c.spread_pct ? `，最高比最低高 ${c.spread_pct}` : '')]
+  const low = rows.value.filter(r => r.p.low_price).map(r => short(r.bidder.id))
+  if (low.length) parts.push(`${low.join('、')}明显低于其余各家（警告色）`)
+  if (ceiling.value) { const over = rows.value.filter(r => r.ceiling.tone === 'over').map(r => short(r.bidder.id)); parts.push(over.length ? `${over.join('、')}在限价线右侧` : '各家都在限价线以内') }
+  const out = cols.value.filter(b => pricing.value!.bidders[b.id]!.not_compared).map(b => short(b.id))
+  if (out.length) parts.push(`${out.join('、')}未参加比较`)
+  return parts.join('；') + '。'
+})
 
 type Pair = BidPricing['pairs'][number]
 const patterned = computed(() => (pricing.value?.pairs ?? []).filter(p => p.label))
@@ -78,6 +94,7 @@ const lede = computed<LedePart[]>(() => {
         </p>
         <BidLede :parts="lede" />
       </div>
+      <PriceStrip v-if="cmp && points.length >= 2" :points="points" :mean="cmp.mean" :ceiling="ceiling" :unit="unit ?? ''" :caption="stripCaption" />
 
       <section class="bid-block">
         <h3 class="bid-title">各家报价<span v-if="calc" class="end"><button type="button" class="act" @click="confirmCalc(ctx)">确认本机计算的 {{ calc }} 条</button></span></h3>
@@ -125,6 +142,9 @@ const lede = computed<LedePart[]>(() => {
             <span :class="'bid-' + levelTone(p.level!)">{{ patternText(p) }}，{{ levelText[p.level!] }}</span>
             <span class="cv num">变异系数 {{ p.cv }}</span></li>
         </ul>
+        <div v-if="patterned.length" class="curves">
+          <RatioCurve v-for="p in patterned" :key="'c' + p.a + p.b" :items="pricing.items" :a="p.a" :b="p.b" :labels="ctx.shorts.value" />
+        </div>
         <p v-else class="bid-empty">各对之间未见分项价格规律。</p>
         <button v-if="plain.length" type="button" class="bid-fold" :aria-expanded="showPlain" @click="showPlain = !showPlain">
           <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: showPlain }" aria-hidden="true" />{{ patterned.length ? `其余 ${plain.length} 对未见规律` : `查看 ${plain.length} 对的比值` }}
@@ -176,6 +196,7 @@ tr.expand > td { padding: 0 0 8px 20px; background: transparent; }
 .found .who { min-width: 160px; color: var(--si-ink-1); font-weight: 500; }
 .found .cv { margin-left: auto; font: var(--si-font-meta); color: var(--si-ink-4); }
 .plain { margin-top: 8px; max-width: 760px; }
+.curves { display: flex; flex-direction: column; gap: 20px; margin-top: 16px; max-width: 880px; }
 .wide { overflow-x: auto; }
 .items th .note { color: var(--si-warn-ink); }
 .bid-table td .note { font: var(--si-font-caption); }

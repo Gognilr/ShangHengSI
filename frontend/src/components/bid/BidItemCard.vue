@@ -3,6 +3,7 @@ import { inject, ref } from 'vue'
 import { ChevronRight } from '@lucide/vue'
 import type { BidItem, BidPlace } from '@/api/bid'
 import BidReviewBar from './BidReviewBar.vue'
+import SimilarMap from './charts/SimilarMap.vue'
 import { bidResultsKey, bidTypeLabel, levelTone, sameSpans } from './results'
 
 // 一条问题或线索：标题行（等级色点、类型、条文项、涉及投标人、核对状态），展开为证据、并排对照与核对栏
@@ -34,6 +35,7 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
       <span v-if="statusMark[item.review_status]" class="status" :class="item.review_status">{{ statusMark[item.review_status] }}</span>
     </button>
     <div v-if="open || bare" class="detail">
+      <SimilarMap v-if="item.type === 'similar' && item.map?.segs.length" class="map" :map="item.map" :a="item.bidder_ids[0]!" :b="item.bidder_ids[1]!" :labels="ctx.shorts.value" :file-names="ctx.fileNames.value" />
       <dl v-for="(row, index) in item.rows" :key="index">
         <dt>{{ row.label }}<template v-if="row.count"> · {{ row.count }} 处</template>
           <template v-if="row.chars"> · 约 {{ row.chars }} 字 · {{ row.sentences }} 句<template v-if="row.section && sectionLabel[row.section]">（{{ sectionLabel[row.section] }}）</template></template></dt>
@@ -101,5 +103,6 @@ mark { background: var(--si-hl-medium); color: inherit; border-radius: 2px; }
 .prices th { color: var(--si-ink-3); }
 .prices .num { text-align: right; }
 .hint { font: var(--si-font-meta); color: var(--si-ink-3); }
+.map { margin-bottom: 16px; max-width: 880px; }
 .bar { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--si-hair); }
 </style>

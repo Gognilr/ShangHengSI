@@ -6,6 +6,8 @@ import type { Bidder, BidCell, BidCheck, BidItem, BidLevel, BidPricing, BidRevie
 /** 结果页（V34-B-06）各页签共用：数据、名称、乐观更新的核对函数与“查看原件页”。 */
 export interface BidResultsContext {
   projectId: string
+  /** 开标日（YYYY-MM-DD，文件时间线的竖线） */
+  openingDate: string
   data: Ref<BidCheck | undefined>
   names: Ref<Record<string, string>>
   /** 表头与结论句用的简称（V34Q-25 第 1 条），悬停显示全称 */
@@ -119,6 +121,13 @@ export function reviewTodos(d: BidCheck | undefined, bidders: Bidder[]): ReviewT
   }
   for (const s of d.signing) out.push({ key: `s${s.file_id}:${s.page ?? s.loc}`, kind: 'signing', bidder_ids: [s.bidder_id], done: !!s.mark })
   return out
+}
+/** 已排除、不计入核对进度的事项数（进度条第三段）：问题与线索、单元格 */
+export function excludedCount(d: BidCheck | undefined, bidder?: string): number {
+  if (!d) return 0
+  const has = (ids: string[]) => !bidder || ids.includes(bidder)
+  return d.items.filter(i => i.kind !== 'normal_dup' && i.review_status === 'excluded' && has(i.bidder_ids)).length
+    + d.cells.filter(c => c.review_status === 'excluded' && has([c.bidder_id])).length
 }
 export function progress(todos: ReviewTodo[], bidder?: string) {
   const list = bidder ? todos.filter(t => t.bidder_ids.includes(bidder)) : todos

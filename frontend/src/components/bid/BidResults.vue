@@ -11,6 +11,7 @@ import BidPricing from './BidPricing.vue'
 import BidFocus from './BidFocus.vue'
 import { bidResultsKey, pricingTypes, reviewTodos, shortNames, todoSteps } from './results'
 import './results.css'
+import './charts/charts.css'
 
 // 初审结果五个页签（bid.md 2.4、visual.md 7.5）。live 为真时（初审中）每 2 秒刷新，已完成的步骤先显示。
 const props = defineProps<{ project: BidProject; stateKey: string; live?: boolean }>()
@@ -107,7 +108,7 @@ function focus(key?: string) { focusAt.value = key ?? steps.value.find(s => !s.d
 const page = ref<{ fileId: string; page: number } | null>(null)
 const pageCount = computed(() => props.project.files.find(f => f.id === page.value?.fileId)?.page_count ?? 1)
 function openPage(fileId: string, n: number) { page.value = { fileId, page: n } }
-provide(bidResultsKey, { projectId: props.project.id, data, names, shorts, fileNames, renderable, todos, steps, reviewItem, reviewCell, reviewBatch, markSigning, focus, openPage })
+provide(bidResultsKey, { projectId: props.project.id, openingDate: props.project.opening_date, data, names, shorts, fileNames, renderable, todos, steps, reviewItem, reviewCell, reviewBatch, markSigning, focus, openPage })
 
 // 各投标人默认选疑似否决项最多（其次问题最多）的一家（V34Q-25 第 6 条）
 watch(data, d => {
@@ -167,7 +168,7 @@ const notes = computed(() => {
       <BidOverview v-if="tab === 'overview'" :bidders="project.bidders" @go="go" />
       <BidMatrix v-else-if="tab === 'matrix'" :bidders="project.bidders" :model-state="project.model.state" />
       <BidBidderIssues v-else-if="tab === 'bidders'" v-model="bidder" :bidders="project.bidders" />
-      <BidClues v-else-if="tab === 'clues'" :pair="pair" @clear="pair = null" />
+      <BidClues v-else-if="tab === 'clues'" :pair="pair" :bidders="project.bidders" @clear="pair = null" @pick="ids => pair = ids" />
       <BidPricing v-else :bidders="project.bidders" />
     </template>
     <p v-else-if="!error && !data" class="hint" role="status">正在读取初审结果…</p>

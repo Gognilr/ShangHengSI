@@ -3,7 +3,8 @@ import { computed, inject } from 'vue'
 import type { Bidder, BidItem, BidLevel } from '@/api/bid'
 import BidLede from './BidLede.vue'
 import BidTodoList from './BidTodoList.vue'
-import { bidderVerdict, bidResultsKey, ceilingView, levelText, markText, patternStep, progress, totalView, type LedePart } from './results'
+import ProgressBar from './charts/ProgressBar.vue'
+import { bidderVerdict, bidResultsKey, ceilingView, excludedCount, levelText, markText, patternStep, progress, totalView, type LedePart } from './results'
 
 // 总览（V34Q-25 第 5 条）：一句结论 + 核对进度 → 投标人表（按录入顺序，最左“结论”）→ 待你处理 → 有线索的两两关系。覆盖说明在页脚。
 // 总价旁标“最高”“最低”与异常低价；未填限价时不出现“与限价”列（V34Q-27）。
@@ -26,7 +27,7 @@ const rows = computed(() => props.bidders.map(b => {
   const price = pricing.value?.bidders[b.id]
   return {
     bidder: b, verdict: bidderVerdict(ctx.data.value, b.id), veto, other: own.length - veto, total: totalView(price), ceiling: ceilingView(price), price,
-    clues: byLevel(clues.value.filter(i => i.bidder_ids.includes(b.id))), progress: progress(ctx.todos.value, b.id),
+    clues: byLevel(clues.value.filter(i => i.bidder_ids.includes(b.id))), progress: progress(ctx.todos.value, b.id), excluded: excludedCount(ctx.data.value, b.id),
   }
 }))
 // 两两关系：只列有线索的一对；家数 ≥ 5 时用三角矩阵
@@ -73,7 +74,7 @@ const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.va
     <section class="bid-block">
       <h3 class="bid-title">投标人<span class="n">{{ bidders.length }}</span></h3>
       <table class="bid-table">
-        <colgroup><col style="width:104px"><col><col style="width:80px"><col style="width:80px"><col style="width:240px"><col v-if="hasCeiling" style="width:190px"><col style="width:120px"><col style="width:112px"></colgroup>
+        <colgroup><col style="width:104px"><col><col style="width:80px"><col style="width:80px"><col style="width:240px"><col v-if="hasCeiling" style="width:190px"><col style="width:120px"><col style="width:150px"></colgroup>
         <thead><tr><th title="疑似否决 > 有串标线索 > 只有一般问题 > 未见问题；已排除的不算">结论</th><th>投标人（按录入顺序）</th><th class="r">疑似否决</th><th class="r">其他问题</th><th class="r">投标总价</th><th v-if="hasCeiling">与限价</th><th>串标线索</th><th class="r" title="这一家要核的事项（已核 / 共）；涉及两家的串标线索在两家各计一次">核对进度</th></tr></thead>
         <tbody>
           <tr v-for="r in rows" :key="r.bidder.id">
@@ -89,7 +90,7 @@ const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.va
             </td>
             <td v-if="hasCeiling"><span :class="{ 'bid-over': r.ceiling.tone === 'over', 'bid-zero': r.ceiling.tone === 'none' }">{{ r.ceiling.text }}</span><span v-if="r.ceiling.tone === 'over'" class="num bid-over bid-diff">{{ r.ceiling.diff }}</span></td>
             <td><button v-if="r.clues.length" type="button" class="bid-link bid-lv" @click="emit('go', 'clues', { pair: [r.bidder.id] })"><span v-for="c in r.clues" :key="c.level" :class="c.level">{{ levelText[c.level] }} <b>{{ c.n }}</b></span></button><span v-else class="bid-zero">—</span></td>
-            <td class="r num"><button v-if="r.progress.total" type="button" class="bid-link" @click="emit('go', 'bidders', { bidder: r.bidder.id })">{{ r.progress.done }} / {{ r.progress.total }}</button><span v-else class="bid-zero">—</span></td>
+            <td class="r num"><ProgressBar v-if="r.progress.total || r.excluded" :done="r.progress.done" :total="r.progress.total" :excluded="r.excluded"><button type="button" class="bid-link" @click="emit('go', 'bidders', { bidder: r.bidder.id })">{{ r.progress.done }} / {{ r.progress.total }}</button></ProgressBar><span v-else class="bid-zero">—</span></td>
           </tr>
         </tbody>
       </table>

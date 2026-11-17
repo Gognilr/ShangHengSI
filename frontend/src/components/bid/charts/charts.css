@@ -1,0 +1,23 @@
+/* 结果页图表（V34-B-06d）：只用令牌。每张图下一句结论（figcaption），读屏用同内容的表格（.sr-only）。 */
+.chart { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.chart svg { display: block; overflow: visible; }
+.chart figcaption { font: var(--si-font-meta); color: var(--si-ink-2); }
+.chart figcaption .w { color: var(--si-warn-ink); }
+.chart figcaption .d { color: var(--si-danger-ink); }
+.chart text { font: var(--si-font-caption); fill: var(--si-ink-3); }
+.chart text.strong { fill: var(--si-ink-1); font-weight: 600; }
+.chart text.halo { paint-order: stroke; stroke: var(--si-bg-canvas); stroke-width: 4px; stroke-linejoin: round; }
+.chart .axis { stroke: var(--si-hair-strong); stroke-width: 1; }
+.chart .grid { stroke: var(--si-hair-faint); stroke-width: 1; }
+.chart .ref { stroke: var(--si-ink-4); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart .limit { stroke: var(--si-danger-ink); stroke-width: 1.5; }
+.chart .dot { fill: var(--si-brand); }
+.chart .dot.warn { fill: var(--si-warn-ink); }
+.chart .lv-s { fill: var(--si-danger-ink); stroke: var(--si-danger-ink); }
+.chart .lv-m { fill: var(--si-warn-ink); stroke: var(--si-warn-ink); }
+.chart .lv-w { fill: var(--si-ink-4); stroke: var(--si-ink-4); }
+.chart .hit { cursor: pointer; outline: none; }
+.chart .hit:focus-visible .ring { stroke: var(--si-focus); stroke-width: 2; }
+.chart .legend { display: flex; flex-wrap: wrap; gap: 16px; font: var(--si-font-caption); color: var(--si-ink-3); }
+.chart .legend i { display: inline-block; width: 14px; height: 8px; margin-right: 6px; border-radius: 2px; vertical-align: middle; font-style: normal; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
