@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { Check, FileDown, FolderOpen, ListChecks, Plus, ScanSearch, Settings2, UploadCloud } from '@lucide/vue'
 import { ApiError } from '@/api/http'
-import { bidApi, bidPolicyLabel, bidState, type BidProject, type BidSettings } from '@/api/bid'
+import { bidApi, bidPolicyLabel, bidState, type BidCategory, type BidProject, type BidSettings } from '@/api/bid'
 import RowMore from '@/components/RowMore.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import BidFiles from '@/components/bid/BidFiles.vue'
@@ -17,6 +17,10 @@ import BidModelCheck from '@/components/bid/BidModelCheck.vue'
 import BidExport from '@/components/bid/BidExport.vue'
 
 const route = useRoute(), router = useRouter(), id = computed(() => String(route.params.id))
+// 分类名只用于页头显示（V34-B-01a）
+const categories = ref<BidCategory[]>([])
+void bidApi.categories().then(r => { categories.value = r.items }).catch(() => {})
+const categoryName = computed(() => categories.value.find(c => c.id === project.value?.category_id)?.name)
 const project = ref<BidProject>(), loading = ref(false), error = ref(''), pending = ref(false), percent = ref<number | null>(null)
 const step = ref(0), reopened = ref(false)  // reopened：刚返回修改材料
 const locked = computed(() => !!project.value && !['preparing', 'ready'].includes(project.value.stage))  // 开始初审后材料锁定
@@ -92,7 +96,7 @@ async function mutate(action: () => Promise<BidProject>, whenLocked = false) {
 }
 function openSettings() { settingsError.value = ''; settingsDialog.value = true }
 async function saveSettings(body: BidSettings) {
-  await mutate(() => bidApi.update(id.value, body))
+  await mutate(() => bidApi.update(id.value, body), true)  // 开始初审后仍可改分类与文件夹
   if (error.value) { settingsError.value = error.value; error.value = '' } else settingsDialog.value = false
 }
 async function removeFile(fid: string) { delete rowErrors[fid]; await mutate(() => bidApi.removeFile(id.value, fid)) }
@@ -226,10 +230,10 @@ async function removeProject() {
       <header class="head">
         <div class="title">
           <h1>{{ project.title }}</h1>
-          <p class="meta"><span class="num">开标 {{ project.opening_date }}</span><i aria-hidden="true">·</i><BidStatus v-bind="bidState(project)" /><i aria-hidden="true">·</i><span>{{ bidPolicyLabel[project.policy] }}</span><i aria-hidden="true">·</i><span>仅本人可见</span></p>
+          <p class="meta"><template v-if="categoryName"><span>{{ categoryName }}</span><i aria-hidden="true">·</i></template><span class="num">开标 {{ project.opening_date }}</span><i aria-hidden="true">·</i><BidStatus v-bind="bidState(project)" /><i aria-hidden="true">·</i><span>{{ bidPolicyLabel[project.policy] }}</span><i aria-hidden="true">·</i><span>仅本人可见</span></p>
         </div>
         <div class="head-actions">
-          <el-button :disabled="blocked" @click="openSettings"><Settings2 :size="16" :stroke-width="1.75" />项目设置</el-button>
+          <el-button :disabled="pending" @click="openSettings"><Settings2 :size="16" :stroke-width="1.75" />项目设置</el-button>
           <RowMore :disabled="pending">
             <el-dropdown-item v-if="project.stage === 'checked'" :disabled="reopenBlock" @click="reopen">返回修改材料</el-dropdown-item>
             <el-dropdown-item v-else :disabled="blocked || !project.files.length" @click="reparse">重新解析全部文件</el-dropdown-item>
@@ -328,7 +332,7 @@ async function removeProject() {
 
     <input ref="picker" type="file" class="file-input" multiple :accept="target ? '.docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png' : '.docx,.doc,.wps,.rtf,.pdf'" @change="picked">
     <input ref="folders" type="file" class="file-input" multiple webkitdirectory @change="pickedFolders">
-    <BidSettingsDialog v-if="project" v-model="settingsDialog" title="项目设置" confirm-text="保存" :initial="{ title: project.title, opening_date: project.opening_date, policy: project.policy }" :busy="pending" :error="settingsError" @submit="saveSettings" />
+    <BidSettingsDialog v-if="project" v-model="settingsDialog" title="项目设置" confirm-text="保存" :initial="{ title: project.title, opening_date: project.opening_date, policy: project.policy, category_id: project.category_id, folder_id: project.folder_id }" :locked="locked" :busy="pending" :error="settingsError" @submit="saveSettings" />
     <el-dialog v-model="groupDialog" title="核对投标人分组" width="600px" :close-on-click-modal="!pending" append-to-body>
       <p class="dialog-lede">每个文件夹对应一家投标人。请把名称改成投标函上的全称；同名的已有投标人会把文件并入该卡片。</p>
       <ul class="group-list">

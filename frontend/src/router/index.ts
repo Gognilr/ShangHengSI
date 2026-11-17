@@ -65,6 +65,7 @@ export const router = createRouter({
             { path: 'laws', name: 'settings-laws', component: () => import('@/views/settings/Laws.vue') },
             { path: 'templates', name: 'settings-templates', component: () => import('@/views/settings/Templates.vue') },
             { path: 'knowledge', name: 'settings-knowledge', component: () => import('@/views/settings/Knowledge.vue') },
+            { path: 'bid-categories', name: 'settings-bid-categories', component: () => import('@/views/settings/BidCategories.vue') },
             { path: 'redaction', name: 'settings-redaction', component: () => import('@/views/settings/Redaction.vue') },
             { path: 'data', name: 'settings-data', component: () => import('@/views/settings/Data.vue') },
           ],

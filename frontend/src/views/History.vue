@@ -102,7 +102,7 @@ onBeforeUnmount(() => clearTimeout(debounce))
 
 /** 名称第二行小字：类型 · 文件类型 · 立场（V34-A-05，原三列并入名称） */
 function subline(row: HistoryItem) {
-  if (row.kind === 'bid') return ['标书初审', `${row.file_count} 个文件`].join(' · ')
+  if (row.kind === 'bid') return ['标书初审', row.category, `${row.file_count} 个文件`].filter(Boolean).join(' · ')
   const parts = [row.kind === 'session' ? '会话' : '审核任务']
   if (row.doc_type) parts.push(docTypeLabel(row.doc_type))
   if (row.kind === 'review' || row.run_count) parts.push(`${stanceLabel(row.stance)}立场`)

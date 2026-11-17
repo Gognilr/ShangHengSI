@@ -2,7 +2,7 @@
 // 后端每个接口仍会再校验，这里只决定显示什么。
 export type Perm =
   | 'use.review' | 'use.bid' | 'use.assistant' | 'use.meeting' | 'use.translate' | 'use.export'
-  | 'content.requirements' | 'content.templates' | 'content.kb' | 'content.terms' | 'content.laws'
+  | 'content.requirements' | 'content.templates' | 'content.kb' | 'content.terms' | 'content.laws' | 'content.bid_categories'
   | 'redaction.names' | 'redaction.words' | 'redaction.parties'
   | 'sys.accounts' | 'sys.models' | 'sys.data' | 'sys.lawsync'
 
@@ -16,6 +16,7 @@ export const SETTING_TABS: { name: string; label: string; search?: string; perms
   { name: 'laws', label: '法规库', perms: ['content.laws', 'sys.lawsync'] },
   { name: 'templates', label: '公司范本', perms: ['content.templates'] },
   { name: 'knowledge', label: '知识库', perms: ['content.kb'] },
+  { name: 'bid-categories', label: '标书分类', perms: ['content.bid_categories'] },
   { name: 'redaction', label: '脱敏', perms: ['redaction.names', 'redaction.words', 'redaction.parties', 'content.terms'] },
   { name: 'data', label: '数据', perms: ['sys.data'] },
 ]

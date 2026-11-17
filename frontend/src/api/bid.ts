@@ -1,7 +1,12 @@
 import { http } from './http'
 
 export type BidStage = 'preparing' | 'ready' | 'checking' | 'checked'
-export interface BidSummary { id: string; title: string; stage: BidStage; status: string; opening_date: string; last_activity_at: string }
+export interface BidSummary { id: string; title: string; stage: BidStage; status: string; opening_date: string; last_activity_at: string; category_id: number | null; folder_id: string | null }
+export interface BidFolder { id: string; parent_id: string | null; name: string; count: number }
+export interface BidFolderTree { folders: BidFolder[]; all: number; unfiled: number }
+export interface BidCategory { id: number; name: string; enabled: boolean; used?: number }
+/** 列表筛选（V34-B-01a）：folder 为 none 表示未归档 */
+export interface BidListQuery { page?: number; q?: string; category?: number; folder?: string; stage?: BidStage; from?: string; to?: string }
 export interface BidFile {
   id: string; bidder_id: string | null; name: string; ext: string; size_bytes: number; page_count: number | null
   has_password: boolean; needs_password: boolean; state: 'failed' | 'done' | 'waiting'; error: string | null; warnings: string[]; original_deleted: boolean
@@ -104,7 +109,7 @@ export interface BidCellDetail {
   places: BidCellPlace[]
 }
 export const bidLevelLabel: Record<BidLevel, string> = { strong: '强', medium: '中', weak: '弱', normal: '正常重复', veto: '疑似否决项', general: '一般问题', hint: '提示' }
-export interface BidSettings { title: string; opening_date: string; policy: 'ai' | 'local_only' }
+export interface BidSettings { title: string; opening_date: string; policy: 'ai' | 'local_only'; category_id: number | null; folder_id?: string | null }
 export const bidStageLabel: Record<BidStage, string> = { preparing: '准备中', ready: '待开标', checking: '初审中', checked: '待核对' }
 export const bidPolicyLabel: Record<BidSettings['policy'], string> = { local_only: '只做本地检查', ai: '本机检查 + 模型核对' }
 /** 列表与项目页共用的状态：文字 + 圆点色调（visual.md 第五节“圆点 + 文字”） */
@@ -119,7 +124,17 @@ export function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 export const bidApi = {
-  list: (page = 1) => http.get<{ items: BidSummary[]; total: number; checking_count: number }>('/bid', { page }),
+  list: (query: BidListQuery = {}) => http.get<{ items: BidSummary[]; total: number; checking_count: number }>('/bid', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
+  folders: () => http.get<BidFolderTree>('/bid/folders'),
+  createFolder: (name: string, parent_id: string | null) => http.post<BidFolderTree>('/bid/folders', { name, parent_id }),
+  renameFolder: (fid: string, name: string) => http.patch<BidFolderTree>(`/bid/folders/${fid}`, { name }),
+  removeFolder: (fid: string) => http.delete<BidFolderTree>(`/bid/folders/${fid}`),
+  place: (id: string, folder_id: string | null) => http.put<{ folder_id: string | null }>(`/bid/${id}/folder`, { folder_id }),
+  categories: () => http.get<{ items: BidCategory[] }>('/bid/categories'),
+  adminCategories: () => http.get<{ items: BidCategory[] }>('/admin/bid-categories'),
+  addCategory: (name: string) => http.post<{ items: BidCategory[] }>('/admin/bid-categories', { name }),
+  patchCategory: (cid: number, body: { name?: string; enabled?: boolean }) => http.patch<{ items: BidCategory[] }>(`/admin/bid-categories/${cid}`, body),
+  removeCategory: (cid: number) => http.delete<{ items: BidCategory[] }>(`/admin/bid-categories/${cid}`),
   create: (body: BidSettings) => http.post<BidProject>('/bid', body),
   get: (id: string) => http.get<BidProject>(`/bid/${id}`),
   update: (id: string, body: BidSettings) => http.patch<BidProject>(`/bid/${id}`, body),

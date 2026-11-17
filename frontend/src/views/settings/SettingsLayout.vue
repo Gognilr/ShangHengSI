@@ -4,15 +4,15 @@ import { settingSectionsKey, type SettingAnchor } from '@/utils/settingSections'
 import { useFx } from '@/utils/motion'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { Cpu, Database, EyeOff, FileStack, LibraryBig, List, ListChecks, Scale, ShieldCheck, UserRound, Users } from '@lucide/vue'
+import { Cpu, Database, EyeOff, FileStack, LibraryBig, List, ListChecks, Scale, ShieldCheck, Tags, UserRound, Users } from '@lucide/vue'
 import { SETTING_TABS } from '@/utils/permissions'
 
 // 设置页导航与路由一一对应，分页按权限点显示，路由守卫再校验（V31-U5F-07）。
 const auth = useAuthStore()
-const ICONS = { personal: UserRound, users: Users, roles: ShieldCheck, model: Cpu, requirements: ListChecks, laws: Scale, templates: FileStack, knowledge: LibraryBig, redaction: EyeOff, data: Database } as Record<string, typeof List>
+const ICONS = { personal: UserRound, users: Users, roles: ShieldCheck, model: Cpu, requirements: ListChecks, laws: Scale, templates: FileStack, knowledge: LibraryBig, 'bid-categories': Tags, redaction: EyeOff, data: Database } as Record<string, typeof List>
 const tabs = computed(() => SETTING_TABS.filter(t => auth.can(...t.perms)).map(t => ({ ...t, icon: ICONS[t.name] ?? List })))
 // 导航分三组（V321Q-51）；没有可见项的组不显示
-const GROUPS = [{ label: '我的', names: ['personal'] }, { label: '内容', names: ['requirements', 'laws', 'templates', 'knowledge', 'redaction'] }, { label: '系统', names: ['users', 'roles', 'model', 'data'] }]
+const GROUPS = [{ label: '我的', names: ['personal'] }, { label: '内容', names: ['requirements', 'laws', 'templates', 'knowledge', 'bid-categories', 'redaction'] }, { label: '系统', names: ['users', 'roles', 'model', 'data'] }]
 const groups = computed(() => GROUPS.map(g => ({ label: g.label, items: g.names.flatMap(n => tabs.value.filter(t => t.name === n)) })).filter(g => g.items.length))
 
 const anchors = ref<SettingAnchor[]>([]), activeSection = ref(''), root = ref<HTMLElement>(), fx = useFx()

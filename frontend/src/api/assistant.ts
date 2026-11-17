@@ -22,7 +22,7 @@ export interface SessionFile extends TaskFile { confirmed_at: string | null; med
 export interface Suggestion { loc: string; start: number; end: number; from: string; to: string }
 export const ASSISTANT_ERROR_MESSAGES: Record<string, string> = { ASR_DISABLED: '录音转写未启用，请联系管理员' }
 /** 历史记录行（V32-B-01）：工作台会话与旧审核任务合并列出 */
-export interface HistoryItem extends TaskListItem { kind: 'session' | 'review' | 'bid'; /** 标书初审的阶段（高风险为疑似否决项数，待处理为待核对的问题与线索数） */ stage?: string | null; last_activity_at: string; run_count: number; file_count: number
+export interface HistoryItem extends TaskListItem { kind: 'session' | 'review' | 'bid'; /** 标书初审的阶段（高风险为疑似否决项数，待处理为待核对的问题与线索数） */ stage?: string | null; /** 标书分类名（V34-B-01a） */ category?: string | null; last_activity_at: string; run_count: number; file_count: number
   /** 最新一轮：待处理问题数、可导出报告的轮次 id、审核进行中（V321-E-04） */
   pending_count: number; latest_run_id: string | null; reviewing: boolean }
 export interface HistoryPage { items: HistoryItem[]; total: number; page: number; page_size: number }
