@@ -209,6 +209,9 @@ def _stopwords():
 
 def keep_entity(text: str, entity: Entity) -> bool:
     surface = text[entity.start:entity.end].strip()
+    from app.redaction.plain import technical_brand_spans
+    if any(a <= entity.start and entity.end <= b for a, b in technical_brand_spans(text)):
+        return False
     if surface.casefold() in PARTY_LABEL_WORDS:
         return False
     if surface.startswith('方') and any(

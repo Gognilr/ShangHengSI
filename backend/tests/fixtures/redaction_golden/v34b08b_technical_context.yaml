@@ -1,0 +1,12 @@
+description: B-08b Q-38 的虚构技术语境，固定普通技术词、设备位号、品牌槽和空白表单标签的误识别边界；不改变通用识别阈值
+stance: other
+must_replace:
+  - {text: 北麓虚构机电有限公司, category: ORG}
+  - {text: Aurora Fictive Bearings Ltd., category: ORG}
+must_keep:
+  - 最佳效率点
+  - 法兰
+  - Q-204C/D
+  - RIVO
+  - NOVA
+  - 电 话

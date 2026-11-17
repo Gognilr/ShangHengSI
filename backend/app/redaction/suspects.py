@@ -379,7 +379,7 @@ def _plain_pattern() -> re.Pattern:
 @by_text
 def plain_content_spans(text: str) -> list[tuple[int, int]]:
     """标准、化学式、贸易术语和行业参数的偏移；只用于不确定项过滤。"""
-    return [m.span() for pattern in (_STANDARD, _TRADE, _plain_pattern()) for m in pattern.finditer(text)] + [
+    return plain.technical_brand_spans(text) + [m.span() for pattern in (_STANDARD, _TRADE, _plain_pattern()) for m in pattern.finditer(text)] + [
         m.span() for m in _CHEMICAL.finditer(text)
         if any(c.isdigit() for c in m.group()) or m.group() in _CHEMICAL_PLAIN]
 

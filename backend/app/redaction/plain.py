@@ -15,6 +15,13 @@ _EQUIPMENT = re.compile(r'[一-鿿]{2,6}(?:总成|装置|系统|设备|机组|�
                         r'控制柜|柜|屏|模块|热电阻|热电偶|管道|管线|电缆|桥架|支架|法兰|平台|软件|终端|网关|云)')
 
 
+def technical_brand_spans(text: str) -> list[tuple[int, int]]:
+    """仅保留明确技术品牌字段中的拉丁品牌串；单位全称与用户词条仍先于本过滤。"""
+    pattern = r'(?:滚动轴承|轴承|设备|电机|仪表)(?:品牌|厂牌)[ \t]*[:：][ \t]*([A-Za-z][A-Za-z0-9&./-]*(?:[ \t]+[A-Za-z][A-Za-z0-9&./-]*)*)'
+    legal = re.compile(r'\b(?:Co|Company|Ltd|Limited|Corp|Corporation|Inc|LLC|PLC|GmbH|AG)\b', re.I)
+    return [m.span(1) for m in re.finditer(pattern, text) if not legal.search(m[1])]
+
+
 def equipment_name(text: str, start: int, end: int) -> bool:
     return bool(_EQUIPMENT.fullmatch(text[start:end])) and not name_slot(text, start, end)
 
