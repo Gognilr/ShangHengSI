@@ -32,7 +32,7 @@
 
 ## 当前阶段：V3.4（计划已确认，2026-11-16）
 
-计划 docs/v34/PLAN.md：导航“一事一入口”、视觉第三版“素纸”（主色松针青、标识松鳞，docs/v34/design/visual.md）、快捷标签不弹窗与单证核对本地为主（A 批），以及新菜单“标书初审”（B 批，docs/v34/design/bid.md，整体设计、一次实施）。用户 2026-11-16 确认，执行规则见计划第〇节；A 批期间视觉以 visual.md 为准（frontend.md 在 V34-Z 换为第三版）。新问题记入 docs/v34/open\_questions.md（V34Q-11 起），报告放 docs/v34/reports/。任务由 Claude 与 ChatGPT（GPT-6.1 Sol）共同分担，谁有额度谁做；每个任务单独开一个新会话。真实合同与真实标书只在本机评测，原文、名称、金额、密码不进仓库、对话与日志。
+计划 docs/v34/PLAN.md：导航“一事一入口”、视觉第三版“素纸”（主色松针青、标识松鳞，docs/v34/design/visual.md）、快捷标签不弹窗与单证核对本地为主（A 批），以及新菜单“标书初审”（B 批，docs/v34/design/bid.md，整体设计、一次实施）。用户 2026-11-16 确认，执行规则见计划第〇节；A 批期间视觉以 visual.md 为准（frontend.md 在 V34-Z 换为第三版）。新问题记入 docs/v34/open\_questions.md（V34Q-11 起），报告放 docs/v34/reports/。任务由 Claude 与 ChatGPT（GPT-6.1 Sol）共同分担，谁有额度谁做；每个任务单独开一个新会话。真实合同与真实标书只在本机评测，原文、名称、金额、密码不进仓库、对话与日志（例外：B-08 的两组过期公开招投标文件可在会话中通读分析，仍不进仓库，V34Q-39）。
 
 V3.3.0 已发布并升级服务器（docs/v33/reports/V33-Z.md，标签 v3.3.0 指向 7b6a8cc）。
 
