@@ -263,13 +263,16 @@ def _total_text(price) -> str:
     if price.get("total"):
         return f"{price['total']} {price.get('currency') or ''}".strip()
     found = price.get("totals_found") or []
-    return f"{len(found)} 个不同总价" if found else "未识别"
+    # 多个总价：写最高的一个并注明个数（与结果页一致，V34Q-25）
+    return f"{found[-1]}（{len(found)} 个总价）" if len(found) > 1 else found[0] if found else "未识别"
 
 
 def _ceiling_text(price) -> str:
     over = (price or {}).get("over_ceiling")
     if over is None:
-        return "多个总价，见报价分析" if price and not price.get("total") and len(price.get("totals_found") or []) > 1 else "—"
+        over = (price or {}).get("over_ceiling_max")
+    if over is None:
+        return "—"
     return "低于限价" if over.startswith("-") else "等于限价" if over == "0.00" else f"超限价 {over}"
 
 

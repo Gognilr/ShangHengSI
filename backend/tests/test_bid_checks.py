@@ -110,6 +110,8 @@ def test_local_check_two_similar_pricing_compliance(owner, db_sessionmaker):
     assert cells[a] == {"yes"} and "no" in cells[x]
     pricing = result["pricing"]
     assert pricing["bidders"][a]["total"] == "2,616,000.00" and pricing["bidders"][x]["totals_found"] == ["4,108,000.00", "4,180,000.00"]
+    # 多个总价按最高者给出超限差额（V34Q-25），over_ceiling 仍为空
+    assert pricing["bidders"][x]["over_ceiling"] is None and pricing["bidders"][x]["over_ceiling_max"] == "380,000.00"
     assert len(pricing["items"]) == 6 and pricing["items"][0]["prices"][b] == "123,600.00"
 
 

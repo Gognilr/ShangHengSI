@@ -183,6 +183,9 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None):
                             "total": money(table_total) if table_total is not None else None}
         if ceiling is not None and facts[b]["total"] is not None and (currency_found in (None, currency)):
             row["over_ceiling"] = money(facts[b]["total"] - ceiling)
+        elif ceiling is not None and len(distinct) > 1 and (currency_found in (None, currency)):
+            # 多个不同总价：按最高者与限价比较（V34Q-25 第 4 条），over_ceiling 仍只表示唯一总价
+            row["over_ceiling_max"] = money(distinct[-1] - ceiling)
         analysis["bidders"][str(b)] = row
     # 各家都填同一价格的分项（多为招标文件给定的暂列金额、固定单价）不参与规律比对
     keyed = {b: {it[0]: _value(it) for it in facts[b]["main"][2] if it[0]} for b in bidders if facts[b]["main"]}
