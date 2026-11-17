@@ -37,3 +37,6 @@
 .bid-table th small, .bid-table td small { display: block; font: var(--si-font-caption); color: var(--si-ink-4); font-weight: 400; }
 /* 页脚说明（细线以上的小字），与固定声明合为通栏脚注 */
 .bid-foot { margin: 0; padding: 14px 0 0; border-top: 1px solid var(--si-hair); list-style: none; display: flex; flex-direction: column; gap: 4px; font: var(--si-font-caption); color: var(--si-ink-4); }
+/* 总价旁的“最高”“最低”“异常低价”（V34Q-27）：小字，不加底色 */
+.bid-mark { margin-left: 6px; font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
+.bid-mark.w { color: var(--si-warn-ink); }

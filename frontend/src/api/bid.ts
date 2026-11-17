@@ -67,7 +67,13 @@ export interface BidCell extends BidReview { requirement_id: string; bidder_id: 
 export interface BidPricing {
   bidders: Record<string, { total: string | null; totals_found: string[]; currency: string | null; table: { name: string; rows: number; total: string | null } | null; over_ceiling: string | null
     /** 多个不同总价时最高者与限价之差（V34Q-25）；over_ceiling 只对应唯一总价 */
-    over_ceiling_max?: string | null }>
+    over_ceiling_max?: string | null
+    /** 总价比较（V34Q-27，后端 Decimal）：最高 / 最低、比最低价高、偏离平均、异常低价；not_compared 为未参加比较的原因 */
+    mark?: 'highest' | 'lowest' | null; above_lowest?: string | null; above_lowest_pct?: string | null; vs_mean?: string | null
+    low_price?: { others: number; others_mean: string; below_pct: string } | null; not_compared?: string | null }>
+  compare?: { n: number; highest: string; lowest: string; mean: string; spread_pct: string | null } | null
+  /** 三家及以上总价等差 / 等比（ids 按金额从低到高） */
+  total_patterns?: { ids: string[]; kind: 'diff' | 'ratio'; step: string; level: BidLevel }[]
   items: { name: string; prices: Record<string, string | null>; fixed: boolean }[]
   pairs: { a: string; b: string; aligned: number; aligned_by: 'name' | 'row'; n?: number; mean_ratio?: string; cv?: string; level?: BidLevel; label?: string }[]
   aligned_by: Record<string, 'name' | 'row'>; base?: string

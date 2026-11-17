@@ -2,9 +2,10 @@
 import { computed, inject } from 'vue'
 import type { Bidder, BidItem, BidLevel } from '@/api/bid'
 import BidLede from './BidLede.vue'
-import { bidResultsKey, ceilingView, levelText, progress, totalView, type LedePart } from './results'
+import { bidResultsKey, ceilingView, levelText, markText, patternStep, progress, totalView, type LedePart } from './results'
 
 // 总览（V34Q-25 第 5 条）：一句结论 + 核对进度 → 投标人表（按录入顺序）→ 有线索的两两关系。覆盖说明在页脚。
+// 总价旁标“最高”“最低”与异常低价；未填限价时不出现“与限价”列（V34Q-27）。
 const props = defineProps<{ bidders: Bidder[] }>()
 const emit = defineEmits<{ go: [tab: 'bidders' | 'clues' | 'pricing' | 'matrix', filter?: { bidder?: string; pair?: string[] }] }>()
 const ctx = inject(bidResultsKey)!
@@ -23,7 +24,7 @@ const rows = computed(() => props.bidders.map(b => {
   const veto = own.filter(i => i.level === 'veto').length
   const price = pricing.value?.bidders[b.id]
   return {
-    bidder: b, veto, other: own.length - veto, total: totalView(price), ceiling: ceilingView(price, hasCeiling.value),
+    bidder: b, veto, other: own.length - veto, total: totalView(price), ceiling: ceilingView(price), price,
     clues: byLevel(clues.value.filter(i => i.bidder_ids.includes(b.id))), progress: progress(ctx.todos.value, b.id),
   }
 }))
@@ -55,8 +56,10 @@ const lede = computed<LedePart[]>(() => {
       parts.push(part)
     }
   }
-  const over = rows.value.filter(r => r.ceiling.tone === 'over')
+  const over = hasCeiling.value ? rows.value.filter(r => r.ceiling.tone === 'over') : []
   if (over.length) parts.push([`${over.map(r => short(r.bidder.id)).join('、')}的报价`, ['超最高限价', 'd']])
+  rows.value.filter(r => r.price?.low_price).forEach(r => parts.push([`${short(r.bidder.id)}的报价比其余各家平均低 ${r.price!.low_price!.below_pct}（`, ['异常低价', 'w'], '）']))
+  ;(pricing.value?.total_patterns ?? []).forEach(t => parts.push([`${t.ids.map(short).join('、')}的投标总价`, [patternStep(t), 'w']]))
   return parts
 })
 const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.value.total}` + (excluded.value ? ` · 另有 ${excluded.value} 条已排除，不计入` : ''))
@@ -69,8 +72,8 @@ const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.va
     <section class="bid-block">
       <h3 class="bid-title">投标人<span class="n">{{ bidders.length }}</span></h3>
       <table class="bid-table">
-        <colgroup><col><col style="width:96px"><col style="width:96px"><col style="width:190px"><col style="width:190px"><col style="width:120px"><col style="width:112px"></colgroup>
-        <thead><tr><th>投标人（按录入顺序）</th><th class="r">疑似否决</th><th class="r">其他问题</th><th class="r">投标总价</th><th>与限价</th><th>串标线索</th><th class="r" title="这一家要核的事项（已核 / 共）；涉及两家的串标线索在两家各计一次">核对进度</th></tr></thead>
+        <colgroup><col><col style="width:96px"><col style="width:96px"><col style="width:240px"><col v-if="hasCeiling" style="width:190px"><col style="width:120px"><col style="width:112px"></colgroup>
+        <thead><tr><th>投标人（按录入顺序）</th><th class="r">疑似否决</th><th class="r">其他问题</th><th class="r">投标总价</th><th v-if="hasCeiling">与限价</th><th>串标线索</th><th class="r" title="这一家要核的事项（已核 / 共）；涉及两家的串标线索在两家各计一次">核对进度</th></tr></thead>
         <tbody>
           <tr v-for="r in rows" :key="r.bidder.id">
             <td class="name" :title="r.bidder.name">{{ r.bidder.name }}</td>
@@ -78,9 +81,11 @@ const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.va
             <td class="r num"><button v-if="r.other" type="button" class="bid-link" @click="emit('go', 'bidders', { bidder: r.bidder.id })">{{ r.other }}</button><span v-else class="bid-zero">—</span></td>
             <td class="r num">
               <button v-if="r.total.text" type="button" class="bid-link" @click="emit('go', 'pricing')">{{ r.total.text }}</button><span v-else class="bid-zero">未识别</span>
-              <small v-if="r.total.multi.length" :title="'出现的总价：' + r.total.multi.join('、')">{{ r.total.multi.length }} 个总价</small>
+              <span v-if="r.price?.mark" class="bid-mark">{{ markText[r.price.mark] }}</span>
+              <span v-if="r.price?.low_price" class="bid-mark w" :title="`比其余 ${r.price.low_price.others} 家平均 ${r.price.low_price.others_mean} 低 ${r.price.low_price.below_pct}`">异常低价</span>
+              <small v-if="r.total.multi.length" :title="'出现的总价：' + r.total.multi.join('、')">{{ r.total.multi.length }} 个总价，未参加比较</small>
             </td>
-            <td><span :class="{ 'bid-over': r.ceiling.tone === 'over', 'bid-zero': r.ceiling.tone === 'none' }">{{ r.ceiling.text }}</span><span v-if="r.ceiling.tone === 'over'" class="num bid-over bid-diff">{{ r.ceiling.diff }}</span></td>
+            <td v-if="hasCeiling"><span :class="{ 'bid-over': r.ceiling.tone === 'over', 'bid-zero': r.ceiling.tone === 'none' }">{{ r.ceiling.text }}</span><span v-if="r.ceiling.tone === 'over'" class="num bid-over bid-diff">{{ r.ceiling.diff }}</span></td>
             <td><button v-if="r.clues.length" type="button" class="bid-link bid-lv" @click="emit('go', 'clues', { pair: [r.bidder.id] })"><span v-for="c in r.clues" :key="c.level" :class="c.level">{{ levelText[c.level] }} <b>{{ c.n }}</b></span></button><span v-else class="bid-zero">—</span></td>
             <td class="r num"><button v-if="r.progress.total" type="button" class="bid-link" @click="emit('go', 'bidders', { bidder: r.bidder.id })">{{ r.progress.done }} / {{ r.progress.total }}</button><span v-else class="bid-zero">—</span></td>
           </tr>

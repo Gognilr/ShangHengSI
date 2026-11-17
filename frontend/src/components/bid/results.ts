@@ -22,11 +22,13 @@ export const bidResultsKey: InjectionKey<BidResultsContext> = Symbol('bidResults
 
 export const bidTypeLabel: Record<string, string> = {
   mixed: '混装', contact: '联系信息相同', props: '文件属性相同', image: '相同图片', similar: '相似段落', pricing: '报价规律',
-  multi_total: '多个总价', sum_total: '合计与总价', ceiling: '超最高限价', uppercase: '大小写', row_calc: '分项计算', sum_rows: '合计计算',
+  multi_total: '多个总价', sum_total: '合计与总价', ceiling: '超最高限价', low_price: '异常低价', uppercase: '大小写', row_calc: '分项计算', sum_rows: '合计计算',
   validity: '投标有效期', deposit: '保证金', cert_expired: '证书有效期', ai_instruction: '写给 AI 的指令',
   model_response: '模型判断', deviation_conflict: '偏离表与正文',
 }
-export const pricingTypes = new Set(['multi_total', 'sum_total', 'ceiling', 'uppercase', 'row_calc', 'sum_rows'])
+export const pricingTypes = new Set(['multi_total', 'sum_total', 'ceiling', 'low_price', 'uppercase', 'row_calc', 'sum_rows'])
+/** 总价旁的“最高”“最低”（V34Q-27：仍按录入顺序排列，不排序） */
+export const markText: Record<string, string> = { highest: '最高', lowest: '最低' }
 export const levelText: Record<string, string> = { strong: '强', medium: '中', weak: '弱' }
 /** 结论句：每个分句由片段组成，[文字, 色调] 的片段着色（d 危险墨、w 警告墨），其余为正文色 */
 export type LedeSeg = string | [string, 'd' | 'w' | 'b']
@@ -60,13 +62,17 @@ export function shortNames(bidders: Bidder[]): Record<string, string> {
 
 /** 与限价（V34Q-25 第 4 条）：金额比较由后端用 Decimal 完成，这里只读差额的符号 */
 export interface CeilingView { tone: 'over' | 'under' | 'equal' | 'none'; text: string; diff: string | null }
-export function ceilingView(price: BidPricing['bidders'][string] | undefined, hasCeiling: boolean): CeilingView {
-  if (!hasCeiling) return { tone: 'none', text: '未填限价', diff: null }
+/** 未填限价时各页不显示“与限价”列（V34Q-27），这里只在填了限价时调用 */
+export function ceilingView(price: BidPricing['bidders'][string] | undefined): CeilingView {
   const over = price?.over_ceiling ?? price?.over_ceiling_max ?? null
   if (over == null) return { tone: 'none', text: '—', diff: null }
   if (over.startsWith('-')) return { tone: 'under', text: '低于限价', diff: over.slice(1) }
   if (over === '0.00') return { tone: 'equal', text: '等于限价', diff: null }
   return { tone: 'over', text: '▲ 超限价', diff: over }
+}
+/** 总价规律的说明（与后端线索标题同义） */
+export function patternStep(t: NonNullable<BidPricing['total_patterns']>[number]) {
+  return t.kind === 'diff' ? `从低到高每家相差 ${t.step}` : `从低到高每家约为前一家的 ${t.step} 倍`
 }
 /** 投标总价：唯一时直接显示；多个时显示最高的一个（后端已升序排列），另注“n 个总价” */
 export function totalView(price: BidPricing['bidders'][string] | undefined): { text: string | null; multi: string[] } {

@@ -31,7 +31,7 @@ METHOD = {"local": "本地规则", "model": "模型判断", "manual": "人工核
 SOURCE = {"marked": "原文标记", "model": "模型提取", "default": "默认（第五十一条）", "manual": "手工"}
 SIGN = {"stamped": "已盖章", "missing": "缺章", "unclear": "看不清", None: "未标注"}
 TYPE = {"mixed": "混装", "contact": "联系信息相同", "props": "文件属性相同", "image": "相同图片", "similar": "相似段落", "pricing": "报价规律",
-        "multi_total": "多个总价", "sum_total": "合计与总价", "ceiling": "超最高限价", "uppercase": "大小写", "row_calc": "分项计算",
+        "multi_total": "多个总价", "sum_total": "合计与总价", "ceiling": "超最高限价", "low_price": "异常低价", "uppercase": "大小写", "row_calc": "分项计算",
         "sum_rows": "合计计算", "validity": "投标有效期", "deposit": "保证金", "cert_expired": "证书有效期",
         "ai_instruction": "写给 AI 的指令", "model_response": "模型判断", "deviation_conflict": "偏离表与正文"}
 SECTION = {"tech": "技术参数章节，已降一档", "price": "报价章节，已升一档"}
@@ -238,6 +238,7 @@ def _overview(doc, d: _Data):
     _para(doc, f"疑似否决项 {len(veto)} 项（已人工核实 {verified} 项）；其他问题 {len(d.issues) - len(veto)} 项；串标线索 {len(d.clues)} 条（{_clue_counts(d.clues)}）；"
                f"待人工核对 {d.pending_total()} 项；已排除 {d.excluded} 条（不列入正文）。")
     pricing = d.view["pricing"] or {}
+    has_ceiling = bool(d.params.get("ceiling"))  # 未填限价时不出现任何限价内容（V34Q-27）
     rows = []
     for b in d.bidders:
         own = [i for i in d.issues if str(b.id) in map(str, i["bidder_ids"])]
@@ -245,10 +246,15 @@ def _overview(doc, d: _Data):
         price = (pricing.get("bidders") or {}).get(str(b.id)) or {}
         rows.append((crypto.decrypt_text(b.name_enc),
                      f"{len(own_veto)}（已核实 {sum(1 for i in own_veto if i['review_status'] == 'verified')}）" if own_veto else "0",
-                     len(own) - len(own_veto), d.pending_for(b.id), _total_text(price), _ceiling_text(price),
+                     len(own) - len(own_veto), d.pending_for(b.id), _total_text(price, mark=True),
+                     *([_ceiling_text(price)] if has_ceiling else []),
                      _clue_counts([c for c in d.clues if str(b.id) in map(str, c["bidder_ids"])])))
-    _table(doc, ("投标人（按录入顺序）", "疑似否决项", "其他问题", "待人工核对", "投标总价", "与最高限价", "涉及串标线索"), rows,
-           (6, 2.8, 2.4, 2.6, 3.8, 4.0, 5.1))
+    if has_ceiling:
+        _table(doc, ("投标人（按录入顺序）", "疑似否决项", "其他问题", "待人工核对", "投标总价", "与最高限价", "涉及串标线索"), rows,
+               (6, 2.8, 2.4, 2.6, 3.8, 4.0, 5.1))
+    else:
+        _table(doc, ("投标人（按录入顺序）", "疑似否决项", "其他问题", "待人工核对", "投标总价", "涉及串标线索"), rows,
+               (7, 3, 2.6, 2.8, 5.6, 5.7))
     pairs = _pair_lines(d)
     if pairs:
         _sub(doc, "串标线索涉及的投标人两两关系")
@@ -257,11 +263,15 @@ def _overview(doc, d: _Data):
     _coverage(doc, d)
 
 
-def _total_text(price) -> str:
+MARK = {"highest": "最高", "lowest": "最低"}
+
+
+def _total_text(price, mark=False) -> str:
     if not price:
         return "未识别"
     if price.get("total"):
-        return f"{price['total']} {price.get('currency') or ''}".strip()
+        tag = f"（{MARK[price['mark']]}）" if mark and price.get("mark") in MARK else ""
+        return f"{price['total']} {price.get('currency') or ''}".strip() + tag
     found = price.get("totals_found") or []
     # 多个总价：写最高的一个并注明个数（与结果页一致，V34Q-25）
     return f"{found[-1]}（{len(found)} 个总价）" if len(found) > 1 else found[0] if found else "未识别"
@@ -474,16 +484,35 @@ def _pricing(doc, d: _Data, number="五"):
     if not pricing:
         _para(doc, "没有可分析的报价（未识别到报价表或投标总价）。")
         return
-    _para(doc, "按投标人录入顺序排列，不排序、不标注最低价；金额与限价比较由本机用 Decimal 计算。"
-          + (f"招标文件最高限价：{ceiling} {d.params.get('currency') or ''}。" if ceiling else "关键参数中未填写最高限价。"))
+    lead = "投标人按录入顺序排列；金额由本机计算。"
+    if ceiling:
+        lead += f"招标文件最高限价：{ceiling} {d.params.get('currency') or ''}。"
+    if cmp := pricing.get("compare"):
+        lead += (f"参加比较的 {cmp['n']} 家中，最高 {cmp['highest']}，最低 {cmp['lowest']}，平均 {cmp['mean']}"
+                 + (f"，最高比最低高 {cmp['spread_pct']}" if cmp.get("spread_pct") else "") + "；多个总价的投标人不参加比较。")
+    _para(doc, lead)
     rows = []
     for b in d.bidders:
         price = pricing["bidders"].get(str(b.id)) or {}
         table = price.get("table") or {}
-        rows.append((crypto.decrypt_text(b.name_enc), _total_text(price), _ceiling_text(price),
-                     (f"{table.get('total') or '—'}（{table.get('rows', 0)} 行）" if table else "未识别报价表"),
-                     "、".join(price.get("totals_found") or []) if len(price.get("totals_found") or []) > 1 else "—"))
-    _table(doc, ("投标人", "投标总价", "与最高限价", "报价表合计", "出现的不同总价"), rows, (6.5, 5, 5, 5.2, 5))
+        above = (f"{price['above_lowest']}（{price['above_lowest_pct']}）" if price.get("above_lowest")
+                 else price.get("not_compared") or "—")
+        rows.append((crypto.decrypt_text(b.name_enc), _total_text(price, mark=True), above,
+                     price.get("vs_mean") if not price.get("not_compared") and price.get("vs_mean") else "—",
+                     *([_ceiling_text(price)] if ceiling else []),
+                     (f"{table.get('total') or '—'}（{table.get('rows', 0)} 行）" if table else "未识别报价表")))
+    if ceiling:
+        _table(doc, ("投标人", "投标总价", "比最低价高", "偏离平均", "与最高限价", "报价表合计"), rows, (6.2, 5, 4.6, 2.6, 3.8, 4.5))
+    else:
+        _table(doc, ("投标人", "投标总价", "比最低价高", "偏离平均", "报价表合计"), rows, (7, 5.6, 5.4, 3, 5.7))
+    for b in d.bidders:
+        low = (pricing["bidders"].get(str(b.id)) or {}).get("low_price")
+        if low:
+            _para(doc, f"· 异常低价提示：{d.name(b.id)} 的投标总价比其余 {low['others']} 家平均 {low['others_mean']} 低 {low['below_pct']}，"
+                       "参照第五十一条（五），请评标委员会核实是否低于成本。", indent=12)
+    for t in pricing.get("total_patterns") or []:
+        how = f"从低到高每家相差 {t['step']}" if t["kind"] == "diff" else f"从低到高每家约为前一家的 {t['step']} 倍"
+        _para(doc, f"· 总价规律：{'、'.join(d.name(i) for i in t['ids'])} 的投标总价{how}（第四十条（四）线索，见串标线索一节）。", indent=12)
     items = pricing.get("items") or []
     if items:
         _sub(doc, f"分项对齐表（共 {len(items)} 项" + (f"，仅列前 {MAX_PRICE_ROWS} 项" if len(items) > MAX_PRICE_ROWS else "") + "）")

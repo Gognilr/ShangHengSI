@@ -4,10 +4,11 @@ import { ChevronRight } from '@lucide/vue'
 import type { Bidder, BidPricing } from '@/api/bid'
 import BidItemCard from './BidItemCard.vue'
 import BidLede from './BidLede.vue'
-import { bidResultsKey, ceilingView, levelText, levelTone, pricingTypes, totalView, trimRatio, type LedePart } from './results'
+import { bidResultsKey, ceilingView, levelText, levelTone, markText, patternStep, pricingTypes, totalView, trimRatio, type LedePart } from './results'
 
-// 报价分析（V34Q-25 第 8 条）：限价 → 结论 → 各家报价（计算与大小写就地展开）→ 两两比值（只列有规律的对）→ 分项对齐表。
-// 投标人按录入顺序，不排序、不标最低价；金额比较全部由后端完成。
+// 报价分析（V34Q-25 第 8 条）：限价 → 结论 → 各家报价（计算与大小写就地展开）→ 总价规律 → 两两比值（只列有规律的对）→ 分项对齐表。
+// 投标人按录入顺序，不提供按价格排序；总价旁标“最高”“最低”，比最低价高、偏离平均与异常低价由后端 Decimal 算好（V34Q-27）。
+// 未填限价时不出现任何限价内容。
 const props = defineProps<{ bidders: Bidder[] }>()
 const ctx = inject(bidResultsKey)!
 const pricing = computed(() => ctx.data.value?.pricing)
@@ -26,8 +27,11 @@ const ceiling = computed(() => {
 })
 const rows = computed(() => cols.value.map(b => {
   const p = pricing.value!.bidders[b.id]!
-  return { bidder: b, p, total: totalView(p), ceiling: ceilingView(p, !!params.value?.ceiling), issues: issuesOf(b.id) }
+  return { bidder: b, p, total: totalView(p), ceiling: ceilingView(p), issues: issuesOf(b.id) }
 }))
+const cmp = computed(() => pricing.value?.compare ?? null)
+const marked = (mark: 'highest' | 'lowest') => rows.value.filter(r => r.p.mark === mark).map(r => short(r.bidder.id)).join('、')
+const patterns = computed(() => pricing.value?.total_patterns ?? [])
 
 type Pair = BidPricing['pairs'][number]
 const patterned = computed(() => (pricing.value?.pairs ?? []).filter(p => p.label))
@@ -48,11 +52,16 @@ const colNote = computed(() => {
 })
 const lede = computed<LedePart[]>(() => {
   const parts: LedePart[] = []
-  rows.value.filter(r => r.ceiling.tone === 'over').forEach(r => parts.push([`${short(r.bidder.id)}的报价`, [`超限价 ${r.ceiling.diff} ${unit.value}`, 'd']]))
+  if (ceiling.value) rows.value.filter(r => r.ceiling.tone === 'over').forEach(r => parts.push([`${short(r.bidder.id)}的报价`, [`超限价 ${r.ceiling.diff} ${unit.value}`, 'd']]))
+  rows.value.filter(r => r.p.low_price).forEach(r => parts.push([`${short(r.bidder.id)}的报价比其余各家平均低 ${r.p.low_price!.below_pct}（`, ['异常低价', 'w'], '），请核实是否低于成本']))
+  patterns.value.forEach(t => parts.push([`${t.ids.map(short).join('、')}的投标总价`, [patternStep(t), 'w'], '（中）']))
   patterned.value.forEach(p => parts.push([`${short(p.a)} · ${short(p.b)}：${patternText(p)}（`, [levelText[p.level!] ?? '', levelTone(p.level!) === 'strong' ? 'd' : 'w'], '）']))
-  const calc = rows.value.filter(r => r.issues.some(i => i.type !== 'ceiling'))
+  const calc = rows.value.filter(r => r.issues.some(i => i.type !== 'ceiling' && i.type !== 'low_price'))
   if (calc.length) parts.push([`${calc.map(r => short(r.bidder.id)).join('、')}的报价有计算或大小写问题`])
-  if (!parts.length) parts.push(['各家报价未超限价，计算与大小写未见问题，分项价格之间未见规律'])
+  if (!parts.length) parts.push([(ceiling.value ? '各家报价未超限价，' : '') + '计算与大小写未见问题，分项价格之间未见规律'])
+  // 高低差放在超限价之后、其他问题之前
+  const over = ceiling.value ? rows.value.filter(r => r.ceiling.tone === 'over').length : 0
+  if (cmp.value?.spread_pct) parts.splice(over, 0, [`最高${marked('highest')}比最低${marked('lowest')}高 ${cmp.value.spread_pct}`])
   return parts
 })
 </script>
@@ -62,23 +71,30 @@ const lede = computed<LedePart[]>(() => {
     <p v-if="!pricing" class="bid-empty">报价检查还没有结果。</p>
     <template v-else>
       <div class="top">
-        <p class="bid-meta">最高限价 <b>{{ ceiling ?? '未填写' }}</b><template v-if="ceiling"> {{ unit }}</template></p>
+        <p v-if="ceiling || cmp" class="bid-meta">
+          <template v-if="ceiling">最高限价 <b>{{ ceiling }}</b> {{ unit }}</template><template v-if="ceiling && cmp"><i class="sep" aria-hidden="true">·</i></template>
+          <template v-if="cmp">参加比较 {{ cmp.n }} 家：最高 <b>{{ cmp.highest }}</b><i class="sep" aria-hidden="true">·</i>最低 <b>{{ cmp.lowest }}</b><i class="sep" aria-hidden="true">·</i>平均 <b>{{ cmp.mean }}</b> {{ unit }}</template>
+        </p>
         <BidLede :parts="lede" />
       </div>
 
       <section class="bid-block">
         <h3 class="bid-title">各家报价</h3>
         <table class="bid-table">
-          <colgroup><col><col style="width:200px"><col style="width:170px"><col style="width:220px"><col style="width:132px"><col style="width:96px"></colgroup>
-          <thead><tr><th>投标人（按录入顺序）</th><th class="r">投标总价</th><th class="r">报价表合计</th><th>与限价</th><th>计算与大小写</th><th class="r">报价表分项</th></tr></thead>
+          <colgroup><col><col style="width:220px"><col style="width:150px"><col style="width:96px"><col v-if="ceiling" style="width:200px"><col style="width:150px"><col style="width:120px"><col style="width:88px"></colgroup>
+          <thead><tr><th>投标人（按录入顺序）</th><th class="r">投标总价</th><th class="r">比最低价高</th><th class="r" title="与参加比较各家平均总价之差">偏离平均</th><th v-if="ceiling">与限价</th><th class="r">报价表合计</th><th>计算与大小写</th><th class="r">报价表分项</th></tr></thead>
           <tbody>
             <template v-for="r in rows" :key="r.bidder.id">
               <tr>
                 <td class="name" :title="r.bidder.name">{{ r.bidder.name }}</td>
                 <td class="r num"><template v-if="r.total.text">{{ r.total.text }}</template><span v-else class="bid-zero">未识别</span>
+                  <span v-if="r.p.mark" class="bid-mark">{{ markText[r.p.mark] }}</span><span v-if="r.p.low_price" class="bid-mark w">异常低价</span>
                   <small v-if="r.total.multi.length" :title="'出现的总价：' + r.total.multi.join('、')">{{ r.total.multi.length }} 个总价</small></td>
+                <td class="r num"><template v-if="r.p.above_lowest">{{ r.p.above_lowest }}<small>{{ r.p.above_lowest_pct }}</small></template>
+                  <span v-else-if="r.p.not_compared" class="bid-zero note">{{ r.p.not_compared }}</span><span v-else class="bid-zero">—</span></td>
+                <td class="r num"><span v-if="r.p.vs_mean && !r.p.not_compared" :class="{ 'low': r.p.low_price }">{{ r.p.vs_mean }}</span><span v-else class="bid-zero">—</span></td>
                 <td class="r num"><template v-if="r.p.table?.total">{{ r.p.table.total }}</template><span v-else class="bid-zero">—</span></td>
-                <td><span :class="{ 'bid-over': r.ceiling.tone === 'over', 'bid-zero': r.ceiling.tone === 'none' }">{{ r.ceiling.text }}</span><span v-if="r.ceiling.diff" class="num bid-diff" :class="{ 'bid-over': r.ceiling.tone === 'over' }">{{ r.ceiling.diff }}</span></td>
+                <td v-if="ceiling"><span :class="{ 'bid-over': r.ceiling.tone === 'over', 'bid-zero': r.ceiling.tone === 'none' }">{{ r.ceiling.text }}</span><span v-if="r.ceiling.diff" class="num bid-diff" :class="{ 'bid-over': r.ceiling.tone === 'over' }">{{ r.ceiling.diff }}</span></td>
                 <td>
                   <button v-if="r.issues.length" type="button" class="bid-link calc bad" :aria-expanded="expanded === r.bidder.id" @click="expanded = expanded === r.bidder.id ? null : r.bidder.id">
                     ✕ {{ r.issues.length }} 条<ChevronRight :size="13" :stroke-width="1.75" class="chev" :class="{ turned: expanded === r.bidder.id }" aria-hidden="true" /></button>
@@ -86,10 +102,19 @@ const lede = computed<LedePart[]>(() => {
                 </td>
                 <td class="r num"><template v-if="r.p.table">{{ r.p.table.rows }} 项</template><span v-else class="bid-zero">—</span></td>
               </tr>
-              <tr v-if="expanded === r.bidder.id" class="expand"><td colspan="6"><BidItemCard v-for="item in r.issues" :key="item.id" :item="item" hide-who /></td></tr>
+              <tr v-if="expanded === r.bidder.id" class="expand"><td :colspan="ceiling ? 8 : 7"><BidItemCard v-for="item in r.issues" :key="item.id" :item="item" hide-who /></td></tr>
             </template>
           </tbody>
         </table>
+      </section>
+
+      <section v-if="patterns.length" class="bid-block">
+        <h3 class="bid-title">总价规律<span class="n">{{ patterns.length }}</span></h3>
+        <ul class="found">
+          <li v-for="t in patterns" :key="t.ids.join()"><span class="who" :title="t.ids.map(i => ctx.names.value[i]).join(' · ')">{{ t.ids.map(short).join(' · ') }}</span>
+            <span :class="'bid-' + levelTone(t.level)">投标总价{{ patternStep(t) }}，{{ levelText[t.level] }}</span>
+            <span class="cv">第四十条（四），见串标线索</span></li>
+        </ul>
       </section>
 
       <section v-if="pricing.pairs.length" class="bid-block">
@@ -150,5 +175,8 @@ tr.expand > td { padding: 0 0 8px 20px; background: transparent; }
 .plain { margin-top: 8px; max-width: 760px; }
 .wide { overflow-x: auto; }
 .items th .note { color: var(--si-warn-ink); }
+.bid-table td .note { font: var(--si-font-caption); }
+.bid-table td .low { color: var(--si-warn-ink); }
+.sep { margin: 0 8px; font-style: normal; color: var(--si-ink-5); }
 .items td.hl { color: var(--si-ink-1); }
 </style>
