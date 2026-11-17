@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
 import { ChevronRight } from '@lucide/vue'
-import { ApiError } from '@/api/http'
-import { bidApi, bidGroupLabel, bidLevelLabel, type Bidder, type BidLevel, type BidReview, type BidSignMark, type BidSigning } from '@/api/bid'
+import { bidGroupLabel, bidLevelLabel, type Bidder, type BidLevel, type BidReview } from '@/api/bid'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import BidItemCard from './BidItemCard.vue'
 import BidReviewBar from './BidReviewBar.vue'
 import BidCellDrawer from './BidCellDrawer.vue'
 import BidLede from './BidLede.vue'
+import BidSignSheets from './BidSignSheets.vue'
 import { bidResultsKey, progress, type LedePart } from './results'
 
 // 各投标人（V34Q-25 第 6 条）：一页列全这一家要核的东西——问题清单｜涉及的串标线索｜需人工核对的要求｜签章页，
@@ -41,17 +41,7 @@ const openReqs = computed(() => reqs.value.filter(r => !r.excluded))
 const drawer = ref<string | null>(null)
 
 const pages = computed(() => (ctx.data.value?.signing ?? []).filter(s => s.bidder_id === current.value))
-const thumbs = computed(() => pages.value.filter(s => s.renderable && s.page))
-const lines = computed(() => pages.value.filter(s => !(s.renderable && s.page)))
 const marked = computed(() => pages.value.filter(s => s.mark).length)
-const marks: { value: BidSignMark; label: string }[] = [{ value: 'stamped', label: '已盖章' }, { value: 'missing', label: '缺章' }, { value: 'unclear', label: '看不清' }]
-const signError = ref('')
-async function mark(s: BidSigning, value: BidSignMark) {
-  const before = s.mark, next = before === value ? null : value
-  s.mark = next; signError.value = ''
-  try { await bidApi.sign(ctx.projectId, s, next) }
-  catch (e) { s.mark = before; signError.value = e instanceof ApiError ? e.message : '标注没有保存，请重试' }
-}
 const prog = computed(() => progress(ctx.todos.value, current.value))
 const lede = computed<LedePart[]>(() => {
   const veto = issues.value.filter(i => i.level === 'veto').length, other = issues.value.length - veto
@@ -95,28 +85,7 @@ const lede = computed<LedePart[]>(() => {
 
     <section class="bid-block">
       <h3 class="bid-title">签章页<span class="n">{{ marked }} / {{ pages.length }}</span><span class="end">点缩略图看大图</span></h3>
-      <p v-if="signError" class="error" role="alert">{{ signError }}</p>
-      <div v-if="thumbs.length" class="sheets">
-        <figure v-for="s in thumbs" :key="s.file_id + s.page" class="sheet" :class="s.mark">
-          <button type="button" class="thumb" :aria-label="`查看 ${s.title} 大图`" @click="ctx.openPage(s.file_id, s.page!)">
-            <img :src="bidApi.pageUrl(ctx.projectId, s.file_id, s.page!, 360)" :alt="`${s.file} 第 ${s.page} 页`" loading="lazy">
-          </button>
-          <figcaption>
-            <span class="t">{{ s.title }}</span><span class="hint">{{ s.file }} · 第 {{ s.page }} 页</span>
-            <span class="marks" role="radiogroup" :aria-label="`${s.title} 的签章`">
-              <button v-for="m in marks" :key="m.value" type="button" role="radio" :aria-checked="s.mark === m.value" :class="[m.value, { on: s.mark === m.value }]" @click="mark(s, m.value)">{{ m.label }}</button>
-            </span>
-          </figcaption>
-        </figure>
-      </div>
-      <ul v-if="lines.length" class="lines">
-        <li v-for="s in lines" :key="s.file_id + s.loc">
-          <span class="t">{{ s.title }}</span><span class="hint">{{ s.file }}<template v-if="s.page"> · 第 {{ s.page }} 页</template> · 到原件核对</span>
-          <span class="marks" role="radiogroup" :aria-label="`${s.title} 的签章`">
-            <button v-for="m in marks" :key="m.value" type="button" role="radio" :aria-checked="s.mark === m.value" :class="[m.value, { on: s.mark === m.value }]" @click="mark(s, m.value)">{{ m.label }}</button>
-          </span>
-        </li>
-      </ul>
+      <BidSignSheets v-if="pages.length" :pages="pages" />
       <p v-if="!pages.length" class="bid-empty">没有在这一家的文件中找到投标函、授权委托书、报价表、承诺函等要求盖章签字的格式页；扫描页识别完成后会补上。</p>
     </section>
 
@@ -132,13 +101,13 @@ const lede = computed<LedePart[]>(() => {
 
 <style scoped>
 .seg { align-self: flex-start; }
-.list, .reqs, .lines { border-top: 1px solid var(--si-hair-strong); }
+.list, .reqs { border-top: 1px solid var(--si-hair-strong); }
 .group + .group { margin-top: 12px; }
 .group h4 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 0; border-bottom: 1px solid var(--si-hair-strong); font: var(--si-font-label-sm); color: var(--si-ink-3); }
 .group h4 .num { color: var(--si-ink-4); }
 h4.veto { color: var(--si-danger-ink); }
 h4.general { color: var(--si-warn-ink); }
-.reqs, .lines { margin: 0; padding: 0; list-style: none; }
+.reqs { margin: 0; padding: 0; list-style: none; }
 .reqs li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; padding: 10px 0; border-bottom: 1px solid var(--si-hair-faint); }
 .req { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .req .meta { font: var(--si-font-meta); color: var(--si-ink-3); }
@@ -147,23 +116,4 @@ h4.general { color: var(--si-warn-ink); }
 .reqs li.excluded .text { color: var(--si-ink-4); text-decoration: line-through; }
 .reqs :deep(.note) { min-width: 160px; max-width: 220px; }
 .hint { font: var(--si-font-meta); color: var(--si-ink-3); }
-.error { margin: 0 0 8px; color: var(--si-danger-ink); font: var(--si-font-meta); }
-.sheets { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 20px; margin-bottom: 16px; }
-.sheet { margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.thumb { display: block; box-sizing: border-box; height: 232px; padding: 0; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-paper); overflow: hidden; cursor: zoom-in; }
-.thumb img { width: 100%; height: 100%; object-fit: contain; object-position: top; display: block; }
-.sheet.missing .thumb { border-color: var(--si-danger); }
-figcaption { display: flex; flex-direction: column; gap: 4px; }
-figcaption .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.t { font: var(--si-font-label); color: var(--si-ink-1); }
-.lines li { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--si-hair-faint); }
-.lines .t { min-width: 120px; }
-.lines .marks { margin: 0 0 0 auto; }
-.marks { display: inline-flex; margin-top: 4px; border: 1px solid var(--si-hair-strong); border-radius: 8px; overflow: hidden; align-self: flex-start; }
-.marks button { padding: 3px 10px; border: 0; background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-3); cursor: pointer; }
-.marks button + button { border-left: 1px solid var(--si-hair); }
-.marks button:hover { color: var(--si-ink-1); background: var(--si-hover-bg); }
-.marks button.on { font-weight: 600; color: var(--si-ink-1); background: var(--si-surface-2); }
-.marks button.missing.on { color: var(--si-danger-ink); }
-.marks button.unclear.on { color: var(--si-warn-ink); }
 </style>

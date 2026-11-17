@@ -2,9 +2,10 @@
 import { computed, inject } from 'vue'
 import type { Bidder, BidItem, BidLevel } from '@/api/bid'
 import BidLede from './BidLede.vue'
-import { bidResultsKey, ceilingView, levelText, markText, patternStep, progress, totalView, type LedePart } from './results'
+import BidTodoList from './BidTodoList.vue'
+import { bidderVerdict, bidResultsKey, ceilingView, levelText, markText, patternStep, progress, totalView, type LedePart } from './results'
 
-// 总览（V34Q-25 第 5 条）：一句结论 + 核对进度 → 投标人表（按录入顺序）→ 有线索的两两关系。覆盖说明在页脚。
+// 总览（V34Q-25 第 5 条）：一句结论 + 核对进度 → 投标人表（按录入顺序，最左“结论”）→ 待你处理 → 有线索的两两关系。覆盖说明在页脚。
 // 总价旁标“最高”“最低”与异常低价；未填限价时不出现“与限价”列（V34Q-27）。
 const props = defineProps<{ bidders: Bidder[] }>()
 const emit = defineEmits<{ go: [tab: 'bidders' | 'clues' | 'pricing' | 'matrix', filter?: { bidder?: string; pair?: string[] }] }>()
@@ -24,7 +25,7 @@ const rows = computed(() => props.bidders.map(b => {
   const veto = own.filter(i => i.level === 'veto').length
   const price = pricing.value?.bidders[b.id]
   return {
-    bidder: b, veto, other: own.length - veto, total: totalView(price), ceiling: ceilingView(price), price,
+    bidder: b, verdict: bidderVerdict(ctx.data.value, b.id), veto, other: own.length - veto, total: totalView(price), ceiling: ceilingView(price), price,
     clues: byLevel(clues.value.filter(i => i.bidder_ids.includes(b.id))), progress: progress(ctx.todos.value, b.id),
   }
 }))
@@ -72,10 +73,11 @@ const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.va
     <section class="bid-block">
       <h3 class="bid-title">投标人<span class="n">{{ bidders.length }}</span></h3>
       <table class="bid-table">
-        <colgroup><col><col style="width:96px"><col style="width:96px"><col style="width:240px"><col v-if="hasCeiling" style="width:190px"><col style="width:120px"><col style="width:112px"></colgroup>
-        <thead><tr><th>投标人（按录入顺序）</th><th class="r">疑似否决</th><th class="r">其他问题</th><th class="r">投标总价</th><th v-if="hasCeiling">与限价</th><th>串标线索</th><th class="r" title="这一家要核的事项（已核 / 共）；涉及两家的串标线索在两家各计一次">核对进度</th></tr></thead>
+        <colgroup><col style="width:112px"><col><col style="width:96px"><col style="width:96px"><col style="width:240px"><col v-if="hasCeiling" style="width:190px"><col style="width:120px"><col style="width:112px"></colgroup>
+        <thead><tr><th title="疑似否决 > 有串标线索 > 只有一般问题 > 未见问题；已排除的不算">结论</th><th>投标人（按录入顺序）</th><th class="r">疑似否决</th><th class="r">其他问题</th><th class="r">投标总价</th><th v-if="hasCeiling">与限价</th><th>串标线索</th><th class="r" title="这一家要核的事项（已核 / 共）；涉及两家的串标线索在两家各计一次">核对进度</th></tr></thead>
         <tbody>
           <tr v-for="r in rows" :key="r.bidder.id">
+            <td><span class="verdict" :class="r.verdict.tone">{{ r.verdict.text }}</span></td>
             <td class="name" :title="r.bidder.name">{{ r.bidder.name }}</td>
             <td class="r num"><button v-if="r.veto" type="button" class="bid-link bid-over" @click="emit('go', 'bidders', { bidder: r.bidder.id })">{{ r.veto }}</button><span v-else class="bid-zero">—</span></td>
             <td class="r num"><button v-if="r.other" type="button" class="bid-link" @click="emit('go', 'bidders', { bidder: r.bidder.id })">{{ r.other }}</button><span v-else class="bid-zero">—</span></td>
@@ -92,6 +94,8 @@ const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.va
         </tbody>
       </table>
     </section>
+
+    <BidTodoList :bidders="bidders" />
 
     <section v-if="bidders.length > 1" class="bid-block">
       <h3 class="bid-title">两两关系<span class="n">{{ linked.length }} / {{ pairs.length }}</span></h3>
@@ -120,6 +124,10 @@ const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.va
 
 <style scoped>
 .bid-table td small { margin-top: 2px; }
+.verdict { font: var(--si-font-label); color: var(--si-ink-2); white-space: nowrap; }
+.verdict.d { color: var(--si-danger-ink); font-weight: 600; }
+.verdict.w { color: var(--si-warn-ink); font-weight: 600; }
+.verdict.ok { color: var(--si-ink-4); }
 .pairs { margin: 0; padding: 0; list-style: none; max-width: 560px; border-top: 1px solid var(--si-hair-strong); }
 .pairs li { display: flex; align-items: center; gap: 24px; padding: 10px 0; border-bottom: 1px solid var(--si-hair-faint); font: var(--si-font-body); }
 .pairs .who { min-width: 160px; color: var(--si-ink-1); }

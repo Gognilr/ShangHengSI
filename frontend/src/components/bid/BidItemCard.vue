@@ -6,7 +6,8 @@ import BidReviewBar from './BidReviewBar.vue'
 import { bidResultsKey, bidTypeLabel, levelTone, sameSpans } from './results'
 
 // 一条问题或线索：标题行（等级色点、类型、条文项、涉及投标人、核对状态），展开为证据、并排对照与核对栏
-const props = defineProps<{ item: BidItem; hideWho?: boolean }>()
+// bare：只显示证据（逐条核对左栏），标题与核对按钮由外层给出
+const props = defineProps<{ item: BidItem; hideWho?: boolean; bare?: boolean }>()
 const ctx = inject(bidResultsKey)!
 const open = ref(false)
 const sectionLabel: Record<string, string> = { tech: '技术参数章节，已降一档', price: '报价章节，已升一档' }
@@ -23,8 +24,8 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
 </script>
 
 <template>
-  <article class="item" :class="{ excluded: item.review_status === 'excluded' }">
-    <button type="button" class="head" :aria-expanded="open" @click="open = !open">
+  <article class="item" :class="{ excluded: item.review_status === 'excluded', bare }">
+    <button v-if="!bare" type="button" class="head" :aria-expanded="open" @click="open = !open">
       <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: open }" aria-hidden="true" />
       <span class="main">
         <span class="title" :class="levelTone(item.level)">{{ item.title }}</span>
@@ -32,7 +33,7 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
       </span>
       <span v-if="statusMark[item.review_status]" class="status" :class="item.review_status">{{ statusMark[item.review_status] }}</span>
     </button>
-    <div v-if="open" class="detail">
+    <div v-if="open || bare" class="detail">
       <dl v-for="(row, index) in item.rows" :key="index">
         <dt>{{ row.label }}<template v-if="row.count"> · {{ row.count }} 处</template>
           <template v-if="row.chars"> · 约 {{ row.chars }} 字 · {{ row.sentences }} 句<template v-if="row.section && sectionLabel[row.section]">（{{ sectionLabel[row.section] }}）</template></template></dt>
@@ -61,7 +62,7 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
         </dd>
       </dl>
       <p v-if="item.normal" class="hint">常见的正常原因：{{ item.normal }}</p>
-      <BidReviewBar class="bar" :review="item" :veto="item.level === 'veto'" @change="patch => ctx.reviewItem(item.id, patch)" />
+      <BidReviewBar v-if="!bare" class="bar" :review="item" :veto="item.level === 'veto'" @change="patch => ctx.reviewItem(item.id, patch)" />
     </div>
   </article>
 </template>
@@ -82,6 +83,8 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
 .status.verified { color: var(--si-ink-1); }
 .excluded .title, .excluded .tags { color: var(--si-ink-4); text-decoration: line-through; text-decoration-color: var(--si-ink-5); }
 .detail { padding: 0 0 16px 24px; }
+.bare { border-bottom: 0; }
+.bare .detail { padding: 0; }
 dl { margin: 0 0 10px; }
 dt { font: var(--si-font-label); color: var(--si-ink-2); }
 dd { margin: 4px 0 0; font: var(--si-font-body); color: var(--si-ink-1); display: flex; flex-direction: column; gap: 2px; }

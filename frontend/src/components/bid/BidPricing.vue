@@ -4,7 +4,7 @@ import { ChevronRight } from '@lucide/vue'
 import type { Bidder, BidPricing } from '@/api/bid'
 import BidItemCard from './BidItemCard.vue'
 import BidLede from './BidLede.vue'
-import { bidResultsKey, ceilingView, levelText, levelTone, markText, patternStep, pricingTypes, totalView, trimRatio, type LedePart } from './results'
+import { bidResultsKey, calcPending, ceilingView, confirmCalc, levelText, levelTone, markText, patternStep, pricingTypes, totalView, trimRatio, type LedePart } from './results'
 
 // 报价分析（V34Q-25 第 8 条）：限价 → 结论 → 各家报价（计算与大小写就地展开）→ 总价规律 → 两两比值（只列有规律的对）→ 分项对齐表。
 // 投标人按录入顺序，不提供按价格排序；总价旁标“最高”“最低”，比最低价高、偏离平均与异常低价由后端 Decimal 算好（V34Q-27）。
@@ -32,6 +32,7 @@ const rows = computed(() => cols.value.map(b => {
 const cmp = computed(() => pricing.value?.compare ?? null)
 const marked = (mark: 'highest' | 'lowest') => rows.value.filter(r => r.p.mark === mark).map(r => short(r.bidder.id)).join('、')
 const patterns = computed(() => pricing.value?.total_patterns ?? [])
+const calc = computed(() => calcPending(ctx.data.value).length)
 
 type Pair = BidPricing['pairs'][number]
 const patterned = computed(() => (pricing.value?.pairs ?? []).filter(p => p.label))
@@ -79,7 +80,7 @@ const lede = computed<LedePart[]>(() => {
       </div>
 
       <section class="bid-block">
-        <h3 class="bid-title">各家报价</h3>
+        <h3 class="bid-title">各家报价<span v-if="calc" class="end"><button type="button" class="act" @click="confirmCalc(ctx)">确认本机计算的 {{ calc }} 条</button></span></h3>
         <table class="bid-table">
           <colgroup><col><col style="width:196px"><col style="width:132px"><col style="width:84px"><col v-if="ceiling" style="width:190px"><col style="width:132px"><col style="width:104px"><col style="width:76px"></colgroup>
           <thead><tr><th>投标人（按录入顺序）</th><th class="r">投标总价</th><th class="r">比最低价高</th><th class="r" title="与参加比较各家平均总价之差">偏离平均</th><th v-if="ceiling">与限价</th><th class="r">报价表合计</th><th>计算与大小写</th><th class="r">报价表分项</th></tr></thead>
@@ -162,6 +163,8 @@ const lede = computed<LedePart[]>(() => {
 
 <style scoped>
 .top { display: flex; flex-direction: column; gap: 8px; }
+.act { padding: 3px 10px; border: 1px solid var(--si-hair-strong); border-radius: 8px; background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-2); cursor: pointer; }
+.act:hover { color: var(--si-ink-1); background: var(--si-hover-bg); }
 .calc { display: inline-flex; align-items: center; gap: 4px; font: var(--si-font-meta); }
 .calc.bad { color: var(--si-danger-ink); }
 .calc.ok { color: var(--si-ink-3); }

@@ -1,5 +1,7 @@
 import type { ComputedRef, InjectionKey, Ref } from 'vue'
-import type { Bidder, BidCheck, BidLevel, BidPricing, BidReview } from '@/api/bid'
+import { ElMessageBox } from 'element-plus'
+import { bidGroupLabel } from '@/api/bid'
+import type { Bidder, BidCell, BidCheck, BidItem, BidLevel, BidPricing, BidReview, BidReviewStatus, BidSigning, BidSignMark } from '@/api/bid'
 
 /** 结果页（V34-B-06）各页签共用：数据、名称、乐观更新的核对函数与“查看原件页”。 */
 export interface BidResultsContext {
@@ -16,6 +18,14 @@ export interface BidResultsContext {
   /** 改核对状态或备注：先改本地，请求失败时回滚并提示 */
   reviewItem: (id: string, patch: Partial<BidReview>) => Promise<void>
   reviewCell: (requirementId: string, bidderId: string, patch: Partial<BidReview>) => Promise<void>
+  /** 批量核对（确认本机计算的 n 条、各家都符合）：一次请求，失败整体回滚 */
+  reviewBatch: (items: string[], cells: { requirement_id: string; bidder_id: string }[], status: BidReviewStatus) => Promise<boolean>
+  /** 签章页标注；多页时一次请求（本家全部已盖章） */
+  markSigning: (pages: BidSigning[], mark: BidSignMark | null) => Promise<void>
+  /** “待你处理”清单（按 疑似否决 → 强线索 → 中线索 → 一般问题 → 人工核对 → 签章页） */
+  steps: ComputedRef<TodoStep[]>
+  /** 进入逐条核对，从 key 这一步开始（缺省为第一条待核） */
+  focus: (key?: string) => void
   openPage: (fileId: string, page: number) => void
 }
 export const bidResultsKey: InjectionKey<BidResultsContext> = Symbol('bidResults')
@@ -113,6 +123,88 @@ export function reviewTodos(d: BidCheck | undefined, bidders: Bidder[]): ReviewT
 export function progress(todos: ReviewTodo[], bidder?: string) {
   const list = bidder ? todos.filter(t => t.bidder_ids.includes(bidder)) : todos
   return { done: list.filter(t => t.done).length, total: list.length }
+}
+
+/**
+ * “待你处理”清单与逐条核对的一步（V34Q-27 第二部分）：与 reviewTodos 同一口径，只是人工核对按要求合并（各家并排），
+ * 签章页按投标人合并（本家全部已盖章，只改例外页）。done 为这一步的待核事项都已核。
+ */
+export type StepGroup = 'veto' | 'strong' | 'medium' | 'general' | 'manual' | 'signing'
+export const stepGroupLabel: Record<StepGroup, string> = { veto: '疑似否决', strong: '强线索', medium: '中线索', general: '一般问题', manual: '人工核对', signing: '签章页' }
+export type TodoStep =
+  | { key: string; group: StepGroup; kind: 'item'; item: BidItem; done: boolean }
+  | { key: string; group: StepGroup; kind: 'cell'; cell: BidCell; requirement: BidCheck['requirements'][number]; done: boolean }
+  | { key: string; group: StepGroup; kind: 'manual'; requirement: BidCheck['requirements'][number]; bidder_ids: string[]; checked: string[]; done: boolean }
+  | { key: string; group: StepGroup; kind: 'signing'; bidder_id: string; pages: BidSigning[]; done: boolean }
+const groupOrder: StepGroup[] = ['veto', 'strong', 'medium', 'general', 'manual', 'signing']
+export function todoSteps(d: BidCheck | undefined, bidders: Bidder[]): TodoStep[] {
+  if (!d) return []
+  const out: TodoStep[] = []
+  for (const i of d.items) {
+    if (i.kind === 'normal_dup' || i.review_status === 'excluded') continue
+    const group: StepGroup = i.kind === 'issue' ? (i.level === 'veto' ? 'veto' : 'general') : i.level === 'strong' ? 'strong' : i.level === 'medium' ? 'medium' : 'general'
+    out.push({ key: 'i' + i.id, group, kind: 'item', item: i, done: i.review_status === 'verified' })
+  }
+  const reqs = new Map(d.requirements.map(r => [r.id, r]))
+  const cellOf = new Map(d.cells.map(c => [`${c.requirement_id}:${c.bidder_id}`, c]))
+  for (const c of d.cells) {
+    const r = reqs.get(c.requirement_id)
+    if (!r || r.method === 'manual' || c.verdict === 'manual' || c.review_status === 'excluded') continue
+    if (c.verdict === 'unclear' || c.cite === 'unverified') out.push({ key: `c${c.requirement_id}:${c.bidder_id}`, group: 'manual', kind: 'cell', cell: c, requirement: r, done: c.review_status === 'verified' })
+  }
+  for (const r of d.requirements) {
+    if (r.method !== 'manual') continue
+    const ids = bidders.map(b => b.id).filter(id => cellOf.get(`${r.id}:${id}`)?.review_status !== 'excluded')
+    if (!ids.length) continue
+    const checked = ids.filter(id => cellOf.get(`${r.id}:${id}`)?.review_status === 'verified')
+    out.push({ key: 'm' + r.id, group: 'manual', kind: 'manual', requirement: r, bidder_ids: ids, checked, done: checked.length === ids.length })
+  }
+  for (const b of bidders) {
+    const pages = d.signing.filter(s => s.bidder_id === b.id)
+    if (pages.length) out.push({ key: 's' + b.id, group: 'signing', kind: 'signing', bidder_id: b.id, pages, done: pages.every(s => !!s.mark) })
+  }
+  return out.map((s, i) => [s, i] as const).sort((a, b) => groupOrder.indexOf(a[0].group) - groupOrder.indexOf(b[0].group) || a[1] - b[1]).map(x => x[0])
+}
+/** 清单行与逐条核对标题的一句话与小字 */
+export function stepLine(s: TodoStep, shorts: Record<string, string>): { text: string; meta: string } {
+  const who = (ids: string[]) => ids.map(id => shorts[id] ?? '已移除').join(' · ')
+  if (s.kind === 'item') return { text: s.item.title, meta: `${bidTypeLabel[s.item.type] ?? s.item.type}${s.item.source === 'model' ? ' · 模型' : ''} · ${who(s.item.bidder_ids)}` }
+  if (s.kind === 'cell') return { text: s.requirement.text, meta: `${who([s.cell.bidder_id])} · ${s.cell.verdict === 'unclear' ? '无法判断' : '引文待核实'} · ${bidGroupLabel[s.requirement.group]}` }
+  if (s.kind === 'manual') return { text: s.requirement.text, meta: `${bidGroupLabel[s.requirement.group]} · 已核 ${s.checked.length} / ${s.bidder_ids.length} 家` }
+  const left = s.pages.filter(p => !p.mark).length
+  return { text: `${who([s.bidder_id])}的签章页`, meta: left ? `${left} 页待标注 · 共 ${s.pages.length} 页` : `已全部标注 · 共 ${s.pages.length} 页` }
+}
+/** 涉及的投标人（清单行与进度用） */
+export function stepBidders(s: TodoStep): string[] {
+  return s.kind === 'item' ? s.item.bidder_ids : s.kind === 'cell' ? [s.cell.bidder_id] : s.kind === 'manual' ? s.bidder_ids : [s.bidder_id]
+}
+
+/** “确认本机计算的 n 条”：本机确定性计算得出、尚待核对的报价类问题（大小写、合计、分项、多个总价、超限价） */
+export const calcTypes = new Set(['uppercase', 'sum_total', 'row_calc', 'sum_rows', 'multi_total', 'ceiling'])
+export function calcPending(d: BidCheck | undefined): BidItem[] {
+  return (d?.items ?? []).filter(i => i.kind === 'issue' && i.source === 'local' && calcTypes.has(i.type) && i.review_status === 'pending')
+}
+
+/** 确认本机计算的 n 条：先说明其中的否决项会以肯定语气写入报告，确认后一次请求 */
+export async function confirmCalc(ctx: BidResultsContext) {
+  const list = calcPending(ctx.data.value)
+  if (!list.length) return
+  const veto = list.filter(i => i.level === 'veto').length
+  try {
+    await ElMessageBox.confirm(`把 ${list.length} 条由本机计算得出的报价问题（大小写、合计、分项、多个总价、超限价）标为“已核实”。`
+      + (veto ? `其中 ${veto} 条为疑似否决项，报告中将以肯定语气写出。` : '') + '之后仍可逐条改回。', '确认本机计算结果', { confirmButtonText: '全部核实', cancelButtonText: '取消' })
+  } catch { return }
+  await ctx.reviewBatch(list.map(i => i.id), [], 'verified')
+}
+
+/** 投标人表“结论”列：每家一个词（已排除的不算） */
+export type Verdict = { text: string; tone: 'd' | 'w' | '' | 'ok' }
+export function bidderVerdict(d: BidCheck | undefined, bidder: string): Verdict {
+  const own = (d?.items ?? []).filter(i => i.bidder_ids.includes(bidder) && i.review_status !== 'excluded')
+  if (own.some(i => i.kind === 'issue' && i.level === 'veto')) return { text: '疑似否决', tone: 'd' }
+  if (own.some(i => i.kind === 'clue')) return { text: '有串标线索', tone: 'w' }
+  if (own.some(i => i.kind === 'issue')) return { text: '只有一般问题', tone: '' }
+  return { text: '未见问题', tone: 'ok' }
 }
 
 /** 两段文字中相同的部分（连续 8 字以上）：返回交替的 [文字, 是否相同] 片段，用于并排对照高亮 */

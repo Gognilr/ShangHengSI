@@ -146,6 +146,9 @@ export const bidApi = {
   reviewCell: (id: string, body: Partial<BidReview> & { requirement_id: string; bidder_id: string }) => http.put<BidReview>(`/bid/${id}/cells`, body),
   cell: (id: string, requirement_id: string, bidder_id: string) => http.get<BidCellDetail>(`/bid/${id}/cell`, { requirement_id, bidder_id }),
   sign: (id: string, s: Pick<BidSigning, 'file_id' | 'page' | 'loc'>, mark: BidSignMark | null) => http.put<{ marks: Record<string, string> }>(`/bid/${id}/signing`, { file_id: s.file_id, page: s.page, loc: s.loc, mark }),
+  /** 批量核对（V34-B-06c）：一次事务，任一项不属于本项目则全部不改 */
+  reviewBatch: (id: string, body: { items?: string[]; cells?: { requirement_id: string; bidder_id: string }[]; review_status?: BidReviewStatus; signing?: Pick<BidSigning, 'file_id' | 'page' | 'loc'>[]; mark?: BidSignMark | null }) =>
+    http.post<{ items: number; cells: number; marks: Record<string, string> | null }>(`/bid/${id}/review`, body),
   reopen: (id: string) => http.post<BidProject>(`/bid/${id}/reopen`),
   /** 投标文件页面图（cookie 会话，直接作 img 地址；服务器内存生成、不缓存） */
   pageUrl: (id: string, fid: string, page: number, width = 320) => `/api/v1/bid/${id}/files/${fid}/page/${page}?width=${width}`,
