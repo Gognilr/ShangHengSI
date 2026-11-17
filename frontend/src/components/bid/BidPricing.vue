@@ -143,7 +143,7 @@ const lede = computed<LedePart[]>(() => {
             <span class="cv num">变异系数 {{ p.cv }}</span></li>
         </ul>
         <div v-if="patterned.length" class="curves">
-          <RatioCurve v-for="p in patterned" :key="'c' + p.a + p.b" :items="pricing.items" :a="p.a" :b="p.b" :labels="ctx.shorts.value" />
+          <RatioCurve :items="pricing.items" :pairs="patterned" :labels="ctx.shorts.value" />
         </div>
         <p v-else class="bid-empty">各对之间未见分项价格规律。</p>
         <button v-if="plain.length" type="button" class="bid-fold" :aria-expanded="showPlain" @click="showPlain = !showPlain">

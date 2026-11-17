@@ -10,10 +10,16 @@ const box = ref<HTMLElement>(), width = useWidth(box)
 const PAD = 56, AXIS = 62
 const H = computed(() => (props.ceiling ? 122 : 104))
 const values = computed(() => props.points.map(p => amount(p.text)))
+// 限价离各家很远时不拉长横轴（点会挤在一起），画在右端并注“→”
+const far = computed(() => {
+  if (!props.ceiling) return false
+  const lo = Math.min(...values.value), hi = Math.max(...values.value), c = amount(props.ceiling)
+  return c > hi + Math.max(hi - lo, hi * 0.02) * 1.5
+})
 const x = computed(() => {
-  const all = [...values.value, ...(props.ceiling ? [amount(props.ceiling)] : [])]
-  const lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * 0.04 || hi * 0.02 || 1
-  return scale(lo - pad, hi + pad, PAD, width.value - PAD)
+  const all = [...values.value, ...(props.ceiling && !far.value ? [amount(props.ceiling)] : [])]
+  const lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * 0.06 || hi * 0.02 || 1
+  return scale(lo - pad, hi + pad, PAD, width.value - PAD - (far.value ? 150 : 0))
 })
 // 名称标在点上方，相互挤占时错开到第二、三层
 const dots = computed(() => {
@@ -28,7 +34,7 @@ const dots = computed(() => {
 })
 const markText = { highest: '最高', lowest: '最低' } as const
 const meanX = computed(() => x.value(amount(props.mean)))
-const ceilX = computed(() => (props.ceiling ? x.value(amount(props.ceiling)) : null))
+const ceilX = computed(() => (!props.ceiling ? null : far.value ? width.value - PAD : x.value(amount(props.ceiling))))
 </script>
 
 <template>
@@ -40,8 +46,10 @@ const ceilX = computed(() => (props.ceiling ? x.value(amount(props.ceiling)) : n
         <text :x="meanX" :y="AXIS + 38" text-anchor="middle">平均 {{ mean }}<title>参加比较各家的平均总价 {{ mean }} {{ unit }}</title></text>
       </g>
       <g v-if="ceilX !== null">
+        <line v-if="far" class="axis" :x1="ceilX - 150" :x2="ceilX - 140" :y1="AXIS + 5" :y2="AXIS - 5" style="stroke: var(--si-ink-3)" />
+        <line v-if="far" class="axis" :x1="ceilX - 144" :x2="ceilX - 134" :y1="AXIS + 5" :y2="AXIS - 5" style="stroke: var(--si-ink-3)" />
         <line class="limit" :x1="ceilX" :x2="ceilX" :y1="AXIS - 52" :y2="AXIS + 42" />
-        <text class="halo" :x="ceilX" :y="AXIS + 56" text-anchor="middle" style="fill: var(--si-danger-ink)">限价 {{ ceiling }}</text>
+        <text class="halo" :x="ceilX" :y="AXIS + 56" :text-anchor="far ? 'end' : 'middle'" style="fill: var(--si-danger-ink)">限价 {{ ceiling }}<title>{{ far ? '限价远高于各家报价，横轴在此处截断' : '' }}</title></text>
       </g>
       <g v-for="d in dots" :key="d.id">
         <title>{{ d.name }}：{{ d.text }} {{ unit }}{{ d.mark ? `（${markText[d.mark]}）` : '' }}{{ d.low ? '，异常低价' : '' }}</title>

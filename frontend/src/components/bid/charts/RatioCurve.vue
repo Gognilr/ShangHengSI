@@ -3,57 +3,70 @@ import { computed, ref } from 'vue'
 import { amount, scale, useWidth } from './chart'
 
 // 分项比值曲线（V34Q-27 第三部分第 2 条）：横轴为分项（按对齐顺序），纵轴为两家单价之比（高的一家比低的一家）。
-// 比值恒定时近似一条水平线，一眼可见“按同一比例算出”。比值只用于画图与显示，不参与金额计算。
+// 有规律的各对画在同一张图上，每对一条线；比值恒定时近似水平线，一眼可见“按同一比例算出”。比值只用于画图与显示，不参与金额计算。
 const props = defineProps<{
   items: { name: string; prices: Record<string, string | null>; fixed: boolean }[]
-  a: string; b: string; labels: Record<string, string>
+  pairs: { a: string; b: string }[]; labels: Record<string, string>
 }>()
 const box = ref<HTMLElement>(), width = useWidth(box)
-const L = 64, R = 24, T = 14, H = 150, B = 118
-const raw = computed(() => props.items.map((it, i) => ({ i, name: it.name || '（无品名）', pa: it.prices[props.a], pb: it.prices[props.b], fixed: it.fixed }))
-  .filter(p => !p.fixed && amount(p.pa) > 0 && amount(p.pb) > 0))
-// 方向：取高的一家比低的一家（与后端 mean_ratio 同向）
-const flip = computed(() => raw.value.reduce((s, p) => s + amount(p.pb) / amount(p.pa), 0) < raw.value.length)
-const hi = computed(() => (flip.value ? props.a : props.b)), lo = computed(() => (flip.value ? props.b : props.a))
-const pts = computed(() => raw.value.map(p => ({ ...p, r: flip.value ? amount(p.pa) / amount(p.pb) : amount(p.pb) / amount(p.pa) })))
-const stats = computed(() => {
-  const rs = pts.value.map(p => p.r)
-  return { min: Math.min(...rs), max: Math.max(...rs), mean: rs.reduce((s, r) => s + r, 0) / (rs.length || 1) }
-})
-// 纵轴至少展开平均值的 ±3%，比值恒定时线才显得“平”
-const y = computed(() => {
-  const { min, max, mean } = stats.value
-  const half = Math.max(max - mean, mean - min, mean * 0.03) * 1.25
-  return scale(mean - half, mean + half, B, T)
-})
-const x = computed(() => scale(0, Math.max(1, pts.value.length - 1), L, width.value - R))
-const path = computed(() => pts.value.map((p, k) => `${k ? 'L' : 'M'}${x.value(k).toFixed(1)},${y.value(p.r).toFixed(1)}`).join(''))
-const ticks = computed(() => { const { mean } = stats.value; const t = y.value; return [mean * 0.97, mean, mean * 1.03].map(v => ({ v, y: t(v) })) })
+const L = 64, R = 132, T = 12, B = 136, H = 168
+const tone = ['var(--si-brand)', 'var(--si-accent)', 'var(--si-ink-2)', 'var(--si-brand-2)', 'var(--si-accent-2)', 'var(--si-ink-4)']
 const f = (r: number, d = 4) => r.toFixed(d).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')
-const caption = computed(() => {
-  const { min, max, mean } = stats.value, n = pts.value.length
-  const who = `${props.labels[hi.value]} ÷ ${props.labels[lo.value]}`
-  if (max - min < 1e-9) return `${who}：${n} 项分项价格之比都是 ${f(mean)}，是一条水平线。`
-  return `${who}：${n} 项分项价格之比都在 ${f(min, 3)}～${f(max, 3)} 之间（平均 ${f(mean, 3)}），近似一条水平线，像按同一比例算出。`
+const live = computed(() => props.items.map((it, i) => ({ i, name: it.name || '（无品名）', it })).filter(x => !x.it.fixed))
+const series = computed(() => props.pairs.map((p, k) => {
+  const raw = live.value.map((x, j) => ({ j, name: x.name, pa: x.it.prices[p.a], pb: x.it.prices[p.b] })).filter(x => amount(x.pa) > 0 && amount(x.pb) > 0)
+  // 方向：取高的一家比低的一家（与后端 mean_ratio 同向）
+  const flip = raw.reduce((s, x) => s + amount(x.pb) / amount(x.pa), 0) < raw.length
+  const pts = raw.map(x => ({ ...x, r: flip ? amount(x.pa) / amount(x.pb) : amount(x.pb) / amount(x.pa) }))
+  const rs = pts.map(x => x.r)
+  return { key: p.a + p.b, a: p.a, b: p.b, hi: flip ? p.a : p.b, lo: flip ? p.b : p.a, pts, color: tone[k % tone.length]!,
+    min: Math.min(...rs), max: Math.max(...rs), mean: rs.reduce((s, r) => s + r, 0) / (rs.length || 1) }
+}).filter(s => s.pts.length >= 2))
+// 纵轴：各对比值的范围，至少展开 ±3%，比值恒定时线才显得“平”
+const y = computed(() => {
+  const lo = Math.min(...series.value.map(s => s.min)), hi = Math.max(...series.value.map(s => s.max)), mid = (lo + hi) / 2
+  const half = Math.max((hi - lo) / 2, mid * 0.03) * 1.2
+  return { s: scale(mid - half, mid + half, B, T), ticks: [mid - half / 1.2, mid, mid + half / 1.2] }
 })
+const n = computed(() => live.value.length)
+const x = computed(() => scale(0, Math.max(1, n.value - 1), L, width.value - R))
+const path = (s: (typeof series.value)[number]) => s.pts.map((p, k) => `${k ? 'L' : 'M'}${x.value(p.j).toFixed(1)},${y.value.s(p.r).toFixed(1)}`).join('')
+// 线尾标签：按比值上下排开，避免重叠
+const tags = computed(() => {
+  const list = series.value.map(s => ({ key: s.key, color: s.color, text: `${props.labels[s.hi]} ÷ ${props.labels[s.lo]}`, y: y.value.s(s.pts[s.pts.length - 1]!.r) })).sort((p, q) => p.y - q.y)
+  list.forEach((t, k) => { if (k && t.y - list[k - 1]!.y < 14) t.y = list[k - 1]!.y + 14 })
+  return list
+})
+const caption = computed(() => series.value.length > 2 ? (() => {
+  const wave = Math.max(...series.value.map(s => (s.max - s.min) / s.mean / 2)) * 100
+  return `${series.value.length} 对的分项价格之比各自` + (wave < 0.005 ? '恒定' : `在平均值 ±${f(wave, 2)}% 以内`) + '，每条线都近似水平，像按同一比例算出；悬停线尾名称与圆点可看各项比值。'
+})() : series.value.map(s => {
+  const who = `${props.labels[s.hi]} ÷ ${props.labels[s.lo]}`
+  return s.max - s.min < 1e-9 ? `${who} ${s.pts.length} 项之比都是 ${f(s.mean)}` : `${who} ${s.pts.length} 项之比在 ${f(s.min, 3)}～${f(s.max, 3)} 之间`
+}).join('；') + `；${series.value.length > 1 ? '每条线' : '这条线'}越平，越像按同一比例算出。`)
 </script>
 
 <template>
-  <figure v-if="pts.length >= 2" ref="box" class="chart">
-    <svg :width="width" :height="H" role="img" :aria-label="caption">
-      <g v-for="t in ticks" :key="t.v">
-        <line :class="t.v === stats.mean ? 'ref' : 'grid'" :x1="L" :x2="width - R" :y1="t.y" :y2="t.y" />
-        <text :x="L - 8" :y="t.y + 4" text-anchor="end">{{ f(t.v, 3) }}</text>
+  <figure ref="box" class="chart">
+    <svg v-if="series.length" :width="width" :height="H" role="img" :aria-label="caption">
+      <g v-for="t in y.ticks" :key="t">
+        <line class="grid" :x1="L" :x2="width - R" :y1="y.s(t)" :y2="y.s(t)" />
+        <text :x="L - 8" :y="y.s(t) + 4" text-anchor="end">{{ f(t, 3) }}</text>
       </g>
-      <path :d="path" fill="none" style="stroke: var(--si-brand); stroke-width: 1.5" />
-      <circle v-for="(p, k) in pts" :key="p.i" class="dot" :cx="x(k)" :cy="y(p.r)" r="3"><title>{{ p.name }}：{{ labels[a] }} {{ p.pa }} · {{ labels[b] }} {{ p.pb }}，比值 {{ f(p.r) }}</title></circle>
-      <text :x="L" :y="H - 8">第 1 项</text>
-      <text :x="width - R" :y="H - 8" text-anchor="end">第 {{ pts.length }} 项（不含给定价）</text>
+      <g v-for="s in series" :key="s.key">
+        <path :d="path(s)" fill="none" :style="{ stroke: s.color, strokeWidth: 1.5 }" />
+        <circle v-for="p in s.pts" :key="p.j" :cx="x(p.j)" :cy="y.s(p.r)" r="3" :style="{ fill: s.color }"><title>{{ p.name }}：{{ labels[s.a] }} {{ p.pa }} · {{ labels[s.b] }} {{ p.pb }}，比值 {{ f(p.r) }}</title></circle>
+      </g>
+      <text v-for="t in tags" :key="t.key" :x="width - R + 10" :y="t.y + 4" :style="{ fill: t.color }">{{ t.text }}</text>
+      <text :x="L" :y="H - 6">第 1 项</text>
+      <text :x="width - R" :y="H - 6" text-anchor="end">第 {{ n }} 项{{ n < items.length ? '（不含给定价的分项）' : '' }}</text>
     </svg>
-    <figcaption>{{ caption }}</figcaption>
+    <figcaption v-if="series.length">{{ caption }}</figcaption>
     <table class="sr-only">
-      <caption>{{ labels[hi] }} 与 {{ labels[lo] }} 的分项价格之比</caption>
-      <tr v-for="p in pts" :key="p.i"><th scope="row">{{ p.name }}</th><td>{{ p.pa }}</td><td>{{ p.pb }}</td><td>{{ f(p.r) }}</td></tr>
+      <caption>分项价格之比</caption>
+      <template v-for="s in series" :key="s.key">
+        <tr v-for="p in s.pts" :key="p.j"><th scope="row">{{ labels[s.hi] }} ÷ {{ labels[s.lo] }} · {{ p.name }}</th><td>{{ f(p.r) }}</td></tr>
+      </template>
     </table>
   </figure>
 </template>

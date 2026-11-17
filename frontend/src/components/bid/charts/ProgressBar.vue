@@ -18,11 +18,11 @@ const label = computed(() => `已核 ${props.done} · 待核 ${props.total - pro
 </template>
 
 <style scoped>
-.pb { display: inline-flex; align-items: center; gap: 10px; }
-.bar { display: inline-flex; width: 64px; height: 4px; border-radius: 2px; overflow: hidden; background: var(--si-hair); }
+.pb { display: inline-flex; align-items: center; gap: 8px; }
+.bar { display: inline-flex; width: 48px; height: 4px; border-radius: 2px; overflow: hidden; background: var(--si-hair); }
 .bar i { display: block; height: 100%; }
 .done { background: var(--si-brand); }
 .left { background: var(--si-hair-strong); }
 .ex { background: repeating-linear-gradient(90deg, var(--si-ink-5) 0 2px, transparent 2px 4px); }
-.num { min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+.num { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 </style>

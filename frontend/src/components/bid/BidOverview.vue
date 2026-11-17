@@ -74,7 +74,7 @@ const sub = computed(() => `核对进度 已核 ${all.value.done} / 共 ${all.va
     <section class="bid-block">
       <h3 class="bid-title">投标人<span class="n">{{ bidders.length }}</span></h3>
       <table class="bid-table">
-        <colgroup><col style="width:104px"><col><col style="width:80px"><col style="width:80px"><col style="width:240px"><col v-if="hasCeiling" style="width:190px"><col style="width:120px"><col style="width:150px"></colgroup>
+        <colgroup><col style="width:104px"><col><col style="width:80px"><col style="width:80px"><col style="width:240px"><col v-if="hasCeiling" style="width:190px"><col style="width:120px"><col style="width:136px"></colgroup>
         <thead><tr><th title="疑似否决 > 有串标线索 > 只有一般问题 > 未见问题；已排除的不算">结论</th><th>投标人（按录入顺序）</th><th class="r">疑似否决</th><th class="r">其他问题</th><th class="r">投标总价</th><th v-if="hasCeiling">与限价</th><th>串标线索</th><th class="r" title="这一家要核的事项（已核 / 共）；涉及两家的串标线索在两家各计一次">核对进度</th></tr></thead>
         <tbody>
           <tr v-for="r in rows" :key="r.bidder.id">

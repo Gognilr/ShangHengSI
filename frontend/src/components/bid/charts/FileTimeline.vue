@@ -12,17 +12,17 @@ const DAY = 86400000, MAX_SPAN = 120 * DAY
 const t = (s: string | null) => (s ? new Date(s).getTime() : NaN)
 // 开标日按北京时间当天结束
 const openAt = computed(() => new Date(`${props.opening}T23:59:59+08:00`).getTime())
-const groupColor = ['var(--si-accent)', 'var(--si-danger-ink)', 'var(--si-warn-ink)', 'var(--si-blue-ink)']
+const groupColor = ['var(--si-accent)', 'var(--si-blue-ink)', 'var(--si-accent-2)', 'var(--si-ink-2)']
 const color = (g: number | null) => (g ? groupColor[(g - 1) % groupColor.length]! : null)
 
 const domain = computed(() => {
   const all = props.files.flatMap(f => [t(f.created), t(f.modified)]).filter(v => !Number.isNaN(v))
   let hi = Math.max(...all, openAt.value), lo = Math.min(...all)
-  hi += (hi - lo) * 0.03 || DAY / 4
-  // 模板复制来的文件常带着几年前的创建时间：只画最近 120 天，更早的起点画成左侧开口
+  // 模板复制来的文件常带着几年前的创建时间：只画开标前后约 120 天，更早的起点画成左侧开口
   const clipped = hi - lo > MAX_SPAN
-  if (clipped) lo = hi - MAX_SPAN
-  return { lo, hi, clipped }
+  if (clipped) lo = Math.min(...all.filter(v => v >= hi - MAX_SPAN), hi - DAY)
+  const pad = (hi - lo) * 0.03 || DAY / 4
+  return { lo: lo - pad, hi: hi + pad, clipped }
 })
 const x = computed(() => scale(domain.value.lo, domain.value.hi, LABEL, width.value - R))
 const layout = computed(() => {
@@ -34,12 +34,12 @@ const layout = computed(() => {
     return { ...row, top, height: Math.max(1, list.length) * LANE, bars: list.map((f, k) => {
       const c = t(f.created), m = t(f.modified), s = Number.isNaN(c) ? m : c, e = Number.isNaN(m) ? c : Math.max(m, s)
       const x0 = x.value(Math.max(s, domain.value.lo)), x1 = Math.max(x0 + 3, x.value(e))
-      return { f, y: top + k * LANE + 3, x0, x1, cut: s < domain.value.lo, color: color(f.group), point: Number.isNaN(c) || Number.isNaN(m) }
+      return { f, y: top + k * LANE + 3, x0, x1, cut: s < domain.value.lo, gone: e < domain.value.lo, since: s, color: color(f.group), point: Number.isNaN(c) || Number.isNaN(m) }
     }) }
   }).filter(r => r.bars.length)
 })
 const H = computed(() => { const last = layout.value[layout.value.length - 1]; return (last ? last.top + last.height + ROWGAP : TOP) + AXIS_H })
-const unit = computed<'hour' | 'day' | 'month'>(() => { const span = domain.value.hi - domain.value.lo; return span <= 2 * DAY ? 'hour' : span <= 75 * DAY ? 'day' : 'month' })
+const unit = computed<'hour' | 'day' | 'month'>(() => { const span = domain.value.hi - domain.value.lo; return span <= 2 * DAY ? 'hour' : span <= 150 * DAY ? 'day' : 'month' })
 const ticks = computed(() => {
   const { lo, hi } = domain.value, span = hi - lo, n = Math.max(2, Math.floor((width.value - LABEL) / 110))
   const steps = [3600e3, 3 * 3600e3, 6 * 3600e3, 12 * 3600e3, DAY, 2 * DAY, 7 * DAY, 14 * DAY, 30 * DAY]
@@ -58,7 +58,7 @@ const caption = computed(() => {
   else parts.push('各家文件之间未见作者相同或创建时间相近')
   const late = props.files.filter(f => f.bidder_id && t(f.modified) > openAt.value).length
   if (late) parts.push(`${late} 个文件的最后修改时间晚于开标日，请核实`)
-  if (domain.value.clipped) parts.push('只画开标前约 120 天，更早创建的文件左端开口')
+  if (domain.value.clipped) parts.push('更早创建的文件（多为模板复制）左端开口，标出创建日期')
   return parts.join('；') + '。'
 })
 </script>
@@ -77,6 +77,7 @@ const caption = computed(() => {
           <title>{{ b.f.file }}：创建 {{ fmt(b.f.created) }} · 最后修改 {{ fmt(b.f.modified) }}{{ b.f.group ? ` · 第 ${b.f.group} 组` : '' }}</title>
           <rect :x="b.x0" :y="b.y" :width="b.x1 - b.x0" height="9" rx="2"
             :style="b.color ? { fill: `color-mix(in srgb, ${b.color} 28%, transparent)`, stroke: b.color, strokeWidth: 1.5 } : { fill: row.id ? 'var(--si-brand-2)' : 'var(--si-ink-5)', opacity: 0.55 }" />
+          <text v-if="b.gone" :x="b.x0 + 10" :y="b.y + 8">{{ fmtTime(b.since, 'full').slice(0, 10) }}</text>
           <path v-if="b.cut" :d="`M${b.x0 + 5},${b.y - 1} L${b.x0},${b.y + 4.5} L${b.x0 + 5},${b.y + 10}`" fill="none" style="stroke: var(--si-ink-3); stroke-width: 1.2" />
         </g>
       </g>
