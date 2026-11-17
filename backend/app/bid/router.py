@@ -29,6 +29,22 @@ def owned(id: str, user: User = Depends(require("use.bid")), db: Session = Depen
     return load_owned_task(db, user, id, "bid")
 
 
+def _list_filters(q, category, stage, date_from, date_to):
+    """列表与文件夹计数共用的筛选；文件夹选择与分页只影响右侧列表。"""
+    where = []
+    if q.strip():
+        where.append(Task.title.ilike(tasks._like_pattern(q.strip()), escape="\\"))
+    if category is not None:
+        where.append(BidProject.category_id == category)
+    if stage:
+        where.append(BidProject.stage == stage)
+    if date_from:
+        where.append(BidProject.opening_date >= date_from)
+    if date_to:
+        where.append(BidProject.opening_date <= date_to)
+    return where
+
+
 @router.get("")
 def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_length=100), category: int | None = None,
              folder: str | None = Query(None, max_length=40), stage: str | None = Query(None, pattern="^(preparing|ready|checking|checked)$"),
@@ -36,21 +52,11 @@ def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_lengt
              user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
     """项目列表与搜索筛选（V34-B-01a）：名称包含、分类、文件夹（含子文件夹；none 为未归档）、阶段、开标日期区间。"""
     base = (Task.owner_id == user.id, Task.kind == "bid")
-    where = list(base)
-    if q.strip():
-        where.append(Task.title.ilike(tasks._like_pattern(q.strip()), escape="\\"))
-    if category is not None:
-        where.append(BidProject.category_id == category)
+    where = [*base, *_list_filters(q, category, stage, date_from, date_to)]
     if folder == "none":
         where.append(BidProject.folder_id.is_(None))
     elif folder:
         where.append(BidProject.folder_id.in_(folders.subtree(db, user, folders.folder(db, user, folder).id)))
-    if stage:
-        where.append(BidProject.stage == stage)
-    if date_from:
-        where.append(BidProject.opening_date >= date_from)
-    if date_to:
-        where.append(BidProject.opening_date <= date_to)
     rows = db.execute(select(Task, BidProject).join(BidProject).where(*where)
                       .order_by(Task.last_activity_at.desc(), Task.id).offset((page - 1) * 20).limit(20)).all()
     active = db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*base, BidProject.stage == "checking")) or 0
@@ -76,8 +82,11 @@ def create(body: ProjectInput, request: Request, user: User = Depends(require("u
 # ---------------------------------------------------------------- 文件夹与分类（V34-B-01a）；写在 /{id} 之前
 
 @router.get("/folders")
-def folder_tree(user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
-    return folders.tree(db, user)
+def folder_tree(q: str = Query("", max_length=100), category: int | None = None,
+                stage: str | None = Query(None, pattern="^(preparing|ready|checking|checked)$"),
+                date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
+                user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    return folders.tree(db, user, _list_filters(q, category, stage, date_from, date_to))
 
 
 @router.post("/folders", status_code=201)

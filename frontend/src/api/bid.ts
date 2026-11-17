@@ -125,7 +125,7 @@ export function formatSize(bytes: number): string {
 }
 export const bidApi = {
   list: (query: BidListQuery = {}) => http.get<{ items: BidSummary[]; total: number; checking_count: number }>('/bid', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
-  folders: () => http.get<BidFolderTree>('/bid/folders'),
+  folders: (query: Omit<BidListQuery, 'page' | 'folder'> = {}) => http.get<BidFolderTree>('/bid/folders', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
   createFolder: (name: string, parent_id: string | null) => http.post<BidFolderTree>('/bid/folders', { name, parent_id }),
   renameFolder: (fid: string, name: string) => http.patch<BidFolderTree>(`/bid/folders/${fid}`, { name }),
   removeFolder: (fid: string) => http.delete<BidFolderTree>(`/bid/folders/${fid}`),

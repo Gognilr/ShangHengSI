@@ -47,10 +47,10 @@ def subtree(db, user, root: uuid.UUID) -> list[uuid.UUID]:
     return out
 
 
-def tree(db, user) -> dict:
+def tree(db, user, filters=()) -> dict:
     """平铺的文件夹（前端按 parent_id 组树）与各自直接包含的项目数，另给全部与未归档的数量。"""
     base = (Task.owner_id == user.id, Task.kind == "bid")
-    counts = dict(db.execute(select(BidProject.folder_id, func.count()).join(Task).where(*base)
+    counts = dict(db.execute(select(BidProject.folder_id, func.count()).join(Task).where(*base, *filters)
                              .group_by(BidProject.folder_id)).all())
     rows = _all(db, user)
     return {"folders": [{"id": r.id, "parent_id": r.parent_id, "name": r.name, "count": counts.get(r.id, 0)} for r in rows],

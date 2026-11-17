@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Folder, FolderPlus, Inbox, Layers, Plus, Search } from '@lucide/vue'
+import { ChevronDown, ChevronRight, Folder, FolderPlus, Inbox, Layers, Plus, Search } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { bidApi, bidStageLabel, bidState, type BidCategory, type BidFolderTree, type BidListQuery, type BidSettings, type BidStage, type BidSummary } from '@/api/bid'
 import { formatDateTimeMinute } from '@/utils/time'
@@ -25,20 +25,22 @@ const STAGES = Object.entries(bidStageLabel) as [BidStage, string][]
 
 // 筛选条件放在地址里，从项目返回时还原（V34-B-01a）
 const str = (v: unknown) => typeof v === 'string' ? v : ''
-const filters = reactive({
+const readFilters = () => ({
   q: str(route.query.q), folder: str(route.query.folder), category: str(route.query.category),
   stage: str(route.query.stage) as BidStage | '', dates: (str(route.query.from) && str(route.query.to) ? [str(route.query.from), str(route.query.to)] : null) as [string, string] | null,
   page: Number(route.query.page) || 1,
 })
+const filters = reactive(readFilters())
 const keyword = ref(filters.q)
 const query = computed<BidListQuery>(() => ({
   page: filters.page, q: filters.q || undefined, folder: filters.folder || undefined, category: filters.category ? Number(filters.category) : undefined,
   stage: filters.stage || undefined, from: filters.dates?.[0], to: filters.dates?.[1],
 }))
 const narrowed = computed(() => !!(filters.q || filters.category || filters.stage || filters.dates))
-const empty = computed(() => ready.value && !tree.value.all && !tree.value.folders.length)
+const empty = computed(() => ready.value && !loading.value && !narrowed.value && !filters.folder && !tree.value.all && !tree.value.folders.length)
 const nodes = computed(() => folderOptions(tree.value.folders))
-const flat = computed(() => { const out: FolderNode[] = []; const walk = (ns: FolderNode[]) => ns.forEach(n => { out.push(n); walk(n.children) }); walk(nodes.value); return out })
+const collapsed = reactive(new Set<string>())
+const flat = computed(() => { const out: FolderNode[] = []; const walk = (ns: FolderNode[]) => ns.forEach(n => { out.push(n); if (!collapsed.has(n.value)) walk(n.children) }); walk(nodes.value); return out })
 const currentName = computed(() => filters.folder === 'none' ? '未归档' : filters.folder ? folderPath(tree.value.folders, filters.folder) : '全部项目')
 const categoryName = (id: number | null) => categories.value.find(c => c.id === id)?.name ?? ''
 
@@ -47,8 +49,9 @@ async function load() {
   const current = ++generation
   loading.value = true; error.value = ''
   try {
-    const data = await bidApi.list(query.value)
-    if (current === generation) { items.value = data.items; total.value = data.total }
+    const { q, category, stage, from, to } = query.value
+    const [data, folders] = await Promise.all([bidApi.list(query.value), bidApi.folders({ q, category, stage, from, to })])
+    if (current === generation) { items.value = data.items; total.value = data.total; tree.value = folders }
   } catch (e) {
     if (current !== generation) return
     // 地址里的文件夹已删除：回到全部项目
@@ -56,17 +59,20 @@ async function load() {
     error.value = e instanceof ApiError ? e.message : '项目列表读取失败'
   } finally { if (current === generation) loading.value = false }
 }
-async function loadTree() {
-  try { tree.value = await bidApi.folders() } catch { /* 列表本身会报错 */ }
-}
 watch(query, value => {
-  void router.replace({ query: Object.fromEntries(Object.entries(value).filter(([k, v]) => v !== undefined && !(k === 'page' && v === 1)).map(([k, v]) => [k, String(v)])) })
-  void load()
+  const next = Object.fromEntries(Object.entries(value).filter(([k, v]) => v !== undefined && !(k === 'page' && v === 1)).map(([k, v]) => [k, String(v)]))
+  if (Object.keys(next).length !== Object.keys(route.query).length || Object.entries(next).some(([k, v]) => route.query[k] !== v)) void router.replace({ query: next })
 }, { deep: true })
-// 换条件回到第 1 页
-watch(() => [filters.q, filters.folder, filters.category, filters.stage, filters.dates], () => { filters.page = 1 })
-function search() { filters.q = keyword.value.trim() }
-function clearFilters() { keyword.value = ''; Object.assign(filters, { q: '', category: '', stage: '', dates: null }) }
+// 地址是查询来源；浏览器前进 / 后退同样还原文件夹、控件和右侧列表。
+watch(() => route.query, () => {
+  Object.assign(filters, readFilters())
+  keyword.value = filters.q
+  void load()
+})
+function selectFolder(folder: string) { filters.folder = folder; filters.page = 1 }
+function toggleFolder(node: FolderNode) { if (collapsed.has(node.value)) collapsed.delete(node.value); else collapsed.add(node.value) }
+function search() { filters.q = keyword.value.trim(); filters.page = 1 }
+function clearFilters() { keyword.value = ''; Object.assign(filters, { q: '', category: '', stage: '', dates: null, page: 1 }) }
 
 async function create(body: BidSettings) {
   if (creating.value) return
@@ -86,14 +92,17 @@ async function newFolder(parent: FolderNode | null) {
     const { value } = await ElMessageBox.prompt(parent ? `在“${parent.label}”下新建` : '最多三级', '新建文件夹', {
       confirmButtonText: '新建', cancelButtonText: '取消', inputPlaceholder: '例如：2026 年',
       inputValidator: v => (!!v.trim() && v.trim().length <= 40) || '请输入 1～40 字' })
-    tree.value = await bidApi.createFolder(value.trim(), parent?.value ?? null)
+    await bidApi.createFolder(value.trim(), parent?.value ?? null)
+    if (parent) collapsed.delete(parent.value)
+    await load()
   } catch (e) { if (e instanceof ApiError) ElMessage.error(e.message) }
 }
 async function renameFolder(node: FolderNode) {
   try {
     const { value } = await ElMessageBox.prompt('最多 40 字', '文件夹改名', { inputValue: node.label, confirmButtonText: '保存', cancelButtonText: '取消',
       inputValidator: v => (!!v.trim() && v.trim().length <= 40) || '请输入 1～40 字' })
-    tree.value = await bidApi.renameFolder(node.value, value.trim())
+    await bidApi.renameFolder(node.value, value.trim())
+    await load()
   } catch (e) { if (e instanceof ApiError) ElMessage.error(e.message) }
 }
 async function removeFolder(node: FolderNode) {
@@ -121,7 +130,7 @@ async function place(id: string, folder: string | null) {
   try {
     await bidApi.place(id, folder)
     ElMessage.success(`已移到“${folder ? folderPath(tree.value.folders, folder) : '未归档'}”`)
-    await Promise.all([loadTree(), load()])
+    await load()
   } catch (e) { ElMessage.error(err(e, '移动失败')) }
 }
 function drop(folder: string | null) { const id = dragId.value; dragEnd(); if (id) void place(id, folder) }
@@ -131,7 +140,7 @@ async function confirmMove() { if (moving.value) { const id = moving.value.id; m
 
 onMounted(async () => {
   try { categories.value = (await bidApi.categories()).items } catch { /* 下拉为空 */ }
-  await Promise.all([loadTree(), load()])
+  await load()
   ready.value = true
 })
 // 全局搜索的“新建标书初审”带 ?new=1 来：直接打开新建对话框，并去掉地址里的参数
@@ -159,18 +168,22 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
     <div v-else-if="ready" class="browser">
       <!-- 左：个人文件夹树（最多三级），可把项目拖到文件夹上 -->
       <nav class="folders" aria-label="文件夹">
-        <button type="button" class="node" :class="{ selected: !filters.folder, drop: dropTarget === '' }" :aria-current="!filters.folder ? 'page' : undefined" @click="filters.folder = ''">
+        <button type="button" class="node" :class="{ selected: !filters.folder, drop: dropTarget === '' }" :aria-current="!filters.folder ? 'page' : undefined" @click="selectFolder('')">
           <Layers :size="16" :stroke-width="1.75" /><span class="label">全部项目</span><span class="count num">{{ tree.all }}</span>
         </button>
         <button type="button" class="node" :class="{ selected: filters.folder === 'none', drop: dropTarget === 'none' }" :aria-current="filters.folder === 'none' ? 'page' : undefined"
-          @click="filters.folder = 'none'" @dragover.prevent="dropTarget = 'none'" @dragleave="dropTarget = null" @drop.prevent="drop(null)">
+          @click="selectFolder('none')" @dragover.prevent="dropTarget = 'none'" @dragleave="dropTarget = null" @drop.prevent="drop(null)">
           <Inbox :size="16" :stroke-width="1.75" /><span class="label">未归档</span><span class="count num">{{ tree.unfiled }}</span>
         </button>
         <p class="group">我的文件夹</p>
         <div v-for="node in flat" :key="node.value" class="node-row" :class="{ selected: filters.folder === node.value, drop: dropTarget === node.value }" :style="{ '--depth': node.depth - 1 }"
           @dragover.prevent="dropTarget = node.value" @dragleave="dropTarget = null" @drop.prevent="drop(node.value)">
-          <button type="button" class="node" :aria-current="filters.folder === node.value ? 'page' : undefined" @click="filters.folder = node.value">
-            <Folder :size="16" :stroke-width="1.75" /><span class="label" :title="node.label">{{ node.label }}</span><span class="count num">{{ node.total || '' }}</span>
+          <button v-if="node.children.length" type="button" class="folder-toggle" :aria-label="`${collapsed.has(node.value) ? '展开' : '收起'}文件夹“${node.label}”`" :aria-expanded="!collapsed.has(node.value)" @click="toggleFolder(node)">
+            <ChevronRight v-if="collapsed.has(node.value)" :size="14" :stroke-width="1.75" /><ChevronDown v-else :size="14" :stroke-width="1.75" />
+          </button>
+          <span v-else class="folder-spacer" aria-hidden="true" />
+          <button type="button" class="node" :aria-current="filters.folder === node.value ? 'page' : undefined" @click="selectFolder(node.value)">
+            <Folder :size="16" :stroke-width="1.75" /><span class="label" :title="node.label">{{ node.label }}</span><span class="count num">{{ node.total }}</span>
           </button>
           <RowMore class="node-more">
             <el-dropdown-item v-if="node.depth < 3" @click="newFolder(node)">新建子文件夹</el-dropdown-item>
@@ -188,13 +201,13 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
           <el-input v-model="keyword" placeholder="搜索项目名称，回车查找" clearable aria-label="搜索项目名称" @keyup.enter="search" @clear="search">
             <template #prefix><Search :size="16" :stroke-width="1.75" /></template>
           </el-input>
-          <el-select v-model="filters.category" placeholder="全部分类" clearable aria-label="分类">
+          <el-select v-model="filters.category" placeholder="全部分类" clearable aria-label="分类" @change="filters.page = 1">
             <el-option v-for="c in categories" :key="c.id" :label="c.enabled ? c.name : `${c.name}（已停用）`" :value="String(c.id)" />
           </el-select>
-          <el-select v-model="filters.stage" placeholder="全部阶段" clearable aria-label="阶段">
+          <el-select v-model="filters.stage" placeholder="全部阶段" clearable aria-label="阶段" @change="filters.page = 1">
             <el-option v-for="[value, label] in STAGES" :key="value" :label="label" :value="value" />
           </el-select>
-          <div class="d"><el-date-picker v-model="filters.dates" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开标从" end-placeholder="开标到" aria-label="开标日期" /></div>
+          <div class="d"><el-date-picker v-model="filters.dates" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开标从" end-placeholder="开标到" aria-label="开标日期" @change="filters.page = 1" /></div>
         </div>
         <div class="list-head">
           <h2>{{ currentName }}</h2>
@@ -245,6 +258,9 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .folders { display: flex; flex-direction: column; gap: 2px; padding-right: 16px; border-right: 1px solid var(--si-hair); align-self: start; }
 .group { margin: 14px 0 4px; padding: 0 10px; font: var(--si-font-overline); color: var(--si-ink-3); }
 .node-row { position: relative; display: flex; align-items: center; padding-left: calc(var(--depth) * 16px); border-radius: var(--el-border-radius-base); }
+.folder-toggle, .folder-spacer { flex: none; width: 24px; height: 34px; }
+.folder-toggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.folder-toggle:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 .folders > .node { flex: none; }
 .node { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--si-ink-2); font: var(--si-font-label); text-align: left; cursor: pointer; }
 .node svg { flex: none; color: var(--si-ink-3); }
@@ -254,8 +270,8 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .node.selected, .node-row.selected .node { background: var(--si-select-bg); color: var(--si-ink-1); font-weight: 600; }
 .node.drop, .node-row.drop .node { outline: 1px solid var(--si-brand); background: var(--si-blue-tint); }
 .node-more { position: absolute; right: 4px; opacity: 0; }
+.node-row .node { padding-right: 30px; }
 .node-row:hover .node-more, .node-row:focus-within .node-more { opacity: 1; }
-.node-row:hover .count, .node-row:focus-within .count { visibility: hidden; }
 .add { margin-top: 6px; color: var(--si-ink-3); }
 .tip { margin: 10px 10px 0; }
 

@@ -44,6 +44,14 @@ def test_folders_depth_filters_and_isolation(setup, make_user, login, db_session
     assert ids(q="空压") == {a} and ids(category=cats["工程类"]) == {b}
     assert ids(folder=one) == {a} and ids(folder="none") == {b}  # 上级文件夹包含子文件夹里的项目
     assert ids(**{"from": "2026-12-01"}) == {b} and ids(stage="preparing") == {a, b}
+    # 文件夹计数与右侧搜索、分类、阶段、日期使用同一筛选；空文件夹仍可选择。
+    filters = {"q": "空压", "category": cats["采购类"], "stage": "preparing", "from": "2026-11-01", "to": "2026-11-30"}
+    filtered = c.get(ROOT + "/folders", params=filters).json()
+    assert filtered["all"] == c.get(ROOT, params=filters).json()["total"] == 1
+    assert filtered["unfiled"] == 0 and len(filtered["folders"]) == 3
+    assert {f["id"]: f["count"] for f in filtered["folders"]} == {one: 0, two: 0, three: 1}
+    assert c.get(ROOT + "/folders", params={"from": "2026-12-01"}).json()["unfiled"] == 1
+    assert c.get(ROOT + "/folders").json()["all"] == 2
 
     # 拖动归档、删除文件夹后项目回到未归档
     assert c.put(f"{ROOT}/{b}/folder", headers=h, json={"folder_id": two}).status_code == 200
