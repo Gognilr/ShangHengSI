@@ -215,7 +215,11 @@ def _rescan_hits(text: str, preserving, contextual: str, codes: list[str]) -> tu
                 if finder is detect.find_addresses and _place_only(surface):
                     continue  # 与脱敏相同：只有国家、城市或港口名称的地址保留（V31-U5F-02）
                 hits.append((hit.category, indices[hit.start], indices[hit.end - 1] + 1, _kept_key(surface)))
-    return tuple(hits)
+    # 证书编号等标签会把后面的 [[ID_7]] 再识别成编号。只排除完全落在已登记代号
+    # 内部的命中；跨出代号或代号外的真实信息、未登记的写法仍按原规则复检。
+    pattern = _codes_pattern(tuple(sorted(set(codes), key=lambda c: (-len(c), c))))
+    spans = [m.span() for m in pattern.finditer(text)] if pattern else []
+    return tuple(hit for hit in hits if not any(start <= hit[1] and hit[2] <= end for start, end in spans))
 
 
 def _allowed(hits, kept_keys) -> set[BlockReason]:

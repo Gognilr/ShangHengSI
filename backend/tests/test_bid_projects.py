@@ -175,12 +175,12 @@ def test_project_ocr_budget_before_second_file(owner, db_sessionmaker, monkeypat
     data = sample_pdf(encrypted=False)
     response = c.post(base + "/files", headers=h, files=[("files", ("虚构一.pdf", data)), ("files", ("虚构二.pdf", data))])
     assert response.status_code == 200
-    monkeypatch.setattr(pdf, "inspect_pdf", lambda *a, **k: pdf.PdfInfo(300, list(range(1, 301))))
+    monkeypatch.setattr(pdf, "inspect_pdf", lambda *a, **k: pdf.PdfInfo(600, list(range(1, 601))))
     called = []
     def parsed(data, seq, **kwargs):
         called.append(seq)
-        return ParsedFile([ParsedNode(f"F{seq}-PG1-B1", 1, "ocr_block", "body", "虚构扫描文本")], 300, False, [], 300)
+        return ParsedFile([ParsedNode(f"F{seq}-PG1-B1", 1, "ocr_block", "body", "虚构扫描文本")], 600, False, [], 600)
     monkeypatch.setattr(pdf, "parse_pdf", parsed)
     drain(db_sessionmaker, base)
     files = c.get(base).json()["files"]
-    assert called == [1] and files[0]["state"] == "done" and "500" in files[1]["error"]
+    assert called == [1] and files[0]["state"] == "done" and "1000" in files[1]["error"]

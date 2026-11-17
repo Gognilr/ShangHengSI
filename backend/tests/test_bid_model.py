@@ -46,6 +46,22 @@ def _prepared(c, h, sm):
 def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     c, h, _ = owner
     base = _prepared(c, h, db_sessionmaker)
+    # V34Q-33 的虚构 golden 同时经过实际发送、外发记录与下面的 A-03 核对。
+    from app.bid import model
+    from app.redaction import engine
+    case = GOLDEN["outbound_placeholder"]
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(base.rsplit("/", 1)[-1]))
+        state = model._state(model._project(db, task))
+        batch = state["batches"][0]
+        snippet = next(s for s in state["snippets"][batch["bidder_id"]] if s["id"] == batch["snippets"][0])
+        node = db.scalar(select(DocNode).where(DocNode.task_id == task.id, DocNode.loc == snippet["locs"][0]))
+        node.redacted_text += "\n" + case["safe"]
+        node.text_enc = crypto.encrypt_text(crypto.decrypt_text(node.text_enc) + "\n" + case["original"])
+        mapping = engine.load_redaction_map(db, task.id)
+        mapping[case["code"]] = case["value"]
+        engine.write_full_map(db, task.id, mapping)
+        db.commit()
     view = c.get(base + "/model").json()
     assert view["state"] == "awaiting" and len(view["bidders"]) == 3
     assert [b["code"] for b in view["bidders"]] == ["[投标人A]", "[投标人B]", "[投标人C]"]
@@ -148,6 +164,11 @@ def test_snippet_redaction_golden(case, owner, db_sessionmaker):
         if case.get("preserve_map"):
             if not case["pinned"].items() <= mapping.items():
                 problems.append("片段准备删除或改写了已有对照表")
+        if case.get("recheck"):
+            from app.redaction.recheck import recheck
+            text = "\n".join(red.values())
+            assert recheck(text, real_values=mapping.values(), terms=[], placeholders=mapping) == []
+            assert recheck(text + "\n" + case["nodes"]["F2-P1"], real_values=mapping.values(), terms=[], placeholders=mapping)
         if sample := case.get("returns"):
             if (actual := restore(sample["model"], mapping)) != sample["expect"]:
                 problems.append(f"还原不符：{actual}")

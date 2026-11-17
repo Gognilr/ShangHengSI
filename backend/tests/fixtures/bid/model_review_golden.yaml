@@ -1,5 +1,15 @@
 # V34-B-05 交叉复核；全部虚构。标注正确行为；issue 为当初发现的问题编号（V34Q-22，已修复）。
 redaction:
+  - id: registered_certificate_placeholder
+    issue: V34Q-33
+    bidder: 虚构松青仪器有限公司
+    pinned:
+      '[[ID_997]]': TEST-2048
+    nodes:
+      F2-P1: 证书编号：TEST-2048
+    contains: '证书编号：[[ID_997]]'
+    preserve_map: true
+    recheck: true
   - id: pinned_bidder
     issue: V34Q-22-1
     bidder: 虚构松青仪器有限公司
@@ -42,6 +52,13 @@ must_not_send:
   - '2,694,480.00'
   - '4,180,000.00'
   - '4,108,000.00'
+  - TEST-2048
+
+outbound_placeholder:
+  safe: '证书编号：[[ID_997]]'
+  original: '证书编号：TEST-2048'
+  code: '[[ID_997]]'
+  value: TEST-2048
 
 quotes:
   source: '[投标人A]承诺提供三年免费质保并在两小时内响应。'
