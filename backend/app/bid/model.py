@@ -330,7 +330,73 @@ def _sweep(text, pairs, codes=None):
     return text, count
 
 
-def redact(db, task, bidders, nodes: dict, req_texts: dict):
+def _close_snippets(db, task, groups, texts, mapping):
+    """按实际拼接语境补齐遗漏，再把替换投影回各节点；原节点与拼接分隔符不移动。
+    跨节点命中分别登记各节点的原文字段，保证每个代号仍能在本机还原。"""
+    from app.redaction.placeholders import NeutralAllocator
+    from app.redaction.normalize import normalize_with_map
+    from app.redaction.recheck import SegmentChecker, recheck_context
+    ctx = recheck_context(db, task.id)
+    protected = 0
+    for _ in range(3):  # 与通用脱敏闭环相同；最终发送仍由网关独立复检
+        alloc = NeutralAllocator()
+        alloc.seed(mapping)
+        codes = [k for k in mapping if not k.startswith('@') and '#' not in k]
+        marks = re.compile('|'.join(map(re.escape, sorted(codes, key=len, reverse=True)))) if codes else None
+        checker = SegmentChecker(real_values=[v for k, v in mapping.items() if not k.startswith('@')],
+                                 terms=ctx.terms, placeholders=codes, kept=ctx.kept)
+        patterns = {category: [P.name_pattern(normalize_value(v)) for v in values if len(v.strip()) >= 2]
+                    for category, values in [('MAP', [v for k, v in mapping.items() if not k.startswith('@')]),
+                                             ('TERM', ctx.terms)]}
+        changed = 0
+        for locs in groups:
+            text, offsets = _joined(locs, texts)
+            inside = [m.span() for m in marks.finditer(text)] if marks else []
+            edits = defaultdict(list)
+            normalized = normalize_with_map(text)
+            for reason in checker(text):
+                start, end = reason.position, min(len(text), reason.end)
+                if reason.category in patterns:
+                    # MAP / TERM 的 end 只是预览约数；必须重新取得精确区间，不能据约数删掉邻接正文。
+                    ends = [normalized.index_map[m.end() - 1] + 1
+                            for pattern in patterns[reason.category] for m in pattern.finditer(normalized.text)
+                            if m.end() > m.start() and normalized.index_map[m.start()] == start]
+                    if not ends:
+                        continue  # 无精确匹配时交给最终网关拦截，不猜测替换范围
+                    end = max(ends)
+                if end <= start or any(s < end and start < e for s, e in inside):
+                    continue  # 不拆开已有代号；跨代号的问题保留给网关拦截
+                category = reason.category if reason.category not in ('MAP', 'TERM', 'INVISIBLE') else 'CUSTOM'
+                for loc, a, b in offsets:
+                    lo, hi = max(start, a), min(end, b)
+                    if lo < hi:
+                        edits[loc].append((lo - a, hi - a, category))
+            for loc, spans in edits.items():
+                merged = []
+                for start, end, category in sorted(set(spans)):
+                    if merged and start < merged[-1][1]:
+                        a, b, c = merged[-1]
+                        merged[-1] = (a, max(b, end), c)
+                    else:
+                        merged.append((start, end, category))
+                for start, end, category in reversed(merged):
+                    surface = texts[loc][start:end]
+                    code = alloc.numbered(category, surface)
+                    mapping.setdefault(code, surface)
+                    if surface != mapping[code] and surface not in mapping.values():
+                        n = 1
+                        while f'{code}#{n}' in mapping:
+                            n += 1
+                        mapping[f'{code}#{n}'] = surface
+                    texts[loc] = texts[loc][:start] + code + texts[loc][end:]
+                    changed += 1
+        protected += changed
+        if not changed:
+            break
+    return protected
+
+
+def redact(db, task, bidders, nodes: dict, req_texts: dict, groups=None):
     """只对待发送的片段节点与要求文字跑完整脱敏（规则 + 实体识别 + 词条）。
     nodes: {loc: 原文}；req_texts: {rid: 原文}。返回 ({loc: 脱敏文本}, {rid: 脱敏文本}, 本机保护处数)。
     对照表只增：沿用任务已有对照表（招标文件的代号不变），新增代号用 [[类别_n]] 形式，投标人统一为 [投标人A]。"""
@@ -378,6 +444,7 @@ def redact(db, task, bidders, nodes: dict, req_texts: dict):
     for loc in texts:
         texts[loc], n = _sweep(texts[loc], sweep, marks)
         protected += n
+    protected += _close_snippets(db, task, groups or [[loc] for loc in nodes], texts, mapping)
     E.write_full_map(db, task.id, mapping)
     by_loc = {loc: texts[loc] for loc in nodes}
     return by_loc, {rid: texts[req_locs[rid]] for rid in req_texts}, protected
@@ -424,7 +491,8 @@ def prepare(db, task):
                                      DocNode.file_id.in_(select(TaskFile.id).where(TaskFile.task_id == task.id,
                                                                                    TaskFile.bidder_id.is_not(None))))
                .values(redacted_text=None))
-    red_nodes, red_reqs, protected = redact(db, task, bidders, chosen, texts)
+    groups = [s['locs'] for items in snippets.values() for s in items]
+    red_nodes, red_reqs, protected = redact(db, task, bidders, chosen, texts, groups)
     from app.redaction.engine import _write_redacted
     locs = list(red_nodes)
     ids = {}
@@ -447,16 +515,23 @@ def prepare(db, task):
                 sum(len(s) for s in snippets.values()), len(state["batches"]))
 
 
-def join(locs, texts):
-    """片段文字：表格同一行的单元格用“｜”连成一行，其余节点分行。"""
-    out, last = "", None
+def _joined(locs, texts):
+    """实际片段及节点在其中的位置；表格同一行的单元格用“｜”连接，其余分行。"""
+    out, last, offsets = "", None, []
     for loc in locs:
         row = _ROW.match(loc)
         key = row.group(1) if row else None
         sep = " ｜ " if key and key == last else "\n"
-        out += (sep if out else "") + (texts.get(loc) or "")
+        out += sep if out else ""
+        start = len(out)
+        out += texts.get(loc) or ""
+        offsets.append((loc, start, len(out)))
         last = key
-    return out
+    return out, offsets
+
+
+def join(locs, texts):
+    return _joined(locs, texts)[0]
 
 
 def _snippet_text(snippet, red):

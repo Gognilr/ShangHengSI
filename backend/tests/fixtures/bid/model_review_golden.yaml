@@ -1,5 +1,23 @@
 # V34-B-05 交叉复核；全部虚构。标注正确行为；issue 为当初发现的问题编号（V34Q-22，已修复）。
 redaction:
+  - id: cross_ocr_currency_and_address
+    issue: V34Q-36
+    bidder: 虚构松青仪器有限公司
+    pinned:
+      '[[ADDR_70]]': "松\n路"
+    nodes:
+      F2-P1: '人民币'
+      F2-P2: '7654321.50'
+      F2-P3: '￥'
+      F2-P4: '58'
+      F2-P5: '松'
+      F2-P6: '路，保留技术说明'
+    groups: [[F2-P1, F2-P2], [F2-P3, F2-P4], [F2-P5, F2-P6]]
+    contains: '保留技术说明'
+    hidden: ['7654321.50', '58', "松\n路"]
+    preserve_map: true
+    round_trip_nodes: true
+    recheck: true
   - id: registered_certificate_placeholder
     issue: V34Q-33
     bidder: 虚构松青仪器有限公司
@@ -53,6 +71,7 @@ must_not_send:
   - '4,180,000.00'
   - '4,108,000.00'
   - TEST-2048
+  - '7654321.50'
 
 outbound_placeholder:
   safe: '证书编号：[[ID_997]]'

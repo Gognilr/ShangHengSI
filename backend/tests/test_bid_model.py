@@ -61,6 +61,13 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
         mapping = engine.load_redaction_map(db, task.id)
         mapping[case["code"]] = case["value"]
         engine.write_full_map(db, task.id, mapping)
+        cross = GOLDEN["redaction"][0]
+        assert cross["id"] == "cross_ocr_currency_and_address"
+        engine.write_full_map(db, task.id, {**mapping, **cross["pinned"]})
+        bidder = SimpleNamespace(id=uuid.uuid4(), code="A", name_enc=crypto.encrypt_text(BIDDERS[0]))
+        red, _, _ = model.redact(db, task, [bidder], cross["nodes"], {}, cross["groups"])
+        node.redacted_text += "\n" + model.join(list(red), red)
+        node.text_enc = crypto.encrypt_text(crypto.decrypt_text(node.text_enc) + "\n" + model.join(list(red), cross["nodes"]))
         db.commit()
     view = c.get(base + "/model").json()
     assert view["state"] == "awaiting" and len(view["bidders"]) == 3
@@ -156,7 +163,7 @@ def test_snippet_redaction_golden(case, owner, db_sessionmaker):
         engine.write_full_map(db, tid, case["pinned"])
         db.flush()
         bidder = SimpleNamespace(id=uuid.uuid4(), code="A", name_enc=crypto.encrypt_text(case["bidder"]))
-        red, _, _ = model.redact(db, task, [bidder], case["nodes"], {})
+        red, _, _ = model.redact(db, task, [bidder], case["nodes"], {}, case.get("groups"))
         mapping = engine.load_redaction_map(db, tid)
         problems = []
         if case["contains"] not in "\n".join(red.values()):
@@ -166,9 +173,15 @@ def test_snippet_redaction_golden(case, owner, db_sessionmaker):
                 problems.append("片段准备删除或改写了已有对照表")
         if case.get("recheck"):
             from app.redaction.recheck import recheck
-            text = "\n".join(red.values())
+            text = model.join(list(red), red)
             assert recheck(text, real_values=mapping.values(), terms=[], placeholders=mapping) == []
-            assert recheck(text + "\n" + case["nodes"]["F2-P1"], real_values=mapping.values(), terms=[], placeholders=mapping)
+            assert recheck(text + "\n" + model.join(list(red), case["nodes"]),
+                           real_values=mapping.values(), terms=[], placeholders=mapping)
+        if case.get("round_trip_nodes"):
+            assert set(red) == set(case["nodes"])
+            for loc, original in case["nodes"].items():
+                assert restore(red[loc], mapping) == original
+            assert not any(value in model.join(list(red), red) for value in case["hidden"])
         if sample := case.get("returns"):
             if (actual := restore(sample["model"], mapping)) != sample["expect"]:
                 problems.append(f"还原不符：{actual}")
