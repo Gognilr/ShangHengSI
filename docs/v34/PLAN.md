@@ -46,7 +46,7 @@
 | V34-B-06b | 报价区分最高最低、无限价隐藏、异常低价、总价规律 | Q-27 | Opus，high | Sol 6.1，high | B-06a | — | 已完成（2026-11-17，Claude Opus 5.5，reports/V34-B-06b.md；Q-28；截图待用户确认） |
 | V34-B-06c | 待你处理清单、结论列、逐条核对、批量确认 | Q-27 | Opus，medium | Sol 6.1，medium | B-06b | 截图交用户 | 已完成（2026-11-17，Claude Opus 5.5，reports/V34-B-06c.md；Q-29；截图待用户确认） |
 | V34-B-06d | 结果页图表：报价分布、比值曲线、线索关系图、文件时间线（甘特）、相似位置条、核对进度条 | Q-27 | Opus，medium | Sol 6.1，medium | B-06c | 截图交用户 | 已完成（2026-11-17，Claude Opus 5.5，reports/V34-B-06d.md；Q-30；截图用户已确认） |
-| V34-B-01a | 项目搜索与筛选、三级文件夹、分类与管理页维护 | Q-27 | Opus，high | Sol 6.1，high | B-06a | 截图交用户 | 未开始 |
+| V34-B-01a | 项目搜索与筛选、三级文件夹、分类与管理页维护 | Q-27 | Opus，high | Sol 6.1，high | B-06a | 截图交用户 | 已完成（2026-11-17，Claude Opus 5.5，reports/V34-B-01a.md；Q-31；截图待用户确认） |
 | V34-B-08 | 真实标书本机评测与阈值校准 | Q-02 | Opus，high | Sol 6.1，high | B-07 | 用户提供文件与密钥；结果交用户 | 未开始 |
 | V34-Z | 复核、SPEC 与 frontend.md 第三版、版本号、全量、增量发布包、服务器升级 | — | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部 | 推送标签前问用户 | 未开始 |
 
