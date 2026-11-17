@@ -65,16 +65,23 @@ SIGN_MARKS = ("stamped", "missing", "unclear")
 
 
 def set_signing(db, task, file_id, page, loc, mark):
+    return set_signing_many(db, task, [(file_id, page, loc)], mark)
+
+
+def set_signing_many(db, task, refs, mark):
+    """refs 为 (file_id, page, loc)；任一页不在速览中则全部不改。"""
     project = db.get(BidProject, task.id)
     summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
-    key = signing_key(file_id, page, loc)
-    if not any(signing_key(s["file_id"], s["page"], s["loc"]) == key for s in summary.get("signing", [])):
+    known = {signing_key(s["file_id"], s["page"], s["loc"]) for s in summary.get("signing", [])}
+    keys = [signing_key(*r) for r in refs]
+    if any(k not in known for k in keys):
         raise NotFoundError("NOT_FOUND", "该格式页不在速览中，请刷新页面")
     marks = dict(project.signing or {})
-    if mark is None:
-        marks.pop(key, None)
-    else:
-        marks[key] = mark
+    for key in keys:
+        if mark is None:
+            marks.pop(key, None)
+        else:
+            marks[key] = mark
     project.signing = marks
     return marks
 
@@ -110,6 +117,15 @@ def review_cell(db, task, requirement_id, bidder_id, status, note):
         db.add(cell)
     _apply(cell, status, note)
     return _review(cell)
+
+
+def review_batch(db, task, item_ids, cells, status):
+    """批量设核对状态（确认本机计算的 n 条、各家都符合）；调用方一次提交，任一项不存在时抛 404、事务回滚。"""
+    for iid in dict.fromkeys(item_ids):
+        review_item(db, task, iid, status, None)
+    for rid, bid in dict.fromkeys(cells):
+        review_cell(db, task, rid, bid, status, None)
+        db.flush()  # 人工核对行新建的单元格先落库，同一请求中重复引用时不再新建
 
 
 def _apply(row, status, note):

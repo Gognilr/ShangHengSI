@@ -1,4 +1,6 @@
 """V34-B-03、B-04：本地检查（混装、联系信息、属性、图片；相似段落、报价、符合项、扫描页延后识别）；样本全部虚构，不调用模型。"""
+import uuid
+
 import pytest
 from sqlalchemy import func, select
 
@@ -181,6 +183,20 @@ def test_review_reopen_and_signing(owner, db_sessionmaker):
     assert sign and all(s["title"] for s in sign)
     s0 = sign[0]
     assert c.put(base + "/signing", headers=h, json={"file_id": s0["file_id"], "page": s0["page"], "loc": s0["loc"], "mark": "missing"}).status_code == 200
+
+    # 批量核对（V34-B-06c）：一次事务；任一项不属于本项目则全部不改
+    calc = [i["id"] for i in result["items"] if i["type"] in ("uppercase", "sum_total", "row_calc", "sum_rows", "multi_total", "ceiling")]
+    refs = [{"requirement_id": manual["id"], "bidder_id": bid} for bid in (a, b, x)]
+    signs = [{k: s[k] for k in ("file_id", "page", "loc")} for s in sign[1:]]
+    bad = c.post(base + "/review", headers=h, json={"items": [str(uuid.uuid4())], "cells": refs, "review_status": "verified"})
+    assert bad.status_code == 404
+    assert all(cl["review_status"] == "pending" for cl in c.get(base + "/check").json()["cells"] if cl["requirement_id"] == manual["id"])
+    out = c.post(base + "/review", headers=h, json={"items": calc, "cells": refs + refs[:1], "review_status": "verified",
+                                                  "signing": signs, "mark": "stamped"}).json()
+    assert out["cells"] == 3 and all(out["marks"][f"{s['file_id']}:{s['page'] if s['page'] is not None else s['loc']}"] == "stamped" for s in signs)
+    now = c.get(base + "/check").json()
+    assert sum(cl["requirement_id"] == manual["id"] and cl["review_status"] == "verified" for cl in now["cells"]) == 3
+    assert all(i["review_status"] == "verified" for i in now["items"] if i["id"] in calc)
 
     assert c.post(base + "/reopen", headers=h).json()["stage"] == "ready"
     assert c.post(base + "/check", headers=h).json()["stage"] == "checking"

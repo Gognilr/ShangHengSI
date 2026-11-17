@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import service as audit
 from app.bid import service
-from app.bid.schemas import (BidderInput, CellReviewInput, ParametersInput, PasswordInput, ProjectInput, RequirementInput,
+from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, ParametersInput, PasswordInput, ProjectInput, RequirementInput,
                              RequirementPatch, ReviewInput, SigningInput)
 from app.db.base import utcnow
 from app.db.models import BidBidder, BidProject, BidRequirement, Task, TaskFile, User
@@ -374,6 +374,20 @@ def review_cell(body: CellReviewInput, task: Task = Depends(owned), db: Session 
     task.last_activity_at = utcnow()
     db.commit()
     return out
+
+
+@router.post("/{id}/review")
+def review_batch(body: BatchReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """批量核对（V34-B-06c）：确认本机计算的 n 条、人工核对“各家都符合”、签章页“本家全部已盖章”。一次事务。"""
+    from app.bid import results
+    if (body.items or body.cells) and body.review_status is None:
+        raise AppError(422, "INVALID", "缺少核对状态")
+    db.scalar(select(BidProject).where(BidProject.task_id == task.id).with_for_update().execution_options(populate_existing=True))
+    results.review_batch(db, task, body.items, [(c.requirement_id, c.bidder_id) for c in body.cells], body.review_status)
+    marks = results.set_signing_many(db, task, [(s.file_id, s.page, s.loc) for s in body.signing], body.mark) if body.signing else None
+    task.last_activity_at = utcnow()
+    db.commit()
+    return {"items": len(set(body.items)), "cells": len({(c.requirement_id, c.bidder_id) for c in body.cells}), "marks": marks}
 
 
 @router.get("/{id}/cell")

@@ -112,3 +112,23 @@ class SigningInput(BaseModel):
     page: int | None = None
     loc: str | None = Field(None, max_length=64)
     mark: Literal["stamped", "missing", "unclear"] | None = None
+
+
+class CellRef(BaseModel):
+    requirement_id: str
+    bidder_id: str
+
+
+class SignRef(BaseModel):
+    file_id: str
+    page: int | None = None
+    loc: str | None = Field(None, max_length=64)
+
+
+class BatchReviewInput(BaseModel):
+    """批量核对（V34-B-06c）：条目与单元格设同一核对状态，签章页设同一标注；一次事务，任一项不属于本项目则全部不改。"""
+    items: list[str] = Field(default_factory=list, max_length=2000)
+    cells: list[CellRef] = Field(default_factory=list, max_length=2000)
+    review_status: Literal["pending", "verified", "excluded"] | None = None
+    signing: list[SignRef] = Field(default_factory=list, max_length=500)
+    mark: Literal["stamped", "missing", "unclear"] | None = None
