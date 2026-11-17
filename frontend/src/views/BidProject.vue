@@ -46,13 +46,18 @@ const steps = computed(() => {
 })
 // 已解析的招标文件变化时，清单组件重新读取
 const tenderKey = computed(() => tenderFiles.value.filter(f => f.state === 'done').map(f => f.id).join(','))
+// 四步条右端只有一处状态（V34Q-25 第 2 条）：上传 / 解析 → 本地检查、扫描页识别、模型核对
 const parseNote = computed(() => {
-  const files = project.value?.files ?? []
-  if (!files.length) return null
+  const p = project.value, files = p?.files ?? []
+  if (!p || !files.length) return null
   const done = files.filter(f => f.state === 'done').length, failed = files.filter(f => f.state === 'failed').length
-  if (project.value?.busy) return { tone: 'run' as const, label: `正在解析 ${done} / ${files.length}` }
+  if (p.busy) return { tone: 'run' as const, label: `正在解析 ${done} / ${files.length}` }
   if (failed) return { tone: 'warn' as const, label: `${failed} 份文件待处理` }
-  return { tone: 'ok' as const, label: `${files.length} 份文件已解析` }
+  const parsed = `${files.length} 份文件已解析`
+  if (p.check?.state === 'failed') return { tone: 'warn' as const, label: p.check.error ?? '本地检查失败' }
+  if (p.stage === 'checking') return { tone: 'run' as const, label: `${parsed} · 正在本地检查${ocrNote.value}` }
+  if (p.stage === 'checked') return { tone: (ocrNote.value || p.model?.state === 'running' ? 'run' : 'ok') as 'run' | 'ok', label: `${parsed} · 本地检查已完成${ocrNote.value}${modelNote.value}` }
+  return { tone: 'ok' as const, label: parsed }
 })
 
 function resetTimer() { if (timer) clearTimeout(timer); timer = undefined }
@@ -116,6 +121,8 @@ const ocrNote = computed(() => {
   const o = project.value?.check?.ocr
   return o && o.total > o.done ? ` · 扫描页识别 ${o.done} / ${o.total}` : ''
 })
+// 结果页自带页脚（口径说明 + 固定声明），项目页不再重复
+const showResults = computed(() => step.value === 2 && (project.value?.stage === 'checking' || project.value?.stage === 'checked'))
 async function reparse() { await mutate(() => bidApi.parse(id.value)) }
 async function renameBidder(bidder: string, name: string) { await mutate(() => bidApi.renameBidder(id.value, bidder, name)) }
 async function removeBidder(bidder: string) { await mutate(() => bidApi.removeBidder(id.value, bidder)) }
@@ -308,9 +315,6 @@ async function removeProject() {
       </div>
 
       <div v-else-if="step === 2 && (project.stage === 'checking' || project.stage === 'checked' || project.check?.state === 'failed')" class="result">
-        <p class="result-status"><BidStatus v-if="project.stage === 'checking'" tone="run" :label="'正在本地检查，已完成的部分先显示' + ocrNote" />
-          <BidStatus v-else-if="project.check?.state === 'failed'" tone="warn" :label="project.check.error ?? '本地检查失败'" />
-          <BidStatus v-else :tone="ocrNote || project.model?.state === 'running' ? 'run' : 'ok'" :label="'本地检查已完成' + ocrNote + modelNote" /></p>
         <BidModelCheck v-if="project.policy === 'ai' && project.stage === 'checked'" :project-id="id" :state-key="modelKey" @changed="load(false)" />
         <BidResults v-if="project.stage === 'checking' || project.stage === 'checked'" :key="id" :project="project" :state-key="checkKey" :live="project.stage === 'checking'" />
       </div>
@@ -319,7 +323,7 @@ async function removeProject() {
       <BidExport v-else-if="step === 3 && project.stage === 'checked'" :key="id" :project="project" />
       <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成并逐条核对后，在这里导出交给评标委员会的《初审疑点报告》（Word）。" />
 
-      <footer class="page-foot"><p class="declaration hint">本系统提供初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。</p></footer>
+      <footer v-if="!showResults" class="page-foot"><p class="declaration hint">本系统提供初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。</p></footer>
     </template>
 
     <input ref="picker" type="file" class="file-input" multiple :accept="target ? '.docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png' : '.docx,.doc,.wps,.rtf,.pdf'" @change="picked">
@@ -392,7 +396,7 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .si-drop.hero { padding: 56px 16px; }
 .limits { margin: 16px 0 0; }
 .step-foot.start { align-items: center; gap: 16px; margin-top: 24px; }
-.result-status { margin: 0 0 24px; }
+.result { flex: 1; display: flex; flex-direction: column; gap: 24px; }
 
 /* 页面至少占满主区域，声明贴底（内容长时随内容下移，至少留 48px） */
 .bid-project { display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; padding-bottom: 20px; }  /* 底边与侧栏底栏的账号行齐平 */

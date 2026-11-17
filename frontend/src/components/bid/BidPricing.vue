@@ -1,80 +1,131 @@
 <script setup lang="ts">
-import { computed, inject } from 'vue'
-import type { Bidder } from '@/api/bid'
+import { computed, inject, ref } from 'vue'
+import { ChevronRight } from '@lucide/vue'
+import type { Bidder, BidPricing } from '@/api/bid'
 import BidItemCard from './BidItemCard.vue'
-import { bidResultsKey, levelTone, pricingTypes } from './results'
+import BidLede from './BidLede.vue'
+import { bidResultsKey, ceilingView, levelText, levelTone, pricingTypes, totalView, trimRatio, type LedePart } from './results'
 
-// 报价分析（bid.md 2.4 第 5 项）：各家总价与限价、分项对齐表、两两比值及离散程度。按录入顺序，不排序、不标最低价。
+// 报价分析（V34Q-25 第 8 条）：限价 → 结论 → 各家报价（计算与大小写就地展开）→ 两两比值（只列有规律的对）→ 分项对齐表。
+// 投标人按录入顺序，不排序、不标最低价；金额比较全部由后端完成。
 const props = defineProps<{ bidders: Bidder[] }>()
 const ctx = inject(bidResultsKey)!
 const pricing = computed(() => ctx.data.value?.pricing)
 const params = computed(() => ctx.data.value?.parameters)
-const issues = computed(() => (ctx.data.value?.items ?? []).filter(i => i.kind === 'issue' && pricingTypes.has(i.type)))
+const short = (id: string) => ctx.shorts.value[id] ?? '已移除'
 const cols = computed(() => props.bidders.filter(b => pricing.value?.bidders[b.id]))
-const name = (id: string) => ctx.names.value[id] ?? '已移除的投标人'
-// 限价按千分位显示（关键参数中存的是不带分隔符的 Decimal 字符串）
+const issues = computed(() => (ctx.data.value?.items ?? []).filter(i => i.kind === 'issue' && pricingTypes.has(i.type) && i.review_status !== 'excluded'))
+const issuesOf = (id: string) => issues.value.filter(i => i.bidder_ids.includes(id))
+const expanded = ref<string | null>(null)
+const unit = computed(() => (params.value?.currency ?? 'CNY') === 'CNY' ? '元' : params.value?.currency)
 const ceiling = computed(() => {
   const v = params.value?.ceiling
   if (!v) return null
   const [int, dec] = v.split('.')
   return int!.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + (dec ?? '').padEnd(2, '0').slice(0, 2)
 })
-function ceilingText(over: string | null | undefined, multiple = false) {
-  if (over == null) return !params.value?.ceiling ? '未填最高限价' : multiple ? '多个总价，见下方问题' : '—'
-  return over.startsWith('-') ? `低于限价 ${over.slice(1)}` : over === '0.00' ? '等于限价' : `▲ 超限价 ${over}`
+const rows = computed(() => cols.value.map(b => {
+  const p = pricing.value!.bidders[b.id]!
+  return { bidder: b, p, total: totalView(p), ceiling: ceilingView(p, !!params.value?.ceiling), issues: issuesOf(b.id) }
+}))
+
+type Pair = BidPricing['pairs'][number]
+const patterned = computed(() => (pricing.value?.pairs ?? []).filter(p => p.label))
+const plain = computed(() => (pricing.value?.pairs ?? []).filter(p => !p.label))
+const showPlain = ref(false)
+function patternText(p: Pair) {
+  return p.label?.startsWith('分项单价比值恒定') ? `${p.n} 项分项价格之比都约为 ${trimRatio(p.mean_ratio)}`
+    : p.label?.startsWith('分项单价完全相同') ? `${p.n} 项分项价格完全相同` : p.label ?? ''
 }
+// 分项对齐表：构成规律的一对，在后一家的列头注明“与 X 比 ≈ k”
+const colNote = computed(() => {
+  const out: Record<string, string> = {}
+  for (const p of patterned.value) {
+    const note = p.label?.startsWith('分项单价比值恒定') ? `与${short(p.a)}比 ≈ ${trimRatio(p.mean_ratio)}` : `与${short(p.a)}有规律`
+    out[p.b] = out[p.b] ? `${out[p.b]}；${note}` : note
+  }
+  return out
+})
+const lede = computed<LedePart[]>(() => {
+  const parts: LedePart[] = []
+  rows.value.filter(r => r.ceiling.tone === 'over').forEach(r => parts.push([`${short(r.bidder.id)}的报价`, [`超限价 ${r.ceiling.diff} ${unit.value}`, 'd']]))
+  patterned.value.forEach(p => parts.push([`${short(p.a)} · ${short(p.b)}：${patternText(p)}（`, [levelText[p.level!] ?? '', levelTone(p.level!) === 'strong' ? 'd' : 'w'], '）']))
+  const calc = rows.value.filter(r => r.issues.some(i => i.type !== 'ceiling'))
+  if (calc.length) parts.push([`${calc.map(r => short(r.bidder.id)).join('、')}的报价有计算或大小写问题`])
+  if (!parts.length) parts.push(['各家报价未超限价，计算与大小写未见问题，分项价格之间未见规律'])
+  return parts
+})
 </script>
 
 <template>
-  <div class="pricing">
-    <p v-if="!pricing" class="hint">报价检查还没有结果。</p>
+  <div class="bid-tab">
+    <p v-if="!pricing" class="bid-empty">报价检查还没有结果。</p>
     <template v-else>
-      <p class="meta">最高限价 <b class="num">{{ ceiling ?? '未填写' }}</b><template v-if="params?.ceiling"> {{ params.currency ?? 'CNY' }}</template> · 金额按 Decimal 计算、四舍五入到分 · 投标人按录入顺序，不排序</p>
-      <section>
-        <h3 class="sub">各家报价</h3>
-        <table>
-          <thead><tr><th>投标人</th><th class="r">投标总价</th><th class="r">报价表合计</th><th>与限价</th><th>报价表分项</th></tr></thead>
+      <div class="top">
+        <p class="bid-meta">最高限价 <b>{{ ceiling ?? '未填写' }}</b><template v-if="ceiling"> {{ unit }}</template></p>
+        <BidLede :parts="lede" />
+      </div>
+
+      <section class="bid-block">
+        <h3 class="bid-title">各家报价</h3>
+        <table class="bid-table">
+          <colgroup><col><col style="width:200px"><col style="width:170px"><col style="width:220px"><col style="width:132px"><col style="width:96px"></colgroup>
+          <thead><tr><th>投标人（按录入顺序）</th><th class="r">投标总价</th><th class="r">报价表合计</th><th>与限价</th><th>计算与大小写</th><th class="r">报价表分项</th></tr></thead>
           <tbody>
-            <tr v-for="b in cols" :key="b.id">
-              <td class="name">{{ b.name }}</td>
-              <td class="r num"><template v-if="pricing.bidders[b.id]!.total">{{ pricing.bidders[b.id]!.total }}</template>
-                <span v-else-if="pricing.bidders[b.id]!.totals_found.length > 1" class="hi">{{ pricing.bidders[b.id]!.totals_found.join(' / ') }}</span><span v-else class="muted">未识别</span></td>
-              <td class="r num">{{ pricing.bidders[b.id]!.table?.total ?? '—' }}</td>
-              <td :class="{ hi: ceilingText(pricing.bidders[b.id]!.over_ceiling).startsWith('▲') }">{{ ceilingText(pricing.bidders[b.id]!.over_ceiling, pricing.bidders[b.id]!.totals_found.length > 1) }}</td>
-              <td class="muted">{{ pricing.bidders[b.id]!.table ? `${pricing.bidders[b.id]!.table!.rows} 项` : '未识别出报价表' }}</td>
+            <template v-for="r in rows" :key="r.bidder.id">
+              <tr>
+                <td class="name" :title="r.bidder.name">{{ r.bidder.name }}</td>
+                <td class="r num"><template v-if="r.total.text">{{ r.total.text }}</template><span v-else class="bid-zero">未识别</span>
+                  <small v-if="r.total.multi.length" :title="'出现的总价：' + r.total.multi.join('、')">{{ r.total.multi.length }} 个总价</small></td>
+                <td class="r num"><template v-if="r.p.table?.total">{{ r.p.table.total }}</template><span v-else class="bid-zero">—</span></td>
+                <td><span :class="{ 'bid-over': r.ceiling.tone === 'over', 'bid-zero': r.ceiling.tone === 'none' }">{{ r.ceiling.text }}</span><span v-if="r.ceiling.diff" class="num bid-diff" :class="{ 'bid-over': r.ceiling.tone === 'over' }">{{ r.ceiling.diff }}</span></td>
+                <td>
+                  <button v-if="r.issues.length" type="button" class="bid-link calc bad" :aria-expanded="expanded === r.bidder.id" @click="expanded = expanded === r.bidder.id ? null : r.bidder.id">
+                    ✕ {{ r.issues.length }} 条<ChevronRight :size="13" :stroke-width="1.75" class="chev" :class="{ turned: expanded === r.bidder.id }" aria-hidden="true" /></button>
+                  <span v-else-if="r.p.table || r.total.text" class="calc ok">✓</span><span v-else class="bid-zero">—</span>
+                </td>
+                <td class="r num"><template v-if="r.p.table">{{ r.p.table.rows }} 项</template><span v-else class="bid-zero">—</span></td>
+              </tr>
+              <tr v-if="expanded === r.bidder.id" class="expand"><td colspan="6"><BidItemCard v-for="item in r.issues" :key="item.id" :item="item" hide-who /></td></tr>
+            </template>
+          </tbody>
+        </table>
+      </section>
+
+      <section v-if="pricing.pairs.length" class="bid-block">
+        <h3 class="bid-title">两两分项比值<span class="n">{{ patterned.length }} / {{ pricing.pairs.length }}</span></h3>
+        <ul v-if="patterned.length" class="found">
+          <li v-for="p in patterned" :key="p.a + p.b"><span class="who" :title="`${ctx.names.value[p.a]} · ${ctx.names.value[p.b]}`">{{ short(p.a) }} · {{ short(p.b) }}</span>
+            <span :class="'bid-' + levelTone(p.level!)">{{ patternText(p) }}，{{ levelText[p.level!] }}</span>
+            <span class="cv num">变异系数 {{ p.cv }}</span></li>
+        </ul>
+        <p v-else class="bid-empty">各对之间未见分项价格规律。</p>
+        <button v-if="plain.length" type="button" class="bid-fold" :aria-expanded="showPlain" @click="showPlain = !showPlain">
+          <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: showPlain }" aria-hidden="true" />{{ patterned.length ? `其余 ${plain.length} 对未见规律` : `查看 ${plain.length} 对的比值` }}
+        </button>
+        <table v-if="showPlain" class="bid-table plain">
+          <thead><tr><th>两家</th><th class="r">对齐分项</th><th class="r">参与比较</th><th class="r">平均比值</th><th class="r">变异系数</th></tr></thead>
+          <tbody>
+            <tr v-for="p in plain" :key="p.a + p.b">
+              <td :title="`${ctx.names.value[p.a]} · ${ctx.names.value[p.b]}`">{{ short(p.a) }} · {{ short(p.b) }}</td>
+              <td class="r num">{{ p.aligned }}<small>{{ p.aligned_by === 'row' ? '按行序' : '按品名' }}</small></td>
+              <td class="r num"><template v-if="p.n">{{ p.n }}</template><span v-else class="bid-zero">不足 5 项</span></td>
+              <td class="r num"><template v-if="p.mean_ratio">{{ trimRatio(p.mean_ratio) }}</template><span v-else class="bid-zero">—</span></td>
+              <td class="r num"><template v-if="p.cv">{{ p.cv }}</template><span v-else class="bid-zero">—</span></td>
             </tr>
           </tbody>
         </table>
       </section>
-      <section v-if="issues.length">
-        <h3 class="sub">报价计算与大小写<span>{{ issues.length }} 条</span></h3>
-        <BidItemCard v-for="item in issues" :key="item.id" :item="item" />
-      </section>
-      <section v-if="pricing.pairs.length">
-        <h3 class="sub">两两分项比值<span>比值的变异系数越小，说明两家分项价格越像按同一比例算出</span></h3>
-        <table>
-          <thead><tr><th>两家</th><th class="r">对齐分项</th><th class="r">参与比较</th><th class="r">平均比值</th><th class="r">变异系数</th><th>规律</th></tr></thead>
-          <tbody>
-            <tr v-for="p in pricing.pairs" :key="p.a + p.b">
-              <td>{{ name(p.a) }} · {{ name(p.b) }}</td>
-              <td class="r num">{{ p.aligned }}<small class="muted"> {{ p.aligned_by === 'row' ? '按行序' : '按品名' }}</small></td>
-              <td class="r num">{{ p.n ?? '—' }}</td>
-              <td class="r num">{{ p.mean_ratio ?? '—' }}</td>
-              <td class="r num">{{ p.cv ?? '—' }}</td>
-              <td><span v-if="p.label" :class="levelTone(p.level!)">{{ p.label }}</span><span v-else class="muted">{{ p.n ? '未见规律' : '对齐不足 5 项' }}</span></td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-      <section v-if="pricing.items.length">
-        <h3 class="sub">分项对齐<span>以{{ name(pricing.base ?? '') }}的报价表为基准，最多 300 项；“给定”为各家同价的分项，不参与比值</span></h3>
-        <div class="scroll">
-          <table>
-            <thead><tr><th>分项</th><th v-for="b in cols" :key="b.id" class="r" :title="b.name">{{ b.name }}</th></tr></thead>
+
+      <section v-if="pricing.items.length" class="bid-block">
+        <h3 class="bid-title">分项对齐<span class="n">{{ pricing.items.length }}</span></h3>
+        <div class="wide">
+          <table class="bid-table items">
+            <thead><tr><th>分项</th><th v-for="b in cols" :key="b.id" class="r" :title="b.name">{{ short(b.id) }}<small v-if="colNote[b.id]" class="note">{{ colNote[b.id] }}</small></th></tr></thead>
             <tbody>
               <tr v-for="(it, i) in pricing.items" :key="i">
-                <td>{{ it.name || '（无品名）' }}<small v-if="it.fixed" class="muted"> 给定</small></td>
-                <td v-for="b in cols" :key="b.id" class="r num">{{ it.prices[b.id] ?? '—' }}</td>
+                <td>{{ it.name || '（无品名）' }}<small v-if="it.fixed">给定</small></td>
+                <td v-for="b in cols" :key="b.id" class="r num" :class="{ hl: colNote[b.id] && !it.fixed }"><template v-if="it.prices[b.id]">{{ it.prices[b.id] }}</template><span v-else class="bid-zero">—</span></td>
               </tr>
             </tbody>
           </table>
@@ -85,20 +136,19 @@ function ceilingText(over: string | null | undefined, multiple = false) {
 </template>
 
 <style scoped>
-.pricing { display: flex; flex-direction: column; gap: 32px; }
-.meta { margin: 0; font: var(--si-font-meta); color: var(--si-ink-3); }
-.meta b { color: var(--si-ink-1); font-weight: 600; }
-.sub { display: flex; align-items: baseline; gap: 10px; margin: 0 0 8px; font: var(--si-font-h4); color: var(--si-ink-1); }
-.sub span { font: var(--si-font-meta); color: var(--si-ink-4); }
-.scroll { overflow-x: auto; max-height: 520px; }
-table { width: 100%; border-collapse: collapse; font: var(--si-font-body); }
-th { position: sticky; top: 0; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--si-hair-strong); background: var(--si-bg-canvas); font: var(--si-font-label-sm); color: var(--si-ink-3); text-align: left; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--si-hair-faint); color: var(--si-ink-2); }
-.r { text-align: right; }
-.name { color: var(--si-ink-1); font-weight: 500; }
-.hi { color: var(--si-danger-ink); font-weight: 600; }
-.strong { color: var(--si-danger-ink); }
-.medium { color: var(--si-warn-ink); }
-.muted { color: var(--si-ink-4); font: var(--si-font-meta); }
-.hint { margin: 0; font: var(--si-font-body); color: var(--si-ink-3); }
+.top { display: flex; flex-direction: column; gap: 8px; }
+.calc { display: inline-flex; align-items: center; gap: 4px; font: var(--si-font-meta); }
+.calc.bad { color: var(--si-danger-ink); }
+.calc.ok { color: var(--si-ink-3); }
+.calc .chev { transition: transform .15s; }
+.calc .chev.turned { transform: rotate(90deg); }
+tr.expand > td { padding: 0 0 8px 20px; background: transparent; }
+.found { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--si-hair-strong); }
+.found li { display: flex; align-items: baseline; gap: 24px; padding: 10px 0; border-bottom: 1px solid var(--si-hair-faint); font: var(--si-font-body); }
+.found .who { min-width: 160px; color: var(--si-ink-1); font-weight: 500; }
+.found .cv { margin-left: auto; font: var(--si-font-meta); color: var(--si-ink-4); }
+.plain { margin-top: 8px; max-width: 760px; }
+.wide { overflow-x: auto; }
+.items th .note { color: var(--si-warn-ink); }
+.items td.hl { color: var(--si-ink-1); }
 </style>

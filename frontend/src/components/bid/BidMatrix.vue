@@ -18,6 +18,8 @@ const all = computed(() => (ctx.data.value?.requirements ?? []).filter(r => orde
   .sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || a.seq - b.seq))
 const rows = computed(() => all.value.filter(r => !onlyProblems.value || props.bidders.some(b => problem(cellOf(r.id, b.id)))))
 const hidden = computed(() => all.value.length - rows.value.length)
+const problemRows = computed(() => all.value.filter(r => props.bidders.some(b => problem(cellOf(r.id, b.id)))).length)
+const manualRows = computed(() => all.value.filter(r => r.method === 'manual').length)
 
 const symbols: Record<string, { s: string; label: string; tone: string }> = {
   yes: { s: '✓', label: '响应', tone: 'ok' }, no: { s: '✕', label: '疑似不响应', tone: 'bad' },
@@ -40,40 +42,44 @@ const drawer = ref<{ rid: string; bid: string } | null>(null)
 </script>
 
 <template>
-  <div class="matrix">
-    <div class="tools">
-      <label class="toggle"><el-switch v-model="onlyProblems" size="small" />只看有问题的行</label>
-      <span v-if="onlyProblems && hidden" class="hint">另有 {{ hidden }} 行全部响应或待人工核对，已隐藏</span>
-      <span class="legend"><span><i class="sym solid ok">✓</i>本地规则</span><span><i class="sym hollow ok">✓</i>模型判断</span><span>✕ 疑似不响应 · ？ 未找到 / 无法判断 · — 人工核对 · 点格子查看依据</span></span>
-    </div>
-    <div v-if="rows.length" class="scroll">
-      <table>
-        <thead><tr><th class="req">要求</th><th v-for="b in bidders" :key="b.id" class="col" :title="b.name">{{ b.name }}</th></tr></thead>
-        <tbody>
-          <tr v-for="r in rows" :key="r.id">
-            <th class="req" scope="row"><span class="group">{{ bidGroupLabel[r.group] }} · {{ bidMethodLabel[r.method] }}</span><span class="text">{{ r.text }}</span></th>
-            <td v-for="b in bidders" :key="b.id">
-              <button type="button" class="cell" :class="{ excluded: cellOf(r.id, b.id)?.review_status === 'excluded' }" :title="title(r.method, cellOf(r.id, b.id))" :aria-label="`${b.name}：${title(r.method, cellOf(r.id, b.id))}`" @click="drawer = { rid: r.id, bid: b.id }">
-                <i class="sym" :class="[view(r.method, cellOf(r.id, b.id)).tone, view(r.method, cellOf(r.id, b.id)).hollow ? 'hollow' : 'solid']">{{ view(r.method, cellOf(r.id, b.id)).s }}</i>
-                <sup v-if="cellOf(r.id, b.id)?.cite === 'unverified'" class="mark">待核实</sup>
-                <sup v-else-if="cellOf(r.id, b.id)?.review_status === 'verified'" class="mark">已核实</sup>
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <p v-else class="hint">{{ all.length ? '没有疑似不响应、未找到或无法判断的格。关闭“只看有问题的行”查看全部。' : '要求清单中没有可逐家判断的要求。' }}</p>
+  <div class="bid-tab">
+    <p class="bid-lede"><template v-if="problemRows">{{ all.length }} 条要求中，<span class="d">{{ problemRows }} 条有</span>疑似不响应、未找到或无法判断的格</template><template v-else-if="all.length">{{ all.length }} 条要求中没有疑似不响应、未找到或无法判断的格</template><template v-else>要求清单中没有可逐家判断的要求</template>{{ manualRows ? `；另有 ${manualRows} 条需人工核对` : '' }}。</p>
+    <section class="bid-block">
+      <div class="tools">
+        <label class="toggle"><el-switch v-model="onlyProblems" size="small" />只看有问题的行</label>
+        <span v-if="onlyProblems && hidden" class="hint num">已隐藏 {{ hidden }} 行</span>
+      </div>
+      <div v-if="rows.length" class="scroll">
+        <table>
+          <thead><tr><th class="req">要求</th><th v-for="b in bidders" :key="b.id" class="col" :title="b.name">{{ ctx.shorts.value[b.id] }}</th></tr></thead>
+          <tbody>
+            <tr v-for="r in rows" :key="r.id">
+              <th class="req" scope="row"><span class="group">{{ bidGroupLabel[r.group] }} · {{ bidMethodLabel[r.method] }}</span><span class="text">{{ r.text }}</span></th>
+              <td v-for="b in bidders" :key="b.id">
+                <button type="button" class="cell" :class="{ excluded: cellOf(r.id, b.id)?.review_status === 'excluded' }" :title="title(r.method, cellOf(r.id, b.id))" :aria-label="`${b.name}：${title(r.method, cellOf(r.id, b.id))}`" @click="drawer = { rid: r.id, bid: b.id }">
+                  <i class="sym" :class="[view(r.method, cellOf(r.id, b.id)).tone, view(r.method, cellOf(r.id, b.id)).hollow ? 'hollow' : 'solid']">{{ view(r.method, cellOf(r.id, b.id)).s }}</i>
+                  <sup v-if="cellOf(r.id, b.id)?.cite === 'unverified'" class="mark">待核实</sup>
+                  <sup v-else-if="cellOf(r.id, b.id)?.review_status === 'verified'" class="mark">已核实</sup>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="bid-empty">{{ all.length ? '关闭“只看有问题的行”可查看全部要求。' : '要求清单中没有可逐家判断的要求。' }}</p>
+      <p v-if="rows.length" class="legend"><span><i class="sym solid ok">✓</i>本地规则</span><span><i class="sym hollow ok">✓</i>模型判断</span><span>✓ 响应　✕ 疑似不响应　？ 未找到或无法判断　— 人工核对</span><span>点格子看依据</span></p>
+    </section>
     <BidCellDrawer v-if="drawer" :requirement-id="drawer.rid" :bidder-id="drawer.bid" @close="drawer = null" />
   </div>
 </template>
 
 <style scoped>
-.tools { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; }
+.tools { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font: var(--si-font-label); color: var(--si-ink-2); cursor: pointer; }
-.legend { margin-left: auto; display: flex; gap: 14px; font: var(--si-font-meta); color: var(--si-ink-3); }
+.hint { margin: 0; font: var(--si-font-meta); color: var(--si-ink-4); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 0 0; font: var(--si-font-caption); color: var(--si-ink-4); }
 .legend > span { display: inline-flex; align-items: center; gap: 6px; }
-.hint { margin: 0; font: var(--si-font-meta); color: var(--si-ink-3); }
+.legend .sym { width: 16px; height: 16px; font-size: 10px; }
 .scroll { overflow-x: auto; border-top: 1px solid var(--si-hair-strong); }
 table { border-collapse: collapse; min-width: 100%; font: var(--si-font-body); }
 th, td { border-bottom: 1px solid var(--si-hair-faint); }

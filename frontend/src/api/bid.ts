@@ -65,7 +65,9 @@ export interface BidReview { review_status: BidReviewStatus; note: string | null
 export interface BidCell extends BidReview { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; cite: null | 'verified' | 'unverified' }
 /** 报价分析（V34-B-04 计算，B-06 展示）：金额已格式化为字符串 */
 export interface BidPricing {
-  bidders: Record<string, { total: string | null; totals_found: string[]; currency: string | null; table: { name: string; rows: number; total: string | null } | null; over_ceiling: string | null }>
+  bidders: Record<string, { total: string | null; totals_found: string[]; currency: string | null; table: { name: string; rows: number; total: string | null } | null; over_ceiling: string | null
+    /** 多个不同总价时最高者与限价之差（V34Q-25）；over_ceiling 只对应唯一总价 */
+    over_ceiling_max?: string | null }>
   items: { name: string; prices: Record<string, string | null>; fixed: boolean }[]
   pairs: { a: string; b: string; aligned: number; aligned_by: 'name' | 'row'; n?: number; mean_ratio?: string; cv?: string; level?: BidLevel; label?: string }[]
   aligned_by: Record<string, 'name' | 'row'>; base?: string

@@ -26,10 +26,11 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
   <article class="item" :class="{ excluded: item.review_status === 'excluded' }">
     <button type="button" class="head" :aria-expanded="open" @click="open = !open">
       <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: open }" aria-hidden="true" />
-      <span class="title" :class="levelTone(item.level)">{{ item.title }}</span>
-      <span class="tag">{{ bidTypeLabel[item.type] ?? item.type }}<template v-if="item.source === 'model'"> · 模型</template></span>
-      <span v-if="item.article" class="tag">{{ article() }}</span>
-      <span class="tail"><span v-if="!hideWho" class="who">{{ who() }}</span><span v-if="statusMark[item.review_status]" class="status">{{ statusMark[item.review_status] }}</span></span>
+      <span class="main">
+        <span class="title" :class="levelTone(item.level)">{{ item.title }}</span>
+        <span class="tags">{{ bidTypeLabel[item.type] ?? item.type }}<template v-if="item.source === 'model'"> · 模型</template><template v-if="item.article"> · {{ article() }}</template><template v-if="!hideWho"><i aria-hidden="true">|</i><span class="who">{{ who() }}</span></template></span>
+      </span>
+      <span v-if="statusMark[item.review_status]" class="status" :class="item.review_status">{{ statusMark[item.review_status] }}</span>
     </button>
     <div v-if="open" class="detail">
       <dl v-for="(row, index) in item.rows" :key="index">
@@ -54,7 +55,7 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
         </dd>
         <dd v-if="row.items?.length" class="prices">
           <table>
-            <thead><tr><th>分项</th><th class="num">{{ ctx.names.value[item.bidder_ids[0]!] }}</th><th class="num">{{ ctx.names.value[item.bidder_ids[1]!] }}</th></tr></thead>
+            <thead><tr><th>分项</th><th v-for="b in item.bidder_ids.slice(0, 2)" :key="b" class="num" :title="ctx.names.value[b]">{{ ctx.shorts.value[b] }}</th></tr></thead>
             <tbody><tr v-for="(it, i) in row.items" :key="i"><td>{{ it.name }}</td><td class="num">{{ it.left }}</td><td class="num">{{ it.right }}</td></tr></tbody>
           </table>
         </dd>
@@ -67,17 +68,19 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
 
 <style scoped>
 .item { border-bottom: 1px solid var(--si-hair-faint); }
-.head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 0; border: 0; background: transparent; cursor: pointer; text-align: left; font: var(--si-font-body); color: var(--si-ink-1); }
-.chev { flex: none; color: var(--si-ink-4); transition: transform .15s; }
+.head { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 12px 0; border: 0; background: transparent; cursor: pointer; text-align: left; font: var(--si-font-body); color: var(--si-ink-1); }
+.chev { flex: none; margin-top: 4px; color: var(--si-ink-4); transition: transform .15s; }
 .turned { transform: rotate(90deg); }
-.title { min-width: 0; overflow-wrap: anywhere; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.title { overflow-wrap: anywhere; }
 .title.strong { color: var(--si-danger-ink); }
 .title.medium { color: var(--si-warn-ink); }
-.tag { flex: none; font: var(--si-font-meta); color: var(--si-ink-3); }
-.tail { margin-left: auto; flex: none; max-width: 45%; display: flex; align-items: center; gap: 12px; min-width: 0; }
-.who { min-width: 0; font: var(--si-font-meta); color: var(--si-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.status { flex: none; font: var(--si-font-label-sm); color: var(--si-ink-3); }
-.excluded .title, .excluded .tag { color: var(--si-ink-4); text-decoration: line-through; text-decoration-color: var(--si-ink-5); }
+.tags { font: var(--si-font-meta); color: var(--si-ink-3); }
+.tags i { margin: 0 8px; font-style: normal; color: var(--si-ink-5); }
+.who { color: var(--si-ink-2); }
+.status { flex: none; margin-top: 2px; font: var(--si-font-label-sm); color: var(--si-ink-3); }
+.status.verified { color: var(--si-ink-1); }
+.excluded .title, .excluded .tags { color: var(--si-ink-4); text-decoration: line-through; text-decoration-color: var(--si-ink-5); }
 .detail { padding: 0 0 16px 24px; }
 dl { margin: 0 0 10px; }
 dt { font: var(--si-font-label); color: var(--si-ink-2); }
