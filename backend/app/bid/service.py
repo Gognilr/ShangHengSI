@@ -12,7 +12,7 @@ from app.security.errors import AppError, NotFoundError
 from app.tasks import service as tasks, storage
 
 # 独立于审核任务的限制；不改变现有合同与会话的上限。
-LIMITS = {"bid_files": 20, "tender_files": 5, "file_mb": 100, "pdf_pages": 600, "ocr_pages": 500}
+LIMITS = {"bid_files": 20, "tender_files": 10, "file_mb": 100, "pdf_pages": 600, "ocr_pages": 500}
 
 
 def busy(db, task):

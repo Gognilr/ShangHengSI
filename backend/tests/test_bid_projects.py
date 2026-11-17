@@ -144,7 +144,7 @@ def test_pdf_password_wrong_correct_and_reparse(owner, db_sessionmaker, caplog):
 def test_bid_limits_and_retention(owner, db_sessionmaker):
     c, h, _ = owner
     base = create(c, h)
-    tender = [("files", (f"虚构招标{i}.docx", document())) for i in range(5)]
+    tender = [("files", (f"虚构招标{i}.docx", document())) for i in range(10)]
     assert c.post(base + "/files", headers=h, files=tender).status_code == 200
     drain(db_sessionmaker, base)
     assert c.post(base + "/files", headers=h, files={"files": ("超出.docx", document())}).status_code == 422
