@@ -35,6 +35,26 @@ def test_cross_run_quote_preserves_text_and_format():
     assert "".join(r.text for r in split_runs(a)) == "应当"
 
 
+def test_proof_err_does_not_split_quote():
+    import io
+
+    from docx import Document
+    from docx.oxml import OxmlElement
+
+    doc = Document()
+    para = doc.add_paragraph()
+    para.add_run("乙方应在合同签订后")
+    para._p.append(OxmlElement("w:proofErr"))
+    para.add_run("三十日内付款。")
+    buf = io.BytesIO()
+    doc.save(buf)
+    data = buf.getvalue()
+    stored = {n.loc: n.text for n in parse_docx(data, 1).nodes}
+    a = load_anchors(data, 1, stored).locate("F1-P1", "签订后三十日")
+    assert a.precise
+    assert "".join(r.text for r in split_runs(a)) == "签订后三十日"
+
+
 def test_cell_second_paragraph():
     a = anchors().locate("F1-T1-R1-C1", "验收期限")
     assert a.precise and a.paragraph.text == "验收期限为十日。"

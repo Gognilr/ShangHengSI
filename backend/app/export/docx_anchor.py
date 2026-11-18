@@ -103,7 +103,7 @@ class Anchors:
                     segment.append(child)
                 elif child.tag == qn("w:pPr") or child.tag in (
                     qn("w:bookmarkStart"), qn("w:bookmarkEnd"),
-                    qn("w:commentRangeStart"), qn("w:commentRangeEnd"),
+                    qn("w:commentRangeStart"), qn("w:commentRangeEnd"), qn("w:proofErr"),
                 ):
                     continue
                 else:
