@@ -348,3 +348,26 @@ V34Q-01～10 来自 2026-11-15 与用户的讨论（标书比对能力、首页�
 * 对已留存的 14 份真实响应在数据库回滚事务中重放，8 个已定位的错引都转为待核实。同一 89 格子集较上一轮真实结果：一致 69 → 68，误报不响应 4 → 0，漏取响应 14 → 19，两处历史工期被误判为响应改记风险未决。另有一格原判恰巧正确，实际选作引文的是备件材料，也转待核实。回放只检验新规则如何处理旧输出，重检索后的模型判读仍待验证。
 * 补看 3 张保证金相关原件页，确认 1 家本次回执信息只在图像中，模型结果漏取；另一家回执在两个文件重复出现，银行附言缺具体项目名，保留待核实。此发现列入私有补核，89 格基线口径保留。文档含正文又嵌有回执图像的漏检交后续 OCR 能力评估，不要求为此扩大本任务脱敏识别范围。
 * 本机重检索后，按同一明确归属规则检查的错归属关联从小 8 / 大 152 降至 0，281 格均仍有候选。该计数检验筛选规则，不能代表全量引用准确度。新回执小 3 批、大 11 批，共 14 批，全部通过本机出口复检，无原文件名。两组调用记录数仍为 8 / 26，等待用户确认后才能发送。
+
+### V34Q-50 全仓代码审核发现的问题记录（2026-11-18，待分批修复）
+
+* **安全与隐私边界（优先）：**
+  1. `local_only` 动态切换：`PATCH /bid/{id}` 在 `extract_state` 进行中切为 `local_only` 时未拦截或重置状态；因 worker `expire_on_commit=False` 且 `gateway._refuse_local_only` 未传 `populate_existing=True`，分段循环会命中缓存继续外发，或提前返回导致卡死在 `extracting`；切为 `local_only` 时 `BidRequirement.method == "model"` 未收敛为 `"manual"` 会形成无法人工核对的死格（`bid/router.py`、`bid/extract.py`、`llm/gateway.py`、`bid/results.py`）。
+  2. 原件保留期清理：`backup/retention.py` 的 `original` 层到期删除原件与节点原文时，漏清 `task_files.password_enc`、`meta_enc` 与 `bid_images`（原件删后 `GET /bid/{id}/files/{fid}/password` 仍可读密码）；且 `bid/results.py`（`reopen`）与 `bid/model.py`（`start`）未拦截 `original_deleted_at is not None`，重跑会将结果层数据洗空。
+  3. 招标文件模型补充脱敏模式：`bid/extract.py:222` 调 `engine.redact_task` 未传 `style="neutral"`，开启 `redaction.date_shift` 时招标文件日期被随机平移而 `restore()` 不逆平移，导致含日期的要求引文核验失败或写入平移假日期，并残留 `（=合同总价的 xx%）` 后缀。
+  4. 任务类型与权限边界：`security/deps.py` 的 `owned_redaction_task` / `owned_party_task` 未像 `owned_readable_task` 那样过滤 `task.kind == "bid"`，本人可用标书 `id` 调 `/tasks/{id}/redaction/*`；另建议 `config.py` 将 `httpx` / `httpcore` 并入 `_CONTENT_LOGGERS`。
+* **后端正确性与状态机：**
+  1. `db/jobs.py` 的 `finalize_failed` 遗漏 `job_type == "bid"`，且 `bid/extract.py`、`bid/model.py` 缺外层兜底异常收敛，任务超时用尽重试或异常后项目永久锁在 `checking` / `extracting` / `running`。
+  2. `bid/pricing.py:115` 对 `table_cell` 列号调 `int(col)`，投标文件含 XLSX（列号 `"A"`）且有独立总价标签格时必抛 `ValueError` 崩溃，且 ≥ 10 列时按字典序排错列。
+  3. `reopen` 后将要求 `method` 由 `model` 改 `local` 再初审，`_pricing_step` 未删旧 `source="model"` 单元格，触发 `BidCell` 唯一键冲突崩溃；停用要求或改材料未重跑模型时旧模型结果残留。
+  4. `bid_items.requirement_id` 为 `ON DELETE SET NULL` 且 `delete_bidder` 未清理 `bid_items.bidder_ids`，删除要求或投标人后残留永久孤儿 `BidItem`，污染统计与报告。
+  5. `bid/schemas.py:78` 与 `bid/requirements.py:207` 的 `Decimal.quantize` 在 `try` 块外，大指数或超长数字抛未捕获 `InvalidOperation`（HTTP 500）；`pricing.py:77` 无单位数字硬编码 `'CNY'` 且回退 `table_total` 丢弃表币种；`assistant/spoken_amount.py:23` 有一处 `float(core)`。
+  6. 延后扫描 `bid(ocr)` 可占满全部 2 个 `worker-parse` 线程饿死普通解析与 `bid(check)`；后台 OCR `_recheck` 与用户 `reopen` / `check` 无项目级互斥锁。
+* **前端导航、权限与标书规范：**
+  1. `WorkbenchHome.vue:67-74` 未适配 `r.kind === 'bid'`，标书项目在工作台首页“继续上次的工作”显示为“工作台 · 对话”且点击跳往 `/review/*` 报 404。
+  2. `BidResults.vue:28-38` 与 `BidModelCheck.vue:32-45` 卸载时在途请求返回后未检查卸载态即重设 `setTimeout`，导致永久 2 秒后台轮询泄漏。
+  3. `BidMatrix.vue` 人工核对行核实后仍显示 `？`（仅悬停可见）且开启“只看有问题”时不隐藏；分组标题左侧按要求行数、右侧按单元格数统计，左右单位矛盾。
+  4. `BidSettingsDialog.vue` 的文件夹 `el-tree-select` 清空为 `undefined` 致序列化丢键，改回“未归档”静默失效。
+  5. 细粒度权限与跳转：`WorkbenchHome.vue` 用 `use.translate` 误藏本地翻译；`GlobalSearch.vue` 缺会议 / 翻译页面项且搜出记录跳往 `/assistant/:id`；`Meeting.vue` / `Translate.vue` 点“全部历史”跳往不含它们的 `/history`；仅 `use.review` 或仅 `use.bid` 账号在 `MainLayout.vue` / `Assistant.vue` / `History.vue` 有残留入口。
+  6. 细节：`SiIsland.vue:36` 浅色模式圆点 `--si-ok` 在深底上对比度仅 1.36:1；`skin.css:366-371` 精简档 `lite` 漏停光带与流光动画；`BidRequirements.vue:113` 快捷键未过滤 `Ctrl/Meta/Alt`；“查看实际发送内容”按钮在点关闭或重新准备后消失。
+* **仓库状态：** 本地 `main` 与 `origin/main` 分叉（领先 94、落后 5，远端含 `FSL-1.1-ALv2` 许可证与三语 `README` 更新），须在 `V34-Z` 推送前先合入；根目录残留空目录 `backend;C`。以上各项拟随 `B-08b` → `B-09` → `B-06e` → `B-08c` → `V34-Z` 对口任务分批修复。
