@@ -25,6 +25,8 @@ from app.worker import job_handler
 
 logger = logging.getLogger(__name__)
 CHUNK = 24000  # 每次调用的正文字数上限（脱敏后）
+_PREVIEW_VERSION = "@bid_extract_neutral_version"
+STALE_PREVIEW = "招标文件脱敏预览已失效，请重新开始模型补充"
 
 SYSTEM = """你是招标文件整理助手。用户给出一份招标文件的若干行（已在本机脱敏，方括号中的代号请原样保留），每行以 [位置] 开头。
 请只做抽取与分类，不做任何判断：列出投标人必须满足或响应的要求。分组只能取：
@@ -61,12 +63,21 @@ def chunks(lines):
     return out
 
 
+def _preview_lines(db, task):
+    if engine._load_full_map(db, task.id).get(_PREVIEW_VERSION) != str(task.material_version):
+        return []
+    lines = _lines(db, task)
+    return [] if any(text is None for _, text in lines) else lines
+
+
 def receipt(db, task) -> dict | None:
     """待确认时的回执：将发送的字数、分段（= 调用次数）、本机保护的项数、剩余次数。"""
     project = _project(db, task)
     if task.policy == "local_only" or project.extract_state != "awaiting":
         return None
-    lines = _lines(db, task)
+    lines = _preview_lines(db, task)
+    if not lines:
+        return None
     parts = chunks(lines)
     from app.models_api import select_model
     try:
@@ -103,10 +114,8 @@ def confirm(db, task):
         raise AppError(409, "LOCAL_ONLY", "本项目只做本地检查，不调用模型")
     if project.extract_state != "awaiting":
         raise AppError(409, "EXTRACT_STATE", "请先完成本机脱敏")
-    if any(text is None for _, text in _lines(db, task)):
-        # 脱敏后招标文件又有变化：重新脱敏，不发送未脱敏的行
-        project.extract_state, project.extract_error = None, "招标文件有变化，请重新开始模型补充"
-        raise AppError(409, "EXTRACT_STALE", project.extract_error)
+    if not _preview_lines(db, task):
+        raise AppError(409, "EXTRACT_STALE", STALE_PREVIEW)
     project.extract_state = "extracting"
     jobs.enqueue(db, "bid", {"task_id": str(task.id), "stage": "extract"})
 
@@ -249,7 +258,12 @@ def handle_bid(db, payload):
         if project.extract_state != "redacting":
             return
         try:
-            engine.redact_task(db, task)
+            engine.redact_task(db, task, style="neutral")
+            # 标记本次中性脱敏的材料版本，旧回执需重新准备再确认。
+            mapping = engine._load_full_map(db, task.id)
+            mapping.pop("@date_shift_days", None)
+            mapping[_PREVIEW_VERSION] = str(task.material_version)
+            engine.write_full_map(db, task.id, mapping)
             project.extract_state = "awaiting"
             db.commit()
         except Exception:
@@ -258,6 +272,10 @@ def handle_bid(db, payload):
         return
     if stage != "extract" or project.extract_state != "extracting":
         return
+    lines = _preview_lines(db, task)
+    if not lines:
+        _fail(db, task_id, STALE_PREVIEW)
+        return
     from app.models_api import select_model
     try:
         model = select_model(db, None, "review", structured=True)
@@ -265,7 +283,7 @@ def handle_bid(db, payload):
         _fail(db, task_id, str(exc))
         return
     items: list = []
-    parts = chunks(_lines(db, task))
+    parts = chunks(lines)
     db.commit()
     for number, part in enumerate(parts, 1):
         messages = [{"role": "system", "content": SYSTEM},

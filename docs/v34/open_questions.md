@@ -357,6 +357,7 @@ V34Q-01～10 来自 2026-11-15 与用户的讨论（标书比对能力、首页�
   2. 原件保留期清理：`backup/retention.py` 的 `original` 层到期删除原件与节点原文时，漏清 `task_files.password_enc`、`meta_enc` 与 `bid_images`（原件删后 `GET /bid/{id}/files/{fid}/password` 仍可读密码）；且 `bid/results.py`（`reopen`）与 `bid/model.py`（`start`）未拦截 `original_deleted_at is not None`，重跑会将结果层数据洗空。
      进度（2026-11-18，Codex）：已补齐原件附属数据清理及旧数据补清，并阻止原件已删除的项目重跑，保护已有初审结果（[报告](reports/V34Q-50-2.md)）。
   3. 招标文件模型补充脱敏模式：`bid/extract.py:222` 调 `engine.redact_task` 未传 `style="neutral"`，开启 `redaction.date_shift` 时招标文件日期被随机平移而 `restore()` 不逆平移，导致含日期的要求引文核验失败或写入平移假日期，并残留 `（=合同总价的 xx%）` 后缀。
+     进度（2026-11-18，Codex）：招标文件的模型补充改用中性脱敏，旧预览及旧队列发送须重新准备并确认（[报告](reports/V34Q-50-3.md)）。
   4. 任务类型与权限边界：`security/deps.py` 的 `owned_redaction_task` / `owned_party_task` 未像 `owned_readable_task` 那样过滤 `task.kind == "bid"`，本人可用标书 `id` 调 `/tasks/{id}/redaction/*`；另建议 `config.py` 将 `httpx` / `httpcore` 并入 `_CONTENT_LOGGERS`。
 * **后端正确性与状态机：**
   1. `db/jobs.py` 的 `finalize_failed` 遗漏 `job_type == "bid"`，且 `bid/extract.py`、`bid/model.py` 缺外层兜底异常收敛，任务超时用尽重试或异常后项目永久锁在 `checking` / `extracting` / `running`。

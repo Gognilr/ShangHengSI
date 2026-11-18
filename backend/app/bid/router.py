@@ -278,6 +278,8 @@ def _requirements(db, task):
     from app.bid import extract, requirements as R
     data = R.view(db, task)
     data["receipt"] = extract.receipt(db, task)
+    if task.policy == "ai" and data["extract_state"] == "awaiting" and data["receipt"] is None:
+        data["extract_state"], data["extract_error"] = "failed", extract.STALE_PREVIEW
     data["stage"] = db.get(BidProject, task.id).stage
     return data
 

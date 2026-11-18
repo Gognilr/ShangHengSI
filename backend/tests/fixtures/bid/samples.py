@@ -32,14 +32,18 @@ def pdf(*, encrypted=True, pages=1, author=None):
 # B-02 虚构招标文件：原文 ★ 4 处（含一处表格行）、否决句 3 处；合同章节与格式章节的“应当 / 必须”不应进入清单。
 TENDER_STARS = 4
 TENDER_VETOES = 3
+TENDER_SUPPLEMENT_CLAUSE = "样机递交截止日期为2028年6月15日，投标保证金为人民币 20,000.00 元（比例为 2%）。"
 
 
-def tender():
+def tender(*, supplement=False):
     doc = Document()
     doc.add_heading("第一章 招标公告", level=1)
     doc.add_paragraph("本项目为虚构的松青示范仪器采购，最高投标限价：人民币 380 万元。投标有效期为 90 日历天。")
     doc.add_paragraph("投标保证金：人民币 5 万元，以银行保函或电汇方式提交。本项目不接受联合体投标。报价为含税价。")
     doc.add_heading("第二章 投标人须知", level=1)
+    if supplement:
+        doc.add_paragraph("合同总价：人民币 1,000,000.00 元。")
+        doc.add_paragraph(TENDER_SUPPLEMENT_CLAUSE)
     doc.add_paragraph("★投标人须具有有效的营业执照。★投标人近三年须有两项同类仪器供货业绩。")
     doc.add_paragraph("投标报价超过最高投标限价的，其投标将被否决。")
     doc.add_paragraph("投标文件未按要求密封的，招标人不予受理。")

@@ -8,16 +8,17 @@ from sqlalchemy import func, select
 
 from app.bid.extract import handle_bid
 from app.db.models import BidProject, Job, LlmCall, Task
-from tests.fixtures.bid.samples import TENDER_STARS, TENDER_VETOES, tender
+from tests.fixtures.bid.samples import TENDER_STARS, TENDER_SUPPLEMENT_CLAUSE, TENDER_VETOES, tender
 from tests.review_support import env, llm  # noqa: F401
 from tests.test_bid_projects import BODY, ROOT, drain, owner  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("env")
 
 
-def project(c, h, sm, policy="local_only"):
+def project(c, h, sm, policy="local_only", *, supplement=False):
     base = ROOT + "/" + c.post(ROOT, headers=h, json={**BODY, "policy": policy}).json()["id"]
-    assert c.post(base + "/files", headers=h, files={"files": ("虚构招标文件.docx", tender())}).status_code == 200
+    files = {"files": ("虚构招标文件.docx", tender(supplement=supplement))}
+    assert c.post(base + "/files", headers=h, files=files).status_code == 200
     drain(sm, base)
     return base
 
@@ -70,9 +71,16 @@ def test_rules_counter_parameters_and_confirm(owner, db_sessionmaker):
 
 
 def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, llm):
+    from app.admin.settings_store import set_setting
+
     c, h, _ = owner
-    base = project(c, h, db_sessionmaker, policy="ai")
+    with db_sessionmaker() as db:
+        set_setting(db, "redaction.date_shift", True, None)
+        db.commit()
+    base = project(c, h, db_sessionmaker, policy="ai", supplement=True)
     tender_view = c.get(base + "/tender").json()
+    clause = next(n for n in tender_view["nodes"] if n["text"] == TENDER_SUPPLEMENT_CLAUSE)
+    clause_loc = clause["loc"]
     loc = next(n["loc"] for n in tender_view["nodes"] if "密封" in n["text"])
     before = len(c.get(base + "/requirements").json()["items"])
     assert c.post(base + "/assist/start", headers=h).json()["extract_state"] == "redacting"
@@ -84,7 +92,13 @@ def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, l
     def handler(request):
         body = json.loads(request.content)
         sent.append(body["messages"][1]["content"])
+        prefix = f"[{clause_loc}] "
+        outbound_quote = next(line[len(prefix):] for line in sent[-1].splitlines() if line.startswith(prefix))
+        assert "2028年6月15日" in outbound_quote and "比例为 2%" in outbound_quote
+        assert "[[AMT_" in outbound_quote and "20,000.00" not in outbound_quote
+        assert "（=合同总价的" not in sent[-1]
         content = json.dumps({"items": [
+            {"group": "validity", "text": outbound_quote, "loc": clause_loc, "quote": outbound_quote},
             {"group": "signing", "text": "投标文件须密封递交", "loc": loc, "quote": "投标文件未按要求密封的"},  # 与规则行重叠，不重复
             {"group": "qualification", "text": "测量精度要求", "loc": "不存在的位置", "quote": "测量精度"},  # 位置无效，丢弃
             {"group": "pricing", "text": "报价须为含税价", "loc": next(n["loc"] for n in tender_view["nodes"] if "含税价" in n["text"]),
@@ -100,7 +114,10 @@ def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, l
     data = c.get(base + "/requirements").json()
     assert data["extract_state"] == "done"
     added = [i for i in data["items"] if i["source"] == "model"]
-    assert [i["text"] for i in added] == ["报价须为含税价"] and len(data["items"]) == before + 1
+    assert [i["text"] for i in added] == [TENDER_SUPPLEMENT_CLAUSE, "报价须为含税价"]
+    assert len(data["items"]) == before + 2
+    assert added[0]["locs"] == [{"file_id": clause["file_id"], "loc": clause_loc, "start": 0,
+                                 "end": len(TENDER_SUPPLEMENT_CLAUSE)}]
     assert "松青示范仪器" not in sent[0] or "[" in sent[0]  # 只发脱敏后的招标文件
     with db_sessionmaker() as db:
         call = db.scalars(select(LlmCall).where(LlmCall.task_id == uuid.UUID(base.rsplit("/", 1)[-1]))).one()
@@ -113,6 +130,37 @@ def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, l
     assert c.get(base).json()["sent_count"] == c.get(base + "/model").json()["sent_count"] == 1
     records = c.get(base + "/sent").json()
     assert len(records) == 1 and records[0]["text"] is None
+
+
+def test_legacy_supplement_preview_must_be_prepared_again(owner, db_sessionmaker, llm):
+    from app.db import jobs
+    from app.redaction import engine
+
+    c, h, _ = owner
+    base = project(c, h, db_sessionmaker, policy="ai", supplement=True)
+    task_id = uuid.UUID(base.rsplit("/", 1)[-1])
+    sent = llm()
+    with db_sessionmaker() as db:
+        engine.redact_task(db, db.get(Task, task_id))  # 旧版本用审核脱敏
+        db.get(BidProject, task_id).extract_state = "awaiting"
+        db.commit()
+
+    legacy_nodes = c.get(base + "/tender", params={"view": "ai"}).json()["nodes"]
+    legacy_quote = next(node["text"] for node in legacy_nodes if "样机递交截止日期为" in node["text"])
+    assert "2028年6月15日" not in legacy_quote and "（=合同总价的" in legacy_quote
+    old = c.get(base + "/requirements").json()
+    assert old["extract_state"] == "failed" and old["receipt"] is None
+    assert c.post(base + "/assist/confirm", headers=h).json()["code"] == "EXTRACT_STALE"
+    with db_sessionmaker() as db:
+        db.get(BidProject, task_id).extract_state = "extracting"
+        jobs.enqueue(db, "bid", {"task_id": str(task_id), "stage": "extract"})
+        db.commit()
+    run_bid_jobs(db_sessionmaker, base)
+    assert c.get(base + "/requirements").json()["extract_state"] == "failed" and not sent
+
+    assert c.post(base + "/assist/start", headers=h).json()["extract_state"] == "redacting"
+    run_bid_jobs(db_sessionmaker, base)
+    assert c.get(base + "/requirements").json()["receipt"]["calls"] == 1
 
 
 def test_switch_to_local_invalidates_receipt_and_normalizes_requirements(owner, db_sessionmaker, llm):
