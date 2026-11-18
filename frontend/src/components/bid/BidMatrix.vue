@@ -26,18 +26,20 @@ function rowRank(r: Requirement) {
 const all = computed(() => [...(ctx.data.value?.requirements ?? [])].filter(r => r.group !== 'format')
   .sort((a, b) => groupOf(a) - groupOf(b) || rowRank(a) - rowRank(b) || a.seq - b.seq))
 const rows = computed(() => all.value.filter(r => !onlyProblems.value || props.bidders.some(b => problem(cellOf(r.id, b.id)))))
+const hasAnomaly = (r: Requirement, verdict: 'no' | 'missing') =>
+  r.method !== 'manual' && props.bidders.some(b => {
+    const c = cellOf(r.id, b.id)
+    return !!c && c.review_status !== 'excluded' && c.cite !== 'unverified' && c.verdict === verdict
+  })
+const countRows = (list: Requirement[], verdict: 'no' | 'missing') => list.filter(r => hasAnomaly(r, verdict)).length
 const groups = computed(() => groupLabels.map((label, index) => {
+  const groupRows = all.value.filter(r => groupOf(r) === index)
   const items = rows.value.filter(r => groupOf(r) === index)
-  const cells = items.flatMap(r => props.bidders.map(b => cellOf(r.id, b.id))).filter(c => c && c.review_status !== 'excluded')
-  return { label, items, no: cells.filter(c => c?.verdict === 'no').length, missing: cells.filter(c => c?.verdict === 'missing').length }
+  return { label, total: groupRows.length, items, no: countRows(groupRows, 'no'), missing: countRows(groupRows, 'missing') }
 }).filter(g => g.items.length))
 const hidden = computed(() => all.value.length - rows.value.length)
-const countRows = (verdict: string) => all.value.filter(r => props.bidders.some(b => {
-  const c = cellOf(r.id, b.id)
-  return c?.review_status !== 'excluded' && c?.verdict === verdict
-})).length
-const noRows = computed(() => countRows('no'))
-const missingRows = computed(() => countRows('missing'))
+const noRows = computed(() => countRows(all.value, 'no'))
+const missingRows = computed(() => countRows(all.value, 'missing'))
 
 const symbols: Record<string, { s: string; label: string; tone: string }> = {
   yes: { s: '✓', label: '响应', tone: 'plain' }, no: { s: '不响应', label: '疑似不响应', tone: 'verify' },
@@ -62,7 +64,7 @@ const drawer = ref<{ rid: string; bid: string } | null>(null)
 
 <template>
   <div class="bid-tab">
-    <p class="bid-lede">{{ all.length }} 条要求中，{{ noRows }} 条有家疑似不响应，{{ missingRows }} 条有家未找到响应内容。</p>
+    <p class="bid-lede num">{{ all.length }} 条要求中，{{ noRows }} 条有家疑似不响应，{{ missingRows }} 条有家未找到响应内容。</p>
     <section class="bid-block">
       <div class="tools">
         <label class="toggle"><el-switch v-model="onlyProblems" size="small" />只看有问题的行</label>
@@ -72,7 +74,7 @@ const drawer = ref<{ rid: string; bid: string } | null>(null)
         <table>
           <thead><tr><th class="req">要求</th><th v-for="b in bidders" :key="b.id" class="col" :title="b.name">{{ ctx.shorts.value[b.id] }}</th></tr></thead>
           <tbody v-for="g in groups" :key="g.label">
-            <tr class="group-row"><th :colspan="bidders.length + 1" scope="rowgroup"><div>{{ g.label }} · {{ g.items.length }}<span class="end"><template v-if="g.no">疑似不响应 {{ g.no }}</template><template v-if="g.no && g.missing"> · </template><template v-if="g.missing">未找到 {{ g.missing }}</template></span></div></th></tr>
+            <tr class="group-row"><th :colspan="bidders.length + 1" scope="rowgroup"><div class="num">{{ g.label }} · {{ g.total }}<span v-if="g.no || g.missing" class="end"><template v-if="g.no">疑似不响应 {{ g.no }}</template><template v-if="g.no && g.missing"> · </template><template v-if="g.missing">未找到 {{ g.missing }}</template></span></div></th></tr>
             <tr v-for="r in g.items" :key="r.id">
               <th class="req" scope="row"><span class="number num">{{ r.seq }}.</span><span class="text" :class="{ potential: ['veto', 'substantive', 'qualification'].includes(r.group) }">{{ r.text }}</span></th>
               <td v-for="b in bidders" :key="b.id">
