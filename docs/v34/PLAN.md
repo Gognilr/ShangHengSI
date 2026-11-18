@@ -52,7 +52,7 @@
 | V34-B-08b | 评测收尾：Q-38 定性、人工真值、模型核对有效率、报价识别、矩阵排序与序号、查看实际发送内容 | Q-37、38 | Opus，high | Sol 6.1，high | B-08 | 用户标注真值；再调模型前问用户 | 进行中（2026-11-18，Codex 接手；矩阵与外发入口已通过虚构样本复验，用户同意合并；人工真值、供货证据与卡片全称待确认；reports/V34-B-08b.md） |
 | V34-B-09 | 初审结论、串通证据链、二次核验与反馈（design/bid-conclusion.md） | Q-39、Q-53 | Opus，high | Sol 6.1，high | B-08b | 调模型前问次数；截图交用户 | 进行中（2026-11-19，Codex；已实现，待两组公开标书验收，[报告](reports/V34-B-09.md)）；Claude 复核代码通过（2026-11-19，Q-54），唱标价偏离设计转 B-06e |
 | V34-C-01 | V34Q-50 补遗：口语金额 Decimal、Word 批注跳过拼写标记 | Q-54 | Sonnet，medium | Terra，medium | B-09 | — | 已完成 |
-| V34-B-06e | 报价分析页重做：一眼看到问题（design/bid-pricing.md）；含改正 B-09 提前实现的唱标价 | Q-39、Q-54 | Opus，medium | Sol 6.1，high | B-09 | 截图交用户 | 未开始（设计用户 2026-11-17 确认） |
+| V34-B-06e | 报价分析页重做：一眼看到问题（design/bid-pricing.md）；含改正 B-09 提前实现的唱标价 | Q-39、Q-54 | Opus，medium | Sol 6.1，high | B-09 | 截图交用户 | 已完成（2026-11-19，Claude Opus 5.5，reports/V34-B-06e.md；46 项通过；与规范的三处差异待用户确认） |
 | V34-D-01 | OCR 选型与升级：RapidOCR 新代次 PP-OCR 模型，模型文件打包、运行时不下载 | Q-55 | Opus，high | Sol 6.1，high | B-06e | 选型报告交用户确认后才换模型 | 未开始 |
 | V34-D-02 | 扫描页线框表格转 table_cell，低置信单元格的校验降级 | Q-55 | Opus，high | Sol 6.1，high | D-01 | — | 未开始 |
 | V34-D-03 | 文字页受限 text 兜底、跨页续表（校验时拼接）、PDF 页眉页脚规则分离 | Q-55 | Opus，medium | Sol 6.1，medium | D-02 | — | 未开始 |
