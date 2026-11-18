@@ -43,6 +43,19 @@ def _prepared(c, h, sm):
     return base
 
 
+def test_quote_context_preserves_page_and_current_term():
+    from app.bid import model
+    rows = [('f', 1, 'F1-PG1-B1', 'ocr_block', 1, '历史材料' * 70),
+            ('f', 1, 'F1-PG2-B1', 'ocr_block', 2, '六、报价单'),
+            ('f', 1, 'F1-PG2-B2', 'ocr_block', 2, '本次服务费用包括全过程费用；税率6%；工期按甲方要求。')]
+    pieces = model.passages(rows)
+    assert len(pieces) == 2 and '税率6%' in pieces[1]['text'] and pieces[1]['page'] == 2
+    history = [{'text': f'历史合同{i}，投标文件中明确完成时间，报告完成时间按旧订单。', 'section': ''} for i in range(4)]
+    pieces = [*history, {**pieces[1], 'section': ''}]
+    links = model.retrieve([('R1', '投标文件中须明确完成时间')], {'A': pieces})
+    assert len(links['A']['R1']) <= model.TOP and 4 in links['A']['R1']
+
+
 def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     c, h, _ = owner
     base = _prepared(c, h, db_sessionmaker)

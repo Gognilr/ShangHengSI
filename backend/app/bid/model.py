@@ -42,6 +42,8 @@ _VETO = {"qualification": "（参照第五十一条（三））", "substantive":
 _GENERIC = {"投标", "标人", "招标", "标文", "文件", "要求", "必须", "应当", "不得", "提供", "具有", "按照", "规定", "符合",
             "的投", "人须", "人应", "须具", "人必", "本项", "项目", "以上", "以下", "相关", "进行", "其投", "将被", "被否",
             "否决", "参照", "条例", "第五", "五十", "十一", "一条", "实施", "招投", "标投", "投标法"}
+_QUOTE_QUERY = re.compile(r"报价|税率|付款|完成时间|工期|交货|供货周期")
+_QUOTE_CONTEXT = re.compile(r"^[^\n]{0,30}(?:报价单|投标一览表|开标一览表)\s*$", re.M)
 
 SYSTEM = """你是招标采购的初审助手。用户给出招标文件的若干要求，以及在某一投标人的投标文件中检索到的相关片段。
 所有内容已在本机脱敏，方括号中的代号（如 [投标人A]、[[ORG_1]]）请原样保留；投标人只以代号出现。
@@ -50,6 +52,10 @@ SYSTEM = """你是招标采购的初审助手。用户给出招标文件的若�
 - 疑似不响应：片段中的内容与要求不符或明显低于要求（偏离表写“负偏离”也属此类）；
 - 未找到：片段中没有与该要求相关的内容；
 - 无法判断：片段相关但信息不足以判断。
+先核对是否为本项目、同一设备位号及同一供货范围；历史业绩合同、其他项目和通用厂家资料不能替代本次响应。
+条件条款先确认触发条件；比较数值须使用要求指定的分子、分母和单位，不能把额定流量替代最佳效率点流量。
+没有明确完成时间、未检索到材料或未见附属设备数据，不等于存在相反承诺；证据不足时用“未找到”或“无法判断”，不要据此判“疑似不响应”。
+要求中若混有编制、会签或日期等表头，不把表头日期当作技术响应条件；汇总材料须结合给出的多份文件，不能仅凭一份目录判缺失。
 若偏离表（技术或商务偏离表）中的写法与正文其他片段矛盾，在 conflict 中写明；否则留空。
 quote 必须从所引片段中逐字摘录（10～60 字）；“未找到”时 snippet 与 quote 留空。不要打分、排序或比较各投标人。
 只输出 JSON：{"items":[{"req":"R1","verdict":"响应|疑似不响应|未找到|无法判断","snippet":"A1","quote":"逐字摘录","reason":"一句话理由","conflict":""}]}"""
@@ -231,7 +237,7 @@ def passages(nodes):
         same_row = row and current and current.get("row") == row.group(1)
         if kind == "heading" and len(text) <= 60:
             section = text.strip()
-        if (current is None or current["file_id"] != file_id or kind == "heading"
+        if (current is None or current["file_id"] != file_id or current["page"] != page or kind == "heading"
                 or (not same_row and len(current["text"]) + len(text) > WINDOW)):
             current = {"file_id": file_id, "seq": seq, "locs": [], "page": page, "section": section, "text": ""}
             out.append(current)
@@ -287,19 +293,24 @@ def retrieve(requirements, per_bidder, matrix=None, queries=None):
         links[bid] = {}
         for rid, text in requirements:
             want = _grams(text)
+            quote = {i for i, p in enumerate(items) if _QUOTE_CONTEXT.search(p['text'])} if _QUOTE_QUERY.search(text) else set()
             scores = []
             for i, p in enumerate(items):
                 kw = len(want & grams[i]) / len(want) if want else 0.0
                 score = 0.6 * kw + (0.05 if kw and "偏离" in p["section"] else 0.0)
                 if matrix is not None and matrix.get(bid) is not None and queries is not None:
                     score += float(matrix[bid][i] @ queries[rid])
-                elif kw == 0:
+                elif kw == 0 and i not in quote:
                     continue
                 scores.append((score, i))
             scores.sort(key=lambda s: (-s[0], s[1]))
             best = scores[:TOP]
             if best:
                 best = [s for s in best if s[0] >= best[0][0] * 0.8]  # 明显不如第一名的不带上
+            # 工期、税率等常在本次报价页；留一个明确报价上下文，防止历史合同包揽前三名。
+            anchor = next((s for s in scores if s[1] in quote), None)
+            if anchor is not None and anchor[1] not in {i for _s, i in best}:
+                best = [*best[:TOP - 1], anchor]
             links[bid][rid] = [i for _s, i in best]
     return links
 
