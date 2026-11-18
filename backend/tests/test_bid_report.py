@@ -54,7 +54,10 @@ def _text(content: bytes) -> str:
 
 
 def test_matrix_order_and_numbers():
+    from types import SimpleNamespace
+
     from app.bid.results import matrix_group, matrix_requirements
+    from app.export.bid_docx import _cell_text
     reqs = [{'id': str(i), 'seq': i, 'group': group, 'method': method}
             for i, group, method in [(1, 'qualification', 'model'), (2, 'veto', 'model'),
                                       (3, 'veto', 'model'), (4, 'substantive', 'manual'), (5, 'veto', 'model'), (6, 'veto', 'model')]]
@@ -64,6 +67,19 @@ def test_matrix_order_and_numbers():
     ordered = matrix_requirements(reqs, cells, 1)
     assert [r['seq'] for r in ordered] == [5, 3, 6, 2, 1, 4]
     assert matrix_group(ordered[-1]) == '人工核对'
+    # 核实了模型的“无法判断”或未核实引文，不能把模型结果当成人工确认符合。
+    verified = {'review_status': 'verified'}
+    cells[-1].update(verified)
+    cells[1].update(verdict='unclear', **verified)
+    assert [r['seq'] for r in matrix_requirements(reqs, cells, 1)] == [5, 3, 2, 6, 1, 4]
+
+    checked = {'verdict': 'unclear', 'source': 'model', 'cite': None, **verified}
+    data = SimpleNamespace(cells={('2', 'A'): checked})
+    assert _cell_text(data, reqs[1], 'A') == '？（模型）·已核实'
+    checked.update(verdict='yes', cite='unverified')
+    assert _cell_text(data, reqs[1], 'A') == '？（模型）·引文待核实'
+    checked.update(verdict='manual', source='local', cite=None)
+    assert _cell_text(data, {**reqs[1], 'method': 'manual'}, 'A') == '✓·已核实'
 
 
 def test_scenario_matches_golden(owner, db_sessionmaker):

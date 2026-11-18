@@ -272,11 +272,12 @@ def matrix_requirements(reqs, cells, bidder_count=None):
         seen.setdefault(key, set()).add(str(c['bidder_id']))
         req = by_req.get(key)
         manual = (req is not None and req['method'] == 'manual') or c['verdict'] == 'manual'
-        if c['review_status'] == 'excluded' or (c['review_status'] == 'verified' and (manual or c['verdict'] in ('unclear', 'yes'))):
+        manual_pass = req is not None and req['method'] == 'manual' and c['verdict'] == 'manual' and c['review_status'] == 'verified'
+        if c['review_status'] == 'excluded' or manual_pass:
             ranks.setdefault(key, 3)
             continue
         rank = 2 if manual else {'no': 0, 'missing': 1, 'unclear': 2, 'manual': 2}.get(c['verdict'], 3)
-        if c['cite'] == 'unverified' and c['review_status'] != 'verified':
+        if c['cite'] == 'unverified':
             rank = 2
         ranks[key] = min(rank, ranks.get(key, 3))
     for r in reqs:

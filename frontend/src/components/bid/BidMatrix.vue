@@ -17,8 +17,8 @@ const cellOf = (rid: string, bid: string) => { const i = cellIndex.value.get(`${
 function cellRank(method: string, c?: BidCell): number {
   if (!c) return 2
   if (c.review_status === 'excluded') return 3
-  if (method === 'manual' || c.verdict === 'manual') return c.review_status === 'verified' ? 3 : 2
-  if (c.review_status === 'verified' && (c.verdict === 'unclear' || c.verdict === 'yes')) return 3
+  if (method === 'manual' || c.verdict === 'manual')
+    return method === 'manual' && c.verdict === 'manual' && c.review_status === 'verified' ? 3 : 2
   if (c.cite === 'unverified') return 2
   return ({ no: 0, missing: 1, unclear: 2, manual: 2, yes: 3 })[c.verdict] ?? 2
 }
@@ -51,20 +51,17 @@ const symbols: Record<string, { s: string; label: string; tone: string }> = {
 function view(method: string, c?: BidCell) {
   if (method === 'manual' || c?.verdict === 'manual') {
     if (c?.review_status === 'excluded') return { s: '—', label: '不适用', tone: 'plain' }
-    if (c?.review_status === 'verified') return { s: '✓', label: '已核实符合', tone: 'plain' }
+    if (method === 'manual' && c?.verdict === 'manual' && c.review_status === 'verified') return { s: '✓', label: '已核实符合', tone: 'plain' }
     return { s: '？', label: '人工核对', tone: 'plain' }
   }
   if (!c) return { s: '？', label: method === 'model' ? (props.modelState === 'running' ? '模型核对中' : '未核对') : '本地规则未能判断', tone: 'plain' }
-  if (c.review_status === 'verified' && (c.verdict === 'unclear' || c.verdict === 'yes')) return { s: '✓', label: '已核实符合', tone: 'plain' }
-  if (c.cite === 'unverified' && c.review_status !== 'verified') return { s: '？', label: '引文待核实', tone: 'plain' }
+  if (c.cite === 'unverified') return { s: '？', label: '引文待核实', tone: 'plain' }
   if (c.verdict === 'no' && c.review_status === 'verified') return { s: '不响应', label: '已核实不响应', tone: 'confirmed' }
-  if (c.verdict === 'missing' && c.review_status === 'verified') return { s: '未找到', label: '已核实未找到', tone: 'confirmed' }
   return symbols[c.verdict] ?? symbols.unclear!
 }
 function title(method: string, c?: BidCell) {
   const v = view(method, c)
   const parts = [v.label, c ? (c.verdict === 'manual' || method === 'manual' ? '人工核对' : c.source === 'model' ? '模型判断' : '本地规则') : bidMethodLabel[method as 'local']]
-  if (c?.cite === 'unverified' && c.review_status !== 'verified') parts.push('引文待核实')
   if (c && c.review_status !== 'pending') parts.push(c.review_status === 'verified' ? '已核实' : (method === 'manual' || c.verdict === 'manual' ? '本条不适用' : '已排除'))
   return parts.join(' · ')
 }

@@ -100,4 +100,13 @@ def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, l
     assert [i["text"] for i in added] == ["报价须为含税价"] and len(data["items"]) == before + 1
     assert "松青示范仪器" not in sent[0] or "[" in sent[0]  # 只发脱敏后的招标文件
     with db_sessionmaker() as db:
-        assert db.scalar(select(LlmCall.purpose).where(LlmCall.task_id == uuid.UUID(base.rsplit("/", 1)[-1]))) == "bid"
+        call = db.scalars(select(LlmCall).where(LlmCall.task_id == uuid.UUID(base.rsplit("/", 1)[-1]))).one()
+        assert call.purpose == "bid"
+        assert sent[0] in c.get(base + "/sent").json()[0]["text"]
+        call.request_text = None  # 外发正文保留期已到
+        db.commit()
+    closed = c.post(base + "/assist/cancel", headers=h).json()
+    assert closed["extract_state"] is None and closed["sent_count"] == 1
+    assert c.get(base).json()["sent_count"] == c.get(base + "/model").json()["sent_count"] == 1
+    records = c.get(base + "/sent").json()
+    assert len(records) == 1 and records[0]["text"] is None

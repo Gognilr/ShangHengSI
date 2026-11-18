@@ -315,14 +315,17 @@ def _cell_text(d: _Data, req, bidder_id) -> str:
     manual = req["method"] == "manual" or cell["verdict"] == "manual"
     if cell["review_status"] == "excluded":
         return "—" if manual else "已排除"
-    if cell["review_status"] == "verified" and (manual or cell["verdict"] == "unclear"):
-        return "✓·已核实"
-    text = {'yes': '✓', 'no': '不响应', 'missing': '未找到', 'unclear': '？', 'manual': '？'}.get(cell['verdict'], '？')
+    if manual:
+        if req["method"] == "manual" and cell["verdict"] == "manual" and cell["review_status"] == "verified":
+            return "✓·已核实"
+        return "？"
+    text = "？" if cell["cite"] == "unverified" else (
+        {'yes': '✓', 'no': '不响应', 'missing': '未找到', 'unclear': '？'}.get(cell['verdict'], '？'))
     if cell["source"] == "model":
         text += "（模型）"
-    if cell["cite"] == "unverified" and cell["review_status"] != "verified":
+    if cell["cite"] == "unverified":
         text += "·引文待核实"
-    if cell["review_status"] == "verified":
+    elif cell["review_status"] == "verified":
         text += "·已核实"
     return text
 
@@ -382,9 +385,7 @@ def _matrix(doc, d: _Data):
 
 
 def _problem_cell(cell) -> bool:
-    if cell["review_status"] == "verified" and cell["verdict"] in ("manual", "unclear", "yes"):
-        return False
-    return cell["verdict"] in ("no", "missing", "unclear") or (cell["cite"] == "unverified" and cell["review_status"] != "verified")
+    return cell["verdict"] in ("no", "missing", "unclear") or cell["cite"] == "unverified"
 
 
 # ---------------------------------------------------------------- 证据
