@@ -165,6 +165,14 @@ def test_conclusion_sign_and_incremental_quote(owner, db_sessionmaker):
         i["id"] for i in after["items"] if i["type"] == "similar"}
     assert "唱标价 · 人工录入" in _text(c.get(base + "/report").content)
 
+    req = after["requirements"][0]
+    app = f"{base}/requirements/{req['id']}/applicability"
+    for applicable in (False, True):
+        changed = c.put(app, headers=h, json={"applicable": applicable})
+        assert changed.status_code == 200
+        actual = next(r for r in changed.json()["requirements"] if r["id"] == req["id"])
+        assert actual["not_applicable"] is not applicable
+
 
 def test_report_requires_export_permission(make_user, login, db_sessionmaker):
     """只有 use.bid、没有 use.export 的账号不能导出。"""

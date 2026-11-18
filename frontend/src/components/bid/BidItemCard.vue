@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject, ref } from 'vue'
 import { ChevronRight } from '@lucide/vue'
-import type { BidItem, BidPlace } from '@/api/bid'
+import { bidApi, type BidItem, type BidPlace } from '@/api/bid'
 import BidReviewBar from './BidReviewBar.vue'
 import SimilarMap from './charts/SimilarMap.vue'
 import { bidResultsKey, bidTypeLabel, levelTone, sameSpans } from './results'
@@ -42,12 +42,17 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
         <dd v-if="row.value" class="value">{{ row.value }}</dd>
         <dd v-if="row.width" class="hint num">{{ row.width }} × {{ row.height }}</dd>
         <dd v-for="(file, bidder) in row.files ?? {}" :key="'f' + bidder" class="hint">{{ ctx.names.value[bidder] }}：{{ file }}</dd>
-        <template v-for="(list, bidder) in row.places ?? {}" :key="'p' + bidder">
-          <dd v-for="(p, i) in list" :key="i">
-            <span class="hint">{{ ctx.names.value[bidder] }} · {{ place(p) }}<button v-if="p.page && ctx.renderable.value[p.file_id]" type="button" class="link" @click="ctx.openPage(p.file_id, p.page!)">查看原件页</button></span>
-            <span v-if="p.excerpt" class="excerpt">{{ p.excerpt }}</span>
-          </dd>
-        </template>
+        <dd v-if="row.places" class="places" :class="{ pair: rowIndex !== undefined && Object.keys(row.places).length > 1 }">
+          <div v-for="(list, bidder) in row.places" :key="bidder" class="locations">
+            <div v-for="(p, i) in list" :key="i">
+              <span class="hint">{{ ctx.names.value[bidder] }} · {{ place(p) }}<button v-if="p.page && ctx.renderable.value[p.file_id]" type="button" class="link" @click="ctx.openPage(p.file_id, p.page!)">查看原件页</button></span>
+              <span v-if="p.excerpt" class="excerpt">{{ p.excerpt }}</span>
+            </div>
+            <img v-if="rowIndex !== undefined && pageOf(list)" class="proof-page" loading="lazy"
+              :src="bidApi.pageUrl(ctx.projectId, pageOf(list)!.file_id, pageOf(list)!.page!, 240)"
+              :alt="`${ctx.names.value[bidder]}的证据页`">
+          </div>
+        </dd>
         <!-- 并排对照：两张纸面，相同文字标出 -->
         <dd v-if="row.left && row.right" class="pair">
           <div v-for="[side, other] in [[row.left, row.right], [row.right, row.left]]" :key="side.bidder_id" class="sheet">
@@ -91,7 +96,9 @@ dl { margin: 0 0 10px; }
 dt { font: var(--si-font-label); color: var(--si-ink-2); }
 dd { margin: 4px 0 0; font: var(--si-font-body); color: var(--si-ink-1); display: flex; flex-direction: column; gap: 2px; }
 .value { font-weight: 600; }
-.excerpt { color: var(--si-ink-2); overflow-wrap: anywhere; }
+.excerpt { display: block; color: var(--si-ink-2); overflow-wrap: anywhere; }
+.locations { min-width: 0; overflow-wrap: anywhere; }
+.proof-page { display: block; max-width: min(100%, 180px); margin-top: 6px; border: 1px solid var(--si-hair); }
 .link { margin-left: 8px; padding: 0; border: 0; background: transparent; font: var(--si-font-meta); color: var(--si-ink-2); text-decoration: underline; text-decoration-color: var(--si-hair-strong); text-underline-offset: 3px; cursor: pointer; }
 .link:hover { color: var(--si-ink-1); }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }

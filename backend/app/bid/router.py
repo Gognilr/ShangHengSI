@@ -589,6 +589,8 @@ def manual_total(bidder_id: str, body: ManualTotalInput, task: Task = Depends(ow
 @router.put("/{id}/requirements/{rid}/applicability")
 def applicability(rid: str, body: ApplicabilityInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
     from app.bid import feedback, requirements, results, model
+    from app.bid.conclusion import SERIOUS_GROUPS
+    from app.db.models import BidCell
     task, project = _locked_result(db, task)
     req = requirements.requirement(db, task, rid)
     if not req.enabled:
@@ -596,7 +598,14 @@ def applicability(rid: str, body: ApplicabilityInput, task: Task = Depends(owned
     state = feedback.load(project.conclusion_enc)
     excluded = set(state.get("not_applicable", []))
     if body.applicable:
+        restoring = str(req.id) in excluded
         excluded.discard(str(req.id))
+        if restoring and task.policy == "ai" and req.method == "model" and req.group in SERIOUS_GROUPS:
+            known = select(BidCell.bidder_id).where(BidCell.requirement_id == req.id)
+            bidders = db.scalars(select(BidBidder.id).where(BidBidder.task_id == task.id, BidBidder.id.not_in(known)))
+            for bid in bidders:
+                db.add(BidCell(task_id=task.id, bidder_id=bid, requirement_id=req.id, verdict="missing", source="model",
+                               reason_enc=crypto.encrypt_text("该要求恢复适用，等待核验")))
     else:
         excluded.add(str(req.id))
     state["not_applicable"] = sorted(excluded)
