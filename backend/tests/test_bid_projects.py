@@ -76,7 +76,7 @@ def test_permissions_owner_and_cross_project_files(owner, make_user, login, db_s
     b1 = c.post(base + "/bidders", headers=h, json={"name": "虚构甲"}).json()["bidders"][0]["id"]
     # 唱标价在初审前即可录入；他人项目 404
     price = c.put(f"{base}/bidders/{b1}/opening-price", headers=h, json={"amount": "1,234.5"}).json()["bidders"][0]["opening_price"]
-    assert price == {"amount": "1234.50", "upper": None, "note": None}
+    assert price == {"amount": "1234.50", "upper": None, "note": None, "text": "1,234.50"}
     assert cb.put(f"{base}/bidders/{b1}/opening-price", headers={"X-CSRF-Token": tb}, json={"amount": "1"}).status_code == 404
     second = create(c, h)
     assert c.post(second + "/files", headers=h, data={"bidder_id": b1}, files={"files": ("虚构.docx", document())}).status_code == 404

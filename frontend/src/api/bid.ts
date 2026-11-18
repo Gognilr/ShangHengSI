@@ -11,7 +11,10 @@ export interface BidFile {
   id: string; bidder_id: string | null; name: string; ext: string; size_bytes: number; page_count: number | null
   has_password: boolean; needs_password: boolean; state: 'failed' | 'done' | 'waiting'; error: string | null; warnings: string[]; original_deleted: boolean
 }
-export interface Bidder { id: string; name: string; code: string; seq: number }
+/** 唱标价（V34-B-06e）：人工录入的小写金额、大写与备注 */
+export interface BidOpeningPrice { amount: string; upper: string | null; note: string | null }
+export interface BidOpeningPriceInput { amount: string | null; upper?: string | null; note?: string | null }
+export interface Bidder { id: string; name: string; code: string; seq: number; opening_price?: (BidOpeningPrice & { text: string }) | null }
 export interface BidProject extends BidSummary {
   policy: 'ai' | 'local_only'; busy: boolean; error_message: string | null; bidders: Bidder[]; files: BidFile[]
   limits: { bid_files: number; tender_files: number; file_mb: number; pdf_pages: number; ocr_pages: number }
@@ -87,7 +90,15 @@ export interface BidPricing {
     over_ceiling_max?: string | null
     /** 总价比较（V34Q-27，后端 Decimal）：最高 / 最低、比最低价高、偏离平均、异常低价；not_compared 为未参加比较的原因 */
     mark?: 'highest' | 'lowest' | null; above_lowest?: string | null; above_lowest_pct?: string | null; vs_mean?: string | null
-    low_price?: { others: number; others_mean: string; below_pct: string } | null; not_compared?: string | null }>
+    low_price?: { others: number; others_mean: string; below_pct: string } | null; not_compared?: string | null
+    /** 唯一总价的出处（报价标题、文件、页码） */
+    source?: { label: string; file_id: string | null; page: number | null } | null
+    /** “找报价页”的候选页（按命中次数排序，最多 10 页） */
+    quote_pages?: { file_id: string; page: number; hits: number }[]
+    /** 唱标价（人工录入，已格式化）与文件中识别的总价 */
+    opening?: { amount: string; upper: string | null; note: string | null } | null; file_total?: string | null
+    /** 修正后总价（大写为准、单价为准），供评标委员会参考 */
+    corrected?: { total: string; from: string; basis: string; over_ceiling?: string } | null }>
   compare?: { n: number; highest: string; lowest: string; mean: string; spread_pct: string | null } | null
   /** 三家及以上总价等差 / 等比（ids 按金额从低到高） */
   total_patterns?: { ids: string[]; kind: 'diff' | 'ratio'; step: string; level: BidLevel }[]
@@ -119,6 +130,8 @@ export interface BidConclusionData {
   cases: BidCase[]; reviews: Record<string, BidConclusionDecision>; signed: string | null; second_calls: number
   site: { id: string; text: string; seq: number }[]
   bidders: { id: string; name: string; short: string; tier: BidTier | null; total: string | null; manual_total: boolean; reasons: { id: string; title: string }[] }[]
+  /** 报价分析页与报告共用（V34-B-06e）：结论句、每家结论标签、报价方面需核实的条目 id */
+  pricing: { lede: string; tags: Record<string, { key: string; text: string; tier: BidTier }[]>; verify: string[] }
 }
 export interface BidFeedback {
   rules: { id: string; agency: string; label: string; reason: string }[]
@@ -201,7 +214,9 @@ export const bidApi = {
   check: (id: string) => http.get<BidCheck>(`/bid/${id}/check`),
   model: (id: string) => http.get<BidModelView>(`/bid/${id}/model`),
   conclusionReview: (id: string, body: BidConclusionReview) => http.post<BidCheck>(`/bid/${id}/conclusion/review`, body),
-  manualTotal: (id: string, bidder: string, total: string | null) => http.put<BidCheck>(`/bid/${id}/bidders/${bidder}/total`, { total }),
+  /** 唱标价：初审完成后返回检查结果（已重算报价），之前返回项目 */
+  openingPrice: (id: string, bidder: string, body: BidOpeningPriceInput) => http.put<BidCheck>(`/bid/${id}/bidders/${bidder}/opening-price`, body),
+  openingPriceBefore: (id: string, bidder: string, body: BidOpeningPriceInput) => http.put<BidProject>(`/bid/${id}/bidders/${bidder}/opening-price`, body),
   applicability: (id: string, rid: string, applicable: boolean) => http.put<BidCheck>(`/bid/${id}/requirements/${rid}/applicability`, { applicable }),
   conclusionSign: (id: string, signed: boolean) => http.put<BidCheck>(`/bid/${id}/conclusion/sign`, { signed }),
   feedback: () => http.get<BidFeedback>('/bid/feedback/mine'),

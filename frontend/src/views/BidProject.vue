@@ -6,7 +6,7 @@ import { Check, FileDown, FolderOpen, ListChecks, Plus, ScanSearch, Settings2, U
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { useAuthStore } from '@/stores/auth'
-import { bidApi, bidPolicyLabel, bidState, type BidCategory, type BidProject, type BidSettings } from '@/api/bid'
+import { bidApi, bidPolicyLabel, bidState, type BidCategory, type BidOpeningPriceInput, type BidProject, type BidSettings } from '@/api/bid'
 import RowMore from '@/components/RowMore.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import BidFiles from '@/components/bid/BidFiles.vue'
@@ -140,6 +140,14 @@ const ocrNote = computed(() => {
 const showResults = computed(() => step.value === 2 && (project.value?.stage === 'checking' || project.value?.stage === 'checked'))
 async function reparse() { await mutate(() => bidApi.parse(id.value)) }
 async function renameBidder(bidder: string, name: string) { await mutate(() => bidApi.renameBidder(id.value, bidder, name)) }
+// 唱标价（V34-B-06e）：失败时在卡片内提示，不弹全局错误
+const openingFailed = ref<Record<string, string>>({})
+async function saveOpening(bidder: string, body: BidOpeningPriceInput, done: () => void) {
+  if (blocked.value) return
+  delete openingFailed.value[bidder]
+  try { project.value = await bidApi.openingPriceBefore(id.value, bidder, body); done() }
+  catch { openingFailed.value[bidder] = body.upper ? '请检查金额，大写例如 壹佰万元整' : '请输入金额，例如 1234567.89' }
+}
 async function removeBidder(bidder: string) { await mutate(() => bidApi.removeBidder(id.value, bidder)) }
 async function addBidder() {
   if (!newName.value.trim()) return
@@ -314,7 +322,7 @@ async function removeProject() {
           <div class="cards">
             <BidderCard v-for="bidder in project.bidders" :key="bidder.id" :project-id="id" :bidder="bidder" :files="filesOf(bidder.id)" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors"
                         @rename="name => renameBidder(bidder.id, name)" @remove="removeBidder(bidder.id)" @pick="choose(bidder.id)" @drop="e => drop(e, bidder.id)"
-                        @password="setPassword" @remove-file="removeFile" />
+                        :opening-failed="openingFailed[bidder.id]" @password="setPassword" @remove-file="removeFile" @opening="(body, done) => saveOpening(bidder.id, body, done)" />
           </div>
           <div class="si-drop slim" :class="{ dragging: dragging === 'bulk' }" :aria-disabled="blocked" role="button" tabindex="0"
                @click="folders?.click()" @keydown.enter="folders?.click()" @dragover.prevent="dragging = 'bulk'" @dragleave.self="dragging = null" @drop.prevent="drop($event, undefined, true)">

@@ -87,6 +87,13 @@ def opening_price(row):
     return json.loads(crypto.decrypt_text(row.opening_price_enc)) if row.opening_price_enc else None
 
 
+def _opening_view(row):
+    from decimal import Decimal
+    from app.checks.numbers import money
+    value = opening_price(row)
+    return value and value | {"text": money(Decimal(value["amount"]))}
+
+
 def file(db, task, raw):
     try:
         row = db.get(TaskFile, uuid.UUID(str(raw)))
@@ -123,7 +130,7 @@ def detail(db, task):
             "check": {"state": project.check_state, "error": project.check_error, "ocr": _ocr(files)},
             "model": {"state": project.model_state, "error": project.model_error, **_model_progress(db, task)},
             "bidders": [{"id": b.id, "name": crypto.decrypt_text(b.name_enc), "code": b.code, "seq": b.seq,
-                         "opening_price": opening_price(b)}
+                         "opening_price": _opening_view(b)}
                         for b in db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))],
             "files": [{"id": f.id, "bidder_id": f.bidder_id, "name": f.original_name, "ext": f.ext,
                        "size_bytes": f.size_bytes, "page_count": f.page_count,
