@@ -269,7 +269,12 @@ def reopen(db, task):
     project.stage, project.check_state, project.check_error = "ready", None, None
     from app.bid import feedback
     previous = feedback.load(project.conclusion_enc)
-    project.conclusion_enc = feedback.encrypt({"manual_totals": previous.get("manual_totals", {})})
+    if previous:
+        previous.pop("signed", None)
+        calls = previous.pop("second", {}).get("calls", 0)
+        if calls:
+            previous["second"] = {"calls": calls}
+        project.conclusion_enc = feedback.encrypt(previous)
     project.model_state, project.model_error, project.model_enc = None, None, None
 
 

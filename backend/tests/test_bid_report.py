@@ -173,6 +173,16 @@ def test_conclusion_sign_and_incremental_quote(owner, db_sessionmaker):
         actual = next(r for r in changed.json()["requirements"] if r["id"] == req["id"])
         assert actual["not_applicable"] is not applicable
 
+    excluded = c.post(base + "/conclusion/review", headers=h,
+                      json={"key": target["id"], "status": "excluded", "reason": "recognition"})
+    assert excluded.status_code == 200
+    assert c.post(base + "/reopen", headers=h).status_code == 200
+    assert c.post(base + "/check", headers=h).status_code == 200
+    _jobs(db_sessionmaker, base, "check")
+    repeated = c.get(base + "/check").json()["conclusion"]
+    assert repeated["reviews"][target["id"]]["reason_label"] == "识别错误"
+    assert repeated["bidders"][0]["total"] == "4,100,100.23"
+
 
 def test_report_requires_export_permission(make_user, login, db_sessionmaker):
     """只有 use.bid、没有 use.export 的账号不能导出。"""

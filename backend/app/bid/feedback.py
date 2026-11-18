@@ -71,19 +71,21 @@ def apply(view, project, owner):
     state = load(project.conclusion_enc)
     rules = owner.get("rules", [])
     scoped = agency(project)
-    reviews = state.get("reviews", {})
+    requirements = {str(r["id"]) for r in view["requirements"]}
     items = {str(i["id"]): i for i in view["items"]}
+    reviews = {key: review for key, review in state.get("reviews", {}).items()
+               if (not review["entry"]["requirement_id"] or review["entry"]["requirement_id"] in requirements)
+               and all(i in items for i in review["evidence"])}
     for item in items.values():
         if memory_matches(item, rules, scoped):
             item["reference_reason"] = "本人反馈记忆"
     for review in reviews.values():
-        if review["status"] != "excluded" or not all(i in items for i in review.get("evidence", [])):
+        if review["status"] != "excluded":
             continue
         for iid in review.get("evidence", []) + review.get("linked", []):
             if iid in items:
                 items[iid]["reference_reason"] = review["reason_label"]
-    state["reviews"] = {key: review for key, review in reviews.items()
-                        if all(i in items for i in review.get("evidence", []))}
+    state["reviews"] = reviews
     return state
 
 
