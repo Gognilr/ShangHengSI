@@ -194,8 +194,11 @@ const notEnough = computed(() => {
           </ul>
 
           <!-- 模型补充（只做抽取，不做判断） -->
-          <div v-if="policy === 'ai'" class="assist">
-            <template v-if="!data.extract_state || data.extract_state === 'failed'">
+          <div v-if="policy === 'ai' || (data.sent_count ?? 0) > 0" class="assist">
+            <template v-if="policy !== 'ai'">
+              <p>本项目当前只做本地检查，存在历史外发或拦截记录。</p>
+            </template>
+            <template v-else-if="!data.extract_state || data.extract_state === 'failed'">
               <Sparkles :size="16" :stroke-width="1.75" aria-hidden="true" />
               <p>{{ data.extract_state === 'failed' ? `模型补充未完成：${data.extract_error}` : '可让模型在脱敏后的招标文件中归类、补漏（只抽取，不判断）。' }}</p>
               <el-button size="small" :disabled="locked" @click="assist('start')">{{ data.extract_state === 'failed' ? '重新开始' : '让模型补充' }}</el-button>
@@ -211,7 +214,7 @@ const notEnough = computed(() => {
             </template>
             <template v-else-if="data.extract_state === 'extracting'"><BidStatus tone="run" label="模型补充中，结果会标为“模型提取 · 请核对”" /></template>
             <template v-else-if="data.extract_state === 'done'"><BidStatus tone="ok" :label="`模型补充已完成，新增 ${data.items.filter(i => i.source === 'model').length} 条，请核对`" /><el-button size="small" text :disabled="locked" @click="assist('cancel')">关闭</el-button></template>
-            <el-button v-if="data.extract_state === 'done' || data.extract_state === 'failed'" text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
+            <el-button v-if="(data.sent_count ?? 0) > 0 || data.extract_state === 'done' || data.extract_state === 'failed'" text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
           </div>
 
           <BidSentDrawer v-model="sentOpen" :project-id="projectId" />

@@ -16,6 +16,7 @@ import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 import BidRequirements from '@/components/bid/BidRequirements.vue'
 import BidResults from '@/components/bid/BidResults.vue'
 import BidModelCheck from '@/components/bid/BidModelCheck.vue'
+import BidSentDrawer from '@/components/bid/BidSentDrawer.vue'
 import BidExport from '@/components/bid/BidExport.vue'
 
 const route = useRoute(), router = useRouter(), id = computed(() => String(route.params.id))
@@ -31,7 +32,7 @@ const tenderFiles = computed(() => project.value?.files.filter(f => !f.bidder_id
 const bidFiles = computed(() => project.value?.files.filter(f => f.bidder_id) ?? [])
 const filesOf = (bidder: string) => project.value?.files.filter(f => f.bidder_id === bidder) ?? []
 const rowErrors = reactive<Record<string, string>>({})  // 密码错误等提示显示在对应文件行，不只在页顶
-const adding = ref(false), newName = ref('')
+const adding = ref(false), newName = ref(''), sentOpen = ref(false)
 const auth = useAuthStore(), exporting = ref(false)
 async function exportReport() {
   if (exporting.value) return
@@ -331,6 +332,11 @@ async function removeProject() {
 
       <div v-else-if="step === 2 && (project.stage === 'checking' || project.stage === 'checked' || project.check?.state === 'failed')" class="result">
         <BidModelCheck v-if="project.policy === 'ai' && project.stage === 'checked'" :project-id="id" :state-key="modelKey" @changed="load(false)" />
+        <div v-else-if="(project.sent_count ?? 0) > 0 && project.stage === 'checked'" class="sent-only">
+          <span>本项目当前只做本地检查，保留历史发送记录。</span>
+          <el-button text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
+          <BidSentDrawer v-model="sentOpen" :project-id="id" />
+        </div>
         <BidResults v-if="project.stage === 'checking' || project.stage === 'checked'" :key="id" :project="project" :state-key="checkKey" :live="project.stage === 'checking'" />
       </div>
       <EmptyState v-else-if="step === 2 && reopened" :icon="ScanSearch" title="正在修改材料" description="改好要求清单或投标文件后，在第 2 步重新开始初审。已做的核对状态与备注会保留在相同的条目上。" />
@@ -419,6 +425,7 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .limits { margin: 16px 0 0; }
 .step-foot.start { align-items: center; gap: 16px; margin-top: 24px; }
 .result { flex: 1; display: flex; flex-direction: column; gap: 24px; }
+.sent-only { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--si-hair); border-bottom: 1px solid var(--si-hair); font: var(--si-font-meta); color: var(--si-ink-2); }
 
 /* 页面至少占满主区域，声明贴底（内容长时随内容下移，至少留 48px） */
 .bid-project { display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; padding-bottom: 20px; }  /* 底边与侧栏底栏的账号行齐平 */

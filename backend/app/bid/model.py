@@ -160,10 +160,11 @@ def confirm(db, task):
 
 def view(db, task) -> dict:
     """片段确认页：各家的片段（原文与 AI 视野）、要求与回执。只在本人页面显示，不进日志。"""
+    from app.bid.results import sent_count
     project = _project(db, task)
     state = _state(project)
     out = {"state": project.model_state, "error": project.model_error, "progress": progress(db, task),
-           "receipt": None, "bidders": [], "requirements": []}
+           "receipt": None, "bidders": [], "requirements": [], "sent_count": sent_count(db, task.id)}
     if not state.get("batches") or project.model_state not in ("awaiting", "failed", "running", "done"):
         return out
     names = {str(b.id): crypto.decrypt_text(b.name_enc) for b in _bidders(db, task)}

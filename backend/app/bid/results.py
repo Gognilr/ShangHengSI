@@ -4,7 +4,7 @@ import json
 import re
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.models import BidBidder, BidCell, BidItem, BidProject, BidRequirement, DocNode, LlmCall, TaskFile
 from app.security import crypto
@@ -264,16 +264,19 @@ def matrix_group(req):
 def matrix_requirements(reqs, cells, bidder_count=None):
     """页面与报告同一排序：轻重分组，组内疑似不响应、未找到、待核实、响应，序号稳定。"""
     reqs = [r for r in reqs if r['group'] != 'format']
+    by_req = {str(r['id']): r for r in reqs}
     ranks, seen = {}, {}
     bidder_count = bidder_count if bidder_count is not None else len({str(c['bidder_id']) for c in cells})
     for c in cells:
         key = str(c['requirement_id'])
         seen.setdefault(key, set()).add(str(c['bidder_id']))
-        if c['review_status'] == 'excluded':
+        req = by_req.get(key)
+        manual = (req is not None and req['method'] == 'manual') or c['verdict'] == 'manual'
+        if c['review_status'] == 'excluded' or (c['review_status'] == 'verified' and (manual or c['verdict'] in ('unclear', 'yes'))):
             ranks.setdefault(key, 3)
             continue
-        rank = {'no': 0, 'missing': 1, 'unclear': 2, 'manual': 2}.get(c['verdict'], 3)
-        if c['cite'] == 'unverified':
+        rank = 2 if manual else {'no': 0, 'missing': 1, 'unclear': 2, 'manual': 2}.get(c['verdict'], 3)
+        if c['cite'] == 'unverified' and c['review_status'] != 'verified':
             rank = 2
         ranks[key] = min(rank, ranks.get(key, 3))
     for r in reqs:
@@ -281,6 +284,10 @@ def matrix_requirements(reqs, cells, bidder_count=None):
         if len(seen.get(key, set())) < bidder_count:
             ranks[key] = min(2, ranks.get(key, 3))
     return sorted(reqs, key=lambda r: (MATRIX_GROUPS.index(matrix_group(r)), ranks.get(str(r['id']), 2), r['seq']))
+
+
+def sent_count(db, task_id) -> int:
+    return db.scalar(select(func.count()).select_from(LlmCall).where(LlmCall.task_id == task_id, LlmCall.purpose == 'bid')) or 0
 
 
 def sent_view(db, task):

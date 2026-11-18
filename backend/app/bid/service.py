@@ -64,11 +64,12 @@ def new_bidder(db, task, name):
 
 
 def detail(db, task):
+    from app.bid.results import sent_count
     project = db.get(BidProject, task.id)
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
     return {"id": task.id, "title": task.title, "opening_date": project.opening_date, "policy": task.policy,
             "stage": project.stage, "status": task.status, "category_id": project.category_id, "folder_id": project.folder_id, "error_message": task.error_message,
-            "last_activity_at": task.last_activity_at, "busy": busy(db, task), "limits": LIMITS,
+            "last_activity_at": task.last_activity_at, "busy": busy(db, task), "limits": LIMITS, "sent_count": sent_count(db, task.id),
             "requirements": {"enabled": db.scalar(select(func.count()).select_from(BidRequirement).where(
                                  BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))) or 0,
                              "extract_state": project.extract_state},

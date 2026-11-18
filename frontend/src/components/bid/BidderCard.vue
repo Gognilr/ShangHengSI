@@ -9,7 +9,7 @@ import BidFiles from './BidFiles.vue'
 const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string> }>()
 const emit = defineEmits<{ rename: [name: string]; remove: []; pick: []; drop: [event: DragEvent]; password: [fid: string, password: string]; removeFile: [fid: string] }>()
 const editing = ref(false), name = ref(''), over = ref(false), input = ref<{ focus: () => void }>()
-const titleName = computed(() => /标书|报价文件|项目/.test(editing.value ? name.value : props.bidder.name))
+const titleName = computed(() => /标书|报价文件|投标文件|项目|\d+\s*[台套份]/.test(editing.value ? name.value : props.bidder.name))
 async function edit() { if (props.disabled) return; name.value = props.bidder.name; editing.value = true; await nextTick(); input.value?.focus() }
 function save() {
   const value = name.value.trim()

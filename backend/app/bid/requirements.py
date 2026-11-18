@@ -327,12 +327,14 @@ def view(db, task: Task) -> dict:
         counts[kind] = {"total": len(found), "covered": len(found) - len(missing),
                         "missing": [{"file_id": m[1].file_id, "loc": m[1].loc, "start": m[2], "end": m[3],
                                      "text": m[1].text[m[2]:m[3]]} for m in missing[:50]]}
+    from app.bid.results import sent_count
     state = load_state(project)
     return {"parameters": state["values"], "parameter_sources": state["sources"], "parameters_confirmed": state["confirmed"],
             "extracted": state["extracted_from"] is not None,
             "tender_changed": state["extracted_from"] is not None and state["extracted_from"] != parsed_tender_ids(db, task.id),
             "items": rows, "counts": counts, "version": project.requirements_version,
-            "extract_state": project.extract_state, "extract_error": project.extract_error}
+            "extract_state": project.extract_state, "extract_error": project.extract_error,
+            "sent_count": sent_count(db, task.id)}
 
 
 def requirement(db, task, raw):

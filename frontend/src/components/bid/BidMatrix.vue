@@ -14,18 +14,21 @@ const groupOf = (r: Requirement) => r.method === 'manual' ? 4 : ({ veto: 0, subs
 // 只缓存位置；取格子时经响应式数组读取，核对状态改动即时反映
 const cellIndex = computed(() => new Map((ctx.data.value?.cells ?? []).map((c, i) => [`${c.requirement_id}:${c.bidder_id}`, i])))
 const cellOf = (rid: string, bid: string) => { const i = cellIndex.value.get(`${rid}:${bid}`); return i === undefined ? undefined : ctx.data.value?.cells[i] }
-const problem = (c?: BidCell) => !c || (c.review_status !== 'excluded' && (c.verdict !== 'yes' || c.cite === 'unverified'))
+function cellRank(method: string, c?: BidCell): number {
+  if (!c) return 2
+  if (c.review_status === 'excluded') return 3
+  if (method === 'manual' || c.verdict === 'manual') return c.review_status === 'verified' ? 3 : 2
+  if (c.review_status === 'verified' && (c.verdict === 'unclear' || c.verdict === 'yes')) return 3
+  if (c.cite === 'unverified') return 2
+  return ({ no: 0, missing: 1, unclear: 2, manual: 2, yes: 3 })[c.verdict] ?? 2
+}
+const problem = (method: string, c?: BidCell) => cellRank(method, c) < 3
 function rowRank(r: Requirement) {
-  return Math.min(...props.bidders.map(b => {
-    const c = cellOf(r.id, b.id)
-    if (!c) return 2
-    if (c.review_status === 'excluded') return 3
-    return c.cite === 'unverified' ? 2 : ({ no: 0, missing: 1, unclear: 2, manual: 2, yes: 3 })[c.verdict]
-  }), 3)
+  return Math.min(...props.bidders.map(b => cellRank(r.method, cellOf(r.id, b.id))), 3)
 }
 const all = computed(() => [...(ctx.data.value?.requirements ?? [])].filter(r => r.group !== 'format')
   .sort((a, b) => groupOf(a) - groupOf(b) || rowRank(a) - rowRank(b) || a.seq - b.seq))
-const rows = computed(() => all.value.filter(r => !onlyProblems.value || props.bidders.some(b => problem(cellOf(r.id, b.id)))))
+const rows = computed(() => all.value.filter(r => !onlyProblems.value || props.bidders.some(b => problem(r.method, cellOf(r.id, b.id)))))
 const hasAnomaly = (r: Requirement, verdict: 'no' | 'missing') =>
   r.method !== 'manual' && props.bidders.some(b => {
     const c = cellOf(r.id, b.id)
@@ -46,17 +49,23 @@ const symbols: Record<string, { s: string; label: string; tone: string }> = {
   missing: { s: '未找到', label: '未找到', tone: 'verify' }, unclear: { s: '？', label: '无法判断', tone: 'plain' },
 }
 function view(method: string, c?: BidCell) {
-  if (method === 'manual' || c?.verdict === 'manual') return { s: '？', label: '人工核对', tone: 'plain' }
+  if (method === 'manual' || c?.verdict === 'manual') {
+    if (c?.review_status === 'excluded') return { s: '—', label: '不适用', tone: 'plain' }
+    if (c?.review_status === 'verified') return { s: '✓', label: '已核实符合', tone: 'plain' }
+    return { s: '？', label: '人工核对', tone: 'plain' }
+  }
   if (!c) return { s: '？', label: method === 'model' ? (props.modelState === 'running' ? '模型核对中' : '未核对') : '本地规则未能判断', tone: 'plain' }
-  if (c.cite === 'unverified') return { s: '？', label: '引文待核实', tone: 'plain' }
+  if (c.review_status === 'verified' && (c.verdict === 'unclear' || c.verdict === 'yes')) return { s: '✓', label: '已核实符合', tone: 'plain' }
+  if (c.cite === 'unverified' && c.review_status !== 'verified') return { s: '？', label: '引文待核实', tone: 'plain' }
   if (c.verdict === 'no' && c.review_status === 'verified') return { s: '不响应', label: '已核实不响应', tone: 'confirmed' }
+  if (c.verdict === 'missing' && c.review_status === 'verified') return { s: '未找到', label: '已核实未找到', tone: 'confirmed' }
   return symbols[c.verdict] ?? symbols.unclear!
 }
 function title(method: string, c?: BidCell) {
   const v = view(method, c)
-  const parts = [v.label, c ? (c.source === 'model' ? '模型判断' : '本地规则') : bidMethodLabel[method as 'local']]
-  if (c?.cite === 'unverified') parts.push('引文待核实')
-  if (c && c.review_status !== 'pending') parts.push(c.review_status === 'verified' ? '已核实' : '已排除')
+  const parts = [v.label, c ? (c.verdict === 'manual' || method === 'manual' ? '人工核对' : c.source === 'model' ? '模型判断' : '本地规则') : bidMethodLabel[method as 'local']]
+  if (c?.cite === 'unverified' && c.review_status !== 'verified') parts.push('引文待核实')
+  if (c && c.review_status !== 'pending') parts.push(c.review_status === 'verified' ? '已核实' : (method === 'manual' || c.verdict === 'manual' ? '本条不适用' : '已排除'))
   return parts.join(' · ')
 }
 const drawer = ref<{ rid: string; bid: string } | null>(null)
@@ -78,7 +87,7 @@ const drawer = ref<{ rid: string; bid: string } | null>(null)
             <tr v-for="r in g.items" :key="r.id">
               <th class="req" scope="row"><span class="number num">{{ r.seq }}.</span><span class="text" :class="{ potential: ['veto', 'substantive', 'qualification'].includes(r.group) }">{{ r.text }}</span></th>
               <td v-for="b in bidders" :key="b.id">
-                <button type="button" class="cell" :class="{ excluded: cellOf(r.id, b.id)?.review_status === 'excluded' }" :title="title(r.method, cellOf(r.id, b.id))" :aria-label="`${b.name}：${title(r.method, cellOf(r.id, b.id))}`" @click="drawer = { rid: r.id, bid: b.id }">
+                <button type="button" class="cell" :class="{ excluded: cellOf(r.id, b.id)?.review_status === 'excluded' && r.method !== 'manual' && cellOf(r.id, b.id)?.verdict !== 'manual' }" :title="title(r.method, cellOf(r.id, b.id))" :aria-label="`${b.name}：${title(r.method, cellOf(r.id, b.id))}`" @click="drawer = { rid: r.id, bid: b.id }">
                   <span class="symbol" :class="view(r.method, cellOf(r.id, b.id)).tone">{{ view(r.method, cellOf(r.id, b.id)).s }}</span>
                 </button>
               </td>

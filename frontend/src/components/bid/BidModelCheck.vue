@@ -88,7 +88,7 @@ async function act(action: 'prepare' | 'confirm' | 'cancel') {
         <BidStatus tone="ok" :label="`模型核对已完成 ${data.progress.total} 家，判断见各家问题与要求响应`" />
         <el-button class="again" size="small" text :loading="busy" @click="act('prepare')">重新准备</el-button>
       </template>
-      <el-button v-if="['done', 'running', 'failed'].includes(data.state ?? '')" text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
+      <el-button v-if="(data.sent_count ?? 0) > 0 || ['done', 'running', 'failed'].includes(data.state ?? '')" text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
     </div>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <ul v-if="open && data.receipt?.notes.length" class="notes"><li v-for="note in data.receipt.notes" :key="note">{{ note }}</li></ul>

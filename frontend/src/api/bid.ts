@@ -18,6 +18,7 @@ export interface BidProject extends BidSummary {
   requirements: { enabled: number; extract_state: BidExtractState }
   check: { state: null | 'running' | 'done' | 'failed'; error: string | null; ocr: { done: number; total: number } }
   model: { state: BidModelState; error: string | null; done: number; total: number }
+  sent_count?: number
 }
 /** 模型核对（V34-B-05）：片段脱敏 → 待确认 → 发送中 → 完成 / 失败 */
 export type BidModelState = null | 'preparing' | 'awaiting' | 'running' | 'done' | 'failed'
@@ -27,6 +28,7 @@ export interface BidModelView {
   receipt: { snippets: number; chars: number; protected: number; calls: number; total_calls: number; remaining: { monthly: number | null; daily: number | null }; notes: string[] } | null
   bidders: { id: string; name: string; code: string; snippets: BidSnippet[] }[]
   requirements: { id: string; n: string; group: BidGroup; text: string; ai_text: string }[]
+  sent_count?: number
 }
 export type BidGroup = 'qualification' | 'substantive' | 'veto' | 'pricing' | 'validity' | 'signing' | 'format'
 export type BidMethod = 'local' | 'model' | 'manual'
@@ -40,6 +42,7 @@ export interface BidRequirements {
   extracted: boolean; tender_changed: boolean; items: BidRequirement[]; counts: { star: BidCount; veto: BidCount }; version: number
   extract_state: BidExtractState; extract_error: string | null; stage: BidStage
   receipt: { chars: number; calls: number; protected: number; remaining: { monthly: number | null; daily: number | null } } | null
+  sent_count?: number
 }
 export interface BidTender { files: Record<string, string>; nodes: { file_id: string; loc: string; kind: string; text: string }[]; markers: { kind: 'star' | 'veto'; loc: string; start: number; end: number }[] }
 export const bidGroupLabel: Record<BidGroup, string> = {

@@ -312,12 +312,15 @@ def _cell_text(d: _Data, req, bidder_id) -> str:
     cell = d.cells.get((str(req["id"]), str(bidder_id)))
     if cell is None:
         return "？"
+    manual = req["method"] == "manual" or cell["verdict"] == "manual"
     if cell["review_status"] == "excluded":
-        return "已排除"
+        return "—" if manual else "已排除"
+    if cell["review_status"] == "verified" and (manual or cell["verdict"] == "unclear"):
+        return "✓·已核实"
     text = {'yes': '✓', 'no': '不响应', 'missing': '未找到', 'unclear': '？', 'manual': '？'}.get(cell['verdict'], '？')
     if cell["source"] == "model":
         text += "（模型）"
-    if cell["cite"] == "unverified":
+    if cell["cite"] == "unverified" and cell["review_status"] != "verified":
         text += "·引文待核实"
     if cell["review_status"] == "verified":
         text += "·已核实"
@@ -327,7 +330,17 @@ def _cell_text(d: _Data, req, bidder_id) -> str:
 def _problem(d: _Data, req) -> bool:
     for b in d.bidders:
         cell = d.cells.get((str(req["id"]), str(b.id)))
-        if cell and cell["review_status"] != "excluded" and (cell["verdict"] in ("no", "missing", "unclear") or cell["cite"] == "unverified"):
+        if cell and cell["review_status"] != "excluded" and _problem_cell(cell):
+            return True
+    return False
+
+
+def _has_row_anomaly(d: _Data, req, verdict: str) -> bool:
+    if req["method"] == "manual":
+        return False
+    for b in d.bidders:
+        cell = d.cells.get((str(req["id"]), str(b.id)))
+        if cell and cell["review_status"] != "excluded" and cell["cite"] != "unverified" and cell["verdict"] == verdict:
             return True
     return False
 
@@ -337,10 +350,10 @@ def _matrix_table(doc, d: _Data, reqs):
         grouped = [r for r in reqs if results.matrix_group(r) == group]
         if not grouped:
             continue
-        ids = {str(r['id']) for r in grouped}
-        cells = [c for c in d.view['cells'] if str(c['requirement_id']) in ids and c['review_status'] != 'excluded']
-        counts = [f"{label} {count}" for label, count in [('疑似不响应', sum(c['verdict'] == 'no' for c in cells)),
-                                                       ('未找到', sum(c['verdict'] == 'missing' for c in cells))] if count]
+        counts = [f"{label} {count}" for label, count in [
+            ('疑似不响应', sum(_has_row_anomaly(d, r, 'no') for r in grouped)),
+            ('未找到', sum(_has_row_anomaly(d, r, 'missing') for r in grouped)),
+        ] if count]
         _sub(doc, f"{group} · {len(grouped)}" + ("　" + " · ".join(counts) if counts else ''))
         rows = [(_clean(f"{r['seq']}. {r['text']}"),
                  *[_cell_text(d, r, b.id) for b in d.bidders]) for r in grouped]
@@ -369,7 +382,9 @@ def _matrix(doc, d: _Data):
 
 
 def _problem_cell(cell) -> bool:
-    return cell["verdict"] in ("no", "missing", "unclear") or cell["cite"] == "unverified"
+    if cell["review_status"] == "verified" and cell["verdict"] in ("manual", "unclear", "yes"):
+        return False
+    return cell["verdict"] in ("no", "missing", "unclear") or (cell["cite"] == "unverified" and cell["review_status"] != "verified")
 
 
 # ---------------------------------------------------------------- 证据
