@@ -6,7 +6,7 @@ import BidItemCard from './BidItemCard.vue'
 import BidReviewReason from './BidReviewReason.vue'
 import { bidResultsKey } from './results'
 
-const props = defineProps<{ item: BidCase; busy?: boolean }>()
+const props = defineProps<{ item: BidCase; busy?: boolean; readonly?: boolean }>()
 const emit = defineEmits<{ decide: [review: BidConclusionReview] }>()
 const ctx = inject(bidResultsKey)!
 const open = ref<number | null>(null)
@@ -33,7 +33,7 @@ const items = computed(() => new Map(ctx.data.value?.items.map(i => [i.id, i])))
     <div class="case-actions">
       <span v-if="item.baseline.sentences || item.baseline.images" class="bid-meta">已剔除：与招标文件相同的句子 {{ item.baseline.sentences ?? 0 }} 句、图片 {{ item.baseline.images ?? 0 }} 张</span>
       <button v-if="item.normal.length" type="button" class="bid-fold" :aria-expanded="normal" @click="normal = !normal"><ChevronRight class="chev" :class="{ turned: normal }" :size="14" />常见的正常原因</button>
-      <div class="decision">
+      <div v-if="!readonly" class="decision">
         <el-button v-if="item.tier === 'verify'" size="small" :disabled="busy" @click="emit('decide', { key: item.id, status: 'verified' })">Y 属实</el-button>
         <BidReviewReason :label="item.tier === 'certain' ? '有异议' : 'N 不属实'" :disabled="busy" @decide="(reason, detail, remember) => emit('decide', { key: item.id, status: 'excluded', reason, detail, remember })" />
       </div>
