@@ -8,7 +8,7 @@ import { bidResultsKey, bidTypeLabel, levelTone, sameSpans } from './results'
 
 // 一条问题或线索：标题行（等级色点、类型、条文项、涉及投标人、核对状态），展开为证据、并排对照与核对栏
 // bare：只显示证据（逐条核对左栏），标题与核对按钮由外层给出
-const props = defineProps<{ item: BidItem; hideWho?: boolean; bare?: boolean }>()
+const props = defineProps<{ item: BidItem; hideWho?: boolean; bare?: boolean; readonly?: boolean; rowIndex?: number }>()
 const ctx = inject(bidResultsKey)!
 const open = ref(false)
 const sectionLabel: Record<string, string> = { tech: '技术参数章节，已降一档', price: '报价章节，已升一档' }
@@ -35,8 +35,8 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
       <span v-if="statusMark[item.review_status]" class="status" :class="item.review_status">{{ statusMark[item.review_status] }}</span>
     </button>
     <div v-if="open || bare" class="detail">
-      <SimilarMap v-if="item.type === 'similar' && item.map?.segs.length" class="map" :map="item.map" :a="item.bidder_ids[0]!" :b="item.bidder_ids[1]!" :labels="ctx.shorts.value" :file-names="ctx.fileNames.value" />
-      <dl v-for="(row, index) in item.rows" :key="index">
+      <SimilarMap v-if="rowIndex === undefined && item.type === 'similar' && item.map?.segs.length" class="map" :map="item.map" :a="item.bidder_ids[0]!" :b="item.bidder_ids[1]!" :labels="ctx.shorts.value" :file-names="ctx.fileNames.value" />
+      <dl v-for="(row, index) in rowIndex === undefined ? item.rows : item.rows.slice(rowIndex, rowIndex + 1)" :key="index">
         <dt>{{ row.label }}<template v-if="row.count"> · {{ row.count }} 处</template>
           <template v-if="row.chars"> · 约 {{ row.chars }} 字 · {{ row.sentences }} 句<template v-if="row.section && sectionLabel[row.section]">（{{ sectionLabel[row.section] }}）</template></template></dt>
         <dd v-if="row.value" class="value">{{ row.value }}</dd>
@@ -63,8 +63,8 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
           </table>
         </dd>
       </dl>
-      <p v-if="item.normal" class="hint">常见的正常原因：{{ item.normal }}</p>
-      <BidReviewBar v-if="!bare" class="bar" :review="item" :veto="item.level === 'veto'" @change="patch => ctx.reviewItem(item.id, patch)" />
+      <p v-if="item.normal && rowIndex === undefined" class="hint">常见的正常原因：{{ item.normal }}</p>
+      <BidReviewBar v-if="!bare && !readonly" class="bar" :review="item" :veto="item.level === 'veto'" @change="patch => ctx.reviewItem(item.id, patch)" />
     </div>
   </article>
 </template>

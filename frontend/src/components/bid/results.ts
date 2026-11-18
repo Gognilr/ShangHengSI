@@ -1,4 +1,29 @@
-import type { ComputedRef, InjectionKey, Ref } from 'vue'
+import { onBeforeUnmount, onMounted, type ComputedRef, type InjectionKey, type Ref } from 'vue'
+
+/** 延续逐条核对的键盘防冲突规则，将按键交给当前需核实列表。 */
+export function useBidReviewKeys(options: {
+  active: () => boolean; move: (step: number) => void; yes: () => void; no: () => void; enter: () => void; escape: () => void
+}) {
+  function onKey(e: KeyboardEvent) {
+    if (e.ctrlKey || e.metaKey || e.altKey || !options.active()) return
+    const target = e.target as HTMLElement | null
+    if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return
+    if ([...document.querySelectorAll<HTMLElement>('.el-overlay')].some(o => o.style.display !== 'none')) return
+    if (e.key === 'Enter' && target?.closest('button, a, summary')) return
+    switch (e.key.toLowerCase()) {
+      case 'y': options.yes(); break
+      case 'n': options.no(); break
+      case 'j': case 'arrowdown': options.move(1); break
+      case 'k': case 'arrowup': options.move(-1); break
+      case 'enter': options.enter(); break
+      case 'escape': options.escape(); break
+      default: return
+    }
+    e.preventDefault()
+  }
+  onMounted(() => window.addEventListener('keydown', onKey))
+  onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+}
 import { ElMessageBox } from 'element-plus'
 import { bidGroupLabel } from '@/api/bid'
 import type { Bidder, BidCell, BidCheck, BidItem, BidLevel, BidPricing, BidReview, BidReviewStatus, BidSigning, BidSignMark } from '@/api/bid'
@@ -38,7 +63,7 @@ export const bidTypeLabel: Record<string, string> = {
   validity: '投标有效期', deposit: '保证金', cert_expired: '证书有效期', ai_instruction: '写给 AI 的指令',
   model_response: '模型判断', deviation_conflict: '偏离表与正文',
 }
-export const pricingTypes = new Set(['multi_total', 'sum_total', 'ceiling', 'low_price', 'uppercase', 'row_calc', 'sum_rows'])
+export const pricingTypes = new Set(['multi_total', 'sum_total', 'ceiling', 'low_price', 'uppercase', 'row_calc', 'sum_rows', 'manual_total_diff'])
 /** 总价旁的“最高”“最低”（V34Q-27：仍按录入顺序排列，不排序） */
 export const markText: Record<string, string> = { highest: '最高', lowest: '最低' }
 export const levelText: Record<string, string> = { strong: '强', medium: '中', weak: '弱' }

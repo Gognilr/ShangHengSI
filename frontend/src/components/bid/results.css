@@ -40,3 +40,14 @@
 /* 总价旁的“最高”“最低”“异常低价”（V34Q-27）：小字，不加底色 */
 .bid-mark { margin-left: 6px; font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
 .bid-mark.w { color: var(--si-warn-ink); }
+.bid-tier { display: inline-flex; align-items: baseline; gap: 6px; overflow-wrap: anywhere; }
+.bid-tier.certain, .bid-tier.verify { font-weight: 600; }
+.bid-tier.certain, .bid-tier-label.certain { color: var(--si-danger-ink); }
+.bid-tier.verify, .bid-tier-label.verify { color: var(--si-warn-ink); }
+.bid-tier.reference { color: var(--si-ink-3); font-weight: 400; }
+.bid-tier.certain::before, .bid-tier.verify::before { content: ""; display: inline-block; align-self: center; flex: 0 0 6px; height: 6px; border-radius: 50%; }
+.bid-tier.certain::before { background: var(--si-danger); }
+.bid-tier.verify::before { background: var(--si-warn); }
+.bid-fine { margin: 4px 0 0; padding: 0; list-style: none; }
+.bid-fine > li { padding: 7px 0; border-bottom: 1px solid var(--si-hair-faint); overflow-wrap: anywhere; }
+.bid-target { background: var(--si-select-bg); }

@@ -10,6 +10,7 @@ const open = ref(true), title = ref('单元格')
 
 <template>
   <el-drawer v-model="open" size="560px" append-to-body :title="title" @closed="emit('close')">
-    <BidCellDetail :requirement-id="requirementId" :bidder-id="bidderId" @loaded="d => title = d.bidder.name" />
+    <BidCellDetail :requirement-id="requirementId" :bidder-id="bidderId" no-bar @loaded="d => title = d.bidder.name" />
+    <slot />
   </el-drawer>
 </template>

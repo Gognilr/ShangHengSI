@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
 import { ChevronRight } from '@lucide/vue'
-import type { Bidder, BidPricing } from '@/api/bid'
+import { bidApi, type Bidder, type BidPricing } from '@/api/bid'
 import BidItemCard from './BidItemCard.vue'
 import BidLede from './BidLede.vue'
 import PriceStrip, { type PricePoint } from './charts/PriceStrip.vue'
 import RatioCurve from './charts/RatioCurve.vue'
-import { bidResultsKey, calcPending, ceilingView, confirmCalc, levelText, levelTone, markText, patternStep, pricingTypes, totalView, trimRatio, type LedePart } from './results'
+import { bidResultsKey, ceilingView, levelText, levelTone, markText, patternStep, pricingTypes, totalView, trimRatio, type LedePart } from './results'
 
 // 报价分析（V34Q-25 第 8 条）：限价 → 结论 → 各家报价（计算与大小写就地展开）→ 总价规律 → 两两比值（只列有规律的对）→ 分项对齐表。
 // 投标人按录入顺序，不提供按价格排序；总价旁标“最高”“最低”，比最低价高、偏离平均与异常低价由后端 Decimal 算好（V34Q-27）。
 // 未填限价时不出现任何限价内容。
-const props = defineProps<{ bidders: Bidder[] }>()
+const props = defineProps<{ bidders: Bidder[]; target?: string }>()
 const ctx = inject(bidResultsKey)!
 const pricing = computed(() => ctx.data.value?.pricing)
 const params = computed(() => ctx.data.value?.parameters)
@@ -34,7 +34,21 @@ const rows = computed(() => cols.value.map(b => {
 const cmp = computed(() => pricing.value?.compare ?? null)
 const marked = (mark: 'highest' | 'lowest') => rows.value.filter(r => r.p.mark === mark).map(r => short(r.bidder.id)).join('、')
 const patterns = computed(() => pricing.value?.total_patterns ?? [])
-const calc = computed(() => calcPending(ctx.data.value).length)
+const editing = ref(''), amount = ref(''), error = ref(''), saving = ref(false)
+const pending = computed(() => ctx.data.value?.conclusion.verify.filter(e => issues.value.some(i => i.id === e.item_id)) ?? [])
+async function saveTotal(id: string) {
+  if (saving.value) return
+  saving.value = true; error.value = ''
+  try {
+    ctx.data.value = await bidApi.manualTotal(ctx.projectId, id, amount.value.trim() || null)
+    editing.value = ''
+  } catch { error.value = '请输入金额，例如 1234567.89' }
+  finally { saving.value = false }
+}
+function editTotal(id: string) {
+  editing.value = id; error.value = ''
+  amount.value = pricing.value?.bidders[id]?.manual_total ? pricing.value.bidders[id]?.total ?? '' : ''
+}
 // 报价分布图：只画参加比较的各家（V34-B-06d）
 const points = computed<PricePoint[]>(() => rows.value.filter(r => r.p.total && !r.p.not_compared)
   .map(r => ({ id: r.bidder.id, label: short(r.bidder.id), name: r.bidder.name, text: r.p.total!, mark: r.p.mark, low: !!r.p.low_price })))
@@ -91,26 +105,35 @@ const lede = computed<LedePart[]>(() => {
     <p v-if="!pricing" class="bid-empty">报价检查还没有结果。</p>
     <template v-else>
       <div class="top">
+        <BidLede :parts="lede" />
         <p v-if="ceiling || cmp" class="bid-meta">
           <template v-if="ceiling">最高限价 <b>{{ ceiling }}</b> {{ unit }}</template><template v-if="ceiling && cmp"><i class="sep" aria-hidden="true">·</i></template>
           <template v-if="cmp">参加比较 {{ cmp.n }} 家：最高 <b>{{ cmp.highest }}</b><i class="sep" aria-hidden="true">·</i>最低 <b>{{ cmp.lowest }}</b><i class="sep" aria-hidden="true">·</i>平均 <b>{{ cmp.mean }}</b> {{ unit }}</template>
         </p>
-        <BidLede :parts="lede" />
       </div>
       <PriceStrip v-if="cmp && points.length >= 2" :points="points" :mean="cmp.mean" :ceiling="ceiling" :unit="unit ?? ''" :caption="stripCaption" />
 
-      <section class="bid-block">
-        <h3 class="bid-title">各家报价<span v-if="calc" class="end"><button type="button" class="act" @click="confirmCalc(ctx)">确认本机计算的 {{ calc }} 条</button></span></h3>
+      <section class="bid-block quote-section" :class="{ saving }">
+        <h3 class="bid-title">各家报价</h3>
         <table class="bid-table">
           <colgroup><col><col style="width:196px"><col style="width:132px"><col style="width:84px"><col v-if="ceiling" style="width:190px"><col style="width:132px"><col style="width:104px"><col style="width:76px"></colgroup>
           <thead><tr><th>投标人（按录入顺序）</th><th class="r">投标总价</th><th class="r">比最低价高</th><th class="r" title="与参加比较各家平均总价之差">偏离平均</th><th v-if="ceiling">与限价</th><th class="r">报价表合计</th><th>计算与大小写</th><th class="r">报价表分项</th></tr></thead>
           <tbody>
             <template v-for="r in rows" :key="r.bidder.id">
-              <tr>
+              <tr :id="'bid-price-' + r.bidder.id" :class="{ 'bid-target': target === r.bidder.id }">
                 <td class="name" :title="r.bidder.name">{{ r.bidder.name }}</td>
                 <td class="r num"><template v-if="r.total.text">{{ r.total.text }}</template><span v-else class="bid-zero">未识别</span>
                   <span v-if="r.p.mark" class="bid-mark">{{ markText[r.p.mark] }}</span><span v-if="r.p.low_price" class="bid-mark w">异常低价</span>
-                  <small v-if="r.total.multi.length" :title="'出现的总价：' + r.total.multi.join('、')">{{ r.total.multi.length }} 个总价</small></td>
+                  <small v-if="r.total.multi.length" :title="'出现的总价：' + r.total.multi.join('、')">{{ r.total.multi.length }} 个总价</small>
+                  <small v-if="r.p.manual_total">唱标价 · 人工录入</small>
+                  <template v-if="editing === r.bidder.id">
+                    <el-input v-model="amount" size="small" aria-label="唱标价" placeholder="小写金额" @keyup.enter="saveTotal(r.bidder.id)" @keyup.esc="editing = ''" />
+                    <el-button size="small" text :disabled="saving" @click="saveTotal(r.bidder.id)">保存</el-button>
+                    <el-button size="small" text :disabled="saving" @click="editing = ''">取消</el-button>
+                    <small v-if="error" class="quote-error" role="alert">{{ error }}</small>
+                  </template>
+                  <el-button v-else size="small" text @click="editTotal(r.bidder.id)">{{ r.p.manual_total ? '修改' : '录入' }}</el-button>
+                </td>
                 <td class="r num"><template v-if="r.p.above_lowest">{{ r.p.above_lowest }}<small>{{ r.p.above_lowest_pct }}</small></template>
                   <span v-else-if="r.p.not_compared" class="bid-zero note" :title="r.p.not_compared">未参加比较</span><span v-else class="bid-zero">—</span></td>
                 <td class="r num"><span v-if="r.p.vs_mean && !r.p.not_compared" :class="{ 'low': r.p.low_price }">{{ r.p.vs_mean }}</span><span v-else class="bid-zero">—</span></td>
@@ -123,12 +146,16 @@ const lede = computed<LedePart[]>(() => {
                 </td>
                 <td class="r num"><template v-if="r.p.table">{{ r.p.table.rows }} 项</template><span v-else class="bid-zero">—</span></td>
               </tr>
-              <tr v-if="expanded === r.bidder.id" class="expand"><td :colspan="ceiling ? 8 : 7"><BidItemCard v-for="item in r.issues" :key="item.id" :item="item" hide-who /></td></tr>
+              <tr v-if="expanded === r.bidder.id" class="expand"><td :colspan="ceiling ? 8 : 7"><BidItemCard v-for="item in r.issues" :key="item.id" :item="item" hide-who readonly /></td></tr>
             </template>
           </tbody>
         </table>
       </section>
 
+      <section v-if="pending.length" class="bid-block">
+        <h3 class="bid-title">报价方面需你核实<span class="n">{{ pending.length }}</span></h3>
+        <ul class="bid-fine"><li v-for="e in pending" :key="e.id"><button class="bid-link bid-tier verify" type="button" @click="ctx.focus(e.id)">{{ e.title }}</button></li></ul>
+      </section>
       <section v-if="patterns.length" class="bid-block">
         <h3 class="bid-title">总价规律<span class="n">{{ patterns.length }}</span></h3>
         <ul class="found">
@@ -185,6 +212,14 @@ const lede = computed<LedePart[]>(() => {
 </template>
 
 <style scoped>
+.quote-section.saving { opacity: .65; }
+.quote-section .quote-error { color: var(--si-danger-ink); }
+.quote-section .el-button + .el-button { margin-inline-start: 0; }
+@media (max-width: 1120px) {
+  .quote-section .bid-table { table-layout: fixed; }
+  .quote-section col { width: auto !important; }
+  .quote-section th, .quote-section td { padding-inline-end: 6px; white-space: normal; overflow-wrap: anywhere; }
+}
 .top { display: flex; flex-direction: column; gap: 8px; }
 .act { padding: 3px 10px; border: 1px solid var(--si-hair-strong); border-radius: 8px; background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-2); cursor: pointer; }
 .act:hover { color: var(--si-ink-1); background: var(--si-hover-bg); }

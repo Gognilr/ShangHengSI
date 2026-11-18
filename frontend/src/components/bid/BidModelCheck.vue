@@ -53,7 +53,7 @@ async function load() {
 watch(() => props.stateKey, () => { if (!busy.value) void load() }, { immediate: true })
 onBeforeUnmount(() => { mounted = false; ++request; clearTimeout(timer) })
 
-async function act(action: 'prepare' | 'confirm' | 'cancel') {
+async function act(action: 'prepare' | 'prepare_second' | 'confirm' | 'cancel') {
   ++request
   clearTimeout(timer)
   busy.value = true; error.value = ''
@@ -81,30 +81,39 @@ async function act(action: 'prepare' | 'confirm' | 'cancel') {
       <template v-else-if="(data.state === 'awaiting' || data.state === 'failed') && data.receipt">
         <p>
           <span v-if="data.state === 'failed'" class="failed">模型核对未完成：{{ data.error }}。</span>
-          将发送 <b class="num">{{ data.receipt.snippets }}</b> 个片段、约 <b class="num">{{ data.receipt.chars }}</b> 字，已在本机保护 <b class="num">{{ data.receipt.protected }}</b> 处；本次 <b class="num">{{ data.receipt.calls }}</b> 次调用（{{ remainingText }}）。不发送：原件、图片、报价金额、文件名。
+          <strong v-if="data.second">二次核验 {{ data.receipt.second_calls }} 次。 </strong>
+          将发送 <b class="num">{{ data.receipt.snippets }}</b> 个脱敏片段，约 <b class="num">{{ data.receipt.chars }}</b> 字，保护 <b class="num">{{ data.receipt.protected }}</b> 处。<template v-if="!data.second">本次 <b class="num">{{ data.receipt.calls }}</b> 次调用。</template>（{{ remainingText }}）
         </p>
         <div class="actions">
           <el-button size="small" text :aria-expanded="open" @click="open = !open">{{ open ? '收起片段' : '查看将发送的片段' }}</el-button>
-          <el-button v-if="data.state === 'failed'" size="small" text :loading="busy" @click="act('prepare')">重新准备</el-button>
+          <el-button v-if="data.state === 'failed'" size="small" text :loading="busy" @click="act(data.second ? 'prepare_second' : 'prepare')">重新准备</el-button>
           <el-button v-else size="small" text :disabled="busy" @click="act('cancel')">不发送</el-button>
-          <el-button size="small" :loading="busy" :disabled="notEnough" @click="act('confirm')">{{ retry ? '继续未完成的部分' : '确认并开始模型核对' }}</el-button>
+          <el-button size="small" :loading="busy" :disabled="notEnough" @click="act('confirm')">{{ retry ? '继续未完成的部分' : data.second ? '确认并开始二次核验' : '确认并开始模型核对' }}</el-button>
         </div>
         <p v-if="notEnough" class="error">剩余调用次数不足，请联系管理员。</p>
       </template>
       <template v-else-if="data.state === 'failed'">
         <p class="failed">模型核对未完成：{{ data.error }}</p>
-        <el-button size="small" :loading="busy" @click="act('prepare')">重新准备</el-button>
+        <el-button size="small" :loading="busy" @click="act(data.second ? 'prepare_second' : 'prepare')">重新准备</el-button>
       </template>
-      <BidStatus v-else-if="data.state === 'running'" tone="run" :label="`模型核对 ${data.progress.done} / ${data.progress.total} 家，结果随后补上`" />
+      <BidStatus v-else-if="data.state === 'running'" tone="run" :label="data.second ? '正在进行二次核验，结果随后补上' : `模型核对 ${data.progress.done} / ${data.progress.total} 家，结果随后补上`" />
       <template v-else-if="data.state === 'done'">
-        <BidStatus tone="ok" :label="`模型核对已完成 ${data.progress.total} 家，判断见各家问题与要求响应`" />
-        <el-button class="again" size="small" text :loading="busy" @click="act('prepare')">重新准备</el-button>
+        <BidStatus tone="ok" :label="data.second ? '二次核验结束，结果见初审结论' : `模型核对已完成 ${data.progress.total} 家，判断见各家问题与要求响应`" />
+        <el-button class="again" size="small" text :loading="busy" @click="act(data.second ? 'prepare_second' : 'prepare')">重新准备</el-button>
       </template>
+      <el-button v-if="data.second_available" size="small" :loading="busy" @click="act('prepare_second')">准备二次核验</el-button>
       <el-button v-if="(data.sent_count ?? 0) > 0 || ['done', 'running', 'failed'].includes(data.state ?? '')" text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
     </div>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <p v-if="open && data.receipt" class="notes">发送内容限于脱敏文字，原件、图片、报价金额和文件名留在本机。</p>
     <ul v-if="open && data.receipt?.notes.length" class="notes"><li v-for="note in data.receipt.notes" :key="note">{{ note }}</li></ul>
 
+    <template v-if="open && data.receipt">
+      <article v-for="(text, i) in data.similar_preview" :key="i" class="snippet">
+        <header>相似段落共同来源核验 {{ i + 1 }}</header>
+        <p class="text">{{ text }}</p>
+      </article>
+    </template>
     <div v-if="open && current && (data.state === 'awaiting' || data.state === 'failed')" class="preview">
       <div class="preview-head">
         <SiSegmented v-model="tab" :options="tabs" size="small" ariaLabel="投标人" />
@@ -126,8 +135,8 @@ async function act(action: 'prepare' | 'confirm' | 'cancel') {
 </template>
 
 <style scoped>
-.model-check { margin-bottom: 28px; }
-.bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 10px 0; border-top: 1px solid var(--si-hair); border-bottom: 1px solid var(--si-hair); font: var(--si-font-meta); color: var(--si-ink-2); }
+.model-check { margin-bottom: 0; }
+.bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 5px 0; border-top: 1px solid var(--si-hair); border-bottom: 1px solid var(--si-hair); font: var(--si-font-meta); color: var(--si-ink-2); }
 .bar > svg { flex: none; color: var(--si-ink-3); }
 .bar p { flex: 1; min-width: 240px; margin: 0; }
 .actions, .again { margin-left: auto; }

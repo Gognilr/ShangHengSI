@@ -233,7 +233,7 @@ async function removeProject() {
 </script>
 
 <template>
-  <div class="page page--wide bid-project">
+  <div class="page page--wide bid-project" :class="{ 'show-result': step === 2 }">
     <nav class="breadcrumb" aria-label="位置"><router-link to="/bid">标书初审</router-link><span aria-hidden="true">/</span><span>{{ project?.title ?? '项目' }}</span></nav>
     <p v-if="loading" role="status" class="hint">正在读取项目…</p>
     <el-alert v-if="error && !project" :title="error" type="error" :closable="false" />
@@ -337,7 +337,7 @@ async function removeProject() {
           <el-button text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
           <BidSentDrawer v-model="sentOpen" :project-id="id" />
         </div>
-        <BidResults v-if="project.stage === 'checking' || project.stage === 'checked'" :key="id" :project="project" :state-key="checkKey" :live="project.stage === 'checking'" />
+        <BidResults v-if="project.stage === 'checking' || project.stage === 'checked'" :key="id" :project="project" :state-key="checkKey" :live="project.stage === 'checking'" @changed="load(false)" />
       </div>
       <EmptyState v-else-if="step === 2 && reopened" :icon="ScanSearch" title="正在修改材料" description="改好要求清单或投标文件后，在第 2 步重新开始初审。已做的核对状态与备注会保留在相同的条目上。" />
       <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认要求清单、放齐投标文件后开始初审，这里会列出总览、要求响应、各家问题、串标线索与报价分析。" />
@@ -424,7 +424,10 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .si-drop.hero { padding: 56px 16px; }
 .limits { margin: 16px 0 0; }
 .step-foot.start { align-items: center; gap: 16px; margin-top: 24px; }
-.result { flex: 1; display: flex; flex-direction: column; gap: 24px; }
+.result { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.show-result .breadcrumb { margin-bottom: 4px; }
+.show-result .steps { margin-block: 8px 4px; padding-block: 3px; }
+.show-result .steps button { padding-block: 4px; }
 .sent-only { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--si-hair); border-bottom: 1px solid var(--si-hair); font: var(--si-font-meta); color: var(--si-ink-2); }
 
 /* 页面至少占满主区域，声明贴底（内容长时随内容下移，至少留 48px） */

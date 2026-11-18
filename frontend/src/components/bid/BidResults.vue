@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { bidApi, type BidCheck, type BidProject, type BidReview, type BidReviewStatus, type BidSigning, type BidSignMark } from '@/api/bid'
-import BidOverview from './BidOverview.vue'
+import BidConclusion from './BidConclusion.vue'
 import BidMatrix from './BidMatrix.vue'
 import BidBidderIssues from './BidBidderIssues.vue'
 import BidClues from './BidClues.vue'
 import BidPricing from './BidPricing.vue'
-import BidFocus from './BidFocus.vue'
-import { bidResultsKey, pricingTypes, reviewTodos, shortNames, todoSteps } from './results'
+const conclusion = ref<InstanceType<typeof BidConclusion>>()
+import { bidResultsKey, reviewTodos, shortNames, todoSteps } from './results'
 import './results.css'
 import './charts/charts.css'
 
 // 初审结果五个页签（bid.md 2.4、visual.md 7.5）。live 为真时（初审中）每 2 秒刷新，已完成的步骤先显示。
 const props = defineProps<{ project: BidProject; stateKey: string; live?: boolean }>()
+const emit = defineEmits<{ changed: [] }>()
 const data = ref<BidCheck>(), error = ref(''), notice = ref('')
 type Tab = 'overview' | 'matrix' | 'bidders' | 'clues' | 'pricing'
 const tab = ref<Tab>('overview'), bidder = ref(''), pair = ref<string[] | null>(null)
@@ -107,9 +108,23 @@ async function markSigning(pages: BidSigning[], mark: BidSignMark | null) {
     notice.value = e instanceof ApiError ? e.message : '标注没有保存，已恢复，请重试'
   } finally { saving-- }
 }
-// 逐条核对（V34Q-27 第二部分第 3 条）：进入时记下待核各步，核完自动跳下一条
-const focusAt = ref<string | null>(null)
-function focus(key?: string) { focusAt.value = key ?? steps.value.find(s => !s.done)?.key ?? steps.value[0]?.key ?? null }
+const priceTarget = ref('')
+let locateTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(locateTimer))
+async function focus(key?: string) {
+  tab.value = 'overview'
+  await nextTick()
+  if (key) await conclusion.value?.locate(key)
+  else document.getElementById('bid-verify')?.scrollIntoView({ block: 'nearest' })
+}
+async function toPrice(id: string) {
+  tab.value = 'pricing'
+  priceTarget.value = id
+  await nextTick()
+  document.getElementById('bid-price-' + id)?.scrollIntoView({ block: 'nearest' })
+  clearTimeout(locateTimer)
+  locateTimer = setTimeout(() => { priceTarget.value = '' }, 1200)
+}
 
 // 查看原件页：大图对话框，可翻页
 const page = ref<{ fileId: string; page: number } | null>(null)
@@ -126,19 +141,15 @@ watch(data, d => {
 
 // 页签计数统一为“待核”数（V34Q-27 第二部分第 7 条）：各投标人页是按家看的同一批事项，不另计数
 const counts = computed(() => {
-  const open = todos.value.filter(t => !t.done)
-  const items = new Map((data.value?.items ?? []).map(i => [i.id, i]))
-  const itemOf = (key: string) => items.get(key.slice(1))
-  return {
-    all: open.length, matrix: open.filter(t => t.kind === 'cell' || t.kind === 'manual').length,
-    clues: open.filter(t => t.kind === 'item' && itemOf(t.key)?.kind === 'clue').length,
-    pricing: open.filter(t => t.kind === 'item' && pricingTypes.has(itemOf(t.key)?.type ?? '')).length,
-  }
+  const d = data.value
+  const verify = d?.conclusion.verify ?? []
+  return { all: verify.length, matrix: new Set(verify.flatMap(e => e.requirement_id ? [e.requirement_id] : [])).size,
+    clues: d?.conclusion.cases.length ?? 0 }
 })
 const tabs = computed(() => [
-  { key: 'overview' as Tab, label: '总览', n: counts.value.all }, { key: 'matrix' as Tab, label: '要求响应矩阵', n: counts.value.matrix },
+  { key: 'overview' as Tab, label: '初审结论', n: counts.value.all }, { key: 'matrix' as Tab, label: '要求响应矩阵', n: counts.value.matrix },
   { key: 'bidders' as Tab, label: '各投标人' }, { key: 'clues' as Tab, label: '串标线索', n: counts.value.clues },
-  { key: 'pricing' as Tab, label: '报价分析', n: counts.value.pricing },
+  { key: 'pricing' as Tab, label: '报价分析' },
 ])
 function go(next: Tab, filter?: { bidder?: string; pair?: string[] }) {
   if (filter?.bidder) bidder.value = filter.bidder
@@ -167,19 +178,18 @@ const notes = computed(() => {
   <div class="results">
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <el-alert v-if="notice" class="notice" :title="notice" type="warning" show-icon @close="notice = ''" />
-    <BidFocus v-if="data && focusAt" v-model="focusAt" :bidders="project.bidders" />
-    <nav v-show="!focusAt" class="tabs" role="tablist" aria-label="初审结果">
+    <nav class="tabs" role="tablist" aria-label="初审结果">
       <button v-for="t in tabs" :key="t.key" type="button" role="tab" :aria-selected="tab === t.key" :class="{ on: tab === t.key }" @click="go(t.key)">{{ t.label }}<i v-if="t.n" class="num" :title="`待核 ${t.n}`">{{ t.n }}</i></button>
     </nav>
-    <template v-if="data && !focusAt">
-      <BidOverview v-if="tab === 'overview'" :bidders="project.bidders" @go="go" />
+    <template v-if="data">
+      <BidConclusion v-if="tab === 'overview'" ref="conclusion" @price="toPrice" />
       <BidMatrix v-else-if="tab === 'matrix'" :bidders="project.bidders" :model-state="project.model.state" />
-      <BidBidderIssues v-else-if="tab === 'bidders'" v-model="bidder" :bidders="project.bidders" />
+      <BidBidderIssues v-else-if="tab === 'bidders'" v-model="bidder" :bidders="project.bidders" @renamed="emit('changed')" />
       <BidClues v-else-if="tab === 'clues'" :pair="pair" :bidders="project.bidders" @clear="pair = null" @pick="ids => pair = ids" />
-      <BidPricing v-else :bidders="project.bidders" />
+      <BidPricing v-else :bidders="project.bidders" :target="priceTarget" />
     </template>
     <p v-else-if="!error && !data" class="hint" role="status">正在读取初审结果…</p>
-    <ul v-show="!focusAt" class="bid-foot foot"><li v-for="n in notes" :key="n">{{ n }}</li><li>{{ declaration }}</li></ul>
+    <ul v-if="tab !== 'overview'" class="bid-foot foot"><li v-for="n in notes" :key="n">{{ n }}</li><li>{{ declaration }}</li></ul>
 
     <el-dialog :model-value="!!page" width="min(920px, 92vw)" append-to-body :title="page ? `${fileNames[page.fileId] ?? '原件'} · 第 ${page.page} 页` : ''" @update:model-value="(v: boolean) => { if (!v) page = null }">
       <div v-if="page" class="page-view">
@@ -197,10 +207,10 @@ const notes = computed(() => {
 </template>
 
 <style scoped>
-.results { flex: 1; display: flex; flex-direction: column; gap: 28px; }
+.results { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .foot { margin-top: auto; padding-top: 14px; }
 .tabs { display: flex; gap: 26px; border-bottom: 1px solid var(--si-hair); }
-.tabs button { position: relative; height: 40px; padding: 0; border: 0; background: transparent; font: var(--si-font-label); color: var(--si-ink-3); cursor: pointer; }
+.tabs button { position: relative; height: 36px; padding: 0; border: 0; background: transparent; font: var(--si-font-label); color: var(--si-ink-3); cursor: pointer; }
 .tabs button:hover { color: var(--si-ink-1); }
 .tabs button.on { color: var(--si-ink-1); font-weight: 600; }
 .tabs button.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--si-ink-1); }

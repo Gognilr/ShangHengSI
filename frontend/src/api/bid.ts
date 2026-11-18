@@ -25,7 +25,8 @@ export type BidModelState = null | 'preparing' | 'awaiting' | 'running' | 'done'
 export interface BidSnippet { id: string; file: string; page: number | null; text: string; ai_text: string; requirements: string[] }
 export interface BidModelView {
   state: BidModelState; error: string | null; progress: { done: number; total: number }
-  receipt: { snippets: number; chars: number; protected: number; calls: number; total_calls: number; remaining: { monthly: number | null; daily: number | null }; notes: string[] } | null
+  second?: boolean; second_available?: boolean; similar_preview?: string[]
+  receipt: { snippets: number; chars: number; protected: number; calls: number; total_calls: number; second_calls?: number; remaining: { monthly: number | null; daily: number | null }; notes: string[] } | null
   bidders: { id: string; name: string; code: string; snippets: BidSnippet[] }[]
   requirements: { id: string; n: string; group: BidGroup; text: string; ai_text: string }[]
   sent_count?: number
@@ -35,7 +36,7 @@ export type BidMethod = 'local' | 'model' | 'manual'
 export type BidExtractState = null | 'redacting' | 'awaiting' | 'extracting' | 'done' | 'failed'
 export interface BidLoc { file_id: string; loc: string; start: number; end: number }
 export interface BidRequirement { id: string; group: BidGroup; text: string; locs: BidLoc[]; method: BidMethod; enabled: boolean; source: 'marked' | 'model' | 'default' | 'manual'; seq: number; file: string | null }
-export interface BidParameters { ceiling: string | null; currency: 'CNY' | 'USD' | 'EUR' | 'HKD'; validity_days: number | null; deposit: string | null; deposit_forms: string; consortium: boolean | null; tax_included: boolean | null }
+export interface BidParameters { ceiling: string | null; currency: 'CNY' | 'USD' | 'EUR' | 'HKD'; validity_days: number | null; deposit: string | null; deposit_forms: string; consortium: boolean | null; tax_included: boolean | null; agency?: string }
 export interface BidCount { total: number; covered: number; missing: (BidLoc & { text: string })[] }
 export interface BidRequirements {
   parameters: BidParameters; parameter_sources: Record<string, { file_id: string; loc: string }>; parameters_confirmed: boolean
@@ -63,7 +64,7 @@ export interface BidEvidenceRow {
 }
 export interface BidItem extends BidReview {
   id: string; kind: 'issue' | 'clue' | 'normal_dup'; type: string; level: BidLevel; article: string | null; bidder_ids: string[]
-  source: 'local' | 'model'; title: string; rows: BidEvidenceRow[]; normal?: string
+  source: 'local' | 'model'; title: string; rows: BidEvidenceRow[]; normal?: string; reference_reason?: string
   requirement_id: string | null
   /** 相似段落位置条（V34-B-06d）：两家按句序的轴，文件依次排列；a / b 为句序范围，pa / pb 为页码范围 */
   map?: BidSimilarMap
@@ -78,10 +79,10 @@ export type BidVerdict = 'yes' | 'no' | 'missing' | 'unclear' | 'manual'
 export type BidReviewStatus = 'pending' | 'verified' | 'excluded'
 export const bidReviewLabel: Record<BidReviewStatus, string> = { pending: '待核对', verified: '已核实', excluded: '已排除' }
 export interface BidReview { review_status: BidReviewStatus; note: string | null }
-export interface BidCell extends BidReview { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; cite: null | 'verified' | 'unverified' }
+export interface BidCell extends BidReview { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; cite: null | 'verified' | 'unverified'; conclusion_tier?: BidTier | null }
 /** 报价分析（V34-B-04 计算，B-06 展示）：金额已格式化为字符串 */
 export interface BidPricing {
-  bidders: Record<string, { total: string | null; totals_found: string[]; currency: string | null; table: { name: string; rows: number; total: string | null } | null; over_ceiling: string | null
+  bidders: Record<string, { total: string | null; totals_found: string[]; currency: string | null; manual_total?: boolean; table: { name: string; rows: number; total: string | null } | null; over_ceiling: string | null
     /** 多个不同总价时最高者与限价之差（V34Q-25）；over_ceiling 只对应唯一总价 */
     over_ceiling_max?: string | null
     /** 总价比较（V34Q-27，后端 Decimal）：最高 / 最低、比最低价高、偏离平均、异常低价；not_compared 为未参加比较的原因 */
@@ -96,11 +97,39 @@ export interface BidPricing {
 }
 export type BidSignMark = 'stamped' | 'missing' | 'unclear'
 export interface BidSigning { bidder_id: string; file_id: string; file: string; page: number | null; loc: string; title: string; renderable: boolean; mark: BidSignMark | null }
+export type BidTier = 'certain' | 'verify' | 'reference'
+export type BidReviewReason = 'template' | 'manufacturer' | 'recognition' | 'model' | 'other'
+export interface BidConclusionEntry {
+  id: string; bidder_ids: string[]; title: string; category: string; tier: BidTier
+  item_id: string | null; requirement_id: string | null; case_id: string | null; article: string | null
+}
+export interface BidCase {
+  id: string; bidder_ids: string[]; title: string; article: string; tier: BidTier
+  evidence: { item_id: string; row: number; fact: string; bidder_ids: string[] }[]
+  normal: string[]; baseline: { sentences?: number; images?: number }
+}
+export interface BidConclusionDecision {
+  status: BidReviewStatus; entry: BidConclusionEntry; reason_label: string | null; detail: string | null; linked: string[]
+}
+export interface BidConclusionReview {
+  key: string; status: BidReviewStatus; reason?: BidReviewReason; detail?: string; remember?: boolean
+}
+export interface BidConclusionData {
+  lede: string; sub: string | null; certain: BidConclusionEntry[]; verify: BidConclusionEntry[]; reference: BidConclusionEntry[]
+  cases: BidCase[]; reviews: Record<string, BidConclusionDecision>; signed: string | null; second_calls: number
+  site: { id: string; text: string; seq: number }[]
+  bidders: { id: string; name: string; short: string; tier: BidTier | null; total: string | null; manual_total: boolean; reasons: { id: string; title: string }[] }[]
+}
+export interface BidFeedback {
+  rules: { id: string; agency: string; label: string; reason: string }[]
+  stats: { category: string; verified: number; total: number }[]
+}
 export interface BidCheck {
+  conclusion: BidConclusionData
   state: BidProject['check']['state']; error: string | null; coverage: string[]; items: BidItem[]
   steps: string[]; elapsed: Record<string, number>; cells: BidCell[]; pricing: BidPricing | null
   parameters: { ceiling: string | null; currency: string | null }
-  requirements: { id: string; group: BidGroup; text: string; method: BidMethod; seq: number }[]
+  requirements: { id: string; group: BidGroup; text: string; method: BidMethod; seq: number; not_applicable?: boolean }[]
   signing: BidSigning[]
   timeline?: BidTimelineFile[]
 }
@@ -111,6 +140,7 @@ export interface BidCellDetail {
   bidder: { id: string; name: string }
   cell: (BidReview & { verdict: BidVerdict; source: 'local' | 'model'; cite: BidCell['cite']; reason: string | null }) | null
   places: BidCellPlace[]
+  second?: { outcome: 'found' | 'confirmed' | 'unclear'; verdict?: BidVerdict | null; reason?: string | null } | null
 }
 export const bidLevelLabel: Record<BidLevel, string> = { strong: '强', medium: '中', weak: '弱', normal: '正常重复', veto: '疑似否决项', general: '一般问题', hint: '提示' }
 export interface BidSettings { title: string; opening_date: string; policy: 'ai' | 'local_only'; category_id: number | null; folder_id?: string | null }
@@ -170,7 +200,13 @@ export const bidApi = {
   startCheck: (id: string) => http.post<BidProject>(`/bid/${id}/check`),
   check: (id: string) => http.get<BidCheck>(`/bid/${id}/check`),
   model: (id: string) => http.get<BidModelView>(`/bid/${id}/model`),
-  modelAction: (id: string, action: 'prepare' | 'confirm' | 'cancel') => http.post<BidModelView>(`/bid/${id}/model/${action}`),
+  conclusionReview: (id: string, body: BidConclusionReview) => http.post<BidCheck>(`/bid/${id}/conclusion/review`, body),
+  manualTotal: (id: string, bidder: string, total: string | null) => http.put<BidCheck>(`/bid/${id}/bidders/${bidder}/total`, { total }),
+  applicability: (id: string, rid: string, applicable: boolean) => http.put<BidCheck>(`/bid/${id}/requirements/${rid}/applicability`, { applicable }),
+  conclusionSign: (id: string, signed: boolean) => http.put<BidCheck>(`/bid/${id}/conclusion/sign`, { signed }),
+  feedback: () => http.get<BidFeedback>('/bid/feedback/mine'),
+  revokeFeedback: (token: string) => http.delete<void>(`/bid/feedback/mine/${token}`),
+  modelAction: (id: string, action: 'prepare' | 'prepare_second' | 'confirm' | 'cancel') => http.post<BidModelView>(`/bid/${id}/model/${action}`),
   reviewItem: (id: string, iid: string, body: Partial<BidReview>) => http.patch<BidReview>(`/bid/${id}/items/${iid}`, body),
   reviewCell: (id: string, body: Partial<BidReview> & { requirement_id: string; bidder_id: string }) => http.put<BidReview>(`/bid/${id}/cells`, body),
   cell: (id: string, requirement_id: string, bidder_id: string) => http.get<BidCellDetail>(`/bid/${id}/cell`, { requirement_id, bidder_id }),

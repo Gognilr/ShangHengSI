@@ -2,6 +2,8 @@
 import { computed, inject, ref } from 'vue'
 import { bidMethodLabel, type Bidder, type BidCell, type BidCheck } from '@/api/bid'
 import BidCellDrawer from './BidCellDrawer.vue'
+import BidLede from './BidLede.vue'
+import { bidApi } from '@/api/bid'
 import { bidResultsKey } from './results'
 
 // 要求响应矩阵：严格按 bid-frontend-spec.md 三之二显示，序号沿用要求清单。
@@ -28,9 +30,9 @@ function rowRank(r: Requirement) {
 }
 const all = computed(() => [...(ctx.data.value?.requirements ?? [])].filter(r => r.group !== 'format')
   .sort((a, b) => groupOf(a) - groupOf(b) || rowRank(a) - rowRank(b) || a.seq - b.seq))
-const rows = computed(() => all.value.filter(r => !onlyProblems.value || props.bidders.some(b => problem(r.method, cellOf(r.id, b.id)))))
+const rows = computed(() => all.value.filter(r => !onlyProblems.value || (!r.not_applicable && props.bidders.some(b => problem(r.method, cellOf(r.id, b.id))))))
 const hasAnomaly = (r: Requirement, verdict: 'no' | 'missing') =>
-  r.method !== 'manual' && props.bidders.some(b => {
+  !r.not_applicable && r.method !== 'manual' && props.bidders.some(b => {
     const c = cellOf(r.id, b.id)
     return !!c && c.review_status !== 'excluded' && c.cite !== 'unverified' && c.verdict === verdict
   })
@@ -56,7 +58,7 @@ function view(method: string, c?: BidCell) {
   }
   if (!c) return { s: '？', label: method === 'model' ? (props.modelState === 'running' ? '模型核对中' : '未核对') : '本地规则未能判断', tone: 'plain' }
   if (c.cite === 'unverified') return { s: '？', label: '引文待核实', tone: 'plain' }
-  if (c.verdict === 'no' && c.review_status === 'verified') return { s: '不响应', label: '已核实不响应', tone: 'confirmed' }
+  if (c.verdict === 'no' && (c.review_status === 'verified' || c.conclusion_tier === 'certain')) return { s: '不响应', label: '已核实不响应', tone: 'confirmed' }
   return symbols[c.verdict] ?? symbols.unclear!
 }
 function title(method: string, c?: BidCell) {
@@ -66,11 +68,18 @@ function title(method: string, c?: BidCell) {
   return parts.join(' · ')
 }
 const drawer = ref<{ rid: string; bid: string } | null>(null)
+const saving = ref(false), saveError = ref('')
+async function toggleApplicability(rid: string) {
+  saving.value = true; saveError.value = ''
+  try { ctx.data.value = await bidApi.applicability(ctx.projectId, rid, !!all.value.find(r => r.id === rid)?.not_applicable) }
+  catch { saveError.value = '保存失败，请重试' }
+  finally { saving.value = false }
+}
 </script>
 
 <template>
   <div class="bid-tab">
-    <p class="bid-lede num">{{ all.length }} 条要求中，{{ noRows }} 条有家疑似不响应，{{ missingRows }} 条有家未找到响应内容。</p>
+    <BidLede :text="`${all.length} 条要求中，${noRows} 条有家疑似不响应，${missingRows} 条有家未找到响应内容。`" />
     <section class="bid-block">
       <div class="tools">
         <label class="toggle"><el-switch v-model="onlyProblems" size="small" />只看有问题的行</label>
@@ -85,7 +94,8 @@ const drawer = ref<{ rid: string; bid: string } | null>(null)
               <th class="req" scope="row"><span class="number num">{{ r.seq }}.</span><span class="text" :class="{ potential: ['veto', 'substantive', 'qualification'].includes(r.group) }">{{ r.text }}</span></th>
               <td v-for="b in bidders" :key="b.id">
                 <button type="button" class="cell" :class="{ excluded: cellOf(r.id, b.id)?.review_status === 'excluded' && r.method !== 'manual' && cellOf(r.id, b.id)?.verdict !== 'manual' }" :title="title(r.method, cellOf(r.id, b.id))" :aria-label="`${b.name}：${title(r.method, cellOf(r.id, b.id))}`" @click="drawer = { rid: r.id, bid: b.id }">
-                  <span class="symbol" :class="view(r.method, cellOf(r.id, b.id)).tone">{{ view(r.method, cellOf(r.id, b.id)).s }}</span>
+                  <span v-if="r.not_applicable" class="symbol plain" aria-label="不适用">—</span>
+                  <span v-else class="symbol" :class="view(r.method, cellOf(r.id, b.id)).tone">{{ view(r.method, cellOf(r.id, b.id)).s }}</span>
                 </button>
               </td>
             </tr>
@@ -95,11 +105,18 @@ const drawer = ref<{ rid: string; bid: string } | null>(null)
       <p v-else class="bid-empty">{{ all.length ? '关闭“只看有问题的行”可查看全部要求。' : '要求清单中没有可逐家判断的要求。' }}</p>
       <p v-if="rows.length" class="legend">✓ 响应　？ 无法判断或引文待核实　— 不适用</p>
     </section>
-    <BidCellDrawer v-if="drawer" :requirement-id="drawer.rid" :bidder-id="drawer.bid" @close="drawer = null" />
+    <BidCellDrawer v-if="drawer" :requirement-id="drawer.rid" :bidder-id="drawer.bid" @close="drawer = null">
+      <template #default>
+        <el-button size="small" :disabled="saving" @click="toggleApplicability(drawer.rid)">{{ all.find(r => r.id === drawer?.rid)?.not_applicable ? '恢复适用' : '标为不适用' }}</el-button>
+        <el-button size="small" text @click="ctx.focus(`cell:${drawer.rid}:${drawer.bid}`)">需你核实</el-button>
+        <p v-if="saveError" class="save-error" role="alert">{{ saveError }}</p>
+      </template>
+    </BidCellDrawer>
   </div>
 </template>
 
 <style scoped>
+.save-error { color: var(--si-danger-ink); }
 .tools { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font: var(--si-font-label); color: var(--si-ink-2); cursor: pointer; }
 .hint { margin: 0; font: var(--si-font-meta); color: var(--si-ink-4); }

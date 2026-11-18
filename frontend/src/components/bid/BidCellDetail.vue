@@ -42,6 +42,13 @@ watch(() => [props.requirementId, props.bidderId], load, { immediate: true })
       </template>
       <p v-else class="hint">{{ detail.requirement.method === 'manual' ? '这一行需要人工对照原件核对，核对后在下方标注。' : '还没有判断结果（模型核对未完成或本地规则未能判断）。' }}</p>
     </section>
+    <section v-if="detail.second">
+      <h3 class="si-overline">二次核验</h3>
+      <p class="verdict"><b>{{ detail.second.outcome === 'found' ? '二次核验找到响应，已改为响应' : detail.second.outcome === 'confirmed' ? '两轮判断一致' : '仍需核实' }}</b>
+        <span v-if="detail.second.outcome === 'unclear' && detail.second.verdict" class="hint">{{ verdictLabel[detail.second.verdict] }}</span>
+      </p>
+      <p v-if="detail.second.reason" class="reason">{{ detail.second.reason }}</p>
+    </section>
     <section v-if="detail.places.length">
       <h3 class="si-overline">{{ detail.bidder.name }}的对应片段</h3>
       <article v-for="(p, i) in detail.places" :key="i" class="place">

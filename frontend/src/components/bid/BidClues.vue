@@ -15,8 +15,8 @@ const ctx = inject(bidResultsKey)!
 const showNormal = ref(false), showExcluded = ref(false)
 const match = (ids: string[]) => !props.pair?.length || props.pair.every(id => ids.includes(id))
 const all = computed(() => (ctx.data.value?.items ?? []).filter(i => i.kind === 'clue' && match(i.bidder_ids)))
-const clues = computed(() => all.value.filter(i => i.review_status !== 'excluded'))
-const excluded = computed(() => all.value.filter(i => i.review_status === 'excluded'))
+const clues = computed(() => all.value.filter(i => i.review_status !== 'excluded' && !i.reference_reason))
+const excluded = computed(() => all.value.filter(i => i.review_status === 'excluded' || i.reference_reason))
 const groups = computed(() => (['strong', 'medium', 'weak'] as BidLevel[]).map(level => ({ level, items: clues.value.filter(i => i.level === level) })).filter(g => g.items.length))
 const normal = computed(() => (ctx.data.value?.items ?? []).filter(i => i.kind === 'normal_dup' && match(i.bidder_ids)))
 const short = (id: string) => ctx.shorts.value[id] ?? ''
@@ -38,8 +38,7 @@ const lede = computed<LedePart[]>(() => {
   const part: LedePart = [`${clues.value.length} 条串标线索（`]
   groups.value.forEach((g, k) => part.push(k ? '、' : '', [`${levelText[g.level]} ${g.items.length}`, g.level === 'strong' ? 'd' : g.level === 'medium' ? 'w' : 'b']))
   part.push(`），涉及 ${pairs.slice(0, 4).join('、')}${pairs.length > 4 ? ' 等' : ''}`)
-  const pending = clues.value.filter(i => i.review_status === 'pending').length
-  return [part, [pending ? `${pending} 条待核对` : '已全部核对']]
+  return [part]
 })
 </script>
 
@@ -48,10 +47,11 @@ const lede = computed<LedePart[]>(() => {
     <BidLede :parts="lede">
       <span v-if="pair?.length" class="sub filter">只看 {{ filterLabel }}<button type="button" aria-label="取消筛选" @click="emit('clear')"><X :size="13" :stroke-width="1.75" />显示全部</button></span>
     </BidLede>
+    <button v-if="ctx.data.value?.conclusion.verify.some(e => e.case_id)" type="button" class="bid-fold" @click="ctx.focus()">需你核实</button>
     <ClueGraph v-if="bidders.length >= 3" :nodes="nodes" :edges="edges" :selected="pair" @pick="ids => emit('pick', ids)" />
     <section v-for="g in groups" :key="g.level" class="bid-block">
       <h3 class="bid-title" :class="'bid-' + g.level">{{ bidLevelLabel[g.level] }}<span class="n">{{ g.items.length }}</span></h3>
-      <div class="list"><BidItemCard v-for="item in g.items" :key="item.id" :item="item" /></div>
+      <div class="list"><BidItemCard v-for="item in g.items" :key="item.id" :item="item" readonly /></div>
     </section>
     <section v-if="timeline.some(t => t.bidder_id)" class="bid-block">
       <h3 class="bid-title">文件时间线<span class="n">{{ timeline.length }}</span></h3>
@@ -61,11 +61,11 @@ const lede = computed<LedePart[]>(() => {
       <button v-if="excluded.length" type="button" class="bid-fold" :aria-expanded="showExcluded" @click="showExcluded = !showExcluded">
         <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: showExcluded }" aria-hidden="true" />已排除 {{ excluded.length }}
       </button>
-      <div v-if="showExcluded" class="list"><BidItemCard v-for="item in excluded" :key="item.id" :item="item" /></div>
+      <div v-if="showExcluded" class="list"><BidItemCard v-for="item in excluded" :key="item.id" :item="item" readonly /></div>
       <button v-if="normal.length" type="button" class="bid-fold" :aria-expanded="showNormal" @click="showNormal = !showNormal">
         <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: showNormal }" aria-hidden="true" />正常重复 {{ normal.length }}
       </button>
-      <div v-if="showNormal" class="list"><BidItemCard v-for="item in normal" :key="item.id" :item="item" /></div>
+      <div v-if="showNormal" class="list"><BidItemCard v-for="item in normal" :key="item.id" :item="item" readonly /></div>
     </section>
   </div>
 </template>
