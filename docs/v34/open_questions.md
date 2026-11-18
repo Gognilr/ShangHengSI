@@ -371,3 +371,9 @@ V34Q-01～10 来自 2026-11-15 与用户的讨论（标书比对能力、首页�
   5. 细粒度权限与跳转：`WorkbenchHome.vue` 用 `use.translate` 误藏本地翻译；`GlobalSearch.vue` 缺会议 / 翻译页面项且搜出记录跳往 `/assistant/:id`；`Meeting.vue` / `Translate.vue` 点“全部历史”跳往不含它们的 `/history`；仅 `use.review` 或仅 `use.bid` 账号在 `MainLayout.vue` / `Assistant.vue` / `History.vue` 有残留入口。
   6. 细节：`SiIsland.vue:36` 浅色模式圆点 `--si-ok` 在深底上对比度仅 1.36:1；`skin.css:366-371` 精简档 `lite` 漏停光带与流光动画；`BidRequirements.vue:113` 快捷键未过滤 `Ctrl/Meta/Alt`；“查看实际发送内容”按钮在点关闭或重新准备后消失。
 * **仓库状态：** 本地 `main` 与 `origin/main` 分叉（领先 94、落后 5，远端含 `FSL-1.1-ALv2` 许可证与三语 `README` 更新），须在 `V34-Z` 推送前先合入；根目录残留空目录 `backend;C`。以上各项拟随 `B-08b` → `B-09` → `B-06e` → `B-08c` → `V34-Z` 对口任务分批修复。
+
+### V34Q-51 系统品牌更名为“Mica 云母”，素纸版界面保持原样（用户 2026-11-18 决定）
+
+* 品牌更名：系统产品名由“商衡SI”更名为 **`Mica 云母`**（字标英文在前、中文在后，副标保留“企业安全脱敏与智能审查平台”），图形标识改为三瓣半透明交叠的云母矿片（左上赤陶橙、右上矿物青绿、正下暖琥珀黄，以 7 块纯矢量路径与 `theme.css` 令牌适配浅色与夜幕，不用 CSS 混合模式）。
+* 界面原则：否决额外装饰化的 UI 改造提案，界面布局、素纸底色、松针青主按钮与单色功能图标完全保持现行 V3.4“素纸版”原样。
+* 工程边界：只改用户可见层（`SiLogo.vue`、`favicon.svg`、`index.html`、`manifest.webmanifest`、`Login.vue`、`NotFound.vue`、Word 导出署名、新签 CA 显示名与各类文档）；底层镜像与卷名 `aireview-*`、CSS 变量 `--si-*`、本地存储键 `si.*` 及已部署服务器的根证书保持不变。完整逐文件清单见 `docs/proposals/Mica云母-品牌更名与标识定稿方案-2026-11-18.md`。
