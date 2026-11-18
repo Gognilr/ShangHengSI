@@ -7,7 +7,7 @@ yes 响应、no 疑似不响应、missing 未找到、unclear 无法本地判断
 import re
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from app.checks.amounts import check_uppercase
 from app.checks.content import check_content
@@ -15,7 +15,7 @@ from app.checks.dates import find_dates
 from app.checks.model import CheckNode
 from app.checks.numbers import money, rounded
 from app.parsing.model import LOW_OCR_CONF
-from app.redaction.detect import find_amounts
+from app.redaction.detect import chinese_upper_value, find_amounts
 
 
 @dataclass(frozen=True)
@@ -86,6 +86,45 @@ def expired_certificates(nodes, opening: date):
     return out
 
 
+def upper_value(text):
+    """唱标价大写 → 数值；允许前面写“人民币”。无法解析时返回 None。"""
+    return chinese_upper_value(re.sub(r"^(?:人民币)?[:：]?", "", "".join(text.split())))
+
+
+_UPPER_DETAIL = re.compile(r"= ([\d,]+\.\d{2})，相邻的小写金额 ([\d,]+\.\d{2})")
+_ROW_DETAIL = re.compile(r"= ([\d,]+\.\d{2})，表中金额 ([\d,]+\.\d{2})")
+
+
+def _num(text):
+    return Decimal(text.replace(",", ""))
+
+
+def corrected_total(fact, wrong_case, ceiling):
+    """修正后总价（bid-pricing.md 二.6）：总价大小写不一致以大写为准，分项计算错误以单价为准；
+    供评标委员会参考，以招标文件约定的修正原则为准。没有可修正的问题时返回 None。"""
+    base = fact.get("file_total") if fact.get("manual_total") is not None else fact["total"]
+    if base is None:
+        return None
+    total_locs = {n.loc for _v, _c, n in fact["totals"]}
+    value, basis = rounded(base), []
+    for r in wrong_case:
+        m = _UPPER_DETAIL.search(r.detail)
+        if m and r.locs[0] in total_locs and _num(m[2]) == value:
+            value, basis = _num(m[1]), basis + ["大写为准"]
+            break
+    delta = sum((_num(m[1]) - _num(m[2]) for r in fact["results"] if r.code == "L-01"
+                 and (m := _ROW_DETAIL.search(r.detail))), Decimal(0))
+    if delta:
+        value, basis = value + delta, basis + ["单价为准"]
+    if not basis or value == rounded(base):
+        return None
+    out = {"total": money(value), "from": money(base), "basis": "、".join(basis)}
+    if ceiling is not None and value > rounded(ceiling):
+        percent = ((value - ceiling) * 100 / ceiling).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        out["over_ceiling"] = f"超最高限价 +{money(value - ceiling)}（+{percent}%）"
+    return out
+
+
 def evaluate(bidder_id, nodes, fact, params, opening: date, place):
     """一家投标人的符合项问题与各检查的判断。nodes 为 CheckNode 子类（带 kind、ocr_conf）；
     fact 为 pricing.analyze 的该家结果；place(node, start, end) 给出证据位置。返回 (问题, {检查: (结论, 理由, [位置])})。"""
@@ -126,6 +165,12 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
         issues.append(_issue("manual_total_diff", "general", f"文件总价与唱标价不一致（差额 {difference}）",
                              [{"label": "唱标价 · 人工录入", "value": money(manual)},
                               {"label": "文件总价", "value": money(file_total), "places": {b: found}}]))
+    # 唱标价的大写：本机比对大小写（V34-B-06e）
+    upper = fact.get("manual_upper")
+    if manual is not None and upper and (value := upper_value(upper)) is not None and rounded(value) != rounded(manual):
+        issues.append(_issue("uppercase", "general", "大写与小写金额不一致",
+                             [{"label": "唱标价 · 小写", "value": money(manual)},
+                              {"label": "唱标价 · 大写", "value": f"{upper}（{money(value)}）"}], kind="uppercase"))
     # 分项合计与投标总价
     if distinct and len(distinct) == 1 and fact["table_total"] is not None and rounded(fact["table_total"]) != distinct[0]:
         main = fact["main"]
@@ -172,6 +217,7 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
         title = "报价表分项金额与数量 × 单价不一致" if r.code == "L-01" else "报价表各行金额之和与合计不一致"
         issues.append(_issue("row_calc" if r.code == "L-01" else "sum_rows", "general", title,
                              [{"label": "计算", "value": r.detail, "places": {b: [at(n)] if n else []}}]))
+    fact["corrected"] = corrected_total(fact, wrong_case, ceiling)
 
     # 投标有效期
     required = params.get("validity_days")

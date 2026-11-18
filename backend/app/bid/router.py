@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.audit import service as audit
 from app.bid import folders, service
 from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, FolderInput, FolderPatch, ParametersInput, PlaceInput, PasswordInput, ProjectInput, RequirementInput,
-                             ApplicabilityInput, ConclusionReviewInput, ConclusionSignInput, ManualTotalInput,
+                             ApplicabilityInput, ConclusionReviewInput, ConclusionSignInput, OpeningPriceInput,
                              RequirementPatch, ReviewInput, SigningInput)
 from app.db.base import utcnow
 from app.db.models import BidBidder, BidItem, BidProject, BidRequirement, Task, TaskFile, User
@@ -564,26 +564,27 @@ def _locked_result(db, task):
     return task, project
 
 
-@router.put("/{id}/bidders/{bidder_id}/total")
-def manual_total(bidder_id: str, body: ManualTotalInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    from app.bid import checks, feedback, results
-    task, project = _locked_result(db, task)
-    service.require_originals(db, task.id)
+@router.put("/{id}/bidders/{bidder_id}/opening-price")
+def opening_price(bidder_id: str, body: OpeningPriceInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """唱标价（V34-B-06e）：除初审中外各阶段都可录入；检查完成后只重跑报价与确定性符合项。审计与日志不写金额。"""
+    from app.bid import checks, model, results
+    task = _lock_owned(db, task)
+    project = db.get(BidProject, task.id, populate_existing=True)
+    if project.stage == "checking":
+        raise AppError(409, "BID_CHECKING", "初审进行中，请完成后再录入唱标价")
     bidder = service.bidder(db, task, bidder_id)
-    state = feedback.load(project.conclusion_enc)
-    totals = state.setdefault("manual_totals", {})
-    if body.total is None:
-        totals.pop(str(bidder.id), None)
-    else:
-        totals[str(bidder.id)] = body.total
-    project.conclusion_enc = feedback.encrypt(state)
-    bidders, nodes, files = checks._load(db, task.id)
-    active = [b for b in bidders if nodes.get(b.id) or str(b.id) in totals]
-    items, _notes = checks._pricing_step(db, task, active, nodes, files, quote_only=True)
-    checks._replace(db, task.id, checks.QUOTE_TYPES, items)
+    value = {"amount": body.amount, "upper": body.upper, "note": body.note} if body.amount else None
+    bidder.opening_price_enc = crypto.encrypt_text(json.dumps(value, ensure_ascii=False)) if value else None
+    if project.stage == "checked":
+        model.require_idle(project)
+        service.require_originals(db, task.id)
+        bidders, nodes, files = checks._load(db, task.id)
+        active = [b for b in bidders if nodes.get(b.id) or b.opening_price_enc]
+        items, _notes = checks._pricing_step(db, task, active, nodes, files, quote_only=True)
+        checks._replace(db, task.id, checks.QUOTE_TYPES, items)
     task.last_activity_at = utcnow()
     db.commit()
-    return results.check_view(db, task)
+    return results.check_view(db, task) if project.stage == "checked" else service.detail(db, task)
 
 
 @router.put("/{id}/requirements/{rid}/applicability")

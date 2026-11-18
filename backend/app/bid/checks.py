@@ -437,22 +437,29 @@ def _replace(db, task_id, types, items):
             db.delete(row)
 
 
-QUOTE_TYPES = ("pricing", "ceiling", "low_price", "manual_total_diff")
+QUOTE_TYPES = ("pricing", "ceiling", "low_price", "manual_total_diff", "uppercase")
+
+
+def _save_pricing(project, analysis, facts):
+    """修正后报价由 compliance.evaluate 写入 facts，随报价分析一并加密保存。"""
+    for bid, fact in facts.items():
+        if fact.get("corrected"):
+            analysis["bidders"][str(bid)]["corrected"] = fact["corrected"]
+    project.pricing_enc = crypto.encrypt_text(json.dumps(analysis, ensure_ascii=False))
 
 
 def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
     """报价分析、报价规律线索、确定性符合项问题与“本地规则”单元格。"""
     from app.bid import compliance, pricing, requirements as R
     project = db.get(BidProject, task.id)
-    from app.bid.feedback import load
-    manual = load(project.conclusion_enc).get("manual_totals")
+    from app.bid.service import opening_price
+    manual = {str(b.id): opening_price(b) for b in bidders if b.opening_price_enc}
     params = R.load_state(project)["values"]
     ceiling = Decimal(params["ceiling"]) if params.get("ceiling") else None
     per = {b.id: [compliance.BidNode(loc, text, files[file_id].seq, None, kind=kind, ocr_conf=conf, file_id=file_id, page=page)
                   for file_id, loc, page, text, kind, conf in nodes.get(b.id, [])] for b in bidders}
     analysis, clues, facts = pricing.analyze([b.id for b in bidders], per, ceiling, params.get("currency"),
                                              lambda n: _where(n.file_id, n.loc, n.page, n.text, 0, len(n.text)), manual)
-    project.pricing_enc = crypto.encrypt_text(json.dumps(analysis, ensure_ascii=False))
     kinds = {}
     for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True),
                                                      BidRequirement.method == "local").order_by(BidRequirement.seq)):
@@ -484,6 +491,7 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
                     cell.review_status, cell.note_enc = "pending", None
                 cell.verdict, cell.reason_enc = verdict, crypto.encrypt_text(reason)
                 cell.locs = [{k: w[k] for k in ("file_id", "loc", "page")} for w in where]
+        _save_pricing(project, analysis, facts)
         return items, []
     # 重跑保留同一单元格的核对状态与备注；人工核对行的单元格（verdict manual）由用户建立，不在此删除
     # 方法已不是“人工核对”的行（返回修改材料时改过）去掉人工建立的单元格，免得与本地 / 模型判断冲突
@@ -508,6 +516,7 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
                 db.add(BidCell(task_id=task.id, requirement_id=r.id, bidder_id=b.id, verdict=verdict,
                                locs=[{"file_id": w["file_id"], "loc": w["loc"], "page": w["page"]} for w in where],
                                reason_enc=crypto.encrypt_text(reason), source="local", review_status=status, note_enc=note))
+    _save_pricing(project, analysis, facts)
     notes = [f"{'、'.join(no_table)}未识别出报价表（需有数量、单价、金额列），未做分项计算与报价规律比对"] if no_table else []
     return items, notes
 
@@ -590,7 +599,7 @@ def _run_once(db, task, *, progressive=True):
     summary["timeline"] = timeline(active, files)
     save("clues", started, clues)
     started = time.monotonic()
-    items, notes = _pricing_step(db, task, active, nodes, files)
+    items, notes = _pricing_step(db, task, [b for b in bidders if nodes.get(b.id) or b.opening_price_enc], nodes, files)
     save("pricing", started, items if two else [i for i in items if i["kind"] == "issue"], notes)
     started = time.monotonic()
     items, stats = _similar_step(active, nodes, historic_nodes) if two else ([], {})

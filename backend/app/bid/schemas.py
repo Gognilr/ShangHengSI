@@ -128,13 +128,32 @@ class ConclusionReviewInput(BaseModel):
     remember: bool = False
 
 
-class ManualTotalInput(BaseModel):
-    total: str | None = Field(None, max_length=32)
+class OpeningPriceInput(BaseModel):
+    """唱标价（V34-B-06e）：小写金额为空即清除；大写与备注选填。"""
+    amount: str | None = Field(None, max_length=32)
+    upper: str | None = Field(None, max_length=64)
+    note: str | None = Field(None, max_length=100)
 
-    @field_validator("total")
+    @field_validator("amount")
     @classmethod
-    def valid_total(cls, value):
+    def valid_amount(cls, value):
         return ParametersInput.decimal_text(value)
+
+    @field_validator("upper")
+    @classmethod
+    def valid_upper(cls, value):
+        value = "".join((value or "").split())
+        if not value:
+            return None
+        from app.bid.compliance import upper_value
+        if upper_value(value) is None:
+            raise ValueError("请填写大写金额，例如 壹佰万元整")
+        return value
+
+    @field_validator("note")
+    @classmethod
+    def valid_note(cls, value):
+        return value.strip() or None if value else None
 
 
 class ApplicabilityInput(BaseModel):

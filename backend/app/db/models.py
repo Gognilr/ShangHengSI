@@ -406,6 +406,8 @@ class BidBidder(Base):
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     name_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     code: Mapped[str] = mapped_column(String(8), nullable=False)
+    # 唱标价（V34-B-06e）：人工录入的小写、大写与备注，加密 JSON
+    opening_price_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
 
 
 class BidRequirement(Base):

@@ -1,4 +1,5 @@
 """标书项目材料管理。所有调用方先校验 use.bid 与 owner；日志只用 id 和数量。"""
+import json
 import uuid
 
 from sqlalchemy import exists, func, select, update
@@ -81,6 +82,11 @@ def bidder(db, task, raw):
     return row
 
 
+def opening_price(row):
+    """唱标价 {amount, upper, note}；未录入为 None。"""
+    return json.loads(crypto.decrypt_text(row.opening_price_enc)) if row.opening_price_enc else None
+
+
 def file(db, task, raw):
     try:
         row = db.get(TaskFile, uuid.UUID(str(raw)))
@@ -116,7 +122,8 @@ def detail(db, task):
                              "extract_state": project.extract_state},
             "check": {"state": project.check_state, "error": project.check_error, "ocr": _ocr(files)},
             "model": {"state": project.model_state, "error": project.model_error, **_model_progress(db, task)},
-            "bidders": [{"id": b.id, "name": crypto.decrypt_text(b.name_enc), "code": b.code, "seq": b.seq}
+            "bidders": [{"id": b.id, "name": crypto.decrypt_text(b.name_enc), "code": b.code, "seq": b.seq,
+                         "opening_price": opening_price(b)}
                         for b in db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))],
             "files": [{"id": f.id, "bidder_id": f.bidder_id, "name": f.original_name, "ext": f.ext,
                        "size_bytes": f.size_bytes, "page_count": f.page_count,

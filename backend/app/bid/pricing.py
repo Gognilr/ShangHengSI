@@ -391,6 +391,42 @@ def total_patterns(totals):
     return found
 
 
+_QUOTE_PAGE = re.compile(r"开标一览表|投标函|报价|大写")
+
+
+def quote_pages(nodes, limit=10):
+    """“找报价页”的候选页：含开标一览表、投标函、报价、大写字样的页，按命中次数从多到少，最多 limit 页。"""
+    hits = {}
+    for n in nodes:
+        page = getattr(n, "page", None)
+        if page is None:
+            continue
+        count = len(_QUOTE_PAGE.findall(n.text))
+        if count:
+            key = (str(getattr(n, "file_id", None)), page)
+            hits[key] = hits.get(key, 0) + count
+    ranked = sorted(hits.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1]))[:limit]
+    return [{"file_id": f, "page": p, "hits": c} for (f, p), c in ranked]
+
+
+def _source(nodes, totals, distinct, main):
+    """唯一总价的出处：所在页的报价标题（开标一览表、投标函等）与文件、页码。"""
+    node, label = None, None
+    if len(distinct) == 1:
+        node = next((n for v, _c, n in totals if rounded(v) == distinct[0]), None)
+    elif not distinct and main is not None and main[2]:
+        node, label = main[2][0][4], "报价表"
+    if node is None:
+        return None
+    page = getattr(node, "page", None)
+    if label is None:
+        same = [n.text for n in nodes if getattr(n, "file_id", None) == getattr(node, "file_id", None) and getattr(n, "page", None) == page and len(n.text) < 160] if page is not None else []
+        found = next((m.group() for t in [node.text, *same] if (m := _QUOTE_HEADING.search(t))), None)
+        label = found or "投标文件"
+    file_id = getattr(node, "file_id", None)
+    return {"label": label, "file_id": str(file_id) if file_id else None, "page": page}
+
+
 def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, manual=None):
     """返回 (报价分析 JSON, 线索, 每家 {总价, 币种, 多个总价, 表, L 结果, 异常低价})。bidders 为按录入顺序的 id；
     place(node) 给出证据位置（总价规律线索用，可省）。"""
@@ -414,16 +450,24 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
         facts[b] = {"total": total if total is not None else (table_total if not distinct else None),
                     "currency": currency_found, "totals": totals, "distinct": distinct, "main": main,
                     "table_total": table_total, "results": results, "separate_scopes": separate_scopes}
+        source = _source(nodes, totals, distinct, main)
         entered = (manual or {}).get(str(b))
         if entered is not None:
             facts[b]["file_total"] = facts[b]["total"]
             facts[b]["file_currency"] = currency_found
-            facts[b]["manual_total"] = Decimal(entered)
+            facts[b]["manual_total"] = Decimal(entered["amount"])
+            facts[b]["manual_upper"] = entered.get("upper")
             facts[b]["total"] = facts[b]["manual_total"]
-            facts[b]["currency"] = currency_found = currency or "CNY"
+            # 唱标价不带币种：按关键参数的币种；参数也未填时保留未知（V34Q-50 后续）
+            facts[b]["currency"] = currency_found = currency
         row = {"total": money(facts[b]["total"]) if facts[b]["total"] is not None else None,
                "totals_found": [money(v) for v in distinct], "currency": currency_found,
-               "table": None, "over_ceiling": None, "manual_total": entered is not None}
+               "table": None, "over_ceiling": None, "manual_total": entered is not None,
+               "source": source, "quote_pages": quote_pages(nodes)}
+        if entered is not None:
+            row["opening"] = {"amount": money(Decimal(entered["amount"])), "upper": entered.get("upper"), "note": entered.get("note")}
+            if facts[b]["file_total"] is not None:
+                row["file_total"] = money(facts[b]["file_total"])
         if main is not None:
             row["table"] = {"name": main[0].name, "rows": len(main[2]),
                             "total": money(table_total) if table_total is not None else None}

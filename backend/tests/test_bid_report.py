@@ -155,12 +155,17 @@ def test_conclusion_sign_and_incremental_quote(owner, db_sessionmaker):
     assert any(r["category"] == target["category"] for r in c.get(ROOT + "/feedback/mine").json()["stats"])
     restored = c.post(base + "/conclusion/review", headers=h, json={"key": target["id"], "status": "pending"})
     assert target["id"] in {e["id"] for e in restored.json()["conclusion"]["verify"]}
-    updated = c.put(f"{base}/bidders/{ids[0]}/total", headers=h, json={"total": "4100100.23"})
+    updated = c.put(f"{base}/bidders/{ids[0]}/opening-price", headers=h,
+                    json={"amount": "4100100.23", "upper": "人民币肆佰壹拾万零壹佰元整", "note": "开标现场"})
     assert updated.status_code == 200
     after = updated.json()
     price = after["pricing"]["bidders"][ids[0]]
-    assert price["total"] == "4,100,100.23" and price["manual_total"]
+    assert price["total"] == "4,100,100.23" and price["manual_total"] and price["opening"]["note"] == "开标现场"
     assert after["conclusion"]["bidders"][0]["manual_total"]
+    mine = {i["type"] for i in after["items"] if ids[0] in i["bidder_ids"]}
+    assert {"uppercase", "manual_total_diff"} <= mine
+    tags = [t["text"] for t in after["conclusion"]["pricing"]["tags"][ids[0]]]
+    assert "大写与小写金额不一致" in tags and any(t.startswith("文件总价与唱标价不一致") for t in tags)
     assert {i["id"] for i in before["items"] if i["type"] == "similar"} == {
         i["id"] for i in after["items"] if i["type"] == "similar"}
     assert "唱标价 · 人工录入" in _text(c.get(base + "/report").content)

@@ -128,6 +128,67 @@ def _cases(items, order, shorts, reviewed, baseline):
     return sorted(cases, key=lambda c: (TIER[c["tier"]], [order[i] for i in c["bidder_ids"]]))
 
 
+PRICE_ISSUES = {"multi_total", "sum_total", "ceiling", "low_price", "uppercase", "row_calc", "sum_rows", "manual_total_diff"}
+_CLUE_LABEL = (("分项单价比值恒定", "比值恒定"), ("分项单价完全相同", "分项单价相同"), ("分项单价差额相同", "分项差额相同"),
+               ("尾数", "尾数习惯相同"), ("等差", "总价等差"), ("等比", "总价等比"))
+
+
+def pricing_summary(view, order, shorts, cases, entries, reviewed):
+    """报价分析页与报告共用（bid-pricing.md 二）：结论句、每家结论标签（按 确凿 → 需核实 → 参考）、报价方面需核实的条目。"""
+    pricing = view.get("pricing") or {}
+    prices = pricing.get("bidders", {})
+    items = {str(i["id"]): i for i in view["items"]}
+    case_of = {e["item_id"]: c for c in cases for e in c["evidence"]}
+    tags = {bid: [] for bid in order}
+    facts = []
+    rows_calc = defaultdict(list)
+    for e in entries:
+        item = items.get(e["item_id"] or "")
+        if (item is None or item["kind"] != "issue" or item["type"] not in PRICE_ISSUES or item["review_status"] == "excluded"
+                or reviewed.get(e["id"], {}).get("status") == "excluded"):
+            continue
+        if item["type"] == "row_calc":
+            rows_calc[e["bidder_ids"][0]].append(e)
+            continue
+        for bid in e["bidder_ids"]:
+            tags[bid].append({"key": e["id"], "text": e["title"], "tier": e["tier"]})
+        facts.append((TIER[e["tier"]], "、".join(shorts[b] for b in e["bidder_ids"]), e["title"]))
+    for bid, rows in rows_calc.items():
+        tier = min((e["tier"] for e in rows), key=TIER.get)
+        text = f"报价计算错误 {len(rows)} 处"
+        tags[bid].append({"key": rows[0]["id"], "text": text, "tier": tier})
+        facts.append((TIER[tier], shorts[bid], text))
+    for item in items.values():
+        if item["kind"] != "clue" or item["type"] != "pricing" or item["review_status"] == "excluded":
+            continue
+        label = next((short for key, short in _CLUE_LABEL if key in item["title"]), "报价有规律")
+        case = case_of.get(str(item["id"]))
+        tier = case["tier"] if case else "reference"
+        ids = [b for b in item["bidder_ids"] if b in tags]
+        for bid in ids:
+            peers = "、".join(shorts[i] for i in ids if i != bid)
+            tags[bid].append({"key": case["id"] if case else "item:" + str(item["id"]), "text": f"与{peers}{label}", "tier": tier})
+        facts.append((TIER[tier], "、".join(shorts[b] for b in ids), label))
+    for bid in tags:
+        tags[bid].sort(key=lambda t: TIER[t["tier"]])
+    facts.sort(key=lambda f: f[0])
+    missing = [b for b in order if b in prices and not prices[b].get("total") and not prices[b].get("totals_found")]
+    compared = (pricing.get("compare") or {}).get("n", 0)
+    parts = []
+    if missing and (len(missing) == len(prices) or compared < 2):
+        parts.append(f"{len(missing)} 家未识别出投标总价，报价比较与规律检查未进行；可录入唱标价")
+    elif missing:
+        parts.append(f"{'、'.join(shorts[b] for b in missing)} 未识别出投标总价，报价比较不完整；可录入唱标价")
+    if facts:
+        listed = "；".join(f"{who} {what}" for _t, who, what in facts[:4])
+        parts.append(f"{len(facts)} 项需处理：{listed}" + ("等" if len(facts) > 4 else ""))
+    elif not missing:
+        parts.append(f"{len(prices)} 家报价均未见问题")
+    keys = {t["key"] for rows in tags.values() for t in rows}
+    return {"lede": "。".join(parts) + "。" if parts else "", "tags": tags,
+            "verify": [e["id"] for e in entries if e["tier"] == "verify" and e["id"] in keys]}
+
+
 def _short_requirement(req):
     text = " ".join(req["text"].split())
     return text[:16] + ("…" if len(text) > 16 else "")
@@ -258,7 +319,8 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
     sub = ("本项目只做本地检查，未核对响应性要求。" if local_only else
            "模型核对未完成，结论可能变化。" if model_state != "done" or second.get("pending") else None)
     signed = feedback.get("signed")
-    return {"lede": lede, "sub": sub, "bidders": rows, "cases": cases, "certain": certain, "verify": verify, "reference": reference,
+    price = pricing_summary(view, list(bidders), shorts, cases, certain + verify + reference, reviewed)
+    return {"pricing": price, "lede": lede, "sub": sub, "bidders": rows, "cases": cases, "certain": certain, "verify": verify, "reference": reference,
             "site": [r for r in reqs.values() if r["method"] == "manual" and r["group"] != "format" and not r.get("not_applicable")],
             "signed": signed["at"] if signed and signed["items"] == sorted(e["id"] for e in certain) else None,
             "reviews": reviewed, "second_calls": second.get("calls", 0)}
