@@ -187,6 +187,15 @@ def _local_check(db, task, project):
     from app.bid import checks
     if project.check_state != "running":
         return
+    if service.originals_expired(db, task.id):
+        # 已排队的旧作业也不能覆盖存量结果。有结果的项目保持可导出。
+        if project.check_enc is not None:
+            project.stage, project.check_state = "checked", "done"
+        else:
+            project.stage, project.check_state = "ready", "failed"
+        project.check_error = service.ORIGINAL_EXPIRED_MSG
+        db.commit()
+        return
     try:
         checks.run(db, task)
         project.check_state, project.check_error, project.stage = "done", None, "checked"

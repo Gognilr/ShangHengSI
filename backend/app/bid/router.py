@@ -255,7 +255,8 @@ def set_password(fid: str, body: PasswordInput, task: Task = Depends(owned), db:
 @router.get("/{id}/files/{fid}/password")
 def reveal_password(fid: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
     row = service.file(db, task, fid)
-    return Response(content=json.dumps({"password": crypto.decrypt_text(row.password_enc) if row.password_enc else None}),
+    password = crypto.decrypt_text(row.password_enc) if row.original_deleted_at is None and row.password_enc else None
+    return Response(content=json.dumps({"password": password}),
                     media_type="application/json", headers={"Cache-Control": "no-store"})
 
 
@@ -424,6 +425,7 @@ def start_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
     extract.require_idle(project)
     if project.stage != "ready":
         raise AppError(409, "NOT_READY", "请先确认关键参数与要求清单")
+    service.require_originals(db, task.id)
     if service.busy(db, task) or db.scalar(select(TaskFile.id).where(TaskFile.task_id == task.id, TaskFile.parser_version.is_(None),
                                                                       TaskFile.parse_error.is_(None)).limit(1)):
         raise AppError(409, "PARSING", "文件还在解析，请稍候")

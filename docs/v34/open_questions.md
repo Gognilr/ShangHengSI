@@ -355,6 +355,7 @@ V34Q-01～10 来自 2026-11-15 与用户的讨论（标书比对能力、首页�
   1. `local_only` 动态切换：`PATCH /bid/{id}` 在 `extract_state` 进行中切为 `local_only` 时未拦截或重置状态；因 worker `expire_on_commit=False` 且 `gateway._refuse_local_only` 未传 `populate_existing=True`，分段循环会命中缓存继续外发，或提前返回导致卡死在 `extracting`；切为 `local_only` 时 `BidRequirement.method == "model"` 未收敛为 `"manual"` 会形成无法人工核对的死格（`bid/router.py`、`bid/extract.py`、`llm/gateway.py`、`bid/results.py`）。
      进度（2026-11-18，Codex）：网关预检、普通发送及助手流式发送统一读取数据库中的最新策略。发送前和每次重试前再查一次；模拟传输覆盖旧会话跨事务切换、重试和流式发送，相关 38 项测试通过。标书侧已完成策略和作业状态闭环。Codex 自复核补上重新启用模型时的旧队列检查，要求旧作业收尾并重新确认（[报告](reports/V34Q-50-1.md)）。
   2. 原件保留期清理：`backup/retention.py` 的 `original` 层到期删除原件与节点原文时，漏清 `task_files.password_enc`、`meta_enc` 与 `bid_images`（原件删后 `GET /bid/{id}/files/{fid}/password` 仍可读密码）；且 `bid/results.py`（`reopen`）与 `bid/model.py`（`start`）未拦截 `original_deleted_at is not None`，重跑会将结果层数据洗空。
+     进度（2026-11-18，Codex）：已补齐原件附属数据清理及旧数据补清，并阻止原件已删除的项目重跑，保护已有初审结果（[报告](reports/V34Q-50-2.md)）。
   3. 招标文件模型补充脱敏模式：`bid/extract.py:222` 调 `engine.redact_task` 未传 `style="neutral"`，开启 `redaction.date_shift` 时招标文件日期被随机平移而 `restore()` 不逆平移，导致含日期的要求引文核验失败或写入平移假日期，并残留 `（=合同总价的 xx%）` 后缀。
   4. 任务类型与权限边界：`security/deps.py` 的 `owned_redaction_task` / `owned_party_task` 未像 `owned_readable_task` 那样过滤 `task.kind == "bid"`，本人可用标书 `id` 调 `/tasks/{id}/redaction/*`；另建议 `config.py` 将 `httpx` / `httpcore` 并入 `_CONTENT_LOGGERS`。
 * **后端正确性与状态机：**

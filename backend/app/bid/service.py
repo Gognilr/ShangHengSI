@@ -1,7 +1,7 @@
 """标书项目材料管理。所有调用方先校验 use.bid 与 owner；日志只用 id 和数量。"""
 import uuid
 
-from sqlalchemy import func, select, update
+from sqlalchemy import exists, func, select, update
 
 from app.db import jobs
 from app.db.base import utcnow
@@ -59,6 +59,18 @@ def clear_model_work(db, project):
         project.requirements_version += 1
 
 
+ORIGINAL_EXPIRED_MSG = "部分或全部原件已按保留期删除，已有初审结果仍可查看"
+
+
+def originals_expired(db, task_id):
+    return db.scalar(select(exists().where(TaskFile.task_id == task_id, TaskFile.original_deleted_at.is_not(None))))
+
+
+def require_originals(db, task_id):
+    if originals_expired(db, task_id):
+        raise AppError(409, "ORIGINAL_EXPIRED", ORIGINAL_EXPIRED_MSG)
+
+
 def bidder(db, task, raw):
     try:
         row = db.get(BidBidder, uuid.UUID(str(raw)))
@@ -107,7 +119,8 @@ def detail(db, task):
             "bidders": [{"id": b.id, "name": crypto.decrypt_text(b.name_enc), "code": b.code, "seq": b.seq}
                         for b in db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))],
             "files": [{"id": f.id, "bidder_id": f.bidder_id, "name": f.original_name, "ext": f.ext,
-                       "size_bytes": f.size_bytes, "page_count": f.page_count, "has_password": f.password_enc is not None,
+                       "size_bytes": f.size_bytes, "page_count": f.page_count,
+                       "has_password": f.original_deleted_at is None and f.password_enc is not None,
                        "needs_password": f.parse_error == MSG_PASSWORD,
                        "state": "failed" if f.parse_error else "done" if f.parser_version else "waiting",
                        "error": f.parse_error, "warnings": f.warnings,

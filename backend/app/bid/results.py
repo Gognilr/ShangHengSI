@@ -6,6 +6,7 @@ import uuid
 
 from sqlalchemy import func, select
 
+from app.bid.service import require_originals
 from app.db.models import BidBidder, BidCell, BidItem, BidProject, BidRequirement, DocNode, LlmCall, TaskFile
 from app.security import crypto
 from app.security.errors import AppError, NotFoundError
@@ -249,6 +250,7 @@ def reopen(db, task):
     project = db.get(BidProject, task.id, populate_existing=True)
     if project.stage != "checked":
         raise AppError(409, "NOT_CHECKED", "只有初审完成的项目可以返回修改材料")
+    require_originals(db, task.id)
     from app.bid.model import require_idle
     require_idle(project)
     project.stage, project.check_state, project.check_error = "ready", None, None

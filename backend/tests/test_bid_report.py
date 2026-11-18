@@ -184,3 +184,91 @@ def test_history_and_search_hide_bid_without_permission(make_user, login, db_ses
     c, csrf = login(user.username)
     assert c.get("/api/v1/assistant/sessions/history").json()["items"] == []
     assert c.post("/api/v1/search", headers={"X-CSRF-Token": csrf}, json={"q": "虚构设备"}).json()["bids"] == []
+
+
+def test_bid_original_retention_preserves_results_and_blocks_restart(owner, db_sessionmaker):
+    import uuid
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from app.admin.settings_store import set_setting
+    from app.backup.retention import run_retention
+    from app.bid.pipeline import _recheck
+    from app.db import jobs
+    from app.db.base import utcnow
+    from app.db.models import BidImage, BidProject, DocNode, Task, TaskFile
+    from app.security import crypto
+    from app.tasks import storage
+
+    c, h, _ = owner
+    base, _ = scenario(c, h, db_sessionmaker)
+    task_id = uuid.UUID(base.rsplit("/", 1)[-1])
+    before = c.get(base + "/check").json()
+    issue = before["items"][0]
+    assert c.patch(f"{base}/items/{issue['id']}", headers=h,
+                   json={"review_status": "verified", "note": "已人工对照虚构原件"}).status_code == 200
+    before = c.get(base + "/check").json()
+
+    now = utcnow()
+    with db_sessionmaker() as db:
+        files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task_id)))
+        locked = next(f for f in files if f.password_enc)
+        fid, storage_key, total = locked.id, locked.storage_key, len(files)
+        assert locked.meta_enc is not None and storage.load_original(storage_key)
+        images = select(BidImage.id).where(BidImage.file_id.in_([f.id for f in files]))
+        assert db.scalar(images.limit(1)) is not None
+
+        task = db.get(Task, task_id)
+        task.policy = "ai"
+        task.last_activity_at = now - timedelta(days=2)
+        project = db.get(BidProject, task_id)
+        project.model_state = "awaiting"
+        project.model_enc = crypto.encrypt_text(json.dumps({"batches": [{"bidder_id": str(locked.bidder_id)}]}))
+        set_setting(db, "retention.original_days", 1, None)
+        set_setting(db, "retention.result_days", 0, None)
+        ocr = jobs.enqueue(db, "bid", {"task_id": str(task_id), "stage": "ocr"})
+        ocr_id = ocr.id
+        db.commit()
+
+        assert run_retention(db, now)["files"] == 0  # OCR 排队时不清理
+        jobs.complete(db, ocr_id)
+        counts = run_retention(db, now)
+        assert (counts["tasks"], counts["files"], counts["results"]) == (1, total, 0)
+        assert db.scalar(images.limit(1)) is None
+        assert db.scalar(select(DocNode.id).where(DocNode.task_id == task_id, DocNode.text_enc.is_not(None))) is None
+        db.refresh(locked)
+        assert locked.original_deleted_at == now and locked.password_enc is None and locked.meta_enc is None
+        with pytest.raises(FileNotFoundError):
+            storage.load_original(storage_key)
+
+        # 模拟旧版已标记原件清理、但仍留下加密密码、元数据及图片指纹。
+        locked.password_enc = crypto.encrypt_text(PASSWORD)
+        locked.meta_enc = crypto.encrypt_text("{}")
+        db.add(BidImage(file_id=fid, page=1, sha256="0" * 64, width=32, height=32, category="image"))
+        db.commit()
+        assert c.get(f"{base}/files/{fid}/password").json() == {"password": None}
+        repaired = run_retention(db, now)
+        assert (repaired["tasks"], repaired["files"]) == (1, 0)
+        db.refresh(locked)
+        assert locked.password_enc is None and locked.meta_enc is None and db.scalar(images.limit(1)) is None
+        assert run_retention(db, now)["tasks"] == 0
+        _recheck(db, task_id)  # 已清理项目也不会被延后的 OCR 结果重算
+
+        # 已入队的旧版本重跑也要收尾，现有结果可继续查阅和导出。
+        project = db.get(BidProject, task_id)
+        project.stage, project.check_state = "checking", "running"
+        jobs.enqueue(db, "bid", {"task_id": str(task_id), "stage": "check"})
+        db.commit()
+
+    _jobs(db_sessionmaker, base, "check")
+    for action in ("reopen", "model/prepare", "model/confirm"):
+        reply = c.post(f"{base}/{action}", headers=h)
+        assert reply.status_code == 409 and reply.json()["code"] == "ORIGINAL_EXPIRED"
+    assert c.get(base).json()["stage"] == "checked"
+    assert c.get(base + "/model").json()["receipt"] is None
+    after = c.get(base + "/check").json()
+    for key in ("items", "cells", "pricing", "coverage"):
+        assert after[key] == before[key]
+    report = c.get(base + "/report")
+    assert report.status_code == 200 and "已人工对照虚构原件" in _text(report.content)

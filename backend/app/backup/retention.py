@@ -14,7 +14,7 @@ from app.audit import service as audit
 from app.backup.service import local_tz
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, AuditLog, BidProject, DocNode, Job, LlmCall, ReviewRun, Task, TaskFile, TaskClauseVector
+from app.db.models import AssistantMessage, AuditLog, BidImage, BidProject, DocNode, Job, LlmCall, ReviewRun, Task, TaskFile, TaskClauseVector
 from app.tasks import storage
 from app.tasks.service import delete_task
 from app.worker import job_handler, register_periodic
@@ -52,6 +52,18 @@ def _pending(task_id) -> object:
     return exists().where(TaskFile.task_id == task_id, TaskFile.original_deleted_at.is_(None))
 
 
+def _expired_bid_files(task_id):
+    return select(TaskFile.id).where(TaskFile.task_id == task_id, TaskFile.original_deleted_at.is_not(None))
+
+
+def _bid_original_residue(task_id):
+    # 旧版本已标记原件删除但还留有标书文件附属数据，下次原件层清理时一并补齐。
+    return _expired_bid_files(task_id).where(or_(
+        TaskFile.password_enc.is_not(None), TaskFile.meta_enc.is_not(None),
+        exists().where(BidImage.file_id == TaskFile.id),
+    )).exists()
+
+
 def _layer_conditions(layer: str) -> list:
     """V2Q-74：重新审核后未提交（待确认且有旧轮次）归原件层、结果层；未完成层只含从未提交审核的任务。"""
     if layer == "unfinished":
@@ -86,7 +98,7 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
         cutoff = now - timedelta(days=days[layer])
         conditions = [*_layer_conditions(layer), Task.last_activity_at < cutoff]
         if layer == "original":
-            conditions.append(_pending(Task.id))
+            conditions.append(or_(_pending(Task.id), and_(Task.kind == "bid", _bid_original_residue(Task.id))))
         # 同一任务跨层只占一个名额；每类最多取 500 条候选，剩余留到下次。
         ids = list(db.scalars(select(Task.id).where(*conditions)
                              .order_by(Task.last_activity_at, Task.id).limit(TASK_LIMIT)))
@@ -102,6 +114,13 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
                     continue
                 processed.add(tid)
                 if layer == "original":
+                    # 在任务锁内检查队列，避免后台 OCR 或模型作业在清理后写回原件派生数据。
+                    if task.kind == "bid" and db.scalar(select(exists().where(
+                        Job.type == "bid", Job.payload["task_id"].astext == str(tid),
+                        Job.status.in_(("queued", "running")),
+                    ))):
+                        db.rollback()
+                        continue
                     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == tid,
                                                                   TaskFile.original_deleted_at.is_(None))))
                     for file in files:
@@ -113,6 +132,11 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
                             storage.delete_original(file.converted_storage_key)
                         file.original_deleted_at = now
                         file.speakers_enc = None
+                    if task.kind == "bid":
+                        expired = _expired_bid_files(tid)
+                        db.execute(delete(BidImage).where(BidImage.file_id.in_(expired)))
+                        db.execute(update(TaskFile).where(TaskFile.id.in_(expired))
+                                   .values(password_enc=None, meta_enc=None))
                     db.execute(update(DocNode).where(DocNode.task_id == tid).values(text_enc=None, formula_enc=None))
                     db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == tid))
                     task.user_note_enc = None

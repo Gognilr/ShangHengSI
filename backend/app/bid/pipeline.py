@@ -14,7 +14,7 @@ import uuid
 from sqlalchemy import delete, select, text
 
 from app.bid import fileprops
-from app.bid.service import LIMITS
+from app.bid.service import LIMITS, originals_expired
 from app.db.base import utcnow
 from app.db.models import BidImage, BidProject, DocNode, Task, TaskFile
 from app.parsing import pdf
@@ -143,7 +143,8 @@ def parse_project(db, task_id):
 
 def _metas(db, task_id):
     rows = db.scalars(select(TaskFile).where(TaskFile.task_id == task_id, TaskFile.bidder_id.is_not(None),
-                                             TaskFile.parser_version.is_not(None), TaskFile.meta_enc.is_not(None))
+                                             TaskFile.parser_version.is_not(None), TaskFile.meta_enc.is_not(None),
+                                             TaskFile.original_deleted_at.is_(None))
                       .order_by(TaskFile.seq))
     return [(f, json.loads(crypto.decrypt_text(f.meta_enc))) for f in rows]
 
@@ -169,7 +170,7 @@ def _recheck(db, task_id):
     from app.bid import checks
     project = db.get(BidProject, task_id, populate_existing=True)
     task = db.get(Task, task_id)
-    if task is None or project is None or project.check_state != "done":
+    if task is None or project is None or project.check_state != "done" or originals_expired(db, task_id):
         db.commit()
         return
     try:
@@ -183,7 +184,9 @@ def _ocr_file(db, task_id, file_id, pages):
     """逐页识别一个文件，每页单独提交；文件被移除或重新解析时停下。返回是否写入了新页。"""
     from app.parsing.model import LOW_OCR_CONF, ParsedNode
     from app.worker import ocr_slot
-    file = db.get(TaskFile, file_id)
+    file = db.get(TaskFile, file_id, populate_existing=True)
+    if file is None or file.original_deleted_at is not None:
+        return False
     data = storage.load_original(file.storage_key)
     password = crypto.decrypt_text(file.password_enc) if file.password_enc is not None else None
     existing = [ParsedNode(loc=loc, ord=0, kind="paragraph", part="body", text="", page=page, bbox=bbox)
@@ -195,8 +198,11 @@ def _ocr_file(db, task_id, file_id, pages):
         for page_no, nodes, confs in pdf.ocr_pages(data, seq, pages, existing, password=password):
             db.execute(text(f"SELECT pg_advisory_xact_lock({_LOCK})"))
             file = db.get(TaskFile, file_id, populate_existing=True)
-            meta = json.loads(crypto.decrypt_text(file.meta_enc)) if file is not None and file.meta_enc is not None else {}
-            if file is None or file.parser_version is None or page_no not in (meta.get("ocr_pending") or []):
+            if file is None or file.original_deleted_at is not None or file.parser_version is None:
+                db.rollback()
+                return wrote
+            meta = json.loads(crypto.decrypt_text(file.meta_enc)) if file.meta_enc is not None else {}
+            if page_no not in (meta.get("ocr_pending") or []):
                 db.rollback()
                 return wrote
             for i, n in enumerate(nodes, 1):

@@ -17,6 +17,7 @@ from sqlalchemy import delete, select, update
 
 from app.admin.settings_store import get_setting
 from app.bid.requirements import _ROW
+from app.bid.service import ORIGINAL_EXPIRED_MSG, lock_task, originals_expired, require_originals
 from app.db import jobs
 from app.db.models import BidBidder, BidCell, BidItem, BidProject, BidRequirement, DocNode, Task, TaskClauseVector, TaskFile
 from app.llm import gateway
@@ -109,7 +110,6 @@ def require_idle(project):
 def start(db, task, *, auto=False):
     """开始准备片段（后台检索与脱敏）；不提交。auto：本地检查完成时自动准备，条件不满足时静默跳过。"""
     if auto:
-        from app.bid.service import lock_task
         task = lock_task(db, task.id)
         if task is None:
             return
@@ -119,6 +119,8 @@ def start(db, task, *, auto=False):
         problem = AppError(409, "LOCAL_ONLY", "本项目只做本地检查，不调用模型")
     elif project.check_state != "done" or project.stage != "checked":
         problem = AppError(409, "NOT_CHECKED", "本地检查完成后才能准备模型核对")
+    elif originals_expired(db, task.id):
+        problem = AppError(409, "ORIGINAL_EXPIRED", ORIGINAL_EXPIRED_MSG)
     elif not model_requirements(db, task):
         problem = AppError(422, "NO_MODEL_ROWS", "要求清单中没有“模型判断”类要求")
     elif project.model_state in ("preparing", "running"):
@@ -145,6 +147,7 @@ def confirm(db, task):
     project = _project(db, task)
     if task.policy == "local_only":
         raise AppError(409, "LOCAL_ONLY", "本项目只做本地检查，不调用模型")
+    require_originals(db, task.id)
     state = _state(project)
     if project.model_state not in ("awaiting", "failed") or not state.get("batches"):
         raise AppError(409, "MODEL_STATE", "请先等待片段准备完成")
@@ -178,6 +181,8 @@ def view(db, task) -> dict:
            "receipt": None, "bidders": [], "requirements": [], "sent_count": sent_count(db, task.id)}
     if task.policy == "local_only":
         return out
+    if project.model_state in ("awaiting", "failed") and originals_expired(db, task.id):
+        return {**out, "state": "failed", "error": ORIGINAL_EXPIRED_MSG}
     state = _state(project)
     if not state.get("batches") or project.model_state not in ("awaiting", "failed", "running", "done"):
         return out
@@ -887,6 +892,9 @@ def run(db, task):
 
 def handle(db, task, project, stage):
     """worker 入口（extract.handle_bid 分派）：snippets 准备片段，model 发送。"""
+    if project.model_state in ("preparing", "running") and originals_expired(db, task.id):
+        _fail(db, task.id, ORIGINAL_EXPIRED_MSG)
+        return
     if stage == "snippets":
         if project.model_state != "preparing":
             return
