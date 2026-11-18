@@ -164,6 +164,10 @@ def test_total_labels_fixture():
                          page=row[1], kind='table_cell' if len(row) > 2 else 'ocr_block')
                  for i, row in enumerate(case['nodes'])]
         assert {v for v, _c, _n in pricing.labelled_totals(nodes)} == {Decimal(v) for v in case['totals']}, case['name']
+        if 'row_errors' in case:
+            _, findings = pricing.quote_tables(nodes)
+            assert [r.locs[0] for r in findings if r.code == 'L-01'] == case['row_errors']
+            assert nodes[5].text == '12000'  # 临时计算副本不改原始单价
         if case.get('separate_scopes'):
             from datetime import date
             from app.bid.compliance import evaluate

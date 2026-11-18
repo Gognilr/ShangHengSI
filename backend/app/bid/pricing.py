@@ -8,6 +8,7 @@
 import re
 import unicodedata
 from collections import Counter
+from dataclasses import replace
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from itertools import combinations
 
@@ -31,6 +32,13 @@ _NOT_TOTAL = re.compile(r"最高限价|控制价|保证金|不含税|分项|单�
 _BARE_MONEY = re.compile(r"^[\s:：()（）]*(?:小写[\s:：()（）]*)?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)(万?元|万)?[\s。；;()（）]*$")
 _NAME = re.compile(r"名称|品名|货物|设备|品目|项目|内容|规格|型号")
 _STRIP = re.compile(r"[\W_]+")
+_MOTOR_SCOPE = re.compile(r"([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*元\s*[（(](不?含电机)(?:价格|价)?[）)]")
+
+
+def _motor_totals(text):
+    """同一合计格明确并列含 / 不含电机价格时，保留两种口径。"""
+    found = [(Decimal(m[1].replace(',', '')), m[2]) for m in _MOTOR_SCOPE.finditer(text)]
+    return found if {scope for _, scope in found} == {'含电机', '不含电机'} else []
 
 
 def labelled_totals(nodes):
@@ -77,6 +85,11 @@ def labelled_totals(nodes):
         if getattr(n, 'kind', '') == 'heading':
             section = bool(_QUOTE_HEADING.search(text))
         in_quote = (n.file_seq, getattr(n, 'page', None)) in quote_pages if getattr(n, 'page', None) is not None else section
+        if re.match(r'^\s*(?:投标)?总价\s*[:：]', text) and (scoped := _motor_totals(text)):
+            out.extend((v, 'CNY', n) for v, _scope in scoped)
+            if cell := table_cell(n.loc):
+                summarized.add((n.file_seq, cell[0]))
+            continue
         matches = list(_TOTAL_LABEL.finditer(text))
         if in_quote:
             matches += [m for m in _SERVICE_LABEL.finditer(text)
@@ -135,7 +148,7 @@ def _name_col(table):
 
 
 def separate_quote_scopes(nodes, totals):
-    """只有明确标题能把每个金额分到不同范围时，才不按重复总价处理；不猜测合计。"""
+    """只有明确标题或含电机说明能区分报价口径时，才不按重复总价处理；不猜测合计。"""
     def scope(text):
         label = re.search(r'表[一二三四五六七八九十](?=[：:、\s）)]|$)', text)
         if label:
@@ -162,12 +175,35 @@ def separate_quote_scopes(nodes, totals):
     for value, _currency, n in totals:
         own = re.search(r'表[一二三四五六七八九十](?=[：:、\s）)]|$)', n.text)
         labels = pages.get((n.file_seq, getattr(n, 'page', None)), set())
-        found = own[0] if own else next(iter(labels)) if len(labels) == 1 else at.get(id(n)) if getattr(n, 'page', None) is None else None
+        inline = next((scope for v, scope in _motor_totals(n.text) if rounded(v) == rounded(value)), None)
+        found = inline or (own[0] if own else next(iter(labels)) if len(labels) == 1 else at.get(id(n)) if getattr(n, 'page', None) is None else None)
         by_value.setdefault(rounded(value), set())
         if found:
             by_value[rounded(value)].add(found)
     values = list(by_value.values())
     return len(values) > 1 and all(values) and all(not (a & b) for a, b in combinations(values, 2))
+
+
+def _component_table(table):
+    """仅明确分列泵头、电机单价且共用数量、总价的表，按组成单价之和复算。
+
+    只建临时计算副本，不改原始节点或普通审核的金额引擎；多种税价等含混列不猜测相加。
+    """
+    labels = {col: re.sub(r'\s+', '', n.text) for col, n in table.rows[table.header].items()}
+    pump = [c for c, t in labels.items() if re.fullmatch(r'(?:泵头|泵体)单价(?:[（(]元[）)])?', t)]
+    motor = [c for c, t in labels.items() if re.fullmatch(r'电机单价(?:[（(]元[）)])?', t)]
+    if len(pump) != 1 or len(motor) != 1 or not re.fullmatch(r'总价(?:[（(]元[）)])?', labels.get(table.columns[table.amount], '')):
+        return table
+    if len([t for t in labels.values() if '单价' in t]) != 2:
+        return table
+    rows = {r: dict(cells) for r, cells in table.rows.items()}
+    for row in table.data_rows:
+        parts = [parse_number(rows[row][c].text) if c in rows[row] else None for c in (pump[0], motor[0])]
+        # 缺少任一部分时留空，让既有引擎按无法核验处理。
+        node = rows[row].get(table.columns['price'])
+        if node:
+            rows[row][table.columns['price']] = replace(node, text=str(sum(parts, Decimal(0))) if all(v is not None for v in parts) else '')
+    return replace(table, rows=rows)
 
 
 def quote_tables(nodes):
@@ -178,13 +214,17 @@ def quote_tables(nodes):
         for table in _scan_tables(nodes):
             if not table.recognized:
                 continue
-            info, found = _check_table(table)
+            calculation = _component_table(table)
+            info, found = _check_table(calculation)
+            if calculation is not table:
+                for result in found:
+                    result.detail = result.detail.replace('× 单价', '× 泵头与电机单价之和')
             results += [r for r in found if r.code in ("L-01", "L-02")]
             col = _name_col(table)
             items = []
             for row in table.data_rows:
                 name = table.rows[row][col].text.strip() if col is not None and col in table.rows[row] else ""
-                price, amount = parse_number(table.text(row, "price")), parse_number(table.text(row, table.amount))
+                price, amount = parse_number(calculation.text(row, "price")), parse_number(table.text(row, table.amount))
                 if price is None and amount is None:
                     continue
                 node = table.node(row, "price") or table.node(row, table.amount)
