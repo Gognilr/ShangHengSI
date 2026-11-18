@@ -391,7 +391,7 @@ def total_patterns(totals):
     return found
 
 
-def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
+def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, manual=None):
     """返回 (报价分析 JSON, 线索, 每家 {总价, 币种, 多个总价, 表, L 结果, 异常低价})。bidders 为按录入顺序的 id；
     place(node) 给出证据位置（总价规律线索用，可省）。"""
     facts, analysis = {}, {"bidders": {}, "items": [], "pairs": [], "aligned_by": {}, "compare": None, "total_patterns": []}
@@ -414,9 +414,16 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
         facts[b] = {"total": total if total is not None else (table_total if not distinct else None),
                     "currency": currency_found, "totals": totals, "distinct": distinct, "main": main,
                     "table_total": table_total, "results": results, "separate_scopes": separate_scopes}
+        entered = (manual or {}).get(str(b))
+        if entered is not None:
+            facts[b]["file_total"] = facts[b]["total"]
+            facts[b]["file_currency"] = currency_found
+            facts[b]["manual_total"] = Decimal(entered)
+            facts[b]["total"] = facts[b]["manual_total"]
+            facts[b]["currency"] = currency_found = currency or "CNY"
         row = {"total": money(facts[b]["total"]) if facts[b]["total"] is not None else None,
                "totals_found": [money(v) for v in distinct], "currency": currency_found,
-               "table": None, "over_ceiling": None}
+               "table": None, "over_ceiling": None, "manual_total": entered is not None}
         if main is not None:
             row["table"] = {"name": main[0].name, "rows": len(main[2]),
                             "total": money(table_total) if table_total is not None else None}
@@ -426,12 +433,16 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
             # 多个不同总价：按最高者与限价比较（V34Q-25 第 4 条），over_ceiling 仍只表示唯一总价
             row["over_ceiling_max"] = money(distinct[-1] - ceiling)
         analysis["bidders"][str(b)] = row
+        delta = row.get("over_ceiling_max") or row["over_ceiling"]
+        if delta and ceiling and (difference := Decimal(delta.replace(",", ""))) > 0:
+            percent = (difference * 100 / ceiling).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            row["ceiling_reason"] = f"超最高限价 +{delta}（+{percent}%）"
     # 总价比较：只有唯一总价、币种与关键参数一致（或未写币种）的参加；多个总价的不参加
     eligible = {}
     for b in bidders:
         f, row = facts[b], analysis["bidders"][str(b)]
         row["not_compared"] = None
-        if len(f["distinct"]) > 1:
+        if len(f["distinct"]) > 1 and f.get("manual_total") is None:
             row["not_compared"] = "不同范围报价，未参加比较" if f['separate_scopes'] else "多个总价，未参加比较"
         elif f["total"] is not None and f["currency"] not in (None, currency or "CNY"):
             row["not_compared"] = f"币种为 {f['currency']}，未参加比较"
@@ -473,7 +484,9 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
         places = {}
         for b in ids:
             f = facts[b]
-            node = f["totals"][0][2] if f["totals"] else (f["main"][2][0][4] if f["main"] and f["main"][2] else None)
+            node = None
+            if f.get("manual_total") is None:
+                node = f["totals"][0][2] if f["totals"] else (f["main"][2][0][4] if f["main"] and f["main"][2] else None)
             places[str(b)] = [place(node)] if place and node is not None else []
         rows = [{"label": "投标总价（从低到高）", "value": "、".join(money(eligible[b]) for b in ids), "places": places}]
         clues.append({"ids": tuple(sorted(ids, key=order.get)), "level": "medium", "title": title, "rows": rows})

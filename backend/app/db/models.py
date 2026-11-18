@@ -219,6 +219,7 @@ class User(Base):
     last_source: Mapped[Optional[str]] = mapped_column(String(10))
     last_login_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     last_login_ip: Mapped[Optional[str]] = mapped_column(INET)
+    bid_feedback_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = _ts_now()
     updated_at: Mapped[datetime] = _ts_updated()
 
@@ -369,6 +370,7 @@ class BidProject(Base):
     model_state: Mapped[Optional[str]] = mapped_column(String(12))
     model_error: Mapped[Optional[str]] = mapped_column(String(200))
     model_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    conclusion_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     # 签章页速览的人工标注（V34-B-06）：{"文件id:页码或节点": stamped / missing / unclear}，不含原文
     signing: Mapped[Optional[Any]] = mapped_column(JSONB)
     # 个人文件夹与全公司分类（V34-B-01a）；删除文件夹时项目回到“未归档”

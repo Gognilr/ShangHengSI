@@ -184,6 +184,10 @@ def cell_detail(db, task, requirement_id, bidder_id):
            "cell": None, "places": []}
     if cell is None:
         return out
+    from app.bid import feedback
+    state = feedback.load(db.get(BidProject, task.id).conclusion_enc)
+    key = f"cell:{rid}:{bid}"
+    out["second"] = state.get("second", {}).get(key)
     out["cell"] = {"verdict": cell.verdict, "source": cell.source, "cite": cell.cite,
                    "reason": crypto.decrypt_text(cell.reason_enc) if cell.reason_enc else None, **_review(cell)}
     for loc in cell.locs or []:
@@ -263,6 +267,9 @@ def reopen(db, task):
     from app.bid.model import require_idle
     require_idle(project)
     project.stage, project.check_state, project.check_error = "ready", None, None
+    from app.bid import feedback
+    previous = feedback.load(project.conclusion_enc)
+    project.conclusion_enc = feedback.encrypt({"manual_totals": previous.get("manual_totals", {})})
     project.model_state, project.model_error, project.model_enc = None, None, None
 
 
@@ -321,6 +328,8 @@ def sent_view(db, task):
                 body = '\n\n'.join(m['content'] for m in messages)
                 if system.startswith('你是招标文件整理助手'):
                     purpose = '要求补充'
+                elif system.startswith('二次核验'):
+                    purpose = '二次核验'
                 else:
                     who = re.search(r'投标人代号：(\[投标人[A-Z]+\])(?:（第 (\d+) / (\d+) 批）)?', body)
                     if who:
@@ -329,7 +338,7 @@ def sent_view(db, task):
             except (ValueError, KeyError, TypeError, IndexError):
                 pass
         counts[purpose] = counts.get(purpose, 0) + 1
-        out.append({'seq': seq, 'purpose': purpose + (f" 第 {counts[purpose]} 次" if purpose == '要求补充' else ''),
+        out.append({'seq': seq, 'purpose': purpose + (f" 第 {counts[purpose]} 次" if purpose in ('要求补充', '二次核验') else ''),
                     'created_at': row.created_at, 'status': row.status, 'chars': len(text) if text is not None else None, 'text': text})
     return out
 
@@ -349,7 +358,7 @@ def check_view(db, task):
 
     def note(row):
         return crypto.decrypt_text(row.note_enc) if row.note_enc else None
-    return {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
+    view = {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
             "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}),
             "pricing": json.loads(crypto.decrypt_text(project.pricing_enc)) if project.pricing_enc else None,
             "parameters": {"ceiling": values.get("ceiling"), "currency": values.get("currency")},
@@ -365,3 +374,28 @@ def check_view(db, task):
                          "mark": marks.get(signing_key(s["file_id"], s["page"], s["loc"]))}
                         for s in summary.get("signing", []) if s["file_id"] in files],
             "timeline": [{**t, "file": files[t["file_id"]].original_name} for t in summary.get("timeline", []) if t["file_id"] in files]}
+    from app.bid import conclusion, feedback, model
+    _, personal = feedback.owner_state(db, task.owner_id)
+    state = feedback.apply(view, project, personal)
+    inapplicable = set(state.get("not_applicable", []))
+    for req in view["requirements"]:
+        req["not_applicable"] = str(req["id"]) in inapplicable
+    second = state.get("second", {})
+    for item in view["items"]:
+        outcome = second.get(str(item["id"]), {})
+        if outcome.get("outcome") == "common":
+            item["reference_reason"] = outcome["reason"]
+    if task.policy != "local_only":
+        second["pending"] = any(model.second_targets({**view, "conclusion": {"reviews": state.get("reviews", {})}}, second))
+    bidders = {str(b.id): crypto.decrypt_text(b.name_enc) for b in db.scalars(
+        select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))}
+    view["conclusion"] = conclusion.build(
+        view, bidders, local_only=task.policy == "local_only", model_state=project.model_state,
+        baseline=summary.get("baseline"), feedback=state, second=second)
+    outcomes = {e["id"]: e["tier"] for e in view["conclusion"]["certain"] + view["conclusion"]["verify"]}
+    for cell in view["cells"]:
+        key = f"cell:{cell['requirement_id']}:{cell['bidder_id']}"
+        cell["conclusion_tier"] = outcomes.get(key)
+        if decision := view["conclusion"]["reviews"].get(key):
+            cell["review_status"] = decision["status"]
+    return view

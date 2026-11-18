@@ -220,6 +220,58 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     assert c.get(base + "/sent").json() == previous
 
 
+def test_second_review_uses_its_own_confirmation_and_audit(owner, db_sessionmaker, llm):
+    from app.db.models import BidBidder, BidCell, BidProject, BidRequirement
+    c, h, _ = owner
+    base = _prepared(c, h, db_sessionmaker)
+    tid = uuid.UUID(base.rsplit("/", 1)[-1])
+    with db_sessionmaker() as db:
+        row = db.scalar(select(BidRequirement).where(BidRequirement.task_id == tid, BidRequirement.method == "model")
+                        .order_by(BidRequirement.seq))
+        bidder = db.scalar(select(BidBidder).where(BidBidder.task_id == tid).order_by(BidBidder.seq))
+        row.group = "substantive"
+        db.add(BidCell(task_id=tid, requirement_id=row.id, bidder_id=bidder.id, verdict="missing", source="model"))
+        db.get(BidProject, tid).model_state = "done"
+        db.commit()
+        rid, bid = str(row.id), str(bidder.id)
+
+    def handler(request):
+        messages = json.loads(request.content)["messages"]
+        assert messages[0]["content"].startswith("二次核验")
+        body = messages[-1]["content"]
+        assert not any(name in body for name in BIDDERS)
+        if messages[0]["content"].startswith("二次核验相似段落"):
+            result = {"source": "共同来源", "reason": "共用公开范本"}
+        else:
+            reqs = re.findall(r"^\[(R\d+)\]", body, re.M)
+            snippet, text = re.search(r"^\[([A-C]\d+)\] (.+)$", body, re.M).groups()
+            assert len(reqs) == 1
+            result = {"items": [{"req": reqs[0], "verdict": "响应", "snippet": snippet, "quote": text[:16],
+                                 "reason": "本次文件给出依据"}]}
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(result, ensure_ascii=False)}}],
+                                         "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+    requests = llm(handler=handler)
+    assert c.post(base + "/model/prepare_second", headers=h).json()["state"] == "preparing"
+    _jobs(db_sessionmaker, base, "snippets")
+    view = c.get(base + "/model").json()
+    count = view["receipt"]["second_calls"]
+    assert view["state"] == "awaiting" and 1 <= count == view["receipt"]["calls"]
+    assert not requests and not c.get(base + "/sent").json()
+    confirm = c.post(base + "/model/confirm", headers=h).json()
+    assert confirm["state"] == "running", confirm.get("error")
+    _jobs(db_sessionmaker, base, "model")
+    assert c.get(base + "/model").json()["state"] == "done"
+    assert len(requests) == count
+    audit = c.get(base + "/sent").json()
+    assert len(audit) == count and all(r["status"] == "sent" and r["purpose"].startswith("二次核验") for r in audit)
+    result = c.get(base + "/check").json()
+    assert result["conclusion"]["second_calls"] == count
+    target = next(c for c in result["cells"] if c["requirement_id"] == rid and c["bidder_id"] == bid)
+    assert target["verdict"] == "yes" and target["cite"] == "verified"
+    assert any(e["title"] == "二次核验找到响应，已改为响应" for e in result["conclusion"]["reference"])
+
+
 def test_recheck_blocks_name_left_in_snippet(owner, db_sessionmaker, llm):
     """片段脱敏结果被改回含真实名称时，确认时整轮不发。"""
     c, h, _ = owner

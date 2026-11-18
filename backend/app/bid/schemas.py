@@ -62,6 +62,7 @@ class ParametersInput(BaseModel):
     deposit_forms: str = Field("", max_length=100)
     consortium: bool | None = None
     tax_included: bool | None = None
+    agency: str = Field("", max_length=255)
 
     @field_validator("ceiling", "deposit")
     @classmethod
@@ -117,6 +118,31 @@ class ReviewInput(BaseModel):
     """核对状态与备注（V34-B-06）；只传要改的一项。"""
     review_status: Literal["pending", "verified", "excluded"] | None = None
     note: str | None = Field(None, max_length=500)
+
+
+class ConclusionReviewInput(BaseModel):
+    key: str = Field(min_length=1, max_length=2000)
+    status: Literal["verified", "excluded", "pending"]
+    reason: Literal["template", "manufacturer", "recognition", "model", "other"] | None = None
+    detail: str | None = Field(None, max_length=50)
+    remember: bool = False
+
+
+class ManualTotalInput(BaseModel):
+    total: str | None = Field(None, max_length=32)
+
+    @field_validator("total")
+    @classmethod
+    def valid_total(cls, value):
+        return ParametersInput.decimal_text(value)
+
+
+class ApplicabilityInput(BaseModel):
+    applicable: bool
+
+
+class ConclusionSignInput(BaseModel):
+    signed: bool
 
 
 class CellReviewInput(ReviewInput):

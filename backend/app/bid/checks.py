@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # 三步依次提交，前端轮询时先看到先完成的（bid.md 3.1“先出结果的先做”）
 STEPS = {"clues": ("mixed", "contact", "props", "image"),
          "pricing": ("pricing", "multi_total", "sum_total", "ceiling", "low_price", "uppercase", "row_calc", "sum_rows", "validity",
-                     "deposit", "cert_expired", "ai_instruction"),
+                     "deposit", "cert_expired", "ai_instruction", "manual_total_diff"),
          "similar": ("similar",)}
 RANK = {"strong": 3, "medium": 2, "weak": 1, "normal": 0}
 
@@ -177,16 +177,22 @@ def check_mixed(bidders, nodes):
             if not wanted:
                 continue
             hits = []
+            cover = []
             for file_id, loc, page, text, *_ in nodes.get(host.id, []):
                 for n in sorted(wanted, key=len, reverse=True):
                     i = text.find(n)
                     if i >= 0:
-                        hits.append(_where(file_id, loc, page, text, i, i + len(n)) | {"name": n})
+                        place = _where(file_id, loc, page, text, i, i + len(n)) | {"name": n}
+                        hits.append(place)
+                        if page == 1 and re.search(r"(?:投标人|投标单位)\s*[：:]\s*" + re.escape(names[other.id]), text):
+                            cover.append(place)
                         break
             if hits:
+                evidence = [{"label": "出现位置", "count": len(hits), "places": {str(host.id): hits[:5]}}]
+                if cover:
+                    evidence.insert(0, {"label": "封面", "mixed_page": True, "places": {str(host.id): cover[:5]}})
                 items.append(_item("clue", (host.id, other.id), "mixed", "strong", "（五）",
-                                   f"{names[host.id]}的文件中出现{names[other.id]}的名称",
-                                   [{"label": "出现位置", "count": len(hits), "places": {str(host.id): hits[:5]}}]))
+                                   f"{names[host.id]}的文件中出现{names[other.id]}的名称", evidence))
     return items
 
 
@@ -236,11 +242,13 @@ def _authors(props, ext=None):
     return {normalize_value(str(props[k])).strip() for k in keys if props.get(k)} - _GENERIC
 
 
-def check_props(bidders, files):
+def check_props(bidders, files, history=()):
     per = _props(files)
     base_ids = {p.get(k) for _f, p in per.get(None, []) for k in ("pdf_id", "xmp_document_id", "xmp_original_id") if p.get(k)}
     base_authors = set().union(*(_authors(p, f.ext) for f, p in per.get(None, []))) if per.get(None) else set()
     base_rsids = set().union(*(set(p.get("rsids") or []) for _f, p in per.get(None, []))) if per.get(None) else set()
+    for _f, props in _props({f.id: f for f in history}).get(None, []):
+        base_rsids.update(props.get("rsids") or [])
     base_company = {normalize_value(p.get("company", "")) for _f, p in per.get(None, [])}
     # 从招标文件（或其模板）另存的文件带着同一个创建时间，不算“同时生成”
     base_times = [(_tool(p), _time(p.get("created"))) for _f, p in per.get(None, [])]
@@ -275,7 +283,7 @@ def check_props(bidders, files):
                 ta, tb = _time(pa.get("created")), _time(pb.get("created"))
                 if (tool_a and tool_a == tool_b and ta and tb and abs(ta - tb) <= timedelta(minutes=10)
                         and not from_tender(tool_a, ta)):
-                    hit("生成软件相同且创建时间相差 10 分钟内", f"{tool_a}", "weak", fa, fb)
+                    hit("生成软件相同且创建时间相差 10 分钟内", tool_a, "weak", fa, fb)
         if rows:
             items.append(_item("clue", (a.id, b.id), "props", level, "（一）", "文件属性相同", rows))
     return items
@@ -328,11 +336,15 @@ def timeline(bidders, files):
 
 # ---------------------------------------------------------------- 相同图片
 
-def check_images(db, bidders, files):
+def check_images(db, bidders, files, history=(), stats=None):
     rows = db.execute(select(BidImage.file_id, BidImage.page, BidImage.sha256, BidImage.width, BidImage.height, BidImage.category)
                       .where(BidImage.file_id.in_(list(files)))).all()
     baseline = {r.sha256 for r in rows if files[r.file_id].bidder_id is None}
+    if history:
+        baseline.update(db.scalars(select(BidImage.sha256).where(BidImage.file_id.in_([f.id for f in history]))))
     order = [b.id for b in bidders]
+    if stats is not None:
+        stats["images"] = len({r.sha256 for r in rows if files[r.file_id].bidder_id in order and r.sha256 in baseline})
     by_hash = defaultdict(list)
     for r in rows:
         owner = files[r.file_id].bidder_id
@@ -405,42 +417,74 @@ def coverage(bidders, files, extra=()):
 
 
 def _replace(db, task_id, types, items):
-    """替换本地的某几类条目；同一条目（类型、投标人、标题与关联要求相同）保留原有核对状态与备注。"""
-    old = {}
+    """替换指定类别；证据相同的条目保留原标识与核验记录。"""
+    old = defaultdict(list)
     for row in db.scalars(select(BidItem).where(BidItem.task_id == task_id, BidItem.source == "local", BidItem.type.in_(types))):
-        title = json.loads(crypto.decrypt_text(row.evidence_enc)).get("title")
-        old[(row.kind, row.type, tuple(row.bidder_ids), title, str(row.requirement_id))] = (row.review_status, row.note_enc)
-    db.execute(delete(BidItem).where(BidItem.task_id == task_id, BidItem.source == "local", BidItem.type.in_(types)))
+        key = (row.kind, row.type, tuple(row.bidder_ids), str(row.requirement_id), row.level, row.article)
+        old[key].append((row, json.loads(crypto.decrypt_text(row.evidence_enc))))
     for it in items:
-        key = (it["kind"], it["type"], tuple(it["bidder_ids"]), it["evidence"]["title"], str(it["requirement_id"]))
-        status, note = old.get(key, ("pending", None))
+        key = (it["kind"], it["type"], tuple(it["bidder_ids"]), str(it["requirement_id"]), it["level"], it["article"])
+        rows = old[key]
+        at = next((i for i, (_row, evidence) in enumerate(rows) if evidence == it["evidence"]), None)
+        if at is not None:
+            rows.pop(at)
+            continue
         db.add(BidItem(task_id=task_id, kind=it["kind"], bidder_ids=it["bidder_ids"], type=it["type"], level=it["level"],
-                       article=it["article"], requirement_id=it["requirement_id"], review_status=status, note_enc=note,
+                       article=it["article"], requirement_id=it["requirement_id"],
                        evidence_enc=crypto.encrypt_text(json.dumps(it["evidence"], ensure_ascii=False)), source="local"))
+    for rows in old.values():
+        for row, _evidence in rows:
+            db.delete(row)
 
 
-def _pricing_step(db, task, bidders, nodes, files):
+QUOTE_TYPES = ("pricing", "ceiling", "low_price", "manual_total_diff")
+
+
+def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
     """报价分析、报价规律线索、确定性符合项问题与“本地规则”单元格。"""
     from app.bid import compliance, pricing, requirements as R
     project = db.get(BidProject, task.id)
+    from app.bid.feedback import load
+    manual = load(project.conclusion_enc).get("manual_totals")
     params = R.load_state(project)["values"]
     ceiling = Decimal(params["ceiling"]) if params.get("ceiling") else None
     per = {b.id: [compliance.BidNode(loc, text, files[file_id].seq, None, kind=kind, ocr_conf=conf, file_id=file_id, page=page)
                   for file_id, loc, page, text, kind, conf in nodes.get(b.id, [])] for b in bidders}
     analysis, clues, facts = pricing.analyze([b.id for b in bidders], per, ceiling, params.get("currency"),
-                                             lambda n: _where(n.file_id, n.loc, n.page, n.text, 0, len(n.text)))
+                                             lambda n: _where(n.file_id, n.loc, n.page, n.text, 0, len(n.text)), manual)
     project.pricing_enc = crypto.encrypt_text(json.dumps(analysis, ensure_ascii=False))
     kinds = {}
     for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True),
                                                      BidRequirement.method == "local").order_by(BidRequirement.seq)):
         kind = compliance.requirement_kind(crypto.decrypt_text(r.text_enc))
-        if kind:
+        if kind and (not quote_only or kind == "ceiling"):
             kinds.setdefault(kind, []).append(r)
 
     def place(n, s, e):
-        return _where(n.file_id, n.loc, n.page, n.text, s, e)
+        where = _where(n.file_id, n.loc, n.page, n.text, s, e)
+        if n.kind == "ocr_block" and n.ocr_conf is not None and n.ocr_conf < compliance.LOW_OCR_CONF:
+            where["low_ocr"] = True
+        return where
 
     items = [_item("clue", c["ids"], "pricing", c["level"], "（四）", c["title"], c["rows"]) for c in clues]
+    if quote_only:
+        for b in bidders:
+            issues, verdicts = compliance.evaluate(b.id, per[b.id], facts[b.id], params, project.opening_date, place)
+            linked = kinds.get("ceiling", [])
+            items.extend(_item("issue", (b.id,), it["type"], it["level"], it["article"], it["title"], it["rows"],
+                               linked[0].id if linked and it["type"] == "ceiling" else None)
+                         for it in issues if it["type"] in QUOTE_TYPES)
+            for req in linked:
+                cell = db.scalar(select(BidCell).where(BidCell.requirement_id == req.id, BidCell.bidder_id == b.id))
+                verdict, reason, where = verdicts["ceiling"]
+                if cell is None:
+                    cell = BidCell(task_id=task.id, requirement_id=req.id, bidder_id=b.id, source="local")
+                    db.add(cell)
+                if cell.verdict != verdict or not cell.reason_enc or crypto.decrypt_text(cell.reason_enc) != reason:
+                    cell.review_status, cell.note_enc = "pending", None
+                cell.verdict, cell.reason_enc = verdict, crypto.encrypt_text(reason)
+                cell.locs = [{k: w[k] for k in ("file_id", "loc", "page")} for w in where]
+        return items, []
     # 重跑保留同一单元格的核对状态与备注；人工核对行的单元格（verdict manual）由用户建立，不在此删除
     # 方法已不是“人工核对”的行（返回修改材料时改过）去掉人工建立的单元格，免得与本地 / 模型判断冲突
     db.execute(delete(BidCell).where(BidCell.task_id == task.id, BidCell.verdict == "manual", BidCell.requirement_id.in_(
@@ -468,10 +512,10 @@ def _pricing_step(db, task, bidders, nodes, files):
     return items, notes
 
 
-def _similar_step(bidders, nodes):
+def _similar_step(bidders, nodes, history=()):
     from app.bid import similar
     found, stats = similar.find([b.id for b in bidders], {b.id: [n[:5] for n in nodes.get(b.id, [])] for b in bidders},
-                                [n[:5] for n in nodes.get(None, [])])
+                                [n[:5] for n in nodes.get(None, [])] + list(history))
     items = []
     for f in found:
         items.append(_item("clue", f["ids"], "similar", f["level"], "（四）", f["title"], f["rows"]))
@@ -491,6 +535,26 @@ def run(db, task):
     return count
 
 
+def _history(db, task, project):
+    from app.bid.feedback import agency
+    from app.bid.requirements import tender_nodes
+    from app.db.models import Task
+    organization = agency(project)
+    if not organization:
+        return [], []
+    projects = [p.task_id for p in db.scalars(select(BidProject).join(Task).where(
+        Task.owner_id == task.owner_id, Task.id != task.id,
+        BidProject.parameters_enc.is_not(None))) if agency(p) == organization]
+    if not projects:
+        return [], []
+    files = list(db.scalars(select(TaskFile).where(TaskFile.task_id.in_(projects), TaskFile.bidder_id.is_(None),
+                                                TaskFile.original_deleted_at.is_(None))))
+    live_ids = {str(f.id) for f in files}
+    nodes = [(n.file_id, n.loc, None, n.text, n.kind) for p in projects
+             for n in tender_nodes(db, p) if n.file_id in live_ids]
+    return files, nodes
+
+
 def _run_once(db, task, *, progressive=True):
     bidders, nodes, files = _load(db, task.id)
     before = ocr_progress(files)[0]
@@ -498,7 +562,8 @@ def _run_once(db, task, *, progressive=True):
     two = len(active) >= 2
     project = db.get(BidProject, task.id)
     from app.bid.results import signing_pages
-    summary = {"steps": [], "elapsed": {}, "notes": {}, "signing": signing_pages(active, nodes)}
+    historic_files, historic_nodes = _history(db, task, project) if two else ([], [])
+    summary = {"steps": [], "elapsed": {}, "notes": {}, "signing": signing_pages(active, nodes), "baseline": {}}
     count = 0
 
     def save(name, started, items, notes=()):
@@ -520,15 +585,16 @@ def _run_once(db, task, *, progressive=True):
         count += len(items)
 
     started = time.monotonic()
-    clues = (check_mixed(active, nodes) + check_contacts(active, nodes) + check_props(active, files)
-             + check_images(db, active, files)) if two else []
+    clues = (check_mixed(active, nodes) + check_contacts(active, nodes) + check_props(active, files, historic_files)
+             + check_images(db, active, files, historic_files, summary["baseline"])) if two else []
     summary["timeline"] = timeline(active, files)
     save("clues", started, clues)
     started = time.monotonic()
     items, notes = _pricing_step(db, task, active, nodes, files)
     save("pricing", started, items if two else [i for i in items if i["kind"] == "issue"], notes)
     started = time.monotonic()
-    items, stats = _similar_step(active, nodes) if two else ([], {})
+    items, stats = _similar_step(active, nodes, historic_nodes) if two else ([], {})
+    summary["baseline"]["sentences"] = stats.get("dropped_tender", 0)
     save("similar", started, items)
     logger.info("标书本地检查完成 task=%s 条目=%s 句子=%s 用时=%s", task.id, count, stats.get("sentences", 0), summary["elapsed"])
     return count, before

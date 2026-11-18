@@ -1,4 +1,4 @@
-﻿"""V34-B-07：整套虚构场景按 golden 标注核对线索与等级；Word 报告的内容与语气；历史与搜索整合。样本全部虚构。"""
+"""V34-B-07：整套虚构场景按 golden 标注核对线索与等级；Word 报告的内容与语气；历史与搜索整合。样本全部虚构。"""
 import io
 import json
 from pathlib import Path
@@ -117,11 +117,13 @@ def test_report_content_tone_and_scope(owner, db_sessionmaker):
     for name in BIDDERS:
         assert name in text  # 投标人用真实名称
     assert "标书初审疑点报告" in text and "不构成对串通投标或否决投标的认定" in text and "虚构模型-X" in text
-    assert "经人工核实：投标有效期 60 天" in text and "已对照原件投标函第 2 页" in text  # 核实后的口吻与备注
-    assert "疑似：投标总价 4,180,000.00 高于最高限价" in text  # 未核实的否决项保持“疑似”
-    assert "证书有效期至 2025-06-30" not in text  # 已排除的不进正文
-    assert "只有这两家共有的相同句" in text and "3,800,000.00" in text
-    assert "要求响应矩阵（只列有问题的行）" in text and "疑似不响应" in text
+    conclusion = c.get(base + "/check").json()["conclusion"]
+    assert conclusion["lede"] in text and all(case["title"] in text for case in conclusion["cases"])
+    assert "投标有效期 60 天" in text and "已对照原件投标函第 2 页" in text
+    assert "超最高限价" in text and "尚待核实" in text
+    assert "证书有效期至 2025-06-30" not in text.split("附录 参考事项")[0]
+    assert "相似段落" in text and "3,800,000.00" in text
+    assert "完整要求响应矩阵" in text and "不响应" in text
     assert PASSWORD not in text and "password" not in text.lower()
     docs = Document(io.BytesIO(r.content))
     assert any(run.font.highlight_color for t in docs.tables for row in t.rows for cell in row.cells
@@ -129,13 +131,39 @@ def test_report_content_tone_and_scope(owner, db_sessionmaker):
 
     only = c.get(base + "/report", headers=h, params={"scope": "clues"})
     clue_text = _text(only.content)
-    assert "标书初审串标线索报告" in clue_text and "相似段落" in clue_text and "第四十条（四）" in clue_text
+    assert "标书初审串标线索报告" in clue_text and "相似段落" in clue_text and "第四十条" in clue_text
     assert "要求响应矩阵" not in clue_text and "各投标人问题清单" not in clue_text and "报价分析" not in clue_text
     assert c.get(base + "/report", headers=h, params={"scope": "x"}).status_code == 422
 
     local = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]  # 未完成初审的项目不能导出
     assert c.get(local + "/report", headers=h).status_code == 409
     assert c.get(ROOT + "/00000000-0000-0000-0000-000000000000/report", headers=h).status_code == 404
+
+
+def test_conclusion_sign_and_incremental_quote(owner, db_sessionmaker):
+    c, h, _ = owner
+    base, ids = scenario(c, h, db_sessionmaker)
+    before = c.get(base + "/check").json()
+    sign = c.put(base + "/conclusion/sign", headers=h, json={"signed": True})
+    assert sign.status_code == 200 and sign.json()["conclusion"]["signed"]
+    target = next(e for e in before["conclusion"]["verify"] if e["category"] != "串通")
+    assert c.post(base + "/conclusion/review", headers=h, json={"key": target["id"], "status": "excluded"}).status_code == 422
+    verdict = c.post(base + "/conclusion/review", headers=h,
+                     json={"key": target["id"], "status": "excluded", "reason": "recognition"})
+    assert verdict.status_code == 200
+    assert target["id"] not in {e["id"] for e in verdict.json()["conclusion"]["verify"]}
+    assert any(r["category"] == target["category"] for r in c.get(ROOT + "/feedback/mine").json()["stats"])
+    restored = c.post(base + "/conclusion/review", headers=h, json={"key": target["id"], "status": "pending"})
+    assert target["id"] in {e["id"] for e in restored.json()["conclusion"]["verify"]}
+    updated = c.put(f"{base}/bidders/{ids[0]}/total", headers=h, json={"total": "4100100.23"})
+    assert updated.status_code == 200
+    after = updated.json()
+    price = after["pricing"]["bidders"][ids[0]]
+    assert price["total"] == "4,100,100.23" and price["manual_total"]
+    assert after["conclusion"]["bidders"][0]["manual_total"]
+    assert {i["id"] for i in before["items"] if i["type"] == "similar"} == {
+        i["id"] for i in after["items"] if i["type"] == "similar"}
+    assert "唱标价 · 人工录入" in _text(c.get(base + "/report").content)
 
 
 def test_report_requires_export_permission(make_user, login, db_sessionmaker):

@@ -1,8 +1,4 @@
-"""标书初审 Word 报告（bid.md 2.5）：只读已落库的结果，在内存中生成，服务器不留存。
-
-结论一律写“疑似”“线索”“未找到”；“已排除”的条目不进正文；疑似否决项只有人工点过“已核实”才去掉“疑似”口吻。
-投标人用真实名称（库里本来就是本机原文）。不读节点原文、不写密码。
-"""
+"""标书初审 Word 报告：读取结果页共用的结论，在内存中生成。"""
 import io
 import json
 import re
@@ -14,6 +10,7 @@ from docx.shared import Cm, Pt
 from sqlalchemy import select
 
 from app.bid import requirements as R, results
+from app.bid.conclusion import DECLARATION as CONCLUSION_DECLARATION
 from app.db.models import BidBidder, BidProject, BidRequirement, LlmCall, Task, TaskFile, User
 from app.export.report_docx import _clean, _font, _heading, _new_document, _table
 from app.security import crypto
@@ -67,18 +64,6 @@ def _widths(first, count, rest=TOTAL_W):
     return [first] + [each] * count
 
 
-def _lines(*lines):
-    """多行文字：每行是 [(文字, 是否高亮)]，行间换行。"""
-    out = []
-    for line in lines:
-        if not line:
-            continue
-        if out:
-            out.append(("\n", False))
-        out.extend(line if isinstance(line, list) else [(_clean(line), False)])
-    return out or [("—", False)]
-
-
 def same_spans(text: str, other: str, n: int = 8) -> list[tuple[str, bool]]:
     """两段文字中相同的部分（连续 n 字以上）；与界面并排对照的高亮口径一致。"""
     if len(text) < n or len(other) < n:
@@ -104,37 +89,6 @@ def _clip(text, n=MAX_TEXT):
     return text if len(text) <= n else text[:n] + "…"
 
 
-def _article(item) -> str:
-    a = item.get("article") or ""
-    if not a:
-        return ""
-    if item["kind"] == "clue":
-        return f"{ART_CLUE}{a}"
-    return f"参照{ART_VETO}{a}" if not a.startswith("第") else f"参照《招标投标法实施条例》{a}"
-
-
-def _headline(item) -> str:
-    """【类型】标题；标题已以类型名开头时不重复。"""
-    label, title = TYPE.get(item["type"], item["type"]), _title(item)
-    return title if title.startswith(label) else f"【{label}】{title}"
-
-
-def _level_text(item) -> str:
-    if item["kind"] == "clue":
-        return f"线索·{LEVEL.get(item['level'], item['level'])}"
-    return LEVEL.get(item["level"], item["level"])
-
-
-def _title(item) -> str:
-    """疑似否决项在人工核实前保持“疑似”口吻；核实后写明“经人工核实”。"""
-    title = item["title"]
-    if item["level"] != "veto" or item["kind"] != "issue":
-        return title
-    if item["review_status"] == "verified":
-        return f"经人工核实：{title}"
-    return title if title.startswith("疑似") else f"疑似：{title}"
-
-
 # ---------------------------------------------------------------- 数据
 
 class _Data:
@@ -146,11 +100,6 @@ class _Data:
         self.files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
         self.file_names = {str(f.id): f.original_name for f in self.files}
         self.view = results.check_view(db, task)
-        self.items = [i for i in self.view["items"] if i["review_status"] != "excluded"]
-        self.excluded = sum(1 for i in self.view["items"] if i["review_status"] == "excluded" and i["kind"] != "normal_dup")
-        self.issues = [i for i in self.items if i["kind"] == "issue"]
-        self.clues = [i for i in self.items if i["kind"] == "clue"]
-        self.normal = [i for i in self.items if i["kind"] == "normal_dup"]
         self.cells = {(str(c["requirement_id"]), str(c["bidder_id"])): c for c in self.view["cells"]}
         self.reqs = results.matrix_requirements(self.view["requirements"], self.view["cells"], len(self.bidders))
         self.params = R.load_state(self.project)["values"]
@@ -167,34 +116,6 @@ class _Data:
 
     def place(self, p) -> str:
         return self.file_names.get(str(p.get("file_id")), "文件") + (f" 第 {p['page']} 页" if p.get("page") else "")
-
-    def pending_for(self, bidder_id) -> int:
-        """待人工核对：与结果页总览同一口径。"""
-        bid = str(bidder_id)
-        cells = [c for (rid, b), c in self.cells.items() if b == bid and c["review_status"] != "excluded"]
-        reviewed = {str(c["requirement_id"]) for c in cells if c["review_status"] != "pending"}
-        manual = [r for r in self.reqs if r["method"] == "manual" and str(r["id"]) not in reviewed]
-        return (sum(1 for i in self.items if i["kind"] != "normal_dup" and i["review_status"] == "pending" and bid in map(str, i["bidder_ids"]))
-                + sum(1 for c in cells if c["review_status"] == "pending" and c["verdict"] != "manual"
-                      and (c["verdict"] == "unclear" or c["cite"] == "unverified"))
-                + len(manual) + sum(1 for s in self.view["signing"] if str(s["bidder_id"]) == bid and not s["mark"]))
-
-    def pending_total(self) -> int:
-        shared = sum(len(i["bidder_ids"]) - 1 for i in self.items
-                     if i["kind"] != "normal_dup" and i["review_status"] == "pending" and len(i["bidder_ids"]) > 1)
-        return sum(self.pending_for(b.id) for b in self.bidders) - shared
-
-
-def _count(items, level) -> int:
-    return sum(1 for i in items if i["level"] == level)
-
-
-def _clue_counts(items) -> str:
-    parts = [f"{LEVEL[lv]} {n}" for lv in ("strong", "medium", "weak") if (n := _count(items, lv))]
-    return "  ".join(parts) or "—"
-
-
-# ---------------------------------------------------------------- 封面与方法说明
 
 def _cover(doc, d: _Data, scope: str):
     bidders = "、".join(d.names.values()) or "—"
@@ -216,55 +137,11 @@ def _cover(doc, d: _Data, scope: str):
                    "投标人以代号表示，模型不知道各家名称，核对结果在本机还原。")
     elif d.model_rows:
         _para(doc, "“模型判断”类要求尚未完成模型核对，相关结果显示为“未核对”，不代表投标文件已响应。")
-    _para(doc, "结论一律写“疑似”“线索”“未找到”，每条附依据；疑似否决项经人工点选“已核实”后才以核实口吻写入。已排除的条目不进正文。"
-               "企业自主招标未必属依法必须招标项目，条文仅作参照依据，最终以招标文件约定为准。")
-    p = _para(doc, DECLARATION, bold=True)
+    p = _para(doc, CONCLUSION_DECLARATION, bold=True)
     p.paragraph_format.space_before = Pt(6)
 
 
 # ---------------------------------------------------------------- 总览与覆盖说明
-
-def _pair_lines(d: _Data) -> list[str]:
-    pairs = []
-    for i, a in enumerate(d.bidders):
-        for b in d.bidders[i + 1:]:
-            shared = [c for c in d.clues if str(a.id) in map(str, c["bidder_ids"]) and str(b.id) in map(str, c["bidder_ids"])]
-            if shared:
-                pairs.append(f"{d.name(a.id)} — {d.name(b.id)}：{_clue_counts(shared)}")
-    return pairs
-
-
-def _overview(doc, d: _Data):
-    _heading(doc, "一 总览")
-    veto = [i for i in d.issues if i["level"] == "veto"]
-    verified = sum(1 for i in veto if i["review_status"] == "verified")
-    _para(doc, f"疑似否决项 {len(veto)} 项（已人工核实 {verified} 项）；其他问题 {len(d.issues) - len(veto)} 项；串标线索 {len(d.clues)} 条（{_clue_counts(d.clues)}）；"
-               f"待人工核对 {d.pending_total()} 项；已排除 {d.excluded} 条（不列入正文）。")
-    pricing = d.view["pricing"] or {}
-    has_ceiling = bool(d.params.get("ceiling"))  # 未填限价时不出现任何限价内容（V34Q-27）
-    rows = []
-    for b in d.bidders:
-        own = [i for i in d.issues if str(b.id) in map(str, i["bidder_ids"])]
-        own_veto = [i for i in own if i["level"] == "veto"]
-        price = (pricing.get("bidders") or {}).get(str(b.id)) or {}
-        rows.append((crypto.decrypt_text(b.name_enc),
-                     f"{len(own_veto)}（已核实 {sum(1 for i in own_veto if i['review_status'] == 'verified')}）" if own_veto else "0",
-                     len(own) - len(own_veto), d.pending_for(b.id), _total_text(price, mark=True),
-                     *([_ceiling_text(price)] if has_ceiling else []),
-                     _clue_counts([c for c in d.clues if str(b.id) in map(str, c["bidder_ids"])])))
-    if has_ceiling:
-        _table(doc, ("投标人（按录入顺序）", "疑似否决项", "其他问题", "待人工核对", "投标总价", "与最高限价", "涉及串标线索"), rows,
-               (6, 2.8, 2.4, 2.6, 3.8, 4.0, 5.1))
-    else:
-        _table(doc, ("投标人（按录入顺序）", "疑似否决项", "其他问题", "待人工核对", "投标总价", "涉及串标线索"), rows,
-               (7, 3, 2.6, 2.8, 5.6, 5.7))
-    pairs = _pair_lines(d)
-    if pairs:
-        _sub(doc, "串标线索涉及的投标人两两关系")
-        for line in pairs:
-            _para(doc, line, indent=12)
-    _coverage(doc, d)
-
 
 MARK = {"highest": "最高", "lowest": "最低"}
 
@@ -298,7 +175,7 @@ def _coverage(doc, d: _Data):
         notes.append("“模型判断”类要求尚未完成模型核对，相关单元格为“未核对”。")
     elif d.project.model_state == "done":
         notes.append("模型核对只覆盖检索出的相关片段，未检索到的内容可能被遗漏；引文待核实的结论请对照原件。")
-    pending = d.pending_total()
+    pending = len(d.view["conclusion"]["verify"])
     if pending:
         notes.append(f"仍有 {pending} 项待人工核对，报告内容尚未全部核实。")
     notes.append("报告未列出的事项不代表投标文件没有问题。")
@@ -309,6 +186,8 @@ def _coverage(doc, d: _Data):
 # ---------------------------------------------------------------- 要求响应矩阵
 
 def _cell_text(d: _Data, req, bidder_id) -> str:
+    if req.get("not_applicable"):
+        return "—"
     cell = d.cells.get((str(req["id"]), str(bidder_id)))
     if cell is None:
         return "？"
@@ -330,22 +209,11 @@ def _cell_text(d: _Data, req, bidder_id) -> str:
     return text
 
 
-def _problem(d: _Data, req) -> bool:
-    for b in d.bidders:
-        cell = d.cells.get((str(req["id"]), str(b.id)))
-        if cell and cell["review_status"] != "excluded" and _problem_cell(cell):
-            return True
-    return False
-
-
 def _has_row_anomaly(d: _Data, req, verdict: str) -> bool:
-    if req["method"] == "manual":
+    if req["method"] == "manual" or req.get("not_applicable"):
         return False
-    for b in d.bidders:
-        cell = d.cells.get((str(req["id"]), str(b.id)))
-        if cell and cell["review_status"] != "excluded" and cell["cite"] != "unverified" and cell["verdict"] == verdict:
-            return True
-    return False
+    return any(cell and cell["review_status"] != "excluded" and cell["cite"] != "unverified" and cell["verdict"] == verdict
+               for b in d.bidders if (cell := d.cells.get((str(req["id"]), str(b.id)))))
 
 
 def _matrix_table(doc, d: _Data, reqs):
@@ -361,31 +229,6 @@ def _matrix_table(doc, d: _Data, reqs):
         rows = [(_clean(f"{r['seq']}. {r['text']}"),
                  *[_cell_text(d, r, b.id) for b in d.bidders]) for r in grouped]
         _table(doc, ("序号 · 要求", *[crypto.decrypt_text(b.name_enc) for b in d.bidders]), rows, _widths(9.5, len(d.bidders)))
-
-
-def _matrix(doc, d: _Data):
-    _heading(doc, "二 要求响应矩阵（只列有问题的行）")
-    rows = [r for r in d.reqs if _problem(d, r)]
-    if not rows:
-        _para(doc, "没有疑似不响应、未找到或无法判断的要求。完整矩阵见附录一。")
-        return
-    _para(doc, f"共 {len(rows)} 行；完整矩阵见附录一。“模型”表示由模型核对，其余为本机规则或人工核对。")
-    _matrix_table(doc, d, rows)
-    detail = []
-    for r in rows:
-        for b in d.bidders:
-            cell = d.cells.get((str(r["id"]), str(b.id)))
-            if cell and cell["review_status"] != "excluded" and (cell["reason"] or cell["note"]) and _problem_cell(cell):
-                detail.append((_clean(f"{r['seq']}. " + _clip(r["text"], 60)), crypto.decrypt_text(b.name_enc), VERDICT.get(cell["verdict"], cell["verdict"]),
-                               _lines(cell["reason"] and f"理由：{_clean(cell['reason'])}", cell["note"] and f"备注：{_clean(cell['note'])}"),
-                               STATUS.get(cell["review_status"], "")))
-    if detail:
-        _sub(doc, "有问题的单元格说明")
-        _table(doc, ("要求", "投标人", "判断", "理由与备注", "核对状态"), detail, (7, 4.5, 2.7, 10, 2.5))
-
-
-def _problem_cell(cell) -> bool:
-    return cell["verdict"] in ("no", "missing", "unclear") or cell["cite"] == "unverified"
 
 
 # ---------------------------------------------------------------- 证据
@@ -420,11 +263,6 @@ def _price_rows(item) -> list:
     return [r["items"] for r in item.get("rows", []) if r.get("items")]
 
 
-def _review_text(item) -> str:
-    text = STATUS.get(item["review_status"], "")
-    return text + (f"\n备注：{_clean(item['note'])}" if item.get("note") else "")
-
-
 def _pair_table(doc, d: _Data, item, left, right):
     """两家原文并排，相同文字高亮。"""
     table = doc.add_table(rows=2, cols=2)
@@ -443,65 +281,6 @@ def _pair_table(doc, d: _Data, item, left, right):
         for cell in row.cells:
             cell.width = Cm(TOTAL_W / 2)
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
-
-
-# ---------------------------------------------------------------- 各投标人问题清单
-
-def _issues(doc, d: _Data):
-    _heading(doc, "三 各投标人问题清单")
-    if not d.bidders:
-        _para(doc, "没有投标人。")
-    for b in d.bidders:
-        _sub(doc, crypto.decrypt_text(b.name_enc))
-        own = [i for i in d.issues if str(b.id) in map(str, i["bidder_ids"])]
-        if not own:
-            _para(doc, "本机检查与模型核对未发现问题（见覆盖说明）。", indent=12)
-            continue
-        rows = []
-        for i in own:
-            req = next((r for r in d.reqs if str(r["id"]) == str(i["requirement_id"])), None)
-            basis = _lines(_article(i), req and f"招标文件要求：{_clean(_clip(req['text'], 120))}")
-            rows.append((_level_text(i), _lines(_headline(i), *_evidence(d, i)),
-                         basis, _review_text(i)))
-        _table(doc, ("等级", "问题与证据（出处、位置、原文摘录）", "依据", "核对状态与备注"), rows, (2.6, 14.3, 6.0, 3.8))
-
-
-# ---------------------------------------------------------------- 串标线索
-
-def _clues(doc, d: _Data, number="四"):
-    _heading(doc, f"{number} 串标线索（强 / 中 / 弱）")
-    if not d.clues:
-        _para(doc, "本机检查未发现串标线索（见覆盖说明；未发现不等于不存在）。")
-    else:
-        _para(doc, f"共 {len(d.clues)} 条：{_clue_counts(d.clues)}。线索只说明文件之间存在相同之处，是否构成串通投标由评标委员会核实。")
-    n = 0
-    for level in ("strong", "medium", "weak"):
-        group = [c for c in d.clues if c["level"] == level]
-        if not group:
-            continue
-        _sub(doc, f"{LEVEL[level]}线索 {len(group)} 条")
-        for c in group:
-            n += 1
-            _para(doc, f"线索 {n}　{_headline(c)}", bold=True, indent=6)
-            _para(doc, f"涉及：{d.who(c)}　依据：{_article(c) or '—'}　核对状态：{STATUS.get(c['review_status'], '')}"
-                  + (f"　备注：{c['note']}" if c.get("note") else ""), size=9.5, indent=12)
-            for line in _evidence(d, c):
-                p = doc.add_paragraph()
-                p.paragraph_format.left_indent = Pt(12)
-                p.paragraph_format.space_after = Pt(1)
-                for text, hit in line:
-                    _font(p.add_run(text), 9.5)
-            for left, right in _pairs(c):
-                _pair_table(doc, d, c, left, right)
-            for items in _price_rows(c):
-                names = [d.name(i) for i in c["bidder_ids"][:2]]
-                _table(doc, ("分项", *names), [(_plain(x["name"]), _plain(x["left"]), _plain(x["right"])) for x in items[:20]], (12, 7.3, 7.4))
-            if c.get("normal"):
-                _para(doc, f"常见的正常原因：{c['normal']}", size=9.5, indent=12)
-    if d.normal:
-        _sub(doc, "正常重复（招标范本、厂家资料，不计入线索）")
-        for c in d.normal:
-            _para(doc, f"· {d.who(c)}：{_title(c)}", size=9.5, indent=12)
 
 
 # ---------------------------------------------------------------- 报价分析
@@ -580,7 +359,8 @@ def _appendix(doc, d: _Data):
         _matrix_table(doc, d, d.reqs)
     else:
         _para(doc, "没有启用的要求。")
-    _heading(doc, "附录二 要求清单全文")
+    _pricing(doc, d, "附录二")
+    _heading(doc, "附录三 要求清单全文")
     values = d.params
     forms = f"（{values['deposit_forms']}）" if values.get("deposit_forms") else ""
     ceiling = f"最高限价 {values['ceiling']} {values.get('currency') or ''}；" if values.get("ceiling") else ""
@@ -591,12 +371,12 @@ def _appendix(doc, d: _Data):
     _table(doc, ("分组", "要求", "检查方式", "来源", "启用"),
            [(GROUP.get(r.group, r.group), f"{r.seq}. " + crypto.decrypt_text(r.text_enc), METHOD.get(r.method, r.method), SOURCE.get(r.source, r.source),
              "是" if r.enabled else "否") for r in all_reqs], (3.5, 14.5, 3, 4, 1.7))
-    _heading(doc, "附录三 文件清单与属性")
+    _heading(doc, "附录四 文件清单与属性")
     owner = {str(b.id): crypto.decrypt_text(b.name_enc) for b in d.bidders}
     _table(doc, ("所属", "文件名", "格式", "页数", "文件属性"),
            [(owner.get(str(f.bidder_id), "招标文件") if f.bidder_id else "招标文件", f.original_name, f.ext, f.page_count or "—", _file_props(f)) for f in d.files],
            (5, 8.5, 1.8, 1.6, 9.8))
-    _heading(doc, "附录四 签章页核对结果")
+    _heading(doc, "附录五 签章页核对结果")
     sign = d.view["signing"]
     if not sign:
         _para(doc, "没有识别到要求盖章签字的格式页。")
@@ -615,25 +395,108 @@ def _signature(doc):
 
 # ---------------------------------------------------------------- 入口
 
+def _conclusion_case(doc, d, case, items):
+    mark = "确凿" if case["tier"] == "certain" else "需核实"
+    _sub(doc, f"{case['title']} · {mark}")
+    for n, e in enumerate(case["evidence"], 1):
+        _para(doc, f"{n}　{e['fact']}", bold=True, indent=6)
+        item = items[e["item_id"]]
+        row = item["rows"][e["row"]]
+        single = {**item, "rows": [row]}
+        for line in _evidence(d, single):
+            _para(doc, "".join(text for text, _hit in line), size=9.5, indent=12)
+        for left, right in _pairs(single):
+            _pair_table(doc, d, item, left, right)
+        for quotes in _price_rows(single):
+            names = [d.name(i) for i in e["bidder_ids"][:2]]
+            _table(doc, ("分项", *names), [(_plain(x["name"]), _plain(x["left"]), _plain(x["right"])) for x in quotes[:20]],
+                   (12, 7.3, 7.4))
+    baseline = case["baseline"]
+    if baseline.get("sentences") or baseline.get("images"):
+        _para(doc, f"已剔除：与招标文件相同的句子 {baseline.get('sentences', 0)} 句、图片 {baseline.get('images', 0)} 张")
+    for reason in case["normal"]:
+        _para(doc, f"常见的正常原因：{reason}", size=9.5, indent=12)
+
+
+def _conclusion_report(doc, d, scope):
+    c = d.view["conclusion"]
+    items = {str(i["id"]): i for i in d.view["items"]}
+    labels = {"certain": "建议否决", "verify": "需核实", None: "未发现问题"}
+    if scope == "full":
+        _heading(doc, "初审结论")
+        _para(doc, c["lede"])
+        if c["sub"]:
+            _para(doc, c["sub"])
+        rows = []
+        for b in c["bidders"]:
+            reason = "；".join(r["title"] for r in b["reasons"][:3])
+            if len(b["reasons"]) > 3:
+                reason += f" 等 {len(b['reasons'])} 项"
+            total = b["total"] or "未识别"
+            if b["manual_total"]:
+                total += "\n唱标价 · 人工录入"
+            rows.append((labels[b["tier"]], b["name"], reason, total))
+        _table(doc, ("结论", "投标人", "理由", "投标总价"), rows, (3.3, 6.2, 12.2, 5))
+    if c["cases"]:
+        _heading(doc, "疑似串通投标")
+        for case in c["cases"]:
+            _conclusion_case(doc, d, case, items)
+    if scope != "full":
+        reference = [e for e in c["reference"] if e["category"] == "串标线索"]
+    else:
+        reference = c["reference"]
+        _heading(doc, "需核实事项")
+        for review in c["reviews"].values():
+            entry = review["entry"]
+            result = "已核实 · 属实" if review["status"] == "verified" else f"已核实 · 不属实（{review['detail'] or review['reason_label']}）"
+            _para(doc, f"{'、'.join(d.name(b) for b in entry['bidder_ids'])}：{entry['title']} · {result}")
+        if c["verify"]:
+            _sub(doc, "尚待核实")
+            for e in c["verify"]:
+                _para(doc, f"{'、'.join(d.name(b) for b in e['bidder_ids'])}：{e['title']}")
+                if e["item_id"] in items:
+                    for line in _evidence(d, items[e["item_id"]]):
+                        _para(doc, "".join(t for t, _ in line), size=9.5, indent=12)
+        if c["certain"]:
+            _heading(doc, "确凿项")
+            if c["signed"]:
+                date = datetime.fromisoformat(c["signed"]).astimezone(ZoneInfo("Asia/Shanghai"))
+                _para(doc, f"已签认（{date:%Y-%m-%d %H:%M}）")
+            for e in c["certain"]:
+                if not e["case_id"]:
+                    _para(doc, f"{'、'.join(d.name(b) for b in e['bidder_ids'])}：{e['title']}", bold=True)
+                    item = items.get(e["item_id"])
+                    if item:
+                        for line in _evidence(d, item):
+                            _para(doc, "".join(t for t, _ in line), size=9.5, indent=12)
+                        if item["note"]:
+                            _para(doc, f"备注：{item['note']}", size=9.5, indent=12)
+        if c["second_calls"]:
+            _para(doc, f"二次核验 {c['second_calls']} 次，均经本机脱敏与出口复检。")
+        if c["site"]:
+            _heading(doc, "现场核验清单")
+            for req in c["site"]:
+                _para(doc, f"□ {req['seq']}. {req['text']}")
+    _heading(doc, f"附录 参考事项 {len(reference)} 条（不影响结论）")
+    for e in reference:
+        _para(doc, f"{'、'.join(d.name(b) for b in e['bidder_ids'])}：{e['title']}")
+        item = items.get(e["item_id"])
+        if item and item["review_status"] != "excluded":
+            if item.get("normal") or item.get("reference_reason"):
+                _para(doc, item.get("reference_reason") or f"常见的正常原因：{item['normal']}", size=9.5)
+            for left, right in _pairs(item):
+                _pair_table(doc, d, item, left, right)
+    _coverage(doc, d)
+
+
 def build_bid_report(db, task: Task, user: User, scope: str = "full") -> tuple[str, bytes]:
     """scope：full 全部初审内容；clues 只导出串标线索。返回 (文件名, 内容)。"""
     d = _Data(db, task, user)
     doc = _new_document("标书初审疑点报告" if scope == "full" else "标书初审串标线索报告")
     _cover(doc, d, scope)
+    _conclusion_report(doc, d, scope)
     if scope == "full":
-        _overview(doc, d)
-        _matrix(doc, d)
-        _issues(doc, d)
-        _clues(doc, d)
-        _pricing(doc, d)
         _appendix(doc, d)
-    else:
-        _heading(doc, "一 串标线索涉及的投标人")
-        pairs = _pair_lines(d)
-        for line in pairs or ["没有涉及两家以上投标人的线索。"]:
-            _para(doc, line, indent=12)
-        _clues(doc, d, "二")
-        _coverage(doc, d)
     _signature(doc)
     data = io.BytesIO()
     doc.save(data)

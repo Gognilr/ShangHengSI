@@ -114,7 +114,18 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
 
     total = fact["total"]
     # 出现多个总价时逐个与限价比较，任何一个超出都报
-    candidates = distinct or ([rounded(total)] if total is not None else [])
+    manual = fact.get("manual_total")
+    candidates = [manual] if manual is not None else distinct or ([rounded(total)] if total is not None else [])
+    file_total = fact.get("file_total")
+    if (manual is not None and file_total is not None and fact.get("file_currency") in (None, fact["currency"])
+            and manual != file_total):
+        difference = money(manual - file_total).replace("-", "−")
+        if manual > file_total:
+            difference = "+" + difference
+        found = [at(totals[0][2])] if totals else []
+        issues.append(_issue("manual_total_diff", "general", f"文件总价与唱标价不一致（差额 {difference}）",
+                             [{"label": "唱标价 · 人工录入", "value": money(manual)},
+                              {"label": "文件总价", "value": money(file_total), "places": {b: found}}]))
     # 分项合计与投标总价
     if distinct and len(distinct) == 1 and fact["table_total"] is not None and rounded(fact["table_total"]) != distinct[0]:
         main = fact["main"]
@@ -124,7 +135,7 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
     # 超最高限价（第五十一条（五））
     if ceiling is None:
         verdicts["ceiling"] = ("unclear", "关键参数未填写最高限价，无法本地比较", [])
-    elif fact.get('separate_scopes'):
+    elif manual is None and fact.get('separate_scopes'):
         verdicts["ceiling"] = ("unclear", "报价范围不同，需统一比较口径后核对最高限价", [])
     elif not candidates:
         verdicts["ceiling"] = ("missing", "未能确定投标总价", [])
@@ -132,7 +143,7 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
         verdicts["ceiling"] = ("unclear", f"投标总价币种为 {fact['currency']}，与最高限价币种不同，未比较", [])
     elif (over := max(candidates)) > rounded(ceiling):
         title = f"投标总价 {money(over)} 高于最高限价 {money(ceiling)}，超出 {money(over - ceiling)}"
-        where = [at(n) for v, _c, n in totals if rounded(v) == over][:1]
+        where = [at(n) for v, _c, n in totals if rounded(v) == over][:1] if manual is None else []
         issues.append(_issue("ceiling", "veto", title, [{"label": "投标总价", "value": money(over), "places": {b: where}}],
                              ARTICLE + "（五）", "ceiling"))
         verdicts["ceiling"] = ("no", title, where)

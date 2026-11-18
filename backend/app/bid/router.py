@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.audit import service as audit
 from app.bid import folders, service
 from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, FolderInput, FolderPatch, ParametersInput, PlaceInput, PasswordInput, ProjectInput, RequirementInput,
+                             ApplicabilityInput, ConclusionReviewInput, ConclusionSignInput, ManualTotalInput,
                              RequirementPatch, ReviewInput, SigningInput)
 from app.db.base import utcnow
 from app.db.models import BidBidder, BidItem, BidProject, BidRequirement, Task, TaskFile, User
@@ -181,8 +182,21 @@ def add_bidder(body: BidderInput, task: Task = Depends(owned), db: Session = Dep
 
 @router.patch("/{id}/bidders/{bidder_id}")
 def rename_bidder(bidder_id: str, body: BidderInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    task = service.editable(db, task)
+    from app.bid import checks, model
+    task = _lock_owned(db, task)
+    project = db.get(BidProject, task.id, populate_existing=True)
+    checked = project.stage == "checked"
+    if checked:
+        service.require_originals(db, task.id)
+        model.require_idle(project)
+    else:
+        service.require_editable(project)
     service.bidder(db, task, bidder_id).name_enc = crypto.encrypt_text(body.name)
+    if checked:
+        db.flush()
+        bidders, nodes, _files = checks._load(db, task.id)
+        checks._replace(db, task.id, ("mixed",), checks.check_mixed([b for b in bidders if nodes.get(b.id)], nodes))
+        model.cancel(db, task)
     task.last_activity_at = utcnow()
     db.commit()
     return service.detail(db, task)
@@ -540,6 +554,91 @@ def reopen(task: Task = Depends(owned), db: Session = Depends(get_db)):
 
 # ---------------------------------------------------------------- 模型核对（V34-B-05）
 
+def _locked_result(db, task):
+    from app.bid import model
+    task = _lock_owned(db, task)
+    project = db.get(BidProject, task.id, populate_existing=True)
+    if project.stage != "checked":
+        raise AppError(409, "NOT_CHECKED", "请等待本地检查完成")
+    model.require_idle(project)
+    return task, project
+
+
+@router.put("/{id}/bidders/{bidder_id}/total")
+def manual_total(bidder_id: str, body: ManualTotalInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import checks, feedback, results
+    task, project = _locked_result(db, task)
+    service.require_originals(db, task.id)
+    bidder = service.bidder(db, task, bidder_id)
+    state = feedback.load(project.conclusion_enc)
+    totals = state.setdefault("manual_totals", {})
+    if body.total is None:
+        totals.pop(str(bidder.id), None)
+    else:
+        totals[str(bidder.id)] = body.total
+    project.conclusion_enc = feedback.encrypt(state)
+    bidders, nodes, files = checks._load(db, task.id)
+    active = [b for b in bidders if nodes.get(b.id) or str(b.id) in totals]
+    items, _notes = checks._pricing_step(db, task, active, nodes, files, quote_only=True)
+    checks._replace(db, task.id, checks.QUOTE_TYPES, items)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return results.check_view(db, task)
+
+
+@router.put("/{id}/requirements/{rid}/applicability")
+def applicability(rid: str, body: ApplicabilityInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import feedback, requirements, results, model
+    task, project = _locked_result(db, task)
+    req = requirements.requirement(db, task, rid)
+    if not req.enabled:
+        raise AppError(409, "REQ_DISABLED", "该要求尚未启用")
+    state = feedback.load(project.conclusion_enc)
+    excluded = set(state.get("not_applicable", []))
+    if body.applicable:
+        excluded.discard(str(req.id))
+    else:
+        excluded.add(str(req.id))
+    state["not_applicable"] = sorted(excluded)
+    project.conclusion_enc = feedback.encrypt(state)
+    model.cancel(db, task)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return results.check_view(db, task)
+
+
+@router.post("/{id}/conclusion/review")
+def conclusion_review(body: ConclusionReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import feedback, results
+    task, _project = _locked_result(db, task)
+    feedback.decide(db, task, body.key, body.status, body.reason, (body.detail or "").strip(), body.remember)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return results.check_view(db, task)
+
+
+@router.put("/{id}/conclusion/sign")
+def conclusion_sign(body: ConclusionSignInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid import feedback, results
+    task, _project = _locked_result(db, task)
+    feedback.sign(db, task, body.signed)
+    db.commit()
+    return results.check_view(db, task)
+
+
+@router.get("/feedback/mine")
+def feedback_settings(user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    from app.bid import feedback
+    return feedback.settings(db, user.id)
+
+
+@router.delete("/feedback/mine/{token}", status_code=204)
+def revoke_feedback(token: str, user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    from app.bid import feedback
+    feedback.revoke(db, user.id, token)
+    db.commit()
+
+
 @router.get("/{id}/sent")
 def sent(response: Response, task: Task = Depends(owned), db: Session = Depends(get_db)):
     from app.bid import results
@@ -557,11 +656,14 @@ def model_view(task: Task = Depends(owned), db: Session = Depends(get_db)):
 def model_action(action: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
     """prepare 准备（重新准备）片段 → confirm 确认并开始模型核对 → cancel 放弃。项目材料已锁定，不再改清单。"""
     from app.bid import model
-    if action not in ("prepare", "confirm", "cancel"):
+    if action not in ("prepare", "prepare_second", "confirm", "cancel"):
         raise AppError(404, "NOT_FOUND", "接口不存在")
     task = _lock_owned(db, task)
     db.get(BidProject, task.id, populate_existing=True)
-    {"prepare": model.start, "confirm": model.confirm, "cancel": model.cancel}[action](db, task)
+    if action == "prepare_second":
+        model.start(db, task, second=True)
+    else:
+        {"prepare": model.start, "confirm": model.confirm, "cancel": model.cancel}[action](db, task)
     task.last_activity_at = utcnow()
     db.commit()
     return model.view(db, task)
