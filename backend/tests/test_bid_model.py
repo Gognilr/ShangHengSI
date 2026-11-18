@@ -56,6 +56,38 @@ def test_quote_context_preserves_page_and_current_term():
     assert len(links['A']['R1']) <= model.TOP and 4 in links['A']['R1']
 
 
+def test_evidence_scope_filters_history_spares_and_other_asset():
+    from app.bid import model
+
+    nodes = [
+        ('a', 1, 'q1', 'ocr_block', 1, '报价单'),
+        ('a', 1, 'q2', 'ocr_block', 1, '工期按甲方要求。'),
+        ('a', 1, 'h1', 'ocr_block', 2, '三、业绩证明文件'),
+        ('a', 1, 'h2', 'ocr_block', 3, '完成时间为十个工作日。'),
+        ('a', 1, 'h3', 'ocr_block', 3, '供货范围含配对法兰和紧固件。'),
+        ('b', 2, 's1', 'ocr_block', 1, '二年备品备件价格清单（单独报价）'),
+        ('b', 2, 's2', 'ocr_block', 1, '排液阀组件过流材质为合金。'),
+        ('c', 3, 'w1', 'table_cell', 1, '位 号'),
+        ('c', 3, 'w2', 'table_cell', 1, 'P-307A/B'),
+        ('c', 3, 'w3', 'table_cell', 1, '供货范围含配对法兰和紧固件。'),
+        ('c', 3, 'c1', 'table_cell', 2, '位号：P-207A/B'),
+        ('c', 3, 'c2', 'table_cell', 2, '供货范围明确含配对法兰和紧固件。'),
+    ]
+    pieces = model.passages(nodes)
+    reqs = [('time', '须明确完成时间'), ('flange', 'P-207A/B不带配对法兰和紧固件'),
+            ('metal', 'P-207A/B过流材质为304'), ('history', '提供同类项目业绩和合同')]
+    linked = model.retrieve(reqs, {'A': pieces})['A']
+    locs = {rid: {loc for i in ids for loc in pieces[i]['locs']} for rid, ids in linked.items()}
+    assert 'q2' in locs['time'] and 'h2' not in locs['time']
+    assert 'c2' in locs['flange'] and {'h3', 'w3'}.isdisjoint(locs['flange'])
+    assert 's2' not in locs['metal']
+    assert 'h1' in locs['history']
+    assert model._scope_gap('P-207A/B过流材质为304', 'spares', set())
+    assert model._scope_gap('P-207A/B不带配对法兰', None, model._asset_ids('P-307A/B'))
+    assert model._scope_gap('P-207B不带配对法兰', None, model._asset_ids('P-207A'))
+    assert model._scope_gap('P-207A/B不带配对法兰', None, model._asset_ids('P-207B')) is None
+
+
 def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     c, h, _ = owner
     base = _prepared(c, h, db_sessionmaker)

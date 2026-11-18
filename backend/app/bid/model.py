@@ -222,14 +222,17 @@ def _bidders(db, task):
     return list(db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq)))
 
 
-def _bid_nodes(db, task):
+def _bid_nodes(db, task, bidder_id=None):
     """{bidder_id: [(file_id, seq, loc, kind, page, text)]}，按文件录入顺序与 ord。"""
     out = defaultdict(list)
-    rows = db.execute(select(TaskFile.bidder_id, TaskFile.id, TaskFile.seq, DocNode.loc, DocNode.kind, DocNode.page, DocNode.text_enc)
+    query = (select(TaskFile.bidder_id, TaskFile.id, TaskFile.seq, DocNode.loc, DocNode.kind, DocNode.page, DocNode.text_enc)
                       .join(TaskFile, TaskFile.id == DocNode.file_id)
                       .where(DocNode.task_id == task.id, DocNode.part.in_(("body", "textbox")), TaskFile.bidder_id.is_not(None),
                              TaskFile.parser_version.is_not(None))
                       .order_by(TaskFile.seq, DocNode.ord))
+    if bidder_id is not None:
+        query = query.where(TaskFile.bidder_id == bidder_id)
+    rows = db.execute(query)
     for bidder_id, file_id, seq, loc, kind, page, enc in rows:
         text = crypto.decrypt_text(enc) if enc is not None else ""
         if text.strip():
@@ -248,23 +251,86 @@ def _nodes_by_loc(db, task, locs):
     return out
 
 
+_HISTORY = re.compile(r"(?:业绩|历史)(?:证明|材料|合同|清单|一览表|表)|(?:买卖|采购|服务|供货)合同(?:书)?$|合同编号\s*[:：]")
+_SEPARATE_SPARES = re.compile(r"备(?:品)?备件.{0,12}(?:报价|价格|清单).{0,35}(?:单独报价|另行报价|不含在投标总价)")
+_CURRENT_SECTION = re.compile(r"^(?:[一二三四五六七八九十\d]+[、.．]\s*)?(?:安全评价)?(?:报价单|投标函|开标一览表|投标一览表)$")
+_ASSET = re.compile(r"(?<![A-Z\d])([A-Z]{1,5})\s*[-－]\s*(\d{2,5})(?:\s*([A-Z])(?:\s*/\s*([A-Z]))?)?(?![A-Z\d-])", re.I)
+_RESPONSE_SCOPE = re.compile(r"完成时间|完成期限|工期|交货|交付|供货|配对法兰|紧固件|过流材质|过流部分|电动机|报价|税率")
+_HISTORY_QUERY = re.compile(r"业绩|类似项目|历史合同")
+
+
+def evidence_by_loc(nodes):
+    """从明确章节和当前页的位号字段提取本地证据归属。"""
+    pages = defaultdict(list)
+    for file_id, _seq, loc, _kind, page, text in nodes:
+        pages[file_id, page].append((loc, text.strip()))
+    out = {}
+    last_file, scope = None, None
+    for (file_id, page), rows in pages.items():
+        if file_id != last_file:
+            last_file, scope = file_id, None
+        page_assets = set()
+        if page is not None:
+            for index, (_loc, text) in enumerate(rows):
+                if re.match(r"^位\s*号\b|^位\s*号[:：]", text):
+                    page_assets.update(_asset_ids(text) or (_asset_ids(rows[index + 1][1]) if index + 1 < len(rows) else set()))
+        for loc, text in rows:
+            if _CURRENT_SECTION.fullmatch(text):
+                scope = None
+            elif len(text) <= 100 and not re.search(r"\.{3,}|…{2,}", text):
+                if _SEPARATE_SPARES.search(text):
+                    scope = "spares"
+                elif _HISTORY.search(text):
+                    scope = "history"
+            out[loc] = (scope, page_assets)
+    return out
+
+
+def _asset_ids(text):
+    return {(m[1].upper(), m[2], suffix.upper() if suffix else "")
+            for m in _ASSET.finditer(text) for suffix in (m[3], m[4]) if suffix or not m[3]}
+
+
+def _scope_gap(requirement, scope, assets):
+    if _HISTORY_QUERY.search(requirement):
+        return None
+    wanted = _asset_ids(requirement)
+    if (wanted or _RESPONSE_SCOPE.search(requirement)) and scope == "history":
+        return "所引内容位于历史合同或业绩附件，需核对本次响应"
+    if (wanted or _RESPONSE_SCOPE.search(requirement)) and scope == "spares" and not re.search(r"备件|备品", requirement):
+        return "所引内容属于另行报价的备件，需核对本次供货范围"
+    assets = {a for a in assets if a[0] in {w[0] for w in wanted}}
+    if wanted and assets and not any(
+        a[:2] == b[:2] and (not a[2] or not b[2] or a[2] == b[2]) for a in wanted for b in assets
+    ):
+        return "所引内容标注的是另一设备位号，需核对对应设备"
+    return None
+
+
 def passages(nodes):
     """把一家的节点合并成检索片段：[{file_id, seq, locs, page, section, text}]。"""
     out, current, section = [], None, ""
+    evidence = evidence_by_loc(nodes)
     for file_id, seq, loc, kind, page, text in nodes:
+        scope, page_assets = evidence[loc]
         row = _ROW.match(loc) if kind == "table_cell" else None
         same_row = row and current and current.get("row") == row.group(1)
+        if current is None or current["file_id"] != file_id:
+            section = ""
         if kind == "heading" and len(text) <= 60:
             section = text.strip()
         if (current is None or current["file_id"] != file_id or current["page"] != page or kind == "heading"
+                or current["scope"] != scope
                 or (not same_row and len(current["text"]) + len(text) > WINDOW)):
-            current = {"file_id": file_id, "seq": seq, "locs": [], "page": page, "section": section, "text": ""}
+            current = {"file_id": file_id, "seq": seq, "locs": [], "page": page, "section": section,
+                       "scope": scope, "page_assets": page_assets, "text": ""}
             out.append(current)
         current["locs"].append(loc)
         current["text"] += (" ｜ " if same_row else "\n" if current["text"] else "") + text
         current["row"] = row.group(1) if row else None
     for p in out:
         p.pop("row", None)
+        p["assets"] = p.pop("page_assets") or _asset_ids(p["text"])
     return out
 
 
@@ -312,9 +378,11 @@ def retrieve(requirements, per_bidder, matrix=None, queries=None):
         links[bid] = {}
         for rid, text in requirements:
             want = _grams(text)
-            quote = {i for i, p in enumerate(items) if _QUOTE_CONTEXT.search(p['text'])} if _QUOTE_QUERY.search(text) else set()
+            eligible = [i for i, p in enumerate(items) if not _scope_gap(text, p.get("scope"), p.get("assets", set()))]
+            quote = {i for i in eligible if _QUOTE_CONTEXT.search(items[i]['text'])} if _QUOTE_QUERY.search(text) else set()
             scores = []
-            for i, p in enumerate(items):
+            for i in eligible:
+                p = items[i]
                 kw = len(want & grams[i]) / len(want) if want else 0.0
                 score = 0.6 * kw + (0.05 if kw and "偏离" in p["section"] else 0.0)
                 if matrix is not None and matrix.get(bid) is not None and queries is not None:
@@ -638,6 +706,7 @@ def apply(db, task, state, index, items):
     batch = state["batches"][index]
     bid = batch["bidder_id"]
     bidder_uuid = uuid.UUID(bid)
+    scope_by_loc = evidence_by_loc(_bid_nodes(db, task, bidder_uuid).get(bidder_uuid, []))
     snippets = {s["id"]: s for s in state["snippets"][bid] if s["id"] in batch["snippets"]}
     by_n = {state["requirements"][rid]["n"]: rid for rid in batch["reqs"]}
     locs = [l for s in snippets.values() for l in s["locs"]]
@@ -666,7 +735,8 @@ def apply(db, task, state, index, items):
         cited = [s.strip("[] ") for s in (raw_ids if isinstance(raw_ids, list) else re.split(r"[,，、\s]+", str(raw_ids)))]
         cited = [s for s in cited if s in snippets]
         quote = str(item.get("quote") or "").strip()
-        where, cite, source = [], None, ""
+        where, cite, source, scope_gap = [], None, "", None
+        text = crypto.decrypt_text(reqs[rid].text_enc)
         if verdict != "missing":
             cite = "unverified"
             for sid in cited:
@@ -678,18 +748,24 @@ def apply(db, task, state, index, items):
                     hit, source = locs_[0], join(locs_, {l: v[0] for l, v in nodes.items()})
                 if hit:
                     cite, where = "verified", [hit]
-                    break
+                    scope, page_assets = scope_by_loc.get(hit, (None, set()))
+                    assets = page_assets or _asset_ids(source) or _asset_ids(join(locs_, {l: v[0] for l, v in nodes.items()}))
+                    scope_gap = _scope_gap(text, scope, assets)
+                    if scope_gap is None:
+                        break
             if not where and cited:
                 where = [snippets[cited[0]]["locs"][0]]
                 source = nodes.get(where[0], ("", ""))[0]
         place = [{"file_id": snippets_file(snippets, l), "loc": l, "page": pages.get(l)} for l in where]
         reason = restore(str(item.get("reason") or "").strip(), mapping)[:500]
+        adjusted = scope_gap and verdict in ("yes", "no")
         cell = old_cells.pop((uuid.UUID(rid), bidder_uuid), None)
         if cell is None:
             cell = BidCell(task_id=task.id, requirement_id=uuid.UUID(rid), bidder_id=bidder_uuid, source="model")
             db.add(cell)
-        cell.verdict, cell.locs, cell.cite = verdict, place, cite
-        cell.reason_enc = crypto.encrypt_text(reason or "（模型未给出理由）")
+        cell.verdict, cell.locs, cell.cite = "unclear" if adjusted else verdict, place, cite
+        cell_reason = f"{scope_gap}。模型原判{'响应' if verdict == 'yes' else '疑似不响应'}：{reason}" if adjusted else reason
+        cell.reason_enc = crypto.encrypt_text(cell_reason or "（模型未给出理由）")
         written += 1
         # 证据摘录优先取本机原文：还原后的引文逐字出现在原文中才用它，否则用所引节点的原文
         excerpt = restore(quote, mapping)
@@ -697,13 +773,12 @@ def apply(db, task, state, index, items):
             excerpt = source
         excerpt = excerpt[:200]
         group = reqs[rid].group
-        text = crypto.decrypt_text(reqs[rid].text_enc)
         rows = [{"label": "判断理由", "value": reason}] if reason else []
         if place:
             rows.append({"label": "所引片段" + ("（引文未能在片段中核实）" if cite == "unverified" else ""),
                          "places": {bid: [{**place[0], "excerpt": excerpt}]}})
         if verdict == "no":
-            gap = _nonresponse_evidence_gap(cite, reason)
+            gap = scope_gap or _nonresponse_evidence_gap(cite, reason)
             article = _VETO.get(group) if gap is None else None
             title = "响应待核实" if gap else "疑似未响应"
             if gap:
