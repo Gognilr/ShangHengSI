@@ -73,12 +73,12 @@ async function decide(patch: BidConclusionReview) {
       completed.value[key]!.text = reviewedText(saved.status, saved.reason_label, saved.detail)
       clearTimer(key)
       timers.set(key, setTimeout(() => { delete completed.value[key]; originalPositions.delete(key) }, 3000))
-      if (saved.linked.length) linkage.value = { key, count: saved.linked.length }
     } else {
       clearTimer(key)
       delete completed.value[key]
       originalPositions.delete(key)
     }
+    if (saved?.linked.length) linkage.value = { key, count: saved.linked.length }
   } catch {
     delete completed.value[key]
     originalPositions.delete(key)
@@ -161,6 +161,7 @@ defineExpose({ locate })
           </template>
         </li>
       </ol>
+      <p v-if="linkage && !completed[linkage.key]" class="bid-meta">同一来源的 {{ linkage.count }} 条已一并移入参考事项 <button type="button" class="bid-link" @click="decide({ key: linkage.key, status: 'pending' })">撤销</button></p>
     </section>
 
     <section v-if="data.certain.length">
@@ -198,7 +199,6 @@ defineExpose({ locate })
         <ul class="bid-fine">
           <li v-for="[key, v] in done" :key="key">
             {{ fact(v.entry) }} · {{ reviewedText(v.status, v.reason_label, v.detail) }}
-            <span v-if="linkage?.key === key" class="bid-meta">同一来源的 {{ linkage.count }} 条已一并移入参考事项</span>
             <button type="button" class="bid-link" :disabled="busy" @click="decide({ key, status: 'pending' })">撤销</button>
             <p v-if="failed === key" class="save-error" role="alert">保存失败，请重试</p>
           </li>
