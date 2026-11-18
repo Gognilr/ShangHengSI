@@ -19,9 +19,10 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import LlmCall, LlmModel
+from app.db.models import LlmCall, LlmModel, Task
 from app.llm import usage
 from app.redaction.recheck import BlockReason, recheck, recheck_context
 from app.security import crypto
@@ -196,9 +197,8 @@ def call_model(db: Session, *, model_id: int, purpose: str, messages: list[dict]
 
 def _refuse_local_only(db: Session, task_id: uuid.UUID | None) -> None:
     """外发策略为不外发的任务一律不调用模型，不论用途（V31Q-114：原先只在助手用途检查，审核与追问靠调用方）。"""
-    from app.db.models import Task
-    task = db.get(Task, task_id) if task_id is not None else None
-    if task is not None and task.policy == "local_only":
+    # worker 会话可能保留旧 Task，直接查询策略列以获取当前已提交值。
+    if task_id is not None and db.scalar(select(Task.policy).where(Task.id == task_id)) == "local_only":
         raise GatewayError("BLOCKED")
 
 
@@ -291,6 +291,7 @@ def _call_config(
             time.sleep(RETRY_DELAYS[attempt - 1])
         if on_attempt is not None:
             on_attempt()
+        _refuse_local_only(db, task_id)
         started = time.monotonic()
         outcome = _send_once(cfg, url, headers, request_text, on_delta, on_content) if on_content is not None else _send_once(cfg, url, headers, request_text, on_delta)
         duration = int((time.monotonic() - started) * 1000)
@@ -485,14 +486,11 @@ def stream_model(db: Session, *, model_id: int, purpose: str, messages: list[dic
                  user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
                  task_title: str | None = None, extra_task_ids=(), json_mode: bool = False) -> ModelResult:
     """助手 SSE 发送唯一入口：上限、整包复检、单次发送、独立记录；流式失败不重试。"""
-    from app.db.models import Task
     if purpose != "assist":
         raise ValueError("purpose")
     if not messages or not all(isinstance(m.get("content"), str) and m.get("role") in ("system", "user", "assistant") for m in messages):
         raise ValueError("messages")
-    task = db.get(Task, task_id) if task_id is not None else None
-    if task is not None and task.policy == "local_only":
-        raise GatewayError("BLOCKED")
+    _refuse_local_only(db, task_id)
     cfg = load_model(db, model_id)
     if not (cfg.base_url and cfg.api_key and cfg.name):
         raise GatewayError("NOT_CONFIGURED")
@@ -546,6 +544,7 @@ def stream_model(db: Session, *, model_id: int, purpose: str, messages: list[dic
     error = None
     deadline_hit = threading.Event()
     deadline_timer = None
+    _refuse_local_only(db, task_id)
     try:
         with httpx.Client(timeout=min(cfg.timeout_s, STREAM_TOTAL_SECONDS), transport=TRANSPORT, trust_env=False,
                           follow_redirects=False) as client:

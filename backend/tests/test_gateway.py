@@ -287,6 +287,44 @@ def test_retries_exhausted(gw, db_sessionmaker, monkeypatch, mode, code):
         assert exc.value.llm_call_id == calls(db)[-1].id
 
 
+@pytest.mark.parametrize("retry", [False, True])
+def test_local_only_uses_latest_policy_before_send(gw, db_sessionmaker, make_user, monkeypatch, retry):
+    """策略切换早于流式发送或自动重试时，旧会话缓存不能放行。"""
+    user = make_user("alice")
+    requests = use(monkeypatch, "http_500")
+    with db_sessionmaker() as db:
+        task = Task(owner_id=user.id, title="虚构测试", stance="sales", source="outgoing",
+                    policy="ai", status="reviewing")
+        db.add(task)
+        db.commit()
+
+        def switch_policy():
+            with db_sessionmaker() as other:
+                other.get(Task, task.id).policy = "local_only"
+                other.commit()
+            assert task.policy == "ai"  # 长寿命 worker 的 ORM 对象仍缓存旧值
+
+        with pytest.raises(GatewayError) as exc:
+            if retry:
+                monkeypatch.setattr(gateway.time, "sleep", lambda _seconds: switch_policy())
+                call_model(db, purpose="review", messages=REVIEW_MESSAGES, user_id=user.id, task_id=task.id)
+            else:
+                original_recheck = gateway.recheck
+
+                def recheck_then_switch(*args, **kwargs):
+                    reasons = original_recheck(*args, **kwargs)
+                    switch_policy()
+                    return reasons
+
+                monkeypatch.setattr(gateway, "recheck", recheck_then_switch)
+                gateway.stream_model(db, model_id=db.scalar(select(LlmModel.id)), purpose="assist",
+                                     messages=REVIEW_MESSAGES, on_delta=lambda _text: True,
+                                     user_id=user.id, task_id=task.id)
+        assert exc.value.code == "BLOCKED"
+        assert len(requests) == int(retry)
+        assert [c.status for c in calls(db)] == (["error"] if retry else [])
+
+
 def test_retry_false_sends_once(gw, db_sessionmaker, monkeypatch):
     """追问（M6-07）：retry=False 时失败不重试，只有一次请求和一条 error 记录。"""
     requests = use(monkeypatch, "http_500")
