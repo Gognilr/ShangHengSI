@@ -50,7 +50,7 @@
 | V34-B-01a | 项目搜索与筛选、三级文件夹、分类与管理页维护 | Q-27 | Opus，high | Sol 6.1，high | B-06a | 截图交用户 | 已完成（2026-11-17，Claude Opus 5.5，reports/V34-B-01a.md；Q-31；截图用户已确认） |
 | V34-B-08 | 真实标书本机评测与阈值校准 | Q-02 | Opus，high | Sol 6.1，high | B-07 | 用户提供文件与密钥；结果交用户 | 评测完成（2026-11-17，Codex，reports/V34-B-08.md）；Claude 复核：代码无阻断问题，收尾转 B-08b（reports/V34-B-08-review.md） |
 | V34-B-08b | 评测收尾：Q-38 定性、人工真值、模型核对有效率、报价识别、矩阵排序与序号、查看实际发送内容 | Q-37、38 | Opus，high | Sol 6.1，high | B-08 | 用户标注真值；再调模型前问用户 | 进行中（2026-11-18，Codex 接手；矩阵与外发入口已通过虚构样本复验，用户同意合并；人工真值、供货证据与卡片全称待确认；reports/V34-B-08b.md） |
-| V34-B-09 | 初审结论、串通证据链、二次核验与反馈（design/bid-conclusion.md） | Q-39 | Opus，high | Sol 6.1，high | B-08b | 调模型前问次数；截图交用户 | 未开始（设计用户 2026-11-17 确认） |
+| V34-B-09 | 初审结论、串通证据链、二次核验与反馈（design/bid-conclusion.md） | Q-39、Q-53 | Opus，high | Sol 6.1，high | B-08b | 调模型前问次数；截图交用户 | 进行中（2026-11-19，Codex；已实现，待两组公开标书验收，[报告](reports/V34-B-09.md)） |
 | V34-B-06e | 报价分析页重做：一眼看到问题（design/bid-pricing.md） | Q-39 | Opus，medium | Sol 6.1，high | B-09 | 截图交用户 | 未开始（设计用户 2026-11-17 确认） |
 | V34-B-08c | 以公开标书为参考，逐步优化标书初审 | Q-39 | Opus，high | Sol 6.1，high | B-06e | 改进清单交用户确认后实施 | 未开始 |
 | V34-Z | 复核、SPEC 与 frontend.md 第三版、版本号、全量、增量发布包、服务器升级 | — | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部（含 B-08b、B-09、B-06e、B-08c） | 推送标签前问用户 | 未开始 |
