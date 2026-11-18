@@ -7,7 +7,7 @@ import BidOpeningInput from './BidOpeningInput.vue'
 import BidReviewReason from './BidReviewReason.vue'
 import PriceStrip, { type PricePoint } from './charts/PriceStrip.vue'
 import RatioCurve from './charts/RatioCurve.vue'
-import { bidResultsKey, totalView, trimRatio } from './results'
+import { bidResultsKey, openingError, totalView, trimRatio } from './results'
 
 // 报价分析（V34-B-06e，design/bid-pricing.md 与 bid-frontend-spec 第三节）：先结论、只摆异常、证据一点即开、明细默认收起。
 // 顺序固定：结论句 → 报价位置条 → 各家报价（三列）→ 报价方面需你核实 → 修正后报价 → 明细（供复核）。
@@ -48,7 +48,7 @@ async function saveOpening(id: string, body: BidOpeningPriceInput) {
   try {
     ctx.data.value = await bidApi.openingPrice(ctx.projectId, id, body)
     editing.value = ''
-  } catch { failed.value = body.upper ? '请检查金额，大写例如 壹佰万元整' : '请输入金额，例如 1234567.89' }
+  } catch (e) { failed.value = openingError(e, body) }
   finally { saving.value = false }
 }
 function edit(id: string) { editing.value = id; failed.value = ''; finding.value = '' }
@@ -117,7 +117,7 @@ const pairText = (p: Pair) => p.label?.startsWith('分项单价比值恒定') ? 
                   <span class="line">
                     <span v-if="r.total.text" :title="hover(r.p) || undefined">{{ r.total.text }}</span><span v-else class="bid-empty">未识别</span>
                     <el-button size="small" text @click="edit(r.bidder.id)">{{ r.p.manual_total ? '修改' : r.total.text ? '录入' : '填写唱标价' }}</el-button>
-                    <el-button v-if="!r.total.text && pages(r.p).length" size="small" text :aria-expanded="finding === r.bidder.id" @click="finding = finding === r.bidder.id ? '' : r.bidder.id">找报价页</el-button>
+                    <el-button v-if="!r.p.total && pages(r.p).length" size="small" text :aria-expanded="finding === r.bidder.id" @click="finding = finding === r.bidder.id ? '' : r.bidder.id">找报价页</el-button>
                   </span>
                   <small v-if="r.p.manual_total">唱标价 · 人工录入<template v-if="r.p.file_total"> · 文件总价 {{ r.p.file_total }}</template></small>
                   <small v-else-if="r.total.multi.length">出现 {{ r.total.multi.length }} 个总价：{{ r.total.multi.join('、') }}</small>

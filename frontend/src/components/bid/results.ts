@@ -25,6 +25,7 @@ export function useBidReviewKeys(options: {
   onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 import { ElMessageBox } from 'element-plus'
+import { ApiError } from '@/api/http'
 import { bidGroupLabel } from '@/api/bid'
 import type { Bidder, BidCell, BidCheck, BidItem, BidLevel, BidPricing, BidReview, BidReviewStatus, BidSigning, BidSignMark } from '@/api/bid'
 
@@ -256,4 +257,10 @@ export function sameSpans(text: string, other: string, n = 8): [string, boolean]
     i = j
   }
   return out
+}
+
+/** 唱标价保存失败的提示：格式不对按规范文案，其余（初审中、原件已删除等）用后端的说明 */
+export function openingError(e: unknown, body: { upper?: string | null }) {
+  if (e instanceof ApiError && e.status !== 422) return e.message
+  return body.upper ? '请检查金额，大写例如 壹佰万元整' : '请输入金额，例如 1234567.89'
 }

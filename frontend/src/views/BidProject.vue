@@ -12,6 +12,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import BidFiles from '@/components/bid/BidFiles.vue'
 import BidStatus from '@/components/bid/BidStatus.vue'
 import BidderCard from '@/components/bid/BidderCard.vue'
+import { openingError } from '@/components/bid/results'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 import BidRequirements from '@/components/bid/BidRequirements.vue'
 import BidResults from '@/components/bid/BidResults.vue'
@@ -146,7 +147,7 @@ async function saveOpening(bidder: string, body: BidOpeningPriceInput, done: () 
   if (blocked.value) return
   delete openingFailed.value[bidder]
   try { project.value = await bidApi.openingPriceBefore(id.value, bidder, body); done() }
-  catch { openingFailed.value[bidder] = body.upper ? '请检查金额，大写例如 壹佰万元整' : '请输入金额，例如 1234567.89' }
+  catch (e) { openingFailed.value[bidder] = openingError(e, body) }
 }
 async function removeBidder(bidder: string) { await mutate(() => bidApi.removeBidder(id.value, bidder)) }
 async function addBidder() {

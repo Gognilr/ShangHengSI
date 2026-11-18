@@ -150,9 +150,13 @@ def pricing_summary(view, order, shorts, cases, entries, reviewed):
         if item["type"] == "row_calc":
             rows_calc[e["bidder_ids"][0]].append(e)
             continue
+        title = e["title"]
+        if item["type"] == "multi_total":
+            count = len(prices.get(e["bidder_ids"][0], {}).get("totals_found", []))
+            title = f"出现 {count} 个不同的投标总价" + ("（报价范围不同）" if "报价范围不同" in item["title"] else "")
         for bid in e["bidder_ids"]:
-            tags[bid].append({"key": e["id"], "text": e["title"], "tier": e["tier"]})
-        facts.append((TIER[e["tier"]], "、".join(shorts[b] for b in e["bidder_ids"]), e["title"]))
+            tags[bid].append({"key": e["id"], "text": title, "tier": e["tier"]})
+        facts.append((TIER[e["tier"]], "、".join(shorts[b] for b in e["bidder_ids"]), title))
     for bid, rows in rows_calc.items():
         tier = min((e["tier"] for e in rows), key=TIER.get)
         text = f"报价计算错误 {len(rows)} 处"
@@ -172,17 +176,23 @@ def pricing_summary(view, order, shorts, cases, entries, reviewed):
     for bid in tags:
         tags[bid].sort(key=lambda t: TIER[t["tier"]])
     facts.sort(key=lambda f: f[0])
+    # 未识别出总价、或有多个总价 / 币种不同而未参加比较的，如实写明（不得写“未见问题”）
     missing = [b for b in order if b in prices and not prices[b].get("total") and not prices[b].get("totals_found")]
+    apart = [b for b in order if b in prices and b not in missing and prices[b].get("not_compared")]
     compared = (pricing.get("compare") or {}).get("n", 0)
     parts = []
-    if missing and (len(missing) == len(prices) or compared < 2):
-        parts.append(f"{len(missing)} 家未识别出投标总价，报价比较与规律检查未进行；可录入唱标价")
-    elif missing:
-        parts.append(f"{'、'.join(shorts[b] for b in missing)} 未识别出投标总价，报价比较不完整；可录入唱标价")
+    if missing or apart:
+        what = "、".join(s for s in (f"{len(missing)} 家未识别出投标总价" if missing else "",
+                                     f"{len(apart)} 家有多个总价或币种不同" if apart else "") if s)
+        if compared < 2:
+            parts.append(f"{what}，报价比较与规律检查未进行；可录入唱标价")
+        else:
+            names = "、".join(shorts[b] for b in missing + apart)
+            parts.append(f"{what}（{names}），报价比较不完整；可录入唱标价")
     if facts:
         listed = "；".join(f"{who} {what}" for _t, who, what in facts[:4])
         parts.append(f"{len(facts)} 项需处理：{listed}" + ("等" if len(facts) > 4 else ""))
-    elif not missing:
+    elif not missing and not apart:
         parts.append(f"{len(prices)} 家报价均未见问题")
     keys = {t["key"] for rows in tags.values() for t in rows}
     return {"lede": "。".join(parts) + "。" if parts else "", "tags": tags,
