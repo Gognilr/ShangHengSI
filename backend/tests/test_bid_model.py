@@ -102,9 +102,12 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
         code = re.search(r"投标人代号：\[投标人([A-C])\]", content).group(1)
         first = next(iter(snippets))
         items = [{"req": r, "verdict": "响应", "snippet": first, "quote": snippets[first][:12], "reason": "片段写明满足要求"} for r in reqs]
+        if code == "A":
+            items[0].update(verdict="疑似不响应", reason="片段未注明所要求的条件，因此不符合要求。")
+            items[1].update(verdict="疑似不响应", reason="片段明确拒绝提供规定的材料。")
         if code == "B":
             items[0] = {"req": reqs[0], "verdict": "疑似不响应", "snippet": first, "quote": "片段中并不存在的一句话引文",
-                        "reason": "[投标人B]未提供相应材料"}
+                        "reason": "[投标人B]明确拒绝提供相应材料"}
         if code == "C":
             items[1]["conflict"] = "偏离表写无偏离，正文写交货期 45 日"
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps({"items": items}, ensure_ascii=False)}}],
@@ -124,7 +127,17 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     bad = next(cell for cell in cells if cell["bidder_id"] == b and cell["verdict"] == "no")
     assert bad["cite"] == "unverified" and BIDDERS[1] in bad["reason"]  # 理由在本机还原；引文对不上标“待核实”
     issues = [i for i in result["items"] if i["source"] == "model"]
-    assert {(i["type"], i["bidder_ids"][0]) for i in issues} == {("model_response", b), ("deviation_conflict", x)}
+    assert {(i["type"], i["bidder_ids"][0]) for i in issues} == {
+        ("model_response", a), ("model_response", b), ("deviation_conflict", x),
+    }
+    findings = {(i["bidder_ids"][0], i["level"]): i for i in issues if i["type"] == "model_response"}
+    assert set(findings) == {(a, "general"), (a, "veto"), (b, "general")}
+    for bid in (a, b):
+        finding = findings[bid, "general"]
+        assert finding["article"] is None and finding["title"].startswith("响应待核实：")
+        assert any(row["label"] == "核实提示" for row in finding["rows"])
+        cell = next(c for c in cells if c["bidder_id"] == bid and c["requirement_id"] == finding["requirement_id"])
+        assert cell["verdict"] == "no" and cell["cite"] == ("verified" if bid == a else "unverified")
     with db_sessionmaker() as db:
         calls = db.scalars(select(LlmCall.purpose).where(LlmCall.task_id == uuid.UUID(base.rsplit("/", 1)[-1]))).all()
         assert calls.count("bid") == 3

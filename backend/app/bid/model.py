@@ -39,6 +39,25 @@ VERDICTS = {"响应": "yes", "疑似不响应": "no", "不响应": "no", "未找
             "yes": "yes", "no": "no", "missing": "missing", "unclear": "unclear"}
 # 不响应即可能否决投标的分组（参照第五十一条（三）（六））；其余为一般问题
 _VETO = {"qualification": "（参照第五十一条（三））", "substantive": "（参照第五十一条（六））", "veto": "（参照第五十一条（六））"}
+_INSUFFICIENT = re.compile(r"未见|未找到|未检索到|未注明|未体现|未明确|未提供|未说明|未显示|未列(?:明|出)?|"
+                           r"未包含|未提交|未填写|(?:仅|只)(?:列明|列出|列有|列|见|提及)|"
+                           r"(?:未能|无法|不能)(?:确认|核实|判断)|(?:信息|依据|证据|材料)不足|无(?:法)?佐证|缺少")
+_CONTRARY = re.compile(r"超(?:出|过)|低于|高于|短于|长于|明确(?:不|拒绝|排除)|负偏离")
+
+
+def _nonresponse_evidence_gap(cite, reason):
+    if cite != "verified":
+        return "引文未能核实，请对照原件"
+    if not reason:
+        return "模型未给出判断理由，请对照原件"
+    sentences = re.split(r"[。；;，,！？\n]|但(?:是)?|然而", reason)
+    if any(_INSUFFICIENT.search(s) for s in sentences) and not any(
+        _CONTRARY.search(s) and not _INSUFFICIENT.search(s)
+        and not re.search(r"是否|可能|似乎|疑似|(?:未|不|无须)(?:超(?:出|过)|低于|高于|短于|长于)|无负偏离", s)
+        for s in sentences
+    ):
+        return "判断理由缺少明确的相反证据，请对照原件"
+    return None
 _GENERIC = {"投标", "标人", "招标", "标文", "文件", "要求", "必须", "应当", "不得", "提供", "具有", "按照", "规定", "符合",
             "的投", "人须", "人应", "须具", "人必", "本项", "项目", "以上", "以下", "相关", "进行", "其投", "将被", "被否",
             "否决", "参照", "条例", "第五", "五十", "十一", "一条", "实施", "招投", "标投", "投标法"}
@@ -684,8 +703,13 @@ def apply(db, task, state, index, items):
             rows.append({"label": "所引片段" + ("（引文未能在片段中核实）" if cite == "unverified" else ""),
                          "places": {bid: [{**place[0], "excerpt": excerpt}]}})
         if verdict == "no":
-            _model_item(db, task, bid, rid, "model_response", "veto" if group in _VETO else "general",
-                        _VETO.get(group), f"疑似未响应：{_short(text)}", rows + [{"label": "要求", "value": text}], old_items)
+            gap = _nonresponse_evidence_gap(cite, reason)
+            article = _VETO.get(group) if gap is None else None
+            title = "响应待核实" if gap else "疑似未响应"
+            if gap:
+                rows.append({"label": "核实提示", "value": gap})
+            _model_item(db, task, bid, rid, "model_response", "veto" if article else "general",
+                        article, f"{title}：{_short(text)}", rows + [{"label": "要求", "value": text}], old_items)
         conflict = restore(str(item.get("conflict") or "").strip(), mapping)
         if conflict:
             _model_item(db, task, bid, rid, "deviation_conflict", "general", None, f"偏离表与正文不一致：{_short(conflict)}",
