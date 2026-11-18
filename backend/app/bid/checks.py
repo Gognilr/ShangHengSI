@@ -491,7 +491,7 @@ def run(db, task):
     return count
 
 
-def _run_once(db, task):
+def _run_once(db, task, *, progressive=True):
     bidders, nodes, files = _load(db, task.id)
     before = ocr_progress(files)[0]
     active = [b for b in bidders if nodes.get(b.id)]
@@ -513,7 +513,10 @@ def _run_once(db, task):
         summary["coverage"] = coverage(bidders, files, extra)
         summary["finished_at"] = utcnow().isoformat()
         project.check_enc = crypto.encrypt_text(json.dumps(summary, ensure_ascii=False))
-        db.commit()
+        if progressive:
+            db.commit()
+        else:
+            db.flush()
         count += len(items)
 
     started = time.monotonic()

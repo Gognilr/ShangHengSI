@@ -30,29 +30,41 @@ const notEnough = computed(() => {
 const retry = computed(() => data.value?.state === 'failed' && !!data.value.receipt && data.value.receipt.calls < data.value.receipt.total_calls)
 
 let timer: ReturnType<typeof setTimeout> | undefined
+let request = 0, mounted = true
+function schedule() {
+  clearTimeout(timer)
+  if (mounted && (data.value?.state === 'preparing' || data.value?.state === 'running'))
+    timer = setTimeout(() => void load(), 2000)
+}
 async function load() {
-  if (timer) clearTimeout(timer)
+  const current = ++request
+  clearTimeout(timer)
   try {
     const next = await bidApi.model(props.projectId)
+    if (current !== request || !mounted) return
+    error.value = ''
     // 状态或进度变化时通知项目页刷新（结果随批次写入，问题清单跟着更新）
     if (data.value && (data.value.state !== next.state || data.value.progress.done !== next.progress.done)) emit('changed')
     data.value = next
     if (!tab.value && next.bidders.length) tab.value = next.bidders[0]!.id
-  } catch (e) { error.value = e instanceof ApiError ? e.message : '模型核对状态读取失败' }
-  if (data.value?.state === 'preparing' || data.value?.state === 'running') timer = setTimeout(() => void load(), 2000)
+  } catch (e) { if (current === request && mounted) error.value = e instanceof ApiError ? e.message : '模型核对状态读取失败' }
+  if (current === request) schedule()
 }
-watch(() => props.stateKey, () => void load(), { immediate: true })
-onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
+watch(() => props.stateKey, () => { if (!busy.value) void load() }, { immediate: true })
+onBeforeUnmount(() => { mounted = false; ++request; clearTimeout(timer) })
 
 async function act(action: 'prepare' | 'confirm' | 'cancel') {
+  ++request
+  clearTimeout(timer)
   busy.value = true; error.value = ''
   try {
-    data.value = await bidApi.modelAction(props.projectId, action)
+    const next = await bidApi.modelAction(props.projectId, action)
+    if (!mounted) return
+    data.value = next
     if (action === 'confirm') open.value = false
     emit('changed')
-    if (data.value.state === 'preparing' || data.value.state === 'running') { if (timer) clearTimeout(timer); timer = setTimeout(() => void load(), 2000) }
-  } catch (e) { error.value = e instanceof ApiError ? e.message : '操作失败，请重试' }
-  finally { busy.value = false }
+  } catch (e) { if (mounted) error.value = e instanceof ApiError ? e.message : '操作失败，请重试' }
+  finally { busy.value = false; schedule() }
 }
 </script>
 

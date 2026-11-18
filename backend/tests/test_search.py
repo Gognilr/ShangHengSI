@@ -5,10 +5,10 @@ from app.main import API_PREFIX
 URL = API_PREFIX + "/search"
 
 
-def add_task(db_sessionmaker, owner, title, kind="review"):
+def add_task(db_sessionmaker, owner, title, kind="review", purpose="chat"):
     with db_sessionmaker() as db:
         db.add(Task(kind=kind, owner_id=owner.id, title=title, stance="sales", source="incoming",
-                    policy="ai", status="reviewed" if kind == "review" else "active"))
+                    policy="ai", purpose=purpose, status="reviewed" if kind == "review" else "active"))
         db.commit()
 
 
@@ -56,3 +56,15 @@ def test_search_finds_latest_run_findings_of_own_tasks(db_sessionmaker, make_use
     client, csrf = login(alice.username)
     data = client.post(URL, json={"q": "违约金"}, headers={"X-CSRF-Token": csrf}).json()
     assert [(f["title"], f["task_id"]) for f in data["findings"]] == [("违约金过高", str(ids[alice.id]))]
+
+
+def test_tool_history_and_search_follow_session_purpose(db_sessionmaker, make_user, login):
+    user = make_user("search_tools")
+    add_task(db_sessionmaker, user, "虚构采购会议", "assistant", "meeting")
+    add_task(db_sessionmaker, user, "虚构采购翻译", "assistant", "translate")
+    client, csrf = login(user.username)
+    matches = client.post(URL, json={"q": "虚构采购"}, headers={"X-CSRF-Token": csrf}).json()["sessions"]
+    assert {row["purpose"] for row in matches} == {"meeting", "translate"}
+    for purpose in ("meeting", "translate"):
+        history = client.get(API_PREFIX + "/assistant/sessions/history", params={"type": purpose}).json()["items"]
+        assert len(history) == 1 and history[0]["purpose"] == purpose

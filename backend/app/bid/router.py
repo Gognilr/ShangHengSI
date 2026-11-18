@@ -3,7 +3,7 @@ import json
 from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
-from sqlalchemy import func, select, update as sql_update
+from sqlalchemy import delete as sql_delete, func, select, update as sql_update
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
@@ -11,7 +11,7 @@ from app.bid import folders, service
 from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, FolderInput, FolderPatch, ParametersInput, PlaceInput, PasswordInput, ProjectInput, RequirementInput,
                              RequirementPatch, ReviewInput, SigningInput)
 from app.db.base import utcnow
-from app.db.models import BidBidder, BidProject, BidRequirement, Task, TaskFile, User
+from app.db.models import BidBidder, BidItem, BidProject, BidRequirement, Task, TaskFile, User
 from app.db.session import get_db
 from app.parsing.pdf import PdfPasswordError, _open
 from app.parsing.model import ParseError
@@ -194,6 +194,7 @@ def delete_bidder(bidder_id: str, task: Task = Depends(owned), db: Session = Dep
     row = service.bidder(db, task, bidder_id)
     if db.scalar(select(TaskFile.id).where(TaskFile.bidder_id == row.id).limit(1)):
         raise AppError(409, "BIDDER_HAS_FILES", "请先移除此投标人的文件")
+    db.execute(sql_delete(BidItem).where(BidItem.task_id == task.id, BidItem.bidder_ids.contains([str(row.id)])))
     db.delete(row)
     task.last_activity_at = utcnow()
     db.commit()
@@ -364,7 +365,8 @@ def patch_requirement(rid: str, body: RequirementPatch, task: Task = Depends(own
 def delete_requirement(rid: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
     from app.bid import requirements as R
     task = service.editable(db, task)
-    db.delete(R.requirement(db, task, rid))
+    row = R.requirement(db, task, rid)
+    R.delete_rows(db, BidRequirement.id == row.id)
     _changed(db, task)
     db.commit()
     return _requirements(db, task)
@@ -465,6 +467,7 @@ def report(scope: str = Query("full", pattern="^(full|clues)$"), task: Task = De
 @router.patch("/{id}/items/{iid}")
 def review_item(iid: str, body: ReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
     from app.bid import results
+    task = _lock_owned(db, task)
     out = results.review_item(db, task, iid, body.review_status, body.note)
     task.last_activity_at = utcnow()
     db.commit()
@@ -489,11 +492,11 @@ def review_batch(body: BatchReviewInput, task: Task = Depends(owned), db: Sessio
         raise AppError(422, "INVALID", "缺少核对状态")
     task = _lock_owned(db, task)
     db.get(BidProject, task.id, populate_existing=True, with_for_update=True)
-    results.review_batch(db, task, body.items, [(c.requirement_id, c.bidder_id) for c in body.cells], body.review_status)
+    cell_updates = results.review_batch(db, task, body.items, [(c.requirement_id, c.bidder_id) for c in body.cells], body.review_status)
     marks = results.set_signing_many(db, task, [(s.file_id, s.page, s.loc) for s in body.signing], body.mark) if body.signing else None
     task.last_activity_at = utcnow()
     db.commit()
-    return {"items": len(set(body.items)), "cells": len({(c.requirement_id, c.bidder_id) for c in body.cells}), "marks": marks}
+    return {"items": len(set(body.items)), "cells": len(cell_updates), "cell_updates": cell_updates, "marks": marks}
 
 
 @router.get("/{id}/cell")

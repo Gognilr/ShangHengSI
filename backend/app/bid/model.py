@@ -131,7 +131,7 @@ def start(db, task, *, auto=False):
         if auto:
             return
         raise problem
-    project.model_state, project.model_error = "preparing", None
+    project.model_state, project.model_error, project.model_enc = "preparing", None, None
     jobs.enqueue(db, "bid", {"task_id": str(task.id), "stage": "snippets"})
 
 

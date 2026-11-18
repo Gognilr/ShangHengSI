@@ -71,11 +71,11 @@ class ParametersInput(BaseModel):
             return None
         try:
             number = Decimal(value.strip().replace(",", ""))
+            if not number.is_finite() or number < 0:
+                raise ValueError("请填写数字金额")
+            return str(number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
         except InvalidOperation:
             raise ValueError("请填写数字金额") from None
-        if number < 0 or not number.is_finite():
-            raise ValueError("请填写数字金额")
-        return str(number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 class Loc(BaseModel):

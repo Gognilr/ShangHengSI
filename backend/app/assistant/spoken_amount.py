@@ -1,5 +1,6 @@
 """口语金额：逐字稿、智能助手消息与追问启用（V31Q-114 R3）；不猜币种或换算模糊数值。审核文档仍只用文档规则。"""
 import re
+from decimal import Decimal
 
 from app.redaction.detect import Hit
 
@@ -20,7 +21,7 @@ def _pieces(text, m):
     if before in tuple('这那哪每第') or after == '儿' or m['core'] == '一':
         return True
     core = m['core']
-    small = float(core) < 100 if core[0].isdigit() else not re.search('[百千]', core)
+    small = Decimal(core) < 100 if core[0].isdigit() else not re.search('[百千]', core)
     return small and not (after == '' or after == '的' or not re.match(r'\w', after))
 
 

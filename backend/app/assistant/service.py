@@ -1,6 +1,6 @@
 """会话 CRUD：任务行锁串行化文件修改，审计只写标识和数量。"""
 import os
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
@@ -597,25 +597,28 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
 
 
 def history(db: Session, user: User, q: str | None, date_from, date_to, page: int, kind: str | None = None) -> HistoryPage:
-    """历史记录（V32-B-01）：本人的工作台会话、旧审核任务与（有权限时）标书初审项目合并，按最近活动倒序一页返回；会议纪要、翻译不在其中。
-    kind 筛选类型（V34-B-07）：review 文件审核（审核任务与发起过审核的会话）、chat 对话、bid 标书初审。"""
+    """本人的审核、标书和会话按权限合并，按最近活动倒序返回。kind 可筛选审核、标书、对话、会议和翻译。"""
     from datetime import datetime, time, timedelta
     from app.bid import service as bid_service
     from app.db.models import BidItem, BidProject, Finding, ReviewRun
     from app.security.permissions import user_permissions
     from app.tasks.schemas import TaskListItem
     size = tasks.PAGE_SIZE
-    kinds = (Task.kind == "review") | ((Task.kind == "assistant") & (Task.purpose == "chat"))
-    if "use.bid" in user_permissions(db, user.id):
-        kinds |= Task.kind == "bid"
-    conds = [Task.owner_id == user.id, kinds]
+    perms = user_permissions(db, user.id)
     reviewed = exists().where(ReviewRun.task_id == Task.id)
-    if kind == "review":
-        conds.append((Task.kind == "review") | ((Task.kind == "assistant") & reviewed))
-    elif kind == "chat":
-        conds.append((Task.kind == "assistant") & ~reviewed)
-    elif kind == "bid":
-        conds.append(Task.kind == "bid")
+    chat = (Task.kind == "assistant") & (Task.purpose == "chat")
+    types = {"translate": (Task.kind == "assistant") & (Task.purpose == "translate")}
+    if "use.review" in perms:
+        types["review"] = (Task.kind == "review") | (chat & reviewed)
+    if "use.assistant" in perms:
+        types["chat"] = chat & ~reviewed if "use.review" in perms else chat
+    if "use.bid" in perms:
+        types["bid"] = Task.kind == "bid"
+    if "use.meeting" in perms:
+        types["meeting"] = (Task.kind == "assistant") & (Task.purpose == "meeting")
+    if kind and kind not in types:
+        return HistoryPage(items=[], total=0, page=page, page_size=size)
+    conds = [Task.owner_id == user.id, types[kind] if kind else or_(*types.values())]
     # 没有发过消息、没有文件的空会话不列
     # 日期筛选按“最近活动”，与列表显示和排序一致（V32-B-01 评审）
     conds.append((Task.kind != "assistant") | (Task.title != "新会话") | exists().where(TaskFile.task_id == Task.id))
@@ -658,7 +661,7 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
             continue
         row = tasks.list_row(db, t, doc_type)
         last = latest.get(t.id)
-        items.append(HistoryItem(**row.model_dump(), kind="review" if t.kind == "review" else "session",
+        items.append(HistoryItem(**row.model_dump(), kind="review" if t.kind == "review" else "session", purpose=t.purpose,
                                  last_activity_at=t.last_activity_at, run_count=runs.get(t.id, 0), file_count=files.get(t.id, 0),
                                  pending_count=pending.get(last.id, 0) if last else 0,
                                  latest_run_id=last.id if last and last.status in ("completed", "partial") else None,

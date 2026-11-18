@@ -111,7 +111,8 @@ async function confirmList() { await act(() => bidApi.confirm(props.projectId)) 
 
 function locate(item: BidRequirement) { current.value = item.id; focus.value = item.locs[0] ?? null }
 function onKey(event: KeyboardEvent) {
-  if (editing.value || adding.value || (event.target as HTMLElement).closest('input, textarea, .el-select')) return
+  if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing || editing.value || adding.value
+    || (event.target as HTMLElement | null)?.closest('input, textarea, .el-select, [contenteditable="true"]')) return
   const list = flat.value, index = list.findIndex(i => i.id === current.value)
   const key = event.key.toLowerCase()
   if (key === 'j' || key === 'k') {

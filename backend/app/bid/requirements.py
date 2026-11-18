@@ -7,11 +7,11 @@ import json
 import re
 import uuid
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, DecimalException
 
 from sqlalchemy import delete, func, select
 
-from app.db.models import BidProject, BidRequirement, DocNode, Task, TaskFile
+from app.db.models import BidItem, BidProject, BidRequirement, DocNode, Task, TaskFile
 from app.security import crypto
 
 GROUPS = ["qualification", "substantive", "veto", "pricing", "validity", "signing", "format"]
@@ -206,9 +206,9 @@ _EMPTY = {"ceiling": None, "currency": "CNY", "validity_days": None, "deposit": 
 def _money(number, unit):
     try:
         value = Decimal(number.replace(",", "").replace("，", "")) * _UNITS[unit]
-    except InvalidOperation:
+        return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    except DecimalException:
         return None
-    return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def prefill(nodes) -> tuple[dict, dict]:
@@ -271,11 +271,17 @@ def next_seq(db, task_id):
     return (db.scalar(select(func.max(BidRequirement.seq)).where(BidRequirement.task_id == task_id)) or 0) + 1
 
 
+def delete_rows(db, *conditions):
+    ids = select(BidRequirement.id).where(*conditions)
+    db.execute(delete(BidItem).where(BidItem.requirement_id.in_(ids)))
+    db.execute(delete(BidRequirement).where(*conditions))
+
+
 def extract(db, task: Task) -> None:
     """（重新）规则抽取：保留手工加入的行，其余重建；关键参数只填用户尚未填写的项。不提交。"""
     project = db.get(BidProject, task.id)
     nodes = tender_nodes(db, task.id)
-    db.execute(delete(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.source != "manual"))
+    delete_rows(db, BidRequirement.task_id == task.id, BidRequirement.source != "manual")
     db.flush()
     seq = 1
     for hit in rule_hits(nodes):

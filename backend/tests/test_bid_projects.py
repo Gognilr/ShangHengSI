@@ -69,6 +69,9 @@ def test_permissions_owner_and_cross_project_files(owner, make_user, login, db_s
                                ("POST", base + "/bidders", {"name": "虚构乙"}),
                                ("GET", base + "/files/invalid/password", None), ("GET", base + "/sent", None)]:
         assert cb.request(method, path, headers={"X-CSRF-Token": tb}, json=body).status_code == 404
+    task_path = "/api/v1/tasks/" + base.rsplit("/", 1)[-1]
+    assert c.get(task_path + "/parties").status_code == 404
+    assert c.post(task_path + "/redaction/manual", headers=h, json={}).status_code == 404
     assert c.get(ROOT).json()["total"] == 1 and cb.get(ROOT).json()["total"] == 0
     b1 = c.post(base + "/bidders", headers=h, json={"name": "虚构甲"}).json()["bidders"][0]["id"]
     second = create(c, h)
@@ -206,3 +209,25 @@ def test_project_ocr_budget_before_second_file(owner, db_sessionmaker, monkeypat
     drain(db_sessionmaker, base)
     files = c.get(base).json()["files"]
     assert called == [1] and files[0]["state"] == "done" and "1000" in files[1]["error"]
+
+
+def test_deleting_requirement_and_bidder_removes_linked_findings(owner, db_sessionmaker):
+    from app.db.models import BidItem
+
+    c, h, _ = owner
+    base = create(c, h)
+    tid = uuid.UUID(base.rsplit("/", 1)[-1])
+    a = c.post(base + "/bidders", headers=h, json={"name": "虚构甲公司"}).json()["bidders"][0]["id"]
+    b = c.post(base + "/bidders", headers=h, json={"name": "虚构乙公司"}).json()["bidders"][1]["id"]
+    requirements = c.post(base + "/requirements", headers=h, json={"group": "signing", "text": "虚构签章要求"}).json()
+    rid = requirements["items"][0]["id"]
+    item = dict(task_id=tid, kind="issue", level="general", type="fixture", source="local",
+                evidence_enc=crypto.encrypt_text("{}"))
+    with db_sessionmaker() as db:
+        db.add_all([BidItem(**item, bidder_ids=[a], requirement_id=uuid.UUID(rid)),
+                    BidItem(**item, bidder_ids=[a, b]), BidItem(**item, bidder_ids=[b])])
+        db.commit()
+    assert c.delete(f"{base}/requirements/{rid}", headers=h).status_code == 200
+    assert c.delete(f"{base}/bidders/{a}", headers=h).status_code == 200
+    with db_sessionmaker() as db:
+        assert list(db.scalars(select(BidItem.bidder_ids).where(BidItem.task_id == tid))) == [[b]]

@@ -211,6 +211,13 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     assert reviewed.json()["verdict"] == "manual" and reviewed.json()["source"] == "local"
     detail = c.get(base + "/cell", params=ref).json()
     assert detail["cell"]["verdict"] == "manual" and detail["cell"]["review_status"] == "verified"
+    assert c.patch(f"{base}/requirements/{ref['requirement_id']}", headers=h, json={"method": "local"}).status_code == 200
+    assert c.post(base + "/check", headers=h).json()["stage"] == "checking"
+    _jobs(db_sessionmaker, base, "check")
+    refreshed = c.get(base + "/check").json()
+    assert refreshed["state"] == "done"
+    assert all(row["source"] != "model" for row in [*refreshed["cells"], *refreshed["items"]])
+    assert c.get(base + "/sent").json() == previous
 
 
 def test_recheck_blocks_name_left_in_snippet(owner, db_sessionmaker, llm):

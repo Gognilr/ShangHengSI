@@ -66,7 +66,7 @@ const activeMenu = computed(() => {
   if (path === '/bid' || path.startsWith('/bid/')) return 'bid'
   if (path.startsWith('/assistant')) {
     const sid = typeof route.params.sessionId === 'string' ? route.params.sessionId : ''
-    return sid && (route.query.mode === 'review' || sessions.isReview(sid)) ? 'review' : 'workbench'
+    return sid && auth.can('use.review') && (!auth.can('use.assistant') || route.query.mode === 'review' || sessions.isReview(sid)) ? 'review' : 'workbench'
   }
   if (path.startsWith('/meeting')) return 'meeting'
   if (path.startsWith('/translate')) return 'translate'
@@ -99,7 +99,7 @@ async function createSession() {
 // 换了登录用户或改完初始密码后重新取近期会话
 watch(() => [auth.user?.id, auth.mustChangePassword] as const, ([id, mustChange]) => {
   sessions.clear()
-  if (id && !mustChange) void sessions.refresh()
+  if (id && !mustChange && auth.can('use.assistant')) void sessions.refresh()
 }, { immediate: true })
 
 const inSettings = computed(() => route.path.startsWith('/settings'))
@@ -123,7 +123,7 @@ async function onCommand(cmd: string) {
     <aside class="sidebar" :style="{ width: `${collapsed ? 64 : width}px` }" aria-label="主导航">
       <div class="brand"><SiLogo :mark-only="collapsed" /><el-tooltip v-if="!collapsed" content="收起侧栏" placement="right"><button type="button" class="toggle collapse" aria-label="收起侧栏" aria-expanded="true" @click="toggleCollapsed"><PanelLeftClose :size="16" :stroke-width="1.75" /></button></el-tooltip></div>
 
-      <div v-if="auth.can('use.assistant', 'use.review')" class="block">
+      <div v-if="auth.can('use.assistant')" class="block">
         <el-tooltip content="新建会话" placement="right" :disabled="!collapsed">
           <button type="button" class="new-session" :disabled="creating || auth.mustChangePassword" :aria-label="collapsed ? '新建会话' : undefined" @click="createSession">
             <Plus :size="16" :stroke-width="1.75" /><span class="label">新建会话</span>
@@ -149,7 +149,7 @@ async function onCommand(cmd: string) {
       </nav>
 
       <div class="recent">
-        <SidebarSessions v-if="!collapsed && !auth.mustChangePassword" />
+        <SidebarSessions v-if="!collapsed && !auth.mustChangePassword && auth.can('use.assistant')" />
       </div>
 
       <div class="block bottom">

@@ -310,3 +310,36 @@ def test_review_heartbeat_failure_discards_only_provisional_findings(db_sessionm
         review_job._save(db, rid, None, None)
         review_job._finish(db, rid, status="blocked", message="拦截", task_status="awaiting_confirm")
         assert db.get(ReviewRun, rid, populate_existing=True).status == "failed"
+
+
+def test_bid_ocr_routing_and_stale_check_finalization(db_sessionmaker, make_user):
+    from app.db.models import BidProject
+
+    owner = make_user("bid_jobs")
+    with db_sessionmaker() as db:
+        task = Task(kind="bid", owner_id=owner.id, title="虚构标书", stance="purchase", source="incoming",
+                    policy="local_only", status="draft")
+        db.add(task)
+        db.flush()
+        db.add(BidProject(task_id=task.id, opening_date=datetime.now(timezone.utc).date(),
+                          stage="checking", check_state="running"))
+        tid = task.id
+        ocr = jobs.enqueue(db, "bid", {"task_id": str(tid), "stage": "ocr"}).id
+        check = jobs.enqueue(db, "bid", {"task_id": str(tid), "stage": "check"}).id
+        db.commit()
+
+        assert jobs.claim(db, "parse", ("parse", "bid"), bid_ocr=False).id == check
+        assert jobs.claim(db, "parse", ("parse", "bid"), bid_ocr=False) is None
+        assert jobs.claim(db, "ocr", ("bid",), bid_ocr=True).id == ocr
+        current = db.get(Job, check)
+        current.attempts = current.max_attempts
+        current.heartbeat_at = datetime.now(timezone.utc) - jobs.STALE_AFTER - timedelta(seconds=10)
+        db.commit()
+        assert jobs.requeue_stale(db) == 1
+        project = db.get(BidProject, tid)
+        assert (project.stage, project.check_state) == ("ready", "failed")
+
+        project.model_state, project.model_enc = "preparing", b"old-preview"  # 旧版等待重试的片段
+        snippet = jobs.enqueue(db, "bid", {"task_id": str(tid), "stage": "snippets"})
+        jobs.fail(db, snippet.id, "RuntimeError")
+        assert project.model_state == "failed" and project.model_enc is None

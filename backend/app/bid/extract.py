@@ -193,7 +193,7 @@ def _fail(db, task_id, message):
 
 def _local_check(db, task, project):
     """本地检查一（B-03）：失败时退回“待开标”，可再次开始。"""
-    from app.bid import checks
+    from app.bid import checks, results
     if project.check_state != "running":
         return
     if service.originals_expired(db, task.id):
@@ -206,6 +206,7 @@ def _local_check(db, task, project):
         db.commit()
         return
     try:
+        results.clear_model_results(db, project)
         checks.run(db, task)
         project.check_state, project.check_error, project.stage = "done", None, "checked"
         db.commit()
@@ -298,7 +299,9 @@ def handle_bid(db, payload):
         except (ValueError, TypeError, AttributeError):
             _fail(db, task_id, "模型返回的内容无法识别，请重试")
             return
-    project = db.get(BidProject, task_id, populate_existing=True, with_for_update=True)
+    # 与清单编辑共用任务行锁，避免合并和删除要求时以相反顺序更新项目与要求。
+    task = service.lock_task(db, task_id)
+    project = db.get(BidProject, task_id, populate_existing=True, with_for_update=True) if task is not None else None
     if project is None or project.extract_state != "extracting":
         db.rollback()
         return

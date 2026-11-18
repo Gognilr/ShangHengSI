@@ -38,6 +38,7 @@ const greetingTimer = setInterval(() => { if (!document.hidden) greetingHour.val
 // 会话的两种视图（V32-B-01）：直接提问 / 全面审核。切换只改视图，不外发、不清空输入；没有“文件审核”权限的人看不到审核视图；会话以外的审核首页在 /review（V34-A-03）。
 // 工作台首页不再有切换（V34-A-04）；会话里没有审核过时工具条只放“全面审核 →”，审核过或打开过审核视图才显示两个页签
 const canReview = computed(() => auth.can('use.review'))
+const canAsk = computed(() => auth.can('use.assistant'))
 const mode = computed<'ask' | 'review'>(() => canReview.value && (route.query.mode === 'review' || !auth.can('use.assistant')) ? 'review' : 'ask')
 const modeModel = computed<'ask' | 'review'>({
   get: () => mode.value,
@@ -75,7 +76,7 @@ watch(() => session.value?.review_running, (running, was) => {
 })
 watch(reviewDone, syncTitle)
 function seeResult() { modeModel.value = 'review' }
-const showTabs = computed(() => canReview.value && (reviewSeen.value || !!session.value?.run_count || !!session.value?.review_running))
+const showTabs = computed(() => canAsk.value && canReview.value && (reviewSeen.value || !!session.value?.run_count || !!session.value?.review_running))
 // 本会话在侧栏的“审核完成”标记：打开即视为看过
 watch(() => [sessions.finished, id.value], () => { if (id.value) sessions.seen(id.value) }, { immediate: true })
 // 讨论回复保存为该问题的修改建议（V32-B-03）；保存结果直接回传给结果页更新该问题（V321-E-02）
@@ -239,23 +240,23 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         <div v-else class="toolbar">
           <el-button class="title" link @click="rename">{{ session.title }}</el-button>
           <SiSegmented v-if="showTabs" v-model="modeModel" :options="modeOptions" size="small" ariaLabel="会话视图" />
-          <el-button v-else-if="canReview" size="small" link @click="seeResult">全面审核 →</el-button>
+          <el-button v-else-if="canReview && canAsk" size="small" link @click="seeResult">全面审核 →</el-button>
           <el-button size="small" @click="drawerOpen = true"><Files :size="14" :stroke-width="1.75" /><span class="files-label">材料 {{ session.files.length }}</span></el-button>
           <el-dropdown trigger="click" :disabled="working || session.review_running" @command="remove(session)">
             <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
             <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除会话</span></el-dropdown-item></el-dropdown-menu></template>
           </el-dropdown>
         </div>
-        <div v-if="mode === 'ask' && (session.review_running || reviewDone)" class="review-note" role="status">
+        <div v-if="canReview && mode === 'ask' && (session.review_running || reviewDone)" class="review-note" role="status">
           <span v-if="session.review_running">审核进行中，完成后可提问。进度与已出现的问题在“全面审核”里看。</span>
           <span v-else>审核已完成，可以在“全面审核”里查看问题，也可以继续提问。</span>
           <el-button size="small" type="primary" link @click="seeResult">{{ session.review_running ? '查看进度' : '查看结果' }}</el-button>
         </div>
         <Transition name="rise"><Conversation v-if="!homeLike" v-show="mode === 'ask'" :messages="shown" :session-id="id" :reading="session?.status === 'parsing'" @cite="cite" @stop="stop" @retry="retry" /></Transition>
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
-        <Composer v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!shown.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
+        <Composer v-if="canAsk" v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!shown.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
         <p v-if="homeLike && canReview && session.files.length" class="review-link"><el-button link @click="seeResult">对已加入的文件全面审核 →</el-button></p>
-        <ReviewPane v-if="reviewSeen" v-show="mode === 'review'" :key="id" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null">
+        <ReviewPane v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null">
           <template #discussion="{ finding, no, update, locate }">
             <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。"
               :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource, el: HTMLElement) => cite(m, src, el, locate)" @stop="stop" @retry="retry" />

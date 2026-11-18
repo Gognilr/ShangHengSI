@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
-from sqlalchemy import or_, select
+from sqlalchemy import false, or_, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.db.models import Finding, Task, User
@@ -40,6 +40,7 @@ class ReviewHit(BaseModel):
 class SessionHit(BaseModel):
     id: uuid.UUID
     title: str
+    purpose: str
     last_activity_at: datetime
 
 
@@ -66,9 +67,12 @@ class SearchResult(BaseModel):
 
 @router.post("", response_model=SearchResult)
 def search(body: SearchBody, user: User = Depends(current_user), db: DbSession = Depends(get_db)) -> SearchResult:
-    def find(kind: str) -> list[Task]:
+    perms = user_permissions(db, user.id)
+    can_review = "use.review" in perms
+
+    def find(kind: str, *conditions) -> list[Task]:
         return list(db.scalars(
-            select(Task).where(Task.owner_id == user.id, Task.kind == kind,
+            select(Task).where(Task.owner_id == user.id, Task.kind == kind, *conditions,
                                Task.title.ilike(_like_pattern(body.q), escape="\\"))
             .order_by(Task.last_activity_at.desc(), Task.id.desc()).limit(LIMIT)))
 
@@ -78,16 +82,22 @@ def search(body: SearchBody, user: User = Depends(current_user), db: DbSession =
         select(Finding, Task).join(Task, Task.latest_run_id == Finding.run_id)
         .where(Task.owner_id == user.id,
                or_(Finding.title.ilike(pattern, escape="\\"), Finding.problem.ilike(pattern, escape="\\")))
-        .order_by(Task.last_activity_at.desc(), Finding.seq).limit(LIMIT)).all()
+        .order_by(Task.last_activity_at.desc(), Finding.seq).limit(LIMIT)).all() if can_review else []
     views: dict[uuid.UUID, _View] = {}
     hits = []
     for finding, task in rows:
         view = views.setdefault(task.id, _View(db, task.id))
         hits.append(FindingHit(id=finding.id, task_id=task.id, task_title=task.title, kind=task.kind, title=view.text(finding.title) or finding.title))
-    can_bid = "use.bid" in user_permissions(db, user.id)
+    purposes = ["translate"]
+    if "use.meeting" in perms:
+        purposes.append("meeting")
+    if "use.assistant" in perms:
+        purposes.append("chat")
+    review_chat = (Task.purpose == "chat") & Task.latest_run_id.is_not(None) if can_review else false()
     return SearchResult(
         findings=hits,
-        bids=[BidHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at) for t in find("bid")] if can_bid else [],
-        reviews=[ReviewHit(id=t.id, title=t.title, status=t.status, created_at=t.created_at) for t in find("review")],
-        sessions=[SessionHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at) for t in find("assistant")],
+        bids=[BidHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at) for t in find("bid")] if "use.bid" in perms else [],
+        reviews=[ReviewHit(id=t.id, title=t.title, status=t.status, created_at=t.created_at) for t in find("review")] if can_review else [],
+        sessions=[SessionHit(id=t.id, title=t.title, purpose=t.purpose or "chat", last_activity_at=t.last_activity_at)
+                  for t in find("assistant", or_(Task.purpose.in_(purposes), review_chat))],
     )

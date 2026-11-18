@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
-from app.db.models import AssistantMessage, BackupRecord, Finding, Job, ReviewRun, Task, TaskFile
+from app.db.models import AssistantMessage, BackupRecord, BidProject, Finding, Job, ReviewRun, Task, TaskFile
 
 # 心跳超过此时间未更新的 running 任务视为 worker 异常退出（SPEC 7.5）
 STALE_AFTER = timedelta(minutes=15)
@@ -40,11 +40,14 @@ def enqueue(db: Session, type: str, payload: dict, *, run_after: datetime | None
     return job
 
 
-def claim(db: Session, worker_id: str, types: tuple[str, ...]) -> Job | None:
+def claim(db: Session, worker_id: str, types: tuple[str, ...], *, bid_ocr: bool | None = None) -> Job | None:
     """按类型取一条到期的 queued 任务：置 running、更新锁与心跳，并提交。"""
+    queued = select(Job).where(Job.status == "queued", Job.run_after <= func.now(), Job.type.in_(types))
+    if bid_ocr is not None:
+        is_ocr = (Job.type == "bid") & (Job.payload["stage"].astext == "ocr")
+        queued = queued.where(is_ocr if bid_ocr else is_ocr.is_not(True))
     job = db.execute(
-        select(Job)
-        .where(Job.status == "queued", Job.run_after <= func.now(), Job.type.in_(types))
+        queued
         .order_by(Job.id)
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -128,6 +131,20 @@ def finalize_failed(db: Session, job_type: str, payload: object) -> None:
             if task is not None and task.status == "reviewing":
                 task.status = "reviewed"
                 task.last_activity_at = utcnow()
+    elif job_type == "bid":
+        task_id = _uuid(payload, "task_id")
+        project = db.get(BidProject, task_id, populate_existing=True, with_for_update=True) if task_id else None
+        if project is None:
+            return
+        stage = payload.get("stage")
+        if stage == "check" and project.stage == "checking" and project.check_state == "running":
+            project.stage, project.check_state, project.check_error = "ready", "failed", "本地检查中断，请重新开始初审"
+        elif (stage, project.extract_state) in (("redact", "redacting"), ("extract", "extracting")):
+            project.extract_state, project.extract_error = "failed", "模型补充中断，请重新开始"
+        elif stage == "snippets" and project.model_state == "preparing":
+            project.model_state, project.model_error, project.model_enc = "failed", "片段准备中断，请重新准备", None
+        elif stage == "model" and project.model_state == "running":
+            project.model_state, project.model_error = "failed", "模型核对中断，可确认后继续"
     elif job_type == "backup":
         # 同一时间只有一个备份（advisory lock），job 最终失败时仍为 running 的记录就是它留下的（M7 设计 3.4）
         db.execute(update(BackupRecord).where(BackupRecord.status == "running")

@@ -31,7 +31,7 @@ const POLICIES = [
 ]
 function submit() {
   if (!form.title.trim() || !form.opening_date || !form.category_id || props.busy) return
-  emit('submit', { ...form, title: form.title.trim() })
+  emit('submit', { ...form, folder_id: form.folder_id || null, title: form.title.trim() })
 }
 </script>
 

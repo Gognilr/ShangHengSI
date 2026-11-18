@@ -2,7 +2,7 @@
 import { SETTING_TABS } from '@/utils/permissions'
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
-import { AlertCircle, FileSearch, FilePlus, History as HistoryIcon, MessageSquare, MessageSquarePlus, Scale, Search, Settings } from '@lucide/vue'
+import { AlertCircle, FileSearch, FilePlus, History as HistoryIcon, Languages, MessageSquare, MessageSquarePlus, Mic, Scale, Search, Settings } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { searchApi, type SearchResult } from '@/api/search'
 import { useAuthStore } from '@/stores/auth'
@@ -29,10 +29,12 @@ const staticEntries = computed<Entry[]>(() => {
   const list: Entry[] = [
     ...(auth.can('use.review') ? [{ key: 'a-review', group: '操作', label: '新建审核', icon: FilePlus, run: go('/review') }] : []),
     ...(auth.can('use.bid') ? [{ key: 'a-bid', group: '操作', label: '新建标书初审', icon: Scale, run: () => void router.push({ path: '/bid', query: { new: '1' } }) }] : []),
-    ...(auth.can('use.assistant', 'use.review') ? [{ key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
+    ...(auth.can('use.assistant') ? [{ key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
       { key: 'p-assistant', group: '页面', label: '工作台', icon: MessageSquare, run: go('/assistant') }] : []),
     ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '文件审核', icon: FileSearch, run: go('/review') }] : []),
     ...(auth.can('use.bid') ? [{ key: 'p-bid', group: '页面', label: '标书初审', icon: Scale, run: go('/bid') }] : []),
+    ...(auth.can('use.meeting') ? [{ key: 'p-meeting', group: '页面', label: '会议纪要', icon: Mic, run: go('/meeting') }] : []),
+    { key: 'p-translate', group: '页面', label: '翻译', icon: Languages, run: go('/translate') },
     { key: 'p-history', group: '页面', label: '历史记录', icon: HistoryIcon, run: go('/history') },
   ]
   for (const s of SETTING_TABS) {
@@ -46,15 +48,21 @@ const entries = computed<Entry[]>(() => {
   const local = staticEntries.value.filter(e => !q || e.label.toLowerCase().includes(q))
   const reviews: Entry[] = result.value.reviews.map(r => ({ key: `r-${r.id}`, group: '审核', label: r.title, icon: FileSearch, meta: formatDate(r.created_at), run: () => void router.push({ name: 'review-result', params: { taskId: r.id } }) }))
   const bids: Entry[] = result.value.bids.map(b => ({ key: `b-${b.id}`, group: '标书初审', label: b.title, icon: Scale, meta: formatDate(b.last_activity_at), run: () => void router.push(`/bid/${b.id}`) }))
-  const sessions: Entry[] = result.value.sessions.map(s => ({ key: `s-${s.id}`, group: '会话', label: s.title, icon: MessageSquare, meta: formatDate(s.last_activity_at), run: () => void router.push(`/assistant/${s.id}`) }))
+  const sessions: Entry[] = result.value.sessions.map(s => {
+    const [path, group, icon] = s.purpose === 'meeting' ? ['meeting', '会议纪要', Mic] as const
+      : s.purpose === 'translate' ? ['translate', '翻译', Languages] as const : ['assistant', '会话', MessageSquare] as const
+    return { key: `s-${s.id}`, group, label: s.title, icon, meta: formatDate(s.last_activity_at),
+      run: () => void router.push(`/${path}/${s.id}`) }
+  })
   const findings: Entry[] = result.value.findings.map(f => ({ key: `f-${f.id}`, group: '问题', label: f.title, icon: AlertCircle, meta: f.task_title, run: () => void router.push(f.kind === 'review' ? { name: 'review-result', params: { taskId: f.task_id }, query: { finding: f.id } } : { path: `/assistant/${f.task_id}`, query: { mode: 'review' } }) }))
-  return [...local.filter(e => e.group === '操作'), ...local.filter(e => e.group === '页面'), ...reviews, ...bids, ...findings, ...sessions]
+  return [...local.filter(e => e.group === '操作'), ...local.filter(e => e.group === '页面'), ...reviews, ...bids, ...findings,
+    ...['会话', '会议纪要', '翻译'].flatMap(group => sessions.filter(s => s.group === group))]
 })
 const groups = computed(() => {
   const out: { name: string; items: Entry[] }[] = []
   for (const entry of entries.value) {
-    const last = out[out.length - 1]
-    if (last && last.name === entry.group) last.items.push(entry)
+    const group = out[out.length - 1]
+    if (group?.name === entry.group) group.items.push(entry)
     else out.push({ name: entry.group, items: [entry] })
   }
   return out

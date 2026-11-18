@@ -5,6 +5,7 @@ import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
 import { usePasteFiles } from '@/composables/usePasteFiles'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
 import { ArrowLeft, Ellipsis, Languages, UploadCloud } from '@lucide/vue'
 import { assistantApi, confirmationTask, type Message, type Session, type SessionItem } from '@/api/assistant'
@@ -17,11 +18,12 @@ import SiSegmented from '@/components/ui/SiSegmented.vue'
 import StepBar from '@/components/StepBar.vue'
 import MessageItem from '@/components/assistant/MessageItem.vue'
 
-const route = useRoute(), router = useRouter()
+const route = useRoute(), router = useRouter(), auth = useAuthStore()
+const canCloud = computed(() => auth.can('use.translate'))
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), recent = ref<SessionItem[]>([])
 const loading = ref(false), error = ref(''), missing = ref(false), uploading = ref<number | null>(null), dragging = ref(false)
-const engine = ref<'local' | 'cloud'>('cloud'), mtAvailable = ref(false)
+const engine = ref<'local' | 'cloud'>(canCloud.value ? 'cloud' : 'local'), mtAvailable = ref(false)
 let enginePicked = false
 const localAvailable = computed(() => session.value?.mt_enabled ?? mtAvailable.value)
 const LANGS = ['英文', '中文', '日文', '韩文', '俄文', '西班牙文', '法文', '德文', '阿拉伯文']
@@ -32,7 +34,10 @@ let timer: ReturnType<typeof setTimeout> | undefined, version = 0, autoOpened = 
 const file = computed(() => session.value?.files[0] ?? null)
 const results = computed(() => messages.value.filter(m => m.role === 'assistant' && m.template === 'translate'))
 const running = computed(() => results.value.some(m => ['queued', 'streaming'].includes(m.status)))
-const engineOptions = computed(() => [{ value: 'local', label: '本地 · 不外发', disabled: running.value || !localAvailable.value }, { value: 'cloud', label: '云端 · 脱敏后发送', disabled: running.value }])
+const engineOptions = computed(() => [
+  { value: 'local', label: '本地 · 不外发', disabled: running.value || !localAvailable.value },
+  ...(canCloud.value ? [{ value: 'cloud', label: '云端 · 脱敏后发送', disabled: running.value }] : []),
+])
 const stepIndex = computed(() => ({ empty: 0, parsing: 0, failed: 0, confirm: 1, ready: 2 })[step.value])
 const stepTitles = computed(() => [step.value === 'parsing' ? '本机解析中…' : step.value === 'failed' ? '本机解析失败' : '本机解析', engine.value === 'local' ? '无需确认脱敏' : '确认脱敏', '翻译'])
 const step = computed(() => !file.value ? 'empty' : session.value?.status === 'parsing' ? 'parsing' : session.value?.status === 'parse_failed' ? 'failed'
@@ -42,13 +47,13 @@ function failure(e: unknown) { return e instanceof ApiError ? (e.status === 404 
 async function load() {
   const current = ++version
   clearTimeout(timer); error.value = ''; missing.value = false
-  if (!id.value) { session.value = null; messages.value = []; try { const list = await assistantApi.list(1, '', 'translate'); recent.value = list.items; mtAvailable.value = list.mt_enabled; if (!enginePicked) { engine.value = list.mt_enabled ? 'local' : 'cloud'; enginePicked = true } } catch (e) { error.value = failure(e) } return }
+  if (!id.value) { session.value = null; messages.value = []; try { const list = await assistantApi.list(1, '', 'translate'); recent.value = list.items; mtAvailable.value = list.mt_enabled; if (!enginePicked) { engine.value = list.mt_enabled || !canCloud.value ? 'local' : 'cloud'; enginePicked = true } } catch (e) { error.value = failure(e) } return }
   loading.value = !session.value
   try {
     const [detail, list] = await Promise.all([assistantApi.get(id.value), assistantApi.messages(id.value)])
     if (current !== version) return
     session.value = detail; messages.value = list.items
-    if (!enginePicked) { engine.value = detail.mt_enabled ? 'local' : 'cloud'; enginePicked = true }
+    if (!enginePicked) { engine.value = detail.mt_enabled || !canCloud.value ? 'local' : 'cloud'; enginePicked = true }
   } catch (e) {
     // 不存在、已删除或不是本人的：整页显示“页面不存在”（V33-B-03）
     if (current === version) { if (e instanceof ApiError && e.status === 404) missing.value = true; else error.value = failure(e) }
@@ -113,9 +118,9 @@ watch(engine, value => { enginePicked = true; if (value === 'local') confirmOpen
 function confirmed() { confirmOpen.value = false; void load() }
 
 const models = ref<AvailableModel[]>([]), modelId = ref<number>(), sending = ref(false)
-void (async () => { try { models.value = (await modelsApi.list('assist')).items; modelId.value = models.value.find(m => m.is_default)?.id ?? models.value[0]?.id } catch (e) { error.value = failure(e) } })()
+if (canCloud.value) void (async () => { try { models.value = (await modelsApi.list('assist')).items; modelId.value = models.value.find(m => m.is_default)?.id ?? models.value[0]?.id } catch (e) { error.value = failure(e) } })()
 async function start() {
-  if (!session.value || !file.value || sending.value) return
+  if (!session.value || !file.value || sending.value || (engine.value === 'local' ? !localAvailable.value : !canCloud.value)) return
   sending.value = true; error.value = ''
   const body = { model_id: engine.value === 'cloud' ? modelId.value : undefined, message: '', template: 'translate' as const, params: { file_id: file.value.id, target: target.value, engine: engine.value }, use_kb: false, use_history: false }
   try {
@@ -154,7 +159,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
       <template #footer><el-button @click="textOpen = false">取消</el-button><el-button type="primary" :loading="uploading !== null" :disabled="!pasted.trim()" @click="uploadText">下一步</el-button></template>
     </el-dialog>
     <section v-if="recent.length" class="recent">
-      <div class="recent-head"><h2>最近的翻译</h2><router-link to="/history" class="all">全部历史</router-link></div>
+      <div class="recent-head"><h2>最近的翻译</h2><router-link :to="{ name: 'history', query: { type: 'translate' } }" class="all">全部历史</router-link></div>
       <router-link v-for="item in recent" :key="item.id" :to="`/translate/${item.id}`" class="list-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
     </section>
   </div>
@@ -181,7 +186,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
         <template v-else>
           <el-select v-model="target" class="lang" aria-label="目标语言"><el-option v-for="l in LANGS" :key="l" :value="l" :label="`译成${l}`" /></el-select>
           <el-select v-if="engine === 'cloud'" v-model="modelId" class="model" aria-label="翻译用的模型"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
-          <el-button type="primary" :loading="sending || running" :disabled="engine === 'cloud' && !modelId" @click="start">{{ results.length ? '重新翻译' : '开始翻译' }}</el-button>
+          <el-button type="primary" :loading="sending || running" :disabled="engine === 'cloud' ? !modelId : !localAvailable" @click="start">{{ results.length ? '重新翻译' : '开始翻译' }}</el-button>
           <span v-if="engine === 'cloud' && !modelId" class="hint">尚未配置云端模型，请联系管理员</span>
         </template>
       </div>

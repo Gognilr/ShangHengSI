@@ -163,7 +163,10 @@ def test_total_labels_fixture():
         nodes = [BidNode(row[2] if len(row) > 2 else f'F1-PG{row[1]}-B{i}', row[0], 1, None,
                          page=row[1], kind='table_cell' if len(row) > 2 else 'ocr_block')
                  for i, row in enumerate(case['nodes'])]
-        assert {v for v, _c, _n in pricing.labelled_totals(nodes)} == {Decimal(v) for v in case['totals']}, case['name']
+        totals = pricing.labelled_totals(nodes)
+        assert {v for v, _c, _n in totals} == {Decimal(v) for v in case['totals']}, case['name']
+        if 'currency' in case:
+            assert {c for _v, c, _n in totals} == {case['currency']}, case['name']
         if 'row_errors' in case:
             _, findings = pricing.quote_tables(nodes)
             assert [r.locs[0] for r in findings if r.code == 'L-01'] == case['row_errors']

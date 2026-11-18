@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAuthStore } from '@/stores/auth'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { confirmOnce } from '@/utils/confirmOnce'
@@ -109,7 +110,8 @@ function onAiNotice() {
   if (first) onLocalSelect(first.locs)
 }
 // 继续讨论：交给工作台切到提问视图并锚定该问题（V32-B-02）；审核中或原件已删除时不开放
-const discussEnabled = computed(() => !props.session.review_running && !props.session.original_deleted && !!run.value && ['completed', 'partial'].includes(run.value.status))
+const auth = useAuthStore()
+const discussEnabled = computed(() => auth.can('use.assistant') && !props.session.review_running && !props.session.original_deleted && !!run.value && ['completed', 'partial'].includes(run.value.status))
 function onDiscuss(f: Finding) {
   if (!run.value) return
   selectedId.value = f.id; rawHighlight.value = [...f.locs]

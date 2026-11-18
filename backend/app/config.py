@@ -89,7 +89,7 @@ def read_secret_file(path: str) -> bytes:
 
 
 # 可能在日志中带出文档内容的第三方库
-_CONTENT_LOGGERS = ("pdfminer", "pdfplumber", "pypdfium2", "PIL", "openpyxl", "docx", "python_multipart", "multipart")
+_CONTENT_LOGGERS = ("pdfminer", "pdfplumber", "pypdfium2", "PIL", "openpyxl", "docx", "python_multipart", "multipart", "httpx", "httpcore")
 
 
 def setup_logging() -> None:

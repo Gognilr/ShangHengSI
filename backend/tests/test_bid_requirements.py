@@ -63,6 +63,7 @@ def test_rules_counter_parameters_and_confirm(owner, db_sessionmaker):
     assert data["counts"]["star"]["covered"] == TENDER_STARS and any(i["source"] == "manual" for i in data["items"])
 
     assert c.put(base + "/parameters", headers=h, json={**p, "ceiling": "abc"}).status_code == 422
+    assert c.put(base + "/parameters", headers=h, json={**p, "ceiling": "1e30"}).status_code == 422
     assert c.put(base + "/parameters", headers=h, json={**p, "ceiling": "3,600,000.005"}).json()["parameters"]["ceiling"] == "3600000.01"
     assert c.post(base + "/assist/start", headers=h).status_code == 409
     assert c.post(base + "/confirm", headers=h).json()["stage"] == "ready"

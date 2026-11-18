@@ -12,9 +12,11 @@ from dataclasses import replace
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from itertools import combinations
 
-from app.checks.amounts import _check_table, _scan_tables
+from openpyxl.utils.cell import column_index_from_string
+
+from app.checks.amounts import _CURRENCY_TOKEN, _check_table, _scan_tables
 from app.checks.numbers import money, parse_number, rounded
-from app.redaction.detect import find_amounts
+from app.redaction.detect import _CURRENCY, find_amounts
 from app.redaction.normalize import normalize_value
 from app.redaction.tables import table_cell
 
@@ -41,6 +43,10 @@ def _motor_totals(text):
     return found if {scope for _, scope in found} == {'含电机', '不含电机'} else []
 
 
+def _column_index(col):
+    return int(col) if col.isdecimal() else column_index_from_string(col)
+
+
 def labelled_totals(nodes):
     """[(值, 币种, node)]：总价标签、报价页的服务费，支持表头同列与同页相邻节点。
 
@@ -63,6 +69,8 @@ def labelled_totals(nodes):
         text = re.sub(r'人\s*民\s*币', '人民币', text)
         text = re.sub(r'(?<=[零壹贰叁肆伍陆柒捌玖拾佰仟万亿])[_\s]+(?=[零壹贰叁肆伍陆柒捌玖拾佰仟万亿元圆整])', '', text)
         inherited_wan = '万元' in label and not re.search(r'\d|[壹贰叁肆伍陆柒捌玖]', label)
+        match_currency = _CURRENCY_TOKEN.search(label)
+        inherited_currency = _CURRENCY.get(match_currency.group().upper()) if match_currency else None
         hits = find_amounts(text)
         lower = [h for h in hits if h.value is not None and not _UPPER.search(text[h.start:h.end])]
         found = lower or [h for h in hits if h.value is not None]
@@ -70,11 +78,12 @@ def labelled_totals(nodes):
             h = found[0]
             # 单位只写在表头时继承；数值自身有单位时以自身为准。
             scale = 10000 if inherited_wan and h.currency is None and not re.search(r'万?元|万圆', text) else 1
-            return h.value * scale, h.currency
+            return h.value * scale, h.currency or inherited_currency
         match = _BARE_MONEY.fullmatch(text) if bare else None
         if match:
             scale = 10000 if '万' in (match[2] or '') or inherited_wan else 1
-            return Decimal(match[1].replace(',', '')) * scale, 'CNY'
+            unit = match[2]
+            return Decimal(match[1].replace(',', '')) * scale, _CURRENCY.get(unit, inherited_currency)
         return None
 
     section = None
@@ -104,16 +113,21 @@ def labelled_totals(nodes):
             if re.match(r'\s*(?:含配套|有效|的|=)', tail):
                 continue
             tail = re.split(r'不含税|保证金|最高限价', tail, maxsplit=1)[0]
-            label = text[:m.end()] + ('（万元）' if re.search(r'[（(]万元[）)]', tail[:8]) else '')
-            found = amount(tail[:100], label, bare=True)
+            unit_label = re.match(r"\s*\(([^)]{1,20})\)", tail)
+            label = text[:m.end()] + (unit_label[1] if unit_label else "")
+            value_text = tail[unit_label.end():] if unit_label and (
+                _CURRENCY_TOKEN.search(unit_label[1]) or unit_label[1] in ("万元", "小写")
+            ) else tail
+            found = amount(value_text[:100], label, bare=True)
             target = n
             cell = table_cell(n.loc)
-            if found is None and cell and not tail.strip(' :()万元人民币含税小写'):
+            if found is None and cell and not _CURRENCY_TOKEN.sub("", value_text).strip(' :()万元人民币含税小写'):
                 table, col, row = cell
                 # 单独标签格优先同行右侧；列标题则取下一行同列。
-                right = sorted((k[2], v) for k, v in cells.items()
-                               if k[0] == n.file_seq and k[1] == table and k[3] == row and int(k[2]) > int(col))
-                candidates = [right[0][1]] if right else []
+                current_col = _column_index(col)
+                right = [(_column_index(k[2]), v) for k, v in cells.items()
+                         if k[0] == n.file_seq and k[1] == table and k[3] == row and _column_index(k[2]) > current_col]
+                candidates = [min(right, key=lambda pair: pair[0])[1]] if right else []
                 below = cells.get((n.file_seq, table, col, row + 1))
                 if below:
                     candidates.append(below)
@@ -128,7 +142,7 @@ def labelled_totals(nodes):
                 nxt = nodes[i + 1]
                 if (nxt.file_seq == n.file_seq and getattr(nxt, 'page', None) == getattr(n, 'page', None)
                         and not table_cell(nxt.loc) and not _NOT_TOTAL.search(tail)):
-                    found = amount((tail + '\n' + nxt.text)[:140], text, bare=True)
+                    found = amount((value_text + '\n' + nxt.text)[:140], label, bare=True)
                     target = nxt
             if found:
                 out.append((*found, target))
@@ -395,6 +409,8 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None):
             table_total = info.total if info.total is not None else (
                 sum((rounded(it[3]) for it in items), Decimal(0)) if items and all(it[3] is not None for it in items) else None)
         currency_found = next((c for _v, c, _n in totals if c), None)
+        if not distinct and table_total is not None:
+            currency_found = main[1].currency
         facts[b] = {"total": total if total is not None else (table_total if not distinct else None),
                     "currency": currency_found, "totals": totals, "distinct": distinct, "main": main,
                     "table_total": table_total, "results": results, "separate_scopes": separate_scopes}

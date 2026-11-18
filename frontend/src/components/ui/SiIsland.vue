@@ -33,7 +33,7 @@ const dash = computed(() => {
 .is-done { max-width: 380px; padding-right: 4px; }
 .glow { box-shadow: 0 0 0 1px color-mix(in srgb, var(--si-brand-2) 45%, transparent); }
 .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--si-ok); }
+.dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--si-island-ink); }
 .is-error .dot { background: var(--si-danger); }
 .ring { flex: none; width: 16px; height: 16px; }
 .ring svg { display: block; width: 100%; height: 100%; transform: rotate(-90deg); }

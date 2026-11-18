@@ -4,7 +4,7 @@ import json
 import re
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.bid.service import require_originals
 from app.db.models import BidBidder, BidCell, BidItem, BidProject, BidRequirement, DocNode, LlmCall, TaskFile
@@ -130,9 +130,11 @@ def review_batch(db, task, item_ids, cells, status):
     """批量设核对状态（确认本机计算的 n 条、各家都符合）；调用方一次提交，任一项不存在时抛 404、事务回滚。"""
     for iid in dict.fromkeys(item_ids):
         review_item(db, task, iid, status, None)
+    updates = []
     for rid, bid in dict.fromkeys(cells):
-        review_cell(db, task, rid, bid, status, None)
+        updates.append({"requirement_id": rid, "bidder_id": bid, **review_cell(db, task, rid, bid, status, None)})
         db.flush()  # 人工核对行新建的单元格先落库，同一请求中重复引用时不再新建
+    return updates
 
 
 def _apply(row, status, note):
@@ -244,6 +246,13 @@ def page_image(db, task, file_id, page, width):
 
 # ---------------------------------------------------------------- 返回修改材料
 
+def clear_model_results(db, project):
+    # 再次初审使用当前材料生成结论，历史外发记录仍独立保留。
+    for kind in (BidCell, BidItem):
+        db.execute(delete(kind).where(kind.task_id == project.task_id, kind.source == "model"))
+    project.model_state, project.model_error, project.model_enc = None, None, None
+
+
 def reopen(db, task):
     """已完成初审的项目退回“待开标”，可改清单、加减文件后重新开始初审；条目与单元格保留，重跑时沿用核对状态与备注。
     模型核对需重新准备并确认（片段随材料变化）。"""
@@ -254,7 +263,7 @@ def reopen(db, task):
     from app.bid.model import require_idle
     require_idle(project)
     project.stage, project.check_state, project.check_error = "ready", None, None
-    project.model_state, project.model_error = None, None
+    project.model_state, project.model_error, project.model_enc = None, None, None
 
 
 # ---------------------------------------------------------------- 初审结果（结果页与 Word 报告共用）

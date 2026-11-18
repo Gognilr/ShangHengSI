@@ -253,6 +253,7 @@ def _worker_loop(
     heartbeat_seconds: float,
     wakeup: _Wakeup,
     types: tuple[str, ...],
+    bid_ocr: bool | None = None,
 ) -> None:
     # 知识库复用解析组，不增加线程；启动分组参数保留，领取时扩展解析任务类型。
     claim_types = (*types, "kb_import") if "parse" in types else types
@@ -261,7 +262,7 @@ def _worker_loop(
             generation = wakeup.generation
         try:
             with session_factory() as db:
-                job = jobs.claim(db, worker_id, claim_types)
+                job = jobs.claim(db, worker_id, claim_types, bid_ocr=bid_ocr)
                 claimed = (job.id, job.type, job.payload) if job else None
         except Exception as exc:  # noqa: BLE001  数据库暂时不可用时等待后重试
             logger.error("取任务失败: %s", type(exc).__name__)
@@ -295,6 +296,7 @@ def run_worker(
     """启动并发线程，主线程负责定时工作；stop 置位后等待正在处理的任务结束再返回。"""
     groups = (("review", review_concurrency, ("review",)),
               ("parse", parse_concurrency, ("parse", "law_import", "bid")),
+              ("bid-ocr", 1, ("bid",)),
               ("assist", assist_concurrency, ("assist",)),
               ("transcribe", transcribe_concurrency, ("transcribe",)),
               ("translate", 1, ("translate",)),
@@ -303,10 +305,12 @@ def run_worker(
     wakeup = _Wakeup()
     listener = None
     for group, concurrency, types in groups:
+        bid_ocr = {"parse": False, "bid-ocr": True}.get(group)
         for i in range(concurrency):
             threads.append(threading.Thread(
                 target=_worker_loop,
                 args=(session_factory, jobs.make_worker_id(len(threads)), stop, idle_seconds, heartbeat_seconds, wakeup, types),
+                kwargs={"bid_ocr": bid_ocr},
                 name=f"worker-{group}-{i}",
                 daemon=True,
             ))
@@ -364,12 +368,13 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
-    logger.info("worker 启动，版本 %s，审核并发 %s，解析并发 %s，助手并发 %s，维护并发 1",
+    logger.info("worker 启动，版本 %s，审核并发 %s，解析并发 %s，助手并发 %s，标书扫描并发 1，维护并发 1",
                 settings.app_version, settings.worker_review_concurrency, settings.worker_parse_concurrency,
                 settings.worker_assist_concurrency)
     # 每个审核任务另有最多 CHUNK_PARALLEL 个分段线程各用一个连接（V31-U5F-01）
     from app.review.job import CHUNK_PARALLEL
-    pool_size = settings.worker_review_concurrency * (1 + CHUNK_PARALLEL) + settings.worker_parse_concurrency + settings.worker_assist_concurrency + settings.worker_transcribe_concurrency + 3
+    # 标书扫描另有一个按项目持有的咨询锁连接。
+    pool_size = settings.worker_review_concurrency * (1 + CHUNK_PARALLEL) + settings.worker_parse_concurrency + settings.worker_assist_concurrency + settings.worker_transcribe_concurrency + 5
     factory = sessionmaker(bind=get_engine(pool_size=pool_size, max_overflow=pool_size), expire_on_commit=False)
     with factory() as db:
         # 只有一个 worker 容器：启动时仍为 running 的任务都是上次退出时中断的，立即按心跳超时规则处理，

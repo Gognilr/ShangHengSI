@@ -5,6 +5,7 @@ import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
 import { usePasteFiles } from '@/composables/usePasteFiles'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
 import { ArrowLeft, Ellipsis, Mic, UploadCloud } from '@lucide/vue'
 import { assistantApi, confirmationTask, type Message, type Session, type SessionItem } from '@/api/assistant'
@@ -21,7 +22,7 @@ import TranscriptEditor from '@/components/assistant/TranscriptEditor.vue'
 import MeetingRecorder, { type Recorded } from '@/components/meeting/MeetingRecorder.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 
-const route = useRoute(), router = useRouter()
+const route = useRoute(), router = useRouter(), auth = useAuthStore()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), recent = ref<SessionItem[]>([])
 const asrEnabled = ref(true), loading = ref(false), error = ref(''), missing = ref(false), uploading = ref<number | null>(null)
@@ -146,7 +147,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
       </div>
     </template>
     <section v-if="recent.length" class="recent">
-      <div class="recent-head"><h2>最近的会议</h2><router-link to="/history" class="all">全部历史</router-link></div>
+      <div class="recent-head"><h2>最近的会议</h2><router-link :to="{ name: 'history', query: { type: 'meeting' } }" class="all">全部历史</router-link></div>
       <router-link v-for="item in recent" :key="item.id" :to="`/meeting/${item.id}`" class="list-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
     </section>
   </div>
@@ -184,7 +185,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
       <div v-else class="minutes">
         <div class="reading">
           <MessageItem v-for="m in [...minutes].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />
-          <el-button link @click="router.push(`/assistant/${session.id}`)">在智能助手中就这场会议继续提问</el-button>
+          <el-button v-if="auth.can('use.assistant')" link @click="router.push(`/assistant/${session.id}`)">在智能助手中就这场会议继续提问</el-button>
         </div>
       </div>
     </template>

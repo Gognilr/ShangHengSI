@@ -14,7 +14,7 @@ import uuid
 from sqlalchemy import delete, select, text
 
 from app.bid import fileprops
-from app.bid.service import LIMITS, originals_expired
+from app.bid.service import LIMITS, lock_task, originals_expired
 from app.db.base import utcnow
 from app.db.models import BidImage, BidProject, DocNode, Task, TaskFile
 from app.parsing import pdf
@@ -168,13 +168,14 @@ def queue_ocr(db, task_id):
 def _recheck(db, task_id):
     """已完成初审的项目重跑本地检查。检查任务正在运行时不等：它结束时发现识别有进展会自己再跑一轮（checks.run）。"""
     from app.bid import checks
-    project = db.get(BidProject, task_id, populate_existing=True)
-    task = db.get(Task, task_id)
-    if task is None or project is None or project.check_state != "done" or originals_expired(db, task_id):
+    task = lock_task(db, task_id)
+    project = db.get(BidProject, task_id, populate_existing=True) if task is not None else None
+    if project is None or project.stage != "checked" or project.check_state != "done" or originals_expired(db, task_id):
         db.commit()
         return
     try:
-        checks.run(db, task)
+        checks._run_once(db, task, progressive=False)
+        db.commit()
     except Exception:
         logger.warning("标书扫描页识别后重跑本地检查失败 task=%s", task_id)
         db.rollback()

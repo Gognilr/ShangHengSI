@@ -362,10 +362,10 @@ html body { font: var(--si-font-body); color: var(--el-text-color-primary); text
 /* 只延迟显示，不增加等待时长；关闭档也保留这次无位移的单帧显现。 */
 .si-wait { opacity: 0; animation: si-loading-in 1ms linear 300ms forwards; }
 html[data-fx="off"] .el-loading-mask, html[data-fx="off"] .si-wait { opacity: 0; animation: si-loading-in 1ms linear 300ms forwards !important; }
-/* 特效关闭：不留静止的彩色线，只把内容变淡 */
-html[data-fx="off"] .el-loading-mask::before { display: none; }
+/* 精简及关闭档不留静止的彩色线，只把内容变淡。 */
+html:is([data-fx="lite"], [data-fx="off"]) .el-loading-mask::before { display: none; }
 
 /* V33-C-04：文字流光，只定义，C-06 在“等待模型”文案一处使用。唯一用 background-position 的动画，周期与光带相同；两端同为 ink-1，循环无缝。 */
 @keyframes si-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
 .si-shimmer { color: transparent; background: linear-gradient(90deg, var(--si-ink-1) 0, var(--si-ink-1) 35%, var(--si-brand) 44%, var(--si-accent-2) 56%, var(--si-ink-1) 65%, var(--si-ink-1) 100%) 100% 0 / 200% 100% no-repeat; -webkit-background-clip: text; background-clip: text; animation: si-shimmer 2.2s linear infinite; }
-html[data-fx="off"] .si-shimmer { color: var(--si-ink-1); background: none; animation: none; }
+html:is([data-fx="lite"], [data-fx="off"]) .si-shimmer { color: var(--si-ink-1); background: none; animation: none; }

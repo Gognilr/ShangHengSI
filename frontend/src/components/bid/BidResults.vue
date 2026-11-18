@@ -25,17 +25,18 @@ const steps = computed(() => todoSteps(data.value, props.project.bidders))
 const fileNames = computed(() => Object.fromEntries(props.project.files.map(f => [f.id, f.name])))
 const renderable = computed(() => Object.fromEntries(props.project.files.map(f => [f.id, !f.original_deleted && ['pdf', 'jpg', 'jpeg', 'png'].includes(f.ext)])))
 
-let timer: ReturnType<typeof setTimeout> | undefined, saving = 0
+let timer: ReturnType<typeof setTimeout> | undefined, saving = 0, request = 0
 async function load() {
-  if (timer) clearTimeout(timer)
+  const current = ++request
+  clearTimeout(timer)
   try {
     const next = await bidApi.check(props.project.id)
-    if (!saving) { data.value = next; error.value = '' }  // 核对状态保存中时不让轮询结果覆盖本地修改
-  } catch (e) { error.value = e instanceof ApiError ? e.message : '初审结果读取失败' }
-  if (props.live) timer = setTimeout(() => void load(), 2000)
+    if (current === request && !saving) { data.value = next; error.value = '' }
+  } catch (e) { if (current === request) error.value = e instanceof ApiError ? e.message : '初审结果读取失败' }
+  if (current === request && props.live) timer = setTimeout(() => void load(), 2000)
 }
 watch(() => [props.stateKey, props.live], () => void load(), { immediate: true })
-onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
+onBeforeUnmount(() => { ++request; clearTimeout(timer) })
 
 // 乐观更新：先改本地，失败回滚并提示
 async function optimistic(target: BidReview, patch: Partial<BidReview>, send: () => Promise<BidReview>) {
@@ -80,8 +81,14 @@ async function reviewBatch(itemIds: string[], refs: { requirement_id: string; bi
   const before = [...items, ...cells].map(t => [t, t.review_status] as const)
   before.forEach(([t]) => { t.review_status = status })
   notice.value = ''; saving++
-  try { await bidApi.reviewBatch(props.project.id, { items: items.map(i => i.id), cells: refs, review_status: status }); return true }
-  catch (e) {
+  try {
+    const reply = await bidApi.reviewBatch(props.project.id, { items: items.map(i => i.id), cells: refs, review_status: status })
+    for (const update of reply.cell_updates) {
+      const cell = cells.find(c => c.requirement_id === update.requirement_id && c.bidder_id === update.bidder_id)
+      if (cell) Object.assign(cell, update)
+    }
+    return true
+  } catch (e) {
     before.forEach(([t, s]) => { t.review_status = s })
     if (created.length) d.cells = d.cells.filter(c => !created.includes(c))
     notice.value = e instanceof ApiError ? e.message : '核对状态没有保存，已恢复，请重试'

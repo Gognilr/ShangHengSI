@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { assistantApi, type HistoryItem } from '@/api/assistant'
@@ -16,9 +16,12 @@ import { docTypeLabel, stanceLabel, statusLabel, statusTag } from '@/utils/label
 import type { SaveResult } from '@/utils/save'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import { formatDate, formatDateTimeMinute } from '@/utils/time'
-import { FileSearch, MessageSquare, Scale, Search } from '@lucide/vue'
+import { FileSearch, Languages, MessageSquare, Mic, Scale, Search } from '@lucide/vue'
 
-const router = useRouter(), auth = useAuthStore()
+const router = useRouter(), route = useRoute(), auth = useAuthStore()
+const emptyAction = computed(() => auth.can('use.assistant') ? ['去工作台', '/assistant']
+  : auth.can('use.review') ? ['去文件审核', '/review'] : auth.can('use.bid') ? ['去标书初审', '/bid']
+    : auth.can('use.meeting') ? ['去会议纪要', '/meeting'] : ['去翻译', '/translate'])
 const tableMax = useTableMaxHeight(300)
 function fileBadge(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
@@ -47,17 +50,24 @@ async function exportReport(row: HistoryItem) {
     ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
   } finally { exporting.value = '' }
 }
-const canExport = (row: HistoryItem) => row.kind === 'bid' ? row.stage === 'checked' && auth.can('use.export')
-  : !row.reviewing && (!!row.latest_run_id || (row.kind === 'review' && row.status === 'completed_local'))
+const canExport = (row: HistoryItem) => auth.can('use.export') && (row.kind === 'bid' ? row.stage === 'checked'
+  : auth.can('use.review') && !row.reviewing && (!!row.latest_run_id || (row.kind === 'review' && row.status === 'completed_local')))
 const hasRun = (row: HistoryItem) => row.kind === 'bid' ? row.stage === 'checked' : row.kind === 'review' ? row.status === 'reviewed' : row.run_count > 0
 
 // 类型分段（V34-B-07）：标书初审只有有权限的账号才有
-type Kind = 'all' | 'review' | 'bid' | 'chat'
-const kind = ref<Kind>('all')
+type Kind = 'all' | 'review' | 'bid' | 'chat' | 'meeting' | 'translate'
 const kindOptions = computed<{ value: Kind; label: string }[]>(() => [
-  { value: 'all', label: '全部' }, { value: 'review', label: '文件审核' },
-  ...(auth.can('use.bid') ? [{ value: 'bid' as Kind, label: '标书初审' }] : []), { value: 'chat', label: '对话' },
+  { value: 'all', label: '全部' },
+  ...(auth.can('use.review') ? [{ value: 'review' as const, label: '文件审核' }] : []),
+  ...(auth.can('use.bid') ? [{ value: 'bid' as const, label: '标书初审' }] : []),
+  ...(auth.can('use.assistant') ? [{ value: 'chat' as const, label: '对话' }] : []),
+  ...(auth.can('use.meeting') ? [{ value: 'meeting' as const, label: '会议纪要' }] : []),
+  { value: 'translate', label: '翻译' },
 ])
+const kind = computed<Kind>({
+  get: () => kindOptions.value.find(option => option.value === route.query.type)?.value ?? 'all',
+  set: value => { void router.replace({ query: { ...route.query, type: value === 'all' ? undefined : value } }) },
+})
 
 const q = ref('')
 // 日期范围：YYYY-MM-DD（按 Asia/Shanghai 日界，由后端换算）
@@ -103,7 +113,7 @@ onBeforeUnmount(() => clearTimeout(debounce))
 /** 名称第二行小字：类型 · 文件类型 · 立场（V34-A-05，原三列并入名称） */
 function subline(row: HistoryItem) {
   if (row.kind === 'bid') return ['标书初审', row.category, `${row.file_count} 个文件`].filter(Boolean).join(' · ')
-  const parts = [row.kind === 'session' ? '会话' : '审核任务']
+  const parts = [row.kind === 'review' ? '审核任务' : row.purpose === 'meeting' ? '会议纪要' : row.purpose === 'translate' ? '翻译' : '会话']
   if (row.doc_type) parts.push(docTypeLabel(row.doc_type))
   if (row.kind === 'review' || row.run_count) parts.push(`${stanceLabel(row.stance)}立场`)
   return parts.join(' · ')
@@ -115,14 +125,16 @@ function statusView(row: HistoryItem): { text: string; tone: string } {
     return { text: s.label, tone: { run: 'busy', warn: 'warning', ok: 'success', idle: 'info' }[s.tone] }
   }
   if (row.reviewing) return { text: '审核中', tone: 'busy' }
-  if (row.kind === 'session') return { text: row.run_count ? `已审核 ${row.run_count} 轮` : '对话', tone: row.run_count ? 'primary' : 'info' }
+  if (row.purpose === 'meeting' || row.purpose === 'translate') return { text: statusLabel(row.status), tone: statusTag(row.status).type }
+  if (row.kind === 'session') return { text: row.run_count && auth.can('use.review') ? `已审核 ${row.run_count} 轮` : '对话', tone: row.run_count ? 'primary' : 'info' }
   return { text: statusLabel(row.status), tone: statusTag(row.status).type }
 }
 
 function open(row: HistoryItem) {
   // 工作台会话回到工作台（发起过审核的直接看审核视图）；旧审核任务用原页面打开，未完成的由结果页转到对应步骤（V32-B-01）
   if (row.kind === 'bid') { void router.push(`/bid/${row.id}`); return }
-  if (row.kind === 'session') { void router.push({ path: `/assistant/${row.id}`, query: row.run_count ? { mode: 'review' } : {} }); return }
+  if (row.purpose === 'meeting' || row.purpose === 'translate') { void router.push(`/${row.purpose}/${row.id}`); return }
+  if (row.kind === 'session') { void router.push({ path: `/assistant/${row.id}`, query: row.run_count && auth.can('use.review') ? { mode: 'review' } : {} }); return }
   void router.push(row.status === 'draft' ? { name: 'review-new', query: { task: row.id } } : { name: 'review-result', params: { taskId: row.id } })
 }
 
@@ -172,8 +184,8 @@ onMounted(load)
 
     <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['1fr', '150px', '68px', '68px', '148px', '104px', '92px']" />
     <el-table v-else v-loading="loading" :data="items" :max-height="tableMax" class="history-table">
-      <template #empty><EmptyState :icon="FileSearch" title="没有历史记录" description="在工作台提问或完成审核后，记录会出现在这里。"><el-button @click="router.push('/assistant')">去工作台</el-button></EmptyState></template>
-      <el-table-column prop="title" label="名称" min-width="300"><template #default="{ row }"><div class="file-cell"><span v-if="row.kind === 'review'" class="file-badge">{{ fileBadge(row.title) }}</span><span v-else class="file-badge"><Scale v-if="row.kind === 'bid'" :size="16" :stroke-width="1.75" /><MessageSquare v-else :size="16" :stroke-width="1.75" /></span><span class="file-text"><span class="file-title" :title="row.title">{{ row.title }}</span><span class="file-sub">{{ subline(row) }}</span></span></div></template></el-table-column>
+      <template #empty><EmptyState :icon="FileSearch" title="没有历史记录" description="使用已开通的功能后，记录会出现在这里。"><el-button @click="router.push(emptyAction[1]!)">{{ emptyAction[0] }}</el-button></EmptyState></template>
+      <el-table-column prop="title" label="名称" min-width="300"><template #default="{ row }"><div class="file-cell"><span v-if="row.kind === 'review'" class="file-badge">{{ fileBadge(row.title) }}</span><span v-else class="file-badge"><Scale v-if="row.kind === 'bid'" :size="16" :stroke-width="1.75" /><Mic v-else-if="row.purpose === 'meeting'" :size="16" :stroke-width="1.75" /><Languages v-else-if="row.purpose === 'translate'" :size="16" :stroke-width="1.75" /><MessageSquare v-else :size="16" :stroke-width="1.75" /></span><span class="file-text"><span class="file-title" :title="row.title">{{ row.title }}</span><span class="file-sub">{{ subline(row) }}</span></span></div></template></el-table-column>
       <el-table-column label="状态" width="150">
         <template #default="{ row }"><span class="status" :class="`tone-${statusView(row).tone}`"><i class="dot" />{{ statusView(row).text }}</span></template>
       </el-table-column>
