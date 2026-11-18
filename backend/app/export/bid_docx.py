@@ -3,6 +3,7 @@ import io
 import json
 import re
 from datetime import datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from docx.enum.text import WD_COLOR_INDEX
@@ -11,6 +12,7 @@ from sqlalchemy import select
 
 from app.bid import requirements as R, results
 from app.bid.conclusion import DECLARATION as CONCLUSION_DECLARATION
+from app.checks.numbers import money
 from app.db.models import BidBidder, BidProject, BidRequirement, LlmCall, Task, TaskFile, User
 from app.export.report_docx import _clean, _font, _heading, _new_document, _table
 from app.security import crypto
@@ -294,7 +296,7 @@ def _pricing(doc, d: _Data, number="五"):
         return
     lead = "投标人按录入顺序排列；金额由本机计算。"
     if ceiling:
-        lead += f"招标文件最高限价：{ceiling} {d.params.get('currency') or ''}。"
+        lead += f"招标文件最高限价：{money(Decimal(ceiling))} {d.params.get('currency') or ''}。"
     if cmp := pricing.get("compare"):
         lead += (f"参加比较的 {cmp['n']} 家中，最高 {cmp['highest']}，最低 {cmp['lowest']}，平均 {cmp['mean']}"
                  + (f"，最高比最低高 {cmp['spread_pct']}" if cmp.get("spread_pct") else "") + "。")
@@ -363,7 +365,7 @@ def _appendix(doc, d: _Data):
     _heading(doc, "附录三 要求清单全文")
     values = d.params
     forms = f"（{values['deposit_forms']}）" if values.get("deposit_forms") else ""
-    ceiling = f"最高限价 {values['ceiling']} {values.get('currency') or ''}；" if values.get("ceiling") else ""
+    ceiling = f"最高限价 {money(Decimal(values['ceiling']))} {values.get('currency') or ''}；" if values.get("ceiling") else ""
     _para(doc, f"关键参数：{ceiling}投标有效期 {_plain(values.get('validity_days'))} 天；"
                f"保证金 {_plain(values.get('deposit'))}{forms}；联合体 " + {True: "接受", False: "不接受"}.get(values.get("consortium"), "未填")
           + "；报价 " + {True: "含税", False: "不含税"}.get(values.get("tax_included"), "未填") + "。")
