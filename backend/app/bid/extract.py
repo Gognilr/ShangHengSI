@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy import select
 
 from app.bid import requirements as R
+from app.bid import service
 from app.db import jobs
 from app.db.models import BidProject, BidRequirement, DocNode, Task, TaskFile
 from app.llm import gateway
@@ -63,7 +64,7 @@ def chunks(lines):
 def receipt(db, task) -> dict | None:
     """待确认时的回执：将发送的字数、分段（= 调用次数）、本机保护的项数、剩余次数。"""
     project = _project(db, task)
-    if project.extract_state != "awaiting":
+    if task.policy == "local_only" or project.extract_state != "awaiting":
         return None
     lines = _lines(db, task)
     parts = chunks(lines)
@@ -77,6 +78,13 @@ def receipt(db, task) -> dict | None:
             "protected": len(engine.load_redaction_map(db, task.id)), "remaining": left}
 
 
+def require_idle(project):
+    if project.extract_state == "redacting":
+        raise AppError(409, "EXTRACT_BUSY", "招标文件正在脱敏，请完成后再操作")
+    if project.extract_state == "extracting":
+        raise AppError(409, "EXTRACT_BUSY", "模型正在补充要求，请完成后再操作")
+
+
 def start(db, task):
     """开始本机脱敏；不提交。"""
     if task.policy == "local_only":
@@ -84,8 +92,7 @@ def start(db, task):
     if not R.parsed_tender_ids(db, task.id):
         raise AppError(422, "NO_TENDER", "请先加入并解析招标文件")
     project = _project(db, task)
-    if project.extract_state in ("redacting", "extracting"):
-        raise AppError(409, "EXTRACT_BUSY", "模型补充正在进行，请稍候")
+    require_idle(project)
     project.extract_state, project.extract_error = "redacting", None
     jobs.enqueue(db, "bid", {"task_id": str(task.id), "stage": "redact"})
 
@@ -169,8 +176,8 @@ def _parse(content):
 
 def _fail(db, task_id, message):
     db.rollback()
-    project = db.get(BidProject, task_id, populate_existing=True)
-    if project is not None:
+    project = db.get(BidProject, task_id, populate_existing=True, with_for_update=True)
+    if project is not None and project.extract_state in ("redacting", "extracting"):
         project.extract_state, project.extract_error = "failed", message[:200]
         db.commit()
 
@@ -184,10 +191,6 @@ def _local_check(db, task, project):
         checks.run(db, task)
         project.check_state, project.check_error, project.stage = "done", None, "checked"
         db.commit()
-        # 外发策略允许时，用户看本地检查结果的同时在后台准备模型核对的片段（bid.md 3.2）
-        from app.bid import model
-        model.start(db, task, auto=True)
-        db.commit()
     except Exception:
         logger.warning("标书本地检查失败 task=%s", task.id)
         db.rollback()
@@ -195,27 +198,45 @@ def _local_check(db, task, project):
         if project is not None:
             project.check_state, project.check_error, project.stage = "failed", "本地检查中断，请重新开始初审", "ready"
             db.commit()
+        return
+    # 外发策略允许时自动准备片段；入队失败时保留已完成的本地检查，仍可手动准备。
+    from app.bid import model
+    try:
+        model.start(db, task, auto=True)
+        db.commit()
+    except Exception:
+        logger.warning("标书模型核对片段自动入队失败 task=%s", task.id)
+        db.rollback()
 
 
 @job_handler("bid")
 def handle_bid(db, payload):
     task_id = uuid.UUID(str(payload["task_id"]))
-    task = db.get(Task, task_id)
-    project = db.get(BidProject, task_id) if task is not None else None
+    stage = payload.get("stage")
+    model_work = stage in ("redact", "extract", "snippets", "model")
+    task = service.lock_task(db, task_id) if model_work else db.get(Task, task_id)
+    project = db.get(BidProject, task_id, populate_existing=True) if task is not None else None
     if task is None or project is None or task.kind != "bid":
         return
-    if payload.get("stage") == "check":
+    if model_work:
+        if task.policy == "local_only":
+            service.clear_model_work(db, project)
+            db.commit()
+            return
+        # 进行中状态阻止切换策略；耗时处理和模型请求前释放任务行锁。
+        db.commit()
+    if stage == "check":
         _local_check(db, task, project)
         return
-    if payload.get("stage") in ("snippets", "model"):
+    if stage in ("snippets", "model"):
         from app.bid import model
-        model.handle(db, task, project, payload["stage"])
+        model.handle(db, task, project, stage)
         return
-    if payload.get("stage") == "ocr":
+    if stage == "ocr":
         from app.bid.pipeline import ocr_project
         ocr_project(db, task_id)
         return
-    if payload.get("stage") == "redact":
+    if stage == "redact":
         if project.extract_state != "redacting":
             return
         try:
@@ -226,7 +247,7 @@ def handle_bid(db, payload):
             logger.warning("标书招标文件脱敏失败 task=%s", task_id)
             _fail(db, task_id, "本机脱敏失败，请重试")
         return
-    if project.extract_state != "extracting" or task.policy == "local_only":
+    if stage != "extract" or project.extract_state != "extracting":
         return
     from app.models_api import select_model
     try:

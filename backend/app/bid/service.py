@@ -1,7 +1,7 @@
 """标书项目材料管理。所有调用方先校验 use.bid 与 owner；日志只用 id 和数量。"""
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.db import jobs
 from app.db.base import utcnow
@@ -20,14 +20,33 @@ def busy(db, task):
                                              Job.status.in_(("queued", "running"))).limit(1)))
 
 
+def lock_task(db, task_id):
+    """锁任务行并刷新策略；FOR NO KEY UPDATE 与解析节点的外键检查兼容。"""
+    return db.get(Task, task_id, populate_existing=True, with_for_update={"key_share": True})
+
+
+def require_editable(project):
+    if project.stage not in ("preparing", "ready"):
+        raise AppError(409, "PROJECT_LOCKED", "项目已进入初审，不能再修改材料")
+
+
 def editable(db, task):
-    """锁任务行（FOR NO KEY UPDATE，不与解析写入节点时的外键检查互斥），只允许在开始初审前修改材料。"""
-    task = db.scalar(select(Task).where(Task.id == task.id).with_for_update(key_share=True).execution_options(populate_existing=True))
+    """只允许在开始初审前修改材料。"""
+    task = lock_task(db, task.id)
     if task is None:
         raise NotFoundError("TASK_NOT_FOUND", "项目不存在")
-    if db.get(BidProject, task.id).stage not in ("preparing", "ready"):
-        raise AppError(409, "PROJECT_LOCKED", "项目已进入初审，不能再修改材料")
+    require_editable(db.get(BidProject, task.id, populate_existing=True))
     return task
+
+
+def clear_model_work(db, project):
+    """失效外发确认和待发送数据，并将模型要求转为人工核对；调用方持任务行锁。"""
+    project.extract_state, project.extract_error = None, None
+    project.model_state, project.model_error, project.model_enc = None, None, None
+    changed = db.execute(update(BidRequirement).where(BidRequirement.task_id == project.task_id,
+                                                      BidRequirement.method == "model").values(method="manual"))
+    if changed.rowcount:
+        project.requirements_version += 1
 
 
 def bidder(db, task, raw):

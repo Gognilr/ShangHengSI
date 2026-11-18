@@ -99,9 +99,21 @@ def model_requirements(db, task):
                                                         BidRequirement.method == "model").order_by(BidRequirement.seq)))
 
 
+def require_idle(project):
+    if project.model_state == "preparing":
+        raise AppError(409, "MODEL_BUSY", "模型核对片段正在准备，请完成后再操作")
+    if project.model_state == "running":
+        raise AppError(409, "MODEL_BUSY", "模型核对正在发送或处理，请完成后再操作")
+
+
 def start(db, task, *, auto=False):
     """开始准备片段（后台检索与脱敏）；不提交。auto：本地检查完成时自动准备，条件不满足时静默跳过。"""
-    project = _project(db, task)
+    if auto:
+        from app.bid.service import lock_task
+        task = lock_task(db, task.id)
+        if task is None:
+            return
+    project = db.get(BidProject, task.id, populate_existing=True)
     problem = None
     if task.policy == "local_only":
         problem = AppError(409, "LOCAL_ONLY", "本项目只做本地检查，不调用模型")
@@ -162,9 +174,11 @@ def view(db, task) -> dict:
     """片段确认页：各家的片段（原文与 AI 视野）、要求与回执。只在本人页面显示，不进日志。"""
     from app.bid.results import sent_count
     project = _project(db, task)
-    state = _state(project)
     out = {"state": project.model_state, "error": project.model_error, "progress": progress(db, task),
            "receipt": None, "bidders": [], "requirements": [], "sent_count": sent_count(db, task.id)}
+    if task.policy == "local_only":
+        return out
+    state = _state(project)
     if not state.get("batches") or project.model_state not in ("awaiting", "failed", "running", "done"):
         return out
     names = {str(b.id): crypto.decrypt_text(b.name_enc) for b in _bidders(db, task)}
@@ -821,8 +835,8 @@ def _model_item(db, task, bid, rid, type_, level, article, title, rows, old):
 
 def _fail(db, task_id, message):
     db.rollback()
-    project = db.get(BidProject, task_id, populate_existing=True)
-    if project is not None:
+    project = db.get(BidProject, task_id, populate_existing=True, with_for_update=True)
+    if project is not None and project.model_state in ("preparing", "running"):
         project.model_state, project.model_error = "failed", message[:200]
         db.commit()
 
@@ -883,5 +897,5 @@ def handle(db, task, project, stage):
             logger.warning("标书模型核对片段准备失败 task=%s", task.id)
             _fail(db, task.id, "片段准备失败，请重试")
         return
-    if stage == "model" and project.model_state == "running" and task.policy != "local_only":
+    if stage == "model" and project.model_state == "running":
         run(db, task)

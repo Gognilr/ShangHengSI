@@ -115,6 +115,10 @@ def review_cell(db, task, requirement_id, bidder_id, status, note):
             raise AppError(409, "CELL_PENDING", "这一格还没有判断结果，请等检查完成")
         cell = BidCell(task_id=task.id, requirement_id=rid, bidder_id=bid, verdict="manual", source="local")
         db.add(cell)
+    elif req.method == "manual" and task.policy == "local_only" and cell.source == "model" and status is not None:
+        # 切换策略后，人工标注替代旧模型判断；仅编辑备注时保留原判断。
+        cell.verdict, cell.source = "manual", "local"
+        cell.cite, cell.reason_enc, cell.locs = None, None, []
     _apply(cell, status, note)
     return _review(cell)
 
@@ -240,11 +244,11 @@ def page_image(db, task, file_id, page, width):
 def reopen(db, task):
     """已完成初审的项目退回“待开标”，可改清单、加减文件后重新开始初审；条目与单元格保留，重跑时沿用核对状态与备注。
     模型核对需重新准备并确认（片段随材料变化）。"""
-    project = db.get(BidProject, task.id)
+    project = db.get(BidProject, task.id, populate_existing=True)
     if project.stage != "checked":
         raise AppError(409, "NOT_CHECKED", "只有初审完成的项目可以返回修改材料")
-    if project.model_state in ("preparing", "running"):
-        raise AppError(409, "MODEL_BUSY", "模型核对正在进行，请完成后再返回修改")
+    from app.bid.model import require_idle
+    require_idle(project)
     project.stage, project.check_state, project.check_error = "ready", None, None
     project.model_state, project.model_error = None, None
 

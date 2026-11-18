@@ -39,6 +39,8 @@ def _prepared(c, h, sm):
     c.post(base + "/check", headers=h)
     _jobs(sm, base, "check")
     assert c.get(base).json()["model"]["state"] == "preparing"  # 本地检查完成后自动在后台准备片段
+    busy = c.patch(base, headers=h, json=BODY)
+    assert busy.status_code == 409 and "片段正在准备" in busy.json()["message"]
     _jobs(sm, base, "snippets")
     return base
 
@@ -147,6 +149,8 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
 
     llm(handler=handler)
     assert c.post(base + "/model/confirm", headers=h).json()["state"] == "running"
+    busy = c.patch(base, headers=h, json=BODY)
+    assert busy.status_code == 409 and "正在发送" in busy.json()["message"]
     _jobs(db_sessionmaker, base, "model")
     project = c.get(base).json()
     assert project["model"] == {"state": "done", "error": None, "done": 3, "total": 3}
@@ -183,6 +187,28 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
             assert text and not any(value in text for value in GOLDEN["must_not_send"])
             assert recheck(text, real_values=ctx.real_values, terms=ctx.terms,
                            placeholders=ctx.placeholders, kept=ctx.kept) == []
+
+    previous = c.get(base + "/sent").json()
+    with db_sessionmaker() as worker:
+        cached = worker.get(Task, tid)
+        worker.commit()
+        assert cached.policy == "ai"
+        assert c.post(base + "/reopen", headers=h).status_code == 200
+        assert c.patch(base, headers=h, json=BODY).json()["policy"] == "local_only"
+        model.start(worker, cached, auto=True)
+        assert cached.policy == "local_only" and model._project(worker, cached).model_enc is None
+        worker.commit()
+    view = c.get(base + "/model").json()
+    assert view["state"] is None and view["receipt"] is None and not view["bidders"]
+    assert view["sent_count"] == 3 and c.get(base + "/sent").json() == previous
+    assert c.post(base + "/model/confirm", headers=h).json()["code"] == "LOCAL_ONLY"
+
+    ref = {"requirement_id": bad["requirement_id"], "bidder_id": bad["bidder_id"]}
+    detail = c.get(base + "/cell", params=ref).json()
+    assert detail["requirement"]["method"] == "manual" and detail["cell"]["source"] == "model"
+    assert c.put(base + "/cells", headers=h, json={**ref, "review_status": "verified"}).status_code == 200
+    detail = c.get(base + "/cell", params=ref).json()
+    assert detail["cell"]["verdict"] == "manual" and detail["cell"]["review_status"] == "verified"
 
 
 def test_recheck_blocks_name_left_in_snippet(owner, db_sessionmaker, llm):

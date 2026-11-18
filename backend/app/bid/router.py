@@ -17,7 +17,7 @@ from app.parsing.pdf import PdfPasswordError, _open
 from app.parsing.model import ParseError
 from app.security import crypto
 from app.security.deps import load_owned_task
-from app.security.errors import AppError
+from app.security.errors import AppError, NotFoundError
 from app.security.permissions import require
 from app.security.sessions import client_ip
 from app.tasks import service as tasks, storage
@@ -27,6 +27,13 @@ router = APIRouter(prefix="/bid", dependencies=[Depends(require("use.bid"))])
 
 def owned(id: str, user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
     return load_owned_task(db, user, id, "bid")
+
+
+def _lock_owned(db, task):
+    locked = service.lock_task(db, task.id)
+    if locked is None:
+        raise NotFoundError("TASK_NOT_FOUND", "项目不存在")
+    return locked
 
 
 def _list_filters(q, category, stage, date_from, date_to):
@@ -123,11 +130,21 @@ def get(task: Task = Depends(owned), db: Session = Depends(get_db)):
 @router.patch("/{id}")
 def update(body: ProjectInput, user: User = Depends(require("use.bid")), task: Task = Depends(owned), db: Session = Depends(get_db)):
     """名称、开标日期、外发策略只在开始初审前可改；分类与文件夹任何阶段都可改（只改请求中给出的项）。"""
-    project = db.get(BidProject, task.id)
-    if (body.title, body.opening_date, body.policy) != (task.title, project.opening_date, task.policy):
-        task = service.editable(db, task)
-        task.title, task.policy = body.title, body.policy
-        project.opening_date = body.opening_date
+    from app.bid import extract, model
+
+    task = _lock_owned(db, task)
+    project = db.get(BidProject, task.id, populate_existing=True)
+    policy_changed = "policy" in body.model_fields_set and body.policy != task.policy
+    if policy_changed:
+        extract.require_idle(project)
+        model.require_idle(project)
+    if policy_changed or (body.title, body.opening_date) != (task.title, project.opening_date):
+        service.require_editable(project)
+        task.title, project.opening_date = body.title, body.opening_date
+    if policy_changed:
+        task.policy = body.policy
+        if body.policy == "local_only":
+            service.clear_model_work(db, project)
     if "category_id" in body.model_fields_set:
         project.category_id = folders.choose_category(db, body.category_id, project.category_id)
     if "folder_id" in body.model_fields_set:
@@ -315,7 +332,8 @@ def add_requirement(body: RequirementInput, task: Task = Depends(owned), db: Ses
         if node is None or node.file_id != loc.file_id or loc.end > len(node.text) or loc.start >= loc.end:
             raise AppError(422, "INVALID_LOC", "所选原文位置无效，请重新划选")
         locs.append(loc.model_dump())
-    R._add(db, task.id, R.next_seq(db, task.id), body.group, body.text, locs, body.method, "manual")
+    method = R.policy_method(body.method, task.policy)
+    R._add(db, task.id, R.next_seq(db, task.id), body.group, body.text, locs, method, "manual")
     _changed(db, task)
     db.commit()
     return _requirements(db, task)
@@ -330,8 +348,7 @@ def patch_requirement(rid: str, body: RequirementPatch, task: Task = Depends(own
         row.group = body.group
     if body.text is not None:
         row.text_enc, row.redacted_text = crypto.encrypt_text(body.text), None  # 改过的文字由 B-05 发送前重新脱敏
-    if body.method is not None:
-        row.method = body.method
+    row.method = R.policy_method(body.method or row.method, task.policy)
     if body.enabled is not None:
         row.enabled = body.enabled
     _changed(db, task)
@@ -352,8 +369,9 @@ def delete_requirement(rid: str, task: Task = Depends(owned), db: Session = Depe
 @router.post("/{id}/requirements/extract")
 def reextract(task: Task = Depends(owned), db: Session = Depends(get_db)):
     """重新规则抽取：手工加入的行保留，其余按当前招标文件重建。"""
-    from app.bid import requirements as R
+    from app.bid import extract, requirements as R
     task = service.editable(db, task)
+    extract.require_idle(db.get(BidProject, task.id))
     if not R.parsed_tender_ids(db, task.id):
         raise AppError(422, "NO_TENDER", "请先加入并解析招标文件")
     R.extract(db, task)
@@ -378,13 +396,12 @@ def model_assist(action: str, task: Task = Depends(owned), db: Session = Depends
 @router.post("/{id}/confirm")
 def confirm_requirements(task: Task = Depends(owned), db: Session = Depends(get_db)):
     """确认关键参数与要求清单：项目进入“待开标”。"""
-    from app.bid import requirements as R
+    from app.bid import extract, requirements as R
     task = service.editable(db, task)
     project = db.get(BidProject, task.id)
     if not R.parsed_tender_ids(db, task.id):
         raise AppError(422, "NO_TENDER", "请先加入并解析招标文件")
-    if project.extract_state in ("redacting", "extracting"):
-        raise AppError(409, "EXTRACT_BUSY", "模型补充正在进行，请完成后再确认")
+    extract.require_idle(project)
     if not db.scalar(select(func.count()).select_from(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))):
         raise AppError(422, "NO_REQUIREMENTS", "要求清单为空，请至少保留一条要求")
     state = R.load_state(project)
@@ -399,9 +416,11 @@ def confirm_requirements(task: Task = Depends(owned), db: Session = Depends(get_
 @router.post("/{id}/check")
 def start_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
     """开始初审：本地检查在后台进行；开始后材料锁定。"""
+    from app.bid import extract
     from app.db import jobs
     task = service.editable(db, task)
     project = db.get(BidProject, task.id)
+    extract.require_idle(project)
     if project.stage != "ready":
         raise AppError(409, "NOT_READY", "请先确认关键参数与要求清单")
     if service.busy(db, task) or db.scalar(select(TaskFile.id).where(TaskFile.task_id == task.id, TaskFile.parser_version.is_(None),
@@ -450,6 +469,7 @@ def review_item(iid: str, body: ReviewInput, task: Task = Depends(owned), db: Se
 @router.put("/{id}/cells")
 def review_cell(body: CellReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
     from app.bid import results
+    task = _lock_owned(db, task)
     out = results.review_cell(db, task, body.requirement_id, body.bidder_id, body.review_status, body.note)
     task.last_activity_at = utcnow()
     db.commit()
@@ -462,7 +482,8 @@ def review_batch(body: BatchReviewInput, task: Task = Depends(owned), db: Sessio
     from app.bid import results
     if (body.items or body.cells) and body.review_status is None:
         raise AppError(422, "INVALID", "缺少核对状态")
-    db.scalar(select(BidProject).where(BidProject.task_id == task.id).with_for_update().execution_options(populate_existing=True))
+    task = _lock_owned(db, task)
+    db.get(BidProject, task.id, populate_existing=True, with_for_update=True)
     results.review_batch(db, task, body.items, [(c.requirement_id, c.bidder_id) for c in body.cells], body.review_status)
     marks = results.set_signing_many(db, task, [(s.file_id, s.page, s.loc) for s in body.signing], body.mark) if body.signing else None
     task.last_activity_at = utcnow()
@@ -481,7 +502,8 @@ def cell_detail(requirement_id: str, bidder_id: str, task: Task = Depends(owned)
 def mark_signing(body: SigningInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
     """签章页速览的人工标注：已盖章 / 缺章 / 看不清，mark 为空即清除。"""
     from app.bid import results
-    db.scalar(select(BidProject).where(BidProject.task_id == task.id).with_for_update().execution_options(populate_existing=True))
+    task = _lock_owned(db, task)
+    db.get(BidProject, task.id, populate_existing=True, with_for_update=True)
     marks = results.set_signing(db, task, body.file_id, body.page, body.loc, body.mark)
     task.last_activity_at = utcnow()
     db.commit()
@@ -501,8 +523,7 @@ def page_image(fid: str, page: int, width: int = Query(320, ge=120, le=1600), ta
 def reopen(task: Task = Depends(owned), db: Session = Depends(get_db)):
     """返回修改材料：退回“待开标”，重新开始初审时沿用已有的核对状态与备注。"""
     from app.bid import results
-    task = db.scalar(select(Task).where(Task.id == task.id).with_for_update(key_share=True).execution_options(populate_existing=True))
-    db.get(BidProject, task.id, populate_existing=True)
+    task = _lock_owned(db, task)
     results.reopen(db, task)
     task.last_activity_at = utcnow()
     db.commit()
@@ -530,7 +551,7 @@ def model_action(action: str, task: Task = Depends(owned), db: Session = Depends
     from app.bid import model
     if action not in ("prepare", "confirm", "cancel"):
         raise AppError(404, "NOT_FOUND", "接口不存在")
-    task = db.scalar(select(Task).where(Task.id == task.id).with_for_update(key_share=True).execution_options(populate_existing=True))
+    task = _lock_owned(db, task)
     db.get(BidProject, task.id, populate_existing=True)
     {"prepare": model.start, "confirm": model.confirm, "cancel": model.cancel}[action](db, task)
     task.last_activity_at = utcnow()

@@ -183,7 +183,11 @@ def default_method(group, text, policy):
         return "local"  # 超限价、大小写、多个报价都能本地算
     if group == "validity" and re.search(r"有效期|保证金", text) and re.search(r"\d|金额|天|日", text):
         return "local"
-    return "manual" if policy == "local_only" else "model"
+    return policy_method("model", policy)
+
+
+def policy_method(method, policy):
+    return "manual" if method == "model" and policy == "local_only" else method
 
 
 # ---------------------------------------------------------------- 关键参数
@@ -285,7 +289,7 @@ def extract(db, task: Task) -> None:
             if key in sources:
                 state["sources"][key] = sources[key]
     for group, method, text in ARTICLE_51:
-        method = "manual" if method == "model" and task.policy == "local_only" else method
+        method = policy_method(method, task.policy)
         enabled = not (text.startswith("投标联合体") and state["values"].get("consortium") is False)
         _add(db, task.id, seq, group, ARTICLE_PREFIX + text, [], method, "default", enabled)
         seq += 1
@@ -293,11 +297,13 @@ def extract(db, task: Task) -> None:
     for row in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.source == "manual")
                           .order_by(BidRequirement.seq)):
         row.seq = seq
+        row.method = policy_method(row.method, task.policy)
         seq += 1
     state["extracted_from"] = parsed_tender_ids(db, task.id)
     save_state(project, state)
     project.requirements_version += 1
-    project.extract_state, project.extract_error = None, None
+    if project.extract_state not in ("redacting", "extracting"):
+        project.extract_state, project.extract_error = None, None
 
 
 def _covered(marker, rows):

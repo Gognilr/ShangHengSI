@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.bid.extract import handle_bid
-from app.db.models import Job, LlmCall
+from app.db.models import BidProject, Job, LlmCall, Task
 from tests.fixtures.bid.samples import TENDER_STARS, TENDER_VETOES, tender
 from tests.review_support import env, llm  # noqa: F401
 from tests.test_bid_projects import BODY, ROOT, drain, owner  # noqa: F401
@@ -93,6 +93,9 @@ def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, l
 
     llm(handler=handler)
     assert c.post(base + "/assist/confirm", headers=h).json()["extract_state"] == "extracting"
+    busy = c.patch(base, headers=h, json=BODY)
+    assert busy.status_code == 409 and "补充要求" in busy.json()["message"]
+    assert c.post(base + "/requirements/extract", headers=h).json()["code"] == "EXTRACT_BUSY"
     run_bid_jobs(db_sessionmaker, base)
     data = c.get(base + "/requirements").json()
     assert data["extract_state"] == "done"
@@ -110,3 +113,70 @@ def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, l
     assert c.get(base).json()["sent_count"] == c.get(base + "/model").json()["sent_count"] == 1
     records = c.get(base + "/sent").json()
     assert len(records) == 1 and records[0]["text"] is None
+
+
+def test_switch_to_local_invalidates_receipt_and_normalizes_requirements(owner, db_sessionmaker, llm):
+    c, h, _ = owner
+    base = project(c, h, db_sessionmaker, policy="ai")
+    sent = llm()
+    assert c.post(base + "/assist/start", headers=h).json()["extract_state"] == "redacting"
+    busy = c.patch(base, headers=h, json=BODY)
+    assert busy.status_code == 409 and "脱敏" in busy.json()["message"]
+    run_bid_jobs(db_sessionmaker, base)
+    before = c.get(base + "/requirements").json()
+    assert before["receipt"] and any(row["method"] == "model" for row in before["items"])
+
+    assert c.patch(base, headers=h, json=BODY).json()["policy"] == "local_only"
+    data = c.get(base + "/requirements").json()
+    assert data["extract_state"] is None and data["receipt"] is None
+    assert data["version"] == before["version"] + 1
+    assert all(row["method"] != "model" for row in data["items"])
+    assert c.post(base + "/assist/confirm", headers=h).json()["code"] == "LOCAL_ONLY"
+
+    added = c.post(base + "/requirements", headers=h, json={"group": "signing", "text": "虚构人工核对要求", "method": "model"})
+    assert added.status_code == 201
+    row = next(row for row in added.json()["items"] if row["source"] == "manual")
+    assert row["method"] == "manual"
+    patched = c.patch(f"{base}/requirements/{row['id']}", headers=h, json={"method": "model", "enabled": False})
+    assert patched.status_code == 200
+    assert next(i for i in patched.json()["items"] if i["id"] == row["id"])["method"] == "manual"
+
+    assert c.patch(base, headers=h, json={**BODY, "policy": "ai"}).status_code == 200
+    assert c.post(base + "/assist/confirm", headers=h).json()["code"] == "EXTRACT_STATE"
+    assert not sent
+
+
+@pytest.mark.parametrize(("stage", "state_field", "state"), [
+    ("redact", "extract_state", "redacting"),
+    ("extract", "extract_state", "extracting"),
+    ("snippets", "model_state", "preparing"),
+    ("model", "model_state", "running"),
+])
+def test_old_queued_model_work_finishes_under_local_policy(stage, state_field, state, owner, db_sessionmaker, llm):
+    from app.db import jobs
+    from app.security import crypto
+
+    c, h, _ = owner
+    base = ROOT + "/" + c.post(ROOT, headers=h, json={**BODY, "policy": "ai"}).json()["id"]
+    task_id = uuid.UUID(base.rsplit("/", 1)[-1])
+    sent = llm()
+    with db_sessionmaker() as worker:
+        cached = worker.get(Task, task_id)
+        worker.commit()
+        with db_sessionmaker() as db:
+            legacy = db.get(BidProject, task_id)
+            setattr(legacy, state_field, state)
+            legacy.model_enc = crypto.encrypt_text('{}')
+            jobs.enqueue(db, "bid", {"task_id": str(task_id), "stage": stage})
+            db.get(Task, task_id).policy = "local_only"  # 模拟旧版本允许切换后留下的排队作业
+            db.commit()
+        assert cached.policy == "ai"
+        job = jobs.claim(worker, "test-bid-policy", ("bid",))
+        assert job is not None
+        handle_bid(worker, job.payload)
+        jobs.complete(worker, job.id)
+        worker.refresh(job)
+        assert job.status == "done"
+        stopped = worker.get(BidProject, task_id, populate_existing=True)
+        assert stopped.extract_state is None and stopped.model_state is None and stopped.model_enc is None
+        assert cached.policy == "local_only" and not sent
