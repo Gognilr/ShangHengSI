@@ -103,6 +103,18 @@ def _group(sentence, marked, veto):
     return "substantive"
 
 
+def _hit_text(piece):
+    text = MARK.sub('', piece).strip()
+    note = re.search(r'注\s*[:：]\s*', text)
+    if note:
+        header = text[:note.start()]
+        # 扫描数据表将编校/会签栏与注释粘成一块时，不把栏头日期变成要求。
+        if (re.search(r'编\s*制|会签', header) and re.search(r'校\s*对|审\s*核', header)
+                and not re.search(r'应|须|需|不得|不允许', header)):
+            text = text[note.end():].strip()
+    return text or piece
+
+
 def markers(nodes, sections=None):
     """原文中的 ★ 句与否决句（格式章节除外）：[(kind, node, start, end)]，kind 为 star / veto。"""
     sections = sections or _sections(nodes)
@@ -141,7 +153,7 @@ def rule_hits(nodes) -> list[Hit]:
             rows_done.add(key)
             cells = by_row[key]
             text = " ｜ ".join(c.text.strip() for c in cells if c.text.strip())
-            hits.append(Hit(_group(text, True, bool(VETO.search(text))), MARK.sub("", text).strip(" ｜") or text,
+            hits.append(Hit(_group(text, True, bool(VETO.search(text))), _hit_text(text).strip(" ｜"),
                             [{"file_id": c.file_id, "loc": c.loc, "start": 0, "end": len(c.text)} for c in cells],
                             True, bool(VETO.search(text))))
             continue
@@ -151,7 +163,7 @@ def rule_hits(nodes) -> list[Hit]:
             must = sec == "body" and len(piece) >= 8 and bool(MUST.search(piece))
             if not (marked or veto or must):
                 continue
-            text = MARK.sub("", piece).strip() or piece
+            text = _hit_text(piece)
             hits.append(Hit(_group(piece, marked, veto), text, [{"file_id": n.file_id, "loc": n.loc, "start": s, "end": e}],
                             marked, veto))
     if fmt:

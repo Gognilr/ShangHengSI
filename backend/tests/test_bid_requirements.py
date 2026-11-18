@@ -32,6 +32,11 @@ def run_bid_jobs(sm, base):
 
 
 def test_rules_counter_parameters_and_confirm(owner, db_sessionmaker):
+    from app.bid import requirements as R
+    header = '★ 专 业：编 制：校 对：审 核：机械会签：日 期：2028.2 注：卖方必须在偏离清单中列明全部技术偏离。'
+    hit = R.rule_hits([R.Node('f', 'F1-P1', 'ocr_block', header)])[0]
+    assert hit.text == '卖方必须在偏离清单中列明全部技术偏离。' and hit.marked
+    assert hit.locs[0]['start'] == 0  # 保留完整来源和原标记覆盖，不改原件
     c, h, _ = owner
     base = project(c, h, db_sessionmaker)
     data = c.get(base + "/requirements").json()
