@@ -206,7 +206,9 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     ref = {"requirement_id": bad["requirement_id"], "bidder_id": bad["bidder_id"]}
     detail = c.get(base + "/cell", params=ref).json()
     assert detail["requirement"]["method"] == "manual" and detail["cell"]["source"] == "model"
-    assert c.put(base + "/cells", headers=h, json={**ref, "review_status": "verified"}).status_code == 200
+    reviewed = c.put(base + "/cells", headers=h, json={**ref, "review_status": "verified"})
+    assert reviewed.status_code == 200
+    assert reviewed.json()["verdict"] == "manual" and reviewed.json()["source"] == "local"
     detail = c.get(base + "/cell", params=ref).json()
     assert detail["cell"]["verdict"] == "manual" and detail["cell"]["review_status"] == "verified"
 

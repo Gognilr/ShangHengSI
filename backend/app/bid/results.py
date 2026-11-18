@@ -119,6 +119,8 @@ def review_cell(db, task, requirement_id, bidder_id, status, note):
         # 切换策略后，人工标注替代旧模型判断；仅编辑备注时保留原判断。
         cell.verdict, cell.source = "manual", "local"
         cell.cite, cell.reason_enc, cell.locs = None, None, []
+        _apply(cell, status, note)
+        return {**_review(cell), "verdict": cell.verdict, "source": cell.source, "cite": None, "reason": None, "locs": []}
     _apply(cell, status, note)
     return _review(cell)
 

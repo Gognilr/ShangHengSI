@@ -213,7 +213,7 @@ def _local_check(db, task, project):
 def handle_bid(db, payload):
     task_id = uuid.UUID(str(payload["task_id"]))
     stage = payload.get("stage")
-    model_work = stage in ("redact", "extract", "snippets", "model")
+    model_work = stage in service.MODEL_JOB_STAGES
     task = service.lock_task(db, task_id) if model_work else db.get(Task, task_id)
     project = db.get(BidProject, task_id, populate_existing=True) if task is not None else None
     if task is None or project is None or task.kind != "bid":

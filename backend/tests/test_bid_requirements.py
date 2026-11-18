@@ -180,3 +180,28 @@ def test_old_queued_model_work_finishes_under_local_policy(stage, state_field, s
         stopped = worker.get(BidProject, task_id, populate_existing=True)
         assert stopped.extract_state is None and stopped.model_state is None and stopped.model_enc is None
         assert cached.policy == "local_only" and not sent
+
+
+def test_legacy_job_cannot_cross_policy_reenable(owner, db_sessionmaker):
+    from app.db import jobs
+    from app.worker import process_job
+
+    c, h, _ = owner
+    base = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]
+    task_id = base.rsplit("/", 1)[-1]
+    with db_sessionmaker() as db:
+        jobs.enqueue(db, "bid", {"task_id": task_id, "stage": "model"})
+        db.commit()
+
+    enable = {**BODY, "policy": "ai"}
+    reply = c.patch(base, headers=h, json=enable)
+    assert reply.status_code == 409 and reply.json()["code"] == "MODEL_JOBS_PENDING"
+    with db_sessionmaker() as db:
+        job = jobs.claim(db, "test-bid-policy", ("bid",))
+        assert job is not None
+        job_id, payload = job.id, job.payload
+    reply = c.patch(base, headers=h, json=enable)
+    assert reply.status_code == 409 and reply.json()["code"] == "MODEL_JOBS_PENDING"
+    process_job(db_sessionmaker, job_id, "bid", payload)
+    assert c.patch(base, headers=h, json=enable).json()["policy"] == "ai"
+    assert c.post(base + "/model/confirm", headers=h).json()["code"] == "MODEL_STATE"

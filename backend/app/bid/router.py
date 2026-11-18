@@ -142,9 +142,10 @@ def update(body: ProjectInput, user: User = Depends(require("use.bid")), task: T
         service.require_editable(project)
         task.title, project.opening_date = body.title, body.opening_date
     if policy_changed:
+        if body.policy == "ai" and service.has_pending_model_job(db, task.id):
+            raise AppError(409, "MODEL_JOBS_PENDING", "旧模型作业尚未收尾，请稍后再启用模型")
         task.policy = body.policy
-        if body.policy == "local_only":
-            service.clear_model_work(db, project)
+        service.clear_model_work(db, project)
     if "category_id" in body.model_fields_set:
         project.category_id = folders.choose_category(db, body.category_id, project.category_id)
     if "folder_id" in body.model_fields_set:

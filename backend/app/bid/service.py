@@ -20,6 +20,16 @@ def busy(db, task):
                                              Job.status.in_(("queued", "running"))).limit(1)))
 
 
+MODEL_JOB_STAGES = ("redact", "extract", "snippets", "model")
+
+
+def has_pending_model_job(db, task_id):
+    return bool(db.scalar(select(Job.id).where(
+        Job.type == "bid", Job.payload["task_id"].astext == str(task_id),
+        Job.payload["stage"].astext.in_(MODEL_JOB_STAGES), Job.status.in_(("queued", "running")),
+    ).limit(1)))
+
+
 def lock_task(db, task_id):
     """锁任务行并刷新策略；FOR NO KEY UPDATE 与解析节点的外键检查兼容。"""
     return db.get(Task, task_id, populate_existing=True, with_for_update={"key_share": True})
