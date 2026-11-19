@@ -32,7 +32,7 @@
 | V35-A-02 | Word 批注 / 修订锚定的零宽字符投影 | — | Sonnet，medium | Terra，medium | 00 | — | 已完成（2026-11-19） |
 | V35-B-01 | 识别提速：残余去重、标书片段识别缓存、向量分桶 | — | Opus，medium | Sol 6.1，medium（另一侧复核） | A-02 | — | 已完成（2026-11-19） |
 | V35-B-02 | 出口复检与片段闭合提速 | — | Opus，high | Sol 6.1，high（另一侧复核） | B-01 | — | 已完成（2026-11-20） |
-| V35-B-03 | 表格列头语义向下传播 | — | Opus，high | Sol 6.1，high（另一侧复核） | B-02 | — | 待开工 |
+| V35-B-03 | 表格列头语义向下传播 | — | Opus，high | Sol 6.1，high（另一侧复核） | B-02 | — | 实现及自测已完成（2026-11-20，Codex，[报告](reports/V35-B-03.md)），待 Opus 交叉复核 |
 | V35-B-04 | 标书还原统一 restore.check()；固定提示词词汇不登记为自动识别实体 | — | Opus，medium | Sol 6.1，medium（另一侧复核） | B-03 | — | 待开工 |
 | V35-B-05 | 实体识别模型 INT8 选型评测 | Q-03 | Opus，high | Sol 6.1，high | B-04 | 选型报告交用户确认后才换 | 待开工 |
 | V35-C-01 | 图像凭证识字：PDF 独立大图局部 OCR、DOCX 内嵌图片渐进 OCR | Q-02 | Opus，high | Sol 6.1，high | B-05 | — | 待开工 |
