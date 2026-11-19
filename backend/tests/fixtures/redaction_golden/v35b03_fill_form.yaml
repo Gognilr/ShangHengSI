@@ -1,0 +1,11 @@
+description: 虚构横向填值表，值右侧的列名格为空时不当表头；左邻敏感列名为中置信名称佐证
+stance: purchase
+loc_prefixed: true
+ner_predictions:
+  曜衡: [[0, 2, ORG, 0.6]]
+  郗珩: [[0, 2, PERSON, 0.6]]
+must_replace:
+  - {text: 曜衡, category: ORG, detected_by: ner}
+  - {text: 郗珩, category: PERSON, detected_by: person}
+  - {text: 139-0000-0456, category: PHONE}
+must_keep: [业主单位, 联系人, 姓名, 联系电话, 备注, 现场核对]

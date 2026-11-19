@@ -521,8 +521,9 @@ def _adjacent_information(nodes, borrowed):
 
 
 def _table_name_slot(slot: tuple[str, str | None] | None, text: str, hit: ner.Entity) -> bool:
-    """只给同类别的整格短名称借用冒号槽位证据，实体识别仍读取单元格原有文字。"""
-    if slot is None or slot[1] != hit.label:
+    """只给同类别的整格短名称借用冒号槽位证据，实体识别仍读取单元格原有文字。
+    左邻显式标签不限查找类别，佐证类别按标签文字确定（“姓名 | 张三”与列头“姓名”同等）。"""
+    if slot is None or (slot[1] or tables.information_category(slot[0])) != hit.label:
         return False
     prefix = '名称：'
     return plain.short_name_slot(prefix + text, len(prefix) + hit.start, len(prefix) + hit.end)

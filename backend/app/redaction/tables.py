@@ -124,6 +124,11 @@ def _col_number(col: str) -> int:
     return value
 
 
+def information_category(label: str) -> str | None:
+    """敏感列名或标签的实体类别（PERSON、ORG、IDNO、PHONE）；不是时 None。"""
+    return _INFORMATION_HEADERS.get(_cell_norm(label).rstrip(':：'), (None, None))[1]
+
+
 def information_slots(
     nodes: list[_Node], complete_label: Callable[[str], bool], has_label: Callable[[str], bool],
 ) -> dict[int, tuple[str, str | None]]:
@@ -140,7 +145,10 @@ def information_slots(
                      if (key := _cell_norm(text).rstrip(':：')) in _INFORMATION_HEADERS}
             known = {col for col, text in values.items() if col in labels or col in typed or text in _OTHER_COLUMNS}
             # 有未识别列名时，须有两个敏感列名且多数格为列名，避免把横向填值行当成表头。
-            mixed = (len(typed) >= 2 and len(known) * 2 > len(values)
+            # “姓名 | 张三 | 电话 |（空）”这样列名与值交替的行是横向填值，不是表头。
+            order = [col in known for col in sorted(values)]
+            alternating = bool(order) and order[0] and all(not (a and b) for a, b in zip(order, order[1:]))
+            mixed = (len(typed) >= 2 and len(known) * 2 > len(values) and not alternating
                      and not any(_numeric_cell(t) for t in values.values()))
             total = _is_total_row(nodes, cells) if headers or typed else False
             if not total and ((known and len(known) == len(values) and (headers or labels or typed)) or mixed):
@@ -157,6 +165,8 @@ def information_slots(
                     label, category = headers[col]
                     if category is None or (not total and text.casefold() not in _EMPTY_VALUES):
                         result[i] = (label, category)
+                elif col - 1 in typed:
+                    result[i] = typed[col - 1]
     return result
 
 
