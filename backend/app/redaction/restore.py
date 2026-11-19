@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 
-from app.redaction.placeholders import _NEUTRAL_LABELS, FIXED, NEUTRAL, NUMBERED_LABELS, ROLE_LABELS
+from app.redaction.placeholders import FIXED, NEUTRAL, NEUTRAL_CATEGORIES, NUMBERED_LABELS, ROLE_LABELS
 
 
 def _variants(code: str) -> list[str]:
@@ -85,6 +85,29 @@ _SHARED = frozenset(code[1:-1] for code in FIXED.values())
 _NEUTRAL_VARIANT = re.compile(r"[\[［【][\[［][ \t]*(?i:OUR|[A-Z]+_\d+)[ \t]*[\]］][\]］】]")
 NEUTRAL_OPEN = re.compile(r"[\[［【][\[［]")
 NEUTRAL_CLOSE = re.compile(r"[\]］][\]］】]")
+_INLINE_SPACE = r"[ \t　]*"
+_BIDDER_BODY = rf"投标人{_INLINE_SPACE}[A-Za-zＡ-Ｚａ-ｚ]+"
+_BID_NEUTRAL_BODY = rf"[A-Za-zＡ-Ｚａ-ｚ]+{_INLINE_SPACE}[_＿]{_INLINE_SPACE}[0-9０-９]+|[OoＯｏ][UuＵｕ][RrＲｒ]"
+_BID_CODES = re.compile(
+    rf"[{re.escape(_LEFT)}]{{1,2}}{_INLINE_SPACE}(?:{_BIDDER_BODY}|{_BID_NEUTRAL_BODY})"
+    rf"{_INLINE_SPACE}[{re.escape(_RIGHT)}]{{1,2}}"
+    rf"|(?<![{_ASCII_WORD}{re.escape(_LEFT)}]){_BIDDER_BODY}(?![{_ASCII_WORD}{re.escape(_RIGHT)}])"
+)
+
+
+def _bid_code(raw: str) -> str | None:
+    body = unicodedata.normalize("NFKC", raw.strip(_LEFT + _RIGHT))
+    body = re.sub(r"\s+", "", body).upper()
+    if body.startswith("投标人"):
+        return f"[{body}]"
+    if body == "OUR" or body.partition("_")[0] in NEUTRAL_CATEGORIES:
+        return f"[[{body}]]"
+    return None
+
+
+def normalize_bid_codes(text: str) -> str:
+    """引文比较前只统一标书代号的写法，保留代号身份供逐字核验。"""
+    return _BID_CODES.sub(lambda match: _bid_code(match[0]) or match[0], text)
 
 
 def _neutral_form(raw: str) -> str | None:
@@ -115,8 +138,8 @@ def _identity(raw: str) -> tuple[str, str] | None:
     return None
 
 
-@lru_cache(maxsize=1)
-def _candidates() -> re.Pattern:
+@lru_cache(maxsize=2)
+def _candidates(bid: bool = False) -> re.Pattern:
     labels = [re.escape(label) for label in _LABELS]
     labels += ["(?i:" + r"[ \t]*".join(map(re.escape, name.split())) + ")" for name in _ENGLISH]
     label = "(?:" + "|".join(sorted(labels, key=len, reverse=True)) + ")"
@@ -125,17 +148,18 @@ def _candidates() -> re.Pattern:
     bracket = r"[\[［【〔][^\[\]［］【】〔〕\r\n]+[\]］】〕]"
     bare = rf"(?<![{_ASCII_WORD}]){label}[ \t]*[_＿]?[ \t]*(?:[A-ZＡ-Ｚ]+|[QＱ]?[0-9０-９]+)(?![{_ASCII_WORD}])"
     # 不带括号的助手代号只认助手类别；大写 OUR、ISO_9001 等普通英文不算候选。
-    tags = "|".join(sorted(set(_NEUTRAL_LABELS.values()), key=len, reverse=True))
+    tags = "|".join(sorted(NEUTRAL_CATEGORIES, key=len, reverse=True))
     bare_neutral = rf"(?<![{_ASCII_WORD}])(?:{tags})_\d+(?![{_ASCII_WORD}])"
+    bid_codes = (_BID_CODES.pattern,) if bid else ()
     return re.compile("|".join((
-        _RATIO, r"【主体说明】|【报价明细表：[^】]*】", neutral, _LOCATION.pattern,
+        _RATIO, r"【主体说明】|【报价明细表：[^】]*】", *bid_codes, neutral, _LOCATION.pattern,
         bracket, bare, bare_neutral, "我方",
     )))
 
 
 def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
           locations: Mapping[str, str] | None = None, dates: Mapping[str, str] | None = None,
-          local: dict[str, str] | None = None) -> Checked:
+          local: dict[str, str] | None = None, bid: bool = False) -> Checked:
     """一次扫描模型原文；只有对照表里无歧义的代号才还原，标记位置按输出计算。"""
     text = text or ""
     local_values = {}
@@ -160,8 +184,9 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
     chunks: list[str] = []
     marks: list[Mark] = []
     cursor = size = restored = fixed = removed = 0
-    tokens = [(m.start(), m.end(), m.group(), 'code') for m in _candidates().finditer(text)]
+    tokens = [(m.start(), m.end(), m.group(), 'code') for m in _candidates(bid).finditer(text)]
     tokens = [t for t in tokens if not (t[2][0] in _LEFT and t[2][-1] in _RIGHT
+              and not (bid and _BID_CODES.fullmatch(t[2]))
               and _identity(t[2]) is None and not NEUTRAL.fullmatch(t[2]) and t[2] not in assistant
               and not _NEUTRAL_VARIANT.fullmatch(t[2])
               and not (assistant and re.fullmatch(r'\[?(?:OUR|[A-Z]+_\d+)\]?', t[2]))
@@ -219,6 +244,13 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
                 replacement = locations[loc]
             else:
                 kind = "note"
+        elif bid and _BID_CODES.fullmatch(raw) and (code := _bid_code(raw)):
+            if code in mapping:
+                replacement = mapping[code]
+                restored += 1
+                fixed += raw != code
+            elif bracketed:
+                kind = "unknown"
         elif raw in assistant:
             replacement = assistant[raw]
             restored += 1
@@ -231,7 +263,7 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
                 kind = "variant"
             else:
                 kind = "unknown"
-        elif (assistant and re.fullmatch(r"\[?(?:OUR|[A-Z]+_\d+)\]?", raw)
+        elif (not bid and assistant and re.fullmatch(r"\[?(?:OUR|[A-Z]+_\d+)\]?", raw)
               and _identity(raw) not in lookup):
             code = "[[" + raw.strip("[]") + "]]"
             kind = "variant" if code in mapping else "unknown"

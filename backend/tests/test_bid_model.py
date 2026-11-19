@@ -90,12 +90,12 @@ def test_evidence_scope_filters_history_spares_and_other_asset():
     assert model._scope_gap('P-207A/B不带配对法兰', None, model._asset_ids('P-207B')) is None
 
 
-def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
+def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm, monkeypatch):
     c, h, _ = owner
     base = _prepared(c, h, db_sessionmaker)
     # V34Q-33 的虚构 golden 同时经过实际发送、外发记录与下面的 A-03 核对。
     from app.bid import model
-    from app.redaction import engine
+    from app.redaction import engine, ner
     case = GOLDEN["outbound_placeholder"]
     with db_sessionmaker() as db:
         task = db.get(Task, uuid.UUID(base.rsplit("/", 1)[-1]))
@@ -115,6 +115,17 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
         red, _, _ = model.redact(db, task, [bidder], cross["nodes"], {}, cross["groups"])
         node.redacted_text += "\n" + model.join(list(red), red)
         node.text_enc = crypto.encrypt_text(crypto.decrypt_text(node.text_enc) + "\n" + model.join(list(red), cross["nodes"]))
+        vocabulary = GOLDEN["prompt_vocabulary"]
+        line, ordinary = vocabulary["original"], vocabulary["ordinary"]
+        with monkeypatch.context() as local:
+            local.setattr(ner, "raw_recognize", lambda text: [ner.Entity(0, len(ordinary), "PERSON", 0.99)] if text == line else [])
+            red, _, _ = model.redact(db, task, [bidder], {"F99-P1": line}, {})
+            explicit = engine.compute([engine.NodeIn("F99-P1", line)], task.stance, style="neutral",
+                                      user_terms=[engine.UserTerm(ordinary, "CUSTOM")])
+        assert ordinary in red["F99-P1"] and ordinary not in engine.load_redaction_map(db, task.id).values()
+        assert ordinary in explicit.mapping.values() and ordinary not in explicit.redacted["F99-P1"]
+        node.redacted_text += "\n" + red["F99-P1"]
+        node.text_enc = crypto.encrypt_text(crypto.decrypt_text(node.text_enc) + "\n" + line)
         db.commit()
     view = c.get(base + "/model").json()
     assert view["state"] == "awaiting" and len(view["bidders"]) == 3
@@ -130,7 +141,7 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     def handler(request):
         body = json.loads(request.content)
         content = body["messages"][1]["content"]
-        sent.append(content)
+        sent.append("\n".join(m["content"] for m in body["messages"]))
         reqs = re.findall(r"^\[(R\d+)\]", content, re.M)
         snippets = dict(re.findall(r"^\[([A-C]\d+)\] (.+)$", content, re.M))
         code = re.search(r"投标人代号：\[投标人([A-C])\]", content).group(1)
@@ -141,9 +152,9 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
             items[1].update(verdict="疑似不响应", reason="片段明确拒绝提供规定的材料。")
         if code == "B":
             items[0] = {"req": reqs[0], "verdict": "疑似不响应", "snippet": first, "quote": "片段中并不存在的一句话引文",
-                        "reason": "[投标人B]明确拒绝提供相应材料"}
+                        "reason": "[投标人 Ｂ]明确拒绝提供相应材料"}
         if code == "C":
-            items[1]["conflict"] = "偏离表写无偏离，正文写交货期 45 日"
+            items[1]["conflict"] = "投标人C的偏离表写无偏离，正文写交货期 45 日"
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps({"items": items}, ensure_ascii=False)}}],
                                          "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
 
@@ -166,6 +177,7 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm):
     assert {(i["type"], i["bidder_ids"][0]) for i in issues} == {
         ("model_response", a), ("model_response", b), ("deviation_conflict", x),
     }
+    assert BIDDERS[2] in next(i for i in issues if i["type"] == "deviation_conflict")["rows"][0]["value"]
     findings = {(i["bidder_ids"][0], i["level"]): i for i in issues if i["type"] == "model_response"}
     assert set(findings) == {(a, "general"), (a, "veto"), (b, "general")}
     for bid in (a, b):
@@ -323,7 +335,7 @@ def test_snippet_redaction_golden(case, owner, db_sessionmaker):
     """通过标书实际片段脱敏入口核对标注；不为每个识别样本另写测试函数。"""
     from app.bid import model
     from app.redaction import engine
-    from app.redaction.restore import restore
+    from app.redaction.restore import check
     c, h, _ = owner
     tid = uuid.UUID(c.post(ROOT, headers=h, json={**BODY, "policy": "ai"}).json()["id"])
     with db_sessionmaker() as db:
@@ -348,11 +360,12 @@ def test_snippet_redaction_golden(case, owner, db_sessionmaker):
         if case.get("round_trip_nodes"):
             assert set(red) == set(case["nodes"])
             for loc, original in case["nodes"].items():
-                assert restore(red[loc], mapping) == original
+                assert check(red[loc], mapping, bid=True).text == original
             assert not any(value in model.join(list(red), red) for value in case["hidden"])
         if sample := case.get("returns"):
-            if (actual := restore(sample["model"], mapping)) != sample["expect"]:
-                problems.append(f"还原不符：{actual}")
+            checked = check(sample["model"], mapping, bid=True)
+            assert checked.text == sample["expect"]
+            assert [mark.raw for mark in checked.marks if mark.kind == "unknown"] == sample.get("unknown", [])
         assert not problems, problems
 
 
@@ -378,7 +391,7 @@ def test_model_quote_golden(owner, db_sessionmaker):
         results = []
         for case in GOLDEN["quotes"]["cases"]:
             model.apply(db, task, state, 0, [{"req": state["requirements"][rid]["n"], "verdict": "响应",
-                "snippet": snippet["id"], "quote": case["quote"], "reason": "[投标人A]承诺提供三年质保"}])
+                "snippet": snippet["id"], "quote": case["quote"], "reason": "[投标人  Ａ]承诺提供三年质保"}])
             db.flush()
             cell = db.scalar(select(BidCell).where(BidCell.requirement_id == uuid.UUID(rid),
                                                    BidCell.bidder_id == uuid.UUID(batch["bidder_id"])))

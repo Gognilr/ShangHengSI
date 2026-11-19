@@ -109,3 +109,48 @@ Provider
 Service Provider
 Licensor
 Licensee
+# V35-B-04：固定系统提示词中的普通词。只按实体整词匹配，人工词条照常处理。
+# 文件审核、追问（resources/prompts/system.md，chat/service.py）
+审核助手
+审核对象
+审核要求
+主体说明
+签约主体
+通行商业惯例
+合规人员
+合规负责人
+最终用户
+修改建议
+专业人员
+角色设定
+# 智能助手、翻译（resources/prompts/assistant.md、assistant_templates.md）
+商务助手
+公司知识库
+历史合同
+录音逐字稿
+翻译分段
+目标语言
+术语表
+# 标书要求抽取、核对与二次核验（bid/extract.py、bid/model.py）
+整理助手
+初审助手
+招标人
+投标人
+招标文件
+投标文件
+供货范围
+厂家资料
+历史业绩
+设备位号
+题设基准
+触发条件
+附属设备
+偏离表
+技术响应
+共同来源
+逐字摘录
+会签
+技术参数
+# V34Q-47：旧版固定提示词中的工况示例。
+额定流量
+最佳效率点

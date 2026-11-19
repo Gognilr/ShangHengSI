@@ -4,6 +4,7 @@ import os
 import json
 import re
 import threading
+import unicodedata
 from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
@@ -202,9 +203,13 @@ def mask(text: str, occupied: list[tuple[int, int]]) -> str:
 
 @lru_cache(maxsize=1)
 def _stopwords():
-    path = Path(__file__).resolve().parents[2] / 'resources/ner_stopwords.txt'
-    return {line.strip().casefold() for line in path.read_text(encoding='utf-8').splitlines()
+    return {_stopword_key(line) for line in STOPWORDS_FILE.read_text(encoding='utf-8').splitlines()
             if line.strip() and not line.startswith('#')}
+
+
+def _stopword_key(surface: str) -> str:
+    # 扫描文本有时在普通词的汉字之间插入空格。
+    return re.sub(r'(?<=[一-鿿])[ \t]+(?=[一-鿿])', '', unicodedata.normalize('NFKC', surface).strip().casefold())
 
 
 def keep_entity(text: str, entity: Entity) -> bool:
@@ -244,7 +249,7 @@ def keep_entity(text: str, entity: Entity) -> bool:
         head = surface[:facility.start()]
         if not head or is_place_chain(head):
             return False
-    return (len(surface) >= 2 and surface.casefold() not in _stopwords()
+    return (len(surface) >= 2 and _stopword_key(surface) not in _stopwords()
             and surface not in zh_legal_finance()
             and surface not in chem_names()
             and re.fullmatch(r'[\d\s\-/.]+', surface) is None

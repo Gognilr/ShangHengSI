@@ -25,7 +25,7 @@ from app.llm.usage import remaining_calls
 from app.redaction import parties as P
 from app.redaction.normalize import normalize_value
 from app.redaction.recheck import _digit_bounded
-from app.redaction.restore import restore
+from app.redaction.restore import check, normalize_bid_codes
 from app.review.validate import normalize_for_quote, quote_matches
 from app.security import crypto
 from app.security.errors import AppError
@@ -877,15 +877,17 @@ def apply(db, task, state, index, items):
         cited = [s.strip("[] ") for s in (raw_ids if isinstance(raw_ids, list) else re.split(r"[,，、\s]+", str(raw_ids)))]
         cited = [s for s in cited if s in snippets]
         quote = str(item.get("quote") or "").strip()
+        quote_for_match = normalize_bid_codes(quote)
         where, cite, source, scope_gap = [], None, "", None
         text = crypto.decrypt_text(reqs[rid].text_enc)
         if verdict != "missing":
             cite = "unverified"
             def matches(text):
+                text = normalize_bid_codes(text)
                 if state.get("second"):
-                    normalized = normalize_for_quote(quote)
+                    normalized = normalize_for_quote(quote_for_match)
                     return bool(normalized) and normalized in normalize_for_quote(text)
-                return _cites(quote, text)
+                return _cites(quote_for_match, text)
             for sid in cited:
                 locs_ = snippets[sid]["locs"]
                 hit = next((l for l in locs_ if l in nodes and matches(nodes[l][1] or "")), None)
@@ -904,7 +906,7 @@ def apply(db, task, state, index, items):
                 where = [snippets[cited[0]]["locs"][0]]
                 source = nodes.get(where[0], ("", ""))[0]
         place = [{"file_id": snippets_file(snippets, l), "loc": l, "page": pages.get(l)} for l in where]
-        reason = snippet_refs(restore(str(item.get("reason") or "").strip(), mapping), own)[:500]
+        reason = snippet_refs(check(str(item.get("reason") or "").strip(), mapping, bid=True).text, own)[:500]
         adjusted = scope_gap and verdict in ("yes", "no")
         cell = old_cells.pop((uuid.UUID(rid), bidder_uuid), None)
         if cell is None:
@@ -915,7 +917,7 @@ def apply(db, task, state, index, items):
         cell.reason_enc = crypto.encrypt_text(cell_reason or "（模型未给出理由）")
         written += 1
         # 证据摘录优先取本机原文：还原后的引文逐字出现在原文中才用它，否则用所引节点的原文
-        excerpt = restore(quote, mapping)
+        excerpt = check(quote, mapping, bid=True).text
         if cite != "verified" or not excerpt or normalize_for_quote(excerpt) not in normalize_for_quote(source):
             excerpt = source
         excerpt = excerpt[:200]
@@ -932,7 +934,7 @@ def apply(db, task, state, index, items):
                 rows.append({"label": "核实提示", "value": gap})
             _model_item(db, task, bid, rid, "model_response", "veto" if article else "general",
                         article, f"{title}：{_short(text)}", rows + [{"label": "要求", "value": text}], old_items)
-        conflict = snippet_refs(restore(str(item.get("conflict") or "").strip(), mapping), own)
+        conflict = snippet_refs(check(str(item.get("conflict") or "").strip(), mapping, bid=True).text, own)
         if conflict:
             _model_item(db, task, bid, rid, "deviation_conflict", "general", None, f"偏离表与正文不一致：{_short(conflict)}",
                         [{"label": "说明", "value": conflict[:500]}] + rows[1:], old_items)
@@ -948,7 +950,7 @@ def apply(db, task, state, index, items):
     return written
 
 
-_MARK = re.compile(r"\[\[[A-Z]+_\d+\]\]|\[投标人[A-Z]+\]")
+_MARK = re.compile(r"\[\[(?:OUR|[A-Z]+_\d+)\]\]|\[投标人[A-Z]+\]")
 
 
 def _cites(quote, text):
@@ -1030,7 +1032,7 @@ def _apply_second(db, task, project, state, index, items):
     if iid := batch.get("similar"):
         if not isinstance(items, dict) or items.get("source") not in {"共同来源", "内容雷同", "无法判断"}:
             raise ValueError("二次核验分类无效")
-        reason = restore(str(items.get("reason") or "").strip(), E.load_redaction_map(db, task.id))[:500]
+        reason = check(str(items.get("reason") or "").strip(), E.load_redaction_map(db, task.id), bid=True).text[:500]
         second[iid] = {"outcome": "common" if items["source"] == "共同来源" and reason else "unclear", "reason": reason}
         project.conclusion_enc = feedback.encrypt(saved)
         return 0

@@ -58,8 +58,9 @@ redaction:
     contains: '[投标人A]'
     preserve_map: true
     returns:
-      model: '［投标人A］提供三年质保服务。'
-      expect: 虚构松青仪器有限公司提供三年质保服务。
+      model: '〔投标人 Ａ〕（亦称投标人A）；电话［［ＴＥＬ＿１］］、[TEL_1]、[[TEL_1]；待核对[投标人Z]、[TEL_999]、[ISO_9001]。'
+      expect: '虚构松青仪器有限公司（亦称虚构松青仪器有限公司）；电话010-66668888、010-66668888、010-66668888；待核对[投标人Z]、[TEL_999]、[ISO_9001]。'
+      unknown: ['[投标人Z]', '[TEL_999]']
 
 # A-03 同时核对实际请求和 llm_calls.request_text，不能只依赖发送后的对照表自证。
 must_not_send:
@@ -79,11 +80,17 @@ outbound_placeholder:
   code: '[[ID_997]]'
   value: TEST-2048
 
+prompt_vocabulary:
+  original: '题设基准以本项目的技术条件为准。'
+  ordinary: 题设基准
+
 quotes:
   source: '[投标人A]承诺提供三年免费质保并在两小时内响应。'
   cases:
     - quote: '[投标人A]承诺提供三年免费质保并在两小时内响应。'
       cite: verified
-    - quote: '[投标人B]承诺提供三年免费质保并在两小时内响应。'
+    - quote: '【投标人 Ａ】承诺提供三年免费质保并在两小时内响应。'
+      cite: verified
+    - quote: '投标人B承诺提供三年免费质保并在两小时内响应。'
       cite: unverified
       issue: V34Q-22-3

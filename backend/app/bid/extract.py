@@ -18,7 +18,7 @@ from app.db.models import BidProject, BidRequirement, DocNode, Task, TaskFile
 from app.llm import gateway
 from app.llm.usage import remaining_calls
 from app.redaction import engine
-from app.redaction.restore import restore
+from app.redaction.restore import check
 from app.security import crypto
 from app.security.errors import AppError
 from app.worker import job_handler
@@ -130,7 +130,7 @@ def cancel(db, task):
 
 def _locate(original, quote_raw, mapping):
     """引文先还原再在原文中找；找不到时返回 None（宁可记整行，也不编造位置）。"""
-    quote = restore(quote_raw or "", mapping).strip()
+    quote = check(quote_raw, mapping, bid=True).text.strip()
     if len(quote) >= 4:
         i = original.find(quote)
         if i >= 0:
@@ -191,7 +191,7 @@ def merge(db, task, items: list[dict]) -> int:
         start, end = span
         if any(any(l.get("loc") == loc and l.get("start", 0) < end and l.get("end", 0) > start for l in r.locs) for r in rows):
             continue  # 规则已抓到的同一处，不重复
-        restored = restore(text, mapping)
+        restored = check(text, mapping, bid=True).text
         if _is_description(group, restored):
             continue
         same = _same_requirement(restored, rows)

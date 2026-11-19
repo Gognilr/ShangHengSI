@@ -1,5 +1,6 @@
 """V34-B-02：要求清单的规则抽取、完整性计数、关键参数与模型补充；样本全部虚构。"""
 import json
+import re
 import uuid
 
 import httpx
@@ -98,8 +99,9 @@ def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, l
         assert "2028年6月15日" in outbound_quote and "比例为 2%" in outbound_quote
         assert "[[AMT_" in outbound_quote and "20,000.00" not in outbound_quote
         assert "（=合同总价的" not in sent[-1]
+        returned_quote = re.sub(r"\[\[([A-Z]+_\d+)\]\]", r"［\1］", outbound_quote)
         content = json.dumps({"items": [
-            {"group": "validity", "text": outbound_quote, "loc": clause_loc, "quote": outbound_quote},
+            {"group": "validity", "text": returned_quote, "loc": clause_loc, "quote": returned_quote},
             {"group": "signing", "text": "投标文件须密封递交", "loc": loc, "quote": "投标文件未按要求密封的"},  # 与规则行重叠，不重复
             {"group": "qualification", "text": "测量精度要求", "loc": "不存在的位置", "quote": "测量精度"},  # 位置无效，丢弃
             {"group": "pricing", "text": "报价须为含税价", "loc": next(n["loc"] for n in tender_view["nodes"] if "含税价" in n["text"]),
