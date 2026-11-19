@@ -331,6 +331,8 @@ def _closure_spans(nodes, result, spans, occupied, *, terms, kept) -> list[_Span
             continue
         segments = align_segments(n.text, redacted, items.get(n.loc, ()))
         for reason in reasons:
+            if not reason.exact:
+                continue  # 边界不能确认的宽松命中只由出口拦截，不自动改写正文（V35-B-02）
             span = to_original(segments, reason.position, reason.end if reason.end > 0 else reason.position + 1)
             if span is not None:
                 _accept([c for c in [_closure_span(i, n.text, *span, reason.category, known)] if c], occupied[i], out)

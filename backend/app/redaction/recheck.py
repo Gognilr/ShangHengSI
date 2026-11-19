@@ -54,7 +54,10 @@ _BIG_AMOUNT = Decimal(10000)  # 不小于此数值的金额真实值，不论是
 class BlockReason:
     category: str  # MAP / TERM / PHONE / EMAIL / ACCOUNT / IDNO / AMOUNT
     position: int  # 在被检查文本中的字符位置，不记真实值
-    end: int = field(default=-1, compare=False)  # 命中结束位置（约数），只供本机定位预览（V31-U5F-02）
+    end: int = field(default=-1, compare=False)  # 命中结束位置，供本机定位预览（V31-U5F-02）
+    # 对照表 / 词条命中的区间边界可确认：可直接按 [position, end) 自动替换。宽松命中（长数字嵌在更长的数字串里、
+    # 紧凑比对跨行或贴着字母数字、只覆盖某个原字符归一化展开的一部分）照常拦截，但不自动改写正文（V35-B-02）
+    exact: bool = field(default=True, compare=False)
 
 
 @dataclass
@@ -110,21 +113,22 @@ def _digit_bounded(text: str, start: int, end: int) -> bool:
     return True
 
 
-def _numeric_spans(text: str, value: str) -> list[tuple[int, int]]:
+def _numeric_spans(text: str, value: str) -> list[tuple[int, int, bool]]:
     out = []
     n_digits = len(_digits(value))
     for start in _find_all(text, value):
         end = start + len(value)
         if _digit_bounded(text, start, end) and (n_digits >= _SHORT_DIGITS or _has_currency(text, start, end)):
-            out.append((start, end))
+            out.append((start, end, True))
     if n_digits >= _LONG_DIGITS:
         compact = _digits(value)
-        # 文本中的数字串（允许空格、短横线分隔）去掉分隔符后与真实值相同；区间只取对上的那几位数字，
-        # 闭合按区间替换时不吞掉同一串里相邻的其他数字（V35-B-02）
+        # 文本中的数字串（允许空格、短横线分隔）去掉分隔符后与真实值相同；区间只取对上的那几位数字。
+        # 前后紧挨着数字（“9123456780”含“12345678”）时照常拦截，但不能确认是同一个号码，不自动替换（V35-B-02）
         for digits, positions in _digit_runs(text):
-            at = digits.find(compact)
-            if at >= 0:
-                out.append((positions[at], positions[at + len(compact) - 1] + 1))
+            for at in _find_all(digits, compact):
+                start, end = positions[at], positions[at + len(compact) - 1] + 1
+                out.append((start, end, not (start > 0 and text[start - 1].isdigit())
+                            and not (end < len(text) and text[end].isdigit())))
     if _AMOUNT_VALUE.match(value):
         target = _decimal(value)
         # 数值 ≥ 10000 的金额：换了千分位、小数位写法也拦截，不要求带币种（Q-134 ③，宁可误拦）。
@@ -132,7 +136,7 @@ def _numeric_spans(text: str, value: str) -> list[tuple[int, int]]:
         any_form = target is not None and target >= _BIG_AMOUNT
         for start, end, number in _numbers(text):
             if number == target and (any_form or _has_currency(text, start, end)):
-                out.append((start, end))
+                out.append((start, end, True))
     return out
 
 
@@ -162,18 +166,18 @@ def _text_pattern(value: str) -> re.Pattern:
     return name_pattern(value, case_sensitive=short_caps or single_english_word(value))
 
 
-def _value_spans(text: str, value: str) -> list[tuple[int, int]]:
-    """真实值 / 词条在文本中的命中区间（起点, 终点）。"""
+def _value_spans(text: str, value: str) -> list[tuple[int, int, bool]]:
+    """真实值 / 词条在文本中的命中区间（起点, 终点, 边界可确认）。"""
     value = value.strip()
     if len(value) < 2:
         return []
     if _NUMERIC_VALUE.match(value):
         return _numeric_spans(text, value)
-    return [m.span() for m in _text_pattern(value).finditer(text)]
+    return [(*m.span(), True) for m in _text_pattern(value).finditer(text)]
 
 
 def _value_positions(text: str, value: str) -> list[int]:
-    return [start for start, _end in _value_spans(text, value)]
+    return [start for start, _end, _exact in _value_spans(text, value)]
 
 
 _INVISIBLE_TAG = re.compile('[\U000E0000-\U000E007F]')
@@ -195,8 +199,8 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
 
 
 def _value_reasons(text, normalized, preserving, codes, values, normalized_codes=None) -> set[BlockReason]:
-    """不可见字符，以及对照表真实值 / 词条的命中。end 为原文中的精确终点；同一位置同类多个值命中时取最长的，
-    片段闭合与脱敏闭环直接按此区间替换，不必再扫一遍（V35-B-02）。"""
+    """不可见字符，以及对照表真实值 / 词条的命中。end 为原文中的终点；同一位置同类多个值命中时优先取边界可确认的、
+    其中最长的。片段闭合与脱敏闭环只按 exact 的区间替换，不必再扫一遍（V35-B-02）。"""
     reasons = {BlockReason('INVISIBLE', m.start(), m.end()) for m in _INVISIBLE_TAG.finditer(text)}
     if values:
         lower, upper = normalized_codes or ([normalize_value(p) for p in codes],
@@ -204,12 +208,13 @@ def _value_reasons(text, normalized, preserving, codes, values, normalized_codes
         masked = _mask_placeholders(normalized.text, lower)
         preserving_masked = _mask_placeholders(preserving.text, upper)
         original_masked = _mask_placeholders(text, codes)
-        ends: dict[tuple[str, int], int] = {}
+        ends: dict[tuple[str, int], tuple[bool, int]] = {}
         for category, value in values:
-            for start, end in _match_spans(value, original_masked, normalized, masked, preserving, preserving_masked):
-                if ends.get((category, start), -1) < end:
-                    ends[(category, start)] = end
-        reasons.update(BlockReason(category, start, end) for (category, start), end in ends.items())
+            for start, end, exact in _match_spans(value, original_masked, normalized, masked, preserving,
+                                                  preserving_masked):
+                if ends.get((category, start), (False, -1)) < (exact, end):
+                    ends[(category, start)] = (exact, end)
+        reasons.update(BlockReason(category, start, end, exact) for (category, start), (exact, end) in ends.items())
     return reasons
 
 
@@ -367,8 +372,12 @@ def _place_only(surface: str) -> bool:
     return all(not _WORD_CHAR.search(piece) or _is_place(piece) for piece in pieces)
 
 
-def _back(view, start: int, end: int) -> tuple[int, int]:
-    return view.index_map[start], view.index_map[end - 1] + 1
+def _back(view, start: int, end: int, exact: bool = True) -> tuple[int, int, bool]:
+    """归一化视图的区间投影回原文。起止落在同一原字符的归一化展开内部（“12M”只对上“12㎒”展开的“12MHz”的前缀，
+    “会社”只对上“㍿”展开的后半）时，投影会扩到整个原字符，记为宽松命中。"""
+    index = view.index_map
+    aligned = (start == 0 or index[start - 1] != index[start]) and (end >= len(index) or index[end] != index[end - 1])
+    return index[start], index[end - 1] + 1, exact and aligned
 
 
 def _find_all(text: str, value: str) -> list[int]:
@@ -396,21 +405,23 @@ def _literal_forms(value: str) -> tuple[str, str] | None:
     return raw, norm
 
 
-def _match_spans(value, original_masked, normalized, masked, preserving, preserving_masked) -> set[tuple[int, int]]:
-    """对照表真实值 / 词条在原文中的命中区间（原文、归一化、紧凑三条通路），后两条经 index_map 投影回原文。"""
+def _match_spans(value, original_masked, normalized, masked, preserving, preserving_masked
+                 ) -> set[tuple[int, int, bool]]:
+    """对照表真实值 / 词条在原文中的命中区间（起, 止, 边界可确认），原文、归一化、紧凑三条通路，后两条经 index_map
+    投影回原文。"""
     literal = _literal_forms(value)
     if literal is not None:
         raw, norm = literal
-        out = {(p, p + len(raw)) for p in _find_all(original_masked, raw)}
+        out = {(p, p + len(raw), True) for p in _find_all(original_masked, raw)}
         out.update(_back(normalized, p, p + len(norm)) for p in _find_all(masked, norm))
         return out
     # Unicode 的 ASCII I→l 等映射会使原有英文大小写比较失配；保留原文通路，只增不减。
     out = set(_value_spans(original_masked, value))
     sensitive = single_english_word(value) or value.isascii() and value.isupper() and len(value) <= 6
     view, compared = (preserving, preserving_masked) if sensitive else (normalized, masked)
-    out.update(_back(view, s, e) for s, e in _value_spans(compared, normalize_value(value, preserve_case=sensitive)))
-    out.update(_back(preserving, s, e)
-               for s, e in _compact_spans(preserving_masked, normalize_value(value, preserve_case=True)))
+    out.update(_back(view, *span) for span in _value_spans(compared, normalize_value(value, preserve_case=sensitive)))
+    out.update(_back(preserving, *span)
+               for span in _compact_spans(preserving_masked, normalize_value(value, preserve_case=True)))
     return out
 
 
@@ -474,7 +485,12 @@ def _alnum_runs(text: str) -> tuple[tuple[str, str | None, list[int]], ...]:
     return tuple(out)
 
 
-def _compact_spans(text: str, value: str) -> list[tuple[int, int]]:
+_ALNUM = frozenset('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789')
+
+
+def _compact_spans(text: str, value: str) -> list[tuple[int, int, bool]]:
+    """去掉空白与短横线后比对，同一串里的每处命中都返回（V35-B-02）。命中前后紧贴英文字母或数字、或中间隔着换行
+    （片段拼接的不同节点）时只拦截，不能确认是同一个编号，不自动替换。"""
     target = _compact_target(value)
     if target is None:
         return []
@@ -482,9 +498,11 @@ def _compact_spans(text: str, value: str) -> list[tuple[int, int]]:
     for compact, folded, positions in _alnum_runs(text):
         variants = [compact] + ([folded] if folded is not None and target.isdigit() else [])
         for variant in variants:
-            start = variant.find(target)
-            if start >= 0:
-                out.append((positions[start], positions[start + len(target) - 1] + 1))
+            for at in _find_all(variant, target):
+                start, end = positions[at], positions[at + len(target) - 1] + 1
+                exact = (not (start > 0 and text[start - 1] in _ALNUM) and not (end < len(text) and text[end] in _ALNUM)
+                         and '\n' not in text[start:end] and '\r' not in text[start:end])
+                out.append((start, end, exact))
     return out
 
 

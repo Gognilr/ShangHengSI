@@ -415,3 +415,25 @@ def test_snippets_wait_for_ocr_and_refresh_after(owner, db_sessionmaker, monkeyp
     with db_sessionmaker() as db:  # 已准备未发送：再次补完识别时作废重备
         pipeline._recheck(db, tid)
     assert c.get(base).json()["model"]["state"] == "preparing"
+
+
+def test_close_snippets_only_rewrites_confirmed_spans(monkeypatch):
+    """V35-B-02 复核：边界不能确认的宽松命中只由出口拦截，不改写正文；同一串里的多处紧凑命中一轮补齐。"""
+    from app.bid import model as M
+    from app.redaction import recheck as R
+    terms = ["AB123", "12M", "会社"]
+    monkeypatch.setattr(R, "recheck_context", lambda db, task_id: R.RecheckContext(terms=terms))
+    texts = {"a": "累计用量 9123456780 件", "b": "设备型号 AB", "c": "123 件备品", "d": "频率 12㎒，㍿某某",
+             "e": "型号 AB-123 A-B123 AB1-23 AB12-3 齐", "f": "账号 1234 5678，"}
+    mapping = {"[[ID_1]]": "12345678"}
+    M._close_snippets(None, SimpleNamespace(id=None), [["a"], ["b", "c"], ["d"], ["e"], ["f"]], texts, mapping)
+    assert texts["a"] == "累计用量 9123456780 件"  # 长数字嵌在更长的数字串里：普通数量保持原样
+    assert (texts["b"], texts["c"]) == ("设备型号 AB", "123 件备品")  # 跨片段换行不合并替换
+    assert texts["d"] == "频率 12㎒，㍿某某"  # 只对上原字符归一化展开的一部分
+    assert re.fullmatch(r"型号 (\[\[[A-Z]+_\d+\]\] ){4}齐", texts["e"])
+    assert texts["f"].startswith("账号 [[")
+
+    def blocked(text):
+        return R.recheck(text, real_values=list(mapping.values()), terms=terms, placeholders=list(mapping))
+    assert blocked(texts["a"]) and blocked(M.join(["b", "c"], texts)) and blocked(texts["d"])  # 仍由出口拦截
+    assert not blocked(texts["e"]) and not blocked(texts["f"])

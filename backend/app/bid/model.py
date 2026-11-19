@@ -528,7 +528,10 @@ def _close_snippets(db, task, groups, texts, mapping):
             inside = [m.span() for m in marks.finditer(text)] if marks else []
             edits = defaultdict(list)
             for reason in checker(text):
-                # MAP / TERM 的 end 是复检经 index_map 投影回原文的精确终点（同位置取最长），不再二次扫描（V35-B-02）
+                # MAP / TERM 的 end 是复检经 index_map 投影回原文的终点（同位置取最长），不再二次扫描；
+                # 边界不能确认的宽松命中（嵌在更长数字串里、跨片段换行等）只交给网关拦截，不改写正文（V35-B-02）
+                if not reason.exact:
+                    continue
                 start, end = reason.position, min(len(text), reason.end)
                 if end <= start or any(s < end and start < e for s, e in inside):
                     continue  # 不拆开已有代号；跨代号的问题保留给网关拦截
