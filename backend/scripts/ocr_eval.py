@@ -60,6 +60,8 @@ def install(name: str):
     """替换 ocr.recognize 的引擎部分，其余（bbox、空行丢弃）与产品一致。"""
     import numpy as np
 
+    if name == "app":  # 产品现用的 ocr.recognize（含块置信度规则），不替换
+        return ocr.recognize
     run = make_engine(name)
 
     def recognize(image):
