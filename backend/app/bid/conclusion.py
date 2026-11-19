@@ -7,17 +7,21 @@ SERIOUS_GROUPS = {"veto", "substantive", "qualification"}
 LOCAL_CERTAIN = {"ceiling", "multi_total", "validity", "deposit"}
 TIER = {"certain": 0, "verify": 1, "reference": 2}
 DECLARATION = "系统只给出建议；否决与串通投标的认定由评标委员会作出。"
-_ORG = re.compile(r"(集团)?(股份)?有限(责任)?公司$|(集团)?股份公司$|集团$|公司$")
+_ORG = re.compile(r"(集团)?(股份)?有限(责任)?公司$|(集团)?股份公司$|集团$|公司$|中心$|研究院$|研究所$|设计院$|事务所$")
+_PAREN = re.compile(r"[（(][^（）()]*[）)]")
+_PROVINCE = re.compile(r"^(?:北京|天津|上海|重庆|河北|山西|辽宁|吉林|黑龙江|江苏|浙江|安徽|福建|江西|山东|河南|湖北|湖南|广东|海南|四川"
+                       r"|贵州|云南|陕西|甘肃|青海|台湾|内蒙古|广西|西藏|宁夏|新疆|香港|澳门)(?:省|市|自治区|特别行政区)?")
 _REGION = re.compile(r"^(北京|上海|天津|重庆)市?|^[^\s]{2,3}?[省市]")
-_TRADE = re.compile(r"(科技|技术|设备|仪器|工程|建设|建筑|贸易|实业|发展|信息|电子|电气|机电|环保|咨询|服务|智能|系统|网络|软件|医疗|器械|物资|供应链)+$")
+_TRADE = re.compile(r"(科技|技术|设备|仪器|工程|建设|建筑|贸易|实业|发展|信息|电子|电气|机电|环保|咨询|服务|智能|系统|网络|软件|医疗|器械|物资|供应链"
+                    r"|安全生产|安全|生产|评价|检测|泵业|阀门|机械|制造|化工|新材料|材料|能源|工业|自动化|流体|环境)+$")
 _ARTICLE = re.compile(r"（([一二三四五六])）")
 
 
 def short_names(bidders):
     cores = {}
     for bid, name in bidders.items():
-        core = _ORG.sub("", name)
-        local = _REGION.sub("", core)
+        core = _ORG.sub("", _PAREN.sub("", name))  # “德帕姆（杭州）泵业科技”去掉括号中的地名
+        local = _REGION.sub("", _PROVINCE.sub("", core))
         core = local if len(local) >= 2 else core
         simple = _TRADE.sub("", core)
         cores[bid] = (simple if len(simple) >= 2 else core) or name

@@ -50,6 +50,8 @@ _CONTACT = {"PHONE": ("电话", "strong", "（二）"), "EMAIL": ("邮箱", "str
             "ADDRESS": ("地址", "medium", "（一）")}
 _PM = re.compile(r"(?:项目经理|项目负责人|技术负责人)(?:[（(][^）)\n]{1,6}[）)])?[ \t]*[:：][ \t]*([一-鿿·]{2,4}?)"
                  r"(?=$|[^一-鿿·]|电话|手机|联系|职务|身份|证书|性别|年龄)")
+# 人名之后须是分隔或另一个标签：“签字代表宣布同意如下”中的“宣布”不是人名（V34-B-08c）
+_AFTER_NAME = re.compile(r"$|[^一-鿿]|电话|手机|联系|职务|职位|身份|证书|性别|年龄|邮箱|传真|地址|授权|法定|委托|签字|签名|日期")
 _SUFFIX = re.compile(r"(?:集团)?(?:股份有限公司|有限责任公司|有限公司|股份公司|公司|厂)$")
 _REGION = re.compile(r"^[一-鿿]{2,3}(?:省|市|自治区)")
 
@@ -117,7 +119,8 @@ def contacts_in(text):
         if h.category in ("PHONE", "EMAIL", "ACCOUNT", "IDNO"):
             out.append((h.category, h.start, h.end))
     for h in detect.find_persons(text):
-        out.append(("PERSON", h.start, h.end))
+        if _AFTER_NAME.match(text, h.end):
+            out.append(("PERSON", h.start, h.end))
     for h in detect.find_addresses(text):
         out.append(("ADDRESS", h.start, h.end))
     for m in _PM.finditer(text):

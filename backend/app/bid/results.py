@@ -16,13 +16,14 @@ from app.tasks import storage
 
 # 要求盖章签字的格式页标题（按出现先后取第一个命中的作页标题）
 _SIGN_TITLES = ("授权委托书", "法定代表人身份证明", "法定代表人授权书", "投标函附录", "投标函", "开标一览表", "报价一览表",
-                "投标报价表", "报价表", "承诺函", "承诺书", "声明函", "声明书", "偏离表", "联合体协议")
+                "投标报价表", "报价表", "报价单", "报价函", "承诺函", "承诺书", "声明函", "声明书", "偏离表", "联合体协议")
 _SIGN_MARK = re.compile(r"盖章|签字|签章|公章|印章|签名")
 MAX_SIGNING = 40  # 每家最多列出的格式页
 
 
 def signing_pages(bidders, nodes):
-    """从投标文件节点找出要求盖章签字的格式页：短行（标题、≤30 字）含格式页名称，且本页有“盖章 / 签字”等字样。
+    """从投标文件节点找出要求盖章签字的格式页：短行（标题、≤30 字）含格式页名称，且本页有“盖章 / 签字”等字样；
+    标题在页首前 3 行时不要求这些字样（扫描页的识别文字里常没有“盖章”，V34-B-08c）。
     返回 [{bidder_id, file_id, page, loc, title}]；Word 无页码时以标题所在节点为一项。"""
     out = []
     for b in bidders:
@@ -31,14 +32,17 @@ def signing_pages(bidders, nodes):
             key = (str(file_id), page if page is not None else loc)
             entry = pages.get(key)
             if entry is None:
-                entry = pages[key] = {"title": None, "mark": False, "loc": loc, "page": page, "file_id": str(file_id)}
+                entry = pages[key] = {"title": None, "mark": False, "loc": loc, "page": page, "file_id": str(file_id), "n": 0}
                 order.append(key)
+            entry["n"] += 1
             short = re.sub(r"\s+", "", text)
             toc = re.search(r"[.…·．]{3,}|\d+$", short)  # 目录行（引导点、行末页码）不算格式页标题
             if entry["title"] is None and kind != "sheet_cell" and not toc and (kind == "heading" or len(short) <= 30):
                 entry["title"] = next((t for t in _SIGN_TITLES if t in short), None)
                 if entry["title"]:
                     entry["loc"] = loc
+                    head = page is not None and entry["n"] <= 3 and not re.match(r"(?:附|见|详见|如)", short)
+                    entry["mark"] = entry["mark"] or head
             if _SIGN_MARK.search(text):
                 entry["mark"] = True
         found, seen = [], set()

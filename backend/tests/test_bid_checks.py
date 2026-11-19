@@ -249,3 +249,20 @@ def test_review_reopen_and_signing(owner, db_sessionmaker):
     assert next(s for s in again["signing"] if s["loc"] == s0["loc"])["mark"] == "missing"
     other = c.post(ROOT, headers=h, json=BODY).json()["id"]  # 别的项目的条目 404
     assert c.patch(f"{ROOT}/{other}/items/{item['id']}", headers=h, json={"review_status": "pending"}).status_code == 404
+
+
+def test_template_words_not_names_scanned_signing_titles_and_short_names():
+    """V34-B-08c：范本句中的词不当联系人；扫描页页首“报价单”进签章页速览；简称取字号。虚构文字。"""
+    from types import SimpleNamespace
+
+    from app.bid.checks import contacts_in
+    from app.bid.conclusion import short_names
+    from app.bid.results import signing_pages
+    assert not [c for c in contacts_in("根据此函，签字代表 宣布同意如下：") if c[0] == "PERSON"]
+    assert [c[2] for c in contacts_in("授权代表：周示例 电话：010-12345678") if c[0] == "PERSON"] == ["周示例"]
+    b = SimpleNamespace(id=uuid.uuid4())
+    nodes = {b.id: [("f", "F3-PG2-B1", 2, "六、报价单", "ocr_block", 0.99), ("f", "F3-PG2-B2", 2, "致：虚构采购人", "ocr_block", 0.99),
+                    ("f", "F3-PG5-B9", 5, "附：报价单", "ocr_block", 0.99)]}
+    assert [(s["page"], s["title"]) for s in signing_pages([b], nodes)] == [(2, "报价单")]  # 页中提及不算
+    names = short_names({1: "虚构示例（杭州）泵业科技有限公司", 2: "浙江样例科技股份有限公司", 3: "山东省演示安全生产技术中心"})
+    assert names == {1: "虚构示例", 2: "样例", 3: "演示"}
