@@ -53,7 +53,7 @@
 | V34-B-09 | 初审结论、串通证据链、二次核验与反馈（design/bid-conclusion.md） | Q-39、Q-53 | Opus，high | Sol 6.1，high | B-08b | 调模型前问次数；截图交用户 | 进行中（2026-11-19，Codex；已实现，待两组公开标书验收，[报告](reports/V34-B-09.md)）；Claude 复核代码通过（2026-11-19，Q-54），唱标价偏离设计转 B-06e |
 | V34-C-01 | V34Q-50 补遗：口语金额 Decimal、Word 批注跳过拼写标记 | Q-54 | Sonnet，medium | Terra，medium | B-09 | — | 已完成 |
 | V34-B-06e | 报价分析页重做：一眼看到问题（design/bid-pricing.md）；含改正 B-09 提前实现的唱标价 | Q-39、Q-54 | Opus，medium | Sol 6.1，high | B-09 | 截图交用户 | 已完成（2026-11-19，Claude Opus 5.5，reports/V34-B-06e.md；46 项通过；与规范的三处差异经用户确认保留） |
-| V34-B-01b | 发标单位一览表：第 1 步识别受邀单位名单，第 2 步按名单自动分组 | Q-56 | Opus，medium | Sol 6.1，medium | D-03 | 截图交用户 | 未开始（方案用户 2026-11-19 确认；顺序改到 D 批之后） |
+| V34-B-01b | 发标单位一览表：第 1 步识别受邀单位名单，第 2 步按名单自动分组 | Q-56、Q-58 | Opus，medium | Sol 6.1，medium | D-03 | 截图交用户 | 已完成（Claude，2026-11-19，reports/V34-B-01b.md） |
 | V34-D-01 | OCR 选型与升级：RapidOCR 新代次 PP-OCR 模型，模型文件打包、运行时不下载 | Q-55 | Opus，high | Sol 6.1，high | B-06e | 选型报告交用户确认后才换模型 | 已完成（2026-11-19，Claude Opus 5.5，reports/V34-D-01.md；选型用户确认 PP-OCRv6 small；块置信度改取最低行） |
 | V34-D-02 | 扫描页线框表格转 table_cell，低置信单元格的校验降级 | Q-55 | Opus，high | Sol 6.1，high | D-01 | — | 已完成（2026-11-19，Claude Opus 5.5，reports/V34-D-02.md；OCR 数字一律降级，Q-57） |
 | V34-D-03 | 文字页受限 text 兜底、跨页续表（校验时拼接）、PDF 页眉页脚规则分离 | Q-55 | Opus，medium | Sol 6.1，medium | D-02 | — || 已完成（2026-11-19，Claude Opus 5.5，reports/V34-D-03.md） |
