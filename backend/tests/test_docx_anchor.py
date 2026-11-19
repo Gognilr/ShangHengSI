@@ -55,6 +55,27 @@ def test_proof_err_does_not_split_quote():
     assert "".join(r.text for r in split_runs(a)) == "签订后三十日"
 
 
+def test_zero_width_and_fullwidth_projection():
+    import io
+
+    from docx import Document
+
+    doc = Document()
+    para = doc.add_paragraph()
+    para.add_run("乙方应在合同​签订后")
+    para.add_run("三十　日内付款，ＡＢＣ公司。")
+    buf = io.BytesIO()
+    doc.save(buf)
+    data = buf.getvalue()
+    stored = {n.loc: n.text for n in parse_docx(data, 1).nodes}
+    items = load_anchors(data, 1, stored)
+    a = items.locate("F1-P1", "合同签订后三十 日")
+    assert a.precise
+    assert "".join(r.text for r in split_runs(a)) == "合同​签订后三十　日"
+    a = load_anchors(data, 1, stored).locate("F1-P1", "ABC公司")
+    assert a.precise and "".join(r.text for r in split_runs(a)) == "ＡＢＣ公司"
+
+
 def test_cell_second_paragraph():
     a = anchors().locate("F1-T1-R1-C1", "验收期限")
     assert a.precise and a.paragraph.text == "验收期限为十日。"

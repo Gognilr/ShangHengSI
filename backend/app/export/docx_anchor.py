@@ -10,6 +10,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
 from app.parsing.docx import TrackedDocx, parse_docx
+from app.redaction.normalize import normalize_value, normalize_with_map
 
 MISMATCH = "原件解析结果与任务记录不一致，无法生成批注版"
 _XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
@@ -40,6 +41,19 @@ def _occurrences(text: str, quote: str):
     while start >= 0:
         yield start
         start = text.find(quote, start + 1)  # 重叠的出现也不是唯一匹配
+
+
+def _spans(text: str, quote: str):
+    """原文中的 (起, 止) 区间：先精确字面匹配；全无命中时，在规范化视图
+    （去零宽字符、全半角与异体统一，保留大小写）中匹配，经 index_map 反投影回原文下标。"""
+    exact = [(s, s + len(quote)) for s in _occurrences(text, quote)]
+    if exact:
+        return exact
+    view, target = normalize_with_map(text, preserve_case=True), normalize_value(quote, preserve_case=True)
+    if not target:
+        return []
+    return [(view.index_map[s], view.index_map[s + len(target) - 1] + 1)
+            for s in _occurrences(view.text, target)]
 
 
 class Anchors:
@@ -93,7 +107,7 @@ class Anchors:
                     visible.append(el.text or "")
                 elif el.tag in (qn("w:tab"), qn("w:br"), qn("w:cr")):
                     visible.append("\t" if el.tag == qn("w:tab") else "\n")
-            visible_count += sum(1 for _ in _occurrences("".join(visible), quote))
+            visible_count += len(_spans("".join(visible), quote))
             if any(a.tag in (qn("w:sdt"), qn("w:ins"), qn("w:moveTo")) for a in p.iterancestors()):
                 continue
             segments = []
@@ -112,8 +126,7 @@ class Anchors:
             segments.append(segment)
             for runs in segments:
                 text = "".join(r.find(qn("w:t")).text or "" for r in runs)
-                for start in _occurrences(text, quote):
-                    end = start + len(quote)
+                for start, end in _spans(text, quote):
                     offset = 0
                     first = last = None
                     for r in runs:
