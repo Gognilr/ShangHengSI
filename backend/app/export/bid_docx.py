@@ -466,6 +466,8 @@ def _conclusion_report(doc, d, scope):
             entry = review["entry"]
             result = "已核实 · 属实" if review["status"] == "verified" else f"已核实 · 不属实（{review['detail'] or review['reason_label']}）"
             _para(doc, f"{'、'.join(d.name(b) for b in entry['bidder_ids'])}：{entry['title']} · {result}")
+        if not c["reviews"] and not c["verify"]:
+            _para(doc, "无")
         if c["verify"]:
             _sub(doc, "尚待核实")
             for e in c["verify"]:

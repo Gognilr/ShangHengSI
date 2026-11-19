@@ -515,10 +515,11 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
     kept = {(c.requirement_id, c.bidder_id): (c.review_status, c.note_enc) for c in db.scalars(select(BidCell).where(
         BidCell.task_id == task.id, BidCell.source == "local", BidCell.verdict != "manual"))}
     db.execute(delete(BidCell).where(BidCell.task_id == task.id, BidCell.source == "local", BidCell.verdict != "manual"))
-    no_table = []
+    no_table, lump = [], []
     for b in bidders:
         if facts[b.id]["main"] is None:
-            no_table.append(crypto.decrypt_text(b.name_enc))
+            # 只有一个总价的按总价报价（服务类常见），不说成“未识别”
+            (lump if len(facts[b.id]["distinct"]) == 1 else no_table).append(crypto.decrypt_text(b.name_enc))
         issues, verdicts = compliance.evaluate(b.id, per[b.id], facts[b.id], params, project.opening_date, place)
         for it in issues:
             linked = kinds.get(it["kind"], [None])[0]
@@ -533,6 +534,8 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
                                reason_enc=crypto.encrypt_text(reason), source="local", review_status=status, note_enc=note))
     _save_pricing(project, analysis, facts)
     notes = [f"{'、'.join(no_table)}未识别出报价表（需有数量、单价、金额列），未做分项计算与报价规律比对"] if no_table else []
+    if lump:
+        notes.append(f"{'、'.join(lump)}按总价报价，未见分项报价表，未做分项计算与报价规律比对")
     return items, notes
 
 

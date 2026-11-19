@@ -178,7 +178,7 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
                               {"label": "投标总价", "value": money(distinct[0]), "places": {b: [at(totals[0][2])]}}]))
     # 超最高限价（第五十一条（五））
     if ceiling is None:
-        verdicts["ceiling"] = ("unclear", "关键参数未填写最高限价，无法本地比较", [])
+        verdicts["ceiling"] = ("unclear", "招标文件未写明最高投标限价（可在关键参数中补填）；是否低于成本见报价分析", [])
     elif manual is None and fact.get('separate_scopes'):
         verdicts["ceiling"] = ("unclear", "报价范围不同，需统一比较口径后核对最高限价", [])
     elif not candidates:

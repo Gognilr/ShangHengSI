@@ -206,7 +206,8 @@ def pricing_summary(view, order, shorts, cases, entries, reviewed):
 
 
 def _short_requirement(req):
-    text = " ".join(req["text"].split())
+    # 第五十一条默认行去掉“（参照……第五十一条）”前缀再截取，否则只剩前缀（V34-B-08c）
+    text = " ".join(re.sub(r"^（参照《[^》]+》第[^）]+条）", "", req["text"]).split())
     return text[:16] + ("…" if len(text) > 16 else "")
 
 
@@ -278,6 +279,7 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
         if req_id and tier != "reference":
             covered.add((req_id, ids[0]))
 
+    answered = defaultdict(int)  # 已响应且引文核实、未经人工处理的格：只计数，不逐家列入参考事项（V34-B-08c）
     for (rid, bid), cell in cells.items():
         req = reqs.get(rid)
         if req is None or bid not in order or req["method"] == "manual" or req["group"] == "format" or req.get("not_applicable"):
@@ -296,6 +298,9 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
         elif verdict == "missing":
             title = f"未找到“{term}”的响应内容（要求 {req['seq']}）"
         elif verdict == "yes" and cell["cite"] != "unverified":
+            if not reviewed.get(key) and cell["review_status"] == "pending" and not item:
+                answered[bid] += 1
+                continue
             title = f"已响应“{term}”（要求 {req['seq']}）"
         else:
             title = f"“{term}”的响应证据需核实（要求 {req['seq']}）"
@@ -305,6 +310,9 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
         add(key, [bid], title, "否决" if serious else "响应性", tier, article=item["article"] if item else None,
             item_id=str(item["id"]) if item else None, requirement_id=rid, status=cell["review_status"])
 
+    if answered:
+        ids = sorted(answered, key=order.get)
+        add("cells:answered", ids, f"已响应 {sum(answered.values())} 格，见要求响应矩阵", "响应性", "reference")
     for case in cases:
         add(case["id"], case["bidder_ids"], case["title"], "串通", case["tier"], article=case["article"], case_id=case["id"])
     verify.sort(key=lambda e: ({"否决": 0, "串通": 1}.get(e["category"], 2), order[e["bidder_ids"][0]], e["title"]))
