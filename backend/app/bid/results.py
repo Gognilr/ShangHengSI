@@ -38,7 +38,7 @@ def signing_pages(bidders, nodes):
             short = re.sub(r"\s+", "", text)
             toc = re.search(r"[.…·．]{3,}|\d+$", short)  # 目录行（引导点、行末页码）不算格式页标题
             if entry["title"] is None and kind != "sheet_cell" and not toc and (kind == "heading" or len(short) <= 30):
-                entry["title"] = next((t for t in _SIGN_TITLES if t in short), None)
+                entry["title"] = next((t for t in _SIGN_TITLES if t in short.replace("报价单位", "")), None)
                 if entry["title"]:
                     entry["loc"] = loc
                     head = page is not None and entry["n"] <= 3 and not re.match(r"(?:附|见|详见|如)", short)

@@ -34,6 +34,7 @@ _NOT_TOTAL = re.compile(r"最高限价|控制价|保证金|不含税|分项|单�
 _BARE_MONEY = re.compile(r"^[\s:：()（）]*(?:小写[\s:：()（）]*)?([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)(万?元|万)?[\s。；;()（）]*$")
 _NAME = re.compile(r"名称|品名|货物|设备|品目|项目|内容|规格|型号")
 _STRIP = re.compile(r"[\W_]+")
+_SUB_LIST = re.compile(r"(?:不)?含在(?:投标)?总价内|单独报价|(?:备品备件|备件|专用工具|工具)(?:价格)?清单")
 _MOTOR_SCOPE = re.compile(r"([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*元\s*[（(](不?含电机)(?:价格|价)?[）)]")
 
 
@@ -56,11 +57,20 @@ def labelled_totals(nodes):
     out, column_hits, summarized = [], set(), set()
     cells = {}
     quote_pages = set()
+    # 扫描件的页眉（“××项目计量泵商务报价单”每页都有）不能让每一页都算报价页（V34-B-08c）
+    heads = Counter()
+    for n in nodes:
+        if getattr(n, 'page', None) is not None and len(n.text) < 160:
+            heads[(n.file_seq, _STRIP.sub('', n.text))] += 1
+    sub_list = set()  # 备品备件、专用工具等分项清单所在页：表中“合计”是清单小计，不是投标总价
     for n in nodes:
         cell = table_cell(n.loc)
         if cell:
             cells[(n.file_seq, *cell)] = n
-        if len(n.text) < 160 and _QUOTE_HEADING.search(n.text) and not re.search(r"\.{3}|…|目录|分项|备品备件", n.text):
+        if getattr(n, 'page', None) is not None and _SUB_LIST.search(n.text):
+            sub_list.add((n.file_seq, n.page))
+        if (len(n.text) < 160 and _QUOTE_HEADING.search(n.text) and not re.search(r"\.{3}|…|目录|分项|备品备件", n.text)
+                and heads[(n.file_seq, _STRIP.sub('', n.text))] < 3):
             quote_pages.add((n.file_seq, getattr(n, 'page', None)))
 
     def amount(text, label, bare=False):
@@ -106,7 +116,7 @@ def labelled_totals(nodes):
         for m in sorted(matches, key=lambda m: m.start()):
             if _NOT_TOTAL.search(text[max(0, m.start() - 6):m.end()]):
                 continue
-            if m.group() == '合计' and text[:m.start()].strip(' :()'):
+            if m.group() == '合计' and (text[:m.start()].strip(' :()') or (n.file_seq, getattr(n, 'page', None)) in sub_list):
                 continue
             tail = text[m.end():]
             # “报价含…税费”“总价的百分比”等说明不作为总价标签。
