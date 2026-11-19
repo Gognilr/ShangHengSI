@@ -295,6 +295,29 @@ def test_recheck_blocks_name_left_in_snippet(owner, db_sessionmaker, llm):
         assert len(records) == 1 and records[0].status == "blocked" and records[0].request_text is None
 
 
+def test_reprepare_reuses_snippet_ner_cache(owner, db_sessionmaker, monkeypatch):
+    """V35-B-01：重新准备片段时实体识别走加密缓存，结果与首次一致；整份脱敏重算不清掉片段缓存。"""
+    c, h, _ = owner
+    base = _prepared(c, h, db_sessionmaker)
+    tid = uuid.UUID(base.rsplit("/", 1)[-1])
+    from app.bid import model
+    from app.db.models import NerNodeResult
+    from app.redaction import engine, ner
+    with db_sessionmaker() as db:
+        engine.redact_task(db, db.get(Task, tid))
+        before = {r.loc: r.redacted_text for r in db.scalars(select(DocNode).where(
+            DocNode.task_id == tid, DocNode.redacted_text.is_not(None)))}
+        assert any(loc.startswith(model._NER_PREFIX) for loc in db.scalars(
+            select(NerNodeResult.loc).where(NerNodeResult.task_id == tid)))
+        calls = []
+        real = ner.recognize
+        monkeypatch.setattr(ner, "recognize", lambda text: calls.append(1) or real(text))
+        model.prepare(db, db.get(Task, tid))
+        after = {r.loc: r.redacted_text for r in db.scalars(select(DocNode).where(
+            DocNode.task_id == tid, DocNode.redacted_text.is_not(None)))}
+        assert not calls and after == before
+
+
 @pytest.mark.parametrize("case", GOLDEN["redaction"], ids=[case["id"] for case in GOLDEN["redaction"]])
 def test_snippet_redaction_golden(case, owner, db_sessionmaker):
     """通过标书实际片段脱敏入口核对标注；不为每个识别样本另写测试函数。"""

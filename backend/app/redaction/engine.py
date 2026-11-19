@@ -1735,7 +1735,8 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
                 db.add(NerNodeResult(task_id=task.id, loc=loc, data_enc=blob, updated_at=utcnow()))
     if changed:
         db.execute(update(NerNodeResult), changed)
-    stale = [rid for loc, rid in cached_ids.items() if loc not in result.ner_cache]
+    # "B|" 开头的是标书片段的识别结果（bid/model.py），不归整份脱敏管理
+    stale = [rid for loc, rid in cached_ids.items() if loc not in result.ner_cache and not loc.startswith('B|')]
     if stale:
         db.execute(delete(NerNodeResult).where(NerNodeResult.id.in_(stale)))
     logger.debug('实体识别缓存：命中=%d，重算=%d', result.ner_cache_hits, result.ner_cache_misses)

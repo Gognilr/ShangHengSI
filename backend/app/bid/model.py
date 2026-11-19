@@ -574,6 +574,37 @@ def _close_snippets(db, task, groups, texts, mapping):
     return protected
 
 
+# 片段的识别结果与招标文件整份脱敏共用 ner_node_results，位置加此前缀区分：
+# 整份重算只清理自己的位置；缓存键含残余文字摘要，片段文字或词条变了自然不命中（V35-B-01）。
+_NER_PREFIX = "B|"
+
+
+def _ner_cache(db, task):
+    from app.redaction.engine import _ner_entries
+    ids, entries = _ner_entries(db, task.id)
+    n = len(_NER_PREFIX)
+    return ({loc[n:]: rid for loc, rid in ids.items() if loc.startswith(_NER_PREFIX)},
+            {loc[n:]: e for loc, e in entries.items() if loc.startswith(_NER_PREFIX)})
+
+
+def _save_ner_cache(db, task, cached_ids, cached, fresh):
+    """只增改不删：没被选中的片段留着，扫描页补完或返回修改后重新准备时多半还会用到；随任务删除。"""
+    from app.db.models import NerNodeResult
+    from app.db.base import utcnow
+    changed = []
+    for loc, entry in fresh.items():
+        if cached.get(loc) == entry:
+            continue
+        blob = crypto.encrypt_text(json.dumps(entry, ensure_ascii=False))
+        if loc in cached_ids:
+            changed.append({"id": cached_ids[loc], "data_enc": blob, "updated_at": utcnow()})
+        else:
+            db.add(NerNodeResult(task_id=task.id, loc=_NER_PREFIX + loc, data_enc=blob, updated_at=utcnow()))
+    if changed:
+        db.execute(update(NerNodeResult), changed)
+    db.flush()
+
+
 def redact(db, task, bidders, nodes: dict, req_texts: dict, groups=None):
     """只对待发送的片段节点与要求文字跑完整脱敏（规则 + 实体识别 + 词条）。
     nodes: {loc: 原文}；req_texts: {rid: 原文}。返回 ({loc: 脱敏文本}, {rid: 脱敏文本}, 本机保护处数)。
@@ -586,9 +617,12 @@ def redact(db, task, bidders, nodes: dict, req_texts: dict, groups=None):
     user_terms += invitee_terms(db, task, [full for full, _short in names.values()])
     req_locs = {rid: f"REQ-{i}" for i, rid in enumerate(req_texts, 1)}
     node_in = [E.NodeIn(loc, text) for loc, text in nodes.items()] + [E.NodeIn(req_locs[rid], t) for rid, t in req_texts.items()]
+    cached_ids, cached = _ner_cache(db, task)
     result = E.compute(node_in, task.stance, terms=E._load_terms(db, task.owner_id), user_terms=user_terms,
                        mask_quantity=bool(get_setting(db, "redaction.mask_quantity")), style="neutral", pinned=old,
-                       ratio=False, keeps=list(keep_terms.effective(db, task.owner_id).values()))
+                       ratio=False, keeps=list(keep_terms.effective(db, task.owner_id).values()), ner_cache=cached)
+    _save_ner_cache(db, task, cached_ids, cached, result.ner_cache)
+    logger.info("标书片段实体识别缓存 task=%s 命中=%s 重算=%s", task.id, result.ner_cache_hits, result.ner_cache_misses)
     mapping, texts = dict(result.mapping), dict(result.redacted)
     sweep = []
     for b in bidders:
