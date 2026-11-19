@@ -22,6 +22,8 @@ export interface BidProject extends BidSummary {
   check: { state: null | 'running' | 'done' | 'failed'; error: string | null; ocr: { done: number; total: number } }
   model: { state: BidModelState; error: string | null; done: number; total: number }
   sent_count?: number
+  /** 受邀投标单位名单（V34-B-01b），全称 */
+  invitees: string[]
 }
 /** 模型核对（V34-B-05）：片段脱敏 → 待确认 → 发送中 → 完成 / 失败 */
 export type BidModelState = null | 'preparing' | 'awaiting' | 'running' | 'done' | 'failed'
@@ -41,7 +43,11 @@ export interface BidLoc { file_id: string; loc: string; start: number; end: numb
 export interface BidRequirement { id: string; group: BidGroup; text: string; locs: BidLoc[]; method: BidMethod; enabled: boolean; source: 'marked' | 'model' | 'default' | 'manual'; seq: number; file: string | null }
 export interface BidParameters { ceiling: string | null; currency: 'CNY' | 'USD' | 'EUR' | 'HKD'; validity_days: number | null; deposit: string | null; deposit_forms: string; consortium: boolean | null; tax_included: boolean | null; agency?: string }
 export interface BidCount { total: number; covered: number; missing: (BidLoc & { text: string })[] }
+/** 受邀单位名单的一项：table 原文表格、scan 扫描页识别、text 原文段落、manual 手工 */
+export interface BidInvitee { name: string; source: 'table' | 'scan' | 'text' | 'manual'; file_id: string | null; loc: string | null }
+export const bidInviteeSourceLabel: Record<BidInvitee['source'], string> = { table: '原文表格', scan: '扫描页识别 · 请核对', text: '原文段落', manual: '手工' }
 export interface BidRequirements {
+  invitees: BidInvitee[]; invitees_edited: boolean
   parameters: BidParameters; parameter_sources: Record<string, { file_id: string; loc: string }>; parameters_confirmed: boolean
   extracted: boolean; tender_changed: boolean; items: BidRequirement[]; counts: { star: BidCount; veto: BidCount }; version: number
   extract_state: BidExtractState; extract_error: string | null; stage: BidStage
@@ -203,6 +209,7 @@ export const bidApi = {
   parse: (id: string) => http.post<BidProject>(`/bid/${id}/parse`),
   tender: (id: string, view: 'original' | 'ai' = 'original') => http.get<BidTender>(`/bid/${id}/tender`, { view }),
   requirements: (id: string) => http.get<BidRequirements>(`/bid/${id}/requirements`),
+  invitees: (id: string, names: string[]) => http.put<BidRequirements>(`/bid/${id}/invitees`, { names }),
   parameters: (id: string, body: BidParameters) => http.put<BidRequirements>(`/bid/${id}/parameters`, body),
   addRequirement: (id: string, body: { group: BidGroup; text: string; method: BidMethod; locs?: BidLoc[] }) => http.post<BidRequirements>(`/bid/${id}/requirements`, body),
   patchRequirement: (id: string, rid: string, body: Partial<Pick<BidRequirement, 'group' | 'text' | 'method' | 'enabled'>>) => http.patch<BidRequirements>(`/bid/${id}/requirements/${rid}`, body),

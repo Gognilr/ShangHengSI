@@ -1847,12 +1847,15 @@ def refresh_if_blocked(db: Session, task: Task) -> None:
         db.flush()
 
 
-def redact_task(db: Session, task: Task, style: str = "review", pin: bool = False) -> None:
+def redact_task(db: Session, task: Task, style: str = "review", pin: bool = False,
+                extra_terms: Sequence[UserTerm] = ()) -> None:
     """parse 阶段的脱敏：写 parties、redaction_items、redaction_maps、redaction_suspects 和正文节点的 redacted_text，
-    并统计已记住名称、自定义敏感词的命中次数（只在这里统计，第二步重算不计数）。不提交。"""
+    并统计已记住名称、自定义敏感词的命中次数（只在这里统计，第二步重算不计数）。不提交。
+    extra_terms：本次附加的词条（只有标书传入受邀单位名单，V34-B-01b），不写入用户词条库。"""
     if pin:
         existing = _existing_parties(db, task)
-        result = _run(db, task, _current_overrides(existing) if existing else None, existing, style=style, pin=True)
+        result = _run(db, task, _current_overrides(existing) if existing else None, existing, extra_terms,
+                      style=style, pin=True)
         _count_hits(db, result.matched_terms)
         from app.redaction.keep_terms import count_hits
         count_hits(db, task.owner_id, result.kept_memory)
@@ -1860,7 +1863,7 @@ def redact_task(db: Session, task: Task, style: str = "review", pin: bool = Fals
     db.execute(delete(Party).where(Party.task_id == task.id))
     db.execute(delete(RedactionSuspect).where(RedactionSuspect.task_id == task.id))
     db.flush()
-    result = _run(db, task, None, {}, style=style, pin=pin)
+    result = _run(db, task, None, {}, extra_terms, style=style, pin=pin)
     _count_hits(db, result.matched_terms)
     from app.redaction.keep_terms import count_hits
     count_hits(db, task.owner_id, result.kept_memory)

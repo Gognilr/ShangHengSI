@@ -259,7 +259,8 @@ def handle_bid(db, payload):
         if project.extract_state != "redacting":
             return
         try:
-            engine.redact_task(db, task, style="neutral")
+            from app.bid.model import invitee_terms
+            engine.redact_task(db, task, style="neutral", extra_terms=invitee_terms(db, task))
             # 标记本次中性脱敏的材料版本，旧回执需重新准备再确认。
             mapping = engine._load_full_map(db, task.id)
             mapping.pop("@date_shift_days", None)

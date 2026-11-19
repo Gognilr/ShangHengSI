@@ -458,6 +458,20 @@ def _names(bidder):
     return full, sorted(short_names(full), key=len, reverse=True)
 
 
+def invitee_terms(db, task, skip=()):
+    """受邀名单中的单位（全称与简称）作为 ORG 词条（V34-B-01b）；已建分组的投标人由调用方按代号处理。不写入用户词条库。"""
+    from app.bid.checks import short_names
+    from app.bid.invitees import key, names
+    from app.bid.requirements import load_state
+    from app.redaction import engine as E
+    done = {key(n) for n in skip}
+    out = []
+    for full in names(load_state(db.get(BidProject, task.id))):
+        if key(full) not in done:
+            out += [E.UserTerm(n, "ORG") for n in sorted(short_names(full), key=len, reverse=True)]
+    return out
+
+
 def _sweep(text, pairs, codes=None):
     """兜底：把仍以原文出现的投标人名称、对照表中的真实值换成代号；返回 (文本, 替换数)。
     数字开头或结尾的真实值按出口复检的数字边界匹配（旧金额 1000 不动“10000次”）；已有代号内部不替换。"""
@@ -551,6 +565,7 @@ def redact(db, task, bidders, nodes: dict, req_texts: dict, groups=None):
     old = E._load_full_map(db, task.id)
     names = {b.id: _names(b) for b in bidders}
     user_terms = [E.UserTerm(n, "ORG") for full, short in names.values() for n in dict.fromkeys([full, *short])]
+    user_terms += invitee_terms(db, task, [full for full, _short in names.values()])
     req_locs = {rid: f"REQ-{i}" for i, rid in enumerate(req_texts, 1)}
     node_in = [E.NodeIn(loc, text) for loc, text in nodes.items()] + [E.NodeIn(req_locs[rid], t) for rid, t in req_texts.items()]
     result = E.compute(node_in, task.stance, terms=E._load_terms(db, task.owner_id), user_terms=user_terms,

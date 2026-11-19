@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Check, FileDown, FolderOpen, ListChecks, Plus, ScanSearch, Settings2, UploadCloud } from '@lucide/vue'
+import { Check, ChevronDown, ChevronRight, FileDown, FolderOpen, ListChecks, Plus, ScanSearch, Settings2, UploadCloud } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { useAuthStore } from '@/stores/auth'
@@ -13,6 +13,7 @@ import BidFiles from '@/components/bid/BidFiles.vue'
 import BidStatus from '@/components/bid/BidStatus.vue'
 import BidderCard from '@/components/bid/BidderCard.vue'
 import { openingError } from '@/components/bid/results'
+import { matchInvitee, nameKey } from '@/components/bid/invitees'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 import BidRequirements from '@/components/bid/BidRequirements.vue'
 import BidResults from '@/components/bid/BidResults.vue'
@@ -42,7 +43,24 @@ async function exportReport() {
   catch (e) { error.value = e instanceof ApiError ? e.message : '导出失败，请重试' }
   finally { exporting.value = false }
 }
-const picker = ref<HTMLInputElement>(), folders = ref<HTMLInputElement>(), target = ref<string>()
+const picker = ref<HTMLInputElement>(), folders = ref<HTMLInputElement>(), target = ref<string>(), targetName = ref<string>()
+// 受邀单位名单（V34-B-01b）：名单中尚无分组的单位显示为待交卡片，拖入文件时才建分组；已有分组只是简称时提示改用全称
+const invitees = computed(() => project.value?.invitees ?? [])
+const bidderKeys = computed(() => new Set(project.value?.bidders.map(b => nameKey(b.name)) ?? []))
+const suggestions = computed(() => {
+  const out: Record<string, string> = {}
+  for (const b of project.value?.bidders ?? []) {
+    if (invitees.value.some(n => nameKey(n) === nameKey(b.name))) continue
+    const full = matchInvitee(b.name, invitees.value)
+    if (full && !bidderKeys.value.has(nameKey(full))) out[b.id] = full
+  }
+  return out
+})
+const waiting = computed(() => {
+  const claimed = new Set(Object.values(suggestions.value).map(nameKey))
+  return invitees.value.filter(n => !bidderKeys.value.has(nameKey(n)) && !claimed.has(nameKey(n)))
+})
+const waitingOpen = ref(true), overWaiting = ref<string | null>(null)
 const dragging = ref<'tender' | 'bulk' | null>(null), groupDialog = ref(false), settingsDialog = ref(false), settingsError = ref('')
 const grouped = ref<{ original: string; name: string; files: File[] }[]>([])
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -155,7 +173,7 @@ async function addBidder() {
   await mutate(() => bidApi.addBidder(id.value, newName.value.trim()))
   if (!error.value) { newName.value = ''; adding.value = false }
 }
-function choose(bidder?: string) { if (!blocked.value) { target.value = bidder; picker.value?.click() } }
+function choose(bidder?: string, name?: string) { if (!blocked.value) { target.value = bidder; targetName.value = name; picker.value?.click() } }
 async function upload(files: File[], bidder?: string, groups?: string[]) {
   if (!files.length || !project.value) return
   if (files.some(f => f.size > project.value!.limits.file_mb * 1024 * 1024)) { error.value = `单个文件不能超过 ${project.value.limits.file_mb} MB`; return }
@@ -165,7 +183,9 @@ async function upload(files: File[], bidder?: string, groups?: string[]) {
 }
 function picked(event: Event) {
   const input = event.target as HTMLInputElement, files = Array.from(input.files ?? [])
-  input.value = ''; void upload(files, target.value)
+  input.value = ''
+  if (targetName.value) void upload(files, undefined, files.map(() => targetName.value!))
+  else void upload(files, target.value)
 }
 
 // 文件夹逐批读取直到空批次，避免浏览器只返回前 100 个条目。根目录只包一层时展开到各投标人子目录。
@@ -190,14 +210,14 @@ function prepareGroups(list: { path: string; file: File }[]) {
     if (!map.has(name)) map.set(name, [])
     map.get(name)!.push(item.file)
   })
-  grouped.value = Array.from(map, ([name, files]) => ({ original: name || '（未放在文件夹中的文件）', name, files })); groupDialog.value = true
+  grouped.value = Array.from(map, ([name, files]) => ({ original: name || '（未放在文件夹中的文件）', name: matchInvitee(name, invitees.value) ?? name, files })); groupDialog.value = true
 }
 function pickedFolders(event: Event) {
   const input = event.target as HTMLInputElement, files = Array.from(input.files ?? [])
   input.value = ''; prepareGroups(files.map(file => ({ file, path: file.webkitRelativePath || file.name })))
 }
-async function drop(event: DragEvent, bidder?: string, folderMode = false) {
-  dragging.value = null
+async function drop(event: DragEvent, bidder?: string, folderMode = false, name?: string) {
+  dragging.value = null; overWaiting.value = null
   if (blocked.value) return
   // 必须在首次 await 前取得全部入口，部分浏览器在事件结束后清除 dataTransfer。
   const entries = Array.from(event.dataTransfer?.items ?? []).map(item => item.webkitGetAsEntry()).filter(Boolean) as unknown as Entry[]
@@ -207,13 +227,18 @@ async function drop(event: DragEvent, bidder?: string, folderMode = false) {
     for (const entry of entries) all.push(...await walk(entry, ''))
     const files = all.length ? all : flat.map(file => ({ file, path: file.name }))
     if (folderMode) prepareGroups(files)
+    else if (name) await upload(files.map(i => i.file), undefined, files.map(() => name))
     else await upload(files.map(i => i.file), bidder)
   } catch { error.value = '文件夹读取失败，请用“导入文件夹”或逐家加入文件' }
 }
 const groupError = ref('')
+function inviteeQuery(query: string, done: (items: { value: string }[]) => void) {
+  const k = nameKey(query)
+  done(invitees.value.filter(n => !k || nameKey(n).includes(k)).map(value => ({ value })))
+}
 async function confirmGroups() {
   const names = grouped.value.map(g => g.name.trim())
-  if (names.some(n => !n) || new Set(names).size !== names.length) { groupError.value = '请为每组填写不同的投标人名称'; return }
+  if (names.some(n => !n) || new Set(names.map(nameKey)).size !== names.length) { groupError.value = '请为每组填写不同的投标人名称'; return }
   groupError.value = ''
   const files: File[] = [], groups: string[] = []
   grouped.value.forEach((g, i) => g.files.forEach(f => { files.push(f); groups.push(names[i]!) }))
@@ -283,7 +308,7 @@ async function removeProject() {
                @click="choose()" @keydown.enter="choose()" @dragover.prevent="dragging = 'tender'" @dragleave.self="dragging = null" @drop.prevent="drop($event)">
             <UploadCloud :size="tenderFiles.length ? 18 : 24" :stroke-width="1.75" />
             <p class="si-drop-title">{{ tenderFiles.length ? '加入答疑、补遗或澄清文件' : '拖入招标文件，或点击选择' }}</p>
-            <p v-if="!tenderFiles.length" class="hint">Word 或 PDF；正文、答疑、补遗与澄清可分别加入，最多 {{ project.limits.tender_files }} 份</p>
+            <p v-if="!tenderFiles.length" class="hint">Word、PDF、Excel 或图片；正文、答疑、补遗与澄清可分别加入，最多 {{ project.limits.tender_files }} 份</p>
           </div>
         </section>
         <BidRequirements v-if="tenderKey" class="requirements" :project-id="id" :policy="project.policy" :disabled="blocked" :tender-key="tenderKey" @changed="load(false)" />
@@ -313,18 +338,32 @@ async function removeProject() {
           <el-button text @click="adding = false; newName = ''">取消</el-button>
         </div>
 
-        <div v-if="!project.bidders.length" class="si-drop hero" :class="{ dragging: dragging === 'bulk' }" :aria-disabled="blocked" role="button" tabindex="0"
+        <div v-if="!project.bidders.length && !waiting.length" class="si-drop hero" :class="{ dragging: dragging === 'bulk' }" :aria-disabled="blocked" role="button" tabindex="0"
              @click="folders?.click()" @keydown.enter="folders?.click()" @dragover.prevent="dragging = 'bulk'" @dragleave.self="dragging = null" @drop.prevent="drop($event, undefined, true)">
           <FolderOpen :size="28" :stroke-width="1.5" />
           <p class="si-drop-title">把各家的投标文件夹一起拖进来</p>
           <p class="hint">每个文件夹建一家投标人，上传前可核对名称；也可以先“添加投标人”，再逐家加入文件。</p>
         </div>
         <template v-else>
-          <div class="cards">
-            <BidderCard v-for="bidder in project.bidders" :key="bidder.id" :project-id="id" :bidder="bidder" :files="filesOf(bidder.id)" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors"
+          <div v-if="project.bidders.length" class="cards">
+            <BidderCard v-for="bidder in project.bidders" :key="bidder.id" :project-id="id" :bidder="bidder" :files="filesOf(bidder.id)" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" :suggest="suggestions[bidder.id]"
                         @rename="name => renameBidder(bidder.id, name)" @remove="removeBidder(bidder.id)" @pick="choose(bidder.id)" @drop="e => drop(e, bidder.id)"
-                        :opening-failed="openingFailed[bidder.id]" @password="setPassword" @remove-file="removeFile" @opening="(body, done) => saveOpening(bidder.id, body, done)" />
+                        :opening-failed="openingFailed[bidder.id]" @password="setPassword" @remove-file="removeFile" @opening="(body, done) => saveOpening(bidder.id, body, done)" @adopt="name => renameBidder(bidder.id, name)" />
           </div>
+          <section v-if="waiting.length" class="waiting" aria-label="名单中尚未交文件的单位">
+            <button type="button" class="waiting-head" :aria-expanded="waitingOpen" @click="waitingOpen = !waitingOpen">
+              <component :is="waitingOpen ? ChevronDown : ChevronRight" :size="14" :stroke-width="1.75" aria-hidden="true" />
+              名单中尚未交文件 <span class="num">{{ waiting.length }}</span> 家
+              <span class="hint">拖入文件时才建分组；未投标的不建卡、不占代号</span>
+            </button>
+            <ul v-if="waitingOpen" class="waiting-list">
+              <li v-for="name in waiting" :key="name" class="pending" :class="{ over: overWaiting === name }" role="button" tabindex="0" :aria-disabled="blocked" :aria-label="`为 ${name} 加入投标文件`"
+                  @click="choose(undefined, name)" @keydown.enter="choose(undefined, name)" @dragover.prevent="overWaiting = name" @dragleave.self="overWaiting = null" @drop.prevent.stop="drop($event, undefined, false, name)">
+                <span class="pending-name" :title="name">{{ name }}</span>
+                <span class="hint">拖入这家的投标文件，或点击选择</span>
+              </li>
+            </ul>
+          </section>
           <div class="si-drop slim" :class="{ dragging: dragging === 'bulk' }" :aria-disabled="blocked" role="button" tabindex="0"
                @click="folders?.click()" @keydown.enter="folders?.click()" @dragover.prevent="dragging = 'bulk'" @dragleave.self="dragging = null" @drop.prevent="drop($event, undefined, true)">
             <FolderOpen :size="18" :stroke-width="1.75" /><p class="si-drop-title">拖入更多投标人的文件夹</p>
@@ -356,15 +395,16 @@ async function removeProject() {
       <footer v-if="!showResults" class="page-foot"><p class="declaration hint">本系统提供初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。</p></footer>
     </template>
 
-    <input ref="picker" type="file" class="file-input" multiple :accept="target ? '.docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png' : '.docx,.doc,.wps,.rtf,.pdf'" @change="picked">
+    <input ref="picker" type="file" class="file-input" multiple accept=".docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png" @change="picked">
     <input ref="folders" type="file" class="file-input" multiple webkitdirectory @change="pickedFolders">
     <BidSettingsDialog v-if="project" v-model="settingsDialog" title="项目设置" confirm-text="保存" :initial="{ title: project.title, opening_date: project.opening_date, policy: project.policy, category_id: project.category_id, folder_id: project.folder_id }" :locked="locked" :busy="pending" :error="settingsError" @submit="saveSettings" />
     <el-dialog v-model="groupDialog" title="核对投标人分组" width="600px" :close-on-click-modal="!pending" append-to-body>
-      <p class="dialog-lede">每个文件夹对应一家投标人。请把名称改成投标函上的全称；同名的已有投标人会把文件并入该卡片。</p>
+      <p class="dialog-lede">每个文件夹对应一家投标人。请把名称改成投标函上的全称；同名的已有投标人会把文件并入该卡片。<template v-if="invitees.length">能对上受邀名单的已预填全称。</template></p>
       <ul class="group-list">
         <li v-for="group in grouped" :key="group.original">
           <span class="folder"><FolderOpen :size="14" :stroke-width="1.75" aria-hidden="true" /><span :title="group.original">{{ group.original }}</span></span>
-          <el-input v-model="group.name" maxlength="255" placeholder="投标人名称" :aria-label="`${group.original} 的投标人名称`" :disabled="pending" />
+          <el-autocomplete v-if="invitees.length" v-model="group.name" :fetch-suggestions="inviteeQuery" maxlength="255" placeholder="投标人名称，可从名单中选" :aria-label="`${group.original} 的投标人名称`" :disabled="pending" />
+          <el-input v-else v-model="group.name" maxlength="255" placeholder="投标人名称" :aria-label="`${group.original} 的投标人名称`" :disabled="pending" />
           <span class="hint num">{{ group.files.length }} 份</span>
         </li>
       </ul>
@@ -431,6 +471,17 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .cards { display: flex; flex-direction: column; gap: 16px; }
 .bids .si-drop.slim { margin-top: 16px; }
 .si-drop.hero { padding: 56px 16px; }
+.waiting { margin-top: 16px; }
+.cards + .waiting { margin-top: 20px; }
+.waiting-head { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 0; border: 0; background: none; font: var(--si-font-label); color: var(--si-ink-2); cursor: pointer; text-align: left; }
+.waiting-head svg { align-self: center; }
+.waiting-head .hint { margin-left: auto; font-weight: 400; }
+.waiting-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
+.pending { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border: 1px dashed var(--si-hair-strong); border-radius: var(--si-radius-card); cursor: pointer; }
+.pending:hover, .pending.over { border-color: var(--si-brand); background: var(--si-hover-bg); }
+.pending.over { background: var(--si-blue-tint); }
+.pending[aria-disabled="true"] { opacity: .65; cursor: progress; }
+.pending-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h3); color: var(--si-ink-2); }
 .limits { margin: 16px 0 0; }
 .step-foot.start { align-items: center; gap: 16px; margin-top: 24px; }
 .result { flex: 1; display: flex; flex-direction: column; gap: 6px; }
@@ -446,6 +497,7 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .file-input { display: none; }
 .dialog-lede { margin: 0 0 16px; font: var(--si-font-body); color: var(--si-ink-2); }
 .group-list { margin: 0; padding: 0; list-style: none; }
+.group-list .el-autocomplete { width: 100%; }
 .group-list li { display: grid; grid-template-columns: 160px minmax(0, 1fr) 48px; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--si-hair-faint); }
 .folder { display: flex; align-items: center; gap: 6px; min-width: 0; font: var(--si-font-meta); color: var(--si-ink-3); }
 .folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

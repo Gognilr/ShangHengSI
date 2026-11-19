@@ -247,7 +247,7 @@ def prefill(nodes) -> tuple[dict, dict]:
 # ---------------------------------------------------------------- 存取
 
 def load_state(project) -> dict:
-    """parameters_enc：{"values", "sources", "confirmed", "extracted_from"}。"""
+    """parameters_enc：{"values", "sources", "confirmed", "extracted_from", "invitees", "invitees_edited"}。"""
     if project.parameters_enc is None:
         return {"values": dict(_EMPTY), "sources": {}, "confirmed": False, "extracted_from": None}
     return json.loads(crypto.decrypt_text(project.parameters_enc))
@@ -305,6 +305,8 @@ def extract(db, task: Task) -> None:
         row.seq = seq
         row.method = policy_method(row.method, task.policy)
         seq += 1
+    from app.bid import invitees
+    invitees.refresh(db, task.id, state)
     state["extracted_from"] = parsed_tender_ids(db, task.id)
     save_state(project, state)
     project.requirements_version += 1
@@ -341,7 +343,9 @@ def view(db, task: Task) -> dict:
                                      "text": m[1].text[m[2]:m[3]]} for m in missing[:50]]}
     from app.bid.results import sent_count
     state = load_state(project)
-    return {"parameters": state["values"], "parameter_sources": state["sources"], "parameters_confirmed": state["confirmed"],
+    from app.bid import invitees
+    return {"invitees": invitees.view(state), "invitees_edited": bool(state.get("invitees_edited")),
+            "parameters": state["values"], "parameter_sources": state["sources"], "parameters_confirmed": state["confirmed"],
             "extracted": state["extracted_from"] is not None,
             "tender_changed": state["extracted_from"] is not None and state["extracted_from"] != parsed_tender_ids(db, task.id),
             "items": rows, "counts": counts, "version": project.requirements_version,

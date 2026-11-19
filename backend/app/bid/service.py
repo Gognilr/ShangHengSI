@@ -104,7 +104,17 @@ def file(db, task, raw):
     return row
 
 
+def require_unique_name(db, task, name, skip=None):
+    """规范化后（去空白、全半角括号、繁简）同名的投标人拒绝，避免同一家建出两张卡（V34-B-01b）。"""
+    from app.bid.invitees import key
+    k = key(name)
+    for row in db.scalars(select(BidBidder).where(BidBidder.task_id == task.id)):
+        if row.id != skip and key(crypto.decrypt_text(row.name_enc)) == k:
+            raise AppError(422, "BIDDER_DUPLICATE", "已有同名的投标人")
+
+
 def new_bidder(db, task, name):
+    require_unique_name(db, task, name)
     seq = (db.scalar(select(func.max(BidBidder.seq)).where(BidBidder.task_id == task.id)) or 0) + 1
     # 按录入顺序分配字母；移除卡片不会重排仍保留的投标人代号。
     code, n = "", seq
@@ -119,11 +129,14 @@ def new_bidder(db, task, name):
 
 def detail(db, task):
     from app.bid.results import sent_count
+    from app.bid import invitees
+    from app.bid.requirements import load_state
     project = db.get(BidProject, task.id)
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
     return {"id": task.id, "title": task.title, "opening_date": project.opening_date, "policy": task.policy,
             "stage": project.stage, "status": task.status, "category_id": project.category_id, "folder_id": project.folder_id, "error_message": task.error_message,
-            "last_activity_at": task.last_activity_at, "busy": busy(db, task), "limits": LIMITS, "sent_count": sent_count(db, task.id),
+            "last_activity_at": task.last_activity_at, "busy": busy(db, task), "limits": LIMITS,
+            "invitees": [e["name"] for e in invitees.view(load_state(project))], "sent_count": sent_count(db, task.id),
             "requirements": {"enabled": db.scalar(select(func.count()).select_from(BidRequirement).where(
                                  BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))) or 0,
                              "extract_state": project.extract_state},
@@ -177,16 +190,21 @@ def add_files(db, task, uploads, bidder_id=None, groups=None):
         raise AppError(422, "TOO_MANY_FILES", f"招标文件最多 {cap} 份" if tender else f"投标文件合计最多 {cap} 份")
     target = bidder(db, task, bidder_id) if bidder_id is not None else None
     checked = [tasks.inspect_upload(f.filename, f.file, LIMITS["file_mb"] * 1024 * 1024) for f in uploads]
-    if tender and any(u.ext not in ("docx", "doc", "wps", "rtf", "pdf") for u in checked):
-        raise AppError(422, "TENDER_FORMAT", "招标文件请上传 Word 或 PDF")
+    if tender and any(u.ext not in ("docx", "doc", "wps", "rtf", "pdf", "xlsx", "xls", "et", "jpg", "png") for u in checked):
+        raise AppError(422, "TENDER_FORMAT", "招标文件请上传 Word、PDF、Excel 或图片")
     # 文件夹名只用作建卡建议；重名的现有卡片明确拒绝歧义，避免混装。
     mapping = {}
     saved = []
     try:
         if groups is not None:
+            from app.bid.invitees import key
             existing = list(db.scalars(select(BidBidder).where(BidBidder.task_id == task.id)))
-            for name in dict.fromkeys(groups):
-                matches = [b for b in existing if crypto.decrypt_text(b.name_enc) == name]
+            names = list(dict.fromkeys(groups))
+            if len({key(n) for n in names}) != len(names):
+                raise AppError(422, "BIDDER_DUPLICATE", "分组中有规范化后同名的投标人，请改为不同名称")
+            for name in names:
+                # 规范化后同名的已有卡片：文件并入该卡（拖入名单中的待交卡片、再次导入同一家文件夹）
+                matches = [b for b in existing if key(crypto.decrypt_text(b.name_enc)) == key(name)]
                 if len(matches) > 1:
                     raise AppError(422, "AMBIGUOUS_GROUP", "同名投标人有多张卡片，请逐卡上传")
                 mapping[name] = matches[0] if matches else new_bidder(db, task, name)

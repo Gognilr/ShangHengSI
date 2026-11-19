@@ -11,6 +11,7 @@ import SiSegmented from '@/components/ui/SiSegmented.vue'
 import BidStatus from './BidStatus.vue'
 import BidSentDrawer from './BidSentDrawer.vue'
 import BidTenderText from './BidTenderText.vue'
+import BidInvitees from './BidInvitees.vue'
 
 /** 第 1 步右半：关键参数、要求清单与完整性计数（bid.md 2.2）。快捷键：J / K 上下、X 停用、E 改文字。 */
 const props = defineProps<{ projectId: string; policy: 'ai' | 'local_only'; disabled: boolean; tenderKey: string }>()
@@ -107,6 +108,7 @@ async function reextract() {
 async function assist(action: 'start' | 'confirm' | 'cancel') {
   if (await act(() => bidApi.assist(props.projectId, action)) && action === 'confirm') view.value = 'original'
 }
+async function saveInvitees(names: string[]) { await act(() => bidApi.invitees(props.projectId, names)) }
 async function confirmList() { await act(() => bidApi.confirm(props.projectId)) }
 
 function locate(item: BidRequirement) { current.value = item.id; focus.value = item.locs[0] ?? null }
@@ -163,6 +165,7 @@ const notEnough = computed(() => {
         </div>
         <p v-if="paramError" class="error" role="alert">{{ paramError }}</p>
         <div v-if="paramsDirty" class="param-actions"><el-button size="small" @click="paramsDirty = false; Object.assign(params, data.parameters)">还原</el-button><el-button size="small" type="primary" :loading="saving" @click="saveParams">保存参数</el-button></div>
+        <BidInvitees :items="data.invitees" :edited="data.invitees_edited" :disabled="locked" @save="saveInvitees" @locate="(l: BidLoc) => { focus = l }" />
       </section>
 
       <!-- 要求清单：左原文，右清单 -->

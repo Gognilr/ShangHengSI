@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import service as audit
 from app.bid import folders, service
-from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, FolderInput, FolderPatch, ParametersInput, PlaceInput, PasswordInput, ProjectInput, RequirementInput,
+from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, FolderInput, FolderPatch, InviteesInput, ParametersInput, PlaceInput, PasswordInput, ProjectInput, RequirementInput,
                              ApplicabilityInput, ConclusionReviewInput, ConclusionSignInput, OpeningPriceInput,
                              RequirementPatch, ReviewInput, SigningInput)
 from app.db.base import utcnow
@@ -191,7 +191,9 @@ def rename_bidder(bidder_id: str, body: BidderInput, task: Task = Depends(owned)
         model.require_idle(project)
     else:
         service.require_editable(project)
-    service.bidder(db, task, bidder_id).name_enc = crypto.encrypt_text(body.name)
+    row = service.bidder(db, task, bidder_id)
+    service.require_unique_name(db, task, body.name, skip=row.id)
+    row.name_enc = crypto.encrypt_text(body.name)
     if checked:
         db.flush()
         bidders, nodes, _files = checks._load(db, task.id)
@@ -336,6 +338,20 @@ def save_parameters(body: ParametersInput, task: Task = Depends(owned), db: Sess
     state["values"], state["confirmed"] = body.model_dump(), True
     R.save_state(project, state)
     _changed(db, task)
+    db.commit()
+    return _requirements(db, task)
+
+
+@router.put("/{id}/invitees")
+def save_invitees(body: InviteesInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """受邀投标单位名单（V34-B-01b）：开始初审前可改；改过后重新抽取不再覆盖。"""
+    from app.bid import invitees, requirements as R
+    task = service.editable(db, task)
+    project = db.get(BidProject, task.id)
+    state = R.load_state(project)
+    invitees.replace(state, body.names)
+    R.save_state(project, state)
+    task.last_activity_at = utcnow()
     db.commit()
     return _requirements(db, task)
 

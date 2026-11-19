@@ -8,8 +8,8 @@ import BidOpeningInput from './BidOpeningInput.vue'
 
 // 一家投标人一张对象卡：代号 · 名称（点铅笔就地改）· 文件数 · 加入文件 · 更多；整张卡可拖入文件
 // 唱标价（选填，V34-B-06e）：开标时边唱标边录，初审前即可录；初审开始后在报价分析页修改
-const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string>; openingFailed?: string }>()
-const emit = defineEmits<{ rename: [name: string]; remove: []; pick: []; drop: [event: DragEvent]; password: [fid: string, password: string]; removeFile: [fid: string]; opening: [body: BidOpeningPriceInput, done: () => void] }>()
+const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string>; openingFailed?: string; suggest?: string }>()
+const emit = defineEmits<{ rename: [name: string]; remove: []; pick: []; drop: [event: DragEvent]; password: [fid: string, password: string]; removeFile: [fid: string]; opening: [body: BidOpeningPriceInput, done: () => void]; adopt: [name: string] }>()
 const pricing = ref(false)
 const editing = ref(false), name = ref(''), over = ref(false), input = ref<{ focus: () => void }>()
 const titleName = computed(() => /标书|报价文件|投标文件|项目|\d+\s*[台套份]/.test(editing.value ? name.value : props.bidder.name))
@@ -41,7 +41,8 @@ function drop(event: DragEvent) { over.value = false; emit('drop', event) }
         <el-dropdown-item :disabled="files.length > 0" @click="emit('remove')">{{ files.length ? '移除投标人（先移除文件）' : '移除投标人' }}</el-dropdown-item>
       </RowMore>
     </header>
-    <p v-if="titleName" class="hint">请填写投标单位全称，便于混装检查与投标人名称脱敏。</p>
+    <p v-if="suggest && !editing" class="suggest">名单中为：<span class="full" :title="suggest">{{ suggest }}</span><el-button size="small" text :disabled="disabled" @click="emit('adopt', suggest)">改用</el-button></p>
+    <p v-else-if="titleName" class="hint">请填写投标单位全称，便于混装检查与投标人名称脱敏。</p>
     <div class="opening">
       <span class="label">唱标价（选填）</span>
       <BidOpeningInput v-if="pricing" :initial="bidder.opening_price" note :busy="busy" :failed="openingFailed" @save="body => emit('opening', body, () => { pricing = false })" @cancel="pricing = false" />
@@ -68,6 +69,8 @@ function drop(event: DragEvent) { over.value = false; emit('drop', event) }
 .count { margin-left: auto; flex: none; }
 .head .el-button:not(.pencil) svg { margin-right: 4px; }
 .files { margin-top: 8px; }
+.suggest { display: flex; align-items: center; gap: 4px; margin: 4px 0 0 38px; font: var(--si-font-meta); color: var(--si-ink-3); }
+.suggest .full { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-1); }
 .opening { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 28px; margin-top: 4px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .opening .value { color: var(--si-ink-1); }
 .empty { display: block; width: 100%; margin: 12px 0 8px; padding: 16px; border: 1px dashed var(--si-hair-strong); border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-meta); cursor: pointer; }

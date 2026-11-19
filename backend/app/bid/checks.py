@@ -20,6 +20,7 @@ from app.db.base import utcnow
 from app.db.models import BidBidder, BidCell, BidImage, BidItem, BidProject, BidRequirement, DocNode, TaskFile
 from app.redaction import detect
 from app.redaction.normalize import normalize_value
+from app.redaction.tables import table_cell
 from app.security import crypto
 
 logger = logging.getLogger(__name__)
@@ -64,12 +65,23 @@ def _load(db, task_id):
     rows = db.execute(select(DocNode.file_id, DocNode.loc, DocNode.page, DocNode.text_enc, DocNode.kind, DocNode.ocr_conf, DocNode.bbox)
                       .where(DocNode.task_id == task_id, DocNode.part != "comment").order_by(DocNode.file_id, DocNode.ord)).all()
     rows.sort(key=lambda r: seqs.get(r[0], 0))  # 按文件录入顺序，文件内按 ord（稳定排序）
+    # 受邀单位名单所在节点不作招标文件基线：否则各家名称与名单上的电话、联系人进入基线，混装与联系信息相同静默失效（V34Q-56）
+    skip_tables, skip_locs = _invitee_skip(db, task_id)
     for file_id, loc, page, enc, kind, conf, bbox in rows:
         f = files.get(file_id)
         if f is None or f.parser_version is None or enc is None:
             continue
+        if f.bidder_id is None and (loc in skip_locs or ((cell := table_cell(loc)) and cell[0] in skip_tables)):
+            continue
         nodes[f.bidder_id].append((file_id, loc, page, crypto.decrypt_text(enc), kind, conf, bbox))
     return bidders, nodes, files
+
+
+def _invitee_skip(db, task_id):
+    from app.bid.invitees import baseline_skip
+    from app.bid.requirements import load_state
+    project = db.get(BidProject, task_id)
+    return baseline_skip(load_state(project)) if project is not None else (set(), set())
 
 
 def _excerpt(text, start, end, pad=24):

@@ -45,6 +45,11 @@ class BidderInput(BaseModel):
         return value.strip()
 
 
+class InviteesInput(BaseModel):
+    """受邀投标单位名单（V34-B-01b）：整表替换。"""
+    names: list[str] = Field(max_length=200)
+
+
 class PasswordInput(BaseModel):
     password: str = Field(max_length=256)
 
