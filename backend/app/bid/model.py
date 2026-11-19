@@ -794,7 +794,8 @@ def messages(db, task, state, index):
 
 # ---------------------------------------------------------------- 结果
 
-_SNIPPET_REF = re.compile(r"\[?(?<![A-Za-z0-9\-/])([A-Z]\d{1,3})(?![0-9A-Za-z\-/])\]?")
+# “A7/A14”连写也换；“GB/T3836”的数字超过 3 位、不是本家片段的编号原样保留
+_SNIPPET_REF = re.compile(r"\[?(?<![A-Za-z0-9\-])([A-Z]\d{1,3})(?![0-9A-Za-z\-])\]?")
 
 
 def snippet_refs(text, snippets):
