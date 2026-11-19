@@ -113,19 +113,18 @@ def _digit_bounded(text: str, start: int, end: int) -> bool:
 def _numeric_spans(text: str, value: str) -> list[tuple[int, int]]:
     out = []
     n_digits = len(_digits(value))
-    for m in re.finditer(re.escape(value), text):
-        if _digit_bounded(text, m.start(), m.end()) and (
-                n_digits >= _SHORT_DIGITS or _has_currency(text, m.start(), m.end())):
-            out.append(m.span())
+    for start in _find_all(text, value):
+        end = start + len(value)
+        if _digit_bounded(text, start, end) and (n_digits >= _SHORT_DIGITS or _has_currency(text, start, end)):
+            out.append((start, end))
     if n_digits >= _LONG_DIGITS:
         compact = _digits(value)
         # 文本中的数字串（允许空格、短横线分隔）去掉分隔符后与真实值相同；区间只取对上的那几位数字，
         # 闭合按区间替换时不吞掉同一串里相邻的其他数字（V35-B-02）
-        for m in re.finditer(r"(?<!\d)\d[\d \-]*\d(?!\d)", text):
-            digits = [i for i in range(m.start(), m.end()) if text[i].isdigit()]
-            at = ''.join(text[i] for i in digits).find(compact)
+        for digits, positions in _digit_runs(text):
+            at = digits.find(compact)
             if at >= 0:
-                out.append((digits[at], digits[at + len(compact) - 1] + 1))
+                out.append((positions[at], positions[at + len(compact) - 1] + 1))
     if _AMOUNT_VALUE.match(value):
         target = _decimal(value)
         # 数值 ≥ 10000 的金额：换了千分位、小数位写法也拦截，不要求带币种（Q-134 ③，宁可误拦）。
@@ -135,6 +134,17 @@ def _numeric_spans(text: str, value: str) -> list[tuple[int, int]]:
             if number == target and (any_form or _has_currency(text, start, end)):
                 out.append((start, end))
     return out
+
+
+@lru_cache(maxsize=8)
+def _digit_runs(text: str) -> tuple[tuple[str, list[int]], ...]:
+    """文本中的数字串（允许空格、短横线分隔）：（去掉分隔符的数字, 各位数字的下标）。逐段复检时数字类值
+    每段都要比对，同一段只切一次（V35-B-02）。只在进程内缓存最近几份。"""
+    out = []
+    for m in re.finditer(r"(?<!\d)\d[\d \-]*\d(?!\d)", text):
+        positions = [i for i in range(m.start(), m.end()) if text[i].isdigit()]
+        out.append((''.join(text[i] for i in positions), positions))
+    return tuple(out)
 
 
 @lru_cache(maxsize=8)
@@ -436,6 +446,7 @@ def _mask_code_syntax(text: str) -> str:
     return re.sub(r'\[\[(?:OUR|[A-Z]+_\d+)\]\]|[\[［【][^\[\]［］【】\r\n]+[\]］】]', mask, text)
 
 
+@lru_cache(maxsize=16384)
 def _compact_target(value: str) -> str | None:
     target = re.sub(r'[\s-]', '', value).upper()
     if (len(target) < 3 or not target.isascii() or not target.isalnum()
@@ -447,18 +458,29 @@ def _compact_target(value: str) -> str | None:
     return target
 
 
+_OCR_DIGITS = str.maketrans({'O': '0', 'L': '1', 'I': '1', '|': '1', 'S': '5', 'B': '8'})
+
+
+@lru_cache(maxsize=8)
+def _alnum_runs(text: str) -> tuple[tuple[str, str | None, list[int]], ...]:
+    """文本中的字母数字串（允许空白、短横线分隔）：（紧凑大写, 数字过半时的 OCR 折叠写法, 各字符下标）。
+    同一段只切一次（V35-B-02）。"""
+    out = []
+    for match in re.finditer(r'[A-Za-z0-9|]+(?:[\s-]+[A-Za-z0-9|]+)*', text):
+        positions = [i for i in range(match.start(), match.end()) if not text[i].isspace() and text[i] != '-']
+        compact = ''.join(text[i] for i in positions).upper()
+        folded = compact.translate(_OCR_DIGITS) if sum(c.isdigit() for c in compact) > len(compact) / 2 else None
+        out.append((compact, folded, positions))
+    return tuple(out)
+
+
 def _compact_spans(text: str, value: str) -> list[tuple[int, int]]:
     target = _compact_target(value)
     if target is None:
         return []
     out = []
-    ocr = str.maketrans({'O': '0', 'L': '1', 'I': '1', '|': '1', 'S': '5', 'B': '8'})
-    for match in re.finditer(r'[A-Za-z0-9|]+(?:[\s-]+[A-Za-z0-9|]+)*', text):
-        positions = [i for i in range(match.start(), match.end()) if not text[i].isspace() and text[i] != '-']
-        compact = ''.join(text[i] for i in positions).upper()
-        variants = [compact]
-        if target.isdigit() and sum(c.isdigit() for c in compact) > len(compact) / 2:
-            variants.append(compact.translate(ocr))
+    for compact, folded, positions in _alnum_runs(text):
+        variants = [compact] + ([folded] if folded is not None and target.isdigit() else [])
         for variant in variants:
             start = variant.find(target)
             if start >= 0:
