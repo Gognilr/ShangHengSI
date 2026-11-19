@@ -22,7 +22,6 @@ from app.redaction.detect import chinese_upper_value, find_amounts
 class BidNode(CheckNode):
     """审核校验的节点加上标书需要的出处：文件、页码、节点类别与 OCR 置信度。"""
     kind: str = "paragraph"
-    ocr_conf: float | None = None
     file_id: object = None
     page: int | None = None
 
@@ -82,7 +81,7 @@ def expired_certificates(nodes, opening: date):
                 continue
             found = [(a, b, v) for a, b, v in find_dates(n.text) if m.end() <= a <= m.end() + 15]
             if found and found[0][2] < opening:
-                out.append((found[0][2], n, m.start(), found[0][1], n.kind == "ocr_block" and (n.ocr_conf or 1) < LOW_OCR_CONF))
+                out.append((found[0][2], n, m.start(), found[0][1], (n.ocr_conf or 1) < LOW_OCR_CONF))
     return out
 
 
@@ -205,17 +204,29 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
                               {"label": f"其余 {low['others']} 家平均", "value": low["others_mean"]}], ARTICLE + "（五）"))
 
     # 大小写（L-04）与分项计算（L-01、L-02）
-    wrong_case = check_uppercase(nodes)
-    for r in wrong_case:
+    # 数字来自扫描件识读的（r.unsure，V34-D-02）只作提示、请核对原件，不参与修正后总价
+    found_case = check_uppercase(nodes)
+    wrong_case = [r for r in found_case if not r.unsure]
+    unsure_case = [r for r in found_case if r.unsure]
+    for r in found_case:
         n = by_loc[r.locs[0]]
-        issues.append(_issue("uppercase", "general", "大写金额与小写金额不一致", [{"label": "位置", "value": r.detail.split("：", 1)[-1],
-                                                                                "places": {b: [at(n)]}}], kind="uppercase"))
-    verdicts["uppercase"] = (("no", f"{len(wrong_case)} 处大写与小写金额不一致", [at(by_loc[r.locs[0]]) for r in wrong_case[:4]])
-                             if wrong_case else ("yes", "未发现大写与小写金额不一致", []))
+        title = "大写金额与小写金额可能不一致（扫描件识读，请核对原件）" if r.unsure else "大写金额与小写金额不一致"
+        issues.append(_issue("uppercase", "hint" if r.unsure else "general", title,
+                             [{"label": "位置", "value": r.detail.split("：", 1)[-1], "places": {b: [at(n)]}}], kind="uppercase"))
+    if wrong_case:
+        verdicts["uppercase"] = ("no", f"{len(wrong_case)} 处大写与小写金额不一致", [at(by_loc[r.locs[0]]) for r in wrong_case[:4]])
+    elif unsure_case:
+        verdicts["uppercase"] = ("unclear", f"{len(unsure_case)} 处大写与小写金额可能不一致，数字来自扫描件识读，请核对原件",
+                                 [at(by_loc[r.locs[0]]) for r in unsure_case[:4]])
+    else:
+        verdicts["uppercase"] = ("yes", "未发现大写与小写金额不一致", [])
     for r in fact["results"]:
         n = by_loc.get(r.locs[0])
-        title = "报价表分项金额与数量 × 单价不一致" if r.code == "L-01" else "报价表各行金额之和与合计不一致"
-        issues.append(_issue("row_calc" if r.code == "L-01" else "sum_rows", "general", title,
+        code = r.unsure or r.code
+        title = "报价表分项金额与数量 × 单价不一致" if code == "L-01" else "报价表各行金额之和与合计不一致"
+        if r.unsure:
+            title = title.replace("不一致", "可能不一致（扫描件识读，请核对原件）")
+        issues.append(_issue("row_calc" if code == "L-01" else "sum_rows", "hint" if r.unsure else "general", title,
                              [{"label": "计算", "value": r.detail, "places": {b: [at(n)] if n else []}}]))
     fact["corrected"] = corrected_total(fact, wrong_case, ceiling)
 

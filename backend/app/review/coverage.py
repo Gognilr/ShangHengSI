@@ -53,7 +53,7 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
     for seq, part, kind, page, confidence in rows:
         if part != "body":
             excluded[(seq, part)] += 1
-        if (part == "body" and kind == "ocr_block" and confidence is not None
+        if (part == "body" and confidence is not None
                 and confidence < LOW_OCR_CONF and page is not None):
             low_pages[seq].add(page)
 

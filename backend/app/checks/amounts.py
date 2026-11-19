@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
 
-from app.checks.model import CheckFile, CheckNode, CheckResult, SEVERITY
+from app.checks.model import CheckFile, CheckNode, CheckResult, SEVERITY, soften_ocr
 from app.checks.numbers import CENT, money, parse_number, parse_rate, pct_diff, rounded
 from app.parsing.xlsx import WARN_FORMULA
 from app.redaction.detect import _CURRENCY
@@ -29,6 +29,7 @@ class QuoteTableCheck:
     total: Decimal | None
     total_ok: bool | None
     currency: str | None
+    rows_unsure: int = 0  # 计算不一致但数字来自 OCR 识读、改为请核对原件的行（V34-D-02）
 
 
 def column_kind(text: str) -> str | None:
@@ -36,7 +37,7 @@ def column_kind(text: str) -> str | None:
     for pattern, kind in ((r"税率|\b(?:tax|vat)\s*rate\b", "rate"),
                           (r"税额|\b(?:tax|vat)\b", "tax"),
                           (r"单价|\bunit\s*price\b", "price"),
-                          (r"金额|总价|小计|\b(?:amount|total|subtotal)\b", "amount"),
+                          (r"金额|总价|合价|小计|\b(?:amount|total|subtotal)\b", "amount"),
                           (r"\bprice\b", "price"), (r"数量|\b(?:qty|quantity)\b", "qty"),
                           (r"合计|总计|总额", "amount")):  # 排在数量之后：“数量合计”仍是数量列
         if re.search(pattern, text, re.IGNORECASE):
@@ -217,7 +218,13 @@ def _check_table(table: _Table) -> tuple[QuoteTableCheck, list[CheckResult]]:
         ending = f"等 {len(skipped)} 行" if len(skipped) > 10 else ""
         text = f"{table.name} 第 {rows} 行{ending}数字无法识别，未做金额核验"
         results.append(_result("L-INFO", table, [table.first_loc], text, text))
-    info.rows_checked, info.rows_skipped, info.row_errors = checked, skipped, errors
+    # 扫描表格（V34-D-02）：涉及 OCR 数字的不一致只提示核对原件，不计为计算错误
+    results = soften_ocr(results, [n for row in table.rows.values() for n in row.values()])
+    unsure = [r for r in results if r.unsure == "L-01"]
+    errors -= len(unsure)
+    if any(r.unsure == "L-02" for r in results):
+        info.total_ok = None
+    info.rows_checked, info.rows_skipped, info.row_errors, info.rows_unsure = checked, skipped, errors, len(unsure)
     return info, results
 
 
@@ -284,4 +291,4 @@ def check_uppercase(nodes: list[CheckNode]) -> list[CheckResult]:
                 detail = f"{node.loc}：大写金额“{surface}”= {money(hit.value)}，相邻的小写金额 {money(other.value)}"
                 results.append(CheckResult("L-04", SEVERITY["L-04"], [node.loc], node.file_seq, detail,
                                            f"{node.loc}：大写金额与相邻的小写金额不一致，差异约 {pct_diff(hit.value, other.value)}"))
-    return results
+    return soften_ocr(results, nodes)

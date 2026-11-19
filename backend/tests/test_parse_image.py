@@ -97,3 +97,30 @@ def test_log_has_no_text(monkeypatch, caplog):
         parse_image(data_of("quotation_clear"), 1)
     assert "机密报价" not in caplog.text
     assert image_mod.PARSER_VERSION == "image-1"
+
+
+OCR_EVAL = Path(__file__).resolve().parent / "fixtures" / "ocr_eval"
+
+
+def test_scanned_ruled_table_becomes_cells_and_checks_soften():
+    """V34-D-02：有线框的扫描报价表（印章压在金额列、合计行合并）出 table_cell；OCR 数字算不平只提示核对原件。"""
+    from app.checks.amounts import check_tables
+    from app.checks.model import CheckNode
+
+    parsed = parse_image((OCR_EVAL / "quotation_stamp.jpg").read_bytes(), 1)
+    cells = {n.loc: n for n in parsed.nodes if n.kind == "table_cell"}
+    assert cells["F1-PG1-T1-R1-C4"].text == "数量" and cells["F1-PG1-T1-R2-C6"].text == "223,200.00"
+    assert cells["F1-PG1-T1-R8-C1"].text.startswith("合计") and "F1-PG1-T1-R8-C2" not in cells  # 合并单元格记在首列
+    assert all(isinstance(v, float) for n in cells.values() for v in n.bbox) and all(n.ocr_conf for n in cells.values())
+    assert [n.ord for n in parsed.nodes] == list(range(1, len(parsed.nodes) + 1))
+
+    nodes = [CheckNode(n.loc, n.text, 1, None, ocr_conf=n.ocr_conf) for n in parsed.nodes]
+    tables, results = check_tables(nodes, [])
+    assert tables[0].recognized and tables[0].rows_checked >= 5 and tables[0].row_errors == 0 and tables[0].rows_unsure >= 1
+    assert not [r for r in results if r.code in ("L-01", "L-02")]
+    assert all("请核对原件" in r.detail and r.severity == "low" for r in results if r.unsure)
+
+
+def test_scanned_table_without_rules_stays_blocks():
+    parsed = parse_image((OCR_EVAL / "quotation_noline.jpg").read_bytes(), 1)
+    assert parsed.nodes and all(n.kind == "ocr_block" for n in parsed.nodes)

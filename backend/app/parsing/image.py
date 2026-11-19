@@ -10,7 +10,7 @@ import warnings
 
 from PIL import Image, ImageOps
 
-from app.parsing import ocr
+from app.parsing import ocr, ocr_table
 from app.parsing.docx import manual_clause_no
 from app.parsing.model import LOW_OCR_CONF, ParsedFile, ParsedNode, ParseError
 
@@ -50,21 +50,40 @@ def parse_image(data: bytes, file_seq: int) -> ParsedFile:
         lines = ocr.recognize(work)
     except Exception:  # noqa: BLE001
         raise ParseError(MSG_UNREADABLE) from None
+    # 线框表格（V34-D-02）：在识别用的图上找，单元格框按原图像素
+    tables, used = ocr_table.find_tables(work, lines, ratio)
     if ratio != 1.0:
         for ln in lines:
             ln.bbox = [round(v / ratio, 2) for v in ln.bbox]
+    rest = [ln for i, ln in enumerate(lines) if i not in used]
+    items = [(t.top, "table", t) for t in tables]
+    items += [(b[1][1], "block", b) for b in map(ocr.block_of, ocr.merge_lines(rest))]
+    items.sort(key=lambda it: it[0])
 
     nodes: list[ParsedNode] = []
     low = False
-    for no, block in enumerate(ocr.merge_lines(lines), start=1):
-        text, bbox, conf = ocr.block_of(block)
-        low = low or conf < LOW_OCR_CONF
-        nodes.append(
-            ParsedNode(
-                loc=f"F{file_seq}-PG1-B{no}", ord=no, kind="ocr_block", part="body", text=text,
-                clause_no=manual_clause_no(text), page=1, bbox=bbox, ocr_conf=conf,
+    block_no = table_no = 0
+    for _, kind, content in items:
+        if kind == "block":
+            block_no += 1
+            text, bbox, conf = content
+            low = low or conf < LOW_OCR_CONF
+            nodes.append(
+                ParsedNode(
+                    loc=f"F{file_seq}-PG1-B{block_no}", ord=len(nodes) + 1, kind="ocr_block", part="body", text=text,
+                    clause_no=manual_clause_no(text), page=1, bbox=bbox, ocr_conf=conf,
+                )
             )
-        )
+            continue
+        table_no += 1
+        for cell in content.cells:
+            low = low or cell.conf < LOW_OCR_CONF
+            nodes.append(
+                ParsedNode(
+                    loc=f"F{file_seq}-PG1-T{table_no}-R{cell.row}-C{cell.col}", ord=len(nodes) + 1, kind="table_cell",
+                    part="body", text=cell.text, page=1, bbox=cell.bbox, ocr_conf=cell.conf,
+                )
+            )
     log.info("image ocr: blocks=%d elapsed=%.1fs", len(nodes), time.monotonic() - started)
     if not nodes:
         raise ParseError(MSG_NO_TEXT)

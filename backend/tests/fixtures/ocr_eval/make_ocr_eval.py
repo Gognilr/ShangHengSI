@@ -47,8 +47,10 @@ class Page:
         self.lines.append("".join(s for _, s in cells))
         self.y += int(pt * PT * gap)
 
-    def table(self, cols: list[int], rows: list[list[str]], pt: float = 10.5, row_h: int = 78):
-        """有线框的表格；cols 为各列左边界加最后的右边界。"""
+    def table(self, cols: list[int], rows: list[list[str]], pt: float = 10.5, row_h: int = 78,
+              ruled: bool = True, merged_last: bool = False):
+        """表格；cols 为各列左边界加最后的右边界。ruled=False 不画线（无线框表，D-02）；
+        merged_last=True 时最后一行除末列外合并为一格（“合计”行，D-02）。"""
         f = font(pt)
         top = self.y
         for r, cells in enumerate(rows):
@@ -59,10 +61,12 @@ class Page:
                 self.d.text((x, y0 + (row_h - pt * PT) / 2 - 4), s, fill=15, font=f)
             self.lines.append("".join(cells))
         bottom = top + len(rows) * row_h
-        for r in range(len(rows) + 1):
-            self.d.line([(cols[0], top + r * row_h), (cols[-1], top + r * row_h)], fill=30, width=3)
-        for x in cols:
-            self.d.line([(x, top), (x, bottom)], fill=30, width=3)
+        if ruled:
+            for r in range(len(rows) + 1):
+                self.d.line([(cols[0], top + r * row_h), (cols[-1], top + r * row_h)], fill=30, width=3)
+            for i, x in enumerate(cols):
+                inner = 0 < i < len(cols) - 2
+                self.d.line([(x, top), (x, bottom - (row_h if merged_last and inner else 0))], fill=30, width=3)
         self.y = bottom + 60
 
 
@@ -172,6 +176,47 @@ def quotation_table():
     return p, fields
 
 
+_QUOTE_ROWS = [
+    ["序号", "货物名称", "规格型号", "数量", "单价", "合价"],
+    ["1", "网络交换机", "SW-5548X", "12", "18,600.00", "223,200.00"],
+    ["2", "视频监控摄像机", "IPC-T260", "86", "1,450.00", "124,700.00"],
+    ["3", "门禁控制器", "AC-04N", "24", "3,280.00", "78,720.00"],
+    ["4", "综合布线", "Cat6A", "1", "96,385.50", "96,385.50"],
+    ["5", "安装调试费", "—", "1", "41,000.00", "41,000.00"],
+    ["6", "备品备件", "SP-01", "10", "607.80", "6,078.00"],
+]
+
+
+def quotation_stamp():
+    """D-02：合计行在表内（前五列合并），落款印章压在表格右下的金额列上。"""
+    p = Page()
+    p.text("开标一览表", 18, center=True, gap=2.4)
+    p.text("项目名称：某虚构园区智能化改造采购项目    招标编号：ZB-2026-0389", 11)
+    p.text("投标人：远帆示例机电设备有限公司            货币单位：人民币元", 11, gap=2.0)
+    cols = [130, 230, 640, 870, 1050, 1300, 1530]
+    table_top = p.y
+    p.table(cols, [*_QUOTE_ROWS, ["合计", "", "", "", "", "564,083.50"]], merged_last=True)
+    p.lines[-1] = "合计564,083.50"
+    p.text("投标总价（大写）：伍拾陆万肆仟零捌拾叁元伍角", 12)
+    p.text("投标人（盖章）：远帆示例机电设备有限公司", 12)
+    p.text("日期：2026年5月20日", 12)
+    fields = ["18,600.00", "223,200.00", "1,450.00", "124,700.00", "3,280.00", "78,720.00", "96,385.50",
+              "41,000.00", "607.80", "6,078.00", "564,083.50", "伍拾陆万肆仟零捌拾叁元伍角"]
+    return p, fields, (1330, table_top + 78 * 6)
+
+
+def quotation_noline():
+    """D-02：无线框的报价表（只有对齐的列），应仍走 ocr_block。"""
+    p = Page()
+    p.text("分项报价表", 18, center=True, gap=2.4)
+    p.text("投标人：远帆示例机电设备有限公司            货币单位：人民币元", 11, gap=2.0)
+    p.table([130, 230, 640, 870, 1050, 1300, 1530], _QUOTE_ROWS, ruled=False)
+    p.text("合计：564,083.50", 12)
+    fields = ["18,600.00", "223,200.00", "1,450.00", "124,700.00", "3,280.00", "78,720.00", "96,385.50",
+              "41,000.00", "607.80", "6,078.00", "564,083.50"]
+    return p, fields
+
+
 def account_info():
     p = Page()
     p.text("投标人基本情况表", 18, center=True, gap=2.4)
@@ -259,6 +304,8 @@ SAMPLES = [
     ("small_font", "承诺书：9 号小字，密排", "normal"),
     ("quotation_poor", "报价一览表的低质量扫描：约 100 DPI 放大、字迹发淡、较重噪点", "poor"),
     ("account_poor", "基本情况表的低质量扫描（同上）", "poor"),
+    ("quotation_stamp", "开标一览表：有线框，合计行在表内（前五列合并），印章压在金额列上（D-02）", "normal"),
+    ("quotation_noline", "无线框的分项报价表：只有对齐的列（D-02）", "normal"),
 ]
 
 
@@ -266,8 +313,8 @@ def main():
     out = {}
     for i, (name, desc, quality) in enumerate(SAMPLES):
         stamp_at = None
-        if name == "stamp_page":
-            page, fields, stamp_at = stamp_page()
+        if name in ("stamp_page", "quotation_stamp"):
+            page, fields, stamp_at = globals()[name]()
         elif name.endswith("_poor"):
             page, fields = globals()[name.replace("_poor", "_table" if name.startswith("quotation") else "_info")]()
         else:

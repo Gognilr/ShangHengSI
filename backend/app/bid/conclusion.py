@@ -159,7 +159,9 @@ def pricing_summary(view, order, shorts, cases, entries, reviewed):
         facts.append((TIER[e["tier"]], "、".join(shorts[b] for b in e["bidder_ids"]), title))
     for bid, rows in rows_calc.items():
         tier = min((e["tier"] for e in rows), key=TIER.get)
-        text = f"报价计算错误 {len(rows)} 处"
+        unsure = sum(1 for e in rows if e["title"].startswith("报价计算待核对"))
+        text = "，".join(x for x in (f"报价计算错误 {len(rows) - unsure} 处" if len(rows) > unsure else "",
+                                     f"报价计算待核对 {unsure} 处（扫描件识读）" if unsure else "") if x)
         tags[bid].append({"key": rows[0]["id"], "text": text, "tier": tier})
         facts.append((TIER[tier], shorts[bid], text))
     for item in items.values():
@@ -252,7 +254,7 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
         if kind == "cert_expired":
             tier = "verify"
         if kind == "row_calc":
-            title = "报价计算错误 1 处"
+            title = "报价计算待核对 1 处（扫描件识读）" if level == "hint" else "报价计算错误 1 处"
         if kind == "low_price":
             low = pricing.get(ids[0], {}).get("low_price")
             if low:

@@ -12,7 +12,7 @@ from app.checks.dates import check_dates
 from app.checks.content import check_content
 from app.checks.installments import check_installments
 from app.checks.references import check_references
-from app.checks.model import CheckFile, CheckNode, CheckResult
+from app.checks.model import CheckFile, CheckNode, CheckResult, soften_ocr
 from app.db.models import DocNode, LocalFinding, TaskFile
 from app.redaction.tables import table_cell
 from app.security import crypto
@@ -38,6 +38,7 @@ def evaluate(nodes: list[CheckNode], files: list[CheckFile], today: date, laws: 
     results += check_dates(nodes, today)
     results += check_installments(nodes, files)
     results += check_references(nodes, laws=laws)
+    results = soften_ocr(results, nodes)  # L-05、L-13、L-14 等（报价表与大小写已在各自检查内降级）
     order = {code: i for i, code in enumerate(("L-01", "L-02", "L-03", "L-INFO", "L-04", "L-05", "L-06", "L-07", "L-08", "L-09", "L-10", "L-11", "L-13", "L-14", "L-15", "L-16", "L-17", "L-18", "L-19", "L-20", "L-21"))}
     positions = {node.loc: i for i, node in enumerate(nodes)}
     results.sort(key=lambda r: (order[r.code], r.file_seq or 0, positions.get(r.locs[0], -1) if r.locs else -1))
@@ -51,7 +52,7 @@ def load_inputs(db, task_id: uuid.UUID) -> tuple[list[CheckNode], list[CheckFile
                       .where(DocNode.task_id == task_id, DocNode.part == "body").order_by(TaskFile.seq, DocNode.ord))
     nodes = [CheckNode(n.loc, crypto.decrypt_text(n.text_enc) if n.text_enc else "", seqs[n.file_id], n.clause_no,
                        n.hidden_spans, crypto.decrypt_text(n.formula_enc) if n.formula_enc else None,
-                       n.sheet, n.cell_ref) for n in rows]
+                       n.sheet, n.cell_ref, n.ocr_conf) for n in rows]
     return nodes, [CheckFile(f.seq, f.is_main, f.ext, f.doc_type, list(f.warnings or [])) for f in files]
 
 
@@ -89,6 +90,7 @@ def run_table_checks(db, task) -> None:
     files = [f for f in files if f.seq in eligible and (f.ext in ('xls', 'xlsx') or f.seq in table_files)]
     _, results = check_tables(nodes, files)
     results += check_uppercase(nodes) + check_finance(nodes) + check_formulas(nodes)
+    results = soften_ocr(results, nodes)
     db.execute(delete(LocalFinding).where(LocalFinding.task_id == task.id))
     loc_files = dict(db.execute(select(DocNode.loc, DocNode.file_id).where(DocNode.task_id == task.id)).all())
     file_ids = dict(db.execute(select(TaskFile.seq, TaskFile.id).where(TaskFile.task_id == task.id)).all())
@@ -114,6 +116,8 @@ def table_notes(nodes, files) -> dict[str, str]:
                  f"金额计算有 {table.row_errors} 行不一致" if table.row_errors else "金额计算一致"]
         if table.rows_skipped:
             parts.append(f"{len(table.rows_skipped)} 行未核验")
+        if table.rows_unsure:
+            parts.append(f"{table.rows_unsure} 行数字来自扫描件识读且计算不一致，请核对原件")
         if table.total_ok is not None:
             parts.append("合计一致" if table.total_ok else "合计不一致")
         if total is not None and table.table in compared:

@@ -233,7 +233,7 @@ def quote_tables(nodes):
             if calculation is not table:
                 for result in found:
                     result.detail = result.detail.replace('× 单价', '× 泵头与电机单价之和')
-            results += [r for r in found if r.code in ("L-01", "L-02")]
+            results += [r for r in found if (r.unsure or r.code) in ("L-01", "L-02")]  # 含扫描识读降级的（V34-D-02）
             col = _name_col(table)
             items = []
             for row in table.data_rows:

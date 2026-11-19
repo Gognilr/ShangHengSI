@@ -139,6 +139,23 @@ def test_scanned_bbox_converted_to_pdf_points():
     assert max(n.bbox[3] for n in parsed.nodes) > 100  # 不是缩得过小
 
 
+def test_scanned_ruled_table_cells_in_pdf_points():
+    """V34-D-02：扫描页的线框表格出 table_cell，loc 为 F-PG-T-R-C，bbox 为 PDF 点，表格前后的块保持阅读顺序。"""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.open(FIXTURES.parent / "ocr_eval" / "quotation_table.jpg").save(buf, "PDF", resolution=200)
+    parsed = parse_pdf(buf.getvalue(), 3)
+    cells = [n for n in parsed.nodes if n.kind == "table_cell"]
+    assert len(cells) >= 36 and all(re.fullmatch(r"F3-PG1-T1-R\d+-C\d+", n.loc) for n in cells)
+    assert all(0 <= n.bbox[0] < n.bbox[2] <= 595.3 and 0 <= n.bbox[1] < n.bbox[3] <= 841.9 for n in cells)
+    kinds = [n.kind for n in parsed.nodes]
+    assert kinds[0] == "ocr_block" and kinds[-1] == "ocr_block"  # 标题在表前、合计与落款在表后
+    assert {n.text for n in cells} >= {"单价", "合价", "223,200.00", "6,078.00"}
+
+
 def test_mixed_pdf_text_and_scanned():
     sample = MANIFEST["mixed"]
     parsed = parse_pdf(data_of("mixed"), 1)

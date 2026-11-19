@@ -3,7 +3,7 @@
 文字页用 pdfplumber：表格单元格出 table_cell 节点，表格区域内的文字行不再重复出段落节点（Q-16），
 其余文字行按纵向间距合并为文本块。bbox 为 [x0, top, x1, bottom]，PDF 点，页面显示方向，原点在左上角
 （pdfplumber 的字符坐标已按 /Rotate 换算）。扫描页（M3-04）用 pypdfium2 以 200 DPI 渲染（渲染结果已含 /Rotate），
-交给 ocr.recognize，行坐标除以渲染比例换算回 PDF 点，再按相同规则合并为块。
+交给 ocr.recognize，行坐标除以渲染比例换算回 PDF 点，再按相同规则合并为块；线框表格转为 table_cell（ocr_table，V34-D-02）。
 解析失败只抛出 ParseError，消息是固定的中文原因，不含原文和异常消息。
 """
 import io
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import pdfplumber
 from pdfminer.pdfdocument import PDFPasswordIncorrect
 
-from app.parsing import ocr
+from app.parsing import ocr, ocr_table
 from app.parsing.docx import manual_clause_no
 from app.parsing.model import LOW_OCR_CONF, MAX_PDF_PAGES, ParsedFile, ParsedNode, ParseError
 
@@ -200,11 +200,9 @@ def _render_page(pdfium_doc, page_no: int):
 
 
 def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[ParsedNode]) -> list[float]:
-    """OCR 一页，追加 ocr_block 节点，返回各块的置信度。"""
+    """OCR 一页，追加 ocr_block 与线框表格的 table_cell 节点（V34-D-02），返回各块、各单元格的置信度。"""
     img, scale = _render_page(pdfium_doc, page_no)
     lines = ocr.recognize(img)
-    for ln in lines:  # 像素 → PDF 点
-        ln.bbox = [v / scale for v in ln.bbox]
     existing = [n for n in nodes if n.page == page_no]
     boxes = [n.bbox for n in existing if n.bbox]
 
@@ -212,20 +210,43 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
         return any(bbox[0] < b[2] and bbox[2] > b[0] and bbox[1] < b[3] and bbox[3] > b[1] for b in boxes)
 
     # 合并前先去掉已有文字的 OCR 行，避免页眉与紧邻的图片正文合并后整块被丢弃。
-    lines = [ln for ln in lines if not overlaps(ln.bbox)]
+    lines = [ln for ln in lines if not overlaps([v / scale for v in ln.bbox])]
+    # 线框表格（V34-D-02）在像素图上找，单元格框直接换算为 PDF 点；其余行照旧合并为块。
+    tables, used = ocr_table.find_tables(img, lines, scale)
+    for ln in lines:  # 像素 → PDF 点
+        ln.bbox = [v / scale for v in ln.bbox]
+    rest = [ln for i, ln in enumerate(lines) if i not in used]
     first_no = max((int(n.loc.rsplit('-B', 1)[1]) for n in existing if re.search(r'-B\d+$', n.loc)), default=0) + 1
-    confs: list[float] = []
-    for no, block in enumerate(ocr.merge_lines(lines), start=first_no):
+    table_no = max((int(m[1]) for n in existing if (m := re.search(r'-T(\d+)-R\d+-C\d+$', n.loc))), default=0)
+    items = [(t.top, "table", t) for t in tables]
+    for block in ocr.merge_lines(rest):
         text, bbox, conf = ocr.block_of(block)
-        if overlaps(bbox):
-            continue
-        confs.append(conf)
-        nodes.append(
-            ParsedNode(
-                loc=f"F{file_seq}-PG{page_no}-B{no}", ord=len(nodes) + 1, kind="ocr_block", part="body", text=text,
-                clause_no=manual_clause_no(text), page=page_no, bbox=bbox, ocr_conf=conf,
+        if not overlaps(bbox):
+            items.append((bbox[1], "block", (text, bbox, conf)))
+    items.sort(key=lambda it: it[0])
+    confs: list[float] = []
+    block_no = first_no - 1
+    for _, kind, content in items:
+        if kind == "block":
+            block_no += 1
+            text, bbox, conf = content
+            confs.append(conf)
+            nodes.append(
+                ParsedNode(
+                    loc=f"F{file_seq}-PG{page_no}-B{block_no}", ord=len(nodes) + 1, kind="ocr_block", part="body", text=text,
+                    clause_no=manual_clause_no(text), page=page_no, bbox=bbox, ocr_conf=conf,
+                )
             )
-        )
+            continue
+        table_no += 1
+        for cell in content.cells:
+            confs.append(cell.conf)
+            nodes.append(
+                ParsedNode(
+                    loc=f"F{file_seq}-PG{page_no}-T{table_no}-R{cell.row}-C{cell.col}", ord=len(nodes) + 1,
+                    kind="table_cell", part="body", text=cell.text, page=page_no, bbox=cell.bbox, ocr_conf=cell.conf,
+                )
+            )
     return confs
 
 

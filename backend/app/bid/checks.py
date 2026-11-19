@@ -469,7 +469,7 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
 
     def place(n, s, e):
         where = _where(n.file_id, n.loc, n.page, n.text, s, e)
-        if n.kind == "ocr_block" and n.ocr_conf is not None and n.ocr_conf < compliance.LOW_OCR_CONF:
+        if n.ocr_conf is not None and n.ocr_conf < compliance.LOW_OCR_CONF:
             where["low_ocr"] = True
         return where
 

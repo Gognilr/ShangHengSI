@@ -33,7 +33,7 @@ def test_header_priority(text, kind):
 
 @pytest.mark.parametrize(("text", "kind"), [
     ("合计", "amount"), ("总计", "amount"), ("总额", "amount"), ("合计（元）", "amount"), ("合计金额", "amount"),
-    ("合计含税", "amount_incl"), ("数量合计", "qty"), ("单价合计", "price"), ("税额合计", "tax"),
+    ("合计含税", "amount_incl"), ("合价", "amount"), ("数量合计", "qty"), ("单价合计", "price"), ("税额合计", "tax"),
 ])
 def test_total_style_header_names(text, kind):
     assert column_kind(text) == kind
@@ -46,6 +46,24 @@ def test_total_named_column_is_recognized_and_checked():
     assert [(r.code, r.locs) for r in results] == [("L-01", ["F1-T1-R3-C4", "F1-T1-R3-C2", "F1-T1-R3-C3"])]
     tables, results = run([["项目", "数量", "单价", "合计"], ["A", "2", "5000", "10000"], ["合计", "", "", "9000"]])
     assert [(r.code, r.locs) for r in results] == [("L-02", ["F1-T1-R3-C4"])]
+
+
+@pytest.mark.parametrize("conf", [0.95, 0.60])
+def test_ocr_cells_soften_calc_errors(conf):
+    """V34-D-02：扫描表格的数字可能识读错（高置信也会错），算不平只提示核对原件，不计为计算错误。"""
+    from dataclasses import replace
+
+    from app.checks.amounts import check_uppercase
+
+    rows = [["数量", "单价", "金额"], ["2", "5000", "10000"], ["1", "5000", "5001"], ["合计", "", "15002"]]
+    scanned = [replace(n, ocr_conf=conf) for n in nodes(rows)]
+    tables, results = check_tables(scanned, [])
+    assert tables[0].row_errors == 0 and tables[0].rows_unsure == 1 and tables[0].total_ok is None
+    assert [(r.code, r.unsure, r.severity) for r in results] == [("L-INFO", "L-01", "low"), ("L-INFO", "L-02", "low")]
+    assert results[0].locs == ["F1-T1-R3-C3", "F1-T1-R3-C1", "F1-T1-R3-C2"] and "请核对原件" in results[0].detail
+    assert ("识读置信度低" in results[0].detail) == (conf < 0.80)
+    upper = check_uppercase([CheckNode("F1-PG1-B1", "总价人民币壹万元（¥10,001.00）", 1, None, ocr_conf=conf)])
+    assert [(r.code, r.unsure) for r in upper] == [("L-INFO", "L-04")]
 
 
 def test_vat_labelled_amount_columns_are_recognized():
