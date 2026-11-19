@@ -1,0 +1,10 @@
+description: B-08c 标书片段中表格各列以“ ｜ ”拼成一行：证照编号只取紧随标签的一格，片段标签 [B2] 不被 OCR 纠成金额（虚构）
+stance: other
+must_replace:
+  - {text: (晋)FM安许证字〔2023〕7716号, category: IDNO}
+  - {text: XK13-205-77391, category: IDNO}
+must_keep:
+  - 安全验收评价
+  - 20190815
+  - 有效期至
+  - "[B2]"

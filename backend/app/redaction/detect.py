@@ -137,6 +137,17 @@ _LABELED_SWIFT = re.compile(r'(?i:SWIFT(?:[ \t]+Code)?|BIC|银行识别码)[ \t]
                            r'([A-Za-z0-9]{8,11})(?![A-Za-z0-9])')
 
 
+# 表格各列以“ ｜ ”拼成一行时（标书片段、出口复检全文），编号只取紧随标签的一格（V34-B-08c）
+_CELL_SEP = re.compile(r'[ \t]*[|｜][ \t]+|[ \t]+[|｜][ \t]*')
+
+
+def _first_cell(raw: str, original: str) -> tuple[int, str]:
+    """original 为同一段的原样文字（识别视图会把数字后的“｜”纠成 1，分隔只在原样文字上找）。"""
+    lead = re.match(r'[ \t]*(?:[|｜][ \t]*)?', original).end()
+    cut = _CELL_SEP.search(original, lead)
+    return lead, raw[lead:cut.start() if cut else len(raw)]
+
+
 def _norm_key(value: str) -> str:
     return re.sub(r"[\s.\-]", "", value).upper()
 
@@ -188,9 +199,10 @@ def find_formatted(text: str) -> list[Hit]:
         code = m.group(1).upper()
         add(m.start(1), m.end(1), 'SWIFT', code[:8] if len(code) == 11 and code.endswith('XXX') else code)
     for m in _GENERIC_ID.finditer(text):
-        value = m.group(1).strip().rstrip('.')
+        lead, cell = _first_cell(m.group(1), plain[m.start(1):m.end(1)])
+        value = cell.strip().rstrip('.')
         if sum(c.isdigit() for c in value) >= 5:
-            start = m.start(1) + len(m.group(1)) - len(m.group(1).lstrip())
+            start = m.start(1) + lead + len(cell) - len(cell.lstrip())
             add(start, start + len(value), 'IDNO')
     for m in _BANK_CODE.finditer(text):
         add(m.start(1), m.end(1), "SWIFT", m.group(1).upper())
@@ -200,8 +212,12 @@ def find_formatted(text: str) -> list[Hit]:
             valid = (validators.id_card(value) if _ID_CARD.fullmatch(value) else
                      validators.uscc(value) if _CREDIT_CODE.fullmatch(value) else None)
             add(m.start(1), m.end(1), "IDNO", validated=valid)
+    # 表格分隔（原样文字中两侧带空白的“｜”）当作截止符；标签与编号分在相邻两格时跳过紧随标签的一个分隔
+    celled = _CELL_SEP.sub(lambda x: '\n' * len(x.group()), plain)
+    celled = ''.join(c if o != '\n' else '\n' for c, o in zip(text, celled))
     for label in _LICENSE.finditer(text):
-        m = _LICENSE_VALUE.match(text, label.end())
+        pos = label.end() + re.match(r'[ \t]*(?:[|｜][ \t]*)?', plain[label.end():]).end()
+        m = _LICENSE_VALUE.match(celled, pos)
         if m:
             value = m.group(2).strip().rstrip('.')
             start = m.start(2) + len(m.group(2)) - len(m.group(2).lstrip())
@@ -553,7 +569,8 @@ def find_amounts(text: str, column: str | None = None) -> list[Hit]:
     hits = _find_amounts(view, column)
     # 短 OCR 数字仅在明确币种 / 金额列语境中核验，不放宽全局数字识别视图。
     # F1-S1-B2 等位置编号的尾部不能因紧随 USD 而被误认作金额；独立负数仍可识别。
-    for match in re.finditer(r'(?<![A-Za-z0-9])(?<![A-Za-z0-9]-)[0-9OoIl|SB][0-9OoIl|SB,. \t]*', view):
+    # 方括号中的片段标签（“$ [B2]”）不按 OCR 纠成数字（V34-B-08c）。
+    for match in re.finditer(r'(?<![A-Za-z0-9\[])(?<![A-Za-z0-9]-)[0-9OoIl|SB][0-9OoIl|SB,. \t]*', view):
         token = match.group().rstrip()
         wrong = [i for i, c in enumerate(token) if c in 'OoIl|SB']
         if not wrong or len(wrong) > 2 or not any(c.isdigit() for c in token):
