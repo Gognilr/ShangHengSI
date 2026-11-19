@@ -282,3 +282,13 @@ def test_single_english_word_value_is_case_sensitive():
     assert check('long', ['Long']) == []
     assert cats("Mr. Long agrees.", ["Long"]) == {'MAP', 'PERSON'}
     assert [r.category for r in recheck("LORNA FICTIVE agrees.", real_values=["Lorna Fictive"], terms=[])] == ["MAP"]
+
+
+def test_value_hits_report_exact_original_span():
+    """V35-B-02：真实值 / 词条命中的 end 是原文中的精确终点（归一化、紧凑通路经 index_map 投影回原文），片段闭合直接按此替换。"""
+    text = "甲方：华\u200b东某某科技公司，账号 6222 0200 1234 5678 9，备注 13800001111"
+    hits = {(r.category, text[r.position:r.end]) for r in recheck(
+        text, real_values=["华东某某科技公司", "6222020012345678"], terms=["某某科技"])}
+    assert ("MAP", "华\u200b东某某科技公司") in hits
+    assert ("TERM", "某某科技") in hits
+    assert ("MAP", "6222 0200 1234 5678") in hits  # 只取对上的那几位，不吞掉同一串里的“9”

@@ -512,7 +512,6 @@ def _close_snippets(db, task, groups, texts, mapping):
     """按实际拼接语境补齐遗漏，再把替换投影回各节点；原节点与拼接分隔符不移动。
     跨节点命中分别登记各节点的原文字段，保证每个代号仍能在本机还原。"""
     from app.redaction.placeholders import NeutralAllocator
-    from app.redaction.normalize import normalize_with_map
     from app.redaction.recheck import SegmentChecker, recheck_context
     ctx = recheck_context(db, task.id)
     protected = 0
@@ -523,25 +522,14 @@ def _close_snippets(db, task, groups, texts, mapping):
         marks = re.compile('|'.join(map(re.escape, sorted(codes, key=len, reverse=True)))) if codes else None
         checker = SegmentChecker(real_values=[v for k, v in mapping.items() if not k.startswith('@')],
                                  terms=ctx.terms, placeholders=codes, kept=ctx.kept)
-        patterns = {category: [P.name_pattern(normalize_value(v)) for v in values if len(v.strip()) >= 2]
-                    for category, values in [('MAP', [v for k, v in mapping.items() if not k.startswith('@')]),
-                                             ('TERM', ctx.terms)]}
         changed = 0
         for locs in groups:
             text, offsets = _joined(locs, texts)
             inside = [m.span() for m in marks.finditer(text)] if marks else []
             edits = defaultdict(list)
-            normalized = normalize_with_map(text)
             for reason in checker(text):
+                # MAP / TERM 的 end 是复检经 index_map 投影回原文的精确终点（同位置取最长），不再二次扫描（V35-B-02）
                 start, end = reason.position, min(len(text), reason.end)
-                if reason.category in patterns:
-                    # MAP / TERM 的 end 只是预览约数；必须重新取得精确区间，不能据约数删掉邻接正文。
-                    ends = [normalized.index_map[m.end() - 1] + 1
-                            for pattern in patterns[reason.category] for m in pattern.finditer(normalized.text)
-                            if m.end() > m.start() and normalized.index_map[m.start()] == start]
-                    if not ends:
-                        continue  # 无精确匹配时交给最终网关拦截，不猜测替换范围
-                    end = max(ends)
                 if end <= start or any(s < end and start < e for s, e in inside):
                     continue  # 不拆开已有代号；跨代号的问题保留给网关拦截
                 category = reason.category if reason.category not in ('MAP', 'TERM', 'INVISIBLE') else 'CUSTOM'

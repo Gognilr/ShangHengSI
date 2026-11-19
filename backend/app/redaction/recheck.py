@@ -110,19 +110,22 @@ def _digit_bounded(text: str, start: int, end: int) -> bool:
     return True
 
 
-def _numeric_positions(text: str, value: str) -> list[int]:
+def _numeric_spans(text: str, value: str) -> list[tuple[int, int]]:
     out = []
     n_digits = len(_digits(value))
     for m in re.finditer(re.escape(value), text):
         if _digit_bounded(text, m.start(), m.end()) and (
                 n_digits >= _SHORT_DIGITS or _has_currency(text, m.start(), m.end())):
-            out.append(m.start())
+            out.append(m.span())
     if n_digits >= _LONG_DIGITS:
         compact = _digits(value)
-        # 文本中的数字串（允许空格、短横线分隔）去掉分隔符后与真实值相同
+        # 文本中的数字串（允许空格、短横线分隔）去掉分隔符后与真实值相同；区间只取对上的那几位数字，
+        # 闭合按区间替换时不吞掉同一串里相邻的其他数字（V35-B-02）
         for m in re.finditer(r"(?<!\d)\d[\d \-]*\d(?!\d)", text):
-            if compact in _digits(m.group()):
-                out.append(m.start())
+            digits = [i for i in range(m.start(), m.end()) if text[i].isdigit()]
+            at = ''.join(text[i] for i in digits).find(compact)
+            if at >= 0:
+                out.append((digits[at], digits[at + len(compact) - 1] + 1))
     if _AMOUNT_VALUE.match(value):
         target = _decimal(value)
         # 数值 ≥ 10000 的金额：换了千分位、小数位写法也拦截，不要求带币种（Q-134 ③，宁可误拦）。
@@ -130,7 +133,7 @@ def _numeric_positions(text: str, value: str) -> list[int]:
         any_form = target is not None and target >= _BIG_AMOUNT
         for start, end, number in _numbers(text):
             if number == target and (any_form or _has_currency(text, start, end)):
-                out.append(start)
+                out.append((start, end))
     return out
 
 
@@ -141,19 +144,26 @@ def _numbers(text: str) -> tuple[tuple[int, int, Decimal | None], ...]:
     return tuple((m.start(1), m.end(1), _decimal(m.group(1))) for m in _NUMBER_IN_TEXT.finditer(text))
 
 
+@lru_cache(maxsize=16384)
 def _text_pattern(value: str) -> re.Pattern:
-    # 全大写的短英文简称、单个英文单词（V2Q-173）区分大小写，与脱敏时一致；其余英文不区分大小写、忽略多余空格
+    # 全大写的短英文简称、单个英文单词（V2Q-173）区分大小写，与脱敏时一致；其余英文不区分大小写、忽略多余空格。
+    # 按值缓存：保护项上千时 re 自带的 512 项缓存被挤掉，每段每值都要重新编译（V35-B-02）
     short_caps = value.isascii() and value.isupper() and len(value) <= 6
     return name_pattern(value, case_sensitive=short_caps or single_english_word(value))
 
 
-def _value_positions(text: str, value: str) -> list[int]:
+def _value_spans(text: str, value: str) -> list[tuple[int, int]]:
+    """真实值 / 词条在文本中的命中区间（起点, 终点）。"""
     value = value.strip()
     if len(value) < 2:
         return []
     if _NUMERIC_VALUE.match(value):
-        return _numeric_positions(text, value)
-    return [m.start() for m in _text_pattern(value).finditer(text)]
+        return _numeric_spans(text, value)
+    return [m.span() for m in _text_pattern(value).finditer(text)]
+
+
+def _value_positions(text: str, value: str) -> list[int]:
+    return [start for start, _end in _value_spans(text, value)]
 
 
 _INVISIBLE_TAG = re.compile('[\U000E0000-\U000E007F]')
@@ -175,7 +185,8 @@ def recheck(text: str, *, real_values: Iterable[str], terms: Iterable[str], kept
 
 
 def _value_reasons(text, normalized, preserving, codes, values, normalized_codes=None) -> set[BlockReason]:
-    """不可见字符，以及对照表真实值 / 词条（按给定顺序，先命中的决定 end）的命中。"""
+    """不可见字符，以及对照表真实值 / 词条的命中。end 为原文中的精确终点；同一位置同类多个值命中时取最长的，
+    片段闭合与脱敏闭环直接按此区间替换，不必再扫一遍（V35-B-02）。"""
     reasons = {BlockReason('INVISIBLE', m.start(), m.end()) for m in _INVISIBLE_TAG.finditer(text)}
     if values:
         lower, upper = normalized_codes or ([normalize_value(p) for p in codes],
@@ -183,9 +194,12 @@ def _value_reasons(text, normalized, preserving, codes, values, normalized_codes
         masked = _mask_placeholders(normalized.text, lower)
         preserving_masked = _mask_placeholders(preserving.text, upper)
         original_masked = _mask_placeholders(text, codes)
+        ends: dict[tuple[str, int], int] = {}
         for category, value in values:
-            reasons.update(BlockReason(category, p, p + len(value)) for p in
-                           _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked))
+            for start, end in _match_spans(value, original_masked, normalized, masked, preserving, preserving_masked):
+                if ends.get((category, start), -1) < end:
+                    ends[(category, start)] = end
+        reasons.update(BlockReason(category, start, end) for (category, start), end in ends.items())
     return reasons
 
 
@@ -343,15 +357,50 @@ def _place_only(surface: str) -> bool:
     return all(not _WORD_CHAR.search(piece) or _is_place(piece) for piece in pieces)
 
 
-def _match_positions(value, original_masked, normalized, masked, preserving, preserving_masked) -> set[int]:
-    """对照表真实值 / 词条在原文中的命中位置（原文、归一化、紧凑三条通路）。"""
+def _back(view, start: int, end: int) -> tuple[int, int]:
+    return view.index_map[start], view.index_map[end - 1] + 1
+
+
+def _find_all(text: str, value: str) -> list[int]:
+    """与 re.finditer(re.escape(value), text) 的起点相同（不重叠、从左到右），用 str.find。"""
+    out, i = [], text.find(value)
+    while i >= 0:
+        out.append(i)
+        i = text.find(value, i + len(value))
+    return out
+
+
+_NOT_LITERAL = re.compile(r"[\s.,A-Za-z0-9]")
+
+
+@lru_cache(maxsize=16384)
+def _literal_forms(value: str) -> tuple[str, str] | None:
+    """常规中文词条（无空白、句点逗号、英文字母与数字，归一化后也没有）：原文、归一化两条通路的名称正则
+    退化为字面查找，紧凑通路必不命中。返回（原文写法, 归一化写法）；其余值仍走正则通路（V35-B-02）。"""
+    raw, norm = value.strip(), normalize_value(value).strip()
+    for form in (raw, norm):
+        if len(form) < 2 or _NUMERIC_VALUE.match(form) or _NOT_LITERAL.search(form):
+            return None
+    if _compact_target(normalize_value(value, preserve_case=True)) is not None:
+        return None
+    return raw, norm
+
+
+def _match_spans(value, original_masked, normalized, masked, preserving, preserving_masked) -> set[tuple[int, int]]:
+    """对照表真实值 / 词条在原文中的命中区间（原文、归一化、紧凑三条通路），后两条经 index_map 投影回原文。"""
+    literal = _literal_forms(value)
+    if literal is not None:
+        raw, norm = literal
+        out = {(p, p + len(raw)) for p in _find_all(original_masked, raw)}
+        out.update(_back(normalized, p, p + len(norm)) for p in _find_all(masked, norm))
+        return out
     # Unicode 的 ASCII I→l 等映射会使原有英文大小写比较失配；保留原文通路，只增不减。
-    out = set(_value_positions(original_masked, value))
+    out = set(_value_spans(original_masked, value))
     sensitive = single_english_word(value) or value.isascii() and value.isupper() and len(value) <= 6
     view, compared = (preserving, preserving_masked) if sensitive else (normalized, masked)
-    out.update(view.index_map[p] for p in _value_positions(compared, normalize_value(value, preserve_case=sensitive)))
-    out.update(preserving.index_map[p]
-               for p in _compact_positions(preserving_masked, normalize_value(value, preserve_case=True)))
+    out.update(_back(view, s, e) for s, e in _value_spans(compared, normalize_value(value, preserve_case=sensitive)))
+    out.update(_back(preserving, s, e)
+               for s, e in _compact_spans(preserving_masked, normalize_value(value, preserve_case=True)))
     return out
 
 
@@ -360,7 +409,7 @@ def matching_terms(text: str, terms: Iterable[str]) -> list[str]:
     normalized = normalize_with_map(text)
     preserving = normalize_with_map(text, preserve_case=True)
     return [value for value in dict.fromkeys(terms)
-            if _match_positions(value, text, normalized, normalized.text, preserving, preserving.text)]
+            if _match_spans(value, text, normalized, normalized.text, preserving, preserving.text)]
 
 
 def _kept_key(value: str) -> str:
@@ -387,13 +436,20 @@ def _mask_code_syntax(text: str) -> str:
     return re.sub(r'\[\[(?:OUR|[A-Z]+_\d+)\]\]|[\[［【][^\[\]［］【】\r\n]+[\]］】]', mask, text)
 
 
-def _compact_positions(text: str, value: str) -> list[int]:
+def _compact_target(value: str) -> str | None:
     target = re.sub(r'[\s-]', '', value).upper()
     if (len(target) < 3 or not target.isascii() or not target.isalnum()
             or not (any(c.isdigit() for c in target) or detect.validators.bic(target))):
-        return []
+        return None
     # 短纯数字仍按原币种 / 数字边界规则处理，不能把代号序号或期限拦下。
     if target.isdigit() and len(target) < _LONG_DIGITS:
+        return None
+    return target
+
+
+def _compact_spans(text: str, value: str) -> list[tuple[int, int]]:
+    target = _compact_target(value)
+    if target is None:
         return []
     out = []
     ocr = str.maketrans({'O': '0', 'L': '1', 'I': '1', '|': '1', 'S': '5', 'B': '8'})
@@ -406,7 +462,7 @@ def _compact_positions(text: str, value: str) -> list[int]:
         for variant in variants:
             start = variant.find(target)
             if start >= 0:
-                out.append(positions[start])
+                out.append((positions[start], positions[start + len(target) - 1] + 1))
     return out
 
 
