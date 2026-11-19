@@ -362,3 +362,33 @@ def test_model_quote_golden(owner, db_sessionmaker):
             assert crypto.decrypt_text(cell.reason_enc) == BIDDERS[0] + "承诺提供三年质保"
             results.append(cell.cite)
         assert results == [case["cite"] for case in GOLDEN["quotes"]["cases"]]
+
+
+def test_snippets_wait_for_ocr_and_refresh_after(owner, db_sessionmaker, monkeypatch):
+    """V34-B-08c：扫描页识别未完成时不准备片段；识别补完后自动准备，已准备未发送的片段作废重备。"""
+    from app.bid import model, pipeline
+    c, h, _ = owner
+    pending = {"on": True}
+    monkeypatch.setattr(pipeline, "has_pending", lambda db, task_id: pending["on"])
+    base = ROOT + "/" + c.post(ROOT, headers=h, json={**BODY, "policy": "ai"}).json()["id"]
+    c.post(base + "/files", headers=h, files={"files": ("虚构招标文件.docx", tender_with_logo())})
+    drain(db_sessionmaker, base)
+    c.post(base + "/files", headers=h, files=[("files", (f"投标文件{i}.docx", bid2(i))) for i in range(3)],
+           data={"groups": json.dumps(list(BIDDERS), ensure_ascii=False)})
+    drain(db_sessionmaker, base)
+    c.post(base + "/confirm", headers=h)
+    c.post(base + "/check", headers=h)
+    _jobs(db_sessionmaker, base, "check")
+    assert c.get(base).json()["model"]["state"] is None  # 识别中不自动准备
+    busy = c.post(base + "/model/prepare", headers=h)
+    assert busy.status_code == 409 and busy.json()["code"] == "OCR_PENDING"
+    pending["on"] = False
+    tid = uuid.UUID(base.rsplit("/", 1)[-1])
+    with db_sessionmaker() as db:
+        pipeline._recheck(db, tid)
+    assert c.get(base).json()["model"]["state"] == "preparing"
+    _jobs(db_sessionmaker, base, "snippets")
+    assert c.get(base + "/model").json()["state"] == "awaiting"
+    with db_sessionmaker() as db:  # 已准备未发送：再次补完识别时作废重备
+        pipeline._recheck(db, tid)
+    assert c.get(base).json()["model"]["state"] == "preparing"

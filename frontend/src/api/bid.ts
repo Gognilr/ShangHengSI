@@ -30,6 +30,8 @@ export type BidModelState = null | 'preparing' | 'awaiting' | 'running' | 'done'
 export interface BidSnippet { id: string; file: string; page: number | null; text: string; ai_text: string; requirements: string[] }
 export interface BidModelView {
   state: BidModelState; error: string | null; progress: { done: number; total: number }
+  /** 扫描页识别进度：未完成时不准备片段，完成后自动准备（V34-B-08c） */
+  ocr?: { done: number; total: number }
   second?: boolean; second_available?: boolean; similar_preview?: string[]
   receipt: { snippets: number; chars: number; protected: number; calls: number; total_calls: number; second_calls?: number; remaining: { monthly: number | null; daily: number | null }; notes: string[] } | null
   bidders: { id: string; name: string; code: string; snippets: BidSnippet[] }[]

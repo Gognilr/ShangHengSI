@@ -179,6 +179,16 @@ def _recheck(db, task_id):
     except Exception:
         logger.warning("标书扫描页识别后重跑本地检查失败 task=%s", task_id)
         db.rollback()
+        return
+    from app.bid import model
+    try:
+        task = lock_task(db, task_id)
+        if task is not None and not has_pending(db, task_id):
+            model.refresh_after_ocr(db, task)
+        db.commit()
+    except Exception:
+        logger.warning("标书扫描页识别后准备模型核对失败 task=%s", task_id)
+        db.rollback()
 
 
 def _ocr_file(db, task_id, file_id, pages):

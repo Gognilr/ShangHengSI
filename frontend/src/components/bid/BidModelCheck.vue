@@ -27,14 +27,15 @@ const notEnough = computed(() => {
   const r = data.value?.receipt
   return !!r && [r.remaining.monthly, r.remaining.daily].some(v => v !== null && v < r.calls)
 })
+const ocrPending = computed(() => !data.value?.state && !!data.value?.ocr && data.value.ocr.done < data.value.ocr.total)
 const retry = computed(() => data.value?.state === 'failed' && !!data.value.receipt && data.value.receipt.calls < data.value.receipt.total_calls)
 
 let timer: ReturnType<typeof setTimeout> | undefined
 let request = 0, mounted = true
 function schedule() {
   clearTimeout(timer)
-  if (mounted && (data.value?.state === 'preparing' || data.value?.state === 'running'))
-    timer = setTimeout(() => void load(), 2000)
+  if (mounted && (data.value?.state === 'preparing' || data.value?.state === 'running' || ocrPending.value))
+    timer = setTimeout(() => void load(), ocrPending.value ? 10000 : 2000)
 }
 async function load() {
   const current = ++request
@@ -73,7 +74,8 @@ async function act(action: 'prepare' | 'prepare_second' | 'confirm' | 'cancel') 
     <BidSentDrawer v-model="sentOpen" :project-id="projectId" />
     <div class="bar">
       <ShieldCheck :size="16" :stroke-width="1.75" aria-hidden="true" />
-      <template v-if="!data.state">
+      <BidStatus v-if="ocrPending" tone="run" :label="`扫描页识别中 ${data.ocr!.done} / ${data.ocr!.total}，识别完成后自动准备模型核对`" />
+      <template v-else-if="!data.state">
         <p>“模型判断”类要求可由模型核对：只发送各家与要求最相关的片段，脱敏后发送，投标人只以代号出现。</p>
         <el-button size="small" :loading="busy" @click="act('prepare')">准备模型核对</el-button>
       </template>

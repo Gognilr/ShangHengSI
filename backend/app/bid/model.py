@@ -122,6 +122,9 @@ def start(db, task, *, auto=False, second=False):
         problem = AppError(409, "LOCAL_ONLY", "本项目只做本地检查，不调用模型")
     elif project.check_state != "done" or project.stage != "checked":
         problem = AppError(409, "NOT_CHECKED", "本地检查完成后才能准备模型核对")
+    elif _ocr_pending(db, task.id):
+        # 未识别的扫描页不在检索范围内：识别完成后由 pipeline 自动准备（V34-B-08c）
+        problem = AppError(409, "OCR_PENDING", "扫描页识别中，识别完成后自动准备模型核对")
     elif originals_expired(db, task.id):
         problem = AppError(409, "ORIGINAL_EXPIRED", ORIGINAL_EXPIRED_MSG)
     elif second and project.model_state not in (None, "done") and not (
@@ -142,6 +145,19 @@ def start(db, task, *, auto=False, second=False):
     if second:
         _save(project, {"second": True})
     jobs.enqueue(db, "bid", {"task_id": str(task.id), "stage": "snippets"})
+
+
+def _ocr_pending(db, task_id):
+    from app.bid.pipeline import has_pending
+    return has_pending(db, task_id)
+
+
+def refresh_after_ocr(db, task):
+    """扫描页识别补完：已准备但未发送的片段作废重备，尚未准备的自动准备；不提交。"""
+    project = _project(db, task)
+    if project.model_state == "awaiting" and not _state(project).get("second"):
+        project.model_state, project.model_enc = None, None
+    start(db, task, auto=True)
 
 
 def cancel(db, task):
@@ -186,8 +202,10 @@ def view(db, task) -> dict:
     """片段确认页：各家的片段（原文与 AI 视野）、要求与回执。只在本人页面显示，不进日志。"""
     from app.bid.results import sent_count
     project = _project(db, task)
+    from app.bid.checks import ocr_progress
+    done, total = ocr_progress({f.id: f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))})
     out = {"state": project.model_state, "error": project.model_error, "progress": progress(db, task),
-           "receipt": None, "bidders": [], "requirements": [], "sent_count": sent_count(db, task.id),
+           "ocr": {"done": done, "total": total}, "receipt": None, "bidders": [], "requirements": [], "sent_count": sent_count(db, task.id),
            "second_available": False, "second": False, "similar_preview": []}
     if task.policy == "local_only":
         return out
