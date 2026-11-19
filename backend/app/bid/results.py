@@ -27,7 +27,7 @@ def signing_pages(bidders, nodes):
     out = []
     for b in bidders:
         pages, order = {}, []
-        for file_id, loc, page, text, kind, _conf in nodes.get(b.id, []):
+        for file_id, loc, page, text, kind, *_ in nodes.get(b.id, []):
             key = (str(file_id), page if page is not None else loc)
             entry = pages.get(key)
             if entry is None:

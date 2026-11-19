@@ -8,9 +8,11 @@
 """
 import io
 import logging
+import math
 import re
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pdfplumber
 from pdfminer.pdfdocument import PDFPasswordIncorrect
@@ -18,6 +20,7 @@ from pdfminer.pdfdocument import PDFPasswordIncorrect
 from app.parsing import ocr, ocr_table
 from app.parsing.docx import manual_clause_no
 from app.parsing.model import LOW_OCR_CONF, MAX_PDF_PAGES, ParsedFile, ParsedNode, ParseError
+from app.redaction import tables as table_tools
 
 PARSER_VERSION = "pdf-1"
 TEXT_PAGE_MIN_CHARS = 20  # SPEC 8.5，去掉空白后的字符数
@@ -146,8 +149,48 @@ def _merge_blocks(lines: list[dict]) -> list[tuple[str, list[float]]]:
     return out
 
 
+_TEXT_STRATEGY = {"vertical_strategy": "text", "horizontal_strategy": "text"}
+
+
+def _text_tables(page) -> list:
+    """受限 text 兜底（V34-D-03）：无线框的报价表。只取表头行（前 5 行内，含单价 / 数量 / 金额 / 合计中的两类）到数据结束的行，
+    且至少 3 列各有 2 个以上纯数字单元格；不满足的整张丢弃，避免把普通正文切成单元格。"""
+    try:
+        found = page.find_tables(_TEXT_STRATEGY)
+    except Exception:  # noqa: BLE001 —— 兜底失败不影响原有解析
+        return []
+    out = []
+    for t in found:
+        texts = [[_WS.sub(" ", c or "").strip() for c in row] for row in t.extract()]
+        cells = [row.cells for row in t.rows]
+        header = next((i for i, row in enumerate(texts[:5])
+                       if len({k for c in row if c and (k := table_tools.header_kind(c))}) >= 2
+                       and not any(table_tools._numeric_cell(c) for c in row if c)), None)
+        if header is None:
+            continue
+        end, sparse = header, 0
+        for i in range(header + 1, len(texts)):
+            if sum(1 for c in texts[i] if c) >= 2:
+                end, sparse = i, 0
+            elif (sparse := sparse + 1) >= 2:  # 连续两行只有一格（正文）即表格结束；单行可能是名称换行
+                break
+        body = texts[header + 1:end + 1]
+        width = max((len(r) for r in body), default=0)
+        numeric_cols = sum(1 for j in range(width)
+                           if sum(1 for r in body if j < len(r) and r[j] and table_tools._numeric_cell(r[j])) >= 2)
+        if numeric_cols < 3:
+            continue
+        keep = range(header, end + 1)
+        boxes = [b for i in keep for b in cells[i] if b is not None]
+        bbox = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+        rows = [texts[i] for i in keep]
+        out.append(SimpleNamespace(bbox=bbox, extract=lambda rows=rows: rows,
+                                   rows=[SimpleNamespace(cells=cells[i]) for i in keep]))
+    return out
+
+
 def _parse_text_page(page, page_no: int, file_seq: int, nodes: list[ParsedNode]):
-    tables = page.find_tables()
+    tables = page.find_tables() or _text_tables(page)
     items: list[tuple[float, str, object]] = []  # (top, 类型, 内容)
 
     for t in tables:
@@ -186,6 +229,39 @@ def _parse_text_page(page, page_no: int, file_seq: int, nodes: list[ParsedNode])
                             bbox=[round(cell_bbox[0], 2), round(cell_bbox[1], 2), round(cell_bbox[2], 2), round(cell_bbox[3], 2)],
                         )
                     )
+
+
+RUNNING_BAND = 0.08  # 页眉 / 页脚带：页顶、页底各 8%
+_DIGITS = re.compile(r"[0-9０-９]+")
+
+
+def _mark_running(nodes: list[ParsedNode], heights: dict[int, float]) -> None:
+    """页眉页脚（V34-D-03）：完全位于页顶 / 页底带内的文本块（文字页段落与 OCR 块），去空白、数字归一化（兼容页码）后
+    在至少 3 页且至少半数页重复出现，标为 part=header / footer（与 DOCX 一致，不参与外发与 AI 审核）。
+    表格单元格不参与：文字页表格区域内的行本来就不出块，OCR 表格内的行已归入单元格。"""
+    seen: dict[tuple[str, str], dict[int, list[ParsedNode]]] = {}
+    for n in nodes:
+        h = heights.get(n.page or 0)
+        if n.kind not in ("paragraph", "ocr_block") or not n.bbox or not h:
+            continue
+        band = "header" if n.bbox[3] <= h * RUNNING_BAND else "footer" if n.bbox[1] >= h * (1 - RUNNING_BAND) else None
+        key = _DIGITS.sub("#", _WS.sub("", n.text))
+        if band and key:
+            seen.setdefault((band, key), {}).setdefault(n.page, []).append(n)
+    need = max(3, math.ceil(len(heights) / 2))
+    for (band, _key), pages in seen.items():
+        if len(pages) >= need:
+            for found in pages.values():
+                for n in found:
+                    n.part = band
+
+
+def _continued_warnings(nodes: list[ParsedNode]) -> list[str]:
+    out = []
+    for group in table_tools.continued_tables(nodes):
+        pages = [int(re.search(r"-PG(\d+)-", name)[1]) for name, _skip in group]
+        out.append(f"第 {pages[0]}–{pages[-1]} 页表格按续表合并核对")
+    return out
 
 
 def _render_page(pdfium_doc, page_no: int):
@@ -274,6 +350,7 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
     mixed: list[int] = []
     low_conf: list[int] = []
     empty: list[int] = []
+    heights: dict[int, float] = {}
     started = time.monotonic()
     with _open(data, password, max_pages) as pdf:
         page_count = len(pdf.pages)
@@ -281,6 +358,7 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
         try:
             for page_no, raw in enumerate(pdf.pages, start=1):
                 page = _dedupe(raw)
+                heights[page_no] = float(page.height)
                 is_scanned = _is_scanned(page)
                 if not is_scanned:
                     _parse_text_page(page, page_no, file_seq, nodes)
@@ -312,6 +390,7 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
         log.info("pdf ocr: pages=%d blocks=%d elapsed=%.1fs", len(scanned) + len(mixed), len(nodes), time.monotonic() - started)
     if not nodes and not pending:
         raise ParseError(MSG_NO_TEXT)
+    _mark_running(nodes, heights)
 
     warnings: list[str] = []
     if pending:
@@ -326,5 +405,6 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
         warnings.append(f"等 {len(low_conf) - MAX_LOW_CONF_PAGES} 页 OCR 识别置信度低，请核对原件")
     for p in empty:
         warnings.append(f"第 {p} 页未识别到文字")
+    warnings += _continued_warnings(nodes)
     return ParsedFile(nodes=nodes, page_count=page_count, has_revisions=False, warnings=warnings, ocr_pages=len(scanned) + len(mixed),
                       ocr_pending=pending)

@@ -157,3 +157,88 @@ def table_hints(nodes: list[_Node], *, with_qty: bool = False) -> dict[int, str]
                     if kind:
                         out[i] = kind
     return out
+
+
+_PAGE_TABLE = re.compile(r"^F\d+-PG(?P<page>\d+)-T\d+$")  # PDF 文字页与扫描页的表格
+
+
+def _cell_norm(text: str) -> str:
+    return re.sub(r"\s+", "", text)
+
+
+def continued_tables(nodes) -> list[list[tuple[str, int]]]:
+    """跨页续表（V34-D-03）：PDF 中被分页切断的同一张表。返回 [[(表格标识, 去掉的重复表头行数), ...]]，只列两张以上的。
+
+    条件：前表是本页最下面的表、续表是下一页最上面的表；列数相同且各列左边界、表格左右边界对齐（容差 max(6 点, 表宽 2%)）；
+    前表前 20 行内有单价或金额表头行；续表开头没有表头，或开头几行与前表表头行逐列相同（这些行记为重复表头，不计入数据行）。
+    节点只按 loc、text、bbox 使用，不加字段、不改 loc；没有 bbox 的节点不参与。
+    """
+    info: dict[str, dict] = {}
+    for n in nodes:
+        cell = table_cell(n.loc)
+        bbox = getattr(n, "bbox", None)
+        if cell is None or not bbox or not (m := _PAGE_TABLE.match(cell[0])):
+            continue
+        t = info.setdefault(cell[0], {"file": cell[0].split("-", 1)[0], "page": int(m["page"]), "rows": {}, "left": {}, "box": list(bbox)})
+        t["rows"].setdefault(cell[2], {})[_col_number(cell[1])] = n
+        col = _col_number(cell[1])
+        t["left"][col] = min(t["left"].get(col, bbox[0]), bbox[0])
+        box = t["box"]
+        t["box"] = [min(box[0], bbox[0]), min(box[1], bbox[1]), max(box[2], bbox[2]), max(box[3], bbox[3])]
+    pages: dict[tuple[str, int], list[str]] = {}
+    for name, t in info.items():
+        pages.setdefault((t["file"], t["page"]), []).append(name)
+
+    def header_rows(t) -> list[dict[int, str]]:
+        rows = t["rows"]
+        for r in sorted(rows):
+            if r > HEADER_SCAN_ROWS:
+                break
+            texts = [n.text for n in rows[r].values()]
+            if any(header_kind(x) in ("PRICE", "AMOUNT") for x in texts) and not any(_numeric_cell(x) for x in texts):
+                # 表头行及其上下各一行（两行表头、标题行）都可能在续页重复出现
+                return [{c: _cell_norm(n.text) for c, n in rows[x].items()} for x in sorted(rows) if r - 1 <= x <= r + 1]
+        return []
+
+    def continues(a, b, heads) -> int | None:
+        if len(a["left"]) < 2 or set(b["left"]) - set(a["left"]) or max(a["left"]) != max(b["left"]):
+            return None
+        tol = max(6.0, 0.02 * (a["box"][2] - a["box"][0]))
+        if abs(a["box"][0] - b["box"][0]) > tol or abs(a["box"][2] - b["box"][2]) > tol:
+            return None
+        if any(abs(a["left"][c] - b["left"][c]) > tol for c in b["left"]):
+            return None
+        if not heads:
+            return None
+        skip = 0
+        for r in sorted(b["rows"]):
+            texts = {c: _cell_norm(n.text) for c, n in b["rows"][r].items()}
+            if texts in heads:
+                skip += 1
+                continue
+            values = list(b["rows"][r].values())
+            if any(header_kind(n.text) for n in values) and not any(_numeric_cell(n.text) for n in values) and \
+                    not _TOTAL_ROW.search(" ".join(n.text for n in values)):
+                return None  # 续页另起一张表（有自己的不同表头）
+            break
+        return skip if skip < len(b["rows"]) else None
+
+    groups: list[list[tuple[str, int]]] = []
+    tail: dict[str, list[tuple[str, int]]] = {}
+    for (file, page) in sorted(pages, key=lambda k: (k[0], k[1])):
+        nxt = pages.get((file, page + 1))
+        if not nxt:
+            continue
+        last = max(pages[(file, page)], key=lambda x: info[x]["box"][3])
+        first = min(nxt, key=lambda x: info[x]["box"][1])
+        head = tail[last][0][0] if last in tail else last
+        skip = continues(info[last], info[first], header_rows(info[head]))
+        if skip is None:
+            continue
+        group = tail.pop(last, None)
+        if group is None:
+            group = [(last, 0)]
+            groups.append(group)
+        group.append((first, skip))
+        tail[first] = group
+    return groups

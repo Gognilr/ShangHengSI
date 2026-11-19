@@ -13,6 +13,7 @@ class CheckNode:
     sheet: str | None = None
     cell_ref: str | None = None
     ocr_conf: float | None = None  # OCR 识读的节点（扫描页块、扫描表格单元格）才有
+    bbox: list[float] | None = None  # PDF 节点才有，跨页续表按列对齐判断（V34-D-03）
 
 
 @dataclass(frozen=True)

@@ -61,14 +61,14 @@ def _load(db, task_id):
     files = {f.id: f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task_id).order_by(TaskFile.seq))}
     nodes = defaultdict(list)
     seqs = {i: f.seq for i, f in files.items()}
-    rows = db.execute(select(DocNode.file_id, DocNode.loc, DocNode.page, DocNode.text_enc, DocNode.kind, DocNode.ocr_conf)
+    rows = db.execute(select(DocNode.file_id, DocNode.loc, DocNode.page, DocNode.text_enc, DocNode.kind, DocNode.ocr_conf, DocNode.bbox)
                       .where(DocNode.task_id == task_id, DocNode.part != "comment").order_by(DocNode.file_id, DocNode.ord)).all()
     rows.sort(key=lambda r: seqs.get(r[0], 0))  # 按文件录入顺序，文件内按 ord（稳定排序）
-    for file_id, loc, page, enc, kind, conf in rows:
+    for file_id, loc, page, enc, kind, conf, bbox in rows:
         f = files.get(file_id)
         if f is None or f.parser_version is None or enc is None:
             continue
-        nodes[f.bidder_id].append((file_id, loc, page, crypto.decrypt_text(enc), kind, conf))
+        nodes[f.bidder_id].append((file_id, loc, page, crypto.decrypt_text(enc), kind, conf, bbox))
     return bidders, nodes, files
 
 
@@ -456,8 +456,8 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
     manual = {str(b.id): opening_price(b) for b in bidders if b.opening_price_enc}
     params = R.load_state(project)["values"]
     ceiling = Decimal(params["ceiling"]) if params.get("ceiling") else None
-    per = {b.id: [compliance.BidNode(loc, text, files[file_id].seq, None, kind=kind, ocr_conf=conf, file_id=file_id, page=page)
-                  for file_id, loc, page, text, kind, conf in nodes.get(b.id, [])] for b in bidders}
+    per = {b.id: [compliance.BidNode(loc, text, files[file_id].seq, None, kind=kind, ocr_conf=conf, bbox=bbox, file_id=file_id, page=page)
+                  for file_id, loc, page, text, kind, conf, bbox in nodes.get(b.id, [])] for b in bidders}
     analysis, clues, facts = pricing.analyze([b.id for b in bidders], per, ceiling, params.get("currency"),
                                              lambda n: _where(n.file_id, n.loc, n.page, n.text, 0, len(n.text)), manual)
     kinds = {}

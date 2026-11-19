@@ -52,7 +52,7 @@ def load_inputs(db, task_id: uuid.UUID) -> tuple[list[CheckNode], list[CheckFile
                       .where(DocNode.task_id == task_id, DocNode.part == "body").order_by(TaskFile.seq, DocNode.ord))
     nodes = [CheckNode(n.loc, crypto.decrypt_text(n.text_enc) if n.text_enc else "", seqs[n.file_id], n.clause_no,
                        n.hidden_spans, crypto.decrypt_text(n.formula_enc) if n.formula_enc else None,
-                       n.sheet, n.cell_ref, n.ocr_conf) for n in rows]
+                       n.sheet, n.cell_ref, n.ocr_conf, n.bbox) for n in rows]
     return nodes, [CheckFile(f.seq, f.is_main, f.ext, f.doc_type, list(f.warnings or [])) for f in files]
 
 

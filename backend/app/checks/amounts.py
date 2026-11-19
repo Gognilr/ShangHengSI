@@ -7,7 +7,7 @@ from app.checks.model import CheckFile, CheckNode, CheckResult, SEVERITY, soften
 from app.checks.numbers import CENT, money, parse_number, parse_rate, pct_diff, rounded
 from app.parsing.xlsx import WARN_FORMULA
 from app.redaction.detect import _CURRENCY
-from app.redaction.tables import table_cell
+from app.redaction.tables import continued_tables, table_cell
 
 XLSX_EXTS = frozenset({"xlsx", "xls", "et"})  # 解析为 xlsx 的格式（xls、et 经 converter 转换）
 
@@ -71,6 +71,19 @@ class _Table:
     header: int
     columns: dict[str, int]
     total_row: int | None
+    origin: dict[int, tuple[str, int]] | None = None  # 跨页续表：逻辑行号 → (原表格标识, 原行号)（V34-D-03）
+
+    def where(self, row: int) -> str:
+        """给用户看的行位置，续表行写原表格与原行号。"""
+        name, real = self.origin.get(row, (self.name, row)) if self.origin else (self.name, row)
+        return f"{name} 第 {real} 行"
+
+    def rows_text(self, rows: list[int]) -> str:
+        parts: dict[str, list[str]] = {}
+        for row in rows:
+            name, real = self.origin.get(row, (self.name, row)) if self.origin else (self.name, row)
+            parts.setdefault(name, []).append(str(real))
+        return "、".join(f"{name} 第 {'、'.join(rs)} 行" for name, rs in parts.items())
 
     def node(self, row: int, kind: str) -> CheckNode | None:
         return self.rows[row].get(self.columns.get(kind, -1))
@@ -108,6 +121,19 @@ def _scan_tables(nodes: list[CheckNode]) -> list[_Table]:
         if cell:
             name, col, row = cell
             grouped.setdefault(name, (node.file_seq, {}))[1].setdefault(row, {})[_col_number(col)] = node
+    origins: dict[str, dict[int, tuple[str, int]]] = {}
+    for group in continued_tables(nodes):  # 跨页续表拼成一张逻辑表，loc 不变（V34-D-03）
+        head = group[0][0]
+        if head not in grouped:
+            continue
+        rows = grouped[head][1]
+        origin = origins[head] = {r: (head, r) for r in rows}
+        for name, skip in group[1:]:
+            more = grouped.pop(name, (0, {}))[1]
+            offset = max(rows)
+            for i, r in enumerate(sorted(more)[skip:], 1):
+                rows[offset + i] = more[r]
+                origin[offset + i] = (name, r)
     out = []
     for name, (seq, rows) in grouped.items():
         candidates = []
@@ -132,7 +158,7 @@ def _scan_tables(nodes: list[CheckNode]) -> list[_Table]:
             if _TOTAL.search(first):
                 total = row
                 break
-        out.append(_Table(name, seq, rows, header, columns, total))
+        out.append(_Table(name, seq, rows, header, columns, total, origins.get(name)))
     return out
 
 
@@ -162,17 +188,17 @@ def _tax_checks(table: _Table, row: int) -> list[CheckResult]:
         expected, actual = rounded(base * rate), rounded(tax)
         if abs(actual - expected) > CENT:
             label = "不含税金额" if "amount_excl" in table.columns else "金额"
-            detail = (f"报价表 {table.name} 第 {row} 行：{label} {money(base)} × 税率 {rate * 100}% = "
+            detail = (f"报价表 {table.where(row)}：{label} {money(base)} × 税率 {rate * 100}% = "
                       f"{money(expected)}，表中税额 {money(actual)}")
             results.append(_result("L-03", table, [table.node(row, "tax").loc], detail,
-                                   f"{table.name} 第 {row} 行：税额与金额×税率不一致，差异约 {pct_diff(actual, expected)}"))
+                                   f"{table.where(row)}：税额与金额×税率不一致，差异约 {pct_diff(actual, expected)}"))
     if "amount_excl" in table.columns and base is not None and tax is not None and gross is not None:
         expected, actual = rounded(base + tax), rounded(gross)
         if abs(actual - expected) > CENT:
-            detail = (f"报价表 {table.name} 第 {row} 行：不含税金额 {money(base)} + 税额 {money(tax)} = "
+            detail = (f"报价表 {table.where(row)}：不含税金额 {money(base)} + 税额 {money(tax)} = "
                       f"{money(expected)}，表中含税金额 {money(actual)}")
             results.append(_result("L-03", table, [table.node(row, "amount_incl").loc], detail,
-                                   f"{table.name} 第 {row} 行：含税金额与不含税金额＋税额不一致，差异约 {pct_diff(actual, expected)}"))
+                                   f"{table.where(row)}：含税金额与不含税金额＋税额不一致，差异约 {pct_diff(actual, expected)}"))
     return results
 
 
@@ -195,18 +221,18 @@ def _check_table(table: _Table) -> tuple[QuoteTableCheck, list[CheckResult]]:
             expected, actual = rounded(qty * price), rounded(amount)
             if abs(actual - expected) > CENT:
                 errors += 1
-                detail = (f"报价表 {table.name} 第 {row} 行：数量 {qty} × 单价 {money(price)} = {money(expected)}，"
+                detail = (f"报价表 {table.where(row)}：数量 {qty} × 单价 {money(price)} = {money(expected)}，"
                           f"表中金额 {money(actual)}，相差 {money(abs(actual - expected))}")
                 results.append(_result("L-01", table,
                                        [table.node(row, k).loc for k in (table.amount, "qty", "price")], detail,
-                                       f"{table.name} 第 {row} 行：数量×单价与金额不一致，差异约 {pct_diff(actual, expected)}"))
+                                       f"{table.where(row)}：数量×单价与金额不一致，差异约 {pct_diff(actual, expected)}"))
         tax_results += _tax_checks(table, row)
     has_subtotals = any(any(n.text.strip().endswith("小计") for n in row.values()) for row in table.rows.values())
     if total is not None and amounts and not has_subtotals and all(x is not None for x in amounts):
         expected, actual = rounded(sum((rounded(x) for x in amounts), Decimal(0))), rounded(total)
         info.total_ok = abs(actual - expected) <= CENT
         if not info.total_ok:
-            detail = (f"报价表 {table.name} 合计行（第 {table.total_row} 行）：各行金额之和 {money(expected)}，"
+            detail = (f"报价表 {table.name} 合计行（{table.where(table.total_row)}）：各行金额之和 {money(expected)}，"
                       f"合计 {money(actual)}，相差 {money(abs(actual - expected))}")
             results.append(_result("L-02", table, [table.node(table.total_row, table.amount).loc], detail,
                                    f"{table.name} 合计行：各行金额之和与合计不一致，差异约 {pct_diff(actual, expected)}"))
@@ -214,9 +240,8 @@ def _check_table(table: _Table) -> tuple[QuoteTableCheck, list[CheckResult]]:
         tax_results += _tax_checks(table, table.total_row)
     results += tax_results
     if skipped:
-        rows = "、".join(str(r) for r in skipped[:10])
         ending = f"等 {len(skipped)} 行" if len(skipped) > 10 else ""
-        text = f"{table.name} 第 {rows} 行{ending}数字无法识别，未做金额核验"
+        text = f"{table.rows_text(skipped[:10])}{ending}数字无法识别，未做金额核验"
         results.append(_result("L-INFO", table, [table.first_loc], text, text))
     # 扫描表格（V34-D-02）：涉及 OCR 数字的不一致只提示核对原件，不计为计算错误
     results = soften_ocr(results, [n for row in table.rows.values() for n in row.values()])
