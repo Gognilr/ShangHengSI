@@ -110,6 +110,7 @@ Service Provider
 Licensor
 Licensee
 # V35-B-04：固定系统提示词中的普通词。只按实体整词匹配，人工词条照常处理。
+用户
 # 文件审核、追问（resources/prompts/system.md，chat/service.py）
 审核助手
 审核对象
