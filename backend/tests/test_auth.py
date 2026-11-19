@@ -411,7 +411,8 @@ def test_create_admin_command(cli_db, api, db_sessionmaker, capsys):
     u = _user(db_sessionmaker, "root_admin")
     from app.security.permissions import user_permissions, CODES
     with db_sessionmaker() as s:
-        assert user_permissions(s, u.id) == set(CODES)
+        # 内置普通用户角色不含 use.bid（V34Q-04），兼任三角色的管理员同样没有，须另授
+        assert user_permissions(s, u.id) == set(CODES) - {"use.bid"}
     assert u.must_change_password is True
     assert u.display_name == "管理员"
     assert password not in u.password_hash
