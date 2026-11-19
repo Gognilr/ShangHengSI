@@ -254,3 +254,24 @@ def test_legacy_job_cannot_cross_policy_reenable(owner, db_sessionmaker):
     process_job(db_sessionmaker, job_id, "bid", payload)
     assert c.patch(base, headers=h, json=enable).json()["policy"] == "ai"
     assert c.post(base + "/model/confirm", headers=h).json()["code"] == "MODEL_STATE"
+
+
+def test_rules_directives_numbered_notes_and_same_text_merged():
+    """V34-B-08c：虚构改写自公开招标文件的写法——指令词、编号注释、括号补充、同文合并、付款条款与大写保证金。"""
+    from app.bid import requirements as R
+    note = ("编 制：校 对：日 期：2029.3 注：1、卖方必须在偏离清单中注明全部偏离。偏离须经设计方书面批准 "
+            "2、卖方应在数据表中标明最小稳定流量。 3、法兰连接标准为HG/T 20592 4、所有设备不带配对法兰")
+    nodes = [R.Node("f1", "F1-PG1-T1-R8-C1", "table_cell", note), R.Node("f2", "F2-PG1-T1-R8-C1", "table_cell", note),
+             R.Node("f3", "F3-P5", "paragraph", "投标文件要求：标书需提供资质证书、营业执照。标书中请明确完成时间。"),
+             R.Node("f3", "F3-P6", "paragraph", "报价请注明：虚构项目总计报价 *** 元。（注明发票税率）"),
+             R.Node("f3", "F3-P7", "paragraph", "付款方式：每笔付款前需开具增值税专用发票。"),
+             R.Node("f3", "F3-P8", "paragraph", "招标保证金：叁万元整。请在开标前电汇投标保证金，无需现金。")]
+    hits = R.rule_hits(nodes)
+    texts = [h.text for h in hits]
+    assert sum("偏离清单" in t for t in texts) == 1 and len(next(h for h in hits if "偏离清单" in h.text).locs) == 2  # 两份数据表合并
+    assert any(t.startswith("2、卖方应在数据表") for t in texts) and not any("批准 2、" in t for t in texts)  # 编号处断句
+    assert any("法兰连接标准" in t for t in texts) and any("不带配对法兰" in t for t in texts)  # 同一注释的其余编号条目
+    assert any("需提供资质证书" in t for t in texts) and "标书中请明确完成时间。" in texts
+    assert any(t.endswith("（注明发票税率）") for t in texts)  # 括号补充并入上一条
+    assert not any("开具增值税" in t for t in texts)  # 中标后的付款条款不取
+    assert R.prefill(nodes)[0]["deposit"] == "30000.00"  # 大写保证金

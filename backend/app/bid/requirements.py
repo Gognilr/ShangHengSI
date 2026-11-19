@@ -1,6 +1,6 @@
 """招标文件要求清单：本地规则抽取、关键参数预填与完整性计数（V34-B-02，bid.md 2.2）。
 
-规则只抓“看得见的标记”：★▲ 标记、含否决字样的句子，以及关键章节中带“必须 / 不得 / 应当”的句子；
+规则只抓“看得见的标记”：★▲ 标记、含否决字样的句子，以及正文中带“必须 / 须 / 应当 / 请……提供”等指令词的句子（同文合并）；
 “投标文件格式”章节整体记一行范围（作范本白名单），其中的句子不进清单。原文只在内存与加密列中出现。
 """
 import json
@@ -12,13 +12,22 @@ from decimal import ROUND_HALF_UP, Decimal, DecimalException
 from sqlalchemy import delete, func, select
 
 from app.db.models import BidItem, BidProject, BidRequirement, DocNode, Task, TaskFile
+from app.redaction.detect import chinese_upper_value
 from app.security import crypto
 
 GROUPS = ["qualification", "substantive", "veto", "pricing", "validity", "signing", "format"]
 MARK = re.compile(r"[★▲]")
 VETO = re.compile(r"否决|废标|无效投标|投标无效|作无效|视为无效|不予受理|拒收|拒绝接收")
-MUST = re.compile(r"必须|不得|应当|严禁|不允许|不接受")
+# 指令词（V34-B-08c）：“须 / 需 / 请……提供、注明 / 应在、应为”等；“须知、无需、所需、需求、需要量”等不是要求
+MUST = re.compile(r"必须|务必|不得|应当|严禁|不允许|不接受|须(?!知)|(?<![所必急无])需(?!求|要量|要台数)"
+                  r"|应(?=[在为按落符满提包具采选设填注附由向予])|请[^。；;]{0,10}?(?:提供|注明|明确|列明|提交|写明|附上)")
 _SENTENCE = re.compile(r"[^。；;！!？?\n]+[。；;！!？?]?")
+# 句中的编号条目（“……批准 2、卖方应……”）另起一句；“附件1、2”这类并列编号不拆
+_ENUM = re.compile(r"(?<=[^\d\s])\s*(?=\d{1,2}、[^\d\s])|\s+(?=\d{1,2}[、．][^\d\s])")
+_ENUM_HEAD = re.compile(r"^\d{1,2}[、．]")
+_PAREN = re.compile(r"^[（(][^（）()]*[）)]$")
+# 中标后的付款、结算、验收、质保条款不作投标要求
+_AFTER_AWARD = re.compile(r"^\s*(?:付款方式|付款条件|结算方式|结算|验收|质保金|质量保证金)\s*[:：]")
 _CHAPTER = re.compile(r"^\s*(?:第[一二三四五六七八九十百零\d]+[章部分篇卷]|[一二三四五六七八九十]+、)\s*(.{1,30})$")
 _FORMAT = re.compile(r"投标文件(?:的)?(?:组成及)?格式|响应文件格式|投标文件格式")
 _CONTRACT = re.compile(r"合同")
@@ -84,13 +93,19 @@ def _sections(nodes):
 
 def _sentences(text):
     for m in _SENTENCE.finditer(text):
-        start, end = m.start(), m.end()
-        while start < end and text[start].isspace():
-            start += 1
-        while end > start and text[end - 1].isspace():
-            end -= 1
-        if end > start:
-            yield start, end
+        cuts = [m.start()] + [m.start() + x.end() for x in _ENUM.finditer(m.group()) if x.end() > 0] + [m.end()]
+        for start, end in zip(cuts, cuts[1:]):
+            while start < end and text[start].isspace():
+                start += 1
+            while end > start and text[end - 1].isspace():
+                end -= 1
+            if end > start:
+                yield start, end
+
+
+def _dedupe_key(text):
+    """同文去重的比较键：去编号、空白与标点。"""
+    return re.sub(r"[\W_]+", "", _ENUM_HEAD.sub("", text.strip()))
 
 
 def _group(sentence, marked, veto):
@@ -157,21 +172,52 @@ def rule_hits(nodes) -> list[Hit]:
                             [{"file_id": c.file_id, "loc": c.loc, "start": 0, "end": len(c.text)} for c in cells],
                             True, bool(VETO.search(text))))
             continue
-        for s, e in _sentences(n.text):
+        spans = list(_sentences(n.text))
+        after_award = bool(_AFTER_AWARD.match(n.text))
+        flags = []
+        for s, e in spans:
             piece = n.text[s:e]
             marked, veto = bool(MARK.search(piece)), bool(VETO.search(piece))
-            must = sec == "body" and len(piece) >= 8 and bool(MUST.search(piece))
+            must = sec == "body" and not after_award and len(piece) >= 8 and bool(MUST.search(piece))
+            flags.append([marked, veto, must])
+        # 编号注释中已有两条以上指令句时，其余编号条目（“法兰连接标准为……”）也是要求
+        if sum(f[2] for f in flags) >= 2:
+            for (s, e), f in zip(spans, flags):
+                if _ENUM_HEAD.match(n.text[s:e]) and e - s >= 8:
+                    f[2] = True
+        node_hits = []
+        for (s, e), (marked, veto, must) in zip(spans, flags):
             if not (marked or veto or must):
+                # 紧随要求句的括号补充（“（注明发票税率）”）并入上一条
+                if node_hits and _PAREN.match(n.text[s:e]) and not n.text[node_hits[-1][1]:s].strip():
+                    node_hits[-1][1] = e
                 continue
-            text = _hit_text(piece)
-            hits.append(Hit(_group(piece, marked, veto), text, [{"file_id": n.file_id, "loc": n.loc, "start": s, "end": e}],
+            node_hits.append([s, e, marked, veto])
+        for s, e, marked, veto in node_hits:
+            piece = n.text[s:e]
+            hits.append(Hit(_group(piece, marked, veto), _hit_text(piece), [{"file_id": n.file_id, "loc": n.loc, "start": s, "end": e}],
                             marked, veto))
+    hits = _merge_same(hits)
     if fmt:
         hits.append(Hit("format", "“投标文件格式”章节：各家照此填写的格式页文字作为范本，不计入相似比对",
                         [{"file_id": fmt[0].file_id, "loc": fmt[0].loc, "start": 0, "end": len(fmt[0].text)},
                          {"file_id": fmt[-1].file_id, "loc": fmt[-1].loc, "start": 0, "end": len(fmt[-1].text)}],
                         False, False))
     return hits
+
+
+def _merge_same(hits):
+    """文字相同的要求只留一条，出处合并（V34-B-08c：4 份数据表的同一注释曾成 8 条）。"""
+    out, seen = [], {}
+    for h in hits:
+        key = _dedupe_key(h.text)
+        if key and key in seen:
+            first = seen[key]
+            first.locs += [loc for loc in h.locs if loc not in first.locs]
+            continue
+        seen[key] = h
+        out.append(h)
+    return out
 
 
 def default_method(group, text, policy):
@@ -197,7 +243,9 @@ _CURRENCY = {"人民币": "CNY", "美元": "USD", "欧元": "EUR", "港币": "HK
 _AMOUNT = r"(人民币|美元|欧元|港币|港元)?\s*[（(]?(?:小写)?[)）]?\s*[:：]?\s*[¥￥]?\s*([0-9][0-9,，]*(?:\.\d+)?)\s*(亿元|万元|元)"
 _CEILING = re.compile(r"(?:最高投标限价|最高限价|招标控制价|拦标价|最高报价)[^。；\n]{0,24}?" + _AMOUNT)
 _VALIDITY = re.compile(r"投标有效期[^。；\n]{0,24}?(\d{1,4})\s*(?:个)?(?:日历天|天|日)")
-_DEPOSIT = re.compile(r"投标保证金[^。；\n]{0,30}?" + _AMOUNT)
+_DEPOSIT = re.compile(r"(?:投标|招标)保证金[^。；\n]{0,30}?" + _AMOUNT)
+_DEPOSIT_UPPER = re.compile(r"(?:投标|招标)保证金[^。；\n\d]{0,12}?(?:人民币)?[:：]?\s*"
+                            r"([零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+[元圆][零壹贰叁肆伍陆柒捌玖角分整正]*)")
 _FORMS = ["银行保函", "保险保函", "担保保函", "电汇", "转账", "银行汇票", "支票", "现金"]
 _EMPTY = {"ceiling": None, "currency": "CNY", "validity_days": None, "deposit": None, "deposit_forms": "",
           "consortium": None, "tax_included": None}
@@ -227,6 +275,9 @@ def prefill(nodes) -> tuple[dict, dict]:
             sources["validity_days"] = here
         if values["deposit"] is None and (m := _DEPOSIT.search(t)):
             values["deposit"] = _money(m.group(2), m.group(3))
+            sources["deposit"] = here
+        elif values["deposit"] is None and (m := _DEPOSIT_UPPER.search(t)) and (v := chinese_upper_value(m.group(1))):
+            values["deposit"] = str(v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))  # “贰万元整”
             sources["deposit"] = here
         if "保证金" in t:
             forms += [f for f in _FORMS if f in t and f not in forms]
