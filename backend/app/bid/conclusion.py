@@ -205,9 +205,15 @@ def pricing_summary(view, order, shorts, cases, entries, reviewed):
             "verify": [e["id"] for e in entries if e["tier"] == "verify" and e["id"] in keys]}
 
 
+_TAG = r"[A-Z]{1,3}-?\d+[A-Z]?(?:/[A-Z])*"
+_TAG_LIST = re.compile(rf"^({_TAG})(?:[、，, ]+(?:和|及)?{_TAG})+")
+
+
 def _short_requirement(req):
     # 第五十一条默认行去掉“（参照……第五十一条）”前缀再截取，否则只剩前缀（V34-B-08c）
     text = " ".join(re.sub(r"^（参照《[^》]+》第[^）]+条）", "", req["text"]).split())
+    # 开头是多个位号（“P-201A/B、P-101A/B防爆等级……”）时只留第一个，否则几条要求的简称一模一样
+    text = _TAG_LIST.sub(lambda m: m.group(1) + "等", text, count=1)
     return text[:16] + ("…" if len(text) > 16 else "")
 
 

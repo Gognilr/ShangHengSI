@@ -5,6 +5,6 @@ must_replace:
   - {text: XK13-205-77391, category: IDNO}
 must_keep:
   - 安全验收评价
-  - 20190815
+  - "20190815"
   - 有效期至
   - "[B2]"

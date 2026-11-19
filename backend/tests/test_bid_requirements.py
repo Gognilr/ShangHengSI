@@ -294,4 +294,6 @@ def test_supplement_near_duplicates_merge_and_snippet_ids_become_pages():
     assert not _is_description("signing", "商务标书、技术标书各一份。")
     text = snippet_refs("C24将电机单独报价，[C5]列在表一；位号P-102A、GB/T3836、C9不变", {"C24": {"page": 10}, "C5": {"page": 3}})
     assert text == "第 10 页将电机单独报价，第 3 页列在表一；位号P-102A、GB/T3836、C9不变"
+    from app.bid.conclusion import _short_requirement
+    assert _short_requirement({"text": "P-901A/B、P-902A/B防爆等级应满足ExdIIBT4。"}) == "P-901A/B等防爆等级应满足…"
     assert snippet_refs("与C24/C5供货范围矛盾，SH/T3406不变", {"C24": {"page": 10}, "C5": {"page": 3}}) == "与第 10 页/第 3 页供货范围矛盾，SH/T3406不变"

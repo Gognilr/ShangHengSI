@@ -31,14 +31,24 @@ def recognition_view(text: str) -> str:
     text = ''.join(chr(ord(c) - 0xFEE0) if '\uff01' <= c <= '\uff5e' else ' ' if c == '\u3000' else c for c in text)
     protected = None
     def digits(match):
+        word, base = match.group(), match.start()
+        # 前后有空白的竖线是表格分隔（“77391 ｜ 有效期至”），不是误读的 1（V34-B-08c）
+        bars = [i for i, c in enumerate(word) if c == '|' and (i == 0 or word[i - 1] in ' \t')
+                and (i == len(word) - 1 or word[i + 1] in ' \t')]
+        out, last = [], 0
+        for i in bars:
+            out += [digits_part(word[last:i], base + last), '|']
+            last = i + 1
+        return ''.join(out) + digits_part(word[last:], base + last)
+
+    def digits_part(word, lo):
         nonlocal protected
-        word = match.group()
         count = sum(c in 'OoIl|SB' for c in word)
         if sum(c.isdigit() for c in word) >= 6 and 0 < count <= 2:
             if protected is None:
                 protected = [m.span() for pattern, validator in ((_CREDIT_CODE, validators.uscc), (_IBAN, validators.iban))
                              for m in pattern.finditer(text) if validator(m.group())]
-            if any(start < match.end() and match.start() < end for start, end in protected):
+            if any(start < lo + len(word) and lo < end for start, end in protected):
                 return word  # 校验已通过的原代码不把合法字母误改为 OCR 数字。
             return word.translate(str.maketrans('OoIl|SB', '0011158'))
         return word
