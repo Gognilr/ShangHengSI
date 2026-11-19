@@ -230,7 +230,8 @@ def find(bidders, nodes, tender_nodes):
         level = max((g[0] for g in graded), key=rank.get)
         if only_two >= STRONG_EXACT:
             level = "strong"
-        graded.sort(key=lambda g: (-rank[g[0]], -g[1]))
+        # 示例先列非公共来源的段落：降档后的审计、专利套话放在最后，不挤掉真正值得看的段落
+        graded.sort(key=lambda g: (g[4], -rank[g[0]], -g[1]))
         rows = []
         for lv, length, section, seg, common in graded[:12]:
             rows.append({"label": "相似段落", "level": lv, "chars": length, "sentences": len(seg),
