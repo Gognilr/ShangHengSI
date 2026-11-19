@@ -24,6 +24,12 @@ _LAW = re.compile(r"《[^《》]{2,40}(?:法|条例|规定|办法|细则|解释)
 _CHAPTER = re.compile(r"^\s*(?:第[一二三四五六七八九十百零\d]+[章部分篇卷节]|[一二三四五六七八九十]+、|\d+(?:\.\d+)*[、.．\s])\s*(.{1,30})$")
 _TECH = re.compile(r"技术参数|技术规格|技术偏离|技术指标|规格参数|产品参数|技术响应|配置清单|参数响应")
 _PRICE = re.compile(r"报价|开标一览表|价格|分项|投标函")
+# 公共来源文字（V34-B-08c）：审计报告标准意见、专利证书固定文字、营业执照套话、信用公示网址、标准编号行。
+# 降权不排除：所在段降一档，不计入“只有两家共有的相同句”；自填参数、偏离与共同错字不受影响。
+_COMMON = re.compile(r"注册会计师|审计准则|审计证据|审计意见|财务报表|重大错报|治理层|职业道德守则|持续经营|内部控制"
+                     r"|专利权|专利登记|专利法|实用新型|知识产权局|专利证书"
+                     r"|依法须经批准的项目|国家企业信用信息公示系统|gsxt\.gov\.cn"
+                     r"|^\s*(?:GB|HG|SH|JB|NB|API|ISO|IEC)\s*/?\s*T?\s*\d")
 _UP = {"weak": "medium", "medium": "strong", "strong": "strong"}
 _DOWN = {"strong": "medium", "medium": "weak", "weak": "weak"}
 
@@ -40,6 +46,7 @@ class Sent:
     grams: frozenset
     section: str  # body / tech / price
     owner_rank: int = 0
+    common: bool = False  # 公共来源文字（审计、专利、执照套话、标准编号）
 
 
 def _sections(nodes):
@@ -66,7 +73,7 @@ def sentences(owner, nodes, start=0):
             if len(norm) < MIN_CHARS:
                 continue
             grams = frozenset(norm[i:i + 2] for i in range(len(norm) - 1))
-            out.append(Sent(owner, index, file_id, loc, page, piece, norm, grams, section))
+            out.append(Sent(owner, index, file_id, loc, page, piece, norm, grams, section, common=bool(_COMMON.search(piece))))
             index += 1
     return out
 
@@ -171,7 +178,7 @@ def _map(a, b, graded, totals, starts):
         pages = [s.page for s in ss if s.page is not None]
         return [min(s.index for s in ss), max(s.index for s in ss)], [min(pages), max(pages)] if pages else None, str(ss[0].file_id)
     segs = []
-    for lv, length, _section, seg in sorted(graded, key=lambda g: min(m[0].index for m in g[3]))[:MAP_SEGS]:
+    for lv, length, _section, seg, _common in sorted(graded, key=lambda g: min(m[0].index for m in g[3]))[:MAP_SEGS]:
         (ia, pa, fa), (ib, pb, fb) = side(seg, 0), side(seg, 1)
         segs.append({"level": lv, "chars": length, "a": ia, "b": ib, "pa": pa, "pb": pb, "fa": fa, "fb": fb})
     return {"n": {str(a): totals[a], str(b): totals[b]}, "files": {str(a): starts[a], str(b): starts[b]}, "segs": segs}
@@ -202,7 +209,7 @@ def find(bidders, nodes, tender_nodes):
     items = []
     for (a, b), matches in pairs.items():
         segs = _segments(matches)
-        only_two = sum(1 for x, _y, exact in matches if exact and len(holders[x.norm]) == 2)
+        only_two = sum(1 for x, _y, exact in matches if exact and len(holders[x.norm]) == 2 and not x.common)
         total = sum(len(x.norm) for x, _y, _e in matches)
         if total < MEDIUM_RUN and only_two < STRONG_EXACT:
             continue  # 零星短句相同（多为固定句式）不报，免得淹没真正的线索；章节升降档只用于够长的命中
@@ -215,16 +222,19 @@ def find(bidders, nodes, tender_nodes):
                 level = _DOWN[level]
             elif section == "price":
                 level = _UP[level]
-            graded.append((level, length, section, seg))
+            common = sum(len(x.norm) for x, _y, _e in seg if x.common) * 10 >= length * 6
+            if common:
+                level = _DOWN[level]
+            graded.append((level, length, section, seg, common))
         rank = {"strong": 3, "medium": 2, "weak": 1}
         level = max((g[0] for g in graded), key=rank.get)
         if only_two >= STRONG_EXACT:
             level = "strong"
         graded.sort(key=lambda g: (-rank[g[0]], -g[1]))
         rows = []
-        for lv, length, section, seg in graded[:12]:
+        for lv, length, section, seg, common in graded[:12]:
             rows.append({"label": "相似段落", "level": lv, "chars": length, "sentences": len(seg),
-                         "section": section, "exact": all(e for *_x, e in seg),
+                         "section": section, "exact": all(e for *_x, e in seg), "common": common,
                          "left": {"bidder_id": str(a), "places": [_place(x) for x, _y, _e in seg][:6],
                                   "text": "".join(x.text for x, _y, _e in seg)[:600]},
                          "right": {"bidder_id": str(b), "places": [_place(y) for _x, y, _e in seg][:6],
@@ -232,6 +242,8 @@ def find(bidders, nodes, tender_nodes):
         title = f"相似段落 {len(segs)} 段、约 {total} 字"
         if only_two:
             title += f"，只有这两家共有的相同句 {only_two} 处"
+        if commons := sum(1 for g in graded if g[4]):
+            title += f"；其中 {commons} 段为审计报告、专利证书、执照或标准条文等公共来源文字，已降一档"
         items.append({"ids": (a, b), "level": level, "title": title, "rows": rows,
                       "more": max(0, len(graded) - len(rows)), "map": _map(a, b, graded, totals, starts)})
     stats = {"sentences": len(pool), "dropped_tender": dropped}

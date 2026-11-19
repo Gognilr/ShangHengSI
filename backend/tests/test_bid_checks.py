@@ -266,3 +266,19 @@ def test_template_words_not_names_scanned_signing_titles_and_short_names():
     assert [(s["page"], s["title"]) for s in signing_pages([b], nodes)] == [(2, "报价单")]  # 页中提及不算
     names = short_names({1: "虚构示例（杭州）泵业科技有限公司", 2: "浙江样例科技股份有限公司", 3: "山东省演示安全生产技术中心"})
     assert names == {1: "虚构示例", 2: "样例", 3: "演示"}
+
+
+def test_similar_boilerplate_is_downweighted_not_dropped():
+    """V34-B-08c：两家附同类审计报告的标准意见（虚构改写）只作公共来源文字降档，仍列出；不计“只有两家共有的相同句”。"""
+    from app.bid import similar
+    audit = ["我们按照中国注册会计师审计准则的规定执行了审计工作，审计报告中的责任部分进一步阐述了我们的责任。",
+             "我们相信，我们获取的审计证据是充分、适当的，为发表审计意见提供了基础，并保持职业怀疑。",
+             "管理层负责按照企业会计准则的规定编制财务报表，使其实现公允反映，并设计执行必要的内部控制。",
+             "我们的目标是对财务报表整体是否不存在由于舞弊或错误导致的重大错报获取合理保证并出具报告。",
+             "按照中国注册会计师职业道德守则，我们独立于被审计单位，并履行了职业道德方面的其他责任。",
+             "在编制财务报表时，管理层负责评估被审计单位的持续经营能力，披露与持续经营相关的事项。"]
+    a, b = uuid.uuid4(), uuid.uuid4()
+    nodes = {x: [("f", f"F{k}-PG9-B{i}", 9, t, "ocr_block") for i, t in enumerate(audit)] for k, x in ((1, a), (2, b))}
+    items, _ = similar.find([a, b], nodes, [])
+    assert len(items) == 1 and items[0]["level"] == "medium" and items[0]["rows"][0]["common"]  # 248 字连续相同本为强，降一档
+    assert "公共来源" in items[0]["title"] and "只有这两家共有" not in items[0]["title"]
