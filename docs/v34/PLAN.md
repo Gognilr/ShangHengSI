@@ -56,7 +56,7 @@
 | V34-B-01b | 发标单位一览表：第 1 步识别受邀单位名单，第 2 步按名单自动分组 | Q-56 | Opus，medium | Sol 6.1，medium | D-03 | 截图交用户 | 未开始（方案用户 2026-11-19 确认；顺序改到 D 批之后） |
 | V34-D-01 | OCR 选型与升级：RapidOCR 新代次 PP-OCR 模型，模型文件打包、运行时不下载 | Q-55 | Opus，high | Sol 6.1，high | B-06e | 选型报告交用户确认后才换模型 | 已完成（2026-11-19，Claude Opus 5.5，reports/V34-D-01.md；选型用户确认 PP-OCRv6 small；块置信度改取最低行） |
 | V34-D-02 | 扫描页线框表格转 table_cell，低置信单元格的校验降级 | Q-55 | Opus，high | Sol 6.1，high | D-01 | — | 已完成（2026-11-19，Claude Opus 5.5，reports/V34-D-02.md；OCR 数字一律降级，Q-57） |
-| V34-D-03 | 文字页受限 text 兜底、跨页续表（校验时拼接）、PDF 页眉页脚规则分离 | Q-55 | Opus，medium | Sol 6.1，medium | D-02 | — | 未开始 |
+| V34-D-03 | 文字页受限 text 兜底、跨页续表（校验时拼接）、PDF 页眉页脚规则分离 | Q-55 | Opus，medium | Sol 6.1，medium | D-02 | — || 已完成（2026-11-19，Claude Opus 5.5，reports/V34-D-03.md） |
 | V34-B-08c | 以公开标书为参考，逐步优化标书初审 | Q-39、Q-54 | Opus，high | Sol 6.1，high | B-06e、D-03、B-01b | 改进清单交用户确认后实施 | 未开始 |
 | V34-Z | 复核、SPEC 与 frontend.md 第三版、版本号、品牌（按用户决定）、分支清理、全量、增量发布包、服务器升级 | Q-51、Q-54 | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部（含 B-08b、B-09、C-01、B-06e、B-01b、D-01～03、B-08c） | 品牌开工前问用户；推送标签前问用户 | 未开始 |
 
