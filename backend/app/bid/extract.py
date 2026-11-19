@@ -33,6 +33,8 @@ SYSTEM = """你是招标文件整理助手。用户给出一份招标文件的�
 qualification 资格条件；substantive 实质性条款（★ 或要求实质性响应的条款）；veto 否决条款（不满足即否决投标、废标或无效投标）；
 pricing 报价要求；validity 投标有效期与保证金；signing 签章与格式页要求。
 不要列出合同履行、付款、验收等中标后的条款，不要列出“投标文件格式”章节中的范本文字。
+同一要求在多份文件、多张数据表中重复出现时只列一次；多个设备位号的要求内容相同时合并为一条，在 text 中列出这些位号。
+只说明设备名称、型号、位号、数量或术语定义的文字不是要求，不要列出。
 若某行改动了前文的要求（如答疑、补遗、澄清），在 replaces 中给出被改动要求所在行的位置。
 只输出 JSON：{"items":[{"group":"分组","text":"一句话写清要求","loc":"位置","quote":"该行中逐字摘录的原文片段","replaces":"被改动要求的位置或空"}]}"""
 
@@ -140,6 +142,27 @@ def _locate(original, quote_raw, mapping):
     return None
 
 
+def _grams(text):
+    t = re.sub(r"[\W_]+", "", R._ENUM_HEAD.sub("", text.strip()))
+    return {t[i:i + 2] for i in range(len(t) - 1)}
+
+
+def _same_requirement(text, rows, threshold=0.85):
+    """已有启用行中文字近似相同（二元组 Dice ≥ 0.85）的一行；没有返回 None。"""
+    mine, numbers = _grams(text), set(re.findall(r"\d+(?:\.\d+)?", text))
+    if len(mine) < 4:
+        return None
+    for r in rows:
+        if not r.enabled:
+            continue
+        other_text = crypto.decrypt_text(r.text_enc)
+        other = _grams(other_text)
+        # 数值不同（70%～120% 与 80%～120%、不同位号）不是同一要求
+        if other and set(re.findall(r"\d+(?:\.\d+)?", other_text)) == numbers                 and 2 * len(mine & other) / (len(mine) + len(other)) >= threshold:
+            return r
+    return None
+
+
 def merge(db, task, items: list[dict]) -> int:
     """校验并并入清单，返回新增行数。位置不在招标文件中、引文对不上的条目丢弃。"""
     mapping = engine.load_redaction_map(db, task.id)
@@ -159,12 +182,19 @@ def merge(db, task, items: list[dict]) -> int:
         start, end = span
         if any(any(l.get("loc") == loc and l.get("start", 0) < end and l.get("end", 0) > start for l in r.locs) for r in rows):
             continue  # 规则已抓到的同一处，不重复
+        restored = restore(text, mapping)
+        same = _same_requirement(restored, rows)
+        if same is not None:
+            # 文字近似相同（多份数据表的同一注释）：只并入出处，不新增一行（V34-B-08c）
+            here = {"file_id": node.file_id, "loc": loc, "start": start, "end": end}
+            if not any(l.get("loc") == loc for l in same.locs):
+                same.locs = [*same.locs, here]
+            continue
         replaced = str(item.get("replaces") or "").strip("[] ")
         if replaced and replaced != loc:
             for r in rows:
                 if r.enabled and r.source != "manual" and any(l.get("loc") == replaced for l in r.locs):
                     r.enabled = False  # 被后发文件改动的旧要求停用（保留可查）
-        restored = restore(text, mapping)
         row = BidRequirement(task_id=task.id, group=group, text_enc=crypto.encrypt_text(restored), redacted_text=text,
                              locs=[{"file_id": node.file_id, "loc": loc, "start": start, "end": end}],
                              method=R.default_method(group, restored, task.policy), enabled=True, source="model", seq=seq)

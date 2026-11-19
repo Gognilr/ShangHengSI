@@ -794,6 +794,18 @@ def messages(db, task, state, index):
 
 # ---------------------------------------------------------------- 结果
 
+_SNIPPET_REF = re.compile(r"\[?(?<![A-Za-z0-9\-/])([A-Z]\d{1,3})(?![0-9A-Za-z\-/])\]?")
+
+
+def snippet_refs(text, snippets):
+    """理由中的片段编号（“C24将电机……”）换成页码：片段编号只在发送时使用，用户看不懂（V34-B-08c）。"""
+    def page(m):
+        s = snippets.get(m.group(1))
+        if s is None:
+            return m.group(0)
+        return f"第 {s['page']} 页" if s.get("page") else "所引段落"
+    return _SNIPPET_REF.sub(page, text) if text else text
+
 def _parse(content):
     data = json.loads(content)
     items = data.get("items") if isinstance(data, dict) else data
@@ -811,6 +823,7 @@ def apply(db, task, state, index, items):
     bidder_uuid = uuid.UUID(bid)
     scope_by_loc = evidence_by_loc(_bid_nodes(db, task, bidder_uuid).get(bidder_uuid, []))
     snippets = {s["id"]: s for s in state["snippets"][bid] if s["id"] in batch["snippets"]}
+    own = {s["id"]: s for s in state["snippets"][bid]}
     by_n = {state["requirements"][rid]["n"]: rid for rid in batch["reqs"]}
     locs = [l for s in snippets.values() for l in s["locs"]]
     nodes = _nodes_by_loc(db, task, locs)
@@ -865,7 +878,7 @@ def apply(db, task, state, index, items):
                 where = [snippets[cited[0]]["locs"][0]]
                 source = nodes.get(where[0], ("", ""))[0]
         place = [{"file_id": snippets_file(snippets, l), "loc": l, "page": pages.get(l)} for l in where]
-        reason = restore(str(item.get("reason") or "").strip(), mapping)[:500]
+        reason = snippet_refs(restore(str(item.get("reason") or "").strip(), mapping), own)[:500]
         adjusted = scope_gap and verdict in ("yes", "no")
         cell = old_cells.pop((uuid.UUID(rid), bidder_uuid), None)
         if cell is None:
@@ -893,7 +906,7 @@ def apply(db, task, state, index, items):
                 rows.append({"label": "核实提示", "value": gap})
             _model_item(db, task, bid, rid, "model_response", "veto" if article else "general",
                         article, f"{title}：{_short(text)}", rows + [{"label": "要求", "value": text}], old_items)
-        conflict = restore(str(item.get("conflict") or "").strip(), mapping)
+        conflict = snippet_refs(restore(str(item.get("conflict") or "").strip(), mapping), own)
         if conflict:
             _model_item(db, task, bid, rid, "deviation_conflict", "general", None, f"偏离表与正文不一致：{_short(conflict)}",
                         [{"label": "说明", "value": conflict[:500]}] + rows[1:], old_items)
