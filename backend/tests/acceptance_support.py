@@ -58,19 +58,19 @@ def _docx_bytes(lines: list[str]) -> bytes:
     return buf.getvalue()
 
 
-_DOCX_CELL = re.compile(r"^F\d+-T(\d+)-R(\d+)-C(\d+)$")
+_TABLE_CELL = re.compile(r"^F\d+-(?:PG(\d+)-)?T(\d+)-R(\d+)-C(\d+)$")
 
 
 def _docx_table_bytes(pairs: list[tuple[str, str]]) -> bytes:
-    """DOCX 表格样本（R1-03）：“F1-T1-R2-C3 文字”写入第 1 个表格的第 2 行第 3 列，其余行写成段落（段落在前、表格在后）。"""
+    """将 DOCX 或 PDF 的表格节点写入 DOCX 网格，其余行写为段落。"""
     d = docx.Document()
-    grids: dict[int, dict[tuple[int, int], str]] = {}
+    grids: dict[tuple[int, int], dict[tuple[int, int], str]] = {}
     for loc, text in pairs:
-        m = _DOCX_CELL.match(loc)
+        m = _TABLE_CELL.match(loc)
         if m is None:
             d.add_paragraph(text)
         else:
-            grids.setdefault(int(m[1]), {})[(int(m[2]), int(m[3]))] = text
+            grids.setdefault((int(m[1] or 0), int(m[2])), {})[(int(m[3]), int(m[4]))] = text
     for t in sorted(grids):
         cells = grids[t]
         table = d.add_table(rows=max(r for r, _ in cells), cols=max(c for _, c in cells))
@@ -97,7 +97,7 @@ def _xlsx_bytes(cells: list[tuple[str, str]]) -> bytes:
 
 
 def golden_samples() -> list[Sample]:
-    """脱敏回归集：普通样本与 OCR 文字块样本写成 DOCX（每行一段），单元格样本写成 XLSX。"""
+    """脱敏回归集：文字节点写为段落，表格节点写为 DOCX 网格或 XLSX 单元格。"""
     out = []
     for txt in sorted(GOLDEN.glob("*.txt")):
         ann = yaml.safe_load(txt.with_suffix(".yaml").read_text(encoding="utf-8"))
@@ -106,7 +106,7 @@ def golden_samples() -> list[Sample]:
             pairs = [tuple(line.split(" ", 1)) for line in lines]
             if all("-S" in loc for loc, _ in pairs):
                 name, data = f"{txt.stem}.xlsx", _xlsx_bytes(pairs)
-            elif any(_DOCX_CELL.match(loc) for loc, _ in pairs):  # DOCX 表格单元格
+            elif any(_TABLE_CELL.match(loc) for loc, _ in pairs):
                 name, data = f"{txt.stem}.docx", _docx_table_bytes(pairs)
             else:  # OCR 文字块：只保留文字，按段落写入
                 name, data = f"{txt.stem}.docx", _docx_bytes([t for _, t in pairs])
