@@ -39,9 +39,9 @@ def test_same_row_segments_not_merged():
     assert len(blocks) == 2
 
 
-def test_block_conf_is_mean_of_lines():
+def test_block_conf_is_min_of_lines():
     _, _, conf = block_of([line("a", 0, 0, 1, 1, 0.9), line("b", 0, 2, 1, 3, 0.5)])
-    assert conf == 0.7
+    assert conf == 0.5  # 取最低一行（V34-D-01）
 
 
 def test_recognize_real_engine_reused_and_telemetry_disabled(monkeypatch):

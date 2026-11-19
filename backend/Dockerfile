@@ -13,9 +13,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TZ=Asia/Shanghai
 
 # postgresql-client 16（备份用 pg_dump）：Debian trixie 自带的是 17，需用 PostgreSQL 官方源。
-# libgl1 / libglib2.0-0：RapidOCR 依赖的 opencv 运行库。
+# libglib2.0-0：opencv（headless）的运行库。
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg libgl1 libglib2.0-0 \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg libglib2.0-0 \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
     && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
@@ -40,7 +40,7 @@ COPY models/ner ./models/ner
 RUN cd models/ner && sha256sum -c MANIFEST.sha256
 COPY models/embedding ./models/embedding
 RUN cd models/embedding && sha256sum -c MANIFEST.sha256
-RUN python -c "from pathlib import Path; import rapidocr_onnxruntime as r; assert len(list((Path(r.__file__).parent / 'models').glob('*.onnx'))) == 3"
+RUN python -c "from app.parsing import ocr; assert all(p.is_file() for p in ocr.model_paths().values())"
 USER appuser
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--no-access-log"]

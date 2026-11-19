@@ -19,7 +19,7 @@ def test_model_check_offline_states(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('CONVERT_SPOOL_DIR', str(tmp_path))
     monkeypatch.setenv('COMPOSE_PROFILES', '')
     calls = []
-    monkeypatch.setattr(local_models, '_light_check', lambda mid, smoke: calls.append(mid))
+    monkeypatch.setattr(local_models, '_light_check', lambda model, smoke: calls.append(model['id']))
     assert cli.main(['model-check']) == 0
     rows = json.loads(capsys.readouterr().out)
     assert rows[0]['verification'] == 'sha256_verified'

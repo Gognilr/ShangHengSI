@@ -95,7 +95,7 @@ while IFS=$'\t' read -r model_image smoke; do
 done <<< "$model_commands"
 
 if built backend; then
-  docker run --rm --network none "aireview-backend:$version" sh -ec 'pip check; pg_dump --version | grep " 16\."; python -c "import app.main"; python -c '\''from pathlib import Path; import rapidocr_onnxruntime as r; import cv2,numpy as np; assert len(list((Path(r.__file__).parent / "models").glob("*.onnx"))) == 3; image=np.full((120,600,3),255,dtype=np.uint8); cv2.putText(image,"TEST 123",(20,80),cv2.FONT_HERSHEY_SIMPLEX,2,(0,0,0),3); result,_=r.RapidOCR()(image); assert result; print("OCR offline OK")'\'''
+  docker run --rm --network none "aireview-backend:$version" sh -ec 'pip check; pg_dump --version | grep " 16\."; python -c "import app.main"'  # OCR 断网冒烟在上面的 models.yaml 循环中（model-check ocr --smoke）
 fi
 if built web; then docker run --rm --network none "aireview-web:$version" test -s /srv/frontend/index.html; fi
 if built converter; then

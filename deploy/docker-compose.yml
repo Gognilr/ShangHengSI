@@ -18,7 +18,7 @@ x-backend: &backend
     BACKUP_PASSWORD_FILE: /run/secrets/backup_password
     FILES_DIR: /data/files
     BACKUP_DIR: /backup
-    OCR_MODEL_DIR: /usr/local/lib/python3.12/site-packages/rapidocr_onnxruntime/models
+    OCR_MODEL_DIR: /usr/local/lib/python3.12/site-packages/rapidocr/models
     LOCAL_MODELS_FILE: /etc/aireview/models.yaml
     COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
     CONVERT_SPOOL_DIR: /spool

@@ -22,7 +22,8 @@ def _manifest(model: dict) -> Path:
     return ROOT.parent / model['dir'] / 'MANIFEST.sha256'
 
 
-def _light_check(mid: str, smoke: bool) -> None:
+def _light_check(model: dict, smoke: bool) -> None:
+    mid = model['id']
     if mid == 'ner':
         from app.redaction import ner
         ner.check(load=smoke)
@@ -34,18 +35,21 @@ def _light_check(mid: str, smoke: bool) -> None:
         if smoke:
             engine.embed(['虚构合同条款'], 'passage')
     else:
-        import rapidocr_onnxruntime as rapid
-        if importlib.metadata.version('rapidocr-onnxruntime') != '1.4.4':
+        import hashlib
+
+        from app.parsing import ocr
+        if importlib.metadata.version('rapidocr') != model['source'].split('==')[1]:
             raise ValueError
-        if len(list((Path(rapid.__file__).parent / 'models').glob('*.onnx'))) != 3:
-            raise ValueError
+        for path in ocr.model_paths().values():
+            if hashlib.sha256(path.read_bytes()).hexdigest() != model['sha256'][path.name]:
+                raise ValueError
         if smoke:
             import cv2
             import numpy as np
+            from PIL import Image
             image = np.full((120, 600, 3), 255, dtype=np.uint8)
             cv2.putText(image, 'TEST 123', (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
-            result, _ = rapid.RapidOCR()(image)
-            if not result:
+            if not ocr.recognize(Image.fromarray(image)):
                 raise ValueError
 
 
@@ -83,10 +87,10 @@ def inspect_models(model_id: str | None = None, *, smoke: bool = False, cached: 
                 if cached and previous and time.monotonic() - previous[0] < 60:
                     ok = previous[1]
                 else:
-                    _light_check(model['id'], smoke)
+                    _light_check(model, smoke)
                     ok = True
                     _checks[model['id']] = (time.monotonic(), ok)
-                verification = 'package_verified' if model['id'] == 'ocr' else 'sha256_verified'
+                verification = 'sha256_verified'
         except Exception:  # 不返回模型路径、异常详情或输入内容。
             ok = False
         rows.append(dict(id=model['id'], purpose=model['purpose'], version=model['source'],

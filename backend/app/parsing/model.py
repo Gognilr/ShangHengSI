@@ -59,7 +59,7 @@ class ParsedFile:
 MAX_PDF_PAGES = 200  # 单个 PDF 的页数上限
 MAX_OCR_PAGES_PER_TASK = 100  # 整个任务合计的 OCR 页数上限
 MAX_XLSX_CELLS = 20000  # 单个 XLSX 的文字单元格上限；数字另限 100000
-LOW_OCR_CONF = 0.80  # 块平均置信度低于此值为低置信
+LOW_OCR_CONF = 0.80  # 块置信度（块内最低一行，V34-D-01）低于此值为低置信
 
 
 class ParseError(Exception):

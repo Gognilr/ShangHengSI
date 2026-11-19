@@ -6,7 +6,7 @@
 |-|-|
 | ner | Apache-2.0，[GLiNER 官方项目 LICENSE](https://raw.githubusercontent.com/urchade/GLiNER/main/LICENSE)；固定模型仓库未提供独立 LICENSE，采用其官方代码项目全文 |
 | embedding | MIT，[FlagEmbedding 官方 LICENSE](https://raw.githubusercontent.com/FlagOpen/FlagEmbedding/master/LICENSE)，保留 Copyright (c) 2022 staoxiao；固定 bge-m3 模型卡标 MIT，但其仓库没有独立 LICENSE，归档对应官方项目的 MIT 原文，不将它冒充从权重目录取得的文件 |
-| ocr | Apache-2.0，[RapidOCR v1.4.4 LICENSE](https://raw.githubusercontent.com/RapidAI/RapidOCR/v1.4.4/LICENSE)，保留 RapidAI 版权行 |
+| ocr | Apache-2.0，RapidOCR LICENSE（v1.4.4 官方地址取得；rapidocr 3.10.0 安装包内的 LICENSE 逐字节相同），保留 RapidAI 版权行；另附 3.10.0 安装包内的 MODEL_LICENSES.md（PP-OCRv6 small 与方向分类模型的来源、SHA-256 与再分发要求，权重版权属百度 / PaddleOCR，V34-D-01） |
 | asr-vad | Apache-2.0，M-01 已保存的 FireRedVAD LICENSE，来源 FireRedTeam/FireRedVAD@c30ec49e8cc69642b0ee65362eba11b9d11c6e54 |
 | asr、asr-punc | Apache-2.0，[FireRedASR2S 官方 LICENSE](https://raw.githubusercontent.com/FireRedTeam/FireRedASR2S/main/LICENSE)，覆盖 AED / Punc；Punc 固定权重仓库未提供独立 LICENSE |
 | asr-punc 标点底座 | Apache-2.0，[Chinese-BERT-wwm 官方 LICENSE](https://raw.githubusercontent.com/ymcui/Chinese-BERT-wwm/master/LICENSE)，归档为 LERT-LICENSE；hfl/chinese-lert-base 权重仓库未提供独立 LICENSE |

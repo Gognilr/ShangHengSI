@@ -1,7 +1,9 @@
 """OCR（M3-04，SPEC 8.5，设计 docs/design/M3.md 第五节，open_questions Q-64）。
 
 RapidOCR 引擎在进程内首次使用时创建一次并复用；调用方负责用 worker.ocr_slot() 互斥，这里不加锁。
-创建引擎前先关闭 onnxruntime 的遥测；模型文件随 rapidocr-onnxruntime 包进镜像，运行时不下载任何东西。
+创建引擎前先关闭 onnxruntime 的遥测。模型（PP-OCRv6 small 检测 / 识别 + v2.0 方向分类，V34-D-01）随锁定的
+rapidocr 包进镜像；创建引擎时显式传入三个模型文件的路径，rapidocr 给了路径就不进入下载分支，运行时不联网。
+文件的 SHA-256 登记在 deploy/models.yaml，由 model-check 核对。
 日志只写行数和耗时，不写识别出的文字。
 """
 import re
@@ -12,6 +14,22 @@ from app.parsing.docx import manual_clause_no
 _CJK_END = re.compile(r"[一-鿿，。；：、？！（）“”‘’《》]")
 
 _engine = None
+
+# 包内模型文件（rapidocr/models/ 下），键为 rapidocr 的配置段。
+MODEL_FILES = {
+    "Det": "PP-OCRv6_det_small.onnx",
+    "Rec": "PP-OCRv6_rec_small.onnx",
+    "Cls": "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+}
+
+
+def model_paths() -> dict:
+    """{配置段: 包内模型文件路径}。只定位文件，不导入 rapidocr（避免加载其依赖）。"""
+    import importlib.util
+    from pathlib import Path
+
+    root = Path(importlib.util.find_spec("rapidocr").origin).parent / "models"
+    return {k: root / v for k, v in MODEL_FILES.items()}
 
 
 @dataclass
@@ -27,9 +45,11 @@ def _get_engine():
         import onnxruntime
 
         onnxruntime.disable_telemetry_events()
-        from rapidocr_onnxruntime import RapidOCR
+        from rapidocr import RapidOCR
 
-        _engine = RapidOCR()
+        params = {"Global.log_level": "warning"}
+        params.update({f"{k}.model_path": str(v) for k, v in model_paths().items()})
+        _engine = RapidOCR(params=params)
     return _engine
 
 
@@ -38,9 +58,11 @@ def recognize(image) -> list[OcrLine]:
     import numpy as np
 
     arr = np.array(image.convert("RGB"))[:, :, ::-1]  # RGB → BGR
-    result, _ = _get_engine()(arr)
+    result = _get_engine()(arr)
+    if result.boxes is None:  # 未检测到文字
+        return []
     lines: list[OcrLine] = []
-    for box, text, score in result or []:
+    for box, text, score in zip(result.boxes.tolist(), result.txts, result.scores):
         text = (text or "").strip()
         if not text:
             continue
@@ -79,10 +101,13 @@ def merge_lines(lines: list[OcrLine], min_gap: float = 3.0) -> list[list[OcrLine
 
 
 def block_of(block: list[OcrLine]) -> tuple[str, list[float], float]:
-    """块 → (文字, 外接 bbox, 平均置信度)。"""
+    """块 → (文字, 外接 bbox, 置信度)。
+
+    块置信度取最低一行（V34-D-01）：PP-OCRv6 的分数整体偏高，平均会把一行明显错读的数字摊平到阈值以上。
+    """
     text = join_text([ln.text for ln in block])
     bbox = [
         round(min(b.bbox[0] for b in block), 2), round(min(b.bbox[1] for b in block), 2),
         round(max(b.bbox[2] for b in block), 2), round(max(b.bbox[3] for b in block), 2),
     ]
-    return text, bbox, round(sum(b.conf for b in block) / len(block), 4)
+    return text, bbox, round(min(b.conf for b in block), 4)
