@@ -347,6 +347,7 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
         lede += ("；" if lede else "") + f"发现 {len(cases)} 组疑似串通投标"
     lede = lede + "。" if lede else f"{len(rows)} 家投标人均未发现否决情形与串通线索。"
     sub = ("本项目只做本地检查，未核对响应性要求。" if local_only else
+           "可对未找到的格做一次补充核对。" if model_state is None and not second.get("pending") else
            "模型核对未完成，结论可能变化。" if model_state != "done" or second.get("pending") else None)
     signed = feedback.get("signed")
     price = pricing_summary(view, list(bidders), shorts, cases, certain + verify + reference, reviewed)
