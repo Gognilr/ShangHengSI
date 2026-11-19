@@ -118,7 +118,7 @@ defineExpose({ locate })
         <tr v-for="b in data.bidders" :key="b.id">
           <td><span v-if="b.tier" class="bid-tier" :class="b.tier">{{ verdict[b.tier] }}</span><span v-else class="pass">✓ 未发现问题</span></td>
           <td class="name" :title="b.name">{{ b.name }}</td>
-          <td><template v-for="(r, i) in b.reasons.slice(0, 3)" :key="r.id"><span v-if="i">；</span><button class="bid-link" type="button" @click="locate(r.id)">{{ r.title }}</button></template><template v-if="b.reasons.length > 3">等 {{ b.reasons.length }} 项</template></td>
+          <td><div class="reasons"><button v-for="r in b.reasons.slice(0, 3)" :key="r.id" class="bid-link" type="button" @click="locate(r.id)">{{ r.title }}</button><span v-if="b.reasons.length > 3">等 {{ b.reasons.length }} 项</span></div></td>
           <td class="r num"><button type="button" class="bid-link" :class="{ 'bid-empty': !b.total }" @click="emit('price', b.id)">{{ b.total ?? '未识别' }}</button><small v-if="b.manual_total">唱标价 · 人工录入</small></td>
         </tr>
       </tbody>
@@ -229,6 +229,7 @@ defineExpose({ locate })
 .price-col { width: 20%; }
 .decision-table .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .decision-table button { text-align: inherit; overflow-wrap: anywhere; }
+.decision-table .reasons { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .cases { display: grid; gap: 8px; }
 .check-row { scroll-margin-block: 12px; }
 .check-line { display: grid; grid-template-columns: 24px minmax(0, 1fr) minmax(0, auto) auto; gap: 8px; align-items: baseline; }
