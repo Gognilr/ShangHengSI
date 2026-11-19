@@ -328,7 +328,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 .context { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
 .chat-confirm-body { max-height: calc(100vh - 200px); overflow-y: auto; }
 .messages { flex: 1; min-height: 120px; overflow-y: auto; margin-bottom: 12px; padding: 0 4px; }
-/* 用户消息靠右气泡；回复满宽、无边框无底色（同助手，frontend.md 2.2） */
+/* 用户消息靠右气泡；回复满宽、无边框无底色（同助手，frontend.md 第六节） */
 .message { padding: 12px 0; }
 .mine { display: flex; flex-direction: column; align-items: flex-end; }
 .mine .message-content { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--si-surface-2); border-radius: 12px; font: var(--si-font-body); }

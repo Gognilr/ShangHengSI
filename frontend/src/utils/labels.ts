@@ -196,7 +196,7 @@ export function toOptions(dict: Dict): { value: string; label: string }[] {
   return Object.entries(dict).map(([value, label]) => ({ value, label }))
 }
 
-/** 标签颜色（frontend.md 第五节）：各页面共用。 */
+/** 标签颜色（frontend.md 第九节）：各页面共用。 */
 export type TagType = 'danger' | 'warning' | 'info' | 'success' | 'primary'
 export const RUN_STATUS_TAG: Record<string, TagType> = {
   completed: 'success', partial: 'warning', blocked: 'warning', failed: 'danger', queued: 'info', running: 'info',
@@ -206,7 +206,7 @@ export const VERDICT_TAG: Record<string, TagType> = { issue: 'danger', ok: 'succ
 export const CITE_TAG: Record<string, TagType> = { verified: 'success', unverified: 'warning', missing: 'info' }
 
 /** 任务 / 文件处理状态标签（V3-A 4.2）：解析中 info、待确认 warning、已确认 success、失败 danger；只读、已过期为 info + plain。
- *  审核完成用 primary 而不用 success：绿色的“已审核”容易被读成“审核通过”（frontend.md 第五节）。 */
+ *  审核完成用 primary 而不用 success：绿色的“已审核”容易被读成“审核通过”（frontend.md 第九节）。 */
 const STATUS_TAG: Record<string, [TagType, 'light' | 'plain']> = {
   draft: ['info', 'light'], parsing: ['info', 'light'], reviewing: ['info', 'light'], queued: ['info', 'light'], streaming: ['info', 'light'],
   awaiting_confirm: ['warning', 'light'],

@@ -4,7 +4,7 @@
 
 An AI-assisted first-pass reviewer for business documents (contracts, quotations, orders, inquiries and letters), designed to run inside a company LAN.
 
-**Current release: V3.3.0** (released 2026-11-15).
+**Current release: V3.4.0** (released 2026-11-19).
 
 Sensitive information never leaves the internal network: documents are parsed, checked and **redacted locally**. Only the redacted text is sent to a cloud LLM, and the results are restored to real names locally before they are shown.
 
@@ -28,27 +28,25 @@ Tasks with the policy `local_only` never call the model. Only local checks are p
 
 ## Modules and highlights
 
-The sidebar has five entries:
+The sidebar is grouped by task (V3.4: one entry per job):
 
 | Module | What it does |
 |-|-|
-| Workbench | The unified home (called "Assistant" before V3.2): start a review, ask questions about a document, and discuss issues in one session |
-| Smart Review | The document review flow described above |
+| Workbench | The unified home: ask questions about documents and discuss issues in one session; four entry tiles with live status |
+| Document Review | The document review flow described above (start page `/review`) |
+| Bid Pre-screening | For the tendering side: compare 3–5 bids against the tender for qualification, compliance and collusion signals (new in V3.4) |
 | Meeting Minutes | Transcribe meeting audio locally and generate minutes |
 | Translation | Translate documents and pasted text; runs locally |
 | History | All past review tasks and sessions (called "Review history" before V3.2) |
 
-Highlights of V3.3.0:
+Highlights of V3.4.0:
 
-- **Unified "page not found" view**: an unknown path no longer silently redirects home; it opens a "page not found" page inside the main frame, with a way back to the workbench.
-- **Three waiting indicators**: block loading uses a brand three-colour review band; file parsing shows a small sheet being scanned line by line and redacted as the scan passes; chat waits use gathering ink dots. All three appear only after a unified 300 ms delay, so fast operations never flash an indicator.
-- **Time-aware home greeting**: the home page greets the user by display name and time of day (Beijing time).
-- **Missing-choice guidance**: the submit button stays clickable when a required choice is missing; unchosen fields are marked with a dashed outline, and clicking scrolls to the first missing one.
-- **Adopt / ignore moves to the next finding**: after a finding is adopted or ignored it collapses and the next pending finding opens, the same behaviour as the A / I shortcut keys.
-- **Steadier citation anchors**: knowledge-base and history reference numbers stay stable within a session, and common citation variants are recognised and anchored. This was verified with a real model (19 calls, targets met). Meeting data created on V3.1.0 was likewise verified to upgrade cleanly, with no code change.
-- **Technical terms and model numbers**: industrial-control terms are no longer flagged by mistake, product model numbers are kept whole instead of being split, and technical-term handling is generalised across trades.
-- **Outbound-extra leak list**: leaks detected in outbound extras are listed by section, and confirmation stays locked until all of them are resolved.
-- **Incremental upgrade packages**: the release script finds a working Python 3.11+ on its own. An upgrade package can carry only the images whose source changed (the V3.3.0 incremental package is about 1.8 GB, vs about 9.4 GB for the full package), and a fresh install rejects incremental packages.
+- **Bid pre-screening (new menu)**: upload the tender and each bidder's files; local checks find shared contacts, identical file metadata and images, copied passages, price patterns, over-ceiling and inconsistent totals, and expired certificates. Only redacted snippets go to the model to check each requirement. The first tab is a conclusion in three layers (certain / to verify / reference) with collusion cases built as evidence chains, and a Word "pre-screening findings" report for the evaluation committee. No scoring, ranking or recommendation.
+- **One entry per job**: the sidebar is grouped into Workbench, document checks (Document Review, Bid Pre-screening), tools (Meeting Minutes, Translation) and History; highlighting no longer jumps. Settings moved into the account menu.
+- **"Plain paper" look and new logo**: one continuous page without grey cards, glows or gradients; pine-needle green as the main colour with a pine-cone ochre accent; the new "pine scale" logo.
+- **Document cross-check runs locally**: the shipping-document check compares quantities, weights, amounts, dates and reference numbers on this machine; the model only helps locate fields it could not find.
+- **Better scanned documents**: OCR upgraded to RapidOCR 3.10 with PP-OCRv6 small models (bundled, no download); ruled tables on scanned pages become table cells; unruled quotation tables, tables continued across pages, and repeated PDF headers/footers are handled.
+- **History**: seven columns without horizontal scrolling, type filter (all / document review / bid pre-screening / chat), search as you type.
 
 ## Security and privacy by design
 
@@ -154,7 +152,7 @@ docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgr
 
 ## Project status
 
-V3.3.0 is the current release (2026-11-15) and is deployed on the production server. The release report is [docs/v33/reports/V33-Z.md](docs/v33/reports/V33-Z.md) and the production upgrade record is [docs/acceptance/V3.3.0升级记录.md](docs/acceptance/V3.3.0升级记录.md). See [docs/TASKS.md](docs/TASKS.md) for the task list.
+V3.4.0 is the current release (2026-11-19) and is deployed on the production server. The release report is [docs/v34/reports/V34-Z.md](docs/v34/reports/V34-Z.md) and the production upgrade record is [docs/acceptance/V3.4.0升级记录.md](docs/acceptance/V3.4.0升级记录.md). See [docs/TASKS.md](docs/TASKS.md) for the task list.
 
 ## Documentation
 

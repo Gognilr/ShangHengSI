@@ -1,7 +1,7 @@
 import { useAppearanceStore } from '@/stores/appearance'
 
 /**
- * 缺必选项时把用户带过去（V33-C-01，frontend.md 第七节）：滚到该项、聚焦其中第一个可操作的控件、
+ * 缺必选项时把用户带过去（V33-C-01，frontend.md 第十一节）：滚到该项、聚焦其中第一个可操作的控件、
  * 主色框闪一次（motion.css 的 .si-nudge；特效关闭时不闪，只显示约 1 秒的静态框）。
  */
 const FOCUSABLE = '[role="radio"][tabindex="0"], input:not([disabled]):not([type="hidden"]), button:not([disabled]), [tabindex="0"]'

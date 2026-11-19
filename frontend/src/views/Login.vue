@@ -96,7 +96,7 @@ async function submit() {
           <h2>先在本机脱敏，<br />再交给模型初审</h2>
           <p class="brand-description">面向商务、合同与法律文件的智能审查。</p>
         </div>
-        <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V3.3.0</footer>
+        <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V3.4.0</footer>
       </section>
       <div class="login-pane">
       <section class="login-form" aria-labelledby="login-title">
