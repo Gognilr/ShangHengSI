@@ -281,12 +281,16 @@ def test_supplement_near_duplicates_merge_and_snippet_ids_become_pages():
     """V34-B-08c：模型补充的近似重复只并入出处；理由中的片段编号换成页码。虚构文字。"""
     from types import SimpleNamespace
 
-    from app.bid.extract import _same_requirement
+    from app.bid.extract import _is_description, _same_requirement
     from app.bid.model import snippet_refs
     from app.security import crypto
     row = SimpleNamespace(enabled=True, text_enc=crypto.encrypt_text("卖方须返回详细的公用工程消耗表，用电消耗应包含所有附属设备的用电消耗。"))
     assert _same_requirement("卖方须返回详细的公用工程消耗表，其中用电消耗需包含所有附属设备的用电消耗。", [row]) is row
     assert _same_requirement("工作点应在最佳效率点流量的70%～120%内。", [row]) is None
     assert _same_requirement("所有设备不带配对法兰及紧固件。", [row]) is None
+    # 工况、环境数据是说明，不是要求；有要求用语的技术条目照列
+    assert _is_description("substantive", "P-901A/B泵操作介质为轻质油，环境温度最低/最高为-10/40℃。")
+    assert not _is_description("substantive", "P-901A/B泵应适用于爆炸危险2区。")
+    assert not _is_description("signing", "商务标书、技术标书各一份。")
     text = snippet_refs("C24将电机单独报价，[C5]列在表一；位号P-102A、GB/T3836、C9不变", {"C24": {"page": 10}, "C5": {"page": 3}})
     assert text == "第 10 页将电机单独报价，第 3 页列在表一；位号P-102A、GB/T3836、C9不变"

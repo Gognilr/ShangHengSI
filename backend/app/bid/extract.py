@@ -163,6 +163,15 @@ def _same_requirement(text, rows, threshold=0.85):
     return None
 
 
+# 技术条目里表示要求的用语；一条都没有的是工况、物性、环境数据一类说明（“操作介质为……”“海拔为……”），不列（V34-B-08c）
+_DEMAND = re.compile(r"须|需|应|必须|不得|宜|要求|满足|符合|采用|选用|使用|执行|包括|包含|提供|注明|标明|明确|具备|具有|适用|"
+                     r"不少于|不低于|不高于|不大于|不小于|不超过|保证|负责|带|配")
+
+
+def _is_description(group, text):
+    return group == "substantive" and not _DEMAND.search(text)
+
+
 def merge(db, task, items: list[dict]) -> int:
     """校验并并入清单，返回新增行数。位置不在招标文件中、引文对不上的条目丢弃。"""
     mapping = engine.load_redaction_map(db, task.id)
@@ -183,6 +192,8 @@ def merge(db, task, items: list[dict]) -> int:
         if any(any(l.get("loc") == loc and l.get("start", 0) < end and l.get("end", 0) > start for l in r.locs) for r in rows):
             continue  # 规则已抓到的同一处，不重复
         restored = restore(text, mapping)
+        if _is_description(group, restored):
+            continue
         same = _same_requirement(restored, rows)
         if same is not None:
             # 文字近似相同（多份数据表的同一注释）：只并入出处，不新增一行（V34-B-08c）
