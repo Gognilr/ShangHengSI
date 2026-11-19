@@ -1,0 +1,13 @@
+description: 虚构历史业绩表，验证单位简称的中置信佐证、合计行、新表头和横向填值
+stance: purchase
+loc_prefixed: true
+ner_predictions:
+  ' 霁砾': [[1, 3, ORG, 0.6]]
+  检修: [[0, 2, PERSON, 0.6]]
+  统计: [[0, 2, ORG, 0.6]]
+  安装: [[0, 2, ORG, 0.6]]
+must_replace:
+  - {text: 霁砾, category: ORG, detected_by: ner}
+  - {text: 玄砾示例商业银行, category: ORG}
+  - {text: 澄砾示例商业银行, category: ORG}
+must_keep: [项目名称, 业主单位, 开户行名称, 厂房改造, 按期验收, 检修, 统计, 安装, 仅用于结算]

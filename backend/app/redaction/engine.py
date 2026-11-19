@@ -478,31 +478,10 @@ def _has_label(value):
     return any(_complete_label(m[1]) for m in re.finditer(r'([^\n:：]{1,35})[:：]', value))
 
 
-def _adjacent_information(nodes):
-    """只借紧邻标签识别值，返回本节点的精确位置；不改正文。"""
+def _adjacent_information(nodes, borrowed):
+    """用表格标签或紧邻上段的标签识别值，返回本节点的精确位置。"""
     complete, has_label = _complete_label, _has_label
-    cells = {}
-    for i, n in enumerate(nodes):
-        if cell := tables.table_cell(n.loc):
-            table, col, row = cell
-            cells.setdefault((table, row), {})[tables._col_number(col)] = i
-    headers = {}
-    borrowed = {}
-    for (table, row), columns in sorted(cells.items()):
-        texts = [nodes[i].text.strip() for i in columns.values() if nodes[i].text.strip()]
-        # 标签行必须全是列名，不能把“联系人 | 姓名”当作列头。
-        header_row = texts and any(complete(t) for t in texts) and all(
-            complete(t) or t in {'序号', '项目', '名称', '类别', '币种', '备注'} for t in texts)
-        if header_row:
-            for col, i in columns.items():
-                headers[table, col] = nodes[i].text if complete(nodes[i].text) else ''
-            continue
-        for col, i in columns.items():
-            if has_label(nodes[i].text) or complete(nodes[i].text):
-                continue
-            left = columns.get(col - 1)
-            borrowed[i] = (nodes[left].text if left is not None and complete(nodes[left].text)
-                           else headers.get((table, col), ''))
+    borrowed = borrowed.copy()
     for i in range(1, len(nodes)):
         previous, current = nodes[i - 1], nodes[i]
         if (not tables.table_cell(previous.loc) and not tables.table_cell(current.loc)
@@ -512,24 +491,39 @@ def _adjacent_information(nodes):
             if m:
                 suffix = next((m[1][j:] for j in range(len(m[1])) if complete(m[1][j:])), None)
                 if suffix:
-                    borrowed[i] = suffix
+                    borrowed[i] = (suffix, None)
+    all_finders = (detect.find_formatted, detect.find_persons, detect.find_addresses)
+    column_finders = {
+        'PERSON': (detect.find_persons,),
+        'ORG': (),
+        'IDNO': (detect.find_formatted,),
+        'PHONE': (detect.find_formatted,),
+    }
     out = {}
-    for i, prefix in borrowed.items():
-        if not prefix:
-            continue
+    for i, (prefix, category) in borrowed.items():
         prefix = prefix.strip().rstrip(':：') + '：'
         # 户名可能是个人；公司仍由原有主体规则优先识别。
         probe = ('联系人：' if prefix == '户名：' else prefix) + nodes[i].text
         offset = len(probe) - len(nodes[i].text)
+        finders = column_finders.get(category, all_finders)
         out[i] = [detect.Hit(h.start - offset, h.end - offset, h.category, h.key,
                             h.currency, h.value, h.validated)
-                  for finder in (detect.find_formatted, detect.find_persons, detect.find_addresses)
-                  for h in finder(probe) if offset <= h.start < h.end <= len(probe)]
+                  for finder in finders
+                  for h in finder(probe) if offset <= h.start < h.end <= len(probe)
+                  and (category is None or h.category == category)]
         if P._LABEL_CANON.get(prefix[:-1].casefold()) == '银行':
             out[i] += [detect.Hit(start - offset, end - offset, 'ORG', P.normalize(probe[start:end]))
                        for role, start, end in P.find_labeled_parties(probe)
                        if role == '银行' and offset <= start < end <= len(probe)]
     return out
+
+
+def _table_name_slot(slot: tuple[str, str | None] | None, text: str, hit: ner.Entity) -> bool:
+    """只给同类别的整格短名称借用冒号槽位证据，实体识别仍读取单元格原有文字。"""
+    if slot is None or slot[1] != hit.label:
+        return False
+    prefix = '名称：'
+    return plain.short_name_slot(prefix + text, len(prefix) + hit.start, len(prefix) + hit.end)
 
 
 def compute(
@@ -597,7 +591,8 @@ def compute(
         cross_parts += [(first, a, b, ent.key), (second, c, d, ent.key)]
 
     # 第 2 步：签约方信息块
-    adjacent = _adjacent_information(nodes)
+    slots = tables.information_slots(nodes, _complete_label, _has_label)
+    adjacent = _adjacent_information(nodes, slots)
     public_parties = set()
     for i, n in enumerate(nodes):
         for h in adjacent.get(i, ()):
@@ -972,7 +967,8 @@ def compute(
             if is_known_place(n.text[hit.start:hit.end]) or detect.is_admin_city(n.text[hit.start:hit.end]):
                 continue
             if hit.score >= ner.HIGH or (hit.score >= ner.MEDIUM and hit.label in ('ORG', 'PERSON')
-                                         and plain.short_name_slot(n.text, hit.start, hit.end)):
+                                         and (plain.short_name_slot(n.text, hit.start, hit.end)
+                                              or _table_name_slot(slots.get(i), n.text, hit))):
                 surface = n.text[hit.start:hit.end]
                 if hit.label == 'ORG' and S.generic_reference(surface):
                     continue  # 部门、泛称（设备部、该公司）高置信也不是机构名称

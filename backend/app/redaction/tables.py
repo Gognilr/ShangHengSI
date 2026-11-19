@@ -5,7 +5,7 @@ R1-03（design/R1.md 第三节，Q-134 ③）：一个表格可以有多个表�
 合计行的纯数字一律按金额处理。
 """
 import re
-from typing import Protocol
+from typing import Callable, Protocol
 
 from app.redaction.detect import _NUM, amount_label_kind, numeric_cell_view
 
@@ -20,6 +20,24 @@ _CURRENCY_DECLARATION = re.compile(r'单位\s*[:：]?\s*(?:万?元|人民币)|�
 _QTY_HEADER = re.compile(r"数量|quantity|qty", re.IGNORECASE)
 _TOTAL_ROW = re.compile(r"合计|小计|总计|(?<![A-Za-z])(?:sub\s*)?total(?![A-Za-z])", re.IGNORECASE)
 _BARE_NUMBER = re.compile(rf'^\s*[-−－(（]?\s*(?:{_NUM})\s*[)）]?\s*$')
+_INFORMATION_HEADERS = {
+    name: (label, category)
+    for label, category, names in (
+        ('联系人', 'PERSON', '姓名 人员姓名 员工姓名 职工姓名 参保人姓名 参保人员姓名 被保险人姓名 联系人 联系人姓名 项目负责人 法定代表人姓名'),
+        ('单位名称', 'ORG', '单位名称 客户 客户名称 客户单位 客户单位名称 业主 业主名称 业主单位 业主单位名称 建设单位 采购单位 用人单位 工作单位 聘用单位 参保单位 缴费单位'),
+        ('开户行', 'ORG', '开户行 开户行名称 开户银行 开户银行名称 收款银行'),
+        ('身份证号', 'IDNO', '身份证号 身份证号码 身份证 公民身份号码 居民身份证号码'),
+        ('证件号', 'IDNO', '证件号 证件号码 社会保障号码'),
+        ('电话', 'PHONE', '电话 联系电话 联系人电话 手机 手机号 手机号码 移动电话 固定电话 办公电话 传真 传真号码'),
+    )
+    for name in names.split()
+}
+_OTHER_COLUMNS = frozenset(
+    '序号 项目 名称 类别 币种 备注 性别 年龄 部门 岗位 职务 职称 工种 人数 起止时间 入职日期 '
+    '缴费年月 缴费月份 缴费基数 缴费状态 险种 项目名称 工程名称 合同名称 合同金额 合同日期 签订日期 '
+    '完成日期 合同工期 履约情况 业绩情况 数量 单位 规格型号'.split()
+)
+_EMPTY_VALUES = frozenset({'-', '--', '—', '/', '无', '暂无', '同上', '同前', '待定', '未填写', '不适用', 'n/a'})
 
 
 def _numeric_cell(text: str) -> bool:
@@ -104,6 +122,42 @@ def _col_number(col: str) -> int:
     for c in col:
         value = value * 26 + ord(c) - ord("A") + 1
     return value
+
+
+def information_slots(
+    nodes: list[_Node], complete_label: Callable[[str], bool], has_label: Callable[[str], bool],
+) -> dict[int, tuple[str, str | None]]:
+    """给表格值借用左邻标签或本列列头。类别用于限制新增列头所提供的证据。"""
+    result = {}
+    for rows in _rows(nodes).values():
+        headers = {}
+        for row in sorted(rows):
+            cells = rows[row]
+            columns = {_col_number(col): i for i, col in cells}
+            values = {col: nodes[i].text.strip() for col, i in columns.items() if nodes[i].text.strip()}
+            labels = {col: text for col, text in values.items() if complete_label(text)}
+            typed = {col: _INFORMATION_HEADERS[key] for col, text in values.items()
+                     if (key := _cell_norm(text).rstrip(':：')) in _INFORMATION_HEADERS}
+            known = {col for col, text in values.items() if col in labels or col in typed or text in _OTHER_COLUMNS}
+            # 有未识别列名时，须有两个敏感列名且多数格为列名，避免把横向填值行当成表头。
+            mixed = (len(typed) >= 2 and len(known) * 2 > len(values)
+                     and not any(_numeric_cell(t) for t in values.values()))
+            total = _is_total_row(nodes, cells) if headers or typed else False
+            if not total and ((known and len(known) == len(values) and (headers or labels or typed)) or mixed):
+                headers = {col: (label, None) for col, label in labels.items()}
+                headers.update(typed)
+                continue
+            for col, text in values.items():
+                i = columns[col]
+                if col in labels or has_label(text):
+                    continue
+                if col - 1 in labels:
+                    result[i] = (labels[col - 1], None)
+                elif col in headers:
+                    label, category = headers[col]
+                    if category is None or (not total and text.casefold() not in _EMPTY_VALUES):
+                        result[i] = (label, category)
+    return result
 
 
 def table_hints(nodes: list[_Node], *, with_qty: bool = False) -> dict[int, str]:

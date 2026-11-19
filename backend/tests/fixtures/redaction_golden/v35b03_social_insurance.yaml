@@ -1,0 +1,7 @@
+description: 虚构社保缴纳证明，使用无效区划和无效日期的测试证件号码
+stance: purchase
+loc_prefixed: true
+must_replace:
+  - {text: 亓玠, category: PERSON, detected_by: person}
+  - {text: '990000199902310002', category: IDNO, detected_by: regex}
+must_keep: [参保人员姓名, 公民身份号码, 工伤保险, 2026年3月, 2026年4月, 不适用]

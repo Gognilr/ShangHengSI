@@ -1,0 +1,8 @@
+description: 虚构人员花名册，含空列、普通数字、合计行和独立工作表
+stance: purchase
+loc_prefixed: true
+must_replace:
+  - {text: 郗珩, category: PERSON, detected_by: person}
+  - {text: 綦珺, category: PERSON, detected_by: person}
+  - {text: 199-0000-0123, category: PHONE}
+must_keep: [姓 名, 焊工, 电工, 初级, 中级, '72', '—', 合计人数, 聿澄, 夙琛]

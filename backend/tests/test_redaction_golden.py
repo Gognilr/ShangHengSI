@@ -10,18 +10,21 @@ tests/fixtures/redaction_golden/ 下每份虚构样本（.txt，每行一个正�
                   落在某个 must_replace 文字内部的出现（如地址中的国家名）不检查；
   must_suspect —— 必须列为疑似遗漏的文字（9.5、Q-69）：自动替换识别不了、需要用户在第二步处理的内容。
   plain_uncertain —— 普通内容但本地无法确定，允许列出；只校验标注存在，供过度替换统计与评测。
+  ner_predictions —— 按识别输入标注模拟实体识别结果（起点、终点、类别、分数），用于独立检验槽位证据。
   returns      —— 模型回程写法的还原与标出。样本按审核任务旧风格代号（[电话]、[地址：中国] 等共用代号）计算，
                   旧风格已冻结（V321Q-18）：现有条目只为旧任务的还原兼容保留，不再新增；
                   新的回程用例写中性代号（[[AMT_1]] 等），放 tests/fixtures/return_probe/ 与会话审核测试。
 识别类标注（must_replace、must_keep 等）与代号风格无关，照常新增。每次修改识别规则或词典都必须通过。
 """
-from pathlib import Path
+from contextlib import nullcontext
 from functools import cache
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
 
-from app.redaction import outbound
+from app.redaction import ner, outbound
 from app.redaction.engine import NodeIn, Term, compute, outbound_text
 from app.redaction.restore import check
 from app.redaction.dates import find_dates
@@ -44,8 +47,10 @@ def load(name: str):
     if ann.get('parsed_text'):
         from app.parsing.model import strip_invisible
         nodes = [NodeIn(n.loc, strip_invisible(n.text), n.clause_no) for n in nodes]
-    result = compute(nodes, ann["stance"], main_prefix="F1-", terms=[Term(**t) for t in ann.get('terms', [])],
-                     date_shift_days=70 if ann.get('must_shift') else 0)
+    predictions = {text: [ner.Entity(*hit) for hit in hits] for text, hits in ann.get('ner_predictions', {}).items()}
+    with patch.object(ner, 'recognize', side_effect=lambda text: predictions.get(text, [])) if predictions else nullcontext():
+        result = compute(nodes, ann["stance"], main_prefix="F1-", terms=[Term(**t) for t in ann.get('terms', [])],
+                         date_shift_days=70 if ann.get('must_shift') else 0)
     parties = [outbound.PartyInfo(p.code, p.role_label, p.country, p.org_type, p.is_our_party) for p in result.parties]
     # 逐节点的外发文本（不汇总报价明细表），用于逐条检查；另附实际外发的文本（报价明细表已汇总）
     text = outbound.build(parties, [(n.loc, n.clause_no, result.redacted[n.loc]) for n in nodes])
