@@ -175,7 +175,7 @@ def test_kb_failure_cleanup_delete_and_settings(env, make_user, login, db_sessio
     assert c.patch(base+'/settings', headers=h, json={'enabled': True}).json() == {'enabled': True}
     r = c.post(base, headers=h, files={'file': ('虚构制度.docx', document())})
     kid = uuid.UUID(r.json()['id'])
-    monkeypatch.setattr(module, '_parse_bytes', lambda *args: (_ for _ in ()).throw(ValueError('虚构秘密异常原文')))
+    monkeypatch.setattr(module, '_parse_bytes', lambda *args, **kwargs: (_ for _ in ()).throw(ValueError('虚构秘密异常原文')))
     with db_sessionmaker() as db:
         job = db.scalar(select(Job).where(Job.type == 'kb_import'))
         with pytest.raises(ValueError):
@@ -206,7 +206,7 @@ def test_kb_old_conversion_and_pdf_ocr_share_parser(monkeypatch):
         calls.append('lock')
         yield
     monkeypatch.setattr(worker, 'ocr_slot', locked)
-    monkeypatch.setattr(pdf, 'inspect_pdf', lambda data: SimpleNamespace(scanned_pages=[1]))
+    monkeypatch.setattr(pdf, 'inspect_pdf', lambda data: SimpleNamespace(scanned_pages=[1], region_pages=[]))
     monkeypatch.setattr(pdf, 'parse_pdf', lambda data, seq, **kwargs: ParsedFile([], 1, False, [], 1))  # V321-E-06 增加 on_ocr 回调
     _parse_bytes('pdf', b'fictional', 1, 0)
     assert calls == ['doc', 'lock']

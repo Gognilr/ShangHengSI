@@ -46,13 +46,23 @@ class ParsedNode:
 
 
 @dataclass
+class DocxImage:
+    """DOCX 正文内嵌图片（V35-C-01）：图片文件、紧跟在第几个节点之后、所在段落或单元格节点、所在段落元素（导出锚定用）。"""
+    target: str
+    after: int
+    parent_loc: str | None = None
+    paragraph: object = None
+
+
+@dataclass
 class ParsedFile:
     nodes: list[ParsedNode]
     page_count: int | None
     has_revisions: bool
     warnings: list[str]
     ocr_pages: int = 0  # 本文件实际做了 OCR 的页数（图片记 1）
-    ocr_pending: list[int] = field(default_factory=list)  # 延后识别的页码（标书投标文件，V34-B-04）
+    ocr_pending: list[int] = field(default_factory=list)  # 延后识别的页码 / DOCX 图片序号（标书投标文件，V34-B-04）
+    images: list[DocxImage] = field(default_factory=list)  # DOCX 正文内嵌图片，未经尺寸筛选（V35-C-01）
 
 
 # 解析限制与阈值（SPEC 8.5、8.7）

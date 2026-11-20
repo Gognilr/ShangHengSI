@@ -8,6 +8,7 @@
 失败时 status=parse_failed，error_message 写明文件名和原因，不含原文；日志不写文件名和任何文本。
 """
 import logging
+import re
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -21,7 +22,7 @@ from app.checks.service import run_checks
 from app.db import jobs
 from app.db.base import utcnow
 from app.db.models import DocNode, Job, Task, TaskFile, TaskClauseVector
-from app.parsing import docx, image, legacy, pdf, progress, xlsx
+from app.parsing import docx, docx_images, image, legacy, pdf, progress, xlsx
 from app.parsing.doctype import detect_doc_type
 from app.parsing.model import MAX_OCR_PAGES_PER_TASK, ParsedFile, ParseError
 from app.redaction.engine import redact_task
@@ -37,18 +38,31 @@ MSG_OCR_BUDGET = "扫描页和图片合计超过 100 页"
 _HEAD_CHARS = 1000  # 文件类型识别只看正文前 1000 字（SPEC 8.6）
 
 
-def _check_ocr_budget(used: int, need: int) -> None:
-    """在开始 OCR 之前判断任务合计 OCR 页数（SPEC 8.7，open_questions Q-61 ⑤）。"""
-    if used + need > MAX_OCR_PAGES_PER_TASK:
-        raise ParseError(MSG_OCR_BUDGET)
+def _check_ocr_budget(used: int, need: int, limit: int | None = None) -> None:
+    """在开始 OCR 之前判断任务合计 OCR 页数（SPEC 8.7，open_questions Q-61 ⑤）。limit 为空时按文件审核上限。"""
+    if used + need > (MAX_OCR_PAGES_PER_TASK if limit is None else limit):
+        raise ParseError(MSG_OCR_BUDGET if limit is None else f"扫描页和图片合计超过 {limit} 页")
 
 
-def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int, report=None) -> tuple[ParsedFile, str]:
-    """按扩展名分派解析器，返回 (解析结果, parser_version)。ocr_used 为本任务此前已 OCR 的页数。
-    report(stage, done, total) 上报解析阶段（V321-E-06），不传则不上报。"""
+def _docx_with_images(data: bytes, seq: int, budget: int, say, images: bool) -> ParsedFile:
+    """DOCX 正文内嵌的证照尺寸图片当场 OCR（V35-C-01），每张占 1 页名额，超出名额的只提示。"""
+    parsed = docx.parse_docx(data, seq)
+    if not images or not docx_images.select(data, parsed):
+        return parsed
+    total = min(len(docx_images.select(data, parsed)), max(0, budget))
+    with worker.ocr_slot():
+        say('ocr', 0, total)
+        return docx_images.ocr_inline(data, parsed, seq, budget, on_ocr=lambda done: say('ocr', done, max(total, done)))
+
+
+def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int, report=None, *,
+                 ocr_limit: int | None = None, images: bool = True) -> tuple[ParsedFile, str]:
+    """按扩展名分派解析器，返回 (解析结果, parser_version)。ocr_used 为本任务此前已 OCR 的页数，ocr_limit 为上限。
+    report(stage, done, total) 上报解析阶段（V321-E-06），不传则不上报。images=False 时不识别 DOCX 内嵌图片。"""
     say = report or (lambda *_: None)
+    ocr_limit = MAX_OCR_PAGES_PER_TASK if ocr_limit is None else ocr_limit
     if ext == "docx":
-        return docx.parse_docx(data, seq), docx.PARSER_VERSION
+        return _docx_with_images(data, seq, ocr_limit - ocr_used, say, images), docx.PARSER_VERSION
     if ext == "xlsx":
         return xlsx.parse_xlsx(data, seq), xlsx.PARSER_VERSION
     if ext in legacy.LEGACY_EXTS:  # 不占 OCR 名额；转换结果只在内存中解析，不保存
@@ -56,25 +70,42 @@ def _parse_bytes(ext: str, data: bytes, seq: int, ocr_used: int, report=None) ->
         converted = legacy.convert(data, ext)
         say('reading')
         if legacy.result_ext(ext) == "docx":
-            parsed, version = docx.parse_docx(converted, seq), docx.PARSER_VERSION
+            parsed, version = _docx_with_images(converted, seq, ocr_limit - ocr_used, say, images), docx.PARSER_VERSION
         else:
             parsed, version = xlsx.parse_xlsx(converted, seq), xlsx.PARSER_VERSION
         parsed.warnings.append(legacy.converted_warning(ext))
         return parsed, f"{version}+{legacy.CONVERTER_TAG}"
     if ext == "pdf":
-        need = len(pdf.inspect_pdf(data).scanned_pages)  # 页数超限也在这里失败
-        if not need:
+        info = pdf.inspect_pdf(data)  # 页数超限也在这里失败
+        if not info.scanned_pages:
             return pdf.parse_pdf(data, seq), pdf.PARSER_VERSION
-        _check_ocr_budget(ocr_used, need)
+        # 扫描页、混排页超出名额整份失败；只识别图片区域的页用剩余名额（V35-C-01）
+        hard = len(info.scanned_pages) - len(info.region_pages)
+        _check_ocr_budget(ocr_used, hard, None if ocr_limit == MAX_OCR_PAGES_PER_TASK else ocr_limit)
+        budget = ocr_limit - ocr_used - hard
+        need = hard + min(len(info.region_pages), budget)
         with worker.ocr_slot():
             say('ocr', 0, need)
-            return pdf.parse_pdf(data, seq, on_ocr=lambda done: say('ocr', done, max(need, done))), pdf.PARSER_VERSION
+            return pdf.parse_pdf(data, seq, on_ocr=lambda done: say('ocr', done, max(need, done)),
+                                 region_budget=budget), pdf.PARSER_VERSION
     if ext in ("jpg", "png"):
-        _check_ocr_budget(ocr_used, 1)
+        _check_ocr_budget(ocr_used, 1, None if ocr_limit == MAX_OCR_PAGES_PER_TASK else ocr_limit)
         with worker.ocr_slot():
             say('ocr', 0, 1)
             return image.parse_image(data, seq), image.PARSER_VERSION
     raise ValueError("unexpected ext")  # 上传检查只放行以上各种（tasks.service.EXT_MAP），走内部错误
+
+
+def _old_ocr_pages(db: Session, old: TaskFile) -> int:
+    """已解析文件占用的 OCR 页数：不重新解析、不运行 OCR、不改旧节点。"""
+    if old.ext in ("png", "jpg"):
+        return 1
+    if old.ext == "pdf":
+        # 不能按 OCR 节点计页：空白扫描页可能没有节点，却仍消耗页数预算。
+        return len(pdf.inspect_pdf(storage.load_original(old.storage_key)).scanned_pages)
+    # DOCX 内嵌图片（V35-C-01）按识别出文字的图片张数计
+    locs = db.scalars(select(DocNode.loc).where(DocNode.file_id == old.id, DocNode.loc.like("%-IM%")))
+    return len({m[1] for loc in locs if (m := re.match(r"^F\d+-IM(\d+)-", loc))})
 
 
 def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list[str] | None = None) -> int:
@@ -217,12 +248,7 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
         ocr_used = 0
         progress.start(db, task_id, [f.id for f in files if not f.parser_version])
         for old in old_files:
-            if old.ext in ("png", "jpg"):
-                ocr_used += 1
-            elif old.ext == "pdf":
-                # 只检查旧 PDF 的扫描页数，不重新解析、不运行 OCR、不改旧节点。
-                # 不能按 OCR 节点计页：空白扫描页可能没有节点，却仍消耗页数预算。
-                ocr_used += len(pdf.inspect_pdf(storage.load_original(old.storage_key)).scanned_pages)
+            ocr_used += _old_ocr_pages(db, old)
         db.execute(delete(DocNode).where(DocNode.task_id == task.id,
                                         DocNode.file_id.in_([f.id for f in files if not f.parser_version])))
         for file in files:
@@ -304,10 +330,7 @@ def _parse_draft(db: Session, task: Task, file_ids: list[str]) -> None:
         for old in files:
             if old in new or not old.parser_version:
                 continue
-            if old.ext in ('png', 'jpg'):
-                ocr_used += 1
-            elif old.ext == 'pdf':
-                ocr_used += len(pdf.inspect_pdf(storage.load_original(old.storage_key)).scanned_pages)
+            ocr_used += _old_ocr_pages(db, old)
         for file in new:
             count = len(saved)
             try:

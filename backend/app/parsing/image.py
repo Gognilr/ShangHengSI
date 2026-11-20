@@ -36,20 +36,16 @@ def _open(data: bytes) -> Image.Image:
         raise ParseError(MSG_UNREADABLE) from None
 
 
-def parse_image(data: bytes, file_seq: int) -> ParsedFile:
-    img = _open(data)
+def ocr_nodes(img: Image.Image, prefix: str, page: int | None) -> tuple[list[ParsedNode], list[float]]:
+    """识别一张图片，返回 (节点, 各块与单元格的置信度)。loc 为 {prefix}-B{块} / {prefix}-T{表}-R{行}-C{列}，
+    bbox 为原图像素；ord 按块顺序从 1 编号，由调用方重排。图片文件与 DOCX 内嵌图片（V35-C-01）共用。"""
     width, height = img.size
     ratio = 1.0
     work = img
     if max(width, height) > MAX_OCR_SIDE:
         ratio = MAX_OCR_SIDE / max(width, height)
         work = img.resize((max(1, round(width * ratio)), max(1, round(height * ratio))), Image.LANCZOS)
-
-    started = time.monotonic()
-    try:
-        lines = ocr.recognize(work)
-    except Exception:  # noqa: BLE001
-        raise ParseError(MSG_UNREADABLE) from None
+    lines = ocr.recognize(work)
     # 线框表格（V34-D-02）：在识别用的图上找，单元格框按原图像素
     tables, used = ocr_table.find_tables(work, lines, ratio)
     if ratio != 1.0:
@@ -61,30 +57,41 @@ def parse_image(data: bytes, file_seq: int) -> ParsedFile:
     items.sort(key=lambda it: it[0])
 
     nodes: list[ParsedNode] = []
-    low = False
+    confs: list[float] = []
     block_no = table_no = 0
     for _, kind, content in items:
         if kind == "block":
             block_no += 1
             text, bbox, conf = content
-            low = low or conf < LOW_OCR_CONF
+            confs.append(conf)
             nodes.append(
                 ParsedNode(
-                    loc=f"F{file_seq}-PG1-B{block_no}", ord=len(nodes) + 1, kind="ocr_block", part="body", text=text,
-                    clause_no=manual_clause_no(text), page=1, bbox=bbox, ocr_conf=conf,
+                    loc=f"{prefix}-B{block_no}", ord=len(nodes) + 1, kind="ocr_block", part="body", text=text,
+                    clause_no=manual_clause_no(text), page=page, bbox=bbox, ocr_conf=conf,
                 )
             )
             continue
         table_no += 1
         for cell in content.cells:
-            low = low or cell.conf < LOW_OCR_CONF
+            confs.append(cell.conf)
             nodes.append(
                 ParsedNode(
-                    loc=f"F{file_seq}-PG1-T{table_no}-R{cell.row}-C{cell.col}", ord=len(nodes) + 1, kind="table_cell",
-                    part="body", text=cell.text, page=1, bbox=cell.bbox, ocr_conf=cell.conf,
+                    loc=f"{prefix}-T{table_no}-R{cell.row}-C{cell.col}", ord=len(nodes) + 1, kind="table_cell",
+                    part="body", text=cell.text, page=page, bbox=cell.bbox, ocr_conf=cell.conf,
                 )
             )
+    return nodes, confs
+
+
+def parse_image(data: bytes, file_seq: int) -> ParsedFile:
+    img = _open(data)
+    started = time.monotonic()
+    try:
+        nodes, confs = ocr_nodes(img, f"F{file_seq}-PG1", 1)
+    except Exception:  # noqa: BLE001
+        raise ParseError(MSG_UNREADABLE) from None
     log.info("image ocr: blocks=%d elapsed=%.1fs", len(nodes), time.monotonic() - started)
     if not nodes:
         raise ParseError(MSG_NO_TEXT)
+    low = any(c < LOW_OCR_CONF for c in confs)
     return ParsedFile(nodes=nodes, page_count=1, has_revisions=False, warnings=[MSG_LOW_CONF] if low else [], ocr_pages=1)

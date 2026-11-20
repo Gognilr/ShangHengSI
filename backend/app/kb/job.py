@@ -69,7 +69,7 @@ def handle_import(db, payload):
     if row is None or row.status != 'parsing':
         db.rollback(); return
     try:
-        parsed, _ = _parse_bytes(payload['ext'], crypto.decrypt(base64.b64decode(payload['data_enc'])), 1, 0)
+        parsed, _ = _parse_bytes(payload['ext'], crypto.decrypt(base64.b64decode(payload['data_enc'])), 1, 0, images=False)
         parts = split(parsed.nodes)
         if not parts:
             raise ValueError('empty')

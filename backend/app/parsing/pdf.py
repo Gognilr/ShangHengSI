@@ -4,6 +4,7 @@
 其余文字行按纵向间距合并为文本块。bbox 为 [x0, top, x1, bottom]，PDF 点，页面显示方向，原点在左上角
 （pdfplumber 的字符坐标已按 /Rotate 换算）。扫描页（M3-04）用 pypdfium2 以 200 DPI 渲染（渲染结果已含 /Rotate），
 交给 ocr.recognize，行坐标除以渲染比例换算回 PDF 点，再按相同规则合并为块；线框表格转为 table_cell（ocr_table，V34-D-02）。
+文字页上没有矢量文字覆盖的独立大图（回单截图、执照、证书扫描，V35-C-01）只裁该区域 OCR，同样计 1 页 OCR。
 解析失败只抛出 ParseError，消息是固定的中文原因，不含原文和异常消息。
 """
 import io
@@ -11,7 +12,7 @@ import logging
 import math
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 import pdfplumber
@@ -46,7 +47,8 @@ _WS = re.compile(r"\s+")
 @dataclass
 class PdfInfo:
     page_count: int
-    scanned_pages: list[int]  # 需要 OCR 的页码（从 1 开始）
+    scanned_pages: list[int]  # 需要 OCR 的页码（从 1 开始），含只识别图片区域的页
+    region_pages: list[int] = field(default_factory=list)  # 其中只识别图片区域的页（V35-C-01）：名额不足时不识别、不失败
 
 
 def _open(data: bytes, password: str | None = None, max_pages: int | None = None):
@@ -84,6 +86,40 @@ def _is_scanned(page) -> bool:
     return len(_WS.sub("", page.extract_text() or "")) < TEXT_PAGE_MIN_CHARS
 
 
+# 独立大图（V35-C-01，按两组公开标书定）：合并相互重叠的图片后，面积 ≥ 页面 4%、短边 ≥ 90 点、长边 ≥ 140 点
+# （约 3.2 × 4.9 厘米：证书缩略图以上；印章、签名、窄条页眉图不到），且框内矢量文字不超过 5 个字
+REGION_MIN_AREA = 0.04
+REGION_MIN_SIDE = 90.0
+REGION_MIN_LONG = 140.0
+REGION_MAX_CHARS = 5
+
+
+def _image_regions(page) -> list[tuple[float, float, float, float]]:
+    """文字页上需要局部 OCR 的图片区域（PDF 点，页面显示方向）。"""
+    boxes = [[max(0, im['x0']), max(0, im['top']), min(page.width, im['x1']), min(page.height, im['bottom'])]
+             for im in page.images]
+    boxes = [b for b in boxes if b[0] < b[2] and b[1] < b[3]]
+    merged: list[list[float]] = []
+    for b in sorted(boxes):  # 切成多条的图片、叠放的图片合为一个区域
+        for m in merged:
+            if b[0] <= m[2] + 2 and b[2] >= m[0] - 2 and b[1] <= m[3] + 2 and b[3] >= m[1] - 2:
+                m[:] = [min(m[0], b[0]), min(m[1], b[1]), max(m[2], b[2]), max(m[3], b[3])]
+                break
+        else:
+            merged.append(list(b))
+    page_area = float(page.width * page.height)
+    out = []
+    for x0, top, x1, bottom in merged:
+        w, h = x1 - x0, bottom - top
+        if w * h < page_area * REGION_MIN_AREA or min(w, h) < REGION_MIN_SIDE or max(w, h) < REGION_MIN_LONG:
+            continue
+        inside = sum(1 for c in page.chars if c["text"].strip()
+                     and x0 <= (c["x0"] + c["x1"]) / 2 <= x1 and top <= (c["top"] + c["bottom"]) / 2 <= bottom)
+        if inside <= REGION_MAX_CHARS:
+            out.append((x0, top, x1, bottom))
+    return out
+
+
 def _is_mixed(page) -> bool:
     if len(_WS.sub("", page.extract_text() or "")) >= 200:
         return False
@@ -107,16 +143,19 @@ def inspect_pdf(data: bytes, *, password: str | None = None, max_pages: int | No
     """页数与需要 OCR 的页码。"""
     with _open(data, password, max_pages) as pdf:
         try:
-            scanned = []
+            scanned, regions = [], []
             for i, raw in enumerate(pdf.pages, start=1):
                 page = _dedupe(raw)
                 if _is_scanned(page) or _is_mixed(page):
                     scanned.append(i)
+                elif _image_regions(page):
+                    scanned.append(i)
+                    regions.append(i)
         except ParseError:
             raise
         except Exception:  # noqa: BLE001
             raise ParseError(MSG_CORRUPT) from None
-        return PdfInfo(page_count=len(pdf.pages), scanned_pages=scanned)
+        return PdfInfo(page_count=len(pdf.pages), scanned_pages=scanned, region_pages=regions)
 
 
 _join = ocr.join_text
@@ -275,16 +314,38 @@ def _render_page(pdfium_doc, page_no: int):
         page.close()
 
 
-def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[ParsedNode]) -> list[float]:
-    """OCR 一页，追加 ocr_block 与线框表格的 table_cell 节点（V34-D-02），返回各块、各单元格的置信度。"""
+def _crop_lines(img, scale: float, regions):
+    """只识别图片区域（V35-C-01）：逐块裁剪识别，行坐标移回整页像素；返回 (只留区域的白底整页图, 行)。
+    区域外涂白，线框表格检测不会把页面上的矢量表格线当成网格。"""
+    from PIL import Image
+
+    canvas = Image.new("RGB", img.size, "white")
+    lines = []
+    for x0, top, x1, bottom in regions:
+        box = (max(0, int(x0 * scale)), max(0, int(top * scale)),
+               min(img.width, math.ceil(x1 * scale)), min(img.height, math.ceil(bottom * scale)))
+        crop = img.crop(box)
+        canvas.paste(crop, box[:2])
+        for ln in ocr.recognize(crop):
+            ln.bbox = [ln.bbox[0] + box[0], ln.bbox[1] + box[1], ln.bbox[2] + box[0], ln.bbox[3] + box[1]]
+            lines.append(ln)
+    return canvas, lines
+
+
+def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[ParsedNode], regions=None) -> list[float]:
+    """OCR 一页，追加 ocr_block 与线框表格的 table_cell 节点（V34-D-02），返回各块、各单元格的置信度。
+    regions 非空时只识别这些图片区域：区域内几乎没有矢量文字，不再按已有节点去重（图片常放在表格单元格里）。"""
     img, scale = _render_page(pdfium_doc, page_no)
-    lines = ocr.recognize(img)
     existing = [n for n in nodes if n.page == page_no]
-    boxes = [n.bbox for n in existing if n.bbox]
+    boxes = [] if regions else [n.bbox for n in existing if n.bbox]
 
     def overlaps(bbox):
         return any(bbox[0] < b[2] and bbox[2] > b[0] and bbox[1] < b[3] and bbox[3] > b[1] for b in boxes)
 
+    if regions:
+        img, lines = _crop_lines(img, scale, regions)
+    else:
+        lines = ocr.recognize(img)
     # 合并前先去掉已有文字的 OCR 行，避免页眉与紧邻的图片正文合并后整块被丢弃。
     lines = [ln for ln in lines if not overlaps([v / scale for v in ln.bbox])]
     # 线框表格（V34-D-02）在像素图上找，单元格框直接换算为 PDF 点；其余行照旧合并为块。
@@ -327,29 +388,35 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
 
 
 def ocr_pages(data: bytes, file_seq: int, pages: list[int], existing: list[ParsedNode], *, password: str | None = None):
-    """延后识别（标书投标文件）：逐页 OCR，产出 (页码, 新节点, 置信度)。existing 为该文件已有的文字节点，用于去掉已有文字的区域。"""
+    """延后识别（标书投标文件）：逐页 OCR，产出 (页码, 新节点, 置信度或 None)。existing 为该文件已有的文字节点，用于去掉已有文字的区域。"""
     import pypdfium2
 
     doc = pypdfium2.PdfDocument(data, password=password)
     try:
-        for page_no in pages:
-            nodes = [n for n in existing if n.page == page_no]
-            before = len(nodes)
-            confs = _parse_scanned_page(doc, page_no, file_seq, nodes)
-            yield page_no, nodes[before:], confs
+        with _open(data, password, max_pages=len(doc)) as plumber:
+            for page_no in pages:
+                page = _dedupe(plumber.pages[page_no - 1])
+                regions = None if _is_scanned(page) or _is_mixed(page) else _image_regions(page)
+                nodes = [n for n in existing if n.page == page_no]
+                before = len(nodes)
+                confs = _parse_scanned_page(doc, page_no, file_seq, nodes, regions)
+                # 只识别图片区域的页没识别到文字（照片）不算空白页：置信度给 None
+                yield page_no, nodes[before:], None if regions and not confs else confs
     finally:
         doc.close()
 
 
 def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None = None,
-              max_pages: int | None = None, defer_ocr: bool = False) -> ParsedFile:
-    """defer_ocr：扫描页与图文混排页不在此识别，页码放进 ocr_pending，由调用方随后用 ocr_pages 补上。"""
+              max_pages: int | None = None, defer_ocr: bool = False, region_budget: int | None = None) -> ParsedFile:
+    """defer_ocr：扫描页与图文混排页不在此识别，页码放进 ocr_pending，由调用方随后用 ocr_pages 补上。
+    region_budget：只识别图片区域的页最多识别几页（剩余 OCR 名额），超出的只提示；None 不限。"""
     nodes: list[ParsedNode] = []
     pending: list[int] = []
     scanned: list[int] = []
     mixed: list[int] = []
     low_conf: list[int] = []
     empty: list[int] = []
+    over: list[int] = []
     heights: dict[int, float] = {}
     started = time.monotonic()
     with _open(data, password, max_pages) as pdf:
@@ -360,10 +427,16 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
                 page = _dedupe(raw)
                 heights[page_no] = float(page.height)
                 is_scanned = _is_scanned(page)
+                regions = None
                 if not is_scanned:
                     _parse_text_page(page, page_no, file_seq, nodes)
-                    if not _is_mixed(page):
+                    if not _is_mixed(page) and not (regions := _image_regions(page)):
                         continue
+                    if regions and region_budget is not None:
+                        if region_budget <= 0:
+                            over.append(page_no)
+                            continue
+                        region_budget -= 1
                 if defer_ocr:
                     pending.append(page_no)
                     continue
@@ -372,11 +445,12 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
 
                     pdfium_doc = pypdfium2.PdfDocument(data, password=password)
                 (scanned if is_scanned else mixed).append(page_no)
-                confs = _parse_scanned_page(pdfium_doc, page_no, file_seq, nodes)
+                confs = _parse_scanned_page(pdfium_doc, page_no, file_seq, nodes, regions)
                 if on_ocr is not None:
                     on_ocr(len(scanned) + len(mixed))  # 已 OCR 的页数（V321-E-06）
                 if not confs:
-                    empty.append(page_no)
+                    if not regions:  # 只识别图片区域的页没识别到文字（照片）不算空白页
+                        empty.append(page_no)
                 elif any(c < LOW_OCR_CONF for c in confs):
                     low_conf.append(page_no)
         except ParseError:
@@ -405,6 +479,8 @@ def parse_pdf(data: bytes, file_seq: int, on_ocr=None, *, password: str | None =
         warnings.append(f"等 {len(low_conf) - MAX_LOW_CONF_PAGES} 页 OCR 识别置信度低，请核对原件")
     for p in empty:
         warnings.append(f"第 {p} 页未识别到文字")
+    if over:
+        warnings.append(f"另有 {len(over)} 页中的图片超出 OCR 页数上限，未识别文字")
     warnings += _continued_warnings(nodes)
     return ParsedFile(nodes=nodes, page_count=page_count, has_revisions=False, warnings=warnings, ocr_pages=len(scanned) + len(mixed),
                       ocr_pending=pending)

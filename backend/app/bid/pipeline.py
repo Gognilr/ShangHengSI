@@ -17,7 +17,7 @@ from app.bid import fileprops
 from app.bid.service import LIMITS, lock_task, originals_expired
 from app.db.base import utcnow
 from app.db.models import BidImage, BidProject, DocNode, Task, TaskFile
-from app.parsing import pdf
+from app.parsing import docx, docx_images, pdf
 from app.parsing.model import ParseError
 from app.security import crypto
 from app.tasks import storage
@@ -51,9 +51,12 @@ def _parse_one(db, file, used):
     if file.ext == "pdf":
         password = crypto.decrypt_text(file.password_enc) if file.password_enc is not None else ""
         options = {"password": password, "max_pages": LIMITS["pdf_pages"]}
-        need = len(pdf.inspect_pdf(data, **options).scanned_pages)
-        if used + need > LIMITS["ocr_pages"]:
+        info = pdf.inspect_pdf(data, **options)
+        need = len(info.scanned_pages)
+        hard = need - len(info.region_pages)  # 只识别图片区域的页用剩余名额，不让文件失败（V35-C-01）
+        if used + hard > LIMITS["ocr_pages"]:
             raise ParseError(_OCR_OVER)
+        options["region_budget"] = LIMITS["ocr_pages"] - used - hard
         if need and file.bidder_id is not None:
             parsed = pdf.parse_pdf(data, file.seq, defer_ocr=True, **options)
             counts = {}
@@ -69,8 +72,12 @@ def _parse_one(db, file, used):
         return parsed, pdf.PARSER_VERSION, _meta(file, data, parsed, password)
     if file.ext in ("jpg", "png") and used + 1 > LIMITS["ocr_pages"]:
         raise ParseError(_OCR_OVER)
+    if file.ext == "docx" and file.bidder_id is not None:
+        # 投标文件的内嵌图片与扫描页一样延后识别（V35-C-01）
+        parsed = docx_images.defer(data, docx.parse_docx(data, file.seq), LIMITS["ocr_pages"] - used)
+        return parsed, docx.PARSER_VERSION, _meta(file, data, parsed)
     from app.tasks.pipeline import _parse_bytes
-    parsed, version = _parse_bytes(file.ext, data, file.seq, 0)
+    parsed, version = _parse_bytes(file.ext, data, file.seq, used, ocr_limit=LIMITS["ocr_pages"])
     return parsed, version, _meta(file, data, parsed)
 
 
@@ -202,11 +209,13 @@ def _ocr_file(db, task_id, file_id, pages):
     password = crypto.decrypt_text(file.password_enc) if file.password_enc is not None else None
     existing = [ParsedNode(loc=loc, ord=0, kind="paragraph", part="body", text="", page=page, bbox=bbox)
                 for loc, page, bbox in db.execute(select(DocNode.loc, DocNode.page, DocNode.bbox).where(DocNode.file_id == file_id))]
-    seq = file.seq
+    seq, is_docx = file.seq, file.ext == "docx"
     db.commit()
     wrote, last = False, time.monotonic()
     with ocr_slot():
-        for page_no, nodes, confs in pdf.ocr_pages(data, seq, pages, existing, password=password):
+        found = (docx_images.ocr_pending(data, seq, pages) if is_docx
+                 else pdf.ocr_pages(data, seq, pages, existing, password=password))
+        for page_no, nodes, confs in found:
             db.execute(text(f"SELECT pg_advisory_xact_lock({_LOCK})"))
             file = db.get(TaskFile, file_id, populate_existing=True)
             if file is None or file.original_deleted_at is not None or file.parser_version is None:
@@ -217,23 +226,30 @@ def _ocr_file(db, task_id, file_id, pages):
                 db.rollback()
                 return wrote
             for i, n in enumerate(nodes, 1):
-                db.add(DocNode(task_id=task_id, file_id=file_id, loc=n.loc, ord=page_no * _PAGE_GAP + _PAGE_GAP // 2 + i,
+                db.add(DocNode(task_id=task_id, file_id=file_id, loc=n.loc,
+                               ord=n.ord if is_docx else page_no * _PAGE_GAP + _PAGE_GAP // 2 + i,
                                kind=n.kind, part=n.part, text_enc=crypto.encrypt_text(n.text), clause_no=n.clause_no,
-                               page=n.page, bbox=n.bbox, ocr_conf=n.ocr_conf))
+                               parent_loc=n.parent_loc, page=n.page, bbox=n.bbox, ocr_conf=n.ocr_conf))
             meta["ocr_pending"] = [p for p in meta["ocr_pending"] if p != page_no]
             meta["ocr_pages"] = meta.get("ocr_pages", 0) + 1
             done = meta.setdefault("ocr_done", [])
             done.append(page_no)
-            if not confs:
+            if confs is None:  # 只识别图片区域、图片中没有文字的页
+                pass
+            elif not confs:
                 meta.setdefault("ocr_empty", []).append(page_no)
             elif any(c < LOW_OCR_CONF for c in confs):
                 meta.setdefault("ocr_low", []).append(page_no)
             if not meta["ocr_pending"]:
                 shown = "、".join(str(p) for p in sorted(done)[:30]) + (" 等" if len(done) > 30 else "")
                 warnings = [w for w in (file.warnings or []) if "正在后台识别" not in w]
-                warnings.append(f"第 {shown} 页为扫描页或图文混排，已用 OCR 识别")
-                warnings += [f"第 {p} 页 OCR 识别置信度低，请核对原件" for p in meta.get("ocr_low", [])[:5]]
-                warnings += [f"第 {p} 页未识别到文字" for p in meta.get("ocr_empty", [])]
+                if is_docx:  # 内嵌图片多为照片、徽标，没有文字不提示
+                    warnings.append(docx_images.WARN_DONE.format(count=len(done)))
+                    warnings += [docx_images.WARN_LOW] if meta.get("ocr_low") else []
+                else:
+                    warnings.append(f"第 {shown} 页为扫描页或图文混排，已用 OCR 识别")
+                    warnings += [f"第 {p} 页 OCR 识别置信度低，请核对原件" for p in meta.get("ocr_low", [])[:5]]
+                    warnings += [f"第 {p} 页未识别到文字" for p in meta.get("ocr_empty", [])]
                 file.warnings = warnings
             file.meta_enc = crypto.encrypt_text(json.dumps(meta, ensure_ascii=False, default=str))
             db.commit()

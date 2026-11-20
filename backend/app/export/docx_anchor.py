@@ -1,4 +1,5 @@
 """原件定位层：只匹配唯一的直接文本 run；拆分只改内存中的副本。"""
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from io import BytesIO
@@ -9,11 +10,13 @@ from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 
+from app.parsing import docx_images
 from app.parsing.docx import TrackedDocx, parse_docx
 from app.redaction.normalize import normalize_value, normalize_with_map
 
 MISMATCH = "原件解析结果与任务记录不一致，无法生成批注版"
 _XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
+_IMAGE_LOC = re.compile(r"^F\d+-IM(\d+)-")
 
 
 class AnchorMismatch(Exception):
@@ -145,8 +148,14 @@ class Anchors:
 def load_anchors(data: bytes, file_seq: int, stored: dict[str, str]) -> Anchors:
     tracked = parse_docx(data, file_seq, track=True)
     assert isinstance(tracked, TrackedDocx)
-    if {n.loc: n.text for n in tracked.nodes} != stored:
+    # 内嵌图片的 OCR 节点（V35-C-01）不由重新解析产生，按图片序号定位到图片所在段落
+    images = {loc: int(m[1]) for loc in stored if (m := _IMAGE_LOC.match(loc))}
+    if {n.loc: n.text for n in tracked.nodes} != {k: v for k, v in stored.items() if k not in images}:
         raise AnchorMismatch(MISMATCH)
+    picks = docx_images.select(data, tracked) if images else []
+    for loc, no in images.items():
+        paragraph = picks[no - 1].paragraph if no <= len(picks) else None
+        tracked.node_paragraphs[loc] = [paragraph] if paragraph is not None else None
     document = Document(BytesIO(data))
     # 两次读取同一个 XML，按元素顺序对应；不以文字查找段落，保留重复段落的身份。
     originals = list(tracked.document.iter())

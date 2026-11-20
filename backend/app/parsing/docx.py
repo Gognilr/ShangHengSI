@@ -7,6 +7,8 @@
   正文段落 F{n}-P{段}，只给生成了节点的段落编号；正文表格 F{n}-T{表}-R{行}-C{列}，表号按正文顶层表格顺序，
   列号按网格列计（gridSpan 占多列，gridBefore 跳过前面的列）；嵌套表格在外层单元格编号后追加 -T{表}-R{行}-C{列}；
   页眉 F{n}-H{段}、页脚 F{n}-FT{段}（每个非空段落一个节点）；批注 F{n}-CM{条}、文本框 F{n}-TB{个}（每条、每个一个节点）。
+  正文内嵌图片（V35-C-01）不在这里出节点，按出现顺序列入 ParsedFile.images（紧跟的节点序号与所在段落），
+  由 parsing/docx_images 筛出证照尺寸的图片后 OCR，节点 F{n}-IM{张}-B{块} / -IM{张}-T{表}-R{行}-C{列}。
 
 节点顺序：页眉、页脚、正文（批注和文本框紧跟在所在段落或单元格之后，嵌套表格紧跟在外层单元格之后）、
 没有在正文中引用的批注。
@@ -22,7 +24,7 @@ from io import BytesIO
 
 from lxml import etree
 
-from app.parsing.model import ParsedFile, ParsedNode, ParseError
+from app.parsing.model import DocxImage, ParsedFile, ParsedNode, ParseError
 
 PARSER_VERSION = "docx-2"
 
@@ -44,6 +46,7 @@ WARN_COMMENTS = "批注未参与 AI 审核"
 WARN_TEXTBOXES = "文本框未参与 AI 审核"
 WARN_NOTES = "脚注和尾注未参与 AI 审核"
 WARN_EMBEDDED = "文件中有 {count} 个图片或嵌入对象未参与 AI 审核；如有扫描附件，请另存为 PDF 或图片一并上传"
+_IMAGE_REL = "/image"
 WARN_EMPTY = "未提取到正文文字"
 
 _OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # 加密的 docx 和 .doc 都是 OLE 复合文档
@@ -64,6 +67,10 @@ _MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 _MC_AC = f"{{{_MC}}}AlternateContent"
 _MC_CHOICE = f"{{{_MC}}}Choice"
 _MC_FALLBACK = f"{{{_MC}}}Fallback"
+_EMBED_ATTRS = (
+    "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed",
+    "{http://purl.oclc.org/ooxml/officeDocument/relationships}embed",
+)
 _PKG_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
 _EMBEDDED_LOCALNAMES = frozenset({"blip", "imagedata", "OLEObject"})
 
@@ -520,7 +527,7 @@ class _Inline:
     length: int = 0
     rev: bool = False
     hidden_spans: list[list[int]] = field(default_factory=list)
-    side: list[tuple] = field(default_factory=list)  # ("tb", 文字, 有修订) / ("cm", 批注 id)
+    side: list[tuple] = field(default_factory=list)  # ("tb", 文字, 有修订) / ("cm", 批注 id) / ("img", 关系 id, 段落)
 
 
 @dataclass
@@ -556,6 +563,9 @@ class _DocxParser:
         self.emitted_comments: set[str] = set()
         self.track = track
         self.node_paragraphs: dict[str, list[etree._Element] | None] = {}
+        self.missing_images = 0
+        self.in_body = False  # 只收正文（含正文文本框）中的图片；页眉页脚的徽标等不识别
+        self.placeholders: dict[int, tuple[str, etree._Element | None]] = {}
 
     # -- 总流程
 
@@ -609,18 +619,40 @@ class _DocxParser:
                     n += 1
                     nodes.append(self._node(f"{self.f}-{prefix}{n}", "paragraph", part, text, rev=rev))
                 nodes.extend(self._side_nodes(side, None))
+        self.in_body = True
         nodes.extend(self._body(body))
+        self.in_body = False
         leftover = [("cm", cid) for cid in self.comments if cid not in self.emitted_comments]
         nodes.extend(self._side_nodes(leftover, None))
 
         notes = any(self._has_note_text(self.pkg.xml(first(k))) for k in ("footnotes", "endnotes"))
+        nodes, images = self._images(nodes, rels)
         self._finalize(nodes)
         if self.track:
             return TrackedDocx(nodes=nodes, page_count=None, has_revisions=self.has_revisions,
                                warnings=self._warnings(nodes, notes), document=root,
-                               node_paragraphs=self.node_paragraphs)
+                               node_paragraphs=self.node_paragraphs, images=images)
         return ParsedFile(nodes=nodes, page_count=None, has_revisions=self.has_revisions,
-                          warnings=self._warnings(nodes, notes))
+                          warnings=self._warnings(nodes, notes), images=images)
+
+    def _images(self, nodes: list[ParsedNode], rels) -> tuple[list[ParsedNode], list[DocxImage]]:
+        """取出图片占位节点：同一图片文件只列第一次出现；关系缺失或不是图片的仍按嵌入对象提示。"""
+        targets = {rid: target for rid, typ, target in rels if typ.endswith(_IMAGE_REL)}
+        out: list[ParsedNode] = []
+        images: list[DocxImage] = []
+        seen: set[str] = set()
+        for node in nodes:
+            if node.kind != "image":
+                out.append(node)
+                continue
+            rid, paragraph = self.placeholders[id(node)]
+            target = targets.get(rid)
+            if target is None or target.lower() not in self.pkg.members:
+                self.missing_images += 1
+            elif target.lower() not in seen:
+                seen.add(target.lower())
+                images.append(DocxImage(target=target, after=len(out), parent_loc=node.parent_loc, paragraph=paragraph))
+        return out, images
 
     def _header_footer_parts(self, body: etree._Element, by_id: dict[str, str]) -> tuple[list[str], list[str]]:
         """按各节 sectPr 中引用的顺序取页眉、页脚部件（去重）。"""
@@ -682,8 +714,8 @@ class _DocxParser:
             warnings.append(WARN_TEXTBOXES)
         if notes:
             warnings.append(WARN_NOTES)
-        if self.embedded_objects:
-            warnings.append(WARN_EMBEDDED.format(count=len(self.embedded_objects)))
+        if self.embedded_objects or self.missing_images:
+            warnings.append(WARN_EMBEDDED.format(count=len(self.embedded_objects) + self.missing_images))
         if "body" not in parts:
             warnings.append(WARN_EMPTY)
         return warnings
@@ -699,6 +731,11 @@ class _DocxParser:
         """文本框和批注节点；loc 在 _finalize 中按最终顺序编号。"""
         out = []
         for item in items:
+            if item[0] == "img":
+                node = self._node("", "image", "body", "", parent=parent)
+                self.placeholders[id(node)] = item[1:]
+                out.append(node)
+                continue
             if item[0] == "tb":
                 _, text, rev = item
                 if text:
@@ -1074,7 +1111,13 @@ class _DocxParser:
             # OLE 对象及其预览图合计一项，避免同时把预览图当成另一张图片。
             self.embedded_objects.add(el)
             object_preview = True
-        if not object_preview and etree.QName(el).localname in _EMBEDDED_LOCALNAMES:
+        name = etree.QName(el).localname
+        rid = next((el.get(a) for a in (*_REL_ID_ATTRS, *_EMBED_ATTRS) if el.get(a)), None)
+        if not object_preview and self.in_body and name in ("blip", "imagedata") and rid:
+            paragraph = next((a for a in el.iterancestors(self.w.p)
+                              if not any(b.tag == self.w.txbxContent for b in a.iterancestors())), None)
+            ctx.side.append(("img", rid, paragraph))
+        elif not object_preview and name in _EMBEDDED_LOCALNAMES:
             self.embedded_objects.add(el)
         for c in el:
             self._embedded(c, ctx, object_preview=object_preview)
