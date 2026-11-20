@@ -91,7 +91,7 @@ async function submit() {
       <section class="brand-area" aria-label="商衡SI">
         <LoginWords class="brand-words" />
         <div class="brand-copy">
-          <SiLogo size="hero" />
+          <SiLogo size="hero" intro />
           <div class="brand-rule" />
           <h2>先在本机脱敏，<br />再交给模型初审</h2>
           <p class="brand-description">面向商务、合同与法律文件的智能审查。</p>

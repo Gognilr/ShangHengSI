@@ -2,6 +2,7 @@
 import io
 import re
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from docx import Document
@@ -29,6 +30,8 @@ CHECKS = dict(zip(("L-01", "L-02", "L-03", "L-04", "L-05", "L-06", "L-07", "L-08
                   ("行金额", "合计", "税额", "大小写一致", "跨文件金额", "币种一致", "报价有效期", "交期与签约日", "提示")))
 CHECKS.update({'L-09': '分期金额', 'L-10': '废止法律', 'L-11': '增值税税率'})
 SANCTIONS = {"none": "无明显风险", "attention": "需注意", "high": "高风险（建议合规人员或律师确认）"}
+# 页眉标志：「衡线」单色稿（docs/design/v35/brand/mark-mono.svg 的位图）
+MARK = Path(__file__).with_name("assets") / "mark-mono.png"
 
 
 def _clean(value) -> str:
@@ -43,6 +46,14 @@ def _font(run, size, bold=False):
     run._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "宋体")
 
 
+def header(doc, text="商衡SI"):
+    """页眉：单色标志 + 一行小字；导出各处共用。"""
+    paragraph = doc.sections[0].header.paragraphs[0]
+    paragraph.clear()
+    paragraph.add_run().add_picture(str(MARK), height=Cm(0.42))
+    _font(paragraph.add_run(" " + text), 9)
+
+
 def _new_document(title_text="商务文件审核报告"):
     doc = Document()
     section = doc.sections[0]
@@ -54,6 +65,7 @@ def _new_document(title_text="商务文件审核报告"):
     normal.font.name, normal.font.size = "Calibri", Pt(10.5)
     normal._element.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), "宋体")
     normal.paragraph_format.space_after = Pt(6)
+    header(doc)
     title = doc.add_paragraph(style="Title")
     # 清除 python-docx 默认 Title 的主题色和底边线，报告标题只用黑色文字。
     title_style = doc.styles["Title"]

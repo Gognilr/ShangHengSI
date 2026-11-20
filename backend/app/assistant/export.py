@@ -94,7 +94,7 @@ def _document():
     # 沿用已有报告字体、页面与边距，移除审核专用标题。
     first = doc.paragraphs[0]._element
     first.getparent().remove(first)
-    report_docx._font(doc.sections[0].header.paragraphs[0].add_run(HEADER), 9)
+    report_docx.header(doc, HEADER)
     return doc
 
 
@@ -282,8 +282,7 @@ def transcript(db, task, file, user, ip):
     if any(n.text_enc is None for n in nodes):
         raise AppError(409, 'TRANSCRIPT_UNAVAILABLE', '逐字稿已按保留期限删除')
     doc = _document()
-    doc.sections[0].header.paragraphs[0].clear()
-    report_docx._font(doc.sections[0].header.paragraphs[0].add_run('商衡SI 会议逐字稿'), 9)
+    report_docx.header(doc, '商衡SI 会议逐字稿')
     report_docx._heading(doc, file.original_name)
     names = speaker_names(file)
     # 与发给模型的文字同一份合并稿：同一发言人间隔不足 30 秒的句子合成一段

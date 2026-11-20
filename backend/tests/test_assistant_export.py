@@ -83,7 +83,7 @@ def test_t52_4_translation_bilingual_and_draft_only(conversation, db_sessionmake
     doc = Document(io.BytesIO(response.content))
     assert len(doc.tables[0].rows) == 2
     assert REAL in doc.tables[0].cell(1, 0).text and REAL in doc.tables[0].cell(1, 1).text
-    assert doc.sections[0].header.paragraphs[0].text == '商衡SI 智能助手 · 内容由 AI 生成，仅供参考'
+    assert doc.sections[0].header.paragraphs[0].text.strip() == '商衡SI 智能助手 · 内容由 AI 生成，仅供参考'
     draft = message(db_sessionmaker, tid, template='reply', content_redacted='说明不得导出\n---\n草稿 [[ORG_1]]')
     doc = Document(io.BytesIO(c.get(url(tid, draft)).content))
     text = '\n'.join(p.text for p in doc.paragraphs)
