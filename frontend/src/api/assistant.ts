@@ -24,7 +24,9 @@ export const ASSISTANT_ERROR_MESSAGES: Record<string, string> = { ASR_DISABLED: 
 /** 历史记录行（V32-B-01）：工作台会话与旧审核任务合并列出 */
 export interface HistoryItem extends TaskListItem { kind: 'session' | 'review' | 'bid'; purpose?: Purpose | null; /** 标书初审的阶段（高风险为本机否决类问题数，待处理恒为 0） */ stage?: string | null; /** 标书分类名（V34-B-01a） */ category?: string | null; last_activity_at: string; run_count: number; file_count: number
   /** 最新一轮：待处理问题数、可导出报告的轮次 id、审核进行中（V321-E-04） */
-  pending_count: number; latest_run_id: string | null; reviewing: boolean }
+  pending_count: number; latest_run_id: string | null; reviewing: boolean
+  /** 最新一轮被发送前复检拦下（V35-F-03） */
+  blocked?: boolean }
 /** 侧栏菜单右侧的数字：待确认遮住的会话、旧审核任务与标书项目（V35-F-02） */
 export interface Waiting { workbench: number; review: number; bid: number; meeting: number; translate: number }
 export interface HistoryPage { items: HistoryItem[]; total: number; page: number; page_size: number }

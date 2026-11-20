@@ -117,6 +117,7 @@ class HistoryItem(TaskListItem):
     pending_count: int = 0
     latest_run_id: uuid.UUID | None = None
     reviewing: bool = False
+    blocked: bool = False  # 最新一轮被发送前复检拦下（V35-F-03，工作台“待你处理”）
 
 
 class HistoryPage(BaseModel):

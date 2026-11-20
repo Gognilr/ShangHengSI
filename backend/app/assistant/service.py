@@ -665,7 +665,8 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
                                  last_activity_at=t.last_activity_at, run_count=runs.get(t.id, 0), file_count=files.get(t.id, 0),
                                  pending_count=pending.get(last.id, 0) if last else 0,
                                  latest_run_id=last.id if last and last.status in ("completed", "partial") else None,
-                                 reviewing=bool(last and last.status in ("queued", "running"))))
+                                 reviewing=bool(last and last.status in ("queued", "running")),
+                                 blocked=bool(last and last.status == "blocked")))
     return HistoryPage(items=items, total=total, page=page, page_size=size)
 
 
