@@ -34,7 +34,7 @@
 | V35-B-02 | 出口复检与片段闭合提速 | — | Opus，high | Sol 6.1，high（另一侧复核） | B-01 | — | 已完成（2026-11-20；Codex 复核的 P1、P2 已修，见报告） |
 | V35-B-03 | 表格列头语义向下传播 | — | Opus，high | Sol 6.1，high（另一侧复核） | B-02 | — | 已完成（2026-11-20，Codex 实现，Opus 复核修正两处，见[报告](reports/V35-B-03.md)） |
 | V35-B-04 | 标书还原统一 restore.check()；固定提示词词汇不登记为自动识别实体 | Q-11、12 | Opus，medium | Sol 6.1，medium（另一侧复核） | B-03 | — | 实现及专项验收已完成（2026-11-20，Codex，[报告](reports/V35-B-04.md)），待 Opus 交叉复核；通用 A-03 遗留见 Q-12 |
-| V35-B-05 | 实体识别模型 INT8 选型评测 | Q-03 | Opus，high | Sol 6.1，high | B-04 | 选型报告交用户确认后才换 | 进行中（2026-11-20，Codex，FP32 基线已测，待量化依赖下载确认，见[报告](reports/V35-B-05.md)） |
+| V35-B-05 | 实体识别模型 INT8 选型评测 | Q-03 | Opus，high | Sol 6.1，high | B-04 | 选型报告交用户确认后才换 | 已完成（2026-11-20，Codex，INT8 召回未达标，维持 FP32，见[报告](reports/V35-B-05.md)） |
 | V35-C-01 | 图像凭证识字：PDF 独立大图局部 OCR、DOCX 内嵌图片渐进 OCR | Q-02 | Opus，high | Sol 6.1，high | B-05 | — | 待开工 |
 | V35-C-02 | 检索：章节面包屑、索引表 / 偏离表页码直达、证照短页保底 | — | Opus，high | Sol 6.1，high | C-01 | — | 待开工 |
 | V35-C-03 | 本地确定性检查：工期 / 交货期、质保期、类似业绩 | — | Opus，medium | Sol 6.1，medium | C-02 | — | 待开工 |
