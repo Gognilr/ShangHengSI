@@ -16,7 +16,7 @@ from sqlalchemy import delete, select, text
 from app.bid import fileprops
 from app.bid.service import LIMITS, lock_task, originals_expired
 from app.db.base import utcnow
-from app.db.models import BidImage, BidProject, DocNode, Task, TaskFile
+from app.db.models import BidImage, BidProject, DocNode, Task, TaskClauseVector, TaskFile
 from app.parsing import docx, docx_images, pdf
 from app.parsing.model import ParseError
 from app.security import crypto
@@ -119,6 +119,7 @@ def parse_project(db, task_id):
             return
         db.execute(delete(DocNode).where(DocNode.file_id == file.id))
         db.execute(delete(BidImage).where(BidImage.file_id == file.id))
+        db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == task_id, TaskClauseVector.file_seq == file.seq))
         file.page_count, file.warnings = None, []
         try:
             if file.original_deleted_at is not None:

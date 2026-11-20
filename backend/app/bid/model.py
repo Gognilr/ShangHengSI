@@ -12,6 +12,7 @@ import logging
 import re
 import uuid
 from collections import defaultdict
+from unicodedata import normalize
 
 from sqlalchemy import delete, select, update
 
@@ -64,6 +65,26 @@ _GENERIC = {"投标", "标人", "招标", "标文", "文件", "要求", "必须"
             "否决", "参照", "条例", "第五", "五十", "十一", "一条", "实施", "招投", "标投", "投标法"}
 _QUOTE_QUERY = re.compile(r"报价|税率|付款|完成时间|工期|交货|供货周期")
 _QUOTE_CONTEXT = re.compile(r"^[^\n]{0,30}(?:报价单|投标一览表|开标一览表)\s*$", re.M)
+_CHAPTER = re.compile(r"^第[一二三四五六七八九十百\d]+\s*([篇部章节]).{1,45}$")
+_ORDINAL = re.compile(r"^[一二三四五六七八九十]+[、.]\s*(.{1,45})$")
+_SUBSECTION = re.compile(r"^(?:\([一二三四五六七八九十\d]+\)|[0-9]+(?:\.[0-9]+){1,2}\s+|[0-9]+[、.]\s+)(.{1,45})$")
+_SECTION_TITLE = re.compile(
+    r"(?:投标函(?:附录)?|报价(?:单|表|清单)|(?:开标|投标)一览表|资格(?:审查|证明|文件)|商务(?:文件|响应)|"
+    r"技术(?:文件|响应|方案)|业绩(?:证明|材料|清单)|授权(?:书|委托书)|营业执照|许可证|资质证书|财务(?:报告|报表)|"
+    r"审计报告)(?:材料|文件|表|复印件|扫描件)?|"
+    r"(?:评标|评审|资格审查|资格评审)[条款项]{0,3}(?:索引|导航|导引)表?|(?:商务|技术)?(?:偏离|偏差)(?:一览)?表"
+)
+_CERT_TYPES = {
+    "营业执照": re.compile(r"营业执照|统一社会信用代码"),
+    "安全生产许可证": re.compile(r"安全生产许可证"),
+    "经营许可证": re.compile(r"经营许可证"),
+    "资质": re.compile(r"资质(?:等级|证书)|(?:工程|行业|专业)[^，。\n]{0,6}资质"),
+    "认证": re.compile(r"认证证书|管理体系(?:认证)?|ISO\s*[0-9]{4,5}", re.I),
+    "审计": re.compile(r"审计报告|经审计(?:的)?财务"),
+    "注册证书": re.compile(r"注册证书|注册执业|执业证书|资格证书"),
+}
+_CERT_FIELDS = re.compile(r"统一社会信用代码|法定代表人|注册资本|证书编号|许可范围|发证机关|有效(?:期|期限)|会计师事务所|注册编号")
+_SHORT_CERT_PAGE = 500
 
 SYSTEM = """你是招标采购的初审助手。输入包含招标文件的若干要求，以及在某一投标人的投标文件中检索到的相关片段。
 所有内容已在本机脱敏，方括号中的代号（如 [投标人A]、[[ORG_1]]）请原样保留；投标人只以代号出现。
@@ -364,9 +385,26 @@ def _scope_gap(requirement, scope, assets):
     return None
 
 
+def _section_heading(kind, text):
+    """显式标题或正文中的独立章节行。目录引导线与表格单元格不当章节。"""
+    if kind not in {"heading", "paragraph", "ocr_block", "list_item"}:
+        return None
+    line = normalize("NFKC", text.strip().partition("\n")[0]).strip()
+    if not line or len(line) > 60 or re.search(r"\.{3,}|…{2,}|·{3,}", line):
+        return None
+    chapter = _CHAPTER.fullmatch(line)
+    if chapter:
+        return (2 if chapter[1] == "节" else 1), line
+    upper, lower = _ORDINAL.fullmatch(line), _SUBSECTION.fullmatch(line)
+    ordinal = upper or lower
+    if kind == "heading" or _SECTION_TITLE.fullmatch(ordinal[1] if ordinal else line):
+        return (2 if lower and not upper else 1), line
+    return None
+
+
 def passages(nodes):
     """把一家的节点合并成检索片段：[{file_id, seq, locs, page, section, text}]。"""
-    out, current, section = [], None, ""
+    out, current, section, breadcrumb = [], None, "", ()
     evidence = evidence_by_loc(nodes)
     for file_id, seq, loc, kind, page, text in nodes:
         scope, page_assets = evidence[loc]
@@ -374,13 +412,18 @@ def passages(nodes):
         same_row = row and current and current.get("row") == row.group(1)
         if current is None or current["file_id"] != file_id:
             section = ""
+            breadcrumb = ()
+        title = _section_heading(kind, text)
+        if title:
+            level, label = title
+            breadcrumb = (*breadcrumb[:level - 1], label)
         if kind == "heading" and len(text) <= 60:
             section = text.strip()
-        if (current is None or current["file_id"] != file_id or current["page"] != page or kind == "heading"
+        if (current is None or current["file_id"] != file_id or current["page"] != page or kind == "heading" or title
                 or current["scope"] != scope
                 or (not same_row and len(current["text"]) + len(text) > WINDOW)):
             current = {"file_id": file_id, "seq": seq, "locs": [], "page": page, "section": section,
-                       "scope": scope, "page_assets": page_assets, "text": ""}
+                       "breadcrumb": breadcrumb, "scope": scope, "page_assets": page_assets, "text": ""}
             out.append(current)
         current["locs"].append(loc)
         current["text"] += (" ｜ " if same_row else "\n" if current["text"] else "") + text
@@ -396,42 +439,86 @@ def _grams(text):
     return {t[i:i + 2] for i in range(len(t) - 1)} - _GENERIC
 
 
+def _cert_types(text):
+    return {name for name, pattern in _CERT_TYPES.items() if pattern.search(text)}
+
+
+def _short_certificate_passages(items):
+    """同一文件的短页须同时有证照类型和证照字段，目录标题本身不触发保底。"""
+    pages = defaultdict(list)
+    for i, p in enumerate(items):
+        if p.get("page") is not None:
+            pages[p["file_id"], p["page"]].append(i)
+    candidates = {}
+    for ids in pages.values():
+        body = "\n".join(items[i]["text"] for i in ids)
+        if len(body.strip()) > _SHORT_CERT_PAGE or not _CERT_FIELDS.search(body):
+            continue
+        for i in ids:
+            types = _cert_types(items[i]["text"])
+            if types:
+                candidates[i] = types
+    return candidates
+
+
+def _with_breadcrumb(passage):
+    """章节只用于本机检索，正文和引文仍使用原节点。"""
+    crumb = passage["breadcrumb"]
+    if crumb and not (len(crumb) == 1 and passage["text"].startswith(crumb[0])):
+        return " > ".join(crumb) + "\n" + passage["text"]
+    return passage["text"]
+
+
 def _embed(db, task, items):
-    """片段向量写入 task_clause_vectors（file_seq 区分投标人文件）；位置相同的已有向量直接复用。
+    """片段向量写入 task_clause_vectors（file_seq 区分投标人文件），分开识别正文与加权章节向量。
     向量模型不可用时返回 None，退回只按关键词检索。"""
     try:
         import numpy as np
         from app.embedding import engine
         model = engine.model_id()
+        section_model = model + ":bid-section-v1"
+        keys = [(p["seq"], tuple(p["locs"])) for p in items]
+        plain = {key: p["text"][:1000] for key, p in zip(keys, items)}
+        contextual = {key: _with_breadcrumb(p)[:1000] for key, p in zip(keys, items)}
+        expected = {key: section_model if contextual[key] != plain[key] else model for key in plain}
         seqs = sorted({p["seq"] for p in items})
         stored = {(v.file_seq, tuple(v.locs)): v for v in db.scalars(select(TaskClauseVector).where(
             TaskClauseVector.task_id == task.id, TaskClauseVector.file_seq.in_(seqs)))}
-        keep = {(p["seq"], tuple(p["locs"])) for p in items}
-        stale = [v.id for k, v in stored.items() if k not in keep or v.model != model]
+        missing = [key for key in plain if key not in stored or stored[key].model != expected[key]]
+        raw_keys = [key for key in missing if key not in stored or stored[key].model != model]
+        section_keys = [key for key in missing if expected[key] == section_model]
+        raw_vectors = dict(zip(raw_keys, engine.embed([plain[key] for key in raw_keys], "passage"))) if raw_keys else {}
+        section_vectors = (dict(zip(section_keys, engine.embed([contextual[key] for key in section_keys], "passage")))
+                           if section_keys else {})
+        stale = [v.id for key, v in stored.items() if v.model != expected.get(key)]
         if stale:
             db.execute(delete(TaskClauseVector).where(TaskClauseVector.id.in_(stale)))
-        missing = [p for p in items if (p["seq"], tuple(p["locs"])) not in stored or stored[(p["seq"], tuple(p["locs"]))].id in stale]
-        vectors = engine.embed([p["text"][:1000] for p in missing], "passage") if missing else []
-        for p, v in zip(missing, vectors):
-            db.add(TaskClauseVector(task_id=task.id, file_seq=p["seq"], first_loc=p["locs"][0][:20], locs=p["locs"],
-                                    embedding=v, model=model))
+        for key in missing:
+            seq, locs = key
+            vector = raw_vectors[key] if key in raw_vectors else np.asarray(stored[key].embedding, dtype=np.float32)
+            if key in section_vectors:
+                vector = 0.75 * vector + 0.25 * section_vectors[key]
+            db.add(TaskClauseVector(task_id=task.id, file_seq=seq, first_loc=locs[0][:20], locs=list(locs),
+                                    embedding=vector, model=expected[key]))
         db.flush()
         found = {(v.file_seq, tuple(v.locs)): np.asarray(v.embedding, dtype=np.float32) for v in db.scalars(
             select(TaskClauseVector).where(TaskClauseVector.task_id == task.id, TaskClauseVector.file_seq.in_(seqs),
-                                           TaskClauseVector.model == model))}
-        return np.stack([found[(p["seq"], tuple(p["locs"]))] for p in items]) if items else None, engine
+                                           TaskClauseVector.model.in_((model, section_model))))}
+        return np.stack([found[key] for key in keys]) if keys else None, engine
     except Exception:
         logger.warning("标书片段向量不可用，只按关键词检索 task=%s", task.id)
         db.rollback()
         return None, None
 
 
-def retrieve(requirements, per_bidder, matrix=None, queries=None, *, second=False):
+def retrieve(requirements, per_bidder, matrix=None, queries=None, *, second=False, qualifications=()):
     """每家、每条要求取最相关的片段：分数 = 向量余弦 + 0.6 × 关键词二元组覆盖率（偏离表略加分）。
-    requirements: [(rid, 原文)]；per_bidder: {bidder: [passage]}；matrix: {bidder: 片段向量}；queries: {rid: 向量}。"""
+    requirements: [(rid, 原文)]；per_bidder: {bidder: [passage]}；matrix: {bidder: 片段向量}；queries: {rid: 向量}。
+    qualifications 为资格类要求编号。"""
     links = {}
     for bid, items in per_bidder.items():
         grams = [_grams(p["text"]) for p in items]
+        certificates = _short_certificate_passages(items) if qualifications and not second else {}
         links[bid] = {}
         for rid, text in requirements:
             want = _grams(text)
@@ -461,9 +548,17 @@ def retrieve(requirements, per_bidder, matrix=None, queries=None, *, second=Fals
             if best:
                 best = [s for s in best if s[0] >= best[0][0] * 0.8]  # 明显不如第一名的不带上
             # 工期、税率等常在本次报价页；留一个明确报价上下文，防止历史合同包揽前三名。
-            anchor = next((s for s in scores if s[1] in quote), None)
-            if anchor is not None and anchor[1] not in {i for _s, i in best}:
-                best = [*best[:TOP - 1], anchor]
+            quote_anchor = next((s for s in scores if s[1] in quote), None)
+            cert_anchor = None
+            if certificates and rid in qualifications:
+                types = _cert_types(text)
+                cert_anchor = next((s for s in scores if s[1] in certificates
+                                    and (not types or types & certificates[s[1]])), None)
+            # 保留得分最高的同类证照短页，豁免相对分截断，与报价页共用现有候选名额。
+            reserved = {s[1]: s for s in (quote_anchor, cert_anchor) if s is not None}
+            if reserved:
+                best = [s for s in best if s[1] not in reserved][:TOP - len(reserved)] + list(reserved.values())
+                best.sort(key=lambda s: (-s[0], s[1]))
             links[bid][rid] = [i for _s, i in best]
     return links
 
@@ -685,7 +780,8 @@ def prepare(db, task):
         queries = dict(zip(texts, engine.embed(list(texts.values()), "query")))
     else:
         notes.append("向量模型不可用，片段只按关键词检索，可能漏掉写法不同的内容")
-    links = retrieve(list(texts.items()), per, matrix, queries, second=second)
+    qualifications = {str(r.id) for r in rows if r.group == "qualification"}
+    links = retrieve(list(texts.items()), per, matrix, queries, second=second, qualifications=qualifications)
     if second:
         links = {b.id: {rid: links[b.id][rid] for rid in pairs.get(str(b.id), [])} for b in bidders}
     # 去重编号：同一家的同一片段只发一次

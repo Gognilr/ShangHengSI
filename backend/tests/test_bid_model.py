@@ -11,7 +11,7 @@ import pytest
 import yaml
 from sqlalchemy import select
 
-from app.db.models import DocNode, LlmCall, Task, TaskFile
+from app.db.models import DocNode, LlmCall, Task, TaskClauseVector, TaskFile
 from app.embedding import engine as embedding
 from app.security import crypto
 from tests.fixtures.bid.samples import BIDDERS, bid2, tender_with_logo
@@ -88,6 +88,58 @@ def test_evidence_scope_filters_history_spares_and_other_asset():
     assert model._scope_gap('P-207A/B不带配对法兰', None, model._asset_ids('P-307A/B'))
     assert model._scope_gap('P-207B不带配对法兰', None, model._asset_ids('P-207A'))
     assert model._scope_gap('P-207A/B不带配对法兰', None, model._asset_ids('P-207B')) is None
+
+
+def test_qualification_keeps_short_certificate_below_score_cutoff():
+    from app.bid import model
+
+    nodes = [
+        ('f', 1, 'F1-PG1-B1', 'paragraph', 1, '清单：营业执照、法定代表人授权书。'),
+        ('f', 1, 'F1-PG1-B2', 'paragraph', 1, '申报说明。' * 110),
+        ('f', 1, 'F1-PG2-B1', 'paragraph', 2, '模板说明：附营业执照。'),
+        ('f', 1, 'F1-PG3-B1', 'paragraph', 3, '模板要求填写营业执照。'),
+        ('f', 1, 'F1-PG4-B1', 'ocr_block', 4, '营业执照\n统一社会信用代码：已填写。'),
+        ('f', 1, 'F1-PG5-B1', 'ocr_block', 5, '资质证书\n证书编号：已填写。'),
+    ]
+    pieces = model.passages(nodes)
+    reqs = [('qualification', '投标人须附营业执照'), ('other', '投标人须附营业执照')]
+    matrix = {'A': np.array([[0.99], [0.91], [0.98], [0.93], [0.2], [0.7]])}
+    queries = {rid: np.array([1.0]) for rid, _text in reqs}
+    links = model.retrieve(reqs, {'A': pieces}, matrix, queries, qualifications={'qualification'})['A']
+    pages = {rid: {pieces[i]['page'] for i in picks} for rid, picks in links.items()}
+    assert pages == {'qualification': {1, 2, 4}, 'other': {1, 2, 3}}
+
+
+def test_breadcrumb_vector_upgrades_and_reuses_cache(owner, db_sessionmaker, monkeypatch):
+    from app.bid import model
+
+    c, h, _ = owner
+    task_id = uuid.UUID(c.post(ROOT, headers=h, json=BODY).json()['id'])
+    pieces = model.passages([
+        ('a', 1, 'F1-PG1-B1', 'paragraph', 1, '第一章 商务文件'),
+        ('a', 1, 'F1-PG1-B2', 'ocr_block', 1, '（一）资格证明'),
+        ('a', 1, 'F1-PG2-B1', 'ocr_block', 2, '证照随附。'),
+        ('b', 2, 'F2-PG1-B1', 'paragraph', 1, '另一个文件。'),
+    ])
+    body, other = pieces[-2:]
+    assert other['breadcrumb'] == ()
+    plain, contextual = np.eye(2, 1024, dtype=np.float32)
+    inputs = []
+
+    def embed(texts, kind):
+        inputs.extend(texts)
+        return np.array([contextual])
+
+    monkeypatch.setattr(embedding, 'embed', embed)
+    with db_sessionmaker() as db:
+        task = db.get(Task, task_id)
+        db.add(TaskClauseVector(task_id=task_id, file_seq=1, first_loc=body['locs'][0], locs=body['locs'],
+                                embedding=plain, model=embedding.model_id()))
+        db.flush()
+        for _ in range(2):
+            matrix, _ = model._embed(db, task, [body])
+            np.testing.assert_allclose(matrix[0], 0.75 * plain + 0.25 * contextual)
+    assert inputs == ['第一章 商务文件 > (一)资格证明\n证照随附。']
 
 
 def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm, monkeypatch):
