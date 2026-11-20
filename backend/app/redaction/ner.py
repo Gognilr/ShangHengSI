@@ -239,6 +239,9 @@ def keep_entity(text: str, entity: Entity) -> bool:
         return False
     if _ROLE_PREFIX.fullmatch(surface):
         return False
+    from app.redaction.parties import inside_role_word
+    if inside_role_word(text, entity.start, entity.end):
+        return False  # 问题 13：“买受人”中的“受人”
     if re.fullmatch(r'[一二三四五六七八九十百零〇\d]+(?:号|号楼|栋|层|期|区|线|车间)?', surface):
         return False  # 序号（“二号”“三期”）不是名称
     from app.redaction.parties import is_place_chain

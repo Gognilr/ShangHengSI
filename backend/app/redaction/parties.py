@@ -43,6 +43,19 @@ _LABELS: list[tuple[str, list[str]]] = [
 _LABEL_CANON = {word.casefold(): canon for canon, words in _LABELS for word in words}
 # V321-A-02：识别结果与不确定项共用签约方标签，不另维护一份角色词表。
 PARTY_LABEL_WORDS = frozenset(_LABEL_CANON)
+# 合同角色词（问题 13）：角色词本身及其子串（“买受人”中的“受人”）不作为人名或单位；
+# 正文“公司 / 厂”前向前取字时遇到角色词即停（“寄达买受人公司”不是名称）。
+CN_ROLE_WORDS = tuple(sorted({w for w in PARTY_LABEL_WORDS if re.fullmatch(r"[一-鿿]+", w)} | {
+    "买受人", "出卖人", "委托人", "受托人", "代理人", "被代理人", "担保人", "保证人", "债权人", "债务人", "抵押人", "抵押权人",
+    "质押人", "出质人", "质权人", "申请人", "被申请人", "收件人", "寄件人", "联系人", "法定代表人", "授权代表", "转让方", "受让方",
+    "转让人", "受让人", "许可方", "被许可方", "发货人", "托运人", "承运人", "合同双方", "双方当事人", "当事人"}, key=len, reverse=True))
+_ROLE_WORD_RE = re.compile("|".join(map(re.escape, CN_ROLE_WORDS)))
+
+
+def inside_role_word(text: str, start: int, end: int) -> bool:
+    """[start, end) 落在正文中某个角色词之内（含整词）：“买受人”“受人”都不是名称。"""
+    lo = max(0, start - 6)
+    return any(m.start() + lo <= start and end <= m.end() + lo for m in _ROLE_WORD_RE.finditer(text[lo:end + 6]))
 _LABEL_WORDS = sorted(_LABEL_CANON, key=len, reverse=True)
 _LABEL_RE = re.compile(
     r"(?:^|(?<=[\s,，;；。、(（]))(?i:("
