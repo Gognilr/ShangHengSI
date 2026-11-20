@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>商衡SI · 标志三个方向正稿（V35-F-00）</title>
+<link rel="stylesheet" href="../../../../frontend/src/styles/fonts.css">
+<style>
+:root{--canvas:#F3F6F9;--card:#FFFFFF;--line:#E1E6ED;--t1:#0E1726;--t2:#334155;--t3:#5E6B7E;--dark:#0B0F14;--dark-card:#121820;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--canvas);color:var(--t2);font:14px/22px "SI Sans","Microsoft YaHei",sans-serif;padding:40px 48px 80px}
+h1{font-size:24px;line-height:32px;color:var(--t1);font-weight:600}
+.lead{color:var(--t3);margin:6px 0 32px;max-width:900px}
+.dir{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:28px 32px;margin-bottom:24px;box-shadow:0 8px 20px -10px rgba(15,23,42,.12)}
+.dir-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.dir-head h2{font-size:18px;line-height:26px;color:var(--t1);font-weight:600}
+.tag{font-size:12px;line-height:16px;font-weight:500;padding:2px 8px;border-radius:99px;background:#EDFBF7;color:#05695B}
+.mean{color:var(--t3);margin-bottom:20px;max-width:980px}
+.row{display:grid;grid-template-columns:repeat(6,auto);gap:28px;align-items:end;justify-content:start}
+.cell{display:flex;flex-direction:column;align-items:center;gap:10px}
+.cell .cap{font-size:13px;line-height:20px;color:var(--t3)}
+.tile{display:flex;align-items:center;justify-content:center;border-radius:14px;border:1px solid var(--line);background:#fff}
+.tile.dk{background:var(--dark);border-color:#222B36}
+.t128{width:168px;height:168px}.t32{width:72px;height:72px}.t16{width:56px;height:56px}
+canvas.zoom{width:112px;height:112px;image-rendering:pixelated;border-radius:10px;border:1px solid var(--line);background:#fff}
+canvas.zoom.dk{background:var(--dark);border-color:#222B36}
+.ctx{display:flex;gap:28px;margin-top:24px;align-items:center;flex-wrap:wrap}
+.tabbar{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:10px 10px 0 0;font-size:13px;width:220px}
+.tabbar.lt{background:#DEE3EA;color:#1F2937}.tabbar.dk{background:#202124;color:#E8EAED}
+.wm{display:flex;align-items:center;gap:10px;padding:14px 18px;border-radius:14px;border:1px solid var(--line);background:#fff}
+.wm.dk{background:var(--dark);border-color:#222B36}
+.wm b{font-size:19px;line-height:24px;font-weight:600;color:var(--t1);letter-spacing:.02em}
+.wm i{font-style:normal;font-size:19px;font-weight:600;color:#078A76;margin-left:2px}
+.wm.dk b{color:#EDF1F6}.wm.dk i{color:#33C0A6}
+.doc-head{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #1B2433;width:260px;background:#fff;font-size:12px;color:#1B2433}
+.pros{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+.pros div{background:#F8FAFC;border-radius:10px;padding:12px 16px}
+.pros h4{font-size:13px;color:var(--t1);font-weight:600;margin-bottom:2px}
+.anim{cursor:pointer}
+/* 方向 A 开场动效 */
+.play .a-bar{transform-origin:12px 12px;animation:barIn 520ms cubic-bezier(.22,1,.36,1) both}
+.play .a-star{transform-origin:17.5px 4.5px;animation:starIn 360ms cubic-bezier(.34,1.56,.64,1) 340ms both}
+.play .a-paper{animation:fade 300ms ease both}
+@keyframes barIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes starIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.note{font-size:13px;color:var(--t3);margin-top:8px}
+</style>
+</head>
+<body>
+<h1>标志 · 三个方向正稿</h1>
+<p class="lead">每个方向：128px 正稿（含纸内细节）、32px、16px（专门的小尺寸稿），单色墨版，深底反白版，以及 16px 放大 7 倍的真实像素效果、浏览器标签页与横排字标中的样子。点方向 A 的 128px 图形可重放开场动效。</p>
+<div id="root"></div>
+
+<script>
+const C = {
+  light:{teal:'#078A76', teal2:'#10A58C', faint:'#A6EAD9', ai:'#6D5BF6', ink:'#0E1726', paper:'#FFFFFF'},
+  dark: {teal:'#33C0A6', teal2:'#33C0A6', faint:'#1F5E55', ai:'#8B7CFF', ink:'#EDF1F6', paper:'#0B0F14'},
+};
+const mono = c => ({teal:c, teal2:c, faint:c, ai:c, ink:c, paper:'#fff'});
+
+/* ---------- 方向 A「衡线」 24 网格 ---------- */
+function A(k, size, detail){
+  const lines = detail ? `<path d="M9.5 6.5h2M9.5 17.5h5" stroke="${k.faint}" stroke-width="2" stroke-linecap="round"/>` : '';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none">
+  <path class="a-paper" d="M12.5 2.5H8.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V10" stroke="${k.teal}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  ${lines}
+  <rect class="a-bar" x="3" y="10" width="18" height="4" rx="2" fill="${k.teal}"/>
+  <path class="a-star" d="M17.5 1.5c.3 1.9.9 2.6 3 3-2.1.4-2.7 1.1-3 3-.3-1.9-.9-2.6-3-3 2.1-.4 2.7-1.1 3-3z" fill="${k.ai}" stroke="${k.ai}" stroke-width=".8" stroke-linejoin="round"/>
+</svg>`;
+}
+/* A 的 16px 专稿：16 网格，纸框 1.5，横线 3，星点改圆点 */
+function A16(k, size){
+  return `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="none">
+  <path d="M8.25 2.25H5.25a1.5 1.5 0 0 0-1.5 1.5v8.5a1.5 1.5 0 0 0 1.5 1.5h5.5a1.5 1.5 0 0 0 1.5-1.5V8" stroke="${k.teal}" stroke-width="1.5" stroke-linecap="round"/>
+  <rect x="1.5" y="6.5" width="13" height="3" rx="1.5" fill="${k.teal}"/>
+  <circle cx="12.25" cy="3.25" r="1.75" fill="${k.ai}"/>
+</svg>`;
+}
+
+/* ---------- 方向 B「行中衡」 ---------- */
+function B(k, size, sw){
+  sw = sw || 2;
+  const id = 'g' + Math.random().toString(36).slice(2,7);
+  const fillD = k.ai === k.teal ? k.ink : `url(#${id})`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none">
+  <defs><linearGradient id="${id}" x1="8" y1="15" x2="16" y2="6" gradientUnits="userSpaceOnUse"><stop stop-color="${k.teal2}"/><stop offset="1" stop-color="${k.ai}"/></linearGradient></defs>
+  <g stroke="${k.ink}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 2.5 4 5.5M5.5 9v12.5"/>
+    <path d="M15.5 4H21M19 4v15.5a2 2 0 0 1-2 2h-.5"/>
+    <path d="M9 18.5h6"/>
+  </g>
+  <path d="M12 6.5 15.5 10.5 12 14.5 8.5 10.5Z" fill="${fillD}" stroke="${fillD}" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>`;
+}
+
+/* ---------- 方向 C「平线」 ---------- */
+function Cm(k, size, small){
+  const id = 'c' + Math.random().toString(36).slice(2,7);
+  const cut = k.paper === '#0B0F14' ? '#0B0F14' : '#FFFFFF';
+  const isMono = k.ai === k.teal;
+  const top = isMono ? k.ink : k.ai, bot = isMono ? k.ink : k.teal;
+  const lw = small ? 2 : 1.6, pill = small ? 2 : 1.6;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none">
+  <defs><clipPath id="${id}"><rect x="2" y="2" width="20" height="20" rx="6"/></clipPath></defs>
+  <g clip-path="url(#${id})">
+    <rect x="2" y="2" width="20" height="10" fill="${top}"/>
+    <rect x="2" y="12" width="20" height="10" fill="${bot}"/>
+    <rect x="2" y="${12 - lw/2}" width="20" height="${lw}" fill="${isMono ? '#fff' : '#fff'}"/>
+    <rect x="6.5" y="${12 + lw/2 + 1.6}" width="7" height="${pill}" rx="${pill/2}" fill="#fff"/>
+  </g>
+</svg>`;
+}
+
+const DIRS = [
+  {key:'A', name:'方向 A「衡线」', tag:'规范推荐',
+   mean:'一页文件，正中一条粗横线伸出纸边、保持水平：它是脱敏条（敏感的一行遮住了才交出去），也是秤杆（放平了称），也是初审找出的那一行。纸的右上角换成灵紫星点——模型只在角上，看到的只是遮住后的文件。',
+   big:k=>A(k,128,true), mid:k=>A(k,32,false), small:(k,s)=>A16(k,s||16),
+   pro:'寓意一句话讲清；横线在 16px 仍是最醒目的一笔，形状独特，不像任何常见图标；动效（横线展开、星点亮起）天然成立。',
+   con:'纸框在 16px 只有 1.5px，深色标签栏上需用亮一档的青；星点在 16px 退化为圆点。'},
+  {key:'B', name:'方向 B「行中衡」', tag:'字形',
+   mean:'取“衡”字骨架：两侧是“行”的两笔竖画，中间一枚菱形被一条短横托住。“行”是商务往来的路，被托住、被守护的是要衡量的文件，两侧竖画也是本机的边界。',
+   big:k=>B(k,128), mid:k=>B(k,32), small:(k,s)=>B(k,s||16,2.6),
+   pro:'有中文字形底蕴，像一方现代印章，单色打印最稳。',
+   con:'16px 下两条竖线主导画面，容易读成“暂停”；菱形渐变在小尺寸看不出来；寓意偏抽象。'},
+  {key:'C', name:'方向 C「平线」', tag:'抽象',
+   mean:'圆角方块被一道白色水平线分成两半：线下衡青是本机，线上灵紫是模型，这道平线就是网关，也是“衡”。线下贴着一条白色短圆角条——能越过这道线的，只有遮住之后的文字。',
+   big:k=>Cm(k,128), mid:k=>Cm(k,32), small:(k,s)=>Cm(k,s||16,true),
+   pro:'最简洁，色块在 16px 最醒目，最像现代应用图标。',
+   con:'寓意要解释一句才明白；实心色块在侧栏和报告页眉里分量偏重；与常见“双色方块”类图标区分度一般。'},
+];
+
+const root = document.getElementById('root');
+for(const d of DIRS){
+  const L = C.light, D = C.dark, M = mono('#0E1726'), MW = mono('#FFFFFF');
+  const el = document.createElement('section');
+  el.className = 'dir';
+  el.innerHTML = `
+  <div class="dir-head"><h2>${d.name}</h2><span class="tag">${d.tag}</span></div>
+  <p class="mean">${d.mean}</p>
+  <div class="row">
+    <div class="cell"><div class="tile t128 ${d.key==='A'?'anim':''}" data-play>${d.big(L)}</div><span class="cap">128 · 彩色</span></div>
+    <div class="cell"><div class="tile t32">${d.mid(L)}</div><span class="cap">32</span></div>
+    <div class="cell"><div class="tile t16">${d.small(L)}</div><span class="cap">16 专稿</span></div>
+    <div class="cell"><canvas class="zoom" width="16" height="16" data-svg="L"></canvas><span class="cap">16 实际像素 ×7</span></div>
+    <div class="cell"><div class="tile t128">${d.big(M)}</div><span class="cap">128 · 单色墨</span></div>
+    <div class="cell"><div class="tile t128 dk">${d.big(D)}</div><span class="cap">128 · 深底</span></div>
+  </div>
+  <div class="ctx">
+    <div class="tile t32">${d.mid(M)}</div>
+    <div class="tile t16">${d.small(M)}</div>
+    <div class="tile t32 dk">${d.mid(D)}</div>
+    <div class="tile t16 dk">${d.small(D)}</div>
+    <canvas class="zoom dk" width="16" height="16" data-svg="D"></canvas>
+    <div class="tabbar lt">${d.small(L)}<span>商衡SI · 工作台</span></div>
+    <div class="tabbar dk">${d.small(D)}<span>商衡SI · 工作台</span></div>
+    <div class="wm">${d.mid(L).replace(/width="32" height="32"/,'width="28" height="28"')}<b>商衡</b><i>SI</i></div>
+    <div class="wm dk">${d.mid(D).replace(/width="32" height="32"/,'width="28" height="28"')}<b>商衡</b><i>SI</i></div>
+    <div class="doc-head">${d.small(mono('#1B2433'),14)}<span>商衡SI · 审核报告</span></div>
+  </div>
+  <div class="pros"><div><h4>长处</h4>${d.pro}</div><div><h4>风险</h4>${d.con}</div></div>`;
+  root.appendChild(el);
+  // 16px 真实光栅化
+  el.querySelectorAll('canvas.zoom').forEach(cv=>{
+    const svg = d.small(cv.dataset.svg==='D'?D:L,16).replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" ');
+    const img = new Image();
+    img.onload = ()=>{ const g = cv.getContext('2d'); g.clearRect(0,0,16,16); g.drawImage(img,0,0,16,16); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+}
+document.querySelectorAll('[data-play].anim').forEach(t=>{
+  const play=()=>{ t.classList.remove('play'); void t.offsetWidth; t.classList.add('play'); };
+  t.addEventListener('click',play); play();
+});
+</script>
+</body>
+</html>

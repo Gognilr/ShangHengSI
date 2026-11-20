@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>商衡SI · 标志全套「衡线」</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="../../../../frontend/src/styles/fonts.css">
+<style>
+*{box-sizing:border-box;margin:0}
+body{background:#F3F6F9;color:#334155;font:14px/22px "SI Sans","Microsoft YaHei",sans-serif;padding:40px 48px 80px}
+h1{font-size:24px;line-height:32px;color:#0E1726;font-weight:600}
+.lead{color:#5E6B7E;margin:6px 0 32px;max-width:960px}
+section{background:#fff;border:1px solid #E1E6ED;border-radius:18px;padding:28px 32px;margin-bottom:24px;box-shadow:0 8px 20px -10px rgba(15,23,42,.12)}
+h2{font-size:18px;line-height:26px;color:#0E1726;font-weight:600;margin-bottom:4px}
+.sub{color:#5E6B7E;margin-bottom:20px}
+.row{display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap}
+.cell{display:flex;flex-direction:column;align-items:center;gap:10px}
+.cap{font-size:13px;color:#5E6B7E}
+.tile{display:flex;align-items:center;justify-content:center;border:1px solid #E1E6ED;border-radius:14px;background:#fff;padding:20px}
+.tile.dk{background:#0B0F14;border-color:#222B36}
+.tile.sunk{background:#EAEEF3}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+/* 留白示意 */
+.clear{position:relative;padding:0;width:240px;height:240px}
+.clear .zone{position:absolute;inset:24px;border:1px dashed #F2A20C;border-radius:4px}
+.clear .ink{position:absolute;inset:56px;outline:1px solid rgba(30,149,224,.45)}
+.clear img{position:absolute;inset:56px;width:128px;height:128px}
+.dont{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+.dont .tile{height:120px;position:relative}
+.dont .tile::after{content:"";position:absolute;right:10px;top:10px;width:18px;height:18px;border-radius:50%;background:#FFEEEF;border:1.5px solid #E5484D}
+table{border-collapse:collapse;width:100%}
+td,th{text-align:left;padding:10px 12px;border-bottom:1px solid #EDF1F5;font-weight:400}
+th{color:#5E6B7E;font-size:13px}
+/* 开场动效：横线自中向两边展开，星点随后弹亮，共 700ms */
+.mk .bar{transform-origin:12px 12px;transform-box:view-box}
+.mk .star{transform-origin:17.5px 4.5px;transform-box:view-box}
+.play .paper{animation:fade 240ms ease both}
+.play .bar{animation:barIn 520ms cubic-bezier(.22,1,.36,1) 60ms both}
+.play .star{animation:starIn 340ms cubic-bezier(.34,1.56,.64,1) 360ms both}
+@keyframes barIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes starIn{from{transform:scale(0) rotate(-30deg);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.tilt .bar{transform:rotate(-6deg)}
+.btn{font:inherit;font-size:13px;border:1px solid #E1E6ED;background:#fff;border-radius:10px;padding:4px 12px;cursor:pointer;color:#334155}
+.tab{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:10px 10px 0 0;font-size:13px;width:220px}
+</style>
+</head>
+<body>
+<h1>标志全套 · 方向 A「衡线」</h1>
+<p class="lead">一页文件，正中一条横线伸出纸边、保持水平：它是遮住敏感内容的脱敏条，是放平了称的秤杆，也是初审找出的那一行；右上角的灵紫星点是模型——它只在角上，看到的只是遮住后的文件。文件清单与使用规定见同目录 README.md。</p>
+
+<section>
+  <h2>图形 · 三种尺寸稿</h2>
+  <p class="sub">≥64px 用大稿（带纸内细线）；20～63px 用标准稿；≤20px 用 16 网格小稿（星点改圆点）。</p>
+  <div class="row">
+    <div class="cell"><div class="tile"><img src="mark-lg-color.svg" width="128" height="128" alt=""></div><span class="cap">大稿 128</span></div>
+    <div class="cell"><div class="tile"><img src="mark-lg-color.svg" width="96" height="96" alt=""></div><span class="cap">96 · 登录页</span></div>
+    <div class="cell"><div class="tile"><img src="mark-color.svg" width="44" height="44" alt=""></div><span class="cap">44 · 首页问候</span></div>
+    <div class="cell"><div class="tile"><img src="mark-color.svg" width="28" height="28" alt=""></div><span class="cap">28 · 侧栏</span></div>
+    <div class="cell"><div class="tile"><img src="mark-sm-color.svg" width="16" height="16" alt=""></div><span class="cap">小稿 16</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>三个版本：彩色 · 单色（墨）· 反白（深底）</h2>
+  <p class="sub">单色用于 Word 报告封面与页眉、打印件；反白用于深色界面。深色模式不是反色，青和紫各提亮一档。</p>
+  <div class="grid3">
+    <div class="tile" style="gap:24px"><img src="mark-lg-color.svg" width="96" alt=""><img src="mark-color.svg" width="32" alt=""><img src="mark-sm-color.svg" width="16" alt=""></div>
+    <div class="tile" style="gap:24px"><img src="mark-lg-mono.svg" width="96" alt=""><img src="mark-mono.svg" width="32" alt=""><img src="mark-sm-mono.svg" width="16" alt=""></div>
+    <div class="tile dk" style="gap:24px"><img src="mark-lg-inverse.svg" width="96" alt=""><img src="mark-inverse.svg" width="32" alt=""><img src="mark-sm-inverse.svg" width="16" alt=""></div>
+  </div>
+</section>
+
+<section>
+  <h2>字标组合（文字已转为路径）</h2>
+  <p class="sub">横排：图形 + 商衡 + SI，最小 96px 宽；竖排：图形在上。“SI” 与图形同色。</p>
+  <div class="grid3" style="margin-bottom:16px">
+    <div class="tile"><img src="wordmark-h-color.svg" height="36" alt=""></div>
+    <div class="tile"><img src="wordmark-h-mono.svg" height="36" alt=""></div>
+    <div class="tile dk"><img src="wordmark-h-inverse.svg" height="36" alt=""></div>
+  </div>
+  <div class="grid3">
+    <div class="tile"><img src="wordmark-v-color.svg" height="98" alt=""></div>
+    <div class="tile"><img src="wordmark-v-mono.svg" height="98" alt=""></div>
+    <div class="tile dk"><img src="wordmark-v-inverse.svg" height="98" alt=""></div>
+  </div>
+  <div class="row" style="margin-top:16px">
+    <div class="cell"><div class="tile"><img src="wordmark-h-color.svg" width="96" alt=""></div><span class="cap">最小 96px 宽</span></div>
+    <div class="cell"><div class="tile"><img src="wordmark-h-color.svg" height="28" alt=""></div><span class="cap">侧栏顶部（图形 28px）</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>应用图标与 favicon</h2>
+  <p class="sub">渐变只用在应用图标底块：深青到衡青，右上角一抹灵紫光。favicon 用小稿，深色标签栏下自动换亮一档。</p>
+  <div class="row">
+    <div class="cell"><img src="app-icon-512.png" width="160" alt=""><span class="cap">512 / 192 · any</span></div>
+    <div class="cell"><img src="app-icon-512-maskable.png" width="160" style="border-radius:50%" alt=""><span class="cap">512 maskable（圆形遮罩下）</span></div>
+    <div class="cell"><img src="apple-touch-icon-180.png" width="90" style="border-radius:20px" alt=""><span class="cap">180 · iOS</span></div>
+    <div class="cell"><img src="app-icon-192.png" width="48" alt=""><span class="cap">48</span></div>
+    <div class="cell"><div class="tab" style="background:#DEE3EA;color:#1F2937"><img src="mark-sm-color.svg" width="16" alt="">商衡SI · 工作台</div><span class="cap">浅色标签栏</span></div>
+    <div class="cell"><div class="tab" style="background:#202124;color:#E8EAED"><img src="mark-sm-inverse.svg" width="16" alt="">商衡SI · 工作台</div><span class="cap">深色标签栏</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>留白、动效与 404 彩蛋</h2>
+  <p class="sub">四周留白不小于横线高度的 2 倍（虚线框）。开场：横线从中间向两边展开，星点随后亮起，共 700ms；精简档直接显示终态。</p>
+  <div class="row">
+    <div class="cell"><div class="tile clear"><div class="zone"></div><div class="ink"></div><img src="mark-lg-color.svg" alt=""></div><span class="cap">琥珀虚线 = 最小留白</span></div>
+    <div class="cell"><div class="tile" id="anim" style="width:240px;height:240px"></div><button class="btn" id="replay">重放开场动效</button></div>
+    <div class="cell"><div class="tile tilt" id="tilt" style="width:240px;height:240px;flex-direction:column;gap:12px"></div><span class="cap">404：横线微斜，“这一页没找平”</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>不得</h2>
+  <p class="sub">拉伸、改色、加阴影、旋转（404 彩蛋除外）、放在花底上。</p>
+  <div class="dont">
+    <div class="tile"><img src="mark-color.svg" width="80" height="48" style="object-fit:fill" alt=""></div>
+    <div class="tile"><img src="mark-color.svg" width="56" style="filter:hue-rotate(160deg)" alt=""></div>
+    <div class="tile"><img src="mark-color.svg" width="56" style="filter:drop-shadow(3px 5px 4px rgba(0,0,0,.45))" alt=""></div>
+    <div class="tile"><img src="mark-color.svg" width="56" style="transform:rotate(18deg)" alt=""></div>
+    <div class="tile" style="background:repeating-linear-gradient(45deg,#FFD9A8 0 10px,#C9F0E6 10px 20px)"><img src="mark-color.svg" width="56" alt=""></div>
+  </div>
+</section>
+
+<section>
+  <h2>使用位置</h2>
+  <table>
+    <tr><th>位置</th><th>用哪一个</th><th>尺寸</th></tr>
+    <tr><td>侧栏顶部</td><td>wordmark-h（随主题彩色 / 反白），收起时只留图形</td><td>图形 28px</td></tr>
+    <tr><td>登录页品牌区</td><td>mark-lg-inverse（深色品牌区），带开场动效</td><td>96px</td></tr>
+    <tr><td>首页问候</td><td>mark（随主题），带开场动效</td><td>44px</td></tr>
+    <tr><td>浏览器标签</td><td>favicon.svg（自带深色适配）</td><td>16px</td></tr>
+    <tr><td>安装到桌面 / 手机</td><td>app-icon-192 / 512 / 512-maskable、apple-touch-icon-180</td><td>—</td></tr>
+    <tr><td>Word 报告封面与页眉</td><td>wordmark-h-mono / mark-mono</td><td>页眉高 10mm 内</td></tr>
+    <tr><td>404 页</td><td>mark-lg，横线旋转 −6°</td><td>128px</td></tr>
+  </table>
+</section>
+
+<script>
+const MARK = `<svg class="mk" viewBox="0 0 24 24" width="128" height="128" fill="none">
+<path class="paper" d="M12.5 2.5H8.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V10" stroke="#078A76" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path class="paper" d="M9.5 6.5h2M9.5 17.5h5" stroke="#A6EAD9" stroke-width="2" stroke-linecap="round"/>
+<rect class="bar" x="3" y="10" width="18" height="4" rx="2" fill="#078A76"/>
+<path class="star" d="M17.5 1.5c.3 1.9.9 2.6 3 3-2.1.4-2.7 1.1-3 3-.3-1.9-.9-2.6-3-3 2.1-.4 2.7-1.1 3-3z" fill="#6D5BF6" stroke="#6D5BF6" stroke-width=".8" stroke-linejoin="round"/></svg>`;
+const anim = document.getElementById('anim'); anim.innerHTML = MARK;
+const tilt = document.getElementById('tilt'); tilt.innerHTML = MARK.replace('width="128" height="128"','width="104" height="104"') + '<span style="font-size:16px;color:#0E1726;font-weight:600">这一页没找平</span>';
+const play = () => { anim.classList.remove('play'); void anim.offsetWidth; anim.classList.add('play'); };
+document.getElementById('replay').onclick = play; play();
+</script>
+</body>
+</html>
