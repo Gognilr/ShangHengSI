@@ -41,7 +41,7 @@ async function exportReport(row: HistoryItem) {
   if (exporting.value) return
   exporting.value = row.id
   try {
-    // 会话与旧审核任务一样：导出最新一轮的报告；仅本地校验的旧任务导出本地报告；标书初审导出初审疑点报告
+    // 会话与旧审核任务一样：导出最新一轮的报告；仅本地校验的旧任务导出本地报告；标书初审导出问题清单
     const result: SaveResult = row.kind === 'bid' ? await reportApi.bid(row.id)
       : row.status === 'completed_local' && row.kind === 'review' ? await reportApi.local(row.id)
       : row.latest_run_id ? await reportApi.run(row.latest_run_id) : 'cancelled'
@@ -197,7 +197,7 @@ onMounted(load)
         <template #default="{ row }">
           <el-button link type="primary" @click="open(row)">{{ openLabel(row) }}</el-button>
           <RowMore>
-            <el-dropdown-item v-if="canExport(row)" :disabled="!!exporting" @click="exportReport(row)">{{ row.kind === 'bid' ? '导出初审疑点报告' : '导出最新一轮报告' }}</el-dropdown-item>
+            <el-dropdown-item v-if="canExport(row)" :disabled="!!exporting" @click="exportReport(row)">{{ row.kind === 'bid' ? '导出问题清单' : '导出最新一轮报告' }}</el-dropdown-item>
             <el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item>
           </RowMore>
         </template>

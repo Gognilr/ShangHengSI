@@ -17,9 +17,9 @@ const items = ref<BidSummary[]>([]), total = ref(0), loading = ref(true), error 
 const tree = ref<BidFolderTree>({ folders: [], all: 0, unfiled: 0 }), categories = ref<BidCategory[]>([])
 const creating = ref(false), dialog = ref(false), dialogError = ref('')
 const STEPS = [
-  { no: '01', title: '招标文件与要求', desc: '开标前上传招标文件，确认关键参数与要求清单。' },
+  { no: '01', title: '招标文件与条款', desc: '开标前上传招标文件，确认 ★、否决与“必须 / 不得”条款。' },
   { no: '02', title: '投标文件', desc: '按投标人分组拖入；带密码的 PDF 就地输入密码。' },
-  { no: '03', title: '初审与报告', desc: '本机比对出不符合项与串标线索，核对后导出报告。' },
+  { no: '03', title: '初审与问题清单', desc: '开标时本机找出严重问题与串标线索，定位到原件页，导出问题清单。' },
 ]
 const STAGES = Object.entries(bidStageLabel) as [BidStage, string][]
 

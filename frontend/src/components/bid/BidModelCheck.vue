@@ -7,8 +7,8 @@ import SiSegmented from '@/components/ui/SiSegmented.vue'
 import BidStatus from '@/components/bid/BidStatus.vue'
 import BidSentDrawer from './BidSentDrawer.vue'
 
-// 模型核对（bid.md 3.2）：本地检查完成后后台准备片段；这里给出“片段模式确认”——只显示将发送的片段，
-// 按投标人分页签，可切 AI 视野；一个按钮确认并开始。发送中显示“模型核对 n / N 家”，结果写入要求响应矩阵（B-06）。
+// 模型补查（V35-E-01 改为可选）：只查 ★ 与否决条款中本机判断不了的；用户选择后才准备片段。
+// “片段模式确认”只显示将发送的片段，按投标人分页签，可切 AI 视野；发送中显示“模型补查 n / N 家”，结果并入问题清单。
 const props = defineProps<{ projectId: string; stateKey: string }>()
 const emit = defineEmits<{ changed: [] }>()
 const data = ref<BidModelView>(), error = ref(''), busy = ref(false), open = ref(false)
@@ -48,13 +48,13 @@ async function load() {
     if (data.value && (data.value.state !== next.state || data.value.progress.done !== next.progress.done)) emit('changed')
     data.value = next
     if (!tab.value && next.bidders.length) tab.value = next.bidders[0]!.id
-  } catch (e) { if (current === request && mounted) error.value = e instanceof ApiError ? e.message : '模型核对状态读取失败' }
+  } catch (e) { if (current === request && mounted) error.value = e instanceof ApiError ? e.message : '模型补查状态读取失败' }
   if (current === request) schedule()
 }
 watch(() => props.stateKey, () => { if (!busy.value) void load() }, { immediate: true })
 onBeforeUnmount(() => { mounted = false; ++request; clearTimeout(timer) })
 
-async function act(action: 'prepare' | 'prepare_second' | 'confirm' | 'cancel') {
+async function act(action: 'prepare' | 'confirm' | 'cancel') {
   ++request
   clearTimeout(timer)
   busy.value = true; error.value = ''
@@ -70,59 +70,51 @@ async function act(action: 'prepare' | 'prepare_second' | 'confirm' | 'cancel') 
 </script>
 
 <template>
-  <section v-if="data" class="model-check" aria-label="模型核对">
+  <section v-if="data" class="model-check" aria-label="模型补查">
     <BidSentDrawer v-model="sentOpen" :project-id="projectId" />
     <div class="bar">
       <ShieldCheck :size="16" :stroke-width="1.75" aria-hidden="true" />
-      <BidStatus v-if="ocrPending" tone="run" :label="`扫描页识别中 ${data.ocr!.done} / ${data.ocr!.total}，识别完成后自动准备模型核对`" />
+      <BidStatus v-if="ocrPending" tone="run" :label="`扫描页识别中 ${data.ocr!.done} / ${data.ocr!.total}，识别完成后可交模型补查`" />
       <template v-else-if="!data.state">
-        <p>“模型判断”类要求可由模型核对：只发送各家与要求最相关的片段，脱敏后发送，投标人只以代号出现。</p>
-        <el-button size="small" :loading="busy" @click="act('prepare')">准备模型核对</el-button>
+        <p>★ 与否决条款中本机判断不了的，可交模型补查（可选）：只发送各家与条款最相关的片段，脱敏后发送，投标人只以代号出现。</p>
+        <el-button size="small" :loading="busy" @click="act('prepare')">准备模型补查</el-button>
       </template>
       <BidStatus v-else-if="data.state === 'preparing'" tone="run" label="正在本机检索相关片段并脱敏，可先看本地检查结果" />
       <template v-else-if="(data.state === 'awaiting' || data.state === 'failed') && data.receipt">
         <p>
-          <span v-if="data.state === 'failed'" class="failed">模型核对未完成：{{ data.error }}。</span>
-          <strong v-if="data.second">二次核验 {{ data.receipt.second_calls }} 次。 </strong>
-          将发送 <b class="num">{{ data.receipt.snippets }}</b> 个脱敏片段，约 <b class="num">{{ data.receipt.chars }}</b> 字，保护 <b class="num">{{ data.receipt.protected }}</b> 处。<template v-if="!data.second">本次 <b class="num">{{ data.receipt.calls }}</b> 次调用。</template>（{{ remainingText }}）
+          <span v-if="data.state === 'failed'" class="failed">模型补查未完成：{{ data.error }}。</span>
+          将发送 <b class="num">{{ data.receipt.snippets }}</b> 个脱敏片段，约 <b class="num">{{ data.receipt.chars }}</b> 字，保护 <b class="num">{{ data.receipt.protected }}</b> 处。本次 <b class="num">{{ data.receipt.calls }}</b> 次调用。（{{ remainingText }}）
         </p>
         <div class="actions">
           <el-button size="small" text :aria-expanded="open" @click="open = !open">{{ open ? '收起片段' : '查看将发送的片段' }}</el-button>
-          <el-button v-if="data.state === 'failed'" size="small" text :loading="busy" @click="act(data.second ? 'prepare_second' : 'prepare')">重新准备</el-button>
+          <el-button v-if="data.state === 'failed'" size="small" text :loading="busy" @click="act('prepare')">重新准备</el-button>
           <el-button v-else size="small" text :disabled="busy" @click="act('cancel')">不发送</el-button>
-          <el-button size="small" :loading="busy" :disabled="notEnough" @click="act('confirm')">{{ retry ? '继续未完成的部分' : data.second ? '确认并开始二次核验' : '确认并开始模型核对' }}</el-button>
+          <el-button size="small" :loading="busy" :disabled="notEnough" @click="act('confirm')">{{ retry ? '继续未完成的部分' : '确认并开始模型补查' }}</el-button>
         </div>
         <p v-if="notEnough" class="error">剩余调用次数不足，请联系管理员。</p>
       </template>
       <template v-else-if="data.state === 'failed'">
-        <p class="failed">模型核对未完成：{{ data.error }}</p>
-        <el-button size="small" :loading="busy" @click="act(data.second ? 'prepare_second' : 'prepare')">重新准备</el-button>
+        <p class="failed">模型补查未完成：{{ data.error }}</p>
+        <el-button size="small" :loading="busy" @click="act('prepare')">重新准备</el-button>
       </template>
-      <BidStatus v-else-if="data.state === 'running'" tone="run" :label="data.second ? '正在进行二次核验，结果随后补上' : `模型核对 ${data.progress.done} / ${data.progress.total} 家，结果随后补上`" />
+      <BidStatus v-else-if="data.state === 'running'" tone="run" :label="`模型补查 ${data.progress.done} / ${data.progress.total} 家，结果随后补上`" />
       <template v-else-if="data.state === 'done'">
-        <BidStatus tone="ok" :label="data.second ? '二次核验结束，结果见初审结论' : `模型核对已完成 ${data.progress.total} 家，判断见各家问题与要求响应`" />
-        <el-button class="again" size="small" text :loading="busy" @click="act(data.second ? 'prepare_second' : 'prepare')">重新准备</el-button>
+        <BidStatus tone="ok" :label="`模型补查已完成 ${data.progress.total} 家，结果已并入问题清单`" />
+        <el-button class="again" size="small" text :loading="busy" @click="act('prepare')">重新准备</el-button>
       </template>
-      <el-button v-if="data.second_available" size="small" :loading="busy" @click="act('prepare_second')">准备二次核验</el-button>
       <el-button v-if="(data.sent_count ?? 0) > 0 || ['done', 'running', 'failed'].includes(data.state ?? '')" text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
     </div>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <p v-if="open && data.receipt" class="notes">发送内容限于脱敏文字，原件、图片、报价金额和文件名留在本机。</p>
     <ul v-if="open && data.receipt?.notes.length" class="notes"><li v-for="note in data.receipt.notes" :key="note">{{ note }}</li></ul>
 
-    <template v-if="open && data.receipt">
-      <article v-for="(text, i) in data.similar_preview" :key="i" class="snippet">
-        <header>相似段落共同来源核验 {{ i + 1 }}</header>
-        <p class="text">{{ text }}</p>
-      </article>
-    </template>
     <div v-if="open && current && (data.state === 'awaiting' || data.state === 'failed')" class="preview">
       <div class="preview-head">
         <SiSegmented v-model="tab" :options="tabs" size="small" ariaLabel="投标人" />
         <SiSegmented v-model="view" :options="viewOptions" size="small" ariaLabel="片段视图" />
       </div>
       <button type="button" class="si-overline toggle" :aria-expanded="showReqs" @click="showReqs = !showReqs">
-        <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: showReqs }" aria-hidden="true" />一同发送的要求<span class="num">{{ data.requirements.length }}</span>
+        <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: showReqs }" aria-hidden="true" />一同发送的条款<span class="num">{{ data.requirements.length }}</span>
       </button>
       <ol v-if="showReqs" class="reqs">
         <li v-for="r in data.requirements" :key="r.id"><span class="code num">{{ r.n }}</span><span class="hint">{{ bidGroupLabel[r.group] }}</span><span>{{ view === 'ai' ? r.ai_text : r.text }}</span></li>

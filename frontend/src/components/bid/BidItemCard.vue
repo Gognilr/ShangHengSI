@@ -2,17 +2,15 @@
 import { inject, ref } from 'vue'
 import { ChevronRight } from '@lucide/vue'
 import { bidApi, type BidItem, type BidPlace } from '@/api/bid'
-import BidReviewBar from './BidReviewBar.vue'
 import SimilarMap from './charts/SimilarMap.vue'
 import { bidResultsKey, bidTypeLabel, levelTone, sameSpans } from './results'
 
-// 一条问题或线索：标题行（等级色点、类型、条文项、涉及投标人、核对状态），展开为证据、并排对照与核对栏
-// bare：只显示证据（逐条核对左栏），标题与核对按钮由外层给出
-const props = defineProps<{ item: BidItem; hideWho?: boolean; bare?: boolean; readonly?: boolean; rowIndex?: number }>()
+// 一条问题或线索：标题行（等级色点、类型、条文项、涉及投标人），展开为证据与并排对照
+// bare：只显示证据，标题由外层给出
+const props = defineProps<{ item: BidItem; hideWho?: boolean; bare?: boolean; rowIndex?: number }>()
 const ctx = inject(bidResultsKey)!
 const open = ref(false)
 const sectionLabel: Record<string, string> = { tech: '技术参数章节，已降一档', price: '报价章节，已升一档' }
-const statusMark: Record<string, string> = { verified: '已核实', excluded: '已排除' }
 
 // 条文项：线索存“（四）”，问题存“第五十一条（五）”或“（三）”
 function article() {
@@ -25,14 +23,13 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
 </script>
 
 <template>
-  <article class="item" :class="{ excluded: item.review_status === 'excluded', bare }">
+  <article class="item" :class="{ bare }">
     <button v-if="!bare" type="button" class="head" :aria-expanded="open" @click="open = !open">
       <ChevronRight :size="14" :stroke-width="1.75" class="chev" :class="{ turned: open }" aria-hidden="true" />
       <span class="main">
         <span class="title" :class="levelTone(item.level)">{{ item.title }}</span>
         <span class="tags">{{ bidTypeLabel[item.type] ?? item.type }}<template v-if="item.source === 'model'"> · 模型</template><template v-if="item.article"> · {{ article() }}</template><template v-if="!hideWho"><i aria-hidden="true">|</i><span class="who">{{ who() }}</span></template></span>
       </span>
-      <span v-if="statusMark[item.review_status]" class="status" :class="item.review_status">{{ statusMark[item.review_status] }}</span>
     </button>
     <div v-if="open || bare" class="detail">
       <SimilarMap v-if="rowIndex === undefined && item.type === 'similar' && item.map?.segs.length" class="map" :map="item.map" :a="item.bidder_ids[0]!" :b="item.bidder_ids[1]!" :labels="ctx.shorts.value" :file-names="ctx.fileNames.value" />
@@ -69,7 +66,6 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
         </dd>
       </dl>
       <p v-if="item.normal && rowIndex === undefined" class="hint">常见的正常原因：{{ item.normal }}</p>
-      <BidReviewBar v-if="!bare && !readonly" class="bar" :review="item" :veto="item.level === 'veto'" @change="patch => ctx.reviewItem(item.id, patch)" />
     </div>
   </article>
 </template>
@@ -86,9 +82,6 @@ function pageOf(list: BidPlace[]) { return list.find(p => p.page && ctx.renderab
 .tags { font: var(--si-font-meta); color: var(--si-ink-3); }
 .tags i { margin: 0 8px; font-style: normal; color: var(--si-ink-5); }
 .who { color: var(--si-ink-2); }
-.status { flex: none; margin-top: 2px; font: var(--si-font-label-sm); color: var(--si-ink-3); }
-.status.verified { color: var(--si-ink-1); }
-.excluded .title, .excluded .tags { color: var(--si-ink-4); text-decoration: line-through; text-decoration-color: var(--si-ink-5); }
 .detail { padding: 0 0 16px 24px; }
 .bare { border-bottom: 0; }
 .bare .detail { padding: 0; }
@@ -111,5 +104,4 @@ mark { background: var(--si-hl-medium); color: inherit; border-radius: 2px; }
 .prices .num { text-align: right; }
 .hint { font: var(--si-font-meta); color: var(--si-ink-3); }
 .map { margin-bottom: 16px; max-width: 880px; }
-.bar { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--si-hair); }
 </style>

@@ -7,7 +7,7 @@ import BidFiles from './BidFiles.vue'
 import BidOpeningInput from './BidOpeningInput.vue'
 
 // 一家投标人一张对象卡：代号 · 名称（点铅笔就地改）· 文件数 · 加入文件 · 更多；整张卡可拖入文件
-// 唱标价（选填，V34-B-06e）：开标时边唱标边录，初审前即可录；初审开始后在报价分析页修改
+// 唱标价（选填，V34-B-06e）：开标时边唱标边录，初审前即可录；初审完成后需“返回修改材料”再改（报价分析页已撤下，F-05 重排）
 const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string>; openingFailed?: string; suggest?: string; rateQuote?: boolean }>()
 const emit = defineEmits<{ rename: [name: string]; remove: []; pick: []; drop: [event: DragEvent]; password: [fid: string, password: string]; removeFile: [fid: string]; opening: [body: BidOpeningPriceInput, done: () => void]; adopt: [name: string] }>()
 const pricing = ref(false)

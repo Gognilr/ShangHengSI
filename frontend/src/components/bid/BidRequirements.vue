@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { Check, Pencil, Plus, RotateCcw, Sparkles, Trash2 } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import {
-  bidApi, bidGroupLabel, bidMethodLabel, bidSourceLabel,
-  type BidGroup, type BidLoc, type BidMethod, type BidParameters, type BidRequirement, type BidRequirements,
+  bidApi, bidGroupLabel, bidMethodLabel, bidParamLabel, bidSourceLabel,
+  type BidGroup, type BidLoc, type BidMethod, type BidParam, type BidRequirement, type BidRequirements,
 } from '@/api/bid'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import BidStatus from './BidStatus.vue'
@@ -13,25 +13,12 @@ import BidSentDrawer from './BidSentDrawer.vue'
 import BidTenderText from './BidTenderText.vue'
 import BidInvitees from './BidInvitees.vue'
 
-/** 第 1 步右半：关键参数、要求清单与完整性计数（bid.md 2.2）。快捷键：J / K 上下、X 停用、E 改文字。 */
+/** 第 1 步：受邀单位、条款清单与完整性计数（V35-E-01：关键参数撤下，★ / 否决条款上带比对参数）。快捷键：J / K 上下、X 停用、E 改文字。 */
 const props = defineProps<{ projectId: string; policy: 'ai' | 'local_only'; disabled: boolean; tenderKey: string }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const data = ref<BidRequirements>(), error = ref(''), saving = ref(false)
-const emptyParams: BidParameters = {
-  ceiling: null, quote_mode: 'fixed', rate_limit: null, currency: 'CNY', validity_days: null, deposit: null, deposit_forms: '',
-  consortium: null, tax_included: null, agency: '',
-  construction_max: null, delivery_max: null, warranty_min: null, defect_min: null,
-  performance_from: null, performance_until: null, performance_amount: null, performance_count: null,
-}
-const params = reactive({ ...emptyParams })
-const termFields = [
-  { key: 'construction_max', label: '工期上限', example: '如 120 日历天' },
-  { key: 'delivery_max', label: '交货期上限', example: '如 20 工作日' },
-  { key: 'warranty_min', label: '质保期下限', example: '如 24 个月' },
-  { key: 'defect_min', label: '缺陷责任期下限', example: '如 2 年' },
-] as const
-const paramsDirty = ref(false), paramError = ref('')
+const paramEdit = ref<string | null>(null), paramDraft = ref<BidParam>({})
 const view = ref<'original' | 'ai'>('original'), focus = ref<BidLoc | null>(null)
 const current = ref<string | null>(null), editing = ref<string | null>(null), draft = ref('')
 const sentOpen = ref(false)
@@ -39,25 +26,15 @@ const adding = ref<{ group: BidGroup; text: string; method: BidMethod; locs: Bid
 const showMissing = ref<'star' | 'veto' | null>(null)
 let timer: ReturnType<typeof setTimeout> | undefined, generation = 0
 
-const groupOrder: BidGroup[] = ['veto', 'substantive', 'qualification', 'pricing', 'validity', 'signing', 'format']
+const groupOrder: BidGroup[] = ['veto', 'substantive', 'qualification', 'pricing', 'validity', 'signing', 'general', 'format']
 const grouped = computed(() => groupOrder.map(g => ({ group: g, items: (data.value?.items ?? []).filter(i => i.group === g) })).filter(g => g.items.length))
 const flat = computed(() => grouped.value.flatMap(g => g.items))
 const covered = computed(() => (data.value?.items ?? []).filter(i => i.enabled).flatMap(i => i.locs))
 const extracting = computed(() => data.value?.extract_state === 'redacting' || data.value?.extract_state === 'extracting')
 const locked = computed(() => props.disabled || saving.value || extracting.value)
-const triOptions = [{ label: '未写明', value: 'null' }, { label: '是', value: 'true' }, { label: '否', value: 'false' }]
 const viewOptions: { label: string; value: 'original' | 'ai' }[] = [{ label: '原文', value: 'original' }, { label: 'AI 视野', value: 'ai' }]
-const tri = (v: boolean | null) => String(v)
-const fromTri = (v: string) => (v === 'null' ? null : v === 'true')
-// 长金额加千分位，便于核对（只做显示，提交仍是原字符串）
-function grouping(v: string | null) {
-  const m = /^(\d+)(\.\d+)?$/.exec((v ?? '').trim())
-  return m && m[1]!.length > 4 ? m[1]!.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (m[2] ?? '') : ''
-}
-
 function accept(d: BidRequirements) {
   data.value = d
-  if (!paramsDirty.value) Object.assign(params, emptyParams, d.parameters)
   if (timer) clearTimeout(timer)
   timer = extracting.value ? setTimeout(() => void load(), 2000) : undefined
   if (d.extract_state !== 'awaiting' && view.value === 'ai') view.value = 'original'
@@ -65,7 +42,7 @@ function accept(d: BidRequirements) {
 async function load() {
   const g = generation
   try { const d = await bidApi.requirements(props.projectId); if (g === generation) accept(d) }
-  catch (e) { if (g === generation) error.value = e instanceof ApiError ? e.message : '要求清单读取失败' }
+  catch (e) { if (g === generation) error.value = e instanceof ApiError ? e.message : '条款清单读取失败' }
 }
 watch(() => [props.projectId, props.tenderKey], () => { generation++; void load() }, { immediate: true })
 onBeforeUnmount(() => { generation++; if (timer) clearTimeout(timer) })
@@ -78,16 +55,21 @@ async function act(action: () => Promise<BidRequirements>) {
   finally { saving.value = false }
 }
 
-async function saveParams() {
-  paramError.value = ''
-  const before = error.value
-  paramsDirty.value = false
-  if (!await act(() => bidApi.parameters(props.projectId, { ...params }))) { paramsDirty.value = true; paramError.value = error.value; error.value = before }
-}
 // 乐观更新：开关与检查方式立即生效，失败时由重新读取回滚
-async function patch(item: BidRequirement, body: Partial<Pick<BidRequirement, 'group' | 'text' | 'method' | 'enabled'>>) {
+async function patch(item: BidRequirement, body: Partial<Pick<BidRequirement, 'group' | 'text' | 'method' | 'enabled' | 'param'>>) {
   Object.assign(item, body)
   if (!await act(() => bidApi.patchRequirement(props.projectId, item.id, body))) void load()
+}
+// ★ / 否决条款的比对参数：显示在条款下，可改（空即不比对）
+function paramText(item: BidRequirement) {
+  const parts = Object.entries(item.param ?? {}).map(([k, v]) => `${bidParamLabel[k] ?? k} ${v ?? '未写明'}`)
+  return parts.join(' · ')
+}
+function startParam(item: BidRequirement) { if (!locked.value) { paramEdit.value = item.id; paramDraft.value = { ...(item.param ?? {}) } } }
+async function saveParam(item: BidRequirement) {
+  const body = Object.fromEntries(Object.entries(paramDraft.value).map(([k, v]) => [k, v === '' ? null : v]))
+  paramEdit.value = null
+  if (!await act(() => bidApi.patchRequirement(props.projectId, item.id, { param: body }))) void load()
 }
 function startEdit(item: BidRequirement) { if (!locked.value) { editing.value = item.id; draft.value = item.text } }
 async function saveEdit(item: BidRequirement) {
@@ -104,7 +86,7 @@ function guessGroup(text: string): BidGroup {
   if (/有效期|保证金|保函/.test(text)) return 'validity'
   if (/盖章|签字|签章|公章|授权委托|签名|骑缝/.test(text)) return 'signing'
   if (/资质|资格|营业执照|业绩|许可证|认证|信誉|财务|社保|联合体|注册资本|失信/.test(text)) return 'qualification'
-  return 'substantive'
+  return 'general'
 }
 function startAdd(loc?: BidLoc, text = '') { adding.value = { group: guessGroup(text), text, method: props.policy === 'ai' ? 'model' : 'manual', locs: loc ? [loc] : [] } }
 async function saveAdd() {
@@ -113,7 +95,7 @@ async function saveAdd() {
   if (await act(() => bidApi.addRequirement(props.projectId, body))) adding.value = null
 }
 async function reextract() {
-  try { await ElMessageBox.confirm('按当前招标文件重新抽取：手工加入的要求保留，其余（含模型补充与修改过的行）重建。', '重新抽取要求清单', { confirmButtonText: '重新抽取', cancelButtonText: '取消' }) }
+  try { await ElMessageBox.confirm('按当前招标文件重新抽取：手工加入的条款保留，其余（含模型补充与修改过的行）重建。', '重新抽取条款清单', { confirmButtonText: '重新抽取', cancelButtonText: '取消' }) }
   catch { return }
   await act(() => bidApi.reextract(props.projectId))
 }
@@ -160,50 +142,21 @@ const notEnough = computed(() => {
   <div class="reqs" @keydown="onKey">
     <el-alert v-if="error" class="alert" :title="error" type="error" show-icon @close="error = ''" />
     <template v-if="data">
-      <!-- 关键参数 -->
-      <section class="params" aria-labelledby="params-title">
-        <div class="section-head">
-          <h2 id="params-title" class="si-overline">关键参数</h2>
-          <span class="hint">{{ data.parameters_confirmed ? '已核对' : '系统预填，请核对改正' }}</span>
-        </div>
-        <div class="param-grid" @input="paramsDirty = true">
-          <label><span>报价形态</span><el-select v-model="params.quote_mode" aria-label="报价形态" :disabled="locked" @change="params.rate_limit = null; paramsDirty = true">
-            <el-option label="固定总价" value="fixed" /><el-option label="费率" value="rate" /><el-option label="下浮率" value="discount" />
-          </el-select></label>
-          <label v-if="params.quote_mode === 'fixed'" key="amount-limit"><span>最高限价<i v-if="grouping(params.ceiling)" class="grouped num">{{ grouping(params.ceiling) }}</i></span><el-input v-model="params.ceiling" :disabled="locked" placeholder="未写明" class="num"><template #append><el-select v-model="params.currency" :disabled="locked" style="width: 96px" aria-label="币种" @change="paramsDirty = true"><el-option label="人民币" value="CNY" /><el-option label="美元" value="USD" /><el-option label="欧元" value="EUR" /><el-option label="港币" value="HKD" /></el-select></template></el-input></label>
-          <label v-else key="rate-limit"><span>{{ params.quote_mode === 'discount' ? '最低下浮率（%）' : '最高费率（%）' }}</span><el-input v-model="params.rate_limit" :disabled="locked" placeholder="如 8" maxlength="16" class="num" /></label>
-          <label><span>投标有效期（天）</span><el-input-number v-model="params.validity_days" :disabled="locked" :min="1" :max="3650" :controls="false" placeholder="未写明" @change="paramsDirty = true" /></label>
-          <label><span>保证金（元）<i v-if="grouping(params.deposit)" class="grouped num">{{ grouping(params.deposit) }}</i></span><el-input v-model="params.deposit" :disabled="locked" placeholder="未写明" class="num" /></label>
-          <label><span>招标代理机构</span><el-input v-model="params.agency" :disabled="locked" maxlength="255" placeholder="选填，填写机构全称" /></label>
-          <label><span>保证金形式</span><el-input v-model="params.deposit_forms" :disabled="locked" maxlength="100" placeholder="如 银行保函、电汇" /></label>
-          <div class="field"><span>接受联合体</span><SiSegmented :model-value="tri(params.consortium)" :options="triOptions" size="small" ariaLabel="是否接受联合体" @update:model-value="(v: string) => { params.consortium = fromTri(v); paramsDirty = true }" /></div>
-          <div v-if="params.quote_mode === 'fixed'" class="field"><span>报价含税</span><SiSegmented :model-value="tri(params.tax_included)" :options="triOptions" size="small" ariaLabel="报价是否含税" @update:model-value="(v: string) => { params.tax_included = fromTri(v); paramsDirty = true }" /></div>
-        </div>
-        <div class="param-grid local-params" @input="paramsDirty = true">
-          <label v-for="term in termFields" :key="term.key">
-            <span>{{ term.label }}</span>
-            <el-input v-model="params[term.key]" :disabled="locked" :placeholder="term.example" maxlength="24" />
-          </label>
-          <label><span>类似业绩最低份数</span><el-input-number v-model="params.performance_count" :disabled="locked" :min="1" :max="999" :precision="0" :controls="false" placeholder="未写明" @change="paramsDirty = true" /></label>
-          <label><span>类似业绩单项最低金额（人民币元）</span><el-input v-model="params.performance_amount" :disabled="locked" class="num" maxlength="32" placeholder="未写明" /></label>
-          <label><span>类似业绩签订起日（含）</span><el-input v-model="params.performance_from" :disabled="locked" class="num" maxlength="10" placeholder="年-月-日" /></label>
-          <label><span>类似业绩签订止日（含）</span><el-input v-model="params.performance_until" :disabled="locked" class="num" maxlength="10" placeholder="年-月-日" /></label>
-        </div>
-        <p v-if="paramError" class="error" role="alert">{{ paramError }}</p>
-        <div v-if="paramsDirty" class="param-actions"><el-button size="small" @click="paramsDirty = false; Object.assign(params, emptyParams, data.parameters)">还原</el-button><el-button size="small" type="primary" :loading="saving" @click="saveParams">保存参数</el-button></div>
+      <section class="params" aria-labelledby="invitees-title">
+        <div class="section-head"><h2 id="invitees-title" class="si-overline">受邀投标单位</h2></div>
         <BidInvitees :items="data.invitees" :edited="data.invitees_edited" :disabled="locked" @save="saveInvitees" @locate="(l: BidLoc) => { focus = l }" />
       </section>
 
-      <!-- 要求清单：左原文，右清单 -->
+      <!-- 条款清单：左原文，右清单 -->
       <div class="section-head list-head">
-        <h2 class="si-overline">要求清单 <span class="num">{{ data.items.filter(i => i.enabled).length }} / {{ data.items.length }}</span></h2>
+        <h2 class="si-overline">条款清单（★、否决、必须 / 不得） <span class="num">{{ data.items.filter(i => i.enabled).length }} / {{ data.items.length }}</span></h2>
         <div class="list-tools">
           <SiSegmented v-if="data.extract_state === 'awaiting'" v-model="view" :options="viewOptions" size="small" ariaLabel="画布视图" />
           <el-button size="small" text :disabled="locked" @click="reextract"><RotateCcw :size="14" :stroke-width="1.75" />重新抽取</el-button>
-          <el-button size="small" :disabled="locked" @click="startAdd()"><Plus :size="14" :stroke-width="1.75" />添加要求</el-button>
+          <el-button size="small" :disabled="locked" @click="startAdd()"><Plus :size="14" :stroke-width="1.75" />添加条款</el-button>
         </div>
       </div>
-      <p v-if="data.tender_changed" class="notice">招标文件有变化（加入或移除了文件）。需要时点“重新抽取”，手工加入的要求会保留。</p>
+      <p v-if="data.tender_changed" class="notice">招标文件有变化（加入或移除了文件）。需要时点“重新抽取”，手工加入的条款会保留。</p>
 
       <div class="split">
         <BidTenderText class="left" :project-id="projectId" :view="view" :reload-key="`${tenderKey}:${data.extract_state}`" :focus="focus" :covered="covered" @add="(loc, text) => startAdd(loc, text)" />
@@ -250,7 +203,7 @@ const notEnough = computed(() => {
 
           <BidSentDrawer v-model="sentOpen" :project-id="projectId" />
           <div v-if="adding" class="add-form">
-            <el-input v-model="adding.text" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="2000" placeholder="要求文字" aria-label="新要求文字" autofocus />
+            <el-input v-model="adding.text" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="2000" placeholder="条款文字" aria-label="新条款文字" autofocus />
             <div class="add-row">
               <el-select v-model="adding.group" size="small" aria-label="分组" style="width: 150px"><el-option v-for="g in groupOrder" :key="g" :label="bidGroupLabel[g]" :value="g" /></el-select>
               <el-select v-model="adding.method" size="small" aria-label="检查方式" style="width: 110px"><el-option v-for="(label, m) in bidMethodLabel" :key="m" :label="label" :value="m" :disabled="m === 'model' && policy === 'local_only'" /></el-select>
@@ -268,6 +221,16 @@ const notEnough = computed(() => {
                 <div class="body">
                   <el-input v-if="editing === item.id" v-model="draft" type="textarea" :autosize="{ minRows: 1, maxRows: 6 }" maxlength="2000" autofocus @click.stop @keydown.enter.exact.prevent="saveEdit(item)" @keydown.esc="editing = null" @blur="saveEdit(item)" />
                   <p v-else class="text"><span class="num">{{ item.seq }}.</span> {{ item.text }}</p>
+                  <p v-if="item.param_kind && paramEdit !== item.id" class="meta param" @click.stop>
+                    <span>比对参数：{{ paramText(item) }}</span>
+                    <button type="button" class="link" :disabled="locked" @click="startParam(item)">修改</button>
+                  </p>
+                  <div v-if="paramEdit === item.id" class="param-edit" @click.stop>
+                    <label v-for="(_v, k) in paramDraft" :key="k"><span>{{ bidParamLabel[k] ?? k }}</span>
+                      <el-input v-model="paramDraft[k] as string" size="small" maxlength="32" :placeholder="String(k).includes('_from') || String(k).includes('_until') ? '年-月-日' : '未写明'" /></label>
+                    <el-button size="small" text @click="paramEdit = null">取消</el-button>
+                    <el-button size="small" type="primary" :disabled="locked" @click="saveParam(item)">保存</el-button>
+                  </div>
                   <p class="meta">
                     <span :class="['source', item.source]">{{ bidSourceLabel[item.source] }}</span>
                     <span v-if="item.file" class="file" :title="item.file">{{ item.file }}</span>
@@ -290,10 +253,10 @@ const notEnough = computed(() => {
       <footer class="foot">
         <BidStatus v-if="data.stage !== 'preparing'" tone="ok" label="清单已确认，项目待开标；之后仍可修改" />
         <span v-else class="hint">确认后项目进入“待开标”。</span>
-        <el-button type="primary" :disabled="locked || paramsDirty" @click="confirmList">{{ data.stage === 'preparing' ? '确认参数与清单' : '重新确认' }}</el-button>
+        <el-button type="primary" :disabled="locked" @click="confirmList">{{ data.stage === 'preparing' ? '确认清单' : '重新确认' }}</el-button>
       </footer>
     </template>
-    <p v-else-if="!error" class="hint" role="status">正在读取要求清单…</p>
+    <p v-else-if="!error" class="hint" role="status">正在读取条款清单…</p>
   </div>
 </template>
 
@@ -302,12 +265,8 @@ const notEnough = computed(() => {
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--si-hair-strong); }
 .section-head .si-overline { margin: 0; }
 .params { margin-bottom: 32px; }
-.param-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 24px; }
-.param-grid label, .param-grid .field { display: flex; flex-direction: column; gap: 6px; font: var(--si-font-meta); color: var(--si-ink-3); }
-.param-grid .el-input-number { width: 100%; }
-.local-params { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--si-hair); }
-.grouped { margin-left: 8px; font-style: normal; color: var(--si-ink-2); }
-.param-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.param-edit { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-top: 6px; }
+.param-edit label { display: flex; flex-direction: column; gap: 4px; width: 150px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .list-head .si-overline .num { margin-left: 6px; color: var(--si-ink-4); }
 .list-tools { display: flex; align-items: center; gap: 8px; }
 .list-tools .el-button svg { margin-right: 4px; }
@@ -350,5 +309,5 @@ const notEnough = computed(() => {
 .keys { margin: 8px 0 0; }
 .foot { display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--si-hair); }
 .error { margin: 8px 0 0; color: var(--si-danger-ink); font: var(--si-font-meta); }
-@media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); height: auto; } .left { height: 50vh; border-right: 0; } .param-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); height: auto; } .left { height: 50vh; border-right: 0; } }
 </style>

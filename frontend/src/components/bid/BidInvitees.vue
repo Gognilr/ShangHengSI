@@ -3,7 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import { LocateFixed, Pencil, Plus, X } from '@lucide/vue'
 import { bidInviteeSourceLabel, type BidInvitee, type BidLoc } from '@/api/bid'
 
-/** 第 1 步关键参数下的“受邀投标单位”（V34-B-01b）：本地规则识别，可改、可删、可补；改过后重新抽取不覆盖。 */
+/** 第 1 步的“受邀投标单位”（V34-B-01b）：本地规则识别，可改、可删、可补；改过后重新抽取不覆盖。 */
 const props = defineProps<{ items: BidInvitee[]; edited: boolean; disabled: boolean }>()
 const emit = defineEmits<{ save: [names: string[]]; locate: [loc: BidLoc] }>()
 const adding = ref(false), draft = ref(''), editing = ref<number | null>(null), editDraft = ref('')

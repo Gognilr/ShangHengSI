@@ -35,24 +35,13 @@ const bidFiles = computed(() => project.value?.files.filter(f => f.bidder_id) ??
 const filesOf = (bidder: string) => project.value?.files.filter(f => f.bidder_id === bidder) ?? []
 const rowErrors = reactive<Record<string, string>>({})  // 密码错误等提示显示在对应文件行，不只在页顶
 const adding = ref(false), newName = ref(''), sentOpen = ref(false)
-const auth = useAuthStore(), exporting = ref(false), clarifying = ref(false)
+const auth = useAuthStore(), exporting = ref(false)
 async function exportReport() {
   if (exporting.value) return
   exporting.value = true
   try { await reportApi.bid(id.value, 'full') }
   catch (e) { error.value = e instanceof ApiError ? e.message : '导出失败，请重试' }
   finally { exporting.value = false }
-}
-async function exportClarification(bidderId: string) {
-  if (clarifying.value) return
-  clarifying.value = true
-  error.value = ''
-  const current = generation
-  try { await reportApi.bidClarification(id.value, bidderId) }
-  catch (e) {
-    if (current === generation) error.value = e instanceof ApiError ? e.message : '澄清通知书导出失败，请重试'
-  }
-  finally { clarifying.value = false }
 }
 const picker = ref<HTMLInputElement>(), folders = ref<HTMLInputElement>(), target = ref<string>(), targetName = ref<string>()
 // 受邀单位名单（V34-B-01b）：名单中尚无分组的单位显示为待交卡片，拖入文件时才建分组；已有分组只是简称时提示改用全称
@@ -77,7 +66,7 @@ const grouped = ref<{ original: string; name: string; files: File[] }[]>([])
 let timer: ReturnType<typeof setTimeout> | undefined
 let generation = 0, edits = 0  // edits：轮询结果晚于修改返回时丢弃，避免旧状态覆盖新状态
 
-// 四步条：前两步按材料是否齐全打勾；后两步在要求清单与初审完成后开放
+// 四步条：前两步按材料是否齐全打勾；后两步在条款清单与初审完成后开放
 const steps = computed(() => {
   const p = project.value
   const tenderDone = !!tenderFiles.value.length && tenderFiles.value.every(f => f.state === 'done') && p?.stage !== 'preparing'
@@ -146,11 +135,11 @@ async function setPassword(fid: string, password: string) {
   await mutate(() => bidApi.password(id.value, fid, password))
   if (error.value) { rowErrors[fid] = error.value; error.value = '' }
 }
-// 开始初审：要求清单确认、文件解析完、至少一家有投标文件
+// 开始初审：条款清单确认、文件解析完、至少一家有投标文件
 const startBlock = computed(() => {
   const p = project.value
   if (!p) return '…'
-  if (p.stage !== 'ready') return locked.value ? '' : '先在第 1 步确认关键参数与要求清单'
+  if (p.stage !== 'ready') return locked.value ? '' : '先在第 1 步确认条款清单'
   if (p.busy || p.files.some(f => f.state === 'waiting')) return '文件还在解析'
   if (!bidFiles.value.some(f => f.state === 'done')) return '请先加入投标文件'
   return ''
@@ -160,7 +149,7 @@ const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?
 const modelKey = computed(() => `${project.value?.model?.state}:${project.value?.model?.done}`)
 const modelNote = computed(() => {
   const m = project.value?.model
-  return m?.state === 'running' ? ` · 模型核对 ${m.done} / ${m.total} 家` : m?.state === 'done' ? ` · 模型核对 ${m.total} 家已完成` : ''
+  return m?.state === 'running' ? ` · 模型补查 ${m.done} / ${m.total} 家` : m?.state === 'done' ? ` · 模型补查 ${m.total} 家已完成` : ''
 })
 const ocrNote = computed(() => {
   const o = project.value?.check?.ocr
@@ -257,11 +246,11 @@ async function confirmGroups() {
   if (error.value) { groupError.value = error.value; error.value = '' }
   else { groupDialog.value = false; grouped.value = []; step.value = 1 }
 }
-// 返回修改材料（V34Q-19 留给 B-06）：退回“待开标”，重新初审时沿用核对状态与备注；模型核对需重新确认发送
+// 返回修改材料：退回“待开标”，重新初审时沿用已标的“不是问题”；模型补查需重新确认发送
 const reopenBlock = computed(() => ['preparing', 'running'].includes(project.value?.model.state ?? ''))
 async function reopen() {
   if (!project.value || pending.value || reopenBlock.value) return
-  try { await ElMessageBox.confirm('项目将退回“待开标”，可以修改要求清单、增减投标文件，然后重新开始初审。已做的核对状态与备注会保留在相同的条目上；模型核对需要重新确认发送。', '返回修改材料', { confirmButtonText: '返回修改', cancelButtonText: '取消' }) }
+  try { await ElMessageBox.confirm('项目将退回“待开标”，可以修改条款清单、增减投标文件，然后重新开始初审。标过“不是问题”的事项会保留；模型补查需要重新确认发送。', '返回修改材料', { confirmButtonText: '返回修改', cancelButtonText: '取消' }) }
   catch { return }
   await mutate(() => bidApi.reopen(id.value), true)
   if (!error.value) { reopened.value = true; step.value = 1 }
@@ -289,14 +278,9 @@ async function removeProject() {
           <p class="meta"><template v-if="categoryName"><span>{{ categoryName }}</span><i aria-hidden="true">·</i></template><span class="num">开标 {{ project.opening_date }}</span><i aria-hidden="true">·</i><BidStatus v-bind="bidState(project)" /><i aria-hidden="true">·</i><span>{{ bidPolicyLabel[project.policy] }}</span><i aria-hidden="true">·</i><span>仅本人可见</span></p>
         </div>
         <div class="head-actions">
-          <el-button v-if="step === 2 && project.stage === 'checked'" type="primary" :loading="exporting" :disabled="!auth.can('use.export')" @click="exportReport"><FileDown :size="16" :stroke-width="1.75" />导出初审疑点报告</el-button>
+          <el-button v-if="step === 2 && project.stage === 'checked'" type="primary" :loading="exporting" :disabled="!auth.can('use.export')" @click="exportReport"><FileDown :size="16" :stroke-width="1.75" />导出问题清单</el-button>
           <el-button :disabled="pending" @click="openSettings"><Settings2 :size="16" :stroke-width="1.75" />项目设置</el-button>
           <RowMore :disabled="pending">
-            <template v-if="step === 2 && project.stage === 'checked' && auth.can('use.export')">
-              <el-dropdown-item v-for="bidder in project.bidders" :key="bidder.id" :disabled="clarifying" @click="exportClarification(bidder.id)">
-                <span class="clarification-label" :title="bidder.name">导出澄清通知书 · {{ bidder.name }}</span>
-              </el-dropdown-item>
-            </template>
             <el-dropdown-item v-if="project.stage === 'checked'" :disabled="reopenBlock" @click="reopen">返回修改材料</el-dropdown-item>
             <el-dropdown-item v-else :disabled="blocked || !project.files.length" @click="reparse">重新解析全部文件</el-dropdown-item>
             <el-dropdown-item divided class="danger-item" @click="removeProject">删除项目</el-dropdown-item>
@@ -329,8 +313,8 @@ async function removeProject() {
         </section>
         <BidRequirements v-if="tenderKey" class="requirements" :project-id="id" :policy="project.policy" :disabled="blocked" :tender-key="tenderKey" @changed="load(false)" />
         <aside v-else class="col next">
-          <div class="section-head"><h2 class="si-overline">关键参数与要求清单</h2></div>
-          <p class="next-lede">招标文件解析后，系统自动抓出 ★ 条款、否决条款与关键参数（最高限价、有效期、保证金等），由你核对确认。</p>
+          <div class="section-head"><h2 class="si-overline">条款清单</h2></div>
+          <p class="next-lede">招标文件解析后，系统自动抓出 ★ 条款、否决条款与“必须 / 不得”类条款，由你核对确认。</p>
           <ul class="groups">
             <li v-for="g in ['资格条件', '实质性条款（★）', '否决条款', '报价要求', '有效期与保证金', '签章与格式页']" :key="g"><ListChecks :size="14" :stroke-width="1.75" aria-hidden="true" />{{ g }}<span class="num">—</span></li>
           </ul>
@@ -404,12 +388,12 @@ async function removeProject() {
         </div>
         <BidResults v-if="project.stage === 'checking' || project.stage === 'checked'" :key="id" :project="project" :state-key="checkKey" :live="project.stage === 'checking'" @changed="load(false)" />
       </div>
-      <EmptyState v-else-if="step === 2 && reopened" :icon="ScanSearch" title="正在修改材料" description="改好要求清单或投标文件后，在第 2 步重新开始初审。已做的核对状态与备注会保留在相同的条目上。" />
-      <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认要求清单、放齐投标文件后开始初审，这里会列出总览、要求响应、各家问题、串标线索与报价分析。" />
+      <EmptyState v-else-if="step === 2 && reopened" :icon="ScanSearch" title="正在修改材料" description="改好条款清单或投标文件后，在第 2 步重新开始初审。标过“不是问题”的事项会保留。" />
+      <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认条款清单、放齐投标文件后开始初审，这里会列出严重问题、提示与串标线索。" />
       <BidExport v-else-if="step === 3 && project.stage === 'checked'" :key="id" :project="project" />
-      <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成并逐条核对后，在这里导出交给评标委员会的《初审疑点报告》（Word）。" />
+      <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成后，在这里导出问题清单（Word）。" />
 
-      <footer v-if="!showResults" class="page-foot"><p class="declaration hint">本系统提供初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。</p></footer>
+      <footer v-if="!showResults" class="page-foot"><p class="declaration hint">系统只指出问题并定位原件，不作否决或串通投标的认定。</p></footer>
     </template>
 
     <input ref="picker" type="file" class="file-input" multiple accept=".docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png" @change="picked">
@@ -520,5 +504,4 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-list .hint { text-align: right; }
 .error { margin: 12px 0 0; color: var(--si-danger-ink); font: var(--si-font-meta); }
-.clarification-label { max-width: min(26rem, 75vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

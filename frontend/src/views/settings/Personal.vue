@@ -4,7 +4,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { authApi, type Device } from '@/api/auth'
-import { bidApi, type BidFeedback } from '@/api/bid'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { formatDateTime } from '@/utils/time'
@@ -15,18 +14,6 @@ import SettingSection from '@/components/SettingSection.vue'
 const auth = useAuthStore()
 const router = useRouter()
 const pwdOpen = ref(false)
-const feedback = ref<BidFeedback>(), feedbackError = ref('')
-async function loadFeedback() {
-  if (!auth.can('use.bid')) return
-  try { feedback.value = await bidApi.feedback(); feedbackError.value = '' }
-  catch { feedbackError.value = '标书反馈读取失败' }
-}
-async function revokeFeedback(id: string) {
-  try { await bidApi.revokeFeedback(id); await loadFeedback() }
-  catch { feedbackError.value = '撤销失败，请重试' }
-}
-onMounted(loadFeedback)
-
 const devices = ref<Device[]>([])
 const devicesError = ref('')
 const busy = ref(false)
@@ -80,17 +67,6 @@ async function endOthers() {
     <div class="panel setting-panel">
       <SettingSection title="外观" description="只保存在本浏览器，修改立即生效；文件纸面跟随外壳。">
         <div class="narrow"><AppearancePanel /></div>
-      </SettingSection>
-      <SettingSection v-if="auth.can('use.bid')" title="标书初审反馈" description="按招标代理机构记住同源证据，仅本人可见。">
-        <p v-if="feedbackError" role="alert">{{ feedbackError }}</p>
-        <p v-if="feedback && !feedback.rules.length" class="si-muted">没有已记住的反馈。</p>
-        <div v-for="rule in feedback?.rules" :key="rule.id" class="si-row">
-          <span class="si-row-value">{{ rule.agency }} · {{ rule.label }} · {{ rule.reason }}</span>
-          <el-button text size="small" @click="revokeFeedback(rule.id)">撤销</el-button>
-        </div>
-        <div v-for="row in feedback?.stats" :key="row.category" class="si-row">
-          <span class="si-row-value">{{ row.category }}属实率 {{ row.verified }} / {{ row.total }}<template v-if="row.total >= 5 && row.verified * 2 < row.total"> · 属实率偏低</template></span>
-        </div>
       </SettingSection>
       <SettingSection title="账号" description="账号由管理员统一分发；修改密码后其他设备会自动退出。">
         <div class="si-rows narrow">

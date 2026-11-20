@@ -27,7 +27,7 @@ async function loadLists() {
 watch(open, value => { if (value) { Object.assign(form, blank(), props.initial ?? { folder_id: props.defaultFolder ?? null }); void loadLists() } }, { immediate: true })
 const POLICIES = [
   { value: 'local_only' as const, title: '只做本地检查', desc: '不调用模型，全部比对在本机完成。' },
-  { value: 'ai' as const, title: '本机检查 + 模型核对', desc: '要求响应由模型补充核对；发送前逐段确认脱敏片段。' },
+  { value: 'ai' as const, title: '本机检查，可选模型补查', desc: '★ 与否决条款中本机判断不了的，可交模型补查；发送前逐段确认脱敏片段。' },
 ]
 function submit() {
   if (!form.title.trim() || !form.opening_date || !form.category_id || props.busy) return

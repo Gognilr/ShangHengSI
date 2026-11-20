@@ -1,28 +1,23 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight } from '@lucide/vue'
 import { ApiError } from '@/api/http'
-import { bidApi, type BidCheck, type BidProject, type BidReview, type BidReviewStatus, type BidSigning, type BidSignMark } from '@/api/bid'
-import BidConclusion from './BidConclusion.vue'
-import BidMatrix from './BidMatrix.vue'
+import { bidApi, type BidCheck, type BidProject, type BidSigning, type BidSignMark } from '@/api/bid'
+import BidIssues from './BidIssues.vue'
 import BidBidderIssues from './BidBidderIssues.vue'
 import BidClues from './BidClues.vue'
-import BidPricing from './BidPricing.vue'
-const conclusion = ref<InstanceType<typeof BidConclusion>>()
-import { bidResultsKey, reviewTodos, shortNames, todoSteps } from './results'
+import { bidResultsKey, shortNames } from './results'
 import './results.css'
 import './charts/charts.css'
 
-// 初审结果五个页签（bid.md 2.4、visual.md 7.5）。live 为真时（初审中）每 2 秒刷新，已完成的步骤先显示。
+// 初审结果三个页签（V35-E-01）：问题清单｜各投标人｜串标线索。live 为真时（初审中）每 2 秒刷新，已完成的步骤先显示。
 const props = defineProps<{ project: BidProject; stateKey: string; live?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 const data = ref<BidCheck>(), error = ref(''), notice = ref('')
-type Tab = 'overview' | 'matrix' | 'bidders' | 'clues' | 'pricing'
-const tab = ref<Tab>('overview'), bidder = ref(''), pair = ref<string[] | null>(null)
+type Tab = 'issues' | 'bidders' | 'clues'
+const tab = ref<Tab>('issues'), bidder = ref('')
 const names = computed(() => Object.fromEntries(props.project.bidders.map(b => [b.id, b.name])))
 const shorts = computed(() => shortNames(props.project.bidders))
-const todos = computed(() => reviewTodos(data.value, props.project.bidders))
-const steps = computed(() => todoSteps(data.value, props.project.bidders))
 const fileNames = computed(() => Object.fromEntries(props.project.files.map(f => [f.id, f.name])))
 const renderable = computed(() => Object.fromEntries(props.project.files.map(f => [f.id, !f.original_deleted && ['pdf', 'jpg', 'jpeg', 'png'].includes(f.ext)])))
 
@@ -39,62 +34,12 @@ async function load() {
 watch(() => [props.stateKey, props.live], () => void load(), { immediate: true })
 onBeforeUnmount(() => { ++request; clearTimeout(timer) })
 
-// 乐观更新：先改本地，失败回滚并提示
-async function optimistic(target: BidReview, patch: Partial<BidReview>, send: () => Promise<BidReview>) {
-  const before = { review_status: target.review_status, note: target.note }
-  Object.assign(target, patch); notice.value = ''; saving++
-  try { Object.assign(target, await send()) }
-  catch (e) { Object.assign(target, before); notice.value = e instanceof ApiError ? e.message : '核对状态没有保存，已恢复，请重试' }
-  finally { saving-- }
-}
-async function reviewItem(id: string, patch: Partial<BidReview>) {
-  const item = data.value?.items.find(i => i.id === id)
-  if (item) await optimistic(item, patch, () => bidApi.reviewItem(props.project.id, id, patch))
-}
-async function reviewCell(rid: string, bid: string, patch: Partial<BidReview>) {
-  if (!data.value) return
-  let cell = data.value.cells.find(c => c.requirement_id === rid && c.bidder_id === bid)
-  const created = !cell
-  if (!cell) {  // 人工核对行首次标注：本地先建一格
-    cell = { requirement_id: rid, bidder_id: bid, verdict: 'manual', locs: [], reason: null, source: 'local', cite: null, review_status: 'pending', note: null }
-    data.value.cells.push(cell)
-    cell = data.value.cells[data.value.cells.length - 1]!
-  }
-  const target = cell
-  await optimistic(target, patch, () => bidApi.reviewCell(props.project.id, { requirement_id: rid, bidder_id: bid, ...patch }))
-  if (created && notice.value && data.value) data.value.cells = data.value.cells.filter(c => c !== target)
-}
-// 批量核对：先改本地（人工核对行没有格时先建），一次请求，失败整体回滚
-async function reviewBatch(itemIds: string[], refs: { requirement_id: string; bidder_id: string }[], status: BidReviewStatus) {
-  const d = data.value
-  if (!d || (!itemIds.length && !refs.length)) return true
-  const ids = new Set(itemIds)
-  const items = d.items.filter(i => ids.has(i.id))
-  const created: typeof d.cells = []
-  const cells = refs.map(r => {
-    const found = d.cells.find(c => c.requirement_id === r.requirement_id && c.bidder_id === r.bidder_id)
-    if (found) return found
-    d.cells.push({ ...r, verdict: 'manual', locs: [], reason: null, source: 'local', cite: null, review_status: 'pending', note: null })
-    const cell = d.cells[d.cells.length - 1]!
-    created.push(cell)
-    return cell
-  })
-  const before = [...items, ...cells].map(t => [t, t.review_status] as const)
-  before.forEach(([t]) => { t.review_status = status })
+// “不是问题”：服务器重算结论后整体替换
+async function dismiss(key: string, dismissed: boolean) {
   notice.value = ''; saving++
-  try {
-    const reply = await bidApi.reviewBatch(props.project.id, { items: items.map(i => i.id), cells: refs, review_status: status })
-    for (const update of reply.cell_updates) {
-      const cell = cells.find(c => c.requirement_id === update.requirement_id && c.bidder_id === update.bidder_id)
-      if (cell) Object.assign(cell, update)
-    }
-    return true
-  } catch (e) {
-    before.forEach(([t, s]) => { t.review_status = s })
-    if (created.length) d.cells = d.cells.filter(c => !created.includes(c))
-    notice.value = e instanceof ApiError ? e.message : '核对状态没有保存，已恢复，请重试'
-    return false
-  } finally { saving-- }
+  try { data.value = await bidApi.dismiss(props.project.id, key, dismissed) }
+  catch (e) { notice.value = e instanceof ApiError ? e.message : '没有保存，请重试' }
+  finally { saving-- }
 }
 async function markSigning(pages: BidSigning[], mark: BidSignMark | null) {
   if (!pages.length) return
@@ -102,76 +47,32 @@ async function markSigning(pages: BidSigning[], mark: BidSignMark | null) {
   pages.forEach(s => { s.mark = mark }); notice.value = ''; saving++
   try {
     if (pages.length === 1) await bidApi.sign(props.project.id, pages[0]!, mark)
-    else await bidApi.reviewBatch(props.project.id, { signing: pages.map(s => ({ file_id: s.file_id, page: s.page, loc: s.loc })), mark })
+    else await bidApi.signBatch(props.project.id, pages.map(s => ({ file_id: s.file_id, page: s.page, loc: s.loc })), mark)
+    data.value = await bidApi.check(props.project.id)  // 缺章是严重问题，结论随之更新
   } catch (e) {
     before.forEach(([s, m]) => { s.mark = m })
     notice.value = e instanceof ApiError ? e.message : '标注没有保存，已恢复，请重试'
   } finally { saving-- }
-}
-const priceTarget = ref('')
-let locateTimer: ReturnType<typeof setTimeout> | undefined
-onBeforeUnmount(() => clearTimeout(locateTimer))
-async function focus(key?: string) {
-  tab.value = 'overview'
-  await nextTick()
-  if (key) await conclusion.value?.locate(key)
-  else document.getElementById('bid-verify')?.scrollIntoView({ block: 'nearest' })
-}
-async function toPrice(id: string) {
-  tab.value = 'pricing'
-  priceTarget.value = id
-  await nextTick()
-  document.getElementById('bid-price-' + id)?.scrollIntoView({ block: 'nearest' })
-  clearTimeout(locateTimer)
-  locateTimer = setTimeout(() => { priceTarget.value = '' }, 1200)
 }
 
 // 查看原件页：大图对话框，可翻页
 const page = ref<{ fileId: string; page: number } | null>(null)
 const pageCount = computed(() => props.project.files.find(f => f.id === page.value?.fileId)?.page_count ?? 1)
 function openPage(fileId: string, n: number) { page.value = { fileId, page: n } }
-provide(bidResultsKey, { projectId: props.project.id, openingDate: props.project.opening_date, data, names, shorts, fileNames, renderable, todos, steps, reviewItem, reviewCell, reviewBatch, markSigning, focus, openPage })
+provide(bidResultsKey, { projectId: props.project.id, data, names, shorts, fileNames, renderable, dismiss, markSigning, openPage })
 
-// 各投标人默认选疑似否决项最多（其次问题最多）的一家（V34Q-25 第 6 条）
+// 各投标人默认选严重问题最多的一家
 watch(data, d => {
   if (bidder.value || !d) return
-  const score = (id: string) => { const own = d.items.filter(i => i.kind === 'issue' && i.review_status !== 'excluded' && i.bidder_ids.includes(id)); return own.filter(i => i.level === 'veto').length * 1000 + own.length }
-  bidder.value = [...props.project.bidders].sort((a, b) => score(b.id) - score(a.id))[0]?.id ?? ''
-})
-
-// 页签计数统一为“待核”数（V34Q-27 第二部分第 7 条）：各投标人页是按家看的同一批事项，不另计数
-const counts = computed(() => {
-  const d = data.value
-  const verify = d?.conclusion.verify ?? []
-  return { all: verify.length, matrix: new Set(verify.flatMap(e => e.requirement_id ? [e.requirement_id] : [])).size,
-    clues: d?.conclusion.cases.length ?? 0 }
+  bidder.value = [...d.conclusion.bidders].sort((a, b) => b.severe - a.severe || b.hint - a.hint)[0]?.id ?? props.project.bidders[0]?.id ?? ''
 })
 const tabs = computed(() => [
-  { key: 'overview' as Tab, label: '初审结论', n: counts.value.all }, { key: 'matrix' as Tab, label: '要求响应矩阵', n: counts.value.matrix },
-  { key: 'bidders' as Tab, label: '各投标人' }, { key: 'clues' as Tab, label: '串标线索', n: counts.value.clues },
-  { key: 'pricing' as Tab, label: '报价分析' },
+  { key: 'issues' as Tab, label: '问题清单', n: data.value?.conclusion.severe.length },
+  { key: 'bidders' as Tab, label: '各投标人' },
+  { key: 'clues' as Tab, label: '串标线索', n: data.value?.conclusion.cases.length },
 ])
-function go(next: Tab, filter?: { bidder?: string; pair?: string[] }) {
-  if (filter?.bidder) bidder.value = filter.bidder
-  pair.value = next === 'clues' ? filter?.pair ?? null : pair.value
-  tab.value = next
-}
-// 页脚说明：各页签的口径与限制写在这里，标题旁不再跟说明句（V34Q-25 第 1 条）
-const declaration = '本系统提供初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。'
-const notes = computed(() => {
-  const d = data.value
-  const base = d?.pricing?.base ? names.value[d.pricing.base] ?? '' : ''
-  switch (tab.value) {
-    case 'overview': return [...(d?.coverage ?? []), '没有列出的事项，不等于投标文件没有问题。']
-    case 'matrix': return ['✓ 表示响应；？表示无法判断或引文待核实；—表示不适用。', '“人工核对”行需要对照原件，可在各投标人页逐家标注。']
-    case 'bidders': return ['签章页只看图核对，不识别印章内容；Word 文件没有页面图，请到原件核对。', '否决性结论须标为“已核实”，报告中才以肯定语气写出。']
-    case 'clues': return ['“正常重复”为招标范本、厂家资料等共有内容，一般不是线索。', '线索按《招标投标法实施条例》第四十条的情形列出，仅供评标委员会核实。']
-    default: return ['金额由本机计算，四舍五入到分；投标人按录入顺序排列，不按价格排序。',
-      '只有唯一总价的投标人参加最高、最低与平均比较；比其余各家平均低 20% 以上提示“异常低价”，由评标委员会要求说明是否低于成本。',
-      ...(base ? [`分项对齐以${base}的报价表为基准，最多 300 项；“给定”为各家同价的分项，不参与比值。`] : []),
-      '两两比值取高的一家比低的一家；各项比值越接近（变异系数越小），越像按同一比例算出。']
-  }
-})
+const declaration = '系统只指出问题并定位原件，不作否决或串通投标的认定。'
+const notes = computed(() => [...(data.value?.coverage ?? []), '没有列出的事项，不等于投标文件没有问题。'])
 </script>
 
 <template>
@@ -179,17 +80,15 @@ const notes = computed(() => {
     <p v-if="error" class="error" role="alert">{{ error }}</p>
     <el-alert v-if="notice" class="notice" :title="notice" type="warning" show-icon @close="notice = ''" />
     <nav class="tabs" role="tablist" aria-label="初审结果">
-      <button v-for="t in tabs" :key="t.key" type="button" role="tab" :aria-selected="tab === t.key" :class="{ on: tab === t.key }" @click="go(t.key)">{{ t.label }}<i v-if="t.n" class="num" :title="`待核 ${t.n}`">{{ t.n }}</i></button>
+      <button v-for="t in tabs" :key="t.key" type="button" role="tab" :aria-selected="tab === t.key" :class="{ on: tab === t.key }" @click="tab = t.key">{{ t.label }}<i v-if="t.n" class="num">{{ t.n }}</i></button>
     </nav>
     <template v-if="data">
-      <BidConclusion v-if="tab === 'overview'" ref="conclusion" @price="toPrice" />
-      <BidMatrix v-else-if="tab === 'matrix'" :bidders="project.bidders" :model-state="project.model.state" />
+      <BidIssues v-if="tab === 'issues'" />
       <BidBidderIssues v-else-if="tab === 'bidders'" v-model="bidder" :bidders="project.bidders" @renamed="emit('changed')" />
-      <BidClues v-else-if="tab === 'clues'" :pair="pair" :bidders="project.bidders" @clear="pair = null" @pick="ids => pair = ids" />
-      <BidPricing v-else :bidders="project.bidders" :target="priceTarget" />
+      <BidClues v-else />
     </template>
     <p v-else-if="!error && !data" class="hint" role="status">正在读取初审结果…</p>
-    <ul v-if="tab !== 'overview'" class="bid-foot foot"><li v-for="n in notes" :key="n">{{ n }}</li><li>{{ declaration }}</li></ul>
+    <ul class="bid-foot foot"><li v-for="n in notes" :key="n">{{ n }}</li><li>{{ declaration }}</li></ul>
 
     <el-dialog :model-value="!!page" width="min(920px, 92vw)" append-to-body :title="page ? `${fileNames[page.fileId] ?? '原件'} · 第 ${page.page} 页` : ''" @update:model-value="(v: boolean) => { if (!v) page = null }">
       <div v-if="page" class="page-view">
