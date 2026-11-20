@@ -6,6 +6,7 @@ import { computed } from 'vue'
  * 一页文件，正中一条横线伸出纸边：脱敏条、秤杆、初审找出的那一行；右上角灵紫星点是大模型。
  * 尺寸：侧栏 28、首页问候 44、登录 96；≥64px 用大稿（纸内细线），≤20px 用 16 网格小稿。
  * intro：开场动效 700ms（纸框淡入 → 横线自中间展开 → 星点弹亮），只在完整档播放，精简档直接是终态。
+ * tilt：404 彩蛋（澄明 8.10），横线倾斜 6°，“这一页没找平”；完整、精简档带一次回弹，关闭档直接是终态。
  */
 const props = withDefaults(defineProps<{
   size?: 'nav' | 'greet' | 'hero'
@@ -13,7 +14,8 @@ const props = withDefaults(defineProps<{
   showTagline?: boolean
   markOnly?: boolean
   intro?: boolean
-}>(), { size: 'nav', showTagline: false, markOnly: false, intro: false })
+  tilt?: boolean
+}>(), { size: 'nav', showTagline: false, markOnly: false, intro: false, tilt: false })
 
 const SIZE_PX = { nav: 28, greet: 44, hero: 96 } as const
 const markPx = computed(() => props.px ?? SIZE_PX[props.size])
@@ -21,7 +23,7 @@ const variant = computed(() => markPx.value <= 20 ? 'sm' : markPx.value >= 64 ? 
 </script>
 
 <template>
-  <span class="si-logo" :class="[`si-logo--${size}`, { 'is-intro': intro }]">
+  <span class="si-logo" :class="[`si-logo--${size}`, { 'is-intro': intro, 'is-tilt': tilt }]">
     <svg v-if="variant === 'sm'" class="mark" viewBox="0 0 16 16" fill="none" :style="{ width: `${markPx}px`, height: `${markPx}px` }" :role="markOnly ? 'img' : undefined" :aria-label="markOnly ? '商衡SI' : undefined" :aria-hidden="markOnly ? undefined : 'true'">
       <path class="paper" d="M8.25 2.25H5.25a1.5 1.5 0 0 0-1.5 1.5v8.5a1.5 1.5 0 0 0 1.5 1.5h5.5a1.5 1.5 0 0 0 1.5-1.5V8" stroke-width="1.5" stroke-linecap="round" />
       <rect class="bar" x="1.5" y="6.5" width="13" height="3" rx="1.5" />
@@ -61,6 +63,8 @@ const variant = computed(() => markPx.value <= 20 ? 'sm' : markPx.value >= 64 ? 
 :global(html[data-fx="full"]) .is-intro .bar { animation: logo-bar 520ms var(--si-ease-out) 60ms both; }
 :global(html[data-fx="full"]) .is-intro .star { animation: logo-star 340ms var(--si-ease-spring) 360ms both; }
 @keyframes logo-paper { from { opacity: 0; } }
+.is-tilt .bar { transform: rotate(-6deg); animation: logo-tilt 900ms var(--si-ease-spring) 300ms both; }
+@keyframes logo-tilt { from { transform: none; } }
 @keyframes logo-bar { from { transform: scaleX(0); } }
 @keyframes logo-star { from { opacity: 0; transform: scale(0) rotate(-30deg); } }
 </style>

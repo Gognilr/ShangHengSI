@@ -1,4 +1,4 @@
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import 'element-plus/dist/index.css'
 import '@/styles/fonts.css'
@@ -20,6 +20,13 @@ app.use(pinia)
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
 useAppearanceStore(pinia).init()
+
+// 出错提示要读原因和办法，1.8 秒太短：未指定时长的 ElMessage.error 改为 4 秒（澄明 8.10 的 1.8 秒只用于普通提示）
+const showError = ElMessage.error
+ElMessage.error = ((options, appContext) => showError(
+  typeof options === 'string' ? { message: options, duration: 4000 }
+    : options && typeof options === 'object' && 'message' in options ? { duration: 4000, ...options } : options,
+  appContext)) as typeof ElMessage.error
 
 const auth = useAuthStore(pinia)
 setHttpHooks({

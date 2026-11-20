@@ -32,15 +32,20 @@ async function remove(item: SessionItem) {
 }
 
 function onCommand(item: SessionItem, cmd: string) { if (cmd === 'rename') rename(item); else if (cmd === 'remove') remove(item) }
+
+// 澄明 8.0：最多 8 条，每条带模块色圆点（发起过审核的为文件审核色，其余为衡青）；更多的去历史记录
+const MAX = 8
+const shown = computed(() => store.items.slice(0, MAX))
+const more = computed(() => store.total > MAX)
 </script>
 
 <template>
   <nav class="sessions" aria-label="近期会话">
-    <h2 class="heading">近期会话</h2>
-    <ul v-if="store.items.length">
-      <li v-for="item in store.items" :key="item.id" class="row" :class="{ current: item.id === current }">
+    <h2 v-if="shown.length" class="heading">近期会话</h2>
+    <ul v-if="shown.length">
+      <li v-for="item in shown" :key="item.id" class="row" :class="{ current: item.id === current }">
         <router-link :to="{ path: `/assistant/${item.id}`, query: item.run_count ? { mode: 'review' } : {} }" class="link" :title="item.title" :aria-current="item.id === current ? 'page' : undefined">
-          <span v-if="item.generating" class="dot" aria-label="生成中"></span>
+          <i class="dot" :class="{ review: item.run_count, 'si-breath': item.generating }" :aria-label="item.generating ? '生成中' : undefined" />
           <span class="title">{{ item.title }}</span>
           <span v-if="item.reviewing" class="tag tag--busy">审核中</span>
           <span v-else-if="store.finished.has(item.id) && item.id !== current" class="tag tag--done">审核完成</span>
@@ -56,30 +61,27 @@ function onCommand(item: SessionItem, cmd: string) { if (cmd === 'rename') renam
         </el-dropdown>
       </li>
     </ul>
-    <p v-else-if="!store.loading" class="empty">暂无会话</p>
-    <button v-if="store.items.length < store.total" type="button" class="more-link" :disabled="store.loading" @click="store.loadMore">查看更多</button>
+    <router-link v-if="more" to="/history" class="more-link">全部历史</router-link>
   </nav>
 </template>
 
 <style scoped>
-.sessions { padding: 0 8px; }
-.heading { margin: 0; padding: 12px 12px 6px; font: var(--si-font-overline); letter-spacing: .08em; color: var(--si-ink-3); }
+.heading { margin: 0; padding: 14px 12px 6px; font: var(--si-font-caption); font-weight: 500; color: var(--si-ink-4); }
 ul { margin: 0; padding: 0; list-style: none; }
-.row { position: relative; display: flex; align-items: center; border-radius: var(--el-border-radius-base); }
+.row { position: relative; display: flex; align-items: center; border-radius: 8px; transition: background-color var(--si-d2) var(--si-ease-out); }
 .row:hover { background: var(--si-hover-bg); }
-.row { transition: background-color var(--si-dur-1) var(--si-ease); }
 .row.current { background: var(--si-select-bg); }
-.link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 4px 6px 12px; color: var(--el-text-color-regular); text-decoration: none; font: var(--si-font-body); }
-.row.current .link { color: var(--si-ink-1); font-weight: 500; }
+.link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 4px 0 12px; color: var(--si-ink-2); text-decoration: none; font: var(--si-font-body); font-size: calc(13.5px * var(--si-fs)); }
+.row.current .link { color: var(--si-ink-1); font-weight: 600; }
 .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tag { flex: none; padding: 0 6px; border-radius: 4px; font: var(--si-font-label-sm); }
-.tag--busy { color: var(--si-blue-ink); background: var(--si-blue-tint); }
-.tag--done { color: var(--si-ink-3); background: transparent; }
-.dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--el-color-primary); }
-.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 2px; padding: 0; border: 0; border-radius: var(--el-border-radius-base); background: transparent; color: var(--el-text-color-secondary); cursor: pointer; opacity: 0; transition: opacity var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
+.dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--si-brand-2); }
+.dot.review { background: var(--si-m-review); }
+.tag { flex: none; padding: 0 6px; border-radius: 999px; font: var(--si-font-badge); }
+.tag--busy { color: var(--si-info-ink); background: var(--si-info-soft); }
+.tag--done { color: var(--si-blue-ink); background: var(--si-blue-tint); }
+.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 3px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-3); cursor: pointer; opacity: 0; transition: opacity var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
 .row:hover .more, .row:focus-within .more, .more[aria-expanded="true"] { opacity: 1; }
-.more:hover { background: var(--el-fill-color); color: var(--el-text-color-primary); }
-.empty { margin: 0; padding: 6px 12px; font: var(--si-font-meta); color: var(--el-text-color-placeholder); }
-.more-link { margin: 4px 0 0; padding: 6px 12px; border: 0; background: transparent; color: var(--el-color-primary); font: var(--si-font-meta); cursor: pointer; }
-.more-link:disabled { color: var(--el-text-color-placeholder); cursor: default; }
+.more:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
+.more-link { display: block; margin: 4px 0 0; padding: 6px 12px; color: var(--si-ink-3); font: var(--si-font-meta); text-decoration: none; }
+.more-link:hover { color: var(--si-blue-ink); }
 </style>

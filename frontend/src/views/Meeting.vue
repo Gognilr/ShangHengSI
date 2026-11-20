@@ -131,7 +131,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     <h1 class="entry-title">录一场会，或上传录音</h1>
     <p class="entry-lede">录音在本机转写，不出服务器；生成纪要时只把校对并确认脱敏后的文字发给模型。</p>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
-    <EmptyState v-if="!asrEnabled" :icon="Mic" title="录音转写未启用" description="请联系系统管理员启用本机转写后再使用会议纪要。" />
+    <EmptyState v-if="!asrEnabled" :icon="Mic" tone="neutral" title="录音转写还没有启用" description="请联系系统管理员启用本机转写后再使用会议纪要。" />
     <template v-else>
       <div class="si-drop" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
         <UploadCloud :size="28" :stroke-width="1.5" />

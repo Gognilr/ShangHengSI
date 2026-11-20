@@ -98,3 +98,6 @@
 .list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 12px; box-sizing: border-box; border-bottom: 1px solid var(--si-hair-faint); border-radius: 8px; color: var(--si-ink-1); text-decoration: none; transition: background-color var(--si-d2) var(--si-ease-out); }
 .list-row:hover { background: var(--si-hover-bg); }
 .list-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 快捷键（澄明 8.0）：细线小方块，等宽字 */
+.si-kbd { display: inline-block; padding: 0 6px; border: 1px solid var(--si-hair); border-radius: 6px; background: var(--si-card-2); color: var(--si-ink-4); font: var(--si-font-caption); font-family: var(--si-font-mono); line-height: 18px; }

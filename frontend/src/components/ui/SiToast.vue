@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { currentToast, dismissToast } from '@/utils/toast'
 import { useFx } from '@/utils/motion'
+import { CircleCheck } from '@lucide/vue'
 
 /** 可撤销提示的显示层，挂在 App.vue 一次。鼠标悬停或焦点在其中时暂停计时。 */
 const fx = useFx()
@@ -45,7 +46,7 @@ onBeforeUnmount(clearTimer)
 <template>
   <Transition name="si-rise">
     <div v-if="currentToast" :key="currentToast.id" class="si-toast" role="status" aria-live="polite" @mouseenter="pause" @mouseleave="resume" @focusin="pause" @focusout="resume">
-      <span class="text">{{ currentToast.text }}</span>
+      <CircleCheck class="icon" :size="18" :stroke-width="1.75" aria-hidden="true" /><span class="text">{{ currentToast.text }}</span>
       <button v-if="currentToast.action" type="button" class="action" @click="onAction">{{ currentToast.action.label }}</button>
       <span v-if="fx !== 'off'" class="bar" :style="{ animationDuration: `${currentToast.duration}ms`, animationPlayState: paused ? 'paused' : 'running' }" aria-hidden="true" />
     </div>
@@ -53,7 +54,10 @@ onBeforeUnmount(clearTimer)
 </template>
 
 <style scoped>
-.si-toast { position: fixed; right: 24px; bottom: 24px; z-index: 4000; display: flex; align-items: center; gap: 16px; max-width: 480px; padding: 10px 18px; overflow: hidden; border-radius: 999px; background: var(--si-toast-bg); color: var(--si-toast-ink); box-shadow: var(--si-shadow-3); font: var(--si-font-label); }
+/* 澄明 8.10：与短提示同一样式，底部居中的深色胶囊 */
+.si-toast { position: fixed; left: 50%; bottom: 32px; z-index: 4000; display: flex; align-items: center; gap: 10px; max-width: 560px; padding: 10px 18px 10px 14px; translate: -50% 0; overflow: hidden; border-radius: 999px; background: var(--si-toast-bg); color: var(--si-toast-ink); box-shadow: var(--si-shadow-3); font: var(--si-font-label); }
+.icon { flex: none; color: var(--si-brand-2); }
+.action { margin-left: 6px; }
 .text { min-width: 0; overflow-wrap: anywhere; }
 .action { flex: none; padding: 0; border: 0; background: transparent; color: inherit; font: var(--si-font-label); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .action:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 3px; border-radius: 4px; }
