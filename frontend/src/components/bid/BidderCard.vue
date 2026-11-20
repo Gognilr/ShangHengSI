@@ -8,7 +8,7 @@ import BidOpeningInput from './BidOpeningInput.vue'
 
 // 一家投标人一张对象卡：代号 · 名称（点铅笔就地改）· 文件数 · 加入文件 · 更多；整张卡可拖入文件
 // 唱标价（选填，V34-B-06e）：开标时边唱标边录，初审前即可录；初审完成后需“返回修改材料”再改（报价分析页已撤下，F-05 重排）
-const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string>; openingFailed?: string; suggest?: string; rateQuote?: boolean }>()
+const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string>; openingFailed?: string; suggest?: string; rateQuote?: boolean; flat?: boolean }>()
 const emit = defineEmits<{ rename: [name: string]; remove: []; pick: []; drop: [event: DragEvent]; password: [fid: string, password: string]; removeFile: [fid: string]; opening: [body: BidOpeningPriceInput, done: () => void]; adopt: [name: string] }>()
 const pricing = ref(false)
 const editing = ref(false), name = ref(''), over = ref(false), input = ref<{ focus: () => void }>()
@@ -23,7 +23,7 @@ function drop(event: DragEvent) { over.value = false; emit('drop', event) }
 </script>
 
 <template>
-  <section class="si-card bidder" :class="{ over }" :aria-label="`投标人 ${bidder.code}`" @dragover.prevent="over = true" @dragleave.self="over = false" @drop.prevent.stop="drop">
+  <section class="bidder" :class="[flat ? 'flat' : 'si-card', { over }]" :aria-label="`投标人 ${bidder.code}`" @dragover.prevent="over = true" @dragleave.self="over = false" @drop.prevent.stop="drop">
     <header class="head">
       <span class="code" aria-hidden="true">{{ bidder.code }}</span>
       <div v-if="editing" class="rename">
@@ -58,6 +58,8 @@ function drop(event: DragEvent) { over.value = false; emit('drop', event) }
 
 <style scoped>
 .bidder { padding: 16px 20px 10px; }
+/* 抽屉里（V35-F-05）：不再套一层卡片 */
+.bidder.flat { padding: 0; }
 .bidder.over { border-color: var(--si-brand); background: var(--si-blue-tint); }
 .head { display: flex; align-items: center; gap: 10px; min-height: 32px; }
 .code { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--si-surface-2); font: var(--si-font-code); color: var(--si-ink-2); }

@@ -1,12 +1,16 @@
 import { http } from './http'
 
 export type BidStage = 'preparing' | 'ready' | 'checking' | 'checked'
-export interface BidSummary { id: string; title: string; stage: BidStage; status: string; opening_date: string; last_activity_at: string; category_id: number | null; folder_id: string | null }
+export interface BidSummary {
+  id: string; title: string; stage: BidStage; status: string; opening_date: string; last_activity_at: string; category_id: number | null; folder_id: string | null
+  /** 列表行（V35-F-05）：投标人数；检查中给进度，已完成给严重 / 提示条数 */
+  bidder_count?: number; progress?: { done: number; total: number }; severe?: number; hint?: number
+}
 export interface BidFolder { id: string; parent_id: string | null; name: string; count: number }
 export interface BidFolderTree { folders: BidFolder[]; all: number; unfiled: number }
 export interface BidCategory { id: number; name: string; enabled: boolean; used?: number }
 /** 列表筛选（V34-B-01a）：folder 为 none 表示未归档 */
-export interface BidListQuery { page?: number; q?: string; category?: number; folder?: string; stage?: BidStage; from?: string; to?: string }
+export interface BidListQuery { page?: number; q?: string; category?: number; folder?: string; stage?: BidStage | 'active' | 'done'; from?: string; to?: string }
 export interface BidFile {
   id: string; bidder_id: string | null; name: string; ext: string; size_bytes: number; page_count: number | null
   has_password: boolean; needs_password: boolean; state: 'failed' | 'done' | 'waiting'; error: string | null; warnings: string[]; original_deleted: boolean
@@ -14,14 +18,15 @@ export interface BidFile {
 /** 唱标价（V34-B-06e）：人工录入的小写金额、大写与备注 */
 export interface BidOpeningPrice { amount: string; upper: string | null; note: string | null }
 export interface BidOpeningPriceInput { amount: string | null; upper?: string | null; note?: string | null }
-export interface Bidder { id: string; name: string; short?: string; code: string; seq: number; opening_price?: (BidOpeningPrice & { text: string }) | null }
+export interface Bidder { id: string; name: string; short?: string; code: string; seq: number; opening_price?: (BidOpeningPrice & { text: string }) | null; pages?: number; ocr?: { done: number; total: number } }
 export type BidQuoteMode = 'fixed' | 'rate' | 'discount'
 export interface BidProject extends BidSummary {
   quote_mode?: BidQuoteMode
   policy: 'ai' | 'local_only'; busy: boolean; error_message: string | null; bidders: Bidder[]; files: BidFile[]
   limits: { bid_files: number; tender_files: number; file_mb: number; pdf_pages: number; ocr_pages: number }
-  requirements: { enabled: number; extract_state: BidExtractState }
-  check: { state: null | 'running' | 'done' | 'failed'; error: string | null; ocr: { done: number; total: number } }
+  /** key：启用的 ★ 与否决条款条数 */
+  requirements: { enabled: number; key?: number; extract_state: BidExtractState }
+  check: { state: null | 'running' | 'done' | 'failed'; error: string | null; ocr: { done: number; total: number }; progress?: { done: number; total: number } }
   model: { state: BidModelState; error: string | null; done: number; total: number }
   sent_count?: number
   /** 受邀投标单位名单（V34-B-01b），全称 */
@@ -130,6 +135,8 @@ export type BidIssueLevel = 'severe' | 'hint'
 export interface BidConclusionEntry {
   id: string; bidder_ids: string[]; title: string; category: string; level: BidIssueLevel
   item_id: string | null; requirement_id: string | null; case_id: string | null; article: string | null; source: 'local' | 'model'
+  /** 出处（V35-F-05）：bidder_id 为 tender 时是招标文件 */
+  places?: { bidder_id: string; file_id: string; page: number | null; loc: string | null }[]
 }
 export interface BidCase {
   id: string; bidder_ids: string[]; title: string; article: string; level: BidIssueLevel; strong_pairs: string[][]
@@ -137,7 +144,7 @@ export interface BidCase {
   normal: string[]; baseline: { sentences?: number; images?: number }
 }
 export interface BidConclusionData {
-  lede: string; sub: string | null; severe: BidConclusionEntry[]; hint: BidConclusionEntry[]; dismissed: BidConclusionEntry[]
+  lede: string; sub: string | null; lookup?: number; severe: BidConclusionEntry[]; hint: BidConclusionEntry[]; dismissed: BidConclusionEntry[]
   cases: BidCase[]
   bidders: { id: string; name: string; short: string; severe: number; hint: number; total: string | null; manual_total: boolean }[]
 }
@@ -166,6 +173,21 @@ export function bidState(p: { stage: BidStage; status: string }): { label: strin
   if (p.stage === 'checking') return { label: '初审中', tone: 'run' }
   if (p.stage === 'checked') return { label: '已完成', tone: 'ok' }
   return { label: bidStageLabel[p.stage], tone: p.stage === 'ready' ? 'ok' : 'idle' }
+}
+/** 徽标（澄明第九、十二节）：列表行与项目页共用。tone：info 进行中（圆点呼吸）、hi 严重、brand 完成、neu 中性、mid 待处理 */
+export type BidBadge = { text: string; tone: 'info' | 'hi' | 'brand' | 'neu' | 'mid'; dot?: boolean; check?: boolean }
+export function bidBadge(p: BidSummary): BidBadge {
+  if (p.status === 'parsing') return { text: '读取中', tone: 'info', dot: true }
+  if (p.status === 'parse_failed') return { text: '文件待处理', tone: 'mid', dot: true }
+  if (p.stage === 'checking') {
+    const pr = p.progress
+    return { text: pr && pr.total ? `检查中 ${Math.round(pr.done / pr.total * 100)}%` : '检查中', tone: 'info', dot: true }
+  }
+  if (p.stage === 'checked') {
+    if (p.severe === undefined) return { text: '已完成', tone: 'brand', check: true }
+    return p.severe ? { text: `严重 ${p.severe}`, tone: 'hi', dot: true } : { text: '没有严重问题', tone: 'brand', check: true }
+  }
+  return { text: p.stage === 'ready' ? '待开标' : '材料准备中', tone: 'neu', dot: true }
 }
 export function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -226,5 +248,5 @@ export const bidApi = {
     http.post<{ marks: Record<string, string> }>(`/bid/${id}/signing/batch`, { signing, mark }),
   reopen: (id: string) => http.post<BidProject>(`/bid/${id}/reopen`),
   /** 投标文件页面图（cookie 会话，直接作 img 地址；服务器内存生成、不缓存） */
-  pageUrl: (id: string, fid: string, page: number, width = 320) => `/api/v1/bid/${id}/files/${fid}/page/${page}?width=${width}`,
+  pageUrl: (id: string, fid: string, page: number, width = 320, loc?: string | null) => `/api/v1/bid/${id}/files/${fid}/page/${page}?width=${width}${loc ? `&loc=${encodeURIComponent(loc)}` : ''}`,
 }

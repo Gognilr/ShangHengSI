@@ -101,3 +101,17 @@
 
 /* 快捷键（澄明 8.0）：细线小方块，等宽字 */
 .si-kbd { display: inline-block; padding: 0 6px; border: 1px solid var(--si-hair); border-radius: 6px; background: var(--si-card-2); color: var(--si-ink-4); font: var(--si-font-caption); font-family: var(--si-font-mono); line-height: 18px; }
+
+/* 徽标（澄明第九节）：浅底深字的全圆胶囊，可带圆点或图标；颜色按第十二节 */
+.si-badge { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-badge); white-space: nowrap; }
+.si-badge > .d { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.si-badge > svg { flex: none; }
+.si-badge.is-info { background: var(--si-info-soft); color: var(--si-info-ink); }
+.si-badge.is-mid { background: var(--si-warn-soft); color: var(--si-warn-ink); }
+.si-badge.is-hi { background: var(--si-danger-soft); color: var(--si-danger-ink); }
+.si-badge.is-brand { background: var(--si-blue-tint); color: var(--si-blue-ink); }
+.si-badge.is-ai { background: var(--si-ai-soft); color: var(--si-ai-ink); }
+.si-badge.is-line { background: transparent; border: 1px solid var(--si-hair); color: var(--si-ink-2); }
+.si-badge.is-info > .d { animation: si-breath 1.6s var(--si-ease-io) infinite; }
+@keyframes si-breath { 50% { opacity: .35; } }
+html[data-fx="off"] .si-badge > .d { animation: none; }

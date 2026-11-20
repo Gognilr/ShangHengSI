@@ -1,6 +1,6 @@
 import type { InjectionKey, Ref } from 'vue'
 import { ApiError } from '@/api/http'
-import type { Bidder, BidCheck, BidLevel, BidPricing, BidSigning, BidSignMark } from '@/api/bid'
+import type { Bidder, BidCheck, BidConclusionEntry, BidItem, BidLevel, BidPlace, BidPricing, BidSigning, BidSignMark } from '@/api/bid'
 
 /** 结果页各页签共用（V35-E-01）：数据、名称、“不是问题”、签章页标注与“查看原件页”。 */
 export interface BidResultsContext {
@@ -16,7 +16,10 @@ export interface BidResultsContext {
   dismiss: (key: string, dismissed: boolean) => Promise<void>
   /** 签章页标注；多页时一次请求（本家全部已盖章） */
   markSigning: (pages: BidSigning[], mark: BidSignMark | null) => Promise<void>
-  openPage: (fileId: string, page: number) => void
+  /** 大图查看原件页；loc 为要框出的命中节点 */
+  openPage: (fileId: string, page: number, loc?: string | null) => void
+  /** 投标人代号（A、B…） */
+  codes: Ref<Record<string, string>>
 }
 export const bidResultsKey: InjectionKey<BidResultsContext> = Symbol('bidResults')
 
@@ -67,4 +70,50 @@ export function sameSpans(text: string, other: string, n = 8): [string, boolean]
 export function openingError(e: unknown, body: { upper?: string | null }) {
   if (e instanceof ApiError && e.status !== 422) return e.message
   return body.upper ? '请检查金额，大写例如 壹佰万元整' : '请输入金额，例如 1234567.89'
+}
+
+/** 证据栏的一处（V35-F-05）：一家或两家并排；pair 为两段原文对照（相同处高亮），value 为相同的内容本身 */
+export interface EvidenceSide { bidderId: string; fileId: string | null; page: number | null; loc: string | null; excerpt?: string; text?: string }
+export interface EvidenceStep { label: string; value?: string; sides: EvidenceSide[]; pair?: boolean; prices?: { name: string; left: string; right: string }[]; similar?: BidItem }
+
+function side(bidderId: string, p: BidPlace, text?: string): EvidenceSide {
+  return { bidderId, fileId: p.file_id ?? null, page: p.page ?? null, loc: p.loc ?? null, excerpt: p.excerpt, text }
+}
+/** 一条证据行拆成可翻看的几处：两段原文对照一处；两家及以上各取首个位置并排一处；只有一家时每个位置一处。 */
+export function rowSteps(item: BidItem, index: number, only?: string[]): EvidenceStep[] {
+  const row = item.rows[index]
+  if (!row) return []
+  const label = row.label + (row.chars ? ` · 约 ${row.chars} 字 · ${row.sentences} 句` : row.count ? ` · ${row.count} 处` : '')
+  const prices = row.items?.length ? row.items : undefined
+  if (row.left && row.right) {
+    return [{ label, value: row.value, pair: true, prices, similar: item.type === 'similar' ? item : undefined,
+      sides: [row.left, row.right].map(s => side(s.bidder_id, s.places[0] ?? { file_id: '', page: null }, s.text)) }]
+  }
+  const groups = Object.entries(row.places ?? {}).filter(([bid]) => bid !== 'tender' && (!only || only.includes(bid)))
+  if (groups.length >= 2) return [{ label, value: row.value, prices, sides: groups.slice(0, 3).map(([bid, list]) => side(bid, list[0]!)) }]
+  if (groups.length === 1) {
+    const [bid, list] = groups[0]!
+    return list.map(p => ({ label, value: row.value, prices, sides: [side(bid, p)] }))
+  }
+  return [{ label, value: row.value, prices, sides: [] }]
+}
+/** 一个事项的全部证据处：案件按证据链，条目按各行。条款与签章页另取（见 BidEvidence）。 */
+export function entrySteps(entry: BidConclusionEntry, data: BidCheck): EvidenceStep[] {
+  const items = new Map(data.items.map(i => [String(i.id), i]))
+  if (entry.case_id) {
+    const kase = data.conclusion.cases.find(c => c.id === entry.case_id)
+    return (kase?.evidence ?? []).flatMap(e => {
+      const item = items.get(String(e.item_id))
+      return item ? rowSteps(item, e.row, e.bidder_ids).map(s => ({ ...s, label: e.fact })) : []
+    })
+  }
+  const item = entry.item_id ? items.get(String(entry.item_id)) : undefined
+  return item ? item.rows.flatMap((_r, i) => rowSteps(item, i)) : []
+}
+/** 列表每行下面的出处：文件 · 第 n 页（只看一家时取这一家的） */
+export function placeText(entry: BidConclusionEntry, fileNames: Record<string, string>, bidder?: string): string {
+  const list = entry.places ?? []
+  const p = (bidder && list.find(x => x.bidder_id === bidder)) || list.find(x => x.bidder_id !== 'tender') || list[0]
+  if (!p) return ''
+  return (fileNames[p.file_id] ?? '文件') + (p.page ? ` · 第 ${p.page} 页` : '')
 }

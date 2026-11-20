@@ -1,50 +1,47 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+// 标书初审 · 项目页（澄明 8.5 ②）：页头（面包屑、项目名、信息徽标、操作）→ 招标文件卡 → 一行进度（只在这一处）→ 投标人卡片网格
+// → 检查中只显示进度、不出结论 → 结果出来后主从两栏（问题清单 + 证据）。条款与各家文件在右侧抽屉里看和改。
+import { computed, onBeforeUnmount, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
-import { Check, ChevronDown, ChevronRight, FileDown, FolderOpen, ListChecks, Plus, ScanSearch, Settings2, UploadCloud } from '@lucide/vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { BookOpen, Calendar, ChevronLeft, ChevronRight, Download, FolderOpen, ListChecks, LoaderCircle, Lock, Play, Plus, RefreshCw, Tags, UploadCloud, Users } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { useAuthStore } from '@/stores/auth'
-import { bidApi, bidPolicyLabel, bidState, type BidCategory, type BidOpeningPriceInput, type BidProject, type BidSettings } from '@/api/bid'
+import { bidApi, type BidCategory, type BidCheck, type BidFolder, type BidOpeningPriceInput, type BidProject, type BidSettings, type BidSigning, type BidSignMark } from '@/api/bid'
 import RowMore from '@/components/RowMore.vue'
-import EmptyState from '@/components/EmptyState.vue'
 import BidFiles from '@/components/bid/BidFiles.vue'
-import BidStatus from '@/components/bid/BidStatus.vue'
 import BidderCard from '@/components/bid/BidderCard.vue'
-import { openingError } from '@/components/bid/results'
+import BidderTile from '@/components/bid/BidderTile.vue'
+import BidSignSheets from '@/components/bid/BidSignSheets.vue'
+import { bidResultsKey, openingError, shortNames, type BidResultsContext } from '@/components/bid/results'
 import { matchInvitee, nameKey } from '@/components/bid/invitees'
+import { folderPath } from '@/components/bid/folders'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
 import BidRequirements from '@/components/bid/BidRequirements.vue'
 import BidResults from '@/components/bid/BidResults.vue'
-import BidModelCheck from '@/components/bid/BidModelCheck.vue'
 import BidSentDrawer from '@/components/bid/BidSentDrawer.vue'
-import BidExport from '@/components/bid/BidExport.vue'
 
 const route = useRoute(), router = useRouter(), id = computed(() => String(route.params.id))
-// 分类名只用于页头显示（V34-B-01a）
-const categories = ref<BidCategory[]>([])
+const auth = useAuthStore()
+// 分类名与文件夹路径只用于页头显示（V34-B-01a）
+const categories = ref<BidCategory[]>([]), folderList = ref<BidFolder[]>([])
 void bidApi.categories().then(r => { categories.value = r.items }).catch(() => {})
+void bidApi.folders().then(r => { folderList.value = r.folders }).catch(() => {})
 const categoryName = computed(() => categories.value.find(c => c.id === project.value?.category_id)?.name)
+const folderName = computed(() => project.value?.folder_id ? folderPath(folderList.value, project.value.folder_id) : '')
 const project = ref<BidProject>(), loading = ref(false), error = ref(''), pending = ref(false), percent = ref<number | null>(null)
-const step = ref(0), reopened = ref(false)  // reopened：刚返回修改材料
-const locked = computed(() => !!project.value && !['preparing', 'ready'].includes(project.value.stage))  // 开始初审后材料锁定
-const blocked = computed(() => pending.value || locked.value)  // 解析期间仍可继续加文件、改名称，新文件由同一次解析接着处理
+const phase = computed<'materials' | 'checking' | 'results'>(() => project.value?.stage === 'checked' ? 'results' : project.value?.stage === 'checking' ? 'checking' : 'materials')
+const locked = computed(() => phase.value !== 'materials')  // 开始检查后材料锁定
+const blocked = computed(() => pending.value || locked.value)  // 读取期间仍可继续加文件、改名称，新文件由同一次读取接着处理
 const tenderFiles = computed(() => project.value?.files.filter(f => !f.bidder_id) ?? [])
 const bidFiles = computed(() => project.value?.files.filter(f => f.bidder_id) ?? [])
 const filesOf = (bidder: string) => project.value?.files.filter(f => f.bidder_id === bidder) ?? []
 const rowErrors = reactive<Record<string, string>>({})  // 密码错误等提示显示在对应文件行，不只在页顶
-const adding = ref(false), newName = ref(''), sentOpen = ref(false)
-const auth = useAuthStore(), exporting = ref(false)
-async function exportReport() {
-  if (exporting.value) return
-  exporting.value = true
-  try { await reportApi.bid(id.value, 'full') }
-  catch (e) { error.value = e instanceof ApiError ? e.message : '导出失败，请重试' }
-  finally { exporting.value = false }
-}
+const sentOpen = ref(false), exporting = ref(false)
+const tenderOpen = ref(false), bidderOpen = ref(''), selected = ref('')
 const picker = ref<HTMLInputElement>(), folders = ref<HTMLInputElement>(), target = ref<string>(), targetName = ref<string>()
-// 受邀单位名单（V34-B-01b）：名单中尚无分组的单位显示为待交卡片，拖入文件时才建分组；已有分组只是简称时提示改用全称
+// 受邀单位名单（V34-B-01b）：名单中尚无分组的单位显示为虚线卡，拖入文件时才建分组；已有分组只是简称时提示改用全称
 const invitees = computed(() => project.value?.invitees ?? [])
 const bidderKeys = computed(() => new Set(project.value?.bidders.map(b => nameKey(b.name)) ?? []))
 const suggestions = computed(() => {
@@ -58,41 +55,13 @@ const suggestions = computed(() => {
 })
 const waiting = computed(() => {
   const claimed = new Set(Object.values(suggestions.value).map(nameKey))
-  return invitees.value.filter(n => !bidderKeys.value.has(nameKey(n)) && !claimed.has(nameKey(n)))
+  return locked.value ? [] : invitees.value.filter(n => !bidderKeys.value.has(nameKey(n)) && !claimed.has(nameKey(n)))
 })
-const waitingOpen = ref(true), overWaiting = ref<string | null>(null)
-const dragging = ref<'tender' | 'bulk' | null>(null), groupDialog = ref(false), settingsDialog = ref(false), settingsError = ref('')
+const overWaiting = ref<string | null>(null), overAdd = ref(false), overTender = ref(false)
+const groupDialog = ref(false), settingsDialog = ref(false), settingsError = ref('')
 const grouped = ref<{ original: string; name: string; files: File[] }[]>([])
 let timer: ReturnType<typeof setTimeout> | undefined
 let generation = 0, edits = 0  // edits：轮询结果晚于修改返回时丢弃，避免旧状态覆盖新状态
-
-// 四步条：前两步按材料是否齐全打勾；后两步在条款清单与初审完成后开放
-const steps = computed(() => {
-  const p = project.value
-  const tenderDone = !!tenderFiles.value.length && tenderFiles.value.every(f => f.state === 'done') && p?.stage !== 'preparing'
-  const bidDone = !!p && p.bidders.length > 0 && p.bidders.every(b => filesOf(b.id).length > 0) && bidFiles.value.every(f => f.state === 'done')
-  return [
-    { title: '招标文件与条款', done: tenderDone },
-    { title: '投标文件', done: bidDone },
-    { title: '初审结果', done: p?.stage === 'checked' },
-    { title: '导出', done: false },
-  ]
-})
-// 已解析的招标文件变化时，清单组件重新读取
-const tenderKey = computed(() => tenderFiles.value.filter(f => f.state === 'done').map(f => f.id).join(','))
-// 四步条右端只有一处状态（V34Q-25 第 2 条）：上传 / 解析 → 本地检查、扫描页识别、模型核对
-const parseNote = computed(() => {
-  const p = project.value, files = p?.files ?? []
-  if (!p || !files.length) return null
-  const done = files.filter(f => f.state === 'done').length, failed = files.filter(f => f.state === 'failed').length
-  if (p.busy) return { tone: 'run' as const, label: `正在解析 ${done} / ${files.length}` }
-  if (failed) return { tone: 'warn' as const, label: `${failed} 份文件待处理` }
-  const parsed = `${files.length} 份文件已解析`
-  if (p.check?.state === 'failed') return { tone: 'warn' as const, label: p.check.error ?? '本地检查失败' }
-  if (p.stage === 'checking') return { tone: 'run' as const, label: `${parsed} · 正在本地检查${ocrNote.value}` }
-  if (p.stage === 'checked') return { tone: (ocrNote.value || p.model?.state === 'running' ? 'run' : 'ok') as 'run' | 'ok', label: `${parsed} · 本地检查已完成${ocrNote.value}${modelNote.value}` }
-  return { tone: 'ok' as const, label: parsed }
-})
 
 function resetTimer() { if (timer) clearTimeout(timer); timer = undefined }
 function accept(data: BidProject) {
@@ -109,13 +78,15 @@ async function load(initial: boolean) {
     const data = await bidApi.get(id.value)
     if (current !== generation || edit !== edits) return
     accept(data)
-    if (initial && (data.stage === 'checking' || data.stage === 'checked')) step.value = 2  // 已开始初审的项目直接看结果
-    else if (initial && data.bidders.length && !tenderFiles.value.length) step.value = 1
   } catch (e) { if (current === generation) error.value = e instanceof ApiError ? e.message : '项目读取失败' }
   finally { if (current === generation) loading.value = false }
 }
-watch(id, () => { generation++; reopened.value = false; resetTimer(); project.value = undefined; error.value = ''; step.value = 0; grouped.value = []; groupDialog.value = false; void load(true) }, { immediate: true })
-onBeforeUnmount(() => { generation++; resetTimer() })
+watch(id, () => {
+  generation++; resetTimer(); project.value = undefined; check.value = undefined; error.value = ''
+  grouped.value = []; groupDialog.value = false; tenderOpen.value = false; bidderOpen.value = ''; selected.value = ''
+  void load(true)
+}, { immediate: true })
+onBeforeUnmount(() => { generation++; resetTimer(); clearInterval(ticker) })
 async function mutate(action: () => Promise<BidProject>, whenLocked = false) {
   if (pending.value || (locked.value && !whenLocked)) return
   pending.value = true; error.value = ''; resetTimer(); edits++
@@ -124,9 +95,89 @@ async function mutate(action: () => Promise<BidProject>, whenLocked = false) {
   catch (e) { if (current === generation) error.value = e instanceof ApiError ? e.message : '操作失败，请重试' }
   finally { pending.value = false }
 }
+
+// ---- 初审结果：项目页读取一次，结果栏、投标人卡片与抽屉里的签章页共用（V35-F-05）
+const check = ref<BidCheck>(), notice = ref('')
+const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}:${project.value?.check?.ocr?.done}:${project.value?.model?.state}:${project.value?.model?.done}`)
+const modelKey = computed(() => `${project.value?.model?.state}:${project.value?.model?.done}`)
+let saving = 0, checkRequest = 0
+async function loadCheck() {
+  if (phase.value !== 'results') return
+  const current = ++checkRequest
+  try { const next = await bidApi.check(id.value); if (current === checkRequest && !saving) check.value = next }
+  catch (e) { if (current === checkRequest) notice.value = e instanceof ApiError ? e.message : '检查结果读取失败' }
+}
+watch(checkKey, () => void loadCheck(), { immediate: true })
+const counts = computed(() => Object.fromEntries((check.value?.conclusion.bidders ?? []).map(b => [b.id, b])))
+const names = computed(() => Object.fromEntries((project.value?.bidders ?? []).map(b => [b.id, b.name])))
+const shorts = computed(() => shortNames(project.value?.bidders ?? []))
+const codes = computed(() => Object.fromEntries((project.value?.bidders ?? []).map(b => [b.id, b.code.replace(/[（）()]/g, '')])))
+const fileNames = computed(() => Object.fromEntries((project.value?.files ?? []).map(f => [f.id, f.name])))
+const renderable = computed(() => Object.fromEntries((project.value?.files ?? []).map(f => [f.id, !f.original_deleted && ['pdf', 'jpg', 'jpeg', 'png'].includes(f.ext)])))
+const ctx: BidResultsContext = { get projectId() { return id.value }, data: check, names, shorts, codes, fileNames, renderable, dismiss, markSigning, openPage }
+provide(bidResultsKey, ctx)
+async function dismiss(key: string, dismissed: boolean) {
+  notice.value = ''; saving++
+  try { check.value = await bidApi.dismiss(id.value, key, dismissed) }
+  catch (e) { notice.value = e instanceof ApiError ? e.message : '没有保存，请重试' }
+  finally { saving-- }
+}
+async function markSigning(pages: BidSigning[], mark: BidSignMark | null) {
+  if (!pages.length) return
+  const before = pages.map(s => [s, s.mark] as const)
+  pages.forEach(s => { s.mark = mark }); notice.value = ''; saving++
+  try {
+    if (pages.length === 1) await bidApi.sign(id.value, pages[0]!, mark)
+    else await bidApi.signBatch(id.value, pages.map(s => ({ file_id: s.file_id, page: s.page, loc: s.loc })), mark)
+    check.value = await bidApi.check(id.value)  // 缺章是严重问题，结论随之更新
+  } catch (e) {
+    before.forEach(([s, m]) => { s.mark = m })
+    notice.value = e instanceof ApiError ? e.message : '标注没有保存，已恢复，请重试'
+  } finally { saving-- }
+}
+// 查看原件页：大图对话框，可翻页；loc 只框在打开的那一页
+const page = ref<{ fileId: string; page: number; loc: string | null; first: number } | null>(null)
+const pageCount = computed(() => project.value?.files.find(f => f.id === page.value?.fileId)?.page_count ?? 1)
+function openPage(fileId: string, n: number, loc?: string | null) { page.value = { fileId, page: n, loc: loc ?? null, first: n } }
+
+// ---- 一行进度（只在这一处）：上传 → 读取 → 本机检查 → 检查后的扫描页识别
+const now = ref(Date.now())
+let ticker: ReturnType<typeof setInterval> | undefined
+watch(phase, p => { clearInterval(ticker); if (p === 'checking') ticker = setInterval(() => { now.value = Date.now() }, 1000) }, { immediate: true })
+function clock(ms: number) { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+const progress = computed(() => {
+  const p = project.value
+  if (!p) return null
+  if (percent.value !== null) return { title: '正在上传', text: `${percent.value}%`, bar: percent.value / 100, note: '上传完后在本机读取' }
+  if (p.stage === 'checking') {
+    const pr = p.check.progress ?? { done: 0, total: 3 }
+    return { title: '本机检查中', text: `已完成 ${pr.done} / ${pr.total} 项`, time: clock(now.value - new Date(p.last_activity_at).getTime()),
+      bar: Math.max(.06, pr.done / Math.max(1, pr.total)), note: '可以离开页面，结论在全部检查完后出现' }
+  }
+  const files = p.files, done = files.filter(f => f.state === 'done').length
+  if (p.busy && files.length) return { title: '正在本机读取', text: `第 ${done} / ${files.length} 份`, bar: done / files.length, note: '可以继续加入文件' }
+  const o = p.check.ocr
+  if (p.stage === 'checked' && o.total > o.done) return { title: '正在本机识别扫描页', text: `第 ${o.done} / ${o.total} 页`, bar: o.done / o.total, note: '结论标为“初步”，识别完后自动更新' }
+  return null
+})
+
+// ---- 招标文件卡：收起时一行说明
+const tenderKey = computed(() => tenderFiles.value.filter(f => f.state === 'done').map(f => f.id).join(','))
+const tender = computed(() => {
+  const p = project.value, list = tenderFiles.value
+  if (!p || !list.length) return null
+  const failed = list.filter(f => f.state === 'failed').length, reading = list.filter(f => f.state === 'waiting').length
+  const key = p.requirements.key ?? p.requirements.enabled
+  if (failed) return { badge: { tone: 'mid', text: `${failed} 份待处理` }, line: `${list.length} 份 · 有文件需要密码或读取失败` }
+  if (reading) return { badge: { tone: 'info', text: '读取中' }, line: `${list.length} 份 · 正在本机读取` }
+  if (p.stage === 'preparing') return { badge: { tone: 'mid', text: '条款待确认' }, line: `${list.length} 份 · 已读取 · ★ 与否决条款 ${key} 条，请核对后确认` }
+  return { line: `${list.length} 份 · 已读取 · ★ 与否决条款 ${key} 条` }
+})
+
+// ---- 操作
 function openSettings() { settingsError.value = ''; settingsDialog.value = true }
 async function saveSettings(body: BidSettings) {
-  await mutate(() => bidApi.update(id.value, body), true)  // 开始初审后仍可改分类与文件夹
+  await mutate(() => bidApi.update(id.value, body), true)  // 开始检查后仍可改分类与文件夹
   if (error.value) { settingsError.value = error.value; error.value = '' } else settingsDialog.value = false
 }
 async function removeFile(fid: string) { delete rowErrors[fid]; await mutate(() => bidApi.removeFile(id.value, fid)) }
@@ -135,30 +186,42 @@ async function setPassword(fid: string, password: string) {
   await mutate(() => bidApi.password(id.value, fid, password))
   if (error.value) { rowErrors[fid] = error.value; error.value = '' }
 }
-// 开始初审：条款清单确认、文件解析完、至少一家有投标文件
+// 开始检查：条款清单确认、文件读取完、至少一家有投标文件
 const startBlock = computed(() => {
   const p = project.value
-  if (!p) return '…'
-  if (p.stage !== 'ready') return locked.value ? '' : '先在第 1 步确认条款清单'
-  if (p.busy || p.files.some(f => f.state === 'waiting')) return '文件还在解析'
-  if (!bidFiles.value.some(f => f.state === 'done')) return '请先加入投标文件'
-  return ''
+  if (!p || locked.value) return ''
+  if (!tenderFiles.value.length) return '先加入招标文件'
+  if (p.stage !== 'ready') return '先核对并确认招标文件的条款'
+  if (p.busy || p.files.some(f => f.state === 'waiting')) return '文件还在读取'
+  if (!bidFiles.value.some(f => f.state === 'done')) return '再加入投标文件'
+  return p.bidders.length < 2 ? '只有 1 家时只做符合性检查' : ''
 })
-async function startCheck() { await mutate(() => bidApi.startCheck(id.value)); if (!error.value) step.value = 2 }
-const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}:${project.value?.check?.ocr?.done}:${project.value?.model?.state}:${project.value?.model?.done}`)
-const modelKey = computed(() => `${project.value?.model?.state}:${project.value?.model?.done}`)
-const modelNote = computed(() => {
-  const m = project.value?.model
-  return m?.state === 'running' ? ` · 模型补查 ${m.done} / ${m.total} 家` : m?.state === 'done' ? ` · 模型补查 ${m.total} 家已完成` : ''
-})
-const ocrNote = computed(() => {
-  const o = project.value?.check?.ocr
-  return o && o.total > o.done ? ` · 扫描页识别 ${o.done} / ${o.total}` : ''
-})
-// 结果页自带页脚（口径说明 + 固定声明），项目页不再重复
-const showResults = computed(() => step.value === 2 && (project.value?.stage === 'checking' || project.value?.stage === 'checked'))
+const canStart = computed(() => !!project.value && project.value.stage === 'ready' && !pending.value && (!startBlock.value || startBlock.value.startsWith('只有')))
+async function startCheck() { await mutate(() => bidApi.startCheck(id.value)); selected.value = '' }
+const reopenBlock = computed(() => ['preparing', 'running'].includes(project.value?.model.state ?? ''))
+// 重新检查：退回待开标后立即再检查一遍；“不是问题”保留，模型补查结果清掉
+async function recheck() {
+  if (!project.value || pending.value || reopenBlock.value) return
+  try { await ElMessageBox.confirm('在本机重新检查一遍。标过“不是问题”的事项会保留；模型补查的结果会清掉，需要时再交模型补查。', '重新检查', { confirmButtonText: '重新检查', cancelButtonText: '取消' }) }
+  catch { return }
+  await mutate(() => bidApi.reopen(id.value), true)
+  if (!error.value) await mutate(() => bidApi.startCheck(id.value))
+}
+async function reopen() {
+  if (!project.value || pending.value || reopenBlock.value) return
+  try { await ElMessageBox.confirm('项目将退回“待开标”，可以修改条款、增减投标文件，然后重新开始检查。标过“不是问题”的事项会保留；模型补查需要重新确认发送。', '返回修改材料', { confirmButtonText: '返回修改', cancelButtonText: '取消' }) }
+  catch { return }
+  await mutate(() => bidApi.reopen(id.value), true)
+}
+async function exportReport() {
+  if (exporting.value) return
+  exporting.value = true
+  try { if (await reportApi.bid(id.value, 'full') === 'downloaded') ElMessage.success('问题清单已下载') }
+  catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '导出失败，请稍后重试') }
+  finally { exporting.value = false }
+}
 async function reparse() { await mutate(() => bidApi.parse(id.value)) }
-async function renameBidder(bidder: string, name: string) { await mutate(() => bidApi.renameBidder(id.value, bidder, name)) }
+async function renameBidder(bidder: string, name: string) { await mutate(() => bidApi.renameBidder(id.value, bidder, name)); if (phase.value === 'results') void loadCheck() }
 // 唱标价（V34-B-06e）：失败时在卡片内提示，不弹全局错误
 const openingFailed = ref<Record<string, string>>({})
 async function saveOpening(bidder: string, body: BidOpeningPriceInput, done: () => void) {
@@ -167,11 +230,15 @@ async function saveOpening(bidder: string, body: BidOpeningPriceInput, done: () 
   try { project.value = await bidApi.openingPriceBefore(id.value, bidder, body); done() }
   catch (e) { openingFailed.value[bidder] = openingError(e, body) }
 }
-async function removeBidder(bidder: string) { await mutate(() => bidApi.removeBidder(id.value, bidder)) }
+async function removeBidder(bidder: string) { await mutate(() => bidApi.removeBidder(id.value, bidder)); if (!error.value) bidderOpen.value = '' }
 async function addBidder() {
-  if (!newName.value.trim()) return
-  await mutate(() => bidApi.addBidder(id.value, newName.value.trim()))
-  if (!error.value) { newName.value = ''; adding.value = false }
+  if (blocked.value) return
+  try {
+    const { value } = await ElMessageBox.prompt('以投标函上的全称为准；之后可以把这家的文件拖到卡片上。', '添加投标人', {
+      confirmButtonText: '添加', cancelButtonText: '取消', inputPlaceholder: '投标人全称',
+      inputValidator: v => (!!v.trim() && v.trim().length <= 255) || '请输入投标人名称' })
+    await mutate(() => bidApi.addBidder(id.value, value.trim()))
+  } catch { /* 取消 */ }
 }
 function choose(bidder?: string, name?: string) { if (!blocked.value) { target.value = bidder; targetName.value = name; picker.value?.click() } }
 async function upload(files: File[], bidder?: string, groups?: string[]) {
@@ -217,7 +284,7 @@ function pickedFolders(event: Event) {
   input.value = ''; prepareGroups(files.map(file => ({ file, path: file.webkitRelativePath || file.name })))
 }
 async function drop(event: DragEvent, bidder?: string, folderMode = false, name?: string) {
-  dragging.value = null; overWaiting.value = null
+  overWaiting.value = null; overAdd.value = false; overTender.value = false
   if (blocked.value) return
   // 必须在首次 await 前取得全部入口，部分浏览器在事件结束后清除 dataTransfer。
   const entries = Array.from(event.dataTransfer?.items ?? []).map(item => item.webkitGetAsEntry()).filter(Boolean) as unknown as Entry[]
@@ -244,16 +311,7 @@ async function confirmGroups() {
   grouped.value.forEach((g, i) => g.files.forEach(f => { files.push(f); groups.push(names[i]!) }))
   await upload(files, undefined, groups)
   if (error.value) { groupError.value = error.value; error.value = '' }
-  else { groupDialog.value = false; grouped.value = []; step.value = 1 }
-}
-// 返回修改材料：退回“待开标”，重新初审时沿用已标的“不是问题”；模型补查需重新确认发送
-const reopenBlock = computed(() => ['preparing', 'running'].includes(project.value?.model.state ?? ''))
-async function reopen() {
-  if (!project.value || pending.value || reopenBlock.value) return
-  try { await ElMessageBox.confirm('项目将退回“待开标”，可以修改条款清单、增减投标文件，然后重新开始初审。标过“不是问题”的事项会保留；模型补查需要重新确认发送。', '返回修改材料', { confirmButtonText: '返回修改', cancelButtonText: '取消' }) }
-  catch { return }
-  await mutate(() => bidApi.reopen(id.value), true)
-  if (!error.value) { reopened.value = true; step.value = 1 }
+  else { groupDialog.value = false; grouped.value = [] }
 }
 async function removeProject() {
   if (!project.value || pending.value) return
@@ -264,141 +322,152 @@ async function removeProject() {
   catch (e) { error.value = e instanceof ApiError ? e.message : '删除失败' }
   finally { pending.value = false }
 }
+// 投标人卡：材料阶段点开抽屉；结果出来后点卡片只看这一家，再点取消
+function selectBidder(bid: string) { selected.value = selected.value === bid ? '' : bid }
+const drawerBidder = computed(() => project.value?.bidders.find(b => b.id === bidderOpen.value))
+const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.bidder_id === bidderOpen.value))
 </script>
 
 <template>
-  <div class="page page--wide bid-project" :class="{ 'show-result': step === 2 }">
-    <nav class="breadcrumb" aria-label="位置"><router-link to="/bid">标书初审</router-link><span aria-hidden="true">/</span><span>{{ project?.title ?? '项目' }}</span></nav>
+  <div class="page bidp">
+    <nav class="crumb" aria-label="位置">
+      <router-link to="/bid">标书初审</router-link>
+      <template v-if="folderName"><ChevronRight :size="14" :stroke-width="1.75" aria-hidden="true" /><router-link :to="{ path: '/bid', query: { folder: project?.folder_id } }">{{ folderName }}</router-link></template>
+    </nav>
     <p v-if="loading" role="status" class="hint">正在读取项目…</p>
     <el-alert v-if="error && !project" :title="error" type="error" :closable="false" />
     <template v-if="project">
       <header class="head">
-        <div class="title">
-          <h1>{{ project.title }}</h1>
-          <p class="meta"><template v-if="categoryName"><span>{{ categoryName }}</span><i aria-hidden="true">·</i></template><span class="num">开标 {{ project.opening_date }}</span><i aria-hidden="true">·</i><BidStatus v-bind="bidState(project)" /><i aria-hidden="true">·</i><span>{{ bidPolicyLabel[project.policy] }}</span><i aria-hidden="true">·</i><span>仅本人可见</span></p>
-        </div>
-        <div class="head-actions">
-          <el-button v-if="step === 2 && project.stage === 'checked'" type="primary" :loading="exporting" :disabled="!auth.can('use.export')" @click="exportReport"><FileDown :size="16" :stroke-width="1.75" />导出问题清单</el-button>
-          <el-button :disabled="pending" @click="openSettings"><Settings2 :size="16" :stroke-width="1.75" />项目设置</el-button>
+        <h1 :title="project.title">{{ project.title }}</h1>
+        <div class="acts">
+          <span v-if="startBlock && phase === 'materials'" class="why">{{ startBlock }}</span>
+          <el-button v-if="phase === 'materials'" type="primary" :disabled="!canStart" @click="startCheck"><Play :size="16" :stroke-width="1.75" />开始检查</el-button>
+          <el-button v-else-if="phase === 'checking'" disabled><LoaderCircle class="spin" :size="16" :stroke-width="1.75" />检查中</el-button>
+          <template v-else>
+            <el-button :disabled="pending || reopenBlock" @click="recheck"><RefreshCw :size="16" :stroke-width="1.75" />重新检查</el-button>
+            <el-button type="primary" :loading="exporting" :disabled="!auth.can('use.export')" :title="auth.can('use.export') ? '' : '当前账号没有导出权限'" @click="exportReport"><Download :size="16" :stroke-width="1.75" />导出问题清单</el-button>
+          </template>
           <RowMore :disabled="pending">
-            <el-dropdown-item v-if="project.stage === 'checked'" :disabled="reopenBlock" @click="reopen">返回修改材料</el-dropdown-item>
-            <el-dropdown-item v-else :disabled="blocked || !project.files.length" @click="reparse">重新解析全部文件</el-dropdown-item>
+            <el-dropdown-item @click="openSettings">项目设置</el-dropdown-item>
+            <el-dropdown-item v-if="phase === 'results'" :disabled="reopenBlock" @click="reopen">返回修改材料</el-dropdown-item>
+            <el-dropdown-item v-else :disabled="blocked || !project.files.length" @click="reparse">重新读取全部文件</el-dropdown-item>
+            <el-dropdown-item v-if="(project.sent_count ?? 0) > 0" @click="sentOpen = true">查看实际发送内容</el-dropdown-item>
             <el-dropdown-item divided class="danger-item" @click="removeProject">删除项目</el-dropdown-item>
           </RowMore>
         </div>
       </header>
-
-      <nav class="steps" aria-label="标书初审步骤">
-        <button v-for="(s, index) in steps" :key="s.title" type="button" :class="{ current: step === index, done: s.done && step !== index }" :aria-current="step === index ? 'step' : undefined" @click="step = index">
-          <span class="number"><Check v-if="s.done && step !== index" :size="14" :stroke-width="2" /><template v-else>{{ index + 1 }}</template></span>{{ s.title }}
-        </button>
-        <span class="progress" role="status">
-          <span v-if="percent !== null" class="hint num">正在上传 {{ percent }}%</span>
-          <BidStatus v-else-if="parseNote" v-bind="parseNote" />
-        </span>
-      </nav>
-      <el-alert v-if="error" class="alert" :title="error" type="error" show-icon @close="error = ''" />
-
-      <!-- 第 1 步：招标文件与条款 -->
-      <div v-if="step === 0" :class="tenderKey ? 'tender-ready' : 'tender'">
-        <section class="col">
-          <div class="section-head"><h2 class="si-overline">招标文件</h2><span class="hint num">{{ tenderFiles.length }} / {{ project.limits.tender_files }}</span></div>
-          <BidFiles v-if="tenderFiles.length" :project-id="id" :files="tenderFiles" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" @remove="removeFile" @password="setPassword" />
-          <div v-if="tenderFiles.length < project.limits.tender_files" class="si-drop" :class="{ dragging: dragging === 'tender', slim: tenderFiles.length > 0 }" :aria-disabled="blocked" role="button" tabindex="0"
-               @click="choose()" @keydown.enter="choose()" @dragover.prevent="dragging = 'tender'" @dragleave.self="dragging = null" @drop.prevent="drop($event)">
-            <UploadCloud :size="tenderFiles.length ? 18 : 24" :stroke-width="1.75" />
-            <p class="si-drop-title">{{ tenderFiles.length ? '加入答疑、补遗或澄清文件' : '拖入招标文件，或点击选择' }}</p>
-            <p v-if="!tenderFiles.length" class="hint">Word、PDF、Excel 或图片；正文、答疑、补遗与澄清可分别加入，最多 {{ project.limits.tender_files }} 份</p>
-          </div>
-        </section>
-        <BidRequirements v-if="tenderKey" class="requirements" :project-id="id" :policy="project.policy" :disabled="blocked" :tender-key="tenderKey" @changed="load(false)" />
-        <aside v-else class="col next">
-          <div class="section-head"><h2 class="si-overline">条款清单</h2></div>
-          <p class="next-lede">招标文件解析后，系统自动抓出 ★ 条款、否决条款与“必须 / 不得”类条款，由你核对确认。</p>
-          <ul class="groups">
-            <li v-for="g in ['资格条件', '实质性条款（★）', '否决条款', '报价要求', '有效期与保证金', '签章与格式页']" :key="g"><ListChecks :size="14" :stroke-width="1.75" aria-hidden="true" />{{ g }}<span class="num">—</span></li>
-          </ul>
-          <p class="hint">{{ project.busy ? '正在解析招标文件…' : '加入招标文件后开始。' }}</p>
-        </aside>
-        <footer class="step-foot"><el-button @click="step = 1">下一步：投标文件</el-button></footer>
-      </div>
-
-      <!-- 第 2 步：投标文件 -->
-      <div v-else-if="step === 1" class="bids">
-        <div class="toolbar">
-          <div class="counts"><h2 class="si-overline">投标人 {{ project.bidders.length }} 家</h2><span class="hint num">投标文件 {{ bidFiles.length }} / {{ project.limits.bid_files }}</span></div>
-          <div class="tools">
-            <el-button :disabled="blocked" @click="adding = true"><Plus :size="16" :stroke-width="1.75" />添加投标人</el-button>
-            <el-button :disabled="blocked" @click="folders?.click()"><FolderOpen :size="16" :stroke-width="1.75" />导入文件夹</el-button>
-          </div>
-        </div>
-        <div v-if="adding" class="si-card adding">
-          <el-input v-model="newName" maxlength="255" placeholder="投标人名称（以投标函上的全称为准）" aria-label="新投标人名称" autofocus @keyup.enter="addBidder" @keyup.esc="adding = false" />
-          <el-button type="primary" :disabled="blocked || !newName.trim()" @click="addBidder">添加</el-button>
-          <el-button text @click="adding = false; newName = ''">取消</el-button>
-        </div>
-
-        <div v-if="!project.bidders.length && !waiting.length" class="si-drop hero" :class="{ dragging: dragging === 'bulk' }" :aria-disabled="blocked" role="button" tabindex="0"
-             @click="folders?.click()" @keydown.enter="folders?.click()" @dragover.prevent="dragging = 'bulk'" @dragleave.self="dragging = null" @drop.prevent="drop($event, undefined, true)">
-          <FolderOpen :size="28" :stroke-width="1.5" />
-          <p class="si-drop-title">把各家的投标文件夹一起拖进来</p>
-          <p class="hint">每个文件夹建一家投标人，上传前可核对名称；也可以先“添加投标人”，再逐家加入文件。</p>
-        </div>
-        <template v-else>
-          <div v-if="project.bidders.length" class="cards">
-            <BidderCard v-for="bidder in project.bidders" :key="bidder.id" :project-id="id" :bidder="bidder" :files="filesOf(bidder.id)" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" :suggest="suggestions[bidder.id]"
-              :rate-quote="project.quote_mode === 'rate' || project.quote_mode === 'discount'"
-                        @rename="name => renameBidder(bidder.id, name)" @remove="removeBidder(bidder.id)" @pick="choose(bidder.id)" @drop="e => drop(e, bidder.id)"
-                        :opening-failed="openingFailed[bidder.id]" @password="setPassword" @remove-file="removeFile" @opening="(body, done) => saveOpening(bidder.id, body, done)" @adopt="name => renameBidder(bidder.id, name)" />
-          </div>
-          <section v-if="waiting.length" class="waiting" aria-label="名单中尚未交文件的单位">
-            <button type="button" class="waiting-head" :aria-expanded="waitingOpen" @click="waitingOpen = !waitingOpen">
-              <component :is="waitingOpen ? ChevronDown : ChevronRight" :size="14" :stroke-width="1.75" aria-hidden="true" />
-              名单中尚未交文件 <span class="num">{{ waiting.length }}</span> 家
-              <span class="hint">拖入文件时才建分组；未投标的不建卡、不占代号</span>
-            </button>
-            <ul v-if="waitingOpen" class="waiting-list">
-              <li v-for="name in waiting" :key="name" class="pending" :class="{ over: overWaiting === name }" role="button" tabindex="0" :aria-disabled="blocked" :aria-label="`为 ${name} 加入投标文件`"
-                  @click="choose(undefined, name)" @keydown.enter="choose(undefined, name)" @dragover.prevent="overWaiting = name" @dragleave.self="overWaiting = null" @drop.prevent.stop="drop($event, undefined, false, name)">
-                <span class="pending-name" :title="name">{{ name }}</span>
-                <span class="hint">拖入这家的投标文件，或点击选择</span>
-              </li>
-            </ul>
-          </section>
-          <div class="si-drop slim" :class="{ dragging: dragging === 'bulk' }" :aria-disabled="blocked" role="button" tabindex="0"
-               @click="folders?.click()" @keydown.enter="folders?.click()" @dragover.prevent="dragging = 'bulk'" @dragleave.self="dragging = null" @drop.prevent="drop($event, undefined, true)">
-            <FolderOpen :size="18" :stroke-width="1.75" /><p class="si-drop-title">拖入更多投标人的文件夹</p>
-          </div>
+      <div class="badges">
+        <span class="si-badge is-line"><Calendar :size="13" :stroke-width="1.75" />开标 {{ project.opening_date }}</span>
+        <span class="si-badge is-line"><Users :size="13" :stroke-width="1.75" />{{ project.bidders.length }} 家投标人</span>
+        <span v-if="categoryName" class="si-badge is-line"><Tags :size="13" :stroke-width="1.75" />{{ categoryName }}</span>
+        <span v-if="project.policy === 'local_only'" class="si-badge is-brand"><Lock :size="13" :stroke-width="1.75" />只在本机处理</span>
+        <template v-if="phase === 'results' && check">
+          <span v-if="check.conclusion.severe.length" class="si-badge is-hi"><i class="d" />严重 {{ check.conclusion.severe.length }}</span>
+          <span v-else class="si-badge is-brand">没有严重问题</span>
+          <span class="si-badge">提示 {{ check.conclusion.hint.length }}</span>
         </template>
-        <footer class="step-foot start">
-          <span v-if="startBlock" class="hint">{{ startBlock }}</span>
-          <span v-else-if="project.bidders.length < 2" class="hint">只有 1 家时只做符合性检查，不比对串标线索</span>
-          <el-button v-if="!locked" type="primary" :disabled="!!startBlock || pending" @click="startCheck">开始初审</el-button>
-          <el-button v-else @click="step = 2">查看初审结果</el-button>
-        </footer>
-        <p class="hint limits num">单个文件 {{ project.limits.file_mb }} MB 以内 · PDF 不超过 {{ project.limits.pdf_pages }} 页 · 全项目扫描页与图片合计 {{ project.limits.ocr_pages }} 页 · 至少 2 家才比对串标线索</p>
+      </div>
+      <el-alert v-if="error" class="alert" :title="error" type="error" show-icon @close="error = ''" />
+      <el-alert v-if="notice" class="alert" :title="notice" type="warning" show-icon @close="notice = ''" />
+      <el-alert v-if="project.check.state === 'failed'" class="alert" type="error" show-icon :closable="false" :title="`检查没有完成：${project.check.error ?? '请重新开始'}`" />
+
+      <!-- 招标文件卡：满宽；没有文件时就是拖放区 -->
+      <section v-if="!tender" class="tender drop-card si-card" :class="{ over: overTender }" role="button" tabindex="0" :aria-disabled="blocked"
+        @click="choose()" @keydown.enter="choose()" @dragover.prevent="overTender = !blocked" @dragleave.self="overTender = false" @drop.prevent="drop($event)">
+        <span class="si-mod-icon mod"><UploadCloud :size="20" :stroke-width="1.75" /></span>
+        <div class="grow"><b>先加入招标文件</b><span>拖入或点击选择 · Word、PDF、Excel 或图片 · 正文、答疑、补遗与澄清可分别加入，最多 {{ project.limits.tender_files }} 份</span></div>
+        <el-button :disabled="blocked" @click.stop="choose()">选择文件</el-button>
+      </section>
+      <section v-else class="tender si-card" :class="{ over: overTender }" @dragover.prevent="overTender = !blocked" @dragleave.self="overTender = false" @drop.prevent="drop($event)">
+        <span class="si-mod-icon mod"><BookOpen :size="20" :stroke-width="1.75" /></span>
+        <div class="grow"><b>招标文件<span v-if="tender.badge" class="si-badge" :class="`is-${tender.badge.tone}`"><i class="d" />{{ tender.badge.text }}</span></b><span>{{ tender.line }}</span></div>
+        <el-button v-if="project.stage === 'preparing' && tenderKey" type="primary" @click="tenderOpen = true"><ListChecks :size="16" :stroke-width="1.75" />核对条款</el-button>
+        <el-button v-else text type="primary" @click="tenderOpen = true">查看条款<ChevronRight :size="16" :stroke-width="1.75" /></el-button>
+      </section>
+
+      <!-- 一行进度：只在这一处 -->
+      <div v-if="progress" class="bid-progress" role="status">
+        <LoaderCircle class="spin" :size="18" :stroke-width="1.75" />
+        <b>{{ progress.title }}</b><span class="num">{{ progress.text }}</span><span v-if="progress.time" class="num t3">用时 {{ progress.time }}</span>
+        <span class="prog" aria-hidden="true"><i :style="{ width: `${Math.round(progress.bar * 100)}%` }" /></span>
+        <span class="note">{{ progress.note }}</span>
       </div>
 
-      <div v-else-if="step === 2 && (project.stage === 'checking' || project.stage === 'checked' || project.check?.state === 'failed')" class="result">
-        <BidModelCheck v-if="project.policy === 'ai' && project.stage === 'checked'" :project-id="id" :state-key="modelKey" @changed="load(false)" />
-        <div v-else-if="(project.sent_count ?? 0) > 0 && project.stage === 'checked'" class="sent-only">
-          <span>本项目当前只做本地检查，保留历史发送记录。</span>
-          <el-button text size="small" @click="sentOpen = true">查看实际发送内容</el-button>
-          <BidSentDrawer v-model="sentOpen" :project-id="id" />
+      <!-- 投标人卡片网格：1440 宽时每行 4 张；最后一张虚线卡“添加投标人” -->
+      <div class="bidders si-stagger" :class="{ lone: !project.bidders.length && !waiting.length }">
+        <BidderTile v-for="b in project.bidders" :key="b.id" :bidder="b" :files="filesOf(b.id)" :busy="project.busy" :phase="phase" :disabled="blocked"
+          :severe="counts[b.id]?.severe" :hint="counts[b.id]?.hint" :selected="selected === b.id"
+          @open="bidderOpen = b.id" @select="selectBidder(b.id)" @drop="e => drop(e, b.id)" />
+        <div v-for="name in waiting" :key="name" class="bc-wait" :class="{ over: overWaiting === name }" role="button" tabindex="0" :aria-disabled="blocked" :aria-label="`为 ${name} 加入投标文件`"
+          @click="choose(undefined, name)" @keydown.enter="choose(undefined, name)" @dragover.prevent="overWaiting = name" @dragleave.self="overWaiting = null" @drop.prevent.stop="drop($event, undefined, false, name)">
+          <b :title="name">{{ name }}</b><span>名单中 · 还没交文件</span><span class="t4">拖入这家的文件，或点击选择</span>
         </div>
-        <BidResults v-if="project.stage === 'checking' || project.stage === 'checked'" :key="id" :project="project" :state-key="checkKey" :live="project.stage === 'checking'" @changed="load(false)" />
+        <div v-if="!locked" class="bc-add" :class="{ over: overAdd }" role="button" tabindex="0" :aria-disabled="blocked"
+          @click="addBidder" @keydown.enter="addBidder" @dragover.prevent="overAdd = true" @dragleave.self="overAdd = false" @drop.prevent.stop="drop($event, undefined, true)">
+          <span class="add-ic"><component :is="project.bidders.length ? Plus : FolderOpen" :size="20" :stroke-width="1.75" /></span>
+          <b>{{ project.bidders.length || waiting.length ? '添加投标人' : '把各家的投标文件夹一起拖进来' }}</b>
+          <span>{{ project.bidders.length || waiting.length ? '拖入文件夹即可建卡' : '每个文件夹建一家投标人，上传前可核对名称' }}</span>
+          <button type="button" class="link" :disabled="blocked" @click.stop="folders?.click()">导入文件夹</button>
+        </div>
       </div>
-      <EmptyState v-else-if="step === 2 && reopened" :icon="ScanSearch" title="正在修改材料" description="改好条款清单或投标文件后，在第 2 步重新开始初审。标过“不是问题”的事项会保留。" />
-      <EmptyState v-else-if="step === 2" :icon="ScanSearch" title="还没有初审结果" description="确认条款清单、放齐投标文件后开始初审，这里会列出严重问题、提示与串标线索。" />
-      <BidExport v-else-if="step === 3 && project.stage === 'checked'" :key="id" :project="project" />
-      <EmptyState v-else :icon="FileDown" title="还不能导出" description="初审完成后，在这里导出问题清单（Word）。" />
+      <p v-if="phase === 'materials'" class="limits num">单个文件 {{ project.limits.file_mb }} MB 以内 · PDF 不超过 {{ project.limits.pdf_pages }} 页 · 全项目扫描页与图片合计 {{ project.limits.ocr_pages }} 页 · 至少 2 家才比对串标线索</p>
 
-      <footer v-if="!showResults" class="page-foot"><p class="declaration hint">系统只指出问题并定位原件，不作否决或串通投标的认定。</p></footer>
+      <!-- 检查中：不出任何结论 -->
+      <div v-if="phase === 'checking'" class="result-wait si-card">
+        <ListChecks :size="24" :stroke-width="1.75" />
+        <div><b>检查完成后在这里列出问题</b><p>先列严重问题，再列提示。检查中不显示任何结论。</p></div>
+      </div>
+      <BidResults v-else-if="phase === 'results'" class="results" :project="project" :bidder="selected" :model-key="modelKey" @changed="load(false)" @clear="selected = ''" />
+      <footer v-if="phase === 'materials'" class="page-foot"><p class="hint">系统只指出问题并定位原件，不作否决或串通投标的认定。</p></footer>
     </template>
 
     <input ref="picker" type="file" class="file-input" multiple accept=".docx,.doc,.wps,.rtf,.pdf,.xlsx,.xls,.et,.jpg,.jpeg,.png" @change="picked">
     <input ref="folders" type="file" class="file-input" multiple webkitdirectory @change="pickedFolders">
-    <BidSettingsDialog v-if="project" v-model="settingsDialog" title="项目设置" confirm-text="保存" :initial="{ title: project.title, opening_date: project.opening_date, policy: project.policy, category_id: project.category_id, folder_id: project.folder_id }" :locked="locked" :busy="pending" :error="settingsError" @submit="saveSettings" />
+    <BidSentDrawer v-if="project" v-model="sentOpen" :project-id="id" />
+
+    <!-- 招标文件与条款：右侧抽屉 -->
+    <el-drawer v-if="project" v-model="tenderOpen" size="min(1180px, 94vw)" append-to-body title="招标文件与条款" class="bid-drawer">
+      <section class="d-sec">
+        <div class="d-head"><h3>招标文件</h3><span class="hint num">{{ tenderFiles.length }} / {{ project.limits.tender_files }}</span></div>
+        <BidFiles v-if="tenderFiles.length" :project-id="id" :files="tenderFiles" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" @remove="removeFile" @password="setPassword" />
+        <div v-if="!locked && tenderFiles.length < project.limits.tender_files" class="si-drop slim" :aria-disabled="blocked" role="button" tabindex="0"
+          @click="choose()" @keydown.enter="choose()" @dragover.prevent @drop.prevent="drop($event)">
+          <UploadCloud :size="18" :stroke-width="1.75" /><p class="si-drop-title">{{ tenderFiles.length ? '加入答疑、补遗或澄清文件' : '拖入招标文件，或点击选择' }}</p>
+        </div>
+      </section>
+      <BidRequirements v-if="tenderKey" :project-id="id" :policy="project.policy" :disabled="blocked" :tender-key="tenderKey" @changed="load(false)" />
+      <p v-else class="hint d-wait">{{ project.busy ? '正在读取招标文件…读取完后自动列出 ★、否决与“必须 / 不得”条款。' : '加入招标文件后，系统自动列出 ★、否决与“必须 / 不得”条款，由你核对确认。' }}</p>
+    </el-drawer>
+
+    <!-- 一家投标人：文件明细、密码、加文件、改名、删除；结果出来后另有签章页 -->
+    <el-drawer v-if="project" :model-value="!!drawerBidder" size="480px" append-to-body :title="drawerBidder ? `${drawerBidder.code.replace(/[（）()]/g, '')}　${drawerBidder.short || drawerBidder.name}` : ''" class="bid-drawer" @update:model-value="(v: boolean) => { if (!v) bidderOpen = '' }">
+      <template v-if="drawerBidder">
+        <BidderCard flat :project-id="id" :bidder="drawerBidder" :files="filesOf(drawerBidder.id)" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" :suggest="suggestions[drawerBidder.id]"
+          :rate-quote="project.quote_mode === 'rate' || project.quote_mode === 'discount'" :opening-failed="openingFailed[drawerBidder.id]"
+          @rename="name => renameBidder(drawerBidder!.id, name)" @remove="removeBidder(drawerBidder!.id)" @pick="choose(drawerBidder!.id)" @drop="e => drop(e, drawerBidder!.id)"
+          @password="setPassword" @remove-file="removeFile" @opening="(body, done) => saveOpening(drawerBidder!.id, body, done)" @adopt="name => renameBidder(drawerBidder!.id, name)" />
+        <p v-if="locked" class="hint d-lock">开始检查后材料锁定；要增减文件，在页头“更多”里选“返回修改材料”。</p>
+        <section v-if="phase === 'results' && check" class="d-sec sign">
+          <div class="d-head"><h3>签章页</h3><span class="hint num">已标 {{ drawerSigning.filter(s => s.mark).length }} / {{ drawerSigning.length }}</span></div>
+          <BidSignSheets v-if="drawerSigning.length" :pages="drawerSigning" />
+          <p v-else class="hint">没有在这一家的文件中找到投标函、授权委托书、报价表、承诺函等要求盖章签字的格式页；扫描页识别完成后会补上。</p>
+        </section>
+      </template>
+    </el-drawer>
+
+    <el-dialog :model-value="!!page" width="min(920px, 92vw)" append-to-body :title="page ? `${fileNames[page.fileId] ?? '原件'} · 第 ${page.page} 页` : ''" @update:model-value="(v: boolean) => { if (!v) page = null }">
+      <div v-if="page" class="page-view">
+        <img :src="bidApi.pageUrl(id, page.fileId, page.page, 1100, page.page === page.first ? page.loc : null)" :alt="`第 ${page.page} 页`">
+      </div>
+      <template #footer>
+        <div v-if="page" class="pager">
+          <el-button :disabled="page.page <= 1" @click="page.page--"><ChevronLeft :size="16" :stroke-width="1.75" />上一页</el-button>
+          <span class="num">{{ page.page }} / {{ pageCount }}</span>
+          <el-button :disabled="page.page >= pageCount" @click="page.page++">下一页<ChevronRight :size="16" :stroke-width="1.75" /></el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="groupDialog" title="核对投标人分组" width="600px" :close-on-click-modal="!pending" append-to-body>
       <p class="dialog-lede">每个文件夹对应一家投标人。请把名称改成投标函上的全称；同名的已有投标人会把文件并入该卡片。<template v-if="invitees.length">能对上受邀名单的已预填全称。</template></p>
       <ul class="group-list">
@@ -412,90 +481,85 @@ async function removeProject() {
       <p v-if="groupError" class="error" role="alert">{{ groupError }}</p>
       <template #footer><el-button :disabled="pending" @click="groupDialog = false">取消</el-button><el-button type="primary" :loading="pending" @click="confirmGroups">{{ percent !== null ? `正在上传 ${percent}%` : '按分组上传' }}</el-button></template>
     </el-dialog>
+    <BidSettingsDialog v-if="project" v-model="settingsDialog" title="项目设置" confirm-text="保存" :initial="{ title: project.title, opening_date: project.opening_date, policy: project.policy, category_id: project.category_id, folder_id: project.folder_id }" :locked="locked" :busy="pending" :error="settingsError" @submit="saveSettings" />
   </div>
 </template>
 
 <style scoped>
-:global(body:has(.bid-project)) { min-width: 0; }
-.breadcrumb { display: flex; gap: 8px; margin-bottom: 16px; font: var(--si-font-meta); color: var(--si-ink-3); }
-.breadcrumb a { color: var(--si-ink-3); text-decoration: none; }
-.breadcrumb a:hover { color: var(--si-ink-1); }
-.breadcrumb span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
-.title { min-width: 0; }
-h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wrap: anywhere; }
-.meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0 0; font: var(--si-font-meta); color: var(--si-ink-3); }
-.meta i { font-style: normal; color: var(--si-ink-5); }
-.head-actions { flex: none; display: flex; align-items: center; gap: 8px; }
-.head-actions .el-button svg { margin-right: 6px; }
-@media (max-width: 1100px) {
-  .head { flex-wrap: wrap; gap: 12px; }
-  .head-actions { margin-left: auto; }
-  .steps { flex-wrap: wrap; row-gap: 6px; }
-  .steps button { margin-right: 12px; }
-}
-:global(.danger-item) { color: var(--si-danger-ink) !important; }
+/* 工作区：内容宽 1200，1440 宽时投标人每行 4 张 */
+.bidp { max-width: 1280px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; }
+.crumb { display: flex; align-items: center; gap: 4px; font: var(--si-font-meta); color: var(--si-ink-3); }
+.crumb a { color: var(--si-ink-3); text-decoration: none; }
+.crumb a:hover { color: var(--si-blue-ink); }
+.crumb svg { color: var(--si-ink-5); }
+.head { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-title); color: var(--si-ink-1); }
+.acts { flex: none; display: flex; align-items: center; gap: 8px; }
+.acts .el-button :deep(> span) { gap: 6px; }
+.why { font: var(--si-font-meta); color: var(--si-ink-3); }
+.spin { animation: bp-spin 1s linear infinite; }
+@keyframes bp-spin { to { transform: rotate(360deg); } }
+:global(html[data-fx="off"]) .bidp .spin { animation: none; }
+.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.alert { margin-top: 16px; }
 
-.steps { display: flex; align-items: center; gap: 4px; margin: 24px 0 28px; padding: 10px 0; border-top: 1px solid var(--si-hair); border-bottom: 1px solid var(--si-hair); }
-.steps button { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 0; margin-right: 24px; border: 0; background: transparent; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
-.steps button:hover { color: var(--si-ink-1); }
-.number { width: 24px; height: 24px; box-sizing: border-box; border: 1px solid var(--si-hair-strong); border-radius: 50%; display: grid; place-items: center; font: var(--si-font-code-sm); }
-.steps .current { color: var(--si-ink-1); font-weight: 600; }
-.steps .current .number { background: var(--si-brand); border-color: var(--si-brand); color: var(--si-white); }
-.steps .done { color: var(--si-ink-2); }
-.steps .done .number { background: var(--si-surface-2); border-color: transparent; color: var(--si-ink-2); }
-.progress { margin-left: auto; }
-.alert { margin-bottom: 20px; }
+.tender { display: flex; align-items: center; gap: 14px; margin-top: 24px; padding: 14px 20px; }
+.tender.over { border-color: var(--si-brand-2); background: var(--si-blue-tint); }
+.mod { --mc: var(--si-m-bid); --mc-soft: var(--si-m-bid-soft); width: 40px; height: 40px; }
+.tender .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tender b { display: flex; align-items: center; gap: 8px; font: var(--si-font-h3); color: var(--si-ink-1); }
+.tender .grow > span { font: var(--si-font-meta); color: var(--si-ink-3); }
+.tender .el-button :deep(> span) { gap: 4px; }
+.drop-card { border: 1.5px dashed var(--si-hair-strong); box-shadow: none; cursor: pointer; }
+.drop-card:hover { border-color: var(--si-m-bid); }
+.drop-card[aria-disabled="true"] { cursor: progress; opacity: .7; }
 
-.section-head { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 10px; margin-bottom: 4px; border-bottom: 1px solid var(--si-hair-strong); }
-.section-head .si-overline { margin: 0; }
-.tender { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px 48px; }
-.tender .si-drop, .tender-ready .si-drop { margin-top: 16px; }
-.tender-ready { display: flex; flex-direction: column; gap: 32px; }
-.tender-ready .step-foot { padding-top: 0; border-top: 0; }
-.si-drop.slim { flex-direction: row; justify-content: center; gap: 10px; padding: 14px 16px; }
-.si-drop.slim .si-drop-title { margin: 0; font: var(--si-font-label); color: var(--si-ink-2); }
-.si-drop[aria-disabled="true"] { opacity: .65; cursor: progress; }
-.next-lede { margin: 12px 0 8px; font: var(--si-font-body); color: var(--si-ink-2); }
-.groups { margin: 0 0 12px; padding: 0; list-style: none; }
-.groups li { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--si-hair-faint); font: var(--si-font-body); color: var(--si-ink-3); }
-.groups li span { margin-left: auto; color: var(--si-ink-5); }
-.step-foot { grid-column: 1 / -1; display: flex; justify-content: flex-end; padding-top: 20px; border-top: 1px solid var(--si-hair); }
+.bid-progress { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 10px 16px; border-radius: 12px; background: var(--si-info-soft); font: var(--si-font-body); color: var(--si-ink-2); }
+.bid-progress > svg { flex: none; color: var(--si-info); }
+.bid-progress b { color: var(--si-info-ink); }
+.t3 { color: var(--si-ink-3); }
+.prog { flex: 1; max-width: 220px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--si-info) 15%, transparent); overflow: hidden; }
+.prog i { display: block; height: 100%; border-radius: 2px; background: var(--si-progress-flow); background-size: 200% 100%; transition: width var(--si-d3) var(--si-ease-out); }
+html:not([data-fx="off"]) .prog i { animation: bp-flow 2.2s linear infinite; }
+@keyframes bp-flow { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.note { margin-left: auto; font: var(--si-font-caption); color: var(--si-ink-3); }
 
-.toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding-bottom: 10px; margin-bottom: 16px; border-bottom: 1px solid var(--si-hair-strong); }
-.counts { display: flex; align-items: baseline; gap: 16px; }
-.counts .si-overline { margin: 0; }
-.tools { display: flex; gap: 8px; }
-.tools .el-button svg { margin-right: 6px; }
-.adding { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding: 12px 16px; }
-.adding .el-input { max-width: 420px; }
-.cards { display: flex; flex-direction: column; gap: 16px; }
-.bids .si-drop.slim { margin-top: 16px; }
-.si-drop.hero { padding: 56px 16px; }
-.waiting { margin-top: 16px; }
-.cards + .waiting { margin-top: 20px; }
-.waiting-head { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 0; border: 0; background: none; font: var(--si-font-label); color: var(--si-ink-2); cursor: pointer; text-align: left; }
-.waiting-head svg { align-self: center; }
-.waiting-head .hint { margin-left: auto; font-weight: 400; }
-.waiting-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
-.pending { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border: 1px dashed var(--si-hair-strong); border-radius: var(--si-radius-card); cursor: pointer; }
-.pending:hover, .pending.over { border-color: var(--si-brand); background: var(--si-hover-bg); }
-.pending.over { background: var(--si-blue-tint); }
-.pending[aria-disabled="true"] { opacity: .65; cursor: progress; }
-.pending-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h3); color: var(--si-ink-2); }
-.limits { margin: 16px 0 0; }
-.step-foot.start { align-items: center; gap: 16px; margin-top: 24px; }
-.result { flex: 1; display: flex; flex-direction: column; gap: 6px; }
-.show-result .breadcrumb { margin-bottom: 4px; }
-.show-result .steps { margin-block: 8px 4px; padding-block: 3px; }
-.show-result .steps button { padding-block: 4px; }
-.sent-only { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--si-hair); border-bottom: 1px solid var(--si-hair); font: var(--si-font-meta); color: var(--si-ink-2); }
+.bidders { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+@media (max-width: 1280px) { .bidders { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.bc-add, .bc-wait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 112px; padding: 14px 16px; box-sizing: border-box; border: 1.5px dashed var(--si-hair-strong); border-radius: var(--si-radius-card); text-align: center; color: var(--si-ink-3); font: var(--si-font-caption); cursor: pointer; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
+.bc-add:hover, .bc-wait:hover { border-color: var(--si-m-bid); }
+.bc-add.over, .bc-wait.over { border-style: solid; border-color: var(--si-m-bid); background: var(--si-m-bid-soft); }
+.bc-add b, .bc-wait b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-label); color: var(--si-ink-2); }
+.bc-wait { align-items: flex-start; text-align: left; }
+.t4 { color: var(--si-ink-4); }
+.add-ic { display: grid; place-items: center; width: 36px; height: 36px; margin-bottom: 2px; border-radius: 10px; background: var(--si-m-bid-soft); color: var(--si-m-bid); }
+.bidders.lone .bc-add { grid-column: 1 / -1; min-height: 180px; }
+.bidders.lone .bc-add b { font: var(--si-font-h3); }
+.link { margin-top: 4px; padding: 0; border: 0; background: none; font: var(--si-font-caption); color: var(--si-blue-ink); cursor: pointer; }
+.link:hover { text-decoration: underline; }
+[aria-disabled="true"] { cursor: progress; }
+.limits { margin: 12px 0 0; font: var(--si-font-caption); color: var(--si-ink-4); }
 
-/* 页面至少占满主区域，声明贴底（内容长时随内容下移，至少留 48px） */
-.bid-project { display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; padding-bottom: 20px; }  /* 底边与侧栏底栏的账号行齐平 */
+.result-wait { display: flex; align-items: center; gap: 16px; margin-top: 24px; padding: 24px; border-style: dashed; background: transparent; box-shadow: none; color: var(--si-ink-4); }
+.result-wait b { font: var(--si-font-h3); color: var(--si-ink-1); }
+.result-wait p { margin: 2px 0 0; font: var(--si-font-meta); color: var(--si-ink-3); }
+.results { margin-top: 24px; }
 .page-foot { margin-top: auto; padding-top: 48px; }
-.declaration { margin: 0; padding-top: 16px; border-top: 1px solid var(--si-hair); }
+.page-foot .hint { margin: 0; padding-top: 14px; border-top: 1px solid var(--si-hair); }
+
+.d-sec { margin-bottom: 24px; }
+.d-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.d-head h3 { margin: 0; font: var(--si-font-h3); color: var(--si-ink-1); }
+.d-sec .si-drop.slim { flex-direction: row; justify-content: center; gap: 10px; margin-top: 12px; padding: 14px 16px; }
+.d-sec .si-drop.slim .si-drop-title { margin: 0; font: var(--si-font-label); color: var(--si-ink-2); }
+.d-wait { margin: 0; }
+.d-lock { margin: 16px 0 0; }
+.sign { margin-top: 28px; }
 .file-input { display: none; }
+.page-view { max-height: 70vh; overflow: auto; background: var(--si-stage); border-radius: var(--si-radius-card); }
+.page-view img { display: block; width: 100%; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.pager .el-button svg { margin: 0 4px; }
 .dialog-lede { margin: 0 0 16px; font: var(--si-font-body); color: var(--si-ink-2); }
 .group-list { margin: 0; padding: 0; list-style: none; }
 .group-list .el-autocomplete { width: 100%; }
