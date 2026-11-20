@@ -93,6 +93,10 @@ class _Data:
         self.file_names = {str(f.id): f.original_name for f in self.files}
         self.view = results.check_view(db, task)
         self.reqs = {str(r["id"]): r for r in self.view["requirements"]}
+        # 条款出处：条款原文所在的招标文件
+        self.req_files = {str(r.id): self.file_names.get(str((r.locs or [{}])[0].get("file_id")), "")
+                          for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id))}
+        self.codes = {str(b.id): b.code.strip("（）()") for b in self.bidders}
         self.models = sorted(db.scalars(select(LlmCall.model_name).where(
             LlmCall.task_id == task.id, LlmCall.purpose == "bid", LlmCall.status == "sent").distinct()))
         self.now = datetime.now(ZoneInfo("Asia/Shanghai"))
@@ -220,7 +224,8 @@ def _entry(doc, d: _Data, e, items, *, bold=False):
 
 
 def _case(doc, d, case, items):
-    _sub(doc, case["title"])
+    names = "、".join(f"{d.codes.get(str(i), '')} {d.name(i)}" for i in case["bidder_ids"])
+    _sub(doc, names + (f" · 《招标投标法实施条例》第四十条{case['article']}" if case.get("article") else ""))
     for n, e in enumerate(case["evidence"], 1):
         _para(doc, f"{n}　{e['fact']}", bold=True, indent=6)
         item = items[e["item_id"]]
@@ -236,32 +241,89 @@ def _case(doc, d, case, items):
         _para(doc, f"常见的正常原因：{reason}", size=9.5, indent=12)
 
 
+def _basis(d: _Data, e) -> str:
+    """依据：招标文件条款（文件 · 分组 · 第 n 条与条款摘录），或法条。"""
+    parts = []
+    req = d.reqs.get(str(e["requirement_id"])) if e.get("requirement_id") else None
+    if req:
+        where = "招标文件" + (f"《{d.req_files[str(req['id'])]}》" if d.req_files.get(str(req["id"])) else "")
+        parts.append(f"{where}{GROUP.get(req['group'], '')}第 {req['seq']} 条：{_clip(req['text'], 120)}")
+    if e.get("article"):
+        law = "《招标投标法实施条例》第四十条" if e["category"] in ("串通", "串标线索") else "《招标投标法实施条例》" if "第五十一条" in e["article"] else ""
+        parts.append(f"{law}{e['article']}")
+    return "\n".join(parts) or "—"
+
+
+def _where(d: _Data, e, bidder) -> str:
+    """位置：这一家的文件 · 页（最多 3 处）。"""
+    own = [p for p in e.get("places", []) if str(p["bidder_id"]) == bidder] or [p for p in e.get("places", []) if p["bidder_id"] == "tender"]
+    out = list(dict.fromkeys(d.place(p) for p in own))
+    return "、".join(out[:3]) + (f" 等 {len(out)} 处" if len(out) > 3 else "") if out else "—"
+
+
+def _problem(d: _Data, e, bidder, cases) -> str:
+    """问题：一句话写事实；两家之间的线索写成“与某家：相同内容”，不写结论性措辞。"""
+    case = cases.get(e.get("case_id") or "")
+    if case:
+        facts = {}
+        for ev in case["evidence"]:
+            if bidder in ev["bidder_ids"]:
+                for other in ev["bidder_ids"]:
+                    if other != bidder:
+                        facts.setdefault(other, []).append(ev["fact"])
+        return "\n".join(f"与 {d.codes.get(o, '')} {d.name(o)}：{'；'.join(dict.fromkeys(f))}" for o, f in facts.items()) or e["title"]
+    title = e["title"]
+    others = [b for b in e["bidder_ids"] if b != bidder]
+    if others and e["category"] == "串标线索":
+        title = f"与 {'、'.join(d.name(o) for o in others)}：{title}"
+    return title + ("（模型补查，请核实）" if e.get("source") == "model" else "")
+
+
+def _by_bidder(doc, d: _Data):
+    """全部问题按投标人分节：严重、提示各一张“问题 / 依据 / 位置”表（澄明 8.5）。"""
+    c = d.view["conclusion"]
+    cases = {case["id"]: case for case in c["cases"]}
+    _heading(doc, "问题清单")
+    serious = sum(1 for b in c["bidders"] if b["severe"])
+    _para(doc, f"{len(c['bidders'])} 家投标人中，{serious} 家列出严重问题。每条写问题、依据与位置，请对照原件核实。")
+    if c["sub"]:
+        _para(doc, c["sub"])
+    for b in c["bidders"]:
+        bid = str(b["id"])
+        severe = [e for e in c["severe"] if bid in e["bidder_ids"]]
+        hint = [e for e in c["hint"] if bid in e["bidder_ids"]]
+        _heading(doc, f"{d.codes.get(bid, '')}　{b['name']}")
+        if not severe and not hint:
+            _para(doc, "未列出问题。")
+            continue
+        for label, rows in (("严重", severe), ("提示", hint)):
+            if rows:
+                _sub(doc, f"{label} {len(rows)} 条")
+                _table(doc, ("问题", "依据", "位置"), [(_problem(d, e, bid, cases), _basis(d, e), _where(d, e, bid)) for e in rows],
+                       (11.2, 8.5, 7.0))
+
+
 def _issues(doc, d: _Data, scope):
     c = d.view["conclusion"]
     items = {str(i["id"]): i for i in d.view["items"]}
     clues = scope != "full"
-    hint = [e for e in c["hint"] if not e["case_id"] and (not clues or e["category"] == "串标线索")]
     if not clues:
-        severe = [e for e in c["severe"] if not e["case_id"]]
-        _heading(doc, "一 严重问题")
-        _para(doc, c["lede"])
-        if c["sub"]:
-            _para(doc, c["sub"])
-        for b in c["bidders"]:
-            own = [e for e in severe if b["id"] in e["bidder_ids"]]
-            if own:
-                _sub(doc, f"{b['name']}（{len(own)} 条）")
-                for e in own:
-                    _entry(doc, d, e, items, bold=True)
-        if not severe:
-            _para(doc, "无")
+        _by_bidder(doc, d)
+        cases = [case for case in c["cases"] if case["id"] not in {e["id"] for e in c["dismissed"]}]
+        if cases:
+            _heading(doc, "附：两家之间的相同内容")
+            for case in cases:
+                _case(doc, d, case, items)
+        _coverage(doc, d)
+        return
+    hint = [e for e in c["hint"] if not e["case_id"] and e["category"] == "串标线索"]
     cases = [case for case in c["cases"] if case["id"] not in {e["id"] for e in c["dismissed"]}]
-    _heading(doc, "串标线索" if clues else "二 串标线索")
+    _heading(doc, "串标线索")
     for case in cases:
         _case(doc, d, case, items)
     if not cases:
         _para(doc, "未形成疑似串通投标案件。")
-    _heading(doc, f"提示 {len(hint)} 条" if clues else f"三 提示 {len(hint)} 条")
+    _heading(doc, f"提示 {len(hint)} 条")
     for e in hint:
         _entry(doc, d, e, items)
         item = items.get(e.get("item_id") or "")

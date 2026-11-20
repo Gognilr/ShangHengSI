@@ -144,8 +144,12 @@ def test_report_content_tone_and_scope(owner, db_sessionmaker):
         assert name in text  # 投标人用真实名称
     assert "标书初审问题清单" in text and "不作否决或串通投标的认定" in text and "虚构模型-X" in text
     conclusion = c.get(base + "/check").json()["conclusion"]
-    assert conclusion["lede"] in text and all(case["title"] in text for case in conclusion["cases"])
-    assert "严重问题" in text and "个不同的投标总价" in text and "提示" in text
+    # V35-F-05：按投标人分节，每条“问题 / 依据 / 位置”；两家之间写相同的事实，不写“疑似串通投标”
+    assert "3 家投标人中，3 家列出严重问题" in text and conclusion["cases"] and "疑似串通投标" not in text
+    row = next(i for i in c.get(ROOT, params={"stage": "done"}).json()["items"] if base.endswith(i["id"]))  # 列表徽标（V35-F-05）
+    assert row["bidder_count"] == 3 and row["severe"] == len(conclusion["severe"]) and not c.get(ROOT, params={"stage": "active"}).json()["items"]
+    assert "问题清单" in text and "严重" in text and "个不同的投标总价" in text and "提示" in text and "第四十条" in text
+    assert any(t.rows[0].cells[0].text == "问题" and t.rows[0].cells[2].text == "位置" for t in Document(io.BytesIO(r.content)).tables)
     assert "证书有效期至 2025-06-30" not in text  # “不是问题”不进清单
     assert "相似段落" in text
     for gone in ("要求响应矩阵", "报价分析", "签字栏", "评标委员会", "确凿", "需核实", "超最高限价", "投标有效期 60 天"):
@@ -186,7 +190,7 @@ def test_opening_price_reruns_quote_checks_only(owner, db_sessionmaker):
     assert "大写与小写金额不一致" in hints and any(t.startswith("文件总价与唱标价不一致") for t in hints)
     assert {i["id"] for i in before["items"] if i["type"] == "similar"} == {
         i["id"] for i in after["items"] if i["type"] == "similar"}
-    assert "唱标价 · 人工录入" in _text(c.get(base + "/report").content)
+    assert "文件总价与唱标价不一致" in _text(c.get(base + "/report").content)
 
     assert c.post(base + "/reopen", headers=h).status_code == 200
     assert c.post(base + "/check", headers=h).status_code == 200
@@ -327,4 +331,4 @@ def test_bid_original_retention_preserves_results_and_blocks_restart(owner, db_s
         assert after[key] == before[key]
     assert after["conclusion"]["dismissed"] == before["conclusion"]["dismissed"]
     report = c.get(base + "/report")
-    assert report.status_code == 200 and before["conclusion"]["lede"] in _text(report.content)
+    assert report.status_code == 200 and "家列出严重问题" in _text(report.content)

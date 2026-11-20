@@ -43,7 +43,11 @@ def _list_filters(q, category, stage, date_from, date_to):
         where.append(Task.title.ilike(tasks._like_pattern(q.strip()), escape="\\"))
     if category is not None:
         where.append(BidProject.category_id == category)
-    if stage:
+    if stage == "active":  # 分段控件“进行中 / 已完成”（V35-F-05）
+        where.append(BidProject.stage != "checked")
+    elif stage == "done":
+        where.append(BidProject.stage == "checked")
+    elif stage:
         where.append(BidProject.stage == stage)
     if date_from:
         where.append(BidProject.opening_date >= date_from)
@@ -54,7 +58,7 @@ def _list_filters(q, category, stage, date_from, date_to):
 
 @router.get("")
 def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_length=100), category: int | None = None,
-             folder: str | None = Query(None, max_length=40), stage: str | None = Query(None, pattern="^(preparing|ready|checking|checked)$"),
+             folder: str | None = Query(None, max_length=40), stage: str | None = Query(None, pattern="^(preparing|ready|checking|checked|active|done)$"),
              date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
              user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
     """项目列表与搜索筛选（V34-B-01a）：名称包含、分类、文件夹（含子文件夹；none 为未归档）、阶段、开标日期区间。"""
@@ -67,9 +71,25 @@ def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_lengt
     rows = db.execute(select(Task, BidProject).join(BidProject).where(*where)
                       .order_by(Task.last_activity_at.desc(), Task.id).offset((page - 1) * 20).limit(20)).all()
     active = db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*base, BidProject.stage == "checking")) or 0
+    from app.db.models import BidBidder
+    ids = [t.id for t, _p in rows]
+    counts = dict(db.execute(select(BidBidder.task_id, func.count()).where(BidBidder.task_id.in_(ids))
+                             .group_by(BidBidder.task_id)).all()) if ids else {}
     return {"items": [{"id": t.id, "title": t.title, "stage": p.stage, "status": t.status, "opening_date": p.opening_date,
-                       "last_activity_at": t.last_activity_at, "category_id": p.category_id, "folder_id": p.folder_id} for t, p in rows],
+                       "last_activity_at": t.last_activity_at, "category_id": p.category_id, "folder_id": p.folder_id,
+                       "bidder_count": counts.get(t.id, 0), **_list_state(db, t, p)} for t, p in rows],
             "total": db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*where)), "checking_count": active}
+
+
+def _list_state(db, task, project):
+    """列表行的状态徽标（澄明 8.5）：检查中给进度，已完成给严重条数；结论随“不是问题”、签章标注实时算。"""
+    if project.stage == "checking":
+        return {"progress": service.check_progress(project)}
+    if project.stage == "checked" and project.check_state == "done":
+        from app.bid import results
+        c = results.check_view(db, task)["conclusion"]
+        return {"severe": len(c["severe"]), "hint": len(c["hint"])}
+    return {}
 
 
 @router.post("", status_code=201)
@@ -90,7 +110,7 @@ def create(body: ProjectInput, request: Request, user: User = Depends(require("u
 
 @router.get("/folders")
 def folder_tree(q: str = Query("", max_length=100), category: int | None = None,
-                stage: str | None = Query(None, pattern="^(preparing|ready|checking|checked)$"),
+                stage: str | None = Query(None, pattern="^(preparing|ready|checking|checked|active|done)$"),
                 date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
                 user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
     return folders.tree(db, user, _list_filters(q, category, stage, date_from, date_to))
@@ -517,11 +537,11 @@ def mark_signing(body: SigningInput, task: Task = Depends(owned), db: Session = 
 
 
 @router.get("/{id}/files/{fid}/page/{page}")
-def page_image(fid: str, page: int, width: int = Query(320, ge=120, le=1600), task: Task = Depends(owned),
-               db: Session = Depends(get_db)):
-    """投标文件某一页的图片（签章页缩略图、查看原件页），服务器内存中生成，不缓存。"""
+def page_image(fid: str, page: int, width: int = Query(320, ge=120, le=1600), loc: str | None = Query(None, max_length=64),
+               task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """投标文件某一页的图片（签章页缩略图、查看原件页、证据栏）；loc 为要框出的命中节点。服务器内存中生成，不缓存。"""
     from app.bid import results
-    return Response(content=results.page_image(db, task, fid, page, width), media_type="image/jpeg",
+    return Response(content=results.page_image(db, task, fid, page, width, loc), media_type="image/jpeg",
                     headers={"Cache-Control": "no-store"})
 
 

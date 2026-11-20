@@ -140,6 +140,29 @@ def _issue_level(item):
     return "hint"
 
 
+def _item_places(item, rows=None):
+    """条目证据的出处：[{bidder_id, file_id, page, loc}]，tender 为招标文件。"""
+    out = []
+    for row in (item["rows"] if rows is None else rows):
+        for bid, places in (row.get("places") or {}).items():
+            out += [{"bidder_id": bid, "file_id": p.get("file_id"), "page": p.get("page"), "loc": p.get("loc")} for p in places]
+        for side in (row.get("left"), row.get("right")):
+            if side:
+                out += [{"bidder_id": side["bidder_id"], "file_id": p.get("file_id"), "page": p.get("page"), "loc": p.get("loc")}
+                        for p in side.get("places", [])]
+    return out
+
+
+def _unique(places, limit=24):
+    seen, out = set(), []
+    for p in places:
+        key = (p["bidder_id"], p["file_id"], p["page"], p["loc"])
+        if p["file_id"] and key not in seen:
+            seen.add(key)
+            out.append(p)
+    return out[:limit]
+
+
 def build(view, bidders, *, local_only=False, model_state=None, dismissed=(), baseline=None):
     dismissed = set(dismissed)
     order = {bid: i for i, bid in enumerate(bidders)}
@@ -152,9 +175,15 @@ def build(view, bidders, *, local_only=False, model_state=None, dismissed=(), ba
     case_items = {e["item_id"] for case in cases for e in case["evidence"]}
     out = {"severe": [], "hint": [], "dismissed": []}
 
-    def add(key, ids, title, category, level, *, article=None, item_id=None, requirement_id=None, case_id=None, source="local"):
+    by_id = {str(i["id"]): i for i in items}
+
+    def add(key, ids, title, category, level, *, article=None, item_id=None, requirement_id=None, case_id=None, source="local", places=()):
+        # places：问题出处（文件 · 页），列表“出处”一行、证据栏与问题清单 Word 共用（V35-F-05）
+        if item_id and not places and item_id in by_id:
+            places = _item_places(by_id[item_id])
         entry = {"id": key, "bidder_ids": ids, "title": title, "category": category, "level": level, "article": article,
-                 "item_id": item_id, "requirement_id": requirement_id, "case_id": case_id, "source": source}
+                 "item_id": item_id, "requirement_id": requirement_id, "case_id": case_id, "source": source,
+                 "places": _unique(places)}
         out["dismissed" if key in dismissed else level].append(entry)
 
     linked, covered = {}, set()
@@ -211,16 +240,20 @@ def build(view, bidders, *, local_only=False, model_state=None, dismissed=(), ba
             title, level = f"“{term}”无法判断，请看原件（条款 {req['seq']}）", "hint"
         add(f"cell:{rid}:{bid}", [bid], title, "否决" if level == "severe" else "条款", level,
             article=item["article"] if item else None, item_id=str(item["id"]) if item else None,
-            requirement_id=rid, source=cell["source"])
+            requirement_id=rid, source=cell["source"],
+            places=[{"bidder_id": bid, "file_id": l.get("file_id"), "page": l.get("page"), "loc": l.get("loc")} for l in cell.get("locs") or []])
 
     for page in view.get("signing", []):
         if page.get("mark") == "missing" and page["bidder_id"] in order:
             where = f"第 {page['page']} 页" if page.get("page") else page.get("title") or "格式页"
             add(f"sign:{page['file_id']}:{page.get('page') or page.get('loc')}", [page["bidder_id"]],
-                f"{page.get('title') or '签章页'}缺章或缺签字（{page.get('file') or '文件'} · {where}）", "否决", "severe")
+                f"{page.get('title') or '签章页'}缺章或缺签字（{page.get('file') or '文件'} · {where}）", "否决", "severe",
+                places=[{"bidder_id": page["bidder_id"], "file_id": page["file_id"], "page": page.get("page"), "loc": page.get("loc")}])
 
     for case in cases:
-        add(case["id"], case["bidder_ids"], case["title"], "串通", case["level"], article=case["article"], case_id=case["id"])
+        add(case["id"], case["bidder_ids"], case["title"], "串通", case["level"], article=case["article"], case_id=case["id"],
+            places=[p for e in case["evidence"] if e["item_id"] in by_id
+                    for p in _item_places(by_id[e["item_id"]], by_id[e["item_id"]]["rows"][e["row"]:e["row"] + 1])])
 
     rank = {"否决": 0, "串通": 1, "条款": 2, "报价": 3, "串标线索": 4, "其他": 5}
     for level in out:
@@ -243,4 +276,4 @@ def build(view, bidders, *, local_only=False, model_state=None, dismissed=(), ba
     sub = ("本项目只做本地检查，★ 与否决条款中本机未找到的不交模型补查。" if local_only else
            "模型补查进行中，结果出来后自动更新。" if model_state in ("preparing", "awaiting", "running") else
            f"★ 与否决条款中本机未找到的 {lookup} 处，可交模型补查。" if lookup and model_state != "done" else None)
-    return {"lede": lede + "。", "sub": sub, "bidders": rows, "cases": cases, **out}
+    return {"lede": lede + "。", "sub": sub, "lookup": 0 if local_only else lookup, "bidders": rows, "cases": cases, **out}

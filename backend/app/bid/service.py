@@ -141,10 +141,14 @@ def detail(db, task):
             "quote_mode": state.get("quote_mode", "fixed"),
             "requirements": {"enabled": db.scalar(select(func.count()).select_from(BidRequirement).where(
                                  BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))) or 0,
+                             "key": db.scalar(select(func.count()).select_from(BidRequirement).where(
+                                 BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True),
+                                 BidRequirement.group.in_(("veto", "substantive")))) or 0,
                              "extract_state": project.extract_state},
-            "check": {"state": project.check_state, "error": project.check_error, "ocr": _ocr(files)},
+            "check": {"state": project.check_state, "error": project.check_error, "ocr": _ocr(files),
+                      "progress": check_progress(project)},
             "model": {"state": project.model_state, "error": project.model_error, **_model_progress(db, task)},
-            "bidders": _bidder_views(db, task),
+            "bidders": _bidder_views(db, task, files),
             "files": [{"id": f.id, "bidder_id": f.bidder_id, "name": f.original_name, "ext": f.ext,
                        "size_bytes": f.size_bytes, "page_count": f.page_count,
                        "has_password": f.original_deleted_at is None and f.password_enc is not None,
@@ -154,13 +158,30 @@ def detail(db, task):
                        "original_deleted": f.original_deleted_at is not None} for f in files]}
 
 
-def _bidder_views(db, task):
-    from app.bid.checks import display_short_names
+def _bidder_views(db, task, files=()):
+    from app.bid.checks import display_short_names, ocr_progress
     rows = list(db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq)))
     names = {b.id: crypto.decrypt_text(b.name_enc) for b in rows}
     shorts = display_short_names(names)
+
+    def ocr(bid):
+        done, total = ocr_progress({f.id: f for f in files if f.bidder_id == bid})
+        return {"done": done, "total": total}
+    # 卡片显示文件数、页数与这一家的扫描页识别进度（V35-F-05）
     return [{"id": b.id, "name": names[b.id], "short": shorts[b.id], "code": b.code, "seq": b.seq,
-             "opening_price": _opening_view(b)} for b in rows]
+             "opening_price": _opening_view(b), "pages": sum(f.page_count or 0 for f in files if f.bidder_id == b.id),
+             "ocr": ocr(b.id)} for b in rows]
+
+
+def check_progress(project):
+    """本地检查的进度 {done, total}：三步（串标线索、报价与符合项、相似段落）完成几步；检查中才有意义。"""
+    from app.bid.checks import STEPS
+    done = 0
+    if project.check_state == "running" and project.check_enc:
+        done = len(json.loads(crypto.decrypt_text(project.check_enc)).get("steps", []))
+    elif project.check_state == "done":
+        done = len(STEPS)
+    return {"done": min(done, len(STEPS)), "total": len(STEPS)}
 
 
 def _model_progress(db, task):

@@ -175,8 +175,9 @@ def renderable(f):
     return f.original_deleted_at is None and f.ext in ("pdf", "jpg", "jpeg", "png")
 
 
-def page_image(db, task, file_id, page, width):
-    """把投标文件 PDF 的一页（或图片文件）渲染成 JPEG，供签章页速览与“查看原件页”；只在内存中生成。"""
+def page_image(db, task, file_id, page, width, loc=None):
+    """把投标文件 PDF 的一页（或图片文件）渲染成 JPEG，供签章页速览与“查看原件页”；只在内存中生成。
+    loc 为命中的节点：节点在这一页且有坐标时，用琥珀色浅底框出（证据栏的“高亮命中处”，V35-F-05）。"""
     f = db.get(TaskFile, _uuid(file_id))
     if f is None or f.task_id != task.id or f.bidder_id is None:
         raise NotFoundError("NOT_FOUND", "文件不存在")
@@ -197,7 +198,8 @@ def page_image(db, task, file_id, page, width):
             p = doc[page - 1]
             try:
                 w, _h = p.get_size()
-                img = p.render(scale=width / max(w, 1.0)).to_pil().convert("RGB")
+                scale = width / max(w, 1.0)
+                img = p.render(scale=scale).to_pil().convert("RGB")
             finally:
                 p.close()
         finally:
@@ -210,11 +212,29 @@ def page_image(db, task, file_id, page, width):
             img = img.convert("RGB")
         except Exception:  # noqa: BLE001
             raise AppError(422, "IMAGE_UNREADABLE", "图片无法打开") from None
+        scale = 1.0
         if img.width > width:
+            scale = width / img.width
             img = img.resize((width, max(1, round(img.height * width / img.width))))
+    if loc:
+        _highlight(db, task, f, page, loc, img, scale)
     out = io.BytesIO()
     img.save(out, "JPEG", quality=82)
     return out.getvalue()
+
+
+def _highlight(db, task, f, page, loc, img, scale):
+    """节点框按页面坐标（PDF 点或原图像素）乘渲染比例画到页面图上；不在这一页或没有坐标时不画。"""
+    from PIL import Image, ImageDraw
+    bbox = db.scalar(select(DocNode.bbox).where(DocNode.task_id == task.id, DocNode.file_id == f.id, DocNode.loc == loc,
+                                                DocNode.page == page))
+    if not bbox or len(bbox) != 4:
+        return
+    box = tuple(round(v * scale) + d for v, d in zip(bbox, (-3, -3, 3, 3)))
+    layer = img.copy()
+    ImageDraw.Draw(layer).rectangle(box, fill=(255, 214, 102))
+    img.paste(Image.blend(img, layer, 0.35))
+    ImageDraw.Draw(img).rectangle(box, outline=(230, 150, 20), width=2)
 
 
 # ---------------------------------------------------------------- 返回修改材料

@@ -631,6 +631,10 @@ def _run_once(db, task, *, progressive=True):
     from app.bid.results import signing_pages
     summary = {"steps": [], "elapsed": {}, "notes": {}, "signing": signing_pages(active, nodes), "baseline": {}}
     count = 0
+    if progressive and project.check_state == "running":
+        # 新一轮检查先清掉上一轮的步骤记录，进度从 0 / 3 开始（V35-F-05）
+        project.check_enc = crypto.encrypt_text(json.dumps(summary, ensure_ascii=False))
+        db.commit()
 
     def save(name, started, items, notes=()):
         nonlocal count
