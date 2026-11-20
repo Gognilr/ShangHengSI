@@ -15,7 +15,9 @@ export interface BidFile {
 export interface BidOpeningPrice { amount: string; upper: string | null; note: string | null }
 export interface BidOpeningPriceInput { amount: string | null; upper?: string | null; note?: string | null }
 export interface Bidder { id: string; name: string; code: string; seq: number; opening_price?: (BidOpeningPrice & { text: string }) | null }
+export type BidQuoteMode = 'fixed' | 'rate' | 'discount'
 export interface BidProject extends BidSummary {
+  quote_mode?: BidQuoteMode
   policy: 'ai' | 'local_only'; busy: boolean; error_message: string | null; bidders: Bidder[]; files: BidFile[]
   limits: { bid_files: number; tender_files: number; file_mb: number; pdf_pages: number; ocr_pages: number }
   requirements: { enabled: number; extract_state: BidExtractState }
@@ -45,6 +47,8 @@ export interface BidLoc { file_id: string; loc: string; start: number; end: numb
 export interface BidRequirement { id: string; group: BidGroup; text: string; locs: BidLoc[]; method: BidMethod; enabled: boolean; source: 'marked' | 'model' | 'default' | 'manual'; seq: number; file: string | null }
 export interface BidParameters {
   ceiling: string | null
+  quote_mode: BidQuoteMode
+  rate_limit: string | null
   currency: 'CNY' | 'USD' | 'EUR' | 'HKD'
   validity_days: number | null
   deposit: string | null
@@ -110,6 +114,10 @@ export interface BidReview { review_status: BidReviewStatus; note: string | null
 export interface BidCell extends BidReview { requirement_id: string; bidder_id: string; verdict: BidVerdict; locs: { file_id: string; loc: string; page: number | null }[]; reason: string | null; source: 'local' | 'model'; cite: null | 'verified' | 'unverified'; conclusion_tier?: BidTier | null }
 /** 报价分析（V34-B-04 计算，B-06 展示）：金额已格式化为字符串 */
 export interface BidPricing {
+  quote_mode?: BidQuoteMode
+  quote_label?: string
+  rate_limit?: string | null
+  rate_limit_label?: string | null
   bidders: Record<string, { total: string | null; totals_found: string[]; currency: string | null; manual_total?: boolean; table: { name: string; rows: number; total: string | null } | null; over_ceiling: string | null
     /** 多个不同总价时最高者与限价之差（V34Q-25）；over_ceiling 只对应唯一总价 */
     over_ceiling_max?: string | null
@@ -122,6 +130,8 @@ export interface BidPricing {
     quote_pages?: { file_id: string; page: number; hits: number }[]
     /** 唱标价（人工录入，已格式化）与文件中识别的总价 */
     opening?: { amount: string; upper: string | null; note: string | null } | null; file_total?: string | null
+    tax_basis?: string
+    tax_pairs?: { net: string; rate: string; gross: string; expected: string; ok: boolean }[]
     /** 修正后总价（大写为准、单价为准），供评标委员会参考 */
     corrected?: { total: string; from: string; basis: string; over_ceiling?: string } | null }>
   compare?: { n: number; highest: string; lowest: string; mean: string; spread_pct: string | null } | null

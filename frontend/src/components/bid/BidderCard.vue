@@ -8,7 +8,7 @@ import BidOpeningInput from './BidOpeningInput.vue'
 
 // 一家投标人一张对象卡：代号 · 名称（点铅笔就地改）· 文件数 · 加入文件 · 更多；整张卡可拖入文件
 // 唱标价（选填，V34-B-06e）：开标时边唱标边录，初审前即可录；初审开始后在报价分析页修改
-const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string>; openingFailed?: string; suggest?: string }>()
+const props = defineProps<{ projectId: string; bidder: Bidder; files: BidFile[]; disabled: boolean; busy: boolean; rowErrors: Record<string, string>; openingFailed?: string; suggest?: string; rateQuote?: boolean }>()
 const emit = defineEmits<{ rename: [name: string]; remove: []; pick: []; drop: [event: DragEvent]; password: [fid: string, password: string]; removeFile: [fid: string]; opening: [body: BidOpeningPriceInput, done: () => void]; adopt: [name: string] }>()
 const pricing = ref(false)
 const editing = ref(false), name = ref(''), over = ref(false), input = ref<{ focus: () => void }>()
@@ -43,7 +43,7 @@ function drop(event: DragEvent) { over.value = false; emit('drop', event) }
     </header>
     <p v-if="suggest && !editing" class="suggest">名单中为：<span class="full" :title="suggest">{{ suggest }}</span><el-button size="small" text :disabled="disabled" @click="emit('adopt', suggest)">改用</el-button></p>
     <p v-else-if="titleName" class="hint">请填写投标单位全称，便于混装检查与投标人名称脱敏。</p>
-    <div class="opening">
+    <div v-if="!rateQuote" class="opening">
       <span class="label">唱标价（选填）</span>
       <BidOpeningInput v-if="pricing" :initial="bidder.opening_price" note :busy="busy" :failed="openingFailed" @save="body => emit('opening', body, () => { pricing = false })" @cancel="pricing = false" />
       <template v-else>

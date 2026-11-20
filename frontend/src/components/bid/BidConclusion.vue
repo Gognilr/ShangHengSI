@@ -113,7 +113,7 @@ defineExpose({ locate })
     <BidLede :text="data.lede" :sub="data.sub ?? undefined" />
     <table class="bid-table decision-table">
       <colgroup><col class="status-col"><col class="name-col"><col><col class="price-col"></colgroup>
-      <thead><tr><th>结论</th><th>投标人</th><th>理由</th><th class="r">投标总价</th></tr></thead>
+        <thead><tr><th>结论</th><th>投标人</th><th>理由</th><th class="r">{{ ctx.data.value?.pricing?.quote_label ?? '投标总价' }}</th></tr></thead>
       <tbody>
         <tr v-for="b in data.bidders" :key="b.id">
           <td><span v-if="b.tier" class="bid-tier" :class="b.tier">{{ verdict[b.tier] }}</span><span v-else class="pass">✓ 未发现问题</span></td>

@@ -31,6 +31,7 @@ SOURCE = {"marked": "原文标记", "model": "模型提取", "default": "默认�
 SIGN = {"stamped": "已盖章", "missing": "缺章", "unclear": "看不清", None: "未标注"}
 TYPE = {"mixed": "混装", "contact": "联系信息相同", "props": "文件属性相同", "image": "相同图片", "similar": "相似段落", "pricing": "报价规律",
         "multi_total": "多个总价", "sum_total": "合计与总价", "ceiling": "超最高限价", "low_price": "异常低价", "uppercase": "大小写", "row_calc": "分项计算",
+        "tax_calc": "税价换算",
         "sum_rows": "合计计算", "validity": "投标有效期", "deposit": "保证金", "cert_expired": "证书有效期",
         "construction_max": "工期", "delivery_max": "交货期", "warranty_min": "质保期",
         "defect_min": "缺陷责任期", "performance": "类似业绩",
@@ -290,8 +291,12 @@ def _pricing(doc, d: _Data, number="五"):
         return
     summary = d.view["conclusion"]["pricing"]
     _para(doc, summary["lede"])
-    lead = "投标人按录入顺序排列；金额由本机计算。"
-    if ceiling:
+    rate = pricing.get("quote_mode") in ("rate", "discount")
+    label = pricing.get("quote_label", "投标总价")
+    lead = "投标人按录入顺序排列；报价由本机核对。" if rate else "投标人按录入顺序排列；金额由本机计算。"
+    if rate and pricing.get("rate_limit") is not None:
+        lead += f"招标文件{pricing['rate_limit_label']}：{pricing['rate_limit']}。"
+    elif not rate and ceiling:
         lead += f"招标文件最高限价：{money(Decimal(ceiling))} {d.params.get('currency') or ''}。"
     _para(doc, lead, size=9.5)
     tier = {"certain": "确凿", "verify": "需核实", "reference": "参考"}
@@ -299,14 +304,18 @@ def _pricing(doc, d: _Data, number="五"):
     for b in d.bidders:
         price = pricing["bidders"].get(str(b.id)) or {}
         total = _total_text(price)
+        if rate and len(price.get("totals_found", [])) > 1:
+            total = "、".join(price["totals_found"])
+        if price.get("tax_basis"):
+            total += f"（{price['tax_basis']}）"
         if price.get("manual_total"):
             total += "\n唱标价（人工录入）" + (f"；文件总价 {price['file_total']}" if price.get("file_total") else "")
         elif (src := price.get("source")) and price.get("total"):
             total += f"\n{src['label']}" + (f" · 第 {src['page']} 页" if src.get("page") else "")
         tags = summary["tags"].get(str(b.id)) or []
         rows.append((crypto.decrypt_text(b.name_enc), total,
-                     "；".join(f"{t['text']}（{tier[t['tier']]}）" for t in tags) or "✓"))
-    _table(doc, ("投标人", "投标总价", "结论"), rows, (7.5, 7, 12.2))
+                     "；".join(f"{t['text']}（{tier[t['tier']]}）" for t in tags) or ("—" if rate and total == "未识别" else "✓")))
+    _table(doc, ("投标人", label, "结论"), rows, (7.5, 7, 12.2))
     c = d.view["conclusion"]
     keys = {t["key"] for tags in summary["tags"].values() for t in tags}
     entries = [e for e in c["certain"] + c["verify"] + c["reference"] if e["id"] in keys]
@@ -331,16 +340,21 @@ def _pricing(doc, d: _Data, number="五"):
     if cmp := pricing.get("compare"):
         _para(doc, f"参加比较的 {cmp['n']} 家中，最高 {cmp['highest']}，最低 {cmp['lowest']}，平均 {cmp['mean']}"
                    + (f"，最高比最低高 {cmp['spread_pct']}" if cmp.get("spread_pct") else "") + "。")
-    rows = []
+    rows, tax_rows = [], []
     for b in d.bidders:
         price = pricing["bidders"].get(str(b.id)) or {}
         table = price.get("table") or {}
-        above = (f"{price['above_lowest']}（{price['above_lowest_pct']}）" if price.get("above_lowest")
-                 else price.get("not_compared") or "—")
-        rows.append((crypto.decrypt_text(b.name_enc), above,
-                     price.get("vs_mean") if not price.get("not_compared") and price.get("vs_mean") else "—",
-                     (f"{table.get('total') or '—'}（{table.get('rows', 0)} 行）" if table else "未识别报价表")))
-    _table(doc, ("投标人", "比最低价高", "偏离平均", "报价表合计"), rows, (8.7, 6, 4, 8))
+        above = price.get("above_lowest") or price.get("not_compared") or "—"
+        if price.get("above_lowest_pct"):
+            above += f"（{price['above_lowest_pct']}）"
+        name = crypto.decrypt_text(b.name_enc)
+        row = (name, above, price.get("vs_mean") or "—")
+        rows.append(row if rate else (*row, f"{table.get('total') or '—'}（{table.get('rows', 0)} 行）" if table else "未识别报价表"))
+        tax_rows.extend((name, tax["net"], tax["rate"], tax["gross"], tax["expected"]) for tax in price.get("tax_pairs", []))
+    if rate:
+        _table(doc, ("投标人", "比最低报价高", "偏离平均"), rows, (8.7, 9, 9))
+    else:
+        _table(doc, ("投标人", "比最低价高", "偏离平均", "报价表合计"), rows, (8.7, 6, 4, 8))
     items = pricing.get("items") or []
     if items:
         _sub(doc, f"分项对齐表（共 {len(items)} 项" + (f"，仅列前 {MAX_PRICE_ROWS} 项" if len(items) > MAX_PRICE_ROWS else "") + "）")
@@ -355,6 +369,9 @@ def _pricing(doc, d: _Data, number="五"):
             stat = f"{p['n']} 项，平均 {p['mean_ratio']} 倍，变异系数 {p['cv']}" if p.get("n", 0) >= 5 and p.get("cv") else f"对齐 {p.get('aligned', 0)} 项，不足 5 项"
             rows.append((f"{d.name(p['a'])} — {d.name(p['b'])}", stat, p.get("label") or "—"))
         _table(doc, ("投标人", "统计", "说明"), rows, (10, 9, 7.7))
+    if tax_rows:
+        _sub(doc, "含税与不含税换算")
+        _table(doc, ("投标人", "不含税价", "税率", "含税价", "换算含税价"), tax_rows, (7.7, 5, 4, 5, 5))
 
 
 # ---------------------------------------------------------------- 附录与签字栏
@@ -381,10 +398,17 @@ def _appendix(doc, d: _Data):
     _heading(doc, "附录三 要求清单全文")
     values = d.params
     forms = f"（{values['deposit_forms']}）" if values.get("deposit_forms") else ""
-    ceiling = f"最高限价 {money(Decimal(values['ceiling']))} {values.get('currency') or ''}；" if values.get("ceiling") else ""
+    from app.bid.pricing import RATE_LABELS, RATE_LIMIT_LABELS, rate_text
+    mode = values.get("quote_mode", "fixed")
+    if mode in RATE_LABELS:
+        ceiling = f"报价形态 {RATE_LABELS[mode]}；"
+        if values.get("rate_limit") is not None:
+            ceiling += f"{RATE_LIMIT_LABELS[mode]} {rate_text(Decimal(values['rate_limit']))}；"
+    else:
+        ceiling = f"最高限价 {money(Decimal(values['ceiling']))} {values.get('currency') or ''}；" if values.get("ceiling") else ""
     _para(doc, f"关键参数：{ceiling}投标有效期 {_plain(values.get('validity_days'))} 天；"
                f"保证金 {_plain(values.get('deposit'))}{forms}；联合体 " + {True: "接受", False: "不接受"}.get(values.get("consortium"), "未填")
-          + "；报价 " + {True: "含税", False: "不含税"}.get(values.get("tax_included"), "未填") + "。")
+          + ("；报价 " + {True: "含税", False: "不含税"}.get(values.get("tax_included"), "未填") if mode == "fixed" else "") + "。")
     extra = [(label, values[key]) for key, label in (
         ("construction_max", "工期上限"), ("delivery_max", "交货期上限"),
         ("warranty_min", "质保期下限"), ("defect_min", "缺陷责任期下限"),
@@ -462,7 +486,7 @@ def _conclusion_report(doc, d, scope):
             if b["manual_total"]:
                 total += "\n唱标价 · 人工录入"
             rows.append((labels[b["tier"]], b["name"], reason, total))
-        _table(doc, ("结论", "投标人", "理由", "投标总价"), rows, (3.3, 6.2, 12.2, 5))
+        _table(doc, ("结论", "投标人", "理由", (d.view.get("pricing") or {}).get("quote_label", "投标总价")), rows, (3.3, 6.2, 12.2, 5))
     if c["cases"]:
         _heading(doc, "疑似串通投标")
         for case in c["cases"]:

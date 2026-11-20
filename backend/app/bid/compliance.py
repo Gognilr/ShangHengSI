@@ -15,7 +15,7 @@ from app.checks.amounts import check_uppercase
 from app.checks.content import check_content
 from app.checks.dates import find_dates, parse_date
 from app.checks.model import CheckNode
-from app.checks.numbers import money, rounded
+from app.checks.numbers import CENT, money, rounded
 from app.parsing.model import LOW_OCR_CONF
 from app.redaction.detect import chinese_upper_value, find_amounts
 from app.redaction.tables import table_cell
@@ -138,7 +138,7 @@ def tender_performance_limits(text):
 
 def requirement_kind(text):
     """“本地规则”要求对应的检查；对不上的返回 None（由人工核对）。"""
-    if re.search(r"限价|控制价|拦标价", text):
+    if re.search(r"限价|控制价|拦标价|最高(?:投标|报价)?费率|最低(?:投标|报价)?下浮率|费率上限|下浮率下限|费率\s*(?:不得|不)(?:高于|超过|低于)", text):
         return "ceiling"
     if re.search(r"两个以上|两份以上|多个(?:不同的)?(?:投标)?报价|备选", text):
         return "multi_total"
@@ -394,16 +394,45 @@ def corrected_total(fact, wrong_case, ceiling):
     return out
 
 
-def evaluate(bidder_id, nodes, fact, params, opening: date, place, *, partial=False):
-    """一家投标人的符合项问题与各检查的判断。nodes 为 CheckNode 子类（带 kind、ocr_conf）；
-    fact 为 pricing.analyze 的该家结果；place(node, start, end) 给出证据位置。返回 (问题, {检查: (结论, 理由, [位置])})。"""
-    issues, verdicts = [], {}
-    b = str(bidder_id)
+def _evaluate_rate(b, fact, params, at, issues, verdicts):
+    from app.bid.pricing import RATE_LABELS, RATE_LIMIT_LABELS, rate_text
+    mode = params["quote_mode"]
+    label, limit_label = RATE_LABELS[mode], RATE_LIMIT_LABELS[mode]
+    distinct, totals = fact["distinct"], fact["totals"]
+    limit = Decimal(params["rate_limit"]) if params.get("rate_limit") else None
+    where = [at(n) for _value, _currency, n in totals][:4]
+    if len(distinct) > 1:
+        title = f"出现 {len(distinct)} 个不同的{label}"
+        rows = [{"label": label, "value": rate_text(v), "places": {b: [at(n)]}} for v, _, n in totals[:8]]
+        issues.append(_issue("multi_total", "veto", title, rows, ARTICLE + "（四）", "multi_total"))
+        verdicts["multi_total"] = ("no", title, where)
+    elif distinct:
+        verdicts["multi_total"] = ("yes", f"{label} {rate_text(distinct[0])}，未见其他不同报价", where)
+    else:
+        verdicts["multi_total"] = ("missing", f"未找到明确的{label}", [])
+
+    if limit is None:
+        verdicts["ceiling"] = ("unclear", f"关键参数未填写{limit_label}", [])
+    elif not distinct:
+        verdicts["ceiling"] = ("missing", f"未能确定{label}", [])
+    else:
+        lower = mode == "discount"
+        bound = min(distinct) if lower else max(distinct)
+        failed = bound < limit if lower else bound > limit
+        relation = ("低于" if lower else "高于") if failed else ("不低于" if lower else "不高于")
+        title = f"{label} {rate_text(bound)} {relation}{limit_label} {rate_text(limit)}"
+        evidence = [at(n) for value, _currency, n in totals if value == bound][:1]
+        if failed:
+            issues.append(_issue("ceiling", "veto", title, [{"label": label, "value": rate_text(bound), "places": {b: evidence}}],
+                                 ARTICLE + "（五）", "ceiling"))
+        verdicts["ceiling"] = ("no" if failed else "yes", title, evidence)
+    verdicts["uppercase"] = ("unclear", "按百分比报价，金额大小写核对不适用", [])
+
+
+def _evaluate_fixed_price(b, nodes, fact, params, at, issues, verdicts):
+    from app.bid.pricing import rate_text
     ceiling = Decimal(params["ceiling"]) if params.get("ceiling") else None
     by_loc = {n.loc: n for n in nodes}
-
-    def at(n, s=0, e=None):
-        return place(n, s, len(n.text) if e is None else e)
 
     # 多个不同总价（第五十一条：同一投标人提交两个以上不同的投标报价）
     distinct, totals = fact["distinct"], fact["totals"]
@@ -441,7 +470,10 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place, *, partial=Fa
                              [{"label": "唱标价 · 小写", "value": money(manual)},
                               {"label": "唱标价 · 大写", "value": f"{upper}（{money(value)}）"}], kind="uppercase"))
     # 分项合计与投标总价
-    if distinct and len(distinct) == 1 and fact["table_total"] is not None and rounded(fact["table_total"]) != distinct[0]:
+    tax_totals = {rounded(other[0]) for net, _tax, gross, _expected in fact.get("tax_totals", [])
+                  if distinct and distinct[0] in (rounded(net[0]), rounded(gross[0])) for other in (net, gross)}
+    if (len(distinct) == 1 and fact["table_total"] is not None
+            and rounded(fact["table_total"]) not in (tax_totals | {distinct[0]})):
         main = fact["main"]
         issues.append(_issue("sum_total", "general", f"报价表合计 {money(fact['table_total'])} 与投标总价 {money(distinct[0])} 不一致",
                              [{"label": "报价表", "value": main[0].name, "places": {b: [at(main[2][0][4])] if main[2] else []}},
@@ -498,7 +530,34 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place, *, partial=Fa
             title = title.replace("不一致", "可能不一致（扫描件识读，请核对原件）")
         issues.append(_issue("row_calc" if code == "L-01" else "sum_rows", "hint" if r.unsure else "general", title,
                              [{"label": "计算", "value": r.detail, "places": {b: [at(n)] if n else []}}]))
+    for net, tax, gross, expected in fact.get("tax_pairs", []):
+        if abs(rounded(gross[0]) - expected) <= CENT:
+            continue
+        nodes_found = {(n.file_seq, n.loc): n for _amount, _currency, n in (net, tax, gross)}
+        evidence = [at(n) for n in nodes_found.values()]
+        unsure = any(n.ocr_conf is not None for n in nodes_found.values())
+        title = "含税价与不含税价按税率换算不一致"
+        if unsure:
+            title = "税价换算待核对（扫描件识读）"
+        detail = f"{money(net[0])} ×（1 + {rate_text(tax[0] * 100)}）= {money(expected)}，所报含税价 {money(gross[0])}"
+        issues.append(_issue("tax_calc", "hint" if unsure else "general", title,
+                             [{"label": "税价换算", "value": detail, "places": {b: evidence}}]))
     fact["corrected"] = corrected_total(fact, wrong_case, ceiling)
+
+
+def evaluate(bidder_id, nodes, fact, params, opening: date, place, *, partial=False):
+    """返回一家投标人的符合项问题与各检查判断。"""
+    issues, verdicts = [], {}
+    b = str(bidder_id)
+    by_loc = {n.loc: n for n in nodes}
+
+    def at(n, s=0, e=None):
+        return place(n, s, len(n.text) if e is None else e)
+
+    if params.get("quote_mode", "fixed") == "fixed":
+        _evaluate_fixed_price(b, nodes, fact, params, at, issues, verdicts)
+    else:
+        _evaluate_rate(b, fact, params, at, issues, verdicts)
 
     # 投标有效期
     required = params.get("validity_days")

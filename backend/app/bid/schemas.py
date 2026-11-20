@@ -61,6 +61,8 @@ Method = Literal["local", "model", "manual"]
 class ParametersInput(BaseModel):
     """关键参数；金额以字符串传递，按 Decimal 校验，不用浮点数。"""
     ceiling: str | None = Field(None, max_length=32)
+    quote_mode: Literal["fixed", "rate", "discount"] = "fixed"
+    rate_limit: str | None = Field(None, max_length=16)
     currency: Literal["CNY", "USD", "EUR", "HKD"] = "CNY"
     validity_days: int | None = Field(None, ge=1, le=3650)
     deposit: str | None = Field(None, max_length=32)
@@ -90,6 +92,16 @@ class ParametersInput(BaseModel):
             return str(number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
         except InvalidOperation:
             raise ValueError("请填写数字金额") from None
+
+    @field_validator("rate_limit")
+    @classmethod
+    def percent_limit(cls, value):
+        from app.bid.pricing import rate_value
+        if value is None or not value.strip():
+            return None
+        if (number := rate_value(value)) is None:
+            raise ValueError("请填写 0 至 100 之间的百分数，如 8 或 8%")
+        return format(number, "f")
 
     @field_validator("construction_max", "delivery_max", "warranty_min", "defect_min")
     @classmethod

@@ -347,6 +347,7 @@ async function removeProject() {
         <template v-else>
           <div v-if="project.bidders.length" class="cards">
             <BidderCard v-for="bidder in project.bidders" :key="bidder.id" :project-id="id" :bidder="bidder" :files="filesOf(bidder.id)" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" :suggest="suggestions[bidder.id]"
+              :rate-quote="project.quote_mode === 'rate' || project.quote_mode === 'discount'"
                         @rename="name => renameBidder(bidder.id, name)" @remove="removeBidder(bidder.id)" @pick="choose(bidder.id)" @drop="e => drop(e, bidder.id)"
                         :opening-failed="openingFailed[bidder.id]" @password="setPassword" @remove-file="removeFile" @opening="(body, done) => saveOpening(bidder.id, body, done)" @adopt="name => renameBidder(bidder.id, name)" />
           </div>

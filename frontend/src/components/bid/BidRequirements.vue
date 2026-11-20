@@ -19,7 +19,7 @@ const emit = defineEmits<{ changed: [] }>()
 
 const data = ref<BidRequirements>(), error = ref(''), saving = ref(false)
 const emptyParams: BidParameters = {
-  ceiling: null, currency: 'CNY', validity_days: null, deposit: null, deposit_forms: '',
+  ceiling: null, quote_mode: 'fixed', rate_limit: null, currency: 'CNY', validity_days: null, deposit: null, deposit_forms: '',
   consortium: null, tax_included: null, agency: '',
   construction_max: null, delivery_max: null, warranty_min: null, defect_min: null,
   performance_from: null, performance_until: null, performance_amount: null, performance_count: null,
@@ -167,13 +167,17 @@ const notEnough = computed(() => {
           <span class="hint">{{ data.parameters_confirmed ? '已核对' : '系统预填，请核对改正' }}</span>
         </div>
         <div class="param-grid" @input="paramsDirty = true">
-          <label><span>最高限价<i v-if="grouping(params.ceiling)" class="grouped num">{{ grouping(params.ceiling) }}</i></span><el-input v-model="params.ceiling" :disabled="locked" placeholder="未写明" class="num"><template #append><el-select v-model="params.currency" :disabled="locked" style="width: 96px" aria-label="币种" @change="paramsDirty = true"><el-option label="人民币" value="CNY" /><el-option label="美元" value="USD" /><el-option label="欧元" value="EUR" /><el-option label="港币" value="HKD" /></el-select></template></el-input></label>
+          <label><span>报价形态</span><el-select v-model="params.quote_mode" aria-label="报价形态" :disabled="locked" @change="params.rate_limit = null; paramsDirty = true">
+            <el-option label="固定总价" value="fixed" /><el-option label="费率" value="rate" /><el-option label="下浮率" value="discount" />
+          </el-select></label>
+          <label v-if="params.quote_mode === 'fixed'" key="amount-limit"><span>最高限价<i v-if="grouping(params.ceiling)" class="grouped num">{{ grouping(params.ceiling) }}</i></span><el-input v-model="params.ceiling" :disabled="locked" placeholder="未写明" class="num"><template #append><el-select v-model="params.currency" :disabled="locked" style="width: 96px" aria-label="币种" @change="paramsDirty = true"><el-option label="人民币" value="CNY" /><el-option label="美元" value="USD" /><el-option label="欧元" value="EUR" /><el-option label="港币" value="HKD" /></el-select></template></el-input></label>
+          <label v-else key="rate-limit"><span>{{ params.quote_mode === 'discount' ? '最低下浮率（%）' : '最高费率（%）' }}</span><el-input v-model="params.rate_limit" :disabled="locked" placeholder="如 8" maxlength="16" class="num" /></label>
           <label><span>投标有效期（天）</span><el-input-number v-model="params.validity_days" :disabled="locked" :min="1" :max="3650" :controls="false" placeholder="未写明" @change="paramsDirty = true" /></label>
           <label><span>保证金（元）<i v-if="grouping(params.deposit)" class="grouped num">{{ grouping(params.deposit) }}</i></span><el-input v-model="params.deposit" :disabled="locked" placeholder="未写明" class="num" /></label>
           <label><span>招标代理机构</span><el-input v-model="params.agency" :disabled="locked" maxlength="255" placeholder="选填，填写机构全称" /></label>
           <label><span>保证金形式</span><el-input v-model="params.deposit_forms" :disabled="locked" maxlength="100" placeholder="如 银行保函、电汇" /></label>
           <div class="field"><span>接受联合体</span><SiSegmented :model-value="tri(params.consortium)" :options="triOptions" size="small" ariaLabel="是否接受联合体" @update:model-value="(v: string) => { params.consortium = fromTri(v); paramsDirty = true }" /></div>
-          <div class="field"><span>报价含税</span><SiSegmented :model-value="tri(params.tax_included)" :options="triOptions" size="small" ariaLabel="报价是否含税" @update:model-value="(v: string) => { params.tax_included = fromTri(v); paramsDirty = true }" /></div>
+          <div v-if="params.quote_mode === 'fixed'" class="field"><span>报价含税</span><SiSegmented :model-value="tri(params.tax_included)" :options="triOptions" size="small" ariaLabel="报价是否含税" @update:model-value="(v: string) => { params.tax_included = fromTri(v); paramsDirty = true }" /></div>
         </div>
         <div class="param-grid local-params" @input="paramsDirty = true">
           <label v-for="term in termFields" :key="term.key">

@@ -18,8 +18,13 @@ const pricing = computed(() => ctx.data.value?.pricing)
 const summary = computed(() => ctx.data.value?.conclusion.pricing)
 const params = computed(() => ctx.data.value?.parameters)
 const short = (id: string) => ctx.shorts.value[id] ?? '已移除'
-const unit = computed(() => (params.value?.currency ?? 'CNY') === 'CNY' ? '元' : params.value?.currency ?? '')
+const rate = computed(() => pricing.value?.quote_mode === 'rate' || pricing.value?.quote_mode === 'discount')
+const quoteLabel = computed(() => pricing.value?.quote_label ?? '投标总价')
+const limitLabel = computed(() => pricing.value?.rate_limit_label ?? '最高限价')
+const unit = computed(() => rate.value ? '' : (params.value?.currency ?? 'CNY') === 'CNY' ? '元' : params.value?.currency ?? '')
+const lowestLabel = computed(() => rate.value ? '比最低报价高' : '比最低价高')
 const ceiling = computed(() => {
+  if (rate.value) return pricing.value?.rate_limit ?? null
   const v = params.value?.ceiling
   if (!v) return null
   const [int, dec] = v.split('.')
@@ -34,7 +39,7 @@ const cmp = computed(() => pricing.value?.compare ?? null)
 // 悬停总价时补充显示（不藏关键信息：结论已在标签里）
 function hover(p: BidPricing['bidders'][string]) {
   const parts = []
-  if (p.above_lowest) parts.push(`比最低价高 ${p.above_lowest}（${p.above_lowest_pct}）`)
+  if (p.above_lowest) parts.push(`${lowestLabel.value} ${p.above_lowest}` + (p.above_lowest_pct ? `（${p.above_lowest_pct}）` : ''))
   if (p.vs_mean && !p.not_compared) parts.push(`偏离平均 ${p.vs_mean}`)
   if (p.not_compared) parts.push(p.not_compared)
   return parts.join('；')
@@ -66,8 +71,8 @@ const points = computed<PricePoint[]>(() => rows.value.filter(r => r.p.total && 
 const stripCaption = computed(() => {
   const c = cmp.value
   if (!c) return ''
-  const parts = [`${c.n} 家总价在 ${c.lowest}～${c.highest} ${unit.value}之间，平均 ${c.mean}`]
-  if (ceiling.value) parts.push(`限价 ${ceiling.value}`)
+  const parts = [`${c.n} 家${quoteLabel.value}在 ${c.lowest}～${c.highest}${unit.value ? ' ' + unit.value : ''} 之间，平均 ${c.mean}`]
+  if (ceiling.value) parts.push(`${limitLabel.value} ${ceiling.value}`)
   const low = rows.value.filter(r => r.p.low_price).map(r => short(r.bidder.id))
   if (low.length) parts.push(`${low.join('、')}在异常低价区间`)
   return parts.join('；') + '。'
@@ -88,6 +93,7 @@ async function decide(patch: BidConclusionReview) {
 }
 
 const corrected = computed(() => rows.value.filter(r => r.p.corrected))
+const taxQuotes = computed(() => rows.value.flatMap(r => (r.p.tax_pairs ?? []).map(pair => ({ ...pair, bidder: r.bidder }))))
 
 // 明细：两两比值只列构成规律的一对；分项对齐表只给异常格加警告墨色
 type Pair = BidPricing['pairs'][number]
@@ -101,12 +107,13 @@ const pairText = (p: Pair) => p.label?.startsWith('分项单价比值恒定') ? 
   <div class="bid-tab" :class="{ saving }">
     <p v-if="!pricing || !summary" class="bid-empty">报价检查还没有结果。</p>
     <template v-else>
-      <BidLede :text="summary.lede" :sub="ceiling ? `最高限价 ${ceiling} ${unit}` : undefined" />
-      <PriceStrip v-if="cmp && points.length >= 2" :points="points" :mean="cmp.mean" :ceiling="ceiling" :unit="unit" :caption="stripCaption" />
+      <BidLede :text="summary.lede" :sub="ceiling ? [limitLabel, ceiling, unit].filter(Boolean).join(' ') : undefined" />
+      <PriceStrip v-if="cmp && points.length >= 2" :points="points" :mean="cmp.mean" :ceiling="ceiling" :unit="unit" :caption="stripCaption"
+        :quote-label="quoteLabel" :limit-label="rate ? limitLabel : undefined" />
 
       <table class="bid-table quotes">
         <colgroup><col class="name-col"><col class="price-col"><col></colgroup>
-        <thead><tr><th>投标人</th><th class="r">投标总价</th><th>结论</th></tr></thead>
+        <thead><tr><th>投标人</th><th class="r">{{ quoteLabel }}</th><th>结论</th></tr></thead>
         <tbody>
           <template v-for="r in rows" :key="r.bidder.id">
             <tr :id="'bid-price-' + r.bidder.id" :class="{ 'bid-target': target === r.bidder.id }">
@@ -115,12 +122,12 @@ const pairText = (p: Pair) => p.label?.startsWith('分项单价比值恒定') ? 
                 <BidOpeningInput v-if="editing === r.bidder.id" :initial="r.p.opening" :busy="saving" :failed="failed" @save="body => saveOpening(r.bidder.id, body)" @cancel="editing = ''" />
                 <template v-else>
                   <span class="line">
-                    <span v-if="r.total.text" :title="hover(r.p) || undefined">{{ r.total.text }}</span><span v-else class="bid-empty">未识别</span>
-                    <el-button size="small" text @click="edit(r.bidder.id)">{{ r.p.manual_total ? '修改' : r.total.text ? '录入' : '填写唱标价' }}</el-button>
+                    <span v-if="r.total.text" :title="hover(r.p) || undefined">{{ rate && r.total.multi.length ? r.total.multi.join('、') : r.total.text }}<template v-if="r.p.tax_basis">（{{ r.p.tax_basis }}）</template></span><span v-else class="bid-empty">未识别</span>
+                    <el-button v-if="!rate" size="small" text @click="edit(r.bidder.id)">{{ r.p.manual_total ? '修改' : r.total.text ? '录入' : '填写唱标价' }}</el-button>
                     <el-button v-if="!r.p.total && pages(r.p).length" size="small" text :aria-expanded="finding === r.bidder.id" @click="finding = finding === r.bidder.id ? '' : r.bidder.id">找报价页</el-button>
                   </span>
                   <small v-if="r.p.manual_total">唱标价 · 人工录入<template v-if="r.p.file_total"> · 文件总价 {{ r.p.file_total }}</template></small>
-                  <small v-else-if="r.total.multi.length">出现 {{ r.total.multi.length }} 个总价：{{ r.total.multi.join('、') }}</small>
+                  <small v-else-if="!rate && r.total.multi.length">出现 {{ r.total.multi.length }} 个总价：{{ r.total.multi.join('、') }}</small>
                   <small v-else-if="r.p.source && r.total.text"><button v-if="r.p.source.file_id && r.p.source.page && ctx.renderable.value[r.p.source.file_id]" type="button" class="bid-link" @click="openSource(r.p)">{{ sourceText(r.p) }}</button><template v-else>{{ sourceText(r.p) }}</template></small>
                 </template>
               </td>
@@ -173,16 +180,16 @@ const pairText = (p: Pair) => p.label?.startsWith('分项单价比值恒定') ? 
 
       <details class="detail">
         <summary class="bid-fold">明细（供复核）</summary>
-        <h4>总价比较</h4>
+        <h4>{{ rate ? quoteLabel + '比较' : '总价比较' }}</h4>
         <table class="bid-table compact">
-          <thead><tr><th>投标人</th><th class="r">比最低价高</th><th class="r">偏离平均</th><th class="r">报价表合计</th><th class="r">报价表分项</th></tr></thead>
+          <thead><tr><th>投标人</th><th class="r">{{ lowestLabel }}</th><th class="r">偏离平均</th><th v-if="!rate" class="r">报价表合计</th><th v-if="!rate" class="r">报价表分项</th></tr></thead>
           <tbody>
             <tr v-for="r in rows" :key="r.bidder.id">
               <td class="name" :title="r.bidder.name">{{ short(r.bidder.id) }}</td>
               <td class="r num"><template v-if="r.p.above_lowest">{{ r.p.above_lowest }}<small>{{ r.p.above_lowest_pct }}</small></template><span v-else-if="r.p.not_compared" class="bid-empty">{{ r.p.not_compared }}</span><span v-else class="bid-zero">—</span></td>
               <td class="r num"><template v-if="r.p.vs_mean && !r.p.not_compared">{{ r.p.vs_mean }}</template><span v-else class="bid-zero">—</span></td>
-              <td class="r num"><template v-if="r.p.table?.total">{{ r.p.table.total }}</template><span v-else class="bid-zero">—</span></td>
-              <td class="r num"><template v-if="r.p.table">{{ r.p.table.rows }} 项</template><span v-else class="bid-empty">未识别</span></td>
+              <td v-if="!rate" class="r num"><template v-if="r.p.table?.total">{{ r.p.table.total }}</template><span v-else class="bid-zero">—</span></td>
+              <td v-if="!rate" class="r num"><template v-if="r.p.table">{{ r.p.table.rows }} 项</template><span v-else class="bid-empty">未识别</span></td>
             </tr>
           </tbody>
         </table>
@@ -215,6 +222,18 @@ const pairText = (p: Pair) => p.label?.startsWith('分项单价比值恒定') ? 
             </tbody>
           </table>
           <div v-if="patterned.length" class="curves"><RatioCurve :items="pricing.items" :pairs="patterned" :labels="ctx.shorts.value" /></div>
+        </template>
+        <template v-if="taxQuotes.length">
+          <h4>含税与不含税换算</h4>
+          <table class="bid-table compact">
+            <thead><tr><th>投标人</th><th class="r">不含税价</th><th class="r">税率</th><th class="r">含税价</th><th class="r">换算含税价</th></tr></thead>
+            <tbody>
+              <tr v-for="(pair, index) in taxQuotes" :key="index">
+                <td>{{ short(pair.bidder.id) }}</td><td class="r num">{{ pair.net }}</td><td class="r num">{{ pair.rate }}</td>
+                <td class="r num">{{ pair.gross }}</td><td class="r num">{{ pair.expected }}</td>
+              </tr>
+            </tbody>
+          </table>
         </template>
       </details>
     </template>

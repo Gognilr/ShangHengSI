@@ -15,7 +15,7 @@ from itertools import combinations
 from openpyxl.utils.cell import column_index_from_string
 
 from app.checks.amounts import _CURRENCY_TOKEN, _check_table, _scan_tables
-from app.checks.numbers import money, parse_number, rounded
+from app.checks.numbers import CENT, money, parse_number, parse_rate, rounded
 from app.redaction.detect import _CURRENCY, find_amounts
 from app.redaction.normalize import normalize_value
 from app.redaction.tables import table_cell
@@ -36,6 +36,168 @@ _NAME = re.compile(r"名称|品名|货物|设备|品目|项目|内容|规格|型
 _STRIP = re.compile(r"[\W_]+")
 _SUB_LIST = re.compile(r"(?:不)?含在(?:投标)?总价内|单独报价|(?:备品备件|备件|专用工具|工具)(?:价格)?清单")
 _MOTOR_SCOPE = re.compile(r"([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*元\s*[（(](不?含电机)(?:价格|价)?[）)]")
+RATE_LABELS = {"rate": "投标费率", "discount": "投标下浮率"}
+RATE_LIMIT_LABELS = {"rate": "最高费率", "discount": "最低下浮率"}
+_QUOTE_RATE = {"rate": r"(?<![税浮折利汇])费率", "discount": r"下浮率"}
+_PERCENT = r"(\d{1,3}(?:\.\d{1,8})?)\s*%(?![\d%]|\s*(?:[-~～—–至]|或)\s*\d)"
+_TAX_LABEL = r"(?:投标)?(?:总报价|报价|总金额|金额|总价|合计|价款|价)"
+_TAX_FIELD = re.compile(rf"(?<!不)不?含(?:增值)?税(?:的)?{_TAX_LABEL}|{_TAX_LABEL}\s*\(不?含(?:增值)?税\)|(?:增值)?税率")
+_TAX_AMOUNT = re.compile(r"\s*[:=为]?\s*(?:人民币|美元|欧元|港币|港元|CNY|USD|EUR|HKD|[¥￥])?\s*([\d,]+(?:\.\d+)?)\s*(万元|元)?\s*")
+
+
+def rate_text(value):
+    return f"{_trim(value)}%"
+
+
+def rate_value(text):
+    """关键参数使用百分数，2 或 2% 均表示 2%。"""
+    match = re.fullmatch(r"(\d{1,3}(?:\.\d{1,8})?)\s*%?", unicodedata.normalize("NFKC", text).strip())
+    return Decimal(match[1]) if match and Decimal(match[1]) <= 100 else None
+
+
+def _quote_fields(nodes):
+    """物理表格按文件隔离，同行用途由调用方确认。"""
+    tables = {}
+    for n in nodes:
+        if cell := table_cell(n.loc):
+            table, col, row = cell
+            tables.setdefault((n.file_seq, table), {}).setdefault(row, {})[_column_index(col)] = n
+    return tables
+
+
+def labelled_rates(nodes, mode):
+    """只取明确的投标费率 / 下浮率。表头可注明 %，文字须带 %。"""
+    label = _QUOTE_RATE[mode]
+    explicit = re.compile(rf"(?:投标报价|投标|报价|综合|统一)\s*\(?\s*{label}\s*\)?|{label}\s*报价")
+    bare = rf"{label}(?:\s*\(%\))?"
+    fields = re.compile(rf"(?:(?:{explicit.pattern})(?:\s*\(%\))?|{bare})")
+    found = []
+
+    def add(text, node, percent_required=True):
+        if percent_required and not text.strip().endswith("%"):
+            return
+        if (value := rate_value(text)) is not None:
+            found.append((value, None, node))
+
+    for n in nodes:
+        text = unicodedata.normalize("NFKC", n.text)
+        if re.search(r"最高|最低|不得|不[高低]于|至少|限价|控制价|历史合同|业绩合同", text):
+            continue
+        pattern = fields.pattern if table_cell(n.loc) or re.match(rf"^\s*{bare}\s*[:=为]", text) else explicit.pattern
+        for match in re.finditer(rf"(?:{pattern})\s*[:=为]?\s*{_PERCENT}", text):
+            add(match[1] + "%", n)
+        # “投标报价：下浮 8%”。
+        if mode == "discount" and (match := re.search(rf"(?:投标报价|投标费率)\s*[:=为]?\s*下浮\s*{_PERCENT}", text)):
+            add(match[1] + "%", n)
+    for rows in _quote_fields(nodes).values():
+        for row, cells in rows.items():
+            for col, n in cells.items():
+                text = unicodedata.normalize("NFKC", n.text).strip(" ：:")
+                if not fields.fullmatch(text):
+                    continue
+                right = cells.get(col + 1)
+                if right and rate_value(right.text) is not None:
+                    add(unicodedata.normalize("NFKC", right.text), right, "(%)" not in text)
+                elif below := rows.get(row + 1, {}).get(col):
+                    add(unicodedata.normalize("NFKC", below.text), below, "(%)" not in text)
+    return found
+
+
+def _tax_quotes(nodes):
+    """配套总价来自同一段、同一表：并排字段、同一合计行或三行标签值。"""
+    candidates = [n for n in nodes if "税" in n.text]
+    if not any("不含税" in n.text or "不含增值税" in n.text for n in candidates):
+        return
+
+    def key(m):
+        return "rate" if "税率" in m[0] else "net" if "不含" in m[0] else "gross"
+
+    def value(k, raw, label):
+        raw = unicodedata.normalize("NFKC", raw).strip(" ：:，,；;。")
+        if k == "rate":
+            rate = parse_rate(raw + "%" if label.endswith("%") and not raw.endswith("%") else raw)
+            return (rate, None) if rate is not None and rate <= 1 else None
+        if not (m := _TAX_AMOUNT.fullmatch(raw)) or not re.fullmatch(r"\d+(?:,\d{3})*(?:\.\d+)?", m[1]):
+            return None
+        token = _CURRENCY_TOKEN.search(raw) or _CURRENCY_TOKEN.search(label)
+        currency = _CURRENCY.get(token[0].upper()) if token else None
+        return Decimal(m[1].replace(",", "")) * (10000 if "万元" in (m[2] or label) else 1), currency
+
+    def add(fields, k, raw, label, n):
+        if parsed := value(k, raw, label):
+            fields.setdefault(k, []).append((*parsed, n))
+
+    groups = []
+    table_ids = set()
+    for n in candidates:
+        if cell := table_cell(n.loc):
+            table_ids.add((n.file_seq, cell[0]))
+            continue  # 表格只在后面按行匹配，避免同一单元格被核对两次
+        text = unicodedata.normalize("NFKC", n.text)
+        if re.search(r"最高限价|控制价|历史合同|业绩合同", text):
+            continue
+        fields = {}
+        matches = list(_TAX_FIELD.finditer(text))
+        for i, m in enumerate(matches):
+            raw = text[m.end():matches[i + 1].start() if i + 1 < len(matches) else len(text)]
+            add(fields, key(m), raw, m[0], n)
+        if fields:
+            groups.append((fields, True))
+    for (seq, table), rows in (_quote_fields(nodes).items() if table_ids else ()):
+        if (seq, table) not in table_ids:
+            continue
+        vertical = {}
+        for row, cells in sorted(rows.items()):
+            horizontal, columns = {}, {}
+            for col, n in cells.items():
+                text = unicodedata.normalize("NFKC", n.text).strip()
+                m = _TAX_FIELD.match(text)
+                if not m:
+                    continue
+                k = key(m)
+                raw = text[m.end():].strip(" :：")
+                unit = re.match(r"\((万元|元|%|人民币|美元|欧元|港币|CNY|USD|EUR|HKD)\)", raw)
+                label = m[0] + (unit[1] if unit else "")
+                raw = raw[unit.end():].strip(" :：") if unit else raw
+                if raw:
+                    add(horizontal, k, raw, label, n)
+                else:
+                    columns[col] = (k, label)
+                    if right := cells.get(col + 1):
+                        add(horizontal, k, right.text, label, right)
+            if horizontal:
+                groups.append((horizontal, True))
+            if horizontal:
+                for k, vals in horizontal.items():
+                    vertical.setdefault(k, []).extend(vals)
+            if len({k for k, _ in columns.values()}) == 3:
+                for after in sorted(r for r in rows if r > row):
+                    detail = rows[after]
+                    is_total = any(re.match(r"^(?:投标)?(?:总[价计额]|合计|价税合计)", n.text.strip()) for n in detail.values())
+                    fields = {}
+                    for col, (k, label) in columns.items():
+                        if n := detail.get(col):
+                            add(fields, k, n.text, label, n)
+                    if fields:
+                        groups.append((fields, is_total or len(rows) == 2))
+        if vertical:
+            groups.append((vertical, True))
+
+    seen = set()
+    for fields, total in groups:
+        if any(len(fields.get(k, ())) != 1 for k in ("net", "rate", "gross")):
+            continue
+        net, rate, gross = (fields[k][0] for k in ("net", "rate", "gross"))
+        if net[1] and gross[1] and net[1] != gross[1]:
+            continue
+        identity = tuple((v, n.file_seq, n.loc) for v, _, n in (net, rate, gross))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        with localcontext() as ctx:
+            ctx.prec = max(34, len(net[0].as_tuple().digits) + len(rate[0].as_tuple().digits) + 4)
+            expected = rounded(net[0] * (1 + rate[0]))
+        yield (net, rate, gross, expected), total
 
 
 def _motor_totals(text):
@@ -181,6 +343,8 @@ def separate_quote_scopes(nodes, totals):
             return '泵头'
         if '电机' in text:
             return '电机'
+        if found := re.search(r'主机|辅机', text):
+            return found[0]
         return None
 
     pages, at = {}, {}
@@ -209,20 +373,21 @@ def separate_quote_scopes(nodes, totals):
 
 
 def _component_table(table):
-    """仅明确分列泵头、电机单价且共用数量、总价的表，按组成单价之和复算。
+    """明确分列组成单价且共用数量、总价的表，按组成单价之和复算。
 
     只建临时计算副本，不改原始节点或普通审核的金额引擎；多种税价等含混列不猜测相加。
     """
     labels = {col: re.sub(r'\s+', '', n.text) for col, n in table.rows[table.header].items()}
-    pump = [c for c, t in labels.items() if re.fullmatch(r'(?:泵头|泵体)单价(?:[（(]元[）)])?', t)]
-    motor = [c for c, t in labels.items() if re.fullmatch(r'电机单价(?:[（(]元[）)])?', t)]
-    if len(pump) != 1 or len(motor) != 1 or not re.fullmatch(r'总价(?:[（(]元[）)])?', labels.get(table.columns[table.amount], '')):
+    components = {re.sub(r'单价[（(]元[）)]$', '单价', t): c for c, t in labels.items() if '单价' in t}
+    match = next((pair for pair in (('泵头单价', '电机单价'), ('泵体单价', '电机单价'), ('主机单价', '辅机单价'))
+                  if components.keys() == set(pair)), None)
+    if not match or not re.fullmatch(r'总价(?:[（(]元[）)])?', labels.get(table.columns[table.amount], '')):
         return table
     if len([t for t in labels.values() if '单价' in t]) != 2:
         return table
     rows = {r: dict(cells) for r, cells in table.rows.items()}
     for row in table.data_rows:
-        parts = [parse_number(rows[row][c].text) if c in rows[row] else None for c in (pump[0], motor[0])]
+        parts = [parse_number(rows[row][c].text) if c in rows[row] else None for c in (components[k] for k in match)]
         # 缺少任一部分时留空，让既有引擎按无法核验处理。
         node = rows[row].get(table.columns['price'])
         if node:
@@ -242,7 +407,7 @@ def quote_tables(nodes):
             info, found = _check_table(calculation)
             if calculation is not table:
                 for result in found:
-                    result.detail = result.detail.replace('× 单价', '× 泵头与电机单价之和')
+                    result.detail = result.detail.replace('× 单价', '× 各组成单价之和')
             results += [r for r in found if (r.unsure or r.code) in ("L-01", "L-02")]  # 含扫描识读降级的（V34-D-02）
             col = _name_col(table)
             items = []
@@ -347,7 +512,7 @@ def _trim(x):
     return f"{x:f}".rstrip("0").rstrip(".") if "." in f"{x:f}" else f"{x:f}"
 
 
-def compare(totals):
+def compare(totals, *, rate=False):
     """各家总价比较。totals 为 {投标人: Decimal}（只含参加比较的，按录入顺序）。
     返回 (汇总或 None, {投标人: 字段})；字段：mark 最高 / 最低、above_lowest(_pct) 比最低价高、vs_mean 偏离平均、
     low_price 异常低价（低于其余各家平均 LOW_PRICE 以上，其余至少 2 家）。"""
@@ -355,31 +520,35 @@ def compare(totals):
         return None, {}
     with localcontext() as ctx:
         ctx.prec = 34
-        vals = {b: rounded(v) for b, v in totals.items()}
+        vals = totals if rate else {b: rounded(v) for b, v in totals.items()}
         hi, lo = max(vals.values()), min(vals.values())
         mean = sum(vals.values(), Decimal(0)) / len(vals)
+        display = rate_text if rate else money
         out = {}
         for b, v in vals.items():
+            diff = (v - mean).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if rate else None
             row = {"mark": None if hi == lo else "highest" if v == hi else "lowest" if v == lo else None,
-                   "above_lowest": money(v - lo) if v != lo else None,
-                   "above_lowest_pct": _pct((v - lo) / lo) if v != lo and lo > 0 else None,
-                   "vs_mean": _pct((v - mean) / mean, signed=True) if mean > 0 else None, "low_price": None}
+                   "above_lowest": (f"+{_trim(v - lo)} 个百分点" if rate else money(v - lo)) if v != lo else None,
+                   "above_lowest_pct": _pct((v - lo) / lo) if not rate and v != lo and lo > 0 else None,
+                   "vs_mean": f"{'+' if diff >= 0 else '−'}{abs(diff):.1f} 个百分点" if diff is not None else
+                   _pct((v - mean) / mean, signed=True) if mean > 0 else None, "low_price": None}
             others = [w for o, w in vals.items() if o != b]
-            if len(others) >= 2:
+            if not rate and len(others) >= 2:
                 other_mean = sum(others, Decimal(0)) / len(others)
                 if other_mean > 0 and v < other_mean * (1 - LOW_PRICE):
                     row["low_price"] = {"others": len(others), "others_mean": money(other_mean),
                                         "below_pct": _pct((other_mean - v) / other_mean)}
             out[b] = row
-        summary = {"n": len(vals), "highest": money(hi), "lowest": money(lo), "mean": money(mean),
-                   "spread_pct": _pct((hi - lo) / lo) if lo > 0 else None}
+        summary = {"n": len(vals), "highest": display(hi), "lowest": display(lo),
+                   "mean": display(mean.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP) if rate else mean),
+                   "spread_pct": _pct((hi - lo) / lo) if not rate and lo > 0 else None}
     return summary, out
 
 
-def total_patterns(totals):
+def total_patterns(totals, *, rate=False):
     """三家及以上总价从低到高呈等差或等比（第四十条（四）“投标报价呈规律性差异”）。
     返回 [(投标人按金额升序, "diff" | "ratio", 显示用的差额或比值)]；已报的一组的子集不再重复报。"""
-    ordered = sorted(((rounded(v), b) for b, v in totals.items()), key=lambda x: x[0])
+    ordered = sorted(((v if rate else rounded(v), b) for b, v in totals.items()), key=lambda x: x[0])
     found = []
     with localcontext() as ctx:
         ctx.prec = 34
@@ -389,15 +558,17 @@ def total_patterns(totals):
                 if any(set(ids) <= set(f[0]) for f in found):
                     continue
                 vals = [v for v, _b in combo]
-                if vals[0] <= 0 or any(x == y for x, y in zip(vals, vals[1:])):
+                if (not rate and vals[0] <= 0) or any(x == y for x, y in zip(vals, vals[1:])):
                     continue
                 diffs = [y - x for x, y in zip(vals, vals[1:])]
-                ratios = [y / x for x, y in zip(vals, vals[1:])]
-                if max(diffs) - min(diffs) <= TOTAL_DIFF_TOL:
-                    found.append((ids, "diff", money(sum(diffs, Decimal(0)) / len(diffs))))
-                elif max(ratios) - min(ratios) <= TOTAL_RATIO_TOL:
-                    k = (sum(ratios, Decimal(0)) / len(ratios)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-                    found.append((ids, "ratio", _trim(k)))
+                if max(diffs) - min(diffs) <= (0 if rate else TOTAL_DIFF_TOL):
+                    step = sum(diffs, Decimal(0)) / len(diffs)
+                    found.append((ids, "diff", f"{_trim(step)} 个百分点" if rate else money(step)))
+                elif vals[0] > 0:
+                    ratios = [y / x for x, y in zip(vals, vals[1:])]
+                    if max(ratios) - min(ratios) <= TOTAL_RATIO_TOL:
+                        k = (sum(ratios, Decimal(0)) / len(ratios)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                        found.append((ids, "ratio", _trim(k)))
     return found
 
 
@@ -419,11 +590,11 @@ def quote_pages(nodes, limit=10):
     return [{"file_id": f, "page": p, "hits": c} for (f, p), c in ranked]
 
 
-def _source(nodes, totals, distinct, main):
+def _source(nodes, totals, distinct, main, *, rate=False):
     """唯一总价的出处：所在页的报价标题（开标一览表、投标函等）与文件、页码。"""
     node, label = None, None
     if len(distinct) == 1:
-        node = next((n for v, _c, n in totals if rounded(v) == distinct[0]), None)
+        node = next((n for v, _c, n in totals if (v if rate else rounded(v)) == distinct[0]), None)
     elif not distinct and main is not None and main[2]:
         node, label = main[2][0][4], "报价表"
     if node is None:
@@ -437,31 +608,65 @@ def _source(nodes, totals, distinct, main):
     return {"label": label, "file_id": str(file_id) if file_id else None, "page": page}
 
 
-def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, manual=None):
+def _tax_totals(totals, pairs, tax_included, table_total):
+    """只替换能够唯一对应的两种税价；独立报价仍进入多个总价检查。"""
+    replacements = {}
+    for net, _rate, gross, _expected in pairs:
+        chosen = net if tax_included is False else gross
+        paired_currency = net[1] or gross[1]
+        chosen = (chosen[0], paired_currency, chosen[2])
+        for amount, _currency, node in (net, gross):
+            replacements.setdefault((rounded(amount), paired_currency), {})[rounded(chosen[0])] = chosen
+    out = []
+    for amount, currency, node in totals:
+        choices = {v: candidate for (price, c), options in replacements.items()
+                   if price == rounded(amount) and (not c or not currency or c == currency)
+                   for v, candidate in options.items()}
+        out.append(next(iter(choices.values())) if len(choices) == 1 else (amount, currency, node))
+    if not totals and len(pairs) == 1:
+        net, _rate, gross, _expected = pairs[0]
+        if table_total is None or rounded(table_total) in (rounded(net[0]), rounded(gross[0])):
+            amount, currency, node = net if tax_included is False else gross
+            out.append((amount, currency or net[1] or gross[1], node))
+    return out
+
+
+def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, manual=None, *,
+            mode="fixed", rate_limit=None, tax_included=None):
     """返回 (报价分析 JSON, 线索, 每家 {总价, 币种, 多个总价, 表, L 结果, 异常低价})。bidders 为按录入顺序的 id；
     place(node) 给出证据位置（总价规律线索用，可省）。"""
-    facts, analysis = {}, {"bidders": {}, "items": [], "pairs": [], "aligned_by": {}, "compare": None, "total_patterns": []}
+    rate = mode in RATE_LABELS
+    label = RATE_LABELS.get(mode, "投标总价")
+    display = rate_text if rate else money
+    facts, analysis = {}, {"bidders": {}, "items": [], "pairs": [], "aligned_by": {}, "compare": None, "total_patterns": [],
+                           "quote_mode": mode, "quote_label": label,
+                           "rate_limit": rate_text(rate_limit) if rate_limit is not None else None,
+                           "rate_limit_label": RATE_LIMIT_LABELS.get(mode)}
     for b in bidders:
         nodes = per_bidder_nodes.get(b, [])
-        tables, results = quote_tables(nodes)
+        tables, results = ([], []) if rate else quote_tables(nodes)
         main = _main(tables)
-        totals = labelled_totals(nodes)
-        distinct = sorted({rounded(v) for v, _c, _n in totals})
-        separate_scopes = separate_quote_scopes(nodes, totals)
-        total = distinct[0] if len(distinct) == 1 else None
         table_total = None
         if main is not None:
             info, items = main[1], main[2]
             table_total = info.total if info.total is not None else (
                 sum((rounded(it[3]) for it in items), Decimal(0)) if items and all(it[3] is not None for it in items) else None)
+        tax_found = [] if rate else list(_tax_quotes(nodes))
+        tax_pairs = [pair for pair, _total in tax_found]
+        tax_totals = [pair for pair, is_total in tax_found if is_total]
+        totals = labelled_rates(nodes, mode) if rate else _tax_totals(labelled_totals(nodes), tax_totals, tax_included, table_total)
+        distinct = sorted({v if rate else rounded(v) for v, _c, _n in totals})
+        separate_scopes = not rate and separate_quote_scopes(nodes, totals)
+        total = distinct[0] if len(distinct) == 1 else None
         currency_found = next((c for _v, c, _n in totals if c), None)
         if not distinct and table_total is not None:
             currency_found = main[1].currency
         facts[b] = {"total": total if total is not None else (table_total if not distinct else None),
                     "currency": currency_found, "totals": totals, "distinct": distinct, "main": main,
-                    "table_total": table_total, "results": results, "separate_scopes": separate_scopes}
-        source = _source(nodes, totals, distinct, main)
-        entered = (manual or {}).get(str(b))
+                    "table_total": table_total, "results": results, "separate_scopes": separate_scopes,
+                    "tax_pairs": tax_pairs, "tax_totals": tax_totals}
+        source = _source(nodes, totals, distinct, main, rate=rate)
+        entered = (manual or {}).get(str(b)) if not rate else None
         if entered is not None:
             facts[b]["file_total"] = facts[b]["total"]
             facts[b]["file_currency"] = currency_found
@@ -470,8 +675,8 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
             facts[b]["total"] = facts[b]["manual_total"]
             # 唱标价不带币种：按关键参数的币种；参数也未填时保留未知（V34Q-50 后续）
             facts[b]["currency"] = currency_found = currency
-        row = {"total": money(facts[b]["total"]) if facts[b]["total"] is not None else None,
-               "totals_found": [money(v) for v in distinct], "currency": currency_found,
+        row = {"total": display(facts[b]["total"]) if facts[b]["total"] is not None else None,
+               "totals_found": [display(v) for v in distinct], "currency": currency_found,
                "table": None, "over_ceiling": None, "manual_total": entered is not None,
                "source": source, "quote_pages": quote_pages(nodes)}
         if entered is not None:
@@ -481,6 +686,20 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
         if main is not None:
             row["table"] = {"name": main[0].name, "rows": len(main[2]),
                             "total": money(table_total) if table_total is not None else None}
+        if tax_pairs:
+            row["tax_pairs"] = [{"net": money(net[0]), "rate": rate_text(tax[0] * 100), "gross": money(gross[0]),
+                                 "expected": money(expected), "ok": abs(rounded(gross[0]) - expected) <= CENT}
+                                for net, tax, gross, expected in tax_pairs]
+            if entered is None and total is not None and any(
+                total == rounded((net if tax_included is False else gross)[0]) for net, _, gross, _ in tax_totals
+            ):
+                row["tax_basis"] = "不含税" if tax_included is False else "含税"
+        if rate and distinct and rate_limit is not None:
+            bound = min(distinct) if mode == "discount" else max(distinct)
+            delta = rate_limit - bound if mode == "discount" else bound - rate_limit
+            if delta > 0:
+                reason = "低于" if mode == "discount" else "超"
+                row["ceiling_reason"] = f"{reason}{RATE_LIMIT_LABELS[mode]} {_trim(delta)} 个百分点"
         if ceiling is not None and facts[b]["total"] is not None and (currency_found in (None, currency)):
             row["over_ceiling"] = money(facts[b]["total"] - ceiling)
         elif ceiling is not None and len(distinct) > 1 and not separate_scopes and (currency_found in (None, currency)):
@@ -497,12 +716,13 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
         f, row = facts[b], analysis["bidders"][str(b)]
         row["not_compared"] = None
         if len(f["distinct"]) > 1 and f.get("manual_total") is None:
-            row["not_compared"] = "不同范围报价，未参加比较" if f['separate_scopes'] else "多个总价，未参加比较"
+            row["not_compared"] = ("不同范围报价，未参加比较" if f['separate_scopes'] else
+                                   f"多个{label if rate else '总价'}，未参加比较")
         elif f["total"] is not None and f["currency"] not in (None, currency or "CNY"):
             row["not_compared"] = f"币种为 {f['currency']}，未参加比较"
         elif f["total"] is not None:
             eligible[b] = f["total"]
-    summary, fields = compare(eligible)
+    summary, fields = compare(eligible, rate=rate)
     analysis["compare"] = summary
     for b in bidders:
         analysis["bidders"][str(b)] |= fields.get(b, {"mark": None, "above_lowest": None, "above_lowest_pct": None,
@@ -532,9 +752,9 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
         analysis["pairs"].append(stat)
     # 总价规律（三家及以上）：线索按录入顺序列投标人，证据按金额从低到高
     order = {b: i for i, b in enumerate(bidders)}
-    for ids, how, step in total_patterns(eligible):
-        title = (f"{len(ids)} 家投标总价呈等差（从低到高每家相差 {step}）" if how == "diff"
-                 else f"{len(ids)} 家投标总价呈等比（从低到高每家约为前一家的 {step} 倍）")
+    for ids, how, step in total_patterns(eligible, rate=rate):
+        title = (f"{len(ids)} 家{label}呈等差（从低到高每家相差 {step}）" if how == "diff"
+                 else f"{len(ids)} 家{label}呈等比（从低到高每家约为前一家的 {step} 倍）")
         places = {}
         for b in ids:
             f = facts[b]
@@ -542,7 +762,7 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
             if f.get("manual_total") is None:
                 node = f["totals"][0][2] if f["totals"] else (f["main"][2][0][4] if f["main"] and f["main"][2] else None)
             places[str(b)] = [place(node)] if place and node is not None else []
-        rows = [{"label": "投标总价（从低到高）", "value": "、".join(money(eligible[b]) for b in ids), "places": places}]
+        rows = [{"label": f"{label}（从低到高）", "value": "、".join(display(eligible[b]) for b in ids), "places": places}]
         clues.append({"ids": tuple(sorted(ids, key=order.get)), "level": "medium", "title": title, "rows": rows})
         analysis["total_patterns"].append({"ids": [str(b) for b in ids], "kind": how, "step": step, "level": "medium"})
     # 分项对齐表（以第一家有报价表的为基准，最多 300 行）

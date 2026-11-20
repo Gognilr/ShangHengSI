@@ -93,6 +93,64 @@ def test_scenario_matches_golden(owner, db_sessionmaker):
         assert not any(k == g["kind"] and t == g["type"] and b == g["bidders"] for k, t, _lv, b in found), g
 
 
+def test_quote_shapes_through_check_and_word(owner, db_sessionmaker):
+    from tests.test_bid_checks import _checked
+
+    def document(*paragraphs, table=()):
+        doc = Document()
+        for text in paragraphs:
+            doc.add_paragraph(text)
+        if table:
+            for row, texts in zip(doc.add_table(rows=len(table), cols=len(table[0])).rows, table):
+                for cell, text in zip(row.cells, texts):
+                    cell.text = text
+        stream = io.BytesIO()
+        doc.save(stream)
+        return stream.getvalue()
+
+    c, h, _ = owner
+    base, _, ids = _checked(c, h, db_sessionmaker, [
+        ("虚构折让甲.docx", document("投标报价：下浮 6.125%")),
+        ("虚构折让乙.docx", document("开标一览表", table=(("投标下浮率（%）",), ("8",)))),
+        ("虚构折让丙.docx", document("投标下浮率：9.875%")),
+    ], tender_bytes=document("★ 本项目采用下浮率报价，最低下浮率 8%。"))
+    result = c.get(base + "/check", headers=h).json()
+    pricing = result["pricing"]
+    assert pricing["quote_mode"] == "discount" and pricing["rate_limit"] == "8%"
+    assert [pricing["bidders"][bid]["total"] for bid in ids] == ["6.125%", "8%", "9.875%"]
+    assert pricing["compare"]["mean"] == "8%" and pricing["total_patterns"][0]["step"] == "1.875 个百分点"
+    issue = next(i for i in result["items"] if i["type"] == "ceiling")
+    assert issue["bidder_ids"] == [ids[0]] and issue["rows"][0]["places"]
+    report = c.get(base + "/report", headers=h)
+    assert report.status_code == 200
+    text = _text(report.content)
+    assert all(t in text for t in ("投标下浮率", "最低下浮率", "6.125%", "1.875 个百分点"))
+
+    base, _, ids = _checked(c, h, db_sessionmaker, [
+        ("虚构税价.docx", document("开标一览表", table=(
+            ("不含税总价（元）", "税率", "含税总价（元）"), ("300", "13%", "339"),
+        ))),
+        ("虚构组成.docx", document("投标总价：人民币 330 元", table=(
+            ("名称", "数量", "主机单价", "辅机单价", "总价"),
+            ("试验设备", "2", "150", "15", "330"), ("合计", "", "", "", "330"),
+        ))),
+        ("虚构税价错误.docx", document("投标报价：含税总价 340 元，不含税总价 300 元，税率 13%。")),
+    ], tender_bytes=document("★ 投标总价应含税。"))
+    result = c.get(base + "/check", headers=h).json()
+    pricing = result["pricing"]
+    assert pricing is not None, result["error"]
+    assert pricing["bidders"][ids[0]]["total"] == "339.00"
+    assert pricing["bidders"][ids[0]]["tax_pairs"][0]["ok"]
+    assert pricing["items"][0]["prices"][ids[1]] == "165.00"
+    assert not {"multi_total", "row_calc", "sum_total"} & {i["type"] for i in result["items"]}
+    issue = next(i for i in result["items"] if i["type"] == "tax_calc")
+    assert issue["bidder_ids"] == [ids[2]] and issue["rows"][0]["places"]
+    report = c.get(base + "/report", headers=h)
+    assert report.status_code == 200
+    text = _text(report.content)
+    assert all(t in text for t in ("含税与不含税换算", "339.00", "165.00", "含税价与不含税价按税率换算不一致"))
+
+
 def test_report_content_tone_and_scope(owner, db_sessionmaker):
     c, h, user = owner
     base, ids = scenario(c, h, db_sessionmaker)

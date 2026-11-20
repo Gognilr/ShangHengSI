@@ -471,11 +471,14 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
     from app.bid.service import opening_price
     manual = {str(b.id): opening_price(b) for b in bidders if b.opening_price_enc}
     params = R.load_state(project)["values"]
-    ceiling = Decimal(params["ceiling"]) if params.get("ceiling") else None
+    mode = params.get("quote_mode", "fixed")
+    ceiling = Decimal(params["ceiling"]) if mode == "fixed" and params.get("ceiling") else None
+    rate_limit = Decimal(params["rate_limit"]) if mode != "fixed" and params.get("rate_limit") else None
     per = {b.id: [compliance.BidNode(loc, text, files[file_id].seq, None, kind=kind, ocr_conf=conf, bbox=bbox, file_id=file_id, page=page)
                   for file_id, loc, page, text, kind, conf, bbox in nodes.get(b.id, [])] for b in bidders}
     analysis, clues, facts = pricing.analyze([b.id for b in bidders], per, ceiling, params.get("currency"),
-                                             lambda n: _where(n.file_id, n.loc, n.page, n.text, 0, len(n.text)), manual)
+                                             lambda n: _where(n.file_id, n.loc, n.page, n.text, 0, len(n.text)), manual,
+                                             mode=mode, rate_limit=rate_limit, tax_included=params.get("tax_included"))
     kinds = {}
     for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True),
                                                      BidRequirement.method == "local").order_by(BidRequirement.seq)):
@@ -519,7 +522,7 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
     db.execute(delete(BidCell).where(BidCell.task_id == task.id, BidCell.source == "local", BidCell.verdict != "manual"))
     no_table, lump = [], []
     for b in bidders:
-        if facts[b.id]["main"] is None:
+        if mode == "fixed" and facts[b.id]["main"] is None:
             # 只有一个总价的按总价报价（服务类常见），不说成“未识别”
             (lump if len(facts[b.id]["distinct"]) == 1 else no_table).append(crypto.decrypt_text(b.name_enc))
         bidder_files = {f.id: f for f in files.values() if f.bidder_id == b.id}

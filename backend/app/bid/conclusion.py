@@ -134,7 +134,7 @@ def _cases(items, order, shorts, reviewed, baseline):
     return sorted(cases, key=lambda c: (TIER[c["tier"]], [order[i] for i in c["bidder_ids"]]))
 
 
-PRICE_ISSUES = {"multi_total", "sum_total", "ceiling", "low_price", "uppercase", "row_calc", "sum_rows", "manual_total_diff"}
+PRICE_ISSUES = {"multi_total", "sum_total", "ceiling", "low_price", "uppercase", "row_calc", "sum_rows", "tax_calc", "manual_total_diff"}
 _CLUE_LABEL = (("分项单价比值恒定", "比值恒定"), ("分项单价完全相同", "分项单价相同"), ("分项单价差额相同", "分项差额相同"),
                ("尾数", "尾数习惯相同"), ("等差", "总价等差"), ("等比", "总价等比"))
 
@@ -142,6 +142,8 @@ _CLUE_LABEL = (("分项单价比值恒定", "比值恒定"), ("分项单价完�
 def pricing_summary(view, order, shorts, cases, entries, reviewed):
     """报价分析页与报告共用（bid-pricing.md 二）：结论句、每家结论标签（按 确凿 → 需核实 → 参考）、报价方面需核实的条目。"""
     pricing = view.get("pricing") or {}
+    rate = pricing.get("quote_mode") in ("rate", "discount")
+    label = pricing.get("quote_label", "投标总价")
     prices = pricing.get("bidders", {})
     items = {str(i["id"]): i for i in view["items"]}
     case_of = {e["item_id"]: c for c in cases for e in c["evidence"]}
@@ -159,7 +161,7 @@ def pricing_summary(view, order, shorts, cases, entries, reviewed):
         title = e["title"]
         if item["type"] == "multi_total":
             count = len(prices.get(e["bidder_ids"][0], {}).get("totals_found", []))
-            title = f"出现 {count} 个不同的投标总价" + ("（报价范围不同）" if "报价范围不同" in item["title"] else "")
+            title = f"出现 {count} 个不同的{label}" + ("（报价范围不同）" if "报价范围不同" in item["title"] else "")
         for bid in e["bidder_ids"]:
             tags[bid].append({"key": e["id"], "text": title, "tier": e["tier"]})
         facts.append((TIER[e["tier"]], "、".join(shorts[b] for b in e["bidder_ids"]), title))
@@ -174,6 +176,8 @@ def pricing_summary(view, order, shorts, cases, entries, reviewed):
         if item["kind"] != "clue" or item["type"] != "pricing" or item["review_status"] == "excluded":
             continue
         label = next((short for key, short in _CLUE_LABEL if key in item["title"]), "报价有规律")
+        if rate and label in ("总价等差", "总价等比"):
+            label = pricing["quote_label"] + label[-2:]
         case = case_of.get(str(item["id"]))
         tier = case["tier"] if case else "reference"
         ids = [b for b in item["bidder_ids"] if b in tags]
@@ -189,14 +193,17 @@ def pricing_summary(view, order, shorts, cases, entries, reviewed):
     apart = [b for b in order if b in prices and b not in missing and prices[b].get("not_compared")]
     compared = (pricing.get("compare") or {}).get("n", 0)
     parts = []
+    label = pricing.get("quote_label", "投标总价")
     if missing or apart:
-        what = "、".join(s for s in (f"{len(missing)} 家未识别出投标总价" if missing else "",
-                                     f"{len(apart)} 家有多个总价或币种不同" if apart else "") if s)
+        apart_reason = f"有多个{label}" if rate else "有多个总价或币种不同"
+        what = "、".join(s for s in (f"{len(missing)} 家未识别出{label}" if missing else "",
+                                     f"{len(apart)} 家{apart_reason}" if apart else "") if s)
+        manual = "" if rate else "；可录入唱标价"
         if compared < 2:
-            parts.append(f"{what}，报价比较与规律检查未进行；可录入唱标价")
+            parts.append(f"{what}，报价比较与规律检查未进行{manual}")
         else:
             names = "、".join(shorts[b] for b in missing + apart)
-            parts.append(f"{what}（{names}），报价比较不完整；可录入唱标价")
+            parts.append(f"{what}（{names}），报价比较不完整{manual}")
     if facts:
         listed = "；".join(f"{who} {what}" for _t, who, what in facts[:4])
         parts.append(f"{len(facts)} 项需处理：{listed}" + ("等" if len(facts) > 4 else ""))
@@ -227,7 +234,8 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
     reqs = {str(r["id"]): r for r in view["requirements"]}
     items = view["items"]
     cells = {(str(c["requirement_id"]), str(c["bidder_id"])): c for c in view["cells"]}
-    pricing = (view.get("pricing") or {}).get("bidders", {})
+    price_data = view.get("pricing") or {}
+    pricing = price_data.get("bidders", {})
     cases = _cases(items, order, shorts, reviewed, baseline or {})
     case_items = {e["item_id"] for case in cases for e in case["evidence"]}
     certain, verify, reference = [], [], []
@@ -264,7 +272,7 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
         if item["source"] == "local" and kind in LOCAL_CERTAIN and level == "veto":
             weak_ocr = any(p.get("low_ocr") for row in item["rows"] for places in row.get("places", {}).values() for p in places)
             tier = "verify" if weak_ocr else "certain"
-        if kind in ("cert_expired", *TERM_LABELS, "performance"):
+        if kind in ("cert_expired", "tax_calc", *TERM_LABELS, "performance"):
             tier = "verify"
         if kind == "row_calc":
             title = "报价计算待核对 1 处（扫描件识读）" if level == "hint" else "报价计算错误 1 处"
@@ -277,7 +285,7 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
         elif kind == "multi_total" and level == "veto":
             count = len(pricing.get(ids[0], {}).get("totals_found", []))
             if count > 1:
-                title = f"出现 {count} 个不同的投标总价"
+                title = f"出现 {count} 个不同的{price_data.get('quote_label', '投标总价')}"
         elif kind == "uppercase":
             title = "大写与小写金额不一致"
         elif kind == "sum_total":

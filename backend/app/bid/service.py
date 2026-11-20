@@ -133,10 +133,12 @@ def detail(db, task):
     from app.bid.requirements import load_state
     project = db.get(BidProject, task.id)
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
+    state = load_state(project)
     return {"id": task.id, "title": task.title, "opening_date": project.opening_date, "policy": task.policy,
             "stage": project.stage, "status": task.status, "category_id": project.category_id, "folder_id": project.folder_id, "error_message": task.error_message,
             "last_activity_at": task.last_activity_at, "busy": busy(db, task), "limits": LIMITS,
-            "invitees": [e["name"] for e in invitees.view(load_state(project))], "sent_count": sent_count(db, task.id),
+            "invitees": [e["name"] for e in invitees.view(state)], "sent_count": sent_count(db, task.id),
+            "quote_mode": state["values"].get("quote_mode", "fixed"),
             "requirements": {"enabled": db.scalar(select(func.count()).select_from(BidRequirement).where(
                                  BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))) or 0,
                              "extract_state": project.extract_state},

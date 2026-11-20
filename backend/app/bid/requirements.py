@@ -246,12 +246,16 @@ _UNITS = {"亿元": Decimal("100000000"), "万元": Decimal("10000"), "元": Dec
 _CURRENCY = {"人民币": "CNY", "美元": "USD", "欧元": "EUR", "港币": "HKD", "港元": "HKD"}
 _AMOUNT = r"(人民币|美元|欧元|港币|港元)?\s*[（(]?(?:小写)?[)）]?\s*[:：]?\s*[¥￥]?\s*([0-9][0-9,，]*(?:\.\d+)?)\s*(亿元|万元|元)"
 _CEILING = re.compile(r"(?:最高投标限价|最高限价|招标控制价|拦标价|最高报价)[^。；\n]{0,24}?" + _AMOUNT)
+_RATE_TERMS = {
+    "rate": (r"以费率报价|采用费率报价|报价方式[：:]?\s*费率", r"最高(?:投标|报价)?费率|(?:投标|报价)?费率\s*(?:不得|不)(?:高于|超过)|费率上限"),
+    "discount": (r"以下浮率报价|采用下浮率报价|报价方式[：:]?\s*下浮率", r"最低(?:投标|报价)?下浮率|(?:投标|报价)?下浮率\s*(?:不得|不)低于|下浮率下限"),
+}
 _VALIDITY = re.compile(r"投标有效期[^。；\n]{0,24}?(\d{1,4})\s*(?:个)?(?:日历天|天|日)")
 _DEPOSIT = re.compile(r"(?:投标|招标)保证金[^。；\n]{0,30}?" + _AMOUNT)
 _DEPOSIT_UPPER = re.compile(r"(?:投标|招标)保证金[^。；\n\d]{0,12}?(?:人民币)?[:：]?\s*"
                             r"([零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+[元圆][零壹贰叁肆伍陆柒捌玖角分整正]*)")
 _FORMS = ["银行保函", "保险保函", "担保保函", "电汇", "转账", "银行汇票", "支票", "现金"]
-_EMPTY = {"ceiling": None, "currency": "CNY", "validity_days": None, "deposit": None, "deposit_forms": "",
+_EMPTY = {"ceiling": None, "quote_mode": "fixed", "rate_limit": None, "currency": "CNY", "validity_days": None, "deposit": None, "deposit_forms": "",
           "consortium": None, "tax_included": None, **dict.fromkeys(TERM_LABELS),
           "performance_from": None, "performance_until": None, "performance_amount": None, "performance_count": None}
 
@@ -268,13 +272,21 @@ def prefill(nodes) -> tuple[dict, dict]:
     """返回 (参数, 出处)；出处为 {字段: {file_id, loc}}。只取第一处明确写法，认不出的留空由用户填写。"""
     values, sources = dict(_EMPTY), {}
     forms = []
-    terms = {}
+    from app.bid.pricing import rate_value
+    terms, quote_modes, rate_limits = {}, {}, {}
     for n, section in zip(nodes, _sections(nodes)):
         t = n.text
         here = {"file_id": n.file_id, "loc": n.loc}
         if section == "body":
             for key, value in (*tender_term_limits(t), *tender_performance_limits(t)):
                 terms.setdefault(key, {}).setdefault(value, here)
+            for mode, (mode_pattern, limit_pattern) in _RATE_TERMS.items():
+                if re.search(mode_pattern, t):
+                    quote_modes.setdefault(mode, here)
+                for match in re.finditer(rf"(?:{limit_pattern})\s*[:：为]?\s*(\d{{1,3}}(?:\.\d{{1,8}})?\s*[%％])", t):
+                    if (limit := rate_value(match[1])) is not None:
+                        quote_modes.setdefault(mode, here)
+                        rate_limits.setdefault(mode, {}).setdefault(limit, here)
         if values["ceiling"] is None and (m := _CEILING.search(t)):
             values["ceiling"] = _money(m.group(2), m.group(3))
             values["currency"] = _CURRENCY.get(m.group(1) or "人民币", "CNY")
@@ -296,14 +308,22 @@ def prefill(nodes) -> tuple[dict, dict]:
             elif re.search(r"(?:接受|允许)联合体", t):
                 values["consortium"], sources["consortium"] = True, here
         if values["tax_included"] is None:
-            if re.search(r"不含(?:增值)?税", t):
+            net, gross = re.search(r"不含(?:增值)?税", t), re.search(r"(?<!不)含(?:增值)?税", t)
+            if net and not gross:
                 values["tax_included"], sources["tax_included"] = False, here
-            elif re.search(r"含(?:增值)?税|含税价", t):
+            elif gross and not net:
                 values["tax_included"], sources["tax_included"] = True, here
     values["deposit_forms"] = "、".join(forms)
     for key, candidates in terms.items():
         if len(candidates) == 1:
             values[key], sources[key] = next(iter(candidates.items()))
+    if len(quote_modes) == 1:
+        mode, source = next(iter(quote_modes.items()))
+        values["quote_mode"], sources["quote_mode"] = mode, source
+        limits = rate_limits.get(mode, {})
+        if len(limits) == 1:
+            limit, source = next(iter(limits.items()))
+            values["rate_limit"], sources["rate_limit"] = format(limit, "f"), source
     start, end = values["performance_from"], values["performance_until"]
     if start and end and start > end:
         for key in ("performance_from", "performance_until"):
@@ -318,7 +338,9 @@ def load_state(project) -> dict:
     """parameters_enc：{"values", "sources", "confirmed", "extracted_from", "invitees", "invitees_edited"}。"""
     if project.parameters_enc is None:
         return {"values": dict(_EMPTY), "sources": {}, "confirmed": False, "extracted_from": None}
-    return json.loads(crypto.decrypt_text(project.parameters_enc))
+    state = json.loads(crypto.decrypt_text(project.parameters_enc))
+    state["values"] = {"quote_mode": "fixed", "rate_limit": None, **state["values"]}
+    return state
 
 
 def save_state(project, state):
@@ -357,8 +379,15 @@ def extract(db, task: Task) -> None:
         seq += 1
     state = load_state(project)
     values, sources = prefill(nodes)
+    if not state["confirmed"]:
+        for key in ("quote_mode", "rate_limit"):
+            state["values"][key] = values[key]
+            if key in sources:
+                state["sources"][key] = sources[key]
+            else:
+                state["sources"].pop(key, None)
     for key, value in values.items():
-        if state["values"].get(key) in (None, "") and value not in (None, ""):
+        if key not in ("quote_mode", "rate_limit") and state["values"].get(key) in (None, "") and value not in (None, ""):
             state["values"][key] = value
             if key in sources:
                 state["sources"][key] = sources[key]
