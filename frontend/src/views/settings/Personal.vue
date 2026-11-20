@@ -65,7 +65,7 @@ async function endOthers() {
 <template>
   <div class="settings-page">
     <div class="panel setting-panel">
-      <SettingSection title="外观" description="只保存在本浏览器，修改立即生效；文件纸面跟随外壳。">
+      <SettingSection title="外观" description="只保存在本浏览器，修改立即生效；文件纸面跟随主题。">
         <div class="narrow"><AppearancePanel /></div>
       </SettingSection>
       <SettingSection title="账号" description="账号由管理员统一分发；修改密码后其他设备会自动退出。">

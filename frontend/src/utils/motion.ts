@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 import { useAppearanceStore, type FxLevel } from '@/stores/appearance'
 
 /** 动效工具（V31-U1 3.1～3.3）。时长与 motion.css 的令牌一致。 */
-const DURATIONS = { micro: 160, struct: 320, exit: 200 } as const
+const DURATIONS = { micro: 200, struct: 320, exit: 200 } as const
 
 /** 当前解析后的特效级别。 */
 export function useFx(): Ref<FxLevel> {

@@ -1,48 +1,118 @@
-/* 动效令牌与通用过渡（V31-U1 第三节）。只动 transform 与 opacity；特效关闭时一律不动 */
+/*
+ * 动效（澄明规范第十一节）。只动 transform 与 opacity；氛围光不用 filter 模糊。
+ * 四档由 html[data-fx] 决定：full 完整 / lite 精简 / off 关闭（自动档在 stores/appearance.ts 判定）。
+ *   精简：去掉依次浮现、数字滚动、悬停转动、氛围光漂移和毛玻璃；品牌时刻定格在终态。
+ *   关闭：只保留 120ms 内的淡入淡出。
+ */
 :root {
-  --si-ease: cubic-bezier(.2, .8, .2, 1);
-  --si-spring: linear(0, .22 7%, .58 15%, .9 25%, 1.06 35%, 1.08 42%, 1.03 55%, .99 68%, 1);
-  --si-dur-1: 160ms;
-  --si-dur-2: 320ms;
-  --si-dur-exit: 200ms;
-  --el-transition-duration: var(--si-dur-2);
-  --el-transition-duration-fast: var(--si-dur-1);
+  --si-ease-out: cubic-bezier(.22, 1, .36, 1);
+  --si-ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --si-ease-io: cubic-bezier(.65, 0, .35, 1);
+  /* 按下 / 颜色变化 / 移动 / 页面进入 */
+  --si-d1: 120ms;
+  --si-d2: 200ms;
+  --si-d3: 320ms;
+  --si-d4: 520ms;
+  /* 旧名：页面里已大量使用，映射到新档 */
+  --si-ease: var(--si-ease-out);
+  --si-spring: var(--si-ease-spring);
+  --si-dur-1: var(--si-d2);
+  --si-dur-2: var(--si-d3);
+  --si-dur-exit: var(--si-d2);
+  --el-transition-duration: var(--si-d3);
+  --el-transition-duration-fast: var(--si-d2);
 }
 
+/* 关闭档：不位移、不循环，颜色与透明度 120ms 内完成 */
 html[data-fx="off"] *, html[data-fx="off"] *::before, html[data-fx="off"] *::after {
-  transition: none !important;
   animation: none !important;
+  transition-property: opacity, color, background-color, border-color, box-shadow !important;
+  transition-duration: var(--si-d1) !important;
+  transition-delay: 0s !important;
 }
 
 /* 淡入淡出 */
-.si-fade-enter-active { transition: opacity var(--si-dur-2) var(--si-ease); }
-.si-fade-leave-active { transition: opacity var(--si-dur-exit) var(--si-ease); }
+.si-fade-enter-active { transition: opacity var(--si-d3) var(--si-ease-out); }
+.si-fade-leave-active { transition: opacity var(--si-d2) var(--si-ease-out); }
 .si-fade-enter-from, .si-fade-leave-to { opacity: 0; }
 
-/* 上移 8px 淡入 */
-.si-rise-enter-active { transition: opacity var(--si-dur-2) var(--si-ease), transform var(--si-dur-2) var(--si-spring); }
-.si-rise-leave-active { transition: opacity var(--si-dur-exit) var(--si-ease), transform var(--si-dur-exit) var(--si-ease); }
-.si-rise-enter-from, .si-rise-leave-to { opacity: 0; transform: translateY(8px); }
+/* 上移淡入 */
+.si-rise-enter-active { transition: opacity var(--si-d3) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
+.si-rise-leave-active { transition: opacity var(--si-d2) var(--si-ease-out), transform var(--si-d2) var(--si-ease-out); }
+.si-rise-enter-from, .si-rise-leave-to { opacity: 0; transform: translateY(10px); }
 
-/* 弹层：缩放淡入 */
-.si-pop-enter-active { transition: opacity var(--si-dur-2) var(--si-ease), transform var(--si-dur-2) var(--si-spring); }
-.si-pop-leave-active { transition: opacity var(--si-dur-exit) var(--si-ease), transform var(--si-dur-exit) var(--si-ease); }
+/* 弹窗：从 0.96 放大进入 */
+.si-pop-enter-active { transition: opacity var(--si-d3) var(--si-ease-out), transform var(--si-d3) var(--si-ease-spring); }
+.si-pop-leave-active { transition: opacity var(--si-d2) var(--si-ease-out), transform var(--si-d2) var(--si-ease-out); }
 .si-pop-enter-from, .si-pop-leave-to { opacity: 0; transform: scale(.96); }
 
-/* 列表增删与移位（TransitionGroup） */
-.si-list-enter-active, .si-list-move { transition: opacity var(--si-dur-2) var(--si-ease), transform var(--si-dur-2) var(--si-spring); }
-.si-list-leave-active { transition: opacity var(--si-dur-exit) var(--si-ease), transform var(--si-dur-exit) var(--si-ease); position: absolute; }
+/* 列表增删与移位（TransitionGroup）：新项从下方弹入，带轻微过冲 */
+.si-list-enter-active, .si-list-move { transition: opacity var(--si-d3) var(--si-ease-out), transform var(--si-d3) var(--si-ease-spring); }
+.si-list-leave-active { transition: opacity var(--si-d2) var(--si-ease-out), transform var(--si-d2) var(--si-ease-out); position: absolute; }
 .si-list-enter-from { opacity: 0; transform: translateY(14px) scale(.98); }
 .si-list-leave-to { opacity: 0; transform: scale(.96); }
 
-/* 路由进入：只有进入动画，旧页面立即移除（3.2 第 3 条） */
-.si-page-enter-active { transition: opacity 240ms var(--si-ease), transform 240ms var(--si-ease); }
-.si-page-enter-from { opacity: 0; transform: translateY(6px); }
+/* 页面进入：淡入并上浮 10px，旧页面立即移除 */
+.si-page-enter-active { transition: opacity var(--si-d4) var(--si-ease-out), transform var(--si-d4) var(--si-ease-out); }
+.si-page-enter-from { opacity: 0; transform: translateY(10px); }
+
+/* 卡片依次浮现：容器加 .si-stagger，每张晚 45ms，最多 8 张（只在完整档） */
+@keyframes si-rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+html[data-fx="full"] .si-stagger > * { animation: si-rise-in var(--si-d4) var(--si-ease-out) both; }
+html[data-fx="full"] .si-stagger > :nth-child(2) { animation-delay: 45ms; }
+html[data-fx="full"] .si-stagger > :nth-child(3) { animation-delay: 90ms; }
+html[data-fx="full"] .si-stagger > :nth-child(4) { animation-delay: 135ms; }
+html[data-fx="full"] .si-stagger > :nth-child(5) { animation-delay: 180ms; }
+html[data-fx="full"] .si-stagger > :nth-child(6) { animation-delay: 225ms; }
+html[data-fx="full"] .si-stagger > :nth-child(7) { animation-delay: 270ms; }
+html[data-fx="full"] .si-stagger > :nth-child(n + 8) { animation-delay: 315ms; }
+
+/* 可点卡片悬停：上移 3px、阴影加深；卡内 .si-lift-icon 在完整档轻转（精简档不转） */
+.si-lift { transition: transform var(--si-d3) var(--si-ease-out), box-shadow var(--si-d3) var(--si-ease-out), border-color var(--si-d2) var(--si-ease-out); }
+.si-lift:hover { transform: translateY(-3px); box-shadow: var(--si-shadow-2); border-color: var(--si-hair-strong); }
+.si-lift .si-lift-icon { transition: transform var(--si-d3) var(--si-ease-spring); }
+html[data-fx="full"] .si-lift:hover .si-lift-icon { transform: scale(1.08) rotate(-4deg); }
+
+/* 原文定位：平滑滚动后闪一次 */
+@keyframes si-flash { 0%, 100% { opacity: 0; } 30% { opacity: 1; } }
+.si-flash { position: relative; }
+.si-flash::after { content: ''; position: absolute; inset: -2px -4px; border-radius: 6px; background: var(--si-hl-medium); opacity: 0; pointer-events: none; animation: si-flash 900ms var(--si-ease-io); }
+
+/* 呼吸圆点（进行中的状态徽标） */
+@keyframes si-breath { 50% { opacity: .35; transform: scale(.8); } }
+.si-breath { animation: si-breath 1.6s var(--si-ease-io) infinite; }
+html[data-fx="lite"] .si-breath { animation: none; }
+
+/* 进行中的进度条：青紫流动（精简档静止为衡青） */
+@keyframes si-flow { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+.si-progress-flow { position: relative; overflow: hidden; }
+.si-progress-flow::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 200%; background: var(--si-progress-flow) 0 0 / 50% 100% repeat-x; animation: si-flow 2.4s linear infinite; }
+html:is([data-fx="lite"], [data-fx="off"]) .si-progress-flow::before { width: 100%; background: var(--si-brand-2); animation: none; }
+
+/*
+ * 氛围光（4.3）：只在首页顶部和登录页品牌区。容器加 .si-glow，内放三个 <i>。
+ * 大块径向渐变，24 秒缓慢漂移，只动 transform；精简档静止，关闭档不显示。
+ */
+.si-glow { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.si-glow > i { position: absolute; width: 70%; aspect-ratio: 1; border-radius: 50%; will-change: transform; }
+.si-glow > i:nth-child(1) { left: -12%; top: -45%; background: radial-gradient(closest-side, var(--si-glow-1), transparent); }
+.si-glow > i:nth-child(2) { right: -14%; top: -35%; background: radial-gradient(closest-side, var(--si-glow-2), transparent); }
+.si-glow > i:nth-child(3) { left: 30%; top: -10%; width: 50%; background: radial-gradient(closest-side, var(--si-glow-3), transparent); }
+@keyframes si-drift-a { 50% { transform: translate(6%, 8%) scale(1.06); } }
+@keyframes si-drift-b { 50% { transform: translate(-7%, 6%) scale(.95); } }
+html[data-fx="full"] .si-glow > i:nth-child(1) { animation: si-drift-a 24s var(--si-ease-io) infinite; }
+html[data-fx="full"] .si-glow > i:nth-child(2) { animation: si-drift-b 24s var(--si-ease-io) infinite; }
+html[data-fx="full"] .si-glow > i:nth-child(3) { animation: si-drift-a 24s var(--si-ease-io) -12s infinite; }
+html[data-fx="off"] .si-glow { display: none; }
+
+/* 毛玻璃：只在完整档，只用于首页输入框与全局搜索浮层；其他档实色 */
+.si-glass { background: var(--si-surface-pop); }
+html[data-fx="full"] .si-glass { background: var(--si-glass); backdrop-filter: blur(16px) saturate(1.4); }
 
 /* 必选项（V33-C-01）：未选时静态主色虚线框；点提交时 nudgeField() 加 .si-nudge，外圈闪两下（只动 opacity） */
 .si-required-empty { outline: 1px dashed var(--el-color-primary); outline-offset: 2px; }
 .si-required-tag { margin-left: 6px; color: var(--el-color-primary); font: var(--si-font-caption); font-weight: 400; }
 .si-nudge { position: relative; }
-.si-nudge::after { content: ''; position: absolute; inset: -5px; border: 2px solid var(--si-focus); border-radius: 12px; pointer-events: none; opacity: 0; animation: si-nudge 1.1s var(--si-ease); }
+.si-nudge::after { content: ''; position: absolute; inset: -5px; border: 2px solid var(--si-focus); border-radius: 12px; pointer-events: none; opacity: 0; animation: si-nudge 1.1s var(--si-ease-out); }
 @keyframes si-nudge { 0%, 50% { opacity: 0; } 20%, 70% { opacity: 1; } 100% { opacity: 0; } }
 html[data-fx="off"] .si-nudge::after { opacity: 1; }

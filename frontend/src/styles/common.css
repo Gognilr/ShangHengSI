@@ -1,16 +1,17 @@
 /* 公共样式（frontend.md 第十四节）：各页面重复的写法收在这里，页面内不再各自定义 */
 .page {
-  /* 内容最大宽度不含左右 40px 留白（V3.4 visual.md 4.4、第七节） */
-  max-width: 1240px;
+  /* 页面两侧 40（1366 以下 28），澄明第六、七节 */
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 32px 40px 56px;
+  padding: 40px 40px 64px;
 }
+@media (max-width: 1400px) { .page { padding-left: 28px; padding-right: 28px; } }
 .page--standard {
-  max-width: 800px;
+  max-width: 960px;
 }
 .page:has(> .step-bar) { padding-top: 24px; }
 .page--wide {
-  max-width: 1240px;
+  max-width: 1280px;
 }
 .page--split {
   max-width: 1600px;
@@ -35,23 +36,28 @@
   margin-bottom: 16px;
 }
 
-/* 表面（V3.4 visual.md 第三节）：面板不是卡片，内容直接写在纸上，面板之间留白加一条细线 */
-.panel { background: transparent; border: 0; border-radius: 0; padding: 0; box-shadow: none; }
-.panel + .panel { margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--si-hair); }
-/* 对象卡：只用于可以单独拿走的对象（问题、投标人、选项）；与纸同色、细线框、无阴影 */
-.si-card { background: transparent; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); padding: 16px 20px; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
-/* 可点击卡片：悬停只换底与边框，不上移 */
+/* 表面（澄明第六节）：一切成组的内容放卡片——白底、1px 细线、极浅阴影、圆角 14；卡片之间 16 */
+.panel { background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); padding: 20px 24px; box-shadow: var(--si-shadow-1); }
+.panel + .panel { margin-top: 16px; }
+.panel--lg { border-radius: var(--si-radius-sheet); }
+/* 对象卡：问题、投标人、文件、会议等；卡内次级块用 .si-card-2 */
+.si-card { background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); padding: 16px 20px; box-shadow: var(--si-shadow-1); transition: border-color var(--si-d2) var(--si-ease-out), box-shadow var(--si-d3) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
+.si-card-2 { background: var(--si-card-2); border: 1px solid var(--si-hair-faint); border-radius: 12px; }
+/* 可点卡片：悬停上移 3px、阴影加深（第九节） */
 .si-card--interactive { cursor: pointer; }
-.si-card--interactive:hover { background: var(--si-hover-bg); border-color: var(--si-hair-strong); }
+.si-card--interactive:hover { transform: translateY(-3px); box-shadow: var(--si-shadow-2); border-color: var(--si-hair-strong); }
+/* 模块图标底块：40～44px 圆角方块，底色用模块浅底；用法 style="--mc: var(--si-m-bid); --mc-soft: var(--si-m-bid-soft)" */
+.si-mod-icon { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--mc-soft, var(--si-blue-tint)); color: var(--mc, var(--si-brand-2)); }
 /* 区块小标题 */
-.si-overline { margin: 0 0 10px; font: var(--si-font-overline); letter-spacing: .08em; color: var(--si-ink-3); }
+.si-overline { margin: 0 0 10px; font: var(--si-font-overline); color: var(--si-ink-3); }
 /* 统计：一行数字条，项与项之间一条竖线 */
 .stat { padding: 2px 0 2px 16px; border-left: 1px solid var(--si-hair); }
-.stat-label { color: var(--si-ink-3); font: var(--si-font-overline); letter-spacing: .08em; }
-.stat-value { font: var(--si-font-stat); font-variant-numeric: tabular-nums; }
+.stat-label { color: var(--si-ink-3); font: var(--si-font-overline); }
+.stat-value { font: var(--si-font-stat); color: var(--si-ink-1); font-variant-numeric: tabular-nums; }
 .num { font-variant-numeric: tabular-nums; }
 .code { font: var(--si-font-code); }
-.avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--si-select-bg); color: var(--si-ink-1); display: inline-grid; place-items: center; font-size: 13px; font-weight: 600; }
+/* 头像：青紫渐变底白字（4.3 第 2 条） */
+.avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; background: var(--si-avatar); color: var(--si-white); display: inline-grid; place-items: center; font: var(--si-font-label-sm); font-weight: 600; }
 
 /* 纸面与外围：浅色外壳白纸黑字、夜幕外壳暗纸浅字（令牌见 theme.css 的 .si-paper；阴影与圆角由使用处加） */
 .si-stage { background: var(--si-stage); }
@@ -79,16 +85,16 @@
 .si-row-label { flex: none; width: 72px; font: var(--si-font-label); color: var(--si-ink-3); }
 .si-row-value { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
-/* 拖入区与入口页（V321-E-11）：会议纪要、翻译首页共用 */
-/* 透明底（与纸同色）、一圈虚线；悬停变实线，拖入中为松青实线 */
-.si-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px; border: 1px dashed var(--si-hair-strong); border-radius: var(--si-radius-card); background: transparent; color: var(--si-ink-3); cursor: pointer; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
-.si-drop:hover { border-style: solid; border-color: var(--si-ink-3); background: var(--si-hover-bg); }
-.si-drop.dragging { border-style: solid; border-color: var(--si-brand); background: var(--si-blue-tint); }
+/* 拖入区与入口页：会议纪要、翻译首页共用 */
+/* 白底大卡片、一圈虚线；悬停虚线变衡青，拖入中为衡青实线加浅底 */
+.si-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 48px 16px; border: 1.5px dashed var(--si-hair-strong); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); color: var(--si-ink-3); cursor: pointer; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
+.si-drop:hover { border-color: var(--si-brand-2); }
+.si-drop.dragging { border-style: solid; border-color: var(--si-brand-2); background: var(--si-blue-tint); }
 .si-drop-title { margin: 4px 0 0; font: var(--si-font-h3); color: var(--si-ink-1); }
 .si-drop .hint { margin: 0; }
-.entry-title { margin: 32px 0 8px; text-align: left; font: var(--si-font-title-lg); color: var(--si-ink-1); }
-.entry-lede { margin: 0 0 24px; max-width: 560px; text-align: left; color: var(--si-ink-3); }
-/* 列表行：44px、行间细线，悬停浅底 */
-.list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; box-sizing: border-box; border-bottom: 1px solid var(--si-hair-faint); color: var(--si-ink-1); text-decoration: none; transition: background-color var(--si-dur-1) var(--si-ease); }
+.entry-title { margin: 0 0 6px; text-align: left; font: var(--si-font-title-lg); color: var(--si-ink-1); }
+.entry-lede { margin: 0 0 28px; max-width: 640px; text-align: left; color: var(--si-ink-3); font: var(--si-font-body); font-size: calc(15px * var(--si-fs)); }
+/* 列表行：行间细线，悬停浅底 */
+.list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 12px; box-sizing: border-box; border-bottom: 1px solid var(--si-hair-faint); border-radius: 8px; color: var(--si-ink-1); text-decoration: none; transition: background-color var(--si-d2) var(--si-ease-out); }
 .list-row:hover { background: var(--si-hover-bg); }
 .list-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

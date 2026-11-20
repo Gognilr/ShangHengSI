@@ -4,19 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <script>
-      // 外观设置（V31-U1 3.3）：样式生效前先写外壳与特效，避免首屏闪烁；之后由 stores/appearance.ts 接管
+      // 外观设置（V31-U1 3.3）：样式生效前先写主题、动效与字号，避免首屏闪烁；之后由 stores/appearance.ts 接管
       (function () {
-        var shell = 'light', fx = 'auto'
+        var shell = 'light', fx = 'auto', fs = 'md'
         try {
           var v = JSON.parse(localStorage.getItem('si.appearance') || '{}')
           if (v.shell === 'night') shell = 'night'
           if (v.fx === 'full' || v.fx === 'lite' || v.fx === 'off') fx = v.fx
+          if (v.fs === 'lg' || v.fs === 'xl') fs = v.fs
         } catch (e) {}
         if (fx === 'auto') fx = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'off' : 'full'
         document.documentElement.dataset.shell = shell
         document.documentElement.dataset.fx = fx
+        document.documentElement.dataset.fs = fs
       })()
     </script>
     <title>商衡SI · 企业安全脱敏与智能审查平台</title>

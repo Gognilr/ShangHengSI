@@ -5,20 +5,24 @@ import { computed, ref, watch } from 'vue'
 export type Shell = 'night' | 'light'
 export type FxChoice = 'auto' | 'full' | 'lite' | 'off'
 export type FxLevel = Exclude<FxChoice, 'auto'>
+/** 字号档（澄明第五节）：标准 / 较大 / 特大，倍率 1 / 1.07 / 1.14，见 theme.css 的 --si-fs */
+export type FontSize = 'md' | 'lg' | 'xl'
 
 const STORAGE_KEY = 'si.appearance'
 const SHELLS: Shell[] = ['night', 'light']
 const CHOICES: FxChoice[] = ['auto', 'full', 'lite', 'off']
+const SIZES: FontSize[] = ['md', 'lg', 'xl']
 
-function readStored(): { shell: Shell; fx: FxChoice } {
+function readStored(): { shell: Shell; fx: FxChoice; fs: FontSize } {
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { shell?: unknown; fx?: unknown }
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { shell?: unknown; fx?: unknown; fs?: unknown }
     return {
       shell: SHELLS.includes(value.shell as Shell) ? value.shell as Shell : 'light',
       fx: CHOICES.includes(value.fx as FxChoice) ? value.fx as FxChoice : 'auto',
+      fs: SIZES.includes(value.fs as FontSize) ? value.fs as FontSize : 'md',
     }
   } catch {
-    return { shell: 'light', fx: 'auto' }
+    return { shell: 'light', fx: 'auto', fs: 'md' }
   }
 }
 
@@ -41,6 +45,7 @@ export const useAppearanceStore = defineStore('appearance', () => {
   const stored = readStored()
   const shell = ref<Shell>(stored.shell)
   const fxChoice = ref<FxChoice>(stored.fx)
+  const fontSize = ref<FontSize>(stored.fs)
   const reducedMotion = ref(false)
   // 自动档的设备判定只做一次；运行中掉帧只在本次打开期间生效
   const deviceLevel = ref<{ level: FxLevel; reason: string }>({ level: 'full', reason: '' })
@@ -65,13 +70,14 @@ export const useAppearanceStore = defineStore('appearance', () => {
 
   function reportDroppedFrames(): void { droppedFrames.value = true }
 
-  watch([shell, fxResolved], ([s, fx]) => {
+  watch([shell, fxResolved, fontSize], ([s, fx, fs]) => {
     document.documentElement.dataset.shell = s
     document.documentElement.dataset.fx = fx
+    document.documentElement.dataset.fs = fs
   }, { immediate: true })
-  watch([shell, fxChoice], ([s, fx]) => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ shell: s, fx })) } catch { /* 只影响下次打开 */ }
+  watch([shell, fxChoice, fontSize], ([s, fx, fs]) => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ shell: s, fx, fs })) } catch { /* 只影响下次打开 */ }
   })
 
-  return { shell, fxChoice, fxResolved, fxReason, init, reportDroppedFrames }
+  return { shell, fxChoice, fontSize, fxResolved, fxReason, init, reportDroppedFrames }
 })

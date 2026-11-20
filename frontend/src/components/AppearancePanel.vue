@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
-import { useAppearanceStore, type FxChoice, type Shell } from '@/stores/appearance'
+import { useAppearanceStore, type FontSize, type FxChoice, type Shell } from '@/stores/appearance'
 
 /** 外观控件（V31-U1 3.3）：修改立即生效，只存本浏览器；用于“设置 · 个人”与外观对话框。 */
 const store = useAppearanceStore()
 
-const shellOptions: { value: Shell; label: string }[] = [{ value: 'night', label: '夜幕' }, { value: 'light', label: '浅色' }]
+const shellOptions: { value: Shell; label: string }[] = [{ value: 'light', label: '浅色' }, { value: 'night', label: '深色' }]
+const sizeOptions: { value: FontSize; label: string }[] = [{ value: 'md', label: '标准' }, { value: 'lg', label: '较大' }, { value: 'xl', label: '特大' }]
 const fxOptions: { value: FxChoice; label: string }[] = [
   { value: 'auto', label: '自动' }, { value: 'full', label: '完整' }, { value: 'lite', label: '精简' }, { value: 'off', label: '关闭' },
 ]
@@ -22,13 +23,20 @@ const fxHint = computed(() => {
 <template>
   <div class="si-rows">
     <div class="si-row">
-      <span class="si-row-label">外壳</span>
-      <div class="si-row-value"><SiSegmented v-model="store.shell" :options="shellOptions" ariaLabel="外壳" /></div>
+      <span class="si-row-label">主题</span>
+      <div class="si-row-value"><SiSegmented v-model="store.shell" :options="shellOptions" ariaLabel="主题" /></div>
     </div>
     <div class="si-row">
-      <span class="si-row-label">特效</span>
+      <span class="si-row-label">字号</span>
       <div class="si-row-value">
-        <SiSegmented v-model="store.fxChoice" :options="fxOptions" ariaLabel="特效" />
+        <SiSegmented v-model="store.fontSize" :options="sizeOptions" ariaLabel="字号" />
+        <p class="hint">放大全站文字，界面布局不变</p>
+      </div>
+    </div>
+    <div class="si-row">
+      <span class="si-row-label">动效</span>
+      <div class="si-row-value">
+        <SiSegmented v-model="store.fxChoice" :options="fxOptions" ariaLabel="动效" />
         <p class="hint">{{ fxHint }}</p>
       </div>
     </div>

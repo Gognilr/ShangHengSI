@@ -20,7 +20,7 @@ import { useSessionsStore } from '@/stores/sessions'
 const auth = useAuthStore()
 const appearance = useAppearanceStore()
 // 外壳一键切换（V31Q-95）：与“设置 · 个人 · 外观”同一份设置
-const shellNext = computed(() => appearance.shell === 'night' ? '浅色' : '夜幕')
+const shellNext = computed(() => appearance.shell === 'night' ? '浅色' : '深色')
 function toggleShell() { appearance.shell = appearance.shell === 'night' ? 'light' : 'night' }
 const sessions = useSessionsStore()
 const route = useRoute()
@@ -178,7 +178,7 @@ async function onCommand(cmd: string) {
             </template>
           </el-dropdown>
           <el-tooltip :content="`切换到${shellNext}`" placement="top">
-            <button type="button" class="toggle" :aria-label="`切换到${shellNext}外壳`" @click="toggleShell">
+            <button type="button" class="toggle" :aria-label="`切换到${shellNext}主题`" @click="toggleShell">
               <Sun v-if="appearance.shell === 'night'" :size="16" :stroke-width="1.75" /><Moon v-else :size="16" :stroke-width="1.75" />
             </button>
           </el-tooltip>
