@@ -202,7 +202,7 @@ watch(() => props.selectedId, async (id) => {
 <style scoped>
 .rail { display: flex; flex-direction: column; min-height: 0; height: 100%; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); overflow: hidden; }
 .rp-tabs { flex: none; display: flex; align-items: center; gap: 18px; height: 48px; padding: 0 16px; border-bottom: 1px solid var(--si-hair-faint); }
-.tab { position: relative; height: 48px; padding: 0; border: 0; background: none; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
+.tab { position: relative; display: inline-flex; align-items: center; height: 48px; padding: 0; border: 0; background: none; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
 .tab:hover { color: var(--si-ink-1); }
 .tab.on { color: var(--si-ink-1); font-weight: 600; cursor: default; }
 .tab.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--si-brand-2); }

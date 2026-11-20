@@ -232,10 +232,10 @@ onMounted(() => {
       <TableSkeleton v-if="!loadedOnce.our" :columns="['1fr', '120px', '170px', '70px']" />
       <el-table v-else v-loading="ourLoading" :data="ourParties" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚未预置我方主体" description="在上方输入我方完整公司名称后添加。" /></template>
-        <el-table-column prop="term" label="名称" min-width="260" show-overflow-tooltip />
+        <el-table-column prop="term" label="名称" min-width="180" show-overflow-tooltip />
         <el-table-column label="记录人" width="120"><template #default="{ row }">{{ row.created_by_name ?? '—' }}</template></el-table-column>
-        <el-table-column label="记录时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="70"><template #default="{ row }"><RowMore :disabled="!!ourRemoving"><el-dropdown-item class="danger-item" @click="removeOurParty(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
+        <el-table-column label="记录时间" width="160" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="操作" width="70" fixed="right"><template #default="{ row }"><RowMore :disabled="!!ourRemoving"><el-dropdown-item class="danger-item" @click="removeOurParty(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
       </SettingSection>
       <SettingSection v-if="auth.can('redaction.words')" title="自定义敏感词" description="需要替换的公司内部词汇；新增、停用、删除只影响之后解析的文件。" stacked>
@@ -248,7 +248,7 @@ onMounted(() => {
       <TableSkeleton v-if="!loadedOnce.custom" :columns="['1fr', '120px', '80px', '170px', '90px']" />
       <el-table v-else v-loading="customLoading" :data="custom" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚未添加自定义敏感词" description="在上方输入后点击“添加”。" /></template>
-        <el-table-column prop="term" label="敏感词" min-width="260" show-overflow-tooltip />
+        <el-table-column prop="term" label="敏感词" min-width="180" show-overflow-tooltip />
         <el-table-column label="记录人" width="120">
           <template #default="{ row }">{{ row.created_by_name ?? '—' }}</template>
         </el-table-column>
@@ -257,10 +257,10 @@ onMounted(() => {
             <el-switch :model-value="row.enabled" @change="(v: string | number | boolean) => toggleTerm(row, v)" />
           </template>
         </el-table-column>
-        <el-table-column label="添加时间" width="170" class-name="num">
+        <el-table-column label="添加时间" width="160" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="70">
+        <el-table-column label="操作" width="70" fixed="right">
           <template #default="{ row }">
             <RowMore><el-dropdown-item class="danger-item" @click="removeTerm(row, loadCustom)">删除</el-dropdown-item></RowMore>
           </template>
@@ -276,7 +276,7 @@ onMounted(() => {
       <TableSkeleton v-if="!loadedOnce.learned" :columns="['1fr', '80px', '90px', '120px', '170px', '90px', '70px']" />
       <el-table v-else v-loading="learnedLoading" :data="learned" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="没有已记住的名称" description="确认脱敏时选择“记住”后会出现在这里。" /></template>
-        <el-table-column prop="term" label="名称" min-width="240" show-overflow-tooltip /><el-table-column label="主写法" min-width="160" show-overflow-tooltip><template #default="{row}">{{ row.alias_of || '—' }}</template></el-table-column>
+        <el-table-column prop="term" label="名称" min-width="180" show-overflow-tooltip /><el-table-column label="主写法" min-width="160" show-overflow-tooltip><template #default="{row}">{{ row.alias_of || '—' }}</template></el-table-column>
         <el-table-column label="类别" width="80">
           <template #default="{ row }">{{ row.category === 'PERSON' ? '人名' : '公司' }}</template>
         </el-table-column>
@@ -286,11 +286,11 @@ onMounted(() => {
         <el-table-column label="记录人" width="120">
           <template #default="{ row }">{{ row.created_by_name ?? '—' }}</template>
         </el-table-column>
-        <el-table-column label="记录时间" width="170" class-name="num">
+        <el-table-column label="记录时间" width="160" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column prop="hit_count" label="命中次数" width="90" class-name="num" />
-        <el-table-column label="操作" width="70">
+        <el-table-column label="操作" width="70" fixed="right">
           <template #default="{ row }">
             <RowMore><el-dropdown-item class="danger-item" @click="removeTerm(row, loadLearned)">删除</el-dropdown-item></RowMore>
           </template>

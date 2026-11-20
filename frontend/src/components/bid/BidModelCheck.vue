@@ -151,7 +151,7 @@ const hidden = computed(() => !!data.value && !data.value.state && !ocrPending.v
 .ic { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 1px; border-radius: 8px; background: color-mix(in srgb, var(--si-ai) 14%, transparent); }
 .spin { animation: ai-spin 1s linear infinite; }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
-:global(html[data-fx="off"]) .ai-card .spin { animation: none; }
+html[data-fx="off"] .ai-card .spin { animation: none; }
 .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .grow b { font: var(--si-font-label); font-weight: 600; }
 .grow > span { font: var(--si-font-caption); opacity: .88; }

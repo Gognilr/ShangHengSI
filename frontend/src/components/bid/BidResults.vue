@@ -128,8 +128,9 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
 .sev { flex: none; width: 8px; height: 8px; margin-top: 8px; border-radius: 50%; }
 .sev.hi { background: var(--si-danger); box-shadow: 0 0 0 3px var(--si-danger-soft); }
 .sev.neu { background: var(--si-ink-5); }
-.nb { flex: none; opacity: 0; transition: opacity var(--si-d2) var(--si-ease-out); }
-.iss:hover .nb, .iss.on .nb, .iss:focus-within .nb, .nb.shown { opacity: 1; }
+/* 只在选中或键盘聚焦的行出现，其余行不预留这一列，标题用满整行 */
+.nb { flex: none; display: none; }
+.iss.on .nb, .iss:focus-within .nb, .nb.shown { display: inline-flex; }
 .none { margin: 4px 12px 8px; font: var(--si-font-meta); color: var(--si-ink-4); }
 .ev-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 48px 24px; text-align: center; }
 .ring { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 6px; border-radius: 50%; background: var(--si-blue-tint); color: var(--si-brand-2); }

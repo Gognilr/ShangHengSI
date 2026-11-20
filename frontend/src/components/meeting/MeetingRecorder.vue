@@ -169,7 +169,9 @@ async function dropSaved() {
   try { await ElMessageBox.confirm('放弃后这段录音无法找回。', '放弃未上传的录音', { type: 'warning', confirmButtonText: '放弃', cancelButtonText: '保留' }) } catch { return }
   await settle(true)
 }
-defineExpose({ settle })
+// 录音卡展开（设置或录音中）时，入口页隐藏“上传录音”卡
+const open = computed(() => state.value !== 'idle')
+defineExpose({ settle, open })
 onMounted(() => { void refreshSaved() })
 onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeMic(); window.removeEventListener('beforeunload', guard) })
 </script>

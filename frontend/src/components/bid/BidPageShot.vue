@@ -24,7 +24,7 @@ watch(() => [props.fileId, props.page, props.loc], () => { loaded.value = false;
 .shot img { display: block; width: 100%; }
 .skeleton { position: absolute; inset: 0; background: linear-gradient(90deg, var(--si-surface-2) 25%, color-mix(in srgb, var(--si-surface-2) 55%, var(--si-surface-1)) 50%, var(--si-surface-2) 75%) 0 0 / 200% 100%; animation: shot-sheen 1.4s linear infinite; }
 @keyframes shot-sheen { to { background-position: -200% 0; } }
-:global(html:is([data-fx="lite"], [data-fx="off"])) .skeleton { animation: none; }
+html:is([data-fx="lite"], [data-fx="off"]) .skeleton { animation: none; }
 .failed { display: grid; place-items: center; min-height: 220px; padding: 24px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .zoom { position: absolute; right: 8px; top: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: var(--si-toast-bg); color: var(--si-toast-ink); font: var(--si-font-badge); opacity: 0; transition: opacity var(--si-d2) var(--si-ease-out); }
 .shot:hover .zoom, .shot:focus-visible .zoom { opacity: .9; }

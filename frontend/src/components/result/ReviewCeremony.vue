@@ -124,7 +124,7 @@ const doneCount = computed(() => findings.value.length)
 :root[data-fx="lite"] .scanline { animation-duration: 6s; }
 .live-rail { flex: 0 0 440px; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); overflow: hidden; }
 .rail-head { flex: none; display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 16px; border-bottom: 1px solid var(--si-hair-faint); }
-.tab { position: relative; height: 48px; line-height: 48px; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
+.tab { position: relative; display: inline-flex; align-items: center; height: 48px; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
 .tab::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--si-brand-2); }
 .ai-tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: auto; padding: 0 10px; border-radius: 999px; background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
 .ai-tag svg { color: var(--si-ai); }

@@ -12,7 +12,7 @@
         var shell = 'light', fx = 'auto', fs = 'md'
         try {
           var v = JSON.parse(localStorage.getItem('si.appearance') || '{}')
-          if (v.shell === 'night') shell = 'night'
+          if (v.shell === 'night' || (v.shell === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)) shell = 'night'
           if (v.fx === 'full' || v.fx === 'lite' || v.fx === 'off') fx = v.fx
           if (v.fs === 'lg' || v.fs === 'xl') fs = v.fs
         } catch (e) {}

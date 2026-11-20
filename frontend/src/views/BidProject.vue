@@ -499,7 +499,7 @@ h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis
 .why { font: var(--si-font-meta); color: var(--si-ink-3); }
 .spin { animation: bp-spin 1s linear infinite; }
 @keyframes bp-spin { to { transform: rotate(360deg); } }
-:global(html[data-fx="off"]) .bidp .spin { animation: none; }
+html[data-fx="off"] .bidp .spin { animation: none; }
 .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .alert { margin-top: 16px; }
 

@@ -40,6 +40,8 @@ const stepIndex = computed(() => {
   if (!audio.value?.confirmed_at) return 1
   return minutes.value.length && !generating.value ? 4 : 3
 })
+// 只有系统在做事（转写、生成纪要）时转圈；校对、确认遮住等你操作时显示编号
+const stepStatus = computed(() => audio.value?.media?.stage === 'failed' ? 'error' : stepIndex.value === 0 || (stepIndex.value === 3 && generating.value) ? 'process' : 'wait')
 
 function failure(e: unknown) { return e instanceof ApiError ? (e.status === 404 ? '会议记录不存在或已被删除' : e.message) : '加载失败，请刷新页面后重试' }
 async function loadRecent() {
@@ -146,7 +148,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     <p v-if="!asrEnabled" class="hint off-note">请联系系统管理员启用本机转写。</p>
     <div v-else class="entry-cards" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)">
       <MeetingRecorder ref="recorder" @recorded="upload([$event.file], $event)" />
-      <div class="entry-card pick" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
+      <div v-show="!recorder?.open" class="entry-card pick" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
         <span class="ic"><UploadCloud :size="26" :stroke-width="1.75" /></span>
         <b class="ttl">{{ uploading !== null ? (uploading < 100 ? `正在上传 ${uploading}%` : '上传完成，正在提交转写……') : dragging ? '松开即可加入' : '上传录音' }}</b>
         <span class="hint">拖入或点击选择 · mp3、m4a、wav、amr、aac、mp4 · 单个不超过 500 MB、3 小时</span>
@@ -164,9 +166,9 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
   <NotFound v-else-if="missing" kind="content" />
   <div v-else v-loading="loading" class="page page--split meeting-page">
     <div class="toolbar">
-      <el-button text @click="router.push('/meeting')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="gap">全部会议</span></el-button>
+      <el-button text @click="router.push('/meeting')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="back-t">全部会议</span></el-button>
       <h2 class="title" :title="session?.title">{{ session?.title }}</h2>
-      <StepBar class="steps" :active="stepIndex" :status="audio?.media?.stage === 'failed' ? 'error' : 'process'" :titles="stepTitles" :ai="[3]" aria-label="会议步骤" />
+      <StepBar class="steps" :active="stepIndex" :status="stepStatus" :titles="stepTitles" :ai="[3]" aria-label="会议步骤" />
       <el-dropdown trigger="click" @command="remove">
         <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
         <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除会议记录</span></el-dropdown-item></el-dropdown-menu></template>
@@ -212,7 +214,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .toolbar { display: flex; align-items: center; gap: 16px; min-height: 52px; }
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .steps { flex: none; }
-.gap { margin-left: 6px; }
+.back-t { margin-left: 6px; }
 .status { width: min(520px, 100%); margin: 48px auto; padding: 24px; border: 1px solid var(--si-hair); border-radius: 18px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
 .workspace { flex: 1; min-height: 0; }
 .generate { display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 0 0 12px; }
@@ -222,5 +224,5 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .m-empty b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
 .m-empty .hint { margin: 0; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
-@media (max-width: 1500px) { .steps :deep(.t) { display: none; } .steps :deep(.current .t) { display: inline; } }
+@media (max-width: 1279px) { .steps :deep(.t) { display: none; } .steps :deep(.current .t) { display: inline; } }
 </style>

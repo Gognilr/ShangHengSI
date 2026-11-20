@@ -161,7 +161,7 @@ th { background: var(--si-surface-2); }
 .think i:nth-child(2) { animation-delay: .15s; }
 .think i:nth-child(3) { animation-delay: .3s; }
 @keyframes think-dot { 0%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
-:global(html[data-fx="lite"]) .think i { animation: none; opacity: .7; }
+html[data-fx="lite"] .think i { animation: none; opacity: .7; }
 .message-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .draft-action { display: flex; align-items: center; gap: 8px; }
 .draft-saved { color: var(--si-ok-ink); font: var(--si-font-label-sm); }

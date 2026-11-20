@@ -223,6 +223,9 @@ html body { font: var(--si-font-body); color: var(--el-text-color-primary); back
 }
 .el-table th.el-table__cell { font: var(--si-font-label-sm); color: var(--si-ink-3); background: var(--si-card-2); }
 .el-table .el-table__cell { padding: 14px 0; }
+/* 行底色透明，固定列（表格横向滚动时）须垫卡片底色，否则压在滚动列的文字上 */
+.el-table .el-table__body-wrapper tr td.el-table-fixed-column--right, .el-table .el-table__body-wrapper tr td.el-table-fixed-column--left { background: var(--si-surface-1); }
+.el-table .el-table__body-wrapper tr:hover > td.el-table-fixed-column--right, .el-table .el-table__body-wrapper tr:hover > td.el-table-fixed-column--left { background: linear-gradient(var(--si-hover-bg), var(--si-hover-bg)), var(--si-surface-1); }
 .el-table--small .el-table__cell { padding: 8px 0; }
 /* 无外框；表头下一条强线，行间细线 */
 .el-table .el-table__inner-wrapper::before { display: none; }

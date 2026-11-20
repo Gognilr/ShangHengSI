@@ -341,7 +341,7 @@ onBeforeUnmount(stopPolling)
       <SettingSection v-if="auth.can('sys.data')" title="备份记录" description="最近 20 条备份的结果。" stacked>
         <el-table :data="records?.items ?? []" size="small">
           <template #empty><EmptyState compact title="尚无备份记录" /></template>
-          <el-table-column label="开始时间" width="170" class-name="num">
+          <el-table-column label="开始时间" width="160" class-name="num">
             <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
           </el-table-column>
           <el-table-column label="方式" width="70">
@@ -352,13 +352,13 @@ onBeforeUnmount(stopPolling)
               <el-tag size="small" :type="BACKUP_STATUS_TAG[row.status]">{{ backupStatusLabel(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="文件名" min-width="200">
+          <el-table-column label="文件名" min-width="180" show-overflow-tooltip>
             <template #default="{ row }">{{ row.file_name ?? '—' }}</template>
           </el-table-column>
           <el-table-column label="大小" width="100" class-name="num">
             <template #default="{ row }">{{ row.size_bytes === null ? '—' : formatBytes(row.size_bytes) }}</template>
           </el-table-column>
-          <el-table-column label="说明" min-width="200">
+          <el-table-column label="说明" min-width="160">
             <template #default="{ row }">
               <span v-if="row.error_message" class="danger">{{ row.error_message }}</span>
               <span v-else>—</span>
@@ -432,7 +432,7 @@ onBeforeUnmount(stopPolling)
       <TableSkeleton v-if="!logLoaded" :columns="['170px', '110px', '1fr', '90px', '130px', '80px', '90px']" />
       <el-table v-else v-loading="logLoading" :data="logs" size="small" :max-height="tableMax" @row-click="openDetail">
         <template #empty><EmptyState compact title="没有符合条件的外发记录" description="可调整上方筛选条件。" /></template>
-        <el-table-column label="时间" width="170" class-name="num">
+        <el-table-column label="时间" width="160" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="用户" width="110">
@@ -478,7 +478,7 @@ onBeforeUnmount(stopPolling)
       <TableSkeleton v-if="!auditLoaded" :columns="['170px', '100px', '120px', '1fr', '1fr', '110px']" />
       <el-table v-else v-loading="auditLoading" :data="auditRows" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="没有符合条件的审计日志" description="可调整上方筛选条件。" /></template>
-        <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="时间" width="160" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="用户" width="100"><template #default="{ row }">{{ row.user_name ?? '—' }}</template></el-table-column>
         <el-table-column label="动作" width="120"><template #default="{ row }">{{ auditActionLabel(row.action) }}</template></el-table-column>
         <el-table-column label="对象" min-width="150"><template #default="{ row }">{{ row.target_type ? auditTargetLabel(row.target_type) : '—' }} / {{ row.target_id ?? '—' }}</template></el-table-column>

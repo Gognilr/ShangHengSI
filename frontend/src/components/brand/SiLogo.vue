@@ -59,9 +59,9 @@ const variant = computed(() => markPx.value <= 20 ? 'sm' : markPx.value >= 64 ? 
 
 /* 开场动效（README“开场动效”）：只动 transform 与 opacity */
 .bar, .star { transform-box: fill-box; transform-origin: center; }
-:global(html[data-fx="full"]) .is-intro .paper { animation: logo-paper 240ms var(--si-ease-out) both; }
-:global(html[data-fx="full"]) .is-intro .bar { animation: logo-bar 520ms var(--si-ease-out) 60ms both; }
-:global(html[data-fx="full"]) .is-intro .star { animation: logo-star 340ms var(--si-ease-spring) 360ms both; }
+html[data-fx="full"] .is-intro .paper { animation: logo-paper 240ms var(--si-ease-out) both; }
+html[data-fx="full"] .is-intro .bar { animation: logo-bar 520ms var(--si-ease-out) 60ms both; }
+html[data-fx="full"] .is-intro .star { animation: logo-star 340ms var(--si-ease-spring) 360ms both; }
 @keyframes logo-paper { from { opacity: 0; } }
 .is-tilt .bar { transform: rotate(-6deg); animation: logo-tilt 900ms var(--si-ease-spring) 300ms both; }
 @keyframes logo-tilt { from { transform: none; } }

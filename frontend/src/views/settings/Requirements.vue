@@ -258,7 +258,7 @@ onMounted(() => {
         <el-table-column label="维度" width="120">
           <template #default="{ row }">{{ row.dimension ?? '—' }}</template>
         </el-table-column>
-        <el-table-column prop="text" label="内容" min-width="360" />
+        <el-table-column prop="text" label="内容" min-width="280" />
         <el-table-column label="适用文件类型" width="200">
           <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
         </el-table-column>
@@ -299,7 +299,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="sort" label="排序" width="70" />
-        <el-table-column label="操作" width="110">
+        <el-table-column label="操作" width="110" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <RowMore><el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item></RowMore>
@@ -317,10 +317,10 @@ onMounted(() => {
         <el-table-column label="修改人" min-width="160">
           <template #default="{ row }">{{ row.created_by_name ?? '—' }}</template>
         </el-table-column>
-        <el-table-column label="时间" width="170" class-name="num">
+        <el-table-column label="时间" width="160" class-name="num">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="90">
+        <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="viewing = row">查看</el-button>
           </template>

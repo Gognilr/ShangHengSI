@@ -689,7 +689,8 @@ useHotkeys({
         <!-- ① 签约方与我方 -->
         <section ref="partiesSec" class="rp-card">
           <h3 class="rp-h"><Users :size="16" :stroke-width="1.75" /><b>签约方与我方</b><span v-if="ourMissing && parties.length" class="si-required-tag">请选择我方</span></h3>
-          <p v-if="!loading && !parties.length" class="warn">没有识别到签约方：在原文中选中我方名称，遮住为“公司”后再设为我方</p>
+          <p v-if="!loading && !parties.length && assistant && !requireOurParty" class="hint">没有识别到签约方。不设我方也可以确认；需要时在原文中选中我方名称，遮住为“公司”后设为我方。</p>
+          <p v-else-if="!loading && !parties.length" class="warn">没有识别到签约方：在原文中选中我方名称，遮住为“公司”后再设为我方</p>
           <div v-for="p in parties" :key="p.id" class="party" :class="{ me: p.is_our_party, editing: editingParty === p.id }">
             <div class="party-line">
               <span class="party-code" :class="{ me: p.is_our_party }">{{ partyMark(p) }}</span>

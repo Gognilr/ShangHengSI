@@ -104,7 +104,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column prop="clause_count" label="条款数" width="80" class-name="num" />
         <el-table-column label="向量状态" width="100"><template #default="{ row }">{{ row.ready ? '可用' : '准备中' }}</template></el-table-column>
         <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
-        <el-table-column label="操作" width="140"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="detail(row)">查看条款</el-button><RowMore><el-dropdown-item :disabled="saving" @click="open(row)">编辑</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
+        <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="detail(row)">查看条款</el-button><RowMore><el-dropdown-item :disabled="saving" @click="open(row)">编辑</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
       </SettingSection>
     </div>

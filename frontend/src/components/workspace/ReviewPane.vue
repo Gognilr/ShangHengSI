@@ -445,8 +445,8 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 .center { padding: 32px; }
 .running { flex: 1; min-height: 0; overflow: hidden; padding: 16px 20px; }
 .local { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
-.confirm-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.confirm-stage > .back { padding: 8px 20px 0; margin: 0; }
+.confirm-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 20px; }
+.confirm-stage > .back { padding: 8px 0 0; margin: 0; }
 .confirm-wb { flex: 1; min-height: 0; }
 .cs { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px solid var(--si-hair); }
 .cs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

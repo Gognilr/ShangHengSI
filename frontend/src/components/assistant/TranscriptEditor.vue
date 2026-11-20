@@ -17,7 +17,8 @@ const emit = defineEmits<{ refresh: []; confirm: []; 'update:tab': [value: 'tool
 const tabs = computed(() => [{ value: 'tools', label: '校对' }, { value: 'minutes', label: props.minutesCount ? `纪要 ${props.minutesCount}` : '纪要' }])
 const railTab = computed({ get: () => props.tab ?? 'tools', set: (v: string) => emit('update:tab', v as 'tools' | 'minutes') })
 const palette = (id: number | null | undefined) => `sp${Number(id ?? 0) % 6}`
-const initial = (id: number | null | undefined) => String.fromCharCode(65 + Number(id ?? 0) % 26)
+// 发言人编号从 1 起：发言人 1 为 A
+const initial = (id: number | null | undefined) => String.fromCharCode(65 + Math.max(0, Number(id ?? 1) - 1) % 26)
 const nodes = ref<PreviewNode[]>([]), suggestions = ref<Suggestion[]>([]), error = ref(''), loading = ref(false), busy = ref(false)
 const names = ref<string[]>([...props.session.participants]), addedName = ref(''), speakers = ref<Record<string,string | null>>({ ...props.file.speakers })
 const readonly = computed(() => !!props.file.confirmed_at || props.session.original_deleted)
@@ -189,8 +190,8 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 .player :deep(.el-select) { width: 80px; }
 .save { margin-left: auto; }
 .save.saved { color: var(--si-ok); }
-.body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 16px; }
-.transcript { overflow: auto; padding: 24px 32px; }
+.body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 420px; gap: 16px; }
+.transcript { overflow: auto; padding: 24px 32px; border: 1px solid var(--si-hair); border-radius: 14px; box-shadow: var(--si-shadow-1); }
 .utterance { content-visibility: auto; contain-intrinsic-size: auto 100px; padding: 12px 16px; border-left: 2px solid transparent; }
 .utterance.current { border-color: var(--si-blue); }
 .meta { display: flex; align-items: center; gap: 8px; font: var(--si-font-meta); color: var(--si-paper-ink-2); }
@@ -212,6 +213,8 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 .low { text-decoration: underline dashed 1px var(--si-warn); text-underline-offset: 4px; }
 .rail { overflow-y: auto; padding: 12px 16px; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
 h3 { font: var(--si-font-h3); margin: 20px 0 8px; }
+.heading { margin: 20px 0 8px; }
+.heading h3 { margin: 0; }
 .names,.speaker,.heading,.suggestion,.exports { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .speaker { margin-bottom: 8px; }
 .speaker :deep(.el-input) { flex: 1; min-width: 100px; }

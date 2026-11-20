@@ -142,8 +142,7 @@ const notEnough = computed(() => {
   <div class="reqs" @keydown="onKey">
     <el-alert v-if="error" class="alert" :title="error" type="error" show-icon @close="error = ''" />
     <template v-if="data">
-      <section class="params" aria-labelledby="invitees-title">
-        <div class="section-head"><h2 id="invitees-title" class="si-overline">受邀投标单位</h2></div>
+      <section class="params">
         <BidInvitees :items="data.invitees" :edited="data.invitees_edited" :disabled="locked" @save="saveInvitees" @locate="(l: BidLoc) => { focus = l }" />
       </section>
 

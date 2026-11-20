@@ -12,7 +12,7 @@ import { tasksApi } from '@/api/tasks'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
-import { docTypeLabel, stanceLabel, statusLabel, statusTag } from '@/utils/labels'
+import { ASSISTANT_STATUS, docTypeLabel, stanceLabel, statusLabel, statusTag } from '@/utils/labels'
 import type { SaveResult } from '@/utils/save'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import { formatShort } from '@/utils/time'
@@ -127,7 +127,11 @@ function statusView(row: HistoryItem): { text: string; tone: string } {
     return { text: s.label, tone: { run: 'busy', warn: 'warning', ok: 'success', idle: 'info' }[s.tone] }
   }
   if (row.reviewing) return { text: '审核中', tone: 'busy' }
-  if (row.purpose === 'meeting' || row.purpose === 'translate') return { text: statusLabel(row.status), tone: statusTag(row.status).type }
+  if (row.purpose === 'meeting' || row.purpose === 'translate') {
+    // 会议、翻译是会话，状态取会话字典（active 等），不用任务状态字典
+    const st: string = row.status
+    return { text: ASSISTANT_STATUS[st] ?? statusLabel(row.status), tone: st === 'parse_failed' || st === 'failed' ? 'danger' : st === 'awaiting_confirm' ? 'warning' : st === 'parsing' ? 'busy' : 'info' }
+  }
   if (row.kind === 'session') return { text: row.run_count && auth.can('use.review') ? `已审核 ${row.run_count} 轮` : '对话', tone: row.run_count ? 'primary' : 'info' }
   return { text: statusLabel(row.status), tone: statusTag(row.status).type }
 }

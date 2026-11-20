@@ -62,7 +62,7 @@ const activeTab = computed(() => {
 </template>
 
 <style scoped>
-.settings { max-width: 1120px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding-top: 32px; padding-bottom: 24px; }
+.settings { max-width: 1200px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding-top: 32px; padding-bottom: 24px; }
 .settings .entry-lede { margin-bottom: 20px; }
 .shell { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; }
 .settings-nav { align-self: start; display: flex; flex-direction: column; gap: 2px; max-height: 100%; padding: 12px; overflow-y: auto; box-sizing: border-box; background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); }

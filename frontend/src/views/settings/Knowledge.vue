@@ -86,7 +86,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
   <div>
     <div v-loading="loading" class="panel setting-panel">
       <SettingSection title="知识库开关" description="关闭后工作台不检索知识库。开启时，员工勾选后相关片段经脱敏随问题发送给模型。">
-        <span>在工作台中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" />
+        <div class="switch-line"><span>在工作台中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" /></div>
         <p class="hint">关闭后不会检索知识库；只有启用且解析完成的文档参与检索。</p>
       </SettingSection>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="gap" />
@@ -99,8 +99,8 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
         <el-table-column prop="chunk_count" label="片段数" width="80" class-name="num" />
         <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving || uploading" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
         <el-table-column prop="uploaded_by" label="上传人" min-width="90" />
-        <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="140"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="preview(row)">预览片段</el-button><RowMore><el-dropdown-item :disabled="saving" @click="rename(row)">改名</el-dropdown-item><el-dropdown-item :disabled="saving || uploading" @click="toggle(row, !row.enabled)">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving || uploading" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
+        <el-table-column label="时间" width="160" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="preview(row)">预览片段</el-button><RowMore><el-dropdown-item :disabled="saving" @click="rename(row)">改名</el-dropdown-item><el-dropdown-item :disabled="saving || uploading" @click="toggle(row, !row.enabled)">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving || uploading" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
       </SettingSection>
     </div>
@@ -120,5 +120,6 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
 .chunk { border-bottom: 1px solid var(--el-border-color-light); padding: 16px 0; }
 .chunk h3 { font: var(--si-font-h3); margin: 0 0 12px; }
 pre { font: var(--si-font-reading); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.switch-line { display: flex; align-items: center; gap: 12px; }
 .error { color: var(--el-color-danger); font: var(--si-font-meta); }
 </style>

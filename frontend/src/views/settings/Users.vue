@@ -192,25 +192,25 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
       <TableSkeleton v-if="!loaded" :columns="['1fr', '1fr', '180px', '100px', '190px', '160px']" />
       <el-table v-else v-loading="loading" :data="items" :max-height="tableMax">
         <template #empty><EmptyState compact title="暂无账号" description="点击右上角“新增账号”添加。" /></template>
-        <el-table-column prop="username" label="用户名" min-width="140" show-overflow-tooltip />
-        <el-table-column label="显示名" min-width="140" show-overflow-tooltip><template #default="{ row }"><div class="user-name"><span class="avatar">{{ Array.from(row.display_name)[0] ?? '?' }}</span><span>{{ row.display_name }}</span></div></template></el-table-column>
-        <el-table-column label="角色" min-width="180">
+        <el-table-column prop="username" label="用户名" min-width="100" show-overflow-tooltip />
+        <el-table-column label="显示名" min-width="110" show-overflow-tooltip><template #default="{ row }"><div class="user-name"><span class="avatar">{{ Array.from(row.display_name)[0] ?? '?' }}</span><span>{{ row.display_name }}</span></div></template></el-table-column>
+        <el-table-column label="角色" min-width="150">
           <template #default="{ row }"><div class="tags"><el-tag v-for="id in row.role_ids" :key="id" type="info" size="small">{{ roleName(id) }}</el-tag></div></template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="80">
           <template #default="{ row }">
             <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'">
               {{ userStatusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="最近登录" width="190">
+        <el-table-column label="最近登录" width="170">
           <template #default="{ row }">
             <div class="login num">{{ formatDateTime(row.last_login_at) }}</div>
             <div class="hint num">{{ row.last_login_ip ?? '' }}<span v-if="row.online" class="online">在线 {{ row.online }} 处</span></div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openReset(row)">重置密码</el-button>
             <RowMore>

@@ -193,11 +193,11 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
       <SettingSection v-if="canLaws" title="导入记录" description="每次导入与自动同步的结果。" stacked>
         <el-table :data="records">
         <template #empty><EmptyState compact title="尚无导入或同步记录" /></template>
-        <el-table-column label="时间" width="170" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
+        <el-table-column label="时间" width="160" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
         <el-table-column label="类型" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_KIND[row.kind] }}</template></el-table-column>
         <el-table-column label="状态" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_STATUS[row.status] }}</template></el-table-column>
         <el-table-column prop="added" label="新增" width="72" /><el-table-column prop="changed" label="变化" width="72" /><el-table-column prop="skipped" label="跳过" width="72" />
-        <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
+        <el-table-column label="操作" width="90" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
       </el-table>
       </SettingSection>
       <SettingSection v-if="canLaws" v-loading="loading" title="法规列表" description="按标题、分类、时效性查找法规。" stacked>
@@ -222,7 +222,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
         <el-table-column label="全文" width="60"><template #default="{ row }">{{ row.has_fulltext ? '有' : '无' }}</template></el-table-column>
         <el-table-column label="替代法规" min-width="120"><template #default="{ row }">{{ row.replaced_by || '—' }}</template></el-table-column>
         <el-table-column label="来源" width="80"><template #default="{ row }">{{ LAW_SOURCE[row.source] }}</template></el-table-column>
-        <el-table-column label="操作" width="90"><template #default="{ row }"><el-button link type="primary" @click="editReplacement(row)">编辑替代</el-button></template></el-table-column>
+        <el-table-column label="操作" width="90" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="editReplacement(row)">编辑替代</el-button></template></el-table-column>
       </el-table>
       <div class="pagination"><span>共 {{ total }} 条</span><el-pagination v-model:current-page="filter.page" :page-size="20" :total="total" layout="prev, pager, next" @current-change="load()" /></div>
     </SettingSection>

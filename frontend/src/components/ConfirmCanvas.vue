@@ -551,7 +551,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
       <el-alert v-if="active?.error" type="error" show-icon :closable="false" :title="active.error" />
       <el-empty v-else-if="active && !active.loading && !active.available" description="原文已按保留期清理" />
       <el-empty v-else-if="active && !active.loading && !blocks.length" description="没有可显示的正文" />
-      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null">
+      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null">
         <template v-for="(b, bi) in blocks" :key="bi">
           <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv)]" :data-node="b.nv.node.loc">
             <div v-if="b.nv.node.kind === 'utterance'" class="utterance-meta"><span :class="{ code: view === 'ai' && b.nv.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nv.node.speaker_code : utteranceLabel(b.nv.node) }}</span> · {{ stamp(b.nv.node.t_start_ms ?? 0) }}</div>
@@ -727,6 +727,9 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 :deep(.k-other) { --k: var(--si-k-other); --k-bg: var(--si-k-other-bg); }
 :deep(.cap), :deep(.unc) { padding: 1px 7px; border-radius: 999px; background: var(--k-bg, var(--si-cap-bg)); color: var(--k, var(--si-cap-ink)); font-weight: 500; cursor: pointer; transition: box-shadow var(--si-d2) var(--si-ease-out); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 :deep(.cap:hover), :deep(.unc:hover) { box-shadow: 0 0 0 1.5px var(--k, var(--si-cap-ink)); }
+/* 结果页：遮住的名称退为正文色加类别色虚线，纸面上只有问题高亮醒目（对齐设计稿 8.4 结果页） */
+.res :deep(.cap:not(.ann)), .res :deep(.unc:not(.ann)) { padding: 0; border-radius: 0; background: none; color: inherit; font-weight: inherit; text-decoration: underline dotted 1.5px var(--k, var(--si-cap-ink)); text-underline-offset: 4px; }
+.res :deep(.cap:not(.ann):hover), .res :deep(.unc:not(.ann):hover) { box-shadow: none; background: var(--k-bg, var(--si-cap-bg)); }
 :deep(.unc) { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k, var(--si-cap-ink)) 55%, transparent); background-image: none; outline: 1px dashed color-mix(in srgb, var(--k, var(--si-cap-ink)) 70%, transparent); outline-offset: -1px; }
 :deep(.code) { padding: 1px 7px; border-radius: 999px; background: var(--k-bg, var(--si-code-bg)); color: var(--k, var(--si-code-ink)); font-family: var(--si-font-mono); font-size: .88em; cursor: pointer; }
 :deep(.code.unc) { outline: 1px dashed var(--k, var(--si-code-ink)); outline-offset: -1px; }

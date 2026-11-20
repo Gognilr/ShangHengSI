@@ -124,7 +124,7 @@ function open(row: HistoryItem) {
 .all:hover { color: var(--si-blue-ink); }
 .list { border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); overflow: hidden; }
 .li { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 16px; color: inherit; text-decoration: none; transition: background-color var(--si-d2) var(--si-ease-out); }
-:global(html[data-fx="full"]) .li { animation: rh-in var(--si-d3) var(--si-ease-out) both; animation-delay: calc(var(--i) * 45ms + 180ms); }
+html[data-fx="full"] .li { animation: rh-in var(--si-d3) var(--si-ease-out) both; animation-delay: calc(var(--i) * 45ms + 180ms); }
 .li + .li { border-top: 1px solid var(--si-hair-faint); }
 .li:hover { background: var(--si-hover-bg); }
 .li:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }

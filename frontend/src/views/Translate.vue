@@ -193,9 +193,9 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
   <NotFound v-else-if="missing" kind="content" />
   <div v-else v-loading="loading" class="page page--split translate-page">
     <div class="toolbar">
-      <el-button text @click="router.push('/translate')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="gap">全部翻译</span></el-button>
+      <el-button text @click="router.push('/translate')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="back-t">全部翻译</span></el-button>
       <h2 class="title" :title="file?.original_name ?? session?.title">{{ file?.original_name ?? session?.title }}</h2>
-      <StepBar class="steps" :active="stepIndex" :status="step === 'failed' ? 'error' : 'process'" :titles="stepTitles" :ai="engine === 'cloud' ? [stepTitles.length - 2] : []" aria-label="翻译步骤" />
+      <StepBar class="steps" :active="stepIndex" :status="step === 'failed' ? 'error' : step === 'parsing' || running ? 'process' : 'wait'" :titles="stepTitles" :ai="engine === 'cloud' ? [stepTitles.length - 2] : []" aria-label="翻译步骤" />
       <span v-if="percent !== null" class="pct num" role="status">{{ percent }}%</span>
       <el-dropdown trigger="click" @command="remove">
         <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
@@ -255,7 +255,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .steps { flex: none; }
 .pct { flex: none; color: var(--si-ai-ink); font: var(--si-font-label); font-weight: 600; }
-.gap { margin-left: 6px; }
+.back-t { margin-left: 6px; }
 .body { flex: 1; min-height: 0; overflow-y: auto; }
 .bar-card { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 14px; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
 .bar-card .grow { flex: 1; }
@@ -265,5 +265,5 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .reading { max-width: 1280px; margin: 16px auto 0; }
 .ready-hint { display: flex; align-items: center; gap: 6px; justify-content: center; margin: 32px 0; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
-@media (max-width: 1500px) { .steps :deep(.t) { display: none; } .steps :deep(.current .t) { display: inline; } }
+@media (max-width: 1279px) { .steps :deep(.t) { display: none; } .steps :deep(.current .t) { display: inline; } }
 </style>

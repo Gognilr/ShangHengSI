@@ -195,6 +195,10 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
 .hub { position: relative; min-height: 100%; }
 /* 氛围光：顶部约 420px，底部渐隐到画布 */
 .aura { bottom: auto; height: 440px; }
+/* 光斑尺寸与位置照设计稿（preview-pages.css .aura）：首屏上方可见的三团光 */
+.aura > i:nth-child(1) { left: 8%; top: -260px; width: 720px; height: 520px; aspect-ratio: auto; }
+.aura > i:nth-child(2) { left: auto; right: 6%; top: -220px; width: 640px; height: 480px; aspect-ratio: auto; }
+.aura > i:nth-child(3) { left: 40%; top: -120px; width: 520px; height: 360px; aspect-ratio: auto; }
 .aura::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 160px; background: linear-gradient(transparent, var(--si-bg-canvas)); }
 .hub-in { position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; padding: 10vh 40px 48px; display: flex; flex-direction: column; align-items: center; }
 .greet { display: flex; flex-direction: column; align-items: center; text-align: center; }
