@@ -11,6 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal, DecimalException
 
 from sqlalchemy import delete, func, select
 
+from app.bid.compliance import TERM_LABELS, tender_performance_limits, tender_term_limits
 from app.db.models import BidItem, BidProject, BidRequirement, DocNode, Task, TaskFile
 from app.redaction.detect import chinese_upper_value
 from app.security import crypto
@@ -229,6 +230,9 @@ def default_method(group, text, policy):
         return "local"  # 超限价、大小写、多个报价都能本地算
     if group == "validity" and re.search(r"有效期|保证金", text) and re.search(r"\d|金额|天|日", text):
         return "local"
+    terms = list(tender_term_limits(text))
+    if len(terms) == 1 and not re.search(r"[，,；;\n]|[。](?!\s*$)", text):
+        return "local"
     return policy_method("model", policy)
 
 
@@ -248,7 +252,8 @@ _DEPOSIT_UPPER = re.compile(r"(?:投标|招标)保证金[^。；\n\d]{0,12}?(?:�
                             r"([零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+[元圆][零壹贰叁肆伍陆柒捌玖角分整正]*)")
 _FORMS = ["银行保函", "保险保函", "担保保函", "电汇", "转账", "银行汇票", "支票", "现金"]
 _EMPTY = {"ceiling": None, "currency": "CNY", "validity_days": None, "deposit": None, "deposit_forms": "",
-          "consortium": None, "tax_included": None}
+          "consortium": None, "tax_included": None, **dict.fromkeys(TERM_LABELS),
+          "performance_from": None, "performance_until": None, "performance_amount": None, "performance_count": None}
 
 
 def _money(number, unit):
@@ -263,9 +268,13 @@ def prefill(nodes) -> tuple[dict, dict]:
     """返回 (参数, 出处)；出处为 {字段: {file_id, loc}}。只取第一处明确写法，认不出的留空由用户填写。"""
     values, sources = dict(_EMPTY), {}
     forms = []
-    for n in nodes:
+    terms = {}
+    for n, section in zip(nodes, _sections(nodes)):
         t = n.text
         here = {"file_id": n.file_id, "loc": n.loc}
+        if section == "body":
+            for key, value in (*tender_term_limits(t), *tender_performance_limits(t)):
+                terms.setdefault(key, {}).setdefault(value, here)
         if values["ceiling"] is None and (m := _CEILING.search(t)):
             values["ceiling"] = _money(m.group(2), m.group(3))
             values["currency"] = _CURRENCY.get(m.group(1) or "人民币", "CNY")
@@ -292,6 +301,14 @@ def prefill(nodes) -> tuple[dict, dict]:
             elif re.search(r"含(?:增值)?税|含税价", t):
                 values["tax_included"], sources["tax_included"] = True, here
     values["deposit_forms"] = "、".join(forms)
+    for key, candidates in terms.items():
+        if len(candidates) == 1:
+            values[key], sources[key] = next(iter(candidates.items()))
+    start, end = values["performance_from"], values["performance_until"]
+    if start and end and start > end:
+        for key in ("performance_from", "performance_until"):
+            values[key] = None
+            sources.pop(key)
     return values, sources
 
 

@@ -72,6 +72,34 @@ def test_rules_counter_parameters_and_confirm(owner, db_sessionmaker):
         assert db.scalar(select(func.count()).select_from(LlmCall)) == 0
 
 
+def test_local_compliance_parameters_prefill_and_edit(owner, db_sessionmaker):
+    from io import BytesIO
+    from docx import Document
+
+    c, h, _ = owner
+    base = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]
+    doc = Document()
+    doc.add_paragraph("★ 工期不得超过120日历天。")
+    doc.add_paragraph("质保期不得少于2年。")
+    doc.add_paragraph("类似业绩至少2份，单项合同金额不低于人民币50万元，合同签订日期在2024年1月1日至2025年1月1日。")
+    stream = BytesIO()
+    doc.save(stream)
+    assert c.post(base + "/files", headers=h, files={"files": ("虚构招标条件.docx", stream.getvalue())}).status_code == 200
+    drain(db_sessionmaker, base)
+    data = c.get(base + "/requirements", headers=h).json()
+    p = data["parameters"]
+    assert p["construction_max"] == "120天" and p["warranty_min"] == "24月"
+    assert (p["performance_from"], p["performance_until"], p["performance_amount"], p["performance_count"]) == (
+        "2024-01-01", "2025-01-01", "500000.00", 2)
+    assert next(i for i in data["items"] if "工期" in i["text"])["method"] == "local"
+    wrong = c.put(base + "/parameters", headers=h, json={**p, "performance_until": "2023-01-01"})
+    assert wrong.status_code == 422
+    edited = c.put(base + "/parameters", headers=h, json={**p, "delivery_max": "20 工作日", "performance_count": 3})
+    assert edited.status_code == 200
+    saved = c.get(base + "/requirements", headers=h).json()["parameters"]
+    assert (saved["delivery_max"], saved["performance_count"]) == ("20工作日", 3)
+
+
 def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, llm):
     from app.admin.settings_store import set_setting
 

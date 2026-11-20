@@ -32,6 +32,8 @@ SIGN = {"stamped": "已盖章", "missing": "缺章", "unclear": "看不清", Non
 TYPE = {"mixed": "混装", "contact": "联系信息相同", "props": "文件属性相同", "image": "相同图片", "similar": "相似段落", "pricing": "报价规律",
         "multi_total": "多个总价", "sum_total": "合计与总价", "ceiling": "超最高限价", "low_price": "异常低价", "uppercase": "大小写", "row_calc": "分项计算",
         "sum_rows": "合计计算", "validity": "投标有效期", "deposit": "保证金", "cert_expired": "证书有效期",
+        "construction_max": "工期", "delivery_max": "交货期", "warranty_min": "质保期",
+        "defect_min": "缺陷责任期", "performance": "类似业绩",
         "ai_instruction": "写给 AI 的指令", "model_response": "模型判断", "deviation_conflict": "偏离表与正文"}
 SECTION = {"tech": "技术参数章节，已降一档", "price": "报价章节，已升一档"}
 MAX_TEXT = 600       # 并排对照每侧最多摘录的字数
@@ -383,6 +385,14 @@ def _appendix(doc, d: _Data):
     _para(doc, f"关键参数：{ceiling}投标有效期 {_plain(values.get('validity_days'))} 天；"
                f"保证金 {_plain(values.get('deposit'))}{forms}；联合体 " + {True: "接受", False: "不接受"}.get(values.get("consortium"), "未填")
           + "；报价 " + {True: "含税", False: "不含税"}.get(values.get("tax_included"), "未填") + "。")
+    extra = [(label, values[key]) for key, label in (
+        ("construction_max", "工期上限"), ("delivery_max", "交货期上限"),
+        ("warranty_min", "质保期下限"), ("defect_min", "缺陷责任期下限"),
+        ("performance_from", "类似业绩签订起日（含）"), ("performance_until", "类似业绩签订止日（含）"),
+        ("performance_amount", "类似业绩单项最低金额（人民币元）"), ("performance_count", "类似业绩最低份数"),
+    ) if values.get(key) is not None]
+    if extra:
+        _para(doc, "；".join(f"{label} {value}" for label, value in extra) + "。")
     all_reqs = sorted(d.db.scalars(select(BidRequirement).where(BidRequirement.task_id == d.task.id)), key=lambda r: (GROUP_ORDER.get(r.group, 9), r.seq))
     _table(doc, ("分组", "要求", "检查方式", "来源", "启用"),
            [(GROUP.get(r.group, r.group), f"{r.seq}. " + crypto.decrypt_text(r.text_enc), METHOD.get(r.method, r.method), SOURCE.get(r.source, r.source),

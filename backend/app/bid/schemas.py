@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ProjectInput(BaseModel):
@@ -68,8 +68,16 @@ class ParametersInput(BaseModel):
     consortium: bool | None = None
     tax_included: bool | None = None
     agency: str = Field("", max_length=255)
+    construction_max: str | None = Field(None, max_length=24)
+    delivery_max: str | None = Field(None, max_length=24)
+    warranty_min: str | None = Field(None, max_length=24)
+    defect_min: str | None = Field(None, max_length=24)
+    performance_from: str | None = Field(None, max_length=10)
+    performance_until: str | None = Field(None, max_length=10)
+    performance_amount: str | None = Field(None, max_length=32)
+    performance_count: int | None = Field(None, ge=1, le=999)
 
-    @field_validator("ceiling", "deposit")
+    @field_validator("ceiling", "deposit", "performance_amount")
     @classmethod
     def decimal_text(cls, value):
         from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -82,6 +90,34 @@ class ParametersInput(BaseModel):
             return str(number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
         except InvalidOperation:
             raise ValueError("请填写数字金额") from None
+
+    @field_validator("construction_max", "delivery_max", "warranty_min", "defect_min")
+    @classmethod
+    def duration(cls, value):
+        from app.bid.compliance import normalize_term
+        if value is None or not value.strip():
+            return None
+        term = normalize_term(value)
+        if term is None:
+            raise ValueError("请填写整数和期限单位，如 120 日历天、20 工作日或 24 个月")
+        return f"{term[0]}{term[1]}"
+
+    @field_validator("performance_from", "performance_until")
+    @classmethod
+    def performance_date(cls, value):
+        if value is None or not value.strip():
+            return None
+        try:
+            parsed = date.fromisoformat(value.strip()).isoformat()
+        except ValueError:
+            raise ValueError("请按年-月-日填写类似业绩签订日期") from None
+        return parsed
+
+    @model_validator(mode="after")
+    def performance_date_order(self):
+        if self.performance_from and self.performance_until and self.performance_from > self.performance_until:
+            raise ValueError("类似业绩签订起日不能晚于止日")
+        return self
 
 
 class Loc(BaseModel):

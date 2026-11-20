@@ -16,6 +16,7 @@ from itertools import combinations
 
 from sqlalchemy import delete, select
 
+from app.bid.compliance import TERM_LABELS
 from app.db.base import utcnow
 from app.db.models import BidBidder, BidCell, BidImage, BidItem, BidProject, BidRequirement, DocNode, TaskFile
 from app.redaction import detect
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 # 三步依次提交，前端轮询时先看到先完成的（bid.md 3.1“先出结果的先做”）
 STEPS = {"clues": ("mixed", "contact", "props", "image"),
          "pricing": ("pricing", "multi_total", "sum_total", "ceiling", "low_price", "uppercase", "row_calc", "sum_rows", "validity",
-                     "deposit", "cert_expired", "ai_instruction", "manual_total_diff"),
+                     "deposit", "cert_expired", "ai_instruction", "manual_total_diff", *TERM_LABELS, "performance"),
          "similar": ("similar",)}
 RANK = {"strong": 3, "medium": 2, "weak": 1, "normal": 0}
 
@@ -490,8 +491,9 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
 
     items = [_item("clue", c["ids"], "pricing", c["level"], "（四）", c["title"], c["rows"]) for c in clues]
     if quote_only:
+        quote_params = {k: v for k, v in params.items() if k not in TERM_LABELS and k != "performance_count"}
         for b in bidders:
-            issues, verdicts = compliance.evaluate(b.id, per[b.id], facts[b.id], params, project.opening_date, place)
+            issues, verdicts = compliance.evaluate(b.id, per[b.id], facts[b.id], quote_params, project.opening_date, place)
             linked = kinds.get("ceiling", [])
             items.extend(_item("issue", (b.id,), it["type"], it["level"], it["article"], it["title"], it["rows"],
                                linked[0].id if linked and it["type"] == "ceiling" else None)
@@ -520,7 +522,11 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
         if facts[b.id]["main"] is None:
             # 只有一个总价的按总价报价（服务类常见），不说成“未识别”
             (lump if len(facts[b.id]["distinct"]) == 1 else no_table).append(crypto.decrypt_text(b.name_enc))
-        issues, verdicts = compliance.evaluate(b.id, per[b.id], facts[b.id], params, project.opening_date, place)
+        bidder_files = {f.id: f for f in files.values() if f.bidder_id == b.id}
+        done, total = ocr_progress(bidder_files)
+        partial = done < total or any(f.parser_version is None for f in bidder_files.values())
+        issues, verdicts = compliance.evaluate(b.id, per[b.id], facts[b.id], params, project.opening_date, place,
+                                               partial=partial)
         for it in issues:
             linked = kinds.get(it["kind"], [None])[0]
             items.append(_item("issue", (b.id,), it["type"], it["level"], it["article"], it["title"], it["rows"],

@@ -62,6 +62,7 @@ export const bidTypeLabel: Record<string, string> = {
   mixed: '混装', contact: '联系信息相同', props: '文件属性相同', image: '相同图片', similar: '相似段落', pricing: '报价规律',
   multi_total: '多个总价', sum_total: '合计与总价', ceiling: '超最高限价', low_price: '异常低价', uppercase: '大小写', row_calc: '分项计算', sum_rows: '合计计算',
   validity: '投标有效期', deposit: '保证金', cert_expired: '证书有效期', ai_instruction: '写给 AI 的指令',
+  construction_max: '工期', delivery_max: '交货期', warranty_min: '质保期', defect_min: '缺陷责任期', performance: '类似业绩',
   model_response: '模型判断', deviation_conflict: '偏离表与正文',
 }
 export const pricingTypes = new Set(['multi_total', 'sum_total', 'ceiling', 'low_price', 'uppercase', 'row_calc', 'sum_rows', 'manual_total_diff'])

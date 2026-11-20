@@ -60,10 +60,10 @@ def test_pdf_properties():
     assert not _authors({'creator': 'Fictive PDF Writer'}, 'pdf')
 
 
-def _checked(c, h, sm, uploads):
+def _checked(c, h, sm, uploads, *, tender_bytes=None):
     import json
     base = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]
-    c.post(base + "/files", headers=h, files={"files": ("虚构招标文件.docx", tender_with_logo())})
+    c.post(base + "/files", headers=h, files={"files": ("虚构招标文件.docx", tender_bytes or tender_with_logo())})
     drain(sm, base)
     r = c.post(base + "/files", headers=h, files=[("files", u) for u in uploads],
                data={"groups": json.dumps(list(BIDDERS[:len(uploads)]), ensure_ascii=False)})
@@ -126,6 +126,36 @@ def test_local_check_two_similar_pricing_compliance(owner, db_sessionmaker):
     assert pricing["bidders"][b]["above_lowest"] == "78,480.00" and pricing["bidders"][b]["above_lowest_pct"] == "3.00%"
     assert pricing["bidders"][x]["mark"] is None and pricing["bidders"][x]["not_compared"] == "多个总价，未参加比较"
     assert pricing["compare"]["n"] == 2
+
+
+def test_new_compliance_finding_and_matrix_survive_a_recheck(owner, db_sessionmaker):
+    from io import BytesIO
+    from docx import Document
+    from app.bid.checks import _run_once
+    from app.db.models import Task
+
+    def document(text):
+        doc = Document()
+        doc.add_paragraph(text)
+        stream = BytesIO()
+        doc.save(stream)
+        return stream.getvalue()
+
+    c, h, _ = owner
+    base, _, _ = _checked(c, h, db_sessionmaker, [("虚构投标文件.docx", document("投标交货期：21日历天。"))],
+                          tender_bytes=document("★ 交货期不得超过20日历天。"))
+    first = c.get(base + "/check", headers=h).json()
+    issue = next(i for i in first["items"] if i["type"] == "delivery_max")
+    cell = next(cell for cell in first["cells"] if cell["requirement_id"] == issue["requirement_id"])
+    assert cell["verdict"] == "no" and issue["level"] == "general"
+    assert cell["locs"] and issue["rows"][0]["places"]
+    assert any(entry["item_id"] == issue["id"] for entry in first["conclusion"]["verify"])
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(base.rsplit("/", 1)[-1]))
+        _run_once(db, task, progressive=False)
+        db.commit()
+    repeated = c.get(base + "/check", headers=h).json()
+    assert [i["id"] for i in repeated["items"] if i["type"] == "delivery_max"] == [issue["id"]]
 
 
 def test_new_compliance_checks_bid_commitments_and_performance_table():

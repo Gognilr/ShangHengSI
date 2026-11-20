@@ -43,7 +43,24 @@ export type BidMethod = 'local' | 'model' | 'manual'
 export type BidExtractState = null | 'redacting' | 'awaiting' | 'extracting' | 'done' | 'failed'
 export interface BidLoc { file_id: string; loc: string; start: number; end: number }
 export interface BidRequirement { id: string; group: BidGroup; text: string; locs: BidLoc[]; method: BidMethod; enabled: boolean; source: 'marked' | 'model' | 'default' | 'manual'; seq: number; file: string | null }
-export interface BidParameters { ceiling: string | null; currency: 'CNY' | 'USD' | 'EUR' | 'HKD'; validity_days: number | null; deposit: string | null; deposit_forms: string; consortium: boolean | null; tax_included: boolean | null; agency?: string }
+export interface BidParameters {
+  ceiling: string | null
+  currency: 'CNY' | 'USD' | 'EUR' | 'HKD'
+  validity_days: number | null
+  deposit: string | null
+  deposit_forms: string
+  consortium: boolean | null
+  tax_included: boolean | null
+  agency?: string
+  construction_max?: string | null
+  delivery_max?: string | null
+  warranty_min?: string | null
+  defect_min?: string | null
+  performance_from?: string | null
+  performance_until?: string | null
+  performance_amount?: string | null
+  performance_count?: number | null
+}
 export interface BidCount { total: number; covered: number; missing: (BidLoc & { text: string })[] }
 /** 受邀单位名单的一项：table 原文表格、scan 扫描页识别、text 原文段落、manual 手工 */
 export interface BidInvitee { name: string; source: 'table' | 'scan' | 'text' | 'manual'; file_id: string | null; loc: string | null }

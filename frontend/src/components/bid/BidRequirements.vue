@@ -18,7 +18,19 @@ const props = defineProps<{ projectId: string; policy: 'ai' | 'local_only'; disa
 const emit = defineEmits<{ changed: [] }>()
 
 const data = ref<BidRequirements>(), error = ref(''), saving = ref(false)
-const params = reactive<BidParameters>({ ceiling: null, currency: 'CNY', validity_days: null, deposit: null, deposit_forms: '', consortium: null, tax_included: null })
+const emptyParams: BidParameters = {
+  ceiling: null, currency: 'CNY', validity_days: null, deposit: null, deposit_forms: '',
+  consortium: null, tax_included: null, agency: '',
+  construction_max: null, delivery_max: null, warranty_min: null, defect_min: null,
+  performance_from: null, performance_until: null, performance_amount: null, performance_count: null,
+}
+const params = reactive({ ...emptyParams })
+const termFields = [
+  { key: 'construction_max', label: '工期上限', example: '如 120 日历天' },
+  { key: 'delivery_max', label: '交货期上限', example: '如 20 工作日' },
+  { key: 'warranty_min', label: '质保期下限', example: '如 24 个月' },
+  { key: 'defect_min', label: '缺陷责任期下限', example: '如 2 年' },
+] as const
 const paramsDirty = ref(false), paramError = ref('')
 const view = ref<'original' | 'ai'>('original'), focus = ref<BidLoc | null>(null)
 const current = ref<string | null>(null), editing = ref<string | null>(null), draft = ref('')
@@ -45,7 +57,7 @@ function grouping(v: string | null) {
 
 function accept(d: BidRequirements) {
   data.value = d
-  if (!paramsDirty.value) Object.assign(params, d.parameters)
+  if (!paramsDirty.value) Object.assign(params, emptyParams, d.parameters)
   if (timer) clearTimeout(timer)
   timer = extracting.value ? setTimeout(() => void load(), 2000) : undefined
   if (d.extract_state !== 'awaiting' && view.value === 'ai') view.value = 'original'
@@ -163,8 +175,18 @@ const notEnough = computed(() => {
           <div class="field"><span>接受联合体</span><SiSegmented :model-value="tri(params.consortium)" :options="triOptions" size="small" ariaLabel="是否接受联合体" @update:model-value="(v: string) => { params.consortium = fromTri(v); paramsDirty = true }" /></div>
           <div class="field"><span>报价含税</span><SiSegmented :model-value="tri(params.tax_included)" :options="triOptions" size="small" ariaLabel="报价是否含税" @update:model-value="(v: string) => { params.tax_included = fromTri(v); paramsDirty = true }" /></div>
         </div>
+        <div class="param-grid local-params" @input="paramsDirty = true">
+          <label v-for="term in termFields" :key="term.key">
+            <span>{{ term.label }}</span>
+            <el-input v-model="params[term.key]" :disabled="locked" :placeholder="term.example" maxlength="24" />
+          </label>
+          <label><span>类似业绩最低份数</span><el-input-number v-model="params.performance_count" :disabled="locked" :min="1" :max="999" :precision="0" :controls="false" placeholder="未写明" @change="paramsDirty = true" /></label>
+          <label><span>类似业绩单项最低金额（人民币元）</span><el-input v-model="params.performance_amount" :disabled="locked" class="num" maxlength="32" placeholder="未写明" /></label>
+          <label><span>类似业绩签订起日（含）</span><el-input v-model="params.performance_from" :disabled="locked" class="num" maxlength="10" placeholder="年-月-日" /></label>
+          <label><span>类似业绩签订止日（含）</span><el-input v-model="params.performance_until" :disabled="locked" class="num" maxlength="10" placeholder="年-月-日" /></label>
+        </div>
         <p v-if="paramError" class="error" role="alert">{{ paramError }}</p>
-        <div v-if="paramsDirty" class="param-actions"><el-button size="small" @click="paramsDirty = false; Object.assign(params, data.parameters)">还原</el-button><el-button size="small" type="primary" :loading="saving" @click="saveParams">保存参数</el-button></div>
+        <div v-if="paramsDirty" class="param-actions"><el-button size="small" @click="paramsDirty = false; Object.assign(params, emptyParams, data.parameters)">还原</el-button><el-button size="small" type="primary" :loading="saving" @click="saveParams">保存参数</el-button></div>
         <BidInvitees :items="data.invitees" :edited="data.invitees_edited" :disabled="locked" @save="saveInvitees" @locate="(l: BidLoc) => { focus = l }" />
       </section>
 
@@ -279,6 +301,7 @@ const notEnough = computed(() => {
 .param-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 24px; }
 .param-grid label, .param-grid .field { display: flex; flex-direction: column; gap: 6px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .param-grid .el-input-number { width: 100%; }
+.local-params { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--si-hair); }
 .grouped { margin-left: 8px; font-style: normal; color: var(--si-ink-2); }
 .param-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .list-head .si-overline .num { margin-left: 6px; color: var(--si-ink-4); }

@@ -3,6 +3,8 @@ import re
 from collections import defaultdict
 from itertools import combinations
 
+from app.bid.compliance import TERM_LABELS
+
 SERIOUS_GROUPS = {"veto", "substantive", "qualification"}
 LOCAL_CERTAIN = {"ceiling", "multi_total", "validity", "deposit"}
 TIER = {"certain": 0, "verify": 1, "reference": 2}
@@ -262,7 +264,7 @@ def build(view, bidders, *, local_only=False, model_state=None, feedback=None, s
         if item["source"] == "local" and kind in LOCAL_CERTAIN and level == "veto":
             weak_ocr = any(p.get("low_ocr") for row in item["rows"] for places in row.get("places", {}).values() for p in places)
             tier = "verify" if weak_ocr else "certain"
-        if kind == "cert_expired":
+        if kind in ("cert_expired", *TERM_LABELS, "performance"):
             tier = "verify"
         if kind == "row_calc":
             title = "报价计算待核对 1 处（扫描件识读）" if level == "hint" else "报价计算错误 1 处"
