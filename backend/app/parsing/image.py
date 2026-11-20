@@ -51,7 +51,7 @@ def ocr_nodes(img: Image.Image, prefix: str, page: int | None) -> tuple[list[Par
     if ratio != 1.0:
         for ln in lines:
             ln.bbox = [round(v / ratio, 2) for v in ln.bbox]
-    rest = [ln for i, ln in enumerate(lines) if i not in used]
+    rest = ocr.clean_lines([ln for i, ln in enumerate(lines) if i not in used], LOW_OCR_CONF)
     items = [(t.top, "table", t) for t in tables]
     items += [(b[1][1], "block", b) for b in map(ocr.block_of, ocr.merge_lines(rest))]
     items.sort(key=lambda it: it[0])

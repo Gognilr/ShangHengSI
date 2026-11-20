@@ -44,6 +44,21 @@ def test_block_conf_is_min_of_lines():
     assert conf == 0.5  # 取最低一行（V34-D-01）
 
 
+def test_clean_lines_signature_watermark_and_address():
+    """V35-E-02 问题 14、17：签字栏后低置信的乱字换成提示；扫描软件水印去掉；地址续行拼进同一块。"""
+    lines = ocr.clean_lines([
+        line("法定代表人（签字）：", 10, 10, 160, 30), line("氵亻", 170, 8, 210, 32, conf=0.41),
+        line("授权代表：郗珩", 10, 40, 160, 60, conf=0.55),
+        line("扫描全能王 创建", 400, 780, 520, 800),
+        line("地址：江苏省南京市虚构区", 10, 100, 240, 120), line("示例路18号", 10, 133, 120, 153),
+    ], 0.8)
+    texts = [ln.text for ln in lines]
+    assert texts[:3] == ["法定代表人（签字）：", ocr.SIGN_MARK, "授权代表：" + ocr.SIGN_MARK]
+    assert not any("扫描全能王" in t for t in texts)
+    blocks = [block_of(b)[0] for b in merge_lines(lines)]
+    assert "地址：江苏省南京市虚构区示例路18号" in blocks
+
+
 def test_recognize_real_engine_reused_and_telemetry_disabled(monkeypatch):
     import onnxruntime
 

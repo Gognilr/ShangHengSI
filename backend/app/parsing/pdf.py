@@ -285,10 +285,16 @@ def _mark_running(nodes: list[ParsedNode], heights: dict[int, float]) -> None:
             continue
         band = "header" if n.bbox[3] <= h * RUNNING_BAND else "footer" if n.bbox[1] >= h * (1 - RUNNING_BAND) else None
         key = _DIGITS.sub("#", _WS.sub("", n.text))
+        if not band and n.kind == "ocr_block" and len(key) <= 12 and not re.search(r"[：:]", key):
+            band = "noise"  # 扫描件里页面中部重复的短行（软件水印、角标，问题 14）
         if band and key:
             seen.setdefault((band, key), {}).setdefault(n.page, []).append(n)
     need = max(3, math.ceil(len(heights) / 2))
     for (band, _key), pages in seen.items():
+        if band == "noise":
+            if len(pages) < max(3, math.ceil(len(heights) * 0.8)):
+                continue
+            band = "header"
         if len(pages) >= need:
             for found in pages.values():
                 for n in found:
@@ -352,7 +358,7 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
     tables, used = ocr_table.find_tables(img, lines, scale)
     for ln in lines:  # 像素 → PDF 点
         ln.bbox = [v / scale for v in ln.bbox]
-    rest = [ln for i, ln in enumerate(lines) if i not in used]
+    rest = ocr.clean_lines([ln for i, ln in enumerate(lines) if i not in used], LOW_OCR_CONF)
     first_no = max((int(n.loc.rsplit('-B', 1)[1]) for n in existing if re.search(r'-B\d+$', n.loc)), default=0) + 1
     table_no = max((int(m[1]) for n in existing if (m := re.search(r'-T(\d+)-R\d+-C\d+$', n.loc))), default=0)
     items = [(t.top, "table", t) for t in tables]

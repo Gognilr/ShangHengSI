@@ -81,11 +81,41 @@ def join_text(parts: list[str]) -> str:
     return out
 
 
+# 扫描软件加在每页的水印（问题 14）：整行丢掉
+_WATERMARK = re.compile(r"(?i)扫描全能王|全能扫描王|CamScanner|夸克扫描|扫描王|由.{0,8}扫描创建|Scanned\s+(?:with|by)|轻闪扫描")
+# 签字栏标签（问题 14、17）：其后 OCR 低置信的 1～3 字多为手写签名，识读结果是乱字
+_SIGN_LABEL = re.compile(r"(?:签字|签名|签章|签署|代表人|授权代表|委托代理人|负责人|经办人)(?:[（(][^）)]{0,8}[）)])?[：:]?\s*$")
+_SIGN_VALUE = re.compile(r"^(.*?(?:签字|签名|签章|签署|代表人|授权代表|委托代理人|负责人|经办人)(?:[（(][^）)]{0,8}[）)])?[：:]\s*)"
+                         r"([^\s，。；：:、（）()]{1,3})\s*$")
+SIGN_MARK = "〔签字处请看原件〕"
+_ADDR_LABEL = re.compile(r"^(?:.{0,6})(?:地址|住所|地点|通讯地址|注册地址|联系地址|收货地址)[：:]")
+
+
+def clean_lines(lines: list[OcrLine], low_conf: float) -> list[OcrLine]:
+    """合并为块之前的行级清理：去扫描软件水印；签字栏后低置信的 1～3 字换成提示，不当作人名、也不外发乱字。"""
+    out = [ln for ln in lines if not _WATERMARK.search(ln.text)]
+    for ln in out:
+        if ln.conf >= low_conf:
+            continue
+        if m := _SIGN_VALUE.match(ln.text):
+            ln.text = m.group(1) + SIGN_MARK
+            continue
+        if len(re.sub(r"[\s\W_]", "", ln.text)) <= 3:
+            h = ln.bbox[3] - ln.bbox[1]
+            left = [o for o in out if o is not ln and o.bbox[2] <= ln.bbox[0] + h
+                    and min(o.bbox[3], ln.bbox[3]) - max(o.bbox[1], ln.bbox[1]) > 0.3 * h]
+            if left and _SIGN_LABEL.search(max(left, key=lambda o: o.bbox[2]).text):
+                ln.text = SIGN_MARK
+    return out
+
+
 def merge_lines(lines: list[OcrLine], min_gap: float = 3.0) -> list[list[OcrLine]]:
     """文本行合并为块（PDF 扫描页与图片共用）。
 
     规则与 PDF 文字页相同：行间距 ≤ max(min_gap, 0.6 × 上一行高度)，且下一行不以条款编号开头；
     与上一行纵向重叠过半（同一行上的左右两段）时另起一块。min_gap 与 bbox 同单位。
+    横向与上一行完全不重叠的行另起一块（页角水印、右侧日期不并入正文）。
+    地址续行（问题 17）：块首是地址标签、上一行没有以句读结束、本行不带冒号时，行距放宽到 1.2 倍行高，地址拼完整再识别。
     """
     blocks: list[list[OcrLine]] = []
     for ln in sorted(lines, key=lambda d: (d.bbox[1], d.bbox[0])):
@@ -93,7 +123,12 @@ def merge_lines(lines: list[OcrLine], min_gap: float = 3.0) -> list[list[OcrLine
             prev = blocks[-1][-1]
             prev_h = prev.bbox[3] - prev.bbox[1]
             gap = ln.bbox[1] - prev.bbox[3]
-            if -0.5 * prev_h <= gap <= max(min_gap, 0.6 * prev_h) and manual_clause_no(ln.text) is None:
+            limit = max(min_gap, 0.6 * prev_h)
+            if (_ADDR_LABEL.match(blocks[-1][0].text) and not re.search(r"[。；;：:]$", prev.text)
+                    and not re.search(r"[：:]", ln.text)):
+                limit = max(limit, 1.2 * prev_h)
+            x_overlap = min(ln.bbox[2], prev.bbox[2]) > max(ln.bbox[0], prev.bbox[0])
+            if -0.5 * prev_h <= gap <= limit and x_overlap and manual_clause_no(ln.text) is None:
                 blocks[-1].append(ln)
                 continue
         blocks.append([ln])
