@@ -60,6 +60,7 @@ function drop(event: DragEvent) { over.value = false; emit('drop', event) }
 .bidder { padding: 16px 20px 10px; }
 /* 抽屉里（V35-F-05）：不再套一层卡片 */
 .bidder.flat { padding: 0; }
+.bidder.flat .name { white-space: normal; overflow-wrap: anywhere; }
 .bidder.over { border-color: var(--si-brand); background: var(--si-blue-tint); }
 .head { display: flex; align-items: center; gap: 10px; min-height: 32px; }
 .code { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--si-surface-2); font: var(--si-font-code); color: var(--si-ink-2); }

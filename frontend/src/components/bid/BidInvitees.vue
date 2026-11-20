@@ -3,7 +3,7 @@ import { computed, nextTick, ref } from 'vue'
 import { LocateFixed, Pencil, Plus, X } from '@lucide/vue'
 import { bidInviteeSourceLabel, type BidInvitee, type BidLoc } from '@/api/bid'
 
-/** 第 1 步的“受邀投标单位”（V34-B-01b）：本地规则识别，可改、可删、可补；改过后重新抽取不覆盖。 */
+/** “招标文件与条款”抽屉里的“受邀投标单位”（V34-B-01b）：本地规则识别，可改、可删、可补；改过后重新抽取不覆盖。 */
 const props = defineProps<{ items: BidInvitee[]; edited: boolean; disabled: boolean }>()
 const emit = defineEmits<{ save: [names: string[]]; locate: [loc: BidLoc] }>()
 const adding = ref(false), draft = ref(''), editing = ref<number | null>(null), editDraft = ref('')
@@ -35,7 +35,7 @@ function locate(item: BidInvitee) { if (item.file_id && item.loc) emit('locate',
       <span class="hint">{{ items.length ? (needsCheck ? '含扫描页识别的名称，请对照原文核对' : edited ? '已按你的修改保存' : '从招标文件中识别，请核对') : '' }}</span>
       <el-button size="small" text :disabled="disabled" @click="startAdd"><Plus :size="14" :stroke-width="1.75" />补充</el-button>
     </div>
-    <p v-if="!items.length && !adding" class="hint empty">未在招标文件中识别到发标单位一览表；需要时可手工补充，第 2 步会按名单列出待交卡片。</p>
+    <p v-if="!items.length && !adding" class="hint empty">未在招标文件中识别到发标单位一览表；需要时可手工补充，投标人区会按名单列出待交文件的虚线卡。</p>
     <ul v-if="items.length" class="list">
       <li v-for="(item, index) in items" :key="item.name">
         <el-input v-if="editing === index" v-model="editDraft" size="small" maxlength="255" autofocus :aria-label="`修改 ${item.name}`" @keyup.enter="saveEdit(index)" @keyup.esc="editing = null" @blur="saveEdit(index)" />

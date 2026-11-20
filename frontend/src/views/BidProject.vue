@@ -31,6 +31,7 @@ void bidApi.folders().then(r => { folderList.value = r.folders }).catch(() => {}
 const categoryName = computed(() => categories.value.find(c => c.id === project.value?.category_id)?.name)
 const folderName = computed(() => project.value?.folder_id ? folderPath(folderList.value, project.value.folder_id) : '')
 const project = ref<BidProject>(), loading = ref(false), error = ref(''), pending = ref(false), percent = ref<number | null>(null)
+const check = ref<BidCheck>(), notice = ref('')  // 初审结果：结果栏、投标人卡片与抽屉里的签章页共用
 const phase = computed<'materials' | 'checking' | 'results'>(() => project.value?.stage === 'checked' ? 'results' : project.value?.stage === 'checking' ? 'checking' : 'materials')
 const locked = computed(() => phase.value !== 'materials')  // 开始检查后材料锁定
 const blocked = computed(() => pending.value || locked.value)  // 读取期间仍可继续加文件、改名称，新文件由同一次读取接着处理
@@ -97,7 +98,6 @@ async function mutate(action: () => Promise<BidProject>, whenLocked = false) {
 }
 
 // ---- 初审结果：项目页读取一次，结果栏、投标人卡片与抽屉里的签章页共用（V35-F-05）
-const check = ref<BidCheck>(), notice = ref('')
 const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}:${project.value?.check?.ocr?.done}:${project.value?.model?.state}:${project.value?.model?.done}`)
 const modelKey = computed(() => `${project.value?.model?.state}:${project.value?.model?.done}`)
 let saving = 0, checkRequest = 0

@@ -13,7 +13,7 @@ import BidSentDrawer from './BidSentDrawer.vue'
 import BidTenderText from './BidTenderText.vue'
 import BidInvitees from './BidInvitees.vue'
 
-/** 第 1 步：受邀单位、条款清单与完整性计数（V35-E-01：关键参数撤下，★ / 否决条款上带比对参数）。快捷键：J / K 上下、X 停用、E 改文字。 */
+/** 招标文件与条款抽屉（V35-F-05）：受邀单位、条款清单与完整性计数（V35-E-01：关键参数撤下，★ / 否决条款上带比对参数）。快捷键：J / K 上下、X 停用、E 改文字。 */
 const props = defineProps<{ projectId: string; policy: 'ai' | 'local_only'; disabled: boolean; tenderKey: string }>()
 const emit = defineEmits<{ changed: [] }>()
 

@@ -99,7 +99,7 @@ function hitParts(text: string) { return text.split('\u0000').map((t, i) => [t, 
 
     <template v-if="step">
       <p v-if="step.label && kind === 'item'" class="fact">{{ step.label }}</p>
-      <p v-if="step.value" class="same"><span class="k">相同的内容</span><mark>{{ step.value }}</mark></p>
+      <p v-if="step.value" class="same"><span class="k">{{ step.sides.length > 1 || step.pair ? '相同的内容' : '原文' }}</span><mark>{{ step.value }}</mark></p>
 
       <!-- 两段原文并排：相同处高亮 -->
       <div v-if="step.pair" class="pair">

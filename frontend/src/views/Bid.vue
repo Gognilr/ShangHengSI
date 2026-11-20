@@ -224,7 +224,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
           <el-select v-model="filters.category" class="cat" placeholder="全部分类" clearable aria-label="分类" @change="filters.page = 1">
             <el-option v-for="c in categories" :key="c.id" :label="c.enabled ? c.name : `${c.name}（已停用）`" :value="String(c.id)" />
           </el-select>
-          <el-date-picker v-model="filters.dates" class="dates" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开标从" end-placeholder="开标到" aria-label="开标日期" @change="filters.page = 1" />
+          <div class="dates"><el-date-picker v-model="filters.dates" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开标从" end-placeholder="开标到" aria-label="开标日期" @change="filters.page = 1" /></div>
         </div>
         <div class="list-head">
           <h2>{{ currentName }}</h2>
@@ -237,7 +237,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
             <span class="si-mod-icon si-lift-icon mod" aria-hidden="true"><FileStack :size="20" :stroke-width="1.75" /></span>
             <span class="main"><b :title="item.title">{{ item.title }}</b><span>{{ sub(item) }}</span></span>
             <span class="si-badge" :class="`is-${bidBadge(item).tone}`"><Check v-if="bidBadge(item).check" :size="13" :stroke-width="2.25" /><i v-else-if="bidBadge(item).dot" class="d" />{{ bidBadge(item).text }}</span>
-            <span class="at num">{{ formatDateTimeMinute(item.last_activity_at) }}</span>
+            <span class="at num" :title="formatDateTimeMinute(item.last_activity_at)">{{ formatDateTimeMinute(item.last_activity_at).slice(5) }}</span>
             <span class="more" @click.prevent.stop><RowMore><el-dropdown-item @click="openMove(item)">移到文件夹…</el-dropdown-item></RowMore></span>
             <ChevronRight class="chev" :size="16" :stroke-width="1.75" aria-hidden="true" />
           </router-link>
@@ -305,10 +305,11 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .tip { margin: 8px 10px 4px; font: var(--si-font-caption); color: var(--si-ink-4); }
 
 .list { flex: 1; min-width: 0; }
-.bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.search { width: 260px; }
-.cat { width: 150px; }
-.dates { width: 250px !important; flex: none; }
+.bar { display: flex; align-items: center; gap: 10px; }
+.search { flex: 1; min-width: 150px; max-width: 260px; }
+.cat { flex: none; width: 132px; }
+.dates { flex: none; width: 236px; }
+.dates :deep(.el-date-editor) { width: 100%; box-sizing: border-box; }
 .list-head { display: flex; align-items: baseline; gap: 12px; margin: 22px 0 12px; }
 .list-head h2 { margin: 0; font: var(--si-font-h3); color: var(--si-ink-1); }
 .reset { margin-left: auto; }
@@ -320,7 +321,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h3); color: var(--si-ink-1); }
 .main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-meta); color: var(--si-ink-3); }
-.at { flex: none; width: 92px; text-align: right; font: var(--si-font-caption); color: var(--si-ink-4); }
+.at { flex: none; width: 80px; text-align: right; font: var(--si-font-caption); color: var(--si-ink-4); }
 .more { flex: none; width: 28px; display: inline-flex; justify-content: center; }
 .chev { flex: none; color: var(--si-ink-4); }
 .none { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 24px; text-align: center; }
@@ -330,5 +331,5 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .pager { margin-top: 16px; }
 .move { width: 100%; }
 .move-name { margin: 0 0 12px; }
-@media (max-width: 1280px) { .dates { width: 220px !important; } .search { width: 200px; } }
+@media (max-width: 1400px) { .bar { flex-wrap: wrap; } }
 </style>
