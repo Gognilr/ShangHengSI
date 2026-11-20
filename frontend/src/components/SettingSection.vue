@@ -24,18 +24,13 @@ onBeforeUnmount(() => registry?.remove(id))
 </template>
 
 <style scoped>
-.setting-section { container-type: inline-size; padding: 24px 0; scroll-margin-top: 64px; }
-.setting-section + .setting-section { border-top: 1px solid var(--el-border-color-lighter); }
-.grid { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; }
-.stacked .grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+/* 每个分组一张卡片：标题、一句说明、字段（澄明 8.9）；stacked 标记保留，现在所有分节都是上标题下内容 */
+.setting-section { container-type: inline-size; padding: 24px; scroll-margin-top: 16px; background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); }
+.setting-section + .setting-section { margin-top: 16px; }
+.grid { display: flex; flex-direction: column; gap: 20px; }
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .head h2 { margin: 0; font: var(--si-font-h3); font-weight: 600; }
-.head p { margin: 4px 0 0; font: var(--si-font-meta); color: var(--el-text-color-secondary); }
-.head-actions { margin-top: 12px; }
-.stacked .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
-.stacked .head-actions { flex: none; margin-top: 0; }
+.head p { margin: 4px 0 0; font: var(--si-font-meta); color: var(--si-ink-3); }
+.head-actions { flex: none; }
 .body { min-width: 0; }
-/* 容器较窄时改为上下排列 */
-@container (max-width: 760px) {
-  .grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-}
 </style>

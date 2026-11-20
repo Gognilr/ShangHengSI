@@ -15,18 +15,20 @@ import TableSkeleton from '@/components/TableSkeleton.vue'
 import { docTypeLabel, stanceLabel, statusLabel, statusTag } from '@/utils/labels'
 import type { SaveResult } from '@/utils/save'
 import { useTableMaxHeight } from '@/utils/tableHeight'
-import { formatDate, formatDateTimeMinute } from '@/utils/time'
-import { FileSearch, Languages, MessageSquare, Mic, Scale, Search } from '@lucide/vue'
+import { formatShort } from '@/utils/time'
+import { FileSearch, FileText, Languages, MessageSquare, Mic, Scale, Search } from '@lucide/vue'
 
 const router = useRouter(), route = useRoute(), auth = useAuthStore()
 const emptyAction = computed(() => auth.can('use.assistant') ? ['去工作台', '/assistant']
   : auth.can('use.review') ? ['去文件审核', '/review'] : auth.can('use.bid') ? ['去标书初审', '/bid']
     : auth.can('use.meeting') ? ['去会议纪要', '/meeting'] : ['去翻译', '/translate'])
 const tableMax = useTableMaxHeight(300)
-function fileBadge(name: string) {
-  const ext = name.split('.').pop()?.toLowerCase() ?? ''
-  return ['docx', 'doc', 'wps', 'rtf'].includes(ext) ? 'DOC' : ['xlsx', 'xls', 'et'].includes(ext) ? 'XLS' : ext === 'pdf' ? 'PDF' : 'IMG'
+/** 模块图标方块的颜色（澄明 8.8）：文件审核青、标书橙、会议玫红、翻译蓝、对话灵紫 */
+function modStyle(row: HistoryItem) {
+  const m = row.kind === 'bid' ? 'bid' : row.kind === 'review' ? 'review' : row.purpose === 'meeting' ? 'meet' : row.purpose === 'translate' ? 'trans' : ''
+  return m ? { '--mc': `var(--si-m-${m})`, '--mc-soft': `var(--si-m-${m}-soft)` } : { '--mc': 'var(--si-ai)', '--mc-soft': 'var(--si-ai-soft)' }
 }
+const BADGE_CLASS: Record<string, string> = { busy: 'is-info', warning: 'is-mid', danger: 'is-hi', success: 'is-ok', primary: 'is-brand', info: '' }
 
 const items = ref<HistoryItem[]>([])
 const total = ref(0)
@@ -164,11 +166,11 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page page--wide history-page">
-    <header class="head"><h1 class="entry-title">历史记录</h1><span class="hint">共 {{ total }} 条 · 仅本人可见</span></header>
+  <div class="page history-page">
+    <header class="head"><h1 class="entry-title">历史记录</h1><p class="entry-lede">你做过的审核、标书、会议、翻译和对话都在这里，只有你自己能看到。共 {{ total }} 条。</p></header>
     <div class="filters">
-      <el-input v-model="q" aria-label="按文件名搜索" clearable placeholder="按文件名搜索" class="q" @input="typing" @keyup.enter="search" @clear="search"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
       <SiSegmented v-model="kind" :options="kindOptions" ariaLabel="类型" />
+      <el-input v-model="q" aria-label="按文件名搜索" clearable placeholder="按文件名搜索" class="q" @input="typing" @keyup.enter="search" @clear="search"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
       <el-date-picker
         v-model="range"
         type="daterange"
@@ -182,27 +184,33 @@ onMounted(load)
 
     <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />
 
-    <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['1fr', '150px', '68px', '68px', '148px', '104px', '92px']" />
-    <el-table v-else v-loading="loading" :data="items" :max-height="tableMax" class="history-table">
-      <template #empty><EmptyState :icon="FileSearch" title="没有历史记录" description="使用已开通的功能后，记录会出现在这里。"><el-button @click="router.push(emptyAction[1]!)">{{ emptyAction[0] }}</el-button></EmptyState></template>
-      <el-table-column prop="title" label="名称" min-width="300"><template #default="{ row }"><div class="file-cell"><span v-if="row.kind === 'review'" class="file-badge">{{ fileBadge(row.title) }}</span><span v-else class="file-badge"><Scale v-if="row.kind === 'bid'" :size="16" :stroke-width="1.75" /><Mic v-else-if="row.purpose === 'meeting'" :size="16" :stroke-width="1.75" /><Languages v-else-if="row.purpose === 'translate'" :size="16" :stroke-width="1.75" /><MessageSquare v-else :size="16" :stroke-width="1.75" /></span><span class="file-text"><span class="file-title" :title="row.title">{{ row.title }}</span><span class="file-sub">{{ subline(row) }}</span></span></div></template></el-table-column>
-      <el-table-column label="状态" width="150">
-        <template #default="{ row }"><span class="status" :class="`tone-${statusView(row).tone}`"><i class="dot" />{{ statusView(row).text }}</span></template>
-      </el-table-column>
-      <el-table-column label="高风险" width="68" align="right"><template #default="{ row }"><span class="num" :class="row.high_count > 0 && hasRun(row) ? 'high-count' : 'zero'">{{ hasRun(row) ? row.high_count : '—' }}</span></template></el-table-column>
-      <el-table-column label="待处理" width="68" align="right"><template #default="{ row }"><span class="num" :class="row.pending_count > 0 && hasRun(row) ? 'pending-count' : 'zero'">{{ hasRun(row) ? row.pending_count : '—' }}</span></template></el-table-column>
-      <el-table-column label="最近活动" width="148"><template #default="{ row }"><span class="num">{{ formatDateTimeMinute(row.last_activity_at) }}</span></template></el-table-column>
-      <el-table-column label="保留至" width="104"><template #default="{ row }"><span class="num" :class="{ expiring: expiring(row.task_expires_at) }">{{ row.task_expires_at ? formatDate(row.task_expires_at) : row.kind === 'session' || row.kind === 'bid' ? '—' : '永久' }}</span></template></el-table-column>
-      <el-table-column label="" width="92" align="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="open(row)">{{ openLabel(row) }}</el-button>
-          <RowMore>
-            <el-dropdown-item v-if="canExport(row)" :disabled="!!exporting" @click="exportReport(row)">{{ row.kind === 'bid' ? '导出问题清单' : '导出最新一轮报告' }}</el-dropdown-item>
-            <el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item>
-          </RowMore>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="panel table-card">
+      <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['1fr', '120px', '170px', '110px', '80px', '92px']" />
+      <el-table v-else v-loading="loading" :data="items" :max-height="tableMax" class="history-table">
+        <template #empty><EmptyState :icon="FileSearch" title="没有历史记录" description="使用已开通的功能后，记录会出现在这里。"><el-button @click="router.push(emptyAction[1]!)">{{ emptyAction[0] }}</el-button></EmptyState></template>
+        <el-table-column prop="title" label="名称" min-width="300"><template #default="{ row }"><div class="file-cell"><span class="si-mod-icon mod" :style="modStyle(row)"><FileText v-if="row.kind === 'review'" :size="18" :stroke-width="1.75" /><Scale v-else-if="row.kind === 'bid'" :size="18" :stroke-width="1.75" /><Mic v-else-if="row.purpose === 'meeting'" :size="18" :stroke-width="1.75" /><Languages v-else-if="row.purpose === 'translate'" :size="18" :stroke-width="1.75" /><MessageSquare v-else :size="18" :stroke-width="1.75" /></span><span class="file-text"><span class="file-title" :title="row.title">{{ row.title }}</span><span class="file-sub">{{ subline(row) }}</span></span></div></template></el-table-column>
+        <el-table-column label="状态" width="130">
+          <template #default="{ row }"><span class="si-badge" :class="BADGE_CLASS[statusView(row).tone]"><i class="d" />{{ statusView(row).text }}</span></template>
+        </el-table-column>
+        <el-table-column label="问题摘要" width="180">
+          <template #default="{ row }">
+            <span v-if="hasRun(row) && (row.high_count > 0 || row.pending_count > 0)" class="sum"><span v-if="row.high_count > 0" class="si-badge is-hi">严重 {{ row.high_count }}</span><span v-if="row.pending_count > 0" class="si-badge is-mid">待处理 {{ row.pending_count }}</span></span>
+            <span v-else class="zero">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="最近活动" width="120"><template #default="{ row }"><span class="num">{{ formatShort(row.last_activity_at) }}</span></template></el-table-column>
+        <el-table-column label="保留至" width="96"><template #default="{ row }"><span class="num" :class="{ expiring: expiring(row.task_expires_at) }">{{ row.task_expires_at ? formatShort(row.task_expires_at, false) : row.kind === 'session' || row.kind === 'bid' ? '—' : '永久' }}</span></template></el-table-column>
+        <el-table-column label="" width="92" align="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="open(row)">{{ openLabel(row) }}</el-button>
+            <RowMore>
+              <el-dropdown-item v-if="canExport(row)" :disabled="!!exporting" @click="exportReport(row)">{{ row.kind === 'bid' ? '导出问题清单' : '导出最新一轮报告' }}</el-dropdown-item>
+              <el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item>
+            </RowMore>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <div class="pager"><el-pagination
       v-model:current-page="page"
@@ -216,27 +224,19 @@ onMounted(load)
 </template>
 
 <style scoped>
-.head { display: flex; align-items: baseline; gap: 16px; }
-.head .entry-title { margin: 0 0 16px; }
-.head .hint { margin: 0; }
-.filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-.q { width: 260px; }
+.history-page { max-width: 1200px; }
+.filters { align-items: center; }
+.q { width: 240px; }
 .filters :deep(.el-date-editor) { width: 280px; margin-left: auto; }
+.table-card { padding: 0; overflow: hidden; }
 .pager { display: flex; margin-top: 20px; justify-content: flex-end; }
-.history-table :deep(.el-table__row) { height: 56px; }
+.history-table :deep(.el-table__row) { height: 64px; }
 .file-cell { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.mod { width: 36px; height: 36px; border-radius: 10px; }
 .file-text { display: flex; flex-direction: column; min-width: 0; }
-.file-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-1); }
+.file-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
 .file-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-caption); color: var(--si-ink-3); }
-.file-badge { flex: none; width: 30px; height: 30px; display: grid; place-items: center; box-sizing: border-box; border: 1px solid var(--si-hair); border-radius: 6px; color: var(--si-ink-3); font: var(--si-font-caption); }
-.status { display: inline-flex; align-items: center; gap: 6px; color: var(--si-ink-2); }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--si-ink-4); }
-.tone-primary .dot, .tone-success .dot { background: var(--si-ink-2); }
-.tone-busy .dot { background: transparent; border: 1.5px solid var(--si-brand); box-sizing: border-box; }
-.tone-warning .dot { background: var(--si-warn-ink); }
-.tone-danger .dot { background: var(--si-danger-ink); }
+.sum { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .expiring { color: var(--si-warn-ink); }
 .zero { color: var(--si-ink-5); }
-.high-count { color: var(--si-danger-ink); font-weight: 600; }
-.pending-count { color: var(--si-warn-ink); font-weight: 600; }
 </style>

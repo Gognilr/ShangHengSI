@@ -9,15 +9,17 @@ export type FxLevel = Exclude<FxChoice, 'auto'>
 export type FontSize = 'md' | 'lg' | 'xl'
 
 const STORAGE_KEY = 'si.appearance'
-const SHELLS: Shell[] = ['night', 'light']
+/** 主题选择：浅色、深色、跟随系统（澄明 8.9）；shell 是据此得出的实际外壳 */
+export type ThemeChoice = Shell | 'system'
+const THEMES: ThemeChoice[] = ['night', 'light', 'system']
 const CHOICES: FxChoice[] = ['auto', 'full', 'lite', 'off']
 const SIZES: FontSize[] = ['md', 'lg', 'xl']
 
-function readStored(): { shell: Shell; fx: FxChoice; fs: FontSize } {
+function readStored(): { shell: ThemeChoice; fx: FxChoice; fs: FontSize } {
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as { shell?: unknown; fx?: unknown; fs?: unknown }
     return {
-      shell: SHELLS.includes(value.shell as Shell) ? value.shell as Shell : 'light',
+      shell: THEMES.includes(value.shell as ThemeChoice) ? value.shell as ThemeChoice : 'light',
       fx: CHOICES.includes(value.fx as FxChoice) ? value.fx as FxChoice : 'auto',
       fs: SIZES.includes(value.fs as FontSize) ? value.fs as FontSize : 'md',
     }
@@ -43,7 +45,11 @@ function isSoftwareRendering(): boolean {
 
 export const useAppearanceStore = defineStore('appearance', () => {
   const stored = readStored()
-  const shell = ref<Shell>(stored.shell)
+  const themeChoice = ref<ThemeChoice>(stored.shell)
+  const darkMedia = matchMedia('(prefers-color-scheme: dark)')
+  const systemDark = ref(darkMedia.matches)
+  darkMedia.addEventListener('change', e => { systemDark.value = e.matches })
+  const shell = computed<Shell>(() => themeChoice.value === 'system' ? (systemDark.value ? 'night' : 'light') : themeChoice.value)
   const fxChoice = ref<FxChoice>(stored.fx)
   const fontSize = ref<FontSize>(stored.fs)
   const reducedMotion = ref(false)
@@ -75,9 +81,9 @@ export const useAppearanceStore = defineStore('appearance', () => {
     document.documentElement.dataset.fx = fx
     document.documentElement.dataset.fs = fs
   }, { immediate: true })
-  watch([shell, fxChoice, fontSize], ([s, fx, fs]) => {
+  watch([themeChoice, fxChoice, fontSize], ([s, fx, fs]) => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ shell: s, fx, fs })) } catch { /* 只影响下次打开 */ }
   })
 
-  return { shell, fxChoice, fontSize, fxResolved, fxReason, init, reportDroppedFrames }
+  return { shell, themeChoice, fxChoice, fontSize, fxResolved, fxReason, init, reportDroppedFrames }
 })

@@ -22,7 +22,7 @@ const auth = useAuthStore()
 const appearance = useAppearanceStore()
 // 外壳一键切换（V31Q-95）：与“设置 · 个人 · 外观”同一份设置
 const shellNext = computed(() => appearance.shell === 'night' ? '浅色' : '深色')
-function toggleShell() { appearance.shell = appearance.shell === 'night' ? 'light' : 'night' }
+function toggleShell() { appearance.themeChoice = appearance.shell === 'night' ? 'light' : 'night' }
 const sessions = useSessionsStore()
 const route = useRoute()
 const router = useRouter()

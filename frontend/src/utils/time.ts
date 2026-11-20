@@ -58,3 +58,13 @@ export function formatDateTimeMinute(value: string | Date | null | undefined): s
   const full = formatDateTime(value)
   return full === '—' ? full : full.slice(0, 16)
 }
+
+const THIS_YEAR = () => formatDate(new Date()).slice(0, 4)
+
+/** 列表用短格式（澄明 8.8）：同一年内省略年份，写作“11-20 14:06”；withTime 为 false 时只写日期“11-20”。 */
+export function formatShort(value: string | Date | null | undefined, withTime = true): string {
+  const full = formatDateTimeMinute(value)
+  if (full === '—') return full
+  const text = withTime ? full : full.slice(0, 10)
+  return text.startsWith(THIS_YEAR()) ? text.slice(5) : text
+}

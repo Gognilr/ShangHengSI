@@ -109,6 +109,7 @@
 .si-badge.is-info { background: var(--si-info-soft); color: var(--si-info-ink); }
 .si-badge.is-mid { background: var(--si-warn-soft); color: var(--si-warn-ink); }
 .si-badge.is-hi { background: var(--si-danger-soft); color: var(--si-danger-ink); }
+.si-badge.is-ok { background: var(--si-ok-soft); color: var(--si-ok-ink); }
 .si-badge.is-brand { background: var(--si-blue-tint); color: var(--si-blue-ink); }
 .si-badge.is-ai { background: var(--si-ai-soft); color: var(--si-ai-ink); }
 .si-badge.is-line { background: transparent; border: 1px solid var(--si-hair); color: var(--si-ink-2); }

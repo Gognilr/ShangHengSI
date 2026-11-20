@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules, InputInstance } from 'element-plus'
-import { Lock, ShieldCheck, User } from '@lucide/vue'
+import { EyeOff, ListChecks, Lock, ShieldCheck, User } from '@lucide/vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
-import LoginWords from '@/components/brand/LoginWords.vue'
 import SiLogo from '@/components/brand/SiLogo.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -89,33 +88,37 @@ async function submit() {
   <div class="login-page">
     <div class="login-shell">
       <section class="brand-area" aria-label="商衡SI">
-        <LoginWords class="brand-words" />
+        <div class="si-glow" aria-hidden="true"><i /><i /><i /></div>
         <div class="brand-copy">
           <SiLogo size="hero" intro />
-          <div class="brand-rule" />
-          <h2>先在本机脱敏，<br />再交给模型初审</h2>
-          <p class="brand-description">面向商务、合同与法律文件的智能审查。</p>
+          <h2>商务文件的安全初审助手</h2>
+          <p class="brand-description">原件留在本机，真实名称遮住后才交给模型，结果回来在本机还原。</p>
+          <ul class="points">
+            <li><span class="pi"><Lock :size="18" :stroke-width="1.75" /></span>原件不出内网</li>
+            <li><span class="pi"><EyeOff :size="18" :stroke-width="1.75" /></span>名称发出前遮住</li>
+            <li><span class="pi"><ListChecks :size="18" :stroke-width="1.75" /></span>几分钟出问题清单</li>
+          </ul>
         </div>
-        <footer>© 2026 商衡SI · 企业安全脱敏与智能审查平台 · V3.4.0</footer>
+        <footer>V3.4.0 · 仅限公司内网使用</footer>
       </section>
       <div class="login-pane">
-      <section class="login-form" aria-labelledby="login-title">
-        <h1 id="login-title">登录</h1>
-        <p class="subtitle">请使用内部分发的账号登录</p>
-        <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="submit">
-          <el-form-item label="用户名" prop="username">
-            <el-input ref="usernameRef" v-model="form.username" aria-label="用户名" autocomplete="username"><template #prefix><User :size="16" :stroke-width="1.75" /></template></el-input>
-          </el-form-item>
-          <el-form-item label="密码" prop="password">
-            <el-input ref="passwordRef" v-model="form.password" aria-label="密码" type="password" show-password autocomplete="current-password"><template #prefix><Lock :size="16" :stroke-width="1.75" /></template></el-input>
-          </el-form-item>
-          <div class="remember-row"><el-checkbox v-model="remember">记住用户名和密码</el-checkbox><span class="hint">密码由浏览器保存</span></div>
-          <el-alert v-if="errorText" type="error" :closable="false" show-icon :title="errorText" class="error" />
-          <el-button type="primary" native-type="submit" :loading="submitting" class="submit">登录</el-button>
-        </el-form>
-        <p class="account-help">账号由管理员统一分发，忘记密码请联系管理员重置</p>
-        <a class="cert-link" :href="certUrl" target="_blank" rel="noopener"><ShieldCheck :size="16" :stroke-width="1.75" /><span>下载根证书</span><span class="hint">浏览器提示“不安全”时安装</span></a>
-      </section>
+        <SiLogo class="pane-logo" size="greet" />
+        <section class="login-form si-card" aria-labelledby="login-title">
+          <h1 id="login-title">登录</h1>
+          <p class="subtitle">请使用内部分发的账号登录</p>
+          <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="submit">
+            <el-form-item label="用户名" prop="username">
+              <el-input ref="usernameRef" v-model="form.username" aria-label="用户名" autocomplete="username" @input="errorText = ''"><template #prefix><User :size="16" :stroke-width="1.75" /></template></el-input>
+            </el-form-item>
+            <el-form-item label="密码" prop="password" :error="errorText">
+              <el-input ref="passwordRef" v-model="form.password" aria-label="密码" type="password" show-password autocomplete="current-password" @input="errorText = ''"><template #prefix><Lock :size="16" :stroke-width="1.75" /></template></el-input>
+            </el-form-item>
+            <div class="remember-row"><el-checkbox v-model="remember">记住账号</el-checkbox><span class="hint">密码由浏览器保存</span></div>
+            <el-button type="primary" native-type="submit" :loading="submitting" class="submit">登录</el-button>
+          </el-form>
+          <p class="account-help">账号由管理员统一分发，忘记密码请联系管理员重置</p>
+          <a class="cert-link" :href="certUrl" target="_blank" rel="noopener"><ShieldCheck :size="16" :stroke-width="1.75" /><span>下载根证书</span><span class="hint">浏览器提示“不安全”时安装</span></a>
+        </section>
       </div>
     </div>
   </div>
@@ -124,33 +127,35 @@ async function submit() {
 <style scoped>
 :global(body:has(.login-page)) { min-width: 0; }
 .login-page { min-height: 100vh; min-height: 100svh; background: var(--si-bg-canvas); }
-.login-shell { display: grid; grid-template-columns: 1fr 1fr; min-height: inherit; }
-.brand-area { min-width: 0; box-sizing: border-box; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 64px clamp(32px, 6vw, 112px) 112px; background: var(--si-bg-side); border-right: 1px solid var(--si-hair-faint); }
-.brand-words { --si-ink-4: var(--si-ink-5); }
+.login-shell { display: grid; grid-template-columns: 55fr 45fr; min-height: inherit; }
+/* 品牌区：深色底，氛围光只在这里（澄明 8.1） */
+.brand-area { min-width: 0; box-sizing: border-box; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 64px clamp(40px, 6vw, 120px) 96px; overflow: hidden; background: var(--si-island-bg); color: var(--si-island-ink); }
 .brand-copy, footer { position: relative; }
-.brand-rule { width: 32px; height: 2px; margin: 32px 0; background: var(--si-logo-a); }
-h2 { font: var(--si-font-display); margin: 0 0 20px; color: var(--si-ink-1); }
-.brand-description { font: var(--si-font-reading); color: var(--si-ink-3); margin: 0; }
-.login-pane { display: flex; align-items: center; justify-content: center; padding: 40px 24px; box-sizing: border-box; min-width: 0; }
-.login-form { width: 320px; max-width: 100%; }
-h1 { font: var(--si-font-title-lg); margin: 0 0 8px; }
-.subtitle { color: var(--si-ink-3); margin: 0 0 32px; }
-.login-form :deep(.el-input) { --el-input-height: 40px; }
-.login-form :deep(.el-form-item) { margin-bottom: 24px; }
+.brand-copy :deep(.wordmark) { color: var(--si-island-ink); }
+.brand-copy :deep(.wordmark em) { color: var(--si-brand-2); }
+h2 { font: var(--si-font-display); margin: 40px 0 16px; color: var(--si-island-ink); }
+.brand-description { margin: 0; max-width: 520px; font: var(--si-font-reading); font-size: calc(16px * var(--si-fs)); color: color-mix(in srgb, var(--si-island-ink) 70%, transparent); }
+.points { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 40px 0 0; padding: 0; list-style: none; font: var(--si-font-label); color: var(--si-island-ink); }
+.points li { display: flex; align-items: center; gap: 10px; }
+.pi { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--si-island-ink) 10%, transparent); color: var(--si-brand-2); }
+footer { position: absolute; bottom: 28px; left: clamp(40px, 6vw, 120px); right: 32px; font: var(--si-font-caption); color: color-mix(in srgb, var(--si-island-ink) 55%, transparent); }
+.login-pane { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 40px 24px; box-sizing: border-box; min-width: 0; }
+.pane-logo { display: none; }
+.login-form { width: 400px; max-width: 100%; padding: 36px 36px 28px; border-radius: var(--si-radius-sheet); box-shadow: var(--si-shadow-2); box-sizing: border-box; }
+h1 { font: var(--si-font-title-lg); margin: 0 0 6px; }
+.subtitle { color: var(--si-ink-3); margin: 0 0 28px; }
+.login-form :deep(.el-input) { --el-input-height: 44px; }
+.login-form :deep(.el-form-item) { margin-bottom: 22px; }
 .remember-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 8px; margin: -4px 0 20px; }
-.error { margin-bottom: 16px; }
-.submit { width: 100%; height: 40px; }
+.submit { width: 100%; height: 44px; }
 .account-help { font: var(--si-font-meta); color: var(--si-ink-3); margin: 20px 0 0; }
-.cert-link { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--si-hair); color: var(--si-blue-ink); font: var(--si-font-label); text-decoration: none; }
+.cert-link { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--si-hair); color: var(--si-blue-ink); font: var(--si-font-label); text-decoration: none; }
 .cert-link:hover > span:first-of-type { text-decoration: underline; }
 .cert-link .hint { font: var(--si-font-caption); color: var(--si-ink-3); }
-footer { position: absolute; bottom: 28px; left: clamp(32px, 6vw, 112px); right: 32px; font: var(--si-font-caption); color: var(--si-ink-3); }
-@media (max-width: 767px) {
+/* 宽度小于 1280：隐去品牌区，只留标志和登录卡 */
+@media (max-width: 1279px) {
   .login-shell { grid-template-columns: 1fr; }
-  .brand-area { padding: 32px 24px; border-right: 0; border-bottom: 1px solid var(--si-hair-faint); }
-  .brand-rule { margin: 20px 0; }
-  h2 { font: var(--si-font-title-lg); margin-bottom: 12px; }
-  footer { position: relative; inset: auto; margin-top: 28px; }
-  .login-pane { padding: 40px 24px; }
+  .brand-area { display: none; }
+  .pane-logo { display: inline-flex; }
 }
 </style>

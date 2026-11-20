@@ -366,3 +366,7 @@ html[data-fs="xl"] { --si-fs: 1.14; }
 /* 纸面：浅色外壳白纸深字，深色外壳暗纸浅字 */
 .si-paper { color-scheme: light; background: var(--si-paper); color: var(--si-paper-ink); }
 html[data-shell="night"] .si-paper { color-scheme: dark; }
+
+/* 主题缩略图（设置 · 个人）：不论当前外壳，两张缩略图固定显示浅色与深色的样子 */
+.si-thumb-light { --th-bg: #F3F6F9; --th-side: #FFFFFF; --th-card: #FFFFFF; --th-line: #E1E6ED; --th-ink: #BCC5D1; --th-brand: #078A76; }
+.si-thumb-dark { --th-bg: #0B0F14; --th-side: #121820; --th-card: #161D26; --th-line: #222B36; --th-ink: #434E5C; --th-brand: #33C0A6; }
