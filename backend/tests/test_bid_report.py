@@ -1,6 +1,7 @@
 """V34-B-07：整套虚构场景按 golden 标注核对线索与等级；Word 报告的内容与语气；历史与搜索整合。样本全部虚构。"""
 import io
 import json
+import uuid
 from pathlib import Path
 
 import pytest
@@ -260,6 +261,82 @@ def test_report_requires_export_permission(make_user, login, db_sessionmaker):
     h = {"X-CSRF-Token": csrf}
     base = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]
     assert c.get(base + "/report", headers=h).status_code == 403
+    assert c.get(base + f"/bidders/{uuid.uuid4()}/clarification").status_code == 403
+
+
+def test_bidder_clarification_isolation(owner, make_user, login, db_sessionmaker, tmp_path):
+    from app.db.models import BidCell, BidItem, BidProject, BidRequirement, DocNode, Task, TaskFile
+    from app.security import crypto
+    from tests.test_bid_projects import grant
+
+    c, h, _ = owner
+    base, ids = scenario(c, h, db_sessionmaker)
+
+    def endpoint(project, bidder):
+        return f"{project}/bidders/{bidder}/clarification"
+
+    assert c.get(endpoint(base, ids[0])).status_code == 409  # 暂无事项
+    other = make_user("clarification_admin", role="admin")
+    grant(db_sessionmaker, other)
+    stranger, _ = login(other.username)
+    assert stranger.get(endpoint(base, ids[0])).status_code == 404
+    new = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]
+    assert c.get(endpoint(new, ids[0])).status_code == 404
+    new_bid = c.post(new + "/bidders", headers=h, json={"name": "虚构单位"}).json()["bidders"][0]["id"]
+    assert c.get(endpoint(new, new_bid)).status_code == 409
+
+    # 补上异常低价和模拟响应结果，把他家信息故意混入证据说明及位置。
+    secret = "9,876,543.21"
+    task_id, bid = uuid.UUID(base.rsplit("/", 1)[-1]), uuid.UUID(ids[0])
+    with db_sessionmaker() as db:
+        db.get(Task, task_id).policy = "ai"
+        db.get(BidProject, task_id).model_state = "done"
+        file = db.query(TaskFile).filter_by(task_id=task_id, bidder_id=bid, original_name="投标文件0-1.docx").one()
+        nodes = db.query(DocNode).filter_by(file_id=file.id).order_by(DocNode.ord).all()
+        quote = next(n for n in nodes if "投标总价" in crypto.decrypt_text(n.text_enc))
+        summary, detail, mixed = nodes[-3:]
+        summary.text_enc = crypto.encrypt_text("偏离表：现场调试由我方负责。")
+        detail.text_enc = crypto.encrypt_text("技术方案：现场调试由招标方负责。")
+        mixed.text_enc = crypto.encrypt_text(f"{BIDDERS[1]}的另一笔报价 {secret}")
+        foreign_file = db.query(TaskFile).filter_by(task_id=task_id, bidder_id=uuid.UUID(ids[1]), original_name="投标文件1-1.docx").one()
+        place = {"file_id": str(file.id), "loc": quote.loc, "page": quote.page}
+        response_places = [{"file_id": str(file.id), "loc": n.loc, "page": n.page} for n in (summary, detail)]
+        foreign = {"file_id": str(foreign_file.id), "loc": quote.loc, "page": 88}
+        suspect = {"file_id": str(file.id), "loc": mixed.loc, "page": mixed.page}
+        req = BidRequirement(task_id=task_id, group="substantive", text_enc=crypto.encrypt_text("提供设备调试方案。"),
+                             enabled=True, source="manual", method="model", seq=99)
+        db.add(req)
+        db.flush()
+        db.add(BidCell(task_id=task_id, requirement_id=req.id, bidder_id=bid, source="model",
+                       verdict="unclear", cite="unverified", locs=response_places,
+                       reason_enc=crypto.encrypt_text(f"{BIDDERS[1]} {secret}")))
+        for type_, source, rid in (("low_price", "local", None), ("deviation_conflict", "model", req.id)):
+            places = [place, foreign, suspect] if type_ == "low_price" else response_places
+            db.add(BidItem(task_id=task_id, bidder_ids=[ids[0]], requirement_id=rid, type=type_, kind="issue",
+                           level="general", source=source, evidence_enc=crypto.encrypt_text(json.dumps({
+                               "title": f"{BIDDERS[1]}平均 {secret}",
+                               "rows": [{"value": secret, "places": {ids[0]: places}}],
+                           }))))
+        db.commit()
+
+    for index, (bid, expected) in enumerate(zip(ids, ("成本测算依据", "大写与小写", "不同报价")), 1):
+        response = c.get(endpoint(base, bid))
+        assert response.status_code == 200, response.text
+        assert "wordprocessingml" in response.headers["content-type"]
+        notice = _text(response.content)
+        assert BIDDERS[index - 1] in notice and expected in notice
+        assert all(name not in notice for name in BIDDERS if name != BIDDERS[index - 1])
+        assert all(token in notice for token in ("原文位置", "摘录", "盖章", "签字", "回复日期"))
+        assert all(token not in notice for token in (secret, "其余各家", "第 88 页", PASSWORD, "串通"))
+        if index == 1:
+            assert all(token in notice for token in ("偏离表", "提供设备调试方案", "请说明贵方对下列要求的响应情况"))
+        (tmp_path / f"clarification-{index}.docx").write_bytes(response.content)
+    results = c.get(base + "/check").json()
+    (tmp_path / "project.json").write_text(json.dumps(c.get(base).json(), ensure_ascii=False), encoding="utf-8")
+    (tmp_path / "results.json").write_text(json.dumps(results, ensure_ascii=False), encoding="utf-8")
+    upper = next(i for i in results["items"] if i["type"] == "uppercase" and i["bidder_ids"] == [ids[1]])
+    assert c.patch(f"{base}/items/{upper['id']}", headers=h, json={"review_status": "excluded"}).status_code == 200
+    assert c.get(endpoint(base, ids[1])).status_code == 409
 
 
 def test_history_type_filter_and_search(owner, db_sessionmaker):

@@ -35,13 +35,24 @@ const bidFiles = computed(() => project.value?.files.filter(f => f.bidder_id) ??
 const filesOf = (bidder: string) => project.value?.files.filter(f => f.bidder_id === bidder) ?? []
 const rowErrors = reactive<Record<string, string>>({})  // 密码错误等提示显示在对应文件行，不只在页顶
 const adding = ref(false), newName = ref(''), sentOpen = ref(false)
-const auth = useAuthStore(), exporting = ref(false)
+const auth = useAuthStore(), exporting = ref(false), clarifying = ref(false)
 async function exportReport() {
   if (exporting.value) return
   exporting.value = true
   try { await reportApi.bid(id.value, 'full') }
   catch (e) { error.value = e instanceof ApiError ? e.message : '导出失败，请重试' }
   finally { exporting.value = false }
+}
+async function exportClarification(bidderId: string) {
+  if (clarifying.value) return
+  clarifying.value = true
+  error.value = ''
+  const current = generation
+  try { await reportApi.bidClarification(id.value, bidderId) }
+  catch (e) {
+    if (current === generation) error.value = e instanceof ApiError ? e.message : '澄清通知书导出失败，请重试'
+  }
+  finally { clarifying.value = false }
 }
 const picker = ref<HTMLInputElement>(), folders = ref<HTMLInputElement>(), target = ref<string>(), targetName = ref<string>()
 // 受邀单位名单（V34-B-01b）：名单中尚无分组的单位显示为待交卡片，拖入文件时才建分组；已有分组只是简称时提示改用全称
@@ -281,6 +292,11 @@ async function removeProject() {
           <el-button v-if="step === 2 && project.stage === 'checked'" type="primary" :loading="exporting" :disabled="!auth.can('use.export')" @click="exportReport"><FileDown :size="16" :stroke-width="1.75" />导出初审疑点报告</el-button>
           <el-button :disabled="pending" @click="openSettings"><Settings2 :size="16" :stroke-width="1.75" />项目设置</el-button>
           <RowMore :disabled="pending">
+            <template v-if="step === 2 && project.stage === 'checked' && auth.can('use.export')">
+              <el-dropdown-item v-for="bidder in project.bidders" :key="bidder.id" :disabled="clarifying" @click="exportClarification(bidder.id)">
+                <span class="clarification-label" :title="bidder.name">导出澄清通知书 · {{ bidder.name }}</span>
+              </el-dropdown-item>
+            </template>
             <el-dropdown-item v-if="project.stage === 'checked'" :disabled="reopenBlock" @click="reopen">返回修改材料</el-dropdown-item>
             <el-dropdown-item v-else :disabled="blocked || !project.files.length" @click="reparse">重新解析全部文件</el-dropdown-item>
             <el-dropdown-item divided class="danger-item" @click="removeProject">删除项目</el-dropdown-item>
@@ -504,4 +520,5 @@ h1 { margin: 0; font: var(--si-font-title); color: var(--si-ink-1); overflow-wra
 .folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-list .hint { text-align: right; }
 .error { margin: 12px 0 0; color: var(--si-danger-ink); font: var(--si-font-meta); }
+.clarification-label { max-width: min(26rem, 75vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

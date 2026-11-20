@@ -6,16 +6,21 @@ from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from docx.enum.text import WD_COLOR_INDEX
+from docx.enum.section import WD_ORIENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 from docx.shared import Cm, Pt
 from sqlalchemy import select
 
 from app.bid import requirements as R, results
+from app.bid.checks import short_names
 from app.bid.conclusion import DECLARATION as CONCLUSION_DECLARATION
+from app.bid.invitees import names as invitee_names
 from app.checks.numbers import money
-from app.db.models import BidBidder, BidProject, BidRequirement, LlmCall, Task, TaskFile, User
+from app.db.models import BidBidder, BidProject, BidRequirement, DocNode, LlmCall, Task, TaskFile, User
 from app.export.report_docx import _clean, _font, _heading, _new_document, _table
+from app.redaction.normalize import normalize_value
 from app.security import crypto
+from app.security.errors import AppError
 
 DECLARATION = "本报告为初审线索，不构成对串通投标或否决投标的认定，由评标委员会核实后决定。"
 ART_CLUE = "《招标投标法实施条例》第四十条"
@@ -556,3 +561,124 @@ def build_bid_report(db, task: Task, user: User, scope: str = "full") -> tuple[s
     stem = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]', "_", task.title) or "项目"
     prefix = "标书初审报告" if scope == "full" else "标书初审串标线索"
     return f"{prefix}_{stem}_{d.now:%Y%m%d}.docx", data.getvalue()
+
+
+_CLARIFICATION_TOPICS = {
+    "low_price": "投标报价偏低，请说明报价构成及成本测算依据。",
+    "uppercase": "报价金额的大写与小写可能不一致，请核对并说明。",
+    "multi_total": "投标文件出现不同报价，请说明各处报价的适用范围及差异原因。",
+    "manual_total_diff": "投标文件报价与唱标记录不一致，请说明差异及所依据的原文。",
+    "sum_total": "报价表合计与投标总价可能不一致，请核对并说明。",
+    "deviation_conflict": "偏离表与投标文件正文的表述可能不一致，请说明差异及所依据的原文。",
+}
+_CLARIFICATION_TITLE = "投标澄清（询标）通知书"
+
+
+def _clarification_topics(view, bid):
+    reqs = {r["id"]: r for r in view["requirements"] if not r["not_applicable"] and r["group"] != "format"}
+    reviews = view["conclusion"]["reviews"]
+    excluded_responses = set()
+    topics = []
+    for item in view["items"]:
+        if item["kind"] != "issue" or item["bidder_ids"] != [bid]:
+            continue
+        rid = item["requirement_id"]
+        excluded = (item["review_status"] == "excluded"
+                    or reviews.get(f"item:{item['id']}", {}).get("status") == "excluded")
+        if item["type"] == "model_response" and excluded:
+            excluded_responses.add(rid)
+        if excluded or (rid is not None and rid not in reqs):
+            continue
+        if prompt := _CLARIFICATION_TOPICS.get(item["type"]):
+            places = [p for row in item["rows"] for p in (row.get("places") or {}).get(bid, [])]
+            topics.append((prompt, reqs.get(rid) if item["type"] == "deviation_conflict" else None, places))
+    for cell in view["cells"]:
+        rid = cell["requirement_id"]
+        req = reqs.get(rid)
+        if (str(cell["bidder_id"]) == bid and cell["source"] == "model" and req and req["method"] != "manual"
+                and cell["review_status"] != "excluded" and rid not in excluded_responses
+                and (cell["verdict"] in ("no", "missing", "unclear") or cell["cite"] == "unverified")):
+            topics.append(("请说明贵方对下列要求的响应情况，并注明投标文件中的依据及位置。", req, cell["locs"]))
+    return topics
+
+
+def _clarification_key(value):
+    return re.sub(r"[\W_]+", "", normalize_value(value))
+
+
+def build_bid_clarification(db, task: Task, bidder: BidBidder) -> tuple[str, bytes]:
+    """生成给单个投标人的通知，只引用该家文件中可重新定位的原文。"""
+    bid = str(bidder.id)
+    view = results.check_view(db, task)
+    topics = _clarification_topics(view, bid)
+    if not topics:
+        raise AppError(409, "NO_CLARIFICATION_ITEMS", "该投标人暂无需要澄清的事项")
+
+    name = crypto.decrypt_text(bidder.name_enc)
+    own_key = _clarification_key(name)
+    others = db.scalars(select(BidBidder).where(BidBidder.task_id == task.id, BidBidder.id != bidder.id))
+    blocked = {_clarification_key(alias) for b in others
+               for alias in short_names(crypto.decrypt_text(b.name_enc)) | {f"投标人{b.code}"}}
+    for invitee in invitee_names(R.load_state(db.get(BidProject, task.id))):
+        if own_key not in _clarification_key(invitee):
+            blocked.update(_clarification_key(alias) for alias in short_names(invitee))
+    blocked.discard("")
+
+    def safe(value):
+        key = _clarification_key(value)
+        return not any(name in key for name in blocked)
+
+    # 混装封面指向另一家时，即使该文件挂在本家，也不能引用其中的内容。
+    mixed_files = {p["file_id"] for item in view["items"] if item["type"] == "mixed"
+                   for row in item["rows"] if row.get("mixed_page")
+                   for p in (row.get("places") or {}).get(bid, [])}
+    files = {str(f.id): f for f in db.scalars(select(TaskFile).where(
+        TaskFile.task_id == task.id, TaskFile.bidder_id == bidder.id))}
+    locs = {p["loc"] for _prompt, _req, places in topics for p in places
+            if p.get("loc") and p.get("file_id") in files and p["file_id"] not in mixed_files}
+    nodes = {(str(n.file_id), n.loc): n for n in db.scalars(select(DocNode).where(
+        DocNode.task_id == task.id, DocNode.file_id.in_([f.id for f in files.values()]), DocNode.loc.in_(locs),
+        DocNode.part != "comment"))} if locs else {}
+
+    doc = _new_document(_CLARIFICATION_TITLE)
+    section = doc.sections[0]
+    section.orientation = WD_ORIENT.PORTRAIT
+    section.page_width, section.page_height = Cm(21), Cm(29.7)
+    section.top_margin = section.bottom_margin = Cm(2)
+    section.left_margin = section.right_margin = Cm(2.5)
+    doc.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _para(doc, f"致：{name}", bold=True)
+    if safe(task.title):
+        _para(doc, f"项目名称：{task.title}")
+    _para(doc, "请就以下事项逐项作出书面说明，注明所依据的投标文件及位置，并在回复后签章。")
+    for index, (prompt, req, places) in enumerate(topics, 1):
+        _heading(doc, f"{index}．{prompt}")
+        if req:
+            source = req["text"]
+            label = f"招标要求第 {req['seq']} 项"
+            _para(doc, f"{label}：{source}" if safe(source) else label)
+        found = False
+        for file_id, loc in dict.fromkeys((p.get("file_id"), p.get("loc")) for p in places):
+            node = nodes.get((file_id, loc))
+            if node is None:
+                continue
+            file = files[file_id]
+            filename = file.original_name if safe(file.original_name) else f"投标文件（材料 {file.seq}）"
+            position = f"第 {node.page} 页" if node.page else f"位置 {node.loc}"
+            excerpt = crypto.decrypt_text(node.text_enc) if node.text_enc else ""
+            _para(doc, f"原文位置：{filename} · {position}", indent=12)
+            if excerpt.strip() and safe(excerpt):
+                _para(doc, f"摘录：{_clip(excerpt.strip(), 200)}", indent=12)
+            found = True
+        if not found:
+            _para(doc, "请在回复中注明所依据的原文位置。", indent=12)
+
+    _heading(doc, "书面回复")
+    _para(doc, "回复内容（可另附页）：______________________________________")
+    _para(doc, "投标人（盖章）：________________")
+    _para(doc, "法定代表人或授权代表（签字）：________________")
+    _para(doc, "回复日期：________ 年 ____ 月 ____ 日")
+    data = io.BytesIO()
+    doc.save(data)
+    stem = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]', "_", name)[:80] or "投标人"
+    return f"{_CLARIFICATION_TITLE}_{stem}.docx", data.getvalue()

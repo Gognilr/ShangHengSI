@@ -494,6 +494,23 @@ def report(scope: str = Query("full", pattern="^(full|clues)$"), task: Task = De
     return _response(filename, content)
 
 
+@router.get("/{id}/bidders/{bidder_id}/clarification", dependencies=[Depends(require("use.export"))])
+def clarification(bidder_id: str, task: Task = Depends(owned), user: User = Depends(require("use.bid")),
+                  db: Session = Depends(get_db)):
+    from app.export.bid_docx import build_bid_clarification
+    from app.export.router import _response
+
+    task = _lock_owned(db, task)
+    bidder = service.bidder(db, task, bidder_id)
+    if db.get(BidProject, task.id).stage != "checked":
+        raise AppError(409, "REPORT_UNAVAILABLE", "初审完成后才能导出澄清通知书")
+    filename, content = build_bid_clarification(db, task, bidder)
+    audit.record(db, "report_export", user_id=user.id, target_type="task", target_id=str(task.id),
+                 detail={"kind": "bid", "scope": "clarification"})
+    db.commit()
+    return _response(filename, content)
+
+
 @router.patch("/{id}/items/{iid}")
 def review_item(iid: str, body: ReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
     from app.bid import results
