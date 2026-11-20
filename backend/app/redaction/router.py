@@ -29,6 +29,8 @@ class PartyOut(BaseModel):
     country: str | None
     org_type: str | None
     is_our_party: bool
+    # 原文中出现的写法（长的在前），卡片显示名称与简称（V35-F-04）；只返回给本人
+    surfaces: list[str] = Field(default_factory=list)
 
 
 class PartyList(BaseModel):
@@ -116,6 +118,16 @@ class RevokeRedaction(BaseModel):
     char_end: StrictInt
 
 
+class AdjustRedaction(RevokeRedaction):
+    new_start: StrictInt
+    new_end: StrictInt
+    category: UserCategory | None = None
+
+
+class PartyAlias(BaseModel):
+    text: str = Field(min_length=1, max_length=100)
+
+
 class OutboundOut(BaseModel):
     text: str
     note: str | None
@@ -142,9 +154,11 @@ class LeakList(BaseModel):
 
 def _party_list(db: DbSession, task: Task) -> PartyList:
     mapping = engine.load_redaction_map(db, task.id)
+    surfaces = engine.party_surfaces(db, task)
     return PartyList(items=[
         PartyOut(id=p.id, code=p.code, name=mapping[p.code], role_label=p.role_label,
-                 country=p.country, org_type=p.org_type, is_our_party=p.is_our_party)
+                 country=p.country, org_type=p.org_type, is_our_party=p.is_our_party,
+                 surfaces=surfaces.get(p.code, []))
         for p in db.scalars(select(Party).where(Party.task_id == task.id).order_by(Party.code))
     ])
 
@@ -350,5 +364,65 @@ def revoke_redaction(body: RevokeRedaction, task: Task = Depends(owned_task), us
                  detail={"category": category})
     stats.operation(locked)
     result = _redaction(db, locked)
+    db.commit()
+    return result
+
+
+def _change(db: DbSession, task: Task, apply) -> RedactionOut:
+    """修改脱敏的公共流程：任务行锁 → 修改并重算 → 返回最新结果；输入错误整体回滚。"""
+    locked = _lock_awaiting(db, task)
+    try:
+        apply(locked)
+    except engine.RedactionInputError as exc:
+        db.rollback()
+        raise _input_error(exc) from None
+    stats.operation(locked)
+    result = _redaction(db, locked)
+    db.commit()
+    return result
+
+
+@router.post("/redaction/adjust", response_model=RedactionOut)
+def adjust_redaction(body: AdjustRedaction, task: Task = Depends(owned_task), user: User = Depends(current_user),
+                     db: DbSession = Depends(get_db)) -> RedactionOut:
+    """胶囊菜单的改类别、扩大或缩小范围（V35-F-04，澄明 8.4）。"""
+    return _change(db, task, lambda locked: engine.adjust_redaction(
+        db, locked, loc=body.loc, char_start=body.char_start, char_end=body.char_end, new_start=body.new_start,
+        new_end=body.new_end, category=body.category, user_id=user.id))
+
+
+def _party(db: DbSession, task: Task, pid: str) -> Party:
+    try:
+        party_id = uuid.UUID(pid)
+    except ValueError:
+        raise NotFoundError("PARTY_NOT_FOUND", "签约方不存在") from None
+    party = db.scalar(select(Party).where(Party.id == party_id, Party.task_id == task.id))
+    if party is None:
+        raise NotFoundError("PARTY_NOT_FOUND", "签约方不存在")
+    return party
+
+
+@router.post("/parties/{pid}/aliases", response_model=RedactionOut)
+def add_party_alias(pid: str, body: PartyAlias, task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> RedactionOut:
+    """签约方卡片里加简称、改名称：照原文的写法登记为该方的变体，沿用同一代号（问题 15）。"""
+    party = _party(db, task, pid)
+    return _change(db, task, lambda locked: engine.add_party_alias(db, locked, party, body.text))
+
+
+@router.post("/parties/{pid}/aliases/remove", response_model=RedactionOut)
+def remove_party_alias(pid: str, body: PartyAlias, task: Task = Depends(owned_task), user: User = Depends(current_user),
+                       db: DbSession = Depends(get_db)) -> RedactionOut:
+    party = _party(db, task, pid)
+    return _change(db, task, lambda locked: engine.remove_party_surface(db, locked, party, body.text, user.id))
+
+
+@router.delete("/parties/{pid}", response_model=RedactionOut)
+def remove_party(pid: str, task: Task = Depends(owned_task), user: User = Depends(current_user),
+                 db: DbSession = Depends(get_db)) -> RedactionOut:
+    """删掉签约方：它的全部写法都不再替换（误识别的单位）。"""
+    party = _party(db, task, pid)
+    result = _change(db, task, lambda locked: engine.remove_party_surface(db, locked, party, None, user.id))
+    audit.record(db, "redaction_revoke", user_id=user.id, target_type="task", target_id=str(task.id),
+                 detail={"category": "ORG"})
     db.commit()
     return result

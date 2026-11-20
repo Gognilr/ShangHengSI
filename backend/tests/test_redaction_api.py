@@ -134,8 +134,8 @@ def test_get_parties_summary_outbound(db_sessionmaker, alice, ready_task):
     items = parties(c, task)
     assert {p["name"] for p in items} == {REAL_OUR_NAME, REAL_BUYER_NAME}
     assert sum(p["is_our_party"] for p in items) == 1
-    assert all(set(p) == {"id", "code", "name", "role_label", "country", "org_type", "is_our_party"}
-               for p in items)
+    assert all(set(p) == {"id", "code", "name", "role_label", "country", "org_type", "is_our_party", "surfaces"}
+               and p["surfaces"] and p["surfaces"][0] == p["name"] for p in items)
     r = c.get(url(task, "redaction"))
     assert r.status_code == 200
     data = r.json()
@@ -509,7 +509,6 @@ def test_manual_errors(alice, ready_task):
         ({"char_end": 10 ** 6}, 422, "INVALID_SELECTION"),
         ({"char_start": end, "char_end": start}, 422, "INVALID_SELECTION"),
         ({"loc": our_loc, "char_start": our_start, "char_end": our_end}, 409, "ALREADY_REDACTED"),
-        ({"loc": our_loc, "char_start": max(0, our_start - 2), "char_end": our_start + 2}, 409, "ALREADY_REDACTED"),
         ({"char_end": start + 1}, 422, "SELECTION_LENGTH"),
         ({"category": "OUR"}, 422, "VALIDATION_ERROR"),
         ({"category": None}, 422, "VALIDATION_ERROR"),
@@ -752,3 +751,55 @@ def test_r3_outbound_lines_reference_nodes_or_quote_tables(alice, ready_task, wi
             assert content.startswith("【报价明细表：")
             grouped.append(loc)
     assert bool(grouped) is with_attachment
+
+
+def test_f04_overlap_adjust_alias_and_remove_party(db_sessionmaker, alice, ready_task):
+    """V35-F-04（问题 13、15）：选区与已有项重叠时合并；胶囊改类别、缩小范围；签约方加简称沿用同一代号、整方删除。"""
+    from app.security.crypto import encrypt_text
+    user, c, h = alice
+    task = ready_task(user)
+    with db_sessionmaker() as db:
+        node = db.scalar(select(DocNode).where(DocNode.task_id == task.id, DocNode.part == "body"))
+        node.text_enc = encrypt_text(f"由{REAL_OUR_NAME}华东分部负责交付，联系人梅远舟。")
+        loc = node.loc
+        engine.apply_party_changes(db, db.get(Task, task.id), [])
+        db.commit()
+    post = lambda path, body: c.post(url(task, path), json=body, headers=h)  # noqa: E731
+    start = 1
+    end = start + len(REAL_OUR_NAME)
+    # 重叠：从名称中间选到“华东分部负责”，并成一个新项（不再报 409）
+    r = post("redaction/manual", {"loc": loc, "char_start": end - 2, "char_end": end + 6, "category": "ORG"})
+    assert r.status_code == 200, r.text
+    assert any(i["loc"] == loc and i["char_start"] <= start and i["char_end"] >= end + 6 for i in r.json()["items"])
+    # 签约方加简称：照原文写法登记，沿用同一代号（另起一个任务，避免上面的用户词条落在改过的正文上）
+    task = ready_task(user)
+    our = next(p for p in parties(c, task) if p["name"] == REAL_OUR_NAME)
+    with db_sessionmaker() as db:
+        node = db.scalar(select(DocNode).where(DocNode.task_id == task.id, DocNode.loc == loc))
+        node.text_enc = encrypt_text(f"{REAL_OUR_NAME}（简称星河公司）负责交付。星河公司联系人梅远舟。")
+        engine.apply_party_changes(db, db.get(Task, task.id), [])
+        db.commit()
+    r = post(f"parties/{our['id']}/aliases", {"text": "星河公司"})
+    assert r.status_code == 200, r.text
+    codes = {i["placeholder"] for i in r.json()["items"] if i["loc"] == loc and i["char_start"] < len(REAL_OUR_NAME) + 8}
+    assert len(codes) == 1 and our["code"] in codes
+    assert "星河公司" in next(p for p in parties(c, task) if p["id"] == our["id"])["surfaces"]
+    assert post(f"parties/{our['id']}/aliases", {"text": "原文没有的写法"}).json()["code"] == "NOT_FOUND_IN_TEXT"
+    # 胶囊改类别：人名改为“其他”，全文同名一起改
+    person = node_loc(c, task, "梅远舟")
+    item = next(i for i in redaction(c, task)["items"] if i["loc"] == person[0] and i["char_start"] <= person[1] < i["char_end"])
+    r = post("redaction/adjust", {**{k: item[k] for k in ("loc", "char_start", "char_end")},
+                                  "new_start": item["char_start"], "new_end": item["char_end"], "category": "CUSTOM"})
+    assert r.status_code == 200, r.text
+    assert next(i for i in r.json()["items"] if i["loc"] == item["loc"] and i["char_start"] == item["char_start"])["category"] == "CUSTOM"
+    # 缩小范围：只留前两个字
+    r = post("redaction/adjust", {**{k: item[k] for k in ("loc", "char_start", "char_end")},
+                                  "new_start": item["char_start"], "new_end": item["char_start"] + 2})
+    assert r.status_code == 200, r.text
+    assert any(i["loc"] == item["loc"] and (i["char_start"], i["char_end"]) == (item["char_start"], item["char_start"] + 2)
+               for i in r.json()["items"])
+    # 删掉整个签约方：它的全部写法不再替换
+    other = next(p for p in parties(c, task) if p["name"] == REAL_BUYER_NAME)
+    r = c.delete(url(task, f"parties/{other['id']}"), headers=h)
+    assert r.status_code == 200, r.text
+    assert all(p["id"] != other["id"] for p in parties(c, task))

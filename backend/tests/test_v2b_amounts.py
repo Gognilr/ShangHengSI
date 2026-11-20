@@ -163,7 +163,8 @@ def test_selection_entrypoints(surface, entry, db_sessionmaker, alice, ready_tas
     assert len({i['placeholder'] for i in items}) == 1
     overlap = client.post(task_url(task, '/redaction/manual'), headers=headers,
         json={'loc': 'F1-P1', 'char_start': 0, 'char_end': len(surface), 'category': 'AMOUNT'})
-    assert (overlap.status_code, overlap.json()['code']) == (409, 'ALREADY_REDACTED')
+    # V35-F-04：选区整段已遮住时仍报 409；盖住金额和旁边文字时并成一个新项
+    assert overlap.status_code == 200 or overlap.json()['code'] == 'ALREADY_REDACTED', overlap.text
 
 
 @pytest.mark.usefixtures('env')

@@ -96,6 +96,8 @@ class UserTerm:
     """用户在本任务中选中或确认替换的文字（原文写法）。"""
     text: str
     category: str  # ORG / PERSON / CUSTOM
+    # 签约方的写法（V35-F-04，问题 15）：用户在签约方卡片里改名称或加简称时，登记为该主体（真实名称）的变体，沿用同一代号
+    alias_of: str | None = None
 
 
 @dataclass
@@ -244,6 +246,14 @@ def _table_hints(cells: tuple[tuple[str, str], ...], with_qty: bool) -> dict[int
 
 def _overlaps(occupied: list[tuple[int, int]], start: int, end: int) -> bool:
     return any(start < e and s < end for s, e in occupied)
+
+
+def _blocked(occupied: list[tuple[int, int]], excluded: list[tuple[int, int]], start: int, end: int) -> bool:
+    """已替换的位置按重叠挡住；用户撤销的文字只挡住整段相同的位置（V35-F-04，问题 13）。
+
+    撤销外层（误把“买受人公司”当成单位）不连带放过里层的人名，撤销里层也不影响外层：重叠的项各自独立。
+    """
+    return _overlaps(occupied, start, end) or (start, end) in excluded
 
 
 def _accept(cands: list[_Span], occupied: list[tuple[int, int]], out: list[_Span], *,
@@ -556,7 +566,8 @@ def compute(
     nodes = [NodeIn(n.loc, _recognition_view(n.text), n.clause_no, n.kind) for n in nodes]
     terms = [Term(_recognition_view(t.text), t.kind, t.category, t.is_our_party,
                   _recognition_view(t.alias_of) if t.alias_of else None) for t in terms]
-    user_terms = [UserTerm(_recognition_view(t.text), t.category) for t in user_terms]
+    user_terms = [UserTerm(_recognition_view(t.text), t.category, _recognition_view(t.alias_of) if t.alias_of else None)
+                  for t in user_terms]
     exclusions = [_recognition_view(t) for t in exclusions]
     keeps = [_recognition_view(t) for t in keeps]
     entities: dict[str, _Entity] = {}
@@ -580,6 +591,12 @@ def compute(
         ent.from_term = True
         ent.term_our = ent.term_our or t.is_our_party
     for u in user_terms:
+        if u.alias_of and u.category == 'ORG':
+            owner = entity(u.alias_of, 'ORG')
+            if P.normalize(u.text) != owner.key and u.text not in owner.aliases:
+                owner.aliases.append(u.text)
+                owner.alias_src[u.text] = ('user', None)
+            continue
         if u.category == 'AMOUNT' and style != 'neutral':
             _manual_amount(u.text)
         ent = entity(u.text, u.category)
@@ -764,6 +781,8 @@ def compute(
                          and not detect.english_alias_allowed(text, s, e))]
         cands += [_Span(i, start, end, 'ORG', key, 'party')
                   for index, start, end, key in cross_parts if index == i]
+        # 撤销的写法不占位置：同一处较短的写法（如用户缩小后的名称）照常采用（V35-F-04）
+        cands = [c for c in cands if c.detected_by == 'user' or P.normalize(text[c.start:c.end]) not in excluded]
         for candidate in cands:
             if candidate.detected_by not in ('user', 'term'):
                 continue
@@ -964,7 +983,7 @@ def compute(
         same_compute[key] = predicted
         node_cache[n.loc] = {'key': key, 'entities': [[e.start, e.end, e.label, e.score] for e in predicted]}
         for hit in predicted:
-            if _overlaps(occupied[i] + excluded_spans, hit.start, hit.end):
+            if _blocked(occupied[i], excluded_spans, hit.start, hit.end):
                 continue
             from app.redaction.dictionaries import is_known_place
             if is_known_place(n.text[hit.start:hit.end]) or detect.is_admin_city(n.text[hit.start:hit.end]):
@@ -984,7 +1003,7 @@ def compute(
                 _accept([_Span(i, hit.start, hit.end, hit.label, key, 'ner')], occupied[i], spans)
             elif hit.score >= ner.MEDIUM:
                 start, end = S.model_token(n.text, hit.start, hit.end) or (hit.start, hit.end)
-                if _overlaps(occupied[i] + excluded_spans, start, end):
+                if _blocked(occupied[i], excluded_spans, start, end):
                     continue
                 candidate = S.Suspect(start, end, 'ner')
                 # 标准号、行业缩写与公共机构先静默排除，不进“已自动保留”清单
@@ -1000,7 +1019,7 @@ def compute(
         excluded_spans = [m.span() for value in exclusions for m in P.name_pattern(value).finditer(n.text)]
         _accept([_Span(i, m.start(), m.end(), label, key, 'ner')
                  for key, (surface, label) in ner_names.items() for m in P.name_pattern(surface).finditer(n.text)
-                 if not _overlaps(excluded_spans, m.start(), m.end())], occupied[i], spans, longest_first=True)
+                 if m.span() not in excluded_spans], occupied[i], spans, longest_first=True)
     ner_suspects = [s for s in ner_suspects if not _overlaps(occupied[locs[s.loc]], s.char_start, s.char_end)]
 
     # 已识别值的等价写法在本任务传播，不把全部形近字放进首次识别。
@@ -1127,20 +1146,21 @@ def compute(
                           if s.loc == n.loc and s.reason == 'checksum_fail']
         # 无行政区、道路与楼层的楼盘名仅有后缀证据，沿用后缀型不确定名称。
         for start, end in detect.building_candidates(n.text):
-            if not _overlaps(occupied[i] + excluded_spans, start, end):
+            if not _blocked(occupied[i], excluded_spans, start, end):
                 found.append(SuspectOut(n.loc, start, end, 'org_suffix'))
         plain_candidates = []
         found += [SuspectOut(n.loc, s.start, s.end, s.reason)
-                            for s in S.find_suspects(n.text, occupied[i] + excluded_spans + checksum_spans, derived=short_derived,
+                            for s in S.find_suspects(n.text, occupied[i] + checksum_spans, derived=short_derived,
                                                      lowercase_words=lowercase_words, header=n.loc in headers,
-                                                     auto_kept=plain_candidates)]
+                                                     auto_kept=plain_candidates)
+                            if (s.start, s.end) not in excluded_spans]
         for candidate in plain_candidates:
             ordinary(n.loc, n.text, candidate)
         for h in detect.plain_person_values(n.text):
-            if not _overlaps(occupied[i] + excluded_spans, h.start, h.end):
+            if not _blocked(occupied[i], excluded_spans, h.start, h.end):
                 auto_kept.append(SuspectOut(n.loc, h.start, h.end, 'ordinary_label_value', 'PERSON'))
         for h in detect.find_narrative_persons(n.text):
-            if (not _overlaps(occupied[i] + excluded_spans, h.start, h.end)
+            if (not _blocked(occupied[i], excluded_spans, h.start, h.end)
                     and not any(s.loc == n.loc and s.char_start < h.end and h.start < s.char_end for s in found)):
                 found.append(SuspectOut(n.loc, h.start, h.end, 'person_name'))
     for suspect in ner_suspects:
@@ -1175,7 +1195,7 @@ def compute(
             continue
         for i, at in original_joined.by_node(P.name_pattern(surface)).items():
             _accept([_Span(i, s, e, 'ORG', owner, 'uncertain') if owner else _Span(i, s, e, category, key, 'uncertain')
-                     for s, e in at if not _overlaps(excluded_by_node[i], s, e)], occupied[i], spans)
+                     for s, e in at if (s, e) not in excluded_by_node[i]], occupied[i], spans)
     spans.sort(key=lambda s: (s.node, s.start))
     result = _assemble(nodes, stance, entities, spans, main_prefix, style=style, pinned=pinned,
                        with_ratio=ratio and style == "review", date_shift_days=date_shift_days)
@@ -1541,6 +1561,9 @@ def _user_terms(db: Session, task_id: uuid.UUID, texts: dict[str, str]) -> list[
     seen: set[tuple[str, str]] = set()
     rows = db.scalars(select(RedactionItem).where(RedactionItem.task_id == task_id, RedactionItem.detected_by == "user")
                       .order_by(RedactionItem.id))
+    # 归在签约方代号下的用户写法是该方的变体：下次重算仍并入该方（同一代号），见 UserTerm.alias_of
+    codes = set(db.scalars(select(Party.code).where(Party.task_id == task_id)))
+    names = {code: value for code, value in load_redaction_map(db, task_id).items() if code in codes} if codes else {}
     for r in rows:
         text = texts.get(r.loc, "")[r.char_start:r.char_end]
         category = "ORG" if r.category == "OUR" else r.category
@@ -1550,7 +1573,8 @@ def _user_terms(db: Session, task_id: uuid.UUID, texts: dict[str, str]) -> list[
         key = (P.normalize(text), category)
         if key not in seen:
             seen.add(key)
-            out.append(UserTerm(text, category))
+            owner = names.get(r.placeholder) if category == 'ORG' else None
+            out.append(UserTerm(text, category, owner if owner and P.normalize(owner) != key[0] else None))
     return out
 
 
@@ -1983,6 +2007,149 @@ def revoke_redaction(db: Session, task: Task, *, loc: str, char_start: int, char
     return category
 
 
+# 替换项类别 → 手动补充的类别（改类别、调范围沿用原类别时使用）
+_TO_USER_CATEGORY = {"OUR": "ORG", "NAME": "ORG", "TERM": "CUSTOM", "PHONE": "IM", "EMAIL": "IM", "URL": "IM",
+                     "SWIFT": "ACCOUNT", "POSTCODE": "REFNO", "PRICE": "AMOUNT"}
+
+
+def _user_category(category: str) -> str:
+    category = _TO_USER_CATEGORY.get(category, category)
+    return category if category in USER_CATEGORIES else "CUSTOM"
+
+
+def _exclude(db: Session, task: Task, texts: dict[str, str], loc: str, surface: str, category: str,
+             user_id: uuid.UUID | None) -> None:
+    """撤销一个写法（全文按整段生效），连同同文字的用户词条（同 revoke_redaction）。"""
+    db.add(RedactionExclusion(task_id=task.id, loc=loc, text_enc=crypto.encrypt_text(surface),
+                             category=category[:10], created_by=user_id))
+    for row in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id,
+                          RedactionItem.detected_by == "user")):
+        if P.normalize(texts.get(row.loc, "")[row.char_start:row.char_end]) == P.normalize(surface):
+            db.delete(row)
+    db.flush()
+
+
+def _party_name(db: Session, task: Task, code: str) -> str | None:
+    if db.scalar(select(Party.id).where(Party.task_id == task.id, Party.code == code)) is None:
+        return None
+    return load_redaction_map(db, task.id).get(code)
+
+
+def _add_alias(db: Session, task: Task, text: str, loc: str, start: int, end: int, owner: str) -> None:
+    """把 text[start:end] 登记为签约方 owner 的写法（同一代号）并重算；重算后该位置必须已被替换。"""
+    m = _user_pattern(text[start:end]).match(text, start)
+    if m is None or m.end() != end:
+        raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确，请选择完整的词")
+    existing = _existing_parties(db, task)
+    _run(db, task, _current_overrides(existing), existing, [UserTerm(text[start:end], "ORG", owner)])
+    covered = [(i.char_start, i.char_end) for i in db.scalars(
+        select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == loc))]
+    if any(not text[k].isspace() and not any(a <= k < b for a, b in covered) for k in range(start, end)):
+        raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确，请选择完整的词")
+
+
+def adjust_redaction(db: Session, task: Task, *, loc: str, char_start: int, char_end: int, new_start: int,
+                     new_end: int, category: str | None, user_id: uuid.UUID | None) -> str:
+    """改类别、扩大或缩小范围（V35-F-04，澄明 8.4）。不提交，返回新类别。
+
+    扩大且类别不变：只加入新写法（较长的优先），其他地方的原写法照旧替换；
+    缩小、平移或改类别：撤销原写法（全文），再按新位置与类别加入。签约方的写法登记为该方的变体，沿用同一代号。
+    新位置与其他替换项重叠时并成一个新项。金额不开放（出口复检对金额不做豁免）。
+    """
+    item = db.scalar(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == loc,
+                     RedactionItem.char_start == char_start, RedactionItem.char_end == char_end))
+    if item is None or item.category == "AMOUNT":
+        raise RedactionInputError(422, "NOT_REVOCABLE", "金额不能改类别或范围")
+    texts = task_texts(db, task)
+    text = texts.get(loc, "")
+    if not 0 <= new_start < new_end <= len(text):
+        raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确")
+    new_start, new_end = _strip_span(text, new_start, new_end)
+    if not MANUAL_MIN <= new_end - new_start <= MANUAL_MAX:
+        raise RedactionInputError(422, "SELECTION_LENGTH", "请选择 2–100 个字符")
+    old = _user_category(item.category)
+    category = category or old
+    if category not in USER_CATEGORIES or category == "AMOUNT":
+        raise RedactionInputError(422, "VALIDATION_ERROR", "类别不正确")
+    if (new_start, new_end) == (char_start, char_end) and category == old:
+        return category
+    owner = _party_name(db, task, item.placeholder) if category == "ORG" else None
+    expand = new_start <= char_start and new_end >= char_end and category == old
+    if not expand:
+        _exclude(db, task, texts, loc, text[char_start:char_end], item.category, user_id)
+    others = [r for r in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id,
+              RedactionItem.loc == loc)) if r.id != item.id and r.placeholder != item.placeholder]
+    start, end = _merge_span(others, new_start, new_end)
+    if owner is not None:
+        _add_alias(db, task, text, loc, start, end, owner)
+    else:
+        _add_term(db, task, text, loc, start, end, category)
+    return category
+
+
+def party_surfaces(db: Session, task: Task) -> dict[str, list[str]]:
+    """{代号: 原文中出现的各种写法}，长的在前；签约方卡片显示名称与简称用。"""
+    texts = task_texts(db, task)
+    out: dict[str, dict[str, str]] = {}
+    for r in db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id)):
+        value = texts.get(r.loc, "")[r.char_start:r.char_end].strip()
+        if value:
+            out.setdefault(r.placeholder, {}).setdefault(P.normalize(value), value)
+    return {code: sorted(v.values(), key=len, reverse=True) for code, v in out.items()}
+
+
+def add_party_alias(db: Session, task: Task, party: Party, value: str) -> None:
+    """签约方卡片“加简称 / 改名称”：在原文中找到这个写法，登记为该方的变体（同一代号）。不提交。"""
+    value = value.strip()
+    if not MANUAL_MIN <= len(value) <= MANUAL_MAX:
+        raise RedactionInputError(422, "SELECTION_LENGTH", "请输入 2–100 个字符")
+    owner = load_redaction_map(db, task.id).get(party.code)
+    if owner is None:
+        raise RedactionInputError(404, "PARTY_NOT_FOUND", "签约方不存在")
+    pattern = _user_pattern(value)
+    for loc, text in task_texts(db, task).items():
+        m = pattern.search(text)
+        if m:
+            _add_alias(db, task, text, loc, m.start(), m.end(), owner)
+            return
+    raise RedactionInputError(422, "NOT_FOUND_IN_TEXT", "原文中没有找到这个写法，请照原文输入")
+
+
+def remove_party_surface(db: Session, task: Task, party: Party, value: str | None, user_id: uuid.UUID | None) -> None:
+    """删掉签约方的一个写法（value），或 value 为 None 时删掉整个签约方（全部写法都不再替换）。不提交。"""
+    texts = task_texts(db, task)
+    surfaces = party_surfaces(db, task).get(party.code, [])
+    targets = surfaces if value is None else [s for s in surfaces if P.normalize(s) == P.normalize(value)]
+    if not targets:
+        raise RedactionInputError(404, "PARTY_NOT_FOUND", "签约方或写法不存在")
+    for _ in range(4):
+        for surface in targets:
+            _exclude(db, task, texts, "", surface, "ORG", user_id)
+        existing = _existing_parties(db, task)
+        _run(db, task, _current_overrides(existing), existing)
+        if value is not None:
+            return
+        # 撤销全称后，原先被全称盖住的较短写法（派生的字号）会冒出来，归在同一方下的一并撤销
+        done = {P.normalize(t) for t in targets}
+        targets = [t for t in party_surfaces(db, task).get(party.code, []) if P.normalize(t) not in done]
+        if not targets or db.get(Party, party.id) is None:
+            return
+
+
+_EDGE_PUNCT = set("，。、；：！？,.;:!?“”‘’\"'")
+
+
+def _merge_span(rows: Sequence[RedactionItem], start: int, end: int) -> tuple[int, int]:
+    """选区与已有替换项重叠时，扩到与它们的并集，作为一个新项（V35-F-04，问题 13、15）。"""
+    changed = True
+    while changed:
+        changed = False
+        for r in rows:
+            if r.char_start < end and r.char_end > start and (r.char_start < start or r.char_end > end):
+                start, end, changed = min(start, r.char_start), max(end, r.char_end), True
+    return start, end
+
+
 def add_user_term(db: Session, task: Task, *, loc: str, char_start: int, char_end: int, category: str,
                   remember: bool = False, user_id: uuid.UUID | None = None) -> None:
     """手动补充（19.4）：校验位置 → 取原文片段（去掉首尾空白后 2–100 个字符）→ 加入用户词条 → 整体重算。不提交。
@@ -1999,13 +2166,19 @@ def add_user_term(db: Session, task: Task, *, loc: str, char_start: int, char_en
     if text is None or not (0 <= char_start < char_end <= len(text)):
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确")
     start, end = _strip_span(text, char_start, char_end)
+    # 划选常带上前后的标点（“：某某公司”），去掉后再判断与已有项的关系
+    while start < end and text[start] in _EDGE_PUNCT:
+        start += 1
+    while end > start and text[end - 1] in _EDGE_PUNCT:
+        end -= 1
     if not MANUAL_MIN <= end - start <= MANUAL_MAX:
         raise RedactionInputError(422, "SELECTION_LENGTH", "请选择 2–100 个字符")
-    taken = db.scalar(select(func.count()).select_from(RedactionItem).where(
-        RedactionItem.task_id == task.id, RedactionItem.loc == loc,
-        RedactionItem.char_start < end, RedactionItem.char_end > start))
-    if taken:
-        raise RedactionInputError(409, "ALREADY_REDACTED", "所选文字已被替换，请选择未替换的文字")
+    rows = list(db.scalars(select(RedactionItem).where(RedactionItem.task_id == task.id, RedactionItem.loc == loc)))
+    if all(text[k].isspace() or any(r.char_start <= k < r.char_end for r in rows) for k in range(start, end)):
+        raise RedactionInputError(409, "ALREADY_REDACTED", "所选文字已被遮住，点它可以改类别或范围")
+    start, end = _merge_span(rows, start, end)
+    if end - start > MANUAL_MAX:
+        raise RedactionInputError(422, "SELECTION_LENGTH", "请选择 2–100 个字符")
     _add_term(db, task, text, loc, start, end, category)
     if remember:
         _remember_custom(db, text[start:end], user_id)
