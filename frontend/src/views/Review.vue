@@ -142,6 +142,6 @@ function open(row: HistoryItem) {
 .b-neu { background: var(--si-surface-2); color: var(--si-ink-3); }
 .breath .d { animation: rh-breath 1.6s var(--si-ease-io) infinite; }
 @keyframes rh-breath { 50% { opacity: .35; } }
-.li-t { flex: none; width: 84px; color: var(--si-ink-4); font: var(--si-font-caption); text-align: right; }
+.li-t { flex: none; width: 128px; white-space: nowrap; color: var(--si-ink-4); font: var(--si-font-caption); text-align: right; }
 .chev { flex: none; color: var(--si-ink-4); }
 </style>

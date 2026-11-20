@@ -15,7 +15,7 @@ import FindingsRail, { type Zone } from '@/components/result/FindingsRail.vue'
 import ReceiptStrip from '@/components/result/ReceiptStrip.vue'
 import ResultCanvas from '@/components/result/ResultCanvas.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
-import { RUN_STATUS_TAG, docTypeLabel, runStatusLabel, sourceLabel, stanceLabel } from '@/utils/labels'
+import { docTypeLabel, runStatusLabel, sourceLabel, stanceLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
 
 /**
@@ -227,7 +227,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
       <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
         <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮`">第 {{ item.run_no }} 轮 · {{ formatDateTime(item.finished_at ?? item.queued_at) }} · {{ runStatusLabel(item.status) }}</el-option>
       </el-select>
-      <el-tag v-if="run && run.status !== 'completed'" :type="RUN_STATUS_TAG[run.status] ?? 'info'" size="small" disable-transitions>{{ runStatusLabel(run.status) }}</el-tag>
       <ReceiptStrip v-if="run && session.policy === 'ai'" :run="run" :file-names="task.files.map(f => f.original_name)" />
       <div class="actions">
         <el-button v-if="canAsk" :disabled="session.review_running" @click="emit('ask')"><MessageSquare :size="15" :stroke-width="1.75" />追问</el-button>
