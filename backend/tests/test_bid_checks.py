@@ -128,6 +128,56 @@ def test_local_check_two_similar_pricing_compliance(owner, db_sessionmaker):
     assert pricing["compare"]["n"] == 2
 
 
+def test_new_compliance_checks_bid_commitments_and_performance_table():
+    from datetime import date
+    from app.bid import compliance, pricing
+
+    rows = [
+        ["项目名称", "合同签订日期", "合同金额（万元）"],
+        ["虚构甲工程", "2024-01-01", "50.01"],
+        ["虚构乙工程", "2023-12-31", "60"],
+        ["虚构丙工程", "2025-01-01", "50.00"],
+        ["虚构甲工程", "2024-01-01", "50.01"],
+    ]
+    nodes = [compliance.BidNode(f"F1-P{i}", line, 1, None, ocr_conf=0.99 if i == 3 else None)
+             for i, line in enumerate(("我方承诺工期为121日历天。", "投标承诺：交货期为20工作日。",
+                                      "我公司承诺质保期为2年。", "我方承诺缺陷责任期为12个月。",
+                                      "类似业绩一览表"))]
+    nodes.extend(compliance.BidNode(f"F1-T1-R{i}-C{j}", value, 1, None, kind="table_cell")
+                 for i, row in enumerate(rows, 1) for j, value in enumerate(row, 1))
+    params = {"construction_max": "120天", "delivery_max": "20日历天", "warranty_min": "24个月",
+              "defect_min": "24个月", "performance_from": "2024-01-01", "performance_until": "2025-01-01",
+              "performance_amount": "500100.00", "performance_count": 2}
+    _, _, facts = pricing.analyze([1], {1: nodes}, None, "CNY")
+    issues, verdicts = compliance.evaluate(1, nodes, facts[1], params, date(2026, 1, 1),
+                                          lambda n, *_: {"loc": n.loc})
+    assert {i["type"] for i in issues} == {"construction_max", "performance"}
+    assert [verdicts[k][0] for k in (*compliance.TERM_LABELS, "performance")] == [
+        "no", "unclear", "yes", "unclear", "no"]
+    assert "1 份" in verdicts["performance"][1]
+    assert {"F1-T1-R3-C2", "F1-T1-R4-C3"} <= {p["loc"] for p in verdicts["performance"][2]}
+
+
+def test_new_compliance_ignores_contract_templates_and_unlabelled_tables():
+    from datetime import date
+    from app.bid import compliance, pricing
+
+    nodes = [
+        compliance.BidNode("F1-P0", "合同条款：工期为180天；缺陷责任期为6个月。", 1, None),
+        compliance.BidNode("F1-T2-R1-C1", "项目名称", 1, None, kind="table_cell"),
+        compliance.BidNode("F1-T2-R1-C2", "合同签订日期", 1, None, kind="table_cell"),
+        compliance.BidNode("F1-T2-R2-C1", "虚构甲工程", 1, None, kind="table_cell"),
+        compliance.BidNode("F1-T2-R2-C2", "2024-01-01", 1, None, kind="table_cell"),
+    ]
+    _, _, facts = pricing.analyze([1], {1: nodes}, None, "CNY")
+    issues, verdicts = compliance.evaluate(
+        1, nodes, facts[1], {"construction_max": "120天", "defect_min": "12个月", "performance_count": 1},
+        date(2026, 1, 1), lambda n, *_: {"loc": n.loc},
+    )
+    assert not issues
+    assert {verdicts[k][0] for k in ("construction_max", "defect_min", "performance")} == {"missing"}
+
+
 def test_total_compare_low_price_and_pattern():
     """V34-B-06b：未填限价时也比较最高 / 最低；低于其余各家平均 20% 以上提示；三家总价等差、等比记线索。"""
     from app.bid import pricing

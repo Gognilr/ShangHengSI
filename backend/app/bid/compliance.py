@@ -5,17 +5,20 @@
 yes 响应、no 疑似不响应、missing 未找到、unclear 无法本地判断。
 """
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from unicodedata import normalize
 
 from app.checks.amounts import check_uppercase
 from app.checks.content import check_content
-from app.checks.dates import find_dates
+from app.checks.dates import find_dates, parse_date
 from app.checks.model import CheckNode
 from app.checks.numbers import money, rounded
 from app.parsing.model import LOW_OCR_CONF
 from app.redaction.detect import chinese_upper_value, find_amounts
+from app.redaction.tables import table_cell
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,49 @@ _DEPOSIT = re.compile(r"投标保证金")
 _CERT = re.compile(r"有效(?:期|日期)限?[^。；;\n]{0,25}?(?:至|截止(?:日期)?|到期日?)\s*[:：]?\s*")
 _NOT_CERT = re.compile(r"投标|报价|响应|合同")
 _UPPER = re.compile(r"[零壹贰叁肆伍陆柒捌玖拾佰仟]")
+TERM_LABELS = {
+    "construction_max": r"(?:总|施工)?工期",
+    "delivery_max": r"交货期|交付期|供货期",
+    "warranty_min": r"质保期|质量保证期|保修期",
+    "defect_min": r"缺陷责任期",
+}
+_TERM_VALUE = r"([1-9][0-9]{0,3})\s*(日历天|工作日|个月|天|日|月|年)"
+_TERM_LINE = re.compile(
+    rf"(?:^|[。；;\n])\s*(?:我(?:方|公司)(?:郑重)?承诺\s*[:：]?\s*|投标承诺\s*[:：]?\s*)"
+    rf"(?P<label>{'|'.join(TERM_LABELS.values())})\s*(?:为|[:：])?\s*(?P<value>{_TERM_VALUE})"
+    r"(?=\s*(?:[。；;\n]|$))"
+)
+_PERFORMANCE = re.compile(r"类似(?:项目|工程|合同)?业绩|类似项目情况")
+_PERFORMANCE_TITLE = re.compile(
+    r"^(?:[\d一二三四五六七八九十.、()]+)?(?:近年|已完成的)?"
+    r"(?:类似(?:项目|工程|合同)?业绩(?:一览|汇总|情况)?表|类似项目情况表)$"
+)
+_PERFORMANCE_HEADERS = {
+    "name": re.compile(r"项目名称|工程名称|合同名称|业绩名称"),
+    "date": re.compile(r"(?:合同)?(?:签订|签署|签约)(?:日期|时间)"),
+    "amount": re.compile(r"(?:单项)?合同(?:金额|价款|总价)(?:\((?:人民币)?(?:亿元|万元|元)\))?"),
+}
+_RMB = re.compile(r"(?:人民币|[¥￥])?\s*(\d{1,15}(?:\.\d{1,4})?)\s*(亿元|万元|元)?")
+_RMB_SCALE = {"亿元": 100_000_000, "万元": 10_000, "元": 1}
+
+
+def _compact(text):
+    return "".join(normalize("NFKC", text).split())
+
+
+def normalize_term(text):
+    """规范为天、工作日、月；年只换算为月，不假定每月的天数。"""
+    match = re.fullmatch(_TERM_VALUE, normalize("NFKC", text.strip()))
+    if match is None:
+        return None
+    value, unit = int(match[1]), match[2]
+    if unit == "年":
+        return value * 12, "月"
+    return value, {"日历天": "天", "日": "天", "个月": "月"}.get(unit, unit)
+
+
+def _term_kind(label):
+    return next((key for key, pattern in TERM_LABELS.items() if re.fullmatch(pattern, label)), None)
 
 
 def requirement_kind(text):
@@ -43,6 +89,11 @@ def requirement_kind(text):
         return "uppercase"
     if "保证金" in text:
         return "deposit"
+    if _PERFORMANCE.search(text):
+        return "performance"
+    terms = [key for key, label in TERM_LABELS.items() if re.search(label, text)]
+    if len(terms) == 1:
+        return terms[0]
     if "有效期" in text:
         return "validity"
     return None
@@ -96,6 +147,165 @@ _ROW_DETAIL = re.compile(r"= ([\d,]+\.\d{2})，表中金额 ([\d,]+\.\d{2})")
 
 def _num(text):
     return Decimal(text.replace(",", ""))
+
+
+def _table_rows(nodes):
+    tables = defaultdict(lambda: defaultdict(dict))
+    title = None
+    for node in nodes:
+        if cell := table_cell(node.loc):
+            table, col, row = cell
+            tables[(node.file_seq, table)][row][col] = node
+        else:
+            title = node
+        if cell and title is not None and title.file_seq == node.file_seq:
+            # 只把紧邻表格的标题作为表格归属，表内标题在读取各行时处理。
+            tables[(node.file_seq, table)].setdefault(0, {"title": title})
+    return tables.values()
+
+
+def _term_evidence(nodes, tables):
+    hits = defaultdict(list)
+    for node in nodes:
+        for match in _TERM_LINE.finditer(node.text):
+            if value := normalize_term(match["value"]):
+                hits[_term_kind(match["label"])].append((value, (node,)))
+    for rows in tables:
+        label_col, response_col = None, None
+        for row_no in sorted(k for k in rows if k):
+            row = rows[row_no]
+            texts = {col: _compact(node.text) for col, node in row.items()}
+            if any(t in ("投标响应", "投标承诺", "投标人承诺") for t in texts.values()):
+                label_col = next((c for c, t in texts.items() if t in ("项目", "名称", "内容", "条款名称")), None)
+                response_col = next(c for c, t in texts.items() if t in ("投标响应", "投标承诺", "投标人承诺"))
+                continue
+            label, response = row.get(label_col), row.get(response_col)
+            if label and response and (kind := _term_kind(texts[label_col])):
+                if value := normalize_term(response.text):
+                    hits[kind].append((value, (label, response)))
+    return hits
+
+
+def _performance_rows(tables, start, end, minimum):
+    """仅按有明确归属的表格及签订日期、合同金额表头核对。"""
+    records = defaultdict(list)
+    for rows in tables:
+        titled = any(_PERFORMANCE_TITLE.fullmatch(_compact(n.text)) for n in rows.get(0, {}).values())
+        headers = {}
+        for row_no in sorted(k for k in rows if k):
+            row = rows[row_no]
+            texts = {col: _compact(node.text) for col, node in row.items()}
+            if any(_PERFORMANCE_TITLE.fullmatch(t) for t in texts.values()):
+                titled, headers = True, {}
+                continue
+            if not titled:
+                continue
+            found = {key: [(col, t, row[col]) for col, t in texts.items() if pattern.fullmatch(t)]
+                     for key, pattern in _PERFORMANCE_HEADERS.items()}
+            if found["name"]:
+                headers = {key: cells[0] for key, cells in found.items() if len(cells) == 1}
+                continue
+            if "name" not in headers:
+                continue
+            name = row.get(headers["name"][0])
+            key = _compact(name.text) if name else ""
+            if key in ("合计", "小计", "总计"):
+                headers = {}
+                continue
+            if not key and not any(t for t in texts.values()):
+                continue
+            evidence = [name] if name else []
+            checks = []
+            if start or end:
+                header = headers.get("date")
+                signed_node = row.get(header[0]) if header else None
+                if signed_node:
+                    evidence.extend((header[2], signed_node))
+                signed = parse_date(_compact(signed_node.text)) if signed_node else None
+                checks.append(None if signed is None else (not start or signed >= start) and (not end or signed <= end))
+            if minimum is not None:
+                header = headers.get("amount")
+                amount_node = row.get(header[0]) if header else None
+                amount, unit = None, None
+                if amount_node:
+                    evidence.extend((header[2], amount_node))
+                    match = _RMB.fullmatch(_compact(amount_node.text).replace(",", ""))
+                    if match:
+                        unit = match[2] or next((u for u in _RMB_SCALE if f"{u})" in header[1]), None)
+                        if unit:
+                            amount = Decimal(match[1]) * _RMB_SCALE[unit]
+                checks.append(None if amount is None else rounded(amount) >= minimum)
+            if (not key or key in ("-", "—", "/", "无", "同上", "同前")
+                    or any(n.ocr_conf is not None for n in evidence)):
+                verdict = "unclear"
+            elif False in checks:
+                verdict = "no"
+            else:
+                verdict = "unclear" if None in checks else "yes"
+            # 同名项目只数一次；同名记录相互矛盾时交人工核对。
+            records[key or name and name.loc or next(iter(row.values())).loc].append((verdict, evidence))
+    return records
+
+
+def _new_compliance(nodes, params, bidder, at):
+    verdicts, issues = {}, []
+    tables = _table_rows(nodes) if any(params.get(k) for k in (*TERM_LABELS, "performance_count")) else []
+    terms = _term_evidence(nodes, tables) if any(params.get(k) for k in TERM_LABELS) else {}
+    labels = {"construction_max": "工期", "delivery_max": "交货期", "warranty_min": "质保期", "defect_min": "缺陷责任期"}
+
+    def record(kind, label, status, reason, evidence=()):
+        places = [at(node) for node in evidence]
+        verdicts[kind] = (status, reason, places)
+        if status == "no":
+            issues.append(_issue(kind, "general", reason,
+                                 [{"label": label, "value": reason, "places": {bidder: places}}], kind=kind))
+
+    for kind, label in labels.items():
+        required = normalize_term(params[kind]) if params.get(kind) else None
+        found = terms.get(kind, [])
+        evidence = [node for _, group in found[:4] for node in group]
+        if required is None:
+            record(kind, label, "unclear", f"关键参数未填写{label}")
+        elif not found:
+            record(kind, label, "missing", f"未找到可直接比较的{label}承诺")
+        elif len({value for value, _ in found}) != 1 or found[0][0][1] != required[1]:
+            record(kind, label, "unclear", f"{label}承诺不一致或单位不同，请核对", evidence)
+        elif any(n.ocr_conf is not None for _, group in found for n in group):
+            record(kind, label, "unclear", f"{label}承诺涉及扫描件识读，请核对原件", evidence)
+        else:
+            (value, unit), group = found[0]
+            limit = required[0]
+            maximum = kind.endswith("_max")
+            fails = value > limit if maximum else value < limit
+            direction = ("超过" if maximum else "短于") if fails else ("未超过" if maximum else "不短于")
+            record(kind, label, "no" if fails else "yes",
+                   f"{label} {value} {unit}，{direction}招标要求的 {limit} {unit}", group)
+
+    count = params.get("performance_count")
+    start = parse_date(params["performance_from"]) if params.get("performance_from") else None
+    end = parse_date(params["performance_until"]) if params.get("performance_until") else None
+    minimum = Decimal(params["performance_amount"]) if params.get("performance_amount") else None
+    label = "类似业绩"
+    if not count:
+        record("performance", label, "unclear", "关键参数未填写类似业绩最低份数")
+        return issues, verdicts
+    records = _performance_rows(tables, start, end, minimum)
+    if not records:
+        record("performance", label, "missing", "未找到可按列核对的类似业绩一览表")
+        return issues, verdicts
+    tallies = defaultdict(list)
+    for entries in records.values():
+        status = entries[0][0] if len({state for state, _ in entries}) == 1 else "unclear"
+        tallies[status].append(entries[0][1])
+    passed, unclear = len(tallies["yes"]), len(tallies["unclear"])
+    status = "yes" if passed >= count else "unclear" if unclear else "no"
+    reason = f"类似业绩一览表中 {passed} 份满足已填写的条件，要求至少 {count} 份"
+    if unclear and status == "unclear":
+        reason += f"；另有 {unclear} 份的日期、金额或项目归属待核对"
+    groups = tallies["yes"] if status == "yes" else tallies["no"] + tallies["unclear"] + tallies["yes"]
+    evidence = list({node.loc: node for group in groups[:4] for node in group}.values())
+    record("performance", label, status, reason, evidence)
+    return issues, verdicts
 
 
 def corrected_total(fact, wrong_case, ceiling):
@@ -280,4 +490,7 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place):
         n = by_loc[r.locs[0]]
         issues.append(_issue("ai_instruction", "hint", "投标文件中有疑似写给 AI 的指令",
                              [{"label": "原文", "value": r.detail.split("：", 1)[-1][:300], "places": {b: [at(n)]}}]))
+    extra_issues, extra_verdicts = _new_compliance(nodes, params, b, at)
+    issues.extend(extra_issues)
+    verdicts.update(extra_verdicts)
     return issues, verdicts
