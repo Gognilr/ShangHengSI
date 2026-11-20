@@ -5,15 +5,11 @@ import type { RunDetail } from '@/api/runs'
 import MarkedText from '@/components/result/MarkedText.vue'
 import { aiInstructionNotice } from '@/utils/labels'
 
-/** 问题栏顶部的压缩结论（V31-U3 3.4）：问题数与等级筛选、制裁、覆盖说明、L-21 提醒、文件摘要与限制事项。 */
+/** 问题栏顶部的说明（V31-U3 3.4）：制裁、覆盖说明、L-21 提醒、文件摘要与限制事项；问题数与等级筛选在问题栏的分段控件上。 */
 const props = defineProps<{ run: RunDetail | null; localOnly: boolean }>()
-const severity = defineModel<string>('severity', { required: true })
 const emit = defineEmits<{ aiNotice: [] }>()
 
 const SANCTIONS_SHORT: Record<string, string> = { none: '无明显风险', attention: '需注意', high: '高风险' }
-const counts = computed(() => (['high', 'medium', 'low'] as const).map(value => ({
-  value, label: { high: '高', medium: '中', low: '低' }[value], count: (props.run?.findings ?? []).filter(f => f.severity === value).length,
-})))
 const aiInstructions = computed(() => props.run?.coverage?.ai_instructions ?? 0)
 const notes = computed(() => props.run?.coverage?.notes ?? [])
 const detailsOpen = ref(false)
@@ -25,11 +21,7 @@ watch(() => props.run?.id, () => { detailsOpen.value = false })
     <p v-if="localOnly" class="local">未做 AI 审核 · 仅本地校验</p>
     <template v-else-if="run">
       <p v-if="run.status === 'failed'" class="local">本次审核失败，未取得有效 AI 结论</p>
-      <div v-else class="line1">
-        <span class="total"><b>{{ run.findings.length }}</b>处问题</span>
-        <div class="counts" aria-label="按问题等级筛选">
-          <button v-for="c in counts" :key="c.value" type="button" class="count" :class="[`sev-${c.value}`, { active: severity === c.value }]" :aria-pressed="severity === c.value" @click="severity = severity === c.value ? '' : c.value"><i />{{ c.label }} {{ c.count }}</button>
-        </div>
+      <div v-else-if="run.sanctions.level" class="line1">
         <el-popover v-if="run.sanctions.level" trigger="click" placement="bottom-end" :width="320">
           <template #reference>
             <button type="button" class="sanctions" :class="{ high: run.sanctions.level === 'high' }">制裁：{{ SANCTIONS_SHORT[run.sanctions.level] ?? run.sanctions.level }}</button>
@@ -57,7 +49,8 @@ watch(() => props.run?.id, () => { detailsOpen.value = false })
 </template>
 
 <style scoped>
-.rail-summary { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border-bottom: 1px solid var(--si-hair); }
+.rail-summary { flex: none; display: flex; flex-direction: column; gap: 4px; }
+.rail-summary:empty { display: none; }
 .rail-summary.open { max-height: 50%; overflow-y: auto; }
 .local { margin: 0; font: var(--si-font-h3); color: var(--el-text-color-primary); }
 .line1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -69,7 +62,7 @@ watch(() => props.run?.id, () => { detailsOpen.value = false })
 .count i { width: 7px; height: 7px; border-radius: 50%; background: var(--si-info); }
 .sev-high i { background: var(--si-danger); }
 .sev-medium i { background: var(--si-warn); }
-.sanctions { margin-left: auto; height: 24px; padding: 0 8px; border: 1px solid var(--si-hair); border-radius: 999px; background: transparent; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; }
+.sanctions { height: 24px; padding: 0 8px; border: 1px solid var(--si-hair); border-radius: 999px; background: transparent; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; }
 .sanctions.high { border-color: var(--si-danger); color: var(--si-danger-ink); }
 .reasons { margin: 0 0 8px; padding-left: 18px; font: var(--si-font-meta); white-space: pre-wrap; overflow-wrap: anywhere; }
 .coverage { margin: 0; font: var(--si-font-meta); color: var(--si-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

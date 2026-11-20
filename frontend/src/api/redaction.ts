@@ -8,6 +8,8 @@ export interface Party {
   country: string | null
   org_type: string | null
   is_our_party: boolean
+  /** 原文中出现的写法，长的在前（V35-F-04）：第一项作名称显示，其余为简称 */
+  surfaces?: string[]
 }
 
 export interface PartyUpdate {
@@ -73,7 +75,9 @@ export const REDACTION_ERROR_MESSAGES: Record<string, string> = {
   TASK_STATE_CONFLICT: '任务状态已变化，请刷新后再试',
   SUSPECT_NOT_FOUND: '该条不确定项已不存在，请刷新后再试',
   INVALID_SELECTION: '所选位置不正确',
-  ALREADY_REDACTED: '所选文字已被替换，请选择未替换的文字',
+  ALREADY_REDACTED: '所选文字已被遮住，点它可以改类别或范围',
+  NOT_FOUND_IN_TEXT: '原文中没有找到这个写法，请照原文输入',
+  PARTY_NOT_FOUND: '签约方已变化，请刷新后再试',
   SELECTION_LENGTH: '请选择 2–100 个字符',
   NOT_KEEPABLE: '这一处不能直接发送，请替换为代号',
 }
@@ -112,6 +116,16 @@ export const redactionApi = {
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/manual`, body),
   revoke: (taskId: string, body: { loc: string; char_start: number; char_end: number }) =>
     http.post<RedactionInfo>(`/tasks/${taskId}/redaction/revoke`, body),
+  /** 胶囊菜单：改类别、扩大或缩小范围（V35-F-04）；新位置与其他项重叠时并成一个新项 */
+  adjust: (taskId: string, body: { loc: string; char_start: number; char_end: number; new_start: number; new_end: number; category?: UserCategory }) =>
+    http.post<RedactionInfo>(`/tasks/${taskId}/redaction/adjust`, body),
+  /** 签约方卡片：照原文写法加简称或改名称，登记为该方的变体（同一代号） */
+  addAlias: (taskId: string, partyId: string, text: string) =>
+    http.post<RedactionInfo>(`/tasks/${taskId}/parties/${partyId}/aliases`, { text }),
+  removeAlias: (taskId: string, partyId: string, text: string) =>
+    http.post<RedactionInfo>(`/tasks/${taskId}/parties/${partyId}/aliases/remove`, { text }),
+  /** 删掉签约方：它的全部写法都不再遮住 */
+  removeParty: (taskId: string, partyId: string) => http.delete<RedactionInfo>(`/tasks/${taskId}/parties/${partyId}`),
   /** 外发文本预览（代号版本），只能按纯文本显示。 */
   outbound: (taskId: string) => http.get<{ text: string; note: string | null }>(`/tasks/${taskId}/redaction/outbound`),
   leaks: (taskId: string) => http.get<LeakList>(`/tasks/${taskId}/redaction/leaks`),

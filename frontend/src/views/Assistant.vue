@@ -11,11 +11,15 @@ import { useAuthStore } from '@/stores/auth'
 import { useSessionsStore } from '@/stores/sessions'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import ReviewPane from '@/components/workspace/ReviewPane.vue'
+import ReviewSteps, { type ReviewProgress } from '@/components/workspace/ReviewSteps.vue'
 import Conversation from '@/components/assistant/Conversation.vue'
 import Composer, { type ComposerStart } from '@/components/assistant/Composer.vue'
 import FilePanel from '@/components/assistant/FilePanel.vue'
 import WorkbenchHome from '@/components/assistant/WorkbenchHome.vue'
 import DraftDialog from '@/components/workspace/DraftDialog.vue'
+
+// 文件审核的步骤条由审核视图报来，显示在顶部工具条（澄明 8.4）
+const reviewProgress = ref<ReviewProgress | null>(null)
 const route = useRoute(), router = useRouter(), sessions = useSessionsStore(), auth = useAuthStore()
 // 会话的两种视图（V32-B-01）：直接提问 / 全面审核。切换只改视图，不外发、不清空输入；没有“文件审核”权限的人看不到审核视图；会话以外的审核首页在 /review（V34-A-03）。
 // 工作台首页不再有切换（V34-A-04）；会话里没有审核过时工具条只放“全面审核 →”，审核过或打开过审核视图才显示两个页签
@@ -227,6 +231,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           <button type="button" class="title" title="修改会话标题" @click="rename">{{ session.title }}</button>
           <span v-if="modelLabel && mode === 'ask'" class="ai-tag"><Sparkle :size="13" :stroke-width="2" />{{ modelLabel }}</span>
           <span class="head-gap" />
+          <ReviewSteps v-if="mode === 'review' && reviewProgress" :progress="reviewProgress" />
           <SiSegmented v-if="showTabs" v-model="modeModel" :options="modeOptions" size="small" ariaLabel="会话视图" />
           <el-button v-else-if="canReview && canAsk" size="small" link @click="seeResult">全面审核 →</el-button>
           <el-button size="small" @click="drawerOpen = true"><PanelRight :size="14" :stroke-width="1.75" /><span class="files-label">文件 {{ session.files.length }}</span></el-button>
@@ -246,7 +251,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           <Composer :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
           <p class="dock-note">模型只看到遮住名称后的文字。AI 建议请结合原文核实。</p>
         </div>
-        <ReviewPane v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" class="review-pane" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null">
+        <ReviewPane v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" class="review-pane" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null" @progress="reviewProgress = $event" @ask="modeModel = 'ask'">
           <template #discussion="{ finding, no, update, locate }">
             <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已遮住名称与金额），不含其他条款。"
               :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource, el: HTMLElement) => cite(m, src, el, locate)" @stop="stop" @retry="retry" />

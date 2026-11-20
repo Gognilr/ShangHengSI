@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Lock, ShieldCheck } from '@lucide/vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { Calculator, Check, Sparkle, Sparkles } from '@lucide/vue'
 import type { Finding, RunDetail } from '@/api/runs'
 import { assistantApi } from '@/api/assistant'
 import ResultCanvas from '@/components/result/ResultCanvas.vue'
@@ -8,9 +8,8 @@ import MarkedText from '@/components/result/MarkedText.vue'
 import type { CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
 import type { TaskDetail } from '@/api/tasks'
 import SentDrawer from '@/components/result/SentDrawer.vue'
-import SiCount from '@/components/ui/SiCount.vue'
 import { NOT_SENT, severityLabel } from '@/utils/labels'
-import { useFx, useLoop, watchFrames } from '@/utils/motion'
+import { useFx } from '@/utils/motion'
 
 /**
  * 审核中仪式（V31-U3 第五节）：舞台把“只有代号出网、回来在本机还原”演出来，四步状态只按真实数据显示，不演假进度。
@@ -38,10 +37,7 @@ const receipt = computed(() => props.run?.receipt ?? null)
 const queued = computed(() => status.value === 'queued')
 const modelName = computed(() => props.run?.model_label ?? props.run?.model_name ?? receipt.value?.model ?? '模型')
 const reviewDone = computed(() => ['completed', 'partial', 'failed'].includes(status.value))
-const restoreDone = computed(() => ['completed', 'partial'].includes(status.value))
-// 复检通过、发出第一段即打勾（进度 sent，V31-U5F-01）；旧轮次没有回执时，进入运行即视为已通过
 const sentCount = computed(() => props.run?.progress?.sent ?? 0)
-const recheckDone = computed(() => sentCount.value >= 1 || (receipt.value ? receipt.value.rechecks >= 1 : !queued.value))
 const reviewText = computed(() => {
   if (queued.value) {
     const pos = props.run?.queue_position ?? props.task.queue_position
@@ -58,26 +54,6 @@ const reviewText = computed(() => {
   if (got) return got
   return sentCount.value ? `已发送，等待 ${modelName.value} 回复` : `${modelName.value} 审核中`
 })
-const recheckText = computed(() => {
-  const total = props.run?.progress?.total ?? 0
-  const blocked = receipt.value?.blocked ?? 0
-  return total > 1 ? `已复检 ${Math.min(sentCount.value, total)}/${total} 段，拦截 ${blocked}` : `通过，拦截 ${blocked}`
-})
-// 每步固定两行：标题 + 说明。完成的步骤保留说明（如“通过”），未开始的显示“等待”，四步基线一致（V31-U5F-03 问题 4）
-const steps = computed(() => {
-  const list = [
-    { label: '本地识别', done: true, active: '', fin: receipt.value ? `已在本机保护 ${receipt.value.protected_total} 处` : '完成' },
-    { label: '出口复检', done: recheckDone.value, active: '发送前检查中', fin: recheckText.value },
-    { label: '模型审核', done: reviewDone.value, active: reviewText.value, fin: status.value === 'failed' ? '未完成' : '已返回' },
-    { label: '本地还原', done: restoreDone.value, active: '在本机还原代号', fin: '已还原' },
-  ]
-  const current = list.findIndex(s => !s.done)
-  return list.map((s, i) => {
-    const state = s.done ? 'done' : i === current ? 'active' : 'wait'
-    return { label: s.label, state, text: state === 'done' ? s.fin : state === 'active' ? s.active : '等待' }
-  })
-})
-
 // 已用时间：排队从 queued_at，运行从 started_at；不显示预计剩余时间
 const now = ref(Date.now())
 const clock = setInterval(() => { now.value = Date.now() }, 1000)
@@ -94,138 +70,96 @@ const notSent = computed(() => {
 })
 const sentOpen = ref(false)
 
-// 舞台：循环只在模型审核进行中、完整特效且页面可见时播放
-const looping = useLoop(computed(() => !queued.value && !reviewDone.value))
-const THUMB = [92, 70, 84, 56, 90, 64, 78, 48]
-let stopFrames: (() => void) | undefined
-onMounted(() => { if (fx.value === 'full') stopFrames = watchFrames() })
-onBeforeUnmount(() => { clearInterval(clock); stopFrames?.() })
+onBeforeUnmount(() => { clearInterval(clock) })
+const doneCount = computed(() => findings.value.length)
 </script>
 
 <template>
   <div class="ceremony">
-    <div v-if="fx !== 'off'" class="stage" :class="`fx-${fx}`" aria-hidden="true">
-      <div class="thumb">
-        <span v-for="(w, i) in THUMB" :key="i" class="bar" :class="{ cap: i % 3 === 1 }" :style="{ width: `${w}%` }" />
-        <span v-if="fx === 'full'" class="scan" />
-      </div>
-      <div v-if="fx === 'full'" class="fly">
-        <span v-for="i in 10" :key="i" class="lane" :style="{ animationDelay: `${(i - 1) * 70}ms`, top: `${30 + (i % 5) * 14}px` }"><i class="pill" /></span>
-      </div>
-      <div class="vault">
-        <Lock :size="28" :stroke-width="1.5" />
-        <span class="vault-n"><SiCount :value="receipt?.protected_total ?? 0" /></span>
-        <span class="caption">本机保险箱</span>
-      </div>
-      <div class="gate" :class="{ lit: recheckDone }">
-        <ShieldCheck :size="26" :stroke-width="1.5" />
-        <span class="caption">复检 {{ Math.max(receipt?.rechecks ?? 0, sentCount) }} 次 · 拦截 {{ receipt?.blocked ?? 0 }}</span>
-      </div>
-      <div class="track" :class="{ moving: looping }">
-        <span class="track-label">只含代号 · 加密传输</span>
-        <span v-for="i in 6" :key="i" class="lane" :style="{ animationDelay: `${-(i - 1) * 400}ms` }"><i class="pill" /></span>
-      </div>
-      <div class="model" :class="{ waiting: queued, breathing: looping }">
-        <span class="halo" /><span class="dot" />
-        <span class="caption model-name">{{ modelName }}</span>
-        <span class="caption">{{ queued ? '排队中' : reviewDone ? '已返回' : reviewText }}</span>
-      </div>
+    <div class="live-canvas">
+      <ResultCanvas ref="canvas" :task="task" :note="run?.user_note ?? null" :annotations="annotations" :local-locs="[]"
+        :selected-finding-id="selected" :raw-highlight="[]" :ask-enabled="false"
+        :node-loader="isSession ? nodeLoader : undefined" :raw-loader="isSession ? rawLoader : undefined" @select="selectCanvas" />
+      <span v-if="!reviewDone && fx !== 'off'" class="scanline" aria-hidden="true" />
     </div>
-
-    <div class="live-result">
-      <div class="live-canvas">
-        <ResultCanvas ref="canvas" :task="task" :note="run?.user_note ?? null" :annotations="annotations" :local-locs="[]"
-          :selected-finding-id="selected" :raw-highlight="[]" :ask-enabled="false"
-          :node-loader="isSession ? nodeLoader : undefined" :raw-loader="isSession ? rawLoader : undefined" @select="selectCanvas" />
+    <aside class="live-rail" aria-live="polite">
+      <div class="rail-head">
+        <span class="tab">意见</span>
+        <span class="ai-tag"><Sparkle :size="13" :stroke-width="2" />{{ modelName }}</span>
       </div>
-      <aside class="live-findings" aria-live="polite">
-        <h3>AI 建议 · 请核实</h3>
-        <p class="hint">审核中，问题会逐条出现；最终结果可能合并或调整。</p>
-        <p v-if="!findings.length" class="hint">正在等待模型返回问题。</p>
-        <article v-for="f in findings" :key="f.id" class="live-card" :class="{ selected: selected === f.id }">
-          <button type="button" class="live-title" @click="selectFinding(f)"><MarkedText :text="f.title" :marks="f.marks.title" /> · {{ severityLabel(f.severity) }}风险</button>
-          <span v-if="f.location" class="hint">{{ f.location }}</span>
-          <MarkedText :text="f.problem" :marks="f.marks.problem" />
-          <span v-if="f.suggestion" class="hint">建议：<MarkedText :text="f.suggestion" :marks="f.marks.suggestion" /></span>
-          <span v-if="f.unresolved" class="hint">有 {{ f.unresolved }} 处未能还原，已原样标出。</span>
-        </article>
-      </aside>
-    </div>
-    <ol class="steps" aria-live="polite">
-      <li v-for="(s, i) in steps" :key="s.label" class="step" :class="s.state">
-        <span class="mark">{{ s.state === 'done' ? '✓' : i + 1 }}</span>
-        <span class="step-label">{{ s.label }}</span>
-        <span class="step-text" :title="s.text">{{ s.text }}</span>
-      </li>
-    </ol>
-    <div class="foot">
-      <span class="num">{{ elapsed }}<template v-if="elapsed"> · </template>可以离开页面，完成后在侧栏和页签上标出，回来即是结果</span>
-      <el-button @click="$router.push('/history')">稍后再看</el-button>
-    </div>
-    <div class="foot hint">
-      <span class="not-sent">不发送：{{ notSent }}</span>
-      <el-button v-if="run && (receipt?.calls ?? 0) >= 1" link type="primary" @click="sentOpen = true">查看本轮实际发送的文字</el-button>
-    </div>
+      <div class="rail-scroll">
+        <div class="calc-fold"><span class="calc-ic"><Calculator :size="14" :stroke-width="1.75" /></span><b>本机计算 · 结果确定</b><span class="ok-badge"><Check :size="12" :stroke-width="2.5" />本机已算完</span></div>
+        <div class="ai-wait" :class="{ queued }">
+          <div class="ai-orb"><Sparkles :size="22" :stroke-width="1.75" /></div>
+          <b>{{ queued ? '排队等待模型' : reviewDone ? '模型已返回，正在本机还原' : '模型正在逐条审阅遮住后的文字' }}</b>
+          <span class="hint">{{ doneCount ? `已收到 ${doneCount} 条意见，结果会一条条出现` : reviewText }}</span>
+        </div>
+        <TransitionGroup name="ic" tag="div" class="cards">
+          <article v-for="(f, i) in findings" :key="f.id" class="ic-card" :class="[`sev-${f.severity}`, { on: selected === f.id }]" role="button" tabindex="0" @click="selectFinding(f)" @keydown.enter="selectFinding(f)">
+            <div class="ic-top"><span class="sev-badge"><i />{{ severityLabel(f.severity) }}</span><span v-if="f.location" class="loc-badge">{{ f.location }}</span><span class="ic-no num">{{ String(i + 1).padStart(2, '0') }}</span></div>
+            <b class="ic-title"><MarkedText :text="f.title" :marks="f.marks.title" /></b>
+            <p class="ic-p"><MarkedText :text="f.problem" :marks="f.marks.problem" /></p>
+          </article>
+        </TransitionGroup>
+        <div v-if="!reviewDone" class="sk-card" aria-hidden="true"><span class="sk" style="width: 30%" /><span class="sk" style="width: 85%; height: 16px" /><span class="sk" style="width: 65%" /></div>
+      </div>
+      <div class="rail-foot">
+        <span class="not-sent" :title="notSent">不发送：{{ notSent }}</span>
+        <div class="foot-row">
+          <el-button v-if="run && (receipt?.calls ?? 0) >= 1" link type="primary" size="small" @click="sentOpen = true">本轮实际发送的文字</el-button>
+          <span class="hint num">{{ elapsed }}</span>
+        </div>
+      </div>
+    </aside>
     <SentDrawer v-if="run" v-model="sentOpen" :run-id="run.id" />
   </div>
 </template>
 
 <style scoped>
-.ceremony { display: flex; flex-direction: column; gap: 16px; min-height: 0; height: 100%; overflow-y: auto; }
-.live-result { display: flex; gap: 12px; min-height: 300px; height: min(45vh, 540px); }
-.live-canvas { display: flex; flex: 1; min-width: 0; min-height: 0; }
-.live-findings { flex: 0 0 40%; min-width: 0; overflow-y: auto; padding: 12px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); }
-.live-findings h3 { margin: 0 0 8px; font: var(--si-font-label); }
-.live-card { box-sizing: border-box; display: flex; flex-direction: column; width: 100%; gap: 6px; margin: 8px 0; padding: 12px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--el-text-color-primary); background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); font: inherit; }
-.live-card.selected { border-color: var(--el-color-primary); }
-.live-title { padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: var(--si-font-label); }
-.live-title:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
-@media (max-height: 900px) { .stage { display: none; } }
-.stage { position: relative; height: 260px; margin: -20px -24px 0; border-bottom: 1px solid var(--si-hair); overflow: hidden; color: var(--si-ink-2); }
-.caption { font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
-/* 文件缩略 */
-.thumb { position: absolute; left: 5%; top: 60px; width: 96px; height: 128px; padding: 14px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; overflow: hidden; border-radius: var(--si-radius-paper); background: var(--si-paper); box-shadow: var(--si-paper-shadow); }
-.bar { height: 5px; border-radius: 3px; background: var(--si-hair-strong); }
-.bar.cap { background: var(--el-color-primary); width: 36% !important; }
-.scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--el-color-primary); animation: scan 1.3s var(--si-ease) both; }
-@keyframes scan { from { transform: translateY(0); opacity: 1; } to { transform: translateY(126px); opacity: 0; } }
-/* 飞入保险箱的小胶囊：lane 与区间等宽，用 translateX(100%) 移动整段距离 */
-.fly { position: absolute; left: calc(5% + 96px); width: calc(22% - 96px); top: 60px; height: 128px; }
-.lane { position: absolute; left: 0; width: 100%; height: 8px; }
-.fly .lane { opacity: 0; animation: fly 750ms var(--si-ease) both; }
-@keyframes fly { 0% { transform: translateX(0); opacity: 0; } 15% { opacity: 1; } 90% { opacity: 1; } 100% { transform: translateX(100%); opacity: 0; } }
-.pill { display: block; width: 18px; height: 8px; border-radius: 4px; background: var(--el-color-primary); }
-/* 保险箱、闸门、模型 */
-.vault, .gate, .model { position: absolute; top: 72px; display: flex; flex-direction: column; align-items: center; gap: 6px; transform: translateX(-50%); }
-.vault { left: 30%; color: var(--el-color-primary); }
-.vault-n { font: var(--si-font-stat); color: var(--el-text-color-primary); }
-.gate { left: 50%; padding: 12px 14px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-card); background: var(--si-surface-1); color: var(--si-ink-3); transition: border-color var(--si-dur-2) var(--si-ease), box-shadow var(--si-dur-2) var(--si-ease); }
-.gate.lit { border-color: var(--el-color-primary); color: var(--el-color-primary); }
-.track { position: absolute; left: calc(50% + 70px); right: calc(14% + 40px); top: 104px; height: 8px; border-top: 2px dashed var(--si-hair-strong); overflow: visible; }
-.track-label { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
-.track .lane { top: -5px; opacity: 0; }
-.track.moving .lane { opacity: 1; animation: run 2.4s linear infinite; }
-@keyframes run { from { transform: translateX(-8%); } to { transform: translateX(100%); } }
-.track .pill { width: 14px; }
-.model { left: 86%; }
-.dot, .halo { width: 44px; height: 44px; border-radius: 50%; }
-.dot { position: relative; background: var(--si-ai); }
-.halo { position: absolute; top: 0; background: var(--si-ai); opacity: 0; }
-.model.waiting .dot { background: var(--si-ink-3); }
-.model.breathing .halo { animation: breathe 2s var(--si-ease) infinite; }
-@keyframes breathe { 0%, 100% { opacity: .15; transform: scale(1); } 50% { opacity: .35; transform: scale(1.35); } }
-.model-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; font: var(--si-font-label-sm); color: var(--el-text-color-primary); }
-/* 四步与说明：三个特效级别完全相同 */
-.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0; padding: 0; list-style: none; }
-.step { display: grid; grid-template-columns: 22px minmax(0, 1fr); grid-template-rows: 22px 18px; align-items: center; column-gap: 8px; row-gap: 4px; color: var(--si-ink-3); }
-.mark { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--si-hair-strong); border-radius: 50%; font: var(--si-font-label-sm); }
-.step-label { font: var(--si-font-label); }
-.step-text { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-caption); }
-.step.done { color: var(--el-text-color-primary); }
-.step.done .mark { border-color: var(--el-color-primary); background: var(--el-color-primary); color: var(--si-white); }
-.step.active { color: var(--el-text-color-primary); }
-.step.active .mark { border-color: var(--el-color-primary); color: var(--el-color-primary); }
-.step.active .step-text { color: var(--el-color-primary); }
-.foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; font: var(--si-font-meta); }
+/* 审核中（澄明 8.4 ③）：纸面扫描线 + 右栏紫色等待；进度只在顶部工具条 */
+.ceremony { display: flex; gap: 16px; min-height: 0; height: 100%; }
+.live-canvas { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.scanline { position: absolute; left: 8%; right: 8%; top: 56px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, var(--si-brand-2), var(--si-ai), transparent); box-shadow: 0 0 12px color-mix(in srgb, var(--si-ai) 50%, transparent); pointer-events: none; animation: cer-scan 3.2s var(--si-ease-io) infinite; }
+@keyframes cer-scan { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { transform: translateY(60vh); opacity: 0; } }
+:root[data-fx="lite"] .scanline { animation-duration: 6s; }
+.live-rail { flex: 0 0 440px; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); overflow: hidden; }
+.rail-head { flex: none; display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 16px; border-bottom: 1px solid var(--si-hair-faint); }
+.tab { position: relative; height: 48px; line-height: 48px; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
+.tab::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--si-brand-2); }
+.ai-tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: auto; padding: 0 10px; border-radius: 999px; background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
+.ai-tag svg { color: var(--si-ai); }
+.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.calc-fold { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--si-card-2); border: 1px solid var(--si-hair-faint); font: var(--si-font-label); }
+.calc-ic { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--si-blue-tint); color: var(--si-brand-2); }
+.ok-badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; margin-left: auto; padding: 0 8px; border-radius: 999px; background: var(--si-ok-soft); color: var(--si-ok-ink); font: var(--si-font-badge); }
+.ai-wait { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 12px 18px; border-radius: 14px; background: var(--si-ai-soft); text-align: center; }
+.ai-wait b { color: var(--si-ai-ink); font: var(--si-font-label); font-weight: 600; }
+.ai-orb { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 4px; border-radius: 50%; background: var(--si-surface-1); color: var(--si-ai); box-shadow: 0 0 0 6px color-mix(in srgb, var(--si-ai) 12%, transparent); animation: cer-breathe 2.4s var(--si-ease-io) infinite; }
+.ai-wait.queued .ai-orb { color: var(--si-ink-3); animation: none; }
+@keyframes cer-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+:root[data-fx="lite"] .ai-orb, :root[data-fx="off"] .ai-orb { animation: none; }
+.cards { display: flex; flex-direction: column; gap: 10px; }
+.ic-card { padding: 12px 14px; border: 1px solid var(--si-hair); border-radius: 12px; background: var(--si-surface-1); cursor: pointer; transition: box-shadow var(--si-d2) var(--si-ease-out), border-color var(--si-d2) var(--si-ease-out); }
+.ic-card:hover { border-color: var(--si-hair-strong); }
+.ic-card.on { border-color: var(--si-brand-2); }
+.ic-top { display: flex; align-items: center; gap: 6px; }
+.sev-badge, .loc-badge { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font: var(--si-font-badge); }
+.sev-badge i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sev-high .sev-badge { background: var(--si-danger-soft); color: var(--si-danger-ink); }
+.sev-medium .sev-badge { background: var(--si-warn-soft); color: var(--si-warn-ink); }
+.sev-low .sev-badge { background: var(--si-info-soft); color: var(--si-info-ink); }
+.loc-badge { max-width: 180px; overflow: hidden; border: 1px solid var(--si-hair); color: var(--si-ink-3); text-overflow: ellipsis; white-space: nowrap; }
+.ic-no { margin-left: auto; color: var(--si-ink-4); font: var(--si-font-code-sm); }
+.ic-title { display: block; margin-top: 8px; color: var(--si-ink-1); font: var(--si-font-h4); }
+.ic-p { margin: 4px 0 0; color: var(--si-ink-2); font: var(--si-font-body); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ic-enter-active { transition: opacity var(--si-d3) var(--si-ease-out), transform var(--si-d3) var(--si-ease-spring); }
+.ic-enter-from { opacity: 0; transform: translateY(14px) scale(.98); }
+.sk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px dashed var(--si-hair); border-radius: 12px; }
+.sk { display: block; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--si-surface-2), color-mix(in srgb, var(--si-surface-2) 40%, var(--si-surface-1)), var(--si-surface-2)); background-size: 200% 100%; animation: cer-shine 1.6s linear infinite; }
+@keyframes cer-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+:root[data-fx="off"] .sk { animation: none; }
+.rail-foot { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 16px; border-top: 1px solid var(--si-hair-faint); color: var(--si-ink-3); font: var(--si-font-caption); }
+.foot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .not-sent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hint { margin: 0; }
 </style>

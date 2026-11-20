@@ -255,7 +255,7 @@ async function remove() {
 }
 
 // ---- 两栏宽度（3.1）：问题栏 clamp(480px, 42%, 640px)，≥ 400px；画布 ≥ 420px ----
-const RAIL_KEY = 'si.review.findingsWidth'
+const RAIL_KEY = 'si.review.railWidth'
 const HANDLE = 8, GAP = 12, RAIL_MIN = 400, CANVAS_MIN = 420
 const splitEl = ref<HTMLElement>()
 const containerWidth = ref(0)

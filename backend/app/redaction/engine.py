@@ -568,7 +568,9 @@ def compute(
                   _recognition_view(t.alias_of) if t.alias_of else None) for t in terms]
     user_terms = [UserTerm(_recognition_view(t.text), t.category, _recognition_view(t.alias_of) if t.alias_of else None)
                   for t in user_terms]
-    exclusions = [_recognition_view(t) for t in exclusions]
+    # 用户之后又明确要遮住的写法（用户词条）不再按先前的撤销处理（V35-F-04：缩小后再选回全称）
+    wanted = {P.normalize(u.text) for u in user_terms}
+    exclusions = [v for v in (_recognition_view(t) for t in exclusions) if P.normalize(v) not in wanted]
     keeps = [_recognition_view(t) for t in keeps]
     entities: dict[str, _Entity] = {}
     excluded = {P.normalize(value) for value in exclusions}
@@ -1969,6 +1971,7 @@ def _add_term(db: Session, task: Task, text: str, loc: str, start: int, end: int
     m = _user_pattern(term).match(text, start)
     if m is None or m.end() != end:  # 选在单词中间（“ora Fic”）时全文匹配不到这里
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确，请选择完整的词")
+    _drop_exclusions(db, task, term)
     existing = _existing_parties(db, task)
     _run(db, task, _current_overrides(existing), existing, [UserTerm(term, category)])
     covered = [(i.char_start, i.char_end) for i in db.scalars(
@@ -2029,6 +2032,15 @@ def _exclude(db: Session, task: Task, texts: dict[str, str], loc: str, surface: 
     db.flush()
 
 
+def _drop_exclusions(db: Session, task: Task, value: str) -> None:
+    """用户又明确要遮住先前撤销过的写法：删掉那条撤销记录（写法也可能是已记住的名称，不能只靠本次的用户词条）。"""
+    key = P.normalize(value)
+    for row in db.scalars(select(RedactionExclusion).where(RedactionExclusion.task_id == task.id)):
+        if P.normalize(crypto.decrypt_text(row.text_enc)) == key:
+            db.delete(row)
+    db.flush()
+
+
 def _party_name(db: Session, task: Task, code: str) -> str | None:
     if db.scalar(select(Party.id).where(Party.task_id == task.id, Party.code == code)) is None:
         return None
@@ -2040,6 +2052,7 @@ def _add_alias(db: Session, task: Task, text: str, loc: str, start: int, end: in
     m = _user_pattern(text[start:end]).match(text, start)
     if m is None or m.end() != end:
         raise RedactionInputError(422, "INVALID_SELECTION", "所选位置不正确，请选择完整的词")
+    _drop_exclusions(db, task, text[start:end])
     existing = _existing_parties(db, task)
     _run(db, task, _current_overrides(existing), existing, [UserTerm(text[start:end], "ORG", owner)])
     covered = [(i.char_start, i.char_end) for i in db.scalars(

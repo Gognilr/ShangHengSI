@@ -17,6 +17,7 @@ import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import SiThinkingDots from '@/components/ui/SiThinkingDots.vue'
 import RunResult from '@/components/workspace/RunResult.vue'
+import type { ReviewProgress } from '@/components/workspace/ReviewSteps.vue'
 import { useAuthStore } from '@/stores/auth'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
 import { nudgeField } from '@/utils/nudge'
@@ -27,7 +28,9 @@ import { nudgeField } from '@/utils/nudge'
  * 一个主按钮“确认并开始审核”同时完成确认与发起；没有待确认文件（已确认过）时才是设置页，只列本轮新增发送的内容。
  */
 const props = defineProps<{ session: Session; fresh?: boolean; discussId?: string; active?: boolean }>()
-const emit = defineEmits<{ refresh: []; confirm: []; add: []; pick: []; remove: [file: SessionFile]; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: [] }>()
+const emit = defineEmits<{ refresh: []; confirm: []; add: []; pick: []; remove: [file: SessionFile]; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: []
+  /** 顶部工具条的步骤条（澄明 8.4：进度只在工具条上） */
+  progress: [p: ReviewProgress]; ask: [] }>()
 const auth = useAuthStore()
 
 // ---- 轮次 ----
@@ -302,6 +305,24 @@ function badge(file: SessionFile) { return file.ext.toUpperCase().slice(0, 4) }
 function newRound() { composing.value = true; note.value = ''; noteOpen.value = false; formError.value = '' }
 function backToResult() { composing.value = false }
 const loadLocal = () => assistantApi.localFindings(props.session.id)
+
+// ---- 顶部步骤条 ----
+const blockedN = ref(0)
+const resultRun = ref<RunDetail | null>(null)
+const progress = computed<ReviewProgress>(() => {
+  const s = stage.value
+  if (s === 'running') {
+    const r = running_.value
+    return { stage: 'running', since: r?.started_at ?? r?.queued_at ?? null, queue: r?.status === 'queued' ? r.queue_position : null }
+  }
+  if (s === 'result') {
+    const r = resultRun.value
+    const start = r ? Date.parse(r.started_at ?? r.queued_at) : NaN, end = r?.finished_at ? Date.parse(r.finished_at) : NaN
+    return { stage: 'result', status: r?.status, seconds: Number.isFinite(start) && Number.isFinite(end) ? (end - start) / 1000 : null }
+  }
+  return { stage: s, blocked: s === 'confirm' ? blockedN.value : 0 }
+})
+watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 </script>
 
 <template>
@@ -327,7 +348,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
       <div v-if="rounds.length" class="back"><el-button link type="primary" @click="backToResult">← 返回第 {{ [...rounds].sort((a, b) => b.run_no - a.run_no)[0]?.run_no }} 轮结果</el-button></div>
       <ConfirmWorkbench :key="`${session.id}:${pendingFiles.map(f => f.id).join(',')}`" class="confirm-wb" :task="confirmationTask(session)" mode="session-review" require-our-party
         v-model:picked="picked" v-model:main-id="mainId" :stance="stance" :file-ids="picked" :model-name="modelName" :blocker="confirmBlocker" :blocker-choice="!!confirmCheck.field" :submit="submitConfirm"
-        @our="confirmOur = $event" @preview="previewVersion = $event" @confirmed="emit('refresh')" @stale="emit('refresh')" @nudge="nudgeConfirm">
+        @our="confirmOur = $event" @preview="previewVersion = $event" @confirmed="emit('refresh')" @stale="emit('refresh')" @nudge="nudgeConfirm" @blocked="blockedN = $event">
         <template #settings>
           <div class="cs">
             <div :ref="fieldRef('confirm', 'stance')" class="cs-row"><span class="setting-label">业务立场<span v-if="!stance" class="si-required-tag">请选择</span></span><SiSegmented :class="{ 'si-required-empty': !stance }" :model-value="stance" :options="stanceOptions" size="small" ariaLabel="业务立场" @update:model-value="chooseStance" /></div>
@@ -348,7 +369,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
 
     <!-- 结果 -->
     <RunResult v-else-if="stage === 'result'" :session="session" :rounds="rounds" :selected-run="selectedRun" :fresh="freshRun"
-      :discuss-id="discussId" @select-run="selectedRun = $event; freshRun = false" @new-round="newRound" @discuss="emit('discuss', $event)" @close-discuss="emit('closeDiscuss')">
+      :discuss-id="discussId" @select-run="selectedRun = $event; freshRun = false" @new-round="newRound" @discuss="emit('discuss', $event)" @close-discuss="emit('closeDiscuss')" @loaded="resultRun = $event" @ask="emit('ask')">
       <!-- 讨论区由工作台提供（消息与轮询只在工作台一处），这里原样转给结果页右栏（V321-E-02） -->
       <template #discussion="slotProps"><slot name="discussion" v-bind="slotProps" /></template>
     </RunResult>
@@ -422,7 +443,7 @@ const loadLocal = () => assistantApi.localFindings(props.session.id)
 <style scoped>
 .review-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .center { padding: 32px; }
-.running { flex: 1; min-height: 0; overflow: hidden; margin: 0 20px 16px; }
+.running { flex: 1; min-height: 0; overflow: hidden; padding: 16px 20px; }
 .local { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .confirm-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .confirm-stage > .back { padding: 8px 20px 0; margin: 0; }

@@ -6,7 +6,7 @@ import type { Session, SessionFile } from '@/api/assistant'
 import { useStale } from '@/utils/stale'
 
 /**
- * 解析阶段（V321-E-06）：每个文件一行显示当前阶段，最后一行是整批的“识别敏感信息与本地校验”。
+ * 解析阶段（V321-E-06）：每个文件一行显示当前阶段，最后一行是整批的“识别名称、金额等并做本机核对”。
  * 只有 OCR 知道总页数，才画确定进度条；其他阶段只显示文字，不画假进度。
  */
 const props = defineProps<{ session: Session }>()
@@ -46,10 +46,10 @@ const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
 </script>
 
 <template>
-  <section class="parse" aria-label="文件解析进度">
+  <section class="parse" aria-label="文件读取进度">
     <div class="parse-card">
-      <h2 v-if="!failed" role="status">正在本机解析<span class="num"> · 已用 {{ elapsed }} 秒</span></h2>
-      <h2 v-else>解析未完成</h2>
+      <h2 v-if="!failed" role="status">正在本机读取<span class="num"> · 已用 {{ elapsed }} 秒</span></h2>
+      <h2 v-else>读取未完成</h2>
       <div v-if="!failed" class="scan-wrap"><SiScanDoc :active="true" /></div>
       <el-alert v-if="failed && session.error_message" type="error" show-icon :closable="false" :title="session.error_message" />
       <ul class="rows">
@@ -66,7 +66,7 @@ const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
         </li>
         <li v-if="!failed" class="row" :class="{ 'row--done': false }">
           <span class="badge badge--sys">本机</span>
-          <span class="name">识别敏感信息与本地校验</span>
+          <span class="name">识别名称、金额等并做本机核对</span>
           <span class="state">
             <i v-if="detecting" class="dot" />
             <span>{{ detecting ? '识别中…' : '等待' }}</span>

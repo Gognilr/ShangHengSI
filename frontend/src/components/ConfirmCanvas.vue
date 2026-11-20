@@ -8,6 +8,7 @@ import DocPreview from '@/components/DocPreview.vue'
 import DocSpectrum, { type SpectrumTick } from '@/components/result/DocSpectrum.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { readAskSelection, readTextSelection, type TextSelection } from '@/composables/useTextSelection'
+import { ChevronRight, Ellipsis, Eye, Layers, Tags, TextCursorInput } from '@lucide/vue'
 import { MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, SEVERITY_ORDER, toOptions } from '@/utils/labels'
 import { excerptRange, overlayRange } from '@/utils/marks'
 import { useFx } from '@/utils/motion'
@@ -47,6 +48,8 @@ const emit = defineEmits<{
   keep: [s: Suspect]
   restore: [s: Suspect]
   replace: [s: Suspect, category?: SuspectCategory]
+  /** 胶囊菜单：改类别、扩大或缩小范围（V35-F-04） */
+  adjust: [item: RedactionItemPos, start: number, end: number, category?: UserCategory]
   select: [findingId: string]
   ask: [prefill: string]
 }>()
@@ -73,7 +76,7 @@ const activeFile = computed(() => sortedFiles.value.find(f => f.id === activeId.
 const rawAvailable = (f: TaskFile | undefined) => !!f && !f.original_deleted_at && ['pdf', 'jpg', 'jpeg', 'png'].includes(f.ext.toLowerCase().replace(/^\./, ''))
 const viewOptions = computed(() => [
   { value: 'orig' as const, label: '原文' },
-  ...(props.aiView === false ? [] : [{ value: 'ai' as const, label: 'AI 视野' }]),
+  ...(props.aiView === false ? [] : [{ value: 'ai' as const, label: '模型将看到的' }]),
   ...(isResult.value && rawAvailable(activeFile.value) ? [{ value: 'raw' as const, label: '原件' }] : []),
 ])
 watch(viewOptions, opts => { if (!opts.some(o => o.value === view.value)) view.value = 'orig' })
@@ -98,6 +101,15 @@ watch(() => sortedFiles.value.map(f => f.id).join(','), () => {
 }, { immediate: true })
 
 const replaceCount = (f: TaskFile) => props.items.filter(it => it.loc.startsWith(`F${f.seq}-`)).length
+
+// ---- 胶囊按类别着色（澄明 4.2）：单位、人名、联系方式、证件、地址、金额、其他 ----
+const KIND_OF: Record<string, string> = {
+  ORG: 'org', OUR: 'org', NAME: 'org', PERSON: 'person', PHONE: 'contact', EMAIL: 'contact', URL: 'contact', IM: 'contact',
+  IDNO: 'id', ACCOUNT: 'id', SWIFT: 'id', ADDR: 'addr', POSTCODE: 'addr', AMOUNT: 'amount', PRICE: 'amount', DATE: 'amount',
+}
+const kindOf = (category: string) => `k-${KIND_OF[category] ?? 'other'}`
+const LEGEND = [['org', '单位'], ['person', '人名'], ['contact', '联系方式'], ['id', '证件与账号'], ['addr', '地址'], ['amount', '金额'], ['other', '其他']] as const
+const presentKinds = computed(() => new Set(props.items.map(it => KIND_OF[it.category] ?? 'other')))
 
 // ---- 分段：替换项、不确定项、保留文字 ----
 type Kind = 'plain' | 'cap' | 'unc' | 'kept'
@@ -245,12 +257,12 @@ const NodeText: FunctionalComponent<{ nv: NodeView; ai: boolean; selId: number |
     const ann = g.hl && !ai ? ['ann', `ann-${g.hl.sev}`, { on: g.hl.fid === selFid }] : []
     if (g.k === 'plain') return ann.length ? h('mark', { class: ann, 'data-fid': g.hl!.fid }, g.text) : g.text
     const selected = g.k === 'kept' ? g.sid === selId : !!selPh && g.item?.placeholder === selPh
-    const attrs: Record<string, unknown> = { 'data-seg': g.k, style: { '--i': Math.min(g.i, 40) }, class: [g.k, { sel: selected }, ...ann] }
+    const attrs: Record<string, unknown> = { 'data-seg': g.k, style: { '--i': Math.min(g.i, 40) }, class: [g.k, g.item ? kindOf(g.item.category) : '', { sel: selected }, ...ann] }
     if (ann.length) attrs['data-fid'] = g.hl!.fid
     if (g.item) attrs['data-item'] = `${g.item.loc}|${g.item.char_start}|${g.item.char_end}`
     if (g.sid !== undefined) attrs['data-sid'] = g.sid
     if (g.k === 'kept') return h('span', attrs, g.text)
-    if (ai) { attrs.class = [g.k === 'unc' ? 'code unc' : 'code', { sel: selected }]; attrs['data-orig'] = g.text; return h('span', attrs, g.item!.placeholder) }
+    if (ai) { attrs.class = [g.k === 'unc' ? 'code unc' : 'code', kindOf(g.item!.category), { sel: selected }]; attrs['data-orig'] = g.text; return h('span', attrs, g.item!.placeholder) }
     return h('span', attrs, g.text)
   })
   return h('span', { class: ai ? 'ai-txt' : 'txt', 'data-loc': nv.node.loc }, kids)
@@ -271,11 +283,68 @@ watch(view, () => {
 })
 
 // ---- 点击胶囊 ----
-interface Pop { left: number; top: number; wordHeight: number; seg: 'cap' | 'unc' | 'kept'; item?: RedactionItemPos; suspect?: Suspect }
+interface Pop { left: number; top: number; wordHeight: number; seg: 'cap' | 'unc' | 'kept'; item?: RedactionItemPos; suspect?: Suspect; text?: string }
 const wrap = ref<HTMLElement>()
 const scroller = ref<HTMLElement>()
 const pop = ref<Pop | null>(null)
-const closePop = () => { pop.value = null }
+const closePop = () => { pop.value = null; popMode.value = 'menu' }
+// 菜单的二级：改类别、调整范围（V35-F-04）
+const popMode = ref<'menu' | 'category' | 'range'>('menu')
+const range = ref({ start: 0, end: 0 })
+/** 已读入的节点原文（按位置），用于菜单里的同名计数与范围预览 */
+const nodeText = computed(() => {
+  const m = new Map<string, string>()
+  for (const st of Object.values(states)) for (const n of st.nodes) m.set(n.loc, n.text ?? '')
+  if (props.note) m.set('NOTE', props.note)
+  return m
+})
+const cut = (loc: string, a: number, b: number) => Array.from(nodeText.value.get(loc) ?? '').slice(a, b).join('')
+/** 同名：同一代号、原文写法相同的替换项（未读入的文件按长度相同估计） */
+const sameName = computed(() => {
+  const it = pop.value?.item
+  if (!it) return 0
+  const surface = cut(it.loc, it.char_start, it.char_end)
+  return props.items.filter(x => x.placeholder === it.placeholder && (nodeText.value.has(x.loc)
+    ? cut(x.loc, x.char_start, x.char_end) === surface : x.char_end - x.char_start === it.char_end - it.char_start)).length
+})
+const popCategory = computed(() => pop.value?.item ? REDACTION_CATEGORY[pop.value.item.category] ?? pop.value.item.category : '')
+const popSource = computed(() => {
+  const it = pop.value?.item
+  if (!it) return ''
+  return it.detected_by === 'uncertain' ? '不确定，默认遮住' : it.detected_by === 'manual' || it.detected_by === 'user' ? '你加的' : it.detected_by === 'party' ? '签约方' : '自动识别'
+})
+function openRange() {
+  const it = pop.value?.item
+  if (!it) return
+  range.value = { start: it.char_start, end: it.char_end }
+  popMode.value = 'range'
+}
+function nudgeRange(edge: 'start' | 'end', delta: number) {
+  const it = pop.value?.item
+  if (!it) return
+  const len = Array.from(nodeText.value.get(it.loc) ?? '').length
+  const next = { ...range.value }
+  next[edge] = Math.max(0, Math.min(len, next[edge] + delta))
+  if (next.end - next.start >= 2 && next.end - next.start <= 100) range.value = next
+}
+const rangeView = computed(() => {
+  const it = pop.value?.item
+  if (!it) return { before: '', mid: '', after: '' }
+  const { start, end } = range.value
+  return { before: cut(it.loc, Math.max(0, start - 12), start), mid: cut(it.loc, start, end), after: cut(it.loc, end, end + 12) }
+})
+function applyRange() {
+  const it = pop.value?.item
+  const { start, end } = range.value
+  closePop()
+  if (it && (start !== it.char_start || end !== it.char_end)) emit('adjust', it, start, end)
+}
+function popCategoryPick(c: UserCategory) {
+  const p = pop.value
+  closePop()
+  if (p?.suspect && p.seg !== 'kept' && p.item?.detected_by === 'uncertain') emit('replace', p.suspect, c)
+  else if (p?.item) emit('adjust', p.item, p.item.char_start, p.item.char_end, c)
+}
 function onPaperClick(event: MouseEvent) {
   if (window.getSelection() && !window.getSelection()!.isCollapsed) return
   const fidEl = isResult.value ? (event.target as HTMLElement).closest<HTMLElement>('[data-fid]') : null
@@ -285,14 +354,15 @@ function onPaperClick(event: MouseEvent) {
   const seg = el.dataset.seg as Pop['seg']
   const box = el.getBoundingClientRect()
   const outer = wrap.value.getBoundingClientRect()
-  const base = { left: Math.max(8, Math.min(box.left - outer.left, outer.width - 276)), top: box.bottom - outer.top + 4, wordHeight: box.height, seg }
+  const base = { left: Math.max(8, Math.min(box.left - outer.left, outer.width - 300)), top: box.bottom - outer.top + 6, wordHeight: box.height, seg }
   if (seg === 'kept') {
     pop.value = { ...base, suspect: props.suspects.find(s => s.id === Number(el.dataset.sid)) }
     return
   }
   const [loc, s, e] = (el.dataset.item ?? '').split('|')
   const item = props.items.find(it => it.loc === loc && it.char_start === Number(s) && it.char_end === Number(e))
-  pop.value = { ...base, item, suspect: item ? suspectByPlaceholder.value.get(item.placeholder) : undefined }
+  popMode.value = 'menu'
+  pop.value = { ...base, item, text: el.textContent ?? '', suspect: item ? suspectByPlaceholder.value.get(item.placeholder) : undefined }
 }
 // 就地反馈（V321-E-01）：保留后在该词上方显示“已保留 · 撤销”，5 秒后消失
 interface KeptNote { left: number; top: number; suspect: Suspect }
@@ -366,15 +436,18 @@ function onPaperMouseUp() {
   if (result.notice) { pickNotice.value = result.notice; pickPos.value = { left: 12, top: 8 }; return }
   const s = result.selection!
   pick.value = s
-  pickPos.value = { left: Math.max(8, Math.min(s.rect.left - outer.left, outer.width - 420)), top: Math.max(4, s.rect.top - outer.top - 48) }
+  pickPos.value = { left: Math.max(8, Math.min(s.rect.left - outer.left, outer.width - 380)), top: Math.max(4, s.rect.top - outer.top - 50) }
 }
-function submitPick() {
+function submitPick(category: UserCategory = pickCategory.value) {
   const s = pick.value
   if (!s || props.locked) return
   window.getSelection()?.removeAllRanges()
   clearPick()
-  emit('manual', { loc: s.loc, char_start: s.start, char_end: s.end, category: pickCategory.value })
+  pickCategory.value = category
+  emit('manual', { loc: s.loc, char_start: s.start, char_end: s.end, category })
 }
+const QUICK_PICK: UserCategory[] = ['PERSON', 'ORG', 'IM', 'ADDR']
+const QUICK_KIND: Record<string, string> = { PERSON: 'k-person', ORG: 'k-org', IM: 'k-contact', ADDR: 'k-addr' }
 
 // ---- 定位（4.4） ----
 async function locate(loc: string, text?: string, findingId?: string) {
@@ -464,8 +537,11 @@ defineExpose({ locate, switchFile, toggleView, cancel })
           <span class="tab-name">{{ f.original_name }}</span><span class="tab-n">{{ replaceCount(f) }}</span>
         </button>
       </div>
-      <span v-else class="spacer" />
-      <SiSegmented v-model="view" :options="viewOptions" size="small" ariaLabel="原文或 AI 视野" />
+      <SiSegmented v-model="view" :options="viewOptions" size="small" ariaLabel="原文或模型将看到的" />
+      <div v-if="!isResult && sortedFiles.length <= 1" class="legend" aria-label="颜色说明">
+        <span v-for="[k, label] in LEGEND" v-show="presentKinds.has(k)" :key="k" :class="`k-${k}`"><i class="kdot" />{{ label }}</span>
+      </div>
+      <span v-else-if="sortedFiles.length <= 1" class="spacer" />
       <div v-if="$slots.bar" class="cv-extra"><slot name="bar" /></div>
     </div>
 
@@ -499,10 +575,43 @@ defineExpose({ locate, switchFile, toggleView, cancel })
     <DocSpectrum v-if="isResult && blocks.length" :ticks="ticks" :scroller="scroller" @pick="onTick" @seek="onSeek" />
     </div>
 
-    <p v-if="!isResult" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
+    <p v-if="!isResult" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机遮住 · 点胶囊可修改 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
     <p v-else-if="view !== 'raw'" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护${askEnabled ? ' · 划选文字可追问' : ''}` : '这是模型看到的样子 · 结论已在本机还原' }}</p>
 
-    <div v-if="pop" class="pop" :style="{ left: `${pop.left}px`, top: `${pop.top}px` }" role="dialog" @click.stop>
+    <div v-if="pop && !isResult && pop.item" class="pop menu" :style="{ left: `${pop.left}px`, top: `${pop.top}px` }" role="menu" @click.stop>
+      <div class="pm-h"><i class="kdot" :class="kindOf(pop.item.category)" /><b class="pm-text">{{ pop.text }}</b><span>{{ popCategory }} · {{ popSource }}</span></div>
+      <template v-if="popMode === 'menu'">
+        <template v-if="pop.item.category === 'AMOUNT'">
+          <p class="pm-note">金额不能取消或改范围：发送前复检对金额不做豁免。</p>
+        </template>
+        <template v-else>
+          <button v-if="pop.suspect && pop.item.detected_by === 'uncertain'" type="button" class="mi" :disabled="locked" @click="popKeep"><Eye :size="15" :stroke-width="1.75" />不遮住，保留原文</button>
+          <button type="button" class="mi" :disabled="locked" @click="popMode = 'category'"><Tags :size="15" :stroke-width="1.75" />改类别<ChevronRight class="mi-end" :size="14" :stroke-width="1.75" /></button>
+          <template v-if="pop.item.can_revoke && pop.item.detected_by !== 'uncertain'">
+            <button type="button" class="mi" :disabled="locked || sameName > 1" :title="sameName > 1 ? `同名的其他 ${sameName - 1} 处仍会遮住，这一处露出会被发送前复检拦下` : ''" @click="popRevoke"><Eye :size="15" :stroke-width="1.75" />只取消这一处</button>
+            <p v-if="sameName > 1" class="pm-note">同名还有 {{ sameName - 1 }} 处，只露出这一处会被发送前复检拦下</p>
+            <button v-if="sameName > 1" type="button" class="mi" :disabled="locked" @click="popRevoke"><Layers :size="15" :stroke-width="1.75" />取消全部同名（{{ sameName }} 处）</button>
+          </template>
+          <button type="button" class="mi" :disabled="locked" @click="openRange"><TextCursorInput :size="15" :stroke-width="1.75" />扩大或缩小范围</button>
+        </template>
+      </template>
+      <template v-else-if="popMode === 'category'">
+        <div class="pm-cats">
+          <button v-for="o in categoryOptions.filter(c => c.value !== 'AMOUNT')" :key="o.value" type="button" class="pm-cat" :class="kindOf(o.value)" :disabled="locked" @click="popCategoryPick(o.value as UserCategory)">{{ o.label }}</button>
+        </div>
+        <button type="button" class="mi back" @click="popMode = 'menu'">返回</button>
+      </template>
+      <template v-else>
+        <p class="pm-range"><span class="ctx">{{ rangeView.before }}</span><mark :class="kindOf(pop.item.category)">{{ rangeView.mid }}</mark><span class="ctx">{{ rangeView.after }}</span></p>
+        <div class="pm-nudge">
+          <span>左边</span><el-button size="small" @click="nudgeRange('start', -1)">扩一字</el-button><el-button size="small" @click="nudgeRange('start', 1)">收一字</el-button>
+          <span>右边</span><el-button size="small" @click="nudgeRange('end', -1)">收一字</el-button><el-button size="small" @click="nudgeRange('end', 1)">扩一字</el-button>
+        </div>
+        <p class="pm-note">同一写法在全文一起调整；碰到旁边已遮住的内容时并成一项。</p>
+        <div class="pm-foot"><el-button size="small" text @click="popMode = 'menu'">返回</el-button><el-button size="small" type="primary" :disabled="locked" @click="applyRange">改为这个范围</el-button></div>
+      </template>
+    </div>
+    <div v-else-if="pop" class="pop" :style="{ left: `${pop.left}px`, top: `${pop.top}px` }" role="dialog" @click.stop>
       <template v-if="isResult">
         <p v-if="pop.seg === 'kept'" class="pop-text">{{ pop.suspect?.text }} · 保留原文，未替换</p>
         <p v-else-if="pop.item" class="pop-text">{{ REDACTION_CATEGORY[pop.item.category] ?? pop.item.category }} · <span class="code-tag">{{ pop.item.placeholder }}</span></p>
@@ -538,9 +647,12 @@ defineExpose({ locate, switchFile, toggleView, cancel })
     </div>
     <div v-if="pick || pickNotice" class="pickbar" :style="{ left: `${pickPos.left}px`, top: `${pickPos.top}px` }">
       <template v-if="pick">
-        <span class="pick-label">补充脱敏</span>
-        <el-select v-model="pickCategory" size="small" class="pick-cat" aria-label="类别"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
-        <el-button type="primary" size="small" :disabled="locked" @click="submitPick">设为敏感信息</el-button>
+        <span class="pick-label">遮住为</span>
+        <button v-for="c in QUICK_PICK" :key="c" type="button" class="pm-cat" :class="QUICK_KIND[c]" :disabled="locked" @mousedown.prevent @click="submitPick(c)">{{ MANUAL_CATEGORY_OPTIONS[c] }}</button>
+        <el-dropdown trigger="click" :disabled="locked" @command="(c: UserCategory) => submitPick(c)">
+          <button type="button" class="pm-more" aria-label="其他类别" @mousedown.prevent><Ellipsis :size="15" :stroke-width="1.75" /></button>
+          <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="o in categoryOptions.filter(c => !QUICK_PICK.includes(c.value as UserCategory))" :key="o.value" :command="o.value">{{ o.label }}</el-dropdown-item></el-dropdown-menu></template>
+        </el-dropdown>
         <span v-if="locked" class="pick-note">正在重新计算，请稍候</span>
       </template>
       <span v-if="pickNotice" class="pick-note">{{ pickNotice }}</span>
@@ -598,12 +710,26 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 :deep(.ann-medium.on) { background: color-mix(in srgb, var(--si-warn) 30%, var(--si-paper)); }
 :deep(.ann-low.on) { background: color-mix(in srgb, var(--si-info) 30%, var(--si-paper)); }
 
-/* 胶囊：括号内的内容仍是原文本身，图标用伪元素，不进入文字内容 */
-:deep(.cap), :deep(.unc) { padding: 0 4px; border-radius: 4px; background: var(--si-cap-bg); color: var(--si-cap-ink); cursor: pointer; }
-:deep(.cap::before) { content: ''; display: inline-block; width: 8px; height: 10px; margin-right: 3px; background: currentColor; clip-path: polygon(50% 0, 100% 18%, 100% 55%, 50% 100%, 0 55%, 0 18%); }
-:deep(.unc) { border: 1px dashed var(--si-cap-ink); }
-:deep(.code) { padding: 0 4px; border-radius: 4px; background: var(--si-code-bg); color: var(--si-code-ink); font-family: var(--si-font-mono); font-size: .9em; cursor: pointer; }
-:deep(.code.unc) { border: 1px dashed var(--si-code-ink); }
+/* 胶囊（澄明 8.4）：按类别着色的全圆角浅底，文字仍是原文本身；不确定项为虚线边 */
+.k-org { --k: var(--si-k-org); --k-bg: var(--si-k-org-bg); }
+.k-person { --k: var(--si-k-person); --k-bg: var(--si-k-person-bg); }
+.k-contact { --k: var(--si-k-contact); --k-bg: var(--si-k-contact-bg); }
+.k-id { --k: var(--si-k-id); --k-bg: var(--si-k-id-bg); }
+.k-addr { --k: var(--si-k-addr); --k-bg: var(--si-k-addr-bg); }
+.k-amount { --k: var(--si-k-amount); --k-bg: var(--si-k-amount-bg); }
+.k-other { --k: var(--si-k-other); --k-bg: var(--si-k-other-bg); }
+:deep(.k-org) { --k: var(--si-k-org); --k-bg: var(--si-k-org-bg); }
+:deep(.k-person) { --k: var(--si-k-person); --k-bg: var(--si-k-person-bg); }
+:deep(.k-contact) { --k: var(--si-k-contact); --k-bg: var(--si-k-contact-bg); }
+:deep(.k-id) { --k: var(--si-k-id); --k-bg: var(--si-k-id-bg); }
+:deep(.k-addr) { --k: var(--si-k-addr); --k-bg: var(--si-k-addr-bg); }
+:deep(.k-amount) { --k: var(--si-k-amount); --k-bg: var(--si-k-amount-bg); }
+:deep(.k-other) { --k: var(--si-k-other); --k-bg: var(--si-k-other-bg); }
+:deep(.cap), :deep(.unc) { padding: 1px 7px; border-radius: 999px; background: var(--k-bg, var(--si-cap-bg)); color: var(--k, var(--si-cap-ink)); font-weight: 500; cursor: pointer; transition: box-shadow var(--si-d2) var(--si-ease-out); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+:deep(.cap:hover), :deep(.unc:hover) { box-shadow: 0 0 0 1.5px var(--k, var(--si-cap-ink)); }
+:deep(.unc) { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k, var(--si-cap-ink)) 55%, transparent); background-image: none; outline: 1px dashed color-mix(in srgb, var(--k, var(--si-cap-ink)) 70%, transparent); outline-offset: -1px; }
+:deep(.code) { padding: 1px 7px; border-radius: 999px; background: var(--k-bg, var(--si-code-bg)); color: var(--k, var(--si-code-ink)); font-family: var(--si-font-mono); font-size: .88em; cursor: pointer; }
+:deep(.code.unc) { outline: 1px dashed var(--k, var(--si-code-ink)); outline-offset: -1px; }
 /* 保留过的词留浅色下划线，点它可改回替换（V321-E-01） */
 :deep(.kept) { text-decoration: underline solid color-mix(in srgb, var(--si-ink-3) 55%, transparent); text-decoration-thickness: 2px; text-underline-offset: 3px; cursor: pointer; }
 :deep(.sel) { outline: 2px solid var(--el-color-primary); outline-offset: 1px; }
@@ -612,7 +738,36 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 @keyframes cv-flip { from { transform: rotateX(90deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes cv-fade { from { opacity: 0; } to { opacity: 1; } }
 
-.pop, .pickbar { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 420px; padding: 8px 10px; border-radius: 10px; background: var(--si-surface-pop); box-shadow: var(--si-shadow-3); }
+.pop, .pickbar { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 420px; padding: 8px 10px; border-radius: 12px; background: var(--si-surface-pop); box-shadow: var(--si-shadow-pop); animation: cv-pop var(--si-d2) var(--si-ease-out); }
+@keyframes cv-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.legend { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; color: var(--si-ink-3); font: var(--si-font-caption); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.kdot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--k, var(--si-ink-4)); }
+.pop.menu { display: block; width: 292px; padding: 6px; }
+.pm-h { display: flex; align-items: center; gap: 8px; padding: 6px 8px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--si-hair-faint); color: var(--si-ink-3); font: var(--si-font-caption); }
+.pm-h .pm-text { min-width: 0; max-width: 132px; overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label); text-overflow: ellipsis; white-space: nowrap; }
+.pm-h span { margin-left: auto; white-space: nowrap; }
+.mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-1); font: var(--si-font-body); text-align: left; cursor: pointer; }
+.mi svg { flex: none; color: var(--si-ink-3); }
+.mi:hover:not(:disabled) { background: var(--si-hover-bg); }
+.mi:disabled { color: var(--si-ink-4); cursor: not-allowed; }
+.mi:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }
+.mi .mi-end { margin-left: auto; }
+.mi.back { justify-content: center; height: 32px; color: var(--si-ink-3); font: var(--si-font-label-sm); }
+.pm-note { margin: 0 10px 6px; color: var(--si-ink-3); font: var(--si-font-caption); }
+.pm-cats { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 6px 8px; }
+.pm-cat { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--k-bg); color: var(--k); font: var(--si-font-label-sm); cursor: pointer; transition: transform var(--si-d1) var(--si-ease-out), box-shadow var(--si-d2) var(--si-ease-out); }
+.pm-cat:hover:not(:disabled) { box-shadow: 0 0 0 1.5px var(--k); }
+.pm-cat:active:not(:disabled) { transform: scale(.97); }
+.pm-cat:disabled { opacity: .5; cursor: not-allowed; }
+.pm-more { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.pm-more:hover { background: var(--si-hover-bg); }
+.pm-range { margin: 4px 8px 8px; padding: 8px 10px; border-radius: 8px; background: var(--si-card-2); font: var(--si-font-body); overflow-wrap: anywhere; }
+.pm-range .ctx { color: var(--si-ink-3); }
+.pm-range mark { padding: 1px 4px; border-radius: 6px; background: var(--k-bg); color: var(--k); }
+.pm-nudge { display: grid; grid-template-columns: auto 1fr 1fr; align-items: center; gap: 6px 6px; margin: 0 8px 8px; color: var(--si-ink-3); font: var(--si-font-caption); }
+.pm-nudge :deep(.el-button + .el-button) { margin-left: 0; }
+.pm-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 4px 6px 4px; }
 .pop { width: 268px; }
 .tip { position: absolute; z-index: 19; display: flex; align-items: center; gap: 6px; max-width: 312px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--si-surface-pop); box-shadow: var(--si-shadow-3); pointer-events: none; white-space: nowrap; }
 .tip.kept-note { pointer-events: auto; }
@@ -621,7 +776,8 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 .tip .code-tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pop-text { flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; font: var(--si-font-body); }
 .code-tag { padding: 0 6px; border-radius: 4px; background: var(--si-code-bg); color: var(--si-code-ink); font-family: var(--si-font-mono); font-size: 12px; }
-.pick-label { font: var(--si-font-label-sm); color: var(--si-ink-3); }
+.pick-label { font: var(--si-font-caption); color: var(--si-ink-3); }
+.pickbar { gap: 6px; padding: 6px 8px; }
 .pick-cat { width: 110px; }
 .pick-note { color: var(--el-color-warning); font: var(--si-font-caption); }
 </style>

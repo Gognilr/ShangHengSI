@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Ellipsis, Plus } from '@lucide/vue'
+import { Ban, Bookmark, ChevronDown, ChevronRight, CircleCheck, CircleDot, Ellipsis, Eye, FileText, Pencil, Plus, Send, Sparkle, Trash2, Users, X } from '@lucide/vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
@@ -28,10 +28,11 @@ import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import SiCount from '@/components/ui/SiCount.vue'
 import SiIsland from '@/components/ui/SiIsland.vue'
+import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { usePendingDeletes } from '@/composables/usePendingDeletes'
 import { useTaskPoll } from '@/composables/useTaskPoll'
 import { useHotkeys } from '@/utils/hotkeys'
-import { DOC_TYPE_OPTIONS, KEPT_BY, autoKeptReasonLabel, MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, docTypeSourceLabel, suspectReasonLabel, toOptions } from '@/utils/labels'
+import { DOC_TYPE_OPTIONS, KEPT_BY, autoKeptReasonLabel, REDACTION_CATEGORY, docTypeSourceLabel, suspectReasonLabel, toOptions } from '@/utils/labels'
 import { toast } from '@/utils/toast'
 import { nudgeField } from '@/utils/nudge'
 
@@ -63,12 +64,13 @@ const emit = defineEmits<{
   (e: 'stale'): void
   /** blockerChoice 时点了提交：父页面定位到缺的那一项 */
   (e: 'nudge'): void
+  /** 发送前复检拦下、还没处理的处数（顶部步骤条显示） */
+  (e: 'blocked', n: number): void
 }>()
 const sessionReview = computed(() => props.mode === 'session-review')
 const assistant = computed(() => props.mode !== 'review')
 const nodeLoader = computed(() => assistant.value ? assistantApi.nodes : undefined)
 const docTypeOptions = toOptions(DOC_TYPE_OPTIONS)
-const categoryOptions = toOptions(MANUAL_CATEGORY_OPTIONS)
 // 类型选项取 SPEC 9.4；国家的建议项是当前识别值和“国家未知”，也可自行输入（Q-50 ②）
 const ORG_TYPES = ['贸易商', '货代', '银行', '类型未知']
 const UNKNOWN_COUNTRY = '国家未知'
@@ -83,7 +85,6 @@ const suspects = ref<Suspect[]>([])
 const redactedItems = ref<RedactionInfo['items']>([])
 const autoKept = ref<AutoKept[]>([])
 const autoOpen = ref(false)
-const receiptOpen = ref(false)
 const outboundText = ref('')
 const outboundNote = ref<string | null>(null)
 const outboundLoading = ref(false)
@@ -101,6 +102,7 @@ function showLeaks(summary: string) {
   void nextTick(() => leakBox.value?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
   void nextTick(() => leakPanel.value?.reload())
 }
+watch(() => leaksShown.value ? leaksPending.value : 0, n => emit('blocked', n), { immediate: true })
 const localCount = ref<number | null>(null)
 const loadLocal = () => localFindingsApi.list(props.task.id)
 const loading = ref(true)
@@ -377,15 +379,6 @@ function setField(id: string, field: 'country' | 'org_type', value: string) {
 
 // ---- 不确定项（3.2、3.3） ----
 const isKept = (s: Suspect) => s.decision === 'ignore' || !!s.kept_by
-const keptCount = computed(() => suspects.value.filter(isKept).length)
-const memoryKept = computed(() => suspects.value.filter(s => s.kept_by === 'memory' || s.kept_by === 'vector').length)
-const suspectSummary = computed(() => {
-  const total = suspects.value.length
-  if (!total) return '无'
-  const extra = memoryKept.value ? `（其中 ${memoryKept.value} 组按记忆或本机判断保留）` : ''
-  return `${total} 组 · 已替换 ${total - keptCount.value} · 保留 ${keptCount.value}${extra}`
-})
-const suspectsOpen = ref(false)
 const selectedId = ref<number | null>(null)
 const checked = ref<number[]>([])
 // 后台保存不锁页面；只有加文件重新计算期间锁住
@@ -396,11 +389,8 @@ watch(suspects, (rows) => {
   checked.value = checked.value.filter(id => ids.has(id))
   if (selectedId.value !== null && !ids.has(selectedId.value)) selectedId.value = null
 })
-const allChecked = computed(() => suspects.value.length > 0 && checked.value.length === suspects.value.length)
-function checkAll(value: string | number | boolean) { checked.value = value ? suspects.value.map(s => s.id) : [] }
 const keepIds = computed(() => suspects.value.filter(s => checked.value.includes(s.id) && !isKept(s)).map(s => s.id))
 const resetIds = computed(() => suspects.value.filter(s => checked.value.includes(s.id) && isKept(s)).map(s => s.id))
-const overLimit = computed(() => keepIds.value.length > 200 || resetIds.value.length > 200)
 
 function shortText(text: string): string { return Array.from(text).length > 12 ? `${Array.from(text).slice(0, 12).join('')}…` : text }
 function resetOne(s: Suspect) {
@@ -437,6 +427,9 @@ async function keepChecked() {
   patchSuspects(ids, true)
   void decide(() => redactionApi.batchSuspects(props.task.id, ids, 'ignore'))
 }
+/** “需要你看一眼的”卡片底部的全部保留 / 全部遮住 */
+function keepAll() { checked.value = suspects.value.map(s => s.id); void keepChecked() }
+function maskAll() { checked.value = suspects.value.map(s => s.id); resetChecked() }
 function resetChecked() {
   const ids = [...resetIds.value]
   if (locked.value || !ids.length || ids.length > 200) return
@@ -452,7 +445,6 @@ async function stepSuspect(delta: 1 | -1) {
   if (!list.length) return
   const index = list.findIndex(s => s.id === selectedId.value)
   const next = list[index < 0 ? (delta > 0 ? 0 : list.length - 1) : (index + delta + list.length) % list.length]!
-  suspectsOpen.value = true
   selectSuspect(next)
   await nextTick()
   document.querySelector(`[data-sid="${next.id}"]`)?.scrollIntoView({ block: 'nearest' })
@@ -509,6 +501,70 @@ async function onRevoke(item: RedactionItemPos) {
   redactedItems.value = redactedItems.value.filter(it => it !== item)
   void decide(() => redactionApi.revoke(props.task.id, { loc: item.loc, char_start: item.char_start, char_end: item.char_end }))
 }
+
+// ---- 胶囊菜单：改类别、扩大或缩小范围（V35-F-04）：画布先按新范围显示，后台保存 ----
+function onAdjust(item: RedactionItemPos, start: number, end: number, category?: UserCategory) {
+  if (locked.value) return
+  redactedItems.value = [...redactedItems.value.filter(it => it !== item && !(it.loc === item.loc && it.char_start < end && it.char_end > start)),
+    { ...item, char_start: start, char_end: end, category: category ?? item.category, placeholder: '…' }]
+  partiesTouched = true
+  void decide(() => redactionApi.adjust(props.task.id, { loc: item.loc, char_start: item.char_start, char_end: item.char_end, new_start: start, new_end: end, ...(category ? { category } : {}) }))
+}
+
+// ---- 签约方卡片：名称和简称可改、可删（问题 15）：改过的写法登记为同一代号的变体 ----
+const partyName = (p: Party) => p.surfaces?.[0] ?? p.name
+const partyShorts = (p: Party) => (p.surfaces ?? []).slice(1)
+const partyMark = (p: Party) => Array.from(p.role_label || p.code.replace(/[[\]]/g, ''))[0] ?? '方'
+const nameDraft = ref('')
+const shortDraft = ref('')
+function editParty(p: Party) {
+  editingParty.value = editingParty.value === p.id ? '' : p.id
+  nameDraft.value = partyName(p)
+  shortDraft.value = ''
+}
+function partyChange(save: () => Promise<RedactionInfo>) {
+  partiesTouched = true
+  return decide(save)
+}
+function saveName(p: Party) {
+  const next = nameDraft.value.trim(), old = partyName(p)
+  if (!next || next === old || locked.value) return
+  void partyChange(() => redactionApi.addAlias(props.task.id, p.id, next))
+  // 新写法不包含旧写法时，旧写法不再算这一方（例如识别多了几个字）
+  if (!next.includes(old)) void partyChange(() => redactionApi.removeAlias(props.task.id, p.id, old))
+  parties.value = parties.value.map(x => x.id === p.id ? { ...x, surfaces: [next, ...(x.surfaces ?? []).filter(v => v !== old && v !== next)] } : x)
+}
+function addShort(p: Party) {
+  const v = shortDraft.value.trim()
+  if (!v || locked.value) return
+  shortDraft.value = ''
+  parties.value = parties.value.map(x => x.id === p.id ? { ...x, surfaces: [...(x.surfaces ?? [p.name]), v] } : x)
+  void partyChange(() => redactionApi.addAlias(props.task.id, p.id, v)).then(() => {
+    // 简称只出现在全称里时不单列（卡片按原文里出现的写法显示）
+    const now = parties.value.find(x => x.id === p.id)
+    if (now && !submitError.value && !(now.surfaces ?? []).includes(v)) toast(`原文里的“${v}”都在全称之内，已随全称一起遮住；单独出现时也会用同一代号`)
+  })
+}
+function removeShort(p: Party, v: string) {
+  if (locked.value) return
+  parties.value = parties.value.map(x => x.id === p.id ? { ...x, surfaces: (x.surfaces ?? []).filter(s => s !== v) } : x)
+  void partyChange(() => redactionApi.removeAlias(props.task.id, p.id, v))
+}
+async function removePartyCard(p: Party) {
+  try {
+    await ElMessageBox.confirm(`删掉后，“${partyName(p)}”及它的简称在全文都不再遮住。只在它不是真实单位（识别错了）时这样做。`, '删掉这个签约方', {
+      type: 'warning', confirmButtonText: '删掉', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger',
+    })
+  } catch { return }
+  if (locked.value) return
+  parties.value = parties.value.filter(x => x.id !== p.id)
+  void partyChange(() => redactionApi.removeParty(props.task.id, p.id))
+}
+const ourOptions = computed(() => {
+  const labels = parties.value.map(p => p.role_label || p.code)
+  if (parties.value.length > 3 || new Set(labels).size !== labels.length) return null
+  return [...parties.value.map(p => ({ value: p.id, label: p.role_label || p.code })), ...(assistant.value && !props.requireOurParty ? [{ value: '', label: '都不是' }] : [])]
+})
 
 // ---- 外发回执 ----
 const replacedTotal = computed(() => Object.values(summary.value).reduce((sum, n) => sum + n, 0))
@@ -583,7 +639,7 @@ const RAIL_MIN = 340, RAIL_MAX = 480, RAIL_DEFAULT = 380, RAIL_KEY = 'si.confirm
 const railWidth = ref(readStoredWidth(RAIL_KEY, RAIL_MIN, RAIL_MAX, RAIL_DEFAULT))
 const helpOpen = ref(false)
 const HOTKEYS = [
-  ['V', '切换“原文 / AI 视野”'],
+  ['V', '切换“原文 / 模型将看到的”'],
   ['[ / ]', '上一个 / 下一个文件页签'],
   ['J / K', '下一个 / 上一个不确定项'],
   ['B', '保留选中的不确定项的原文'],
@@ -614,7 +670,7 @@ useHotkeys({
 <template>
   <div class="wb" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
     <div class="canvas">
-      <ConfirmCanvas ref="canvas" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @manual="onManual" @revoke="onRevoke" @keep="s => keepOne(s, true)" @restore="restoreOne" @replace="replaceOne">
+      <ConfirmCanvas ref="canvas" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @manual="onManual" @revoke="onRevoke" @keep="s => keepOne(s, true)" @restore="restoreOne" @replace="replaceOne" @adjust="onAdjust">
         <template #bar>
           <SiIsland v-if="island" :state="island.state" :text="island.text" />
           <span v-else-if="saving" class="hint saving" aria-live="polite">正在后台保存…</span>
@@ -626,92 +682,97 @@ useHotkeys({
     </div>
     <SplitHandle v-model="railWidth" reverse :min="RAIL_MIN" :max="RAIL_MAX" :default-value="RAIL_DEFAULT" :storage-key="RAIL_KEY" label="调整回执栏宽度" />
     <aside v-loading="loading" class="rail" :style="{ flexBasis: `${railWidth}px` }">
-      <div class="rail-scroll">
+      <div class="rail-scroll si-stagger">
         <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" />
-        <div v-if="leaksShown" ref="leakBox"><LeakPanel ref="leakPanel" :task-id="task.id" :files="files" :locked="locked || saving > 0" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" @pending="leaksPending = $event" /></div>
+        <div v-if="leaksShown" ref="leakBox"><LeakPanel ref="leakPanel" :task-id="task.id" :files="files" :locked="locked || saving > 0" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" @pending="leaksPending = $event" @parties="nudgeField(partiesSec)" /></div>
 
-        <section ref="partiesSec" class="sec">
-          <h3>签约方与我方<span v-if="ourMissing && parties.length" class="si-required-tag">请选择我方</span><span class="sum">{{ parties.length ? `${parties.length} 方` : '' }}</span></h3>
-          <p v-if="assistant && !requireOurParty" class="hint">会话可以不设置我方，最多选择一方。<el-button link :disabled="waiting" @click="setOur('')">不设我方</el-button></p>
-          <p v-if="!loading && !parties.length" class="warn">未识别到签约方：在原文中选中我方名称、类别选“公司”后再设为我方</p>
-          <ul class="rows" :class="{ 'si-required-empty': ourMissing && parties.length }">
-            <li v-for="p in parties" :key="p.id" class="party" :class="{ our: p.is_our_party }">
-              <div class="party-line">
-                <el-radio :model-value="ourId" :value="p.id" :disabled="waiting" :aria-label="`设 ${p.name} 为我方`" @change="setOur(p.id)"><span class="sr-only">我方</span></el-radio>
-                <span class="party-name" :title="p.name">{{ p.name }}</span>
-                <span class="code">{{ p.code }}</span>
-                <span class="hint">{{ p.role_label }}</span>
-                <el-button link type="primary" @click="editingParty = editingParty === p.id ? '' : p.id">{{ editingParty === p.id ? '收起' : '编辑' }}</el-button>
+        <!-- ① 签约方与我方 -->
+        <section ref="partiesSec" class="rp-card">
+          <h3 class="rp-h"><Users :size="16" :stroke-width="1.75" /><b>签约方与我方</b><span v-if="ourMissing && parties.length" class="si-required-tag">请选择我方</span></h3>
+          <p v-if="!loading && !parties.length" class="warn">没有识别到签约方：在原文中选中我方名称，遮住为“公司”后再设为我方</p>
+          <div v-for="p in parties" :key="p.id" class="party" :class="{ me: p.is_our_party, editing: editingParty === p.id }">
+            <div class="party-line">
+              <span class="party-code" :class="{ me: p.is_our_party }">{{ partyMark(p) }}</span>
+              <div class="party-main">
+                <b :title="partyName(p)">{{ partyName(p) }}</b>
+                <span>{{ p.role_label }} · <span class="code-chip">{{ p.code }}</span><template v-if="partyShorts(p).length"> · 简称：{{ partyShorts(p).join('、') }}</template><em v-if="p.is_our_party"> · 我方</em></span>
               </div>
-              <div v-if="editingParty === p.id" class="party-edit">
+              <button type="button" class="ibtn" :aria-label="`编辑 ${partyName(p)}`" :aria-expanded="editingParty === p.id" :disabled="waiting" @click="editParty(p)"><Pencil :size="15" :stroke-width="1.75" /></button>
+            </div>
+            <div v-if="editingParty === p.id" class="party-edit">
+              <label class="pe-row"><span>名称</span><el-input v-model="nameDraft" size="small" :disabled="locked" placeholder="照原文写法" @keyup.enter="saveName(p)" /><el-button size="small" :disabled="locked || !nameDraft.trim() || nameDraft.trim() === partyName(p)" @click="saveName(p)">改</el-button></label>
+              <div class="pe-row"><span>简称</span>
+                <div class="shorts">
+                  <span v-for="v in partyShorts(p)" :key="v" class="short">{{ v }}<button type="button" :aria-label="`删掉简称 ${v}`" :disabled="locked" @click="removeShort(p, v)"><X :size="12" :stroke-width="2" /></button></span>
+                  <el-input v-model="shortDraft" size="small" class="short-input" :disabled="locked" placeholder="加简称" @keyup.enter="addShort(p)" />
+                </div>
+              </div>
+              <p class="hint">改过的名称和简称登记为同一代号的变体，发送前复检不再拦它们。</p>
+              <div class="pe-row pe-more">
                 <el-select :model-value="p.country ?? UNKNOWN_COUNTRY" filterable allow-create default-first-option size="small" :disabled="waiting" aria-label="国家" @change="(v: string) => setField(p.id, 'country', v)"><el-option v-for="c in countryOptions(p)" :key="c" :label="c" :value="c" /></el-select>
                 <el-select :model-value="p.org_type ?? '类型未知'" filterable allow-create default-first-option size="small" :disabled="waiting" aria-label="类型" @change="(v: string) => setField(p.id, 'org_type', v)"><el-option v-for="t in ORG_TYPES" :key="t" :label="t" :value="t" /></el-select>
               </div>
-            </li>
-          </ul>
+              <div class="pe-foot">
+                <el-button v-if="!ourOptions && !p.is_our_party" size="small" :disabled="waiting" @click="setOur(p.id)">设为我方</el-button>
+                <el-button size="small" text type="danger" :disabled="locked" @click="removePartyCard(p)"><Trash2 :size="14" :stroke-width="1.75" />删掉这一方</el-button>
+              </div>
+            </div>
+          </div>
+          <div v-if="parties.length" class="our-row" :class="{ 'si-required-empty': ourMissing }">
+            <span class="hint">我方是</span>
+            <SiSegmented v-if="ourOptions" :model-value="ourId" :options="ourOptions" size="small" ariaLabel="我方是" @update:model-value="setOur(String($event))" />
+            <span v-else class="hint">{{ ourCount ? parties.find(p => p.is_our_party)?.role_label : '点签约方的编辑按钮设为我方' }}</span>
+          </div>
         </section>
 
-        <section class="sec">
-          <h3 class="clickable" role="button" tabindex="0" :aria-expanded="suspectsOpen" @click="suspectsOpen = !suspectsOpen" @keydown.enter="suspectsOpen = !suspectsOpen">
-            <component :is="suspectsOpen ? ChevronDown : ChevronRight" :size="16" :stroke-width="1.75" />不确定项<span class="sum">{{ suspectSummary }}</span>
-          </h3>
-          <template v-if="suspectsOpen">
-            <p v-if="!suspects.length" class="hint">未发现不确定项</p>
-            <template v-else>
-              <div class="batch">
-                <el-checkbox :model-value="allChecked" :disabled="locked" @change="checkAll">全选</el-checkbox>
-                <el-button size="small" :disabled="locked || !keepIds.length || overLimit" @click="keepChecked">保留所选（{{ keepIds.length }} 组）</el-button>
-                <el-button size="small" :disabled="locked || !resetIds.length || overLimit" @click="resetChecked">改回替换（{{ resetIds.length }} 组）</el-button>
-              </div>
-              <p v-if="overLimit" class="warn">每次最多处理 200 组，请减少选择</p>
-              <ul class="rows suspects">
-                <li v-for="s in suspects" :key="s.id" :data-sid="s.id" class="suspect" :class="{ selected: s.id === selectedId }" @click="selectSuspect(s)">
-                  <el-checkbox v-model="checked" :value="s.id" :disabled="locked" :aria-label="`选择：${s.text}`" @click.stop />
-                  <span class="suspect-main">
-                    <span class="suspect-text" :title="s.text">{{ s.text }}</span>
-                    <span class="hint">{{ suspectReasonLabel(s.reason) }}<template v-if="s.occurrences > 1"> · {{ s.occurrences }} 处</template></span>
-                  </span>
-                  <span v-if="isKept(s)" class="state kept">{{ KEPT_BY[s.kept_by ?? 'user'] }}</span>
-                  <span v-else class="state"><span class="code">{{ s.placeholder ?? '已替换' }}</span></span>
-                  <span class="suspect-actions" @click.stop>
-                    <el-button v-if="!isKept(s)" link type="primary" :disabled="locked" @click="keepOne(s)">保留原文</el-button>
-                    <el-button v-else link type="primary" :disabled="locked" @click="restoreOne(s)">{{ s.kept_by === 'user' ? '改回替换' : '替换' }}</el-button>
-                    <el-dropdown v-if="!isKept(s)" trigger="click" :disabled="locked" @command="(c: UserCategory) => replaceOne(s, c)">
-                      <el-button link :disabled="locked">指定类别…</el-button>
-                      <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="o in categoryOptions" :key="o.value" :command="o.value">{{ o.label }}</el-dropdown-item></el-dropdown-menu></template>
-                    </el-dropdown>
-                  </span>
-                </li>
-              </ul>
-            </template>
+        <!-- ② 需要你看一眼的 -->
+        <section class="rp-card">
+          <h3 class="rp-h"><Eye :size="16" :stroke-width="1.75" /><b>需要你看一眼的</b><span v-if="suspects.length" class="badge-mid num">{{ suspects.length }}</span></h3>
+          <p v-if="!suspects.length" class="hint">没有拿不准的内容。</p>
+          <template v-else>
+            <p class="hint">拿不准是不是名称，默认遮住。保留原文的会按原文发给模型。</p>
+            <ul class="unsure-list">
+              <li v-for="s in suspects" :key="s.id" :data-sid="s.id" class="unsure" :class="{ selected: s.id === selectedId }" @click="selectSuspect(s)">
+                <i class="kdot" :class="`k-${s.category === 'PERSON' ? 'person' : s.category === 'REFNO' ? 'other' : 'org'}`" />
+                <div class="unsure-main">
+                  <b :title="s.text">{{ s.text }}</b>
+                  <span>{{ suspectReasonLabel(s.reason) }}<template v-if="s.occurrences > 1"> · {{ s.occurrences }} 处</template><template v-if="isKept(s)"> · {{ KEPT_BY[s.kept_by ?? 'user'] }}</template></span>
+                </div>
+                <span class="choice" @click.stop>
+                  <button type="button" class="ch" :class="{ on: isKept(s) }" :disabled="locked" @click="isKept(s) ? undefined : keepOne(s)">保留</button>
+                  <button type="button" class="ch" :class="{ on: !isKept(s) }" :disabled="locked" @click="isKept(s) ? restoreOne(s) : undefined">遮住</button>
+                </span>
+              </li>
+            </ul>
+            <div class="row2"><el-button size="small" :disabled="locked || suspects.every(isKept) || suspects.length > 200" @click="keepAll">全部保留</el-button><el-button size="small" :disabled="locked || !suspects.some(isKept) || suspects.length > 200" @click="maskAll">全部遮住</el-button></div>
           </template>
           <div v-if="autoGroups.length" class="auto">
-            <h3 class="clickable auto-head" role="button" tabindex="0" :aria-expanded="autoOpen" @click="autoOpen = !autoOpen" @keydown.enter="autoOpen = !autoOpen">
-              <component :is="autoOpen ? ChevronDown : ChevronRight" :size="16" :stroke-width="1.75" />已自动保留 {{ autoGroups.length }} 个普通词<span class="sum">未替换，点开可改为替换</span>
-            </h3>
-            <ul v-if="autoOpen" class="rows suspects">
-              <li v-for="g in autoGroups" :key="g.text" class="suspect">
-                <span class="suspect-main">
-                  <span class="suspect-text" :title="g.text">{{ g.text }}</span>
-                  <span class="hint">{{ autoKeptReasonLabel(g.reason) }}<template v-if="g.count > 1"> · {{ g.count }} 处</template></span>
-                </span>
-                <span class="suspect-actions"><el-button link type="primary" :disabled="locked" @click="replaceAuto(g)">改为替换</el-button></span>
+            <button type="button" class="auto-head" :aria-expanded="autoOpen" @click="autoOpen = !autoOpen">
+              <component :is="autoOpen ? ChevronDown : ChevronRight" :size="14" :stroke-width="1.75" />已自动保留 {{ autoGroups.length }} 个普通词，没有遮住
+            </button>
+            <ul v-if="autoOpen" class="unsure-list">
+              <li v-for="g in autoGroups" :key="g.text" class="unsure">
+                <div class="unsure-main"><b :title="g.text">{{ g.text }}</b><span>{{ autoKeptReasonLabel(g.reason) }}<template v-if="g.count > 1"> · {{ g.count }} 处</template></span></div>
+                <el-button size="small" :disabled="locked" @click="replaceAuto(g)">遮住</el-button>
               </li>
             </ul>
           </div>
           <div class="sr-only" aria-live="polite">{{ liveText }}</div>
         </section>
 
-        <section class="sec">
-          <h3>文件<span class="sum">{{ visibleFiles.length }} 个</span></h3>
-          <ul class="rows">
+        <!-- 文件：多份文件或可以增删时才单列 -->
+        <section v-if="visibleFiles.length > 1 || canEditFiles || failedFiles || visibleFiles.some(f => f.warnings.length)" class="rp-card">
+          <h3 class="rp-h"><FileText :size="16" :stroke-width="1.75" /><b>文件</b><span class="hint num">{{ visibleFiles.length }} 份</span></h3>
+          <ul class="files">
             <li v-for="f in visibleFiles" :key="f.id" class="file">
               <div class="file-line">
                 <el-checkbox v-if="sessionReview && visibleFiles.length > 1" :model-value="(picked ?? []).includes(f.id)" :disabled="f.parse_state !== 'done'" :aria-label="`审核 ${f.original_name}`" @change="(v: unknown) => emit('update:picked', v ? [...(picked ?? []), f.id] : (picked ?? []).filter(id => id !== f.id))" />
-                <span class="badge" :class="`badge--${badgeClass(f.original_name)}`">{{ fileBadge(f.original_name) }}</span>
-                <span class="file-name" :title="f.original_name">{{ f.original_name }}<em v-if="sessionReview ? f.id === mainId : f.is_main" class="main-tag">主文件</em><el-button v-if="sessionReview && f.id !== mainId && (picked ?? []).includes(f.id)" link type="primary" size="small" @click="emit('update:mainId', f.id)">设为主文件</el-button></span>
+                <span class="ftype" :class="`ftype--${badgeClass(f.original_name)}`">{{ fileBadge(f.original_name) }}</span>
+                <span class="file-name" :title="f.original_name">{{ f.original_name }}</span>
+                <em v-if="sessionReview ? f.id === mainId : f.is_main" class="main-tag">主文件</em>
+                <el-button v-else-if="sessionReview && (picked ?? []).includes(f.id)" link type="primary" size="small" @click="emit('update:mainId', f.id)">设为主文件</el-button>
                 <el-dropdown v-if="canEditFiles" trigger="click" :disabled="waiting">
-                  <button type="button" class="icon-btn" :aria-label="`${f.original_name} 的更多操作`"><Ellipsis :size="16" :stroke-width="1.75" /></button>
+                  <button type="button" class="ibtn" :aria-label="`${f.original_name} 的更多操作`"><Ellipsis :size="16" :stroke-width="1.75" /></button>
                   <template #dropdown><el-dropdown-menu><el-dropdown-item :disabled="f.is_main || f.parse_state !== 'done'" @click="setMain(f)">设为主文件</el-dropdown-item><el-dropdown-item :disabled="visibleFiles.length <= 1" @click="removeFile(f)">删除</el-dropdown-item></el-dropdown-menu></template>
                 </el-dropdown>
               </div>
@@ -719,60 +780,57 @@ useHotkeys({
                 <el-select class="doc-type" :model-value="f.doc_type ?? undefined" placeholder="请选择" size="small" :aria-label="`${f.original_name} 的文件类型`" @change="(v: string) => changeDocType(f.id, v)"><el-option v-for="o in docTypeOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
                 <span class="hint">{{ docTypeSourceLabel(f.doc_type_source) }}</span>
               </div>
-              <div class="hint">{{ fileMeta(f) }}<template v-if="f.parse_state === 'parsing'"> · 解析中</template></div>
-              <div v-if="f.parse_state === 'failed'" class="warn">解析失败：{{ f.parse_error || '文件无法解析' }}</div>
+              <div class="hint">{{ fileMeta(f) }}<template v-if="f.parse_state === 'parsing'"> · 正在读取</template></div>
+              <div v-if="f.parse_state === 'failed'" class="warn">读取失败：{{ f.parse_error || '文件无法读取' }}</div>
               <div v-if="f.warnings.length" class="warn" :title="f.warnings.join('\n')">{{ f.warnings[0] }}<template v-if="f.warnings.length > 1">（共 {{ f.warnings.length }} 条）</template></div>
             </li>
           </ul>
           <template v-if="canEditFiles">
             <input ref="picker" type="file" multiple hidden accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png" @change="onPick">
-            <el-button class="add-file" :disabled="waiting" @click="picker?.click()"><Plus :size="14" :stroke-width="1.75" />加入文件</el-button>
+            <el-button class="add-file" size="small" :disabled="waiting" @click="picker?.click()"><Plus :size="14" :stroke-width="1.75" />加入文件</el-button>
           </template>
           <p v-if="fileError" class="warn">{{ fileError }}</p>
         </section>
 
-        <section v-if="!assistant" class="sec">
-          <h3>本地校验 · 公司范本</h3>
-          <p class="line">本地校验 {{ localCount ?? '—' }} 条 · <el-button link type="primary" @click="localDrawer = true">查看</el-button></p>
-          <p v-if="task.template_suggestion" class="line">将对照公司范本：{{ task.template_suggestion.name }}<el-checkbox v-model="skipTemplate" :disabled="submitting" class="skip">不对照</el-checkbox></p>
-          <el-button link type="primary" @click="reqDrawer = true">查看审核要求</el-button>
+        <!-- ③ 将要发送的 -->
+        <section class="rp-card">
+          <h3 class="rp-h"><Send :size="16" :stroke-width="1.75" /><b>{{ assistant && !sessionReview ? '本会话文件的遮住结果' : '将要发送的' }}</b></h3>
+          <ul class="send-list">
+            <li><FileText :size="15" :stroke-width="1.75" /><span>正文 <b class="num"><SiCount :value="outboundLength" /></b> 字，已在本机遮住 <b class="num"><SiCount :value="replacedTotal" /></b> 处</span></li>
+            <li v-if="categoryChips.length" class="chips-li"><span class="chips"><span v-for="c in categoryChips" :key="c" class="chip">{{ c }}</span></span></li>
+            <li><Ban :size="15" :stroke-width="1.75" /><span>不发送原件、图片和文件名</span></li>
+            <li v-if="!assistant || sessionReview"><Sparkle :size="15" :stroke-width="1.75" class="t-ai" /><span>模型：{{ modelName || '审核模型' }}</span></li>
+            <li v-if="!assistant && task.template_suggestion"><Bookmark :size="15" :stroke-width="1.75" /><span>对照范本：{{ task.template_suggestion.name }}</span><el-checkbox v-model="skipTemplate" :disabled="submitting" class="skip">不对照</el-checkbox></li>
+          </ul>
+          <div class="links">
+            <el-button link type="primary" size="small" :disabled="!outboundText" @click="outboundDrawer = true">查看将发送的全文</el-button>
+            <el-button v-if="!assistant" link type="primary" size="small" @click="localDrawer = true">本地校验 {{ localCount ?? '—' }} 条</el-button>
+            <el-button v-if="!assistant" link type="primary" size="small" @click="reqDrawer = true">审核要求</el-button>
+          </div>
+          <div v-if="$slots.settings" class="settings"><slot name="settings" /></div>
         </section>
       </div>
 
-      <div class="receipt">
-        <slot name="settings" />
-        <template v-if="!assistant || sessionReview">
-          <h3 class="receipt-title">即将发送给 {{ modelName || '审核模型' }}</h3>
-          <p class="hint">只发脱敏后的文字，结果在本机还原</p>
-        </template>
-        <h3 v-else class="receipt-title">本会话文件的脱敏结果</h3>
-        <button type="button" class="stat-line" :aria-expanded="receiptOpen" @click="receiptOpen = !receiptOpen">
-          <component :is="receiptOpen ? ChevronDown : ChevronRight" :size="14" :stroke-width="1.75" />
-          <span>正文 <SiCount :value="outboundLength" /> 字 · 已在本机保护 <SiCount :value="replacedTotal" /> 处</span>
-        </button>
-        <template v-if="receiptOpen">
-          <div v-if="categoryChips.length" class="chips"><span v-for="c in categoryChips" :key="c" class="chip">{{ c }}</span></div>
-          <p class="hint">不发送：原件 · 图片 · 文件名</p>
-          <p v-if="!sessionReview" class="hint">确认后本机再做一次出口复检，命中即拦截、不发送</p>
-        </template>
-        <el-button link type="primary" :disabled="!outboundText" @click="outboundDrawer = true">查看将发送的全文</el-button>
+      <div class="rp-foot">
         <el-alert v-if="submitError" type="error" show-icon :closable="false" :title="submitError" class="receipt-alert" />
-        <ul class="conditions" aria-label="提交条件" aria-live="polite">
-          <li v-if="assistant && !requireOurParty" :class="{ met: ourCount <= 1 }">{{ ourCount ? '已选择一方为我方' : '未设置我方，可以确认脱敏' }}</li>
-          <li v-else :class="{ met: ourCount === 1 }"><template v-if="ourCount === 1">✓ 已选择我方</template><template v-else-if="!parties.length">未识别到签约方，暂时不能提交 AI 审核</template><button v-else type="button" class="cond-link" @click="nudgeField(partiesSec)">请先选择哪一方是我方</button></li>
-          <li v-if="sessionReview && blocker"><button v-if="blockerChoice" type="button" class="cond-link" @click="emit('nudge')">{{ blocker }}</button><template v-else>{{ blocker }}</template></li>
-          <li v-if="leaksShown && leaksPending"><button type="button" class="cond-link" @click="nudgeField(leakBox)">出口复检拦下的 {{ leaksPending }} 处还没处理，处理后才能发送</button></li>
-          <li v-if="waiting || parsingFiles">文件正在解析，请稍候</li>
-          <li v-if="failedFiles">有解析失败的文件，请先删除</li>
-          <li v-if="saving" class="met">修改正在后台保存，确认发送时会等保存完成</li>
-          <li v-if="loading">正在读取脱敏信息……</li>
+        <ul class="checks" aria-label="提交条件" aria-live="polite">
+          <li v-if="assistant && !requireOurParty" class="ok"><CircleCheck :size="15" :stroke-width="1.75" />{{ ourCount ? '已选一方为我方' : '不设我方也可以确认' }}</li>
+          <li v-else :class="ourCount === 1 ? 'ok' : 'todo'"><component :is="ourCount === 1 ? CircleCheck : CircleDot" :size="15" :stroke-width="1.75" /><template v-if="ourCount === 1">已选我方</template><template v-else-if="!parties.length">没有识别到签约方，暂时不能交给模型</template><button v-else type="button" class="cond-link" @click="nudgeField(partiesSec)">还没选哪一方是我方</button></li>
+          <li v-if="parties.length" class="ok"><CircleCheck :size="15" :stroke-width="1.75" />签约方已列出，可在上方核对</li>
+          <li v-if="suspects.length" class="info"><CircleDot :size="15" :stroke-width="1.75" />{{ suspects.length }} 处拿不准的已默认遮住</li>
+          <li v-if="sessionReview && blocker" class="todo"><CircleDot :size="15" :stroke-width="1.75" /><button v-if="blockerChoice" type="button" class="cond-link" @click="emit('nudge')">{{ blocker }}</button><template v-else>{{ blocker }}</template></li>
+          <li v-if="leaksShown && leaksPending" class="todo"><CircleDot :size="15" :stroke-width="1.75" /><button type="button" class="cond-link" @click="nudgeField(leakBox)">还有 {{ leaksPending }} 处拦截未处理</button></li>
+          <li v-if="waiting || parsingFiles" class="todo"><CircleDot :size="15" :stroke-width="1.75" />文件正在读取，请稍候</li>
+          <li v-if="failedFiles" class="todo"><CircleDot :size="15" :stroke-width="1.75" />有读取失败的文件，请先删除</li>
+          <li v-if="saving" class="info"><CircleDot :size="15" :stroke-width="1.75" />修改正在后台保存，发送时会等保存完成</li>
+          <li v-if="loading" class="info"><CircleDot :size="15" :stroke-width="1.75" />正在读取遮住的内容……</li>
         </ul>
         <p v-if="submitting" class="submit-wait si-wait" role="status">
           <SiThinkingDots />
-          <span><span class="si-shimmer">{{ submitText }}</span>，已用 {{ submitSeconds }} 秒<template v-if="submitSlow">。比预计慢：可能在按最新规则重新脱敏，请不要关闭页面</template></span>
+          <span><span class="si-shimmer">{{ submitText }}</span>，已用 {{ submitSeconds }} 秒<template v-if="submitSlow">。比预计慢：可能在按最新规则重新遮住，请不要关闭页面</template></span>
         </p>
         <div ref="confirmBox" class="confirm-btn" :class="{ flash: confirmFlash }">
-          <el-button type="primary" size="large" :disabled="submitting || !readyExceptChoices || (leaksShown && leaksPending > 0)" @click="onConfirmClick">{{ submitting ? '正在提交…' : sessionReview ? '确认并开始审核' : assistant ? '确认脱敏' : '确认发送并开始审核' }}</el-button>
+          <el-button type="primary" size="large" :disabled="submitting || !readyExceptChoices || (leaksShown && leaksPending > 0)" @click="onConfirmClick"><Send :size="16" :stroke-width="1.75" />{{ submitting ? '正在提交…' : leaksShown ? '重新发送' : assistant && !sessionReview ? '确认遮住' : '确认发送并开始审核' }}</el-button>
         </div>
       </div>
     </aside>
@@ -799,69 +857,104 @@ useHotkeys({
 .keys-link:hover { color: var(--el-color-primary); }
 .saving { white-space: nowrap; }
 .drop-veil { position: absolute; inset: 0; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: var(--si-radius-card); background: color-mix(in srgb, var(--el-color-primary-light-9) 85%, transparent); color: var(--el-color-primary); font: var(--si-font-h4); pointer-events: none; }
-/* 右栏顶端与纸面顶端对齐：让出页签行（32px）、间距（8px）与纸面上方 2px；“即将发送”与确认按钮固定在栏底 */
-.rail { flex: 0 0 auto; min-width: 0; min-height: 0; margin-top: 42px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); background: var(--el-bg-color); }
-.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px; display: flex; flex-direction: column; gap: 4px; }
-.sec { padding: 12px 0; }
-.sec + .sec { border-top: 1px solid var(--el-border-color-lighter); }
-h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font: var(--si-font-h4); }
-h3.clickable { cursor: pointer; }
-h3.clickable:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 2px; }
-.sum { margin-left: auto; color: var(--si-ink-3); font: var(--si-font-caption); text-align: right; }
-.rows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+/* 右栏（澄明 8.4）：三张卡片各自成组，栏底固定提交条件与满宽主按钮 */
+.rail { flex: 0 0 auto; min-width: 0; min-height: 0; margin-top: 42px; display: flex; flex-direction: column; overflow: hidden; }
+.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 4px 12px 2px; display: flex; flex-direction: column; gap: 12px; }
+.rp-card { padding: 14px 16px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.rp-h { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font: var(--si-font-h4); color: var(--si-ink-1); }
+.rp-h > svg { flex: none; color: var(--si-ink-3); }
+.rp-h b { font-weight: 600; }
+.rp-h .hint, .rp-h .badge-mid { margin-left: auto; }
+.badge-mid { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-badge); }
 .hint { margin: 0; }
-.warn { margin: 4px 0 0; color: var(--el-color-warning); font: var(--si-font-caption); }
-.line { margin: 0 0 4px; font: var(--si-font-body); }
-.skip { margin-left: 12px; }
-.code { padding: 0 6px; border-radius: 4px; background: var(--si-code-bg); color: var(--si-code-ink); font-family: var(--si-font-mono); font-size: 12px; }
-.party { padding: 6px 8px; border-radius: 8px; border: 1px solid transparent; }
-.party.our { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); }
-.party-line { display: flex; align-items: center; gap: 8px; }
-.party-line :deep(.el-radio) { margin: 0; }
-.party-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.party-edit { display: flex; gap: 8px; margin-top: 6px; }
-.party-edit :deep(.el-select) { flex: 1; min-width: 0; }
-.batch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
-.suspects { max-height: 320px; overflow-y: auto; }
-.suspect { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; cursor: pointer; }
-.suspect.selected { outline: 2px solid var(--el-color-primary); outline-offset: -1px; }
-.suspect-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.suspect-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.state { flex: none; font: var(--si-font-caption); }
-.state.kept { color: var(--si-ink-3); }
-.suspect-actions { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
-.suspect-actions :deep(.el-button + .el-button), .suspect-actions :deep(.el-dropdown) { margin-left: 0; }
-.file { padding: 8px; border: 1px solid var(--el-border-color-lighter); border-radius: 8px; display: flex; flex-direction: column; gap: 4px; }
-.stat-line { display: flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--si-ink-2); font: var(--si-font-body); cursor: pointer; text-align: left; }
-.stat-line:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 2px; border-radius: 4px; }
-.auto { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--si-hair); }
-.auto-head { margin: 0; }
+.warn { margin: 4px 0 0; color: var(--si-warn-ink); font: var(--si-font-caption); }
+/* 签约方 */
+.party { margin: 0 -8px; padding: 8px; border-radius: 12px; transition: background-color var(--si-d2) var(--si-ease-out); }
+.party + .party { margin-top: 2px; }
+.party.me { background: var(--si-blue-tint); }
+.party.editing { background: var(--si-card-2); }
+.party-line { display: flex; align-items: center; gap: 10px; }
+.party-code { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--si-k-org-bg); color: var(--si-k-org); font: var(--si-font-h4); }
+.party-code.me { background: var(--si-brand); color: var(--si-white); }
+.party-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.party-main b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.party-main > span { overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
+.party-main em { color: var(--si-blue-ink); font-style: normal; font-weight: 600; }
+.code-chip { font-family: var(--si-font-mono); }
+.ibtn { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.ibtn:hover:not(:disabled) { background: var(--si-hover-bg); color: var(--si-ink-1); }
+.ibtn:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
+.party-edit { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--si-hair-faint); }
+.pe-row { display: flex; align-items: center; gap: 8px; }
+.pe-row > span:first-child { flex: none; width: 32px; color: var(--si-ink-3); font: var(--si-font-caption); }
+.pe-row :deep(.el-input) { flex: 1; min-width: 0; }
+.pe-more :deep(.el-select) { flex: 1; min-width: 0; }
+.shorts { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.short { display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 4px 0 10px; border-radius: 999px; background: var(--si-k-org-bg); color: var(--si-k-org); font: var(--si-font-caption); }
+.short button { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+.short button:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+.short-input { flex: 1 1 96px !important; min-width: 96px; }
+.pe-foot { display: flex; justify-content: space-between; gap: 8px; }
+.pe-foot :deep(.el-button + .el-button) { margin-left: 0; }
+.our-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--si-hair-faint); border-radius: 0; }
+/* 需要你看一眼的 */
+.unsure-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
+.unsure { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 10px; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out); }
+.unsure:hover { background: var(--si-hover-bg); }
+.unsure.selected { background: var(--si-select-bg); }
+.unsure-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.unsure-main b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label); text-overflow: ellipsis; white-space: nowrap; }
+.unsure-main span { overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
+.kdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--k); }
+.k-org { --k: var(--si-k-org); } .k-person { --k: var(--si-k-person); } .k-other { --k: var(--si-k-other); }
+.choice { flex: none; display: inline-flex; padding: 2px; border-radius: 9px; background: var(--si-sunken); }
+.ch { height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label-sm); cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), color var(--si-d2) var(--si-ease-out); }
+.ch.on { background: var(--si-surface-1); color: var(--si-ink-1); box-shadow: var(--si-shadow-1); }
+.ch:disabled { cursor: not-allowed; }
+.row2 { display: flex; gap: 8px; margin-top: 10px; }
+.row2 :deep(.el-button) { flex: 1; margin: 0; }
+.auto { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--si-hair-faint); }
+.auto-head { display: flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--si-ink-3); font: var(--si-font-caption); cursor: pointer; }
+.auto-head:hover { color: var(--si-ink-1); }
+/* 文件 */
+.files { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.file { display: flex; flex-direction: column; gap: 4px; }
 .file-line { display: flex; align-items: center; gap: 8px; }
-.file-line.sub { gap: 8px; }
-.badge { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; font-size: 11px; font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
-.badge--xls { background: var(--el-color-success-light-9); color: var(--el-color-success); }
-.badge--pdf { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
-.badge--img, .badge--audio { background: var(--el-color-info-light-9); color: var(--el-color-info); }
-.file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.main-tag { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); font-style: normal; }
+.ftype { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; font: var(--si-font-badge); font-weight: 600; background: var(--si-k-org-bg); color: var(--si-k-org); }
+.ftype--xls { background: var(--si-ok-soft); color: var(--si-ok-ink); }
+.ftype--pdf { background: var(--si-danger-soft); color: var(--si-danger-ink); }
+.ftype--img { background: var(--si-k-person-bg); color: var(--si-k-person); }
+.ftype--audio { background: var(--si-m-meet-soft); color: var(--si-m-meet); }
+.file-name { flex: 1; min-width: 0; overflow: hidden; font: var(--si-font-label); text-overflow: ellipsis; white-space: nowrap; }
+.main-tag { flex: none; padding: 0 8px; border-radius: 999px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-badge); font-style: normal; line-height: 20px; }
 .doc-type { flex: 1; min-width: 0; }
-.icon-btn { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--si-ink-3); cursor: pointer; }
-.icon-btn:hover { background: var(--si-surface-2); }
-.add-file { margin-top: 8px; }
-.receipt { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 14px 16px 16px; border-top: 1px solid var(--el-border-color-light); border-radius: 0 0 var(--si-radius-card) var(--si-radius-card); background: var(--si-surface-2); }
-.receipt-title { margin: 0; }
-.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.stat { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--el-bg-color); font: var(--si-font-h4); }
-.stat-label { color: var(--si-ink-3); font: var(--si-font-caption); }
+.add-file { margin-top: 10px; }
+/* 将要发送的 */
+.send-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; color: var(--si-ink-2); font: var(--si-font-body); }
+.send-list li { display: flex; align-items: center; gap: 8px; }
+.send-list li > svg { flex: none; color: var(--si-ink-3); }
+.send-list b { color: var(--si-ink-1); }
+.send-list .t-ai { color: var(--si-ai); }
+.chips-li { padding-left: 23px; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.chip { padding: 1px 8px; border-radius: 999px; background: var(--el-bg-color); color: var(--si-ink-2); font: var(--si-font-caption); }
-.receipt-alert { margin-top: 4px; }
-.conditions { margin: 0; padding: 0; list-style: none; font: var(--si-font-caption); color: var(--el-color-warning); }
-.conditions .met { color: var(--si-ink-2); }
+.chip { padding: 0 8px; border-radius: 999px; background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-caption); }
+.skip { margin-left: auto; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; }
+.links :deep(.el-button + .el-button) { margin-left: 0; }
+.settings { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--si-hair-faint); }
+/* 栏底：提交条件 + 满宽主按钮 */
+.rp-foot { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 12px 2px 0; }
+.receipt-alert { margin: 0; }
+.checks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font: var(--si-font-caption); }
+.checks li { display: flex; align-items: center; gap: 6px; }
+.checks li > svg { flex: none; }
+.checks .ok { color: var(--si-ink-2); } .checks .ok > svg { color: var(--si-brand-2); }
+.checks .todo { color: var(--si-warn-ink); }
+.checks .info { color: var(--si-ink-3); }
 .cond-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
-.cond-link:hover { color: var(--el-color-primary); }
-.rows.si-required-empty { border-radius: 6px; }
-.confirm-btn :deep(.el-button) { width: 100%; height: 44px; }
+.cond-link:hover { color: var(--si-blue-ink); }
+.confirm-btn :deep(.el-button) { width: 100%; height: 46px; gap: 8px; border-radius: 12px; font: var(--si-font-label); font-size: calc(15px * var(--si-fs)); }
+.confirm-btn :deep(.el-button > span) { gap: 8px; }
 .submit-wait { display: flex; align-items: center; gap: 8px; margin: 0; font: var(--si-font-caption); color: var(--si-ink-2); }
 .confirm-btn.flash :deep(.el-button) { box-shadow: 0 0 0 3px var(--si-focus); }
 .outbound { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-reading); }
