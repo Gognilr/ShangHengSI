@@ -171,11 +171,59 @@ def check_contacts(bidders, nodes):
 
 # ---------------------------------------------------------------- 混装
 
+_PAREN = re.compile(r"[（(][^（）()]*[）)]")
+_ORG_TAIL = re.compile(r"(?:(?:集团)?(?:股份有限公司|有限责任公司|有限公司|股份公司|公司|厂)|集团|中心|研究院|研究所|设计院|事务所"
+                       r"|分公司|分厂)+$")
+# 字号之后常见的行业词：industry_words.txt 与脱敏字号判断的补充词之外，再补标书里常见的几个
+_BID_TRADE = ("机械制造", "制造", "设备", "仪器", "器械", "医疗", "智能", "自动化", "流体", "环境", "检测", "评价", "安全生产", "安全",
+              "生产", "物资", "电力", "水务", "给排水", "暖通", "空调", "制冷", "动力", "电控", "控制")
+
+
+def _strip_trade(s):
+    from app.redaction.parties import _brand_industry
+    words = sorted(set(_brand_industry()) | set(_BID_TRADE), key=len, reverse=True)
+    while (word := next((w for w in words if s.endswith(w) and len(s) > len(w)), None)):
+        s = s[:-len(word)]
+    return s
+
+
+def _strip_place(s):
+    from app.redaction.parties import _place_prefix
+    while (place := _place_prefix(s)) and len(s) - len(place) >= 2:
+        s = s[len(place):]
+    return s
+
+
+def brand_of(name):
+    """投标人字号（问题 8、10、11）：去括号中的地名、组织形式、开头的省市区（按行政区划表）与结尾的行业词，取前面 2～4 字。
+    前端显示的简称与后端结论、导出都用这一个规则（前端从接口取 short）。"""
+    full = re.sub(r"\s", "", name)
+    core = _ORG_TAIL.sub("", _PAREN.sub("", full)) or full
+    brand = _strip_trade(_strip_place(core))
+    return (brand if len(brand) >= 2 else core)[:4] or full
+
+
+def display_short_names(names):
+    """{id: 全称} → {id: 简称}。字号重名时依次放宽到去掉地名后的 6 字、10 字，最后用全称。"""
+    def make(name, size):
+        if size == 4:
+            return brand_of(name)
+        core = _strip_place(_ORG_TAIL.sub("", _PAREN.sub("", re.sub(r"\s", "", name))))
+        return core[:size] if size else name
+    for size in (4, 6, 10, 0):
+        out = {k: make(v, size) or v for k, v in names.items()}
+        if len(set(out.values())) == len(out):
+            return out
+    return dict(names)
+
+
 def short_names(name):
+    """混装、外部名称比对用的名称写法（4 字以上），与 brand_of 去括号、去地名的口径一致。"""
     full = re.sub(r"\s", "", name)
     core = _SUFFIX.sub("", full)
     names = {full}
-    for candidate in (core, _REGION.sub("", core)):
+    bare = _SUFFIX.sub("", _PAREN.sub("", full))
+    for candidate in (core, _REGION.sub("", core), bare, _strip_place(bare)):
         if len(candidate) >= 4:
             names.add(candidate)
     return names
@@ -550,10 +598,10 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
     return items, notes
 
 
-def _similar_step(bidders, nodes, history=()):
+def _similar_step(bidders, nodes, history=(), title=None):
     from app.bid import similar
     found, stats = similar.find([b.id for b in bidders], {b.id: nodes.get(b.id, []) for b in bidders},
-                                nodes.get(None, []), history=history)
+                                nodes.get(None, []), history=history, titles=[title] if title else ())
     items = []
     for f in found:
         items.append(_item("clue", f["ids"], "similar", f["level"], "（四）", f["title"], f["rows"]))
@@ -615,7 +663,7 @@ def _run_once(db, task, *, progressive=True):
     items, notes = _pricing_step(db, task, [b for b in bidders if nodes.get(b.id) or b.opening_price_enc], nodes, files)
     save("pricing", started, items if two else [i for i in items if i["kind"] == "issue"], notes)
     started = time.monotonic()
-    items, stats = _similar_step(active, nodes) if two else ([], {})
+    items, stats = _similar_step(active, nodes, title=task.title) if two else ([], {})
     summary["baseline"]["sentences"] = stats.get("dropped_tender", 0)
     save("similar", started, items)
     logger.info("标书本地检查完成 task=%s 条目=%s 句子=%s 用时=%s", task.id, count, stats.get("sentences", 0), summary["elapsed"])

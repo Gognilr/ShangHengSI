@@ -327,8 +327,8 @@ def test_total_labels_fixture():
             assert facts[0]['separate_scopes'] and facts[0]['total'] is None
             assert analysis['bidders']['0']['not_compared'] == '不同范围报价，未参加比较'
             issues, verdicts = evaluate(0, nodes, facts[0], {}, date(2026,11,17), lambda n, *_: {'loc': n.loc})
-            assert not any(i['type'] == 'multi_total' and i['level'] == 'veto' for i in issues)
-            assert verdicts['multi_total'][0] == 'unclear' and 'ceiling' not in verdicts
+            assert not any(i['type'] == 'multi_total' for i in issues), case['name']  # 范围不同不报（V35-E-02）
+            assert verdicts['multi_total'][0] == 'yes' and 'ceiling' not in verdicts
 
 
 def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):
@@ -401,8 +401,8 @@ def test_template_words_not_names_scanned_signing_titles_and_short_names():
     assert names == {1: "虚构示例", 2: "样例", 3: "演示"}
 
 
-def test_similar_boilerplate_is_downweighted_not_dropped():
-    """V34-B-08c：两家附同类审计报告的标准意见（虚构改写）只作公共来源文字降档，仍列出；不计“只有两家共有的相同句”。"""
+def test_similar_skips_boilerplate_fixed_names_and_own_repeats():
+    """V35-E-02 问题 2、10：审计报告标准意见等公共来源文字不报；招标人、项目名称比对前去掉；同一家多份文件里的重复只算一处。"""
     from app.bid import similar
     audit = ["我们按照中国注册会计师审计准则的规定执行了审计工作，审计报告中的责任部分进一步阐述了我们的责任。",
              "我们相信，我们获取的审计证据是充分、适当的，为发表审计意见提供了基础，并保持职业怀疑。",
@@ -412,6 +412,17 @@ def test_similar_boilerplate_is_downweighted_not_dropped():
              "在编制财务报表时，管理层负责评估被审计单位的持续经营能力，披露与持续经营相关的事项。"]
     a, b = uuid.uuid4(), uuid.uuid4()
     nodes = {x: [("f", f"F{k}-PG9-B{i}", 9, t, "ocr_block") for i, t in enumerate(audit)] for k, x in ((1, a), (2, b))}
-    items, _ = similar.find([a, b], nodes, [])
-    assert len(items) == 1 and items[0]["level"] == "medium" and items[0]["rows"][0]["common"]  # 248 字连续相同本为强，降一档
-    assert "公共来源" in items[0]["title"] and "只有这两家共有" not in items[0]["title"]
+    assert similar.find([a, b], nodes, [])[0] == []
+    # 两家都照填项目名称与招标人名称的承诺句：去掉名称后不足 20 字，不比
+    tender = [("t", "F9-P1", None, "项目名称：虚构松青示范仪器更新改造采购项目", "paragraph"),
+              ("t", "F9-P2", None, "招标人：虚构松青示范检测中心有限公司", "paragraph")]
+    promise = "我方响应虚构松青示范仪器更新改造采购项目并向虚构松青示范检测中心有限公司承诺第{}项按期供货。"
+    nodes = {x: [("f", f"F{k}-P{i}", None, promise.format(n), "paragraph") for i, n in enumerate("一二三四五六")]
+             for k, x in ((1, a), (2, b))}
+    assert similar.find([a, b], nodes, tender)[0] == []
+    # 自写方案在本家两份文件各出现一次，只算一处：相同句仍只有 1 处
+    own = "本公司在示范区设立常驻服务站，配置专用检测车辆和备件库，接报后两小时内到场处理并留存维修记录。"
+    nodes = {a: [("f1", "F1-P1", None, own, "paragraph"), ("f2", "F2-P1", None, own, "paragraph")],
+             b: [("f3", "F3-P1", None, own, "paragraph")]}
+    items, stats = similar.find([a, b], nodes, [])
+    assert stats["sentences"] == 2 and items == []  # 单句 40 余字，不足 80 字的长段，也不够 5 处相同句

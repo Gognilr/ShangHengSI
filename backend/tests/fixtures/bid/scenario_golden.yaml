@@ -26,5 +26,6 @@ absent:
   - {kind: clue, type: image, bidders: [1, 2]}
   - {kind: clue, type: similar, bidders: [0, 2]}
   - {kind: clue, type: similar, bidders: [1, 2]}
+  - {kind: issue, type: cert_expired, bidders: [0]}  # 历史证书过期、同类现行证书有效（V35-E-02）
   - {kind: issue, type: ceiling, bidders: [0]}
   - {kind: issue, type: ceiling, bidders: [1]}

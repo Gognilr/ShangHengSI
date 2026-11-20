@@ -339,6 +339,11 @@ def separate_quote_scopes(nodes, totals):
         label = re.search(r'表[一二三四五六七八九十](?=[：:、\s）)]|$)', text)
         if label:
             return label[0]
+        # 分包、标段与单列报价的附加范围（问题 11）：范围不同的总价不是“两个报价”
+        if lot := re.search(r'第?[一二三四五六七八九十\d]{1,2}(?:包|标段|分标)|[A-Z]包|包[件号]?[一二三四五六七八九十\d]{1,2}(?!装)', text):
+            return re.sub(r'^第', '', lot[0])
+        if extra := re.search(r'备品备件|随机备件|备件|专用工具|安装调试|安装|运输|培训|选配|选购|可选|运维|维保|技术服务', text):
+            return extra[0]
         if re.search(r'泵头|泵体', text):
             return '泵头'
         if '电机' in text:
@@ -361,10 +366,10 @@ def separate_quote_scopes(nodes, totals):
         at[id(n)] = current
     by_value = {}
     for value, _currency, n in totals:
-        own = re.search(r'表[一二三四五六七八九十](?=[：:、\s）)]|$)', n.text)
+        own = scope(n.text[:max(0, n.text.find('总价'))] or n.text[:20]) if len(n.text) < 160 else None
         labels = pages.get((n.file_seq, getattr(n, 'page', None)), set())
         inline = next((scope for v, scope in _motor_totals(n.text) if rounded(v) == rounded(value)), None)
-        found = inline or (own[0] if own else next(iter(labels)) if len(labels) == 1 else at.get(id(n)) if getattr(n, 'page', None) is None else None)
+        found = inline or (own if own else next(iter(labels)) if len(labels) == 1 else at.get(id(n)) if getattr(n, 'page', None) is None else None)
         by_value.setdefault(rounded(value), set())
         if found:
             by_value[rounded(value)].add(found)

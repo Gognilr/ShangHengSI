@@ -144,9 +144,7 @@ def detail(db, task):
                              "extract_state": project.extract_state},
             "check": {"state": project.check_state, "error": project.check_error, "ocr": _ocr(files)},
             "model": {"state": project.model_state, "error": project.model_error, **_model_progress(db, task)},
-            "bidders": [{"id": b.id, "name": crypto.decrypt_text(b.name_enc), "code": b.code, "seq": b.seq,
-                         "opening_price": _opening_view(b)}
-                        for b in db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))],
+            "bidders": _bidder_views(db, task),
             "files": [{"id": f.id, "bidder_id": f.bidder_id, "name": f.original_name, "ext": f.ext,
                        "size_bytes": f.size_bytes, "page_count": f.page_count,
                        "has_password": f.original_deleted_at is None and f.password_enc is not None,
@@ -154,6 +152,15 @@ def detail(db, task):
                        "state": "failed" if f.parse_error else "done" if f.parser_version else "waiting",
                        "error": f.parse_error, "warnings": f.warnings,
                        "original_deleted": f.original_deleted_at is not None} for f in files]}
+
+
+def _bidder_views(db, task):
+    from app.bid.checks import display_short_names
+    rows = list(db.scalars(select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq)))
+    names = {b.id: crypto.decrypt_text(b.name_enc) for b in rows}
+    shorts = display_short_names(names)
+    return [{"id": b.id, "name": names[b.id], "short": shorts[b.id], "code": b.code, "seq": b.seq,
+             "opening_price": _opening_view(b)} for b in rows]
 
 
 def _model_progress(db, task):

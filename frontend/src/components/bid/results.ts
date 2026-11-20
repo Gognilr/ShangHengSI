@@ -34,25 +34,9 @@ export function levelTone(level: BidLevel): 'strong' | 'medium' | 'weak' {
   return level === 'veto' || level === 'strong' ? 'strong' : level === 'general' || level === 'medium' ? 'medium' : 'weak'
 }
 
-/** 投标人简称：去掉公司组织形式与常见行业词，过长取后 4 字；重名时退回更长的写法 */
-const orgTail = /(集团)?(股份)?有限(责任)?公司$|(集团)?股份公司$|集团$|公司$/
-const tradeTail = /(科技|技术|设备|仪器|工程|建设|建筑|贸易|实业|发展|信息|电子|电气|机电|环保|咨询|服务|智能|系统|网络|软件|医疗|器械|物资|供应链)+$/
+/** 投标人简称：后端 checks.display_short_names 按同一规则算好（字号 2～4 字，重名时放宽），这里只取用 */
 export function shortNames(bidders: Bidder[]): Record<string, string> {
-  const make = (name: string, keep: number) => {
-    let s = name.replace(orgTail, '')
-    const local = s.replace(/^(北京|上海|天津|重庆)(市)?|^[^\s]{2,3}?[省市]/, '')
-    if (local.length >= 2) s = local
-    const core = s.replace(tradeTail, '')
-    if (core.length >= 2) s = core
-    return s.length > keep ? s.slice(-keep) : s
-  }
-  const out: Record<string, string> = {}
-  for (const keep of [4, 6, 10, 99]) {
-    bidders.forEach(b => { out[b.id] = make(b.name, keep) })
-    if (new Set(Object.values(out)).size === bidders.length) break
-  }
-  if (new Set(Object.values(out)).size !== bidders.length) bidders.forEach(b => { out[b.id] = b.name })
-  return out
+  return Object.fromEntries(bidders.map(b => [b.id, b.short || b.name]))
 }
 
 /** 投标总价：唯一时直接显示；多个时显示最高的一个（后端已升序排列），另注“n 个总价” */

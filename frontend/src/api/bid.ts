@@ -14,7 +14,7 @@ export interface BidFile {
 /** 唱标价（V34-B-06e）：人工录入的小写金额、大写与备注 */
 export interface BidOpeningPrice { amount: string; upper: string | null; note: string | null }
 export interface BidOpeningPriceInput { amount: string | null; upper?: string | null; note?: string | null }
-export interface Bidder { id: string; name: string; code: string; seq: number; opening_price?: (BidOpeningPrice & { text: string }) | null }
+export interface Bidder { id: string; name: string; short?: string; code: string; seq: number; opening_price?: (BidOpeningPrice & { text: string }) | null }
 export type BidQuoteMode = 'fixed' | 'rate' | 'discount'
 export interface BidProject extends BidSummary {
   quote_mode?: BidQuoteMode

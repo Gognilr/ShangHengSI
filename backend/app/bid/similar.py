@@ -25,11 +25,15 @@ _CHAPTER = re.compile(r"^\s*(?:第[一二三四五六七八九十百零\d]+[章�
 _TECH = re.compile(r"技术参数|技术规格|技术偏离|技术指标|规格参数|产品参数|技术响应|配置清单|参数响应")
 _PRICE = re.compile(r"报价|开标一览表|价格|分项|投标函")
 # 公共来源文字（V34-B-08c）：审计报告标准意见、专利证书固定文字、营业执照套话、信用公示网址、标准编号行。
-# 降权不排除：所在段降一档，不计入“只有两家共有的相同句”；自填参数、偏离与共同错字不受影响。
+# 这类句子不参与相似段落（E-02，问题 2、10）；自填参数、偏离与共同错字不受影响。
 _COMMON = re.compile(r"注册会计师|审计准则|审计证据|审计意见|财务报表|重大错报|治理层|职业道德守则|持续经营|内部控制"
                      r"|专利权|专利登记|专利法|实用新型|知识产权局|专利证书"
                      r"|依法须经批准的项目|国家企业信用信息公示系统|gsxt\.gov\.cn"
                      r"|^\s*(?:GB|HG|SH|JB|NB|API|ISO|IEC)\s*/?\s*T?\s*\d")
+# 招标人、代理机构与项目名称（问题 2、10）：各家文件里都会照填，比对前从句子中去掉，免得只因同填项目名而相似
+_OWNER_NAME = re.compile(r"(?:招标人|采购人|招标单位|采购单位|建设单位|项目业主|业主单位|业主|招标代理机构|采购代理机构|代理机构)"
+                         r"(?:名称)?\s*[:：]\s*([^\s，,。；;：:（(]{4,60})")
+_PROJECT_NAME = re.compile(r"(?:项目名称|工程名称|采购项目名称|招标项目名称)\s*[:：]\s*([^\s，,。；;：:]{4,80})")
 _UP = {"weak": "medium", "medium": "strong", "strong": "strong"}
 _DOWN = {"strong": "medium", "medium": "weak", "weak": "weak"}
 _HAN_PAIR = re.compile(r"[一-鿿]{2}")
@@ -64,15 +68,38 @@ def _sections(nodes):
     return out
 
 
-def sentences(owner, nodes, start=0):
-    """[Sent]：nodes 为 [(file_id, loc, page, text, kind)]；只保留归一化后 ≥ 20 字且不是法条引文的句子。"""
+def _norm(text):
+    return _STRIP.sub("", normalize_value(text))
+
+
+def fixed_names(tender_nodes, titles=()):
+    """招标人、代理机构、项目名称及其变体的归一化写法（长的在前）。"""
+    from app.bid.checks import short_names
+    raw = set(titles)
+    for _f, _l, _p, text, *_ in tender_nodes:
+        raw.update(m.group(1) for m in _OWNER_NAME.finditer(text))
+        raw.update(m.group(1) for m in _PROJECT_NAME.finditer(text))
+    out = set()
+    for name in raw:
+        name = re.sub(r"(?:项目|工程)?(?:招标文件|采购文件|招标公告|竞争性谈判文件|询价文件)$", "", name.strip())
+        for variant in {name, *short_names(name)}:
+            if len(v := _norm(variant)) >= 4:
+                out.add(v)
+    return sorted(out, key=len, reverse=True)
+
+
+def sentences(owner, nodes, start=0, strip=()):
+    """[Sent]：nodes 为 [(file_id, loc, page, text, kind)]；只保留归一化后 ≥ 20 字且不是法条引文的句子。
+    strip 为比对前从句子中去掉的固定名称（招标人、项目名称）。"""
     out, index = [], start
     for (file_id, loc, page, text, _kind, *extra), section in zip(nodes, _sections(nodes)):
         for m in _SPLIT.finditer(text):
             piece = m.group().strip()
             if not piece or _LAW.search(piece):
                 continue
-            norm = _STRIP.sub("", normalize_value(piece))
+            norm = _norm(piece)
+            for name in strip:
+                norm = norm.replace(name, "")
             if len(norm) < MIN_CHARS:
                 continue
             grams = frozenset(norm[i:i + 2] for i in range(len(norm) - 1))
@@ -239,16 +266,21 @@ def _shared_typos(tender, history, shared):
             for ids, rows in rows_by_pair.items()]
 
 
-def find(bidders, nodes, tender_nodes, *, history=()):
-    """返回 (线索列表, 统计)。bidders 为按录入顺序的 id；nodes {id: [(file_id, loc, page, text, kind)]}。"""
-    tender = sentences(None, tender_nodes)
-    historic = sentences(None, history)
+def find(bidders, nodes, tender_nodes, *, history=(), titles=()):
+    """返回 (线索列表, 统计)。bidders 为按录入顺序的 id；nodes {id: [(file_id, loc, page, text, kind)]}。
+    titles：项目标题等固定名称，与招标文件中的招标人、项目名称一起在比对前去掉。"""
+    strip = fixed_names(tender_nodes, titles)
+    tender = sentences(None, tender_nodes, strip=strip)
+    historic = sentences(None, history, strip=strip)
     baseline = tender + historic
     pool, dropped = [], 0
     shared = defaultdict(dict)
     totals, starts = {}, {}  # 位置条（V34-B-06d）：每家句子总数与各文件的起始句序号
     for b in bidders:
-        mine = sentences(b, nodes.get(b, []))
+        mine = sentences(b, nodes.get(b, []), strip=strip)
+        # 同一家多份文件（商务标、技术标）里重复的句子只算一处（问题 2、10）
+        seen_norms = set()
+        mine = [x for x in mine if not (x.norm in seen_norms or seen_norms.add(x.norm))]
         totals[b] = len(mine)
         starts[b] = []
         for x in mine:
@@ -268,8 +300,10 @@ def find(bidders, nodes, tender_nodes, *, history=()):
         holders[s.norm].add(s.owner)
     items = []
     for (a, b), matches in pairs.items():
+        # 公共来源文字（审计、专利、执照套话、标准编号）不报（问题 2、10）
+        matches = [m for m in matches if not m[0].common and not m[1].common]
         segs = _segments(matches)
-        only_two = sum(1 for x, _y, exact in matches if exact and len(holders[x.norm]) == 2 and not x.common)
+        only_two = sum(1 for x, _y, exact in matches if exact and len(holders[x.norm]) == 2)
         total = sum(len(x.norm) for x, _y, _e in matches)
         if total < MEDIUM_RUN and only_two < STRONG_EXACT:
             continue  # 零星短句相同（多为固定句式）不报，免得淹没真正的线索；章节升降档只用于够长的命中
@@ -282,9 +316,7 @@ def find(bidders, nodes, tender_nodes, *, history=()):
                 level = _DOWN[level]
             elif section == "price":
                 level = _UP[level]
-            common = sum(len(x.norm) for x, _y, _e in seg if x.common) * 10 >= length * 6
-            if common:
-                level = _DOWN[level]
+            common = False
             graded.append((level, length, section, seg, common))
         rank = {"strong": 3, "medium": 2, "weak": 1}
         level = max((g[0] for g in graded), key=rank.get)
@@ -303,8 +335,6 @@ def find(bidders, nodes, tender_nodes, *, history=()):
         title = f"相似段落 {len(segs)} 段、约 {total} 字"
         if only_two:
             title += f"，只有这两家共有的相同句 {only_two} 处"
-        if commons := sum(1 for g in graded if g[4]):
-            title += f"；其中 {commons} 段为审计报告、专利证书、执照或标准条文等公共来源文字，已降一档"
         items.append({"ids": (a, b), "level": level, "title": title, "rows": rows,
                       "more": max(0, len(graded) - len(rows)), "map": _map(a, b, graded, totals, starts)})
     stats = {"sentences": len(pool), "dropped_tender": dropped}

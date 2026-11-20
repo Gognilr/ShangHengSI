@@ -159,16 +159,35 @@ def _issue(type_, level, title, rows, article=None, kind=None):
     return {"type": type_, "level": level, "title": title, "rows": rows, "article": article, "kind": kind}
 
 
+def _cert_type(nodes, i, m):
+    """证书类别：先看本句“有效期”之前，再看同一页（无页码时看前 8 个节点）；认不出时 None。"""
+    from app.bid.model import _cert_types
+    n = nodes[i]
+    if types := _cert_types(n.text[:m.start()]):
+        return min(types)
+    same = [o for o in nodes[max(0, i - 8):i + 1] if o.file_id == n.file_id and (n.page is None or o.page == n.page)]
+    for o in reversed(same):
+        if types := _cert_types(o.text):
+            return min(types)
+    return None
+
+
 def expired_certificates(nodes, opening: date):
-    """[(日期, node, start, end, 低置信)]：“有效期至”后的日期早于开标日；投标、报价有效期不算。"""
-    out = []
-    for n in nodes:
+    """[(日期, node, start, end, 低置信, 严重)]：“有效期至”后的日期早于开标日；投标、报价有效期不算。
+    文件里常附历史证书：同一类证书只要有一份在有效期内就不报；该类全部过期才算严重，认不出类别的只作提示。"""
+    found_all = []
+    for i, n in enumerate(nodes):
         for m in _CERT.finditer(n.text):
             if _NOT_CERT.search(n.text[max(0, m.start() - 6):m.start() + 4]):
                 continue
             found = [(a, b, v) for a, b, v in find_dates(n.text) if m.end() <= a <= m.end() + 15]
-            if found and found[0][2] < opening:
-                out.append((found[0][2], n, m.start(), found[0][1], (n.ocr_conf or 1) < LOW_OCR_CONF))
+            if found:
+                found_all.append((found[0][2], n, m.start(), found[0][1], _cert_type(nodes, i, m)))
+    valid = {kind for value, *_rest, kind in found_all if value >= opening}
+    out = []
+    for value, n, s, e, kind in found_all:
+        if value < opening and kind not in valid:
+            out.append((value, n, s, e, (n.ocr_conf or 1) < LOW_OCR_CONF, kind is not None))
     return out
 
 
@@ -372,14 +391,15 @@ def _evaluate_fixed_price(b, nodes, fact, at, issues, verdicts):
 
     # 多个不同总价（第五十一条：同一投标人提交两个以上不同的投标报价）
     distinct, totals = fact["distinct"], fact["totals"]
-    if len(distinct) > 1:
+    if len(distinct) > 1 and fact.get('separate_scopes', False):
+        # 报价范围不同（分包、表一表二、主机与备件等，问题 11）：不是同一范围的两个报价，不报
+        verdicts["multi_total"] = ("yes", f"{len(distinct)} 个总价分属不同报价范围，未见同一范围的不同报价",
+                                   [at(n) for _v, _c, n in totals[:4]])
+    elif len(distinct) > 1:
         rows = [{"label": "投标总价", "value": money(v), "places": {b: [at(n)]}} for v, _c, n in totals]
         title = f"出现 {len(distinct)} 个不同的投标总价：" + "、".join(money(v) for v in distinct)
-        separate = fact.get('separate_scopes', False)
-        if separate:
-            title += "；报价范围不同，需统一比较口径"
-        issues.append(_issue("multi_total", "hint" if separate else "veto", title, rows[:8], None if separate else ARTICLE + "（四）", "multi_total"))
-        verdicts["multi_total"] = ("unclear" if separate else "no", title, [r["places"][b][0] for r in rows[:4]])
+        issues.append(_issue("multi_total", "veto", title, rows[:8], ARTICLE + "（四）", "multi_total"))
+        verdicts["multi_total"] = ("no", title, [r["places"][b][0] for r in rows[:4]])
     elif distinct:
         verdicts["multi_total"] = ("yes", f"投标总价 {money(distinct[0])}，未见其他不同总价", [at(totals[0][2])])
     else:
@@ -474,9 +494,12 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place, *, mode="fixe
         _evaluate_rate(b, fact, mode, at, issues, verdicts)
 
     # 证书有效期早于开标日（OCR 低置信只提示人工核对）
-    for value, n, s, e, low in expired_certificates(nodes, opening):
+    for value, n, s, e, low, severe in expired_certificates(nodes, opening):
         if low:
             issues.append(_issue("cert_expired", "hint", f"扫描页上的证书有效期似为 {value.isoformat()}，识别置信度低，请人工核对",
+                                 [{"label": "证书有效期", "value": value.isoformat(), "places": {b: [at(n, s, e)]}}]))
+        elif not severe:
+            issues.append(_issue("cert_expired", "hint", f"有效期至 {value.isoformat()}，早于开标日，未能认出证书类别，请核对是否另有有效证书",
                                  [{"label": "证书有效期", "value": value.isoformat(), "places": {b: [at(n, s, e)]}}]))
         else:
             issues.append(_issue("cert_expired", "general", f"证书有效期至 {value.isoformat()}，早于开标日 {opening.isoformat()}",
