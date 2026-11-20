@@ -103,25 +103,22 @@ def test_local_check_two_similar_pricing_compliance(owner, db_sessionmaker):
     assert "两小时内响应" in similar["rows"][0]["left"]["text"]
     seg = similar["map"]["segs"][0]  # 位置条（V34-B-06d）：两侧句序范围落在各自总句数内
     assert 0 <= seg["a"][0] <= seg["a"][1] < similar["map"]["n"][a] and 0 <= seg["b"][0] <= seg["b"][1] < similar["map"]["n"][b]
-    assert {t["bidder_id"] for t in result["timeline"]} >= {a, b}
+    assert "timeline" not in result  # 文件时间线已撤下（V35-E-01）
     assert clues[("pricing", (a, b))]["level"] == "strong" and "1.03" in clues[("pricing", (a, b))]["title"]
     assert not any(i["type"] == "pricing" and x in i["bidder_ids"] for i in result["items"])
     issues = {(i["type"], i["bidder_ids"][0]): i for i in result["items"] if i["kind"] == "issue"}
     assert issues[("uppercase", b)]["level"] == "general"
-    assert issues[("validity", b)]["level"] == "veto" and "60" in issues[("validity", b)]["title"]
-    for kind in ("multi_total", "ceiling", "deposit"):
-        assert issues[(kind, x)]["level"] == "veto", kind
-    assert issues[("ceiling", x)]["requirement_id"]  # 关联到“本地规则”要求
-    assert issues[("cert_expired", x)]["level"] == "general"
+    assert issues[("multi_total", x)]["level"] == "veto" and issues[("cert_expired", x)]["level"] == "general"
+    # 关键参数已撤下：不再比对最高限价、投标有效期与保证金（V35-E-01）
+    assert not any(t in ("ceiling", "validity", "deposit") for t, _b in issues)
     assert not any(bidder == a for _t, bidder in issues)  # 甲无问题
-    cells = {}
-    for cell in result["cells"]:
-        cells.setdefault(cell["bidder_id"], set()).add(cell["verdict"])
-    assert cells[a] == {"yes"} and "no" in cells[x]
+    # 严重：多个报价、证书过期；大小写只是提示
+    c_ = result["conclusion"]
+    severe = {(e["title"], e["bidder_ids"][0]) for e in c_["severe"] if not e["case_id"]}
+    assert {bid for _t, bid in severe} == {x} and any("个不同的" in t for t, _b in severe)
+    assert any(e["bidder_ids"] == [b] and "大写" in e["title"] for e in c_["hint"])
     pricing = result["pricing"]
     assert pricing["bidders"][a]["total"] == "2,616,000.00" and pricing["bidders"][x]["totals_found"] == ["4,108,000.00", "4,180,000.00"]
-    # 多个总价按最高者给出超限差额（V34Q-25），over_ceiling 仍为空
-    assert pricing["bidders"][x]["over_ceiling"] is None and pricing["bidders"][x]["over_ceiling_max"] == "380,000.00"
     assert len(pricing["items"]) == 6 and pricing["items"][0]["prices"][b] == "123,600.00"
     # 最高 / 最低（V34Q-27）：多个总价的一家不参加比较
     assert pricing["bidders"][a]["mark"] == "lowest" and pricing["bidders"][b]["mark"] == "highest"
@@ -138,7 +135,6 @@ def test_shared_external_names_typos_and_fractional_tails(owner, db_sessionmaker
     from docx import Document
 
     from app.bid.conclusion import build
-    from app.bid.model import second_targets
     from tests.fixtures.bid.samples import _quote_table
     from tests.test_bid_report import _text
 
@@ -192,11 +188,10 @@ def test_shared_external_names_typos_and_fractional_tails(owner, db_sessionmaker
     assert len(new["分项单价小数尾数共现"]["rows"][0]["items"]) == 5
     bidders = dict(zip(ids, BIDDERS))
     names_only = build(view | {"items": [new["外部项目名称"], new["外部业主名称"]]}, bidders)
-    assert not names_only["cases"] and len(names_only["reference"]) >= 2
+    assert not names_only["cases"] and len(names_only["hint"]) >= 2
     case, = view["conclusion"]["cases"]
-    assert case["bidder_ids"] == ids[:2] and case["tier"] == "verify" and not case["certain_pairs"]
+    assert case["bidder_ids"] == ids[:2] and case["level"] == "hint" and not case["strong_pairs"]  # 中等证据只是提示
     assert set(i["id"] for i in new.values()) <= {e["item_id"] for e in case["evidence"]}
-    assert not second_targets(view, {})[1]
     report = _text(c.get(base + "/report", headers=h).content)
     assert all(label in report for label in labels)
     assert expected in report and "招标文件 · " in report
@@ -221,9 +216,9 @@ def test_new_compliance_finding_and_matrix_survive_a_recheck(owner, db_sessionma
     first = c.get(base + "/check", headers=h).json()
     issue = next(i for i in first["items"] if i["type"] == "delivery_max")
     cell = next(cell for cell in first["cells"] if cell["requirement_id"] == issue["requirement_id"])
-    assert cell["verdict"] == "no" and issue["level"] == "general"
+    assert cell["verdict"] == "no" and issue["level"] == "veto"  # ★ 条款驱动，不满足即严重
     assert cell["locs"] and issue["rows"][0]["places"]
-    assert any(entry["item_id"] == issue["id"] for entry in first["conclusion"]["verify"])
+    assert any(entry["item_id"] == issue["id"] for entry in first["conclusion"]["severe"])
     with db_sessionmaker() as db:
         task = db.get(Task, uuid.UUID(base.rsplit("/", 1)[-1]))
         _run_once(db, task, progressive=False)
@@ -328,13 +323,12 @@ def test_total_labels_fixture():
         if case.get('separate_scopes'):
             from datetime import date
             from app.bid.compliance import evaluate
-            analysis, _, facts = pricing.analyze([0], {0: nodes}, Decimal('500000'), 'CNY')
+            analysis, _, facts = pricing.analyze([0], {0: nodes})
             assert facts[0]['separate_scopes'] and facts[0]['total'] is None
             assert analysis['bidders']['0']['not_compared'] == '不同范围报价，未参加比较'
-            issues, verdicts = evaluate(0, nodes, facts[0], {'ceiling': '500000', 'currency': 'CNY'}, date(2026,11,17),
-                                        lambda n, *_: {'loc': n.loc})
+            issues, verdicts = evaluate(0, nodes, facts[0], {}, date(2026,11,17), lambda n, *_: {'loc': n.loc})
             assert not any(i['type'] == 'multi_total' and i['level'] == 'veto' for i in issues)
-            assert verdicts['multi_total'][0] == verdicts['ceiling'][0] == 'unclear'
+            assert verdicts['multi_total'][0] == 'unclear' and 'ceiling' not in verdicts
 
 
 def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):
@@ -353,56 +347,41 @@ def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):
     assert not any("识别中" in n for n in c.get(base + "/check").json()["coverage"])  # 重跑过检查
 
 
-def test_review_reopen_and_signing(owner, db_sessionmaker):
-    """V34-B-06：核对状态与备注在返回修改材料、重新初审后保留；单元格详情、人工核对单元格、签章页标注、两两比值。"""
+def test_dismiss_reopen_and_signing(owner, db_sessionmaker):
+    """V35-E-01：唯一的人工操作“不是问题”可撤销，返回修改材料、重新初审后保留；签章页标为缺章即为严重问题。"""
     c, h, _ = owner
     base, _project, (a, b, x) = _checked(c, h, db_sessionmaker, [(f"投标文件{i}.docx", bid2(i)) for i in range(3)])
     result = c.get(base + "/check").json()
-    item = next(i for i in result["items"] if i["type"] == "validity")
-    assert c.patch(f"{base}/items/{item['id']}", headers=h, json={"review_status": "verified", "note": "已核对原件第 3 页"}).json() == \
-        {"review_status": "verified", "note": "已核对原件第 3 页"}
-    cell = next(cl for cl in result["cells"] if cl["verdict"] == "no")
-    key = {"requirement_id": cell["requirement_id"], "bidder_id": cell["bidder_id"]}
-    assert c.put(base + "/cells", headers=h, json={**key, "review_status": "excluded"}).status_code == 200
-    detail = c.get(base + "/cell", headers=h, params=key).json()
-    assert detail["cell"]["review_status"] == "excluded" and detail["requirement"]["text"] and detail["places"][0]["text"]
-    manual = next(r for r in result["requirements"] if r["method"] == "manual")
-    assert c.put(base + "/cells", headers=h, json={"requirement_id": manual["id"], "bidder_id": a, "note": "签字齐全"}).status_code == 200
-    model_row = next((r for r in result["requirements"] if r["method"] == "model"), None)
-    if model_row:  # 模型判断行在没有结果前不能标注
-        assert c.put(base + "/cells", headers=h, json={"requirement_id": model_row["id"], "bidder_id": a, "note": "x"}).status_code == 409
+    entry = next(e for e in result["conclusion"]["severe"] if e["bidder_ids"] == [x] and e["item_id"])
+    out = c.put(base + "/dismissed", headers=h, json={"key": entry["id"], "dismissed": True}).json()["conclusion"]
+    assert entry["id"] in {e["id"] for e in out["dismissed"]} and entry["id"] not in {e["id"] for e in out["severe"]}
+    assert c.put(base + "/dismissed", headers=h, json={"key": "item:" + str(uuid.uuid4()), "dismissed": True}).status_code == 404
+    for gone in ("/review", "/cells", f"/items/{entry['item_id']}", "/conclusion/sign"):  # 核实、签认已撤下
+        assert c.patch(base + gone, headers=h, json={}).status_code in (404, 405)
     assert any(p["n"] >= 5 and p["cv"] for p in result["pricing"]["pairs"])  # 未构成线索的一对也给比值
     sign = result["signing"]
     assert sign and all(s["title"] for s in sign)
     s0 = sign[0]
     assert c.put(base + "/signing", headers=h, json={"file_id": s0["file_id"], "page": s0["page"], "loc": s0["loc"], "mark": "missing"}).status_code == 200
-
-    # 批量核对（V34-B-06c）：一次事务；任一项不属于本项目则全部不改
-    calc = [i["id"] for i in result["items"] if i["type"] in ("uppercase", "sum_total", "row_calc", "sum_rows", "multi_total", "ceiling")]
-    refs = [{"requirement_id": manual["id"], "bidder_id": bid} for bid in (a, b, x)]
     signs = [{k: s[k] for k in ("file_id", "page", "loc")} for s in sign[1:]]
-    bad = c.post(base + "/review", headers=h, json={"items": [str(uuid.uuid4())], "cells": refs, "review_status": "verified"})
+    bad = c.post(base + "/signing/batch", headers=h, json={"signing": signs + [{"file_id": str(uuid.uuid4()), "page": 1}], "mark": "stamped"})
     assert bad.status_code == 404
-    assert all(cl["review_status"] == "pending" for cl in c.get(base + "/check").json()["cells"] if cl["requirement_id"] == manual["id"])
-    out = c.post(base + "/review", headers=h, json={"items": calc, "cells": refs + refs[:1], "review_status": "verified",
-                                                  "signing": signs, "mark": "stamped"}).json()
-    assert out["cells"] == 3 and all(out["marks"][f"{s['file_id']}:{s['page'] if s['page'] is not None else s['loc']}"] == "stamped" for s in signs)
-    now = c.get(base + "/check").json()
-    assert sum(cl["requirement_id"] == manual["id"] and cl["review_status"] == "verified" for cl in now["cells"]) == 3
-    assert all(i["review_status"] == "verified" for i in now["items"] if i["id"] in calc)
+    if signs:
+        out = c.post(base + "/signing/batch", headers=h, json={"signing": signs, "mark": "stamped"}).json()
+        assert all(out["marks"][f"{s['file_id']}:{s['page'] if s['page'] is not None else s['loc']}"] == "stamped" for s in signs)
+    now = c.get(base + "/check").json()["conclusion"]
+    assert any(e["id"].startswith("sign:") and e["bidder_ids"] == [s0["bidder_id"]] for e in now["severe"])
 
     assert c.post(base + "/reopen", headers=h).json()["stage"] == "ready"
     assert c.post(base + "/check", headers=h).json()["stage"] == "checking"
     _jobs(db_sessionmaker, base, "check")
     again = c.get(base + "/check").json()
-    same = next(i for i in again["items"] if i["type"] == "validity")
-    assert same["review_status"] == "verified" and same["note"] == "已核对原件第 3 页"
-    by = {(cl["requirement_id"], cl["bidder_id"]): cl for cl in again["cells"]}
-    assert by[(cell["requirement_id"], cell["bidder_id"])]["review_status"] == "excluded"
-    assert by[(manual["id"], a)]["note"] == "签字齐全"
+    assert entry["id"] in {e["id"] for e in again["conclusion"]["dismissed"]}
     assert next(s for s in again["signing"] if s["loc"] == s0["loc"])["mark"] == "missing"
-    other = c.post(ROOT, headers=h, json=BODY).json()["id"]  # 别的项目的条目 404
-    assert c.patch(f"{ROOT}/{other}/items/{item['id']}", headers=h, json={"review_status": "pending"}).status_code == 404
+    restored = c.put(base + "/dismissed", headers=h, json={"key": entry["id"], "dismissed": False}).json()["conclusion"]
+    assert entry["id"] in {e["id"] for e in restored["severe"]}
+    other = c.post(ROOT, headers=h, json=BODY).json()["id"]  # 别的项目 409（未初审），不泄露本项目的事项
+    assert c.put(f"{ROOT}/{other}/dismissed", headers=h, json={"key": entry["id"], "dismissed": True}).status_code == 409
 
 
 def test_template_words_not_names_scanned_signing_titles_and_short_names():

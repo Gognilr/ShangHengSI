@@ -8,11 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.audit import service as audit
 from app.bid import folders, service
-from app.bid.schemas import (BatchReviewInput, BidderInput, CellReviewInput, FolderInput, FolderPatch, InviteesInput, ParametersInput, PlaceInput, PasswordInput, ProjectInput, RequirementInput,
-                             ApplicabilityInput, ConclusionReviewInput, ConclusionSignInput, OpeningPriceInput,
-                             RequirementPatch, ReviewInput, SigningInput)
+from app.bid.schemas import (BidderInput, DismissInput, FolderInput, FolderPatch, InviteesInput, OpeningPriceInput, PlaceInput,
+                             PasswordInput, ProjectInput, RequirementInput, RequirementPatch, SigningBatchInput, SigningInput)
 from app.db.base import utcnow
-from app.db.models import BidBidder, BidItem, BidProject, BidRequirement, Task, TaskFile, User
+from app.db.models import BidItem, BidProject, BidRequirement, Task, TaskFile, User
 from app.db.session import get_db
 from app.parsing.pdf import PdfPasswordError, _open
 from app.parsing.model import ParseError
@@ -302,7 +301,7 @@ def _requirements(db, task):
 
 
 def _changed(db, task):
-    """改清单或参数：版本加一；已确认（待开标）的项目保持待开标，开标后由检查任务只重跑受影响的行。"""
+    """改清单或条款参数：版本加一；已确认（待开标）的项目保持待开标，开标后由检查任务只重跑受影响的行。"""
     db.get(BidProject, task.id).requirements_version += 1
     task.last_activity_at = utcnow()
 
@@ -326,19 +325,6 @@ def tender_text(view: str = Query("original", pattern="^(original|ai)$"), task: 
 
 @router.get("/{id}/requirements")
 def requirements_view(task: Task = Depends(owned), db: Session = Depends(get_db)):
-    return _requirements(db, task)
-
-
-@router.put("/{id}/parameters")
-def save_parameters(body: ParametersInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    from app.bid import requirements as R
-    task = service.editable(db, task)
-    project = db.get(BidProject, task.id)
-    state = R.load_state(project)
-    state["values"], state["confirmed"] = body.model_dump(), True
-    R.save_state(project, state)
-    _changed(db, task)
-    db.commit()
     return _requirements(db, task)
 
 
@@ -386,6 +372,12 @@ def patch_requirement(rid: str, body: RequirementPatch, task: Task = Depends(own
     row.method = R.policy_method(body.method or row.method, task.policy)
     if body.enabled is not None:
         row.enabled = body.enabled
+    if body.param is not None:
+        kind = R.param_kind(crypto.decrypt_text(row.text_enc)) if row.group in R.KEY_GROUPS else None
+        if kind is None:
+            raise AppError(422, "NO_PARAM", "只有 ★ 与否决条款中的工期、交货期、质保期、缺陷责任期与类似业绩可以填写参数")
+        R.save_param(row, R.clean_param(kind, body.param))
+        row.method = "local"
     _changed(db, task)
     db.commit()
     return _requirements(db, task)
@@ -431,15 +423,14 @@ def model_assist(action: str, task: Task = Depends(owned), db: Session = Depends
 
 @router.post("/{id}/confirm")
 def confirm_requirements(task: Task = Depends(owned), db: Session = Depends(get_db)):
-    """确认关键参数与要求清单：项目进入“待开标”。"""
+    """确认条款清单：项目进入“待开标”。"""
     from app.bid import extract, requirements as R
     task = service.editable(db, task)
     project = db.get(BidProject, task.id)
     if not R.parsed_tender_ids(db, task.id):
         raise AppError(422, "NO_TENDER", "请先加入并解析招标文件")
     extract.require_idle(project)
-    if not db.scalar(select(func.count()).select_from(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True))):
-        raise AppError(422, "NO_REQUIREMENTS", "要求清单为空，请至少保留一条要求")
+    # 招标文件可以没有 ★ / 否决条款（V35-E-01）：串标与确定性检查照常进行
     state = R.load_state(project)
     state["confirmed"] = True
     R.save_state(project, state)
@@ -458,7 +449,7 @@ def start_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
     project = db.get(BidProject, task.id)
     extract.require_idle(project)
     if project.stage != "ready":
-        raise AppError(409, "NOT_READY", "请先确认关键参数与要求清单")
+        raise AppError(409, "NOT_READY", "请先确认条款清单")
     service.require_originals(db, task.id)
     if service.busy(db, task) or db.scalar(select(TaskFile.id).where(TaskFile.task_id == task.id, TaskFile.parser_version.is_(None),
                                                                       TaskFile.parse_error.is_(None)).limit(1)):
@@ -475,7 +466,7 @@ def start_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
 
 @router.get("/{id}/check")
 def check_result(task: Task = Depends(owned), db: Session = Depends(get_db)):
-    """初审结果：条目（含核对状态与备注）、单元格、要求清单、报价分析、签章页速览与覆盖说明。"""
+    """初审结果：严重 / 提示两档的问题清单、条目、单元格、条款、签章页速览与覆盖说明。"""
     from app.bid import results
     return results.check_view(db, task)
 
@@ -483,7 +474,7 @@ def check_result(task: Task = Depends(owned), db: Session = Depends(get_db)):
 @router.get("/{id}/report", dependencies=[Depends(require("use.export"))])
 def report(scope: str = Query("full", pattern="^(full|clues)$"), task: Task = Depends(owned),
            user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
-    """Word 报告（服务器内存生成、不留存）：full 全部初审内容，clues 只含串标线索。初审完成后可导出。"""
+    """Word 问题清单（服务器内存生成、不留存）：full 全部，clues 只含串标线索。初审完成后可导出。"""
     from app.export.bid_docx import build_bid_report
     from app.export.router import _response
     if db.get(BidProject, task.id).stage != "checked":
@@ -494,63 +485,23 @@ def report(scope: str = Query("full", pattern="^(full|clues)$"), task: Task = De
     return _response(filename, content)
 
 
-@router.get("/{id}/bidders/{bidder_id}/clarification", dependencies=[Depends(require("use.export"))])
-def clarification(bidder_id: str, task: Task = Depends(owned), user: User = Depends(require("use.bid")),
-                  db: Session = Depends(get_db)):
-    from app.export.bid_docx import build_bid_clarification
-    from app.export.router import _response
-
-    task = _lock_owned(db, task)
-    bidder = service.bidder(db, task, bidder_id)
-    if db.get(BidProject, task.id).stage != "checked":
-        raise AppError(409, "REPORT_UNAVAILABLE", "初审完成后才能导出澄清通知书")
-    filename, content = build_bid_clarification(db, task, bidder)
-    audit.record(db, "report_export", user_id=user.id, target_type="task", target_id=str(task.id),
-                 detail={"kind": "bid", "scope": "clarification"})
-    db.commit()
-    return _response(filename, content)
-
-
-@router.patch("/{id}/items/{iid}")
-def review_item(iid: str, body: ReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    from app.bid import results
-    task = _lock_owned(db, task)
-    out = results.review_item(db, task, iid, body.review_status, body.note)
-    task.last_activity_at = utcnow()
-    db.commit()
-    return out
-
-
-@router.put("/{id}/cells")
-def review_cell(body: CellReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    from app.bid import results
-    task = _lock_owned(db, task)
-    out = results.review_cell(db, task, body.requirement_id, body.bidder_id, body.review_status, body.note)
-    task.last_activity_at = utcnow()
-    db.commit()
-    return out
-
-
-@router.post("/{id}/review")
-def review_batch(body: BatchReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    """批量核对（V34-B-06c）：确认本机计算的 n 条、人工核对“各家都符合”、签章页“本家全部已盖章”。一次事务。"""
-    from app.bid import results
-    if (body.items or body.cells) and body.review_status is None:
-        raise AppError(422, "INVALID", "缺少核对状态")
-    task = _lock_owned(db, task)
-    db.get(BidProject, task.id, populate_existing=True, with_for_update=True)
-    cell_updates = results.review_batch(db, task, body.items, [(c.requirement_id, c.bidder_id) for c in body.cells], body.review_status)
-    marks = results.set_signing_many(db, task, [(s.file_id, s.page, s.loc) for s in body.signing], body.mark) if body.signing else None
-    task.last_activity_at = utcnow()
-    db.commit()
-    return {"items": len(set(body.items)), "cells": len(cell_updates), "cell_updates": cell_updates, "marks": marks}
-
-
 @router.get("/{id}/cell")
 def cell_detail(requirement_id: str, bidder_id: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    """矩阵单元格抽屉：要求原文与出处、该家对应片段（含上下文）、判断理由、核对状态与备注。"""
+    """条款证据：条款原文与出处、该家对应片段（含上下文）与判断理由。"""
     from app.bid import results
     return results.cell_detail(db, task, requirement_id, bidder_id)
+
+
+@router.post("/{id}/signing/batch")
+def mark_signing_batch(body: SigningBatchInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """签章页批量标注（本家全部已盖章）：一次事务。"""
+    from app.bid import results
+    task = _lock_owned(db, task)
+    db.get(BidProject, task.id, populate_existing=True, with_for_update=True)
+    marks = results.set_signing_many(db, task, [(s.file_id, s.page, s.loc) for s in body.signing], body.mark)
+    task.last_activity_at = utcnow()
+    db.commit()
+    return {"marks": marks}
 
 
 @router.put("/{id}/signing")
@@ -576,7 +527,7 @@ def page_image(fid: str, page: int, width: int = Query(320, ge=120, le=1600), ta
 
 @router.post("/{id}/reopen")
 def reopen(task: Task = Depends(owned), db: Session = Depends(get_db)):
-    """返回修改材料：退回“待开标”，重新开始初审时沿用已有的核对状态与备注。"""
+    """返回修改材料：退回“待开标”，重新开始初审时沿用已标的“不是问题”。"""
     from app.bid import results
     task = _lock_owned(db, task)
     results.reopen(db, task)
@@ -585,7 +536,7 @@ def reopen(task: Task = Depends(owned), db: Session = Depends(get_db)):
     return service.detail(db, task)
 
 
-# ---------------------------------------------------------------- 模型核对（V34-B-05）
+# ---------------------------------------------------------------- 模型补查（V34-B-05；V35-E-01 改为可选）
 
 def _locked_result(db, task):
     from app.bid import model
@@ -620,66 +571,17 @@ def opening_price(bidder_id: str, body: OpeningPriceInput, task: Task = Depends(
     return results.check_view(db, task) if project.stage == "checked" else service.detail(db, task)
 
 
-@router.put("/{id}/requirements/{rid}/applicability")
-def applicability(rid: str, body: ApplicabilityInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    from app.bid import feedback, requirements, results, model
-    from app.bid.conclusion import SERIOUS_GROUPS
-    from app.db.models import BidCell
-    task, project = _locked_result(db, task)
-    req = requirements.requirement(db, task, rid)
-    if not req.enabled:
-        raise AppError(409, "REQ_DISABLED", "该要求尚未启用")
-    state = feedback.load(project.conclusion_enc)
-    excluded = set(state.get("not_applicable", []))
-    if body.applicable:
-        restoring = str(req.id) in excluded
-        excluded.discard(str(req.id))
-        if restoring and task.policy == "ai" and req.method == "model" and req.group in SERIOUS_GROUPS:
-            known = select(BidCell.bidder_id).where(BidCell.requirement_id == req.id)
-            bidders = db.scalars(select(BidBidder.id).where(BidBidder.task_id == task.id, BidBidder.id.not_in(known)))
-            for bid in bidders:
-                db.add(BidCell(task_id=task.id, bidder_id=bid, requirement_id=req.id, verdict="missing", source="model",
-                               reason_enc=crypto.encrypt_text("该要求恢复适用，等待核验")))
-    else:
-        excluded.add(str(req.id))
-    state["not_applicable"] = sorted(excluded)
-    project.conclusion_enc = feedback.encrypt(state)
-    model.cancel(db, task)
+@router.put("/{id}/dismissed")
+def dismiss(body: DismissInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """“不是问题”：标记或撤销；初审完成后可用。"""
+    from app.bid import results
+    task = _lock_owned(db, task)
+    if db.get(BidProject, task.id, populate_existing=True).stage != "checked":
+        raise AppError(409, "NOT_CHECKED", "请等待本地检查完成")
+    results.dismiss(db, task, body.key, body.dismissed)
     task.last_activity_at = utcnow()
     db.commit()
     return results.check_view(db, task)
-
-
-@router.post("/{id}/conclusion/review")
-def conclusion_review(body: ConclusionReviewInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    from app.bid import feedback, results
-    task, _project = _locked_result(db, task)
-    feedback.decide(db, task, body.key, body.status, body.reason, (body.detail or "").strip(), body.remember)
-    task.last_activity_at = utcnow()
-    db.commit()
-    return results.check_view(db, task)
-
-
-@router.put("/{id}/conclusion/sign")
-def conclusion_sign(body: ConclusionSignInput, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    from app.bid import feedback, results
-    task, _project = _locked_result(db, task)
-    feedback.sign(db, task, body.signed)
-    db.commit()
-    return results.check_view(db, task)
-
-
-@router.get("/feedback/mine")
-def feedback_settings(user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
-    from app.bid import feedback
-    return feedback.settings(db, user.id)
-
-
-@router.delete("/feedback/mine/{token}", status_code=204)
-def revoke_feedback(token: str, user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
-    from app.bid import feedback
-    feedback.revoke(db, user.id, token)
-    db.commit()
 
 
 @router.get("/{id}/sent")
@@ -690,23 +592,20 @@ def sent(response: Response, task: Task = Depends(owned), db: Session = Depends(
 
 @router.get("/{id}/model")
 def model_view(task: Task = Depends(owned), db: Session = Depends(get_db)):
-    """片段确认页：将发送的片段（原文与 AI 视野）、要求与回执。"""
+    """片段确认页：将发送的片段（原文与 AI 视野）、条款与回执。"""
     from app.bid import model
     return model.view(db, task)
 
 
 @router.post("/{id}/model/{action}")
 def model_action(action: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
-    """prepare 准备（重新准备）片段 → confirm 确认并开始模型核对 → cancel 放弃。项目材料已锁定，不再改清单。"""
+    """prepare 准备（重新准备）片段 → confirm 确认并开始模型补查 → cancel 放弃。项目材料已锁定，不再改清单。"""
     from app.bid import model
-    if action not in ("prepare", "prepare_second", "confirm", "cancel"):
+    if action not in ("prepare", "confirm", "cancel"):
         raise AppError(404, "NOT_FOUND", "接口不存在")
     task = _lock_owned(db, task)
     db.get(BidProject, task.id, populate_existing=True)
-    if action == "prepare_second":
-        model.start(db, task, second=True)
-    else:
-        {"prepare": model.start, "confirm": model.confirm, "cancel": model.cancel}[action](db, task)
+    {"prepare": model.start, "confirm": model.confirm, "cancel": model.cancel}[action](db, task)
     task.last_activity_at = utcnow()
     db.commit()
     return model.view(db, task)

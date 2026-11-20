@@ -691,8 +691,8 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
             facts[b]["manual_total"] = Decimal(entered["amount"])
             facts[b]["manual_upper"] = entered.get("upper")
             facts[b]["total"] = facts[b]["manual_total"]
-            # 唱标价不带币种：按关键参数的币种；参数也未填时保留未知（V34Q-50 后续）
-            facts[b]["currency"] = currency_found = currency
+            # 唱标价不带币种：按文件总价的币种（V35-E-01 起没有关键参数）
+            facts[b]["currency"] = currency_found = currency or currency_found
         row = {"total": display(facts[b]["total"]) if facts[b]["total"] is not None else None,
                "totals_found": [display(v) for v in distinct], "currency": currency_found,
                "table": None, "over_ceiling": None, "manual_total": entered is not None,

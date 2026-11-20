@@ -1,4 +1,4 @@
-"""初审结果页（V34-B-06）：核对状态与备注、单元格详情、签章页速览、原件页面图、返回修改材料。"""
+"""初审结果页（V34-B-06；V35-E-01）：“不是问题”、单元格详情、签章页速览、原件页面图、返回修改材料。"""
 import io
 import json
 import re
@@ -91,7 +91,7 @@ def set_signing_many(db, task, refs, mark):
     return marks
 
 
-# ---------------------------------------------------------------- 核对状态与备注
+# ---------------------------------------------------------------- 不是问题
 
 def _uuid(raw):
     try:
@@ -100,56 +100,25 @@ def _uuid(raw):
         raise NotFoundError("NOT_FOUND", "条目不存在") from None
 
 
-def review_item(db, task, item_id, status, note):
-    row = db.get(BidItem, _uuid(item_id))
-    if row is None or row.task_id != task.id:
-        raise NotFoundError("NOT_FOUND", "条目不存在")
-    _apply(row, status, note)
-    return _review(row)
+def load_conclusion(project) -> dict:
+    """项目结论的人工处理：{"dismissed": [条目键]}。"""
+    return json.loads(crypto.decrypt_text(project.conclusion_enc)) if project.conclusion_enc else {}
 
 
-def review_cell(db, task, requirement_id, bidder_id, status, note):
-    """单元格的核对状态与备注；人工核对行没有判断结果，首次标注时建立单元格（verdict manual）。"""
-    rid, bid = _uuid(requirement_id), _uuid(bidder_id)
-    req, bidder = db.get(BidRequirement, rid), db.get(BidBidder, bid)
-    if req is None or req.task_id != task.id or bidder is None or bidder.task_id != task.id:
-        raise NotFoundError("NOT_FOUND", "单元格不存在")
-    cell = db.scalar(select(BidCell).where(BidCell.requirement_id == rid, BidCell.bidder_id == bid))
-    if cell is None:
-        if req.method != "manual":
-            raise AppError(409, "CELL_PENDING", "这一格还没有判断结果，请等检查完成")
-        cell = BidCell(task_id=task.id, requirement_id=rid, bidder_id=bid, verdict="manual", source="local")
-        db.add(cell)
-    elif req.method == "manual" and task.policy == "local_only" and cell.source == "model" and status is not None:
-        # 切换策略后，人工标注替代旧模型判断；仅编辑备注时保留原判断。
-        cell.verdict, cell.source = "manual", "local"
-        cell.cite, cell.reason_enc, cell.locs = None, None, []
-        _apply(cell, status, note)
-        return {**_review(cell), "verdict": cell.verdict, "source": cell.source, "cite": None, "reason": None, "locs": []}
-    _apply(cell, status, note)
-    return _review(cell)
-
-
-def review_batch(db, task, item_ids, cells, status):
-    """批量设核对状态（确认本机计算的 n 条、各家都符合）；调用方一次提交，任一项不存在时抛 404、事务回滚。"""
-    for iid in dict.fromkeys(item_ids):
-        review_item(db, task, iid, status, None)
-    updates = []
-    for rid, bid in dict.fromkeys(cells):
-        updates.append({"requirement_id": rid, "bidder_id": bid, **review_cell(db, task, rid, bid, status, None)})
-        db.flush()  # 人工核对行新建的单元格先落库，同一请求中重复引用时不再新建
-    return updates
-
-
-def _apply(row, status, note):
-    if status is not None:
-        row.review_status = status
-    if note is not None:
-        row.note_enc = crypto.encrypt_text(note) if note.strip() else None
-
-
-def _review(row):
-    return {"review_status": row.review_status, "note": crypto.decrypt_text(row.note_enc) if row.note_enc else None}
+def dismiss(db, task, key, dismissed):
+    """“不是问题”（可撤销）：条目键须是本项目结论中出现过的事项。不提交。"""
+    project = db.get(BidProject, task.id, populate_existing=True, with_for_update=True)
+    state = load_conclusion(project)
+    keys = set(state.get("dismissed", []))
+    if dismissed:
+        c = check_view(db, task)["conclusion"]
+        if key not in {e["id"] for level in ("severe", "hint", "dismissed") for e in c[level]}:
+            raise NotFoundError("NOT_FOUND", "事项不存在，请刷新页面")
+        keys.add(key)
+    else:
+        keys.discard(key)
+    state["dismissed"] = sorted(keys)
+    project.conclusion_enc = crypto.encrypt_text(json.dumps(state, ensure_ascii=False, sort_keys=True))
 
 
 # ---------------------------------------------------------------- 单元格详情
@@ -188,12 +157,8 @@ def cell_detail(db, task, requirement_id, bidder_id):
            "cell": None, "places": []}
     if cell is None:
         return out
-    from app.bid import feedback
-    state = feedback.load(db.get(BidProject, task.id).conclusion_enc)
-    key = f"cell:{rid}:{bid}"
-    out["second"] = state.get("second", {}).get(key)
     out["cell"] = {"verdict": cell.verdict, "source": cell.source, "cite": cell.cite,
-                   "reason": crypto.decrypt_text(cell.reason_enc) if cell.reason_enc else None, **_review(cell)}
+                   "reason": crypto.decrypt_text(cell.reason_enc) if cell.reason_enc else None}
     for loc in cell.locs or []:
         f = files.get(_uuid(loc.get("file_id")))
         ctx = _context(db, task, loc.get("file_id"), loc.get("loc"))
@@ -262,8 +227,8 @@ def clear_model_results(db, project):
 
 
 def reopen(db, task):
-    """已完成初审的项目退回“待开标”，可改清单、加减文件后重新开始初审；条目与单元格保留，重跑时沿用核对状态与备注。
-    模型核对需重新准备并确认（片段随材料变化）。"""
+    """已完成初审的项目退回“待开标”，可改清单、加减文件后重新开始初审；“不是问题”按条目键保留。
+    模型补查需重新准备并确认（片段随材料变化）。"""
     project = db.get(BidProject, task.id, populate_existing=True)
     if project.stage != "checked":
         raise AppError(409, "NOT_CHECKED", "只有初审完成的项目可以返回修改材料")
@@ -271,54 +236,10 @@ def reopen(db, task):
     from app.bid.model import require_idle
     require_idle(project)
     project.stage, project.check_state, project.check_error = "ready", None, None
-    from app.bid import feedback
-    previous = feedback.load(project.conclusion_enc)
-    if previous:
-        previous.pop("signed", None)
-        calls = previous.pop("second", {}).get("calls", 0)
-        if calls:
-            previous["second"] = {"calls": calls}
-        project.conclusion_enc = feedback.encrypt(previous)
     project.model_state, project.model_error, project.model_enc = None, None, None
 
 
 # ---------------------------------------------------------------- 初审结果（结果页与 Word 报告共用）
-
-MATRIX_GROUPS = ("否决条款", "★ / 实质性条款", "资格条件", "一般要求", "人工核对")
-
-
-def matrix_group(req):
-    if req['method'] == 'manual':
-        return MATRIX_GROUPS[4]
-    return {'veto': MATRIX_GROUPS[0], 'substantive': MATRIX_GROUPS[1],
-            'qualification': MATRIX_GROUPS[2]}.get(req['group'], MATRIX_GROUPS[3])
-
-
-def matrix_requirements(reqs, cells, bidder_count=None):
-    """页面与报告同一排序：轻重分组，组内疑似不响应、未找到、待核实、响应，序号稳定。"""
-    reqs = [r for r in reqs if r['group'] != 'format']
-    by_req = {str(r['id']): r for r in reqs}
-    ranks, seen = {}, {}
-    bidder_count = bidder_count if bidder_count is not None else len({str(c['bidder_id']) for c in cells})
-    for c in cells:
-        key = str(c['requirement_id'])
-        seen.setdefault(key, set()).add(str(c['bidder_id']))
-        req = by_req.get(key)
-        manual = (req is not None and req['method'] == 'manual') or c['verdict'] == 'manual'
-        manual_pass = req is not None and req['method'] == 'manual' and c['verdict'] == 'manual' and c['review_status'] == 'verified'
-        if c['review_status'] == 'excluded' or manual_pass:
-            ranks.setdefault(key, 3)
-            continue
-        rank = 2 if manual else {'no': 0, 'missing': 1, 'unclear': 2, 'manual': 2}.get(c['verdict'], 3)
-        if c['cite'] == 'unverified':
-            rank = 2
-        ranks[key] = min(rank, ranks.get(key, 3))
-    for r in reqs:
-        key = str(r['id'])
-        if len(seen.get(key, set())) < bidder_count:
-            ranks[key] = min(2, ranks.get(key, 3))
-    return sorted(reqs, key=lambda r: (MATRIX_GROUPS.index(matrix_group(r)), ranks.get(str(r['id']), 2), r['seq']))
-
 
 def sent_count(db, task_id) -> int:
     return db.scalar(select(func.count()).select_from(LlmCall).where(LlmCall.task_id == task_id, LlmCall.purpose == 'bid')) or 0
@@ -352,8 +273,7 @@ def sent_view(db, task):
     return out
 
 def check_view(db, task):
-    """条目（含核对状态与备注）、单元格、要求清单、报价分析、签章页速览与覆盖说明。"""
-    from app.bid import requirements as R
+    """条目、单元格、条款、各家总价、签章页速览、覆盖说明与初审结论（严重 / 提示）。"""
     project = db.get(BidProject, task.id)
     summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
     rank = {"veto": 0, "strong": 1, "general": 2, "medium": 3, "weak": 4, "hint": 5, "normal": 6}
@@ -363,48 +283,24 @@ def check_view(db, task):
                       .order_by(BidRequirement.seq))
     files = {str(f.id): f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
     marks = project.signing or {}
-    values = R.load_state(project)["values"]
-
-    def note(row):
-        return crypto.decrypt_text(row.note_enc) if row.note_enc else None
     view = {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
             "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}),
             "pricing": json.loads(crypto.decrypt_text(project.pricing_enc)) if project.pricing_enc else None,
-            "parameters": {"ceiling": values.get("ceiling"), "currency": values.get("currency")},
             "requirements": [{"id": r.id, "group": r.group, "text": crypto.decrypt_text(r.text_enc), "method": r.method, "seq": r.seq}
                              for r in reqs],
             "items": [{"id": i.id, "kind": i.kind, "type": i.type, "level": i.level, "article": i.article,
                        "bidder_ids": i.bidder_ids, "requirement_id": i.requirement_id, "source": i.source,
-                       "review_status": i.review_status, "note": note(i), **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items],
+                       **json.loads(crypto.decrypt_text(i.evidence_enc))} for i in items],
             "cells": [{"requirement_id": c.requirement_id, "bidder_id": c.bidder_id, "verdict": c.verdict, "locs": c.locs,
-                       "reason": crypto.decrypt_text(c.reason_enc) if c.reason_enc else None, "source": c.source, "cite": c.cite,
-                       "review_status": c.review_status, "note": note(c)} for c in cells],
+                       "reason": crypto.decrypt_text(c.reason_enc) if c.reason_enc else None, "source": c.source, "cite": c.cite}
+                      for c in cells],
             "signing": [{**s, "file": files[s["file_id"]].original_name, "renderable": renderable(files[s["file_id"]]),
                          "mark": marks.get(signing_key(s["file_id"], s["page"], s["loc"]))}
-                        for s in summary.get("signing", []) if s["file_id"] in files],
-            "timeline": [{**t, "file": files[t["file_id"]].original_name} for t in summary.get("timeline", []) if t["file_id"] in files]}
-    from app.bid import conclusion, feedback, model
-    _, personal = feedback.owner_state(db, task.owner_id)
-    state = feedback.apply(view, project, personal)
-    inapplicable = set(state.get("not_applicable", []))
-    for req in view["requirements"]:
-        req["not_applicable"] = str(req["id"]) in inapplicable
-    second = state.get("second", {})
-    for item in view["items"]:
-        outcome = second.get(str(item["id"]), {})
-        if outcome.get("outcome") == "common":
-            item["reference_reason"] = outcome["reason"]
-    if task.policy != "local_only":
-        second["pending"] = any(model.second_targets({**view, "conclusion": {"reviews": state.get("reviews", {})}}, second))
+                        for s in summary.get("signing", []) if s["file_id"] in files]}
+    from app.bid import conclusion
     bidders = {str(b.id): crypto.decrypt_text(b.name_enc) for b in db.scalars(
         select(BidBidder).where(BidBidder.task_id == task.id).order_by(BidBidder.seq))}
     view["conclusion"] = conclusion.build(
         view, bidders, local_only=task.policy == "local_only", model_state=project.model_state,
-        baseline=summary.get("baseline"), feedback=state, second=second)
-    outcomes = {e["id"]: e["tier"] for e in view["conclusion"]["certain"] + view["conclusion"]["verify"]}
-    for cell in view["cells"]:
-        key = f"cell:{cell['requirement_id']}:{cell['bidder_id']}"
-        cell["conclusion_tier"] = outcomes.get(key)
-        if decision := view["conclusion"]["reviews"].get(key):
-            cell["review_status"] = decision["status"]
+        baseline=summary.get("baseline"), dismissed=load_conclusion(project).get("dismissed", []))
     return view

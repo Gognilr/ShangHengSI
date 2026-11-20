@@ -1,27 +1,30 @@
-"""招标文件要求清单：本地规则抽取、关键参数预填与完整性计数（V34-B-02，bid.md 2.2）。
+"""招标文件条款清单：本地规则抽取与完整性计数（V34-B-02；V35-E-01 定位收缩）。
 
-规则只抓“看得见的标记”：★▲ 标记、含否决字样的句子，以及正文中带“必须 / 须 / 应当 / 请……提供”等指令词的句子（同文合并）；
+只抽三类：★▲ 标记、含否决字样的句子，以及正文（非合同、非技术参数章节）中“必须 / 不得”类句子（同文合并）。
+技术参数不算要求；第五十一条各项是系统自己的检查，不再列为要求。
+★ 与否决条款中的工期、交货期、质保期、缺陷责任期、类似业绩带参数（param_enc），由这些条款驱动本机比对。
 “投标文件格式”章节整体记一行范围（作范本白名单），其中的句子不进清单。原文只在内存与加密列中出现。
 """
 import json
 import re
 import uuid
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal, DecimalException
+from datetime import date
+from decimal import Decimal, DecimalException
 
 from sqlalchemy import delete, func, select
 
-from app.bid.compliance import TERM_LABELS, tender_performance_limits, tender_term_limits
+from app.bid.compliance import normalize_term, requirement_kind, tender_performance_limits, tender_term_limits
 from app.db.models import BidItem, BidProject, BidRequirement, DocNode, Task, TaskFile
-from app.redaction.detect import chinese_upper_value
 from app.security import crypto
 
-GROUPS = ["qualification", "substantive", "veto", "pricing", "validity", "signing", "format"]
+# substantive 为 ★ 条款，veto 为否决条款，两者是“严重”一档；其余为“必须 / 不得”类条款（general 等）
+GROUPS = ["qualification", "substantive", "veto", "pricing", "validity", "signing", "general", "format"]
+KEY_GROUPS = {"veto", "substantive"}
 MARK = re.compile(r"[★▲]")
 VETO = re.compile(r"否决|废标|无效投标|投标无效|作无效|视为无效|不予受理|拒收|拒绝接收")
-# 指令词（V34-B-08c）：“须 / 需 / 请……提供、注明 / 应在、应为”等；“须知、无需、所需、需求、需要量”等不是要求
-MUST = re.compile(r"必须|务必|不得|应当|严禁|不允许|不接受|须(?!知)|(?<![所必急无])需(?!求|要量|要台数)"
-                  r"|应(?=[在为按落符满提包具采选设填注附由向予])|请[^。；;]{0,10}?(?:提供|注明|明确|列明|提交|写明|附上)")
+# “必须 / 不得”类（V35-E-01）：“应当、需、请……提供”一类说明性写法不再进清单；“须知”不是要求
+MUST = re.compile(r"必须|务必|不得|严禁|不允许|不接受|须(?!知)")
 _SENTENCE = re.compile(r"[^。；;！!？?\n]+[。；;！!？?]?")
 # 句中的编号条目（“……批准 2、卖方应……”）另起一句；“附件1、2”这类并列编号不拆
 _ENUM = re.compile(r"(?<=[^\d\s])\s*(?=\d{1,2}、[^\d\s])|\s+(?=\d{1,2}[、．][^\d\s])")
@@ -32,6 +35,8 @@ _AFTER_AWARD = re.compile(r"^\s*(?:付款方式|付款条件|结算方式|结算
 _CHAPTER = re.compile(r"^\s*(?:第[一二三四五六七八九十百零\d]+[章部分篇卷]|[一二三四五六七八九十]+、)\s*(.{1,30})$")
 _FORMAT = re.compile(r"投标文件(?:的)?(?:组成及)?格式|响应文件格式|投标文件格式")
 _CONTRACT = re.compile(r"合同")
+# 技术参数章节：只收 ★ 与否决句，“必须 / 不得”类的技术写法不算要求（问题 7）
+_TECHNICAL = re.compile(r"技术(?:规格|参数|要求|规范|标准|条款|协议)|数据表|规格书|货物需求|采购需求|供货范围|设备清单")
 _ROW = re.compile(r"^(.*R\d+)-?C\d+$")  # Word 表格单元格位置如 F1-T1-R2-C1
 _KEYWORDS = [  # 顺序即优先级；否决、★ 在此之前判定
     ("pricing", re.compile(r"报价|投标价|限价|价格|总价|单价|含税|币种|控制价")),
@@ -40,17 +45,7 @@ _KEYWORDS = [  # 顺序即优先级；否决、★ 在此之前判定
     ("qualification", re.compile(r"资质|资格|营业执照|业绩|许可证|认证|信誉|财务|社保|联合体|注册资本|失信")),
 ]
 
-# 第五十一条否决情形（参照依据；最终以招标文件约定为准）。method 中的 model 在“只做本地检查”时改人工核对。
-ARTICLE_51 = [
-    ("signing", "manual", "投标文件未经投标单位盖章和单位负责人签字"),
-    ("qualification", "manual", "投标联合体没有提交共同投标协议"),
-    ("qualification", "model", "投标人不符合国家或者招标文件规定的资格条件"),
-    ("pricing", "local", "同一投标人提交两个以上不同的投标文件或者投标报价（招标文件要求提交备选投标的除外）"),
-    ("pricing", "local", "投标报价低于成本或者高于招标文件设定的最高投标限价"),
-    ("substantive", "model", "投标文件没有对招标文件的实质性要求和条件作出响应"),
-    ("veto", "manual", "投标人有串通投标、弄虚作假、行贿等违法行为"),
-]
-ARTICLE_PREFIX = "（参照《招标投标法实施条例》第五十一条）"
+ARTICLE_PREFIX = "（参照《招标投标法实施条例》第五十一条）"  # V3.4 默认行的前缀；历史项目仍可能有这样的行
 
 
 @dataclass
@@ -80,14 +75,15 @@ def tender_nodes(db, task_id) -> list[Node]:
 
 
 def _sections(nodes):
-    """逐节点给出所在章节类别：format / contract / body。章节标题本身归新章节。"""
+    """逐节点给出所在章节类别：format / contract / technical / body。章节标题本身归新章节。"""
     current, out = "body", []
     for n in nodes:
         title = n.text.strip()
         m = _CHAPTER.match(title) if len(title) <= 40 else None
         if m or (n.kind == "heading" and len(title) <= 40):
             name = m.group(1) if m else title
-            current = "format" if _FORMAT.search(name) else "contract" if _CONTRACT.search(name) else "body"
+            current = ("format" if _FORMAT.search(name) else "contract" if _CONTRACT.search(name)
+                       else "technical" if _TECHNICAL.search(name) else "body")
         out.append(current)
     return out
 
@@ -116,7 +112,7 @@ def _group(sentence, marked, veto):
         for name, pattern in _KEYWORDS:
             if pattern.search(sentence):
                 return name
-    return "substantive"
+    return "substantive" if marked else "general"
 
 
 def _hit_text(piece):
@@ -181,11 +177,6 @@ def rule_hits(nodes) -> list[Hit]:
             marked, veto = bool(MARK.search(piece)), bool(VETO.search(piece))
             must = sec == "body" and not after_award and len(piece) >= 8 and bool(MUST.search(piece))
             flags.append([marked, veto, must])
-        # 编号注释中已有两条以上指令句时，其余编号条目（“法兰连接标准为……”）也是要求
-        if sum(f[2] for f in flags) >= 2:
-            for (s, e), f in zip(spans, flags):
-                if _ENUM_HEAD.match(n.text[s:e]) and e - s >= 8:
-                    f[2] = True
         node_hits = []
         for (s, e), (marked, veto, must) in zip(spans, flags):
             if not (marked or veto or must):
@@ -222,17 +213,16 @@ def _merge_same(hits):
 
 
 def default_method(group, text, policy):
+    """本机能判的才记 local：多个报价、大小写；★ / 否决条款中带参数的工期、交货期、质保期、缺陷责任期、类似业绩。
+    其余 ★ / 否决条款交模型补查（只做本地检查时人工核对），“必须 / 不得”类只列出、人工核对。"""
     if group == "format":
         return "local"
-    if group == "signing":
+    if requirement_kind(text) in ("multi_total", "uppercase"):
+        return "local"
+    if group in KEY_GROUPS and param_kind(text):
+        return "local"
+    if group == "signing" or group not in KEY_GROUPS:
         return "manual"
-    if group in ("pricing", "veto") and re.search(r"限价|控制价|大写|小写|两个以上", text):
-        return "local"  # 超限价、大小写、多个报价都能本地算
-    if group == "validity" and re.search(r"有效期|保证金", text) and re.search(r"\d|金额|天|日", text):
-        return "local"
-    terms = list(tender_term_limits(text))
-    if len(terms) == 1 and not re.search(r"[，,；;\n]|[。](?!\s*$)", text):
-        return "local"
     return policy_method("model", policy)
 
 
@@ -240,106 +230,111 @@ def policy_method(method, policy):
     return "manual" if method == "model" and policy == "local_only" else method
 
 
-# ---------------------------------------------------------------- 关键参数
+# ---------------------------------------------------------------- 报价方式与条款参数
 
-_UNITS = {"亿元": Decimal("100000000"), "万元": Decimal("10000"), "元": Decimal("1")}
-_CURRENCY = {"人民币": "CNY", "美元": "USD", "欧元": "EUR", "港币": "HKD", "港元": "HKD"}
-_AMOUNT = r"(人民币|美元|欧元|港币|港元)?\s*[（(]?(?:小写)?[)）]?\s*[:：]?\s*[¥￥]?\s*([0-9][0-9,，]*(?:\.\d+)?)\s*(亿元|万元|元)"
-_CEILING = re.compile(r"(?:最高投标限价|最高限价|招标控制价|拦标价|最高报价)[^。；\n]{0,24}?" + _AMOUNT)
 _RATE_TERMS = {
-    "rate": (r"以费率报价|采用费率报价|报价方式[：:]?\s*费率", r"最高(?:投标|报价)?费率|(?:投标|报价)?费率\s*(?:不得|不)(?:高于|超过)|费率上限"),
-    "discount": (r"以下浮率报价|采用下浮率报价|报价方式[：:]?\s*下浮率", r"最低(?:投标|报价)?下浮率|(?:投标|报价)?下浮率\s*(?:不得|不)低于|下浮率下限"),
+    "rate": r"以费率报价|采用费率报价|报价方式[：:]?\s*费率|最高(?:投标|报价)?费率|(?:投标|报价)?费率\s*(?:不得|不)(?:高于|超过)|费率上限",
+    "discount": r"以下浮率报价|采用下浮率报价|报价方式[：:]?\s*下浮率|最低(?:投标|报价)?下浮率|(?:投标|报价)?下浮率\s*(?:不得|不)低于|下浮率下限",
 }
-_VALIDITY = re.compile(r"投标有效期[^。；\n]{0,24}?(\d{1,4})\s*(?:个)?(?:日历天|天|日)")
-_DEPOSIT = re.compile(r"(?:投标|招标)保证金[^。；\n]{0,30}?" + _AMOUNT)
-_DEPOSIT_UPPER = re.compile(r"(?:投标|招标)保证金[^。；\n\d]{0,12}?(?:人民币)?[:：]?\s*"
-                            r"([零壹贰叁肆伍陆柒捌玖拾佰仟万亿]+[元圆][零壹贰叁肆伍陆柒捌玖角分整正]*)")
-_FORMS = ["银行保函", "保险保函", "担保保函", "电汇", "转账", "银行汇票", "支票", "现金"]
-_EMPTY = {"ceiling": None, "quote_mode": "fixed", "rate_limit": None, "currency": "CNY", "validity_days": None, "deposit": None, "deposit_forms": "",
-          "consortium": None, "tax_included": None, **dict.fromkeys(TERM_LABELS),
-          "performance_from": None, "performance_until": None, "performance_amount": None, "performance_count": None}
+TERM_NAMES = {"construction_max": "工期", "delivery_max": "交货期", "warranty_min": "质保期", "defect_min": "缺陷责任期"}
+PERFORMANCE_KEYS = ("performance_count", "performance_amount", "performance_from", "performance_until")
 
 
-def _money(number, unit):
-    try:
-        value = Decimal(number.replace(",", "").replace("，", "")) * _UNITS[unit]
-        return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-    except DecimalException:
+def quote_mode(nodes) -> str:
+    """招标文件正文只写了一种费率 / 下浮率报价方式时按它，否则按金额报价（C-04）。"""
+    found = {mode for n, section in zip(nodes, _sections(nodes)) if section == "body"
+             for mode, pattern in _RATE_TERMS.items() if re.search(pattern, n.text)}
+    return found.pop() if len(found) == 1 else "fixed"
+
+
+def param_kind(text):
+    """条款对应的可比参数：工期类四项之一或 performance（类似业绩）；对不上返回 None。"""
+    kind = requirement_kind(text)
+    return kind if kind in TERM_NAMES or kind == "performance" else None
+
+
+def default_param(text):
+    """从条款文字预填参数；认不出的值留空，由用户在条款抽屉中填写。"""
+    kind = param_kind(text)
+    if kind is None:
         return None
+    if kind == "performance":
+        found = dict(tender_performance_limits(text))
+        return {key: found.get(key) for key in PERFORMANCE_KEYS}
+    values = [value for key, value in tender_term_limits(text) if key == kind]
+    return {kind: values[0] if len(set(values)) == 1 else None}
 
 
-def prefill(nodes) -> tuple[dict, dict]:
-    """返回 (参数, 出处)；出处为 {字段: {file_id, loc}}。只取第一处明确写法，认不出的留空由用户填写。"""
-    values, sources = dict(_EMPTY), {}
-    forms = []
-    from app.bid.pricing import rate_value
-    terms, quote_modes, rate_limits = {}, {}, {}
-    for n, section in zip(nodes, _sections(nodes)):
-        t = n.text
-        here = {"file_id": n.file_id, "loc": n.loc}
-        if section == "body":
-            for key, value in (*tender_term_limits(t), *tender_performance_limits(t)):
-                terms.setdefault(key, {}).setdefault(value, here)
-            for mode, (mode_pattern, limit_pattern) in _RATE_TERMS.items():
-                if re.search(mode_pattern, t):
-                    quote_modes.setdefault(mode, here)
-                for match in re.finditer(rf"(?:{limit_pattern})\s*[:：为]?\s*(\d{{1,3}}(?:\.\d{{1,8}})?\s*[%％])", t):
-                    if (limit := rate_value(match[1])) is not None:
-                        quote_modes.setdefault(mode, here)
-                        rate_limits.setdefault(mode, {}).setdefault(limit, here)
-        if values["ceiling"] is None and (m := _CEILING.search(t)):
-            values["ceiling"] = _money(m.group(2), m.group(3))
-            values["currency"] = _CURRENCY.get(m.group(1) or "人民币", "CNY")
-            sources["ceiling"] = here
-        if values["validity_days"] is None and (m := _VALIDITY.search(t)):
-            values["validity_days"] = int(m.group(1))
-            sources["validity_days"] = here
-        if values["deposit"] is None and (m := _DEPOSIT.search(t)):
-            values["deposit"] = _money(m.group(2), m.group(3))
-            sources["deposit"] = here
-        elif values["deposit"] is None and (m := _DEPOSIT_UPPER.search(t)) and (v := chinese_upper_value(m.group(1))):
-            values["deposit"] = str(v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))  # “贰万元整”
-            sources["deposit"] = here
-        if "保证金" in t:
-            forms += [f for f in _FORMS if f in t and f not in forms]
-        if values["consortium"] is None:
-            if re.search(r"(?:不接受|不允许|不得以)联合体", t):
-                values["consortium"], sources["consortium"] = False, here
-            elif re.search(r"(?:接受|允许)联合体", t):
-                values["consortium"], sources["consortium"] = True, here
-        if values["tax_included"] is None:
-            net, gross = re.search(r"不含(?:增值)?税", t), re.search(r"(?<!不)含(?:增值)?税", t)
-            if net and not gross:
-                values["tax_included"], sources["tax_included"] = False, here
-            elif gross and not net:
-                values["tax_included"], sources["tax_included"] = True, here
-    values["deposit_forms"] = "、".join(forms)
-    for key, candidates in terms.items():
-        if len(candidates) == 1:
-            values[key], sources[key] = next(iter(candidates.items()))
-    if len(quote_modes) == 1:
-        mode, source = next(iter(quote_modes.items()))
-        values["quote_mode"], sources["quote_mode"] = mode, source
-        limits = rate_limits.get(mode, {})
-        if len(limits) == 1:
-            limit, source = next(iter(limits.items()))
-            values["rate_limit"], sources["rate_limit"] = format(limit, "f"), source
-    start, end = values["performance_from"], values["performance_until"]
-    if start and end and start > end:
-        for key in ("performance_from", "performance_until"):
-            values[key] = None
-            sources.pop(key)
-    return values, sources
+def requirement_param(row, text):
+    """★ / 否决条款的参数：用户改过的（param_enc）优先，否则按文字预填。"""
+    if row.group not in KEY_GROUPS:
+        return None
+    if row.param_enc is not None:
+        return json.loads(crypto.decrypt_text(row.param_enc))
+    return default_param(text)
+
+
+def clean_param(kind, raw):
+    """校验并规范用户填写的参数；不合法时抛 422。"""
+    from app.security.errors import AppError
+    bad = AppError(422, "INVALID_PARAM", "参数格式不正确")
+    if kind in TERM_NAMES:
+        value = (raw or {}).get(kind)
+        if value in (None, ""):
+            return {kind: None}
+        term = normalize_term(str(value))
+        if term is None:
+            raise AppError(422, "INVALID_PARAM", f"{TERM_NAMES[kind]}请写成“90天”“12个月”这样的形式")
+        return {kind: f"{term[0]}{term[1]}"}
+    out = {}
+    for key in PERFORMANCE_KEYS:
+        value = (raw or {}).get(key)
+        if value in (None, ""):
+            out[key] = None
+            continue
+        try:
+            if key == "performance_count":
+                out[key] = int(value)
+                if not 1 <= out[key] <= 999:
+                    raise ValueError
+            elif key == "performance_amount":
+                amount = Decimal(str(value).replace(",", ""))
+                if amount <= 0:
+                    raise ValueError
+                out[key] = str(amount.quantize(Decimal("0.01")))
+            else:
+                out[key] = date.fromisoformat(str(value)).isoformat()
+        except (ValueError, DecimalException):
+            raise bad from None
+    if out["performance_from"] and out["performance_until"] and out["performance_from"] > out["performance_until"]:
+        raise AppError(422, "INVALID_PARAM", "签订日期的起点不能晚于终点")
+    return out
+
+
+def key_params(db, task_id):
+    """检查用：启用的、本机判断的 ★ / 否决条款中带参数的 → [(条款, 参数类别, 参数)]。"""
+    out = []
+    for row in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task_id, BidRequirement.enabled.is_(True),
+                                                      BidRequirement.method == "local", BidRequirement.group.in_(KEY_GROUPS))
+                          .order_by(BidRequirement.seq)):
+        text = crypto.decrypt_text(row.text_enc)
+        kind = param_kind(text)
+        if kind:
+            out.append((row, kind, requirement_param(row, text) or {}))
+    return out
 
 
 # ---------------------------------------------------------------- 存取
 
 def load_state(project) -> dict:
-    """parameters_enc：{"values", "sources", "confirmed", "extracted_from", "invitees", "invitees_edited"}。"""
+    """parameters_enc：{"quote_mode", "confirmed", "extracted_from", "invitees", "invitees_edited"}。
+    V3.4 的关键参数（values、sources）已撤下（V35-E-01），旧项目读到时只取其中的报价方式。"""
     if project.parameters_enc is None:
-        return {"values": dict(_EMPTY), "sources": {}, "confirmed": False, "extracted_from": None}
+        return {"quote_mode": "fixed", "confirmed": False, "extracted_from": None}
     state = json.loads(crypto.decrypt_text(project.parameters_enc))
-    state["values"] = {"quote_mode": "fixed", "rate_limit": None, **state["values"]}
+    old = state.pop("values", None) or {}
+    state.pop("sources", None)
+    state.setdefault("quote_mode", old.get("quote_mode", "fixed"))
     return state
 
 
@@ -357,6 +352,10 @@ def _add(db, task_id, seq, group, text, locs, method, source, enabled=True, reda
                           locs=locs, method=method, enabled=enabled, source=source, seq=seq))
 
 
+def save_param(row, value):
+    row.param_enc = crypto.encrypt_text(json.dumps(value, ensure_ascii=False)) if value is not None else None
+
+
 def next_seq(db, task_id):
     return (db.scalar(select(func.max(BidRequirement.seq)).where(BidRequirement.task_id == task_id)) or 0) + 1
 
@@ -368,7 +367,7 @@ def delete_rows(db, *conditions):
 
 
 def extract(db, task: Task) -> None:
-    """（重新）规则抽取：保留手工加入的行，其余重建；关键参数只填用户尚未填写的项。不提交。"""
+    """（重新）规则抽取：保留手工加入的行，其余重建；报价方式按招标文件重新判断。不提交。"""
     project = db.get(BidProject, task.id)
     nodes = tender_nodes(db, task.id)
     delete_rows(db, BidRequirement.task_id == task.id, BidRequirement.source != "manual")
@@ -378,24 +377,7 @@ def extract(db, task: Task) -> None:
         _add(db, task.id, seq, hit.group, hit.text, hit.locs, default_method(hit.group, hit.text, task.policy), "marked")
         seq += 1
     state = load_state(project)
-    values, sources = prefill(nodes)
-    if not state["confirmed"]:
-        for key in ("quote_mode", "rate_limit"):
-            state["values"][key] = values[key]
-            if key in sources:
-                state["sources"][key] = sources[key]
-            else:
-                state["sources"].pop(key, None)
-    for key, value in values.items():
-        if key not in ("quote_mode", "rate_limit") and state["values"].get(key) in (None, "") and value not in (None, ""):
-            state["values"][key] = value
-            if key in sources:
-                state["sources"][key] = sources[key]
-    for group, method, text in ARTICLE_51:
-        method = policy_method(method, task.policy)
-        enabled = not (text.startswith("投标联合体") and state["values"].get("consortium") is False)
-        _add(db, task.id, seq, group, ARTICLE_PREFIX + text, [], method, "default", enabled)
-        seq += 1
+    state["quote_mode"] = quote_mode(nodes)
     # 手工行排到最后，保持原有相对顺序
     for row in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.source == "manual")
                           .order_by(BidRequirement.seq)):
@@ -421,15 +403,19 @@ def _covered(marker, rows):
 
 
 def view(db, task: Task) -> dict:
-    """清单页数据：参数、按顺序的要求、完整性计数与差额、模型补充状态。"""
+    """清单页数据：按顺序的条款（★ / 否决条款带参数）、完整性计数与差额、模型补充状态。"""
     project = db.get(BidProject, task.id)
     nodes = tender_nodes(db, task.id)
     names = {str(f.id): f.original_name for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id,
                                                                                     TaskFile.bidder_id.is_(None)))}
-    rows = [{"id": r.id, "group": r.group, "text": crypto.decrypt_text(r.text_enc), "locs": r.locs, "method": r.method,
-             "enabled": r.enabled, "source": r.source, "seq": r.seq,
-             "file": names.get(r.locs[0]["file_id"]) if r.locs else None}
-            for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id).order_by(BidRequirement.seq))]
+    rows = []
+    for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id).order_by(BidRequirement.seq)):
+        text = crypto.decrypt_text(r.text_enc)
+        kind = param_kind(text) if r.group in KEY_GROUPS else None
+        rows.append({"id": r.id, "group": r.group, "text": text, "locs": r.locs, "method": r.method,
+                     "enabled": r.enabled, "source": r.source, "seq": r.seq,
+                     "param_kind": kind, "param": requirement_param(r, text) if kind else None,
+                     "file": names.get(r.locs[0]["file_id"]) if r.locs else None})
     enabled = [r for r in rows if r["enabled"]]
     counts = {}
     for kind in ("star", "veto"):
@@ -442,7 +428,7 @@ def view(db, task: Task) -> dict:
     state = load_state(project)
     from app.bid import invitees
     return {"invitees": invitees.view(state), "invitees_edited": bool(state.get("invitees_edited")),
-            "parameters": state["values"], "parameter_sources": state["sources"], "parameters_confirmed": state["confirmed"],
+            "quote_mode": state.get("quote_mode", "fixed"),
             "extracted": state["extracted_from"] is not None,
             "tender_changed": state["extracted_from"] is not None and state["extracted_from"] != parsed_tender_ids(db, task.id),
             "items": rows, "counts": counts, "version": project.requirements_version,

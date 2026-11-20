@@ -1,4 +1,5 @@
-"""V34-B-05：片段脱敏、确认与按家模型核对；出口复检拦截名称一例。样本全部虚构，模型用模拟服务。"""
+"""V34-B-05：片段脱敏、确认与按家模型核对（V35-E-01 起为可选补查，只查 ★ 与否决条款）；出口复检拦截名称一例。
+样本全部虚构，模型用模拟服务。"""
 import json
 import re
 import uuid
@@ -38,7 +39,8 @@ def _prepared(c, h, sm):
     assert c.post(base + "/confirm", headers=h).json()["stage"] == "ready"
     c.post(base + "/check", headers=h)
     _jobs(sm, base, "check")
-    assert c.get(base).json()["model"]["state"] == "preparing"  # 本地检查完成后自动在后台准备片段
+    assert c.get(base).json()["model"]["state"] is None  # 模型补查可选：本地检查完成后不自动准备
+    assert c.post(base + "/model/prepare", headers=h).json()["state"] == "preparing"
     busy = c.patch(base, headers=h, json=BODY)
     assert busy.status_code == 409 and "片段正在准备" in busy.json()["message"]
     _jobs(sm, base, "snippets")
@@ -253,15 +255,8 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm, mon
                            placeholders=ctx.placeholders, kept=ctx.kept) == []
 
     previous = c.get(base + "/sent").json()
-    with db_sessionmaker() as worker:
-        cached = worker.get(Task, tid)
-        worker.commit()
-        assert cached.policy == "ai"
-        assert c.post(base + "/reopen", headers=h).status_code == 200
-        assert c.patch(base, headers=h, json=BODY).json()["policy"] == "local_only"
-        model.start(worker, cached, auto=True)
-        assert cached.policy == "local_only" and model._project(worker, cached).model_enc is None
-        worker.commit()
+    assert c.post(base + "/reopen", headers=h).status_code == 200
+    assert c.patch(base, headers=h, json=BODY).json()["policy"] == "local_only"
     view = c.get(base + "/model").json()
     assert view["state"] is None and view["receipt"] is None and not view["bidders"]
     assert view["sent_count"] == 3 and c.get(base + "/sent").json() == previous
@@ -270,11 +265,6 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm, mon
     ref = {"requirement_id": bad["requirement_id"], "bidder_id": bad["bidder_id"]}
     detail = c.get(base + "/cell", params=ref).json()
     assert detail["requirement"]["method"] == "manual" and detail["cell"]["source"] == "model"
-    reviewed = c.put(base + "/cells", headers=h, json={**ref, "review_status": "verified"})
-    assert reviewed.status_code == 200
-    assert reviewed.json()["verdict"] == "manual" and reviewed.json()["source"] == "local"
-    detail = c.get(base + "/cell", params=ref).json()
-    assert detail["cell"]["verdict"] == "manual" and detail["cell"]["review_status"] == "verified"
     assert c.patch(f"{base}/requirements/{ref['requirement_id']}", headers=h, json={"method": "local"}).status_code == 200
     assert c.post(base + "/check", headers=h).json()["stage"] == "checking"
     _jobs(db_sessionmaker, base, "check")
@@ -282,58 +272,6 @@ def test_snippets_redacted_confirmed_and_judged(owner, db_sessionmaker, llm, mon
     assert refreshed["state"] == "done"
     assert all(row["source"] != "model" for row in [*refreshed["cells"], *refreshed["items"]])
     assert c.get(base + "/sent").json() == previous
-
-
-def test_second_review_uses_its_own_confirmation_and_audit(owner, db_sessionmaker, llm):
-    from app.db.models import BidBidder, BidCell, BidProject, BidRequirement
-    c, h, _ = owner
-    base = _prepared(c, h, db_sessionmaker)
-    tid = uuid.UUID(base.rsplit("/", 1)[-1])
-    with db_sessionmaker() as db:
-        row = db.scalar(select(BidRequirement).where(BidRequirement.task_id == tid, BidRequirement.method == "model")
-                        .order_by(BidRequirement.seq))
-        bidder = db.scalar(select(BidBidder).where(BidBidder.task_id == tid).order_by(BidBidder.seq))
-        row.group = "substantive"
-        db.add(BidCell(task_id=tid, requirement_id=row.id, bidder_id=bidder.id, verdict="missing", source="model"))
-        db.get(BidProject, tid).model_state = "done"
-        db.commit()
-        rid, bid = str(row.id), str(bidder.id)
-
-    def handler(request):
-        messages = json.loads(request.content)["messages"]
-        assert messages[0]["content"].startswith("二次核验")
-        body = messages[-1]["content"]
-        assert not any(name in body for name in BIDDERS)
-        if messages[0]["content"].startswith("二次核验相似段落"):
-            result = {"source": "共同来源", "reason": "共用公开范本"}
-        else:
-            reqs = re.findall(r"^\[(R\d+)\]", body, re.M)
-            snippet, text = re.search(r"^\[([A-C]\d+)\] (.+)$", body, re.M).groups()
-            assert len(reqs) == 1
-            result = {"items": [{"req": reqs[0], "verdict": "响应", "snippet": snippet, "quote": text[:16],
-                                 "reason": "本次文件给出依据"}]}
-        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(result, ensure_ascii=False)}}],
-                                         "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
-
-    requests = llm(handler=handler)
-    assert c.post(base + "/model/prepare_second", headers=h).json()["state"] == "preparing"
-    _jobs(db_sessionmaker, base, "snippets")
-    view = c.get(base + "/model").json()
-    count = view["receipt"]["second_calls"]
-    assert view["state"] == "awaiting" and 1 <= count == view["receipt"]["calls"]
-    assert not requests and not c.get(base + "/sent").json()
-    confirm = c.post(base + "/model/confirm", headers=h).json()
-    assert confirm["state"] == "running", confirm.get("error")
-    _jobs(db_sessionmaker, base, "model")
-    assert c.get(base + "/model").json()["state"] == "done"
-    assert len(requests) == count
-    audit = c.get(base + "/sent").json()
-    assert len(audit) == count and all(r["status"] == "sent" and r["purpose"].startswith("二次核验") for r in audit)
-    result = c.get(base + "/check").json()
-    assert result["conclusion"]["second_calls"] == count
-    target = next(c for c in result["cells"] if c["requirement_id"] == rid and c["bidder_id"] == bid)
-    assert target["verdict"] == "yes" and target["cite"] == "verified"
-    assert any(e["title"] == "二次核验找到响应，已改为响应" for e in result["conclusion"]["reference"])
 
 
 def test_recheck_blocks_name_left_in_snippet(owner, db_sessionmaker, llm):
@@ -453,7 +391,7 @@ def test_model_quote_golden(owner, db_sessionmaker):
 
 
 def test_snippets_wait_for_ocr_and_refresh_after(owner, db_sessionmaker, monkeypatch):
-    """V34-B-08c：扫描页识别未完成时不准备片段；识别补完后自动准备，已准备未发送的片段作废重备。"""
+    """V34-B-08c：扫描页识别未完成时不准备片段；V35-E-01 起识别补完后不自动准备，已准备未发送的片段作废。"""
     from app.bid import model, pipeline
     c, h, _ = owner
     pending = {"on": True}
@@ -474,12 +412,13 @@ def test_snippets_wait_for_ocr_and_refresh_after(owner, db_sessionmaker, monkeyp
     tid = uuid.UUID(base.rsplit("/", 1)[-1])
     with db_sessionmaker() as db:
         pipeline._recheck(db, tid)
-    assert c.get(base).json()["model"]["state"] == "preparing"
+    assert c.get(base).json()["model"]["state"] is None
+    assert c.post(base + "/model/prepare", headers=h).json()["state"] == "preparing"
     _jobs(db_sessionmaker, base, "snippets")
     assert c.get(base + "/model").json()["state"] == "awaiting"
-    with db_sessionmaker() as db:  # 已准备未发送：再次补完识别时作废重备
+    with db_sessionmaker() as db:  # 已准备未发送：再次补完识别时作废，由用户重新选择补查
         pipeline._recheck(db, tid)
-    assert c.get(base).json()["model"]["state"] == "preparing"
+    assert c.get(base).json()["model"]["state"] is None
 
 
 def test_close_snippets_only_rewrites_confirmed_spans(monkeypatch):

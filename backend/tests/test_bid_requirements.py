@@ -1,4 +1,4 @@
-"""V34-B-02：要求清单的规则抽取、完整性计数、关键参数与模型补充；样本全部虚构。"""
+"""V34-B-02：条款清单的规则抽取、完整性计数与模型补充；V35-E-01：★ / 否决条款驱动的参数。样本全部虚构。"""
 import json
 import re
 import uuid
@@ -33,7 +33,7 @@ def run_bid_jobs(sm, base):
             handle_bid(db, job.payload)
 
 
-def test_rules_counter_parameters_and_confirm(owner, db_sessionmaker):
+def test_rules_counter_and_confirm(owner, db_sessionmaker):
     from app.bid import requirements as R
     header = '★ 专 业：编 制：校 对：审 核：机械会签：日 期：2028.2 注：卖方必须在偏离清单中列明全部技术偏离。'
     hit = R.rule_hits([R.Node('f', 'F1-P1', 'ocr_block', header)])[0]
@@ -49,11 +49,10 @@ def test_rules_counter_parameters_and_confirm(owner, db_sessionmaker):
     assert any("测量精度" in t and "0.01" in t for t in texts)  # 表格中的 ★ 整行一条
     assert not any("开具发票" in t for t in texts) and not any("格式范本" in t for t in texts)
     assert any(i["group"] == "format" for i in data["items"])
-    p = data["parameters"]
-    assert (p["ceiling"], p["validity_days"], p["deposit"], p["consortium"], p["tax_included"]) == ("3800000.00", 90, "50000.00", False, True)
-    defaults = [i for i in data["items"] if i["source"] == "default"]
-    assert len(defaults) == 7 and not next(i for i in defaults if "联合体" in i["text"])["enabled"]
-    assert all(i["method"] != "model" for i in data["items"])  # 只做本地检查：模型判断一律转人工
+    # V35-E-01：没有关键参数与第五十一条默认行；只做本地检查时 ★ / 否决条款转人工
+    assert "parameters" not in data and not any(i["source"] == "default" for i in data["items"])
+    assert data["quote_mode"] == "fixed"
+    assert all(i["method"] != "model" for i in data["items"])
 
     # 停用一条 ★，计数器列出差额；手工行在重新抽取后保留
     star = next(i for i in data["items"] if "营业执照" in i["text"])
@@ -63,16 +62,15 @@ def test_rules_counter_parameters_and_confirm(owner, db_sessionmaker):
     data = c.post(base + "/requirements/extract", headers=h).json()
     assert data["counts"]["star"]["covered"] == TENDER_STARS and any(i["source"] == "manual" for i in data["items"])
 
-    assert c.put(base + "/parameters", headers=h, json={**p, "ceiling": "abc"}).status_code == 422
-    assert c.put(base + "/parameters", headers=h, json={**p, "ceiling": "1e30"}).status_code == 422
-    assert c.put(base + "/parameters", headers=h, json={**p, "ceiling": "3,600,000.005"}).json()["parameters"]["ceiling"] == "3600000.01"
+    assert c.put(base + "/parameters", headers=h, json={}).status_code in (404, 405)
     assert c.post(base + "/assist/start", headers=h).status_code == 409
     assert c.post(base + "/confirm", headers=h).json()["stage"] == "ready"
     with db_sessionmaker() as db:
         assert db.scalar(select(func.count()).select_from(LlmCall)) == 0
 
 
-def test_local_compliance_parameters_prefill_and_edit(owner, db_sessionmaker):
+def test_key_clause_parameters_prefill_and_edit(owner, db_sessionmaker):
+    """V35-E-01：工期、质保、业绩只由 ★ / 否决条款驱动，参数显示在条款上并可改；“必须 / 不得”类条款不带参数。"""
     from io import BytesIO
     from docx import Document
 
@@ -81,23 +79,25 @@ def test_local_compliance_parameters_prefill_and_edit(owner, db_sessionmaker):
     doc = Document()
     doc.add_paragraph("★ 工期不得超过120日历天。")
     doc.add_paragraph("质保期不得少于2年。")
-    doc.add_paragraph("类似业绩至少2份，单项合同金额不低于人民币50万元，合同签订日期在2024年1月1日至2025年1月1日。")
+    doc.add_paragraph("★ 类似业绩至少2份，单项合同金额不低于人民币50万元，合同签订日期在2024年1月1日至2025年1月1日。")
     stream = BytesIO()
     doc.save(stream)
     assert c.post(base + "/files", headers=h, files={"files": ("虚构招标条件.docx", stream.getvalue())}).status_code == 200
     drain(db_sessionmaker, base)
-    data = c.get(base + "/requirements", headers=h).json()
-    p = data["parameters"]
-    assert p["construction_max"] == "120天" and p["warranty_min"] == "24月"
-    assert (p["performance_from"], p["performance_until"], p["performance_amount"], p["performance_count"]) == (
-        "2024-01-01", "2025-01-01", "500000.00", 2)
-    assert next(i for i in data["items"] if "工期" in i["text"])["method"] == "local"
-    wrong = c.put(base + "/parameters", headers=h, json={**p, "performance_until": "2023-01-01"})
-    assert wrong.status_code == 422
-    edited = c.put(base + "/parameters", headers=h, json={**p, "delivery_max": "20 工作日", "performance_count": 3})
-    assert edited.status_code == 200
-    saved = c.get(base + "/requirements", headers=h).json()["parameters"]
-    assert (saved["delivery_max"], saved["performance_count"]) == ("20工作日", 3)
+    items = c.get(base + "/requirements", headers=h).json()["items"]
+    term = next(i for i in items if "工期" in i["text"])
+    warranty = next(i for i in items if "质保期" in i["text"])
+    performance = next(i for i in items if "类似业绩" in i["text"])
+    assert (term["group"], term["method"], term["param"]) == ("substantive", "local", {"construction_max": "120天"})
+    assert (warranty["group"], warranty["method"], warranty["param"]) == ("general", "manual", None)
+    assert performance["param"] == {"performance_count": 2, "performance_amount": "500000.00",
+                                    "performance_from": "2024-01-01", "performance_until": "2025-01-01"}
+    url = f"{base}/requirements/"
+    assert c.patch(url + warranty["id"], headers=h, json={"param": {"warranty_min": "24月"}}).status_code == 422
+    assert c.patch(url + performance["id"], headers=h, json={"param": {**performance["param"], "performance_until": "2023-01-01"}}).status_code == 422
+    assert c.patch(url + term["id"], headers=h, json={"param": {"construction_max": "三个月"}}).status_code == 422
+    items = c.patch(url + term["id"], headers=h, json={"param": {"construction_max": "20 工作日"}}).json()["items"]
+    assert next(i for i in items if i["id"] == term["id"])["param"] == {"construction_max": "20工作日"}
 
 
 def test_model_supplement_redacts_and_validates_quotes(owner, db_sessionmaker, llm):
@@ -287,24 +287,25 @@ def test_legacy_job_cannot_cross_policy_reenable(owner, db_sessionmaker):
 
 
 def test_rules_directives_numbered_notes_and_same_text_merged():
-    """V34-B-08c：虚构改写自公开招标文件的写法——指令词、编号注释、括号补充、同文合并、付款条款与大写保证金。"""
+    """V34-B-08c 的虚构写法；V35-E-01 起只收“必须 / 不得”类，“应 / 需 / 请……提供”与技术参数不算要求（问题 7）。"""
     from app.bid import requirements as R
     note = ("编 制：校 对：日 期：2029.3 注：1、卖方必须在偏离清单中注明全部偏离。偏离须经设计方书面批准 "
             "2、卖方应在数据表中标明最小稳定流量。 3、法兰连接标准为HG/T 20592 4、所有设备不带配对法兰")
     nodes = [R.Node("f1", "F1-PG1-T1-R8-C1", "table_cell", note), R.Node("f2", "F2-PG1-T1-R8-C1", "table_cell", note),
              R.Node("f3", "F3-P5", "paragraph", "投标文件要求：标书需提供资质证书、营业执照。标书中请明确完成时间。"),
              R.Node("f3", "F3-P6", "paragraph", "报价请注明：虚构项目总计报价 *** 元。（注明发票税率）"),
-             R.Node("f3", "F3-P7", "paragraph", "付款方式：每笔付款前需开具增值税专用发票。"),
-             R.Node("f3", "F3-P8", "paragraph", "招标保证金：叁万元整。请在开标前电汇投标保证金，无需现金。")]
+             R.Node("f3", "F3-P7", "paragraph", "付款方式：每笔付款前必须开具增值税专用发票。"),
+             R.Node("f3", "F3-P8", "heading", "第五章 技术要求"),
+             R.Node("f3", "F3-P9", "paragraph", "泵体必须采用不锈钢材质。★ 电机防爆等级不得低于 dIIBT4。")]
     hits = R.rule_hits(nodes)
     texts = [h.text for h in hits]
     assert sum("偏离清单" in t for t in texts) == 1 and len(next(h for h in hits if "偏离清单" in h.text).locs) == 2  # 两份数据表合并
-    assert any(t.startswith("2、卖方应在数据表") for t in texts) and not any("批准 2、" in t for t in texts)  # 编号处断句
-    assert any("法兰连接标准" in t for t in texts) and any("不带配对法兰" in t for t in texts)  # 同一注释的其余编号条目
-    assert any("需提供资质证书" in t for t in texts) and "标书中请明确完成时间。" in texts
-    assert any(t.endswith("（注明发票税率）") for t in texts)  # 括号补充并入上一条
+    assert any(t.startswith("偏离须经设计方") for t in texts) and not any("批准 2、" in t for t in texts)  # 编号处断句
+    assert not any("卖方应在数据表" in t or "法兰" in t for t in texts)  # “应”与编号条目不再算要求
+    assert not any("需提供资质证书" in t or "请明确完成时间" in t or "注明发票税率" in t for t in texts)
     assert not any("开具增值税" in t for t in texts)  # 中标后的付款条款不取
-    assert R.prefill(nodes)[0]["deposit"] == "30000.00"  # 大写保证金
+    assert not any("不锈钢" in t for t in texts) and any("防爆等级" in t for t in texts)  # 技术章节只收 ★
+    assert R.quote_mode(nodes) == "fixed"
 
 
 def test_supplement_near_duplicates_merge_and_snippet_ids_become_pages():

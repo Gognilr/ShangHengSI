@@ -1,14 +1,15 @@
-"""确定性符合项（bid.md 3.1）：大小写、合计、多个总价、超最高限价、异常低价提示、投标有效期、保证金、证书有效期与写给 AI 的指令。
+"""确定性符合项（bid.md 3.1；V35-E-01 定位收缩）：多个总价、大小写、合计、分项计算、税价换算、异常低价提示、
+证书有效期、写给 AI 的指令，以及 ★ / 否决条款驱动的工期、交货期、质保期、缺陷责任期与类似业绩。
 
-金额、天数与日期都在本机按关键参数比较（Decimal，ROUND_HALF_UP）；复用审核的 L-01、L-02、L-04、L-21。
-“本地规则”类要求按文字归到某项检查，每家写一个单元格（bid_cells，source local）：
+关键参数（最高限价、投标有效期、保证金等）已撤下，不再据此比对。金额用 Decimal（ROUND_HALF_UP）；复用审核的 L-01、L-02、L-04、L-21。
+“本地规则”类条款按文字归到某项检查，每家写一个单元格（bid_cells，source local）：
 yes 响应、no 疑似不响应、missing 未找到、unclear 无法本地判断。
 """
 import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from unicodedata import normalize
 
 from app.checks.amounts import check_uppercase
@@ -17,7 +18,7 @@ from app.checks.dates import find_dates, parse_date
 from app.checks.model import CheckNode
 from app.checks.numbers import CENT, money, rounded
 from app.parsing.model import LOW_OCR_CONF
-from app.redaction.detect import chinese_upper_value, find_amounts
+from app.redaction.detect import chinese_upper_value
 from app.redaction.tables import table_cell
 
 
@@ -29,8 +30,6 @@ class BidNode(CheckNode):
     page: int | None = None
 
 ARTICLE = "第五十一条"
-_VALIDITY = re.compile(r"投标有效期[^。；;\n]{0,30}?(\d{1,4})\s*(个月|日历天|天|日)")
-_DEPOSIT = re.compile(r"投标保证金")
 _CERT = re.compile(r"有效(?:期|日期)限?[^。；;\n]{0,25}?(?:至|截止(?:日期)?|到期日?)\s*[:：]?\s*")
 _NOT_CERT = re.compile(r"投标|报价|响应|合同")
 _UPPER = re.compile(r"[零壹贰叁肆伍陆柒捌玖拾佰仟]")
@@ -160,26 +159,6 @@ def _issue(type_, level, title, rows, article=None, kind=None):
     return {"type": type_, "level": level, "title": title, "rows": rows, "article": article, "kind": kind}
 
 
-def validity_days(nodes):
-    """[(天数, node)]；“个月”按 30 天计。"""
-    out = []
-    for n in nodes:
-        for m in _VALIDITY.finditer(n.text):
-            days = int(m.group(1)) * (30 if m.group(2) == "个月" else 1)
-            out.append((days, n, m.start(), m.end()))
-    return out
-
-
-def deposits(nodes):
-    out = []
-    for n in nodes:
-        for m in _DEPOSIT.finditer(n.text):
-            hits = [h for h in find_amounts(n.text) if h.value is not None and m.end() <= h.start <= m.end() + 30]
-            if hits:
-                out.append((hits[0].value, n, m.start(), hits[0].end))
-    return out
-
-
 def expired_certificates(nodes, opening: date):
     """[(日期, node, start, end, 低置信)]：“有效期至”后的日期早于开标日；投标、报价有效期不算。"""
     out = []
@@ -196,10 +175,6 @@ def expired_certificates(nodes, opening: date):
 def upper_value(text):
     """唱标价大写 → 数值；允许前面写“人民币”。无法解析时返回 None。"""
     return chinese_upper_value(re.sub(r"^(?:人民币)?[:：]?", "", "".join(text.split())))
-
-
-_UPPER_DETAIL = re.compile(r"= ([\d,]+\.\d{2})，相邻的小写金额 ([\d,]+\.\d{2})")
-_ROW_DETAIL = re.compile(r"= ([\d,]+\.\d{2})，表中金额 ([\d,]+\.\d{2})")
 
 
 def _num(text):
@@ -306,6 +281,7 @@ def _performance_rows(tables, start, end, minimum):
 
 
 def _new_compliance(nodes, params, bidder, at, *, partial=False):
+    """params 来自 ★ / 否决条款的参数（requirements.key_params）；没有对应条款的项不检查。"""
     verdicts, issues = {}, []
     tables = _table_rows(nodes) if any(params.get(k) for k in (*TERM_LABELS, "performance_count")) else []
     terms = _term_evidence(nodes, tables) if any(params.get(k) for k in TERM_LABELS) else {}
@@ -317,15 +293,17 @@ def _new_compliance(nodes, params, bidder, at, *, partial=False):
             status, reason = "unclear", reason + "；部分投标材料尚未完成解析，请稍后复核"
         verdicts[kind] = (status, reason, places)
         if status == "no":
-            issues.append(_issue(kind, "general", reason,
-                                 [{"label": label, "value": reason, "places": {bidder: places}}], kind=kind))
+            issues.append(_issue(kind, "veto", reason, [{"label": label, "value": reason, "places": {bidder: places}}],
+                                 ARTICLE + "（六）", kind=kind))
 
     for kind, label in labels.items():
+        if kind not in params:
+            continue
         required = normalize_term(params[kind]) if params.get(kind) else None
         found = terms.get(kind, [])
         evidence = [node for _, group in found[:4] for node in group]
         if required is None:
-            record(kind, label, "unclear", f"关键参数未填写{label}")
+            record(kind, label, "unclear", f"条款中没有可比较的{label}，可在条款上填写")
         elif not found:
             record(kind, label, "missing", f"未找到可直接比较的{label}承诺")
         elif len({value for value, _ in found}) != 1 or found[0][0][1] != required[1]:
@@ -346,8 +324,10 @@ def _new_compliance(nodes, params, bidder, at, *, partial=False):
     end = parse_date(params["performance_until"]) if params.get("performance_until") else None
     minimum = Decimal(params["performance_amount"]) if params.get("performance_amount") else None
     label = "类似业绩"
+    if "performance_count" not in params:
+        return issues, verdicts
     if not count:
-        record("performance", label, "unclear", "关键参数未填写类似业绩最低份数")
+        record("performance", label, "unclear", "条款中没有类似业绩的最低份数，可在条款上填写")
         return issues, verdicts
     records = _performance_rows(tables, start, end, minimum)
     if not records:
@@ -368,38 +348,10 @@ def _new_compliance(nodes, params, bidder, at, *, partial=False):
     return issues, verdicts
 
 
-def corrected_total(fact, wrong_case, ceiling):
-    """修正后总价（bid-pricing.md 二.6）：总价大小写不一致以大写为准，分项计算错误以单价为准；
-    供评标委员会参考，以招标文件约定的修正原则为准。没有可修正的问题时返回 None。"""
-    base = fact.get("file_total") if fact.get("manual_total") is not None else fact["total"]
-    if base is None:
-        return None
-    total_locs = {n.loc for _v, _c, n in fact["totals"]}
-    value, basis = rounded(base), []
-    for r in wrong_case:
-        m = _UPPER_DETAIL.search(r.detail)
-        if m and r.locs[0] in total_locs and _num(m[2]) == value:
-            value, basis = _num(m[1]), basis + ["大写为准"]
-            break
-    delta = sum((_num(m[1]) - _num(m[2]) for r in fact["results"] if r.code == "L-01"
-                 and (m := _ROW_DETAIL.search(r.detail))), Decimal(0))
-    if delta:
-        value, basis = value + delta, basis + ["单价为准"]
-    if not basis or value == rounded(base):
-        return None
-    out = {"total": money(value), "from": money(base), "basis": "、".join(basis)}
-    if ceiling is not None and value > rounded(ceiling):
-        percent = ((value - ceiling) * 100 / ceiling).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-        out["over_ceiling"] = f"超最高限价 +{money(value - ceiling)}（+{percent}%）"
-    return out
-
-
-def _evaluate_rate(b, fact, params, at, issues, verdicts):
-    from app.bid.pricing import RATE_LABELS, RATE_LIMIT_LABELS, rate_text
-    mode = params["quote_mode"]
-    label, limit_label = RATE_LABELS[mode], RATE_LIMIT_LABELS[mode]
+def _evaluate_rate(b, fact, mode, at, issues, verdicts):
+    from app.bid.pricing import RATE_LABELS, rate_text
+    label = RATE_LABELS[mode]
     distinct, totals = fact["distinct"], fact["totals"]
-    limit = Decimal(params["rate_limit"]) if params.get("rate_limit") else None
     where = [at(n) for _value, _currency, n in totals][:4]
     if len(distinct) > 1:
         title = f"出现 {len(distinct)} 个不同的{label}"
@@ -411,27 +363,11 @@ def _evaluate_rate(b, fact, params, at, issues, verdicts):
     else:
         verdicts["multi_total"] = ("missing", f"未找到明确的{label}", [])
 
-    if limit is None:
-        verdicts["ceiling"] = ("unclear", f"关键参数未填写{limit_label}", [])
-    elif not distinct:
-        verdicts["ceiling"] = ("missing", f"未能确定{label}", [])
-    else:
-        lower = mode == "discount"
-        bound = min(distinct) if lower else max(distinct)
-        failed = bound < limit if lower else bound > limit
-        relation = ("低于" if lower else "高于") if failed else ("不低于" if lower else "不高于")
-        title = f"{label} {rate_text(bound)} {relation}{limit_label} {rate_text(limit)}"
-        evidence = [at(n) for value, _currency, n in totals if value == bound][:1]
-        if failed:
-            issues.append(_issue("ceiling", "veto", title, [{"label": label, "value": rate_text(bound), "places": {b: evidence}}],
-                                 ARTICLE + "（五）", "ceiling"))
-        verdicts["ceiling"] = ("no" if failed else "yes", title, evidence)
     verdicts["uppercase"] = ("unclear", "按百分比报价，金额大小写核对不适用", [])
 
 
-def _evaluate_fixed_price(b, nodes, fact, params, at, issues, verdicts):
+def _evaluate_fixed_price(b, nodes, fact, at, issues, verdicts):
     from app.bid.pricing import rate_text
-    ceiling = Decimal(params["ceiling"]) if params.get("ceiling") else None
     by_loc = {n.loc: n for n in nodes}
 
     # 多个不同总价（第五十一条：同一投标人提交两个以上不同的投标报价）
@@ -450,9 +386,7 @@ def _evaluate_fixed_price(b, nodes, fact, params, at, issues, verdicts):
         verdicts["multi_total"] = ("missing", "未找到标明“投标总价 / 投标报价”的金额", [])
 
     total = fact["total"]
-    # 出现多个总价时逐个与限价比较，任何一个超出都报
     manual = fact.get("manual_total")
-    candidates = [manual] if manual is not None else distinct or ([rounded(total)] if total is not None else [])
     file_total = fact.get("file_total")
     if (manual is not None and file_total is not None and fact.get("file_currency") in (None, fact["currency"])
             and manual != file_total):
@@ -478,26 +412,7 @@ def _evaluate_fixed_price(b, nodes, fact, params, at, issues, verdicts):
         issues.append(_issue("sum_total", "general", f"报价表合计 {money(fact['table_total'])} 与投标总价 {money(distinct[0])} 不一致",
                              [{"label": "报价表", "value": main[0].name, "places": {b: [at(main[2][0][4])] if main[2] else []}},
                               {"label": "投标总价", "value": money(distinct[0]), "places": {b: [at(totals[0][2])]}}]))
-    # 超最高限价（第五十一条（五））
-    if ceiling is None:
-        verdicts["ceiling"] = ("unclear", "招标文件未写明最高投标限价（可在关键参数中补填）；是否低于成本见报价分析", [])
-    elif manual is None and fact.get('separate_scopes'):
-        verdicts["ceiling"] = ("unclear", "报价范围不同，需统一比较口径后核对最高限价", [])
-    elif not candidates:
-        verdicts["ceiling"] = ("missing", "未能确定投标总价", [])
-    elif fact["currency"] not in (None, params.get("currency")):
-        verdicts["ceiling"] = ("unclear", f"投标总价币种为 {fact['currency']}，与最高限价币种不同，未比较", [])
-    elif (over := max(candidates)) > rounded(ceiling):
-        title = f"投标总价 {money(over)} 高于最高限价 {money(ceiling)}，超出 {money(over - ceiling)}"
-        where = [at(n) for v, _c, n in totals if rounded(v) == over][:1] if manual is None else []
-        issues.append(_issue("ceiling", "veto", title, [{"label": "投标总价", "value": money(over), "places": {b: where}}],
-                             ARTICLE + "（五）", "ceiling"))
-        verdicts["ceiling"] = ("no", title, where)
-    else:
-        verdicts["ceiling"] = ("yes", f"投标总价 {money(max(candidates))}，未超过最高限价 {money(ceiling)}",
-                               [at(totals[0][2])] if totals else [])
-
-    # 异常低价（参照第五十一条（五）低于成本）：只提示，由评标委员会要求说明（V34Q-27）
+    # 异常低价（参照第五十一条（五）低于成本）：只作提示
     if low := fact.get("low_price"):
         where = [at(totals[0][2])] if totals else []
         issues.append(_issue("low_price", "hint", f"投标总价 {money(total)} 比其余 {low['others']} 家平均 {low['others_mean']} 低 "
@@ -542,11 +457,10 @@ def _evaluate_fixed_price(b, nodes, fact, params, at, issues, verdicts):
         detail = f"{money(net[0])} ×（1 + {rate_text(tax[0] * 100)}）= {money(expected)}，所报含税价 {money(gross[0])}"
         issues.append(_issue("tax_calc", "hint" if unsure else "general", title,
                              [{"label": "税价换算", "value": detail, "places": {b: evidence}}]))
-    fact["corrected"] = corrected_total(fact, wrong_case, ceiling)
 
 
-def evaluate(bidder_id, nodes, fact, params, opening: date, place, *, partial=False):
-    """返回一家投标人的符合项问题与各检查判断。"""
+def evaluate(bidder_id, nodes, fact, params, opening: date, place, *, mode="fixed", partial=False):
+    """返回一家投标人的符合项问题与各检查判断；params 为 ★ / 否决条款的参数。"""
     issues, verdicts = [], {}
     b = str(bidder_id)
     by_loc = {n.loc: n for n in nodes}
@@ -554,44 +468,10 @@ def evaluate(bidder_id, nodes, fact, params, opening: date, place, *, partial=Fa
     def at(n, s=0, e=None):
         return place(n, s, len(n.text) if e is None else e)
 
-    if params.get("quote_mode", "fixed") == "fixed":
-        _evaluate_fixed_price(b, nodes, fact, params, at, issues, verdicts)
+    if mode == "fixed":
+        _evaluate_fixed_price(b, nodes, fact, at, issues, verdicts)
     else:
-        _evaluate_rate(b, fact, params, at, issues, verdicts)
-
-    # 投标有效期
-    required = params.get("validity_days")
-    found = validity_days(nodes)
-    if not required:
-        verdicts["validity"] = ("unclear", "关键参数未填写投标有效期", [])
-    elif not found:
-        verdicts["validity"] = ("missing", "未找到投标有效期的天数", [])
-    else:
-        days, n, s, e = min(found, key=lambda x: x[0])
-        if days < required:
-            title = f"投标有效期 {days} 天，短于招标文件要求的 {required} 天"
-            issues.append(_issue("validity", "veto", title, [{"label": "投标有效期", "value": f"{days} 天", "places": {b: [at(n, s, e)]}}],
-                                 ARTICLE + "（六）", "validity"))
-            verdicts["validity"] = ("no", title, [at(n, s, e)])
-        else:
-            verdicts["validity"] = ("yes", f"投标有效期 {days} 天，不短于要求的 {required} 天", [at(n, s, e)])
-
-    # 投标保证金
-    need = Decimal(params["deposit"]) if params.get("deposit") else None
-    paid = deposits(nodes)
-    if need is None:
-        verdicts["deposit"] = ("unclear", "关键参数未填写保证金金额", [])
-    elif not paid:
-        verdicts["deposit"] = ("missing", "未找到投标保证金金额", [])
-    else:
-        value, n, s, e = max(paid, key=lambda x: x[0])
-        if rounded(value) < rounded(need):
-            title = f"投标保证金 {money(value)}，少于要求的 {money(need)}"
-            issues.append(_issue("deposit", "veto", title, [{"label": "投标保证金", "value": money(value), "places": {b: [at(n, s, e)]}}],
-                                 ARTICLE + "（六）", "deposit"))
-            verdicts["deposit"] = ("no", title, [at(n, s, e)])
-        else:
-            verdicts["deposit"] = ("yes", f"投标保证金 {money(value)}，不少于要求的 {money(need)}", [at(n, s, e)])
+        _evaluate_rate(b, fact, mode, at, issues, verdicts)
 
     # 证书有效期早于开标日（OCR 低置信只提示人工核对）
     for value, n, s, e, low in expired_certificates(nodes, opening):

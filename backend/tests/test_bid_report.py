@@ -1,4 +1,4 @@
-"""V34-B-07：整套虚构场景按 golden 标注核对线索与等级；Word 报告的内容与语气；历史与搜索整合。样本全部虚构。"""
+"""V34-B-07：整套虚构场景按 golden 标注核对线索与等级；Word 问题清单的内容与语气（V35-E-01）；历史与搜索整合。样本全部虚构。"""
 import io
 import json
 import uuid
@@ -54,35 +54,6 @@ def _text(content: bytes) -> str:
     return "\n".join(parts)
 
 
-def test_matrix_order_and_numbers():
-    from types import SimpleNamespace
-
-    from app.bid.results import matrix_group, matrix_requirements
-    from app.export.bid_docx import _cell_text
-    reqs = [{'id': str(i), 'seq': i, 'group': group, 'method': method}
-            for i, group, method in [(1, 'qualification', 'model'), (2, 'veto', 'model'),
-                                      (3, 'veto', 'model'), (4, 'substantive', 'manual'), (5, 'veto', 'model'), (6, 'veto', 'model')]]
-    cells = [{'requirement_id':str(i), 'bidder_id':'A', 'verdict':v, 'cite':None, 'review_status':'pending'}
-             for i, v in [(1,'no'), (2,'yes'), (3,'missing'), (5,'no')]]
-    cells.append({'requirement_id':'6', 'bidder_id':'A', 'verdict':'no', 'cite':'unverified', 'review_status':'pending'})
-    ordered = matrix_requirements(reqs, cells, 1)
-    assert [r['seq'] for r in ordered] == [5, 3, 6, 2, 1, 4]
-    assert matrix_group(ordered[-1]) == '人工核对'
-    # 核实了模型的“无法判断”或未核实引文，不能把模型结果当成人工确认符合。
-    verified = {'review_status': 'verified'}
-    cells[-1].update(verified)
-    cells[1].update(verdict='unclear', **verified)
-    assert [r['seq'] for r in matrix_requirements(reqs, cells, 1)] == [5, 3, 2, 6, 1, 4]
-
-    checked = {'verdict': 'unclear', 'source': 'model', 'cite': None, **verified}
-    data = SimpleNamespace(cells={('2', 'A'): checked})
-    assert _cell_text(data, reqs[1], 'A') == '？（模型）·已核实'
-    checked.update(verdict='yes', cite='unverified')
-    assert _cell_text(data, reqs[1], 'A') == '？（模型）·引文待核实'
-    checked.update(verdict='manual', source='local', cite=None)
-    assert _cell_text(data, {**reqs[1], 'method': 'manual'}, 'A') == '✓·已核实'
-
-
 def test_scenario_matches_golden(owner, db_sessionmaker):
     """预埋线索全部报出且等级正确，招标文件里就有的内容不报（基线剔除）。"""
     c, h, _ = owner
@@ -117,15 +88,14 @@ def test_quote_shapes_through_check_and_word(owner, db_sessionmaker):
     ], tender_bytes=document("★ 本项目采用下浮率报价，最低下浮率 8%。"))
     result = c.get(base + "/check", headers=h).json()
     pricing = result["pricing"]
-    assert pricing["quote_mode"] == "discount" and pricing["rate_limit"] == "8%"
+    assert pricing["quote_mode"] == "discount" and pricing["rate_limit"] is None  # 限价类比对已撤下（V35-E-01）
     assert [pricing["bidders"][bid]["total"] for bid in ids] == ["6.125%", "8%", "9.875%"]
     assert pricing["compare"]["mean"] == "8%" and pricing["total_patterns"][0]["step"] == "1.875 个百分点"
-    issue = next(i for i in result["items"] if i["type"] == "ceiling")
-    assert issue["bidder_ids"] == [ids[0]] and issue["rows"][0]["places"]
+    assert not any(i["type"] == "ceiling" for i in result["items"])
     report = c.get(base + "/report", headers=h)
     assert report.status_code == 200
     text = _text(report.content)
-    assert all(t in text for t in ("投标下浮率", "最低下浮率", "6.125%", "1.875 个百分点"))
+    assert all(t in text for t in ("投标下浮率", "1.875 个百分点"))
 
     base, _, ids = _checked(c, h, db_sessionmaker, [
         ("虚构税价.docx", document("开标一览表", table=(
@@ -149,19 +119,16 @@ def test_quote_shapes_through_check_and_word(owner, db_sessionmaker):
     report = c.get(base + "/report", headers=h)
     assert report.status_code == 200
     text = _text(report.content)
-    assert all(t in text for t in ("含税与不含税换算", "339.00", "165.00", "含税价与不含税价按税率换算不一致"))
+    assert "含税价与不含税价按税率换算不一致" in text
 
 
 def test_report_content_tone_and_scope(owner, db_sessionmaker):
     c, h, user = owner
     base, ids = scenario(c, h, db_sessionmaker)
     result = c.get(base + "/check").json()
-    by = {(i["type"], tuple(i["bidder_ids"])): i for i in result["items"]}
-    excluded = by[("cert_expired", (ids[2],))]
-    verified = by[("validity", (ids[1],))]
-    assert c.patch(f"{base}/items/{excluded['id']}", headers=h, json={"review_status": "excluded"}).status_code == 200
-    assert c.patch(f"{base}/items/{verified['id']}", headers=h, json={"review_status": "verified", "note": "已对照原件投标函第 2 页"}).status_code == 200
-    with db_sessionmaker() as db:  # 模型核对已完成的项目：方法说明写明模型名称，且不外发名称
+    cert = next(e for e in result["conclusion"]["severe"] if e["bidder_ids"] == [ids[2]] and "证书有效期" in e["title"])
+    assert c.put(base + "/dismissed", headers=h, json={"key": cert["id"], "dismissed": True}).status_code == 200
+    with db_sessionmaker() as db:  # 模型补查已完成的项目：检查方式写明模型名称，且不外发名称
         task_id = base.rsplit("/", 1)[-1]
         from app.db.models import BidProject, Task
         task = db.get(Task, task_id)
@@ -175,14 +142,14 @@ def test_report_content_tone_and_scope(owner, db_sessionmaker):
     text = _text(r.content)
     for name in BIDDERS:
         assert name in text  # 投标人用真实名称
-    assert "标书初审疑点报告" in text and "不构成对串通投标或否决投标的认定" in text and "虚构模型-X" in text
+    assert "标书初审问题清单" in text and "不作否决或串通投标的认定" in text and "虚构模型-X" in text
     conclusion = c.get(base + "/check").json()["conclusion"]
     assert conclusion["lede"] in text and all(case["title"] in text for case in conclusion["cases"])
-    assert "投标有效期 60 天" in text and "已对照原件投标函第 2 页" in text
-    assert "超最高限价" in text and "尚待核实" in text
-    assert "证书有效期至 2025-06-30" not in text.split("附录 参考事项")[0]
-    assert "相似段落" in text and "3,800,000.00" in text
-    assert "完整要求响应矩阵" in text and "不响应" in text
+    assert "严重问题" in text and "个不同的投标总价" in text and "提示" in text
+    assert "证书有效期至 2025-06-30" not in text  # “不是问题”不进清单
+    assert "相似段落" in text
+    for gone in ("要求响应矩阵", "报价分析", "签字栏", "评标委员会", "确凿", "需核实", "超最高限价", "投标有效期 60 天"):
+        assert gone not in text, gone
     assert PASSWORD not in text and "password" not in text.lower()
     docs = Document(io.BytesIO(r.content))
     assert any(run.font.highlight_color for t in docs.tables for row in t.rows for cell in row.cells
@@ -190,8 +157,8 @@ def test_report_content_tone_and_scope(owner, db_sessionmaker):
 
     only = c.get(base + "/report", headers=h, params={"scope": "clues"})
     clue_text = _text(only.content)
-    assert "标书初审串标线索报告" in clue_text and "相似段落" in clue_text and "第四十条" in clue_text
-    assert "要求响应矩阵" not in clue_text and "各投标人问题清单" not in clue_text and "报价分析" not in clue_text
+    assert "标书初审串标线索" in clue_text and "相似段落" in clue_text and "第四十条" in clue_text
+    assert "严重问题" not in clue_text and "条款清单" not in clue_text
     assert c.get(base + "/report", headers=h, params={"scope": "x"}).status_code == 422
 
     local = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]  # 未完成初审的项目不能导出
@@ -199,21 +166,13 @@ def test_report_content_tone_and_scope(owner, db_sessionmaker):
     assert c.get(ROOT + "/00000000-0000-0000-0000-000000000000/report", headers=h).status_code == 404
 
 
-def test_conclusion_sign_and_incremental_quote(owner, db_sessionmaker):
+def test_opening_price_reruns_quote_checks_only(owner, db_sessionmaker):
     c, h, _ = owner
     base, ids = scenario(c, h, db_sessionmaker)
     before = c.get(base + "/check").json()
-    sign = c.put(base + "/conclusion/sign", headers=h, json={"signed": True})
-    assert sign.status_code == 200 and sign.json()["conclusion"]["signed"]
-    target = next(e for e in before["conclusion"]["verify"] if e["category"] != "串通")
-    assert c.post(base + "/conclusion/review", headers=h, json={"key": target["id"], "status": "excluded"}).status_code == 422
-    verdict = c.post(base + "/conclusion/review", headers=h,
-                     json={"key": target["id"], "status": "excluded", "reason": "recognition"})
-    assert verdict.status_code == 200
-    assert target["id"] not in {e["id"] for e in verdict.json()["conclusion"]["verify"]}
-    assert any(r["category"] == target["category"] for r in c.get(ROOT + "/feedback/mine").json()["stats"])
-    restored = c.post(base + "/conclusion/review", headers=h, json={"key": target["id"], "status": "pending"})
-    assert target["id"] in {e["id"] for e in restored.json()["conclusion"]["verify"]}
+    for gone in ("/conclusion/sign", "/conclusion/review"):  # 评委签认、Y/N 核实已撤下
+        assert c.post(base + gone, headers=h, json={}).status_code in (404, 405)
+    assert c.get(ROOT + "/feedback/mine").status_code in (404, 405, 422)
     updated = c.put(f"{base}/bidders/{ids[0]}/opening-price", headers=h,
                     json={"amount": "4100100.23", "upper": "人民币肆佰壹拾万零壹佰元整", "note": "开标现场"})
     assert updated.status_code == 200
@@ -223,29 +182,16 @@ def test_conclusion_sign_and_incremental_quote(owner, db_sessionmaker):
     assert after["conclusion"]["bidders"][0]["manual_total"]
     mine = {i["type"] for i in after["items"] if ids[0] in i["bidder_ids"]}
     assert {"uppercase", "manual_total_diff"} <= mine
-    tags = [t["text"] for t in after["conclusion"]["pricing"]["tags"][ids[0]]]
-    assert "大写与小写金额不一致" in tags and any(t.startswith("文件总价与唱标价不一致") for t in tags)
+    hints = [e["title"] for e in after["conclusion"]["hint"] if e["bidder_ids"] == [ids[0]]]
+    assert "大写与小写金额不一致" in hints and any(t.startswith("文件总价与唱标价不一致") for t in hints)
     assert {i["id"] for i in before["items"] if i["type"] == "similar"} == {
         i["id"] for i in after["items"] if i["type"] == "similar"}
     assert "唱标价 · 人工录入" in _text(c.get(base + "/report").content)
 
-    req = after["requirements"][0]
-    app = f"{base}/requirements/{req['id']}/applicability"
-    for applicable in (False, True):
-        changed = c.put(app, headers=h, json={"applicable": applicable})
-        assert changed.status_code == 200
-        actual = next(r for r in changed.json()["requirements"] if r["id"] == req["id"])
-        assert actual["not_applicable"] is not applicable
-
-    excluded = c.post(base + "/conclusion/review", headers=h,
-                      json={"key": target["id"], "status": "excluded", "reason": "recognition"})
-    assert excluded.status_code == 200
     assert c.post(base + "/reopen", headers=h).status_code == 200
     assert c.post(base + "/check", headers=h).status_code == 200
     _jobs(db_sessionmaker, base, "check")
-    repeated = c.get(base + "/check").json()["conclusion"]
-    assert repeated["reviews"][target["id"]]["reason_label"] == "识别错误"
-    assert repeated["bidders"][0]["total"] == "4,100,100.23"
+    assert c.get(base + "/check").json()["conclusion"]["bidders"][0]["total"] == "4,100,100.23"
 
 
 def test_report_requires_export_permission(make_user, login, db_sessionmaker):
@@ -261,82 +207,6 @@ def test_report_requires_export_permission(make_user, login, db_sessionmaker):
     h = {"X-CSRF-Token": csrf}
     base = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]
     assert c.get(base + "/report", headers=h).status_code == 403
-    assert c.get(base + f"/bidders/{uuid.uuid4()}/clarification").status_code == 403
-
-
-def test_bidder_clarification_isolation(owner, make_user, login, db_sessionmaker, tmp_path):
-    from app.db.models import BidCell, BidItem, BidProject, BidRequirement, DocNode, Task, TaskFile
-    from app.security import crypto
-    from tests.test_bid_projects import grant
-
-    c, h, _ = owner
-    base, ids = scenario(c, h, db_sessionmaker)
-
-    def endpoint(project, bidder):
-        return f"{project}/bidders/{bidder}/clarification"
-
-    assert c.get(endpoint(base, ids[0])).status_code == 409  # 暂无事项
-    other = make_user("clarification_admin", role="admin")
-    grant(db_sessionmaker, other)
-    stranger, _ = login(other.username)
-    assert stranger.get(endpoint(base, ids[0])).status_code == 404
-    new = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]
-    assert c.get(endpoint(new, ids[0])).status_code == 404
-    new_bid = c.post(new + "/bidders", headers=h, json={"name": "虚构单位"}).json()["bidders"][0]["id"]
-    assert c.get(endpoint(new, new_bid)).status_code == 409
-
-    # 补上异常低价和模拟响应结果，把他家信息故意混入证据说明及位置。
-    secret = "9,876,543.21"
-    task_id, bid = uuid.UUID(base.rsplit("/", 1)[-1]), uuid.UUID(ids[0])
-    with db_sessionmaker() as db:
-        db.get(Task, task_id).policy = "ai"
-        db.get(BidProject, task_id).model_state = "done"
-        file = db.query(TaskFile).filter_by(task_id=task_id, bidder_id=bid, original_name="投标文件0-1.docx").one()
-        nodes = db.query(DocNode).filter_by(file_id=file.id).order_by(DocNode.ord).all()
-        quote = next(n for n in nodes if "投标总价" in crypto.decrypt_text(n.text_enc))
-        summary, detail, mixed = nodes[-3:]
-        summary.text_enc = crypto.encrypt_text("偏离表：现场调试由我方负责。")
-        detail.text_enc = crypto.encrypt_text("技术方案：现场调试由招标方负责。")
-        mixed.text_enc = crypto.encrypt_text(f"{BIDDERS[1]}的另一笔报价 {secret}")
-        foreign_file = db.query(TaskFile).filter_by(task_id=task_id, bidder_id=uuid.UUID(ids[1]), original_name="投标文件1-1.docx").one()
-        place = {"file_id": str(file.id), "loc": quote.loc, "page": quote.page}
-        response_places = [{"file_id": str(file.id), "loc": n.loc, "page": n.page} for n in (summary, detail)]
-        foreign = {"file_id": str(foreign_file.id), "loc": quote.loc, "page": 88}
-        suspect = {"file_id": str(file.id), "loc": mixed.loc, "page": mixed.page}
-        req = BidRequirement(task_id=task_id, group="substantive", text_enc=crypto.encrypt_text("提供设备调试方案。"),
-                             enabled=True, source="manual", method="model", seq=99)
-        db.add(req)
-        db.flush()
-        db.add(BidCell(task_id=task_id, requirement_id=req.id, bidder_id=bid, source="model",
-                       verdict="unclear", cite="unverified", locs=response_places,
-                       reason_enc=crypto.encrypt_text(f"{BIDDERS[1]} {secret}")))
-        for type_, source, rid in (("low_price", "local", None), ("deviation_conflict", "model", req.id)):
-            places = [place, foreign, suspect] if type_ == "low_price" else response_places
-            db.add(BidItem(task_id=task_id, bidder_ids=[ids[0]], requirement_id=rid, type=type_, kind="issue",
-                           level="general", source=source, evidence_enc=crypto.encrypt_text(json.dumps({
-                               "title": f"{BIDDERS[1]}平均 {secret}",
-                               "rows": [{"value": secret, "places": {ids[0]: places}}],
-                           }))))
-        db.commit()
-
-    for index, (bid, expected) in enumerate(zip(ids, ("成本测算依据", "大写与小写", "不同报价")), 1):
-        response = c.get(endpoint(base, bid))
-        assert response.status_code == 200, response.text
-        assert "wordprocessingml" in response.headers["content-type"]
-        notice = _text(response.content)
-        assert BIDDERS[index - 1] in notice and expected in notice
-        assert all(name not in notice for name in BIDDERS if name != BIDDERS[index - 1])
-        assert all(token in notice for token in ("原文位置", "摘录", "盖章", "签字", "回复日期"))
-        assert all(token not in notice for token in (secret, "其余各家", "第 88 页", PASSWORD, "串通"))
-        if index == 1:
-            assert all(token in notice for token in ("偏离表", "提供设备调试方案", "请说明贵方对下列要求的响应情况"))
-        (tmp_path / f"clarification-{index}.docx").write_bytes(response.content)
-    results = c.get(base + "/check").json()
-    (tmp_path / "project.json").write_text(json.dumps(c.get(base).json(), ensure_ascii=False), encoding="utf-8")
-    (tmp_path / "results.json").write_text(json.dumps(results, ensure_ascii=False), encoding="utf-8")
-    upper = next(i for i in results["items"] if i["type"] == "uppercase" and i["bidder_ids"] == [ids[1]])
-    assert c.patch(f"{base}/items/{upper['id']}", headers=h, json={"review_status": "excluded"}).status_code == 200
-    assert c.get(endpoint(base, ids[1])).status_code == 409
 
 
 def test_history_type_filter_and_search(owner, db_sessionmaker):
@@ -346,7 +216,7 @@ def test_history_type_filter_and_search(owner, db_sessionmaker):
     c.post("/api/v1/assistant/sessions", headers=h, json={"purpose": "chat"})
     rows = c.get("/api/v1/assistant/sessions/history").json()["items"]
     bid = next(i for i in rows if i["id"] == tid)
-    assert bid["kind"] == "bid" and bid["stage"] == "checked" and bid["high_count"] == 4 and bid["pending_count"] > 0
+    assert bid["kind"] == "bid" and bid["stage"] == "checked" and bid["high_count"] == 1 and bid["pending_count"] == 0
     assert bid["file_count"] == 10 and not bid["reviewing"]
     only = c.get("/api/v1/assistant/sessions/history", params={"type": "bid"}).json()
     assert [i["id"] for i in only["items"]] == [tid]
@@ -391,9 +261,8 @@ def test_bid_original_retention_preserves_results_and_blocks_restart(owner, db_s
     base, _ = scenario(c, h, db_sessionmaker)
     task_id = uuid.UUID(base.rsplit("/", 1)[-1])
     before = c.get(base + "/check").json()
-    issue = before["items"][0]
-    assert c.patch(f"{base}/items/{issue['id']}", headers=h,
-                   json={"review_status": "verified", "note": "已人工对照虚构原件"}).status_code == 200
+    hint = before["conclusion"]["hint"][0]
+    assert c.put(base + "/dismissed", headers=h, json={"key": hint["id"], "dismissed": True}).status_code == 200
     before = c.get(base + "/check").json()
 
     now = utcnow()
@@ -456,5 +325,6 @@ def test_bid_original_retention_preserves_results_and_blocks_restart(owner, db_s
     after = c.get(base + "/check").json()
     for key in ("items", "cells", "pricing", "coverage"):
         assert after[key] == before[key]
+    assert after["conclusion"]["dismissed"] == before["conclusion"]["dismissed"]
     report = c.get(base + "/report")
-    assert report.status_code == 200 and "已人工对照虚构原件" in _text(report.content)
+    assert report.status_code == 200 and before["conclusion"]["lede"] in _text(report.content)

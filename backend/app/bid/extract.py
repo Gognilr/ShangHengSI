@@ -259,14 +259,7 @@ def _local_check(db, task, project):
             project.check_state, project.check_error, project.stage = "failed", "本地检查中断，请重新开始初审", "ready"
             db.commit()
         return
-    # 外发策略允许时自动准备片段；入队失败时保留已完成的本地检查，仍可手动准备。
-    from app.bid import model
-    try:
-        model.start(db, task, auto=True)
-        db.commit()
-    except Exception:
-        logger.warning("标书模型核对片段自动入队失败 task=%s", task.id)
-        db.rollback()
+    # 模型补查改为可选（V35-E-01）：本地检查完成后不再自动准备片段，由用户在结果页选择
 
 
 @job_handler("bid")

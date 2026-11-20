@@ -219,7 +219,6 @@ class User(Base):
     last_source: Mapped[Optional[str]] = mapped_column(String(10))
     last_login_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     last_login_ip: Mapped[Optional[str]] = mapped_column(INET)
-    bid_feedback_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = _ts_now()
     updated_at: Mapped[datetime] = _ts_updated()
 
@@ -370,6 +369,7 @@ class BidProject(Base):
     model_state: Mapped[Optional[str]] = mapped_column(String(12))
     model_error: Mapped[Optional[str]] = mapped_column(String(200))
     model_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    # 初审结论的人工处理：{"dismissed": [条目键]}，即“不是问题”（V35-E-01），加密 JSON
     conclusion_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     # 签章页速览的人工标注（V34-B-06）：{"文件id:页码或节点": stamped / missing / unclear}，不含原文
     signing: Mapped[Optional[Any]] = mapped_column(JSONB)
@@ -412,7 +412,7 @@ class BidBidder(Base):
 
 class BidRequirement(Base):
     __tablename__ = "bid_requirements"
-    __table_args__ = (CheckConstraint("\"group\" IN ('qualification', 'substantive', 'veto', 'pricing', 'validity', 'signing', 'format')",
+    __table_args__ = (CheckConstraint("\"group\" IN ('qualification', 'substantive', 'veto', 'pricing', 'validity', 'signing', 'general', 'format')",
                                       name="group_valid"),
                       enum_check("method", ["local", "model", "manual"]),
                       enum_check("source", ["marked", "model", "default", "manual"]))
@@ -426,14 +426,15 @@ class BidRequirement(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=_TRUE)
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    # ★ / 否决条款的比对参数（工期、交货期、质保期、缺陷责任期、类似业绩），用户改过才写；加密 JSON（V35-E-01）
+    param_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
 
 
 class BidItem(Base):
     __tablename__ = "bid_items"
     __table_args__ = (Index("ix_bid_items_task_id", "task_id"),
                       enum_check("kind", ["issue", "clue", "normal_dup"]),
-                      enum_check("source", ["local", "model"]),
-                      enum_check("review_status", ["pending", "verified", "excluded"]))
+                      enum_check("source", ["local", "model"]))
     id: Mapped[uuid.UUID] = uuid_pk()
     task_id: Mapped[uuid.UUID] = _task_fk()
     kind: Mapped[str] = mapped_column(String(12), nullable=False)
@@ -444,15 +445,12 @@ class BidItem(Base):
     article: Mapped[Optional[str]] = mapped_column(String(40))
     evidence_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     source: Mapped[str] = mapped_column(String(8), nullable=False)
-    review_status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
-    note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
 
 
 class BidCell(Base):
     __tablename__ = "bid_cells"
     __table_args__ = (UniqueConstraint("requirement_id", "bidder_id"),
-                      enum_check("source", ["local", "model"]),
-                      enum_check("review_status", ["pending", "verified", "excluded"]))
+                      enum_check("source", ["local", "model"]))
     id: Mapped[uuid.UUID] = uuid_pk()
     task_id: Mapped[uuid.UUID] = _task_fk()
     requirement_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("bid_requirements.id", ondelete="CASCADE"), nullable=False)
@@ -461,8 +459,6 @@ class BidCell(Base):
     locs: Mapped[Any] = _jsonb_list()
     reason_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     source: Mapped[str] = mapped_column(String(8), nullable=False)
-    review_status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
-    note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     cite: Mapped[Optional[str]] = mapped_column(String(12))  # 模型判断的引文校验：verified / unverified（SPEC 11）
 
 

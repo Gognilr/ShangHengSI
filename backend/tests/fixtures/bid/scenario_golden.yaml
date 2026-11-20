@@ -11,11 +11,8 @@ scenario:
   - {kind: clue, type: pricing, level: strong, bidders: [0, 1]}    # 分项单价比值恒定 1.03
   - {kind: clue, type: similar, level: strong, bidders: [0, 1]}    # 共用自写的售后服务方案
   - {kind: clue, type: image, level: medium, bidders: [0, 1]}      # 授权委托书页同一张图片
-  # 预埋的确定性问题
-  - {kind: issue, type: ceiling, level: veto, bidders: [2]}        # 超最高限价
+  # 预埋的确定性问题（V35-E-01 起不再比对最高限价、保证金与投标有效期）
   - {kind: issue, type: multi_total, level: veto, bidders: [2]}    # 两个不同总价
-  - {kind: issue, type: deposit, level: veto, bidders: [2]}        # 保证金不足
-  - {kind: issue, type: validity, level: veto, bidders: [1]}       # 投标有效期 60 天
   - {kind: issue, type: uppercase, level: general, bidders: [1]}   # 大小写金额不一致
   - {kind: issue, type: cert_expired, level: general, bidders: [2]}  # 证书已过期
   # 样本自带的弱项：甲丙的 PDF 都由同一软件在同一时刻生成，按“生成软件相同且创建时间 10 分钟内”报弱线索
