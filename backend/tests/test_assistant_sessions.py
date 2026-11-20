@@ -74,6 +74,22 @@ def test_t47_4_create_defaults_and_audit(files_dir, session_client, db_sessionma
     assert data['id'] in [i['id'] for i in c.get(BASE, params={'purpose': 'chat'}).json()['items']]
 
 
+def test_my_stats_only_counts_own(files_dir, session_client, make_user, db_sessionmaker):
+    """工作台信任条（V35-F-03）：遮住处数与拦截次数只算本人本月。"""
+    from app.db.models import LlmCall, RedactionItem
+    c, h, owner = session_client
+    other = make_user("stats_other")
+    mine = uuid.UUID(create(c, h)["id"])
+    with db_sessionmaker() as db:
+        for user_id in (owner.id, other.id):
+            db.add(LlmCall(user_id=user_id, purpose="assist", model_name="mock", status="blocked"))
+        db.add_all(RedactionItem(task_id=mine, loc="p1", char_start=i, char_end=i + 2, category="ORG",
+                                 placeholder=f"[[ORG_{i}]]", detected_by="term") for i in range(3))
+        db.commit()
+    data = c.get(BASE + "/stats").json()
+    assert (data["masked"], data["blocked"], data["calls"]) == (3, 1, 0)
+
+
 @pytest.mark.parametrize("role", ["user", "admin"])
 def test_t47_1_other_owner_hidden(files_dir, session_client, make_user, login, role):
     c, h, _ = session_client

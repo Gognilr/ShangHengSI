@@ -29,6 +29,8 @@ export interface HistoryItem extends TaskListItem { kind: 'session' | 'review' |
   blocked?: boolean }
 /** 侧栏菜单右侧的数字：待确认遮住的会话、旧审核任务与标书项目（V35-F-02） */
 export interface Waiting { workbench: number; review: number; bid: number; meeting: number; translate: number }
+/** 工作台信任条的本人本月数字（V35-F-03）；daily_cap 为 0 表示不限 */
+export interface MyStats { masked: number; blocked: number; calls: number; today_calls: number; daily_cap: number }
 export interface HistoryPage { items: HistoryItem[]; total: number; page: number; page_size: number }
 /** 会话发起审核（V32-A-02）；file_ids 不传为全部已确认文件 */
 export interface SessionRunInput {
@@ -101,6 +103,7 @@ export const assistantApi = {
   list: (page = 1, q = '', purpose: Purpose | '' = '') => http.get<SessionPage>(base, { page, q, purpose }),
   /** 侧栏各菜单等本人处理的数量（V35-F-02） */
   waiting: () => http.get<Waiting>(`${base}/waiting`),
+  stats: () => http.get<MyStats>(`${base}/stats`),
   history: (query: { page?: number; q?: string; from?: string; to?: string; type?: 'review' | 'chat' | 'bid' | 'meeting' | 'translate' }) => http.get<HistoryPage>(`${base}/history`, query),
   runs: (id: string) => http.get<{ items: RunListItem[] }>(`${base}/${id}/runs`),
   createRun: (id: string, body: SessionRunInput) => http.post<RunCreated>(`${base}/${id}/runs`, body),

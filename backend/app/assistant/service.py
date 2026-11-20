@@ -686,6 +686,21 @@ def waiting(db: Session, user: User) -> dict[str, int]:
             "translate": count(Task.kind == "assistant", Task.purpose == "translate")}
 
 
+def my_stats(db: Session, user: User) -> dict[str, int]:
+    """工作台信任条（V35-F-03）：本人本月在本机遮住的处数、发送前复检拦下的次数、模型调用次数，以及今天的调用数与每人每日上限。
+    只查现有表，不建统计表；遮住数按本月新建的本人任务数遮住项（每处一行），调用数与额度同口径（审核按轮）。"""
+    from app.db.models import LlmCall
+    start = usage.month_start()
+    masked = db.scalar(select(func.count()).select_from(RedactionItem).join(Task, Task.id == RedactionItem.task_id)
+                       .where(Task.owner_id == user.id, Task.created_at >= start)) or 0
+    blocked = db.scalar(select(func.count()).select_from(LlmCall).where(
+        LlmCall.user_id == user.id, LlmCall.status == "blocked", LlmCall.created_at >= start)) or 0
+    mine = (LlmCall.user_id == user.id, LlmCall.purpose != "test")
+    return {"masked": masked, "blocked": blocked, "calls": usage._quota_calls(db, start, *mine),
+            "today_calls": usage._quota_calls(db, usage.day_start(), *mine),
+            "daily_cap": int(get_setting(db, "model.user_daily_cap") or 0)}
+
+
 def lock(db: Session, task: Task) -> Task:
     return db.execute(select(Task).where(Task.id == task.id).with_for_update()
                       .execution_options(populate_existing=True)).scalar_one()

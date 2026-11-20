@@ -86,6 +86,12 @@ def waiting(user: User = Depends(current_user), db: Session = Depends(get_db)) -
     return service.waiting(db, user)
 
 
+@router.get("/stats")
+def stats(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    """工作台信任条的本人本月数字（V35-F-03）；须声明在 /{id} 之前。"""
+    return service.my_stats(db, user)
+
+
 @router.get("/{id}", response_model=SessionDetail)
 def detail(task: Task = Depends(owned_session), db: Session = Depends(get_db)):
     return service.detail(db, task)

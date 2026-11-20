@@ -5,10 +5,11 @@
 import { computed, onBeforeUnmount, onMounted, ref, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { AudioLines, Columns2, EyeOff, FileSearch, FileX, ListChecks, Lock, PenLine, ShieldAlert, ShieldCheck, Sparkle } from '@lucide/vue'
-import { assistantApi, type HistoryItem, type Template, type Waiting } from '@/api/assistant'
+import { assistantApi, type HistoryItem, type MyStats, type Template, type Waiting } from '@/api/assistant'
 import { bidApi } from '@/api/bid'
 import { useAuthStore } from '@/stores/auth'
 import SiLogo from '@/components/brand/SiLogo.vue'
+import SiCount from '@/components/ui/SiCount.vue'
 
 const props = defineProps<{ busy?: boolean; hasFiles?: boolean; template: Template | null }>()
 const emit = defineEmits<{ 'update:template': [value: Template | null]; review: [] }>()
@@ -44,22 +45,21 @@ function pickQuick(item: Quick) {
 }
 
 // ---- 模块卡与待你处理的数据 ----
-const history = ref<HistoryItem[]>([]), waiting = ref<Waiting | null>(null), monthTotal = ref<number | null>(null)
+const history = ref<HistoryItem[]>([]), waiting = ref<Waiting | null>(null), stats = ref<MyStats | null>(null)
 const lastMeeting = ref<{ title: string; at: string } | null>(null), lastTranslate = ref<{ title: string; at: string } | null>(null)
 const lastBid = ref<{ title: string; at: string } | null>(null), bidChecking = ref(0)
 const asrEnabled = ref(true), mtEnabled = ref(false), loaded = ref(false)
 const TZ = 'Asia/Shanghai'
-const monthStart = () => { const [y, m] = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit' }).format(new Date()).split('-'); return `${y}-${m}-01` }
 onMounted(async () => {
   if (props.busy) return
   const skip = Promise.reject(new Error('skip'))
   skip.catch(() => undefined)
-  const [h, w, m, t, b, month] = await Promise.allSettled([
+  const [h, w, m, t, b, st] = await Promise.allSettled([
     assistantApi.history({ page: 1 }), assistantApi.waiting(),
     can('use.meeting') ? assistantApi.list(1, '', 'meeting') : skip,
     assistantApi.list(1, '', 'translate'),
     can('use.bid') ? bidApi.list() : skip,
-    assistantApi.history({ page: 1, from: monthStart() }),
+    assistantApi.stats(),
   ])
   if (h.status === 'fulfilled') history.value = h.value.items
   if (w.status === 'fulfilled') waiting.value = w.value
@@ -67,7 +67,7 @@ onMounted(async () => {
   if (m.status === 'fulfilled') { asrEnabled.value = m.value.asr_enabled; const x = m.value.items.find(real); if (x) lastMeeting.value = { title: x.title, at: x.last_activity_at } }
   if (t.status === 'fulfilled') { mtEnabled.value = t.value.mt_enabled; const x = t.value.items.find(real); if (x) lastTranslate.value = { title: x.title, at: x.last_activity_at } }
   if (b.status === 'fulfilled') { bidChecking.value = b.value.checking_count; const x = b.value.items[0]; if (x) lastBid.value = { title: x.title, at: x.last_activity_at } }
-  if (month.status === 'fulfilled') monthTotal.value = month.value.total
+  if (st.status === 'fulfilled') stats.value = st.value
   loaded.value = true
 })
 const monthDay = new Intl.DateTimeFormat('zh-CN', { timeZone: TZ, month: '2-digit', day: '2-digit' })
@@ -175,10 +175,16 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
             </div>
           </div>
         </section>
-        <p class="trust">
+        <!-- 信任条：本人本月的数字（GET /assistant/sessions/stats）；取不到时写两句事实 -->
+        <p v-if="stats" class="trust">
+          <span><EyeOff :size="15" :stroke-width="1.75" />本月在本机遮住 <b class="num"><SiCount :value="stats.masked" /></b> 处名称与金额</span><i />
+          <span><ShieldCheck :size="15" :stroke-width="1.75" />发送前复检拦截 <b class="num"><SiCount :value="stats.blocked" /></b> 次</span><i />
+          <span v-if="stats.daily_cap"><Sparkle :size="15" :stroke-width="1.75" class="ai" />今天模型调用 <b class="num"><SiCount :value="stats.today_calls" /></b> / {{ stats.daily_cap }} 次</span>
+          <span v-else><Sparkle :size="15" :stroke-width="1.75" class="ai" />本月模型调用 <b class="num"><SiCount :value="stats.calls" /></b> 次</span>
+        </p>
+        <p v-else-if="loaded" class="trust">
           <span><EyeOff :size="15" :stroke-width="1.75" />原件和真实名称只留在本机</span><i />
           <span><ShieldCheck :size="15" :stroke-width="1.75" />发给模型前遮住名称与金额，并做发送前复检</span>
-          <template v-if="monthTotal"><i /><span><Sparkle :size="15" :stroke-width="1.75" class="ai" />本月处理 <b class="num">{{ monthTotal }}</b> 项工作</span></template>
         </p>
       </template>
     </div>
