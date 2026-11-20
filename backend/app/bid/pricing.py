@@ -335,22 +335,24 @@ def _name_col(table):
 
 def separate_quote_scopes(nodes, totals):
     """只有明确标题或含电机说明能区分报价口径时，才不按重复总价处理；不猜测合计。"""
-    def scope(text):
+    def scope(text, extra=False):
+        """extra：只在总价自身的标签里认备件、运输等附加范围；页标题里这类词多是普通小节，不用来分页。"""
         label = re.search(r'表[一二三四五六七八九十](?=[：:、\s）)]|$)', text)
         if label:
             return label[0]
-        # 分包、标段与单列报价的附加范围（问题 11）：范围不同的总价不是“两个报价”
+        found = []
+        # 分包、标段与单列报价的附加范围（问题 11）：范围不同的总价不是“两个报价”；与原有口径组合成一个标签
         if lot := re.search(r'第?[一二三四五六七八九十\d]{1,2}(?:包|标段|分标)|[A-Z]包|包[件号]?[一二三四五六七八九十\d]{1,2}(?!装)', text):
-            return re.sub(r'^第', '', lot[0])
-        if extra := re.search(r'备品备件|随机备件|备件|专用工具|安装调试|安装|运输|培训|选配|选购|可选|运维|维保|技术服务', text):
-            return extra[0]
+            found.append(re.sub(r'^第', '', lot[0]))
         if re.search(r'泵头|泵体', text):
-            return '泵头'
-        if '电机' in text:
-            return '电机'
-        if found := re.search(r'主机|辅机', text):
-            return found[0]
-        return None
+            found.append('泵头')
+        elif '电机' in text:
+            found.append('电机')
+        elif part := re.search(r'主机|辅机', text):
+            found.append(part[0])
+        if extra and (word := re.search(r'备品备件|随机备件|备件|专用工具|安装调试|运输|培训|选配|选购|可选|运维|维保', text)):
+            found.append(word[0])
+        return '|'.join(found) or None
 
     pages, at = {}, {}
     current, last_file = None, None
@@ -366,7 +368,8 @@ def separate_quote_scopes(nodes, totals):
         at[id(n)] = current
     by_value = {}
     for value, _currency, n in totals:
-        own = scope(n.text[:max(0, n.text.find('总价'))] or n.text[:20]) if len(n.text) < 160 else None
+        own = re.search(r'表[一二三四五六七八九十](?=[：:、\s）)]|$)', n.text)
+        own = own[0] if own else scope(n.text[:n.text.find('总价')], extra=True) if 0 < n.text.find('总价') <= 20 else None
         labels = pages.get((n.file_seq, getattr(n, 'page', None)), set())
         inline = next((scope for v, scope in _motor_totals(n.text) if rounded(v) == rounded(value)), None)
         found = inline or (own if own else next(iter(labels)) if len(labels) == 1 else at.get(id(n)) if getattr(n, 'page', None) is None else None)
