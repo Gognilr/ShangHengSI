@@ -3,7 +3,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { modelsApi, type AvailableModel } from '@/api/models'
-import { ArrowUp, Check, FileAudio, FileText, Loader2, Paperclip, Square, X } from '@lucide/vue'
+import { ArrowUp, Check, ChevronDown, ChevronRight, FileAudio, FileImage, FileSpreadsheet, FileText, Loader2, Lock, Paperclip, Sparkle, Square, X } from '@lucide/vue'
 import { pastedFiles } from '@/composables/usePasteFiles'
 import { assistantApi, type AssistantPreview, type Session, type SessionFile, type Template, type MessageInput } from '@/api/assistant'
 import type { ChatDecision } from '@/api/chat'
@@ -13,12 +13,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useDraftsStore } from '@/stores/drafts'
 import { ASSISTANT_TEMPLATE, USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 import { TEMPLATE_LIMITS, usableFiles } from '@/utils/assistantTemplates'
-import TemplatePicker from './TemplatePicker.vue'
 
 export interface ComposerStart { text: string; template: Template | null; files: File[]; modelId?: number }
 const props = defineProps<{
   session: Session | null; template: Template | null; generating: number | null
   asrEnabled: boolean; showTemplates?: boolean; uploading?: number | null
+  /** 首页大号输入框（澄明 8.2）：圆角 24、完整档毛玻璃；否则为对话页底部的输入框 */
+  hero?: boolean
   initial?: { text: string; autoSend: boolean; modelId?: number } | null
   /** 讨论锚点：设置后消息带 finding_id，只围绕该问题讨论（V32-B-02） */
   anchor?: { id: string } | null
@@ -93,14 +94,35 @@ function clickChip(file: SessionFile) {
     fileIds.value = fileIds.value.includes(file.id) ? fileIds.value.filter(id => id !== file.id) : [...fileIds.value, file.id]
   } else emit('open', file)
 }
+// 文件标签（澄明 8.2）：类型色图标、名称、状态；读取中带细进度条，等你确认为琥珀色、点了去确认
+function fileKind(file: SessionFile) {
+  if (file.media) return 'aud'
+  const ext = file.ext.toLowerCase()
+  return ext === 'pdf' ? 'pdf' : ['xlsx', 'xls', 'et'].includes(ext) ? 'xls' : ['jpg', 'jpeg', 'png'].includes(ext) ? 'img' : 'doc'
+}
+const KIND_ICON = { aud: FileAudio, pdf: FileText, xls: FileSpreadsheet, img: FileImage, doc: FileText } as const
+function tag(file: SessionFile): { text: string; tone: string; progress: number | null } {
+  if (file.media) { const c = chip(file); return { text: c.label ?? '', tone: c.tone, progress: null } }
+  if (file.parse_state === 'failed') return { text: '读取失败', tone: 'danger', progress: null }
+  if (file.parse_state === 'parsing' || props.session?.status === 'parsing' && !file.confirmed_at) {
+    const p = props.session?.parse_progress?.files?.[file.id]
+    if (p?.total) return { text: `正在本机读取 · 第 ${Math.min(p.done ?? 0, p.total)} / ${p.total} 页`, tone: 'busy', progress: Math.min(1, (p.done ?? 0) / p.total) }
+    return { text: props.session?.parse_progress?.phase === 'detect' ? '正在本机遮住名称与金额' : '正在本机读取', tone: 'busy', progress: null }
+  }
+  if (!file.confirmed_at) {
+    // 遮住数是整个会话的合计：只有一份文件待确认时才写数字
+    const single = (props.session?.files ?? []).filter(f => !f.confirmed_at && !f.media).length === 1
+    return { text: single && props.session?.code_count ? `已遮住 ${props.session.code_count} 处 · 等你确认` : '等你确认 · 点此查看', tone: 'warn', progress: null }
+  }
+  if (selectable(file)) return { text: fileIds.value.includes(file.id) ? `${file.page_count ? `${file.page_count} 页 · ` : ''}本次提问使用` : '本次不用 · 点击使用', tone: 'ok', progress: null }
+  return { text: '已确认', tone: 'ok', progress: null }
+}
 const failures = computed(() => (props.session?.files ?? []).filter(f => f.parse_error || f.media?.stage === 'failed'))
 const removable = (_file: SessionFile) => props.session?.status !== 'parsing' && !props.session?.generating && !props.session?.review_running
 
 // ---- 模板 ----
 const target = ref('英文'), focus = ref('全部'), tone = ref('正式'), language = ref('同来函'), fileIds = ref<string[]>([])
 watch(() => files.value.map(f => f.id).join(','), () => { fileIds.value = files.value.map(f => f.id) }, { immediate: true })
-// 点快捷标签只选中模板，不弹系统文件窗口（V34Q-09）；所需文件数与“加入文件”在模板行就地显示
-function chooseTemplate(value: Template | null) { emit('update:template', value) }
 const limits = computed(() => props.template ? TEMPLATE_LIMITS[props.template] : [0, 10] as [number, number])
 const TEMPLATE_DESC: Partial<Record<Template, string>> = { translate: '分段翻译并核对原文', summary: '提取文件中的重点', reply: '根据来函起草回复', crosscheck: '在本机逐项核对多份单证是否一致', compare: '对齐报价项目，在本地比较价格', minutes: '把录音整理为议题、决议与待办' }
 const need = computed(() => {
@@ -147,6 +169,11 @@ const reason = computed(() => {
   if (!text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length)) return '请输入问题或粘贴来函'
   return ''
 })
+const modelName = computed(() => modelItems.value.find(m => m.id === modelId.value)?.display_name ?? (modelLoading.value ? '加载模型…' : '选择模型'))
+const modelLocked = computed(() => allowedModels.value.length <= 1 || sending.value || busy.value || props.generating !== null)
+function onModelMenu(visible: boolean) { if (visible) void loadModels(modelId.value) }
+function pickModel(id: number) { modelId.value = id }
+const localOnly = computed(() => props.session?.policy === 'local_only')
 const waitingText = computed(() => !resume.value || !props.session ? '' : props.session.status === 'parsing' ? '文件处理完成后自动发送' : props.session.status === 'awaiting_confirm' ? '确认脱敏后自动发送' : '')
 function input(): MessageInput {
   if (props.anchor) return { model_id: modelId.value, message: text.value, template: null, params: omitAdvice.value ? { omit_finding_advice: true } : {}, use_kb: useKb.value && !!props.session?.kb_enabled, use_history: useHistory.value, finding_id: props.anchor.id }
@@ -214,24 +241,26 @@ defineExpose({ pick, attach })
 </script>
 
 <template>
-  <div class="composer">
+  <div class="composer" :class="{ 'is-hero': hero, 'is-anchor': anchor }">
     <p v-if="session?.original_deleted" class="hint">原件已按保留期限删除，本会话只能查看</p>
     <template v-else>
-      <div class="box" :class="{ dragging }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop" @paste="paste">
-        <div v-if="!anchor && (session?.files.length || uploading !== null && uploading !== undefined)" class="chips">
-          <span v-for="file in session?.files ?? []" :key="file.id" class="chip" :class="[`chip--${chip(file).tone}`, { 'chip--picked': selectable(file) && fileIds.includes(file.id), 'chip--unpicked': selectable(file) && !fileIds.includes(file.id) }]">
-            <button type="button" class="chip-main" :disabled="!selectable(file) && !chip(file).openable && !(file.media && file.confirmed_at)"
+      <div class="box" :class="{ dragging, 'si-glass': hero }" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop" @paste="paste">
+        <div v-if="!anchor && (session?.files.length || uploading !== null && uploading !== undefined)" class="files">
+          <div v-for="file in session?.files ?? []" :key="file.id" class="ft" :class="[`ft-${fileKind(file)}`, `ft--${tag(file).tone}`, { 'ft--off': selectable(file) && !fileIds.includes(file.id) }]">
+            <button type="button" class="ft-main" :disabled="!selectable(file) && !chip(file).openable && !(file.media && file.confirmed_at)"
                     :aria-pressed="selectable(file) ? fileIds.includes(file.id) : undefined"
-                    :title="file.parse_error ?? (file.media?.error ? '转写失败，可在文件抽屉中重试' : selectable(file) ? (fileIds.includes(file.id) ? '本次提问使用此文件，点击取消' : '本次提问不使用此文件，点击使用') : undefined)" @click="clickChip(file)">
-              <Check v-if="selectable(file) && fileIds.includes(file.id)" :size="14" :stroke-width="2" class="chip-check" />
-              <component :is="file.media ? FileAudio : FileText" v-else :size="14" :stroke-width="1.75" />
-              <span class="chip-name">{{ file.original_name }}</span>
-              <Loader2 v-if="chip(file).tone === 'busy'" :size="12" :stroke-width="2" class="spin" aria-hidden="true" />
-              <span class="chip-state">{{ chip(file).label }}</span>
+                    :title="file.parse_error ?? (file.media?.error ? '转写失败，可在文件面板中重试' : selectable(file) ? (fileIds.includes(file.id) ? '本次提问使用此文件，点击取消' : '本次提问不使用此文件，点击使用') : undefined)" @click="clickChip(file)">
+              <span class="fi"><Check v-if="selectable(file) && fileIds.includes(file.id)" :size="16" :stroke-width="2" /><component :is="KIND_ICON[fileKind(file)]" v-else :size="16" :stroke-width="1.75" /></span>
+              <span class="ft-text"><span class="nm">{{ file.original_name }}</span><span class="st"><Loader2 v-if="tag(file).tone === 'busy'" :size="12" :stroke-width="2" class="spin" aria-hidden="true" />{{ tag(file).text }}</span></span>
+              <ChevronRight v-if="tag(file).tone === 'warn'" :size="16" :stroke-width="1.75" class="ft-go" aria-hidden="true" />
             </button>
-            <button v-if="removable(file)" type="button" class="chip-x" :aria-label="`从会话移除 ${file.original_name}`" :title="'从会话移除'" @click="emit('remove', file)"><X :size="12" :stroke-width="2" /></button>
-          </span>
-          <span v-if="uploading !== null && uploading !== undefined" class="chip chip--busy"><span class="chip-main"><Loader2 :size="12" :stroke-width="2" class="spin" aria-hidden="true" />正在上传 {{ uploading }}%</span></span>
+            <button v-if="removable(file)" type="button" class="ft-x" :aria-label="`从会话移除 ${file.original_name}`" title="从会话移除" @click="emit('remove', file)"><X :size="14" :stroke-width="2" /></button>
+            <span v-if="tag(file).tone === 'busy'" class="ft-bar" :class="{ 'si-progress-flow': tag(file).progress === null }"><i v-if="tag(file).progress !== null" :style="{ width: `${Math.max(4, (tag(file).progress ?? 0) * 100)}%` }" /></span>
+          </div>
+          <div v-if="uploading !== null && uploading !== undefined" class="ft ft-doc ft--busy">
+            <span class="ft-main"><span class="fi"><Loader2 :size="16" :stroke-width="2" class="spin" /></span><span class="ft-text"><span class="nm">正在上传</span><span class="st num">{{ uploading }}%</span></span></span>
+            <span class="ft-bar"><i :style="{ width: `${Math.max(4, uploading)}%` }" /></span>
+          </div>
         </div>
         <p v-for="file in anchor ? [] : failures" :key="`f-${file.id}`" class="failure" role="alert">
           <span class="failure-text">{{ file.original_name }}：{{ file.parse_error ?? file.media?.error ?? '处理失败' }}</span>
@@ -239,7 +268,7 @@ defineExpose({ pick, attach })
           <el-button v-else-if="removable(file)" link size="small" type="danger" @click="emit('remove', file)">移除</el-button>
         </p>
         <div v-if="template" class="template-row">
-          <span class="template-tag">{{ ASSISTANT_TEMPLATE[template] }}<button type="button" class="chip-x" aria-label="取消模板" @click="emit('update:template', null)"><X :size="12" :stroke-width="2" /></button></span>
+          <span class="template-tag">{{ ASSISTANT_TEMPLATE[template] }}<button type="button" class="ft-x" aria-label="取消模板" @click="emit('update:template', null)"><X :size="12" :stroke-width="2" /></button></span>
           <el-select v-if="template === 'translate'" v-model="target" size="small" class="param" aria-label="目标语言"><el-option v-for="option in ['中文','英文','日文','韩文','俄文','西班牙文','法文','德文','阿拉伯文']" :key="option" :label="`译成${option}`" :value="option" /></el-select>
           <el-select v-if="template === 'summary'" v-model="focus" size="small" class="param" aria-label="侧重点"><el-option v-for="option in ['全部','义务与期限','金额与付款','风险']" :key="option" :label="`侧重：${option}`" :value="option" /></el-select>
           <el-select v-if="template === 'reply'" v-model="tone" size="small" class="param" aria-label="回复语气"><el-option v-for="option in ['正式','简洁','友好坚定']" :key="option" :label="option" :value="option" /></el-select>
@@ -247,35 +276,34 @@ defineExpose({ pick, attach })
           <span class="hint where">{{ TEMPLATE_DESC[template] }}<template v-if="template === 'translate'"> · 云端 · 脱敏后发送</template> · {{ need }}</span>
           <el-button v-if="short && canPick" link size="small" type="primary" @click="pick(template === 'minutes' ? 'audio' : 'doc')">加入文件</el-button>
         </div>
-        <el-input ref="questionInput" v-model="text" type="textarea" :autosize="{ minRows: showTemplates ? 3 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="anchor ? '就这个问题继续讨论，例如：怎么改更稳妥？' : showTemplates ? '提问，或把合同、报价单拖到这里、粘贴进来' : '继续提问…'" aria-label="问题或来函" @keydown="onKeydown" />
+        <el-input ref="questionInput" v-model="text" type="textarea" :autosize="{ minRows: hero ? 2 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="anchor ? '就这个问题继续讨论，例如：怎么改更稳妥？' : hero ? '问一个问题，或把合同、报价单拖进来、粘贴进来…' : '继续追问…'" aria-label="问题或来函" @keydown="onKeydown" />
+        <!-- 文件还在处理时：自动发送写在框内（问题 12） -->
+        <p v-if="waitingText" class="auto" role="status"><Loader2 :size="14" :stroke-width="2" class="spin" aria-hidden="true" />{{ waitingText }}<span class="dot">·</span><el-button link size="small" @click="resume = false">取消</el-button></p>
         <div class="bar">
-          <el-tooltip v-if="!anchor" content="加入文件" placement="top"><el-button text circle aria-label="加入文件" :disabled="!!session && (session.files.length >= 10 || !!session.generating || session.review_running)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" /></el-button></el-tooltip>
+          <button v-if="!anchor" type="button" class="cp-btn" :disabled="!!session && (session.files.length >= 10 || !!session.generating || session.review_running)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" />添加文件</button>
           <input ref="picker" class="file-input" type="file" multiple :accept="accept" @change="picked">
-          <el-select
-            v-model="modelId" class="model-select" size="small" aria-label="助手模型" placeholder="选择模型"
-            :loading="modelLoading" :disabled="allowedModels.length === 1 || sending || busy || generating !== null"
-            @visible-change="$event && loadModels(modelId)"
-          >
-            <el-option v-for="model in allowedModels" :key="model.id" :value="model.id" :label="model.display_name" />
-          </el-select>
-          <el-checkbox v-if="session?.kb_enabled" v-model="useKb" size="small">知识库</el-checkbox><el-checkbox v-model="useHistory" size="small">参考历史合同</el-checkbox>
-          <el-button v-if="generating !== null" class="send" circle aria-label="停止生成" title="停止生成" @click="emit('stop', generating)"><Square :size="14" :stroke-width="2" fill="currentColor" /></el-button>
-          <el-button v-else class="send" type="primary" circle aria-label="发送" :title="reason || '发送（Enter）'" :disabled="!!reason && !processing" :loading="busy || sending" @click="submit"><ArrowUp v-if="!busy && !sending" :size="16" :stroke-width="2" /></el-button>
+          <span v-if="localOnly" class="local-tag"><Lock :size="13" :stroke-width="2" />只在本机</span>
+          <el-dropdown v-else trigger="click" :disabled="modelLocked" @visible-change="onModelMenu" @command="pickModel">
+            <button type="button" class="cp-btn ai-pick" :disabled="modelLocked" aria-label="助手模型"><Sparkle :size="14" :stroke-width="2" /><span class="ai-name">{{ modelName }}</span><ChevronDown v-if="!modelLocked" :size="14" :stroke-width="1.75" /></button>
+            <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="model in allowedModels" :key="model.id" :command="model.id" :class="{ 'is-current': model.id === modelId }">{{ model.display_name }}</el-dropdown-item></el-dropdown-menu></template>
+          </el-dropdown>
+          <button v-if="session?.kb_enabled" type="button" class="cp-btn tog" :class="{ on: useKb }" :aria-pressed="useKb" @click="useKb = !useKb"><i class="sw" />知识库</button>
+          <button type="button" class="cp-btn tog" :class="{ on: useHistory }" :aria-pressed="useHistory" @click="useHistory = !useHistory"><i class="sw" />参考历史合同</button>
+          <button v-if="generating !== null" type="button" class="send stop" aria-label="停止生成" title="停止生成" @click="emit('stop', generating)"><Square :size="12" :stroke-width="2" fill="currentColor" /></button>
+          <button v-else type="button" class="send" :class="{ dim: !!reason && !processing }" aria-label="发送" :title="reason || '发送（Enter）'" :disabled="(!!reason && !processing) || busy || sending" @click="submit"><Loader2 v-if="busy || sending" :size="18" :stroke-width="2" class="spin" /><ArrowUp v-else :size="18" :stroke-width="2.25" /></button>
         </div>
       </div>
-      <p v-if="waitingText" class="hint status" role="status">{{ waitingText }} · <el-button link size="small" @click="resume = false">取消</el-button></p>
-      <p v-else-if="reason && (text.trim() || template)" class="hint status">{{ reason }}</p>
+      <p v-if="!waitingText && reason && (text.trim() || template)" class="hint status">{{ reason }}</p>
       <el-alert v-if="error && !open" :title="error" type="error" :closable="false" />
       <el-button v-if="blockedCode === 'DISCUSSION_ADVICE_BLOCKED'" :disabled="busy || sending" @click="withoutAdvice">不带该问题的结论与建议条文发送</el-button>
       <p v-if="omitAdvice && anchor" class="hint">本轮只附相关原文，不附问题结论与建议条文。</p>
-      <TemplatePicker v-if="showTemplates" class="quick" chips :asr-enabled="asrEnabled" :model-value="template" @update:model-value="chooseTemplate" />
     </template>
     <el-dialog v-model="open" title="确认发送内容" width="640px" :close-on-click-modal="false" :close-on-press-escape="!sending" :show-close="!sending" append-to-body>
-      <p class="hint">消息中有疑似敏感信息，请逐项决定是否替换为代号。发给模型的只有脱敏后的文字。</p><pre>{{ preview?.redacted }}</pre>
+      <p class="hint">消息里有疑似名称或金额，请逐项决定是否遮住。发给模型的只有遮住后的文字。</p><pre>{{ preview?.redacted }}</pre>
       <div v-for="(suspect, index) in preview?.suspects" :key="index" class="suspect">
-        <p>{{ suspect.text }}</p><el-radio-group v-model="decisions[index]!.decision"><el-radio value="replace">替换</el-radio><el-radio value="keep">不替换</el-radio></el-radio-group>
-        <el-select v-if="decisions[index]!.decision === 'replace'" v-model="decisions[index]!.category" aria-label="替换类别"><el-option v-for="option in toOptions(USER_CATEGORY_OPTIONS)" :key="option.value" :value="option.value" :label="option.label" /></el-select>
-        <p v-if="suspect.in_files && decisions[index]!.decision === 'replace'" class="hint">文件中的同一文字也会替换</p>
+        <p>{{ suspect.text }}</p><el-radio-group v-model="decisions[index]!.decision"><el-radio value="replace">遮住</el-radio><el-radio value="keep">不遮住</el-radio></el-radio-group>
+        <el-select v-if="decisions[index]!.decision === 'replace'" v-model="decisions[index]!.category" aria-label="类别"><el-option v-for="option in toOptions(USER_CATEGORY_OPTIONS)" :key="option.value" :value="option.value" :label="option.label" /></el-select>
+        <p v-if="suspect.in_files && decisions[index]!.decision === 'replace'" class="hint">文件中的同一文字也会遮住</p>
       </div>
       <el-alert v-if="error" :title="error" type="error" :closable="false" />
       <template #footer><el-button :disabled="sending" @click="open = false">取消</el-button><el-button type="primary" :disabled="!confirmed" :loading="sending" @click="send">确认发送</el-button></template>
@@ -284,43 +312,77 @@ defineExpose({ pick, attach })
 </template>
 
 <style scoped>
-.composer { padding: 12px 24px 16px; }
-.composer > * { max-width: 760px; margin-left: auto; margin-right: auto; }
-/* 一个容器：16px 圆角、细边、轻阴影；聚焦只把边框加深，不加蓝框（visual.md 第五节） */
-.box { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 10px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-sheet); background: var(--si-field); box-shadow: var(--si-shadow-composer); transition: border-color var(--si-dur-1) var(--si-ease); }
-.box:focus-within { border-color: var(--si-ink-4); }
-.box.dragging { border-color: var(--si-blue); border-style: dashed; background: color-mix(in srgb, var(--si-blue) 6%, var(--si-surface-1)); }
-.box :deep(.el-textarea__inner) { padding: 0; border: 0; box-shadow: none; background: transparent; font: var(--si-font-body); resize: none; }
-.chips, .template-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.chip { display: inline-flex; align-items: center; max-width: 100%; border-radius: var(--el-border-radius-base); background: var(--si-surface-2); font: var(--si-font-caption); }
-.chip-main { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 8px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
-.chip-main:disabled { cursor: default; }
-.chip-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-1); }
-.chip-state { color: var(--si-ink-3); }
-.chip--ok .chip-state { color: var(--si-ok-ink); }
-.chip--warn .chip-state { color: var(--si-warn-ink); font-weight: 600; }
-.chip--danger .chip-state { color: var(--si-danger-ink); }
-.chip--busy .chip-state, .chip--busy .chip-main { color: var(--si-blue-ink); }
-.chip-x { display: grid; place-items: center; width: 20px; height: 20px; margin-right: 4px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--si-ink-3); cursor: pointer; }
-.chip-x:hover { background: var(--si-surface-1); color: var(--si-ink-1); }
-.template-tag { display: inline-flex; align-items: center; gap: 2px; padding: 2px 0 2px 8px; border-radius: var(--el-border-radius-base); background: var(--si-select-bg); color: var(--si-ink-1); font: var(--si-font-label); }
+/* 一个容器：细边、浮起一层；首页圆角 24、完整档毛玻璃（澄明 8.2），对话页圆角 18 */
+.box { display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 10px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-2); transition: border-color var(--si-d2) var(--si-ease-out), box-shadow var(--si-d3) var(--si-ease-out); }
+.is-hero .box { padding: 16px 16px 12px; border-radius: var(--si-radius-composer); }
+.is-anchor .box { padding: 10px 12px 8px; border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); }
+.box:focus-within { border-color: var(--si-brand-line); box-shadow: var(--si-shadow-2), var(--si-ring); }
+.box.dragging { border-color: var(--si-brand-2); border-style: dashed; background: var(--si-blue-tint); }
+.box :deep(.el-textarea__inner) { padding: 4px 6px; border: 0; box-shadow: none; background: transparent; font: var(--si-font-body); font-size: calc(15px * var(--si-fs)); line-height: 1.7; color: var(--si-ink-1); resize: none; }
+.is-hero .box :deep(.el-textarea__inner) { font-size: calc(16px * var(--si-fs)); line-height: 1.65; }
+/* 文件标签 */
+.files { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.ft { position: relative; display: flex; align-items: center; min-width: 0; overflow: hidden; border: 1px solid var(--si-hair); border-radius: 12px; background: var(--si-surface-1); transition: border-color var(--si-d2), background-color var(--si-d2); }
+.ft-main { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; padding: 8px 6px 8px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ft-main:disabled { cursor: default; }
+.fi { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border-radius: 8px; }
+.ft-pdf .fi { background: var(--si-danger-soft); color: var(--si-danger); }
+.ft-doc .fi { background: var(--si-k-org-bg); color: var(--si-k-org); }
+.ft-xls .fi { background: var(--si-ok-soft); color: var(--si-ok); }
+.ft-img .fi { background: var(--si-ai-soft); color: var(--si-ai); }
+.ft-aud .fi { background: var(--si-m-meet-soft); color: var(--si-m-meet); }
+.ft-text { display: flex; flex-direction: column; min-width: 0; }
+.nm { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label-sm); text-overflow: ellipsis; white-space: nowrap; }
+.st { display: inline-flex; align-items: center; gap: 4px; overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); font-size: calc(12.5px * var(--si-fs)); text-overflow: ellipsis; white-space: nowrap; }
+.ft--busy .st { color: var(--si-blue-ink); }
+.ft--danger { border-color: var(--si-danger-line); }
+.ft--danger .st { color: var(--si-danger-ink); }
+.ft--warn { border-color: var(--si-warn-line); background: var(--si-warn-soft); }
+.ft--warn .st, .ft-go { color: var(--si-warn-ink); font-weight: 500; }
+.ft-go { flex: none; }
+.ft--off .nm { color: var(--si-ink-3); }
+.ft--off .fi { background: var(--si-surface-2); color: var(--si-ink-4); }
+.ft-x { display: grid; flex: none; place-items: center; width: 24px; height: 24px; margin-right: 6px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--si-ink-4); cursor: pointer; }
+.ft-x:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
+.ft-bar { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; }
+.ft-bar i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--si-brand-2), var(--si-ai)); transition: width var(--si-d3) var(--si-ease-out); }
+.template-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.template-tag { display: inline-flex; align-items: center; gap: 2px; padding: 2px 0 2px 10px; border-radius: 999px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-label-sm); }
+.template-tag .ft-x { width: 20px; height: 20px; margin-right: 2px; color: inherit; }
 .param { width: 132px; }
 .where { margin: 0; }
-.bar { display: flex; align-items: center; gap: 8px; }
-.bar :deep(.el-checkbox) { margin-right: 0; }
-.model-select { width: 150px; }
-.chip--picked { background: color-mix(in srgb, var(--si-blue) 12%, var(--si-surface-2)); }
-.chip--picked .chip-name, .chip-check { color: var(--si-blue-ink); }
-.chip--unpicked .chip-name { color: var(--si-ink-3); text-decoration: line-through; }
+.auto { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 6px 0; border-top: 1px dashed var(--si-hair); color: var(--si-ink-3); font: var(--si-font-caption); }
+.auto svg { color: var(--si-brand-2); }
+.auto .dot { color: var(--si-ink-4); }
+/* 底栏 */
+.bar { display: flex; align-items: center; gap: 4px; }
+.cp-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 0; border-radius: var(--si-radius-control); background: none; color: var(--si-ink-2); font: var(--si-font-body); font-size: calc(13.5px * var(--si-fs)); cursor: pointer; transition: background-color var(--si-d2), box-shadow var(--si-d2); }
+.cp-btn:hover:not(:disabled) { background: var(--si-hover-bg); }
+.cp-btn:disabled { cursor: default; opacity: .6; }
+.cp-btn > svg { color: var(--si-ink-3); }
+.ai-pick { max-width: 220px; background: var(--si-ai-soft); color: var(--si-ai-ink); }
+.ai-pick:hover:not(:disabled) { background: var(--si-ai-soft); box-shadow: inset 0 0 0 1px var(--si-ai-line); }
+.ai-pick:disabled { opacity: 1; }
+.ai-pick > svg { color: var(--si-ai); }
+.ai-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-tag { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-badge); }
+.sw { position: relative; flex: none; width: 28px; height: 16px; border-radius: 999px; background: var(--si-hair-strong); transition: background-color var(--si-d2); }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--si-white); transition: transform var(--si-d3) var(--si-ease-spring); }
+.tog.on .sw { background: var(--si-brand); }
+.tog.on .sw::after { transform: translateX(12px); }
+.send { display: inline-grid; flex: none; place-items: center; width: 40px; height: 40px; margin-left: auto; padding: 0; border: 0; border-radius: 50%; background: var(--si-brand); color: var(--si-white); box-shadow: var(--si-btn-shadow); cursor: pointer; transition: transform var(--si-d1) var(--si-ease-out), background-color var(--si-d2); }
+.send:hover:not(:disabled) { background: var(--si-blue-press); }
+.send:active:not(:disabled) { transform: scale(.92); }
+.send.dim, .send:disabled { background: var(--si-hair-strong); box-shadow: none; cursor: default; }
+.send.stop { background: var(--si-ink-1); color: var(--si-bg-canvas); box-shadow: none; }
+.is-anchor .send { width: 32px; height: 32px; }
 .failure { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--si-danger-ink); font: var(--si-font-caption); }
 .failure-text { min-width: 0; overflow-wrap: anywhere; }
-.spin { animation: chip-spin 1s linear infinite; }
-@keyframes chip-spin { to { transform: rotate(360deg); } }
-.send { margin-left: auto; width: 32px; height: 32px; }
+.spin { animation: cp-spin 1s linear infinite; }
+@keyframes cp-spin { to { transform: rotate(360deg); } }
 .file-input { display: none; }
 .status { margin: 6px 0 0; }
-.quick { margin-top: 12px; }
-pre { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-body); max-height: 320px; overflow-y: auto; padding: 16px; background: var(--el-fill-color-light); border-radius: var(--el-border-radius-base); }
-.suspect { border-top: 1px solid var(--el-border-color-light); padding: 12px 0; }
+pre { padding: 16px; overflow-y: auto; max-height: 320px; border-radius: var(--el-border-radius-base); background: var(--si-surface-2); font: var(--si-font-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.suspect { padding: 12px 0; border-top: 1px solid var(--si-hair); }
 .suspect :deep(.el-select) { width: 160px; }
 </style>

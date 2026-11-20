@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
-import { Ellipsis, Files } from '@lucide/vue'
+import { Ellipsis, PanelRight, Sparkle } from '@lucide/vue'
 import { assistantApi, type Session, type SessionItem, type Message, type MessageSource, type Template } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import NotFound from '@/views/NotFound.vue'
@@ -17,24 +17,6 @@ import FilePanel from '@/components/assistant/FilePanel.vue'
 import WorkbenchHome from '@/components/assistant/WorkbenchHome.vue'
 import DraftDialog from '@/components/workspace/DraftDialog.vue'
 const route = useRoute(), router = useRouter(), sessions = useSessionsStore(), auth = useAuthStore()
-// 问候只取北京时间和当前账号显示名，不发送到服务器（V33Q-14）。
-const hourFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Shanghai', hour: '2-digit', hourCycle: 'h23' })
-const greetingHour = ref(Number(hourFormat.format(new Date())))
-const greeting = computed(() => {
-  const hour = greetingHour.value
-  if (hour < 5 || hour >= 23) return { title: '夜深了', text: '先处理要紧的事，也记得早点休息。' }
-  if (hour < 8) return { title: '早上好', text: '新的一天想先从哪项工作开始？' }
-  if (hour < 11) return { title: '上午好', text: '今天想先处理哪项工作？' }
-  if (hour < 14) return { title: '中午好', text: '接下来想先处理哪份材料？' }
-  if (hour < 18) return { title: '下午好', text: '下午的工作想先从哪件事开始？' }
-  return { title: '晚上好', text: '今天还有哪项工作需要梳理？' }
-})
-// 欢迎语一行一句话（V34Q-06）：问候、称呼与问句同字号、同色、常规字重，用逗号连成一句
-const greetingLine = computed(() => {
-  const name = auth.user?.display_name?.trim() || auth.user?.username
-  return [greeting.value.title, name, greeting.value.text].filter(Boolean).join('，')
-})
-const greetingTimer = setInterval(() => { if (!document.hidden) greetingHour.value = Number(hourFormat.format(new Date())) }, 60000)
 // 会话的两种视图（V32-B-01）：直接提问 / 全面审核。切换只改视图，不外发、不清空输入；没有“文件审核”权限的人看不到审核视图；会话以外的审核首页在 /review（V34-A-03）。
 // 工作台首页不再有切换（V34-A-04）；会话里没有审核过时工具条只放“全面审核 →”，审核过或打开过审核视图才显示两个页签
 const canReview = computed(() => auth.can('use.review'))
@@ -218,75 +200,86 @@ async function retry(mid: number) { try { await assistantApi.retry(id.value, mid
 // 本会话正在生成的回复（输入框的发送按钮原位变为停止）
 // V31-U5F-04：只加了文件、还没发出第一条消息时保持首页布局（输入框不动，文件标签在框内），发出后才转为对话布局
 const homeLike = computed(() => !!session.value && !shown.value.length && mode.value === 'ask' && !session.value.review_running && !reviewDone.value)
+// 对话页标题旁的灵紫小徽标：最近一条回复用的模型
+const modelLabel = computed(() => [...messages.value].reverse().find(m => m.role === 'assistant' && m.model_label)?.model_label ?? '')
 const generating = computed(() => messages.value.find(m => m.role === 'assistant' && ['queued', 'streaming'].includes(m.status))?.id ?? null)
 // 在侧栏改名后同步标题
 watch(() => sessions.items.find(item => item.id === id.value)?.title, title => { if (title && session.value) session.value.title = title })
 watch(id, load, { immediate: true })
 function visibility() {
-  greetingHour.value = Number(hourFormat.format(new Date()))
   if (document.hidden) clearTimeout(timer)
   else { void poll(); if (reviewDone.value && mode.value === 'review') reviewDone.value = false }
 }
 onMounted(() => document.addEventListener('visibilitychange', visibility))
-onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); document.title = baseTitle; active = false; ++version; clearTimeout(timer); clearInterval(greetingTimer); offsets.clear() })
+onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibility); document.title = baseTitle; active = false; ++version; clearTimeout(timer); offsets.clear() })
 </script>
 <template>
   <NotFound v-if="missing" kind="content" />
-  <div v-else class="page page--split assistant-page">
-    <main v-loading="loading" class="dialogue" :class="{ 'is-home': (mode === 'ask' && homeLike) || (mode === 'ask' && !session && !id) }">
-      <el-alert v-if="error" type="error" :closable="false" :title="error" />
-      <template v-if="session">
-        <h1 v-if="homeLike" class="greeting">{{ greetingLine }}</h1>
-        <div v-else class="toolbar">
-          <el-button class="title" link @click="rename">{{ session.title }}</el-button>
+  <div v-else v-loading="loading" class="assistant-page" :class="{ 'is-home': (session && homeLike) || (!session && !id), 'is-review': mode === 'review' }">
+    <el-alert v-if="error" class="page-error" type="error" :closable="false" :title="error" />
+    <template v-if="session">
+      <!-- 只加了文件、还没发出第一条消息：保持首页构图，文件标签在输入框里（澄明 8.2） -->
+      <WorkbenchHome v-if="homeLike" busy :has-files="session.files.length > 0" v-model:template="template" @review="seeResult">
+        <Composer v-if="canAsk" :key="id" v-model:template="template" hero :session="session" :generating="generating" :asr-enabled="session.asr_enabled" show-templates :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
+      </WorkbenchHome>
+      <template v-else>
+        <header class="chat-head">
+          <button type="button" class="title" title="修改会话标题" @click="rename">{{ session.title }}</button>
+          <span v-if="modelLabel && mode === 'ask'" class="ai-tag"><Sparkle :size="13" :stroke-width="2" />{{ modelLabel }}</span>
+          <span class="head-gap" />
           <SiSegmented v-if="showTabs" v-model="modeModel" :options="modeOptions" size="small" ariaLabel="会话视图" />
           <el-button v-else-if="canReview && canAsk" size="small" link @click="seeResult">全面审核 →</el-button>
-          <el-button size="small" @click="drawerOpen = true"><Files :size="14" :stroke-width="1.75" /><span class="files-label">材料 {{ session.files.length }}</span></el-button>
+          <el-button size="small" @click="drawerOpen = true"><PanelRight :size="14" :stroke-width="1.75" /><span class="files-label">文件 {{ session.files.length }}</span></el-button>
           <el-dropdown trigger="click" :disabled="working || session.review_running" @command="remove(session)">
             <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
             <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除会话</span></el-dropdown-item></el-dropdown-menu></template>
           </el-dropdown>
-        </div>
+        </header>
         <div v-if="canReview && mode === 'ask' && (session.review_running || reviewDone)" class="review-note" role="status">
-          <span v-if="session.review_running">审核进行中，完成后可提问。进度与已出现的问题在“全面审核”里看。</span>
-          <span v-else>审核已完成，可以在“全面审核”里查看问题，也可以继续提问。</span>
+          <span v-if="session.review_running">审核进行中，完成后可以提问。进度和已出现的问题在“全面审核”里看。</span>
+          <span v-else>审核已完成，可以在“全面审核”里看问题，也可以继续提问。</span>
           <el-button size="small" type="primary" link @click="seeResult">{{ session.review_running ? '查看进度' : '查看结果' }}</el-button>
         </div>
-        <Transition name="rise"><Conversation v-if="!homeLike" v-show="mode === 'ask'" :messages="shown" :session-id="id" :reading="session?.status === 'parsing'" @cite="cite" @stop="stop" @retry="retry" /></Transition>
+        <Conversation v-show="mode === 'ask'" :messages="shown" :session-id="id" :reading="session?.status === 'parsing'" @cite="cite" @stop="stop" @retry="retry" />
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
-        <Composer v-if="canAsk" v-show="mode === 'ask'" :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :show-templates="!shown.length" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
-        <p v-if="homeLike && canReview && session.files.length" class="review-link"><el-button link @click="seeResult">对已加入的文件全面审核 →</el-button></p>
-        <ReviewPane v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null">
+        <div v-if="canAsk" v-show="mode === 'ask'" class="dock">
+          <Composer :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
+          <p class="dock-note">模型只看到遮住名称后的文字。AI 建议请结合原文核实。</p>
+        </div>
+        <ReviewPane v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" class="review-pane" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null">
           <template #discussion="{ finding, no, update, locate }">
-            <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已脱敏），不含其他条款。"
+            <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已遮住名称与金额），不含其他条款。"
               :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource, el: HTMLElement) => cite(m, src, el, locate)" @stop="stop" @retry="retry" />
             <Composer :key="`${id}:${finding.id}`" :template="null" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="false" @sent="sent" @stop="stop" @busy="refresh" @confirm="filePanel?.openConfirm()" />
           </template>
         </ReviewPane>
       </template>
-      <!-- 工作台首页（V34-A-04，visual.md 7.2）：一句欢迎语 · 输入框 · 常用标签 · 四格入口 · 继续上次的工作 -->
-      <WorkbenchHome v-else-if="!loading && !id">
-        <template #greeting><h1 class="greeting">{{ greetingLine }}</h1></template>
-        <Composer v-model:template="template" :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
-      </WorkbenchHome>
-    </main>
+    </template>
+    <!-- 工作台首页（澄明 8.2） -->
+    <WorkbenchHome v-else-if="!loading && !id" v-model:template="template" @review="router.push('/review')">
+      <Composer v-model:template="template" hero :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
+    </WorkbenchHome>
     <DraftDialog v-model:open="draftOpen" :anchor="anchor" :message="draftMessage" @saved="draftUpdate?.($event)" />
     <FilePanel v-if="session" ref="filePanel" :key="id" v-model:open="drawerOpen" :session="session" @refresh="refresh" />
   </div>
 </template>
 <style scoped>
 .danger-item { color: var(--el-color-danger); }
-.assistant-page { height: 100%; box-sizing: border-box; padding-top: 20px; padding-bottom: 20px; overflow: hidden; }
-.dialogue { height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--el-bg-color); border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-card); }
-.toolbar { display: flex; gap: 12px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--el-border-color-light); }
-.title { flex: 1; min-width: 0; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; text-align: left; font: var(--si-font-h2); }
-.review-note { display: flex; gap: 12px; align-items: center; justify-content: center; margin: 12px 20px 0; padding: 8px 12px; border-radius: var(--si-radius-card); background: var(--si-surface-1); border: 1px solid var(--si-hair); color: var(--si-ink-2); font: var(--si-font-body); }
+.assistant-page { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+/* 首页与只加了文件的会话：整页可纵向滚动，氛围光在顶部 */
+.assistant-page.is-home { display: block; overflow-y: auto; }
+.page-error { position: absolute; top: 12px; left: 50%; z-index: 3; width: min(760px, calc(100% - 48px)); transform: translateX(-50%); }
+/* 对话页（澄明 8.3）：顶部 64px 工具条，中间一栏 800，输入框固定在底部 */
+.chat-head { display: flex; flex: none; align-items: center; gap: 12px; height: 64px; padding: 0 24px; border-bottom: 1px solid var(--si-hair); background: var(--si-surface-1); }
+.title { min-width: 0; max-width: 46%; padding: 4px 8px; margin-left: -8px; overflow: hidden; border: 0; border-radius: 8px; background: none; color: var(--si-ink-1); font: var(--si-font-h3); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.title:hover { background: var(--si-hover-bg); }
+.ai-tag { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
+.ai-tag svg { color: var(--si-ai); }
+.head-gap { flex: 1; }
+.chat-head :deep(.el-button + .el-button), .chat-head :deep(.el-dropdown) { margin-left: 0; }
 .files-label { margin-left: 6px; }
-/* 欢迎语：一行一句，26px 常规字重、墨色，字距略松（visual.md 7.2） */
-.greeting { width: 100%; max-width: 808px; margin: 0 auto 20px; padding: 0 24px; box-sizing: border-box; text-align: left; font: var(--si-font-greeting); letter-spacing: .03em; color: var(--si-ink-1); overflow-wrap: anywhere; }
-.review-link { width: 100%; max-width: 808px; margin: 0 auto; padding: 0 24px; box-sizing: border-box; text-align: right; }
-/* 首页与只加了文件的会话：与纸同面，不加卡片框；内容可纵向滚动 */
-.dialogue.is-home { justify-content: center; padding-bottom: 6vh; border-color: transparent; background: transparent; overflow-y: auto; }
-.rise-enter-active { transition: opacity var(--si-dur-2, 240ms) var(--si-ease), transform var(--si-dur-2, 240ms) var(--si-ease); }
-.rise-enter-from { opacity: 0; transform: translateY(12px); }
+.review-note { display: flex; align-items: center; justify-content: center; gap: 12px; width: min(800px, calc(100% - 48px)); margin: 16px auto 0; padding: 8px 14px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-card-2); color: var(--si-ink-2); font: var(--si-font-body); box-sizing: border-box; }
+.dock { flex: none; width: min(800px, calc(100% - 48px)); margin: 0 auto; padding: 0 0 14px; }
+.dock-note { margin: 8px 0 0; color: var(--si-ink-4); font: var(--si-font-caption); font-size: calc(12.5px * var(--si-fs)); text-align: center; }
+.is-review .review-pane { flex: 1; min-height: 0; }
 </style>

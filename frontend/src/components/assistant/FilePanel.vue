@@ -150,7 +150,7 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
 </script>
 <template>
   <div class="file-host">
-  <el-drawer :model-value="open" title="本会话文件" size="400px" append-to-body @update:model-value="emit('update:open', $event)">
+  <el-drawer :model-value="open" title="本会话的文件" size="360px" append-to-body @update:model-value="emit('update:open', $event)">
   <div class="files" @dragover.prevent @drop.prevent="canUpload && addList(Array.from($event.dataTransfer?.files ?? []))">
     <div class="file-heading"><h2>文件（{{ session.files.length }}）</h2><el-button size="small" :disabled="!canUpload" :loading="busy" @click="upload?.click()">加入文件</el-button><input ref="upload" class="file-input" type="file" multiple :accept="pickAccept || accept" @change="added"></div>
     <div v-if="uploadProgress !== null" role="status"><el-progress :percentage="uploadProgress" /><p class="hint">正在上传 {{ uploadProgress }}%</p></div>

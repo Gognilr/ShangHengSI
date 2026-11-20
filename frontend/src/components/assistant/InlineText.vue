@@ -27,7 +27,8 @@ function tag(source: MessageSource) {
   </template>
 </template>
 <style scoped>
-.si-unresolved { color: inherit; background: var(--si-unresolved-bg); text-decoration: underline dashed 1px var(--si-warn-ink); text-underline-offset: 3px; cursor: help; }
+/* 未能还原（澄明 8.3）：原文字不变，琥珀色虚线下划线，悬停说明原因 */
+.si-unresolved { color: inherit; background: none; border-bottom: 1.5px dashed var(--si-warn); cursor: help; }
 strong, .bold { font-weight: 600; }
 button { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
 .cite-link { color: var(--si-blue); text-decoration: underline dotted 1px; text-underline-offset: 3px; }

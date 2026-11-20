@@ -24,7 +24,7 @@ const lastReply = () => [...props.messages].reverse().find(m => m.role === 'assi
   <div class="conversation-wrap">
     <div ref="area" class="conversation" @scroll.passive="onScroll">
       <div class="reading">
-        <p v-if="!messages.length" class="empty-hint">{{ hint ?? '可以直接提问；文件加入后在本机解析与脱敏，发给模型的只有脱敏后的文字。' }}</p>
+        <p v-if="!messages.length" class="empty-hint">{{ hint ?? '可以直接提问。文件加入后在本机读取并遮住名称与金额，发给模型的只有遮住后的文字。' }}</p>
         <MessageItem v-for="message in messages" :key="message.id" :message="message" :session-id="sessionId" :last="message.id === lastReply()" :draftable="draftable" :reading="reading" :saved-no="message.id === savedId ? savedNo ?? '' : undefined" @draft="emit('draft', $event)" @cite="(m, src, el) => emit('cite', m, src, el)" @stop="emit('stop', $event)" @retry="emit('retry', $event)" />
       </div>
     </div>
@@ -34,7 +34,7 @@ const lastReply = () => [...props.messages].reverse().find(m => m.role === 'assi
 <style scoped>
 .conversation-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .conversation { flex: 1; min-height: 0; overflow-y: auto; padding: 0 24px 24px; }
-.reading { max-width: 760px; margin: 0 auto; }
+.reading { max-width: 800px; margin: 0 auto; padding-top: 16px; }
 .empty-hint { margin: 32px 0; text-align: center; color: var(--el-text-color-secondary); font: var(--si-font-body); }
 .to-bottom { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); box-shadow: var(--el-box-shadow-light); }
 </style>
