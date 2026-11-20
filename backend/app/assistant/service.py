@@ -669,6 +669,22 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
     return HistoryPage(items=items, total=total, page=page, page_size=size)
 
 
+def waiting(db: Session, user: User) -> dict[str, int]:
+    """侧栏菜单右侧的数字（V35-F-02）：只数等本人处理的事，即待确认遮住的会话、旧审核任务与标书项目。
+    发起过审核的对话算文件审核，其余对话算工作台；不按权限过滤，菜单本身已按权限显示。"""
+    from app.db.models import BidProject, ReviewRun
+    reviewed = exists().where(ReviewRun.task_id == Task.id)
+    waiting_task = (Task.owner_id == user.id) & (Task.status == "awaiting_confirm")
+    def count(*conds) -> int:
+        return db.scalar(select(func.count()).select_from(Task).where(waiting_task, *conds)) or 0
+    chat = (Task.kind == "assistant") & (Task.purpose == "chat")
+    bid = db.scalar(select(func.count()).select_from(BidProject).join(Task, Task.id == BidProject.task_id).where(
+        Task.owner_id == user.id, or_(BidProject.extract_state == "awaiting", BidProject.model_state == "awaiting"))) or 0
+    return {"workbench": count(chat, ~reviewed), "review": count((Task.kind == "review") | (chat & reviewed)), "bid": bid,
+            "meeting": count(Task.kind == "assistant", Task.purpose == "meeting"),
+            "translate": count(Task.kind == "assistant", Task.purpose == "translate")}
+
+
 def lock(db: Session, task: Task) -> Task:
     return db.execute(select(Task).where(Task.id == task.id).with_for_update()
                       .execution_options(populate_existing=True)).scalar_one()

@@ -80,6 +80,12 @@ def history(q: str | None = Query(None, max_length=100), page: int = Query(1, ge
     return service.history(db, user, q, date_from, date_to, page, kind)
 
 
+@router.get("/waiting")
+def waiting(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, int]:
+    """侧栏各菜单等本人处理的数量（V35-F-02）；须声明在 /{id} 之前。"""
+    return service.waiting(db, user)
+
+
 @router.get("/{id}", response_model=SessionDetail)
 def detail(task: Task = Depends(owned_session), db: Session = Depends(get_db)):
     return service.detail(db, task)
