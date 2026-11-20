@@ -175,7 +175,7 @@ onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeM
 </script>
 
 <template>
-  <div class="recorder">
+  <div class="recorder" :class="{ open: state !== 'idle' }">
     <div v-if="saved && state === 'idle'" class="saved" role="status">
       <RotateCcw :size="16" :stroke-width="1.75" />
       <span class="saved-text">发现一段未上传的录音：<span class="num">{{ savedText }}</span><template v-if="saved.topic">，主题“{{ saved.topic }}”</template></span>
@@ -183,10 +183,11 @@ onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeM
       <el-button size="small" text @click="dropSaved">放弃</el-button>
     </div>
 
-    <template v-if="state === 'idle'">
-      <el-button class="start" :disabled="!!saved" @click="openSetup"><Mic :size="16" :stroke-width="1.75" /><span>现场录音</span></el-button>
-      <p v-if="saved" class="hint">请先处理上面未上传的录音</p>
-    </template>
+    <div v-if="state === 'idle'" class="idle">
+      <button type="button" class="rec-btn" :disabled="!!saved" aria-label="开始现场录音" @click="openSetup"><Mic :size="30" :stroke-width="1.75" /></button>
+      <b class="idle-title">现场录音</b>
+      <span class="hint">{{ saved ? '请先处理上面未上传的录音' : '用这台电脑的麦克风录会议，录完自动转写' }}</span>
+    </div>
 
     <div v-else-if="state === 'setup'" v-loading="testing" class="panel" role="group" aria-label="录音设置">
       <label class="row"><span class="label">麦克风</span>
@@ -210,10 +211,11 @@ onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeM
         <span class="state">{{ state === 'paused' ? '已暂停' : '录音中' }}</span>
       </div>
       <div class="wave big" aria-hidden="true"><i v-for="(b, i) in bars" :key="i" :style="{ '--h': state === 'paused' ? 0.06 : Math.max(0.06, b) }" /></div>
+      <p class="hint safe">录音保存在本机浏览器，断网也不会丢（每 2 秒保存一次，刷新后可恢复）。</p>
       <div class="actions center">
         <el-button @click="pause"><component :is="state === 'paused' ? Play : Pause" :size="14" :stroke-width="1.75" /><span>{{ state === 'paused' ? '继续' : '暂停' }}</span></el-button>
         <el-button @click="mark"><Flag :size="14" :stroke-width="1.75" /><span>打点</span></el-button>
-        <el-button type="primary" @click="stop"><Square :size="12" :stroke-width="2" /><span>停止并转写</span></el-button>
+        <el-button type="primary" @click="stop"><Square :size="12" :stroke-width="2" /><span>结束并转写</span></el-button>
         <el-button text @click="discard"><Trash2 :size="14" :stroke-width="1.75" /><span>放弃</span></el-button>
       </div>
       <div v-if="marks.length" class="marks"><span v-for="(m, i) in marks" :key="i" class="mark num"><Flag :size="11" :stroke-width="1.75" />{{ stamp(m) }}<button type="button" :aria-label="`删除标记 ${stamp(m)}`" @click="unmark(i)"><X :size="11" :stroke-width="2" /></button></span></div>
@@ -221,7 +223,6 @@ onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeM
       <label class="row"><span class="label">参会人</span>
         <el-select v-model="participants" multiple filterable allow-create default-first-option :reserve-keyword="false" placeholder="输入姓名后回车，可不填" aria-label="参会人" @change="cleanNames" />
       </label>
-      <p class="hint">录音每 2 秒保存到本机浏览器，刷新页面后可恢复。</p>
     </div>
 
     <p v-if="error === 'https'" class="error">浏览器只在 https 地址下允许使用麦克风。请改用 <a :href="httpsUrl">{{ httpsUrl }}</a> 打开本系统后重试。</p>
@@ -230,32 +231,42 @@ onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeM
 </template>
 
 <style scoped>
-.recorder { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; }
+/* 澄明 8.6：入口页左边的玫红大卡；录音中展开为整行 */
+.recorder { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 12px; min-height: 240px; padding: 24px; border: 1px solid var(--si-hair); border-radius: 18px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); box-sizing: border-box; }
+.recorder.open { grid-column: 1 / -1; align-items: center; }
 .recorder :deep(.el-button > span) { display: inline-flex; align-items: center; gap: 6px; }
-.saved { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: 520px; padding: 8px 12px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-card); background: var(--si-surface-1); font: var(--si-font-caption); }
+.idle { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.idle-title { color: var(--si-ink-1); font: var(--si-font-h3); }
+.rec-btn { display: grid; place-items: center; width: 76px; height: 76px; margin-bottom: 4px; border: 0; border-radius: 50%; background: var(--si-m-meet); color: var(--si-white); cursor: pointer; box-shadow: 0 0 0 8px var(--si-m-meet-soft); transition: transform var(--si-d3) var(--si-ease-spring), box-shadow var(--si-d3) var(--si-ease-out); }
+.rec-btn:hover:not(:disabled) { transform: scale(1.06); box-shadow: 0 0 0 12px var(--si-m-meet-soft); }
+.rec-btn:active:not(:disabled) { transform: scale(.97); }
+.rec-btn:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 4px; }
+.rec-btn:disabled { opacity: .5; cursor: not-allowed; }
+.saved { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: stretch; padding: 8px 12px; border: 1px solid var(--si-hair-strong); border-radius: 12px; background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-caption); }
 .saved-text { flex: 1; min-width: 160px; }
-.panel { width: min(460px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-card); background: var(--si-surface-1); }
+.panel { width: min(520px, 100%); display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; align-items: center; gap: 10px; }
-.label { flex: none; width: 56px; color: var(--si-ink-3); font: var(--si-font-caption); }
+.label { flex: none; width: 64px; color: var(--si-ink-3); font: var(--si-font-caption); }
 .row :deep(.el-select), .row :deep(.el-input), .test { flex: 1; min-width: 0; }
 .test { display: flex; flex-direction: column; gap: 4px; }
-.wave { display: flex; align-items: center; gap: 2px; height: 28px; }
-.wave.big { height: 44px; }
-.wave i { flex: 1; min-width: 2px; height: calc(100% * var(--h)); border-radius: 2px; background: var(--si-ok); transition: height 120ms linear; }
-.head { display: flex; align-items: center; gap: 10px; }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--si-danger); animation: blink 1.2s ease-in-out infinite; }
+.wave { display: flex; align-items: center; gap: 2px; height: 32px; }
+.wave.big { height: 64px; }
+.wave i { flex: 1; min-width: 2px; height: calc(100% * var(--h)); border-radius: 2px; background: var(--si-m-meet); transition: height 120ms linear; }
+.head { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--si-m-meet); animation: blink 1.2s var(--si-ease-io) infinite; }
 .dot.paused { background: var(--si-ink-4); animation: none; }
-@keyframes blink { 50% { opacity: .35; } }
-.time { font: var(--si-font-title-lg); }
+@keyframes blink { 50% { opacity: .3; } }
+.time { font: var(--si-font-title-lg); font-size: calc(40px * var(--si-fs)); line-height: 1.1; color: var(--si-ink-1); }
 .state { color: var(--si-ink-3); font: var(--si-font-caption); }
+.safe { text-align: center; }
 .actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .actions.center { justify-content: center; }
 .actions :deep(.el-button) { margin: 0; }
-.rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--si-danger); }
+.rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--si-m-meet); }
 .marks { display: flex; flex-wrap: wrap; gap: 6px; }
-.mark { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 999px; background: var(--si-surface-2); font: var(--si-font-caption); }
+.mark { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--si-m-meet-soft); color: var(--si-ink-2); font: var(--si-font-caption); }
 .mark button { display: inline-flex; padding: 0; border: 0; background: none; color: var(--si-ink-3); cursor: pointer; }
-.hint { margin: 0; color: var(--si-ink-3); font: var(--si-font-meta); }
-.error { margin: 0; max-width: 460px; color: var(--si-danger-ink); font: var(--si-font-meta); }
+.hint { margin: 0; color: var(--si-ink-3); font: var(--si-font-caption); }
+.error { margin: 0; text-align: center; color: var(--si-danger-ink); font: var(--si-font-meta); }
 .error a { color: inherit; text-decoration: underline; }
 </style>

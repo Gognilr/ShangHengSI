@@ -7,7 +7,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
-import { ArrowLeft, Ellipsis, Languages, UploadCloud } from '@lucide/vue'
+import { ArrowLeft, ChevronRight, Cloud, Ellipsis, FileText, Languages, Lock, UploadCloud } from '@lucide/vue'
 import { assistantApi, confirmationTask, type Message, type Session, type SessionItem } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ApiError } from '@/api/http'
@@ -25,6 +25,8 @@ const session = ref<Session | null>(null), messages = ref<Message[]>([]), recent
 const loading = ref(false), error = ref(''), missing = ref(false), uploading = ref<number | null>(null), dragging = ref(false)
 const engine = ref<'local' | 'cloud'>(canCloud.value ? 'cloud' : 'local'), mtAvailable = ref(false)
 let enginePicked = false
+// 入口页选的方式带到翻译页
+const queryEngine = () => route.query.engine === 'local' || route.query.engine === 'cloud' ? route.query.engine : null
 const localAvailable = computed(() => session.value?.mt_enabled ?? mtAvailable.value)
 const LANGS = ['英文', '中文', '日文', '韩文', '俄文', '西班牙文', '法文', '德文', '阿拉伯文']
 const target = ref(typeof route.query.to === 'string' && LANGS.includes(route.query.to) ? route.query.to : '英文')
@@ -38,8 +40,17 @@ const engineOptions = computed(() => [
   { value: 'local', label: '本地 · 不外发', disabled: running.value || !localAvailable.value },
   ...(canCloud.value ? [{ value: 'cloud', label: '云端 · 脱敏后发送', disabled: running.value }] : []),
 ])
-const stepIndex = computed(() => ({ empty: 0, parsing: 0, failed: 0, confirm: 1, ready: 2 })[step.value])
-const stepTitles = computed(() => [step.value === 'parsing' ? '本机解析中…' : step.value === 'failed' ? '本机解析失败' : '本机解析', engine.value === 'local' ? '无需确认脱敏' : '确认脱敏', '翻译'])
+const latest = computed(() => results.value[results.value.length - 1])
+const done = computed(() => !!latest.value && !running.value && latest.value.status !== 'failed')
+const percent = computed(() => { const e = latest.value?.extras; return running.value && e?.segments_total ? Math.round((e.segments_done ?? 0) / e.segments_total * 100) : null })
+// 工具条步骤（澄明 8.7）：读取 → 确认遮住的内容（只有云端有这一步）→ 翻译 → 完成；翻译步骤用紫色（云端）
+const stepTitles = computed(() => [step.value === 'failed' ? '读取失败' : '读取', ...(engine.value === 'cloud' ? ['确认遮住的内容'] : []), '翻译', '完成'])
+const stepIndex = computed(() => {
+  const cloud = engine.value === 'cloud', last = stepTitles.value.length - 1
+  if (done.value) return last + 1
+  if (running.value) return last - 1
+  return ({ empty: 0, parsing: 0, failed: 0, confirm: 1, ready: cloud ? 2 : 1 })[step.value]
+})
 const step = computed(() => !file.value ? 'empty' : session.value?.status === 'parsing' ? 'parsing' : session.value?.status === 'parse_failed' ? 'failed'
   : engine.value === 'local' && file.value.parse_state === 'done' ? 'ready' : !file.value.confirmed_at ? 'confirm' : 'ready')
 
@@ -53,7 +64,7 @@ async function load() {
     const [detail, list] = await Promise.all([assistantApi.get(id.value), assistantApi.messages(id.value)])
     if (current !== version) return
     session.value = detail; messages.value = list.items
-    if (!enginePicked) { engine.value = detail.mt_enabled || !canCloud.value ? 'local' : 'cloud'; enginePicked = true }
+    if (!enginePicked) { const q = queryEngine(); engine.value = q && (q === 'local' ? detail.mt_enabled : canCloud.value) ? q : detail.mt_enabled || !canCloud.value ? 'local' : 'cloud'; enginePicked = true }
   } catch (e) {
     // 不存在、已删除或不是本人的：整页显示“页面不存在”（V33-B-03）
     if (current === version) { if (e instanceof ApiError && e.status === 404) missing.value = true; else error.value = failure(e) }
@@ -79,7 +90,7 @@ async function upload(files: File[]) {
   try {
     const created = await assistantApi.create('translate')
     await assistantApi.addFiles(created.id, [picked], (loaded, total) => { uploading.value = Math.round(loaded / total * 100) })
-    await router.push({ path: `/translate/${created.id}`, query: { to: target.value } })
+    await router.push({ path: `/translate/${created.id}`, query: { to: target.value, engine: engine.value } })
   } catch (e) { error.value = failure(e) }
   finally { uploading.value = null }
 }
@@ -96,7 +107,7 @@ async function uploadText() {
     const created = await assistantApi.create('translate')
     await assistantApi.addText(created.id, text)
     textOpen.value = false; pasted.value = ''
-    await router.push({ path: `/translate/${created.id}`, query: { to: target.value } })
+    await router.push({ path: `/translate/${created.id}`, query: { to: target.value, engine: engine.value } })
   } catch (e) { error.value = failure(e) }
   finally { uploading.value = null }
 }
@@ -115,6 +126,7 @@ onBeforeUnmount(() => document.removeEventListener('paste', pasteText))
 const confirmOpen = ref(false), task = computed(() => session.value ? confirmationTask(session.value) : null)
 watch(step, value => { if (value === 'confirm' && engine.value === 'cloud' && !autoOpened) { autoOpened = true; confirmOpen.value = true } })
 watch(engine, value => { enginePicked = true; if (value === 'local') confirmOpen.value = false })
+function chooseEngine(value: 'local' | 'cloud') { engine.value = value; enginePicked = true }
 function confirmed() { confirmOpen.value = false; void load() }
 
 const models = ref<AvailableModel[]>([]), modelId = ref<number>(), sending = ref(false)
@@ -141,34 +153,50 @@ async function stopMessage(mid: number) { if (session.value) { await assistantAp
 async function retryMessage(mid: number) { if (session.value) { await assistantApi.retry(session.value.id, mid); await load() } }
 </script>
 
+
 <template>
-  <div v-if="!id" class="page page--standard translate-home">
-    <h1 class="entry-title">要翻译什么文件？</h1>
-    <p class="entry-lede">本地翻译只在本机处理原文；云端翻译须先确认脱敏。译稿请逐段核对名称、金额和业务条件。</p>
-    <el-alert v-if="error" type="error" :closable="false" :title="error" />
-    <div class="setup"><span class="label">译成</span><el-select v-model="target" aria-label="目标语言" class="lang"><el-option v-for="l in LANGS" :key="l" :value="l" :label="l" /></el-select><span class="hint where">{{ localAvailable ? '本地 · 不外发' : '云端 · 脱敏后发送（本地未启用）' }}</span></div>
-    <div class="si-drop" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
-      <UploadCloud :size="28" :stroke-width="1.5" />
-      <p class="si-drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : '拖入要翻译的文件，或点击选择' }}</p>
-      <p class="hint">Word、PDF、Excel、WPS、图片，单个不超过 30 MB</p>
+  <!-- 入口页（澄明 8.7 ①）：两张方式卡二选一 → 目标语言 → 拖放区 + 粘贴文字 → 最近的翻译 -->
+  <div v-if="!id" class="entry-page translate-home si-stagger">
+    <h1 class="entry-title">翻译</h1>
+    <p class="entry-lede">本地翻译只在本机处理原文；云端翻译须先确认遮住名称和金额。译稿请逐段核对。</p>
+    <el-alert v-if="error" type="error" :closable="false" :title="error" class="err" />
+    <div class="entry-cards">
+      <button type="button" class="entry-card pick method" :class="{ selected: engine === 'local', off: !localAvailable }" style="--mod: var(--si-brand); --mod-soft: var(--si-blue-tint)" :disabled="!localAvailable" :aria-pressed="engine === 'local'" @click="chooseEngine('local')">
+        <span class="ic"><Lock :size="26" :stroke-width="1.75" /></span><b class="ttl">本地翻译 · 不外发</b>
+        <span class="hint">{{ localAvailable ? '原文不离开本机，万字约一小时' : '本地翻译未启用，请联系管理员' }}</span>
+      </button>
+      <button v-if="canCloud" type="button" class="entry-card pick method" :class="{ selected: engine === 'cloud' }" style="--mod: var(--si-ai); --mod-soft: var(--si-ai-soft)" :aria-pressed="engine === 'cloud'" @click="chooseEngine('cloud')">
+        <span class="ic"><Cloud :size="26" :stroke-width="1.75" /></span><b class="ttl">云端翻译 · 遮住后发送</b>
+        <span class="hint">速度快；先确认遮住的名称和金额，模型只见遮住后的文字</span>
+      </button>
+    </div>
+    <div class="setup"><span class="label">译成</span><el-select v-model="target" aria-label="目标语言" class="lang"><el-option v-for="l in LANGS" :key="l" :value="l" :label="l" /></el-select></div>
+    <div class="drop" :class="{ dragging, busy: uploading !== null }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
+      <span class="drop-ic"><UploadCloud :size="26" :stroke-width="1.75" /></span>
+      <b class="drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : dragging ? '松开即可加入' : '拖入要翻译的文件，或点击选择' }}</b>
+      <span class="hint">Word、PDF、Excel、WPS、图片，单个不超过 30 MB · 也可以按 Ctrl+V 粘贴</span>
+      <el-button v-if="uploading === null" link type="primary" @click.stop="textOpen = true">或粘贴文字翻译</el-button>
+      <span v-if="uploading !== null" class="bar" aria-hidden="true"><i :style="{ width: `${uploading}%` }" /></span>
     </div>
     <input ref="picker" class="file-input" type="file" :accept="DOC" @change="picked">
-    <div class="text-entry"><el-button link type="primary" class="text-link" @click="textOpen = true">或粘贴文字翻译</el-button></div>
     <el-dialog v-model="textOpen" title="粘贴要翻译的文字" width="640px" append-to-body destroy-on-close>
-      <el-input v-model="pasted" type="textarea" :rows="12" maxlength="20000" show-word-limit placeholder="把要翻译的文字粘贴到这里，最多 2 万字。空行分段，后续与上传文件相同：本机解析、确认脱敏、翻译。" aria-label="要翻译的文字" />
+      <el-input v-model="pasted" type="textarea" :rows="12" maxlength="20000" show-word-limit placeholder="把要翻译的文字粘贴到这里，最多 2 万字。空行分段，后续与上传文件相同：本机读取、确认遮住的内容、翻译。" aria-label="要翻译的文字" />
       <template #footer><el-button @click="textOpen = false">取消</el-button><el-button type="primary" :loading="uploading !== null" :disabled="!pasted.trim()" @click="uploadText">下一步</el-button></template>
     </el-dialog>
-    <section v-if="recent.length" class="recent">
-      <div class="recent-head"><h2>最近的翻译</h2><router-link :to="{ name: 'history', query: { type: 'translate' } }" class="all">全部历史</router-link></div>
-      <router-link v-for="item in recent" :key="item.id" :to="`/translate/${item.id}`" class="list-row"><span class="name">{{ item.title }}</span><span class="hint num">{{ formatDateTime(item.last_activity_at) }}</span></router-link>
+    <section v-if="recent.length" class="recent-list" style="--mod: var(--si-m-trans); --mod-soft: var(--si-m-trans-soft)">
+      <div class="rl-head"><h2>最近的翻译</h2><router-link :to="{ name: 'history', query: { type: 'translate' } }" class="all">全部历史<ChevronRight :size="14" :stroke-width="1.75" /></router-link></div>
+      <div class="rl"><router-link v-for="item in recent" :key="item.id" :to="`/translate/${item.id}`" class="li"><span class="mod-ic"><FileText :size="18" :stroke-width="1.75" /></span><b :title="item.title">{{ item.title }}</b><span class="li-t num">{{ formatDateTime(item.last_activity_at) }}</span></router-link></div>
     </section>
   </div>
 
+  <!-- 翻译页（工作区）：工具条（步骤、百分比）+ 设置条 + 原文译文同一张纸面 -->
   <NotFound v-else-if="missing" kind="content" />
   <div v-else v-loading="loading" class="page page--split translate-page">
     <div class="toolbar">
       <el-button text @click="router.push('/translate')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="gap">全部翻译</span></el-button>
-      <h2 class="title">{{ file?.original_name ?? session?.title }}</h2>
+      <h2 class="title" :title="file?.original_name ?? session?.title">{{ file?.original_name ?? session?.title }}</h2>
+      <StepBar class="steps" :active="stepIndex" :status="step === 'failed' ? 'error' : 'process'" :titles="stepTitles" :ai="engine === 'cloud' ? [stepTitles.length - 2] : []" aria-label="翻译步骤" />
+      <span v-if="percent !== null" class="pct num" role="status">{{ percent }}%</span>
       <el-dropdown trigger="click" @command="remove">
         <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
         <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除翻译记录</span></el-dropdown-item></el-dropdown-menu></template>
@@ -176,22 +204,21 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     </div>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
     <div v-if="session" class="body">
-      <div class="setup">
+      <div class="bar-card">
         <SiSegmented v-model="engine" :options="engineOptions" ariaLabel="翻译方式" />
         <span v-if="!localAvailable" class="hint">本地翻译未启用，请联系管理员</span>
-      </div>
-      <StepBar :active="stepIndex" :status="step === 'failed' ? 'error' : 'process'" :titles="stepTitles" aria-label="翻译步骤" />
-      <div v-if="step === 'confirm' || step === 'ready'" class="actions">
-        <el-button v-if="step === 'confirm'" type="primary" @click="confirmOpen = true">去确认脱敏</el-button>
-        <template v-else>
+        <span class="grow" />
+        <template v-if="step === 'confirm'"><el-button type="primary" @click="confirmOpen = true">去确认遮住的内容</el-button></template>
+        <template v-else-if="step === 'ready'">
           <el-select v-model="target" class="lang" aria-label="目标语言"><el-option v-for="l in LANGS" :key="l" :value="l" :label="`译成${l}`" /></el-select>
           <el-select v-if="engine === 'cloud'" v-model="modelId" class="model" aria-label="翻译用的模型"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
           <el-button type="primary" :loading="sending || running" :disabled="engine === 'cloud' ? !modelId : !localAvailable" @click="start">{{ results.length ? '重新翻译' : '开始翻译' }}</el-button>
           <span v-if="engine === 'cloud' && !modelId" class="hint">尚未配置云端模型，请联系管理员</span>
         </template>
+        <span v-else-if="step === 'parsing'" class="hint">正在本机读取文件 · 可以离开页面</span>
       </div>
-      <p v-if="step === 'failed'" class="hint">{{ session.error_message || '文件解析失败，请删除后重新上传' }}</p>
-      <p v-if="engine === 'local'" class="hint">本地翻译较慢（万字约一小时），可以离开本页，稍后从“最近的翻译”回来查看；译稿须逐段核对。</p>
+      <p v-if="step === 'failed'" class="fail">{{ session.error_message || '文件读取失败，请删除后重新上传' }}</p>
+      <p v-if="engine === 'local' && (running || step === 'ready')" class="hint local-note">本地翻译较慢（万字约一小时），可以离开本页，稍后从“最近的翻译”回来查看。</p>
       <div class="reading">
         <p v-if="!results.length && step === 'ready'" class="hint ready-hint"><Languages :size="16" :stroke-width="1.75" />选择目标语言后点“开始翻译”。</p>
         <MessageItem v-for="m in [...results].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />
@@ -201,29 +228,42 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
   </div>
 </template>
 
-
 <style scoped>
 .danger-item { color: var(--el-color-danger); }
-.setup { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.setup .label { font: var(--si-font-label); color: var(--si-ink-2); }
-.lang { width: 140px; }
-.model { width: 150px; }
-.where { margin: 0; }
+.err { margin-bottom: 16px; }
 .file-input { display: none; }
-.text-entry { margin-top: 8px; }
-.recent { margin-top: 32px; }
-.recent-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
-.recent h2 { margin: 0; font: var(--si-font-h3); }
-.all { font: var(--si-font-caption); color: var(--si-ink-3); text-decoration: none; }
-.all:hover { color: var(--si-ink-1); }
-.text-link { padding-left: 0; }
-.translate-page { height: 100%; box-sizing: border-box; padding-top: 16px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
-.toolbar { display: flex; align-items: center; gap: 12px; }
+.method { font: inherit; color: inherit; }
+.method:disabled { cursor: not-allowed; }
+.method:only-child { grid-column: 1 / -1; min-height: 170px; }
+.setup { display: flex; align-items: center; gap: 12px; margin: 20px 0 12px; }
+.setup .label { font: var(--si-font-label); color: var(--si-ink-2); }
+.lang { width: 150px; }
+.model { width: 170px; }
+.drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 200px; padding: 24px; border: 2px dashed var(--si-hair-strong); border-radius: 18px; background: var(--si-surface-1); text-align: center; cursor: pointer; overflow: hidden; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
+.drop:hover { border-color: var(--si-m-trans); }
+.drop:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
+.drop.dragging { border-style: solid; border-color: var(--si-m-trans); background: var(--si-m-trans-soft); transform: scale(1.01); }
+.drop.busy { cursor: progress; }
+.drop-ic { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--si-m-trans-soft); color: var(--si-m-trans); transition: transform var(--si-d3) var(--si-ease-spring); }
+.drop:hover .drop-ic, .drop.dragging .drop-ic { transform: translateY(-3px) scale(1.06); }
+.drop-title { color: var(--si-ink-1); font: var(--si-font-h3); }
+.drop .hint { margin: 0; }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--si-sunken); }
+.bar i { display: block; height: 100%; background: var(--si-progress-flow, var(--si-brand-2)); transition: width var(--si-d3) var(--si-ease-out); }
+.translate-page { height: 100%; box-sizing: border-box; padding-top: 12px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+.toolbar { display: flex; align-items: center; gap: 16px; min-height: 52px; }
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.steps { flex: none; }
+.pct { flex: none; color: var(--si-ai-ink); font: var(--si-font-label); font-weight: 600; }
 .gap { margin-left: 6px; }
 .body { flex: 1; min-height: 0; overflow-y: auto; }
-.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
-.reading { max-width: 900px; margin: 16px auto 0; }
+.bar-card { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 14px; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.bar-card .grow { flex: 1; }
+.bar-card .hint { margin: 0; }
+.fail { margin: 12px 0 0; color: var(--si-danger-ink); font: var(--si-font-caption); }
+.local-note { margin: 10px 0 0; }
+.reading { max-width: 1280px; margin: 16px auto 0; }
 .ready-hint { display: flex; align-items: center; gap: 6px; justify-content: center; margin: 32px 0; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
+@media (max-width: 1500px) { .steps :deep(.t) { display: none; } .steps :deep(.current .t) { display: inline; } }
 </style>

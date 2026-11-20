@@ -10,8 +10,14 @@ import { saveBlob } from '@/utils/save'
 import { useHotkeys } from '@/utils/hotkeys'
 import { groupSentences, stamp } from '@/utils/transcript'
 import SiIsland from '@/components/ui/SiIsland.vue'
-const props = defineProps<{ session: Session; file: SessionFile }>()
-const emit = defineEmits<{ refresh: []; confirm: [] }>()
+import SiSegmented from '@/components/ui/SiSegmented.vue'
+const props = defineProps<{ session: Session; file: SessionFile; tab?: 'tools' | 'minutes'; minutesCount?: number }>()
+const emit = defineEmits<{ refresh: []; confirm: []; 'update:tab': [value: 'tools' | 'minutes'] }>()
+// 右栏分两页：校对工具 / 会议纪要（澄明 8.6）；发言人圆标按编号取色
+const tabs = computed(() => [{ value: 'tools', label: '校对' }, { value: 'minutes', label: props.minutesCount ? `纪要 ${props.minutesCount}` : '纪要' }])
+const railTab = computed({ get: () => props.tab ?? 'tools', set: (v: string) => emit('update:tab', v as 'tools' | 'minutes') })
+const palette = (id: number | null | undefined) => `sp${Number(id ?? 0) % 6}`
+const initial = (id: number | null | undefined) => String.fromCharCode(65 + Number(id ?? 0) % 26)
 const nodes = ref<PreviewNode[]>([]), suggestions = ref<Suggestion[]>([]), error = ref(''), loading = ref(false), busy = ref(false)
 const names = ref<string[]>([...props.session.participants]), addedName = ref(''), speakers = ref<Record<string,string | null>>({ ...props.file.speakers })
 const readonly = computed(() => !!props.file.confirmed_at || props.session.original_deleted)
@@ -148,7 +154,7 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
       <div ref="paper" v-loading="loading && !nodes.length" class="si-paper transcript" @pointerdown="scrollbarPointer" @wheel.passive="following = false" @touchmove.passive="following = false" @keydown="['PageUp','PageDown','ArrowUp','ArrowDown','Home','End'].includes($event.key) && (following = false)">
         <p v-if="!loading && !nodes.length" class="hint">逐字稿暂无可显示的内容</p>
         <section v-for="para in paras" v-memo="[para, rev, activeIn(para), flashIn(para), readonly, editLoc, speakerEditLoc === para[0]!.loc, speakers]" :key="para[0]!.loc" :data-loc="para[0]!.loc" class="utterance" :class="{ current: !!activeIn(para) }">
-          <div class="meta"><span v-if="readonly">{{ speakers[String(para[0]!.speaker)] || `发言人 ${para[0]!.speaker}` }}</span><el-select v-else-if="speakerEditLoc === para[0]!.loc" :model-value="para[0]!.speaker" aria-label="发言人" @change="changeSpeaker(para, $event)" @visible-change="!$event && (speakerEditLoc = '')"><el-option v-for="id in speakerIds" :key="id" :value="Number(id)" :label="speakers[id] || `发言人 ${id}`" /></el-select><el-button v-else link class="who" :aria-label="`修改 ${stamp(para[0]!.t_start_ms ?? 0)} 起这一段的发言人`" @click="openSpeaker(para[0]!.loc)">{{ speakers[String(para[0]!.speaker)] || `发言人 ${para[0]!.speaker}` }}<Pencil :size="12" :stroke-width="1.75" class="pen" /></el-button><span class="num">{{ stamp(para[0]!.t_start_ms ?? 0) }}</span><el-button link :aria-label="`从 ${stamp(para[0]!.t_start_ms ?? 0)} 播放`" @click="playAt(para[0]!.t_start_ms ?? 0)">播放</el-button></div>
+          <div class="meta"><span class="chip" :class="palette(para[0]!.speaker)" aria-hidden="true">{{ initial(para[0]!.speaker) }}</span><span v-if="readonly">{{ speakers[String(para[0]!.speaker)] || `发言人 ${para[0]!.speaker}` }}</span><el-select v-else-if="speakerEditLoc === para[0]!.loc" :model-value="para[0]!.speaker" aria-label="发言人" @change="changeSpeaker(para, $event)" @visible-change="!$event && (speakerEditLoc = '')"><el-option v-for="id in speakerIds" :key="id" :value="Number(id)" :label="speakers[id] || `发言人 ${id}`" /></el-select><el-button v-else link class="who" :aria-label="`修改 ${stamp(para[0]!.t_start_ms ?? 0)} 起这一段的发言人`" @click="openSpeaker(para[0]!.loc)">{{ speakers[String(para[0]!.speaker)] || `发言人 ${para[0]!.speaker}` }}<Pencil :size="12" :stroke-width="1.75" class="pen" /></el-button><span class="num">{{ stamp(para[0]!.t_start_ms ?? 0) }}</span><el-button link :aria-label="`从 ${stamp(para[0]!.t_start_ms ?? 0)} 播放`" @click="playAt(para[0]!.t_start_ms ?? 0)">播放</el-button></div>
           <div class="words">
             <template v-for="node in para" :key="node.loc">
               <button v-for="m in markMap.get(node.loc) ?? []" :key="m" type="button" class="flag" :title="`录音时的标记 ${stamp(m)}，点击从这里播放`" @click="playAt(m)"><Flag :size="11" :stroke-width="1.75" />标记 <span class="num">{{ stamp(m) }}</span></button>
@@ -159,17 +165,26 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
         </section>
       </div>
       <aside class="rail">
+        <SiSegmented v-model="railTab" class="rail-tabs" ariaLabel="右栏" :options="tabs" />
+        <div v-show="railTab === 'minutes'" class="minutes-pane"><slot name="minutes" /></div>
+        <div v-show="railTab === 'tools'">
         <h3>参会人名单</h3><div class="names"><el-tag v-for="name in names" :key="name" :closable="!readonly && !busy" @close="setNames(names.filter(n => n !== name))">{{ name }}</el-tag></div><el-input v-if="!readonly" v-model="addedName" :disabled="busy" maxlength="40" placeholder="输入姓名后回车添加" aria-label="添加参会人" @keydown.enter.prevent="addName" /><p class="hint">名单中的名字会在整份逐字稿中替换为代号，并用于同音纠正</p>
         <h3>发言人</h3><div v-for="id in speakerIds" :key="id" class="speaker"><label>发言人 {{ id }} →</label><span v-if="readonly">{{ speakers[id] || `发言人 ${id}` }}</span><el-input v-else v-model="speakers[id]" :disabled="busy" maxlength="40" :aria-label="`发言人 ${id} 姓名`" list="meeting-participants" @blur="saveSpeaker(id)" @keydown.enter.prevent="saveSpeaker(id)" /></div><datalist id="meeting-participants"><option v-for="name in names" :key="name" :value="name" /></datalist>
         <template v-if="!readonly"><div class="heading"><h3>同音纠正建议 {{ suggestions.length }} 条</h3><el-button link :disabled="busy || !suggestions.length" @click="apply(suggestions)">全部采纳</el-button></div><p v-if="!suggestions.length" class="hint">没有同音纠正建议</p><div v-for="(hint,i) in suggestions" :key="i" class="suggestion"><el-button link @click="highlight(hint.loc)">{{ hint.from }} → {{ hint.to }} · {{ stamp(nodes.find(n => n.loc === hint.loc)?.t_start_ms ?? 0) }}</el-button><el-button link :disabled="busy" @click="apply([hint])">采纳</el-button></div></template>
-        <div class="exports"><el-button :disabled="busy" @click="download">逐字稿 Word</el-button><el-button v-if="!readonly" type="primary" :disabled="busy || pendingSaves > 0" @click="emit('confirm')">确认脱敏</el-button><slot name="actions" /></div>
+        <div class="exports"><el-button :disabled="busy" @click="download">逐字稿 Word</el-button><el-button v-if="!readonly" type="primary" :disabled="busy || pendingSaves > 0" @click="emit('confirm')">确认脱敏</el-button></div>
+        </div>
       </aside>
     </div>
   </div>
 </template>
 <style scoped>
 .editor { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.player { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.player { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.chip { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--sp, var(--si-m-meet)); color: var(--si-white); font: var(--si-font-badge); }
+.sp0 { --sp: var(--si-m-meet); } .sp1 { --sp: var(--si-m-trans); } .sp2 { --sp: var(--si-m-review); } .sp3 { --sp: var(--si-m-bid); } .sp4 { --sp: var(--si-ai); } .sp5 { --sp: var(--si-brand); }
+.rail-tabs { display: flex; width: 100%; margin: 4px 0 8px; }
+.rail-tabs :deep(.option) { flex: 1; }
+.minutes-pane { padding-top: 8px; }
 .player :deep(.el-slider) { flex: 1; min-width: 100px; }
 .player :deep(.el-select) { width: 80px; }
 .save { margin-left: auto; }
@@ -195,7 +210,7 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 .sent-edit { display: block; margin: 6px 0; }
 .flag { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px 0 0; padding: 0 6px; border: 1px solid var(--si-warn); border-radius: 999px; background: none; color: var(--si-warn-ink, var(--si-ink-2)); font: var(--si-font-caption); vertical-align: 1px; cursor: pointer; }
 .low { text-decoration: underline dashed 1px var(--si-warn); text-underline-offset: 4px; }
-.rail { overflow-y: auto; padding: 0 12px; }
+.rail { overflow-y: auto; padding: 12px 16px; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
 h3 { font: var(--si-font-h3); margin: 20px 0 8px; }
 .names,.speaker,.heading,.suggestion,.exports { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .speaker { margin-bottom: 8px; }
