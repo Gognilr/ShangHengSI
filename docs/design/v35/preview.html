@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商衡SI · 澄明设计原型</title>
+<link rel="stylesheet" href="../../../frontend/src/styles/fonts.css">
+<script src="icons.js"></script>
+<style>
+/* ===== 令牌：浅色（澄明 · V3.5 草案）===== */
+:root{
+  --canvas:#F3F6F9; --sunken:#EAEEF3; --surface:#FFFFFF; --surface-2:#F8FAFC; --hover:#F1F4F8; --select:#E8EEF5;
+  --line:#E1E6ED; --line-strong:#C9D2DD; --line-faint:#EDF1F5;
+  --t1:#0E1726; --t2:#334155; --t3:#5E6B7E; --t4:#94A0B2;
+  --brand-50:#EDFBF7; --brand-100:#D2F5EC; --brand-200:#A6EAD9; --brand-400:#33C0A6; --brand-500:#10A58C; --brand-600:#078A76; --brand-700:#066F60; --brand-800:#0A5950;
+  --brand:var(--brand-600); --brand-hover:var(--brand-700); --brand-soft:var(--brand-50); --brand-ink:#05695B;
+  --ai:#6D5BF6; --ai-soft:#F1EEFF; --ai-ink:#5240DD;
+  --danger:#E5484D; --danger-soft:#FFEEEF; --danger-ink:#C21F2E;
+  --warn:#F2A20C; --warn-soft:#FFF5DD; --warn-ink:#9A5600;
+  --ok:#1FA05A; --ok-soft:#E8F8EE; --ok-ink:#137A43;
+  --info:#1E95E0; --info-soft:#E9F5FD; --info-ink:#0B67A3;
+  --m-review:#10A58C; --m-review-soft:#E3F7F1;
+  --m-bid:#EE7A1E; --m-bid-soft:#FFF0E3;
+  --m-meet:#E14E86; --m-meet-soft:#FDEBF2;
+  --m-trans:#1E95E0; --m-trans-soft:#E6F3FC;
+  --k-org:#2563EB; --k-org-bg:#E9F0FF; --k-person:#7C3AED; --k-person-bg:#F2ECFF; --k-amount:#B45309; --k-amount-bg:#FFF4DC; --k-contact:#0E8BA8; --k-contact-bg:#E3F6FA;
+  --paper:#FFFFFF; --paper-ink:#1B2433;
+  --sh-1:0 1px 2px rgba(15,23,42,.04);
+  --sh-2:0 8px 20px -6px rgba(15,23,42,.12),0 2px 6px -2px rgba(15,23,42,.06);
+  --sh-3:0 22px 48px -12px rgba(15,23,42,.22),0 6px 14px -6px rgba(15,23,42,.10);
+  --sh-paper:0 1px 3px rgba(15,23,42,.06),0 12px 32px -12px rgba(15,23,42,.14);
+  --ring:0 0 0 3px rgba(16,165,140,.20);
+  --ease-out:cubic-bezier(.22,1,.36,1); --ease-spring:cubic-bezier(.34,1.56,.64,1); --ease-io:cubic-bezier(.65,0,.35,1);
+  --d1:120ms; --d2:200ms; --d3:320ms; --d4:520ms;
+  --thumb:#FFFFFF;
+  --font:"SI Sans","PingFang SC","Microsoft YaHei",sans-serif;
+}
+/* ===== 令牌：深色 ===== */
+html[data-theme="dark"]{
+  --canvas:#0B0F14; --sunken:#080B0F; --surface:#121820; --surface-2:#161D26; --hover:#1A222C; --select:#202A36;
+  --line:#222B36; --line-strong:#2F3A48; --line-faint:#1A212A;
+  --t1:#EDF1F6; --t2:#C6CFDA; --t3:#8E9AAB; --t4:#5E6A7B;
+  --brand-soft:rgba(51,192,166,.13); --brand-ink:#5ED6BF; --brand-200:#1F5E55;
+  --ai:#8B7CFF; --ai-soft:rgba(139,124,255,.15); --ai-ink:#B1A6FF;
+  --danger:#F2555A; --danger-soft:rgba(242,85,90,.14); --danger-ink:#FF8E92;
+  --warn:#F5B232; --warn-soft:rgba(245,178,50,.14); --warn-ink:#F7C766;
+  --ok:#35B873; --ok-soft:rgba(53,184,115,.14); --ok-ink:#6FD69C;
+  --info:#3AA7EC; --info-soft:rgba(58,167,236,.14); --info-ink:#7CC6F4;
+  --m-review-soft:rgba(16,165,140,.16); --m-bid-soft:rgba(238,122,30,.16); --m-meet-soft:rgba(225,78,134,.16); --m-trans-soft:rgba(30,149,224,.16);
+  --k-org:#7FA6FF; --k-org-bg:rgba(37,99,235,.20); --k-person:#B69BFF; --k-person-bg:rgba(124,58,237,.22); --k-amount:#F4C062; --k-amount-bg:rgba(180,83,9,.24); --k-contact:#5FCDE6; --k-contact-bg:rgba(14,139,168,.22);
+  --paper:#141B24; --paper-ink:#DCE3EB; --thumb:#2A3543;
+  --sh-1:0 1px 2px rgba(0,0,0,.3);
+  --sh-2:0 10px 24px -8px rgba(0,0,0,.55);
+  --sh-3:0 24px 56px -12px rgba(0,0,0,.7);
+  --sh-paper:0 0 0 1px #1E2732,0 16px 40px -14px rgba(0,0,0,.6);
+  --ring:0 0 0 3px rgba(51,192,166,.28);
+  color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font:400 14px/1.6 var(--font);color:var(--t2);background:var(--canvas);-webkit-font-smoothing:antialiased;font-feature-settings:"tnum";transition:background var(--d3),color var(--d3)}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+input,textarea{font:inherit;color:var(--t1)}
+svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+h1{font:600 24px/32px var(--font);color:var(--t1);letter-spacing:-.01em}
+h2{font:600 18px/26px var(--font);color:var(--t1)}
+h3{font:600 16px/24px var(--font);color:var(--t1)}
+.meta{font-size:13px;line-height:20px;color:var(--t3)}
+.cap{font:500 12px/16px var(--font);color:var(--t3)}
+.row{display:flex;align-items:center;gap:8px}
+.sp{flex:1}
+/* ===== 外壳 ===== */
+.app{display:grid;grid-template-columns:252px minmax(0,1fr);height:100vh}
+.side{background:var(--surface);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:16px 12px 12px;gap:4px;min-height:0;transition:background var(--d3)}
+.logo{display:flex;align-items:center;gap:10px;padding:4px 8px 14px}
+.mark{width:32px;height:32px;border-radius:10px;background:linear-gradient(140deg,var(--brand-400),var(--brand-700));display:grid;place-items:center;color:#fff;box-shadow:0 4px 12px -4px rgba(7,138,118,.6)}
+.mark svg{width:18px;height:18px;stroke-width:2}
+.logo b{font:600 17px/1 var(--font);color:var(--t1)}
+.logo small{font:600 11px/1 var(--font);color:var(--brand-ink);background:var(--brand-soft);padding:3px 6px;border-radius:6px;margin-left:2px}
+.newbtn{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:10px;background:var(--brand-soft);color:var(--brand-ink);font-weight:500;margin-bottom:8px;transition:transform var(--d1),background var(--d2)}
+.newbtn:hover{background:color-mix(in srgb,var(--brand-soft) 70%,var(--brand-200))}
+.newbtn:active{transform:scale(.98)}
+.newbtn kbd{margin-left:auto;font:500 11px/1 var(--font);color:var(--t4);border:1px solid var(--line);border-radius:5px;padding:3px 5px;background:var(--surface)}
+.grp{font:500 12px/16px var(--font);color:var(--t4);padding:14px 10px 6px}
+.nav{display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border-radius:9px;color:var(--t2);font-size:14px;position:relative;transition:background var(--d2),color var(--d2)}
+.nav:hover{background:var(--hover);color:var(--t1)}
+.nav svg{color:var(--t3);transition:color var(--d2),transform var(--d3) var(--ease-spring)}
+.nav:hover svg{transform:scale(1.08)}
+.nav.on{background:var(--select);color:var(--t1);font-weight:500}
+.nav.on svg{color:var(--c,var(--brand))}
+.nav .n{margin-left:auto;font:500 12px/1 var(--font);color:var(--t3);background:var(--hover);padding:3px 7px;border-radius:999px}
+.nav.on .n{background:var(--surface);color:var(--t2)}
+.recent{flex:1;min-height:0;overflow:auto;margin-top:4px}
+.ritem{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:8px;font-size:13px;color:var(--t2);white-space:nowrap;overflow:hidden}
+.ritem:hover{background:var(--hover)}
+.ritem i{width:7px;height:7px;border-radius:50%;flex:none}
+.ritem span{overflow:hidden;text-overflow:ellipsis}
+.acct{display:flex;align-items:center;gap:10px;padding:10px 8px 4px;border-top:1px solid var(--line-faint);margin-top:6px}
+.av{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--brand-400),var(--ai));color:#fff;display:grid;place-items:center;font:600 14px/1 var(--font);flex:none}
+.acct b{display:block;font:500 14px/18px var(--font);color:var(--t1)}
+.ibtn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--t3);transition:background var(--d2),color var(--d2),transform var(--d1)}
+.ibtn:hover{background:var(--hover);color:var(--t1)}
+.ibtn:active{transform:scale(.92)}
+.main{overflow:auto;min-width:0;position:relative;scroll-behavior:smooth}
+.page{max-width:1200px;margin:0 auto;padding:32px 40px 56px}
+.screen{display:none}
+.screen.on{display:block;animation:pageIn var(--d4) var(--ease-out) both}
+@keyframes pageIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.stg>*{animation:rise .6s var(--ease-out) both;animation-delay:calc(var(--i,0)*45ms + 60ms)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* ===== 通用组件 ===== */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-1);transition:transform var(--d3) var(--ease-out),box-shadow var(--d3) var(--ease-out),border-color var(--d2),background var(--d3)}
+.card.hv{cursor:pointer}
+.card.hv:hover{transform:translateY(-3px);box-shadow:var(--sh-2);border-color:var(--line-strong)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);color:var(--t1);font-weight:500;font-size:14px;white-space:nowrap;transition:background var(--d2),border-color var(--d2),transform var(--d1),box-shadow var(--d2)}
+.btn:hover{background:var(--hover)}
+.btn:active{transform:scale(.97)}
+.btn svg{width:16px;height:16px}
+.btn.pri{background:var(--brand);border-color:transparent;color:#fff;box-shadow:0 1px 2px rgba(7,138,118,.35),inset 0 1px 0 rgba(255,255,255,.14)}
+.btn.pri:hover{background:var(--brand-hover);box-shadow:0 6px 16px -6px rgba(7,138,118,.55)}
+.btn.gh{border-color:transparent;background:transparent;color:var(--t2)}
+.btn.gh:hover{background:var(--hover);color:var(--t1)}
+.btn.sm{height:30px;padding:0 10px;font-size:13px;border-radius:8px}
+.bd{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;font:500 12px/1 var(--font);white-space:nowrap;background:var(--hover);color:var(--t2)}
+.bd svg{width:13px;height:13px}
+.bd.danger{background:var(--danger-soft);color:var(--danger-ink)}
+.bd.warn{background:var(--warn-soft);color:var(--warn-ink)}
+.bd.ok{background:var(--ok-soft);color:var(--ok-ink)}
+.bd.info{background:var(--info-soft);color:var(--info-ink)}
+.bd.brand{background:var(--brand-soft);color:var(--brand-ink)}
+.bd.ai{background:var(--ai-soft);color:var(--ai-ink)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.live{position:relative}
+.live::after{content:"";position:absolute;inset:-4px;border-radius:50%;background:inherit;opacity:.35;animation:ping 1.6s var(--ease-out) infinite}
+@keyframes ping{from{transform:scale(.6);opacity:.45}to{transform:scale(1.8);opacity:0}}
+.seg{display:inline-flex;position:relative;padding:3px;border-radius:10px;background:var(--sunken);gap:2px}
+.seg button{position:relative;z-index:1;height:30px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:500;color:var(--t3);transition:color var(--d2);display:flex;align-items:center;gap:6px}
+.seg button.on{color:var(--t1)}
+.seg .thumb{position:absolute;top:3px;bottom:3px;border-radius:8px;background:var(--thumb);box-shadow:0 1px 3px rgba(15,23,42,.12);transition:left var(--d3) var(--ease-out),width var(--d3) var(--ease-out)}
+.seg .c{font:500 12px/1 var(--font);padding:2px 6px;border-radius:999px;background:var(--hover)}
+.inp{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);color:var(--t3);transition:border-color var(--d2),box-shadow var(--d2)}
+.inp:focus-within{border-color:var(--brand-400);box-shadow:var(--ring)}
+.inp input{border:0;outline:0;background:transparent;flex:1;font-size:14px;min-width:0}
+.bar{height:6px;border-radius:999px;background:var(--sunken);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:inherit;background:var(--brand-500);transition:width .9s var(--ease-out)}
+.bar.flow i{background:linear-gradient(90deg,var(--brand-500),var(--ai),var(--brand-500));background-size:200% 100%;animation:flow 1.8s linear infinite}
+@keyframes flow{to{background-position:-200% 0}}
+.tile-ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;flex:none;transition:transform var(--d3) var(--ease-spring)}
+.tile-ic svg{width:22px;height:22px}
+.card.hv:hover .tile-ic{transform:scale(1.08) rotate(-4deg)}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);opacity:0;background:var(--t1);color:var(--surface);padding:10px 16px;border-radius:12px;font-weight:500;display:flex;gap:8px;align-items:center;box-shadow:var(--sh-3);transition:all var(--d3) var(--ease-spring);pointer-events:none;z-index:50}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.toast svg{color:var(--brand-400)}
+/* ===== 工作台 ===== */
+.hello{display:flex;align-items:flex-end;justify-content:space-between;margin:8px 0 22px}
+.hello h1{font:600 30px/40px var(--font)}
+.hello p{font-size:15px;color:var(--t3);margin-top:6px}
+.composer{padding:18px 18px 14px;border-radius:18px;box-shadow:var(--sh-2)}
+.composer:focus-within{border-color:var(--brand-400);box-shadow:var(--sh-2),var(--ring)}
+.composer textarea{width:100%;border:0;outline:0;resize:none;background:transparent;font-size:16px;line-height:26px;min-height:52px}
+.composer textarea::placeholder{color:var(--t4)}
+.fchip{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 6px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);font-size:13px;color:var(--t1);margin-bottom:10px}
+.fchip .ficon{width:24px;height:24px;border-radius:6px;background:var(--danger-soft);color:var(--danger);display:grid;place-items:center}
+.fchip .ficon svg{width:14px;height:14px}
+.send{width:38px;height:38px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;box-shadow:0 4px 12px -4px rgba(7,138,118,.6);transition:transform var(--d2) var(--ease-spring),background var(--d2)}
+.send:hover{transform:translateY(-2px);background:var(--brand-hover)}
+.chips{display:flex;gap:8px;margin:14px 0 28px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:500;color:var(--t2);transition:all var(--d2)}
+.chip:hover{border-color:var(--brand-200);color:var(--brand-ink);background:var(--brand-soft);transform:translateY(-1px)}
+.chip svg{width:15px;height:15px}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:28px}
+.tile{padding:18px;display:flex;flex-direction:column;gap:12px;min-height:178px}
+.tile p{font-size:13.5px;color:var(--t3);line-height:21px;flex:1}
+.tile .bd{align-self:flex-start}
+.acct .meta{white-space:nowrap}
+.recent{scrollbar-width:none}
+.two{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);gap:16px}
+.chead{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line-faint)}
+.chead a{margin-left:auto;font-size:13px;color:var(--brand-ink);text-decoration:none;display:flex;align-items:center;gap:2px;font-weight:500}
+.lrow{display:flex;align-items:center;gap:14px;padding:12px 20px;transition:background var(--d2);cursor:pointer}
+.lrow+.lrow{border-top:1px solid var(--line-faint)}
+.lrow:hover{background:var(--surface-2)}
+.lic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex:none}
+.lic svg{width:18px;height:18px}
+.lrow b{display:block;font:500 14px/20px var(--font);color:var(--t1)}
+.stat{padding:20px}
+.big{font:600 40px/48px var(--font);color:var(--t1);letter-spacing:-.02em}
+.kv{display:flex;align-items:center;justify-content:space-between;padding:10px 0;font-size:14px}
+.kv+.kv{border-top:1px solid var(--line-faint)}
+.kv b{font-weight:600;color:var(--t1)}
+/* ===== 合同审核工作区 ===== */
+.ws{display:flex;flex-direction:column;height:100vh}
+.wtop{display:flex;align-items:center;gap:12px;height:64px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--line);flex:none}
+.wtop .title{font:600 16px/22px var(--font);color:var(--t1)}
+.steps{display:flex;align-items:center;gap:6px;margin:0 auto;padding:4px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line-faint)}
+.step{display:flex;align-items:center;gap:7px;height:30px;padding:0 10px;border-radius:8px;font-size:13px;color:var(--t4);font-weight:500;transition:all var(--d3)}
+.step .sc{width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center}
+.step .sc svg{width:11px;height:11px;stroke-width:3}
+.step.done{color:var(--brand-ink)}
+.step.done .sc{background:var(--brand-500);border-color:var(--brand-500);color:#fff}
+.step.act{color:var(--ai-ink);background:var(--ai-soft)}
+.step.act .sc{border-color:transparent;border-top-color:var(--ai);border-right-color:var(--ai);animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.step-sep{width:14px;height:1.5px;background:var(--line-strong);border-radius:2px}
+.wbody{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 460px}
+.docwrap{overflow:auto;background:var(--sunken);padding:28px 32px 48px}
+.paper{max-width:780px;margin:0 auto;background:var(--paper);color:var(--paper-ink);border-radius:6px;box-shadow:var(--sh-paper);padding:60px 72px 72px;font-size:15px;line-height:30px}
+.paper h4{font:600 20px/30px var(--font);text-align:center;margin-bottom:24px;color:var(--paper-ink)}
+.paper p{margin-bottom:12px;text-indent:2em}
+.ent{border-radius:5px;padding:1px 4px;font-weight:500;white-space:nowrap}
+.ent.org{background:var(--k-org-bg);color:var(--k-org)}
+.ent.per{background:var(--k-person-bg);color:var(--k-person)}
+.ent.amt{background:var(--k-amount-bg);color:var(--k-amount)}
+mark{background:none;color:inherit;border-radius:3px;padding:2px 0;cursor:pointer;transition:background var(--d2),box-shadow var(--d2)}
+mark.h{background:var(--danger-soft);box-shadow:inset 0 -2px 0 var(--danger)}
+mark.m{background:var(--warn-soft);box-shadow:inset 0 -2px 0 var(--warn)}
+mark.l{background:var(--info-soft);box-shadow:inset 0 -2px 0 var(--info)}
+mark.sel{animation:flash 1.2s var(--ease-out)}
+@keyframes flash{0%,40%{box-shadow:inset 0 -2px 0 var(--danger),0 0 0 4px rgba(229,72,77,.25)}100%{box-shadow:inset 0 -2px 0 var(--danger),0 0 0 0 rgba(229,72,77,0)}}
+.rail{background:var(--surface);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.rail-h{padding:18px 20px 14px;border-bottom:1px solid var(--line-faint)}
+.rail-b{flex:1;overflow:auto;padding:14px 16px 24px;display:flex;flex-direction:column;gap:12px}
+.issue{padding:16px;border-radius:14px;border:1px solid var(--line);background:var(--surface);cursor:pointer;transition:border-color var(--d2),box-shadow var(--d3),transform var(--d3) var(--ease-out)}
+.issue:hover{border-color:var(--line-strong);box-shadow:var(--sh-2)}
+.issue.on{border-color:var(--brand-400);box-shadow:var(--ring)}
+.issue.new{animation:pop .55s var(--ease-spring) both}
+@keyframes pop{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+.issue h5{font:600 15px/22px var(--font);color:var(--t1);margin:8px 0 4px}
+.issue .ex{font-size:14px;line-height:22px;color:var(--t2)}
+.sug{margin-top:12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line-faint);padding:10px 12px}
+.sug .t{font-size:14px;line-height:22px;color:var(--t1)}
+.acts{display:flex;gap:4px;margin-top:12px}
+.thinking{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:14px;border:1px dashed color-mix(in srgb,var(--ai) 45%,transparent);background:var(--ai-soft);color:var(--ai-ink);font-size:13px;font-weight:500}
+.dots{display:inline-flex;gap:4px}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--ai);animation:bob 1.2s var(--ease-io) infinite}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes bob{0%,80%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-5px);opacity:1}}
+/* ===== 标书 ===== */
+.crumb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--t3);margin-bottom:10px}
+.crumb svg{width:14px;height:14px}
+.phead{display:flex;align-items:flex-start;gap:16px;margin-bottom:24px}
+.chiprow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.sec{display:flex;align-items:center;gap:10px;margin:28px 0 14px}
+.sec h2{display:flex;align-items:center;gap:8px}
+.bidders{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.bcard{padding:16px;position:relative;overflow:hidden}
+.bcard.sev{border-color:color-mix(in srgb,var(--danger) 45%,var(--line))}
+.bcard.sev::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:var(--danger);border-radius:0}
+.bcard.act{box-shadow:var(--ring);border-color:var(--brand-400)}
+.code{width:28px;height:28px;border-radius:8px;background:var(--hover);color:var(--t1);font:600 13px/28px var(--font);text-align:center;flex:none}
+.price{font:600 20px/28px var(--font);color:var(--t1);margin-top:10px;letter-spacing:-.01em}
+.md{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:16px;margin-top:16px}
+.qhead{padding:14px 16px;border-bottom:1px solid var(--line-faint);display:flex;align-items:center;gap:8px}
+.qgrp{padding:14px 16px 6px;font:600 13px/18px var(--font);display:flex;align-items:center;gap:6px}
+.q{display:flex;gap:12px;padding:12px 16px;cursor:pointer;transition:background var(--d2);position:relative}
+.q:hover{background:var(--surface-2)}
+.q.on{background:var(--brand-soft)}
+.q.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--brand-500)}
+.q b{display:block;font:500 14px/21px var(--font);color:var(--t1)}
+.ev{padding:18px}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.pg{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface-2)}
+.pg-h{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line-faint);font-size:13px;color:var(--t2);background:var(--surface)}
+.pg-b{padding:16px;font-size:13.5px;line-height:24px;color:var(--t2);min-height:190px;background:var(--paper)}
+.hit{background:color-mix(in srgb,var(--warn) 28%,transparent);border-radius:3px;padding:1px 0;color:var(--t1)}
+/* ===== 历史 ===== */
+.tbar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse}
+th{font:500 13px/18px var(--font);color:var(--t3);text-align:left;padding:12px 16px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+td{padding:14px 16px;border-bottom:1px solid var(--line-faint);font-size:14px;color:var(--t2);vertical-align:middle}
+tbody tr{transition:background var(--d2);cursor:pointer}
+tbody tr:hover{background:var(--surface-2)}
+td b{display:block;font:500 14px/20px var(--font);color:var(--t1)}
+/* ===== 设置 ===== */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);position:relative;margin-bottom:24px}
+.tabs button{height:44px;padding:0 14px;font-size:14px;font-weight:500;color:var(--t3);transition:color var(--d2)}
+.tabs button.on{color:var(--t1)}
+.tabs .ul{position:absolute;bottom:-1px;height:2px;border-radius:2px;background:var(--brand-500);transition:left var(--d3) var(--ease-out),width var(--d3) var(--ease-out)}
+.scard{padding:24px;margin-bottom:16px}
+.scard h2{margin-bottom:4px}
+.opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px}
+.opt{border:1.5px solid var(--line);border-radius:14px;padding:10px;cursor:pointer;transition:border-color var(--d2),box-shadow var(--d2),transform var(--d2) var(--ease-out)}
+.opt:hover{transform:translateY(-2px)}
+.opt.on{border-color:var(--brand-500);box-shadow:var(--ring)}
+.mini{height:84px;border-radius:9px;display:grid;grid-template-columns:28% 1fr;overflow:hidden;border:1px solid var(--line-faint)}
+.mini .s{padding:8px 6px;display:flex;flex-direction:column;gap:5px}
+.mini .s i,.mini .c i{display:block;height:6px;border-radius:3px}
+.mini .c{padding:10px;display:flex;flex-direction:column;gap:6px}
+.opt .lb{display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:500;color:var(--t1);padding:0 4px}
+.radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line-strong);display:grid;place-items:center;transition:border-color var(--d2)}
+.opt.on .radio{border-color:var(--brand-500)}
+.opt.on .radio::after{content:"";width:9px;height:9px;border-radius:50%;background:var(--brand-500);animation:popin .3s var(--ease-spring)}
+@keyframes popin{from{transform:scale(0)}}
+.field{display:grid;grid-template-columns:140px minmax(0,360px);align-items:center;gap:16px;margin-top:14px}
+.field label{font-weight:500;color:var(--t1)}
+/* ===== 登录 ===== */
+.login{display:grid;grid-template-columns:1.1fr 1fr;height:100vh}
+.hero{position:relative;overflow:hidden;background:linear-gradient(150deg,#0A5950 0%,#078A76 45%,#3E62C9 100%);color:#fff;padding:56px;display:flex;flex-direction:column}
+.hero::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(circle at 70% 40%,#000 0,transparent 70%)}
+.orb{position:absolute;border-radius:50%;filter:blur(60px);opacity:.55;animation:drift 16s var(--ease-io) infinite alternate}
+@keyframes drift{to{transform:translate(40px,-30px) scale(1.12)}}
+.hero h2{font:600 34px/46px var(--font);color:#fff;margin-top:auto;position:relative;letter-spacing:-.01em}
+.hero p{font-size:16px;line-height:28px;opacity:.85;margin-top:14px;max-width:460px;position:relative}
+.feat{display:flex;gap:12px;margin-top:28px;position:relative;flex-wrap:wrap}
+.feat>span{display:flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);font-size:14px;backdrop-filter:blur(6px)}
+.lform{display:grid;place-items:center;background:var(--canvas)}
+.lcard{width:400px;padding:36px;border-radius:20px;box-shadow:var(--sh-3)}
+/* ===== 规范 ===== */
+.sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
+.sw div{border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.sw i{display:block;height:56px}
+.sw span{display:block;padding:8px 10px;font-size:12px;color:var(--t2);background:var(--surface)}
+.ts>div{display:flex;align-items:baseline;gap:20px;padding:12px 0;border-bottom:1px solid var(--line-faint)}
+.ts span.k{width:180px;font-size:13px;color:var(--t3);flex:none}
+.demo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.demo .card{padding:18px;min-height:140px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side">
+    <div class="logo"><div class="mark" data-i="scale"></div><b>商衡</b><small>SI</small></div>
+    <button class="newbtn"><span data-i="plus"></span>新建会话<kbd>Ctrl K</kbd></button>
+    <a class="nav on" data-go="home" style="--c:var(--brand-500)"><span data-i="layout-dashboard"></span>工作台</a>
+    <div class="grp">文件审查</div>
+    <a class="nav" data-go="review" style="--c:var(--m-review)"><span data-i="file-search"></span>文件审核<span class="n">14</span></a>
+    <a class="nav" data-go="bid" style="--c:var(--m-bid)"><span data-i="gavel"></span>标书初审<span class="n">2</span></a>
+    <div class="grp">工具</div>
+    <a class="nav" data-go="home" data-key="meet" style="--c:var(--m-meet)"><span data-i="mic"></span>会议纪要</a>
+    <a class="nav" data-go="home" data-key="trans" style="--c:var(--m-trans)"><span data-i="languages"></span>翻译</a>
+    <a class="nav" data-go="history" style="--c:var(--t1)"><span data-i="clock-fading"></span>历史记录</a>
+    <div class="grp">近期</div>
+    <div class="recent">
+      <div class="ritem"><i style="background:var(--m-review)"></i><span>设备采购合同（虚构）.pdf</span></div>
+      <div class="ritem"><i style="background:var(--m-bid)"></i><span>计量泵采购项目</span></div>
+      <div class="ritem"><i style="background:var(--m-review)"></i><span>年度维保服务协议.docx</span></div>
+      <div class="ritem"><i style="background:var(--m-meet)"></i><span>周例会 11-18</span></div>
+      <div class="ritem"><i style="background:var(--m-trans)"></i><span>Supply Agreement.docx</span></div>
+      <div class="ritem"><i style="background:var(--m-review)"></i><span>供货函（虚构）.docx</span></div>
+    </div>
+    <div class="grp">原型</div>
+    <a class="nav" data-go="login"><span data-i="key-round"></span>登录页</a>
+    <a class="nav" data-go="spec"><span data-i="palette"></span>设计规范</a>
+    <div class="acct">
+      <div class="av">王</div>
+      <div style="min-width:0"><b>王经理</b><span class="meta">采购部 · 管理员</span></div>
+      <span class="sp"></span>
+      <button class="ibtn" id="themeBtn" title="切换浅色 / 深色"><span data-i="moon"></span></button>
+      <button class="ibtn" data-go="settings" title="设置"><span data-i="settings"></span></button>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <!-- ===== 工作台 ===== -->
+    <section class="screen on" id="s-home"><div class="page stg">
+      <div class="hello" style="--i:0">
+        <div><h1>下午好，王经理</h1><p>把合同、标书或录音交给我。原件和真实名称只留在本机，发出去的只有脱敏后的文字。</p></div>
+        <span class="bd ok"><span class="dot live" style="background:var(--ok)"></span>本机服务正常</span>
+      </div>
+      <div class="card composer" style="--i:1">
+        <div class="fchip"><span class="ficon" data-i="file-text"></span>设备采购合同（虚构）.pdf<span class="meta">· 12 页 · 已脱敏 37 处</span><span data-i="x" style="color:var(--t4)"></span></div>
+        <textarea rows="2" placeholder="提个问题，或者说说要我怎么审，比如：站在采购方立场，重点看付款和违约条款"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn gh sm"><span data-i="paperclip"></span>添加文件</button>
+          <button class="btn gh sm"><span data-i="sparkles" style="color:var(--ai)"></span>DeepSeek<span data-i="chevron-down"></span></button>
+          <button class="btn gh sm"><span data-i="book-open"></span>参考历史合同</button>
+          <span class="sp"></span><span class="meta">Enter 发送</span>
+          <button class="send" title="发送"><span data-i="arrow-up"></span></button>
+        </div>
+      </div>
+      <div class="chips" style="--i:2">
+        <button class="chip"><span data-i="list-checks"></span>全面审核</button>
+        <button class="chip"><span data-i="file-text"></span>摘要</button>
+        <button class="chip"><span data-i="pen-line"></span>起草回复</button>
+        <button class="chip"><span data-i="receipt"></span>单证核对</button>
+        <button class="chip"><span data-i="arrow-left-right"></span>比价</button>
+      </div>
+      <div class="tiles" style="--i:3">
+        <div class="card hv tile" data-go="review"><div class="tile-ic" style="background:var(--m-review-soft);color:var(--m-review)" data-i="file-search"></div><h3>文件审核</h3><p>合同、报价单、函件逐条初审，问题标在原文上，建议条文一键复制。</p><span class="bd warn">14 条待处理</span></div>
+        <div class="card hv tile" data-go="bid"><div class="tile-ic" style="background:var(--m-bid-soft);color:var(--m-bid)" data-i="gavel"></div><h3>标书初审</h3><p>开标时几分钟找出否决类硬伤与串标线索，点一下就到原件页。</p><span class="bd">2 个项目进行中</span></div>
+        <div class="card hv tile"><div class="tile-ic" style="background:var(--m-meet-soft);color:var(--m-meet)" data-i="mic"></div><h3>会议纪要</h3><p>录音在本机转写，整理成议题、决议与待办，按发言人分段。</p><span class="bd brand"><span data-i="lock"></span>录音不出本机</span></div>
+        <div class="card hv tile"><div class="tile-ic" style="background:var(--m-trans-soft);color:var(--m-trans)" data-i="languages"></div><h3>翻译</h3><p>整份文件分段翻译，译文与原文逐段对照，可导出 Word。</p><span class="bd brand"><span data-i="lock"></span>本地模型</span></div>
+      </div>
+      <div class="two" style="--i:4">
+        <div class="card">
+          <div class="chead"><h3>继续上次的工作</h3><a data-go="history">全部历史<span data-i="chevron-right"></span></a></div>
+          <div class="lrow" data-go="review"><div class="lic" style="background:var(--m-review-soft);color:var(--m-review)" data-i="file-search"></div><div class="sp"><b>设备采购合同（虚构）.pdf</b><span class="meta">文件审核 · 采购立场 · 第 1 轮</span></div><span class="bd danger">高 3</span><span class="bd warn">中 4</span><span class="meta" style="width:72px;text-align:right">14:06</span></div>
+          <div class="lrow" data-go="bid"><div class="lic" style="background:var(--m-bid-soft);color:var(--m-bid)" data-i="gavel"></div><div class="sp"><b>计量泵采购项目（虚构）</b><span class="meta">标书初审 · 4 家投标人 · 开标 11-20</span></div><span class="bd danger">严重 4</span><span class="meta" style="width:72px;text-align:right">11:33</span></div>
+          <div class="lrow"><div class="lic" style="background:var(--m-meet-soft);color:var(--m-meet)" data-i="mic"></div><div class="sp"><b>周例会 11-18</b><span class="meta">会议纪要 · 52 分钟 · 4 位发言人</span></div><span class="bd ok"><span data-i="check"></span>已整理</span><span class="meta" style="width:72px;text-align:right">昨天</span></div>
+          <div class="lrow"><div class="lic" style="background:var(--m-trans-soft);color:var(--m-trans)" data-i="languages"></div><div class="sp"><b>Supply Agreement.docx</b><span class="meta">翻译 · 英译中 · 38 段</span></div><span class="bd info"><span class="dot live" style="background:var(--info)"></span>翻译中 62%</span><span class="meta" style="width:72px;text-align:right">昨天</span></div>
+        </div>
+        <div class="card stat">
+          <div class="row"><span data-i="shield-check" style="color:var(--brand-500)"></span><h3>本月本机保护</h3></div>
+          <div class="big" style="margin-top:14px" data-count="1284">0</div>
+          <div class="meta">处名称、金额与联系方式没有离开本机</div>
+          <div style="margin-top:18px">
+            <div class="kv"><span>审核文件</span><b data-count="23">0</b></div>
+            <div class="kv"><span>出口复检拦截</span><b data-count="3">0</b></div>
+            <div class="kv" style="display:block"><div class="row"><span>模型调用</span><span class="sp"></span><b>46 / 500</b></div><div class="bar" style="margin-top:8px"><i data-w="9.2%" style="width:0"></i></div></div>
+          </div>
+        </div>
+      </div>
+    </div></section>
+
+    <!-- ===== 合同审核 ===== -->
+    <section class="screen" id="s-review"><div class="ws">
+      <div class="wtop">
+        <button class="ibtn" data-go="home"><span data-i="chevron-left"></span></button>
+        <div><div class="title">设备采购合同（虚构）.pdf</div><div class="row" style="gap:6px"><span class="meta">合同 · 采购立场 · 第 1 轮</span></div></div>
+        <div class="steps" id="steps">
+          <div class="step done"><span class="sc" data-i="check"></span>本地识别 37 处</div><span class="step-sep"></span>
+          <div class="step done"><span class="sc" data-i="check"></span>出口复检</div><span class="step-sep"></span>
+          <div class="step act" id="stepAi"><span class="sc"></span><span id="stepAiT">模型审核 · 已出 0 条</span></div><span class="step-sep"></span>
+          <div class="step" id="stepRestore"><span class="sc"></span>本地还原</div>
+        </div>
+        <button class="btn gh" id="replay"><span data-i="refresh-cw"></span>重放</button>
+        <button class="btn gh"><span data-i="message-square"></span>追问</button>
+        <button class="btn pri"><span data-i="download"></span>导出<span data-i="chevron-down"></span></button>
+      </div>
+      <div class="wbody">
+        <div class="docwrap" id="docwrap"><div class="paper">
+          <h4>设备采购合同</h4>
+          <p>买受人：<span class="ent org">北辰示例新材料股份有限公司</span>（以下简称“买受人”）</p>
+          <p>出卖人：<span class="ent org">海川示例机械有限公司</span>（以下简称“出卖人”）</p>
+          <p>第一条 标的物：隔膜式计量泵 24 台，规格型号与技术参数见附件一。合同总价为人民币 <span class="ent amt">叁拾贰万零贰佰元整</span>（含 13% 增值税）。</p>
+          <p>第二条 交货：出卖人应于合同生效后 30 日内将货物送至买受人指定地点，<mark class="l" data-q="4">交货地点由买受人另行书面通知</mark>。</p>
+          <p>第三条 付款：<mark class="h" data-q="1">买受人在货物到达后一次性支付全部货款</mark>，出卖人应在付款前开具全额增值税专用发票。</p>
+          <p>第四条 验收：<mark class="m" data-q="3">买受人应在货物到达后 3 日内完成验收</mark>，逾期未提出书面异议的视为验收合格。</p>
+          <p>第五条 质量保证：质保期自验收合格之日起 12 个月。质保期内出现质量问题，出卖人在收到通知后 6 小时内响应。</p>
+          <p>第六条 违约责任：<mark class="h" data-q="2">买受人逾期付款的，每日按未付金额的 1% 支付违约金</mark>；出卖人逾期交货的，每日按合同总价的 0.05% 支付违约金。</p>
+          <p>第七条 争议解决：<mark class="m" data-q="5">因本合同发生争议，提交出卖人所在地人民法院诉讼解决</mark>。</p>
+          <p>第八条 其他：本合同一式两份，自双方签字盖章之日起生效。联系人：<span class="ent per">李示例</span>。</p>
+        </div></div>
+        <aside class="rail">
+          <div class="rail-h">
+            <div class="row"><h2>审核意见</h2><span class="bd ai"><span data-i="sparkles"></span>DeepSeek</span><span class="sp"></span><span class="meta">已在本机还原</span></div>
+            <div class="seg" id="sevSeg" style="margin-top:12px">
+              <span class="thumb"></span>
+              <button class="on" data-f="all">全部 <span class="c" id="cAll">0</span></button>
+              <button data-f="h"><span class="dot" style="background:var(--danger)"></span>高 <span class="c" id="cH">0</span></button>
+              <button data-f="m"><span class="dot" style="background:var(--warn)"></span>中 <span class="c" id="cM">0</span></button>
+              <button data-f="l"><span class="dot" style="background:var(--info)"></span>低 <span class="c" id="cL">0</span></button>
+            </div>
+          </div>
+          <div class="rail-b" id="issues"></div>
+        </aside>
+      </div>
+    </div></section>
+
+    <!-- ===== 标书初审 ===== -->
+    <section class="screen" id="s-bid"><div class="page stg">
+      <div style="--i:0">
+        <div class="crumb"><span data-i="gavel" style="color:var(--m-bid)"></span>标书初审<span data-i="chevron-right"></span>工程类</div>
+        <div class="phead">
+          <div class="sp"><h1>计量泵采购项目（虚构）</h1>
+            <div class="chiprow"><span class="bd"><span data-i="calendar"></span>开标 11-20 14:30</span><span class="bd"><span data-i="users"></span>4 家投标人</span><span class="bd ok"><span data-i="check"></span>检查完成 · 用时 2 分 40 秒</span><span class="bd brand"><span data-i="lock"></span>只做本机检查</span></div>
+          </div>
+          <button class="btn"><span data-i="refresh-cw"></span>重新检查</button>
+          <button class="btn pri"><span data-i="download"></span>导出问题清单</button>
+        </div>
+      </div>
+      <div class="bidders" style="--i:1" id="bidders">
+        <div class="card hv bcard sev" data-b="A"><div class="row"><span class="code">A</span><b style="color:var(--t1);font-weight:600">甲泵业</b><span class="sp"></span><span class="bd danger">严重 2</span></div><div class="price">¥320,200</div><div class="meta">唱标价 · 4 份文件 · 76 页 · 提示 3</div></div>
+        <div class="card hv bcard" data-b="B"><div class="row"><span class="code">B</span><b style="color:var(--t1);font-weight:600">乙流体</b><span class="sp"></span><span class="bd ok">无严重问题</span></div><div class="price">¥399,800</div><div class="meta">唱标价 · 3 份文件 · 212 页 · 提示 1</div></div>
+        <div class="card hv bcard sev" data-b="C"><div class="row"><span class="code">C</span><b style="color:var(--t1);font-weight:600">丙机械</b><span class="sp"></span><span class="bd danger">严重 2</span></div><div class="price">¥516,100</div><div class="meta">唱标价 · 5 份文件 · 98 页 · 提示 2</div></div>
+        <div class="card hv bcard sev" data-b="D"><div class="row"><span class="code">D</span><b style="color:var(--t1);font-weight:600">丁制造</b><span class="sp"></span><span class="bd danger">严重 1</span></div><div class="price">¥611,900</div><div class="meta">唱标价 · 3 份文件 · 233 页 · 提示 0</div></div>
+      </div>
+      <div class="md" style="--i:2">
+        <div class="card" style="overflow:hidden">
+          <div class="qhead"><h3>问题清单</h3><span class="sp"></span><span class="meta" id="bidFilterT">全部投标人</span></div>
+          <div class="qgrp" style="color:var(--danger-ink)"><span data-i="octagon-alert"></span>严重问题 · 5</div>
+          <div id="qlist"></div>
+          <div class="qgrp" style="color:var(--t3);border-top:1px solid var(--line-faint);margin-top:6px;padding-bottom:14px;cursor:pointer"><span data-i="chevron-right"></span>提示 6 条（默认收起）</div>
+        </div>
+        <div class="card ev" id="evidence"></div>
+      </div>
+    </div></section>
+
+    <!-- ===== 历史记录 ===== -->
+    <section class="screen" id="s-history"><div class="page stg">
+      <div class="phead" style="--i:0"><div class="sp"><h1>历史记录</h1><p class="meta" style="margin-top:6px;font-size:14px">共 14 条 · 只有你自己能看到</p></div></div>
+      <div class="tbar" style="--i:1">
+        <div class="seg" id="hSeg"><span class="thumb"></span><button class="on">全部</button><button>文件审核</button><button>标书初审</button><button>会议纪要</button><button>翻译</button><button>对话</button></div>
+        <span class="sp"></span>
+        <div class="inp" style="width:280px"><span data-i="search"></span><input placeholder="搜索文件名或内容"></div>
+      </div>
+      <div class="card" style="overflow:hidden;--i:2">
+        <table>
+          <thead><tr><th>名称</th><th style="width:150px">状态</th><th style="width:150px">问题</th><th style="width:140px">最近活动</th><th style="width:120px">保留至</th><th style="width:48px"></th></tr></thead>
+          <tbody>
+            <tr data-go="review"><td><div class="row" style="gap:12px"><div class="lic" style="background:var(--m-review-soft);color:var(--m-review)" data-i="file-search"></div><div><b>设备采购合同（虚构）.pdf</b><span class="meta">文件审核 · 采购立场</span></div></div></td><td><span class="bd ok"><span data-i="check"></span>已审核 1 轮</span></td><td><span class="bd danger">高 3</span> <span class="bd warn">中 4</span></td><td class="meta">今天 14:06</td><td class="meta">2027-11-20</td><td><button class="ibtn"><span data-i="ellipsis"></span></button></td></tr>
+            <tr data-go="bid"><td><div class="row" style="gap:12px"><div class="lic" style="background:var(--m-bid-soft);color:var(--m-bid)" data-i="gavel"></div><div><b>计量泵采购项目（虚构）</b><span class="meta">标书初审 · 4 家 · 23 份文件</span></div></div></td><td><span class="bd ok"><span data-i="check"></span>检查完成</span></td><td><span class="bd danger">严重 5</span></td><td class="meta">今天 11:33</td><td class="meta">2027-11-20</td><td><button class="ibtn"><span data-i="ellipsis"></span></button></td></tr>
+            <tr><td><div class="row" style="gap:12px"><div class="lic" style="background:var(--m-review-soft);color:var(--m-review)" data-i="file-search"></div><div><b>光伏发电合同扫描件.pdf</b><span class="meta">文件审核 · 8 页扫描件</span></div></div></td><td><span class="bd warn"><span data-i="circle-alert"></span>待确认脱敏</span></td><td class="meta">—</td><td class="meta">今天 10:36</td><td class="meta">2026-12-20</td><td><button class="ibtn"><span data-i="ellipsis"></span></button></td></tr>
+            <tr><td><div class="row" style="gap:12px"><div class="lic" style="background:var(--m-meet-soft);color:var(--m-meet)" data-i="mic"></div><div><b>周例会 11-18</b><span class="meta">会议纪要 · 52 分钟</span></div></div></td><td><span class="bd ok"><span data-i="check"></span>已整理</span></td><td class="meta">待办 6</td><td class="meta">昨天 17:40</td><td class="meta">2026-12-19</td><td><button class="ibtn"><span data-i="ellipsis"></span></button></td></tr>
+            <tr><td><div class="row" style="gap:12px"><div class="lic" style="background:var(--m-trans-soft);color:var(--m-trans)" data-i="languages"></div><div><b>Supply Agreement.docx</b><span class="meta">翻译 · 英译中</span></div></div></td><td><span class="bd info"><span class="dot live" style="background:var(--info)"></span>翻译中 62%</span></td><td class="meta">—</td><td class="meta">昨天 15:12</td><td class="meta">2026-12-19</td><td><button class="ibtn"><span data-i="ellipsis"></span></button></td></tr>
+            <tr><td><div class="row" style="gap:12px"><div class="lic" style="background:var(--hover);color:var(--t2)" data-i="message-square"></div><div><b>工业品模板.pdf</b><span class="meta">对话 · 1 份文件</span></div></div></td><td><span class="bd">对话</span></td><td class="meta">—</td><td class="meta">今天 10:27</td><td class="meta">—</td><td><button class="ibtn"><span data-i="ellipsis"></span></button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div></section>
+
+    <!-- ===== 设置 ===== -->
+    <section class="screen" id="s-settings"><div class="page stg" style="max-width:1000px">
+      <div style="--i:0"><h1>设置</h1><p class="meta" style="margin-top:6px;font-size:14px">个人偏好对所有人可见；管理分页按你的权限显示</p></div>
+      <div class="tabs" id="tabs" style="--i:1;margin-top:20px"><span class="ul"></span><button class="on">个人</button><button>账号与角色</button><button>模型</button><button>审核要求</button><button>脱敏</button><button>法规与范本</button><button>数据</button></div>
+      <div class="card scard" style="--i:2">
+        <h2>外观</h2><p class="meta">深色在晚上阅读长文件更舒服；跟随系统会在傍晚自动切换。</p>
+        <div class="opts" id="themeOpts">
+          <div class="opt on" data-t="light"><div class="mini" style="background:#F3F6F9"><div class="s" style="background:#fff"><i style="background:#D2F5EC;width:80%"></i><i style="background:#E1E6ED"></i><i style="background:#E1E6ED;width:70%"></i></div><div class="c"><i style="background:#0E1726;width:50%"></i><i style="background:#fff;height:30px;border:1px solid #E1E6ED"></i><i style="background:#078A76;width:30%"></i></div></div><div class="lb"><span class="radio"></span>浅色</div></div>
+          <div class="opt" data-t="dark"><div class="mini" style="background:#0B0F14"><div class="s" style="background:#121820"><i style="background:#1F5E55;width:80%"></i><i style="background:#222B36"></i><i style="background:#222B36;width:70%"></i></div><div class="c"><i style="background:#EDF1F6;width:50%"></i><i style="background:#121820;height:30px;border:1px solid #222B36"></i><i style="background:#10A58C;width:30%"></i></div></div><div class="lb"><span class="radio"></span>深色</div></div>
+          <div class="opt" data-t="light"><div class="mini" style="background:linear-gradient(90deg,#F3F6F9 50%,#0B0F14 50%)"><div class="s" style="background:#fff"><i style="background:#D2F5EC;width:80%"></i><i style="background:#E1E6ED"></i></div><div class="c"><i style="background:#94A0B2;width:50%"></i><i style="background:transparent;height:30px;border:1px solid #5E6A7B"></i></div></div><div class="lb"><span class="radio"></span>跟随系统</div></div>
+        </div>
+        <div class="field" style="margin-top:24px"><label>字号</label><div class="seg" id="fsSeg"><span class="thumb"></span><button class="on">标准</button><button>较大</button><button>特大</button></div></div>
+        <div class="field"><label>动效</label><div class="seg" id="mSeg"><span class="thumb"></span><button class="on">完整</button><button>适中</button><button>最少</button></div></div>
+      </div>
+      <div class="card scard" style="--i:3">
+        <h2>修改密码</h2><p class="meta">至少 10 位，包含字母和数字。修改后其他设备需要重新登录。</p>
+        <div class="field"><label>当前密码</label><div class="inp"><span data-i="lock"></span><input type="password" value="••••••••"></div></div>
+        <div class="field"><label>新密码</label><div class="inp"><span data-i="key-round"></span><input type="password" placeholder="输入新密码"></div></div>
+        <div class="field"><label></label><div><button class="btn pri">保存新密码</button></div></div>
+      </div>
+    </div></section>
+
+    <!-- ===== 设计规范 ===== -->
+    <section class="screen" id="s-spec"><div class="page stg">
+      <div style="--i:0"><h1>澄明 · 设计规范速览</h1><p class="meta" style="margin-top:6px;font-size:14px">层次清楚、颜色有用意、字够大、动起来有分寸</p></div>
+      <div class="sec" style="--i:1"><h2>色彩</h2></div>
+      <div class="sw" style="--i:2" id="swatches"></div>
+      <div class="sec" style="--i:3"><h2>字号阶梯</h2></div>
+      <div class="card ts" style="padding:4px 24px;--i:4">
+        <div><span class="k">展示 30 / 40 · 600</span><span style="font:600 30px/40px var(--font);color:var(--t1)">下午好，王经理</span></div>
+        <div><span class="k">页标题 24 / 32 · 600</span><span style="font:600 24px/32px var(--font);color:var(--t1)">计量泵采购项目</span></div>
+        <div><span class="k">区块 18 / 26 · 600</span><span style="font:600 18px/26px var(--font);color:var(--t1)">审核意见</span></div>
+        <div><span class="k">卡片 16 / 24 · 600</span><span style="font:600 16px/24px var(--font);color:var(--t1)">违约金比例明显偏高</span></div>
+        <div><span class="k">阅读 15 / 30 · 400</span><span style="font:400 15px/30px var(--font);color:var(--t1)">买受人逾期付款的，每日按未付金额的万分之五支付违约金。</span></div>
+        <div><span class="k">正文 14 / 22 · 400</span><span style="font-size:14px;color:var(--t2)">界面默认字号，按钮、表格、说明都用它</span></div>
+        <div><span class="k">辅助 13 / 20 · 400</span><span class="meta">只用于时间、来源、次要说明</span></div>
+        <div style="border:0"><span class="k">标签 12 / 16 · 500</span><span class="bd danger">只用于徽标与计数</span></div>
+      </div>
+      <div class="sec" style="--i:5"><h2>组件</h2></div>
+      <div class="card" style="padding:24px;--i:6">
+        <div class="row" style="flex-wrap:wrap;gap:10px"><button class="btn pri"><span data-i="sparkles"></span>主要操作</button><button class="btn">次要操作</button><button class="btn gh">文字按钮</button><button class="btn sm">小按钮</button><span class="bd danger">高</span><span class="bd warn">中</span><span class="bd info">低</span><span class="bd ok">已完成</span><span class="bd ai">模型</span><span class="bd brand">本机</span></div>
+        <div class="row" style="gap:16px;margin-top:20px"><div class="inp" style="width:280px"><span data-i="search"></span><input placeholder="输入框获得焦点时有青色光圈"></div><div class="seg" id="demoSeg"><span class="thumb"></span><button class="on">滑块</button><button>跟随</button><button>选中</button></div></div>
+        <div style="margin-top:20px;max-width:420px"><div class="row"><span class="meta">处理中的进度条（青到紫流动）</span></div><div class="bar flow" style="margin-top:8px"><i style="width:64%"></i></div></div>
+      </div>
+      <div class="sec" style="--i:7"><h2>动效（点卡片重放）</h2></div>
+      <div class="demo" style="--i:8">
+        <div class="card hv" onclick="replayEl(this.querySelector('.d1'))"><b style="color:var(--t1)">列表依次浮现</b><p class="meta">每项晚 45ms，上浮 14px</p><div class="d1 stg" style="margin-top:10px;display:grid;gap:6px"><i style="--i:0;height:8px;border-radius:4px;background:var(--brand-200);display:block"></i><i style="--i:1;height:8px;border-radius:4px;background:var(--brand-200);display:block;width:80%"></i><i style="--i:2;height:8px;border-radius:4px;background:var(--brand-200);display:block;width:60%"></i></div></div>
+        <div class="card hv" onclick="replayEl(this.querySelector('.d2'))"><b style="color:var(--t1)">新问题弹入</b><p class="meta">弹性曲线，轻微过冲</p><div class="d2 issue new" style="margin-top:10px;padding:10px"><span class="bd danger">高</span> <span style="font-size:13px">付款条件不利</span></div></div>
+        <div class="card hv" onclick="replayEl(this.querySelector('.big'))"><b style="color:var(--t1)">数字滚动</b><p class="meta">统计数字从 0 增长到目标</p><div class="big" data-count="1284" style="font-size:30px">0</div></div>
+      </div>
+    </div></section>
+
+    <!-- ===== 登录 ===== -->
+    <section class="screen" id="s-login" style="position:fixed;inset:0;z-index:20;background:var(--canvas)"><div class="login">
+      <div class="hero">
+        <span class="orb" style="width:380px;height:380px;background:#33C0A6;left:-80px;top:-60px"></span>
+        <span class="orb" style="width:420px;height:420px;background:#6D5BF6;right:-120px;bottom:-80px;animation-delay:-6s"></span>
+        <div class="logo" style="position:relative;padding:0"><div class="mark" style="background:rgba(255,255,255,.16);box-shadow:none" data-i="scale"></div><b style="color:#fff">商衡</b><small style="background:rgba(255,255,255,.16);color:#fff">SI</small></div>
+        <h2>商务文件的安全初审助手</h2>
+        <p>上传合同、标书或录音，系统先在本机脱敏，再交给大模型初审，最后在本机还原成真实名称。</p>
+        <div class="feat"><span><span data-i="shield-check"></span>原件不出内网</span><span><span data-i="scan-text"></span>扫描件也能识别</span><span><span data-i="zap"></span>几分钟出问题清单</span></div>
+      </div>
+      <div class="lform"><div class="card lcard">
+        <h1>登录</h1><p class="meta" style="margin:6px 0 24px;font-size:14px">使用公司分配的账号</p>
+        <div class="inp"><span data-i="user-round"></span><input placeholder="账号" value="wangjl"></div>
+        <div class="inp" style="margin-top:12px"><span data-i="lock"></span><input type="password" placeholder="密码"><span data-i="eye-off"></span></div>
+        <button class="btn pri" style="width:100%;justify-content:center;height:42px;margin-top:20px;font-size:15px" data-go="home">登录</button>
+        <p class="meta" style="text-align:center;margin-top:20px">商衡SI V3.5.0 · 仅限公司内网使用</p>
+      </div></div>
+    </div></section>
+  </main>
+</div>
+<div class="toast" id="toast"><span data-i="circle-check"></span><span id="toastT">已复制建议条文</span></div>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+function ic(n){const d=(window.ICONS||{})[n];if(!d)return'';return'<svg class="i" viewBox="0 0 24 24">'+d.map(([t,a])=>'<'+t+' '+Object.entries(a).map(([k,v])=>k+'="'+v+'"').join(' ')+'/>').join('')+'</svg>'}
+function paintIcons(r=document){$$('[data-i]',r).forEach(e=>{if(!e.dataset.done){e.insertAdjacentHTML('afterbegin',ic(e.dataset.i));e.dataset.done=1}})}
+paintIcons();
+function toast(t){$('#toastT').textContent=t;const e=$('#toast');e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),1800)}
+function seg(el,cb){const th=$('.thumb',el),bs=$$('button',el);const mv=b=>{th.style.left=b.offsetLeft+'px';th.style.width=b.offsetWidth+'px'};bs.forEach(b=>b.onclick=()=>{bs.forEach(x=>x.classList.remove('on'));b.classList.add('on');mv(b);cb&&cb(b)});requestAnimationFrame(()=>mv($('button.on',el)||bs[0]));el._mv=()=>mv($('button.on',el)||bs[0])}
+function countUp(r){$$('[data-count]',r).forEach(e=>{const to=+e.dataset.count,t0=performance.now(),d=1100;const f=t=>{const p=Math.min(1,(t-t0)/d),v=Math.round(to*(1-Math.pow(1-p,4)));e.textContent=v.toLocaleString('zh-CN');if(p<1)requestAnimationFrame(f)};requestAnimationFrame(f)});$$('[data-w]',r).forEach(e=>{e.style.width='0';setTimeout(()=>e.style.width=e.dataset.w,120)})}
+function replayEl(e){if(!e)return;if(e.dataset.count!==undefined)return countUp(e.parentNode);e.style.animation='none';$$('*',e).forEach(c=>c.style.animation='none');void e.offsetWidth;e.style.animation='';$$('*',e).forEach(c=>c.style.animation='')}
+/* 导航 */
+function go(id){$$('.screen').forEach(s=>s.classList.remove('on'));const s=$('#s-'+id);s.classList.add('on');$$('.nav').forEach(n=>n.classList.toggle("on",(n.dataset.key||n.dataset.go)===id&&!n.closest(".acct")));if(id==='home'||id==='spec')countUp(s);if(id==='review'&&!window._played)playReview();$$('.seg',s).forEach(x=>x._mv&&x._mv());if(id==='settings')requestAnimationFrame(moveUl);$('#main').scrollTop=0}
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g){e.preventDefault();go(g.dataset.go)}});
+$('#themeBtn').onclick=()=>{const h=document.documentElement,d=h.dataset.theme==='dark';h.dataset.theme=d?'light':'dark';$('#themeBtn').innerHTML=ic(d?'moon':'sun');$$('#themeOpts .opt').forEach((o,i)=>o.classList.toggle('on',i===(d?0:1)))};
+$$('#themeOpts .opt').forEach(o=>o.onclick=()=>{$$('#themeOpts .opt').forEach(x=>x.classList.remove('on'));o.classList.add('on');document.documentElement.dataset.theme=o.dataset.t;$('#themeBtn').innerHTML=ic(o.dataset.t==='dark'?'sun':'moon')});
+['#hSeg','#fsSeg','#mSeg','#demoSeg'].forEach(s=>seg($(s)));
+/* 设置页签下划线 */
+function moveUl(){const b=$('#tabs button.on'),u=$('#tabs .ul');u.style.left=b.offsetLeft+'px';u.style.width=b.offsetWidth+'px'}
+$$('#tabs button').forEach(b=>b.onclick=()=>{$$('#tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');moveUl()});
+/* 合同审核：流式出问题 */
+const ISS=[
+ {q:1,s:'h',cat:'付款风险',loc:'第三条',t:'到货即付全款，缺少验收后付款的保障',ex:'采购方在验收前就付清全款，出现质量问题时失去最有效的制约手段。',sug:'买受人在货物验收合格并收到合规发票后 30 日内支付合同总价的 90%，余款 10% 作为质保金于质保期满后无息支付。'},
+ {q:2,s:'h',cat:'违约责任',loc:'第六条',t:'违约金比例明显偏高且双方不对等',ex:'买受人逾期付款按日 1% 计，折合年化约 365%；出卖人逾期交货仅按日 0.05%，双方责任明显失衡。',sug:'买受人逾期付款的，每日按未付金额的万分之五支付违约金，累计不超过未付金额的 10%。'},
+ {q:3,s:'m',cat:'验收',loc:'第四条',t:'验收期限过短，逾期视为合格对采购方不利',ex:'24 台计量泵 3 日内难以完成安装调试与性能验证，“逾期视为合格”会让问题设备被默认接收。',sug:'买受人应在货物到达并安装调试完成后 15 个工作日内组织验收，验收标准以附件一技术参数为准。'},
+ {q:5,s:'m',cat:'争议解决',loc:'第七条',t:'约定由对方所在地法院管辖',ex:'争议发生时需异地诉讼，增加采购方的维权成本。',sug:'因本合同发生争议，双方协商不成的，提交买受人所在地人民法院诉讼解决。'},
+ {q:4,s:'l',cat:'交货',loc:'第二条',t:'交货地点未在合同中写明',ex:'“另行书面通知”可能引发运费与风险转移时点的争议。',sug:'交货地点为买受人厂区仓库（地址见首部），货物毁损灭失风险自交付验收合格时转移。'}
+];
+let flt='all';
+function issueHTML(x,i){const sv={h:['danger','高'],m:['warn','中'],l:['info','低']}[x.s];return '<div class="issue new" data-q="'+x.q+'" data-s="'+x.s+'"><div class="row"><span class="bd '+sv[0]+'">'+sv[1]+' · '+x.cat+'</span><span class="bd">'+ic('hash')+x.loc+'</span><span class="sp"></span><span class="cap">#'+(i+1)+'</span></div><h5>'+x.t+'</h5><div class="ex">'+x.ex+'</div><div class="sug"><div class="row"><span class="cap">建议条文</span><span class="sp"></span><button class="btn gh sm cp">'+ic('copy')+'复制</button></div><div class="t">'+x.sug+'</div></div><div class="acts"><button class="btn sm">'+ic('check')+'采纳</button><button class="btn gh sm">忽略</button><button class="btn gh sm">'+ic('message-square')+'追问</button></div></div>'}
+function counts(){const n=$$('#issues .issue');$('#cAll').textContent=n.length;['h','m','l'].forEach(k=>$('#c'+k.toUpperCase()).textContent=n.filter(e=>e.dataset.s===k).length);$('#sevSeg')._mv&&$('#sevSeg')._mv()}
+function playReview(){window._played=1;const box=$('#issues');box.innerHTML='<div class="thinking"><span class="dots"><i></i><i></i><i></i></span>模型正在逐条审阅脱敏后的文字…</div>';$('#stepAi').className='step act';$('#stepAi .sc').innerHTML='';$('#stepRestore').className='step';$('#stepRestore .sc').innerHTML='';counts();let i=0;const tick=()=>{if(i<ISS.length){$('#issues .thinking').insertAdjacentHTML('beforebegin',issueHTML(ISS[i],i));i++;$('#stepAiT').textContent='模型审核 · 已出 '+i+' 条';counts();applyF();setTimeout(tick,900)}else{$('#issues .thinking').remove();$('#stepAi').className='step done';$('#stepAi .sc').innerHTML=ic('check');$('#stepAiT').textContent='模型审核 · '+ISS.length+' 条';$('#stepRestore').className='step done';$('#stepRestore .sc').innerHTML=ic('check');toast('审核完成，已在本机还原真实名称')}};setTimeout(tick,1100)}
+function applyF(){$$('#issues .issue').forEach(e=>e.style.display=(flt==='all'||e.dataset.s===flt)?'':'none')}
+seg($('#sevSeg'),b=>{flt=b.dataset.f;applyF()});
+$('#replay').onclick=()=>playReview();
+$('#issues').addEventListener('click',e=>{if(e.target.closest('.cp')){e.stopPropagation();toast('已复制建议条文，可粘贴到原文中修改');return}const c=e.target.closest('.issue');if(!c||e.target.closest('.acts'))return;$$('#issues .issue').forEach(x=>x.classList.toggle('on',x===c));const m=$('mark[data-q="'+c.dataset.q+'"]');if(m){m.scrollIntoView({behavior:'smooth',block:'center'});m.classList.remove('sel');void m.offsetWidth;m.classList.add('sel')}});
+$$('mark[data-q]').forEach(m=>m.onclick=()=>{const c=$('#issues .issue[data-q="'+m.dataset.q+'"]');if(c){c.scrollIntoView({behavior:'smooth',block:'nearest'});$$('#issues .issue').forEach(x=>x.classList.toggle('on',x===c))}});
+/* 标书：清单与证据 */
+const BQ=[
+ {id:1,b:['C','D'],t:'C 与 D：自写内容相同 9 处，约 1,600 字',m:'串标线索 · 第四十条（四）',pair:1},
+ {id:2,b:['A'],t:'A：营业执照有效期已过',m:'资格 · 商务标 第 6 页',l:'A 甲泵业 · 商务标.pdf 第 6 页',x:'营业期限：2006 年 08 月 12 日 至 <span class="hit">2026 年 08 月 11 日</span>'},
+ {id:3,b:['A'],t:'A：报价一览表未加盖公章',m:'签章 · 报价文件 第 2 页',l:'A 甲泵业 · 报价文件.pdf 第 2 页',x:'投标人（盖章）：<span class="hit">　　　　　　（空白）</span><br>法定代表人或授权代表（签字）：已签'},
+ {id:4,b:['C'],t:'C：未响应 ★ 法兰连接标准',m:'★ 条款 · 技术标 第 14 页',l:'C 丙机械 · 技术标.pdf 第 14 页',x:'法兰连接：<span class="hit">按 HG/T 20592 执行</span>（招标文件 ★ 要求 SH/T 3406）'},
+ {id:5,b:['C'],t:'C：同一份报价出现两个不同总价',m:'报价 · 报价文件 第 1、3 页',l:'C 丙机械 · 报价文件.pdf 第 1 页 / 第 3 页',x:'第 1 页 投标总价：<span class="hit">516,100.00</span><br>第 3 页 分项合计：<span class="hit">521,600.00</span>'}
+];
+let bf=null,bsel=1;
+function renderQ(){const L=BQ.filter(q=>!bf||q.b.includes(bf));$('#qlist').innerHTML=L.map(q=>'<div class="q'+(q.id===bsel?' on':'')+'" data-id="'+q.id+'"><span class="dot" style="background:var(--danger);margin-top:7px"></span><div><b>'+q.t+'</b><span class="meta">'+q.m+'</span></div></div>').join('')||'<div class="meta" style="padding:16px">这家没有严重问题</div>';$('#bidFilterT').textContent=bf?'只看 '+bf:'全部投标人';renderEv()}
+function renderEv(){const q=BQ.find(x=>x.id===bsel);const e=$('#evidence');if(!q){e.innerHTML='';return}
+ if(q.pair){e.innerHTML='<div class="row"><h3>自写内容相同</h3><span class="bd danger">严重</span><span class="sp"></span><span class="meta">第 3 / 9 处</span><button class="ibtn">'+ic('chevron-left')+'</button><button class="ibtn">'+ic('chevron-right')+'</button></div><p class="meta" style="margin-top:4px">招标文件原文、项目名称与公共来源段落已在比对前剔除；同一家多份文件中的重复只算一处。</p><div class="cmp"><div class="pg"><div class="pg-h"><span class="code" style="width:22px;height:22px;line-height:22px;font-size:12px">C</span>丙机械 · 技术标 第 14 页<span class="sp"></span>'+ic('external-link')+'</div><div class="pg-b">八、售后服务<br>如因安装或使用问题造成<span class="hit">泵损坏或无法使用，卖方积极配合买方进行维修和更换有关零件</span>，并在一周内完成。</div></div><div class="pg"><div class="pg-h"><span class="code" style="width:22px;height:22px;line-height:22px;font-size:12px">D</span>丁制造 · 商务文件 第 203 页<span class="sp"></span>'+ic('external-link')+'</div><div class="pg-b">五、质量保证<br>但如因安装或使用问题造成<span class="hit">泵损坏或无法使用，卖方积极配合买方进行维修和更换有关零件</span>，需要更换的零件收取成本费用。</div></div></div><div class="row" style="margin-top:14px"><span class="bd info">'+ic('info')+'常见正常原因：引用同一厂家的售后模板</span><span class="sp"></span><button class="btn sm">不是问题</button><button class="btn sm pri">'+ic('external-link')+'打开原件页</button></div>'}
+ else{e.innerHTML='<div class="row"><h3>'+q.t.slice(3)+'</h3><span class="bd danger">严重</span></div><p class="meta" style="margin-top:4px">'+q.m+'</p><div class="pg" style="margin-top:14px"><div class="pg-h">'+ic('file-text')+q.l+'<span class="sp"></span>'+ic('external-link')+'</div><div class="pg-b" style="min-height:150px">'+q.x+'</div></div><div class="row" style="margin-top:14px"><span class="meta">依据：招标文件 第二章 投标人须知 3.2</span><span class="sp"></span><button class="btn sm">不是问题</button><button class="btn sm pri">'+ic('external-link')+'打开原件页</button></div>'}
+ e.style.animation='none';void e.offsetWidth;e.style.animation='rise .45s var(--ease-out) both'}
+$('#qlist').addEventListener('click',e=>{const q=e.target.closest('.q');if(q){bsel=+q.dataset.id;renderQ()}});
+$$('#bidders .bcard').forEach(c=>c.addEventListener('click',()=>{bf=bf===c.dataset.b?null:c.dataset.b;$$('#bidders .bcard').forEach(x=>x.classList.toggle('act',x.dataset.b===bf));const L=BQ.filter(q=>!bf||q.b.includes(bf));bsel=L[0]?L[0].id:0;renderQ()}));
+renderQ();
+/* 色板 */
+const SW=[['--brand-500','衡青 主色'],['--brand-600','衡青 按钮'],['--brand-soft','衡青 浅底'],['--ai','灵紫 模型'],['--ai-soft','灵紫 浅底'],['--danger','严重 / 高'],['--warn','注意 / 中'],['--info','提示 / 低'],['--ok','完成'],['--m-bid','标书初审'],['--m-meet','会议纪要'],['--m-trans','翻译'],['--canvas','画布'],['--surface','卡片'],['--t1','标题墨'],['--t3','辅助墨']];
+$('#swatches').innerHTML=SW.map(([v,n],i)=>'<div style="--i:'+i+'"><i style="background:var('+v+')"></i><span>'+n+'<br><code style="font-size:11px;color:var(--t3)">'+v+'</code></span></div>').join('');
+countUp($('#s-home'));
+</script>
+</body>
+</html>
