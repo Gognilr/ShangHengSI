@@ -72,7 +72,7 @@ const steps = computed(() => {
   const tenderDone = !!tenderFiles.value.length && tenderFiles.value.every(f => f.state === 'done') && p?.stage !== 'preparing'
   const bidDone = !!p && p.bidders.length > 0 && p.bidders.every(b => filesOf(b.id).length > 0) && bidFiles.value.every(f => f.state === 'done')
   return [
-    { title: '招标文件与要求', done: tenderDone },
+    { title: '招标文件与条款', done: tenderDone },
     { title: '投标文件', done: bidDone },
     { title: '初审结果', done: p?.stage === 'checked' },
     { title: '导出', done: false },
@@ -299,7 +299,7 @@ async function removeProject() {
       </nav>
       <el-alert v-if="error" class="alert" :title="error" type="error" show-icon @close="error = ''" />
 
-      <!-- 第 1 步：招标文件与要求 -->
+      <!-- 第 1 步：招标文件与条款 -->
       <div v-if="step === 0" :class="tenderKey ? 'tender-ready' : 'tender'">
         <section class="col">
           <div class="section-head"><h2 class="si-overline">招标文件</h2><span class="hint num">{{ tenderFiles.length }} / {{ project.limits.tender_files }}</span></div>
