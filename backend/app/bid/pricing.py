@@ -503,6 +503,24 @@ def pattern(pairs, fixed=frozenset()):
     return None
 
 
+def _fractional_tail_pattern(pairs, fixed, tender_prices):
+    """在唯一品名的对齐分项上比较真实单价的小数尾数，排除给定价及常规取整。"""
+    counts = Counter(x[0] for x, _ in pairs)
+    eligible, matched = 0, []
+    for x, y in pairs:
+        name, a, b = x[0], x[2], y[2]
+        if (counts[name] != 1 or name in fixed or a is None or b is None or min(a, b) <= 0
+                or any(it[4].ocr_conf is not None or parse_number(it[4].text) != it[2] for it in (x, y))
+                or {a, b} & tender_prices.get(name, set())):
+            continue
+        eligible += 1
+        tail = (a % 1) * 100
+        if (a != b and a == rounded(a) and b == rounded(b) and tail == (b % 1) * 100
+                and tail % 5 != 0 and tail != 99):
+            matched.append((x, y))
+    return matched if len(matched) >= MIN_ITEMS and len(matched) * 5 >= eligible * 4 else []
+
+
 def _pct(x, signed=False):
     q = (x * 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return f"{'+' if signed and q > 0 else ''}{q}%"
@@ -632,7 +650,7 @@ def _tax_totals(totals, pairs, tax_included, table_total):
 
 
 def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, manual=None, *,
-            mode="fixed", rate_limit=None, tax_included=None):
+            mode="fixed", rate_limit=None, tax_included=None, tender_nodes=()):
     """返回 (报价分析 JSON, 线索, 每家 {总价, 币种, 多个总价, 表, L 结果, 异常低价})。bidders 为按录入顺序的 id；
     place(node) 给出证据位置（总价规律线索用，可省）。"""
     rate = mode in RATE_LABELS
@@ -735,6 +753,7 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
         common = set.intersection(*(set(v) for v in keyed.values()))
         fixed = {k for k in common if len({rounded(v[k]) for v in keyed.values() if v[k] is not None}) == 1}
     clues = []
+    tender_prices = None
     for a, b in combinations(bidders, 2):
         ma, mb = facts[a]["main"], facts[b]["main"]
         if ma is None or mb is None:
@@ -749,6 +768,26 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
                      "items": [{"name": x[1] or y[1], "left": money(_value(x)), "right": money(_value(y))}
                                for x, y in pairs[:20] if _value(x) is not None and _value(y) is not None]}]
             clues.append({"ids": (a, b), "level": level, "title": label, "rows": rows})
+        if how == "name" and facts[a]["currency"] in (None, currency or "CNY") and facts[b]["currency"] in (None, currency or "CNY"):
+            unique_b = Counter(it[0] for it in mb[2])
+            named_pairs = [(x, y) for x, y in pairs if unique_b[y[0]] == 1]
+            matched = _fractional_tail_pattern(named_pairs, fixed, tender_prices or {})
+            if matched and tender_prices is None:
+                tender_prices = {}
+                for _, _, entries in quote_tables(tender_nodes)[0]:
+                    for key, _, price, _, _ in entries:
+                        if key and price is not None:
+                            tender_prices.setdefault(key, set()).add(price)
+                matched = _fractional_tail_pattern(named_pairs, fixed, tender_prices)
+            if matched:
+                label = "分项单价小数尾数共现"
+                rows = [{"label": label, "value": f"{len(matched)} 项不同单价的小数尾数按品名对齐后相同",
+                         "items": [{"name": x[1], "left": money(x[2]), "right": money(y[2])} for x, y in matched[:12]],
+                         "places": {str(a): [place(x[4]) for x, _ in matched[:5]],
+                                    str(b): [place(y[4]) for _, y in matched[:5]]} if place else {}}]
+                clues.append({"ids": (a, b), "level": "medium", "title": label, "rows": rows})
+                if not found:
+                    stat |= {"level": "medium", "label": label}
         analysis["pairs"].append(stat)
     # 总价规律（三家及以上）：线索按录入顺序列投标人，证据按金额从低到高
     order = {b: i for i, b in enumerate(bidders)}

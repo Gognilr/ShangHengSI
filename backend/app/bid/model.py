@@ -1075,6 +1075,7 @@ def _model_item(db, task, bid, rid, type_, level, article, title, rows, old):
 def second_targets(view, previous):
     """二次核验只挑严重的疑似不响应、未找到，以及需要辨认共同来源的相似段落。"""
     from app.bid.conclusion import SERIOUS_GROUPS, clue_strength
+    from app.bid.similar import SHARED_TYPO
     requirements = {str(r["id"]): r for r in view["requirements"] if r["group"] in SERIOUS_GROUPS and r["method"] == "model" and not r.get("not_applicable")}
     pairs = defaultdict(list)
     reviewed = view.get("conclusion", {}).get("reviews", {})
@@ -1086,7 +1087,7 @@ def second_targets(view, previous):
             pairs[bid].append(rid)
     clues = [i for i in view["items"] if i["kind"] == "clue" and i["review_status"] == "pending" and not i.get("reference_reason")]
     similar = [i for i in clues if i["type"] == "similar" and i["level"] in {"medium", "strong"}
-               and i.get("rows") and str(i["id"]) not in previous
+               and i.get("rows") and i["rows"][0]["label"] != SHARED_TYPO and str(i["id"]) not in previous
                and not any(j["type"] != "similar" and set(i["bidder_ids"]) <= set(j["bidder_ids"])
                            and any(clue_strength(j, r)[0] == "certain" for r in j["rows"]) for j in clues)]
     return dict(pairs), similar

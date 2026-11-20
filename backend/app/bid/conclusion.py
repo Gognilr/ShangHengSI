@@ -136,7 +136,7 @@ def _cases(items, order, shorts, reviewed, baseline):
 
 PRICE_ISSUES = {"multi_total", "sum_total", "ceiling", "low_price", "uppercase", "row_calc", "sum_rows", "tax_calc", "manual_total_diff"}
 _CLUE_LABEL = (("分项单价比值恒定", "比值恒定"), ("分项单价完全相同", "分项单价相同"), ("分项单价差额相同", "分项差额相同"),
-               ("尾数", "尾数习惯相同"), ("等差", "总价等差"), ("等比", "总价等比"))
+               ("小数尾数共现", "分项小数尾数共现"), ("尾数", "尾数习惯相同"), ("等差", "总价等差"), ("等比", "总价等比"))
 
 
 def pricing_summary(view, order, shorts, cases, entries, reviewed):

@@ -246,8 +246,9 @@ def _evidence(d: _Data, item) -> list:
         for bid, file in (row.get("files") or {}).items():
             lines.append(f"  {d.name(bid)}：{_clean(file)}")
         for bid, places in (row.get("places") or {}).items():
+            owner = "招标文件" if bid == "tender" else d.name(bid)
             for p in places:
-                lines.append(f"  {d.name(bid)} · {d.place(p)}" + (f"：{_clean(_clip(p['excerpt'], 160))}" if p.get("excerpt") else ""))
+                lines.append(f"  {owner} · {d.place(p)}" + (f"：{_clean(_clip(p['excerpt'], 160))}" if p.get("excerpt") else ""))
     return [x if isinstance(x, list) else [(x, False)] for x in lines]
 
 

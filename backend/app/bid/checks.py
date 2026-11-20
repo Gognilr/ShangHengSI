@@ -16,7 +16,7 @@ from itertools import combinations
 
 from sqlalchemy import delete, select
 
-from app.bid.compliance import TERM_LABELS
+from app.bid.compliance import LOW_OCR_CONF, TERM_LABELS
 from app.db.base import utcnow
 from app.db.models import BidBidder, BidCell, BidImage, BidItem, BidProject, BidRequirement, DocNode, TaskFile
 from app.redaction import detect
@@ -55,6 +55,9 @@ _PM = re.compile(r"(?:项目经理|项目负责人|技术负责人)(?:[（(][^�
 _AFTER_NAME = re.compile(r"$|[^一-鿿]|电话|手机|联系|职务|职位|身份|证书|性别|年龄|邮箱|传真|地址|授权|法定|委托|签字|签名|日期")
 _SUFFIX = re.compile(r"(?:集团)?(?:股份有限公司|有限责任公司|有限公司|股份公司|公司|厂)$")
 _REGION = re.compile(r"^[一-鿿]{2,3}(?:省|市|自治区)")
+_PROJECT_FIELD = re.compile(r"^\s*(?:本(?:次)?(?:招标|投标))?\s*(?:项目名称|工程名称|项目全称|project (?:name|title))\s*[:：]", re.I)
+_OWNER_FIELD = re.compile(r"^\s*(?:招标人|招标单位|采购人|采购单位|建设单位|业主单位|业主|发包人|发包单位|owner|employer)\s*(?:名称|全称)?\s*[:：]", re.I)
+_NAME_KEY = re.compile(r"[\W_]+")
 
 
 # ---------------------------------------------------------------- 材料
@@ -209,6 +212,63 @@ def check_mixed(bidders, nodes):
                     evidence.insert(0, {"label": "封面", "mixed_page": True, "places": {str(host.id): cover[:5]}})
                 items.append(_item("clue", (host.id, other.id), "mixed", "strong", "（五）",
                                    f"{names[host.id]}的文件中出现{names[other.id]}的名称", evidence))
+    return items
+
+
+def check_external_names(bidders, nodes, invitees, title):
+    """复用项目、主体识别，只比对文件开头标明角色的名称，避开业绩、厂家资料和合同附件。"""
+    from app.redaction.parties import extract_org_name
+
+    def key(value):
+        return _NAME_KEY.sub("", normalize_value(value))
+
+    names = [*invitees, *(crypto.decrypt_text(b.name_enc) for b in bidders)]
+    known = {key(name) for full in names for name in short_names(full)} | {key(title)}
+    tender = "\n".join(key(n[3]) for n in nodes.get(None, ()))
+    shared = defaultdict(dict)
+    for bidder in bidders:
+        seen = defaultdict(int)
+        label_cell = None
+        for file_id, loc, page, body, kind, conf, *_ in nodes.get(bidder.id, ()):
+            previous, label_cell = label_cell, None
+            seen[file_id] += 1
+            on_cover = page == 1 if page is not None else seen[file_id] <= 12
+            if not on_cover or (conf is not None and conf < LOW_OCR_CONF):
+                continue
+            cell = table_cell(loc) if kind == "table_cell" else None
+            prefix = ""
+            if cell and cell[1].isdigit():
+                table, col, row = cell
+                if previous and previous[:4] == (file_id, table, int(col) - 1, row):
+                    prefix = previous[4]
+                else:
+                    label_text = body.strip(" ：:") + "："
+                    if _PROJECT_FIELD.fullmatch(label_text) or _OWNER_FIELD.fullmatch(label_text):
+                        label_cell = file_id, table, int(col), row, label_text
+                        continue
+            text = prefix + body
+            if match := _PROJECT_FIELD.match(text):
+                spans = [(h.start, h.end) for h in detect.find_projects(text) if h.start >= match.end()]
+                label = "外部项目名称"
+            elif match := _OWNER_FIELD.match(text):
+                span = extract_org_name(text, match.end())
+                spans = [span] if span else []
+                label = "外部业主名称"
+            else:
+                continue
+            for start, end in spans[:1]:
+                start, end = start - len(prefix), end - len(prefix)
+                name = key(body[start:end])
+                if len(name) >= 4:
+                    shared[label, name].setdefault(bidder.id, _where(file_id, loc, page, body, start, end))
+    items = []
+    for (label, name), places in shared.items():
+        if len(places) < 2 or name in tender or any(k and (name in k or k in name) for k in known):
+            continue
+        rows = [{"label": label, "count": len(places), "places": {str(b): [p] for b, p in places.items()}}]
+        item = _item("clue", places, "mixed", "medium", "（五）", f"{len(places)} 家投标文件出现相同的{label}", rows)
+        item["evidence"]["normal"] = "沿用公开范本或附有既往项目材料，请核对该名称是否填写在本次投标的项目或业主位置。"
+        items.append(item)
     return items
 
 
@@ -474,11 +534,15 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
     mode = params.get("quote_mode", "fixed")
     ceiling = Decimal(params["ceiling"]) if mode == "fixed" and params.get("ceiling") else None
     rate_limit = Decimal(params["rate_limit"]) if mode != "fixed" and params.get("rate_limit") else None
-    per = {b.id: [compliance.BidNode(loc, text, files[file_id].seq, None, kind=kind, ocr_conf=conf, bbox=bbox, file_id=file_id, page=page)
-                  for file_id, loc, page, text, kind, conf, bbox in nodes.get(b.id, [])] for b in bidders}
+    def bid_nodes(owner):
+        return [compliance.BidNode(loc, text, files[file_id].seq, None, kind=kind, ocr_conf=conf, bbox=bbox, file_id=file_id, page=page)
+                for file_id, loc, page, text, kind, conf, bbox in nodes.get(owner, ())]
+
+    per = {b.id: bid_nodes(b.id) for b in bidders}
     analysis, clues, facts = pricing.analyze([b.id for b in bidders], per, ceiling, params.get("currency"),
                                              lambda n: _where(n.file_id, n.loc, n.page, n.text, 0, len(n.text)), manual,
-                                             mode=mode, rate_limit=rate_limit, tax_included=params.get("tax_included"))
+                                             mode=mode, rate_limit=rate_limit, tax_included=params.get("tax_included"),
+                                             tender_nodes=bid_nodes(None))
     kinds = {}
     for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True),
                                                      BidRequirement.method == "local").order_by(BidRequirement.seq)):
@@ -550,12 +614,13 @@ def _pricing_step(db, task, bidders, nodes, files, *, quote_only=False):
 
 def _similar_step(bidders, nodes, history=()):
     from app.bid import similar
-    found, stats = similar.find([b.id for b in bidders], {b.id: [n[:5] for n in nodes.get(b.id, [])] for b in bidders},
-                                [n[:5] for n in nodes.get(None, [])] + list(history))
+    found, stats = similar.find([b.id for b in bidders], {b.id: nodes.get(b.id, []) for b in bidders},
+                                nodes.get(None, []), history=history)
     items = []
     for f in found:
         items.append(_item("clue", f["ids"], "similar", f["level"], "（四）", f["title"], f["rows"]))
-        items[-1]["evidence"]["map"] = f["map"]
+        if "map" in f:
+            items[-1]["evidence"]["map"] = f["map"]
     return items, stats
 
 
@@ -621,8 +686,13 @@ def _run_once(db, task, *, progressive=True):
         count += len(items)
 
     started = time.monotonic()
-    clues = (check_mixed(active, nodes) + check_contacts(active, nodes) + check_props(active, files, historic_files)
-             + check_images(db, active, files, historic_files, summary["baseline"])) if two else []
+    clues = []
+    if two:
+        from app.bid.invitees import names as invitee_names
+        from app.bid.requirements import load_state
+        clues = (check_mixed(active, nodes) + check_external_names(active, nodes, invitee_names(load_state(project)), task.title)
+                 + check_contacts(active, nodes) + check_props(active, files, historic_files)
+                 + check_images(db, active, files, historic_files, summary["baseline"]))
     summary["timeline"] = timeline(active, files)
     save("clues", started, clues)
     started = time.monotonic()

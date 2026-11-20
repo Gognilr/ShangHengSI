@@ -60,11 +60,13 @@ def test_pdf_properties():
     assert not _authors({'creator': 'Fictive PDF Writer'}, 'pdf')
 
 
-def _checked(c, h, sm, uploads, *, tender_bytes=None):
+def _checked(c, h, sm, uploads, *, tender_bytes=None, invitees=()):
     import json
     base = ROOT + "/" + c.post(ROOT, headers=h, json=BODY).json()["id"]
     c.post(base + "/files", headers=h, files={"files": ("虚构招标文件.docx", tender_bytes or tender_with_logo())})
     drain(sm, base)
+    if invitees:
+        assert c.put(base + "/invitees", headers=h, json={"names": list(invitees)}).status_code == 200
     r = c.post(base + "/files", headers=h, files=[("files", u) for u in uploads],
                data={"groups": json.dumps(list(BIDDERS[:len(uploads)]), ensure_ascii=False)})
     assert r.status_code == 200, r.text
@@ -126,6 +128,78 @@ def test_local_check_two_similar_pricing_compliance(owner, db_sessionmaker):
     assert pricing["bidders"][b]["above_lowest"] == "78,480.00" and pricing["bidders"][b]["above_lowest_pct"] == "3.00%"
     assert pricing["bidders"][x]["mark"] is None and pricing["bidders"][x]["not_compared"] == "多个总价，未参加比较"
     assert pricing["compare"]["n"] == 2
+
+
+def test_shared_external_names_typos_and_fractional_tails(owner, db_sessionmaker):
+    """三类线索从虚构原件进入证据链，重复的名称只计一类。"""
+    from decimal import Decimal
+    from io import BytesIO
+
+    from docx import Document
+
+    from app.bid.conclusion import build
+    from app.bid.model import second_targets
+    from tests.fixtures.bid.samples import _quote_table
+    from tests.test_bid_report import _text
+
+    expected = "本项目要求供应商在收到通知以后提交设备运行记录并确认交接清单。"
+    typo = expected.replace("清单", "单清")
+    copied = "投标文件应在指定时间内连续编页装订并按招标文件要求提交。"
+    shared_invitee = "虚构双河仪器有限公司"
+    owner_name = "虚构临江供热有限公司"
+    old_project = "虚构龙湾供热改造工程"
+    current_project = "虚构北港仓库新建工程"
+    current_owner = "虚构北港物资有限公司"
+
+    def content(project_name, organization, sentence, prices=(), *, cover_table=False):
+        doc = Document()
+        if cover_table:
+            cover = doc.add_table(rows=2, cols=2)
+            for row, (label, value) in enumerate((("项目名称", project_name), ("招标人：", organization))):
+                cover.cell(row, 0).text = label
+                cover.cell(row, 1).text = value
+        else:
+            doc.add_paragraph(f"项目名称：{project_name}")
+            doc.add_paragraph(f"招标人：{organization}")
+        doc.add_paragraph(f"项目名称：{current_project}")
+        doc.add_paragraph(f"业主单位：{current_owner}")
+        if prices:
+            doc.add_paragraph(f"业主单位：{shared_invitee}")
+        doc.add_paragraph(sentence)
+        doc.add_paragraph(copied)
+        if prices:
+            _quote_table(doc, [Decimal(p) for p in prices])
+        stream = BytesIO()
+        doc.save(stream)
+        return stream.getvalue()
+
+    c, h, _ = owner
+    a_price = ["103.27", "207.38", "317.62", "402.13", "517.27", "691.41"]
+    b_price = ["167.27", "231.38", "365.62", "433.13", "653.27", "797.59"]
+    base, _, ids = _checked(c, h, db_sessionmaker, [
+        ("甲.docx", content(old_project, owner_name, typo, a_price)),
+        ("乙.docx", content(old_project, owner_name, typo, b_price, cover_table=True)),
+        ("丙.docx", content(current_project, current_owner, expected, ["121.99"] * 6)),
+    ], tender_bytes=content(current_project, current_owner, expected), invitees=(shared_invitee,))
+    view = c.get(base + "/check").json()
+    labels = {"外部项目名称", "外部业主名称", "同句同错", "分项单价小数尾数共现"}
+    candidates = [i for i in view["items"] if i["rows"][0]["label"] in labels]
+    assert len(candidates) == len(labels)
+    new = {i["rows"][0]["label"]: i for i in candidates}
+    assert new.keys() == labels
+    assert all(i["bidder_ids"] == ids[:2] and i["level"] == "medium" for i in new.values())
+    assert new["同句同错"]["rows"][0]["places"]["tender"][0]["excerpt"] == expected
+    assert len(new["分项单价小数尾数共现"]["rows"][0]["items"]) == 5
+    bidders = dict(zip(ids, BIDDERS))
+    names_only = build(view | {"items": [new["外部项目名称"], new["外部业主名称"]]}, bidders)
+    assert not names_only["cases"] and len(names_only["reference"]) >= 2
+    case, = view["conclusion"]["cases"]
+    assert case["bidder_ids"] == ids[:2] and case["tier"] == "verify" and not case["certain_pairs"]
+    assert set(i["id"] for i in new.values()) <= {e["item_id"] for e in case["evidence"]}
+    assert not second_targets(view, {})[1]
+    report = _text(c.get(base + "/report", headers=h).content)
+    assert all(label in report for label in labels)
+    assert expected in report and "招标文件 · " in report
 
 
 def test_new_compliance_finding_and_matrix_survive_a_recheck(owner, db_sessionmaker):

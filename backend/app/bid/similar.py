@@ -32,6 +32,8 @@ _COMMON = re.compile(r"注册会计师|审计准则|审计证据|审计意见|�
                      r"|^\s*(?:GB|HG|SH|JB|NB|API|ISO|IEC)\s*/?\s*T?\s*\d")
 _UP = {"weak": "medium", "medium": "strong", "strong": "strong"}
 _DOWN = {"strong": "medium", "medium": "weak", "weak": "weak"}
+_HAN_PAIR = re.compile(r"[一-鿿]{2}")
+SHARED_TYPO = "同句同错"
 
 
 @dataclass
@@ -47,11 +49,12 @@ class Sent:
     section: str  # body / tech / price
     owner_rank: int = 0
     common: bool = False  # 公共来源文字（审计、专利、执照套话、标准编号）
+    ocr: bool = False
 
 
 def _sections(nodes):
     current, out = "body", []
-    for _f, _l, _p, text, kind in nodes:
+    for _f, _l, _p, text, kind, *_ in nodes:
         title = text.strip()
         m = _CHAPTER.match(title) if len(title) <= 40 else None
         if m or (kind == "heading" and len(title) <= 40):
@@ -64,7 +67,7 @@ def _sections(nodes):
 def sentences(owner, nodes, start=0):
     """[Sent]：nodes 为 [(file_id, loc, page, text, kind)]；只保留归一化后 ≥ 20 字且不是法条引文的句子。"""
     out, index = [], start
-    for (file_id, loc, page, text, _kind), section in zip(nodes, _sections(nodes)):
+    for (file_id, loc, page, text, _kind, *extra), section in zip(nodes, _sections(nodes)):
         for m in _SPLIT.finditer(text):
             piece = m.group().strip()
             if not piece or _LAW.search(piece):
@@ -73,7 +76,8 @@ def sentences(owner, nodes, start=0):
             if len(norm) < MIN_CHARS:
                 continue
             grams = frozenset(norm[i:i + 2] for i in range(len(norm) - 1))
-            out.append(Sent(owner, index, file_id, loc, page, piece, norm, grams, section, common=bool(_COMMON.search(piece))))
+            out.append(Sent(owner, index, file_id, loc, page, piece, norm, grams, section,
+                            common=bool(_COMMON.search(piece)), ocr=bool(extra and extra[0] is not None)))
             index += 1
     return out
 
@@ -184,10 +188,64 @@ def _map(a, b, graded, totals, starts):
     return {"n": {str(a): totals[a], str(b): totals[b]}, "files": {str(a): starts[a], str(b): starts[b]}, "segs": segs}
 
 
-def find(bidders, nodes, tender_nodes):
+def _transposition(actual, expected):
+    if len(actual) != len(expected):
+        return None
+    for start, (a, b) in enumerate(zip(actual, expected)):
+        if a == b:
+            continue
+        end = start + 2
+        word, correct = actual[start:end], expected[start:end]
+        if word == correct[::-1] and _HAN_PAIR.fullmatch(word) and actual[end:] == expected[end:]:
+            return word, correct
+        break
+    return None
+
+
+def _shared_typos(tender, history, shared):
+    """同一文本层句子、同一汉字倒置，且招标基线有唯一的对照写法。"""
+    baseline = {s.norm for s in tender + history}
+    groups = [list(by_owner.values()) for norm, by_owner in shared.items()
+              if len(by_owner) >= 2 and norm not in baseline]
+    if not groups:
+        return []
+    reference = [s for s in tender if not s.common and not s.ocr]
+    if not reference:
+        return []
+    index = _Index(reference, 0.8)
+    rows_by_pair = defaultdict(list)
+    for group in groups:
+        norm = group[0].norm
+        grams = group[0].grams
+        matches = {}
+        for i in sorted(index.candidates(grams)):
+            source = reference[i]
+            if change := _transposition(norm, source.norm):
+                matches.setdefault(source.norm, (source, change))
+        if len(matches) != 1:
+            continue
+        source, (actual, correct) = next(iter(matches.values()))
+        for x, y in combinations(group, 2):
+            rows = rows_by_pair[x.owner, y.owner]
+            if len(rows) < 12:
+                rows.append({
+                    "label": SHARED_TYPO, "level": "medium",
+                    "value": f"两家同写「{actual}」，招标文件写作「{correct}」",
+                    "left": {"bidder_id": str(x.owner), "places": [_place(x)], "text": x.text[:600]},
+                    "right": {"bidder_id": str(y.owner), "places": [_place(y)], "text": y.text[:600]},
+                    "places": {"tender": [_place(source) | {"excerpt": source.text[:600]}]},
+                })
+    return [{"ids": ids, "level": "medium", "title": "两家出现与招标文件不同的同句同错", "rows": rows}
+            for ids, rows in rows_by_pair.items()]
+
+
+def find(bidders, nodes, tender_nodes, *, history=()):
     """返回 (线索列表, 统计)。bidders 为按录入顺序的 id；nodes {id: [(file_id, loc, page, text, kind)]}。"""
     tender = sentences(None, tender_nodes)
+    historic = sentences(None, history)
+    baseline = tender + historic
     pool, dropped = [], 0
+    shared = defaultdict(dict)
     totals, starts = {}, {}  # 位置条（V34-B-06d）：每家句子总数与各文件的起始句序号
     for b in bidders:
         mine = sentences(b, nodes.get(b, []))
@@ -196,7 +254,9 @@ def find(bidders, nodes, tender_nodes):
         for x in mine:
             if not starts[b] or starts[b][-1][0] != str(x.file_id):
                 starts[b].append([str(x.file_id), x.index])
-        own, n = _drop_tender(mine, tender)
+            if not x.common and not x.ocr:
+                shared[x.norm].setdefault(b, x)
+        own, n = _drop_tender(mine, baseline)
         dropped += n
         pool += own
     for s in pool:
@@ -248,4 +308,4 @@ def find(bidders, nodes, tender_nodes):
         items.append({"ids": (a, b), "level": level, "title": title, "rows": rows,
                       "more": max(0, len(graded) - len(rows)), "map": _map(a, b, graded, totals, starts)})
     stats = {"sentences": len(pool), "dropped_tender": dropped}
-    return items, stats
+    return items + _shared_typos(tender, historic, shared), stats
