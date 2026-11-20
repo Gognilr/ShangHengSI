@@ -61,7 +61,7 @@ function setStatus(value: HandlingStatus) {
   status.value = value
   void save({ handling_status: value })
 }
-// 讨论修改稿（V32-B-03）：与原审核建议二选一，采纳与修订版取所选文本；原建议不被覆盖
+// 讨论修改稿（V32-B-03）：与原审核建议二选一，采纳与批注版取所选文本；原建议不被覆盖
 const sourceOptions = [{ value: 'review', label: '原审核建议' }, { value: 'discussed', label: '讨论修改稿' }]
 function setSource(value: string) {
   const wanted = value === 'discussed'
@@ -100,7 +100,7 @@ async function copy(text: string) {
     <div class="head" role="button" tabindex="0" :aria-expanded="!!selected" @click="emit('select', f)" @keydown.enter.self.prevent="emit('select', f)" @keydown.space.self.prevent="emit('select', f)">
       <span class="no">{{ no }}</span>
       <div class="main">
-        <div class="title"><span v-if="status === 'adopted'" class="h-tag h-tag--adopted">✓ 已采纳</span><span v-else-if="status === 'ignored'" class="h-tag h-tag--ignored">已忽略</span><span v-if="f.discussed_text" class="h-tag d-tag" :class="{ on: f.use_discussed }" :title="f.use_discussed ? '采纳与修订版使用讨论修改稿' : '有讨论修改稿，当前使用原审核建议'">讨论稿</span><MarkedText :text="f.title" :marks="f.marks.title" /><span v-if="f.unresolved > 0" class="unresolved">{{ f.unresolved }} 处未能还原</span></div>
+        <div class="title"><span v-if="status === 'adopted'" class="h-tag h-tag--adopted">✓ 已采纳</span><span v-else-if="status === 'ignored'" class="h-tag h-tag--ignored">已忽略</span><span v-if="f.discussed_text" class="h-tag d-tag" :class="{ on: f.use_discussed }" :title="f.use_discussed ? '采纳与批注版使用讨论修改稿' : '有讨论修改稿，当前使用原审核建议'">讨论稿</span><MarkedText :text="f.title" :marks="f.marks.title" /><span v-if="f.unresolved > 0" class="unresolved">{{ f.unresolved }} 处未能还原</span></div>
         <div class="meta">{{ meta }}</div>
       </div>
       <span class="sev"><i aria-hidden="true" />{{ severityLabel(f.severity) }}</span>
@@ -129,7 +129,7 @@ async function copy(text: string) {
         <MarkedText class="text" :text="f.discussed_text" :marks="f.marks.discussed_text" />
       </div>
       <div v-if="f.discussed_text" class="source">
-        <span class="label">采纳与修订版使用</span>
+        <span class="label">采纳与批注版使用</span>
         <SiSegmented :model-value="f.use_discussed ? 'discussed' : 'review'" :options="sourceOptions" size="small" ariaLabel="采纳时使用的建议" @update:model-value="setSource(String($event))" />
       </div>
       <div v-if="f.basis" class="row basis"><span class="label">依据</span><MarkedText class="text" :text="f.basis" :marks="f.marks.basis" /></div>

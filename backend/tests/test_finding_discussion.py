@@ -175,12 +175,11 @@ def test_draft_adopt_and_export_mainline(files_dir, model, make_user, login, db_
     for fid in (a, b):
         assert c.patch(f"{API_PREFIX}/findings/{fid}", headers=h, json={"handling_status": "adopted"}).status_code == 200
 
-    r = c.get(f"{API_PREFIX}/runs/{rid}/revised", params={"file_seq": 1})
+    r = c.get(f"{API_PREFIX}/runs/{rid}/annotated", params={"file_seq": 1})
     assert r.status_code == 200, r.text
-    assert r.headers["X-SI-Revised"] == "1" and r.headers["X-SI-Commented"] == "1"
-    from app.export.revised_docx import _views
-    text = "".join(_views(r.content)[1])
-    assert f"{BUYER}应在十日内付款。" in text and "[[ORG_9]]" not in text  # 修订（接受视图）只含合格的讨论稿
+    import io, zipfile
+    comments = zipfile.ZipFile(io.BytesIO(r.content)).read("word/comments.xml").decode()
+    assert f"{BUYER}应在十日内付款。" in comments  # 批注写所选的讨论修改稿（已还原）
     # 改回原审核建议：原 suggested_text 未被覆盖
     r = c.patch(f"{API_PREFIX}/findings/{a}", headers=h, json={"use_discussed": False})
     assert r.status_code == 200 and r.json()["use_discussed"] is False

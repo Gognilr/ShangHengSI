@@ -236,22 +236,6 @@ async function exportAnnotated(seq: number) {
     savedTick.value++
   } catch (e) { exportError(e) } finally { exporting.value = '' }
 }
-async function exportRevised(seq: number) {
-  if (!task.value || !run.value || exporting.value || deleting.value || exportReason.value) return
-  if (!['completed', 'partial'].includes(run.value.status)
-    || !task.value.files.some(file => file.seq === seq && file.annotatable && !file.has_revisions)) return
-  const runId = run.value.id
-  const taskId = task.value.id
-  if (!await confirmOnce('revised', '修订版按已采纳的问题改写条款，请在 Word 中逐条核对后接受或拒绝；文件中如有批注，发给对方前请先删除。', '导出修订版', '导出修订版')) return
-  exporting.value = '修订版'
-  try {
-    const { saveResult, revised, commented } = await reportApi.revised(runId, seq)
-    if (saveResult === 'cancelled' || task.value?.id !== taskId || run.value?.id !== runId) return
-    annotationNotice.value = commented > 0 ? `共 ${revised} 处修订；另有 ${commented} 条已采纳的问题未能写成修订，已作为批注附上，请人工修改。` : ''
-    if (!commented) ElMessage.success(`已生成修订版，共 ${revised} 处修订`)
-    savedTick.value++
-  } catch (e) { exportError(e) } finally { exporting.value = '' }
-}
 
 async function remove() {
   if (!task.value || deleting.value) return
@@ -306,7 +290,7 @@ onMounted(() => {
     <template v-else-if="task">
       <ResultToolbar :task="task" :run="run" :rounds="rounds" :selected-run="selectedRun" :req-version="reqVersion" :warnings="expiryWarnings"
         :export-reason="exportReason" :exporting="exporting" :saved-tick="savedTick" :deleting="deleting"
-        @select-run="selectRun" @export-report="exportReport" @export-annotated="exportAnnotated" @export-revised="exportRevised" @remove="remove">
+        @select-run="selectRun" @export-report="exportReport" @export-annotated="exportAnnotated" @remove="remove">
         <template #before-export><ChatPanel ref="chat" :key="task.id" :task-id="task.id" :disabled="deleting" /></template>
         <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :disabled="deleting" @click="rerunOpen = true"><template #icon><RotateCw :size="16" :stroke-width="1.75" /></template>重新审核</el-button>
       </ResultToolbar>

@@ -161,21 +161,6 @@ async function exportAnnotated(seq: number) {
     savedTick.value++
   } catch (e) { exportError(e) } finally { exporting.value = '' }
 }
-async function exportRevised(seq: number) {
-  if (!run.value || exporting.value || exportReason.value) return
-  if (!['completed', 'partial'].includes(run.value.status)
-    || !task.value.files.some(file => file.seq === seq && file.annotatable && !file.has_revisions)) return
-  const runId = run.value.id
-  if (!await confirmOnce('revised', '修订版按已采纳的问题改写条款，请在 Word 中逐条核对后接受或拒绝；文件中如有批注，发给对方前请先删除。', '导出修订版', '导出修订版')) return
-  exporting.value = '修订版'
-  try {
-    const { saveResult, revised, commented } = await reportApi.revised(runId, seq)
-    if (saveResult === 'cancelled' || run.value?.id !== runId) return
-    annotationNotice.value = commented > 0 ? `共 ${revised} 处修订；另有 ${commented} 条已采纳的问题未能写成修订，已作为批注附上，请人工修改。` : ''
-    if (!commented) ElMessage.success(`已生成修订版，共 ${revised} 处修订`)
-    savedTick.value++
-  } catch (e) { exportError(e) } finally { exporting.value = '' }
-}
 
 // ---- 收尾（V321-E-05）：待处理归零后顶部给出下一步，不让人自己找导出入口 ----
 const doneRun = computed(() => !!run.value && ['completed', 'partial'].includes(run.value.status))
@@ -186,8 +171,6 @@ const handled = computed(() => {
 })
 const wrapUp = computed(() => doneRun.value && !props.session.review_running && handled.value.total > 0 && handled.value.pending === 0)
 const wrapUpClosed = ref('')
-const revisedFile = computed(() => task.value.files.find(f => f.annotatable && !f.has_revisions))
-const canRevise = computed(() => !!revisedFile.value && !exportReason.value && !!run.value?.findings.some(f => f.handling_status === 'adopted' && f.suggested_text))
 
 // ---- 头部说明 ----
 const modelText = computed(() => run.value?.model_label ? `${run.value.model_label}（${run.value.model_name ?? '—'}）` : run.value?.model_name ?? '—')
@@ -241,15 +224,14 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
             <span><el-button :disabled="!!newReason" @click="emit('newRound')"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新一轮审核</el-button></span>
           </el-tooltip>
           <ExportButton :task="task" :run="run" :export-reason="exportReason" :exporting="exporting" :deleting="false" :saved-tick="savedTick"
-            @report="exportReport" @annotated="exportAnnotated" @revised="exportRevised" />
+            @report="exportReport" @annotated="exportAnnotated" />
         </div>
       </div>
       <div class="details" :title="details">{{ details }}</div>
     </header>
     <div v-if="wrapUp && wrapUpClosed !== run?.id" class="wrap-up" role="status">
       <span class="wrap-text">✓ {{ handled.total }} 条问题都处理完了（采纳 {{ handled.adopted }} · 忽略 {{ handled.ignored }}）</span>
-      <el-button v-if="canRevise" size="small" type="primary" :disabled="!!exporting" @click="exportRevised(revisedFile!.seq)">导出修订版</el-button>
-      <el-button size="small" :type="canRevise ? 'default' : 'primary'" :disabled="!!exporting || !!exportReason" @click="exportReport">导出报告</el-button>
+      <el-button size="small" type="primary" :disabled="!!exporting || !!exportReason" @click="exportReport">导出报告</el-button>
       <el-button size="small" link aria-label="关闭提示" @click="wrapUpClosed = run?.id ?? ''">×</el-button>
     </div>
     <el-alert v-if="annotationNotice" type="warning" show-icon closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />

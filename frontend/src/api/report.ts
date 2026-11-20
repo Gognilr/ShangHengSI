@@ -17,15 +17,6 @@ export const reportApi = {
   /** 标书初审报告（V34-B-07）：full 全部初审内容，clues 只含串标线索 */
   bid: (projectId: string, scope: 'full' | 'clues' = 'full') => download(`/bid/${projectId}/report?scope=${scope}`),
   bidClarification: (projectId: string, bidderId: string) => download(`/bid/${projectId}/bidders/${bidderId}/clarification`),
-  async revised(runId: string, fileSeq: number) {
-    const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/revised?file_seq=${fileSeq}`)
-    const saveResult = await saveBlob(blob, filename)
-    return {
-      saveResult,
-      revised: countHeader(headers, 'X-SI-Revised'),
-      commented: countHeader(headers, 'X-SI-Commented'),
-    }
-  },
   async annotated(runId: string, fileSeq: number) {
     const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/annotated?file_seq=${fileSeq}`)
     const saveResult = await saveBlob(blob, filename)

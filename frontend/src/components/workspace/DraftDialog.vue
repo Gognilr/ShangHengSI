@@ -48,7 +48,7 @@ async function save(adopt: boolean) {
               title="这条回复里没有可提取的修改条文。可以让助手“给出完整的替换条文”后再保存，或在下面手工整理。" />
     <el-input v-model="text" type="textarea" :autosize="{ minRows: 4, maxRows: 12 }" maxlength="4000" show-word-limit
               placeholder="可直接替换原文的条文" aria-label="修改条文" />
-    <p class="hint">保存后在本机脱敏再存储，原审核建议保留不变；采纳和导出修订版默认使用这份讨论修改稿，可在问题卡上改回原审核建议。含未能还原的写法时，修订版会把该问题改为批注。</p>
+    <p class="hint">保存后在本机脱敏再存储，原审核建议保留不变；采纳和导出批注版默认使用这份讨论修改稿，可在问题卡上改回原审核建议。</p>
     <el-alert v-if="error" type="error" :closable="false" :title="error" />
     <template #footer>
       <el-button @click="open = false">取消</el-button>
