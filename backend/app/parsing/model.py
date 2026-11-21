@@ -33,6 +33,7 @@ class ParsedNode:
     has_revision: bool = False
     hidden_spans: list[list[int]] | None = None
     formula: str | None = None
+    text_before: str | None = None  # DOCX 正文“拒绝全部修订”后的文字，与 text 不同时才有（V35-D-02）
 
     def __post_init__(self) -> None:
         if self.hidden_spans:
@@ -43,6 +44,8 @@ class ParsedNode:
             self.hidden_spans = [[offsets[a], offsets[b]] for a, b in self.hidden_spans
                                  if offsets[a] < offsets[b]] or None
         self.text = strip_invisible(self.text)
+        if self.text_before is not None:
+            self.text_before = strip_invisible(self.text_before)
 
 
 @dataclass

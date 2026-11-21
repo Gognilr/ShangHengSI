@@ -126,7 +126,8 @@ def finding_text(f, run):
     return "\n".join(lines)
 
 
-def build_annotated(db, run, file: TaskFile):
+def build_annotated(db, run, file: TaskFile, include_changes: bool = True):
+    """include_changes：同时把与上一稿的变化挂成批注（V35-D-02，只对工作台会话里有上一稿的文件）。"""
     check_available(run, file)
     task = db.get(Task, run.task_id)
     detail = run_detail(db, run)
@@ -137,7 +138,14 @@ def build_annotated(db, run, file: TaskFile):
                     (_belongs(r["locs"], file.seq) or
                      (not r["locs"] and (r["file_id"] == str(file.id) or
                                         (r["file_id"] is None and file.is_main))))), key=lambda r: r["id"])
-    if not findings and not local:
+    changes = []
+    if include_changes and file.prev_file_id is not None:
+        from app.export.diff_docx import change_comments
+        try:
+            changes = change_comments(db, task, file)
+        except AppError:
+            changes = []  # 上一稿原文已清理等：只挂问题
+    if not findings and not local and not changes:
         raise AppError(409, "ANNOTATED_UNAVAILABLE", "本轮没有可批注的问题")
     original, anchors = load_source(db, file)
     mapping = load_redaction_map(db, task.id)
@@ -175,6 +183,8 @@ def build_annotated(db, run, file: TaskFile):
                 f"{restore(row['detail'], mapping)}\n—— 商衡SI 本地校验")
         # 本地校验没有 quote，按设计挂在其位置段首，不计模型引用定位失败。
         add(row["locs"][0] if row["locs"] else None, None, text, row["location"], False)
+    for loc, quote, text in changes:
+        add(loc, quote, text, None, False)
     try:
         content = _save(anchors, original)
     except Exception as exc:
@@ -184,4 +194,4 @@ def build_annotated(db, run, file: TaskFile):
     stem = file.original_name.rsplit(".", 1)[0]
     stem = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]', "_", stem) or "文件"
     filename = f"{stem}_商衡SI批注_{datetime.now(ZoneInfo('Asia/Shanghai')):%Y%m%d}.docx"
-    return filename, content, len(findings) + len(local), unanchored
+    return filename, content, len(findings) + len(local) + len(changes), unanchored

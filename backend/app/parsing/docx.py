@@ -2,6 +2,8 @@
 
 按“接受全部修订”后的文本输出节点：w:ins、w:moveTo 中的文字计入，w:del、w:moveFrom 中的文字不计入；
 段落标记被删除的段落并入下一段；被删除的表格行、单元格不生成节点。
+另按“拒绝全部修订”取每个正文节点的文字（V35-D-02，text_before，与接受后的文字不同时才有值），供多稿对比判断改动是否留痕：
+w:del、w:moveFrom 计入，w:ins、w:moveTo 不计入；接受后为空的段落、被删除的表格行，其拒绝后的文字并入下一个正文节点。
 
 位置编号（SPEC 8.2、open_questions Q-15、Q-40）：
   正文段落 F{n}-P{段}，只给生成了节点的段落编号；正文表格 F{n}-T{表}-R{行}-C{列}，表号按正文顶层表格顺序，
@@ -26,7 +28,7 @@ from lxml import etree
 
 from app.parsing.model import DocxImage, ParsedFile, ParsedNode, ParseError
 
-PARSER_VERSION = "docx-2"
+PARSER_VERSION = "docx-3"  # docx-3：正文节点带“拒绝全部修订”文字（V35-D-02）
 
 # 与上传检查（SPEC 17.6）相同的解压上限；这里再查一次，不依赖调用方
 MAX_ARCHIVE_BYTES = 200 * 1024 * 1024
@@ -264,7 +266,7 @@ class _W:
 
     _NAMES = (
         "abstractNum", "abstractNumId", "basedOn", "body", "br", "cellDel", "cellIns", "commentReference", "cr",
-        "customXml", "default", "document", "drawing", "footerReference", "gridBefore", "gridSpan",
+        "customXml", "default", "delText", "document", "drawing", "footerReference", "gridBefore", "gridSpan",
         "headerReference", "id", "ilvl", "ins", "isLgl", "lvl", "lvlOverride", "lvlRestart", "lvlText", "moveFrom",
         "moveTo", "name", "noBreakHyphen", "num", "numFmt", "numId", "numPr", "numStyleLink", "object",
         "outlineLvl", "p", "pPr", "pStyle", "pict", "ptab", "r", "rPr", "sdt", "sdtContent", "sectPr",
@@ -528,6 +530,8 @@ class _Inline:
     rev: bool = False
     hidden_spans: list[list[int]] = field(default_factory=list)
     side: list[tuple] = field(default_factory=list)  # ("tb", 文字, 有修订) / ("cm", 批注 id) / ("img", 关系 id, 段落)
+    before: list[str] = field(default_factory=list)  # 拒绝全部修订后的文字（V35-D-02）
+    ins: int = 0  # 正处在 w:ins / w:moveTo 之内的层数
 
 
 @dataclass
@@ -541,6 +545,7 @@ class _Para:
     heading: bool = False
     paragraphs: list[etree._Element] = field(default_factory=list)
     hidden_spans: list[list[int]] = field(default_factory=list)
+    before: str = ""
 
 
 @dataclass
@@ -566,6 +571,7 @@ class _DocxParser:
         self.missing_images = 0
         self.in_body = False  # 只收正文（含正文文本框）中的图片；页眉页脚的徽标等不识别
         self.placeholders: dict[int, tuple[str, etree._Element | None]] = {}
+        self.pending_before = ""  # 接受修订后没有出节点、拒绝后有文字的内容，并入下一个正文节点（V35-D-02）
 
     # -- 总流程
 
@@ -781,6 +787,8 @@ class _DocxParser:
             tr_pr = tr.find(w.trPr)
             if tr_pr is not None and tr_pr.find(w.del_) is not None:
                 self.has_revisions = True
+                if self.in_body:  # 整行删除且留痕：拒绝修订后这一行还在，文字并入下一个正文节点
+                    self._pend("".join(e.text or "" for e in tr.iter(w.t, w.delText)).strip())
                 continue
             inserted = tr_pr is not None and tr_pr.find(w.ins) is not None
             if inserted:
@@ -812,6 +820,7 @@ class _DocxParser:
         para.hidden_spans = carry.hidden_spans + [[a + len(carry.text), b + len(carry.text)]
                                                   for a, b in para.hidden_spans]
         para.text = carry.text + para.text
+        para.before = carry.before + para.before
         para.rev = True
         para.side = carry.side + para.side
         para.paragraphs = carry.paragraphs + para.paragraphs
@@ -839,16 +848,27 @@ class _DocxParser:
             self._emit_paragraph(carry, out)
         return out
 
+    def _pend(self, before: str) -> None:
+        self.pending_before = "\n".join(t for t in (self.pending_before, before) if t)
+
+    def _before(self, text: str, before: str) -> str | None:
+        """拒绝修订后的文字：并入此前没出节点的删除内容；与接受后相同时为 None。"""
+        before, self.pending_before = "\n".join(t for t in (self.pending_before, before.strip()) if t), ""
+        return before if before != text else None
+
     def _emit_paragraph(self, para: _Para, out: list[ParsedNode]) -> None:
         text = para.text.strip()
         loc = None
+        if not text and para.before.strip():
+            self._pend(para.before.strip())
         if text:
             self.p += 1
             loc = f"{self.f}-P{self.p}"
             kind = "heading" if para.heading else "list_item" if para.numbered else "paragraph"
             out.append(self._node(loc, kind, "body", text, clause=para.clause or manual_clause_no(text),
                                   rev=para.rev))
-            out[-1] = replace(out[-1], text=text, hidden_spans=self._trim_hidden(para))
+            out[-1] = replace(out[-1], text=text, hidden_spans=self._trim_hidden(para),
+                              text_before=self._before(text, para.before))
             if self.track:
                 self.node_paragraphs[loc] = para.paragraphs
         out.extend(self._side_nodes(para.side, loc))
@@ -871,11 +891,15 @@ class _DocxParser:
 
         paragraphs: list[etree._Element] = []
         hidden: list[list[int]] = []
+        befores: list[str] = []
+        inserted = rev  # 整行或整格是插入的：拒绝修订后没有这一格
 
         def take(para: _Para) -> None:
             nonlocal rev
             if self.track:
                 paragraphs.extend(para.paragraphs)
+            if para.before.strip():
+                befores.append(para.before.strip())
             if para.text.strip():
                 offset = sum(len(t) + 1 for t in texts)
                 hidden.extend([[a + offset, b + offset] for a, b in (self._trim_hidden(para) or [])])
@@ -904,6 +928,7 @@ class _DocxParser:
                         offset = sum(len(text) + 1 for text in texts)
                         hidden.extend([[a + offset, b + offset] for a, b in spans])
                         texts.append(t)
+                        befores.append(t)
                     rev = rev or any(r for _, r, _ in items)
                     side.extend(sub_side)
                     if self.track:
@@ -914,10 +939,13 @@ class _DocxParser:
         if carry is not None:
             take(carry)
         text = "\n".join(texts)
+        before = "" if inserted else "\n".join(befores)
+        if not text and before:
+            self._pend(before)
         if text:
             out.append(self._node(loc, "table_cell", "body", text, parent=parent, rev=rev))
             # ParsedNode 统一清理零宽字符并换算区间。
-            out[-1] = replace(out[-1], text=text, hidden_spans=hidden or None)
+            out[-1] = replace(out[-1], text=text, hidden_spans=hidden or None, text_before=self._before(text, before))
             if self.track:
                 self.node_paragraphs[loc] = paragraphs
         out.extend(self._side_nodes(side, loc if text else parent))
@@ -978,7 +1006,8 @@ class _DocxParser:
         ctx = _Inline()
         self._inline(p, ctx)
         para = _Para(text="".join(ctx.parts), rev=ctx.rev or mark_deleted or mark_inserted,
-                     mark_deleted=mark_deleted, side=ctx.side, hidden_spans=ctx.hidden_spans)
+                     mark_deleted=mark_deleted, side=ctx.side, hidden_spans=ctx.hidden_spans,
+                     before="".join(ctx.before))
         if self.track and body:
             para.paragraphs = [p]
         if para.rev:
@@ -999,11 +1028,14 @@ class _DocxParser:
                 continue
             if tag == w.r:
                 self._run(child, ctx)
-            elif tag in (w.del_, w.moveFrom):  # 删除和移走的内容不计入
+            elif tag in (w.del_, w.moveFrom):  # 删除和移走的内容不计入，只记入拒绝修订后的文字
                 ctx.rev = True
+                self._deleted(child, ctx)
             elif tag in (w.ins, w.moveTo):
                 ctx.rev = True
+                ctx.ins += 1
                 self._inline(child, ctx)
+                ctx.ins -= 1
             elif tag == _MC_AC:
                 branch = _choose(child)
                 if branch is not None:
@@ -1017,8 +1049,23 @@ class _DocxParser:
             elif tag in _MATH_T:
                 ctx.parts.append(child.text or "")
                 ctx.length += len(child.text or "")
+                if not ctx.ins:
+                    ctx.before.append(child.text or "")
             else:  # 超链接、智能标记、简单域、自定义 XML、公式等容器
                 self._inline(child, ctx)
+
+    def _deleted(self, el: etree._Element, ctx: _Inline) -> None:
+        """w:del / w:moveFrom 中的文字（拒绝修订后的视图），文本框除外。"""
+        w = self.w
+        for e in el.iter():
+            if any(a.tag == w.txbxContent for a in e.iterancestors()):
+                continue
+            if e.tag in (w.t, w.delText):
+                ctx.before.append(e.text or "")
+            elif e.tag in (w.tab, w.ptab):
+                ctx.before.append("\t")
+            elif e.tag in (w.br, w.cr):
+                ctx.before.append("\n")
 
     def _run(self, r: etree._Element, ctx: _Inline) -> None:
         w = self.w
@@ -1040,6 +1087,8 @@ class _DocxParser:
             elif tag in (w.drawing, w.pict, w.object, _MC_AC):
                 self._embedded(c, ctx)
             # 其余（delText、instrText 域代码、softHyphen、sym、脚注引用等）不计入
+        if not ctx.ins:
+            ctx.before.extend(ctx.parts[part_start:])
         end = ctx.length = start + sum(map(len, ctx.parts[part_start:]))
         if end > start and self._hidden_run(r):
             if ctx.hidden_spans and ctx.hidden_spans[-1][1] == start:

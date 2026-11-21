@@ -343,6 +343,9 @@ class TaskFile(Base):
     original_deleted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     created_at: Mapped[datetime] = _ts_now()
+    # 多稿对比（V35-D-02）：同一会话里的上一稿；一稿最多一个下一稿，上一稿被删除时置空
+    prev_file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid, ForeignKey("task_files.id", ondelete="SET NULL"), unique=True)
 
 
 # ---- 标书初审（V34-B-01） ----
@@ -512,6 +515,8 @@ class DocNode(Base):
     cell_ref: Mapped[Optional[str]] = mapped_column(String(16))
     ocr_conf: Mapped[Optional[float]] = mapped_column(REAL)
     has_revision: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # “拒绝全部修订”后的原文，只有带修订且与 text 不同的 DOCX 正文节点有值（V35-D-02），随 text_enc 清理
+    text_before_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
 
 
 # ---- 18.8 parties ----

@@ -139,6 +139,7 @@ def _parse_file(db: Session, task: Task, f: TaskFile, ocr_used: int, saved: list
             page=n.page, bbox=n.bbox, sheet=n.sheet, cell_ref=n.cell_ref, ocr_conf=n.ocr_conf,
             has_revision=n.has_revision, hidden_spans=n.hidden_spans,
             formula_enc=crypto.encrypt_text(n.formula) if n.formula else None,
+            text_before_enc=crypto.encrypt_text(n.text_before) if n.text_before is not None and n.part == "body" else None,
         )
         for n in parsed.nodes
     )
@@ -269,6 +270,9 @@ def _parse_assistant(db: Session, task: Task, files: list[TaskFile], old_files: 
                 db.commit()
             else:
                 ocr_used += _parse_file(db, task, file, ocr_used)
+                if task.purpose == 'chat':  # 认出是会话里某份文件的新一稿（V35-D-02）
+                    from app.review.drafts import auto_link
+                    auto_link(db, task, file)
         db.commit()
         from app.parsing.transcribe import finish
         progress.phase(db, task_id, 'detect')

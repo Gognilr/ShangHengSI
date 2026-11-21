@@ -20,12 +20,12 @@ CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.d
 
 
 @router.get("/runs/{rid}/annotated", dependencies=[Depends(_export)])
-def annotated(file_seq: int = Query(..., ge=1), run: ReviewRun = Depends(owned_run),
+def annotated(file_seq: int = Query(..., ge=1), include_changes: bool = True, run: ReviewRun = Depends(owned_run),
               user: User = Depends(current_user), db: Session = Depends(get_db)):
     file = db.scalar(select(TaskFile).where(TaskFile.task_id == run.task_id, TaskFile.seq == file_seq))
     if file is None:
         raise AppError(404, "NOT_FOUND", "文件不存在")
-    filename, content, total, unanchored = build_annotated(db, run, file)
+    filename, content, total, unanchored = build_annotated(db, run, file, include_changes)
     audit.record(db, "export_annotated", user_id=user.id, target_type="run", target_id=str(run.id),
                  detail={"run_no": run.run_no, "file_seq": file.seq, "total": total, "unanchored": unanchored})
     db.commit()

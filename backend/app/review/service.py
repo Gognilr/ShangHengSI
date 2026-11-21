@@ -360,10 +360,17 @@ def create_session_run(db: DbSession, task: Task, user: User, ip: str | None, bo
         task = assistant.confirm_files(db, task, user, ip)
     files = selected_files(db, task, {} if body.file_ids is None else {"file_ids": body.file_ids})
     files = [f for f in files if not f.media]  # 录音逐字稿不参与审核
+    default_main = next((f for f in files if f.is_main), files[0] if files else None)
+    if body.file_ids is None:  # 默认：每条稿次链只取最新一稿，加上不在链上的附件（V35-D-02）
+        from app.review.drafts import latest_of, superseded
+        old = superseded(files)
+        if default_main is not None:
+            default_main = latest_of(files, default_main)
+        files = [f for f in files if f.id not in old]
     if not files:
         raise AppError(422, "NO_FILES", "请先加入并确认要审核的文件")
     main = next((f for f in files if str(f.id) == body.main_file_id), None) if body.main_file_id else (
-        next((f for f in files if f.is_main), files[0]))
+        default_main if default_main in files else files[0])
     if main is None:
         raise AppError(422, "VALIDATION_ERROR", "主文件不在所选文件中")
     if main.doc_type is None:

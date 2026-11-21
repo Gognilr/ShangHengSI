@@ -110,18 +110,23 @@ def detail(db: Session, task: Task) -> SessionDetail:
                           Job.status.in_(('queued', 'running')), Job.id < job_id)) if job_id else 0
         media[file.id] = {**file.media, 'queue_position': ahead}
     reason = availability(db, task)
+    from app.review import drafts
+    chains = drafts.chain_info(files) if task.purpose == 'chat' else {}
+    rows = {f.id: f for f in files}
     generating = bool(db.scalar(select(exists().where(AssistantMessage.task_id == task.id,
                        AssistantMessage.role == 'assistant', AssistantMessage.status.in_(('queued', 'streaming'))))))
     return SessionDetail(**_item(task, files, generating=generating).model_dump(), stance=task.stance, source=task.source, policy=task.policy,
                          error_message=task.error_message, created_at=task.created_at,
                          files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id], media=media[f.id],
-                                            speakers=unpack(next(row.speakers_enc for row in files if row.id == f.id), {})
-                                            if media[f.id] is not None else None) for f in preview.files],
+                                            speakers=unpack(rows[f.id].speakers_enc, {}) if media[f.id] is not None else None,
+                                            prev_file_id=rows[f.id].prev_file_id if f.id in chains else None,
+                                            draft_no=chains[f.id][0] if f.id in chains else None) for f in preview.files],
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
                          participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled(), mt_enabled=mt_enabled(),
                          material_version=task.material_version, review_running=review_active(db, task),
-                         parse_progress=_parse_progress(db, task))
+                         parse_progress=_parse_progress(db, task),
+                         draft_hint=drafts.draft_hint(db, task, files) if task.purpose == 'chat' else None)
 
 
 def _parse_progress(db: Session, task: Task) -> dict | None:
@@ -756,7 +761,8 @@ def patch(db: Session, task: Task, body: SessionPatch) -> SessionDetail:
     return result
 
 
-def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None) -> SessionDetail:
+def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None, draft_of: str | None = None) -> SessionDetail:
+    """draft_of：结果页“传新一稿”（V35-D-02），新文件直接认作该文件所在链最新一稿的下一稿，不靠相似度。"""
     task = lock(db, task)
     _writable(db, task)
     _not_reviewing(db, task)
@@ -769,6 +775,15 @@ def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None
     audio_count, uploads = 0, []
     if not raw:
         raise AppError(422, 'NO_FILES', '请至少选择一个文件')
+    draft_prev = None
+    if draft_of is not None:
+        from app.review import drafts
+        from app.security.deps import _parse_id
+        fid = _parse_id(draft_of)
+        base = next((f for f in files if f.id == fid and not f.media), None)
+        if base is None or task.purpose != 'chat' or len(raw) != 1:
+            raise AppError(422, 'VALIDATION_ERROR', '新一稿只能是本会话里文件审核的一份文件')
+        draft_prev = drafts.latest_of(files, base)
     for name, source in raw:
         cleaned = tasks.clean_filename(name)
         ext = cleaned.rsplit('.', 1)[-1].lower()
@@ -802,6 +817,7 @@ def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None
             seq += 1
             row = TaskFile(task_id=task.id, seq=seq, is_main=not files and not rows, original_name=up.name,
                            ext=up.ext, size_bytes=up.size, sha256=digest, storage_key=key,
+                           prev_file_id=draft_prev.id if draft_prev is not None else None,
                            media={"stage": "decoding", "progress": 0, "error": None,
                                   **({"marks": marks} if marks else {})} if audio else None)
             db.add(row)

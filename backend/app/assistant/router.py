@@ -15,6 +15,7 @@ from app.db.session import get_db
 from app.security.deps import _parse_id, current_user, load_owned_task
 from app.assistant.service import _files as task_files
 from app.security.errors import AppError, NotFoundError
+from app.security.permissions import require
 from app.security.sessions import client_ip
 from app.tasks import service as tasks
 from pydantic import BaseModel, Field
@@ -137,9 +138,64 @@ def delete(request: Request, task: Task = Depends(owned_session), user: User = D
 
 @router.post("/{id}/files", response_model=SessionDetail)
 def add_files(files: list[UploadFile] | None = File(None), marks: str | None = Form(None, max_length=4000),
+              draft_of: str | None = Form(None, max_length=64),
               task: Task = Depends(owned_session), db: Session = Depends(get_db)):
     raw = [(f.filename, f.file) for f in files or [] if f.filename]
-    return service.add_files(db, task, raw, _marks(marks))
+    return service.add_files(db, task, raw, _marks(marks), draft_of)
+
+
+class DraftIn(BaseModel):
+    prev_file_id: str | None = None
+
+
+@router.put("/{id}/files/{fid}/draft", response_model=SessionDetail)
+def set_draft(body: DraftIn, file: TaskFile = Depends(owned_file), task: Task = Depends(owned_session),
+              db: Session = Depends(get_db)):
+    """改稿次关系（V35-D-02）：对照哪一稿，或 null 作为独立文件。只影响对比与审核范围，不改脱敏结果。"""
+    from app.review import drafts
+    task = service.lock(db, task)
+    service._not_reviewing(db, task)
+    prev = None
+    if body.prev_file_id is not None:
+        prev = _parse_id(body.prev_file_id)
+        if prev is None:
+            raise AppError(422, "VALIDATION_ERROR", "所选上一稿不正确")
+    drafts.set_prev(db, task, file, prev)
+    result = service.detail(db, task)
+    db.commit()
+    return result
+
+
+def _diff_file(task: Task, db: Session, file_id: str) -> TaskFile:
+    fid = _parse_id(file_id)
+    file = db.get(TaskFile, fid) if fid is not None else None
+    if file is None or file.task_id != task.id or task.purpose != 'chat':
+        raise NotFoundError("FILE_NOT_FOUND", "文件不存在")
+    return file
+
+
+@router.get("/{id}/diff")
+def diff(response: Response, file_id: str = Query(..., max_length=64), task: Task = Depends(owned_session),
+         db: Session = Depends(get_db)):
+    """本稿与上一稿的变化（V35-D-02）：现算不存；含原文，只给本人界面，不写日志。"""
+    from app.review import drafts
+    response.headers['Cache-Control'] = 'no-store'
+    return drafts.diff(db, task, _diff_file(task, db, file_id))
+
+
+@router.get("/{id}/diff/export", dependencies=[Depends(require("use.export"))])
+def diff_export(request: Request, file_id: str = Query(..., max_length=64), task: Task = Depends(owned_session),
+                user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """变化对照表 Word（V35-D-02），内存生成，服务器不留文件。"""
+    from app.audit import service as audit
+    from app.export.diff_docx import build_diff_table
+    file = _diff_file(task, db, file_id)
+    filename, content = build_diff_table(db, task, file)
+    audit.record(db, "export_diff", user_id=user.id, target_type="file", target_id=str(file.id), ip=client_ip(request))
+    db.commit()
+    return Response(content=content, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+                             'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
 
 
 def _marks(value):

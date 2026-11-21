@@ -19,6 +19,9 @@ class SessionFile(TaskFileOut):
     media: dict | None = None
     confirmed_at: UtcDatetime | None
     speakers: dict[str, str | None] | None = None
+    # 稿次（V35-D-02）：上一稿与第几稿；不在链上时为空
+    prev_file_id: uuid.UUID | None = None
+    draft_no: int | None = None
 
 
 class SessionItem(BaseModel):
@@ -69,6 +72,8 @@ class SessionDetail(SessionItem):
     material_version: int = 0
     review_running: bool = False  # 会话发起的审核排队或进行中（V32-A-02）
     parse_progress: dict | None = None  # 解析阶段：{phase, files: {文件 id: {stage, done, total}}}（V321-E-06）
+    # 跨会话提示（V35-D-02）：本人近 30 天另一个会话的主文件名去掉稿次字样后相同：{session_id, title, file_name}
+    draft_hint: dict | None = None
 
 
 class AssistantPreviewNode(PreviewNode):
