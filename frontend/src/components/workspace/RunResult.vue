@@ -222,12 +222,9 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 
 <template>
   <div class="run-result">
-    <header class="bar">
-      <span class="lede" :title="details">{{ lede }}</span>
-      <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
-        <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮`">第 {{ item.run_no }} 轮 · {{ formatDateTime(item.finished_at ?? item.queued_at) }} · {{ runStatusLabel(item.status) }}</el-option>
-      </el-select>
-      <ReceiptStrip v-if="run && session.policy === 'ai'" :run="run" :file-names="task.files.map(f => f.original_name)" />
+    <!-- 设计稿 8.4 结果页：说明与操作并入会话顶部工具条（Assistant.vue 的 #ws-head-sub / #ws-head-actions），轮次与回执放到纸面工具行右侧，省出一整行 -->
+    <Teleport to="#ws-head-sub" defer><span class="lede" :title="details">{{ lede }}</span></Teleport>
+    <Teleport to="#ws-head-actions" defer>
       <div class="actions">
         <el-button v-if="canAsk" :disabled="session.review_running" @click="emit('ask')"><MessageSquare :size="15" :stroke-width="1.75" />追问</el-button>
         <el-tooltip :content="newReason" :disabled="!newReason" placement="bottom">
@@ -236,7 +233,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
         <ExportButton :task="task" :run="run" :export-reason="exportReason" :exporting="exporting" :deleting="false" :saved-tick="savedTick"
           @report="exportReport" @annotated="exportAnnotated" />
       </div>
-    </header>
+    </Teleport>
     <div v-if="wrapUp && wrapUpClosed !== run?.id" class="wrap-up" role="status">
       <span class="wrap-text">✓ {{ handled.total }} 条问题都处理完了（采纳 {{ handled.adopted }} · 忽略 {{ handled.ignored }}）</span>
       <el-button size="small" type="primary" :disabled="!!exporting || !!exportReason" @click="exportReport">导出报告</el-button>
@@ -248,7 +245,14 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
         <ResultCanvas ref="canvas" :key="`${session.id}:${session.material_version}`" :task="task" :note="run ? run.user_note : null" :annotations="annotations" :local-locs="localLocs"
           :selected-finding-id="selectedId" :raw-highlight="rawHighlight" :ask-enabled="false"
           :node-loader="nodeLoader" :raw-loader="rawLoader"
-          @select="onCanvasSelect" />
+          @select="onCanvasSelect">
+          <template #bar>
+            <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
+              <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮`">第 {{ item.run_no }} 轮 · {{ formatDateTime(item.finished_at ?? item.queued_at) }} · {{ runStatusLabel(item.status) }}</el-option>
+            </el-select>
+            <ReceiptStrip v-if="run && session.policy === 'ai'" :run="run" :file-names="task.files.map(f => f.original_name)" />
+          </template>
+        </ResultCanvas>
       </div>
       <SplitHandle v-model="railWidth" reverse :min="RAIL_MIN" :max="railMax" :default-value="railDefault" :storage-key="RAIL_KEY" label="调整问题栏宽度" />
       <div class="rail-col" :style="{ flexBasis: `${railWidth}px` }">
@@ -275,7 +279,6 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 <style scoped>
 .run-result { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 20px; }
 /* 结果工具条：一行说明 + 轮次 + 模型徽标，右侧追问、重新审核、导出（澄明 8.4 ③） */
-.bar { flex: none; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 0; border-bottom: 1px solid var(--si-hair-faint); }
 .lede { min-width: 0; overflow: hidden; color: var(--si-ink-3); font: var(--si-font-label-sm); text-overflow: ellipsis; white-space: nowrap; }
 .round-select { flex: none; width: 104px; }
 .actions { display: flex; align-items: center; gap: 8px; margin: 0 0 0 auto; }

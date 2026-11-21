@@ -46,5 +46,7 @@ defineExpose({
     :note="note" :selected-suspect-id="null" locked :protected-count="protectedCount"
     :annotations="annotations" :local-locs="localLocs" :selected-finding-id="selectedFindingId"
     :ai-view="task.policy === 'ai'" :ask-enabled="askEnabled" :raw-highlight="rawHighlight" :node-loader="nodeLoader" :raw-loader="rawLoader"
-    @select="emit('select', $event)" @ask="emit('ask', $event)" />
+    @select="emit('select', $event)" @ask="emit('ask', $event)">
+    <template v-if="$slots.bar" #bar><slot name="bar" /></template>
+  </ConfirmCanvas>
 </template>

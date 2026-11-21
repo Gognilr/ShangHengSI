@@ -80,6 +80,18 @@ def _item(task: Task, files: list[TaskFile], *, generating: bool = False, review
                        purpose=task.purpose, reviewing=reviewing, run_count=run_count)
 
 
+def _meeting_meta(files: list[TaskFile], minuted: bool, speakers: int) -> dict | None:
+    """会议列表一行的说明：时长、发言人数（逐字稿里不同的发言人编号数）、状态。不含任何原文。"""
+    audio = next((f for f in files if f.media), None)
+    if audio is None:
+        return None
+    stage = audio.media.get('stage')
+    state = ('failed' if stage == 'failed' else 'transcribing' if stage != 'done' else
+             'proofread' if audio.confirmed_at is None else 'minuted' if minuted else 'confirmed')
+    return {'duration_ms': audio.media.get('duration_ms') or 0,
+            'speakers': speakers if stage == 'done' else 0, 'state': state}
+
+
 def detail(db: Session, task: Task) -> SessionDetail:
     from app.assistant.meeting import unpack
     files = _files(db, task)
@@ -591,8 +603,23 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
     run_stats = {tid: (n, active) for tid, n, active in db.execute(
         select(ReviewRun.task_id, func.count(), func.bool_or(ReviewRun.status.in_(('queued', 'running'))))
         .where(ReviewRun.task_id.in_(ids)).group_by(ReviewRun.task_id))} if ids else {}
-    return SessionPage(items=[_item(t, _files(db, t), generating=t.id in generating, run_count=run_stats.get(t.id, (0, False))[0],
-                                    reviewing=t.purpose == 'chat' and run_stats.get(t.id, (0, False))[1]) for t in rows], total=total, page=page,
+    minuted = set(db.scalars(select(AssistantMessage.task_id).where(
+        AssistantMessage.task_id.in_([t.id for t in rows if t.purpose == 'meeting']), AssistantMessage.role == 'assistant',
+        AssistantMessage.status == 'done'))) if ids else set()
+    from app.db.models import DocNode
+    meeting_ids = [t.id for t in rows if t.purpose == 'meeting']
+    speaker_counts = dict(db.execute(select(DocNode.task_id, func.count(func.distinct(DocNode.speaker)))
+                                     .where(DocNode.task_id.in_(meeting_ids), DocNode.speaker.is_not(None))
+                                     .group_by(DocNode.task_id)).all()) if meeting_ids else {}
+    items = []
+    for t in rows:
+        files = _files(db, t)
+        item = _item(t, files, generating=t.id in generating, run_count=run_stats.get(t.id, (0, False))[0],
+                     reviewing=t.purpose == 'chat' and run_stats.get(t.id, (0, False))[1])
+        if t.purpose == 'meeting':
+            item.meeting = _meeting_meta(files, t.id in minuted, speaker_counts.get(t.id, 0))
+        items.append(item)
+    return SessionPage(items=items, total=total, page=page,
                        kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')), asr_enabled=asr_enabled(), mt_enabled=mt_enabled())
 
 

@@ -228,12 +228,16 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
       </WorkbenchHome>
       <template v-else>
         <header class="chat-head">
-          <button type="button" class="title" title="修改会话标题" @click="rename">{{ session.title }}</button>
+          <div class="title-col">
+            <button type="button" class="title" title="修改会话标题" @click="rename">{{ session.title }}</button>
+            <span v-show="mode === 'review'" id="ws-head-sub" class="head-sub" />
+          </div>
           <span v-if="modelLabel && mode === 'ask'" class="ai-tag"><Sparkle :size="13" :stroke-width="2" />{{ modelLabel }}</span>
           <span class="head-gap" />
           <ReviewSteps v-if="mode === 'review' && reviewProgress" :progress="reviewProgress" />
           <SiSegmented v-if="showTabs" v-model="modeModel" :options="modeOptions" size="small" ariaLabel="会话视图" />
           <el-button v-else-if="canReview && canAsk" size="small" link @click="seeResult">全面审核 →</el-button>
+          <div v-show="mode === 'review'" id="ws-head-actions" class="head-actions" />
           <el-button size="small" @click="drawerOpen = true"><PanelRight :size="14" :stroke-width="1.75" /><span class="files-label">文件 {{ session.files.length }}</span></el-button>
           <el-dropdown trigger="click" :disabled="working || session.review_running" @command="remove(session)">
             <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
@@ -281,6 +285,11 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .ai-tag { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
 .ai-tag svg { color: var(--si-ai); }
 .head-gap { flex: 1; }
+.title-col { flex: 0 1 auto; min-width: 0; max-width: 40%; display: flex; flex-direction: column; align-items: stretch; }
+.title-col .title { max-width: none; }
+.head-sub { max-width: 100%; overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
+.head-sub:empty, .head-actions:empty { display: none; }
+.head-actions { display: flex; align-items: center; gap: 8px; }
 .chat-head :deep(.el-button + .el-button), .chat-head :deep(.el-dropdown) { margin-left: 0; }
 .files-label { margin-left: 6px; }
 .review-note { display: flex; align-items: center; justify-content: center; gap: 12px; width: min(800px, calc(100% - 48px)); margin: 16px auto 0; padding: 8px 14px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-card-2); color: var(--si-ink-2); font: var(--si-font-body); box-sizing: border-box; }

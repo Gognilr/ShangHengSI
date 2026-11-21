@@ -43,9 +43,17 @@ const stepIndex = computed(() => {
 // 只有系统在做事（转写、生成纪要）时转圈；校对、确认遮住等你操作时显示编号
 const stepStatus = computed(() => audio.value?.media?.stage === 'failed' ? 'error' : stepIndex.value === 0 || (stepIndex.value === 3 && generating.value) ? 'process' : 'wait')
 
+// 最近的会议：时长 · 发言人数，加状态徽标（设计稿 8.6 ①）
+const MEETING_STATE = { transcribing: ['转写中', 'is-info'], failed: ['转写失败', 'is-hi'], proofread: ['转写完成，待校对', 'is-mid'], confirmed: ['待生成纪要', 'is-brand'], minuted: ['纪要已生成', 'is-ok'] } as const
+function meetingSub(item: SessionItem) {
+  const m = item.meeting
+  if (!m?.duration_ms) return ''
+  const minutes = Math.max(1, Math.round(m.duration_ms / 60000)), h = Math.floor(minutes / 60)
+  return [h ? `${h} 小时 ${minutes % 60} 分钟` : `${minutes} 分钟`, m.speakers ? `${m.speakers} 位发言人` : ''].filter(Boolean).join(' · ')
+}
 function failure(e: unknown) { return e instanceof ApiError ? (e.status === 404 ? '会议记录不存在或已被删除' : e.message) : '加载失败，请刷新页面后重试' }
 async function loadRecent() {
-  try { const page = await assistantApi.list(1, '', 'meeting'); recent.value = page.items; asrEnabled.value = page.asr_enabled } catch (e) { error.value = failure(e) }
+  try { const page = await assistantApi.list(1, '', 'meeting'); recent.value = page.items.filter(i => i.file_count > 0).slice(0, 5); asrEnabled.value = page.asr_enabled } catch (e) { error.value = failure(e) }
 }
 async function load() {
   const current = ++version
@@ -158,7 +166,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     <input ref="picker" class="file-input" type="file" :accept="AUDIO" @change="picked">
     <section v-if="recent.length" class="recent-list" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)">
       <div class="rl-head"><h2>最近的会议</h2><router-link :to="{ name: 'history', query: { type: 'meeting' } }" class="all">全部历史<ChevronRight :size="14" :stroke-width="1.75" /></router-link></div>
-      <div class="rl"><router-link v-for="item in recent" :key="item.id" :to="`/meeting/${item.id}`" class="li"><span class="mod-ic"><Mic :size="18" :stroke-width="1.75" /></span><b :title="item.title">{{ item.title }}</b><span class="li-t num">{{ formatDateTime(item.last_activity_at) }}</span></router-link></div>
+      <div class="rl"><router-link v-for="item in recent" :key="item.id" :to="`/meeting/${item.id}`" class="li"><span class="mod-ic"><Mic :size="18" :stroke-width="1.75" /></span><span class="li-main"><b :title="item.title">{{ item.title }}</b><span v-if="meetingSub(item)" class="num">{{ meetingSub(item) }}</span></span><span v-if="item.meeting" class="si-badge" :class="MEETING_STATE[item.meeting.state][1]"><i class="d" />{{ MEETING_STATE[item.meeting.state][0] }}</span><span class="li-t num">{{ formatDateTime(item.last_activity_at) }}</span></router-link></div>
     </section>
   </div>
 

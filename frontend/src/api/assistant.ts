@@ -44,6 +44,8 @@ export interface SessionItem {
   original_deleted: boolean; generating?: boolean; purpose: Purpose
   /** 审核排队或进行中、已发起的轮数（侧栏列表；V321-E-03） */
   reviewing?: boolean; run_count?: number
+  /** 会议列表的说明行（V35-F-08）：时长、发言人数、状态 */
+  meeting?: { duration_ms: number; speakers: number; state: 'transcribing' | 'failed' | 'proofread' | 'confirmed' | 'minuted' } | null
 }
 /** 会话的入口（V31-U5）：智能助手、会议纪要、翻译各列自己的记录 */
 export type Purpose = 'chat' | 'meeting' | 'translate'

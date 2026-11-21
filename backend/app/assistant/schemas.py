@@ -33,6 +33,8 @@ class SessionItem(BaseModel):
     # 侧栏列表用（V321-E-03）：审核排队或进行中、已发起的轮数；单个会话详情里以 review_running 为准
     reviewing: bool = False
     run_count: int = 0
+    # 会议列表的说明行（V35-F-08）：时长、发言人数、状态；只对会议会话给出
+    meeting: dict | None = None
 
 
 class SessionCreate(BaseModel):
