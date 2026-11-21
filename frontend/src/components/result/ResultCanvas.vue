@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { redactionApi, type RedactionInfo } from '@/api/redaction'
 import type { PreviewNodes } from '@/api/preview'
 import type { TaskDetail } from '@/api/tasks'
+import type { DiffChange, DiffResult } from '@/api/assistant'
 import ConfirmCanvas, { type CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
 
 /**
@@ -20,6 +21,8 @@ const props = defineProps<{
   /** 工作台会话：节点与原件走会话接口（V32-B-01）；不传为审核任务 */
   nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes>
   rawLoader?: (taskId: string, fileId: string) => Promise<Blob>
+  /** 工作台会话：有上一稿的文件可“对比上一稿”（V35-D-02） */
+  diffLoader?: (fileId: string, prevId: string) => Promise<DiffResult>
 }>()
 const emit = defineEmits<{ select: [findingId: string]; ask: [prefill: string] }>()
 
@@ -38,6 +41,7 @@ defineExpose({
   locate: (loc: string, findingId?: string) => canvas.value?.locate(loc, undefined, findingId),
   switchFile: (delta: 1 | -1) => canvas.value?.switchFile(delta),
   cancel: () => canvas.value?.cancel(),
+  showDiff: (fileId: string, change: DiffChange) => canvas.value?.showDiff(fileId, change),
 })
 </script>
 
@@ -45,7 +49,7 @@ defineExpose({
   <ConfirmCanvas ref="canvas" mode="result" :task-id="task.id" :files="task.files" :items="info.items" :suspects="info.suspects"
     :note="note" :selected-suspect-id="null" locked :protected-count="protectedCount"
     :annotations="annotations" :local-locs="localLocs" :selected-finding-id="selectedFindingId"
-    :ai-view="task.policy === 'ai'" :ask-enabled="askEnabled" :raw-highlight="rawHighlight" :node-loader="nodeLoader" :raw-loader="rawLoader"
+    :ai-view="task.policy === 'ai'" :ask-enabled="askEnabled" :raw-highlight="rawHighlight" :node-loader="nodeLoader" :raw-loader="rawLoader" :diff-loader="diffLoader"
     @select="emit('select', $event)" @ask="emit('ask', $event)">
     <template v-if="$slots.bar" #bar><slot name="bar" /></template>
   </ConfirmCanvas>

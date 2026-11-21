@@ -68,7 +68,7 @@ function openSent() {
 </template>
 
 <style scoped>
-.strip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 1px solid var(--si-hair); border-radius: var(--el-border-radius-round); background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
+.strip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; overflow: hidden; height: 28px; padding: 0 10px; border: 1px solid var(--si-hair); border-radius: var(--el-border-radius-round); background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; }
 .strip:hover { background: var(--si-surface-2); }
 .strip:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 .icon { color: var(--el-color-primary); }

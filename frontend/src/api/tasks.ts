@@ -33,6 +33,9 @@ export interface TaskFile {
   parse_error: string | null
   /** 原件按保留期限删除的时间；未删除为 null。 */
   original_deleted_at?: string | null
+  /** 工作台会话的稿次（V35-D-02）：上一稿与第几稿，不在链上时为空 */
+  prev_file_id?: string | null
+  draft_no?: number | null
 }
 
 export interface LatestRun {

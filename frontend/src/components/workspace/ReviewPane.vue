@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { FileUp, ShieldCheck } from '@lucide/vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
@@ -21,6 +22,7 @@ import type { ReviewProgress } from '@/components/workspace/ReviewSteps.vue'
 import { useAuthStore } from '@/stores/auth'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
 import { nudgeField } from '@/utils/nudge'
+import { loadDiff } from '@/utils/drafts'
 
 /**
  * 工作台“全面审核”视图（V32-B-01 2）：解析 → 确认 → 审核中 → 结果，按会话数据决定。
@@ -88,13 +90,31 @@ const candidates = computed(() => files.value.filter(f => !!f.confirmed_at || f.
 const picked = ref<string[]>([])
 const mainId = ref('')
 const known = new Set<string>()
-watch(() => candidates.value.map(f => f.id).join(','), () => {
+// 稿次（V35-D-02）：每条链只默认勾选最新一稿；文件被下一稿取代时取消勾选，主文件随之换成最新一稿
+const superseded = computed(() => new Set(files.value.map(f => f.prev_file_id).filter((id): id is string => !!id)))
+const knownSuperseded = new Set<string>()
+function latestDraft(id: string) {
+  let cur = id
+  const seen = new Set([id])
+  for (;;) { const next = files.value.find(f => f.prev_file_id === cur); if (!next || seen.has(next.id)) return cur; cur = next.id; seen.add(cur) }
+}
+watch(() => candidates.value.map(f => `${f.id}:${f.prev_file_id ?? ''}`).join(','), () => {
   const ids = candidates.value.map(f => f.id)
-  // 新确认的文件默认选中；已不存在的去掉
-  picked.value = [...picked.value.filter(id => ids.includes(id)), ...ids.filter(id => !picked.value.includes(id) && !known.has(id))]
+  const fresh = [...superseded.value].filter(id => !knownSuperseded.has(id))
+  fresh.forEach(id => knownSuperseded.add(id))
+  // 新确认的文件默认选中（已被下一稿取代的除外）；已不存在的、刚被取代的去掉
+  picked.value = [...picked.value.filter(id => ids.includes(id) && !fresh.includes(id)),
+    ...ids.filter(id => !picked.value.includes(id) && !known.has(id) && !superseded.value.has(id))]
   ids.forEach(id => known.add(id))
-  if (!picked.value.includes(mainId.value)) mainId.value = candidates.value.find(f => picked.value.includes(f.id) && f.is_main)?.id ?? picked.value[0] ?? ''
+  if (fresh.includes(mainId.value) || !picked.value.includes(mainId.value)) {
+    const mainFile = candidates.value.find(f => f.is_main)
+    const preferred = latestDraft(mainId.value && ids.includes(mainId.value) ? mainId.value : mainFile?.id ?? '')
+    mainId.value = picked.value.includes(preferred) ? preferred : picked.value[0] ?? ''
+  }
 }, { immediate: true })
+const diffLoader = (fid: string, prev: string) => loadDiff(props.session.id, fid, prev)
+const router = useRouter()
+const hintClosed = ref('')
 watch(picked, ids => { if (!ids.includes(mainId.value)) mainId.value = ids[0] ?? '' })
 
 const stance = ref<Stance | ''>('')
@@ -346,8 +366,13 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
     <!-- 确认页（内嵌）：确认脱敏 + 审核设置，一个主按钮 -->
     <section v-else-if="stage === 'confirm'" class="confirm-stage">
       <div v-if="rounds.length" class="back"><el-button link type="primary" @click="backToResult">← 返回第 {{ [...rounds].sort((a, b) => b.run_no - a.run_no)[0]?.run_no }} 轮结果</el-button></div>
+      <div v-if="session.draft_hint && hintClosed !== session.id" class="draft-hint" role="status">
+        <span class="hint-text">这像是《{{ session.draft_hint.file_name }}》的新一稿。要和上一稿对比，请在那次审核里点“传新一稿”传入。</span>
+        <el-button size="small" link type="primary" @click="router.push({ path: `/assistant/${session.draft_hint.session_id}`, query: { mode: 'review' } })">打开那次审核</el-button>
+        <el-button size="small" link aria-label="关闭提示" @click="hintClosed = session.id">×</el-button>
+      </div>
       <ConfirmWorkbench :key="`${session.id}:${pendingFiles.map(f => f.id).join(',')}`" class="confirm-wb" :task="confirmationTask(session)" mode="session-review" require-our-party
-        v-model:picked="picked" v-model:main-id="mainId" :stance="stance" :file-ids="picked" :model-name="modelName" :blocker="confirmBlocker" :blocker-choice="!!confirmCheck.field" :submit="submitConfirm"
+        v-model:picked="picked" v-model:main-id="mainId" :diff-loader="diffLoader" :stance="stance" :file-ids="picked" :model-name="modelName" :blocker="confirmBlocker" :blocker-choice="!!confirmCheck.field" :submit="submitConfirm"
         @our="confirmOur = $event" @preview="previewVersion = $event" @confirmed="emit('refresh')" @stale="emit('refresh')" @nudge="nudgeConfirm" @blocked="blockedN = $event">
         <template #settings>
           <div class="cs">
@@ -369,7 +394,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 
     <!-- 结果 -->
     <RunResult v-else-if="stage === 'result'" :session="session" :rounds="rounds" :selected-run="selectedRun" :fresh="freshRun"
-      :discuss-id="discussId" @select-run="selectedRun = $event; freshRun = false" @new-round="newRound" @discuss="emit('discuss', $event)" @close-discuss="emit('closeDiscuss')" @loaded="resultRun = $event" @ask="emit('ask')">
+      :discuss-id="discussId" @select-run="selectedRun = $event; freshRun = false" @new-round="newRound" @discuss="emit('discuss', $event)" @close-discuss="emit('closeDiscuss')" @loaded="resultRun = $event" @ask="emit('ask')" @uploaded="emit('refresh')">
       <!-- 讨论区由工作台提供（消息与轮询只在工作台一处），这里原样转给结果页右栏（V321-E-02） -->
       <template #discussion="slotProps"><slot name="discussion" v-bind="slotProps" /></template>
     </RunResult>
@@ -448,6 +473,8 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 .confirm-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 20px; }
 .confirm-stage > .back { padding: 8px 0 0; margin: 0; }
 .confirm-wb { flex: 1; min-height: 0; }
+.draft-hint { flex: none; display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 12px; border-radius: var(--si-radius-card); background: var(--si-blue-tint); color: var(--si-blue-ink); }
+.hint-text { flex: 1; min-width: 0; font: var(--si-font-label); }
 .cs { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px solid var(--si-hair); }
 .cs-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .cs-row :deep(.el-select) { width: 200px; }

@@ -16,8 +16,8 @@ export const reportApi = {
   local: (taskId: string) => download(`/tasks/${taskId}/report`),
   /** 标书初审问题清单（V35-E-01）：full 全部，clues 只含串标线索 */
   bid: (projectId: string, scope: 'full' | 'clues' = 'full') => download(`/bid/${projectId}/report?scope=${scope}`),
-  async annotated(runId: string, fileSeq: number) {
-    const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/annotated?file_seq=${fileSeq}`)
+  async annotated(runId: string, fileSeq: number, includeChanges = true) {
+    const { blob, filename, headers } = await http.getDownload(`/runs/${runId}/annotated?file_seq=${fileSeq}${includeChanges ? '' : '&include_changes=false'}`)
     const saveResult = await saveBlob(blob, filename)
     return {
       saveResult,

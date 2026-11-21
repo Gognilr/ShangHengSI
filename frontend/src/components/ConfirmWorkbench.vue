@@ -3,7 +3,8 @@ import { Ban, Bookmark, ChevronDown, ChevronRight, CircleCheck, CircleDot, Ellip
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
-import { assistantApi } from '@/api/assistant'
+import { assistantApi, type DiffResult } from '@/api/assistant'
+import { diffParts, substantive } from '@/utils/drafts'
 import { localFindingsApi } from '@/api/localFindings'
 import {
   REDACTION_ERROR_MESSAGES,
@@ -50,6 +51,8 @@ const props = withDefaults(defineProps<{
   blocker?: string
   /** blocker 是用户还没选的项（立场、模型）：按钮保持可点，点击时发 nudge 由父页面定位（V33-C-01） */
   blockerChoice?: boolean
+  /** session-review：多稿对比（V35-D-02），确认前就能看与上一稿的变化 */
+  diffLoader?: (fileId: string, prevId: string) => Promise<DiffResult>
 }>(), { mode: 'review', requireOurParty: false })
 const emit = defineEmits<{
   (e: 'update:picked', ids: string[]): void
@@ -79,6 +82,52 @@ const UNKNOWN_COUNTRY = '国家未知'
 const files = ref<TaskFile[]>(props.task.files)
 const hidden = ref<Set<string>>(new Set())
 const visibleFiles = computed(() => files.value.filter(f => !hidden.value.has(f.id)))
+watch(() => props.task.files, list => {
+  // 稿次关系由会话详情带回（自动认稿、改关系）：只同步这两项，不打断本页其余状态
+  const map = new Map(list.map(f => [f.id, f]))
+  if (files.value.some(f => map.has(f.id) && (map.get(f.id)!.prev_file_id ?? null) !== (f.prev_file_id ?? null)))
+    files.value = files.value.map(f => map.has(f.id) ? { ...f, prev_file_id: map.get(f.id)!.prev_file_id ?? null, draft_no: map.get(f.id)!.draft_no ?? null } : f)
+})
+
+// ---- 稿次（V35-D-02）：文件行写“第 2 稿 · 对照《…》第 1 稿”，可改对照哪一稿或作为独立文件；有上一稿时给出变化摘要 ----
+const draftDiffs = ref<Record<string, DiffResult | 'error'>>({})
+watch(() => visibleFiles.value.map(f => `${f.id}:${f.prev_file_id ?? ''}:${f.parse_state}`).join(','), () => {
+  if (!sessionReview.value || !props.diffLoader) return
+  for (const f of visibleFiles.value) {
+    if (!f.prev_file_id || f.parse_state !== 'done') continue
+    const key = `${f.id}:${f.prev_file_id}`
+    if (draftDiffs.value[key]) continue
+    props.diffLoader(f.id, f.prev_file_id).then(d => { draftDiffs.value = { ...draftDiffs.value, [key]: d } })
+      .catch(() => { draftDiffs.value = { ...draftDiffs.value, [key]: 'error' } })
+  }
+}, { immediate: true })
+const fileName = (id: string | null | undefined) => files.value.find(f => f.id === id)?.original_name ?? ''
+const draftOf = (f: TaskFile) => { const d = f.prev_file_id ? draftDiffs.value[`${f.id}:${f.prev_file_id}`] : undefined; return d && d !== 'error' ? d : null }
+const prevNo = (f: TaskFile) => files.value.find(x => x.id === f.prev_file_id)?.draft_no ?? 1
+/** 可作为上一稿的文件：本会话其余文档，排除本稿的后续稿（不能成环） */
+function prevChoices(f: TaskFile) {
+  const later = new Set<string>([f.id])
+  let grew = true
+  while (grew) { grew = false; for (const x of files.value) if (x.prev_file_id && later.has(x.prev_file_id) && !later.has(x.id)) { later.add(x.id); grew = true } }
+  return visibleFiles.value.filter(x => !later.has(x.id) && x.parse_state === 'done')
+}
+const draftSaving = ref(false)
+async function changeDraft(f: TaskFile, prev: string | null) {
+  if (draftSaving.value || (f.prev_file_id ?? null) === prev) return
+  draftSaving.value = true
+  try {
+    const session = await assistantApi.setDraft(props.task.id, f.id, prev)
+    const map = new Map(session.files.map(x => [x.id, x]))
+    files.value = files.value.map(x => map.has(x.id) ? { ...x, prev_file_id: map.get(x.id)!.prev_file_id ?? null, draft_no: map.get(x.id)!.draft_no ?? null } : x)
+    emit('stale')
+  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '保存失败，请重试') }
+  finally { draftSaving.value = false }
+}
+function viewDiff(f: TaskFile) {
+  const d = draftOf(f)
+  const first = d?.changes.find(c => c.type !== 'format')
+  if (first) void canvas.value?.showDiff(f.id, first)
+}
 const parties = ref<Party[]>([])
 const summary = ref<Record<string, number>>({})
 const suspects = ref<Suspect[]>([])
@@ -670,7 +719,7 @@ useHotkeys({
 <template>
   <div class="wb" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
     <div class="canvas">
-      <ConfirmCanvas ref="canvas" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @manual="onManual" @revoke="onRevoke" @keep="s => keepOne(s, true)" @restore="restoreOne" @replace="replaceOne" @adjust="onAdjust">
+      <ConfirmCanvas ref="canvas" :diff-loader="sessionReview ? diffLoader : undefined" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @manual="onManual" @revoke="onRevoke" @keep="s => keepOne(s, true)" @restore="restoreOne" @replace="replaceOne" @adjust="onAdjust">
         <template #bar>
           <SiIsland v-if="island" :state="island.state" :text="island.text" />
           <span v-else-if="saving" class="hint saving" aria-live="polite">正在后台保存…</span>
@@ -781,6 +830,24 @@ useHotkeys({
                 <el-select class="doc-type" :model-value="f.doc_type ?? undefined" placeholder="请选择" size="small" :aria-label="`${f.original_name} 的文件类型`" @change="(v: string) => changeDocType(f.id, v)"><el-option v-for="o in docTypeOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
                 <span class="hint">{{ docTypeSourceLabel(f.doc_type_source) }}</span>
               </div>
+              <div v-if="sessionReview && (f.draft_no || visibleFiles.length > 1)" class="draft-line">
+                <el-dropdown trigger="click" :disabled="draftSaving || waiting" @command="(v: string) => changeDraft(f, v || null)">
+                  <button type="button" class="draft-btn" :class="{ on: !!f.draft_no }" :aria-label="`${f.original_name} 的稿次`">
+                    <template v-if="f.prev_file_id">第 {{ f.draft_no }} 稿 · 对照《{{ fileName(f.prev_file_id) }}》第 {{ prevNo(f) }} 稿</template>
+                    <template v-else-if="f.draft_no">第 {{ f.draft_no }} 稿</template>
+                    <template v-else>独立文件</template>
+                    <ChevronDown :size="13" :stroke-width="1.75" />
+                  </button>
+                  <template #dropdown><el-dropdown-menu>
+                    <el-dropdown-item command="" :disabled="!f.prev_file_id">作为独立文件</el-dropdown-item>
+                    <el-dropdown-item v-for="x in prevChoices(f)" :key="x.id" :command="x.id" :disabled="x.id === f.prev_file_id">作为《{{ x.original_name }}》的新一稿</el-dropdown-item>
+                  </el-dropdown-menu></template>
+                </el-dropdown>
+              </div>
+              <div v-if="sessionReview && draftOf(f)" class="draft-sum">
+                <span>{{ diffParts(draftOf(f)!).length ? diffParts(draftOf(f)!).map(p => p.text).join(' · ') : '正文与上一稿一致' }}</span>
+                <el-button v-if="substantive(draftOf(f)!).length" link type="primary" size="small" @click="viewDiff(f)">查看对比</el-button>
+              </div>
               <div class="hint">{{ fileMeta(f) }}<template v-if="f.parse_state === 'parsing'"> · 正在读取</template></div>
               <div v-if="f.parse_state === 'failed'" class="warn">读取失败：{{ f.parse_error || '文件无法读取' }}</div>
               <div v-if="f.warnings.length" class="warn" :title="f.warnings.join('\n')">{{ f.warnings[0] }}<template v-if="f.warnings.length > 1">（共 {{ f.warnings.length }} 条）</template></div>
@@ -849,6 +916,13 @@ useHotkeys({
 </template>
 
 <style scoped>
+/* 稿次（V35-D-02） */
+.draft-line { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.draft-btn { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 22px; padding: 0 8px; border: 1px solid var(--si-hair); border-radius: 999px; background: transparent; color: var(--si-ink-3); font: var(--si-font-caption); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.draft-btn.on { border-color: transparent; background: var(--si-blue-tint); color: var(--si-blue-ink); }
+.draft-btn:hover { border-color: var(--el-color-primary); }
+.draft-sum { display: flex; align-items: center; gap: 8px; margin-top: 2px; color: var(--si-ink-2); font: var(--si-font-caption); }
+
 /* 工作台（V31-U5F-03 问题 2B）：高度固定为容器（可视区），左侧文档、右侧栏各自滚动。
    height: 100% 让块级容器（助手、会议纪要、翻译的全屏对话框）里同样固定高度，不再随文档拉伸 */
 .wb { display: flex; flex: 1; height: 100%; min-height: 0; box-sizing: border-box; padding: 12px 0 20px; overflow: hidden; }

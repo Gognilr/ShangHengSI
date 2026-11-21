@@ -3,7 +3,7 @@
 // 拖入、点选或粘贴文件才建会话（不在进入页面时建空会话），上传后进入该会话的审核视图；底层仍是“工作空间就是会话”。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronRight, FilePlus, FileText, Upload } from '@lucide/vue'
+import { ChevronRight, Ellipsis, FilePlus, FileText, Upload } from '@lucide/vue'
 import { assistantApi, type HistoryItem } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import { usePasteFiles } from '@/composables/usePasteFiles'
@@ -59,6 +59,27 @@ const rows = computed(() => recent.value.map(row => {
   const sub = [row.doc_type ? docTypeLabel(row.doc_type) : '', row.stance ? `${stanceLabel(row.stance)}立场` : '', row.run_count > 1 ? `第 ${row.run_count} 轮` : '', row.file_count > 1 ? `${row.file_count} 份文件` : ''].filter(Boolean).join(' · ')
   return { row, badges, sub }
 }))
+// “⋯ → 传新一稿”（V35-D-02）：选好文件后传进那次审核，直接认作主文件所在链最新一稿的下一稿，再打开该会话
+const draftPicker = ref<HTMLInputElement>()
+const draftTarget = ref<HistoryItem | null>(null)
+function pickDraft(row: HistoryItem) { draftTarget.value = row; draftPicker.value?.click() }
+async function draftPicked(event: Event) {
+  const input = event.target as HTMLInputElement, file = input.files?.[0], row = draftTarget.value
+  input.value = ''
+  if (!file || !row || uploading.value !== null) return
+  error.value = ''; uploading.value = 0
+  try {
+    const session = await assistantApi.get(row.id)
+    const docs = session.files.filter(f => !f.media)
+    let base = docs.find(f => f.is_main) ?? docs[0]
+    for (let next = base && docs.find(f => f.prev_file_id === base!.id); next; next = docs.find(f => f.prev_file_id === base!.id)) base = next
+    if (!base) throw new Error('这次审核里没有可对照的文件')
+    await assistantApi.addFiles(row.id, [file], (loaded, total) => { uploading.value = Math.round(loaded / total * 100) }, [], base.id)
+    sessions.markReview(row.id)
+    await router.push({ path: `/assistant/${row.id}`, query: { mode: 'review' } })
+  } catch (e) { error.value = e instanceof ApiError ? e.message : e instanceof Error ? e.message : '上传失败，请稍后重试' }
+  finally { uploading.value = null }
+}
 function open(row: HistoryItem) {
   if (row.kind === 'session') void router.push({ path: `/assistant/${row.id}`, query: { mode: 'review' } })
   else void router.push(row.status === 'draft' ? { name: 'review-new', query: { task: row.id } } : { name: 'review-result', params: { taskId: row.id } })
@@ -81,6 +102,7 @@ function open(row: HistoryItem) {
       <span v-if="uploading !== null" class="bar" aria-hidden="true"><i :style="{ width: `${uploading}%` }" /></span>
     </div>
     <input ref="picker" class="file-input" type="file" multiple :accept="DOC" @change="picked">
+    <input ref="draftPicker" class="file-input" type="file" :accept="DOC" @change="draftPicked">
     <section v-if="rows.length" class="recent">
       <div class="recent-head"><h2>最近的审核</h2><router-link to="/history" class="all">全部历史<ChevronRight :size="14" :stroke-width="1.75" /></router-link></div>
       <div class="list">
@@ -89,6 +111,10 @@ function open(row: HistoryItem) {
           <span class="li-main"><b :title="row.title">{{ row.title }}</b><span v-if="sub">{{ sub }}</span></span>
           <span v-for="b in badges" :key="b.text" class="badge" :class="[`b-${b.tone}`, { breath: b.tone === 'info' }]"><i v-if="b.dot" class="d" />{{ b.text }}</span>
           <span class="li-t num">{{ formatDateTime(row.last_activity_at) }}</span>
+          <el-dropdown v-if="row.kind === 'session'" trigger="click" @command="() => pickDraft(row)" @click.prevent.stop>
+            <button type="button" class="more" :aria-label="`${row.title} 的更多操作`" @click.prevent.stop><Ellipsis :size="16" :stroke-width="1.75" /></button>
+            <template #dropdown><el-dropdown-menu><el-dropdown-item command="draft">传新一稿</el-dropdown-item></el-dropdown-menu></template>
+          </el-dropdown>
           <ChevronRight class="chev" :size="16" :stroke-width="1.75" />
         </a>
       </div>
@@ -144,4 +170,6 @@ html[data-fx="full"] .li { animation: rh-in var(--si-d3) var(--si-ease-out) both
 @keyframes rh-breath { 50% { opacity: .35; } }
 .li-t { flex: none; width: 128px; white-space: nowrap; color: var(--si-ink-4); font: var(--si-font-caption); text-align: right; }
 .chev { flex: none; color: var(--si-ink-4); }
+.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.more:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 </style>

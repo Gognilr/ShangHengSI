@@ -4,6 +4,7 @@ import { ApiError } from '@/api/http'
 import { previewApi, type PreviewNode, type PreviewNodes } from '@/api/preview'
 import type { ManualInput, RedactionItemPos, Suspect, SuspectCategory, UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
+import type { DiffChange, DiffResult } from '@/api/assistant'
 import DocPreview from '@/components/DocPreview.vue'
 import DocSpectrum, { type SpectrumTick } from '@/components/result/DocSpectrum.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
@@ -39,6 +40,8 @@ const props = defineProps<{
   aiView?: boolean
   askEnabled?: boolean
   rawHighlight?: string[]
+  /** 工作台会话（V35-D-02）：有上一稿的文件多一个“对比上一稿”视图，只读 */
+  diffLoader?: (fileId: string, prevId: string) => Promise<DiffResult>
 }>()
 const isResult = computed(() => props.mode === 'result')
 // 手动补充与撤销只发事件，由确认工作台乐观更新并放进保存队列（V31-U5F-03）
@@ -61,11 +64,14 @@ const FOLD_LIMIT = 800
 // ---- 文件页签与节点 ----
 interface FileState { loading: boolean; error: string; available: boolean; nodes: PreviewNode[] }
 const states = reactive<Record<string, FileState>>({})
-const sortedFiles = computed(() => [...props.files].sort((a, b) => Number(b.is_main) - Number(a.is_main) || a.seq - b.seq))
+// 已被下一稿取代的文件排在最后，默认打开最新一稿（V35-D-02）
+const supersededIds = computed(() => new Set(props.files.map(f => f.prev_file_id).filter(Boolean)))
+const sortedFiles = computed(() => [...props.files].sort((a, b) => Number(supersededIds.value.has(a.id)) - Number(supersededIds.value.has(b.id))
+  || Number(b.is_main) - Number(a.is_main) || a.seq - b.seq))
 const activeId = ref('')
 const active = computed(() => states[activeId.value])
 const lastFileId = computed(() => sortedFiles.value[sortedFiles.value.length - 1]?.id ?? '')
-const view = ref<'orig' | 'ai' | 'raw'>('orig')
+const view = ref<'orig' | 'ai' | 'raw' | 'diff'>('orig')
 function utteranceLabel(node: PreviewNode) {
   const file = activeFile.value as (TaskFile & { speakers?: Record<string, string | null> }) | undefined
   return file?.speakers?.[String(node.speaker)] || '发言人 ' + node.speaker
@@ -74,12 +80,54 @@ function stamp(ms = 0) { const s = Math.floor(ms/1000); return [Math.floor(s/360
 const activeFile = computed(() => sortedFiles.value.find(f => f.id === activeId.value))
 // 原件视图：PDF 或图片且原件未删除
 const rawAvailable = (f: TaskFile | undefined) => !!f && !f.original_deleted_at && ['pdf', 'jpg', 'jpeg', 'png'].includes(f.ext.toLowerCase().replace(/^\./, ''))
+const hasPrev = computed(() => !!props.diffLoader && !!activeFile.value?.prev_file_id)
 const viewOptions = computed(() => [
   { value: 'orig' as const, label: '原文' },
   ...(props.aiView === false ? [] : [{ value: 'ai' as const, label: '模型将看到的' }]),
+  ...(hasPrev.value ? [{ value: 'diff' as const, label: '对比上一稿' }] : []),
   ...(isResult.value && rawAvailable(activeFile.value) ? [{ value: 'raw' as const, label: '原件' }] : []),
 ])
 watch(viewOptions, opts => { if (!opts.some(o => o.value === view.value)) view.value = 'orig' })
+
+// ---- 对比上一稿（V35-D-02，设计 diff.md 3.4）：纸面显示本稿，新增浅底下划线、删除划线、整段删除单列，改过的段左侧竖线 ----
+interface DiffState { loading: boolean; error: string; data: DiffResult | null }
+const diffs = reactive<Record<string, DiffState>>({})
+const activeDiff = computed(() => diffs[`${activeId.value}:${activeFile.value?.prev_file_id ?? ''}`])
+async function loadDiff() {
+  const file = activeFile.value
+  if (!props.diffLoader || !file?.prev_file_id) return
+  const key = `${file.id}:${file.prev_file_id}`
+  if (diffs[key] && !diffs[key]!.error) return
+  const st = reactive<DiffState>({ loading: true, error: '', data: null })
+  diffs[key] = st
+  try { st.data = await props.diffLoader(file.id, file.prev_file_id) }
+  catch (e) { st.error = e instanceof ApiError ? e.message : '对比失败，请重试' }
+  finally { st.loading = false }
+}
+watch([view, activeId, () => activeFile.value?.prev_file_id], () => { if (view.value === 'diff') void loadDiff() })
+const diffMaps = computed(() => {
+  const changes = view.value === 'diff' ? activeDiff.value?.data?.changes ?? [] : []
+  const byLoc = new Map<string, DiffChange>(), before = new Map<string, DiffChange[]>(), after = new Map<string, DiffChange[]>()
+  for (const c of changes) {
+    if (c.type !== 'del') { if (c.loc) byLoc.set(c.loc, c); continue }
+    const map = c.after ? after : before
+    const key = c.anchor ?? ''
+    map.set(key, [...(map.get(key) ?? []), c])
+  }
+  return { byLoc, before, after }
+})
+const DiffText: FunctionalComponent<{ c: DiffChange }> = ({ c }) =>
+  h('span', { class: 'txt', 'data-loc': c.loc ?? '' }, c.segs.map(s => s.t === 'eq' ? s.s : h(s.t, { class: [`d-${s.t}`, { 'd-u': s.u }] }, s.s)))
+DiffText.props = ['c']
+const diffTag = (c: DiffChange) => c.type === 'move' ? `位置调整${c.prev_clause ? `（原${c.prev_clause}）` : ''}` : c.type === 'add' ? '本稿新增' : ''
+const diffHint = computed(() => {
+  const d = activeDiff.value?.data
+  if (!d) return activeDiff.value?.loading ? '正在本机对比…' : ''
+  const notes = [`对照第 ${d.prev_no} 稿《${d.prev_name}》`, '本机逐字对比，未发送给模型']
+  if (d.trace === 'flag') notes.push('本稿解析较早，只能按段落判断是否留痕')
+  if (d.ocr) notes.push('扫描件识字可能有误差，单字差异请对照原件')
+  return notes.join(' · ')
+})
 
 async function loadFile(id: string) {
   if (!id || states[id]) return
@@ -116,12 +164,13 @@ type Kind = 'plain' | 'cap' | 'unc' | 'kept'
 interface Hl { fid: string; sev: string }
 interface Seg { text: string; k: Kind; item?: RedactionItemPos; sid?: number; i: number; hl?: Hl }
 /** bar：没能标出片段的问题按最高等级画左侧竖条；tags：挂在本节点的问题。 */
-interface NodeView { node: PreviewNode; segs: Seg[]; changed: boolean; bar?: string; local?: boolean; tags?: CanvasAnnotation[] }
+interface NodeView { node: PreviewNode; segs: Seg[]; changed: boolean; bar?: string; local?: boolean; tags?: CanvasAnnotation[]; diff?: DiffChange }
 type Block =
   | { t: 'node'; nv: NodeView }
   | { t: 'para'; nvs: NodeView[] }
   | { t: 'table'; key: string; rows: { r: number; cells: NodeView[] }[] }
   | { t: 'fold'; id: string; n: number }
+  | { t: 'gone'; changes: DiffChange[] }
 
 const itemsByLoc = computed(() => {
   const m = new Map<string, RedactionItemPos[]>()
@@ -213,12 +262,20 @@ const blocks = computed<Block[]>(() => {
   const counter = { n: 0 }
   const nodes = activeId.value === lastFileId.value && noteNode.value ? [...st.nodes, noteNode.value] : st.nodes
   const flat: Block[] = []
+  const diffing = view.value === 'diff'
+  const { byLoc, before, after } = diffMaps.value
+  let stash: DiffChange[] = []  // 表格中间的整段删除：等表格结束再单列，不把表格拆开
+  const flush = () => { if (stash.length) { flat.push({ t: 'gone', changes: stash }); stash = [] } }
   for (const node of nodes) {
     const segs = buildSegs(node.loc, node.text ?? '', counter)
     const base: NodeView = { node, segs, changed: segs.some(s => s.k !== 'plain') }
-    const nv = isResult.value ? annotate(base) : base
+    const nv = diffing ? { ...base, changed: false, diff: byLoc.get(node.loc) } : isResult.value ? annotate(base) : base
     const pos = cellPos(node)
     const last = flat[flat.length - 1]
+    const inTable = !!pos && last?.t === 'table' && last.key === pos.key
+    if (!inTable) flush()
+    const gone = diffing ? before.get(node.loc) : undefined
+    if (gone) { if (inTable) stash.push(...gone); else flat.push({ t: 'gone', changes: gone }) }
     if (pos) {
       if (last?.t === 'table' && last.key === pos.key) {
         const row = last.rows.find(r => r.r === pos.r)
@@ -230,12 +287,15 @@ const blocks = computed<Block[]>(() => {
       if (last?.t === 'para' && sameParagraph(last.nvs[last.nvs.length - 1]!.node, node)) last.nvs.push(nv)
       else flat.push({ t: 'para', nvs: [nv] })
     } else flat.push({ t: 'node', nv })
+    const tail = diffing ? after.get(node.loc) : undefined
+    if (tail) stash.push(...tail)
   }
+  flush()
   if (nodes.length <= FOLD_LIMIT || unfolded.value.has(activeId.value)) return flat
   // 长文档：只显示有替换或保留文字的块，其余折叠
   // 结果页另外保留有问题标注或本地校验位置的块
-  const keep = (nv: NodeView) => nv.changed || !!nv.tags || !!nv.local
-  const changed = (b: Block) => b.t === 'node' ? keep(b.nv) : b.t === 'para' ? b.nvs.some(keep) : b.t === 'table' ? b.rows.some(r => r.cells.some(keep)) : false
+  const keep = (nv: NodeView) => nv.changed || !!nv.tags || !!nv.local || !!nv.diff
+  const changed = (b: Block) => b.t === 'node' ? keep(b.nv) : b.t === 'para' ? b.nvs.some(keep) : b.t === 'table' ? b.rows.some(r => r.cells.some(keep)) : b.t === 'gone'
   const out: Block[] = []
   let run = 0
   let runId = ''
@@ -268,7 +328,7 @@ const NodeText: FunctionalComponent<{ nv: NodeView; ai: boolean; selId: number |
   return h('span', { class: ai ? 'ai-txt' : 'txt', 'data-loc': nv.node.loc }, kids)
 }
 NodeText.props = ['nv', 'ai', 'selId', 'selPh', 'selFid']
-const nodeClass = (nv: NodeView) => [nv.bar ? `ann-bar ann-bar-${nv.bar}` : '', { 'local-bar': nv.local && !nv.bar, 'ann-hit': nv.tags?.some(a => a.id === props.selectedFindingId) }]
+const nodeClass = (nv: NodeView) => nv.diff ? ['d-chg', `d-${nv.diff.type}`, { 'd-u': nv.diff.untracked }] : [nv.bar ? `ann-bar ann-bar-${nv.bar}` : '', { 'local-bar': nv.local && !nv.bar, 'ann-hit': nv.tags?.some(a => a.id === props.selectedFindingId) }]
 const tagText = (tags: CanvasAnnotation[]) => `问题 ${tags.map(a => a.no).join(' · ')}`
 
 const flipping = ref(false)
@@ -470,6 +530,27 @@ async function locate(loc: string, text?: string, findingId?: string) {
   target.classList.add('flash')
   setTimeout(() => target.classList.remove('flash'), 1600)
 }
+/** 右栏“变化”点了一条：切到对比视图、对应文件，定位并闪烁（V35-D-02） */
+async function showDiff(fileId: string, change: DiffChange) {
+  const file = sortedFiles.value.find(f => f.id === fileId)
+  if (!file?.prev_file_id || !props.diffLoader) return
+  activeId.value = file.id
+  view.value = 'diff'
+  await loadFile(file.id)
+  await loadDiff()
+  unfolded.value = new Set(unfolded.value).add(file.id)
+  await focusDiff(change.type === 'del' ? { gone: change.id } : { loc: change.loc ?? '' })
+}
+async function focusDiff(target: { loc?: string; gone?: string }) {
+  await nextTick()
+  const box = scroller.value
+  const el = target.gone ? box?.querySelector<HTMLElement>(`[data-gone="${CSS.escape(target.gone)}"]`)
+    : box?.querySelector<HTMLElement>(`[data-node="${CSS.escape(target.loc ?? '')}"]`)
+  if (!box || !el) return
+  box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 80
+  el.classList.add('flash')
+  setTimeout(() => el.classList.remove('flash'), 1600)
+}
 function switchFile(delta: 1 | -1) {
   const list = sortedFiles.value
   const index = list.findIndex(f => f.id === activeId.value)
@@ -480,9 +561,18 @@ function cancel() { closePop(); clearPick(); ask.value = null; window.getSelecti
 
 // ---- 光谱条（结果页）：刻度位置 = 块序号 ÷ 当前渲染的块数 ----
 const ticks = computed<SpectrumTick[]>(() => {
-  if (!isResult.value) return []
   const list = blocks.value
   const out: SpectrumTick[] = []
+  if (view.value === 'diff') {
+    list.forEach((b, i) => {
+      const pos = (i + 0.5) / list.length
+      const views = b.t === 'node' ? [b.nv] : b.t === 'para' ? b.nvs : b.t === 'table' ? b.rows.flatMap(r => r.cells) : []
+      for (const nv of views) if (nv.diff && nv.diff.type !== 'format') out.push({ pos, kind: nv.diff.untracked ? 'chg-u' : 'chg', loc: nv.node.loc })
+      if (b.t === 'gone') for (const c of b.changes) out.push({ pos, kind: c.untracked ? 'chg-u' : 'chg', loc: `gone:${c.id}` })
+    })
+    return out
+  }
+  if (!isResult.value) return []
   list.forEach((b, i) => {
     const pos = (i + 0.5) / list.length
     const views = b.t === 'node' ? [b.nv] : b.t === 'para' ? b.nvs : b.t === 'table' ? b.rows.flatMap(r => r.cells) : []
@@ -496,6 +586,7 @@ const ticks = computed<SpectrumTick[]>(() => {
   return out
 })
 function onTick(t: SpectrumTick) {
+  if (view.value === 'diff') { void focusDiff(t.loc.startsWith('gone:') ? { gone: t.loc.slice(5) } : { loc: t.loc }); return }
   void locate(t.loc, undefined, t.fid)
   if (t.fid) emit('select', t.fid)
 }
@@ -526,7 +617,7 @@ function onPaperOver(event: MouseEvent) {
     text: ai ? (el.dataset.orig ?? '') : item.placeholder,
   }
 }
-defineExpose({ locate, switchFile, toggleView, cancel })
+defineExpose({ locate, switchFile, toggleView, cancel, showDiff })
 </script>
 
 <template>
@@ -537,7 +628,7 @@ defineExpose({ locate, switchFile, toggleView, cancel })
           <span class="tab-name">{{ f.original_name }}</span><span class="tab-n">{{ replaceCount(f) }}</span>
         </button>
       </div>
-      <SiSegmented v-model="view" :options="viewOptions" size="small" ariaLabel="原文或模型将看到的" />
+      <SiSegmented v-model="view" :options="viewOptions" size="small" ariaLabel="原文、模型将看到的或对比上一稿" />
       <div v-if="!isResult && sortedFiles.length <= 1" class="legend" aria-label="颜色说明">
         <span v-for="[k, label] in LEGEND" v-show="presentKinds.has(k)" :key="k" :class="`k-${k}`"><i class="kdot" />{{ label }}</span>
       </div>
@@ -547,35 +638,45 @@ defineExpose({ locate, switchFile, toggleView, cancel })
 
     <DocPreview v-if="view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? []" :node-loader="nodeLoader" :raw-loader="rawLoader" />
     <div v-else class="stage-wrap">
-    <div ref="scroller" v-loading="active?.loading" class="stage si-stage" :class="{ 'with-spectrum': isResult }" @scroll.passive="onStageScroll">
+    <div ref="scroller" v-loading="active?.loading || (view === 'diff' && activeDiff?.loading)" class="stage si-stage" :class="{ 'with-spectrum': isResult || view === 'diff' }" @scroll.passive="onStageScroll">
       <el-alert v-if="active?.error" type="error" show-icon :closable="false" :title="active.error" />
       <el-empty v-else-if="active && !active.loading && !active.available" description="原文已按保留期清理" />
+      <el-alert v-else-if="view === 'diff' && activeDiff?.error" type="error" show-icon :closable="false" :title="activeDiff.error" />
       <el-empty v-else-if="active && !active.loading && !blocks.length" description="没有可显示的正文" />
-      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null">
+      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult, diffing: view === 'diff' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null">
         <template v-for="(b, bi) in blocks" :key="bi">
           <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv)]" :data-node="b.nv.node.loc">
             <div v-if="b.nv.node.kind === 'utterance'" class="utterance-meta"><span :class="{ code: view === 'ai' && b.nv.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nv.node.speaker_code : utteranceLabel(b.nv.node) }}</span> · {{ stamp(b.nv.node.t_start_ms ?? 0) }}</div>
             <button v-if="b.nv.tags" type="button" class="ann-tag" :data-fid="b.nv.tags[0]!.id">{{ tagText(b.nv.tags) }}</button>
+            <span v-if="b.nv.diff && (b.nv.diff.untracked || diffTag(b.nv.diff))" class="d-tag" :class="{ 'd-tag-u': b.nv.diff.untracked && b.nv.diff.type !== 'format' }">{{ b.nv.diff.untracked && b.nv.diff.type !== 'format' ? (b.nv.diff.mixed ? '部分未留痕' : '未留痕') : diffTag(b.nv.diff) }}</span>
             <div v-if="b.nv.node.loc === 'NOTE'" class="side-label">本次补充说明</div>
             <span v-else-if="b.nv.node.part !== 'body'" class="side-label">{{ b.nv.node.part }}</span>
             <span v-if="b.nv.node.clause_no && b.nv.node.part === 'body' && !(b.nv.node.text ?? '').trimStart().startsWith(b.nv.node.clause_no)" class="clause">{{ b.nv.node.clause_no }}</span>
-            <NodeText :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" />
+            <DiffText v-if="b.nv.diff" :c="b.nv.diff" />
+            <NodeText v-else :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" />
+          </div>
+          <div v-else-if="b.t === 'gone'" class="gone-wrap">
+            <div v-for="c in b.changes" :key="c.id" class="node gone d-chg" :class="{ 'd-u': c.untracked }" :data-gone="c.id">
+              <span class="d-tag" :class="{ 'd-tag-u': c.untracked }">本稿已删除{{ c.untracked ? ' · 未留痕' : '' }}</span>
+              <span class="gone-clause">{{ c.clause }}</span><del class="d-del">{{ c.segs[0]?.s }}</del>
+            </div>
           </div>
           <div v-else-if="b.t === 'para'" class="node kind-utterance">
             <div class="utterance-meta"><span :class="{ code: view === 'ai' && b.nvs[0]!.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nvs[0]!.node.speaker_code : utteranceLabel(b.nvs[0]!.node) }}</span> · {{ stamp(b.nvs[0]!.node.t_start_ms ?? 0) }}</div>
             <span v-for="nv in b.nvs" :key="nv.node.loc" class="sent" :data-node="nv.node.loc" :class="nodeClass(nv)"><NodeText :nv="nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></span>
           </div>
           <table v-else-if="b.t === 'table'" class="tbl">
-            <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc" :class="nodeClass(c)" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"><NodeText :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>
+            <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc" :class="nodeClass(c)" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"><DiffText v-if="c.diff" :c="c.diff" /><NodeText v-else :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>
           </table>
           <button v-else type="button" class="fold" @click="unfolded = new Set(unfolded).add(activeId)">{{ b.n }} 段{{ isResult ? '无标注' : '未改动' }} · 展开</button>
         </template>
       </div>
     </div>
-    <DocSpectrum v-if="isResult && blocks.length" :ticks="ticks" :scroller="scroller" @pick="onTick" @seek="onSeek" />
+    <DocSpectrum v-if="(isResult || view === 'diff') && blocks.length" :ticks="ticks" :scroller="scroller" @pick="onTick" @seek="onSeek" />
     </div>
 
-    <p v-if="!isResult" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机遮住 · 点胶囊可修改 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
+    <p v-if="view === 'diff'" class="cv-foot hint">{{ diffHint }}</p>
+    <p v-else-if="!isResult" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机遮住 · 点胶囊可修改 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
     <p v-else-if="view !== 'raw'" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护${askEnabled ? ' · 划选文字可追问' : ''}` : '这是模型看到的样子 · 结论已在本机还原' }}</p>
 
     <div v-if="pop && !isResult && pop.item" class="pop menu" :style="{ left: `${pop.left}px`, top: `${pop.top}px` }" role="menu" @click.stop>
@@ -665,10 +766,10 @@ defineExpose({ locate, switchFile, toggleView, cancel })
 .kind-utterance { content-visibility: auto; contain-intrinsic-size: auto 80px; }
 .cv { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .cv-bar { flex: none; height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.cv-extra { flex: none; display: flex; align-items: center; gap: 12px; }
+.cv-extra { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; overflow: hidden; }
 .spacer { flex: 1; }
 /* 文件页签（V31-U5F-03 问题 6）：选中为主色文字 + 加粗 + 下划线，未选中为次要色；确认页与结果页同款 */
-.tabs { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tabs { flex: 1; min-width: 112px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .tab { flex: none; max-width: 220px; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; transition: color var(--si-dur-1) var(--si-ease), border-color var(--si-dur-1) var(--si-ease); }
 .tab:hover { color: var(--si-ink-1); }
 .tab.on { border-bottom-color: var(--el-color-primary); color: var(--el-color-primary); font-weight: 600; }
@@ -709,6 +810,20 @@ td.ann-bar, td.local-bar { margin-left: 0; padding-left: 8px; cursor: pointer; }
 :deep(.ann-high.on) { background: color-mix(in srgb, var(--si-danger) 28%, var(--si-paper)); }
 :deep(.ann-medium.on) { background: color-mix(in srgb, var(--si-warn) 30%, var(--si-paper)); }
 :deep(.ann-low.on) { background: color-mix(in srgb, var(--si-info) 30%, var(--si-paper)); }
+
+/* 对比上一稿（V35-D-02）：新增主色浅底下划线，删除次要文字色划线，改过的段左侧主色竖线；未留痕为警示色竖线与小标 */
+.d-chg { box-shadow: inset 3px 0 0 var(--d-bar, var(--el-color-primary)); padding-left: 10px; margin-left: -13px; }
+td.d-chg { margin-left: 0; padding-left: 8px; }
+.d-chg.d-u { --d-bar: var(--si-warn); }
+.d-chg.d-format { --d-bar: var(--si-hair-strong); }
+:deep(ins.d-ins) { padding: 0 1px; border-radius: 2px; background: var(--si-blue-tint); color: inherit; text-decoration: underline 1.5px var(--el-color-primary); text-underline-offset: 3px; }
+:deep(ins.d-ins.d-u) { text-decoration-color: var(--si-warn); }
+:deep(del.d-del), del.d-del { color: var(--si-ink-3); text-decoration: line-through 1px; }
+.d-format :deep(ins.d-ins) { background: none; text-decoration-style: dotted; }
+.d-tag { float: right; margin: 0 0 4px 8px; padding: 0 6px; border-radius: var(--si-radius-tag); background: var(--si-surface-2); color: var(--si-ink-2); font: var(--si-font-label-sm); line-height: 20px; }
+.d-tag-u { background: var(--si-warn-soft); color: var(--si-warn-ink); }
+.gone { color: var(--si-ink-3); }
+.gone-clause { margin-right: 8px; font-size: 13px; }
 
 /* 胶囊（澄明 8.4）：按类别着色的全圆角浅底，文字仍是原文本身；不确定项为虚线边 */
 .k-org { --k: var(--si-k-org); --k-bg: var(--si-k-org-bg); }

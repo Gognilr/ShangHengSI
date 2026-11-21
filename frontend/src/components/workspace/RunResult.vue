@@ -3,9 +3,12 @@ import { useAuthStore } from '@/stores/auth'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { confirmOnce } from '@/utils/confirmOnce'
-import { MessageSquare, RefreshCw } from '@lucide/vue'
+import { FilePlus2, MessageSquare, RefreshCw } from '@lucide/vue'
+import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
-import { assistantApi, confirmationTask, type Session } from '@/api/assistant'
+import { assistantApi, confirmationTask, type DiffChange, type DiffResult, type Session } from '@/api/assistant'
+import DiffRail from '@/components/result/DiffRail.vue'
+import { loadDiff, substantive } from '@/utils/drafts'
 import { reportApi } from '@/api/report'
 import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
 import type { CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
@@ -29,7 +32,9 @@ const emit = defineEmits<{ selectRun: [id: string]; newRound: []; discuss: [anch
   /** 读到该轮详情：父级据此在顶部工具条显示“已完成 · 用时” */
   loaded: [run: RunDetail]
   /** 工具条“追问”：切到提问视图 */
-  ask: [] }>()
+  ask: []
+  /** 传了新一稿：父级刷新会话，进入解析与确认 */
+  uploaded: [] }>()
 
 const task = computed(() => confirmationTask(props.session))
 // 节点与原件走会话接口（审核任务的 /tasks/{id}/files/… 只认 kind=review）
@@ -151,14 +156,14 @@ async function exportReport() {
     savedTick.value++
   } catch (e) { exportError(e) } finally { exporting.value = '' }
 }
-async function exportAnnotated(seq: number) {
+async function exportAnnotated(seq: number, includeChanges = true) {
   if (!run.value || exporting.value || exportReason.value) return
   if (!['completed', 'partial'].includes(run.value.status) || !task.value.files.some(file => file.seq === seq && file.annotatable)) return
   const runId = run.value.id
   if (!await confirmOnce('annotated', '批注版含内部审核意见，请勿直接发给对方。', '导出批注版', '导出批注版')) return
   exporting.value = '批注版'
   try {
-    const { saveResult, total, unanchored } = await reportApi.annotated(runId, seq)
+    const { saveResult, total, unanchored } = await reportApi.annotated(runId, seq, includeChanges)
     if (saveResult === 'cancelled' || run.value?.id !== runId) return
     annotationNotice.value = unanchored > 0 ? `共 ${total} 条批注，其中 ${unanchored} 条未能精确定位，已挂在所在段落开头。` : ''
     if (!unanchored) ElMessage.success(`已生成批注版，共 ${total} 条批注`)
@@ -175,6 +180,60 @@ const handled = computed(() => {
 })
 const wrapUp = computed(() => doneRun.value && !props.session.review_running && handled.value.total > 0 && handled.value.pending === 0)
 const wrapUpClosed = ref('')
+
+// ---- 多稿对比（V35-D-02）：右栏“变化”页签、纸面“对比上一稿”、传新一稿 ----
+const router = useRouter()
+const docFiles = computed(() => props.session.files.filter(f => !f.media))
+/** 对比的是哪份：主文件所在链的最新一稿；没有时取任一条链的最新一稿 */
+const diffFile = computed(() => {
+  const files = docFiles.value
+  const next = new Map(files.filter(f => f.prev_file_id).map(f => [f.prev_file_id!, f]))
+  const latest = (f: typeof files[number]) => { let cur = f; const seen = new Set([f.id]); while (next.has(cur.id) && !seen.has(next.get(cur.id)!.id)) { cur = next.get(cur.id)!; seen.add(cur.id) } return cur }
+  const main = files.find(f => f.is_main)
+  const fromMain = main ? latest(main) : undefined
+  return fromMain?.prev_file_id ? fromMain : files.find(f => f.prev_file_id && !next.has(f.id))
+})
+const diffLoader = (fid: string, prev: string) => loadDiff(props.session.id, fid, prev)
+const diff = ref<DiffResult | null>(null)
+const diffLoading = ref(false), diffError = ref('')
+watch(() => `${diffFile.value?.id}:${diffFile.value?.prev_file_id}`, async () => {
+  const file = diffFile.value
+  diff.value = null; diffError.value = ''
+  if (!file?.prev_file_id) { railTab.value = 'findings'; return }
+  diffLoading.value = true
+  try { diff.value = await diffLoader(file.id, file.prev_file_id) }
+  catch (e) { diffError.value = e instanceof ApiError ? e.message : '对比失败，请刷新页面后重试' }
+  finally { diffLoading.value = false }
+}, { immediate: true })
+const railTab = ref<'findings' | 'diff'>('findings')
+const pickedChange = ref('')
+function onPickChange(c: DiffChange) {
+  pickedChange.value = c.id
+  if (diffFile.value) void canvas.value?.showDiff(diffFile.value.id, c)
+}
+const exportChanges = computed(() => diff.value && diffFile.value
+  ? { seq: diffFile.value.seq, total: substantive(diff.value).length, untracked: diff.value.summary.untracked } : null)
+const draftPicker = ref<HTMLInputElement>()
+const uploadingDraft = ref(false)
+const DOC_ACCEPT = '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png'
+const draftReason = computed(() => props.session.original_deleted ? '原件已按保留期限删除' : props.session.review_running ? '审核进行中，完成后再传' : props.session.generating ? '回复完成后再传' : docFiles.value.length >= 10 ? '会话最多 10 个文件' : '')
+async function onDraftPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  const base = diffFile.value ?? docFiles.value.find(f => f.is_main)
+  if (!file || !base || uploadingDraft.value) return
+  uploadingDraft.value = true
+  try {
+    await assistantApi.addFiles(props.session.id, [file], undefined, [], base.id)
+    ElMessage.success('已传入新一稿，正在本机读取并与上一稿对比')
+    emit('uploaded')
+  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '上传失败，请稍后重试') }
+  finally { uploadingDraft.value = false }
+}
+const hintClosed = ref('')
+const hint = computed(() => props.session.draft_hint && hintClosed.value !== props.session.id ? props.session.draft_hint : null)
+function openHint() { if (hint.value) void router.push({ path: `/assistant/${hint.value.session_id}`, query: { mode: 'review' } }) }
 
 // ---- 头部说明（澄明 8.4：合同 · 采购方立场 · 第 1 轮）----
 const lede = computed(() => {
@@ -230,8 +289,12 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
         <el-tooltip :content="newReason" :disabled="!newReason" placement="bottom">
           <span><el-button :disabled="!!newReason" @click="emit('newRound')"><RefreshCw :size="15" :stroke-width="1.75" />重新审核</el-button></span>
         </el-tooltip>
+        <el-tooltip :content="draftReason || '对方改回的二稿、三稿：本机对比改了哪里，包括没开修订悄悄改的'" placement="bottom">
+          <span><el-button :disabled="!!draftReason || uploadingDraft" @click="draftPicker?.click()"><FilePlus2 :size="15" :stroke-width="1.75" />{{ uploadingDraft ? '正在上传…' : '传新一稿' }}</el-button></span>
+        </el-tooltip>
+        <input ref="draftPicker" type="file" hidden :accept="DOC_ACCEPT" @change="onDraftPicked">
         <ExportButton :task="task" :run="run" :export-reason="exportReason" :exporting="exporting" :deleting="false" :saved-tick="savedTick"
-          @report="exportReport" @annotated="exportAnnotated" />
+          :changes="exportChanges" @report="exportReport" @annotated="exportAnnotated" />
       </div>
     </Teleport>
     <div v-if="wrapUp && wrapUpClosed !== run?.id" class="wrap-up" role="status">
@@ -239,12 +302,17 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
       <el-button size="small" type="primary" :disabled="!!exporting || !!exportReason" @click="exportReport">导出报告</el-button>
       <el-button size="small" link aria-label="关闭提示" @click="wrapUpClosed = run?.id ?? ''">×</el-button>
     </div>
+    <div v-if="hint" class="draft-hint" role="status">
+      <span class="wrap-text">这像是《{{ hint.file_name }}》的新一稿。要和上一稿对比，请在那次审核里点“传新一稿”传入。</span>
+      <el-button size="small" link type="primary" @click="openHint">打开那次审核</el-button>
+      <el-button size="small" link aria-label="关闭提示" @click="hintClosed = session.id">×</el-button>
+    </div>
     <el-alert v-if="annotationNotice" type="warning" show-icon closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
     <div :ref="bindSplit" class="split">
       <div class="canvas-col">
         <ResultCanvas ref="canvas" :key="`${session.id}:${session.material_version}`" :task="task" :note="run ? run.user_note : null" :annotations="annotations" :local-locs="localLocs"
           :selected-finding-id="selectedId" :raw-highlight="rawHighlight" :ask-enabled="false"
-          :node-loader="nodeLoader" :raw-loader="rawLoader"
+          :node-loader="nodeLoader" :raw-loader="rawLoader" :diff-loader="diffLoader"
           @select="onCanvasSelect">
           <template #bar>
             <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
@@ -256,10 +324,13 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
       </div>
       <SplitHandle v-model="railWidth" reverse :min="RAIL_MIN" :max="railMax" :default-value="railDefault" :storage-key="RAIL_KEY" label="调整问题栏宽度" />
       <div class="rail-col" :style="{ flexBasis: `${railWidth}px` }">
-        <FindingsRail v-show="!discussing" v-model:severity="fSeverity" v-model:category="fCategory" v-model:handling="fHandling" v-model:zone="zone"
+        <DiffRail v-if="railTab === 'diff' && !discussing" :session-id="session.id" :diff="diff" :loading="diffLoading" :error="diffError"
+          :ask-tab="canAsk && !session.review_running" :selected-id="pickedChange" @pick="onPickChange" @findings-tab="railTab = 'findings'" @ask-tab="emit('ask')" />
+        <FindingsRail v-show="!discussing && railTab === 'findings'" v-model:severity="fSeverity" v-model:category="fCategory" v-model:handling="fHandling" v-model:zone="zone"
           :task-id="session.id" :run="run" :run-loading="runLoading" :run-error="runError" :local-only="false" :findings="findings"
           :selected-id="selectedId" :ask-enabled="false" :discuss-enabled="discussEnabled" :local-loader="localLoader" :fresh="fresh"
           :model-name="modelShort" :ask-tab="canAsk && !session.review_running" @ask-tab="emit('ask')"
+          :diff-count="diffFile?.prev_file_id ? (diff ? substantive(diff).length : null) : undefined" @diff-tab="railTab = 'diff'"
           @select="onSelect" @discuss="onDiscuss" @local-select="onLocalSelect" @updated="onUpdated" @ai-notice="onAiNotice" />
         <section v-if="discussed" class="discuss" aria-label="讨论问题">
           <header class="discuss-head">
@@ -287,6 +358,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 .wrap-up { flex: none; display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 12px; border-radius: var(--si-radius-card); background: var(--el-color-success-light-9); color: var(--si-ok-ink); }
 .wrap-text { flex: 1; min-width: 0; font: var(--si-font-label); }
 .annotation-notice { flex: none; margin-top: 8px; }
+.draft-hint { flex: none; display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 12px; border-radius: var(--si-radius-card); background: var(--si-blue-tint); color: var(--si-blue-ink); }
 .split { display: flex; flex: 1; min-height: 0; gap: 12px; padding: 12px 0 16px; }
 .canvas-col { flex: 1; min-width: 420px; min-height: 0; display: flex; flex-direction: column; }
 .rail-col { flex: 0 0 auto; min-width: 400px; min-height: 0; display: flex; flex-direction: column; }

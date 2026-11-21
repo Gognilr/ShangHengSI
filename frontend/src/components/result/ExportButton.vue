@@ -9,8 +9,11 @@ import { useFx } from '@/utils/motion'
  * 分体导出（V31-U3 3.7）：主按钮“导出报告”，箭头菜单列出审核报告、各文件的批注版，不可用时禁用并写原因。
  * exporting 为正在生成的名称（如“批注版”），savedTick 每次保存成功加一，按钮显示“已保存”1.6 秒。
  */
-const props = defineProps<{ task: TaskDetail; run: RunDetail | null; exportReason: string; exporting: string; deleting: boolean; savedTick: number }>()
-const emit = defineEmits<{ report: []; annotated: [seq: number] }>()
+/** changes：有上一稿的文件（V35-D-02），批注版可同时标出与上一稿的变化，默认勾上 */
+const props = defineProps<{ task: TaskDetail; run: RunDetail | null; exportReason: string; exporting: string; deleting: boolean; savedTick: number
+  changes?: { seq: number; total: number; untracked: number } | null }>()
+const emit = defineEmits<{ report: []; annotated: [seq: number, includeChanges: boolean] }>()
+const withChanges = ref(true)
 const fx = useFx()
 
 const localOnly = computed(() => props.task.status === 'completed_local')
@@ -27,7 +30,7 @@ const label = computed(() => props.exporting ? `正在生成${props.exporting}�
 function onCommand(command: string) {
   const [kind, seq] = command.split(':')
   if (kind === 'report') emit('report')
-  else if (kind === 'annotated') emit('annotated', Number(seq))
+  else if (kind === 'annotated') emit('annotated', Number(seq), props.changes?.seq === Number(seq) && withChanges.value)
 }
 </script>
 
@@ -48,6 +51,9 @@ function onCommand(command: string) {
             <el-dropdown-item :command="`annotated:${file.seq}`" :disabled="!!fileReason">
               <div class="item"><span class="name" :title="file.original_name">批注版：{{ file.original_name }}</span><span class="sub">{{ fileReason || '原件不改，问题挂在批注' }}</span></div>
             </el-dropdown-item>
+            <li v-if="changes && changes.seq === file.seq && changes.total" class="changes-opt" @click.stop>
+              <el-checkbox v-model="withChanges" size="small">同时标出与上一稿的变化（{{ changes.total }} 处<template v-if="changes.untracked">，未留痕 {{ changes.untracked }} 处</template>）</el-checkbox>
+            </li>
           </template>
           <el-dropdown-item disabled divided><span class="hint-line">批注版支持 Word 与 WPS 文字文件；PDF、图片、表格只能导出审核报告</span></el-dropdown-item>
         </el-dropdown-menu>
@@ -67,5 +73,6 @@ function onCommand(command: string) {
 .item { display: flex; flex-direction: column; max-width: 360px; padding: 2px 0; line-height: 1.4; }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-label); }
 .sub { font: var(--si-font-caption); color: var(--si-ink-3); white-space: normal; }
+.changes-opt { list-style: none; padding: 0 16px 6px 20px; }
 .hint-line { max-width: 360px; white-space: normal; font: var(--si-font-caption); color: var(--si-ink-3); }
 </style>

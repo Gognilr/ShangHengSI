@@ -5,7 +5,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
  * 文档光谱条（V31-U3 3.3）：画布右缘的竖轨，刻度位置按节点序号（不按像素），视窗框按滚动比例。
  * 只给鼠标用（aria-hidden），键盘用户通过问题栏定位。
  */
-export interface SpectrumTick { pos: number; kind: 'high' | 'medium' | 'low' | 'local' | 'cap'; loc: string; fid?: string }
+export interface SpectrumTick { pos: number; kind: 'high' | 'medium' | 'low' | 'local' | 'cap' | 'chg' | 'chg-u'; loc: string; fid?: string }
 const props = defineProps<{ ticks: SpectrumTick[]; scroller: HTMLElement | undefined }>()
 const emit = defineEmits<{ pick: [tick: SpectrumTick]; seek: [ratio: number] }>()
 
@@ -20,7 +20,7 @@ const shown = computed(() => {
 })
 // 问题刻度画在最上层
 const ordered = computed(() => [...shown.value].sort((a, b) => rank(a) - rank(b)))
-function rank(t: SpectrumTick) { return t.kind === 'cap' ? 0 : t.kind === 'local' ? 1 : 2 }
+function rank(t: SpectrumTick) { return t.kind === 'cap' ? 0 : t.kind === 'local' || t.kind === 'chg' ? 1 : 2 }
 
 const frame = ref({ top: 0, height: 1 })
 let raf = 0
@@ -69,4 +69,8 @@ function onTrack(event: MouseEvent) {
 .t-low { background: var(--si-info); }
 .t-local { background: var(--si-ink-3); }
 .t-cap { background: color-mix(in srgb, var(--el-color-primary) 40%, transparent); }
+/* 对比上一稿（V35-D-02）：改动为主色，未留痕为警示色 */
+.t-chg, .t-chg-u { height: 3px; }
+.t-chg { background: var(--el-color-primary); }
+.t-chg-u { background: var(--si-warn); }
 </style>

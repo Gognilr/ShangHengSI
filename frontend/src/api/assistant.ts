@@ -60,6 +60,26 @@ export interface Session extends SessionItem {
   review_running: boolean
   /** 解析阶段（V321-E-06）：整批阶段与每个文件的阶段；OCR 时 done / total 为页数。排队中为空对象，不在解析时为 null */
   parse_progress?: ParseProgress | null
+  /** 跨会话提示（V35-D-02）：本人近 30 天另一个会话的主文件名去掉稿次字样后相同 */
+  draft_hint?: { session_id: string; title: string; file_name: string } | null
+}
+/** 多稿对比（V35-D-02）：本稿与上一稿的变化，本机现算 */
+export interface DiffSeg { t: 'eq' | 'ins' | 'del'; s: string; u?: boolean }
+export type DiffType = 'mod' | 'add' | 'del' | 'move' | 'format'
+export interface DiffChange {
+  id: string; type: DiffType; loc: string | null; prev_loc: string | null
+  /** 删除：挂在本稿哪一段之前；after 为删在文末，挂在最后一段之后 */
+  anchor?: string | null; after?: boolean
+  clause: string; prev_clause?: string; segs: DiffSeg[]
+  /** null：PDF、扫描件没有修订概念 */
+  untracked: boolean | null; mixed: boolean
+  brief: { ctx: string; old: string; new: string; text?: string }
+}
+export interface DiffResult {
+  file_id: string; prev_file_id: string; prev_name: string; no: number; prev_no: number
+  /** exact：按“拒绝修订”文字判断；flag：本稿解析较早，只能按段落判断；none：不判断留痕 */
+  trace: 'exact' | 'flag' | 'none'; ocr: boolean; elapsed_ms: number
+  summary: Record<DiffType | 'untracked', number>; changes: DiffChange[]
 }
 export interface ParseProgress { phase?: 'files' | 'detect'; files?: Record<string, { stage: string; done: number | null; total: number | null }> }
 export interface SessionPage { items: SessionItem[]; total: number; page: number; page_size: number; kb_enabled?: boolean; asr_enabled: boolean; mt_enabled: boolean }
@@ -113,13 +133,17 @@ export const assistantApi = {
     http.get<{ text: string; note: string | null; material_version: number }>(`${base}/${id}/outbound`,
       { mode: 'review', ...query, include_pending: query.include_pending ? 'true' : undefined }),
   raw: (id: string, fid: string) => http.getBlob(`${base}/${id}/files/${fid}/raw`),
+  diff: (id: string, fileId: string) => http.get<DiffResult>(`${base}/${id}/diff?file_id=${encodeURIComponent(fileId)}`),
+  diffExport: (id: string, fileId: string) => http.getDownload(`${base}/${id}/diff/export?file_id=${encodeURIComponent(fileId)}`),
+  setDraft: (id: string, fid: string, prev: string | null) => http.put<Session>(`${base}/${id}/files/${fid}/draft`, { prev_file_id: prev }),
   create: (purpose: Purpose = 'chat') => http.post<Session>(base, { purpose }),
   get: (id: string) => http.get<Session>(`${base}/${id}`),
   patch: (id: string, body: { title?: string; stance?: Stance; source?: Source }) => http.patch<Session>(`${base}/${id}`, body),
   remove: (id: string) => http.delete<void>(`${base}/${id}`),
-  addFiles: (id: string, files: File[], onProgress: (loaded: number, total: number) => void = () => {}, marks: number[] = []) => {
+  addFiles: (id: string, files: File[], onProgress: (loaded: number, total: number) => void = () => {}, marks: number[] = [], draftOf?: string) => {
     const form = new FormData(); files.forEach(file => form.append('files', file, file.name))
     if (marks.length) form.append('marks', JSON.stringify(marks))
+    if (draftOf) form.append('draft_of', draftOf)
     return http.postFormWithProgress<Session>(`${base}/${id}/files`, form, onProgress)
   },
   addText: (id: string, text: string) => http.post<Session>(`${base}/${id}/text`, { text }),

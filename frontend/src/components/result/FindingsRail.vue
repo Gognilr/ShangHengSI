@@ -36,6 +36,8 @@ const props = defineProps<{
   modelName?: string
   /** 显示“追问”页签（点了切到提问视图） */
   askTab?: boolean
+  /** 有上一稿时显示“变化 n”页签（V35-D-02）；null 为还在对比 */
+  diffCount?: number | null
 }>()
 const severity = defineModel<string>('severity', { required: true })
 const category = defineModel<string>('category', { required: true })
@@ -49,6 +51,7 @@ const emit = defineEmits<{
   discuss: [f: Finding]
   aiNotice: []
   askTab: []
+  diffTab: []
 }>()
 
 const fx = useFx()
@@ -147,6 +150,7 @@ watch(() => props.selectedId, async (id) => {
   <aside ref="rail" class="rail">
     <div class="rp-tabs">
       <span class="tab on">意见</span>
+      <button v-if="diffCount !== undefined" type="button" class="tab" @click="emit('diffTab')">变化<span class="tab-n num">{{ diffCount ?? '…' }}</span></button>
       <button v-if="askTab" type="button" class="tab" @click="emit('askTab')">追问</button>
       <span v-if="modelName" class="ai-tag"><Sparkle :size="12" :stroke-width="2" />{{ modelName }}</span>
     </div>
@@ -205,6 +209,7 @@ watch(() => props.selectedId, async (id) => {
 .tab { position: relative; display: inline-flex; align-items: center; height: 48px; padding: 0; border: 0; background: none; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
 .tab:hover { color: var(--si-ink-1); }
 .tab.on { color: var(--si-ink-1); font-weight: 600; cursor: default; }
+.tab-n { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-label-sm); }
 .tab.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--si-brand-2); }
 .ai-tag { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-left: auto; padding: 0 10px; border-radius: 999px; background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
 .ai-tag svg { color: var(--si-ai); }
