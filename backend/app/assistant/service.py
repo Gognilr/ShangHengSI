@@ -678,7 +678,8 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
                           .order_by(ReviewRun.run_no.desc())).all() if ids else []:
         latest.setdefault(run.task_id, run)
     pending = dict(db.execute(select(Finding.run_id, func.count()).where(
-        Finding.run_id.in_([r.id for r in latest.values()]), Finding.handling_status == 'pending')
+        Finding.run_id.in_([r.id for r in latest.values()]), Finding.handling_status == 'pending',
+        Finding.carry.is_distinct_from('resolved'))
         .group_by(Finding.run_id)).all()) if latest else {}
     bid_ids = [t.id for t, _ in rows if t.kind == "bid"]
     bids = bid_service.history_stats(db, bid_ids) if bid_ids else {}

@@ -17,6 +17,12 @@ class Clause:
     locs: list[str] = field(default_factory=list)
 
 
+def is_first_level(clause_no: str | None) -> bool:
+    """一级条款编号：“第八条”“8”“8.”“8、”；“8.3”是子条款（V35-D-03：“1.”式自动编号原先被误当子条款）。"""
+    value = (clause_no or '').strip().rstrip('.、．')
+    return bool(value) and '.' not in value and '．' not in value
+
+
 def first_level(nodes) -> list[Clause]:
     out = []
     for node in nodes:
@@ -24,7 +30,7 @@ def first_level(nodes) -> list[Clause]:
             continue
         seq = int(node.loc.split('-', 1)[0][1:])
         if (not out or out[-1].file_seq != seq or node.kind == 'heading' or
-                (node.clause_no and '.' not in node.clause_no)):
+                is_first_level(node.clause_no)):
             out.append(Clause(seq, node.loc, node.text[:60]))
         clause = out[-1]
         clause.locs.append(node.loc)

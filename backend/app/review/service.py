@@ -40,6 +40,7 @@ from app.llm import gateway, usage
 from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map, load_date_pairs, load_local_values
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import check, _LOCATION
+from app.review.clauses import is_first_level
 from app.review.coverage import describe
 from app.review.validate import normalize_unable_reason
 from app.review.prompt import ReviewContext, build_messages, note_requirement
@@ -71,6 +72,9 @@ class RunListItem(BaseModel):
     model_name: str | None
     model_id: int | None = None
     model_label: str | None = None
+    scope: str = "full"  # full / delta（V35-D-03）
+    base_run_no: int | None = None
+    draft_no: int | None = None  # 主文件是第几稿（不在稿次链上为 null）
 
 
 class RunList(BaseModel):
@@ -128,6 +132,8 @@ class FindingOut(BaseModel):
     use_discussed: bool = False  # 采纳与修订版取讨论修改稿
     marks: dict[str, list[MarkOut]] = {}
     unresolved: int = 0
+    carry: str | None = None  # 增量轮：new / persists / unchanged / resolved（V35-D-03）
+    carry_note: str | None = None
 
 
 class Progress(BaseModel):
@@ -168,6 +174,9 @@ class RunDetail(BaseModel):
     sanctions: Sanctions
     requirement_results: list[RequirementResultOut]
     findings: list[FindingOut]
+    scope: str = "full"
+    base_run_no: int | None = None
+    draft_no: int | None = None
 
 
 class FindingPatch(BaseModel):
@@ -222,10 +231,11 @@ def collect_requirements(db: DbSession, *, doc_type: str, stance: str, source: s
 
 
 def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_note: str | None,
-                  main_doc_type: str, file_ids: list[str] | None = None) -> ReviewContext:
+                  main_doc_type: str, file_ids: list[str] | None = None, delta=None) -> ReviewContext:
     """拼出一次审核的上下文。预检（创建轮次时）和 review 处理函数用同一个函数，保证检查的就是将要发送的内容。
 
     file_ids 为会话审核轮次所选文件（第一个是主文件，V32-A-02）；None 表示审核任务的全部文件。
+    delta 为增量复审计划（V35-D-03）：外发正文换成变化所在条款与上轮问题，分段切分点为变化条款的第一行。
     """
     from app.checks.service import local_summary
     from app.checks.ratios import section
@@ -240,6 +250,8 @@ def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_n
         ids = [f.id for f in files if str(f.id) in chosen]
         seqs = {f.seq for f in files if str(f.id) in chosen}
     built = build_outbound(db, task, "review", file_ids=file_ids, stance=stance)
+    if delta is not None:
+        built.text = delta.head + "\n" + delta.body()
     return ReviewContext(
         task=task, stance=stance, source=source, user_note=user_note, main_doc_type=main_doc_type,
         attachment_types=[t for t in attachments if t],
@@ -249,8 +261,9 @@ def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_n
         outbound_text=built.text,
         local_summary=local_summary(db, task, file_ids=ids),
         ratios=section(db, task, seqs),
-        boundary_locs=chunk_boundaries(db, task.id, seqs),
+        boundary_locs=delta.boundaries if delta is not None else chunk_boundaries(db, task.id, seqs),
         quote_tables=built.quote_tables,
+        delta=delta,
     )
 
 
@@ -265,7 +278,7 @@ def chunk_boundaries(db: DbSession, task_id: uuid.UUID, seqs: set[int] | None = 
     for loc, kind, clause_no, seq in rows:
         if seqs is not None and seq not in seqs:
             continue
-        if seq not in seen_files or kind == "heading" or (clause_no and "." not in clause_no):
+        if seq not in seen_files or kind == "heading" or is_first_level(clause_no):
             out.add(loc)
         seen_files.add(seq)
     return out
@@ -324,6 +337,7 @@ class SessionRunIn(BaseModel):
     expected_material_version: int | None = None
     use_template: bool = True
     confirm_pending: bool = False  # 同一事务里先确认待确认的文件再发起（V321-E-06）
+    scope: Literal["full", "delta"] = "full"  # delta：只审变化与上轮未决问题（V35-D-03）
 
 
 def session_review_active(db: DbSession, task_id: uuid.UUID) -> bool:
@@ -391,16 +405,23 @@ def create_session_run(db: DbSession, task: Task, user: User, ip: str | None, bo
     if our != 1:
         raise _conflict("OUR_PARTY_REQUIRED", "请先确认哪一方是我方")
     file_ids = [str(main.id)] + [str(f.id) for f in files if f.id != main.id]  # 第一个是主文件
+    plan = None
+    if body.scope == "delta":  # 增量轮只审主文件的变化（4.1），附件不重发
+        from app.review import delta
+        plan = delta.plan(db, task, main, stance=body.stance)
+        if not plan.available:
+            raise _conflict("DELTA_UNAVAILABLE", plan.reason)
+        file_ids = [str(main.id)]
     run = _launch(db, task, user, ip, stance=body.stance, source=body.source, user_note=task.user_note_redacted,
                   main_doc_type=main.doc_type, model_id=body.model_id, use_template=body.use_template,
-                  file_ids=file_ids)
+                  file_ids=file_ids, delta=plan)
     db.commit()
     return run
 
 
 def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: str, source: str,
             user_note: str | None, main_doc_type: str, model_id: int | None, use_template: bool,
-            file_ids: list[str] | None = None) -> ReviewRun:
+            file_ids: list[str] | None = None, delta=None) -> ReviewRun:
     """审核任务与会话共用：模型与上限 → 预检出口复检 → 记住名称 → 建轮次 → 入队（不提交，不改任务状态）。"""
     from app.redaction import engine as redaction_engine
     model = select_model(db, model_id, "review")
@@ -410,7 +431,7 @@ def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: st
 
     def precheck():
         ctx = build_context(db, task, stance=stance, source=source, user_note=user_note,
-                            main_doc_type=main_doc_type, file_ids=file_ids)
+                            main_doc_type=main_doc_type, file_ids=file_ids, delta=delta)
         rc = recheck_context(db, task.id)
         return ctx, recheck("\n".join(m["content"] for m in build_messages(ctx)), real_values=rc.real_values,
                             terms=rc.terms, placeholders=rc.placeholders, kept=rc.kept)
@@ -437,6 +458,7 @@ def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: st
         company_req_version=db.scalar(select(func.max(RequirementVersion.version))),
         created_by=user.id, queued_at=utcnow(), receipt=_receipt(db, task, model.display_name, file_ids),
         file_ids=file_ids, material_version=task.material_version,
+        scope="delta" if delta is not None else "full", base_run_id=delta.base_run.id if delta is not None else None,
     )
     db.add(run)
     if use_template:
@@ -506,10 +528,21 @@ def sent_text(db, run, user, ip):
 # ---------------------------------------------------------------- 轮次列表与详情
 
 
+def _run_meta(db: DbSession, task_id: uuid.UUID, runs: list[ReviewRun]) -> dict:
+    """{轮次 id: (基准轮号, 主文件第几稿)}：轮次下拉“第 2 轮 · 第 2 稿 · 只审变化（对照第 1 轮）”。"""
+    from app.review.drafts import chain_info
+    chains = chain_info(list(db.scalars(select(TaskFile).where(TaskFile.task_id == task_id))))
+    by_file = {str(k): v[0] for k, v in chains.items()}
+    nos = dict(db.execute(select(ReviewRun.id, ReviewRun.run_no).where(ReviewRun.task_id == task_id)).all())
+    return {r.id: (nos.get(r.base_run_id), by_file.get(str(r.file_ids[0])) if r.file_ids else None) for r in runs}
+
+
 def list_runs(db: DbSession, task: Task) -> RunList:
-    rows = db.scalars(select(ReviewRun).where(ReviewRun.task_id == task.id).order_by(ReviewRun.run_no.desc()))
+    rows = list(db.scalars(select(ReviewRun).where(ReviewRun.task_id == task.id).order_by(ReviewRun.run_no.desc())))
+    meta = _run_meta(db, task.id, rows)
     return RunList(items=[RunListItem(id=r.id, run_no=r.run_no, status=r.status, queued_at=r.queued_at,
-                                      finished_at=r.finished_at, model_name=r.model_name, model_id=r.model_id, model_label=r.model_label) for r in rows])
+                                      finished_at=r.finished_at, model_name=r.model_name, model_id=r.model_id, model_label=r.model_label,
+                                      scope=r.scope, base_run_no=meta[r.id][0], draft_no=meta[r.id][1]) for r in rows])
 
 
 class _View:
@@ -595,7 +628,7 @@ class _View:
             handling_status=f.handling_status, handling_note=f.handling_note,
             discussed_at=f.discussed_at, discussed_message_id=f.discussed_message_id if f.discussed_text else None, use_discussed=bool(f.use_discussed and f.discussed_text),
             law_refs=f.law_refs, law_unverified=f.law_unverified,
-            source=f.source,
+            source=f.source, carry=f.carry, carry_note=self.text(f.carry_note),
         )
 
 
@@ -625,11 +658,19 @@ def _coverage(run: ReviewRun, view: _View) -> dict | None:
     reasons = raw.get("unable_by_reason", {"redacted": 0, "absent": 0, "other": unable})
     # 无法判断的原因是模型输出（使用代号），与审核要求列表一样还原为真实名称后显示
     raw = {**raw, "unable": [{**item, "note": view.text(item.get("note"))} for item in raw.get("unable", [])]}
+    delta = raw.get("delta") if isinstance(raw.get("delta"), dict) else None
+    counts = (f"有问题 {issue} 条，未发现问题 {ok} 条，不适用 {na} 条，无法判断 {unable} 条（信息已脱敏 {reasons['redacted']}、"
+              f"文件未写 {reasons['absent']}、其他 {reasons['other']}）")
+    if run.status == 'failed':
+        summary = f"本次计划审核 {total} 条要求，审核失败，未取得有效 AI 结论"
+    elif delta:
+        summary = f"增量复审沿用第 {delta['base_run_no']} 轮的逐条结论，只更新涉及变化的要求：{counts}"
+    else:
+        summary = f"本次按 {total} 条审核要求审核：{counts}"
     return {
-        "summary": (f"本次计划审核 {total} 条要求，审核失败，未取得有效 AI 结论" if run.status == 'failed' else
-                    f"本次按 {total} 条审核要求审核：有问题 {issue} 条，未发现问题 {ok} 条，"
-                    f"不适用 {na} 条，无法判断 {unable} 条（信息已脱敏 {reasons['redacted']}、"
-                    f"文件未写 {reasons['absent']}、其他 {reasons['other']}）"),
+        "summary": summary,
+        "delta": delta and {k: delta.get(k) for k in ("base_run_no", "no", "prev_no", "changed_clauses", "unchanged_clauses",
+                                                      "priors_sent", "priors_unchanged", "priors_ignored", "summary")},
         "unable_by_reason": reasons,
         "ai_instructions": int(raw.get("ai_instructions", 0)),
         "notes": describe(raw, view.file_names),
@@ -666,7 +707,9 @@ def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
                                                   unable_reason=normalize_unable_reason(r.verdict, r.unable_reason))
                              for r in results],
         findings=[view.finding(f, locations) for f in findings],
+        scope=run.scope,
     )
+    detail.base_run_no, detail.draft_no = _run_meta(db, run.task_id, [run])[run.id]
     # 临时问题只供阅读：返回不可用于写接口或讨论的独立标识，最终合并后重新生成正式问题。
     if run.status in ("queued", "running"):
         for finding, output in zip(findings, detail.findings):

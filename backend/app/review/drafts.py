@@ -182,9 +182,10 @@ def _labels(nodes) -> list[str]:
     return out
 
 
-def compare(old: list, new: list, *, mode: str = 'exact') -> dict:
+def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False) -> dict:
     """old / new：上一稿、本稿的正文节点（loc、text、before、kind、clause_no、page、has_revision）。
-    mode：exact（本稿有“拒绝修订”文字）/ flag（旧版本解析，按节点修订标记）/ none（非 Word，不判断留痕）。"""
+    mode：exact（本稿有“拒绝修订”文字）/ flag（旧版本解析，按节点修订标记）/ none（非 Word，不判断留痕）。
+    with_map：另返回 map {上一稿位置: 本稿位置}（未变、修改、位置调整的段落），供增量复审换算位置（D-03）。"""
     started = time.perf_counter()
     old_keys, new_keys = [key(n.text) for n in old], [key(n.text) for n in new]
     old_labels, new_labels = _labels(old), _labels(new)
@@ -262,6 +263,8 @@ def compare(old: list, new: list, *, mode: str = 'exact') -> dict:
                         'clause': old_labels[i], 'segs': [{'t': 'del', 's': old[i].text, **({} if t is None else {'u': not t})}],
                         'order': at - 0.5 + i * 1e-6})
     changes.sort(key=lambda c: c['order'])
+    loc_map = {old[i].loc: new[j].loc for i, j in pairs}
+    loc_map.update({c['prev_loc']: c['loc'] for c in changes if c['type'] == 'move'})
     summary = {'mod': 0, 'add': 0, 'del': 0, 'move': 0, 'format': 0, 'untracked': 0}
     for n, c in enumerate(changes, 1):
         c['id'] = f'C{n}'
@@ -279,7 +282,10 @@ def compare(old: list, new: list, *, mode: str = 'exact') -> dict:
             summary['untracked'] += 1
     logger.info('多稿对比 old=%d new=%d changes=%d ms=%d', len(old), len(new), len(changes),
                 (time.perf_counter() - started) * 1000)
-    return {'changes': changes, 'summary': summary, 'elapsed_ms': round((time.perf_counter() - started) * 1000)}
+    out = {'changes': changes, 'summary': summary, 'elapsed_ms': round((time.perf_counter() - started) * 1000)}
+    if with_map:
+        out['map'] = loc_map
+    return out
 
 
 def _deleted_tracked(p, new: list, at: int, mode: str) -> bool | None:

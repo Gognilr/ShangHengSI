@@ -186,6 +186,34 @@ def _finish(doc):
     return data.getvalue()
 
 
+CARRY = {"new": "本轮新增", "persists": "仍存在", "unchanged": "仍存在（条款未改动）", "resolved": "已解决"}
+
+
+def _changes(doc, db, task, run, text):
+    """增量轮：结论摘要后加“与上一稿的变化”（计数和未留痕清单，diff.md 3.5）。现算，原文已清理时只写计数。"""
+    from app.review import delta as delta_mod, drafts
+    doc.add_paragraph().add_run("与上一稿的变化").bold = True
+    summary = (run.coverage or {}).get("delta", {}).get("summary") or {}
+    doc.add_paragraph(f"对照第 {run.coverage['delta'].get('prev_no')} 稿：修改 {summary.get('mod', 0)} 处 · "
+                      f"新增 {summary.get('add', 0)} 段 · 删除 {summary.get('del', 0)} 段 · 位置调整 {summary.get('move', 0)} 处 · "
+                      f"未留痕 {summary.get('untracked', 0)} 处")
+    main = delta_mod.main_file(db, run)
+    try:
+        result = drafts.diff(db, task, main) if main is not None else None
+    except Exception:  # 上一稿已移除或原文已清理：只写计数
+        result = None
+    rows = []
+    for c in (result or {}).get("changes", []):
+        if not c.get("untracked") or c["type"] == "format":
+            continue
+        b = c["brief"]
+        excerpt = b.get("text") or f"{b['ctx']}{b['old']} → {b['new']}"
+        rows.append((c["clause"] or "—", {"mod": "修改", "add": "新增", "del": "删除", "move": "位置调整"}.get(c["type"], ""),
+                     _clean(excerpt)))
+    if rows:
+        _table(doc, ("位置", "类型", "未留痕的改动"), rows, (5, 2.5, 19.2))
+
+
 def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     task = db.get(Task, run.task_id)
     files, main = _files(db, task)
@@ -208,11 +236,19 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     else:
         doc.add_paragraph("本轮次没有覆盖说明")
     _heading(doc, "三 结论摘要")
-    doc.add_paragraph("；".join(f"{label}问题 {sum(f.severity == code for f in detail.findings)} 条" for code, label in SEVERITY.items()))
+    live = [f for f in detail.findings if getattr(f, "carry", None) != "resolved"]  # 已解决的不计入问题数（diff.md 4.3）
+    doc.add_paragraph("；".join(f"{label}问题 {sum(f.severity == code for f in live)} 条" for code, label in SEVERITY.items()))
+    delta = (detail.coverage or {}).get("delta")
+    if delta:
+        doc.add_paragraph("本轮新增 {} 条 · 仍存在 {} 条 · 已解决 {} 条".format(
+            sum(f.carry == "new" for f in detail.findings), sum(f.carry in ("persists", "unchanged") for f in detail.findings),
+            sum(f.carry == "resolved" for f in detail.findings)))
     doc.add_paragraph("制裁结论：" + SANCTIONS.get(detail.sanctions.level, "—"))
     for reason in detail.sanctions.reasons:
         doc.add_paragraph(text(reason))
     doc.add_paragraph(SANCTIONS_NOTE)
+    if delta:
+        _changes(doc, db, task, run, text)
     _heading(doc, "四 问题清单")
     rows = []
     for finding in detail.findings:
@@ -239,10 +275,17 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
         handling = HANDLING.get(finding.handling_status, finding.handling_status)
         if finding.handling_note:
             handling += "\n" + _clean(finding.handling_note)
-        rows.append((finding.seq, SEVERITY.get(finding.severity, finding.severity), CATEGORY.get(finding.category, finding.category),
-                     finding.location or ("缺失项" if finding.missing else "—"), text(finding.quote), _lines(problem),
-                     _lines(suggestion), CITE.get(finding.cite_status, finding.cite_status), handling))
-    if rows:
+        row = (finding.seq, SEVERITY.get(finding.severity, finding.severity), CATEGORY.get(finding.category, finding.category),
+               finding.location or ("缺失项" if finding.missing else "—"), text(finding.quote), _lines(problem),
+               _lines(suggestion), CITE.get(finding.cite_status, finding.cite_status), handling)
+        if delta:  # 增量轮加一列“本轮状态”
+            state = CARRY.get(finding.carry or "new", "")
+            row += (state + ("\n" + _clean(finding.carry_note) if finding.carry_note else ""),)
+        rows.append(row)
+    if rows and delta:
+        _table(doc, ("序号", "等级", "类别", "位置", "原文", "问题说明", "修改建议", "引用状态", "处理状态与备注", "本轮状态"),
+               rows, (1, 1, 1.3, 2.6, 4, 5, 4.6, 1.8, 2.6, 2.6))
+    elif rows:
         _table(doc, ("序号", "等级", "类别", "位置", "原文", "问题说明", "修改建议", "引用状态", "处理状态与备注"),
                rows, (1, 1, 1.5, 3, 4.5, 5.5, 5, 2.2, 3))
     else:

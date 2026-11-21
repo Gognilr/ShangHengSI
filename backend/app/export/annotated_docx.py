@@ -132,7 +132,8 @@ def build_annotated(db, run, file: TaskFile, include_changes: bool = True):
     task = db.get(Task, run.task_id)
     detail = run_detail(db, run)
     # 没有文件位置的任务级问题挂在主文件；跨文件问题只按首个位置归属。
-    findings = sorted((f for f in detail.findings if f.handling_status != "ignored" and
+    # 增量轮“已解决”的问题不挂批注（diff.md 4.3）
+    findings = sorted((f for f in detail.findings if f.handling_status != "ignored" and f.carry != "resolved" and
                        _belongs(f.locs, file.seq, file.is_main)), key=lambda f: f.seq)
     local = sorted((r for r in list_findings(db, task) if
                     (_belongs(r["locs"], file.seq) or

@@ -102,10 +102,12 @@ def detail(task: Task = Depends(owned_session), db: Session = Depends(get_db)):
 def outbound(response: Response, mode: Literal['assist', 'review'] = 'assist',
              stance: Literal['sales', 'purchase', 'other'] | None = None,
              file_ids: list[str] | None = Query(None, max_length=10), include_pending: bool = False,
+             scope: Literal['full', 'delta'] = 'full', main_file_id: str | None = Query(None, max_length=64),
              task: Task = Depends(owned_session), db: Session = Depends(get_db)):
     """mode=review：会话发起审核时的外发正文（含【主体说明】、报价汇总，V32-A-02），供审核确认页查看。
     include_pending：确认页在确认前预览，同时包含已解析、尚未确认的文件（V321-E-06）。
-    stance、file_ids 为确认页当前所选（V32-B-01 评审），使预览与实际发送一致；file_ids 只认本会话已确认的文件。"""
+    stance、file_ids 为确认页当前所选（V32-B-01 评审），使预览与实际发送一致；file_ids 只认本会话已确认的文件。
+    scope=delta（V35-D-03）：主文件 main_file_id 的增量复审预览，另返回 delta（能否只审变化、条款与问题数）；chars 为正文字数。"""
     from app.redaction import engine
     response.headers['Cache-Control'] = 'no-store'
     ids = None
@@ -113,8 +115,20 @@ def outbound(response: Response, mode: Literal['assist', 'review'] = 'assist',
         ids = [str(f.id) for f in task_files(db, task) if (f.confirmed_at is not None or (include_pending and f.parser_version)) and not f.media]
         if file_ids:
             ids = [fid for fid in ids if fid in set(file_ids)]
-    return {'text': engine.build_outbound(db, task, mode, file_ids=ids, stance=stance).text, 'note': task.user_note_redacted,
-            'material_version': task.material_version}
+    if mode == 'review' and scope == 'delta':
+        from app.review import delta
+        main = next((f for f in task_files(db, task) if str(f.id) == (main_file_id or (ids or [''])[0]) and str(f.id) in (ids or [])), None)
+        if main is None:
+            return {'text': '', 'note': task.user_note_redacted, 'material_version': task.material_version, 'chars': 0,
+                    'delta': {'available': False, 'reason': '请先选择主文件'}}
+        plan = delta.plan(db, task, main, stance=stance)
+        text = plan.text() if plan.available else ''
+        return {'text': text, 'note': task.user_note_redacted, 'material_version': task.material_version,
+                'chars': len(text) - len(plan.head), 'delta': plan.info()}
+    text = engine.build_outbound(db, task, mode, file_ids=ids, stance=stance).text
+    from app.review.prompt import split_outbound
+    return {'text': text, 'note': task.user_note_redacted, 'material_version': task.material_version,
+            'chars': len(split_outbound(text)[1])}
 
 
 @router.get("/{id}/local-findings")

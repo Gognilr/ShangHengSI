@@ -58,6 +58,25 @@ class SanctionsOut(_Model):
         return _as_list(value)
 
 
+class PriorOut(_Model):
+    id: str
+    status: str = ""
+    note: str | None = None
+
+
+class DeltaOutput(_Model):
+    """增量复审的输出（V35-D-03，diff.md 4.2）：不逐条给要求结论，对上轮问题逐条判断。"""
+    doc_summary: str = ""
+    prior: list[PriorOut] = []
+    findings: list[FindingOut] = []
+    sanctions: SanctionsOut | None = None
+
+    @field_validator("findings", "prior", mode="before")
+    @classmethod
+    def _none_lists(cls, value):
+        return [] if value is None else value
+
+
 class ModelOutput(_Model):
     doc_summary: str = ""
     requirement_results: list[RequirementResultOut]

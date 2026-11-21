@@ -105,9 +105,20 @@ def build_coverage(db: Session, task: Task, ctx: ReviewContext, review: Validate
     }
 
 
+def delta_note(delta: dict) -> str:
+    """增量复审的覆盖说明（diff.md 4.3），结果页与报告首页共用。"""
+    priors = int(delta.get("priors_sent", 0))
+    return (f"增量复审：对照第 {delta.get('prev_no')} 稿，审核了变化的 {int(delta.get('changed_clauses', 0))} 条条款"
+            + (f"与上轮 {priors} 个问题" if priors else "") + f"；其余 {int(delta.get('unchanged_clauses', 0))} 条未改动的条款"
+            f"沿用第 {delta.get('base_run_no')} 轮结论，没有重新审核。")
+
+
 def describe(coverage: dict, file_names: dict[int, str]) -> list[str]:
     """把结构化覆盖信息转成结果页和报告共用的固定中文句子。"""
     notes: list[str] = []
+    delta = coverage.get("delta")
+    if isinstance(delta, dict):
+        notes.append(delta_note(delta))
     template=coverage.get('template',{})
     if template.get('blocked'):
         notes.append('公司范本对照未通过出口复检，本次未发送')

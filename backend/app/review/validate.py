@@ -24,7 +24,7 @@ from app.redaction.quotes import QuoteTable, summary_text
 from app.redaction.restore import restore
 from app.review.chunking import Chunk
 from app.review.prompt import ReviewContext, build_messages
-from app.review.schema import FindingOut, ModelOutput, RequirementResultOut
+from app.review.schema import DeltaOutput, FindingOut, ModelOutput, RequirementResultOut
 from app.security import crypto
 
 CATEGORY_MAP = {"表述": "wording", "逻辑": "logic", "法律": "legal", "合规与制裁": "compliance", "商务": "commercial"}
@@ -37,6 +37,8 @@ _VERDICT_RANK = {"issue": 3, "unable": 2, "ok": 1, "na": 0}
 _SEVERITY_RANK = {"high": 2, "medium": 1, "low": 0}
 _CITE_RANK = {"verified": 2, "missing": 1, "unverified": 0}
 MISSING_NOTE = "模型未返回结论"
+_PRIOR_STATUS = {"resolved": "resolved", "persists": "persists", "已解决": "resolved", "仍存在": "persists",
+                 "persist": "persists", "unresolved": "persists"}
 QUOTE_SIMILARITY = 0.9
 TITLE_SIMILARITY = 0.8
 TITLE_MAX = 200
@@ -116,6 +118,7 @@ class ValidatedReview:
     tokens_in: int = 0
     tokens_out: int = 0
     llm_call_ids: list[int] = field(default_factory=list)
+    prior: dict[str, tuple[str, str | None]] = field(default_factory=dict)  # 增量轮：上轮问题编号 → (resolved / persists, 依据)
 
 
 # ---------------------------------------------------------------- 取值映射
@@ -236,7 +239,7 @@ def strip_fence(raw: str) -> str:
     return m.group(1) if m else (raw or "").strip()
 
 
-def parse_output(raw: str) -> ModelOutput:
+def parse_output(raw: str, model=ModelOutput):
     if not raw or not raw.strip():
         raise OutputError("模型未返回正文", public_reason="模型未返回正文，请检查思考模式及输出长度设置")
     try:
@@ -247,7 +250,7 @@ def parse_output(raw: str) -> ModelOutput:
     if not isinstance(data, dict):
         raise OutputError("输出必须是一个 JSON 对象", public_reason="返回内容不是要求的 JSON 对象")
     try:
-        return ModelOutput.model_validate(data)
+        return model.model_validate(data)
     except ValidationError as exc:
         problems = "；".join(f"{'.'.join(str(p) for p in e['loc'])}：{e['msg']}" for e in exc.errors()[:10])
         raise OutputError(f"输出不符合规定结构：{problems}",
@@ -316,8 +319,19 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
     chunk 不为 None 时，第 3 条只保留本段内的位置编号。
     """
     allowed = nodes if chunk is None else {loc: v for loc, v in nodes.items() if loc in chunk.locs}
-    out = parse_output(raw)
+    if ctx.delta is not None:  # 增量轮：位置只认本次发送的变化行
+        allowed = {loc: v for loc, v in allowed.items() if loc in ctx.delta.locs}
+    out = parse_output(raw, DeltaOutput if ctx.delta is not None else ModelOutput)
     sent = {r.id: r for r in ctx.requirements}
+    prior: dict[str, tuple[str, str | None]] = {}
+    if ctx.delta is not None:  # 没发过的编号丢弃；漏判的由保存时记“仍存在（模型未判断）”
+        sent_ids = {p.pid for p in ctx.delta.sent_priors}
+        for item in out.prior:
+            pid, status = item.id.strip().upper(), _PRIOR_STATUS.get((item.status or "").strip().lower())
+            if pid in sent_ids and status:
+                prior[pid] = (status, (item.note or "").strip() or None)
+        out = ModelOutput(doc_summary=out.doc_summary, requirement_results=[], findings=out.findings,
+                          sanctions=out.sanctions)
 
     # 第 6 条：每条发送的要求恰好一条结论；未发送的要求编号丢弃；同一要求多条时取 issue > unable > ok > na
     verdicts: dict[str, tuple[str, str | None, str | None]] = {}
@@ -369,6 +383,7 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
         findings=_merge_duplicates(findings),  # 第 7 条
         sanctions_level=map_sanctions(sanctions.level) if sanctions else None,
         sanctions_reasons=list(sanctions.reasons) if sanctions else [],
+        prior=prior,
     )
 
 
@@ -418,6 +433,7 @@ def merge_reviews(ctx: ReviewContext, outcomes: list[ChunkOutcome]) -> Validated
     merged.tokens_in = sum(r.tokens_in for r in reviews) + sum(o.tokens_in for o in outcomes if o.review is None)
     merged.tokens_out = sum(r.tokens_out for r in reviews) + sum(o.tokens_out for o in outcomes if o.review is None)
     merged.llm_call_ids = [i for r in reviews for i in r.llm_call_ids]
+    merged.prior = {k: v for r in reviews for k, v in r.prior.items()}
     return merged
 
 

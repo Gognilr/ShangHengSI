@@ -128,6 +128,9 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
         db.rollback()
         return
     db.execute(delete(Finding).where(Finding.run_id == run_id, Finding.seq < 0))
+    if ctx.delta is not None:
+        _save_delta(db, run, task, ctx, review, chunk_count, failed)
+        return
     for rr in review.requirement_results:
         db.add(RequirementResult(run_id=run.id, req_id=rr.req_id, req_source=rr.req_source, req_text=rr.req_text,
                                  dimension=rr.dimension, verdict=rr.verdict, note=rr.note,
@@ -173,6 +176,103 @@ def _save(db: Session, run_id: uuid.UUID, ctx: ReviewContext, review: ValidatedR
     logger.info("run %s 结束 状态=%s 问题=%s 高风险=%s", run_id, run.status, len(review.findings), high)
 
 
+_CARRIED = ("title", "category", "severity", "req_ids", "missing", "cite_status", "quote_model", "quote_snapshot_enc",
+            "quote_orig_enc", "problem", "impact", "suggestion", "suggested_text", "basis", "law_refs", "law_unverified",
+            "source", "handling_status", "discussed_text", "discussed_message_id", "discussed_at", "use_discussed",
+            "handling_note_enc")
+_VERDICT_NOTE_RESOLVED = "上轮问题已解决"
+
+
+def _save_delta(db: Session, run: ReviewRun, task: Task, ctx: ReviewContext, review: ValidatedReview,
+                chunk_count: int, failed: list[dict]) -> None:
+    """增量轮的结果（diff.md 4.3）：本轮新增 + 仍存在（模型判断 / 条款未改动）+ 已解决，全部写进本轮 findings。
+
+    逐条结论沿用基准轮，有新增或仍存在问题的要求记为有问题；制裁取基准轮与本轮的较高一级。
+    """
+    from app.review.delta import NOTE_IGNORED, NOTE_UNJUDGED
+    from app.review.validate import TITLE_SIMILARITY, _SANCTIONS_RANK, RequirementResultView, _similar
+    plan = ctx.delta
+    base = db.get(ReviewRun, plan.base_run.id)
+    olds = {f.id: f for f in db.scalars(select(Finding).where(Finding.run_id == base.id))}
+    rows: list[Finding] = []
+    for prior in plan.priors:
+        old = olds.get(prior.finding_id)
+        if old is None or prior.action == "drop":
+            continue
+        if prior.action == "send":
+            carry, note = review.prior.get(prior.pid, ("persists", NOTE_UNJUDGED))
+        elif prior.action == "unchanged":
+            carry, note = "unchanged", None
+        else:  # 已忽略：原样带
+            carry, note = ("persists", NOTE_IGNORED) if prior.touched else ("unchanged", None)
+        row = Finding(run_id=run.id, task_id=task.id, seq=0, locs=prior.locs, carry=carry, carry_note=note,
+                      prev_finding_id=old.id, **{k: getattr(old, k) for k in _CARRIED})
+        rows.append(row)
+    kept = [r for r in rows if r.carry != "resolved"]
+    for f in review.findings:
+        # 新问题与某个仍存在的旧问题位置相同、标题相似时并为一条（沿用 11.4 第 7 条）
+        same = next((r for r in kept if r.category == f.category and set(r.locs or []) & set(f.locs)
+                     and _similar(r.title, f.title) >= TITLE_SIMILARITY), None)
+        if same is not None:
+            continue
+        rows.append(Finding(
+            run_id=run.id, task_id=task.id, seq=0, title=f.title, category=f.category, severity=f.severity,
+            req_ids=f.req_ids, locs=f.locs, missing=f.missing, cite_status=f.cite_status, quote_model=f.quote_model,
+            quote_snapshot_enc=crypto.encrypt_text(f.quote_snapshot) if f.quote_snapshot is not None else None,
+            quote_orig_enc=crypto.encrypt_text(f.quote_original) if f.quote_original is not None else None,
+            problem=f.problem, impact=f.impact, suggestion=f.suggestion, suggested_text=f.suggested_text,
+            basis=f.basis, law_refs=f.law_refs, law_unverified=f.law_unverified, source=f.source, carry="new"))
+    live = _ordered(db, task.id, [r for r in rows if r.carry != "resolved"])
+    done = _ordered(db, task.id, [r for r in rows if r.carry == "resolved"])
+    for seq, row in enumerate(live + done, start=1):
+        row.seq = seq
+        db.add(row)
+
+    issue = {r for row in live for r in (row.req_ids or [])}
+    cleared = {r for row in done for r in (row.req_ids or [])} - issue
+    results = []
+    for rr in db.scalars(select(RequirementResult).where(RequirementResult.run_id == base.id).order_by(RequirementResult.id)):
+        verdict, note, reason = rr.verdict, rr.note, rr.unable_reason
+        if rr.req_id in issue and verdict != "issue":
+            verdict, note, reason = "issue", None, None
+        elif rr.req_id in cleared and verdict == "issue":
+            verdict, note = "ok", _VERDICT_NOTE_RESOLVED
+        db.add(RequirementResult(run_id=run.id, req_id=rr.req_id, req_source=rr.req_source, req_text=rr.req_text,
+                                 dimension=rr.dimension, verdict=verdict, note=note, unable_reason=reason))
+        results.append(RequirementResultView(rr.req_id, rr.req_source, rr.req_text, rr.dimension, verdict, note,
+                                             unable_reason=reason))
+    levels = [x for x in (base.sanctions_level, review.sanctions_level) if x]
+    now = utcnow()
+    run.doc_summary = review.doc_summary or base.doc_summary
+    run.sanctions_level = max(levels, key=lambda v: _SANCTIONS_RANK.get(v, -1)) if levels else None
+    run.sanctions_reasons = list(dict.fromkeys(list(base.sanctions_reasons or []) + list(review.sanctions_reasons)))
+    run.tokens_in += review.tokens_in
+    run.tokens_out += review.tokens_out
+    run.chunk_count = chunk_count
+    run.failed_chunks = failed
+    summary = ValidatedReview(run.doc_summary, results, [], run.sanctions_level, run.sanctions_reasons)
+    coverage = build_coverage(db, task, ctx, summary, chunk_count, failed)
+    coverage["requirements"]["total"] = len(results)
+    coverage["delta"] = {**plan.coverage(), "new": sum(r.carry == "new" for r in rows),
+                         "persists": sum(r.carry in ("persists", "unchanged") for r in rows),
+                         "resolved": len(done)}
+    run.coverage = coverage
+    unable = any(r.verdict == "unable" for r in results)
+    run.status = "partial" if failed or unable else "completed"
+    run.error_message = _partial_message(failed) if failed else None
+    run.finished_at = now
+    task.error_message = None
+    task.last_activity_at = now
+    try:
+        db.commit()
+    except IntegrityError:
+        if _reload(db, run.id) is not None:
+            raise
+        return
+    logger.info("run %s 增量轮结束 状态=%s 新增=%s 仍存在=%s 已解决=%s", run.id, run.status,
+                coverage["delta"]["new"], coverage["delta"]["persists"], coverage["delta"]["resolved"])
+
+
 def run_review(db: Session, run_id: uuid.UUID) -> None:
     run = db.scalar(select(ReviewRun).where(ReviewRun.id == run_id).with_for_update())
     task = db.get(Task, run.task_id) if run is not None else None
@@ -195,9 +295,21 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
     logger.info("run %s 开始", run_id)
 
     ctx: ReviewContext | None = None
+    plan = None
+    if run.scope == "delta":  # 增量轮：按创建时的基准轮重算计划（本机、确定性）
+        from app.review import delta
+        main = delta.main_file(db, run)
+        plan = delta.plan(db, task, main, stance=run.stance, base_run_id=run.base_run_id) if main else None
+        if plan is None or not plan.available:
+            _finish(db, run_id, status="failed", message=(plan.reason if plan else "主文件已移除") + "，请全文重审",
+                    task_status="reviewed")
+            return
     try:
         ctx = build_context(db, task, stance=run.stance, source=run.source, user_note=run.user_note,
-                            main_doc_type=run.main_doc_type, file_ids=run.file_ids)
+                            main_doc_type=run.main_doc_type, file_ids=run.file_ids, delta=plan)
+        if plan is not None and plan.empty:  # 没有要交给模型的内容：本机直接出结果，不调用模型
+            _save(db, run_id, ctx, ValidatedReview("", [], [], None, []), chunk_count=1)
+            return
         _, body = split_outbound(ctx.outbound_text)
         chunks = split_chunks(outbound_lines(body, ctx.boundary_locs),
                               effective_limit(model.chunk_chars))
@@ -209,7 +321,8 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
             return
         prepared = _prepare_chunks(db, ctx, chunks, nodes)
         # 全文能放入管理员配置的长度时按维度并发；长文件保留原分段路径，避免超出模型上下文。
-        groups = group_requirements(ctx.requirements) if total == 1 else [ctx.requirements]
+        # 增量轮一次请求，不按维度并发（4.2：发送量小，并发省不了时间却要 4 倍调用）
+        groups = group_requirements(ctx.requirements) if total == 1 and plan is None else [ctx.requirements]
         if len(groups) > 1:
             outcomes = _send_dimensions(db, run_id, prepared[0], groups, nodes)
         else:
@@ -255,6 +368,9 @@ def _prepare_chunks(db: Session, ctx: ReviewContext, chunks: list[Chunk],
     prepared = []
     for chunk in chunks:
         part = chunk if chunk.total > 1 else None
+        if ctx.delta is not None and part is None:  # 增量轮：法条与范本只按变化的条款检索
+            part = Chunk(chunk.index, chunk.total, chunk.lines, chunk.first_loc, chunk.last_loc,
+                         frozenset(ctx.delta.locs))
         prepare(db, ctx, part, nodes)
         prepare_template(db, ctx, part)
         prepared.append((chunk, copy.copy(ctx)))  # 每段重新赋值 law_refs / template_section，浅拷贝即可

@@ -730,6 +730,9 @@ class ReviewRun(Base):
     queued_at: Mapped[datetime] = mapped_column(TIMESTAMPTZ, nullable=False, default=utcnow)
     started_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
     finished_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    # 增量复审（V35-D-03）：full 全文 / delta 只审变化；delta 轮的基准轮
+    scope: Mapped[str] = mapped_column(String(5), nullable=False, server_default="full")
+    base_run_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("review_runs.id", ondelete="SET NULL"))
 
 
 # ---- 18.15 requirement_results ----
@@ -805,6 +808,10 @@ class Finding(Base):
     handling_note_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
     updated_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    # 增量轮（V35-D-03）：new 本轮新增 / persists 仍存在 / unchanged 条款未改动 / resolved 已解决；全文轮为空
+    carry: Mapped[Optional[str]] = mapped_column(String(10))
+    prev_finding_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("findings.id", ondelete="SET NULL"))
+    carry_note: Mapped[Optional[str]] = mapped_column(Text)  # 模型给的一句依据（代号形式）
 
     @property
     def handling_note(self) -> Optional[str]:
