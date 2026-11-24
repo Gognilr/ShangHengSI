@@ -198,6 +198,7 @@ const diffFile = computed(() => {
 const diffLoader = (fid: string, prev: string) => loadDiff(props.session.id, fid, prev)
 const diff = ref<DiffResult | null>(null)
 const diffLoading = ref(false), diffError = ref('')
+const railTab = ref<'findings' | 'diff'>('findings')
 watch(() => `${diffFile.value?.id}:${diffFile.value?.prev_file_id}`, async () => {
   const file = diffFile.value
   diff.value = null; diffError.value = ''
@@ -207,7 +208,6 @@ watch(() => `${diffFile.value?.id}:${diffFile.value?.prev_file_id}`, async () =>
   catch (e) { diffError.value = e instanceof ApiError ? e.message : '对比失败，请刷新页面后重试' }
   finally { diffLoading.value = false }
 }, { immediate: true })
-const railTab = ref<'findings' | 'diff'>('findings')
 const pickedChange = ref('')
 function onPickChange(c: DiffChange) {
   pickedChange.value = c.id

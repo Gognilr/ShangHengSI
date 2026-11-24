@@ -136,7 +136,9 @@ def parse_project(db, task_id):
                 continue
             file.parse_error = "解析中断，请重新解析"
         else:
-            db.add_all(DocNode(task_id=task_id, file_id=file.id, **{k: v for k, v in vars(n).items() if k not in ("text", "formula")},
+            # 标书只使用当前正文，不保存文件审核用于多稿对比的修订前文字。
+            db.add_all(DocNode(task_id=task_id, file_id=file.id,
+                               **{k: v for k, v in vars(n).items() if k not in ("text", "formula", "text_before")},
                                text_enc=crypto.encrypt_text(n.text), formula_enc=crypto.encrypt_text(n.formula) if n.formula else None)
                        for n in parsed.nodes)
             file.parser_version, file.page_count = version, parsed.page_count

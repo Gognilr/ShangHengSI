@@ -898,7 +898,9 @@ def test_leaks_in_party_description_listed_and_keepable(db_sessionmaker, alice, 
     user, c, h = alice
     task = ready_task(user)
     with db_sessionmaker() as db:
-        party = db.scalars(select(Party).where(Party.task_id == task.id)).first()
+        party = db.scalars(select(Party).where(
+            Party.task_id == task.id, Party.is_our_party.is_(False),
+        )).first()
         party.country = "13912345678"
         db.commit()
     url = f"{API_PREFIX}/tasks/{task.id}/redaction/leaks"
