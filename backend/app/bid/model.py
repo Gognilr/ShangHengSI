@@ -981,10 +981,11 @@ _MARK = re.compile(r"\[\[(?:OUR|[A-Z]+_\d+)\]\]|\[投标人[A-Z]+\]")
 
 
 def _cites(quote, text):
-    """引文出自片段：整体相似，且引文中的代号（投标人、[[类别_n]]）都在片段中——换了代号的引文还原后会指向另一家。"""
-    if not quote or not quote_matches(quote, text):
-        return False
-    return set(_MARK.findall(normalize_for_quote(quote))) <= set(_MARK.findall(normalize_for_quote(text)))
+    """含代号的引文须连续匹配，普通引文在无代号的文本段内可容许轻微差异。"""
+    q, t = normalize_for_quote(quote), normalize_for_quote(text)
+    if _MARK.search(q):
+        return q in t
+    return any(quote_matches(q, part) for part in _MARK.split(t))
 
 
 def snippets_file(snippets, loc):

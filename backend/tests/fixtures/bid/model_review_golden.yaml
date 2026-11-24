@@ -85,7 +85,7 @@ prompt_vocabulary:
   ordinary: 题设基准
 
 quotes:
-  source: '[投标人A]承诺提供三年免费质保并在两小时内响应。'
+  source: '[投标人A]承诺提供三年免费质保并在两小时内响应。[投标人B]只提供零部件采购渠道。'
   cases:
     - quote: '[投标人A]承诺提供三年免费质保并在两小时内响应。'
       cite: verified
@@ -94,3 +94,9 @@ quotes:
     - quote: '投标人B承诺提供三年免费质保并在两小时内响应。'
       cite: unverified
       issue: V34Q-22-3
+    - quote: '[投标人B]承诺提供三年免费质保并在两小时内响应。[投标人A]只提供零部件采购渠道。'
+      cite: unverified
+    - quote: '承诺提供三年免费质保并在两小时内响应。只提供零部件采购渠道。'
+      cite: unverified
+    - quote: '承诺提供三年免费质保，并在两小时内响应。'
+      cite: verified

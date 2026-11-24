@@ -375,7 +375,8 @@ def test_model_quote_golden(owner, db_sessionmaker):
         snippet["locs"] = [loc]
         node = db.scalar(select(DocNode).where(DocNode.task_id == tid, DocNode.loc == loc))
         node.redacted_text = GOLDEN["quotes"]["source"]
-        node.text_enc = crypto.encrypt_text(node.redacted_text.replace("[投标人A]", BIDDERS[0]))
+        original = node.redacted_text.replace("[投标人A]", BIDDERS[0]).replace("[投标人B]", BIDDERS[1])
+        node.text_enc = crypto.encrypt_text(original)
         db.flush()
         rid = batch["reqs"][0]
         results = []
