@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, Up
 from sqlalchemy import delete as sql_delete, func, select, update as sql_update
 from sqlalchemy.orm import Session
 
+from app import content_drafts
 from app.audit import service as audit
 from app.bid import folders, service
 from app.bid.schemas import (BidderInput, DismissInput, FolderInput, FolderPatch, InviteesInput, OpeningPriceInput, PlaceInput,
@@ -94,13 +95,17 @@ def _list_state(db, task, project):
 
 @router.post("", status_code=201)
 def create(body: ProjectInput, request: Request, user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
+    from app.bid.requirements import snapshot_company_checks
+
     category = folders.choose_category(db, body.category_id)
     folder_id = folders.folder(db, user, body.folder_id).id if body.folder_id else None
     task = Task(owner_id=user.id, kind="bid", title=body.title, stance="purchase", source="incoming",
                 policy=body.policy, status="draft")
     db.add(task)
     db.flush()
-    db.add(BidProject(task_id=task.id, opening_date=body.opening_date, category_id=category, folder_id=folder_id))
+    project = BidProject(task_id=task.id, opening_date=body.opening_date, category_id=category, folder_id=folder_id)
+    snapshot_company_checks(db, task, project)
+    db.add(project)
     audit.record(db, "task_create", user_id=user.id, target_type="task", target_id=str(task.id), detail={"kind": "bid"}, ip=client_ip(request))
     db.commit()
     return service.detail(db, task)
@@ -150,7 +155,7 @@ def get(task: Task = Depends(owned), db: Session = Depends(get_db)):
 @router.patch("/{id}")
 def update(body: ProjectInput, user: User = Depends(require("use.bid")), task: Task = Depends(owned), db: Session = Depends(get_db)):
     """名称、开标日期、外发策略只在开始初审前可改；分类与文件夹任何阶段都可改（只改请求中给出的项）。"""
-    from app.bid import extract, model
+    from app.bid import extract, model, requirements
 
     task = _lock_owned(db, task)
     project = db.get(BidProject, task.id, populate_existing=True)
@@ -167,7 +172,11 @@ def update(body: ProjectInput, user: User = Depends(require("use.bid")), task: T
         task.policy = body.policy
         service.clear_model_work(db, project)
     if "category_id" in body.model_fields_set:
-        project.category_id = folders.choose_category(db, body.category_id, project.category_id)
+        category_id = folders.choose_category(db, body.category_id, project.category_id)
+        if project.category_id != category_id:
+            project.category_id = category_id
+            if project.stage == "preparing":
+                requirements.snapshot_company_checks(db, task, project)
     if "folder_id" in body.model_fields_set:
         project.folder_id = folders.folder(db, user, body.folder_id).id if body.folder_id else None
     task.last_activity_at = utcnow()
@@ -346,6 +355,20 @@ def tender_text(view: str = Query("original", pattern="^(original|ai)$"), task: 
 @router.get("/{id}/requirements")
 def requirements_view(task: Task = Depends(owned), db: Session = Depends(get_db)):
     return _requirements(db, task)
+
+
+@router.post("/{id}/requirements/{rid}/company-draft")
+def submit_company_draft(rid: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid.requirements import requirement
+
+    row = requirement(db, task, rid)
+    if row.group == "format" or row.source == "default":
+        raise AppError(422, "CONTENT_DRAFT_NOT_APPLICABLE", "请选择一条具体的招标要求")
+    project = db.get(BidProject, task.id)
+    result = content_drafts.submit(db, task, row.id, crypto.decrypt_text(row.text_enc), "bid",
+                                   category_id=project.category_id, project_names=content_drafts.bid_names(db, task, project))
+    db.commit()
+    return result
 
 
 @router.put("/{id}/invitees")

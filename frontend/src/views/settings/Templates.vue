@@ -5,6 +5,8 @@ import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import SettingSection from '@/components/SettingSection.vue'
+import ContentDrafts from '@/components/settings/ContentDrafts.vue'
+import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import { ApiError } from '@/api/http'
 import { templatesApi, type TemplateRow, type TemplateDetail, type TemplateClause } from '@/api/templates'
@@ -12,6 +14,8 @@ import { DOC_TYPE_OPTIONS, STANCE_OPTIONS, docTypeLabel, stanceLabel, toOptions 
 import { formatDateTime } from '@/utils/time'
 
 const rows = ref<TemplateRow[]>([])
+const filter = ref('all')
+const filters = [{ value: 'all', label: '全部范本' }, { value: 'pending', label: '待审批' }]
 const loading = ref(false)
 const loaded = ref(false)
 const tableMax = useTableMaxHeight(320)
@@ -92,8 +96,12 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 <template>
   <div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
-    <div v-loading="loading" class="panel setting-panel">
-      <SettingSection title="范本列表" description="审核时按文件类型和立场选择合适的范本。" stacked><template #actions><el-button type="primary" :disabled="rows.length >= 50 || saving" @click="open()">上传公司范本</el-button></template>
+    <div class="panel setting-panel">
+      <SettingSection title="范本列表" description="审核时按文件类型和立场选择合适的范本。" stacked>
+        <template #actions><el-button v-if="filter === 'all'" type="primary" :disabled="rows.length >= 50 || saving" @click="open()">上传公司范本</el-button></template>
+        <SiSegmented v-model="filter" :options="filters" ariaLabel="范本筛选" />
+        <ContentDrafts v-if="filter === 'pending'" kind="template" :templates="rows" @approved="load()" />
+        <div v-else v-loading="loading">
         <p class="hint">最多 50 份，含停用范本。只有启用且向量准备完成的范本参与选择；更换文件请删除后重新上传。</p>
         <TableSkeleton v-if="!loaded" :columns="['1fr', '130px', '100px', '80px', '100px', '80px', '160px']" />
       <el-table v-else :data="rows" :max-height="tableMax">
@@ -106,6 +114,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
         <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="detail(row)">查看条款</el-button><RowMore><el-dropdown-item :disabled="saving" @click="open(row)">编辑</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
+        </div>
       </SettingSection>
     </div>
     <el-dialog v-model="dialog" :title="editing ? '编辑范本设置' : '上传公司范本'" width="640px" :close-on-click-modal="!saving">

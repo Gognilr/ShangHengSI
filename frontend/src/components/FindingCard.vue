@@ -2,10 +2,12 @@
 import { ElMessage, type InputInstance } from 'element-plus'
 import { BookOpen, Check, Copy, MapPin, MessageSquare, Undo2 } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
+import { contentDraftsApi, draftStatusMessage } from '@/api/contentDrafts'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type HandlingStatus } from '@/api/runs'
 import MarkedText from '@/components/result/MarkedText.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
+import { useAuthStore } from '@/stores/auth'
 import { CARRY_LABELS, CITE_TAG, categoryLabel, citeStatusLabel, severityLabel } from '@/utils/labels'
 
 /**
@@ -23,6 +25,18 @@ const emit = defineEmits<{
 }>()
 
 const f = computed(() => props.finding)
+const auth = useAuthStore()
+const submittingDraft = ref(false)
+
+async function submitTemplateDraft() {
+  if (submittingDraft.value || saving.value) return
+  submittingDraft.value = true
+  try {
+    const { status } = await contentDraftsApi.submitFinding(f.value.id)
+    ElMessage.success(draftStatusMessage[status])
+  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '提交失败，请重试') }
+  finally { submittingDraft.value = false }
+}
 const basisShort = computed(() => {
   const law = f.value.law_refs?.[0]
   if (law) return `《${law.title}》${law.article_no ?? ''}`
@@ -131,7 +145,11 @@ async function copy(text: string) {
         <div class="sugg-h">
           <span>{{ f.discussed_text ? '原审核建议的条文' : '建议条文' }}</span>
           <span v-if="f.marks.suggested_text?.length" class="copy-warn">含未能还原的写法，复制后请核对</span>
-          <el-button text size="small" @click.stop="copy(f.suggested_text)"><Copy :size="14" :stroke-width="1.75" />复制</el-button>
+          <div class="sugg-actions">
+            <el-button text size="small" @click.stop="copy(f.suggested_text)"><Copy :size="14" :stroke-width="1.75" />复制</el-button>
+            <el-button v-if="!f.use_discussed && auth.can('use.review')" text size="small" :disabled="saving"
+              :loading="submittingDraft" @click.stop="submitTemplateDraft">提交为范本草稿</el-button>
+          </div>
         </div>
         <MarkedText class="text" :text="f.suggested_text" :marks="f.marks.suggested_text" />
       </div>
@@ -139,7 +157,11 @@ async function copy(text: string) {
         <div class="sugg-h">
           <span>讨论修改稿</span>
           <span v-if="f.marks.discussed_text?.length" class="copy-warn">含未能还原的写法，导出时转为批注</span>
-          <el-button text size="small" @click.stop="copy(f.discussed_text)"><Copy :size="14" :stroke-width="1.75" />复制</el-button>
+          <div class="sugg-actions">
+            <el-button text size="small" @click.stop="copy(f.discussed_text)"><Copy :size="14" :stroke-width="1.75" />复制</el-button>
+            <el-button v-if="f.use_discussed && auth.can('use.review')" text size="small" :disabled="saving"
+              :loading="submittingDraft" @click.stop="submitTemplateDraft">提交为范本草稿</el-button>
+          </div>
         </div>
         <MarkedText class="text" :text="f.discussed_text" :marks="f.marks.discussed_text" />
       </div>
@@ -212,8 +234,9 @@ async function copy(text: string) {
 .basis svg { flex: none; margin-top: 3px; }
 .laws { margin-top: -4px; }
 .sugg { padding: 10px 12px; border: 1px solid var(--si-hair-faint); border-radius: 12px; background: var(--si-card-2); }
-.sugg-h { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--si-ink-3); font: var(--si-font-label-sm); }
-.sugg-h .el-button { margin-left: auto; }
+.sugg-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 4px; color: var(--si-ink-3); font: var(--si-font-label-sm); }
+.sugg-actions { display: flex; flex-wrap: wrap; margin-left: auto; }
+.sugg-actions .el-button + .el-button { margin-left: 0; }
 .sugg-h :deep(.el-button > span) { gap: 4px; }
 .sugg .text { color: var(--si-ink-1); }
 .sugg.discussed.chosen { box-shadow: inset 0 0 0 1px var(--si-brand-2); }

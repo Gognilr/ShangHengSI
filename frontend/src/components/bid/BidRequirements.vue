@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Pencil, Plus, RotateCcw, Sparkles, Trash2 } from '@lucide/vue'
 import { ApiError } from '@/api/http'
+import { contentDraftsApi, draftStatusMessage } from '@/api/contentDrafts'
 import {
   bidApi, bidGroupLabel, bidMethodLabel, bidParamLabel, bidSourceLabel,
   type BidGroup, type BidLoc, type BidMethod, type BidParam, type BidRequirement, type BidRequirements,
@@ -18,6 +19,7 @@ const props = defineProps<{ projectId: string; policy: 'ai' | 'local_only'; disa
 const emit = defineEmits<{ changed: [] }>()
 
 const data = ref<BidRequirements>(), error = ref(''), saving = ref(false)
+const submittingDraft = ref<string | null>(null)
 const paramEdit = ref<string | null>(null), paramDraft = ref<BidParam>({})
 const view = ref<'original' | 'ai'>('original'), focus = ref<BidLoc | null>(null)
 const current = ref<string | null>(null), editing = ref<string | null>(null), draft = ref('')
@@ -78,6 +80,16 @@ async function saveEdit(item: BidRequirement) {
   if (text && text !== item.text) await patch(item, { text })
 }
 async function remove(item: BidRequirement) { await act(() => bidApi.removeRequirement(props.projectId, item.id)) }
+
+async function submitCompanyDraft(item: BidRequirement) {
+  if (submittingDraft.value) return
+  submittingDraft.value = item.id
+  try {
+    const { status } = await contentDraftsApi.submitBid(props.projectId, item.id)
+    ElMessage.success(draftStatusMessage[status])
+  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '提交失败，请重试') }
+  finally { submittingDraft.value = null }
+}
 // 划选加入时按关键词猜分组（与后端规则一致），用户可改
 function guessGroup(text: string): BidGroup {
   if (/否决|废标|无效投标|投标无效|不予受理|拒收/.test(text)) return 'veto'
@@ -160,6 +172,10 @@ const notEnough = computed(() => {
       <div class="split">
         <BidTenderText class="left" :project-id="projectId" :view="view" :reload-key="`${tenderKey}:${data.extract_state}`" :focus="focus" :covered="covered" @add="(loc, text) => startAdd(loc, text)" />
         <div class="right">
+          <section v-if="data.company_checks?.length" class="company-checks">
+            <h3>公司补充要求 · 人工核对</h3>
+            <ul><li v-for="text in data.company_checks" :key="text">{{ text }}</li></ul>
+          </section>
           <!-- 完整性计数器：用户只处理差额 -->
           <ul class="counter" aria-label="完整性计数">
             <li v-for="kind in (['star', 'veto'] as const)" :key="kind">
@@ -236,6 +252,9 @@ const notEnough = computed(() => {
                     <el-select :model-value="item.method" size="small" class="method" :disabled="locked" aria-label="检查方式" @click.stop @update:model-value="(v: BidMethod) => patch(item, { method: v })">
                       <el-option v-for="(label, m) in bidMethodLabel" :key="m" :label="label" :value="m" :disabled="m === 'model' && policy === 'local_only'" />
                     </el-select>
+                    <el-button v-if="item.group !== 'format' && item.source !== 'default' && editing !== item.id" link type="primary" size="small"
+                      :loading="submittingDraft === item.id" :disabled="saving || (submittingDraft !== null && submittingDraft !== item.id)"
+                      @click.stop="submitCompanyDraft(item)">提交为补充要求草稿</el-button>
                   </p>
                 </div>
                 <div class="row-actions">
@@ -275,6 +294,9 @@ const notEnough = computed(() => {
 .right { min-height: 0; overflow: auto; padding-right: 4px; }
 .counter { margin: 0 0 8px; padding: 0; list-style: none; }
 .counter li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font: var(--si-font-body); color: var(--si-ink-1); }
+.company-checks { margin: 0 0 12px; padding: 0 0 10px; border-bottom: 1px solid var(--si-hair); }
+.company-checks h3 { margin: 0 0 4px; font: var(--si-font-label); color: var(--si-ink-2); }
+.company-checks ul { margin: 0; padding-left: 1.5em; font: var(--si-font-body); overflow-wrap: anywhere; }
 .ok { color: var(--si-ok-ink); }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .dot.warn { background: var(--si-warn); }

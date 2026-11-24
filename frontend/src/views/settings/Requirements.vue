@@ -15,6 +15,8 @@ import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import RatioSetting from '@/components/settings/RatioSetting.vue'
+import ContentDrafts from '@/components/settings/ContentDrafts.vue'
+import SiSegmented from '@/components/ui/SiSegmented.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import SaveState from '@/components/SaveState.vue'
 import { useAutoSave } from '@/utils/autosave'
@@ -48,6 +50,8 @@ const scopeText = (values: string[], label: (v: string) => string) =>
   values.includes('all') ? '全部' : values.map(label).join('、')
 
 // ---- ② 公司补充要求 ----
+const companyFilter = ref('all')
+const companyFilters = [{ value: 'all', label: '文件审核要求' }, { value: 'pending', label: '待审批' }]
 const items = ref<CompanyReqRow[]>([])
 const comboCounts = ref<{ doc_type: string; stance: string; source: string; count: number }[]>([])
 const comboColumns = toOptions(STANCE_OPTIONS).flatMap(stance => toOptions(SOURCE_OPTIONS).map(source => ({ stance: stance.value, source: source.value, label: stance.label + ' / ' + source.label })))
@@ -265,6 +269,9 @@ onMounted(() => {
       </el-table>
     </SettingSection>
       <SettingSection title="公司补充要求" description="在内置要求之外增加本公司的审核内容；只能增加，不能取消内置要求。" stacked>
+      <SiSegmented v-model="companyFilter" :options="companyFilters" ariaLabel="公司补充要求筛选" />
+      <ContentDrafts v-if="companyFilter === 'pending'" kind="bid" />
+      <template v-else>
       <div class="hint tip">补充要求只能增加审核内容，不能取消内置要求。请勿在补充要求中写入具体客户名称。</div>
       <h4>各组合生效条数</h4>
       <el-table v-loading="listLoading" :data="comboRows" size="small" class="combo-table">
@@ -306,6 +313,7 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
+      </template>
     </SettingSection>
       <SettingSection title="发送本地财务比率" description="可选择把本机计算的比率用于模型分析，默认关闭。"><RatioSetting /></SettingSection>
       <SettingSection title="版本历史" description="公司说明与补充要求每次修改的记录。" stacked>

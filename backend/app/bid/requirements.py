@@ -342,6 +342,16 @@ def save_state(project, state):
     project.parameters_enc = crypto.encrypt_text(json.dumps(state, ensure_ascii=False))
 
 
+def snapshot_company_checks(db, task, project):
+    from app.content_drafts import bid_checks
+
+    state = load_state(project)
+    checks = bid_checks(db, project.category_id, task.created_at)
+    if checks != state.get("company_checks", []):
+        state["company_checks"] = checks
+        save_state(project, state)
+
+
 def parsed_tender_ids(db, task_id):
     return sorted(str(i) for i in db.scalars(select(TaskFile.id).where(
         TaskFile.task_id == task_id, TaskFile.bidder_id.is_(None), TaskFile.parser_version.is_not(None))))
@@ -431,7 +441,8 @@ def view(db, task: Task) -> dict:
             "quote_mode": state.get("quote_mode", "fixed"),
             "extracted": state["extracted_from"] is not None,
             "tender_changed": state["extracted_from"] is not None and state["extracted_from"] != parsed_tender_ids(db, task.id),
-            "items": rows, "counts": counts, "version": project.requirements_version,
+            "items": rows, "company_checks": state.get("company_checks", []), "counts": counts,
+            "version": project.requirements_version,
             "extract_state": project.extract_state, "extract_error": project.extract_error,
             "sent_count": sent_count(db, task.id)}
 

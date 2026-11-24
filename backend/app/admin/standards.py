@@ -5,6 +5,7 @@ from fastapi import APIRouter,Depends,File,Form,UploadFile
 from pydantic import BaseModel,ConfigDict,Field,field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from app import content_drafts
 from app.audit import service as audit
 from app.config import get_settings
 from app.db.models import StandardTemplate,DOC_TYPES,STANCES,User
@@ -50,6 +51,10 @@ class ClausePatch(BaseModel):
     escalate:str|None=Field(None,max_length=300)
 
 
+class DraftApproval(BaseModel):
+    template_id: uuid.UUID
+
+
 @router.get('')
 def listing(db:Session=Depends(get_db)):
     return {'items':[service.view(db,r) for r in db.scalars(select(StandardTemplate).order_by(StandardTemplate.created_at.desc()))]}
@@ -66,6 +71,23 @@ def upload(name:str=Form(...),doc_types:str=Form(...),stances:str=Form(...),file
     row=service.create(db,data,values,admin.id)
     db.commit()
     return service.view(db,row,True)
+
+
+@router.get("/drafts")
+def pending_drafts(db: Session = Depends(get_db)):
+    return {"items": content_drafts.pending(db, "template")}
+
+
+@router.post("/drafts/{draft_id}/approve", status_code=204)
+def approve_draft(draft_id: uuid.UUID, body: DraftApproval, admin: User = Depends(_perm), db: Session = Depends(get_db)):
+    content_drafts.decide(db, draft_id, "template", admin.id, approve=True, template_id=body.template_id)
+    db.commit()
+
+
+@router.post("/drafts/{draft_id}/return", status_code=204)
+def return_draft(draft_id: uuid.UUID, admin: User = Depends(_perm), db: Session = Depends(get_db)):
+    content_drafts.decide(db, draft_id, "template", admin.id, approve=False)
+    db.commit()
 
 
 @router.get('/{tid}')

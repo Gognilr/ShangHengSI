@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session as DbSession
 
+from app import content_drafts
 from app.admin.settings_store import get_setting, set_setting
 from app.audit import service as audit
 from app.db.base import utcnow
@@ -183,6 +184,23 @@ def _audit(db: DbSession, admin: User, request: Request, *, target_type: str, ta
 def list_company_requirements(db: DbSession = Depends(get_db)) -> CompanyReqList:
     rows = db.scalars(select(CompanyRequirement).order_by(CompanyRequirement.sort, CompanyRequirement.code)).all()
     return CompanyReqList(items=[CompanyReqRow.of(r) for r in rows], version=_latest_version(db), combo_counts=_combo_counts(rows))
+
+
+@router.get("/bid-requirement-drafts")
+def pending_bid_drafts(db: DbSession = Depends(get_db)):
+    return {"items": content_drafts.pending(db, "bid")}
+
+
+@router.post("/bid-requirement-drafts/{draft_id}/approve", status_code=204)
+def approve_bid_draft(draft_id: uuid.UUID, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
+    content_drafts.decide(db, draft_id, "bid", admin.id, approve=True)
+    db.commit()
+
+
+@router.post("/bid-requirement-drafts/{draft_id}/return", status_code=204)
+def return_bid_draft(draft_id: uuid.UUID, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
+    content_drafts.decide(db, draft_id, "bid", admin.id, approve=False)
+    db.commit()
 
 
 def _combo_counts(rows) -> list[dict]:

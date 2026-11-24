@@ -390,6 +390,27 @@ class BidCategory(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=_TRUE)
 
 
+class ContentDraft(Base):
+    """从审核结果沉淀的脱敏文本。来源只用来在重复提交时识别同一条。"""
+    __tablename__ = "content_drafts"
+    __table_args__ = (
+        UniqueConstraint("kind", "source_id", "content_hash"),
+        enum_check("kind", ["template", "bid"]),
+        enum_check("status", ["pending", "approved", "returned"]),
+    )
+    id: Mapped[uuid.UUID] = uuid_pk()
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    content_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    text_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    doc_type: Mapped[Optional[str]] = mapped_column(String(20))
+    stance: Mapped[Optional[str]] = mapped_column(String(12))
+    category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("bid_categories.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(8), nullable=False, server_default="pending")
+    created_at: Mapped[datetime] = _ts_now()
+    approved_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+
+
 class BidFolder(Base):
     """个人文件夹，最多三级；删除时子文件夹一并删除。"""
     __tablename__ = "bid_folders"

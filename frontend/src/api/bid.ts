@@ -66,7 +66,8 @@ export const bidInviteeSourceLabel: Record<BidInvitee['source'], string> = { tab
 export interface BidRequirements {
   invitees: BidInvitee[]; invitees_edited: boolean
   quote_mode: BidQuoteMode
-  extracted: boolean; tender_changed: boolean; items: BidRequirement[]; counts: { star: BidCount; veto: BidCount }; version: number
+  extracted: boolean; tender_changed: boolean; items: BidRequirement[]; company_checks: string[]
+  counts: { star: BidCount; veto: BidCount }; version: number
   extract_state: BidExtractState; extract_error: string | null; stage: BidStage
   receipt: { chars: number; calls: number; protected: number; remaining: { monthly: number | null; daily: number | null } } | null
   sent_count?: number

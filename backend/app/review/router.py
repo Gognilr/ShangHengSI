@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
+from app import content_drafts
 from app.db.models import DOC_TYPES, Finding, RequirementVersion, ReviewRun, Task, User
 from app.db.session import get_db
 from app.review import service
@@ -102,6 +103,17 @@ def put_finding_draft(
 ) -> FindingOut:
     """讨论稿保存为该问题的修改建议（V32-B-03）：只用于工作台会话的轮次。"""
     return service.save_draft(db, finding, user, body)
+
+
+@router.post("/findings/{fid}/template-draft", dependencies=[Depends(_review)])
+def submit_template_draft(finding: Finding = Depends(owned_finding), db: DbSession = Depends(get_db)):
+    run = db.get(ReviewRun, finding.run_id)
+    task = db.get(Task, finding.task_id)
+    chosen, _ = service.chosen_text(finding)
+    result = content_drafts.submit(db, task, finding.id, chosen, "template",
+                                   doc_type=run.main_doc_type, stance=run.stance)
+    db.commit()
+    return result
 
 
 # ---------------------------------------------------------------- 审核要求（抽屉，M5-06）
