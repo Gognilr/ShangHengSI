@@ -325,7 +325,7 @@ def validate_output(raw: str, ctx: ReviewContext, nodes: dict[str, DocNodeView],
     sent = {r.id: r for r in ctx.requirements}
     prior: dict[str, tuple[str, str | None]] = {}
     if ctx.delta is not None:  # 没发过的编号丢弃；漏判的由保存时记“仍存在（模型未判断）”
-        sent_ids = {p.pid for p in ctx.delta.sent_priors}
+        sent_ids = {p.pid for p in ctx.delta.priors_for(chunk)}
         for item in out.prior:
             pid, status = item.id.strip().upper(), _PRIOR_STATUS.get((item.status or "").strip().lower())
             if pid in sent_ids and status:

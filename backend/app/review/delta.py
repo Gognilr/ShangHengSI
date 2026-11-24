@@ -73,19 +73,33 @@ class DeltaPlan:
 
     def prior_lines(self, chunk=None) -> list[str]:
         """分段时每段只带位置落在本段的上轮问题；没有位置（缺失型、条款已删）的放第 1 段。"""
+        return [p.line for p in self.priors_for(chunk)]
+
+    def priors_for(self, chunk=None) -> list[Prior]:
         out = []
         for p in self.sent_priors:
             inside = p.anchor is not None and p.anchor in self.locs
             if chunk is None or chunk.total <= 1 or (p.anchor in chunk.locs if inside else chunk.index == 1):
-                out.append(p.line)
+                out.append(p)
         return out
 
     def text(self) -> str:
         """外发预览用：主体说明 + 变化 + 上轮问题（与实际发送的这两部分逐字相同）。"""
-        parts = [self.head, "【待审核文件 · 变化】", self.body()]
-        if self.sent_priors:
-            parts += ["【上轮问题】", *self.prior_lines()]
-        return "\n".join(x for x in parts if x)
+        if self.empty:
+            return ""
+        return "\n".join(x for x in (self.head, self.preview_body()) if x)
+
+    def preview_body(self) -> str:
+        if self.empty:
+            return ""
+        return self.message_body(self.body())
+
+    def message_body(self, body: str, chunk=None) -> str:
+        parts = [f"【待审核文件 · 变化】\n<document>\n{body}\n</document>"]
+        priors = self.prior_lines(chunk)
+        if priors:
+            parts += ["【上轮问题】", *priors]
+        return "\n".join(parts)
 
     def coverage(self) -> dict:
         """写进轮次 coverage 的增量信息：只有位置编号与数字，不含原文。"""
@@ -100,7 +114,7 @@ class DeltaPlan:
         """设置页“审核范围”用的说明（4.1）。"""
         if not self.available:
             return {"available": False, "reason": self.reason}
-        return {"available": True, "recommended": self.recommended, "identical": self.identical,
+        return {"available": True, "recommended": self.recommended, "identical": self.identical, "empty": self.empty,
                 "no": self.no, "prev_no": self.prev_no, "base_run_no": self.base_run.run_no,
                 "changed_clauses": self.changed_clauses, "total_clauses": self.total_clauses,
                 "priors_sent": len(self.sent_priors), "priors_total": len([p for p in self.priors if p.action != "drop"]),
@@ -134,7 +148,8 @@ def plan(db: Session, task: Task, file: TaskFile, *, stance: str | None = None,
     if prev is None:
         return _unavailable("这份文件没有上一稿")
     base = db.get(ReviewRun, base_run_id) if base_run_id else base_run(db, task, prev)
-    if base is None or base.task_id != task.id:
+    if (base is None or base.task_id != task.id or base.status not in ("completed", "partial")
+            or not base.file_ids or str(base.file_ids[0]) != str(prev.id)):
         return _unavailable("上一稿还没有完成的审核，请全文审核")
     old, new = drafts.body_nodes(db, prev), drafts.body_nodes(db, file)
     if old is None or new is None:
@@ -150,6 +165,9 @@ def plan(db: Session, task: Task, file: TaskFile, *, stance: str | None = None,
     clauses = first_level([SimpleNamespace(loc=r.loc, part=r.part, kind=r.kind, clause_no=r.clause_no,
                                            text=r.redacted_text or "") for r in rows])
     clause_of = {loc: i for i, c in enumerate(clauses) for loc in c.locs}
+    old_clauses = first_level([SimpleNamespace(**vars(n), part="body") for n in old])
+    old_clause_of = {loc: i for i, c in enumerate(old_clauses) for loc in c.locs}
+    loc_map = result["map"]
     prev_rows = {r.loc: r for r in db.execute(select(DocNode.loc, DocNode.redacted_text)
                                               .where(DocNode.file_id == prev.id, DocNode.part == "body"))}
     prev_text = lambda loc: escape_document_tags(" ".join((prev_rows[loc].redacted_text or "").split())) \
@@ -158,17 +176,27 @@ def plan(db: Session, task: Task, file: TaskFile, *, stance: str | None = None,
     substantive = [c for c in result["changes"] if c["type"] != "format"]
     out.identical = not substantive
     changed: set[int] = set()
+    deleted_clauses: dict[int, list[str]] = {}
     before: dict[str, list[str]] = {}  # 本稿某段之前要插的说明（删除的段落）
     after: dict[str, list[str]] = {}  # 本稿某段之后的说明
     changed_chars = 0
     for c in substantive:
         if c["type"] == "del":
-            anchor = c.get("anchor")
-            if anchor is None:
-                continue
-            changed.add(clause_of.get(anchor, -1))
             note = f"（上一稿{c['clause'] or '此处'}已删除：{prev_text(c['prev_loc'])}）"
-            (after if c.get("after") else before).setdefault(anchor, []).append(note)
+            old_index = old_clause_of[c["prev_loc"]]
+            # 整条删除时只送上一稿的文字，不能把纸面显示用的相邻条款也当成变化。
+            surviving = [loc_map[loc] for loc in old_clauses[old_index].locs
+                         if loc in loc_map and loc_map[loc] in clause_of]
+            if surviving:
+                anchor = c.get("anchor")
+                if anchor in surviving:
+                    (after if c.get("after") else before).setdefault(anchor, []).append(note)
+                else:
+                    anchor = surviving[-1]
+                    after.setdefault(anchor, []).append(note)
+                changed.add(clause_of[anchor])
+            else:
+                deleted_clauses.setdefault(old_index, []).append(note)
             changed_chars += len(c["segs"][0]["s"])
             continue
         changed.add(clause_of.get(c["loc"], -1))
@@ -182,7 +210,8 @@ def plan(db: Session, task: Task, file: TaskFile, *, stance: str | None = None,
             after.setdefault(c["loc"], []).append(f"（此段由上一稿{c.get('prev_clause') or '别处'}移来，文字未改）")
     changed.discard(-1)
     total_chars = sum(len(n.text) for n in new) or 1
-    out.changed_clauses, out.total_clauses = len(changed), len(clauses)
+    out.changed_clauses = len(changed) + len(deleted_clauses)
+    out.total_clauses = len(clauses) + len(deleted_clauses)
     out.recommended = bool(substantive) and changed_chars / total_chars <= MAX_SHARE
 
     # 变化所在条款的外发行：与全文审核的行逐字相同（同一份对照表、同样的报价表汇总）
@@ -200,9 +229,10 @@ def plan(db: Session, task: Task, file: TaskFile, *, stance: str | None = None,
                 out.lines.append(line_of.pop(target))
                 out.locs.add(target)
             out.lines += after.get(loc, [])
+    for lines in deleted_clauses.values():
+        out.lines += lines
 
     # 上轮问题分三类（4.2）
-    loc_map = result["map"]
     old_labels = dict(zip((n.loc for n in old), drafts._labels(old)))
     has_new_text = any(c["type"] in ("add", "mod") for c in substantive)
     prefix = f"F{prev.seq}-"
@@ -227,7 +257,8 @@ def plan(db: Session, task: Task, file: TaskFile, *, stance: str | None = None,
         else:
             pn += 1
             prior.pid = f"P{pn}"
-            prior.anchor = next((m for m in mapped if m), None)
+            prior.anchor = next((table_of.get(m, m) for m in mapped if m and table_of.get(m, m) in out.locs), None)
+            prior.anchor = prior.anchor or next((m for m in mapped if m), None)
             if prior.anchor is not None:
                 where = f"[{prior.anchor}]"
             elif deleted:

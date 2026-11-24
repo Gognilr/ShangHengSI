@@ -7,6 +7,7 @@ import io
 import json
 import re
 import uuid
+from time import perf_counter
 
 import httpx
 import pytest
@@ -30,11 +31,11 @@ def _loc(text, start):
     return next(loc for loc, line in _LINE.findall(text) if re.sub(r"^\d+[.、]?\s*", "", line).startswith(start))
 
 
-def _reply(content):
+def _reply(content, prompt_tokens):
     return httpx.Response(200, json={"id": "x", "object": "chat.completion", "model": "mock",
                                      "choices": [{"index": 0, "message": {"role": "assistant", "content": content},
                                                   "finish_reason": "stop"}],
-                                     "usage": {"prompt_tokens": 10, "completion_tokens": 10}})
+                                     "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": 10}})
 
 
 def _finding(loc, title, quote, missing=False, req=None):
@@ -49,6 +50,7 @@ def model(monkeypatch, env):
 
     def handle(request):
         body = json.loads(request.content)
+        tokens = max(1, sum(len(m["content"]) for m in body["messages"]) // 2)
         text = body["messages"][-1]["content"]
         seen.append(text)
         reqs = _REQ.findall(text.split("【审核要求】", 1)[1]) if "【审核要求】" in text else []
@@ -58,7 +60,7 @@ def model(monkeypatch, env):
                       for pid, title in priors]
             new = [_finding(_loc(text, "质量保证"), "质量保证期起算不明", "质量保证", req=reqs[:1])]                 if "此段为本稿新增" in text else []
             return _reply(json.dumps({"doc_summary": "第 2 稿改了付款、违约金等", "prior": judged, "findings": new,
-                                      "sanctions": {"level": "无明显风险", "reasons": []}}, ensure_ascii=False))
+                                      "sanctions": {"level": "无明显风险", "reasons": []}}, ensure_ascii=False), tokens)
         findings = []
         full.append(text)
         if len(full) == 1:  # 全文轮按维度并发：只在第一组里提问题，免得四组重复
@@ -67,7 +69,7 @@ def model(monkeypatch, env):
                             _finding(None, "缺少验收条款", None, missing=True, req=reqs[:1])]
         results = [{"req_id": r, "verdict": "issue" if findings and r == reqs[0] else "ok", "note": "模拟"} for r in reqs]
         return _reply(json.dumps({"doc_summary": "设备采购合同", "requirement_results": results, "findings": findings,
-                                  "sanctions": {"level": "无明显风险", "reasons": []}}, ensure_ascii=False))
+                                  "sanctions": {"level": "无明显风险", "reasons": []}}, ensure_ascii=False), tokens)
 
     monkeypatch.setattr(gateway, "TRANSPORT", httpx.MockTransport(handle))
     return seen
@@ -129,10 +131,32 @@ def test_delta_review_three_drafts(files_dir, session_client, db_sessionmaker, m
     assert info["priors_sent"] == 2 and info["priors_total"] == 3
     assert "交货期限" not in preview["text"] and "（上一稿此段：" in preview["text"] and "【上轮问题】" in preview["text"]
 
+    # 上轮模型若曾把真实名称写进问题说明，沿用的问题文字也必须经出口复检拦截。
+    def prior_problem(db):
+        return db.scalar(select(Finding).where(Finding.run_id == uuid.UUID(first), Finding.title == "付款期限过长"))
+
+    with sm() as db:
+        finding = prior_problem(db)
+        clean_problem = finding.problem
+        finding.problem = "华岳精工设备有限公司的付款期限过长"
+        db.commit()
+    before_block = len(model)
+    blocked = c.post(f"{BASE}/{sid}/runs", headers=h, json={"stance": "purchase", "source": "incoming", "scope": "delta",
+                                                             "file_ids": [two["id"]], "main_file_id": two["id"]})
+    assert blocked.status_code == 409 and blocked.json()["code"] == "OUTBOUND_BLOCKED"
+    assert len(model) == before_block
+    with sm() as db:
+        prior_problem(db).problem = clean_problem
+        db.commit()
+
+    started = perf_counter()
     second, calls_delta = _run(c, h, sm, sid, file_ids=[two["id"]], main_file_id=two["id"], scope="delta")
+    delta_seconds = perf_counter() - started
     assert calls_delta == 1 and calls_full == 4  # 增量轮一次请求；全文轮按四个维度并发
     sent = model[-1]
     assert "增量复审" in sent and "交货期限" not in sent.split("【上轮问题】")[0]
+    assert preview["text"].split("\n", 1)[1] in sent
+    assert "【本地校验摘要】" not in sent and "【本地财务比率】" not in sent
     d2 = c.get(f"{API_PREFIX}/runs/{second}").json()
     carry = {f["title"]: f["carry"] for f in d2["findings"]}
     assert carry == {"付款期限过长": "resolved", "交货期限未约定起算": "unchanged", "缺少验收条款": "persists",
@@ -151,6 +175,8 @@ def test_delta_review_three_drafts(files_dir, session_client, db_sessionmaker, m
     doc = Document(io.BytesIO(report.content))
     texts = "\n".join(p.text for p in doc.paragraphs)
     assert "与上一稿的变化" in texts and "已解决 1 条" in texts
+    assert "第2稿.docx" in doc.tables[0].rows[1].cells[1].text
+    assert "第1稿.docx" not in doc.tables[0].rows[1].cells[1].text
     assert any(t.rows[0].cells[-1].text == "本轮状态" for t in doc.tables)
 
     # 三稿：基准是二稿那一轮（本身就是增量轮），已解决的不再往下带
@@ -161,6 +187,28 @@ def test_delta_review_three_drafts(files_dir, session_client, db_sessionmaker, m
     third, _ = _run(c, h, sm, sid, file_ids=[three["id"]], main_file_id=three["id"], scope="delta")
     d3 = c.get(f"{API_PREFIX}/runs/{third}").json()
     assert d3["base_run_no"] == 2 and "付款期限过长" not in {f["title"] for f in d3["findings"]}
+
+    # 同一份二稿全文重审，用模拟服务相同的字数计量口径比较。
+    started = perf_counter()
+    full_second, calls_full_second = _run(c, h, sm, sid, file_ids=[two["id"]], main_file_id=two["id"])
+    full_seconds = perf_counter() - started
+    assert calls_full_second == 4
+    with sm() as db:
+        full_tokens, delta_tokens = (db.get(ReviewRun, uuid.UUID(rid)).tokens_in for rid in (full_second, second))
+    print(f"二稿全文/增量：正文预览 {full['chars']}/{preview['chars']} 字，"
+          f"请求 {calls_full_second}/{calls_delta} 次，模拟输入 token {full_tokens}/{delta_tokens}，"
+          f"创建到完成 {full_seconds:.2f}/{delta_seconds:.2f} 秒")
+
+    # 完全相同的新稿仍能选增量，只在本机继承基准轮结果。
+    _upload(c, h, sid, NAMES[2], draft_of=three["id"])
+    parse(sm, sid)
+    same = c.get(f"{BASE}/{sid}").json()["files"][-1]["id"]
+    _confirm(c, h, sid, our=False)
+    unchanged = c.get(f"{BASE}/{sid}/outbound", params={**q, "file_ids": [same], "main_file_id": same,
+                                                       "scope": "delta"}).json()
+    assert unchanged["delta"]["available"] and unchanged["delta"]["identical"] and unchanged["chars"] == 0
+    _, calls_same = _run(c, h, sm, sid, file_ids=[same], main_file_id=same, scope="delta")
+    assert calls_same == 0
 
     # 一稿没有上一稿：不能只审变化；非本人 404
     r = c.post(f"{BASE}/{sid}/runs", headers=h, json={"stance": "purchase", "source": "incoming", "scope": "delta",

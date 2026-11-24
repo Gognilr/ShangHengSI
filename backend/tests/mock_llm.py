@@ -69,8 +69,22 @@ def _bid(text: str) -> str:
     return json.dumps({"items": items}, ensure_ascii=False)
 
 
+_PRIOR_LINE = re.compile(r"^(P\d+) ", re.MULTILINE)
+
+
 def build_content(messages: list[dict], mode: str = "normal") -> str:
-    """按模式生成 assistant 消息的 content。"""
+    """按模式生成 assistant 消息的 content。增量复审（V35-D-03）另对【上轮问题】交替判 resolved / persists。"""
+    content = _build_content(messages, mode)
+    text = _user_text(messages)
+    if "【上轮问题】" not in text or mode in ("non_json", "fenced"):
+        return content
+    data = json.loads(content)
+    data["prior"] = [{"id": pid, "status": "resolved" if i % 2 == 0 else "persists", "note": "模拟依据：本稿已改写该条"}
+                     for i, pid in enumerate(_PRIOR_LINE.findall(text.split("【上轮问题】", 1)[1]))]
+    return json.dumps(data, ensure_ascii=False)
+
+
+def _build_content(messages: list[dict], mode: str = "normal") -> str:
     if mode == "non_json":
         return "好的，我已经审核完毕，整体没有问题。"
     text = _user_text(messages)

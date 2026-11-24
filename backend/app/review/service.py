@@ -259,8 +259,8 @@ def build_context(db: DbSession, task: Task, *, stance: str, source: str, user_n
                                           user_note=user_note),
         company_profile=str(get_setting(db, "review.company_profile") or ""),
         outbound_text=built.text,
-        local_summary=local_summary(db, task, file_ids=ids),
-        ratios=section(db, task, seqs),
+        local_summary=local_summary(db, task, file_ids=ids) if delta is None else "",
+        ratios=section(db, task, seqs) if delta is None else "",
         boundary_locs=delta.boundaries if delta is not None else chunk_boundaries(db, task.id, seqs),
         quote_tables=built.quote_tables,
         delta=delta,
@@ -432,6 +432,8 @@ def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: st
     def precheck():
         ctx = build_context(db, task, stance=stance, source=source, user_note=user_note,
                             main_doc_type=main_doc_type, file_ids=file_ids, delta=delta)
+        if delta is not None and delta.empty:
+            return ctx, []
         rc = recheck_context(db, task.id)
         return ctx, recheck("\n".join(m["content"] for m in build_messages(ctx)), real_values=rc.real_values,
                             terms=rc.terms, placeholders=rc.placeholders, kept=rc.kept)
@@ -441,6 +443,11 @@ def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: st
         # 已存结果过不了复检（如规则升级前的旧结果）：按当前规则重算一次再查（V31-U5F-02）。
         # 先查后重算，正常情况下外发全文只扫一遍（V31-U5F-03 测试机：10 万字每遍 2～4 秒）
         redaction_engine.refresh_if_blocked(db, task)
+        if delta is not None:
+            from app.review.delta import plan
+            delta = plan(db, task, delta.file, stance=stance, base_run_id=delta.base_run.id)
+            if not delta.available:
+                raise _conflict("DELTA_UNAVAILABLE", delta.reason)
         ctx, reasons = precheck()
     if reasons:  # 只报类别和位置，不报真实值
         raise _conflict("OUTBOUND_BLOCKED", f"出口复检发现未脱敏的信息，已拦截，未发送（{describe_reasons(reasons)}）")
@@ -461,7 +468,7 @@ def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: st
         scope="delta" if delta is not None else "full", base_run_id=delta.base_run.id if delta is not None else None,
     )
     db.add(run)
-    if use_template:
+    if use_template and delta is None:
         from app.standards.service import choose
         template=choose(db,task,main_doc_type)
         if template:

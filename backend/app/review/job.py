@@ -190,7 +190,7 @@ def _save_delta(db: Session, run: ReviewRun, task: Task, ctx: ReviewContext, rev
     逐条结论沿用基准轮，有新增或仍存在问题的要求记为有问题；制裁取基准轮与本轮的较高一级。
     """
     from app.review.delta import NOTE_IGNORED, NOTE_UNJUDGED
-    from app.review.validate import TITLE_SIMILARITY, _SANCTIONS_RANK, RequirementResultView, _similar
+    from app.review.validate import TITLE_SIMILARITY, _SANCTIONS_RANK, _SEVERITY_RANK, RequirementResultView, _similar
     plan = ctx.delta
     base = db.get(ReviewRun, plan.base_run.id)
     olds = {f.id: f for f in db.scalars(select(Finding).where(Finding.run_id == base.id))}
@@ -214,6 +214,12 @@ def _save_delta(db: Session, run: ReviewRun, task: Task, ctx: ReviewContext, rev
         same = next((r for r in kept if r.category == f.category and set(r.locs or []) & set(f.locs)
                      and _similar(r.title, f.title) >= TITLE_SIMILARITY), None)
         if same is not None:
+            same.req_ids = list(dict.fromkeys([*(same.req_ids or []), *f.req_ids]))
+            same.locs = list(dict.fromkeys([*(same.locs or []), *f.locs]))
+            same.law_refs = [*(same.law_refs or []), *(ref for ref in f.law_refs if ref not in (same.law_refs or []))]
+            same.law_unverified = same.law_unverified or f.law_unverified
+            if _SEVERITY_RANK[f.severity] > _SEVERITY_RANK[same.severity]:
+                same.severity = f.severity
             continue
         rows.append(Finding(
             run_id=run.id, task_id=task.id, seq=0, title=f.title, category=f.category, severity=f.severity,
@@ -231,7 +237,9 @@ def _save_delta(db: Session, run: ReviewRun, task: Task, ctx: ReviewContext, rev
     issue = {r for row in live for r in (row.req_ids or [])}
     cleared = {r for row in done for r in (row.req_ids or [])} - issue
     results = []
+    inherited_ids = set()
     for rr in db.scalars(select(RequirementResult).where(RequirementResult.run_id == base.id).order_by(RequirementResult.id)):
+        inherited_ids.add(rr.req_id)
         verdict, note, reason = rr.verdict, rr.note, rr.unable_reason
         if rr.req_id in issue and verdict != "issue":
             verdict, note, reason = "issue", None, None
@@ -241,6 +249,11 @@ def _save_delta(db: Session, run: ReviewRun, task: Task, ctx: ReviewContext, rev
                                  dimension=rr.dimension, verdict=verdict, note=note, unable_reason=reason))
         results.append(RequirementResultView(rr.req_id, rr.req_source, rr.req_text, rr.dimension, verdict, note,
                                              unable_reason=reason))
+    for req in ctx.requirements:
+        if req.id in issue - inherited_ids:
+            db.add(RequirementResult(run_id=run.id, req_id=req.id, req_source=req.source, req_text=req.text,
+                                     dimension=req.dimension, verdict="issue"))
+            results.append(RequirementResultView(req.id, req.source, req.text, req.dimension, "issue", None))
     levels = [x for x in (base.sanctions_level, review.sanctions_level) if x]
     now = utcnow()
     run.doc_summary = review.doc_summary or base.doc_summary
@@ -296,15 +309,15 @@ def run_review(db: Session, run_id: uuid.UUID) -> None:
 
     ctx: ReviewContext | None = None
     plan = None
-    if run.scope == "delta":  # 增量轮：按创建时的基准轮重算计划（本机、确定性）
-        from app.review import delta
-        main = delta.main_file(db, run)
-        plan = delta.plan(db, task, main, stance=run.stance, base_run_id=run.base_run_id) if main else None
-        if plan is None or not plan.available:
-            _finish(db, run_id, status="failed", message=(plan.reason if plan else "主文件已移除") + "，请全文重审",
-                    task_status="reviewed")
-            return
     try:
+        if run.scope == "delta":  # 增量轮：按创建时的基准轮重算计划（本机、确定性）
+            from app.review import delta
+            main = delta.main_file(db, run)
+            plan = delta.plan(db, task, main, stance=run.stance, base_run_id=run.base_run_id) if main else None
+            if plan is None or not plan.available:
+                _finish(db, run_id, status="failed", message=plan.reason if plan else "主文件已移除，请全文重审",
+                        task_status="reviewed")
+                return
         ctx = build_context(db, task, stance=run.stance, source=run.source, user_note=run.user_note,
                             main_doc_type=run.main_doc_type, file_ids=run.file_ids, delta=plan)
         if plan is not None and plan.empty:  # 没有要交给模型的内容：本机直接出结果，不调用模型

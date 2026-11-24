@@ -156,10 +156,7 @@ def build_user_message(ctx: ReviewContext, chunk: Chunk | None = None) -> str:
     if ctx.ratios:
         parts.append(ctx.ratios)
     if ctx.delta is not None:
-        parts.append(f"【待审核文件 · 变化】\n<document>\n{body}\n</document>")
-        priors = ctx.delta.prior_lines(chunk)
-        if priors:
-            parts.append("【上轮问题】\n" + "\n".join(priors))
+        parts.append(ctx.delta.message_body(body, chunk))
     else:
         parts.append(f"【待审核文件】\n<document>\n{body}\n</document>")
     if ctx.law_refs:

@@ -149,7 +149,7 @@ def _filename(main, task):
 
 def _basic(doc, task, files, main, user, run=None):
     _heading(doc, "一 基本信息")
-    filenames = [main.original_name if main else task.title] + [f"附件：{file.original_name}" for file in files if not file.is_main]
+    filenames = [main.original_name if main else task.title] + [f"附件：{file.original_name}" for file in files if file != main]
     if run is None:
         version, when = "—", "—"
     else:
@@ -189,7 +189,7 @@ def _finish(doc):
 CARRY = {"new": "本轮新增", "persists": "仍存在", "unchanged": "仍存在（条款未改动）", "resolved": "已解决"}
 
 
-def _changes(doc, db, task, run, text):
+def _changes(doc, db, run, main):
     """增量轮：结论摘要后加“与上一稿的变化”（计数和未留痕清单，diff.md 3.5）。现算，原文已清理时只写计数。"""
     from app.review import delta as delta_mod, drafts
     doc.add_paragraph().add_run("与上一稿的变化").bold = True
@@ -197,11 +197,11 @@ def _changes(doc, db, task, run, text):
     doc.add_paragraph(f"对照第 {run.coverage['delta'].get('prev_no')} 稿：修改 {summary.get('mod', 0)} 处 · "
                       f"新增 {summary.get('add', 0)} 段 · 删除 {summary.get('del', 0)} 段 · 位置调整 {summary.get('move', 0)} 处 · "
                       f"未留痕 {summary.get('untracked', 0)} 处")
-    main = delta_mod.main_file(db, run)
-    try:
-        result = drafts.diff(db, task, main) if main is not None else None
-    except Exception:  # 上一稿已移除或原文已清理：只写计数
-        result = None
+    base = db.get(ReviewRun, run.base_run_id) if run.base_run_id is not None else None
+    prev = delta_mod.main_file(db, base) if base is not None and base.task_id == run.task_id else None
+    old = drafts.body_nodes(db, prev) if prev is not None else None
+    new = drafts.body_nodes(db, main) if main is not None else None
+    result = drafts.compare(old, new, mode=drafts._mode(main)) if old is not None and new is not None else None
     rows = []
     for c in (result or {}).get("changes", []):
         if not c.get("untracked") or c["type"] == "format":
@@ -217,6 +217,10 @@ def _changes(doc, db, task, run, text):
 def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     task = db.get(Task, run.task_id)
     files, main = _files(db, task)
+    if run.file_ids:
+        files_by_id = {str(file.id): file for file in files}
+        files = [files_by_id[str(fid)] for fid in run.file_ids if str(fid) in files_by_id]
+        main = files_by_id.get(str(run.file_ids[0]))
     detail = run_detail(db, run)  # 复用结果页的位置、覆盖说明和还原，不读取节点原文。
     # run_detail 已对模型字段、NOTE 及要求文字做一次还原，引用快照也是原文；不能再次替换已还原值。
     text = _clean
@@ -248,7 +252,7 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
         doc.add_paragraph(text(reason))
     doc.add_paragraph(SANCTIONS_NOTE)
     if delta:
-        _changes(doc, db, task, run, text)
+        _changes(doc, db, run, main)
     _heading(doc, "四 问题清单")
     rows = []
     for finding in detail.findings:

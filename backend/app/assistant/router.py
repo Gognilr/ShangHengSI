@@ -124,7 +124,7 @@ def outbound(response: Response, mode: Literal['assist', 'review'] = 'assist',
         plan = delta.plan(db, task, main, stance=stance)
         text = plan.text() if plan.available else ''
         return {'text': text, 'note': task.user_note_redacted, 'material_version': task.material_version,
-                'chars': len(text) - len(plan.head), 'delta': plan.info()}
+                'chars': len(plan.preview_body()) if plan.available else 0, 'delta': plan.info()}
     text = engine.build_outbound(db, task, mode, file_ids=ids, stance=stance).text
     from app.review.prompt import split_outbound
     return {'text': text, 'note': task.user_note_redacted, 'material_version': task.material_version,
