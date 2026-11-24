@@ -176,7 +176,8 @@ def test_t44a_9_null_reference_snapshot_and_report(monkeypatch):
     monkeypatch.setattr(report_docx, '_basic', lambda *args: None)
     monkeypatch.setattr(report_docx, '_local', lambda *args: None)
     monkeypatch.setattr(report_docx, '_filename', lambda *args: '示例报告.docx')
-    _, data = report_docx.build_run_report(SimpleNamespace(get=lambda *args: None), SimpleNamespace(task_id=None), None)
+    run = SimpleNamespace(task_id=None, file_ids=[])
+    _, data = report_docx.build_run_report(SimpleNamespace(get=lambda *args: None), run, None)
     doc = Document(io.BytesIO(data))
     rendered = '\n'.join(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
     assert '依据：《示例批复》' in rendered and '一、示例正文。' in rendered
