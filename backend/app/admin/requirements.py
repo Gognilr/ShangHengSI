@@ -186,20 +186,14 @@ def list_company_requirements(db: DbSession = Depends(get_db)) -> CompanyReqList
     return CompanyReqList(items=[CompanyReqRow.of(r) for r in rows], version=_latest_version(db), combo_counts=_combo_counts(rows))
 
 
-@router.get("/bid-requirement-drafts")
-def pending_bid_drafts(db: DbSession = Depends(get_db)):
-    return {"items": content_drafts.pending(db, "bid")}
+@router.get("/bid-shared-requirements")
+def shared_bid_requirements(db: DbSession = Depends(get_db)):
+    return {"items": content_drafts.listing(db, "bid")}
 
 
-@router.post("/bid-requirement-drafts/{draft_id}/approve", status_code=204)
-def approve_bid_draft(draft_id: uuid.UUID, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
-    content_drafts.decide(db, draft_id, "bid", admin.id, approve=True)
-    db.commit()
-
-
-@router.post("/bid-requirement-drafts/{draft_id}/return", status_code=204)
-def return_bid_draft(draft_id: uuid.UUID, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
-    content_drafts.decide(db, draft_id, "bid", admin.id, approve=False)
+@router.delete("/bid-shared-requirements/{content_id}", status_code=204)
+def withdraw_shared_bid_requirement(content_id: uuid.UUID, admin: User = Depends(_perm), db: DbSession = Depends(get_db)):
+    content_drafts.withdraw(db, "bid", admin.id, content_id=content_id)
     db.commit()
 
 

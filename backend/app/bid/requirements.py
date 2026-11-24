@@ -414,16 +414,21 @@ def _covered(marker, rows):
 
 def view(db, task: Task) -> dict:
     """清单页数据：按顺序的条款（★ / 否决条款带参数）、完整性计数与差额、模型补充状态。"""
+    from app.content_drafts import shared_sources
+
     project = db.get(BidProject, task.id)
     nodes = tender_nodes(db, task.id)
     names = {str(f.id): f.original_name for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id,
                                                                                     TaskFile.bidder_id.is_(None)))}
     rows = []
-    for r in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id).order_by(BidRequirement.seq)):
+    requirements = db.scalars(select(BidRequirement).where(
+        BidRequirement.task_id == task.id).order_by(BidRequirement.seq)).all()
+    shared = shared_sources(db, "bid", [row.id for row in requirements])
+    for r in requirements:
         text = crypto.decrypt_text(r.text_enc)
         kind = param_kind(text) if r.group in KEY_GROUPS else None
         rows.append({"id": r.id, "group": r.group, "text": text, "locs": r.locs, "method": r.method,
-                     "enabled": r.enabled, "source": r.source, "seq": r.seq,
+                     "enabled": r.enabled, "source": r.source, "seq": r.seq, "shared": r.id in shared,
                      "param_kind": kind, "param": requirement_param(r, text) if kind else None,
                      "file": names.get(r.locs[0]["file_id"]) if r.locs else None})
     enabled = [r for r in rows if r["enabled"]]

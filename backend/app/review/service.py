@@ -130,6 +130,7 @@ class FindingOut(BaseModel):
     discussed_at: UtcDatetime | None = None
     discussed_message_id: int | None = None  # 讨论稿来自哪条回复，对话里据此标“已保存”（V321-E-02）
     use_discussed: bool = False  # 采纳与修订版取讨论修改稿
+    shared: bool = False
     marks: dict[str, list[MarkOut]] = {}
     unresolved: int = 0
     carry: str | None = None  # 增量轮：new / persists / unchanged / resolved（V35-D-03）
@@ -464,7 +465,7 @@ def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: st
         prompt_version=load_system_template()[0], builtin_req_version=builtin_version(),
         company_req_version=db.scalar(select(func.max(RequirementVersion.version))),
         created_by=user.id, queued_at=utcnow(), receipt=_receipt(db, task, model.display_name, file_ids),
-        file_ids=file_ids, material_version=task.material_version,
+        file_ids=file_ids, material_version=task.material_version, use_shared_clauses=use_template and delta is None,
         scope="delta" if delta is not None else "full", base_run_id=delta.base_run.id if delta is not None else None,
     )
     db.add(run)
@@ -561,6 +562,7 @@ class _View:
         self.mapping = load_redaction_map(db, task_id)
         self.dates = load_date_pairs(db, task_id)
         self.locals = {}
+        self.shared_findings = None
         self.restore_stats = dict(restored=0, marked=0)
         self.file_names = dict(db.execute(select(TaskFile.seq, TaskFile.original_name)
                                           .where(TaskFile.task_id == task_id)).all())
@@ -630,6 +632,9 @@ class _View:
         return out
 
     def finding(self, f: Finding, locations: dict[str, str]) -> FindingOut:
+        if self.shared_findings is None:
+            from app.content_drafts import shared_sources
+            self.shared_findings = shared_sources(self.db, "template", select(Finding.id).where(Finding.task_id == self.task_id))
         quote = crypto.decrypt_text(f.quote_snapshot_enc) if f.quote_snapshot_enc is not None else None
         locs = [str(x) for x in (f.locs or [])]
         checked = {key: self.checked(getattr(f, key), clause=key in ('suggested_text', 'discussed_text'),
@@ -643,7 +648,7 @@ class _View:
             location=locations.get(locs[0]) if locs else None, missing=f.missing, cite_status=f.cite_status,
             quote=quote, quote_excerpt=crypto.decrypt_text(f.quote_orig_enc) if f.quote_orig_enc is not None else None,
             **values, marks=marks, unresolved=sum(len(v) for v in marks.values()),
-            handling_status=f.handling_status, handling_note=f.handling_note,
+            handling_status=f.handling_status, handling_note=f.handling_note, shared=f.id in self.shared_findings,
             discussed_at=f.discussed_at, discussed_message_id=f.discussed_message_id if f.discussed_text else None, use_discussed=bool(f.use_discussed and f.discussed_text),
             law_refs=f.law_refs, law_unverified=f.law_unverified,
             source=f.source, carry=f.carry, carry_note=self.text(f.carry_note),

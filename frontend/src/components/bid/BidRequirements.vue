@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Pencil, Plus, RotateCcw, Sparkles, Trash2 } from '@lucide/vue'
 import { ApiError } from '@/api/http'
-import { contentDraftsApi, draftStatusMessage } from '@/api/contentDrafts'
+import { sharedContentApi } from '@/api/sharedContent'
 import {
   bidApi, bidGroupLabel, bidMethodLabel, bidParamLabel, bidSourceLabel,
   type BidGroup, type BidLoc, type BidMethod, type BidParam, type BidRequirement, type BidRequirements,
@@ -19,7 +19,7 @@ const props = defineProps<{ projectId: string; policy: 'ai' | 'local_only'; disa
 const emit = defineEmits<{ changed: [] }>()
 
 const data = ref<BidRequirements>(), error = ref(''), saving = ref(false)
-const submittingDraft = ref<string | null>(null)
+const sharing = ref<string | null>(null)
 const paramEdit = ref<string | null>(null), paramDraft = ref<BidParam>({})
 const view = ref<'original' | 'ai'>('original'), focus = ref<BidLoc | null>(null)
 const current = ref<string | null>(null), editing = ref<string | null>(null), draft = ref('')
@@ -81,14 +81,16 @@ async function saveEdit(item: BidRequirement) {
 }
 async function remove(item: BidRequirement) { await act(() => bidApi.removeRequirement(props.projectId, item.id)) }
 
-async function submitCompanyDraft(item: BidRequirement) {
-  if (submittingDraft.value) return
-  submittingDraft.value = item.id
+async function changeSharing(item: BidRequirement) {
+  if (sharing.value) return
+  sharing.value = item.id
   try {
-    const { status } = await contentDraftsApi.submitBid(props.projectId, item.id)
-    ElMessage.success(draftStatusMessage[status])
-  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '提交失败，请重试') }
-  finally { submittingDraft.value = null }
+    const { active } = await sharedContentApi.bid(props.projectId, item.id, !item.shared)
+    const current = data.value?.items.find(row => row.id === item.id)
+    if (current) current.shared = active
+    ElMessage.success(active ? '已沉淀为公司补充要求' : '已撤回沉淀')
+  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '操作失败，请重试') }
+  finally { sharing.value = null }
 }
 // 划选加入时按关键词猜分组（与后端规则一致），用户可改
 function guessGroup(text: string): BidGroup {
@@ -252,9 +254,9 @@ const notEnough = computed(() => {
                     <el-select :model-value="item.method" size="small" class="method" :disabled="locked" aria-label="检查方式" @click.stop @update:model-value="(v: BidMethod) => patch(item, { method: v })">
                       <el-option v-for="(label, m) in bidMethodLabel" :key="m" :label="label" :value="m" :disabled="m === 'model' && policy === 'local_only'" />
                     </el-select>
-                    <el-button v-if="item.group !== 'format' && item.source !== 'default' && editing !== item.id" link type="primary" size="small"
-                      :loading="submittingDraft === item.id" :disabled="saving || (submittingDraft !== null && submittingDraft !== item.id)"
-                      @click.stop="submitCompanyDraft(item)">提交为补充要求草稿</el-button>
+                    <el-button v-if="(item.shared || item.group !== 'format' && item.source !== 'default') && editing !== item.id" link type="primary" size="small"
+                      :loading="sharing === item.id" :disabled="saving || (sharing !== null && sharing !== item.id)"
+                      @click.stop="changeSharing(item)">{{ item.shared ? '撤回沉淀' : '沉淀为公司补充要求' }}</el-button>
                   </p>
                 </div>
                 <div class="row-actions">

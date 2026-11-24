@@ -72,21 +72,6 @@ def update_clause(db,tid,cid,values,user_id):
     return clause
 
 
-def append_clause(db, template_id, value, doc_type, stance):
-    row = load(db, template_id, locked=True)
-    if not row.enabled or doc_type not in row.doc_types or stance not in row.stances:
-        raise AppError(422, "CONTENT_DRAFT_TEMPLATE_SCOPE", "请选择已启用且适用文件类型和立场的范本")
-    if row.clause_count >= 200 or len(value) > 5000:
-        raise AppError(422, "TEMPLATE_CLAUSES", "范本最多 200 条，每条最多 5000 字")
-    seq = (db.scalar(select(func.max(StandardClause.seq)).where(StandardClause.template_id == row.id)) or 0) + 1
-    db.add(StandardClause(template_id=row.id, seq=seq, title_enc=crypto.encrypt_text(f"建议条款 {seq}"),
-                          text_enc=crypto.encrypt_text(value)))
-    row.clause_count += 1
-    db.flush()
-    rehash(db, row)
-    jobs.enqueue(db, "template_embed", {"template_id": str(row.id)})
-
-
 def view(db,row,detail=False):
     items=clauses(db,row.id)
     result=dict(id=row.id,name=crypto.decrypt_text(row.name_enc),doc_types=row.doc_types,stances=row.stances,

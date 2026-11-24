@@ -2,7 +2,7 @@
 import { ElMessage, type InputInstance } from 'element-plus'
 import { BookOpen, Check, Copy, MapPin, MessageSquare, Undo2 } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
-import { contentDraftsApi, draftStatusMessage } from '@/api/contentDrafts'
+import { sharedContentApi } from '@/api/sharedContent'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type HandlingStatus } from '@/api/runs'
 import MarkedText from '@/components/result/MarkedText.vue'
@@ -26,16 +26,18 @@ const emit = defineEmits<{
 
 const f = computed(() => props.finding)
 const auth = useAuthStore()
-const submittingDraft = ref(false)
+const sharing = ref(false)
 
-async function submitTemplateDraft() {
-  if (submittingDraft.value || saving.value) return
-  submittingDraft.value = true
+async function changeSharing() {
+  if (sharing.value || saving.value) return
+  const id = f.value.id
+  sharing.value = true
   try {
-    const { status } = await contentDraftsApi.submitFinding(f.value.id)
-    ElMessage.success(draftStatusMessage[status])
-  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '提交失败，请重试') }
-  finally { submittingDraft.value = false }
+    const { active } = await sharedContentApi.finding(id, !f.value.shared)
+    if (f.value.id === id) emit('updated', { ...f.value, shared: active })
+    ElMessage.success(active ? '已沉淀为公司条文' : '已撤回沉淀')
+  } catch (e) { ElMessage.error(e instanceof ApiError ? e.message : '操作失败，请重试') }
+  finally { sharing.value = false }
 }
 const basisShort = computed(() => {
   const law = f.value.law_refs?.[0]
@@ -148,7 +150,7 @@ async function copy(text: string) {
           <div class="sugg-actions">
             <el-button text size="small" @click.stop="copy(f.suggested_text)"><Copy :size="14" :stroke-width="1.75" />复制</el-button>
             <el-button v-if="!f.use_discussed && auth.can('use.review')" text size="small" :disabled="saving"
-              :loading="submittingDraft" @click.stop="submitTemplateDraft">提交为范本草稿</el-button>
+              :loading="sharing" @click.stop="changeSharing">{{ f.shared ? '撤回沉淀' : '沉淀为公司条文' }}</el-button>
           </div>
         </div>
         <MarkedText class="text" :text="f.suggested_text" :marks="f.marks.suggested_text" />
@@ -160,7 +162,7 @@ async function copy(text: string) {
           <div class="sugg-actions">
             <el-button text size="small" @click.stop="copy(f.discussed_text)"><Copy :size="14" :stroke-width="1.75" />复制</el-button>
             <el-button v-if="f.use_discussed && auth.can('use.review')" text size="small" :disabled="saving"
-              :loading="submittingDraft" @click.stop="submitTemplateDraft">提交为范本草稿</el-button>
+              :loading="sharing" @click.stop="changeSharing">{{ f.shared ? '撤回沉淀' : '沉淀为公司条文' }}</el-button>
           </div>
         </div>
         <MarkedText class="text" :text="f.discussed_text" :marks="f.marks.discussed_text" />
@@ -169,6 +171,8 @@ async function copy(text: string) {
         <span class="label">采纳与批注版使用</span>
         <SiSegmented :model-value="f.use_discussed ? 'discussed' : 'review'" :options="sourceOptions" size="small" ariaLabel="采纳时使用的建议" @update:model-value="setSource(String($event))" />
       </div>
+      <el-button v-if="f.shared && !f.suggested_text && !f.discussed_text && auth.can('use.review')" text size="small"
+        :loading="sharing" @click.stop="changeSharing">撤回沉淀</el-button>
       <div class="badges">
         <el-tag :type="CITE_TAG[f.cite_status] ?? 'info'" size="small" effect="plain">{{ citeStatusLabel(f.cite_status) }}</el-tag>
         <el-tag v-if="f.law_unverified" size="small" type="warning" effect="plain">引用未经法规库核实</el-tag>

@@ -1,7 +1,7 @@
 """维护组逐批向量化；删除范本后不再写入。"""
 import uuid
 from sqlalchemy import select
-from app.db.models import StandardClause,StandardTemplate
+from app.db.models import ContentDraft,StandardClause,StandardTemplate
 from app.embedding import engine
 from app.security.crypto import decrypt_text
 from app.worker import job_handler
@@ -9,6 +9,12 @@ from app.worker import job_handler
 
 @job_handler('template_embed')
 def handle_embed(db,payload):
+    if "content_id" in payload:
+        row = db.get(ContentDraft, uuid.UUID(payload["content_id"]), with_for_update=True)
+        if row is not None and row.kind == "template" and row.status == "active" and row.embedding is None:
+            row.embedding, = engine.embed([decrypt_text(row.text_enc)], "passage")
+        db.commit()
+        return
     tid=uuid.UUID(payload['template_id'])
     while True:
         row=db.get(StandardTemplate,tid,with_for_update=True,populate_existing=True)

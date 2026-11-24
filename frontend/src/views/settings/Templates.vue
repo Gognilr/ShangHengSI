@@ -5,7 +5,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import SettingSection from '@/components/SettingSection.vue'
-import ContentDrafts from '@/components/settings/ContentDrafts.vue'
+import SharedContent from '@/components/settings/SharedContent.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import { ApiError } from '@/api/http'
@@ -15,7 +15,7 @@ import { formatDateTime } from '@/utils/time'
 
 const rows = ref<TemplateRow[]>([])
 const filter = ref('all')
-const filters = [{ value: 'all', label: '全部范本' }, { value: 'pending', label: '待审批' }]
+const filters = [{ value: 'all', label: '全部范本' }, { value: 'shared', label: '公司沉淀' }]
 const loading = ref(false)
 const loaded = ref(false)
 const tableMax = useTableMaxHeight(320)
@@ -100,7 +100,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
       <SettingSection title="范本列表" description="审核时按文件类型和立场选择合适的范本。" stacked>
         <template #actions><el-button v-if="filter === 'all'" type="primary" :disabled="rows.length >= 50 || saving" @click="open()">上传公司范本</el-button></template>
         <SiSegmented v-model="filter" :options="filters" ariaLabel="范本筛选" />
-        <ContentDrafts v-if="filter === 'pending'" kind="template" :templates="rows" @approved="load()" />
+        <SharedContent v-if="filter === 'shared'" kind="template" />
         <div v-else v-loading="loading">
         <p class="hint">最多 50 份，含停用范本。只有启用且向量准备完成的范本参与选择；更换文件请删除后重新上传。</p>
         <TableSkeleton v-if="!loaded" :columns="['1fr', '130px', '100px', '80px', '100px', '80px', '160px']" />

@@ -105,13 +105,23 @@ def put_finding_draft(
     return service.save_draft(db, finding, user, body)
 
 
-@router.post("/findings/{fid}/template-draft", dependencies=[Depends(_review)])
-def submit_template_draft(finding: Finding = Depends(owned_finding), db: DbSession = Depends(get_db)):
+@router.post("/findings/{fid}/template-reuse", dependencies=[Depends(_review)])
+def share_template_clause(finding: Finding = Depends(owned_finding), db: DbSession = Depends(get_db)):
+    db.refresh(finding, with_for_update=True)
     run = db.get(ReviewRun, finding.run_id)
     task = db.get(Task, finding.task_id)
     chosen, _ = service.chosen_text(finding)
-    result = content_drafts.submit(db, task, finding.id, chosen, "template",
-                                   doc_type=run.main_doc_type, stance=run.stance)
+    result = content_drafts.publish(db, task, finding.id, chosen, "template",
+                                    doc_type=run.main_doc_type, stance=run.stance)
+    db.commit()
+    return result
+
+
+@router.delete("/findings/{fid}/template-reuse", dependencies=[Depends(_review)])
+def withdraw_template_clause(finding: Finding = Depends(owned_finding), db: DbSession = Depends(get_db)):
+    db.refresh(finding, with_for_update=True)
+    task = db.get(Task, finding.task_id)
+    result = content_drafts.withdraw(db, "template", task.owner_id, source_id=finding.id)
     db.commit()
     return result
 

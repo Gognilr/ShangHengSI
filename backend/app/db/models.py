@@ -391,12 +391,12 @@ class BidCategory(Base):
 
 
 class ContentDraft(Base):
-    """从审核结果沉淀的脱敏文本。来源只用来在重复提交时识别同一条。"""
+    """从审核结果沉淀的脱敏文本，原条目标识用于去重和撤回。"""
     __tablename__ = "content_drafts"
     __table_args__ = (
         UniqueConstraint("kind", "source_id", "content_hash"),
         enum_check("kind", ["template", "bid"]),
-        enum_check("status", ["pending", "approved", "returned"]),
+        enum_check("status", ["pending", "approved", "returned", "active", "withdrawn"]),
     )
     id: Mapped[uuid.UUID] = uuid_pk()
     kind: Mapped[str] = mapped_column(String(8), nullable=False)
@@ -406,9 +406,10 @@ class ContentDraft(Base):
     doc_type: Mapped[Optional[str]] = mapped_column(String(20))
     stance: Mapped[Optional[str]] = mapped_column(String(12))
     category_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("bid_categories.id", ondelete="SET NULL"))
-    status: Mapped[str] = mapped_column(String(8), nullable=False, server_default="pending")
+    status: Mapped[str] = mapped_column(String(10), nullable=False, server_default="pending")
     created_at: Mapped[datetime] = _ts_now()
-    approved_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMPTZ)  # 生效时间，沿用首版列名
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1024))
 
 
 class BidFolder(Base):
@@ -737,6 +738,7 @@ class ReviewRun(Base):
     template_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid,ForeignKey('standard_templates.id',ondelete='SET NULL'))
     template_name_snapshot_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     template_hash: Mapped[Optional[str]] = mapped_column(CHAR(64))
+    use_shared_clauses: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     failed_chunks: Mapped[Any] = _jsonb_list()
     coverage: Mapped[Optional[Any]] = mapped_column(JSONB)

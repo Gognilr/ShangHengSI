@@ -53,7 +53,7 @@ export type BidParamKind = 'construction_max' | 'delivery_max' | 'warranty_min' 
 export type BidParam = Record<string, string | number | null>
 export interface BidRequirement {
   id: string; group: BidGroup; text: string; locs: BidLoc[]; method: BidMethod; enabled: boolean; source: 'marked' | 'model' | 'default' | 'manual'; seq: number; file: string | null
-  param_kind: BidParamKind | null; param: BidParam | null
+  param_kind: BidParamKind | null; param: BidParam | null; shared: boolean
 }
 export const bidParamLabel: Record<string, string> = {
   construction_max: '工期上限', delivery_max: '交货期上限', warranty_min: '质保期下限', defect_min: '缺陷责任期下限',

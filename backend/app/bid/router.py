@@ -357,16 +357,28 @@ def requirements_view(task: Task = Depends(owned), db: Session = Depends(get_db)
     return _requirements(db, task)
 
 
-@router.post("/{id}/requirements/{rid}/company-draft")
-def submit_company_draft(rid: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
+@router.post("/{id}/requirements/{rid}/company-reuse")
+def share_company_requirement(rid: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
     from app.bid.requirements import requirement
 
     row = requirement(db, task, rid)
+    db.refresh(row, with_for_update=True)
     if row.group == "format" or row.source == "default":
         raise AppError(422, "CONTENT_DRAFT_NOT_APPLICABLE", "请选择一条具体的招标要求")
     project = db.get(BidProject, task.id)
-    result = content_drafts.submit(db, task, row.id, crypto.decrypt_text(row.text_enc), "bid",
-                                   category_id=project.category_id, project_names=content_drafts.bid_names(db, task, project))
+    result = content_drafts.publish(db, task, row.id, crypto.decrypt_text(row.text_enc), "bid",
+                                    category_id=project.category_id, project_names=content_drafts.bid_names(db, task, project))
+    db.commit()
+    return result
+
+
+@router.delete("/{id}/requirements/{rid}/company-reuse")
+def withdraw_company_requirement(rid: str, task: Task = Depends(owned), db: Session = Depends(get_db)):
+    from app.bid.requirements import requirement
+
+    row = requirement(db, task, rid)
+    db.refresh(row, with_for_update=True)
+    result = content_drafts.withdraw(db, "bid", task.owner_id, source_id=row.id)
     db.commit()
     return result
 
