@@ -347,6 +347,17 @@ def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):
     assert not any("识别中" in n for n in c.get(base + "/check").json()["coverage"])  # 重跑过检查
 
 
+def test_unclassified_valid_certificate_does_not_hide_an_unrelated_expiry():
+    from datetime import date
+
+    from app.bid.compliance import BidNode, expired_certificates
+
+    expired = BidNode("F1-PG1-P1", "虚构凭证甲 有效期至：2025-01-01", 1, None, file_id=1, page=1)
+    valid = BidNode("F2-PG1-P1", "虚构凭证乙 有效期至：2027-01-01", 2, None, file_id=2, page=1)
+    [result] = expired_certificates([expired, valid], date(2026, 11, 24))
+    assert result[1] == expired and not result[-1]
+
+
 def test_dismiss_reopen_and_signing(owner, db_sessionmaker):
     """V35-E-01：唯一的人工操作“不是问题”可撤销，返回修改材料、重新初审后保留；签章页标为缺章即为严重问题。"""
     c, h, _ = owner

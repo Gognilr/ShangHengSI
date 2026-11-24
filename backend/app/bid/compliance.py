@@ -183,7 +183,7 @@ def expired_certificates(nodes, opening: date):
             found = [(a, b, v) for a, b, v in find_dates(n.text) if m.end() <= a <= m.end() + 15]
             if found:
                 found_all.append((found[0][2], n, m.start(), found[0][1], _cert_type(nodes, i, m)))
-    valid = {kind for value, *_rest, kind in found_all if value >= opening}
+    valid = {kind for value, *_rest, kind in found_all if kind is not None and value >= opening}
     out = []
     for value, n, s, e, kind in found_all:
         if value < opening and kind not in valid:
