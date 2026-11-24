@@ -578,10 +578,10 @@ class _View:
         self.restore_stats['marked'] += len(result.marks)
         return result
 
-    def locations(self, findings: list[Finding]) -> dict[str, str]:
-        return self.readable({f.locs[0] for f in findings if f.locs})
+    def locations(self, findings: list[Finding], *, include_pages=False) -> dict[str, str]:
+        return self.readable({f.locs[0] for f in findings if f.locs}, include_pages=include_pages)
 
-    def readable(self, locs) -> dict[str, str]:
+    def readable(self, locs, *, include_pages=False) -> dict[str, str]:
         """位置集合 → “原文件名 + 空格 + 可读位置”（设计 docs/design/M3.md 6.3）。
 
         可读位置：有 clause_no 时为 clause_no；否则 PDF、图片节点为“第 N 页”，XLSX 节点为“工作表!单元格”，
@@ -590,12 +590,19 @@ class _View:
         if not locs:
             return {}
         rows = {r.loc: r for r in self.db.execute(
-            select(DocNode.loc, DocNode.file_id, DocNode.clause_no, DocNode.page, DocNode.sheet, DocNode.cell_ref)
+            select(DocNode.loc, DocNode.file_id, DocNode.clause_no, DocNode.page, DocNode.sheet, DocNode.cell_ref, DocNode.part)
             .where(DocNode.task_id == self.task_id).order_by(DocNode.file_id, DocNode.ord))}
         parents = {}
+        page_clauses = {}
         nearest = {}
         for row in rows.values():
             clause = row.clause_no or ''
+            if include_pages and row.page and row.part == "body":
+                key = (row.file_id, row.page)
+                if clause:
+                    page_clauses[key] = clause
+                elif row.loc in locs and key in page_clauses:
+                    parents[row.loc] = page_clauses[key]
             if re.fullmatch(r'第[^条章\n]{1,20}[条章]', clause):
                 nearest[row.file_id] = clause
             elif re.fullmatch(r'[（(]?(?:\d+|[A-Za-z]|[一二三四五六七八九十百]+)[）).、]?', clause):
@@ -607,10 +614,14 @@ class _View:
                 shown = loc
             elif r.clause_no:
                 shown = f'{parents[loc]} {r.clause_no}' if parents.get(loc) else r.clause_no
+                if include_pages and r.page:
+                    shown = f"第 {r.page} 页 · {shown}"
             elif r.sheet and r.cell_ref:
                 shown = f"{r.sheet}!{r.cell_ref}"
             elif r.page:
                 shown = f"第 {r.page} 页"
+                if include_pages and parents.get(loc):
+                    shown += f" · {parents[loc]}"
             else:
                 shown = loc
             m = _LOC_FILE_SEQ.match(loc)
@@ -684,11 +695,11 @@ def _coverage(run: ReviewRun, view: _View) -> dict | None:
     }
 
 
-def run_detail(db: DbSession, run: ReviewRun) -> RunDetail:
+def run_detail(db: DbSession, run: ReviewRun, *, include_pages=False) -> RunDetail:
     view = _View(db, run.task_id)
     findings = sorted(db.scalars(select(Finding).where(Finding.run_id == run.id)),
                       key=lambda f: (_SEVERITY_ORDER.get(f.severity, 3), f.seq))
-    locations = view.locations(findings)
+    locations = view.locations(findings, include_pages=include_pages)
     results = db.scalars(select(RequirementResult).where(RequirementResult.run_id == run.id)
                          .order_by(RequirementResult.id))
     queue_position = None

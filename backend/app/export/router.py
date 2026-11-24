@@ -9,7 +9,7 @@ from app.audit import service as audit
 from app.db.models import ReviewRun, Task, TaskFile, User
 from app.export.annotated_docx import build_annotated
 from app.db.session import get_db
-from app.export.report_docx import build_local_report, build_run_report
+from app.export.report_docx import build_issue_list, build_local_report, build_run_report
 from app.security.permissions import require
 from app.security.deps import current_user, owned_run, owned_task
 from app.security.errors import AppError
@@ -46,6 +46,17 @@ def run_report(run: ReviewRun = Depends(owned_run), user: User = Depends(current
         raise AppError(409, "REPORT_UNAVAILABLE", "该轮次尚未完成，无法导出")
     filename, content = build_run_report(db, run, user)
     audit.record(db, "report_export", user_id=user.id, target_type="run", target_id=str(run.id), detail={"run_no": run.run_no})
+    db.commit()
+    return _response(filename, content)
+
+
+@router.get("/runs/{rid}/issue-list", dependencies=[Depends(_export)])
+def issue_list(run: ReviewRun = Depends(owned_run), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    if run.status not in ("completed", "partial"):
+        raise AppError(409, "ISSUE_LIST_UNAVAILABLE", "该轮次没有可导出的审核结果")
+    filename, content = build_issue_list(db, run)
+    audit.record(db, "report_export", user_id=user.id, target_type="run", target_id=str(run.id),
+                 detail={"run_no": run.run_no, "format": "issue_list"})
     db.commit()
     return _response(filename, content)
 

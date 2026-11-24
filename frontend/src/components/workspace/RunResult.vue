@@ -145,14 +145,16 @@ const exportReason = computed(() => runLoading.value ? '正在加载该轮次，
 function exportError(e: unknown) {
   ElMessage.error(e instanceof ApiError ? e.status === 404 ? '会话不存在或已被删除' : e.message : '导出失败，请稍后重试')
 }
-async function exportReport() {
+async function exportReport(format?: 'issue-list') {
   const runId = run.value?.id
   if (!runId || exporting.value || exportReason.value) return
-  exporting.value = '审核报告'
+  const issueList = format === 'issue-list'
+  if (issueList && !doneRun.value) return
+  exporting.value = issueList ? '问题清单' : '审核报告'
   try {
-    const result = await reportApi.run(runId)
+    const result = issueList ? await reportApi.issueList(runId) : await reportApi.run(runId)
     if (result === 'cancelled') return
-    if (result === 'downloaded') ElMessage.success('报告已下载')
+    if (result === 'downloaded') ElMessage.success(issueList ? '问题清单已下载' : '报告已下载')
     savedTick.value++
   } catch (e) { exportError(e) } finally { exporting.value = '' }
 }
@@ -299,7 +301,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
     </Teleport>
     <div v-if="wrapUp && wrapUpClosed !== run?.id" class="wrap-up" role="status">
       <span class="wrap-text">✓ {{ handled.total }} 条问题都处理完了（采纳 {{ handled.adopted }} · 忽略 {{ handled.ignored }}）</span>
-      <el-button size="small" type="primary" :disabled="!!exporting || !!exportReason" @click="exportReport">导出报告</el-button>
+      <el-button size="small" type="primary" :disabled="!!exporting || !!exportReason" @click="exportReport()">导出报告</el-button>
       <el-button size="small" link aria-label="关闭提示" @click="wrapUpClosed = run?.id ?? ''">×</el-button>
     </div>
     <div v-if="hint" class="draft-hint" role="status">

@@ -207,17 +207,21 @@ const exportReason = computed(() => localOnly.value ? ''
 function exportError(e: unknown) {
   ElMessage.error(e instanceof ApiError ? e.status === 404 ? '任务不存在或已被删除' : e.message : '导出失败，请稍后重试')
 }
-async function exportReport() {
+async function exportReport(format?: 'issue-list') {
   if (!task.value || exporting.value || exportReason.value) return
   const taskId = task.value.id
   const runId = run.value?.id
   const isLocal = localOnly.value
+  const issueList = format === 'issue-list'
   if (!isLocal && !runId) return
-  exporting.value = isLocal ? '本地校验报告' : '审核报告'
+  if (issueList && (isLocal || !run.value || !['completed', 'partial'].includes(run.value.status))) return
+  exporting.value = issueList ? '问题清单' : isLocal ? '本地校验报告' : '审核报告'
   try {
-    const result = runId && !isLocal ? await reportApi.run(runId) : await reportApi.local(taskId)
+    const result = runId && !isLocal
+      ? await (issueList ? reportApi.issueList(runId) : reportApi.run(runId))
+      : await reportApi.local(taskId)
     if (result === 'cancelled') return
-    if (result === 'downloaded') ElMessage.success('报告已下载')
+    if (result === 'downloaded') ElMessage.success(issueList ? '问题清单已下载' : '报告已下载')
     savedTick.value++
   } catch (e) { exportError(e) } finally { exporting.value = '' }
 }

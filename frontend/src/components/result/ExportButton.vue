@@ -6,13 +6,13 @@ import type { TaskDetail } from '@/api/tasks'
 import { useFx } from '@/utils/motion'
 
 /**
- * 分体导出（V31-U3 3.7）：主按钮“导出报告”，箭头菜单列出审核报告、各文件的批注版，不可用时禁用并写原因。
+ * 分体导出：主按钮“导出报告”，箭头菜单另有问题清单和各文件的批注版。
  * exporting 为正在生成的名称（如“批注版”），savedTick 每次保存成功加一，按钮显示“已保存”1.6 秒。
  */
 /** changes：有上一稿的文件（V35-D-02），批注版可同时标出与上一稿的变化，默认勾上 */
 const props = defineProps<{ task: TaskDetail; run: RunDetail | null; exportReason: string; exporting: string; deleting: boolean; savedTick: number
   changes?: { seq: number; total: number; untracked: number } | null }>()
-const emit = defineEmits<{ report: []; annotated: [seq: number, includeChanges: boolean] }>()
+const emit = defineEmits<{ report: [format?: 'issue-list']; annotated: [seq: number, includeChanges: boolean] }>()
 const withChanges = ref(true)
 const fx = useFx()
 
@@ -30,6 +30,7 @@ const label = computed(() => props.exporting ? `正在生成${props.exporting}�
 function onCommand(command: string) {
   const [kind, seq] = command.split(':')
   if (kind === 'report') emit('report')
+  else if (kind === 'issue-list') emit('report', 'issue-list')
   else if (kind === 'annotated') emit('annotated', Number(seq), props.changes?.seq === Number(seq) && withChanges.value)
 }
 </script>
@@ -45,7 +46,10 @@ function onCommand(command: string) {
       <template #dropdown>
         <el-dropdown-menu class="export-menu">
           <el-dropdown-item command="report" :disabled="!!exportReason">
-            <div class="item"><span class="name">{{ localOnly ? '本地校验报告' : '审核报告' }}</span><span class="sub">{{ exportReason || 'Word · 问题清单与依据' }}</span></div>
+            <div class="item"><span class="name">{{ localOnly ? '本地校验报告' : '审核报告' }}</span><span class="sub">{{ exportReason || 'Word · 完整审核记录' }}</span></div>
+          </el-dropdown-item>
+          <el-dropdown-item v-if="!localOnly" command="issue-list" :disabled="!!fileReason">
+            <div class="item"><span class="name">问题清单</span><span class="sub">{{ fileReason || 'Word · 原页码与条款、问题与依据、建议条文' }}</span></div>
           </el-dropdown-item>
           <template v-for="file in files" :key="file.id">
             <el-dropdown-item :command="`annotated:${file.seq}`" :disabled="!!fileReason">
@@ -55,7 +59,7 @@ function onCommand(command: string) {
               <el-checkbox v-model="withChanges" size="small">同时标出与上一稿的变化（{{ changes.total }} 处<template v-if="changes.untracked">，未留痕 {{ changes.untracked }} 处</template>）</el-checkbox>
             </li>
           </template>
-          <el-dropdown-item disabled divided><span class="hint-line">批注版支持 Word 与 WPS 文字文件；PDF、图片、表格只能导出审核报告</span></el-dropdown-item>
+          <el-dropdown-item v-if="!localOnly" disabled divided><span class="hint-line">批注版支持 Word 与 WPS 文字文件</span></el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>

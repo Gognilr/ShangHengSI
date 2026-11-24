@@ -13,6 +13,7 @@ function countHeader(headers: Headers, name: string): number {
 
 export const reportApi = {
   run: (runId: string) => download(`/runs/${runId}/report`),
+  issueList: (runId: string) => download(`/runs/${runId}/issue-list`),
   local: (taskId: string) => download(`/tasks/${taskId}/report`),
   /** 标书初审问题清单（V35-E-01）：full 全部，clues 只含串标线索 */
   bid: (projectId: string, scope: 'full' | 'clues' = 'full') => download(`/bid/${projectId}/report?scope=${scope}`),

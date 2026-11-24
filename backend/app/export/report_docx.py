@@ -140,11 +140,11 @@ def _files(db, task):
     return files, main
 
 
-def _filename(main, task):
+def _filename(main, task, prefix="审核报告"):
     name = main.original_name if main else task.title
     stem = name.rsplit(".", 1)[0] if "." in name else name
     stem = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]', "_", stem) or "文件"
-    return f"审核报告_{stem}_{datetime.now(ZoneInfo('Asia/Shanghai')):%Y%m%d}.docx"
+    return f"{prefix}_{stem}_{datetime.now(ZoneInfo('Asia/Shanghai')):%Y%m%d}.docx"
 
 
 def _basic(doc, task, files, main, user, run=None):
@@ -214,13 +214,66 @@ def _changes(doc, db, run, main):
         _table(doc, ("位置", "类型", "未留痕的改动"), rows, (5, 2.5, 19.2))
 
 
-def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
+def _run_files(db, run):
     task = db.get(Task, run.task_id)
     files, main = _files(db, task)
     if run.file_ids:
         files_by_id = {str(file.id): file for file in files}
         files = [files_by_id[str(fid)] for fid in run.file_ids if str(fid) in files_by_id]
         main = files_by_id.get(str(run.file_ids[0]))
+    return task, files, main
+
+
+def _problem_lines(finding):
+    problem = [_marked(finding.title, finding.marks.get('title', ())),
+               _marked(finding.problem, finding.marks.get('problem', ()))]
+    if finding.source == 'template':
+        problem.insert(0, [('范本对照', False)])
+    for field, label in (('impact', '对我方的影响：'), ('basis', '依据：')):
+        value = getattr(finding, field)
+        if value:
+            problem.append([(label, False)] + _marked(value, finding.marks.get(field, ())))
+    for ref in finding.law_refs:
+        problem.append([(f"依据：《{_clean(ref['title'])}》{_clean(ref.get('article_no') or '')}\n{_clean(ref['text'])}", False)])
+    if finding.law_unverified:
+        problem.append([('引用未经法规库核实', False)])
+    return problem
+
+
+def build_issue_list(db, run: ReviewRun) -> tuple[str, bytes]:
+    """按所选轮次导出可供人工修改的条文，生成过程只使用审核记录。"""
+    task, _, main = _run_files(db, run)
+    detail = run_detail(db, run, include_pages=True)
+    doc = _new_document("文件审核问题清单")
+    doc.add_paragraph(f"{_clean(main.original_name if main else task.title)} · 第 {run.run_no} 轮")
+    doc.add_paragraph("请对照原件核实问题与建议条文。标黄的文字未能还原，请核对。")
+    if run.status == "partial":
+        doc.add_paragraph("本轮仅完成部分审核，请查看审核报告中的覆盖说明。")
+    groups = {code: [] for code in SEVERITY}
+    for finding in detail.findings:
+        if finding.handling_status == "ignored" or finding.carry == "resolved":
+            continue
+        location = finding.location or ("缺失项" if finding.missing else "—")
+        problem = _problem_lines(finding)
+        if finding.cite_status == "unverified":
+            problem.append([("原文引用待核实", False)])
+        field = "discussed_text" if finding.use_discussed else "suggested_text"
+        suggestion = _marked(getattr(finding, field), finding.marks.get(field, ()))
+        groups[finding.severity].append((location, _lines(problem), suggestion))
+    for severity, rows in groups.items():
+        if rows:
+            _heading(doc, f"{SEVERITY[severity]}风险问题 {len(rows)} 条")
+            _table(doc, ("原页码与条款", "问题与依据", "建议条文"), rows, (7.0, 11.2, 8.5))
+    if not any(groups.values()):
+        doc.add_paragraph("本轮没有可列出的问题。")
+    doc.add_paragraph(DECLARATION)
+    data = io.BytesIO()
+    doc.save(data)
+    return _filename(main, task, "问题清单"), data.getvalue()
+
+
+def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
+    task, files, main = _run_files(db, run)
     detail = run_detail(db, run)  # 复用结果页的位置、覆盖说明和还原，不读取节点原文。
     # run_detail 已对模型字段、NOTE 及要求文字做一次还原，引用快照也是原文；不能再次替换已还原值。
     text = _clean
@@ -256,17 +309,7 @@ def build_run_report(db, run: ReviewRun, user: User) -> tuple[str, bytes]:
     _heading(doc, "四 问题清单")
     rows = []
     for finding in detail.findings:
-        problem = [_marked(finding.title, finding.marks.get('title', ())),
-                   _marked(finding.problem, finding.marks.get('problem', ()))]
-        if finding.source=='template':problem.insert(0,[('范本对照', False)])
-        for field, label in (('impact', '对我方的影响：'), ('basis', '依据：')):
-            value = getattr(finding, field)
-            if value:
-                problem.append([(label, False)] + _marked(value, finding.marks.get(field, ())))
-        for ref in finding.law_refs:
-            problem.append([(f"依据：《{_clean(ref['title'])}》{_clean(ref.get('article_no') or '')}\n{_clean(ref['text'])}", False)])
-        if finding.law_unverified:
-            problem.append([('引用未经法规库核实', False)])
+        problem = _problem_lines(finding)
         if finding.unresolved:
             problem.append([(f'注：本问题有 {finding.unresolved} 处文字未能还原（已标黄），请核对。', False)])
         suggestion = ([_marked(finding.suggestion, finding.marks.get('suggestion', ()))] if finding.suggestion else [])

@@ -10,7 +10,7 @@ import { formatDateTime } from '@/utils/time'
 
 /** 结果页工具条（V31-U3 3.2）：第一行文件、轮次、回执与操作；第二行次要信息，单行省略、悬停看全文。 */
 const props = defineProps<{ task: TaskDetail; run: RunDetail | null; rounds: RunListItem[]; selectedRun: string; reqVersion: string; warnings: string[]; exportReason: string; exporting: string; savedTick: number; deleting: boolean }>()
-const emit = defineEmits<{ selectRun: [id: string]; exportReport: []; exportAnnotated: [seq: number]; remove: [] }>()
+const emit = defineEmits<{ selectRun: [id: string]; exportReport: [format?: 'issue-list']; exportAnnotated: [seq: number]; remove: [] }>()
 
 const mainFile = computed(() => props.task.files.find(f => f.is_main) ?? props.task.files[0])
 const badge = computed(() => {
@@ -47,7 +47,7 @@ const details = computed(() => {
       <div class="actions">
         <slot name="before-export" />
         <ExportButton :task="task" :run="run" :export-reason="exportReason" :exporting="exporting" :deleting="deleting" :saved-tick="savedTick"
-          @report="emit('exportReport')" @annotated="emit('exportAnnotated', $event)" />
+          @report="emit('exportReport', $event)" @annotated="emit('exportAnnotated', $event)" />
         <slot />
         <el-dropdown trigger="click" placement="bottom-end" :disabled="deleting" @command="emit('remove')">
           <el-button text :loading="deleting" aria-label="更多操作"><Ellipsis :size="16" :stroke-width="1.75" /></el-button>
