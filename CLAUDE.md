@@ -1,4 +1,4 @@
-# 商衡SI · 企业安全脱敏与智能审查平台（V3.4.0）
+# 商衡SI · 企业安全脱敏与智能审查平台（V3.5.0）
 
 系统目前的做法记录在 docs/SPEC.md，开始工作前先读相关章节。**SPEC 只是现状记录，不是永久规范**（用户 2026-11-04）：有更好的设计就直接提出并取代其中的条目，必要时整节删除，不得以“SPEC 这么写”为由照做别扭的设计或拒绝改进；改动后同步更新 SPEC。下列安全要点是产品目标本身，不在此列。
 
@@ -9,7 +9,7 @@
 ## 必须遵守
 
 * 新增侧栏菜单或页面先给出方案经我确认（防止功能膨胀，不是因为 SPEC 没写）。左侧侧栏菜单为：工作台｜文件审查（文件审核、标书初审）｜工具（会议纪要、翻译）｜历史记录（V3.4 一事一入口，V34Q-01；另有新建会话、搜索、近期会话，SPEC 1.6、6.9）。“设置”在账号菜单中（V34Q-12），对所有人可见，第一个分页“个人”（外观、修改密码），管理分页按权限点显示（SPEC 1.3）。
-* 界面视觉以 docs/design/frontend.md（素纸版，V3.4 起）为准：十六进制颜色只写在 frontend/src/styles/theme.css，页面和组件只用 CSS 变量；标书初审结果页另以 docs/v34/design/bid-frontend-spec.md 为硬性规范。
+* 界面视觉以 docs/design/frontend.md（澄明，V3.5 起）为准，标书初审见该规范 8.5。十六进制颜色只写在 frontend/src/styles/theme.css，页面和组件只用 CSS 变量。衡线标志资产在 docs/design/v35/brand/。
 * 取舍外部提案与新能力按 SPEC 2A“技术路线”：确定性规则优先、其次本地 CPU 小模型、最后才是只见脱敏文本的云端模型；主线功能须在无 GPU 的基线机器上可用；新能力附代表性样本的效率与质量实测。
 * 技术栈固定（SPEC 第 3 节），不得替换。不得引入 Redis、Celery、RabbitMQ、Elasticsearch、独立的向量数据库服务（向量检索只用 PostgreSQL 的 pgvector 扩展，V2-E）、PyMuPDF、Presidio、PaddleOCR / paddlepaddle（OCR 用 RapidOCR）、未经确认的本地大模型；本地大模型只允许 deploy/models.yaml 中经确认的翻译模型一个（Hy-MT2-7B Q6_K，llama.cpp CPU，V31Q-100）。本地模型只允许 SPEC 第 3 节列出的实体识别模型、向量模型各一个，以及转写一组（语音分段、转写、标点、说话人分段、声纹各一个，V31-M），用 onnxruntime（转写一组的说话人分离另用 sherpa-onnx）在 CPU 上离线运行；本地模型的唯一清单是 deploy/models.yaml（接入、放置与资源按 docs/v31/design/local-models.md），更换或新增须经选型报告和我确认（该规范第七节）。实体识别模型已确认为 urchade/gliner_multi-v2.1（Apache-2.0，FP32 ONNX，文件与 SHA-256 见 docs/v2/design/V2-B.md 6.2）；向量模型已确认为 BAAI/bge-m3（MIT，由官方 ONNX 量化的 INT8 ONNX，只用稠密向量，文件与 SHA-256 见 docs/v2/reports/V2-E-04a.md 第六节）。转写一组已确认为 FireRedVAD、FireRedASR2-AED INT8、FireRedPunc INT8、pyannote segmentation-3.0、3D-Speaker CAM++（Apache-2.0 / MIT，文件与 SHA-256 见 transcriber/models/asr/MANIFEST.sha256 与 docs/v31/reports/V31-M-01.md），只在 transcriber 容器中运行。任何镜像不得安装 torch、transformers、gliner、sentencepiece（导出 ONNX 只在仓库外的一次性容器中做）；模型文件不进仓库。LibreOffice 与 ffmpeg（录音解码，V31Q-71）只允许在 converter 容器中使用，不得进入 backend 镜像；converter、transcriber 与 translator 容器不接任何网络，只通过内存盘 /spool 与 worker 交换文件。
 * 只有两处可以访问外网：① 模型网关 backend/app/llm/gateway.py，依次执行：调用上限检查 → 出口复检 → 发送 → 记录 llm\_calls，任何模型调用不得绕过网关；② 法规同步 backend/app/lawsync/client.py（V2-E），只访问固定的国家法律法规数据库域名（flk.npc.gov.cn）及其全文文件存储域名（flkoss.obs-bj2.cucloud.cn），只下载公开的法规目录与全文，请求中不含任何任务数据，默认关闭，同步结果经业务管理员确认才生效。其他代码不得访问外网。
@@ -31,11 +31,11 @@
   * 脱敏行为按设计有意改变时，可以修改对应的旧测试，在报告中列出改动和原因。
   * 报告写短；整仓全量只在批次末跑一次。
 
-## 当前阶段：V3.4.0 已发布，下一阶段待规划
+## 当前阶段：V3.5.0 阶段复核
 
-V3.4 计划 docs/v34/PLAN.md 已全部完成（复核与发布见 docs/v34/reports/V34-Z.md）。下一阶段的计划由 Opus 起草、经我确认后开工；新问题与报告放该阶段的目录。任务由 Claude 与 ChatGPT（GPT-6.1 Sol）共同分担，谁有额度谁做；每个任务单独开一个新会话。真实合同与真实标书只在本机评测，原文、名称、金额、密码不进仓库、对话与日志（例外：V34Q-39 的两组过期公开招投标文件可在会话中通读分析，仍不进仓库）。
+V3.5 计划见 docs/v35/PLAN.md。V35-Z 复核记录见 docs/v35/reports/V35-Z.md。推送发布标签与升级服务器前先取得用户确认。下一阶段计划由 Opus 起草、经我确认后开工；新问题与报告放该阶段的目录。任务由 Claude 与 ChatGPT 共同分担，每个任务单独开一个新会话。真实合同与真实标书只在本机评测，原文、名称、金额、密码不进仓库、对话与日志（例外：V34Q-39 的两组过期公开招投标文件可在会话中通读分析，仍不进仓库）。
 
-已发布：标签 `v1.0.0`、`v2.0.0`、`v2.1.0`、`v3.1.0`（含 V3）、`v3.2.1`（含 V3.2，2026-11-15，报告 docs/v321/reports/V321-Z.md）、`v3.3.0`（2026-11-15，报告 docs/v33/reports/V33-Z.md）、`v3.4.0`（2026-11-19，报告 docs/v34/reports/V34-Z.md）。docs/SPEC.md 记录当前做法；docs/v2/～docs/v34/ 只作历史，开工时不必读。
+已发布：标签 `v1.0.0`、`v2.0.0`、`v2.1.0`、`v3.1.0`（含 V3）、`v3.2.1`（含 V3.2，2026-11-15，报告 docs/v321/reports/V321-Z.md）、`v3.3.0`（2026-11-15，报告 docs/v33/reports/V33-Z.md）、`v3.4.0`（2026-11-19，报告 docs/v34/reports/V34-Z.md）。docs/SPEC.md 记录源码当前做法；docs/v2/～docs/v34/ 为历史，开工时不必读。
 
 * 服务器 172.16.11.252：今后的正式服务器，现为 3.4.0（各次记录在 docs/acceptance/）。**我宣布正式启用之前没有生产数据，可以随意部署、测试、重装**（用户 2026-11-12）；宣布之后任何停服、删数据、升级或恢复操作先征得我同意。
 * 版本号随版本及时更新：SPEC 头部、CLAUDE.md 标题、登录页页脚（frontend/src/views/Login.vue）写当前版本；系统状态中的版本号由发布包构建时的 APP\_VERSION 写入。

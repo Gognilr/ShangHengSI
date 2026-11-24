@@ -4,7 +4,7 @@
 
 An AI-assisted first-pass reviewer for business documents (contracts, quotations, orders, inquiries and letters), designed to run inside a company LAN.
 
-**Current release: V3.4.0** (released 2026-11-19).
+**Source version: V3.5.0** · [Stage review](docs/v35/reports/V35-Z.md). Latest published release: V3.4.0 (2026-11-19).
 
 Sensitive information never leaves the internal network: documents are parsed, checked and **redacted locally**. Only the redacted text is sent to a cloud LLM, and the results are restored to real names locally before they are shown.
 
@@ -15,14 +15,14 @@ Sensitive information never leaves the internal network: documents are parsed, c
 ```text
 Upload → Local parsing & checks → Automatic redaction → User confirmation
        → Cloud LLM review → Local restoration & issue list → Follow-up questions & discussion
-       → Word report / annotated copy / revised copy
+       → Word report / issue list / annotated copy
 ```
 
 1. **Upload**: one or more files, with the stance (sales / purchase / other), source (sent by us / received) and outbound policy.
 2. **Local processing**: parsing into a unified document model, local consistency checks (amounts, totals, dates, currencies), and redaction of company names, people, amounts, accounts, phone numbers and more, replaced by codes such as `客户_A` (Customer A) or `[金额_1]` (Amount 1).
 3. **Confirmation**: the user confirms which party is "us", reviews the redaction summary and previews the exact text that will be sent.
 4. **AI review**: the LLM gives a verdict on every review requirement and lists issues with locations and verbatim quotes. Quotes are verified locally.
-5. **Results**: issues are shown with real names restored, streamed in as the review progresses. Users can ask follow-up questions (also redacted before sending), discuss individual issues and adopt a discussion draft, and export a Word report, an annotated copy or a revised copy. Review replies carry citation anchors; clicking one shows the cited source (knowledge base, history or law) in a popover.
+5. **Results**: issues are shown with real names restored, streamed in as the review progresses. Users can ask follow-up questions (also redacted before sending), discuss individual issues and adopt a discussion draft, and export a Word report, an issue list or an annotated copy. Review replies carry citation anchors; clicking one shows the cited source (knowledge base, history or law) in a popover.
 
 Tasks with the policy `local_only` never call the model. Only local checks are performed.
 
@@ -39,14 +39,12 @@ The sidebar is grouped by task (V3.4: one entry per job):
 | Translation | Translate documents and pasted text; runs locally |
 | History | All past review tasks and sessions (called "Review history" before V3.2) |
 
-Highlights of V3.4.0:
+Highlights of V3.5.0:
 
-- **Bid pre-screening (new menu)**: upload the tender and each bidder's files; local checks find shared contacts, identical file metadata and images, copied passages, price patterns, over-ceiling and inconsistent totals, and expired certificates. Only redacted snippets go to the model to check each requirement. The first tab is a conclusion in three layers (certain / to verify / reference) with collusion cases built as evidence chains, and a Word "pre-screening findings" report for the evaluation committee. No scoring, ranking or recommendation.
-- **One entry per job**: the sidebar is grouped into Workbench, document checks (Document Review, Bid Pre-screening), tools (Meeting Minutes, Translation) and History; highlighting no longer jumps. Settings moved into the account menu.
-- **"Plain paper" look and new logo**: one continuous page without grey cards, glows or gradients; pine-needle green as the main colour with a pine-cone ochre accent; the new "pine scale" logo.
-- **Document cross-check runs locally**: the shipping-document check compares quantities, weights, amounts, dates and reference numbers on this machine; the model only helps locate fields it could not find.
-- **Better scanned documents**: OCR upgraded to RapidOCR 3.10 with PP-OCRv6 small models (bundled, no download); ruled tables on scanned pages become table cells; unruled quotation tables, tables continued across pages, and repeated PDF headers/footers are handled.
-- **History**: seven columns without horizontal scrolling, type filter (all / document review / bid pre-screening / chat), search as you type.
+- **Clarity interface** with the Hengxian mark, light and dark themes, three font sizes and four motion settings.
+- **Document review** compares drafts within a session and can review only changed clauses and unresolved findings. The Word issue list also supports PDFs and scans.
+- **Bid pre-screening** lists serious issues with source evidence for opening-day staff. Local screening comes first, with optional model checks for unresolved starred or rejection requirements.
+- **Local processing** includes table-header context for redaction, image OCR for tender evidence and new letter-of-credit checks. Review staff can share redacted clauses or bid requirements for future use.
 
 ## Security and privacy by design
 
@@ -152,7 +150,7 @@ docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgr
 
 ## Project status
 
-V3.4.0 is the current release (2026-11-19) and is deployed on the production server. The release report is [docs/v34/reports/V34-Z.md](docs/v34/reports/V34-Z.md) and the production upgrade record is [docs/acceptance/V3.4.0升级记录.md](docs/acceptance/V3.4.0升级记录.md). See [docs/TASKS.md](docs/TASKS.md) for the task list.
+V3.5.0 is in [stage review](docs/v35/reports/V35-Z.md). The latest published release and recorded server upgrade are V3.4.0. See the [V3.4.0 release report](docs/v34/reports/V34-Z.md) and [server upgrade record](docs/acceptance/V3.4.0升级记录.md).
 
 ## Documentation
 

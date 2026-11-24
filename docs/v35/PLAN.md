@@ -62,7 +62,7 @@
 | V35-D-04 | PDF / 扫描件导出问题清单（含建议条文） | Q-30、31 | Sonnet，medium | Terra，medium | F-04 | — | 已完成（2026-11-24，Codex，[报告](reports/V35-D-04.md)；专项 29 项通过，虚构 PDF 与扫描件 Word 目视通过） |
 | V35-D-05 | 顺手沉淀：专职人员一键共享公司条文 / 标书补充要求 | Q-35 | Opus，medium | Sol 6.1，medium | D-03 | 公司共享口径已确认 | 已完成（2026-11-24，Codex，reports/V35-D-05-reuse.md） |
 | V35-D-06 | 单证核对：信用证日期规则、金额上限与溢短装 | Q-34 | Sonnet，medium | Terra，medium | F-08 | — | 已完成（2026-11-24，Codex，[报告](reports/V35-D-06.md)；专项 35 项通过，虚构单证命中三处违规） |
-| V35-Z | 复核、合并 SPEC 与澄明规范（frontend.md、CLAUDE.md 引用）、版本 3.5.0、全量、发布包、服务器升级 | — | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部 | 推送标签与升级前问用户 | 待开工 |
+| V35-Z | 复核、合并 SPEC 与澄明规范（frontend.md、CLAUDE.md 引用）、版本 3.5.0、全量、发布包、服务器升级 | Q-12、31、33、36 | Opus，high（新会话） | Sol 6.1，high（新会话） | 全部 | 推送标签与升级前问用户 | 进行中（2026-11-24，Codex，[复核记录](reports/V35-Z.md)） |
 
 执行顺序：**A-01 → A-02 → B-01 → … → B-05 → C-01 → … → C-06 → F-00 → E-01 → E-02 → F-01 → F-02 → F-03 → F-04 → F-05 → F-06 → F-07 → F-08 → D-01 → D-02 → D-03 → D-04 → D-05 → D-06 → Z**（A～C 已完成）。
 
