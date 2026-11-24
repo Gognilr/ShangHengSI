@@ -1,5 +1,7 @@
 """T-50：五个模板的参数、固定消息、原样说明与回复草稿边界。"""
 import uuid
+from io import BytesIO
+from zipfile import ZipFile
 
 import pytest
 import httpx
@@ -105,13 +107,15 @@ def test_crosscheck_local_table_and_model_only_locates(conversation, db_sessionm
     body["template"] = "crosscheck"
     with db_sessionmaker() as db:
         first, second = db.scalars(select(DocNode).where(DocNode.task_id == uuid.UUID(tid)).order_by(DocNode.loc))
-        first.text_enc = crypto.encrypt_text("金额：USD 1000.00；毛重：12.5 MT")
-        first.redacted_text = "金额：USD [[AMT_1]]；毛重：12.5 MT"
-        second.text_enc = crypto.encrypt_text("Total Amount: USD 1,000.00")
-        second.redacted_text = "Total Amount: USD [[AMT_2]]"
+        first.text_enc = crypto.encrypt_text("金额：USD 1000.00；毛重：12.5 MT；最迟装运期：2026-11-15")
+        first.redacted_text = "金额：USD [[AMT_1]]；毛重：12.5 MT；最迟装运期：2026-12-13"
+        second.text_enc = crypto.encrypt_text("Total Amount: USD 1,000.00; B/L Date: 2026-11-16")
+        second.redacted_text = "Total Amount: USD [[AMT_2]]; B/L Date: 2026-12-14"
         db.add(DocNode(task_id=uuid.UUID(tid), file_id=second.file_id, loc="F2-P2", ord=2, kind="paragraph", part="body",
                        text_enc=crypto.encrypt_text("G.W 12500 KGS"), redacted_text="G.W 12500 KGS"))
-        engine.write_full_map(db, uuid.UUID(tid), {"[[AMT_1]]": "1000.00", "[[AMT_2]]": "1,000.00"})
+        engine.write_full_map(db, uuid.UUID(tid), {"[[AMT_1]]": "1000.00", "[[AMT_2]]": "1,000.00",
+                                                    "@date_shift_days": "28", "2026-12-13#D1": "2026-11-15",
+                                                    "2026-12-14#D2": "2026-11-16"})
         db.commit()
     invalid = {"template": "crosscheck", "params": {"file_ids": body["params"]["file_ids"][:1]}}
     assert c.post(f"{BASE}/{tid}/messages", headers=h, json=invalid).status_code == 422
@@ -131,13 +135,24 @@ def test_crosscheck_local_table_and_model_only_locates(conversation, db_sessionm
     run(db_sessionmaker, tid)
     messages = json.loads(requests[0].content)["messages"]
     assert messages[0]["content"].endswith(instruction("crosscheck"))
-    assert "【待定位项目】\n毛重：文件 2" in messages[-1]["content"] and "1000.00" not in requests[0].content.decode()
+    assert messages[-1]["content"].endswith("【待定位项目】\n毛重：文件 2")
+    sent = requests[0].content.decode()
+    assert [value for value in ("1000.00", "2026-11-15", "2026-11-16") if value in sent] == []
+    assert "2026-12-13" in sent and "2026-12-14" in sent
     table = next(m for m in c.get(f"{BASE}/{tid}/messages").json()["items"] if m["id"] == mid)["crosscheck"]
     rows = {row["label"]: row for row in table["rows"]}
     assert rows["金额"]["status"] == "一致" and rows["币种"]["status"] == "一致"
     assert rows["毛重"]["status"] == "一致" and rows["毛重"]["values"]["2"][0]["by"] == "model"
+    assert len(table["findings"]) == 1 and table["findings"][0].startswith("提单日晚于最迟装运期")
     with db_sessionmaker() as db:
         reply = db.get(AssistantMessage, mid)
         assert reply.status == "done" and "1000" not in reply.content_redacted and "1000" not in json.dumps(reply.extras)
+        assert "2026-11-16" not in reply.content_redacted and "提单日晚于最迟装运期" not in reply.content_redacted
     for fmt in ("docx", "xlsx"):
-        assert c.get(f"{BASE}/{tid}/messages/{mid}/export", params={"format": fmt}).status_code == 200
+        exported = c.get(f"{BASE}/{tid}/messages/{mid}/export", params={"format": fmt})
+        assert exported.status_code == 200
+        with ZipFile(BytesIO(exported.content)) as archive:
+            if fmt == "docx":
+                assert "提单日晚于最迟装运期" in archive.read("word/document.xml").decode()
+            else:
+                assert "2026-11-16" in archive.read("xl/worksheets/sheet1.xml").decode()

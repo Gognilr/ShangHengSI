@@ -6,7 +6,7 @@
 import json
 import re
 import unicodedata
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 from app.checks.consistency import check_cross_files
 from app.checks.model import CheckFile, CheckNode
@@ -25,7 +25,7 @@ FIELDS = (
     ("gross", "毛重", "weight", r"总毛重|毛重|gross\s*weight|g\.\s*w\."),
     ("net", "净重", "weight", r"总净重|净重|net\s*weight|n\.\s*w\."),
     ("packages", "件数", "count", r"总件数|包装件数|件数|箱数|no\.?\s*of\s*packages|packages|cartons"),
-    ("amount", "金额", "money", r"总金额|合同金额|发票金额|总价|金额|total\s*amount|total\s*value|invoice\s*value|amount"),
+    ("amount", "金额", "money", r"总金额|(?P<contract_amount>合同金额)|总价|金额|total\s*amount|total\s*value|amount"),
     ("shipper", "发货人", "text", r"发货人|托运人|shipper|consignor"),
     ("consignee", "收货人", "text", r"收货人|consignee"),
     ("pol", "装运港", "place", r"装运港|装货港|起运港|port\s+of\s+loading"),
@@ -36,9 +36,16 @@ FIELDS = (
     ("invoice_no", "发票号", "ref", r"发票编号|发票号码|发票号|invoice\s*(?:no\.?|number)"),
     ("bl_no", "提单号", "ref", r"提单编号|提单号码|提单号|b/l\s*(?:no\.?|number)"),
     ("lc_no", "信用证号", "ref", r"信用证编号|信用证号码|信用证号|l/c\s*(?:no\.?|number)"),
+    ("latest_ship_date", "最迟装运期", "rule_date", r"最迟装运日期|最迟装运期|最迟装船日(?:期)?|latest\s+(?:date\s+of\s+shipment|shipment\s+date)"),
+    ("bl_date", "提单日", "rule_date", r"提单签发日(?:期)?|提单日(?:期)?|(?:bill\s+of\s+lading|b/l)\s+(?:issue\s+)?date"),
+    ("insurance_date", "保单签发日", "rule_date", r"保险单签发日(?:期)?|保单签发日(?:期)?|保险单日期|保单日期|insurance\s+(?:policy|certificate)\s+(?:issue\s+)?date"),
+    ("lc_amount", "信用证金额", "rule_money", r"信用证金额|(?:letter\s+of\s+credit|credit|l/c|lc)\s+amount"),
+    ("invoice_amount", "发票金额", "rule_money", r"发票金额|invoice\s+(?:amount|value)"),
+    ("tolerance", "溢短装比例", "tolerance", r"溢短装(?:比例)?|(?:credit\s+)?amount\s+tolerance(?:\s+percentage)?"),
 )
 LABELS = {key: label for key, label, _, _ in FIELDS}
 _KIND = {key: kind for key, _, kind, _ in FIELDS}
+_LOCAL_ONLY = {field for field, _, kind, _ in FIELDS if kind.startswith("rule_") or kind == "tolerance"}
 _ANY_LABEL = "|".join(f"(?P<{key}>{pattern})" for key, _, _, pattern in FIELDS)
 # 行内写法“标签：值”：标签前为行首或分隔符，值到换行、分号或下一个标签为止
 _UNIT_NOTE = r"\s*(?:[（(](?P<unit>[^）)]{1,12})[）)])?"
@@ -52,6 +59,10 @@ _UNITS = {"kg": ("kg", 1), "kgs": ("kg", 1), "千克": ("kg", 1), "公斤": ("kg
           "ctns": ("ctn", 1), "ctn": ("ctn", 1), "cartons": ("ctn", 1), "carton": ("ctn", 1), "箱": ("ctn", 1),
           "pkgs": ("pkg", 1), "packages": ("pkg", 1), "包": ("pkg", 1)}
 _MEASURE = re.compile(r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*([A-Za-z]+|[一-鿿]{1,2})?")
+_INVOICE = re.compile(r"商业发票|发票|(?:commercial\s+)?invoice", re.I)
+_BILL_OF_LADING = re.compile(r"(?:海运)?提单|(?:ocean\s+)?bill\s+of\s+lading|b/l", re.I)
+_PERCENT = r"([0-9]+(?:\.[0-9]+)?|\.[0-9]+)"
+_TOLERANCE = re.compile(rf"(?:±|\+\s*)?{_PERCENT}\s*%(?:\s*/\s*-\s*{_PERCENT}\s*%)?")
 
 
 def _clip(text: str) -> str:
@@ -104,18 +115,55 @@ def _same_measure(a, b) -> bool:
     return a == b
 
 
+def _rule_key(kind: str, text: str):
+    text = unicodedata.normalize("NFKC", text)
+    if kind == "rule_date":
+        dates = {hit.value for hit in find_dates("日期：" + text)}
+        return (kind, dates.pop()) if len(dates) == 1 else None
+    if kind == "rule_money":
+        # 金额校验只用可确认币种的正数，不将裸 $ 或 OCR 推测出的数字用于判定。
+        text = text.upper()
+        amounts = {(hit.value, hit.currency) for hit in find_amounts(text)
+                   if hit.category == "AMOUNT" and hit.value is not None and hit.currency
+                   and re.fullmatch(r"[0-9,. \t]+", text[hit.start:hit.end])}
+        if len(amounts) != 1 or re.search(r"[~≈±%()]|(?<!US|HK)\$", text):
+            return None
+        number = parse_number(text)
+        if number is None or number <= 0:
+            return None
+        amount, currency = amounts.pop()
+        return (kind, amount, currency)
+    match = _TOLERANCE.fullmatch(text)
+    if match:
+        upper, lower = Decimal(match[1]), Decimal(match[2] or match[1])
+        if upper <= 100 and lower <= 100:
+            return (kind, upper, lower)
+    return None
+
+
 def extract(nodes: list[CheckNode]) -> dict[int, dict[str, list[dict]]]:
     """{文件序号: {项目: [{text, loc, key}]}}；同一文件同一项目同值只留第一处。"""
     found: dict[int, dict[str, list[dict]]] = {}
+    blank_tolerances = {}
+    invoice_files = {n.file_seq for n in nodes if _INVOICE.fullmatch(n.text.strip())}
 
-    def add(field, node, text, unit=None):
+    def add(field, node, text, unit=None, *, mirror=True):
         text = _clip(text)
         if not text:
+            if field == "tolerance":
+                blank_tolerances.setdefault(node.file_seq, {"text": "空白", "loc": node.loc, "key": None})
             return
         if unit and _KIND[field] in ("measure", "weight", "count") and re.fullmatch(r"[0-9][0-9,.]*", text):
             text += " " + unit.strip()  # “毛重(KGS)：12,500” 的单位写在标签里
-        value = key(_KIND[field], text)
-        if value is None and _KIND[field] not in ("text", "place"):
+        if mirror and field == "invoice_amount":
+            add("amount", node, text, mirror=False)
+        if mirror and field == "amount" and node.file_seq in invoice_files:
+            add("invoice_amount", node, text, unit, mirror=False)
+        kind = _KIND[field]
+        if unit and kind == "rule_money" and re.fullmatch(r"[0-9][0-9,.]*", text):
+            text = unit.strip() + " " + text
+        value = _rule_key(kind, text) if field in _LOCAL_ONLY else key(kind, text)
+        if value is None and kind not in ("text", "place") and field not in _LOCAL_ONLY:
             return  # “Amount in words”之类解析不出值的不算该项目
         items = found.setdefault(node.file_seq, {}).setdefault(field, [])
         if value is None or all(not _equal(field, value, item["key"]) for item in items):
@@ -125,7 +173,8 @@ def extract(nodes: list[CheckNode]) -> dict[int, dict[str, list[dict]]]:
         for match in _INLINE.finditer(text):
             tail = text[match.end():]
             following = _INLINE.search(tail)
-            add(_field(match), node, tail[:following.start()] if following else tail, match["unit"])
+            add(_field(match), node, tail[:following.start()] if following else tail, match["unit"],
+                mirror=match["contract_amount"] is None)
     # 表头写项目名、合计行（或唯一数据行）写值的表格
     tables: dict[tuple[int, str], dict[int, dict[str, CheckNode]]] = {}
     for node in nodes:
@@ -134,7 +183,7 @@ def extract(nodes: list[CheckNode]) -> dict[int, dict[str, list[dict]]]:
             tables.setdefault((node.file_seq, cell[0]), {}).setdefault(cell[2], {})[cell[1]] = node
     for rows in tables.values():
         for header in sorted(rows)[:3]:
-            columns = {col: (_field(m), m["unit"]) for col, n in rows[header].items() if (m := _HEADER.fullmatch(n.text))}
+            columns = {col: m for col, n in rows[header].items() if (m := _HEADER.fullmatch(n.text))}
             if len(columns) < 2:
                 continue
             body = [r for r in sorted(rows) if r > header]
@@ -142,11 +191,14 @@ def extract(nodes: list[CheckNode]) -> dict[int, dict[str, list[dict]]]:
             data = [r for r in body if r not in totals and any(n.text.strip() for n in rows[r].values())]
             target = totals[-1] if totals else data[0] if len(data) == 1 else None
             if target is not None:
-                for col, (field, unit) in columns.items():
+                for col, match in columns.items():
+                    field = _field(match)
                     cell = rows[target].get(col)
-                    if cell is not None and cell.text.strip() and (field != "goods" or not totals):
-                        add(field, cell, cell.text, unit)
+                    if cell is not None and (field != "goods" or not totals):
+                        add(field, cell, cell.text, match["unit"], mirror=match["contract_amount"] is None)
             break
+    for seq, item in blank_tolerances.items():
+        found.setdefault(seq, {}).setdefault("tolerance", [item])
     return found
 
 
@@ -223,7 +275,7 @@ def missing(rows: list[dict], seqs: list[int]) -> dict[str, list[int]]:
     """本机有至少一份文件识别到、另一些文件没找到的项目：只这些请模型定位。"""
     out = {}
     for row in rows:
-        if row["field"] == "currency":
+        if row["field"] == "currency" or row["field"] in _LOCAL_ONLY:
             continue
         absent = [seq for seq in seqs if not row["values"][str(seq)]]
         if absent and len(absent) < len(seqs):
@@ -266,12 +318,74 @@ def merge_located(rows, gaps, payload, redacted: dict[str, tuple[int, str]], res
     return added
 
 
+def _credit_findings(found, nodes) -> tuple[list[str], list[str]]:
+    """仅当每个角色有唯一可核对的出处时比较；同一信用证上的比例才用于计算。"""
+    bl_files = {n.file_seq for n in nodes if _BILL_OF_LADING.fullmatch(n.text.strip())}
+
+    def sources(field, fallback=None, titled_files=()):
+        explicit = [(seq, item) for seq, fields in found.items() for item in fields.get(field, [])]
+        return explicit or [(seq, {**item, "key": _rule_key(_KIND[field], item["text"])})
+                            for seq in titled_files for item in found.get(seq, {}).get(fallback, [])]
+
+    def compatible(left, right):
+        if len(left) != 1 or len(right) != 1 or left[0][0] == right[0][0]:
+            return False
+        left_seq, left_value = left[0]
+        right_seq, right_value = right[0]
+        refs = [{v["key"] for v in found[seq].get("lc_no", [])} for seq in (left_seq, right_seq)]
+        return (left_value["key"] is not None and right_value["key"] is not None
+                and all(len(ref) <= 1 for ref in refs) and (not all(refs) or refs[0] == refs[1]))
+
+    findings, notes = [], []
+    bl_date = sources("bl_date", "ship_date", bl_files)
+    latest = sources("latest_ship_date")
+    insurance = sources("insurance_date")
+    for left, right, applicable, earlier, later in (
+        (bl_date, latest, latest, "提单日", "最迟装运期"),
+        (insurance, bl_date, insurance, "保单签发日", "提单日"),
+    ):
+        if not compatible(left, right):
+            if applicable:
+                notes.append(f"无法核对{earlier}与{later}，请核对日期原文及单据对应关系")
+            continue
+        a, b = left[0][1], right[0][1]
+        if a["key"][1] > b["key"][1]:
+            findings.append(f"{earlier}晚于{later}（{a['loc']}：{a['text']}；{b['loc']}：{b['text']}）")
+
+    invoices = sources("invoice_amount")
+    credits = sources("lc_amount")
+    if not credits:
+        return findings, notes
+    if compatible(invoices, credits):
+        invoice, (seq, credit) = invoices[0][1], credits[0]
+        _, actual, invoice_currency = invoice["key"]
+        _, amount, credit_currency = credit["key"]
+        tolerances = found[seq].get("tolerance", [])
+        rate = Decimal(0)
+        if tolerances:
+            rate = tolerances[0]["key"][1] if len(tolerances) == 1 and tolerances[0]["key"] else None
+        if invoice_currency == credit_currency and rate is not None:
+            # 以原精度比较上限，避免在比较前舍入改变边界。
+            with localcontext() as ctx:
+                ctx.prec = max(28, len(amount.as_tuple().digits) + max(0, 2 - rate.as_tuple().exponent) + 4)
+                limit = amount * (1 + rate.scaleb(-2))
+            if actual > limit:
+                basis = f"溢短装比例 {tolerances[0]['loc']}：{tolerances[0]['text']}" if tolerances else "未列明溢短装比例"
+                findings.append(f"发票金额超过信用证金额上限（{invoice['loc']}：{invoice['text']}；"
+                                f"{credit['loc']}：{credit['text']}；{basis}；上限 {credit_currency} {limit:f}）")
+            return findings, notes
+    notes.append("无法核对发票金额上限，请核对金额、币种、溢短装比例及单据对应关系")
+    return findings, notes
+
+
 def build(nodes: list[CheckNode], files: list[CheckFile]) -> dict:
     seqs = [f.seq for f in files]
-    rows = compare(extract(nodes), seqs)
+    found = extract(nodes)
+    rows = compare(found, seqs)
     # 跨文件的收款账号、签约方名称、合同号与同一品名单价数量（L-17～L-19）
     findings = [r.detail for r in check_cross_files(nodes, files)]
-    return {"files": seqs, "rows": rows, "findings": findings, "notes": []}
+    credit_findings, notes = _credit_findings(found, nodes)
+    return {"files": seqs, "rows": rows, "findings": findings + credit_findings, "notes": notes}
 
 
 def summary(result: dict) -> str:
