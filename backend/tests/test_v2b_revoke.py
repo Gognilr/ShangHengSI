@@ -75,8 +75,11 @@ def test_02_automatic_categories_revocable(alice, ready_task, category):
     assert not any(i['loc'] == target['loc'] and i['char_start'] == target['char_start']
                    and i['char_end'] == target['char_end'] for i in r.json()['items'])
     if category == 'OUR':
-        assert c.get(task_url(task, '/parties')).json()['items'] == []
-        assert '我方' not in c.get(task_url(task, '/redaction/outbound')).json()['text']
+        # F-04：撤销全称只作用于这个写法，重叠的较短写法仍须遮住。
+        shorter = [i for i in r.json()['items'] if i['category'] == 'OUR' and i['loc'] == target['loc']]
+        assert shorter
+        assert all(target['char_start'] <= i['char_start'] < i['char_end'] <= target['char_end'] for i in shorter)
+        assert '我方' in c.get(task_url(task, '/redaction/outbound')).json()['text']
 
 
 def test_03_manual_term_removed(db_sessionmaker, alice, ready_task):
@@ -238,7 +241,7 @@ def test_recheck_revocation_and_active_map_still_blocks(db_sessionmaker, alice, 
                    terms=ctx.terms, placeholders=ctx.placeholders, kept=ctx.kept))
 
 
-def test_workspace_party_revoke_preserves_history_and_removes_subject(db_sessionmaker, alice, ready_task):
+def test_workspace_party_removal_preserves_history_and_removes_subject(db_sessionmaker, alice, ready_task):
     user, c, h = alice
     task = make_task(ready_task, user)
     with db_sessionmaker() as db:
@@ -248,9 +251,8 @@ def test_workspace_party_revoke_preserves_history_and_removes_subject(db_session
         db.commit()
         before = engine._load_full_map(db, task.id)
     party = c.get(task_url(task, '/parties')).json()['items'][0]
-    target = next(i for i in items(c, task)['items'] if i['placeholder'] == party['code'])
-    assert target['placeholder'].startswith('[[ORG_')
-    assert revoke(c, h, task, target).status_code == 200
+    assert party['code'].startswith('[[ORG_')
+    assert c.delete(task_url(task, f"/parties/{party['id']}"), headers=h).status_code == 200
     assert c.get(task_url(task, '/parties')).json()['items'] == []
     with db_sessionmaker() as db:
         assert engine._load_full_map(db, task.id).items() >= before.items()
