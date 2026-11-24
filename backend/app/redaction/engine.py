@@ -539,6 +539,22 @@ def _table_name_slot(slot: tuple[str, str | None] | None, text: str, hit: ner.En
     return plain.short_name_slot(prefix + text, len(prefix) + hit.start, len(prefix) + hit.end)
 
 
+def _table_org_short(slot: tuple[str, str | None] | None, text: str) -> tuple[int, int] | None:
+    """明确机构名称格中，保守兜底识别尚未登记的整格中文简称。"""
+    if slot != ('单位名称', 'ORG'):
+        return None
+    hit = re.fullmatch(r'\s*([一-鿿]{2,4})[\s。.;；]*', text)
+    if hit is None:
+        return None
+    surface = hit[1]
+    start, end = hit.span(1)
+    if (surface in tables._EMPTY_VALUES or surface in plain.words() or S.generic_reference(surface)
+            or detect.is_admin_city(surface) or S.public_institution_spans(surface)
+            or not ner.keep_entity(text, ner.Entity(start, end, 'ORG', 0))):
+        return None
+    return start, end
+
+
 def compute(
     nodes: list[NodeIn],
     stance: str,
@@ -1156,6 +1172,9 @@ def compute(
                                                      lowercase_words=lowercase_words, header=n.loc in headers,
                                                      auto_kept=plain_candidates)
                             if (s.start, s.end) not in excluded_spans]
+        if (span := _table_org_short(slots.get(i), n.text)) and not _blocked(occupied[i], excluded_spans, *span):
+            if not any(s.loc == n.loc and (s.char_start, s.char_end) == span for s in found):
+                found.append(SuspectOut(n.loc, *span, 'derived_name'))
         for candidate in plain_candidates:
             ordinary(n.loc, n.text, candidate)
         for h in detect.plain_person_values(n.text):
@@ -1839,6 +1858,30 @@ def _vector_kept_spans(db: Session, task: Task) -> set[tuple[str, int, int]]:
     return spans
 
 
+def _uncovered_table_org(db: Session, task: Task, items: list[RedactionItem]) -> bool:
+    """识别旧草稿中还未生成不确定项的机构简称。"""
+    rows = db.execute(
+        select(DocNode.loc, DocNode.text_enc).join(TaskFile, TaskFile.id == DocNode.file_id)
+        .where(DocNode.task_id == task.id, DocNode.part == 'body', DocNode.text_enc.is_not(None),
+               DocNode.kind.in_(('table_cell', 'sheet_cell')), *_scope(task)))
+    nodes = [NodeIn(loc, _recognition_view(crypto.decrypt_text(blob))) for loc, blob in rows]
+    slots = tables.information_slots(nodes, _complete_label, _has_label)
+    occupied: dict[str, list[tuple[int, int]]] = {}
+    for item in items:
+        occupied.setdefault(item.loc, []).append((item.char_start, item.char_end))
+    candidates = []
+    for i, slot in slots.items():
+        node = nodes[i]
+        if (span := _table_org_short(slot, node.text)) and not _overlaps(occupied.get(node.loc, []), *span):
+            candidates.append(P.normalize(node.text[span[0]:span[1]]))
+    if not candidates:
+        return False
+    from app.redaction.keep_terms import effective
+    kept = {P.normalize(value) for value in load_kept_values(db, task.id)}
+    kept.update(P.normalize(value) for value in effective(db, task.owner_id).values())
+    return any(value not in kept for value in candidates)
+
+
 def ensure_default_replacements(db: Session, task: Task) -> None:
     """V31Q-16：升级前留下的 pending 在确认时补算，不能只移除旧发送闸门。
     按记忆或本机判断保留的 pending 本来就不替换（与页面 kept_by 判断相同），不算“未补算”；
@@ -1856,7 +1899,7 @@ def ensure_default_replacements(db: Session, task: Task) -> None:
     if uncovered:
         vector_spans = _vector_kept_spans(db, task)
         uncovered = [s for s in uncovered if (s.loc, s.char_start, s.char_end) not in vector_spans]
-    if uncovered:
+    if uncovered or _uncovered_table_org(db, task, items):
         existing = _existing_parties(db, task)
         _run(db, task, _current_overrides(existing), existing)
 

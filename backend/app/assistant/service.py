@@ -371,6 +371,7 @@ def _validate_input(db: Session, task: Task, body):
 
 
 def _preflight(db: Session, task: Task, template, params, model_id: int, finding_id=None):
+    engine.ensure_default_replacements(db, task)
     if finding_id is not None:  # 按问题讨论：上下文放不下时发送前就拒绝（V32-B-02）
         from app.assistant import context
         context.build_for(db, task, finding_id, None, model_id=model_id,
