@@ -23,6 +23,10 @@ export interface RunListItem {
   model_id: number | null
   model_label: string | null
   model_name: string | null
+  /** 增量复审（V35-D-03）：delta 只审变化；base_run_no 对照的轮次；draft_no 主文件第几稿 */
+  scope?: 'full' | 'delta'
+  base_run_no?: number | null
+  draft_no?: number | null
 }
 
 export interface RequirementResult {
@@ -68,7 +72,11 @@ export interface Finding {
   quote_excerpt: string | null
   marks: Partial<Record<MarkedField, Mark[]>>
   unresolved: number
+  /** 增量轮的本轮状态（V35-D-03）：本轮新增 / 仍存在 / 仍存在·条款未改动 / 已解决；全文轮为 null */
+  carry?: Carry | null
+  carry_note?: string | null
 }
+export type Carry = 'new' | 'persists' | 'unchanged' | 'resolved'
 
 /** 外发回执（SPEC 18.29）：只有数字、布尔与模型显示名；旧轮次为 null。 */
 export interface RunReceipt {
@@ -93,6 +101,8 @@ export interface Coverage {
   unable_by_reason?: Record<UnableReason, number>
   /** V31Q-67 ①：L-21 条数，旧轮次没有 */
   ai_instructions?: number
+  /** 增量轮（V35-D-03） */
+  delta?: { base_run_no: number; no: number; prev_no: number; changed_clauses: number; unchanged_clauses: number; priors_sent: number; priors_unchanged: number; priors_ignored: number } | null
 }
 
 /** 本轮实际发送的文字；外发记录正文已按保留期清理时为 { available: false }。 */
@@ -130,6 +140,9 @@ export interface RunDetail {
   sanctions: { level: string | null; reasons: string[] }
   requirement_results: RequirementResult[]
   findings: Finding[]
+  scope?: 'full' | 'delta'
+  base_run_no?: number | null
+  draft_no?: number | null
 }
 
 export const runsApi = {
@@ -157,4 +170,11 @@ export const RUN_ERROR_MESSAGES: Record<string, string> = {
   MATERIAL_CHANGED: '材料有变化，请重新核对后再确认',
   SESSION_BUSY: '审核进行中，完成后再操作',
   FILE_IN_USE: '该文件已用于审核，不能移除；可在发送时不选它',
+  DELTA_UNAVAILABLE: '当前不能只审变化，请改为全文重审',
+}
+
+/** 轮次下拉的名字（V35-D-03）：“第 2 轮 · 第 2 稿 · 只审变化（对照第 1 轮）” */
+export function roundLabel(r: { run_no: number; scope?: string; base_run_no?: number | null; draft_no?: number | null }) {
+  return [`第 ${r.run_no} 轮`, r.draft_no ? `第 ${r.draft_no} 稿` : '',
+    r.scope === 'delta' ? `只审变化${r.base_run_no ? `（对照第 ${r.base_run_no} 轮）` : ''}` : ''].filter(Boolean).join(' · ')
 }

@@ -10,7 +10,7 @@ import { assistantApi, confirmationTask, type DiffChange, type DiffResult, type 
 import DiffRail from '@/components/result/DiffRail.vue'
 import { loadDiff, substantive } from '@/utils/drafts'
 import { reportApi } from '@/api/report'
-import { runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
+import { roundLabel, runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
 import type { CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
 import FindingCard from '@/components/FindingCard.vue'
 import ExportButton from '@/components/result/ExportButton.vue'
@@ -88,7 +88,7 @@ const findings = computed<Finding[]>(() => (run.value?.findings ?? []).filter(f 
   && (!fCategory.value || f.category === fCategory.value)
   && (!fHandling.value || f.handling_status === fHandling.value)))
 const noOf = (id: string) => String((run.value?.findings.findIndex(f => f.id === id) ?? -1) + 1).padStart(2, '0')
-const annotations = computed<CanvasAnnotation[]>(() => findings.value.filter(f => f.locs.length)
+const annotations = computed<CanvasAnnotation[]>(() => findings.value.filter(f => f.locs.length && f.carry !== 'resolved')
   .map(f => ({ id: f.id, no: noOf(f.id), severity: f.severity, loc: f.locs[0]!, excerpt: f.quote_excerpt })))
 const localLocs = computed(() => zone.value === 'local' ? localItems.value.flatMap(l => l.locs) : [])
 
@@ -238,7 +238,7 @@ function openHint() { if (hint.value) void router.push({ path: `/assistant/${hin
 // ---- 头部说明（澄明 8.4：合同 · 采购方立场 · 第 1 轮）----
 const lede = computed(() => {
   const r = run.value
-  return [r ? docTypeLabel(r.main_doc_type) : '', `${stanceLabel(r?.stance ?? props.session.stance)}立场`, r ? `第 ${r.run_no} 轮` : ''].filter(Boolean).join(' · ')
+  return [r ? docTypeLabel(r.main_doc_type) : '', `${stanceLabel(r?.stance ?? props.session.stance)}立场`, r ? roundLabel(r) : ''].filter(Boolean).join(' · ')
 })
 const modelShort = computed(() => run.value?.model_label ?? run.value?.model_name ?? '')
 const canAsk = computed(() => auth.can('use.assistant'))
@@ -315,8 +315,9 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
           :node-loader="nodeLoader" :raw-loader="rawLoader" :diff-loader="diffLoader"
           @select="onCanvasSelect">
           <template #bar>
-            <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
-              <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮`">第 {{ item.run_no }} 轮 · {{ formatDateTime(item.finished_at ?? item.queued_at) }} · {{ runStatusLabel(item.status) }}</el-option>
+            <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select"
+              :class="{ 'round-delta': run?.scope === 'delta' }" :title="run ? roundLabel(run) : undefined" size="small" @update:model-value="emit('selectRun', $event)">
+              <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="roundLabel(item)">{{ roundLabel(item) }} · {{ formatDateTime(item.finished_at ?? item.queued_at) }} · {{ runStatusLabel(item.status) }}</el-option>
             </el-select>
             <ReceiptStrip v-if="run && session.policy === 'ai'" :run="run" :file-names="task.files.map(f => f.original_name)" />
           </template>
@@ -352,6 +353,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 /* 结果工具条：一行说明 + 轮次 + 模型徽标，右侧追问、重新审核、导出（澄明 8.4 ③） */
 .lede { min-width: 0; overflow: hidden; color: var(--si-ink-3); font: var(--si-font-label-sm); text-overflow: ellipsis; white-space: nowrap; }
 .round-select { flex: none; width: 104px; }
+.round-select.round-delta { width: 16rem; max-width: 48%; }
 .actions { display: flex; align-items: center; gap: 8px; margin: 0 0 0 auto; }
 .actions :deep(.el-button + .el-button) { margin-left: 0; }
 .actions :deep(.el-button > span) { gap: 6px; }

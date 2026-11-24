@@ -38,6 +38,14 @@ export interface SessionRunInput {
   file_ids?: string[]; main_file_id?: string; expected_material_version?: number; use_template?: boolean
   /** 同一事务里先确认待确认的文件再发起（V321-E-06） */
   confirm_pending?: boolean
+  /** delta：只审变化与上轮未决问题（V35-D-03） */
+  scope?: 'full' | 'delta'
+}
+/** 审核范围预览（V35-D-03，diff.md 4.1）：能否只审变化、变化条款与上轮问题数 */
+export interface DeltaInfo {
+  available: boolean; reason?: string; recommended?: boolean; identical?: boolean; empty?: boolean
+  no?: number; prev_no?: number; base_run_no?: number; changed_clauses?: number; total_clauses?: number
+  priors_sent?: number; priors_total?: number; advice?: string
 }
 export interface SessionItem {
   id: string; title: string; status: string; file_count: number; last_activity_at: string
@@ -129,8 +137,8 @@ export const assistantApi = {
   history: (query: { page?: number; q?: string; from?: string; to?: string; type?: 'review' | 'chat' | 'bid' | 'meeting' | 'translate' }) => http.get<HistoryPage>(`${base}/history`, query),
   runs: (id: string) => http.get<{ items: RunListItem[] }>(`${base}/${id}/runs`),
   createRun: (id: string, body: SessionRunInput) => http.post<RunCreated>(`${base}/${id}/runs`, body),
-  outboundReview: (id: string, query: { stance?: Stance; file_ids?: string[]; include_pending?: boolean } = {}) =>
-    http.get<{ text: string; note: string | null; material_version: number }>(`${base}/${id}/outbound`,
+  outboundReview: (id: string, query: { stance?: Stance; file_ids?: string[]; include_pending?: boolean; scope?: 'full' | 'delta'; main_file_id?: string } = {}) =>
+    http.get<{ text: string; note: string | null; material_version: number; chars?: number; delta?: DeltaInfo }>(`${base}/${id}/outbound`,
       { mode: 'review', ...query, include_pending: query.include_pending ? 'true' : undefined }),
   raw: (id: string, fid: string) => http.getBlob(`${base}/${id}/files/${fid}/raw`),
   diff: (id: string, fileId: string) => http.get<DiffResult>(`${base}/${id}/diff?file_id=${encodeURIComponent(fileId)}`),

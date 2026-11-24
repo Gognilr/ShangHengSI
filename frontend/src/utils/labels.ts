@@ -126,6 +126,8 @@ export const CITE_STATUS: Dict = { verified: '引用已校验', unverified: '待
 export const citeStatusLabel = pick(CITE_STATUS)
 
 export const HANDLING_OPTIONS: Dict = { pending: '待处理', adopted: '已采纳', ignored: '已忽略' }
+/** 增量轮的本轮状态（V35-D-03） */
+export const CARRY_LABELS: Record<string, string> = { new: '本轮新增', persists: '仍存在', unchanged: '仍存在 · 条款未改动', resolved: '已解决' }
 export const handlingLabel = pick(HANDLING_OPTIONS)
 
 export const REQ_SOURCE: Dict = { builtin: '内置要求', company: '公司补充要求', note: '本次补充说明' }

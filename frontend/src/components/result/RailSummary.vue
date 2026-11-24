@@ -31,6 +31,7 @@ watch(() => props.run?.id, () => { detailsOpen.value = false })
         </el-popover>
       </div>
       <p v-if="run.status === 'failed'" class="hint">请重新审核；本地校验结果可在“本地计算”中查看。</p>
+      <p v-if="run.status !== 'failed' && run.coverage?.delta && notes[0]" class="delta-note">{{ notes[0] }}</p>
       <p v-else-if="run.coverage?.summary" class="coverage" :title="run.coverage.summary">{{ run.coverage.summary }}</p>
       <button v-if="aiInstructions > 0" type="button" class="ai-notice" @click="emit('aiNotice')">
         <TriangleAlert :size="14" :stroke-width="1.75" aria-hidden="true" /><span>{{ aiInstructionNotice(aiInstructions) }}</span>
@@ -65,6 +66,7 @@ watch(() => props.run?.id, () => { detailsOpen.value = false })
 .sanctions { height: 24px; padding: 0 8px; border: 1px solid var(--si-hair); border-radius: 999px; background: transparent; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; }
 .sanctions.high { border-color: var(--si-danger); color: var(--si-danger-ink); }
 .reasons { margin: 0 0 8px; padding-left: 18px; font: var(--si-font-meta); white-space: pre-wrap; overflow-wrap: anywhere; }
+.delta-note { margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-meta); overflow-wrap: anywhere; }
 .coverage { margin: 0; font: var(--si-font-meta); color: var(--si-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-notice { display: flex; align-items: flex-start; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--si-warn-ink); font: var(--si-font-meta); text-align: left; cursor: pointer; }
 .ai-notice svg { flex: none; margin-top: 3px; }

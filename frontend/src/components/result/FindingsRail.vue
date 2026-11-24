@@ -12,7 +12,7 @@ import RailSummary from '@/components/result/RailSummary.vue'
 import RequirementList from '@/components/result/RequirementList.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import ZoneHeader from '@/components/ui/ZoneHeader.vue'
-import { CATEGORY_OPTIONS, HANDLING_OPTIONS, toOptions } from '@/utils/labels'
+import { CARRY_LABELS, CATEGORY_OPTIONS, HANDLING_OPTIONS, toOptions } from '@/utils/labels'
 import { motionMs, useFx } from '@/utils/motion'
 
 /**
@@ -56,16 +56,35 @@ const emit = defineEmits<{
 
 const fx = useFx()
 const categoryOptions = toOptions(CATEGORY_OPTIONS)
+// 增量轮（V35-D-03，diff.md 4.3）：摘要“本轮新增 · 仍存在 · 已解决”可点击筛选；已解决不计入问题数，默认折叠在最后
+const delta = computed(() => props.run?.scope === 'delta')
+const carry = ref<'' | 'new' | 'persists' | 'resolved'>('')
+const resolvedOpen = ref(false)
+const isResolved = (f: Finding) => f.carry === 'resolved'
+const carryOf = (f: Finding) => f.carry === 'unchanged' ? 'persists' : f.carry
+const allLive = computed(() => (props.run?.findings ?? []).filter(f => !isResolved(f)))
+const carryCounts = computed(() => {
+  const list = props.run?.findings ?? []
+  return (['new', 'persists', 'resolved'] as const).map(value => ({ value, label: CARRY_LABELS[value], n: list.filter(f => carryOf(f) === value).length }))
+})
+function pickCarry(value: 'new' | 'persists' | 'resolved') {
+  carry.value = carry.value === value ? '' : value
+  if (value === 'resolved') resolvedOpen.value = carry.value === 'resolved'
+}
+const live = computed(() => carry.value === 'resolved' ? [] : props.findings.filter(f => !isResolved(f) && (!carry.value || carryOf(f) === carry.value)))
+const resolved = computed(() => carry.value && carry.value !== 'resolved' ? [] : props.findings.filter(isResolved))
+const visible = computed(() => resolvedOpen.value ? [...live.value, ...resolved.value] : live.value)
+watch(() => props.run?.id, () => { carry.value = ''; resolvedOpen.value = false })
 // 处理状态计数切换（V31-U5F-03 问题 7）：计数随等级、类别筛选变化
 const handlingCounts = computed(() => {
-  const list = (props.run?.findings ?? []).filter(f => (!severity.value || f.severity === severity.value) && (!category.value || f.category === category.value))
+  const list = allLive.value.filter(f => (!severity.value || f.severity === severity.value) && (!category.value || f.category === category.value))
   const n = (s: string) => list.filter(f => f.handling_status === s).length
   return [{ value: '', label: `全部 ${list.length}` }, ...Object.entries(HANDLING_OPTIONS).map(([value, label]) => ({ value, label: `${label} ${n(value)}` }))]
 })
 const localCount = ref<number | null>(null)
 // 等级分段（全部 / 高 / 中 / 低，带计数）
 const severityOptions = computed(() => {
-  const list = props.run?.findings ?? []
+  const list = allLive.value
   const n = (v: string) => list.filter(f => f.severity === v).length
   return [{ value: '', label: `全部 ${list.length}` }, { value: 'high', label: `高 ${n('high')}` }, { value: 'medium', label: `中 ${n('medium')}` }, { value: 'low', label: `低 ${n('low')}` }]
 })
@@ -91,17 +110,17 @@ function inField(target: EventTarget | null) {
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest('.si-segmented, .el-dialog, .el-drawer, .el-message-box, .el-select-dropdown'))
 }
 function step(delta: number) {
-  const list = props.findings
+  const list = visible.value
   if (!list.length) return
   const at = list.findIndex(f => f.id === props.selectedId)
   const next = list[at < 0 ? (delta > 0 ? 0 : list.length - 1) : Math.min(list.length - 1, Math.max(0, at + delta))]
   if (next && next.id !== props.selectedId) emit('select', next)
 }
 async function handle(status: HandlingStatus) {
-  const current = props.findings.find(f => f.id === props.selectedId)
+  const current = live.value.find(f => f.id === props.selectedId)
   if (!current || keyBusy) return
   keyBusy = true
-  const list = props.findings, at = list.indexOf(current)
+  const list = live.value, at = list.indexOf(current)
   try {
     // 已是该状态时不重复保存，只跳到下一条待处理
     if (current.handling_status !== status) emit('updated', await runsApi.patchFinding(current.id, { handling_status: status }))
@@ -117,7 +136,7 @@ function onHandled(f: Finding) {
   window.clearTimeout(handledTimer)
   handledTimer = window.setTimeout(() => {
     if (props.selectedId !== f.id) return
-    const list = props.findings, at = list.findIndex(x => x.id === f.id)
+    const list = live.value, at = list.findIndex(x => x.id === f.id)
     const next = [...list.slice(at + 1), ...list.slice(0, at)].find(x => x.handling_status === 'pending')
     emit('select', next ?? f) // 选中同一条即收起
   }, motionMs('struct'))
@@ -177,24 +196,39 @@ watch(() => props.selectedId, async (id) => {
       <template v-if="!localOnly">
         <EmptyState v-if="run?.status === 'failed'" title="未取得有效 AI 结论" description="模型审核未完成，请重新审核。本机计算的结果在上方。" />
         <template v-else-if="run">
-          <ZoneHeader kind="ai" :count="findings.length">
+          <div v-if="delta" class="carry-switch" role="group" aria-label="按本轮状态筛选">
+            <template v-for="(c, i) in carryCounts" :key="c.value"><span v-if="i" class="dot" aria-hidden="true">·</span>
+              <button type="button" class="carry-btn" :class="[`cb-${c.value}`, { on: carry === c.value }]" :aria-pressed="carry === c.value" @click="pickCarry(c.value)">{{ c.label }} <b class="num">{{ c.n }}</b></button></template>
+          </div>
+          <ZoneHeader kind="ai" :count="live.length">
             <el-select aria-label="类别" v-model="category" clearable placeholder="类别" size="small" class="filter"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
           </ZoneHeader>
           <div class="handling-switch"><SiSegmented v-model="handling" :options="handlingCounts" size="small" ariaLabel="按处理状态筛选" /></div>
           <TransitionGroup name="si-list" tag="div" class="cards" :appear="stagger">
-            <FindingCard v-for="(f, i) in findings" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled" :discuss-enabled="discussEnabled"
+            <FindingCard v-for="(f, i) in live" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled" :discuss-enabled="discussEnabled"
               :style="stagger && i < 8 ? { transitionDelay: `${i * 45}ms` } : undefined"
               @select="emit('select', $event)" @updated="emit('updated', $event)" @handled="onHandled" @ask="emit('ask', $event)" @discuss="emit('discuss', $event)" />
           </TransitionGroup>
-          <EmptyState v-if="!findings.length" :icon="ListChecks"
+          <section v-if="resolved.length" class="resolved">
+            <button type="button" class="calc-h" :aria-expanded="resolvedOpen" @click="resolvedOpen = !resolvedOpen">
+              <b>已解决</b><span class="calc-n num">{{ resolved.length }} 条</span>
+              <component :is="resolvedOpen ? ChevronDown : ChevronRight" class="calc-chev" :size="15" :stroke-width="1.75" />
+            </button>
+            <div v-if="resolvedOpen" class="cards">
+              <FindingCard v-for="f in resolved" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled" :discuss-enabled="discussEnabled"
+                @select="emit('select', $event)" @updated="emit('updated', $event)" @handled="onHandled" @ask="emit('ask', $event)" @discuss="emit('discuss', $event)" />
+            </div>
+          </section>
+          <EmptyState v-if="!live.length && !resolved.length" :icon="ListChecks"
             :title="run.findings.length ? '没有符合筛选条件的问题' : '本次没有列出问题条目'"
             :description="run.findings.length ? '调整上方的等级、类别或处理状态筛选后再看。' : '结果由 AI 生成，仅供参考，请以人工复核为准。'" />
-          <p v-if="findings.length" class="keys hint">快捷键：<kbd>↑</kbd><kbd>↓</kbd> 切换 · <kbd>A</kbd> 采纳 · <kbd>I</kbd> 忽略</p>
+          <p v-if="visible.length" class="keys hint">快捷键：<kbd>↑</kbd><kbd>↓</kbd> 切换<span v-if="live.length"> · <kbd>A</kbd> 采纳 · <kbd>I</kbd> 忽略</span></p>
           <section v-if="run.requirement_results.length" class="req">
             <button type="button" class="calc-h" :aria-expanded="reqOpen" @click="reqOpen = !reqOpen">
               <b>逐条结论</b><span class="calc-n num">{{ run.requirement_results.length }} 条</span>
               <component :is="reqOpen ? ChevronDown : ChevronRight" class="calc-chev" :size="15" :stroke-width="1.75" />
             </button>
+            <p v-if="reqOpen && run.coverage?.delta" class="hint req-note">增量复审沿用第 {{ run.coverage.delta.base_run_no }} 轮的逐条结论，只更新涉及变化的要求</p>
             <RequirementList v-if="reqOpen" :items="run.requirement_results" :ask-enabled="askEnabled" @ask="emit('ask', $event)" />
           </section>
         </template>
@@ -232,5 +266,16 @@ watch(() => props.selectedId, async (id) => {
 .handling-switch :deep(.si-segmented button) { flex: 1; }
 .keys { margin: 4px 0 0; }
 .keys kbd { margin: 0 2px; padding: 0 5px; border: 1px solid var(--si-hair-strong); border-radius: 4px; background: var(--si-surface-2); font: var(--si-font-code-sm); }
+.carry-switch { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.carry-switch .dot { color: var(--si-ink-4); }
+.carry-btn { height: 26px; padding: 0 10px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; }
+.carry-btn b { font-weight: 600; color: var(--si-ink-1); }
+.carry-btn:hover { background: var(--si-surface-2); }
+.carry-btn.on.cb-new { border-color: var(--si-brand-line); background: var(--si-blue-tint); color: var(--si-blue-ink); }
+.carry-btn.on.cb-persists { border-color: var(--si-warn-line); background: var(--si-warn-soft); color: var(--si-warn-ink); }
+.carry-btn.on.cb-resolved { border-color: var(--si-ok); background: var(--si-ok-soft); color: var(--si-ok-ink); }
+.resolved { border-top: 1px solid var(--si-hair-faint); padding-top: 4px; }
+.resolved .calc-h { padding: 8px 0; }
+.req-note { margin: 0 0 6px; }
 .cards { position: relative; display: flex; flex-direction: column; gap: 10px; }
 </style>

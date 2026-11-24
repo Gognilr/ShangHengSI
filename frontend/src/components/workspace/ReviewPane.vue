@@ -18,6 +18,7 @@ import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import SiThinkingDots from '@/components/ui/SiThinkingDots.vue'
 import RunResult from '@/components/workspace/RunResult.vue'
+import ScopePicker from '@/components/workspace/ScopePicker.vue'
 import type { ReviewProgress } from '@/components/workspace/ReviewSteps.vue'
 import { useAuthStore } from '@/stores/auth'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
@@ -114,6 +115,15 @@ watch(() => candidates.value.map(f => `${f.id}:${f.prev_file_id ?? ''}`).join(',
 }, { immediate: true })
 const diffLoader = (fid: string, prev: string) => loadDiff(props.session.id, fid, prev)
 const router = useRouter()
+// 审核范围（V35-D-03）：主文件有上一稿时可以只审变化
+const scope = ref<'full' | 'delta'>('full')
+const previousId = computed(() => files.value.find(f => f.id === mainId.value)?.prev_file_id)
+const hasPrev = computed(() => !!previousId.value)
+const scopeReady = ref(true)
+watch(hasPrev, has => { if (!has) scope.value = 'full' })
+const runScope = () => hasPrev.value ? scope.value : 'full'
+// 只审变化时本轮只发主文件，附件不重发
+const runFiles = () => runScope() === 'delta' ? [mainId.value] : picked.value
 const hintClosed = ref('')
 watch(picked, ids => { if (!ids.includes(mainId.value)) mainId.value = ids[0] ?? '' })
 
@@ -188,20 +198,28 @@ async function loadModels() {
   finally { modelsLoading.value = false }
 }
 
-// 本轮新增发送的内容：主体说明来自服务端按当前材料生成的外发正文，只取这一行，不展示全文
+// 本轮外发预览由服务端按所选范围生成
 const subjects = ref<string[]>([])
+const deltaPreview = ref('')
 const previewVersion = ref<number | null>(null)
 const previewError = ref('')
 // 按当前所选的立场与文件取预览，与实际发送一致；所选变化时重取，取到之前不能确认
 let previewSeq = 0
 async function loadPreview() {
   const current = ++previewSeq
-  previewError.value = ''; previewVersion.value = null
+  previewError.value = ''; previewVersion.value = null; deltaPreview.value = ''
   if (!stance.value) { subjects.value = []; return }
   try {
-    const data = await assistantApi.outboundReview(props.session.id, { stance: stance.value, file_ids: picked.value })
+    const data = await assistantApi.outboundReview(props.session.id, {
+      stance: stance.value, file_ids: runFiles(), scope: runScope(), main_file_id: mainId.value,
+    })
     if (current !== previewSeq) return
+    if (runScope() === 'delta' && !data.delta?.available) {
+      previewError.value = data.delta?.reason || '当前不能只审变化，请改为全文重审'
+      return
+    }
     previewVersion.value = data.material_version
+    if (runScope() === 'delta') deltaPreview.value = data.text
     const line = /【主体说明】([^\n]*)/.exec(data.text)?.[1] ?? ''
     subjects.value = line && line !== '无' ? line.split('；').filter(Boolean) : []
   } catch (e) {
@@ -229,7 +247,7 @@ const canConfigure = computed(() => stage.value === 'setup' && ['active', 'await
 watch(() => [props.session.id, props.session.status, props.session.material_version, stage.value].join(':'), () => {
   if (stage.value === 'setup' && ['active', 'awaiting_confirm'].includes(props.session.status)) void loadParties()
 }, { immediate: true })
-watch([stage, () => props.session.material_version, () => confirmedFiles.value.length, stance, () => picked.value.join(',')], ([s]) => {
+watch([stage, () => props.session.material_version, () => confirmedFiles.value.length, stance, scope, mainId, previousId, () => picked.value.join(',')], ([s]) => {
   if (s === 'setup' && picked.value.length) { void loadModels(); void loadPreview() }
   if (s === 'confirm') void loadModels()
 }, { immediate: true })
@@ -251,6 +269,7 @@ const setupCheck = computed<Check>(() => {
   if (modelsLoading.value) return { text: '正在加载模型列表' }
   if (modelError.value) return { text: modelError.value }
   if (!modelId.value) return { text: '请选择审核模型', field: 'model' }
+  if (hasPrev.value && !scopeReady.value) return { text: '正在读取审核范围' }
   if (previewVersion.value === null) return { text: previewError.value || '正在读取本轮发送内容' }
   return { text: '' }
 })
@@ -279,6 +298,7 @@ const confirmCheck = computed<Check>(() => {
   if (modelsLoading.value) return { text: '正在加载模型列表' }
   if (modelError.value) return { text: modelError.value }
   if (!modelId.value) return { text: '请选择审核模型', field: 'model' }
+  if (hasPrev.value && !scopeReady.value) return { text: '正在读取审核范围' }
   return { text: '' }
 })
 const confirmBlocker = computed(() => confirmCheck.value.text)
@@ -289,7 +309,8 @@ async function submitConfirm() {
   const trimmed = note.value.trim()
   const created = await assistantApi.createRun(props.session.id, {
     stance: stance.value, source: source.value, model_id: modelId.value, user_note: trimmed || null,
-    file_ids: picked.value, main_file_id: mainId.value, expected_material_version: previewVersion.value ?? undefined, confirm_pending: true,
+    file_ids: runFiles(), main_file_id: mainId.value, expected_material_version: previewVersion.value ?? undefined, confirm_pending: true,
+    scope: runScope(),
   })
   savePrefs()
   return created
@@ -309,7 +330,8 @@ async function start() {
     const trimmed = note.value.trim()
     await assistantApi.createRun(props.session.id, {
       stance: stance.value, source: source.value, model_id: modelId.value, user_note: trimmed || null,
-      file_ids: picked.value, main_file_id: mainId.value, expected_material_version: previewVersion.value ?? undefined,
+      file_ids: runFiles(), main_file_id: mainId.value, expected_material_version: previewVersion.value ?? undefined,
+      scope: runScope(),
     })
     savePrefs()
     emit('refresh')
@@ -372,7 +394,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
         <el-button size="small" link aria-label="关闭提示" @click="hintClosed = session.id">×</el-button>
       </div>
       <ConfirmWorkbench :key="`${session.id}:${pendingFiles.map(f => f.id).join(',')}`" class="confirm-wb" :task="confirmationTask(session)" mode="session-review" require-our-party
-        v-model:picked="picked" v-model:main-id="mainId" :diff-loader="diffLoader" :stance="stance" :file-ids="picked" :model-name="modelName" :blocker="confirmBlocker" :blocker-choice="!!confirmCheck.field" :submit="submitConfirm"
+        v-model:picked="picked" v-model:main-id="mainId" :diff-loader="diffLoader" :stance="stance" :file-ids="runFiles()" :scope="runScope()" :model-name="modelName" :blocker="confirmBlocker" :blocker-choice="!!confirmCheck.field" :submit="submitConfirm"
         @our="confirmOur = $event" @preview="previewVersion = $event" @confirmed="emit('refresh')" @stale="emit('refresh')" @nudge="nudgeConfirm" @blocked="blockedN = $event">
         <template #settings>
           <div class="cs">
@@ -380,6 +402,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
             <p v-if="autoStance" class="hint cs-hint">按我方为{{ ourParty?.role_label }}带出</p>
             <p v-else-if="inferredStance && stance && stance !== inferredStance" class="hint cs-hint">所选立场与我方的{{ ourParty?.role_label }}标签不一致，请核对。</p>
             <div class="cs-row"><span class="setting-label">文件来源</span><SiSegmented v-model="source" :options="sourceOptions" size="small" ariaLabel="文件来源" /></div>
+            <ScopePicker v-if="previousId && stance" v-model="scope" v-model:ready="scopeReady" compact :session-id="session.id" :stance="stance" :file-ids="picked" :main-id="mainId" :previous-id="previousId" :material-version="previewVersion" include-pending />
             <div :ref="fieldRef('confirm', 'model')" class="cs-row">
               <span class="setting-label">审核模型<span v-if="!modelId && models.length > 1" class="si-required-tag">请选择</span></span>
               <span v-if="models.length === 1" class="cs-model">{{ models[0]!.display_name }}</span>
@@ -426,6 +449,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
               <h2>审核设置</h2>
               <div :ref="fieldRef('setup', 'stance')" class="setting"><span class="setting-label">业务立场<span v-if="!stance" class="si-required-tag">请选择</span></span><SiSegmented :class="{ 'si-required-empty': !stance }" :model-value="stance" :options="stanceOptions" ariaLabel="业务立场" @update:model-value="chooseStance" /><p v-if="autoStance" class="hint">按我方为{{ ourParty?.role_label }}带出</p><p v-else-if="inferredStance && stance && stance !== inferredStance" class="hint">所选立场与我方的{{ ourParty?.role_label }}标签不一致，请核对。</p></div>
               <div class="setting"><span class="setting-label">文件来源</span><SiSegmented v-model="source" :options="sourceOptions" ariaLabel="文件来源" /></div>
+              <div v-if="previousId && stance" class="setting"><ScopePicker v-model="scope" v-model:ready="scopeReady" :session-id="session.id" :stance="stance" :file-ids="picked" :main-id="mainId" :previous-id="previousId" :material-version="previewVersion" /></div>
               <div :ref="fieldRef('setup', 'model')" class="setting">
                 <span class="setting-label">审核模型<span v-if="!modelId && models.length > 1" class="si-required-tag">请选择</span></span>
                 <span v-if="models.length === 1">{{ models[0]!.display_name }}</span>
@@ -443,7 +467,12 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 
           <div class="sent" aria-label="本轮发送的内容">
             <div class="sent-head"><ShieldCheck :size="16" :stroke-width="1.75" /><h2>本轮发送的内容</h2></div>
-            <p class="hint">已确认的 {{ picked.length }} 个文件按已核对的脱敏结果发送，不再逐个核对；本轮新增发送的只有：</p>
+            <p v-if="runScope() === 'delta'" class="hint">只审变化：只发主文件变化所在的条款、上一稿对应文字与上轮未解决的问题，均为已核对的脱敏结果；本轮新增发送的只有：</p>
+            <details v-if="deltaPreview" class="delta-preview">
+              <summary>查看将发送的变化与问题</summary>
+              <pre>{{ deltaPreview }}</pre>
+            </details>
+            <p v-else class="hint">已确认的 {{ picked.length }} 个文件按已核对的脱敏结果发送，不再逐个核对；本轮新增发送的只有：</p>
             <div v-if="parties.length" :ref="fieldRef('setup', 'our')" class="setting"><span class="setting-label">选择我方<span v-if="!ourParty" class="si-required-tag">请选择</span></span><el-radio-group :class="{ 'si-required-empty': !ourParty }" :model-value="ourParty?.id ?? ''" :disabled="partiesLoading || partiesSaving || submitting" @update:model-value="selectOur(String($event))"><el-radio v-for="p in parties" :key="p.id" :value="p.id">{{ p.name }}（{{ p.role_label }}，{{ p.code }}）</el-radio></el-radio-group></div>
             <p v-if="partiesError" class="hint">{{ partiesError }}</p>
             <ul>
@@ -466,6 +495,9 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 </template>
 
 <style scoped>
+.delta-preview { margin: 8px 0; color: var(--si-ink-2); }
+.delta-preview summary { cursor: pointer; }
+.delta-preview pre { max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-reading); }
 .review-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .center { padding: 32px; }
 .running { flex: 1; min-height: 0; overflow: hidden; padding: 16px 20px; }

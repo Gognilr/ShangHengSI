@@ -6,7 +6,7 @@ import { ApiError } from '@/api/http'
 import { runsApi, type Finding, type HandlingStatus } from '@/api/runs'
 import MarkedText from '@/components/result/MarkedText.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
-import { CITE_TAG, categoryLabel, citeStatusLabel, severityLabel } from '@/utils/labels'
+import { CARRY_LABELS, CITE_TAG, categoryLabel, citeStatusLabel, severityLabel } from '@/utils/labels'
 
 /**
  * 问题卡片（V31-U3 3.5，澄明 8.4 ③）：等级、位置、序号 → 一句话结论 → 为什么 → 依据 → 建议条文（可复制）→ 采纳 / 忽略 / 追问。
@@ -101,6 +101,7 @@ async function copy(text: string) {
   <article class="card" :class="[`severity-${f.severity}`, `h-${status}`, { selected }]">
     <div class="head" role="button" tabindex="0" :aria-expanded="!!selected" @click="emit('select', f)" @keydown.enter.self.prevent="emit('select', f)" @keydown.space.self.prevent="emit('select', f)">
       <div class="top">
+        <span v-if="f.carry" class="h-tag c-tag" :class="`c-${f.carry}`">{{ CARRY_LABELS[f.carry] }}</span>
         <span class="sev"><i aria-hidden="true" />{{ severityLabel(f.severity) }}</span>
         <span v-if="f.location" class="loc" :title="f.location"><MapPin :size="12" :stroke-width="2" />{{ f.location }}</span>
         <span v-if="status === 'adopted'" class="h-tag h-tag--adopted"><Check :size="12" :stroke-width="2.5" />已采纳</span>
@@ -109,6 +110,7 @@ async function copy(text: string) {
         <span class="no num">{{ no }}</span>
       </div>
       <b class="title"><MarkedText :text="f.title" :marks="f.marks.title" /><span v-if="f.unresolved > 0" class="unresolved">{{ f.unresolved }} 处未能还原</span></b>
+      <p v-if="f.carry_note" class="carry-note">{{ f.carry === 'resolved' ? '已解决的依据' : '说明' }}：{{ f.carry_note }}</p>
       <p v-if="!selected" class="brief"><MarkedText :text="f.problem" :marks="f.marks.problem" /></p>
       <span v-if="!selected" class="cat">{{ categoryLabel(f.category) }}<template v-if="basisShort"> · 依据 {{ basisShort }}</template></span>
     </div>
@@ -188,6 +190,12 @@ async function copy(text: string) {
 .loc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .h-tag--adopted { background: var(--si-ok-soft); color: var(--si-ok-ink); }
 .h-tag--ignored { background: var(--si-surface-2); color: var(--si-ink-3); }
+/* 增量轮的本轮状态（V35-D-03）：“仍存在 · 条款未改动”用次要文字色，与模型判断的区分开 */
+.c-new { background: var(--si-blue-tint); color: var(--si-blue-ink); }
+.c-persists { background: var(--si-warn-soft); color: var(--si-warn-ink); }
+.c-unchanged { background: var(--si-surface-2); color: var(--si-ink-3); }
+.c-resolved { background: var(--si-ok-soft); color: var(--si-ok-ink); }
+.carry-note { margin: 4px 0 0; color: var(--si-ink-3); font: var(--si-font-caption); overflow-wrap: anywhere; }
 .d-tag { background: var(--si-surface-2); color: var(--si-ink-2); }
 .d-tag.on { background: var(--si-select-bg); color: var(--si-ink-1); }
 .no { margin-left: auto; color: var(--si-ink-4); font: var(--si-font-code-sm); }

@@ -44,7 +44,7 @@ import { nudgeField } from '@/utils/nudge'
 const props = withDefaults(defineProps<{
   task: TaskDetail; modelId?: number; modelName?: string; mode?: 'review' | 'assistant' | 'session-review'; requireOurParty?: boolean
   /** session-review：当前立场与所选文件，用于取审核外发正文预览 */
-  stance?: string; fileIds?: string[]; picked?: string[]; mainId?: string
+  stance?: string; fileIds?: string[]; picked?: string[]; mainId?: string; scope?: 'full' | 'delta'
   /** session-review：父页面的提交（确认 + 发起）；抛出的 ApiError 按错误码在本页显示 */
   submit?: () => Promise<RunCreated | void>
   /** session-review：父页面的未满足条件，非空时不能提交 */
@@ -60,7 +60,7 @@ const emit = defineEmits<{
   /** 当前我方变化（含首次加载） */
   (e: 'our', party: Party | null): void
   /** session-review：外发预览的材料版本，提交时作为 expected_material_version */
-  (e: 'preview', version: number): void
+  (e: 'preview', version: number | null): void
   /** 已提交确认发送，父页面应刷新任务状态 */
   (e: 'confirmed'): void
   /** 任务状态已变化（如 409），父页面应刷新任务 */
@@ -135,6 +135,8 @@ const redactedItems = ref<RedactionInfo['items']>([])
 const autoKept = ref<AutoKept[]>([])
 const autoOpen = ref(false)
 const outboundText = ref('')
+const outboundChars = ref<number | null>(null)
+const outboundEmpty = ref(false)
 const outboundNote = ref<string | null>(null)
 const outboundLoading = ref(false)
 const outboundError = ref('')
@@ -168,25 +170,43 @@ function applyRedaction(info: RedactionInfo) {
   autoKept.value = info.auto_kept ?? []
 }
 async function loadSummary() { applyRedaction(await redactionApi.redaction(props.task.id)) }
+let outboundSeq = 0
 async function loadOutbound() {
+  const seq = ++outboundSeq
   outboundLoading.value = true
+  outboundEmpty.value = false
   outboundError.value = ''
+  if (sessionReview.value) emit('preview', null)
   try {
     if (sessionReview.value) {
-      const outbound = await assistantApi.outboundReview(props.task.id, { stance: (props.stance || undefined) as Stance | undefined, file_ids: props.fileIds, include_pending: true })
+      const outbound = await assistantApi.outboundReview(props.task.id, {
+        stance: (props.stance || undefined) as Stance | undefined, file_ids: props.fileIds, include_pending: true,
+        scope: props.scope, main_file_id: props.mainId,
+      })
+      if (seq !== outboundSeq) return
+      if (props.scope === 'delta' && !outbound.delta?.available) {
+        outboundError.value = outbound.delta?.reason || '当前不能只审变化，请改为全文重审'
+        outboundText.value = ''
+        return
+      }
       outboundText.value = outbound.text
+      outboundChars.value = outbound.chars ?? null
+      outboundEmpty.value = props.scope === 'delta' && outbound.delta?.empty === true
       outboundNote.value = outbound.note
       emit('preview', outbound.material_version)
     } else {
       const outbound = await redactionApi.outbound(props.task.id)
+      if (seq !== outboundSeq) return
       outboundText.value = outbound.text
+      outboundChars.value = null
       outboundNote.value = outbound.note
     }
   } catch (e) {
+    if (seq !== outboundSeq) return
     outboundText.value = ''
     outboundNote.value = null
     outboundError.value = e instanceof ApiError ? e.message : '加载失败'
-  } finally { outboundLoading.value = false }
+  } finally { if (seq === outboundSeq) outboundLoading.value = false }
 }
 async function loadBlocked() {
   const run = props.task.latest_run
@@ -399,7 +419,9 @@ const ourCount = computed(() => parties.value.filter(p => p.is_our_party).length
 const ourId = computed(() => parties.value.find(p => p.is_our_party)?.id ?? '')
 watch(() => { const p = parties.value.find(x => x.is_our_party); return p ? `${p.id}:${p.role_label}` : '' }, () => emit('our', parties.value.find(p => p.is_our_party) ?? null), { immediate: true })
 // session-review：立场或所选文件变化后重取审核外发预览，与实际发送一致
-watch(() => [props.stance, (props.fileIds ?? []).join(',')].join('|'), () => { if (sessionReview.value && !loading.value) void loadOutbound() })
+watch(() => [props.stance, (props.fileIds ?? []).join(','), props.scope, props.mainId].join('|'), () => {
+  if (sessionReview.value) void loadOutbound()
+})
 const editingParty = ref('')
 function countryOptions(p: Party): string[] {
   const set = new Set<string>()
@@ -618,7 +640,7 @@ const ourOptions = computed(() => {
 // ---- 外发回执 ----
 const replacedTotal = computed(() => Object.values(summary.value).reduce((sum, n) => sum + n, 0))
 const categoryChips = computed(() => Object.entries(summary.value).filter(([, n]) => n > 0).map(([code, n]) => `${REDACTION_CATEGORY[code] ?? code} ${n}`))
-const outboundLength = computed(() => outboundText.value.length)
+const outboundLength = computed(() => outboundLoading.value || !outboundText.value ? 0 : outboundChars.value ?? outboundText.value.length)
 const reqDrawer = ref(false)
 const localDrawer = ref(false)
 const outboundDrawer = ref(false)
@@ -627,7 +649,7 @@ const ourMissing = computed(() => !(assistant.value && !props.requireOurParty ? 
 // 缺的只是用户该选的项（我方、父页面的立场 / 模型）时按钮仍可点，点击定位到缺项（V33-C-01）；等待类条件照旧禁用
 const readyExceptChoices = computed(() =>
   !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value
-  && (!sessionReview.value || ((!props.blocker || props.blockerChoice) && !outboundLoading.value && !!outboundText.value)))
+  && (!sessionReview.value || ((!props.blocker || props.blockerChoice) && !outboundLoading.value && (!!outboundText.value || outboundEmpty.value))))
 const canConfirm = computed(() => readyExceptChoices.value && !ourMissing.value && (!sessionReview.value || !props.blocker))
 const partiesSec = ref<HTMLElement>()
 function nudgeMissing() {
@@ -864,14 +886,14 @@ useHotkeys({
         <section class="rp-card">
           <h3 class="rp-h"><Send :size="16" :stroke-width="1.75" /><b>{{ assistant && !sessionReview ? '本会话文件的遮住结果' : '将要发送的' }}</b></h3>
           <ul class="send-list">
-            <li><FileText :size="15" :stroke-width="1.75" /><span>正文 <b class="num"><SiCount :value="outboundLength" /></b> 字，已在本机遮住 <b class="num"><SiCount :value="replacedTotal" /></b> 处</span></li>
+            <li><FileText :size="15" :stroke-width="1.75" /><span v-if="outboundEmpty">正文没有实质变化，本轮无需发送给模型</span><span v-else>正文 <b class="num"><SiCount :value="outboundLength" /></b> 字，已在本机遮住 <b class="num"><SiCount :value="replacedTotal" /></b> 处</span></li>
             <li v-if="categoryChips.length" class="chips-li"><span class="chips"><span v-for="c in categoryChips" :key="c" class="chip">{{ c }}</span></span></li>
             <li><Ban :size="15" :stroke-width="1.75" /><span>不发送原件、图片和文件名</span></li>
             <li v-if="!assistant || sessionReview"><Sparkle :size="15" :stroke-width="1.75" class="t-ai" /><span>模型：{{ modelName || '审核模型' }}</span></li>
             <li v-if="!assistant && task.template_suggestion"><Bookmark :size="15" :stroke-width="1.75" /><span>对照范本：{{ task.template_suggestion.name }}</span><el-checkbox v-model="skipTemplate" :disabled="submitting" class="skip">不对照</el-checkbox></li>
           </ul>
           <div class="links">
-            <el-button link type="primary" size="small" :disabled="!outboundText" @click="outboundDrawer = true">查看将发送的全文</el-button>
+            <el-button link type="primary" size="small" :disabled="outboundLoading || !outboundText" @click="outboundDrawer = true">{{ scope === 'delta' ? '查看将发送的变化与问题' : '查看将发送的全文' }}</el-button>
             <el-button v-if="!assistant" link type="primary" size="small" @click="localDrawer = true">本地校验 {{ localCount ?? '—' }} 条</el-button>
             <el-button v-if="!assistant" link type="primary" size="small" @click="reqDrawer = true">审核要求</el-button>
           </div>
@@ -905,7 +927,7 @@ useHotkeys({
 
     <RequirementsDrawer v-model="reqDrawer" :stance="task.stance" :source="task.source" :doc-type="mainDocType" :user-note="task.user_note" />
     <el-drawer v-model="localDrawer" title="本地校验结果" size="560px" append-to-body><LocalCheckList :loader="loadLocal" :load-key="task.id" @count="localCount = $event" /></el-drawer>
-    <el-drawer v-model="outboundDrawer" title="将发送的全文" size="640px" append-to-body>
+    <el-drawer v-model="outboundDrawer" :title="scope === 'delta' ? '将发送的变化与问题' : '将发送的全文'" size="640px" append-to-body>
       <p v-if="outboundNote" class="hint">{{ outboundNote }}</p>
       <pre class="outbound">{{ outboundText }}</pre>
     </el-drawer>
