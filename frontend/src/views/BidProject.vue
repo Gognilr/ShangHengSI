@@ -70,7 +70,7 @@ function accept(data: BidProject) {
   resetTimer()
   // 扫描页延后识别：识别完成前继续轮询，结果随识别补上
   const ocr = data.check?.ocr
-  if (data.busy || data.stage === 'checking' || (ocr && ocr.total > ocr.done)) timer = setTimeout(() => void load(false), data.busy || data.stage === 'checking' ? 1500 : 5000)
+  if (data.busy || data.stage === 'checking' || (ocr && ocr.total > ocr.done) || data.check.ocr_result?.state === 'updating') timer = setTimeout(() => void load(false), data.busy || data.stage === 'checking' ? 1500 : 5000)
 }
 async function load(initial: boolean) {
   const current = generation, edit = edits
@@ -98,14 +98,18 @@ async function mutate(action: () => Promise<BidProject>, whenLocked = false) {
 }
 
 // ---- 初审结果：项目页读取一次，结果栏、投标人卡片与抽屉里的签章页共用（V35-F-05）
-const checkKey = computed(() => `${project.value?.stage}:${project.value?.check?.state}:${project.value?.check?.ocr?.done}:${project.value?.model?.state}:${project.value?.model?.done}`)
+const checkKey = computed(() => {
+  const p = project.value
+  return [p?.stage, p?.check.state, p?.check.ocr.done, p?.check.ocr_result?.state, p?.check.ocr_result?.version, p?.model.state, p?.model.done].join(':')
+})
 const modelKey = computed(() => `${project.value?.model?.state}:${project.value?.model?.done}`)
 let saving = 0, checkRequest = 0
 async function loadCheck() {
   if (phase.value !== 'results') return
   const current = ++checkRequest
-  try { const next = await bidApi.check(id.value); if (current === checkRequest && !saving) check.value = next }
-  catch (e) { if (current === checkRequest) notice.value = e instanceof ApiError ? e.message : '检查结果读取失败' }
+  const projectAtRequest = generation
+  try { const next = await bidApi.check(id.value); if (current === checkRequest && projectAtRequest === generation && !saving) check.value = next }
+  catch (e) { if (current === checkRequest && projectAtRequest === generation) notice.value = e instanceof ApiError ? e.message : '检查结果读取失败' }
 }
 watch(checkKey, () => void loadCheck(), { immediate: true })
 const counts = computed(() => Object.fromEntries((check.value?.conclusion.bidders ?? []).map(b => [b.id, b])))
@@ -198,6 +202,7 @@ const startBlock = computed(() => {
 })
 const canStart = computed(() => !!project.value && project.value.stage === 'ready' && !pending.value && (!startBlock.value || startBlock.value.startsWith('只有')))
 async function startCheck() { await mutate(() => bidApi.startCheck(id.value)); selected.value = '' }
+async function refreshCheck() { await mutate(() => bidApi.refreshCheck(id.value), true) }
 const reopenBlock = computed(() => ['preparing', 'running'].includes(project.value?.model.state ?? ''))
 // 重新检查：退回待开标后立即再检查一遍；“不是问题”保留，模型补查结果清掉
 async function recheck() {
@@ -363,7 +368,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         <span v-if="project.policy === 'local_only'" class="si-badge is-brand"><Lock :size="13" :stroke-width="1.75" />只在本机处理</span>
         <template v-if="phase === 'results' && check">
           <span v-if="check.conclusion.severe.length" class="si-badge is-hi"><i class="d" />严重 {{ check.conclusion.severe.length }}</span>
-          <span v-else class="si-badge is-brand">没有严重问题</span>
+          <span v-else-if="check.ocr_result?.state === 'final'" class="si-badge is-brand">没有严重问题</span>
           <span class="si-badge">提示 {{ check.conclusion.hint.length }}</span>
         </template>
       </div>
@@ -417,7 +422,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         <ListChecks :size="24" :stroke-width="1.75" />
         <div><b>检查完成后在这里列出问题</b><p>先列严重问题，再列提示。检查中不显示任何结论。</p></div>
       </div>
-      <BidResults v-else-if="phase === 'results'" class="results" :project="project" :bidder="selected" :model-key="modelKey" @changed="load(false)" @clear="selected = ''" />
+      <BidResults v-else-if="phase === 'results'" class="results" :project="project" :bidder="selected" :model-key="modelKey" @changed="load(false)" @refresh="refreshCheck" @clear="selected = ''" />
       <footer v-if="phase === 'materials'" class="page-foot"><p class="hint">系统只指出问题并定位原件，不作否决或串通投标的认定。</p></footer>
     </template>
 

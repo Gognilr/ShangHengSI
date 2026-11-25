@@ -259,6 +259,9 @@ def _local_check(db, task, project):
             project.check_state, project.check_error, project.stage = "failed", "本地检查中断，请重新开始初审", "ready"
             db.commit()
         return
+    # 先发布首检，再比较材料进度。识别任务若赶在首检发布前完成，由此接上补算；反之由识别任务补算。
+    from app.bid.pipeline import _recheck
+    _recheck(db, task.id, force=False)
     # 模型补查改为可选（V35-E-01）：本地检查完成后不再自动准备片段，由用户在结果页选择
 
 

@@ -347,6 +347,27 @@ def test_scanned_pages_deferred_and_added(owner, db_sessionmaker, monkeypatch):
     assert not any("识别中" in n for n in c.get(base + "/check").json()["coverage"])  # 重跑过检查
 
 
+def test_last_ocr_page_committed_before_first_check_publication(owner, db_sessionmaker, monkeypatch):
+    from app.bid import checks
+    from app.parsing import ocr
+    c, h, _ = owner
+    monkeypatch.setattr(ocr, "recognize", lambda _image: [ocr.OcrLine("虚构扫描文字", [100, 100, 900, 160], .95)])
+    original = checks._run_once
+
+    def overlap(db, task, *, progressive=True):
+        result = original(db, task, progressive=progressive)
+        if progressive:
+            # 三步已提交但首检状态仍在运行，在另一会话写入末页并尝试补算。
+            _jobs(db_sessionmaker, f"{ROOT}/{task.id}", "ocr")
+        return result
+
+    monkeypatch.setattr(checks, "_run_once", overlap)
+    _base, project, _ids = _checked(c, h, db_sessionmaker, [("虚构扫描件.pdf", scan_bid("FICTIVE"))])
+    assert project["check"]["ocr"] == {"done": 1, "total": 1}
+    assert project["check"]["ocr_result"]["state"] == "final"
+    assert project["check"]["ocr_result"]["included"] == {"done": 1, "total": 1}
+
+
 def test_unclassified_valid_certificate_does_not_hide_an_unrelated_expiry():
     from datetime import date
 

@@ -18,6 +18,12 @@ export interface BidFile {
 /** 唱标价（V34-B-06e）：人工录入的小写金额、大写与备注 */
 export interface BidOpeningPrice { amount: string; upper: string | null; note: string | null }
 export interface BidOpeningPriceInput { amount: string | null; upper?: string | null; note?: string | null }
+export interface BidOcrResult {
+  state: 'scanning' | 'updating' | 'failed' | 'final' | 'unknown' | 'expired' | null
+  included: { done: number; total: number } | null
+  version: string | null
+  note: string | null
+}
 export interface Bidder { id: string; name: string; short?: string; code: string; seq: number; opening_price?: (BidOpeningPrice & { text: string }) | null; pages?: number; ocr?: { done: number; total: number } }
 export type BidQuoteMode = 'fixed' | 'rate' | 'discount'
 export interface BidProject extends BidSummary {
@@ -26,7 +32,7 @@ export interface BidProject extends BidSummary {
   limits: { bid_files: number; tender_files: number; file_mb: number; pdf_pages: number; ocr_pages: number }
   /** key：启用的 ★ 与否决条款条数 */
   requirements: { enabled: number; key?: number; extract_state: BidExtractState }
-  check: { state: null | 'running' | 'done' | 'failed'; error: string | null; ocr: { done: number; total: number }; progress?: { done: number; total: number } }
+  check: { state: null | 'running' | 'done' | 'failed'; error: string | null; ocr: { done: number; total: number }; ocr_result: BidOcrResult; progress?: { done: number; total: number } }
   model: { state: BidModelState; error: string | null; done: number; total: number }
   sent_count?: number
   /** 受邀投标单位名单（V34-B-01b），全称 */
@@ -152,6 +158,7 @@ export interface BidConclusionData {
 export interface BidCheck {
   conclusion: BidConclusionData
   state: BidProject['check']['state']; error: string | null; coverage: string[]; items: BidItem[]
+  ocr_result: BidOcrResult
   steps: string[]; elapsed: Record<string, number>; cells: BidCell[]; pricing: BidPricing | null
   requirements: { id: string; group: BidGroup; text: string; method: BidMethod; seq: number }[]
   signing: BidSigning[]
@@ -234,6 +241,7 @@ export const bidApi = {
   assist: (id: string, action: 'start' | 'confirm' | 'cancel') => http.post<BidRequirements>(`/bid/${id}/assist/${action}`),
   confirm: (id: string) => http.post<BidRequirements>(`/bid/${id}/confirm`),
   startCheck: (id: string) => http.post<BidProject>(`/bid/${id}/check`),
+  refreshCheck: (id: string) => http.post<BidProject>(`/bid/${id}/check/refresh`),
   check: (id: string) => http.get<BidCheck>(`/bid/${id}/check`),
   model: (id: string) => http.get<BidModelView>(`/bid/${id}/model`),
   /** “不是问题”：标记或撤销（V35-E-01） */

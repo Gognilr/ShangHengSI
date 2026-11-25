@@ -10,7 +10,7 @@ import './charts/charts.css'
 // 初审结果（澄明 8.5）：主从两栏。左栏问题清单——先列严重，再列“提示 n 条”（默认折叠），每行一句话、下面一行出处，
 // 唯一的操作是“不是问题”（可撤销）；右栏是选中事项的证据。bidder 为只看这一家（点投标人卡片切换）。
 const props = defineProps<{ project: BidProject; bidder: string; modelKey: string }>()
-const emit = defineEmits<{ changed: []; clear: [] }>()
+const emit = defineEmits<{ changed: []; clear: []; refresh: [] }>()
 const ctx = inject(bidResultsKey)!
 const c = computed(() => ctx.data.value?.conclusion)
 const mine = (list: BidConclusionEntry[] = []) => props.bidder ? list.filter(e => e.bidder_ids.includes(props.bidder)) : list
@@ -29,8 +29,8 @@ watch([severe, hint, dismissed], () => {
   if (first && !severe.value.length) showHint.value = true
 }, { immediate: true })
 
-const ocr = computed(() => props.project.check.ocr)
-const preliminary = computed(() => ocr.value.total > ocr.value.done)
+const result = computed(() => ctx.data.value?.ocr_result ?? props.project.check.ocr_result)
+const preliminary = computed(() => ['scanning', 'updating', 'failed', 'expired'].includes(result.value?.state ?? ''))
 const scope = computed(() => props.bidder ? `${ctx.names.value[props.bidder] ?? ''} · 再点一次卡片看全部` : `全部 ${props.project.bidders.length} 家 · 点投标人卡片只看一家`)
 function who(e: BidConclusionEntry) { return e.bidder_ids.map(id => ctx.shorts.value[id] ?? '已移除').join('、') }
 function meta(e: BidConclusionEntry) {
@@ -50,7 +50,9 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
         <div class="md-h">
           <b>问题清单<span v-if="preliminary" class="si-badge is-info pre"><i class="d" />初步</span></b>
           <span class="scope">{{ scope }}<button v-if="bidder" type="button" class="clear" @click="emit('clear')">看全部</button></span>
-          <span v-if="preliminary" class="pre-note">扫描页还在识别（{{ ocr.done }} / {{ ocr.total }} 页），识别完后结论自动更新</span>
+          <span v-if="result?.note" class="pre-note">{{ result.note }}
+            <button v-if="result.state === 'failed'" type="button" class="clear" @click="emit('refresh')">重试更新</button>
+          </span>
         </div>
         <template v-if="c">
           <div class="mi-g">严重 <span class="num">{{ severe.length }}</span></div>
@@ -61,7 +63,7 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
               <el-button size="small" text class="nb" :disabled="busy === e.id" @click.stop="toggle(e, true)">不是问题</el-button>
             </div>
           </TransitionGroup>
-          <p v-if="!severe.length" class="none">{{ bidder ? '这一家没有严重问题。' : '没有严重问题。' }}</p>
+          <p v-if="!severe.length" class="none">{{ preliminary ? '当前已检查的材料未列出严重问题。' : bidder ? '这一家没有严重问题。' : '没有严重问题。' }}</p>
 
           <template v-if="hint.length">
             <button type="button" class="mi-g fold" :aria-expanded="showHint" @click="showHint = !showHint"><ChevronRight :size="14" :stroke-width="1.75" :class="{ turned: showHint }" />提示 <span class="num">{{ hint.length }}</span> 条</button>

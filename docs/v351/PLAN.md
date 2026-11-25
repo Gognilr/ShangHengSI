@@ -18,7 +18,7 @@
 | V351-00 | 核验 V3.5.0 基线并复核计划 | Q-01～18 | Opus，high | Sol 6.1，high | — | 技术复核 | 已完成（2026-11-25，Codex，[报告](reports/V351-00.md)） |
 | V351-A-01 | 浏览器现场录音按账号隔离 | Q-01 | Opus，high | Sol 6.1，high | 00 | 自审和双账号走查 | 已完成（2026-11-25，Codex，[报告](reports/V351-A-01.md)） |
 | V351-A-02 | 数据库与原件备份一致、先核验再切换恢复 | Q-02 | Opus，high | Sol 6.1，high | A-01 | 自审和隔离恢复演练 | 已完成（2026-11-25，Codex，[报告](reports/V351-A-02.md)） |
-| V351-A-03 | 标书 OCR 与初审结果、Word 覆盖一致 | Q-03、13 | Opus，high | Sol 6.1，high | A-02 | 另一侧复核、Word 目视 | 待开工 |
+| V351-A-03 | 标书 OCR 与初审结果、Word 覆盖一致 | Q-03、13 | Opus，high | Sol 6.1，high | A-02 | 自审和 Word 目视 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-03.md)） |
 | V351-A-04 | 审核批注按轮次选稿与归属 | Q-04 | Opus，medium | Sol 6.1，high | A-03 | Word 目视 | 待开工 |
 | V351-A-05 | 文件审核重开及确认后送审 | Q-17 | Opus，high | Sol 6.1，high | A-04 | 另一侧复核、虚构任务实走 | 待开工 |
 | V351-A-06 | 普通对话仅续发明确提交过的提问 | Q-18 | Opus，high | Sol 6.1，high | A-05 | 另一侧复核、模拟外发 | 待开工 |

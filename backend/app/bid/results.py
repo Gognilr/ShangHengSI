@@ -6,7 +6,7 @@ import uuid
 
 from sqlalchemy import delete, func, select
 
-from app.bid.service import require_originals
+from app.bid.service import _ocr, ocr_result, require_originals
 from app.db.models import BidBidder, BidCell, BidItem, BidProject, BidRequirement, DocNode, LlmCall, TaskFile
 from app.security import crypto
 from app.security.errors import AppError, NotFoundError
@@ -294,7 +294,7 @@ def sent_view(db, task):
 
 def check_view(db, task):
     """条目、单元格、条款、各家总价、签章页速览、覆盖说明与初审结论（严重 / 提示）。"""
-    project = db.get(BidProject, task.id)
+    project = db.get(BidProject, task.id, populate_existing=True, with_for_update={"read": True})
     summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
     rank = {"veto": 0, "strong": 1, "general": 2, "medium": 3, "weak": 4, "hint": 5, "normal": 6}
     items = sorted(db.scalars(select(BidItem).where(BidItem.task_id == task.id)), key=lambda i: (rank.get(i.level, 9), i.type))
@@ -303,8 +303,9 @@ def check_view(db, task):
                       .order_by(BidRequirement.seq))
     files = {str(f.id): f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id))}
     marks = project.signing or {}
+    status = ocr_result(project, _ocr(files.values()), any(f.original_deleted_at is not None for f in files.values()), summary=summary)
     view = {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
-            "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}),
+            "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}), "ocr_result": status,
             "pricing": json.loads(crypto.decrypt_text(project.pricing_enc)) if project.pricing_enc else None,
             "requirements": [{"id": r.id, "group": r.group, "text": crypto.decrypt_text(r.text_enc), "method": r.method, "seq": r.seq}
                              for r in reqs],

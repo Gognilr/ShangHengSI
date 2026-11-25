@@ -359,6 +359,8 @@ def build_bid_report(db, task: Task, user: User, scope: str = "full") -> tuple[s
     """scope：full 全部问题；clues 只导出串标线索。返回 (文件名, 内容)。"""
     d = _Data(db, task, user)
     doc = _new_document("标书初审问题清单" if scope == "full" else "标书初审串标线索")
+    if note := d.view["ocr_result"]["note"]:
+        _para(doc, note)
     _cover(doc, d, scope)
     _issues(doc, d, scope)
     if scope == "full":

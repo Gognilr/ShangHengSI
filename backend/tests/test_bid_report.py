@@ -65,6 +65,56 @@ def test_scenario_matches_golden(owner, db_sessionmaker):
         assert not any(k == g["kind"] and t == g["type"] and b == g["bidders"] for k, t, _lv, b in found), g
 
 
+def test_scanned_result_remains_preliminary_until_recheck_commits(owner, db_sessionmaker, monkeypatch):
+    from app.bid import checks
+    from app.parsing import ocr
+    from tests.fixtures.bid.samples import scan_bid
+    from tests.test_bid_checks import _checked
+
+    c, h, _ = owner
+    base, _, _ = _checked(c, h, db_sessionmaker, [("虚构扫描件.pdf", scan_bid("FICTIVE"))])
+    before = c.get(base + "/check").json()
+    assert before["ocr_result"]["state"] == "scanning"
+    lines = [ocr.OcrLine(text, [100, y, 900, y + 60], .95) for y, text in (
+        (100, "投标总价：人民币10000元"), (250, "投标总价：人民币20000元"),
+    )]
+    monkeypatch.setattr(ocr, "recognize", lambda _image: lines)
+    originals = checks._run_once
+    observed = []
+
+    def interrupt(db, task, *, progressive=True):
+        project = c.get(base).json()
+        interim = c.get(base + "/check").json()
+        assert project["check"]["ocr"]["done"] == project["check"]["ocr"]["total"] == 1
+        assert interim["ocr_result"]["state"] == "updating"
+        assert interim["ocr_result"]["included"] == {"done": 0, "total": 1}
+        assert interim["conclusion"]["severe"] == before["conclusion"]["severe"]
+        interim_word = c.get(base + "/report")
+        assert interim_word.status_code == 200 and interim["ocr_result"]["note"] in _text(interim_word.content)
+        observed.append(interim["ocr_result"]["included"])
+        raise RuntimeError("虚构补算失败")
+
+    monkeypatch.setattr(checks, "_run_once", interrupt)
+    _jobs(db_sessionmaker, base, "ocr")
+    assert observed == [{"done": 0, "total": 1}]
+    failed = c.get(base + "/check").json()
+    assert failed["ocr_result"]["state"] == "failed"
+    assert failed["ocr_result"]["version"] == before["ocr_result"]["version"]
+    assert failed["ocr_result"]["note"] in _text(c.get(base + "/report").content)
+
+    monkeypatch.setattr(checks, "_run_once", originals)
+    assert c.post(base + "/check/refresh", headers=h).status_code == 200
+    _jobs(db_sessionmaker, base, "ocr")
+    final = c.get(base + "/check").json()
+    assert final["ocr_result"]["state"] == "final" and final["ocr_result"]["included"] == {"done": 1, "total": 1}
+    assert final["ocr_result"]["version"] != before["ocr_result"]["version"]
+    issue = next(it for it in final["items"] if it["type"] == "multi_total")
+    assert any(p["page"] == 2 for row in issue["rows"] for places in row["places"].values() for p in places)
+    doc = _text(c.get(base + "/report").content)
+    assert final["conclusion"]["severe"][0]["title"] in doc and "虚构扫描件.pdf 第 2 页" in doc
+    assert failed["ocr_result"]["note"] not in doc
+
+
 def test_quote_shapes_through_check_and_word(owner, db_sessionmaker):
     from tests.test_bid_checks import _checked
 
@@ -314,8 +364,11 @@ def test_bid_original_retention_preserves_results_and_blocks_restart(owner, db_s
         assert run_retention(db, now)["tasks"] == 0
         _recheck(db, task_id)  # 已清理项目也不会被延后的 OCR 结果重算
 
-        # 已入队的旧版本重跑也要收尾，现有结果可继续查阅和导出。
+        # 已入队的旧版本重跑也要收尾，缺字段的既有结果可继续查看和导出。
         project = db.get(BidProject, task_id)
+        legacy = json.loads(crypto.decrypt_text(project.check_enc))
+        legacy.pop("ocr")
+        project.check_enc = crypto.encrypt_text(json.dumps(legacy))
         project.stage, project.check_state = "checking", "running"
         jobs.enqueue(db, "bid", {"task_id": str(task_id), "stage": "check"})
         db.commit()
@@ -330,5 +383,7 @@ def test_bid_original_retention_preserves_results_and_blocks_restart(owner, db_s
     for key in ("items", "cells", "pricing", "coverage"):
         assert after[key] == before[key]
     assert after["conclusion"]["dismissed"] == before["conclusion"]["dismissed"]
+    assert after["ocr_result"]["state"] == "unknown"
     report = c.get(base + "/report")
     assert report.status_code == 200 and "家列出严重问题" in _text(report.content)
+    assert after["ocr_result"]["note"] in _text(report.content)

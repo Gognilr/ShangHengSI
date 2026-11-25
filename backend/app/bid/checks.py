@@ -61,10 +61,14 @@ _NAME_KEY = re.compile(r"[\W_]+")
 
 # ---------------------------------------------------------------- 材料
 
-def _load(db, task_id):
+def _load(db, task_id, *, lock_files=False):
     """返回 (投标人列表, 节点 {bidder_id|None: [(file_id, loc, page, text, kind, ocr_conf)]}, 文件 {file_id: TaskFile})。"""
     bidders = list(db.scalars(select(BidBidder).where(BidBidder.task_id == task_id).order_by(BidBidder.seq)))
-    files = {f.id: f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task_id).order_by(TaskFile.seq))}
+    query = select(TaskFile).where(TaskFile.task_id == task_id).order_by(TaskFile.seq)
+    if lock_files:
+        # OCR 在同一事务更新文件进度并写节点。先锁文件，让两次读取得同一批材料。
+        query = query.with_for_update(read=True).execution_options(populate_existing=True)
+    files = {f.id: f for f in db.scalars(query)}
     nodes = defaultdict(list)
     seqs = {i: f.seq for i, f in files.items()}
     rows = db.execute(select(DocNode.file_id, DocNode.loc, DocNode.page, DocNode.text_enc, DocNode.kind, DocNode.ocr_conf, DocNode.bbox)
@@ -611,25 +615,19 @@ def _similar_step(bidders, nodes, history=(), title=None):
 
 
 def run(db, task):
-    """依次计算三步，每步替换本地条目并提交（前端先看到先完成的）；返回条目数。
-    运行期间扫描页识别有进展（识别任务只在检查完成后才重跑）时，结束后再跑一轮，最多三轮。"""
-    for _ in range(3):
-        count, before = _run_once(db, task)
-        files = {f.id: f for f in db.scalars(select(TaskFile).where(TaskFile.task_id == task.id)
-                                             .execution_options(populate_existing=True))}
-        if ocr_progress(files)[0] == before:
-            break
-    return count
+    """首轮分三步提交进度，已入库的新扫描页由完成后的补算纳入。"""
+    return _run_once(db, task)
 
 
 def _run_once(db, task, *, progressive=True):
-    bidders, nodes, files = _load(db, task.id)
-    before = ocr_progress(files)[0]
+    bidders, nodes, files = _load(db, task.id, lock_files=True)
+    done, total = ocr_progress(files)
     active = [b for b in bidders if nodes.get(b.id)]
     two = len(active) >= 2
     project = db.get(BidProject, task.id)
     from app.bid.results import signing_pages
-    summary = {"steps": [], "elapsed": {}, "notes": {}, "signing": signing_pages(active, nodes), "baseline": {}}
+    summary = {"steps": [], "elapsed": {}, "notes": {}, "signing": signing_pages(active, nodes), "baseline": {},
+               "ocr": {"done": done, "total": total}}
     count = 0
     if progressive and project.check_state == "running":
         # 新一轮检查先清掉上一轮的步骤记录，进度从 0 / 3 开始（V35-F-05）
@@ -671,4 +669,4 @@ def _run_once(db, task, *, progressive=True):
     summary["baseline"]["sentences"] = stats.get("dropped_tender", 0)
     save("similar", started, items)
     logger.info("标书本地检查完成 task=%s 条目=%s 句子=%s 用时=%s", task.id, count, stats.get("sentences", 0), summary["elapsed"])
-    return count, before
+    return count

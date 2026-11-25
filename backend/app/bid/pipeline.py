@@ -14,7 +14,7 @@ import uuid
 from sqlalchemy import delete, select, text
 
 from app.bid import fileprops
-from app.bid.service import LIMITS, lock_task, originals_expired
+from app.bid.service import LIMITS, OCR_RECHECK_FAILED, lock_task, originals_expired
 from app.db.base import utcnow
 from app.db.models import BidImage, BidProject, DocNode, Task, TaskClauseVector, TaskFile
 from app.parsing import docx, docx_images, pdf
@@ -175,21 +175,32 @@ def queue_ocr(db, task_id):
         jobs.enqueue(db, "bid", {"task_id": str(task_id), "stage": "ocr"})
 
 
-def _recheck(db, task_id):
-    """已完成初审的项目重跑本地检查。检查任务正在运行时不等：它结束时发现识别有进展会自己再跑一轮（checks.run）。"""
+def _recheck(db, task_id, *, force=True):
+    """补算不覆盖模型结论；首检尚在运行时由首检完成后补接。"""
     from app.bid import checks
     task = lock_task(db, task_id)
     project = db.get(BidProject, task_id, populate_existing=True) if task is not None else None
     if project is None or project.stage != "checked" or project.check_state != "done" or originals_expired(db, task_id):
         db.commit()
         return
+    if not force:
+        summary = json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {}
+        included = summary.get("ocr")
+        live = sum(meta.get("ocr_pages", 0) for _f, meta in _metas(db, task_id))
+        if included is not None and included["done"] == live and project.check_error != OCR_RECHECK_FAILED:
+            db.commit()
+            return
     try:
-        checks._run_once(db, task, progressive=False)
-        db.commit()
+        # 回滚失败的补算时仍持有任务锁，上一版结果和失败状态一起保留。
+        with db.begin_nested():
+            checks._run_once(db, task, progressive=False)
+            project.check_error = None
     except Exception:
         logger.warning("标书扫描页识别后重跑本地检查失败 task=%s", task_id)
-        db.rollback()
+        project.check_error = OCR_RECHECK_FAILED
+        db.commit()
         return
+    db.commit()
     from app.bid import model
     try:
         task = lock_task(db, task_id)
@@ -258,7 +269,7 @@ def _ocr_file(db, task_id, file_id, pages):
             db.commit()
             wrote = True
             if time.monotonic() - last >= RECHECK_SECONDS:
-                _recheck(db, task_id)
+                _recheck(db, task_id, force=False)
                 last = time.monotonic()
     return wrote
 
@@ -275,15 +286,13 @@ def ocr_project(db, task_id):
             if not got:
                 return
             try:
-                wrote = False
                 while True:
                     target = next(((f.id, list(m["ocr_pending"])) for f, m in _metas(db, task_id) if m.get("ocr_pending")), None)
                     db.commit()
                     if target is None:
                         break
-                    wrote = _ocr_file(db, task_id, *target) or wrote
-                if wrote:
-                    _recheck(db, task_id)
+                    _ocr_file(db, task_id, *target)
+                _recheck(db, task_id, force=False)
             finally:
                 conn.execute(text("SELECT pg_advisory_unlock(:a, :b)"), {"a": _OCR_LOCK, "b": key})
                 conn.commit()

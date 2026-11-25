@@ -519,6 +519,21 @@ def start_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
     return service.detail(db, task)
 
 
+@router.post("/{id}/check/refresh")
+def refresh_check(task: Task = Depends(owned), db: Session = Depends(get_db)):
+    """补算失败时重新排队，保留当前结果和模型补查。"""
+    from app.db import jobs
+    task = _lock_owned(db, task)
+    project = db.get(BidProject, task.id, populate_existing=True)
+    service.require_originals(db, task.id)
+    if project.stage != "checked" or project.check_error != service.OCR_RECHECK_FAILED:
+        raise AppError(409, "NO_CHECK_REFRESH", "当前结论无需重试更新")
+    project.check_error = None
+    jobs.enqueue(db, "bid", {"task_id": str(task.id), "stage": "ocr"})
+    db.commit()
+    return service.detail(db, task)
+
+
 @router.get("/{id}/check")
 def check_result(task: Task = Depends(owned), db: Session = Depends(get_db)):
     """初审结果：严重 / 提示两档的问题清单、条目、单元格、条款、签章页速览与覆盖说明。"""

@@ -21,6 +21,8 @@ def busy(db, task):
                                              Job.status.in_(("queued", "running"))).limit(1)))
 
 
+OCR_RECHECK_FAILED = "扫描页识别后的结论更新失败，请重试更新"
+
 MODEL_JOB_STAGES = ("redact", "extract", "snippets", "model")
 
 
@@ -134,6 +136,7 @@ def detail(db, task):
     project = db.get(BidProject, task.id)
     files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == task.id).order_by(TaskFile.seq)))
     state = load_state(project)
+    ocr = _ocr(files)
     return {"id": task.id, "title": task.title, "opening_date": project.opening_date, "policy": task.policy,
             "stage": project.stage, "status": task.status, "category_id": project.category_id, "folder_id": project.folder_id, "error_message": task.error_message,
             "last_activity_at": task.last_activity_at, "busy": busy(db, task), "limits": LIMITS,
@@ -145,7 +148,8 @@ def detail(db, task):
                                  BidRequirement.task_id == task.id, BidRequirement.enabled.is_(True),
                                  BidRequirement.group.in_(("veto", "substantive")))) or 0,
                              "extract_state": project.extract_state},
-            "check": {"state": project.check_state, "error": project.check_error, "ocr": _ocr(files),
+            "check": {"state": project.check_state, "error": project.check_error, "ocr": ocr,
+                      "ocr_result": ocr_result(project, ocr, any(f.original_deleted_at is not None for f in files)),
                       "progress": check_progress(project)},
             "model": {"state": project.model_state, "error": project.model_error, **_model_progress(db, task)},
             "bidders": _bidder_views(db, task, files),
@@ -194,6 +198,27 @@ def _ocr(files):
     from app.bid.checks import ocr_progress
     done, total = ocr_progress({f.id: f for f in files})
     return {"done": done, "total": total}
+
+
+def ocr_result(project, live, expired, *, summary=None):
+    """结果以该次实际纳入的页数为准；实时识别进度只用来判断是否还有工作。"""
+    summary = summary if summary is not None else (
+        json.loads(crypto.decrypt_text(project.check_enc)) if project.check_enc else {})
+    included, version = summary.get("ocr"), summary.get("finished_at")
+    state, note = "final", None
+    if project.stage != "checked":
+        state = None
+    elif project.check_error == OCR_RECHECK_FAILED and not expired:
+        state, note = "failed", "扫描页识别后的结论更新失败，以下为上一次检查结果。"
+    elif included is None:
+        state, note = "unknown", "历史结果未记录本次检查纳入的扫描页数，请结合已有说明核对原件。"
+    elif expired and included["done"] < included["total"]:
+        state, note = "expired", "这是初步结果，部分扫描页未纳入检查，原件已按保留期清理。"
+    elif live["done"] < live["total"]:
+        state, note = "scanning", f"初步结果已纳入 {included['done']} / {included['total']} 页扫描内容，识别完后自动更新。"
+    elif live["done"] > included["done"]:
+        state, note = "updating", f"扫描页已识别，正在更新结论。初步结果已纳入 {included['done']} / {included['total']} 页扫描内容。"
+    return {"state": state, "included": included, "version": version, "note": note}
 
 
 def queue_parse(db, task):
