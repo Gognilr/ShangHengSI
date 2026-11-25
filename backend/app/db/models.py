@@ -541,6 +541,7 @@ class DocNode(Base):
     has_revision: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     # “拒绝全部修订”后的原文，只有带修订且与 text 不同的 DOCX 正文节点有值（V35-D-02），随 text_enc 清理
     text_before_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    ocr_original_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)  # PDF 校订前的首份识别稿
 
 
 # ---- 18.8 parties ----

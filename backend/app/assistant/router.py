@@ -18,6 +18,7 @@ from app.security.errors import AppError, NotFoundError
 from app.security.permissions import require
 from app.security.sessions import client_ip
 from app.tasks import service as tasks
+from app.tasks.schemas import OcrCorrection
 from pydantic import BaseModel, Field
 
 
@@ -343,6 +344,12 @@ def transcript(request: Request, format: Literal['docx'] = 'docx', file: TaskFil
     return Response(content=data, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                     headers={'Content-Disposition':f"attachment; filename*=UTF-8''{quote('逐字稿.docx')}",
                              'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff'})
+
+
+@router.patch("/{id}/files/{fid}/ocr/{loc}", dependencies=[Depends(require("use.review"))])
+def correct_ocr(loc: str, body: OcrCorrection, request: Request, file: TaskFile = Depends(owned_file),
+                task: Task = Depends(owned_session), user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return tasks.correct_ocr(db, task, file.id, loc, body, user, client_ip(request))
 
 
 @router.get("/{id}/files/{fid}/raw")

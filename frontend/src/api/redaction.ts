@@ -127,7 +127,7 @@ export const redactionApi = {
   /** 删掉签约方：它的全部写法都不再遮住 */
   removeParty: (taskId: string, partyId: string) => http.delete<RedactionInfo>(`/tasks/${taskId}/parties/${partyId}`),
   /** 外发文本预览（代号版本），只能按纯文本显示。 */
-  outbound: (taskId: string) => http.get<{ text: string; note: string | null }>(`/tasks/${taskId}/redaction/outbound`),
+  outbound: (taskId: string) => http.get<{ text: string; note: string | null; material_version: number }>(`/tasks/${taskId}/redaction/outbound`),
   leaks: (taskId: string) => http.get<LeakList>(`/tasks/${taskId}/redaction/leaks`),
   /** 确认这一处可以发送（只限电话、人名等重扫命中；已替换内容与金额不可豁免）。 */
   keepLeak: (taskId: string, body: { loc: string; char_start: number; char_end: number }) =>

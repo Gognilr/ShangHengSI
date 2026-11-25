@@ -404,7 +404,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
         <el-button size="small" link type="primary" @click="router.push({ path: `/assistant/${session.draft_hint.session_id}`, query: { mode: 'review' } })">打开那次审核</el-button>
         <el-button size="small" link aria-label="关闭提示" @click="hintClosed = session.id">×</el-button>
       </div>
-      <ConfirmWorkbench :key="`${session.id}:${pendingFiles.map(f => f.id).join(',')}`" class="confirm-wb" :task="confirmationTask(session)" mode="session-review" require-our-party
+      <ConfirmWorkbench :key="`${session.id}:${pendingFiles.map(f => f.id).join(',')}`" class="confirm-wb" :task="confirmationTask(session)" mode="session-review" require-our-party :allow-ocr="(session.run_count ?? 0) === 0"
         v-model:picked="picked" v-model:main-id="mainId" :diff-loader="diffLoader" :stance="stance" :file-ids="runFiles()" :scope="runScope()" :model-name="modelName" :blocker="confirmBlocker" :blocker-choice="!!confirmCheck.field" :submit="submitConfirm"
         @our="confirmOur = $event" @preview="previewVersion = $event" @stale="emit('refresh')" @nudge="nudgeConfirm" @blocked="blockedN = $event">
         <template #settings>

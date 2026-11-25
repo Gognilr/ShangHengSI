@@ -59,6 +59,11 @@ class TaskFileOut(BaseModel):
     parse_error: str | None = None
 
 
+class OcrCorrection(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+    expected_material_version: int = Field(ge=0)
+
+
 class PreviewNode(BaseModel):
     """预览节点（设计 M3 第七节）；text 为解密后的原文，保留期清理后为 None。"""
 
@@ -76,6 +81,8 @@ class PreviewNode(BaseModel):
     sheet: str | None
     cell_ref: str | None
     ocr_conf: float | None
+    ocr_corrected: bool = False
+    ocr_editable: bool = False
     parent_loc: str | None
 
 

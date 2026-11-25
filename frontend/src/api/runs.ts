@@ -153,7 +153,7 @@ export function canAnnotateRunFile(run: RunDetail | null, file: { id: string; an
 }
 
 export const runsApi = {
-  create: (taskId: string, useTemplate = true, modelId?: number) => http.post<RunCreated>(`/tasks/${taskId}/runs`, { use_template: useTemplate, model_id: modelId }),
+  create: (taskId: string, useTemplate = true, modelId?: number, materialVersion?: number) => http.post<RunCreated>(`/tasks/${taskId}/runs`, { use_template: useTemplate, model_id: modelId, expected_material_version: materialVersion }),
   list: (taskId: string) => http.get<{ items: RunListItem[] }>(`/tasks/${taskId}/runs`),
   get: (runId: string) => http.get<RunDetail>(`/runs/${runId}`),
   sent: (runId: string) => http.get<SentText>(`/runs/${runId}/sent`),

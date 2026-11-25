@@ -20,7 +20,7 @@ from app.security.errors import AppError, NotFoundError
 from app.security.sessions import client_ip
 from app.tasks import service
 from app.redaction import stats
-from app.tasks.schemas import PreviewNodes, TaskCreated, TaskDetail, TaskFileOut, TaskPage, TaskPatch
+from app.tasks.schemas import OcrCorrection, PreviewNodes, TaskCreated, TaskDetail, TaskFileOut, TaskPage, TaskPatch
 
 _review = require("use.review")
 router = APIRouter(prefix="/tasks")
@@ -148,6 +148,12 @@ def get_file_nodes(
     db: DbSession = Depends(get_db),
 ) -> PreviewNodes:
     return service.preview_nodes(db, task, file)
+
+
+@router.patch("/{id}/files/{fid}/ocr/{loc}", dependencies=[Depends(_review)])
+def correct_ocr(loc: str, body: OcrCorrection, request: Request, file: TaskFile = Depends(owned_task_file),
+                task: Task = Depends(owned_task), user: User = Depends(current_user), db: DbSession = Depends(get_db)):
+    return service.correct_ocr(db, task, file.id, loc, body, user, client_ip(request))
 
 
 @router.get("/{id}/files/{fid}/raw")

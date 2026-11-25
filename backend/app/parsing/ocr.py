@@ -91,6 +91,13 @@ SIGN_MARK = "〔签字处请看原件〕"
 _ADDR_LABEL = re.compile(r"^(?:.{0,6})(?:地址|住所|地点|通讯地址|注册地址|联系地址|收货地址)[：:]")
 
 
+def unclear_signature_only(text: str) -> bool:
+    if SIGN_MARK not in text:
+        return False
+    label = text.replace(SIGN_MARK, "").strip()
+    return not label or bool(_SIGN_LABEL.fullmatch(label))
+
+
 def clean_lines(lines: list[OcrLine], low_conf: float) -> list[OcrLine]:
     """合并为块之前的行级清理：去扫描软件水印；签字栏后低置信的 1～3 字换成提示，不当作人名、也不外发乱字。"""
     out = [ln for ln in lines if not _WATERMARK.search(ln.text)]

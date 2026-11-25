@@ -43,6 +43,7 @@ def contract_compare(response: Response, baseline: UploadFile = File(), revised:
 class RunIn(BaseModel):
     use_template: bool = True
     model_id: int | None = Field(None, gt=0)
+    expected_material_version: int | None = Field(None, ge=0)
 
 
 @router.post("/tasks/{id}/runs", status_code=status.HTTP_201_CREATED, response_model=RunCreated, dependencies=[Depends(_review)])
@@ -54,7 +55,8 @@ def create_run(
     db: DbSession = Depends(get_db),
 ) -> RunCreated:
     run = service.create_run(db, task, user, client_ip(request),use_template=body.use_template if body else True,
-                             model_id=body.model_id if body else None)
+                             model_id=body.model_id if body else None,
+                             expected_material_version=body.expected_material_version if body else None)
     return RunCreated(id=run.id, run_no=run.run_no, status=run.status, remembered=task.__dict__.get('_remembered', []))
 
 

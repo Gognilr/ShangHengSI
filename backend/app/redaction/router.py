@@ -131,6 +131,7 @@ class PartyAlias(BaseModel):
 class OutboundOut(BaseModel):
     text: str
     note: str | None
+    material_version: int
 
 
 class LeakOut(BaseModel):
@@ -317,7 +318,8 @@ def forget_kept(body: ForgetKept, task: Task = Depends(owned_readable_task), use
 
 @router.get("/redaction/outbound", response_model=OutboundOut)
 def get_outbound(task: Task = Depends(owned_task), db: DbSession = Depends(get_db)) -> OutboundOut:
-    return OutboundOut(text=engine.build_outbound_text(db, task), note=task.user_note_redacted)
+    return OutboundOut(text=engine.build_outbound_text(db, task), note=task.user_note_redacted,
+                       material_version=task.material_version)
 
 
 def _leaks(db: DbSession, task: Task) -> LeakList:

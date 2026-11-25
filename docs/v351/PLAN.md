@@ -31,7 +31,7 @@
 | V351-C-02 | 知识库失败项可原位重新上传 | Q-12 | Sonnet，medium | Terra，medium | C-01 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-C-02.md)） |
 | V351-D-01 | 标书结果页更正唱标价 | Q-14 | Sonnet，medium | Terra，medium | C-02、A-03 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-D-01.md)） |
 | V351-D-02 | 合同沉淀显示复用状态与重试 | Q-15 | Sonnet，high | Sol 6.1，medium | D-01、C-02 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-D-02.md)） |
-| V351-D-03 | 文件审核确认脱敏页就地校对 PDF 扫描文字 | Q-16 | Opus，high | Sol 6.1，high | D-02 | 另一侧脱敏复核 | 已纳入，待开工 |
+| V351-D-03 | 文件审核确认脱敏页就地校对 PDF 扫描文字 | Q-16 | Opus，high | Sol 6.1，high | D-02 | 另一侧脱敏复核 | 已完成（2026-11-26，Codex，[报告](reports/V351-D-03.md)） |
 | V351-Z | 双基线验收、复核规格、打包和发布 | Q-01～18 | Opus，high | Sol 6.1，high | A～D | 报告交用户，推标签和升级前等确认 | 待开工 |
 
 执行顺序 **00 → A-01～06 → B-01～05 → C-01～02 → D-01～03 → Z**。
@@ -149,7 +149,7 @@
 - **现状** 文件审核只有只读识别稿、结果页原件查看和脱敏调整。PDF 扫描错字没有校对入口，签章附近的高置信错字也可能照常进入识别稿。V3.5.0 的 OpenAPI 和签字行预处理已用断网容器验证，见 Q-16。
 - **做法** 按用户 2026-11-25 确认的入口，在现有确认脱敏页点选已有的 OCR 文字块或扫描表格单元格，使用「改识别文字」原位编辑、保存或取消，可在同页看原件对应区域。对照原件更正看得清的文字，有歧义、看不清的签章和没有识别块的区域保留「需看原件」提示。原件字节和原识别值保留，校订稿本机加密，沿用同一证据页码与定位框。范围先限 PDF 中确认为 OCR 的正文节点。
 - **重新确认** 校订保存后刷新当前材料版本及确认页节点，重跑受影响的本地校验与脱敏。受影响的旧选区、确认和外发预览失效，用户核对后再按既有流程送审并执行出口复检。写入在任务锁内校验本人、解析与审核状态。首版建议只对首次送审前的确认脱敏页开放，已出结果的资料可以从原件新建审核后进入同一页校对，原轮次继续按原有依据查阅。签字盖章状态由人看原件判断。
-- **文件** 候选范围为 `frontend/src/components/ConfirmCanvas.vue`、`frontend/src/components/ConfirmWorkbench.vue`、`frontend/src/components/DocPreview.vue`、`frontend/src/api/preview.ts`、`frontend/src/api/assistant.ts`、`backend/app/tasks/router.py`、`backend/app/tasks/service.py`、`backend/app/assistant/router.py`、`backend/app/tasks/pipeline.py` 和对应专项。加密校订存储、材料版本及相关字段变更在设计确认时列出具体文件与 Alembic 迁移，再进入实现。
+- **文件** `frontend/src/components/ConfirmCanvas.vue`、`frontend/src/components/ConfirmWorkbench.vue`、`frontend/src/components/DocPreview.vue`、`frontend/src/components/workspace/ReviewPane.vue`、`frontend/src/api/preview.ts`、`frontend/src/api/assistant.ts`、`frontend/src/api/redaction.ts`、`frontend/src/api/runs.ts`、`backend/app/tasks/router.py`、`backend/app/tasks/service.py`、`backend/app/tasks/schemas.py`、`backend/app/assistant/router.py`、`backend/app/tasks/pipeline.py`、`backend/app/review/router.py`、`backend/app/review/service.py`、`backend/app/redaction/router.py`、`backend/app/parsing/pdf.py`、`backend/app/parsing/ocr.py`、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0059_ocr_correction.py`、`backend/app/backup/retention.py`、`backend/tests/test_a03_outbound.py` 及该卡虚构 golden 标注。复用 DocPreview、已有 OCR 置信度来源及材料版本。新增 `ocr_original_enc` 保留首份识别稿，随原件保留期清理并自动纳入主密钥轮换。旧送审路径同步校验预览版本。
 - **验收** 一份虚构扫描 PDF 含签章旁看得清的日期或印刷姓名误读，以及一处看不清的签名。校订后原件逐字节一致，预览重新脱敏、确认与出口复检通过，页码和定位不漂移，看不清处只提示人工核验。用新任务和原件仍在的旧审核各核对一次，历史轮次报告保持原有依据。列一个 golden 样本并用 A-03 验证校订文本外发，真实模型调用另行确认。
 
 ## 五、V351-Z 阶段复核与发布

@@ -353,12 +353,12 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
     else:
         lines = ocr.recognize(img)
     # 合并前先去掉已有文字的 OCR 行，避免页眉与紧邻的图片正文合并后整块被丢弃。
-    lines = [ln for ln in lines if not overlaps([v / scale for v in ln.bbox])]
+    lines = ocr.clean_lines([ln for ln in lines if not overlaps([v / scale for v in ln.bbox])], LOW_OCR_CONF)
     # 线框表格（V34-D-02）在像素图上找，单元格框直接换算为 PDF 点；其余行照旧合并为块。
     tables, used = ocr_table.find_tables(img, lines, scale)
     for ln in lines:  # 像素 → PDF 点
         ln.bbox = [v / scale for v in ln.bbox]
-    rest = ocr.clean_lines([ln for i, ln in enumerate(lines) if i not in used], LOW_OCR_CONF)
+    rest = [ln for i, ln in enumerate(lines) if i not in used]
     first_no = max((int(n.loc.rsplit('-B', 1)[1]) for n in existing if re.search(r'-B\d+$', n.loc)), default=0) + 1
     table_no = max((int(m[1]) for n in existing if (m := re.search(r'-T(\d+)-R\d+-C\d+$', n.loc))), default=0)
     items = [(t.top, "table", t) for t in tables]

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, nextTick, reactive, ref, watch, type FunctionalComponent, type VNode } from 'vue'
 import { ApiError } from '@/api/http'
-import { previewApi, type PreviewNode, type PreviewNodes } from '@/api/preview'
+import { previewApi, type OcrCorrection, type PreviewNode, type PreviewNodes } from '@/api/preview'
 import type { ManualInput, RedactionItemPos, Suspect, SuspectCategory, UserCategory } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
 import type { DiffChange, DiffResult } from '@/api/assistant'
@@ -40,6 +40,9 @@ const props = defineProps<{
   aiView?: boolean
   askEnabled?: boolean
   rawHighlight?: string[]
+  correctOcr?: (fileId: string, loc: string, body: OcrCorrection) => Promise<void>
+  ocrVersion?: number | null
+  ocrBusy?: boolean
   /** 工作台会话（V35-D-02）：有上一稿的文件多一个“对比上一稿”视图，只读 */
   diffLoader?: (fileId: string, prevId: string) => Promise<DiffResult>
 }>()
@@ -55,6 +58,7 @@ const emit = defineEmits<{
   adjust: [item: RedactionItemPos, start: number, end: number, category?: UserCategory]
   select: [findingId: string]
   ask: [prefill: string]
+  'ocr-editing': [open: boolean]
 }>()
 
 const fx = useFx()
@@ -80,12 +84,65 @@ function stamp(ms = 0) { const s = Math.floor(ms/1000); return [Math.floor(s/360
 const activeFile = computed(() => sortedFiles.value.find(f => f.id === activeId.value))
 // 原件视图：PDF 或图片且原件未删除
 const rawAvailable = (f: TaskFile | undefined) => !!f && !f.original_deleted_at && ['pdf', 'jpg', 'jpeg', 'png'].includes(f.ext.toLowerCase().replace(/^\./, ''))
+const pickedOcr = ref('')
+const ocrDraft = ref<{ file: TaskFile; node: PreviewNode; version: number; text: string } | null>(null)
+const ocrError = ref(''), ocrNotice = ref(''), savingOcr = ref(false)
+const editorInput = ref<{ focus: () => void }>()
+const scan = computed(() => !!props.correctOcr && !isResult.value && activeFile.value?.ext === 'pdf' && rawAvailable(activeFile.value))
+function canPickOcr(node: PreviewNode) {
+  return scan.value && view.value === 'orig' && node.ocr_conf != null && node.page != null && !!node.bbox?.length
+}
+const selectedOcr = computed(() => active.value?.nodes.find(node => node.loc === pickedOcr.value && canPickOcr(node)))
+const hasOcr = computed(() => scan.value && active.value?.nodes.some(node => node.ocr_conf != null))
+function pickOcr(node: PreviewNode) { if (canPickOcr(node)) pickedOcr.value = node.loc }
+function endOcr() {
+  ocrDraft.value = null
+  ocrError.value = ''
+  emit('ocr-editing', false)
+}
+watch([activeId, view], ([file, nextView], [previousFile]) => {
+  if (file !== previousFile || nextView !== 'raw') pickedOcr.value = ''
+  ocrNotice.value = ''
+  if (ocrDraft.value && !savingOcr.value) endOcr()
+})
+async function editOcr() {
+  const node = selectedOcr.value, file = activeFile.value, version = props.ocrVersion
+  if (!node?.ocr_editable || !file || version == null || props.ocrBusy) return
+  cancel()
+  ocrNotice.value = ''
+  ocrDraft.value = { file, node, version, text: node.text ?? '' }
+  emit('ocr-editing', true)
+  await nextTick()
+  editorInput.value?.focus()
+}
+async function commitOcr() {
+  const draft = ocrDraft.value
+  if (!draft || !props.correctOcr || savingOcr.value || props.ocrBusy || !draft.text.trim()) return
+  savingOcr.value = true
+  ocrError.value = ''
+  try {
+    await props.correctOcr(draft.file.id, draft.node.loc, { text: draft.text, expected_material_version: draft.version })
+    endOcr()
+    await reloadActive()
+    if (activeId.value === draft.file.id && !active.value?.error) {
+      await locate(draft.node.loc)
+      pickedOcr.value = draft.node.loc
+      ocrNotice.value = '已保存校订，待发预览已更新，请重新核对'
+    }
+  } catch (e) {
+    if (e instanceof ApiError && ['MATERIAL_CHANGED', 'TASK_STATE_CONFLICT'].includes(e.code)) {
+      endOcr()
+      await reloadActive()
+      ocrNotice.value = '材料已变化，请重新选中并核对识别文字'
+    } else ocrError.value = e instanceof ApiError || e instanceof Error ? e.message : '保存校订失败，请重试'
+  } finally { savingOcr.value = false }
+}
 const hasPrev = computed(() => !!props.diffLoader && !!activeFile.value?.prev_file_id)
 const viewOptions = computed(() => [
   { value: 'orig' as const, label: '原文' },
   ...(props.aiView === false ? [] : [{ value: 'ai' as const, label: '模型将看到的' }]),
   ...(hasPrev.value ? [{ value: 'diff' as const, label: '对比上一稿' }] : []),
-  ...(isResult.value && rawAvailable(activeFile.value) ? [{ value: 'raw' as const, label: '原件' }] : []),
+  ...((isResult.value || scan.value) && rawAvailable(activeFile.value) ? [{ value: 'raw' as const, label: '原件' }] : []),
 ])
 watch(viewOptions, opts => { if (!opts.some(o => o.value === view.value)) view.value = 'orig' })
 
@@ -140,6 +197,14 @@ async function loadFile(id: string) {
   } catch (e) {
     st.error = e instanceof ApiError ? e.message : '加载失败，请重试'
   } finally { st.loading = false }
+}
+async function reloadActive() {
+  const fileId = activeId.value
+  cancel()
+  pickedOcr.value = ''
+  if (!fileId) return
+  delete states[fileId]
+  await loadFile(fileId)
 }
 // 文件增删或主文件变化后重新读取节点
 watch(() => sortedFiles.value.map(f => f.id).join(','), () => {
@@ -409,7 +474,13 @@ function onPaperClick(event: MouseEvent) {
   if (window.getSelection() && !window.getSelection()!.isCollapsed) return
   const fidEl = isResult.value ? (event.target as HTMLElement).closest<HTMLElement>('[data-fid]') : null
   if (fidEl && !(event.target as HTMLElement).closest('[data-seg]')) { closePop(); emit('select', fidEl.dataset.fid!); return }
-  const el = (event.target as HTMLElement).closest<HTMLElement>('[data-seg]')
+  const tgt = event.target as HTMLElement
+  if (hasOcr.value && view.value === 'orig') {
+    const loc = tgt.closest<HTMLElement>('[data-node]')?.dataset.node
+    const node = active.value?.nodes.find(n => n.loc === loc)
+    if (node) pickOcr(node)
+  }
+  const el = tgt.closest<HTMLElement>('[data-seg]')
   if (!el || !wrap.value) { closePop(); return }
   const seg = el.dataset.seg as Pop['seg']
   const box = el.getBoundingClientRect()
@@ -617,27 +688,47 @@ function onPaperOver(event: MouseEvent) {
     text: ai ? (el.dataset.orig ?? '') : item.placeholder,
   }
 }
-defineExpose({ locate, switchFile, toggleView, cancel, showDiff })
+defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
 </script>
 
 <template>
   <div ref="wrap" class="cv">
     <div class="cv-bar">
       <div v-if="sortedFiles.length > 1" class="tabs" role="tablist">
-        <button v-for="f in sortedFiles" :key="f.id" type="button" role="tab" class="tab" :class="{ on: f.id === activeId }" :aria-selected="f.id === activeId" :title="f.original_name" @click="activeId = f.id">
+        <button v-for="f in sortedFiles" :key="f.id" type="button" role="tab" class="tab" :class="{ on: f.id === activeId }" :aria-selected="f.id === activeId" :disabled="!!ocrDraft" :title="f.original_name" @click="activeId = f.id">
           <span class="tab-name">{{ f.original_name }}</span><span class="tab-n">{{ replaceCount(f) }}</span>
         </button>
       </div>
-      <SiSegmented v-model="view" :options="viewOptions" size="small" ariaLabel="原文、模型将看到的或对比上一稿" />
-      <div v-if="!isResult && sortedFiles.length <= 1" class="legend" aria-label="颜色说明">
+      <SiSegmented v-if="!ocrDraft" v-model="view" :options="viewOptions" size="small" ariaLabel="原文、模型将看到的或对比上一稿" />
+      <el-button v-if="hasOcr && !ocrDraft && view === 'orig'" size="small" text type="primary"
+        :disabled="!selectedOcr?.ocr_editable || ocrBusy || ocrVersion == null" @click="editOcr">改识别文字</el-button>
+      <div v-if="!isResult && sortedFiles.length <= 1 && !ocrDraft" class="legend" aria-label="颜色说明">
         <span v-for="[k, label] in LEGEND" v-show="presentKinds.has(k)" :key="k" :class="`k-${k}`"><i class="kdot" />{{ label }}</span>
       </div>
       <span v-else-if="sortedFiles.length <= 1" class="spacer" />
       <div v-if="$slots.bar" class="cv-extra"><slot name="bar" /></div>
     </div>
 
-    <DocPreview v-if="view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? []" :node-loader="nodeLoader" :raw-loader="rawLoader" />
-    <div v-else class="stage-wrap">
+    <section v-if="ocrDraft" class="ocr-editor" aria-label="校对 PDF 扫描文字">
+      <div class="ocr-original">
+        <p class="hint">原件 · 第 {{ ocrDraft.node.page }} 页</p>
+        <DocPreview :task-id="taskId" :file="ocrDraft.file" :highlight="[ocrDraft.node.loc]" :focus-page="ocrDraft.node.page ?? undefined" :node-loader="nodeLoader" :raw-loader="rawLoader" />
+      </div>
+      <div class="ocr-form">
+        <label class="ocr-label" for="ocr-correction">识别文字</label>
+        <el-input id="ocr-correction" ref="editorInput" v-model="ocrDraft.text" type="textarea" :rows="8"
+          maxlength="20000" :disabled="savingOcr" @keydown.esc.stop.prevent="!savingOcr && endOcr()" />
+        <p class="hint">对照原件改清晰可辨的文字。签字、盖章看不清时，请核验原件并保留提示。</p>
+        <el-alert v-if="ocrError" :title="ocrError" type="error" :closable="false" show-icon />
+        <div class="ocr-actions">
+          <el-button :disabled="savingOcr" @click="endOcr">取消</el-button>
+          <el-button type="primary" :loading="savingOcr" :disabled="ocrBusy || !ocrDraft.text.trim() || ocrDraft.text === ocrDraft.node.text"
+            @click="commitOcr">保存校订</el-button>
+        </div>
+      </div>
+    </section>
+    <DocPreview v-if="!ocrDraft && view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? (pickedOcr ? [pickedOcr] : [])" :node-loader="nodeLoader" :raw-loader="rawLoader" />
+    <div v-else v-show="!ocrDraft" class="stage-wrap">
     <div ref="scroller" v-loading="active?.loading || (view === 'diff' && activeDiff?.loading)" class="stage si-stage" :class="{ 'with-spectrum': isResult || view === 'diff' }" @scroll.passive="onStageScroll">
       <el-alert v-if="active?.error" type="error" show-icon :closable="false" :title="active.error" />
       <el-empty v-else-if="active && !active.loading && !active.available" description="原文已按保留期清理" />
@@ -645,7 +736,8 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff })
       <el-empty v-else-if="active && !active.loading && !blocks.length" description="没有可显示的正文" />
       <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult, diffing: view === 'diff' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null">
         <template v-for="(b, bi) in blocks" :key="bi">
-          <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv)]" :data-node="b.nv.node.loc">
+          <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv), { 'ocr-picked': pickedOcr === b.nv.node.loc, 'ocr-pickable': canPickOcr(b.nv.node) && b.nv.node.ocr_editable }]" :data-node="b.nv.node.loc"
+            :tabindex="canPickOcr(b.nv.node) ? 0 : undefined" @keydown.enter.self.prevent="pickOcr(b.nv.node)">
             <div v-if="b.nv.node.kind === 'utterance'" class="utterance-meta"><span :class="{ code: view === 'ai' && b.nv.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nv.node.speaker_code : utteranceLabel(b.nv.node) }}</span> · {{ stamp(b.nv.node.t_start_ms ?? 0) }}</div>
             <button v-if="b.nv.tags" type="button" class="ann-tag" :data-fid="b.nv.tags[0]!.id">{{ tagText(b.nv.tags) }}</button>
             <span v-if="b.nv.diff && (b.nv.diff.untracked || diffTag(b.nv.diff))" class="d-tag" :class="{ 'd-tag-u': b.nv.diff.untracked && b.nv.diff.type !== 'format' }">{{ b.nv.diff.untracked && b.nv.diff.type !== 'format' ? (b.nv.diff.mixed ? '部分未留痕' : '未留痕') : diffTag(b.nv.diff) }}</span>
@@ -666,7 +758,9 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff })
             <span v-for="nv in b.nvs" :key="nv.node.loc" class="sent" :data-node="nv.node.loc" :class="nodeClass(nv)"><NodeText :nv="nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></span>
           </div>
           <table v-else-if="b.t === 'table'" class="tbl">
-            <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc" :class="nodeClass(c)" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"><DiffText v-if="c.diff" :c="c.diff" /><NodeText v-else :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>
+            <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc" :class="[nodeClass(c), { 'ocr-picked': pickedOcr === c.node.loc, 'ocr-pickable': canPickOcr(c.node) && c.node.ocr_editable }]"
+              :tabindex="canPickOcr(c.node) ? 0 : undefined" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"
+              @keydown.enter.self.prevent="pickOcr(c.node)"><DiffText v-if="c.diff" :c="c.diff" /><NodeText v-else :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>
           </table>
           <button v-else type="button" class="fold" @click="unfolded = new Set(unfolded).add(activeId)">{{ b.n }} 段{{ isResult ? '无标注' : '未改动' }} · 展开</button>
         </template>
@@ -675,9 +769,12 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff })
     <DocSpectrum v-if="(isResult || view === 'diff') && blocks.length" :ticks="ticks" :scroller="scroller" @pick="onTick" @seek="onSeek" />
     </div>
 
-    <p v-if="view === 'diff'" class="cv-foot hint">{{ diffHint }}</p>
-    <p v-else-if="!isResult" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机遮住 · 点胶囊可修改 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
-    <p v-else-if="view !== 'raw'" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护${askEnabled ? ' · 划选文字可追问' : ''}` : '这是模型看到的样子 · 结论已在本机还原' }}</p>
+    <p v-if="ocrNotice" class="cv-foot hint" role="status">{{ ocrNotice }}</p>
+    <p v-else-if="hasOcr && view === 'orig' && !ocrDraft" class="cv-foot hint">点选扫描文字块或单元格后可以校对。签章不清楚或没有识别文字的地方需看原件。</p>
+    <p v-else-if="scan && view === 'raw'" class="cv-foot hint">签章不清楚或没有识别文字的地方，请核验原件。</p>
+    <p v-else-if="view === 'diff'" class="cv-foot hint">{{ diffHint }}</p>
+    <p v-else-if="!isResult && !ocrDraft" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机遮住 · 点胶囊可修改 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
+    <p v-else-if="isResult && view !== 'raw'" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护${askEnabled ? ' · 划选文字可追问' : ''}` : '这是模型看到的样子 · 结论已在本机还原' }}</p>
 
     <div v-if="pop && !isResult && pop.item" class="pop menu" :style="{ left: `${pop.left}px`, top: `${pop.top}px` }" role="menu" @click.stop>
       <div class="pm-h"><i class="kdot" :class="kindOf(pop.item.category)" /><b class="pm-text">{{ pop.text }}</b><span>{{ popCategory }} · {{ popSource }}</span></div>
@@ -792,6 +889,18 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff })
 .fold { display: block; width: 100%; margin: 8px 0; padding: 6px; border: 1px dashed var(--si-hair-strong); border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label-sm); cursor: pointer; }
 .fold:hover { color: var(--el-color-primary); border-color: var(--el-color-primary); }
 .cv-foot { flex: none; margin: 0; }
+.ocr-pickable { cursor: text; }
+.ocr-picked { outline: 1px solid var(--si-brand-2); outline-offset: -1px; background: var(--si-select-bg); }
+.ocr-editor { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; overflow: auto; }
+.ocr-original, .ocr-form { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 10px; }
+.ocr-original > .doc-preview { min-height: 260px; }
+.ocr-editor p { margin: 0; }
+.ocr-label { font: var(--si-font-label); }
+.ocr-actions { display: flex; justify-content: flex-end; }
+@media (max-width: 1040px) {
+  .ocr-editor { grid-template-columns: minmax(0, 1fr); }
+  .ocr-original { min-height: 320px; }
+}
 
 /* 结果页问题标注（V31-U3 3.3）：片段用等级底色与底线，找不到片段时整段左侧竖条；本地校验位置为灰色竖条 */
 .node { position: relative; }

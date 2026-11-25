@@ -293,7 +293,8 @@ def _conflict(code: str, message: str) -> AppError:
     return AppError(409, code, message)
 
 
-def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_template: bool = True, model_id: int | None = None) -> ReviewRun:
+def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_template: bool = True,
+               model_id: int | None = None, expected_material_version: int | None = None) -> ReviewRun:
     """POST /tasks/{id}/runs：前置检查 → 预检出口复检 → 建轮次 → 入队 → 任务进入 reviewing。"""
     # 锁住任务行并重读：两个并发的确认请求只有一个能通过状态检查
     task = db.execute(select(Task).where(Task.id == task.id).with_for_update()
@@ -303,7 +304,8 @@ def create_run(db: DbSession, task: Task, user: User, ip: str | None, use_templa
         raise _conflict("LOCAL_ONLY", "该任务的外发策略为不外发，不能提交 AI 审核")
     if task.status != "awaiting_confirm":
         raise _conflict("TASK_STATE_CONFLICT", "当前状态不能提交审核")
-    from app.tasks.service import task_busy
+    from app.tasks.service import check_review_preview, task_busy
+    check_review_preview(db, task, expected_material_version)
     if task_busy(db, task.id):
         raise _conflict('FILES_PARSING', '还有文件正在解析，请稍候')
     if db.scalar(select(exists().where(TaskFile.task_id == task.id, TaskFile.parse_error.is_not(None)))):
@@ -354,7 +356,7 @@ def create_session_run(db: DbSession, task: Task, user: User, ip: str | None, bo
     from app.assistant.prompt import selected_files
     from app.db.models import AssistantMessage
     from app.redaction import engine as redaction_engine
-    from app.tasks.service import check_material, set_user_note, task_busy
+    from app.tasks.service import check_review_preview, set_user_note, task_busy
     task = assistant.lock(db, task)
     if task.kind != "assistant" or task.purpose != "chat":
         from app.security.errors import NotFoundError
@@ -362,7 +364,7 @@ def create_session_run(db: DbSession, task: Task, user: User, ip: str | None, bo
     if task.policy == "local_only":
         raise _conflict("LOCAL_ONLY", "该会话的外发策略为不外发，不能提交 AI 审核，可查看本地校验结果")
     assistant._writable(db, task)  # 原件层到期后禁止审核
-    check_material(task, body.expected_material_version)
+    check_review_preview(db, task, body.expected_material_version)
     if task.status not in ("active", "awaiting_confirm") or task_busy(db, task.id):
         raise _conflict("FILES_PARSING" if task.status == "parsing" else "SESSION_BUSY",
                         "还有文件正在解析，请稍候" if task.status == "parsing" else "当前会话状态不能发起审核")

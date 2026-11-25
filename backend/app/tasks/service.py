@@ -18,13 +18,14 @@ from app.admin.settings_store import get_setting
 from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import DocNode, Job, LlmCall, RedactionItem, RedactionSuspect, ReviewRun, Task, TaskFile, User
+from app.db.models import AssistantMessage, DocNode, Job, LlmCall, RedactionExclusion, RedactionItem, RedactionSuspect, ReviewRun, Task, TaskFile, User
 from app.redaction import engine, stats
 from app.security import crypto
 from app.security.errors import AppError, NotFoundError
 from app.tasks import filecheck, storage
 from app.tasks.schemas import (
     LatestRun,
+    OcrCorrection,
     PreviewNode,
     PreviewNodes,
     TaskDetail,
@@ -47,6 +48,14 @@ def check_material(task: Task, expected: int | None) -> None:
     """预览后材料又变化时拒绝发送；旧客户端不传 expected 时不校验（V32-A-01）。"""
     if expected is not None and task.material_version != expected:
         raise AppError(409, 'MATERIAL_CHANGED', '材料已变化，请重新预览后再发送')
+
+
+def check_review_preview(db, task: Task, expected: int | None) -> None:
+    check_material(task, expected)
+    if expected is None and db.scalar(select(exists().where(
+        DocNode.task_id == task.id, DocNode.ocr_original_enc.is_not(None),
+    ))):
+        raise AppError(409, "MATERIAL_CHANGED", "识别稿已校订，请重新核对待发预览")
 
 
 def lock_files(db, task: Task, *, main_change: bool = True) -> Task:
@@ -560,6 +569,16 @@ def patch_task(db: DbSession, task: Task, patch: TaskPatch) -> TaskDetail:
 RAW_MEDIA_TYPES = {"pdf": "application/pdf", "jpg": "image/jpeg", "png": "image/png"}
 
 
+def _ocr_node(file: TaskFile, node: DocNode) -> bool:
+    return (file.ext == "pdf" and file.original_deleted_at is None and node.text_enc is not None and node.part == "body"
+            and node.kind in ("ocr_block", "table_cell") and node.ocr_conf is not None and node.page is not None and bool(node.bbox))
+
+
+def _ocr_editable(text: str | None) -> bool:
+    from app.parsing.ocr import unclear_signature_only
+    return bool(text and text.strip() and not unclear_signature_only(text))
+
+
 def preview_nodes(db: DbSession, task: Task, file: TaskFile) -> PreviewNodes:
     """该文件全部 part 的节点，按 ord 排序，原文解密后返回。
 
@@ -568,12 +587,14 @@ def preview_nodes(db: DbSession, task: Task, file: TaskFile) -> PreviewNodes:
     if task.status in ("parsing", "parse_failed"):
         return PreviewNodes(text_available=True, items=[])
     rows = db.scalars(select(DocNode).where(DocNode.file_id == file.id).order_by(DocNode.ord)).all()
-    items = [
-        PreviewNode(
+    items = []
+    for r in rows:
+        text = crypto.decrypt_text(r.text_enc) if r.text_enc is not None else None
+        items.append(PreviewNode(
             loc=r.loc,
             kind=r.kind,
             part=r.part,
-            text=crypto.decrypt_text(r.text_enc) if r.text_enc is not None else None,
+            text=text,
             t_start_ms=r.t_start_ms, t_end_ms=r.t_end_ms, speaker=r.speaker, low_conf_spans=r.low_conf_spans,
             clause_no=r.clause_no,
             page=r.page,
@@ -581,12 +602,72 @@ def preview_nodes(db: DbSession, task: Task, file: TaskFile) -> PreviewNodes:
             sheet=r.sheet,
             cell_ref=r.cell_ref,
             ocr_conf=r.ocr_conf,
+            ocr_corrected=r.ocr_original_enc is not None,
+            ocr_editable=_ocr_node(file, r) and _ocr_editable(text),
             parent_loc=r.parent_loc,
-        )
-        for r in rows
-    ]
+        ))
     available = file.original_deleted_at is None and all(i.text is not None for i in items)
     return PreviewNodes(text_available=available, items=items)
+
+
+def correct_ocr(db: DbSession, task: Task, file_id, loc: str, body: OcrCorrection, user: User, ip: str | None) -> dict:
+    """在首次送审前校订既有 PDF 识别稿；保留原始密文与版面坐标。"""
+    from app.parsing.docx import manual_clause_no
+    from app.parsing.model import strip_invisible
+    from app.parsing.ocr import SIGN_MARK
+    from app.tasks.pipeline import recompute_ocr_correction
+
+    locked = db.scalar(select(Task).where(Task.id == task.id, Task.owner_id == user.id)
+                       .with_for_update().execution_options(populate_existing=True))
+    if locked is None:
+        raise NotFoundError("TASK_NOT_FOUND", "任务不存在")
+    if (locked.status != "awaiting_confirm" or locked.policy == "local_only"
+        or (locked.kind != "review" and (locked.kind != "assistant" or locked.purpose != "chat"))
+        or db.scalar(select(exists().where(ReviewRun.task_id == locked.id)))
+        or task_busy(db, locked.id)):
+        raise AppError(409, "TASK_STATE_CONFLICT", "仅首次送审前、文件读取完成时可以校订扫描文字")
+    if locked.kind == "assistant" and db.scalar(select(exists().where(
+        AssistantMessage.task_id == locked.id, AssistantMessage.role == "assistant",
+        AssistantMessage.status.in_(("queued", "streaming")),
+    ))):
+        raise AppError(409, "TASK_STATE_CONFLICT", "请等会话回复结束后再校订扫描文字")
+    check_material(locked, body.expected_material_version)
+    files = list(db.scalars(select(TaskFile).where(TaskFile.task_id == locked.id).execution_options(populate_existing=True)))
+    file = next((f for f in files if f.id == file_id), None)
+    if file is None:
+        raise NotFoundError("FILE_NOT_FOUND", "文件不存在")
+    if file.ext != "pdf" or file.original_deleted_at is not None or file.parse_error or not file.parser_version:
+        raise AppError(422, "OCR_NODE_UNAVAILABLE", "该文件没有可校订的 PDF 扫描文字")
+    node = db.scalar(select(DocNode).where(DocNode.task_id == locked.id, DocNode.file_id == file.id, DocNode.loc == loc))
+    if node is None or not _ocr_node(file, node):
+        raise AppError(422, "OCR_NODE_UNAVAILABLE", "该位置没有可校订的 PDF 扫描文字")
+
+    old = crypto.decrypt_text(node.text_enc)
+    text = strip_invisible(body.text).strip()
+    if not text or not _ocr_editable(old) or text.count(SIGN_MARK) != old.count(SIGN_MARK):
+        raise AppError(422, "OCR_TEXT_INVALID", "请输入可辨认的文字，并保留需核验原件的签字提示")
+    if text == old:
+        return {"material_version": locked.material_version}
+    if node.ocr_original_enc is None:
+        node.ocr_original_enc = node.text_enc
+    node.text_enc = crypto.encrypt_text(text)
+    if node.kind == "ocr_block":
+        node.clause_no = manual_clause_no(text)
+    for model in (RedactionItem, RedactionSuspect, RedactionExclusion):
+        db.execute(delete(model).where(model.task_id == locked.id, model.loc == loc))
+    # 代号表与外发正文需要整份重算，其余节点的区间仍按原坐标保留。
+    for current in files:
+        current.confirmed_at = None
+    if locked.kind == "assistant":
+        locked.review_intent = True
+    locked.last_activity_at = utcnow()
+    db.flush()
+    recompute_ocr_correction(db, locked)
+    audit.record(db, "ocr_correction", user_id=user.id, target_type="task", target_id=str(locked.id), ip=ip,
+                 detail={"file_id": str(file.id), "loc": loc})
+    result = {"material_version": locked.material_version}
+    db.commit()
+    return result
 
 
 def load_raw(file: TaskFile) -> tuple[bytes, str]:

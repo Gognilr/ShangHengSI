@@ -1,6 +1,6 @@
 import { http } from './http'
 import type { TaskDetail, TaskFile, TaskListItem, Source, Stance } from './tasks'
-import type { PreviewNodes } from './preview'
+import type { OcrCorrection, PreviewNodes } from './preview'
 import type { Calc, ChatDecision, ChatPreview } from './chat'
 
 export type AssistantPreview = Omit<ChatPreview, 'suspects'> & {
@@ -179,6 +179,8 @@ export const assistantApi = {
   transcript: (id: string, fid: string) => http.getDownload(`${base}/${id}/files/${fid}/transcript`),
   retranscribe: (id: string, fid: string) => http.post<Session>(`${base}/${id}/files/${fid}/retranscribe`),
   removeFile: (id: string, fid: string) => http.delete<Session>(`${base}/${id}/files/${fid}`),
+  correctOcr: (id: string, fid: string, loc: string, body: OcrCorrection) =>
+    http.patch<{ material_version: number }>(`${base}/${id}/files/${fid}/ocr/${encodeURIComponent(loc)}`, body),
   nodes: (id: string, fid: string) => http.get<PreviewNodes>(`${base}/${id}/files/${fid}/nodes`),
   confirm: (id: string) => http.post<Session>(`${base}/${id}/confirm`),
   outbound: (id: string) => http.get<{ text: string; note: string | null }>(`${base}/${id}/outbound`),

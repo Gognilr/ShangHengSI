@@ -11,7 +11,7 @@ import type { TaskFile } from '@/api/tasks'
  * 原件一律先取 Blob（PDF 转 ArrayBuffer，图片用 object URL），不把接口地址交给 pdfjs 或 img。
  */
 /** nodeLoader / rawLoader：工作台会话改读 /assistant/sessions/{id}/files/…（V32-B-01） */
-const props = defineProps<{ taskId: string; file: TaskFile; highlight: string[]; nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes>; rawLoader?: (taskId: string, fileId: string) => Promise<Blob> }>()
+const props = defineProps<{ taskId: string; file: TaskFile; highlight: string[]; focusPage?: number; nodeLoader?: (taskId: string, fileId: string) => Promise<PreviewNodes>; rawLoader?: (taskId: string, fileId: string) => Promise<Blob> }>()
 
 interface PdfPage { num: number; w: number; h: number }
 interface FileState { loading: boolean; error: string; nodes: PreviewNode[]; imageUrl: string; imgW: number; imgH: number; pdfPages: PdfPage[] }
@@ -23,6 +23,7 @@ const rendered = new Set<string>()
 const body = ref<HTMLElement | null>(null)
 const viewWidth = ref(600)
 const state = computed(() => states[props.file.id])
+const visiblePdfPages = computed(() => state.value?.pdfPages.filter(page => props.focusPage == null || page.num === props.focusPage) ?? [])
 const isPdf = computed(() => props.file.ext.toLowerCase().replace(/^\./, '') === 'pdf')
 const hl = computed(() => new Set(props.highlight))
 const hlNodes = computed(() => (state.value?.nodes ?? []).filter(n => hl.value.has(n.loc) && n.bbox))
@@ -106,6 +107,7 @@ function scrollToHighlight() {
 function afterLayout() { observePages(); scrollToHighlight() }
 
 watch(() => props.highlight, () => void nextTick(scrollToHighlight))
+watch(() => props.focusPage, () => void nextTick(afterLayout))
 watch(() => props.file.id, async () => { await loadFile(props.file); await nextTick(); afterLayout() }, { immediate: true })
 
 function pct(v: number, total: number): string { return `${(v / total) * 100}%` }
@@ -140,7 +142,7 @@ onBeforeUnmount(() => {
     <template v-if="state && !state.loading">
       <el-alert v-if="state.error" type="warning" :closable="false" show-icon :title="state.error" />
       <div v-else-if="isPdf" class="pdf">
-        <div v-for="p in state.pdfPages" :key="p.num" class="pdf-page si-paper" :data-page="p.num" :style="{ aspectRatio: `${p.w} / ${p.h}` }">
+        <div v-for="p in visiblePdfPages" :key="p.num" class="pdf-page si-paper" :data-page="p.num" :style="{ aspectRatio: `${p.w} / ${p.h}` }">
           <canvas :data-page="p.num" class="pdf-page__canvas" />
           <div class="hl-layer">
             <div v-for="n in hlNodes.filter((x) => x.page === p.num)" :key="n.loc" class="hl-box is-highlight" :style="boxStyle(n.bbox!, p.w, p.h)" />

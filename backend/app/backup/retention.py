@@ -137,7 +137,7 @@ def run_retention(db: Session, now: datetime | None = None) -> dict:
                         db.execute(delete(BidImage).where(BidImage.file_id.in_(expired)))
                         db.execute(update(TaskFile).where(TaskFile.id.in_(expired))
                                    .values(password_enc=None, meta_enc=None))
-                    db.execute(update(DocNode).where(DocNode.task_id == tid).values(text_enc=None, formula_enc=None, text_before_enc=None))
+                    db.execute(update(DocNode).where(DocNode.task_id == tid).values(text_enc=None, formula_enc=None, text_before_enc=None, ocr_original_enc=None))
                     db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == tid))
                     task.user_note_enc = None
                     task.participants_enc = None

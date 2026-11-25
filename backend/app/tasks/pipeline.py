@@ -324,6 +324,19 @@ def recompute_task(db: Session, task: Task):
     return result
 
 
+def recompute_ocr_correction(db: Session, task: Task) -> None:
+    # 向量重算在保存点内，失败时也不能继续复用校订前的向量。
+    db.execute(delete(TaskClauseVector).where(TaskClauseVector.task_id == task.id))
+    if task.kind == 'review':
+        recompute_task(db, task)
+        return
+    from app.redaction import engine
+    session_checks(db, task)
+    existing = engine._existing_parties(db, task)
+    overrides = engine._current_overrides(existing) if any(p.confirmed for p in existing.values()) else None
+    engine._run(db, task, overrides, existing)
+
+
 def _parse_draft(db: Session, task: Task, file_ids: list[str]) -> None:
     task_id, saved = task.id, []
     selected = {uuid.UUID(str(fid)) for fid in file_ids}

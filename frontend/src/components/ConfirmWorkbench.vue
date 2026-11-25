@@ -3,6 +3,7 @@ import { Ban, Bookmark, ChevronDown, ChevronRight, CircleCheck, CircleDot, Ellip
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
+import { previewApi, type OcrCorrection } from '@/api/preview'
 import { assistantApi, type DiffResult } from '@/api/assistant'
 import { diffParts, substantive } from '@/utils/drafts'
 import { localFindingsApi } from '@/api/localFindings'
@@ -48,6 +49,7 @@ const props = withDefaults(defineProps<{
   /** session-review：父页面的提交（确认 + 发起）；抛出的 ApiError 按错误码在本页显示 */
   submit?: () => Promise<RunCreated | void>
   continueQuestion?: boolean
+  allowOcr?: boolean
   /** session-review：父页面的未满足条件，非空时不能提交 */
   blocker?: string
   /** blocker 是用户还没选的项（立场、模型）：按钮保持可点，点击时发 nudge 由父页面定位（V33-C-01） */
@@ -137,6 +139,9 @@ const redactedItems = ref<RedactionInfo['items']>([])
 const autoKept = ref<AutoKept[]>([])
 const autoOpen = ref(false)
 const outboundText = ref('')
+const outboundVersion = ref<number | null>(null)
+const ocrEditing = ref(false), ocrSaving = ref(false)
+const canCorrectOcr = computed(() => sessionReview.value ? props.allowOcr : !assistant.value && !props.task.latest_run && props.task.policy !== 'local_only')
 const outboundChars = ref<number | null>(null)
 const outboundEmpty = ref(false)
 const outboundNote = ref<string | null>(null)
@@ -176,6 +181,7 @@ let outboundSeq = 0
 async function loadOutbound() {
   const seq = ++outboundSeq
   outboundLoading.value = true
+  outboundVersion.value = null
   outboundEmpty.value = false
   outboundError.value = ''
   if (sessionReview.value) emit('preview', null)
@@ -195,6 +201,7 @@ async function loadOutbound() {
       outboundChars.value = outbound.chars ?? null
       outboundEmpty.value = props.scope === 'delta' && outbound.delta?.empty === true
       outboundNote.value = outbound.note
+      outboundVersion.value = outbound.material_version
       emit('preview', outbound.material_version)
     } else {
       const outbound = await redactionApi.outbound(props.task.id)
@@ -202,6 +209,7 @@ async function loadOutbound() {
       outboundText.value = outbound.text
       outboundChars.value = null
       outboundNote.value = outbound.note
+      outboundVersion.value = outbound.material_version
     }
   } catch (e) {
     if (seq !== outboundSeq) return
@@ -231,6 +239,33 @@ async function loadAll(silent = false) {
   } finally { loading.value = false }
 }
 onMounted(() => void loadAll())
+
+async function saveOcr(fileId: string, loc: string, body: OcrCorrection) {
+  if (!canCorrectOcr.value || ocrSaving.value || submitting.value || waiting.value || saving.value) {
+    throw new Error('请等待当前操作完成后再保存校订')
+  }
+  ocrSaving.value = true
+  try {
+    const correct = sessionReview.value ? assistantApi.correctOcr : previewApi.correctOcr
+    await correct(props.task.id, fileId, loc, body)
+    ++outboundSeq
+    outboundVersion.value = null
+    outboundText.value = ''
+    outboundDrawer.value = false
+    selectedId.value = null
+    checked.value = []
+    submitError.value = ''
+    if (leaksShown.value) void leakPanel.value?.reload()
+    await loadAll(true)
+    emit('stale')
+  } catch (e) {
+    if (e instanceof ApiError && ['MATERIAL_CHANGED', 'TASK_STATE_CONFLICT'].includes(e.code)) {
+      await loadAll(true)
+      emit('stale')
+    }
+    throw e
+  } finally { ocrSaving.value = false }
+}
 
 /** 拦截清单处理成功后：以返回值刷新，并重读签约方（可能出现新的方）和外发文本。 */
 async function afterChange(info: RedactionInfo) {
@@ -309,7 +344,7 @@ function handleError(e: unknown) {
     if (e.code === 'OUTBOUND_BLOCKED') { submitError.value = ''; showLeaks(e.message); return }
     submitError.value = base
     if (e.code === 'TASK_STATE_CONFLICT') emit('stale')
-    if (e.code === 'MATERIAL_CHANGED') { submitError.value = '材料有变化，已更新本页，请核对后再确认'; void loadAll(true) }
+    if (e.code === 'MATERIAL_CHANGED') { submitError.value = '材料有变化，已更新本页，请核对后再确认'; void canvas.value?.reloadActive(); void loadAll(true) }
   } else submitError.value = '操作失败，请重试'
 }
 
@@ -455,7 +490,7 @@ const isKept = (s: Suspect) => s.decision === 'ignore' || !!s.kept_by
 const selectedId = ref<number | null>(null)
 const checked = ref<number[]>([])
 // 后台保存不锁页面；只有加文件重新计算期间锁住
-const locked = computed(() => waiting.value)
+const locked = computed(() => waiting.value || ocrSaving.value)
 const canvas = ref<InstanceType<typeof ConfirmCanvas>>()
 watch(suspects, (rows) => {
   const ids = new Set(rows.map(s => s.id))
@@ -650,7 +685,8 @@ const outboundDrawer = ref(false)
 const ourMissing = computed(() => !(assistant.value && !props.requireOurParty ? ourCount.value <= 1 : ourCount.value === 1))
 // 缺的只是用户该选的项（我方、父页面的立场 / 模型）时按钮仍可点，点击定位到缺项（V33-C-01）；等待类条件照旧禁用
 const readyExceptChoices = computed(() =>
-  !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value
+  !loading.value && !waiting.value && !parsingFiles.value && !failedFiles.value && !ocrEditing.value && !ocrSaving.value
+  && (assistant.value || outboundVersion.value !== null)
   && (!sessionReview.value || ((!props.blocker || props.blockerChoice) && !outboundLoading.value && (!!outboundText.value || outboundEmpty.value))))
 const canConfirm = computed(() => readyExceptChoices.value && !ourMissing.value && (!sessionReview.value || !props.blocker))
 const partiesSec = ref<HTMLElement>()
@@ -701,7 +737,7 @@ async function confirmSend() {
     submitStep.value = 'sending'
     if (sessionReview.value) rememberedToast(await props.submit?.())
     else if (assistant.value) await assistantApi.confirm(props.task.id)
-    else rememberedToast(await runsApi.create(props.task.id, !skipTemplate.value, props.modelId))
+    else rememberedToast(await runsApi.create(props.task.id, !skipTemplate.value, props.modelId, outboundVersion.value ?? undefined))
     emit('confirmed')
   } catch (e) { handleError(e) }
   finally { submitting.value = false; window.clearInterval(submitTimer) }
@@ -743,7 +779,9 @@ useHotkeys({
 <template>
   <div class="wb" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
     <div class="canvas">
-      <ConfirmCanvas ref="canvas" :diff-loader="sessionReview ? diffLoader : undefined" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" @manual="onManual" @revoke="onRevoke" @keep="s => keepOne(s, true)" @restore="restoreOne" @replace="replaceOne" @adjust="onAdjust">
+      <ConfirmCanvas ref="canvas" :diff-loader="sessionReview ? diffLoader : undefined" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal"
+        :raw-loader="sessionReview ? assistantApi.raw : undefined" :correct-ocr="canCorrectOcr ? saveOcr : undefined" :ocr-version="outboundVersion"
+        :ocr-busy="loading || outboundLoading || locked || saving > 0 || submitting" @ocr-editing="ocrEditing = $event" @manual="onManual" @revoke="onRevoke" @keep="s => keepOne(s, true)" @restore="restoreOne" @replace="replaceOne" @adjust="onAdjust">
         <template #bar>
           <SiIsland v-if="island" :state="island.state" :text="island.text" />
           <span v-else-if="saving" class="hint saving" aria-live="polite">正在后台保存…</span>
@@ -914,6 +952,7 @@ useHotkeys({
           <li v-if="leaksShown && leaksPending" class="todo"><CircleDot :size="15" :stroke-width="1.75" /><button type="button" class="cond-link" @click="nudgeField(leakBox)">还有 {{ leaksPending }} 处拦截未处理</button></li>
           <li v-if="waiting || parsingFiles" class="todo"><CircleDot :size="15" :stroke-width="1.75" />文件正在读取，请稍候</li>
           <li v-if="failedFiles" class="todo"><CircleDot :size="15" :stroke-width="1.75" />有读取失败的文件，请先删除</li>
+          <li v-if="ocrEditing" class="info"><CircleDot :size="15" :stroke-width="1.75" />请先保存或取消扫描文字校对</li>
           <li v-if="saving" class="info"><CircleDot :size="15" :stroke-width="1.75" />修改正在后台保存，发送时会等保存完成</li>
           <li v-if="loading" class="info"><CircleDot :size="15" :stroke-width="1.75" />正在读取遮住的内容……</li>
         </ul>

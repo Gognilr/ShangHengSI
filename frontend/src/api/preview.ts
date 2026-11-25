@@ -19,6 +19,8 @@ export interface PreviewNode {
   sheet: string | null
   cell_ref: string | null
   ocr_conf: number | null
+  ocr_corrected?: boolean
+  ocr_editable?: boolean
   parent_loc: string | null
 }
 
@@ -27,7 +29,11 @@ export interface PreviewNodes {
   items: PreviewNode[]
 }
 
+export interface OcrCorrection { text: string; expected_material_version: number }
+
 export const previewApi = {
+  correctOcr: (id: string, fid: string, loc: string, body: OcrCorrection) =>
+    http.patch<{ material_version: number }>(`/tasks/${id}/files/${fid}/ocr/${encodeURIComponent(loc)}`, body),
   nodes: (taskId: string, fileId: string) =>
     http.get<PreviewNodes>(`/tasks/${taskId}/files/${fileId}/nodes`),
   /** 原件字节（仅 PDF、JPG、PNG）；先取 Blob，不把地址直接交给 pdfjs 或 img。 */
