@@ -221,9 +221,24 @@ def test_report_content_tone_and_scope(owner, db_sessionmaker):
 
 
 def test_opening_price_reruns_quote_checks_only(owner, db_sessionmaker):
+    from sqlalchemy import func, select
+    from app.db.models import BidItem, BidProject
+    from app.security import crypto
+
     c, h, _ = owner
     base, ids = scenario(c, h, db_sessionmaker)
+    task_id = uuid.UUID(base.rsplit("/", 1)[-1])
+    with db_sessionmaker() as db:
+        db.get(BidProject, task_id).model_state = "done"
+        model = BidItem(task_id=task_id, kind="issue", type="model_response", level="general", bidder_ids=[ids[1]],
+                        source="model", evidence_enc=crypto.encrypt_text('{"title":"虚构补查意见","rows":[]}'))
+        db.add(model)
+        db.flush()
+        model_id = str(model.id)
+        db.commit()
     before = c.get(base + "/check").json()
+    other = next(e for e in before["conclusion"]["severe"] if e["bidder_ids"] == [ids[2]] and "证书有效期" in e["title"])
+    assert c.put(base + "/dismissed", headers=h, json={"key": other["id"], "dismissed": True}).status_code == 200
     for gone in ("/conclusion/sign", "/conclusion/review"):  # 评委签认、Y/N 核实已撤下
         assert c.post(base + gone, headers=h, json={}).status_code in (404, 405)
     assert c.get(ROOT + "/feedback/mine").status_code in (404, 405, 422)
@@ -240,7 +255,13 @@ def test_opening_price_reruns_quote_checks_only(owner, db_sessionmaker):
     assert "大写与小写金额不一致" in hints and any(t.startswith("文件总价与唱标价不一致") for t in hints)
     assert {i["id"] for i in before["items"] if i["type"] == "similar"} == {
         i["id"] for i in after["items"] if i["type"] == "similar"}
-    assert "文件总价与唱标价不一致" in _text(c.get(base + "/report").content)
+    assert any(i["id"] == model_id and i["source"] == "model" for i in after["items"])
+    assert any(e["id"] == other["id"] for e in after["conclusion"]["dismissed"])
+    assert c.get(base).json()["model"]["state"] == "done"
+    text = _text(c.get(base + "/report").content)
+    assert "文件总价与唱标价不一致" in text and "虚构补查意见" in text and "证书有效期至 2025-06-30" not in text
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(LlmCall).where(LlmCall.task_id == task_id)) == 0
 
     assert c.post(base + "/reopen", headers=h).status_code == 200
     assert c.post(base + "/check", headers=h).status_code == 200

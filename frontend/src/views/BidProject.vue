@@ -121,13 +121,14 @@ const renderable = computed(() => Object.fromEntries((project.value?.files ?? []
 const ctx: BidResultsContext = { get projectId() { return id.value }, data: check, names, shorts, codes, fileNames, renderable, dismiss, markSigning, openPage }
 provide(bidResultsKey, ctx)
 async function dismiss(key: string, dismissed: boolean) {
+  if (pending.value) return
   notice.value = ''; saving++
   try { check.value = await bidApi.dismiss(id.value, key, dismissed) }
   catch (e) { notice.value = e instanceof ApiError ? e.message : '没有保存，请重试' }
   finally { saving-- }
 }
 async function markSigning(pages: BidSigning[], mark: BidSignMark | null) {
-  if (!pages.length) return
+  if (!pages.length || pending.value) return
   const before = pages.map(s => [s, s.mark] as const)
   pages.forEach(s => { s.mark = mark }); notice.value = ''; saving++
   try {
@@ -229,11 +230,35 @@ async function reparse() { await mutate(() => bidApi.parse(id.value)) }
 async function renameBidder(bidder: string, name: string) { await mutate(() => bidApi.renameBidder(id.value, bidder, name)); if (phase.value === 'results') void loadCheck() }
 // 唱标价（V34-B-06e）：失败时在卡片内提示，不弹全局错误
 const openingFailed = ref<Record<string, string>>({})
+const openingLocked = computed(() => pending.value || phase.value === 'checking'
+  || (phase.value === 'materials' && project.value?.busy)
+  || (phase.value === 'results' && (reopenBlock.value || project.value?.files.some(f => f.original_deleted))))
 async function saveOpening(bidder: string, body: BidOpeningPriceInput, done: () => void) {
-  if (blocked.value) return
+  if (openingLocked.value || saving) return
+  const current = generation
+  const projectId = id.value
+  const checked = phase.value === 'results'
   delete openingFailed.value[bidder]
-  try { project.value = await bidApi.openingPriceBefore(id.value, bidder, body); done() }
-  catch (e) { openingFailed.value[bidder] = openingError(e, body) }
+  pending.value = true
+  ++edits; ++checkRequest; saving++; resetTimer()
+  try {
+    if (checked) {
+      const updated = await bidApi.openingPrice(projectId, bidder, body)
+      if (current !== generation) return
+      check.value = updated
+      await load(false) // 抽屉的唱标价沿用项目详情里的服务端格式
+    } else {
+      const updated = await bidApi.openingPriceBefore(projectId, bidder, body)
+      if (current !== generation) return
+      accept(updated)
+    }
+    if (current === generation) done()
+  } catch (e) {
+    if (current === generation) {
+      openingFailed.value[bidder] = openingError(e, body)
+      void load(false)
+    }
+  } finally { saving--; pending.value = false }
 }
 async function removeBidder(bidder: string) { await mutate(() => bidApi.removeBidder(id.value, bidder)); if (!error.value) bidderOpen.value = '' }
 async function addBidder() {
@@ -447,8 +472,8 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
     <!-- 一家投标人：文件明细、密码、加文件、改名、删除；结果出来后另有签章页 -->
     <el-drawer v-if="project" :model-value="!!drawerBidder" size="480px" append-to-body :title="drawerBidder ? `${drawerBidder.code.replace(/[（）()]/g, '')}　${drawerBidder.short || drawerBidder.name}` : ''" class="bid-drawer" @update:model-value="(v: boolean) => { if (!v) bidderOpen = '' }">
       <template v-if="drawerBidder">
-        <BidderCard flat :project-id="id" :bidder="drawerBidder" :files="filesOf(drawerBidder.id)" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" :suggest="suggestions[drawerBidder.id]"
-          :rate-quote="project.quote_mode === 'rate' || project.quote_mode === 'discount'" :opening-failed="openingFailed[drawerBidder.id]"
+        <BidderCard :key="drawerBidder.id" flat :project-id="id" :bidder="drawerBidder" :files="filesOf(drawerBidder.id)" :disabled="blocked" :busy="project.busy" :row-errors="rowErrors" :suggest="suggestions[drawerBidder.id]"
+          :rate-quote="project.quote_mode === 'rate' || project.quote_mode === 'discount'" :opening-failed="openingFailed[drawerBidder.id]" :opening-disabled="openingLocked"
           @rename="name => renameBidder(drawerBidder!.id, name)" @remove="removeBidder(drawerBidder!.id)" @pick="choose(drawerBidder!.id)" @drop="e => drop(e, drawerBidder!.id)"
           @password="setPassword" @remove-file="removeFile" @opening="(body, done) => saveOpening(drawerBidder!.id, body, done)" @adopt="name => renameBidder(drawerBidder!.id, name)" />
         <p v-if="locked" class="hint d-lock">开始检查后材料锁定；要增减文件，在页头“更多”里选“返回修改材料”。</p>
