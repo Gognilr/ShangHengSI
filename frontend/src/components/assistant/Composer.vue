@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 智能助手输入框（V31-U5 第二节）：附件、模板与发送都在这里；首页时 session 为空，第一次动作交给页面建会话
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ArrowUp, Check, ChevronDown, ChevronRight, FileAudio, FileImage, FileSpreadsheet, FileText, Loader2, Lock, Paperclip, Sparkle, Square, X } from '@lucide/vue'
@@ -14,19 +14,21 @@ import { useDraftsStore } from '@/stores/drafts'
 import { ASSISTANT_TEMPLATE, USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 import { TEMPLATE_LIMITS, usableFiles } from '@/utils/assistantTemplates'
 
-export interface ComposerStart { text: string; template: Template | null; files: File[]; modelId?: number }
-const props = defineProps<{
+export interface ComposerStart { action: 'attach' | 'send'; text: string; template: Template | null; files: File[]; modelId?: number }
+const props = withDefaults(defineProps<{
   session: Session | null; template: Template | null; generating: number | null
   asrEnabled: boolean; showTemplates?: boolean; uploading?: number | null
   /** 首页大号输入框（澄明 8.2）：圆角 24、完整档毛玻璃；否则为对话页底部的输入框 */
   hero?: boolean
-  initial?: { text: string; autoSend: boolean; modelId?: number } | null
+  initial?: { text: string; submitted: boolean; modelId?: number } | null
+  active?: boolean
+  confirmedTick?: number
   /** 讨论锚点：设置后消息带 finding_id，只围绕该问题讨论（V32-B-02） */
   anchor?: { id: string } | null
-}>()
+}>(), { active: true })
 const emit = defineEmits<{
   'update:template': [value: Template | null]; sent: [text: string]; stop: [mid: number]
-  start: [payload: ComposerStart]; busy: []; files: [files: File[]]; open: [file: SessionFile]; remove: [file: SessionFile]; confirm: []; retry: [file: SessionFile]
+  start: [payload: ComposerStart]; waiting: [value: boolean]; busy: []; files: [files: File[]]; open: [file: SessionFile]; remove: [file: SessionFile]; confirm: []; retry: [file: SessionFile]
 }>()
 
 const init = props.initial
@@ -53,7 +55,7 @@ onMounted(async () => {
   if (props.session) { try { preferred = [...(await assistantApi.messages(props.session.id)).items].reverse().find(m => m.role === 'assistant' && m.model_id)?.model_id } catch { /* 用默认模型 */ } }
   // 首页选的模型带到新会话的第一条消息，不被默认模型替换
   await loadModels(init?.modelId ?? preferred)
-  if (init) { text.value = init.text; if (init.autoSend) { await nextTick(); void submit() } }
+  if (init?.submitted && !destroyed) { await nextTick(); void submit() }
 })
 watch(() => !!props.anchor, anchored => { if (anchored && !modelItems.value.length) void loadModels() })
 watch(() => props.template, template => {
@@ -73,7 +75,7 @@ function picked(event: Event) {
   input.value = ''; pickAccept.value = ''
   if (files.length) attach(files)
 }
-function attach(files: File[]) { if (props.session) emit('files', files); else emit('start', { text: text.value, template: props.template, files, modelId: modelId.value }) }
+function attach(files: File[]) { if (props.session) emit('files', files); else emit('start', { action: 'attach', text: text.value, template: props.template, files, modelId: modelId.value }) }
 const files = computed(() => props.session ? usableFiles(props.session, props.template) : [])
 function chip(file: SessionFile) {
   const m = file.media
@@ -138,10 +140,27 @@ const canPick = computed(() => !props.session || (props.session.files.length < 1
 // 草稿按会话（及讨论锚点）存内存，发送成功清空时随之清掉（V321-E-12）
 const drafts = useDraftsStore()
 const draftKey = props.session ? `${props.session.id}:${props.anchor?.id ?? ''}` : ''
-const text = ref(draftKey ? drafts.get(draftKey) : '')
-if (draftKey) watch(text, value => drafts.set(draftKey, value))
+const text = ref(init?.text ?? (draftKey ? drafts.get(draftKey) : ''))
+if (draftKey) {
+  if (init) drafts.set(draftKey, text.value)
+  watch(text, value => drafts.set(draftKey, value), { flush: 'sync' })
+}
 const useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
 const resume = ref(false)
+let destroyed = false
+function cancelWaiting() {
+  if (!resume.value) return
+  resume.value = false
+  emit('waiting', false)
+}
+function startWaiting() {
+  resume.value = true
+  emit('waiting', true)
+}
+function active() { return !destroyed && props.active !== false }
+watch(() => props.active, value => { if (value === false) { cancelWaiting(); open.value = false } }, { flush: 'sync' })
+watch([text, () => props.template, modelId, target, focus, tone, language, useKb, useHistory], cancelWaiting, { flush: 'sync' })
+onBeforeUnmount(() => { destroyed = true; cancelWaiting() })
 const omitAdvice = ref(false), blockedCode = ref('')
 const questionInput = ref<{ focus: () => void }>()
 watch(() => props.anchor?.id, () => { omitAdvice.value = false; blockedCode.value = '' })
@@ -174,7 +193,7 @@ const modelLocked = computed(() => allowedModels.value.length <= 1 || sending.va
 function onModelMenu(visible: boolean) { if (visible) void loadModels(modelId.value) }
 function pickModel(id: number) { modelId.value = id }
 const localOnly = computed(() => props.session?.policy === 'local_only')
-const waitingText = computed(() => !resume.value || !props.session ? '' : props.session.status === 'parsing' ? '文件处理完成后自动发送' : props.session.status === 'awaiting_confirm' ? '确认脱敏后自动发送' : '')
+const waitingText = computed(() => !resume.value || !props.session ? '' : props.session.status === 'parsing' ? '已提交提问，文件读取并确认后继续' : props.session.status === 'awaiting_confirm' ? '确认脱敏后继续已提交的提问' : '')
 function input(): MessageInput {
   if (props.anchor) return { model_id: modelId.value, message: text.value, template: null, params: omitAdvice.value ? { omit_finding_advice: true } : {}, use_kb: useKb.value && !!props.session?.kb_enabled, use_history: useHistory.value, finding_id: props.anchor.id }
   const params: Record<string, unknown> = props.template === 'translate' ? { file_id: fileIds.value[0], target: target.value } : { file_ids: [...fileIds.value] }
@@ -184,17 +203,23 @@ function input(): MessageInput {
 }
 let pending: MessageInput | null = null
 async function submit() {
-  if (busy.value || sending.value || props.generating !== null) return
-  if (!props.session) { if (!reason.value || text.value.trim() || props.template) emit('start', { text: text.value, template: props.template, files: [], modelId: modelId.value }); return }
+  if (!active() || busy.value || sending.value || props.generating !== null) return
+  if (!props.session) {
+    if (!reason.value || text.value.trim() || props.template) emit('start', { action: 'send', text: text.value, template: props.template, files: [], modelId: modelId.value })
+    return
+  }
   if (processing.value) {
-    resume.value = true
+    if (!text.value.trim() && !props.template) return
+    startWaiting()
     if (props.session.status === 'awaiting_confirm') emit('confirm')
     return
   }
   if (reason.value) return
   busy.value = true; error.value = ''; pending = input()
   try {
-    preview.value = await assistantApi.preview(props.session.id, pending)
+    const prepared = await assistantApi.preview(props.session.id, pending)
+    if (!active()) return
+    preview.value = prepared
     pending.expected_material_version = preview.value.material_version
     decisions.value = preview.value.suspects.map(() => ({ decision: '', category: '' }))
     if (preview.value.suspects.length) open.value = true
@@ -202,19 +227,24 @@ async function submit() {
   } catch (e) { failDiscussion(e); error.value = e instanceof ApiError ? e.message : '发送失败，请重试'; if (e instanceof ApiError && e.code === 'SESSION_BUSY') emit('busy') }
   finally { busy.value = false }
 }
-// 处理完成：待确认时打开确认，可发送时继续发送
-watch(() => [props.session?.status, props.session?.can_send] as const, ([status]) => {
-  if (!resume.value || !props.session) return
+// 等待的是用户明确提交的提问。只有本页确认成功才能续发，切换或取消时保留输入。
+watch(() => props.session?.status, status => {
+  if (!resume.value || !active()) return
   if (status === 'awaiting_confirm') emit('confirm')
-  else if (status === 'active') { resume.value = false; void nextTick(submit) }
-  else if (status === 'parse_failed') resume.value = false
+  else if (status === 'parse_failed') cancelWaiting()
+  else if (status === 'active' && props.anchor) { cancelWaiting(); void submit() }
+})
+watch(() => props.confirmedTick, () => {
+  if (!resume.value || !active() || props.session?.status !== 'active') return
+  cancelWaiting()
+  void submit()
 })
 function onKeydown(event: KeyboardEvent) {
   if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return
   event.preventDefault(); void submit()
 }
 async function send() {
-  if (!pending || !confirmed.value || sending.value || !props.session) return
+  if (!active() || !pending || !confirmed.value || sending.value || !props.session) return
   sending.value = true; error.value = ''
   const selected: ChatDecision[] = (preview.value?.suspects ?? []).map((suspect, index) => ({
     start: suspect.start, end: suspect.end, decision: decisions.value[index]!.decision as 'replace' | 'keep',
@@ -237,7 +267,7 @@ const dragging = ref(false)
 function drop(event: DragEvent) { dragging.value = false; const list = Array.from(event.dataTransfer?.files ?? []); if (list.length) attach(list) }
 // V31-U5F-04：输入框里 Ctrl+V 粘贴文件（资源管理器复制的文件、截图）与拖入相同；只有文字时照常粘贴
 function paste(event: ClipboardEvent) { const list = pastedFiles(event); if (!list.length) return; event.preventDefault(); attach(list) }
-defineExpose({ pick, attach })
+defineExpose({ pick, attach, cancelWaiting })
 </script>
 
 <template>
@@ -278,7 +308,7 @@ defineExpose({ pick, attach })
         </div>
         <el-input ref="questionInput" v-model="text" type="textarea" :autosize="{ minRows: hero ? 2 : 1, maxRows: 8 }" maxlength="4000" :show-word-limit="text.length > 3500" :placeholder="anchor ? '就这个问题继续讨论，例如：怎么改更稳妥？' : hero ? '问一个问题，或把合同、报价单拖进来、粘贴进来…' : '继续追问…'" aria-label="问题或来函" @keydown="onKeydown" />
         <!-- 文件还在处理时：自动发送写在框内（问题 12） -->
-        <p v-if="waitingText" class="auto" role="status"><Loader2 :size="14" :stroke-width="2" class="spin" aria-hidden="true" />{{ waitingText }}<span class="dot">·</span><el-button link size="small" @click="resume = false">取消</el-button></p>
+        <p v-if="waitingText" class="auto" role="status"><Loader2 :size="14" :stroke-width="2" class="spin" aria-hidden="true" />{{ waitingText }}<span class="dot">·</span><el-button link size="small" @click="cancelWaiting">取消</el-button></p>
         <div class="bar">
           <button v-if="!anchor" type="button" class="cp-btn" :disabled="!!session && (session.files.length >= 10 || !!session.generating || session.review_running)" @click="pick()"><Paperclip :size="16" :stroke-width="1.75" />添加文件</button>
           <input ref="picker" class="file-input" type="file" multiple :accept="accept" @change="picked">

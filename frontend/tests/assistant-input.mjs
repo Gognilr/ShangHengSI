@@ -8,11 +8,11 @@ const source = readFileSync(new URL('../src/components/assistant/Composer.vue', 
 const body = source.match(/function input\(\): MessageInput \{([\s\S]*?)\n\}/)?.[1]
 assert.ok(body)
 const compiled = ts.transpile(`function input() {${body}\n}`)
-const build = new Function('props', 'fileIds', 'target', 'focus', 'tone', 'language', 'text', 'useKb', 'useHistory', `${compiled}; return input()`)
+const build = new Function('props', 'fileIds', 'target', 'focus', 'tone', 'language', 'text', 'useKb', 'useHistory', 'modelId', `${compiled}; return input()`)
 const make = (template, enabled = true) => build(
   { template, session: { kb_enabled: enabled } }, { value: ['file-one'] }, { value: '英文' },
   { value: '全部' }, { value: '正式' }, { value: '同来函' }, { value: '虚构来函' },
-  { value: true }, { value: false },
+  { value: true }, { value: false }, { value: 1 },
 )
 test('翻译按单文件契约提交 file_id 与 target', () => {
   assert.deepEqual(make('translate').params, { file_id: 'file-one', target: '英文' })
@@ -29,4 +29,23 @@ test('保留来函与参考选择，总开关关闭时不请求知识库', () =>
   assert.equal(make('translate').use_history, false)
   assert.equal(make('translate').use_kb, true)
   assert.equal(make('translate', false).use_kb, false)
+})
+
+test('首页加附件与明确发送使用不同事件意图', async () => {
+  const attachment = source.match(/^function attach\(files: File\[\]\) \{.*\}$/m)?.[0]
+  const submit = source.match(/^async function submit\(\) \{[\s\S]*?^\}/m)?.[0]
+  assert.ok(attachment && submit)
+  const wired = ts.transpile(attachment + '\n' + submit)
+  const events = []
+  const start = new Function('props', 'emit', 'text', 'modelId', 'active', 'busy', 'sending', 'reason',
+    wired + '\nreturn { attach, submit }')(
+    { session: null, template: 'summary', generating: null }, (...e) => events.push(e),
+    { value: '虚构草稿' }, { value: 1 }, () => true, { value: false }, { value: false }, { value: '' },
+  )
+  start.attach([{ name: '虚构附件.docx' }])
+  await start.submit()
+  assert.deepEqual(events.map(([event, payload]) => [event, payload.action, payload.text, payload.template, payload.files.length]), [
+    ['start', 'attach', '虚构草稿', 'summary', 1],
+    ['start', 'send', '虚构草稿', 'summary', 0],
+  ])
 })

@@ -150,7 +150,7 @@ async function refresh() {
   } catch (e) { if (active && current === version) error.value = failure(e) }
 }
 // 首页：第一次发送、加入文件或选模板时才建会话（不再先建空会话，V31-U5 2.1）
-const initial = ref<{ text: string; autoSend: boolean; modelId?: number } | null>(null), homeUpload = ref<number | null>(null)
+const initial = ref<{ text: string; submitted: boolean; modelId?: number } | null>(null), homeUpload = ref<number | null>(null)
 let carryTemplate: Template | null = null
 async function start(payload: ComposerStart) {
   if (working.value) return
@@ -164,7 +164,7 @@ async function start(payload: ComposerStart) {
       finally { homeUpload.value = null }
     }
     carryTemplate = payload.template
-    initial.value = { text: payload.text, modelId: payload.modelId, autoSend: !!payload.text.trim() || (!!payload.template && payload.files.length > 0) }
+    initial.value = { text: payload.text, modelId: payload.modelId, submitted: payload.action === 'send' }
     await router.push(`/assistant/${created.id}`)
     void sessions.refresh()
   } catch (e) { error.value = failure(e) }
@@ -178,6 +178,15 @@ async function sent(text: string) {
     try { session.value = await assistantApi.patch(id.value, { title: text.trim().replace(/\s+/g, ' ').slice(0, 20) }); void sessions.refresh() } catch { /* 标题不影响使用 */ }
   }
 }
+const askComposer = ref<InstanceType<typeof Composer>>()
+const askWaiting = ref(false), confirmedTick = ref(0)
+function cancelWaiting() { askComposer.value?.cancelWaiting(); askWaiting.value = false }
+async function attachmentsConfirmed() {
+  const selected = id.value
+  await refresh()
+  if (selected === id.value && mode.value === 'ask') confirmedTick.value++
+}
+watch(mode, value => { if (value === 'review') cancelWaiting() }, { flush: 'sync' })
 const filePanel = ref<InstanceType<typeof FilePanel>>(), reviewPane = ref<InstanceType<typeof ReviewPane>>(), drawerOpen = ref(false)
 function openReviewConfirm() { reviewPane.value?.openConfirm() }
 // 回复依据（V321-E-13）：原文段落在讨论栏旁的原文画布定位，直接提问时打开“查看原文”；其余依据在依据抽屉中看原文
@@ -230,7 +239,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
     <template v-if="session">
       <!-- 只加了文件、还没发出第一条消息：保持首页构图，文件标签在输入框里（澄明 8.2） -->
       <WorkbenchHome v-if="homeLike" busy :has-files="session.files.length > 0" v-model:template="template" @review="seeResult">
-        <Composer v-if="canAsk" :key="id" v-model:template="template" hero :session="session" :generating="generating" :asr-enabled="session.asr_enabled" show-templates :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
+        <Composer v-if="canAsk" ref="askComposer" :key="id" :active="mode === 'ask'" :confirmed-tick="confirmedTick" @waiting="askWaiting = $event" v-model:template="template" hero :session="session" :generating="generating" :asr-enabled="session.asr_enabled" show-templates :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
       </WorkbenchHome>
       <template v-else>
         <header class="chat-head">
@@ -258,7 +267,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         <Conversation v-show="mode === 'ask'" :messages="shown" :session-id="id" :reading="session?.status === 'parsing'" @cite="cite" @stop="stop" @retry="retry" />
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
         <div v-if="canAsk" v-show="mode === 'ask'" class="dock">
-          <Composer :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
+          <Composer ref="askComposer" :key="id" :active="mode === 'ask'" :confirmed-tick="confirmedTick" @waiting="askWaiting = $event" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
           <p class="dock-note">模型只看到遮住名称后的文字。AI 建议请结合原文核实。</p>
         </div>
         <ReviewPane ref="reviewPane" v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" class="review-pane" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null" @progress="reviewProgress = $event" @ask="modeModel = 'ask'">
@@ -275,7 +284,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
       <Composer v-model:template="template" hero :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
     </WorkbenchHome>
     <DraftDialog v-model:open="draftOpen" :anchor="anchor" :message="draftMessage" @saved="draftUpdate?.($event)" />
-    <FilePanel v-if="session" ref="filePanel" :key="id" v-model:open="drawerOpen" :session="session" :review-mode="mode === 'review'" @refresh="refresh" @review-confirm="openReviewConfirm" />
+    <FilePanel v-if="session" ref="filePanel" :key="id" v-model:open="drawerOpen" :session="session" :review-mode="mode === 'review'" :continue-question="askWaiting" @refresh="refresh" @attachments-confirmed="attachmentsConfirmed" @cancel-waiting="cancelWaiting" @review-confirm="openReviewConfirm" />
   </div>
 </template>
 <style scoped>

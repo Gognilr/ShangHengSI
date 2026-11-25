@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
 import { computed, nextTick, ref, onBeforeUnmount, onMounted, watch } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { assistantApi, confirmationTask, type MessageSource, type Session, type SessionFile, type SourceDetail } from '@/api/assistant'
 import ResultCanvas from '@/components/result/ResultCanvas.vue'
 import { saveBlob } from '@/utils/save'
@@ -19,8 +19,8 @@ import { FileText } from '@lucide/vue'
 import SiScanDoc from '@/components/brand/SiScanDoc.vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 // V31-U5：不再常驻右栏，改为标题栏“文件 N”打开的抽屉；确认、校对与上传由输入框直接调用（defineExpose）
-const props = defineProps<{ session: Session; open: boolean; reviewMode?: boolean }>()
-const emit = defineEmits<{ refresh: []; 'update:open': [value: boolean]; 'review-confirm': [] }>()
+const props = defineProps<{ session: Session; open: boolean; reviewMode?: boolean; continueQuestion?: boolean }>()
+const emit = defineEmits<{ refresh: []; 'update:open': [value: boolean]; 'review-confirm': []; 'attachments-confirmed': []; 'cancel-waiting': [] }>()
 const upload = ref<HTMLInputElement>(), busy = ref(false), error = ref(''), confirmOpen = ref(false), outboundOpen = ref(false), outbound = ref('')
 const transcriptFile = ref<SessionFile | null>(null)
 const currentTranscript = computed(() => props.session.files.find(f => f.id === transcriptFile.value?.id) ?? transcriptFile.value)
@@ -99,7 +99,18 @@ async function showOutbound() {
 const loadLocal = () => assistantApi.localFindings(props.session.id)
 async function retryMedia(file: SessionFile) { await perform(() => assistantApi.retranscribe(props.session.id, file.id)) }
 async function downloadTranscript(file: SessionFile) { await perform(async () => { const data = await assistantApi.transcript(props.session.id, file.id); await saveBlob(data.blob, data.filename) }) }
-function confirmed() { confirmOpen.value = false; emit('refresh') }
+function confirmed() {
+  confirmOpen.value = false
+  if (!props.continueQuestion) ElMessage.success('脱敏已保存，可在输入框发送提问')
+  emit('attachments-confirmed')
+}
+function setConfirmOpen(value: boolean) {
+  confirmOpen.value = value
+  if (!value) emit('cancel-waiting')
+}
+watch(() => props.reviewMode, review => {
+  if (review) { confirmOpen.value = false; guided.value = false }
+})
 watch(() => props.session.status, status => {
   if (!guided.value || status !== 'awaiting_confirm') return
   guided.value = false
@@ -175,7 +186,7 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
   </el-drawer>
     <el-drawer append-to-body v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
     <el-dialog append-to-body :model-value="!!transcriptFile" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><template #header="{ close }"><DialogBackHeader :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" back="返回对话" @close="close" /></template><div class="transcript-frame"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></div></el-dialog>
-    <el-dialog append-to-body v-model="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
+    <el-dialog append-to-body :model-value="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="setConfirmOpen"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" :continue-question="continueQuestion" @cancel-waiting="emit('cancel-waiting')" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
     <el-dialog append-to-body v-model="readerOpen" fullscreen :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="查看原文" back="返回对话" @close="close" /></template><div class="reader-frame"><ResultCanvas ref="reader" :key="`${session.id}:${session.material_version}`" :task="task" :note="null" :annotations="[]" :local-locs="[]" selected-finding-id="" :raw-highlight="[]" :ask-enabled="false" :node-loader="nodeLoader" :raw-loader="rawLoader" /></div></el-dialog>
     <el-popover :visible="sourceOpen" :virtual-ref="sourceAnchor" virtual-triggering placement="bottom-start" :width="380" popper-class="source-pop">

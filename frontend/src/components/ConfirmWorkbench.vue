@@ -47,6 +47,7 @@ const props = withDefaults(defineProps<{
   stance?: string; fileIds?: string[]; picked?: string[]; mainId?: string; scope?: 'full' | 'delta'
   /** session-review：父页面的提交（确认 + 发起）；抛出的 ApiError 按错误码在本页显示 */
   submit?: () => Promise<RunCreated | void>
+  continueQuestion?: boolean
   /** session-review：父页面的未满足条件，非空时不能提交 */
   blocker?: string
   /** blocker 是用户还没选的项（立场、模型）：按钮保持可点，点击时发 nudge 由父页面定位（V33-C-01） */
@@ -57,6 +58,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'update:picked', ids: string[]): void
   (e: 'update:mainId', id: string): void
+  (e: 'cancel-waiting'): void
   /** 当前我方变化（含首次加载） */
   (e: 'our', party: Party | null): void
   /** session-review：外发预览的材料版本，提交时作为 expected_material_version */
@@ -920,7 +922,8 @@ useHotkeys({
           <span><span class="si-shimmer">{{ submitText }}</span>，已用 {{ submitSeconds }} 秒<template v-if="submitSlow">。比预计慢：可能在按最新规则重新遮住，请不要关闭页面</template></span>
         </p>
         <div ref="confirmBox" class="confirm-btn" :class="{ flash: confirmFlash }">
-          <el-button type="primary" size="large" :disabled="submitting || !readyExceptChoices || (leaksShown && leaksPending > 0)" @click="onConfirmClick"><Send :size="16" :stroke-width="1.75" />{{ submitting ? '正在提交…' : leaksShown ? '重新发送' : assistant && !sessionReview ? '确认遮住' : '确认发送并开始审核' }}</el-button>
+          <p v-if="continueQuestion && !submitting" class="hint">确认后继续已提交的提问。<el-button link type="primary" @click="emit('cancel-waiting')">取消续发</el-button></p>
+          <el-button type="primary" size="large" :disabled="submitting || !readyExceptChoices || (leaksShown && leaksPending > 0)" @click="onConfirmClick"><Send :size="16" :stroke-width="1.75" />{{ submitting ? '正在提交…' : leaksShown ? '重新发送' : assistant && !sessionReview ? (continueQuestion ? '确认并继续发送' : '确认遮住') : '确认发送并开始审核' }}</el-button>
         </div>
       </div>
     </aside>
