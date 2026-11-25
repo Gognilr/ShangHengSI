@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // 文件审核首页（V34-A-03，澄明 8.4 ①）：标题与一句说明 + 大号拖放区 + 最近的审核 5 条。
 // 拖入、点选或粘贴文件才建会话（不在进入页面时建空会话），上传后进入该会话的审核视图；底层仍是“工作空间就是会话”。
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronRight, Ellipsis, FilePlus, FileText, Upload } from '@lucide/vue'
+import { ChevronRight, Ellipsis, FilePlus, FileText, GitCompareArrows, Upload } from '@lucide/vue'
 import { assistantApi, type HistoryItem } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import { usePasteFiles } from '@/composables/usePasteFiles'
+import ContractCompare from '@/components/workspace/ContractCompare.vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
@@ -16,6 +17,13 @@ const DOC = '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png'
 const picker = ref<HTMLInputElement>(), dragging = ref(false)
 const uploading = ref<number | null>(null), error = ref('')
 const recent = ref<HistoryItem[]>([])
+const comparing = ref(false)
+
+async function closeCompare() {
+  comparing.value = false
+  await nextTick()
+  document.getElementById('open-contract-compare')?.focus()
+}
 
 async function upload(files: File[]) {
   if (!files.length || uploading.value !== null) return
@@ -35,7 +43,7 @@ function drop(event: DragEvent) { dragging.value = false; dragDepth = 0; void up
 let dragDepth = 0
 function dragEnter() { dragDepth += 1; dragging.value = true }
 function dragLeave() { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) dragging.value = false }
-usePasteFiles(files => void upload(files), () => uploading.value === null)
+usePasteFiles(files => void upload(files), () => !comparing.value && uploading.value === null)
 
 // 最近的审核：历史记录第一页中发起过审核的会话与旧审核任务，取前 5 条
 onMounted(async () => {
@@ -87,10 +95,16 @@ function open(row: HistoryItem) {
 </script>
 
 <template>
-  <div class="page review-home si-stagger">
+  <ContractCompare v-if="comparing" @close="closeCompare" />
+  <div v-else class="page review-home si-stagger">
     <header class="head">
-      <h1 class="entry-title">文件审核</h1>
-      <p class="entry-lede">合同、报价单、订单、函件都可以。文件在本机读取和遮住名称，你确认后才交给模型初审。</p>
+      <div>
+        <h1 class="entry-title">文件审核</h1>
+        <p class="entry-lede">合同、报价单、订单、函件都可以。文件在本机读取和遮住名称，你确认后才交给模型初审。</p>
+      </div>
+      <el-button id="open-contract-compare" :disabled="uploading !== null" @click="comparing = true">
+        <GitCompareArrows :size="16" :stroke-width="1.75" />合同对比
+      </el-button>
     </header>
     <el-alert v-if="error" type="error" :closable="false" :title="error" class="err" />
     <div class="drop" :class="{ dragging, busy: uploading !== null }" role="button" tabindex="0" :aria-disabled="uploading !== null"
@@ -125,7 +139,7 @@ function open(row: HistoryItem) {
 <style scoped>
 /* 入口页（澄明第七节模板 ②）：内容宽 960 */
 .review-home { max-width: 960px; margin: 0 auto; padding: 48px 24px 64px; box-sizing: border-box; }
-.head { margin-bottom: 28px; }
+.head { display: flex; align-items: start; justify-content: space-between; gap: 20px; margin-bottom: 28px; }
 .entry-lede { margin-bottom: 0; }
 .err { margin-bottom: 16px; }
 .file-input { display: none; }

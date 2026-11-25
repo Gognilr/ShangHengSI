@@ -48,6 +48,7 @@ interface RequestOptions {
   silent401?: boolean
   /** 关闭标签页时仍须发出的请求（V31-U2 延迟删除），透传给 fetch。 */
   keepalive?: boolean
+  signal?: AbortSignal
 }
 
 async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
@@ -73,6 +74,7 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
       headers,
       credentials: 'same-origin',
       keepalive: opts.keepalive,
+      signal: opts.signal,
       body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
     })
   } catch {
@@ -171,7 +173,7 @@ export const http = {
     request<T>('GET', path, { query, ...opts }),
   post: <T>(path: string, body?: unknown, opts?: Pick<RequestOptions, 'silent401'>) =>
     request<T>('POST', path, { body, ...opts }),
-  postForm: <T>(path: string, form: FormData) => request<T>('POST', path, { form }),
+  postForm: <T>(path: string, form: FormData, signal?: AbortSignal) => request<T>('POST', path, { form, signal }),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, { body }),
   delete: <T>(path: string, opts?: Pick<RequestOptions, 'keepalive'>) => request<T>('DELETE', path, { ...opts }),
