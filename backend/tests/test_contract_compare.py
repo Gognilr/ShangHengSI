@@ -55,6 +55,9 @@ def test_contract_compare_literal_differences_and_no_task(alice, files_dir, db_s
     assert _edits(moved) == [('del', '正式'), ('ins', '完整'), ('del', '（'), ('ins', '('), ('del', '）'), ('ins', ')')]
     assert amount['baseline_location'] == '表 1 · 第 1 行第 1 列' and _edits(amount) == [('del', '3'), ('ins', '6')]
 
+    punctuation = client.post(URL, headers=headers, files=_pair(_word(['货到签收。']), _word(['货到签收'])))
+    [only_change] = punctuation.json()['changes']
+    assert only_change['type'] == 'format' and _edits(only_change) == [('del', '。')]
     assert client.post(URL, headers=headers, files=_pair(before, before)).json()['changes'] == []
     with db_sessionmaker() as db:
         for model in (Task, TaskFile, DocNode, Job, LlmCall):
