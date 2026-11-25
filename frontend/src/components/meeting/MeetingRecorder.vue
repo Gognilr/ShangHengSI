@@ -6,10 +6,13 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { Flag, Mic, Pause, Play, RotateCcw, Square, Trash2, X } from '@lucide/vue'
-import { recordingStore, type RecordingMeta } from '@/utils/recordingStore'
+import { recordingStoreFor, type RecordingMeta } from '@/utils/recordingStore'
 import { stamp } from '@/utils/transcript'
 
-export interface Recorded { file: File; marks: number[]; topic: string; participants: string[] }
+export interface Recorded { ownerId: string; startedAt: number; file: File; marks: number[]; topic: string; participants: string[] }
+const props = defineProps<{ ownerId: string; busy: boolean }>()
+const ownerId = props.ownerId
+const recordingStore = recordingStoreFor(ownerId)
 const emit = defineEmits<{ recorded: [value: Recorded] }>()
 const RATE = 16000, LIMIT_S = 3 * 3600, FLUSH = RATE * 2, BARS = 48
 type State = 'idle' | 'setup' | 'recording' | 'paused'
@@ -17,7 +20,8 @@ const state = ref<State>('idle'), seconds = ref(0), level = ref(0), error = ref(
 const bars = ref<number[]>(Array(BARS).fill(0))
 const devices = ref<MediaDeviceInfo[]>([]), deviceId = ref(''), testing = ref(false)
 const topic = ref(''), participants = ref<string[]>([]), marks = ref<number[]>([])
-const saved = ref<RecordingMeta | null>(null)
+const saved = ref<RecordingMeta | null>(null), checkingSaved = ref(true)
+let mounted = true, micRequest = 0
 let ctx: AudioContext | null = null, stream: MediaStream | null = null, node: ScriptProcessorNode | null = null
 let chunks: Int16Array[] = [], pending: Int16Array[] = [], pendingSamples = 0, samples = 0, startedAt = 0
 const secure = typeof window !== 'undefined' && window.isSecureContext
@@ -69,24 +73,31 @@ function flush() {
 }
 async function openMic() {
   closeMic()
-  stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceId.value ? { exact: deviceId.value } : undefined, channelCount: 1, echoCancellation: false, noiseSuppression: false } })
+  const request = micRequest
+  const inputStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: deviceId.value ? { exact: deviceId.value } : undefined, channelCount: 1, echoCancellation: false, noiseSuppression: false } })
+  if (request !== micRequest) { inputStream.getTracks().forEach(t => t.stop()); return }
+  stream = inputStream
   ctx = new AudioContext({ sampleRate: RATE })
   const source = ctx.createMediaStreamSource(stream)
   node = ctx.createScriptProcessor(4096, 1, 1)
   node.onaudioprocess = process
   source.connect(node); node.connect(ctx.destination)
   // 授权后才能读到设备名称
-  devices.value = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput')
-  const current = stream.getAudioTracks()[0]?.getSettings().deviceId
+  const inputs = await navigator.mediaDevices.enumerateDevices()
+  if (request !== micRequest) return
+  devices.value = inputs.filter(d => d.kind === 'audioinput')
+  const current = inputStream.getAudioTracks()[0]?.getSettings().deviceId
   if (!deviceId.value && current) deviceId.value = current
 }
 function closeMic() {
+  micRequest++
   node?.disconnect(); node = null
   stream?.getTracks().forEach(t => t.stop()); stream = null
   void ctx?.close(); ctx = null
   level.value = 0
 }
 async function openSetup() {
+  if (props.busy || checkingSaved.value || saved.value) return
   error.value = ''
   if (!secure) { error.value = 'https'; return }
   if (!supported) { error.value = '当前浏览器不支持录音，请使用最新版 Edge 或 Chrome'; return }
@@ -139,14 +150,14 @@ async function stop() {
   closeMic(); state.value = 'idle'; chunks = []; samples = 0
   window.removeEventListener('beforeunload', guard)
   saved.value = info
-  if (total) emit('recorded', { file: new File([wav(parts, total)], fileName(info.startedAt), { type: 'audio/wav' }), marks: info.marks, topic: info.topic, participants: info.participants })
-  else await settle(true)
+  if (total) emit('recorded', { ownerId, startedAt: info.startedAt, file: new File([wav(parts, total)], fileName(info.startedAt), { type: 'audio/wav' }), marks: info.marks, topic: info.topic, participants: info.participants })
+  else await settle(true, info.startedAt)
 }
 async function discard() {
   try { await ElMessageBox.confirm('放弃后这段录音无法找回。', '放弃录音', { type: 'warning', confirmButtonText: '放弃', cancelButtonText: '继续录音' }) } catch { return }
   closeMic(); state.value = 'idle'; chunks = []; pending = []; samples = 0
   window.removeEventListener('beforeunload', guard)
-  await settle(true)
+  await settle(true, startedAt)
 }
 
 // ---- 防丢：上传成功后清除；失败或刷新后可从本机存储恢复再传 ----
@@ -154,26 +165,36 @@ async function refreshSaved() {
   const info = recordingStore.supported ? await recordingStore.meta() : undefined
   saved.value = info && info.samples > RATE ? info : null
 }
-async function settle(ok: boolean) {
-  if (ok) { await recordingStore.clear(); saved.value = null } else await refreshSaved()
+async function settle(ok: boolean, draftStartedAt: number) {
+  if (ok) await recordingStore.clear(draftStartedAt)
+  if (mounted) await refreshSaved()
 }
 async function restore() {
   const info = saved.value
-  if (!info) return
+  if (!info || props.busy) return
   const parts = await recordingStore.chunks()
+  if (!mounted || props.busy || saved.value !== info) return
   const total = (parts ?? []).reduce((s, c) => s + c.length, 0)
-  if (!parts || !total) { error.value = '本机保存的录音已无法读取'; await settle(true); return }
-  emit('recorded', { file: new File([wav(parts, total)], fileName(info.startedAt), { type: 'audio/wav' }), marks: info.marks, topic: info.topic, participants: info.participants })
+  if (!parts || !total) { error.value = '本机保存的录音已无法读取'; await settle(true, info.startedAt); return }
+  emit('recorded', { ownerId, startedAt: info.startedAt, file: new File([wav(parts, total)], fileName(info.startedAt), { type: 'audio/wav' }), marks: info.marks, topic: info.topic, participants: info.participants })
 }
 async function dropSaved() {
+  const info = saved.value
+  if (!info || props.busy) return
   try { await ElMessageBox.confirm('放弃后这段录音无法找回。', '放弃未上传的录音', { type: 'warning', confirmButtonText: '放弃', cancelButtonText: '保留' }) } catch { return }
-  await settle(true)
+  if (mounted && !props.busy) await settle(true, info.startedAt)
 }
 // 录音卡展开（设置或录音中）时，入口页隐藏“上传录音”卡
 const open = computed(() => state.value !== 'idle')
 defineExpose({ settle, open })
-onMounted(() => { void refreshSaved() })
-onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeMic(); window.removeEventListener('beforeunload', guard) })
+onMounted(async () => { await refreshSaved(); checkingSaved.value = false })
+onBeforeUnmount(() => {
+  mounted = false
+  clearTimeout(metaTimer)
+  if (live.value) { flush(); void recordingStore.saveMeta(meta()) }
+  closeMic()
+  window.removeEventListener('beforeunload', guard)
+})
 </script>
 
 <template>
@@ -181,12 +202,12 @@ onBeforeUnmount(() => { clearTimeout(metaTimer); if (live.value) flush(); closeM
     <div v-if="saved && state === 'idle'" class="saved" role="status">
       <RotateCcw :size="16" :stroke-width="1.75" />
       <span class="saved-text">发现一段未上传的录音：<span class="num">{{ savedText }}</span><template v-if="saved.topic">，主题“{{ saved.topic }}”</template></span>
-      <el-button size="small" type="primary" @click="restore">上传这段录音</el-button>
-      <el-button size="small" text @click="dropSaved">放弃</el-button>
+      <el-button size="small" type="primary" :disabled="busy" @click="restore">上传这段录音</el-button>
+      <el-button size="small" text :disabled="busy" @click="dropSaved">放弃</el-button>
     </div>
 
     <div v-if="state === 'idle'" class="idle">
-      <button type="button" class="rec-btn" :disabled="!!saved" aria-label="开始现场录音" @click="openSetup"><Mic :size="30" :stroke-width="1.75" /></button>
+      <button type="button" class="rec-btn" :disabled="!!saved || busy || checkingSaved" aria-label="开始现场录音" @click="openSetup"><Mic :size="30" :stroke-width="1.75" /></button>
       <b class="idle-title">现场录音</b>
       <span class="hint">{{ saved ? '请先处理上面未上传的录音' : '用这台电脑的麦克风录会议，录完自动转写' }}</span>
     </div>

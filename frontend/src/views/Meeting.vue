@@ -84,23 +84,36 @@ onBeforeUnmount(() => { clearTimeout(timer); ++version; document.removeEventList
 
 // ---- 加入录音：没有会议记录时先建一条 ----
 const recorder = ref<InstanceType<typeof MeetingRecorder>>()
+const recordingOwner = computed(() => auth.user?.id)
+let uploadVersion = 0
+watch(recordingOwner, () => { ++uploadVersion; uploading.value = null }, { flush: 'sync' })
 async function upload(files: File[], recorded?: Recorded) {
-  const file = files[0]
-  if (!file) return
+  const file = files[0], ownerId = recordingOwner.value
+  if (!file || !ownerId || uploading.value !== null || (recorded && recorded.ownerId !== ownerId)) return
+  const currentRecorder = recorder.value, current = ++uploadVersion
+  const active = () => current === uploadVersion
   const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
   if (!AUDIO.split(',').includes('.' + ext)) { error.value = '请选择会议录音（mp3、m4a、wav、amr、aac、mp4）'; return }
   if (file.size > 500 * 1024 * 1024) { error.value = '录音单个不能超过 500 MB'; return }
   error.value = ''; uploading.value = 0
   try {
     const target = session.value?.id ?? (await assistantApi.create('meeting')).id
+    if (!active()) return
     // 现场录音时填的主题与参会人：尽力而为，失败不挡上传（会后仍可在逐字稿页修改）
     if (recorded?.topic) await assistantApi.patch(target, { title: recorded.topic }).catch(() => undefined)
+    if (!active()) return
     if (recorded?.participants.length) await assistantApi.participants(target, recorded.participants).catch(() => undefined)
-    await assistantApi.addFiles(target, [file], (loaded, total) => { uploading.value = Math.round(loaded / total * 100) }, recorded?.marks)
-    if (recorded) await recorder.value?.settle(true)  // 上传成功才清掉本机保存的录音
-    if (target !== id.value) await router.push(`/meeting/${target}`); else await load()
-  } catch (e) { error.value = failure(e); if (recorded) await recorder.value?.settle(false) }
-  finally { uploading.value = null }
+    if (!active()) return
+    await assistantApi.addFiles(target, [file], (loaded, total) => { if (active()) uploading.value = Math.round(loaded / total * 100) }, recorded?.marks)
+    if (recorded) await currentRecorder?.settle(true, recorded.startedAt)  // 只清掉上传时所属账号的录音
+    if (active()) {
+      if (target !== id.value) await router.push(`/meeting/${target}`); else await load()
+    }
+  } catch (e) {
+    if (!active()) return
+    error.value = failure(e)
+    if (recorded) await currentRecorder?.settle(false, recorded.startedAt)
+  } finally { if (active()) uploading.value = null }
 }
 function picked(event: Event) { const input = event.target as HTMLInputElement, files = Array.from(input.files ?? []); input.value = ''; void upload(files) }
 function drop(event: DragEvent) { dragging.value = false; void upload(Array.from(event.dataTransfer?.files ?? [])) }
@@ -155,7 +168,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     </div>
     <p v-if="!asrEnabled" class="hint off-note">请联系系统管理员启用本机转写。</p>
     <div v-else class="entry-cards" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)">
-      <MeetingRecorder ref="recorder" @recorded="upload([$event.file], $event)" />
+      <MeetingRecorder v-if="recordingOwner" :key="recordingOwner" ref="recorder" :owner-id="recordingOwner" :busy="uploading !== null" @recorded="upload([$event.file], $event)" />
       <div v-show="!recorder?.open" class="entry-card pick" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
         <span class="ic"><UploadCloud :size="26" :stroke-width="1.75" /></span>
         <b class="ttl">{{ uploading !== null ? (uploading < 100 ? `正在上传 ${uploading}%` : '上传完成，正在提交转写……') : dragging ? '松开即可加入' : '上传录音' }}</b>

@@ -6,9 +6,9 @@ export interface RecordingMeta {
   startedAt: number; samples: number; marks: number[]; topic: string; participants: string[]
 }
 
-function open(): Promise<IDBDatabase> {
+function open(ownerId: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB, 1)
+    const request = indexedDB.open(DB + ':' + ownerId, 1)
     request.onupgradeneeded = () => { request.result.createObjectStore(CHUNKS, { autoIncrement: true }); request.result.createObjectStore(META) }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
@@ -26,39 +26,46 @@ function enqueue<T>(job: () => Promise<T>): Promise<T | undefined> {
   return next
 }
 
-export const recordingStore = {
-  supported: typeof indexedDB !== 'undefined',
-  /** 开始新录音：清掉旧分片，写入元信息 */
-  begin: (meta: RecordingMeta) => enqueue(async () => {
-    const db = await open(), tx = db.transaction([CHUNKS, META], 'readwrite')
-    tx.objectStore(CHUNKS).clear(); tx.objectStore(META).put(meta, KEY)
-    await done(tx); db.close()
-  }),
-  append: (chunk: Int16Array, meta: RecordingMeta) => enqueue(async () => {
-    const db = await open(), tx = db.transaction([CHUNKS, META], 'readwrite')
-    tx.objectStore(CHUNKS).add(chunk.buffer); tx.objectStore(META).put(meta, KEY)
-    await done(tx); db.close()
-  }),
-  saveMeta: (meta: RecordingMeta) => enqueue(async () => {
-    const db = await open(), tx = db.transaction(META, 'readwrite')
-    tx.objectStore(META).put(meta, KEY)
-    await done(tx); db.close()
-  }),
-  meta: () => enqueue(async () => {
-    const db = await open(), tx = db.transaction(META, 'readonly')
-    const request = tx.objectStore(META).get(KEY)
-    await done(tx); db.close()
-    return request.result as RecordingMeta | undefined
-  }),
-  chunks: () => enqueue(async () => {
-    const db = await open(), tx = db.transaction(CHUNKS, 'readonly')
-    const request = tx.objectStore(CHUNKS).getAll()
-    await done(tx); db.close()
-    return (request.result as ArrayBuffer[]).map(b => new Int16Array(b))
-  }),
-  clear: () => enqueue(async () => {
-    const db = await open(), tx = db.transaction([CHUNKS, META], 'readwrite')
-    tx.objectStore(CHUNKS).clear(); tx.objectStore(META).clear()
-    await done(tx); db.close()
-  }),
+// V1 的无归属库不读也不迁移，新录音的分片和元信息同库按账号隔离。
+export function recordingStoreFor(ownerId: string) {
+  return {
+    supported: typeof indexedDB !== 'undefined',
+    /** 开始新录音：清掉旧分片，写入元信息 */
+    begin: (meta: RecordingMeta) => enqueue(async () => {
+      const db = await open(ownerId), tx = db.transaction([CHUNKS, META], 'readwrite')
+      tx.objectStore(CHUNKS).clear(); tx.objectStore(META).put(meta, KEY)
+      await done(tx); db.close()
+    }),
+    append: (chunk: Int16Array, meta: RecordingMeta) => enqueue(async () => {
+      const db = await open(ownerId), tx = db.transaction([CHUNKS, META], 'readwrite')
+      tx.objectStore(CHUNKS).add(chunk.buffer); tx.objectStore(META).put(meta, KEY)
+      await done(tx); db.close()
+    }),
+    saveMeta: (meta: RecordingMeta) => enqueue(async () => {
+      const db = await open(ownerId), tx = db.transaction(META, 'readwrite')
+      tx.objectStore(META).put(meta, KEY)
+      await done(tx); db.close()
+    }),
+    meta: () => enqueue(async () => {
+      const db = await open(ownerId), tx = db.transaction(META, 'readonly')
+      const request = tx.objectStore(META).get(KEY)
+      await done(tx); db.close()
+      return request.result as RecordingMeta | undefined
+    }),
+    chunks: () => enqueue(async () => {
+      const db = await open(ownerId), tx = db.transaction(CHUNKS, 'readonly')
+      const request = tx.objectStore(CHUNKS).getAll()
+      await done(tx); db.close()
+      return (request.result as ArrayBuffer[]).map(b => new Int16Array(b))
+    }),
+    clear: (startedAt: number) => enqueue(async () => {
+      const db = await open(ownerId), tx = db.transaction([CHUNKS, META], 'readwrite')
+      const meta = tx.objectStore(META), request = meta.get(KEY)
+      request.onsuccess = () => {
+        if ((request.result as RecordingMeta | undefined)?.startedAt !== startedAt) return
+        tx.objectStore(CHUNKS).clear(); meta.delete(KEY)
+      }
+      await done(tx); db.close()
+    }),
+  }
 }
