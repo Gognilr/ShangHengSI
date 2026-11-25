@@ -84,10 +84,10 @@ _MANUAL_CLAUSE = re.compile(
 _LVL_PLACEHOLDER = re.compile(r"%([1-9])")
 
 
-def parse_docx(data: bytes, file_seq: int, track: bool = False) -> ParsedFile:
+def parse_docx(data: bytes, file_seq: int, track: bool = False, *, preserve_whitespace: bool = False) -> ParsedFile:
     """解析 DOCX。file_seq 从 1 开始；track 开启时附带原 XML 段落，节点与版本不变。"""
     try:
-        return _DocxParser(data, file_seq, track=track).parse()
+        return _DocxParser(data, file_seq, track=track, preserve_whitespace=preserve_whitespace).parse()
     except ParseError:
         raise
     except Exception:  # noqa: BLE001  任何其他异常都视为文件损坏；不带异常消息，避免原文片段外泄
@@ -557,7 +557,7 @@ class TrackedDocx(ParsedFile):
 
 
 class _DocxParser:
-    def __init__(self, data: bytes, file_seq: int, track: bool = False):
+    def __init__(self, data: bytes, file_seq: int, *, track: bool = False, preserve_whitespace: bool = False):
         self.pkg = _Package(data)
         self.f = f"F{file_seq}"
         self.has_revisions = False
@@ -567,6 +567,7 @@ class _DocxParser:
         self.comments: dict[str, etree._Element] = {}
         self.emitted_comments: set[str] = set()
         self.track = track
+        self.preserve_whitespace = preserve_whitespace
         self.node_paragraphs: dict[str, list[etree._Element] | None] = {}
         self.missing_images = 0
         self.in_body = False  # 只收正文（含正文文本框）中的图片；页眉页脚的徽标等不识别
@@ -856,8 +857,12 @@ class _DocxParser:
         before, self.pending_before = "\n".join(t for t in (self.pending_before, before.strip()) if t), ""
         return before if before != text else None
 
+    def _visible_text(self, para: _Para) -> str:
+        stripped = para.text.strip()
+        return para.text if self.preserve_whitespace and stripped else stripped
+
     def _emit_paragraph(self, para: _Para, out: list[ParsedNode]) -> None:
-        text = para.text.strip()
+        text = self._visible_text(para)
         loc = None
         if not text and para.before.strip():
             self._pend(para.before.strip())
@@ -900,10 +905,11 @@ class _DocxParser:
                 paragraphs.extend(para.paragraphs)
             if para.before.strip():
                 befores.append(para.before.strip())
-            if para.text.strip():
+            text = self._visible_text(para)
+            if text:
                 offset = sum(len(t) + 1 for t in texts)
                 hidden.extend([[a + offset, b + offset] for a, b in (self._trim_hidden(para) or [])])
-                texts.append(para.text.strip())
+                texts.append(text)
             rev = rev or para.rev
             side.extend(para.side)
 
@@ -959,8 +965,9 @@ class _DocxParser:
         carry: _Para | None = None
 
         def take(para: _Para) -> None:
-            if para.text.strip():
-                items.append((para.text.strip(), para.rev, self._trim_hidden(para) or []))
+            text = self._visible_text(para)
+            if text:
+                items.append((text, para.rev, self._trim_hidden(para) or []))
             side.extend(para.side)
 
         for blk in self._items(container, (w.p, w.tbl)):
@@ -1096,8 +1103,9 @@ class _DocxParser:
             else:
                 ctx.hidden_spans.append([start, end])
 
-    @staticmethod
-    def _trim_hidden(para: _Para) -> list[list[int]] | None:
+    def _trim_hidden(self, para: _Para) -> list[list[int]] | None:
+        if self.preserve_whitespace:
+            return para.hidden_spans or None
         left = len(para.text) - len(para.text.lstrip())
         right = len(para.text.rstrip())
         spans = [[max(a, left) - left, min(b, right) - left] for a, b in para.hidden_spans

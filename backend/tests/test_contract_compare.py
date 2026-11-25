@@ -65,6 +65,35 @@ def test_contract_compare_literal_differences_and_no_task(alice, files_dir, db_s
     assert not any(path.is_file() for path in files_dir.rglob('*'))
 
 
+def test_contract_compare_tracks_column_change_and_visible_whitespace(alice):
+    client, csrf = alice
+    headers = {'X-CSRF-Token': csrf}
+
+    def word(lines, rows):
+        doc = Document()
+        for line in lines:
+            doc.add_paragraph(line)
+        table = doc.add_table(rows=len(rows), cols=len(rows[0]))
+        for row, cells in zip(table.rows, rows):
+            for cell, text in zip(row.cells, cells):
+                cell.text = text
+        stream = io.BytesIO()
+        doc.save(stream)
+        return stream.getvalue()
+
+    baseline = word(['原正文'], [('迁移条款', ''), ('固定行', '说明  ')])
+    revised = word(['新加段落', '  原正文'], [('新增行', ''), ('', '迁移条款'), ('固定行', '说明')])
+    answer = client.post(URL, headers=headers, files=_pair(baseline, revised))
+    assert answer.status_code == 200, answer.text
+    changes = answer.json()['changes']
+    [move] = [c for c in changes if c['type'] == 'move']
+    assert move['baseline_location'] == '表 1 · 第 1 行第 1 列'
+    assert move['revised_location'] == '表 1 · 第 2 行第 2 列'
+    whitespace = [c for c in changes if c['type'] == 'format']
+    assert [_edits(c) for c in whitespace] == [[('ins', '  ')], [('del', '  ')]]
+    assert not any('固定行' in str(c['segs']) for c in changes)
+
+
 def test_contract_compare_legacy_and_input_errors(alice, monkeypatch):
     client, csrf = alice
     headers = {'X-CSRF-Token': csrf}

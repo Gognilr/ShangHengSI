@@ -214,6 +214,32 @@ def _literal_moves(old, new, deleted, added) -> dict[int, int]:
     return {i: j for i, j in paired.items() if counts[j] == 1}
 
 
+_CELL_SLOT = re.compile(r"^F\d+-(.+)-R\d+-C(\d+)$")
+
+
+def _literal_cell_moves(old, new, old_keys, new_keys, pairs):
+    old_counts, new_counts = Counter(old_keys), Counter(new_keys)
+    by_old, by_new, cells = defaultdict(set), defaultdict(set), []
+    for i, j in pairs:
+        p = _CELL_SLOT.fullmatch(old[i].loc) if old[i].kind == "table_cell" else None
+        n = _CELL_SLOT.fullmatch(new[j].loc) if new[j].kind == "table_cell" else None
+        if not p or not n:
+            continue
+        if old_keys[i] == new_keys[j] and old_counts[old_keys[i]] == new_counts[new_keys[j]] == 1:
+            by_old[p[1]].add(n[1])
+            by_new[n[1]].add(p[1])
+        if p[2] != n[2]:
+            cells.append((i, j, p[1], n[1]))
+    moved, ambiguous = set(), set()
+    for i, j, old_table, new_table in cells:
+        if (old_counts[old_keys[i]] == new_counts[new_keys[j]] == 1
+                and by_old[old_table] == {new_table} and by_new[new_table] == {old_table}):
+            moved.add((i, j))
+        else:
+            ambiguous.add((i, j))
+    return moved, ambiguous
+
+
 def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False, literal: bool = False) -> dict:
     """old / new：上一稿、本稿的正文节点（loc、text、before、kind、clause_no、page、has_revision）。
     mode：exact（本稿有“拒绝修订”文字）/ flag（旧版本解析，按节点修订标记）/ none（非 Word，不判断留痕）。
@@ -246,6 +272,12 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
                     deleted.append((i, j))
             added.extend(range(j, j2))
 
+    cell_moves, ambiguous = _literal_cell_moves(old, new, old_keys, new_keys, pairs) if literal else (set(), set())
+    if ambiguous:
+        pairs = [(i, j) for i, j in pairs if (i, j) not in ambiguous]
+        deleted.extend(sorted(ambiguous))
+        added.extend(j for _, j in sorted(ambiguous))
+
     changes = []
 
     def node_trace(i, j):
@@ -254,9 +286,12 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
 
     for i, j in pairs:
         p, n = old[i], new[j]
-        if p.text == n.text:
+        if (i, j) in cell_moves:
+            kind = 'move'
+        elif p.text != n.text:
+            kind = 'format' if _loose(p.text) == _loose(n.text) else 'mod'
+        else:
             continue
-        kind = 'format' if _loose(p.text) == _loose(n.text) else 'mod'
         segs = _segments(p.text, n.text, node_trace(i, j), n.has_revision, literal=literal)
         changes.append({'type': kind, 'loc': n.loc, 'prev_loc': p.loc, 'clause': new_labels[j], 'segs': segs, 'order': j})
     # 会话对比沿用归一段落键，一次性对比较验有文字变化的唯一移位段落。
@@ -264,7 +299,9 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
     if not literal:
         for j in added:
             by_key[new_keys[j]].append(j)
-    literal_moves = _literal_moves(old, new, deleted, added) if literal else {}
+    ambiguous_old, ambiguous_new = {i for i, _ in ambiguous}, {j for _, j in ambiguous}
+    literal_moves = _literal_moves(old, new, [(i, at) for i, at in deleted if i not in ambiguous_old],
+                                   [j for j in added if j not in ambiguous_new]) if literal else {}
     moved = set()
     rest_deleted = []
     for i, at in deleted:

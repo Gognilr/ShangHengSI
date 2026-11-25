@@ -22,7 +22,7 @@
 | V351-A-04 | 审核批注按轮次选稿与归属 | Q-04 | Opus，medium | Sol 6.1，high | A-03 | Word 目视 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-04.md)） |
 | V351-A-05 | 文件审核重开及确认后送审 | Q-17 | Opus，high | Sol 6.1，high | A-04 | 自审和虚构任务实走 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-05.md)） |
 | V351-A-06 | 普通对话仅续发明确提交过的提问 | Q-18 | Opus，high | Sol 6.1，high | A-05 | 自审和模拟外发 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-06.md)） |
-| V351-B-01 | 一次性合同对比保留跨列与首尾空格差异 | Q-05 | Sonnet，high | Sol 6.1，high | A-06 | — | 待开工 |
+| V351-B-01 | 一次性合同对比保留跨列与首尾空格差异 | Q-05 | Sonnet，high | Sol 6.1，high | A-06 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-01.md)） |
 | V351-B-02 | 单证同额异币分别保留并核对 | Q-06 | Sonnet，high | Sol 6.1，high | B-01 | — | 待开工 |
 | V351-B-03 | 修复按问题讨论的回复导出 | Q-07 | Sonnet，medium | Terra，medium | B-02 | — | 待开工 |
 | V351-B-04 | 翻译停止、完成与待确认状态对齐 | Q-08、09 | Sonnet，high | Sol 6.1，medium | B-03 | 确认 Q-09 状态口径 | 待开工 |

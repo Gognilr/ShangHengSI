@@ -35,6 +35,8 @@
 
 - **触发与证据** 手工或程序新建两份文字相同的 Word，将一条表格文字从第 1 列移到第 2 列。另组只在段首加两个空格，原件 XML 保留空格。当前接口两组均返回 HTTP 200 和空差异清单。一次性对比本身不读取之前的任务。 [读取](../../backend/app/review/contract_compare.py#L17) · [丢空格](../../backend/app/parsing/docx.py#L859) · [同文字跳过](../../backend/app/review/drafts.py#L255)
 
+- **结论（B-01）** 一次性对比保留原始正文和格内首尾空白。可信配对的跨列文字标记位置变化，配对有歧义时按增删展示。普通入审与增量复审继续沿用现行读取口径。
+
 ### V351Q-06 同额异币被去重并误判一致（P2，B-02）
 
 - **触发与证据** 单证 A 明列美元和欧元各 `10,000`，单证 B 只列美元 `10,000`。当前本机核对保留美元，丢掉欧元和出处，金额与币种均显示一致。普通金额 T-50 路径触发，信用证金额上限使用独立规则。 [金额归一](../../backend/app/assistant/crosscheck.py#L79) · [去重](../../backend/app/assistant/crosscheck.py#L166) · [币种](../../backend/app/assistant/crosscheck.py#L233)

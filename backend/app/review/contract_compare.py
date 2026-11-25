@@ -22,7 +22,7 @@ def _read(file: UploadFile, label: str, seq: int, max_bytes: int) -> tuple[list[
     inspect_upload(f'{label}.{ext}', file.file, max_bytes)
     data = file.file.read()
     try:
-        parsed = parse_docx(legacy.convert(data, ext) if ext == 'doc' else data, seq)
+        parsed = parse_docx(legacy.convert(data, ext) if ext == 'doc' else data, seq, preserve_whitespace=True)
     except ParseError as exc:
         message = str(exc).replace('DOCX / XLSX', 'DOCX')
         raise AppError(422, 'CONTRACT_READ_FAILED', f'{label}读取失败。{message}') from None
