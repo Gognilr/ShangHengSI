@@ -27,6 +27,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.audit import service as audit
+from app.backup.references import ReferenceError, dump_file_keys, file_keys
 from app.config import get_settings
 from app.db.base import utcnow
 from app.db.jobs import BACKUP_INTERRUPTED_MSG
@@ -264,6 +265,14 @@ def prepare(tar_path: str | Path, work_dir: str | Path) -> dict:
             if revision not in known_revisions():
                 raise RestoreError("备份来自更新的系统版本，请先升级到不低于备份时的版本再恢复")
 
+            try:
+                required_keys = dump_file_keys(dump_dest)
+            except ReferenceError as exc:
+                raise RestoreError(str(exc)) from None
+            missing = required_keys - {m.name.split("/", 1)[1] for m in file_ms}
+            if missing:
+                raise RestoreError(f"备份缺少数据库快照引用的原件（{len(missing)} 件），当前数据库和原件未改动")
+
             key_checked = False
             new_dir.mkdir(mode=0o700)
             for m in file_ms:
@@ -455,10 +464,11 @@ def verify(expect_files: int) -> dict:
     files_dir = _files_dir()
     present = set(_original_names(files_dir))
     with get_sessionmaker()() as db:
-        rows = db.execute(select(TaskFile.storage_key, TaskFile.media_storage_key).where(TaskFile.original_deleted_at.is_(None))).all()
-        keys = [media or original for original, media in rows]
-    missing = sum(1 for k in keys if k not in present)
-    result = {"files": len(present), "expected": expect_files, "records": len(keys), "missing": missing,
+        rows = db.execute(select(TaskFile.storage_key, TaskFile.media_storage_key, TaskFile.converted_storage_key)
+                          .where(TaskFile.original_deleted_at.is_(None))).all()
+    keys = {key for row in rows for key in file_keys(*row)}
+    missing = len(keys - present)
+    result = {"files": len(present), "expected": expect_files, "records": len(rows), "missing": missing,
               "ok": len(present) == expect_files and missing == 0}
     return result
 

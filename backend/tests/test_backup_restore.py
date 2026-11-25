@@ -137,6 +137,41 @@ def _bad(env, members, message: str):
     assert {p.name for p in env["files"].iterdir()} == {KEY_A, KEY_B, "README"}
 
 
+def test_prepare_requires_replay_and_conversion_but_accepts_expired_original(
+    env, db_sessionmaker, make_user, pg_url, target, monkeypatch,
+):
+    owner = make_user("restore_owner")
+    with db_sessionmaker() as db:
+        task = _task(owner.id, "虚构任务")
+        db.add(task)
+        db.flush()
+        for seq, ext, original, replay, conversion, deleted in (
+            (1, "mp3", KEY_C, KEY_A, None, None),
+            (2, "doc", KEY_A, None, KEY_B, None),
+            (3, "docx", "d" * 32, None, None, utcnow()),
+        ):
+            db.add(TaskFile(task_id=task.id, seq=seq, is_main=seq == 1, original_name=f"虚构{seq}.{ext}",
+                            ext=ext, size_bytes=1, sha256="0" * 64, storage_key=original,
+                            media_storage_key=replay, converted_storage_key=conversion, original_deleted_at=deleted))
+        db.commit()
+    tar = _backup_tar(env, db_sessionmaker)
+    members = _members(tar)
+    _bad(env, [(m, data) for m, data in members if m.name != f"files/{KEY_B}"], "缺少数据库快照引用的原件（1 件）")
+    assert restore.prepare(tar, env["work"])["files_extracted"] == 2
+    with _admin() as admin:
+        admin.execute(f'CREATE DATABASE "{target}"')
+    monkeypatch.setenv("DATABASE_URL", _url_for(pg_url, target).render_as_string(hide_password=False))
+    _clear_caches()
+    assert restore.restore_db(env["work"] / "db.dump")["database"] == target
+    assert restore.swap_files() == {"moved_out": 2, "moved_in": 2}
+    assert restore.verify(2)["ok"]
+    assert crypto.decrypt_file(env["files"] / KEY_A) == b"fictive original A"
+    with db_session.get_sessionmaker()() as db:
+        assert db.scalar(select(Task.owner_id)) == owner.id
+        assert db.scalar(select(User.username).where(User.id == owner.id)) == "restore_owner"
+    db_session.get_engine().dispose()
+
+
 def test_prepare_rejects_wrong_master_key(env, db_sessionmaker):
     tar = _backup_tar(env, db_sessionmaker)
     env["key"].write_bytes(os.urandom(32))

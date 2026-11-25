@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from app.admin.settings_store import get_setting
 from app.audit import service as audit
 from app.backup.archive import EncryptingWriter, load_backup_password
+from app.backup.references import ReferenceError, dump_file_keys
 from app.config import get_settings
 from app.db.base import utcnow
 from app.db.jobs import BACKUP_INTERRUPTED_MSG
@@ -119,14 +120,14 @@ def _add_bytes(tar: tarfile.TarFile, name: str, data: bytes, mtime: float) -> No
     tar.addfile(info, io.BytesIO(data))
 
 
-def _write_archive(tmp: Path, password: bytes, manifest: dict, dump: Path, files: list[Path]) -> tuple[int, str, int]:
-    """写加密的 .tmp 文件并 fsync，返回（大小, SHA-256, 实际放入的原件数）。"""
+def _write_archive(tmp: Path, password: bytes, manifest: dict, dump: Path, files: list[Path]) -> tuple[int, str, set[str]]:
+    """写加密的 .tmp 文件并 fsync，返回大小、SHA-256 与实际归档的文件键。"""
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, BACKUP_FILE_MODE)
     os.fchmod(fd, BACKUP_FILE_MODE)  # 不受 umask 影响
     with os.fdopen(fd, "wb") as f:
         hashing = _HashingFile(f)
         writer = EncryptingWriter(hashing, password)
-        added = 0
+        added = set()
         with tarfile.open(fileobj=writer, mode="w|", format=tarfile.PAX_FORMAT) as tar:
             # manifest 写在最前（设计 3.2），file_count 为列出的原件数；列出后才被删除的原件（任务刚被删除）跳过，
             # 这时 file_count 会比实际多，恢复不依赖这个数字
@@ -144,7 +145,7 @@ def _write_archive(tmp: Path, password: bytes, manifest: dict, dump: Path, files
                     info.uid = info.gid = 0
                     info.uname = info.gname = ""
                     tar.addfile(info, fh)
-                added += 1
+                added.add(p.name)
         writer.close()
         f.flush()
         os.fsync(f.fileno())
@@ -233,6 +234,7 @@ def _locked_backup(db: Session, *, trigger: str, user_id: uuid.UUID | None, now:
         work.mkdir(mode=0o700)
         dump = work / "db.dump"
         _pg_dump(db, dump)
+        required_keys = dump_file_keys(dump)
         db_bytes = _measure_stat(lambda: _database_bytes(db))
 
         manifest = {"format": FORMAT_VERSION, "app_version": settings.app_version,
@@ -242,6 +244,9 @@ def _locked_backup(db: Session, *, trigger: str, user_id: uuid.UUID | None, now:
         files = _original_files(Path(settings.files_dir))
         created.append(tmp)
         size, digest, added = _write_archive(tmp, password, manifest, dump, files)
+        missing = required_keys - added
+        if missing:
+            raise BackupError(f"备份缺少数据库快照引用的原件（{len(missing)} 件），请重新备份")
 
         created.append(sha_path)
         fd = os.open(sha_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, BACKUP_FILE_MODE)
@@ -263,14 +268,14 @@ def _locked_backup(db: Session, *, trigger: str, user_id: uuid.UUID | None, now:
     except Exception as exc:  # noqa: BLE001  失败一律记录，不让 job 重试
         for p in created:
             p.unlink(missing_ok=True)
-        message = str(exc) if isinstance(exc, BackupError) else f"备份失败（{type(exc).__name__}）"
+        message = str(exc) if isinstance(exc, (BackupError, ReferenceError)) else f"备份失败（{type(exc).__name__}）"
         db.rollback()
         logger.error("备份 %s 失败 trigger=%s 错误=%s", record_id, trigger, type(exc).__name__)
         return _finish(db, record_id, trigger=trigger, user_id=user_id, status="failed", error_message=message)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     ms = int((time.monotonic() - started) * 1000)
-    logger.info("备份 %s 完成 %s 大小=%s 原件=%s 轮换删除=%s 耗时=%sms", record_id, name, size, added, len(removed), ms)
+    logger.info("备份 %s 完成 %s 大小=%s 原件=%s 轮换删除=%s 耗时=%sms", record_id, name, size, len(added), len(removed), ms)
     return _finish(db, record_id, trigger=trigger, user_id=user_id, status="success", file_name=name,
                    size_bytes=size, sha256=digest, error_message=None, db_bytes=db_bytes,
                    dir_bytes=_measure_stat(lambda: _directory_bytes(backup_dir)),

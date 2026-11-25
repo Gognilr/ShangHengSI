@@ -23,7 +23,8 @@ from app.backup import service
 from app.backup.archive import decrypt_stream
 from app.config import get_settings
 from app.db import jobs
-from app.db.models import AuditLog, BackupRecord, Job
+from app.db.models import AuditLog, BackupRecord, Job, Task, TaskFile
+from app.tasks import service as tasks
 
 PASSWORD = "fictive-backup-password-2026"
 SH = timezone(timedelta(hours=8))
@@ -122,6 +123,37 @@ def _assert_failed(env, sm, message: str, *, extra: set[str] = frozenset()):
         audit = db.scalars(select(AuditLog).where(AuditLog.action == "backup_run")).all()[-1]
         assert audit.detail == {"trigger": "manual", "status": "failed"}
     assert _names(env["backup"]) == set(extra)
+
+
+def test_backup_fails_when_original_is_deleted_after_snapshot(env, db_sessionmaker, make_user, monkeypatch):
+    owner = make_user("backup_owner")
+    with db_sessionmaker() as db:
+        set_setting(db, "backup.keep", 1, user_id=owner.id)
+        task = Task(owner_id=owner.id, title="虚构备份任务", stance="sales", source="outgoing",
+                    policy="ai", status="reviewed")
+        db.add(task)
+        db.flush()
+        task_id = task.id
+        db.add(TaskFile(task_id=task_id, seq=1, is_main=True, original_name="虚构.docx", ext="docx",
+                        size_bytes=1, sha256="0" * 64, storage_key=KEY_A))
+        db.commit()
+
+    old = _run(db_sessionmaker)
+    assert old.status == "success"
+    old_names = {old.file_name, old.file_name + ".sha256"}
+    old_contents = {name: (env["backup"] / name).read_bytes() for name in old_names}
+    enumerate_originals = service._original_files
+
+    def delete_after_enumeration(directory):
+        files = enumerate_originals(directory)
+        with db_sessionmaker() as db:
+            tasks.delete_task(db, db.get(Task, task_id), owner, None)
+        return files
+
+    monkeypatch.setattr(service, "_original_files", delete_after_enumeration)
+    _run(db_sessionmaker, now=T0 + timedelta(minutes=1))
+    _assert_failed(env, db_sessionmaker, "备份缺少数据库快照引用的原件（1 件），请重新备份", extra=old_names)
+    assert {name: (env["backup"] / name).read_bytes() for name in old_names} == old_contents
 
 
 def test_pg_dump_failure(env, db_sessionmaker, monkeypatch):
