@@ -77,11 +77,10 @@ def _plain(text: str) -> str:
 def key(kind: str, text: str):
     """归一化值：写法不同的同一金额、重量、日期、单号得到同一个键；无法解析时为 None。"""
     if kind == "money":
-        hits = [h for h in find_amounts(text) if h.value is not None]
-        if hits:
-            return ("money", hits[0].value)
-        number = parse_number(text)
-        return ("money", number) if number is not None else None
+        hits = {(h.value, h.currency) for h in find_amounts(text) if h.value is not None}
+        if not hits and (number := parse_number(text)) is not None:
+            hits.add((number, None))
+        return ("money", tuple(sorted(hits, key=lambda h: (h[0], h[1] or "")))) if hits else None
     if kind == "count":  # 件数只比数目：“50 箱”“50 CTNS”“50 件”同为 50
         match = _MEASURE.search(unicodedata.normalize("NFKC", text))
         return ("count", Decimal(match[1].replace(",", ""))) if match else None
@@ -156,11 +155,11 @@ def extract(nodes: list[CheckNode]) -> dict[int, dict[str, list[dict]]]:
         if unit and _KIND[field] in ("measure", "weight", "count") and re.fullmatch(r"[0-9][0-9,.]*", text):
             text += " " + unit.strip()  # “毛重(KGS)：12,500” 的单位写在标签里
         if mirror and field == "invoice_amount":
-            add("amount", node, text, mirror=False)
+            add("amount", node, text, unit, mirror=False)
         if mirror and field == "amount" and node.file_seq in invoice_files:
             add("invoice_amount", node, text, unit, mirror=False)
         kind = _KIND[field]
-        if unit and kind == "rule_money" and re.fullmatch(r"[0-9][0-9,.]*", text):
+        if unit and kind in ("money", "rule_money") and re.fullmatch(r"[0-9][0-9,.]*", text):
             text = unit.strip() + " " + text
         value = _rule_key(kind, text) if field in _LOCAL_ONLY else key(kind, text)
         if value is None and kind not in ("text", "place") and field not in _LOCAL_ONLY:
@@ -240,23 +239,48 @@ def compare(found: dict[int, dict[str, list[dict]]], seqs: list[int]) -> list[di
         rows.append({"field": field, "label": label, "status": status,
                      "values": {str(seq): [{k: v for k, v in item.items() if k != "key"} for item in values[seq]]
                                 for seq in seqs}})
-        if field == "amount":
-            currencies = {seq: [h.currency for item in values[seq] for h in find_amounts(item["text"])[:1] if h.currency]
-                          for seq in present}
-            named = [seq for seq in present if currencies[seq]]
-            if named:
-                distinct = {c for seq in named for c in currencies[seq]}
-                rows.append({"field": "currency", "label": "币种",
-                             "status": "仅一份文件有" if len(named) < 2 else "一致" if len(distinct) == 1 else "不一致",
-                             "values": {str(seq): [{"text": c, "loc": values[seq][0]["loc"]} for c in currencies.get(seq, [])]
-                                        for seq in seqs}})
+        if field == "amount" and (currency := _currency_row(rows[-1])):
+            rows.append(currency)
     return rows
+
+
+def _currency_row(amount: dict) -> dict | None:
+    values, known, incomplete = {}, [], False
+    for seq, items in amount["values"].items():
+        named = {}
+        for item in items:
+            value = key("money", item["text"])
+            for _, currency in value[1] if value else ():
+                if currency is None:
+                    incomplete = True
+                    continue
+                named.setdefault((currency, item["loc"]), {**item, "text": currency})
+        values[seq] = list(named.values())
+        if named:
+            known.append({currency for currency, _ in named})
+    if not known:
+        return None
+    if len(known) < 2:
+        status = "仅一份文件有"
+    elif any(value != known[0] for value in known[1:]):
+        status = "不一致"
+    else:
+        status = "无法比较" if incomplete else "一致"
+    return {"field": "currency", "label": "币种", "status": status, "values": values}
 
 
 def _status(field, kind, groups: list[list[dict]]) -> str:
     keys = [[item["key"] for item in group] for group in groups]
     if any(k is None for group in keys for k in group):
         return "无法比较"
+    if kind == "money":
+        amounts = [{pair for k in group for pair in k[1]} for group in keys]
+        if any(len(values) > 1 for values in amounts) and any(values != amounts[0] for values in amounts[1:]):
+            return "文件内有多个值"
+        if any(currency is None for group in amounts for _, currency in group):
+            if any(currency is not None for group in amounts for _, currency in group):
+                return "无法比较"
+        return "一致" if all(values == amounts[0] for values in amounts[1:]) else "不一致"
     if any(len(group) > 1 for group in keys):
         # 每份文件的值集合相同才算一致
         same = all(len(group) == len(keys[0]) and all(any(_equal(field, a, b) for b in keys[0]) for a in group)
@@ -308,13 +332,24 @@ def merge_located(rows, gaps, payload, redacted: dict[str, tuple[int, str]], res
         if node is None or node[0] != seq or not text.strip() or squash(text) not in squash(node[1]):
             continue
         cell = by_field[field]["values"][str(seq)]
-        if not cell:
-            cell.append({"text": _clip(restore_text(text)), "loc": loc, "by": "model"})
-            added += 1
+        restored = _clip(restore_text(text))
+        if field == "amount":
+            candidate = key("money", restored)
+            if candidate is None or any(key("money", value["text"]) == candidate for value in cell):
+                continue
+        elif cell:
+            continue
+        cell.append({"text": restored, "loc": loc, "by": "model"})
+        added += 1
     for row in rows:
         if row["field"] in gaps and any(v.get("by") == "model" for vs in row["values"].values() for v in vs):
             groups = [[{**v, "key": key(_KIND[row["field"]], v["text"])} for v in vs] for vs in row["values"].values() if vs]
             row["status"] = _status(row["field"], _KIND[row["field"]], groups) if len(groups) >= 2 else "仅一份文件有"
+    if "amount" in gaps and (amount := by_field.get("amount")) is not None and (currency := _currency_row(amount)):
+        if "currency" in by_field:
+            by_field["currency"].update(currency)
+        else:
+            rows.insert(rows.index(amount) + 1, currency)
     return added
 
 

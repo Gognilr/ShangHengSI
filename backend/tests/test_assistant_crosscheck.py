@@ -19,6 +19,9 @@ def test_crosscheck_fixture(path):
     statuses = {row["field"]: row["status"] for row in result["rows"]}
     assert {field: statuses.get(field) for field in case["expect"]} == case["expect"], statuses
     assert len(result["findings"]) == case["findings"], result["findings"]
+    if expected := case.get("currency_sources"):
+        values = next(row["values"] for row in result["rows"] if row["field"] == "currency")
+        assert {seq: [[v["text"], v["loc"]] for v in items] for seq, items in values.items()} == expected
 
 
 def test_credit_rule_boundaries():

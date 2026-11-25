@@ -1,0 +1,10 @@
+{
+  "note": "虚构：两币种分别留存并保留出处",
+  "files": {
+    "1": [["F1-P1", "总金额：USD 10,000"], ["F1-P2", "总金额：EUR 10,000"]],
+    "2": [["F2-P1", "Total Amount: USD 10,000"]]
+  },
+  "expect": {"amount": "文件内有多个值", "currency": "不一致"},
+  "currency_sources": {"1": [["USD", "F1-P1"], ["EUR", "F1-P2"]], "2": [["USD", "F2-P1"]]},
+  "findings": 0
+}

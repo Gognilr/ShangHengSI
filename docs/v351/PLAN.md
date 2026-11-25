@@ -23,7 +23,7 @@
 | V351-A-05 | 文件审核重开及确认后送审 | Q-17 | Opus，high | Sol 6.1，high | A-04 | 自审和虚构任务实走 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-05.md)） |
 | V351-A-06 | 普通对话仅续发明确提交过的提问 | Q-18 | Opus，high | Sol 6.1，high | A-05 | 自审和模拟外发 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-06.md)） |
 | V351-B-01 | 一次性合同对比保留跨列与首尾空格差异 | Q-05 | Sonnet，high | Sol 6.1，high | A-06 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-01.md)） |
-| V351-B-02 | 单证同额异币分别保留并核对 | Q-06 | Sonnet，high | Sol 6.1，high | B-01 | — | 待开工 |
+| V351-B-02 | 单证同额异币分别保留并核对 | Q-06 | Sonnet，high | Sol 6.1，high | B-01 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-02.md)） |
 | V351-B-03 | 修复按问题讨论的回复导出 | Q-07 | Sonnet，medium | Terra，medium | B-02 | — | 待开工 |
 | V351-B-04 | 翻译停止、完成与待确认状态对齐 | Q-08、09 | Sonnet，high | Sol 6.1，medium | B-03 | 确认 Q-09 状态口径 | 待开工 |
 | V351-B-05 | 历史筛选只采纳最新请求 | Q-10 | Sonnet，medium | Terra，medium | B-04 | — | 待开工 |
@@ -93,7 +93,7 @@
 
 - **现状** 普通金额项目按数值去重，随后从留下的金额推币种。同一文件的 `USD 10,000` 和 `EUR 10,000` 可变成一条，造成金额与币种都显示一致。
 - **做法** 归一与去重保留币种信息，币种项目使用每个实际候选和其位置。多币种候选缺乏足够配对时提示人工核对，缺币种时不自动补币种。保留同币种不同写法等价，以及独立的信用证上限逻辑。处理本机结果与模型仅定位补值共用的口径，金额继续使用 Decimal。
-- **文件** `backend/app/assistant/crosscheck.py`、`backend/tests/fixtures/crosscheck/` 内本卡虚构样本、`backend/tests/test_assistant_crosscheck.py`、`backend/tests/test_assistant_templates.py`。
+- **文件** `backend/app/assistant/crosscheck.py`、`backend/app/assistant/export.py` 的单证金额与币种出处、`backend/tests/fixtures/crosscheck/` 内本卡虚构样本、`backend/tests/test_assistant_crosscheck.py`、`backend/tests/test_assistant_templates.py`。
 - **验收** 一份单据有等额美元和欧元、另一份只有美元，结果与导出保留两处出处，不能把整组判为一致。既有同币种不同写法和信用证专用规则通过。已有加密结果照旧查看，用户重新核对时按新规则计算。
 
 ### V351-B-03 问题讨论回复导出

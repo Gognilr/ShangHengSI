@@ -187,7 +187,12 @@ def _comparison_rows(comparison):
 def _crosscheck_rows(result):
     """单证核对（V34-A-08）：每个项目一行，各文件的值与结论。"""
     headers = ['项目', *[f"文件 {f['file']} {f['name']}" for f in result['files']], '结论']
-    rows = [[row['label'], *['；'.join(v['text'] + (' *' if v.get('by') == 'model' else '') for v in row['values'].get(str(f['file']), []))
+    def shown(row, value):
+        marker = ' *' if value.get('by') == 'model' else ''
+        place = (value.get('place') or value.get('loc')) if row.get('field') in ('amount', 'currency') else None
+        return value['text'] + marker + (f"（{place}）" if place else '')
+
+    rows = [[row['label'], *['；'.join(shown(row, value) for value in row['values'].get(str(f['file']), []))
                              or '未找到' for f in result['files']], row['status']] for row in result['rows']]
     return headers, rows
 

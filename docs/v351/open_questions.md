@@ -41,6 +41,8 @@
 
 - **触发与证据** 单证 A 明列美元和欧元各 `10,000`，单证 B 只列美元 `10,000`。当前本机核对保留美元，丢掉欧元和出处，金额与币种均显示一致。普通金额 T-50 路径触发，信用证金额上限使用独立规则。 [金额归一](../../backend/app/assistant/crosscheck.py#L79) · [去重](../../backend/app/assistant/crosscheck.py#L166) · [币种](../../backend/app/assistant/crosscheck.py#L233)
 
+- **结论（B-02）** 按 Decimal 数值及币种归一。保留同额异币及各自位置，多值无法配对时提示核对。未写币种时保留未知，信用证专用规则照常。金额及币种的出处随 Word、Excel 出件。
+
 ### V351Q-07 按问题讨论的回复无法导出（P2，B-03）
 
 - **触发与证据** 从现版问题讨论界面导出回复，前端构造 `会话 UUID:问题 UUID`。后端要求路径字段为单个会话 UUID，返回 404。用新会话和当场生成的消息验证，合法会话 ID 可出件。 [前端构造](../../frontend/src/views/Assistant.vue#L260) · [导出接口](../../backend/app/assistant/router.py#L397) · [UUID 校验](../../backend/app/security/deps.py#L28)

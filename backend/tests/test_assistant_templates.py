@@ -1,6 +1,7 @@
 """T-50：五个模板的参数、固定消息、原样说明与回复草稿边界。"""
 import uuid
 from io import BytesIO
+from xml.etree import ElementTree
 from zipfile import ZipFile
 
 import pytest
@@ -96,6 +97,36 @@ def test_t50_11_12_template_instruction_in_actual_request(conversation, db_sessi
     if template == "reply":
         items = c.get(f"{BASE}/{tid}/messages").json()["items"]
         assert items[-1]["draft"] == "回复草稿"
+
+
+def test_crosscheck_equal_amounts_keep_both_currencies_and_export_sources(conversation, db_sessionmaker):
+    from tests.test_assistant_compare import compare_input
+    c, h, tid, _ = conversation
+    body = {**compare_input(db_sessionmaker, tid), "template": "crosscheck"}
+    with db_sessionmaker() as db:
+        first, second = db.scalars(select(DocNode).where(DocNode.task_id == uuid.UUID(tid)).order_by(DocNode.loc))
+        first.text_enc = crypto.encrypt_text("总金额：USD 10,000")
+        first.redacted_text = "总金额：USD [[AMT_1]]"
+        second.text_enc = crypto.encrypt_text("Total Amount: USD 10,000")
+        second.redacted_text = "Total Amount: USD [[AMT_1]]"
+        db.add(DocNode(task_id=uuid.UUID(tid), file_id=first.file_id, loc="F1-P2", ord=2, kind="paragraph", part="body",
+                       text_enc=crypto.encrypt_text("总金额：EUR 10,000"), redacted_text="总金额：EUR [[AMT_2]]"))
+        db.commit()
+    response = c.post(f"{BASE}/{tid}/messages", headers=h, json=body)
+    assert response.status_code == 201, response.text
+    mid = response.json()["assistant"]["id"]
+    run(db_sessionmaker, tid)
+    table = next(m["crosscheck"] for m in c.get(f"{BASE}/{tid}/messages").json()["items"] if m["id"] == mid)
+    amount, currency = (next(r for r in table["rows"] if r["field"] == field) for field in ("amount", "currency"))
+    assert amount["status"] == "文件内有多个值" and currency["status"] == "不一致"
+    usd, eur = currency["values"]["1"]
+    assert usd["text"] == "USD" and eur["text"] == "EUR" and usd["loc"] != eur["loc"]
+    for fmt, part in (("docx", "word/document.xml"), ("xlsx", "xl/worksheets/sheet1.xml")):
+        exported = c.get(f"{BASE}/{tid}/messages/{mid}/export", params={"format": fmt})
+        assert exported.status_code == 200
+        with ZipFile(BytesIO(exported.content)) as archive:
+            content = ''.join(ElementTree.fromstring(archive.read(part)).itertext())
+            assert all(f"{item['text']}（{item['place']}）" in content for item in [usd, eur])
 
 
 def test_crosscheck_local_table_and_model_only_locates(conversation, db_sessionmaker, monkeypatch):
