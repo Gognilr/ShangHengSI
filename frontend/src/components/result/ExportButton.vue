@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ChevronDown, Download } from '@lucide/vue'
-import type { RunDetail } from '@/api/runs'
+import { canAnnotateRunFile, type RunDetail } from '@/api/runs'
 import type { TaskDetail } from '@/api/tasks'
 import { useFx } from '@/utils/motion'
 
@@ -18,7 +18,7 @@ const fx = useFx()
 
 const localOnly = computed(() => props.task.status === 'completed_local')
 const runDone = computed(() => !!props.run && ['completed', 'partial'].includes(props.run.status))
-const files = computed(() => localOnly.value ? [] : props.task.files.filter(f => f.annotatable))
+const files = computed(() => localOnly.value ? [] : props.task.files.filter(f => canAnnotateRunFile(props.run, f)))
 const fileReason = computed(() => props.exportReason || (runDone.value ? '' : '本轮审核未完成，不能生成'))
 
 const saved = ref(false)

@@ -10,7 +10,7 @@ import { assistantApi, confirmationTask, type DiffChange, type DiffResult, type 
 import DiffRail from '@/components/result/DiffRail.vue'
 import { loadDiff, substantive } from '@/utils/drafts'
 import { reportApi } from '@/api/report'
-import { roundLabel, runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
+import { canAnnotateRunFile, roundLabel, runsApi, type Finding, type RunDetail, type RunListItem } from '@/api/runs'
 import type { CanvasAnnotation } from '@/components/ConfirmCanvas.vue'
 import FindingCard from '@/components/FindingCard.vue'
 import ExportButton from '@/components/result/ExportButton.vue'
@@ -160,7 +160,7 @@ async function exportReport(format?: 'issue-list') {
 }
 async function exportAnnotated(seq: number, includeChanges = true) {
   if (!run.value || exporting.value || exportReason.value) return
-  if (!['completed', 'partial'].includes(run.value.status) || !task.value.files.some(file => file.seq === seq && file.annotatable)) return
+  if (!['completed', 'partial'].includes(run.value.status) || !task.value.files.some(file => file.seq === seq && canAnnotateRunFile(run.value, file))) return
   const runId = run.value.id
   if (!await confirmOnce('annotated', '批注版含内部审核意见，请勿直接发给对方。', '导出批注版', '导出批注版')) return
   exporting.value = '批注版'

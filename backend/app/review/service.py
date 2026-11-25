@@ -175,6 +175,7 @@ class RunDetail(BaseModel):
     sanctions: Sanctions
     requirement_results: list[RequirementResultOut]
     findings: list[FindingOut]
+    file_ids: list[str] | None = None
     scope: str = "full"
     base_run_no: int | None = None
     draft_no: int | None = None
@@ -730,7 +731,7 @@ def run_detail(db: DbSession, run: ReviewRun, *, include_pages=False) -> RunDeta
                                                   unable_reason=normalize_unable_reason(r.verdict, r.unable_reason))
                              for r in results],
         findings=[view.finding(f, locations) for f in findings],
-        scope=run.scope,
+        file_ids=run.file_ids, scope=run.scope,
     )
     detail.base_run_no, detail.draft_no = _run_meta(db, run.task_id, [run])[run.id]
     # 临时问题只供阅读：返回不可用于写接口或讨论的独立标识，最终合并后重新生成正式问题。

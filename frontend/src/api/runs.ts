@@ -141,9 +141,15 @@ export interface RunDetail {
   sanctions: { level: string | null; reasons: string[] }
   requirement_results: RequirementResult[]
   findings: Finding[]
+  /** 参加本轮的文件，第一项为主稿。历史轮次可能没有快照。 */
+  file_ids: string[] | null
   scope?: 'full' | 'delta'
   base_run_no?: number | null
   draft_no?: number | null
+}
+
+export function canAnnotateRunFile(run: RunDetail | null, file: { id: string; annotatable?: boolean }) {
+  return !!file.annotatable && (run?.file_ids == null || run.file_ids.includes(file.id))
 }
 
 export const runsApi = {

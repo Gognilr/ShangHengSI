@@ -85,6 +85,8 @@ def _belongs(locs, seq, is_main=False):
 def check_available(run, file):
     if run.status not in ("completed", "partial"):
         raise AppError(409, "ANNOTATED_UNAVAILABLE", "本轮尚未完成")
+    if run.file_ids is not None and str(file.id) not in run.file_ids:
+        raise AppError(409, "ANNOTATED_UNAVAILABLE", "该文件未参加本轮审核")
     if file.ext not in ("docx", "doc", "wps", "rtf"):
         raise AppError(409, "ANNOTATED_UNAVAILABLE", "该文件格式不支持批注版，只能导出审核报告")
     if file.original_deleted_at is not None:
@@ -131,14 +133,15 @@ def build_annotated(db, run, file: TaskFile, include_changes: bool = True):
     check_available(run, file)
     task = db.get(Task, run.task_id)
     detail = run_detail(db, run)
-    # 没有文件位置的任务级问题挂在主文件；跨文件问题只按首个位置归属。
+    is_main = file.is_main if run.file_ids is None else run.file_ids[0] == str(file.id)
+    # 没有文件位置的任务级问题挂在本轮主文件；跨文件问题只按首个位置归属。
     # 增量轮“已解决”的问题不挂批注（diff.md 4.3）
     findings = sorted((f for f in detail.findings if f.handling_status != "ignored" and f.carry != "resolved" and
-                       _belongs(f.locs, file.seq, file.is_main)), key=lambda f: f.seq)
+                       _belongs(f.locs, file.seq, is_main)), key=lambda f: f.seq)
     local = sorted((r for r in list_findings(db, task) if
                     (_belongs(r["locs"], file.seq) or
                      (not r["locs"] and (r["file_id"] == str(file.id) or
-                                        (r["file_id"] is None and file.is_main))))), key=lambda r: r["id"])
+                                        (r["file_id"] is None and is_main))))), key=lambda r: r["id"])
     changes = []
     if include_changes and file.prev_file_id is not None:
         from app.export.diff_docx import change_comments

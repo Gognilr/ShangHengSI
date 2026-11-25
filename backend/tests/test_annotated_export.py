@@ -143,6 +143,48 @@ def test_owner_format_state_and_mismatch(case, make_user, login, db_sessionmaker
     assert client.get(path).json()["message"] == "本轮没有可批注的问题"
 
 
+def test_annotation_follows_the_rounds_file_snapshot(case, login, db_sessionmaker):
+    user, tid, old_rid, first_id, _ = case
+    doc = Document()
+    doc.add_paragraph("第二稿正文")
+    stream = io.BytesIO()
+    doc.save(stream)
+    data = stream.getvalue()
+    with db_sessionmaker() as db:
+        key, digest = storage.save_original(data)
+        second = TaskFile(task_id=tid, seq=2, is_main=False, original_name="第二稿.docx", ext="docx",
+                          size_bytes=len(data), sha256=digest, storage_key=key)
+        db.add(second)
+        db.flush()
+        for node in parse_docx(data, 2).nodes:
+            db.add(DocNode(task_id=tid, file_id=second.id, loc=node.loc, ord=node.ord,
+                           kind=node.kind, part=node.part, text_enc=crypto.encrypt_text(node.text)))
+        run = ReviewRun(task_id=tid, run_no=2, status="completed", stance="sales", source="outgoing",
+                        main_doc_type="contract", created_by=user.id, file_ids=[str(second.id)])
+        db.add(run)
+        db.flush()
+        db.add(Finding(task_id=tid, run_id=run.id, seq=1, title="第二轮无定位意见", category="legal",
+                       severity="high", locs=[], cite_status="unverified", problem="虚构问题", handling_status="pending"))
+        db.add(LocalFinding(task_id=tid, file_id=None, check_code="L-08", severity="medium",
+                            locs=[], detail_enc=crypto.encrypt_text("无归属的本地校验"), ai_summary="虚构校验"))
+        db.commit()
+        rid, second_id = run.id, second.id
+    client, _ = login(user.username)
+    assert client.get(f"/api/v1/runs/{rid}").json()["file_ids"] == [str(second_id)]
+    assert client.get(f"/api/v1/runs/{old_rid}").json()["file_ids"] is None
+    assert client.get(f"/api/v1/runs/{rid}/annotated?file_seq=1").status_code == 409
+    new = client.get(f"/api/v1/runs/{rid}/annotated?file_seq=2")
+    old = client.get(f"/api/v1/runs/{old_rid}/annotated?file_seq=1")
+    assert new.status_code == old.status_code == 200
+    annotated_docx.validate(data, new.content)
+    assert storage.load_original(_file(db_sessionmaker, first_id).storage_key) == case[-1]
+    new_comments = [c.text for c in Document(io.BytesIO(new.content)).comments]
+    old_comments = [c.text for c in Document(io.BytesIO(old.content)).comments]
+    assert any("第二轮无定位意见" in text for text in new_comments)
+    assert not any("第二轮无定位意见" in text for text in old_comments)
+    assert all(any("无归属的本地校验" in text for text in comments) for comments in [new_comments, old_comments])
+
+
 def test_legacy_save_export_and_retention(case, login, db_sessionmaker, monkeypatch):
     user, tid, rid, fid, _ = case
     root = Path(__file__).parent / "fixtures" / "legacy"
