@@ -1142,6 +1142,8 @@ requirements:
 16. **多稿与增量复审**（V35-D-01～03）：同一会话通过 `prev_file_id` 关联稿次，每稿最多一个直接后一稿。本机对比按条款和节点对齐，区分已留痕和未留痕的实质变化，按需计算。结果页右栏显示变化，可定位原文、下载变化对照表，或在批注版中标出变化。重新审核可选只审变化或全文重审，范围、基准轮和提示词见 11.6 及 [多稿对比设计](v35/design/diff.md)。
 17. **会议和翻译入口**（V35-F-06、F-08）：会议入口双卡为上传录音与现场录音。逐字稿页分纸面与校对 / 纪要，播放器按说话时间戳画活动条。翻译入口可选本地或云端，方式通过 `engine` 带入；译稿在同一纸面分段对照。状态、校对、脱敏和模型边界见 13A。
 
+18. **一次性合同对比**（V35-D-07、V35Q-39）：文件审核首页提供「合同对比」。分别选择 DOCX 或 DOC 作为基准稿、修改稿，按接受已有修订后的正文和表格文字对比。两稿原文并排显示并定位，默认标出标点、空格或手写编号的变化。DOC 在现有断网转换容器中临时转换。对比结果只在当前页查看，原件和结果不保存，不产生任务历史或模型调用。
+
 ## 13C\. 标书初审（V3.5）
 
 定位为开标时给经办人员的初审提示，输出严重问题、提示和原件证据。按录入顺序列投标人。只提示待核实事项，最终判断由人作出。视觉以澄明规范 8.5 为准，V35-E、F 批及 V35Q-13～20、25、35 记录取舍。
@@ -1957,6 +1959,7 @@ worker 启动和每次解析前把启用的名称解密到内存中匹配，不�
 |-|-|-|
 |POST|/tasks/{id}/runs|确认发送，可带 use\_template；V3.1 起不确定项不再是前置条件，有文件在解析时 409 FILES\_PARSING，有解析失败的文件时 409 FILE\_PARSE\_FAILED；run\_create 审计附确认页操作统计 confirm（只有数量）；同时写入术语记忆；达到每月或个人每日上限时 409 CAP\_REACHED / USER\_CAP\_REACHED；写入已记住的名称并入队审核|
 |GET|/tasks/{id}/runs|轮次列表|
+|POST|/review/contract-compare|需 use.review，提交 baseline、revised 两个 Word 文件字段。只支持 DOCX、DOC。返回本次字符差异和位置，响应禁止缓存|
 |GET|/runs/{rid}|状态、进度、覆盖说明、制裁结论、审核要求逐条结论、问题清单（含 law\_refs、law\_unverified、source）；每个问题另有 marks（字段名 → \[{start, end, kind}]，只列有标记的字段，kind 为 variant / unknown / shared / note，V3.1 增加 date / literal，位置为返回文字的码点下标）、quote\_excerpt（V3.1，引用对应的原文片段，可空）与 unresolved（标记总数）；doc\_summary\_marks 为摘要的标记（9.9）；V3.1（V31-E）另有 receipt（18.29，旧轮次为 null）、restore\_stats {restored, marked}（本次详情生成时各字段还原与标记的累计，界面显示还原 restored ÷ (restored + marked)）、requirement\_results\[].unable\_reason 与 coverage.unable\_by\_reason|
 |GET|/runs/{rid}/sent|V3.1：本轮 status=sent 的 llm\_calls 中 user 消息的文字（发出去的原样，含代号，不还原），按发送顺序 \[{seq, chars, text}]，同一调用的多条 user 消息按原顺序以换行连接，未发送返回空列表；任一已发请求被保留期清理时返回 {"available": false}；审计 view\_sent（只记轮次）；非本人 404|
 |PATCH|/findings/{fid}|{handling\_status, handling\_note}|
