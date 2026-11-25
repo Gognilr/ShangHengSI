@@ -210,3 +210,71 @@ def test_kb_old_conversion_and_pdf_ocr_share_parser(monkeypatch):
     monkeypatch.setattr(pdf, 'parse_pdf', lambda data, seq, **kwargs: ParsedFile([], 1, False, [], 1))  # V321-E-06 增加 on_ocr 回调
     _parse_bytes('pdf', b'fictional', 1, 0)
     assert calls == ['doc', 'lock']
+
+
+@pytest.mark.parametrize('old_record', [False, True])
+def test_failed_kb_upload_retries_in_place(env, make_user, login, db_sessionmaker, monkeypatch, old_record):
+    from hashlib import sha256
+    from app.db.models import KbChunk, KbDoc
+    from app.embedding import engine
+    from app.kb.job import handle_import
+
+    user = make_user('kb_retry', role='biz_admin')
+    c, csrf = login(user.username)
+    h = {'X-CSRF-Token': csrf}
+    base = '/api/v1/admin/kb'
+    original = document()
+    files = {'file': ('虚构原制度.docx', original)}
+    stale_payload = None
+    if old_record:
+        with db_sessionmaker() as db:
+            row = KbDoc(name_enc=crypto.encrypt_text('虚构旧条目'), content_hash=sha256(original).hexdigest(),
+                        created_by=user.id, status='failed', enabled=False)
+            db.add(row)
+            db.flush()
+            kid = row.id
+            db.commit()
+    else:
+        response = c.post(base, headers=h, files=files)
+        assert response.status_code == 201, response.text
+        kid = uuid.UUID(response.json()['id'])
+
+        def unavailable(texts, kind):
+            raise RuntimeError('虚构向量暂不可用')
+
+        monkeypatch.setattr(engine, 'embed', unavailable)
+        with db_sessionmaker() as db:
+            job = db.scalar(select(Job).where(Job.type == 'kb_import'))
+            stale_payload = dict(job.payload)
+            with pytest.raises(RuntimeError):
+                handle_import(db, stale_payload)
+            assert db.get(KbDoc, kid).status == 'failed'
+            assert job.payload == {'doc_id': str(kid)}
+
+    other = make_user('kb_retry_denied')
+    denied, denied_csrf = login(other.username)
+    retry = f'{base}/{kid}/retry'
+    assert denied.post(retry, headers={'X-CSRF-Token': denied_csrf}, files=files).status_code == 403
+    wrong = c.post(retry, headers=h, files={'file': ('虚构原制度.docx', original + b'x')})
+    assert wrong.status_code == 409 and wrong.json()['code'] == 'KB_FILE_CHANGED'
+    response = c.post(retry, headers=h, files=files)
+    assert response.status_code == 202, response.text
+    assert response.json()['id'] == str(kid)
+    assert response.json()['enabled'] is (not old_record)
+    assert response.json()['name'] == ('虚构旧条目' if old_record else '虚构原制度.docx')
+    assert c.post(retry, headers=h, files=files).status_code == 409
+    monkeypatch.setattr(engine, 'embed', lambda texts, kind: [vector() for _ in texts])
+    with db_sessionmaker() as db:
+        job = db.scalar(select(Job).where(Job.type == 'kb_import').order_by(Job.id.desc()))
+        if stale_payload:
+            handle_import(db, stale_payload)
+            assert db.get(KbDoc, kid).status == 'parsing'
+            assert 'data_enc' in job.payload
+        handle_import(db, job.payload)
+        assert db.get(KbDoc, kid).status == 'ready'
+        assert job.payload == {'doc_id': str(kid)}
+        assert db.scalar(select(func.count()).select_from(KbDoc)) == 1
+        assert db.scalar(select(func.count()).select_from(KbChunk).where(KbChunk.doc_id == kid)) > 0
+    repeated = c.post(base, headers=h, files=files)
+    assert repeated.status_code == 409 and repeated.json()['code'] == 'KB_DUPLICATE'
+    assert c.post(retry, headers=h, files=files).status_code == 409

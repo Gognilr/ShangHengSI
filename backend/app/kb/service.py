@@ -1,4 +1,5 @@
 """知识库上传与预览：仅密文持久化，审计只写标识与数量。"""
+import base64
 import hashlib
 import uuid
 
@@ -31,24 +32,42 @@ def view(db, row):
                 created_at=row.created_at, updated_at=row.updated_at)
 
 
-def create(db, upload, user):
+def _checked_document(upload):
     checked = inspect_upload(upload.filename, upload.file, 20 * 1024 * 1024)
     if checked.ext not in ('docx', 'pdf', 'xlsx', 'doc', 'wps', 'rtf', 'xls', 'et'):
         raise AppError(422, 'UNSUPPORTED_FILE_TYPE', '知识库支持 docx、pdf、xlsx 及对应旧格式')
     data = checked.file.read()
-    digest = hashlib.sha256(data).hexdigest()
+    return checked, data, hashlib.sha256(data).hexdigest()
+
+
+def _enqueue_import(db, row, ext, data, user, action):
+    # 任务卡没有原件表，输入只作为本次队列任务的密文，处理后清除。
+    jobs.enqueue(db, 'kb_import', {'doc_id': str(row.id), 'ext': ext,
+                                 'data_enc': base64.b64encode(crypto.encrypt(data)).decode('ascii')})
+    audit.record(db, action, user_id=user.id, target_type='kb_doc', target_id=str(row.id), detail={'chunks': 0})
+    return row
+
+
+def create(db, upload, user):
+    checked, data, digest = _checked_document(upload)
     # 序列化重复检查，避免并发上传触发唯一约束后变成内部错误。
     db.execute(text('SELECT pg_advisory_xact_lock(7205005)'))
     if db.scalar(select(KbDoc.id).where(KbDoc.content_hash == digest)):
         raise AppError(409, 'KB_DUPLICATE', '相同内容的知识库文档已存在')
     row = KbDoc(name_enc=crypto.encrypt_text(checked.name), status='parsing', content_hash=digest, created_by=user.id)
     db.add(row); db.flush()
-    # 任务卡没有原件表：解析输入仅作为队列密文，解析结束即移除，不落未加密临时文件。
-    import base64
-    jobs.enqueue(db, 'kb_import', {'doc_id': str(row.id), 'ext': checked.ext,
-                                 'data_enc': base64.b64encode(crypto.encrypt(data)).decode('ascii')})
-    audit.record(db, 'kb_upload', user_id=user.id, target_type='kb_doc', target_id=str(row.id), detail={'chunks': 0})
-    return row
+    return _enqueue_import(db, row, checked.ext, data, user, 'kb_upload')
+
+
+def retry(db, kid, upload, user):
+    checked, data, digest = _checked_document(upload)
+    row = load(db, kid, locked=True)
+    if row.status != 'failed':
+        raise AppError(409, 'KB_NOT_FAILED', '仅解析失败的文档可重新上传')
+    if row.content_hash != digest:
+        raise AppError(409, 'KB_FILE_CHANGED', '请选择原来上传的同一份文件')
+    row.status, row.error_message, row.chunk_count = 'parsing', None, 0
+    return _enqueue_import(db, row, checked.ext, data, user, 'kb_retry')
 
 
 def chunks(db, row):

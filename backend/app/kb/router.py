@@ -53,6 +53,14 @@ def upload(file: UploadFile = File(...), db=Depends(get_db), user=Depends(_perm)
     return result
 
 
+@router.post('/{id}/retry', status_code=202)
+def retry(id: str, file: UploadFile = File(...), db=Depends(get_db), user=Depends(_perm)):
+    row = service.retry(db, id, file, user)
+    result = service.view(db, row)
+    db.commit()
+    return result
+
+
 @router.get('/{id}/chunks')
 def chunks(id: str, db=Depends(get_db)):
     return service.chunks(db, service.load(db, id))

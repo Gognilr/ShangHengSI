@@ -68,8 +68,16 @@ def handle_import(db, payload):
     row = db.get(KbDoc, kid, with_for_update=True)
     if row is None or row.status != 'parsing':
         db.rollback(); return
+    # 只处理本条目最新入队的密文。旧 worker 即使拿着之前的输入重入，也不能更新新一轮。
+    job = db.scalar(select(Job).where(Job.type == 'kb_import', Job.payload['doc_id'].astext == str(kid))
+                    .order_by(Job.id.desc()).limit(1))
+    encrypted = payload.get('data_enc')
+    if not encrypted or job is None or job.payload.get('data_enc') != encrypted:
+        db.rollback()
+        return
+    job_id = job.id
     try:
-        parsed, _ = _parse_bytes(payload['ext'], crypto.decrypt(base64.b64decode(payload['data_enc'])), 1, 0, images=False)
+        parsed, _ = _parse_bytes(payload['ext'], crypto.decrypt(base64.b64decode(encrypted)), 1, 0, images=False)
         parts = split(parsed.nodes)
         if not parts:
             raise ValueError('empty')
@@ -81,18 +89,15 @@ def handle_import(db, payload):
                            text_enc=crypto.encrypt_text(text), embedding=vector)
                    for i, ((heading, text), vector) in enumerate(zip(parts, vectors), 1))
         row.status, row.chunk_count, row.error_message = 'ready', len(parts), None
-        _clear_input(db, kid)
+        job.payload = {'doc_id': str(kid)}
         db.commit()
     except Exception:
         db.rollback()
         row = db.get(KbDoc, kid, with_for_update=True)
-        if row is not None and row.status == 'parsing':
-            row.status, row.error_message = 'failed', '知识库解析失败，请重新上传；仍然失败请联系管理员'
-        _clear_input(db, kid)
+        job = db.get(Job, job_id, populate_existing=True)
+        if job is not None and job.payload.get('data_enc') == encrypted:
+            if row is not None and row.status == 'parsing':
+                row.status, row.error_message = 'failed', '知识库解析失败，请重新上传；仍然失败请联系管理员'
+            job.payload = {'doc_id': str(kid)}
         db.commit()
         raise
-
-
-def _clear_input(db, kid):
-    for job in db.scalars(select(Job).where(Job.type == 'kb_import', Job.payload['doc_id'].astext == str(kid))):
-        job.payload = {'doc_id': str(kid)}

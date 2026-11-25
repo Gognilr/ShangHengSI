@@ -14,6 +14,7 @@ import { formatDateTime } from '@/utils/time'
 const tableMax = useTableMaxHeight(320), loaded = ref(false)
 const rows = ref<KbDoc[]>([]), enabled = ref(false), loading = ref(false), saving = ref(false), error = ref('')
 const uploading = ref(false), uploadOpen = ref(false), formError = ref(''), files = ref<UploadUserFile[]>([])
+const retryTarget = ref<KbDoc | null>(null)
 const previewOpen = ref(false), previewLoading = ref(false), previewError = ref(''), viewing = ref(''), chunks = ref<KbChunk[]>([])
 let active = true, timer: ReturnType<typeof setTimeout> | undefined, previewVersion = 0
 const err = (e: unknown) => e instanceof ApiError ? e.message : '请求失败，请稍后重试'
@@ -34,7 +35,10 @@ async function switchGlobal(value: string | number | boolean) {
   catch (e) { error.value = err(e) }
   finally { saving.value = false; schedule() }
 }
-function openUpload() { files.value = []; formError.value = ''; uploadOpen.value = true }
+function openUpload(row?: KbDoc) {
+  retryTarget.value = row ?? null
+  files.value = []; formError.value = ''; uploadOpen.value = true
+}
 async function upload() {
   const selected = files.value.map(item => item.raw).filter((file): file is NonNullable<typeof file> => !!file)
   if (!selected.length) { formError.value = '请选择知识库文件'; return }
@@ -44,8 +48,10 @@ async function upload() {
   }
   uploading.value = true; formError.value = ''; let completed = 0
   try {
-    for (const file of selected) { await kbApi.upload(file); completed++; files.value.shift() }
-    uploadOpen.value = false; ElMessage.success(`已上传 ${completed} 份文档，正在本机解析`)
+    const retryId = retryTarget.value?.id
+    for (const file of selected) { await kbApi.upload(file, retryId); completed++; files.value.shift() }
+    uploadOpen.value = false
+    ElMessage.success(retryId ? '已重新上传，正在本机解析' : `已上传 ${completed} 份文档，正在本机解析`)
   } catch (e) { formError.value = `${completed ? `已上传 ${completed} 份；` : ''}${err(e)}` }
   finally { uploading.value = false; await load() }
 }
@@ -90,7 +96,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
         <p class="hint">关闭后不会检索知识库；只有启用且解析完成的文档参与检索。</p>
       </SettingSection>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="gap" />
-      <SettingSection title="资料列表" description="只有启用且解析完成的文档参与检索。" stacked><template #actions><el-button type="primary" :disabled="saving || uploading" @click="openUpload">上传文档</el-button></template>
+      <SettingSection title="资料列表" description="只有启用且解析完成的文档参与检索。" stacked><template #actions><el-button type="primary" :disabled="saving || uploading" @click="openUpload()">上传文档</el-button></template>
         <TableSkeleton v-if="!loaded" :columns="['1fr', '90px', '80px', '80px', '1fr', '170px', '160px']" />
       <el-table v-else :data="rows" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚无知识库文档" description="点击右上角“上传文档”，可上传公司制度、流程与产品资料。" /></template>
@@ -100,13 +106,14 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
         <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving || uploading" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
         <el-table-column prop="uploaded_by" label="上传人" min-width="90" />
         <el-table-column label="时间" width="160" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="preview(row)">预览片段</el-button><RowMore><el-dropdown-item :disabled="saving" @click="rename(row)">改名</el-dropdown-item><el-dropdown-item :disabled="saving || uploading" @click="toggle(row, !row.enabled)">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving || uploading" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
+        <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button v-if="row.status === 'failed'" link type="primary" :disabled="saving || uploading" @click="openUpload(row)">重新上传</el-button><el-button v-else link type="primary" :disabled="saving" @click="preview(row)">预览片段</el-button><RowMore><el-dropdown-item :disabled="saving" @click="rename(row)">改名</el-dropdown-item><el-dropdown-item :disabled="saving || uploading" @click="toggle(row, !row.enabled)">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving || uploading" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
       </el-table>
       </SettingSection>
     </div>
-    <el-dialog v-model="uploadOpen" title="上传知识库文档" width="640px" :close-on-click-modal="!uploading" :close-on-press-escape="!uploading" :show-close="!uploading">
-      <p class="hint">支持 DOCX、PDF、XLSX 及对应旧格式，单个文件不超过 20 MB。相同内容不能重复上传。</p>
-      <el-upload v-model:file-list="files" multiple :auto-upload="false" :disabled="uploading" accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et"><el-button :disabled="uploading">选择文件</el-button></el-upload>
+    <el-dialog v-model="uploadOpen" :title="retryTarget ? '重新上传知识库文档' : '上传知识库文档'" width="640px" :close-on-click-modal="!uploading" :close-on-press-escape="!uploading" :show-close="!uploading">
+      <p v-if="retryTarget" class="hint">请选择「{{ retryTarget.name }}」原来上传的同一份文件。</p>
+      <p v-else class="hint">支持 DOCX、PDF、XLSX 及对应旧格式，单个文件不超过 20 MB。相同内容不能重复上传。</p>
+      <el-upload v-model:file-list="files" :multiple="!retryTarget" :limit="retryTarget ? 1 : undefined" :auto-upload="false" :disabled="uploading" accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et"><el-button :disabled="uploading">选择文件</el-button></el-upload>
       <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="gap" />
       <template #footer><el-button :disabled="uploading" @click="uploadOpen = false">取消</el-button><el-button type="primary" :loading="uploading" @click="upload">上传并解析</el-button></template>
     </el-dialog>
