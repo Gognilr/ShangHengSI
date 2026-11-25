@@ -115,17 +115,21 @@ def _markdown_doc(doc, content, flags=None):
 
 
 def _translation_doc(db, task, row, view, doc, variant):
-    file_ids = row.params.get('file_ids', [])
+    if row.status == 'stopped':
+        total = row.extras.get('segments_total')
+        done = row.extras.get('segments_done')
+        doc.add_paragraph(f'已停止 · 完成 {done}/{total} 段' if total and done is not None else '已停止 · 部分译稿')
+    file_ids = row.params.get('file_ids') or ([row.params['file_id']] if row.params.get('file_id') else [])
     nodes = db.scalars(select(DocNode).join(TaskFile).where(DocNode.task_id == task.id,
                         TaskFile.id.in_(file_ids), DocNode.part == 'body')
                         .order_by(TaskFile.seq, DocNode.ord)).all()
     translated = view.get('translation', {})
-    if variant == 'bilingual':
+    if variant == 'bilingual' and nodes:
         rows = [(crypto.decrypt_text(n.text_enc) if n.text_enc else '原文已按保留期限删除',
                  translated.get(n.loc, '未完成翻译')) for n in nodes]
         report_docx._table(doc, ('原文', '译文'), rows, (13.35, 13.35))
         return
-    if not translated:
+    if not translated or not nodes:
         _markdown_doc(doc, view['content'])
         return
     table, table_group, table_row = None, None, None

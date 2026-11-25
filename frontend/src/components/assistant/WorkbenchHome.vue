@@ -108,6 +108,7 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
   if (r.kind === 'bid') return []
   if (r.blocked) return [{ ...base, icon: ShieldAlert, text: '发送前复检拦下了未遮住的名称或金额', badge: '被拦截', tone: 'warning', action: '去处理', primary: false }]
   if (r.status !== 'awaiting_confirm') return []
+  if (r.purpose === 'translate' && (r.translation_engine !== 'cloud' || !can('use.translate'))) return []
   if (r.purpose === 'meeting') return [{ ...base, icon: AudioLines, text: '转写完成，等你校对后整理纪要', badge: '转写完成', tone: 'success', action: '去校对', primary: false }]
   return [{ ...base, icon: EyeOff, text: '已在本机遮住名称与金额，等你确认后发送', badge: '待你确认', tone: 'warning', action: '去确认', primary: true }]
 }))

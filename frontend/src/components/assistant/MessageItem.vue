@@ -49,6 +49,7 @@ const waiting = computed(() => {
 const waitingTail = computed(() => (waiting.value && slow.value && !reading.value ? '，响应较慢，可以先做别的' : ''))
 // 本机给出的回复（单证核对、本地翻译等没有调用云端模型的）用青色徽标；其余为灵紫“模型 · 只见遮住后的文字”
 const local = computed(() => !!props.message.crosscheck || (!pending.value && !props.message.model_label) || !!props.message.model_label?.startsWith('本地'))
+const unknownTranslation = computed(() => props.message.template === 'translate' && !['local', 'cloud'].includes(String(props.message.params.engine)))
 const showStatus = computed(() => !pending.value && !['done', 'active'].includes(props.message.status))
 const hasTable = computed(() => !!props.message.compare || !!props.message.crosscheck || parsed.value.some(block => block.kind === 'table'))
 const downloading = ref(false), error = ref('')
@@ -74,7 +75,8 @@ async function copy() {
 <template>
   <article class="message" :class="message.role === 'user' ? 'mine' : 'reply'">
     <div v-if="message.role === 'assistant'" class="ai-line">
-      <span v-if="local" class="local-tag"><Cpu :size="13" :stroke-width="2" />{{ message.model_label || '本机处理' }} · 不外发</span>
+      <span v-if="unknownTranslation" class="aux">翻译方式未记录</span>
+      <span v-else-if="local" class="local-tag"><Cpu :size="13" :stroke-width="2" />{{ message.model_label || '本机处理' }} · 不外发</span>
       <span v-else class="ai-tag"><Sparkle :size="13" :stroke-width="2" />{{ message.model_label || '模型' }} · 只见遮住后的文字</span>
       <span class="aux num">{{ formatDateTime(message.created_at) }}<template v-if="showStatus"> · {{ assistantStatusLabel(message.status) }}</template></span>
     </div>

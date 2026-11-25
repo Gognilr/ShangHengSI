@@ -8,11 +8,15 @@ from app.tasks.schemas import PreviewNode, TaskFileOut, TaskListItem, UtcDatetim
 from app.parsing.model import strip_invisible
 
 
+TranslationEngine = Literal["local", "cloud"]
+
+
 class SessionPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str | None = Field(None, min_length=1, max_length=60)
     stance: Literal["sales", "purchase", "other"] | None = None
     source: Literal["incoming", "outgoing"] | None = None
+    translation_engine: TranslationEngine | None = None
 
 
 class SessionFile(TaskFileOut):
@@ -39,12 +43,15 @@ class SessionItem(BaseModel):
     is_review: bool = False
     # 会议列表的说明行（V35-F-08）：时长、发言人数、状态；只对会议会话给出
     meeting: dict | None = None
+    translation_engine: TranslationEngine | None = None
+    translation_status: str | None = None
 
 
 class SessionCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
     purpose: Literal['chat', 'meeting', 'translate'] = 'chat'
     review_intent: StrictBool = False
+    translation_engine: TranslationEngine | None = None
 
 
 class SessionPage(BaseModel):
@@ -127,6 +134,8 @@ class HistoryItem(TaskListItem):
     pending_count: int = 0
     latest_run_id: uuid.UUID | None = None
     reviewing: bool = False
+    translation_engine: TranslationEngine | None = None
+    translation_status: str | None = None
     blocked: bool = False  # 最新一轮被发送前复检拦下（V35-F-03，工作台“待你处理”）
 
 

@@ -227,7 +227,8 @@ def handle_translate(db, job):
             db.commit()
         row = db.get(AssistantMessage, mid, with_for_update=True)
         if row is not None:
-            row.status = 'stopped' if row.extras.get('stop_requested') or len(translations) == 0 else 'done'
+            completed = row.extras['segments_done'] == len(chunks) and not row.extras.get('stop_requested')
+            row.status = 'done' if completed else 'stopped'
             db.commit()
     except Exception as exc:
         db.rollback()

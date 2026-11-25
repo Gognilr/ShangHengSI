@@ -232,3 +232,33 @@ def test_compare_public_history_checks_sources(conversation, db_sessionmaker, ma
     payload = json.loads(requests[0].content)
     assert payload['stream'] is False and '【我的历史合同条款】[H1]' in str(payload)
     assert '虚构来源买方' not in str(payload)
+
+
+def test_translation_waiting_requires_known_cloud_mode(conversation, db_sessionmaker):
+    from app.db.models import AssistantMessage, Job
+    from tests.test_assistant_chat import BASE
+    c, h, tid, _ = conversation
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        task.purpose, task.status = 'translate', 'awaiting_confirm'
+        file = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id))
+        file.confirmed_at = None
+        fid = str(file.id)
+        db.add(AssistantMessage(task_id=task.id, role='assistant', status='stopped', template='translate',
+                                params={}, content_redacted='虚构旧译文'))
+        db.commit()
+    unknown = c.get(BASE + '/history?type=translate').json()['items'][0]
+    assert (unknown['translation_engine'], unknown['translation_status']) == (None, 'stopped')
+    assert c.get(BASE + '/waiting').json()['translate'] == 0
+
+    selected = c.patch(f'{BASE}/{tid}', headers=h, json={'translation_engine': 'cloud'})
+    assert selected.status_code == 200, selected.text
+    assert c.get(f'{BASE}/{tid}').json()['translation_engine'] == 'cloud'
+    assert c.get(BASE + '/waiting').json()['translate'] == 1
+    response = c.post(f'{BASE}/{tid}/messages', headers=h, json={
+        'template': 'translate', 'params': {'file_id': fid, 'target': '英文', 'engine': 'cloud'}
+    })
+    assert response.status_code in (409, 422), response.text
+    with db_sessionmaker() as db:
+        assert not db.scalar(select(Job.id).where(Job.type.in_(('assist', 'translate'))))
+        assert not db.scalar(select(LlmCall.id))

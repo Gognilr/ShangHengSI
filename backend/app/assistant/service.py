@@ -90,12 +90,46 @@ def _is_review(task, count: int) -> bool:
     return task.kind == "assistant" and task.purpose == "chat" and bool(task.review_intent or count)
 
 
+def _translation_replies():
+    return select(AssistantMessage).where(AssistantMessage.role == 'assistant', AssistantMessage.template == 'translate')
+
+
+def _translation_states(db: Session, tasks: list[Task]) -> dict:
+    ids = [task.id for task in tasks if task.purpose == 'translate']
+    if not ids:
+        return {}
+    latest_ids = _translation_replies().with_only_columns(func.max(AssistantMessage.id)).where(
+        AssistantMessage.task_id.in_(ids)).group_by(AssistantMessage.task_id)
+    rows = db.execute(select(AssistantMessage.task_id, AssistantMessage.status,
+                             AssistantMessage.params['engine'].astext.label('engine')).where(
+        AssistantMessage.id.in_(latest_ids)))
+    return {row.task_id: row for row in rows}
+
+
+def _translation_state(task: Task, reply) -> dict:
+    mode = reply.engine if reply else None
+    return {'translation_engine': task.translation_engine or (mode if mode in ('local', 'cloud') else None),
+            'translation_status': reply.status if reply else None}
+
+
+def _check_translation_engine(db, user_id, purpose, value):
+    if value is None:
+        return
+    if purpose != 'translate':
+        raise AppError(422, 'INVALID_PURPOSE', '仅翻译会话可选择翻译方式')
+    if value == 'cloud':
+        from app.security.permissions import user_permissions
+        if 'use.translate' not in user_permissions(db, user_id):
+            raise AppError(403, 'FORBIDDEN', '没有云端翻译权限，请联系系统管理员')
+
+
 def _item(task: Task, files: list[TaskFile], *, generating: bool = False, reviewing: bool = False,
-          run_count: int = 0) -> SessionItem:
+          run_count: int = 0, translation_reply=None) -> SessionItem:
     return SessionItem(id=task.id, title=task.title, status=task.status, file_count=len(files),
                        last_activity_at=task.last_activity_at,
                        original_deleted=any(f.original_deleted_at is not None for f in files), generating=generating,
-                       purpose=task.purpose, reviewing=reviewing, run_count=run_count, is_review=_is_review(task, run_count))
+                       purpose=task.purpose, reviewing=reviewing, run_count=run_count, is_review=_is_review(task, run_count),
+                       **_translation_state(task, translation_reply))
 
 
 def _meeting_meta(files: list[TaskFile], minuted: bool, speakers: int) -> dict | None:
@@ -134,7 +168,9 @@ def detail(db: Session, task: Task) -> SessionDetail:
     generating = bool(db.scalar(select(exists().where(AssistantMessage.task_id == task.id,
                        AssistantMessage.role == 'assistant', AssistantMessage.status.in_(('queued', 'streaming'))))))
     run_count, reviewing = _run_stats(db, [task.id]).get(task.id, (0, False)) if task.purpose == 'chat' else (0, False)
-    return SessionDetail(**_item(task, files, generating=generating, reviewing=reviewing, run_count=run_count).model_dump(),
+    translation_reply = _translation_states(db, [task]).get(task.id)
+    return SessionDetail(**_item(task, files, generating=generating, reviewing=reviewing, run_count=run_count,
+                                 translation_reply=translation_reply).model_dump(),
                          stance=task.stance, source=task.source, policy=task.policy,
                          error_message=task.error_message, created_at=task.created_at,
                          files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id], media=media[f.id],
@@ -158,7 +194,8 @@ def _parse_progress(db: Session, task: Task) -> dict | None:
     return (row.progress if row else None) or {}
 
 
-def create(db: Session, user: User, ip: str | None, purpose: str = 'chat', *, review_intent: bool = False) -> SessionDetail:
+def create(db: Session, user: User, ip: str | None, purpose: str = 'chat', *, review_intent: bool = False,
+           translation_engine: str | None = None) -> SessionDetail:
     from app.security import permissions
     if review_intent:
         if purpose != "chat":
@@ -170,8 +207,10 @@ def create(db: Session, user: User, ip: str | None, purpose: str = 'chat', *, re
             raise AppError(403, "FORBIDDEN", "没有此项权限，请联系系统管理员")
     elif purpose != 'translate':  # 翻译页可只用本地翻译，云端发送时再校验
         permissions.ensure(db, user, permissions.PURPOSE_PERM[purpose])
+    _check_translation_engine(db, user.id, purpose, translation_engine)
     task = Task(kind="assistant", owner_id=user.id, title="新会话", stance="other", source="incoming",
-                policy="ai", status="active", last_activity_at=utcnow(), purpose=purpose, review_intent=review_intent)
+                policy="ai", status="active", last_activity_at=utcnow(), purpose=purpose, review_intent=review_intent,
+                translation_engine=translation_engine)
     db.add(task)
     db.flush()
     if purpose == 'chat':
@@ -225,7 +264,8 @@ def message_out(db: Session, task: Task, message: AssistantMessage) -> dict:
             shift = _shift_days(db, task)
             result["translation"] = {loc: dates_unshift(restore(text, mapping), shift)
                                      for loc, text in message.extras.get("translation", {}).items()}
-            result["translation_notice"] = "名称、地址、金额按原文写法还原，请核对"
+            result["translation_notice"] = ("名称、地址、金额按原文写法还原，请核对"
+                                            if message.params.get('engine') == 'cloud' else "请逐段核对译文与原文")
         elif message.template == "crosscheck" and message.role == "assistant" and message.local_result_enc:
             from app.assistant.crosscheck import view
             result["crosscheck"] = view(db, task, message)
@@ -273,9 +313,10 @@ def _located(message) -> bool:
 
 
 def _message_mapping(db: Session, task: Task, message: AssistantMessage) -> dict:
-    if message.role == "assistant" and message.template == "translate":
+    target = message.params.get("target")
+    if message.role == "assistant" and message.template == "translate" and isinstance(target, str):
         from app.assistant.translate import target_mapping
-        return target_mapping(engine._load_full_map(db, task.id), message.params["target"])
+        return target_mapping(engine._load_full_map(db, task.id), target)
     return engine.load_redaction_map(db, task.id)
 
 
@@ -533,6 +574,8 @@ def send(db: Session, task: Task, user: User, body) -> dict:
     _cover_session_values(db, task, user, extra)
     if not body.finding_id:
         params = {**params, "file_ids": [str(f.id) for f in selected_files(db, task, params)]}
+    if body.template == "translate":
+        params["engine"] = "cloud"
     params.update(use_kb=body.use_kb, use_history=body.use_history)
     row = AssistantMessage(task_id=task.id, role="user", content_redacted=result.text, status="done",
                            params=params, template=body.template, material_version=task.material_version,
@@ -634,6 +677,7 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
         AssistantMessage.task_id.in_([t.id for t in rows if t.purpose == 'meeting']), AssistantMessage.role == 'assistant',
         AssistantMessage.status == 'done'))) if ids else set()
     from app.db.models import DocNode
+    translations = _translation_states(db, rows)
     meeting_ids = [t.id for t in rows if t.purpose == 'meeting']
     speaker_counts = dict(db.execute(select(DocNode.task_id, func.count(func.distinct(DocNode.speaker)))
                                      .where(DocNode.task_id.in_(meeting_ids), DocNode.speaker.is_not(None))
@@ -642,7 +686,7 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
     for t in rows:
         files = _files(db, t)
         item = _item(t, files, generating=t.id in generating, run_count=run_stats.get(t.id, (0, False))[0],
-                     reviewing=t.purpose == 'chat' and run_stats.get(t.id, (0, False))[1])
+                     reviewing=t.purpose == 'chat' and run_stats.get(t.id, (0, False))[1], translation_reply=translations.get(t.id))
         if t.purpose == 'meeting':
             item.meeting = _meeting_meta(files, t.id in minuted, speaker_counts.get(t.id, 0))
         items.append(item)
@@ -705,6 +749,7 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
         .group_by(Finding.run_id)).all()) if latest else {}
     bid_ids = [t.id for t, _ in rows if t.kind == "bid"]
     bids = bid_service.history_stats(db, bid_ids) if bid_ids else {}
+    translations = _translation_states(db, [t for t, _ in rows])
     items = []
     for t, doc_type in rows:
         if t.kind == "bid":
@@ -722,7 +767,8 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
                                  pending_count=pending.get(last.id, 0) if last else 0,
                                  latest_run_id=last.id if last and last.status in ("completed", "partial") else None,
                                  reviewing=bool(last and last.status in ("queued", "running")),
-                                 blocked=bool(last and last.status == "blocked")))
+                                 blocked=bool(last and last.status == "blocked"),
+                                 **_translation_state(t, translations.get(t.id))))
     return HistoryPage(items=items, total=total, page=page, page_size=size)
 
 
@@ -737,9 +783,15 @@ def waiting(db: Session, user: User) -> dict[str, int]:
     chat = (Task.kind == "assistant") & (Task.purpose == "chat")
     bid = db.scalar(select(func.count()).select_from(BidProject).join(Task, Task.id == BidProject.task_id).where(
         Task.owner_id == user.id, or_(BidProject.extract_state == "awaiting", BidProject.model_state == "awaiting"))) or 0
+    from app.security.permissions import user_permissions
+    latest_engine = _translation_replies().with_only_columns(AssistantMessage.params['engine'].astext).where(
+        AssistantMessage.task_id == Task.id).order_by(AssistantMessage.id.desc()).limit(1).scalar_subquery()
+    translate = (count(Task.kind == "assistant", Task.purpose == "translate",
+                       func.coalesce(Task.translation_engine, latest_engine) == 'cloud')
+                 if 'use.translate' in user_permissions(db, user.id) else 0)
     return {"workbench": count(chat, ~reviewed), "review": count((Task.kind == "review") | reviewed), "bid": bid,
             "meeting": count(Task.kind == "assistant", Task.purpose == "meeting"),
-            "translate": count(Task.kind == "assistant", Task.purpose == "translate")}
+            "translate": translate}
 
 
 def my_stats(db: Session, user: User) -> dict[str, int]:
@@ -777,6 +829,12 @@ def patch(db: Session, task: Task, body: SessionPatch) -> SessionDetail:
         _not_reviewing(db, task)
         if task.status != "active" or any(f.confirmed_at is not None for f in _files(db, task)):
             raise AppError(409, "SESSION_BUSY", "确认文件后不能修改立场或来源")
+    if "translation_engine" in fields:
+        _writable(db, task)
+        _check_translation_engine(db, task.owner_id, task.purpose, body.translation_engine)
+        if db.scalar(select(exists().where(AssistantMessage.task_id == task.id, AssistantMessage.role == 'assistant',
+                                           AssistantMessage.status.in_(('queued', 'streaming'))))):
+            raise AppError(409, "SESSION_BUSY", "请等本次翻译结束后再切换方式")
     for name in fields:
         setattr(task, name, getattr(body, name).strip())
     db.flush()

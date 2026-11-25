@@ -201,3 +201,15 @@ def test_unresolved_codes_are_highlighted_and_counted(conversation, db_sessionma
                                                           for p in cell.paragraphs for r in p.runs]
     assert [r.text for r in runs if r.font.highlight_color] == ['[[ORG_9]]', '[[ORG_9]]']
     assert any('含 2 处未能还原的代号' in p.text for p in doc.paragraphs)
+
+
+def test_old_stopped_translation_word_without_progress(conversation, db_sessionmaker):
+    c, _, tid, _ = conversation
+    mid = message(db_sessionmaker, tid, template='translate', content_redacted='虚构旧译稿内容')
+    with db_sessionmaker() as db:
+        db.get(AssistantMessage, mid).status = 'stopped'
+        db.commit()
+    response = c.get(url(tid, mid, variant='bilingual'))
+    assert response.status_code == 200, response.text
+    lines = [p.text for p in Document(io.BytesIO(response.content)).paragraphs]
+    assert '已停止 · 部分译稿' in lines and '虚构旧译稿内容' in lines

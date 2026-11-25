@@ -25,7 +25,7 @@
 | V351-B-01 | 一次性合同对比保留跨列与首尾空格差异 | Q-05 | Sonnet，high | Sol 6.1，high | A-06 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-01.md)） |
 | V351-B-02 | 单证同额异币分别保留并核对 | Q-06 | Sonnet，high | Sol 6.1，high | B-01 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-02.md)） |
 | V351-B-03 | 修复按问题讨论的回复导出 | Q-07 | Sonnet，medium | Terra，medium | B-02 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-03.md)） |
-| V351-B-04 | 翻译停止、完成与待确认状态对齐 | Q-08、09 | Sonnet，high | Sol 6.1，medium | B-03 | 确认 Q-09 状态口径 | 待开工 |
+| V351-B-04 | 翻译停止、完成与待确认状态对齐 | Q-08、09 | Sonnet，high | Sol 6.1，medium | B-03 | 确认 Q-09 状态口径 | 已完成（2026-11-26，Codex，[报告](reports/V351-B-04.md)） |
 | V351-B-05 | 历史筛选只采纳最新请求 | Q-10 | Sonnet，medium | Terra，medium | B-04 | — | 待开工 |
 | V351-C-01 | 用实际备份卷容量告警 | Q-11 | Sonnet，medium | Terra，medium | B-05、A-02 | — | 待开工 |
 | V351-C-02 | 知识库失败项可原位重新上传 | Q-12 | Sonnet，medium | Terra，medium | C-01 | — | 待开工 |
@@ -107,7 +107,7 @@
 
 - **现状** 翻译页把 `stopped` 当作完成。纯本地翻译保留材料的未确认状态，工作台会误列为等待云端发送。
 - **做法** 完成只认 `done`，停止时显示已译段数和部分译稿。已停止的本地译稿导出同样标明部分完成。工作台、历史和菜单依据已知的翻译方式与消息状态展示，对没有可靠方式信息的会话沿用 Q-09 确认的口径。界面状态不写成脱敏已经确认，云端发送依然走原有确认和出口复检。
-- **文件** `backend/app/assistant/service.py`、`backend/app/assistant/schemas.py`、`backend/app/assistant/export.py`、`frontend/src/api/assistant.ts`、`frontend/src/views/Translate.vue`、`frontend/src/views/History.vue`、`frontend/src/components/assistant/WorkbenchHome.vue`、`frontend/src/components/assistant/TranslationView.vue`、`backend/tests/test_assistant_local_translation.py`、`backend/tests/test_assistant_export.py`、`backend/tests/test_assistant_history.py`。
+- **文件** `backend/app/assistant/service.py`、`backend/app/assistant/router.py`、`backend/app/assistant/schemas.py`、`backend/app/assistant/export.py`、`backend/app/assistant/local_translation.py`、`backend/app/db/models.py`、`backend/app/db/alembic/versions/0058_translation_engine.py`（持久化选用方式，旧行保持未知）、`frontend/src/api/assistant.ts`、`frontend/src/views/Translate.vue`、`frontend/src/views/History.vue`、`frontend/src/components/assistant/WorkbenchHome.vue`、`frontend/src/components/assistant/TranslationView.vue`、`frontend/src/components/assistant/MessageItem.vue`（旧消息方式未知时采用中性标签）、`backend/tests/test_assistant_local_translation.py`、`backend/tests/test_assistant_export.py`、`backend/tests/test_assistant_history.py`。
 - **验收** 5 段虚构文件在第 1 段后停止，回到页面和下载均说明只完成 1/5；完整本地翻译显示完成且不进入确认待办；云端待确认仍能直达确认，确认前不发送。旧翻译消息缺方式或段数时可看、可导出，界面准确表达已知信息。
 
 ### V351-B-05 历史列表请求顺序

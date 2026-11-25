@@ -22,11 +22,12 @@ export interface SessionFile extends TaskFile { confirmed_at: string | null; med
 export interface Suggestion { loc: string; start: number; end: number; from: string; to: string }
 export const ASSISTANT_ERROR_MESSAGES: Record<string, string> = { ASR_DISABLED: '录音转写未启用，请联系管理员' }
 /** 历史记录行（V32-B-01）：工作台会话与旧审核任务合并列出 */
+export type TranslationEngine = "local" | "cloud"
 export interface HistoryItem extends TaskListItem { kind: 'session' | 'review' | 'bid'; purpose?: Purpose | null; /** 标书初审的阶段（高风险为本机否决类问题数，待处理恒为 0） */ stage?: string | null; /** 标书分类名（V34-B-01a） */ category?: string | null; last_activity_at: string; run_count: number; file_count: number
   /** 最新一轮：待处理问题数、可导出报告的轮次 id、审核进行中（V321-E-04） */
   pending_count: number; latest_run_id: string | null; reviewing: boolean
   /** 最新一轮被发送前复检拦下（V35-F-03） */
-  blocked?: boolean; is_review?: boolean }
+  blocked?: boolean; is_review?: boolean; translation_engine?: TranslationEngine | null; translation_status?: string | null }
 /** 侧栏菜单右侧的数字：待确认遮住的会话、旧审核任务与标书项目（V35-F-02） */
 export interface Waiting { workbench: number; review: number; bid: number; meeting: number; translate: number }
 /** 工作台信任条的本人本月数字（V35-F-03）；daily_cap 为 0 表示不限 */
@@ -52,6 +53,7 @@ export interface SessionItem {
   original_deleted: boolean; generating?: boolean; purpose: Purpose
   /** 审核排队或进行中、已发起的轮数（侧栏列表；V321-E-03） */
   reviewing?: boolean; run_count?: number; is_review?: boolean
+  translation_engine?: TranslationEngine | null; translation_status?: string | null
   /** 会议列表的说明行（V35-F-08）：时长、发言人数、状态 */
   meeting?: { duration_ms: number; speakers: number; state: 'transcribing' | 'failed' | 'proofread' | 'confirmed' | 'minuted' } | null
 }
@@ -153,9 +155,11 @@ export const assistantApi = {
   diff: (id: string, fileId: string) => http.get<DiffResult>(`${base}/${id}/diff?file_id=${encodeURIComponent(fileId)}`),
   diffExport: (id: string, fileId: string) => http.getDownload(`${base}/${id}/diff/export?file_id=${encodeURIComponent(fileId)}`),
   setDraft: (id: string, fid: string, prev: string | null) => http.put<Session>(`${base}/${id}/files/${fid}/draft`, { prev_file_id: prev }),
-  create: (purpose: Purpose = 'chat', reviewIntent = false) => http.post<Session>(base, { purpose, ...(reviewIntent ? { review_intent: true } : {}) }),
+  create: (purpose: Purpose = 'chat', reviewIntent = false, translationEngine?: TranslationEngine) => http.post<Session>(base, {
+    purpose, ...(reviewIntent ? { review_intent: true } : {}), ...(translationEngine ? { translation_engine: translationEngine } : {}),
+  }),
   get: (id: string) => http.get<Session>(`${base}/${id}`),
-  patch: (id: string, body: { title?: string; stance?: Stance; source?: Source }) => http.patch<Session>(`${base}/${id}`, body),
+  patch: (id: string, body: { title?: string; stance?: Stance; source?: Source; translation_engine?: TranslationEngine }) => http.patch<Session>(`${base}/${id}`, body),
   remove: (id: string) => http.delete<void>(`${base}/${id}`),
   addFiles: (id: string, files: File[], onProgress: (loaded: number, total: number) => void = () => {}, marks: number[] = [], draftOf?: string) => {
     const form = new FormData(); files.forEach(file => form.append('files', file, file.name))

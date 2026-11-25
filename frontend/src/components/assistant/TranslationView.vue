@@ -9,6 +9,12 @@ const props = defineProps<{ message: Message; sessionId: string }>()
 const originals = ref<PreviewNode[]>([]), error = ref(''), loading = ref(true)
 // 没有对照行可显示时退回纯译文；译文视图不显示行首的分段标记 ⟦F1-P1⟧（只用于对齐，V321-Z）
 const plain = computed(() => props.message.content.replace(/^⟦[^⟧\r\n]+⟧[ \t]*/gm, ''))
+const stopped = computed(() => props.message.status === 'stopped')
+const progress = computed(() => {
+  const {segments_done: done, segments_total: total} = props.message.extras
+  if (stopped.value) return total && done !== undefined ? `已停止 · 完成 ${done}/${total} 段` : '已停止 · 部分译稿'
+  return total ? `已译 ${done ?? 0}/${total} 段` : ''
+})
 const pending = computed(() => ['queued', 'streaming'].includes(props.message.status))
 const unaligned = computed(() => props.message.extras.translation_unaligned?.length ?? 0)
 const firstMissing = computed(() => pending.value ? originals.value.findIndex(n => !props.message.translation?.[n.loc]) : -1)
@@ -26,7 +32,7 @@ onMounted(async () => {
 <template>
   <div class="tv">
     <p class="notice">{{ message.translation_notice ?? '译稿请逐段核对名称、金额和业务条件；名称、地址、金额按原文写法还原' }}</p>
-    <p v-if="message.extras.segments_total" class="prog num">第 {{ message.extras.segments_done ?? 0 }} / {{ message.extras.segments_total }} 段</p>
+    <p v-if="progress" class="prog num" role="status">{{ progress }}</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <el-alert v-if="unaligned" title="部分译文未能按位置对齐，请核对原文" type="warning" :closable="false" />
     <div v-if="originals.length" class="paper">

@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 
 from app.assistant import local_translation as mt, prompt
 from app.assistant.local_translation import handle_translate
-from app.db.models import AssistantMessage, Job, LlmCall, Task, TaskFile
+from app.db.models import AssistantMessage, DocNode, Job, LlmCall, Task, TaskFile
+from app.security import crypto
 from tests.test_assistant_chat import BASE, conversation, send  # noqa: F401
 from tests.review_support import env  # noqa: F401
 
@@ -46,6 +47,15 @@ def test_local_translation_encrypted_and_excluded_from_cloud(conversation, db_se
     view = c.get(f'{BASE}/{tid}/messages').json()['items'][-1]
     assert view['content'] == translated and view['translation']['F1-P1'] == translated
     assert view['status'] == 'done' and '不外发' in view['translation_notice']
+    with db_sessionmaker() as db:
+        db.get(Task, uuid.UUID(tid)).purpose = 'translate'
+        db.commit()
+    row = c.get(BASE + '/history?type=translate').json()['items'][0]
+    assert (row['translation_engine'], row['translation_status']) == ('local', 'done')
+    assert c.get(BASE + '/waiting').json()['translate'] == 0
+    with db_sessionmaker() as db:
+        db.get(Task, uuid.UUID(tid)).purpose = 'chat'
+        db.commit()
     document = c.get(f'{BASE}/{tid}/messages/{mid}/export?format=docx&variant=bilingual')
     assert document.status_code == 200
     doc = Document(io.BytesIO(document.content))
@@ -87,3 +97,48 @@ def test_local_translation_retry_reuses_source(conversation, db_sessionmaker, mo
         handle_translate(db, job.payload)
         assert db.get(AssistantMessage, again.json()['assistant']['id']).status == 'done'
         assert db.scalar(select(func.count()).select_from(AssistantMessage).where(AssistantMessage.role == 'user')) == 1
+
+
+def test_local_translation_stopped_at_one_of_five(conversation, db_sessionmaker, monkeypatch):
+    c, h, tid, _ = conversation
+    monkeypatch.setenv('COMPOSE_PROFILES', 'mt')
+    monkeypatch.setattr(mt, 'alive', lambda: True)
+    with db_sessionmaker() as db:
+        task = db.get(Task, uuid.UUID(tid))
+        task.purpose, task.status = 'translate', 'awaiting_confirm'
+        file = db.scalar(select(TaskFile).where(TaskFile.task_id == task.id))
+        file.confirmed_at, file.parser_version = None, 'docx-test'
+        fid = str(file.id)
+        for n in range(2, 6):
+            db.add(DocNode(task_id=task.id, file_id=file.id, loc=f'F1-P{n}', ord=n, kind='paragraph', part='body',
+                           text_enc=crypto.encrypt_text(f'虚构待译段落 {n}')))
+        db.commit()
+
+    result = send(conversation, '', template='translate', params={'engine': 'local', 'file_id': fid, 'target': '英文'})
+    assert result.status_code == 201, result.text
+    mid = result.json()['assistant']['id']
+    exchanges = []
+
+    def exchange(text, _target, cancelled):
+        exchanges.append(text)
+        if len(exchanges) == 1:
+            return 'Fictional translated segment.'
+        assert c.post(f'{BASE}/{tid}/messages/{mid}/stop', headers=h).status_code == 200
+        assert cancelled()
+        return None
+
+    monkeypatch.setattr(mt, 'exchange', exchange)
+    with db_sessionmaker() as db:
+        handle_translate(db, db.scalar(select(Job).where(Job.type == 'translate')).payload)
+        assert not db.scalar(select(func.count()).select_from(LlmCall))
+    view = c.get(f'{BASE}/{tid}/messages').json()['items'][-1]
+    assert (view['status'], view['extras']['segments_done'], view['extras']['segments_total']) == ('stopped', 1, 5)
+    assert list(view['translation']) == ['F1-P1']
+    for variant in ('translation', 'bilingual'):
+        response = c.get(f'{BASE}/{tid}/messages/{mid}/export?format=docx&variant={variant}')
+        assert response.status_code == 200, response.text
+        doc = Document(io.BytesIO(response.content))
+        lines = [p.text for p in doc.paragraphs]
+        lines.extend(cell.text for table in doc.tables for row in table.rows for cell in row.cells)
+        assert '已停止 · 完成 1/5 段' in lines
+        assert 'Fictional translated segment.' in lines

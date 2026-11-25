@@ -286,6 +286,7 @@ class Task(Base):
     # 助手会话的入口（V31-U5）：对话、会议纪要、翻译；审核任务恒为 chat
     purpose: Mapped[str] = mapped_column(String(10), nullable=False, server_default="chat")
     review_intent: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    translation_engine: Mapped[Optional[str]] = mapped_column(String(5))
     stance: Mapped[str] = mapped_column(String(10), nullable=False)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     policy: Mapped[str] = mapped_column(String(12), nullable=False)

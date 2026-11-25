@@ -127,6 +127,14 @@ function statusView(row: HistoryItem): { text: string; tone: string } {
     return { text: s.label, tone: { run: 'busy', warn: 'warning', ok: 'success', idle: 'info' }[s.tone] }
   }
   if (row.reviewing) return { text: '审核中', tone: 'busy' }
+  if (row.purpose === 'translate') {
+    if (['queued', 'streaming'].includes(row.translation_status ?? '')) return { text: '翻译中', tone: 'busy' }
+    if (row.status === 'awaiting_confirm' && row.translation_engine === 'cloud' && auth.can('use.translate')) return { text: '待确认脱敏', tone: 'warning' }
+    if (row.translation_status === 'done') return { text: '翻译完成', tone: 'success' }
+    if (row.translation_status === 'stopped') return { text: '已停止', tone: 'info' }
+    if (row.translation_status === 'failed') return { text: '翻译失败', tone: 'danger' }
+    if (row.status === 'awaiting_confirm') return { text: row.translation_engine === 'local' ? '待开始翻译' : '待选择翻译方式', tone: 'info' }
+  }
   if (row.purpose === 'meeting' || row.purpose === 'translate') {
     // 会议、翻译是会话，状态取会话字典（active 等），不用任务状态字典
     const st: string = row.status
