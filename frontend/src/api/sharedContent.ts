@@ -1,6 +1,7 @@
 import { http } from './http'
 
 export type SharedContentKind = 'template' | 'bid'
+export type SharedReuseStatus = 'preparing' | 'ready' | 'failed'
 export interface SharedContent {
   id: string
   text: string
@@ -8,6 +9,7 @@ export interface SharedContent {
   stance: string | null
   category: string | null
   shared_at: string
+  reuse_status?: SharedReuseStatus
 }
 
 const paths = {
@@ -19,6 +21,7 @@ export const sharedContentApi = {
   finding: (id: string, active: boolean) => change(`/findings/${id}/template-reuse`, active),
   bid: (id: string, rid: string, active: boolean) => change(`/bid/${id}/requirements/${rid}/company-reuse`, active),
   list: (kind: SharedContentKind) => http.get<{ items: SharedContent[] }>(paths[kind]),
+  retry: (id: string) => http.post<{ reuse_status: SharedReuseStatus }>(`${paths.template}/${id}/retry`),
   remove: (kind: SharedContentKind, id: string) => http.delete<void>(`${paths[kind]}/${id}`),
 }
 

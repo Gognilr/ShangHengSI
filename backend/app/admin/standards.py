@@ -74,6 +74,13 @@ def shared_clauses(db: Session = Depends(get_db)):
     return {"items": content_drafts.listing(db, "template")}
 
 
+@router.post("/shared-clauses/{content_id}/retry", status_code=202)
+def retry_shared_clause(content_id: uuid.UUID, admin: User = Depends(_perm), db: Session = Depends(get_db)):
+    result = content_drafts.retry_template(db, content_id, admin.id)
+    db.commit()
+    return result
+
+
 @router.delete("/shared-clauses/{content_id}", status_code=204)
 def withdraw_shared_clause(content_id: uuid.UUID, admin: User = Depends(_perm), db: Session = Depends(get_db)):
     content_drafts.withdraw(db, "template", admin.id, content_id=content_id)

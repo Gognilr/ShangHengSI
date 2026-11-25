@@ -3,10 +3,12 @@ import uuid
 
 from sqlalchemy import select
 
+from app.db import jobs
 from app.db.models import BidCategory, ContentDraft, Finding, LocalFinding, ReviewRun, TaskClauseVector
 from app.review.prompt import ReviewContext
 from app.review.validate import DocNodeView
 from app.standards import compare, job
+from app.worker import process_job
 from tests.review_support import env, ready_task  # noqa: F401
 from tests.test_bid_projects import BODY, ROOT, grant
 from tests.test_standards import vector
@@ -46,11 +48,36 @@ def test_specialist_shares_chosen_clause_and_can_withdraw(make_user, login, read
     assert c.get(f"/api/v1/runs/{run_id}").json()["findings"][0]["shared"]
     assert c.get(shared_path).status_code == 403
     row, = a.get(shared_path).json()["items"]
-    assert set(row) == {"id", "text", "doc_type", "stance", "category", "shared_at"}
+    assert set(row) == {"id", "text", "doc_type", "stance", "category", "shared_at", "reuse_status"}
+    assert row["reuse_status"] == "preparing"
+    retry = f"{shared_path}/{row['id']}/retry"
+    assert c.post(retry, headers=headers).status_code == 403
+    assert a.post(retry, headers=admin_headers).status_code == 409
+
+    def unavailable(texts, kind):
+        raise RuntimeError("虚构向量准备失败")
+
+    def run_job():
+        with db_sessionmaker() as db:
+            claimed = jobs.claim(db, "v351-d02", ("template_embed",))
+            assert claimed is not None
+            job_id, kind, payload = claimed.id, claimed.type, claimed.payload
+        process_job(db_sessionmaker, job_id, kind, payload, heartbeat_seconds=0.05)
+
+    monkeypatch.setattr(job.engine, "embed", unavailable)
+    run_job()
+    assert a.get(shared_path).json()["items"][0]["reuse_status"] == "failed"
+    assert c.get(f"/api/v1/runs/{run_id}").json()["findings"][0]["shared"]
+    response = a.post(retry, headers=admin_headers)
+    assert response.status_code == 202 and response.json() == {"reuse_status": "preparing"}
+    assert a.post(retry, headers=admin_headers).status_code == 409
     assert "签收凭证" in row["text"] and "（待填写）" in row["text"]
     assert not any(x in row["text"] for x in ("ORG_7", "REF_9", "2028", "88", "原审核意见"))
 
     monkeypatch.setattr(job.engine, "embed", lambda texts, _: [vector() for _ in texts])
+    run_job()
+    assert a.get(shared_path).json()["items"][0]["reuse_status"] == "ready"
+    assert a.post(retry, headers=admin_headers).status_code == 409
     next_task = ready_task(colleague)
     response = reader.post(f"/api/v1/tasks/{next_task.id}/runs", headers=reader_headers)
     assert response.status_code == 201, response.text
@@ -60,7 +87,6 @@ def test_specialist_shares_chosen_clause_and_can_withdraw(make_user, login, read
     with db_sessionmaker() as db:
         stored = db.get(ContentDraft, shared_id)
         assert row["text"].encode() not in stored.text_enc
-        job.handle_embed(db, {"content_id": str(shared_id)})
         assert stored.embedding is not None
         next_run = db.get(ReviewRun, next_run_id)
         assert next_run.use_shared_clauses and next_run.template_id is None
@@ -80,6 +106,7 @@ def test_specialist_shares_chosen_clause_and_can_withdraw(make_user, login, read
     assert c.delete(path, headers=headers).json() == {"active": False}
     assert not c.get(f"/api/v1/runs/{run_id}").json()["findings"][0]["shared"]
     assert a.get(shared_path).json()["items"] == []
+    assert a.post(retry, headers=admin_headers).status_code == 404
 
 
 def test_specialist_shares_for_new_bids_in_the_same_category(make_user, login, db_sessionmaker, env):
