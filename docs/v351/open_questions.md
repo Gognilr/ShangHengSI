@@ -47,6 +47,8 @@
 
 - **触发与证据** 从现版问题讨论界面导出回复，前端构造 `会话 UUID:问题 UUID`。后端要求路径字段为单个会话 UUID，返回 404。用新会话和当场生成的消息验证，合法会话 ID 可出件。 [前端构造](../../frontend/src/views/Assistant.vue#L260) · [导出接口](../../backend/app/assistant/router.py#L397) · [UUID 校验](../../backend/app/security/deps.py#L28)
 
+- **结论（B-03）** 讨论栏使用实际会话 UUID 导出，问题标识单独用于视图重置。保留原消息归属和导出权限。
+
 ### V351Q-08 部分译稿被显示为完成（P2，B-04）
 
 - **触发与证据** 向现版翻译页输入后台产生的 `stopped`、1/5 段状态。执行实际布局代码，界面把全部步骤标为完成。后端保存已译内容，导出仍可用。 [翻译状态](../../frontend/src/views/Translate.vue#L44) · [部分结果](../../backend/app/assistant/local_translation.py#L212)

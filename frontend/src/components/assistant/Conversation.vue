@@ -4,7 +4,7 @@ import { ArrowDown } from '@lucide/vue'
 import type { Message, MessageSource } from '@/api/assistant'
 import MessageItem from './MessageItem.vue'
 /** savedId / savedNo：讨论稿来自哪条回复、属于问题几，该回复上显示“已保存”（V321-E-02） */
-const props = defineProps<{ messages: Message[]; sessionId: string; hint?: string; draftable?: boolean; savedId?: number | null; savedNo?: string; reading?: boolean }>()
+const props = defineProps<{ messages: Message[]; sessionId: string; viewKey?: string; hint?: string; draftable?: boolean; savedId?: number | null; savedNo?: string; reading?: boolean }>()
 const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message]; cite: [message: Message, source: MessageSource, anchor: HTMLElement] }>()
 const area = ref<HTMLElement>()
 // 自动跟随：离底部 80px 以内视为在底部；用户向上滚动即停止跟随，点“回到底部”恢复
@@ -13,7 +13,7 @@ function toBottom() { if (area.value) area.value.scrollTop = area.value.scrollHe
 function onScroll() { const el = area.value; if (el) following.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 80 }
 onMounted(async () => { await nextTick(); toBottom() })
 // 切换会话、首次载入消息时滚到底部
-watch(() => [props.sessionId, props.messages.length === 0] as const, async () => { await nextTick(); toBottom() })
+watch(() => [props.sessionId, props.viewKey, props.messages.length === 0] as const, async () => { await nextTick(); toBottom() })
 watch(() => props.messages.map(m => `${m.id}:${m.content.length}`).join(','), async () => {
   if (!following.value) return
   await nextTick(); toBottom()

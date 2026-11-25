@@ -272,7 +272,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         </div>
         <ReviewPane ref="reviewPane" v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" class="review-pane" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null" @progress="reviewProgress = $event" @ask="modeModel = 'ask'">
           <template #discussion="{ finding, no, update, locate }">
-            <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已遮住名称与金额），不含其他条款。"
+            <Conversation :messages="threadOf(finding.id)" :session-id="id" :view-key="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已遮住名称与金额），不含其他条款。"
               :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource, el: HTMLElement) => cite(m, src, el, locate)" @stop="stop" @retry="retry" />
             <Composer :key="`${id}:${finding.id}`" :template="null" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="false" @sent="sent" @stop="stop" @busy="refresh" @confirm="filePanel?.openConfirm()" />
           </template>
