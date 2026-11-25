@@ -1,10 +1,11 @@
 """管理员提醒（SPEC 6.7，设计 M7 第十节）：三种提醒的有 / 无边界、普通用户为空。全部内容虚构。"""
-from collections import namedtuple
+import shutil
+from datetime import datetime
 
 import pytest
 
-from app.admin import alerts as alerts_module
 from app.admin import settings_store
+from app.backup.service import local_tz
 from app.config import get_settings
 from app.db.base import utcnow
 from app.db.models import BackupRecord, LlmCall, LlmModel
@@ -15,7 +16,7 @@ pytestmark = pytest.mark.usefixtures("env")
 
 ME = f"{API_PREFIX}/auth/me"
 GB = 1024**3
-Usage = namedtuple("Usage", "total used free")
+DATA = f"{API_PREFIX}/admin/backup/records"
 
 
 @pytest.fixture
@@ -29,16 +30,6 @@ def backup_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def free_space(monkeypatch):
-    """控制备份目录的剩余空间：free_space(n_bytes)。"""
-
-    def _set(free):
-        monkeypatch.setattr(alerts_module.shutil, "disk_usage", lambda p: Usage(100 * GB, 0, free))
-
-    return _set
-
-
-@pytest.fixture
 def admin(make_user, login, backup_dir):
     make_user("boss", role="admin")
     return login("boss")[0]
@@ -48,9 +39,9 @@ def alerts(c):
     return c.get(ME).json()["alerts"]
 
 
-def add_backup(sm, status, size=None):
+def add_backup(sm, status, size=None, free=None):
     with sm() as s:
-        s.add(BackupRecord(trigger="schedule", status=status, size_bytes=size, started_at=utcnow(),
+        s.add(BackupRecord(trigger="schedule", status=status, size_bytes=size, dir_free_bytes=free, started_at=utcnow(),
                            finished_at=None if status == "running" else utcnow(),
                            file_name="aireview_x.bak" if status == "success" else None,
                            error_message="数据库导出失败（返回码 1）" if status == "failed" else None))
@@ -95,16 +86,28 @@ def test_backup_failed(admin, db_sessionmaker):
 # ---------------------------------------------------------------- 空间不足
 
 
-def test_space_low_boundary(admin, db_sessionmaker, free_space):
-    add_backup(db_sessionmaker, "success", 3 * GB)  # 需要 6 GB
-    free_space(6 * GB)
+def test_space_low_boundary(admin, db_sessionmaker):
+    add_backup(db_sessionmaker, "success", 3 * GB, 6 * GB)
     assert alerts(admin) == []  # 恰好等于：不提示
-    free_space(6 * GB - 1)
+    add_backup(db_sessionmaker, "success", 3 * GB, 6 * GB - 1)
+    assert [x["code"] for x in alerts(admin)] == ["BACKUP_SPACE_LOW"]
+
+    # Docker 的 tmpfs 模拟只有 worker 可见的卷，容量与 app 所见普通目录不同。
+    worker_free = shutil.disk_usage("/dev/shm").free
+    assert shutil.disk_usage(get_settings().backup_dir).free > worker_free * 2
+    add_backup(db_sessionmaker, "success", worker_free, worker_free)
+    add_backup(db_sessionmaker, "failed")
+    records = admin.get(DATA).json()
+    assert records["free_bytes"] == worker_free
+    sample = datetime.fromisoformat(records["free_measured_at"]).astimezone(local_tz()).strftime("%Y-%m-%d %H:%M")
     a = alerts(admin)
-    assert [x["code"] for x in a] == ["BACKUP_SPACE_LOW"]
-    assert a[0]["message"] == "备份目录剩余空间不足：剩余 6.0 GB，建议不少于 6.0 GB"
-    free_space(int(1.5 * GB))
-    assert alerts(admin)[0]["message"] == "备份目录剩余空间不足：剩余 1.5 GB，建议不少于 6.0 GB"
+    assert [x["code"] for x in a] == ["BACKUP_FAILED", "BACKUP_SPACE_LOW"]
+    assert a[1]["message"].endswith(f"（{sample} 备份时统计）")
+
+    add_backup(db_sessionmaker, "success", 3 * GB)
+    records = admin.get(DATA).json()
+    assert records["free_bytes"] is None and records["free_measured_at"] is None
+    assert alerts(admin) == []
 
 
 # ---------------------------------------------------------------- 调用上限

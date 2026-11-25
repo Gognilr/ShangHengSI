@@ -170,10 +170,8 @@ def backup_records(db: DbSession = Depends(get_db)) -> BackupRecords:
     rows = db.scalars(select(BackupRecord).order_by(BackupRecord.id.desc()).limit(20)).all()
     items = [BackupRow.of(r) for r in rows]
     directory = get_settings().backup_dir
-    latest_ok = _latest_backup(db)
-    free = latest_ok.dir_free_bytes if latest_ok else None
-    return BackupRecords(dir=directory, free_bytes=free,
-                         free_measured_at=latest_ok.finished_at if latest_ok and free is not None else None,
+    _, free, measured_at = backup_space(db)
+    return BackupRecords(dir=directory, free_bytes=free, free_measured_at=measured_at,
                          latest=items[0] if items else None, items=items)
 
 
@@ -347,6 +345,14 @@ def _latest_backup(db: DbSession) -> BackupRecord | None:
                      .order_by(BackupRecord.finished_at.desc(), BackupRecord.id.desc()).limit(1))
 
 
+def backup_space(db: DbSession) -> tuple[BackupRecord | None, int | None, datetime | None]:
+    """只使用 worker 在最近一次成功备份时记录的容量；旧记录可能没有采样。"""
+    record = _latest_backup(db)
+    if record is None or record.dir_free_bytes is None:
+        return record, None, None
+    return record, record.dir_free_bytes, record.finished_at
+
+
 def _files_bytes(directory: str) -> int | None:
     try:
         # os.walk 默认吞掉根目录权限错误，先验证根目录可读。
@@ -406,7 +412,7 @@ def _storage_snapshot(db: DbSession) -> dict:
         if _storage_cache.get("key") == key and monotime.monotonic() < _storage_cache["until"]:
             return dict(_storage_cache["value"])
         now = utcnow()
-        latest = _latest_backup(db)
+        latest, backup_free, _ = backup_space(db)
         measured = latest is not None and any(value is not None for value in
                        (latest.db_bytes, latest.dir_bytes, latest.dir_free_bytes))
         free = _free(settings.files_dir)
@@ -414,7 +420,7 @@ def _storage_snapshot(db: DbSession) -> dict:
         value = dict(files_bytes=_files_bytes(settings.files_dir), db_bytes=_db_bytes(db), data_free_bytes=free,
                      backup_dir_bytes=latest.dir_bytes if measured else None,
                      latest_backup_bytes=latest.size_bytes if measured else None,
-                     backup_free_bytes=latest.dir_free_bytes if measured else None,
+                     backup_free_bytes=backup_free,
                      backup_stats_at=latest.finished_at if measured else None,
                      estimated_days=estimated, estimate_reason=reason, storage_measured_at=now)
         _storage_cache.update(key=key, until=monotime.monotonic() + 600, value=value)

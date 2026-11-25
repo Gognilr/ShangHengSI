@@ -3,14 +3,14 @@
 三种提醒：最近一次备份失败；备份目录剩余空间不足（小于最近一次成功备份大小的 2 倍）；本月调用次数达到上限的 90%。
 提醒文字只含次数、容量和固定说明，不含路径和其他系统信息。
 """
-import shutil
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.admin.settings_store import get_setting
-from app.config import get_settings
+from app.admin.data import backup_space
+from app.backup.service import local_tz
 from app.db.models import BackupRecord, LawImport, LlmModel
 from app.llm.usage import monthly_sent_calls
 
@@ -29,21 +29,15 @@ def _backup_alerts(db: Session) -> list[dict]:
     )
     if finished is not None and finished.status == "failed":
         alerts.append({"code": "BACKUP_FAILED", "message": "最近一次备份失败，请到“设置 - 数据”查看原因"})
-    last_ok = db.scalar(
-        select(BackupRecord).where(BackupRecord.status == "success").order_by(BackupRecord.id.desc()).limit(1)
-    )
-    if last_ok is not None and last_ok.size_bytes is not None:
-        try:
-            free = shutil.disk_usage(get_settings().backup_dir).free
-        except OSError:
-            alerts.append({"code": "BACKUP_SPACE_LOW", "message": "备份目录不可用"})
-        else:
-            need = last_ok.size_bytes * 2
-            if need > free:
-                alerts.append({
-                    "code": "BACKUP_SPACE_LOW",
-                    "message": f"备份目录剩余空间不足：剩余 {_gb(free)} GB，建议不少于 {_gb(need)} GB",
-                })
+    last_ok, free, measured_at = backup_space(db)
+    if last_ok is not None and last_ok.size_bytes is not None and free is not None and measured_at is not None:
+        need = last_ok.size_bytes * 2
+        if free < need:
+            sample = measured_at.astimezone(local_tz()).strftime("%Y-%m-%d %H:%M")
+            alerts.append({
+                "code": "BACKUP_SPACE_LOW",
+                "message": f"备份目录剩余空间不足：剩余 {_gb(free)} GB，建议不少于 {_gb(need)} GB（{sample} 备份时统计）",
+            })
     return alerts
 
 
