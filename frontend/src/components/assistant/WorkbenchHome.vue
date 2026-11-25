@@ -5,7 +5,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { AudioLines, Columns2, EyeOff, FileSearch, FileX, ListChecks, Lock, PenLine, ShieldAlert, ShieldCheck, Sparkle } from '@lucide/vue'
-import { assistantApi, type HistoryItem, type MyStats, type Template, type Waiting } from '@/api/assistant'
+import { assistantApi, isReviewSession, sessionLocation, type HistoryItem, type MyStats, type Template, type Waiting } from '@/api/assistant'
 import { bidApi } from '@/api/bid'
 import { useAuthStore } from '@/stores/auth'
 import SiLogo from '@/components/brand/SiLogo.vue'
@@ -76,7 +76,7 @@ const last = (x: { title: string; at: string } | null) => x ? `上次：${x.titl
 
 type ModKey = 'review' | 'bid' | 'meet' | 'trans'
 interface Mod { key: ModKey; to: string; title: string; desc: string; status: string; warn: boolean }
-const reviewed = (r: HistoryItem) => r.kind === 'review' || (r.purpose === 'chat' && r.run_count > 0)
+const reviewed = (r: HistoryItem) => r.kind === 'review' || isReviewSession(r)
 const mods = computed<Mod[]>(() => {
   const w = waiting.value, list: Mod[] = []
   if (can('use.review')) {
@@ -98,8 +98,7 @@ const mods = computed<Mod[]>(() => {
 interface Todo { id: string; mod: ModKey; icon: Component; title: string; text: string; badge: string; tone: 'warning' | 'success' | 'danger'; action: string; primary: boolean; open: () => void }
 function open(r: HistoryItem) {
   if (r.kind === 'bid') { void router.push(`/bid/${r.id}`); return }
-  if (r.purpose === 'meeting' || r.purpose === 'translate') { void router.push(`/${r.purpose}/${r.id}`); return }
-  if (r.kind === 'session') { void router.push({ path: `/assistant/${r.id}`, query: r.run_count && can('use.review') ? { mode: 'review' } : {} }); return }
+  if (r.kind === 'session') { void router.push(sessionLocation(r, can('use.review'))); return }
   void router.push(r.status === 'draft' ? { name: 'review-new', query: { task: r.id } } : { name: 'review-result', params: { taskId: r.id } })
 }
 const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {

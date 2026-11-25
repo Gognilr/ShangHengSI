@@ -4,6 +4,7 @@ import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { AlertCircle, ClockFading, CornerDownLeft, FilePlus, FileSearch, FileStack, House, Languages, MessageSquare, MessageSquarePlus, Mic, Search, Settings } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { isReviewSession, sessionLocation } from '@/api/assistant'
 import { searchApi, type SearchResult } from '@/api/search'
 import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/time'
@@ -50,14 +51,15 @@ const entries = computed<Entry[]>(() => {
   const reviews: Entry[] = result.value.reviews.map(r => ({ key: `r-${r.id}`, group: '文件审核', label: r.title, icon: FileSearch, mod: 'review', meta: formatDate(r.created_at), run: () => void router.push({ name: 'review-result', params: { taskId: r.id } }) }))
   const bids: Entry[] = result.value.bids.map(b => ({ key: `b-${b.id}`, group: '标书初审', label: b.title, icon: FileStack, mod: 'bid', meta: formatDate(b.last_activity_at), run: () => void router.push(`/bid/${b.id}`) }))
   const sessions: Entry[] = result.value.sessions.map(s => {
-    const [path, group, icon, mod] = s.purpose === 'meeting' ? ['meeting', '会议纪要', Mic, 'meet'] as const
-      : s.purpose === 'translate' ? ['translate', '翻译', Languages, 'trans'] as const : ['assistant', '对话', MessageSquare, undefined] as const
+    const [group, icon, mod] = s.purpose === 'meeting' ? ['会议纪要', Mic, 'meet'] as const
+      : s.purpose === 'translate' ? ['翻译', Languages, 'trans'] as const
+      : auth.can('use.review') && isReviewSession(s) ? ['文件审核', FileSearch, 'review'] as const : ['对话', MessageSquare, undefined] as const
     return { key: `s-${s.id}`, group, label: s.title, icon, mod, meta: formatDate(s.last_activity_at),
-      run: () => void router.push(`/${path}/${s.id}`) }
+      run: () => void router.push(sessionLocation(s, auth.can('use.review'))) }
   })
   const findings: Entry[] = result.value.findings.map(f => ({ key: `f-${f.id}`, group: '问题', label: f.title, icon: AlertCircle, mod: 'review', meta: f.task_title, run: () => void router.push(f.kind === 'review' ? { name: 'review-result', params: { taskId: f.task_id }, query: { finding: f.id } } : { path: `/assistant/${f.task_id}`, query: { mode: 'review' } }) }))
   return [...local.filter(e => e.group === '操作'), ...local.filter(e => e.group === '页面'), ...reviews, ...bids, ...findings,
-    ...['对话', '会议纪要', '翻译'].flatMap(group => sessions.filter(s => s.group === group))]
+    ...['文件审核', '对话', '会议纪要', '翻译'].flatMap(group => sessions.filter(s => s.group === group))]
 })
 const groups = computed(() => {
   const out: { name: string; items: Entry[] }[] = []

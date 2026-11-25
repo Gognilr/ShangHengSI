@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
-import { assistantApi, type HistoryItem } from '@/api/assistant'
+import { assistantApi, isReviewSession, sessionLocation, type HistoryItem } from '@/api/assistant'
 import { bidApi, bidState } from '@/api/bid'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -115,7 +115,7 @@ onBeforeUnmount(() => clearTimeout(debounce))
 /** 名称第二行小字：类型 · 文件类型 · 立场（V34-A-05，原三列并入名称） */
 function subline(row: HistoryItem) {
   if (row.kind === 'bid') return ['标书初审', row.category, `${row.file_count} 个文件`].filter(Boolean).join(' · ')
-  const parts = [row.kind === 'review' ? '审核任务' : row.purpose === 'meeting' ? '会议纪要' : row.purpose === 'translate' ? '翻译' : '会话']
+  const parts = [row.kind === 'review' ? '审核任务' : row.purpose === 'meeting' ? '会议纪要' : row.purpose === 'translate' ? '翻译' : isReviewSession(row) && auth.can('use.review') ? '文件审核' : '会话']
   if (row.doc_type) parts.push(docTypeLabel(row.doc_type))
   if (row.kind === 'review' || row.run_count) parts.push(`${stanceLabel(row.stance)}立场`)
   return parts.join(' · ')
@@ -132,15 +132,19 @@ function statusView(row: HistoryItem): { text: string; tone: string } {
     const st: string = row.status
     return { text: ASSISTANT_STATUS[st] ?? statusLabel(row.status), tone: st === 'parse_failed' || st === 'failed' ? 'danger' : st === 'awaiting_confirm' ? 'warning' : st === 'parsing' ? 'busy' : 'info' }
   }
-  if (row.kind === 'session') return { text: row.run_count && auth.can('use.review') ? `已审核 ${row.run_count} 轮` : '对话', tone: row.run_count ? 'primary' : 'info' }
+  if (row.kind === 'session') {
+    if (!auth.can('use.review') || !isReviewSession(row)) return { text: '对话', tone: 'info' }
+    if (row.run_count) return { text: `已审核 ${row.run_count} 轮`, tone: 'primary' }
+    const state: string = row.status
+    return { text: state === 'active' ? '待开始审核' : statusLabel(row.status), tone: statusTag(row.status).type }
+  }
   return { text: statusLabel(row.status), tone: statusTag(row.status).type }
 }
 
 function open(row: HistoryItem) {
   // 工作台会话回到工作台（发起过审核的直接看审核视图）；旧审核任务用原页面打开，未完成的由结果页转到对应步骤（V32-B-01）
   if (row.kind === 'bid') { void router.push(`/bid/${row.id}`); return }
-  if (row.purpose === 'meeting' || row.purpose === 'translate') { void router.push(`/${row.purpose}/${row.id}`); return }
-  if (row.kind === 'session') { void router.push({ path: `/assistant/${row.id}`, query: row.run_count && auth.can('use.review') ? { mode: 'review' } : {} }); return }
+  if (row.kind === 'session') { void router.push(sessionLocation(row, auth.can('use.review'))); return }
   void router.push(row.status === 'draft' ? { name: 'review-new', query: { task: row.id } } : { name: 'review-result', params: { taskId: row.id } })
 }
 

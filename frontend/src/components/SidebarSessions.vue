@@ -3,11 +3,13 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Ellipsis } from '@lucide/vue'
-import { assistantApi, type SessionItem } from '@/api/assistant'
+import { assistantApi, isReviewSession, sessionLocation, type SessionItem } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import { useSessionsStore } from '@/stores/sessions'
 
-const store = useSessionsStore()
+import { useAuthStore } from '@/stores/auth'
+
+const store = useSessionsStore(), auth = useAuthStore()
 const route = useRoute(), router = useRouter()
 const current = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 
@@ -26,7 +28,7 @@ async function remove(item: SessionItem) {
   catch { return }
   try {
     await assistantApi.remove(item.id)
-    if (item.id === current.value) await router.push('/assistant')
+    if (item.id === current.value) await router.push(auth.can('use.assistant') ? '/assistant' : '/review')
     await store.refresh()
   } catch (e) { fail(e) }
 }
@@ -35,7 +37,7 @@ function onCommand(item: SessionItem, cmd: string) { if (cmd === 'rename') renam
 
 // 澄明 8.0：最多 8 条，每条带模块色圆点（发起过审核的为文件审核色，其余为衡青）；更多的去历史记录
 const MAX = 8
-const shown = computed(() => store.items.slice(0, MAX))
+const shown = computed(() => store.items.filter(item => auth.can('use.assistant') || isReviewSession(item)).slice(0, MAX))
 const more = computed(() => store.total > MAX)
 </script>
 
@@ -44,8 +46,8 @@ const more = computed(() => store.total > MAX)
     <h2 v-if="shown.length" class="heading">近期会话</h2>
     <ul v-if="shown.length">
       <li v-for="item in shown" :key="item.id" class="row" :class="{ current: item.id === current }">
-        <router-link :to="{ path: `/assistant/${item.id}`, query: item.run_count ? { mode: 'review' } : {} }" class="link" :title="item.title" :aria-current="item.id === current ? 'page' : undefined">
-          <i class="dot" :class="{ review: item.run_count, 'si-breath': item.generating }" :aria-label="item.generating ? '生成中' : undefined" />
+        <router-link :to="sessionLocation(item, auth.can('use.review'))" class="link" :title="item.title" :aria-current="item.id === current ? 'page' : undefined">
+          <i class="dot" :class="{ review: auth.can('use.review') && isReviewSession(item), 'si-breath': item.generating }" :aria-label="item.generating ? '生成中' : undefined" />
           <span class="title">{{ item.title }}</span>
           <span v-if="item.reviewing" class="tag tag--busy">审核中</span>
           <span v-else-if="store.finished.has(item.id) && item.id !== current" class="tag tag--done">审核完成</span>

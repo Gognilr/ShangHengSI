@@ -62,7 +62,8 @@ def owned_file(fid: str, task: Task = Depends(owned_session), db: Session = Depe
 
 @router.post("", response_model=SessionDetail, status_code=201)
 def create(request: Request, body: SessionCreate | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return service.create(db, user, client_ip(request), (body or SessionCreate()).purpose)
+    body = body or SessionCreate()
+    return service.create(db, user, client_ip(request), body.purpose, review_intent=body.review_intent)
 
 
 @router.get("", response_model=SessionPage)

@@ -30,7 +30,7 @@ async function upload(files: File[]) {
   if (files.some(f => /\.(mp3|m4a|wav|amr|aac|mp4)$/i.test(f.name))) { error.value = '录音请到“会议纪要”中处理'; return }
   error.value = ''; uploading.value = 0
   try {
-    const created = await assistantApi.create()
+    const created = await assistantApi.create('chat', true)
     await assistantApi.addFiles(created.id, files, (loaded, total) => { uploading.value = Math.round(loaded / total * 100) })
     sessions.markReview(created.id)
     await router.push({ path: `/assistant/${created.id}`, query: { mode: 'review' } })
@@ -47,7 +47,7 @@ usePasteFiles(files => void upload(files), () => !comparing.value && uploading.v
 
 // 最近的审核：历史记录第一页中发起过审核的会话与旧审核任务，取前 5 条
 onMounted(async () => {
-  try { recent.value = (await assistantApi.history({ page: 1 })).items.filter(row => row.kind === 'review' || row.run_count > 0).slice(0, 5) }
+  try { recent.value = (await assistantApi.history({ page: 1, type: 'review' })).items.slice(0, 5) }
   catch { /* 列表失败不影响上传 */ }
 })
 // 每行：名称、一句说明（立场 · 轮次），状态徽标按澄明第十二节着色

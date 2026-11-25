@@ -9,9 +9,9 @@ from pathlib import Path
 
 import httpx
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 
-from app.db.models import Finding, Job, LlmCall, ReviewRun, Task, TaskFile
+from app.db.models import Finding, Job, LlmCall, ReviewRun, Role, Task, TaskFile, UserRole
 from app.llm import gateway
 from app.main import API_PREFIX
 from app.redaction import engine
@@ -56,8 +56,8 @@ def _job(sm, kind, tid):
                          .order_by(Job.id.desc()))
 
 
-def _session(c, h, sm):
-    tid = c.post(BASE, headers=h).json()["id"]
+def _session(c, h, sm, *, review=False, confirm=True):
+    tid = c.post(BASE, headers=h, json={"review_intent": True} if review else None).json()["id"]
     r = c.post(f"{BASE}/{tid}/files", headers=h, files=[("files", ("虚构合同.docx", SAMPLE.read_bytes()))])
     assert r.status_code == 200, r.text
     with sm() as db:
@@ -71,7 +71,7 @@ def _session(c, h, sm):
     items = [{"id": p["id"], "is_our_party": mapping[p["code"]] == OUR, "country": p["country"],
               "org_type": p["org_type"]} for p in parties]
     assert c.put(f"{API_PREFIX}/tasks/{tid}/parties", headers=h, json={"items": items}).status_code == 200
-    r = c.post(f"{BASE}/{tid}/confirm", headers=h)
+    r = c.post(f"{BASE}/{tid}/confirm", headers=h) if confirm else c.get(f"{BASE}/{tid}")
     assert r.status_code == 200, r.text
     return tid, r.json()
 
@@ -108,7 +108,8 @@ def test_session_chat_then_review_shares_codes(files_dir, model, make_user, logi
     rid = r.json()["id"]
     busy = c.post(f"{BASE}/{tid}/messages", headers=h, json={"message": "再问一句"})
     assert busy.status_code == 409 and busy.json()["code"] == "SESSION_BUSY"
-    assert c.get(f"{BASE}/{tid}").json()["review_running"] is True
+    running = c.get(f"{BASE}/{tid}").json()
+    assert running["review_running"] is True and running["is_review"] and running["run_count"] == 1
     with db_sessionmaker() as db:
         review_job.run_review(db, uuid.UUID(rid))
     review_text = seen[-1]["messages"][-1]["content"]  # 只看外发的用户消息（系统提示里的代号示例不算）
@@ -143,6 +144,60 @@ def test_session_chat_then_review_shares_codes(files_dir, model, make_user, logi
         handle_assist(db, _job(db_sessionmaker, "assist", tid).payload)
     last = c.get(f"{BASE}/{tid}/messages").json()["items"][-1]
     assert last["calcs"][0]["result"].replace(",", "") == "100000.00 CNY"
+
+
+def test_review_entry_can_be_reopened_and_confirmed_atomically(files_dir, model, make_user, login, db_sessionmaker, monkeypatch):
+    from app.review import service as review_service
+    from app.security.errors import AppError
+
+    owner = make_user("review-only")
+    with db_sessionmaker() as db:
+        role = Role(name="仅文件审核", permissions=["use.review"])
+        db.add(role)
+        db.flush()
+        db.execute(delete(UserRole).where(UserRole.user_id == owner.id))
+        db.add(UserRole(user_id=owner.id, role_id=role.id))
+        db.commit()
+    c, csrf = login(owner.username)
+    h = {"X-CSRF-Token": csrf}
+    tid, detail = _session(c, h, db_sessionmaker, review=True, confirm=False)
+    path = f"{BASE}/{tid}"
+    title = "虚构等待确认的审核"
+    assert c.patch(path, headers=h, json={"title": title}).status_code == 200
+    assert detail["is_review"] and detail["run_count"] == 0 and detail["status"] == "awaiting_confirm"
+    assert not detail["files"][0]["confirmed_at"]
+    assert c.get(path + "/runs").json()["items"] == []
+    assert c.get(BASE + "?purpose=chat").json()["items"][0]["is_review"]
+    history = c.get(BASE + "/history?type=review").json()["items"]
+    assert [r["id"] for r in history] == [tid] and history[0]["is_review"]
+    assert c.get(BASE + "/waiting").json()["review"] == 1
+    result = c.post(API_PREFIX + "/search", headers=h, json={"q": title}).json()
+    assert [r["id"] for r in result["sessions"] if r["is_review"]] == [tid]
+
+    body = {"stance": "sales", "source": "outgoing", "confirm_pending": True,
+            "expected_material_version": detail["material_version"]}
+    original = review_service.recheck
+
+    def block(*args, **kwargs):
+        raise AppError(409, "OUTBOUND_BLOCKED", "虚构预检拦截")
+
+    monkeypatch.setattr(review_service, "recheck", block)
+    r = c.post(path + "/runs", headers=h, json=body)
+    assert r.status_code == 409 and r.json()["code"] == "OUTBOUND_BLOCKED"
+    blocked = c.get(path).json()
+    assert blocked["status"] == "awaiting_confirm" and blocked["run_count"] == 0
+    assert blocked["files"][0]["confirmed_at"] is None and _job(db_sessionmaker, "review", tid) is None
+
+    monkeypatch.setattr(review_service, "recheck", original)
+    r = c.post(path + "/runs", headers=h, json=body)
+    assert r.status_code == 201 and r.json()["status"] == "queued", r.text
+    assert c.post(path + "/runs", headers=h, json=body).status_code == 409
+    accepted = c.get(path).json()
+    items = c.get(path + "/runs").json()["items"]
+    assert accepted["review_running"] and accepted["run_count"] == len(items) == 1
+    assert accepted["files"][0]["confirmed_at"] and items[0]["id"] == r.json()["id"]
+    assert _job(db_sessionmaker, "review", tid).status == "queued"
+    assert not model[0]
 
 
 def test_local_only_session_never_calls_model(files_dir, model, make_user, login, db_sessionmaker):

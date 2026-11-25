@@ -9,7 +9,7 @@ import { ApiError } from '@/api/http'
 import { assistantApi, confirmationTask, type Session, type SessionFile } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { redactionApi, type Party } from '@/api/redaction'
-import { RUN_ERROR_MESSAGES, runsApi, type RunDetail, type RunListItem } from '@/api/runs'
+import { RUN_ERROR_MESSAGES, runsApi, type RunCreated, type RunDetail, type RunListItem } from '@/api/runs'
 import { MAX_NOTE_LENGTH, type Source, type Stance } from '@/api/tasks'
 import EmptyState from '@/components/EmptyState.vue'
 import LocalCheckList from '@/components/result/LocalCheckList.vue'
@@ -31,7 +31,7 @@ import { loadDiff } from '@/utils/drafts'
  * 一个主按钮“确认并开始审核”同时完成确认与发起；没有待确认文件（已确认过）时才是设置页，只列本轮新增发送的内容。
  */
 const props = defineProps<{ session: Session; fresh?: boolean; discussId?: string; active?: boolean }>()
-const emit = defineEmits<{ refresh: []; confirm: []; add: []; pick: []; remove: [file: SessionFile]; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: []
+const emit = defineEmits<{ refresh: []; add: []; pick: []; remove: [file: SessionFile]; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: []
   /** 顶部工具条的步骤条（澄明 8.4：进度只在工具条上） */
   progress: [p: ReviewProgress]; ask: [] }>()
 const auth = useAuthStore()
@@ -42,6 +42,7 @@ const roundsLoaded = ref(false)
 const selectedRun = ref('')
 const composing = ref(false)
 const freshRun = ref(false)
+const accepted = ref<RunCreated | null>(null)
 let version = 0
 async function loadRounds(select?: 'latest') {
   const current = ++version
@@ -55,12 +56,18 @@ async function loadRounds(select?: 'latest') {
   } catch { /* 读不到时保持设置视图，用户可刷新 */ }
   finally { if (current === version) roundsLoaded.value = true }
 }
-watch(() => props.session.id, () => { rounds.value = []; roundsLoaded.value = false; selectedRun.value = ''; composing.value = false; void loadRounds() }, { immediate: true })
+watch(() => props.session.id, () => { rounds.value = []; roundsLoaded.value = false; selectedRun.value = ''; composing.value = false; accepted.value = null; void loadRounds() }, { immediate: true })
 
 // 审核结束（review_running 由真变假）：取新轮次并显示结果
 watch(() => props.session.review_running, async (running, was) => {
   if (was && !running) { running_.value = null; composing.value = false; freshRun.value = true; await loadRounds('latest') }
   else if (running) { composing.value = false; void pollRun() }
+})
+
+watch(() => [props.session.review_running, props.session.run_count] as const, ([running, count]) => {
+  if (!accepted.value || (!running && (count ?? 0) < accepted.value.run_no)) return
+  accepted.value = null
+  if (!running) { composing.value = false; freshRun.value = true; void loadRounds('latest') }
 })
 
 // ---- 审核中：轮询最新轮次进度（会话详情由页面轮询）----
@@ -79,7 +86,7 @@ async function pollRun() {
 onBeforeUnmount(() => clearTimeout(timer))
 if (props.session.review_running) void pollRun()
 const ceremonyTask = computed(() => ({ ...confirmationTask(props.session), status: 'reviewing' as const,
-  latest_run: running_.value ? { id: running_.value.id, run_no: running_.value.run_no, status: running_.value.status } : null,
+  latest_run: running_.value ? { id: running_.value.id, run_no: running_.value.run_no, status: running_.value.status } : accepted.value,
   queue_position: running_.value?.queue_position ?? null }))
 
 // ---- 设置 ----
@@ -230,7 +237,7 @@ async function loadPreview() {
 }
 
 const stage = computed<'loading' | 'running' | 'result' | 'local' | 'parsing' | 'confirm' | 'setup'>(() => {
-  if (props.session.review_running) return 'running'
+  if (props.session.review_running || accepted.value) return 'running'
   if (props.session.policy === 'local_only') return 'local'
   if (!roundsLoaded.value) return 'loading'
   const reading = !(rounds.value.length && !composing.value)  // 正在看结果时，新加的文件不打断阅读，点“新一轮”再进入
@@ -313,6 +320,8 @@ async function submitConfirm() {
     scope: runScope(),
   })
   savePrefs()
+  accepted.value = created
+  emit('refresh')
   return created
 }
 const submitting = ref(false)
@@ -328,7 +337,7 @@ async function start() {
   submitTimer = window.setInterval(() => { submitSeconds.value += 1 }, 1000)
   try {
     const trimmed = note.value.trim()
-    await assistantApi.createRun(props.session.id, {
+    accepted.value = await assistantApi.createRun(props.session.id, {
       stance: stance.value, source: source.value, model_id: modelId.value, user_note: trimmed || null,
       file_ids: runFiles(), main_file_id: mainId.value, expected_material_version: previewVersion.value ?? undefined,
       scope: runScope(),
@@ -346,6 +355,8 @@ async function start() {
 function badge(file: SessionFile) { return file.ext.toUpperCase().slice(0, 4) }
 function newRound() { composing.value = true; note.value = ''; noteOpen.value = false; formError.value = '' }
 function backToResult() { composing.value = false }
+function openConfirm() { if (!props.session.review_running && !accepted.value) composing.value = true }
+defineExpose({ openConfirm })
 const loadLocal = () => assistantApi.localFindings(props.session.id)
 
 // ---- 顶部步骤条 ----
@@ -395,7 +406,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
       </div>
       <ConfirmWorkbench :key="`${session.id}:${pendingFiles.map(f => f.id).join(',')}`" class="confirm-wb" :task="confirmationTask(session)" mode="session-review" require-our-party
         v-model:picked="picked" v-model:main-id="mainId" :diff-loader="diffLoader" :stance="stance" :file-ids="runFiles()" :scope="runScope()" :model-name="modelName" :blocker="confirmBlocker" :blocker-choice="!!confirmCheck.field" :submit="submitConfirm"
-        @our="confirmOur = $event" @preview="previewVersion = $event" @confirmed="emit('refresh')" @stale="emit('refresh')" @nudge="nudgeConfirm" @blocked="blockedN = $event">
+        @our="confirmOur = $event" @preview="previewVersion = $event" @stale="emit('refresh')" @nudge="nudgeConfirm" @blocked="blockedN = $event">
         <template #settings>
           <div class="cs">
             <div :ref="fieldRef('confirm', 'stance')" class="cs-row"><span class="setting-label">业务立场<span v-if="!stance" class="si-required-tag">请选择</span></span><SiSegmented :class="{ 'si-required-empty': !stance }" :model-value="stance" :options="stanceOptions" size="small" ariaLabel="业务立场" @update:model-value="chooseStance" /></div>

@@ -8,7 +8,7 @@ from app.admin.settings_store import get_setting
 from app.config import get_settings
 from app.db import jobs
 from app.db.base import utcnow
-from app.db.models import Job, AssistantMessage, LlmModel, Party, RedactionMap, RedactionExclusion, RedactionItem, RedactionSuspect, Task, TaskFile, User
+from app.db.models import Job, AssistantMessage, LlmModel, Party, RedactionMap, RedactionExclusion, RedactionItem, RedactionSuspect, ReviewRun, Task, TaskFile, User
 from app.llm import gateway, usage
 from app.models_api import select_model
 from app.redaction import engine
@@ -72,12 +72,30 @@ def choose_model(db: Session, task: Task, model_id=None, template=None):
     return select_model(db, model_id, "assist", structured=template == "compare")
 
 
+def review_session_clause():
+    """审核入口或已有轮次的工作台会话。没有可证入口的旧会话按普通会话保留。"""
+    return (Task.kind == "assistant") & (Task.purpose == "chat") & (
+        Task.review_intent.is_(True) | exists().where(ReviewRun.task_id == Task.id))
+
+
+def _run_stats(db: Session, ids):
+    if not ids:
+        return {}
+    return {tid: (count, active) for tid, count, active in db.execute(
+        select(ReviewRun.task_id, func.count(), func.bool_or(ReviewRun.status.in_(("queued", "running"))))
+        .where(ReviewRun.task_id.in_(ids)).group_by(ReviewRun.task_id))}
+
+
+def _is_review(task, count: int) -> bool:
+    return task.kind == "assistant" and task.purpose == "chat" and bool(task.review_intent or count)
+
+
 def _item(task: Task, files: list[TaskFile], *, generating: bool = False, reviewing: bool = False,
           run_count: int = 0) -> SessionItem:
     return SessionItem(id=task.id, title=task.title, status=task.status, file_count=len(files),
                        last_activity_at=task.last_activity_at,
                        original_deleted=any(f.original_deleted_at is not None for f in files), generating=generating,
-                       purpose=task.purpose, reviewing=reviewing, run_count=run_count)
+                       purpose=task.purpose, reviewing=reviewing, run_count=run_count, is_review=_is_review(task, run_count))
 
 
 def _meeting_meta(files: list[TaskFile], minuted: bool, speakers: int) -> dict | None:
@@ -115,7 +133,9 @@ def detail(db: Session, task: Task) -> SessionDetail:
     rows = {f.id: f for f in files}
     generating = bool(db.scalar(select(exists().where(AssistantMessage.task_id == task.id,
                        AssistantMessage.role == 'assistant', AssistantMessage.status.in_(('queued', 'streaming'))))))
-    return SessionDetail(**_item(task, files, generating=generating).model_dump(), stance=task.stance, source=task.source, policy=task.policy,
+    run_count, reviewing = _run_stats(db, [task.id]).get(task.id, (0, False)) if task.purpose == 'chat' else (0, False)
+    return SessionDetail(**_item(task, files, generating=generating, reviewing=reviewing, run_count=run_count).model_dump(),
+                         stance=task.stance, source=task.source, policy=task.policy,
                          error_message=task.error_message, created_at=task.created_at,
                          files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id], media=media[f.id],
                                             speakers=unpack(rows[f.id].speakers_enc, {}) if media[f.id] is not None else None,
@@ -124,7 +144,7 @@ def detail(db: Session, task: Task) -> SessionDetail:
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
                          participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled(), mt_enabled=mt_enabled(),
-                         material_version=task.material_version, review_running=review_active(db, task),
+                         material_version=task.material_version, review_running=reviewing,
                          parse_progress=_parse_progress(db, task),
                          draft_hint=drafts.draft_hint(db, task, files) if task.purpose == 'chat' else None)
 
@@ -138,16 +158,20 @@ def _parse_progress(db: Session, task: Task) -> dict | None:
     return (row.progress if row else None) or {}
 
 
-def create(db: Session, user: User, ip: str | None, purpose: str = 'chat') -> SessionDetail:
+def create(db: Session, user: User, ip: str | None, purpose: str = 'chat', *, review_intent: bool = False) -> SessionDetail:
     from app.security import permissions
-    if purpose == 'chat':
+    if review_intent:
+        if purpose != "chat":
+            raise AppError(422, "INVALID_PURPOSE", "仅文件审核会话可标记为审核入口")
+        permissions.ensure(db, user, "use.review")
+    elif purpose == 'chat':
         # 工作台：持有提问或审核任一权限即可新建、加文件、确认（V32-A-02）；提问与审核各自在发送时校验
         if not permissions.user_permissions(db, user.id) & {'use.assistant', 'use.review'}:
             raise AppError(403, "FORBIDDEN", "没有此项权限，请联系系统管理员")
     elif purpose != 'translate':  # 翻译页可只用本地翻译，云端发送时再校验
         permissions.ensure(db, user, permissions.PURPOSE_PERM[purpose])
     task = Task(kind="assistant", owner_id=user.id, title="新会话", stance="other", source="incoming",
-                policy="ai", status="active", last_activity_at=utcnow(), purpose=purpose)
+                policy="ai", status="active", last_activity_at=utcnow(), purpose=purpose, review_intent=review_intent)
     db.add(task)
     db.flush()
     if purpose == 'chat':
@@ -604,11 +628,8 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
     generating = set(db.scalars(select(AssistantMessage.task_id).where(
         AssistantMessage.task_id.in_([task.id for task in rows]), AssistantMessage.role == 'assistant',
         AssistantMessage.status.in_(('queued', 'streaming')))))
-    from app.db.models import ReviewRun
     ids = [t.id for t in rows]
-    run_stats = {tid: (n, active) for tid, n, active in db.execute(
-        select(ReviewRun.task_id, func.count(), func.bool_or(ReviewRun.status.in_(('queued', 'running'))))
-        .where(ReviewRun.task_id.in_(ids)).group_by(ReviewRun.task_id))} if ids else {}
+    run_stats = _run_stats(db, ids)
     minuted = set(db.scalars(select(AssistantMessage.task_id).where(
         AssistantMessage.task_id.in_([t.id for t in rows if t.purpose == 'meeting']), AssistantMessage.role == 'assistant',
         AssistantMessage.status == 'done'))) if ids else set()
@@ -633,16 +654,16 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
     """本人的审核、标书和会话按权限合并，按最近活动倒序返回。kind 可筛选审核、标书、对话、会议和翻译。"""
     from datetime import datetime, time, timedelta
     from app.bid import service as bid_service
-    from app.db.models import BidItem, BidProject, Finding, ReviewRun
+    from app.db.models import BidItem, BidProject, Finding
     from app.security.permissions import user_permissions
     from app.tasks.schemas import TaskListItem
     size = tasks.PAGE_SIZE
     perms = user_permissions(db, user.id)
-    reviewed = exists().where(ReviewRun.task_id == Task.id)
+    reviewed = review_session_clause()
     chat = (Task.kind == "assistant") & (Task.purpose == "chat")
     types = {"translate": (Task.kind == "assistant") & (Task.purpose == "translate")}
     if "use.review" in perms:
-        types["review"] = (Task.kind == "review") | (chat & reviewed)
+        types["review"] = (Task.kind == "review") | reviewed
     if "use.assistant" in perms:
         types["chat"] = chat & ~reviewed if "use.review" in perms else chat
     if "use.bid" in perms:
@@ -697,6 +718,7 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
         last = latest.get(t.id)
         items.append(HistoryItem(**row.model_dump(), kind="review" if t.kind == "review" else "session", purpose=t.purpose,
                                  last_activity_at=t.last_activity_at, run_count=runs.get(t.id, 0), file_count=files.get(t.id, 0),
+                                 is_review=_is_review(t, runs.get(t.id, 0)),
                                  pending_count=pending.get(last.id, 0) if last else 0,
                                  latest_run_id=last.id if last and last.status in ("completed", "partial") else None,
                                  reviewing=bool(last and last.status in ("queued", "running")),
@@ -706,16 +728,16 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
 
 def waiting(db: Session, user: User) -> dict[str, int]:
     """侧栏菜单右侧的数字（V35-F-02）：只数等本人处理的事，即待确认遮住的会话、旧审核任务与标书项目。
-    发起过审核的对话算文件审核，其余对话算工作台；不按权限过滤，菜单本身已按权限显示。"""
-    from app.db.models import BidProject, ReviewRun
-    reviewed = exists().where(ReviewRun.task_id == Task.id)
+    文件审核入口或已有审核轮次的会话算文件审核，其余对话算工作台。"""
+    from app.db.models import BidProject
+    reviewed = review_session_clause()
     waiting_task = (Task.owner_id == user.id) & (Task.status == "awaiting_confirm")
     def count(*conds) -> int:
         return db.scalar(select(func.count()).select_from(Task).where(waiting_task, *conds)) or 0
     chat = (Task.kind == "assistant") & (Task.purpose == "chat")
     bid = db.scalar(select(func.count()).select_from(BidProject).join(Task, Task.id == BidProject.task_id).where(
         Task.owner_id == user.id, or_(BidProject.extract_state == "awaiting", BidProject.model_state == "awaiting"))) or 0
-    return {"workbench": count(chat, ~reviewed), "review": count((Task.kind == "review") | (chat & reviewed)), "bid": bid,
+    return {"workbench": count(chat, ~reviewed), "review": count((Task.kind == "review") | reviewed), "bid": bid,
             "meeting": count(Task.kind == "assistant", Task.purpose == "meeting"),
             "translate": count(Task.kind == "assistant", Task.purpose == "translate")}
 

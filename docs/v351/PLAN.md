@@ -20,7 +20,7 @@
 | V351-A-02 | 数据库与原件备份一致、先核验再切换恢复 | Q-02 | Opus，high | Sol 6.1，high | A-01 | 自审和隔离恢复演练 | 已完成（2026-11-25，Codex，[报告](reports/V351-A-02.md)） |
 | V351-A-03 | 标书 OCR 与初审结果、Word 覆盖一致 | Q-03、13 | Opus，high | Sol 6.1，high | A-02 | 自审和 Word 目视 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-03.md)） |
 | V351-A-04 | 审核批注按轮次选稿与归属 | Q-04 | Opus，medium | Sol 6.1，high | A-03 | Word 目视 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-04.md)） |
-| V351-A-05 | 文件审核重开及确认后送审 | Q-17 | Opus，high | Sol 6.1，high | A-04 | 另一侧复核、虚构任务实走 | 待开工 |
+| V351-A-05 | 文件审核重开及确认后送审 | Q-17 | Opus，high | Sol 6.1，high | A-04 | 自审和虚构任务实走 | 已完成（2026-11-26，Codex，[报告](reports/V351-A-05.md)） |
 | V351-A-06 | 普通对话仅续发明确提交过的提问 | Q-18 | Opus，high | Sol 6.1，high | A-05 | 另一侧复核、模拟外发 | 待开工 |
 | V351-B-01 | 一次性合同对比保留跨列与首尾空格差异 | Q-05 | Sonnet，high | Sol 6.1，high | A-06 | — | 待开工 |
 | V351-B-02 | 单证同额异币分别保留并核对 | Q-06 | Sonnet，high | Sol 6.1，high | B-01 | — | 待开工 |
@@ -70,7 +70,7 @@
 
 - **现状** 文件审核首页建的是普通工作台会话，首轮前只靠当前地址和页面内存保留审核意图。审核列表和待办靠有无轮次分类，历史、近期、搜索等入口可能漏列或跳到提问。审核视图里的文件抽屉也能打开只保存脱敏的普通弹窗。会话详情的轮次数目前可能与轮次列表不一致。
 - **做法** 在服务端保存明确来自文件审核入口的会话意图，会话详情、历史、待办、近期、搜索和审核首页共用审核归类与恢复规则。让审核视图的待确认入口都回到内嵌审核确认页，显示本轮材料、我方、立场、模型及外发预览。审核主按钮为「确认发送并开始审核」，复用带 `confirm_pending` 的事务，受理后显示真实轮次及进度，失败保留可处理的说明。会话详情与列表用同一轮次口径。旧会话有轮次时按审核恢复，无轮次且无可证入口时保留手动进入「全面审核」的能力。视图切换本身只导航。
-- **文件** `backend/app/assistant/router.py`、`backend/app/assistant/service.py`、`backend/app/assistant/schemas.py`、`backend/app/tasks/search.py`、`backend/app/db/models.py` 及本卡 Alembic 迁移，`frontend/src/api/assistant.ts`、`frontend/src/views/Review.vue`、`frontend/src/views/Assistant.vue`、`frontend/src/views/History.vue`、`frontend/src/components/assistant/WorkbenchHome.vue`、`frontend/src/components/assistant/FilePanel.vue`、`frontend/src/components/workspace/ReviewPane.vue`、`frontend/src/components/GlobalSearch.vue`、`frontend/src/components/SidebarSessions.vue`、`frontend/src/stores/sessions.ts`、`frontend/src/layouts/MainLayout.vue`、`backend/tests/test_session_review.py`、`backend/tests/test_bid_report.py` 的已有历史和搜索专项。涉及共用接口的增量范围在评审中确认。
+- **文件** `backend/app/assistant/router.py`、`backend/app/assistant/service.py`、`backend/app/assistant/schemas.py`、`backend/app/tasks/search.py`、`backend/app/db/models.py` 及本卡 Alembic 迁移，`frontend/src/api/assistant.ts`、`frontend/src/api/search.ts`、`frontend/src/views/Review.vue`、`frontend/src/views/Assistant.vue`、`frontend/src/views/History.vue`、`frontend/src/components/assistant/WorkbenchHome.vue`、`frontend/src/components/assistant/FilePanel.vue`、`frontend/src/components/workspace/ReviewPane.vue`、`frontend/src/components/GlobalSearch.vue`、`frontend/src/components/SidebarSessions.vue`、`frontend/src/stores/sessions.ts`、`frontend/src/layouts/MainLayout.vue`、`backend/tests/test_session_review.py`、`backend/tests/test_bid_report.py` 的已有历史和搜索专项。涉及共用接口的增量范围在评审中确认。
 - **验收** 在全新库从文件审核上传虚构文件，解析后未发起首轮，从审核首页、历史、近期或标题搜索重开仍进审核。核对仅有审核权限和同时有提问权限的两种账号，从审核视图文件抽屉也到同一确认页。一次确认只创建一个审核轮次，详情和列表一致。模拟预检拦截时轮次未创建、用户可继续处理并重新提交。已单独确认的文件能继续送审，旧报告可查，原文件不需重传。
 
 ### V351-A-06 普通对话仅续发明确提交过的提问

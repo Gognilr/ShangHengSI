@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { Ellipsis, PanelRight, Sparkle } from '@lucide/vue'
-import { assistantApi, type Session, type SessionItem, type Message, type MessageSource, type Template } from '@/api/assistant'
+import { assistantApi, isReviewSession, type Session, type SessionItem, type Message, type MessageSource, type Template } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import NotFound from '@/views/NotFound.vue'
 import type { Finding } from '@/api/runs'
@@ -25,10 +25,15 @@ const route = useRoute(), router = useRouter(), sessions = useSessionsStore(), a
 // 工作台首页不再有切换（V34-A-04）；会话里没有审核过时工具条只放“全面审核 →”，审核过或打开过审核视图才显示两个页签
 const canReview = computed(() => auth.can('use.review'))
 const canAsk = computed(() => auth.can('use.assistant'))
-const mode = computed<'ask' | 'review'>(() => canReview.value && (route.query.mode === 'review' || !auth.can('use.assistant')) ? 'review' : 'ask')
+const mode = computed<'ask' | 'review'>(() => {
+  if (!canReview.value) return 'ask'
+  if (!canAsk.value || route.query.mode === 'review') return 'review'
+  if (route.query.mode === 'ask') return 'ask'
+  return isReviewSession(session.value) ? 'review' : 'ask'
+})
 const modeModel = computed<'ask' | 'review'>({
   get: () => mode.value,
-  set: value => { void router.replace({ path: route.path, query: value === 'review' ? { mode: 'review' } : {} }) },
+  set: value => { void router.replace({ path: route.path, query: { mode: value } }) },
 })
 // 审核状态（V321-E-03）：页签小圆点、侧栏标记、浏览器标题三处同步；完成时人不在审核视图，页签与标题留“完成”提示，打开审核视图即清除
 const reviewDone = ref(false)
@@ -53,7 +58,7 @@ function discuss(next: Anchor) { anchor.value = next }
 const reviewSeen = ref(mode.value === 'review')
 watch(mode, value => { if (value === 'review') { reviewSeen.value = true; reviewDone.value = false } })
 // 侧栏高亮：打开过审核视图或发起过审核的会话归“文件审核”（V34-A-03）
-watch(() => [id.value, mode.value, session.value?.run_count, session.value?.review_running] as const, ([sid, m, runs, running]) => {
+watch(() => [id.value, mode.value, isReviewSession(session.value), session.value?.review_running] as const, ([sid, m, runs, running]) => {
   if (sid && (m === 'review' || runs || running)) sessions.markReview(sid)
 }, { immediate: true })
 watch(() => session.value?.review_running, (running, was) => {
@@ -62,7 +67,7 @@ watch(() => session.value?.review_running, (running, was) => {
 })
 watch(reviewDone, syncTitle)
 function seeResult() { modeModel.value = 'review' }
-const showTabs = computed(() => canAsk.value && canReview.value && (reviewSeen.value || !!session.value?.run_count || !!session.value?.review_running))
+const showTabs = computed(() => canAsk.value && canReview.value && (reviewSeen.value || isReviewSession(session.value) || !!session.value?.review_running))
 // 本会话在侧栏的“审核完成”标记：打开即视为看过
 watch(() => [sessions.finished, id.value], () => { if (id.value) sessions.seen(id.value) }, { immediate: true })
 // 讨论回复保存为该问题的修改建议（V32-B-03）；保存结果直接回传给结果页更新该问题（V321-E-02）
@@ -173,7 +178,8 @@ async function sent(text: string) {
     try { session.value = await assistantApi.patch(id.value, { title: text.trim().replace(/\s+/g, ' ').slice(0, 20) }); void sessions.refresh() } catch { /* 标题不影响使用 */ }
   }
 }
-const filePanel = ref<InstanceType<typeof FilePanel>>(), drawerOpen = ref(false)
+const filePanel = ref<InstanceType<typeof FilePanel>>(), reviewPane = ref<InstanceType<typeof ReviewPane>>(), drawerOpen = ref(false)
+function openReviewConfirm() { reviewPane.value?.openConfirm() }
 // 回复依据（V321-E-13）：原文段落在讨论栏旁的原文画布定位，直接提问时打开“查看原文”；其余依据在依据抽屉中看原文
 function cite(message: Message, source: MessageSource, anchor: HTMLElement, locate?: (loc: string) => void) {
   if (source.kind === 'para') { if (locate) locate(source.ref); else void filePanel.value?.locate(source.ref) }
@@ -255,7 +261,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           <Composer :key="id" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
           <p class="dock-note">模型只看到遮住名称后的文字。AI 建议请结合原文核实。</p>
         </div>
-        <ReviewPane v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" class="review-pane" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @confirm="filePanel?.openConfirm()" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null" @progress="reviewProgress = $event" @ask="modeModel = 'ask'">
+        <ReviewPane ref="reviewPane" v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" class="review-pane" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null" @progress="reviewProgress = $event" @ask="modeModel = 'ask'">
           <template #discussion="{ finding, no, update, locate }">
             <Conversation :messages="threadOf(finding.id)" :session-id="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已遮住名称与金额），不含其他条款。"
               :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource, el: HTMLElement) => cite(m, src, el, locate)" @stop="stop" @retry="retry" />
@@ -269,7 +275,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
       <Composer v-model:template="template" hero :session="null" :generating="null" :asr-enabled="sessions.asrEnabled" show-templates :uploading="homeUpload" @start="start" />
     </WorkbenchHome>
     <DraftDialog v-model:open="draftOpen" :anchor="anchor" :message="draftMessage" @saved="draftUpdate?.($event)" />
-    <FilePanel v-if="session" ref="filePanel" :key="id" v-model:open="drawerOpen" :session="session" @refresh="refresh" />
+    <FilePanel v-if="session" ref="filePanel" :key="id" v-model:open="drawerOpen" :session="session" :review-mode="mode === 'review'" @refresh="refresh" @review-confirm="openReviewConfirm" />
   </div>
 </template>
 <style scoped>

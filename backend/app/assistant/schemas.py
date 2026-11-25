@@ -36,6 +36,7 @@ class SessionItem(BaseModel):
     # 侧栏列表用（V321-E-03）：审核排队或进行中、已发起的轮数；单个会话详情里以 review_running 为准
     reviewing: bool = False
     run_count: int = 0
+    is_review: bool = False
     # 会议列表的说明行（V35-F-08）：时长、发言人数、状态；只对会议会话给出
     meeting: dict | None = None
 
@@ -43,6 +44,7 @@ class SessionItem(BaseModel):
 class SessionCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
     purpose: Literal['chat', 'meeting', 'translate'] = 'chat'
+    review_intent: StrictBool = False
 
 
 class SessionPage(BaseModel):
@@ -115,6 +117,7 @@ class HistoryItem(TaskListItem):
     """历史记录行（V32-B-01）：kind 区分工作台会话与旧审核任务；会话的 run_count 为已发起的审核轮数。"""
     kind: Literal['session', 'review', 'bid']
     purpose: Literal['chat', 'meeting', 'translate'] | None = None
+    is_review: bool = False
     stage: str | None = None  # 标书初审项目的阶段（V34-B-07）；高风险为疑似否决项数，待处理为待核对的问题与线索数
     category: str | None = None  # 标书分类名（V34-B-01a）
     last_activity_at: UtcDatetime

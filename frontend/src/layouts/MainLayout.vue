@@ -124,7 +124,7 @@ async function createSession() {
 // 换了登录用户或改完初始密码后重新取近期会话
 watch(() => [auth.user?.id, auth.mustChangePassword] as const, ([id, mustChange]) => {
   sessions.clear()
-  if (id && !mustChange && auth.can('use.assistant')) void sessions.refresh()
+  if (id && !mustChange && auth.can('use.assistant', 'use.review')) void sessions.refresh()
   void refreshWaiting()
 }, { immediate: true })
 
@@ -181,7 +181,7 @@ async function onCommand(cmd: string) {
       </nav>
 
       <div class="recent">
-        <SidebarSessions v-if="!collapsed && !auth.mustChangePassword && auth.can('use.assistant')" />
+        <SidebarSessions v-if="!collapsed && !auth.mustChangePassword && auth.can('use.assistant', 'use.review')" />
       </div>
 
       <div class="account">

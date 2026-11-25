@@ -18,13 +18,9 @@ import WorkFolderBar from '@/components/WorkFolderBar.vue'
 import { FileText } from '@lucide/vue'
 import SiScanDoc from '@/components/brand/SiScanDoc.vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
-import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 // V31-U5：不再常驻右栏，改为标题栏“文件 N”打开的抽屉；确认、校对与上传由输入框直接调用（defineExpose）
-const props = defineProps<{ session: Session; open: boolean }>()
-const route = useRoute(), auth = useAuthStore()
-const reviewMode = computed(() => auth.can('use.review') && (route.query.mode === 'review' || !auth.can('use.assistant')))
-const emit = defineEmits<{ refresh: []; 'update:open': [value: boolean] }>()
+const props = defineProps<{ session: Session; open: boolean; reviewMode?: boolean }>()
+const emit = defineEmits<{ refresh: []; 'update:open': [value: boolean]; 'review-confirm': [] }>()
 const upload = ref<HTMLInputElement>(), busy = ref(false), error = ref(''), confirmOpen = ref(false), outboundOpen = ref(false), outbound = ref('')
 const transcriptFile = ref<SessionFile | null>(null)
 const currentTranscript = computed(() => props.session.files.find(f => f.id === transcriptFile.value?.id) ?? transcriptFile.value)
@@ -79,7 +75,7 @@ async function addList(files: File[]) {
   if (files.filter(f => audioExts.includes(f.name.split('.').pop()?.toLowerCase() ?? '')).length > 1) { error.value = '一次最多加入 1 个录音'; return }
   if (files.length && canUpload.value) {
     uploadProgress.value = 0
-    try { await perform(() => assistantApi.addFiles(props.session.id, files, (loaded,total) => { uploadProgress.value = Math.round(loaded / total * 100) })); if (!error.value && !reviewMode.value) guided.value = true }  // 审核视图里确认页内嵌在页面中，不弹全屏（V321-E-06）
+    try { await perform(() => assistantApi.addFiles(props.session.id, files, (loaded,total) => { uploadProgress.value = Math.round(loaded / total * 100) })); if (!error.value && !props.reviewMode) guided.value = true }  // 审核视图里确认页内嵌在页面中，不弹全屏（V321-E-06）
     finally { uploadProgress.value = null }
   }
 }
@@ -107,8 +103,7 @@ function confirmed() { confirmOpen.value = false; emit('refresh') }
 watch(() => props.session.status, status => {
   if (!guided.value || status !== 'awaiting_confirm') return
   guided.value = false
-  const audio = pending.value.find(f => f.media?.stage === 'done')
-  if (audio) transcriptFile.value = audio; else confirmOpen.value = true
+  openConfirm()
 })
 async function pick(kind: 'doc' | 'audio') {
   if (!canUpload.value) return
@@ -116,7 +111,15 @@ async function pick(kind: 'doc' | 'audio') {
   await nextTick(); upload.value?.click()
 }
 function openTranscript(file: SessionFile) { transcriptFile.value = file }
-function openConfirm() { const audio = pending.value.find(f => f.media?.stage === 'done'); if (audio) transcriptFile.value = audio; else confirmOpen.value = true }
+function openConfirm() {
+  if (props.reviewMode) {
+    emit('update:open', false)
+    emit('review-confirm')
+    return
+  }
+  const audio = pending.value.find(f => f.media?.stage === 'done')
+  if (audio) transcriptFile.value = audio; else confirmOpen.value = true
+}
 // 回复依据（V321-E-13）：原文段落在只读画布中定位并闪烁高亮；知识库、历史合同、法条在“依据”抽屉中显示原文
 const readerOpen = ref(false), reader = ref<InstanceType<typeof ResultCanvas>>()
 const nodeLoader = (_id: string, fid: string) => assistantApi.nodes(props.session.id, fid)
@@ -165,14 +168,14 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
       <el-button v-if="session.status !== 'parsing' && !session.generating && !session.review_running" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
     </div>
     <EmptyState v-if="!session.files.length" compact :icon="FileText" title="还没有文件" description="加入文件后，在本机解析与脱敏。" />
-    <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="confirmOpen = true">确认脱敏（{{ pending.length }} 个文件）</el-button>
+    <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="openConfirm">确认脱敏（{{ pending.length }} 个文件）</el-button>
     <div v-if="findings.length" class="session-settings"><ZoneHeader kind="local" :count="certain.length" /><p>高 {{ counts[0] }} · 中 {{ counts[1] }} · 低 {{ counts[2] }}</p><p v-if="unverified" class="hint">无法核验 {{ unverified }} 项</p><el-button link @click="localOpen = true">查看</el-button><p class="hint">发给模型的只有不含金额的摘要</p></div>
     <div class="session-settings"><h3>会话设置</h3><label>我方立场</label><el-select :model-value="session.stance" :disabled="!canStance || busy" @change="stance"><el-option label="销售" value="sales" /><el-option label="采购" value="purchase" /><el-option label="其他" value="other" /></el-select><p class="hint">第一个文件确认后不能修改立场</p><p>本会话代号 <span class="num">{{ session.code_count }}</span> 个</p><el-button :disabled="busy || session.status === 'parsing'" @click="showOutbound">查看外发文本</el-button><p class="hint">发给模型的只有脱敏后的文字，回复在本机还原</p></div>
   </div>
   </el-drawer>
     <el-drawer append-to-body v-model="localOpen" title="本地校验" size="560px" destroy-on-close><LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations /></el-drawer>
     <el-dialog append-to-body :model-value="!!transcriptFile" fullscreen destroy-on-close :close-on-click-modal="false" @update:model-value="!$event && (transcriptFile = null)"><template #header="{ close }"><DialogBackHeader :title="`校对逐字稿 · ${currentTranscript?.original_name ?? ''}`" back="返回对话" @close="close" /></template><div class="transcript-frame"><TranscriptEditor v-if="currentTranscript && transcriptFile" :session="session" :file="currentTranscript" @refresh="emit('refresh')" @confirm="transcriptFile = null; confirmOpen = true" /></div></el-dialog>
-    <el-dialog append-to-body v-model="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" :require-our-party="reviewMode" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
+    <el-dialog append-to-body v-model="confirmOpen" fullscreen destroy-on-close :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="确认脱敏" back="返回对话" @close="close" /></template><div class="confirmation"><ConfirmWorkbench :task="task" mode="assistant" @confirmed="confirmed" @stale="emit('refresh')" /></div></el-dialog>
     <el-dialog append-to-body v-model="outboundOpen" title="查看外发文本" width="960px"><pre>{{ outbound }}</pre></el-dialog>
     <el-dialog append-to-body v-model="readerOpen" fullscreen :close-on-click-modal="false"><template #header="{ close }"><DialogBackHeader title="查看原文" back="返回对话" @close="close" /></template><div class="reader-frame"><ResultCanvas ref="reader" :key="`${session.id}:${session.material_version}`" :task="task" :note="null" :annotations="[]" :local-locs="[]" selected-finding-id="" :raw-highlight="[]" :ask-enabled="false" :node-loader="nodeLoader" :raw-loader="rawLoader" /></div></el-dialog>
     <el-popover :visible="sourceOpen" :virtual-ref="sourceAnchor" virtual-triggering placement="bottom-start" :width="380" popper-class="source-pop">

@@ -26,7 +26,7 @@ export interface HistoryItem extends TaskListItem { kind: 'session' | 'review' |
   /** 最新一轮：待处理问题数、可导出报告的轮次 id、审核进行中（V321-E-04） */
   pending_count: number; latest_run_id: string | null; reviewing: boolean
   /** 最新一轮被发送前复检拦下（V35-F-03） */
-  blocked?: boolean }
+  blocked?: boolean; is_review?: boolean }
 /** 侧栏菜单右侧的数字：待确认遮住的会话、旧审核任务与标书项目（V35-F-02） */
 export interface Waiting { workbench: number; review: number; bid: number; meeting: number; translate: number }
 /** 工作台信任条的本人本月数字（V35-F-03）；daily_cap 为 0 表示不限 */
@@ -51,12 +51,21 @@ export interface SessionItem {
   id: string; title: string; status: string; file_count: number; last_activity_at: string
   original_deleted: boolean; generating?: boolean; purpose: Purpose
   /** 审核排队或进行中、已发起的轮数（侧栏列表；V321-E-03） */
-  reviewing?: boolean; run_count?: number
+  reviewing?: boolean; run_count?: number; is_review?: boolean
   /** 会议列表的说明行（V35-F-08）：时长、发言人数、状态 */
   meeting?: { duration_ms: number; speakers: number; state: 'transcribing' | 'failed' | 'proofread' | 'confirmed' | 'minuted' } | null
 }
 /** 会话的入口（V31-U5）：智能助手、会议纪要、翻译各列自己的记录 */
 export type Purpose = 'chat' | 'meeting' | 'translate'
+export function isReviewSession(item?: { is_review?: boolean; run_count?: number } | null) {
+  return Boolean(item?.is_review || item?.run_count)
+}
+
+export function sessionLocation(item: { id: string; purpose?: Purpose | null; is_review?: boolean; run_count?: number }, canReview: boolean) {
+  const prefix = item.purpose === 'meeting' || item.purpose === 'translate' ? item.purpose : 'assistant'
+  return { path: `/${prefix}/${item.id}`, query: prefix === 'assistant' && canReview && isReviewSession(item) ? { mode: 'review' } : {} }
+}
+
 export interface Session extends SessionItem {
   stance: Stance; source: Source; policy: 'ai' | 'local_only'; error_message: string | null
   created_at: string; files: SessionFile[]; can_send: boolean; send_reason: string | null; code_count: number
@@ -144,7 +153,7 @@ export const assistantApi = {
   diff: (id: string, fileId: string) => http.get<DiffResult>(`${base}/${id}/diff?file_id=${encodeURIComponent(fileId)}`),
   diffExport: (id: string, fileId: string) => http.getDownload(`${base}/${id}/diff/export?file_id=${encodeURIComponent(fileId)}`),
   setDraft: (id: string, fid: string, prev: string | null) => http.put<Session>(`${base}/${id}/files/${fid}/draft`, { prev_file_id: prev }),
-  create: (purpose: Purpose = 'chat') => http.post<Session>(base, { purpose }),
+  create: (purpose: Purpose = 'chat', reviewIntent = false) => http.post<Session>(base, { purpose, ...(reviewIntent ? { review_intent: true } : {}) }),
   get: (id: string) => http.get<Session>(`${base}/${id}`),
   patch: (id: string, body: { title?: string; stance?: Stance; source?: Source }) => http.patch<Session>(`${base}/${id}`, body),
   remove: (id: string) => http.delete<void>(`${base}/${id}`),

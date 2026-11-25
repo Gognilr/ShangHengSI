@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import false, or_, select
 from sqlalchemy.orm import Session as DbSession
 
+from app.assistant.service import review_session_clause
 from app.db.models import Finding, Task, User
 from app.db.session import get_db
 from app.security.deps import current_user
@@ -42,6 +43,7 @@ class SessionHit(BaseModel):
     title: str
     purpose: str
     last_activity_at: datetime
+    is_review: bool = False
 
 
 class FindingHit(BaseModel):
@@ -93,11 +95,18 @@ def search(body: SearchBody, user: User = Depends(current_user), db: DbSession =
         purposes.append("meeting")
     if "use.assistant" in perms:
         purposes.append("chat")
-    review_chat = (Task.purpose == "chat") & Task.latest_run_id.is_not(None) if can_review else false()
+    reviewed = review_session_clause() if can_review else false()
+    session_rows = db.execute(
+        select(Task, reviewed.label("is_review")).where(
+            Task.owner_id == user.id, Task.kind == "assistant",
+            Task.title.ilike(pattern, escape="\\"),
+            or_(Task.purpose.in_(purposes), reviewed),
+        ).order_by(Task.last_activity_at.desc(), Task.id.desc()).limit(LIMIT))
     return SearchResult(
         findings=hits,
         bids=[BidHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at) for t in find("bid")] if "use.bid" in perms else [],
         reviews=[ReviewHit(id=t.id, title=t.title, status=t.status, created_at=t.created_at) for t in find("review")] if can_review else [],
-        sessions=[SessionHit(id=t.id, title=t.title, purpose=t.purpose or "chat", last_activity_at=t.last_activity_at)
-                  for t in find("assistant", or_(Task.purpose.in_(purposes), review_chat))],
+        sessions=[SessionHit(id=t.id, title=t.title, purpose=t.purpose or "chat",
+                             last_activity_at=t.last_activity_at, is_review=is_review)
+                  for t, is_review in session_rows],
     )

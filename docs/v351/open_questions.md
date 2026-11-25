@@ -91,7 +91,7 @@
 
 - **用户现象** 「确认脱敏」弹窗左上「返回对话」、右下「确认遮住」。这套界面只提交 `POST /assistant/sessions/{id}/confirm`，成功后关闭弹窗并刷新会话。文件审核内嵌确认页走 `POST /assistant/sessions/{id}/runs`，带 `confirm_pending` 时在同一事务里确认并入队。用户本次从何入口进入及服务器上该任务状态未经检查。 [弹窗](../../frontend/src/components/assistant/FilePanel.vue#L175) · [按钮行为](../../frontend/src/components/ConfirmWorkbench.vue#L685) · [审核提交](../../frontend/src/components/workspace/ReviewPane.vue#L307)
 - **根因与证据** 文件审核新建会话只在首次地址中加 `mode=review`，后端未持久记录审核入口。空库用新会话和虚构文件验证，首轮前审核历史查不到、待确认数记到工作台。Node 回放实际前端逻辑确认多种重开入口走提问视图。审核视图的文件抽屉可另开普通确认弹窗。后端实际调用普通确认可保存材料并保持零轮次；同一文件随后可正常创建审核轮次。新轮次已经排队时，详情的 `run_count` 仍可为 0，轮次列表有 1 条。 [新建路径](../../frontend/src/views/Review.vue#L28) · [历史分类](../../backend/app/assistant/service.py#L640) · [详情](../../backend/app/assistant/service.py#L118)
-- **口径** 从文件审核创建的待处理工作应能从审核列表和各种重开入口继续，确认按钮同时提交审核。旧无轮次会话的原始入口不可可靠推断，保留已有资料和明确进入全面审核的操作。 [当前规格](../SPEC.md#13b-统一工作台v32--v321)
+- **结论（A-05）** 从文件审核创建时持久记录入口，已有轮次的会话也按文件审核恢复。确认复用同一事务完成脱敏确认和审核入队。旧无轮次会话的原始入口不可可靠推断，保留已有资料和明确进入全面审核的操作；视图切换仅导航。 [当前规格](../SPEC.md#13b-统一工作台v32--v321)
 
 ### V351Q-18 工作台只加附件也可能挂起并续发提问（P1，A-06）
 

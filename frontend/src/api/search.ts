@@ -1,7 +1,7 @@
 import { http } from './http'
 
 export interface SearchReview { id: string; title: string; status: string; created_at: string }
-export interface SearchSession { id: string; title: string; purpose: 'chat' | 'meeting' | 'translate'; last_activity_at: string }
+export interface SearchSession { id: string; title: string; purpose: 'chat' | 'meeting' | 'translate'; last_activity_at: string; is_review?: boolean }
 export interface SearchFinding { id: string; task_id: string; task_title: string; kind: 'review' | 'assistant'; title: string }
 export interface SearchBid { id: string; title: string; last_activity_at: string }
 export interface SearchResult { reviews: SearchReview[]; sessions: SearchSession[]; findings: SearchFinding[]; bids: SearchBid[] }

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { assistantApi, type SessionItem } from '@/api/assistant'
+import { assistantApi, isReviewSession, type SessionItem } from '@/api/assistant'
 
 /** 侧栏“近期会话”：本人会话按最后活动排序的前几页；智能助手页在新建、改名、删除、发送后调用 refresh()。 */
 export const useSessionsStore = defineStore('sessions', () => {
@@ -15,7 +15,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   // 归入“文件审核”的会话（V34-A-03 侧栏高亮）：发起过审核，或本页面内打开过审核视图；打开过即不再随页签切换跳回工作台
   const reviewTouched = ref<Set<string>>(new Set())
   function markReview(id: string): void { if (!reviewTouched.value.has(id)) reviewTouched.value = new Set(reviewTouched.value).add(id) }
-  function isReview(id: string): boolean { return reviewTouched.value.has(id) || !!items.value.find(item => item.id === id)?.run_count }
+  function isReview(id: string): boolean { return reviewTouched.value.has(id) || isReviewSession(items.value.find(item => item.id === id)) }
   let version = 0
   let timer: ReturnType<typeof setTimeout> | undefined
 
