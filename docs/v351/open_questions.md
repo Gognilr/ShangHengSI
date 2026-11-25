@@ -65,6 +65,8 @@
 
 - **触发与证据** 先请求「文件审核」，再切「翻译」。用当前 Vue 函数让翻译响应先到，文件审核后到，列表会被旧响应覆盖。全局搜索已有按请求序号防止旧结果覆盖的范例。 [历史](../../frontend/src/views/History.vue#L78) · [全局搜索](../../frontend/src/components/GlobalSearch.vue#L77)
 
+- **结论（B-05）** 列表、页码、加载与错误只采纳最新请求；输入防抖开始时立即使旧请求失效，回退沿用原筛选并在返回时再校验。
+
 ### V351Q-11 备份空间告警读错磁盘（P2，C-01）
 
 - **触发与证据** 单机部署中，备份卷与 app 容器层容量不同。app 内 `/backup` 由镜像创建，真正备份卷只挂到 worker。用空库新建成功备份记录，备份包 2 GiB，worker 回报卷剩余 1 GiB，模拟 app 层空间 100 GiB。实际数据接口返回 1 GiB，账号提醒接口漏报低空间。 [告警](../../backend/app/admin/alerts.py#L32) · [挂载](../../deploy/docker-compose.yml#L101) · [采用实际统计](../../backend/app/admin/data.py#L169)

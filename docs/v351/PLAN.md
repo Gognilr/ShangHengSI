@@ -26,7 +26,7 @@
 | V351-B-02 | 单证同额异币分别保留并核对 | Q-06 | Sonnet，high | Sol 6.1，high | B-01 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-02.md)） |
 | V351-B-03 | 修复按问题讨论的回复导出 | Q-07 | Sonnet，medium | Terra，medium | B-02 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-03.md)） |
 | V351-B-04 | 翻译停止、完成与待确认状态对齐 | Q-08、09 | Sonnet，high | Sol 6.1，medium | B-03 | 确认 Q-09 状态口径 | 已完成（2026-11-26，Codex，[报告](reports/V351-B-04.md)） |
-| V351-B-05 | 历史筛选只采纳最新请求 | Q-10 | Sonnet，medium | Terra，medium | B-04 | — | 待开工 |
+| V351-B-05 | 历史筛选只采纳最新请求 | Q-10 | Sonnet，medium | Terra，medium | B-04 | — | 已完成（2026-11-26，Codex，[报告](reports/V351-B-05.md)） |
 | V351-C-01 | 用实际备份卷容量告警 | Q-11 | Sonnet，medium | Terra，medium | B-05、A-02 | — | 待开工 |
 | V351-C-02 | 知识库失败项可原位重新上传 | Q-12 | Sonnet，medium | Terra，medium | C-01 | — | 待开工 |
 | V351-D-01 | 标书结果页更正唱标价 | Q-14 | Sonnet，medium | Terra，medium | C-02、A-03 | — | 已纳入，待开工 |

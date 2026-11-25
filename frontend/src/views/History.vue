@@ -75,42 +75,67 @@ const q = ref('')
 // 日期范围：YYYY-MM-DD（按 Asia/Shanghai 日界，由后端换算）
 const range = ref<[string, string] | null>(null)
 
-async function load() {
+let requestVersion = 0
+let debounce: ReturnType<typeof setTimeout> | undefined
+
+async function load(requestedPage = page.value) {
+  clearTimeout(debounce)
+  const version = ++requestVersion
+  const filters = {
+    q: q.value.trim() || undefined,
+    from: range.value?.[0],
+    to: range.value?.[1],
+    type: kind.value === 'all' ? undefined : kind.value,
+  }
   loading.value = true
   error.value = ''
   try {
-    const res = await assistantApi.history({
-      page: page.value,
-      q: q.value.trim() || undefined,
-      from: range.value?.[0],
-      to: range.value?.[1],
-      type: kind.value === 'all' ? undefined : kind.value,
-    })
+    let res = await assistantApi.history({ ...filters, page: requestedPage })
+    if (version !== requestVersion) return
+    // 删除后回到最后一页，回退仍沿用该请求的筛选条件
+    const lastPage = Math.max(1, Math.ceil(res.total / res.page_size))
+    if (!res.items.length && requestedPage > lastPage) {
+      requestedPage = lastPage
+      if (res.total) res = await assistantApi.history({ ...filters, page: requestedPage })
+      if (version !== requestVersion) return
+    }
+    page.value = requestedPage
     items.value = res.items
     total.value = res.total
     pageSize.value = res.page_size
-    // 删除后当前页已超出范围时回到最后一页
-    if (!res.items.length && res.total > 0 && page.value > 1) {
-      page.value = Math.ceil(res.total / res.page_size)
-      await load()
-    }
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : '加载失败，请刷新页面'
+    if (version === requestVersion) error.value = e instanceof ApiError ? e.message : '加载失败，请刷新页面'
   } finally {
-    loading.value = false
-    initialLoad.value = false
+    if (version === requestVersion) {
+      loading.value = false
+      initialLoad.value = false
+    }
   }
 }
 
-function search() {
+function resetFilters() {
+  clearTimeout(debounce)
+  ++requestVersion
   page.value = 1
+  items.value = []
+  total.value = 0
+  error.value = ''
+  loading.value = true
+}
+function search() {
+  resetFilters()
   void load()
 }
 watch(kind, search)
-// 输入即筛选：停顿 300ms 后查询；回车、清除、选日期立即查询
-let debounce: ReturnType<typeof setTimeout> | undefined
-function typing() { clearTimeout(debounce); debounce = setTimeout(search, 300) }
-onBeforeUnmount(() => clearTimeout(debounce))
+// 输入变化时立即让旧请求失效；停顿 300ms 再查，回车、清除、选日期立即查
+function typing() {
+  resetFilters()
+  debounce = setTimeout(() => void load(), 300)
+}
+function changePage(next: number) {
+  if (!loading.value && next !== page.value) void load(next)
+}
+onBeforeUnmount(() => { clearTimeout(debounce); ++requestVersion })
 
 /** 名称第二行小字：类型 · 文件类型 · 立场（V34-A-05，原三列并入名称） */
 function subline(row: HistoryItem) {
@@ -229,12 +254,12 @@ onMounted(load)
     </div>
 
     <div class="pager"><el-pagination
-      v-model:current-page="page"
+      :current-page="page"
       layout="prev, pager, next"
       :page-size="pageSize"
       :total="total"
       hide-on-single-page
-      @current-change="load"
+      @update:current-page="changePage"
     /></div>
   </div>
 </template>
