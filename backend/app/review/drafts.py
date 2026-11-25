@@ -11,6 +11,7 @@ import logging
 import re
 import time
 import unicodedata
+from collections import Counter, defaultdict
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -112,15 +113,15 @@ def _token_ops(p: str, a: str):
         yield tag, at(tp, i1, p), at(tp, i2, p), at(ta, j1, a), at(ta, j2, a)
 
 
-def _segments(p: str, a: str, trace: _Trace, has_revision: bool) -> list[dict]:
+def _segments(p: str, a: str, trace: _Trace, has_revision: bool, *, literal: bool = False) -> list[dict]:
     """字级差异：相邻碎片间隔 ≤ 2 字并成一段；每段带是否留痕（u = 未留痕）。"""
     groups: list[list] = []  # [tag, a0, a1, b0, b1, tracked]
-    for tag, i1, i2, j1, j2 in _token_ops(p, a):
+    for tag, i1, i2, j1, j2 in (_ops if literal else _token_ops)(p, a):
         if tag == 'equal':
             groups.append(['equal', i1, i2, j1, j2, None])
             continue
         t = trace.tracked(i1, i2, j1, j2, has_revision)
-        if (len(groups) >= 2 and groups[-1][0] == 'equal' and groups[-1][2] - groups[-1][1] <= MERGE_GAP
+        if (not literal and len(groups) >= 2 and groups[-1][0] == 'equal' and groups[-1][2] - groups[-1][1] <= MERGE_GAP
                 and groups[-2][0] != 'equal'):
             groups.pop()
             prev = groups.pop()
@@ -182,10 +183,42 @@ def _labels(nodes) -> list[str]:
     return out
 
 
-def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False) -> dict:
+def _move_anchors(kind: str, text: str):
+    yield kind, 'text', text
+    # 足够长的相同段首或段尾用于找挪动后有修改的段落。
+    if len(text) >= 14:
+        yield kind, 'start', text[:8]
+        yield kind, 'end', text[-8:]
+
+
+def _literal_moves(old, new, deleted, added) -> dict[int, int]:
+    """唯一对应且原文相近的段落可标为移位，其余按增删显示。"""
+    index = defaultdict(list)
+    new_text = {j: _loose(new[j].text) or key(new[j].text) for j in added}
+    for j, text in new_text.items():
+        for anchor in _move_anchors(new[j].kind, text):
+            index[anchor].append(j)
+    paired = {}
+    for i, _ in deleted:
+        text = _loose(old[i].text) or key(old[i].text)
+        targets = set()
+        for anchor in _move_anchors(old[i].kind, text):
+            choices = index.get(anchor, ())
+            if len(choices) == 1:
+                targets.add(choices[0])
+        if len(targets) == 1:
+            j = next(iter(targets))
+            if _ratio(text, new_text[j]) >= 0.8:
+                paired[i] = j
+    counts = Counter(paired.values())
+    return {i: j for i, j in paired.items() if counts[j] == 1}
+
+
+def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False, literal: bool = False) -> dict:
     """old / new：上一稿、本稿的正文节点（loc、text、before、kind、clause_no、page、has_revision）。
     mode：exact（本稿有“拒绝修订”文字）/ flag（旧版本解析，按节点修订标记）/ none（非 Word，不判断留痕）。
-    with_map：另返回 map {上一稿位置: 本稿位置}（未变、修改、位置调整的段落），供增量复审换算位置（D-03）。"""
+    with_map：另返回 map {上一稿位置: 本稿位置}（未变、修改、位置调整的段落），供增量复审换算位置（D-03）。
+    literal：一次性合同对比按原始字符高亮，位置调整也展示文字变化。"""
     started = time.perf_counter()
     old_keys, new_keys = [key(n.text) for n in old], [key(n.text) for n in new]
     old_labels, new_labels = _labels(old), _labels(new)
@@ -217,32 +250,39 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
 
     def node_trace(i, j):
         n = new[j]
-        return _Trace(old[i].text if i is not None else '', n.text, n.before, mode)
+        return _Trace(old[i].text if i is not None else '', n.text, n.before if mode == 'exact' else None, mode)
 
     for i, j in pairs:
         p, n = old[i], new[j]
         if p.text == n.text:
             continue
         kind = 'format' if _loose(p.text) == _loose(n.text) else 'mod'
-        segs = _segments(p.text, n.text, node_trace(i, j), n.has_revision)
+        segs = _segments(p.text, n.text, node_trace(i, j), n.has_revision, literal=literal)
         changes.append({'type': kind, 'loc': n.loc, 'prev_loc': p.loc, 'clause': new_labels[j], 'segs': segs, 'order': j})
-    # 位置调整：删掉的一段与新增的一段文字完全相同
-    by_key = {}
-    for j in added:
-        by_key.setdefault(new_keys[j], []).append(j)
+    # 会话对比沿用归一段落键，一次性对比较验有文字变化的唯一移位段落。
+    by_key = defaultdict(list)
+    if not literal:
+        for j in added:
+            by_key[new_keys[j]].append(j)
+    literal_moves = _literal_moves(old, new, deleted, added) if literal else {}
     moved = set()
     rest_deleted = []
     for i, at in deleted:
         candidates = by_key.get(old_keys[i]) if old_keys[i] else None
+        j = literal_moves.get(i)
         if candidates:
             j = candidates.pop(0)
+        if j is not None:
             moved.add(j)
             n = new[j]
-            trace = _Trace('', n.text, n.before, mode)
+            trace = node_trace(None, j)
             ins_t = trace.tracked(0, 0, 0, len(n.text), n.has_revision)
             t = None if ins_t is None else ins_t and _deleted_tracked(old[i], new, at, mode)
+            segs = [{'t': 'eq', 's': n.text}]
+            if literal:
+                segs = _segments(old[i].text, n.text, node_trace(i, j), n.has_revision, literal=True)
             changes.append({'type': 'move', 'loc': n.loc, 'prev_loc': old[i].loc, 'clause': new_labels[j],
-                            'prev_clause': old_labels[i], 'segs': [{'t': 'eq', 's': n.text}],
+                            'prev_clause': old_labels[i], 'segs': segs,
                             'order': j, 'untracked': None if t is None else not t})
         else:
             rest_deleted.append((i, at))
@@ -250,7 +290,7 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
         if j in moved:
             continue
         n = new[j]
-        trace = _Trace('', n.text, n.before, mode)
+        trace = node_trace(None, j)
         t = trace.tracked(0, 0, 0, len(n.text), n.has_revision)
         changes.append({'type': 'add', 'loc': n.loc, 'prev_loc': None, 'clause': new_labels[j],
                         'segs': [{'t': 'ins', 's': n.text, **({} if t is None else {'u': not t})}], 'order': j})
@@ -275,7 +315,8 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
             c['mixed'] = bool(flags) and any(flags) and not all(flags)
         else:
             c['mixed'] = False
-        c['brief'] = _brief(c['segs']) if c['type'] in ('mod', 'format') else {
+        moved_edit = literal and c['type'] == 'move' and any(s['t'] != 'eq' for s in c['segs'])
+        c['brief'] = _brief(c['segs']) if c['type'] in ('mod', 'format') or moved_edit else {
             'ctx': '', 'old': '', 'new': '', 'text': (lambda s: s if len(s) <= 40 else s[:40] + '…')(c['segs'][0]['s'])}
         summary[c['type']] += 1
         if c['untracked'] and c['type'] != 'format':

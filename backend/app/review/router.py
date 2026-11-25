@@ -5,7 +5,7 @@ GET /runs/{rid}/report（导出报告）在 M7 之前的里程碑实现，不在
 """
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, Query, Request, status
+from fastapi import APIRouter, Body, Depends, File, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
@@ -14,6 +14,7 @@ from app import content_drafts
 from app.db.models import DOC_TYPES, Finding, RequirementVersion, ReviewRun, Task, User
 from app.db.session import get_db
 from app.review import service
+from app.review.contract_compare import compare_contracts
 from app.review.requirements import (
     Requirement,
     _builtin_data,
@@ -30,6 +31,13 @@ from app.security.sessions import client_ip
 
 _review = require("use.review")
 router = APIRouter()
+
+
+@router.post('/review/contract-compare', dependencies=[Depends(_review)])
+def contract_compare(response: Response, baseline: UploadFile = File(), revised: UploadFile = File()):
+    """返回本次两份合同的文字变化，不创建审核任务。"""
+    response.headers['Cache-Control'] = 'no-store'
+    return compare_contracts(baseline, revised)
 
 
 class RunIn(BaseModel):
