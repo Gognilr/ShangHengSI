@@ -95,13 +95,46 @@ function canPickOcr(node: PreviewNode) {
 const selectedOcr = computed(() => active.value?.nodes.find(node => node.loc === pickedOcr.value && canPickOcr(node)))
 const hasOcr = computed(() => scan.value && active.value?.nodes.some(node => node.ocr_conf != null))
 function pickOcr(node: PreviewNode) { if (canPickOcr(node)) pickedOcr.value = node.loc }
+/** 点选扫描块后就地浮出“校对识别文字”（V351 后续：取代页签旁的按钮） */
+const ocrBar = ref<{ left: number; top: number } | null>(null)
+const ocrBarReady = computed(() => !props.ocrBusy && props.ocrVersion != null)
+function showOcrBar(nodeEl: HTMLElement, clientX: number) {
+  if (!wrap.value || !selectedOcr.value?.ocr_editable) { ocrBar.value = null; return }
+  const r = nodeEl.getBoundingClientRect(), outer = wrap.value.getBoundingClientRect()
+  const above = r.top - outer.top - 42
+  ocrBar.value = { left: Math.max(8, Math.min(clientX - outer.left - 70, outer.width - 170)), top: above >= 36 ? above : r.bottom - outer.top + 6 }
+}
+function openOcr(node: PreviewNode) {
+  if (!canPickOcr(node) || !node.ocr_editable) return
+  pickOcr(node)
+  void editOcr()
+}
+function onPaperDblClick(event: MouseEvent) {
+  if (!hasOcr.value || view.value !== 'orig') return
+  const loc = (event.target as HTMLElement).closest<HTMLElement>('[data-node]')?.dataset.node
+  const node = active.value?.nodes.find(n => n.loc === loc)
+  if (node) openOcr(node)
+}
+// 局部放大：原件读入后把该块连同四周画到右侧，叠一个定位框
+const ocrPreview = ref<InstanceType<typeof DocPreview>>()
+const cropCanvas = ref<HTMLCanvasElement>(), cropWrap = ref<HTMLElement>()
+const cropBox = ref<{ left: number; top: number; width: number; height: number } | null>(null)
+async function drawOcrCrop() {
+  const draft = ocrDraft.value
+  await nextTick()
+  if (!draft || !ocrPreview.value || !cropCanvas.value) return
+  try { cropBox.value = await ocrPreview.value.drawCrop(cropCanvas.value, draft.node.loc, (cropWrap.value?.clientWidth ?? 420) - 24) }
+  catch { cropBox.value = null }
+}
 function endOcr() {
   ocrDraft.value = null
   ocrError.value = ''
+  cropBox.value = null
   emit('ocr-editing', false)
 }
 watch([activeId, view], ([file, nextView], [previousFile]) => {
   if (file !== previousFile || nextView !== 'raw') pickedOcr.value = ''
+  ocrBar.value = null
   ocrNotice.value = ''
   if (ocrDraft.value && !savingOcr.value) endOcr()
 })
@@ -475,12 +508,14 @@ function onPaperClick(event: MouseEvent) {
   const fidEl = isResult.value ? (event.target as HTMLElement).closest<HTMLElement>('[data-fid]') : null
   if (fidEl && !(event.target as HTMLElement).closest('[data-seg]')) { closePop(); emit('select', fidEl.dataset.fid!); return }
   const tgt = event.target as HTMLElement
-  if (hasOcr.value && view.value === 'orig') {
-    const loc = tgt.closest<HTMLElement>('[data-node]')?.dataset.node
-    const node = active.value?.nodes.find(n => n.loc === loc)
-    if (node) pickOcr(node)
-  }
+  ocrBar.value = null
   const el = tgt.closest<HTMLElement>('[data-seg]')
+  if (hasOcr.value && view.value === 'orig') {
+    const nodeEl = tgt.closest<HTMLElement>('[data-node]')
+    const node = active.value?.nodes.find(n => n.loc === nodeEl?.dataset.node)
+    if (node) pickOcr(node)
+    if (node && nodeEl && !el) showOcrBar(nodeEl, event.clientX)
+  }
   if (!el || !wrap.value) { closePop(); return }
   const seg = el.dataset.seg as Pop['seg']
   const box = el.getBoundingClientRect()
@@ -628,7 +663,7 @@ function switchFile(delta: 1 | -1) {
   if (list.length > 1 && index >= 0) activeId.value = list[(index + delta + list.length) % list.length]!.id
 }
 function toggleView() { view.value = view.value === 'orig' ? 'ai' : 'orig' }
-function cancel() { closePop(); clearPick(); ask.value = null; window.getSelection()?.removeAllRanges() }
+function cancel() { closePop(); clearPick(); ask.value = null; ocrBar.value = null; window.getSelection()?.removeAllRanges() }
 
 // ---- 光谱条（结果页）：刻度位置 = 块序号 ÷ 当前渲染的块数 ----
 const ticks = computed<SpectrumTick[]>(() => {
@@ -665,7 +700,7 @@ function onSeek(ratio: number) {
   const box = scroller.value
   if (box) box.scrollTop = ratio * box.scrollHeight - box.clientHeight / 2
 }
-function onStageScroll() { closePop(); ask.value = null; tip.value = null; clearKeptNote() }
+function onStageScroll() { closePop(); ask.value = null; tip.value = null; ocrBar.value = null; clearKeptNote() }
 
 // ---- 悬停胶囊（V31-U5F-03 问题 8）：AI 视野悬停代号显示“原文：…”，原文视图悬停显示代号；只在本机浏览器显示 ----
 interface Tip { left: number; top: number; label: string; text: string; ai: boolean }
@@ -700,8 +735,7 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
         </button>
       </div>
       <SiSegmented v-if="!ocrDraft" v-model="view" :options="viewOptions" size="small" ariaLabel="原文、模型将看到的或对比上一稿" />
-      <el-button v-if="hasOcr && !ocrDraft && view === 'orig'" size="small" text type="primary"
-        :disabled="!selectedOcr?.ocr_editable || ocrBusy || ocrVersion == null" @click="editOcr">改识别文字</el-button>
+      <p v-else class="ocr-title">校对识别文字 · {{ ocrDraft.file.original_name }} 第 {{ ocrDraft.node.page }} 页</p>
       <div v-if="!isResult && sortedFiles.length <= 1 && !ocrDraft" class="legend" aria-label="颜色说明">
         <span v-for="[k, label] in LEGEND" v-show="presentKinds.has(k)" :key="k" :class="`k-${k}`"><i class="kdot" />{{ label }}</span>
       </div>
@@ -711,12 +745,19 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
 
     <section v-if="ocrDraft" class="ocr-editor" aria-label="校对 PDF 扫描文字">
       <div class="ocr-original">
-        <p class="hint">原件 · 第 {{ ocrDraft.node.page }} 页</p>
-        <DocPreview :task-id="taskId" :file="ocrDraft.file" :highlight="[ocrDraft.node.loc]" :focus-page="ocrDraft.node.page ?? undefined" :node-loader="nodeLoader" :raw-loader="rawLoader" />
+        <DocPreview ref="ocrPreview" :task-id="taskId" :file="ocrDraft.file" :highlight="[ocrDraft.node.loc]" :focus-page="ocrDraft.node.page ?? undefined" auto-zoom :node-loader="nodeLoader" :raw-loader="rawLoader" @ready="drawOcrCrop" />
       </div>
       <div class="ocr-form">
+        <p class="ocr-label">原件局部</p>
+        <div ref="cropWrap" class="ocr-crop si-paper" :class="{ ready: !!cropBox }">
+          <div class="crop-inner">
+            <canvas ref="cropCanvas" />
+            <div v-if="cropBox" class="crop-hl" :style="{ left: `${cropBox.left * 100}%`, top: `${cropBox.top * 100}%`, width: `${cropBox.width * 100}%`, height: `${cropBox.height * 100}%` }" />
+          </div>
+          <span v-if="!cropBox" class="crop-wait">正在放大原件…</span>
+        </div>
         <label class="ocr-label" for="ocr-correction">识别文字</label>
-        <el-input id="ocr-correction" ref="editorInput" v-model="ocrDraft.text" type="textarea" :rows="8"
+        <el-input id="ocr-correction" ref="editorInput" v-model="ocrDraft.text" type="textarea" :autosize="{ minRows: 2, maxRows: 8 }"
           maxlength="20000" :disabled="savingOcr" @keydown.esc.stop.prevent="!savingOcr && endOcr()" />
         <p class="hint">对照原件改清晰可辨的文字。签字、盖章看不清时，请核验原件并保留提示。</p>
         <el-alert v-if="ocrError" :title="ocrError" type="error" :closable="false" show-icon />
@@ -734,10 +775,10 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
       <el-empty v-else-if="active && !active.loading && !active.available" description="原文已按保留期清理" />
       <el-alert v-else-if="view === 'diff' && activeDiff?.error" type="error" show-icon :closable="false" :title="activeDiff.error" />
       <el-empty v-else-if="active && !active.loading && !blocks.length" description="没有可显示的正文" />
-      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult, diffing: view === 'diff' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null">
+      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult, diffing: view === 'diff' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null" @dblclick="onPaperDblClick">
         <template v-for="(b, bi) in blocks" :key="bi">
           <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv), { 'ocr-picked': pickedOcr === b.nv.node.loc, 'ocr-pickable': canPickOcr(b.nv.node) && b.nv.node.ocr_editable }]" :data-node="b.nv.node.loc"
-            :tabindex="canPickOcr(b.nv.node) ? 0 : undefined" @keydown.enter.self.prevent="pickOcr(b.nv.node)">
+            :tabindex="canPickOcr(b.nv.node) ? 0 : undefined" @keydown.enter.self.prevent="openOcr(b.nv.node)">
             <div v-if="b.nv.node.kind === 'utterance'" class="utterance-meta"><span :class="{ code: view === 'ai' && b.nv.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nv.node.speaker_code : utteranceLabel(b.nv.node) }}</span> · {{ stamp(b.nv.node.t_start_ms ?? 0) }}</div>
             <button v-if="b.nv.tags" type="button" class="ann-tag" :data-fid="b.nv.tags[0]!.id">{{ tagText(b.nv.tags) }}</button>
             <span v-if="b.nv.diff && (b.nv.diff.untracked || diffTag(b.nv.diff))" class="d-tag" :class="{ 'd-tag-u': b.nv.diff.untracked && b.nv.diff.type !== 'format' }">{{ b.nv.diff.untracked && b.nv.diff.type !== 'format' ? (b.nv.diff.mixed ? '部分未留痕' : '未留痕') : diffTag(b.nv.diff) }}</span>
@@ -760,7 +801,7 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
           <table v-else-if="b.t === 'table'" class="tbl">
             <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc" :class="[nodeClass(c), { 'ocr-picked': pickedOcr === c.node.loc, 'ocr-pickable': canPickOcr(c.node) && c.node.ocr_editable }]"
               :tabindex="canPickOcr(c.node) ? 0 : undefined" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"
-              @keydown.enter.self.prevent="pickOcr(c.node)"><DiffText v-if="c.diff" :c="c.diff" /><NodeText v-else :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>
+              @keydown.enter.self.prevent="openOcr(c.node)"><DiffText v-if="c.diff" :c="c.diff" /><NodeText v-else :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>
           </table>
           <button v-else type="button" class="fold" @click="unfolded = new Set(unfolded).add(activeId)">{{ b.n }} 段{{ isResult ? '无标注' : '未改动' }} · 展开</button>
         </template>
@@ -770,7 +811,11 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
     </div>
 
     <p v-if="ocrNotice" class="cv-foot hint" role="status">{{ ocrNotice }}</p>
-    <p v-else-if="hasOcr && view === 'orig' && !ocrDraft" class="cv-foot hint">点选扫描文字块或单元格后可以校对。签章不清楚或没有识别文字的地方需看原件。</p>
+    <p v-else-if="hasOcr && view === 'orig' && !ocrDraft" class="cv-foot hint">点扫描文字块或单元格可校对识别文字（双击直接打开）。签章不清楚或没有识别文字的地方需看原件。</p>
+
+    <div v-if="ocrBar && !ocrDraft && !pop" class="pickbar" :style="{ left: `${ocrBar.left}px`, top: `${ocrBar.top}px` }">
+      <el-button type="primary" size="small" :disabled="!ocrBarReady" :title="ocrBarReady ? '' : '正在处理，请稍候'" @click.stop="ocrBar = null; editOcr()">校对识别文字</el-button>
+    </div>
     <p v-else-if="scan && view === 'raw'" class="cv-foot hint">签章不清楚或没有识别文字的地方，请核验原件。</p>
     <p v-else-if="view === 'diff'" class="cv-foot hint">{{ diffHint }}</p>
     <p v-else-if="!isResult && !ocrDraft" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机遮住 · 点胶囊可修改 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
@@ -891,11 +936,20 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
 .cv-foot { flex: none; margin: 0; }
 .ocr-pickable { cursor: text; }
 .ocr-picked { outline: 1px solid var(--si-brand-2); outline-offset: -1px; background: var(--si-select-bg); }
-.ocr-editor { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; overflow: auto; }
+/* 校对编辑器：左原件（可缩放，打开即放大到该块），右“原件局部”放大图在输入框正上方，眼睛只在两者间来回 */
+.ocr-editor { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 16px; overflow: auto; }
 .ocr-original, .ocr-form { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 10px; }
+.ocr-form { overflow-y: auto; }
 .ocr-original > .doc-preview { min-height: 260px; }
 .ocr-editor p { margin: 0; }
-.ocr-label { font: var(--si-font-label); }
+.ocr-title { flex: 1; min-width: 0; margin: 0; overflow: hidden; color: var(--si-ink-2); font: var(--si-font-label); text-overflow: ellipsis; white-space: nowrap; }
+.ocr-label { margin: 0; font: var(--si-font-label); }
+.ocr-crop { position: relative; flex: none; min-height: 72px; max-height: 300px; overflow: auto; padding: 12px; border-radius: var(--si-radius-paper); box-shadow: var(--si-paper-shadow); }
+.crop-inner { position: relative; width: max-content; margin: 0 auto; line-height: 0; visibility: hidden; }
+.ocr-crop.ready .crop-inner { visibility: visible; }
+.crop-inner canvas { display: block; max-width: none; }
+.crop-hl { position: absolute; box-sizing: border-box; border: 1.5px solid var(--si-warn); border-radius: 2px; pointer-events: none; }
+.crop-wait { position: absolute; inset: 0; display: grid; place-items: center; color: var(--si-ink-3); font: var(--si-font-caption); }
 .ocr-actions { display: flex; justify-content: flex-end; }
 @media (max-width: 1040px) {
   .ocr-editor { grid-template-columns: minmax(0, 1fr); }
