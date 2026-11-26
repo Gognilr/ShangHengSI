@@ -48,14 +48,15 @@ const trips = computed(() => new Map(shown.value.map(item => [item.id, rowTrip({
     <h2 v-if="shown.length" class="heading">近期会话</h2>
     <ul v-if="shown.length">
       <li v-for="item in shown" :key="item.id" class="row" :class="{ current: item.id === current }">
-        <router-link :to="sessionLocation(item, auth.can('use.review'))" class="link" :title="item.title" :aria-current="item.id === current ? 'page' : undefined">
-          <el-tooltip effect="light" placement="right" :show-after="250" :offset="14" popper-class="recent-trip-pop">
+        <!-- 悬停提示在侧栏外侧：完整标题 + 整条迷你往返线 -->
+        <el-tooltip effect="light" placement="right" :show-after="300" :offset="18" popper-class="recent-trip-pop">
+          <router-link :to="sessionLocation(item, auth.can('use.review'))" class="link" :aria-current="item.id === current ? 'page' : undefined">
             <SiTrip :trip="trips.get(item.id)!" scale="dot" />
-            <template #content><SiTrip :trip="trips.get(item.id)!" /></template>
-          </el-tooltip>
-          <span class="title">{{ item.title }}</span>
-          <span v-if="store.finished.has(item.id) && item.id !== current" class="tag tag--done">审核完成</span>
-        </router-link>
+            <span class="title">{{ item.title }}</span>
+            <span v-if="store.finished.has(item.id) && item.id !== current" class="tag tag--done">审核完成</span>
+          </router-link>
+          <template #content><b class="rt-title">{{ item.title }}</b><SiTrip :trip="trips.get(item.id)!" /></template>
+        </el-tooltip>
         <el-dropdown trigger="click" placement="bottom-end" @command="onCommand(item, $event)">
           <button type="button" class="more" aria-label="会话操作" :title="`“${item.title}”的操作`"><Ellipsis :size="16" :stroke-width="1.75" /></button>
           <template #dropdown>
@@ -90,5 +91,6 @@ ul { margin: 0; padding: 0; list-style: none; }
 </style>
 <style>
 /* 悬停提示里是整条迷你往返线（teleport 到 body，不加 scoped） */
-.recent-trip-pop.el-popper { padding: 8px 12px; box-shadow: var(--si-shadow-3); }
+.recent-trip-pop.el-popper { display: flex; flex-direction: column; gap: 6px; max-width: 320px; padding: 8px 12px; box-shadow: var(--si-shadow-3); }
+.recent-trip-pop .rt-title { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 </style>

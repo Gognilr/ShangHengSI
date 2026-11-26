@@ -109,7 +109,7 @@ async function copy() {
         <div v-if="receiptOpen" class="rb">
           <p class="rb-h">你的提问 · 发出时的样子</p>
           <pre>{{ sent }}</pre>
-          <p class="rb-note">文件正文按确认后的遮住版本一并发出，可在“文件”里点“查看外发文本”。</p>
+          <p v-if="codeCount" class="rb-note">文件正文按确认后的遮住版本一并发出，可在“文件”里点“查看外发文本”。</p>
         </div>
       </div>
     </component>

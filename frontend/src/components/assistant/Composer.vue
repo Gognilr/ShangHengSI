@@ -353,7 +353,7 @@ defineExpose({ pick, attach, cancelWaiting })
 .box :deep(.el-textarea__inner) { padding: 4px 6px; border: 0; box-shadow: none; background: transparent; font: var(--si-font-body); font-size: calc(15px * var(--si-fs)); line-height: 1.7; color: var(--si-ink-1); resize: none; }
 .is-hero .box :deep(.el-textarea__inner) { font-size: calc(16px * var(--si-fs)); line-height: 1.65; }
 /* 文件标签 */
-.files { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.files { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
 .ft { position: relative; display: flex; align-items: center; min-width: 0; overflow: hidden; border: 1px solid var(--si-hair); border-radius: var(--si-radius-md); background: var(--si-surface-1); transition: border-color var(--si-d2), background-color var(--si-d2); }
 .ft-main { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; padding: 8px 6px 8px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .ft-main:disabled { cursor: default; }
