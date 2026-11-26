@@ -3,15 +3,19 @@ import SiNotice from '@/components/ui/SiNotice.vue'
 // 合同对比（V35-D-07；澄明二版 6.9）：侧栏“文件审查”下的独立页面 /compare（V351-E-01），文件和结果只在本页，不留历史。
 // 入口是并排的两张纸；结果是两稿纸面并排，变化的段落之间用缎带缝起来，右栏是差异清单。
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { ArrowLeft, FilePlus, FileText, GitCompareArrows, RotateCcw } from '@lucide/vue'
-import { compareContracts, type CompareNode, type ContractChange, type ContractComparison } from '@/api/contractCompare'
+import { ArrowLeft, Download, FilePlus, FileText, GitCompareArrows, RotateCcw } from '@lucide/vue'
+import { ElMessage } from 'element-plus'
+import { compareContracts, exportContractComparison, type CompareNode, type ContractChange, type ContractComparison } from '@/api/contractCompare'
 import { ApiError } from '@/api/http'
 import EmptyState from '@/components/EmptyState.vue'
+import { useAuthStore } from '@/stores/auth'
 import { contractChangeLabel } from '@/utils/labels'
 import { useFx } from '@/utils/motion'
+import { saveBlob } from '@/utils/save'
 
 type Side = 'baseline' | 'revised'
 const fx = useFx()
+const auth = useAuthStore()
 const baselinePicker = ref<HTMLInputElement>()
 const revisedPicker = ref<HTMLInputElement>()
 const pickers = { baseline: baselinePicker, revised: revisedPicker }
@@ -23,6 +27,7 @@ const names = ref({ baseline: '', revised: '' })
 const result = shallowRef<ContractComparison | null>(null)
 const error = ref('')
 const busy = ref(false)
+const exporting = ref(false)
 const firstSheet = ref<HTMLElement>()
 let request: AbortController | undefined
 onBeforeUnmount(() => request?.abort())
@@ -54,8 +59,7 @@ async function start() {
     const output = await compareContracts(old, current, controller.signal)
     if (controller.signal.aborted) return
     names.value = { baseline: old.name, revised: current.name }
-    baseline.value = null
-    revised.value = null
+    // 仅在本页内存中保留 File，以便导出时重新提交原件。
     selected.value = output.changes[0]?.id ?? ''
     result.value = output
   } catch (e) {
@@ -66,11 +70,33 @@ async function start() {
   }
 }
 async function restart() {
+  request?.abort()
   result.value = null
+  baseline.value = null
+  revised.value = null
   names.value = { baseline: '', revised: '' }
   error.value = ''
   await nextTick()
   firstSheet.value?.focus()
+}
+
+async function exportTable() {
+  if (!baseline.value || !revised.value || exporting.value) return
+  const controller = new AbortController()
+  request = controller
+  exporting.value = true
+  error.value = ''
+  try {
+    const blob = await exportContractComparison(baseline.value, revised.value, controller.signal)
+    if (!controller.signal.aborted && await saveBlob(blob, '合同对比表.docx') === 'downloaded') {
+      ElMessage.success('对照表已下载')
+    }
+  } catch (e) {
+    if (!controller.signal.aborted) error.value = e instanceof ApiError ? e.message : '导出失败，请稍后重试。'
+  } finally {
+    if (request === controller) request = undefined
+    exporting.value = false
+  }
 }
 
 /* ================= 结果：缝线 ================= */
@@ -79,14 +105,36 @@ type Kind = 'cm' | 'ca' | 'cd'
 const kindOf = (c: ContractChange): Kind => c.type === 'add' ? 'ca' : c.type === 'del' ? 'cd' : 'cm'
 const changes = computed(() => result.value?.changes ?? [])
 const counts = computed(() => ({ cm: changes.value.filter(c => kindOf(c) === 'cm').length, ca: changes.value.filter(c => kindOf(c) === 'ca').length, cd: changes.value.filter(c => kindOf(c) === 'cd').length }))
-const label = (c: ContractChange) => c.type === 'move' && c.segs.some(s => s.t !== 'eq') ? '位置与文字改动' : contractChangeLabel(c.type)
+const label = (c: ContractChange) => c.type === 'move' && c.segs.some(s => s.t !== 'eq')
+  ? '位置与文字改动' : contractChangeLabel(c.detail_type ?? c.type)
+const regions = { body: '', header: '页眉', footer: '页脚', textbox: '文本框' }
+const omitted = computed(() => (['baseline', 'revised'] as const).flatMap(side => {
+  const items = result.value?.[`${side}_omitted`]
+  return items?.length ? [`${LABEL[side]}含${items.join('、')}，未对比`] : []
+}))
+const paperChanges = computed(() => changes.value.flatMap(c => [c, ...c.members.map(member => ({ ...c, ...member }))]))
 const selected = ref('')
+
+function traceMarks(c: ContractChange) {
+  const pieces = [c, ...c.members].flatMap(item => item.segs)
+  const style = (u: boolean) => c.visibility_segs.filter(s => s.u === u).map(s => `可见性「${s.s}」`)
+  const hint = (u: boolean) => {
+    const text = pieces.filter(s => s.u === u && (c.detail_type !== 'visibility' || s.t === 'ins'))
+      .map(s => `${c.detail_type === 'visibility' ? '可见性' : s.t === 'del' ? '删' : '增'}「${s.s}」`)
+    return [...text, ...style(u)].join('、')
+  }
+  return [
+    ...(c.untracked === false || c.mixed ? [{ label: '已留修订痕迹', detail: hint(false), pending: false }] : []),
+    ...(c.untracked === true ? [{ label: '未留痕', detail: hint(true), pending: true }] : []),
+  ]
+}
+const segmentTrace = (s: ContractChange['segs'][number]) => s.u === undefined ? undefined : s.u ? '未留痕' : '已留修订痕迹'
 
 interface Cell { node: CompareNode; change?: ContractChange }
 type Block = { t: 'p'; cell: Cell } | { t: 'table'; key: string; rows: { r: number; cells: Cell[] }[] }
 const TABLE_RE = /^(.*-T\d+)-R(\d+)-C(\d+)$/
 function blocksOf(nodes: CompareNode[], side: Side): Block[] {
-  const by = new Map(changes.value.map(c => [side === 'baseline' ? c.baseline_loc : c.revised_loc, c] as const).filter(([loc]) => !!loc))
+  const by = new Map(paperChanges.value.map(c => [side === 'baseline' ? c.baseline_loc : c.revised_loc, c] as const).filter(([loc]) => !!loc))
   const out: Block[] = []
   for (const node of nodes) {
     const cell: Cell = { node, change: by.get(node.loc) }
@@ -103,11 +151,14 @@ function blocksOf(nodes: CompareNode[], side: Side): Block[] {
 const blocksA = computed(() => blocksOf(result.value?.baseline ?? [], 'baseline'))
 const blocksB = computed(() => blocksOf(result.value?.revised ?? [], 'revised'))
 /** 一侧的文字：基准稿不显示插入，修改稿不显示删除 */
-const segsOf = (c: ContractChange, side: Side) => c.segs.filter(s => side === 'baseline' ? s.t !== 'ins' : s.t !== 'del')
+const segsOf = (c: ContractChange, side: Side) => {
+  const segments = c.segs.filter(s => side === 'baseline' ? s.t !== 'ins' : s.t !== 'del')
+  return c.detail_type === 'visibility' ? segments.map(s => ({ ...s, t: 'eq' as const })) : segments
+}
 
 // ---- 缎带：随滚动重绘，requestAnimationFrame 节流，只画可见的部分（二版第五节） ----
 const colA = ref<HTMLElement>(), colB = ref<HTMLElement>(), gut = ref<HTMLElement>()
-const ribbons = ref<{ id: string; kind: Kind; d: string }[]>([])
+const ribbons = ref<{ id: string; key: string; kind: Kind; d: string }[]>([])
 const ribbonHidden = ref(false)
 const reversePairs = computed(() => new Map(Object.entries(result.value?.pairs ?? {}).map(([a, b]) => [b, a])))
 const nodeEl = (col: HTMLElement | undefined, loc: string | null) => loc ? col?.querySelector<HTMLElement>(`[data-loc="${CSS.escape(loc)}"]`) ?? null : null
@@ -139,11 +190,11 @@ function draw() {
   if (!g || fx.value === 'off') { ribbons.value = []; return }
   const box = g.getBoundingClientRect(), W = box.width, H = box.height, mid = W / 2
   const out: typeof ribbons.value = []
-  for (const c of changes.value) {
+  for (const c of paperChanges.value) {
     const a = span(c, 'baseline', box.top), b = span(c, 'revised', box.top)
     if (!a || !b) continue
     if (Math.max(a[1], b[1]) < -40 || Math.min(a[0], b[0]) > H + 40) continue
-    out.push({ id: c.id, kind: kindOf(c), d: `M0 ${a[0]}C${mid} ${a[0]} ${mid} ${b[0]} ${W} ${b[0]}L${W} ${b[1]}C${mid} ${b[1]} ${mid} ${a[1]} 0 ${a[1]}Z` })
+    out.push({ id: c.id, key: c.baseline_loc ?? c.revised_loc ?? c.id, kind: kindOf(c), d: `M0 ${a[0]}C${mid} ${a[0]} ${mid} ${b[0]} ${W} ${b[0]}L${W} ${b[1]}C${mid} ${b[1]} ${mid} ${a[1]} 0 ${a[1]}Z` })
   }
   ribbons.value = out
 }
@@ -220,7 +271,7 @@ function step(delta: number) {
     </div>
     <input ref="baselinePicker" type="file" accept=".docx,.doc" hidden @change="pick($event, 'baseline')">
     <input ref="revisedPicker" type="file" accept=".docx,.doc" hidden @change="pick($event, 'revised')">
-    <p class="foot">支持 DOCX 和 DOC，对比正文和表格文字。</p>
+    <p class="foot">支持 DOCX 和 DOC，对比正文、表格、页眉页脚和文本框。</p>
   </section>
 
   <!-- 结果：缝线 -->
@@ -237,8 +288,15 @@ function step(delta: number) {
         <span><i class="lg cd" />删除 <b class="num">{{ counts.cd }}</b></span>
         <span class="lg-note">缎带颜色是差异类型，不是严重程度</span>
       </div>
-      <el-button @click="restart"><RotateCcw :size="15" :stroke-width="1.75" />重新对比</el-button>
+      <div class="actions">
+        <el-button v-if="auth.can('use.export')" :loading="exporting" @click="exportTable"><Download v-if="!exporting" :size="15" :stroke-width="1.75" />{{ exporting ? '正在生成' : '导出对比表' }}</el-button>
+        <el-button @click="restart"><RotateCcw :size="15" :stroke-width="1.75" />重新对比</el-button>
+      </div>
     </header>
+    <SiNotice v-if="error" class="result-notice" type="error" :title="error" :closable="false" />
+    <div v-if="omitted.length" class="omitted" aria-label="未对比内容">
+      <span v-for="line in omitted" :key="line">{{ line }}</span>
+    </div>
 
     <div v-if="changes.length" class="seam">
       <div ref="colA" class="col" @scroll.passive="onScroll">
@@ -246,12 +304,13 @@ function step(delta: number) {
           <p class="paper-h"><span>基准稿</span>{{ names.baseline }}</p>
           <template v-for="(b, i) in blocksA" :key="i">
             <p v-if="b.t === 'p'" class="node" :class="b.cell.change && ['chg', kindOf(b.cell.change), { on: b.cell.change.id === selected }]" :data-loc="b.cell.node.loc">
-              <template v-if="b.cell.change"><template v-for="(s, k) in segsOf(b.cell.change, 'baseline')" :key="k"><del v-if="s.t === 'del'">{{ s.s }}</del><template v-else>{{ s.s }}</template></template></template>
+              <span v-if="regions[b.cell.node.part]" class="region">{{ regions[b.cell.node.part] }}</span>
+              <template v-if="b.cell.change"><template v-for="(s, k) in segsOf(b.cell.change, 'baseline')" :key="k"><del v-if="s.t === 'del'" :title="segmentTrace(s)">{{ s.s }}</del><template v-else>{{ s.s }}</template></template></template>
               <template v-else>{{ b.cell.node.text }}</template>
             </p>
             <table v-else class="tbl"><tbody><tr v-for="row in b.rows" :key="row.r">
               <td v-for="c in row.cells" :key="c.node.loc" :data-loc="c.node.loc" :class="c.change && ['chg', kindOf(c.change), { on: c.change.id === selected }]">
-                <template v-if="c.change"><template v-for="(s, k) in segsOf(c.change, 'baseline')" :key="k"><del v-if="s.t === 'del'">{{ s.s }}</del><template v-else>{{ s.s }}</template></template></template>
+                <template v-if="c.change"><template v-for="(s, k) in segsOf(c.change, 'baseline')" :key="k"><del v-if="s.t === 'del'" :title="segmentTrace(s)">{{ s.s }}</del><template v-else>{{ s.s }}</template></template></template>
                 <template v-else>{{ c.node.text }}</template>
               </td>
             </tr></tbody></table>
@@ -259,19 +318,20 @@ function step(delta: number) {
         </article>
       </div>
       <div ref="gut" class="gut" aria-hidden="true">
-        <svg class="rib" :class="{ hide: ribbonHidden }"><path v-for="r in ribbons" :key="r.id" :class="[r.kind, { on: r.id === selected }]" :d="r.d" /></svg>
+        <svg class="rib" :class="{ hide: ribbonHidden }"><path v-for="r in ribbons" :key="r.key" :class="[r.kind, { on: r.id === selected }]" :d="r.d" /></svg>
       </div>
       <div ref="colB" class="col" @scroll.passive="onScroll">
         <article class="si-paper paper">
           <p class="paper-h"><span>修改稿</span>{{ names.revised }}</p>
           <template v-for="(b, i) in blocksB" :key="i">
             <p v-if="b.t === 'p'" class="node" :class="b.cell.change && ['chg', kindOf(b.cell.change), { on: b.cell.change.id === selected }]" :data-loc="b.cell.node.loc">
-              <template v-if="b.cell.change"><template v-for="(s, k) in segsOf(b.cell.change, 'revised')" :key="k"><ins v-if="s.t === 'ins'">{{ s.s }}</ins><template v-else>{{ s.s }}</template></template></template>
+              <span v-if="regions[b.cell.node.part]" class="region">{{ regions[b.cell.node.part] }}</span>
+              <template v-if="b.cell.change"><template v-for="(s, k) in segsOf(b.cell.change, 'revised')" :key="k"><ins v-if="s.t === 'ins'" :title="segmentTrace(s)">{{ s.s }}</ins><template v-else>{{ s.s }}</template></template></template>
               <template v-else>{{ b.cell.node.text }}</template>
             </p>
             <table v-else class="tbl"><tbody><tr v-for="row in b.rows" :key="row.r">
               <td v-for="c in row.cells" :key="c.node.loc" :data-loc="c.node.loc" :class="c.change && ['chg', kindOf(c.change), { on: c.change.id === selected }]">
-                <template v-if="c.change"><template v-for="(s, k) in segsOf(c.change, 'revised')" :key="k"><ins v-if="s.t === 'ins'">{{ s.s }}</ins><template v-else>{{ s.s }}</template></template></template>
+                <template v-if="c.change"><template v-for="(s, k) in segsOf(c.change, 'revised')" :key="k"><ins v-if="s.t === 'ins'" :title="segmentTrace(s)">{{ s.s }}</ins><template v-else>{{ s.s }}</template></template></template>
                 <template v-else>{{ c.node.text }}</template>
               </td>
             </tr></tbody></table>
@@ -285,19 +345,26 @@ function step(delta: number) {
             <button type="button" class="dli" :class="[kindOf(c), { on: c.id === selected }]" :data-c="c.id" :aria-pressed="c.id === selected" @click="locate(c)">
               <span class="bar" aria-hidden="true" />
               <span class="dl-b">
-                <b>{{ c.clause || c.revised_location || c.baseline_location }}</b>
-                <span class="dl-k">{{ label(c) }}</span>
+                <b>{{ c.revised_location || c.baseline_location }}</b>
+                <span class="dl-meta">
+                  <span class="dl-k">{{ label(c) }}</span>
+                  <span v-for="mark in traceMarks(c)" :key="mark.label" class="trace" :class="{ pending: mark.pending }" :title="mark.detail || undefined">{{ mark.label }}</span>
+                </span>
                 <span v-if="c.brief.text" class="ex">{{ c.brief.text }}</span>
                 <span v-else class="ex">{{ c.brief.ctx }}<del v-if="c.brief.old">{{ c.brief.old }}</del><span v-if="c.brief.old && c.brief.new" class="arrow"> → </span><ins v-if="c.brief.new">{{ c.brief.new }}</ins></span>
+                <span v-if="c.visibility && c.detail_type !== 'visibility'" class="dl-k">{{ c.visibility }}</span>
+                <span v-if="c.mixed && c.id === selected" class="trace-pieces">
+                  <span v-for="mark in traceMarks(c)" :key="mark.label" :class="{ pending: mark.pending }">{{ mark.label }}<template v-if="mark.detail"> · {{ mark.detail }}</template></span>
+                </span>
               </span>
             </button>
           </li>
         </ol>
-        <p class="dl-f">正文和表格按接受已有修订后的文字对比 · ↑ ↓ 切换</p>
+        <p class="dl-f">按接受修订后的文字对比 · ↑ ↓ 切换</p>
       </aside>
     </div>
     <div v-else class="same">
-      <EmptyState illus="pair" title="未发现文字差异" description="两份稿件的正文和表格文字一致。">
+      <EmptyState illus="pair" title="未发现差异" description="两份稿件在对比范围内一致。">
         <el-button @click="restart">重新对比</el-button>
       </EmptyState>
     </div>
@@ -337,6 +404,9 @@ html[data-fx="full"] .sheet.full .sp { animation: sh-in var(--si-d3) var(--si-ea
 .ttl b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-h4); text-overflow: ellipsis; white-space: nowrap; }
 .ttl span { overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
 .wbar :deep(.el-button > span) { gap: 6px; }
+.actions { display: flex; flex: none; }
+.result-notice { flex: none; margin: 8px 16px; width: auto; }
+.omitted { display: flex; flex: none; flex-wrap: wrap; gap: 4px 20px; padding: 8px 18px; border-bottom: 1px solid var(--si-hair); background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-caption); }
 .legend { flex: none; display: flex; align-items: center; gap: 14px; color: var(--si-ink-3); font: var(--si-font-meta); }
 .legend b { color: var(--si-ink-1); font-weight: 600; }
 .lg { display: inline-block; width: 14px; height: 8px; margin-right: 6px; border-radius: 2px; vertical-align: middle; }
@@ -355,6 +425,7 @@ html[data-fx="full"] .sheet.full .sp { animation: sh-in var(--si-d3) var(--si-ea
 .paper-h { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; padding-bottom: 12px; overflow: hidden; border-bottom: 1px solid var(--si-hair-faint); color: var(--si-paper-ink-2); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
 .paper-h span { flex: none; padding: 0 8px; border-radius: var(--si-radius-badge); background: var(--si-hover-bg); color: var(--si-ink-2); font: var(--si-font-badge); line-height: 22px; }
 .node { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.region { display: inline-block; margin-inline-end: 8px; padding: 0 6px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-tag); font: var(--si-font-caption); color: var(--si-paper-ink-2); }
 .tbl { width: 100%; margin: 10px 0; border-collapse: collapse; font-size: calc(14px * var(--si-fs)); }
 .tbl td { padding: 6px 8px; border: 1px solid var(--si-hair-strong); vertical-align: top; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 变化的段落：浅底；段内的删除划线、新增下划线 */
@@ -390,6 +461,11 @@ td.chg.on { box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--cc) 12%, tran
 .dl-b { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .dl-b b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
 .dl-k { color: var(--si-ink-3); font: var(--si-font-caption); }
+.dl-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 7px; }
+.trace { padding: 0 6px; border-radius: var(--si-radius-badge); background: var(--si-surface-2); color: var(--si-ink-2); font: var(--si-font-caption); }
+.trace.pending { background: var(--si-warn-soft); color: var(--si-warn-ink); }
+.trace-pieces { display: grid; gap: 2px; color: var(--si-ink-2); font: var(--si-font-caption); overflow-wrap: anywhere; }
+.trace-pieces .pending { color: var(--si-warn-ink); }
 .ex { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: var(--si-ink-2); font: var(--si-font-meta); }
 .arrow { color: var(--si-ink-3); }
 .dl-f { flex: none; margin: 0; padding: 10px 18px 14px; border-top: 1px solid var(--si-hair-faint); color: var(--si-ink-4); font: var(--si-font-caption); }

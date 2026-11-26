@@ -51,7 +51,8 @@ interface RequestOptions {
   signal?: AbortSignal
 }
 
-async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
+async function request<T>(method: Method, path: string, opts: RequestOptions = {},
+  read: (res: Response) => Promise<T> = res => res.json()): Promise<T> {
   let url = API_PREFIX + path
   if (opts.query) {
     const params = new URLSearchParams()
@@ -83,7 +84,7 @@ async function request<T>(method: Method, path: string, opts: RequestOptions = {
 
   if (res.ok) {
     if (res.status === 204) return undefined as T
-    return (await res.json()) as T
+    return read(res)
   }
 
   let code = 'HTTP_ERROR'
@@ -174,6 +175,8 @@ export const http = {
   post: <T>(path: string, body?: unknown, opts?: Pick<RequestOptions, 'silent401'>) =>
     request<T>('POST', path, { body, ...opts }),
   postForm: <T>(path: string, form: FormData, signal?: AbortSignal) => request<T>('POST', path, { form, signal }),
+  postFormBlob: (path: string, form: FormData, signal?: AbortSignal) =>
+    request<Blob>('POST', path, { form, signal }, res => res.blob()),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, { body }),
   delete: <T>(path: string, opts?: Pick<RequestOptions, 'keepalive'>) => request<T>('DELETE', path, { ...opts }),

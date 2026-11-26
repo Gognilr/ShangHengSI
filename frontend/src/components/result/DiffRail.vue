@@ -12,7 +12,7 @@ import { DIFF_TYPE, diffParts, traceText } from '@/utils/drafts'
 
 /**
  * 右栏“变化”页签（V35-D-02，设计 diff.md 3.4）：对照上一稿的摘要、分段筛选、逐条变化；点一条在纸面切到对比并定位。
- * 格式变化（只改标点、空格或编号）折叠在最后。页签行与“意见”栏一致。
+ * 标点、空格折叠在最后。页签行与“意见”栏一致。
  */
 const props = defineProps<{ sessionId: string; diff: DiffResult | null; loading: boolean; error: string; askTab?: boolean; selectedId?: string }>()
 const emit = defineEmits<{ pick: [c: DiffChange]; findingsTab: []; askTab: [] }>()
@@ -34,6 +34,9 @@ const options = computed(() => {
 })
 const shown = computed(() => main.value.filter(c => match(c, filter.value)))
 const parts = computed(() => props.diff ? diffParts(props.diff) : [])
+const typeLabel = (c: DiffChange) => c.detail_type === 'numbering' ? '编号变化'
+  : c.detail_type === 'visibility' ? '隐藏文字'
+  : c.type === 'move' && c.segs.some(s => s.t !== 'eq') ? '位置与文字改动' : DIFF_TYPE[c.type]
 
 const exporting = ref(false)
 async function exportTable() {
@@ -63,30 +66,32 @@ async function exportTable() {
         <div class="sum-main">
           <b>对照第 {{ diff.prev_no }} 稿</b><span class="sum-name" :title="diff.prev_name">《{{ diff.prev_name }}》</span>
           <p v-if="parts.length" class="sum-line"><template v-for="(p, i) in parts" :key="p.text"><span v-if="i" class="dot">·</span><span :class="{ warn: p.warn }">{{ p.text }}</span></template></p>
-          <p v-else class="sum-line">正文没有实质变化</p>
+          <p v-else class="sum-line">对比范围内没有实质变化</p>
         </div>
       </div>
       <p v-if="diff.trace === 'flag'" class="note">本稿解析较早，只能按段落判断是否留痕。</p>
       <p v-if="diff.ocr" class="note">扫描件识字可能有误差，单字差异请对照原件。</p>
+      <p v-if="diff.omitted?.length" class="note">稿件含{{ diff.omitted.join('、') }}，未对比。</p>
       <div v-if="main.length" class="filters"><SiSegmented v-model="filter" :options="options" size="small" ariaLabel="按变化类型筛选" /></div>
       <ul v-if="shown.length" class="list">
         <li v-for="c in shown" :key="c.id">
           <button type="button" class="row" :class="{ on: c.id === selectedId, u: c.untracked }" @click="emit('pick', c)">
             <span class="row-h">
-              <span class="ty" :class="`ty-${c.type}`">{{ DIFF_TYPE[c.type] }}</span>
+              <span class="ty" :class="`ty-${c.type}`">{{ typeLabel(c) }}</span>
               <span class="clause">{{ c.clause || '—' }}</span>
               <span v-if="traceText(c)" class="tr" :class="{ 'tr-u': c.untracked }">{{ traceText(c) }}</span>
             </span>
-            <span v-if="c.type === 'mod'" class="ex">{{ c.brief.ctx }}<del>{{ c.brief.old }}</del><span class="arrow">→</span><b>{{ c.brief.new }}</b></span>
-            <span v-else class="ex" :class="{ gone: c.type === 'del' }">{{ c.type === 'move' && c.prev_clause ? `原${c.prev_clause}：` : '' }}{{ c.brief.text }}</span>
+            <span v-if="c.brief.text" class="ex" :class="{ gone: c.type === 'del' }">{{ c.type === 'move' && c.prev_clause ? `原${c.prev_clause}：` : '' }}{{ c.brief.text }}</span>
+            <span v-else class="ex">{{ c.brief.ctx }}<del>{{ c.brief.old }}</del><span class="arrow">→</span><b>{{ c.brief.new }}</b></span>
+            <span v-if="c.visibility && c.detail_type !== 'visibility'" class="hint">{{ c.visibility }}</span>
           </button>
         </li>
       </ul>
       <EmptyState v-else-if="main.length" title="没有符合筛选条件的变化" description="换一个筛选看看。" />
-      <EmptyState v-else :icon="GitCompareArrows" :title="`与第 ${diff.prev_no} 稿正文一致`" description="两稿正文没有实质变化。" />
+      <EmptyState v-else :icon="GitCompareArrows" :title="`与第 ${diff.prev_no} 稿没有实质变化`" />
       <section v-if="formats.length" class="fmt">
         <button type="button" class="fmt-h" :aria-expanded="formatOpen" @click="formatOpen = !formatOpen">
-          <component :is="formatOpen ? ChevronDown : ChevronRight" :size="14" :stroke-width="1.75" />格式变化 {{ formats.length }} 处<span class="hint">只改标点、空格或编号</span>
+          <component :is="formatOpen ? ChevronDown : ChevronRight" :size="14" :stroke-width="1.75" />标点、空格 {{ formats.length }} 处
         </button>
         <ul v-if="formatOpen" class="list">
           <li v-for="c in formats" :key="c.id">
@@ -97,7 +102,7 @@ async function exportTable() {
           </li>
         </ul>
       </section>
-      <p class="foot hint">本机逐字对比，未发送给模型 · 页眉页脚、批注、文本框不在对比范围内</p>
+      <p class="foot hint">本机对比 · 会话留痕判断仅覆盖正文和表格</p>
     </div>
   </aside>
 </template>

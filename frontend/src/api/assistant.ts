@@ -94,14 +94,17 @@ export interface DiffChange {
   /** 删除：挂在本稿哪一段之前；after 为删在文末，挂在最后一段之后 */
   anchor?: string | null; after?: boolean
   clause: string; prev_clause?: string; segs: DiffSeg[]
-  /** null：PDF、扫描件没有修订概念 */
+  /** 编号及隐藏文字是“修改”的独立类别，仍纳入增量复审。 */
+  detail_type?: 'numbering' | 'visibility'
+  visibility?: string
+  /** null：没有可用于判断的修订文字。 */
   untracked: boolean | null; mixed: boolean
   brief: { ctx: string; old: string; new: string; text?: string }
 }
 export interface DiffResult {
   file_id: string; prev_file_id: string; prev_name: string; no: number; prev_no: number
   /** exact：按“拒绝修订”文字判断；flag：本稿解析较早，只能按段落判断；none：不判断留痕 */
-  trace: 'exact' | 'flag' | 'none'; ocr: boolean; elapsed_ms: number
+  trace: 'exact' | 'flag' | 'none'; ocr: boolean; elapsed_ms: number; omitted?: string[]
   summary: Record<DiffType | 'untracked', number>; changes: DiffChange[]
 }
 export interface ParseProgress { phase?: 'files' | 'detect'; files?: Record<string, { stage: string; done: number | null; total: number | null }> }
