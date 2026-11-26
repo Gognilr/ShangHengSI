@@ -54,6 +54,10 @@ def test_contract_compare_literal_differences_and_no_task(alice, files_dir, db_s
     assert moved['type'] == 'move' and moved['baseline_location'] == '正文第 1 段' and moved['revised_location'] == '正文第 5 段'
     assert _edits(moved) == [('del', '正式'), ('ins', '完整'), ('del', '（'), ('ins', '('), ('del', '）'), ('ins', ')')]
     assert amount['baseline_location'] == '表 1 · 第 1 行第 1 列' and _edits(amount) == [('del', '3'), ('ins', '6')]
+    # 缝线（V36-F-04）：两稿正文按顺序回给本人浏览器，差异挂在各自的位置上；删除处挂在修改稿的锚点
+    assert [n['text'] for n in result['baseline']][:2] == [old_move, old_notice]
+    assert moved['baseline_loc'] == result['baseline'][0]['loc'] and moved['revised_loc'] == result['revised'][4]['loc']
+    assert deletion['revised_loc'] is None and deletion['anchor'] in {n['loc'] for n in result['revised']}
 
     punctuation = client.post(URL, headers=headers, files=_pair(_word(['货到签收。']), _word(['货到签收'])))
     [only_change] = punctuation.json()['changes']
@@ -106,7 +110,8 @@ def test_contract_compare_legacy_and_input_errors(alice, monkeypatch):
 
     monkeypatch.setattr(legacy, 'convert', convert)
     result = client.post(URL, headers=headers, files=_pair(doc, docx, ext='DOC'))
-    assert result.status_code == 200 and result.json() == {'converted': True, 'changes': []}
+    body = result.json()
+    assert result.status_code == 200 and body['converted'] and body['changes'] == [] and len(body['baseline']) == len(body['revised'])
 
     unsupported = client.post(URL, headers=headers, files=_pair(doc, docx, ext='rtf'))
     assert unsupported.status_code == 422 and unsupported.json()['code'] == 'UNSUPPORTED_FILE_TYPE'

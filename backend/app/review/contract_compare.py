@@ -47,12 +47,17 @@ def compare_contracts(baseline: UploadFile, revised: UploadFile) -> dict:
     old_locations = {node.loc: _location(node) for node in old}
     new_locations = {node.loc: _location(node) for node in new}
     changes = compare(old, new, mode='none', literal=True)['changes']
+    # 两稿正文只回给上传者本人的浏览器画缝线（V36-F-04），不落库、不缓存（接口 no-store）
     return {
         'changes': [{
             'id': change['id'], 'type': change['type'], 'clause': change['clause'],
             'baseline_location': old_locations.get(change['prev_loc']),
             'revised_location': new_locations.get(change['loc']),
+            'baseline_loc': change['prev_loc'], 'revised_loc': change['loc'],
+            'anchor': change.get('anchor'), 'after': bool(change.get('after')),
             'brief': change['brief'], 'segs': change['segs'],
         } for change in changes],
+        'baseline': [{'loc': node.loc, 'kind': node.kind, 'text': node.text} for node in old],
+        'revised': [{'loc': node.loc, 'kind': node.kind, 'text': node.text} for node in new],
         'converted': old_converted or new_converted,
     }
