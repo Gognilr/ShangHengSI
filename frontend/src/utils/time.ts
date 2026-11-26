@@ -68,3 +68,32 @@ export function formatShort(value: string | Date | null | undefined, withTime = 
   const text = withTime ? full : full.slice(0, 10)
   return text.startsWith(THIS_YEAR()) ? text.slice(5) : text
 }
+
+/** 按天的时间线（澄明二版 6.18）：今天、昨天、本周（周一起）、更早；日期按 Asia/Shanghai 计。 */
+export type DayGroup = 'today' | 'yesterday' | 'week' | 'earlier'
+const DAY_MS = 86400000
+function dayNumber(value: string | Date): number | null {
+  const d = parseUtc(value)
+  if (!d) return null
+  const [y, m, day] = formatDate(d).split('-').map(Number)
+  return Math.round(Date.UTC(y!, m! - 1, day!) / DAY_MS)
+}
+export function dayGroup(value: string | Date, now: Date = new Date()): DayGroup {
+  const d = dayNumber(value), t = dayNumber(now)
+  if (d == null || t == null) return 'earlier'
+  if (d >= t) return 'today'
+  if (d === t - 1) return 'yesterday'
+  // 1970-01-01 是周四：(t + 3) % 7 为距本周一的天数
+  return d >= t - ((t + 3) % 7) ? 'week' : 'earlier'
+}
+const WEEKDAY = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+/** “11-24 周一” */
+export function formatDayLabel(value: string | Date): string {
+  const n = dayNumber(value)
+  return n == null ? '—' : `${formatShort(value, false)} ${WEEKDAY[(n + 4) % 7]}`
+}
+/** “14:20” */
+export function formatClock(value: string | Date | null | undefined): string {
+  const full = formatDateTimeMinute(value)
+  return full === '—' ? full : full.slice(11)
+}

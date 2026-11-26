@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
-// 文件审核首页（V34-A-03，澄明 8.4 ①）：标题与一句说明 + 大号拖放区 + 最近的审核 5 条。
+// 文件审核首页（V34-A-03；澄明二版 6.6）：标题与一句说明 + 纸叠拖放区 + 按天的最近审核 5 条。
 // 拖入、点选或粘贴文件才建会话（不在进入页面时建空会话），上传后进入该会话的审核视图；底层仍是“工作空间就是会话”。
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChevronRight, Ellipsis, FilePlus, FileText, Upload } from '@lucide/vue'
+import { ChevronRight, Ellipsis, FileText, Upload } from '@lucide/vue'
 import { assistantApi, type HistoryItem } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import { usePasteFiles } from '@/composables/usePasteFiles'
 import { useSessionsStore } from '@/stores/sessions'
-import { docTypeLabel, stanceLabel, statusLabel } from '@/utils/labels'
-import { formatDateTime } from '@/utils/time'
+import SiIllus from '@/components/brand/illus/SiIllus.vue'
+import TripTimeline, { type TimelineItem } from '@/components/TripTimeline.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import { MAX_FILE_MB } from '@/api/tasks'
+import { docTypeLabel, stanceLabel } from '@/utils/labels'
+import { rowTrip, type Trip } from '@/utils/trip'
 
 const router = useRouter(), sessions = useSessionsStore()
 const DOC = '.docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et,.jpg,.jpeg,.png'
@@ -22,13 +26,14 @@ async function upload(files: File[]) {
   if (!files.length || uploading.value !== null) return
   if (files.some(f => /\.(mp3|m4a|wav|amr|aac|mp4)$/i.test(f.name))) { error.value = '录音请到“会议纪要”中处理'; return }
   error.value = ''; uploading.value = 0
+  incoming.value = files.map(f => ({ name: f.name, size: sizeText(f.size) }))
   try {
     const created = await assistantApi.create('chat', true)
     await assistantApi.addFiles(created.id, files, (loaded, total) => { uploading.value = Math.round(loaded / total * 100) })
     sessions.markReview(created.id)
     await router.push({ path: `/assistant/${created.id}`, query: { mode: 'review' } })
     void sessions.refresh()
-  } catch (e) { error.value = e instanceof ApiError ? e.message : '上传失败，请稍后重试' }
+  } catch (e) { error.value = e instanceof ApiError ? e.message : '上传失败，请稍后重试'; incoming.value = [] }
   finally { uploading.value = null }
 }
 function picked(event: Event) { const input = event.target as HTMLInputElement, list = Array.from(input.files ?? []); input.value = ''; void upload(list) }
@@ -43,23 +48,19 @@ onMounted(async () => {
   try { recent.value = (await assistantApi.history({ page: 1, type: 'review' })).items.slice(0, 5) }
   catch { /* 列表失败不影响上传 */ }
 })
-// 每行：名称、一句说明（立场 · 轮次），状态徽标按澄明第十二节着色
-type Tone = 'info' | 'mid' | 'hi' | 'brand' | 'neu' | 'ok'
-const rows = computed(() => recent.value.map(row => {
-  const badges: { text: string; tone: Tone; dot?: boolean }[] = []
-  if (row.reviewing) badges.push({ text: '审核中', tone: 'info', dot: true })
-  else if (row.blocked) badges.push({ text: '被拦截', tone: 'mid', dot: true })
-  else if (row.status === 'awaiting_confirm' || row.status === 'draft') badges.push({ text: '待你确认', tone: 'mid', dot: true })
-  else if (row.status === 'parsing') badges.push({ text: '读取中', tone: 'info', dot: true })
-  else if (row.status === 'parse_failed') badges.push({ text: '读取失败', tone: 'hi', dot: true })
-  else {
-    if (row.high_count > 0) badges.push({ text: `高 ${row.high_count}`, tone: 'hi' })
-    if (row.latest_run_id && row.pending_count > 0) badges.push({ text: `待处理 ${row.pending_count}`, tone: 'neu' })
-    if (!badges.length) badges.push({ text: row.kind === 'session' && row.run_count ? '已审核' : statusLabel(row.status), tone: 'brand' })
-  }
+// 每行（澄明二版 6.6）：按天的时间线，迷你往返线说进度，徽标只留结果的计数
+const rows = computed<(TimelineItem & { row: HistoryItem })[]>(() => recent.value.map(row => {
+  const trip = rowTrip(row)
+  const finished = trip.state === 'done' || trip.state === 'partial'
+  const badge = !finished ? null : row.high_count > 0 ? { text: `高 ${row.high_count}`, tone: 'danger' as const, dot: true }
+    : row.latest_run_id && row.pending_count > 0 ? { text: `待处理 ${row.pending_count}`, tone: 'neutral' as const } : null
   const sub = [row.doc_type ? docTypeLabel(row.doc_type) : '', row.stance ? `${stanceLabel(row.stance)}立场` : '', row.run_count > 1 ? `第 ${row.run_count} 轮` : '', row.file_count > 1 ? `${row.file_count} 份文件` : ''].filter(Boolean).join(' · ')
-  return { row, badges, sub }
+  return { key: row.id, title: row.title, sub, trip, time: row.last_activity_at, mod: 'review' as const, badge, row }
 }))
+// 纸叠里正在上传的文件：从“读取”开始走
+const incoming = ref<{ name: string; size: string }[]>([])
+const incomingTrip = computed<Trip>(() => ({ mod: 'review', at: 0, state: 'run', note: uploading.value != null && uploading.value < 100 ? `上传 ${uploading.value}%` : '正在读取' }))
+const sizeText = (n: number) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
 // “⋯ → 传新一稿”（V35-D-02）：选好文件后传进那次审核，直接认作主文件所在链最新一稿的下一稿，再打开该会话
 const draftPicker = ref<HTMLInputElement>()
 const draftTarget = ref<HistoryItem | null>(null)
@@ -91,34 +92,39 @@ function open(row: HistoryItem) {
   <div class="page review-home si-stagger">
     <header class="head">
       <h1 class="entry-title">文件审核</h1>
-      <p class="entry-lede">合同、报价单、订单、函件都可以。文件在本机读取和遮住名称，你确认后才交给模型初审。</p>
+      <p class="entry-lede">合同、报价单、订单、函件都可以。原件只在本机读取，名称遮住、你确认后才交给模型。</p>
     </header>
     <SiNotice v-if="error" type="error" :closable="false" :title="error" class="err" />
-    <div class="drop" :class="{ dragging, busy: uploading !== null }" role="button" tabindex="0" :aria-disabled="uploading !== null"
-      @click="picker?.click()" @keydown.enter="picker?.click()" @dragenter.prevent="dragEnter" @dragover.prevent @dragleave="dragLeave" @drop.prevent="drop">
-      <span class="drop-ic"><Upload :size="26" :stroke-width="1.75" /></span>
-      <b class="drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : dragging ? '松开即可加入' : '拖入要审核的文件，或点击选择' }}</b>
-      <span class="hint">Word、PDF、扫描件、图片、Excel、WPS，可一次加入多份 · 也可以按 Ctrl+V 粘贴</span>
-      <el-button v-if="uploading === null && !dragging" type="primary" class="pick" @click.stop="picker?.click()"><FilePlus :size="16" :stroke-width="1.75" />选择文件</el-button>
-      <span v-if="uploading !== null" class="bar" aria-hidden="true"><i :style="{ width: `${uploading}%` }" /></span>
+    <!-- 纸叠（二版 6.6）：拖入时最上一张抬起；松手后纸滑进来，下方出现这份文件的迷你往返线 -->
+    <div class="pile si-hov" :class="{ dragging, busy: uploading !== null }" role="button" tabindex="0" :aria-disabled="uploading !== null" aria-label="选择要审核的文件"
+      @click="uploading === null && picker?.click()" @keydown.enter.self="uploading === null && picker?.click()" @dragenter.prevent="dragEnter" @dragover.prevent @dragleave="dragLeave" @drop.prevent="drop">
+      <SiIllus kind="stack" :on="dragging || uploading !== null" class="pile-obj" />
+      <div class="pile-b">
+        <h2>{{ dragging ? '松开即可加入' : '把文件放到这叠纸上' }}</h2>
+        <p class="ph">也可以点击选择，或按 Ctrl+V 粘贴。一次可以放多份，会在同一次审核里一起看。</p>
+        <div class="pa"><el-button type="primary" size="large" :disabled="uploading !== null" @click.stop="picker?.click()"><Upload :size="16" :stroke-width="1.75" />选择文件</el-button></div>
+        <p class="pf">Word、PDF、扫描件、图片、Excel、WPS · 单个不超过 {{ MAX_FILE_MB }} MB</p>
+        <TransitionGroup v-if="incoming.length" name="pile-in" tag="ul" class="pile-in" aria-live="polite">
+          <li v-for="f in incoming" :key="f.name" class="pfile">
+            <span class="mod-ic"><FileText :size="16" :stroke-width="1.75" /></span>
+            <span class="pf-n"><b :title="f.name">{{ f.name }}</b><span class="num">{{ f.size }}</span></span>
+            <SiTrip :trip="incomingTrip" />
+          </li>
+        </TransitionGroup>
+      </div>
     </div>
     <input ref="picker" class="file-input" type="file" multiple :accept="DOC" @change="picked">
     <input ref="draftPicker" class="file-input" type="file" :accept="DOC" @change="draftPicked">
     <section v-if="rows.length" class="recent">
       <div class="recent-head"><h2>最近的审核</h2><router-link to="/history" class="all">全部历史<ChevronRight :size="14" :stroke-width="1.75" /></router-link></div>
-      <div class="list">
-        <a v-for="({ row, badges, sub }, i) in rows" :key="row.id" href="#" class="li" :style="{ '--i': i }" @click.prevent="open(row)">
-          <span class="mod-ic"><FileText :size="18" :stroke-width="1.75" /></span>
-          <span class="li-main"><b :title="row.title">{{ row.title }}</b><span v-if="sub">{{ sub }}</span></span>
-          <span v-for="b in badges" :key="b.text" class="badge" :class="[`b-${b.tone}`, { breath: b.tone === 'info' }]"><i v-if="b.dot" class="d" />{{ b.text }}</span>
-          <span class="li-t num">{{ formatDateTime(row.last_activity_at) }}</span>
-          <el-dropdown v-if="row.kind === 'session'" trigger="click" @command="() => pickDraft(row)" @click.prevent.stop>
-            <button type="button" class="more" :aria-label="`${row.title} 的更多操作`" @click.prevent.stop><Ellipsis :size="16" :stroke-width="1.75" /></button>
+      <TripTimeline :items="rows" @open="it => open(it.row)">
+        <template #actions="{ item }">
+          <el-dropdown v-if="item.row.kind === 'session'" trigger="click" @command="() => pickDraft(item.row)">
+            <button type="button" class="more" :aria-label="`${item.title} 的更多操作`"><Ellipsis :size="16" :stroke-width="1.75" /></button>
             <template #dropdown><el-dropdown-menu><el-dropdown-item command="draft">传新一稿</el-dropdown-item></el-dropdown-menu></template>
           </el-dropdown>
-          <ChevronRight class="chev" :size="16" :stroke-width="1.75" />
-        </a>
-      </div>
+        </template>
+      </TripTimeline>
     </section>
   </div>
 </template>
@@ -126,51 +132,37 @@ function open(row: HistoryItem) {
 <style scoped>
 /* 入口页（澄明第七节模板 ②）：内容宽 960 */
 .review-home { max-width: 960px; margin: 0 auto; padding: 48px 24px 64px; box-sizing: border-box; }
-.head { margin-bottom: 28px; }
+.head { margin-bottom: 24px; }
 .entry-lede { margin-bottom: 0; }
 .err { margin-bottom: 16px; }
 .file-input { display: none; }
-/* 大号拖放区：220 高、圆角 18、2px 虚线，模块色图标；拖入时边框变模块色、底色变浅、放大 1.01 */
-.drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 220px; padding: 28px 24px; border: 2px dashed var(--si-hair-strong); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); text-align: center; cursor: pointer; overflow: hidden; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
-.drop:hover { border-color: var(--si-m-review); }
-.drop:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
-.drop.dragging { border-style: solid; border-color: var(--si-m-review); background: var(--si-m-review-soft); transform: scale(1.01); }
-.drop.busy { cursor: progress; }
-.drop-ic { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 4px; border-radius: var(--si-radius-pop); background: var(--si-m-review-soft); color: var(--si-m-review); transition: transform var(--si-d3) var(--si-ease-spring); }
-.drop:hover .drop-ic, .drop.dragging .drop-ic { transform: translateY(-3px) scale(1.06); }
-.drop-title { color: var(--si-ink-1); font: var(--si-font-h3); }
-.drop .hint { margin: 0; }
-.pick { margin-top: 10px; }
-.pick :deep(> span) { gap: 6px; }
-.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--si-sunken); }
-.bar i { display: block; height: 100%; background: var(--si-progress-flow, var(--si-brand-2)); transition: width var(--si-d3) var(--si-ease-out); }
-.recent { margin-top: 48px; }
+/* 纸叠：左插画 300、右说明；拖入时描边变衡青并带浅光晕 */
+.pile { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 32px; align-items: center; padding: 30px 32px 26px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); cursor: pointer; transition: box-shadow var(--si-d3) var(--si-ease-out), border-color var(--si-d3) var(--si-ease-out); }
+.pile:hover { box-shadow: var(--si-shadow-2); }
+.pile:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
+.pile.dragging { border-color: var(--si-brand-line); box-shadow: 0 0 0 4px var(--si-brand-soft), var(--si-shadow-2); }
+.pile.busy { cursor: progress; }
+.pile-obj { height: 170px; }
+.pile h2 { margin: 0; color: var(--si-ink-1); font: var(--si-font-h2); font-size: calc(22px * var(--si-fs)); line-height: 1.4; }
+.ph { margin: 6px 0 0; color: var(--si-ink-3); font: var(--si-font-body); }
+.pa { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+.pa :deep(.el-button > span) { gap: 6px; }
+.pf { margin: 16px 0 0; color: var(--si-ink-3); font: var(--si-font-caption); }
+.pile-in { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.pfile { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--si-hair-faint); border-radius: var(--si-radius-md); background: var(--si-card-2); }
+.pile-in-enter-active { transition: transform 500ms var(--si-ease-out), opacity 500ms var(--si-ease-out); }
+.pile-in-enter-from { opacity: 0; transform: translateY(-14px); }
+html[data-fx="off"] .pile-in-enter-active { transition: none; }
+.mod-ic { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--si-radius-control); background: var(--si-m-review-soft); color: var(--si-m-review); }
+.pf-n { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pf-n b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.pf-n span { color: var(--si-ink-3); font: var(--si-font-caption); }
+.recent { margin-top: 44px; }
 .recent-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
 .recent h2 { margin: 0; font: var(--si-font-h3); color: var(--si-ink-1); }
 .all { display: inline-flex; align-items: center; gap: 2px; color: var(--si-ink-3); font: var(--si-font-label-sm); text-decoration: none; }
 .all:hover { color: var(--si-blue-ink); }
-.list { border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); overflow: hidden; }
-.li { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 16px; color: inherit; text-decoration: none; transition: background-color var(--si-d2) var(--si-ease-out); }
-html[data-fx="full"] .li { animation: rh-in var(--si-d3) var(--si-ease-out) both; animation-delay: calc(var(--i) * 45ms + 180ms); }
-.li + .li { border-top: 1px solid var(--si-hair-faint); }
-.li:hover { background: var(--si-hover-bg); }
-.li:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }
-@keyframes rh-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.mod-ic { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--si-radius-control); background: var(--si-m-review-soft); color: var(--si-m-review); }
-.li-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.li-main b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.li-main span { overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
-.badge { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: var(--si-radius-badge); font: var(--si-font-badge); white-space: nowrap; }
-.badge .d { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.b-info { background: var(--si-info-soft); color: var(--si-info-ink); }
-.b-mid { background: var(--si-warn-soft); color: var(--si-warn-ink); }
-.b-hi { background: var(--si-danger-soft); color: var(--si-danger-ink); }
-.b-brand { background: var(--si-blue-tint); color: var(--si-blue-ink); }
-.b-neu { background: var(--si-surface-2); color: var(--si-ink-3); }
-.breath .d { animation: rh-breath 1.6s var(--si-ease-io) infinite; }
-@keyframes rh-breath { 50% { opacity: .35; } }
-.li-t { flex: none; width: 128px; white-space: nowrap; color: var(--si-ink-4); font: var(--si-font-caption); text-align: right; }
-.chev { flex: none; color: var(--si-ink-4); }
-.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.more { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-3); cursor: pointer; }
 .more:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
+@media (max-width: 900px) { .pile { grid-template-columns: minmax(0, 1fr); } .pile-obj { height: 120px; } }
 </style>
