@@ -92,8 +92,17 @@ export interface ModelRow extends Omit<ModelBody, 'api_key'> {
   price: ModelPrice | null; balance: ModelBalance | null
 }
 export interface ModelList { items: ModelRow[]; user_daily_cap: number; usage: ModelUsage }
+// 出口地图与仪表行（V36-F-02）：本月按模型、上海自然日的计数与金额，不含任务名、用户名或内容
+export interface OverviewDay { day: number; calls: number; failed: number; blocked: number }
+export interface OverviewModel { id: number; calls: number; failed: number; blocked: number; median_ms: number | null; cost: string; unpriced: number; purposes: Record<string, number>; daily: OverviewDay[] }
+export interface ModelOverview {
+  month: string; today: number; days: number; user_daily_cap: number
+  total: { calls: number; failed: number; blocked: number; unpriced: number; cost: string }
+  models: OverviewModel[]; local: { id: 'ner' | 'embedding' | 'asr' | 'mt'; status: 'enabled' | 'disabled' | 'unavailable' }[]
+}
 export const adminModelApi = {
   list: () => http.get<ModelList>('/admin/models'),
+  overview: () => http.get<ModelOverview>('/admin/models/overview'),
   create: (body: ModelBody) => http.post<ModelRow>('/admin/models', body),
   update: (id: number, body: ModelBody) => http.put<ModelRow>(`/admin/models/${id}`, body),
   test: (id: number) => http.post<{ tests: ModelTests; structured_ok: boolean; message: string | null }>(`/admin/models/${id}/test`),

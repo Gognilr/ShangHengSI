@@ -4,7 +4,7 @@ import { ref } from 'vue'
 /**
  * 行卡（澄明二版第四节，管理列表里取代 el-table）：一行一个对象。
  * 插槽：icon 识别方块、title 名称、sub 一行辅助、status 状态徽标、data 主数据、actions 操作、detail 展开后的详情。
- * 悬停浮起；有 detail 时点行展开（actions 区的点击不展开）。
+ * 悬停浮起；有 detail 时点行展开（actions 区的点击不展开）。名称后的徽标放不下时折到下一行，名称本身不断开。
  */
 const props = withDefaults(defineProps<{ expandable?: boolean; open?: boolean }>(), { expandable: false, open: undefined })
 const emit = defineEmits<{ 'update:open': [v: boolean] }>()
@@ -34,7 +34,7 @@ function toggle() { if (!props.expandable) return; const v = !isOpen(); inner.va
 .expandable .rc-m { cursor: pointer; }
 .rc-i { flex: none; display: flex; }
 .rc-n { flex: 1; min-width: 0; }
-.rc-n b { display: flex; align-items: center; gap: 8px; font: var(--si-font-h4); font-size: calc(15px * var(--si-fs)); color: var(--si-ink-1); }
+.rc-n b { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font: var(--si-font-h4); font-size: calc(15px * var(--si-fs)); color: var(--si-ink-1); }
 .rc-n > span { display: block; overflow: hidden; font: var(--si-font-meta); color: var(--si-ink-3); white-space: nowrap; text-overflow: ellipsis; }
 .rc-s, .rc-d, .rc-a { flex: none; display: flex; align-items: center; gap: 8px; }
 .rc-x { padding: 16px 18px 18px 76px; border-top: 1px solid var(--si-hair-faint); }
