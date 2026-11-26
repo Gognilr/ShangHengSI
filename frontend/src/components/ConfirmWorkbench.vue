@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ban, Bookmark, ChevronDown, ChevronRight, CircleCheck, CircleDot, Ellipsis, Eye, FileText, Pencil, Plus, Send, Sparkle, Trash2, Users, X } from '@lucide/vue'
+import { Ban, Bookmark, Check, ChevronDown, ChevronRight, CircleCheck, CircleDot, Ellipsis, Eye, FileText, Pencil, Plus, Send, Sparkle, Trash2, Users, X } from '@lucide/vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
@@ -850,9 +850,9 @@ useHotkeys({
                   <b :title="s.text">{{ s.text }}</b>
                   <span>{{ suspectReasonLabel(s.reason) }}<template v-if="s.occurrences > 1"> · {{ s.occurrences }} 处</template><template v-if="isKept(s)"> · {{ KEPT_BY[s.kept_by ?? 'user'] }}</template></span>
                 </div>
-                <span class="choice" @click.stop>
-                  <button type="button" class="ch" :class="{ on: isKept(s) }" :disabled="locked" @click="isKept(s) ? undefined : keepOne(s)">保留</button>
-                  <button type="button" class="ch" :class="{ on: !isKept(s) }" :disabled="locked" @click="isKept(s) ? restoreOne(s) : undefined">遮住</button>
+                <span class="choice" :class="isKept(s) ? 'is-kept' : 'is-masked'" role="group" :aria-label="`${s.text}：保留原文或遮住`" @click.stop>
+                  <button type="button" class="ch ch-keep" :aria-pressed="isKept(s)" :disabled="locked" @click="isKept(s) ? undefined : keepOne(s)"><Check v-if="isKept(s)" :size="14" :stroke-width="2.25" aria-hidden="true" />{{ isKept(s) ? '已保留' : '保留' }}</button>
+                  <button type="button" class="ch ch-mask" :aria-pressed="!isKept(s)" :disabled="locked" @click="isKept(s) ? restoreOne(s) : undefined"><Check v-if="!isKept(s)" :size="14" :stroke-width="2.25" aria-hidden="true" />{{ isKept(s) ? '遮住' : '已遮住' }}</button>
                 </span>
               </li>
             </ul>
@@ -1046,9 +1046,16 @@ useHotkeys({
 .unsure-main span { overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
 .kdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--k); }
 .k-org { --k: var(--si-k-org); } .k-person { --k: var(--si-k-person); } .k-other { --k: var(--si-k-other); }
-.choice { flex: none; display: inline-flex; padding: 2px; border-radius: 9px; background: var(--si-sunken); }
-.ch { height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label-sm); cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), color var(--si-d2) var(--si-ease-out); }
-.ch.on { background: var(--si-surface-1); color: var(--si-ink-1); box-shadow: var(--si-shadow-1); }
+/* 保留 / 遮住（V351-E-01）：选中的一侧按含义着色、加对勾并写“已保留 / 已遮住”，不只靠颜色区分。
+   遮住是本机保护，用衡青；保留会把原文发给模型，用琥珀提醒。两列等宽，滑块平移，切换时宽度不跳。 */
+.choice { position: relative; isolation: isolate; flex: none; display: inline-grid; grid-template-columns: 1fr 1fr; padding: 2px; border-radius: 10px; background: var(--si-sunken); }
+.choice::before { content: ''; position: absolute; z-index: -1; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 8px; background: var(--si-blue-tint); box-shadow: inset 0 0 0 1px var(--si-brand-line); transform: translateX(100%); transition: transform var(--si-d3) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out), box-shadow var(--si-d2) var(--si-ease-out); }
+.choice.is-kept::before { transform: none; background: var(--si-warn-soft); box-shadow: inset 0 0 0 1px var(--si-warn-line); }
+.ch { display: inline-flex; align-items: center; justify-content: center; gap: 3px; height: 26px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label-sm); white-space: nowrap; cursor: pointer; transition: color var(--si-d2) var(--si-ease-out); }
+.ch[aria-pressed="false"]:hover:not(:disabled) { color: var(--si-ink-1); }
+.ch[aria-pressed="true"] { font-weight: 600; cursor: default; }
+.is-kept .ch-keep { color: var(--si-warn-ink); }
+.is-masked .ch-mask { color: var(--si-blue-ink); }
 .ch:disabled { cursor: not-allowed; }
 .row2 { display: flex; gap: 8px; margin-top: 10px; }
 .row2 :deep(.el-button) { flex: 1; margin: 0; }
