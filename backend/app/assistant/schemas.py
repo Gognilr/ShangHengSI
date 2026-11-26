@@ -45,6 +45,9 @@ class SessionItem(BaseModel):
     meeting: dict | None = None
     translation_engine: TranslationEngine | None = None
     translation_status: str | None = None
+    # 往返线（V36-F-01）：外发策略与最新一轮的状态，列表行据此画当前站
+    policy: Literal['ai', 'local_only'] = 'ai'
+    run_status: str | None = None
 
 
 class SessionCreate(BaseModel):
@@ -136,6 +139,12 @@ class HistoryItem(TaskListItem):
     translation_engine: TranslationEngine | None = None
     translation_status: str | None = None
     blocked: bool = False  # 最新一轮被发送前复检拦下（V35-F-03，工作台“待你处理”）
+    # 往返线（V36-F-01）：外发策略、最新一轮的状态、正在生成回复、会议说明行、标书模型补查状态
+    policy: Literal['ai', 'local_only'] = 'ai'
+    run_status: str | None = None
+    generating: bool = False
+    meeting: dict | None = None
+    model_state: str | None = None
 
 
 class HistoryPage(BaseModel):

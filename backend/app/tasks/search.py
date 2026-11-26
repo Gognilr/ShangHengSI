@@ -7,7 +7,8 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import false, or_, select
 from sqlalchemy.orm import Session as DbSession
 
-from app.assistant.service import review_session_clause
+from app.assistant.service import _latest_run_status, _translation_state, _translation_states, review_session_clause
+from app.bid import service as bid_service
 from app.db.models import Finding, Task, User
 from app.db.session import get_db
 from app.security.deps import current_user
@@ -36,6 +37,9 @@ class ReviewHit(BaseModel):
     title: str
     status: str
     created_at: datetime
+    # 往返线（V36-F-01）：外发策略与最新一轮的状态
+    policy: str = "ai"
+    run_status: str | None = None
 
 
 class SessionHit(BaseModel):
@@ -44,6 +48,12 @@ class SessionHit(BaseModel):
     purpose: str
     last_activity_at: datetime
     is_review: bool = False
+    # 往返线（V36-F-01）：任务状态、外发策略、最新一轮、翻译方式与状态
+    status: str = "active"
+    policy: str = "ai"
+    run_status: str | None = None
+    translation_engine: str | None = None
+    translation_status: str | None = None
 
 
 class FindingHit(BaseModel):
@@ -58,6 +68,10 @@ class BidHit(BaseModel):
     id: uuid.UUID
     title: str
     last_activity_at: datetime
+    # 往返线（V36-F-01）：解析状态、阶段、模型补查状态
+    status: str = "active"
+    stage: str = "preparing"
+    model_state: str | None = None
 
 
 class SearchResult(BaseModel):
@@ -102,11 +116,20 @@ def search(body: SearchBody, user: User = Depends(current_user), db: DbSession =
             Task.title.ilike(pattern, escape="\\"),
             or_(Task.purpose.in_(purposes), reviewed),
         ).order_by(Task.last_activity_at.desc(), Task.id.desc()).limit(LIMIT))
+    bid_rows = find("bid") if "use.bid" in perms else []
+    bids = bid_service.history_stats(db, [t.id for t in bid_rows]) if bid_rows else {}
+    review_rows = find("review") if can_review else []
+    session_rows = list(session_rows)
+    runs = _latest_run_status(db, review_rows + [t for t, _ in session_rows])
+    translations = _translation_states(db, [t for t, _ in session_rows])
     return SearchResult(
         findings=hits,
-        bids=[BidHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at) for t in find("bid")] if "use.bid" in perms else [],
-        reviews=[ReviewHit(id=t.id, title=t.title, status=t.status, created_at=t.created_at) for t in find("review")] if can_review else [],
+        bids=[BidHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at, status=t.status,
+                     stage=bids[t.id][0], model_state=bids[t.id][4]) for t in bid_rows],
+        reviews=[ReviewHit(id=t.id, title=t.title, status=t.status, created_at=t.created_at, policy=t.policy,
+                           run_status=runs.get(t.id)) for t in review_rows],
         sessions=[SessionHit(id=t.id, title=t.title, purpose=t.purpose or "chat",
-                             last_activity_at=t.last_activity_at, is_review=is_review)
+                             last_activity_at=t.last_activity_at, is_review=is_review, status=t.status, policy=t.policy,
+                             run_status=runs.get(t.id), **_translation_state(t, translations.get(t.id)))
                   for t, is_review in session_rows],
     )

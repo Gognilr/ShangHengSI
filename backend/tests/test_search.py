@@ -68,3 +68,28 @@ def test_tool_history_and_search_follow_session_purpose(db_sessionmaker, make_us
     for purpose in ("meeting", "translate"):
         history = client.get(API_PREFIX + "/assistant/sessions/history", params={"type": purpose}).json()["items"]
         assert len(history) == 1 and history[0]["purpose"] == purpose
+
+
+def test_trip_fields_on_history_and_search(db_sessionmaker, make_user, login):
+    """V36-F-01：列表行带往返线所需的外发策略与最新一轮状态；只见本人的任务。"""
+    alice, bob = make_user("trip_alice"), make_user("trip_bob")
+    for owner, title, policy in ((alice, "虚构往返合同.docx", "ai"), (alice, "虚构本机合同.docx", "local_only"), (bob, "虚构往返别人.docx", "ai")):
+        with db_sessionmaker() as db:
+            task = Task(kind="review", owner_id=owner.id, title=title, stance="sales", source="incoming", policy=policy,
+                        status="completed_local" if policy == "local_only" else "awaiting_confirm")
+            db.add(task)
+            db.flush()
+            if policy == "ai":
+                run = ReviewRun(task_id=task.id, run_no=1, status="blocked", stance="sales", source="incoming",
+                                main_doc_type="contract", created_by=owner.id)
+                db.add(run)
+                db.flush()
+                task.latest_run_id = run.id
+            db.commit()
+    client, csrf = login(alice.username)
+    rows = {r["title"]: r for r in client.get(API_PREFIX + "/assistant/sessions/history").json()["items"]}
+    assert set(rows) == {"虚构往返合同.docx", "虚构本机合同.docx"}
+    assert (rows["虚构往返合同.docx"]["policy"], rows["虚构往返合同.docx"]["run_status"]) == ("ai", "blocked")
+    assert (rows["虚构本机合同.docx"]["policy"], rows["虚构本机合同.docx"]["run_status"]) == ("local_only", None)
+    hits = client.post(URL, json={"q": "虚构往返"}, headers={"X-CSRF-Token": csrf}).json()["reviews"]
+    assert [(h["title"], h["policy"], h["run_status"]) for h in hits] == [("虚构往返合同.docx", "ai", "blocked")]

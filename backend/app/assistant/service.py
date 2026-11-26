@@ -86,6 +86,32 @@ def _run_stats(db: Session, ids):
         .where(ReviewRun.task_id.in_(ids)).group_by(ReviewRun.task_id))}
 
 
+def _latest_run_status(db: Session, rows: list[Task]) -> dict:
+    """往返线（V36-F-01）：各任务最新一轮的状态。"""
+    ids = [t.latest_run_id for t in rows if t.latest_run_id]
+    return dict(db.execute(select(ReviewRun.task_id, ReviewRun.status).where(ReviewRun.id.in_(ids))).all()) if ids else {}
+
+
+def _generating(db: Session, ids) -> set:
+    return set(db.scalars(select(AssistantMessage.task_id).where(
+        AssistantMessage.task_id.in_(ids), AssistantMessage.role == 'assistant',
+        AssistantMessage.status.in_(('queued', 'streaming'))))) if ids else set()
+
+
+def _meeting_metas(db: Session, rows: list[Task]) -> dict:
+    """会议行的说明（时长、发言人数、状态），会话列表与历史共用。"""
+    from app.db.models import DocNode
+    ids = [t.id for t in rows if t.purpose == 'meeting']
+    if not ids:
+        return {}
+    minuted = set(db.scalars(select(AssistantMessage.task_id).where(
+        AssistantMessage.task_id.in_(ids), AssistantMessage.role == 'assistant', AssistantMessage.status == 'done')))
+    speakers = dict(db.execute(select(DocNode.task_id, func.count(func.distinct(DocNode.speaker)))
+                               .where(DocNode.task_id.in_(ids), DocNode.speaker.is_not(None))
+                               .group_by(DocNode.task_id)).all())
+    return {t.id: _meeting_meta(_files(db, t), t.id in minuted, speakers.get(t.id, 0)) for t in rows if t.purpose == 'meeting'}
+
+
 def _is_review(task, count: int) -> bool:
     return task.kind == "assistant" and task.purpose == "chat" and bool(task.review_intent or count)
 
@@ -129,7 +155,7 @@ def _item(task: Task, files: list[TaskFile], *, generating: bool = False, review
                        last_activity_at=task.last_activity_at,
                        original_deleted=any(f.original_deleted_at is not None for f in files), generating=generating,
                        purpose=task.purpose, reviewing=reviewing, run_count=run_count, is_review=_is_review(task, run_count),
-                       **_translation_state(task, translation_reply))
+                       policy=task.policy, **_translation_state(task, translation_reply))
 
 
 def _meeting_meta(files: list[TaskFile], minuted: bool, speakers: int) -> dict | None:
@@ -171,7 +197,7 @@ def detail(db: Session, task: Task) -> SessionDetail:
     translation_reply = _translation_states(db, [task]).get(task.id)
     return SessionDetail(**_item(task, files, generating=generating, reviewing=reviewing, run_count=run_count,
                                  translation_reply=translation_reply).model_dump(),
-                         stance=task.stance, source=task.source, policy=task.policy,
+                         stance=task.stance, source=task.source,
                          error_message=task.error_message, created_at=task.created_at,
                          files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id], media=media[f.id],
                                             speakers=unpack(rows[f.id].speakers_enc, {}) if media[f.id] is not None else None,
@@ -668,27 +694,19 @@ def list_sessions(db: Session, user: User, q: str | None, page: int, purpose: st
     rows = db.scalars(select(Task).where(*conditions).order_by(Task.last_activity_at.desc(), Task.id.desc())
                       .offset((page - 1) * 30).limit(30))
     rows = list(rows)
-    generating = set(db.scalars(select(AssistantMessage.task_id).where(
-        AssistantMessage.task_id.in_([task.id for task in rows]), AssistantMessage.role == 'assistant',
-        AssistantMessage.status.in_(('queued', 'streaming')))))
     ids = [t.id for t in rows]
+    generating = _generating(db, ids)
     run_stats = _run_stats(db, ids)
-    minuted = set(db.scalars(select(AssistantMessage.task_id).where(
-        AssistantMessage.task_id.in_([t.id for t in rows if t.purpose == 'meeting']), AssistantMessage.role == 'assistant',
-        AssistantMessage.status == 'done'))) if ids else set()
-    from app.db.models import DocNode
     translations = _translation_states(db, rows)
-    meeting_ids = [t.id for t in rows if t.purpose == 'meeting']
-    speaker_counts = dict(db.execute(select(DocNode.task_id, func.count(func.distinct(DocNode.speaker)))
-                                     .where(DocNode.task_id.in_(meeting_ids), DocNode.speaker.is_not(None))
-                                     .group_by(DocNode.task_id)).all()) if meeting_ids else {}
+    meetings = _meeting_metas(db, rows)
+    run_status = _latest_run_status(db, rows)
     items = []
     for t in rows:
         files = _files(db, t)
         item = _item(t, files, generating=t.id in generating, run_count=run_stats.get(t.id, (0, False))[0],
                      reviewing=t.purpose == 'chat' and run_stats.get(t.id, (0, False))[1], translation_reply=translations.get(t.id))
-        if t.purpose == 'meeting':
-            item.meeting = _meeting_meta(files, t.id in minuted, speaker_counts.get(t.id, 0))
+        item.meeting = meetings.get(t.id)
+        item.run_status = run_status.get(t.id)
         items.append(item)
     return SessionPage(items=items, total=total, page=page,
                        kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')), asr_enabled=asr_enabled(), mt_enabled=mt_enabled())
@@ -750,14 +768,17 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
     bid_ids = [t.id for t, _ in rows if t.kind == "bid"]
     bids = bid_service.history_stats(db, bid_ids) if bid_ids else {}
     translations = _translation_states(db, [t for t, _ in rows])
+    generating = _generating(db, [t.id for t, _ in rows if t.kind == "assistant"])
+    meetings = _meeting_metas(db, [t for t, _ in rows])
     items = []
     for t, doc_type in rows:
         if t.kind == "bid":
-            stage, veto, todo, category = bids.get(t.id, ("preparing", 0, 0, None))
+            stage, veto, todo, category, model_state = bids.get(t.id, ("preparing", 0, 0, None, None))
             row = TaskListItem(id=t.id, title=t.title, doc_type=None, stance=t.stance, status=t.status, high_count=veto,
                                created_at=t.created_at, **bid_service.expiry(db, t, stage))
             items.append(HistoryItem(**row.model_dump(), kind="bid", stage=stage, category=category, last_activity_at=t.last_activity_at,
-                                     file_count=files.get(t.id, 0), pending_count=todo, reviewing=stage == "checking"))
+                                     file_count=files.get(t.id, 0), pending_count=todo, reviewing=stage == "checking",
+                                     policy=t.policy, model_state=model_state))
             continue
         row = tasks.list_row(db, t, doc_type)
         last = latest.get(t.id)
@@ -768,6 +789,8 @@ def history(db: Session, user: User, q: str | None, date_from, date_to, page: in
                                  latest_run_id=last.id if last and last.status in ("completed", "partial") else None,
                                  reviewing=bool(last and last.status in ("queued", "running")),
                                  blocked=bool(last and last.status == "blocked"),
+                                 policy=t.policy, run_status=last.status if last else None,
+                                 generating=t.id in generating, meeting=meetings.get(t.id),
                                  **_translation_state(t, translations.get(t.id))))
     return HistoryPage(items=items, total=total, page=page, page_size=size)
 

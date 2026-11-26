@@ -285,14 +285,18 @@ def add_files(db, task, uploads, bidder_id=None, groups=None):
 # ---------------------------------------------------------------- 历史记录（V34-B-07）
 
 def history_stats(db, task_ids):
-    """{任务: (阶段, 本机否决类问题数, 待处理数（V35-E-01 起不再逐条核对，恒为 0）, 分类名)}；列表只做粗略计数。"""
+    """{任务: (阶段, 本机否决类问题数, 待处理数（V35-E-01 起不再逐条核对，恒为 0）, 分类名, 模型补查状态)}；列表只做粗略计数。
+    模型补查状态给往返线用（V36-F-01）：未发起为 None。"""
     from app.db.models import BidCategory, BidItem
-    stages = dict(db.execute(select(BidProject.task_id, BidProject.stage).where(BidProject.task_id.in_(task_ids))).all())
+    stages, model = {}, {}
+    for tid, stage, model_state in db.execute(select(BidProject.task_id, BidProject.stage, BidProject.model_state)
+                                              .where(BidProject.task_id.in_(task_ids))).all():
+        stages[tid], model[tid] = stage, model_state
     names = dict(db.execute(select(BidProject.task_id, BidCategory.name).join(BidCategory, BidCategory.id == BidProject.category_id)
                             .where(BidProject.task_id.in_(task_ids))).all())
     veto = dict(db.execute(select(BidItem.task_id, func.count()).where(
         BidItem.task_id.in_(task_ids), BidItem.kind == "issue", BidItem.level == "veto").group_by(BidItem.task_id)).all())
-    return {i: (stages.get(i, "preparing"), veto.get(i, 0), 0, names.get(i)) for i in task_ids}
+    return {i: (stages.get(i, "preparing"), veto.get(i, 0), 0, names.get(i), model.get(i)) for i in task_ids}
 
 
 def expiry(db, task, stage):
