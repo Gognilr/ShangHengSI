@@ -7,16 +7,19 @@ import EmptyState from '@/components/EmptyState.vue'
 import { isReviewSession, sessionLocation } from '@/api/assistant'
 import { searchApi, type SearchResult } from '@/api/search'
 import { useAuthStore } from '@/stores/auth'
-import { formatDate } from '@/utils/time'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import { formatShort } from '@/utils/time'
+import { rowTrip, type Trip } from '@/utils/trip'
 
-// 全局搜索（V3-A 6.2）：操作、页面在本地过滤；审核、标书初审与会话来自接口（只含本人任务）
+// 全局搜索（V3-A 6.2，澄明二版 6.2）：操作、页面在本地过滤；审核、标书初审与会话来自接口（只含本人任务），
+// 结果按模块分组，每条带迷你往返线和最近活动时间
 const open = defineModel<boolean>({ required: true })
 const emit = defineEmits<{ 'new-session': [] }>()
 const router = useRouter()
 const auth = useAuthStore()
 
 /** mod：模块色（澄明 8.0 结果按模块分组，图标底块用模块色） */
-interface Entry { key: string; group: string; label: string; icon: Component; mod?: string; meta?: string; run: () => void }
+interface Entry { key: string; group: string; label: string; icon: Component; mod?: string; meta?: string; trip?: Trip; run: () => void }
 
 const query = ref('')
 const result = ref<SearchResult>({ reviews: [], sessions: [], findings: [], bids: [] })
@@ -49,25 +52,27 @@ const staticEntries = computed<Entry[]>(() => {
 const entries = computed<Entry[]>(() => {
   const q = query.value.trim().toLowerCase()
   const local = staticEntries.value.filter(e => !q || e.label.toLowerCase().includes(q))
-  const reviews: Entry[] = result.value.reviews.map(r => ({ key: `r-${r.id}`, group: '文件审核', label: r.title, icon: FileSearch, mod: 'review', meta: formatDate(r.created_at), run: () => void router.push({ name: 'review-result', params: { taskId: r.id } }) }))
-  const bids: Entry[] = result.value.bids.map(b => ({ key: `b-${b.id}`, group: '标书初审', label: b.title, icon: FileStack, mod: 'bid', meta: formatDate(b.last_activity_at), run: () => void router.push(`/bid/${b.id}`) }))
+  const reviews: Entry[] = result.value.reviews.map(r => ({ key: `r-${r.id}`, group: '文件审核', label: r.title, icon: FileSearch, mod: 'review', meta: formatShort(r.created_at), trip: rowTrip({ kind: 'review', status: r.status, policy: r.policy, run_status: r.run_status }), run: () => void router.push({ name: 'review-result', params: { taskId: r.id } }) }))
+  const bids: Entry[] = result.value.bids.map(b => ({ key: `b-${b.id}`, group: '标书初审', label: b.title, icon: FileStack, mod: 'bid', meta: formatShort(b.last_activity_at), trip: rowTrip({ kind: 'bid', status: b.status, stage: b.stage, model_state: b.model_state }), run: () => void router.push(`/bid/${b.id}`) }))
   const sessions: Entry[] = result.value.sessions.map(s => {
     const [group, icon, mod] = s.purpose === 'meeting' ? ['会议纪要', Mic, 'meet'] as const
       : s.purpose === 'translate' ? ['翻译', Languages, 'trans'] as const
       : auth.can('use.review') && isReviewSession(s) ? ['文件审核', FileSearch, 'review'] as const : ['对话', MessageSquare, undefined] as const
-    return { key: `s-${s.id}`, group, label: s.title, icon, mod, meta: formatDate(s.last_activity_at),
+    return { key: `s-${s.id}`, group, label: s.title, icon, mod, meta: formatShort(s.last_activity_at), trip: rowTrip({ ...s, kind: 'session' }),
       run: () => void router.push(sessionLocation(s, auth.can('use.review'))) }
   })
   const findings: Entry[] = result.value.findings.map(f => ({ key: `f-${f.id}`, group: '问题', label: f.title, icon: AlertCircle, mod: 'review', meta: f.task_title, run: () => void router.push(f.kind === 'review' ? { name: 'review-result', params: { taskId: f.task_id }, query: { finding: f.id } } : { path: `/assistant/${f.task_id}`, query: { mode: 'review' } }) }))
   return [...local.filter(e => e.group === '操作'), ...local.filter(e => e.group === '页面'), ...reviews, ...bids, ...findings,
     ...['文件审核', '对话', '会议纪要', '翻译'].flatMap(group => sessions.filter(s => s.group === group))]
 })
+// 分组标题前的识别方块用模块色；操作、页面、对话没有模块色，用衡青
+const GROUP_MOD: Record<string, string> = { 文件审核: 'review', 问题: 'review', 标书初审: 'bid', 会议纪要: 'meet', 翻译: 'trans' }
 const groups = computed(() => {
-  const out: { name: string; items: Entry[] }[] = []
+  const out: { name: string; mod?: string; items: Entry[] }[] = []
   for (const entry of entries.value) {
     const group = out[out.length - 1]
     if (group?.name === entry.group) group.items.push(entry)
-    else out.push({ name: entry.group, items: [entry] })
+    else out.push({ name: entry.group, mod: GROUP_MOD[entry.group], items: [entry] })
   }
   return out
 })
@@ -125,11 +130,11 @@ function parts(label: string): [string, string, string] {
     <div class="results" role="listbox" aria-label="搜索结果">
       <template v-if="!noResult">
         <div v-for="g in groups" :key="g.name" class="group">
-          <div class="group-title">{{ g.name }}</div>
+          <div class="group-title"><i v-if="g.mod" class="gm" :class="`m-${g.mod}`" aria-hidden="true" />{{ g.name }}</div>
           <div v-for="entry in g.items" :key="entry.key" class="entry" :class="[{ active: indexOf(entry) === active }, entry.mod ? `m-${entry.mod}` : '']" role="option" :aria-selected="indexOf(entry) === active" @mouseenter="active = indexOf(entry)" @click="choose(entry)">
             <span class="ic"><component :is="entry.icon" :size="16" :stroke-width="1.75" /></span>
-            <span class="label">{{ parts(entry.label)[0] }}<mark v-if="parts(entry.label)[1]">{{ parts(entry.label)[1] }}</mark>{{ parts(entry.label)[2] }}</span>
-            <span v-if="entry.meta" class="meta">{{ entry.meta }}</span>
+            <span class="label"><b>{{ parts(entry.label)[0] }}<mark v-if="parts(entry.label)[1]">{{ parts(entry.label)[1] }}</mark>{{ parts(entry.label)[2] }}</b><span v-if="entry.meta" class="meta">{{ entry.meta }}</span></span>
+            <SiTrip v-if="entry.trip" :trip="entry.trip" class="trip" />
             <CornerDownLeft v-if="indexOf(entry) === active" class="enter" :size="16" :stroke-width="1.75" aria-hidden="true" />
           </div>
         </div>
@@ -150,7 +155,8 @@ html[data-fx="full"] .global-search.el-dialog { background: var(--si-glass); bac
 .global-search .gs-in input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--si-ink-1); font: var(--si-font-body); font-size: calc(17px * var(--si-fs)); }
 .global-search .gs-in input::placeholder { color: var(--si-ink-4); }
 .global-search .results { padding: 8px; max-height: min(420px, 50vh); overflow-y: auto; }
-.global-search .group-title { padding: 10px 12px 6px; font: var(--si-font-caption); font-weight: 500; color: var(--si-ink-4); }
+.global-search .group-title { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; font: var(--si-font-caption); font-weight: 500; color: var(--si-ink-4); }
+.global-search .group-title .gm { width: 10px; height: 10px; border-radius: 3px; background: var(--mc, var(--si-brand-2)); }
 .global-search .entry { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--si-radius-control); color: var(--si-ink-1); font: var(--si-font-body); cursor: pointer; }
 .global-search .entry.active { background: var(--si-select-bg); }
 .global-search .entry .ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--si-radius-sm); background: var(--mc-soft, var(--si-blue-tint)); color: var(--mc, var(--si-brand-2)); }
@@ -158,9 +164,11 @@ html[data-fx="full"] .global-search.el-dialog { background: var(--si-glass); bac
 .global-search .m-bid { --mc: var(--si-m-bid); --mc-soft: var(--si-m-bid-soft); }
 .global-search .m-meet { --mc: var(--si-m-meet); --mc-soft: var(--si-m-meet-soft); }
 .global-search .m-trans { --mc: var(--si-m-trans); --mc-soft: var(--si-m-trans-soft); }
-.global-search .entry .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.global-search .entry .label { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.global-search .entry .label > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.global-search .entry .trip { flex: none; max-width: 230px; }
 .global-search .entry mark { padding: 0 1px; border-radius: 3px; background: var(--si-warn-soft); color: inherit; }
-.global-search .entry .meta { flex: none; font: var(--si-font-meta); color: var(--si-ink-3); }
+.global-search .entry .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-meta); color: var(--si-ink-3); }
 .global-search .entry .enter { flex: none; color: var(--si-ink-4); }
 .global-search .gs-foot { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-top: 1px solid var(--si-hair-faint); font: var(--si-font-meta); color: var(--si-ink-3); }
 .global-search .gs-foot .mine { margin-left: auto; }

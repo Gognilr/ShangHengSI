@@ -6,8 +6,9 @@ import { Ellipsis } from '@lucide/vue'
 import { assistantApi, isReviewSession, sessionLocation, type SessionItem } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import { useSessionsStore } from '@/stores/sessions'
-
 import { useAuthStore } from '@/stores/auth'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import { rowTrip } from '@/utils/trip'
 
 const store = useSessionsStore(), auth = useAuthStore()
 const route = useRoute(), router = useRouter()
@@ -35,10 +36,11 @@ async function remove(item: SessionItem) {
 
 function onCommand(item: SessionItem, cmd: string) { if (cmd === 'rename') rename(item); else if (cmd === 'remove') remove(item) }
 
-// 澄明 8.0：最多 8 条，每条带模块色圆点（发起过审核的为文件审核色，其余为衡青）；更多的去历史记录
+// 澄明二版 6.1：最多 8 条，每条前面是往返线的当前站（只画一个点，颜色与光圈按第二节），悬停显示全部站；更多的去历史记录
 const MAX = 8
 const shown = computed(() => store.items.filter(item => auth.can('use.assistant') || isReviewSession(item)).slice(0, MAX))
 const more = computed(() => store.total > MAX)
+const trips = computed(() => new Map(shown.value.map(item => [item.id, rowTrip({ ...item, kind: 'session' })])))
 </script>
 
 <template>
@@ -47,10 +49,12 @@ const more = computed(() => store.total > MAX)
     <ul v-if="shown.length">
       <li v-for="item in shown" :key="item.id" class="row" :class="{ current: item.id === current }">
         <router-link :to="sessionLocation(item, auth.can('use.review'))" class="link" :title="item.title" :aria-current="item.id === current ? 'page' : undefined">
-          <i class="dot" :class="{ review: auth.can('use.review') && isReviewSession(item), 'si-breath': item.generating }" :aria-label="item.generating ? '生成中' : undefined" />
+          <el-tooltip effect="light" placement="right" :show-after="250" :offset="14" popper-class="recent-trip-pop">
+            <SiTrip :trip="trips.get(item.id)!" scale="dot" />
+            <template #content><SiTrip :trip="trips.get(item.id)!" /></template>
+          </el-tooltip>
           <span class="title">{{ item.title }}</span>
-          <span v-if="item.reviewing" class="tag tag--busy">审核中</span>
-          <span v-else-if="store.finished.has(item.id) && item.id !== current" class="tag tag--done">审核完成</span>
+          <span v-if="store.finished.has(item.id) && item.id !== current" class="tag tag--done">审核完成</span>
         </router-link>
         <el-dropdown trigger="click" placement="bottom-end" @command="onCommand(item, $event)">
           <button type="button" class="more" aria-label="会话操作" :title="`“${item.title}”的操作`"><Ellipsis :size="16" :stroke-width="1.75" /></button>
@@ -76,14 +80,15 @@ ul { margin: 0; padding: 0; list-style: none; }
 .link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 4px 0 12px; color: var(--si-ink-2); text-decoration: none; font: var(--si-font-body); font-size: calc(13.5px * var(--si-fs)); }
 .row.current .link { color: var(--si-ink-1); font-weight: 600; }
 .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--si-brand-2); }
-.dot.review { background: var(--si-m-review); }
 .tag { flex: none; padding: 0 6px; border-radius: var(--si-radius-badge); font: var(--si-font-badge); }
-.tag--busy { color: var(--si-info-ink); background: var(--si-info-soft); }
 .tag--done { color: var(--si-blue-ink); background: var(--si-blue-tint); }
 .more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 3px; padding: 0; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-3); cursor: pointer; opacity: 0; transition: opacity var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
 .row:hover .more, .row:focus-within .more, .more[aria-expanded="true"] { opacity: 1; }
 .more:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 .more-link { display: block; margin: 4px 0 0; padding: 6px 12px; color: var(--si-ink-3); font: var(--si-font-meta); text-decoration: none; }
 .more-link:hover { color: var(--si-blue-ink); }
+</style>
+<style>
+/* 悬停提示里是整条迷你往返线（teleport 到 body，不加 scoped） */
+.recent-trip-pop.el-popper { padding: 8px 12px; box-shadow: var(--si-shadow-3); }
 </style>

@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import false, or_, select
 from sqlalchemy.orm import Session as DbSession
 
-from app.assistant.service import _latest_run_status, _translation_state, _translation_states, review_session_clause
+from app.assistant.service import _latest_run_status, _meeting_metas, _translation_state, _translation_states, review_session_clause
 from app.bid import service as bid_service
 from app.db.models import Finding, Task, User
 from app.db.session import get_db
@@ -54,6 +54,8 @@ class SessionHit(BaseModel):
     run_status: str | None = None
     translation_engine: str | None = None
     translation_status: str | None = None
+    # 会议的说明行（V36-F-03）：迷你往返线按转写、校对、纪要的状态画当前站
+    meeting: dict | None = None
 
 
 class FindingHit(BaseModel):
@@ -122,6 +124,7 @@ def search(body: SearchBody, user: User = Depends(current_user), db: DbSession =
     session_rows = list(session_rows)
     runs = _latest_run_status(db, review_rows + [t for t, _ in session_rows])
     translations = _translation_states(db, [t for t, _ in session_rows])
+    meetings = _meeting_metas(db, [t for t, _ in session_rows])
     return SearchResult(
         findings=hits,
         bids=[BidHit(id=t.id, title=t.title, last_activity_at=t.last_activity_at, status=t.status,
@@ -130,6 +133,7 @@ def search(body: SearchBody, user: User = Depends(current_user), db: DbSession =
                            run_status=runs.get(t.id)) for t in review_rows],
         sessions=[SessionHit(id=t.id, title=t.title, purpose=t.purpose or "chat",
                              last_activity_at=t.last_activity_at, is_review=is_review, status=t.status, policy=t.policy,
-                             run_status=runs.get(t.id), **_translation_state(t, translations.get(t.id)))
+                             run_status=runs.get(t.id), meeting=meetings.get(t.id),
+                             **_translation_state(t, translations.get(t.id)))
                   for t, is_review in session_rows],
     )
