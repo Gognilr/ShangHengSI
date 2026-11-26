@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="zh-CN" data-shell="light" data-fx="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商衡SI · 澄明二版「衡线」效果稿（V36-F-00）</title>
+<link rel="icon" href="../v35/brand/favicon.svg">
+<link rel="stylesheet" href="../../../frontend/src/styles/fonts.css">
+<link rel="stylesheet" href="../v35/preview.css">
+<link rel="stylesheet" href="../v35/preview-pages.css">
+<link rel="stylesheet" href="preview.css">
+<script src="icons.js"></script>
+<script src="illus.js"></script>
+</head>
+<body>
+<!--
+  效果稿说明：右下角控制条切换页面（按规范第六节编号）、浅色 / 深色、动效档（完整 / 精简 / 关闭）。
+  地址可带参数，例如 preview.html#confirm&dark&lite&clean（clean 隐去控制条，用于截图）。
+  外壳、按钮、卡片沿用 V3.5 澄明稿（../v35/preview*.css），本稿只叠加二版新增。所有名称、金额均为虚构。
+-->
+
+<!-- ================= 6.3 登录 ================= -->
+<div class="screen full" id="s-login">
+  <div class="login">
+    <div class="login-brand">
+      <div class="aura dark-aura"><i></i><i></i><i></i></div>
+      <div class="lb-in">
+        <div data-mark="96" data-detail="1" data-inverse="1" class="lb-mark"></div>
+        <h1 class="f-hero lb-title">商务文件的安全初审助手</h1>
+        <p class="lb-sub">原件留在本机，真实名称遮住后才交给模型，结果回来在本机还原。</p>
+        <div class="lb-trip" id="lbTrip">
+          <svg viewBox="0 0 560 64" aria-hidden="true">
+            <path class="lt-l" d="M10 32H550"/>
+            <path class="lt-run" id="ltRun" d="M70 32H490"/>
+            <g id="ltNodes"></g>
+          </svg>
+          <div class="lt-labels" role="list" aria-label="一次往返">
+            <div role="listitem"><b>原件不出内网</b><span>在本机读取</span></div>
+            <div role="listitem"><b>名称发出前遮住</b><span>换成代号再发送</span></div>
+            <div role="listitem"><b>模型只见代号</b><span>经网关复检后发出</span></div>
+            <div role="listitem"><b>回到本机还原</b><span>换回真实名称</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="lb-foot"><span>商衡SI 3.6.0</span><span>仅限公司内网使用</span></div>
+    </div>
+    <div class="login-side">
+      <div class="login-card">
+        <h2 class="f-page">登录</h2>
+        <p class="f-aux mt8">用公司分配的账号登录</p>
+        <label class="fld mt24"><span>账号</span><div class="inp lg focus"><span data-i="user-round"></span><input value="wang.jl"></div></label>
+        <label class="fld mt16"><span>密码</span><div class="inp lg"><span data-i="key-round"></span><input type="password" value="••••••••"><span data-i="eye-off"></span></div></label>
+        <div class="row mt16"><label class="chk on"><i data-i="check"></i>记住账号</label><span class="ml-auto f-aux">忘记密码请联系系统管理员</span></div>
+        <button class="btn pri lg block mt24" data-go="home">登录</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <!-- ================= 6.1 外壳 ================= -->
+  <aside class="side">
+    <div class="side-logo"><span data-mark="28"></span><span class="wm">商衡<em>SI</em></span><button class="side-collapse" title="收起侧栏"><span data-i="panel-left"></span></button></div>
+    <button class="new-chat"><span data-i="plus"></span>新建会话<span class="kbd">Ctrl N</span></button>
+    <a class="nav" data-nav="home"><span data-i="house"></span>工作台</a>
+    <div class="nav-g">文件审查</div>
+    <a class="nav m-review" data-nav="review"><span data-i="file-search"></span>文件审核<span class="cnt" title="等你确认遮住的内容">2</span></a>
+    <a class="nav m-review" data-nav="compare"><span data-i="git-compare"></span>合同对比</a>
+    <a class="nav m-bid" data-nav="bid"><span data-i="file-stack"></span>标书初审</a>
+    <div class="nav-g">工具</div>
+    <a class="nav m-meet" data-nav="meet"><span data-i="mic"></span>会议纪要<span class="cnt" title="转写完成待校对">1</span></a>
+    <a class="nav m-trans" data-nav="trans"><span data-i="languages"></span>翻译</a>
+    <div class="nav-g"></div>
+    <a class="nav" data-nav="history"><span data-i="clock-fading"></span>历史记录</a>
+    <a class="nav" data-nav="search"><span data-i="search"></span>搜索<span class="kbd">Ctrl K</span></a>
+    <div class="nav-g">近期会话</div>
+    <div class="recent" id="recent"></div>
+    <div class="acct" data-nav="set-me">
+      <div class="avatar">王<i class="adm" title="有 1 条管理提醒"></i></div>
+      <div class="who"><b>王经理</b><span>采购部</span></div>
+      <button class="ibtn" data-act="theme" title="切换浅色 / 深色"><span data-i="moon"></span></button>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+
+  <!-- ================= 〇 衡线组件 ================= -->
+  <section class="screen" id="s-kit">
+    <div class="page w1200 enter">
+      <h1 class="f-page">衡线组件</h1>
+      <p class="sub">往返线三种尺度与全部状态、两个地带、就地卡、迷你图表与物件插画。颜色说在哪里，光圈说怎么样。</p>
+
+      <div class="card mt24" style="padding:22px 24px">
+        <div class="row gap12"><b class="f-block">SiTrip · 同一状态的三种尺度</b><span class="spec-ref ml-auto">规范第二节</span></div>
+        <div class="row gap10 mt16" style="flex-wrap:wrap">
+          <span class="f-aux">模块</span><div class="ctrl" id="kitMod"></div>
+        </div>
+        <div class="row gap10 mt10" style="flex-wrap:wrap">
+          <span class="f-aux">状态</span><div class="ctrl" id="kitSt"></div>
+          <button class="btn sm sec ml-auto" id="kitWalk"><span data-i="play"></span>走一遍</button>
+        </div>
+        <div class="st-grid mt20">
+          <span>工具条</span><div class="demo-bar" id="kitBar"></div>
+          <span>迷你</span><div id="kitMini"></div>
+          <span>只画当前站</span><div id="kitDot"></div>
+          <span>读屏</span><code class="f-aux" id="kitAria"></code>
+        </div>
+      </div>
+
+      <div class="card mt16" style="padding:22px 24px">
+        <div class="row"><b class="f-block">迷你尺度 · 状态全集</b><span class="spec-ref ml-auto">8px 点 · 2px 线 · 宽 80</span></div>
+        <div class="cols2 mt16" id="kitAll"></div>
+      </div>
+
+      <div class="gal mt16">
+        <div class="card">
+          <h4>SiZone · 两个地带</h4><p class="gs">区块级底色。本机为青，带锁或计算器；模型为紫，带星点。计数在标题里。</p>
+          <div class="zone l"><div class="zh"><span data-i="calculator"></span>本机计算 · 结果确定<span class="zc">3</span><span class="za"><button class="btn sm txt">展开</button></span></div>
+            <div class="card" style="padding:10px 14px;font-size:13.5px">各期付款合计 <b class="num">4,200,000.00</b> 与总价一致</div></div>
+          <div class="zone m"><div class="zh"><span data-i="sparkles"></span>AI 建议 · 请核实<span class="zc">6</span></div>
+            <div class="card" style="padding:10px 14px;font-size:13.5px">逾期未验收即视为合格，对采购方不利</div></div>
+        </div>
+        <div class="card">
+          <h4>SiNotice · 就地卡</h4><p class="gs">原因加怎么办。只有“说明”可以关闭。</p>
+          <div class="ntc info"><span class="ni"><span data-i="info"></span></span><div class="nb"><b>扫描页先按原件显示</b><p>识别完成后可切换到逐字对照。</p></div><button class="ibtn sm nx"><span data-i="x"></span></button></div>
+          <div class="ntc warn mt8"><span class="ni"><span data-i="triangle-alert"></span></span><div class="nb"><b>第 7、9 页是扫描件，结论为初步</b><p>识别完成后会自动更新。</p></div></div>
+          <div class="ntc err mt8"><span class="ni"><span data-i="circle-alert"></span></span><div class="nb"><b>模型没有返回结果</b><p>接口超时 60 秒。可以重试，或换一个模型。</p><div class="na"><button class="btn sm sec"><span data-i="refresh-cw"></span>重试</button></div></div></div>
+        </div>
+        <div class="card">
+          <h4>SiBadge · 胶囊徽标</h4><p class="gs">浅底深字全圆。取代 el-tag。</p>
+          <div class="row gap8" style="flex-wrap:wrap"><span class="badge b-neu">中性</span><span class="badge b-brand"><span data-i="lock"></span>全程本机</span><span class="badge b-ai"><span data-i="sparkle"></span>审核默认</span><span class="badge b-hi"><i class="d"></i>严重 2</span><span class="badge b-mid"><i class="d"></i>待校对</span><span class="badge b-lo"><i class="d"></i>低</span><span class="badge b-mod m-bid">标书</span><span class="badge b-k k-amount">金额 6</span></div>
+          <h4 class="mt20">SiSpark · SiRing · SiStack</h4><p class="gs">计数画柱，用量画环，构成画分段条。</p>
+          <div class="row gap20"><span class="spark-c" data-spark="3,5,2,0,0,6,8,4,7,9,3,0,0,5,6,8,10,4,6,0,0,7" style="--sc:var(--si-ai)"></span><span class="sring" data-ring="46"></span><span class="sring hot" data-ring="91"></span>
+            <div class="grow"><div class="stackbar" data-stack="org:12,person:6,contact:4,id:2,addr:3,amount:8,other:2"></div></div></div>
+        </div>
+        <div class="card">
+          <h4>表单 · 左标签</h4><p class="gs">标签宽 140、控件宽 360，说明放在控件下方。</p>
+          <div class="frm">
+            <div class="fr"><label>每人每天上限</label><div class="fx"><div class="inp36"><input value="200"><span class="f-aux">次</span></div><em>超过后当天不再调用模型，第二天自动恢复。</em></div></div>
+            <div class="fr"><label>超限后提醒</label><div class="fx"><div class="row gap8"><span class="sw2 on"></span><span class="f-body">提醒系统管理员</span></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt16" style="padding:22px 24px">
+        <div class="row"><b class="f-block">物件插画正稿</b><span class="f-aux ml-auto">悬停才动 · 线条 · 模块色 · 单个不超过 30 个元素 · illus/*.svg</span></div>
+        <div class="illus-row mt16">
+          <div class="ib hov m-review"><div class="il-host" data-illus="stack"></div><span>文件审核 · 纸叠</span></div>
+          <div class="ib hov m-compare"><div class="il-host" data-illus="pair"></div><span>合同对比 · 两张纸</span></div>
+          <div class="ib hov m-bid"><div class="il-host" data-illus="table"></div><span>标书初审 · 开标桌</span></div>
+          <div class="ib hov m-meet"><div class="il-host" data-illus="voiceprint"></div><span>会议纪要 · 声纹带</span></div>
+          <div class="ib hov m-trans"><div class="il-host" data-illus="spread"></div><span>翻译 · 对开两页</span></div>
+        </div>
+      </div>
+
+      <div class="card mt16" style="padding:22px 24px">
+        <div class="row"><b class="f-block">对比度核算（WCAG 2.x 相对亮度公式）</b><span class="f-aux ml-auto">半透明浅底先叠到纸面或卡片上再算 · 文字 ≥ 4.5，图形 ≥ 3</span></div>
+        <div class="cols2 mt16">
+          <table class="ctbl"><thead><tr><th>浅色 · 胶囊字</th><th>原取值</th><th>比值</th><th>改为</th><th>比值</th></tr></thead><tbody id="ctL"></tbody></table>
+          <table class="ctbl"><thead><tr><th>深色 · 文字</th><th>前景</th><th>叠后底色</th><th>比值</th></tr></thead><tbody id="ctD"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 6.4 工作台 ================= -->
+  <section class="screen" id="s-home">
+    <div class="hub">
+      <div class="aura"><i></i><i></i><i></i></div>
+      <div class="hub-in enter">
+        <div class="greet">
+          <div data-mark="44" class="greet-mark"></div>
+          <h1 class="f-greet">下午好，王经理</h1>
+          <p class="greet-sub">把合同、标书或录音交给我。原件和真实名称只留在本机。</p>
+        </div>
+        <div class="composer glass">
+          <textarea placeholder="问一个问题，或把文件拖进来…" rows="2"></textarea>
+          <div class="cp-bar">
+            <button class="cp-btn" title="添加文件"><span data-i="paperclip"></span>添加文件</button>
+            <button class="cp-btn ai-pick"><span data-i="sparkle"></span>DeepSeek-V3<span data-i="chevron-down"></span></button>
+            <button class="cp-btn"><span data-i="briefcase"></span>立场：采购方<span data-i="chevron-down"></span></button>
+            <button class="send" title="发送"><span data-i="arrow-up"></span></button>
+          </div>
+        </div>
+        <div class="quick">
+          <button><span data-i="file-search"></span>全面审核这份合同</button>
+          <button><span data-i="pencil"></span>起草回复函</button>
+          <button><span data-i="list-checks"></span>核对单证</button>
+          <button><span data-i="columns-2"></span>比较几份报价</button>
+        </div>
+        <div class="mods">
+          <a class="mod lift hov m-review" data-go="review"><div class="illus obj" data-illus="stack"></div>
+            <div class="mod-b"><b>文件审核</b><p>合同、报价、订单、函件，逐条给出意见</p><span class="mod-st warn"><i></i>2 份等你确认</span></div></a>
+          <a class="mod lift hov m-bid" data-go="bid"><div class="illus obj" data-illus="table"></div>
+            <div class="mod-b"><b>标书初审</b><p>开标时找出会被否决的严重问题</p><span class="mod-st">上次：泵站改造工程 11-19</span></div></a>
+          <a class="mod lift hov m-meet" data-go="meet"><div class="illus obj" data-illus="voiceprint"></div>
+            <div class="mod-b"><b>会议纪要</b><p>本机转写录音，整理议题、决议与待办</p><span class="mod-st warn"><i></i>1 场待校对</span></div></a>
+          <a class="mod lift hov m-trans" data-go="trans"><div class="illus obj" data-illus="spread"></div>
+            <div class="mod-b"><b>翻译</b><p>本机翻译不外发，或遮住名称后云端翻译</p><span class="mod-st">上次：Supply Agreement 11-17</span></div></a>
+        </div>
+        <div class="todo-sec">
+          <div class="sec-h"><span class="f-block">待你处理</span><span class="badge b-mid">4</span></div>
+          <div class="card todo-list">
+            <div class="td"><span class="mod-ic s m-review"><span data-i="file-search"></span></span><div class="grow"><b>设备采购合同（第二稿）.docx</b><span>已遮住 37 处名称与金额</span></div><span data-trip="review" data-at="1" data-st="wait" data-note="等你确认"></span><button class="btn sm pri" data-go="confirm">去确认</button></div>
+            <div class="td"><span class="mod-ic s m-review"><span data-i="file-search"></span></span><div class="grow"><b>年度维保服务合同.pdf</b><span>有 2 处名称没有遮住</span></div><span data-trip="review" data-at="2" data-st="block" data-note="复检拦截 2 处"></span><button class="btn sm sec" data-go="confirm-b">去处理</button></div>
+            <div class="td"><span class="mod-ic s m-meet"><span data-i="mic"></span></span><div class="grow"><b>周例会 11-18</b><span>52 分钟 · 4 位发言人</span></div><span data-trip="meet" data-at="1" data-st="wait" data-note="转写完成，待校对"></span><button class="btn sm sec" data-go="meetp">去校对</button></div>
+            <div class="td"><span class="mod-ic s m-bid"><span data-i="file-stack"></span></span><div class="grow"><b>泵站改造工程 · 丙机电投标文件.pdf</b><span>文件已加密，需要密码或重新上传</span></div><span data-trip="bid" data-at="0" data-st="fail" data-note="读取失败"></span><button class="btn sm sec">重新上传</button></div>
+          </div>
+        </div>
+        <div class="trust2">
+          <svg class="exit" viewBox="0 0 64 12" aria-hidden="true"><path d="M5 6H32" stroke="var(--si-trip-l)" stroke-width="2" stroke-linecap="round"/><path d="M32 6H59" stroke="var(--si-trip-m)" stroke-width="2" stroke-linecap="round"/><circle cx="5" cy="6" r="4" fill="var(--si-trip-l)"/><circle cx="32" cy="6" r="4" fill="var(--si-trip-l)"/><circle cx="59" cy="6" r="4" fill="var(--si-trip-m)"/></svg>
+          <span>本月本机遮住<b data-count="1284">1,284</b>处</span><i class="sep"></i>
+          <span>发送前复检拦截<b data-count="7">7</b>次</span><i class="sep"></i>
+          <span>经网关发出<b data-count="96">96</b>次</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 6.2 全局搜索 ================= -->
+  <section class="screen" id="s-search">
+    <div class="hub ghost">
+      <div class="aura"><i></i><i></i><i></i></div>
+      <div class="hub-in"><div class="greet"><div data-mark="44" class="greet-mark"></div><h1 class="f-greet">下午好，王经理</h1></div><div class="composer glass" style="height:136px"></div></div>
+    </div>
+    <div class="scrim">
+      <div class="pop gsearch glass">
+        <div class="gs-in"><span data-i="search"></span><input value="维保"><span class="kbd">Esc</span></div>
+        <div class="gs-body">
+          <div class="gs-g"><span class="mod-ic s m-review" style="width:18px;height:18px;border-radius:5px;display:inline-flex;margin-right:6px;vertical-align:-4px"></span>文件审核</div>
+          <div class="gs-r hv m-review"><span class="mod-ic s"><span data-i="file-search"></span></span><div class="grow"><b>年度<mark>维保</mark>服务合同</b><span>销售方立场 · 11-20 10:42</span></div><span data-trip="review" data-at="4" data-st="done" data-note="已完成 · 严重 2"></span><span data-i="corner-down-left" class="t4"></span></div>
+          <div class="gs-r m-review"><span class="mod-ic s"><span data-i="file-search"></span></span><div class="grow"><b>空调<mark>维保</mark>补充协议</b><span>采购方立场 · 11-06 15:20</span></div><span data-trip="review" data-at="1" data-st="wait" data-note="等你确认"></span></div>
+          <div class="gs-g"><span class="mod-ic s m-meet" style="width:18px;height:18px;border-radius:5px;display:inline-flex;margin-right:6px;vertical-align:-4px"></span>会议纪要</div>
+          <div class="gs-r m-meet"><span class="mod-ic s"><span data-i="mic"></span></span><div class="grow"><b>设备<mark>维保</mark>协调会</b><span>38 分钟 · 11-12</span></div><span data-trip="meet" data-at="5" data-st="done" data-note="纪要已生成"></span></div>
+          <div class="gs-g"><span class="mod-ic s m-chat" style="width:18px;height:18px;border-radius:5px;display:inline-flex;margin-right:6px;vertical-align:-4px"></span>对话</div>
+          <div class="gs-r m-chat"><span class="mod-ic s"><span data-i="message-square"></span></span><div class="grow"><b><mark>维保</mark>响应时间一般怎么约定</b><span>11-02</span></div><span data-trip="chat" data-at="4" data-st="done" data-note="已回答"></span></div>
+        </div>
+        <div class="gs-foot"><span><span class="kbd">↑</span><span class="kbd">↓</span> 选择</span><span><span class="kbd">Enter</span> 打开</span><span class="ml-auto">只搜索你自己的记录</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 6.5 对话页 ================= -->
+  <section class="screen" id="s-chat">
+    <div class="chat-wrap">
+      <div class="chat-main">
+        <div class="chat-head"><b>设备采购合同（第二稿）</b><span class="ai-tag"><span data-i="sparkle"></span>DeepSeek-V3</span><button class="btn sm sec ml-auto"><span data-i="panel-right"></span>文件</button></div>
+        <div class="chat-col">
+          <div class="msg-u"><div class="att-chip"><span class="mod-ic s m-review" style="width:28px;height:28px;border-radius:8px"><span data-i="file-text"></span></span><span>设备采购合同（第二稿）.pdf</span><span data-trip="chat" data-at="4" data-st="done" data-note="已遮住 37 处"></span></div><div class="bubble mt8">付款条件对我们采购方有什么风险？顺便算一下各期金额。</div></div>
+          <div class="msg-a answer-zone">
+            <div class="ai-line"><span class="ai-tag"><span data-i="sparkle"></span>DeepSeek · 只见遮住后的文字</span><span class="f-aux">用时 18 秒</span></div>
+            <div class="zone l mt8"><div class="zh"><span data-i="calculator"></span>本机计算 · 结果确定<span class="f-aux ml-auto" style="font-weight:400">按合同第 4.1 条逐期相加</span></div>
+              <table class="calc-t">
+                <tr><td>预付款 30%</td><td class="num">¥ 1,260,000.00</td></tr>
+                <tr><td>到货款 40%</td><td class="num">¥ 1,680,000.00</td></tr>
+                <tr><td>验收款 25%</td><td class="num">¥ 1,050,000.00</td></tr>
+                <tr><td>质保金 5%</td><td class="num">¥ 210,000.00</td></tr>
+                <tr class="sum"><td>合计</td><td class="num">¥ 4,200,000.00 <span class="badge b-ok"><span data-i="check"></span>与合同总价一致</span></td></tr>
+              </table></div>
+            <div class="zone m"><div class="zh"><span data-i="sparkles"></span>AI 建议 · 请核实</div>
+              <div class="f-read answer">
+                <p>从采购方角度看，付款条件主要有三处风险：</p>
+                <p><b>1. 预付比例偏高、没有保函。</b>第 4.1 条约定签约后 7 日内支付 30% 预付款，但没有要求青禾科技有限公司提供履约银行保函。建议增加“乙方应在收到预付款前提交等额银行保函”。</p>
+                <p><b>2. 验收款与验收结果没有挂钩。</b>第 4.1 条写“设备到货安装后支付 25%”，没有写明以验收合格为前提。</p>
+              </div>
+              <div class="receipt" data-act="receipt">
+                <div class="rh"><span data-i="send"></span><b>实际发送内容</b><span class="sp"></span>遮住 37 处<span class="sp"></span><span class="badge b-brand" style="height:20px"><span data-i="shield-check"></span>复检通过</span><span class="sp"></span>DeepSeek-V3<span data-i="chevron-down" class="chev ml-auto"></span></div>
+                <div class="rb">第四条　付款方式　4.1 合同总价为人民币〔金额 1〕（大写：〔金额 1·大写〕），甲方按以下方式支付：签约后 7 日内支付 30%；设备到货后支付 40%；安装后支付 25%；余款 5% 作为质保金……
+4.2 〔乙方〕应在收到每期款项后 5 个工作日内开具等额增值税专用发票。
+
+用户问题：付款条件对我们采购方有什么风险？顺便算一下各期金额。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="chat-dock">
+          <div class="composer flat">
+            <textarea placeholder="继续追问…" rows="1"></textarea>
+            <div class="cp-bar"><button class="cp-btn"><span data-i="paperclip"></span>添加文件</button><button class="cp-btn ai-pick"><span data-i="sparkle"></span>DeepSeek-V3<span data-i="chevron-down"></span></button><button class="send" title="发送"><span data-i="arrow-up"></span></button></div>
+          </div>
+          <p class="f-aux dock-note">模型只看到遮住名称后的文字。AI 建议请结合原文核实。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 6.6 文件审核入口 ================= -->
+  <section class="screen" id="s-review">
+    <div class="page w960 enter">
+      <h1 class="f-page">文件审核</h1>
+      <p class="sub">合同、报价、订单、函件。原件只在本机读取，名称遮住后才交给模型。</p>
+      <div class="pile hov mt24 m-review" id="pile">
+        <div class="il-host" data-illus="stack"></div>
+        <div>
+          <h2>把文件放到这叠纸上</h2>
+          <p class="ph">也可以点击选择，或按 Ctrl+V 粘贴。一次可以放多份，会按同一项目一起审核。</p>
+          <div class="pa"><button class="btn pri lg" id="pilePick"><span data-i="upload"></span>选择文件</button><span class="f-aux">拖进来时最上一张会抬起</span></div>
+          <p class="pf">支持 Word、PDF、扫描件图片、Excel · 单个不超过 50 MB</p>
+          <div class="pile-in" id="pileIn"></div>
+        </div>
+      </div>
+      <div class="sec-t"><b class="f-block">最近的审核</b><a class="btn sm txt ml-auto" data-go="history">全部历史<span data-i="chevron-right"></span></a></div>
+      <div id="tlReview"></div>
+    </div>
+  </section>
+
+  <!-- ================= 6.7 脱敏确认 ================= -->
+  <section class="screen" id="s-confirm">
+    <div class="wbar">
+      <button class="ibtn"><span data-i="arrow-left"></span></button>
+      <div class="ttl"><b>设备采购合同（第二稿）.pdf</b><span>合同 · 采购方立场 · 12 页</span></div>
+      <div class="ml-auto" id="confirmTrip" data-trip="review" data-scale="bar" data-at="1" data-st="wait" data-note="等你确认" data-act="去确认" data-tm="0:42"></div>
+    </div>
+    <div class="ws">
+      <div class="stage" id="confirmStage">
+        <div class="stage-top" style="max-width:760px;margin:0 auto 14px;display:flex;align-items:center;gap:12px">
+          <div class="seg" id="srcSeg"><button class="on" data-v="text">文字件</button><button data-v="scan">扫描页</button></div>
+          <span class="f-aux">演示：扫描页显示原件页图时，滑块退回二选一开关</span>
+        </div>
+        <div id="revealHost">
+          <div class="reveal-hint"><span data-i="move-horizontal"></span>拖动紫线逐字对照<span class="kbd">←</span><span class="kbd">→</span>每次 5%<span class="kbd">V</span>全部切换</div>
+          <div class="reveal" id="reveal">
+            <span class="tagL"><span data-i="file-text"></span>原文</span><span class="tagR"><span data-i="sparkle"></span>模型将看到的</span>
+            <div class="ly lr" id="lyRaw"></div>
+            <div class="ly lc" id="lyCode" aria-hidden="true"></div>
+            <div class="handle"><div class="knob" tabindex="0" role="slider" aria-label="对照位置：左边原文，右边模型将看到的" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" id="knob"><span data-i="arrow-left-right"></span></div></div>
+          </div>
+        </div>
+        <div id="scanHost" hidden>
+          <div class="reveal-hint"><div class="seg"><button class="on">原件</button><button>模型将看到的</button></div><span>扫描页没有逐字对应，用二选一切换</span><button class="btn sm sec"><span data-i="scan-text"></span>校对识别文字</button></div>
+          <div class="scanpage"><div class="sl" style="width:40%;margin:0 auto 26px"></div><div class="sl"></div><div class="sl" style="width:92%"></div><div class="sl" style="width:86%"></div><div class="sl"></div><div class="sl" style="width:70%"></div><div class="sl mt24"></div><div class="sl" style="width:94%"></div><div class="sl" style="width:80%"></div><div class="stamp"></div></div>
+        </div>
+      </div>
+      <aside class="rpanel w420">
+        <div class="rp-scroll">
+          <div id="blockCard" hidden>
+            <div class="ntc block"><span class="ni"><span data-i="shield-alert"></span></span><div class="nb"><b>发送前复检拦下 2 处</b><p>这些文字看起来是真实名称，但没有遮住。处理后才能发送。</p>
+              <div class="hits"><div><span class="pill k-org">华东远拓</span><span class="grow"><em>第 4.2 条 · 像单位简称</em></span><button class="btn sm sec">遮住</button></div><div><span class="pill k-person">宋明远</span><span class="grow"><em>第一条 · 像人名</em></span><button class="btn sm sec">遮住</button></div></div>
+              <div class="na"><button class="btn sm txt">不是名称，照常发送</button></div></div></div>
+          </div>
+          <div class="card rp-card">
+            <div class="rp-h"><span data-i="users"></span><b>签约方与我方</b></div>
+            <div class="party me"><span class="code">甲</span><div class="grow"><b>远拓精密制造有限公司</b><span>简称：远拓精密 · <em>我方</em></span></div><button class="ibtn sm"><span data-i="pencil"></span></button></div>
+            <div class="party"><span class="code b">乙</span><div class="grow"><b>青禾科技有限公司</b><span>简称：青禾科技、青禾</span></div><button class="ibtn sm"><span data-i="pencil"></span></button></div>
+            <div class="row mt12"><span class="f-aux">我方是</span><div class="seg ml-auto"><button class="on">甲方</button><button>乙方</button><button>都不是</button></div></div>
+          </div>
+          <div class="card rp-card">
+            <div class="rp-h"><span data-i="eye"></span><b>需要你看一眼的</b><span class="badge b-mid ml-auto">2</span></div>
+            <div class="unsure"><span class="k-person"><i class="kdot"></i></span><div class="grow"><b>宋明远</b><span>第一条 · 可能是人名</span></div><div class="seg"><button>保留</button><button class="on">遮住</button></div></div>
+            <div class="unsure"><span class="k-other"><i class="kdot"></i></span><div class="grow"><b>HX-2026-118</b><span>第 1 页页眉 · 可能是项目编号</span></div><div class="seg"><button class="on">保留</button><button>遮住</button></div></div>
+          </div>
+          <div class="card rp-card send-card">
+            <div class="rp-h"><span data-i="send"></span><b>将要发送的</b><span class="f-aux ml-auto">点一段只看这一类</span></div>
+            <div class="stackbar" id="kStack" data-stack="org:9,person:5,contact:4,id:2,addr:3,amount:11,other:3" data-pick="1"></div>
+            <ul class="send-list mt12">
+              <li><span data-i="file-text"></span>正文 <b class="num">8,416</b> 字，已在本机遮住 <b class="num">37</b> 处</li>
+              <li><span data-i="ban"></span>不发送原件、图片和文件名</li>
+              <li><span data-i="sparkle" class="t-ai"></span>模型：DeepSeek-V3</li>
+            </ul>
+          </div>
+        </div>
+        <div class="rp-foot" id="confirmFoot">
+          <ul class="checks"><li class="ok"><span data-i="circle-check"></span>已选我方</li><li class="ok"><span data-i="circle-check"></span>签约方已核对</li><li class="todo"><span data-i="circle-dot"></span>还有 2 处需要你看一眼</li></ul>
+          <button class="btn pri lg block mt12"><span data-i="send"></span>确认发送并开始审核</button>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= 6.8 审核结果 ================= -->
+  <section class="screen" id="s-result">
+    <div class="wbar">
+      <button class="ibtn"><span data-i="arrow-left"></span></button>
+      <div class="ttl"><b>设备采购合同（第二稿）.pdf</b><span>合同 · 采购方立场 · 第 1 轮</span></div>
+      <span id="resTrip" data-trip="review" data-scale="bar" data-at="4" data-st="done" data-took="1 分 12 秒"></span>
+      <div class="row gap8 ml-auto"><button class="btn sm txt" id="replayRestore"><span data-i="rotate-ccw"></span>重放还原扫描</button><button class="btn sec" data-act="receipt-open"><span data-i="send"></span>外发回执</button><button class="btn sec"><span data-i="message-square"></span>追问</button><button class="btn sec"><span data-i="refresh-cw"></span>重新审核</button><button class="btn pri"><span data-i="download"></span>导出<span data-i="chevron-down"></span></button></div>
+    </div>
+    <div class="ws">
+      <div class="stage" id="resStage">
+        <div class="paper restore-wrap" id="resPaper" style="margin-right:auto;margin-left:auto">
+          <div class="sweep" id="sweep"></div>
+          <h3>设备采购合同</h3>
+          <p class="ni">甲方（采购方）：<span class="rs"><span class="c">〔甲方单位〕</span><span class="r">远拓精密制造有限公司</span></span></p>
+          <p class="ni">乙方（供货方）：<span class="rs"><span class="c">〔乙方单位〕</span><span class="r">青禾科技有限公司</span></span></p>
+          <p class="mt16"><span class="cl">第四条　付款方式</span>　4.1 合同总价为人民币 <span class="rs"><span class="c">〔金额 1〕</span><span class="r">4,200,000.00 元</span></span>，甲方按以下方式支付：<span class="hl hl-mid" data-t="预付款 30% 没有保函担保" data-s="mid">签约后 7 日内支付 30%</span>；设备到货后支付 40%；<span class="hl hl-lo" data-t="验收款未与验收结果挂钩" data-s="lo">安装后支付 25%</span>；余款 5% 作为质保金。</p>
+          <p>4.2 <span class="rs"><span class="c">〔乙方〕</span><span class="r">青禾科技</span></span> 应在收到每期款项后 5 个工作日内开具等额增值税专用发票。</p>
+          <p>4.3 甲方逾期付款的，每逾期一日按应付未付金额的万分之五向乙方支付违约金。</p>
+          <p><span class="cl">第五条　交货</span>　乙方应于合同生效后 60 日内将设备运至 <span class="rs"><span class="c">〔地址 1〕</span><span class="r">江宁区科创大道 88 号 6 栋</span></span>，运输、装卸费用由乙方承担。交货时乙方联系人 <span class="rs"><span class="c">〔人名 1〕</span><span class="r">林晓舟</span></span> 应到场。</p>
+          <p><span class="cl">第六条　验收</span>　设备安装调试完毕后，<span class="hl hl-hi" data-t="逾期未验收即视为合格，对采购方不利" data-s="hi">甲方应在 3 日内组织验收；逾期未验收的，视为验收合格</span>。</p>
+          <p><span class="cl">第七条　质量保证</span>　质保期为验收合格之日起 12 个月。<span class="hl hl-mid" data-t="质保期起算点不明确" data-s="mid">质保期内设备出现故障的，乙方应及时维修</span>。</p>
+          <p><span class="cl">第九条　违约责任</span>　乙方逾期交货的，每逾期一日按合同总价的千分之一支付违约金，<span class="hl hl-hi" data-t="乙方违约金上限过低" data-s="hi">违约金总额不超过合同总价的 5%</span>。</p>
+          <p><span class="cl">第十二条　争议解决</span>　因本合同引起的争议，<span class="hl hl-lo" data-t="仲裁地对采购方不便" data-s="lo">提交乙方所在地仲裁委员会仲裁</span>。</p>
+          <div class="terrain" id="terrain" aria-hidden="true"></div>
+        </div>
+      </div>
+      <aside class="rpanel w440">
+        <div class="rp-tabs"><div class="tabs"><button class="on">意见</button><button>变化</button><button>追问</button></div><span class="ai-tag ml-auto"><span data-i="sparkle"></span>DeepSeek-V3</span></div>
+        <div class="rp-scroll">
+          <div class="zone l"><div class="zh"><span data-i="calculator"></span>本机计算 · 结果确定<span class="zc">3</span><span class="za"><span class="badge b-ok">全部一致</span></span></div>
+            <div class="calc-rows"><div><span>各期付款合计</span><span class="num">4,200,000.00</span><span class="badge b-ok">与总价一致</span></div><div><span>大写金额</span><span>肆佰贰拾万元整</span><span class="badge b-ok">一致</span></div><div><span>违约金上限</span><span class="num">210,000.00</span><span class="badge b-neu">合同总价 5%</span></div></div></div>
+          <div class="zone m"><div class="zh"><span data-i="sparkles"></span>AI 建议 · 请核实<span class="zc">6</span><span class="za f-aux">按严重程度排列</span></div>
+            <div class="seg full" style="margin-bottom:12px"><button class="on">全部<span class="c">6</span></button><button>高<span class="c">2</span></button><button>中<span class="c">2</span></button><button>低<span class="c">2</span></button></div>
+            <div class="ic-card hi on">
+              <div class="ic-top"><span class="badge b-hi"><i class="d"></i>高</span><span class="badge b-line">第六条</span><span class="ic-no num">01</span></div>
+              <b class="f-card">逾期未验收即视为合格，对采购方不利</b>
+              <p>3 日的验收期过短。一旦逾期，“视为验收合格”会让验收款与质保期起算条件自动成立。</p>
+              <div class="basis"><span data-i="book-open"></span>依据：《民法典》第六百二十条；公司范本第 6.2 条</div>
+              <div class="sugg"><div class="sugg-h"><span>建议条文</span><button class="btn sm txt" data-act="copy"><span data-i="copy"></span>复制</button></div><p>设备安装调试完毕后，甲方应在 15 个工作日内组织验收，验收合格后由双方签署验收报告。</p></div>
+              <div class="ic-act"><button class="btn sm sec"><span data-i="check"></span>采纳</button><button class="btn sm txt">忽略</button><button class="btn sm txt"><span data-i="message-square"></span>追问</button></div>
+            </div>
+            <div class="ic-card hi"><div class="ic-top"><span class="badge b-hi"><i class="d"></i>高</span><span class="badge b-line">第九条</span><span class="ic-no num">02</span></div><b class="f-card">乙方违约金上限过低</b><p>上限 5% 不足以覆盖停产损失，且与甲方逾期付款的违约金不对等。</p></div>
+            <div class="ic-card mid"><div class="ic-top"><span class="badge b-mid"><i class="d"></i>中</span><span class="badge b-line">第 4.1 条</span><span class="ic-no num">03</span></div><b class="f-card">预付款 30% 没有保函担保</b><p>预付比例较高，建议以乙方提交等额预付款保函为付款前提。</p></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= 6.9 合同对比 · 入口 ================= -->
+  <section class="screen" id="s-compare">
+    <div class="page w1040 enter">
+      <h1 class="f-page">合同对比</h1>
+      <p class="sub">把两稿并排放好，逐段找出改动、新增和删除。全程在本机比对，不留记录，离开即清。</p>
+      <div class="two-sheets" id="twoSheets">
+        <div class="sheet-drop hov m-compare" data-sheet="a"><div class="sp"><span data-i="file-plus"></span></div><b>基准稿</b><span class="f-aux">拖入或点击选择，通常是对方最初发来的版本</span></div>
+        <div class="mid-go" id="midGo"><span class="stitch"></span><button class="btn pri" id="cmpGo" disabled data-go="compare-r"><span data-i="git-compare"></span>开始对比</button><span class="stitch"></span></div>
+        <div class="sheet-drop hov m-compare" data-sheet="b"><div class="sp"><span data-i="file-plus"></span></div><b>修改稿</b><span class="f-aux">拖入或点击选择，通常是对方改过的版本</span></div>
+      </div>
+      <p class="f-aux mt16" style="text-align:center">演示：分别点两张纸，放好后中间的按钮亮起</p>
+    </div>
+  </section>
+
+  <!-- ================= 6.9 合同对比 · 结果（缝线） ================= -->
+  <section class="screen" id="s-compare-r">
+    <div class="wbar">
+      <button class="ibtn" data-go="compare"><span data-i="arrow-left"></span></button>
+      <div class="ttl"><b>设备采购合同 · 两稿对比</b><span>不留记录 · 离开即清</span></div>
+      <div class="seam-legend ml-auto"><span><i style="background:color-mix(in srgb,var(--si-warn) 55%,transparent)"></i>改动 5</span><span><i style="background:color-mix(in srgb,var(--si-brand-icon) 55%,transparent)"></i>新增 2</span><span><i style="background:color-mix(in srgb,var(--si-danger) 50%,transparent)"></i>删除 1</span><span class="f-aux">缎带颜色是差异类型，不是严重程度</span></div>
+      <button class="btn pri"><span data-i="download"></span>导出对比表</button>
+    </div>
+    <div class="seam" id="seam">
+      <div class="col" id="colA"><div class="paper" id="paperA"></div></div>
+      <div class="gut" id="gut"><svg class="rib" id="rib"></svg></div>
+      <div class="col" id="colB"><div class="paper" id="paperB"></div></div>
+      <div class="dlist" id="dlist"></div>
+    </div>
+  </section>
+
+  <!-- ================= 6.10 标书项目列表 ================= -->
+  <section class="screen" id="s-bid">
+    <div class="page w1200 enter">
+      <div class="row"><div><h1 class="f-page">标书初审</h1><p class="sub">开标时找出会被否决的严重问题。投标文件只在本机检查。</p></div><button class="btn pri ml-auto"><span data-i="plus"></span>新建初审项目</button></div>
+      <div class="bid-l mt24" style="display:grid;grid-template-columns:240px 1fr;gap:20px">
+        <div class="card tree" style="padding:10px">
+          <div class="ctree"><div style="grid-column:1/-1">
+            <div class="tn on"><span data-i="folder-open"></span>全部项目<span class="num">9</span></div>
+            <div class="tn sub"><span data-i="folder"></span>2026 年度 · 水务工程<span class="num">4</span></div>
+            <div class="tn sub"><span data-i="folder"></span>2026 年度 · 设备采购<span class="num">3</span></div>
+            <div class="tn sub"><span data-i="folder"></span>物业服务<span class="num">2</span></div>
+          </div></div>
+        </div>
+        <div>
+          <div class="card ruler">
+            <div class="rh"><b class="f-card">开标时间尺</b><span class="f-aux">近 30 天 · 点日期筛到那天的项目</span><button class="btn sm txt ml-auto" id="rulerAll">显示全部</button></div>
+            <div class="rt" id="ruler"></div>
+          </div>
+          <div class="rowcs" id="bidRows"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 6.11 标书项目页 ================= -->
+  <section class="screen" id="s-bidp">
+    <div class="wbar">
+      <button class="ibtn" data-go="bid"><span data-i="arrow-left"></span></button>
+      <div class="ttl"><b>泵站改造工程施工</b><span>开标 11-21 09:30 · 5 家投标人 · 水务工程</span></div>
+      <div class="ml-auto" data-trip="bid" data-scale="bar" data-at="3" data-st="done" data-took="6 分 40 秒" data-full="1"></div>
+      <button class="btn pri"><span data-i="download"></span>导出问题清单</button>
+    </div>
+    <div class="page w1200" style="padding-top:24px">
+      <div class="btable">
+        <div class="bt-h"><b class="f-card">开标桌</b><span class="f-aux">点一份只看这一家，再点取消</span><span class="ml-auto row gap8"><span class="badge b-hi"><i class="d"></i>严重 3</span><span class="badge b-neu">提示 7</span></span></div>
+        <div class="bdocs" id="bdocs"></div>
+      </div>
+      <div class="md mt24">
+        <div class="md-list card">
+          <div class="md-h"><b>问题清单</b><span class="f-aux" id="bidWho">全部投标人</span></div>
+          <div class="mi-g">严重 <span class="num">3</span></div>
+          <div class="iss on" data-b="B"><span class="sev hi"></span><div class="grow"><b>与丙机电的技术方案有 6 段文字完全相同，含同一处错别字</b><span>乙水务 · 技术方案.pdf · 第 41 页</span></div><button class="btn sm txt">不是问题</button></div>
+          <div class="iss" data-b="B"><span class="sev hi"></span><div class="grow"><b>投标保证金缴纳凭证金额少于招标文件要求</b><span>乙水务 · ★ 否决条款 3.2 · 资格文件.pdf · 第 7 页</span></div><button class="btn sm txt">不是问题</button></div>
+          <div class="iss" data-b="C"><span class="sev hi"></span><div class="grow"><b>授权委托书未加盖公章</b><span>丙机电 · ★ 否决条款 2.4 · 资格文件.pdf · 第 3 页</span></div><button class="btn sm txt">不是问题</button></div>
+          <button class="mi-g fold"><span data-i="chevron-right"></span>提示 <span class="num">7</span> 条</button>
+          <div class="zone m mt12" style="margin:12px 14px 14px"><div class="zh"><span data-i="sparkles"></span>模型补查 · 可选</div><p class="f-body" style="color:var(--si-t2)">★ 否决条款中本机没找到的 4 处，可交模型补查。只发送遮住名称后的相关段落。</p><button class="btn sm ai mt10"><span data-i="sparkle"></span>交模型补查</button></div>
+        </div>
+        <div class="md-ev card">
+          <div class="ev-h"><b>证据 · 两家相同段落</b><span class="f-aux">第 <span class="num">1</span> / 6 处</span></div>
+          <div class="ev-pair">
+            <div class="ev-paper"><div class="evp-h"><span class="code sm">B</span>乙水务 · 技术方案.pdf · 第 41 页</div><div class="evp-b">4.3 施工降排水措施<br>基坑开挖前沿四周布置轻型井点，<mark>井点间距 1.2 米，滤管埋深 6 米，抽水设备连续运转并做好纪录</mark>。</div></div>
+            <div class="ev-paper"><div class="evp-h"><span class="code sm">C</span>丙机电 · 施工组织设计.pdf · 第 37 页</div><div class="evp-b">五、降水与排水<br>本工程采用轻型井点降水，<mark>井点间距 1.2 米，滤管埋深 6 米，抽水设备连续运转并做好纪录</mark>。</div></div>
+          </div>
+          <p class="f-aux mt12"><span data-i="info"></span> 两家都把“记录”写成了“纪录”。相似段落在两份文件中的位置见下方位置条（沿用 SimilarMap）。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 6.12 会议纪要入口 ================= -->
+  <section class="screen" id="s-meet">
+    <div class="page w960 enter">
+      <h1 class="f-page">会议纪要</h1>
+      <p class="sub">录音在本机转写，校对后再整理纪要。生成纪要时只发送遮住名称后的逐字稿。</p>
+      <div class="vband mt24 m-meet" id="vband">
+        <div class="vb-strip" id="vbStrip"></div>
+        <button class="vb-rec" data-go="meet-rec" title="开始现场录音"><span data-i="mic"></span></button>
+        <div class="vb-drop"><span class="mod-ic s m-meet"><span data-i="upload"></span></span><div class="grow"><b class="f-body" style="color:var(--si-t1);font-weight:600">或把录音文件拖到这里</b><div class="f-aux">MP3、M4A、WAV、AMR · 单个不超过 500 MB、3 小时</div></div><button class="btn sec">选择录音</button></div>
+      </div>
+      <div class="sec-t"><b class="f-block">最近的会议</b><a class="btn sm txt ml-auto" data-go="history">全部历史<span data-i="chevron-right"></span></a></div>
+      <div id="tlMeet"></div>
+    </div>
+  </section>
+
+  <!-- ================= 6.12 录音中 ================= -->
+  <section class="screen" id="s-meet-rec">
+    <div class="page w960 enter">
+      <div class="rec-head"><span class="badge b-hi"><i class="d breath"></i>正在录音</span><div class="rt2 mt12" id="recT">00:12:46</div><p class="f-aux mt6">录音保存在本机浏览器，断网也不会丢</p></div>
+      <div class="vband rec m-meet" id="vbandRec"><div class="vb-strip" id="vbStripRec"></div></div>
+      <div class="row gap10 mt24" style="justify-content:center"><button class="btn sec lg"><span data-i="pause"></span>暂停</button><button class="btn pri lg" data-go="meetp"><span data-i="square"></span>结束并转写</button></div>
+    </div>
+  </section>
+
+  <!-- ================= 6.13 会议页 ================= -->
+  <section class="screen" id="s-meetp">
+    <div class="wbar">
+      <button class="ibtn" data-go="meet"><span data-i="arrow-left"></span></button>
+      <div class="ttl"><b>周例会 11-18</b><span>52 分钟 · 4 位发言人</span></div>
+      <div class="ml-auto" data-trip="meet" data-scale="bar" data-at="1" data-st="wait" data-note="转写完成，待校对" data-act="去校对"></div>
+      <button class="btn sec"><span data-i="download"></span>导出</button>
+    </div>
+    <div class="ws">
+      <div class="stage">
+        <div class="card" style="max-width:820px;margin:0 auto;padding:16px 20px 14px">
+          <div class="row gap12"><button class="btn pri" id="lanePlay" style="width:36px;padding:0;border-radius:50%"><span data-i="play"></span></button><span class="num" id="laneT">08:20</span><span class="f-aux">/ 52:04</span><span class="f-aux ml-auto">点泳道任一段跳到那句话 · ← → 上一句 / 下一句</span></div>
+          <div class="lanes" id="lanes"></div>
+          <div class="lane-axis"><span>0:00</span><span>10:00</span><span>20:00</span><span>30:00</span><span>40:00</span><span>52:04</span></div>
+        </div>
+        <div class="zone l" style="max-width:820px;margin:16px auto 0;background:var(--si-paper)">
+          <div class="zh"><span data-i="lock"></span>逐字稿 · 本机转写<span class="zc">186 句</span><span class="za"><span class="badge b-mid">待校对</span></span></div>
+          <div id="transcript"></div>
+        </div>
+      </div>
+      <aside class="rpanel w420">
+        <div class="rp-scroll">
+          <div class="zone m"><div class="zh"><span data-i="sparkles"></span>纪要 · 模型生成</div>
+            <div class="ntc info"><span class="ni"><span data-i="info"></span></span><div class="nb"><b>校对后再生成纪要</b><p>生成时只发送遮住名称后的逐字稿，回来在本机还原。</p><div class="na"><button class="btn sm ai"><span data-i="sparkle"></span>生成纪要</button></div></div></div>
+          </div>
+          <div class="card rp-card mt16"><div class="rp-h"><span data-i="list-checks"></span><b>待办</b><span class="f-aux ml-auto">生成后出现</span></div><p class="f-aux">每条带负责人和日期。</p></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= 6.14 翻译入口 ================= -->
+  <section class="screen" id="s-trans">
+    <div class="page w960 enter">
+      <h1 class="f-page">翻译</h1>
+      <p class="sub">本机翻译全程不外发；云端翻译先遮住名称，复检后发送，回来在本机还原。</p>
+      <div class="tmode mt24" id="tmode">
+        <button class="on" data-m="l"><span class="mod-ic m-review"><span data-i="lock"></span></span><span><b>本机翻译</b><span class="f-aux">全程本机 · 不外发 · 万字约一小时</span></span></button>
+        <button data-m="c"><span class="mod-ic m-chat"><span data-i="sparkle"></span></span><span><b>云端翻译</b><span class="f-aux">遮住、复检后发送 · 万字约三分钟</span></span></button>
+      </div>
+      <div class="tline" id="tline"><svg id="tlSvg" viewBox="0 0 300 40" width="300"></svg><div class="tl-says" id="tlSays"></div></div>
+      <div class="card mt20" style="padding:18px 20px;display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center">
+        <div class="row gap12"><span class="f-body" style="color:var(--si-t2)">目标语言</span><div class="seg"><button class="on">中 → 英</button><button>英 → 中</button><button>中 → 日</button></div></div>
+        <div style="height:64px;display:flex;align-items:center;justify-content:center;gap:10px;border:1.5px dashed var(--si-line-strong);border-radius:14px;color:var(--si-t3)"><span data-i="upload"></span>拖入文件，或直接粘贴文字</div>
+      </div>
+      <div class="sec-t"><b class="f-block">最近的翻译</b><a class="btn sm txt ml-auto" data-go="history">全部历史<span data-i="chevron-right"></span></a></div>
+      <div id="tlTrans"></div>
+    </div>
+  </section>
+
+  <!-- ================= 6.15 翻译页 ================= -->
+  <section class="screen" id="s-transp">
+    <div class="wbar">
+      <button class="ibtn" data-go="trans"><span data-i="arrow-left"></span></button>
+      <div class="ttl"><b>Supply Agreement 译稿</b><span>英 → 中 · 本机翻译</span></div>
+      <div class="ml-auto" data-trip="transL" data-scale="bar" data-at="1" data-st="run" data-note="第 23 / 76 段" data-tm="18:05"></div>
+      <button class="btn sec"><span data-i="square"></span>停止</button>
+    </div>
+    <div class="stage" style="height:calc(100vh - 64px)">
+      <div class="ntc warn" style="max-width:1100px;margin:0 auto 16px"><span class="ni"><span data-i="triangle-alert"></span></span><div class="nb"><b>本机翻译较慢，可以先离开</b><p>关闭页面不影响翻译，完成后在“待你处理”提醒你。</p></div></div>
+      <div style="max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:0;position:relative" id="spread">
+        <div class="paper" style="max-width:none;border-radius:6px 0 0 6px;padding:40px 40px;position:relative"><div class="tr-ruler" id="trRuler" style="--rc:var(--si-trip-l)"></div><div id="trSrc"></div></div>
+        <div class="paper" style="max-width:none;border-radius:0 6px 6px 0;padding:40px 40px;border-left:1px solid var(--si-line)"><div id="trDst"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 6.16 空状态、出错、提示 ================= -->
+  <section class="screen" id="s-states">
+    <div class="page w1200 enter">
+      <h1 class="f-page">空状态、出错与提示</h1>
+      <p class="sub">空状态用模块物件插画；出错与提示一律就地显示，写原因加怎么办。</p>
+      <div class="gal mt24" style="grid-template-columns:repeat(3,1fr)">
+        <div class="card hov m-review"><div class="emp2"><div class="il-host" data-illus="stack"></div><b>还没有审核过文件</b><p>把合同、报价或函件放进来，几分钟出问题清单。</p><button class="btn pri sm" data-go="review"><span data-i="upload"></span>上传文件</button></div></div>
+        <div class="card hov m-bid"><div class="emp2"><div class="il-host" data-illus="table"></div><b>这个文件夹里还没有项目</b><p>新建一个初审项目，把招标文件和投标文件放进来。</p><button class="btn pri sm"><span data-i="plus"></span>新建初审项目</button></div></div>
+        <div class="card hov m-meet"><div class="emp2"><div class="il-host" data-illus="voiceprint"></div><b>还没有会议</b><p>现场录音，或上传一段录音文件。</p><button class="btn pri sm" data-go="meet"><span data-i="mic"></span>开始录音</button></div></div>
+      </div>
+      <div class="gal mt16">
+        <div class="card"><h4>拦截</h4><p class="gs">琥珀，逐处列出，每处一键处理。</p>
+          <div class="ntc block"><span class="ni"><span data-i="shield-alert"></span></span><div class="nb"><b>发送前复检拦下 1 处</b><p>这段文字看起来是真实名称，但没有遮住。</p><div class="hits"><div><span class="pill k-contact">139 0000 6218</span><span class="grow"><em>第 2 页 · 像手机号</em></span><button class="btn sm sec">遮住</button></div></div></div></div></div>
+        <div class="card"><h4>注意 · 错误</h4><p class="gs">注意不可关闭；错误带重试。</p>
+          <div class="ntc warn"><span class="ni"><span data-i="triangle-alert"></span></span><div class="nb"><b>本月调用已用 91%</b><p>超过上限后停止调用模型，下月 1 日恢复。可以请系统管理员调高上限。</p></div></div>
+          <div class="ntc err mt8"><span class="ni"><span data-i="file-x"></span></span><div class="nb"><b>文件已加密，读取失败</b><p>请取消文件密码后重新上传。</p><div class="na"><button class="btn sm sec"><span data-i="upload"></span>重新上传</button></div></div></div></div>
+      </div>
+      <div class="card mt16" style="padding:22px 24px"><b class="f-block">6.17 处理中的真实进度写在当前站旁边</b>
+        <div class="demo-bar mt12"><span data-trip="review" data-scale="bar" data-at="0" data-st="run" data-note="第 23 / 76 页 · 识别扫描页" data-tm="0:38"></span></div>
+        <div class="demo-bar mt8"><span data-trip="review" data-scale="bar" data-at="3" data-st="run" data-note="模型正在逐条审阅遮住后的文字" data-tm="0:21"></span></div>
+        <div class="demo-bar mt8"><span data-trip="review" data-scale="bar" data-at="3" data-st="fail" data-note="接口超时 60 秒" data-act="重试"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 404 ================= -->
+  <section class="screen" id="s-nf">
+    <div class="nf"><div data-mark="120" data-tilt="1" class="nf-mark"></div><h1 class="f-page mt24">这个页面不存在</h1><p class="sub">可能已被删除，或链接写错了。</p><button class="btn pri mt24" data-go="home"><span data-i="house"></span>回到工作台</button></div>
+  </section>
+
+  <!-- ================= 6.18 历史记录 ================= -->
+  <section class="screen" id="s-history">
+    <div class="page w1120 enter">
+      <h1 class="f-page">历史记录</h1>
+      <p class="sub">只有你自己能看到。按最近活动排列，整行可点。</p>
+      <div class="hist-f"><div class="seg"><button class="on">全部</button><button>文件审核</button><button>标书</button><button>会议</button><button>翻译</button><button>对话</button></div><div class="inp36" style="width:240px"><span data-i="search"></span><input placeholder="搜索文件名"></div><button class="btn sec sm"><span data-i="calendar"></span>日期范围</button></div>
+      <div id="tlHist"></div>
+    </div>
+  </section>
+
+  <!-- ================= 6.19 设置 · 个人 ================= -->
+  <section class="screen" id="s-set-me">
+    <div class="page w1120"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-me"></nav>
+      <div class="grow set-body enter">
+        <div class="card" style="padding:22px 24px">
+          <b class="f-block">外观</b><p class="f-aux">缩略图用当前页面的真实令牌画出。</p>
+          <div class="th3 mt16" id="th3"></div>
+          <div class="frm mt24">
+            <div class="fr"><label>字号</label><div class="fx"><div class="seg" id="fsSeg"><button class="on" data-f="1">标准</button><button data-f="1.07">较大</button><button data-f="1.14">特大</button></div>
+              <div class="fs-sample" id="fsSample">第六条　验收　设备安装调试完毕后，甲方应在 15 个工作日内组织验收。</div></div></div>
+            <div class="fr"><label>动效</label><div class="fx wide"><div class="fx4" id="fx4"></div><em>自动档按电脑性能与系统设置选择，可以手动指定。</em></div></div>
+          </div>
+        </div>
+        <div class="card mt16" style="padding:22px 24px"><div class="row"><div><b class="f-block">修改密码</b><p class="f-aux">至少 10 位，包含字母和数字。</p></div><button class="btn sec ml-auto">修改密码</button></div></div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.20 设置 · 模型（样板页） ================= -->
+  <section class="screen" id="s-set-model">
+    <div class="page w1200"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-model"></nav>
+      <div class="grow set-body enter" style="min-width:0">
+        <div><b class="f-block">模型</b><p class="f-aux">云端模型只收到遮住名称后的文字。每次调用都经过模型网关，并记录在案。</p></div>
+        <div class="card xmap mt16">
+          <div class="row"><b class="f-card">出口地图</b><span class="f-aux">11 月 · 截至今天</span><button class="btn sm txt ml-auto" id="mapReplay"><span data-i="rotate-ccw"></span>重放</button></div>
+          <svg class="xm" id="xm" viewBox="0 0 900 300" role="img" aria-label="出口地图：本机 4 个本地模型；网关四关；云端 3 个模型"></svg>
+          <div class="xm-foot"><span><i></i>线越粗，本月调用越多</span><span><i class="d"></i>已停用</span><span><span data-i="sparkle" class="t-ai" style="vertical-align:-3px"></span> 默认模型</span><span class="ml-auto">本地部分只显示状态，不显示任何任务内容</span></div>
+        </div>
+        <div class="sec-t"><b class="f-block">值班席位</b><span class="f-aux">默认模型不能直接停用，请先更换</span></div>
+        <div class="duty" id="duty"></div>
+        <div class="sec-t"><b class="f-block">已接入</b><span class="badge b-neu">3</span></div>
+        <div class="rowcs" id="mrows"></div>
+        <div class="sec-t"><b class="f-block">接入新模型</b><span class="f-aux">只填 API 密钥，模型名与接口地址已按推荐值填好</span></div>
+        <div class="tiles" id="tiles"></div>
+        <div class="connect" id="connect" hidden></div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.21 设置 · 账号 ================= -->
+  <section class="screen" id="s-set-acct">
+    <div class="page w1120"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-acct"></nav>
+      <div class="grow set-body enter">
+        <div class="row"><div><b class="f-block">账号</b><p class="f-aux">12 个账号 · 管理员也看不到他人的任务内容</p></div><button class="btn pri ml-auto"><span data-i="user-plus"></span>新增账号</button></div>
+        <div class="rowcs mt16" id="accts"></div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.22 设置 · 角色 ================= -->
+  <section class="screen" id="s-set-role">
+    <div class="page w1120"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-role"></nav>
+      <div class="grow set-body enter">
+        <b class="f-block">角色</b><p class="f-aux">勾选每个角色能用的功能。改动过的格子高亮，保存后生效。</p>
+        <div class="card mt16" style="padding:4px 0 8px;overflow:hidden"><table class="matrix" id="matrix"></table></div>
+        <div class="savebar" id="savebar" hidden><span id="saveN">1 处改动</span><button class="btn sm sec ml-auto" id="saveDrop">放弃</button><button class="btn sm pri">保存</button></div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.23 设置 · 审核要求 ================= -->
+  <section class="screen" id="s-set-req">
+    <div class="page w1200"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-req"></nav>
+      <div class="grow set-body enter">
+        <div class="row"><div><b class="f-block">审核要求</b><p class="f-aux">按文件类型分栏。拖动调整顺序，键盘用户用卡上的上移、下移。</p></div><button class="btn pri ml-auto"><span data-i="plus"></span>新增要求</button></div>
+        <div class="reqcols mt16" id="reqcols"></div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.24 设置 · 法规 ================= -->
+  <section class="screen" id="s-set-law">
+    <div class="page w1120"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-law"></nav>
+      <div class="grow set-body enter">
+        <div class="row"><div><b class="f-block">法规</b><p class="f-aux">从国家法律法规数据库同步公开法规。同步结果确认后才生效。</p></div><button class="btn sec ml-auto"><span data-i="refresh-cw"></span>立即同步</button></div>
+        <div class="lawtl mt20">
+          <div class="lawn pend"><div class="card"><div class="grow"><b class="f-card">11-25 02:00 同步 · 待确认</b><div class="cnt3 mt6"><span>新增<b>3</b></span><span>修订<b>5</b></span><span>废止<b>1</b></span></div></div><button class="btn sm txt">查看明细</button><button class="btn sm sec">放弃</button><button class="btn sm pri">确认生效</button></div></div>
+          <div class="lawn"><div class="card"><div class="grow"><b class="f-body" style="color:var(--si-t1);font-weight:600">11-18 02:00 同步 · 已生效</b><div class="cnt3 mt6"><span>新增<b>1</b></span><span>修订<b>2</b></span><span>废止<b>0</b></span></div></div><span class="f-aux">王经理 确认于 11-18 09:12</span></div></div>
+          <div class="lawn"><div class="card"><div class="grow"><b class="f-body" style="color:var(--si-t1);font-weight:600">11-11 02:00 同步 · 没有变化</b></div></div></div>
+        </div>
+        <div class="card mt16" style="padding:6px 0">
+          <div class="rowc" style="border:0;box-shadow:none;border-radius:0"><div class="rc-m"><span class="mod-ic s" style="--mc:var(--si-t2);--mcs:var(--si-hover)"><span data-i="gavel"></span></span><div class="rc-n"><b>中华人民共和国民法典</b><span>全国人民代表大会 · 2021-01-01 施行</span></div><span class="badge b-ok">有效</span></div></div>
+          <div class="rowc" style="border:0;box-shadow:none;border-radius:0;border-top:1px solid var(--si-line-faint)"><div class="rc-m"><span class="mod-ic s" style="--mc:var(--si-t2);--mcs:var(--si-hover)"><span data-i="gavel"></span></span><div class="rc-n"><b>中华人民共和国招标投标法实施条例</b><span>国务院 · 2019-03-02 修订</span></div><span class="badge b-mid">待确认修订</span></div></div>
+        </div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.25 设置 · 范本、知识库 ================= -->
+  <section class="screen" id="s-set-tpl">
+    <div class="page w1200"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-tpl"></nav>
+      <div class="grow set-body enter">
+        <div class="row"><div><b class="f-block">范本</b><p class="f-aux">公司认可的合同范本，审核时对照条款。</p></div><button class="btn pri ml-auto"><span data-i="upload"></span>上传范本</button></div>
+        <div class="thumbs mt16" id="thumbs"></div>
+        <div class="sec-t"><b class="f-block">公司沉淀</b><span class="f-aux">专职人员从审核结果中登记的条款</span></div>
+        <div class="thumbs" id="thumbs2"></div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.26 设置 · 标书分类 ================= -->
+  <section class="screen" id="s-set-cat">
+    <div class="page w1120"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-cat"></nav>
+      <div class="grow set-body enter">
+        <b class="f-block">标书分类</b><p class="f-aux">每个分类可以加补充要求。计数是分类下的项目数。</p>
+        <div class="ctree mt16">
+          <div class="card tr2"><div class="tn on"><span data-i="folder-open"></span>水务工程<span class="num">4</span></div><div class="tn sub"><span data-i="folder"></span>泵站与管网<span class="num">3</span></div><div class="tn sub"><span data-i="folder"></span>水厂改造<span class="num">1</span></div><div class="tn"><span data-i="folder"></span>设备采购<span class="num">3</span></div><div class="tn"><span data-i="folder"></span>物业服务<span class="num">2</span></div><button class="btn sm txt mt8"><span data-i="plus"></span>新增分类</button></div>
+          <div class="card" style="padding:18px 20px"><div class="row"><b class="f-card">水务工程 · 补充要求</b><button class="btn sm sec ml-auto"><span data-i="plus"></span>添加</button></div>
+            <div class="reqc mt12"><span data-i="grip-vertical" class="gr"></span><div class="rq-b"><b>项目经理须具备水利水电工程一级建造师</b><div class="rq-t"><span class="badge b-hi">严重</span><span class="badge b-line">资格</span></div></div><span class="sw2 on"></span></div>
+            <div class="reqc"><span data-i="grip-vertical" class="gr"></span><div class="rq-b"><b>近三年须有两项以上同类泵站业绩</b><div class="rq-t"><span class="badge b-hi">严重</span><span class="badge b-line">业绩</span></div></div><span class="sw2 on"></span></div></div>
+        </div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.27 设置 · 脱敏 ================= -->
+  <section class="screen" id="s-set-redact">
+    <div class="page w1200"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-redact"></nav>
+      <div class="grow set-body enter">
+        <b class="f-block">脱敏</b><p class="f-aux">七类名称的自定义词。颜色与确认页一致。</p>
+        <div class="kwall mt16" id="kwall"></div>
+        <div class="card mt16" style="padding:20px 22px"><b class="f-card">保留词</b><p class="f-aux">出现这些词时不遮住，例如行业通用说法。</p>
+          <div class="frm mt16"><div class="fr"><label>保留词</label><div class="fx"><div class="inp36"><input value="甲方、乙方、招标人、投标人"></div><em>用顿号分隔。</em></div></div><div class="fr"><label>金额精度</label><div class="fx"><div class="seg"><button class="on">遮住全部金额</button><button>只遮大于 1 万</button></div></div></div></div></div>
+      </div></div></div>
+  </section>
+
+  <!-- ================= 6.28 设置 · 数据 ================= -->
+  <section class="screen" id="s-set-data">
+    <div class="page w1120"><h1 class="f-page">设置</h1><div class="set mt24"><nav class="set-nav" data-setnav="set-data"></nav>
+      <div class="grow set-body enter">
+        <b class="f-block">数据</b><p class="f-aux">存储构成与保留期限。到期的任务按保留规则自动删除原件。</p>
+        <div class="card mt16" style="padding:20px 22px"><div class="row"><b class="f-card">存储构成</b><span class="num ml-auto" style="color:var(--si-t1)">共 186.4 GB</span></div>
+          <div class="stackbar mt12" style="height:14px" data-stack="原件:92,录音:54,数据库:12,备份:28" data-colors="var(--si-m-review),var(--si-m-meet),var(--si-info),var(--si-t4)" data-unit=" GB"></div></div>
+        <div class="card mt16" style="padding:20px 22px"><div class="row"><b class="f-card">未来 30 天到期</b><span class="f-aux ml-auto">只计件数 · 共 <b class="num" style="color:var(--si-t1)">143</b> 件</span></div>
+          <div class="retl" id="retl"></div><div class="retl-ax"><span>今天</span><span>12-03</span><span>12-10</span><span>12-17</span><span>12-25</span></div></div>
+        <div class="card mt16" style="padding:16px 20px"><div class="row gap16"><span class="mod-ic s" style="--mc:var(--si-ok);--mcs:var(--si-ok-soft)"><span data-i="database-backup"></span></span><div class="grow"><b class="f-body" style="color:var(--si-t1);font-weight:600">最近一次备份 · 今天 02:00</b><div class="f-aux">成功 · 用时 6 分钟 · 备份卷剩余 212 GB</div></div><button class="btn sm sec">立即备份</button></div></div>
+        <div class="ntc warn mt16"><span class="ni"><span data-i="hard-drive"></span></span><div class="nb"><b>备份卷剩余空间不足三次备份</b><p>按最近一次备份大小估算只够再存 2 份。请清理旧备份或扩容备份卷。</p></div></div>
+      </div></div></div>
+  </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast" hidden><span data-i="circle-check"></span><span id="toastT">已复制，可粘贴到原文中修改</span></div>
+
+<div class="dz" id="dz">
+  <select id="dzScreen"></select>
+  <button id="dzTheme">深色</button>
+  <select id="dzFx"><option value="full">完整</option><option value="lite">精简</option><option value="off">关闭</option></select>
+  <button id="dzReplay" title="重放进入动效">重放</button>
+</div>
+<script src="preview.js"></script>
+</body>
+</html>
