@@ -12,6 +12,8 @@ import type { UserCategory } from '@/api/redaction'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useDraftsStore } from '@/stores/drafts'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import { attachTrip } from '@/utils/trip'
 import { ASSISTANT_TEMPLATE, USER_CATEGORY_OPTIONS, toOptions } from '@/utils/labels'
 import { TEMPLATE_LIMITS, usableFiles } from '@/utils/assistantTemplates'
 
@@ -282,7 +284,7 @@ defineExpose({ pick, attach, cancelWaiting })
                     :aria-pressed="selectable(file) ? fileIds.includes(file.id) : undefined"
                     :title="file.parse_error ?? (file.media?.error ? '转写失败，可在文件面板中重试' : selectable(file) ? (fileIds.includes(file.id) ? '本次提问使用此文件，点击取消' : '本次提问不使用此文件，点击使用') : undefined)" @click="clickChip(file)">
               <span class="fi"><Check v-if="selectable(file) && fileIds.includes(file.id)" :size="16" :stroke-width="2" /><component :is="KIND_ICON[fileKind(file)]" v-else :size="16" :stroke-width="1.75" /></span>
-              <span class="ft-text"><span class="nm">{{ file.original_name }}</span><span class="st"><Loader2 v-if="tag(file).tone === 'busy'" :size="12" :stroke-width="2" class="spin" aria-hidden="true" />{{ tag(file).text }}</span></span>
+              <span class="ft-text"><span class="nm">{{ file.original_name }}</span><span class="st"><SiTrip v-if="!file.media" :trip="attachTrip(file, { policy: session?.policy, parsing: session?.status === 'parsing' })" hide-text class="ft-trip" /><Loader2 v-else-if="tag(file).tone === 'busy'" :size="12" :stroke-width="2" class="spin" aria-hidden="true" />{{ tag(file).text }}</span></span>
               <ChevronRight v-if="tag(file).tone === 'warn'" :size="16" :stroke-width="1.75" class="ft-go" aria-hidden="true" />
             </button>
             <button v-if="removable(file)" type="button" class="ft-x" :aria-label="`从会话移除 ${file.original_name}`" title="从会话移除" @click="emit('remove', file)"><X :size="14" :stroke-width="2" /></button>
@@ -365,6 +367,8 @@ defineExpose({ pick, attach, cancelWaiting })
 .nm { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label-sm); text-overflow: ellipsis; white-space: nowrap; }
 .st { display: inline-flex; align-items: center; gap: 4px; overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); font-size: calc(12.5px * var(--si-fs)); text-overflow: ellipsis; white-space: nowrap; }
 .ft--busy .st { color: var(--si-blue-ink); }
+/* 附件标签的迷你往返线（澄明二版 6.5）：状态文字跟在线后 */
+.ft-trip { flex: none; margin-right: 4px; }
 .ft--danger { border-color: var(--si-danger-line); }
 .ft--danger .st { color: var(--si-danger-ink); }
 .ft--warn { border-color: var(--si-warn-line); background: var(--si-warn-soft); }

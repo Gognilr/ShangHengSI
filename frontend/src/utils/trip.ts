@@ -120,6 +120,15 @@ export function chatTrip(p: { status: string; policy?: string | null; generating
   return { mod: 'chat', at: 4, state: 'done' }
 }
 
+/** 对话的附件标签（澄明二版 6.5）：读取 → 遮住（等你确认）→ 确认后停在复检前，随提问发出；只在本机处理的会话为本机三站 */
+export function attachTrip(f: { parse_state?: string | null; confirmed_at?: string | null }, p: { policy?: string | null; parsing?: boolean }): Trip {
+  if (p.policy === 'local_only') return f.parse_state === 'failed' ? localTrip('parse_failed') : f.parse_state === 'parsing' || p.parsing && !f.confirmed_at ? localTrip('parsing') : localTrip('active')
+  if (f.parse_state === 'failed') return { mod: 'chat', at: 0, state: 'fail', note: '读取失败' }
+  if (f.parse_state === 'parsing' || p.parsing && !f.confirmed_at) return { mod: 'chat', at: 0, state: 'run', note: '正在读取' }
+  if (!f.confirmed_at) return { mod: 'chat', at: 1, state: 'wait', note: '等你确认' }
+  return { mod: 'chat', at: 2, state: 'todo', note: '已遮住，随提问发出' }
+}
+
 /** 标书初审：本机三站；发起模型补查后接上遮住 · 复检 · 模型补查 · 还原 */
 export function bidTrip(p: { status: string; stage?: string | null; modelState?: string | null; progress?: { done: number; total: number } | null }): Trip {
   if (p.status === 'parsing') return { mod: 'bid', at: 0, state: 'run', note: '正在读取' }

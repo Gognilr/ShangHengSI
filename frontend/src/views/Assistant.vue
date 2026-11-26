@@ -267,7 +267,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           <span v-else>审核已完成，可以在“全面审核”里看问题，也可以继续提问。</span>
           <el-button size="small" type="primary" link @click="seeResult">{{ session.review_running ? '查看进度' : '查看结果' }}</el-button>
         </div>
-        <Conversation v-show="mode === 'ask'" :messages="shown" :session-id="id" :reading="session?.status === 'parsing'" @cite="cite" @stop="stop" @retry="retry" />
+        <Conversation v-show="mode === 'ask'" :messages="shown" :session-id="id" :reading="session?.status === 'parsing'" :code-count="session.code_count" @cite="cite" @stop="stop" @retry="retry" />
         <!-- 切换到审核视图时只隐藏输入框，不卸载，未发出的文字保留（V32-B-01 评审） -->
         <div v-if="canAsk" v-show="mode === 'ask'" class="dock">
           <Composer ref="askComposer" :key="id" :active="mode === 'ask'" :confirmed-tick="confirmedTick" @waiting="askWaiting = $event" v-model:template="template" :session="session" :generating="generating" :asr-enabled="session.asr_enabled" :uploading="uploading" :initial="initial" @sent="sent" @stop="stop" @busy="refresh" @files="addFiles" @open="openFile" @remove="filePanel?.remove($event)" @confirm="filePanel?.openConfirm()" @retry="filePanel?.retryMedia($event)" />
@@ -275,7 +275,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
         </div>
         <ReviewPane ref="reviewPane" v-if="canReview && reviewSeen" v-show="mode === 'review'" :key="id" class="review-pane" :session="session" :discuss-id="anchor?.id" :active="mode === 'review'" @refresh="refresh" @pick="filePanel?.pick('doc')" @remove="filePanel?.remove($event)" @discuss="discuss" @close-discuss="anchor = null" @progress="reviewProgress = $event" @ask="modeModel = 'ask'">
           <template #discussion="{ finding, no, update, locate }">
-            <Conversation :messages="threadOf(finding.id)" :session-id="id" :view-key="`${id}:${finding.id}`" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已遮住名称与金额），不含其他条款。"
+            <Conversation :messages="threadOf(finding.id)" :session-id="id" :view-key="`${id}:${finding.id}`" :code-count="session.code_count" hint="围绕这个问题继续讨论。发给模型的是该问题的结论与相关条款（已遮住名称与金额），不含其他条款。"
               :draftable="!session.original_deleted" :saved-id="finding.discussed_message_id" :saved-no="no" @draft="openDraft($event, update)" @cite="(m: Message, src: MessageSource, el: HTMLElement) => cite(m, src, el, locate)" @stop="stop" @retry="retry" />
             <Composer :key="`${id}:${finding.id}`" :template="null" :session="session" :anchor="anchor" :generating="generating" :asr-enabled="false" @sent="sent" @stop="stop" @busy="refresh" @confirm="filePanel?.openConfirm()" />
           </template>

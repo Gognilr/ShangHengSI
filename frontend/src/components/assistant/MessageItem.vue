@@ -2,13 +2,13 @@
 import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Cpu, Sparkle } from '@lucide/vue'
+import { ChevronDown, Cpu, Send, ShieldCheck, Sparkle } from '@lucide/vue'
 import { saveBlob } from '@/utils/save'
 import type { Message, MessageSource } from '@/api/assistant'
 import { assistantApi } from '@/api/assistant'
 import { ApiError } from '@/api/http'
 import CalcResult from '@/components/result/CalcResult.vue'
-import ZoneHeader from '@/components/ui/ZoneHeader.vue'
+import SiZone from '@/components/ui/SiZone.vue'
 import { markTokens, unresolvedCount } from '@/utils/marks'
 import { markdown } from '@/utils/markdown'
 import InlineText from './InlineText.vue'
@@ -18,8 +18,8 @@ import { assistantStatusLabel } from '@/utils/labels'
 import CompareTable from './CompareTable.vue'
 import CrosscheckTable from './CrosscheckTable.vue'
 import TranslationView from './TranslationView.vue'
-/** savedNo：这条回复已保存为问题 savedNo 的修改建议（V321-E-02） */
-const props = defineProps<{ message: Message; sessionId: string; last?: boolean; draftable?: boolean; savedNo?: string; reading?: boolean }>()
+/** savedNo：这条回复已保存为问题 savedNo 的修改建议（V321-E-02）；sent：这条回答对应的提问实际发给模型的文字；codeCount：本会话遮住的处数 */
+const props = defineProps<{ message: Message; sessionId: string; last?: boolean; draftable?: boolean; savedNo?: string; reading?: boolean; sent?: string; codeCount?: number }>()
 const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message]; cite: [message: Message, source: MessageSource, anchor: HTMLElement] }>()
 const tokens = computed(() => markTokens(props.message.content, props.message.marks))
 // 回复依据（V321-E-13）：锚点只来自后端 cites（本地登记过的 id），模型自写的编号对不上就是普通文字
@@ -52,6 +52,9 @@ const waitingTail = computed(() => (waiting.value && slow.value && !reading.valu
 const local = computed(() => !!props.message.crosscheck || (!pending.value && !props.message.model_label) || !!props.message.model_label?.startsWith('本地'))
 const unknownTranslation = computed(() => props.message.template === 'translate' && !['local', 'cloud'].includes(String(props.message.params.engine)))
 const showStatus = computed(() => !pending.value && !['done', 'active'].includes(props.message.status))
+// 外发回执（澄明二版 6.5）：合上时一行“遮住 n 处 · 复检通过 · 模型名”，翻开是实际发出的提问文字（后端返回，按纯文本显示）
+const receipt = computed(() => props.message.role === 'assistant' && !local.value && !pending.value && props.message.status !== 'failed' && !!props.sent)
+const receiptOpen = ref(false)
 const hasTable = computed(() => !!props.message.compare || !!props.message.crosscheck || parsed.value.some(block => block.kind === 'table'))
 const downloading = ref(false), error = ref('')
 async function download(format: 'docx' | 'xlsx', variant = 'translation') {
@@ -84,8 +87,7 @@ async function copy() {
     <CompareTable v-if="message.compare" :comparison="message.compare" />
     <CrosscheckTable v-else-if="message.crosscheck" :result="message.crosscheck" />
     <TranslationView v-else-if="message.template === 'translate' && message.role === 'assistant'" :message="message" :session-id="sessionId" />
-    <div v-else-if="message.role === 'user' || message.content" :class="message.role === 'user' ? 'bubble' : 'ai-sec'">
-      <ZoneHeader v-if="message.role === 'assistant' && !local" kind="ai" class="ai-sec-h" />
+    <component :is="message.role === 'assistant' && !local ? SiZone : 'div'" v-else-if="message.role === 'user' || message.content" :class="message.role === 'user' ? 'bubble' : local ? 'local-sec' : 'ai-zone'" v-bind="message.role === 'assistant' && !local ? { kind: 'ai' } : {}">
       <div class="markdown">
         <template v-for="(block, index) in parsed" :key="index">
           <CalcResult v-if="block.calc" :calc="block.calc" />
@@ -96,12 +98,22 @@ async function copy() {
         </template>
         <p v-if="streaming && parsed[parsed.length - 1]?.kind !== 'paragraph' && parsed[parsed.length - 1]?.kind !== 'heading' && parsed[parsed.length - 1]?.kind !== 'list'"><i class="cursor" aria-hidden="true" /></p>
       </div>
-    </div>
+      <div v-if="receipt" class="receipt" :class="{ open: receiptOpen }">
+        <button type="button" class="rh" :aria-expanded="receiptOpen" @click="receiptOpen = !receiptOpen">
+          <Send :size="14" :stroke-width="1.75" aria-hidden="true" /><b>查看实际发送内容</b>
+          <template v-if="codeCount"><i class="sp" />遮住 <span class="num">{{ codeCount }}</span> 处</template>
+          <i class="sp" /><span class="pass"><ShieldCheck :size="13" :stroke-width="2" aria-hidden="true" />复检通过</span>
+          <template v-if="message.model_label"><i class="sp" />{{ message.model_label }}</template>
+          <ChevronDown :size="16" :stroke-width="1.75" class="chev" aria-hidden="true" />
+        </button>
+        <div v-if="receiptOpen" class="rb">
+          <p class="rb-h">你的提问 · 发出时的样子</p>
+          <pre>{{ sent }}</pre>
+          <p class="rb-note">文件正文按确认后的遮住版本一并发出，可在“文件”里点“查看外发文本”。</p>
+        </div>
+      </div>
+    </component>
     <span v-if="message.role === 'user'" class="aux num">{{ formatDateTime(message.created_at) }}</span>
-    <details v-if="message.role === 'user' && message.sent" class="sent">
-      <summary class="hint">查看实际发送内容</summary>
-      <pre>{{ message.sent }}</pre>
-    </details>
     <p v-if="waiting" class="waiting" :class="reading ? 'is-local' : 'is-ai'" role="status"><span v-if="!reading" class="think" aria-hidden="true"><i /><i /><i /></span><span>{{ waiting }}{{ waitingTail }}</span></p>
     <p v-if="count" class="warning">有 {{ count }} 处没能还原为真实名称，已用虚线标出，原文保持不变</p>
     <SiNotice v-if="message.error" :title="message.error" type="error" :closable="false" />
@@ -136,12 +148,22 @@ async function copy() {
 .ai-tag { background: var(--si-ai-soft); color: var(--si-ai-ink); }
 .ai-tag svg { color: var(--si-ai); }
 .local-tag { background: var(--si-blue-tint); color: var(--si-blue-ink); }
-/* AI 建议：左侧一条灵紫细线，标题“AI 建议 · 请核实” */
-.ai-sec { padding-left: 18px; border-left: 2px solid var(--si-ai-line); }
-/* 用户消息下的“查看实际发送内容”：只读，代号文本原样显示 */
-.sent { max-width: 80%; text-align: right; }
-.sent summary { cursor: pointer; }
-.sent pre { margin: 6px 0 0; padding: 8px 12px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-meta); color: var(--si-ink-3); background: var(--si-surface-2); border-radius: var(--el-border-radius-base); }
+/* 回答放在紫色地带（二版 6.5），标题“AI 建议 · 请核实”；本机给出的回答不加地带 */
+.ai-zone .markdown > p:first-child { margin-top: 0; }
+.ai-zone .markdown > p:last-child { margin-bottom: 0; }
+/* 外发回执：虚线边，合上一行；翻开是实际发出的提问文字，代号原样显示 */
+.receipt { margin-top: 14px; overflow: hidden; border: 1px dashed var(--si-ai-line); border-radius: var(--si-radius-md); background: var(--si-surface-1); }
+.rh { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; width: 100%; padding: 8px 12px; border: 0; background: none; color: var(--si-ink-3); font: var(--si-font-meta); text-align: left; cursor: pointer; }
+.rh:hover { color: var(--si-ink-2); }
+.rh b { color: var(--si-ink-2); font-weight: 500; }
+.rh .sp { width: 3px; height: 3px; border-radius: 50%; background: var(--si-ink-4); }
+.rh .pass { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: var(--si-radius-badge); background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-badge); }
+.rh .chev { margin-left: auto; transition: transform var(--si-d2) var(--si-ease-out); }
+.receipt.open .chev { transform: rotate(180deg); }
+.rb { padding: 12px 14px; border-top: 1px dashed var(--si-ai-line); background: var(--si-card-2); white-space: normal; }
+.rb-h { margin: 0 0 6px; font: var(--si-font-caption); color: var(--si-ink-3); }
+.rb pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-code-sm); color: var(--si-ink-2); }
+.rb-note { margin: 10px 0 0; font: var(--si-font-caption); color: var(--si-ink-3); }
 .markdown { font: var(--si-font-reading); color: var(--si-ink-1); overflow-wrap: anywhere; white-space: pre-wrap; }
 .markdown p { margin: 10px 0; }
 .heading { font: var(--si-font-h3); }

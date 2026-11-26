@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ArrowDown } from '@lucide/vue'
 import type { Message, MessageSource } from '@/api/assistant'
 import MessageItem from './MessageItem.vue'
 /** savedId / savedNo：讨论稿来自哪条回复、属于问题几，该回复上显示“已保存”（V321-E-02） */
-const props = defineProps<{ messages: Message[]; sessionId: string; viewKey?: string; hint?: string; draftable?: boolean; savedId?: number | null; savedNo?: string; reading?: boolean }>()
+const props = defineProps<{ messages: Message[]; sessionId: string; viewKey?: string; hint?: string; draftable?: boolean; savedId?: number | null; savedNo?: string; reading?: boolean; codeCount?: number }>()
 const emit = defineEmits<{ stop: [mid: number]; retry: [mid: number]; draft: [message: Message]; cite: [message: Message, source: MessageSource, anchor: HTMLElement] }>()
 const area = ref<HTMLElement>()
 // 自动跟随：离底部 80px 以内视为在底部；用户向上滚动即停止跟随，点“回到底部”恢复
@@ -18,6 +18,13 @@ watch(() => props.messages.map(m => `${m.id}:${m.content.length}`).join(','), as
   if (!following.value) return
   await nextTick(); toBottom()
 })
+// 外发回执：每条回答配上它前面那条提问实际发出的文字
+const sentFor = computed(() => {
+  const out = new Map<number, string>()
+  let sent = ''
+  for (const m of props.messages) { if (m.role === 'user') sent = m.sent ?? ''; else if (sent) out.set(m.id, sent) }
+  return out
+})
 const lastReply = () => [...props.messages].reverse().find(m => m.role === 'assistant')?.id
 </script>
 <template>
@@ -25,7 +32,7 @@ const lastReply = () => [...props.messages].reverse().find(m => m.role === 'assi
     <div ref="area" class="conversation" @scroll.passive="onScroll">
       <div class="reading">
         <p v-if="!messages.length" class="empty-hint">{{ hint ?? '可以直接提问。文件加入后在本机读取并遮住名称与金额，发给模型的只有遮住后的文字。' }}</p>
-        <MessageItem v-for="message in messages" :key="message.id" :message="message" :session-id="sessionId" :last="message.id === lastReply()" :draftable="draftable" :reading="reading" :saved-no="message.id === savedId ? savedNo ?? '' : undefined" @draft="emit('draft', $event)" @cite="(m, src, el) => emit('cite', m, src, el)" @stop="emit('stop', $event)" @retry="emit('retry', $event)" />
+        <MessageItem v-for="message in messages" :key="message.id" :message="message" :session-id="sessionId" :last="message.id === lastReply()" :draftable="draftable" :reading="reading" :sent="sentFor.get(message.id)" :code-count="codeCount" :saved-no="message.id === savedId ? savedNo ?? '' : undefined" @draft="emit('draft', $event)" @cite="(m, src, el) => emit('cite', m, src, el)" @stop="emit('stop', $event)" @retry="emit('retry', $event)" />
       </div>
     </div>
     <el-button v-if="!following" class="to-bottom" round size="small" @click="toBottom"><template #icon><ArrowDown :size="16" :stroke-width="1.75" /></template>回到底部</el-button>
