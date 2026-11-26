@@ -27,6 +27,7 @@ import {
 } from '@/api/tasks'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
+import { nudgeField } from '@/utils/nudge'
 import SiTrip from '@/components/ui/SiTrip.vue'
 import { reviewTrip, type Trip } from '@/utils/trip'
 import ReviewCeremony from '@/components/result/ReviewCeremony.vue'
@@ -412,7 +413,12 @@ async function startOver() {
 
 const parsing = computed(() => task.value?.status === 'parsing')
 const parseFailed = computed(() => task.value?.status === 'parse_failed')
-// 工具条（二版第二节）：读取 · 确认遮住 · 复检 · 模型审核 · 还原；映射在 utils/trip.ts
+// 工具条（二版第二节）：读取 · 确认遮住 · 复检 · 模型审核 · 还原；映射在 utils/trip.ts。
+// “去确认 / 去处理”把人带到确认页底部的主按钮，“重试”回到上传
+function onTripAct() {
+  if (step.value === 1) nudgeField(document.querySelector('.confirm-step .el-button--primary.el-button--large'))
+  else if (parseFailed.value) void startOver()
+}
 const trip = computed<Trip>(() => {
   const t = task.value
   if (!t || (t.status === 'draft' && !t.busy && !t.files.some(f => f.parse_state === 'parsing'))) return { mod: 'review', at: 0, state: 'todo', note: '等你添加文件' }
@@ -443,7 +449,7 @@ function fileBadge(name: string): string {
 <template>
   <NotFound v-if="missing" kind="content" />
   <div v-else class="page" :class="step === 1 ? 'page--split is-workbench' : 'page--standard'">
-    <SiTrip class="page-trip" :trip="trip" scale="bar" />
+    <SiTrip class="page-trip" :trip="trip" scale="bar" @act="onTripAct" />
 
     <section v-if="step === 0" class="panel">
       <div v-if="parsing" class="processing">

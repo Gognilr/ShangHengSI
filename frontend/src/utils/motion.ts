@@ -50,3 +50,22 @@ export function watchFrames(): () => void {
   requestAnimationFrame(tick)
   return () => { stopped = true }
 }
+
+/**
+ * 地图点亮（二版第五节）：元素首次进入视口时返回 true，之后不再变。完整档由页面据此依次点亮节点；
+ * 精简与关闭档一开始就是 true（直接显示终态，不走）。
+ */
+export function useLitOnce(target: Ref<HTMLElement | undefined>): Ref<boolean> {
+  const store = useAppearanceStore()
+  const lit = ref(store.fxResolved !== 'full')
+  let io: IntersectionObserver | undefined
+  onMounted(() => {
+    if (lit.value || !target.value) { lit.value = true; return }
+    io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) { lit.value = true; io?.disconnect() }
+    }, { threshold: .35 })
+    io.observe(target.value)
+  })
+  onBeforeUnmount(() => io?.disconnect())
+  return lit
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, X } from '@lucide/vue'
 import { useFx } from '@/utils/motion'
 import { barStations, currentName, isLocalTrip, miniStations, segmentsOf, tripAria, tripTitle, type Station, type Trip } from '@/utils/trip'
@@ -8,7 +8,7 @@ import { barStations, currentName, isLocalTrip, miniStations, segmentsOf, tripAr
  * 往返线「衡线」（澄明二版第二节）：一件工作从本机出发，遮住后经网关到模型，再回到本机还原。
  * 颜色说在哪里（本机青、模型紫），光圈说怎么样（呼吸进行中、琥珀等你、红叉失败）。
  * scale：mini 迷你（列表行，五个 8px 点）；bar 工具条（工作区顶部，模块站名横排）；dot 只画当前站（侧栏）。
- * 状态映射只在 utils/trip.ts。
+ * 状态映射只在 utils/trip.ts。等你、被拦截、失败时，父页面接 @act 才在状态后画动作按钮。
  */
 const props = withDefaults(defineProps<{
   trip: Trip; scale?: 'mini' | 'bar' | 'dot'; hideText?: boolean
@@ -18,6 +18,8 @@ const props = withDefaults(defineProps<{
   seconds?: number | null
 }>(), { scale: 'mini' })
 const emit = defineEmits<{ act: [] }>()
+// 动作按钮只在父页面接了 @act 时显示：没有去处的按钮不画
+const hasAct = !!getCurrentInstance()?.vnode.props?.onAct
 const fx = useFx()
 
 const label = computed(() => tripAria(props.trip))
@@ -133,7 +135,7 @@ watch(() => [props.trip.mod, props.trip.at] as const, async ([mod, at], old) => 
       <span class="d" aria-hidden="true"><X v-if="s.state === 'fail'" :size="10" :stroke-width="3" /></span>{{ s.name }}
       <span v-if="i === trip.at && s.state === 'run' && elapsed" class="tm">{{ elapsed }}</span>
       <span v-if="i === trip.at && trip.note && s.state !== 'todo'" class="note" :class="s.state">{{ trip.note }}
-        <el-button v-if="trip.act && ['wait', 'block', 'fail'].includes(s.state)" size="small" :type="s.state === 'fail' ? 'default' : 'primary'" @click="emit('act')">{{ trip.act }}</el-button>
+        <el-button v-if="hasAct && trip.act && ['wait', 'block', 'fail'].includes(s.state)" size="small" :type="s.state === 'fail' ? 'default' : 'primary'" @click="emit('act')">{{ trip.act }}</el-button>
       </span>
     </li>
     <li ref="spark" class="spark" aria-hidden="true"><i class="sl" /><i class="sm" /></li>

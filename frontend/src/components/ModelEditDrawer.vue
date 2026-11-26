@@ -105,7 +105,7 @@ async function save() {
       <el-form-item label="接口地址" prop="base_url"><el-input v-model="form.base_url" maxlength="500" placeholder="https://api.example.com/v1" /></el-form-item>
       <el-form-item label="API 密钥" prop="api_key"><el-input v-model="form.api_key" type="password" show-password autocomplete="new-password" :placeholder="keyLast4 ? `已设置（末 4 位 ${keyLast4}），留空不修改` : '请输入 API 密钥'" maxlength="500" /></el-form-item>
       <el-form-item label="模型名称" prop="model_name"><el-input v-model="form.model_name" maxlength="100" /></el-form-item>
-      <el-form-item label="单价（内置价格表，只读）">
+      <el-form-item label="单价（只读）">
         <ModelPriceInfo v-if="priceSaved" :price="model?.price ?? null" />
         <span v-else class="hint">保存后按接口主机与模型名称自动匹配内置价格表；未收录的型号只统计 token。</span>
       </el-form-item>

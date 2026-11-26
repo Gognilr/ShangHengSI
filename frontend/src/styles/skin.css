@@ -225,7 +225,7 @@ html[data-shell="night"] .el-button--primary {
   --el-table-header-text-color: var(--si-ink-3);
   --el-table-text-color: var(--si-ink-2);
   --el-table-border-color: var(--si-hair-faint);
-  --el-table-header-bg-color: var(--si-card-2);
+  --el-table-header-bg-color: transparent;
   --el-table-row-hover-bg-color: var(--si-hover-bg);
   --el-table-current-row-bg-color: var(--si-select-bg);
   --el-table-expanded-cell-bg-color: transparent;
@@ -238,6 +238,7 @@ html[data-shell="night"] .el-button--primary {
 .el-table--border .el-table__inner-wrapper::after, .el-table--border::after, .el-table--border::before { display: none; }
 /* 行底色透明，固定列（表格横向滚动时）须垫卡片底色，否则压在滚动列的文字上 */
 .el-table .el-table__body-wrapper tr td.el-table-fixed-column--right, .el-table .el-table__body-wrapper tr td.el-table-fixed-column--left { background: var(--si-surface-1); }
+.el-table th.el-table__cell.el-table-fixed-column--right, .el-table th.el-table__cell.el-table-fixed-column--left { background: var(--si-surface-1); }
 .el-table .el-table__body-wrapper tr:hover > td.el-table-fixed-column--right, .el-table .el-table__body-wrapper tr:hover > td.el-table-fixed-column--left { background: linear-gradient(var(--si-hover-bg), var(--si-hover-bg)), var(--si-surface-1); }
 .el-table--small .el-table__cell { height: 44px; padding: 6px 0; }
 /* 无外框；表头下一条强线，行间细线 */
