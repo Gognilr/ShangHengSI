@@ -99,7 +99,7 @@ async function submit() {
             <li><span class="pi"><ListChecks :size="18" :stroke-width="1.75" /></span>几分钟出问题清单</li>
           </ul>
         </div>
-        <footer>V3.5.0 · 仅限公司内网使用</footer>
+        <footer>V3.5.1 · 仅限公司内网使用</footer>
       </section>
       <div class="login-pane">
         <SiLogo class="pane-logo" size="greet" />
