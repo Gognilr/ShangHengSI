@@ -914,8 +914,6 @@ class LlmModel(Base):
     json_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     extra_params: Mapped[Any] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     chunk_chars: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("60000"))
-    price_in_per_m: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, server_default=text("0"))
-    price_out_per_m: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, server_default=text("0"))
     monthly_call_cap: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     for_review: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -953,6 +951,9 @@ class LlmCall(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text)
     tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    # 命中缓存的输入 token（含在 tokens_in 中）与按内置价格表当场算出的费用（元）；cost 为空表示未收录价格（V351Q-21）
+    tokens_cached: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 6))
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[datetime] = _ts_now()
 

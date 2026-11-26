@@ -24,6 +24,7 @@ DEFAULTS: dict[str, Any] = {
     "model.default_review_id": None,
     "model.default_assist_id": None,
     "model.user_daily_cap": 0,
+    "model.balance_watch": {},  # 余额对账状态，按“接口主机|密钥摘要”分账户（V351Q-21）
     "redaction.mask_quantity": False,
     "redaction.date_shift": True,  # V31-E-09：E-07 评测 B 组不低于 A 组，默认开
     "review.company_profile": "",

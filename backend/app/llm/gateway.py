@@ -8,6 +8,9 @@ call_model() 依次执行：读取模型 → 调用上限检查 → 出口复检
 - llm_calls 用独立的数据库会话写入并立即提交：调用方回滚自己的事务时，外发记录仍然保留。
 - 审核调用传 on_delta 时流式接收（V31-U5F-03），只改接收方式，上限、复检、记录与重试不变。
 - API 密钥只出现在请求头中；写入 llm_calls 的文字中若出现密钥原文一律替换为 ***；日志只写记录 id、用途、状态、耗时。
+- 记账（V351Q-21）：从 usage 读出命中缓存的 token，按内置价格表（llm/pricing.py）算好本次费用写入 llm_calls.cost。
+- 余额对账（V351Q-21）：query_balance 用同一密钥只读查询模型接口主机上的账户余额，请求不含任何任务数据，
+  不写 llm_calls，日志不写金额。
 """
 import json
 import logging
@@ -17,13 +20,15 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
+from urllib.parse import urlsplit
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import LlmCall, LlmModel, Task
-from app.llm import usage
+from app.db.base import utcnow
+from app.llm import pricing, usage
 from app.redaction.recheck import BlockReason, recheck, recheck_context
 from app.security import crypto
 
@@ -82,8 +87,6 @@ class _Config:
     monthly_call_cap: int = 0
     id: int | None = None
     chunk_chars: int = 60000
-    price_in_per_m: Decimal = Decimal("0")
-    price_out_per_m: Decimal = Decimal("0")
 
 
 def load_model(db: Session, model_id: int) -> _Config:
@@ -95,7 +98,6 @@ def load_model(db: Session, model_id: int) -> _Config:
         name=model.model_name.strip(), temperature=float(model.temperature), max_tokens=model.max_tokens,
         timeout_s=model.timeout_s, json_mode=model.json_mode, extra_params=model.extra_params,
         monthly_call_cap=model.monthly_call_cap, chunk_chars=model.chunk_chars,
-        price_in_per_m=model.price_in_per_m, price_out_per_m=model.price_out_per_m,
     )
 
 
@@ -172,13 +174,21 @@ def _build_body(cfg: _Config, messages: list[dict], json_mode: bool) -> dict:
     return body
 
 
-def _parse_response(resp: httpx.Response) -> tuple[str, int, int]:
+def _parse_response(resp: httpx.Response) -> tuple[str, pricing.Usage]:
     data = resp.json()
-    content = data["choices"][0]["message"]["content"]
+    message = data["choices"][0]["message"]
+    content = message["content"]
     if not isinstance(content, str):
         raise ValueError("content")
-    usage = data.get("usage") or {}
-    return content, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+    use = pricing.parse_usage(data.get("usage"))
+    if isinstance(message.get("reasoning_content"), str) and message["reasoning_content"]:
+        use.thinking = True  # 思考模式输出另有单价的型号按此计价
+    return content, use
+
+
+def _cost_fields(cfg: _Config, use: pricing.Usage) -> dict:
+    return {"tokens_in": use.tokens_in, "tokens_out": use.tokens_out, "tokens_cached": use.tokens_cached,
+            "cost": pricing.call_cost(cfg.base_url, cfg.name, use, utcnow())}
 
 
 def call_model(db: Session, *, model_id: int, purpose: str, messages: list[dict],
@@ -305,11 +315,11 @@ def _call_config(
             if not outcome.retry:
                 break
             continue
-        content, tokens_in, tokens_out = outcome
+        content, use = outcome
         call_id = recorder.write(status="sent", request_text=request_text, response_text=content,
-                                 tokens_in=tokens_in, tokens_out=tokens_out, duration_ms=duration)
+                                 duration_ms=duration, **_cost_fields(cfg, use))
         logger.info("llm_call %s 已发送 purpose=%s 耗时=%sms", call_id, purpose, duration)
-        return ModelResult(content, cfg.name, tokens_in, tokens_out, duration, call_id)
+        return ModelResult(content, cfg.name, use.tokens_in, use.tokens_out, duration, call_id)
     assert last is not None
     raise last
 
@@ -322,7 +332,7 @@ class _Failure:
 
 
 def _send_once(cfg: _Config, url: str, headers: dict, request_text: str,
-               on_delta=None, on_content=None) -> tuple[str, int, int] | _Failure:
+               on_delta=None, on_content=None) -> tuple[str, pricing.Usage] | _Failure:
     """发送一次。4xx（408、429 等除外）不重试：密钥错误、参数错误重试也不会成功。
     on_delta 不为空时请求体已带 stream=true，改为流式接收，每收到一段回复就以本次累计字数回调（V31-U5F-03）。"""
     if on_delta is not None:
@@ -346,11 +356,12 @@ def _send_once(cfg: _Config, url: str, headers: dict, request_text: str,
 
 
 def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
-                 on_delta, on_content=None) -> tuple[str, int, int] | _Failure:
+                 on_delta, on_content=None) -> tuple[str, pricing.Usage] | _Failure:
     """流式发送一次（审核用）：失败分类与 _send_once 相同。服务端忽略 stream、直接返回整段 JSON（application/json）时按普通回复解析。
     两段数据之间超过 cfg.timeout_s 或总时长超过 max(STREAM_TOTAL_SECONDS, cfg.timeout_s) 记为超时。"""
     parts: list[str] = []
-    tokens_in = tokens_out = 0
+    usage_acc: dict = {}
+    thought = False
     received = 0
     started = time.monotonic()
 
@@ -373,13 +384,13 @@ def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
                 if "application/json" in resp.headers.get("content-type", ""):
                     resp.read()
                     try:
-                        content, tokens_in, tokens_out = _parse_response(resp)
+                        content, use = _parse_response(resp)
                     except (ValueError, KeyError, IndexError, TypeError):
                         return _Failure(GatewayError("BAD_RESPONSE"), True, resp.text)
                     notify(len(content))
                     if on_content is not None:
                         on_content(content)
-                    return content, tokens_in, tokens_out
+                    return content, use
                 complete = False
                 pending: list[str] = []
                 lines = resp.iter_lines()
@@ -398,9 +409,7 @@ def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
                     payload = json.loads(data)
                     if not isinstance(payload, dict) or "error" in payload:
                         raise ValueError("event")
-                    use = payload.get("usage") or {}
-                    tokens_in = int(use.get("prompt_tokens") or tokens_in)
-                    tokens_out = int(use.get("completion_tokens") or tokens_out)
+                    pricing.merge_usage(usage_acc, payload.get("usage"))
                     for choice in payload.get("choices") or []:
                         delta = choice.get("delta") or {}
                         piece = delta.get("content")
@@ -415,6 +424,7 @@ def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
                         # 推理模型先流式输出思考内容（测试机实测约 2 分钟）：只计字数让用户看到在出字，不保存、不记录
                         thinking = delta.get("reasoning_content")
                         if isinstance(thinking, str) and thinking:
+                            thought = True
                             received += len(thinking)
                             notify(received)
                         if choice.get("finish_reason") is not None:
@@ -428,7 +438,12 @@ def _send_stream(cfg: _Config, url: str, headers: dict, request_text: str,
                         "".join(parts) or None)
     except (ValueError, KeyError, IndexError, TypeError, AttributeError):
         return _Failure(GatewayError("BAD_RESPONSE"), True, "".join(parts) or None)
-    return "".join(parts), tokens_in, tokens_out
+    try:
+        use = pricing.parse_usage(usage_acc)
+    except (ValueError, TypeError):
+        return _Failure(GatewayError("BAD_RESPONSE"), True, "".join(parts) or None)
+    use.thinking = use.thinking or thought
+    return "".join(parts), use
 
 
 _DETAIL_MAX = 300
@@ -509,26 +524,27 @@ def stream_model(db: Session, *, model_id: int, purpose: str, messages: list[dic
     body["stream"], body["stream_options"] = True, {"include_usage": True}
     request_text = json.dumps(body, ensure_ascii=False)
     started = last_received = time.monotonic()
-    parts, tokens_in, tokens_out = [], 0, 0
+    parts, usage_acc, thought = [], {}, False
     complete, stopped, pending = False, False, []
 
     def event(data):
-        nonlocal complete, stopped, tokens_in, tokens_out
+        nonlocal complete, stopped, thought
         if data == "[DONE]":
             complete = True
             return False
         payload = json.loads(data)
         if not isinstance(payload, dict) or "error" in payload:
             raise ValueError("event")
-        usage_data = payload.get("usage") or {}
-        tokens_in = int(usage_data.get("prompt_tokens") or tokens_in)
-        tokens_out = int(usage_data.get("completion_tokens") or tokens_out)
+        pricing.merge_usage(usage_acc, payload.get("usage"))
         choices = payload.get("choices")
         if not isinstance(choices, list):
             raise ValueError("choices")
         if choices:
             choice = choices[0]
-            content = (choice.get("delta") or {}).get("content")
+            delta = choice.get("delta") or {}
+            if isinstance(delta.get("reasoning_content"), str) and delta["reasoning_content"]:
+                thought = True
+            content = delta.get("content")
             if content is not None:
                 if not isinstance(content, str):
                     raise ValueError("content")
@@ -596,12 +612,46 @@ def stream_model(db: Session, *, model_id: int, purpose: str, messages: list[dic
         error = GatewayError("TIMEOUT")
     duration = int((time.monotonic() - started) * 1000)
     content = "".join(parts)
+    try:
+        use = pricing.parse_usage(usage_acc)
+    except (ValueError, TypeError):
+        use, error = pricing.Usage(), error or GatewayError("BAD_RESPONSE")
+    use.thinking = use.thinking or thought
+    # 中途出错的流式调用厂商同样按已用 token 计费，费用照记；统计只计 sent。
     cid = recorder.write(status="error" if error else "sent", request_text=request_text,
                          response_text=content[:_RESPONSE_KEEP_CHARS] if error else content,
-                         tokens_in=tokens_in, tokens_out=tokens_out, duration_ms=duration,
+                         duration_ms=duration, **_cost_fields(cfg, use),
                          **({"error_message": str(error)} if error else {}))
     logger.info("llm_call %s 流式结束 purpose=assist 状态=%s 耗时=%sms", cid, "error" if error else "sent", duration)
     if error:
         error.llm_call_id = cid
         raise error
-    return ModelResult(content, cfg.name, tokens_in, tokens_out, duration, cid)
+    return ModelResult(content, cfg.name, use.tokens_in, use.tokens_out, duration, cid)
+
+
+# 余额对账（V351Q-21）：价格表 balance 字段对应的查询路径（各家官方文档）
+BALANCE_PATHS = {"deepseek": "/user/balance", "moonshot": "/v1/users/me/balance"}
+
+
+def query_balance(base_url: str, api_key: str, kind: str) -> Decimal:
+    """查询账户可用余额（元）。只访问模型接口地址的同一主机，请求只有密钥、没有任何任务数据。
+    失败抛出 GatewayError（HTTP_ERROR / TIMEOUT / BAD_RESPONSE）；不写 llm_calls，余额不写日志。"""
+    parts = urlsplit(base_url.strip())
+    url = f"{parts.scheme}://{parts.netloc}{BALANCE_PATHS[kind]}"
+    try:
+        with httpx.Client(timeout=15, transport=TRANSPORT, trust_env=False, follow_redirects=False) as client:
+            resp = client.get(url, headers={"Authorization": f"Bearer {api_key}"})
+    except httpx.TimeoutException:
+        raise GatewayError("TIMEOUT") from None
+    except httpx.HTTPError as exc:
+        raise GatewayError("HTTP_ERROR", f"{MESSAGES['HTTP_ERROR']}（{type(exc).__name__}）") from None
+    if resp.status_code != 200:
+        raise GatewayError("HTTP_ERROR", f"{MESSAGES['HTTP_ERROR']}（HTTP {resp.status_code}）")
+    try:
+        data = resp.json()
+        if kind == "deepseek":
+            # 只对人民币账户对账：美元账户与人民币价格表无法比较
+            return next(Decimal(str(i["total_balance"])) for i in data["balance_infos"] if i.get("currency") == "CNY")
+        return Decimal(str(data["data"]["available_balance"]))
+    except (ValueError, KeyError, TypeError, StopIteration, ArithmeticError):
+        raise GatewayError("BAD_RESPONSE") from None

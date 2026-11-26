@@ -1,7 +1,6 @@
 """V3-B-01：多模型迁移、网关、独立月限额与合计日限额。"""
 import json
 import os
-from decimal import Decimal
 
 import httpx
 import pytest
@@ -26,8 +25,7 @@ def models(tmp_path, monkeypatch, db_sessionmaker):
     with db_sessionmaker() as db:
         rows = [LlmModel(display_name=name, base_url=f"https://{name.lower()}.example.test/v1",
                         api_key_enc=crypto.encrypt_text("secret-"+name), model_name="model-"+name,
-                        for_review=True, for_assist=True, monthly_call_cap=1,
-                        price_in_per_m=Decimal("2" if name == "A" else "4"), price_out_per_m=Decimal("8")) for name in ("A", "B")]
+                        for_review=True, for_assist=True, monthly_call_cap=1) for name in ("A", "B")]
         db.add_all(rows)
         db.commit()
     yield rows
@@ -86,7 +84,8 @@ def test_model_monthly_cap_and_shared_daily_cap(models, db_sessionmaker, make_us
             send(models[1])
         assert caught.value.code == "USER_CAP_REACHED"
         assert usage.remaining_calls(db, user.id, models[0].id) == {"monthly": 0, "daily": 0}
-        assert usage.monthly_usage(db)["cost"] == Decimal("8.00")
+        # 示例主机不在价格表中：只统计 token，记为未收录价格（V351Q-21）
+        assert usage.monthly_usage(db)["unpriced"] == 2
         assert usage.monthly_usage(db, models[0].id)["calls"] == 1
     assert len(requests) == 2
 

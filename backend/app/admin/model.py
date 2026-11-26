@@ -17,7 +17,7 @@ from app.config import get_settings
 from app.db.base import utcnow
 from app.db.models import AssistantMessage, LlmCall, LlmModel, ReviewRun, User
 from app.db.session import get_db
-from app.llm import gateway
+from app.llm import balance, gateway, pricing
 from app.llm.usage import monthly_usage
 from app.security import crypto
 from app.security.permissions import require
@@ -26,7 +26,6 @@ from app.security.sessions import client_ip
 
 _perm = require("sys.models")
 router = APIRouter(prefix="/admin", dependencies=[Depends(_perm)])
-_PRICE = re.compile(r"\d{1,8}(\.\d{1,4})?")
 _KEY_CHARS = re.compile(r"[\x21-\x7e]{8,500}")
 _EXTRA_MSG = "附加请求参数须为 JSON 对象，且不能包含 messages"
 
@@ -43,8 +42,6 @@ class ModelIn(BaseModel):
     json_mode: bool = True
     extra_params: Any = Field(default_factory=dict)
     chunk_chars: int = Field(default=60000, ge=1000, le=1_000_000)
-    price_in_per_m: str = "0"
-    price_out_per_m: str = "0"
     monthly_call_cap: int = Field(default=0, ge=0, le=1_000_000_000)
     for_review: bool = True
     for_assist: bool = True
@@ -56,14 +53,6 @@ class ModelIn(BaseModel):
     def _url(cls, v: str) -> str:
         if not re.fullmatch(r"https?://\S+", v):
             raise ValueError("base_url")
-        return v
-
-    @field_validator("price_in_per_m", "price_out_per_m")
-    @classmethod
-    def _price(cls, v: str) -> str:
-        v = v.strip()
-        if not _PRICE.fullmatch(v):
-            raise ValueError("price")
         return v
 
     @field_validator("api_key")
@@ -110,9 +99,11 @@ def _usage(db, mid=None):
 
 def _read(db, row):
     data = {c.name: getattr(row, c.name) for c in LlmModel.__table__.columns if c.name != "api_key_enc"}
-    for field in ("temperature", "price_in_per_m", "price_out_per_m"):
-        data[field] = str(data[field])
-    data.update(api_key_last4=crypto.decrypt_text(row.api_key_enc)[-4:], usage=_usage(db, row.id),
+    data["temperature"] = str(data["temperature"])
+    key = crypto.decrypt_text(row.api_key_enc)
+    # 单价来自内置价格表，只读（V351Q-21）；对账信息只有支持余额查询的厂商才有
+    data.update(api_key_last4=key[-4:], usage=_usage(db, row.id), price=pricing.describe(row.base_url, row.model_name),
+                balance=balance.view(db, row, key),
                 is_default_review=get_setting(db, "model.default_review_id") == row.id,
                 is_default_assist=get_setting(db, "model.default_assist_id") == row.id,
                 used=_used(db, row.id))
@@ -145,8 +136,6 @@ def _save(db, row, body, request, admin):
     if not isinstance(body.extra_params, dict) or "messages" in body.extra_params:
         raise AppError(422, "EXTRA_PARAMS_INVALID", _EXTRA_MSG)
     values = body.model_dump(exclude={"api_key"})
-    for key in ("price_in_per_m", "price_out_per_m"):
-        values[key] = Decimal(values[key])
     new = row is None
     if new and body.api_key is None:
         raise AppError(422, "API_KEY_REQUIRED", "新增模型须填写 API 密钥")

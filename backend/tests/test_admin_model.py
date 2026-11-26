@@ -18,7 +18,7 @@ KEY = "sk-fictional-01234567"
 
 def body(**over):
     data = {"display_name": "第二模型", "model_name": "second", "base_url": "https://second.example.test/v1",
-            "api_key": KEY, "price_in_per_m": "2.5", "for_review": True, "for_assist": True}
+            "api_key": KEY, "for_review": True, "for_assist": True}
     return {**data, **over}
 
 

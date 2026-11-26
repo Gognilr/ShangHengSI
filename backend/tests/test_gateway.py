@@ -411,12 +411,13 @@ def test_settings_defaults_and_unknown_keys(gw, db_sessionmaker):
 def test_monthly_usage_shanghai_month_and_cost(gw, db_sessionmaker):
     now = datetime(2026, 10, 15, 4, 0, tzinfo=timezone.utc)
     with db_sessionmaker() as db:
-        configure(db, "model.price_in_per_m", 2, None)
-        configure(db, "model.price_out_per_m", 8, None)
         db.add_all([
-            # 9 月 30 日 17:00 UTC = 上海 10 月 1 日 01:00，计入 10 月
+            # 9 月 30 日 17:00 UTC = 上海 10 月 1 日 01:00，计入 10 月；费用为网关记账时算好的值（V351Q-21）
             LlmCall(model_id=1, purpose="review", model_name="m", status="sent", tokens_in=1_000_000, tokens_out=125_001,
-                    created_at=datetime(2026, 9, 30, 17, 0, tzinfo=timezone.utc)),
+                    tokens_cached=1000, cost=Decimal("3.000008"), created_at=datetime(2026, 9, 30, 17, 0, tzinfo=timezone.utc)),
+            # 未收录价格：只计次数与 token
+            LlmCall(model_id=1, purpose="review", model_name="m", status="sent", tokens_in=10, tokens_out=10,
+                    created_at=datetime(2026, 10, 3, tzinfo=timezone.utc)),
             # 9 月 30 日 15:00 UTC = 上海 9 月 30 日 23:00，不计
             LlmCall(model_id=1, purpose="review", model_name="m", status="sent", tokens_in=5, tokens_out=5,
                     created_at=datetime(2026, 9, 30, 15, 0, tzinfo=timezone.utc)),
@@ -427,8 +428,8 @@ def test_monthly_usage_shanghai_month_and_cost(gw, db_sessionmaker):
         ])
         db.commit()
         u = usage.monthly_usage(db, now=now)
-    # 费用 = 1,000,000×2/1e6 + 125,001×8/1e6 = 2 + 1.000008 → 3.00（四舍五入两位）
-    assert u == {"calls": 1, "tokens_in": 1_000_000, "tokens_out": 125_001, "cost": Decimal("3.00")}
+    assert u == {"calls": 2, "tokens_in": 1_000_010, "tokens_out": 125_011, "tokens_cached": 1000,
+                 "cost": Decimal("3.00"), "unpriced": 1}
     assert usage.month_start(now).isoformat() == "2026-10-01T00:00:00+08:00"
 
 

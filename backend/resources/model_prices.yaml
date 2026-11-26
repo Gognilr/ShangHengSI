@@ -1,0 +1,152 @@
+# 模型单价表（V351Q-21，SPEC 15.2）：网关记录每次调用时按本表算好费用写入 llm_calls.cost。
+# 随发布包更新，运行时不联网获取；发布前须到各家官网逐条核对（运维说明“发布前核对价格表”）。
+#
+# 单位：元 / 百万 token。每档：input = 输入（未命中缓存）、cached = 输入（命中缓存）、output = 输出；
+#   output_thinking = 思考模式的输出价（只有与非思考不同时才写，按回复中是否有思考内容判断）。
+# 分档：max_input / max_output 为单次请求的输入 / 输出 token 上限（含），K 按 1000 计；
+#   从上往下取第一个满足的档，超出全部档按最后一档。
+# offpeak + peak_hours：高峰时段（北京时间工作日，不含 cn_holidays）按各档价，其余时段按 offpeak。
+# models：模型名不区分大小写；末尾 * 表示前缀，精确名优先。
+# effective：价格自该日起适用；同一型号可写多段，按调用日期取已生效的最新一段，早于最早一段的旧调用按最早一段计。
+# balance：该厂商支持用同一 API 密钥查询账户余额，用于余额对账（发现调价）。
+version: "2026-11-26"
+
+# 中国法定节假日放假日（国务院办公厅通知，www.gov.cn）：DeepSeek 高峰时段判断用
+cn_holidays:
+  - 2026-01-01..2026-01-03
+  - 2026-02-15..2026-02-23
+  - 2026-04-04..2026-04-06
+  - 2026-05-01..2026-05-05
+  - 2026-06-19..2026-06-21
+  - 2026-09-25..2026-09-27
+  - 2026-10-01..2026-10-07
+  - 2027-01-01..2027-01-03
+  - 2027-02-05..2027-02-13
+  - 2027-04-03..2027-04-05
+  - 2027-05-01..2027-05-05
+  - 2027-06-09..2027-06-09
+  - 2027-09-15..2027-09-15
+  - 2027-10-01..2027-10-07
+
+vendors:
+  - vendor: DeepSeek
+    host: api.deepseek.com
+    source: https://api-docs.deepseek.com/zh-cn/quick_start/pricing
+    effective: 2026-11-26  # 官网未写明本次价格的起始日期，按核对日期记
+    balance: deepseek
+    # 官网：北京时间周一至周五（不含法定节假日）9:00-12:00、14:00-18:00 为高峰，其余为空闲，空闲价为高峰价一半
+    peak_hours: ["09:00-12:00", "14:00-18:00"]
+    note: 空闲时段半价
+    models:
+      # deepseek-v4-flash 等旧名仍可调用，由 V4.1-Flash 提供服务并按 Flash 价格计费
+      - names: [deepseek-flash, deepseek-v4-flash, deepseek-v4-flash-vision-exp]
+        tiers: [{input: 2, cached: 0.04, output: 8}]
+        offpeak: [{input: 1, cached: 0.02, output: 4}]
+      - names: [deepseek-v4-pro]
+        tiers: [{input: 9, cached: 0.30, output: 27}]
+        offpeak: [{input: 4.5, cached: 0.15, output: 13.5}]
+
+  - vendor: 智谱 GLM
+    host: open.bigmodel.cn
+    source: https://docs.bigmodel.cn/cn/guide/start/pricing
+    effective: 2026-11-26
+    # 缓存存储费官网标“限时免费”，不计。官网分档为左闭右开（如 [0, 32K)），这里按含上限写，边界 1 个 token 的差异忽略。
+    models:
+      - names: [glm-5.3, glm-5.2]
+        tiers: [{input: 8, cached: 2, output: 28}]
+      - names: [glm-5.3-flash]
+        tiers: [{input: 0.8, cached: 0.23, output: 2.8}]
+      - names: [glm-5.3-flashx]
+        tiers: [{input: 2, cached: 0.57, output: 7}]
+      - names: [glm-5.1]
+        tiers:
+          - {max_input: 32000, input: 6, cached: 1.3, output: 24}
+          - {input: 8, cached: 2, output: 28}
+      - names: [glm-5-turbo]
+        tiers:
+          - {max_input: 32000, input: 5, cached: 1.2, output: 22}
+          - {input: 7, cached: 1.8, output: 26}
+      - names: [glm-5]
+        tiers:
+          - {max_input: 32000, input: 4, cached: 1, output: 18}
+          - {input: 6, cached: 1.5, output: 22}
+      - names: [glm-4.7]
+        tiers:
+          - {max_input: 32000, max_output: 200, input: 2, cached: 0.4, output: 8}
+          - {max_input: 32000, input: 3, cached: 0.6, output: 14}
+          - {input: 4, cached: 0.8, output: 16}
+      - names: [glm-4.5-air]
+        tiers:
+          - {max_input: 32000, max_output: 200, input: 0.8, cached: 0.16, output: 2}
+          - {max_input: 32000, input: 0.8, cached: 0.16, output: 6}
+          - {input: 1.2, cached: 0.24, output: 8}
+      - names: [glm-4.7-flashx]
+        tiers: [{input: 0.5, cached: 0.1, output: 3}]
+      - names: [glm-4.7-flash]
+        tiers: [{input: 0, cached: 0, output: 0}]
+
+  - vendor: Kimi
+    host: api.moonshot.cn
+    source: https://platform.kimi.com/docs/pricing/chat
+    effective: 2026-11-26
+    balance: moonshot
+    # K3 系列缓存写入按 TTL 计费：默认 5 分钟档与输入同价，本系统不设 1 小时档，按输入价计。
+    # K2 系列 2026-10-31 起不再向新注册用户开放，计划 12 月底下线。
+    models:
+      - names: [kimi-k3.1-pro]
+        tiers: [{input: 13, cached: 1.30, output: 68}]
+      - names: [kimi-k3.1-pro-highspeed]
+        tiers: [{input: 26, cached: 1.30, output: 136}]
+      - names: [kimi-k3]
+        tiers: [{input: 20, cached: 2, output: 100}]
+      - names: [kimi-k2.7-code]
+        tiers: [{input: 6.5, cached: 1.30, output: 27}]
+      - names: [kimi-k2.7-code-highspeed]
+        tiers: [{input: 13, cached: 2.60, output: 54}]
+      - names: [kimi-k2.6]
+        tiers: [{input: 6.5, cached: 1.10, output: 27}]
+
+  - vendor: 通义千问
+    host: dashscope.aliyuncs.com
+    source: https://help.aliyun.com/zh/model-studio/model-pricing
+    effective: 2026-11-26
+    # 华北2（北京）原价，不含新用户免费额度。隐式缓存命中按输入价的 20% 计
+    # （https://help.aliyun.com/zh/model-studio/context-cache）；不支持缓存的型号 cached 与 input 相同。
+    models:
+      - names: [qwen-plus, qwen-plus-latest, qwen-plus-2025-12-01]
+        tiers:
+          - {max_input: 128000, input: 0.8, cached: 0.16, output: 2, output_thinking: 8}
+          - {max_input: 256000, input: 2.4, cached: 0.48, output: 20, output_thinking: 24}
+          - {input: 4.8, cached: 0.96, output: 48, output_thinking: 64}
+      # 官网标“限时 8 折”（未写截止日期），按折后价计
+      - names: [qwen3.7-plus]
+        tiers:
+          - {max_input: 256000, input: 1.6, cached: 0.32, output: 6.4}
+          - {input: 4.8, cached: 0.96, output: 19.2}
+      - names: [qwen3.6-plus]
+        tiers:
+          - {max_input: 256000, input: 2, cached: 0.4, output: 12}
+          - {input: 8, cached: 1.6, output: 48}
+      - names: [qwen3.5-plus]
+        tiers:
+          - {max_input: 128000, input: 0.8, cached: 0.16, output: 4.8}
+          - {max_input: 256000, input: 2, cached: 0.4, output: 12}
+          - {input: 4, cached: 0.8, output: 24}
+      - names: [qwen4-max]
+        tiers: [{input: 10, cached: 2, output: 30}]
+      - names: [qwen3.8-max, qwen3.7-max]
+        tiers: [{input: 12, cached: 2.4, output: 36}]
+      - names: [qwen-max]
+        tiers: [{input: 2.4, cached: 2.4, output: 9.6}]
+      - names: [qwen3.8-flash]
+        tiers: [{input: 0.8, cached: 0.16, output: 2.7}]
+      - names: [qwen3.7-flash]
+        tiers:
+          - {max_input: 32000, input: 0.2, cached: 0.04, output: 0.8}
+          - {max_input: 256000, input: 0.6, cached: 0.12, output: 2.4}
+          - {input: 1.2, cached: 0.24, output: 4.8}
+      - names: [qwen-flash]
+        tiers:
+          - {max_input: 128000, input: 0.15, cached: 0.03, output: 1.5}
+          - {max_input: 256000, input: 0.6, cached: 0.12, output: 6}
+          - {input: 1.2, cached: 0.24, output: 12}

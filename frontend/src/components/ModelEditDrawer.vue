@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { adminModelApi, type ModelBody, type ModelRow, type ModelTests } from '@/api/admin'
 import { ApiError } from '@/api/http'
 import { useUnsaved } from '@/utils/unsaved'
+import ModelPriceInfo from '@/components/ModelPriceInfo.vue'
 
 const props = defineProps<{ modelValue: boolean; model: ModelRow | null }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; saved: [] }>()
@@ -16,8 +17,7 @@ const keyLast4 = ref('')
 const baseline = ref('')
 const form = reactive({ display_name: '', description: '', for_review: true, for_assist: true,
   base_url: '', api_key: '', model_name: '', temperature: 0.1, max_tokens: 32000, timeout_s: 180,
-  json_mode: true, extra_text: '{}', chunk_chars: 60000, price_in_per_m: '0', price_out_per_m: '0',
-  monthly_call_cap: 0, sort_order: 0 })
+  json_mode: true, extra_text: '{}', chunk_chars: 60000, monthly_call_cap: 0, sort_order: 0 })
 function fill(row: ModelRow | null) {
   editingId.value = row?.id ?? null
   keyLast4.value = row?.api_key_last4 ?? ''
@@ -27,7 +27,6 @@ function fill(row: ModelRow | null) {
     temperature: Number(row?.temperature ?? 0.1), max_tokens: row?.max_tokens ?? 32000,
     timeout_s: row?.timeout_s ?? 180, json_mode: row?.json_mode ?? true,
     extra_text: JSON.stringify(row?.extra_params ?? {}, null, 2), chunk_chars: row?.chunk_chars ?? 60000,
-    price_in_per_m: row?.price_in_per_m ?? '0', price_out_per_m: row?.price_out_per_m ?? '0',
     monthly_call_cap: row?.monthly_call_cap ?? 0, sort_order: row?.sort_order ?? 0 })
   baseline.value = JSON.stringify(form)
 }
@@ -60,9 +59,10 @@ const rules: FormRules = {
     cb((v === '' && editingId.value !== null) || /^[\x21-\x7e]{8,500}$/.test(v) ? undefined : new Error('请输入 8～500 个可见的英文字符，不能含空格'))
   }, trigger: 'blur' }],
   extra_text: [{ validator: (_r, _v, cb) => cb(extra() ? undefined : new Error('须为 JSON 对象，且不能包含 messages')), trigger: 'blur' }],
-  price_in_per_m: [{ pattern: /^\d{1,8}(\.\d{1,4})?$/, message: '请输入不小于 0、最多 4 位小数的单价', trigger: 'blur' }],
-  price_out_per_m: [{ pattern: /^\d{1,8}(\.\d{1,4})?$/, message: '请输入不小于 0、最多 4 位小数的单价', trigger: 'blur' }],
 }
+// 单价来自内置价格表（V351Q-21），只读；改了接口地址或模型名称时保存后重新匹配
+const priceSaved = computed(() => editingId.value !== null && !!props.model
+  && form.base_url.trim() === props.model.base_url && form.model_name.trim() === props.model.model_name)
 async function save() {
   if (saving.value || !await formRef.value?.validate().catch(() => false)) return
   const params = extra()
@@ -72,7 +72,6 @@ async function save() {
     model_name: form.model_name.trim(), api_key: form.api_key.trim() || undefined,
     temperature: form.temperature, max_tokens: form.max_tokens, timeout_s: form.timeout_s,
     json_mode: form.json_mode, extra_params: params, chunk_chars: form.chunk_chars,
-    price_in_per_m: form.price_in_per_m.trim(), price_out_per_m: form.price_out_per_m.trim(),
     monthly_call_cap: form.monthly_call_cap, sort_order: form.sort_order }
   saving.value = true
   error.value = ''
@@ -105,6 +104,10 @@ async function save() {
       <el-form-item label="接口地址" prop="base_url"><el-input v-model="form.base_url" maxlength="500" placeholder="https://api.example.com/v1" /></el-form-item>
       <el-form-item label="API 密钥" prop="api_key"><el-input v-model="form.api_key" type="password" show-password autocomplete="new-password" :placeholder="keyLast4 ? `已设置（末 4 位 ${keyLast4}），留空不修改` : '请输入 API 密钥'" maxlength="500" /></el-form-item>
       <el-form-item label="模型名称" prop="model_name"><el-input v-model="form.model_name" maxlength="100" /></el-form-item>
+      <el-form-item label="单价（内置价格表，只读）">
+        <ModelPriceInfo v-if="priceSaved" :price="model?.price ?? null" />
+        <span v-else class="hint">保存后按接口主机与模型名称自动匹配内置价格表；未收录的型号只统计 token。</span>
+      </el-form-item>
       <div class="fields">
         <el-form-item label="温度（0～2）"><el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" :precision="2" /></el-form-item>
         <el-form-item label="最大输出 token"><el-input-number v-model="form.max_tokens" :min="1" :max="1000000" /></el-form-item>
@@ -115,8 +118,6 @@ async function save() {
       <div class="fields">
         <el-form-item label="分段字符数"><el-input-number v-model="form.chunk_chars" :min="1000" :max="1000000" /></el-form-item>
         <el-form-item label="每月调用上限"><el-input-number v-model="form.monthly_call_cap" :min="0" :max="1000000000" /><span class="hint">0 表示不限</span></el-form-item>
-        <el-form-item label="输入单价（元 / 百万 token）" prop="price_in_per_m"><el-input v-model="form.price_in_per_m" /></el-form-item>
-        <el-form-item label="输出单价（元 / 百万 token）" prop="price_out_per_m"><el-input v-model="form.price_out_per_m" /></el-form-item>
         <el-form-item label="排序"><el-input-number v-model="form.sort_order" :precision="0" /></el-form-item>
       </div>
     </el-form>

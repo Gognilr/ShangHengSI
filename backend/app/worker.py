@@ -365,6 +365,8 @@ def main() -> None:
     import app.parsing.transcribe  # noqa: F401  注册独立转写队列
     import app.assistant.local_translation  # noqa: F401  注册独立翻译队列
     import app.bid.extract  # noqa: F401  注册标书要求清单的脱敏与模型补充
+    from app.llm import balance
+    register_periodic("model_balance", balance.check, 3600)  # 余额对账：经网关查 DeepSeek、Kimi 余额（V351Q-21）
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)

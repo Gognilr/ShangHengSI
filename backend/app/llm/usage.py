@@ -1,6 +1,7 @@
 """模型用量统计（SPEC 15.2、18.18）。
 
-只统计 status=sent 的记录；月份按 Asia/Shanghai（配置项 TZ）计算。费用用 Decimal 估算，保留 2 位小数（ROUND_HALF_UP）。
+只统计 status=sent 的记录；月份按 Asia/Shanghai（配置项 TZ）计算。费用是网关记账时按内置价格表算好的 llm_calls.cost
+之和（V351Q-21），保留 2 位小数（ROUND_HALF_UP）；cost 为空的调用计入 unpriced，只统计 token。
 """
 from datetime import datetime
 from contextlib import contextmanager
@@ -17,7 +18,6 @@ from app.config import get_settings
 from app.db.base import utcnow
 from app.db.models import LlmCall, LlmModel
 
-_MILLION = Decimal(1_000_000)
 _review_round: ContextVar[uuid.UUID | None] = ContextVar("review_round", default=None)
 
 
@@ -81,21 +81,16 @@ def cap_reached(db: Session, user_id: uuid.UUID | None, purpose: str, model_id: 
 
 
 def monthly_usage(db: Session, model_id: int | None = None, now: datetime | None = None) -> dict:
-    """按每个模型单价估算，再合计；未保存模型的测试记录只有用量、无定价。"""
-    query = select(LlmCall.model_id, func.count(), func.sum(LlmCall.tokens_in), func.sum(LlmCall.tokens_out)).where(
+    """本月实际调用次数、token 与费用合计；unpriced 为未收录价格（cost 为空）的调用次数。"""
+    query = select(func.count(), func.coalesce(func.sum(LlmCall.tokens_in), 0), func.coalesce(func.sum(LlmCall.tokens_out), 0),
+                   func.coalesce(func.sum(LlmCall.tokens_cached), 0), func.sum(LlmCall.cost),
+                   func.count().filter(LlmCall.cost.is_(None))).where(
         LlmCall.status == "sent", LlmCall.created_at >= month_start(now))
     if model_id is not None:
         query = query.where(LlmCall.model_id == model_id)
-    result = {"calls": 0, "tokens_in": 0, "tokens_out": 0, "cost": Decimal("0.00")}
-    for mid, calls, tin, tout in db.execute(query.group_by(LlmCall.model_id)):
-        result["calls"] += calls
-        result["tokens_in"] += tin
-        result["tokens_out"] += tout
-        model = db.get(LlmModel, mid) if mid is not None else None
-        if model is not None:
-            cost = (Decimal(tin) * model.price_in_per_m + Decimal(tout) * model.price_out_per_m) / _MILLION
-            result["cost"] += cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    return result
+    calls, tin, tout, cached, cost, unpriced = db.execute(query).one()
+    return {"calls": calls, "tokens_in": int(tin), "tokens_out": int(tout), "tokens_cached": int(cached),
+            "cost": (cost or Decimal("0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), "unpriced": unpriced}
 
 
 def remaining_calls(db: Session, user_id: uuid.UUID, model_id: int) -> dict[str, int | None]:

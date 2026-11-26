@@ -63,19 +63,33 @@ export const adminRolesApi = {
 }
 
 // ---- 模型（设置 - 模型） ----
-export interface ModelUsage { calls: number; tokens_in: number; tokens_out: number; cost: string }
+// cost 为已收录价格的调用费用之和；unpriced 为未收录价格、只统计 token 的调用次数（V351Q-21）
+export interface ModelUsage { calls: number; tokens_in: number; tokens_out: number; tokens_cached: number; cost: string; unpriced: number }
+// 内置价格表匹配到的单价（元 / 百万 token，只读）；max_input / max_output 为分档上限（含）
+export interface ModelPriceTier { input: string; cached: string; output: string; output_thinking: string | null; max_input: number | null; max_output: number | null }
+export interface ModelPrice {
+  vendor: string; version: string; effective: string; source: string; note: string | null
+  tiers: ModelPriceTier[]; offpeak: ModelPriceTier[] | null; peak_hours: string[] | null; balance: boolean
+}
+// 余额对账（DeepSeek、Kimi）：verdict 为 pending / ok / drift / unpriced，查询失败时 error 为原因
+export interface ModelBalanceWindow { verdict: 'ok' | 'drift'; spent: string; cost: string; diff: string | null; base_at: string }
+export interface ModelBalance {
+  balance: string | null; checked_at: string | null; base_at: string | null; spent: string | null; cost: string | null; diff: string | null
+  verdict: 'pending' | 'ok' | 'drift' | 'unpriced' | null; error: string | null; prev: ModelBalanceWindow | null
+}
 export interface ModelTestResult { ok: boolean; model?: string; duration_ms?: number; message?: string }
 export interface ModelTests { connection: ModelTestResult; structured: ModelTestResult }
 export interface ModelBody {
   display_name: string; description: string | null; base_url: string; model_name: string
   temperature: number | string; max_tokens: number; timeout_s: number; json_mode: boolean
-  extra_params: Record<string, unknown>; chunk_chars: number; price_in_per_m: string; price_out_per_m: string
+  extra_params: Record<string, unknown>; chunk_chars: number
   monthly_call_cap: number; for_review: boolean; for_assist: boolean; sort_order: number; api_key?: string
 }
 export interface ModelRow extends Omit<ModelBody, 'api_key'> {
   id: number; enabled: boolean; structured_ok: boolean; structured_tested_at: string | null
   created_at: string; updated_at: string; api_key_last4: string; used: boolean
   is_default_review: boolean; is_default_assist: boolean; usage: ModelUsage; tests?: ModelTests | null
+  price: ModelPrice | null; balance: ModelBalance | null
 }
 export interface ModelList { items: ModelRow[]; user_daily_cap: number; usage: ModelUsage }
 export const adminModelApi = {
