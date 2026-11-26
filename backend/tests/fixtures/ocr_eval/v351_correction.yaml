@@ -1,9 +1,12 @@
 # V351-Q16：同一虚构扫描件，真实稿与模拟初识不同。坐标按 600 × 800 PDF 点。
 scanned_lines:
   - {text: "Signed on 2026-11-26", initial: "Signed on 2026-11-28", bbox: [60, 130, 310, 151], confidence: 0.95}
+  - {text: "Courier code lumenheron", initial: "Courier code lumenher0n", bbox: [60, 180, 330, 201], confidence: 0.95}
   - {text: "Contact", initial: "Contact", bbox: [64, 284, 140, 305], confidence: 0.96}
   - {text: "13800138001", initial: "13800138OO1", bbox: [329, 284, 475, 305], confidence: 0.94}
   - {text: "Signature", initial: "签字：XQ", bbox: [64, 365, 178, 389], confidence: 0.69}
   - {text: "Seal to verify on paper", initial: "Seal to verify on paper", bbox: [329, 365, 546, 389], confidence: 0.98}
+# 用户在校订前手动遮住误识别的 lumenher0n；校订后改正的写法仍须遮住（V351-D-03 返修）。
+user_masked: {initial: "lumenher0n", text: "lumenheron"}
 manual_check: "〔签字处请看原件〕"
 safe_excerpt: "Signed on"

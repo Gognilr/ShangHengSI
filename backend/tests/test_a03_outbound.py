@@ -272,6 +272,8 @@ def test_v351_ocr_correction_before_first_review(workspace, db_sessionmaker, mak
     nodes = client.get(fpath + "/nodes").json()["items"]
     date = next(n for n in nodes if "2026-11-28" in n["text"])
     contact = next(n for n in nodes if n["text"] == "13800138OO1")
+    masked = case["user_masked"]
+    courier = next(n for n in nodes if masked["initial"] in n["text"])
     unclear = next(n for n in nodes if case["manual_check"] in n["text"])
     digital = next(n for n in nodes if n["page"] == 1)
     assert date["kind"] == "ocr_block" and date["ocr_editable"]
@@ -284,11 +286,10 @@ def test_v351_ocr_correction_before_first_review(workspace, db_sessionmaker, mak
         return client.patch(f"{fpath}/ocr/{node['loc']}", headers=headers,
                             json={"text": text, "expected_material_version": version})
 
-    with db_sessionmaker() as db:
-        # 模拟人工给误识别的电话片段标记过范围；校订后不能把旧区间当成新一轮决定。
-        db.add(RedactionItem(task_id=task_id, loc=contact["loc"], char_start=0, char_end=5,
-                             category="CUSTOM", placeholder="[[CUSTOM_79]]", detected_by="user"))
-        db.commit()
+    mask = client.post(f"{base}/tasks/{task_id}/redaction/manual", headers=headers, json={
+        "loc": courier["loc"], "char_start": courier["text"].index(masked["initial"]),
+        "char_end": courier["text"].index(masked["initial"]) + len(masked["initial"]), "category": "CUSTOM"})
+    assert mask.status_code == 200, mask.text
     initial = client.get(preview_url).json()
     prev = initial["material_version"]
     assert edit(digital, "不能改数字文字层", prev).status_code == 422
@@ -303,24 +304,29 @@ def test_v351_ocr_correction_before_first_review(workspace, db_sessionmaker, mak
     assert revised > prev
     stale = edit(contact, "13800138001", prev)
     assert stale.status_code == 409 and stale.json()["code"] == "MATERIAL_CHANGED"
-    correct_contact = edit(contact, case["scanned_lines"][2]["text"], revised)
+    correct_contact = edit(contact, case["scanned_lines"][3]["text"], revised)
     assert correct_contact.status_code == 200, correct_contact.text
+    fixed = courier["text"].replace(masked["initial"], masked["text"])
+    current_version = client.get(preview_url).json()["material_version"]
+    correct_courier = edit(courier, fixed, current_version)
+    assert correct_courier.status_code == 200, correct_courier.text
     final_nodes = {node["loc"]: node for node in client.get(fpath + "/nodes").json()["items"]}
-    for old, value in ((date, "Signed on 2026-11-26"), (contact, "13800138001")):
+    for old, value in ((date, "Signed on 2026-11-26"), (contact, "13800138001"), (courier, fixed)):
         corrected = final_nodes[old["loc"]]
         assert corrected["text"] == value and corrected["ocr_corrected"]
         assert (corrected["page"], corrected["bbox"]) == (old["page"], old["bbox"])
     assert client.get(fpath + "/raw").content == pdf_bytes
     with db_sessionmaker() as db:
         assert db.get(TaskFile, uuid.UUID(fid)).sha256 == hashlib.sha256(pdf_bytes).hexdigest()
-        for old in (date, contact):
+        for old in (date, contact, courier):
             stored = db.scalar(select(DocNode).where(DocNode.task_id == task_id, DocNode.loc == old["loc"]))
             assert old["text"].encode() not in stored.ocr_original_enc
             assert crypto.decrypt_text(stored.ocr_original_enc) == old["text"]
-        assert not db.scalar(select(RedactionItem.id).where(RedactionItem.task_id == task_id,
-            RedactionItem.loc == contact["loc"], RedactionItem.detected_by == "user"))
+        kept = db.scalars(select(RedactionItem).where(RedactionItem.task_id == task_id,
+            RedactionItem.loc == courier["loc"], RedactionItem.detected_by == "user")).all()
+        assert [fixed[r.char_start:r.char_end] for r in kept] == [masked["text"]]
         audit = db.scalars(select(AuditLog).where(AuditLog.action == "ocr_correction")).all()
-        assert len(audit) == 2 and all("13800138001" not in str(entry.detail) for entry in audit)
+        assert len(audit) == 3 and all("13800138001" not in str(entry.detail) for entry in audit)
         assert not db.scalar(select(LlmCall.id))
         assert db.get(TaskFile, uuid.UUID(fid)).confirmed_at is None
         # 明确为 PDF 中可编辑的两个 OCR 节点。
@@ -329,6 +335,7 @@ def test_v351_ocr_correction_before_first_review(workspace, db_sessionmaker, mak
     current = client.get(preview_url).json()
     assert current["material_version"] > initial["material_version"]
     assert "2026-11-28" not in current["text"] and "13800138001" not in current["text"]
+    assert masked["text"] not in current["text"] and masked["initial"] not in current["text"]
     assert "XQ" not in current["text"] and case["manual_check"] in current["text"]
     parties = client.get(f"{base}/tasks/{task_id}/parties").json()["items"]
     assert parties
@@ -358,7 +365,7 @@ def test_v351_ocr_correction_before_first_review(workspace, db_sessionmaker, mak
     assert any(case["safe_excerpt"] in record.wire_text and case["manual_check"] in record.wire_text for record in records)
     for record in records:
         for sent in (record.request_text, record.wire_text):
-            for excluded in ("13800138001", "13800138OO1", "2026-11-28", "XQ"):
+            for excluded in ("13800138001", "13800138OO1", "2026-11-28", "XQ", masked["text"], masked["initial"]):
                 assert excluded not in sent
             assert not recheck(sent, real_values=record.real_values, terms=record.terms)
     report = client.get(f"{base}/runs/{run_id}")

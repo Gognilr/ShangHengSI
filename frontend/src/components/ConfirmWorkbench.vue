@@ -343,7 +343,8 @@ function handleError(e: unknown) {
     // 出口复检拦截：改为逐条列出的拦截清单，可定位、就地处理
     if (e.code === 'OUTBOUND_BLOCKED') { submitError.value = ''; showLeaks(e.message); return }
     submitError.value = base
-    if (e.code === 'TASK_STATE_CONFLICT') emit('stale')
+    // 会话审核：材料变了或会话正忙时，会话本身（文件、轮次、状态）也可能变了，一并让外层刷新
+    if (e.code === 'TASK_STATE_CONFLICT' || (sessionReview.value && ['MATERIAL_CHANGED', 'SESSION_BUSY', 'FILES_PARSING'].includes(e.code))) emit('stale')
     if (e.code === 'MATERIAL_CHANGED') { submitError.value = '材料有变化，已更新本页，请核对后再确认'; void canvas.value?.reloadActive(); void loadAll(true) }
   } else submitError.value = '操作失败，请重试'
 }

@@ -610,6 +610,16 @@ def preview_nodes(db: DbSession, task: Task, file: TaskFile) -> PreviewNodes:
     return PreviewNodes(text_available=available, items=items)
 
 
+def _remap_span(old: str, new: str, start: int, end: int) -> tuple[int, int] | None:
+    """把 old 中 [start, end) 按逐字差异映射到 new；落在改动处的端点扩到整段改动，映射后为空则返回 None。"""
+    from difflib import SequenceMatcher
+
+    ops = SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+    a = next((j1 + (start - i1) if tag == "equal" else j1 for tag, i1, i2, j1, _ in ops if i1 <= start < i2), len(new))
+    b = next((j1 + (end - i1) if tag == "equal" else j2 for tag, i1, i2, j1, j2 in ops if i1 < end <= i2), a)
+    return (a, b) if b > a and new[a:b].strip() else None
+
+
 def correct_ocr(db: DbSession, task: Task, file_id, loc: str, body: OcrCorrection, user: User, ip: str | None) -> dict:
     """在首次送审前校订既有 PDF 识别稿；保留原始密文与版面坐标。"""
     from app.parsing.docx import manual_clause_no
@@ -653,7 +663,18 @@ def correct_ocr(db: DbSession, task: Task, file_id, loc: str, body: OcrCorrectio
     node.text_enc = crypto.encrypt_text(text)
     if node.kind == "ocr_block":
         node.clause_no = manual_clause_no(text)
-    for model in (RedactionItem, RedactionSuspect, RedactionExclusion):
+    # 用户亲手遮住的词条按新旧文字的差异平移到校订稿上（改的正是被遮住的字时，遮住改后的写法），
+    # 重算时据此取回用户词条；其余自动识别结果与疑似项一律重算。
+    for item in db.scalars(select(RedactionItem).where(RedactionItem.task_id == locked.id, RedactionItem.loc == loc,
+                                                       RedactionItem.detected_by == "user")):
+        span = _remap_span(old, text, item.char_start, item.char_end)
+        if span is None:
+            db.delete(item)
+        else:
+            item.char_start, item.char_end = span
+    db.execute(delete(RedactionItem).where(RedactionItem.task_id == locked.id, RedactionItem.loc == loc,
+                                           RedactionItem.detected_by != "user"))
+    for model in (RedactionSuspect, RedactionExclusion):
         db.execute(delete(model).where(model.task_id == locked.id, model.loc == loc))
     # 代号表与外发正文需要整份重算，其余节点的区间仍按原坐标保留。
     for current in files:
