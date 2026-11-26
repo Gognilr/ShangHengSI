@@ -539,7 +539,7 @@ h3.first {
   white-space: pre-wrap;
   word-break: break-all;
   font-family: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--si-fs));
   max-height: 320px;
   overflow: auto;
 }

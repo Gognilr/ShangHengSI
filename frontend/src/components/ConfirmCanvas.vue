@@ -880,11 +880,11 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
 .paper.fx-lite.ai { animation: cv-fade 160ms var(--si-ease); }
 .node { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; content-visibility: auto; contain-intrinsic-size: auto 48px; }
 .node.head { font-weight: 600; margin-top: 18px; }
-.clause { margin-right: 8px; color: var(--si-ink-3); font-size: 13px; }
-.side { padding-left: 12px; border-left: 2px solid var(--si-hair-strong); color: var(--si-ink-3); font-size: 13px; }
+.clause { margin-right: 8px; color: var(--si-ink-3); font-size: calc(13px * var(--si-fs)); }
+.side { padding-left: 12px; border-left: 2px solid var(--si-hair-strong); color: var(--si-ink-3); font-size: calc(13px * var(--si-fs)); }
 .note { margin-top: 28px; padding-top: 16px; border-top: 1px dashed var(--si-hair-strong); }
-.side-label { margin-bottom: 4px; color: var(--si-ink-3); font-size: 12px; }
-.tbl { width: 100%; margin: 10px 0; border-collapse: collapse; font-size: 14px; }
+.side-label { margin-bottom: 4px; color: var(--si-ink-3); font-size: calc(13px * var(--si-fs)); }
+.tbl { width: 100%; margin: 10px 0; border-collapse: collapse; font-size: calc(14px * var(--si-fs)); }
 .tbl td { padding: 6px 8px; border: 1px solid var(--si-hair-strong); vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
 .fold { display: block; width: 100%; margin: 8px 0; padding: 6px; border: 1px dashed var(--si-hair-strong); border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label-sm); cursor: pointer; }
 .fold:hover { color: var(--el-color-primary); border-color: var(--el-color-primary); }
@@ -932,7 +932,7 @@ td.d-chg { margin-left: 0; padding-left: 8px; }
 .d-tag { float: right; margin: 0 0 4px 8px; padding: 0 6px; border-radius: var(--si-radius-tag); background: var(--si-surface-2); color: var(--si-ink-2); font: var(--si-font-label-sm); line-height: 20px; }
 .d-tag-u { background: var(--si-warn-soft); color: var(--si-warn-ink); }
 .gone { color: var(--si-ink-3); }
-.gone-clause { margin-right: 8px; font-size: 13px; }
+.gone-clause { margin-right: 8px; font-size: calc(13px * var(--si-fs)); }
 
 /* 胶囊（澄明 8.4）：按类别着色的全圆角浅底，文字仍是原文本身；不确定项为虚线边 */
 .k-org { --k: var(--si-k-org); --k-bg: var(--si-k-org-bg); }
@@ -1002,7 +1002,7 @@ td.d-chg { margin-left: 0; padding-left: 8px; }
 .tip-orig { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-radius: 4px; background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-label); }
 .tip .code-tag { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pop-text { flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; font: var(--si-font-body); }
-.code-tag { padding: 0 6px; border-radius: 4px; background: var(--si-code-bg); color: var(--si-code-ink); font-family: var(--si-font-mono); font-size: 12px; }
+.code-tag { padding: 0 6px; border-radius: 4px; background: var(--si-code-bg); color: var(--si-code-ink); font-family: var(--si-font-mono); font-size: calc(12px * var(--si-fs)); }
 .pick-label { font: var(--si-font-caption); color: var(--si-ink-3); }
 .pickbar { gap: 6px; padding: 6px 8px; }
 .pick-cat { width: 110px; }

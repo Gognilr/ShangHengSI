@@ -64,7 +64,7 @@ function state(file: BidFile) {
 .file { padding: 10px 0; border-top: 1px solid var(--si-hair-faint); }
 .file:first-child { border-top: 0; }
 .line { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.badge { flex: none; width: 34px; height: 30px; display: grid; place-items: center; border: 1px solid var(--si-hair); border-radius: 6px; font: var(--si-font-code-sm); font-size: 10px; color: var(--si-ink-3); }
+.badge { flex: none; box-sizing: border-box; min-width: 34px; height: 30px; padding: 0 4px; display: grid; place-items: center; border: 1px solid var(--si-hair); border-radius: 6px; font: var(--si-font-code-sm); font-size: calc(12px * var(--si-fs)); color: var(--si-ink-3); }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-body); color: var(--si-ink-1); }
 .sub { display: flex; align-items: center; gap: 4px; font: var(--si-font-caption); color: var(--si-ink-3); }

@@ -560,7 +560,7 @@ h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .file-row { position: relative; display: flex; align-items: center; gap: 12px; padding: 8px 12px; overflow: hidden; border: 1px solid var(--el-border-color-light); border-radius: 8px; }
 .file-row + .file-row { margin-top: 8px; }
 .file-row.is-main { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); }
-.file-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; font-size: 12px; font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.file-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; font-size: calc(12px * var(--si-fs)); font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
 .file-badge--xls { background: var(--el-color-success-light-9); color: var(--el-color-success); }
 .file-badge--pdf { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
 .file-badge--img { background: var(--el-color-info-light-9); color: var(--el-color-info); }
@@ -589,7 +589,7 @@ h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .foot-right { display: flex; align-items: center; gap: 12px; }
 .is-dragging .drop-col { outline: 2px dashed var(--el-color-primary); outline-offset: 6px; border-radius: var(--si-radius-card); }
 .drop-veil { position: absolute; inset: -8px; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: var(--si-radius-card); background: color-mix(in srgb, var(--el-color-primary-light-9) 85%, transparent); color: var(--el-color-primary); font: var(--si-font-h4); pointer-events: none; }
-.file-size { flex: none; color: var(--el-text-color-secondary); font-size: 13px; }
+.file-size { flex: none; color: var(--el-text-color-secondary); font-size: calc(13px * var(--si-fs)); }
 .ceremony-panel { overflow: hidden; }
 .scan-wrap { display: flex; justify-content: center; margin: 20px 0; }
 </style>

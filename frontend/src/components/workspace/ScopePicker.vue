@@ -79,7 +79,7 @@ const deltaText = computed(() => {
 <style scoped>
 .scope { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .label { color: var(--si-ink-3); font: var(--si-font-label-sm); }
-.opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 8px 12px; border: 1px solid var(--si-hair); border-radius: 10px; background: var(--si-surface-1); color: var(--si-ink-2); text-align: left; cursor: pointer; transition: border-color var(--si-dur-fast, .15s), background var(--si-dur-fast, .15s); }
+.opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 8px 12px; border: 1px solid var(--si-hair); border-radius: 10px; background: var(--si-surface-1); color: var(--si-ink-2); text-align: left; cursor: pointer; transition: border-color var(--si-d2), background var(--si-d2); }
 .opt:hover:not(:disabled) { border-color: var(--si-hair-strong); }
 .opt:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 .opt.on { border-color: var(--si-brand-2); background: var(--si-blue-tint); color: var(--si-ink-1); }
