@@ -32,10 +32,11 @@ import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import SiCount from '@/components/ui/SiCount.vue'
 import SiIsland from '@/components/ui/SiIsland.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
+import SiStack, { type StackSeg } from '@/components/ui/SiStack.vue'
 import { usePendingDeletes } from '@/composables/usePendingDeletes'
 import { useTaskPoll } from '@/composables/useTaskPoll'
 import { useHotkeys } from '@/utils/hotkeys'
-import { DOC_TYPE_OPTIONS, KEPT_BY, autoKeptReasonLabel, REDACTION_CATEGORY, docTypeSourceLabel, suspectReasonLabel, toOptions } from '@/utils/labels'
+import { DOC_TYPE_OPTIONS, KEPT_BY, REDACTION_KINDS, autoKeptReasonLabel, docTypeSourceLabel, redactionKind, suspectReasonLabel, toOptions } from '@/utils/labels'
 import { toast } from '@/utils/toast'
 import { nudgeField } from '@/utils/nudge'
 
@@ -678,7 +679,14 @@ const ourOptions = computed(() => {
 
 // ---- 外发回执 ----
 const replacedTotal = computed(() => Object.values(summary.value).reduce((sum, n) => sum + n, 0))
-const categoryChips = computed(() => Object.entries(summary.value).filter(([, n]) => n > 0).map(([code, n]) => `${REDACTION_CATEGORY[code] ?? code} ${n}`))
+// 七类分段条（二版 6.7）：按类别显示遮住的处数；点一段，纸面高亮这一类，再点取消
+const kindSegments = computed<StackSeg[]>(() => {
+  const n = new Map<string, number>()
+  for (const [code, c] of Object.entries(summary.value)) if (c > 0) n.set(redactionKind(code), (n.get(redactionKind(code)) ?? 0) + c)
+  return REDACTION_KINDS.map(([kind, label]) => ({ key: kind, label, value: n.get(kind) ?? 0, kind }))
+})
+const kindPick = ref<string | null>(null)
+watch(kindSegments, segs => { if (kindPick.value && !segs.some(x => x.key === kindPick.value && x.value > 0)) kindPick.value = null })
 const outboundLength = computed(() => outboundLoading.value || !outboundText.value ? 0 : outboundChars.value ?? outboundText.value.length)
 const reqDrawer = ref(false)
 const localDrawer = ref(false)
@@ -750,7 +758,7 @@ const RAIL_MIN = 340, RAIL_MAX = 480, RAIL_DEFAULT = 380, RAIL_KEY = 'si.confirm
 const railWidth = ref(readStoredWidth(RAIL_KEY, RAIL_MIN, RAIL_MAX, RAIL_DEFAULT))
 const helpOpen = ref(false)
 const HOTKEYS = [
-  ['V', '切换“原文 / 模型将看到的”'],
+  ['V', '紫线在“全部原文”与“全部模型将看到的”之间切换'],
   ['[ / ]', '上一个 / 下一个文件页签'],
   ['J / K', '下一个 / 上一个不确定项'],
   ['B', '保留选中的不确定项的原文'],
@@ -776,12 +784,23 @@ useHotkeys({
   escape: () => { helpOpen.value = false; selectedId.value = null; canvas.value?.cancel() },
   '?': () => { helpOpen.value = true },
 }, { enabled: computed(() => !assistant.value || sessionReview.value) })
+/** 工具条“去确认 / 去处理”（二版 6.7）：被拦截时滚到拦截卡，否则滚到右栏底部的主按钮并闪一下 */
+function focusConfirm() {
+  if (leaksShown.value && leaksPending.value && leakBox.value) { nudgeField(leakBox.value); return }
+  const box = confirmBox.value
+  if (!box) return
+  box.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  box.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
+  confirmFlash.value = true
+  setTimeout(() => { confirmFlash.value = false }, 700)
+}
+defineExpose({ focusConfirm })
 </script>
 
 <template>
   <div class="wb" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDrop">
     <div class="canvas">
-      <ConfirmCanvas ref="canvas" :diff-loader="sessionReview ? diffLoader : undefined" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal"
+      <ConfirmCanvas ref="canvas" :diff-loader="sessionReview ? diffLoader : undefined" :ai-view="true" :node-loader="nodeLoader" :task-id="task.id" :files="visibleFiles" :items="redactedItems" :suspects="suspects" :note="task.user_note" :selected-suspect-id="selectedId" :locked="locked" :protected-count="replacedTotal" :kind-filter="kindPick"
         :raw-loader="sessionReview ? assistantApi.raw : undefined" :correct-ocr="canCorrectOcr ? saveOcr : undefined" :ocr-version="outboundVersion"
         :ocr-busy="loading || outboundLoading || locked || saving > 0 || submitting" @ocr-editing="ocrEditing = $event" @manual="onManual" @revoke="onRevoke" @keep="s => keepOne(s, true)" @restore="restoreOne" @replace="replaceOne" @adjust="onAdjust">
         <template #bar>
@@ -926,10 +945,10 @@ useHotkeys({
 
         <!-- ③ 将要发送的 -->
         <section class="rp-card">
-          <h3 class="rp-h"><Send :size="16" :stroke-width="1.75" /><b>{{ assistant && !sessionReview ? '本会话文件的遮住结果' : '将要发送的' }}</b></h3>
+          <h3 class="rp-h"><Send :size="16" :stroke-width="1.75" /><b>{{ assistant && !sessionReview ? '本会话文件的遮住结果' : '将要发送的' }}</b><span v-if="kindSegments.some(x => x.value)" class="hint">点一段只看这一类</span></h3>
+          <SiStack v-if="kindSegments.some(x => x.value)" v-model:picked="kindPick" :segments="kindSegments" class="kind-stack" />
           <ul class="send-list">
             <li><FileText :size="15" :stroke-width="1.75" /><span v-if="outboundEmpty">正文没有实质变化，本轮无需发送给模型</span><span v-else>正文 <b class="num"><SiCount :value="outboundLength" /></b> 字，已在本机遮住 <b class="num"><SiCount :value="replacedTotal" /></b> 处</span></li>
-            <li v-if="categoryChips.length" class="chips-li"><span class="chips"><span v-for="c in categoryChips" :key="c" class="chip">{{ c }}</span></span></li>
             <li><Ban :size="15" :stroke-width="1.75" /><span>不发送原件、图片和文件名</span></li>
             <li v-if="!assistant || sessionReview"><Sparkle :size="15" :stroke-width="1.75" class="t-ai" /><span>模型：{{ modelName || '审核模型' }}</span></li>
             <li v-if="!assistant && task.template_suggestion"><Bookmark :size="15" :stroke-width="1.75" /><span>对照范本：{{ task.template_suggestion.name }}</span><el-checkbox v-model="skipTemplate" :disabled="submitting" class="skip">不对照</el-checkbox></li>
@@ -1083,9 +1102,7 @@ useHotkeys({
 .send-list li > svg { flex: none; color: var(--si-ink-3); }
 .send-list b { color: var(--si-ink-1); }
 .send-list .t-ai { color: var(--si-ai); }
-.chips-li { padding-left: 23px; }
-.chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.chip { padding: 0 8px; border-radius: var(--si-radius-badge); background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-caption); }
+.kind-stack { margin-bottom: 12px; }
 .skip { margin-left: auto; }
 .links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; }
 .links :deep(.el-button + .el-button) { margin-left: 0; }

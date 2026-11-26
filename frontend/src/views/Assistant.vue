@@ -252,7 +252,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           </div>
           <span v-if="modelLabel && mode === 'ask'" class="ai-tag"><Sparkle :size="13" :stroke-width="2" />{{ modelLabel }}</span>
           <span class="head-gap" />
-          <SiTrip v-if="mode === 'review' && reviewTrip" :trip="reviewTrip" scale="bar" :since="reviewProgress?.since" :seconds="reviewProgress?.seconds" class="head-trip" />
+          <SiTrip v-if="mode === 'review' && reviewTrip" :trip="reviewTrip" scale="bar" :since="reviewProgress?.since" :seconds="reviewProgress?.seconds" class="head-trip" @act="reviewPane?.focusConfirm()" />
           <SiSegmented v-if="showTabs" v-model="modeModel" :options="modeOptions" size="small" ariaLabel="会话视图" />
           <el-button v-else-if="canReview && canAsk" size="small" link @click="seeResult">全面审核 →</el-button>
           <div v-show="mode === 'review'" id="ws-head-actions" class="head-actions" />

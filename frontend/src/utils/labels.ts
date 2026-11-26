@@ -268,3 +268,12 @@ export const REDACTION_KIND: Record<string, string> = {
   // 不确定项的默认替换：类别色同“其他”，画布按 detected_by=uncertain 另画虚线胶囊（V31-U2 4.2）
   NAME: 'other', TERM: 'other',
 }
+
+/** 七类脱敏（澄明 4.2，二版 6.7 分段条）：遮住类别 → 胶囊与分段条的颜色类 */
+export type RedactionKind = 'org' | 'person' | 'contact' | 'id' | 'addr' | 'amount' | 'other'
+const REDACTION_KIND_OF: Record<string, RedactionKind> = {
+  ORG: 'org', OUR: 'org', NAME: 'org', PERSON: 'person', PHONE: 'contact', EMAIL: 'contact', URL: 'contact', IM: 'contact',
+  IDNO: 'id', ACCOUNT: 'id', SWIFT: 'id', ADDR: 'addr', POSTCODE: 'addr', AMOUNT: 'amount', PRICE: 'amount', DATE: 'amount',
+}
+export const redactionKind = (category: string): RedactionKind => REDACTION_KIND_OF[category] ?? 'other'
+export const REDACTION_KINDS: [RedactionKind, string][] = [['org', '单位'], ['person', '人名'], ['contact', '联系方式'], ['id', '证件与账号'], ['addr', '地址'], ['amount', '金额'], ['other', '其他']]

@@ -196,11 +196,12 @@ export function progressTrip(p: ReviewProgress): Trip | null {
     case 'loading': return null
     case 'local': return localTrip('completed_local')
     case 'parsing': return reviewTrip({ status: 'parsing' })
-    // 工作区里确认页就在眼前，不再带“去确认 / 去处理”按钮
-    case 'confirm': return p.blocked ? { ...reviewTrip({ status: 'awaiting_confirm', blocked: p.blocked }), act: undefined } : { mod: 'review', at: 1, state: 'wait', note: '等你确认' }
+    // 工作区确认页（二版 6.7）：按钮滚到右栏底部的主按钮；被拦截时滚到拦截卡
+    case 'confirm': return p.blocked ? reviewTrip({ status: 'awaiting_confirm', blocked: p.blocked }) : { mod: 'review', at: 1, state: 'wait', note: '等你确认', act: '去确认' }
     case 'setup': return reviewTrip({ status: 'active' })
     case 'running': { const t = reviewTrip({ status: 'reviewing', runStatus: 'running', queue: p.queue }); return { ...t, note: `${t.note} · 可以离开页面` } }
-    case 'result': return reviewTrip({ status: 'reviewed', runStatus: p.status ?? 'completed' })
+    // 结果页的重试在工具条右侧的“重新审核”，往返线上不再带按钮
+    case 'result': return { ...reviewTrip({ status: 'reviewed', runStatus: p.status ?? 'completed' }), act: undefined }
   }
 }
 

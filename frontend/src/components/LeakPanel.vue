@@ -1,8 +1,8 @@
 <script setup lang="ts">
-/** 发送前复检拦截清单（V31-U5F-02，澄明 8.4）：红色浅底卡，逐处列出命中内容，每处都有一键处理，处理完直接重新发送。
+/** 发送前复检拦截清单（V31-U5F-02；二版 6.7 改用 SiNotice 的拦截语气）：琥珀浅底卡，逐处列出命中内容，每处都有一键处理，处理完直接重新发送。
  *  预览是本人原文，只在本页显示；确认页与智能助手、会议纪要的确认页共用。 */
 import { computed, ref } from 'vue'
-import { Check, OctagonAlert } from '@lucide/vue'
+import { Check, ShieldAlert } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { REDACTION_ERROR_MESSAGES, redactionApi, type Leak, type LeakList, type RedactionInfo } from '@/api/redaction'
 import type { TaskFile } from '@/api/tasks'
@@ -93,7 +93,7 @@ async function keep(x: Leak) {
 
 <template>
   <section v-loading="loading" class="block-card" aria-live="polite">
-    <div class="bc-h"><OctagonAlert :size="18" :stroke-width="1.75" /><b>{{ done ? '拦下的内容都处理好了' : `发送前复检拦下 ${loaded ? items.length + other : ''} 处未遮住的内容` }}</b></div>
+    <div class="bc-h"><span class="bc-ic"><ShieldAlert :size="16" :stroke-width="2" /></span><b>{{ done ? '拦下的内容都处理好了' : `发送前复检拦下 ${loaded ? items.length + other : ''} 处未遮住的内容` }}</b></div>
     <p class="bc-p">{{ done ? '可以重新发送。' : '这些内容像真实名称或联系方式，但没有被遮住，所以这次没有发送。逐处处理后可以直接重新发送。' }}</p>
     <p v-if="summary && !done" class="bc-sum">{{ summary }}</p>
     <ul class="hits">
@@ -123,10 +123,10 @@ async function keep(x: Leak) {
 </template>
 
 <style scoped>
-.block-card { padding: 14px 16px; border: 1px solid var(--si-danger-line); border-radius: var(--si-radius-card); background: var(--si-danger-soft); animation: bc-in var(--si-d3) var(--si-ease-out) both; }
+.block-card { padding: 14px 16px; border: 1px solid var(--si-warn-line); border-radius: var(--si-radius-card); background: var(--si-warn-soft); animation: bc-in var(--si-d3) var(--si-ease-out) both; }
 @keyframes bc-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-.bc-h { display: flex; align-items: center; gap: 8px; color: var(--si-danger-ink); font: var(--si-font-h4); }
-.bc-h svg { flex: none; }
+.bc-h { display: flex; align-items: center; gap: 10px; color: var(--si-ink-1); font: var(--si-font-h4); }
+.bc-ic { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--si-radius-sm); background: var(--si-surface-1); color: var(--si-warn-ink); }
 .bc-p { margin: 6px 0 0; color: var(--si-ink-2); font: var(--si-font-body); }
 .bc-sum, .note, .hint { margin: 4px 0 0; color: var(--si-ink-3); font: var(--si-font-caption); }
 .hits { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
@@ -140,7 +140,7 @@ async function keep(x: Leak) {
 .where:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 .where-static { color: var(--si-ink-3); font: var(--si-font-caption); }
 .ctx { overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
-mark { padding: 0 2px; border-radius: 3px; background: var(--si-danger-soft); color: var(--si-danger-ink); }
+mark { padding: 0 2px; border-radius: 3px; background: var(--si-warn-soft); color: var(--si-warn-ink); }
 .ops { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .ops :deep(.el-button + .el-button) { margin-left: 0; }
 .ops .hint { max-width: 140px; text-align: right; }

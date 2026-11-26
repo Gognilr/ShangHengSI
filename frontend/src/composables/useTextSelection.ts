@@ -10,6 +10,12 @@ export interface TextSelection {
 }
 
 const cpLen = (s: string) => Array.from(s).length
+/** 揭幕滑块（二版 6.7）的原文层里，每个遮住处叠着隐藏的代号（.rx-c）：计算文字与位置时不算它 */
+function plain(r: Range): string {
+  const frag = r.cloneContents()
+  frag.querySelectorAll('.rx-c').forEach(n => n.remove())
+  return frag.textContent ?? ''
+}
 
 /**
  * 读取页面上当前的划选（V31-U2 4.3）。每个节点的文字放在独立的 .txt 元素中（data-loc），
@@ -27,10 +33,11 @@ export function readTextSelection(itemsByLoc: Map<string, RedactionItemPos[]>): 
   if (!a || !b || a !== b) return { notice: '请在同一段内选择' }
   const pre = document.createRange()
   pre.selectNodeContents(a)
+  const whole = pre.cloneRange()
   pre.setEnd(range.startContainer, range.startOffset)
-  const full = a.textContent ?? ''
-  const picked = range.toString()
-  const start = cpLen(full.slice(0, pre.toString().length))
+  const full = plain(whole)
+  const picked = plain(range)
+  const start = cpLen(full.slice(0, plain(pre).length))
   const end = start + cpLen(picked)
   const loc = a.dataset.loc ?? ''
   // 与已遮住的项重叠时由后端并成一个新项（V35-F-04）；整段都已遮住时提示点胶囊修改
@@ -50,6 +57,6 @@ export function readAskSelection(): { loc: string; text: string; rect: DOMRect }
   const holder = (n: Node) => (n.nodeType === 1 ? (n as Element) : n.parentElement)?.closest<HTMLElement>('.txt') ?? null
   const a = holder(range.startContainer)
   if (!a || a !== holder(range.endContainer)) return null
-  const text = range.toString().trim()
+  const text = plain(range).trim()
   return text ? { loc: a.dataset.loc ?? '', text, rect: range.getBoundingClientRect() } : null
 }

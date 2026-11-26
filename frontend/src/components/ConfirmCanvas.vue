@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
-import { computed, h, nextTick, reactive, ref, watch, type FunctionalComponent, type VNode } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, reactive, ref, watch, type FunctionalComponent, type VNode } from 'vue'
 import { ApiError } from '@/api/http'
 import { previewApi, type OcrCorrection, type PreviewNode, type PreviewNodes } from '@/api/preview'
 import type { ManualInput, RedactionItemPos, Suspect, SuspectCategory, UserCategory } from '@/api/redaction'
@@ -10,9 +10,9 @@ import DocPreview from '@/components/DocPreview.vue'
 import DocSpectrum, { type SpectrumTick } from '@/components/result/DocSpectrum.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { readAskSelection, readTextSelection, type TextSelection } from '@/composables/useTextSelection'
-import { ChevronRight, Ellipsis, Eye, Layers, Tags, TextCursorInput } from '@lucide/vue'
+import { ArrowLeftRight, ChevronRight, Ellipsis, Eye, FileText, Layers, Sparkle, Tags, TextCursorInput } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
-import { MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, SEVERITY_ORDER, toOptions } from '@/utils/labels'
+import { MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, REDACTION_KINDS, SEVERITY_ORDER, redactionKind, toOptions } from '@/utils/labels'
 import { excerptRange, overlayRange } from '@/utils/marks'
 import { useFx } from '@/utils/motion'
 import { sameParagraph } from '@/utils/transcript'
@@ -23,7 +23,7 @@ import { sameParagraph } from '@/utils/transcript'
  * mode=result（V31-U3 3.3）：只读；纸面上标出问题与本地校验位置，右缘光谱条，划选只能“追问这段”，可切到“原件”。
  */
 /** 纸面上的一条问题标注：挂在第一个 loc 的节点上。 */
-export interface CanvasAnnotation { id: string; no: string; severity: string; loc: string; excerpt: string | null }
+export interface CanvasAnnotation { id: string; no: string; severity: string; loc: string; excerpt: string | null; title?: string }
 const props = defineProps<{
   taskId: string
   files: TaskFile[]
@@ -47,6 +47,10 @@ const props = defineProps<{
   ocrBusy?: boolean
   /** 工作台会话（V35-D-02）：有上一稿的文件多一个“对比上一稿”视图，只读 */
   diffLoader?: (fileId: string, prevId: string) => Promise<DiffResult>
+  /** 七类分段条选中的一类（二版 6.7）：纸面其余类别降到 25%，这一类加描边 */
+  kindFilter?: string | null
+  /** 结果页（二版第五节“还原扫描”）：这一轮的 id。第一次打开时青色扫描线掠过纸面一次，代号翻成真名；同一轮再次打开不再播放 */
+  restoreKey?: string
 }>()
 const isResult = computed(() => props.mode === 'result')
 // 手动补充与撤销只发事件，由确认工作台乐观更新并放进保存队列（V31-U5F-03）
@@ -77,7 +81,13 @@ const sortedFiles = computed(() => [...props.files].sort((a, b) => Number(supers
 const activeId = ref('')
 const active = computed(() => states[activeId.value])
 const lastFileId = computed(() => sortedFiles.value[sortedFiles.value.length - 1]?.id ?? '')
-const view = ref<'orig' | 'ai' | 'raw' | 'diff'>('orig')
+// reveal：揭幕滑块（二版 6.7），确认页的默认视图，取代“原文 / 模型将看到的”二选一；结果页仍是原文 / 模型看到的
+type View = 'orig' | 'ai' | 'raw' | 'diff' | 'reveal'
+const revealable = computed(() => props.mode !== 'result' && props.aiView !== false)
+const view = ref<View>(props.mode !== 'result' && props.aiView !== false ? 'reveal' : 'orig')
+/** 纸面显示原文文字（可点胶囊、划选、校对）：原文视图或揭幕滑块 */
+const textView = computed(() => view.value === 'orig' || view.value === 'reveal')
+const textViewName = (): View => revealable.value ? 'reveal' : 'orig'
 function utteranceLabel(node: PreviewNode) {
   const file = activeFile.value as (TaskFile & { speakers?: Record<string, string | null> }) | undefined
   return file?.speakers?.[String(node.speaker)] || '发言人 ' + node.speaker
@@ -92,7 +102,7 @@ const ocrError = ref(''), ocrNotice = ref(''), savingOcr = ref(false)
 const editorInput = ref<{ focus: () => void }>()
 const scan = computed(() => !!props.correctOcr && !isResult.value && activeFile.value?.ext === 'pdf' && rawAvailable(activeFile.value))
 function canPickOcr(node: PreviewNode) {
-  return scan.value && view.value === 'orig' && node.ocr_conf != null && node.page != null && !!node.bbox?.length
+  return scan.value && textView.value && node.ocr_conf != null && node.page != null && !!node.bbox?.length
 }
 const selectedOcr = computed(() => active.value?.nodes.find(node => node.loc === pickedOcr.value && canPickOcr(node)))
 const hasOcr = computed(() => scan.value && active.value?.nodes.some(node => node.ocr_conf != null))
@@ -112,7 +122,7 @@ function openOcr(node: PreviewNode) {
   void editOcr()
 }
 function onPaperDblClick(event: MouseEvent) {
-  if (!hasOcr.value || view.value !== 'orig') return
+  if (!hasOcr.value || !textView.value) return
   const loc = (event.target as HTMLElement).closest<HTMLElement>('[data-node]')?.dataset.node
   const node = active.value?.nodes.find(n => n.loc === loc)
   if (node) openOcr(node)
@@ -173,13 +183,12 @@ async function commitOcr() {
   } finally { savingOcr.value = false }
 }
 const hasPrev = computed(() => !!props.diffLoader && !!activeFile.value?.prev_file_id)
-const viewOptions = computed(() => [
-  { value: 'orig' as const, label: '原文' },
-  ...(props.aiView === false ? [] : [{ value: 'ai' as const, label: '模型将看到的' }]),
+const viewOptions = computed<{ value: View; label: string }[]>(() => [
+  ...(revealable.value ? [{ value: 'reveal' as const, label: '逐字对照' }] : [{ value: 'orig' as const, label: '原文' }, ...(props.aiView === false ? [] : [{ value: 'ai' as const, label: '模型看到的' }])]),
   ...(hasPrev.value ? [{ value: 'diff' as const, label: '对比上一稿' }] : []),
   ...((isResult.value || scan.value) && rawAvailable(activeFile.value) ? [{ value: 'raw' as const, label: '原件' }] : []),
 ])
-watch(viewOptions, opts => { if (!opts.some(o => o.value === view.value)) view.value = 'orig' })
+watch(viewOptions, opts => { if (!opts.some(o => o.value === view.value)) view.value = opts[0]?.value ?? 'orig' })
 
 // ---- 对比上一稿（V35-D-02，设计 diff.md 3.4）：纸面显示本稿，新增浅底下划线、删除划线、整段删除单列，改过的段左侧竖线 ----
 interface DiffState { loading: boolean; error: string; data: DiffResult | null }
@@ -251,13 +260,9 @@ watch(() => sortedFiles.value.map(f => f.id).join(','), () => {
 const replaceCount = (f: TaskFile) => props.items.filter(it => it.loc.startsWith(`F${f.seq}-`)).length
 
 // ---- 胶囊按类别着色（澄明 4.2）：单位、人名、联系方式、证件、地址、金额、其他 ----
-const KIND_OF: Record<string, string> = {
-  ORG: 'org', OUR: 'org', NAME: 'org', PERSON: 'person', PHONE: 'contact', EMAIL: 'contact', URL: 'contact', IM: 'contact',
-  IDNO: 'id', ACCOUNT: 'id', SWIFT: 'id', ADDR: 'addr', POSTCODE: 'addr', AMOUNT: 'amount', PRICE: 'amount', DATE: 'amount',
-}
-const kindOf = (category: string) => `k-${KIND_OF[category] ?? 'other'}`
-const LEGEND = [['org', '单位'], ['person', '人名'], ['contact', '联系方式'], ['id', '证件与账号'], ['addr', '地址'], ['amount', '金额'], ['other', '其他']] as const
-const presentKinds = computed(() => new Set(props.items.map(it => KIND_OF[it.category] ?? 'other')))
+const kindOf = (category: string) => `k-${redactionKind(category)}`
+const LEGEND = REDACTION_KINDS
+const presentKinds = computed(() => new Set(props.items.map(it => redactionKind(it.category))))
 
 // ---- 分段：替换项、不确定项、保留文字 ----
 type Kind = 'plain' | 'cap' | 'unc' | 'kept'
@@ -412,23 +417,45 @@ const blocks = computed<Block[]>(() => {
 
 // ---- 渲染：原文 / AI 视野 ----
 const selectedPlaceholder = computed(() => props.suspects.find(s => s.id === props.selectedSuspectId)?.placeholder ?? null)
-const NodeText: FunctionalComponent<{ nv: NodeView; ai: boolean; selId: number | null; selPh: string | null; selFid?: string }> = ({ nv, ai, selId, selPh, selFid }) => {
+/** layer：揭幕滑块的两层（r 原文、c 模型将看到的）。每个遮住处是同一个网格单元，原文与代号叠放，宽度取较宽者，每层只显示自己那一个，两层换行完全一致。 */
+const NodeText: FunctionalComponent<{ nv: NodeView; ai: boolean; selId: number | null; selPh: string | null; selFid?: string; layer?: 'r' | 'c'; kf?: string | null }> = ({ nv, ai, selId, selPh, selFid, layer, kf }) => {
   const kids: Array<VNode | string> = nv.segs.map((g) => {
     const ann = g.hl && !ai ? ['ann', `ann-${g.hl.sev}`, { on: g.hl.fid === selFid }] : []
     if (g.k === 'plain') return ann.length ? h('mark', { class: ann, 'data-fid': g.hl!.fid }, g.text) : g.text
     const selected = g.k === 'kept' ? g.sid === selId : !!selPh && g.item?.placeholder === selPh
-    const attrs: Record<string, unknown> = { 'data-seg': g.k, style: { '--i': Math.min(g.i, 40) }, class: [g.k, g.item ? kindOf(g.item.category) : '', { sel: selected }, ...ann] }
+    const kind = g.item ? kindOf(g.item.category) : ''
+    const kon = !!kf && (g.item ? kind === `k-${kf}` : false)
+    const attrs: Record<string, unknown> = { 'data-seg': g.k, style: { '--i': Math.min(g.i, 40) }, class: [g.k, kind, { sel: selected, kon }, ...ann] }
     if (ann.length) attrs['data-fid'] = g.hl!.fid
     if (g.item) attrs['data-item'] = `${g.item.loc}|${g.item.char_start}|${g.item.char_end}`
     if (g.sid !== undefined) attrs['data-sid'] = g.sid
     if (g.k === 'kept') return h('span', attrs, g.text)
-    if (ai) { attrs.class = [g.k === 'unc' ? 'code unc' : 'code', kindOf(g.item!.category), { sel: selected }]; attrs['data-orig'] = g.text; return h('span', attrs, g.item!.placeholder) }
+    if (layer) {
+      attrs.class = ['rx', kind, { sel: selected, kon }]
+      attrs['data-orig'] = g.text
+      const unc = g.k === 'unc' ? ' unc' : ''
+      return h('span', attrs, [h('span', { class: `rx-r ${g.k}` }, g.text), h('span', { class: `rx-c code${unc}` }, g.item!.placeholder)])
+    }
+    if (ai) { attrs.class = [g.k === 'unc' ? 'code unc' : 'code', kind, { sel: selected, kon }]; attrs['data-orig'] = g.text; return h('span', attrs, g.item!.placeholder) }
+    if (restoring.value && !ann.length) { attrs.class = ['rs', kind]; return h('span', attrs, [h('span', { class: 'rs-c' }, g.item!.placeholder), h('span', { class: `rs-r ${g.k}` }, g.text)]) }
     return h('span', attrs, g.text)
   })
-  return h('span', { class: ai ? 'ai-txt' : 'txt', 'data-loc': nv.node.loc }, kids)
+  return h('span', { class: ai ? 'ai-txt' : 'txt', 'data-loc': layer === 'c' ? undefined : nv.node.loc }, kids)
 }
-NodeText.props = ['nv', 'ai', 'selId', 'selPh', 'selFid']
+NodeText.props = ['nv', 'ai', 'selId', 'selPh', 'selFid', 'layer', 'kf']
 const nodeClass = (nv: NodeView) => nv.diff ? ['d-chg', `d-${nv.diff.type}`, { 'd-u': nv.diff.untracked }] : [nv.bar ? `ann-bar ann-bar-${nv.bar}` : '', { 'local-bar': nv.local && !nv.bar, 'ann-hit': nv.tags?.some(a => a.id === props.selectedFindingId) }]
+/** 揭幕滑块的两层；其他视图只有一层 n */
+const layers = computed(() => view.value === 'reveal' ? ['r', 'c'] as const : ['n'] as const)
+const lyr = (layer: 'r' | 'c' | 'n') => layer === 'n' ? undefined : layer
+/** 定位、划选只认原文层：代号层不带 data-node */
+const dn = (layer: 'r' | 'c' | 'n', loc: string) => layer === 'c' ? undefined : loc
+/** 发言人：原文层写名字，模型视图写代号；揭幕滑块两层叠在同一格，换行一致 */
+const SpeakerName: FunctionalComponent<{ node: PreviewNode; layer: 'r' | 'c' | 'n' }> = ({ node, layer }) => {
+  const code = node.speaker_code, coded = !!code?.startsWith('[[')
+  if (layer === 'n') return view.value === 'ai' ? h('span', { class: { code: coded } }, code ?? '') : h('span', utteranceLabel(node))
+  return h('span', { class: 'rx rx-meta' }, [h('span', { class: 'rx-r' }, utteranceLabel(node)), h('span', { class: ['rx-c', { code: coded }] }, code ?? '')])
+}
+SpeakerName.props = ['node', 'layer']
 const tagText = (tags: CanvasAnnotation[]) => `问题 ${tags.map(a => a.no).join(' · ')}`
 
 const flipping = ref(false)
@@ -512,7 +539,7 @@ function onPaperClick(event: MouseEvent) {
   const tgt = event.target as HTMLElement
   ocrBar.value = null
   const el = tgt.closest<HTMLElement>('[data-seg]')
-  if (hasOcr.value && view.value === 'orig') {
+  if (hasOcr.value && textView.value) {
     const nodeEl = tgt.closest<HTMLElement>('[data-node]')
     const node = active.value?.nodes.find(n => n.loc === nodeEl?.dataset.node)
     if (node) pickOcr(node)
@@ -530,7 +557,7 @@ function onPaperClick(event: MouseEvent) {
   const [loc, s, e] = (el.dataset.item ?? '').split('|')
   const item = props.items.find(it => it.loc === loc && it.char_start === Number(s) && it.char_end === Number(e))
   popMode.value = 'menu'
-  pop.value = { ...base, item, text: el.textContent ?? '', suspect: item ? suspectByPlaceholder.value.get(item.placeholder) : undefined }
+  pop.value = { ...base, item, text: el.dataset.orig ?? el.textContent ?? '', suspect: item ? suspectByPlaceholder.value.get(item.placeholder) : undefined }
 }
 // 就地反馈（V321-E-01）：保留后在该词上方显示“已保留 · 撤销”，5 秒后消失
 interface KeptNote { left: number; top: number; suspect: Suspect }
@@ -577,7 +604,7 @@ function readableLoc(loc: string): string {
 }
 function onAskMouseUp() {
   ask.value = null
-  if (view.value !== 'orig' || !props.askEnabled || !wrap.value) return
+  if (!textView.value || !props.askEnabled || !wrap.value) return
   const s = readAskSelection()
   if (!s) return
   const outer = wrap.value.getBoundingClientRect()
@@ -596,7 +623,7 @@ function submitAsk() {
 }
 function onPaperMouseUp() {
   if (isResult.value) { onAskMouseUp(); return }
-  if (view.value !== 'orig') return
+  if (!textView.value) return
   const result = readTextSelection(itemsByLoc.value)
   clearPick()
   if (!result || !wrap.value) return
@@ -623,7 +650,7 @@ async function locate(loc: string, text?: string, findingId?: string) {
   if (!file) return
   // 原件视图下只切页签，由原件视图按 bbox 高亮
   if (view.value === 'raw' && rawAvailable(file)) { activeId.value = file.id; return }
-  if (view.value !== 'orig') view.value = 'orig'
+  if (!textView.value) view.value = textViewName()
   activeId.value = file.id
   await loadFile(file.id)
   unfolded.value = new Set(unfolded.value).add(file.id)
@@ -634,7 +661,7 @@ async function locate(loc: string, text?: string, findingId?: string) {
   box.scrollTop += node.getBoundingClientRect().top - box.getBoundingClientRect().top - 80
   const marked = findingId ? node.querySelector<HTMLElement>(`[data-fid="${CSS.escape(findingId)}"]:not(.ann-tag)`) : null
   const candidates = Array.from(node.querySelectorAll<HTMLElement>('[data-seg]'))
-  const target = marked ?? (findingId ? node : undefined) ?? (text ? candidates.find(el => el.textContent === text) : undefined) ?? candidates[0] ?? node
+  const target = marked ?? (findingId ? node : undefined) ?? (text ? candidates.find(el => (el.dataset.orig ?? el.textContent) === text) : undefined) ?? candidates[0] ?? node
   target.classList.add('flash')
   setTimeout(() => target.classList.remove('flash'), 1600)
 }
@@ -664,7 +691,40 @@ function switchFile(delta: 1 | -1) {
   const index = list.findIndex(f => f.id === activeId.value)
   if (list.length > 1 && index >= 0) activeId.value = list[(index + delta + list.length) % list.length]!.id
 }
-function toggleView() { view.value = view.value === 'orig' ? 'ai' : 'orig' }
+function toggleView() {
+  if (view.value === 'reveal') { setReveal(reveal.value > 0 ? 0 : 100); return }
+  if (revealable.value) { view.value = 'reveal'; return }
+  view.value = view.value === 'orig' ? 'ai' : 'orig'
+}
+
+// ---- 揭幕滑块（二版 6.7）：紫线左边是原文，右边是模型将看到的；两层逐字对齐，右层用 clip-path 只露出紫线右边 ----
+const reveal = ref(50)
+const paperEl = ref<HTMLElement>()
+function setReveal(x: number) { reveal.value = Math.round(Math.max(0, Math.min(100, x)) * 10) / 10 }
+const revealText = computed(() => reveal.value <= 0 ? '全部为模型将看到的' : reveal.value >= 100 ? '全部为原文' : `左边 ${Math.round(reveal.value)}% 为原文`)
+let dragId: number | null = null
+function onHandleDown(e: PointerEvent) {
+  if (e.button !== 0) return
+  e.preventDefault()
+  dragId = e.pointerId
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  closePop(); tip.value = null
+  onHandleMove(e)
+}
+function onHandleMove(e: PointerEvent) {
+  if (dragId !== e.pointerId || !paperEl.value) return
+  const b = paperEl.value.getBoundingClientRect()
+  setReveal((e.clientX - b.left) / b.width * 100)   // 跟手，无缓动
+}
+function onHandleUp(e: PointerEvent) { if (dragId === e.pointerId) dragId = null }  // 松手不回弹
+function onKnobKey(e: KeyboardEvent) {
+  const step: Record<string, number> = { ArrowLeft: -5, ArrowRight: 5 }
+  if (e.key in step) setReveal(reveal.value + step[e.key]!)
+  else if (e.key === 'Home') setReveal(0)
+  else if (e.key === 'End') setReveal(100)
+  else return
+  e.preventDefault()
+}
 function cancel() { closePop(); clearPick(); ask.value = null; ocrBar.value = null; window.getSelection()?.removeAllRanges() }
 
 // ---- 光谱条（结果页）：刻度位置 = 块序号 ÷ 当前渲染的块数 ----
@@ -686,7 +746,7 @@ const ticks = computed<SpectrumTick[]>(() => {
     const views = b.t === 'node' ? [b.nv] : b.t === 'para' ? b.nvs : b.t === 'table' ? b.rows.flatMap(r => r.cells) : []
     let cap = false
     for (const nv of views) {
-      for (const a of nv.tags ?? []) out.push({ pos, kind: (['high', 'medium', 'low'].includes(a.severity) ? a.severity : 'low') as SpectrumTick['kind'], loc: nv.node.loc, fid: a.id })
+      for (const a of nv.tags ?? []) out.push({ pos, kind: (['high', 'medium', 'low'].includes(a.severity) ? a.severity : 'low') as SpectrumTick['kind'], loc: nv.node.loc, fid: a.id, title: `${a.no} ${a.title ?? ''}`.trim() })
       if (nv.local) out.push({ pos, kind: 'local', loc: nv.node.loc })
       if (!cap && nv.changed) { cap = true; out.push({ pos, kind: 'cap', loc: nv.node.loc }) }
     }
@@ -702,6 +762,35 @@ function onSeek(ratio: number) {
   const box = scroller.value
   if (box) box.scrollTop = ratio * box.scrollHeight - box.clientHeight / 2
 }
+// ---- 还原扫描（二版第五节）：扫描线自上而下掠过可见纸面约 1.7 秒，经过处的代号沿横轴翻成真名；翻完后代号格收起，只在结束时重排一次 ----
+const RESTORED_KEY = 'si.restored'
+const SWEEP_MS = 1700
+const restoring = ref(false)
+const sweepH = ref(0)
+function playedBefore(key: string): boolean {
+  let list: string[] = []
+  try { list = JSON.parse(localStorage.getItem(RESTORED_KEY) ?? '[]') as string[] } catch { /* 坏值按没播过 */ }
+  if (list.includes(key)) return true
+  try { localStorage.setItem(RESTORED_KEY, JSON.stringify([...list, key].slice(-300))) } catch { /* 存不下就每次都播 */ }
+  return false
+}
+let restoreTimer: ReturnType<typeof setTimeout> | undefined
+watch(() => [props.restoreKey, isResult.value && view.value === 'orig' && !active.value?.loading && blocks.value.length > 0 && props.items.length > 0] as const, async ([key, ready]) => {
+  if (!key || !ready || restoring.value || playedBefore(key) || fx.value !== 'full') return
+  restoring.value = true
+  await nextTick()
+  const box = scroller.value
+  if (!box) { restoring.value = false; return }
+  const top = box.getBoundingClientRect().top, h = box.clientHeight
+  sweepH.value = h
+  for (const el of Array.from(box.querySelectorAll<HTMLElement>('.rs'))) {
+    const y = el.getBoundingClientRect().top - top
+    el.style.setProperty('--d', `${Math.round(Math.max(0, Math.min(1, y / h)) * SWEEP_MS)}ms`)
+  }
+  clearTimeout(restoreTimer)
+  restoreTimer = setTimeout(() => { restoring.value = false }, SWEEP_MS + 520)
+})
+onBeforeUnmount(() => clearTimeout(restoreTimer))
 function onStageScroll() { closePop(); ask.value = null; tip.value = null; ocrBar.value = null; clearKeptNote() }
 
 // ---- 悬停胶囊（V31-U5F-03 问题 8）：AI 视野悬停代号显示“原文：…”，原文视图悬停显示代号；只在本机浏览器显示 ----
@@ -715,7 +804,8 @@ function onPaperOver(event: MouseEvent) {
   if (!item) { tip.value = null; return }
   const box = el.getBoundingClientRect()
   const outer = wrap.value.getBoundingClientRect()
-  const ai = view.value === 'ai'
+  const pb = paperEl.value?.getBoundingClientRect()
+  const ai = view.value === 'ai' || (view.value === 'reveal' && !!pb && event.clientX > pb.left + pb.width * reveal.value / 100)
   const above = box.top - outer.top - 34
   tip.value = {
     left: Math.max(8, Math.min(box.left - outer.left, outer.width - 320)),
@@ -736,8 +826,8 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
           <span class="tab-name">{{ f.original_name }}</span><span class="tab-n">{{ replaceCount(f) }}</span>
         </button>
       </div>
-      <SiSegmented v-if="!ocrDraft" v-model="view" :options="viewOptions" size="small" ariaLabel="原文、模型将看到的或对比上一稿" />
-      <p v-else class="ocr-title">校对识别文字 · {{ ocrDraft.file.original_name }} 第 {{ ocrDraft.node.page }} 页</p>
+      <SiSegmented v-if="!ocrDraft && viewOptions.length > 1" v-model="view" :options="viewOptions" size="small" ariaLabel="原文、模型将看到的或对比上一稿" />
+      <p v-if="ocrDraft" class="ocr-title">校对识别文字 · {{ ocrDraft.file.original_name }} 第 {{ ocrDraft.node.page }} 页</p>
       <div v-if="!isResult && sortedFiles.length <= 1 && !ocrDraft" class="legend" aria-label="颜色说明">
         <span v-for="[k, label] in LEGEND" v-show="presentKinds.has(k)" :key="k" :class="`k-${k}`"><i class="kdot" />{{ label }}</span>
       </div>
@@ -772,23 +862,26 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
     </section>
     <DocPreview v-if="!ocrDraft && view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? (pickedOcr ? [pickedOcr] : [])" :node-loader="nodeLoader" :raw-loader="rawLoader" />
     <div v-else v-show="!ocrDraft" class="stage-wrap">
+    <span v-if="restoring" class="sweep" :style="{ '--h': `${sweepH}px` }" aria-hidden="true" />
     <div ref="scroller" v-loading="active?.loading || (view === 'diff' && activeDiff?.loading)" class="stage si-stage" :class="{ 'with-spectrum': isResult || view === 'diff' }" @scroll.passive="onStageScroll">
       <SiNotice v-if="active?.error" type="error" :closable="false" :title="active.error" />
       <EmptyState v-else-if="active && !active.loading && !active.available" illus="stack" tone="neutral" title="原文已按保留期清理" description="原件已按保留期限删除，这里不再显示原文。" />
       <SiNotice v-else-if="view === 'diff' && activeDiff?.error" type="error" :closable="false" :title="activeDiff.error" />
       <EmptyState v-else-if="active && !active.loading && !blocks.length" illus="stack" tone="neutral" title="没有可显示的正文" description="这份文件没有读出文字；扫描件请等识别完成后再看。" />
-      <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult, diffing: view === 'diff' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null" @dblclick="onPaperDblClick">
+      <div v-else ref="paperEl" class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult, diffing: view === 'diff', reveal: view === 'reveal', kfilter: !!kindFilter }]" :style="view === 'reveal' ? { '--x': `${reveal}%` } : undefined" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null" @dblclick="onPaperDblClick">
+        <div v-if="view === 'reveal'" class="rv-tags" aria-hidden="true"><span class="rv-tag l"><FileText :size="12" :stroke-width="2" />原文</span><span class="rv-tag r"><Sparkle :size="12" :stroke-width="2" />模型将看到的</span></div>
+        <div v-for="layer in layers" :key="layer" class="ly" :class="`ly-${layer}`" :aria-hidden="layer === 'c' ? 'true' : undefined">
         <template v-for="(b, bi) in blocks" :key="bi">
-          <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv), { 'ocr-picked': pickedOcr === b.nv.node.loc, 'ocr-pickable': canPickOcr(b.nv.node) && b.nv.node.ocr_editable }]" :data-node="b.nv.node.loc"
-            :tabindex="canPickOcr(b.nv.node) ? 0 : undefined" @keydown.enter.self.prevent="openOcr(b.nv.node)">
-            <div v-if="b.nv.node.kind === 'utterance'" class="utterance-meta"><span :class="{ code: view === 'ai' && b.nv.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nv.node.speaker_code : utteranceLabel(b.nv.node) }}</span> · {{ stamp(b.nv.node.t_start_ms ?? 0) }}</div>
+          <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv), { 'ocr-picked': pickedOcr === b.nv.node.loc, 'ocr-pickable': canPickOcr(b.nv.node) && b.nv.node.ocr_editable }]" :data-node="dn(layer, b.nv.node.loc)"
+            :tabindex="layer !== 'c' && canPickOcr(b.nv.node) ? 0 : undefined" @keydown.enter.self.prevent="openOcr(b.nv.node)">
+            <div v-if="b.nv.node.kind === 'utterance'" class="utterance-meta"><SpeakerName :node="b.nv.node" :layer="layer" /> · {{ stamp(b.nv.node.t_start_ms ?? 0) }}</div>
             <button v-if="b.nv.tags" type="button" class="ann-tag" :data-fid="b.nv.tags[0]!.id">{{ tagText(b.nv.tags) }}</button>
             <span v-if="b.nv.diff && (b.nv.diff.untracked || diffTag(b.nv.diff))" class="d-tag" :class="{ 'd-tag-u': b.nv.diff.untracked && b.nv.diff.type !== 'format' }">{{ b.nv.diff.untracked && b.nv.diff.type !== 'format' ? (b.nv.diff.mixed ? '部分未留痕' : '未留痕') : diffTag(b.nv.diff) }}</span>
             <div v-if="b.nv.node.loc === 'NOTE'" class="side-label">本次补充说明</div>
             <span v-else-if="b.nv.node.part !== 'body'" class="side-label">{{ b.nv.node.part }}</span>
             <span v-if="b.nv.node.clause_no && b.nv.node.part === 'body' && !(b.nv.node.text ?? '').trimStart().startsWith(b.nv.node.clause_no)" class="clause">{{ b.nv.node.clause_no }}</span>
             <DiffText v-if="b.nv.diff" :c="b.nv.diff" />
-            <NodeText v-else :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" />
+            <NodeText v-else :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" :layer="lyr(layer)" :kf="kindFilter" />
           </div>
           <div v-else-if="b.t === 'gone'" class="gone-wrap">
             <div v-for="c in b.changes" :key="c.id" class="node gone d-chg" :class="{ 'd-u': c.untracked }" :data-gone="c.id">
@@ -797,30 +890,35 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
             </div>
           </div>
           <div v-else-if="b.t === 'para'" class="node kind-utterance">
-            <div class="utterance-meta"><span :class="{ code: view === 'ai' && b.nvs[0]!.node.speaker_code?.startsWith('[[') }">{{ view === 'ai' ? b.nvs[0]!.node.speaker_code : utteranceLabel(b.nvs[0]!.node) }}</span> · {{ stamp(b.nvs[0]!.node.t_start_ms ?? 0) }}</div>
-            <span v-for="nv in b.nvs" :key="nv.node.loc" class="sent" :data-node="nv.node.loc" :class="nodeClass(nv)"><NodeText :nv="nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></span>
+            <div class="utterance-meta"><SpeakerName :node="b.nvs[0]!.node" :layer="layer" /> · {{ stamp(b.nvs[0]!.node.t_start_ms ?? 0) }}</div>
+            <span v-for="nv in b.nvs" :key="nv.node.loc" class="sent" :data-node="dn(layer, nv.node.loc)" :class="nodeClass(nv)"><NodeText :nv="nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" :layer="lyr(layer)" :kf="kindFilter" /></span>
           </div>
           <table v-else-if="b.t === 'table'" class="tbl">
-            <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="c.node.loc" :class="[nodeClass(c), { 'ocr-picked': pickedOcr === c.node.loc, 'ocr-pickable': canPickOcr(c.node) && c.node.ocr_editable }]"
-              :tabindex="canPickOcr(c.node) ? 0 : undefined" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"
-              @keydown.enter.self.prevent="openOcr(c.node)"><DiffText v-if="c.diff" :c="c.diff" /><NodeText v-else :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" /></td></tr></tbody>
+            <tbody><tr v-for="row in b.rows" :key="row.r"><td v-for="c in row.cells" :key="c.node.loc" :data-node="dn(layer, c.node.loc)" :class="[nodeClass(c), { 'ocr-picked': pickedOcr === c.node.loc, 'ocr-pickable': canPickOcr(c.node) && c.node.ocr_editable }]"
+              :tabindex="layer !== 'c' && canPickOcr(c.node) ? 0 : undefined" :data-fid="c.bar ? c.tags?.[0]?.id : undefined"
+              @keydown.enter.self.prevent="openOcr(c.node)"><DiffText v-if="c.diff" :c="c.diff" /><NodeText v-else :nv="c" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" :layer="lyr(layer)" :kf="kindFilter" /></td></tr></tbody>
           </table>
-          <button v-else type="button" class="fold" @click="unfolded = new Set(unfolded).add(activeId)">{{ b.n }} 段{{ isResult ? '无标注' : '未改动' }} · 展开</button>
+          <button v-else type="button" class="fold" :tabindex="layer === 'c' ? -1 : undefined" @click="unfolded = new Set(unfolded).add(activeId)">{{ b.n }} 段{{ isResult ? '无标注' : '未改动' }} · 展开</button>
         </template>
+        </div>
+        <div v-if="view === 'reveal'" class="rv-handle" @pointerdown="onHandleDown" @pointermove="onHandleMove" @pointerup="onHandleUp" @pointercancel="onHandleUp" @click.stop>
+          <span class="rv-knob" tabindex="0" role="slider" aria-label="对照位置：左边原文，右边模型将看到的" aria-valuemin="0" aria-valuemax="100"
+            :aria-valuenow="Math.round(reveal)" :aria-valuetext="revealText" @keydown="onKnobKey"><ArrowLeftRight :size="18" :stroke-width="2" /></span>
+        </div>
       </div>
     </div>
     <DocSpectrum v-if="(isResult || view === 'diff') && blocks.length" :ticks="ticks" :scroller="scroller" @pick="onTick" @seek="onSeek" />
     </div>
 
     <p v-if="ocrNotice" class="cv-foot hint" role="status">{{ ocrNotice }}</p>
-    <p v-else-if="hasOcr && view === 'orig' && !ocrDraft" class="cv-foot hint">点扫描文字块或单元格可校对识别文字（双击直接打开）。签章不清楚或没有识别文字的地方需看原件。</p>
+    <p v-else-if="hasOcr && textView && !ocrDraft" class="cv-foot hint">点扫描文字块或单元格可校对识别文字（双击直接打开）。签章不清楚或没有识别文字的地方需看原件。</p>
 
     <div v-if="ocrBar && !ocrDraft && !pop" class="pickbar" :style="{ left: `${ocrBar.left}px`, top: `${ocrBar.top}px` }">
       <el-button type="primary" size="small" :disabled="!ocrBarReady" :title="ocrBarReady ? '' : '正在处理，请稍候'" @click.stop="ocrBar = null; editOcr()">校对识别文字</el-button>
     </div>
     <p v-else-if="scan && view === 'raw'" class="cv-foot hint">签章不清楚或没有识别文字的地方，请核验原件。</p>
     <p v-else-if="view === 'diff'" class="cv-foot hint">{{ diffHint }}</p>
-    <p v-else-if="!isResult && !ocrDraft" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机遮住 · 点胶囊可修改 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
+    <p v-else-if="!isResult && !ocrDraft" class="cv-foot hint">{{ view === 'reveal' ? `${protectedCount} 处已在本机遮住 · 拖动紫线逐字对照（← → 每次 5%，V 全部切换）· 点胶囊可修改 · 划选文字可补充` : view === 'orig' ? `${protectedCount} 处已在本机遮住 · 点胶囊可修改 · 划选文字可补充` : '这是模型将看到的样子 · 代号在本机还原' }}</p>
     <p v-else-if="isResult && view !== 'raw'" class="cv-foot hint">{{ view === 'orig' ? `${protectedCount} 处已在本机保护${askEnabled ? ' · 划选文字可追问' : ''}` : '这是模型看到的样子 · 结论已在本机还原' }}</p>
 
     <div v-if="pop && !isResult && pop.item" class="pop menu" :style="{ left: `${pop.left}px`, top: `${pop.top}px` }" role="menu" @click.stop>
@@ -922,7 +1020,7 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
 .tab-n { flex: none; padding: 0 6px; border-radius: var(--si-radius-badge); background: var(--si-cap-bg); color: var(--si-cap-ink); font: var(--si-font-label-sm); }
 .stage-wrap { position: relative; flex: 1; min-height: 0; display: flex; }
 .stage { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; border-radius: var(--si-radius-card); }
-.stage.with-spectrum { padding-right: 24px; }
+.stage.with-spectrum { padding-right: 36px; }
 .paper { max-width: 760px; margin: 0 auto; padding: 40px 48px; border-radius: var(--si-radius-paper); box-shadow: var(--si-paper-shadow); font: var(--si-font-reading); }
 .paper.fx-lite.ai { animation: cv-fade 160ms var(--si-ease); }
 .node { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; content-visibility: auto; contain-intrinsic-size: auto 48px; }
@@ -1063,4 +1161,36 @@ td.d-chg { margin-left: 0; padding-left: 8px; }
 .pickbar { gap: 6px; padding: 6px 8px; }
 .pick-cat { width: 110px; }
 .pick-note { color: var(--el-color-warning); font: var(--si-font-caption); }
+/* 揭幕滑块（二版 6.7）：右层（模型将看到的）叠在左层（原文）上，clip-path 只露出紫线右边，拖动时不重排 */
+.paper.reveal { position: relative; }
+/* 两层都是独立的块格式化上下文：首段的上边距不与外层折叠，两层逐像素同高 */
+.reveal .ly { display: flow-root; }
+.reveal .node, .reveal .kind-utterance { content-visibility: visible; }
+.ly-c { position: absolute; inset: 0; padding: inherit; border-radius: inherit; background: var(--si-paper); clip-path: inset(0 0 0 var(--x)); pointer-events: none; user-select: none; }
+/* 一个遮住处 = 一个网格单元：原文与代号叠放，宽度取较宽者，每层只显示自己那一个；整体不断行 */
+:deep(.rx) { display: inline-grid; vertical-align: baseline; text-indent: 0; }
+:deep(.rx > *) { grid-area: 1 / 1; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+:deep(.rx-meta > *) { justify-content: flex-start; text-align: left; }
+.ly-r :deep(.rx-c), .ly-c :deep(.rx-r) { visibility: hidden; }
+.ly-r :deep(.rx-c) { user-select: none; }
+.rv-handle { position: absolute; top: 0; bottom: 0; left: var(--x); z-index: 4; width: 24px; margin-left: -12px; cursor: ew-resize; touch-action: none; }
+.rv-handle::before { content: ''; position: absolute; top: 0; bottom: 0; left: 11px; width: 2px; background: var(--si-ai); box-shadow: 0 0 0 3px color-mix(in srgb, var(--si-ai) 14%, transparent); }
+.rv-knob { position: sticky; top: calc(50% - 20px); display: grid; place-items: center; width: 40px; height: 40px; margin: 120px 0 0 -8px; border-radius: 50%; background: var(--si-ai); color: var(--si-white); box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--si-ai) 60%, transparent); outline: 0; cursor: ew-resize; }
+.rv-knob:focus-visible { box-shadow: 0 0 0 4px var(--si-surface-1), 0 0 0 7px var(--si-ai); }
+.rv-tags { position: sticky; top: 30px; z-index: 5; height: 0; margin: 0 -34px; pointer-events: none; }
+.rv-tag { position: absolute; top: -26px; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: var(--si-radius-badge); font: var(--si-font-badge); }
+.rv-tag.l { left: 0; background: var(--si-hover-bg); color: var(--si-ink-3); }
+.rv-tag.r { right: 0; background: var(--si-ai-soft); color: var(--si-ai-ink); }
+/* 七类分段条点了一段：其余类别降到 25%，这一类加描边 */
+.kfilter :deep([data-seg]:not(.kon)) { opacity: .25; transition: opacity var(--si-d2) var(--si-ease-out); }
+.kfilter :deep(.cap.kon), .kfilter :deep(.unc.kon), .kfilter :deep(.code.kon), .kfilter :deep(.rx.kon > *) { box-shadow: 0 0 0 2px var(--k); }
+/* 还原扫描（二版第五节）：翻转期间代号与真名叠在同一格，翻完后代号格收起 */
+.sweep { position: absolute; top: 0; left: max(8px, calc(50% - 392px)); width: min(calc(100% - 16px), 784px); height: 3px; z-index: 3; border-radius: 2px; background: var(--si-trip-l); box-shadow: 0 0 0 6px color-mix(in srgb, var(--si-trip-l) 16%, transparent), 0 0 24px 6px color-mix(in srgb, var(--si-trip-l) 25%, transparent); pointer-events: none; animation: rs-sweep 1700ms linear both; }
+@keyframes rs-sweep { 0% { transform: translateY(0); opacity: 0; } 6% { opacity: 1; } 94% { opacity: 1; } 100% { transform: translateY(var(--h)); opacity: 0; } }
+:deep(.rs) { display: inline-grid; vertical-align: baseline; perspective: 400px; }
+:deep(.rs > *) { grid-area: 1 / 1; backface-visibility: hidden; }
+:deep(.rs-c) { align-self: center; padding: 0 6px; border-radius: var(--si-radius-tag); background: var(--si-cap-bg); color: var(--si-cap-ink); font-family: var(--si-font-mono); font-size: .86em; line-height: 1.6; animation: rs-out 420ms var(--si-ease-out) var(--d, 0ms) both; }
+:deep(.rs-r) { animation: rs-in 420ms var(--si-ease-out) calc(var(--d, 0ms) + 50ms) both; }
+@keyframes rs-out { to { transform: rotateX(90deg); opacity: 0; } }
+@keyframes rs-in { from { transform: rotateX(-90deg); opacity: 0; background: color-mix(in srgb, var(--si-brand-soft) 60%, transparent); } }
 </style>
