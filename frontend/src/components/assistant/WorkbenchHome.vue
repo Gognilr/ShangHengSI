@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import SiBadge from '@/components/ui/SiBadge.vue'
-// 工作台首页（澄明 8.2）：氛围光 → 问候 → 输入框（插槽）→ 快捷开始 → 四张模块卡 → 待你处理 → 信任条。
+// 工作台首页（澄明 8.2，二版 6.4）：氛围光 → 问候 → 输入框（插槽）→ 快捷开始 → 四张物件模块卡 → 待你处理（迷你往返线）→ 出口信任条。
 // busy：已加入文件、还没发出第一条消息的会话，只留问候、输入框、快捷开始与“只在本机”说明。
 // 数据只取本人已有的接口（历史记录第一页、等你处理计数、会议与翻译列表、标书列表），失败时卡片照常可点、只是不写状态。
 import { computed, onBeforeUnmount, onMounted, ref, type Component } from 'vue'
 import { useRouter } from 'vue-router'
-import { AudioLines, Columns2, EyeOff, FileSearch, FileX, ListChecks, Lock, PenLine, ShieldAlert, ShieldCheck, Sparkle } from '@lucide/vue'
+import { AudioLines, Columns2, EyeOff, FileSearch, FileX, ListChecks, Lock, PenLine, ShieldAlert } from '@lucide/vue'
 import { assistantApi, isReviewSession, sessionLocation, type HistoryItem, type MyStats, type Template, type Waiting } from '@/api/assistant'
 import { bidApi } from '@/api/bid'
 import { useAuthStore } from '@/stores/auth'
 import SiLogo from '@/components/brand/SiLogo.vue'
 import SiCount from '@/components/ui/SiCount.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import SiIllus, { type IllusKind } from '@/components/brand/illus/SiIllus.vue'
+import { rowTrip, type Trip } from '@/utils/trip'
 
 const props = defineProps<{ busy?: boolean; hasFiles?: boolean; template: Template | null }>()
 const emit = defineEmits<{ 'update:template': [value: Template | null]; review: [] }>()
@@ -77,6 +80,8 @@ const last = (x: { title: string; at: string } | null) => x ? `上次：${x.titl
 
 type ModKey = 'review' | 'bid' | 'meet' | 'trans'
 interface Mod { key: ModKey; to: string; title: string; desc: string; status: string; warn: boolean }
+// 物件插画：一叠纸、开标桌、声纹带、对开两页（规范第三节第 3 条），悬停整张卡时动
+const ILLUS: Record<ModKey, IllusKind> = { review: 'stack', bid: 'table', meet: 'voiceprint', trans: 'spread' }
 const reviewed = (r: HistoryItem) => r.kind === 'review' || isReviewSession(r)
 const mods = computed<Mod[]>(() => {
   const w = waiting.value, list: Mod[] = []
@@ -95,8 +100,9 @@ const mods = computed<Mod[]>(() => {
   return list
 })
 
-// 待你处理：只列要你动手的事（待确认、被拦截、转写待校对、读取失败），最多 5 条，没有就整块不显示
-interface Todo { id: string; mod: ModKey; icon: Component; title: string; text: string; badge: string; tone: 'warning' | 'success' | 'danger'; action: string; primary: boolean; open: () => void }
+// 待你处理：只列要你动手的事（待确认、被拦截、转写待校对、读取失败），最多 5 条，没有就整块不显示。
+// 每行一条迷你往返线，卡住的那一站是琥珀（失败为红），行尾按钮就是解法
+interface Todo { id: string; mod: ModKey; icon: Component; title: string; text: string; trip: Trip; action: string; primary: boolean; open: () => void }
 function open(r: HistoryItem) {
   if (r.kind === 'bid') { void router.push(`/bid/${r.id}`); return }
   if (r.kind === 'session') { void router.push(sessionLocation(r, can('use.review'))); return }
@@ -104,14 +110,14 @@ function open(r: HistoryItem) {
 }
 const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
   const mod: ModKey = r.kind === 'bid' ? 'bid' : r.purpose === 'meeting' ? 'meet' : r.purpose === 'translate' ? 'trans' : 'review'
-  const base = { id: r.id, mod, title: r.title, open: () => open(r) }
-  if (r.status === 'parse_failed') return [{ ...base, icon: FileX, text: r.kind === 'bid' ? '有投标文件读取失败，需要重新上传或移除' : '文件读取失败，需要重新上传', badge: '失败', tone: 'danger', action: '去处理', primary: false }]
+  const base = { id: r.id, mod, title: r.title, trip: rowTrip(r), open: () => open(r) }
+  if (r.status === 'parse_failed') return [{ ...base, icon: FileX, text: r.kind === 'bid' ? '有投标文件读取失败，需要重新上传或移除' : '文件读取失败，需要重新上传', action: '重新上传', primary: false }]
   if (r.kind === 'bid') return []
-  if (r.blocked) return [{ ...base, icon: ShieldAlert, text: '发送前复检拦下了未遮住的名称或金额', badge: '被拦截', tone: 'warning', action: '去处理', primary: false }]
+  if (r.blocked) return [{ ...base, icon: ShieldAlert, text: '发送前复检拦下了未遮住的名称或金额', action: '去处理', primary: false }]
   if (r.status !== 'awaiting_confirm') return []
   if (r.purpose === 'translate' && (r.translation_engine !== 'cloud' || !can('use.translate'))) return []
-  if (r.purpose === 'meeting') return [{ ...base, icon: AudioLines, text: '转写完成，等你校对后整理纪要', badge: '转写完成', tone: 'success', action: '去校对', primary: false }]
-  return [{ ...base, icon: EyeOff, text: '已在本机遮住名称与金额，等你确认后发送', badge: '待你确认', tone: 'warning', action: '去确认', primary: true }]
+  if (r.purpose === 'meeting') return [{ ...base, icon: AudioLines, text: '转写完成，等你校对后整理纪要', action: '去校对', primary: false }]
+  return [{ ...base, icon: EyeOff, text: '已在本机遮住名称与金额，等你确认后发送', action: '去确认', primary: true }]
 }))
 </script>
 
@@ -133,31 +139,8 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
       <p v-if="busy && hasFiles" class="busy-note"><span class="local-tag"><Lock :size="13" :stroke-width="2" />只在本机</span>读取和遮住都在公司服务器上完成。可以离开页面，处理完会在“待你处理”里提醒。</p>
       <template v-else>
         <nav v-if="mods.length" class="mods" aria-label="开始一项工作" :style="{ '--cols': mods.length }">
-          <router-link v-for="mod in mods" :key="mod.key" :to="mod.to" class="mod" :class="`m-${mod.key}`">
-            <div class="illus" aria-hidden="true">
-              <svg v-if="mod.key === 'review'" viewBox="0 0 220 104" fill="none">
-                <rect x="66" y="12" width="88" height="84" rx="8" class="il-paper" />
-                <path d="M80 30h44M80 42h60M80 54h52M80 66h60M80 78h36" class="il-line" />
-                <rect x="76" y="48" width="68" height="12" rx="3" class="il-hl" />
-                <circle cx="160" cy="22" r="10" class="il-soft" /><path d="m155 22 3.5 3.5L166 18" class="il-stroke" />
-              </svg>
-              <svg v-else-if="mod.key === 'bid'" viewBox="0 0 220 104" fill="none">
-                <rect x="40" y="18" width="62" height="32" rx="6" class="il-paper" /><path d="M50 30h22M50 40h36" class="il-line" />
-                <rect x="118" y="18" width="62" height="32" rx="6" class="il-paper" /><path d="M128 30h22M128 40h36" class="il-line" />
-                <rect x="40" y="58" width="62" height="32" rx="6" class="il-paper" /><path d="M50 70h22M50 80h36" class="il-line" />
-                <rect x="118" y="58" width="62" height="32" rx="6" class="il-paper red" /><path d="M128 70h22M128 80h36" class="il-line red" />
-                <circle cx="178" cy="60" r="7" class="il-alert" /><path d="M178 56.5v4M178 63h.01" class="il-alert-s" />
-              </svg>
-              <svg v-else-if="mod.key === 'meet'" viewBox="0 0 220 104" fill="none">
-                <rect v-for="(h, i) in [14, 26, 40, 22, 52, 34, 62, 30, 46, 20, 36, 16]" :key="i" :x="44 + i * 12" :y="52 - h / 2" width="6" :height="h" rx="3" class="il-bar" :style="{ '--d': `${(i % 5) * 0.12}s` }" />
-              </svg>
-              <svg v-else viewBox="0 0 220 104" fill="none">
-                <rect x="34" y="14" width="66" height="78" rx="8" class="il-paper" /><rect x="120" y="14" width="66" height="78" rx="8" class="il-paper" />
-                <path d="M46 32h40M46 48h30M46 64h42M46 78h24" class="il-line" />
-                <path d="M132 32h36M132 48h42M132 64h28M132 78h38" class="il-line shift" />
-                <path d="M100 48h20M100 64h20" class="il-link" />
-              </svg>
-            </div>
+          <router-link v-for="mod in mods" :key="mod.key" :to="mod.to" class="mod si-hov" :class="`m-${mod.key}`">
+            <div class="illus"><SiIllus :kind="ILLUS[mod.key]" /></div>
             <div class="mod-b">
               <b>{{ mod.title }}</b>
               <p>{{ mod.desc }}</p>
@@ -171,21 +154,22 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
             <div v-for="t in todos.slice(0, 5)" :key="t.id" class="td">
               <span class="si-mod-icon td-ic" :class="`m-${t.mod}`"><component :is="t.icon" :size="18" :stroke-width="1.75" /></span>
               <div class="td-main"><b>{{ t.title }}</b><span>{{ t.text }}</span></div>
-              <SiBadge :tone="t.tone">{{ t.badge }}</SiBadge>
+              <SiTrip :trip="t.trip" class="td-trip" />
               <el-button size="small" :type="t.primary ? 'primary' : undefined" @click="t.open()">{{ t.action }}</el-button>
             </div>
           </div>
         </section>
-        <!-- 信任条：本人本月的数字（GET /assistant/sessions/stats）；取不到时写两句事实 -->
+        <!-- 信任条（二版 6.4）：一条迷你出口线（青、青、紫三点）加三组数字，本人本月（GET /assistant/sessions/stats）；取不到时写两句事实 -->
         <p v-if="stats" class="trust">
-          <span><EyeOff :size="15" :stroke-width="1.75" />本月在本机遮住 <b class="num"><SiCount :value="stats.masked" /></b> 处名称与金额</span><i />
-          <span><ShieldCheck :size="15" :stroke-width="1.75" />发送前复检拦截 <b class="num"><SiCount :value="stats.blocked" /></b> 次</span><i />
-          <span v-if="stats.daily_cap"><Sparkle :size="15" :stroke-width="1.75" class="ai" />今天模型调用 <b class="num"><SiCount :value="stats.today_calls" /></b> / {{ stats.daily_cap }} 次</span>
-          <span v-else><Sparkle :size="15" :stroke-width="1.75" class="ai" />本月模型调用 <b class="num"><SiCount :value="stats.calls" /></b> 次</span>
+          <svg class="exit" viewBox="0 0 64 12" aria-hidden="true"><path class="xl" d="M5 6H32" /><path class="xm" d="M32 6H59" /><circle class="xl" cx="5" cy="6" r="4" /><circle class="xl" cx="32" cy="6" r="4" /><circle class="xm" cx="59" cy="6" r="4" /></svg>
+          <span>本月本机遮住<b class="num"><SiCount :value="stats.masked" /></b>处</span><i />
+          <span>发送前复检拦截<b class="num"><SiCount :value="stats.blocked" /></b>次</span><i />
+          <span>经网关发出<b class="num"><SiCount :value="stats.calls" /></b>次</span>
         </p>
         <p v-else-if="loaded" class="trust">
-          <span><EyeOff :size="15" :stroke-width="1.75" />原件和真实名称只留在本机</span><i />
-          <span><ShieldCheck :size="15" :stroke-width="1.75" />发给模型前遮住名称与金额，并做发送前复检</span>
+          <svg class="exit" viewBox="0 0 64 12" aria-hidden="true"><path class="xl" d="M5 6H32" /><path class="xm" d="M32 6H59" /><circle class="xl" cx="5" cy="6" r="4" /><circle class="xl" cx="32" cy="6" r="4" /><circle class="xm" cx="59" cy="6" r="4" /></svg>
+          <span>原件和真实名称只留在本机</span><i />
+          <span>发给模型前遮住名称与金额，并做发送前复检</span>
         </p>
       </template>
     </div>
@@ -223,33 +207,14 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
 .mods { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 240px)); justify-content: center; gap: 16px; width: 100%; margin-top: 56px; }
 .mod { display: flex; flex-direction: column; min-height: 208px; overflow: hidden; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); color: inherit; text-decoration: none; transition: transform var(--si-d3) var(--si-ease-out), box-shadow var(--si-d3) var(--si-ease-out), border-color var(--si-d2); }
 .mod:hover, .mod:focus-visible { transform: translateY(-3px); box-shadow: var(--si-shadow-2); border-color: var(--si-hair-strong); }
-.illus { height: 104px; background: var(--mc-soft); }
-.illus svg { display: block; width: 100%; height: 100%; }
+.illus { height: 112px; padding: 6px 10px 0; box-sizing: border-box; background: linear-gradient(180deg, color-mix(in srgb, var(--mc-soft) 70%, transparent), transparent); }
+.illus :deep(.si-illus) { display: block; width: 100%; height: 100%; }
 .mod-b { display: flex; flex: 1; flex-direction: column; gap: 4px; padding: 14px 18px 16px; }
 .mod-b b { font: var(--si-font-h2); color: var(--si-ink-1); }
 .mod-b p { margin: 0; font: var(--si-font-body); color: var(--si-ink-3); }
 .mod-st { display: flex; align-items: center; gap: 6px; min-height: 20px; margin-top: auto; padding-top: 8px; font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mod-st.warn { color: var(--si-warn-ink); font-weight: 500; }
 .mod-st i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--si-warn); }
-.il-paper { fill: var(--si-surface-1); stroke: var(--mc); stroke-width: 1.75; stroke-opacity: .55; }
-.il-line { stroke: var(--mc); stroke-width: 3; stroke-linecap: round; stroke-opacity: .35; }
-.il-hl { fill: var(--mc); fill-opacity: .18; transform-box: fill-box; transform-origin: left center; transform: scaleX(.35); transition: transform 700ms var(--si-ease-out), fill-opacity var(--si-d3); }
-.mod:hover .il-hl { transform: scaleX(1); fill-opacity: .28; }
-.il-soft { fill: var(--mc); fill-opacity: .16; }
-.il-stroke { stroke: var(--mc); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.il-paper.red, .il-line.red { transition: stroke var(--si-d3), fill var(--si-d3), stroke-opacity var(--si-d3); }
-.mod:hover .il-paper.red { stroke: var(--si-danger); stroke-opacity: 1; fill: var(--si-danger-soft); }
-.mod:hover .il-line.red { stroke: var(--si-danger); stroke-opacity: .6; }
-.il-alert { fill: var(--si-danger); opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(.4); transition: opacity var(--si-d3), transform var(--si-d3) var(--si-ease-spring); }
-.il-alert-s { stroke: var(--si-white); stroke-width: 1.75; stroke-linecap: round; opacity: 0; transition: opacity var(--si-d3); }
-.mod:hover .il-alert, .mod:hover .il-alert-s { opacity: 1; transform: none; }
-.il-bar { fill: var(--mc); fill-opacity: .55; transform-box: fill-box; transform-origin: center; }
-.mod:hover .il-bar { animation: il-eq 900ms var(--si-ease-io) var(--d) infinite alternate; }
-@keyframes il-eq { to { transform: scaleY(.4); } }
-.il-line.shift { transform: translateX(8px); transition: transform 600ms var(--si-ease-out); }
-.mod:hover .il-line.shift { transform: none; }
-.il-link { stroke: var(--mc); stroke-width: 1.75; stroke-dasharray: 3 3; stroke-opacity: .5; }
-html[data-fx="lite"] .mod:hover .il-bar { animation: none; }
 
 /* 待你处理：一张卡，每行一个主按钮 */
 .todo { width: 880px; max-width: 100%; margin-top: 56px; }
@@ -262,14 +227,19 @@ html[data-fx="lite"] .mod:hover .il-bar { animation: none; }
 .td-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .td-main b { font: var(--si-font-h3); font-size: calc(15px * var(--si-fs)); color: var(--si-ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .td-main span { font: var(--si-font-caption); color: var(--si-ink-3); }
+.td-trip { flex: none; width: 220px; }
 .td :deep(.el-button) { margin-left: 0; }
 
-/* 页脚信任条 */
-.trust { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; margin: 40px 0 0; font: var(--si-font-caption); color: var(--si-ink-3); }
-.trust > span { display: inline-flex; align-items: center; gap: 6px; }
-.trust svg { color: var(--si-brand-2); }
-.trust svg.ai { color: var(--si-ai); }
-.trust b { color: var(--si-ink-1); font-weight: 600; }
-.trust > i { width: 1px; height: 12px; background: var(--si-hair-strong); }
+/* 页脚信任条：迷你出口线 + 三组数字 */
+.trust { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px; margin: 32px 0 0; font: var(--si-font-meta); color: var(--si-ink-3); }
+.trust > span { display: inline-flex; align-items: baseline; }
+.trust b { margin: 0 4px; font: var(--si-font-label); font-weight: 600; color: var(--si-ink-1); }
+.trust > i { width: 1px; height: 14px; background: var(--si-hair-strong); }
+.exit { flex: none; width: 64px; height: 12px; overflow: visible; }
+.exit path { fill: none; stroke-width: 2; stroke-linecap: round; }
+.exit path.xl { stroke: var(--si-trip-l); }
+.exit path.xm { stroke: var(--si-trip-m); }
+.exit circle.xl { fill: var(--si-trip-l); }
+.exit circle.xm { fill: var(--si-trip-m); }
 @media (max-width: 1100px) { .mods { grid-template-columns: repeat(2, minmax(0, 240px)); } }
 </style>
