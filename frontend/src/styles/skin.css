@@ -64,6 +64,11 @@ html body { font: var(--si-font-body); color: var(--el-text-color-primary); back
   --el-button-disabled-bg-color: color-mix(in srgb, var(--si-brand) 40%, var(--si-surface-1));
   --el-button-disabled-border-color: transparent;
 }
+/* 深色下 40% 衡青加 70% 白字像一枚可点的深青按钮（V351-E-01）：改为淡青底、禁用色字 */
+html[data-shell="night"] .el-button--primary {
+  --el-button-disabled-text-color: var(--si-ink-4);
+  --el-button-disabled-bg-color: color-mix(in srgb, var(--si-brand) 16%, var(--si-surface-1));
+}
 .el-button--primary:not(.is-link):not(.is-text):not(.is-plain):not(.is-disabled) { box-shadow: var(--si-btn-shadow); }
 
 /* 文字按钮与链接：衡青深字，悬停衡青浅底 */
