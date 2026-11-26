@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 文件审核首页（V34-A-03，澄明 8.4 ①）：标题与一句说明 + 大号拖放区 + 最近的审核 5 条。
 // 拖入、点选或粘贴文件才建会话（不在进入页面时建空会话），上传后进入该会话的审核视图；底层仍是“工作空间就是会话”。
 import { computed, onMounted, ref } from 'vue'
@@ -92,7 +93,7 @@ function open(row: HistoryItem) {
       <h1 class="entry-title">文件审核</h1>
       <p class="entry-lede">合同、报价单、订单、函件都可以。文件在本机读取和遮住名称，你确认后才交给模型初审。</p>
     </header>
-    <el-alert v-if="error" type="error" :closable="false" :title="error" class="err" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" class="err" />
     <div class="drop" :class="{ dragging, busy: uploading !== null }" role="button" tabindex="0" :aria-disabled="uploading !== null"
       @click="picker?.click()" @keydown.enter="picker?.click()" @dragenter.prevent="dragEnter" @dragover.prevent @dragleave="dragLeave" @drop.prevent="drop">
       <span class="drop-ic"><Upload :size="26" :stroke-width="1.75" /></span>

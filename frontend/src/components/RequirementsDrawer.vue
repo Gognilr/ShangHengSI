@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import { requirementsApi, type RequirementsView } from '@/api/requirements'
@@ -70,22 +72,22 @@ const scopeLine = computed(
     <div v-loading="loading" class="body">
       <p class="intro">AI 将按以下要求逐条审核。公司补充要求只能增加审核内容，不能取消内置要求。</p>
       <p class="scope">当前范围：{{ scopeLine }}</p>
-      <el-alert v-if="errorText" type="error" show-icon :closable="false" :title="errorText" class="gap" />
+      <SiNotice v-if="errorText" type="error" :closable="false" :title="errorText" class="gap" />
 
       <template v-if="data">
-        <h4>内置要求 <el-tag size="small" type="info">{{ data.builtin.length }}</el-tag><span class="ver">（版本 {{ data.builtin_version }}）</span></h4>
+        <h4>内置要求 <SiBadge tone="info">{{ data.builtin.length }}</SiBadge><span class="ver">（版本 {{ data.builtin_version }}）</span></h4>
         <p v-if="!data.builtin.length" class="empty">暂无适用的内置要求</p>
         <ul v-else class="list">
           <li v-for="r in data.builtin" :key="r.id">
             <span class="code">{{ r.id }}</span>
-            <el-tag v-if="r.dimension" size="small" type="info" class="dim">{{ r.dimension }}</el-tag>
+            <SiBadge v-if="r.dimension" tone="info" class="dim">{{ r.dimension }}</SiBadge>
             <span>{{ r.text }}</span>
             <span v-if="!docType" class="hint">（适用：{{ typesText(r.doc_types) }}）</span>
           </li>
         </ul>
 
         <h4>
-          公司补充要求 <el-tag size="small" type="info">{{ data.company.length }}</el-tag><span v-if="data.company_version !== null" class="ver">（版本 {{ data.company_version }}）</span>
+          公司补充要求 <SiBadge tone="info">{{ data.company.length }}</SiBadge><span v-if="data.company_version !== null" class="ver">（版本 {{ data.company_version }}）</span>
         </h4>
         <p v-if="!data.company.length" class="empty">暂无公司补充要求</p>
         <ul v-else class="list">
@@ -97,7 +99,7 @@ const scopeLine = computed(
         </ul>
       </template>
 
-      <h4>本次补充说明 <el-tag size="small" type="info">{{ userNote?.trim() ? 1 : 0 }}</el-tag></h4>
+      <h4>本次补充说明 <SiBadge tone="info">{{ userNote?.trim() ? 1 : 0 }}</SiBadge></h4>
       <p v-if="userNote?.trim()" class="note">{{ userNote.trim() }}</p>
       <p v-else class="empty">未填写</p>
     </div>

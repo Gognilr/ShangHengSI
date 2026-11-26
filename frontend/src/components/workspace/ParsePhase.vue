@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { Check, X } from '@lucide/vue'
 import SiScanDoc from '@/components/brand/SiScanDoc.vue'
@@ -51,7 +52,7 @@ const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
       <h2 v-if="!failed" role="status">正在本机读取<span class="num"> · 已用 {{ elapsed }} 秒</span></h2>
       <h2 v-else>读取未完成</h2>
       <div v-if="!failed" class="scan-wrap"><SiScanDoc :active="true" /></div>
-      <el-alert v-if="failed && session.error_message" type="error" show-icon :closable="false" :title="session.error_message" />
+      <SiNotice v-if="failed && session.error_message" type="error" :closable="false" :title="session.error_message" />
       <ul class="rows">
         <li v-for="r in rows" :key="r.file.id" class="row" :class="`row--${r.stage}`">
           <span class="badge">{{ badge(r.file) }}</span>

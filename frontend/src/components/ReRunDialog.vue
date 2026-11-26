@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
@@ -89,7 +90,7 @@ async function submit() {
       </el-form-item>
     </el-form>
     <p class="hint">确定后回到确认页：按新设置重新计算替换，再次确认后发送。之前的审核结果会保留。</p>
-    <el-alert v-if="errorText" type="error" :closable="false" show-icon :title="errorText" class="gap" />
+    <SiNotice v-if="errorText" type="error" :closable="false" :title="errorText" class="gap" />
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="submitting" :disabled="!modelId || modelsLoading" @click="submit">回到确认页</el-button>

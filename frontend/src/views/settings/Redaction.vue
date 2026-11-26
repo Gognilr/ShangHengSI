@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onMounted, ref } from 'vue'
 import { adminRedactionApi, type TermRow } from '@/api/admin'
@@ -220,7 +221,7 @@ onMounted(() => {
   <div class="settings-page">
     <div class="panel setting-panel">
       <SettingSection v-if="auth.can('redaction.words')" title="识别与替换" description="设置只影响之后解析与重新计算的任务。">
-        <el-alert v-if="maskError" type="error" :closable="false" show-icon :title="maskError" />
+        <SiNotice v-if="maskError" type="error" :closable="false" :title="maskError" />
         <div class="switch-row"><div><h3>数量脱敏</h3><p class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</p></div><el-switch :model-value="maskQuantity" :loading="maskLoading" aria-label="数量脱敏" @change="toggleMask" /></div><div class="switch-row"><div><h3>日期整体平移</h3><p class="hint">发给模型的日期整体平移同一天数，回来后在本机换回；只影响之后重新计算的任务</p></div><el-switch :model-value="dateShift" :loading="maskLoading" aria-label="日期整体平移" @change="toggleExtra('date_shift', $event)" /></div>
       </SettingSection>
       <SettingSection v-if="auth.can('redaction.parties')" title="我方主体" description="管理员预置的公司名称对所有人有效；审核时选择的我方只为选择者本人记住。" stacked>
@@ -228,7 +229,7 @@ onMounted(() => {
         <el-input v-model="ourName" maxlength="100" class="term-input" placeholder="输入我方完整公司名称" aria-label="我方主体名称" :disabled="ourAdding" @keyup.enter="addOurParty" />
         <el-button type="primary" :loading="ourAdding" @click="addOurParty">添加我方主体</el-button>
       </div>
-      <el-alert v-if="ourError" type="error" show-icon :closable="false" :title="ourError" class="gap" />
+      <SiNotice v-if="ourError" type="error" :closable="false" :title="ourError" class="gap" />
       <TableSkeleton v-if="!loadedOnce.our" :columns="['1fr', '120px', '170px', '70px']" />
       <el-table v-else v-loading="ourLoading" :data="ourParties" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚未预置我方主体" description="在上方输入我方完整公司名称后添加。" /></template>
@@ -244,7 +245,7 @@ onMounted(() => {
         <el-button type="primary" :loading="adding" @click="addTerm">添加</el-button>
       </div>
       <div class="hint tip">新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算。</div>
-      <el-alert v-if="customError" type="error" :closable="false" show-icon :title="customError" />
+      <SiNotice v-if="customError" type="error" :closable="false" :title="customError" />
       <TableSkeleton v-if="!loadedOnce.custom" :columns="['1fr', '120px', '80px', '170px', '90px']" />
       <el-table v-else v-loading="customLoading" :data="custom" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚未添加自定义敏感词" description="在上方输入后点击“添加”。" /></template>
@@ -272,7 +273,7 @@ onMounted(() => {
         <el-input v-model="learnedQuery" clearable placeholder="搜索名称" class="learned-query" @keyup.enter="searchLearned" @clear="searchLearned"><template #prefix><Search :size="16" :stroke-width="1.75" /></template></el-input>
         <el-button @click="searchLearned">搜索</el-button>
       </div>
-      <el-alert v-if="learnedError" type="error" :closable="false" show-icon :title="learnedError" />
+      <SiNotice v-if="learnedError" type="error" :closable="false" :title="learnedError" />
       <TableSkeleton v-if="!loadedOnce.learned" :columns="['1fr', '80px', '90px', '120px', '170px', '90px', '70px']" />
       <el-table v-else v-loading="learnedLoading" :data="learned" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="没有已记住的名称" description="确认脱敏时选择“记住”后会出现在这里。" /></template>

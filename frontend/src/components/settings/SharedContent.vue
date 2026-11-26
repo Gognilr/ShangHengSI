@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { sharedContentApi, type SharedContent, type SharedContentKind, type SharedReuseStatus } from '@/api/sharedContent'
@@ -83,7 +84,7 @@ onBeforeUnmount(() => { active = false; clearTimeout(timer) })
       <li v-for="row in rows" :key="row.id" class="shared-row">
         <div class="shared-main">
           <p class="meta">{{ scope(row) }} · {{ formatDateTime(row.shared_at) }}
-            <el-tag v-if="row.reuse_status" :type="reuseTypes[row.reuse_status]" size="small" effect="plain">{{ reuseLabels[row.reuse_status] }}</el-tag>
+            <SiBadge v-if="row.reuse_status" :tone="reuseTypes[row.reuse_status]" plain>{{ reuseLabels[row.reuse_status] }}</SiBadge>
           </p>
           <p class="shared-text">{{ row.text }}</p>
         </div>

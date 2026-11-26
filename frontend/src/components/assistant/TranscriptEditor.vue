@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 逐字稿校对（V31-U5 第四节、V31-U5F-05 第 5.2 节）：同一发言人间隔不足 30 秒的句子合并成段显示；
 // 悬停出现编辑提示与时间点，点击文字修改、点别处自动保存；改字与改发言人乐观更新，后台按顺序保存，不整页重算。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -173,7 +175,7 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 <template>
   <div class="editor">
     <SiIsland v-if="busy" state="busy" text="正在重新计算…" />
-    <el-alert v-if="error" type="error" :closable="false" :title="error" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" />
     <div class="player"><button type="button" class="play" :class="{ busy: audioLoading }" :aria-label="playing ? '暂停' : '播放'" :disabled="audioLoading" @click="toggle"><Pause v-if="playing" :size="16" :stroke-width="2" /><Play v-else :size="16" :stroke-width="2" /></button><span class="num t">{{ stamp(current) }}</span><div class="wave" role="slider" tabindex="0" aria-label="播放位置" :aria-valuemin="0" :aria-valuemax="Math.round(duration / 1000)" :aria-valuenow="Math.round(current / 1000)" :aria-valuetext="stamp(current)" @click="seekWave" @keydown="waveKey"><i v-for="(h, i) in bars" :key="i" :class="{ on: i < playedBars }" :style="{ transform: `scaleY(${h})` }" /></div><span class="num t">{{ stamp(duration) }}</span><el-select v-model="speed" aria-label="播放速度" @change="audio && (audio.playbackRate = speed)"><el-option v-for="n in [0.75,1,1.25,1.5]" :key="n" :value="n" :label="n + 'x'" /></el-select><el-checkbox v-model="following">跟随播放</el-checkbox><span v-if="audioLoading" class="hint">正在载入录音…</span><span v-if="!readonly" class="save hint" role="status" :class="saveState">{{ notice || (saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '已保存' : '点击文字可修改，点别处自动保存') }}</span></div>
     <audio ref="audio" @play="playing = true" @pause="playing = false" @ended="playing = false" @timeupdate="timeupdate" @loadedmetadata="duration = (audio?.duration ?? 0) * 1000" />
     <div class="body">
@@ -194,7 +196,7 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
         <SiSegmented v-model="railTab" class="rail-tabs" ariaLabel="右栏" :options="tabs" />
         <div v-show="railTab === 'minutes'" class="minutes-pane"><slot name="minutes" /></div>
         <div v-show="railTab === 'tools'">
-        <h3>参会人名单</h3><div class="names"><el-tag v-for="name in names" :key="name" :closable="!readonly && !busy" @close="setNames(names.filter(n => n !== name))">{{ name }}</el-tag></div><el-input v-if="!readonly" v-model="addedName" :disabled="busy" maxlength="40" placeholder="输入姓名后回车添加" aria-label="添加参会人" @keydown.enter.prevent="addName" /><p class="hint">名单中的名字会在整份逐字稿中替换为代号，并用于同音纠正</p>
+        <h3>参会人名单</h3><div class="names"><SiBadge v-for="name in names" :key="name" :closable="!readonly && !busy" @close="setNames(names.filter(n => n !== name))">{{ name }}</SiBadge></div><el-input v-if="!readonly" v-model="addedName" :disabled="busy" maxlength="40" placeholder="输入姓名后回车添加" aria-label="添加参会人" @keydown.enter.prevent="addName" /><p class="hint">名单中的名字会在整份逐字稿中替换为代号，并用于同音纠正</p>
         <h3>发言人</h3><div v-for="id in speakerIds" :key="id" class="speaker"><label>发言人 {{ id }} →</label><span v-if="readonly">{{ speakers[id] || `发言人 ${id}` }}</span><el-input v-else v-model="speakers[id]" :disabled="busy" maxlength="40" :aria-label="`发言人 ${id} 姓名`" list="meeting-participants" @blur="saveSpeaker(id)" @keydown.enter.prevent="saveSpeaker(id)" /></div><datalist id="meeting-participants"><option v-for="name in names" :key="name" :value="name" /></datalist>
         <template v-if="!readonly"><div class="heading"><h3>同音纠正建议 {{ suggestions.length }} 条</h3><el-button link :disabled="busy || !suggestions.length" @click="apply(suggestions)">全部采纳</el-button></div><p v-if="!suggestions.length" class="hint">没有同音纠正建议</p><div v-for="(hint,i) in suggestions" :key="i" class="suggestion"><el-button link @click="highlight(hint.loc)">{{ hint.from }} → {{ hint.to }} · {{ stamp(nodes.find(n => n.loc === hint.loc)?.t_start_ms ?? 0) }}</el-button><el-button link :disabled="busy" @click="apply([hint])">采纳</el-button></div></template>
         <div class="exports"><el-button :disabled="busy" @click="download">逐字稿 Word</el-button><el-button v-if="!readonly" type="primary" :disabled="busy || pendingSaves > 0" @click="emit('confirm')">确认脱敏</el-button></div>

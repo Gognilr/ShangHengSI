@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Pencil, Plus, RotateCcw, Sparkles, Trash2 } from '@lucide/vue'
@@ -154,7 +155,7 @@ const notEnough = computed(() => {
 
 <template>
   <div class="reqs" @keydown="onKey">
-    <el-alert v-if="error" class="alert" :title="error" type="error" show-icon @close="error = ''" />
+    <SiNotice v-if="error" class="alert" :title="error" type="error" @close="error = ''" />
     <template v-if="data">
       <section class="params">
         <BidInvitees :items="data.invitees" :edited="data.invitees_edited" :disabled="locked" @save="saveInvitees" @locate="(l: BidLoc) => { focus = l }" />

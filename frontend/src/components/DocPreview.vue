@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -231,7 +232,7 @@ defineExpose({ drawCrop })
     </div>
     <div ref="body" v-loading="!state || state.loading" class="dp-body si-stage" @wheel="onWheel">
       <template v-if="state && !state.loading">
-        <el-alert v-if="state.error" type="warning" :closable="false" show-icon :title="state.error" />
+        <SiNotice v-if="state.error" type="warning" :closable="false" :title="state.error" />
         <div v-else-if="isPdf" class="pdf" :style="{ width: `${paperWidth}px` }">
           <div v-for="p in visiblePdfPages" :key="p.num" class="pdf-page si-paper" :data-page="p.num" :style="{ aspectRatio: `${p.w} / ${p.h}` }">
             <canvas :data-page="p.num" class="pdf-page__canvas" />

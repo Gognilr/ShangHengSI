@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
@@ -235,7 +236,7 @@ onMounted(() => {
   <div class="settings-page">
     <div class="panel setting-panel">
       <SettingSection title="公司说明" description="简述公司主营与出口合规情况，随每次审核发送给模型。">
-      <el-alert v-if="profileError" type="error" :closable="false" show-icon :title="profileError" />
+      <SiNotice v-if="profileError" type="error" :closable="false" :title="profileError" />
       <div v-loading="profileLoading">
         <el-input
           v-model="profile"
@@ -256,7 +257,7 @@ onMounted(() => {
         </el-select>
         <span class="hint version">内置要求版本：{{ builtinVersion || '—' }}，共 {{ builtin.length }} 条</span>
       </div>
-      <el-alert v-if="builtinError" type="error" :closable="false" show-icon :title="builtinError" />
+      <SiNotice v-if="builtinError" type="error" :closable="false" :title="builtinError" />
       <el-table v-loading="builtinLoading" :data="builtin" size="small" max-height="360" empty-text="没有符合条件的内置要求">
         <el-table-column prop="id" label="编号" width="90" class-name="num" />
         <el-table-column label="维度" width="120">
@@ -285,7 +286,7 @@ onMounted(() => {
         <span v-if="full" class="hint version">已达 {{ MAX_ITEMS }} 条上限，请先删除不用的条目。</span>
         <span v-else class="hint version">已有 {{ items.length }} / {{ MAX_ITEMS }} 条</span>
       </div>
-      <el-alert v-if="listError" type="error" :closable="false" show-icon :title="listError" />
+      <SiNotice v-if="listError" type="error" :closable="false" :title="listError" />
       <TableSkeleton v-if="!listLoaded" :columns="['80px', '1fr', '150px', '100px', '100px', '70px', '70px', '110px']" />
       <el-table v-else v-loading="listLoading" :data="items" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚未添加公司补充要求" description="点击上方“新增”，补充的要求会并入每次审核。" /></template>
@@ -317,7 +318,7 @@ onMounted(() => {
     </SettingSection>
       <SettingSection title="发送本地财务比率" description="可选择把本机计算的比率用于模型分析，默认关闭。"><RatioSetting /></SettingSection>
       <SettingSection title="版本历史" description="公司说明与补充要求每次修改的记录。" stacked>
-      <el-alert v-if="versionsError" type="error" :closable="false" show-icon :title="versionsError" />
+      <SiNotice v-if="versionsError" type="error" :closable="false" :title="versionsError" />
       <el-table v-loading="versionsLoading" :data="versions" size="small" max-height="320" empty-text="尚无修改记录">
         <el-table-column label="版本号" width="100" class-name="num">
           <template #default="{ row }">第 {{ row.version }} 版</template>

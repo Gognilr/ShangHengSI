@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { adminRolesApi, adminUsersApi, type RoleRow, type UserRow } from '@/api/admin'
@@ -188,20 +190,20 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 <template>
   <div class="settings-page">
     <div class="panel setting-panel"><SettingSection title="账号列表" description="新建账号、启停和重置密码；新账号首次登录时须先修改密码。" stacked><template #actions><el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新增账号</el-button></template>
-      <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="gap" />
+      <SiNotice v-if="error" type="error" :closable="false" :title="error" class="gap" />
       <TableSkeleton v-if="!loaded" :columns="['1fr', '1fr', '180px', '100px', '190px', '160px']" />
       <el-table v-else v-loading="loading" :data="items" :max-height="tableMax">
         <template #empty><EmptyState compact title="暂无账号" description="点击右上角“新增账号”添加。" /></template>
         <el-table-column prop="username" label="用户名" min-width="100" show-overflow-tooltip />
         <el-table-column label="显示名" min-width="110" show-overflow-tooltip><template #default="{ row }"><div class="user-name"><span class="avatar">{{ Array.from(row.display_name)[0] ?? '?' }}</span><span>{{ row.display_name }}</span></div></template></el-table-column>
         <el-table-column label="角色" min-width="150">
-          <template #default="{ row }"><div class="tags"><el-tag v-for="id in row.role_ids" :key="id" type="info" size="small">{{ roleName(id) }}</el-tag></div></template>
+          <template #default="{ row }"><div class="tags"><SiBadge v-for="id in row.role_ids" :key="id" tone="info">{{ roleName(id) }}</SiBadge></div></template>
         </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'">
+            <SiBadge :tone="row.status === 'active' ? 'success' : 'info'">
               {{ userStatusLabel(row.status) }}
-            </el-tag>
+            </SiBadge>
           </template>
         </el-table-column>
         <el-table-column label="最近登录" width="170">

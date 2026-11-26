@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 标书初审 · 项目列表（澄明 8.5 ①，列表页模板 1200）：页头一句说明 + 新建；左文件夹树卡片 240；右分段筛选、搜索、分类、开标日期，项目一行一张卡。
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -171,7 +172,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
       <el-button type="primary" size="large" class="create" @click="openDialog"><Plus :size="18" :stroke-width="1.75" />新建初审项目</el-button>
     </header>
     <p v-if="auth.can('use.assistant')" class="aside">只是比较几份报价单？用<router-link to="/assistant">工作台的“比价”</router-link></p>
-    <el-alert v-if="error" class="alert" :title="error" type="error" :closable="false" />
+    <SiNotice v-if="error" class="alert" :title="error" type="error" :closable="false" />
 
     <!-- 还没有任何项目：三步说明卡片 -->
     <section v-if="empty && !error" class="how si-stagger" aria-label="一次初审分三步">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 译稿（澄明 8.7）：原文与译文放在同一张纸面上按段成行，天然对齐、一起滚动；
 // 悬停的段落整行高亮；正在生成的段落末尾有光标，未生成的显示骨架
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -33,8 +34,8 @@ onMounted(async () => {
   <div class="tv">
     <p class="notice">{{ message.translation_notice ?? '译稿请逐段核对名称、金额和业务条件；名称、地址、金额按原文写法还原' }}</p>
     <p v-if="progress" class="prog num" role="status">{{ progress }}</p>
-    <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-alert v-if="unaligned" title="部分译文未能按位置对齐，请核对原文" type="warning" :closable="false" />
+    <SiNotice v-if="error" :title="error" type="error" :closable="false" />
+    <SiNotice v-if="unaligned" title="部分译文未能按位置对齐，请核对原文" type="warning" :closable="false" />
     <div v-if="originals.length" class="paper">
       <div class="cols" aria-hidden="true"><span>原文</span><span>译文</span></div>
       <div v-for="(node, i) in originals" :key="node.loc" class="row" :class="{ live: i === firstMissing }">

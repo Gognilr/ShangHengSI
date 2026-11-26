@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
 import { ElMessage, type InputInstance } from 'element-plus'
 import { BookOpen, Check, Copy, MapPin, MessageSquare, Undo2 } from '@lucide/vue'
 import { computed, nextTick, ref, watch } from 'vue'
@@ -174,9 +175,9 @@ async function copy(text: string) {
       <el-button v-if="f.shared && !f.suggested_text && !f.discussed_text && auth.can('use.review')" text size="small"
         :loading="sharing" @click.stop="changeSharing">撤回沉淀</el-button>
       <div class="badges">
-        <el-tag :type="CITE_TAG[f.cite_status] ?? 'info'" size="small" effect="plain">{{ citeStatusLabel(f.cite_status) }}</el-tag>
-        <el-tag v-if="f.law_unverified" size="small" type="warning" effect="plain">引用未经法规库核实</el-tag>
-        <el-tag v-if="f.source === 'template'" size="small" type="info" effect="plain">范本对照</el-tag>
+        <SiBadge :tone="CITE_TAG[f.cite_status] ?? 'info'" plain>{{ citeStatusLabel(f.cite_status) }}</SiBadge>
+        <SiBadge v-if="f.law_unverified" tone="warning" plain>引用未经法规库核实</SiBadge>
+        <SiBadge v-if="f.source === 'template'" tone="info" plain>范本对照</SiBadge>
         <span class="cat">{{ categoryLabel(f.category) }}</span>
       </div>
       <div class="act">

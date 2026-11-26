@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import type { LocalFinding } from '@/api/localFindings'
@@ -54,7 +56,7 @@ defineExpose({ reload: load })
 
 <template>
   <div v-loading="loading" class="local-check-list">
-    <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" />
     <EmptyState v-else-if="!loading && !items.length" compact title="本地校验未发现问题" />
     <template v-else-if="items.length">
       <ZoneHeader kind="local" :count="certain.length" />
@@ -62,7 +64,7 @@ defineExpose({ reload: load })
       <ul class="cards">
         <li v-for="f in certain" :key="f.id" class="card">
           <div class="head">
-            <el-tag :type="SEVERITY_TAG[f.severity] ?? 'info'" size="small" round>{{ severityLabel(f.severity) }}</el-tag>
+            <SiBadge :tone="SEVERITY_TAG[f.severity] ?? 'info'">{{ severityLabel(f.severity) }}</SiBadge>
             <span class="name">{{ localCheckLabel(f.check_code) }}</span>
           </div>
           <el-button v-if="f.locs.length && !readonlyLocations" link type="primary" class="location" @click="emit('select', [...f.locs])">{{ f.location || '定位' }}</el-button>

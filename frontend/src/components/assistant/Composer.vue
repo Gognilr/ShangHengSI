@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 智能助手输入框（V31-U5 第二节）：附件、模板与发送都在这里；首页时 session 为空，第一次动作交给页面建会话
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -323,7 +324,7 @@ defineExpose({ pick, attach, cancelWaiting })
         </div>
       </div>
       <p v-if="!waitingText && reason && (text.trim() || template)" class="hint status">{{ reason }}</p>
-      <el-alert v-if="error && !open" :title="error" type="error" :closable="false" />
+      <SiNotice v-if="error && !open" :title="error" type="error" :closable="false" />
       <el-button v-if="blockedCode === 'DISCUSSION_ADVICE_BLOCKED'" :disabled="busy || sending" @click="withoutAdvice">不带该问题的结论与建议条文发送</el-button>
       <p v-if="omitAdvice && anchor" class="hint">本轮只附相关原文，不附问题结论与建议条文。</p>
     </template>
@@ -334,7 +335,7 @@ defineExpose({ pick, attach, cancelWaiting })
         <el-select v-if="decisions[index]!.decision === 'replace'" v-model="decisions[index]!.category" aria-label="类别"><el-option v-for="option in toOptions(USER_CATEGORY_OPTIONS)" :key="option.value" :value="option.value" :label="option.label" /></el-select>
         <p v-if="suspect.in_files && decisions[index]!.decision === 'replace'" class="hint">文件中的同一文字也会遮住</p>
       </div>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" />
+      <SiNotice v-if="error" :title="error" type="error" :closable="false" />
       <template #footer><el-button :disabled="sending" @click="open = false">取消</el-button><el-button type="primary" :disabled="!confirmed" :loading="sending" @click="send">确认发送</el-button></template>
     </el-dialog>
   </div>

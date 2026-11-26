@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
@@ -235,7 +236,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 <template>
   <NotFound v-if="missing" kind="content" />
   <div v-else v-loading="loading" class="assistant-page" :class="{ 'is-home': (session && homeLike) || (!session && !id), 'is-review': mode === 'review' }">
-    <el-alert v-if="error" class="page-error" type="error" :closable="false" :title="error" />
+    <SiNotice v-if="error" class="page-error" type="error" :closable="false" :title="error" />
     <template v-if="session">
       <!-- 只加了文件、还没发出第一条消息：保持首页构图，文件标签在输入框里（澄明 8.2） -->
       <WorkbenchHome v-if="homeLike" busy :has-files="session.files.length > 0" v-model:template="template" @review="seeResult">

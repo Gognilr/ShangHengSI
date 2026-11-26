@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -290,7 +291,7 @@ onMounted(() => {
 <template>
   <NotFound v-if="missing" kind="content" />
   <div v-else class="page page--split">
-    <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" />
     <template v-else-if="task">
       <ResultToolbar :task="task" :run="run" :rounds="rounds" :selected-run="selectedRun" :req-version="reqVersion" :warnings="expiryWarnings"
         :export-reason="exportReason" :exporting="exporting" :saved-tick="savedTick" :deleting="deleting"
@@ -298,7 +299,7 @@ onMounted(() => {
         <template #before-export><ChatPanel ref="chat" :key="task.id" :task-id="task.id" :disabled="deleting" /></template>
         <el-button v-if="task.status === 'reviewed' && task.policy === 'ai' && !task.files.some((f) => f.original_deleted_at)" :disabled="deleting" @click="rerunOpen = true"><template #icon><RotateCw :size="16" :stroke-width="1.75" /></template>重新审核</el-button>
       </ResultToolbar>
-      <el-alert v-if="annotationNotice" type="warning" show-icon closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
+      <SiNotice v-if="annotationNotice" type="warning" closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
       <div :ref="bindSplit" class="split">
         <div class="canvas-col">
           <ResultCanvas ref="canvas" :task="task" :note="run ? run.user_note : task.user_note" :annotations="annotations" :local-locs="localLocs"

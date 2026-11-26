@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -223,7 +224,7 @@ onMounted(load)
       />
     </div>
 
-    <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" class="gap" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" class="gap" />
 
     <div class="panel table-card">
       <TableSkeleton v-if="loading && initialLoad && !items.length" :columns="['1fr', '120px', '170px', '110px', '80px', '92px']" />

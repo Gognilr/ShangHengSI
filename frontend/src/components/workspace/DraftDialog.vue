@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import { runsApi, type Finding } from '@/api/runs'
@@ -44,12 +45,12 @@ async function save(adopt: boolean) {
 <template>
   <el-dialog v-model="open" title="保存到该问题的修改建议" width="560px" append-to-body>
     <p v-if="anchor" class="target">问题 {{ anchor.no }}「{{ anchor.title }}」</p>
-    <el-alert v-if="!found" type="warning" :closable="false" show-icon
+    <SiNotice v-if="!found" type="warning" :closable="false"
               title="这条回复里没有可提取的修改条文。可以让助手“给出完整的替换条文”后再保存，或在下面手工整理。" />
     <el-input v-model="text" type="textarea" :autosize="{ minRows: 4, maxRows: 12 }" maxlength="4000" show-word-limit
               placeholder="可直接替换原文的条文" aria-label="修改条文" />
     <p class="hint">保存后在本机脱敏再存储，原审核建议保留不变；采纳和导出批注版默认使用这份讨论修改稿，可在问题卡上改回原审核建议。</p>
-    <el-alert v-if="error" type="error" :closable="false" :title="error" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" />
     <template #footer>
       <el-button @click="open = false">取消</el-button>
       <el-button :disabled="!text.trim() || saving" @click="save(false)">只保存</el-button>
@@ -60,6 +61,6 @@ async function save(adopt: boolean) {
 
 <style scoped>
 .target { margin: 0 0 12px; font: var(--si-font-h4); color: var(--si-ink-1); overflow-wrap: anywhere; }
-.el-alert { margin-bottom: 12px; }
+.si-notice { margin-bottom: 12px; }
 .hint { margin: 8px 0 0; font: var(--si-font-caption); color: var(--si-ink-3); }
 </style>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 设置 · 角色（V31-U5F 7.1）：权限点由系统固定，角色勾选权限点，人在“账号”里挑角色（可兼多个）。
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -102,7 +104,7 @@ async function remove(row: RoleRow) {
   <div class="settings-page">
     <div class="panel setting-panel">
       <SettingSection title="角色列表" description="权限点由系统固定；一个人兼多个角色时权限取并集。任何角色都不能查看他人的审核与会话内容。" stacked><template #actions><el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新建角色</el-button></template>
-        <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" class="gap" />
+        <SiNotice v-if="error" type="error" :closable="false" :title="error" class="gap" />
         <TableSkeleton v-if="!loaded" :columns="['160px', '1fr', '80px', '100px']" />
         <el-table v-else v-loading="loading" :data="roles">
           <el-table-column label="角色" min-width="160">
@@ -113,7 +115,7 @@ async function remove(row: RoleRow) {
           </el-table-column>
           <el-table-column label="权限" min-width="320">
             <template #default="{ row }">
-              <div v-if="row.permissions.length" class="tags"><el-tag v-for="p in row.permissions" :key="p" size="small" type="info">{{ permName(p) }}</el-tag></div>
+              <div v-if="row.permissions.length" class="tags"><SiBadge v-for="p in row.permissions" :key="p" tone="info">{{ permName(p) }}</SiBadge></div>
               <span v-else class="hint">没有任何权限</span>
             </template>
           </el-table-column>

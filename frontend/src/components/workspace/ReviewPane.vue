@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -389,7 +390,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 
     <!-- 不外发的会话：只有本地校验 -->
     <section v-else-if="stage === 'local'" class="local">
-      <el-alert type="info" :closable="false" show-icon title="该会话的外发策略为“不外发，仅本地校验”：文件不离开本系统，只做金额、日期等本地校验，不产生 AI 审核意见。" />
+      <SiNotice type="info" :closable="false" title="该会话的外发策略为“不外发，仅本地校验”：文件不离开本系统，只做金额、日期等本地校验，不产生 AI 审核意见。" />
       <LocalCheckList :loader="loadLocal" :load-key="session.id" readonly-locations />
     </section>
 
@@ -492,7 +493,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
             </ul>
             <p class="hint">名称、金额、账号等已替换为代号；模型回复在本机还原。立场与来源以上方所选为准。</p>
           </div>
-          <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" />
+          <SiNotice v-if="formError" type="error" :closable="false" :title="formError" />
           <div class="foot">
             <span v-if="submitting" class="hint submit-wait si-wait" role="status"><SiThinkingDots /><span><span class="si-shimmer">本机正在做出口复检，通过后交给模型</span>，已用 {{ submitSeconds }} 秒</span></span>
             <span v-else-if="blocker" class="hint">{{ blocker }}</span>

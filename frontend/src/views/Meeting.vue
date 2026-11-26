@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 会议纪要（V31-U5，侧栏独立菜单）：录音或上传 → 本机转写 → 校对与确认脱敏 → 生成纪要 → 导出
 // 底层沿用智能助手的会话接口（purpose=meeting）；录音与逐字稿只在本机，生成纪要时才发脱敏后的文字
 import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
@@ -161,7 +162,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
   <div v-if="!id" class="entry-page meeting-home si-stagger">
     <h1 class="entry-title">会议纪要</h1>
     <p class="entry-lede">录一场会或上传录音，在本机转写；校对并遮住名称后，才把文字交给模型生成纪要。</p>
-    <el-alert v-if="error" type="error" :closable="false" :title="error" class="err" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" class="err" />
     <div v-if="!asrEnabled" class="entry-cards off-wrap">
       <div class="entry-card off" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)"><span class="ic"><Mic :size="26" :stroke-width="1.75" /></span><b class="ttl">现场录音</b><span class="hint">录音转写还没有启用</span></div>
       <div class="entry-card off" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)"><span class="ic"><UploadCloud :size="26" :stroke-width="1.75" /></span><b class="ttl">上传录音</b><span class="hint">录音转写还没有启用</span></div>
@@ -195,7 +196,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
         <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除会议记录</span></el-dropdown-item></el-dropdown-menu></template>
       </el-dropdown>
     </div>
-    <el-alert v-if="error" type="error" :closable="false" :title="error" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" />
     <template v-if="session && audio?.media">
       <div v-if="audio.media.stage !== 'done'" class="status">
         <MediaRow :file="audio" :busy="false" @retry="retry" @download="downloadTranscript" />

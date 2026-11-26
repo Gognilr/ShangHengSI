@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import SettingSection from '@/components/SettingSection.vue'
@@ -40,7 +41,7 @@ onMounted(() => run(() => bidApi.adminCategories()))
 <template>
   <div class="panel setting-panel">
     <SettingSection title="标书分类" description="新建标书初审项目时必选一个分类，全公司统一。停用的分类不能再选，已使用它的项目保留；已有项目使用的分类不能删除。" stacked>
-      <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="gap" />
+      <SiNotice v-if="error" :title="error" type="error" :closable="false" class="gap" />
       <ul v-loading="loading" class="cats" aria-label="标书分类">
         <li v-for="row in rows" :key="row.id" class="cat" :class="{ off: !row.enabled }">
           <span class="name">{{ row.name }}</span>

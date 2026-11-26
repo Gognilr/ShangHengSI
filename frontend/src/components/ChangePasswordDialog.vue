@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { computed, reactive, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
@@ -82,11 +83,10 @@ async function submit() {
     :show-close="!forced"
     destroy-on-close
   >
-    <el-alert
+    <SiNotice
       v-if="forced"
       type="warning"
       :closable="false"
-      show-icon
       title="首次登录或密码已被重置，请先修改密码后再使用系统。"
       class="tip"
     />
@@ -106,7 +106,7 @@ async function submit() {
       <el-form-item label="确认新密码" prop="confirm">
         <el-input v-model="form.confirm" type="password" show-password autocomplete="new-password" />
       </el-form-item>
-      <el-alert v-if="errorText" type="error" :closable="false" show-icon :title="errorText" />
+      <SiNotice v-if="errorText" type="error" :closable="false" :title="errorText" />
     </el-form>
     <template #footer>
       <el-button v-if="!forced" @click="visible = false">取消</el-button>

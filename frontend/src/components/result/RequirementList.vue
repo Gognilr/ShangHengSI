@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
 import { ref } from 'vue'
 import type { RequirementResult } from '@/api/runs'
 import EmptyState from '@/components/EmptyState.vue'
@@ -26,7 +27,7 @@ function prefill(r: RequirementResult) {
       <div class="head">
         <span class="id">{{ r.req_id }}<template v-if="r.dimension"> · {{ r.dimension }}</template></span>
         <span class="source">{{ reqSourceLabel(r.req_source) }}</span>
-        <el-tag :type="VERDICT_TAG[r.verdict] ?? 'info'" size="small" round class="verdict">{{ verdictLabel(r.verdict) }}</el-tag>
+        <SiBadge :tone="VERDICT_TAG[r.verdict] ?? 'info'" class="verdict">{{ verdictLabel(r.verdict) }}</SiBadge>
         <span v-if="r.verdict === 'unable' && r.unable_reason" class="reason">{{ unableReasonLabel(r.unable_reason) }}</span>
       </div>
       <button type="button" class="text" :class="{ open: expanded.has(r.req_id) }" :aria-expanded="expanded.has(r.req_id)" @click="toggle(r.req_id)">{{ r.req_text }}</button>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Calculator, ChevronDown, ChevronRight, ListChecks, Sparkle } from '@lucide/vue'
@@ -173,10 +174,10 @@ watch(() => props.selectedId, async (id) => {
       <button v-if="askTab" type="button" class="tab" @click="emit('askTab')">追问</button>
       <span v-if="modelName" class="ai-tag"><Sparkle :size="12" :stroke-width="2" />{{ modelName }}</span>
     </div>
-    <el-alert v-if="runError" type="error" show-icon :closable="false" :title="runError" class="alert" />
+    <SiNotice v-if="runError" type="error" :closable="false" :title="runError" class="alert" />
     <template v-if="run">
-      <el-alert v-if="run.status === 'failed'" type="error" show-icon :closable="false" :title="run.error_message || '审核失败'" class="alert" />
-      <el-alert v-else-if="run.status === 'partial' && run.error_message" type="warning" show-icon :closable="false" :title="run.error_message" class="alert" />
+      <SiNotice v-if="run.status === 'failed'" type="error" :closable="false" :title="run.error_message || '审核失败'" class="alert" />
+      <SiNotice v-else-if="run.status === 'partial' && run.error_message" type="warning" :closable="false" :title="run.error_message" class="alert" />
     </template>
     <div v-if="runLoading" class="loading"><el-skeleton :rows="6" animated /></div>
     <div v-else ref="aiEl" class="zone">

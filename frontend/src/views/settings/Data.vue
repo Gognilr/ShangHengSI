@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
@@ -304,7 +306,7 @@ onBeforeUnmount(stopPolling)
   <div class="settings-page">
     <div class="panel setting-panel">
       <SettingSection v-if="auth.can('sys.data')" title="备份" description="每天定时备份数据，超出份数的最旧备份自动删除。">
-      <el-alert v-if="backupError" type="error" :closable="false" show-icon :title="backupError" />
+      <SiNotice v-if="backupError" type="error" :closable="false" :title="backupError" />
       <div v-loading="backupLoading">
         <el-form label-width="110px" @submit.prevent>
           <el-form-item label="备份时间">
@@ -324,9 +326,9 @@ onBeforeUnmount(stopPolling)
           </el-form-item>
           <el-form-item label="最近一次">
             <template v-if="records?.latest">
-              <el-tag size="small" :type="BACKUP_STATUS_TAG[records.latest.status]">
+              <SiBadge :tone="BACKUP_STATUS_TAG[records.latest.status]">
                 {{ backupStatusLabel(records.latest.status) }}
-              </el-tag>
+              </SiBadge>
               <span class="inline">{{ formatDateTime(records.latest.finished_at ?? records.latest.started_at) }}</span>
               <span v-if="records.latest.file_name" class="inline">{{ records.latest.file_name }}（{{ formatBytes(records.latest.size_bytes) }}）</span>
             </template>
@@ -349,7 +351,7 @@ onBeforeUnmount(stopPolling)
           </el-table-column>
           <el-table-column label="状态" width="90">
             <template #default="{ row }">
-              <el-tag size="small" :type="BACKUP_STATUS_TAG[row.status]">{{ backupStatusLabel(row.status) }}</el-tag>
+              <SiBadge :tone="BACKUP_STATUS_TAG[row.status]">{{ backupStatusLabel(row.status) }}</SiBadge>
             </template>
           </el-table-column>
           <el-table-column label="文件名" min-width="180" show-overflow-tooltip>
@@ -368,7 +370,7 @@ onBeforeUnmount(stopPolling)
       </SettingSection>
 
       <SettingSection v-if="auth.can('sys.data')" title="数据保留" description="原件、审核结果和各类记录的保留期限。">
-      <el-alert v-if="retentionError" type="error" :closable="false" show-icon :title="retentionError" />
+      <SiNotice v-if="retentionError" type="error" :closable="false" :title="retentionError" />
       <el-form label-width="110px" @submit.prevent>
         <el-form-item v-for="field in retentionFields" :key="field.key" :label="field.label">
           <el-select v-model="retention[field.key]" :disabled="!retentionLoaded" class="retention-select" :aria-label="field.label" @change="changeRetention(field.key)">
@@ -385,7 +387,7 @@ onBeforeUnmount(stopPolling)
     </SettingSection>
 
       <SettingSection v-if="auth.can('sys.data')" v-loading="statusLoading" title="系统状态" description="版本、任务队列与存储占用。">
-      <el-alert v-if="statusError" type="error" :closable="false" show-icon :title="statusError" />
+      <SiNotice v-if="statusError" type="error" :closable="false" :title="statusError" />
       <div v-if="status" class="system-stats">
         <div class="stat"><div class="stat-label">版本号</div><div class="stat-value">{{ status.version }}</div></div>
         <div class="stat"><div class="stat-label">排队任务数</div><div class="stat-value">{{ status.queued_jobs }}</div></div>
@@ -428,7 +430,7 @@ onBeforeUnmount(stopPolling)
           <el-option v-for="o in toOptions(OUTBOUND_STATUS)" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
       </div>
-      <el-alert v-if="logError" type="error" :closable="false" show-icon :title="logError" />
+      <SiNotice v-if="logError" type="error" :closable="false" :title="logError" />
       <TableSkeleton v-if="!logLoaded" :columns="['170px', '110px', '1fr', '90px', '130px', '80px', '90px']" />
       <el-table v-else v-loading="logLoading" :data="logs" size="small" :max-height="tableMax" @row-click="openDetail">
         <template #empty><EmptyState compact title="没有符合条件的外发记录" description="可调整上方筛选条件。" /></template>
@@ -448,7 +450,7 @@ onBeforeUnmount(stopPolling)
         <el-table-column prop="chars" label="字数" width="80" class-name="num" />
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag size="small" :type="OUTBOUND_STATUS_TAG[row.status]">{{ outboundStatusLabel(row.status) }}</el-tag>
+            <SiBadge :tone="OUTBOUND_STATUS_TAG[row.status]">{{ outboundStatusLabel(row.status) }}</SiBadge>
           </template>
         </el-table-column>
       </el-table>
@@ -474,7 +476,7 @@ onBeforeUnmount(stopPolling)
         </el-select>
         <el-date-picker v-model="auditFilters.range" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" class="date-filter" @change="searchAudit" />
       </div>
-      <el-alert v-if="auditError" type="error" :closable="false" show-icon :title="auditError" />
+      <SiNotice v-if="auditError" type="error" :closable="false" :title="auditError" />
       <TableSkeleton v-if="!auditLoaded" :columns="['170px', '100px', '120px', '1fr', '1fr', '110px']" />
       <el-table v-else v-loading="auditLoading" :data="auditRows" size="small" :max-height="tableMax">
         <template #empty><EmptyState compact title="没有符合条件的审计日志" description="可调整上方筛选条件。" /></template>
@@ -489,7 +491,7 @@ onBeforeUnmount(stopPolling)
     </SettingSection>
     </div>
     <el-drawer v-model="drawer" title="外发记录详情" direction="rtl" size="560px">
-      <el-alert v-if="detailError" type="error" :closable="false" show-icon :title="detailError" />
+      <SiNotice v-if="detailError" type="error" :closable="false" :title="detailError" />
       <div v-loading="detailLoading">
         <template v-if="detail">
           <el-descriptions border size="small" :column="1">
@@ -499,8 +501,8 @@ onBeforeUnmount(stopPolling)
             <el-descriptions-item label="用途 / 模型">{{ llmPurposeLabel(detail.purpose) }} / {{ detail.model_name }}</el-descriptions-item>
             <el-descriptions-item label="状态">{{ outboundStatusLabel(detail.status) }}</el-descriptions-item>
           </el-descriptions>
-          <el-alert v-if="detail.block_reason" class="gap" type="warning" :closable="false" show-icon title="拦截原因（类别和位置）" :description="detail.block_reason" />
-          <el-alert v-if="detail.error_message" class="gap" type="error" :closable="false" show-icon title="错误信息" :description="detail.error_message" />
+          <SiNotice v-if="detail.block_reason" class="gap" type="warning" :closable="false" title="拦截原因（类别和位置）" :description="detail.block_reason" />
+          <SiNotice v-if="detail.error_message" class="gap" type="error" :closable="false" title="错误信息" :description="detail.error_message" />
           <h3>外发文本</h3>
           <pre class="plain">{{ detail.request_text ?? detail.body_notice ?? '（未发送）' }}</pre>
           <h3>返回内容</h3>

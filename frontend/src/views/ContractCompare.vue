@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 合同对比（V35-D-07）：侧栏“文件审查”下的独立页面 /compare（V351-E-01），文件和结果只在本页，不留历史
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { ChevronLeft, ChevronRight, FileText, GitCompareArrows } from '@lucide/vue'
@@ -117,7 +118,7 @@ function move(offset: number) {
       </div>
       <input ref="baselinePicker" type="file" accept=".docx,.doc" hidden @change="pick($event, 'baseline')">
       <input ref="revisedPicker" type="file" accept=".docx,.doc" hidden @change="pick($event, 'revised')">
-      <el-alert v-if="error" class="error" type="error" :title="error" :closable="false" show-icon />
+      <SiNotice v-if="error" class="error" type="error" :title="error" :closable="false" />
       <div class="form-actions">
         <p>支持 DOCX 和 DOC，对比正文和表格文字。</p>
         <el-button type="primary" native-type="submit" :disabled="busy || !baseline || !revised">开始对比</el-button>

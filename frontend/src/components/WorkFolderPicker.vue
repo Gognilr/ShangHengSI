@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ref, watch } from 'vue'
 import { FolderOpen } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -32,7 +33,7 @@ function add() {
 
 <template>
   <el-dialog v-model="open" title="从工作文件夹选择" width="640px" destroy-on-close>
-    <el-alert v-if="error" type="error" show-icon :closable="false" :title="error" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" />
     <el-table v-else v-loading="loading" :data="rows" max-height="360" @selection-change="selected = $event">
       <template #empty><EmptyState compact :icon="FolderOpen" title="文件夹里没有支持的文件" description="只列出第一层中 DOCX、PDF、XLSX 等系统支持格式的文件。" /></template>
       <el-table-column type="selection" width="44" />

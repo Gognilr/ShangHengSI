@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, h, nextTick, reactive, ref, watch, type FunctionalComponent, type VNode } from 'vue'
 import { ApiError } from '@/api/http'
 import { previewApi, type OcrCorrection, type PreviewNode, type PreviewNodes } from '@/api/preview'
@@ -10,6 +11,7 @@ import DocSpectrum, { type SpectrumTick } from '@/components/result/DocSpectrum.
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { readAskSelection, readTextSelection, type TextSelection } from '@/composables/useTextSelection'
 import { ChevronRight, Ellipsis, Eye, Layers, Tags, TextCursorInput } from '@lucide/vue'
+import EmptyState from '@/components/EmptyState.vue'
 import { MANUAL_CATEGORY_OPTIONS, REDACTION_CATEGORY, SEVERITY_ORDER, toOptions } from '@/utils/labels'
 import { excerptRange, overlayRange } from '@/utils/marks'
 import { useFx } from '@/utils/motion'
@@ -760,7 +762,7 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
         <el-input id="ocr-correction" ref="editorInput" v-model="ocrDraft.text" type="textarea" :autosize="{ minRows: 2, maxRows: 8 }"
           maxlength="20000" :disabled="savingOcr" @keydown.esc.stop.prevent="!savingOcr && endOcr()" />
         <p class="hint">对照原件改清晰可辨的文字。签字、盖章看不清时，请核验原件并保留提示。</p>
-        <el-alert v-if="ocrError" :title="ocrError" type="error" :closable="false" show-icon />
+        <SiNotice v-if="ocrError" :title="ocrError" type="error" :closable="false" />
         <div class="ocr-actions">
           <el-button :disabled="savingOcr" @click="endOcr">取消</el-button>
           <el-button type="primary" :loading="savingOcr" :disabled="ocrBusy || !ocrDraft.text.trim() || ocrDraft.text === ocrDraft.node.text"
@@ -771,10 +773,10 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
     <DocPreview v-if="!ocrDraft && view === 'raw' && activeFile" :task-id="taskId" :file="activeFile" :highlight="rawHighlight ?? (pickedOcr ? [pickedOcr] : [])" :node-loader="nodeLoader" :raw-loader="rawLoader" />
     <div v-else v-show="!ocrDraft" class="stage-wrap">
     <div ref="scroller" v-loading="active?.loading || (view === 'diff' && activeDiff?.loading)" class="stage si-stage" :class="{ 'with-spectrum': isResult || view === 'diff' }" @scroll.passive="onStageScroll">
-      <el-alert v-if="active?.error" type="error" show-icon :closable="false" :title="active.error" />
-      <el-empty v-else-if="active && !active.loading && !active.available" description="原文已按保留期清理" />
-      <el-alert v-else-if="view === 'diff' && activeDiff?.error" type="error" show-icon :closable="false" :title="activeDiff.error" />
-      <el-empty v-else-if="active && !active.loading && !blocks.length" description="没有可显示的正文" />
+      <SiNotice v-if="active?.error" type="error" :closable="false" :title="active.error" />
+      <EmptyState v-else-if="active && !active.loading && !active.available" illus="stack" tone="neutral" title="原文已按保留期清理" description="原件已按保留期限删除，这里不再显示原文。" />
+      <SiNotice v-else-if="view === 'diff' && activeDiff?.error" type="error" :closable="false" :title="activeDiff.error" />
+      <EmptyState v-else-if="active && !active.loading && !blocks.length" illus="stack" tone="neutral" title="没有可显示的正文" description="这份文件没有读出文字；扫描件请等识别完成后再看。" />
       <div v-else class="si-paper paper" :class="[{ flipping }, `fx-${fx}`, { ai: view === 'ai', res: isResult, diffing: view === 'diff' }]" :key="view === 'ai' && fx === 'lite' ? 'a' : 'o'" @click="onPaperClick" @mouseup="onPaperMouseUp" @mouseover="onPaperOver" @mouseleave="tip = null" @dblclick="onPaperDblClick">
         <template v-for="(b, bi) in blocks" :key="bi">
           <div v-if="b.t === 'node'" class="node" :class="[`kind-${b.nv.node.kind}`, { head: b.nv.node.kind === 'heading', note: b.nv.node.loc === 'NOTE', side: b.nv.node.part !== 'body' }, ...nodeClass(b.nv), { 'ocr-picked': pickedOcr === b.nv.node.loc, 'ocr-pickable': canPickOcr(b.nv.node) && b.nv.node.ocr_editable }]" :data-node="b.nv.node.loc"

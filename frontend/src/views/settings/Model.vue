@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@lucide/vue'
@@ -116,7 +118,7 @@ async function operate(row: ModelRow, action: 'test' | 'review' | 'assist' | 'en
 
 <template>
   <div class="settings-page">
-    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap"><el-button link type="primary" @click="load">重新加载</el-button></el-alert>
+    <SiNotice v-if="error" :title="error" type="error" :closable="false" class="gap"><el-button link type="primary" @click="load">重新加载</el-button></SiNotice>
     <div v-loading="loading" class="panel">
       <SettingSection title="全部模型" description="个人每日调用上限跨模型合计，按上海时间每天统计；按实际调用模型的次数计，一份长文档分段审核或格式重试会计多次。费用在每次调用时按内置价格表计算，区分缓存命中、输入长度分档与时段；DeepSeek、Kimi 每小时用账户余额核对一次。" stacked>
         <el-form label-position="left" label-width="140px" @submit.prevent>
@@ -134,17 +136,17 @@ async function operate(row: ModelRow, action: 'test' | 'review' | 'assist' | 'en
           <p class="connection">{{ row.model_name }} · {{ host(row.base_url) }}</p>
           <p v-if="row.description" class="description">{{ row.description }}</p>
           <div class="tags">
-            <el-tag v-if="row.is_default_review" size="small">审核默认</el-tag><el-tag v-if="row.is_default_assist" size="small">助手默认</el-tag>
-            <el-tag v-if="row.for_review && !row.for_assist" size="small" type="info">仅审核</el-tag><el-tag v-if="row.for_assist && !row.for_review" size="small" type="info">仅助手</el-tag>
-            <el-tag v-if="!row.enabled" size="small" type="info">已停用</el-tag><el-tag v-if="!row.structured_ok" size="small" type="warning">结构化未通过</el-tag>
-            <el-tag v-if="drift(row.balance)" size="small" type="warning">价格表可能已过期</el-tag>
+            <SiBadge v-if="row.is_default_review">审核默认</SiBadge><SiBadge v-if="row.is_default_assist">助手默认</SiBadge>
+            <SiBadge v-if="row.for_review && !row.for_assist" tone="info">仅审核</SiBadge><SiBadge v-if="row.for_assist && !row.for_review" tone="info">仅助手</SiBadge>
+            <SiBadge v-if="!row.enabled" tone="info">已停用</SiBadge><SiBadge v-if="!row.structured_ok" tone="warning">结构化未通过</SiBadge>
+            <SiBadge v-if="drift(row.balance)" tone="warning">价格表可能已过期</SiBadge>
           </div>
           <p class="model-usage num">本月调用 {{ row.usage.calls }} 次 · {{ usageText(row.usage) }} / 上限 {{ row.monthly_call_cap > 0 ? `${row.monthly_call_cap} 次` : '不限' }}</p>
           <ModelPriceInfo :price="row.price" />
           <p v-if="row.balance && row.enabled" class="model-usage" :class="{ 'balance-drift': drift(row.balance) }">{{ balanceText(row.balance) }}</p>
           <div v-if="results[row.id]" class="test-results" aria-live="polite">
-            <el-alert :title="results[row.id]!.connection.ok ? '连接测试：成功' : `连接测试：${results[row.id]!.connection.message}`" :type="results[row.id]!.connection.ok ? 'success' : 'error'" :closable="false" />
-            <el-alert :title="results[row.id]!.structured.ok ? '结构化输出测试：成功' : `结构化输出测试：${results[row.id]!.structured.message}`" :type="results[row.id]!.structured.ok ? 'success' : 'warning'" :closable="false" />
+            <SiNotice :title="results[row.id]!.connection.ok ? '连接测试：成功' : `连接测试：${results[row.id]!.connection.message}`" :type="results[row.id]!.connection.ok ? 'success' : 'error'" :closable="false" />
+            <SiNotice :title="results[row.id]!.structured.ok ? '结构化输出测试：成功' : `结构化输出测试：${results[row.id]!.structured.message}`" :type="results[row.id]!.structured.ok ? 'success' : 'warning'" :closable="false" />
           </div>
           <div class="card-actions">
             <el-button link type="primary" :disabled="busy !== null" @click="edit(row)">编辑</el-button>
@@ -166,7 +168,7 @@ async function operate(row: ModelRow, action: 'test' | 'review' | 'assist' | 'en
             <el-form-item label="接口地址"><el-input v-model="presetForm[p.id]!.base_url" maxlength="500" :disabled="presetForm[p.id]!.busy" /></el-form-item>
           </el-form>
           <p class="hint">网络出口须放行 {{ host(presetForm[p.id]!.base_url) }}，否则测试会失败。</p>
-          <el-alert v-if="presetForm[p.id]!.error" :title="presetForm[p.id]!.error" type="error" :closable="false" show-icon />
+          <SiNotice v-if="presetForm[p.id]!.error" :title="presetForm[p.id]!.error" type="error" :closable="false" />
           <div class="card-actions"><el-button type="primary" :loading="presetForm[p.id]!.busy" :disabled="busy !== null" @click="addPreset(p)">{{ presetForm[p.id]!.busy ? '正在测试…' : '测试并启用' }}</el-button></div>
         </article>
         <button class="model-card add-card" :disabled="data.items.length >= 10 || busy !== null" @click="edit(null)"><Plus :size="16" :stroke-width="1.75" /><span>自定义模型</span><span class="hint">{{ data.items.length >= 10 ? '已达 10 个模型上限（含停用）' : `其他兼容 OpenAI 接口的模型 · 已配置 ${data.items.length} / 10` }}</span></button>

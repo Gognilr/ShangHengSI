@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
 import { computed } from 'vue'
 import { Ellipsis, Trash2 } from '@lucide/vue'
 import type { TaskDetail } from '@/api/tasks'
@@ -38,7 +39,7 @@ const details = computed(() => {
       <span class="file-badge">{{ badge }}</span>
       <div class="file-name" :title="`${mainFile?.original_name ?? task.title}${task.files.length > 1 ? `（另有 ${task.files.length - 1} 个附件）` : ''}`">{{ mainFile?.original_name ?? task.title }}</div>
       <span v-if="task.files.length > 1" class="hint nowrap attachments">另有 {{ task.files.length - 1 }} 个附件</span>
-      <el-tag v-if="run" :type="RUN_STATUS_TAG[run.status] ?? 'info'" size="small" disable-transitions>{{ runStatusLabel(run.status) }}</el-tag>
+      <SiBadge v-if="run" :tone="RUN_STATUS_TAG[run.status] ?? 'info'">{{ runStatusLabel(run.status) }}</SiBadge>
       <span v-else class="hint nowrap">{{ statusLabel(task.status) }}</span>
       <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
         <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮`">第 {{ item.run_no }} 轮 · {{ formatDateTime(item.finished_at ?? item.queued_at) }} · {{ runStatusLabel(item.status) }}</el-option>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { Ban, Bookmark, Check, ChevronDown, ChevronRight, CircleCheck, CircleDot, Ellipsis, Eye, FileText, Pencil, Plus, Send, Sparkle, Trash2, Users, X } from '@lucide/vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -789,13 +790,13 @@ useHotkeys({
           <button v-if="!assistant || sessionReview" type="button" class="hint keys-link" @click="helpOpen = true">按 ? 查看快捷键</button>
         </template>
       </ConfirmCanvas>
-      <el-alert v-if="outboundError" type="error" show-icon :closable="false" :title="outboundError" />
+      <SiNotice v-if="outboundError" type="error" :closable="false" :title="outboundError" />
       <div v-if="dragging" class="drop-veil" aria-hidden="true">松开加入本任务</div>
     </div>
     <SplitHandle v-model="railWidth" reverse :min="RAIL_MIN" :max="RAIL_MAX" :default-value="RAIL_DEFAULT" :storage-key="RAIL_KEY" label="调整回执栏宽度" />
     <aside v-loading="loading" class="rail" :style="{ flexBasis: `${railWidth}px` }">
       <div class="rail-scroll si-stagger">
-        <el-alert v-if="loadError" type="error" show-icon :closable="false" :title="loadError" />
+        <SiNotice v-if="loadError" type="error" :closable="false" :title="loadError" />
         <div v-if="leaksShown" ref="leakBox"><LeakPanel ref="leakPanel" :task-id="task.id" :files="files" :locked="locked || saving > 0" :summary="blockedReason" @locate="(loc, text) => canvas?.locate(loc, text)" @changed="afterChange" @pending="leaksPending = $event" @parties="nudgeField(partiesSec)" /></div>
 
         <!-- ① 签约方与我方 -->
@@ -943,7 +944,7 @@ useHotkeys({
       </div>
 
       <div class="rp-foot">
-        <el-alert v-if="submitError" type="error" show-icon :closable="false" :title="submitError" class="receipt-alert" />
+        <SiNotice v-if="submitError" type="error" :closable="false" :title="submitError" class="receipt-alert" />
         <ul class="checks" aria-label="提交条件" aria-live="polite">
           <li v-if="assistant && !requireOurParty" class="ok"><CircleCheck :size="15" :stroke-width="1.75" />{{ ourCount ? '已选一方为我方' : '不设我方也可以确认' }}</li>
           <li v-else :class="ourCount === 1 ? 'ok' : 'todo'"><component :is="ourCount === 1 ? CircleCheck : CircleDot" :size="15" :stroke-width="1.75" /><template v-if="ourCount === 1">已选我方</template><template v-else-if="!parties.length">没有识别到签约方，暂时不能交给模型</template><button v-else type="button" class="cond-link" @click="nudgeField(partiesSec)">还没选哪一方是我方</button></li>

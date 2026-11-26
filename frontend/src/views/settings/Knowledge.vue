@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
@@ -95,13 +97,13 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
         <div class="switch-line"><span>在工作台中启用知识库</span><el-switch :model-value="enabled" :disabled="saving || loading || uploading" aria-label="在智能助手中启用知识库" @change="switchGlobal" /></div>
         <p class="hint">关闭后不会检索知识库；只有启用且解析完成的文档参与检索。</p>
       </SettingSection>
-      <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="gap" />
+      <SiNotice v-if="error" :title="error" type="error" :closable="false" class="gap" />
       <SettingSection title="资料列表" description="只有启用且解析完成的文档参与检索。" stacked><template #actions><el-button type="primary" :disabled="saving || uploading" @click="openUpload()">上传文档</el-button></template>
         <TableSkeleton v-if="!loaded" :columns="['1fr', '90px', '80px', '80px', '1fr', '170px', '160px']" />
       <el-table v-else :data="rows" :max-height="tableMax">
         <template #empty><EmptyState compact title="尚无知识库文档" description="点击右上角“上传文档”，可上传公司制度、流程与产品资料。" /></template>
         <el-table-column label="名称" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.name }}<p v-if="row.error_message" class="error">{{ row.error_message }}</p></template></el-table-column>
-        <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="KB_STATUS_TAG[row.status]" size="small">{{ KB_STATUS[row.status] }}</el-tag></template></el-table-column>
+        <el-table-column label="状态" width="90"><template #default="{ row }"><SiBadge :tone="KB_STATUS_TAG[row.status]">{{ KB_STATUS[row.status] }}</SiBadge></template></el-table-column>
         <el-table-column prop="chunk_count" label="片段数" width="80" class-name="num" />
         <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving || uploading" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
         <el-table-column prop="uploaded_by" label="上传人" min-width="90" />
@@ -114,11 +116,11 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
       <p v-if="retryTarget" class="hint">请选择「{{ retryTarget.name }}」原来上传的同一份文件。</p>
       <p v-else class="hint">支持 DOCX、PDF、XLSX 及对应旧格式，单个文件不超过 20 MB。相同内容不能重复上传。</p>
       <el-upload v-model:file-list="files" :multiple="!retryTarget" :limit="retryTarget ? 1 : undefined" :auto-upload="false" :disabled="uploading" accept=".docx,.pdf,.xlsx,.doc,.wps,.rtf,.xls,.et"><el-button :disabled="uploading">选择文件</el-button></el-upload>
-      <el-alert v-if="formError" :title="formError" type="error" show-icon :closable="false" class="gap" />
+      <SiNotice v-if="formError" :title="formError" type="error" :closable="false" class="gap" />
       <template #footer><el-button :disabled="uploading" @click="uploadOpen = false">取消</el-button><el-button type="primary" :loading="uploading" @click="upload">上传并解析</el-button></template>
     </el-dialog>
     <el-dialog v-model="previewOpen" title="预览知识库片段" width="960px" @closed="previewVersion++">
-      <div v-loading="previewLoading" class="preview"><p class="hint">最多预览前 200 段。名称、标题和正文仅在本机显示。</p><el-alert v-if="previewError" :title="previewError" type="error" :closable="false" /><section v-for="chunk in chunks" :key="chunk.id" class="chunk"><h3><span class="num">{{ chunk.seq }}</span> {{ chunk.heading }}</h3><pre>{{ chunk.text }}</pre></section><el-empty v-if="!previewLoading && !chunks.length && !previewError" description="尚无可预览片段，请等待解析完成" /></div>
+      <div v-loading="previewLoading" class="preview"><p class="hint">最多预览前 200 段。名称、标题和正文仅在本机显示。</p><SiNotice v-if="previewError" :title="previewError" type="error" :closable="false" /><section v-for="chunk in chunks" :key="chunk.id" class="chunk"><h3><span class="num">{{ chunk.seq }}</span> {{ chunk.heading }}</h3><pre>{{ chunk.text }}</pre></section><EmptyState v-if="!previewLoading && !chunks.length && !previewError" compact tone="neutral" title="还没有可预览的片段" description="解析完成后可在这里预览。" /></div>
     </el-dialog>
   </div>
 </template>

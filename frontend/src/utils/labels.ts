@@ -199,11 +199,11 @@ export function toOptions(dict: Dict): { value: string; label: string }[] {
 }
 
 /** 标签颜色（frontend.md 第九节）：各页面共用。 */
-export type TagType = 'danger' | 'warning' | 'info' | 'success' | 'primary'
+export type TagType = 'danger' | 'warning' | 'info' | 'success' | 'primary' | 'low'
 export const RUN_STATUS_TAG: Record<string, TagType> = {
   completed: 'success', partial: 'warning', blocked: 'warning', failed: 'danger', queued: 'info', running: 'info',
 }
-export const SEVERITY_TAG: Record<string, TagType> = { high: 'danger', medium: 'warning', low: 'info' }
+export const SEVERITY_TAG: Record<string, TagType> = { high: 'danger', medium: 'warning', low: 'low' }
 export const VERDICT_TAG: Record<string, TagType> = { issue: 'danger', ok: 'success', na: 'info', unable: 'warning' }
 export const CITE_TAG: Record<string, TagType> = { verified: 'success', unverified: 'warning', missing: 'info' }
 

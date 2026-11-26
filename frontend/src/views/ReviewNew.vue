@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
+import SiNotice from '@/components/ui/SiNotice.vue'
 import WorkFolderBar from '@/components/WorkFolderBar.vue'
 import { Trash2, Upload } from '@lucide/vue'
 import { ElMessage } from 'element-plus'
@@ -467,7 +469,7 @@ function fileBadge(name: string): string {
               <span class="upload-icon"><Upload :size="24" :stroke-width="1.75" /></span>
               <span class="drop-title">将文件拖到此处，或 <em>点击选择</em></span>
               <span class="drop-sub">拖入后立即在本机解析，最多 {{ MAX_FILES }} 个文件，单个不超过 {{ MAX_FILE_MB }} MB</span>
-              <span class="format-tags"><el-tag v-for="ext in ALLOWED_EXTS" :key="ext" type="info" size="small" effect="plain">{{ ext.toUpperCase() }}</el-tag></span>
+              <span class="format-tags"><SiBadge v-for="ext in ALLOWED_EXTS" :key="ext" tone="info" plain>{{ ext.toUpperCase() }}</SiBadge></span>
             </button>
             <div v-else class="file-box">
               <TransitionGroup name="si-list" tag="ul" class="file-list">
@@ -509,7 +511,7 @@ function fileBadge(name: string): string {
             </div>
           </div>
         </div>
-        <el-alert v-if="formError" type="error" show-icon :closable="false" :title="formError" class="home-error" />
+        <SiNotice v-if="formError" type="error" :closable="false" :title="formError" class="home-error" />
         <div class="home-foot">
           <SiIsland :state="island.state" :text="island.text" />
           <div class="foot-right"><span v-if="proceedHint" class="hint">{{ proceedHint }}</span><el-button type="primary" :loading="proceeding" :disabled="!canProceed" @click="proceed">{{ policy === 'ai' ? '下一步：确认脱敏' : '完成本地校验' }}</el-button></div>
@@ -519,7 +521,7 @@ function fileBadge(name: string): string {
     </section>
 
     <section v-else-if="step === 1 && task" class="confirm-step">
-      <el-alert v-if="modelError" :title="modelError" type="error" :closable="false" show-icon class="gap" />
+      <SiNotice v-if="modelError" :title="modelError" type="error" :closable="false" class="gap" />
       <ConfirmWorkbench v-if="!modelsLoading && !modelError" :key="`${task.id}:${modelId ?? ''}`" :task="task" :model-id="modelId" :model-name="modelItems.find(m => m.id === modelId)?.display_name" @confirmed="refreshTask" @stale="refreshTask" />
     </section>
     <section v-else-if="step === 2 && task" class="panel ceremony-panel">

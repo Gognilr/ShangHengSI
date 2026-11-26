@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 翻译（V31-U5，侧栏独立菜单）：拖入文件 → 本机解析与确认脱敏 → 开始翻译 → 导出译文或双语 Word
 // 底层沿用智能助手会话（purpose=translate）的翻译模板；本地离线翻译接入后在此选择“本地 · 不外发”（V31-U5-06）
 import DialogBackHeader from '@/components/ui/DialogBackHeader.vue'
@@ -177,7 +178,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
   <div v-if="!id" class="entry-page translate-home si-stagger">
     <h1 class="entry-title">翻译</h1>
     <p class="entry-lede">本地翻译只在本机处理原文；云端翻译须先确认遮住名称和金额。译稿请逐段核对。</p>
-    <el-alert v-if="error" type="error" :closable="false" :title="error" class="err" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" class="err" />
     <div class="entry-cards">
       <button type="button" class="entry-card pick method" :class="{ selected: engine === 'local', off: !localAvailable }" style="--mod: var(--si-brand); --mod-soft: var(--si-blue-tint)" :disabled="!localAvailable" :aria-pressed="engine === 'local'" @click="chooseEngine('local')">
         <span class="ic"><Lock :size="26" :stroke-width="1.75" /></span><b class="ttl">本地翻译 · 不外发</b>
@@ -220,7 +221,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
         <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除翻译记录</span></el-dropdown-item></el-dropdown-menu></template>
       </el-dropdown>
     </div>
-    <el-alert v-if="error" type="error" :closable="false" :title="error" />
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" />
     <div v-if="session" class="body">
       <div class="bar-card">
         <SiSegmented :model-value="engine" :options="engineOptions" ariaLabel="翻译方式" @update:model-value="chooseEngine" />

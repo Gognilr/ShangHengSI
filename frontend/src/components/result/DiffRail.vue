@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ChevronDown, ChevronRight, Download, GitCompareArrows } from '@lucide/vue'
@@ -55,7 +56,7 @@ async function exportTable() {
       <el-button v-if="diff && main.length" class="export" link type="primary" size="small" :disabled="exporting" @click="exportTable"><Download :size="14" :stroke-width="1.75" />{{ exporting ? '正在生成…' : '导出对照表' }}</el-button>
     </div>
     <div v-if="loading" class="loading"><el-skeleton :rows="6" animated /></div>
-    <el-alert v-else-if="error" type="error" show-icon :closable="false" :title="error" class="alert" />
+    <SiNotice v-else-if="error" type="error" :closable="false" :title="error" class="alert" />
     <div v-else-if="diff" class="zone">
       <div class="sum">
         <span class="sum-ic"><GitCompareArrows :size="15" :stroke-width="1.75" /></span>

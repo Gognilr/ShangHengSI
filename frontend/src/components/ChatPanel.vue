@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, type InputInstance } from 'element-plus'
 import { MessageSquare } from '@lucide/vue'
@@ -258,8 +259,8 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
     :close-on-click-modal="!busy" :close-on-press-escape="!busy" :show-close="!busy"
     @opened="onOpened">
     <div class="chat-panel">
-      <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" />
-      <el-alert v-else-if="!loading && !available" type="warning" :closable="false" show-icon :title="reason" />
+      <SiNotice v-if="error" type="error" :closable="false" :title="error" />
+      <SiNotice v-else-if="!loading && !available" type="warning" :closable="false" :title="reason" />
       <div ref="messageList" v-loading="loading" class="messages" aria-live="polite">
         <EmptyState v-if="!loading && !error && !items.length" compact title="暂无对话记录" />
         <div v-for="item in items" :key="item.id" class="message" :class="item.role === 'user' ? 'mine' : 'reply'">

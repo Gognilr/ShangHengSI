@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiBadge from '@/components/ui/SiBadge.vue'
 // 工作台首页（澄明 8.2）：氛围光 → 问候 → 输入框（插槽）→ 快捷开始 → 四张模块卡 → 待你处理 → 信任条。
 // busy：已加入文件、还没发出第一条消息的会话，只留问候、输入框、快捷开始与“只在本机”说明。
 // 数据只取本人已有的接口（历史记录第一页、等你处理计数、会议与翻译列表、标书列表），失败时卡片照常可点、只是不写状态。
@@ -165,12 +166,12 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
           </router-link>
         </nav>
         <section v-if="todos.length" class="todo" aria-label="待你处理">
-          <h2 class="todo-h">待你处理<el-tag type="warning" size="small" class="num">{{ todos.length }}</el-tag></h2>
+          <h2 class="todo-h">待你处理<SiBadge tone="warning" class="num">{{ todos.length }}</SiBadge></h2>
           <div class="todo-list">
             <div v-for="t in todos.slice(0, 5)" :key="t.id" class="td">
               <span class="si-mod-icon td-ic" :class="`m-${t.mod}`"><component :is="t.icon" :size="18" :stroke-width="1.75" /></span>
               <div class="td-main"><b>{{ t.title }}</b><span>{{ t.text }}</span></div>
-              <el-tag :type="t.tone" size="small">{{ t.badge }}</el-tag>
+              <SiBadge :tone="t.tone">{{ t.badge }}</SiBadge>
               <el-button size="small" :type="t.primary ? 'primary' : undefined" @click="t.open()">{{ t.action }}</el-button>
             </div>
           </div>

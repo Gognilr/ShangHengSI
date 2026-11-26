@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import { runsApi, type SentItem } from '@/api/runs'
@@ -45,7 +46,7 @@ watch([open, () => props.runId], ([isOpen]) => { if (isOpen && loadedFor !== pro
       </div>
     </template>
     <div v-loading="loading" class="body">
-      <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" />
+      <SiNotice v-if="error" type="error" :closable="false" :title="error" />
       <p v-else-if="cleared" class="empty">外发记录正文已按保留期清理</p>
       <p v-else-if="items && !items.length" class="empty">本轮没有发送记录</p>
       <section v-for="item in items ?? []" :key="item.seq" class="block">

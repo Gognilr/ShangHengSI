@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
@@ -170,7 +171,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
   <div>
     <div class="panel setting-panel">
       <SettingSection v-if="canSync" title="自动更新" description="定期从国家法律法规数据库拉取公开法规；变更经业务管理员确认后才生效。默认关闭。">
-        <el-alert v-if="syncError" :title="syncError" type="error" :closable="false" show-icon class="gap" />
+        <SiNotice v-if="syncError" :title="syncError" type="error" :closable="false" class="gap" />
         <el-form label-width="110px" @submit.prevent>
           <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!sync || syncRunning" aria-label="法规库自动更新" @change="changeSyncEnabled" /></el-form-item>
           <el-form-item label="更新频率"><el-select v-model="syncForm.interval" :disabled="!sync || syncRunning" aria-label="法规更新频率" @change="syncSave.schedule(0)"><el-option v-for="(label, value) in LAWSYNC_INTERVAL" :key="value" :value="value" :label="label" /></el-select><SaveState :status="syncSave.status.value" :message="syncSave.message.value" @retry="syncSave.retry()" /></el-form-item>
@@ -185,7 +186,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
         <el-switch :model-value="enabled" :disabled="saving || loading || !settingsLoaded" aria-label="审核时附带相关法条" @change="saveSetting" />
         <p class="hint">开启后每次审核约多 5 千个 token，默认关闭，评测确认效果后再开启。</p>
       </SettingSection>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
+      <SiNotice v-if="error" :title="error" type="error" :closable="false" class="gap" />
       <SettingSection v-if="canLaws" title="导入目录与全文" description="导入官方导出的法规目录与全文，预览差异后确认生效。">
         <el-button :disabled="pending || saving" @click="openUpload('catalog')">导入目录</el-button><el-button :disabled="pending || saving" @click="openUpload('fulltext')">导入全文</el-button>
         <p v-if="pending" class="hint">有一项更新正在解析或等待确认，请处理后再导入。</p>
@@ -228,7 +229,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
     </SettingSection>
     </div>
     <el-dialog v-model="uploadOpen" :title="kind === 'catalog' ? '导入法规目录' : '导入法规全文'" width="640px" :close-on-click-modal="!saving">
-      <el-alert v-if="uploadError" :title="uploadError" type="error" :closable="false" class="gap" />
+      <SiNotice v-if="uploadError" :title="uploadError" type="error" :closable="false" class="gap" />
       <el-form label-position="left" label-width="140px">
         <el-form-item v-if="kind === 'catalog'" label="目录时效性（必选）"><el-select v-model="status" placeholder="请选择时效性"><el-option v-for="o in toOptions(LAW_STATUS)" :key="o.value" :value="o.value" :label="o.label" /></el-select></el-form-item>
         <p class="hint">{{ kind === 'catalog' ? '请在官网按时效性筛选后导出，一次只导入一种时效性的文件，可多选文件' : '建议先导入常用的有效法律和司法解释全文；全部有效法规可在测试虚拟机评测后分批导入。ZIP 内文件名为法规标题_公布日期YYYYMMDD.docx 或 .doc。' }}</p>
@@ -238,10 +239,10 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
     </el-dialog>
     <el-dialog v-model="detailOpen" title="法规库更新差异" width="640px" :close-on-click-modal="!saving">
       <div v-loading="detailLoading">
-        <el-alert v-if="detailError || detail?.error" :title="detailError || detail?.error || ''" type="error" :closable="false" />
+        <SiNotice v-if="detailError || detail?.error" :title="detailError || detail?.error || ''" type="error" :closable="false" />
         <template v-if="detail">
           <p>{{ LAW_IMPORT_KIND[detail.kind] }} · {{ LAW_IMPORT_STATUS[detail.status] }} · {{ formatDateTime(detail.created_at) }}</p>
-          <el-alert v-if="detail.status === 'parsing'" title="正在解析，请稍候；可关闭窗口，稍后查看。" type="info" :closable="false" />
+          <SiNotice v-if="detail.status === 'parsing'" title="正在解析，请稍候；可关闭窗口，稍后查看。" type="info" :closable="false" />
           <p>新增 {{ detail.added }}，变化 {{ detail.changed }}，未变 {{ detail.unchanged }}，跳过 {{ detail.skipped }}</p>
           <template v-if="detail.diff">
             <h3>新增法规</h3><p v-for="(item, i) in detail.diff.added" :key="i">{{ item.title }} · {{ formatDate(item.published_on) }} · {{ LAW_STATUS[item.status ?? ''] }}</p>

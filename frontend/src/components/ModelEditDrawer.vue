@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { adminModelApi, type ModelBody, type ModelRow, type ModelTests } from '@/api/admin'
@@ -91,11 +92,11 @@ async function save() {
 
 <template>
   <el-drawer :model-value="modelValue" :title="editingId === null ? '新增模型' : '编辑模型'" size="560px" :before-close="close" :close-on-click-modal="!saving" :close-on-press-escape="!saving">
-    <el-alert title="每增加一个模型就是一个新的外发目的地，接口地址须在公司出口放行。" type="warning" :closable="false" show-icon class="gap" />
-    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
+    <SiNotice title="每增加一个模型就是一个新的外发目的地，接口地址须在公司出口放行。" type="warning" :closable="false" class="gap" />
+    <SiNotice v-if="error" :title="error" type="error" :closable="false" class="gap" />
     <div v-if="tests" class="test-results gap" aria-live="polite">
-      <el-alert :title="tests.connection.ok ? '连接测试：成功' : `连接测试：${tests.connection.message}`" :type="tests.connection.ok ? 'success' : 'error'" :closable="false" show-icon />
-      <el-alert :title="tests.structured.ok ? '结构化输出测试：成功' : `结构化输出测试：${tests.structured.message}`" :type="tests.structured.ok ? 'success' : 'warning'" :closable="false" show-icon />
+      <SiNotice :title="tests.connection.ok ? '连接测试：成功' : `连接测试：${tests.connection.message}`" :type="tests.connection.ok ? 'success' : 'error'" :closable="false" />
+      <SiNotice :title="tests.structured.ok ? '结构化输出测试：成功' : `结构化输出测试：${tests.structured.message}`" :type="tests.structured.ok ? 'success' : 'warning'" :closable="false" />
     </div>
     <el-form ref="formRef" :model="form" :rules="rules" label-position="left" label-width="140px" :disabled="saving" @submit.prevent="save">
       <el-form-item label="显示名称" prop="display_name"><el-input v-model="form.display_name" maxlength="40" show-word-limit /></el-form-item>

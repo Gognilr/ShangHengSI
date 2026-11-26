@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminApi } from '@/api/admin'
@@ -13,5 +14,5 @@ async function change(next: string|number|boolean) {
  try{value.value=(await adminApi.saveReviewSettings({send_ratios:next===true})).send_ratios;ElMessage.success('已保存')}catch(e){error.value=e instanceof ApiError?e.message:'设置保存失败，请重试'}finally{loading.value=false}
 }
 </script>
-<template><div><el-alert v-if="error" type="error" :title="error" :closable="false" /><div class="row"><p class="hint">{{ description }}</p><el-switch :model-value="value" :disabled="!!error" :loading="loading" aria-label="发送本地财务比率" @change="change" /></div></div></template>
+<template><div><SiNotice v-if="error" type="error" :title="error" :closable="false" /><div class="row"><p class="hint">{{ description }}</p><el-switch :model-value="value" :disabled="!!error" :loading="loading" aria-label="发送本地财务比率" @change="change" /></div></div></template>
 <style scoped>.row {display:flex;align-items:center;gap:20px;}.hint {flex:1;margin:0;}</style>

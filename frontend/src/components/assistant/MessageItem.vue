@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Cpu, Sparkle } from '@lucide/vue'
@@ -103,8 +104,8 @@ async function copy() {
     </details>
     <p v-if="waiting" class="waiting" :class="reading ? 'is-local' : 'is-ai'" role="status"><span v-if="!reading" class="think" aria-hidden="true"><i /><i /><i /></span><span>{{ waiting }}{{ waitingTail }}</span></p>
     <p v-if="count" class="warning">有 {{ count }} 处没能还原为真实名称，已用虚线标出，原文保持不变</p>
-    <el-alert v-if="message.error" :title="message.error" type="error" :closable="false" />
-    <el-alert v-if="error" :title="error" type="error" :closable="false" />
+    <SiNotice v-if="message.error" :title="message.error" type="error" :closable="false" />
+    <SiNotice v-if="error" :title="error" type="error" :closable="false" />
     <div v-if="sources.length" class="sources" role="group" aria-label="回复依据">
       <span class="hint">依据</span>
       <button v-for="source in sources" :key="source.ref" type="button" class="source" :class="{ uncited: !source.cited }" :title="source.cited ? '' : '已附带发送，回复中未引用'" @click="cite(source, $event.currentTarget as HTMLElement)"><span class="source-kind">{{ kindLabel[source.kind] }}{{ source.kind === 'kb' ? ' ' + source.ref.slice(2) : '' }}</span>{{ source.kind === 'kb' ? source.label.replace(/^[^·]+· /, '') : source.label }}</button>

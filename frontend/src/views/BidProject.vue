@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 // 标书初审 · 项目页（澄明 8.5 ②）：页头（面包屑、项目名、信息徽标、操作）→ 招标文件卡 → 一行进度（只在这一处）→ 投标人卡片网格
 // → 检查中只显示进度、不出结论 → 结果出来后主从两栏（问题清单 + 证据）。条款与各家文件在右侧抽屉里看和改。
 import { computed, onBeforeUnmount, provide, reactive, ref, watch } from 'vue'
@@ -365,7 +366,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
       <template v-if="folderName"><ChevronRight :size="14" :stroke-width="1.75" aria-hidden="true" /><router-link :to="{ path: '/bid', query: { folder: project?.folder_id } }">{{ folderName }}</router-link></template>
     </nav>
     <p v-if="loading" role="status" class="hint">正在读取项目…</p>
-    <el-alert v-if="error && !project" :title="error" type="error" :closable="false" />
+    <SiNotice v-if="error && !project" :title="error" type="error" :closable="false" />
     <template v-if="project">
       <header class="head">
         <h1 :title="project.title">{{ project.title }}</h1>
@@ -397,9 +398,9 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
           <span class="si-badge">提示 {{ check.conclusion.hint.length }}</span>
         </template>
       </div>
-      <el-alert v-if="error" class="alert" :title="error" type="error" show-icon @close="error = ''" />
-      <el-alert v-if="notice" class="alert" :title="notice" type="warning" show-icon @close="notice = ''" />
-      <el-alert v-if="project.check.state === 'failed'" class="alert" type="error" show-icon :closable="false" :title="`检查没有完成：${project.check.error ?? '请重新开始'}`" />
+      <SiNotice v-if="error" class="alert" :title="error" type="error" @close="error = ''" />
+      <SiNotice v-if="notice" class="alert" :title="notice" type="warning" @close="notice = ''" />
+      <SiNotice v-if="project.check.state === 'failed'" class="alert" type="error" :closable="false" :title="`检查没有完成：${project.check.error ?? '请重新开始'}`" />
 
       <!-- 招标文件卡：满宽；没有文件时就是拖放区 -->
       <section v-if="!tender" class="tender drop-card si-card" :class="{ over: overTender }" role="button" tabindex="0" :aria-disabled="blocked"

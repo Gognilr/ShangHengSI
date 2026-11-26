@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
@@ -95,7 +96,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 
 <template>
   <div>
-    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap" />
+    <SiNotice v-if="error" :title="error" type="error" :closable="false" class="gap" />
     <div class="panel setting-panel">
       <SettingSection title="范本列表" description="审核时按文件类型和立场选择合适的范本。" stacked>
         <template #actions><el-button v-if="filter === 'all'" type="primary" :disabled="rows.length >= 50 || saving" @click="open()">上传公司范本</el-button></template>
@@ -118,7 +119,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
       </SettingSection>
     </div>
     <el-dialog v-model="dialog" :title="editing ? '编辑范本设置' : '上传公司范本'" width="640px" :close-on-click-modal="!saving">
-      <el-alert v-if="formError" :title="formError" type="error" :closable="false" class="gap" />
+      <SiNotice v-if="formError" :title="formError" type="error" :closable="false" class="gap" />
       <el-form label-position="left" label-width="140px">
         <el-form-item label="范本名称"><el-input v-model="form.name" maxlength="100" show-word-limit /></el-form-item>
         <el-form-item label="适用文件类型"><el-select v-model="form.doc_types" multiple placeholder="请选择文件类型"><el-option v-for="o in toOptions(DOC_TYPE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" /></el-select></el-form-item>
@@ -129,7 +130,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
     </el-dialog>
     <el-dialog v-model="detailOpen" title="范本条款" width="640px" :close-on-click-modal="!saving">
       <div v-loading="detailLoading">
-        <el-alert v-if="detailError" :title="detailError" type="error" :closable="false" show-icon />
+        <SiNotice v-if="detailError" :title="detailError" type="error" :closable="false" />
         <template v-if="viewing">
           <h2>{{ viewing.name }}</h2><p class="hint">更新时间：{{ formatDateTime(viewing.updated_at) }} · {{ viewing.clause_count }} 条</p>
           <el-collapse><el-collapse-item v-for="clause in viewing.clauses" :key="clause.id" :name="clause.id" :title="`${clause.seq}. ${clause.title}`">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { useAuthStore } from '@/stores/auth'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -309,7 +310,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
       <el-button size="small" link type="primary" @click="openHint">打开那次审核</el-button>
       <el-button size="small" link aria-label="关闭提示" @click="hintClosed = session.id">×</el-button>
     </div>
-    <el-alert v-if="annotationNotice" type="warning" show-icon closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
+    <SiNotice v-if="annotationNotice" type="warning" closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
     <div :ref="bindSplit" class="split">
       <div class="canvas-col">
         <ResultCanvas ref="canvas" :key="`${session.id}:${session.material_version}`" :task="task" :note="run ? run.user_note : null" :annotations="annotations" :local-locs="localLocs"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, ref, watch } from 'vue'
 import { adminApi, type RedactionStats } from '@/api/admin'
 import { ApiError } from '@/api/http'
@@ -10,5 +11,5 @@ const fields = [{key:'tasks',label:'确认任务数'},{key:'zero_ops_ratio',labe
 const stats = computed(()=> fields.map(field=>({label:field.label,value:format(data.value?.[field.key], 'ratio' in field)})))
 function format(value?: number, ratio=false) {return value ? new Intl.NumberFormat('zh-CN',{style:ratio?'percent':'decimal',maximumFractionDigits:2}).format(value):'—'}
 </script>
-<template><div v-loading="loading"><div class="period"><SiSegmented ariaLabel="统计时间范围" v-model="days" :options="[7,30,90,365].map(value=>({value,label:`最近 ${value} 天`}))" /></div><el-alert v-if="error" :title="error" type="error" :closable="false" /><div class="stats"><div v-for="stat in stats" :key="stat.label" class="stat"><span class="stat-label">{{ stat.label }}</span><span class="stat-value">{{ stat.value }}</span></div></div><template v-if="data"><h3>无法判断 · {{ format(data.unable_ratio,true) }}</h3><p>信息已脱敏 {{ data.unable_by_reason.redacted || '—' }} · 文件未写 {{ data.unable_by_reason.absent || '—' }} · 其他 {{ data.unable_by_reason.other || '—' }}</p><p class="hint">因脱敏无法判断最多的要求：{{ data.redacted_top_requirements.map(r=>`${r.req_id} ×${r.count}`).join('、') || '—' }}</p></template></div></template>
+<template><div v-loading="loading"><div class="period"><SiSegmented ariaLabel="统计时间范围" v-model="days" :options="[7,30,90,365].map(value=>({value,label:`最近 ${value} 天`}))" /></div><SiNotice v-if="error" :title="error" type="error" :closable="false" /><div class="stats"><div v-for="stat in stats" :key="stat.label" class="stat"><span class="stat-label">{{ stat.label }}</span><span class="stat-value">{{ stat.value }}</span></div></div><template v-if="data"><h3>无法判断 · {{ format(data.unable_ratio,true) }}</h3><p>信息已脱敏 {{ data.unable_by_reason.redacted || '—' }} · 文件未写 {{ data.unable_by_reason.absent || '—' }} · 其他 {{ data.unable_by_reason.other || '—' }}</p><p class="hint">因脱敏无法判断最多的要求：{{ data.redacted_top_requirements.map(r=>`${r.req_id} ×${r.count}`).join('、') || '—' }}</p></template></div></template>
 <style scoped>.period { display:flex;justify-content:flex-end;margin-bottom:16px; }.stats { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px; }.stat { display:flex;flex-direction:column;gap:8px; }.stat-value { font:var(--si-font-stat); }h3 { font:var(--si-font-h3);margin:20px 0 8px; }p { margin:8px 0; }</style>
