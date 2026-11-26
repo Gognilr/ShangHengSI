@@ -358,7 +358,8 @@ def test_manual_clause_no():
     assert manual_clause_no("第12条 付款") == "第12条"
     assert manual_clause_no("第十二条付款") == "第十二条"
     assert manual_clause_no("2.1 单价") == "2.1"
-    assert manual_clause_no("2.1.3买方") == "2.1.3"
+    assert manual_clause_no("2.1.3买方") is None
+    assert manual_clause_no("2.1.3 买方") == "2.1.3"
     assert manual_clause_no("2.1. 单价") == "2.1"
     assert manual_clause_no("1.5% 的违约金") is None
     assert manual_clause_no("2026.03.15 签订") is None

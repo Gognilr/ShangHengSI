@@ -4,17 +4,22 @@
 GET /runs/{rid}/report（导出报告）在 M7 之前的里程碑实现，不在这里。
 """
 from typing import Literal
+from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, Query, Request, Response, UploadFile, status
+from fastapi import APIRouter, Body, Depends, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
 
 from app import content_drafts
+from app.config import get_settings
 from app.db.models import DOC_TYPES, Finding, RequirementVersion, ReviewRun, Task, User
 from app.db.session import get_db
 from app.review import service
-from app.review.contract_compare import compare_contracts
+from app.review.contract_compare import compare_contracts, export_contract_comparison
 from app.review.requirements import (
     Requirement,
     _builtin_data,
@@ -33,11 +38,51 @@ _review = require("use.review")
 router = APIRouter()
 
 
+class _MemoryMultipart(MultiPartParser):
+    spool_max_size = 0  # 禁用 SpooledTemporaryFile 自动转存，由请求字节上限约束内存。
+
+
+async def _contract_uploads(request: Request, action):
+    limit = 2 * get_settings().max_upload_mb * 1024 * 1024 + 64 * 1024
+
+    async def bounded_stream():
+        total = 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > limit:
+                raise AppError(422, 'FILE_TOO_LARGE', '两份文件合计超过上传大小限制')
+            yield chunk
+
+    if request.headers.get('content-type', '').split(';', 1)[0].strip().lower() != 'multipart/form-data':
+        raise AppError(422, 'INVALID_CONTRACT_UPLOAD', '请重新选择两份 Word 稿件')
+    try:
+        form = await _MemoryMultipart(request.headers, bounded_stream(), max_files=2, max_fields=0).parse()
+    except MultiPartException:
+        raise AppError(422, 'INVALID_CONTRACT_UPLOAD', '请重新选择两份 Word 稿件') from None
+    try:
+        baseline, revised = form.get('baseline'), form.get('revised')
+        if not isinstance(baseline, UploadFile) or not isinstance(revised, UploadFile):
+            raise AppError(422, 'INVALID_CONTRACT_UPLOAD', '请选择基准稿和修改稿')
+        return await run_in_threadpool(action, baseline, revised)
+    finally:
+        await form.close()
+
+
 @router.post('/review/contract-compare', dependencies=[Depends(_review)])
-def contract_compare(response: Response, baseline: UploadFile = File(), revised: UploadFile = File()):
+async def contract_compare(request: Request, response: Response):
     """返回本次两份合同的文字变化，不创建审核任务。"""
     response.headers['Cache-Control'] = 'no-store'
-    return compare_contracts(baseline, revised)
+    return await _contract_uploads(request, compare_contracts)
+
+
+@router.post('/review/contract-compare/export', dependencies=[Depends(_review), Depends(require('use.export'))])
+async def contract_compare_export(request: Request):
+    """根据本次上传在内存生成 Word，不创建任务或导出记录。"""
+    data = await _contract_uploads(request, export_contract_comparison)
+    return Response(data, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    headers={'Cache-Control': 'no-store',
+                             'Content-Disposition': f"attachment; filename*=UTF-8''{quote('合同对比表.docx')}",
+                             'X-Content-Type-Options': 'nosniff'})
 
 
 class RunIn(BaseModel):

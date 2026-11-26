@@ -58,6 +58,45 @@ def test_name_stem_ignores_draft_words():
     assert name_stem("设备采购合同_第2稿.docx") == name_stem("设备采购合同（1）.docx") == name_stem("设备采购合同-v3 20261118.docx")
 
 
+def _word_nodes(seq, paragraphs, cells=()):
+    doc = Document()
+    for line in paragraphs:
+        doc.add_paragraph(line)
+    if cells:
+        table = doc.add_table(rows=1, cols=len(cells))
+        for cell, text in zip(table.rows[0].cells, cells):
+            cell.text = text
+    stream = io.BytesIO()
+    doc.save(stream)
+    return parse_docx(stream.getvalue(), seq).nodes
+
+
+def test_numeric_values_remain_substantive_and_party_names_stay_in_place():
+    old = _word_nodes(1, ['甲方：星桥公司', '乙方：云岬公司'], ('1,000元', '12.5%', '5台', '8.3 万元'))
+    new = _word_nodes(2, ['甲方：云岬公司', '乙方：星桥公司'], ('2,000元', '13.5%', '8台', '8.5 万元'))
+    changes = compare(old, new)['changes']
+    assert [(c['type'], c.get('detail_type')) for c in changes] == [('mod', None)] * 6
+
+
+def test_ordered_pairing_uses_best_match_and_finds_real_short_move():
+    old = _word_nodes(1, ['本设备由甲方负责保管。', '本设备由乙方负责现场安装。', '沿海交接', '双方签章后生效。'])
+    filler = ['安全库存独立盘点。'] * 8
+    new = _word_nodes(2, [*filler, '本设备由乙方负责现场调试。', '双方签章后生效。', '沿海移交'])
+    changes = compare(old, new)['changes']
+    assert [(c['type'], c['prev_loc'], c['loc']) for c in changes if c['type'] != 'add'] == [
+        ('del', 'F1-P1', None), ('mod', 'F1-P2', 'F2-P9'), ('move', 'F1-P3', 'F2-P11'),
+    ]
+
+
+def test_inserted_clause_groups_numbering_but_keeps_each_delta_position():
+    old = _word_nodes(1, ['第一条 合同设备随附证明。', '第二条 到场后进行联合验收。', '第三条 交付日以签收单为准。'])
+    new = _word_nodes(2, ['第一条 合同设备随附证明。', '第二条 附图由双方签章。', '第三条 到场后进行联合验收。', '第四条 交付日以签收单为准。'])
+    [added, numbering] = compare(old, new, compact_numbering=True)['changes']
+    assert added['type'] == 'add' and numbering['detail_type'] == 'numbering'
+    assert numbering['brief']['text'] == '第二条起编号顺延 2 处'
+    assert [c['loc'] for c in compare(old, new, with_map=True)['changes'] if c.get('detail_type') == 'numbering'] == ['F2-P3', 'F2-P4']
+
+
 def _upload(client, headers, sid, name, draft_of=None):
     data = {"draft_of": draft_of} if draft_of else None
     response = client.post(f"{BASE}/{sid}/files", headers=headers, data=data,

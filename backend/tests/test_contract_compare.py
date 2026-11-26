@@ -5,8 +5,9 @@ from pathlib import Path
 from docx import Document
 from sqlalchemy import func, select
 
-from app.db.models import DocNode, Job, LlmCall, Task, TaskFile
+from app.db.models import AuditLog, DocNode, Job, LlmCall, Role, Task, TaskFile
 from app.parsing import legacy
+from tests.test_parse_docx import NS_DECL, P, make_docx
 from tests.test_tasks_api import alice, files_dir  # noqa: F401
 
 URL = '/api/v1/review/contract-compare'
@@ -118,3 +119,71 @@ def test_contract_compare_legacy_and_input_errors(alice, monkeypatch):
     assert unsupported.status_code == 422 and unsupported.json()['code'] == 'UNSUPPORTED_FILE_TYPE'
     empty = client.post(URL, headers=headers, files=_pair(_word([]), docx))
     assert empty.status_code == 422 and empty.json()['code'] == 'CONTRACT_TEXT_MISSING'
+
+
+def test_contract_compare_sections_and_mixed_trace(alice):
+    client, csrf = alice
+    headers = {'X-CSRF-Token': csrf}
+    header = lambda text: f'<w:hdr {NS_DECL}>{P(text)}</w:hdr>'
+    footer = lambda text: f'<w:ftr {NS_DECL}>{P(text)}</w:ftr>'
+    textbox = lambda text: P(runs=f'<w:r><w:pict><w:txbxContent>{P(text)}</w:txbxContent></w:pict></w:r>')
+    symbol = lambda code: P(runs=f'<w:r><w:sym w:font="Wingdings" w:char="{code}"/><w:t>验收</w:t></w:r>')
+    refs = '<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/><w:footerReference w:type="default" r:id="rIdF"/></w:sectPr>'
+    old = make_docx(
+        P('交付地点为北区，交付期限为三十日。') + symbol('F0A8') + textbox('联系人：样本甲')
+        + P(runs='<w:r><w:rPr><w:vanish/></w:rPr><w:t>小样备注</w:t></w:r>') + P('末尾整段留痕删除。') + refs,
+        extra={'word/header.xml': header('试制设备合同'), 'word/footer.xml': footer('客户归档')},
+        rels=[('rIdH', 'header', 'header.xml'), ('rIdF', 'footer', 'footer.xml')],
+    )
+    tracked = ('<w:r><w:t>交付地点为南区，交付期限为</w:t></w:r>'
+               '<w:del w:id="1"><w:r><w:delText>三</w:delText></w:r></w:del>'
+               '<w:ins w:id="2"><w:r><w:t>五</w:t></w:r></w:ins><w:r><w:t>十日。</w:t></w:r>')
+    notes = f'<w:footnotes {NS_DECL}><w:footnote w:id="1">{P("脚注示例")}</w:footnote></w:footnotes>'
+    shown = ('<w:r><w:rPr><w:rPrChange w:id="4"><w:rPr><w:vanish/></w:rPr></w:rPrChange></w:rPr>'
+             '<w:t>小样备注</w:t></w:r>')
+    new = make_docx(
+        P(runs=tracked) + symbol('F0FE') + textbox('联系人：样本乙') + P(runs=shown)
+        + P(runs='<w:del w:id="3"><w:r><w:delText>末尾整段留痕删除。</w:delText></w:r></w:del>') + refs,
+        extra={'word/header.xml': header('试制设备采购合同'), 'word/footer.xml': footer('供应方归档'),
+               'word/footnotes.xml': notes},
+        rels=[('rIdH', 'header', 'header.xml'), ('rIdF', 'footer', 'footer.xml'), ('rIdN', 'footnotes', 'footnotes.xml')],
+    )
+    response = client.post(URL, headers=headers, files=_pair(old, new))
+    assert response.status_code == 200, response.text
+    result = response.json()
+    by_loc = {c['revised_loc']: c for c in result['changes']}
+    assert result['revised_omitted'] == ['脚注']
+    assert [by_loc[f'F2-{loc}']['revised_location'] for loc in ('H1', 'FT1', 'TB1')] == ['页眉第 1 段', '页脚第 1 段', '文本框第 1 段']
+    assert _edits(by_loc['F2-P2']) == [('del', '□'), ('ins', '☑')]
+    assert by_loc['F2-P3']['visibility'] == '隐藏文字改为显示'
+    assert by_loc['F2-P3']['untracked'] is False
+    assert next(c for c in result['changes'] if c['baseline_loc'] == 'F1-P4')['untracked'] is False
+    mixed = by_loc['F2-P1']
+    assert mixed['mixed']
+    assert [(s['s'], s['u']) for s in mixed['segs'] if s['t'] == 'ins'] == [('南', True), ('五', False)]
+
+
+def test_contract_compare_export_requires_permission_and_keeps_no_record(alice, files_dir, db_sessionmaker):
+    client, csrf = alice
+    headers = {'X-CSRF-Token': csrf}
+    files = _pair(_word(['5台']), _word(['8台']))
+    uri = URL + '/export'
+    with db_sessionmaker() as db:
+        audit_before = db.scalar(select(func.count()).select_from(AuditLog))
+    response = client.post(uri, headers=headers, files=files)
+    assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
+    table = Document(io.BytesIO(response.content)).tables[0]
+    row = table.rows[1].cells
+    assert [c.text for c in row] == ['1', '文字修改', '正文第 1 段', '正文第 1 段', '5台', '8台', '未留痕']
+    assert row[4].paragraphs[0].runs[0].font.highlight_color is not None
+    assert row[5].paragraphs[0].runs[0].font.highlight_color is not None
+    with db_sessionmaker() as db:
+        assert db.scalar(select(func.count()).select_from(AuditLog)) == audit_before
+        for model in (Task, TaskFile, DocNode, Job, LlmCall):
+            assert db.scalar(select(func.count()).select_from(model)) == 0
+        role = db.scalar(select(Role).where(Role.builtin == 'user'))
+        role.permissions = [p for p in role.permissions if p != 'use.export']
+        db.commit()
+    assert not any(path.is_file() for path in files_dir.rglob('*'))
+    assert client.post(URL, headers=headers, files=files).status_code == 200
+    assert client.post(uri, headers=headers, files=files).status_code == 403

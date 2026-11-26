@@ -11,8 +11,10 @@ import logging
 import re
 import time
 import unicodedata
+from bisect import bisect_left
 from collections import Counter, defaultdict
 from datetime import timedelta
+from itertools import groupby
 from types import SimpleNamespace
 
 from sqlalchemy import select
@@ -20,12 +22,13 @@ from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
 from app.db.models import DocNode, Task, TaskFile
+from app.parsing.docx import MULTILEVEL_NUMBER, WARN_COMMENTS, WARN_EMBEDDED, WARN_NOTES
 from app.security import crypto
 from app.security.errors import AppError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
-MOD_RATIO = 0.5  # 替换块内配对为“修改”的相似度
+MOD_RATIO = 0.6  # 替换块内配对为“修改”的相似度
 LINK_RATIO = 0.6  # 自动认稿：逐段相似度
 LINK_SHARE = 0.5  # 相同或高度相似的段落占新文件的比例
 MERGE_GAP = 2  # 相邻差异碎片间隔不超过 2 字时并成一段
@@ -33,9 +36,16 @@ _PUNCT = str.maketrans({'，': ',', '。': '.', '；': ';', '：': ':', '（': '
                         '‘': "'", '’': "'", '、': ',', '【': '[', '】': ']', '《': '<', '》': '>', '！': '!',
                         '？': '?', '—': '-', '－': '-', '～': '~', '…': '.'})
 _WS = re.compile(r'\s+')
-# 段首手写编号：第八条、8.3、(一)、一、1.；自动编号不在正文里（clause_no），本来就不比
-_LEAD_NO = re.compile(r'^(?:第[0-9一二三四五六七八九十百千零〇两]+[条章节款项]|\d{1,3}(?:\.\d{1,3})*[.、)]?(?![\d%])|'
-                      r'\([0-9一二三四五六七八九十]{1,3}\)|[一二三四五六七八九十]{1,3}[、.])')
+_CHINESE_NUM = '一二三四五六七八九十百千零〇两'
+# 编号在去空白、替换标点之前识别，避免拆开小数和千分位。
+_LEAD_NO = re.compile(
+    rf'^\s*(第[\d{_CHINESE_NUM}]+[条章节款项]|{MULTILEVEL_NUMBER}|'
+    rf'\d{{1,3}}\.(?![\d.%‰])|\d{{1,3}}、|\([\d{_CHINESE_NUM}]{{1,6}}\)|[{_CHINESE_NUM}]{{1,6}}[、.])'
+)
+_NUMBER = re.compile(r'[+\-−]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?[%‰]?')
+_PARTY = re.compile(r'^(甲方|乙方|丙方|买方|卖方|采购方|供应方|供方|需方)(?:\([^)]{1,8}\))?[:=]')
+REGIONS = {'header': '页眉', 'footer': '页脚', 'textbox': '文本框'}
+COMPARE_PARTS = ('header', 'body', 'textbox', 'footer')
 _DRAFT_WORDS = re.compile(r'(?:第[一二三四五六七八九十\d]+稿|[一二三四五六七八九十\d]稿|[vV]\d+(?:\.\d+)*|'
                           r'修改版|修订版|修改稿|修订稿|最终版|终稿|定稿|新版|初稿|草稿|对方修改|对方意见|回复版|反馈版|'
                           r'\d{4}[-._年]?\d{1,2}[-._月]?\d{1,2}日?|\d{6,8}|[(（]\d{1,2}[)）]|副本|copy)', re.I)
@@ -46,18 +56,25 @@ def normalize(text: str) -> str:
 
 
 def key(text: str) -> str:
-    """对齐键：规范化后去掉段首手写编号。"""
-    value = normalize(text)
-    stripped = _LEAD_NO.sub('', value, count=1)
-    return stripped or value
+    """对齐键：去段首手写编号，再规范化正文。"""
+    return normalize(_without_number(text)[1]) or normalize(text)
 
 
-def _loose(text: str) -> str:
-    return ''.join(c for c in key(text) if not unicodedata.category(c).startswith('P'))
+def _without_number(text: str) -> tuple[str, str]:
+    value = unicodedata.normalize('NFKC', text or '')
+    match = _LEAD_NO.match(value)
+    return (match[1], value[match.end():]) if match else ('', value)
+
+
+def _meaning(text: str) -> tuple[str, list[str]]:
+    """忽略标点与空格，保留数字的符号、小数点、千分位、比例符号及数字间的分隔。"""
+    value = unicodedata.normalize('NFKC', text)
+    words = ''.join(c for c in value if not c.isspace() and not unicodedata.category(c).startswith('P'))
+    return words, _NUMBER.findall(value)
 
 
 def _ratio(a: str, b: str) -> float:
-    if not a or not b:
+    if not a or not b or 2 * min(len(a), len(b)) < MOD_RATIO * (len(a) + len(b)):
         return 0.0
     m = difflib.SequenceMatcher(None, a, b, autojunk=False)
     return m.ratio() if m.real_quick_ratio() >= MOD_RATIO and m.quick_ratio() >= MOD_RATIO else 0.0
@@ -72,33 +89,37 @@ def _ops(a: str, b: str):
 class _Trace:
     """P→A 的一处差异是否落在 B→A（留痕）范围内。tracked=None：非 Word 文件，没有修订概念。"""
 
-    def __init__(self, p: str, a: str, b: str | None, mode: str):
+    def __init__(self, p: str, a: str, b: str | None, mode: str, *, literal: bool = False):
         self.mode = mode  # exact / flag / none
         if mode != 'exact':
             return
-        b = a if b is None else b
         self.ins_a = [False] * len(a)
+        self.p2b: list[int | None] = [None] * len(p)
+        if b is None or b == a:
+            self.del_b = []
+            return
         self.del_b = [False] * len(b)
-        for tag, i1, i2, j1, j2 in _token_ops(b, a):
+        diff = _ops if literal else _token_ops
+        for tag, i1, i2, j1, j2 in diff(b, a):
             if tag in ('insert', 'replace'):
                 self.ins_a[j1:j2] = [True] * (j2 - j1)
             if tag in ('delete', 'replace'):
                 self.del_b[i1:i2] = [True] * (i2 - i1)
-        self.p2b: list[int | None] = [None] * len(p)
-        for tag, i1, i2, j1, j2 in _token_ops(p, b):
+        for tag, i1, i2, j1, j2 in diff(p, b):
             if tag == 'equal':
                 for k in range(i2 - i1):
                     self.p2b[i1 + k] = j1 + k
 
-    def tracked(self, a0, a1, b0, b1, has_revision=False) -> bool | None:
-        """(a0, a1) 为上一稿 P 的区间，(b0, b1) 为本稿 A 的区间。"""
-        if self.mode == 'none':
-            return None
-        if self.mode == 'flag':  # 旧版本解析没有“拒绝修订”文字：只能按节点是否有修订判断
-            return has_revision
-        if b1 > b0 and not all(self.ins_a[b0:b1]):
-            return False
-        return all(self.p2b[k] is not None and self.del_b[self.p2b[k]] for k in range(a0, a1))
+    def segments(self, text, start, end, *, inserted, has_revision):
+        if self.mode != 'exact':
+            flag = {} if self.mode == 'none' else {'u': not has_revision}
+            yield {'t': 'ins' if inserted else 'del', 's': text[start:end], **flag}
+            return
+        marks = self.ins_a[start:end] if inserted else [
+            mapped is not None and self.del_b[mapped] for mapped in self.p2b[start:end]
+        ]
+        for marked, group in groupby(zip(text[start:end], marks), key=lambda item: item[1]):
+            yield {'t': 'ins' if inserted else 'del', 's': ''.join(c for c, _ in group), 'u': not marked}
 
 
 _TOKEN = re.compile(r'[0-9A-Za-z０-９Ａ-Ｚａ-ｚ]+(?:[.,，．][0-9０-９]+)*[%％‰]?|.', re.S)
@@ -114,31 +135,24 @@ def _token_ops(p: str, a: str):
 
 
 def _segments(p: str, a: str, trace: _Trace, has_revision: bool, *, literal: bool = False) -> list[dict]:
-    """字级差异：相邻碎片间隔 ≤ 2 字并成一段；每段带是否留痕（u = 未留痕）。"""
-    groups: list[list] = []  # [tag, a0, a1, b0, b1, tracked]
+    """字级差异；精确判断时保留每一段的留痕边界。"""
+    groups = []
     for tag, i1, i2, j1, j2 in (_ops if literal else _token_ops)(p, a):
-        if tag == 'equal':
-            groups.append(['equal', i1, i2, j1, j2, None])
-            continue
-        t = trace.tracked(i1, i2, j1, j2, has_revision)
-        if (not literal and len(groups) >= 2 and groups[-1][0] == 'equal' and groups[-1][2] - groups[-1][1] <= MERGE_GAP
-                and groups[-2][0] != 'equal'):
-            groups.pop()
-            prev = groups.pop()
-            merged_t = None if t is None else bool(prev[5]) and t
-            groups.append(['replace', prev[1], i2, prev[3], j2, merged_t])
+        if (tag != 'equal' and trace.mode != 'exact' and not literal and len(groups) >= 2 and groups[-1][0] == 'equal'
+                and groups[-1][2] - groups[-1][1] <= MERGE_GAP and groups[-2][0] != 'equal'):
+            _, start_old, _, start_new, _ = groups[-2]
+            groups[-2:] = [('replace', start_old, i2, start_new, j2)]
         else:
-            groups.append([tag, i1, i2, j1, j2, t])
+            groups.append((tag, i1, i2, j1, j2))
     segs = []
-    for tag, i1, i2, j1, j2, t in groups:
+    for tag, i1, i2, j1, j2 in groups:
         if tag == 'equal':
             segs.append({'t': 'eq', 's': a[j1:j2]})
             continue
-        extra = {} if t is None else {'u': not t}
         if i2 > i1:
-            segs.append({'t': 'del', 's': p[i1:i2], **extra})
+            segs.extend(trace.segments(p, i1, i2, inserted=False, has_revision=has_revision))
         if j2 > j1:
-            segs.append({'t': 'ins', 's': a[j1:j2], **extra})
+            segs.extend(trace.segments(a, j1, j2, inserted=True, has_revision=has_revision))
     return segs
 
 
@@ -166,6 +180,10 @@ def _labels(nodes) -> list[str]:
     """所属条款：节点的条款号，没有时取前面最近的一级条款号；PDF、图片为页码。"""
     out, nearest = [], ''
     for n in nodes:
+        region = _region_location(n)
+        if region:
+            out.append(region)
+            continue
         clause = (n.clause_no or '').strip()
         if re.fullmatch(r'\d{1,3}[.、．]?', clause):
             clause = f'第 {clause.rstrip(".、．")} 条'
@@ -183,35 +201,104 @@ def _labels(nodes) -> list[str]:
     return out
 
 
-def _move_anchors(kind: str, text: str):
-    yield kind, 'text', text
-    # 足够长的相同段首或段尾用于找挪动后有修改的段落。
-    if len(text) >= 14:
-        yield kind, 'start', text[:8]
-        yield kind, 'end', text[-8:]
+def _region_location(node) -> str:
+    part = getattr(node, 'part', 'body')
+    if part not in REGIONS:
+        return ''
+    number = re.search(r'\d+$', node.loc)
+    return f'{REGIONS[part]}第 {number[0]} 段' if number else REGIONS[part]
 
 
-def _literal_moves(old, new, deleted, added) -> dict[int, int]:
-    """唯一对应且原文相近的段落可标为移位，其余按增删显示。"""
-    index = defaultdict(list)
-    new_text = {j: _loose(new[j].text) or key(new[j].text) for j in added}
-    for j, text in new_text.items():
-        for anchor in _move_anchors(new[j].kind, text):
-            index[anchor].append(j)
-    paired = {}
+def _alignment_key(node) -> tuple[bool, str]:
+    return node.kind == 'table_cell', key(node.text)
+
+
+def _score(old_key, new_key, old_no, new_no) -> float:
+    if old_key[0] != new_key[0]:
+        return 0.0
+    a, b = old_key[1], new_key[1]
+    role_a, role_b = _PARTY.match(a), _PARTY.match(b)
+    if role_a and role_b:
+        return 1.0 if role_a[1] == role_b[1] else 0.0
+    score = _ratio(a, b)
+    if score < MOD_RATIO and (old_no and old_no == new_no or
+                              _NUMBER.search(a) and _NUMBER.sub('#', a) == _NUMBER.sub('#', b)):
+        return MOD_RATIO
+    return score
+
+
+def _optimal_pairs(old_keys, new_keys, old_no, new_no, i1, i2, j1, j2) -> list[tuple[int, int]]:
+    """顺序不交叉，选择相似度总和最高的替换配对。只存当前两行分数和回溯方向。"""
+    width = j2 - j1
+    previous = [0] * (width + 1)
+    directions = []
+    for i in range(i1, i2):
+        current = [0] * (width + 1)
+        path = bytearray(width)
+        directions.append(path)
+        for k, j in enumerate(range(j1, j2)):
+            score = _score(old_keys[i], new_keys[j], old_no[i], new_no[j])
+            best = current[k]
+            if previous[k + 1] > best:
+                best, path[k] = previous[k + 1], 1
+            if score >= MOD_RATIO:
+                paired = previous[k] + round(1000 * score)
+                if paired > best:
+                    best, path[k] = paired, 2
+            current[k + 1] = best
+        previous = current
+    result = []
+    i, j = i2 - i1 - 1, width - 1
+    while i >= 0 and j >= 0:
+        direction = directions[i][j]
+        if direction == 2:
+            result.append((i1 + i, j1 + j))
+        if direction:
+            i -= 1
+        if direction != 1:
+            j -= 1
+    return result[::-1]
+
+
+def _moves(old_keys, new_keys, ordered, deleted, added) -> dict[int, int]:
+    """只在原有顺序被打破时找移位。两侧有多个近似候选时按增删显示。"""
+    old_counts, new_counts = Counter(old_keys), Counter(new_keys)
+    positions = [i for i, _ in ordered]
+    exact = {new_keys[j]: j for j in added if new_counts[new_keys[j]] == 1}
+    found, near_old, near_new = {}, defaultdict(list), defaultdict(list)
     for i, _ in deleted:
-        text = _loose(old[i].text) or key(old[i].text)
-        targets = set()
-        for anchor in _move_anchors(old[i].kind, text):
-            choices = index.get(anchor, ())
-            if len(choices) == 1:
-                targets.add(choices[0])
-        if len(targets) == 1:
-            j = next(iter(targets))
-            if _ratio(text, new_text[j]) >= 0.8:
-                paired[i] = j
-    counts = Counter(paired.values())
-    return {i: j for i, j in paired.items() if counts[j] == 1}
+        k = bisect_left(positions, i)
+        left = ordered[k - 1][1] if k else -1
+        right = ordered[k][1] if k < len(ordered) else len(new_keys)
+        token = old_keys[i]
+        if old_counts[token] != 1:
+            continue
+        j = exact.get(token)
+        if j is not None and (j < left or j > right):
+            found[i] = j
+            continue
+        a = token[1]
+        for j in added:
+            cell, b = new_keys[j]
+            if left < j < right or cell != token[0] or new_counts[new_keys[j]] != 1:
+                continue
+            if min(len(a), len(b)) < 3 or (max(len(a), len(b)) > 20 and a[:4] != b[:4] and a[-4:] != b[-4:]):
+                continue
+            ratio = _ratio(a, b)
+            if ratio >= 2 / 3:
+                near_old[i].append((ratio, j))
+                near_new[j].append((ratio, i))
+
+    def best(scores):
+        scores = sorted(scores, reverse=True)
+        return scores[0][1] if scores and (len(scores) == 1 or scores[0][0] - scores[1][0] >= 0.12) else None
+
+    exact_targets = set(found.values())
+    for i, scores in near_old.items():
+        j = best(scores)
+        if j is not None and j not in exact_targets and best(near_new[j]) == i:
+            found[i] = j
+    return found
 
 
 _CELL_SLOT = re.compile(r"^F\d+-(.+)-R\d+-C(\d+)$")
@@ -240,15 +327,105 @@ def _literal_cell_moves(old, new, old_keys, new_keys, pairs):
     return moved, ambiguous
 
 
-def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False, literal: bool = False) -> dict:
-    """old / new：上一稿、本稿的正文节点（loc、text、before、kind、clause_no、page、has_revision）。
-    mode：exact（本稿有“拒绝修订”文字）/ flag（旧版本解析，按节点修订标记）/ none（非 Word，不判断留痕）。
-    with_map：另返回 map {上一稿位置: 本稿位置}（未变、修改、位置调整的段落），供增量复审换算位置（D-03）。
-    literal：一次性合同对比按原始字符高亮，位置调整也展示文字变化。"""
-    started = time.perf_counter()
-    old_keys, new_keys = [key(n.text) for n in old], [key(n.text) for n in new]
+def _number_value(text: str) -> tuple[str, int] | None:
+    match = re.fullmatch(rf'(.*?)(\d+|[{_CHINESE_NUM}]+)([条章节款项、.)]?)', text)
+    if not match:
+        return None
+    prefix, number, suffix = match.groups()
+    if number.isdecimal():
+        return prefix + '#' + suffix, int(number)
+    digits = dict(zip('零〇一二两三四五六七八九', (0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9)))
+    units = {'十': 10, '百': 100, '千': 1000}
+    if all(c in digits for c in number):
+        return prefix + '中' + suffix, int(''.join(str(digits[c]) for c in number))
+    value = current = 0
+    for c in number:
+        if c in units:
+            value += (current or 1) * units[c]
+            current = 0
+        else:
+            current = digits[c]
+    return prefix + '中' + suffix, value + current
+
+
+def _numbering_runs(changes, old_no, new_no, added):
+    """前插条款导致的连续同幅顺延只列一条，其余编号变化仍逐处显示。"""
+    by_pos = {(c['old_index'], c['order']): c for c in changes if c.get('detail_type') == 'numbering'}
+    for (i, j), first in by_pos.items():
+        if first.get('grouped'):
+            continue
+        p, n = _number_value(old_no[i]), _number_value(new_no[j])
+        if not p or not n or p[0] != n[0]:
+            continue
+        shift = n[1] - p[1]
+        if shift < 1 or j < shift or any(k not in added or _number_value(new_no[k]) != (p[0], n[1] - j + k)
+                                         for k in range(j - shift, j)):
+            continue
+        members = []
+        for k in range(1, min(len(old_no) - i, len(new_no) - j)):
+            member = by_pos.get((i + k, j + k))
+            if (not member or _number_value(old_no[i + k]) != (p[0], p[1] + k)
+                    or _number_value(new_no[j + k]) != (n[0], n[1] + k)):
+                break
+            member['grouped'] = True
+            members.append({key: member[key] for key in ('prev_loc', 'loc', 'segs')})
+        if members:
+            first['numbering_members'] = members
+            first['note'] = f'{old_no[i]}起编号顺延 {1 + len(members)} 处'
+    return [c for c in changes if not c.get('grouped')]
+
+
+def _visibility(p, n):
+    old = getattr(p, 'hidden_spans', None) or []
+    new = getattr(n, 'hidden_spans', None) or []
+    if not old and not new:
+        return None
+    if p.text == n.text and old == new:
+        return None
+    revealed = concealed = False
+    old_mask, new_mask = bytearray(len(p.text)), bytearray(len(n.text))
+    trace_mask = bytearray(len(n.text))
+    for spans, mask in ((old, old_mask), (new, new_mask), (getattr(n, 'visibility_revisions', ()), trace_mask)):
+        for start, end in spans:
+            mask[start:end] = b'\x01' * (end - start)
+    status = bytearray(len(n.text))
+    for tag, i1, i2, j1, j2 in _ops(p.text, n.text):
+        if tag != 'equal':
+            continue
+        for j, (a, b) in enumerate(zip(old_mask[i1:i2], new_mask[j1:j2]), j1):
+            if a != b:
+                revealed |= a > b
+                concealed |= a < b
+                status[j] = 1 if trace_mask[j] else 2
+    if not (revealed or concealed):
+        return None
+    label = '隐藏和显示范围有变化' if revealed and concealed else '隐藏文字改为显示' if revealed else '文字改为隐藏'
+    return label, status
+
+
+def _visibility_segments(text: str, status: bytearray, track: bool) -> list[dict]:
+    out = []
+    for mark, group in groupby(zip(text, status), key=lambda item: item[1]):
+        part = ''.join(c for c, _ in group)
+        if not mark:
+            out.append({'t': 'eq', 's': part})
+        else:
+            flag = {'u': mark == 2} if track else {}
+            out.extend([{'t': 'del', 's': part, **flag}, {'t': 'ins', 's': part, **flag}])
+    return out
+
+
+def _before_text(node):
+    return getattr(node, 'text_before', getattr(node, 'before', None))
+
+
+def _compare_part(old, new, *, mode, literal, compact_numbering):
+    deleted_revisions = [n for n in new if not n.text and _before_text(n)]
+    old, new = [n for n in old if n.text], [n for n in new if n.text]
+    old_keys, new_keys = [_alignment_key(n) for n in old], [_alignment_key(n) for n in new]
+    old_no, new_no = [_without_number(n.text)[0] for n in old], [_without_number(n.text)[0] for n in new]
     old_labels, new_labels = _labels(old), _labels(new)
-    pairs, added, deleted = [], [], []  # pairs: (i, j)；deleted: (i, 插在本稿第 j 个节点之前)
+    pairs, added, deleted = [], [], []
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old_keys, new_keys, autojunk=False).get_opcodes():
         if tag == 'equal':
             pairs.extend(zip(range(i1, i2), range(j1, j2)))
@@ -256,20 +433,14 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
             deleted.extend((i, j1) for i in range(i1, i2))
         elif tag == 'insert':
             added.extend(range(j1, j2))
-        else:  # 替换块内按顺序贪心配对
-            j = j1
-            for i in range(i1, i2):
-                best, best_j = 0.0, None
-                for k in range(j, min(j2, j + 6)):
-                    r = _ratio(old_keys[i], new_keys[k])
-                    if r > best:
-                        best, best_j = r, k
-                if best_j is not None and best >= MOD_RATIO:
-                    added.extend(range(j, best_j))
-                    pairs.append((i, best_j))
-                    j = best_j + 1
-                else:
-                    deleted.append((i, j))
+        else:
+            i, j = i1, j1
+            for k, l in _optimal_pairs(old_keys, new_keys, old_no, new_no, i1, i2, j1, j2):
+                deleted.extend((idx, j) for idx in range(i, k))
+                added.extend(range(j, l))
+                pairs.append((k, l))
+                i, j = k + 1, l + 1
+            deleted.extend((idx, j) for idx in range(i, i2))
             added.extend(range(j, j2))
 
     cell_moves, ambiguous = _literal_cell_moves(old, new, old_keys, new_keys, pairs) if literal else (set(), set())
@@ -277,84 +448,111 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
         pairs = [(i, j) for i, j in pairs if (i, j) not in ambiguous]
         deleted.extend(sorted(ambiguous))
         added.extend(j for _, j in sorted(ambiguous))
-
+    ambiguous_old, ambiguous_new = {i for i, _ in ambiguous}, {j for _, j in ambiguous}
+    moves = _moves(old_keys, new_keys, pairs, [(i, at) for i, at in deleted if i not in ambiguous_old],
+                   [j for j in added if j not in ambiguous_new])
     changes = []
 
-    def node_trace(i, j):
-        n = new[j]
-        return _Trace(old[i].text if i is not None else '', n.text, n.before if mode == 'exact' else None, mode)
+    def node_trace(p, n):
+        return _Trace(p, n.text, _before_text(n), mode, literal=literal)
 
-    for i, j in pairs:
+    for i, j in [*pairs, *moves.items()]:
         p, n = old[i], new[j]
-        if (i, j) in cell_moves:
-            kind = 'move'
-        elif p.text != n.text:
-            kind = 'format' if _loose(p.text) == _loose(n.text) else 'mod'
-        else:
-            continue
-        segs = _segments(p.text, n.text, node_trace(i, j), n.has_revision, literal=literal)
-        changes.append({'type': kind, 'loc': n.loc, 'prev_loc': p.loc, 'clause': new_labels[j], 'segs': segs, 'order': j})
-    # 会话对比沿用归一段落键，一次性对比较验有文字变化的唯一移位段落。
-    by_key = defaultdict(list)
-    if not literal:
-        for j in added:
-            by_key[new_keys[j]].append(j)
-    ambiguous_old, ambiguous_new = {i for i, _ in ambiguous}, {j for _, j in ambiguous}
-    literal_moves = _literal_moves(old, new, [(i, at) for i, at in deleted if i not in ambiguous_old],
-                                   [j for j in added if j not in ambiguous_new]) if literal else {}
-    moved = set()
-    rest_deleted = []
-    for i, at in deleted:
-        candidates = by_key.get(old_keys[i]) if old_keys[i] else None
-        j = literal_moves.get(i)
-        if candidates:
-            j = candidates.pop(0)
-        if j is not None:
-            moved.add(j)
-            n = new[j]
-            trace = node_trace(None, j)
-            ins_t = trace.tracked(0, 0, 0, len(n.text), n.has_revision)
-            t = None if ins_t is None else ins_t and _deleted_tracked(old[i], new, at, mode)
-            segs = [{'t': 'eq', 's': n.text}]
-            if literal:
-                segs = _segments(old[i].text, n.text, node_trace(i, j), n.has_revision, literal=True)
-            changes.append({'type': 'move', 'loc': n.loc, 'prev_loc': old[i].loc, 'clause': new_labels[j],
-                            'prev_clause': old_labels[i], 'segs': segs,
-                            'order': j, 'untracked': None if t is None else not t})
-        else:
-            rest_deleted.append((i, at))
+        visibility = _visibility(p, n)
+        change = {'type': 'mod', 'loc': n.loc, 'prev_loc': p.loc, 'clause': new_labels[j], 'order': j, 'old_index': i}
+        if (i, j) in cell_moves or moves.get(i) == j:
+            change.update(type='move', prev_clause=old_labels[i])
+        elif p.text == n.text:
+            if not visibility:
+                continue
+            change['detail_type'] = 'visibility'
+        elif _meaning(_without_number(p.text)[1]) == _meaning(_without_number(n.text)[1]):
+            if old_no[i] != new_no[j]:
+                change.update(detail_type='numbering', prev_clause=old_labels[i])
+            elif not visibility:
+                change['type'] = 'format'
+        change['segs'] = _segments(p.text, n.text, node_trace(p.text, n), n.has_revision, literal=literal)
+        if visibility:
+            change['visibility'], status = visibility
+            marks = _visibility_segments(n.text, status, mode == 'exact' and literal)
+            if change.get('detail_type') == 'visibility':
+                change['segs'] = marks
+            else:
+                change['visibility_segs'] = [{'s': s['s'], 'u': s['u']} for s in marks if s['t'] == 'ins' and 'u' in s]
+        if change['type'] == 'move' and p.text == n.text and mode != 'none':
+            existed_after_reject = _before_text(n) is None or _before_text(n) == n.text
+            tracked = n.has_revision if mode == 'flag' else not existed_after_reject and _deleted_tracked(
+                p, new, dict(deleted).get(i, j), mode, deleted_revisions)
+            change['untracked'] = not tracked
+        changes.append(change)
+    moved = set(moves.values())
     for j in added:
         if j in moved:
             continue
         n = new[j]
-        trace = node_trace(None, j)
-        t = trace.tracked(0, 0, 0, len(n.text), n.has_revision)
         changes.append({'type': 'add', 'loc': n.loc, 'prev_loc': None, 'clause': new_labels[j],
-                        'segs': [{'t': 'ins', 's': n.text, **({} if t is None else {'u': not t})}], 'order': j})
-    for i, at in rest_deleted:
-        t = _deleted_tracked(old[i], new, at, mode)
-        # anchor：挂在本稿哪一段之前；删在文末时挂在最后一段之后（after）
+                        'segs': list(node_trace('', n).segments(n.text, 0, len(n.text), inserted=True,
+                                                               has_revision=n.has_revision)), 'order': j})
+    for i, at in deleted:
+        if i in moves:
+            continue
+        t = _deleted_tracked(old[i], new, at, mode, deleted_revisions)
         changes.append({'type': 'del', 'loc': None, 'prev_loc': old[i].loc,
                         'anchor': new[at].loc if at < len(new) else (new[-1].loc if new else None),
                         'after': at >= len(new),
                         'clause': old_labels[i], 'segs': [{'t': 'del', 's': old[i].text, **({} if t is None else {'u': not t})}],
                         'order': at - 0.5 + i * 1e-6})
+    if compact_numbering:
+        changes = _numbering_runs(changes, old_no, new_no, set(added) - moved)
     changes.sort(key=lambda c: c['order'])
-    loc_map = {old[i].loc: new[j].loc for i, j in pairs}
-    loc_map.update({c['prev_loc']: c['loc'] for c in changes if c['type'] == 'move'})
+    loc_map = {old[i].loc: new[j].loc for i, j in [*pairs, *moves.items()]}
+    return changes, loc_map
+
+
+def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False, literal: bool = False,
+            include_regions: bool = False, compact_numbering: bool = False) -> dict:
+    """old / new：上一稿、本稿的正文节点（loc、text、before、kind、clause_no、page、has_revision）。
+    mode：exact（本稿有“拒绝修订”文字）/ flag（旧版本解析，按节点修订标记）/ none（非 Word，不判断留痕）。
+    with_map：另返回 map {上一稿位置: 本稿位置}（未变、修改、位置调整的段落），供增量复审换算位置（D-03）。
+    literal：一次性合同对比按原始字符高亮。
+    compact_numbering：对比栏合并顺延。增量复审仍逐处取变化位置。"""
+    started = time.perf_counter()
+    changes, loc_map = [], {}
+    parts = COMPARE_PARTS if include_regions else ('body',)
+    for part in parts:
+        a, b = ([n for n in nodes if getattr(n, 'part', 'body') == part] for nodes in (old, new))
+        # 会话历史只存了正文的拒绝修订文字；即时比两份 Word 可以判断所有分区。
+        c, mapping = _compare_part(a, b, mode=mode if part == 'body' or literal else 'none', literal=literal,
+                                   compact_numbering=compact_numbering)
+        if c and not any(n.text for n in b):
+            next_nodes = [n for n in new if n.text and getattr(n, 'part', 'body') in parts[parts.index(part) + 1:]]
+            prev_nodes = [n for n in new if n.text and getattr(n, 'part', 'body') in parts[:parts.index(part)]]
+            anchor = next_nodes[0].loc if next_nodes else prev_nodes[-1].loc if prev_nodes else None
+            for change in c:
+                change.update(anchor=anchor, after=not next_nodes)
+        changes.extend(c)
+        loc_map.update(mapping)
     summary = {'mod': 0, 'add': 0, 'del': 0, 'move': 0, 'format': 0, 'untracked': 0}
-    for n, c in enumerate(changes, 1):
-        c['id'] = f'C{n}'
+    for number, c in enumerate(changes, 1):
+        c['id'] = f'C{number}'
         c.pop('order')
-        if 'untracked' not in c:
-            flags = [s['u'] for s in c['segs'] if 'u' in s]
-            c['untracked'] = (any(flags) if flags else None)
-            c['mixed'] = bool(flags) and any(flags) and not all(flags)
+        c.pop('old_index', None)
+        flags = [s['u'] for s in c['segs'] if 'u' in s]
+        flags.extend(s['u'] for s in c.get('visibility_segs', ()))
+        for member in c.get('numbering_members', ()):
+            flags.extend(s['u'] for s in member['segs'] if 'u' in s)
+        if 'untracked' in c:
+            flags.append(c['untracked'])
+        c['untracked'] = any(flags) if flags else None
+        c['mixed'] = bool(flags) and any(flags) and not all(flags)
+        edited = any(s['t'] != 'eq' for s in c['segs'])
+        if c.get('note') or c.get('detail_type') == 'visibility':
+            c['brief'] = {'text': c.get('note') or c['visibility'], 'ctx': '', 'old': '', 'new': ''}
+        elif c['type'] in ('mod', 'format') or (c['type'] == 'move' and edited):
+            c['brief'] = _brief(c['segs'])
         else:
-            c['mixed'] = False
-        moved_edit = literal and c['type'] == 'move' and any(s['t'] != 'eq' for s in c['segs'])
-        c['brief'] = _brief(c['segs']) if c['type'] in ('mod', 'format') or moved_edit else {
-            'ctx': '', 'old': '', 'new': '', 'text': (lambda s: s if len(s) <= 40 else s[:40] + '…')(c['segs'][0]['s'])}
+            text = c['segs'][0]['s']
+            c['brief'] = {'ctx': '', 'old': '', 'new': '', 'text': text[:40] + ('…' if len(text) > 40 else '')}
         summary[c['type']] += 1
         if c['untracked'] and c['type'] != 'format':
             summary['untracked'] += 1
@@ -366,17 +564,18 @@ def compare(old: list, new: list, *, mode: str = 'exact', with_map: bool = False
     return out
 
 
-def _deleted_tracked(p, new: list, at: int, mode: str) -> bool | None:
-    """整段删除是否留痕：删掉的文字出现在附近节点的“拒绝修订”文字里，且不在其接受后的文字里。"""
+def _deleted_tracked(p, new: list, at: int, mode: str, deleted_revisions=()) -> bool | None:
+    """整段删除：原文应在附近节点的拒绝修订文字中，接受修订后已经消失。"""
     if mode == 'none':
         return None
-    target = key(p.text)
-    for n in new[max(0, at - 3): at + 3]:
+    target = normalize(p.text)
+    for n in [*new[max(0, at - 3): at + 3], *deleted_revisions]:
         if mode == 'flag':
             if n.has_revision:
                 return True
             continue
-        if n.before is not None and target and target in key(n.before) and target not in key(n.text):
+        before = _before_text(n)
+        if before is not None and target and target in normalize(before) and target not in normalize(n.text):
             return True
     return False
 
@@ -406,11 +605,12 @@ def superseded(files: list[TaskFile]) -> set:
     return {f.prev_file_id for f in files if f.prev_file_id in ids}
 
 
-def body_nodes(db: Session, file: TaskFile) -> list | None:
-    """正文节点（含表格单元格、OCR 块）；原文已按保留期清理时为 None。"""
+def body_nodes(db: Session, file: TaskFile, *, include_regions: bool = False) -> list | None:
+    """增量复审只读正文；打开会话对比时另读三个分区。原文已清理时返回 None。"""
+    parts = COMPARE_PARTS if include_regions else ('body',)
     rows = db.execute(select(DocNode.loc, DocNode.kind, DocNode.clause_no, DocNode.page, DocNode.has_revision,
-                             DocNode.text_enc, DocNode.text_before_enc)
-                      .where(DocNode.file_id == file.id, DocNode.part == 'body').order_by(DocNode.ord)).all()
+                             DocNode.text_enc, DocNode.text_before_enc, DocNode.part, DocNode.hidden_spans)
+                      .where(DocNode.file_id == file.id, DocNode.part.in_(parts)).order_by(DocNode.ord)).all()
     if any(r.text_enc is None for r in rows):
         return None
     out = []
@@ -418,9 +618,12 @@ def body_nodes(db: Session, file: TaskFile) -> list | None:
         text = crypto.decrypt_text(r.text_enc)
         if not text.strip():
             continue
-        out.append(SimpleNamespace(loc=r.loc, kind=r.kind, clause_no=r.clause_no, page=r.page,
-                                   has_revision=r.has_revision, text=text,
-                                   before=crypto.decrypt_text(r.text_before_enc) if r.text_before_enc is not None else None))
+        node = SimpleNamespace(loc=r.loc, kind=r.kind, clause_no=r.clause_no, page=r.page,
+                               hidden_spans=r.hidden_spans, has_revision=r.has_revision, text=text,
+                               before=crypto.decrypt_text(r.text_before_enc) if r.text_before_enc is not None else None)
+        if include_regions:
+            node.part = r.part
+        out.append(node)
     return out
 
 
@@ -443,17 +646,21 @@ def diff(db: Session, task: Task, file: TaskFile) -> dict:
         raise NotFoundError('NO_PREVIOUS_DRAFT', '这份文件没有上一稿')
     if not file.parser_version or not prev.parser_version:
         raise AppError(409, 'DRAFT_NOT_READY', '文件还在解析，解析完成后可以对比')
-    old, new = body_nodes(db, prev), body_nodes(db, file)
+    old, new = body_nodes(db, prev, include_regions=True), body_nodes(db, file, include_regions=True)
     if old is None or new is None:
         raise AppError(409, 'TEXT_UNAVAILABLE', '原文已按保留期清理，不能对比')
     mode = _mode(file)
-    result = compare(old, new, mode=mode)
+    result = compare(old, new, mode=mode, include_regions=True, compact_numbering=True)
+    omitted = {warning for f in (prev, file) for warning in (f.warnings or [])}
+    omitted_labels = [label for warning, label in ((WARN_COMMENTS, '批注'), (WARN_NOTES, '脚注或尾注')) if warning in omitted]
+    if any(isinstance(warning, str) and warning.startswith(WARN_EMBEDDED.split('{count}')[0]) for warning in omitted):
+        omitted_labels.append('图片或嵌入对象')
     chains = chain_info(files)
     logger.info('多稿对比 task=%s file=F%d prev=F%d changes=%d untracked=%d', task.id, file.seq, prev.seq,
                 len(result['changes']), result['summary']['untracked'])
     return {**result, 'file_id': str(file.id), 'prev_file_id': str(prev.id), 'prev_name': prev.original_name,
             'no': chains.get(file.id, (2,))[0], 'prev_no': chains.get(prev.id, (1,))[0],
-            'trace': mode, 'ocr': any(n.kind == 'ocr_block' for n in new + old)}
+            'trace': mode, 'ocr': any(n.kind == 'ocr_block' for n in new + old), 'omitted': omitted_labels}
 
 
 def _share(old_keys: list[str], new_keys: list[str]) -> float:
