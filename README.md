@@ -4,7 +4,7 @@
 
 An AI-assisted first-pass reviewer for business documents (contracts, quotations, orders, inquiries and letters), designed to run inside a company LAN.
 
-**Source version: V3.5.1** · [Stage review](docs/v351/reports/V351-Z.md). Latest published release: V3.5.0 (2026-11-25).
+**Source version: V3.5.1** · [Stage review](docs/v351/reports/V351-Z.md). Released on 2026-11-26.
 
 Sensitive information never leaves the internal network: documents are parsed, checked and **redacted locally**. Only the redacted text is sent to a cloud LLM, and the results are restored to real names locally before they are shown.
 
@@ -158,7 +158,7 @@ docker run --rm --network aireview-test -e TEST_DATABASE_URL=postgresql://postgr
 
 ## Project status
 
-V3.5.1 (quality fixes) is in [stage review](docs/v351/reports/V351-Z.md). The latest published release and recorded server upgrade are V3.5.0. See the [V3.5.0 release report](docs/v35/reports/V35-Z.md) and [server upgrade record](docs/acceptance/V3.5.0升级记录.md).
+The latest published release is V3.5.1 (quality fixes, 2026-11-26). See the [V3.5.1 release report](docs/v351/reports/V351-Z.md) and [server upgrade record](docs/acceptance/V3.5.1升级记录.md).
 
 ## Documentation
 
