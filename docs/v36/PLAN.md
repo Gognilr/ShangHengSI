@@ -61,7 +61,7 @@
 | V36-F-02 | 样板页：设置 · 模型（含聚合接口） | 6.20 | Opus，high | Sol 6.1，high | F-01 | 用户确认样板 | 已完成（11-27 用户确认样板，用法已写回规范草案；build 通过，test_admin_model.py 5 passed，见 reports/V36-F-02.md） |
 | V36-F-03 | 外壳、全局搜索、登录、工作台、对话页 | 6.1～6.5 | Opus，high | Sol 6.1，high | F-02 | 截图交用户 | 已完成（11-27 截图已交；build 通过，test_search + test_auth 31 passed；首次改密第二步已用虚构账号实走，见 reports/V36-F-03.md） |
 | V36-F-04 | 文件审核入口、脱敏确认、审核结果、合同对比 | 6.6～6.9 | Opus，high | Sol 6.1，high | F-03 | 截图交用户 | 已完成（11-27 浅色 1440 截图已交，用户看过确认结束，深色与 1366 未截；build 通过，test_contract_compare 3 passed；揭幕滑块两层 62 个盒子逐像素对齐，见 reports/V36-F-04.md） |
-| V36-B-01 | 合同对比与多稿对比的识别准确率 | Q-12 | Opus，high | Sol 6.1，high | F-04 | 截图交用户 | 未开始 |
+| V36-B-01 | 合同对比与多稿对比的识别准确率 | Q-12 | Opus，high | Sol 6.1，high | F-04 | 截图交用户 | 已完成（2026-11-27，Codex，reports/V36-B-01.md；相关回归 143 条、构建通过，两页各 4 张截图） |
 | V36-F-05 | 标书项目列表与项目页 | 6.10、6.11 | Opus，medium | Sol 6.1，medium | F-04 | 截图交用户 | 未开始 |
 | V36-F-06 | 会议纪要与翻译 | 6.12～6.15 | Sonnet，medium | Terra，medium | F-05 | 截图交用户 | 未开始 |
 | V36-F-07 | 历史记录与设置其余各页 | 6.18、6.19、6.21～6.28 | Sonnet，medium | Terra，medium | F-06 | 截图交用户 | 未开始 |
