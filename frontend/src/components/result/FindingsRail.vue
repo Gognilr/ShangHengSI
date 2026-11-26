@@ -2,7 +2,7 @@
 import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Calculator, ChevronDown, ChevronRight, ListChecks, Sparkle } from '@lucide/vue'
+import { ChevronDown, ChevronRight, ListChecks, Sparkle } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import type { LocalFinding } from '@/api/localFindings'
 import { runsApi, type Finding, type HandlingStatus, type RunDetail } from '@/api/runs'
@@ -12,13 +12,13 @@ import LocalCheckList from '@/components/result/LocalCheckList.vue'
 import RailSummary from '@/components/result/RailSummary.vue'
 import RequirementList from '@/components/result/RequirementList.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
-import ZoneHeader from '@/components/ui/ZoneHeader.vue'
+import SiZone from '@/components/ui/SiZone.vue'
 import { CARRY_LABELS, CATEGORY_OPTIONS, HANDLING_OPTIONS, toOptions } from '@/utils/labels'
 import { motionMs, useFx } from '@/utils/motion'
 
 /**
- * 问题栏（V31-U3 3.4～3.6，澄明 8.4 ③）：顶部页签“意见 / 追问”与模型徽标；等级分段控件带计数；
- * “本机计算 · 结果确定”在上、可折叠（zone = 'local' 为展开），下面是“AI 建议 · 请核实”的问题卡片，最后是可折叠的逐条结论。
+ * 问题栏（V31-U3 3.4～3.6，澄明 8.4 ③；二版 6.8 两个地带）：顶部页签“意见 / 追问”与模型徽标；
+ * 青色地带“本机计算 · 结果确定”在上、可折叠（zone = 'local' 为展开）；紫色地带“AI 建议 · 请核实”在下，第一行是等级与处理状态筛选，然后是问题卡片与可折叠的逐条结论。
  */
 export type Zone = 'ai' | 'local' | 'req'
 const props = defineProps<{
@@ -181,30 +181,31 @@ watch(() => props.selectedId, async (id) => {
     </template>
     <div v-if="runLoading" class="loading"><el-skeleton :rows="6" animated /></div>
     <div v-else ref="aiEl" class="zone">
-      <div v-if="!localOnly && run && run.status !== 'failed'" class="sev-switch"><SiSegmented v-model="severity" :options="severityOptions" ariaLabel="按等级筛选" /></div>
       <RailSummary :run="run" :local-only="localOnly" @ai-notice="emit('aiNotice')" />
 
-      <!-- 本机计算 · 结果确定：在上，可折叠 -->
-      <section class="calc" :class="{ open: localOpen }">
-        <button v-if="!localOnly" type="button" class="calc-h" :aria-expanded="localOpen" @click="toggleLocal">
-          <span class="calc-ic"><Calculator :size="14" :stroke-width="1.75" /></span><b>本机计算 · 结果确定</b>
-          <span class="calc-n num">{{ localCount ?? '—' }} 项</span>
-          <component :is="localOpen ? ChevronDown : ChevronRight" class="calc-chev" :size="15" :stroke-width="1.75" />
-        </button>
+      <!-- 二版 6.8：上面青色“本机计算 · 结果确定”，下面紫色“AI 建议 · 请核实”；计数放进地带标题 -->
+      <SiZone kind="local" :count="localCount ?? undefined">
+        <template v-if="!localOnly" #actions>
+          <button type="button" class="z-btn" :aria-expanded="localOpen" @click="toggleLocal">{{ localOpen ? '收起' : '展开' }}<component :is="localOpen ? ChevronDown : ChevronRight" :size="14" :stroke-width="1.75" /></button>
+        </template>
         <div v-show="localOpen" class="calc-body"><LocalCheckList :loader="localLoader" :load-key="taskId" @count="localCount = $event" @select="emit('localSelect', $event)" /></div>
-      </section>
+      </SiZone>
 
       <template v-if="!localOnly">
         <EmptyState v-if="run?.status === 'failed'" title="未取得有效 AI 结论" description="模型审核未完成，请重新审核。本机计算的结果在上方。" />
-        <template v-else-if="run">
-          <div v-if="delta" class="carry-switch" role="group" aria-label="按本轮状态筛选">
-            <template v-for="(c, i) in carryCounts" :key="c.value"><span v-if="i" class="dot" aria-hidden="true">·</span>
-              <button type="button" class="carry-btn" :class="[`cb-${c.value}`, { on: carry === c.value }]" :aria-pressed="carry === c.value" @click="pickCarry(c.value)">{{ c.label }} <b class="num">{{ c.n }}</b></button></template>
+        <SiZone v-else-if="run" kind="ai" :count="live.length">
+          <template #actions><span class="z-note">按严重程度排列</span></template>
+          <div class="z-rows">
+            <div class="sev-switch"><SiSegmented v-model="severity" :options="severityOptions" ariaLabel="按等级筛选" /></div>
+            <div v-if="delta" class="carry-switch" role="group" aria-label="按本轮状态筛选">
+              <template v-for="(c, i) in carryCounts" :key="c.value"><span v-if="i" class="dot" aria-hidden="true">·</span>
+                <button type="button" class="carry-btn" :class="[`cb-${c.value}`, { on: carry === c.value }]" :aria-pressed="carry === c.value" @click="pickCarry(c.value)">{{ c.label }} <b class="num">{{ c.n }}</b></button></template>
+            </div>
+            <div class="filter-row">
+              <SiSegmented v-model="handling" :options="handlingCounts" size="small" ariaLabel="按处理状态筛选" />
+              <el-select aria-label="类别" v-model="category" clearable placeholder="类别" size="small" class="filter"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
+            </div>
           </div>
-          <ZoneHeader kind="ai" :count="live.length">
-            <el-select aria-label="类别" v-model="category" clearable placeholder="类别" size="small" class="filter"><el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" /></el-select>
-          </ZoneHeader>
-          <div class="handling-switch"><SiSegmented v-model="handling" :options="handlingCounts" size="small" ariaLabel="按处理状态筛选" /></div>
           <TransitionGroup name="si-list" tag="div" class="cards" :appear="stagger">
             <FindingCard v-for="(f, i) in live" :key="f.id" :data-finding="f.id" :finding="f" :no="no(f)" :selected="f.id === selectedId" :ask-enabled="askEnabled" :discuss-enabled="discussEnabled"
               :style="stagger && i < 8 ? { transitionDelay: `${i * 45}ms` } : undefined"
@@ -220,7 +221,7 @@ watch(() => props.selectedId, async (id) => {
                 @select="emit('select', $event)" @updated="emit('updated', $event)" @handled="onHandled" @ask="emit('ask', $event)" @discuss="emit('discuss', $event)" />
             </div>
           </section>
-          <EmptyState v-if="!live.length && !resolved.length" :icon="ListChecks"
+          <EmptyState v-if="!live.length && !resolved.length" :icon="ListChecks" compact
             :title="run.findings.length ? '没有符合筛选条件的问题' : '本次没有列出问题条目'"
             :description="run.findings.length ? '调整上方的等级、类别或处理状态筛选后再看。' : '结果由 AI 生成，仅供参考，请以人工复核为准。'" />
           <p v-if="visible.length" class="keys hint">快捷键：<kbd>↑</kbd><kbd>↓</kbd> 切换<span v-if="live.length"> · <kbd>A</kbd> 采纳 · <kbd>I</kbd> 忽略</span></p>
@@ -232,7 +233,7 @@ watch(() => props.selectedId, async (id) => {
             <p v-if="reqOpen && run.coverage?.delta" class="hint req-note">增量复审沿用第 {{ run.coverage.delta.base_run_no }} 轮的逐条结论，只更新涉及变化的要求</p>
             <RequirementList v-if="reqOpen" :items="run.requirement_results" :ask-enabled="askEnabled" @ask="emit('ask', $event)" />
           </section>
-        </template>
+        </SiZone>
       </template>
     </div>
   </aside>
@@ -250,21 +251,26 @@ watch(() => props.selectedId, async (id) => {
 .ai-tag svg { color: var(--si-ai); }
 .alert { flex: none; margin: 12px 16px 0; width: auto; }
 .loading { padding: 16px; }
-.zone { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.zone { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.zone > .si-zone + .si-zone { margin-top: 0; }
 .sev-switch :deep(.si-segmented) { display: flex; width: 100%; }
 .sev-switch :deep(.si-segmented button) { flex: 1; }
-.calc { border: 1px solid var(--si-hair-faint); border-radius: var(--si-radius-md); background: var(--si-card-2); }
 .calc-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 0; background: none; color: var(--si-ink-1); font: var(--si-font-label); text-align: left; cursor: pointer; }
 .calc-h:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; border-radius: var(--si-radius-md); }
-.calc-ic { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--si-blue-tint); color: var(--si-brand-2); }
 .calc-n { margin-left: auto; color: var(--si-ink-3); font: var(--si-font-caption); }
 .calc-chev { color: var(--si-ink-4); }
-.calc-body { padding: 0 12px 10px; }
+.calc-body :deep(.local-list), .calc-body { min-width: 0; }
+.z-btn { display: inline-flex; align-items: center; gap: 2px; height: 26px; padding: 0 8px; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-blue-ink); font: var(--si-font-label-sm); cursor: pointer; }
+.z-btn:hover { background: var(--si-surface-1); }
+.z-btn:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
+.z-note { color: var(--si-ink-3); font: var(--si-font-caption); }
+.z-rows { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.filter-row { display: flex; align-items: center; gap: 8px; }
+.filter-row :deep(.si-segmented) { flex: 1; min-width: 0; display: flex; }
+.filter-row :deep(.si-segmented button) { flex: 1; }
 .req { border-top: 1px solid var(--si-hair-faint); padding-top: 4px; }
 .req .calc-h { padding: 8px 0; }
-.filter { width: 104px; }
-.handling-switch :deep(.si-segmented) { display: flex; width: 100%; }
-.handling-switch :deep(.si-segmented button) { flex: 1; }
+.filter { flex: none; width: 96px; }
 .keys { margin: 4px 0 0; }
 .keys kbd { margin: 0 2px; padding: 0 5px; border: 1px solid var(--si-hair-strong); border-radius: 4px; background: var(--si-surface-2); font: var(--si-font-code-sm); }
 .carry-switch { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }

@@ -155,7 +155,7 @@ const findings = computed<Finding[]>(() => (run.value?.findings ?? []).filter(f 
   && (!fHandling.value || f.handling_status === fHandling.value)))
 const noOf = (id: string) => String((run.value?.findings.findIndex(f => f.id === id) ?? -1) + 1).padStart(2, '0')
 const annotations = computed<CanvasAnnotation[]>(() => findings.value.filter(f => f.locs.length)
-  .map(f => ({ id: f.id, no: noOf(f.id), severity: f.severity, loc: f.locs[0]!, excerpt: f.quote_excerpt })))
+  .map(f => ({ id: f.id, no: noOf(f.id), severity: f.severity, loc: f.locs[0]!, excerpt: f.quote_excerpt, title: f.title })))
 const localLocs = computed(() => localOnly.value || zone.value === 'local' ? localItems.value.flatMap(l => l.locs) : [])
 
 const canvas = ref<InstanceType<typeof ResultCanvas>>()
@@ -302,7 +302,7 @@ onMounted(() => {
       <SiNotice v-if="annotationNotice" type="warning" closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
       <div :ref="bindSplit" class="split">
         <div class="canvas-col">
-          <ResultCanvas ref="canvas" :task="task" :note="run ? run.user_note : task.user_note" :annotations="annotations" :local-locs="localLocs"
+          <ResultCanvas ref="canvas" :restore-key="run && task.policy === 'ai' && ['completed', 'partial'].includes(run.status) ? run.id : undefined" :task="task" :note="run ? run.user_note : task.user_note" :annotations="annotations" :local-locs="localLocs"
             :selected-finding-id="selectedId" :raw-highlight="rawHighlight" :ask-enabled="askEnabled"
             @select="onCanvasSelect" @ask="ask" />
         </div>

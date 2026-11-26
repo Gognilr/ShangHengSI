@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Check, X } from '@lucide/vue'
+import { Check, TriangleAlert, X } from '@lucide/vue'
 import { useFx } from '@/utils/motion'
 import { barStations, currentName, isLocalTrip, miniStations, segmentsOf, tripAria, tripTitle, type Station, type Trip } from '@/utils/trip'
 
@@ -120,7 +120,7 @@ watch(() => [props.trip.mod, props.trip.at] as const, async ([mod, at], old) => 
   </span>
 
   <!-- 工具条：完成后收成徽标 -->
-  <span v-else-if="done" class="si-trip-done" role="status">
+  <span v-else-if="done || trip.state === 'partial'" class="si-trip-done" :class="{ partial: !done }" role="status">
     <svg class="tdl" :viewBox="`-2 -2 ${all.w + 4} 16`" aria-hidden="true">
       <template v-for="(s, i) in all.segs" :key="'s' + i">
         <template v-if="s.zone === 'r'"><path class="seg m" :d="`M${s.x1} 6H${s.xm}`" /><path class="seg l" :d="`M${s.xm} 6H${s.x2}`" /></template>
@@ -128,7 +128,7 @@ watch(() => [props.trip.mod, props.trip.at] as const, async ([mod, at], old) => 
       </template>
       <circle v-for="(d, i) in all.dots" :key="'d' + i" class="dot done" :class="d.zone" :cx="d.cx" cy="6" r="4" />
     </svg>
-    <Check :size="14" :stroke-width="2.25" aria-hidden="true" />已完成<template v-if="took"> · 用时 {{ took }}</template><template v-if="local"> · 全程本机</template>
+    <Check v-if="done" :size="14" :stroke-width="2.25" aria-hidden="true" /><TriangleAlert v-else :size="14" :stroke-width="2.25" aria-hidden="true" />{{ done ? '已完成' : '部分完成' }}<template v-if="took"> · 用时 {{ took }}</template><template v-if="local"> · 全程本机</template>
   </span>
   <ol v-else ref="ol" class="si-trip-bar" :aria-label="label">
     <li v-for="(s, i) in bar" :key="i" class="ts" :class="[s.zone, s.state === 'run' ? 'cur' : s.state, { partial: s.partial, now: i === trip.at && s.state !== 'todo', [`pass-${barSegs[i - 1]?.zone}`]: i > 0 && barSegs[i - 1]?.pass }]" :aria-current="i === trip.at ? 'step' : undefined">
@@ -206,6 +206,7 @@ html:is([data-fx="lite"], [data-fx="off"]) .ts.cur .d::after { inset: -4px; anim
 
 /* ---- 完成徽标 ---- */
 .si-trip-done { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 8px; border-radius: var(--si-radius-badge); background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-label-sm); white-space: nowrap; animation: trip-pop var(--si-d3) var(--si-ease-spring) both; }
+.si-trip-done.partial { background: var(--si-warn-soft); color: var(--si-warn-ink); }
 .si-trip-done .tdl { width: 44px; height: 10px; overflow: visible; }
 @keyframes trip-pop { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
 </style>

@@ -23,6 +23,8 @@ const props = defineProps<{
   rawLoader?: (taskId: string, fileId: string) => Promise<Blob>
   /** 工作台会话：有上一稿的文件可“对比上一稿”（V35-D-02） */
   diffLoader?: (fileId: string, prevId: string) => Promise<DiffResult>
+  /** 还原扫描（二版第五节）：轮次 id，第一次打开播放一次 */
+  restoreKey?: string
 }>()
 const emit = defineEmits<{ select: [findingId: string]; ask: [prefill: string] }>()
 
@@ -49,7 +51,7 @@ defineExpose({
   <ConfirmCanvas ref="canvas" mode="result" :task-id="task.id" :files="task.files" :items="info.items" :suspects="info.suspects"
     :note="note" :selected-suspect-id="null" locked :protected-count="protectedCount"
     :annotations="annotations" :local-locs="localLocs" :selected-finding-id="selectedFindingId"
-    :ai-view="task.policy === 'ai'" :ask-enabled="askEnabled" :raw-highlight="rawHighlight" :node-loader="nodeLoader" :raw-loader="rawLoader" :diff-loader="diffLoader"
+    :ai-view="task.policy === 'ai'" :ask-enabled="askEnabled" :raw-highlight="rawHighlight" :node-loader="nodeLoader" :raw-loader="rawLoader" :diff-loader="diffLoader" :restore-key="restoreKey"
     @select="emit('select', $event)" @ask="emit('ask', $event)">
     <template v-if="$slots.bar" #bar><slot name="bar" /></template>
   </ConfirmCanvas>

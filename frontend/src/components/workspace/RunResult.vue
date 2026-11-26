@@ -90,7 +90,7 @@ const findings = computed<Finding[]>(() => (run.value?.findings ?? []).filter(f 
   && (!fHandling.value || f.handling_status === fHandling.value)))
 const noOf = (id: string) => String((run.value?.findings.findIndex(f => f.id === id) ?? -1) + 1).padStart(2, '0')
 const annotations = computed<CanvasAnnotation[]>(() => findings.value.filter(f => f.locs.length && f.carry !== 'resolved')
-  .map(f => ({ id: f.id, no: noOf(f.id), severity: f.severity, loc: f.locs[0]!, excerpt: f.quote_excerpt })))
+  .map(f => ({ id: f.id, no: noOf(f.id), severity: f.severity, loc: f.locs[0]!, excerpt: f.quote_excerpt, title: f.title })))
 const localLocs = computed(() => zone.value === 'local' ? localItems.value.flatMap(l => l.locs) : [])
 
 watch(() => props.selectedRun, id => { void loadRun(id) }, { immediate: true })
@@ -313,7 +313,7 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
     <SiNotice v-if="annotationNotice" type="warning" closable :title="annotationNotice" class="annotation-notice" @close="annotationNotice = ''" />
     <div :ref="bindSplit" class="split">
       <div class="canvas-col">
-        <ResultCanvas ref="canvas" :key="`${session.id}:${session.material_version}`" :task="task" :note="run ? run.user_note : null" :annotations="annotations" :local-locs="localLocs"
+        <ResultCanvas ref="canvas" :key="`${session.id}:${session.material_version}`" :restore-key="run && session.policy === 'ai' && ['completed', 'partial'].includes(run.status) ? run.id : undefined" :task="task" :note="run ? run.user_note : null" :annotations="annotations" :local-locs="localLocs"
           :selected-finding-id="selectedId" :raw-highlight="rawHighlight" :ask-enabled="false"
           :node-loader="nodeLoader" :raw-loader="rawLoader" :diff-loader="diffLoader"
           @select="onCanvasSelect">

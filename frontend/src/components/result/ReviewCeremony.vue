@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { Calculator, Check, Sparkle, Sparkles } from '@lucide/vue'
+import { Check, Sparkle, Sparkles } from '@lucide/vue'
+import SiZone from '@/components/ui/SiZone.vue'
 import type { Finding, RunDetail } from '@/api/runs'
 import { assistantApi } from '@/api/assistant'
 import ResultCanvas from '@/components/result/ResultCanvas.vue'
@@ -25,7 +26,7 @@ const selected = ref('')
 const canvas = ref<InstanceType<typeof ResultCanvas>>()
 const findings = computed(() => props.run?.findings ?? [])
 const annotations = computed<CanvasAnnotation[]>(() => findings.value.filter(f => f.locs.length).map((f, i) =>
-  ({ id: f.id, no: String(i + 1).padStart(2, '0'), severity: f.severity, loc: f.locs[0]!, excerpt: f.quote_excerpt })))
+  ({ id: f.id, no: String(i + 1).padStart(2, '0'), severity: f.severity, loc: f.locs[0]!, excerpt: f.quote_excerpt, title: f.title })))
 function selectFinding(f: Finding) {
   selected.value = f.id
   if (f.locs[0]) void canvas.value?.locate(f.locs[0], f.id)
@@ -88,7 +89,9 @@ const doneCount = computed(() => findings.value.length)
         <span class="ai-tag"><Sparkle :size="13" :stroke-width="2" />{{ modelName }}</span>
       </div>
       <div class="rail-scroll">
-        <div class="calc-fold"><span class="calc-ic"><Calculator :size="14" :stroke-width="1.75" /></span><b>本机计算 · 结果确定</b><span class="ok-badge"><Check :size="12" :stroke-width="2.5" />本机已算完</span></div>
+        <!-- 二版 6.8：审核中，青色本机地带已算完；紫色地带里写模型正在审阅 -->
+        <SiZone kind="local"><template #actions><span class="ok-badge"><Check :size="12" :stroke-width="2.5" />本机已算完</span></template></SiZone>
+        <SiZone kind="ai" :count="doneCount || undefined">
         <div class="ai-wait" :class="{ queued }">
           <div class="ai-orb"><Sparkles :size="22" :stroke-width="1.75" /></div>
           <b>{{ queued ? '排队等待模型' : reviewDone ? '模型已返回，正在本机还原' : '模型正在逐条审阅遮住后的文字' }}</b>
@@ -102,6 +105,7 @@ const doneCount = computed(() => findings.value.length)
           </article>
         </TransitionGroup>
         <div v-if="!reviewDone" class="sk-card" aria-hidden="true"><span class="sk" style="width: 30%" /><span class="sk" style="width: 85%; height: 16px" /><span class="sk" style="width: 65%" /></div>
+        </SiZone>
       </div>
       <div class="rail-foot">
         <span class="not-sent" :title="notSent">不发送：{{ notSent }}</span>
@@ -129,10 +133,11 @@ const doneCount = computed(() => findings.value.length)
 .ai-tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: auto; padding: 0 10px; border-radius: var(--si-radius-badge); background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
 .ai-tag svg { color: var(--si-ai); }
 .rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
-.calc-fold { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--si-radius-md); background: var(--si-card-2); border: 1px solid var(--si-hair-faint); font: var(--si-font-label); }
-.calc-ic { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--si-blue-tint); color: var(--si-brand-2); }
 .ok-badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; margin-left: auto; padding: 0 8px; border-radius: var(--si-radius-badge); background: var(--si-ok-soft); color: var(--si-ok-ink); font: var(--si-font-badge); }
-.ai-wait { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 12px 18px; border-radius: var(--si-radius-card); background: var(--si-ai-soft); text-align: center; }
+.ai-wait { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 12px 18px; text-align: center; }
+.si-zone .cards, .si-zone .sk-card { margin-top: 10px; }
+.si-zone :deep(.zh) { margin-bottom: 0; }
+.z-ai :deep(.zh) { margin-bottom: 8px; }
 .ai-wait b { color: var(--si-ai-ink); font: var(--si-font-label); font-weight: 600; }
 .ai-orb { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 4px; border-radius: 50%; background: var(--si-surface-1); color: var(--si-ai); box-shadow: 0 0 0 6px color-mix(in srgb, var(--si-ai) 12%, transparent); animation: cer-breathe 2.4s var(--si-ease-io) infinite; }
 .ai-wait.queued .ai-orb { color: var(--si-ink-3); animation: none; }
