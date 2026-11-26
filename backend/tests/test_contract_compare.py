@@ -58,6 +58,7 @@ def test_contract_compare_literal_differences_and_no_task(alice, files_dir, db_s
     assert [n['text'] for n in result['baseline']][:2] == [old_move, old_notice]
     assert moved['baseline_loc'] == result['baseline'][0]['loc'] and moved['revised_loc'] == result['revised'][4]['loc']
     assert deletion['revised_loc'] is None and deletion['anchor'] in {n['loc'] for n in result['revised']}
+    assert result['pairs'][moved['baseline_loc']] == moved['revised_loc']
 
     punctuation = client.post(URL, headers=headers, files=_pair(_word(['货到签收。']), _word(['货到签收'])))
     [only_change] = punctuation.json()['changes']

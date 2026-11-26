@@ -1192,5 +1192,5 @@ td.d-chg { margin-left: 0; padding-left: 8px; }
 :deep(.rs-c) { align-self: center; padding: 0 6px; border-radius: var(--si-radius-tag); background: var(--si-cap-bg); color: var(--si-cap-ink); font-family: var(--si-font-mono); font-size: .86em; line-height: 1.6; animation: rs-out 420ms var(--si-ease-out) var(--d, 0ms) both; }
 :deep(.rs-r) { animation: rs-in 420ms var(--si-ease-out) calc(var(--d, 0ms) + 50ms) both; }
 @keyframes rs-out { to { transform: rotateX(90deg); opacity: 0; } }
-@keyframes rs-in { from { transform: rotateX(-90deg); opacity: 0; background: color-mix(in srgb, var(--si-brand-soft) 60%, transparent); } }
+@keyframes rs-in { from { transform: rotateX(-90deg); opacity: 0; background: color-mix(in srgb, var(--si-blue-tint) 60%, transparent); } }
 </style>

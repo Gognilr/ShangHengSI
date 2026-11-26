@@ -140,7 +140,7 @@ function open(row: HistoryItem) {
 .pile { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 32px; align-items: center; padding: 30px 32px 26px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); cursor: pointer; transition: box-shadow var(--si-d3) var(--si-ease-out), border-color var(--si-d3) var(--si-ease-out); }
 .pile:hover { box-shadow: var(--si-shadow-2); }
 .pile:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
-.pile.dragging { border-color: var(--si-brand-line); box-shadow: 0 0 0 4px var(--si-brand-soft), var(--si-shadow-2); }
+.pile.dragging { border-color: var(--si-brand-line); box-shadow: 0 0 0 4px var(--si-blue-tint), var(--si-shadow-2); }
 .pile.busy { cursor: progress; }
 .pile-obj { height: 170px; }
 .pile h2 { margin: 0; color: var(--si-ink-1); font: var(--si-font-h2); font-size: calc(22px * var(--si-fs)); line-height: 1.4; }

@@ -46,7 +46,8 @@ def compare_contracts(baseline: UploadFile, revised: UploadFile) -> dict:
     new, new_converted = _read(revised, '修改稿', 2, max_bytes)
     old_locations = {node.loc: _location(node) for node in old}
     new_locations = {node.loc: _location(node) for node in new}
-    changes = compare(old, new, mode='none', literal=True)['changes']
+    result = compare(old, new, mode='none', literal=True, with_map=True)
+    changes = result['changes']
     # 两稿正文只回给上传者本人的浏览器画缝线（V36-F-04），不落库、不缓存（接口 no-store）
     return {
         'changes': [{
@@ -59,5 +60,7 @@ def compare_contracts(baseline: UploadFile, revised: UploadFile) -> dict:
         } for change in changes],
         'baseline': [{'loc': node.loc, 'kind': node.kind, 'text': node.text} for node in old],
         'revised': [{'loc': node.loc, 'kind': node.kind, 'text': node.text} for node in new],
+        # 基准稿位置 → 修改稿位置（未变、修改、位置调整的段落），用来给新增段落在基准稿一侧找落点
+        'pairs': result['map'],
         'converted': old_converted or new_converted,
     }
