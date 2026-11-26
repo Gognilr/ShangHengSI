@@ -159,7 +159,7 @@ const tripAria = STOPS.map((s, i) => `第 ${i + 1} 站 ${s.title}`).join('，')
       <section class="brand-area" aria-label="商衡SI">
         <div class="si-glow" aria-hidden="true"><i /><i /><i /></div>
         <div class="brand-copy">
-          <SiLogo :px="96" mark-only intro class="brand-mark" />
+          <SiLogo size="hero" intro class="brand-mark" />
           <h2>商务文件的安全初审助手</h2>
           <p class="brand-description">原件留在本机，真实名称遮住后才交给模型，结果回来在本机还原。</p>
           <!-- 衡线标志的横线伸出纸边，延长成这条往返线：标志开场后 0.6 秒开始走 -->
@@ -240,7 +240,10 @@ const tripAria = STOPS.map((s, i) => `第 ${i + 1} 站 ${s.title}`).join('，')
 /* 品牌区：深色底，氛围光只在这里（澄明 8.1） */
 .brand-area { min-width: 0; box-sizing: border-box; position: relative; display: flex; flex-direction: column; justify-content: center; padding: 64px clamp(40px, 6vw, 120px) 96px; overflow: hidden; background: var(--si-island-bg); color: var(--si-island-ink); }
 .brand-copy, footer { position: relative; }
-.brand-mark { margin-bottom: 4px; }
+/* 标志 96 加字标“商衡SI”：深色品牌区里字标用浅色，SI 用衡青 */
+.brand-copy .brand-mark { flex-direction: row; align-items: center; gap: 20px; margin-bottom: 4px; }
+.brand-mark :deep(.wordmark) { color: var(--si-island-ink); }
+.brand-mark :deep(.wordmark em) { color: var(--si-brand-2); }
 h2 { font: var(--si-font-display); margin: 32px 0 16px; color: var(--si-island-ink); }
 .brand-description { margin: 0; max-width: 560px; font: var(--si-font-reading); font-size: calc(16px * var(--si-fs)); color: color-mix(in srgb, var(--si-island-ink) 70%, transparent); }
 footer { position: absolute; bottom: 28px; left: clamp(40px, 6vw, 120px); right: 32px; display: flex; gap: 16px; font: var(--si-font-caption); color: color-mix(in srgb, var(--si-island-ink) 45%, transparent); }
