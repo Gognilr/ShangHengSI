@@ -119,7 +119,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
     </div>
     <el-dialog v-model="dialog" :title="editing ? '编辑范本设置' : '上传公司范本'" width="640px" :close-on-click-modal="!saving">
       <el-alert v-if="formError" :title="formError" type="error" :closable="false" class="gap" />
-      <el-form label-position="top">
+      <el-form label-position="left" label-width="140px">
         <el-form-item label="范本名称"><el-input v-model="form.name" maxlength="100" show-word-limit /></el-form-item>
         <el-form-item label="适用文件类型"><el-select v-model="form.doc_types" multiple placeholder="请选择文件类型"><el-option v-for="o in toOptions(DOC_TYPE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" /></el-select></el-form-item>
         <el-form-item label="适用立场"><el-select v-model="form.stances" multiple placeholder="请选择立场"><el-option v-for="o in toOptions(STANCE_OPTIONS)" :key="o.value" :label="o.label" :value="o.value" /></el-select></el-form-item>
@@ -134,7 +134,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
           <h2>{{ viewing.name }}</h2><p class="hint">更新时间：{{ formatDateTime(viewing.updated_at) }} · {{ viewing.clause_count }} 条</p>
           <el-collapse><el-collapse-item v-for="clause in viewing.clauses" :key="clause.id" :name="clause.id" :title="`${clause.seq}. ${clause.title}`">
             <pre class="plain">{{ clause.text }}</pre>
-            <el-form label-position="top">
+            <el-form label-position="left" label-width="140px">
               <el-form-item label="标准立场"><el-input v-model="clause.stance" type="textarea" maxlength="300" show-word-limit /></el-form-item>
               <el-form-item label="可接受范围"><el-input v-model="clause.acceptable" type="textarea" maxlength="300" show-word-limit /></el-form-item>
               <el-form-item label="需上报的情形"><el-input v-model="clause.escalate" type="textarea" maxlength="300" show-word-limit /></el-form-item>

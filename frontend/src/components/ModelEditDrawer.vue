@@ -97,7 +97,7 @@ async function save() {
       <el-alert :title="tests.connection.ok ? '连接测试：成功' : `连接测试：${tests.connection.message}`" :type="tests.connection.ok ? 'success' : 'error'" :closable="false" show-icon />
       <el-alert :title="tests.structured.ok ? '结构化输出测试：成功' : `结构化输出测试：${tests.structured.message}`" :type="tests.structured.ok ? 'success' : 'warning'" :closable="false" show-icon />
     </div>
-    <el-form ref="formRef" :model="form" :rules="rules" label-position="top" :disabled="saving" @submit.prevent="save">
+    <el-form ref="formRef" :model="form" :rules="rules" label-position="left" label-width="140px" :disabled="saving" @submit.prevent="save">
       <el-form-item label="显示名称" prop="display_name"><el-input v-model="form.display_name" maxlength="40" show-word-limit /></el-form-item>
       <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="2" maxlength="200" show-word-limit /></el-form-item>
       <div class="purposes"><el-checkbox v-model="form.for_review">可用于文件审核</el-checkbox><el-checkbox v-model="form.for_assist">可用于智能助手</el-checkbox></div>
@@ -126,7 +126,7 @@ async function save() {
 </template>
 
 <style scoped>
-.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.fields { display: block; }
 .fields :deep(.el-input-number) { width: 100%; }
 .fields :deep(.el-form-item) { min-width: 0; }
 .purposes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }

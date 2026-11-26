@@ -119,7 +119,7 @@ async function operate(row: ModelRow, action: 'test' | 'review' | 'assist' | 'en
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon class="gap"><el-button link type="primary" @click="load">重新加载</el-button></el-alert>
     <div v-loading="loading" class="panel">
       <SettingSection title="全部模型" description="个人每日调用上限跨模型合计，按上海时间每天统计；按实际调用模型的次数计，一份长文档分段审核或格式重试会计多次。费用在每次调用时按内置价格表计算，区分缓存命中、输入长度分档与时段；DeepSeek、Kimi 每小时用账户余额核对一次。" stacked>
-        <el-form label-position="top" @submit.prevent>
+        <el-form label-position="left" label-width="140px" @submit.prevent>
           <el-form-item label="个人每日调用上限"><div class="cap-controls"><el-input-number v-model="dailyCap" :min="0" :precision="0" :disabled="!data" aria-label="个人每日调用上限" @blur="capSave.flush()" /><span class="hint">0 表示不限</span><SaveState :status="capSave.status.value" :message="capSave.message.value" @retry="capSave.retry()" /></div></el-form-item>
         </el-form>
         <div v-if="data" class="usage-stats">
@@ -160,7 +160,7 @@ async function operate(row: ModelRow, action: 'test' | 'review' | 'assist' | 'en
         <article v-for="p in freePresets" :key="p.id" class="model-card preset-card">
           <h2>{{ p.name }}</h2>
           <p class="description">{{ p.description }}</p>
-          <el-form label-position="top" size="small" @submit.prevent="addPreset(p)">
+          <el-form label-position="left" label-width="84px" size="small" @submit.prevent="addPreset(p)">
             <el-form-item label="API 密钥"><el-input v-model="presetForm[p.id]!.api_key" type="password" show-password autocomplete="new-password" maxlength="500" :disabled="presetForm[p.id]!.busy" :aria-label="`${p.name} API 密钥`" /></el-form-item>
             <el-form-item label="模型名称"><el-input v-model="presetForm[p.id]!.model_name" maxlength="100" :disabled="presetForm[p.id]!.busy" /></el-form-item>
             <el-form-item label="接口地址"><el-input v-model="presetForm[p.id]!.base_url" maxlength="500" :disabled="presetForm[p.id]!.busy" /></el-form-item>

@@ -129,7 +129,7 @@ async function remove(row: RoleRow) {
     </div>
 
     <el-dialog v-model="open" :title="editing ? '编辑角色' : '新建角色'" width="560px" :close-on-click-modal="false">
-      <el-form label-position="top" @submit.prevent="save">
+      <el-form label-position="left" label-width="140px" @submit.prevent="save">
         <el-form-item label="名称"><el-input v-model="form.name" maxlength="30" show-word-limit /></el-form-item>
         <el-checkbox-group v-model="form.permissions">
           <div v-for="g in groups" :key="g.name" class="group">

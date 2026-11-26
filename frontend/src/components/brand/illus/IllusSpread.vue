@@ -1,0 +1,14 @@
+<script setup lang="ts">
+import './illus.css'
+// 翻译 · 对开两页：左页原文、右页译文，行与行用细线对齐，悬停时右页的行滑到对齐；共 16 个元素
+</script>
+
+<template>
+  <svg viewBox="0 0 220 120" fill="none" class="il il-spread" aria-hidden="true">
+  <path d="M110 22C92 16 60 16 34 20V102C60 98 92 98 110 104Z" class="il-p"/>
+  <path d="M110 22C128 16 160 16 186 20V102C160 98 128 98 110 104Z" class="il-p"/>
+  <path d="M46 38h48M46 52h38M46 66h50M46 80h30" class="il-l"/>
+  <path d="M104 52h12M104 66h12" class="il-k"/>
+  <g class="il-shift"><path d="M124 38h46M124 52h40" class="il-a"/><path d="M124 66h34M124 80h44" class="il-l"/></g>
+</svg>
+</template>

@@ -229,7 +229,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
     </div>
     <el-dialog v-model="uploadOpen" :title="kind === 'catalog' ? '导入法规目录' : '导入法规全文'" width="640px" :close-on-click-modal="!saving">
       <el-alert v-if="uploadError" :title="uploadError" type="error" :closable="false" class="gap" />
-      <el-form label-position="top">
+      <el-form label-position="left" label-width="140px">
         <el-form-item v-if="kind === 'catalog'" label="目录时效性（必选）"><el-select v-model="status" placeholder="请选择时效性"><el-option v-for="o in toOptions(LAW_STATUS)" :key="o.value" :value="o.value" :label="o.label" /></el-select></el-form-item>
         <p class="hint">{{ kind === 'catalog' ? '请在官网按时效性筛选后导出，一次只导入一种时效性的文件，可多选文件' : '建议先导入常用的有效法律和司法解释全文；全部有效法规可在测试虚拟机评测后分批导入。ZIP 内文件名为法规标题_公布日期YYYYMMDD.docx 或 .doc。' }}</p>
         <el-upload v-model:file-list="files" :auto-upload="false" :multiple="kind === 'catalog'" :limit="kind === 'catalog' ? 10 : 1" :accept="kind === 'catalog' ? '.xls,.xlsx' : '.zip'" :disabled="saving" @exceed="ElMessage.error('文件数量超过本次导入限制')"><el-button>选择文件</el-button></el-upload>

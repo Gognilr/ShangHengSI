@@ -37,7 +37,7 @@ function submit() {
 
 <template>
   <el-dialog v-model="open" :title="title" width="560px" :close-on-click-modal="!busy" append-to-body>
-    <el-form label-position="top" @submit.prevent="submit">
+    <el-form label-position="left" label-width="140px" @submit.prevent="submit">
       <el-form-item label="项目名称"><el-input v-model="form.title" maxlength="255" placeholder="例如：2026 年空压机采购" :disabled="locked" @keyup.enter="submit" /></el-form-item>
       <div class="pair">
         <el-form-item label="分类" required>

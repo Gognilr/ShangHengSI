@@ -1,0 +1,44 @@
+/*
+ * 物件插画（澄明二版第三节第 3 条）：线条、模块色、单个不超过 30 个元素、悬停才动，只动 transform 与 opacity。
+ * 颜色只用变量：--il 模块色、--il-soft 模块浅底、--il-faint 模块细线；容器 .si-illus 按模块类给出这三个值。
+ * 悬停的触发者：外层加 .si-hov（整张卡片悬停时插画动）；.on 让插画停在悬停态，.live 让声纹一直起伏。
+ */
+.si-illus { display: block; }
+.si-illus .il { display: block; width: 100%; height: 100%; overflow: visible; }
+.si-illus.m-review, .si-illus.m-compare { --il: var(--si-m-review); --il-soft: var(--si-m-review-soft); --il-faint: color-mix(in srgb, var(--si-m-review) 38%, var(--si-surface-1)); }
+.si-illus.m-bid { --il: var(--si-m-bid); --il-soft: var(--si-m-bid-soft); --il-faint: color-mix(in srgb, var(--si-m-bid) 38%, var(--si-surface-1)); }
+.si-illus.m-meet { --il: var(--si-m-meet); --il-soft: var(--si-m-meet-soft); --il-faint: color-mix(in srgb, var(--si-m-meet) 38%, var(--si-surface-1)); }
+.si-illus.m-trans { --il: var(--si-m-trans); --il-soft: var(--si-m-trans-soft); --il-faint: color-mix(in srgb, var(--si-m-trans) 38%, var(--si-surface-1)); }
+
+.il-p { fill: var(--si-paper); stroke: var(--il); stroke-width: 1.5; stroke-linejoin: round; }
+.il-p2 { fill: var(--si-paper); stroke: var(--il-faint); stroke-width: 1.5; }
+.il-l { stroke: var(--il-faint); stroke-width: 3; stroke-linecap: round; }
+.il-a { stroke: var(--il); stroke-width: 3; stroke-linecap: round; }
+.il-c { fill: var(--il-soft); stroke: var(--il); stroke-width: 1.2; }
+.il-t { stroke: var(--il); stroke-width: 2; stroke-linecap: round; }
+.il-r { stroke: var(--si-danger); stroke-width: 3; stroke-linecap: round; }
+.il-rb { fill: var(--si-danger); }
+.il-rt { fill: var(--si-white); font: 600 9px var(--si-font-mono); }
+.il-rw { fill: var(--si-warn); opacity: .3; }
+.il-rn { fill: var(--il); opacity: .26; }
+.il-hw { stroke: var(--si-warn); stroke-width: 3; stroke-linecap: round; }
+.il-hn { stroke: var(--il); stroke-width: 3; stroke-linecap: round; }
+.il-k { stroke: var(--il); stroke-width: 1.2; stroke-dasharray: 2 3; }
+.il-band { fill: var(--il-soft); stroke: var(--il-faint); stroke-width: 1.2; }
+.il-b { fill: var(--il); }
+.il-bf { fill: var(--il-faint); }
+
+.il-top, .il-bad, .il-shift, .il-bars rect, .il-rib { transition: transform var(--si-d3) var(--si-ease-out), opacity var(--si-d3) var(--si-ease-out); }
+.il-tail { transform-box: fill-box; transform-origin: left; transform: scaleX(0); transition: transform var(--si-d3) var(--si-ease-out); }
+.il-bars rect { transform-box: fill-box; transform-origin: center; }
+.il-rib { transform-box: fill-box; transform-origin: left; transform: scaleX(.15); opacity: .2; }
+.il-shift { transform: translateX(10px); }
+:is(.si-hov:hover, .si-illus.on) .il-top { transform: translate(-3px, -9px) rotate(-2deg); }
+:is(.si-hov:hover, .si-illus.on) .il-tail { transform: scaleX(1); }
+:is(.si-hov:hover, .si-illus.on) .il-bad { transform: translateY(-8px); }
+:is(.si-hov:hover, .si-illus.on) .il-rib { transform: scaleX(1); opacity: 1; }
+:is(.si-hov:hover, .si-illus.on) .il-shift { transform: none; }
+:is(.si-hov:hover, .si-illus.live) .il-bars rect { animation: si-il-wave .9s var(--si-ease-io) both; animation-delay: calc(var(--n) * 50ms); }
+.si-illus.live .il-bars rect { animation-iteration-count: infinite; }
+@keyframes si-il-wave { 50% { transform: scaleY(1.6); } }
+html[data-fx="lite"] .si-illus.live .il-bars rect { animation: none; }
