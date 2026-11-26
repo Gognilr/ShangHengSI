@@ -1,6 +1,7 @@
 """系统管理员多模型管理；审计只记录修改字段，不含密钥。"""
 import re
-from decimal import Decimal
+from datetime import timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal, Optional
 from zoneinfo import ZoneInfo
 
@@ -18,7 +19,7 @@ from app.db.base import utcnow
 from app.db.models import AssistantMessage, LlmCall, LlmModel, ReviewRun, User
 from app.db.session import get_db
 from app.llm import balance, gateway, pricing
-from app.llm.usage import monthly_usage
+from app.llm.usage import month_start, monthly_usage
 from app.security import crypto
 from app.security.permissions import require
 from app.security.errors import AppError, NotFoundError
@@ -193,6 +194,71 @@ def _save(db, row, body, request, admin):
 def list_models(db: DbSession = Depends(get_db)):
     return {"items": [_read(db, row) for row in db.scalars(select(LlmModel).order_by(LlmModel.sort_order, LlmModel.id))],
             "user_daily_cap": get_setting(db, "model.user_daily_cap"), "usage": _usage(db)}
+
+
+# 出口地图本机地带：只报本地模型是否在运行，不报任何任务内容（V36-F-02）
+_LOCAL_GROUPS = (("ner", ("ner",)), ("embedding", ("embedding",)),
+                 ("asr", ("asr-vad", "asr", "asr-punc", "asr-seg", "asr-spk")), ("mt", ("mt",)))
+
+
+def _local_status():
+    from app.local_models import inspect_models
+    try:
+        rows = {row["id"]: row["status"] for row in inspect_models(cached=True)}
+    except Exception:  # noqa: BLE001 清单读不到时整块显示“不可用”，不影响模型管理
+        rows = {}
+    out = []
+    for key, ids in _LOCAL_GROUPS:
+        states = [rows.get(i, "unavailable") for i in ids]
+        status = "disabled" if "disabled" in states else "unavailable" if "unavailable" in states else "enabled"
+        out.append({"id": key, "status": status})
+    return out
+
+
+@router.get("/models/overview")
+def overview(db: DbSession = Depends(get_db)):
+    """设置 · 模型的出口地图与仪表行（6.20）：本月 llm_calls 按模型、上海时区自然日分组的计数与金额。
+
+    只给计数、耗时与金额，不给任务名、用户名或任何内容。费用口径同 monthly_usage（V351Q-21）。
+    """
+    tz = get_settings().tz or "Asia/Shanghai"
+    start = month_start()
+    now = utcnow().astimezone(ZoneInfo(tz))
+    base = [LlmCall.created_at >= start]
+    sent, err, blocked = (LlmCall.status == s for s in ("sent", "error", "blocked"))
+    day = func.extract("day", func.timezone(tz, LlmCall.created_at)).label("day")
+    daily = db.execute(select(LlmCall.model_id, day, func.count().filter(sent), func.count().filter(err),
+                              func.count().filter(blocked)).where(*base).group_by(LlmCall.model_id, day)).all()
+    per_model = db.execute(select(
+        LlmCall.model_id, func.count().filter(sent), func.count().filter(err), func.count().filter(blocked),
+        func.percentile_cont(0.5).within_group(LlmCall.duration_ms).filter(sent),
+        func.sum(LlmCall.cost).filter(sent), func.count().filter(sent, LlmCall.cost.is_(None)),
+    ).where(*base).group_by(LlmCall.model_id)).all()
+    purposes = db.execute(select(LlmCall.model_id, LlmCall.purpose, func.count()).where(*base, sent)
+                          .group_by(LlmCall.model_id, LlmCall.purpose)).all()
+
+    def money(v):
+        return str((v or Decimal("0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+    models: dict = {}
+    for mid, calls, failed, blk, median, cost, unpriced in per_model:
+        models[mid] = {"id": mid, "calls": calls, "failed": failed, "blocked": blk,
+                       "median_ms": None if median is None else int(median), "cost": cost or Decimal("0"),
+                       "unpriced": unpriced, "purposes": {}, "daily": []}
+    for mid, d, calls, failed, blk in daily:
+        models[mid]["daily"].append({"day": int(d), "calls": calls, "failed": failed, "blocked": blk})
+    for mid, purpose, n in purposes:
+        models[mid]["purposes"][purpose] = n
+    total = {k: sum(m[k] for m in models.values()) for k in ("calls", "failed", "blocked", "unpriced")}
+    total["cost"] = money(sum((m["cost"] for m in models.values()), Decimal("0")))
+    for m in models.values():
+        m["cost"] = money(m["cost"])
+        m["daily"].sort(key=lambda r: r["day"])
+    days = (now.replace(month=now.month % 12 + 1, year=now.year + now.month // 12, day=1) - timedelta(days=1)).day
+    return {"month": now.strftime("%Y-%m"), "today": now.day, "days": days,
+            "user_daily_cap": get_setting(db, "model.user_daily_cap") or 0, "total": total,
+            # 已删除模型的测试记录 model_id 为空，只计入合计
+            "models": [m for mid, m in models.items() if mid is not None], "local": _local_status()}
 
 
 @router.post("/models", status_code=201)

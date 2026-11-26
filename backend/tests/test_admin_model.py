@@ -98,3 +98,35 @@ def test_delete_used_default_and_disable_guards(admin, db_sessionmaker):
     assert client.post(BASE + "/1/enabled", json={"enabled": False}, headers=headers).json()["code"] == "DEFAULT_IN_USE"
     response = client.put(API_PREFIX + "/admin/settings/user-daily-cap", json={"value": 7}, headers=headers)
     assert response.status_code == 200 and client.get(BASE).json()["user_daily_cap"] == 7
+
+
+def test_overview_groups_by_shanghai_day_counts_blocks_and_hides_content(admin, db_sessionmaker, env, make_user, login):
+    """V36-F-02：出口地图聚合按模型与上海自然日分组，拦截单独计数，不带任务名、用户名或内容。"""
+    from datetime import timedelta
+    from decimal import Decimal
+    from app.llm.usage import month_start
+    client, _ = admin
+    start = month_start()
+    def call(at, status="sent", purpose="review", cost="0.50", ms=800):
+        return LlmCall(model_id=1, purpose=purpose, model_name="mock-model", status=status, task_title="秘密合同",
+                       request_text="正文" if status != "blocked" else None, cost=Decimal(cost) if cost else None,
+                       duration_ms=ms, created_at=at)
+    with db_sessionmaker() as db:
+        db.add_all([call(start + timedelta(minutes=30)),               # 上海 1 日 00:30，UTC 仍是上月最后一天
+                    call(start + timedelta(minutes=40), purpose="assist", cost=None, ms=1200),
+                    call(start + timedelta(hours=30), status="blocked", cost=None, ms=None),
+                    call(start + timedelta(hours=30), status="error", cost=None, ms=None),
+                    call(start - timedelta(minutes=1))])                # 上月，不计
+        db.commit()
+    resp = client.get(BASE + "/overview")
+    assert resp.status_code == 200
+    data = resp.json()
+    m = next(x for x in data["models"] if x["id"] == 1)
+    assert (m["calls"], m["failed"], m["blocked"], m["unpriced"], m["cost"]) == (2, 1, 1, 1, "0.50")
+    assert m["median_ms"] == 1000 and m["purposes"] == {"review": 1, "assist": 1}
+    assert [(d["day"], d["calls"], d["blocked"]) for d in m["daily"]] == [(1, 2, 0), (2, 0, 1)]
+    assert data["total"]["blocked"] == 1 and len(data["local"]) == 4
+    assert "秘密合同" not in resp.text and "正文" not in resp.text and "user" not in json.dumps(data["models"])
+    make_user("overview_reader")
+    reader, _ = login("overview_reader")
+    assert reader.get(BASE + "/overview").status_code == 403
