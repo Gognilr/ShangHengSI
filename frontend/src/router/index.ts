@@ -44,8 +44,8 @@ export const router = createRouter({
         // 旧地址 /assistant?mode=review 与只有审核权限的人的工作台首页都转到文件审核首页（V34-A-03）
         { path: 'assistant', name: 'assistant', component: Assistant, meta: { perms: ['use.assistant', 'use.review'] },
           beforeEnter: to => {
-            const auth = useAuthStore()  // 须改密期间只停留在首页（见下方守卫），不转走
-            return !auth.mustChangePassword && (to.query.mode === 'review' || !auth.can('use.assistant')) ? { path: '/review', replace: true } : true
+            const auth = useAuthStore()
+            return to.query.mode === 'review' || !auth.can('use.assistant') ? { path: '/review', replace: true } : true
           } },
         { path: 'assistant/:sessionId', name: 'assistant-session', component: Assistant, meta: { perms: ['use.assistant', 'use.review'] } },
         // 会议纪要与翻译是侧栏独立菜单（V31-U5），底层沿用助手会话
@@ -86,7 +86,8 @@ router.beforeEach(async (to) => {
   if (!auth.loaded) await auth.load()
 
   if (to.meta.public) {
-    // 已登录再访问登录页，回到首页
+    // 已登录但须改密：停在登录卡第二步（澄明二版 6.3）；其余已登录的人回到首页
+    if (auth.isLoggedIn && auth.mustChangePassword) return to.name === 'login' ? true : { name: 'login' }
     return auth.isLoggedIn ? { path: homeFor(auth.can) } : true
   }
 
@@ -95,9 +96,9 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } }
   }
 
-  // 强制改密：只能停留在首页，由主布局弹出不可关闭的改密对话框（不再按权限跳转）
+  // 须改密（首次登录或被重置）：送回登录卡第二步，改完后回到原来要去的页面
   if (auth.mustChangePassword) {
-    return to.path === HOME_PATH ? true : { path: HOME_PATH }
+    return { name: 'login', query: to.fullPath === '/' || to.fullPath === HOME_PATH ? {} : { redirect: to.fullPath } }
   }
 
   // 非管理员不能进入管理员页面

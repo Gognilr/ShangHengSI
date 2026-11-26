@@ -29,8 +29,6 @@ const router = useRouter()
 
 const appearanceOpen = ref(false)
 const pwdOpen = ref(false)
-// 须改密期间对话框始终打开且不可关闭
-const pwdVisible = computed(() => pwdOpen.value || auth.mustChangePassword)
 
 // 侧栏宽度与收起状态只存本浏览器（V3-A 〇.2）；澄明 8.0：默认 248，收起为 68，窗口窄于 1280 时自动收起
 const SIDEBAR_MIN = 220, SIDEBAR_MAX = 320, SIDEBAR_DEFAULT = 248, SIDEBAR_FOLDED = 68
@@ -94,7 +92,7 @@ const roleLine = computed(() => (auth.user?.roles ?? []).join('、'))
 // 菜单右侧的数字只数等你处理的（澄明 8.0）：进页面、换页和每分钟（页面在前台时）各取一次
 const waiting = ref<Waiting | null>(null)
 async function refreshWaiting() {
-  if (!auth.user || auth.mustChangePassword) { waiting.value = null; return }
+  if (!auth.user) { waiting.value = null; return }
   try { waiting.value = await assistantApi.waiting() } catch { /* 数字取不到时不显示，不打断页面 */ }
 }
 function badge(m: Menu) { const n = m.key === 'history' || m.key === 'compare' ? 0 : waiting.value?.[m.key] ?? 0; return n > 99 ? '99+' : n || '' }
@@ -104,12 +102,12 @@ watch(() => route.path, () => void refreshWaiting())
 onMounted(() => { waitTimer = window.setInterval(() => { if (!document.hidden) void refreshWaiting() }, 60000) })
 onBeforeUnmount(() => window.clearInterval(waitTimer))
 
-// 全局搜索：侧栏按钮或 Ctrl+K（Mac 为 ⌘K）打开；须改密期间不响应
+// 全局搜索：侧栏按钮或 Ctrl+K（Mac 为 ⌘K）打开
 const searchOpen = ref(false)
 function onShortcut(event: KeyboardEvent) {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'k') return
   event.preventDefault()
-  if (!auth.mustChangePassword) searchOpen.value = true
+  searchOpen.value = true
 }
 onMounted(() => window.addEventListener('keydown', onShortcut))
 onBeforeUnmount(() => window.removeEventListener('keydown', onShortcut))
@@ -124,10 +122,10 @@ async function createSession() {
   finally { creating.value = false }
 }
 
-// 换了登录用户或改完初始密码后重新取近期会话
-watch(() => [auth.user?.id, auth.mustChangePassword] as const, ([id, mustChange]) => {
+// 换了登录用户后重新取近期会话（须改密的会话停在登录卡第二步，进不了主框架，见路由守卫）
+watch(() => auth.user?.id, id => {
   sessions.clear()
-  if (id && !mustChange && auth.can('use.assistant', 'use.review')) void sessions.refresh()
+  if (id && auth.can('use.assistant', 'use.review')) void sessions.refresh()
   void refreshWaiting()
 }, { immediate: true })
 
@@ -159,7 +157,7 @@ async function onCommand(cmd: string) {
 
       <div v-if="auth.can('use.assistant')" class="block">
         <el-tooltip content="新建会话" placement="right" :disabled="!collapsed">
-          <button type="button" class="new-session" :disabled="creating || auth.mustChangePassword" :aria-label="collapsed ? '新建会话' : undefined" @click="createSession">
+          <button type="button" class="new-session" :disabled="creating" :aria-label="collapsed ? '新建会话' : undefined" @click="createSession">
             <Plus :size="18" :stroke-width="2" /><span class="label">新建会话</span>
           </button>
         </el-tooltip>
@@ -177,14 +175,14 @@ async function onCommand(cmd: string) {
           </el-tooltip>
         </template>
         <el-tooltip content="搜索（Ctrl K）" placement="right" :disabled="!collapsed">
-          <button type="button" class="item" :disabled="auth.mustChangePassword" :aria-label="collapsed ? '搜索' : undefined" aria-keyshortcuts="Control+K" @click="searchOpen = true">
+          <button type="button" class="item" :aria-label="collapsed ? '搜索' : undefined" aria-keyshortcuts="Control+K" @click="searchOpen = true">
             <Search class="icon" :size="18" :stroke-width="1.75" /><span class="label">搜索</span><kbd class="label si-kbd">Ctrl K</kbd>
           </button>
         </el-tooltip>
       </nav>
 
       <div class="recent">
-        <SidebarSessions v-if="!collapsed && !auth.mustChangePassword && auth.can('use.assistant', 'use.review')" />
+        <SidebarSessions v-if="!collapsed && auth.can('use.assistant', 'use.review')" />
       </div>
 
       <div class="account">
@@ -219,10 +217,9 @@ async function onCommand(cmd: string) {
     </aside>
 
     <div class="content">
-      <LoginNotice v-if="!auth.mustChangePassword" />
+      <LoginNotice />
       <main class="main">
-        <p v-if="auth.mustChangePassword" class="must-change">请先修改初始密码</p>
-        <router-view v-else v-slot="{ Component }">
+        <router-view v-slot="{ Component }">
           <Transition name="si-page"><component :is="Component" /></Transition>
         </router-view>
       </main>
@@ -230,11 +227,7 @@ async function onCommand(cmd: string) {
 
     <GlobalSearch v-model="searchOpen" @new-session="createSession" />
     <AppearanceDialog v-model="appearanceOpen" />
-    <ChangePasswordDialog
-      :model-value="pwdVisible"
-      :forced="auth.mustChangePassword"
-      @update:model-value="pwdOpen = $event"
-    />
+    <ChangePasswordDialog v-model="pwdOpen" />
   </div>
 </template>
 
@@ -334,7 +327,6 @@ html[data-fx="full"] .item:hover .icon { transform: scale(1.08); }
 .content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .main { flex: 1; min-height: 0; overflow-y: auto; background: var(--si-bg-canvas); }
 .main :deep(.confirm-actions) { bottom: 0; }
-.must-change { margin: 0; padding: 48px 32px; text-align: center; color: var(--si-ink-3); }
 </style>
 
 <style>

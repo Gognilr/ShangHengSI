@@ -6,10 +6,10 @@ import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 
 /**
- * 修改密码对话框（SPEC 6.6、open_questions Q-06）。
- * forced 为 true（首次登录或密码被重置）时不能关闭，也没有取消按钮。
+ * 主动修改密码对话框（SPEC 6.6、open_questions Q-06）：账号菜单与设置 · 个人里打开。
+ * 首次登录或被重置后的改密在登录卡第二步（澄明二版 6.3），不走这里。
  */
-const props = defineProps<{ modelValue: boolean; forced?: boolean }>()
+const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 
 const auth = useAuthStore()
@@ -38,7 +38,7 @@ function validateConfirm(_rule: unknown, value: string, callback: (e?: Error) =>
 }
 
 const rules = computed<FormRules>(() => ({
-  oldPassword: props.forced ? [] : [{ required: true, message: '请输入原密码', trigger: 'blur' }],
+  oldPassword: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
   newPassword: [{ required: true, validator: validateNew, trigger: 'blur' }],
   confirm: [{ required: true, validator: validateConfirm, trigger: 'blur' }],
 }))
@@ -79,19 +79,10 @@ async function submit() {
     title="修改密码"
     width="480px"
     :close-on-click-modal="false"
-    :close-on-press-escape="!forced"
-    :show-close="!forced"
-    destroy-on-close
+        destroy-on-close
   >
-    <SiNotice
-      v-if="forced"
-      type="warning"
-      :closable="false"
-      title="首次登录或密码已被重置，请先修改密码后再使用系统。"
-      class="tip"
-    />
     <el-form ref="formRef" :model="form" :rules="rules" label-width="96px" @submit.prevent="submit">
-      <el-form-item v-if="!forced" label="原密码" prop="oldPassword">
+      <el-form-item label="原密码" prop="oldPassword">
         <el-input v-model="form.oldPassword" type="password" show-password autocomplete="current-password" />
       </el-form-item>
       <el-form-item label="新密码" prop="newPassword">
@@ -109,14 +100,8 @@ async function submit() {
       <SiNotice v-if="errorText" type="error" :closable="false" :title="errorText" />
     </el-form>
     <template #footer>
-      <el-button v-if="!forced" @click="visible = false">取消</el-button>
+      <el-button @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="submitting" @click="submit">确定</el-button>
     </template>
   </el-dialog>
 </template>
-
-<style scoped>
-.tip {
-  margin-bottom: 16px;
-}
-</style>

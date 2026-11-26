@@ -41,9 +41,11 @@ setHttpHooks({
       })
     }
   },
-  // 服务端要求先改密：重新读取登录状态，主布局会弹出改密对话框
+  // 服务端要求先改密（例如管理员刚重置了密码）：重新读取登录状态，送回登录卡第二步，改完回到当前页面
   onPasswordChangeRequired: () => {
-    void auth.refresh().then(() => router.replace({ path: HOME_PATH }))
+    const current = router.currentRoute.value
+    void auth.refresh().then(() => current.name === 'login' ? undefined
+      : router.replace({ name: 'login', query: current.fullPath === '/' || current.fullPath === HOME_PATH ? {} : { redirect: current.fullPath } }))
   },
 })
 
