@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
-import { ArrowLeft, ChevronLeft, ChevronRight, FileText, GitCompareArrows } from '@lucide/vue'
+// 合同对比（V35-D-07）：侧栏“文件审查”下的独立页面 /compare（V351-E-01），文件和结果只在本页，不留历史
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { ChevronLeft, ChevronRight, FileText, GitCompareArrows } from '@lucide/vue'
 import { compareContracts, type ContractChange, type ContractComparison } from '@/api/contractCompare'
 import { ApiError } from '@/api/http'
 import EmptyState from '@/components/EmptyState.vue'
 import { contractChangeLabel } from '@/utils/labels'
 
-const emit = defineEmits<{ close: [] }>()
 const firstFile = ref<HTMLButtonElement>()
 const resultTitle = ref<HTMLElement>()
 const list = ref<HTMLElement>()
@@ -30,7 +30,6 @@ const evidence = computed(() => selected.value ? [
     segs: selected.value.segs.filter(seg => seg.t !== 'del'), empty: '修改稿已删除此处' },
 ] : [])
 
-onMounted(() => firstFile.value?.focus())
 onBeforeUnmount(() => request?.abort())
 
 function pick(event: Event, side: 'baseline' | 'revised') {
@@ -98,7 +97,6 @@ function move(offset: number) {
   <section class="compare-workspace" :class="{ setup: !result }">
     <header class="tool-head">
       <div>
-        <el-button link class="back" @click="emit('close')"><ArrowLeft :size="16" :stroke-width="1.75" />返回文件审核</el-button>
         <h1 class="entry-title">合同对比</h1>
         <p v-if="!result" class="entry-lede">在内网核对两份 Word，文件和结果用完即清。</p>
       </div>
@@ -177,7 +175,6 @@ function move(offset: number) {
 .compare-workspace { max-width: 1344px; margin: 0 auto; padding: 40px 28px 64px; box-sizing: border-box; }
 .compare-workspace.setup { max-width: 960px; }
 .tool-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
-.tool-head .back { margin-bottom: 12px; }
 .tool-head .entry-lede { margin-bottom: 0; }
 .busy { color: var(--si-blue-ink); font: var(--si-font-body); }
 .input-panel { padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }

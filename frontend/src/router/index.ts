@@ -32,6 +32,8 @@ export const router = createRouter({
         { path: '', redirect: HOME_PATH },
         // 文件审核首页（V34-A-03）：拖入文件即建会话，进入会话的审核视图
         { path: 'review', name: 'review', component: () => import('@/views/Review.vue'), meta: { perms: ['use.review'] } },
+        // 合同对比（V351-E-01）：侧栏“文件审查”下的一项，原在文件审核首页右上角
+        { path: 'compare', name: 'contract-compare', component: () => import('@/views/ContractCompare.vue'), meta: { perms: ['use.review'] } },
         { path: 'bid', name: 'bid', component: () => import('@/views/Bid.vue'), meta: { perms: ['use.bid'] } },
         { path: 'bid/:id', name: 'bid-project', component: () => import('@/views/BidProject.vue'), meta: { perms: ['use.bid'] } },
         // 带 task 的是未完成的旧审核任务（草稿、待确认、审核中），仍用原页面接着做（V32Q-08）；不带的回到文件审核首页

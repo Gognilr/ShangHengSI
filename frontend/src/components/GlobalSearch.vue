@@ -2,7 +2,7 @@
 import { SETTING_TABS } from '@/utils/permissions'
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
-import { AlertCircle, ClockFading, CornerDownLeft, FilePlus, FileSearch, FileStack, House, Languages, MessageSquare, MessageSquarePlus, Mic, Search, Settings } from '@lucide/vue'
+import { AlertCircle, ClockFading, CornerDownLeft, FilePlus, FileSearch, FileStack, GitCompareArrows, House, Languages, MessageSquare, MessageSquarePlus, Mic, Search, Settings } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { isReviewSession, sessionLocation } from '@/api/assistant'
 import { searchApi, type SearchResult } from '@/api/search'
@@ -33,7 +33,8 @@ const staticEntries = computed<Entry[]>(() => {
     ...(auth.can('use.bid') ? [{ key: 'a-bid', group: '操作', label: '新建标书初审', icon: FileStack, mod: 'bid', run: () => void router.push({ path: '/bid', query: { new: '1' } }) }] : []),
     ...(auth.can('use.assistant') ? [{ key: 'a-session', group: '操作', label: '新建会话', icon: MessageSquarePlus, run: () => emit('new-session') },
       { key: 'p-assistant', group: '页面', label: '工作台', icon: House, run: go('/assistant') }] : []),
-    ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '文件审核', icon: FileSearch, mod: 'review', run: go('/review') }] : []),
+    ...(auth.can('use.review') ? [{ key: 'p-review', group: '页面', label: '文件审核', icon: FileSearch, mod: 'review', run: go('/review') },
+      { key: 'p-compare', group: '页面', label: '合同对比', icon: GitCompareArrows, mod: 'review', run: go('/compare') }] : []),
     ...(auth.can('use.bid') ? [{ key: 'p-bid', group: '页面', label: '标书初审', icon: FileStack, mod: 'bid', run: go('/bid') }] : []),
     ...(auth.can('use.meeting') ? [{ key: 'p-meeting', group: '页面', label: '会议纪要', icon: Mic, mod: 'meet', run: go('/meeting') }] : []),
     { key: 'p-translate', group: '页面', label: '翻译', icon: Languages, mod: 'trans', run: go('/translate') },

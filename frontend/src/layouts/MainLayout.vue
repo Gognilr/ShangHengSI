@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ClockFading, FileSearch, FileStack, House, KeyRound, Languages, LogOut, Mic, Moon, Palette, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, Sun } from '@lucide/vue'
+import { ClockFading, FileSearch, FileStack, GitCompareArrows, House, KeyRound, Languages, LogOut, Mic, Moon, Palette, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, Sun } from '@lucide/vue'
 import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
@@ -52,12 +52,14 @@ onBeforeUnmount(() => narrowQuery.removeEventListener('change', onNarrow))
 
 // 菜单按权限点显示（V31-U5F-07）；翻译可只用本地翻译、历史记录是本人的记录，人人可见
 // V3.4 一事一入口（V34Q-01）：工作台｜文件审查｜工具｜历史记录、搜索；分组名在收起的窄栏里变为一条短线
+// 合同对比（V351-E-01）放在文件审核之后，同属审核权限与审核模块色；它不留记录，没有等待数
 // 澄明 8.0：选中时图标变成模块色（mc），工作台、历史记录、搜索没有模块色，用衡青
-type Menu = { key: keyof Waiting | 'history'; to: string; label: string; icon: typeof House; mc?: string; perms?: Perm[] }
+type Menu = { key: keyof Waiting | 'history' | 'compare'; to: string; label: string; icon: typeof House; mc?: string; perms?: Perm[] }
 const SECTIONS: { title: string; items: Menu[] }[] = [
   { title: '', items: [{ key: 'workbench', to: '/assistant', label: '工作台', icon: House, perms: ['use.assistant'] }] },
   { title: '文件审查', items: [
     { key: 'review', to: '/review', label: '文件审核', icon: FileSearch, mc: 'review', perms: ['use.review'] },
+    { key: 'compare', to: '/compare', label: '合同对比', icon: GitCompareArrows, mc: 'review', perms: ['use.review'] },
     { key: 'bid', to: '/bid', label: '标书初审', icon: FileStack, mc: 'bid', perms: ['use.bid'] },
   ] },
   { title: '工具', items: [
@@ -72,6 +74,7 @@ const sections = computed(() => SECTIONS.map(s => ({ ...s, items: s.items.filter
 const activeMenu = computed(() => {
   const path = route.path
   if (path === '/review' || path.startsWith('/review/')) return 'review'
+  if (path === '/compare') return 'compare'
   if (path === '/bid' || path.startsWith('/bid/')) return 'bid'
   if (path.startsWith('/assistant')) {
     const sid = typeof route.params.sessionId === 'string' ? route.params.sessionId : ''
@@ -94,7 +97,7 @@ async function refreshWaiting() {
   if (!auth.user || auth.mustChangePassword) { waiting.value = null; return }
   try { waiting.value = await assistantApi.waiting() } catch { /* 数字取不到时不显示，不打断页面 */ }
 }
-function badge(m: Menu) { const n = m.key === 'history' ? 0 : waiting.value?.[m.key] ?? 0; return n > 99 ? '99+' : n || '' }
+function badge(m: Menu) { const n = m.key === 'history' || m.key === 'compare' ? 0 : waiting.value?.[m.key] ?? 0; return n > 99 ? '99+' : n || '' }
 const BADGE_TIP: Record<string, string> = { workbench: '等你确认遮住的会话', review: '等你确认遮住的文件', bid: '等你确认后发送的标书项目', meeting: '等你确认遮住的会议', translate: '等你确认遮住的译稿' }
 let waitTimer: number | undefined
 watch(() => route.path, () => void refreshWaiting())
