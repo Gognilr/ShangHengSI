@@ -4,17 +4,14 @@ sources 是本条回复可点的依据；cites 是回复正文（已还原）里
 引用登记只是本地 id 与标题，不改外发内容。
 """
 import re
-import uuid
 
-from sqlalchemy import select
-
-from app.db.models import AssistantMessage, DocNode, Finding, KbChunk, KbDoc, Task, TaskFile
+from app.db.models import AssistantMessage, Finding, KbChunk, KbDoc, Task
 from app.laws.index import canonical
 from app.redaction.restore import _LOCATION
 from app.security.crypto import decrypt_text
 from app.security.errors import NotFoundError
 
-_TAG = re.compile(r'[\[［【]\s*(KB|H)\s*(\d{1,3})\s*[\]］】]')
+_TAG = re.compile(r'[\[［【]\s*(KB)\s*(\d{1,3})\s*[\]］】]')
 _NO = r'第[零〇一二三四五六七八九十百千\d]+条(?:之[一二三四五六七八九十]+)?'
 _CITATION = re.compile(rf'《([^》\n]{{1,60}})》\s*({_NO})((?:\s*[、和及与]\s*{_NO})*)')
 _MORE = re.compile(rf'\s*[、和及与]\s*({_NO})')
@@ -62,7 +59,7 @@ def build(db, task: Task, message: AssistantMessage, content: str, locations: di
             seen.add(loc)
             sources.append({'ref': loc, 'kind': 'para', 'label': locations[loc], 'cited': True})
             cite(locations[loc], loc)
-    registered = {r['ref']: r for r in message.extras.get('refs', [])}
+    registered = {r['ref']: r for r in message.extras.get('refs', []) if r.get('kind') == 'kb'}
     used = []
     for m in _TAG.finditer(content):
         ref = f'{m[1]}{int(m[2])}'
@@ -72,14 +69,10 @@ def build(db, task: Task, message: AssistantMessage, content: str, locations: di
                 used.append(ref)
     # 引用过的在前，附带未引用的在后；前几轮带来的编号（carried）只在本条写到时列出（V33-B-02）
     for ref in used + [r for r in registered if r not in used and not registered[r].get('carried')]:
-        item = registered[ref]
-        if item['kind'] == 'kb':
-            chunk = db.get(KbChunk, item['chunk_id'])
-            doc = db.get(KbDoc, chunk.doc_id) if chunk else None
-            label = f'公司知识库 · {decrypt_text(doc.name_enc)}' if doc else '公司知识库 · 片段已删除'
-        else:
-            label = f'历史合同 · {item.get("label", "合同")}'
-        sources.append({'ref': ref, 'kind': item['kind'], 'label': label, 'cited': ref in used})
+        chunk = db.get(KbChunk, registered[ref]['chunk_id'])
+        doc = db.get(KbDoc, chunk.doc_id) if chunk else None
+        label = f'公司知识库 · {decrypt_text(doc.name_enc)}' if doc else '公司知识库 · 片段已删除'
+        sources.append({'ref': ref, 'kind': 'kb', 'label': label, 'cited': ref in used})
     laws = _laws(db, message)
     cited_laws = set()
     for m in _CITATION.finditer(content):
@@ -98,32 +91,16 @@ def build(db, task: Task, message: AssistantMessage, content: str, locations: di
 
 
 def detail(db, task: Task, message: AssistantMessage, ref: str) -> dict:
-    """依据原文：只放行本条回复登记过的 ref；历史合同必须仍是本人、原件仍在。"""
+    """依据原文：只放行本条回复登记过的 ref。"""
     missing = NotFoundError('SOURCE_NOT_FOUND', '依据不存在或已删除')
     if ref.startswith('LAW'):
         law = next((r for r in _laws(db, message) if r['ref'] == ref), None)
         if law is None:
             raise missing
-        return {'kind': 'law', 'title': f'《{law["title"]}》{law["article_no"]}', 'text': law.get('text') or '', 'link': None}
-    item = next((r for r in message.extras.get('refs', []) if r['ref'] == ref), None)
-    if item is None:
+        return {'kind': 'law', 'title': f'《{law["title"]}》{law["article_no"]}', 'text': law.get('text') or ''}
+    item = next((r for r in message.extras.get('refs', []) if r['ref'] == ref and r.get('kind') == 'kb'), None)
+    chunk = db.get(KbChunk, item['chunk_id']) if item else None
+    doc = db.get(KbDoc, chunk.doc_id) if chunk else None
+    if doc is None:
         raise missing
-    if item['kind'] == 'kb':
-        chunk = db.get(KbChunk, item['chunk_id'])
-        doc = db.get(KbDoc, chunk.doc_id) if chunk else None
-        if doc is None:
-            raise missing
-        return {'kind': 'kb', 'title': decrypt_text(doc.name_enc), 'text': decrypt_text(chunk.text_enc), 'link': None}
-    source = db.get(Task, uuid.UUID(item['task_id']))
-    if source is None or source.owner_id != task.owner_id:
-        raise missing
-    file = db.scalar(select(TaskFile).where(TaskFile.task_id == source.id, TaskFile.seq == item['file_seq']))
-    if file is None or file.original_deleted_at is not None:
-        raise missing
-    nodes = db.scalars(select(DocNode).where(DocNode.file_id == file.id, DocNode.part == 'body',
-                                             DocNode.loc.in_(item['locs'])).order_by(DocNode.ord)).all()
-    if not nodes:
-        raise missing
-    link = f'/assistant/{source.id}?mode=review' if source.kind == 'assistant' else f'/review/{source.id}'
-    return {'kind': 'history', 'title': item.get('label', '合同'), 'text': '\n'.join(decrypt_text(n.text_enc) for n in nodes),
-            'link': link}
+    return {'kind': 'kb', 'title': decrypt_text(doc.name_enc), 'text': decrypt_text(chunk.text_enc)}

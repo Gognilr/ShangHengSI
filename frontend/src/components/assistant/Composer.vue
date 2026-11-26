@@ -145,7 +145,7 @@ if (draftKey) {
   if (init) drafts.set(draftKey, text.value)
   watch(text, value => drafts.set(draftKey, value), { flush: 'sync' })
 }
-const useKb = ref(false), useHistory = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
+const useKb = ref(false), busy = ref(false), sending = ref(false), error = ref(''), open = ref(false)
 const resume = ref(false)
 let destroyed = false
 function cancelWaiting() {
@@ -159,7 +159,7 @@ function startWaiting() {
 }
 function active() { return !destroyed && props.active !== false }
 watch(() => props.active, value => { if (value === false) { cancelWaiting(); open.value = false } }, { flush: 'sync' })
-watch([text, () => props.template, modelId, target, focus, tone, language, useKb, useHistory], cancelWaiting, { flush: 'sync' })
+watch([text, () => props.template, modelId, target, focus, tone, language, useKb], cancelWaiting, { flush: 'sync' })
 onBeforeUnmount(() => { destroyed = true; cancelWaiting() })
 const omitAdvice = ref(false), blockedCode = ref('')
 const questionInput = ref<{ focus: () => void }>()
@@ -195,11 +195,11 @@ function pickModel(id: number) { modelId.value = id }
 const localOnly = computed(() => props.session?.policy === 'local_only')
 const waitingText = computed(() => !resume.value || !props.session ? '' : props.session.status === 'parsing' ? '已提交提问，文件读取并确认后继续' : props.session.status === 'awaiting_confirm' ? '确认脱敏后继续已提交的提问' : '')
 function input(): MessageInput {
-  if (props.anchor) return { model_id: modelId.value, message: text.value, template: null, params: omitAdvice.value ? { omit_finding_advice: true } : {}, use_kb: useKb.value && !!props.session?.kb_enabled, use_history: useHistory.value, finding_id: props.anchor.id }
+  if (props.anchor) return { model_id: modelId.value, message: text.value, template: null, params: omitAdvice.value ? { omit_finding_advice: true } : {}, use_kb: useKb.value && !!props.session?.kb_enabled, finding_id: props.anchor.id }
   const params: Record<string, unknown> = props.template === 'translate' ? { file_id: fileIds.value[0], target: target.value } : { file_ids: [...fileIds.value] }
   if (props.template === 'summary') params.focus = focus.value
   if (props.template === 'reply') Object.assign(params, { tone: tone.value, language: language.value })
-  return { model_id: modelId.value, message: text.value, template: props.template, params, use_kb: useKb.value && !!props.session?.kb_enabled, use_history: useHistory.value }
+  return { model_id: modelId.value, message: text.value, template: props.template, params, use_kb: useKb.value && !!props.session?.kb_enabled }
 }
 let pending: MessageInput | null = null
 async function submit() {
@@ -318,7 +318,6 @@ defineExpose({ pick, attach, cancelWaiting })
             <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="model in allowedModels" :key="model.id" :command="model.id" :class="{ 'is-current': model.id === modelId }">{{ model.display_name }}</el-dropdown-item></el-dropdown-menu></template>
           </el-dropdown>
           <button v-if="session?.kb_enabled" type="button" class="cp-btn tog" :class="{ on: useKb }" :aria-pressed="useKb" @click="useKb = !useKb"><i class="sw" />知识库</button>
-          <button type="button" class="cp-btn tog" :class="{ on: useHistory }" :aria-pressed="useHistory" @click="useHistory = !useHistory"><i class="sw" />参考历史合同</button>
           <button v-if="generating !== null" type="button" class="send stop" aria-label="停止生成" title="停止生成" @click="emit('stop', generating)"><Square :size="12" :stroke-width="2" fill="currentColor" /></button>
           <button v-else type="button" class="send" :class="{ dim: !!reason && !processing }" aria-label="发送" :title="reason || '发送（Enter）'" :disabled="(!!reason && !processing) || busy || sending" @click="submit"><Loader2 v-if="busy || sending" :size="18" :stroke-width="2" class="spin" /><ArrowUp v-else :size="18" :stroke-width="2.25" /></button>
         </div>

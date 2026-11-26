@@ -130,13 +130,13 @@ export interface Message {
   /** 按问题讨论：消息所属的审核问题（V32-B-02）；普通对话为 null */
   finding_id?: string | null
 }
-export interface MessageSource { ref: string; kind: 'para' | 'kb' | 'history' | 'law'; label: string; cited: boolean }
-export interface SourceDetail { kind: MessageSource['kind']; title: string; text: string; link: string | null }
+export interface MessageSource { ref: string; kind: 'para' | 'kb' | 'law'; label: string; cited: boolean }
+export interface SourceDetail { kind: MessageSource['kind']; title: string; text: string }
 export interface MessageInput {
   expected_material_version?: number
   model_id?: number
   message: string; template?: Template | null; params: Record<string, unknown>
-  use_kb: boolean; use_history: boolean; decisions?: ChatDecision[]
+  use_kb: boolean; decisions?: ChatDecision[]
   finding_id?: string
 }
 const base = '/assistant/sessions'

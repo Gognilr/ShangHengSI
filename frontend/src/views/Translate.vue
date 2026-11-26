@@ -152,7 +152,7 @@ if (canCloud.value) void (async () => { try { models.value = (await modelsApi.li
 async function start() {
   if (!session.value || !file.value || !engine.value || switchingEngine.value || sending.value || (engine.value === 'local' ? !localAvailable.value : !canCloud.value)) return
   sending.value = true; error.value = ''
-  const body = { model_id: engine.value === 'cloud' ? modelId.value : undefined, message: '', template: 'translate' as const, params: { file_id: file.value.id, target: target.value, engine: engine.value }, use_kb: false, use_history: false }
+  const body = { model_id: engine.value === 'cloud' ? modelId.value : undefined, message: '', template: 'translate' as const, params: { file_id: file.value.id, target: target.value, engine: engine.value }, use_kb: false }
   try {
     const preview = await assistantApi.preview(session.value.id, body)
     if (preview.suspects.length) { error.value = '本次请求中有需要确认的内容，请在智能助手中打开继续'; return }

@@ -14,7 +14,7 @@ from app.redaction import engine
 from app.redaction.engine import load_redaction_map
 from app.security.errors import AppError
 
-VERSION = "assistant-2026.11-10"
+VERSION = "assistant-2026.11-11"
 _PATH = Path(__file__).resolve().parents[2] / "resources/prompts/assistant.md"
 _TYPES = {"contract": "合同", "quotation": "报价单", "order": "订单", "inquiry": "询价单", "letter": "函件"}
 _LABELS = {"NAME": "名称", "PROPN": "专有名词", "ORG": "企业", "PER": "人名", "PRJ": "项目", "REF": "编号", "TEL": "电话", "EMAIL": "邮箱",
@@ -39,7 +39,7 @@ def system_prompt() -> str:
 def fixed_prompt_text() -> str:
     from app.assistant.templates import RESOURCE
     return "\n".join((system_prompt(), RESOURCE.read_text(encoding="utf-8"), *_TYPES.values(), *_LABELS.values(),
-                      "【文件：资料，录音逐字稿，录音时长】【翻译分段】【公司知识库片段】【我的历史合同条款】",
+                      "【文件：资料，录音逐字稿，录音时长】【翻译分段】【公司知识库片段】",
                       "【模板参数】目标语言：侧重点：语气：回复语言：【代号说明】【本地校验摘要】【待定位项目】",
                       "我方 敏感信息 <document></document>", DATE_SHIFT_NOTE, *_discuss_text()))
 
@@ -99,11 +99,9 @@ def build_messages(db: Session, task: Task, user_message: AssistantMessage, *, n
             .order_by(AssistantMessage.id.desc()).limit(10)))))
     refs = references or {}
     reference_blocks = []
-    # 编号由 history.prepare 按会话固定分配（V33-B-02）
+    # 编号由 refs.prepare 按会话固定分配（V33-B-02）
     for index, item in enumerate(refs.get('kb', []), 1):
         reference_blocks.append(f'【公司知识库片段】[{item.get("ref", f"KB{index}")}] <document>{item["text"]}</document>')
-    for index, item in enumerate(refs.get('history', []), 1):
-        reference_blocks.append(f'【我的历史合同条款】[{item.get("ref", f"H{index}")}] {item["label"]}：<document>{item["text"]}</document>')
     if reference_blocks:
         block += '\n' + '\n'.join(reference_blocks)
     used = set(NEUTRAL.findall("\n".join([block, user_message.content_redacted] + [m.content_redacted for m in history])))

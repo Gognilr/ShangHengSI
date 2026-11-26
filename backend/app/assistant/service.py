@@ -576,7 +576,7 @@ def send(db: Session, task: Task, user: User, body) -> dict:
         params = {**params, "file_ids": [str(f.id) for f in selected_files(db, task, params)]}
     if body.template == "translate":
         params["engine"] = "cloud"
-    params.update(use_kb=body.use_kb, use_history=body.use_history)
+    params.update(use_kb=body.use_kb)
     row = AssistantMessage(task_id=task.id, role="user", content_redacted=result.text, status="done",
                            params=params, template=body.template, material_version=task.material_version,
                            finding_id=body.finding_id)

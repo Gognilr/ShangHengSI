@@ -185,13 +185,13 @@ def call_model(db: Session, *, model_id: int, purpose: str, messages: list[dict]
                user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
                task_title: str | None = None, run_id: uuid.UUID | None = None,
                json_mode: bool | None = None, timeout_s: float | None = None,
-               retry: bool = True, extra_task_ids=(), on_send=None, on_delta=None, on_content=None, on_attempt=None) -> ModelResult:
+               retry: bool = True, on_send=None, on_delta=None, on_content=None, on_attempt=None) -> ModelResult:
     """on_send：出口复检通过、即将发出时调用（审核中进度用，V31-U5F-01），不改变检查顺序。
     on_delta：给出时流式接收回复，以本次尝试累计收到的字数回调（审核中“已收到约 n 字”，V31-U5F-03）；
     上限检查、出口复检、记录与重试和非流式完全相同。"""
     return _call_config(db, cfg=load_model(db, model_id), purpose=purpose, messages=messages,
                         user_id=user_id, task_id=task_id, task_title=task_title, run_id=run_id,
-                        json_mode=json_mode, timeout_s=timeout_s, retry=retry, extra_task_ids=extra_task_ids,
+                        json_mode=json_mode, timeout_s=timeout_s, retry=retry,
                         on_send=on_send, on_delta=on_delta, on_content=on_content, on_attempt=on_attempt)
 
 
@@ -233,7 +233,6 @@ def _call_config(
     json_mode: bool | None = None,
     timeout_s: float | None = None,
     retry: bool = True,
-    extra_task_ids=(),
     on_send=None,
     on_delta=None,
     on_content=None,
@@ -263,7 +262,7 @@ def _call_config(
         raise GatewayError(reached)
 
     # 2. 出口复检
-    ctx = recheck_context(db, task_id, extra_task_ids=extra_task_ids)
+    ctx = recheck_context(db, task_id)
     reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values, terms=ctx.terms,
                       placeholders=ctx.placeholders, kept=ctx.kept)
     if reasons:
@@ -484,7 +483,7 @@ test_config.__test__ = False
 
 def stream_model(db: Session, *, model_id: int, purpose: str, messages: list[dict], on_delta,
                  user_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None,
-                 task_title: str | None = None, extra_task_ids=(), json_mode: bool = False) -> ModelResult:
+                 task_title: str | None = None, json_mode: bool = False) -> ModelResult:
     """助手 SSE 发送唯一入口：上限、整包复检、单次发送、独立记录；流式失败不重试。"""
     if purpose != "assist":
         raise ValueError("purpose")
@@ -499,7 +498,7 @@ def stream_model(db: Session, *, model_id: int, purpose: str, messages: list[dic
         raise GatewayError(reached)
     recorder = _Recorder(db, cfg.api_key, {"user_id": user_id, "task_id": task_id, "task_title": task_title,
                                           "purpose": purpose, "model_id": cfg.id, "model_name": cfg.name[:100]})
-    ctx = recheck_context(db, task_id, extra_task_ids=extra_task_ids)
+    ctx = recheck_context(db, task_id)
     reasons = recheck("\n".join(m["content"] for m in messages), real_values=ctx.real_values,
                       terms=ctx.terms, placeholders=ctx.placeholders, kept=ctx.kept)
     if reasons:

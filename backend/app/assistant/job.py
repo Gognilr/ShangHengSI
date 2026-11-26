@@ -40,7 +40,7 @@ def handle_assist(db: Session, payload: dict) -> None:
         template, params = user_row.template, user_row.params
         if user_row.finding_id:
             service._discussion_check(db, task, user_row.finding_id, params, user_row.content_redacted, model_id)
-        from app.assistant.history import prepare
+        from app.assistant.refs import prepare
         references, reference_metadata = prepare(db, task, user_row)
         row.extras = {**row.extras, **reference_metadata}
         if template == "translate":
@@ -60,8 +60,7 @@ def handle_assist(db: Session, payload: dict) -> None:
             row.status = "streaming"
             db.commit()
             outcome = gateway.call_model(db, model_id=model_id, purpose="assist", messages=messages, user_id=owner_id,
-                                         task_id=tid, task_title=title, json_mode=True, retry=False,
-                                         extra_task_ids=[uuid.UUID(item['task_id']) for item in references['history']])
+                                         task_id=tid, task_title=title, json_mode=True, retry=False)
             compare_tokens = (outcome.tokens_in, outcome.tokens_out)
             try:
                 from app.assistant.compare import normalize
@@ -116,8 +115,7 @@ def handle_assist(db: Session, payload: dict) -> None:
             if number > 1:
                 content += "\n"
             outcome = gateway.stream_model(db, model_id=model_id, purpose="assist", messages=messages, user_id=owner_id,
-                                           task_id=tid, task_title=title, on_delta=write,
-                                           extra_task_ids=[uuid.UUID(item['task_id']) for item in references['history']])
+                                           task_id=tid, task_title=title, on_delta=write)
             row = db.scalar(select(AssistantMessage).where(AssistantMessage.id == mid).with_for_update()
                             .execution_options(populate_existing=True))
             if row is None:
@@ -185,8 +183,7 @@ def _crosscheck(db: Session, task: Task, row: AssistantMessage, user_row: Assist
             row.status = "streaming"
             db.commit()
             outcome = gateway.call_model(db, model_id=model_id, purpose="assist", messages=messages, user_id=task.owner_id,
-                                         task_id=task.id, task_title=task.title, json_mode=True, retry=False,
-                                         extra_task_ids=[uuid.UUID(item['task_id']) for item in references['history']])
+                                         task_id=task.id, task_title=task.title, json_mode=True, retry=False)
             tokens = (outcome.tokens_in, outcome.tokens_out)
             mapping = engine.load_redaction_map(db, task.id)
             shift = service._shift_days(db, task)

@@ -506,16 +506,12 @@ def _compact_spans(text: str, value: str) -> list[tuple[int, int, bool]]:
     return out
 
 
-def recheck_context(db: Session, task_id: uuid.UUID | None, extra_task_ids: Iterable[uuid.UUID] = ()) -> RecheckContext:
+def recheck_context(db: Session, task_id: uuid.UUID | None) -> RecheckContext:
     """汇集对照表真实值（有任务时）与启用中的已记住名称、自定义敏感词。"""
     from app.redaction.engine import load_kept_values, load_placeholders, load_real_values  # 避免循环导入
 
     values = load_real_values(db, task_id) if task_id is not None else []
     codes = load_placeholders(db, task_id) if task_id is not None else []
-    for extra_id in dict.fromkeys(extra_task_ids):
-        if extra_id != task_id:
-            values.extend(load_real_values(db, extra_id))
-            codes.extend(load_placeholders(db, extra_id))
     rows = db.scalars(select(RedactionTerm.term_enc).where(RedactionTerm.enabled.is_(True)))
     return RecheckContext(real_values=values, terms=[crypto.decrypt_text(blob) for blob in rows], placeholders=codes,
                           kept=load_kept_values(db, task_id) if task_id is not None else [])

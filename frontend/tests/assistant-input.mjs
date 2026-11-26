@@ -8,11 +8,11 @@ const source = readFileSync(new URL('../src/components/assistant/Composer.vue', 
 const body = source.match(/function input\(\): MessageInput \{([\s\S]*?)\n\}/)?.[1]
 assert.ok(body)
 const compiled = ts.transpile(`function input() {${body}\n}`)
-const build = new Function('props', 'fileIds', 'target', 'focus', 'tone', 'language', 'text', 'useKb', 'useHistory', 'modelId', `${compiled}; return input()`)
+const build = new Function('props', 'fileIds', 'target', 'focus', 'tone', 'language', 'text', 'useKb', 'modelId', `${compiled}; return input()`)
 const make = (template, enabled = true) => build(
   { template, session: { kb_enabled: enabled } }, { value: ['file-one'] }, { value: '英文' },
   { value: '全部' }, { value: '正式' }, { value: '同来函' }, { value: '虚构来函' },
-  { value: true }, { value: false }, { value: 1 },
+  { value: true }, { value: 1 },
 )
 test('翻译按单文件契约提交 file_id 与 target', () => {
   assert.deepEqual(make('translate').params, { file_id: 'file-one', target: '英文' })
@@ -26,7 +26,6 @@ test('其余模板保持 file_ids 与各自选项', () => {
 })
 test('保留来函与参考选择，总开关关闭时不请求知识库', () => {
   assert.equal(make('translate').message, '虚构来函')
-  assert.equal(make('translate').use_history, false)
   assert.equal(make('translate').use_kb, true)
   assert.equal(make('translate', false).use_kb, false)
 })

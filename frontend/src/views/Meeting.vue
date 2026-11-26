@@ -131,7 +131,7 @@ void loadModels()
 async function generate() {
   if (!session.value || !audio.value || sending.value) return
   sending.value = true; error.value = ''
-  const body = { model_id: modelId.value, message: '', template: 'minutes' as const, params: { file_ids: [audio.value.id] }, use_kb: false, use_history: false }
+  const body = { model_id: modelId.value, message: '', template: 'minutes' as const, params: { file_ids: [audio.value.id] }, use_kb: false }
   try {
     const preview = await assistantApi.preview(session.value.id, body)
     // 纪要请求本身不含用户文字，正常不会有疑似项；有时交给助手页逐项决定

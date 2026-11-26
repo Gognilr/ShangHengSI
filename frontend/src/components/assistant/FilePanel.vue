@@ -131,7 +131,7 @@ function openConfirm() {
   const audio = pending.value.find(f => f.media?.stage === 'done')
   if (audio) transcriptFile.value = audio; else confirmOpen.value = true
 }
-// 回复依据（V321-E-13）：原文段落在只读画布中定位并闪烁高亮；知识库、历史合同、法条在“依据”抽屉中显示原文
+// 回复依据（V321-E-13）：原文段落在只读画布中定位并闪烁高亮；知识库、法条在“依据”抽屉中显示原文
 const readerOpen = ref(false), reader = ref<InstanceType<typeof ResultCanvas>>()
 const nodeLoader = (_id: string, fid: string) => assistantApi.nodes(props.session.id, fid)
 const rawLoader = (_id: string, fid: string) => assistantApi.raw(props.session.id, fid)
@@ -152,7 +152,7 @@ async function showSource(mid: number, item: MessageSource, anchor: HTMLElement)
   catch (e) { if (version === sourceVersion) sourceError.value = e instanceof ApiError ? e.message : '依据读取失败，请重试' }
   finally { if (version === sourceVersion) sourceLoading.value = false }
 }
-const sourceKind = { para: '原文', kb: '公司知识库', history: '我的历史合同', law: '法条' } as const
+const sourceKind = { para: '原文', kb: '公司知识库', law: '法条' } as const
 function closeOutside(event: Event) {
   const target = event.target as Element | null
   if (sourceOpen.value && !target?.closest('.source-pop') && !sourceAnchor.value?.contains(target)) sourceOpen.value = false
@@ -192,7 +192,7 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
     <el-popover :visible="sourceOpen" :virtual-ref="sourceAnchor" virtual-triggering placement="bottom-start" :width="380" popper-class="source-pop">
       <div v-loading="sourceLoading" class="source-body" role="dialog" :aria-label="source ? sourceKind[source.kind] : '依据'">
         <el-alert v-if="sourceError" :title="sourceError" type="error" :closable="false" />
-        <template v-else-if="source"><p class="source-kind">{{ sourceKind[source.kind] }}</p><p class="source-title">{{ source.title }}</p><p class="source-text">{{ source.text }}</p><div v-if="source.link || source.kind !== 'law'" class="source-foot"><span v-if="source.kind !== 'law'" class="hint">本机原文，发给模型的是脱敏后的文字</span><router-link v-if="source.link" :to="source.link" target="_blank" rel="noopener">打开这份合同</router-link></div></template>
+        <template v-else-if="source"><p class="source-kind">{{ sourceKind[source.kind] }}</p><p class="source-title">{{ source.title }}</p><p class="source-text">{{ source.text }}</p><div v-if="source.kind !== 'law'" class="source-foot"><span class="hint">本机原文，发给模型的是脱敏后的文字</span></div></template>
         <p v-else-if="!sourceLoading" class="hint">{{ sourceLabel }}</p>
       </div>
     </el-popover>

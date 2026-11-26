@@ -110,7 +110,6 @@ class MessageIn(BaseModel):
     params: dict = Field(default_factory=dict)
     decisions: list[MessageDecision] = Field(default_factory=list)
     use_kb: StrictBool = False
-    use_history: StrictBool = False
     expected_material_version: int | None = Field(None, ge=0)
     finding_id: uuid.UUID | None = None  # 按问题讨论：该问题必须属于本会话（V32-B-02）
 
