@@ -130,7 +130,7 @@ async function keep(x: Leak) {
 .bc-p { margin: 6px 0 0; color: var(--si-ink-2); font: var(--si-font-body); }
 .bc-sum, .note, .hint { margin: 4px 0 0; color: var(--si-ink-3); font: var(--si-font-caption); }
 .hits { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
-.hit { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--si-surface-1); }
+.hit { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--si-radius-control); background: var(--si-surface-1); }
 .hit.done { opacity: .78; }
 .hit.other { color: var(--si-ink-2); font: var(--si-font-caption); }
 .hit-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -144,6 +144,6 @@ mark { padding: 0 2px; border-radius: 3px; background: var(--si-danger-soft); co
 .ops { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .ops :deep(.el-button + .el-button) { margin-left: 0; }
 .ops .hint { max-width: 140px; text-align: right; }
-.ok-badge { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--si-ok-soft); color: var(--si-ok-ink); font: var(--si-font-badge); }
+.ok-badge { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--si-radius-badge); background: var(--si-ok-soft); color: var(--si-ok-ink); font: var(--si-font-badge); }
 .err { margin: 6px 0 0; color: var(--si-danger-ink); font: var(--si-font-caption); }
 </style>

@@ -16,7 +16,8 @@ import NotFound from '@/views/NotFound.vue'
 import { formatDateTime } from '@/utils/time'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
-import StepBar from '@/components/StepBar.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import { translateTrip } from '@/utils/trip'
 import MessageItem from '@/components/assistant/MessageItem.vue'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore()
@@ -44,17 +45,9 @@ const engineOptions = computed(() => [
   ...(canCloud.value ? [{ value: 'cloud', label: '云端 · 脱敏后发送', disabled: switchingEngine.value || running.value }] : []),
 ])
 const latest = computed(() => results.value[results.value.length - 1])
-const done = computed(() => latest.value?.status === 'done')
-const stopped = computed(() => latest.value?.status === 'stopped')
 const percent = computed(() => { const e = latest.value?.extras; return running.value && e?.segments_total ? Math.round((e.segments_done ?? 0) / e.segments_total * 100) : null })
-// 工具条步骤（澄明 8.7）：读取 → 确认遮住的内容（只有云端有这一步）→ 翻译 → 完成；翻译步骤用紫色（云端）
-const stepTitles = computed(() => [step.value === 'failed' ? '读取失败' : '读取', ...(engine.value === 'cloud' ? ['确认遮住的内容'] : []), '翻译', '完成'])
-const stepIndex = computed(() => {
-  const cloud = engine.value === 'cloud', last = stepTitles.value.length - 1
-  if (done.value) return last + 1
-  if (running.value || stopped.value) return last - 1
-  return ({ empty: 0, parsing: 0, failed: 0, choose: 1, confirm: 1, ready: cloud ? 2 : 1 })[step.value]
-})
+// 工具条（二版第二节）：本机三站或云端五站，百分比写在当前站旁；映射在 utils/trip.ts
+const trip = computed(() => translateTrip({ status: session.value?.status ?? 'active', engine: engine.value || null, translationStatus: latest.value?.status, confirmed: file.value ? !!file.value.confirmed_at || engine.value === 'local' : undefined, percent: percent.value }))
 const step = computed(() => !file.value ? 'empty' : session.value?.status === 'parsing' ? 'parsing' : session.value?.status === 'parse_failed' ? 'failed'
   : !engine.value ? 'choose' : engine.value === 'local' && file.value.parse_state === 'done' ? 'ready' : !file.value.confirmed_at ? 'confirm' : 'ready')
 
@@ -214,8 +207,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     <div class="toolbar">
       <el-button text @click="router.push('/translate')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="back-t">全部翻译</span></el-button>
       <h2 class="title" :title="file?.original_name ?? session?.title">{{ file?.original_name ?? session?.title }}</h2>
-      <StepBar class="steps" :active="stepIndex" :status="step === 'failed' ? 'error' : step === 'parsing' || running ? 'process' : 'wait'" :titles="stepTitles" :ai="engine === 'cloud' ? [stepTitles.length - 2] : []" aria-label="翻译步骤" />
-      <span v-if="percent !== null" class="pct num" role="status">{{ percent }}%</span>
+      <SiTrip class="steps" :trip="trip" scale="bar" />
       <el-dropdown trigger="click" @command="remove">
         <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
         <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除翻译记录</span></el-dropdown-item></el-dropdown-menu></template>
@@ -259,12 +251,12 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .setup .label { font: var(--si-font-label); color: var(--si-ink-2); }
 .lang { width: 150px; }
 .model { width: 170px; }
-.drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 200px; padding: 24px; border: 2px dashed var(--si-hair-strong); border-radius: 18px; background: var(--si-surface-1); text-align: center; cursor: pointer; overflow: hidden; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
+.drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 200px; padding: 24px; border: 2px dashed var(--si-hair-strong); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); text-align: center; cursor: pointer; overflow: hidden; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
 .drop:hover { border-color: var(--si-m-trans); }
 .drop:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
 .drop.dragging { border-style: solid; border-color: var(--si-m-trans); background: var(--si-m-trans-soft); transform: scale(1.01); }
 .drop.busy { cursor: progress; }
-.drop-ic { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--si-m-trans-soft); color: var(--si-m-trans); transition: transform var(--si-d3) var(--si-ease-spring); }
+.drop-ic { display: grid; place-items: center; width: 56px; height: 56px; border-radius: var(--si-radius-pop); background: var(--si-m-trans-soft); color: var(--si-m-trans); transition: transform var(--si-d3) var(--si-ease-spring); }
 .drop:hover .drop-ic, .drop.dragging .drop-ic { transform: translateY(-3px) scale(1.06); }
 .drop-title { color: var(--si-ink-1); font: var(--si-font-h3); }
 .drop .hint { margin: 0; }
@@ -274,10 +266,9 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .toolbar { display: flex; align-items: center; gap: 16px; min-height: 52px; }
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .steps { flex: none; }
-.pct { flex: none; color: var(--si-ai-ink); font: var(--si-font-label); font-weight: 600; }
 .back-t { margin-left: 6px; }
 .body { flex: 1; min-height: 0; overflow-y: auto; }
-.bar-card { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 14px; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.bar-card { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 14px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
 .bar-card .grow { flex: 1; }
 .bar-card .hint { margin: 0; }
 .fail { margin: 12px 0 0; color: var(--si-danger-ink); font: var(--si-font-caption); }
@@ -285,5 +276,5 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .reading { max-width: 1280px; margin: 16px auto 0; }
 .ready-hint { display: flex; align-items: center; gap: 6px; justify-content: center; margin: 32px 0; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
-@media (max-width: 1279px) { .steps :deep(.t) { display: none; } .steps :deep(.current .t) { display: inline; } }
+
 </style>

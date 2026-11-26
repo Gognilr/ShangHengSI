@@ -27,7 +27,8 @@ import {
 } from '@/api/tasks'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
-import StepBar from '@/components/StepBar.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import { reviewTrip, type Trip } from '@/utils/trip'
 import ReviewCeremony from '@/components/result/ReviewCeremony.vue'
 import SiIsland from '@/components/ui/SiIsland.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
@@ -411,7 +412,12 @@ async function startOver() {
 
 const parsing = computed(() => task.value?.status === 'parsing')
 const parseFailed = computed(() => task.value?.status === 'parse_failed')
-const stepStatus = computed(() => (parseFailed.value ? 'error' : 'process'))
+// 工具条（二版第二节）：读取 · 确认遮住 · 复检 · 模型审核 · 还原；映射在 utils/trip.ts
+const trip = computed<Trip>(() => {
+  const t = task.value
+  if (!t || (t.status === 'draft' && !t.busy && !t.files.some(f => f.parse_state === 'parsing'))) return { mod: 'review', at: 0, state: 'todo', note: '等你添加文件' }
+  return reviewTrip({ status: t.status, policy: t.policy, runStatus: t.latest_run?.status, queue: t.queue_position })
+})
 const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 // 第三步只用最新轮次的详情；仪式自己计已用时间
@@ -437,7 +443,7 @@ function fileBadge(name: string): string {
 <template>
   <NotFound v-if="missing" kind="content" />
   <div v-else class="page" :class="step === 1 ? 'page--split is-workbench' : 'page--standard'">
-    <StepBar :active="step" :status="stepStatus" />
+    <SiTrip class="page-trip" :trip="trip" scale="bar" />
 
     <section v-if="step === 0" class="panel">
       <div v-if="parsing" class="processing">
@@ -542,7 +548,7 @@ function fileBadge(name: string): string {
 .model-option { height: auto; min-height: 40px; padding-top: 8px; padding-bottom: 8px; font: var(--si-font-body); }
 .model-description { display: block; color: var(--el-text-color-secondary); font: var(--si-font-caption); overflow-wrap: anywhere; }
 .is-workbench { height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; padding-top: 16px; padding-bottom: 0; }
-.is-workbench :deep(.step-bar) { flex: none; margin-bottom: 0; }
+.is-workbench .page-trip { flex: none; margin-bottom: 0; }
 .confirm-step { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .center { text-align: center; padding: 48px 0; }
 .center > .el-icon { color: var(--el-color-primary); }
@@ -553,16 +559,16 @@ h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .dropzone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 280px; padding: 24px; border: 1.5px dashed var(--el-border-color); border-radius: var(--si-radius-card); background: transparent; color: inherit; font: var(--si-font-body); cursor: pointer; transition: border-color var(--si-dur-1) var(--si-ease), background-color var(--si-dur-1) var(--si-ease); }
 .dropzone:hover:not(:disabled) { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .dropzone:focus-visible, .add-more:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
-.upload-icon { width: 44px; height: 44px; display: grid; place-items: center; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 12px; }
+.upload-icon { width: 44px; height: 44px; display: grid; place-items: center; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: var(--si-radius-md); }
 .drop-title em { color: var(--el-color-primary); font-style: normal; }
 .drop-sub { color: var(--si-ink-3); font: var(--si-font-caption); }
 .format-tags { display: flex; justify-content: center; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
 .file-box { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .file-list { position: relative; flex: 1; margin: 0; padding: 0; list-style: none; overflow-y: auto; }
-.file-row { position: relative; display: flex; align-items: center; gap: 12px; padding: 8px 12px; overflow: hidden; border: 1px solid var(--el-border-color-light); border-radius: 8px; }
+.file-row { position: relative; display: flex; align-items: center; gap: 12px; padding: 8px 12px; overflow: hidden; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-sm); }
 .file-row + .file-row { margin-top: 8px; }
 .file-row.is-main { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); }
-.file-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 8px; font-size: calc(12px * var(--si-fs)); font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.file-badge { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--si-radius-sm); font-size: calc(12px * var(--si-fs)); font-weight: 600; background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
 .file-badge--xls { background: var(--el-color-success-light-9); color: var(--el-color-success); }
 .file-badge--pdf { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
 .file-badge--img { background: var(--el-color-info-light-9); color: var(--el-color-info); }
@@ -571,12 +577,12 @@ h2 { margin: 0 0 16px; font: var(--si-font-h4); }
 .main-tag { margin-left: 8px; padding: 0 6px; border-radius: 4px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); font-style: normal; }
 .file-state { color: var(--si-ink-3); font: var(--si-font-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-state.is-failed { color: var(--el-color-danger); }
-.icon-btn { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.icon-btn { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--si-radius-tag); background: transparent; color: var(--si-ink-3); cursor: pointer; }
 .icon-btn:hover { background: var(--si-surface-2); color: var(--el-color-danger); }
 .scan { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; overflow: hidden; }
 .scan::after { content: ''; position: absolute; top: 0; left: 0; width: 30%; height: 100%; background: var(--si-brand-2); animation: home-scan 1.2s linear infinite; }
 @keyframes home-scan { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
-.add-more { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border: 1.5px dashed var(--el-border-color); border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
+.add-more { flex: none; display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border: 1.5px dashed var(--el-border-color); border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
 .add-more:hover:not(:disabled) { border-color: var(--el-color-primary); color: var(--el-color-primary); }
 .settings-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .settings-head { display: flex; align-items: baseline; justify-content: space-between; }

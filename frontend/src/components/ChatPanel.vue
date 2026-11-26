@@ -321,7 +321,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 .chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .live-preview { flex-shrink: 0; max-height: 200px; overflow-y: auto; margin-top: 12px; }
 .live-preview .hint { margin: 0 0 4px; }
-.placeholder { color: var(--el-color-primary); background: var(--el-color-primary-light-9); border-radius: 6px; }
+.placeholder { color: var(--el-color-primary); background: var(--el-color-primary-light-9); border-radius: var(--si-radius-tag); }
 .suspect { color: inherit; background: var(--el-color-warning-light-9); border-bottom: 2px solid var(--el-color-warning); }
 .suspect-decisions { max-height: 240px; overflow-y: auto; }
 .suspect-decision { padding: 12px 0; border-top: 1px solid var(--el-border-color-light); }
@@ -332,7 +332,7 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(previewTi
 /* 用户消息靠右气泡；回复满宽、无边框无底色（同助手，frontend.md 第六节） */
 .message { padding: 12px 0; }
 .mine { display: flex; flex-direction: column; align-items: flex-end; }
-.mine .message-content { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--si-surface-2); border-radius: 12px; font: var(--si-font-body); }
+.mine .message-content { max-width: 80%; box-sizing: border-box; padding: 12px 16px; background: var(--si-surface-2); border-radius: var(--si-radius-md); font: var(--si-font-body); }
 .message-content { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .reply .message-content { font: var(--si-font-reading); color: var(--si-text-reading); }
 .unresolved { margin: 6px 0 0; font: var(--si-font-caption); color: var(--si-warn-ink); white-space: normal; }

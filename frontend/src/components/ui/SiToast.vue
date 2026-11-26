@@ -55,7 +55,7 @@ onBeforeUnmount(clearTimer)
 
 <style scoped>
 /* 澄明 8.10：与短提示同一样式，底部居中的深色胶囊 */
-.si-toast { position: fixed; left: 50%; bottom: 32px; z-index: 4000; display: flex; align-items: center; gap: 10px; max-width: 560px; padding: 10px 18px 10px 14px; translate: -50% 0; overflow: hidden; border-radius: 999px; background: var(--si-toast-bg); color: var(--si-toast-ink); box-shadow: var(--si-shadow-3); font: var(--si-font-label); }
+.si-toast { position: fixed; left: 50%; bottom: 32px; z-index: 4000; display: flex; align-items: center; gap: 10px; max-width: 560px; padding: 10px 18px 10px 14px; translate: -50% 0; overflow: hidden; border-radius: var(--si-radius-badge); background: var(--si-toast-bg); color: var(--si-toast-ink); box-shadow: var(--si-shadow-3); font: var(--si-font-label); }
 .icon { flex: none; color: var(--si-brand-2); }
 .action { margin-left: 6px; }
 .text { min-width: 0; overflow-wrap: anywhere; }

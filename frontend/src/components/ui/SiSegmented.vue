@@ -73,7 +73,7 @@ watch(() => [model.value, props.options], () => { void nextTick(measure) }, { de
 </template>
 
 <style scoped>
-.si-segmented { --seg-h: 28px; position: relative; display: inline-flex; gap: 2px; padding: 2px; background: var(--si-surface-2); border-radius: 10px; }
+.si-segmented { --seg-h: 28px; position: relative; display: inline-flex; gap: 2px; padding: 2px; background: var(--si-surface-2); border-radius: var(--si-radius-control); }
 .si-segmented--small { --seg-h: 24px; }
 .thumb { position: absolute; top: 2px; left: 0; height: var(--seg-h); border-radius: var(--el-border-radius-base); background: var(--si-field); box-shadow: 0 0 0 1px var(--si-hair); opacity: 0; }
 .thumb.ready { opacity: 1; transition: transform var(--si-dur-2) var(--si-spring), width var(--si-dur-2) var(--si-ease); }

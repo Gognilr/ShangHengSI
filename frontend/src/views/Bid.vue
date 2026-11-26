@@ -277,7 +277,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 
 .how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
 .how-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 22px 22px 24px; }
-.how-ic { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 8px; border-radius: 12px; background: var(--si-m-bid-soft); color: var(--si-m-bid); }
+.how-ic { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 8px; border-radius: var(--si-radius-md); background: var(--si-m-bid-soft); color: var(--si-m-bid); }
 .how-no { position: absolute; top: 20px; right: 22px; font: var(--si-font-code-sm); color: var(--si-ink-5); }
 .how-card b { font: var(--si-font-h3); color: var(--si-ink-1); }
 .how-card p { margin: 0; font: var(--si-font-meta); color: var(--si-ink-3); }
@@ -286,12 +286,12 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .browser { display: flex; align-items: flex-start; gap: 24px; margin-top: 32px; }
 .tree { flex: none; width: 240px; box-sizing: border-box; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
 .group { margin: 12px 0 4px; padding: 0 10px; font: var(--si-font-overline); color: var(--si-ink-4); }
-.node-row { position: relative; display: flex; align-items: center; padding-left: calc(var(--depth) * 16px); border-radius: 10px; }
+.node-row { position: relative; display: flex; align-items: center; padding-left: calc(var(--depth) * 16px); border-radius: var(--si-radius-control); }
 .folder-toggle, .folder-spacer { flex: none; width: 22px; height: 36px; }
-.folder-toggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-4); cursor: pointer; }
+.folder-toggle { display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-4); cursor: pointer; }
 .folder-toggle:hover { color: var(--si-ink-1); }
 .tree > .node { flex: none; }
-.node { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--si-ink-2); font: var(--si-font-label); text-align: left; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), color var(--si-d2) var(--si-ease-out); }
+.node { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 0; border-radius: var(--si-radius-control); background: transparent; color: var(--si-ink-2); font: var(--si-font-label); text-align: left; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), color var(--si-d2) var(--si-ease-out); }
 .node svg { flex: none; color: var(--si-ink-3); }
 .node .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node .count { flex: none; font: var(--si-font-caption); color: var(--si-ink-4); }

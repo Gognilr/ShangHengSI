@@ -62,9 +62,9 @@ function drop(event: DragEvent) { over.value = false; if (!props.disabled) emit(
 .bc.bad::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--si-danger); }
 .bc.on { box-shadow: var(--si-ring), var(--si-shadow-2); border-color: var(--si-brand-2); }
 .bc-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.code { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--si-m-bid-soft); color: var(--si-m-bid); font: var(--si-font-code); font-weight: 600; }
+.code { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--si-radius-sm); background: var(--si-m-bid-soft); color: var(--si-m-bid); font: var(--si-font-code); font-weight: 600; }
 .bc-h b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h3); color: var(--si-ink-1); }
-.open { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-4); cursor: pointer; }
+.open { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-4); cursor: pointer; }
 .open:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 .meta { font: var(--si-font-caption); color: var(--si-ink-3); }
 .bc-st { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font: var(--si-font-meta); color: var(--si-ink-2); }

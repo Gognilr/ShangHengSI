@@ -199,17 +199,17 @@ async function copy(text: string) {
 
 <style scoped>
 /* 问题卡片（澄明 8.4 ③）：白底卡片，等级在左缘一条色线；选中时衡青边与光圈 */
-.card { --sev: var(--si-info); --sev-soft: var(--si-info-soft); --sev-ink: var(--si-info-ink); position: relative; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: inset 3px 0 0 var(--sev); transition: border-color var(--si-d2) var(--si-ease-out), box-shadow var(--si-d2) var(--si-ease-out), transform var(--si-d2) var(--si-ease-out); }
+.card { --sev: var(--si-info); --sev-soft: var(--si-info-soft); --sev-ink: var(--si-info-ink); position: relative; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: inset 3px 0 0 var(--sev); transition: border-color var(--si-d2) var(--si-ease-out), box-shadow var(--si-d2) var(--si-ease-out), transform var(--si-d2) var(--si-ease-out); }
 .severity-high { --sev: var(--si-danger); --sev-soft: var(--si-danger-soft); --sev-ink: var(--si-danger-ink); }
 .severity-medium { --sev: var(--si-warn); --sev-soft: var(--si-warn-soft); --sev-ink: var(--si-warn-ink); }
 .card:hover { border-color: var(--si-hair-strong); box-shadow: inset 3px 0 0 var(--sev), var(--si-shadow-2); }
 .card.selected { border-color: var(--si-brand-2); box-shadow: inset 3px 0 0 var(--sev), 0 0 0 3px var(--si-ring); }
 .card.h-adopted:not(.selected) .head { opacity: .72; }
 .card.h-ignored:not(.selected) .head { opacity: .5; }
-.head { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 12px 16px; cursor: pointer; border-radius: 14px; }
+.head { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 12px 16px; cursor: pointer; border-radius: var(--si-radius-card); }
 .head:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }
 .top { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.sev, .loc, .h-tag { display: inline-flex; flex: none; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font: var(--si-font-badge); }
+.sev, .loc, .h-tag { display: inline-flex; flex: none; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: var(--si-radius-badge); font: var(--si-font-badge); }
 .sev { background: var(--sev-soft); color: var(--sev-ink); }
 .sev i { width: 6px; height: 6px; border-radius: 50%; background: var(--sev); }
 .loc { flex: 0 1 auto; min-width: 0; max-width: 200px; border: 1px solid var(--si-hair); color: var(--si-ink-3); }
@@ -238,7 +238,7 @@ async function copy(text: string) {
 .basis { display: flex; align-items: flex-start; gap: 6px; color: var(--si-ink-3); font: var(--si-font-meta); }
 .basis svg { flex: none; margin-top: 3px; }
 .laws { margin-top: -4px; }
-.sugg { padding: 10px 12px; border: 1px solid var(--si-hair-faint); border-radius: 12px; background: var(--si-card-2); }
+.sugg { padding: 10px 12px; border: 1px solid var(--si-hair-faint); border-radius: var(--si-radius-md); background: var(--si-card-2); }
 .sugg-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 4px; color: var(--si-ink-3); font: var(--si-font-label-sm); }
 .sugg-actions { display: flex; flex-wrap: wrap; margin-left: auto; }
 .sugg-actions .el-button + .el-button { margin-left: 0; }

@@ -274,7 +274,7 @@ onMounted(load)
 .pager { display: flex; margin-top: 20px; justify-content: flex-end; }
 .history-table :deep(.el-table__row) { height: 64px; }
 .file-cell { display: flex; gap: 12px; align-items: center; min-width: 0; }
-.mod { width: 36px; height: 36px; border-radius: 10px; }
+.mod { width: 36px; height: 36px; border-radius: var(--si-radius-control); }
 .file-text { display: flex; flex-direction: column; min-width: 0; }
 .file-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
 .file-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-caption); color: var(--si-ink-3); }

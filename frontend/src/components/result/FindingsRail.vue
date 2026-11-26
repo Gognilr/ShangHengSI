@@ -244,18 +244,18 @@ watch(() => props.selectedId, async (id) => {
 .tab { position: relative; display: inline-flex; align-items: center; height: 48px; padding: 0; border: 0; background: none; color: var(--si-ink-3); font: var(--si-font-label); cursor: pointer; }
 .tab:hover { color: var(--si-ink-1); }
 .tab.on { color: var(--si-ink-1); font-weight: 600; cursor: default; }
-.tab-n { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-label-sm); }
+.tab-n { margin-left: 6px; padding: 0 6px; border-radius: var(--si-radius-badge); background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-label-sm); }
 .tab.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--si-brand-2); }
-.ai-tag { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-left: auto; padding: 0 10px; border-radius: 999px; background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
+.ai-tag { display: inline-flex; align-items: center; gap: 5px; height: 24px; margin-left: auto; padding: 0 10px; border-radius: var(--si-radius-badge); background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
 .ai-tag svg { color: var(--si-ai); }
 .alert { flex: none; margin: 12px 16px 0; width: auto; }
 .loading { padding: 16px; }
 .zone { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
 .sev-switch :deep(.si-segmented) { display: flex; width: 100%; }
 .sev-switch :deep(.si-segmented button) { flex: 1; }
-.calc { border: 1px solid var(--si-hair-faint); border-radius: 12px; background: var(--si-card-2); }
+.calc { border: 1px solid var(--si-hair-faint); border-radius: var(--si-radius-md); background: var(--si-card-2); }
 .calc-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 0; background: none; color: var(--si-ink-1); font: var(--si-font-label); text-align: left; cursor: pointer; }
-.calc-h:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; border-radius: 12px; }
+.calc-h:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; border-radius: var(--si-radius-md); }
 .calc-ic { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--si-blue-tint); color: var(--si-brand-2); }
 .calc-n { margin-left: auto; color: var(--si-ink-3); font: var(--si-font-caption); }
 .calc-chev { color: var(--si-ink-4); }
@@ -269,7 +269,7 @@ watch(() => props.selectedId, async (id) => {
 .keys kbd { margin: 0 2px; padding: 0 5px; border: 1px solid var(--si-hair-strong); border-radius: 4px; background: var(--si-surface-2); font: var(--si-font-code-sm); }
 .carry-switch { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .carry-switch .dot { color: var(--si-ink-4); }
-.carry-btn { height: 26px; padding: 0 10px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; }
+.carry-btn { height: 26px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--si-radius-badge); background: none; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; }
 .carry-btn b { font-weight: 600; color: var(--si-ink-1); }
 .carry-btn:hover { background: var(--si-surface-2); }
 .carry-btn.on.cb-new { border-color: var(--si-brand-line); background: var(--si-blue-tint); color: var(--si-blue-ink); }

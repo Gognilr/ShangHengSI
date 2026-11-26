@@ -20,7 +20,7 @@ import SiSegmented from '@/components/ui/SiSegmented.vue'
 import SiThinkingDots from '@/components/ui/SiThinkingDots.vue'
 import RunResult from '@/components/workspace/RunResult.vue'
 import ScopePicker from '@/components/workspace/ScopePicker.vue'
-import type { ReviewProgress } from '@/components/workspace/ReviewSteps.vue'
+import type { ReviewProgress } from '@/utils/trip'
 import { useAuthStore } from '@/stores/auth'
 import { SOURCE_OPTIONS, STANCE_OPTIONS, toOptions } from '@/utils/labels'
 import { nudgeField } from '@/utils/nudge'
@@ -29,7 +29,7 @@ import { loadDiff } from '@/utils/drafts'
 /**
  * 工作台“全面审核”视图（V32-B-01 2）：解析 → 确认 → 审核中 → 结果，按会话数据决定。
  * 文件只上传一次、只确认一次（V321-E-06）：有待确认的文件时，确认页内嵌在本视图，立场、来源、模型在右栏底部，
- * 一个主按钮“确认并开始审核”同时完成确认与发起；没有待确认文件（已确认过）时才是设置页，只列本轮新增发送的内容。
+ * 一个主按钮“确认发送并开始审核”同时完成确认与发起；没有待确认文件（已确认过）时才是设置页，只列本轮新增发送的内容。
  */
 const props = defineProps<{ session: Session; fresh?: boolean; discussId?: string; active?: boolean }>()
 const emit = defineEmits<{ refresh: []; add: []; pick: []; remove: [file: SessionFile]; discuss: [anchor: { id: string; no: string; title: string; runNo: number }]; closeDiscuss: []
@@ -532,10 +532,10 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 h2 { margin: 0; font: var(--si-font-h4); }
 .file-list { display: flex; flex-direction: column; gap: 8px; }
-.file-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--el-border-color-light); border-radius: 8px; cursor: pointer; }
+.file-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-sm); cursor: pointer; }
 .file-row.is-main { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); }
 .file-row :deep(.el-checkbox) { height: auto; }
-.file-badge { flex: none; display: grid; place-items: center; min-width: 36px; height: 28px; padding: 0 6px; border-radius: 6px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); }
+.file-badge { flex: none; display: grid; place-items: center; min-width: 36px; height: 28px; padding: 0 6px; border-radius: var(--si-radius-tag); background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); }
 .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-body); }
 .main-tag { padding: 0 6px; border-radius: 4px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); font-style: normal; }
 .setting { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }

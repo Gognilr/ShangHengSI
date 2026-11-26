@@ -208,12 +208,12 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
 .greet-sub { margin: 10px 0 0; font: 400 calc(16px * var(--si-fs))/calc(26px * var(--si-fs)) var(--si-font-sans); color: var(--si-ink-3); }
 .composer-slot { width: 760px; max-width: 100%; margin-top: 36px; }
 .quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 16px; }
-.quick button { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid var(--si-hair); border-radius: 999px; background: var(--si-surface-1); color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; transition: transform var(--si-d3) var(--si-ease-out), box-shadow var(--si-d3) var(--si-ease-out), border-color var(--si-d2), color var(--si-d2), background-color var(--si-d2); }
+.quick button { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-badge); background: var(--si-surface-1); color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; transition: transform var(--si-d3) var(--si-ease-out), box-shadow var(--si-d3) var(--si-ease-out), border-color var(--si-d2), color var(--si-d2), background-color var(--si-d2); }
 .quick button svg { color: var(--si-brand-2); }
 .quick button:hover { transform: translateY(-2px); box-shadow: var(--si-shadow-2); border-color: var(--si-hair-strong); color: var(--si-ink-1); }
 .quick button.active { border-color: var(--si-brand-line); background: var(--si-blue-tint); color: var(--si-blue-ink); }
 .busy-note { display: flex; align-items: center; justify-content: center; gap: 8px; width: 760px; max-width: 100%; margin: 16px 0 0; font: var(--si-font-caption); color: var(--si-ink-3); }
-.local-tag { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-badge); }
+.local-tag { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--si-radius-badge); background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-badge); }
 
 /* 模块卡：插画在上（模块浅底 + 线条），悬停时插画动起来 */
 .m-review { --mc: var(--si-m-review); --mc-soft: var(--si-m-review-soft); }
@@ -258,7 +258,7 @@ html[data-fx="lite"] .mod:hover .il-bar { animation: none; }
 .td { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid var(--si-hair-faint); transition: background-color var(--si-d2); }
 .td:last-child { border-bottom: 0; }
 .td:hover { background: var(--si-hover-bg); }
-.td-ic { width: 36px; height: 36px; border-radius: 10px; }
+.td-ic { width: 36px; height: 36px; border-radius: var(--si-radius-control); }
 .td-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .td-main b { font: var(--si-font-h3); font-size: calc(15px * var(--si-fs)); color: var(--si-ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .td-main span { font: var(--si-font-caption); color: var(--si-ink-3); }

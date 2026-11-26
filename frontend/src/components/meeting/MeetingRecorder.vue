@@ -255,7 +255,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* 澄明 8.6：入口页左边的玫红大卡；录音中展开为整行 */
-.recorder { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 12px; min-height: 240px; padding: 24px; border: 1px solid var(--si-hair); border-radius: 18px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); box-sizing: border-box; }
+.recorder { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 12px; min-height: 240px; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); box-sizing: border-box; }
 .recorder.open { grid-column: 1 / -1; align-items: center; }
 .recorder :deep(.el-button > span) { display: inline-flex; align-items: center; gap: 6px; }
 .idle { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
@@ -265,7 +265,7 @@ onBeforeUnmount(() => {
 .rec-btn:active:not(:disabled) { transform: scale(.97); }
 .rec-btn:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 4px; }
 .rec-btn:disabled { opacity: .5; cursor: not-allowed; }
-.saved { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: stretch; padding: 8px 12px; border: 1px solid var(--si-hair-strong); border-radius: 12px; background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-caption); }
+.saved { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: stretch; padding: 8px 12px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-md); background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-caption); }
 .saved-text { flex: 1; min-width: 160px; }
 .panel { width: min(520px, 100%); display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; align-items: center; gap: 10px; }
@@ -287,7 +287,7 @@ onBeforeUnmount(() => {
 .actions :deep(.el-button) { margin: 0; }
 .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--si-m-meet); }
 .marks { display: flex; flex-wrap: wrap; gap: 6px; }
-.mark { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--si-m-meet-soft); color: var(--si-ink-2); font: var(--si-font-caption); }
+.mark { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--si-radius-badge); background: var(--si-m-meet-soft); color: var(--si-ink-2); font: var(--si-font-caption); }
 .mark button { display: inline-flex; padding: 0; border: 0; background: none; color: var(--si-ink-3); cursor: pointer; }
 .hint { margin: 0; color: var(--si-ink-3); font: var(--si-font-caption); }
 .error { margin: 0; text-align: center; color: var(--si-danger-ink); font: var(--si-font-meta); }

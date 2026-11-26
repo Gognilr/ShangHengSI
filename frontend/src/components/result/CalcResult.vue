@@ -17,10 +17,10 @@ defineProps<{ calc: Calc }>()
 </template>
 
 <style scoped>
-.calc-result { margin: 12px 0; padding: 14px 18px; border: 1px solid var(--si-hair-faint); border-radius: 12px; background: var(--si-card-2); white-space: normal; }
+.calc-result { margin: 12px 0; padding: 14px 18px; border: 1px solid var(--si-hair-faint); border-radius: var(--si-radius-md); background: var(--si-card-2); white-space: normal; }
 .calc-h { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .calc-h b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
-.calc-ic { display: inline-grid; flex: none; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--si-blue-tint); color: var(--si-brand-2); }
+.calc-ic { display: inline-grid; flex: none; place-items: center; width: 28px; height: 28px; border-radius: var(--si-radius-sm); background: var(--si-blue-tint); color: var(--si-brand-2); }
 .expression { font: var(--si-font-body); color: var(--si-ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .result { margin-top: 2px; font: var(--si-font-h3); color: var(--si-ink-1); overflow-wrap: anywhere; }
 .failed { font: var(--si-font-meta); color: var(--si-warn-ink); }

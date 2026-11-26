@@ -20,7 +20,8 @@ import MediaRow from '@/components/assistant/MediaRow.vue'
 import MessageItem from '@/components/assistant/MessageItem.vue'
 import TranscriptEditor from '@/components/assistant/TranscriptEditor.vue'
 import MeetingRecorder, { type Recorded } from '@/components/meeting/MeetingRecorder.vue'
-import StepBar from '@/components/StepBar.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import { meetingTrip } from '@/utils/trip'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
@@ -33,16 +34,13 @@ const audio = computed(() => session.value?.files.find(f => f.media) ?? null)
 const minutes = computed(() => messages.value.filter(m => m.role === 'assistant' && m.template === 'minutes'))
 const generating = computed(() => minutes.value.some(m => ['queued', 'streaming'].includes(m.status)))
 const view = ref<'tools' | 'minutes'>('tools')
-// 工具条步骤（澄明 8.6）：转写 → 校对 → 确认遮住的内容 → 生成纪要（模型步骤用紫色）
-const stepTitles = ['转写', '校对', '确认遮住的内容', '生成纪要']
-const stepIndex = computed(() => {
+// 工具条（二版第二节）：本机转写 · 校对 · 确认遮住 · 复检 · 生成纪要 · 还原；映射在 utils/trip.ts
+const trip = computed(() => {
   const media = audio.value?.media
-  if (!media || media.stage !== 'done') return 0
-  if (!audio.value?.confirmed_at) return 1
-  return minutes.value.length && !generating.value ? 4 : 3
+  const state = !media ? null : media.stage === 'failed' ? 'failed' : media.stage !== 'done' ? 'transcribing'
+    : !audio.value?.confirmed_at ? 'proofread' : minutes.value.length && !generating.value ? 'minuted' : 'confirmed'
+  return meetingTrip({ state, status: session.value?.status, generating: generating.value, percent: media?.stage === 'transcribing' && media.progress ? Math.round(media.progress) : null })
 })
-// 只有系统在做事（转写、生成纪要）时转圈；校对、确认遮住等你操作时显示编号
-const stepStatus = computed(() => audio.value?.media?.stage === 'failed' ? 'error' : stepIndex.value === 0 || (stepIndex.value === 3 && generating.value) ? 'process' : 'wait')
 
 // 最近的会议：时长 · 发言人数，加状态徽标（设计稿 8.6 ①）
 const MEETING_STATE = { transcribing: ['转写中', 'is-info'], failed: ['转写失败', 'is-hi'], proofread: ['转写完成，待校对', 'is-mid'], confirmed: ['待生成纪要', 'is-brand'], minuted: ['纪要已生成', 'is-ok'] } as const
@@ -190,7 +188,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
     <div class="toolbar">
       <el-button text @click="router.push('/meeting')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="back-t">全部会议</span></el-button>
       <h2 class="title" :title="session?.title">{{ session?.title }}</h2>
-      <StepBar class="steps" :active="stepIndex" :status="stepStatus" :titles="stepTitles" :ai="[3]" aria-label="会议步骤" />
+      <SiTrip class="steps" :trip="trip" scale="bar" />
       <el-dropdown trigger="click" @command="remove">
         <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
         <template #dropdown><el-dropdown-menu><el-dropdown-item command="remove"><span class="danger-item">删除会议记录</span></el-dropdown-item></el-dropdown-menu></template>
@@ -237,7 +235,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .steps { flex: none; }
 .back-t { margin-left: 6px; }
-.status { width: min(520px, 100%); margin: 48px auto; padding: 24px; border: 1px solid var(--si-hair); border-radius: 18px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.status { width: min(520px, 100%); margin: 48px auto; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
 .workspace { flex: 1; min-height: 0; }
 .generate { display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 0 0 12px; }
 .generate .model { width: 100%; }
@@ -246,5 +244,5 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .m-empty b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
 .m-empty .hint { margin: 0; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
-@media (max-width: 1279px) { .steps :deep(.t) { display: none; } .steps :deep(.current .t) { display: inline; } }
+
 </style>

@@ -50,9 +50,9 @@ onMounted(async () => {
 </template>
 <style scoped>
 .tv { display: flex; flex-direction: column; gap: 10px; }
-.notice { margin: 0; padding: 8px 14px; border-radius: 10px; background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-caption); }
+.notice { margin: 0; padding: 8px 14px; border-radius: var(--si-radius-control); background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-caption); }
 .prog { margin: 0; color: var(--si-ink-3); font: var(--si-font-caption); }
-.paper { border: 1px solid var(--si-hair); border-radius: 16px; background: var(--si-paper); box-shadow: var(--si-paper-shadow); overflow: hidden; }
+.paper { border: 1px solid var(--si-hair); border-radius: var(--si-radius-paper); background: var(--si-paper); box-shadow: var(--si-paper-shadow); overflow: hidden; }
 .cols, .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cols span { padding: 8px 20px; border-bottom: 1px solid var(--si-hair-faint); background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-label-sm); }
 .cols span + span { border-left: 1px solid var(--si-hair-faint); }

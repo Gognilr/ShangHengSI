@@ -207,7 +207,7 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 </template>
 <style scoped>
 .editor { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.player { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.player { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
 .chip { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--sp, var(--si-m-meet)); color: var(--si-white); font: var(--si-font-badge); }
 .sp0 { --sp: var(--si-m-meet); } .sp1 { --sp: var(--si-m-trans); } .sp2 { --sp: var(--si-m-review); } .sp3 { --sp: var(--si-m-bid); } .sp4 { --sp: var(--si-ai); } .sp5 { --sp: var(--si-brand); }
 .rail-tabs { display: flex; width: 100%; margin: 4px 0 8px; }
@@ -217,7 +217,7 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 .play:hover:not(:disabled) { transform: scale(1.06); }
 .play.busy { opacity: .6; cursor: progress; }
 .player .t { flex: none; color: var(--si-ink-3); font: var(--si-font-meta); }
-.wave { flex: 1; min-width: 120px; height: 32px; display: flex; align-items: center; gap: 2px; cursor: pointer; border-radius: 6px; }
+.wave { flex: 1; min-width: 120px; height: 32px; display: flex; align-items: center; gap: 2px; cursor: pointer; border-radius: var(--si-radius-tag); }
 .wave:focus-visible { outline: 2px solid var(--si-ring); outline-offset: 2px; }
 .wave i { flex: 1; height: 100%; border-radius: 2px; background: var(--si-hair-strong); transform-origin: center; transition: background-color var(--si-d2) var(--si-ease-out); }
 .wave i.on { background: var(--si-m-meet); }
@@ -226,8 +226,8 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 .save { margin-left: auto; }
 .save.saved { color: var(--si-ok); }
 .body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 420px; gap: 16px; }
-.transcript { overflow: auto; padding: 24px 32px; border: 1px solid var(--si-hair); border-radius: 14px; box-shadow: var(--si-shadow-1); }
-.utterance { position: relative; content-visibility: auto; contain-intrinsic-size: auto 100px; padding: 12px 16px; border-radius: 12px; transition: background-color var(--si-d2) var(--si-ease-out); }
+.transcript { overflow: auto; padding: 24px 32px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); }
+.utterance { position: relative; content-visibility: auto; contain-intrinsic-size: auto 100px; padding: 12px 16px; border-radius: var(--si-radius-md); transition: background-color var(--si-d2) var(--si-ease-out); }
 /* 正在播放的这一段整行高亮（澄明 8.6 设计稿：模块玫红浅底） */
 .utterance.current { background: var(--si-m-meet-soft); }
 .now { position: absolute; top: 14px; right: 16px; color: var(--si-m-meet); font: var(--si-font-caption); }
@@ -241,14 +241,14 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 .sent:hover, .sent:focus-visible { background: var(--si-surface-2); outline: none; }
 .sent.playing { text-decoration: underline 2px color-mix(in srgb, var(--si-m-meet) 55%, transparent); text-underline-offset: 5px; }
 .sent.flash { background: var(--si-unresolved-bg); }
-.tip { position: absolute; left: 0; bottom: 100%; z-index: 3; display: none; align-items: center; gap: 8px; padding: 2px 8px; border: 1px solid var(--si-hair-strong); border-radius: 6px; background: var(--si-surface-pop); font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
+.tip { position: absolute; left: 0; bottom: 100%; z-index: 3; display: none; align-items: center; gap: 8px; padding: 2px 8px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-tag); background: var(--si-surface-pop); font: var(--si-font-caption); color: var(--si-ink-3); white-space: nowrap; }
 .sent:hover > .tip, .sent:focus-visible > .tip { display: inline-flex; }
 .tplay { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--si-blue); cursor: pointer; font: inherit; }
 .edit-hint { display: inline-flex; align-items: center; gap: 4px; }
 .sent-edit { display: block; margin: 6px 0; }
-.flag { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px 0 0; padding: 0 6px; border: 1px solid var(--si-warn); border-radius: 999px; background: none; color: var(--si-warn-ink, var(--si-ink-2)); font: var(--si-font-caption); vertical-align: 1px; cursor: pointer; }
+.flag { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px 0 0; padding: 0 6px; border: 1px solid var(--si-warn); border-radius: var(--si-radius-badge); background: none; color: var(--si-warn-ink, var(--si-ink-2)); font: var(--si-font-caption); vertical-align: 1px; cursor: pointer; }
 .low { text-decoration: underline dashed 1px var(--si-warn); text-underline-offset: 4px; }
-.rail { overflow-y: auto; padding: 12px 16px; border: 1px solid var(--si-hair); border-radius: 14px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.rail { overflow-y: auto; padding: 12px 16px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
 h3 { font: var(--si-font-h3); margin: 20px 0 8px; }
 .heading { margin: 20px 0 8px; }
 .heading h3 { margin: 0; }

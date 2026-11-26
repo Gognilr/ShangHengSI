@@ -137,7 +137,7 @@ h2 { font: var(--si-font-display); margin: 40px 0 16px; color: var(--si-island-i
 .brand-description { margin: 0; max-width: 520px; font: var(--si-font-reading); font-size: calc(16px * var(--si-fs)); color: color-mix(in srgb, var(--si-island-ink) 70%, transparent); }
 .points { display: flex; flex-wrap: wrap; gap: 12px 28px; margin: 40px 0 0; padding: 0; list-style: none; font: var(--si-font-label); color: var(--si-island-ink); }
 .points li { display: flex; align-items: center; gap: 10px; }
-.pi { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--si-island-ink) 10%, transparent); color: var(--si-brand-2); }
+.pi { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--si-radius-control); background: color-mix(in srgb, var(--si-island-ink) 10%, transparent); color: var(--si-brand-2); }
 footer { position: absolute; bottom: 28px; left: clamp(40px, 6vw, 120px); right: 32px; font: var(--si-font-caption); color: color-mix(in srgb, var(--si-island-ink) 55%, transparent); }
 .login-pane { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; padding: 40px 24px; box-sizing: border-box; min-width: 0; }
 .pane-logo { display: none; }

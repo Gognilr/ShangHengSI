@@ -59,8 +59,8 @@ function onTrack(event: MouseEvent) {
 </template>
 
 <style scoped>
-.spectrum { position: absolute; top: 8px; bottom: 8px; right: 4px; width: 8px; border-radius: 999px; background: var(--si-surface-2); cursor: pointer; z-index: 2; }
-.frame { position: absolute; left: -2px; right: -2px; min-height: 8px; border: 1px solid var(--si-ink-3); border-radius: 999px; pointer-events: none; box-sizing: border-box; }
+.spectrum { position: absolute; top: 8px; bottom: 8px; right: 4px; width: 8px; border-radius: var(--si-radius-badge); background: var(--si-surface-2); cursor: pointer; z-index: 2; }
+.frame { position: absolute; left: -2px; right: -2px; min-height: 8px; border: 1px solid var(--si-ink-3); border-radius: var(--si-radius-badge); pointer-events: none; box-sizing: border-box; }
 .tick { position: absolute; left: 0; right: 0; height: 2px; transform: translateY(-50%); }
 .tick:hover { transform: translateY(-50%) scaleY(2); }
 .t-high, .t-medium, .t-low { height: 3px; }

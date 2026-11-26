@@ -126,24 +126,24 @@ const doneCount = computed(() => findings.value.length)
 .rail-head { flex: none; display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 16px; border-bottom: 1px solid var(--si-hair-faint); }
 .tab { position: relative; display: inline-flex; align-items: center; height: 48px; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
 .tab::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--si-brand-2); }
-.ai-tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: auto; padding: 0 10px; border-radius: 999px; background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
+.ai-tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; margin-left: auto; padding: 0 10px; border-radius: var(--si-radius-badge); background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
 .ai-tag svg { color: var(--si-ai); }
 .rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
-.calc-fold { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--si-card-2); border: 1px solid var(--si-hair-faint); font: var(--si-font-label); }
+.calc-fold { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--si-radius-md); background: var(--si-card-2); border: 1px solid var(--si-hair-faint); font: var(--si-font-label); }
 .calc-ic { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--si-blue-tint); color: var(--si-brand-2); }
-.ok-badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; margin-left: auto; padding: 0 8px; border-radius: 999px; background: var(--si-ok-soft); color: var(--si-ok-ink); font: var(--si-font-badge); }
-.ai-wait { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 12px 18px; border-radius: 14px; background: var(--si-ai-soft); text-align: center; }
+.ok-badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; margin-left: auto; padding: 0 8px; border-radius: var(--si-radius-badge); background: var(--si-ok-soft); color: var(--si-ok-ink); font: var(--si-font-badge); }
+.ai-wait { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 22px 12px 18px; border-radius: var(--si-radius-card); background: var(--si-ai-soft); text-align: center; }
 .ai-wait b { color: var(--si-ai-ink); font: var(--si-font-label); font-weight: 600; }
 .ai-orb { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 4px; border-radius: 50%; background: var(--si-surface-1); color: var(--si-ai); box-shadow: 0 0 0 6px color-mix(in srgb, var(--si-ai) 12%, transparent); animation: cer-breathe 2.4s var(--si-ease-io) infinite; }
 .ai-wait.queued .ai-orb { color: var(--si-ink-3); animation: none; }
 @keyframes cer-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 :root[data-fx="lite"] .ai-orb, :root[data-fx="off"] .ai-orb { animation: none; }
 .cards { display: flex; flex-direction: column; gap: 10px; }
-.ic-card { padding: 12px 14px; border: 1px solid var(--si-hair); border-radius: 12px; background: var(--si-surface-1); cursor: pointer; transition: box-shadow var(--si-d2) var(--si-ease-out), border-color var(--si-d2) var(--si-ease-out); }
+.ic-card { padding: 12px 14px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-md); background: var(--si-surface-1); cursor: pointer; transition: box-shadow var(--si-d2) var(--si-ease-out), border-color var(--si-d2) var(--si-ease-out); }
 .ic-card:hover { border-color: var(--si-hair-strong); }
 .ic-card.on { border-color: var(--si-brand-2); }
 .ic-top { display: flex; align-items: center; gap: 6px; }
-.sev-badge, .loc-badge { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font: var(--si-font-badge); }
+.sev-badge, .loc-badge { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: var(--si-radius-badge); font: var(--si-font-badge); }
 .sev-badge i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .sev-high .sev-badge { background: var(--si-danger-soft); color: var(--si-danger-ink); }
 .sev-medium .sev-badge { background: var(--si-warn-soft); color: var(--si-warn-ink); }
@@ -154,8 +154,8 @@ const doneCount = computed(() => findings.value.length)
 .ic-p { margin: 4px 0 0; color: var(--si-ink-2); font: var(--si-font-body); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ic-enter-active { transition: opacity var(--si-d3) var(--si-ease-out), transform var(--si-d3) var(--si-ease-spring); }
 .ic-enter-from { opacity: 0; transform: translateY(14px) scale(.98); }
-.sk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px dashed var(--si-hair); border-radius: 12px; }
-.sk { display: block; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--si-surface-2), color-mix(in srgb, var(--si-surface-2) 40%, var(--si-surface-1)), var(--si-surface-2)); background-size: 200% 100%; animation: cer-shine 1.6s linear infinite; }
+.sk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px dashed var(--si-hair); border-radius: var(--si-radius-md); }
+.sk { display: block; height: 12px; border-radius: var(--si-radius-tag); background: linear-gradient(90deg, var(--si-surface-2), color-mix(in srgb, var(--si-surface-2) 40%, var(--si-surface-1)), var(--si-surface-2)); background-size: 200% 100%; animation: cer-shine 1.6s linear infinite; }
 @keyframes cer-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 :root[data-fx="off"] .sk { animation: none; }
 .rail-foot { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 16px; border-top: 1px solid var(--si-hair-faint); color: var(--si-ink-3); font: var(--si-font-caption); }

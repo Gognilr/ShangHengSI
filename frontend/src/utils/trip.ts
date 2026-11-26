@@ -168,6 +168,33 @@ export function translateTrip(p: { status: string; engine?: 'local' | 'cloud' | 
   return { mod, at: work, state: 'todo', note: '待翻译' }
 }
 
+/** 文件审核工作区顶部（Assistant 的审核视图）：ReviewPane 上报的进度 → 往返线 */
+export interface ReviewProgress {
+  stage: 'parsing' | 'confirm' | 'setup' | 'running' | 'result' | 'local' | 'loading'
+  /** 审核中：开始时间（ISO），用于计时 */
+  since?: string | null
+  /** 已完成：用时（秒） */
+  seconds?: number | null
+  /** 发送前复检拦下的处数（确认页） */
+  blocked?: number
+  /** 审核中：排队位置 */
+  queue?: number | null
+  /** 结果的轮次状态（failed / partial 等） */
+  status?: string
+}
+export function progressTrip(p: ReviewProgress): Trip | null {
+  switch (p.stage) {
+    case 'loading': return null
+    case 'local': return localTrip('completed_local')
+    case 'parsing': return reviewTrip({ status: 'parsing' })
+    // 工作区里确认页就在眼前，不再带“去确认 / 去处理”按钮
+    case 'confirm': return p.blocked ? { ...reviewTrip({ status: 'awaiting_confirm', blocked: p.blocked }), act: undefined } : { mod: 'review', at: 1, state: 'wait', note: '等你确认' }
+    case 'setup': return reviewTrip({ status: 'active' })
+    case 'running': { const t = reviewTrip({ status: 'reviewing', runStatus: 'running', queue: p.queue }); return { ...t, note: `${t.note} · 可以离开页面` } }
+    case 'result': return reviewTrip({ status: 'reviewed', runStatus: p.status ?? 'completed' })
+  }
+}
+
 /* ================= 列表行 ================= */
 
 interface RowLike {

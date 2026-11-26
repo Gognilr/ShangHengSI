@@ -86,8 +86,8 @@ const badge = (f: SessionFile) => f.ext.toUpperCase().slice(0, 4)
 h2 { margin: 0; font: var(--si-font-h3); color: var(--si-ink-1); }
 .num { color: var(--si-ink-3); font-variant-numeric: tabular-nums; }
 .rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 8px 12px; border: 1px solid var(--el-border-color-light); border-radius: 8px; background: var(--el-bg-color); }
-.badge { display: grid; place-items: center; min-width: 36px; height: 24px; padding: 0 6px; border-radius: 6px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); }
+.row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 8px 12px; border: 1px solid var(--el-border-color-light); border-radius: var(--si-radius-sm); background: var(--el-bg-color); }
+.badge { display: grid; place-items: center; min-width: 36px; height: 24px; padding: 0 6px; border-radius: var(--si-radius-tag); background: var(--el-color-primary-light-9); color: var(--el-color-primary); font: var(--si-font-label-sm); }
 .badge--sys { background: var(--si-surface-2); color: var(--si-ink-2); }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-body); }
 .state { display: inline-flex; align-items: center; gap: 6px; color: var(--si-ink-2); font: var(--si-font-caption); }

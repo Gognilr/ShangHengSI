@@ -12,7 +12,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useSessionsStore } from '@/stores/sessions'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import ReviewPane from '@/components/workspace/ReviewPane.vue'
-import ReviewSteps, { type ReviewProgress } from '@/components/workspace/ReviewSteps.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
+import { progressTrip, type ReviewProgress } from '@/utils/trip'
 import Conversation from '@/components/assistant/Conversation.vue'
 import Composer, { type ComposerStart } from '@/components/assistant/Composer.vue'
 import FilePanel from '@/components/assistant/FilePanel.vue'
@@ -21,6 +22,7 @@ import DraftDialog from '@/components/workspace/DraftDialog.vue'
 
 // 文件审核的步骤条由审核视图报来，显示在顶部工具条（澄明 8.4）
 const reviewProgress = ref<ReviewProgress | null>(null)
+const reviewTrip = computed(() => reviewProgress.value ? progressTrip(reviewProgress.value) : null)
 const route = useRoute(), router = useRouter(), sessions = useSessionsStore(), auth = useAuthStore()
 // 会话的两种视图（V32-B-01）：直接提问 / 全面审核。切换只改视图，不外发、不清空输入；没有“文件审核”权限的人看不到审核视图；会话以外的审核首页在 /review（V34-A-03）。
 // 工作台首页不再有切换（V34-A-04）；会话里没有审核过时工具条只放“全面审核 →”，审核过或打开过审核视图才显示两个页签
@@ -250,7 +252,7 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
           </div>
           <span v-if="modelLabel && mode === 'ask'" class="ai-tag"><Sparkle :size="13" :stroke-width="2" />{{ modelLabel }}</span>
           <span class="head-gap" />
-          <ReviewSteps v-if="mode === 'review' && reviewProgress" :progress="reviewProgress" />
+          <SiTrip v-if="mode === 'review' && reviewTrip" :trip="reviewTrip" scale="bar" :since="reviewProgress?.since" :seconds="reviewProgress?.seconds" class="head-trip" />
           <SiSegmented v-if="showTabs" v-model="modeModel" :options="modeOptions" size="small" ariaLabel="会话视图" />
           <el-button v-else-if="canReview && canAsk" size="small" link @click="seeResult">全面审核 →</el-button>
           <div v-show="mode === 'review'" id="ws-head-actions" class="head-actions" />
@@ -296,9 +298,9 @@ onBeforeUnmount(() => { document.removeEventListener('visibilitychange', visibil
 .page-error { position: absolute; top: 12px; left: 50%; z-index: 3; width: min(760px, calc(100% - 48px)); transform: translateX(-50%); }
 /* 对话页（澄明 8.3）：顶部 64px 工具条，中间一栏 800，输入框固定在底部 */
 .chat-head { display: flex; flex: none; align-items: center; gap: 12px; height: 64px; padding: 0 24px; border-bottom: 1px solid var(--si-hair); background: var(--si-surface-1); }
-.title { min-width: 0; max-width: 46%; padding: 4px 8px; margin-left: -8px; overflow: hidden; border: 0; border-radius: 8px; background: none; color: var(--si-ink-1); font: var(--si-font-h3); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
+.title { min-width: 0; max-width: 46%; padding: 4px 8px; margin-left: -8px; overflow: hidden; border: 0; border-radius: var(--si-radius-sm); background: none; color: var(--si-ink-1); font: var(--si-font-h3); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: text; }
 .title:hover { background: var(--si-hover-bg); }
-.ai-tag { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
+.ai-tag { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--si-radius-badge); background: var(--si-ai-soft); color: var(--si-ai-ink); font: var(--si-font-badge); }
 .ai-tag svg { color: var(--si-ai); }
 .head-gap { flex: 1; }
 .title-col { flex: 0 1 auto; min-width: 0; max-width: 40%; display: flex; flex-direction: column; align-items: stretch; }

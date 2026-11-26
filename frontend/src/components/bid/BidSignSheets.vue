@@ -49,7 +49,7 @@ defineExpose({ allStamped, left })
 
 <style scoped>
 .all { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; }
-.act { padding: 3px 10px; border: 1px solid var(--si-hair-strong); border-radius: 8px; background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-2); cursor: pointer; }
+.act { padding: 3px 10px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-sm); background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-2); cursor: pointer; }
 .act:hover { color: var(--si-ink-1); background: var(--si-hover-bg); }
 .hint { font: var(--si-font-meta); color: var(--si-ink-3); }
 .lines { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--si-hair-strong); }
@@ -64,7 +64,7 @@ figcaption .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowra
 .lines li { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--si-hair-faint); }
 .lines .t { min-width: 120px; }
 .lines .marks { margin: 0 0 0 auto; }
-.marks { display: inline-flex; margin-top: 4px; border: 1px solid var(--si-hair-strong); border-radius: 8px; overflow: hidden; align-self: flex-start; }
+.marks { display: inline-flex; margin-top: 4px; border: 1px solid var(--si-hair-strong); border-radius: var(--si-radius-sm); overflow: hidden; align-self: flex-start; }
 .marks button { padding: 3px 10px; border: 0; background: transparent; font: var(--si-font-label-sm); color: var(--si-ink-3); cursor: pointer; }
 .marks button + button { border-left: 1px solid var(--si-hair); }
 .marks button:hover { color: var(--si-ink-1); background: var(--si-hover-bg); }

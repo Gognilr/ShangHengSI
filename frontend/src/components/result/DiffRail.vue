@@ -109,24 +109,24 @@ async function exportTable() {
 .tab:hover { color: var(--si-ink-1); }
 .tab.on { color: var(--si-ink-1); font-weight: 600; cursor: default; }
 .tab.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--si-brand-2); }
-.tab-n { padding: 0 6px; border-radius: 999px; background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-label-sm); }
+.tab-n { padding: 0 6px; border-radius: var(--si-radius-badge); background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-label-sm); }
 .export { margin-left: auto; }
 .export :deep(> span) { gap: 4px; }
 .loading { padding: 16px; }
 .alert { margin: 12px 16px 0; width: auto; }
 .zone { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
-.sum { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--si-hair-faint); border-radius: 12px; background: var(--si-card-2); }
-.sum-ic { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--si-blue-tint); color: var(--si-brand-2); }
+.sum { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--si-hair-faint); border-radius: var(--si-radius-md); background: var(--si-card-2); }
+.sum-ic { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: var(--si-radius-sm); background: var(--si-blue-tint); color: var(--si-brand-2); }
 .sum-main { min-width: 0; flex: 1; font: var(--si-font-label); color: var(--si-ink-1); }
 .sum-name { color: var(--si-ink-3); font: var(--si-font-label-sm); overflow-wrap: anywhere; }
 .sum-line { margin: 4px 0 0; color: var(--si-ink-2); font: var(--si-font-body); }
 .sum-line .dot { margin: 0 6px; color: var(--si-ink-4); }
 .sum-line .warn { color: var(--si-warn-ink); font-weight: 600; }
-.note { margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-caption); }
+.note { margin: 0; padding: 6px 10px; border-radius: var(--si-radius-sm); background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-caption); }
 .filters :deep(.si-segmented) { display: flex; width: 100%; }
 .filters :deep(.si-segmented button) { flex: 1; }
 .list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
-.row { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 8px 10px 8px 12px; border: 1px solid var(--si-hair-faint); border-radius: 10px; background: var(--si-surface-1); box-shadow: inset 3px 0 0 var(--el-color-primary); text-align: left; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), border-color var(--si-d2) var(--si-ease-out); }
+.row { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 8px 10px 8px 12px; border: 1px solid var(--si-hair-faint); border-radius: var(--si-radius-control); background: var(--si-surface-1); box-shadow: inset 3px 0 0 var(--el-color-primary); text-align: left; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), border-color var(--si-d2) var(--si-ease-out); }
 .row.u { box-shadow: inset 3px 0 0 var(--si-warn); }
 .row:hover { background: var(--si-hover-bg); }
 .row.on { border-color: var(--el-color-primary); background: var(--si-blue-tint); }
@@ -137,7 +137,7 @@ async function exportTable() {
 .ty-del { background: var(--si-surface-2); color: var(--si-ink-3); }
 .clause { flex: 1; min-width: 0; overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label); text-overflow: ellipsis; white-space: nowrap; }
 .tr { flex: none; color: var(--si-ink-3); font: var(--si-font-caption); }
-.tr-u { padding: 0 6px; border-radius: 999px; background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-badge); line-height: 20px; }
+.tr-u { padding: 0 6px; border-radius: var(--si-radius-badge); background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-badge); line-height: 20px; }
 .ex { color: var(--si-ink-2); font: var(--si-font-body); overflow-wrap: anywhere; }
 .ex del { color: var(--si-ink-3); }
 .ex b { color: var(--si-ink-1); }

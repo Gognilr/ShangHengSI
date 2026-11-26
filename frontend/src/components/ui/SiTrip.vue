@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, X } from '@lucide/vue'
 import { useFx } from '@/utils/motion'
 import { barStations, currentName, isLocalTrip, miniStations, segmentsOf, tripAria, tripTitle, type Station, type Trip } from '@/utils/trip'
@@ -10,11 +10,37 @@ import { barStations, currentName, isLocalTrip, miniStations, segmentsOf, tripAr
  * scale：mini 迷你（列表行，五个 8px 点）；bar 工具条（工作区顶部，模块站名横排）；dot 只画当前站（侧栏）。
  * 状态映射只在 utils/trip.ts。
  */
-const props = withDefaults(defineProps<{ trip: Trip; scale?: 'mini' | 'bar' | 'dot'; elapsed?: string; took?: string; hideText?: boolean }>(), { scale: 'mini' })
+const props = withDefaults(defineProps<{
+  trip: Trip; scale?: 'mini' | 'bar' | 'dot'; hideText?: boolean
+  /** 工具条：进行中的计时起点（ISO），当前站名旁显示 m:ss */
+  since?: string | null
+  /** 工具条：完成徽标里的用时（秒） */
+  seconds?: number | null
+}>(), { scale: 'mini' })
 const emit = defineEmits<{ act: [] }>()
 const fx = useFx()
 
 const label = computed(() => tripAria(props.trip))
+
+/* ---- 计时与用时 ---- */
+const now = ref(Date.now())
+let timer: number | undefined
+watch(() => props.scale === 'bar' && props.trip.state === 'run' && !!props.since, on => {
+  window.clearInterval(timer)
+  if (on) { now.value = Date.now(); timer = window.setInterval(() => { now.value = Date.now() }, 1000) }
+}, { immediate: true })
+onBeforeUnmount(() => window.clearInterval(timer))
+const elapsed = computed(() => {
+  const t = props.since ? Date.parse(props.since) : NaN
+  if (!Number.isFinite(t)) return ''
+  const sec = Math.max(0, Math.floor((now.value - t) / 1000))
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+})
+const took = computed(() => {
+  const s = props.seconds
+  if (s == null || !Number.isFinite(s)) return ''
+  return s >= 60 ? `${Math.floor(s / 60)} 分 ${Math.round(s % 60)} 秒` : `${Math.max(1, Math.round(s))} 秒`
+})
 const local = computed(() => isLocalTrip(props.trip))
 const done = computed(() => props.trip.state === 'done')
 

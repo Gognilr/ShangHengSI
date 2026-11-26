@@ -545,7 +545,7 @@ html[data-fx="off"] .bidp .spin { animation: none; }
 .drop-card:hover { border-color: var(--si-m-bid); }
 .drop-card[aria-disabled="true"] { cursor: progress; opacity: .7; }
 
-.bid-progress { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 10px 16px; border-radius: 12px; background: var(--si-info-soft); font: var(--si-font-body); color: var(--si-ink-2); }
+.bid-progress { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 10px 16px; border-radius: var(--si-radius-md); background: var(--si-info-soft); font: var(--si-font-body); color: var(--si-ink-2); }
 .bid-progress > svg { flex: none; color: var(--si-info); }
 .bid-progress b { color: var(--si-info-ink); }
 .t3 { color: var(--si-ink-3); }
@@ -563,7 +563,7 @@ html:not([data-fx="off"]) .prog i { animation: bp-flow 2.2s linear infinite; }
 .bc-add b, .bc-wait b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-label); color: var(--si-ink-2); }
 .bc-wait { align-items: flex-start; text-align: left; }
 .t4 { color: var(--si-ink-4); }
-.add-ic { display: grid; place-items: center; width: 36px; height: 36px; margin-bottom: 2px; border-radius: 10px; background: var(--si-m-bid-soft); color: var(--si-m-bid); }
+.add-ic { display: grid; place-items: center; width: 36px; height: 36px; margin-bottom: 2px; border-radius: var(--si-radius-control); background: var(--si-m-bid-soft); color: var(--si-m-bid); }
 .bidders.lone .bc-add { grid-column: 1 / -1; min-height: 180px; }
 .bidders.lone .bc-add b { font: var(--si-font-h3); }
 .link { margin-top: 4px; padding: 0; border: 0; background: none; font: var(--si-font-caption); color: var(--si-blue-ink); cursor: pointer; }

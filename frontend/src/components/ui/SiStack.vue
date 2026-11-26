@@ -33,7 +33,7 @@ function pick(key: string) { if (props.pickable) emit('update:picked', props.pic
 .bar.pick > i { opacity: .28; }
 .bar.pick > i.on { opacity: 1; }
 .lg { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font: var(--si-font-meta); color: var(--si-ink-2); }
-.lg > * { display: inline-flex; align-items: center; gap: 6px; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; cursor: pointer; }
+.lg > * { display: inline-flex; align-items: center; gap: 6px; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: var(--si-radius-tag); background: none; color: inherit; font: inherit; cursor: pointer; }
 .lg > span { cursor: default; }
 .lg > button:hover { background: var(--si-hover-bg); }
 .lg i { width: 8px; height: 8px; border-radius: 2px; }

@@ -263,7 +263,7 @@ defineExpose({ drawCrop })
 .hl-layer { position: absolute; inset: 0; pointer-events: none; }
 .hl-box { position: absolute; box-sizing: border-box; border: 1px solid var(--si-warn); border-bottom-width: 2px; background: var(--si-hl-medium); opacity: .7; scroll-margin-block: 48px; }
 /* 缩放工具条：浮在原件右上角，不随纸面滚动 */
-.zoombar { position: absolute; top: 10px; right: 18px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 10px; background: var(--si-surface-pop); box-shadow: var(--si-shadow-pop); }
+.zoombar { position: absolute; top: 10px; right: 18px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: var(--si-radius-control); background: var(--si-surface-pop); box-shadow: var(--si-shadow-pop); }
 .zb { display: grid; place-items: center; min-width: 28px; height: 28px; padding: 0 4px; border: 0; border-radius: 7px; background: transparent; color: var(--si-ink-2); font: var(--si-font-label-sm); font-variant-numeric: tabular-nums; cursor: pointer; }
 .zb:hover:not(:disabled) { background: var(--si-hover-bg); color: var(--si-ink-1); }
 .zb:disabled { color: var(--si-ink-4); cursor: not-allowed; }

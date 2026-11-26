@@ -68,7 +68,7 @@ const details = computed(() => {
 .toolbar { flex: none; padding: 6px 0 8px; border-bottom: 1px solid var(--si-hair); }
 .top { display: flex; align-items: center; gap: 10px; min-height: 48px; container: result-toolbar / inline-size; }
 .separator { flex: none; width: 1px; height: 24px; background: var(--si-hair); }
-.file-badge { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font: var(--si-font-label-sm); }
+.file-badge { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--si-radius-sm); color: var(--el-color-primary); background: var(--el-color-primary-light-9); font: var(--si-font-label-sm); }
 .file-name { min-width: 120px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h2); }
 .nowrap { white-space: nowrap; }
 .round-select { flex: none; width: 112px; }

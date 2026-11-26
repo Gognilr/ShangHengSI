@@ -151,9 +151,9 @@ html[data-fx="full"] .global-search.el-dialog { background: var(--si-glass); bac
 .global-search .gs-in input::placeholder { color: var(--si-ink-4); }
 .global-search .results { padding: 8px; max-height: min(420px, 50vh); overflow-y: auto; }
 .global-search .group-title { padding: 10px 12px 6px; font: var(--si-font-caption); font-weight: 500; color: var(--si-ink-4); }
-.global-search .entry { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 10px; color: var(--si-ink-1); font: var(--si-font-body); cursor: pointer; }
+.global-search .entry { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: var(--si-radius-control); color: var(--si-ink-1); font: var(--si-font-body); cursor: pointer; }
 .global-search .entry.active { background: var(--si-select-bg); }
-.global-search .entry .ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--mc-soft, var(--si-blue-tint)); color: var(--mc, var(--si-brand-2)); }
+.global-search .entry .ic { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--si-radius-sm); background: var(--mc-soft, var(--si-blue-tint)); color: var(--mc, var(--si-brand-2)); }
 .global-search .m-review { --mc: var(--si-m-review); --mc-soft: var(--si-m-review-soft); }
 .global-search .m-bid { --mc: var(--si-m-bid); --mc-soft: var(--si-m-bid-soft); }
 .global-search .m-meet { --mc: var(--si-m-meet); --mc-soft: var(--si-m-meet-soft); }

@@ -352,10 +352,10 @@ defineExpose({ pick, attach, cancelWaiting })
 .is-hero .box :deep(.el-textarea__inner) { font-size: calc(16px * var(--si-fs)); line-height: 1.65; }
 /* 文件标签 */
 .files { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-.ft { position: relative; display: flex; align-items: center; min-width: 0; overflow: hidden; border: 1px solid var(--si-hair); border-radius: 12px; background: var(--si-surface-1); transition: border-color var(--si-d2), background-color var(--si-d2); }
+.ft { position: relative; display: flex; align-items: center; min-width: 0; overflow: hidden; border: 1px solid var(--si-hair); border-radius: var(--si-radius-md); background: var(--si-surface-1); transition: border-color var(--si-d2), background-color var(--si-d2); }
 .ft-main { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; padding: 8px 6px 8px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .ft-main:disabled { cursor: default; }
-.fi { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border-radius: 8px; }
+.fi { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border-radius: var(--si-radius-sm); }
 .ft-pdf .fi { background: var(--si-danger-soft); color: var(--si-danger); }
 .ft-doc .fi { background: var(--si-k-org-bg); color: var(--si-k-org); }
 .ft-xls .fi { background: var(--si-ok-soft); color: var(--si-ok); }
@@ -372,12 +372,12 @@ defineExpose({ pick, attach, cancelWaiting })
 .ft-go { flex: none; }
 .ft--off .nm { color: var(--si-ink-3); }
 .ft--off .fi { background: var(--si-surface-2); color: var(--si-ink-4); }
-.ft-x { display: grid; flex: none; place-items: center; width: 24px; height: 24px; margin-right: 6px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--si-ink-4); cursor: pointer; }
+.ft-x { display: grid; flex: none; place-items: center; width: 24px; height: 24px; margin-right: 6px; padding: 0; border: 0; border-radius: var(--si-radius-tag); background: none; color: var(--si-ink-4); cursor: pointer; }
 .ft-x:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 .ft-bar { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; }
 .ft-bar i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--si-brand-2), var(--si-ai)); transition: width var(--si-d3) var(--si-ease-out); }
 .template-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.template-tag { display: inline-flex; align-items: center; gap: 2px; padding: 2px 0 2px 10px; border-radius: 999px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-label-sm); }
+.template-tag { display: inline-flex; align-items: center; gap: 2px; padding: 2px 0 2px 10px; border-radius: var(--si-radius-badge); background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-label-sm); }
 .template-tag .ft-x { width: 20px; height: 20px; margin-right: 2px; color: inherit; }
 .param { width: 132px; }
 .where { margin: 0; }
@@ -395,8 +395,8 @@ defineExpose({ pick, attach, cancelWaiting })
 .ai-pick:disabled { opacity: 1; }
 .ai-pick > svg { color: var(--si-ai); }
 .ai-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.local-tag { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-badge); }
-.sw { position: relative; flex: none; width: 28px; height: 16px; border-radius: 999px; background: var(--si-hair-strong); transition: background-color var(--si-d2); }
+.local-tag { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--si-radius-badge); background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-badge); }
+.sw { position: relative; flex: none; width: 28px; height: 16px; border-radius: var(--si-radius-badge); background: var(--si-hair-strong); transition: background-color var(--si-d2); }
 .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--si-white); transition: transform var(--si-d3) var(--si-ease-spring); }
 .tog.on .sw { background: var(--si-brand); }
 .tog.on .sw::after { transform: translateX(12px); }

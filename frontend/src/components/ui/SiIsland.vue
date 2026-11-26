@@ -28,7 +28,7 @@ const dash = computed(() => {
 </template>
 
 <style scoped>
-.si-island { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; width: max-content; max-width: 240px; height: 30px; padding: 0 12px; overflow: hidden; border-radius: 999px; background: var(--si-island-bg); color: var(--si-island-ink); font: var(--si-font-label-sm); white-space: nowrap; transition: max-width var(--si-dur-2) var(--si-spring); }
+.si-island { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; width: max-content; max-width: 240px; height: 30px; padding: 0 12px; overflow: hidden; border-radius: var(--si-radius-badge); background: var(--si-island-bg); color: var(--si-island-ink); font: var(--si-font-label-sm); white-space: nowrap; transition: max-width var(--si-dur-2) var(--si-spring); }
 .is-busy, .is-error { max-width: 320px; }
 .is-done { max-width: 380px; padding-right: 4px; }
 .glow { box-shadow: 0 0 0 1px color-mix(in srgb, var(--si-brand-2) 45%, transparent); }
@@ -41,7 +41,7 @@ const dash = computed(() => {
 .track, .arc { fill: none; stroke-width: 2; }
 .track { stroke: color-mix(in srgb, var(--si-island-ink) 22%, transparent); }
 .arc { stroke: var(--si-brand-2); stroke-linecap: round; }
-.action { flex: none; height: 22px; padding: 0 10px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--si-island-ink) 18%, transparent); color: var(--si-island-ink); font: var(--si-font-label-sm); cursor: pointer; transition: background-color var(--si-dur-1) var(--si-ease); }
+.action { flex: none; height: 22px; padding: 0 10px; border: 0; border-radius: var(--si-radius-badge); background: color-mix(in srgb, var(--si-island-ink) 18%, transparent); color: var(--si-island-ink); font: var(--si-font-label-sm); cursor: pointer; transition: background-color var(--si-dur-1) var(--si-ease); }
 .action:hover { background: color-mix(in srgb, var(--si-island-ink) 28%, transparent); }
 .action:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 @keyframes si-island-spin { to { transform: rotate(360deg); } }

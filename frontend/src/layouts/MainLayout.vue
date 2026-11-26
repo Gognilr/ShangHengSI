@@ -271,7 +271,7 @@ async function onCommand(cmd: string) {
 
 .new-session {
   display: flex; align-items: center; gap: 10px; width: 100%; height: 44px; margin-bottom: 14px; padding: 0 14px; box-sizing: border-box;
-  border: 0; border-radius: 12px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-label); font-weight: 600;
+  border: 0; border-radius: var(--si-radius-md); background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-label); font-weight: 600;
   cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), transform var(--si-d1) var(--si-ease-out);
 }
 .new-session:hover:not(:disabled) { background: color-mix(in srgb, var(--si-blue-tint) 70%, var(--si-brand-line)); }
@@ -308,7 +308,7 @@ html[data-fx="full"] .item:hover .icon { transform: scale(1.08); }
 .item:disabled, .new-session:disabled { cursor: not-allowed; opacity: .6; }
 .item:active:not(:disabled), .new-session:active:not(:disabled) { transform: scale(.97); }
 /* 等你处理的数量：琥珀浅底胶囊；收起时变成图标右上角的小圆点 */
-.count { margin-left: auto; min-width: 22px; height: 20px; padding: 0 7px; box-sizing: border-box; border-radius: 999px; background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-badge); font-weight: 600; line-height: 20px; text-align: center; }
+.count { margin-left: auto; min-width: 22px; height: 20px; padding: 0 7px; box-sizing: border-box; border-radius: var(--si-radius-badge); background: var(--si-warn-soft); color: var(--si-warn-ink); font: var(--si-font-badge); font-weight: 600; line-height: 20px; text-align: center; }
 .item .si-kbd { margin-left: auto; }
 
 .account { flex: none; display: flex; align-items: center; gap: 4px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--si-hair-faint); }
@@ -342,7 +342,7 @@ html[data-fx="full"] .item:hover .icon { transform: scale(1.08); }
 .account-pop.el-popover.el-popper { padding: 6px; }
 .account-menu { display: flex; flex-direction: column; }
 .account-menu .alerts { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--si-hair-faint); }
-.account-menu .menu-item { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-2); font: var(--si-font-body); text-align: left; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out); }
+.account-menu .menu-item { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 12px; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-2); font: var(--si-font-body); text-align: left; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out); }
 .account-menu .menu-item svg { color: var(--si-ink-3); }
 .account-menu .menu-item:hover, .account-menu .menu-item:focus-visible { background: var(--si-hover-bg); color: var(--si-ink-1); outline: none; }
 .account-menu .menu-rule { height: 1px; margin: 4px 6px; background: var(--si-hair-faint); }

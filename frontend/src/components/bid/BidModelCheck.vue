@@ -147,8 +147,8 @@ const hidden = computed(() => !!data.value && !data.value.state && !ocrPending.v
 </template>
 
 <style scoped>
-.ai-card { display: flex; align-items: flex-start; gap: 12px; margin: 12px 4px 0; padding: 12px 14px; border-radius: 12px; background: var(--si-ai-soft); color: var(--si-ai-ink); }
-.ic { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 1px; border-radius: 8px; background: color-mix(in srgb, var(--si-ai) 14%, transparent); }
+.ai-card { display: flex; align-items: flex-start; gap: 12px; margin: 12px 4px 0; padding: 12px 14px; border-radius: var(--si-radius-md); background: var(--si-ai-soft); color: var(--si-ai-ink); }
+.ic { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 1px; border-radius: var(--si-radius-sm); background: color-mix(in srgb, var(--si-ai) 14%, transparent); }
 .spin { animation: ai-spin 1s linear infinite; }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
 html[data-fx="off"] .ai-card .spin { animation: none; }

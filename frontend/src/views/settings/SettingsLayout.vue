@@ -68,7 +68,7 @@ const activeTab = computed(() => {
 .settings-nav { align-self: start; display: flex; flex-direction: column; gap: 2px; max-height: 100%; padding: 12px; overflow-y: auto; box-sizing: border-box; background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); }
 .nav-group { flex: none; margin: 14px 0 4px; padding: 0 10px; font: var(--si-font-overline); color: var(--si-ink-3); }
 .nav-group:first-child { margin-top: 2px; }
-.nav-item { flex: none; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; border-radius: 10px; color: var(--si-ink-2); font: var(--si-font-label); text-decoration: none; transition: background-color var(--si-d2) var(--si-ease-out), color var(--si-d2) var(--si-ease-out); }
+.nav-item { flex: none; display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 10px; border-radius: var(--si-radius-control); color: var(--si-ink-2); font: var(--si-font-label); text-decoration: none; transition: background-color var(--si-d2) var(--si-ease-out), color var(--si-d2) var(--si-ease-out); }
 .nav-item svg { flex: none; color: var(--si-ink-3); transition: color var(--si-d2) var(--si-ease-out); }
 .nav-item:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 .nav-item.selected { background: var(--si-blue-tint); color: var(--si-blue-ink); font-weight: 600; }
@@ -80,7 +80,7 @@ const activeTab = computed(() => {
 .settings-body :deep(.panel) { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 /* 表单标签宽 140，控件宽 360（澄明 8.9） */
 .settings-body :deep(.si-row-label) { width: 140px; }
-.section-nav { position: sticky; top: 0; z-index: 5; display: flex; overflow-x: auto; margin-bottom: 12px; padding: 6px 8px; background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: 12px; box-shadow: var(--si-shadow-1); }
+.section-nav { position: sticky; top: 0; z-index: 5; display: flex; overflow-x: auto; margin-bottom: 12px; padding: 6px 8px; background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-md); box-shadow: var(--si-shadow-1); }
 .section-nav :deep(.el-button) { flex: none; margin: 0; }
 @media (max-width: 1279px) { .shell { grid-template-columns: 200px minmax(0, 1fr); gap: 16px; } }
 </style>

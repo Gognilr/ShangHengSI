@@ -58,7 +58,7 @@ const fxHint = computed(() => {
 .top { align-items: flex-start; }
 .themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 480px; }
 .theme { display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; text-align: center; }
-.thumb { display: flex; height: 72px; box-sizing: border-box; overflow: hidden; border: 2px solid var(--si-hair); border-radius: 12px; transition: border-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
+.thumb { display: flex; height: 72px; box-sizing: border-box; overflow: hidden; border: 2px solid var(--si-hair); border-radius: var(--si-radius-md); transition: border-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
 .theme:hover .thumb { transform: translateY(-2px); }
 .theme.on .thumb { border-color: var(--si-brand-2); box-shadow: var(--si-ring); }
 .theme.on .tl { color: var(--si-blue-ink); font-weight: 600; }

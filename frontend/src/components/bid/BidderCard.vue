@@ -77,7 +77,7 @@ function drop(event: DragEvent) { over.value = false; emit('drop', event) }
 .suggest .full { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--si-ink-1); }
 .opening { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 28px; margin-top: 4px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .opening .value { color: var(--si-ink-1); }
-.empty { display: block; width: 100%; margin: 12px 0 8px; padding: 16px; border: 1px dashed var(--si-hair-strong); border-radius: 8px; background: transparent; color: var(--si-ink-3); font: var(--si-font-meta); cursor: pointer; }
+.empty { display: block; width: 100%; margin: 12px 0 8px; padding: 16px; border: 1px dashed var(--si-hair-strong); border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-3); font: var(--si-font-meta); cursor: pointer; }
 .empty:hover:not(:disabled) { border-style: solid; border-color: var(--si-ink-3); background: var(--si-hover-bg); }
 .empty:disabled { cursor: default; }
 </style>

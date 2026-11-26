@@ -58,15 +58,15 @@ watch(() => props.run?.id, () => { detailsOpen.value = false })
 .total { display: flex; align-items: baseline; gap: 4px; font: var(--si-font-meta); color: var(--si-ink-2); }
 .total b { font: var(--si-font-stat); color: var(--el-text-color-primary); }
 .counts { display: flex; gap: 6px; }
-.count { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border: 1px solid var(--si-hair); border-radius: 999px; background: transparent; color: var(--el-text-color-primary); font: var(--si-font-label-sm); font-variant-numeric: tabular-nums; cursor: pointer; }
+.count { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-badge); background: transparent; color: var(--el-text-color-primary); font: var(--si-font-label-sm); font-variant-numeric: tabular-nums; cursor: pointer; }
 .count.active { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .count i { width: 7px; height: 7px; border-radius: 50%; background: var(--si-info); }
 .sev-high i { background: var(--si-danger); }
 .sev-medium i { background: var(--si-warn); }
-.sanctions { height: 24px; padding: 0 8px; border: 1px solid var(--si-hair); border-radius: 999px; background: transparent; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; }
+.sanctions { height: 24px; padding: 0 8px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-badge); background: transparent; color: var(--si-ink-2); font: var(--si-font-label-sm); cursor: pointer; }
 .sanctions.high { border-color: var(--si-danger); color: var(--si-danger-ink); }
 .reasons { margin: 0 0 8px; padding-left: 18px; font: var(--si-font-meta); white-space: pre-wrap; overflow-wrap: anywhere; }
-.delta-note { margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-meta); overflow-wrap: anywhere; }
+.delta-note { margin: 0; padding: 6px 10px; border-radius: var(--si-radius-sm); background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-meta); overflow-wrap: anywhere; }
 .coverage { margin: 0; font: var(--si-font-meta); color: var(--si-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-notice { display: flex; align-items: flex-start; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--si-warn-ink); font: var(--si-font-meta); text-align: left; cursor: pointer; }
 .ai-notice svg { flex: none; margin-top: 3px; }

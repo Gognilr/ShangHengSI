@@ -42,8 +42,8 @@ html body { font: var(--si-font-body); color: var(--el-text-color-primary); back
 }
 .el-button.is-round { border-radius: var(--el-border-radius-round); }
 .el-button.is-circle { padding: 0; }
-.el-button--small { --el-button-size: var(--el-component-size-small); padding: 0 12px; border-radius: 8px; font: var(--si-font-label-sm); }
-.el-button--large { --el-button-size: var(--el-component-size-large); padding: 0 22px; border-radius: 12px; font-size: calc(15px * var(--si-fs)); }
+.el-button--small { --el-button-size: var(--el-component-size-small); padding: 0 12px; border-radius: var(--si-radius-sm); font: var(--si-font-label-sm); }
+.el-button--large { --el-button-size: var(--el-component-size-large); padding: 0 22px; border-radius: var(--si-radius-md); font-size: calc(15px * var(--si-fs)); }
 .el-button:active:not(.is-disabled):not(.is-link):not(.is-text) { transform: scale(.97); }
 .el-button.is-link { padding: 0; }
 .el-button.is-link, .el-button.is-link.el-button--small { height: auto; }
@@ -163,7 +163,7 @@ html[data-shell="night"] .el-button--primary {
   line-height: 30px;
   border: 0;
   outline: 0;
-  border-radius: 8px;
+  border-radius: var(--si-radius-sm);
   background: transparent;
   color: var(--si-ink-3);
   font: var(--si-font-label);
@@ -285,14 +285,14 @@ html[data-shell="night"] .el-button--primary {
 .el-popper .el-popper__arrow { display: none; }
 .el-popper.is-light .el-popover__title { color: var(--si-ink-1); font: var(--si-font-h4); }
 .el-popover.el-popper { padding: 16px; font: var(--si-font-body); }
-.el-dropdown__popper.el-popper, .el-select__popper.el-popper, .el-picker__popper.el-popper { border-radius: 14px; }
+.el-dropdown__popper.el-popper, .el-select__popper.el-popper, .el-picker__popper.el-popper { border-radius: var(--si-radius-card); }
 .el-dropdown-menu { --el-dropdown-menuItem-hover-fill: var(--si-hover-bg); --el-dropdown-menuItem-hover-color: var(--si-ink-1); padding: 6px; background: transparent; }
-.el-dropdown-menu__item { margin: 0; padding: 8px 12px; border-radius: 8px; font: var(--si-font-body); }
+.el-dropdown-menu__item { margin: 0; padding: 8px 12px; border-radius: var(--si-radius-sm); font: var(--si-font-body); }
 .el-dropdown-menu__item--divided { margin: 6px 0 0; border-radius: 0 0 8px 8px; border-top-color: var(--si-hair-faint); }
 .el-dropdown-menu__item--divided::before { background-color: transparent; }
 .el-dropdown-menu__item.danger-item { color: var(--si-danger-ink); }
-.el-select-dropdown { --el-select-dropdown-bg: transparent; --el-select-option-hover-bg: var(--si-hover-bg); --el-select-option-selected-text-color: var(--si-blue-ink); border-radius: 12px; font: var(--si-font-body); }
-.el-select-dropdown__item { margin: 0 6px; border-radius: 8px; font: var(--si-font-body); }
+.el-select-dropdown { --el-select-dropdown-bg: transparent; --el-select-option-hover-bg: var(--si-hover-bg); --el-select-option-selected-text-color: var(--si-blue-ink); border-radius: var(--si-radius-md); font: var(--si-font-body); }
+.el-select-dropdown__item { margin: 0 6px; border-radius: var(--si-radius-sm); font: var(--si-font-body); }
 .el-select-dropdown__item.is-hovering, .el-select-dropdown__item:hover { background-color: var(--si-hover-bg); }
 .el-select-dropdown__item.is-selected { color: var(--si-blue-ink); font-weight: 500; }
 .el-date-picker, .el-picker-panel { --el-datepicker-text-color: var(--si-ink-2); --el-datepicker-off-text-color: var(--si-ink-5); --el-datepicker-header-text-color: var(--si-ink-1); --el-datepicker-icon-color: var(--si-ink-3); --el-datepicker-border-color: var(--si-hair); --el-datepicker-inner-border-color: var(--si-hair); --el-datepicker-hover-text-color: var(--si-blue-ink); --el-datepicker-active-color: var(--si-brand); --el-datepicker-inrange-bg-color: var(--si-surface-2); --el-datepicker-inrange-hover-bg-color: var(--si-surface-2); }
@@ -304,7 +304,7 @@ html[data-shell="night"] .el-button--primary {
   --el-popover-border-color: transparent;
   background: var(--si-island-bg);
   border-color: transparent;
-  border-radius: 8px;
+  border-radius: var(--si-radius-sm);
   box-shadow: var(--si-shadow-3);
   color: var(--si-island-ink);
   font: var(--si-font-label-sm);
@@ -344,7 +344,7 @@ html[data-shell="night"] .el-button--primary {
   --el-message-text-color: var(--si-toast-ink);
   --el-message-close-icon-color: var(--si-toast-ink);
   --el-message-close-hover-color: var(--si-toast-ink);
-  border-radius: 999px;
+  border-radius: var(--si-radius-badge);
   padding: 10px 18px 10px 14px;
   gap: 10px;
   max-width: 560px;

@@ -70,7 +70,7 @@ const more = computed(() => store.total > MAX)
 <style scoped>
 .heading { margin: 0; padding: 14px 12px 6px; font: var(--si-font-caption); font-weight: 500; color: var(--si-ink-4); }
 ul { margin: 0; padding: 0; list-style: none; }
-.row { position: relative; display: flex; align-items: center; border-radius: 8px; transition: background-color var(--si-d2) var(--si-ease-out); }
+.row { position: relative; display: flex; align-items: center; border-radius: var(--si-radius-sm); transition: background-color var(--si-d2) var(--si-ease-out); }
 .row:hover { background: var(--si-hover-bg); }
 .row.current { background: var(--si-select-bg); }
 .link { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 4px 0 12px; color: var(--si-ink-2); text-decoration: none; font: var(--si-font-body); font-size: calc(13.5px * var(--si-fs)); }
@@ -78,10 +78,10 @@ ul { margin: 0; padding: 0; list-style: none; }
 .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--si-brand-2); }
 .dot.review { background: var(--si-m-review); }
-.tag { flex: none; padding: 0 6px; border-radius: 999px; font: var(--si-font-badge); }
+.tag { flex: none; padding: 0 6px; border-radius: var(--si-radius-badge); font: var(--si-font-badge); }
 .tag--busy { color: var(--si-info-ink); background: var(--si-info-soft); }
 .tag--done { color: var(--si-blue-ink); background: var(--si-blue-tint); }
-.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 3px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-3); cursor: pointer; opacity: 0; transition: opacity var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
+.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-right: 3px; padding: 0; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-3); cursor: pointer; opacity: 0; transition: opacity var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
 .row:hover .more, .row:focus-within .more, .more[aria-expanded="true"] { opacity: 1; }
 .more:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 .more-link { display: block; margin: 4px 0 0; padding: 6px 12px; color: var(--si-ink-3); font: var(--si-font-meta); text-decoration: none; }

@@ -132,7 +132,7 @@ async function copy() {
 .bubble .markdown p:last-child { margin-bottom: 0; }
 .aux { color: var(--si-ink-4); font: var(--si-font-caption); }
 .ai-line { display: flex; align-items: center; gap: 10px; }
-.ai-tag, .local-tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; font: var(--si-font-badge); }
+.ai-tag, .local-tag { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--si-radius-badge); font: var(--si-font-badge); }
 .ai-tag { background: var(--si-ai-soft); color: var(--si-ai-ink); }
 .ai-tag svg { color: var(--si-ai); }
 .local-tag { background: var(--si-blue-tint); color: var(--si-blue-ink); }
@@ -174,7 +174,7 @@ html[data-fx="lite"] .think i { animation: none; opacity: .7; }
 .reply:hover .message-actions.on-hover, .reply:focus-within .message-actions.on-hover { opacity: 1; }
 /* 依据行（V321-E-13）：引用过的在前；附带发送但未引用的用次要色 */
 .sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
-.source { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 10px; border: 1px solid var(--si-hair); border-radius: 999px; background: var(--si-surface-1); font: var(--si-font-meta); color: var(--si-ink-2); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: border-color var(--si-d2), color var(--si-d2); }
+.source { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 10px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-badge); background: var(--si-surface-1); font: var(--si-font-meta); color: var(--si-ink-2); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: border-color var(--si-d2), color var(--si-d2); }
 .source:hover { border-color: var(--si-brand-line); color: var(--si-blue-ink); }
 .source:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 .source.uncited { color: var(--si-ink-3); border-style: dashed; }

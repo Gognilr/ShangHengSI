@@ -131,12 +131,12 @@ function open(row: HistoryItem) {
 .err { margin-bottom: 16px; }
 .file-input { display: none; }
 /* 大号拖放区：220 高、圆角 18、2px 虚线，模块色图标；拖入时边框变模块色、底色变浅、放大 1.01 */
-.drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 220px; padding: 28px 24px; border: 2px dashed var(--si-hair-strong); border-radius: 18px; background: var(--si-surface-1); text-align: center; cursor: pointer; overflow: hidden; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
+.drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 220px; padding: 28px 24px; border: 2px dashed var(--si-hair-strong); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); text-align: center; cursor: pointer; overflow: hidden; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
 .drop:hover { border-color: var(--si-m-review); }
 .drop:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
 .drop.dragging { border-style: solid; border-color: var(--si-m-review); background: var(--si-m-review-soft); transform: scale(1.01); }
 .drop.busy { cursor: progress; }
-.drop-ic { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 4px; border-radius: 16px; background: var(--si-m-review-soft); color: var(--si-m-review); transition: transform var(--si-d3) var(--si-ease-spring); }
+.drop-ic { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 4px; border-radius: var(--si-radius-pop); background: var(--si-m-review-soft); color: var(--si-m-review); transition: transform var(--si-d3) var(--si-ease-spring); }
 .drop:hover .drop-ic, .drop.dragging .drop-ic { transform: translateY(-3px) scale(1.06); }
 .drop-title { color: var(--si-ink-1); font: var(--si-font-h3); }
 .drop .hint { margin: 0; }
@@ -156,11 +156,11 @@ html[data-fx="full"] .li { animation: rh-in var(--si-d3) var(--si-ease-out) both
 .li:hover { background: var(--si-hover-bg); }
 .li:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }
 @keyframes rh-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.mod-ic { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--si-m-review-soft); color: var(--si-m-review); }
+.mod-ic { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--si-radius-control); background: var(--si-m-review-soft); color: var(--si-m-review); }
 .li-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .li-main b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .li-main span { overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
-.badge { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; font: var(--si-font-badge); white-space: nowrap; }
+.badge { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: var(--si-radius-badge); font: var(--si-font-badge); white-space: nowrap; }
 .badge .d { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .b-info { background: var(--si-info-soft); color: var(--si-info-ink); }
 .b-mid { background: var(--si-warn-soft); color: var(--si-warn-ink); }
@@ -171,6 +171,6 @@ html[data-fx="full"] .li { animation: rh-in var(--si-d3) var(--si-ease-out) both
 @keyframes rh-breath { 50% { opacity: .35; } }
 .li-t { flex: none; width: 128px; white-space: nowrap; color: var(--si-ink-4); font: var(--si-font-caption); text-align: right; }
 .chev { flex: none; color: var(--si-ink-4); }
-.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.more { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-3); cursor: pointer; }
 .more:hover { background: var(--si-hover-bg); color: var(--si-ink-1); }
 </style>

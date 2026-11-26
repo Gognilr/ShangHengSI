@@ -76,7 +76,7 @@ html[data-fx="full"] .si-lift:hover .si-lift-icon { transform: scale(1.08) rotat
 /* 原文定位：平滑滚动后闪一次 */
 @keyframes si-flash { 0%, 100% { opacity: 0; } 30% { opacity: 1; } }
 .si-flash { position: relative; }
-.si-flash::after { content: ''; position: absolute; inset: -2px -4px; border-radius: 6px; background: var(--si-hl-medium); opacity: 0; pointer-events: none; animation: si-flash 900ms var(--si-ease-io); }
+.si-flash::after { content: ''; position: absolute; inset: -2px -4px; border-radius: var(--si-radius-tag); background: var(--si-hl-medium); opacity: 0; pointer-events: none; animation: si-flash 900ms var(--si-ease-io); }
 
 /* 呼吸圆点（进行中的状态徽标） */
 @keyframes si-breath { 50% { opacity: .35; transform: scale(.8); } }
@@ -113,6 +113,6 @@ html[data-fx="full"] .si-glass { background: var(--si-glass); backdrop-filter: b
 .si-required-empty { outline: 1px dashed var(--el-color-primary); outline-offset: 2px; }
 .si-required-tag { margin-left: 6px; color: var(--el-color-primary); font: var(--si-font-caption); font-weight: 400; }
 .si-nudge { position: relative; }
-.si-nudge::after { content: ''; position: absolute; inset: -5px; border: 2px solid var(--si-focus); border-radius: 12px; pointer-events: none; opacity: 0; animation: si-nudge 1.1s var(--si-ease-out); }
+.si-nudge::after { content: ''; position: absolute; inset: -5px; border: 2px solid var(--si-focus); border-radius: var(--si-radius-md); pointer-events: none; opacity: 0; animation: si-nudge 1.1s var(--si-ease-out); }
 @keyframes si-nudge { 0%, 50% { opacity: 0; } 20%, 70% { opacity: 1; } 100% { opacity: 0; } }
 html[data-fx="off"] .si-nudge::after { opacity: 1; }

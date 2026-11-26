@@ -117,7 +117,7 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
 .mi-g svg { transition: transform var(--si-d2) var(--si-ease-out); }
 .mi-g .turned { transform: rotate(90deg); }
 .rows { position: relative; display: flex; flex-direction: column; gap: 2px; }
-.iss { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 12px; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out); }
+.iss { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: var(--si-radius-md); cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out); }
 .iss:hover { background: var(--si-hover-bg); }
 .iss.on { background: var(--si-select-bg); }
 .iss:focus-visible { outline: 2px solid var(--si-focus); outline-offset: -2px; }
