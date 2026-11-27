@@ -171,7 +171,7 @@ const unrecognized = computed(() => batch.value?.unrecognized ?? [])
 // 识别中：每识别完一个文件弹入一行占位，正在识别的那一行带扫描光条（预览行在全部识别完后才有内容，V36Q-22）
 const pending = computed(() => {
   const p = batch.value?.progress
-  if (!p || finished.value || batch.value?.status === 'failed') return [] as { i: number; cur: boolean }[]
+  if (!p || finished.value || batch.value?.status === 'failed' || (batch.value?.status === 'queued' && !p.done)) return [] as { i: number; cur: boolean }[]
   const n = Math.min(p.total, p.done + 1)
   return Array.from({ length: n }, (_, i) => ({ i, cur: i === p.done }))
 })
@@ -291,7 +291,7 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
           <table class="tbl">
             <thead><tr>
               <th class="c-seq">序号</th><th class="c-kind">票种</th><th class="c-no">发票号码</th><th class="c-date">开票日期</th>
-              <th>销售方</th><th class="c-amt">价税合计</th><th class="c-amt">税额</th><th class="c-hint">核对提示</th>
+              <th>销售方</th><th class="c-amt">价税合计</th><th class="c-amt c-tax">税额</th><th class="c-hint">核对提示</th>
             </tr></thead>
             <SiStagger v-if="finished" tag="tbody">
               <tr v-for="(r, i) in shownRows" :key="r.seq" :data-i="i" :class="{ hint: r.hints.length }">
@@ -301,7 +301,7 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
                 <td class="c-date num">{{ r.date || '—' }}</td>
                 <td class="c-seller" :title="r.seller_name">{{ r.seller_name || '—' }}</td>
                 <td class="c-amt"><MoneyRoll :value="r.total" :roll="rolled" :delay="Math.min(i, 7) * 45" /></td>
-                <td class="c-amt"><MoneyRoll :value="r.tax" :roll="rolled" :delay="Math.min(i, 7) * 45" /></td>
+                <td class="c-amt c-tax"><MoneyRoll :value="r.tax" :roll="rolled" :delay="Math.min(i, 7) * 45" /></td>
                 <td class="c-hint">
                   <el-tooltip v-if="r.hints.length" placement="top-end" :show-after="200">
                     <template #content><div class="hint-full"><p v-for="h in r.hints" :key="h">{{ h }}</p></div></template>
@@ -388,16 +388,16 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
 /* 表格换皮：表头 13px 辅助色，行高 56，无竖线，无斑马纹 */
 .tbl-wrap { overflow: hidden; border: 1px solid var(--si-hair); border-radius: var(--si-radius-md); background: var(--si-surface-1); }
 .tbl { width: 100%; border-collapse: collapse; table-layout: fixed; font: var(--si-font-body); }
+.tbl th, .tbl td { box-sizing: border-box; }
 .tbl th { height: 44px; padding: 0 14px; border-bottom: 1px solid var(--si-hair); color: var(--si-ink-3); font: var(--si-font-meta); font-weight: 500; text-align: left; white-space: nowrap; }
 .tbl td { position: relative; height: 56px; padding: 0 14px; border-bottom: 1px solid var(--si-hair-faint); overflow: hidden; color: var(--si-ink-2); text-overflow: ellipsis; white-space: nowrap; }
 .tbl tbody tr:last-child td { border-bottom: 0; }
 .tbl tbody tr:hover td { background: var(--si-hover-bg); }
-.c-seq { width: 56px; } .c-kind { width: 120px; } .c-no { width: 200px; } .c-date { width: 112px; }
-.c-amt { width: 128px; text-align: right !important; } .c-hint { width: 236px; }
-.c-seller { color: var(--si-ink-1) !important; }
+.c-seq { width: 64px; } .c-kind { width: 112px; } .c-no { width: 204px; } .c-date { width: 116px; }
+.c-amt { width: 128px; text-align: right !important; } .c-tax { width: 112px; } .c-hint { width: 232px; }
+td.c-seller, td.c-amt { color: var(--si-ink-1); }
 .mono { font-family: var(--si-font-mono); font-variant-numeric: tabular-nums; }
 .num { font-variant-numeric: tabular-nums; }
-.c-amt { color: var(--si-ink-1) !important; }
 .hint-b { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; outline: none; }
 .hint-b :deep(.si-badge) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .hint-b:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 2px; border-radius: var(--si-radius-badge); }
@@ -432,5 +432,6 @@ html:is([data-fx="lite"], [data-fx="off"]) .scan { display: none; }
 .unrec li span { color: var(--si-ink-3); }
 .keep { margin-top: 14px; color: var(--si-ink-3); font: var(--si-font-caption); }
 
-@media (max-width: 1400px) { .c-kind { width: 104px; } .c-no { width: 184px; } .c-hint { width: 200px; } .c-amt { width: 116px; } }
+/* 1366：号码不截断，让核对提示列窄一些（全文在悬停里） */
+@media (max-width: 1400px) { .c-seq { width: 52px; } .c-kind { width: 96px; } .c-no { width: 206px; } .c-date { width: 106px; } .c-amt { width: 112px; } .c-tax { width: 96px; } .c-hint { width: 172px; } }
 </style>
