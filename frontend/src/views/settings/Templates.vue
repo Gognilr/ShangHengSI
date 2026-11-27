@@ -4,11 +4,9 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
-import TableSkeleton from '@/components/TableSkeleton.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import SharedContent from '@/components/settings/SharedContent.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
-import { useTableMaxHeight } from '@/utils/tableHeight'
 import { ApiError } from '@/api/http'
 import { templatesApi, type TemplateRow, type TemplateDetail, type TemplateClause } from '@/api/templates'
 import { DOC_TYPE_OPTIONS, STANCE_OPTIONS, docTypeLabel, stanceLabel, toOptions } from '@/utils/labels'
@@ -19,7 +17,6 @@ const filter = ref('all')
 const filters = [{ value: 'all', label: '全部范本' }, { value: 'shared', label: '公司沉淀' }]
 const loading = ref(false)
 const loaded = ref(false)
-const tableMax = useTableMaxHeight(320)
 const saving = ref(false)
 const error = ref('')
 const dialog = ref(false)
@@ -104,17 +101,15 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
         <SharedContent v-if="filter === 'shared'" kind="template" />
         <div v-else v-loading="loading">
         <p class="hint">最多 50 份，含停用范本。只有启用且向量准备完成的范本参与选择；更换文件请删除后重新上传。</p>
-        <TableSkeleton v-if="!loaded" :columns="['1fr', '130px', '100px', '80px', '100px', '80px', '160px']" />
-      <el-table v-else :data="rows" :max-height="tableMax">
-        <template #empty><EmptyState compact title="尚无公司范本" description="点击右上角上传按钮，可上传 DOCX 标准合同。" /></template>
-        <el-table-column prop="name" label="范本名称" min-width="180" show-overflow-tooltip />
-        <el-table-column label="文件类型" min-width="130"><template #default="{ row }">{{ row.doc_types.map(docTypeLabel).join('、') }}</template></el-table-column>
-        <el-table-column label="立场" min-width="100"><template #default="{ row }">{{ row.stances.map(stanceLabel).join('、') }}</template></el-table-column>
-        <el-table-column prop="clause_count" label="条款数" width="80" class-name="num" />
-        <el-table-column label="向量状态" width="100"><template #default="{ row }">{{ row.ready ? '可用' : '准备中' }}</template></el-table-column>
-        <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
-        <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button link type="primary" :disabled="saving" @click="detail(row)">查看条款</el-button><RowMore><el-dropdown-item :disabled="saving" @click="open(row)">编辑</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
-      </el-table>
+        <div v-if="!loaded" class="thumbs" aria-busy="true"><i v-for="n in 5" :key="n" class="sk" /></div>
+        <EmptyState v-else-if="!rows.length" compact title="尚无公司范本" description="点击右上角上传按钮，可上传 DOCX 标准合同。" />
+        <div v-else class="thumbs">
+          <PaperThumb v-for="row in rows" :key="row.id" :name="row.name" :count="`条款 ${row.clause_count}`" :off="!row.enabled" @open="detail(row)">
+            <SiBadge :tone="row.ready ? 'ok' : 'low'">{{ row.ready ? '可用' : '准备中' }}</SiBadge>
+            <span class="scope" :title="`${row.doc_types.map(docTypeLabel).join('、')} · ${row.stances.map(stanceLabel).join('、')}`">{{ row.doc_types.map(docTypeLabel).join('、') }} · {{ row.stances.map(stanceLabel).join('、') }}</span>
+            <span class="ctl"><el-switch size="small" :model-value="row.enabled" :disabled="saving" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" />
+              <RowMore><el-dropdown-item :disabled="saving" @click="detail(row)">查看条款</el-dropdown-item><el-dropdown-item :disabled="saving" @click="open(row)">编辑</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving" @click="remove(row)">删除</el-dropdown-item></RowMore></span>
+          </PaperThumb>
         </div>
       </SettingSection>
     </div>

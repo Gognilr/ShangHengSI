@@ -11,18 +11,16 @@ import { formatDateTime } from '@/utils/time'
 import { Plus } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
-import TableSkeleton from '@/components/TableSkeleton.vue'
-import SettingSection from '@/components/SettingSection.vue'
-import { useTableMaxHeight } from '@/utils/tableHeight'
+import SiRowCard from '@/components/ui/SiRowCard.vue'
 
 const auth = useAuthStore()
 const items = ref<UserRow[]>([])
 const loading = ref(false)
 const loaded = ref(false)
-const tableMax = useTableMaxHeight(300)
 const error = ref('')
 const roles = ref<RoleRow[]>([])
 const roleName = (id: number) => roles.value.find(r => r.id === id)?.name ?? '已删除的角色'
+const isAdminRole = (id: number) => { const b = roles.value.find(r => r.id === id)?.builtin; return b === 'sys_admin' || b === 'biz_admin' }
 const defaultRole = computed(() => roles.value.find(r => r.builtin === 'user')?.id)
 
 async function load() {
@@ -188,42 +186,33 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 </script>
 
 <template>
-  <div class="settings-page">
-    <div class="panel setting-panel"><SettingSection title="账号列表" description="新建账号、启停和重置密码；新账号首次登录时须先修改密码。" stacked><template #actions><el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新增账号</el-button></template>
-      <SiNotice v-if="error" type="error" :closable="false" :title="error" class="gap" />
-      <TableSkeleton v-if="!loaded" :columns="['1fr', '1fr', '180px', '100px', '190px', '160px']" />
-      <el-table v-else v-loading="loading" :data="items" :max-height="tableMax">
-        <template #empty><EmptyState compact title="暂无账号" description="点击右上角“新增账号”添加。" /></template>
-        <el-table-column prop="username" label="用户名" min-width="100" show-overflow-tooltip />
-        <el-table-column label="显示名" min-width="110" show-overflow-tooltip><template #default="{ row }"><div class="user-name"><span class="avatar">{{ Array.from(row.display_name)[0] ?? '?' }}</span><span>{{ row.display_name }}</span></div></template></el-table-column>
-        <el-table-column label="角色" min-width="150">
-          <template #default="{ row }"><div class="tags"><SiBadge v-for="id in row.role_ids" :key="id" tone="info">{{ roleName(id) }}</SiBadge></div></template>
-        </el-table-column>
-        <el-table-column label="状态" width="80">
-          <template #default="{ row }">
-            <SiBadge :tone="row.status === 'active' ? 'success' : 'info'">
-              {{ userStatusLabel(row.status) }}
-            </SiBadge>
-          </template>
-        </el-table-column>
-        <el-table-column label="最近登录" width="170">
-          <template #default="{ row }">
-            <div class="login num">{{ formatDateTime(row.last_login_at) }}</div>
-            <div class="hint num">{{ row.last_login_ip ?? '' }}<span v-if="row.online" class="online">在线 {{ row.online }} 处</span></div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openReset(row)">重置密码</el-button>
-            <RowMore>
-              <el-dropdown-item @click="openEdit(row)">修改角色</el-dropdown-item>
-              <el-dropdown-item v-if="row.online" @click="forceLogout(row)">强制下线</el-dropdown-item>
-              <el-dropdown-item v-if="!isSelf(row)" :class="{ 'danger-item': row.status === 'active' }" @click="toggleStatus(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-dropdown-item>
-            </RowMore>
-          </template>
-        </el-table-column>
-      </el-table>
-    </SettingSection></div>
+  <div class="settings-page users-page">
+    <div class="head-row">
+      <div><h2>账号</h2><p class="aux">{{ items.length }} 个账号 · 管理员也看不到他人的任务内容</p></div>
+      <el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新增账号</el-button>
+    </div>
+    <SiNotice v-if="error" type="error" :closable="false" :title="error" class="gap" />
+    <div v-if="!loaded" class="skel" aria-busy="true"><i v-for="n in 4" :key="n" /></div>
+    <EmptyState v-else-if="!items.length" compact title="暂无账号" description="点击右上角“新增账号”添加。" />
+    <div v-else v-loading="loading" class="rows">
+      <SiRowCard v-for="row in items" :key="row.id" class="urow" :class="{ off: row.status !== 'active' }">
+        <template #icon><span class="avatar" aria-hidden="true">{{ Array.from(row.display_name)[0] ?? '?' }}</span></template>
+        <template #title>{{ row.display_name }}<SiBadge v-for="id in row.role_ids" :key="id" :tone="isAdminRole(id) ? 'ai' : 'neutral'">{{ roleName(id) }}</SiBadge></template>
+        <template #sub>{{ row.username }}</template>
+        <template #data>
+          <span class="login"><span class="num">最近登录 {{ formatDateTime(row.last_login_at) }}</span><span class="aux num">{{ row.last_login_ip ?? '' }}<b v-if="row.online" class="online">在线 {{ row.online }} 处</b></span></span>
+        </template>
+        <template #status><SiBadge :tone="row.status === 'active' ? 'ok' : 'neutral'" dot>{{ userStatusLabel(row.status) }}</SiBadge></template>
+        <template #actions>
+          <el-button size="small" @click="openReset(row)">重置密码</el-button>
+          <RowMore>
+            <el-dropdown-item @click="openEdit(row)">修改角色</el-dropdown-item>
+            <el-dropdown-item v-if="row.online" @click="forceLogout(row)">强制下线</el-dropdown-item>
+            <el-dropdown-item v-if="!isSelf(row)" :class="{ 'danger-item': row.status === 'active' }" @click="toggleStatus(row)">{{ row.status === 'active' ? '停用' : '启用' }}</el-dropdown-item>
+          </RowMore>
+        </template>
+      </SiRowCard>
+    </div>
 
     <el-dialog :model-value="dialog !== ''" :title="dialogTitle" width="480px" :close-on-click-modal="false" @close="dialog = ''">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">
@@ -267,7 +256,15 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
 </template>
 
 <style scoped>
-.user-name { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
-.tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.online { margin-left: 8px; color: var(--el-color-success); }
+.head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.head-row h2 { margin: 0; font: var(--si-font-h3); color: var(--si-ink-1); }
+.aux { margin: 4px 0 0; font: var(--si-font-meta); color: var(--si-ink-3); }
+.rows { display: flex; flex-direction: column; gap: 10px; }
+.skel { display: flex; flex-direction: column; gap: 10px; }
+.skel i { display: block; height: 72px; border-radius: var(--si-radius-card); background: var(--si-hover-bg); }
+.avatar { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--si-blue-tint); color: var(--si-blue-ink); font: var(--si-font-h4); }
+.urow.off .avatar { background: var(--si-hover-bg); color: var(--si-ink-4); }
+.urow.off :deep(.rc-n b) { color: var(--si-ink-3); }
+.login { display: flex; flex-direction: column; width: 220px; font: var(--si-font-meta); color: var(--si-ink-2); }
+.online { margin-left: 8px; font-weight: 500; color: var(--si-ok-ink, var(--si-ok)); }
 </style>

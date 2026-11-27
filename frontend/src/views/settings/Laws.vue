@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
+import SiBadge from '@/components/ui/SiBadge.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
@@ -112,6 +113,18 @@ async function decide(action: 'apply' | 'discard') {
   catch (e) { detailError.value = err(e) }
   finally { saving.value = false }
 }
+// 时间线：待确认置顶，其余按时间倒序（接口已倒序）
+const timeline = computed(() => [...records.value.filter(r => r.status === 'pending'), ...records.value.filter(r => r.status !== 'pending')])
+async function quickDecide(r: LawImport, action: 'apply' | 'discard') {
+  try {
+    await ElMessageBox.confirm(action === 'apply' ? '确认将所列法规目录和全文差异写入法规库？' : '放弃本次更新及暂存全文？此操作无法恢复。',
+      action === 'apply' ? '确认生效' : '放弃更新', { type: 'warning', confirmButtonText: action === 'apply' ? '确认生效' : '放弃', cancelButtonText: '取消' })
+  } catch { return }
+  saving.value = true
+  try { await lawsApi[action](r.id); ElMessage.success(action === 'apply' ? '更新已生效' : '已放弃更新'); await load() }
+  catch (e) { ElMessage.error(err(e)) }
+  finally { saving.value = false }
+}
 function changeValue(key: string, value: unknown) {
   if (value == null || value === '') return '（空）'
   if (key === 'status') return LAW_STATUS[String(value)] ?? String(value)
@@ -191,15 +204,23 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
         <el-button :disabled="pending || saving" @click="openUpload('catalog')">导入目录</el-button><el-button :disabled="pending || saving" @click="openUpload('fulltext')">导入全文</el-button>
         <p v-if="pending" class="hint">有一项更新正在解析或等待确认，请处理后再导入。</p>
       </SettingSection>
-      <SettingSection v-if="canLaws" title="导入记录" description="每次导入与自动同步的结果。" stacked>
-        <el-table :data="records">
-        <template #empty><EmptyState compact title="尚无导入或同步记录" /></template>
-        <el-table-column label="时间" width="160" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="类型" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_KIND[row.kind] }}</template></el-table-column>
-        <el-table-column label="状态" min-width="100"><template #default="{ row }">{{ LAW_IMPORT_STATUS[row.status] }}</template></el-table-column>
-        <el-table-column prop="added" label="新增" width="72" /><el-table-column prop="changed" label="变化" width="72" /><el-table-column prop="skipped" label="跳过" width="72" />
-        <el-table-column label="操作" width="90" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="loadDetail(row.id)">查看差异</el-button></template></el-table-column>
-      </el-table>
+      <SettingSection v-if="canLaws" title="同步时间线" description="每次导入与自动同步一个节点；待确认的置顶，确认生效后才写入法规库。">
+        <EmptyState v-if="!records.length" compact title="尚无导入或同步记录" />
+        <ol v-else class="lawtl">
+          <li v-for="r in timeline" :key="r.id" class="lawn" :class="{ pend: r.status === 'pending' }">
+            <div class="lcard">
+              <div class="lmain">
+                <b>{{ formatDateTime(r.created_at) }} · {{ LAW_IMPORT_KIND[r.kind] }} · {{ LAW_IMPORT_STATUS[r.status] }}</b>
+                <div class="cnt3"><span>新增<b class="num">{{ r.added }}</b></span><span>变化<b class="num">{{ r.changed }}</b></span><span>跳过<b class="num">{{ r.skipped }}</b></span></div>
+              </div>
+              <el-button size="small" text @click="loadDetail(r.id)">查看明细</el-button>
+              <template v-if="r.status === 'pending'">
+                <el-button size="small" :disabled="saving" @click="quickDecide(r, 'discard')">放弃</el-button>
+                <el-button size="small" type="primary" :disabled="saving" @click="quickDecide(r, 'apply')">确认生效</el-button>
+              </template>
+            </div>
+          </li>
+        </ol>
       </SettingSection>
       <SettingSection v-if="canLaws" v-loading="loading" title="法规列表" description="按标题、分类、时效性查找法规。" stacked>
       <div class="counts">
@@ -217,7 +238,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
         <template #empty><EmptyState compact title="没有符合条件的法规" description="可调整筛选条件，或导入官方导出的目录。" /></template>
         <el-table-column prop="title" label="法规标题" min-width="180" show-overflow-tooltip />
         <el-table-column prop="category" label="分类" min-width="80" />
-        <el-table-column label="时效性" width="80"><template #default="{ row }">{{ LAW_STATUS[row.status] }}</template></el-table-column>
+        <el-table-column label="时效性" width="80"><template #default="{ row }"><SiBadge :tone="row.status === 'valid' ? 'ok' : row.status === 'repealed' ? 'danger' : row.status === 'amended' ? 'warn' : 'neutral'">{{ LAW_STATUS[row.status] }}</SiBadge></template></el-table-column>
         <el-table-column label="公布日期" width="100" class-name="num"><template #default="{ row }">{{ formatDate(row.published_on) }}</template></el-table-column>
         <el-table-column label="施行日期" width="100" class-name="num"><template #default="{ row }">{{ formatDate(row.effective_on) }}</template></el-table-column>
         <el-table-column label="全文" width="60"><template #default="{ row }">{{ row.has_fulltext ? '有' : '无' }}</template></el-table-column>
@@ -272,4 +293,15 @@ p { overflow-wrap: anywhere; white-space: pre-wrap; }
 .search { width: 240px; }
 .category { width: 140px; }
 .pagination { justify-content: space-between; margin-top: 16px; }
+.lawtl { position: relative; margin: 0; padding: 0 0 0 26px; list-style: none; }
+.lawtl::before { content: ''; position: absolute; left: 7px; top: 6px; bottom: 6px; width: 2px; background: var(--si-hair); }
+.lawn { position: relative; margin-bottom: 10px; }
+.lawn::before { content: ''; position: absolute; left: -24px; top: 18px; width: 12px; height: 12px; box-sizing: border-box; border: 3px solid var(--si-brand-2); border-radius: 50%; background: var(--si-surface-1); }
+.lawn.pend::before { border-color: var(--si-warn); }
+.lcard { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); }
+.lawn.pend .lcard { background: var(--si-warn-soft); border-color: var(--si-warn-line); }
+.lmain { flex: 1; min-width: 0; }
+.lmain > b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
+.cnt3 { display: flex; gap: 14px; margin-top: 4px; color: var(--si-ink-3); font: var(--si-font-meta); }
+.cnt3 b { margin-left: 3px; color: var(--si-ink-1); }
 </style>

@@ -14,14 +14,14 @@ import { DOC_TYPE_OPTIONS, STANCE_OPTIONS, SOURCE_OPTIONS, docTypeLabel, stanceL
 import { formatDateTime } from '@/utils/time'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
-import TableSkeleton from '@/components/TableSkeleton.vue'
+import SiBadge from '@/components/ui/SiBadge.vue'
+import { ChevronDown, ChevronUp, FileText, GripVertical, Plus } from '@lucide/vue'
 import RatioSetting from '@/components/settings/RatioSetting.vue'
 import SharedContent from '@/components/settings/SharedContent.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import SaveState from '@/components/SaveState.vue'
 import { useAutoSave } from '@/utils/autosave'
-import { useTableMaxHeight } from '@/utils/tableHeight'
 
 const MAX_ITEMS = 100
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback)
@@ -61,7 +61,6 @@ const comboCount = (doc: string, stance: string, source: string) => comboCounts.
 const currentVersion = ref<number | null>(null)
 const listLoading = ref(false)
 const listLoaded = ref(false)
-const tableMax = useTableMaxHeight(360)
 const listError = ref('')
 const full = computed(() => items.value.length >= MAX_ITEMS)
 
@@ -176,6 +175,44 @@ async function remove(row: CompanyReqRow) {
   await Promise.all([loadList(), loadVersions()])
 }
 
+// ---- 按文件类型分栏的条款卡（二版 6.23）：卡上有启用开关；拖动排序，键盘用“上移 / 下移”，都写回 sort ----
+const DOC_ORDER = Object.keys(DOC_TYPE_OPTIONS)
+const colOf = (r: CompanyReqRow) => r.doc_types.includes('all') ? 'all' : DOC_ORDER.find(d => r.doc_types.includes(d)) ?? 'all'
+const columns = computed(() => ['all', ...DOC_ORDER].map(key => ({
+  key, title: key === 'all' ? '全部文件类型' : docTypeLabel(key), items: items.value.filter(r => colOf(r) === key),
+})).filter(c => c.items.length))
+const extraTypes = (r: CompanyReqRow) => r.doc_types.includes('all') ? '' : r.doc_types.filter(d => d !== colOf(r)).map(docTypeLabel).join('、')
+const reorderBusy = ref(false)
+async function persistOrder(list: CompanyReqRow[]) {
+  reorderBusy.value = true
+  try {
+    for (const [i, r] of list.entries()) {
+      const sort = (i + 1) * 10
+      if (r.sort !== sort) await adminRequirementsApi.update(r.id, { text: r.text, doc_types: r.doc_types, stances: r.stances, sources: r.sources, enabled: r.enabled, sort })
+    }
+  } catch (e) { ElMessage.error(errText(e, '排序保存失败，请稍后重试')) }
+  await Promise.all([loadList(), loadVersions()])
+  reorderBusy.value = false
+}
+function moveBy(list: CompanyReqRow[], r: CompanyReqRow, step: -1 | 1) {
+  const from = list.indexOf(r), to = from + step
+  if (reorderBusy.value || to < 0 || to >= list.length) return
+  const next = [...list]
+  next.splice(from, 1)
+  next.splice(to, 0, r)
+  void persistOrder(next)
+}
+const dragging = ref<CompanyReqRow | null>(null), dropAt = ref<string | number | null>(null)
+function dropOn(list: CompanyReqRow[], target: CompanyReqRow) {
+  const from = dragging.value
+  dragging.value = null
+  dropAt.value = null
+  if (!from || from === target || reorderBusy.value || !list.includes(from)) return
+  const next = list.filter(x => x !== from)
+  next.splice(next.indexOf(target) + (list.indexOf(from) < list.indexOf(target) ? 1 : 0), 0, from)
+  void persistOrder(next)
+}
+
 // ---- ③ 公司说明 ----
 const profile = ref('')
 const profileLoading = ref(false)
@@ -274,46 +311,46 @@ onMounted(() => {
       <SharedContent v-if="companyFilter === 'shared'" kind="bid" />
       <template v-else>
       <div class="hint tip">补充要求只能增加审核内容，不能取消内置要求。请勿在补充要求中写入具体客户名称。</div>
-      <h4>各组合生效条数</h4>
-      <el-table v-loading="listLoading" :data="comboRows" size="small" class="combo-table">
-        <el-table-column prop="label" label="文件类型" width="110" />
-        <el-table-column v-for="col in comboColumns" :key="col.stance + col.source" :label="col.label" min-width="120">
-          <template #default="{ row }"><span :class="{ warning: comboCount(row.doc_type, col.stance, col.source) >= 25 }">{{ comboCount(row.doc_type, col.stance, col.source) }} / 30</span></template>
-        </el-table-column>
-      </el-table>
+      <details class="combo"><summary>各组合生效条数</summary>
+        <el-table v-loading="listLoading" :data="comboRows" size="small" class="combo-table">
+          <el-table-column prop="label" label="文件类型" width="110" />
+          <el-table-column v-for="col in comboColumns" :key="col.stance + col.source" :label="col.label" min-width="120">
+            <template #default="{ row }"><span :class="{ warning: comboCount(row.doc_type, col.stance, col.source) >= 25 }">{{ comboCount(row.doc_type, col.stance, col.source) }} / 30</span></template>
+          </el-table-column>
+        </el-table>
+      </details>
       <div class="filters">
-        <el-button type="primary" :disabled="full" @click="openCreate">新增</el-button>
+        <el-button type="primary" :disabled="full" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新增要求</el-button>
         <span v-if="full" class="hint version">已达 {{ MAX_ITEMS }} 条上限，请先删除不用的条目。</span>
-        <span v-else class="hint version">已有 {{ items.length }} / {{ MAX_ITEMS }} 条</span>
+        <span v-else class="hint version">已有 {{ items.length }} / {{ MAX_ITEMS }} 条 · 拖动卡片调整顺序，键盘用上移、下移</span>
       </div>
       <SiNotice v-if="listError" type="error" :closable="false" :title="listError" />
-      <TableSkeleton v-if="!listLoaded" :columns="['80px', '1fr', '150px', '100px', '100px', '70px', '70px', '110px']" />
-      <el-table v-else v-loading="listLoading" :data="items" size="small" :max-height="tableMax">
-        <template #empty><EmptyState compact title="尚未添加公司补充要求" description="点击上方“新增”，补充的要求会并入每次审核。" /></template>
-        <el-table-column prop="code" label="编号" width="80" class-name="num" />
-        <el-table-column prop="text" label="内容" min-width="200" show-overflow-tooltip />
-        <el-table-column label="适用文件类型" width="150">
-          <template #default="{ row }">{{ scopeText(row.doc_types, docTypeLabel) }}</template>
-        </el-table-column>
-        <el-table-column label="适用立场" width="100">
-          <template #default="{ row }">{{ scopeText(row.stances, stanceLabel) }}</template>
-        </el-table-column>
-        <el-table-column label="适用来源" width="100">
-          <template #default="{ row }">{{ scopeText(row.sources, sourceLabel) }}</template>
-        </el-table-column>
-        <el-table-column label="启用" width="70">
-          <template #default="{ row }">
-            <el-switch :model-value="row.enabled" @change="(v: string | number | boolean) => toggleEnabled(row, v === true)" />
-          </template>
-        </el-table-column>
-        <el-table-column prop="sort" label="排序" width="70" />
-        <el-table-column label="操作" width="110" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <RowMore><el-dropdown-item class="danger-item" @click="remove(row)">删除</el-dropdown-item></RowMore>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div v-if="!listLoaded" class="req-skel" aria-busy="true"><i v-for="n in 3" :key="n" /></div>
+      <EmptyState v-else-if="!items.length" compact title="尚未添加公司补充要求" description="点击上方“新增要求”，补充的要求会并入每次审核。" />
+      <div v-else v-loading="listLoading" class="reqcols">
+        <div v-for="col in columns" :key="col.key" class="reqcol">
+          <h5><FileText :size="14" :stroke-width="1.75" />{{ col.title }}<SiBadge>{{ col.items.length }}</SiBadge></h5>
+          <div v-for="(r, i) in col.items" :key="r.id" class="reqc" :class="{ off: !r.enabled, drop: dropAt === r.id && dragging !== r }" draggable="true"
+            @dragstart="dragging = r" @dragend="dragging = null; dropAt = null" @dragover.prevent="dropAt = r.id" @dragleave="dropAt === r.id && (dropAt = null)" @drop.prevent="dropOn(col.items, r)">
+            <span class="gr" aria-hidden="true"><GripVertical :size="16" :stroke-width="1.75" /></span>
+            <div class="rq-b">
+              <b>{{ r.text }}</b>
+              <div class="rq-t">
+                <SiBadge tone="brand">{{ r.stances.includes('all') ? '通用' : scopeText(r.stances, stanceLabel) }}</SiBadge>
+                <SiBadge v-if="!r.sources.includes('all')" plain>{{ scopeText(r.sources, sourceLabel) }}</SiBadge>
+                <SiBadge v-if="extraTypes(r)" plain>另含{{ extraTypes(r) }}</SiBadge>
+                <span class="code num">{{ r.code }}</span>
+              </div>
+              <div class="rq-a">
+                <button type="button" class="ibtn" title="上移" :aria-label="`上移 ${r.code}`" :disabled="i === 0 || reorderBusy" @click="moveBy(col.items, r, -1)"><ChevronUp :size="15" :stroke-width="1.75" /></button>
+                <button type="button" class="ibtn" title="下移" :aria-label="`下移 ${r.code}`" :disabled="i === col.items.length - 1 || reorderBusy" @click="moveBy(col.items, r, 1)"><ChevronDown :size="15" :stroke-width="1.75" /></button>
+                <RowMore><el-dropdown-item @click="openEdit(r)">编辑</el-dropdown-item><el-dropdown-item class="danger-item" @click="remove(r)">删除</el-dropdown-item></RowMore>
+              </div>
+            </div>
+            <el-switch size="small" :model-value="r.enabled" :aria-label="`启用 ${r.code}`" @change="(v: string | number | boolean) => toggleEnabled(r, v === true)" />
+          </div>
+        </div>
+      </div>
       </template>
     </SettingSection>
       <SettingSection title="发送本地财务比率" description="可选择把本机计算的比率用于模型分析，默认关闭。"><RatioSetting /></SettingSection>
@@ -425,5 +462,24 @@ h3.first {
 .scope-select { width: 100%; }
 .filters { flex-wrap: wrap; }
 .warning { color: var(--el-color-warning); }
-.combo-table { margin-bottom: 16px; }
+.combo { margin: 4px 0 12px; }
+.combo summary { cursor: pointer; color: var(--si-ink-3); font: var(--si-font-meta); }
+.combo-table { margin: 8px 0 4px; }
+.req-skel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.req-skel i { display: block; height: 120px; border-radius: var(--si-radius-card); background: var(--si-hover-bg); }
+.reqcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; align-items: start; }
+.reqcol h5 { display: flex; align-items: center; gap: 6px; margin: 0 0 8px 2px; font: var(--si-font-label-sm); font-weight: 600; color: var(--si-ink-3); }
+.reqc { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; padding: 12px 12px 10px; background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); transition: box-shadow var(--si-d2) var(--si-ease-out); }
+.reqc:hover { box-shadow: var(--si-shadow-2); }
+.reqc.drop { box-shadow: 0 -3px 0 var(--si-brand-2), var(--si-shadow-2); }
+.reqc .gr { padding-top: 2px; color: var(--si-ink-4); cursor: grab; }
+.rq-b { flex: 1; min-width: 0; }
+.rq-b > b { display: block; color: var(--si-ink-1); font: var(--si-font-label); line-height: 21px; overflow-wrap: anywhere; }
+.reqc.off .rq-b > b { color: var(--si-ink-4); }
+.rq-t { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.code { margin-left: auto; color: var(--si-ink-4); font-size: 12px; }
+.rq-a { display: flex; align-items: center; gap: 2px; margin-top: 6px; margin-left: -6px; }
+.ibtn { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--si-radius-sm); background: transparent; color: var(--si-ink-3); cursor: pointer; }
+.ibtn:hover:not(:disabled) { background: var(--si-hover-bg); color: var(--si-ink-1); }
+.ibtn:disabled { opacity: .35; cursor: default; }
 </style>

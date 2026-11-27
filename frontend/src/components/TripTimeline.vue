@@ -12,6 +12,8 @@ import { dayGroup, formatClock, formatDayLabel, formatShort, type DayGroup } fro
  */
 export interface TimelineItem {
   key: string; title: string; sub?: string; trip: Trip; time: string
+  /** 保留至（历史记录用）：写在时间后面，即将到期时变琥珀 */
+  retain?: string; retainSoon?: boolean
   mod: 'review' | 'bid' | 'meet' | 'trans' | 'chat'
   badge?: { text: string; tone: BadgeTone; dot?: boolean } | null
 }
@@ -41,7 +43,7 @@ const when = (g: DayGroup, t: string) => g === 'today' || g === 'yesterday' ? fo
           <span class="ti-n"><b :title="it.title">{{ it.title }}</b><span v-if="it.sub">{{ it.sub }}</span></span>
           <SiTrip :trip="it.trip" class="ti-trip" />
           <SiBadge v-if="it.badge" :tone="it.badge.tone" :dot="it.badge.dot">{{ it.badge.text }}</SiBadge>
-          <span class="ti-t num">{{ when(d.group, it.time) }}</span>
+          <span class="ti-t num">{{ when(d.group, it.time) }}<small v-if="it.retain" :class="{ soon: it.retainSoon }"> · 保留至 {{ it.retain }}</small></span>
           <span v-if="$slots.actions" class="ti-a" @click.stop @keydown.stop><slot name="actions" :item="it" /></span>
         </li>
       </ol>
@@ -67,7 +69,9 @@ html[data-fx="full"] .tl-it { animation: tl-in var(--si-d3) var(--si-ease-out) b
 .ti-n b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .ti-n span { overflow: hidden; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
 .ti-trip { flex: none; width: 216px; }
-.ti-t { flex: none; width: 88px; color: var(--si-ink-3); font: var(--si-font-caption); text-align: right; white-space: nowrap; }
+.ti-t small { font: inherit; }
+.ti-t small.soon { color: var(--si-warn-ink); }
+.ti-t { flex: none; min-width: 88px; color: var(--si-ink-3); font: var(--si-font-caption); text-align: right; white-space: nowrap; }
 .ti-a { flex: none; display: flex; align-items: center; }
 @media (max-width: 1100px) { .ti-trip { width: auto; } .tl-day { grid-template-columns: 76px minmax(0, 1fr); } }
 </style>
