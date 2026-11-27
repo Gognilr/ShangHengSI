@@ -13,12 +13,15 @@ import { useHotkeys } from '@/utils/hotkeys'
 import { groupSentences, stamp } from '@/utils/transcript'
 import SiIsland from '@/components/ui/SiIsland.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
+import SiZone from '@/components/ui/SiZone.vue'
+import SpeakerLanes from '@/components/meeting/SpeakerLanes.vue'
 const props = defineProps<{ session: Session; file: SessionFile; tab?: 'tools' | 'minutes'; minutesCount?: number }>()
 const emit = defineEmits<{ refresh: []; confirm: []; 'update:tab': [value: 'tools' | 'minutes'] }>()
 // 右栏分两页：校对工具 / 会议纪要（澄明 8.6）；发言人圆标按编号取色
 const tabs = computed(() => [{ value: 'tools', label: '校对' }, { value: 'minutes', label: props.minutesCount ? `纪要 ${props.minutesCount}` : '纪要' }])
 const railTab = computed({ get: () => props.tab ?? 'tools', set: (v: string) => emit('update:tab', v as 'tools' | 'minutes') })
-const palette = (id: number | null | undefined) => `sp${Number(id ?? 0) % 6}`
+// 与发言泳道同一组颜色：发言人 1 起依次为玫红、蓝、黄绿、橙、紫、青
+const palette = (id: number | null | undefined) => `sp${Math.max(0, Number(id ?? 1) - 1) % 6}`
 // 发言人编号从 1 起：发言人 1 为 A
 const initial = (id: number | null | undefined) => String.fromCharCode(65 + Math.max(0, Number(id ?? 1) - 1) % 26)
 const nodes = ref<PreviewNode[]>([]), suggestions = ref<Suggestion[]>([]), error = ref(''), loading = ref(false), busy = ref(false)
@@ -134,31 +137,9 @@ async function playAt(ms?: number) {
   catch (e) { if (alive) error.value = e instanceof ApiError ? e.message : '录音无法播放，请重试' }
 }
 function toggle() { if (playing.value) audio.value?.pause(); else void playAt() }
-// 说话活动条（澄明 8.6“播放器带波形”）：不解码录音（长录音在浏览器解码要占上 GB 内存），按逐字稿时间戳分桶，
-// 柱高 = 这一桶里说话所占时长 × 语速；打开页面即可显示，点击跳转
-const BARS = 120
-const bars = computed(() => {
-  const total = Math.max(duration.value, 1), width = total / BARS, cover = new Array<number>(BARS).fill(0), chars = new Array<number>(BARS).fill(0)
-  for (const n of nodes.value) {
-    const a = n.t_start_ms ?? 0, b = Math.max(n.t_end_ms ?? a, a), rate = (n.text?.length ?? 0) / Math.max(b - a, 1)
-    for (let i = Math.max(0, Math.floor(a / width)); i < BARS && i * width < b; i++) {
-      const overlap = Math.min(b, (i + 1) * width) - Math.max(a, i * width)
-      if (overlap > 0) { cover[i]! += overlap / width; chars[i]! += overlap * rate }
-    }
-  }
-  const peak = Math.max(...chars, 1)
-  return cover.map((c, i) => c <= 0 ? 0.08 : Math.min(1, 0.2 + 0.8 * Math.min(1, c) * (0.55 + 0.45 * chars[i]! / peak)))
-})
-const playedBars = computed(() => Math.floor(current.value / Math.max(duration.value, 1) * BARS))
-function seekWave(event: MouseEvent) {
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  void playAt(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration.value)
-}
-function waveKey(event: KeyboardEvent) {
-  const step = event.key === 'ArrowRight' ? 5000 : event.key === 'ArrowLeft' ? -5000 : 0
-  if (!step) return
-  event.preventDefault(); void playAt(Math.max(0, Math.min(duration.value, current.value + step)))
-}
+// 发言泳道（澄明二版 6.13）：点任一段跳到那句话并定位逐字稿；方向键前后 5 秒
+function seekLane(ms: number, loc?: string) { if (loc) { following.value = true; locate(loc) } void playAt(ms) }
+function stepLane(delta: number) { void playAt(Math.max(0, Math.min(duration.value, current.value + delta))) }
 function timeupdate() {
   if (!audio.value) return
   current.value = audio.value.currentTime * 1000
@@ -176,9 +157,14 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
   <div class="editor">
     <SiIsland v-if="busy" state="busy" text="正在重新计算…" />
     <SiNotice v-if="error" type="error" :closable="false" :title="error" />
-    <div class="player"><button type="button" class="play" :class="{ busy: audioLoading }" :aria-label="playing ? '暂停' : '播放'" :disabled="audioLoading" @click="toggle"><Pause v-if="playing" :size="16" :stroke-width="2" /><Play v-else :size="16" :stroke-width="2" /></button><span class="num t">{{ stamp(current) }}</span><div class="wave" role="slider" tabindex="0" aria-label="播放位置" :aria-valuemin="0" :aria-valuemax="Math.round(duration / 1000)" :aria-valuenow="Math.round(current / 1000)" :aria-valuetext="stamp(current)" @click="seekWave" @keydown="waveKey"><i v-for="(h, i) in bars" :key="i" :class="{ on: i < playedBars }" :style="{ transform: `scaleY(${h})` }" /></div><span class="num t">{{ stamp(duration) }}</span><el-select v-model="speed" aria-label="播放速度" @change="audio && (audio.playbackRate = speed)"><el-option v-for="n in [0.75,1,1.25,1.5]" :key="n" :value="n" :label="n + 'x'" /></el-select><el-checkbox v-model="following">跟随播放</el-checkbox><span v-if="audioLoading" class="hint">正在载入录音…</span><span v-if="!readonly" class="save hint" role="status" :class="saveState">{{ notice || (saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '已保存' : '点击文字可修改，点别处自动保存') }}</span></div>
+    <div class="player">
+      <div class="p-row"><button type="button" class="play" :class="{ busy: audioLoading }" :aria-label="playing ? '暂停' : '播放'" :disabled="audioLoading" @click="toggle"><Pause v-if="playing" :size="16" :stroke-width="2" /><Play v-else :size="16" :stroke-width="2" /></button><span class="num t">{{ stamp(current) }}</span><span class="num t dim">/ {{ stamp(duration) }}</span><span v-if="audioLoading" class="hint">正在载入录音…</span><span class="hint grow-hint">点泳道任一段跳到那句话 · ← → 前进或后退 5 秒</span><el-select v-model="speed" aria-label="播放速度" @change="audio && (audio.playbackRate = speed)"><el-option v-for="n in [0.75,1,1.25,1.5]" :key="n" :value="n" :label="n + 'x'" /></el-select><el-checkbox v-model="following">跟随播放</el-checkbox></div>
+      <SpeakerLanes :nodes="nodes" :speakers="speakers" :current="current" :duration="duration" :active-loc="activeLoc" @seek="seekLane" @step="stepLane" />
+    </div>
     <audio ref="audio" @play="playing = true" @pause="playing = false" @ended="playing = false" @timeupdate="timeupdate" @loadedmetadata="duration = (audio?.duration ?? 0) * 1000" />
     <div class="body">
+      <SiZone kind="local" lock title="逐字稿 · 本机转写" :count="nodes.length" class="ts-zone">
+        <template #actions><span v-if="!readonly" class="save hint" role="status" :class="saveState">{{ notice || (saveState === 'saving' ? '保存中…' : saveState === 'saved' ? '已保存' : '点击文字可修改，点别处自动保存') }}</span><SiBadge :tone="readonly ? 'ok' : 'warn'">{{ readonly ? '已确认' : '待校对' }}</SiBadge></template>
       <div ref="paper" v-loading="loading && !nodes.length" class="si-paper transcript" @pointerdown="scrollbarPointer" @wheel.passive="following = false" @touchmove.passive="following = false" @keydown="['PageUp','PageDown','ArrowUp','ArrowDown','Home','End'].includes($event.key) && (following = false)">
         <p v-if="!loading && !nodes.length" class="hint">逐字稿暂无可显示的内容</p>
         <section v-for="para in paras" v-memo="[para, rev, activeIn(para), flashIn(para), readonly, editLoc, speakerEditLoc === para[0]!.loc, speakers]" :key="para[0]!.loc" :data-loc="para[0]!.loc" class="utterance" :class="{ current: !!activeIn(para) }"><span v-if="activeIn(para)" class="now">正在播放</span>
@@ -192,6 +178,7 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
           </div>
         </section>
       </div>
+      </SiZone>
       <aside class="rail">
         <SiSegmented v-model="railTab" class="rail-tabs" ariaLabel="右栏" :options="tabs" />
         <div v-show="railTab === 'minutes'" class="minutes-pane"><slot name="minutes" /></div>
@@ -207,9 +194,15 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 </template>
 <style scoped>
 .editor { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.player { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+/* 播放器卡：播放行加发言泳道（澄明二版 6.13） */
+.player { padding: 12px 16px 12px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.p-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.grow-hint { flex: 1; text-align: right; }
+.t.dim { color: var(--si-ink-4); }
+.ts-zone { display: flex; flex-direction: column; min-height: 0; background: var(--si-zone-l); }
+.ts-zone .save { margin-left: 0; }
 .chip { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--sp, var(--si-m-meet)); color: var(--si-white); font: var(--si-font-badge); }
-.sp0 { --sp: var(--si-m-meet); } .sp1 { --sp: var(--si-m-trans); } .sp2 { --sp: var(--si-m-review); } .sp3 { --sp: var(--si-m-bid); } .sp4 { --sp: var(--si-ai); } .sp5 { --sp: var(--si-brand); }
+.sp0 { --sp: var(--si-m-meet); } .sp1 { --sp: var(--si-info); } .sp2 { --sp: var(--si-k-addr); } .sp3 { --sp: var(--si-k-id); } .sp4 { --sp: var(--si-ai); } .sp5 { --sp: var(--si-brand); }
 .rail-tabs { display: flex; width: 100%; margin: 4px 0 8px; }
 .rail-tabs :deep(.option) { flex: 1; }
 .minutes-pane { padding-top: 8px; }
@@ -217,16 +210,10 @@ onBeforeUnmount(() => { alive = false;  clearTimeout(timer); clearTimeout(savedT
 .play:hover:not(:disabled) { transform: scale(1.06); }
 .play.busy { opacity: .6; cursor: progress; }
 .player .t { flex: none; color: var(--si-ink-3); font: var(--si-font-meta); }
-.wave { flex: 1; min-width: 120px; height: 32px; display: flex; align-items: center; gap: 2px; cursor: pointer; border-radius: var(--si-radius-tag); }
-.wave:focus-visible { outline: 2px solid var(--si-ring); outline-offset: 2px; }
-.wave i { flex: 1; height: 100%; border-radius: 2px; background: var(--si-hair-strong); transform-origin: center; transition: background-color var(--si-d2) var(--si-ease-out); }
-.wave i.on { background: var(--si-m-meet); }
-.wave:hover i:not(.on) { background: color-mix(in srgb, var(--si-m-meet) 35%, var(--si-hair-strong)); }
 .player :deep(.el-select) { width: 80px; }
-.save { margin-left: auto; }
 .save.saved { color: var(--si-ok); }
 .body { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0,1fr) 420px; gap: 16px; }
-.transcript { overflow: auto; padding: 24px 32px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); }
+.transcript { flex: 1; min-height: 0; overflow: auto; padding: 24px 32px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); }
 .utterance { position: relative; content-visibility: auto; contain-intrinsic-size: auto 100px; padding: 12px 16px; border-radius: var(--si-radius-md); transition: background-color var(--si-d2) var(--si-ease-out); }
 /* 正在播放的这一段整行高亮（澄明 8.6 设计稿：模块玫红浅底） */
 .utterance.current { background: var(--si-m-meet-soft); }

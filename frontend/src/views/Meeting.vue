@@ -13,7 +13,6 @@ import { assistantApi, confirmationTask, type Message, type Session, type Sessio
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ApiError } from '@/api/http'
 import NotFound from '@/views/NotFound.vue'
-import { formatDateTime } from '@/utils/time'
 import { saveBlob } from '@/utils/save'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 import MediaRow from '@/components/assistant/MediaRow.vue'
@@ -21,7 +20,10 @@ import MessageItem from '@/components/assistant/MessageItem.vue'
 import TranscriptEditor from '@/components/assistant/TranscriptEditor.vue'
 import MeetingRecorder, { type Recorded } from '@/components/meeting/MeetingRecorder.vue'
 import SiTrip from '@/components/ui/SiTrip.vue'
-import { meetingTrip } from '@/utils/trip'
+import { meetingTrip, rowTrip } from '@/utils/trip'
+import SiZone from '@/components/ui/SiZone.vue'
+import VoiceBand from '@/components/meeting/VoiceBand.vue'
+import TripTimeline, { type TimelineItem } from '@/components/TripTimeline.vue'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
@@ -42,14 +44,14 @@ const trip = computed(() => {
   return meetingTrip({ state, status: session.value?.status, generating: generating.value, percent: media?.stage === 'transcribing' && media.progress ? Math.round(media.progress) : null })
 })
 
-// 最近的会议：时长 · 发言人数，加状态徽标（设计稿 8.6 ①）
-const MEETING_STATE = { transcribing: ['转写中', 'is-info'], failed: ['转写失败', 'is-hi'], proofread: ['转写完成，待校对', 'is-mid'], confirmed: ['待生成纪要', 'is-brand'], minuted: ['纪要已生成', 'is-ok'] } as const
+// 最近的会议（二版 6.12）：按天的时间线，副标题写时长与发言人数，往返线说进度
 function meetingSub(item: SessionItem) {
   const m = item.meeting
   if (!m?.duration_ms) return ''
   const minutes = Math.max(1, Math.round(m.duration_ms / 60000)), h = Math.floor(minutes / 60)
   return [h ? `${h} 小时 ${minutes % 60} 分钟` : `${minutes} 分钟`, m.speakers ? `${m.speakers} 位发言人` : ''].filter(Boolean).join(' · ')
 }
+const recentRows = computed<TimelineItem[]>(() => recent.value.map(item => ({ key: item.id, title: item.title, sub: meetingSub(item), trip: rowTrip(item), time: item.last_activity_at, mod: 'meet' as const })))
 function failure(e: unknown) { return e instanceof ApiError ? (e.status === 404 ? '会议记录不存在或已被删除' : e.message) : '加载失败，请刷新页面后重试' }
 async function loadRecent() {
   try { const page = await assistantApi.list(1, '', 'meeting'); recent.value = page.items.filter(i => i.file_count > 0).slice(0, 5); asrEnabled.value = page.asr_enabled } catch (e) { error.value = failure(e) }
@@ -156,29 +158,32 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 
 
 <template>
-  <!-- 入口页（澄明 8.6 ①）：现场录音 / 上传录音两张大卡，下面是最近的会议 -->
+  <!-- 入口页（澄明二版 6.12）：声纹带（现场录音大按钮 + 上传录音拖放行），下面是按天的最近的会议 -->
   <div v-if="!id" class="entry-page meeting-home si-stagger">
-    <h1 class="entry-title">会议纪要</h1>
-    <p class="entry-lede">录一场会或上传录音，在本机转写；校对并遮住名称后，才把文字交给模型生成纪要。</p>
+    <h1 v-show="!recorder?.open" class="entry-title">会议纪要</h1>
+    <p v-show="!recorder?.open" class="entry-lede">录音在本机转写，校对后再整理纪要。生成纪要时只发送遮住名称后的逐字稿。</p>
     <SiNotice v-if="error" type="error" :closable="false" :title="error" class="err" />
-    <div v-if="!asrEnabled" class="entry-cards off-wrap">
-      <div class="entry-card off" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)"><span class="ic"><Mic :size="26" :stroke-width="1.75" /></span><b class="ttl">现场录音</b><span class="hint">录音转写还没有启用</span></div>
-      <div class="entry-card off" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)"><span class="ic"><UploadCloud :size="26" :stroke-width="1.75" /></span><b class="ttl">上传录音</b><span class="hint">录音转写还没有启用</span></div>
+    <div v-if="!asrEnabled" class="vband off">
+      <VoiceBand />
+      <span class="vb-rec off-rec" aria-hidden="true"><Mic :size="30" :stroke-width="1.75" /></span>
+      <p class="off-note">本机转写尚未启用，请联系系统管理员启用。</p>
     </div>
-    <p v-if="!asrEnabled" class="hint off-note">请联系系统管理员启用本机转写。</p>
-    <div v-else class="entry-cards" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)">
-      <MeetingRecorder v-if="recordingOwner" :key="recordingOwner" ref="recorder" :owner-id="recordingOwner" :busy="uploading !== null" @recorded="upload([$event.file], $event)" />
-      <div v-show="!recorder?.open" class="entry-card pick" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
-        <span class="ic"><UploadCloud :size="26" :stroke-width="1.75" /></span>
-        <b class="ttl">{{ uploading !== null ? (uploading < 100 ? `正在上传 ${uploading}%` : '上传完成，正在提交转写……') : dragging ? '松开即可加入' : '上传录音' }}</b>
-        <span class="hint">拖入或点击选择 · mp3、m4a、wav、amr、aac、mp4 · 单个不超过 500 MB、3 小时</span>
-        <span v-if="uploading !== null" class="bar" aria-hidden="true"><i :style="{ width: `${uploading}%` }" /></span>
-      </div>
-    </div>
+    <template v-else>
+      <MeetingRecorder v-if="recordingOwner" :key="recordingOwner" ref="recorder" :owner-id="recordingOwner" :busy="uploading !== null" @recorded="upload([$event.file], $event)">
+        <template #drop>
+          <div class="vb-drop" :class="{ dragging }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter.self="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
+            <span class="mod-ic"><UploadCloud :size="18" :stroke-width="1.75" /></span>
+            <div class="vd-t"><b>{{ uploading !== null ? (uploading < 100 ? `正在上传 ${uploading}%` : '上传完成，正在提交转写……') : dragging ? '松开即可加入' : '或把录音文件拖到这里' }}</b><span>MP3、M4A、WAV、AMR · 单个不超过 500 MB、3 小时</span></div>
+            <el-button :disabled="uploading !== null" @click.stop="picker?.click()">选择录音</el-button>
+            <span v-if="uploading !== null" class="bar" aria-hidden="true"><i :style="{ width: `${uploading}%` }" /></span>
+          </div>
+        </template>
+      </MeetingRecorder>
+    </template>
     <input ref="picker" class="file-input" type="file" :accept="AUDIO" @change="picked">
-    <section v-if="recent.length" class="recent-list" style="--mod: var(--si-m-meet); --mod-soft: var(--si-m-meet-soft)">
-      <div class="rl-head"><h2>最近的会议</h2><router-link :to="{ name: 'history', query: { type: 'meeting' } }" class="all">全部历史<ChevronRight :size="14" :stroke-width="1.75" /></router-link></div>
-      <div class="rl"><router-link v-for="item in recent" :key="item.id" :to="`/meeting/${item.id}`" class="li"><span class="mod-ic"><Mic :size="18" :stroke-width="1.75" /></span><span class="li-main"><b :title="item.title">{{ item.title }}</b><span v-if="meetingSub(item)" class="num">{{ meetingSub(item) }}</span></span><span v-if="item.meeting" class="si-badge" :class="MEETING_STATE[item.meeting.state][1]"><i class="d" />{{ MEETING_STATE[item.meeting.state][0] }}</span><span class="li-t num">{{ formatDateTime(item.last_activity_at) }}</span></router-link></div>
+    <section v-if="recent.length" v-show="!recorder?.open" class="recent">
+      <div class="recent-head"><h2>最近的会议</h2><router-link :to="{ name: 'history', query: { type: 'meeting' } }" class="all">全部历史<ChevronRight :size="14" :stroke-width="1.75" /></router-link></div>
+      <TripTimeline :items="recentRows" @open="it => router.push(`/meeting/${it.key}`)" />
     </section>
   </div>
 
@@ -187,7 +192,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
   <div v-else v-loading="loading" class="page page--split meeting-page">
     <div class="toolbar">
       <el-button text @click="router.push('/meeting')"><ArrowLeft :size="16" :stroke-width="1.75" /><span class="back-t">全部会议</span></el-button>
-      <h2 class="title" :title="session?.title">{{ session?.title }}</h2>
+      <div class="title" :title="session?.title"><h2>{{ session?.title }}</h2><span v-if="session && meetingSub(session)" class="num">{{ meetingSub(session) }}</span></div>
       <SiTrip class="steps" :trip="trip" scale="bar" />
       <el-dropdown trigger="click" @command="remove">
         <el-button size="small" aria-label="更多操作"><Ellipsis :size="14" :stroke-width="1.75" /></el-button>
@@ -204,16 +209,18 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
       <div v-else class="workspace">
         <TranscriptEditor v-model:tab="view" :session="session" :file="audio" :minutes-count="minutes.length" @refresh="load" @confirm="confirmOpen = true">
           <template #minutes>
-            <div v-if="!audio.confirmed_at" class="m-empty"><Sparkles :size="22" :stroke-width="1.75" /><b>校对完成后生成纪要</b><span class="hint">在“校对”页确认遮住的内容后，这里可以生成纪要。</span></div>
-            <template v-else>
-              <div class="generate">
-                <el-select v-model="modelId" size="small" aria-label="生成纪要用的模型" class="model"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
-                <el-button type="primary" :loading="sending || generating" @click="generate">{{ minutes.length ? '重新生成纪要' : '生成会议纪要' }}</el-button>
-                <span class="hint">AI 建议 · 请核实。发给模型的只有遮住名称后的逐字稿。</span>
-              </div>
-              <MessageItem v-for="m in [...minutes].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />
-              <el-button v-if="minutes.length && auth.can('use.assistant')" link @click="router.push(`/assistant/${session.id}`)">在智能助手中就这场会议继续提问</el-button>
-            </template>
+            <SiZone kind="ai" title="纪要 · 模型生成" class="minutes-zone">
+              <SiNotice v-if="!audio.confirmed_at" type="info" title="校对后再生成纪要" description="在“校对”页确认遮住的内容后，这里可以生成纪要。生成时只发送遮住名称后的逐字稿，回来在本机还原。" :closable="false" />
+              <template v-else>
+                <div class="generate">
+                  <el-select v-model="modelId" size="small" aria-label="生成纪要用的模型" class="model"><el-option v-for="m in models" :key="m.id" :value="m.id" :label="m.display_name" /></el-select>
+                  <el-button type="primary" :loading="sending || generating" @click="generate"><Sparkles :size="14" :stroke-width="1.75" />{{ minutes.length ? '重新生成纪要' : '生成会议纪要' }}</el-button>
+                  <span class="hint">AI 建议 · 请核实。发给模型的只有遮住名称后的逐字稿；待办写明负责人和期限。</span>
+                </div>
+                <MessageItem v-for="m in [...minutes].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />
+                <el-button v-if="minutes.length && auth.can('use.assistant')" link @click="router.push(`/assistant/${session.id}`)">在智能助手中就这场会议继续提问</el-button>
+              </template>
+            </SiZone>
           </template>
         </TranscriptEditor>
       </div>
@@ -226,13 +233,31 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .danger-item { color: var(--el-color-danger); }
 .file-input { display: none; }
 .err { margin-bottom: 16px; }
-.off-wrap { margin-top: 4px; }
-.off-note { margin: 12px 0 0; }
-.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; border-radius: 0 0 16px 16px; background: var(--si-sunken); overflow: hidden; }
+.vband { position: relative; padding: 34px 36px 26px; overflow: hidden; border: 1px solid var(--si-hair); border-radius: 22px; background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.vband.off { filter: grayscale(1); opacity: .7; }
+.off-rec { position: absolute; left: 50%; top: 56px; display: grid; place-items: center; width: 76px; height: 76px; margin-left: -38px; border-radius: 50%; background: var(--si-m-meet); color: var(--si-white); box-shadow: 0 0 0 10px var(--si-surface-1); }
+.off-note { margin: 22px 0 0; text-align: center; color: var(--si-ink-2); font: var(--si-font-label); }
+.vb-drop { position: relative; display: flex; align-items: center; gap: 14px; margin-top: 22px; padding: 14px 16px; overflow: hidden; border: 1.5px dashed var(--si-hair-strong); border-radius: 14px; background: var(--si-card-2); cursor: pointer; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
+.vb-drop:hover, .vb-drop.dragging { border-color: var(--si-m-meet); }
+.vb-drop.dragging { border-style: solid; background: var(--si-m-meet-soft); }
+.vb-drop:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
+.vb-drop .mod-ic { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--si-radius-control); background: var(--si-m-meet-soft); color: var(--si-m-meet); }
+.vd-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.vd-t b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
+.vd-t span { color: var(--si-ink-3); font: var(--si-font-caption); }
+.recent { margin-top: 40px; }
+.recent-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.recent-head h2 { margin: 0; font: var(--si-font-h3); color: var(--si-ink-1); }
+.recent-head .all { display: inline-flex; align-items: center; gap: 2px; color: var(--si-ink-3); font: var(--si-font-label-sm); text-decoration: none; }
+.recent-head .all:hover { color: var(--si-blue-ink); }
+.minutes-zone { margin-top: 4px; }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--si-sunken); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--si-progress-flow, var(--si-brand-2)); transition: width var(--si-d3) var(--si-ease-out); }
 .meeting-page { height: 100%; box-sizing: border-box; padding-top: 12px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
 .toolbar { display: flex; align-items: center; gap: 16px; min-height: 52px; }
-.title { flex: 1; min-width: 0; margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.title h2 { margin: 0; font: var(--si-font-h2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title span { color: var(--si-ink-3); font: var(--si-font-caption); }
 .steps { flex: none; }
 .back-t { margin-left: 6px; }
 .status { width: min(520px, 100%); margin: 48px auto; padding: 24px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
@@ -240,9 +265,6 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .generate { display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 0 0 12px; }
 .generate .model { width: 100%; }
 .generate .hint { margin: 0; color: var(--si-ai-ink); }
-.m-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 12px; text-align: center; color: var(--si-ai); }
-.m-empty b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
-.m-empty .hint { margin: 0; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
 
 </style>

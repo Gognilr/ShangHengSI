@@ -8,16 +8,17 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessageBox } from 'element-plus'
-import { ArrowLeft, ChevronRight, Cloud, Ellipsis, FileText, Languages, Lock, UploadCloud } from '@lucide/vue'
+import { ArrowLeft, ChevronRight, Ellipsis, Languages, Lock, Sparkles, UploadCloud } from '@lucide/vue'
 import { assistantApi, confirmationTask, type Message, type Session, type SessionItem, type TranslationEngine } from '@/api/assistant'
 import { modelsApi, type AvailableModel } from '@/api/models'
 import { ApiError } from '@/api/http'
 import NotFound from '@/views/NotFound.vue'
-import { formatDateTime } from '@/utils/time'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import SiTrip from '@/components/ui/SiTrip.vue'
-import { translateTrip } from '@/utils/trip'
+import { rowTrip, translateTrip } from '@/utils/trip'
+import TransLine from '@/components/assistant/TransLine.vue'
+import TripTimeline, { type TimelineItem } from '@/components/TripTimeline.vue'
 import MessageItem from '@/components/assistant/MessageItem.vue'
 
 const route = useRoute(), router = useRouter(), auth = useAuthStore()
@@ -51,6 +52,7 @@ const trip = computed(() => translateTrip({ status: session.value?.status ?? 'ac
 const step = computed(() => !file.value ? 'empty' : session.value?.status === 'parsing' ? 'parsing' : session.value?.status === 'parse_failed' ? 'failed'
   : !engine.value ? 'choose' : engine.value === 'local' && file.value.parse_state === 'done' ? 'ready' : !file.value.confirmed_at ? 'confirm' : 'ready')
 
+const recentRows = computed<TimelineItem[]>(() => recent.value.map(item => ({ key: item.id, title: item.title, sub: item.translation_engine === 'cloud' ? '云端翻译' : item.translation_engine === 'local' ? '本机翻译' : '', trip: rowTrip(item), time: item.last_activity_at, mod: 'trans' as const })))
 function failure(e: unknown) { return e instanceof ApiError ? (e.status === 404 ? '翻译记录不存在或已被删除' : e.message) : '加载失败，请刷新页面后重试' }
 async function load() {
   const current = ++version
@@ -167,37 +169,40 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 
 
 <template>
-  <!-- 入口页（澄明 8.7 ①）：两张方式卡二选一 → 目标语言 → 拖放区 + 粘贴文字 → 最近的翻译 -->
+  <!-- 入口页（澄明二版 6.14）：开关决定往返线的颜色 → 目标语言与拖放区 → 按天的最近的翻译 -->
   <div v-if="!id" class="entry-page translate-home si-stagger">
     <h1 class="entry-title">翻译</h1>
-    <p class="entry-lede">本地翻译只在本机处理原文；云端翻译须先确认遮住名称和金额。译稿请逐段核对。</p>
+    <p class="entry-lede">本机翻译全程不外发；云端翻译先遮住名称，复检后发送，回来在本机还原。译稿请逐段核对。</p>
     <SiNotice v-if="error" type="error" :closable="false" :title="error" class="err" />
-    <div class="entry-cards">
-      <button type="button" class="entry-card pick method" :class="{ selected: engine === 'local', off: !localAvailable }" style="--mod: var(--si-brand); --mod-soft: var(--si-blue-tint)" :disabled="!localAvailable" :aria-pressed="engine === 'local'" @click="chooseEngine('local')">
-        <span class="ic"><Lock :size="26" :stroke-width="1.75" /></span><b class="ttl">本地翻译 · 不外发</b>
-        <span class="hint">{{ localAvailable ? '原文不离开本机，万字约一小时' : '本地翻译未启用，请联系管理员' }}</span>
+    <div class="tmode" role="group" aria-label="翻译方式">
+      <button type="button" :class="{ on: engine === 'local' }" :disabled="!localAvailable" :aria-pressed="engine === 'local'" @click="chooseEngine('local')">
+        <span class="mod-ic m-local"><Lock :size="18" :stroke-width="1.75" /></span>
+        <span><b>本机翻译</b><span class="aux">{{ localAvailable ? '全程本机 · 不外发 · 万字约一小时' : '本地翻译未启用，请联系管理员' }}</span></span>
       </button>
-      <button v-if="canCloud" type="button" class="entry-card pick method" :class="{ selected: engine === 'cloud' }" style="--mod: var(--si-ai); --mod-soft: var(--si-ai-soft)" :aria-pressed="engine === 'cloud'" @click="chooseEngine('cloud')">
-        <span class="ic"><Cloud :size="26" :stroke-width="1.75" /></span><b class="ttl">云端翻译 · 遮住后发送</b>
-        <span class="hint">速度快；先确认遮住的名称和金额，模型只见遮住后的文字</span>
+      <button v-if="canCloud" type="button" :class="{ on: engine === 'cloud' }" :aria-pressed="engine === 'cloud'" @click="chooseEngine('cloud')">
+        <span class="mod-ic m-cloud"><Sparkles :size="18" :stroke-width="1.75" /></span>
+        <span><b>云端翻译</b><span class="aux">遮住、复检后发送 · 速度快</span></span>
       </button>
     </div>
-    <div class="setup"><span class="label">译成</span><el-select v-model="target" aria-label="目标语言" class="lang"><el-option v-for="l in LANGS" :key="l" :value="l" :label="l" /></el-select></div>
-    <div class="drop" :class="{ dragging, busy: uploading !== null }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
-      <span class="drop-ic"><UploadCloud :size="26" :stroke-width="1.75" /></span>
-      <b class="drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : dragging ? '松开即可加入' : '拖入要翻译的文件，或点击选择' }}</b>
-      <span class="hint">Word、PDF、Excel、WPS、图片，单个不超过 30 MB · 也可以按 Ctrl+V 粘贴</span>
-      <el-button v-if="uploading === null" link type="primary" @click.stop="textOpen = true">或粘贴文字翻译</el-button>
-      <span v-if="uploading !== null" class="bar" aria-hidden="true"><i :style="{ width: `${uploading}%` }" /></span>
+    <TransLine :cloud="engine === 'cloud'" />
+    <div class="card-in">
+      <div class="setup"><span class="label">译成</span><el-select v-model="target" aria-label="目标语言" class="lang"><el-option v-for="l in LANGS" :key="l" :value="l" :label="l" /></el-select></div>
+      <div class="drop" :class="{ dragging, busy: uploading !== null }" role="button" tabindex="0" @click="picker?.click()" @keydown.enter.self="picker?.click()" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="drop">
+        <UploadCloud :size="20" :stroke-width="1.75" />
+        <span class="drop-title">{{ uploading !== null ? `正在上传 ${uploading}%` : dragging ? '松开即可加入' : '拖入文件，或直接粘贴文字' }}</span>
+        <el-button v-if="uploading === null" link type="primary" @click.stop="textOpen = true">粘贴文字翻译</el-button>
+        <span v-if="uploading !== null" class="bar" aria-hidden="true"><i :style="{ width: `${uploading}%` }" /></span>
+      </div>
+      <p class="hint formats">Word、PDF、Excel、WPS、图片，单个不超过 30 MB · 也可以按 Ctrl+V 粘贴</p>
     </div>
     <input ref="picker" class="file-input" type="file" :accept="DOC" @change="picked">
     <el-dialog v-model="textOpen" title="粘贴要翻译的文字" width="640px" append-to-body destroy-on-close>
       <el-input v-model="pasted" type="textarea" :rows="12" maxlength="20000" show-word-limit placeholder="把要翻译的文字粘贴到这里，最多 2 万字。空行分段，后续与上传文件相同：本机读取、确认遮住的内容、翻译。" aria-label="要翻译的文字" />
       <template #footer><el-button @click="textOpen = false">取消</el-button><el-button type="primary" :loading="uploading !== null" :disabled="!pasted.trim()" @click="uploadText">下一步</el-button></template>
     </el-dialog>
-    <section v-if="recent.length" class="recent-list" style="--mod: var(--si-m-trans); --mod-soft: var(--si-m-trans-soft)">
-      <div class="rl-head"><h2>最近的翻译</h2><router-link :to="{ name: 'history', query: { type: 'translate' } }" class="all">全部历史<ChevronRight :size="14" :stroke-width="1.75" /></router-link></div>
-      <div class="rl"><router-link v-for="item in recent" :key="item.id" :to="`/translate/${item.id}`" class="li"><span class="mod-ic"><FileText :size="18" :stroke-width="1.75" /></span><b :title="item.title">{{ item.title }}</b><span class="li-t num">{{ formatDateTime(item.last_activity_at) }}</span></router-link></div>
+    <section v-if="recent.length" class="recent">
+      <div class="recent-head"><h2>最近的翻译</h2><router-link :to="{ name: 'history', query: { type: 'translate' } }" class="all">全部历史<ChevronRight :size="14" :stroke-width="1.75" /></router-link></div>
+      <TripTimeline :items="recentRows" @open="it => router.push(`/translate/${it.key}`)" />
     </section>
   </div>
 
@@ -230,7 +235,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
         <span v-else-if="step === 'parsing'" class="hint">正在本机读取文件 · 可以离开页面</span>
       </div>
       <p v-if="step === 'failed'" class="fail">{{ session.error_message || '文件读取失败，请删除后重新上传' }}</p>
-      <p v-if="engine === 'local' && (running || step === 'ready')" class="hint local-note">本地翻译较慢（万字约一小时），可以离开本页，稍后从“最近的翻译”回来查看。</p>
+      <SiNotice v-if="engine === 'local' && (running || step === 'ready')" type="warning" title="本机翻译较慢，可以先离开" description="关闭页面不影响翻译，稍后从“最近的翻译”回来查看。" :closable="false" class="local-note" />
       <div class="reading">
         <p v-if="!results.length && step === 'ready'" class="hint ready-hint"><Languages :size="16" :stroke-width="1.75" />选择目标语言后点“开始翻译”。</p>
         <MessageItem v-for="m in [...results].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />
@@ -244,22 +249,34 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .danger-item { color: var(--el-color-danger); }
 .err { margin-bottom: 16px; }
 .file-input { display: none; }
-.method { font: inherit; color: inherit; }
-.method:disabled { cursor: not-allowed; }
-.method:only-child { grid-column: 1 / -1; min-height: 170px; }
-.setup { display: flex; align-items: center; gap: 12px; margin: 20px 0 12px; }
+.tmode { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-width: 620px; margin-top: 24px; padding: 5px; border-radius: 16px; background: var(--si-sunken); }
+.tmode:has(button:only-child) { grid-template-columns: 1fr; }
+.tmode button { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 0; border-radius: 12px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), box-shadow var(--si-d2) var(--si-ease-out); }
+.tmode button.on { background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.tmode button:disabled { cursor: not-allowed; opacity: .6; }
+.tmode button:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
+.tmode .mod-ic { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; }
+.tmode .m-local { background: var(--si-blue-tint); color: var(--si-trip-l); }
+.tmode .m-cloud { background: var(--si-ai-soft); color: var(--si-trip-m); }
+.tmode b { display: block; color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
+.tmode .aux { display: block; color: var(--si-ink-3); font: var(--si-font-caption); }
+.card-in { margin-top: 20px; padding: 18px 20px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: var(--si-shadow-1); }
+.setup { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .setup .label { font: var(--si-font-label); color: var(--si-ink-2); }
 .lang { width: 150px; }
 .model { width: 170px; }
-.drop { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 200px; padding: 24px; border: 2px dashed var(--si-hair-strong); border-radius: var(--si-radius-sheet); background: var(--si-surface-1); text-align: center; cursor: pointer; overflow: hidden; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out); }
+.drop { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; height: 64px; overflow: hidden; border: 1.5px dashed var(--si-hair-strong); border-radius: 14px; color: var(--si-ink-3); cursor: pointer; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
 .drop:hover { border-color: var(--si-m-trans); }
 .drop:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
-.drop.dragging { border-style: solid; border-color: var(--si-m-trans); background: var(--si-m-trans-soft); transform: scale(1.01); }
+.drop.dragging { border-style: solid; border-color: var(--si-m-trans); background: var(--si-m-trans-soft); }
 .drop.busy { cursor: progress; }
-.drop-ic { display: grid; place-items: center; width: 56px; height: 56px; border-radius: var(--si-radius-pop); background: var(--si-m-trans-soft); color: var(--si-m-trans); transition: transform var(--si-d3) var(--si-ease-spring); }
-.drop:hover .drop-ic, .drop.dragging .drop-ic { transform: translateY(-3px) scale(1.06); }
-.drop-title { color: var(--si-ink-1); font: var(--si-font-h3); }
-.drop .hint { margin: 0; }
+.drop-title { color: var(--si-ink-2); font: var(--si-font-body); }
+.formats { margin: 8px 0 0; text-align: center; }
+.recent { margin-top: 40px; }
+.recent-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.recent-head h2 { margin: 0; font: var(--si-font-h3); color: var(--si-ink-1); }
+.recent-head .all { display: inline-flex; align-items: center; gap: 2px; color: var(--si-ink-3); font: var(--si-font-label-sm); text-decoration: none; }
+.recent-head .all:hover { color: var(--si-blue-ink); }
 .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--si-sunken); }
 .bar i { display: block; height: 100%; background: var(--si-progress-flow, var(--si-brand-2)); transition: width var(--si-d3) var(--si-ease-out); }
 .translate-page { height: 100%; box-sizing: border-box; padding-top: 12px; padding-bottom: 16px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
@@ -272,7 +289,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
 .bar-card .grow { flex: 1; }
 .bar-card .hint { margin: 0; }
 .fail { margin: 12px 0 0; color: var(--si-danger-ink); font: var(--si-font-caption); }
-.local-note { margin: 10px 0 0; }
+.local-note { margin: 12px 0 0; }
 .reading { max-width: 1280px; margin: 16px auto 0; }
 .ready-hint { display: flex; align-items: center; gap: 6px; justify-content: center; margin: 32px 0; }
 .confirmation { height: calc(100vh - 110px); max-width: 1600px; margin: auto; }
