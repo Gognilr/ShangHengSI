@@ -1,19 +1,28 @@
 <script setup lang="ts">
-import SiBadge from '@/components/ui/SiBadge.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
 import { computed } from 'vue'
 import { Ellipsis, Trash2 } from '@lucide/vue'
 import type { TaskDetail } from '@/api/tasks'
 import type { RunDetail, RunListItem } from '@/api/runs'
 import ExportButton from '@/components/result/ExportButton.vue'
 import ReceiptStrip from '@/components/result/ReceiptStrip.vue'
-import { TEMPLATE_STATE, RUN_STATUS_TAG, docTypeLabel, runStatusLabel, sourceLabel, stanceLabel, statusLabel } from '@/utils/labels'
+import { TEMPLATE_STATE, docTypeLabel, runStatusLabel, sourceLabel, stanceLabel, statusLabel } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
+import { reviewTrip } from '@/utils/trip'
 
 /** 结果页工具条（V31-U3 3.2）：第一行文件、轮次、回执与操作；第二行次要信息，单行省略、悬停看全文。 */
 const props = defineProps<{ task: TaskDetail; run: RunDetail | null; rounds: RunListItem[]; selectedRun: string; reqVersion: string; warnings: string[]; exportReason: string; exporting: string; savedTick: number; deleting: boolean }>()
 const emit = defineEmits<{ selectRun: [id: string]; exportReport: [format?: 'issue-list']; exportAnnotated: [seq: number]; remove: [] }>()
 
 const mainFile = computed(() => props.task.files.find(f => f.is_main) ?? props.task.files[0])
+const runStatus = computed(() => props.run?.status ?? props.rounds.find(round => round.id === props.selectedRun)?.status)
+const trip = computed(() => reviewTrip({ status: props.task.status, policy: props.task.policy, runStatus: runStatus.value }))
+const seconds = computed(() => {
+  const { started_at, finished_at } = props.run ?? {}
+  if (!started_at || !finished_at) return null
+  const duration = (Date.parse(finished_at) - Date.parse(started_at)) / 1000
+  return duration > 0 ? duration : null
+})
 const badge = computed(() => {
   const ext = mainFile.value?.ext ?? ''
   return ['docx', 'doc', 'wps', 'rtf'].includes(ext) ? 'DOC' : ['xlsx', 'xls', 'et'].includes(ext) ? 'XLS' : ext === 'pdf' ? 'PDF' : 'IMG'
@@ -39,8 +48,8 @@ const details = computed(() => {
       <span class="file-badge">{{ badge }}</span>
       <div class="file-name" :title="`${mainFile?.original_name ?? task.title}${task.files.length > 1 ? `（另有 ${task.files.length - 1} 个附件）` : ''}`">{{ mainFile?.original_name ?? task.title }}</div>
       <span v-if="task.files.length > 1" class="hint nowrap attachments">另有 {{ task.files.length - 1 }} 个附件</span>
-      <SiBadge v-if="run" :tone="RUN_STATUS_TAG[run.status] ?? 'info'">{{ runStatusLabel(run.status) }}</SiBadge>
-      <span v-else class="hint nowrap">{{ statusLabel(task.status) }}</span>
+      <SiTrip v-if="runStatus || task.status === 'completed_local'" class="trip" :trip="trip" :scale="['done', 'partial'].includes(trip.state) ? 'bar' : 'mini'" :seconds="seconds" />
+      <span v-else-if="!selectedRun" class="hint nowrap">{{ statusLabel(task.status) }}</span>
       <el-select v-if="rounds.length > 1" :model-value="selectedRun" aria-label="审核轮次" class="round-select" size="small" @update:model-value="emit('selectRun', $event)">
         <el-option v-for="item in rounds" :key="item.id" :value="item.id" :label="`第 ${item.run_no} 轮`">第 {{ item.run_no }} 轮 · {{ formatDateTime(item.finished_at ?? item.queued_at) }} · {{ runStatusLabel(item.status) }}</el-option>
       </el-select>
@@ -71,6 +80,7 @@ const details = computed(() => {
 .file-badge { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--si-radius-sm); color: var(--el-color-primary); background: var(--el-color-primary-light-9); font: var(--si-font-label-sm); }
 .file-name { min-width: 120px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h2); }
 .nowrap { white-space: nowrap; }
+.trip { flex: none; }
 .round-select { flex: none; width: 112px; }
 /* 工具条较窄时附件数只放在文件名的悬停提示里，保证右侧操作不被挤出 */
 @container result-toolbar (max-width: 1200px) { .attachments { display: none; } }

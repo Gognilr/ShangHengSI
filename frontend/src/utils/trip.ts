@@ -164,13 +164,16 @@ export function bidTrip(p: {
 
 type MeetingState = 'transcribing' | 'failed' | 'proofread' | 'confirmed' | 'minuted'
 /** 会议纪要：本机转写 · 校对 · 确认遮住 · 复检 · 生成纪要 · 还原 */
-export function meetingTrip(p: { state?: MeetingState | null; status?: string; generating?: boolean; policy?: string | null; percent?: number | null }): Trip {
+export function meetingTrip(p: { state?: MeetingState | null; status?: string; generating?: boolean; policy?: string | null; percent?: number | null; minutesStatus?: string; blocked?: boolean }): Trip {
   const s = p.state
   if (!s) return p.status === 'parsing' ? { mod: 'meet', at: 0, state: 'run', note: '正在转写' } : { mod: 'meet', at: 0, state: 'todo', note: '待上传录音' }
   if (s === 'transcribing') return { mod: 'meet', at: 0, state: 'run', note: p.percent != null ? `${p.percent}%` : '正在转写' }
   if (s === 'failed') return { mod: 'meet', at: 0, state: 'fail', note: '转写失败', act: '重试' }
   if (s === 'proofread') return { mod: 'meet', at: 1, state: 'wait', note: '待校对', act: '去校对' }
   if (p.generating) return { mod: 'meet', at: 4, state: 'run', note: '正在生成纪要' }
+  if (p.blocked) return { mod: 'meet', at: 3, state: 'block', note: '发送前复检拦截' }
+  if (p.minutesStatus === 'failed') return { mod: 'meet', at: 4, state: 'fail', note: '纪要生成失败' }
+  if (p.minutesStatus === 'stopped') return { mod: 'meet', at: 4, state: 'stop', note: '已停止' }
   if (s === 'minuted') return { mod: 'meet', at: 5, state: 'done' }
   if (p.policy === 'local_only') return { mod: 'meet', at: 1, state: 'done' }
   return { mod: 'meet', at: 4, state: 'wait', note: '待生成纪要', act: '生成纪要' }
@@ -214,14 +217,14 @@ export interface ReviewProgress {
   blocked?: number
   /** 审核中：排队位置 */
   queue?: number | null
-  /** 结果的轮次状态（failed / partial 等） */
+  /** 读取和本机校验时为会话状态，结果页为轮次状态。 */
   status?: string
 }
 export function progressTrip(p: ReviewProgress): Trip | null {
   switch (p.stage) {
     case 'loading': return null
-    case 'local': return localTrip('completed_local')
-    case 'parsing': return reviewTrip({ status: 'parsing' })
+    case 'local': return localTrip(p.status ?? 'completed_local')
+    case 'parsing': return { ...reviewTrip({ status: p.status ?? 'parsing' }), act: undefined }
     // 工作区确认页（二版 6.7）：按钮滚到右栏底部的主按钮；被拦截时滚到拦截卡
     case 'confirm': return p.blocked ? reviewTrip({ status: 'awaiting_confirm', blocked: p.blocked }) : { mod: 'review', at: 1, state: 'wait', note: '等你确认', act: '去确认' }
     case 'setup': return reviewTrip({ status: 'active' })

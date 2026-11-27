@@ -244,7 +244,7 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
       </div>
       <b class="f-t">{{ dragging ? '松开即可加入' : drops.length ? `已加入 ${added} 个文件` : '拖入发票，或点击选择' }}</b>
       <span class="f-h">也可以按 Ctrl+V 粘贴</span>
-      <el-button class="f-b" @click.stop="picker?.click()"><FileUp :size="15" :stroke-width="1.75" />选择文件</el-button>
+      <span class="f-b" aria-hidden="true"><FileUp :size="15" :stroke-width="1.75" />选择文件</span>
     </div>
     <p class="foot">PDF、OFD、XML、JPG、PNG，可整包拖入 zip；一批最多 100 张 · 全程本机 · 原件只在内存中，30 分钟后清除</p>
     <input ref="picker" type="file" multiple accept=".pdf,.ofd,.xml,.jpg,.jpeg,.png,.zip" hidden @change="pick">
@@ -345,8 +345,8 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
 .illus { width: 100%; height: 100%; }
 .f-t { color: var(--si-ink-1); font: var(--si-font-h3); }
 .f-h { color: var(--si-ink-3); font: var(--si-font-meta); }
-.f-b { margin-top: 10px; }
-.f-b :deep(> span), .acts :deep(.el-button > span) { gap: 6px; }
+.f-b { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 0 14px; min-height: 36px; border: 1px solid var(--si-hair); border-radius: var(--el-border-radius-base); color: var(--si-ink-2); font: var(--si-font-body); }
+.acts :deep(.el-button > span) { gap: 6px; }
 .foot { margin: 20px 0 0; color: var(--si-ink-3); font: var(--si-font-meta); text-align: center; }
 /* 落入：小票卡从上方依次落进夹口 */
 .drop { position: absolute; left: 50%; top: 40%; width: 46px; height: 32px; margin: -16px 0 0 -23px; box-sizing: border-box; padding: 8px 7px; border: 1.5px solid var(--si-m-inv); border-radius: 4px; background: var(--si-paper); box-shadow: var(--si-shadow-1); opacity: 0; animation: inv-drop 520ms var(--si-ease-out) both; animation-delay: calc(var(--i) * 45ms); }

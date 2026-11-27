@@ -29,19 +29,26 @@ const route = useRoute(), router = useRouter(), auth = useAuthStore()
 const id = computed(() => typeof route.params.sessionId === 'string' ? route.params.sessionId : '')
 const session = ref<Session | null>(null), messages = ref<Message[]>([]), recent = ref<SessionItem[]>([])
 const asrEnabled = ref(true), loading = ref(false), error = ref(''), missing = ref(false), uploading = ref<number | null>(null)
+const sending = ref(false), outboundBlocked = ref(false)
 const AUDIO = '.mp3,.m4a,.wav,.amr,.aac,.mp4', picker = ref<HTMLInputElement>(), dragging = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined, version = 0
 
 const audio = computed(() => session.value?.files.find(f => f.media) ?? null)
 const minutes = computed(() => messages.value.filter(m => m.role === 'assistant' && m.template === 'minutes'))
+const latestMinutes = computed(() => minutes.value.at(-1))
 const generating = computed(() => minutes.value.some(m => ['queued', 'streaming'].includes(m.status)))
 const view = ref<'tools' | 'minutes'>('tools')
 // 工具条（二版第二节）：本机转写 · 校对 · 确认遮住 · 复检 · 生成纪要 · 还原；映射在 utils/trip.ts
 const trip = computed(() => {
   const media = audio.value?.media
   const state = !media ? null : media.stage === 'failed' ? 'failed' : media.stage !== 'done' ? 'transcribing'
-    : !audio.value?.confirmed_at ? 'proofread' : minutes.value.length && !generating.value ? 'minuted' : 'confirmed'
-  return meetingTrip({ state, status: session.value?.status, generating: generating.value, percent: media?.stage === 'transcribing' && media.progress ? Math.round(media.progress) : null })
+    : !audio.value?.confirmed_at ? 'proofread' : latestMinutes.value?.status === 'done' ? 'minuted' : 'confirmed'
+  return meetingTrip({
+    state, status: session.value?.status, generating: generating.value || sending.value,
+    percent: media?.stage === 'transcribing' && media.progress ? Math.round(media.progress) : null,
+    minutesStatus: latestMinutes.value?.status,
+    blocked: outboundBlocked.value || latestMinutes.value?.error_code === 'BLOCKED',
+  })
 })
 
 // 最近的会议（二版 6.12）：按天的时间线，副标题写时长与发言人数，往返线说进度
@@ -78,7 +85,7 @@ function schedule() {
   const waiting = session.value?.status === 'parsing' || (media && !['done', 'failed'].includes(media.stage))
   if (!document.hidden && (waiting || generating.value)) timer = setTimeout(load, generating.value ? 1000 : 3000)
 }
-watch(id, () => { session.value = null; view.value = 'tools'; void load() }, { immediate: true })
+watch(id, () => { session.value = null; outboundBlocked.value = false; view.value = 'tools'; void load() }, { immediate: true })
 function visibility() { if (!document.hidden) void load() }
 document.addEventListener('visibilitychange', visibility)
 onBeforeUnmount(() => { clearTimeout(timer); ++version; document.removeEventListener('visibilitychange', visibility) })
@@ -123,7 +130,7 @@ usePasteFiles(files => void upload(files), () => !id.value && asrEnabled.value &
 // ---- 确认脱敏与生成纪要 ----
 const confirmOpen = ref(false), task = computed(() => session.value ? confirmationTask(session.value) : null)
 function confirmed() { confirmOpen.value = false; view.value = 'minutes'; void load() }
-const models = ref<AvailableModel[]>([]), modelId = ref<number>(), sending = ref(false)
+const models = ref<AvailableModel[]>([]), modelId = ref<number>()
 async function loadModels() {
   try { models.value = (await modelsApi.list('assist')).items; modelId.value ??= models.value.find(m => m.is_default)?.id ?? models.value[0]?.id }
   catch (e) { error.value = failure(e) }
@@ -131,7 +138,7 @@ async function loadModels() {
 void loadModels()
 async function generate() {
   if (!session.value || !audio.value || sending.value) return
-  sending.value = true; error.value = ''
+  sending.value = true; outboundBlocked.value = false; error.value = ''
   const body = { model_id: modelId.value, message: '', template: 'minutes' as const, params: { file_ids: [audio.value.id] }, use_kb: false }
   try {
     const preview = await assistantApi.preview(session.value.id, body)
@@ -139,7 +146,10 @@ async function generate() {
     if (preview.suspects.length) { error.value = '本次请求中有需要确认的内容，请在智能助手中打开此会议继续'; return }
     await assistantApi.send(session.value.id, { ...body, decisions: [] })
     view.value = 'minutes'; await load()
-  } catch (e) { error.value = failure(e) }
+  } catch (e) {
+    outboundBlocked.value = e instanceof ApiError && e.code === 'OUTBOUND_BLOCKED'
+    error.value = failure(e)
+  }
   finally { sending.value = false }
 }
 async function downloadTranscript() {
@@ -153,7 +163,15 @@ async function remove() {
   try { await assistantApi.remove(session.value.id); await router.push('/meeting') } catch (e) { error.value = failure(e) }
 }
 async function stopMessage(mid: number) { if (session.value) { await assistantApi.stop(session.value.id, mid); await load() } }
-async function retryMessage(mid: number) { if (session.value) { await assistantApi.retry(session.value.id, mid); await load() } }
+async function retryMessage(mid: number) {
+  if (!session.value) return
+  outboundBlocked.value = false
+  try { await assistantApi.retry(session.value.id, mid); await load() }
+  catch (e) {
+    outboundBlocked.value = e instanceof ApiError && e.code === 'OUTBOUND_BLOCKED'
+    error.value = failure(e)
+  }
+}
 </script>
 
 

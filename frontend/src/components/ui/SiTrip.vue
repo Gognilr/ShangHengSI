@@ -67,7 +67,7 @@ const miniText = computed(() => done.value ? '' : currentName(props.trip))
 /* ---- 工具条 ---- */
 const bar = computed(() => barStations(props.trip))
 const barSegs = computed(() => segmentsOf(bar.value))
-const all = computed(() => geom(miniStations({ ...props.trip, state: 'done' })))
+const all = computed(() => geom(miniStations(props.trip)))
 
 /* ---- 走线：状态变化时光点沿线走一次，过复检后由青变紫，回到还原时变回青（只在完整档） ---- */
 const ol = ref<HTMLOListElement>()
@@ -126,7 +126,10 @@ watch(() => [props.trip.mod, props.trip.at] as const, async ([mod, at], old) => 
         <template v-if="s.zone === 'r'"><path class="seg m" :d="`M${s.x1} 6H${s.xm}`" /><path class="seg l" :d="`M${s.xm} 6H${s.x2}`" /></template>
         <path v-else class="seg" :class="s.zone" :d="`M${s.x1} 6H${s.x2}`" />
       </template>
-      <circle v-for="(d, i) in all.dots" :key="'d' + i" class="dot done" :class="d.zone" :cx="d.cx" cy="6" r="4" />
+      <template v-for="(d, i) in all.dots" :key="'d' + i">
+        <circle v-if="d.partial" class="halo w" :cx="d.cx" cy="6" r="6.5" />
+        <circle class="dot done" :class="d.zone" :cx="d.cx" cy="6" r="4" />
+      </template>
     </svg>
     <Check v-if="done" :size="14" :stroke-width="2.25" aria-hidden="true" /><TriangleAlert v-else :size="14" :stroke-width="2.25" aria-hidden="true" />{{ done ? '已完成' : '部分完成' }}<template v-if="took"> · 用时 {{ took }}</template><template v-if="local"> · 全程本机</template>
   </span>

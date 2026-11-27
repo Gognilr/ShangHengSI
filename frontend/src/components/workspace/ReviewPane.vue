@@ -371,11 +371,12 @@ const progress = computed<ReviewProgress>(() => {
     return { stage: 'running', since: r?.started_at ?? r?.queued_at ?? null, queue: r?.status === 'queued' ? r.queue_position : null }
   }
   if (s === 'result') {
-    const r = resultRun.value
+    const r = resultRun.value?.id === selectedRun.value ? resultRun.value : null
+    const status = r?.status ?? rounds.value.find(round => round.id === selectedRun.value)?.status
     const start = r ? Date.parse(r.started_at ?? r.queued_at) : NaN, end = r?.finished_at ? Date.parse(r.finished_at) : NaN
-    return { stage: 'result', status: r?.status, seconds: Number.isFinite(start) && Number.isFinite(end) ? (end - start) / 1000 : null }
+    return { stage: 'result', status, seconds: Number.isFinite(start) && Number.isFinite(end) ? (end - start) / 1000 : null }
   }
-  return { stage: s, blocked: s === 'confirm' ? blockedN.value : 0 }
+  return { stage: s, blocked: s === 'confirm' ? blockedN.value : 0, status: props.session.status }
 })
 watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 </script>

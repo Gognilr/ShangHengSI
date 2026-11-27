@@ -27,7 +27,6 @@ import {
 } from '@/api/tasks'
 import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import ConfirmWorkbench from '@/components/ConfirmWorkbench.vue'
-import { nudgeField } from '@/utils/nudge'
 import SiTrip from '@/components/ui/SiTrip.vue'
 import { reviewTrip, type Trip } from '@/utils/trip'
 import ReviewCeremony from '@/components/result/ReviewCeremony.vue'
@@ -414,15 +413,17 @@ async function startOver() {
 const parsing = computed(() => task.value?.status === 'parsing')
 const parseFailed = computed(() => task.value?.status === 'parse_failed')
 // 工具条（二版第二节）：读取 · 确认遮住 · 复检 · 模型审核 · 还原；映射在 utils/trip.ts。
-// “去确认 / 去处理”把人带到确认页底部的主按钮，“重试”回到上传
+const confirmWorkbench = ref<InstanceType<typeof ConfirmWorkbench>>()
+const blocked = ref(0)
+// 复检拦截时跳到拦截卡，其余确认状态跳到提交区。
 function onTripAct() {
-  if (step.value === 1) nudgeField(document.querySelector('.confirm-step .el-button--primary.el-button--large'))
+  if (step.value === 1) confirmWorkbench.value?.focusConfirm()
   else if (parseFailed.value) void startOver()
 }
 const trip = computed<Trip>(() => {
   const t = task.value
   if (!t || (t.status === 'draft' && !t.busy && !t.files.some(f => f.parse_state === 'parsing'))) return { mod: 'review', at: 0, state: 'todo', note: '等你添加文件' }
-  return reviewTrip({ status: t.status, policy: t.policy, runStatus: t.latest_run?.status, queue: t.queue_position })
+  return reviewTrip({ status: t.status, policy: t.policy, runStatus: t.latest_run?.status, queue: t.queue_position, blocked: step.value === 1 ? blocked.value : 0 })
 })
 const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
@@ -534,7 +535,7 @@ function fileBadge(name: string): string {
 
     <section v-else-if="step === 1 && task" class="confirm-step">
       <SiNotice v-if="modelError" :title="modelError" type="error" :closable="false" class="gap" />
-      <ConfirmWorkbench v-if="!modelsLoading && !modelError" :key="`${task.id}:${modelId ?? ''}`" :task="task" :model-id="modelId" :model-name="modelItems.find(m => m.id === modelId)?.display_name" @confirmed="refreshTask" @stale="refreshTask" />
+      <ConfirmWorkbench v-if="!modelsLoading && !modelError" ref="confirmWorkbench" :key="`${task.id}:${modelId ?? ''}`" :task="task" :model-id="modelId" :model-name="modelItems.find(m => m.id === modelId)?.display_name" @confirmed="refreshTask" @stale="refreshTask" @blocked="blocked = $event" />
     </section>
     <section v-else-if="step === 2 && task" class="panel ceremony-panel">
       <ReviewCeremony :task="task" :run="ceremonyRun" />
