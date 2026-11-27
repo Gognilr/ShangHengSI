@@ -66,6 +66,9 @@
   --si-m-meet-soft: #FDEBF2;
   --si-m-trans: #1E95E0;
   --si-m-trans-soft: #E6F3FC;
+  /* 发票管家“票赭”（V36-I，草案 10.5 核算）：白底 5.34、浅底 4.59，文字也可直接用，不另设深字 */
+  --si-m-inv: #9A5B3C;
+  --si-m-inv-soft: #F6ECE6;
   /* 标志 */
   --si-logo-a: #078A76;
   --si-logo-faint: #A6EAD9;
@@ -189,6 +192,8 @@ html[data-shell="night"], html[data-shell="night"] .si-paper {
   --si-m-meet-soft: rgba(236, 106, 155, .15);
   --si-m-trans: #3AA7EC;
   --si-m-trans-soft: rgba(58, 167, 236, .15);
+  --si-m-inv: #C98463;
+  --si-m-inv-soft: rgba(201, 132, 99, .15);
   --si-logo-a: #33C0A6;
   --si-logo-faint: #1F5E55;
   --si-logo-star: #8B7CFF;

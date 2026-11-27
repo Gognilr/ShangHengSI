@@ -9,6 +9,7 @@
 .si-illus.m-bid { --il: var(--si-m-bid); --il-soft: var(--si-m-bid-soft); --il-faint: color-mix(in srgb, var(--si-m-bid) 38%, var(--si-surface-1)); }
 .si-illus.m-meet { --il: var(--si-m-meet); --il-soft: var(--si-m-meet-soft); --il-faint: color-mix(in srgb, var(--si-m-meet) 38%, var(--si-surface-1)); }
 .si-illus.m-trans { --il: var(--si-m-trans); --il-soft: var(--si-m-trans-soft); --il-faint: color-mix(in srgb, var(--si-m-trans) 38%, var(--si-surface-1)); }
+.si-illus.m-inv { --il: var(--si-m-inv); --il-soft: var(--si-m-inv-soft); --il-faint: color-mix(in srgb, var(--si-m-inv) 38%, var(--si-surface-1)); }
 
 .il-p { fill: var(--si-paper); stroke: var(--il); stroke-width: 1.5; stroke-linejoin: round; }
 .il-p2 { fill: var(--si-paper); stroke: var(--il-faint); stroke-width: 1.5; }
@@ -42,3 +43,13 @@
 .si-illus.live .il-bars rect { animation-iteration-count: infinite; }
 @keyframes si-il-wave { 50% { transform: scaleY(1.6); } }
 html[data-fx="lite"] .si-illus.live .il-bars rect { animation: none; }
+
+/* 票夹（V36-I）：悬停抽出最上一张；.open 为拖入时，夹片张开 12°、票扇展开 */
+.il-pull, .il-jaw, .il-fan-l, .il-fan-r { transform-box: view-box; transition: transform var(--si-d3) var(--si-ease-spring); }
+.il-fan-l, .il-fan-r { transform-origin: 110px 24px; }
+.il-jaw { transform-origin: 128px 30px; }
+:is(.si-hov:hover, .si-illus.on) .il-pull { transform: translateY(-6px); }
+.si-illus.open .il-jaw { transform: rotate(-12deg); }
+.si-illus.open .il-fan-l { transform: rotate(-9deg); }
+.si-illus.open .il-fan-r { transform: rotate(9deg); }
+.si-illus.open .il-pull { transform: translateY(-6px); }

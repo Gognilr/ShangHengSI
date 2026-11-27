@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ClockFading, FileSearch, FileStack, GitCompareArrows, House, KeyRound, Languages, LogOut, Mic, Moon, Palette, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings, Sun } from '@lucide/vue'
+import { ClockFading, FileSearch, FileStack, GitCompareArrows, House, KeyRound, Languages, LogOut, Mic, Moon, Palette, PanelLeftClose, PanelLeftOpen, Plus, ReceiptText, Search, Settings, Sun } from '@lucide/vue'
 import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
@@ -50,9 +50,9 @@ onBeforeUnmount(() => narrowQuery.removeEventListener('change', onNarrow))
 
 // 菜单按权限点显示（V31-U5F-07）；翻译可只用本地翻译、历史记录是本人的记录，人人可见
 // V3.4 一事一入口（V34Q-01）：工作台｜文件审查｜工具｜历史记录、搜索；分组名在收起的窄栏里变为一条短线
-// 合同对比（V351-E-01）放在文件审核之后，同属审核权限与审核模块色；它不留记录，没有等待数
+// 合同对比（V351-E-01）放在文件审核之后，同属审核权限与审核模块色；它与发票管家（V36-I）都不留记录，没有等待数
 // 澄明 8.0：选中时图标变成模块色（mc），工作台、历史记录、搜索没有模块色，用衡青
-type Menu = { key: keyof Waiting | 'history' | 'compare'; to: string; label: string; icon: typeof House; mc?: string; perms?: Perm[] }
+type Menu = { key: keyof Waiting | 'history' | 'compare' | 'invoice'; to: string; label: string; icon: typeof House; mc?: string; perms?: Perm[] }
 const SECTIONS: { title: string; items: Menu[] }[] = [
   { title: '', items: [{ key: 'workbench', to: '/assistant', label: '工作台', icon: House, perms: ['use.assistant'] }] },
   { title: '文件审查', items: [
@@ -63,6 +63,7 @@ const SECTIONS: { title: string; items: Menu[] }[] = [
   { title: '工具', items: [
     { key: 'meeting', to: '/meeting', label: '会议纪要', icon: Mic, mc: 'meet', perms: ['use.meeting'] },
     { key: 'translate', to: '/translate', label: '翻译', icon: Languages, mc: 'trans' },
+    { key: 'invoice', to: '/invoice', label: '发票管家', icon: ReceiptText, mc: 'inv', perms: ['use.export'] },
   ] },
   { title: '', items: [{ key: 'history', to: '/history', label: '历史记录', icon: ClockFading }] },
 ]
@@ -80,6 +81,7 @@ const activeMenu = computed(() => {
   }
   if (path.startsWith('/meeting')) return 'meeting'
   if (path.startsWith('/translate')) return 'translate'
+  if (path === '/invoice') return 'invoice'
   if (path.startsWith('/history')) return 'history'
   return ''
 })
@@ -95,7 +97,7 @@ async function refreshWaiting() {
   if (!auth.user) { waiting.value = null; return }
   try { waiting.value = await assistantApi.waiting() } catch { /* 数字取不到时不显示，不打断页面 */ }
 }
-function badge(m: Menu) { const n = m.key === 'history' || m.key === 'compare' ? 0 : waiting.value?.[m.key] ?? 0; return n > 99 ? '99+' : n || '' }
+function badge(m: Menu) { const n = m.key === 'history' || m.key === 'compare' || m.key === 'invoice' ? 0 : waiting.value?.[m.key] ?? 0; return n > 99 ? '99+' : n || '' }
 const BADGE_TIP: Record<string, string> = { workbench: '等你确认遮住的会话', review: '等你确认遮住的文件', bid: '等你确认后发送的标书项目', meeting: '等你确认遮住的会议', translate: '等你确认遮住的译稿' }
 let waitTimer: number | undefined
 watch(() => route.path, () => void refreshWaiting())
@@ -298,6 +300,7 @@ html[data-fx="full"] .item:hover .icon { transform: scale(1.08); }
 .m-bid { --mc: var(--si-m-bid); }
 .m-meet { --mc: var(--si-m-meet); }
 .m-trans { --mc: var(--si-m-trans); }
+.m-inv { --mc: var(--si-m-inv); }
 .item:disabled, .new-session:disabled { cursor: not-allowed; opacity: .6; }
 .item:active:not(:disabled), .new-session:active:not(:disabled) { transform: scale(.97); }
 /* 等你处理的数量：琥珀浅底胶囊；收起时变成图标右上角的小圆点 */

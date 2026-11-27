@@ -5,7 +5,7 @@
  * 迷你尺度一律压成通用五站（或只在本机的三站），几站压进同一通用站时当前站的状态说了算。
  */
 
-export type TripModule = 'review' | 'chat' | 'bid' | 'bidx' | 'meet' | 'transL' | 'transC' | 'local'
+export type TripModule = 'review' | 'chat' | 'bid' | 'bidx' | 'meet' | 'transL' | 'transC' | 'local' | 'inv'
 /** 未到、进行中、等你、被拦截、失败、已停止、全线完成、部分完成（还原已过，模型站带琥珀光圈） */
 export type TripState = 'todo' | 'run' | 'wait' | 'block' | 'fail' | 'stop' | 'done' | 'partial'
 
@@ -30,6 +30,7 @@ export const TRIP_DEFS: Record<TripModule, TripDef> = {
   transL: { names: ['读取', '本机翻译', '完成'], local: true },
   transC: { names: ['读取', '确认遮住', '复检', '模型翻译', '还原'] },
   local: { names: ['读取', '本机处理', '完成'], local: true },
+  inv: { names: ['读取', '本机识别', '生成清单'], local: true },
 }
 const GEN5 = ['读取', '遮住', '复检', '模型', '还原']
 const GEN3 = ['读取', '本机处理', '完成']
@@ -187,6 +188,19 @@ export function translateTrip(p: { status: string; engine?: 'local' | 'cloud' | 
   if (t === 'stopped') return { mod, at: work, state: 'stop', note: '已停止' }
   if (cloud && (p.status === 'awaiting_confirm' || p.confirmed === false)) return { mod, at: 1, state: 'wait', note: '等你确认', act: '去确认' }
   return { mod, at: work, state: 'todo', note: '待翻译' }
+}
+
+/** 发票管家（澄明二版 6.29）：本机三站“读取 · 本机识别 · 生成清单”，整条青色；完成后收成“已完成 · 全程本机” */
+export function invoiceTrip(p: { upload?: number | null; status?: 'queued' | 'running' | 'done' | 'failed' | null; done?: number; total?: number }): Trip {
+  if (p.upload != null) return { mod: 'inv', at: 0, state: 'run', note: p.upload < 100 ? `正在上传 ${p.upload}%` : '正在读取' }
+  if (p.status === 'failed') return { mod: 'inv', at: 1, state: 'fail', note: '识别未完成' }
+  if (p.status === 'done') return { mod: 'inv', at: 2, state: 'done' }
+  if (p.status === 'queued' && !p.done) return { mod: 'inv', at: 1, state: 'run', note: '排队中' }
+  if (p.status === 'queued' || p.status === 'running') {
+    const n = Math.min((p.done ?? 0) + 1, p.total ?? 0)
+    return { mod: 'inv', at: 1, state: 'run', note: p.total ? `第 ${n} / ${p.total} 个文件` : undefined }
+  }
+  return { mod: 'inv', at: 0, state: 'todo' }
 }
 
 /** 文件审核工作区顶部（Assistant 的审核视图）：ReviewPane 上报的进度 → 往返线 */

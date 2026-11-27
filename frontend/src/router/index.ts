@@ -53,6 +53,8 @@ export const router = createRouter({
         { path: 'meeting/:sessionId', name: 'meeting-session', component: () => import('@/views/Meeting.vue') },
         { path: 'translate', name: 'translate', component: () => import('@/views/Translate.vue') },
         { path: 'translate/:sessionId', name: 'translate-session', component: () => import('@/views/Translate.vue') },
+        // 发票管家（V36-I）：侧栏“工具”下第三项，按导出权限显示；不留记录，没有子页面
+        { path: 'invoice', name: 'invoice', component: () => import('@/views/Invoice.vue'), meta: { perms: ['use.export'] } },
         {
           path: 'settings',
           component: () => import('@/views/settings/SettingsLayout.vue'),
