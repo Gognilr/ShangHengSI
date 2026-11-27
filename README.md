@@ -4,7 +4,7 @@
 
 An AI-assisted first-pass reviewer for business documents (contracts, quotations, orders, inquiries and letters), designed to run inside a company LAN.
 
-**Source version: V3.5.1** · [Stage review](docs/v351/reports/V351-Z.md). Released on 2026-11-26.
+**Source version: V3.6.0** · [Stage review](docs/v36/reports/V36-Z.md).
 
 Sensitive information never leaves the internal network: documents are parsed, checked and **redacted locally**. Only the redacted text is sent to a cloud LLM, and the results are restored to real names locally before they are shown.
 
@@ -34,11 +34,18 @@ The sidebar is grouped by task (V3.4: one entry per job):
 |-|-|
 | Workbench | The unified home: ask questions about documents and discuss issues in one session; four entry tiles with live status |
 | Document Review | The document review flow described above (start page `/review`) |
-| Contract Compare | One-off comparison of two Word drafts; nothing is stored and no model is called (in the sidebar since V3.5.1) |
+| Contract Compare | Compare two Word drafts side by side and export a Word comparison. Processing is local and does not create history. |
 | Bid Pre-screening | For the tendering side: compare 3–5 bids against the tender for qualification, compliance and collusion signals (new in V3.4) |
 | Meeting Minutes | Transcribe meeting audio locally and generate minutes |
 | Translation | Translate documents and pasted text; runs locally |
+| Invoice Organizer | Recognize domestic invoices locally, preview the batch and download an Excel list. Batch contents are held in memory and cleared automatically. |
 | History | All past review tasks and sessions (called "Review history" before V3.2) |
+
+V3.6.0 highlights:
+
+- **Hengxian interface** shows each stage from local processing to redaction, outbound checks, model use and local restoration.
+- **Document review** keeps redaction codes stable after the first review and restores each round using its saved mapping.
+- **Contract Compare** improves matching across drafts, covers headers, footers and text boxes, and exports the comparison to Word.
 
 V3.5.1 quality fixes:
 
