@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.admin import settings_store
 from app.config import get_settings
 from app.db.base import utcnow
-from app.db.models import AuditLog, BackupRecord, Job, LlmCall
+from app.db.models import AuditLog, BackupRecord, Job, LlmCall, Task
 from app.main import API_PREFIX
 
 A = f"{API_PREFIX}/admin"
@@ -78,6 +78,7 @@ def test_all_endpoints_forbid_non_admin(make_user, login, api, dirs):
         ("post", "/backup/run", None), ("get", "/backup/records", None),
         ("get", "/settings/retention", None), ("put", "/settings/retention", {"original_days": 1}),
         ("get", "/outbound-logs", None), ("get", "/outbound-logs/1", None), ("get", "/system/status", None),
+        ("get", "/retention/forecast", None),
         ("get", "/audit-logs", None),
     ]:
         r = getattr(c, method)(A + path, headers=_hdr(csrf), **({"json": body} if body is not None else {}))
@@ -481,3 +482,19 @@ def test_v2c05_audit_filters_pagination_and_read_only(admin,db_sessionmaker,make
     assert c.get(A+"/audit-logs",params={**params,"action":"task_delete"}).json()["total"] == 1
     with db_sessionmaker() as db:
         assert db.scalar(select(func.count()).select_from(AuditLog)) == before
+
+
+def test_f07_retention_forecast_counts_only(admin, db_sessionmaker, make_user):
+    """V36-F-07：未来 30 天按日到期件数；已过期待清理的算今天，不到期与未完成之外的不计，只返回件数。"""
+    c, csrf = admin
+    assert c.put(A + "/settings/retention", json=dict(original_days=30, result_days=30, outbound_days=0, audit_days=0,
+                                                       unfinished_days=0), headers=_hdr(csrf)).status_code == 200
+    user, now = make_user("fc"), utcnow()
+    with db_sessionmaker() as db:
+        for title, status, age in [("过期", "reviewed", 40), ("明天", "reviewed", 29), ("很久以后", "reviewed", 1), ("解析中", "parsing", 40)]:
+            db.add(Task(owner_id=user.id, title=title, stance="sales", source="outgoing", policy="ai", status=status,
+                        last_activity_at=now - timedelta(days=age)))
+        db.commit()
+    d = c.get(A + "/retention/forecast").json()
+    assert set(d) == {"start", "counts", "total"} and len(d["counts"]) == 30
+    assert (d["counts"][0], d["counts"][1], d["counts"][29], d["total"]) == (1, 1, 1, 3)

@@ -219,6 +219,38 @@ def put_retention(
     return body
 
 
+class RetentionForecast(BaseModel):
+    start: date
+    counts: list[int]
+    total: int
+
+
+@router.get("/retention/forecast", response_model=RetentionForecast, dependencies=[Depends(_data)])
+def retention_forecast(db: DbSession = Depends(get_db)) -> RetentionForecast:
+    """未来 30 天（含今天）每天到期的任务件数（V36-F-07，设置 · 数据的保留期限时间轴）。
+    只给件数：按与清理作业相同的分层条件，逐任务取最早到期的一层；已过期待清理的算在今天。"""
+    from app.backup.retention import LAYERS, _days, _layer_conditions, _pending  # 延迟导入：该模块依赖 worker
+    tz, now = _tz(), utcnow()
+    today = now.astimezone(tz).date()
+    earliest: dict = {}
+    for layer in LAYERS[:2] + LAYERS[4:]:  # original、result、unfinished
+        days = _days(db, layer)
+        if not days:
+            continue
+        conds = _layer_conditions(layer)
+        if layer == "original":
+            conds = [*conds, _pending(Task.id)]
+        for tid, last in db.execute(select(Task.id, Task.last_activity_at).where(*conds)).all():
+            due = (last + timedelta(days=days)).astimezone(tz).date()
+            earliest[tid] = min(due, earliest.get(tid, due))
+    counts = [0] * 30
+    for due in earliest.values():
+        offset = max((due - today).days, 0)
+        if offset < 30:
+            counts[offset] += 1
+    return RetentionForecast(start=today, counts=counts, total=sum(counts))
+
+
 # ---------------------------------------------------------------- 外发记录
 
 
