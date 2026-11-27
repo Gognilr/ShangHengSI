@@ -1,0 +1,16 @@
+description: 甲乙方前缀的开户行标签（“乙方开户行：”“甲方开户银行：”）后的银行名称整段作为银行主体；“卡号 / 银行卡号”后的数字按账号（V36-R-01）
+stance: purchase
+must_replace:
+  - {text: 青澜虚构新材料科技有限公司, category: ORG}
+  - {text: 远岫虚构贸易有限公司, category: ORG}
+  - {text: 虚构银行湖州长兴支行, category: ORG}
+  - {text: 虚构农村商业银行城东支行, category: ORG}
+  - {text: 6217 0012 3456 7890 123, category: ACCOUNT}
+  - {text: 6230 5200 1234 5678 901, category: ACCOUNT}
+  - {text: "6228480012345678912", category: ACCOUNT}
+  - {text: 周慕远, category: PERSON}
+must_keep:
+  - 乙方开户行：
+  - 甲方开户银行：
+  - 卡号：
+  - 退款请汇入银行卡号：

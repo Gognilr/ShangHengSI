@@ -231,6 +231,10 @@ _EXTEND_STOP_WORDS = (*_CN_BOUNDARY_WORDS, "或", "并", "且", "的", "等", "�
 # 开户行（R1-12，Q-139 ②）：这些标签后的中文值以银行类结尾时，没有企业后缀也作为银行主体；单独的“Bank”不在此列
 _BANK_VALUE_LABELS = frozenset(w.casefold() for w in ("开户行", "开户银行", "收款银行", "受益人银行", "Bank Name", "Beneficiary Bank"))
 _BANK_VALUE_SUFFIXES = ("银行", "支行", "分行", "分理处", "营业部", "储蓄所")
+# 角色词紧贴开户行标签（“乙方开户行：”“甲方开户银行：”）：_LABEL_RE 的前界不认这种写法，银行名称只被遮掉地名部分（V36-R-01）
+_ROLE_BANK_RE = re.compile(
+    r"(?:^|(?<=[\s,，;；。、(（]))(?:甲方|乙方|丙方|买方|卖方|供方|需方|采购方|供应商|销售方|收款方|付款方|收款人|付款人|承包人|发包人)"
+    r"(?:开户行|开户银行|收款银行)\s*(?:名称|全称)?\s*[:：]", re.MULTILINE)
 _BANK_VALUE_MIN_HAN = 4
 
 # ---------------------------------------------------------------- 简称
@@ -558,6 +562,10 @@ def find_labeled_parties(text: str) -> list[tuple[str, int, int]]:
                 elif note and any(w in note.group(1) for w in ("供方", "卖方", "供应商", "承包人", "受托方", "出租方")):
                     label = SELLER
             out.append((label, *span))
+    for m in _ROLE_BANK_RE.finditer(text):
+        span = extract_org_name(text, m.end()) or _bank_value(text, m.end())
+        if span and not any(s < span[1] and span[0] < e for _, s, e in out):
+            out.append((_LABEL_CANON["开户行"], *span))
     return out
 
 

@@ -84,3 +84,32 @@ def test_revocability_is_authoritative_per_source(alice, ready_task, monkeypatch
         json={k:target[k] for k in ('loc','char_start','char_end')})
     assert response.status_code == 200
     assert not any(i['loc']=='F1-P4' for i in response.json()['items'])
+
+
+@pytest.mark.usefixtures('env')
+def test_codes_stay_after_first_run(alice, ready_task, db_sessionmaker):
+    """V36-R-01：送审过之后在确认页补人名，旧代号不改、不复用，旧轮次的问题仍还原为原来的人。"""
+    from app.db.models import ReviewRun
+    from app.redaction import engine
+    from app.review.service import _View
+    user, client, headers = alice
+    document = Document()
+    for line in ('卖方：星河虚构进出口有限公司', '联系人：周示例', '虚构标记', 'Attn: Mr. Karim Haddad'):
+        document.add_paragraph(line)
+    stream = io.BytesIO()
+    document.save(stream)
+    task = ready_task(user, files=[('虚构说明.docx', stream.getvalue())])
+    with db_sessionmaker() as db:
+        before = engine.load_redaction_map(db, task.id)
+        assert before['[人员_2]'] == 'Karim Haddad'
+        db.add(ReviewRun(task_id=task.id, run_no=1, status='completed', stance=task.stance, source=task.source,
+                         main_doc_type='contract', created_by=user.id))
+        db.commit()
+    response = client.post(task_url(task, '/redaction/manual'), headers=headers,
+                           json={'loc': 'F1-P3', 'char_start': 0, 'char_end': 4, 'category': 'PERSON'})
+    assert response.status_code == 200, response.text
+    with db_sessionmaker() as db:
+        after = engine.load_redaction_map(db, task.id)
+        assert after['[人员_1]'] == '周示例' and after['[人员_2]'] == 'Karim Haddad'
+        assert after['[人员_3]'] == '虚构标记'
+        assert _View(db, task.id).text('由 [人员_2] 签字') == '由 Karim Haddad 签字'

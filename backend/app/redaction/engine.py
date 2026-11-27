@@ -464,7 +464,7 @@ def _cached_entities(entry: object, key: str, length: int) -> list[ner.Entity] |
     return result
 
 
-_ADJACENT_LABEL = re.compile(r'(?i)(?:开户行账号|银行账号|银行帐号|账户号码|账号|帐号|户名|开户行|身份证号|证件号|联系人|经办人|收件人|电话|手机|传真|邮箱|电子邮箱|地址|注册地址|合同编号|订单编号|编号|SWIFT(?:\s+CODE)?|account(?:\s+(?:no\.?|number|name))?|bank|contact(?:\s+person)?|phone|tel|mobile|fax|e-?mail|address|IBAN|BIC|QQ|微信|wechat)\s*[:：]?\s*\Z')
+_ADJACENT_LABEL = re.compile(r'(?i)(?:开户行账号|银行账号|银行帐号|账户号码|银行卡号|卡号|账号|帐号|户名|开户行|身份证号|证件号|联系人|经办人|收件人|电话|手机|传真|邮箱|电子邮箱|地址|注册地址|合同编号|订单编号|编号|SWIFT(?:\s+CODE)?|account(?:\s+(?:no\.?|number|name))?|bank|contact(?:\s+person)?|phone|tel|mobile|fax|e-?mail|address|IBAN|BIC|QQ|微信|wechat)\s*[:：]?\s*\Z')
 
 
 @lru_cache(maxsize=32768)
@@ -1377,7 +1377,7 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
     if len(ours) > 1:
         raise ValueError("我方只能有一个")
     alloc = NeutralAllocator() if style == "neutral" else Allocator()
-    if style == "neutral":
+    if style == "neutral" or pinned:
         alloc.seed(pinned or {})
     mapping: dict[str, str] = dict(pinned or {}) if style == "neutral" else {}
     extra: dict[str, list[str]] = {}
@@ -1431,7 +1431,8 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
                     remember(code, None, node.text[start:end].strip())
         else:
             primary = entities[s.key].name if s.key in entities and category in ("PERSON", "CUSTOM") else surface
-            code = alloc.numbered(category, primary if style == "neutral" else s.key)
+            code = (alloc.numbered(category, primary) if style == "neutral"
+                    else alloc.numbered(category, s.key, primary))
             remember(code, primary, surface)
         items.append(ItemOut(node.loc, s.start, s.end, category, code, s.detected_by))
 
@@ -1441,6 +1442,15 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
             values = known + [v for v in values if v not in known]
         for n, value in enumerate(values, start=1):
             mapping[f"{code}#{n}"] = value
+
+    if style == "review" and pinned:
+        # 首次送审后对照表只增（V36-R-01）：本次不再出现的旧代号连同其他写法保留，只用于旧轮次、追问的还原；
+        # 明确保留或撤销的原文按 V31Q-18 不参与拦截。追问代号与特殊键由 _write_map 保留。
+        bases = {key.split("#", 1)[0] for key in mapping}
+        for key, value in pinned.items():
+            base = key.split("#", 1)[0]
+            if not key.startswith("@") and chat_number(base) is None and base not in bases:
+                mapping[key] = value
 
     inserts = _ratio_inserts(nodes, spans, main_prefix) if with_ratio else {}
     by_node: dict[str, list[ItemOut]] = {}
@@ -1709,6 +1719,14 @@ def _write_suspects(db: Session, task_id: uuid.UUID, found: list[SuspectOut], te
     db.flush()
 
 
+def _codes_frozen(db: Session, task: Task, style: str) -> bool:
+    """文件审核任务送审过（已有轮次）后，重算只增不改代号：旧轮次的问题、追问与增量复审都以代号形式保存（V36-R-01）。
+    首次送审之前仍按首次出现顺序整份重排。"""
+    from app.db.models import ReviewRun
+    return (style == 'review' and task.kind != 'assistant'
+            and db.scalar(select(ReviewRun.id).where(ReviewRun.task_id == task.id).limit(1)) is not None)
+
+
 def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
          existing: dict[str, Party], extra_terms: Sequence[UserTerm] = (), *,
          style: str | None = None, pin: bool | None = None) -> RedactionResult:
@@ -1758,7 +1776,8 @@ def _run(db: Session, task: Task, overrides: dict[str, PartyOverride] | None,
                    exclusions=[crypto.decrypt_text(e.text_enc) for e in db.scalars(
                        select(RedactionExclusion).where(RedactionExclusion.task_id == task.id))],
                    main_prefix=_main_prefix(db, task.id), style=style, date_shift_days=shift_days,
-                   pinned=_load_full_map(db, task.id) if pin else None, ratio=style == 'review')
+                   pinned=_load_full_map(db, task.id) if pin or _codes_frozen(db, task, style) else None,
+                   ratio=style == 'review')
     keeps = [*user_keeps, *memory.values()]
     result = compute(nodes, task.stance, **options, keeps=keeps, ner_cache=cached)
     if shift_days:

@@ -94,25 +94,78 @@ def code_role(role_label: str, stance: str, org_type: str | None) -> str:
     return "公司"
 
 
+_NUMBERED_BY_LABEL = {fmt.strip("[]").split("_", 1)[0]: category for category, fmt in _NUMBERED.items()}
+_ROLE_CODE = re.compile(r"\[([^\[\]_]+)_([A-Z]+)\]")
+_NUMBER_CODE = re.compile(r"\[([^\[\]_]+)_(\d+)\]")
+
+
+def letter_index(text: str) -> int:
+    """letters() 的反函数：A→0，Z→25，AA→26。"""
+    n = 0
+    for ch in text:
+        n = n * 26 + ord(ch) - ord("A") + 1
+    return n - 1
+
+
 class Allocator:
-    """按首次出现顺序分配代号。"""
+    """按首次出现顺序分配代号。
+
+    seed() 之后对照表只增（V36-R-01）：首次送审后再重算时，旧对照表里的同一对象沿用原来的字母或序号（角色随立场变化），
+    新对象接在已用过的最大号之后，号码不复用；旧轮次、追问与增量复审里的代号因此仍指向原来的对象。"""
 
     def __init__(self) -> None:
         self._org_letters = 0
         self._counters: dict[str, int] = {}
         self._codes: dict[tuple[str, str], str] = {}
+        self._seed_letters: dict[str, list[int]] = {}
+        self._seed_codes: dict[tuple[str, str], list[str]] = {}
+        self._claimed: set[str | int] = set()
+
+    def seed(self, pinned: dict[str, str]) -> None:
+        from app.redaction.parties import normalize  # 延迟导入，避免循环导入
+        for entry, value in sorted(pinned.items(), key=lambda kv: "#" in kv[0]):  # 主写法优先于其他写法
+            if entry.startswith("@") or "#D" in entry or not value:
+                continue
+            code, variant = entry.split("#", 1)[0], "#" in entry
+            role = _ROLE_CODE.fullmatch(code)
+            if role and role[1] in ROLE_LABELS:
+                index = letter_index(role[2])
+                self._org_letters = max(self._org_letters, index + 1)
+                if not variant:
+                    self._seed_letters.setdefault(normalize(value), []).append(index)
+                continue
+            number = _NUMBER_CODE.fullmatch(code)
+            category = _NUMBERED_BY_LABEL.get(number[1]) if number else None
+            if category is None:
+                continue
+            self._counters[category] = max(self._counters.get(category, 0), int(number[2]))
+            codes = self._seed_codes.setdefault((category, normalize(value)), [])
+            if code not in codes:
+                codes.append(code)
 
     def org(self, key: str, role: str) -> str:
         if ("ORG", key) not in self._codes:
-            self._codes[("ORG", key)] = f"[{role}_{letters(self._org_letters)}]"
-            self._org_letters += 1
+            index = next((i for i in self._seed_letters.get(key, ()) if i not in self._claimed), None)
+            if index is None:
+                index = self._org_letters
+                self._org_letters += 1
+            self._claimed.add(index)
+            self._codes[("ORG", key)] = f"[{role}_{letters(index)}]"
         return self._codes[("ORG", key)]
 
-    def numbered(self, category: str, key: str) -> str:
+    def numbered(self, category: str, key: str, value: str | None = None) -> str:
         if (category, key) not in self._codes:
-            n = self._counters.get(category, 0) + 1
-            self._counters[category] = n
-            self._codes[(category, key)] = _NUMBERED[category].format(n)
+            code = None
+            if value is not None and self._seed_codes:
+                from app.redaction.parties import normalize
+                code = next((c for c in self._seed_codes.get((category, normalize(value)), ())
+                             if c not in self._claimed), None)
+            if code is None:
+                n = self._counters.get(category, 0) + 1
+                self._counters[category] = n
+                code = _NUMBERED[category].format(n)
+            self._claimed.add(code)
+            self._codes[(category, key)] = code
         return self._codes[(category, key)]
 
     def fixed(self, category: str, key: str) -> str:

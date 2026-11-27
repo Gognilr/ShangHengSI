@@ -76,7 +76,7 @@ _LABELED_IBAN = re.compile(
     r'(?:IBAN(?:\s*(?:No\.?|number))?|银行账号|收款账号|付款账号|账号|帐号|账户|帐户|account\s*(?:no\.?|number))'
     r'\s*[:：]?\s*' + _OPEN + '(' + _IBAN.pattern + ')', re.IGNORECASE)
 _ACCOUNT = re.compile(
-    r"(?:开户行账号|银行账号|收款账号|付款账号|账号|帐号|账户|帐户|(?i:account\s*(?:no\.?|number)|a/c\s*no\.?|a/c))"
+    r"(?:开户行账号|银行账号|收款账号|付款账号|银行卡号|卡号|账号|帐号|账户|帐户|(?i:account\s*(?:no\.?|number)|a/c\s*no\.?|a/c))"
     r"\s*[:：]?\s*" + _OPEN + r"(\d[\d \-]{6,45}\d)(?![\d])"
 )
 _ACCOUNT_SIMPLE = re.compile(r'(?<![A-Za-z])(?i:Account|A/C|Acct\.?)[ \t]+'
