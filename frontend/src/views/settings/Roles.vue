@@ -172,10 +172,10 @@ async function remove(row: RoleRow) {
 .matrix td { height: 44px; padding: 0 8px; border-top: 1px solid var(--si-hair-faint); text-align: center; color: var(--si-ink-2); }
 .matrix tr.g td { height: 36px; background: var(--si-card-2); color: var(--si-ink-1); font-weight: 600; text-align: left; box-shadow: inset 3px 0 0 var(--mc); }
 .matrix td.chg { background: var(--si-warn-soft); }
-.cb2 { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid var(--si-hair-strong); border-radius: 6px; background: var(--si-surface-1); color: #fff; cursor: pointer; transition: background var(--si-d2) var(--si-ease-out); }
+.cb2 { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 1.5px solid var(--si-hair-strong); border-radius: 6px; background: var(--si-surface-1); color: var(--si-white); cursor: pointer; transition: background var(--si-d2) var(--si-ease-out); }
 .cb2.on { background: var(--si-brand-2); border-color: var(--si-brand-2); }
 .cb2:disabled { cursor: not-allowed; opacity: .65; }
 .cb2:focus-visible { outline: 3px solid var(--si-ring); outline-offset: 2px; }
-.savebar { position: sticky; bottom: 16px; z-index: 5; display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 10px 12px 10px 18px; border-radius: var(--si-radius-card); background: var(--si-island-bg); color: var(--si-island-ink, #EDF1F6); box-shadow: var(--si-shadow-2); font: var(--si-font-label); }
-.savebar .drop { margin-left: auto; background: transparent; color: inherit; border-color: rgba(255, 255, 255, .25); }
+.savebar { position: sticky; bottom: 16px; z-index: 5; display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 10px 12px 10px 18px; border-radius: var(--si-radius-card); background: var(--si-island-bg); color: var(--si-island-ink); box-shadow: var(--si-shadow-2); font: var(--si-font-label); }
+.savebar .drop { margin-left: auto; background: transparent; color: inherit; border-color: color-mix(in srgb, var(--si-white) 25%, transparent); }
 </style>

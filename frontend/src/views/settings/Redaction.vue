@@ -350,6 +350,6 @@ h3 {
 .chip.add { padding: 0 8px; background: transparent; border: 1px dashed var(--si-hair-strong); color: var(--si-ink-3); cursor: pointer; }
 .addf { display: inline-flex; gap: 4px; }
 .addi { width: 150px; height: 24px; padding: 0 8px; border: 1px solid var(--si-hair-strong); border-radius: 6px; background: var(--si-surface-1); color: var(--si-ink-1); font: var(--si-font-meta); }
-.addb { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--si-brand-2); color: #fff; font: var(--si-font-meta); cursor: pointer; }
+.addb { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--si-brand-2); color: var(--si-white); font: var(--si-font-meta); cursor: pointer; }
 .none { color: var(--si-ink-3); font: var(--si-font-caption); }
 </style>
