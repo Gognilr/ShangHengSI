@@ -28,7 +28,7 @@ def test_01_all_thirteen_labels():
 
 def test_02_customs_whole_value():
     r = result("报关单号：222120260000123456")
-    assert r.redacted["F1-P1"] in ("报关单号：[编号_1]", "报关单号：[证件号]")
+    assert r.redacted["F1-P1"] in ("报关单号：[编号_1]", "报关单号：[证件号_1]")
 
 
 @pytest.mark.parametrize("value", ["见附件", "待定", "另行约定", "同上"])
@@ -42,8 +42,8 @@ def test_04_project_semicolon():
 
 def test_05_repeated_im_mapping():
     r = result("微信：zhang_fiction88 微信：zhang_fiction88")
-    assert r.redacted["F1-P1"] == "微信：[联系方式] 微信：[联系方式]"
-    assert r.mapping == {"[联系方式]#1": "zhang_fiction88"}
+    assert r.redacted["F1-P1"] == "微信：[联系方式_1] 微信：[联系方式_1]"
+    assert r.mapping == {"[联系方式_1]": "zhang_fiction88"}
 
 
 def test_06_im_map_blocks_leak():
@@ -62,7 +62,7 @@ def test_07_chat_wechat_with_or_without_colon():
 
 
 def test_note_uses_same_rules():
-    assert result("微信：zhang_fiction88", "NOTE").redacted["NOTE"] == "微信：[联系方式]"
+    assert result("微信：zhang_fiction88", "NOTE").redacted["NOTE"] == "微信：[联系方式_1]"
 
 
 def test_project_unique_and_information_boundary():

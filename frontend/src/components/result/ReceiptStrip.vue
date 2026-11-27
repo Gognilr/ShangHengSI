@@ -14,6 +14,7 @@ const popOpen = ref(false)
 const receipt = computed(() => props.run.receipt)
 const restored = computed(() => props.run.restore_stats.restored ?? 0)
 const marked = computed(() => props.run.restore_stats.marked ?? 0)
+const invented = computed(() => props.run.restore_stats.invented ?? 0)
 const categories = computed(() => Object.entries(receipt.value?.protected ?? {}).filter(([, n]) => n > 0))
 const notSent = computed(() => {
   const parts = [`原件 · ${props.fileNames.join('、')}`]
@@ -58,7 +59,7 @@ function openSent() {
         <dt>出口复检</dt>
         <dd>{{ receipt.rechecks }} 次 · 拦截 {{ receipt.blocked }} 次</dd>
         <dt>本机还原</dt>
-        <dd v-if="restored || marked">已还原 {{ restored }} 处<template v-if="marked > 0">；标出 {{ marked }} 处模型写法无法对应到原文，见虚线标记</template></dd>
+        <dd v-if="restored || marked">已还原 {{ restored }} 处<template v-if="marked > 0">；标出 {{ marked }} 处模型写法无法对应到原文<template v-if="invented > 0">（其中 {{ invented }} 处是模型自造的代号，对照表里没有）</template>，见虚线标记</template></dd>
         <dd v-else>模型回复中没有代号，无需还原</dd>
       </dl>
       <el-button link type="primary" class="sent-link" @click="openSent">查看本轮实际发送的文字</el-button>

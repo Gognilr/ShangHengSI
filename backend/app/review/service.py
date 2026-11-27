@@ -37,7 +37,8 @@ from app.db.models import (
 from app.models_api import select_model
 from app.llm.gateway import describe_reasons
 from app.llm import gateway, usage
-from app.redaction.engine import build_outbound, learn_confirmed_names, load_redaction_map, load_date_pairs, load_local_values
+from app.redaction.engine import (build_outbound, learn_confirmed_names, load_redaction_map, load_date_pairs,
+                                  load_local_values, map_snapshot, run_redaction_map)
 from app.redaction.recheck import recheck, recheck_context
 from app.redaction.restore import check, _LOCATION
 from app.review.clauses import is_first_level
@@ -470,6 +471,7 @@ def _launch(db: DbSession, task: Task, user: User, ip: str | None, *, stance: st
         created_by=user.id, queued_at=utcnow(), receipt=_receipt(db, task, model.display_name, file_ids),
         file_ids=file_ids, material_version=task.material_version, use_shared_clauses=use_template and delta is None,
         scope="delta" if delta is not None else "full", base_run_id=delta.base_run.id if delta is not None else None,
+        map_enc=map_snapshot(db, task.id),
     )
     db.add(run)
     if use_template and delta is None:
@@ -559,14 +561,16 @@ def list_runs(db: DbSession, task: Task) -> RunList:
 class _View:
     """一个任务共用的代号、日期还原与文件位置上下文。"""
 
-    def __init__(self, db: DbSession, task_id: uuid.UUID):
+    def __init__(self, db: DbSession, task_id: uuid.UUID, run: ReviewRun | None = None):
         self.db = db
         self.task_id = task_id
-        self.mapping = load_redaction_map(db, task_id)
+        # 按轮次还原：用该轮创建时的对照表快照（改我方后旧轮次的 [我方] 仍指原来的一方，V36-R-03）
+        self.mapping = run_redaction_map(db, run) if run is not None else load_redaction_map(db, task_id)
         self.dates = load_date_pairs(db, task_id)
         self.locals = {}
         self.shared_findings = None
-        self.restore_stats = dict(restored=0, marked=0)
+        # invented：模型写出的、合乎代号文法但对照表里没有的代号（V36-R-04，单列以便比较各模型改写代号的程度）
+        self.restore_stats = dict(restored=0, marked=0, invented=0)
         self.file_names = dict(db.execute(select(TaskFile.seq, TaskFile.original_name)
                                           .where(TaskFile.task_id == task_id)).all())
 
@@ -581,6 +585,7 @@ class _View:
                        local=self.locals.get(loc))
         self.restore_stats['restored'] += result.restored
         self.restore_stats['marked'] += len(result.marks)
+        self.restore_stats['invented'] += sum(mark.kind == 'unknown' for mark in result.marks)
         return result
 
     def locations(self, findings: list[Finding], *, include_pages=False) -> dict[str, str]:
@@ -704,7 +709,7 @@ def _coverage(run: ReviewRun, view: _View) -> dict | None:
 
 
 def run_detail(db: DbSession, run: ReviewRun, *, include_pages=False) -> RunDetail:
-    view = _View(db, run.task_id)
+    view = _View(db, run.task_id, run)
     findings = sorted(db.scalars(select(Finding).where(Finding.run_id == run.id)),
                       key=lambda f: (_SEVERITY_ORDER.get(f.severity, 3), f.seq))
     locations = view.locations(findings, include_pages=include_pages)
@@ -768,7 +773,7 @@ def update_finding(db: DbSession, finding: Finding, user: User, patch: FindingPa
     finding.updated_by = user.id
     finding.updated_at = utcnow()
     db.commit()
-    view = _View(db, finding.task_id)
+    view = _View(db, finding.task_id, db.get(ReviewRun, finding.run_id))
     return view.finding(finding, view.locations([finding]))
 
 
@@ -811,5 +816,5 @@ def save_draft(db: DbSession, finding: Finding, user: User, body: DraftIn) -> Fi
     finding.updated_at = utcnow()
     task.last_activity_at = utcnow()
     db.commit()
-    view = _View(db, finding.task_id)
+    view = _View(db, finding.task_id, db.get(ReviewRun, finding.run_id))
     return view.finding(finding, view.locations([finding]))

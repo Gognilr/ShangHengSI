@@ -6,7 +6,8 @@ import re
 
 OUR_CODE = "[我方]"
 
-# 不区分对象、所有命中共用一个代号的类别
+# V3.6 之前审核任务不区分对象、所有命中共用一个代号的类别；V36-R-02 起新算的审核任务也按对象编号（[电话_1]），
+# 这些写法只为旧任务的还原兼容保留（restore._SHARED），类别集合仍按此表判断
 FIXED = {
     "IM": "[联系方式]",
     "PHONE": "[电话]",
@@ -16,12 +17,12 @@ FIXED = {
     "POSTCODE": "[邮编]",  # Q-139 ①：与电话相同，真实值写入对照表供出口复检
 }
 
-# 地址：代号只保留国家，同一国家的地址共用一个代号（与 FIXED 一样不能唯一还原，open_questions Q-45 ①、Q-71 ③）
+# 地址：代号保留国家。V36-R-02 起按地址编号（[地址_1：中国]），可唯一还原；旧任务的 [地址：国家] 共用代号只读兼容
 ADDR = "ADDR"
 
 
-def address_code(country: str) -> str:
-    return f"[地址：{country}]"
+def address_code(country: str, n: int | None = None) -> str:
+    return f"[地址：{country}]" if n is None else f"[地址_{n}：{country}]"
 
 
 # 按对象编号的类别
@@ -37,6 +38,13 @@ _NUMBERED = {
     "PRICE": "[单价_{}]",
     "QTY": "[数量_{}]",
     "CUSTOM": "[敏感词_{}]",
+    # V36-R-02：原共用代号的类别也按对象编号，模型的建议条文里能唯一还原，两个电话不再分不清
+    "PHONE": "[电话_{}]",
+    "EMAIL": "[邮箱_{}]",
+    "URL": "[网址_{}]",
+    "IDNO": "[证件号_{}]",
+    "POSTCODE": "[邮编_{}]",
+    "IM": "[联系方式_{}]",
 }
 
 # 追问中出现、本任务对照表里没有的对象（M6-07，open_questions Q-97）：按任务编号，写入本任务对照表，可唯一还原。
@@ -94,9 +102,9 @@ def code_role(role_label: str, stance: str, org_type: str | None) -> str:
     return "公司"
 
 
-_NUMBERED_BY_LABEL = {fmt.strip("[]").split("_", 1)[0]: category for category, fmt in _NUMBERED.items()}
+_NUMBERED_BY_LABEL = {fmt.strip("[]").split("_", 1)[0]: category for category, fmt in _NUMBERED.items()} | {"地址": ADDR}
 _ROLE_CODE = re.compile(r"\[([^\[\]_]+)_([A-Z]+)\]")
-_NUMBER_CODE = re.compile(r"\[([^\[\]_]+)_(\d+)\]")
+_NUMBER_CODE = re.compile(r"\[([^\[\]_]+)_(\d+)(?:：[^\[\]]*)?\]")
 
 
 def letter_index(text: str) -> int:
@@ -168,11 +176,23 @@ class Allocator:
             self._codes[(category, key)] = code
         return self._codes[(category, key)]
 
-    def fixed(self, category: str, key: str) -> str:
-        return FIXED[category]
+    def fixed(self, category: str, key: str, value: str | None = None) -> str:
+        return self.numbered(category, key, value)
 
-    def address(self, country: str, key: str) -> str:
-        return address_code(country)
+    def address(self, country: str, key: str, value: str | None = None) -> str:
+        if (ADDR, key) not in self._codes:
+            code = None
+            if value is not None and self._seed_codes:
+                from app.redaction.parties import normalize
+                code = next((c for c in self._seed_codes.get((ADDR, normalize(value)), ())
+                             if c not in self._claimed and c.endswith(f"：{country}]")), None)
+            if code is None:
+                n = self._counters.get(ADDR, 0) + 1
+                self._counters[ADDR] = n
+                code = address_code(country, n)
+            self._claimed.add(code)
+            self._codes[(ADDR, key)] = code
+        return self._codes[(ADDR, key)]
 
     def our(self, key: str | None = None) -> str:
         return OUR_CODE

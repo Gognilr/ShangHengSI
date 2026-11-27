@@ -14,7 +14,7 @@ from app.checks.service import list_findings
 from app.db.models import DocNode, Finding, Task, TaskFile
 from app.export.docx_anchor import AnchorMismatch, MISMATCH, load_anchors, split_runs
 from app.export.report_docx import CATEGORY, CHECKS, SEVERITY, _clean
-from app.redaction.engine import load_redaction_map, load_date_pairs, load_local_values
+from app.redaction.engine import load_date_pairs, load_local_values, run_redaction_map
 from app.redaction.restore import restore, check
 from app.review.service import run_detail
 from app.security import crypto
@@ -152,7 +152,7 @@ def build_annotated(db, run, file: TaskFile, include_changes: bool = True):
     if not findings and not local and not changes:
         raise AppError(409, "ANNOTATED_UNAVAILABLE", "本轮没有可批注的问题")
     original, anchors = load_source(db, file)
-    mapping = load_redaction_map(db, task.id)
+    mapping = run_redaction_map(db, run)  # 按该轮创建时的代号还原（V36-R-03）
     dates = load_date_pairs(db, task.id)
     quotes = {row.id: row for row in db.execute(select(Finding.id, Finding.quote_model, Finding.quote_orig_enc)
                                                .where(Finding.run_id == run.id))}

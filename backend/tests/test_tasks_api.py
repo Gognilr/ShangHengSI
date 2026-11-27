@@ -767,6 +767,22 @@ def test_rerun_recomputes_roles_and_keeps_old_runs(db_sessionmaker, rerun_user, 
     assert count(db_sessionmaker, Finding, Finding.run_id == uuid.UUID(first)) > 0
 
 
+def test_old_run_restores_with_its_own_map_after_our_party_changes(db_sessionmaker, rerun_user, ready_task, llm):
+    """V36-R-03：改立场与我方后，旧轮次按当时的对照表快照还原，[我方] 仍指原来的一方。"""
+    user, c, h = rerun_user
+    task = ready_task(user)
+    llm("normal")
+    first = review_once(db_sessionmaker, c, h, task.id)
+    with db_sessionmaker() as db:
+        db.get(ReviewRun, uuid.UUID(first)).doc_summary = "[我方]向[客户_A]销售"
+        db.commit()
+    assert patch_task(c, h, task.id, {"stance": "purchase"}).status_code == 200
+    set_our_party(c, h, task.id, REAL_BUYER_NAME)
+    assert parties_of(c, task.id)[REAL_BUYER_NAME]["code"] == "[我方]"
+    summary = c.get(f"{API_PREFIX}/runs/{first}").json()["doc_summary"]
+    assert summary == f"{REAL_OUR_NAME}向{REAL_BUYER_NAME}销售"
+
+
 def test_rerun_keeps_user_terms_and_ignore_decisions(rerun_user, ready_task):
     import docx
 

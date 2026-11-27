@@ -180,6 +180,9 @@ def check(text: str | None, mapping: dict[str, str], *, clause: bool = False,
         if identity and identity[0] != "shared":
             lookup.setdefault(identity, set()).add(value)
             exact[code] = value
+            if identity[0] == "number" and ":" in identity[1]:
+                # [地址_1：中国] 被模型写成 [地址_1] 时仍能唯一对应（V36-R-02）
+                lookup.setdefault((identity[0], identity[1].split(":", 1)[0]), set()).add(value)
 
     chunks: list[str] = []
     marks: list[Mark] = []

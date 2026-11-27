@@ -141,6 +141,8 @@ _LICENSE = re.compile(
 _LICENSE_VALUE = re.compile(r'[ \t]*([:：]?)[ \t]*([^\\\r\n,，、。；;！!？?：:.]{4,40})(?=$|[\\\r\n,，、。；;！!？?：:.])')
 # 标签后没有冒号、也没有“编号 / 号码 / 号”时，后面多半是条款叙述：含这些虚词的不是编号
 _LICENSE_PROSE = re.compile(r'[的应须并且或后内前至于为在和与及]')
+# 取值整段是代号（[证件号_1]、[[ID_3]]）时不是证照号：复检扫外发文本时代号里的序号不算号码（V36-R-02）
+_CODE_VALUE = re.compile(r'\[\[?[^\[\]\s]+_(?:Q?\d+|[A-Z]+)(?:[:：][^\[\]]*)?\]\]?')
 _GENERIC_ID = re.compile(r'(?:证件号码|证件号|证照号|许可证编号|证书编号|资质证书编号)[ \t]*[:：]?[ \t]*'
                          r'([^\\\r\n,，。；;！!？?：:]{5,60})')
 _LABELED_SWIFT = re.compile(r'(?i:SWIFT(?:[ \t]+Code)?|BIC|银行识别码)[ \t]*[:：]?[ \t]*'
@@ -236,7 +238,7 @@ def find_formatted(text: str) -> list[Hit]:
             explicit = (bool(m.group(1)) or label.group().endswith(('编号', '号码', '号'))
                         or not re.search(r'[一-鿿]', label.group()))
             digits = value if explicit else plain[start:start + len(value)]
-            if (4 <= len(value) <= 40 and any(c.isdigit() for c in digits)
+            if (4 <= len(value) <= 40 and any(c.isdigit() for c in digits) and not _CODE_VALUE.fullmatch(value)
                     and (explicit or not _LICENSE_PROSE.search(value))):
                 add(start, start + len(value), 'IDNO')
     for m in _IM.finditer(text):

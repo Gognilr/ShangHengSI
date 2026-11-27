@@ -137,7 +137,7 @@ export interface RunDetail {
   doc_summary: string | null
   doc_summary_marks: Mark[]
   receipt: RunReceipt | null
-  restore_stats: { restored?: number; marked?: number }
+  restore_stats: { restored?: number; marked?: number; invented?: number }
   sanctions: { level: string | null; reasons: string[] }
   requirement_results: RequirementResult[]
   findings: Finding[]

@@ -21,7 +21,8 @@ from app.llm import gateway, usage
 from app.models_api import select_model
 from app.parsing.model import strip_invisible
 from app.redaction import dates, detect, ner, parties, placeholders, recheck, suspects
-from app.redaction.engine import _load_full_map, build_outbound, load_redaction_map, load_date_pairs, write_full_map
+from app.redaction.engine import (_load_full_map, build_outbound, load_redaction_map, load_date_pairs, snapshot_map,
+                                  write_full_map)
 from app.redaction.outbound import escape_document_tags
 from app.redaction.restore import check, restore, _LOCATION
 from app.review.service import _View, MarkOut
@@ -440,8 +441,34 @@ def _findings_summary(db: Session, run: ReviewRun) -> str:
 
 def _history(db: Session, task: Task) -> list[ChatMessage]:
     rows = list(db.scalars(select(ChatMessage).where(ChatMessage.task_id == task.id)
-                           .order_by(ChatMessage.id.desc()).limit(HISTORY_LIMIT)))
-    return rows[::-1]
+                           .order_by(ChatMessage.id.desc()).limit(HISTORY_LIMIT)))[::-1]
+    # 改我方之前的对话里 [我方] 指另一方，不再作为上下文发给模型（V36-R-03）
+    current = load_redaction_map(db, task.id)
+    maps = message_maps(db, task, rows, current)
+    return [m for m in rows if maps[m.id].get('[我方]') == current.get('[我方]')]
+
+
+def message_maps(db: Session, task: Task, rows, current: dict[str, str]) -> dict[int, dict[str, str]]:
+    """每条追问消息的还原用对照表：发出时最近一轮的快照（追问只在已审核时可用，其间不重算），
+    快照之后新增的追问代号取当前对照表；V3.6 之前的轮次没有快照，用当前对照表（V36-R-03）。"""
+    snaps = list(db.execute(select(ReviewRun.queued_at, ReviewRun.map_enc)
+                            .where(ReviewRun.task_id == task.id, ReviewRun.map_enc.is_not(None))
+                            .order_by(ReviewRun.queued_at)))
+    built: dict[bytes, dict[str, str]] = {}
+    out = {}
+    for m in rows:
+        blob = None
+        for queued_at, enc in snaps:
+            if queued_at > m.created_at:
+                break
+            blob = enc
+        if blob is None:
+            out[m.id] = current
+        else:
+            if blob not in built:
+                built[blob] = snapshot_map(blob, current)
+            out[m.id] = built[blob]
+    return out
 
 
 def build_messages(db: Session, task: Task, run: ReviewRun, question: str, chunk_chars: int = 60000) -> list[dict]:
@@ -491,8 +518,10 @@ def list_messages(db: Session, task: Task) -> dict:
     from app.calc import code_context
     text = '\n'.join(m.content_redacted for m in rows if m.role == 'assistant')
     calc_context = code_context(db, task, text, mapping) if '【算式】' in text else {}
+    maps = message_maps(db, task, rows, mapping)
+    dates_ = load_date_pairs(db, task.id)
     return {"available": reason is None, "reason": reason,
-            "items": [message_out(m, mapping, locations=locations, dates=load_date_pairs(db, task.id), calc_context=calc_context) for m in rows]}
+            "items": [message_out(m, maps[m.id], locations=locations, dates=dates_, calc_context=calc_context) for m in rows]}
 
 
 def preview(db: Session, task: Task, message: str) -> dict:

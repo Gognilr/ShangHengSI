@@ -449,7 +449,7 @@ def _mask_code_syntax(text: str) -> str:
     def mask(match):
         raw = match.group()
         identity = _identity(raw)
-        if identity and identity[0] == 'shared' and identity[1].startswith('地址:'):
+        if identity and identity[1].startswith('地址') and ':' in identity[1]:  # 含 [地址_1：国家]（V36-R-02）
             country = raw[1:-1].split('：' if '：' in raw else ':', 1)[-1]
             if detect.find_country(country) != country and country != '国家未知':
                 identity = None

@@ -43,7 +43,7 @@ def test_samples_must_replace_and_keep(name):
     r, text = run(sample_nodes(name))
     for item in sample.get("must_replace", []):
         assert item["text"] not in text, item
-    # 地址整段换成 [地址：国家]：地址中的英文国家名以代号中的中文国家名保留（M4-04）
+    # 地址整段换成 [地址_n：国家]（V36-R-02 起按地址编号）：地址中的英文国家名以代号中的中文国家名保留（M4-04）
     addresses = [i["text"] for i in sample.get("must_replace", []) if i["category"] == "ADDR"]
     for keep in sample.get("must_keep", []) + sample.get("must_keep_words", []):
         if any(keep in a for a in addresses):
@@ -63,10 +63,10 @@ def test_contract_codes_are_consistent():
     assert red["F1-P4"] == "卖方：[我方]（以下简称“[我方]”）"
     assert red["F1-P9"] == '买方：[客户_A]（hereinafter referred to as "[客户_A]"）'
     assert red["F1-P2"] == "合同编号：[编号_1]"
-    assert red["F1-P7"] == "电话：[电话]，[电话]"
+    assert red["F1-P7"] == "电话：[电话_1]，[电话_2]"
     # 账号、SWIFT 带序号（Q-59）：IBAN 与本地账号写法不同，视为不同账号
     assert red["F1-P19"] == "开户行账号：[账号_1]" and red["F1-P21"] == "IBAN: [账号_2]" and red["F1-P20"] == "SWIFT: [SWIFT_1]"
-    assert red["F1-P10"] == "Address: [地址：阿联酋]" and red["F1-P11"] == "Contact: [人员_2], [电话]"
+    assert red["F1-P10"] == "Address: [地址_1：阿联酋]" and red["F1-P11"] == "Contact: [人员_2], [电话_3]"
     assert red["F1-P6"] == "联系人：[人员_1]" and red["F1-P26"] == "法定代表人（签字）：[人员_3]"
     # 单价与金额分开编号，币种保留；同一数值同一代号（大写与小写）
     assert red["F1-P15"] == "2.1 单价为 USD [单价_1]/MT CIF Jebel Ali Port，合同总价 Total Amount: USD [金额_1]。"
@@ -76,17 +76,16 @@ def test_contract_codes_are_consistent():
     assert text.splitlines()[0] == "【主体说明】[我方]=卖方；[客户_A]：阿联酋，贸易商"
     assert {(p.code, p.role_label, p.country, p.is_our_party) for p in r.parties} == {
         ("[我方]", "卖方", "中国", True), ("[客户_A]", "买方", "阿联酋", False)}
-    # 对照表：唯一代号 → 主要写法；其他写法和共用代号的值以“代号#n”保存
+    # 对照表：唯一代号 → 主要写法；其他写法以“代号#n”保存（V36-R-02 起电话、地址也按对象编号，可唯一还原）
     assert r.mapping["[我方]"] == "星河虚构进出口有限公司"
     assert r.mapping["[客户_A]"] == "Fictional Metals Trading FZE"
     assert r.mapping["[客户_A]#1"] == "FMT" and r.mapping["[我方]#1"] == "星河公司"
     assert r.mapping["[金额_3]"] == "捌拾万元整" and r.mapping["[金额_3]#1"] == "800,000.00"
     assert r.mapping["[账号_1]"] == "6222 0000 1111 2222 333" and r.mapping["[SWIFT_1]"] == "FICTAEAD"
     assert r.mapping["[人员_3]"] == "吴虚构"
-    assert "[地址：阿联酋]" not in r.mapping  # 地址不能唯一还原，真实值只用于出口复检
-    assert r.mapping["[地址：阿联酋]#1"] == "Plot 12, Jebel Ali Free Zone, Dubai, United Arab Emirates"
-    assert {r.mapping[k] for k in r.mapping if k.startswith("[电话]#")} == {"13800138000", "021-12345678", "+971 4 123 4567"}
-    assert "[电话]" not in r.mapping  # 共用代号不能唯一还原
+    assert r.mapping["[地址_1：阿联酋]"] == "Plot 12, Jebel Ali Free Zone, Dubai, United Arab Emirates"
+    assert {r.mapping[f"[电话_{n}]"] for n in (1, 2, 3)} == {"13800138000", "021-12345678", "+971 4 123 4567"}
+    assert "[电话]" not in r.mapping
     # 替换记录的位置和来源
     by = {(i.loc, i.placeholder): i.detected_by for i in r.items}
     assert by[("F1-P4", "[我方]")] in ("party", "alias") and by[("F1-P2", "[编号_1]")] == "regex"
@@ -422,17 +421,16 @@ def test_postcode_patterns():
 
 
 def test_postcode_fixed_code_and_mapping():
-    """[邮编] 为共用代号（与电话相同）：真实值写入对照表“[邮编]#n”；同一行的地址在邮编标签前结束。"""
+    """邮编按对象编号（V36-R-02，与电话相同）；同一行的地址在邮编标签前结束。"""
     nodes = nodes_of("通讯地址：山东省示例县示例路 18 号 邮政编码：【251500】",
                      "收货地址：上海市示例区虚构路 99 号，邮编：200000",
                      "Post Code: SW1A 1AA")
     r, out = run(nodes, "purchase")
-    assert r.redacted["F1-P1"] == "通讯地址：[地址：中国] 邮政编码：【[邮编]】"
-    assert r.redacted["F1-P2"] == "收货地址：[地址：中国]，邮编：[邮编]"
-    assert r.redacted["F1-P3"] == "Post Code: [邮编]"
-    assert "[邮编]" not in r.mapping  # 不能唯一还原
-    assert sorted(v for k, v in r.mapping.items() if k.startswith("[邮编]#")) == ["200000", "251500", "SW1A 1AA"]
-    assert {i.category for i in r.items if i.placeholder == "[邮编]"} == {"POSTCODE"}
+    assert r.redacted["F1-P1"] == "通讯地址：[地址_1：中国] 邮政编码：【[邮编_1]】"
+    assert r.redacted["F1-P2"] == "收货地址：[地址_2：中国]，邮编：[邮编_2]"
+    assert r.redacted["F1-P3"] == "Post Code: [邮编_3]"
+    assert [r.mapping[f"[邮编_{n}]"] for n in (1, 2, 3)] == ["251500", "200000", "SW1A 1AA"]
+    assert {i.category for i in r.items if i.placeholder.startswith("[邮编_")} == {"POSTCODE"}
     for value in ("251500", "200000", "SW1A 1AA"):
         assert value not in out
     # Q-140 ④：英文邮编标签在常见用语中，不列为疑似遗漏
@@ -634,13 +632,12 @@ def test_addresses_segments_country_and_repeat():
     )
     r, text = run(nodes)
     # 与公司名重叠的部分已替换，剩下的各段用同一代号
-    assert r.redacted["F1-P2"] == "地址：[地址：中国][我方][地址：中国]，电话：[电话]"
+    assert r.redacted["F1-P2"] == "地址：[地址_1：中国][我方][地址_2：中国]，电话：[电话_1]"
     assert r.redacted["F1-P3"] == "Address: Dubai"  # 只有城市名，保留（9.2 保留国家和港口）
-    assert r.redacted["F1-P4"] == "Registered Address: [地址：德国]"
-    assert r.redacted["F1-P5"] == "Documents to be sent to [地址：德国] by courier."  # 同一地址在别处也替换
+    assert r.redacted["F1-P4"] == "Registered Address: [地址_3：德国]"
+    assert r.redacted["F1-P5"] == "Documents to be sent to [地址_3：德国] by courier."  # 同一地址在别处也替换
     assert {i.detected_by for i in r.items if i.category == "ADDR"} == {"address"}
-    assert "[地址：德国]" not in r.mapping
-    assert {r.mapping[k] for k in r.mapping if k.startswith("[地址：德国]#")} == {"Unit 5, Example Tower, Hamburg, Germany"}
+    assert r.mapping["[地址_3：德国]"] == "Unit 5, Example Tower, Hamburg, Germany"
 
 
 def test_accounts_and_swift_numbered():

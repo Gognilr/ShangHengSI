@@ -151,6 +151,10 @@ def plan(db: Session, task: Task, file: TaskFile, *, stance: str | None = None,
     if (base is None or base.task_id != task.id or base.status not in ("completed", "partial")
             or not base.file_ids or str(base.file_ids[0]) != str(prev.id)):
         return _unavailable("上一稿还没有完成的审核，请全文审核")
+    from app.redaction.engine import load_redaction_map, run_redaction_map
+    if run_redaction_map(db, base).get("[我方]") != load_redaction_map(db, task.id).get("[我方]"):
+        # 上轮问题里的 [我方] 指另一方，不能和本稿正文一起发（V36-R-03）
+        return _unavailable("我方已改，请全文审核")
     old, new = drafts.body_nodes(db, prev), drafts.body_nodes(db, file)
     if old is None or new is None:
         return _unavailable("原文已按保留期清理，不能对比")

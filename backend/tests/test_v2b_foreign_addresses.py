@@ -21,7 +21,7 @@ def test_01_02_golden_gaps(name, category):
                    for i in r.items if i.loc == n.loc), value
         assert value not in text
     if category == "ADDR":
-        assert all(i.placeholder == "[地址：中国]" for i in r.items if i.category == "ADDR")
+        assert all(i.placeholder.startswith("[地址_") and i.placeholder.endswith("：中国]") for i in r.items if i.category == "ADDR")
 
 
 def test_03_turkey():
@@ -50,7 +50,7 @@ def test_07_places_retained(text):
 
 def test_08_labeled_address_unchanged():
     r = compute([NodeIn("F1-P1", "地址：江苏省南京市江宁区虚构路 88 号")], "sales")
-    assert r.redacted["F1-P1"] == "地址：[地址：中国]"
+    assert r.redacted["F1-P1"] == "地址：[地址_1：中国]"
 
 
 @pytest.mark.parametrize("suffix", ["A.Ş.", "Ltd. Şti.", "Ltd. Sti.", "Sp. z o.o.", "Sp. z o. o.", "s.r.o.", "a.s.",
@@ -81,4 +81,4 @@ def test_quoted_prefixes(prefix):
 
 def test_address_narrative_boundaries():
     text = "货物运至江苏省南京市江宁区虚构路 88 号，工期不变。"
-    assert compute([NodeIn("F1-P1", text)], "sales").redacted["F1-P1"] == "货物运至[地址：中国]，工期不变。"
+    assert compute([NodeIn("F1-P1", text)], "sales").redacted["F1-P1"] == "货物运至[地址_1：中国]，工期不变。"

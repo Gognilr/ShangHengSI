@@ -740,6 +740,8 @@ class ReviewRun(Base):
     company_req_version: Mapped[Optional[int]] = mapped_column(Integer)
     template_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid,ForeignKey('standard_templates.id',ondelete='SET NULL'))
     template_name_snapshot_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    # 轮次创建时的对照表快照（与 redaction_maps.map_enc 同一密文，V36-R-03）：旧轮次与当时的追问按它还原
+    map_enc: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     template_hash: Mapped[Optional[str]] = mapped_column(CHAR(64))
     use_shared_clauses: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))

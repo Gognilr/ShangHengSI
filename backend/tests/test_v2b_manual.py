@@ -16,9 +16,9 @@ def no_model(monkeypatch):
 
 
 @pytest.mark.parametrize('category,surface,placeholder', [
-    ('ORG','虚构主体','[公司_A]'), ('PERSON','虚构人员','[人员_1]'), ('IM','fiction.account','[联系方式]'),
-    ('ACCOUNT','765432109876','[账号_1]'), ('IDNO','AB765432','[证件号]'), ('REFNO','FICT-782','[编号_1]'),
-    ('ADDR','中国虚构园区','[地址：中国]'), ('AMOUNT','1234.50','[金额_1]'),
+    ('ORG','虚构主体','[公司_A]'), ('PERSON','虚构人员','[人员_1]'), ('IM','fiction.account','[联系方式_1]'),
+    ('ACCOUNT','765432109876','[账号_1]'), ('IDNO','AB765432','[证件号_1]'), ('REFNO','FICT-782','[编号_1]'),
+    ('ADDR','中国虚构园区','[地址_1：中国]'), ('AMOUNT','1234.50','[金额_1]'),
     ('PROJECT','虚构试验项目','[项目_1]'), ('CUSTOM','虚构词条','[敏感词_1]')])
 def test_ten_manual_categories(category, surface, placeholder):
     result = compute([NodeIn('F1-P1', surface)], 'other', user_terms=[UserTerm(surface, category)])

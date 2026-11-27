@@ -1,0 +1,19 @@
+description: 审核任务原共用代号的类别按对象编号（V36-R-02）：同一号码换了空格写法仍是同一代号，两个电话、两个地址各自编号，模型回程能唯一还原；旧写法 [电话] 仍按共用代号标出
+stance: purchase
+must_replace:
+  - {text: 远岫虚构贸易有限公司, category: ORG}
+  - {text: 周慕远, category: PERSON}
+  - {text: 139 1234 5678, category: PHONE}
+  - {text: "13912345678", category: PHONE}
+  - {text: 0572-6123456, category: PHONE}
+  - {text: zhoumy@yuanxiu-demo.cn, category: EMAIL}
+  - {text: 浙江省湖州市长兴县和平镇工业大道 18 号, category: ADDR}
+  - {text: 江苏省苏州市吴江区松陵镇开平路 300 号, category: ADDR}
+  - {text: 91330500MA2B3C4D5E, category: IDNO}
+must_keep:
+  - 备用
+returns:
+  - field: clause
+    model: "请向[电话_1]或[电话_2]确认，发票寄[地址_1：中国]，货物送[地址_2]，证件[证件号_1]，邮件[邮箱_1]；旧写法[电话]。"
+    expect: "请向139 1234 5678或0572-6123456确认，发票寄浙江省湖州市长兴县和平镇工业大道 18 号，货物送江苏省苏州市吴江区松陵镇开平路 300 号，证件91330500MA2B3C4D5E，邮件zhoumy@yuanxiu-demo.cn；旧写法[电话]。"
+    marks: [{raw: "[电话]", kind: shared}]

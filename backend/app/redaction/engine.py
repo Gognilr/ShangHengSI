@@ -7,9 +7,10 @@
 redact_task() 等函数负责读写数据库，不提交事务，由调用方提交。
 
 对照表（redaction_maps.map_enc）是加密的 JSON {键: 真实值}：
-  - 键为代号（[我方]、[客户_A]、[人员_1]、[编号_1]、[账号_1]、[金额_1] 等能唯一还原的代号）时，值是该对象的主要写法，用于还原；
-  - 键为“代号#序号”时，值是同一对象的其他写法（简称、大小写不同的写法）或共用代号类别（[电话]、[地址：国家] 等）的真实值，
-    只用于出口复检，不用于还原（open_questions Q-45）。
+  - 键为代号（[我方]、[客户_A]、[人员_1]、[电话_1]、[地址_1：中国]、[金额_1] 等能唯一还原的代号）时，值是该对象的主要写法，用于还原；
+  - 键为“代号#序号”时，值是同一对象的其他写法（简称、大小写不同的写法），只用于出口复检，不用于还原（open_questions Q-45）；
+    V36-R-02 之前的审核任务用共用代号（[电话]、[地址：国家] 等），这些代号只有“#序号”键，还原时按节点就地取值。
+  - 审核任务送审后对照表只增（V36-R-01），每轮创建时另存一份快照到 review_runs.map_enc（V36-R-03）。
 用户词条（手动补充、疑似遗漏选“替换”）不另建表：就是本任务 detected_by="user" 的替换项，每次重算前从原文中取回（Q-70 ②）。
 真实值不写日志，parties 表不存名称。
 """
@@ -1421,11 +1422,15 @@ def _assemble(nodes: list[NodeIn], stance: str, entities: dict[str, _Entity], sp
             else:
                 mapping[f'{code}#D{sum(it.category == "DATE" for it in items) + 1}'] = surface
         elif category in FIXED:
-            code = alloc.fixed(category, surface)
-            remember(code, surface if style == "neutral" else None, surface)
+            # V36-R-02：审核任务也按对象编号，同一号码换了空格、短横线写法仍是同一个代号
+            identity = detect._norm_key(surface) if category in ('PHONE', 'IDNO', 'POSTCODE') else P.normalize(surface)
+            code = (alloc.fixed(category, surface) if style == "neutral"
+                    else alloc.fixed(category, identity, surface))
+            remember(code, surface, surface)
         elif category == ADDR:
-            code = alloc.address(s.key, surface)
-            remember(code, surface if style == "neutral" else None, surface)
+            code = (alloc.address(s.key, surface) if style == "neutral"
+                    else alloc.address(s.key, P.normalize(surface), surface))
+            remember(code, surface, surface)
             for start, end in detect.address_extension_parts(node.text):
                 if s.start <= start and end <= s.end:
                     remember(code, None, node.text[start:end].strip())
@@ -2525,6 +2530,28 @@ def redaction_summary(db: Session, task: Task) -> dict[str, int]:
 def load_redaction_map(db: Session, task_id: uuid.UUID) -> dict[str, str]:
     """{代号: 真实值}，只含能唯一还原的代号（用于还原）。"""
     return {k: v for k, v in _load_full_map(db, task_id).items() if "#" not in k and not k.startswith('@')}
+
+
+def _restorable(mapping: dict[str, str]) -> dict[str, str]:
+    return {k: v for k, v in mapping.items() if "#" not in k and not k.startswith('@')}
+
+
+def map_snapshot(db: Session, task_id: uuid.UUID) -> bytes | None:
+    """建轮次时保存的对照表快照：与 redaction_maps 同一份密文（V36-R-03）。"""
+    row = db.get(RedactionMap, task_id)
+    return row.map_enc if row is not None else None
+
+
+def snapshot_map(blob: bytes | None, current: dict[str, str]) -> dict[str, str]:
+    """按快照还原：快照里的代号以快照为准（改我方之前的 [我方] 仍指原来的一方），快照之后才有的代号（追问）取当前对照表。"""
+    if blob is None:
+        return current
+    return {**current, **_restorable(json.loads(crypto.decrypt_text(blob)))}
+
+
+def run_redaction_map(db: Session, run) -> dict[str, str]:
+    """该轮问题、结论与报告的还原用对照表；V3.6 之前的轮次没有快照，用当前对照表。"""
+    return snapshot_map(getattr(run, 'map_enc', None), load_redaction_map(db, run.task_id))
 
 
 def load_date_pairs(db: Session, task_id: uuid.UUID) -> dict[str, str] | None:
