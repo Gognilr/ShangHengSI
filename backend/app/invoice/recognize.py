@@ -55,13 +55,16 @@ def _single(name: str, got: Invoice | str) -> FileResult:
 # ---------------------------------------------------------------- 图像处理
 
 def remove_red(img):
-    """去红章（沿用 8.5 的思路）：饱和的红色像素换成白色，压在名称、备注上的印章不再干扰识别。"""
+    """去红章：只把鲜红的印章色换成白色，压在名称、备注上的印章不再干扰识别。
+
+    数电票的版式标签本身是暗红色（实测约 128,0,0），不能按“偏红”一刀切，否则锚点全被抹掉；
+    这里只去亮度高、饱和的红（印章油墨、浅色水印），暗红的标签与黑字保留。"""
     import numpy as np
     from PIL import Image
 
     arr = np.asarray(img.convert("RGB")).astype(np.int16)
     r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
-    mask = (r > 120) & (r - np.maximum(g, b) > 50)
+    mask = (r >= 200) & (r - np.maximum(g, b) > 45)
     if not mask.any():
         return img
     out = arr.copy()

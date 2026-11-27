@@ -56,7 +56,8 @@ def test_each_format(name, source, number, date, total, extra):
 
 
 def _clean() -> Invoice:
-    return Invoice(number="26999000000000000009", date="2026-11-01", amount=Decimal("100.00"), tax=Decimal("13.00"),
+    return Invoice(number="26999000000000000009", date="2026-11-01", seller_name="虚构示例科技有限公司",
+                   seller_tax="91999999MA00000001", amount=Decimal("100.00"), tax=Decimal("13.00"),
                    total=Decimal("113.00"), total_cn="壹佰壹拾叁元整",
                    qr=Qr("31", "", "26999000000000000009", Decimal("113.00"), "2026-11-01"))
 
@@ -75,6 +76,8 @@ def test_four_checks():
     inv = _clean()
     inv.source, inv.low = "photo", ["number", "total"]
     assert checks.check(inv) == ["照片识别，请核对：号码、价税合计"]
+    inv.tax = None  # 没读到的关键字段同样提示
+    assert checks.check(inv)[-1] == "未读到：税额"
 
 
 def test_merge_same_invoice():

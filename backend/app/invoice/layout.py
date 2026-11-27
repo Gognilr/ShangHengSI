@@ -241,6 +241,21 @@ def _money_in(row: Row, start: int = 0) -> list[tuple[float, str, float, int]]:
     return out
 
 
+def _money_near(rows: list[Row], hit: Hit) -> list[tuple[float, str, float, int]]:
+    """锚点同一行右侧的金额；没有时看上下紧邻、纵向相差不到一个字高的行（实测有版式把合计金额排得略高于标签）。"""
+    row = rows[hit.row]
+    money = _money_in(row, hit.end)
+    if money:
+        return money
+    x = row.x_at(hit.start)
+    for r in (hit.row - 1, hit.row + 1):
+        if 0 <= r < len(rows) and abs((rows[r].top + rows[r].bottom) / 2 - (row.top + row.bottom) / 2) < 1.2 * row.h:
+            got = [m for m in _money_in(rows[r]) if m[0] > x]
+            if got:
+                return got
+    return []
+
+
 def detect_kind(rows: list[Row]) -> str:
     text = re.sub(r"\s+", "", "".join(r.norm for r in rows))
     for pattern, kind in KINDS:
@@ -327,9 +342,15 @@ def read_invoice(rows: list[Row], *, source: str, low_conf: float) -> Invoice:
 
     # 合计行：金额在左、税额在右
     sum_hits = [h for h in _hits(rows, SUM_LABEL) if not TOTAL_LABEL.search(rows[h.row].norm)]
+    if not sum_hits and total_rows:
+        # OCR 偶尔把宽字距的“合　计”拆到上下两行：退而取价税合计上方最近一行带 ¥ 的金额行
+        for r in range(total_rows[0].row - 1, max(total_rows[0].row - 4, -1), -1):
+            if re.search(r"¥\s*-?\d", rows[r].norm):
+                sum_hits = [Hit(r, 0, 0)]
+                break
     if inv.kind == "航空运输电子客票行程单":
         for hit in sum_hits[:1]:
-            money = _money_in(rows[hit.row], hit.end)
+            money = _money_near(rows, hit)
             if money:
                 put("total", (money[0][1], money[0][2]))
         for hit in _hits(rows, AIR_TAX_LABEL)[:1]:
@@ -339,12 +360,12 @@ def read_invoice(rows: list[Row], *, source: str, low_conf: float) -> Invoice:
     else:
         for hit in sum_hits[:1]:
             row = rows[hit.row]
-            money = sorted(_money_in(row, hit.end))
+            money = sorted(_money_near(rows, hit))
             if money:
                 put("amount", (money[0][1], money[0][2]))
                 if len(money) > 1:
                     put("tax", (money[1][1], money[1][2]))
-                elif "*" in row.norm[money[0][3]:]:
+                elif "*" in row.norm[hit.end:]:
                     inv.tax = parse_money("0.00")
                     confs["tax"] = money[0][2]
     if inv.total is None:

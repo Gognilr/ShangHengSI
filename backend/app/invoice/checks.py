@@ -4,6 +4,8 @@ from app.invoice.model import FIELD_LABELS, OCR_SOURCES, SOURCE_RANK, Invoice, c
 MERGE_FIELDS = ("kind", "code", "date", "buyer_name", "buyer_tax", "seller_name", "seller_tax",
                 "amount", "tax", "total", "total_cn", "remark")
 KEY_FIELDS = ("number", "date", "total")
+VAT_FIELDS = ("amount", "tax", "seller_name", "seller_tax")  # 客票没有这几项
+TICKETS = ("铁路电子客票", "航空运输电子客票行程单")
 
 
 def merge(records: list[Invoice]) -> list[Invoice]:
@@ -67,7 +69,8 @@ def check(inv: Invoice) -> list[str]:
     if inv.source in OCR_SOURCES and inv.low:
         word = "照片识别" if inv.source == "photo" else "扫描识别"
         hints.append(f"{word}，请核对：" + "、".join(FIELD_LABELS[k] for k in inv.low))
-    missing = [FIELD_LABELS[k] for k in KEY_FIELDS if getattr(inv, k) in (None, "")]
+    keys = KEY_FIELDS + (() if inv.kind in TICKETS else VAT_FIELDS)
+    missing = [FIELD_LABELS[k] for k in FIELD_LABELS if k in keys and getattr(inv, k) in (None, "")]
     if missing:
         hints.append("未读到：" + "、".join(missing))
     return hints
