@@ -49,6 +49,7 @@ class Settings:
     lawsync_proxy: str = ""
     worker_assist_concurrency: int = 4
     worker_transcribe_concurrency: int = 1
+    invoice_mem_dir: str = "/invoice_mem"  # 发票管家的内存盘（V36-I-01），只挂给 app 与 worker
 
 
 def load_settings() -> Settings:
@@ -70,6 +71,7 @@ def load_settings() -> Settings:
         app_version=os.environ.get("APP_VERSION", "dev"),
         convert_spool_dir=os.environ.get("CONVERT_SPOOL_DIR", "/spool"),
         lawsync_proxy=os.environ.get("LAWSYNC_PROXY", ""),
+        invoice_mem_dir=os.environ.get("INVOICE_MEM_DIR", "/invoice_mem"),
     )
 
 

@@ -295,7 +295,7 @@ def run_worker(
 ) -> None:
     """启动并发线程，主线程负责定时工作；stop 置位后等待正在处理的任务结束再返回。"""
     groups = (("review", review_concurrency, ("review",)),
-              ("parse", parse_concurrency, ("parse", "law_import", "bid")),
+              ("parse", parse_concurrency, ("parse", "law_import", "bid", "invoice")),
               ("bid-ocr", 1, ("bid",)),
               ("assist", assist_concurrency, ("assist",)),
               ("transcribe", transcribe_concurrency, ("transcribe",)),
@@ -365,6 +365,7 @@ def main() -> None:
     import app.parsing.transcribe  # noqa: F401  注册独立转写队列
     import app.assistant.local_translation  # noqa: F401  注册独立翻译队列
     import app.bid.extract  # noqa: F401  注册标书要求清单的脱敏与模型补充
+    import app.invoice.job  # noqa: F401  注册发票识别与内存盘定时清除（V36-I-01）
     from app.llm import balance
     register_periodic("model_balance", balance.check, 3600)  # 余额对账：经网关查 DeepSeek、Kimi 余额（V351Q-21）
 

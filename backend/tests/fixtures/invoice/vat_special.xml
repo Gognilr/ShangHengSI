@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 虚构样本：内容全部编造 -->
+<EInvoice>
+  <Header>
+    <EIid>26999000000000000001</EIid>
+    <InherentLabel><EInvoiceType><LabelCode>01</LabelCode><LabelName>增值税专用发票</LabelName></EInvoiceType></InherentLabel>
+  </Header>
+  <EInvoiceData>
+    <SellerInformation><SellerIdNum>91999999MA00000001</SellerIdNum><SellerName>虚构示例科技有限公司</SellerName></SellerInformation>
+    <BuyerInformation><BuyerIdNum>91999999MA00000002</BuyerIdNum><BuyerName>虚构甲方贸易有限公司</BuyerName></BuyerInformation>
+    <BasicInformation>
+      <TotalAmWithoutTax>1000.00</TotalAmWithoutTax><TotalTaxAm>60.00</TotalTaxAm>
+      <TotalTax-includedAmount>1060.00</TotalTax-includedAmount>
+      <TotalTax-includedAmountInChinese>壹仟零陆拾圆整</TotalTax-includedAmountInChinese>
+    </BasicInformation>
+    <IssuItemInformation><ItemName>*信息技术服务*软件维护费</ItemName><Amount>600.00</Amount><TaxRate>0.06</TaxRate></IssuItemInformation>
+    <IssuItemInformation><ItemName>*现代服务*技术咨询费</ItemName><Amount>400.00</Amount><TaxRate>0.06</TaxRate></IssuItemInformation>
+    <AdditionalInformation><Remark>虚构项目编号 XG-001</Remark></AdditionalInformation>
+  </EInvoiceData>
+  <TaxSupervisionInfo><InvoiceNumber>26999000000000000001</InvoiceNumber><IssueTime>2026-11-03 10:20:30</IssueTime></TaxSupervisionInfo>
+</EInvoice>
