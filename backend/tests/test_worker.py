@@ -388,7 +388,7 @@ def test_default_worker_thread_groups(monkeypatch):
     monkeypatch.setattr(worker.threading, "Thread", Thread)
     worker.run_worker(None, stop)
     assert [t["args"][-1] for t in threads].count(("review",)) == 8
-    assert [t["args"][-1] for t in threads].count(("parse", "law_import", "bid")) == 2
+    assert [t["args"][-1] for t in threads].count(("parse", "law_import", "bid", "invoice")) == 2
     workers = [t for t in threads if t["name"].startswith("worker-parse-")]
     assert all(t["kwargs"]["bid_ocr"] is False for t in workers)
     assert [t["args"][-1] for t in threads if t["kwargs"]["bid_ocr"] is True] == [("bid",)]

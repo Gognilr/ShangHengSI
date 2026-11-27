@@ -12,8 +12,8 @@ def merge(records: list[Invoice]) -> list[Invoice]:
     for r in records:
         groups.setdefault(r.number, []).append(r)
     out = []
-    for number, rs in groups.items():
-        rs = sorted(rs, key=lambda r: SOURCE_RANK.get(r.source, 9))
+    for number, arrived in groups.items():
+        rs = sorted(arrived, key=lambda r: SOURCE_RANK.get(r.source, 9))
         base = rs[0]
         inv = Invoice(number=number, source=base.source)
         low = set()
@@ -36,7 +36,7 @@ def merge(records: list[Invoice]) -> list[Invoice]:
             inv.rates = list(dict.fromkeys(x for r in same for x in r.rates))
         else:
             inv.rates = list(dict.fromkeys(x for r in rs for x in r.rates))
-        inv.files = list(dict.fromkeys(f for r in rs for f in r.files))
+        inv.files = list(dict.fromkeys(f for r in arrived for f in r.files))  # 文件名按上传顺序
         inv.qr = next((r.qr for r in rs if r.qr is not None), None)
         inv.low = [k for k in FIELD_LABELS if k in low]
         out.append(inv)
