@@ -1,22 +1,26 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
 // 标书初审 · 项目列表（澄明 8.5 ①，列表页模板 1200）：页头一句说明 + 新建；左文件夹树卡片 240；右分段筛选、搜索、分类、开标日期，项目一行一张卡。
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Check, ChevronDown, ChevronRight, FileStack, Folder, FolderOpen, FolderPlus, Inbox, ListChecks, Plus, ScanSearch, Search, UploadCloud } from '@lucide/vue'
+import { ChevronDown, ChevronRight, FileStack, Folder, FolderOpen, FolderPlus, Inbox, ListChecks, Plus, ScanSearch, Search, UploadCloud } from '@lucide/vue'
 import { ApiError } from '@/api/http'
-import { bidApi, bidBadge, type BidCategory, type BidFolderTree, type BidListQuery, type BidSettings, type BidSummary } from '@/api/bid'
-import { formatDateTimeMinute } from '@/utils/time'
+import { bidApi, type BidCategory, type BidFolderTree, type BidListQuery, type BidOpeningRuler, type BidSettings, type BidSummary } from '@/api/bid'
+import { formatDateTimeMinute, formatShort } from '@/utils/time'
+import { bidTrip } from '@/utils/trip'
 import { useAuthStore } from '@/stores/auth'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
 import BidSettingsDialog from '@/components/bid/BidSettingsDialog.vue'
+import OpeningRuler from '@/components/bid/OpeningRuler.vue'
 import RowMore from '@/components/RowMore.vue'
 import { folderOptions, folderPath, type FolderNode } from '@/components/bid/folders'
 
 const router = useRouter(), route = useRoute(), auth = useAuthStore()
 const items = ref<BidSummary[]>([]), total = ref(0), loading = ref(true), error = ref(''), ready = ref(false)
 const tree = ref<BidFolderTree>({ folders: [], all: 0, unfiled: 0 }), categories = ref<BidCategory[]>([])
+const ruler = ref<BidOpeningRuler>()
 const creating = ref(false), dialog = ref(false), dialogError = ref('')
 const STEPS = [
   { icon: UploadCloud, title: '招标文件与条款', desc: '开标前上传招标文件，核对 ★、否决与“必须 / 不得”条款。' },
@@ -52,6 +56,14 @@ function sub(item: BidSummary) {
   if (item.folder_id && item.folder_id !== filters.folder) parts.push(folderPath(tree.value.folders, item.folder_id))
   return parts.filter(Boolean).join(' · ')
 }
+const projects = computed(() => items.value.map(item => {
+  const trip = bidTrip({ ...item, checkFailed: item.check_failed, ocrState: item.ocr_state })
+  const preliminary = ['scanning', 'updating', 'failed', 'expired'].includes(item.ocr_state ?? '')
+  const conclusion = item.stage !== 'checked' || item.severe === undefined ? '' : item.severe
+    ? `${preliminary ? '初步 · ' : ''}严重 ${item.severe}`
+    : preliminary ? '初步 · 未列出严重问题' : '没有严重问题'
+  return { item, trip, conclusion }
+}))
 
 let generation = 0, timer: ReturnType<typeof setTimeout> | undefined
 async function load(quiet = false) {
@@ -61,11 +73,10 @@ async function load(quiet = false) {
   error.value = ''
   try {
     const { q, category, stage, from, to } = query.value
-    const [data, folders] = await Promise.all([bidApi.list(query.value), bidApi.folders({ q, category, stage, from, to })])
+    const [data, folders] = await Promise.all([bidApi.list({ ...query.value, opening_view: true }), bidApi.folders({ q, category, stage, from, to })])
     if (current !== generation) return
-    items.value = data.items; total.value = data.total; tree.value = folders
-    // 检查中、读取中的项目进度在行内徽标上走动
-    if (data.items.some(i => i.stage === 'checking' || i.status === 'parsing')) timer = setTimeout(() => void load(true), 3000)
+    items.value = data.items; total.value = data.total; tree.value = folders; ruler.value = data.opening_ruler
+    if (projects.value.some(({ trip }) => trip.state === 'run')) timer = setTimeout(() => void load(true), 3000)
   } catch (e) {
     if (current !== generation) return
     // 地址里的文件夹已删除：回到全部项目
@@ -88,6 +99,7 @@ function toggleFolder(node: FolderNode) { if (collapsed.has(node.value)) collaps
 function search() { filters.q = keyword.value.trim(); filters.page = 1 }
 function clearFilters() { keyword.value = ''; Object.assign(filters, { q: '', category: '', stage: '', dates: null, page: 1 }) }
 function setPhase(v: Phase) { filters.stage = v; filters.page = 1 }
+function setOpeningDate(date: string | null) { filters.dates = date ? [date, date] : null; filters.page = 1 }
 
 async function create(body: BidSettings) {
   if (creating.value) return
@@ -158,6 +170,7 @@ onMounted(async () => {
   await load()
   ready.value = true
 })
+onBeforeUnmount(() => { generation++; clearTimeout(timer) })
 // 全局搜索的“新建标书初审”带 ?new=1 来：直接打开新建对话框，并去掉地址里的参数
 watch(() => route.query.new, value => { if (value) { openDialog(); void router.replace({ path: '/bid' }) } }, { immediate: true })
 </script>
@@ -173,6 +186,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
     </header>
     <p v-if="auth.can('use.assistant')" class="aside">只是比较几份报价单？用<router-link to="/assistant">工作台的“比价”</router-link></p>
     <SiNotice v-if="error" class="alert" :title="error" type="error" :closable="false" />
+    <p v-if="!ready && loading" class="hint" role="status">正在读取项目…</p>
 
     <!-- 还没有任何项目：三步说明卡片 -->
     <section v-if="empty && !error" class="how si-stagger" aria-label="一次初审分三步">
@@ -217,6 +231,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 
       <!-- 右：分段筛选、搜索、分类、开标日期与项目卡片 -->
       <section class="list" aria-label="项目列表">
+        <OpeningRuler v-if="ruler" :ruler="ruler" :dates="filters.dates" @filter="setOpeningDate" />
         <div class="bar">
           <SiSegmented :model-value="filters.stage" :options="PHASES" ariaLabel="进度" @update:model-value="v => setPhase(v as Phase)" />
           <el-input v-model="keyword" class="search" placeholder="搜索项目名，回车查找" clearable aria-label="搜索项目名称" @keyup.enter="search" @clear="search">
@@ -233,17 +248,20 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
           <el-button v-if="narrowed" link type="primary" class="reset" @click="clearFilters">清除筛选</el-button>
         </div>
         <div class="cards si-stagger" :aria-busy="loading">
-          <router-link v-for="item in items" :key="item.id" :to="`/bid/${item.id}`" class="proj si-card si-lift" :class="{ dragging: dragId === item.id }" draggable="true"
+          <router-link v-for="{ item, trip, conclusion } in projects" :key="item.id" :to="`/bid/${item.id}`" class="proj si-card si-lift" :class="{ dragging: dragId === item.id }" draggable="true"
             @dragstart="dragStart($event, item)" @dragend="dragEnd">
             <span class="si-mod-icon si-lift-icon mod" aria-hidden="true"><FileStack :size="20" :stroke-width="1.75" /></span>
             <span class="main"><b :title="item.title">{{ item.title }}</b><span>{{ sub(item) }}</span></span>
-            <span class="si-badge" :class="`is-${bidBadge(item).tone}`"><Check v-if="bidBadge(item).check" :size="13" :stroke-width="2.25" /><i v-else-if="bidBadge(item).dot" class="d" />{{ bidBadge(item).text }}</span>
-            <span class="at num" :title="formatDateTimeMinute(item.last_activity_at)">{{ formatDateTimeMinute(item.last_activity_at).slice(5) }}</span>
+            <span class="row-state">
+              <SiTrip :trip="trip" :hide-text="trip.state === 'done' && !!conclusion" />
+              <span v-if="conclusion" class="si-badge" :class="{ 'is-hi': item.severe }">{{ conclusion }}</span>
+            </span>
+            <span class="at num" :title="formatDateTimeMinute(item.last_activity_at)">{{ formatShort(item.last_activity_at) }}</span>
             <span class="more" @click.prevent.stop><RowMore><el-dropdown-item @click="openMove(item)">移到文件夹…</el-dropdown-item></RowMore></span>
             <ChevronRight class="chev" :size="16" :stroke-width="1.75" aria-hidden="true" />
           </router-link>
         </div>
-        <div v-if="!loading && !items.length" class="none si-card">
+        <div v-if="!loading && !error && !items.length" class="none si-card">
           <span class="none-ic"><ListChecks :size="22" :stroke-width="1.75" /></span>
           <b>{{ narrowed ? '没有符合条件的项目' : filters.folder ? '这个文件夹里还没有项目' : '还没有项目' }}</b>
           <p class="hint">{{ narrowed ? '换个条件，或清除筛选。' : filters.folder ? '可以把项目拖进来，或在这里新建。' : '新建一个初审项目，先上传招标文件。' }}</p>
@@ -306,7 +324,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .tip { margin: 8px 10px 4px; font: var(--si-font-caption); color: var(--si-ink-4); }
 
 .list { flex: 1; min-width: 0; }
-.bar { display: flex; align-items: center; gap: 10px; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
 .search { flex: 1; min-width: 150px; max-width: 260px; }
 .cat { flex: none; width: 132px; }
 .dates { flex: none; width: 236px; }
@@ -322,7 +340,8 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-h3); color: var(--si-ink-1); }
 .main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--si-font-meta); color: var(--si-ink-3); }
-.at { flex: none; width: 80px; text-align: right; font: var(--si-font-caption); color: var(--si-ink-4); }
+.row-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 10px; max-width: 44%; }
+.at { flex: none; text-align: right; font: var(--si-font-meta); color: var(--si-ink-3); }
 .more { flex: none; width: 28px; display: inline-flex; justify-content: center; }
 .chev { flex: none; color: var(--si-ink-4); }
 .none { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 24px; text-align: center; }
@@ -332,5 +351,4 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
 .pager { margin-top: 16px; }
 .move { width: 100%; }
 .move-name { margin: 0 0 12px; }
-@media (max-width: 1400px) { .bar { flex-wrap: wrap; } }
 </style>

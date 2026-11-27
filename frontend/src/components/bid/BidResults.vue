@@ -22,11 +22,10 @@ const selected = ref('')
 const all = computed(() => [...severe.value, ...hint.value, ...dismissed.value])
 const current = computed(() => all.value.find(e => e.id === selected.value))
 // 默认选第一条严重问题；没有时选第一条提示。切换投标人或结论变化后，选中项不在清单里就重新选。
-watch([severe, hint, dismissed], () => {
-  if (current.value) return
-  const first = severe.value[0] ?? hint.value[0]
+watch([severe, hint, dismissed, showHint], () => {
+  if (current.value && (showHint.value || !hint.value.includes(current.value))) return
+  const first = severe.value[0] ?? (showHint.value ? hint.value[0] : undefined)
   selected.value = first?.id ?? ''
-  if (first && !severe.value.length) showHint.value = true
 }, { immediate: true })
 
 const result = computed(() => ctx.data.value?.ocr_result ?? props.project.check.ocr_result)

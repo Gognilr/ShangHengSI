@@ -130,9 +130,15 @@ export function attachTrip(f: { parse_state?: string | null; confirmed_at?: stri
 }
 
 /** 标书初审：本机三站；发起模型补查后接上遮住 · 复检 · 模型补查 · 还原 */
-export function bidTrip(p: { status: string; stage?: string | null; modelState?: string | null; progress?: { done: number; total: number } | null }): Trip {
-  if (p.status === 'parsing') return { mod: 'bid', at: 0, state: 'run', note: '正在读取' }
+export function bidTrip(p: {
+  status: string; stage?: string | null; modelState?: string | null
+  progress?: { done: number; total: number } | null; checkFailed?: boolean; upload?: number | null
+  reading?: { done: number; total: number }; ocr?: { done: number; total: number }; ocrState?: string | null; hasMaterials?: boolean
+}): Trip {
+  if (p.upload != null) return { mod: 'bid', at: 0, state: 'run', note: `正在上传 ${p.upload}%` }
+  if (p.status === 'parsing' || p.reading) return { mod: 'bid', at: 0, state: 'run', note: p.reading ? `已读取 ${p.reading.done} / ${p.reading.total} 份` : undefined }
   if (p.status === 'parse_failed') return { mod: 'bid', at: 0, state: 'fail', note: '文件待处理' }
+  if (p.checkFailed) return { mod: 'bid', at: 2, state: 'fail', note: '检查未完成' }
   const m = p.modelState
   if (m) {
     if (m === 'preparing') return { mod: 'bidx', at: 3, state: 'run', note: '正在遮住' }
@@ -143,10 +149,15 @@ export function bidTrip(p: { status: string; stage?: string | null; modelState?:
   }
   if (p.stage === 'checking') {
     const pr = p.progress
-    return { mod: 'bid', at: 2, state: 'run', note: pr?.total ? `${Math.round(pr.done / pr.total * 100)}%` : '本机检查中' }
+    return { mod: 'bid', at: 2, state: 'run', note: pr?.total ? `已完成 ${pr.done} / ${pr.total} 项` : undefined }
   }
+  if (p.ocrState === 'failed') return { mod: 'bid', at: 1, state: 'fail', note: '结论更新失败' }
+  const ocr = p.ocr
+  if (ocr && ocr.done < ocr.total || p.ocrState === 'scanning') return { mod: 'bid', at: 1, state: 'run', note: ocr ? `${ocr.done} / ${ocr.total} 页` : undefined }
+  if (p.ocrState === 'updating') return { mod: 'bid', at: 2, state: 'run', note: '正在更新初步结论' }
   if (p.stage === 'checked') return { mod: 'bid', at: 3, state: 'done' }
-  return { mod: 'bid', at: 2, state: 'todo', note: p.stage === 'ready' ? '待开标' : '材料准备中' }
+  if (p.stage === 'ready') return { mod: 'bid', at: 2, state: 'wait', note: '待开标' }
+  return { mod: 'bid', at: 0, state: 'wait', note: p.hasMaterials ? '待核对条款' : '材料准备中' }
 }
 
 type MeetingState = 'transcribing' | 'failed' | 'proofread' | 'confirmed' | 'minuted'

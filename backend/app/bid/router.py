@@ -1,6 +1,7 @@
 """标书项目接口；所有读写均需 use.bid，内容仍只本人可见。"""
 import json
-from datetime import date
+from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from sqlalchemy import delete as sql_delete, func, select, update as sql_update
@@ -61,16 +62,30 @@ def _list_filters(q, category, stage, date_from, date_to):
 def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_length=100), category: int | None = None,
              folder: str | None = Query(None, max_length=40), stage: str | None = Query(None, pattern="^(preparing|ready|checking|checked|active|done)$"),
              date_from: date | None = Query(None, alias="from"), date_to: date | None = Query(None, alias="to"),
+             opening_view: bool = False,
              user: User = Depends(require("use.bid")), db: Session = Depends(get_db)):
     """项目列表与搜索筛选（V34-B-01a）：名称包含、分类、文件夹（含子文件夹；none 为未归档）、阶段、开标日期区间。"""
     base = (Task.owner_id == user.id, Task.kind == "bid")
-    where = [*base, *_list_filters(q, category, stage, date_from, date_to)]
+    scope = [*base, *_list_filters(q, category, stage, None, None)]
     if folder == "none":
-        where.append(BidProject.folder_id.is_(None))
+        scope.append(BidProject.folder_id.is_(None))
     elif folder:
-        where.append(BidProject.folder_id.in_(folders.subtree(db, user, folders.folder(db, user, folder).id)))
+        scope.append(BidProject.folder_id.in_(folders.subtree(db, user, folders.folder(db, user, folder).id)))
+    where = [*scope, *_list_filters("", None, None, date_from, date_to)]
+    order = [Task.last_activity_at.desc(), Task.id]
+    ruler = {}
+    if opening_view:
+        today = utcnow().astimezone(ZoneInfo("Asia/Shanghai")).date()
+        # 先看距今天最近的开标日；同距时未过的开标日在前。
+        opening = BidProject.opening_date
+        order = [func.abs(opening - today), opening.desc(), *order]
+        start, end = today - timedelta(days=7), today + timedelta(days=22)
+        days = db.execute(select(opening, func.count()).select_from(Task).join(BidProject)
+                          .where(*scope, opening.between(start, end)).group_by(opening).order_by(opening))
+        ruler = {"opening_ruler": {"today": today, "start": start, "end": end,
+                                   "days": [{"date": day, "count": count} for day, count in days]}}
     rows = db.execute(select(Task, BidProject).join(BidProject).where(*where)
-                      .order_by(Task.last_activity_at.desc(), Task.id).offset((page - 1) * 20).limit(20)).all()
+                      .order_by(*order).offset((page - 1) * 20).limit(20)).all()
     active = db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*base, BidProject.stage == "checking")) or 0
     from app.db.models import BidBidder
     ids = [t.id for t, _p in rows]
@@ -79,7 +94,8 @@ def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_lengt
     return {"items": [{"id": t.id, "title": t.title, "stage": p.stage, "status": t.status, "opening_date": p.opening_date,
                        "last_activity_at": t.last_activity_at, "category_id": p.category_id, "folder_id": p.folder_id,
                        "bidder_count": counts.get(t.id, 0), **_list_state(db, t, p)} for t, p in rows],
-            "total": db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*where)), "checking_count": active}
+            "total": db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*where)),
+            "checking_count": active, **ruler}
 
 
 def _list_state(db, task, project):
@@ -88,8 +104,11 @@ def _list_state(db, task, project):
         return {"progress": service.check_progress(project)}
     if project.stage == "checked" and project.check_state == "done":
         from app.bid import results
-        c = results.check_view(db, task)["conclusion"]
-        return {"severe": len(c["severe"]), "hint": len(c["hint"])}
+        view = results.check_view(db, task)
+        c = view["conclusion"]
+        return {"severe": len(c["severe"]), "hint": len(c["hint"]), "ocr_state": view["ocr_result"]["state"]}
+    if project.check_state == "failed":
+        return {"check_failed": True}
     return {}
 
 

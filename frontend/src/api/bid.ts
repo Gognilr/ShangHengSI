@@ -5,12 +5,14 @@ export interface BidSummary {
   id: string; title: string; stage: BidStage; status: string; opening_date: string; last_activity_at: string; category_id: number | null; folder_id: string | null
   /** 列表行（V35-F-05）：投标人数；检查中给进度，已完成给严重 / 提示条数 */
   bidder_count?: number; progress?: { done: number; total: number }; severe?: number; hint?: number
+  check_failed?: boolean; ocr_state?: BidOcrResult['state']
 }
+export interface BidOpeningRuler { today: string; start: string; end: string; days: { date: string; count: number }[] }
 export interface BidFolder { id: string; parent_id: string | null; name: string; count: number }
 export interface BidFolderTree { folders: BidFolder[]; all: number; unfiled: number }
 export interface BidCategory { id: number; name: string; enabled: boolean; used?: number }
 /** 列表筛选（V34-B-01a）：folder 为 none 表示未归档 */
-export interface BidListQuery { page?: number; q?: string; category?: number; folder?: string; stage?: BidStage | 'active' | 'done'; from?: string; to?: string }
+export interface BidListQuery { page?: number; q?: string; category?: number; folder?: string; stage?: BidStage | 'active' | 'done'; from?: string; to?: string; opening_view?: boolean }
 export interface BidFile {
   id: string; bidder_id: string | null; name: string; ext: string; size_bytes: number; page_count: number | null
   has_password: boolean; needs_password: boolean; state: 'failed' | 'done' | 'waiting'; error: string | null; warnings: string[]; original_deleted: boolean
@@ -182,28 +184,13 @@ export function bidState(p: { stage: BidStage; status: string }): { label: strin
   if (p.stage === 'checked') return { label: '已完成', tone: 'ok' }
   return { label: bidStageLabel[p.stage], tone: p.stage === 'ready' ? 'ok' : 'idle' }
 }
-/** 徽标（澄明第九、十二节）：列表行与项目页共用。tone：info 进行中（圆点呼吸）、hi 严重、brand 完成、neu 中性、mid 待处理 */
-export type BidBadge = { text: string; tone: 'info' | 'hi' | 'brand' | 'neu' | 'mid'; dot?: boolean; check?: boolean }
-export function bidBadge(p: BidSummary): BidBadge {
-  if (p.status === 'parsing') return { text: '读取中', tone: 'info', dot: true }
-  if (p.status === 'parse_failed') return { text: '文件待处理', tone: 'mid', dot: true }
-  if (p.stage === 'checking') {
-    const pr = p.progress
-    return { text: pr && pr.total ? `检查中 ${Math.round(pr.done / pr.total * 100)}%` : '检查中', tone: 'info', dot: true }
-  }
-  if (p.stage === 'checked') {
-    if (p.severe === undefined) return { text: '已完成', tone: 'brand', check: true }
-    return p.severe ? { text: `严重 ${p.severe}`, tone: 'hi', dot: true } : { text: '没有严重问题', tone: 'brand', check: true }
-  }
-  return { text: p.stage === 'ready' ? '待开标' : '材料准备中', tone: 'neu', dot: true }
-}
 export function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 export const bidApi = {
   sent: (id: string) => http.get<{ seq: number; purpose: string; created_at: string; status: 'sent' | 'blocked' | 'error'; chars: number | null; text: string | null }[]>(`/bid/${id}/sent`),
-  list: (query: BidListQuery = {}) => http.get<{ items: BidSummary[]; total: number; checking_count: number }>('/bid', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
-  folders: (query: Omit<BidListQuery, 'page' | 'folder'> = {}) => http.get<BidFolderTree>('/bid/folders', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
+  list: (query: BidListQuery = {}) => http.get<{ items: BidSummary[]; total: number; checking_count: number; opening_ruler?: BidOpeningRuler }>('/bid', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
+  folders: (query: Omit<BidListQuery, 'page' | 'folder' | 'opening_view'> = {}) => http.get<BidFolderTree>('/bid/folders', Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== '' && v !== null))),
   createFolder: (name: string, parent_id: string | null) => http.post<BidFolderTree>('/bid/folders', { name, parent_id }),
   renameFolder: (fid: string, name: string) => http.patch<BidFolderTree>(`/bid/folders/${fid}`, { name }),
   removeFolder: (fid: string) => http.delete<BidFolderTree>(`/bid/folders/${fid}`),

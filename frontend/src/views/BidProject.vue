@@ -5,12 +5,14 @@ import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, onBeforeUnmount, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { BookOpen, Calendar, ChevronLeft, ChevronRight, Download, FolderOpen, ListChecks, LoaderCircle, Lock, Play, Plus, RefreshCw, Tags, UploadCloud, Users } from '@lucide/vue'
+import { BookOpen, Calendar, ChevronLeft, ChevronRight, Download, FolderOpen, ListChecks, Lock, Play, Plus, RefreshCw, Tags, UploadCloud, Users } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { useAuthStore } from '@/stores/auth'
+import { bidTrip } from '@/utils/trip'
 import { bidApi, type BidCategory, type BidCheck, type BidFolder, type BidOpeningPriceInput, type BidProject, type BidSettings, type BidSigning, type BidSignMark } from '@/api/bid'
 import RowMore from '@/components/RowMore.vue'
+import SiTrip from '@/components/ui/SiTrip.vue'
 import BidFiles from '@/components/bid/BidFiles.vue'
 import BidderCard from '@/components/bid/BidderCard.vue'
 import BidderTile from '@/components/bid/BidderTile.vue'
@@ -88,7 +90,7 @@ watch(id, () => {
   grouped.value = []; groupDialog.value = false; tenderOpen.value = false; bidderOpen.value = ''; selected.value = ''
   void load(true)
 }, { immediate: true })
-onBeforeUnmount(() => { generation++; resetTimer(); clearInterval(ticker) })
+onBeforeUnmount(() => { generation++; resetTimer() })
 async function mutate(action: () => Promise<BidProject>, whenLocked = false) {
   if (pending.value || (locked.value && !whenLocked)) return
   pending.value = true; error.value = ''; resetTimer(); edits++
@@ -112,7 +114,10 @@ async function loadCheck() {
   try { const next = await bidApi.check(id.value); if (current === checkRequest && projectAtRequest === generation && !saving) check.value = next }
   catch (e) { if (current === checkRequest && projectAtRequest === generation) notice.value = e instanceof ApiError ? e.message : '检查结果读取失败' }
 }
-watch(checkKey, () => void loadCheck(), { immediate: true })
+watch(checkKey, () => {
+  if (phase.value === 'results') void loadCheck()
+  else { checkRequest++; check.value = undefined }
+}, { immediate: true })
 const counts = computed(() => Object.fromEntries((check.value?.conclusion.bidders ?? []).map(b => [b.id, b])))
 const names = computed(() => Object.fromEntries((project.value?.bidders ?? []).map(b => [b.id, b.name])))
 const shorts = computed(() => shortNames(project.value?.bidders ?? []))
@@ -146,26 +151,16 @@ const page = ref<{ fileId: string; page: number; loc: string | null; first: numb
 const pageCount = computed(() => project.value?.files.find(f => f.id === page.value?.fileId)?.page_count ?? 1)
 function openPage(fileId: string, n: number, loc?: string | null) { page.value = { fileId, page: n, loc: loc ?? null, first: n } }
 
-// ---- 一行进度（只在这一处）：上传 → 读取 → 本机检查 → 检查后的扫描页识别
-const now = ref(Date.now())
-let ticker: ReturnType<typeof setInterval> | undefined
-watch(phase, p => { clearInterval(ticker); if (p === 'checking') ticker = setInterval(() => { now.value = Date.now() }, 1000) }, { immediate: true })
-function clock(ms: number) { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
-const progress = computed(() => {
+// 本机检查工具条。可选的模型补查在结果区内单独显示。
+const trip = computed(() => {
   const p = project.value
   if (!p) return null
-  if (percent.value !== null) return { title: '正在上传', text: `${percent.value}%`, bar: percent.value / 100, note: '上传完后在本机读取' }
-  if (p.stage === 'checking') {
-    const pr = p.check.progress ?? { done: 0, total: 3 }
-    return { title: '本机检查中', text: `已完成 ${pr.done} / ${pr.total} 项`, time: clock(now.value - new Date(p.last_activity_at).getTime()),
-      bar: Math.max(.06, pr.done / Math.max(1, pr.total)), note: '可以离开页面，结论在全部检查完后出现' }
-  }
-  const files = p.files, done = files.filter(f => f.state === 'done').length
-  if (p.busy && files.length) return { title: '正在本机读取', text: `第 ${done} / ${files.length} 份`, bar: done / files.length, note: '可以继续加入文件' }
-  const o = p.check.ocr
-  if (p.stage === 'checked' && o.total > o.done) return { title: '正在本机识别扫描页', text: `第 ${o.done} / ${o.total} 页`, bar: o.done / o.total, note: '结论标为“初步”，识别完后自动更新' }
-  return null
+  const reading = p.busy && p.files.length ? { done: p.files.filter(f => f.state !== 'waiting').length, total: p.files.length } : undefined
+  return bidTrip({ status: p.status, stage: p.stage, progress: p.check.progress, checkFailed: p.check.state === 'failed',
+    upload: percent.value, reading, ocr: p.check.ocr, ocrState: p.check.ocr_result?.state, hasMaterials: !!tenderKey.value })
 })
+const conclusion = computed(() => phase.value === 'results' ? check.value?.conclusion : undefined)
+const preliminary = computed(() => ['scanning', 'updating', 'failed', 'expired'].includes(check.value?.ocr_result?.state ?? ''))
 
 // ---- 招标文件卡：收起时一行说明
 const tenderKey = computed(() => tenderFiles.value.filter(f => f.state === 'done').map(f => f.id).join(','))
@@ -373,8 +368,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         <div class="acts">
           <span v-if="startBlock && phase === 'materials'" class="why">{{ startBlock }}</span>
           <el-button v-if="phase === 'materials'" type="primary" :disabled="!canStart" @click="startCheck"><Play :size="16" :stroke-width="1.75" />开始检查</el-button>
-          <el-button v-else-if="phase === 'checking'" disabled><LoaderCircle class="spin" :size="16" :stroke-width="1.75" />检查中</el-button>
-          <template v-else>
+          <template v-else-if="phase === 'results'">
             <el-button :disabled="pending || reopenBlock" @click="recheck"><RefreshCw :size="16" :stroke-width="1.75" />重新检查</el-button>
             <el-button type="primary" :loading="exporting" :disabled="!auth.can('use.export')" :title="auth.can('use.export') ? '' : '当前账号没有导出权限'" @click="exportReport"><Download :size="16" :stroke-width="1.75" />导出问题清单</el-button>
           </template>
@@ -392,11 +386,10 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         <span class="si-badge is-line"><Users :size="13" :stroke-width="1.75" />{{ project.bidders.length }} 家投标人</span>
         <span v-if="categoryName" class="si-badge is-line"><Tags :size="13" :stroke-width="1.75" />{{ categoryName }}</span>
         <span v-if="project.policy === 'local_only'" class="si-badge is-brand"><Lock :size="13" :stroke-width="1.75" />只在本机处理</span>
-        <template v-if="phase === 'results' && check">
-          <span v-if="check.conclusion.severe.length" class="si-badge is-hi"><i class="d" />严重 {{ check.conclusion.severe.length }}</span>
-          <span v-else-if="check.ocr_result?.state === 'final'" class="si-badge is-brand">没有严重问题</span>
-          <span class="si-badge">提示 {{ check.conclusion.hint.length }}</span>
-        </template>
+      </div>
+      <div v-if="trip" class="trip-toolbar si-card">
+        <SiTrip :trip="trip" scale="bar" :since="phase === 'checking' ? project.last_activity_at : null" />
+        <span v-if="phase === 'checking'" class="hint">可以离开页面</span>
       </div>
       <SiNotice v-if="error" class="alert" :title="error" type="error" @close="error = ''" />
       <SiNotice v-if="notice" class="alert" :title="notice" type="warning" @close="notice = ''" />
@@ -416,37 +409,40 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         <el-button v-else text type="primary" @click="tenderOpen = true">查看条款<ChevronRight :size="16" :stroke-width="1.75" /></el-button>
       </section>
 
-      <!-- 一行进度：只在这一处 -->
-      <div v-if="progress" class="bid-progress" role="status">
-        <LoaderCircle class="spin" :size="18" :stroke-width="1.75" />
-        <b>{{ progress.title }}</b><span class="num">{{ progress.text }}</span><span v-if="progress.time" class="num t3">用时 {{ progress.time }}</span>
-        <span class="prog" aria-hidden="true"><i :style="{ width: `${Math.round(progress.bar * 100)}%` }" /></span>
-        <span class="note">{{ progress.note }}</span>
-      </div>
-
-      <!-- 投标人卡片网格：1440 宽时每行 4 张；最后一张虚线卡“添加投标人” -->
-      <div class="bidders si-stagger" :class="{ lone: !project.bidders.length && !waiting.length }">
-        <BidderTile v-for="b in project.bidders" :key="b.id" :bidder="b" :files="filesOf(b.id)" :busy="project.busy" :phase="phase" :disabled="blocked"
-          :severe="counts[b.id]?.severe" :hint="counts[b.id]?.hint" :selected="selected === b.id"
-          @open="bidderOpen = b.id" @select="selectBidder(b.id)" @drop="e => drop(e, b.id)" />
-        <div v-for="name in waiting" :key="name" class="bc-wait" :class="{ over: overWaiting === name }" role="button" tabindex="0" :aria-disabled="blocked" :aria-label="`为 ${name} 加入投标文件`"
-          @click="choose(undefined, name)" @keydown.enter="choose(undefined, name)" @dragover.prevent="overWaiting = name" @dragleave.self="overWaiting = null" @drop.prevent.stop="drop($event, undefined, false, name)">
-          <b :title="name">{{ name }}</b><span>名单中 · 还没交文件</span><span class="t4">拖入这家的文件，或点击选择</span>
+      <section class="opening-desk si-card" aria-labelledby="opening-desk-title">
+        <header class="desk-head">
+          <h2 id="opening-desk-title">开标桌</h2>
+          <span v-if="conclusion" class="desk-help">点投标人卡片只看这一家，再点取消</span>
+          <div v-if="conclusion" class="desk-summary">
+            <span v-if="preliminary" class="si-badge is-info">初步</span>
+            <span v-if="conclusion.severe.length" class="si-badge is-hi">严重 {{ conclusion.severe.length }}</span>
+            <span v-else-if="check?.ocr_result?.state === 'final'" class="si-badge">没有严重问题</span>
+            <span class="si-badge">提示 {{ conclusion.hint.length }}</span>
+          </div>
+        </header>
+        <div class="bidders si-stagger" :class="{ lone: !project.bidders.length && !waiting.length }">
+          <BidderTile v-for="b in project.bidders" :key="b.id" :bidder="b" :files="filesOf(b.id)" :busy="project.busy" :phase="phase" :disabled="blocked"
+            :severe="conclusion ? counts[b.id]?.severe : undefined" :hint="conclusion ? counts[b.id]?.hint : undefined" :preliminary="preliminary" :selected="selected === b.id"
+            @open="bidderOpen = b.id" @select="selectBidder(b.id)" @drop="e => drop(e, b.id)" />
+          <div v-for="name in waiting" :key="name" class="bc-wait" :class="{ over: overWaiting === name }" role="button" tabindex="0" :aria-disabled="blocked" :aria-label="`为 ${name} 加入投标文件`"
+            @click="choose(undefined, name)" @keydown.enter="choose(undefined, name)" @dragover.prevent="overWaiting = name" @dragleave.self="overWaiting = null" @drop.prevent.stop="drop($event, undefined, false, name)">
+            <b :title="name">{{ name }}</b><span>名单中 · 还没交文件</span><span class="t4">拖入这家的文件，或点击选择</span>
+          </div>
+          <div v-if="!locked" class="bc-add" :class="{ over: overAdd }" role="button" tabindex="0" :aria-disabled="blocked"
+            @click="addBidder" @keydown.enter="addBidder" @dragover.prevent="overAdd = true" @dragleave.self="overAdd = false" @drop.prevent.stop="drop($event, undefined, true)">
+            <span class="add-ic"><component :is="project.bidders.length ? Plus : FolderOpen" :size="20" :stroke-width="1.75" /></span>
+            <b>{{ project.bidders.length || waiting.length ? '添加投标人' : '把各家的投标文件夹一起拖进来' }}</b>
+            <span>{{ project.bidders.length || waiting.length ? '拖入文件夹即可建卡' : '每个文件夹建一家投标人，上传前可核对名称' }}</span>
+            <button type="button" class="link" :disabled="blocked" @click.stop="folders?.click()">导入文件夹</button>
+          </div>
         </div>
-        <div v-if="!locked" class="bc-add" :class="{ over: overAdd }" role="button" tabindex="0" :aria-disabled="blocked"
-          @click="addBidder" @keydown.enter="addBidder" @dragover.prevent="overAdd = true" @dragleave.self="overAdd = false" @drop.prevent.stop="drop($event, undefined, true)">
-          <span class="add-ic"><component :is="project.bidders.length ? Plus : FolderOpen" :size="20" :stroke-width="1.75" /></span>
-          <b>{{ project.bidders.length || waiting.length ? '添加投标人' : '把各家的投标文件夹一起拖进来' }}</b>
-          <span>{{ project.bidders.length || waiting.length ? '拖入文件夹即可建卡' : '每个文件夹建一家投标人，上传前可核对名称' }}</span>
-          <button type="button" class="link" :disabled="blocked" @click.stop="folders?.click()">导入文件夹</button>
-        </div>
-      </div>
+      </section>
       <p v-if="phase === 'materials'" class="limits num">单个文件 {{ project.limits.file_mb }} MB 以内 · PDF 不超过 {{ project.limits.pdf_pages }} 页 · 全项目扫描页与图片合计 {{ project.limits.ocr_pages }} 页 · 至少 2 家才比对串标线索</p>
 
       <!-- 检查中：不出任何结论 -->
       <div v-if="phase === 'checking'" class="result-wait si-card">
         <ListChecks :size="24" :stroke-width="1.75" />
-        <div><b>检查完成后在这里列出问题</b><p>先列严重问题，再列提示。检查中不显示任何结论。</p></div>
+        <div><b>检查完成后在这里列出问题</b><p>严重问题排在提示前面。</p></div>
       </div>
       <BidResults v-else-if="phase === 'results'" class="results" :project="project" :bidder="selected" :model-key="modelKey" @changed="load(false)" @refresh="refreshCheck" @clear="selected = ''" />
       <footer v-if="phase === 'materials'" class="page-foot"><p class="hint">系统只指出问题并定位原件，不作否决或串通投标的认定。</p></footer>
@@ -528,11 +524,11 @@ h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis
 .acts { flex: none; display: flex; align-items: center; gap: 8px; }
 .acts .el-button :deep(> span) { gap: 6px; }
 .why { font: var(--si-font-meta); color: var(--si-ink-3); }
-.spin { animation: bp-spin 1s linear infinite; }
-@keyframes bp-spin { to { transform: rotate(360deg); } }
-html[data-fx="off"] .bidp .spin { animation: none; }
 .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .alert { margin-top: 16px; }
+.trip-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 16px; padding: 12px 16px; }
+.trip-toolbar :deep(.si-trip-bar) { flex-wrap: wrap; row-gap: 8px; }
+.trip-toolbar .hint { margin-left: auto; }
 
 .tender { display: flex; align-items: center; gap: 14px; margin-top: 24px; padding: 14px 20px; }
 .tender.over { border-color: var(--si-brand-2); background: var(--si-blue-tint); }
@@ -545,18 +541,15 @@ html[data-fx="off"] .bidp .spin { animation: none; }
 .drop-card:hover { border-color: var(--si-m-bid); }
 .drop-card[aria-disabled="true"] { cursor: progress; opacity: .7; }
 
-.bid-progress { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 10px 16px; border-radius: var(--si-radius-md); background: var(--si-info-soft); font: var(--si-font-body); color: var(--si-ink-2); }
-.bid-progress > svg { flex: none; color: var(--si-info); }
-.bid-progress b { color: var(--si-info-ink); }
-.t3 { color: var(--si-ink-3); }
-.prog { flex: 1; max-width: 220px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--si-info) 15%, transparent); overflow: hidden; }
-.prog i { display: block; height: 100%; border-radius: 2px; background: var(--si-progress-flow); background-size: 200% 100%; transition: width var(--si-d3) var(--si-ease-out); }
-html:not([data-fx="off"]) .prog i { animation: bp-flow 2.2s linear infinite; }
-@keyframes bp-flow { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-.note { margin-left: auto; font: var(--si-font-caption); color: var(--si-ink-3); }
-
-.bidders { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
-@media (max-width: 1280px) { .bidders { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.opening-desk { margin-top: 20px; padding: 16px 18px 12px; background: color-mix(in srgb, var(--si-m-bid-soft) 38%, var(--si-surface-1)); }
+.desk-head, .desk-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.desk-head { gap: 8px 12px; margin-bottom: 16px; }
+.desk-head h2 { margin: 0; font: var(--si-font-h2); color: var(--si-ink-1); }
+.desk-help { color: var(--si-ink-3); font: var(--si-font-meta); }
+.desk-summary { margin-left: auto; }
+.bidders { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 14px; padding-bottom: 8px; border-bottom: 3px solid color-mix(in srgb, var(--si-m-bid) 36%, var(--si-hair)); }
+@media (max-width: 1120px) { .bidders { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 840px) { .bidders { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .bc-add, .bc-wait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 112px; padding: 14px 16px; box-sizing: border-box; border: 1.5px dashed var(--si-hair-strong); border-radius: var(--si-radius-card); text-align: center; color: var(--si-ink-3); font: var(--si-font-caption); cursor: pointer; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }
 .bc-add:hover, .bc-wait:hover { border-color: var(--si-m-bid); }
 .bc-add.over, .bc-wait.over { border-style: solid; border-color: var(--si-m-bid); background: var(--si-m-bid-soft); }

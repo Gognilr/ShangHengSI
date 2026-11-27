@@ -1,4 +1,6 @@
 """V34-B-01a：文件夹、分类与列表筛选的代表性流程；全部虚构。"""
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from app.db.models import BidCategory, Role, UserRole
@@ -70,6 +72,45 @@ def test_folders_depth_filters_and_isolation(setup, make_user, login, db_session
     assert co.put(f"{ROOT}/{a}/folder", headers=ho, json={"folder_id": None}).status_code == 404
     theirs = co.post(ROOT, headers=ho, json={**body, "title": "虚构他人项目", "category_id": cats["工程类"]}).json()["id"]
     assert co.put(f"{ROOT}/{theirs}/folder", headers=ho, json={"folder_id": mine}).status_code == 404
+
+
+def test_opening_view_orders_before_page_and_keeps_date_markers(setup, make_user, login, db_sessionmaker, monkeypatch):
+    from app.bid import router
+
+    monkeypatch.setattr(router, "utcnow", lambda: datetime(2026, 11, 26, 16, tzinfo=timezone.utc))
+    c, h, cats = setup
+    today = datetime(2026, 11, 27).date()
+    body = {"policy": "local_only", "category_id": cats["工程类"]}
+
+    def create(client, headers, offset, title):
+        response = client.post(ROOT, headers=headers, json={**body, "title": title,
+                                                           "opening_date": (today + timedelta(days=offset)).isoformat()})
+        assert response.status_code == 201
+        return response.json()["id"]
+
+    first = create(c, h, 0, "虚构今日开标")
+    later = create(c, h, 7, "虚构七日后开标")
+    for n in range(19):
+        create(c, h, 1, f"虚构明日开标 {n + 1}")
+    other = make_user("ruler_other")
+    co, csrf = login(other.username)
+    assert co.get(ROOT, params={"opening_view": True}).status_code == 403
+    grant(db_sessionmaker, other, ["use.bid"])
+    create(co, {"X-CSRF-Token": csrf}, 0, "虚构他人开标")
+
+    query = {"opening_view": True}
+    first_page = c.get(ROOT, params=query).json()
+    assert first_page["total"] == 21 and first_page["items"][0]["id"] == first
+    second_page = c.get(ROOT, params={**query, "page": 2}).json()
+    assert [item["id"] for item in second_page["items"]] == [later]
+    filtered = c.get(ROOT, params={**query, "from": "2026-11-27", "to": "2026-11-27"}).json()
+    assert [item["id"] for item in filtered["items"]] == [first]
+    assert first_page["opening_ruler"] == second_page["opening_ruler"] == filtered["opening_ruler"] == {
+        "today": "2026-11-27", "start": "2026-11-20", "end": "2026-12-19",
+        "days": [{"date": "2026-11-27", "count": 1}, {"date": "2026-11-28", "count": 19},
+                 {"date": "2026-12-04", "count": 1}],
+    }
+    assert "opening_ruler" not in c.get(ROOT).json()
 
 
 def test_disabled_category_cannot_be_chosen(setup, make_user, login, db_sessionmaker):
