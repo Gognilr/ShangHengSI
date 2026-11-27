@@ -55,6 +55,8 @@ def fake_converter(spool: Path, handler):
                 os.replace(part, out)
             time.sleep(0.02)
 
+    # 入口会立即检查心跳，先就绪再把控制权交给测试。
+    beat(spool)
     t = threading.Thread(target=run, daemon=True)
     t.start()
     try:
