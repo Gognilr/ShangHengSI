@@ -66,10 +66,16 @@ def check(inv: Invoice) -> list[str]:
             bad.append("金额")
         if bad:
             hints.append("二维码与票面不一致：" + "、".join(bad))
-    if inv.source in OCR_SOURCES and inv.low:
+    ocr = inv.source in OCR_SOURCES
+    # 照片与扫描件没解出二维码时，号码和日期没有第二来源可对，一并请用户核对（V36-I-02 评测：高置信也会读错）
+    low = set(inv.low) | ({"number", "date"} if ocr and q is None else set())
+    if ocr and low:
         word = "照片识别" if inv.source == "photo" else "扫描识别"
-        hints.append(f"{word}，请核对：" + "、".join(FIELD_LABELS[k] for k in inv.low))
+        hints.append(f"{word}，请核对：" + "、".join(FIELD_LABELS[k] for k in FIELD_LABELS if k in low))
     keys = KEY_FIELDS + (() if inv.kind in TICKETS else VAT_FIELDS)
+    # 购买方税号：个人抬头的普票本来就没有；只在照片与扫描件里、抬头像单位（5 字以上）或抬头也没读到时提示（V36-I-02 评测）
+    if ocr and inv.kind not in TICKETS and (len(inv.buyer_name) >= 5 or not inv.buyer_name):
+        keys += ("buyer_tax",)
     missing = [FIELD_LABELS[k] for k in FIELD_LABELS if k in keys and getattr(inv, k) in (None, "")]
     if missing:
         hints.append("未读到：" + "、".join(missing))

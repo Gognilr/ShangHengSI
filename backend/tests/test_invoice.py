@@ -75,9 +75,16 @@ def test_four_checks():
     assert checks.check(inv) == ["二维码与票面不一致：日期"]
     inv = _clean()
     inv.source, inv.low = "photo", ["number", "total"]
+    inv.buyer_name, inv.buyer_tax = "虚构甲方贸易有限公司", "91999999MA00000002"
     assert checks.check(inv) == ["照片识别，请核对：号码、价税合计"]
     inv.tax = None  # 没读到的关键字段同样提示
     assert checks.check(inv)[-1] == "未读到：税额"
+    inv.buyer_tax = ""  # 照片里单位抬头（或抬头也没读到）的购买方税号没读到也提示；个人抬头不提示
+    assert checks.check(inv)[-1] == "未读到：购买方税号、税额"
+    inv.buyer_name = "张三"
+    assert checks.check(inv)[-1] == "未读到：税额"
+    inv.qr = None  # 没解出二维码：号码、日期没有第二来源，一并请核对
+    assert checks.check(inv)[0] == "照片识别，请核对：号码、日期、价税合计"
 
 
 def test_merge_same_invoice():
