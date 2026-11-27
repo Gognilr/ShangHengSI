@@ -423,7 +423,10 @@ function onTripAct() {
 const trip = computed<Trip>(() => {
   const t = task.value
   if (!t || (t.status === 'draft' && !t.busy && !t.files.some(f => f.parse_state === 'parsing'))) return { mod: 'review', at: 0, state: 'todo', note: '等你添加文件' }
-  return reviewTrip({ status: t.status, policy: t.policy, runStatus: t.latest_run?.status, queue: t.queue_position, blocked: step.value === 1 ? blocked.value : 0 })
+  const count = step.value === 1 ? blocked.value : 0
+  const progress = reviewTrip({ status: t.status, policy: t.policy, runStatus: t.latest_run?.status, queue: t.queue_position, blocked: count })
+  // 拦截位置加载之前，没有可以跳转的待处理项。
+  return progress.state === 'block' && !count ? { ...progress, act: undefined } : progress
 })
 const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
