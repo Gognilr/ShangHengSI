@@ -56,9 +56,10 @@ html[data-fx="off"] *, html[data-fx="off"] *::before, html[data-fx="off"] *::aft
 .si-page-enter-active { transition: opacity var(--si-d4) var(--si-ease-out), transform var(--si-d4) var(--si-ease-out); }
 .si-page-enter-from { opacity: 0; transform: translateY(10px); }
 
-/* 卡片依次浮现：容器加 .si-stagger，每张晚 45ms，最多 8 张（只在完整档） */
+/* 卡片依次浮现：容器加 .si-stagger，每张晚 45ms，最多 8 张（只在完整档）。
+   只填充开始前（backwards）：播完后不再压住卡片自己的悬停上浮、选中与变淡 */
 @keyframes si-rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-html[data-fx="full"] .si-stagger > * { animation: si-rise-in var(--si-d4) var(--si-ease-out) both; }
+html[data-fx="full"] .si-stagger > * { animation: si-rise-in var(--si-d4) var(--si-ease-out) backwards; }
 html[data-fx="full"] .si-stagger > :nth-child(2) { animation-delay: 45ms; }
 html[data-fx="full"] .si-stagger > :nth-child(3) { animation-delay: 90ms; }
 html[data-fx="full"] .si-stagger > :nth-child(4) { animation-delay: 135ms; }

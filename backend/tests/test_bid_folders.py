@@ -107,8 +107,8 @@ def test_opening_view_orders_before_page_and_keeps_date_markers(setup, make_user
     assert [item["id"] for item in filtered["items"]] == [first]
     assert first_page["opening_ruler"] == second_page["opening_ruler"] == filtered["opening_ruler"] == {
         "today": "2026-11-27", "start": "2026-11-20", "end": "2026-12-19",
-        "days": [{"date": "2026-11-27", "count": 1}, {"date": "2026-11-28", "count": 19},
-                 {"date": "2026-12-04", "count": 1}],
+        "days": [{"date": "2026-11-27", "count": 1, "severe": 0}, {"date": "2026-11-28", "count": 19, "severe": 0},
+                 {"date": "2026-12-04", "count": 1, "severe": 0}],
     }
     assert "opening_ruler" not in c.get(ROOT).json()
 

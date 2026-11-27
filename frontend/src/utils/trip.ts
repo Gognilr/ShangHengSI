@@ -157,7 +157,8 @@ export function bidTrip(p: {
   if (p.ocrState === 'updating') return { mod: 'bid', at: 2, state: 'run', note: '正在更新初步结论' }
   if (p.stage === 'checked') return { mod: 'bid', at: 3, state: 'done' }
   if (p.stage === 'ready') return { mod: 'bid', at: 2, state: 'wait', note: '待开标' }
-  return { mod: 'bid', at: 0, state: 'wait', note: p.hasMaterials ? '待核对条款' : '材料准备中' }
+  // 招标文件已读完、等你核对条款为“等你”；还没有材料只是未开始（效果稿：未上传投标文件为占位）
+  return { mod: 'bid', at: 0, state: p.hasMaterials ? 'wait' : 'todo', note: p.hasMaterials ? '待核对条款' : '材料准备中' }
 }
 
 type MeetingState = 'transcribing' | 'failed' | 'proofread' | 'confirmed' | 'minuted'

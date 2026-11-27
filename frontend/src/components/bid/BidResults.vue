@@ -93,7 +93,10 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
       <section v-else class="ev-empty si-card">
         <span class="ring"><ListChecks :size="22" :stroke-width="1.75" /></span>
         <b v-if="!c">正在读取…</b>
-        <b v-else-if="hint.length">展开提示查看证据</b>
+        <template v-else-if="hint.length">
+          <b>{{ preliminary ? '已检查的材料未列出严重问题' : bidder ? '这一家没有严重问题' : '没有严重问题' }}</b>
+          <el-button size="small" @click="showHint = true">展开 {{ hint.length }} 条提示看证据</el-button>
+        </template>
         <template v-else>
           <b>{{ bidder ? '这一家没有列出问题' : '没有列出问题' }}</b>
           <p class="hint">没有列出的事项，不等于投标文件没有问题；可以在投标人卡片里看签章页。</p>

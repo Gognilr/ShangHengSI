@@ -73,17 +73,21 @@ def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_lengt
         scope.append(BidProject.folder_id.in_(folders.subtree(db, user, folders.folder(db, user, folder).id)))
     where = [*scope, *_list_filters("", None, None, date_from, date_to)]
     order = [Task.last_activity_at.desc(), Task.id]
-    ruler = {}
+    ruler, states = {}, {}
     if opening_view:
         today = utcnow().astimezone(ZoneInfo("Asia/Shanghai")).date()
         # 先看距今天最近的开标日；同距时未过的开标日在前。
         opening = BidProject.opening_date
         order = [func.abs(opening - today), opening.desc(), *order]
         start, end = today - timedelta(days=7), today + timedelta(days=22)
-        days = db.execute(select(opening, func.count()).select_from(Task).join(BidProject)
-                          .where(*scope, opening.between(start, end)).group_by(opening).order_by(opening))
-        ruler = {"opening_ruler": {"today": today, "start": start, "end": end,
-                                   "days": [{"date": day, "count": count} for day, count in days]}}
+        # 时间尺每个项目画一格，有严重问题的画红；结论与下面的列表行共用一次计算。
+        days = {}
+        for t, p in db.execute(select(Task, BidProject).join(BidProject).where(*scope, opening.between(start, end))):
+            states[t.id] = _list_state(db, t, p)
+            day = days.setdefault(p.opening_date, {"date": p.opening_date, "count": 0, "severe": 0})
+            day["count"] += 1
+            day["severe"] += 1 if states[t.id].get("severe") else 0
+        ruler = {"opening_ruler": {"today": today, "start": start, "end": end, "days": [days[d] for d in sorted(days)]}}
     rows = db.execute(select(Task, BidProject).join(BidProject).where(*where)
                       .order_by(*order).offset((page - 1) * 20).limit(20)).all()
     active = db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*base, BidProject.stage == "checking")) or 0
@@ -93,7 +97,8 @@ def projects(page: int = Query(1, ge=1, le=100000), q: str = Query("", max_lengt
                              .group_by(BidBidder.task_id)).all()) if ids else {}
     return {"items": [{"id": t.id, "title": t.title, "stage": p.stage, "status": t.status, "opening_date": p.opening_date,
                        "last_activity_at": t.last_activity_at, "category_id": p.category_id, "folder_id": p.folder_id,
-                       "bidder_count": counts.get(t.id, 0), **_list_state(db, t, p)} for t, p in rows],
+                       "bidder_count": counts.get(t.id, 0), "model_state": p.model_state,
+                       **(states[t.id] if t.id in states else _list_state(db, t, p))} for t, p in rows],
             "total": db.scalar(select(func.count()).select_from(Task).join(BidProject).where(*where)),
             "checking_count": active, **ruler}
 

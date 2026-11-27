@@ -151,14 +151,22 @@ const page = ref<{ fileId: string; page: number; loc: string | null; first: numb
 const pageCount = computed(() => project.value?.files.find(f => f.id === page.value?.fileId)?.page_count ?? 1)
 function openPage(fileId: string, n: number, loc?: string | null) { page.value = { fileId, page: n, loc: loc ?? null, first: n } }
 
-// 本机检查工具条。可选的模型补查在结果区内单独显示。
+// 工具条（规范第二节）：本机四站；发起模型补查后接上遮住 · 复检 · 模型补查 · 还原。
 const trip = computed(() => {
   const p = project.value
   if (!p) return null
   const reading = p.busy && p.files.length ? { done: p.files.filter(f => f.state !== 'waiting').length, total: p.files.length } : undefined
   return bidTrip({ status: p.status, stage: p.stage, progress: p.check.progress, checkFailed: p.check.state === 'failed',
-    upload: percent.value, reading, ocr: p.check.ocr, ocrState: p.check.ocr_result?.state, hasMaterials: !!tenderKey.value })
+    upload: percent.value, reading, ocr: p.check.ocr, ocrState: p.check.ocr_result?.state, hasMaterials: !!tenderKey.value,
+    modelState: phase.value === 'results' ? p.model?.state : null })
 })
+// 完成徽标的用时：本机检查各步用时之和
+const tripSeconds = computed(() => {
+  const e = check.value?.elapsed
+  return e ? Object.values(e).reduce((n, v) => n + v, 0) : null
+})
+// 补查等你确认或失败时，工具条上的按钮带到结果区的模型补查卡
+function toModelCheck() { document.querySelector('.bidp .ai-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
 const conclusion = computed(() => phase.value === 'results' ? check.value?.conclusion : undefined)
 const preliminary = computed(() => ['scanning', 'updating', 'failed', 'expired'].includes(check.value?.ocr_result?.state ?? ''))
 
@@ -386,10 +394,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         <span class="si-badge is-line"><Users :size="13" :stroke-width="1.75" />{{ project.bidders.length }} 家投标人</span>
         <span v-if="categoryName" class="si-badge is-line"><Tags :size="13" :stroke-width="1.75" />{{ categoryName }}</span>
         <span v-if="project.policy === 'local_only'" class="si-badge is-brand"><Lock :size="13" :stroke-width="1.75" />只在本机处理</span>
-      </div>
-      <div v-if="trip" class="trip-toolbar si-card">
-        <SiTrip :trip="trip" scale="bar" :since="phase === 'checking' ? project.last_activity_at : null" />
-        <span v-if="phase === 'checking'" class="hint">可以离开页面</span>
+        <SiTrip v-if="trip" class="head-trip" :trip="trip" scale="bar" :since="phase === 'checking' ? project.last_activity_at : null" :seconds="tripSeconds" @act="toModelCheck" />
       </div>
       <SiNotice v-if="error" class="alert" :title="error" type="error" @close="error = ''" />
       <SiNotice v-if="notice" class="alert" :title="notice" type="warning" @close="notice = ''" />
@@ -420,7 +425,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
             <span class="si-badge">提示 {{ conclusion.hint.length }}</span>
           </div>
         </header>
-        <div class="bidders si-stagger" :class="{ lone: !project.bidders.length && !waiting.length }">
+        <div class="bidders si-stagger" :class="{ lone: !project.bidders.length && !waiting.length, dim: !!selected }">
           <BidderTile v-for="b in project.bidders" :key="b.id" :bidder="b" :files="filesOf(b.id)" :busy="project.busy" :phase="phase" :disabled="blocked"
             :severe="conclusion ? counts[b.id]?.severe : undefined" :hint="conclusion ? counts[b.id]?.hint : undefined" :preliminary="preliminary" :selected="selected === b.id"
             @open="bidderOpen = b.id" @select="selectBidder(b.id)" @drop="e => drop(e, b.id)" />
@@ -442,7 +447,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
       <!-- 检查中：不出任何结论 -->
       <div v-if="phase === 'checking'" class="result-wait si-card">
         <ListChecks :size="24" :stroke-width="1.75" />
-        <div><b>检查完成后在这里列出问题</b><p>严重问题排在提示前面。</p></div>
+        <div><b>检查完成后在这里列出问题</b><p>可以离开页面；严重问题排在提示前面。</p></div>
       </div>
       <BidResults v-else-if="phase === 'results'" class="results" :project="project" :bidder="selected" :model-key="modelKey" @changed="load(false)" @refresh="refreshCheck" @clear="selected = ''" />
       <footer v-if="phase === 'materials'" class="page-foot"><p class="hint">系统只指出问题并定位原件，不作否决或串通投标的认定。</p></footer>
@@ -524,11 +529,9 @@ h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis
 .acts { flex: none; display: flex; align-items: center; gap: 8px; }
 .acts .el-button :deep(> span) { gap: 6px; }
 .why { font: var(--si-font-meta); color: var(--si-ink-3); }
-.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.badges { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.head-trip { margin-left: auto; }
 .alert { margin-top: 16px; }
-.trip-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 16px; padding: 12px 16px; }
-.trip-toolbar :deep(.si-trip-bar) { flex-wrap: wrap; row-gap: 8px; }
-.trip-toolbar .hint { margin-left: auto; }
 
 .tender { display: flex; align-items: center; gap: 14px; margin-top: 24px; padding: 14px 20px; }
 .tender.over { border-color: var(--si-brand-2); background: var(--si-blue-tint); }
@@ -541,13 +544,16 @@ h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis
 .drop-card:hover { border-color: var(--si-m-bid); }
 .drop-card[aria-disabled="true"] { cursor: progress; opacity: .7; }
 
-.opening-desk { margin-top: 20px; padding: 16px 18px 12px; background: color-mix(in srgb, var(--si-m-bid-soft) 38%, var(--si-surface-1)); }
+.opening-desk { margin-top: 20px; padding: 18px 20px 14px; background: linear-gradient(180deg, var(--si-surface-1), color-mix(in srgb, var(--si-m-bid-soft) 55%, var(--si-surface-1))); }
 .desk-head, .desk-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .desk-head { gap: 8px 12px; margin-bottom: 16px; }
 .desk-head h2 { margin: 0; font: var(--si-font-h2); color: var(--si-ink-1); }
 .desk-help { color: var(--si-ink-3); font: var(--si-font-meta); }
 .desk-summary { margin-left: auto; }
-.bidders { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 14px; padding-bottom: 8px; border-bottom: 3px solid color-mix(in srgb, var(--si-m-bid) 36%, var(--si-hair)); }
+.bidders { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: end; gap: 18px 14px; padding: 10px 0 12px; border-bottom: 3px solid color-mix(in srgb, var(--si-m-bid) 36%, var(--si-hair)); }
+/* 只看一家时，其余几份退后 */
+.bidders.dim > :deep(.bc:not(.on)) { opacity: .55; }
+@media (max-width: 1280px) { .bidders { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 1120px) { .bidders { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 840px) { .bidders { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .bc-add, .bc-wait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 112px; padding: 14px 16px; box-sizing: border-box; border: 1.5px dashed var(--si-hair-strong); border-radius: var(--si-radius-card); text-align: center; color: var(--si-ink-3); font: var(--si-font-caption); cursor: pointer; transition: border-color var(--si-d2) var(--si-ease-out), background-color var(--si-d2) var(--si-ease-out); }

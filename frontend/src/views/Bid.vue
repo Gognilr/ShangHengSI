@@ -51,13 +51,20 @@ const collapsed = reactive(new Set<string>())
 const flat = computed(() => { const out: FolderNode[] = []; const walk = (ns: FolderNode[]) => ns.forEach(n => { out.push(n); if (!collapsed.has(n.value)) walk(n.children) }); walk(nodes.value); return out })
 const currentName = computed(() => filters.folder === 'none' ? '未归档' : filters.folder ? folderPath(tree.value.folders, filters.folder) : '全部项目')
 const categoryName = (id: number | null) => categories.value.find(c => c.id === id)?.name ?? ''
+// 开标日距今天（上海时区，由时间尺接口给出）：今天、n 天后；已过的不写
+function fromToday(date: string) {
+  const today = ruler.value?.today
+  if (!today) return ''
+  const d = Math.round((Date.parse(date) - Date.parse(today)) / 86400000)
+  return d === 0 ? ' · 今天' : d > 0 ? ` · ${d} 天后` : ''
+}
 function sub(item: BidSummary) {
-  const parts = [categoryName(item.category_id), `开标 ${item.opening_date}`, item.bidder_count ? `${item.bidder_count} 家投标人` : '还没有投标人']
+  const parts = [categoryName(item.category_id), `开标 ${item.opening_date.slice(5)}${fromToday(item.opening_date)}`, item.bidder_count ? `${item.bidder_count} 家投标人` : '还没有投标人']
   if (item.folder_id && item.folder_id !== filters.folder) parts.push(folderPath(tree.value.folders, item.folder_id))
   return parts.filter(Boolean).join(' · ')
 }
 const projects = computed(() => items.value.map(item => {
-  const trip = bidTrip({ ...item, checkFailed: item.check_failed, ocrState: item.ocr_state })
+  const trip = bidTrip({ ...item, checkFailed: item.check_failed, ocrState: item.ocr_state, modelState: item.model_state })
   const preliminary = ['scanning', 'updating', 'failed', 'expired'].includes(item.ocr_state ?? '')
   const conclusion = item.stage !== 'checked' || item.severe === undefined ? '' : item.severe
     ? `${preliminary ? '初步 · ' : ''}严重 ${item.severe}`
@@ -254,7 +261,7 @@ watch(() => route.query.new, value => { if (value) { openDialog(); void router.r
             <span class="main"><b :title="item.title">{{ item.title }}</b><span>{{ sub(item) }}</span></span>
             <span class="row-state">
               <SiTrip :trip="trip" :hide-text="trip.state === 'done' && !!conclusion" />
-              <span v-if="conclusion" class="si-badge" :class="{ 'is-hi': item.severe }">{{ conclusion }}</span>
+              <span v-if="conclusion" class="si-badge" :class="{ 'is-hi': item.severe }"><i v-if="item.severe" class="d" />{{ conclusion }}</span>
             </span>
             <span class="at num" :title="formatDateTimeMinute(item.last_activity_at)">{{ formatShort(item.last_activity_at) }}</span>
             <span class="more" @click.prevent.stop><RowMore><el-dropdown-item @click="openMove(item)">移到文件夹…</el-dropdown-item></RowMore></span>

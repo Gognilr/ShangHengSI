@@ -31,7 +31,7 @@ const bad = computed(() => props.phase === 'results' && (props.severe ?? 0) > 0)
 const statusLabel = computed(() => {
   if (props.phase !== 'results') return state.value.text
   if (props.severe === undefined) return '正在读取结果'
-  const label = props.severe ? `严重 ${props.severe}` : '未列出严重问题'
+  const label = props.severe ? `严重 ${props.severe}` : props.preliminary ? '初步，未列出严重问题' : '没有严重问题'
   return `${label}${props.hint ? `，提示 ${props.hint}` : ''}`
 })
 function activate() { if (props.phase === 'results') emit('select'); else emit('open') }
@@ -45,11 +45,15 @@ function drop(event: DragEvent) { over.value = false; if (!props.disabled) emit(
       <span class="code" aria-hidden="true">{{ code }}</span>
       <b :title="bidder.name">{{ bidder.short || bidder.name }}</b>
     </div>
+    <span class="lines" aria-hidden="true"><i /><i /><i /></span>
     <span class="meta num">{{ files.length }} 个文件<template v-if="pages"> · {{ pages }} 页</template></span>
     <span v-if="phase === 'results'" class="bc-st">
-      <span v-if="hint" class="si-badge">提示 {{ hint }}</span>
       <span v-if="severe === undefined" class="hint">正在读取结果…</span>
-      <span v-else-if="!severe && !hint" class="si-badge">{{ preliminary ? '初步 · 未列出问题' : '未列出问题' }}</span>
+      <template v-else>
+        <span v-if="severe" class="si-badge is-hi"><i class="d" />严重 {{ severe }}</span>
+        <span v-else class="si-badge">{{ preliminary ? '初步 · 未列出严重问题' : '没有严重问题' }}</span>
+        <span v-if="hint" class="si-badge">提示 {{ hint }}</span>
+      </template>
       <span v-if="ocrPending" class="ocr num"><ScanText :size="13" :stroke-width="1.75" />识别 {{ ocr!.done }} / {{ ocr!.total }}</span>
     </span>
     <span v-else class="bc-st" :class="state.tone"><component :is="state.icon" :size="15" :stroke-width="1.75" />{{ state.text }}</span>
@@ -61,14 +65,21 @@ function drop(event: DragEvent) { over.value = false; if (!props.disabled) emit(
 </template>
 
 <style scoped>
-.bc { position: relative; display: flex; flex-direction: column; gap: 8px; min-height: 102px; padding: 14px 14px 10px; border-radius: var(--si-radius-control) var(--si-radius-control) 5px 5px; background: var(--si-paper); }
+.bc { position: relative; display: flex; flex-direction: column; gap: 8px; min-height: 138px; padding: 14px 14px 10px; border-radius: var(--si-radius-control) var(--si-radius-control) 5px 5px; background: var(--si-paper);
+  transition: border-color var(--si-d2) var(--si-ease-out), box-shadow var(--si-d3) var(--si-ease-out), transform var(--si-d3) var(--si-ease-out), opacity var(--si-d3) var(--si-ease-out); }
 .bc:hover { transform: translateY(-3px); box-shadow: var(--si-shadow-2); border-color: var(--si-hair-strong); }
 .bc:has(.tile-action:focus-visible) { box-shadow: var(--si-ring), var(--si-shadow-2); }
 .bc.over { border-color: var(--si-brand-2); background: var(--si-blue-tint); }
 .bc.bad { border-color: var(--si-danger-line); }
 .bc.bad::before { content: ""; position: absolute; left: -1px; right: -1px; top: -1px; height: 3px; border-radius: var(--si-radius-control) var(--si-radius-control) 0 0; background: var(--si-danger); }
-.severe-tag { position: absolute; right: 12px; top: -10px; padding: 1px 8px; border: 1px solid var(--si-danger-line); border-radius: var(--si-radius-badge); background: color-mix(in srgb, var(--si-danger) 14%, var(--si-paper)); color: var(--si-danger-ink); font: var(--si-font-label-sm); }
-.bc.on { box-shadow: var(--si-ring), var(--si-shadow-2); border-color: var(--si-brand-2); }
+.severe-tag { position: absolute; right: 12px; top: -10px; padding: 1px 8px; border: 1px solid var(--si-danger); border-radius: var(--si-radius-badge); background: color-mix(in srgb, var(--si-danger) 14%, var(--si-paper)); color: var(--si-danger-ink); font: var(--si-font-label-sm); }
+.bc.on { transform: translateY(-8px); box-shadow: 0 0 0 2px var(--si-m-bid), var(--si-shadow-2); border-color: var(--si-m-bid); }
+html[data-fx="off"] .bc.on, html[data-fx="off"] .bc:hover { transform: none; }
+/* 纸面上的几行字，像桌上摊开的一份标书 */
+.lines { display: flex; flex-direction: column; gap: 5px; margin: 2px 0; }
+.lines i { display: block; height: 5px; border-radius: 3px; background: var(--si-hair); }
+.lines i:nth-child(2) { width: 70%; }
+.lines i:nth-child(3) { width: 85%; }
 .bc-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .bc:has(.open) .bc-h { padding-right: 30px; }
 .code { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--si-radius-sm); background: var(--si-m-bid-soft); color: var(--si-m-bid); font: var(--si-font-code); font-weight: 600; }

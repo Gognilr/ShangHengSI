@@ -5,9 +5,10 @@ export interface BidSummary {
   id: string; title: string; stage: BidStage; status: string; opening_date: string; last_activity_at: string; category_id: number | null; folder_id: string | null
   /** 列表行（V35-F-05）：投标人数；检查中给进度，已完成给严重 / 提示条数 */
   bidder_count?: number; progress?: { done: number; total: number }; severe?: number; hint?: number
-  check_failed?: boolean; ocr_state?: BidOcrResult['state']
+  check_failed?: boolean; ocr_state?: BidOcrResult['state']; model_state?: BidModelState
 }
-export interface BidOpeningRuler { today: string; start: string; end: string; days: { date: string; count: number }[] }
+/** 开标时间尺（V36-F-05）：近 30 天每个开标日的项目数，severe 为其中有严重问题的项目数 */
+export interface BidOpeningRuler { today: string; start: string; end: string; days: { date: string; count: number; severe: number }[] }
 export interface BidFolder { id: string; parent_id: string | null; name: string; count: number }
 export interface BidFolderTree { folders: BidFolder[]; all: number; unfiled: number }
 export interface BidCategory { id: number; name: string; enabled: boolean; used?: number }
