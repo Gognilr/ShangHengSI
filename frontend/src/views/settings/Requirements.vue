@@ -376,7 +376,7 @@ onMounted(() => {
     </div>
 
     <el-dialog v-model="dialog" :title="editing ? `编辑 ${editing.code}` : '新增公司补充要求'" width="640px" :close-on-click-modal="false">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="140px" @submit.prevent="submit">
         <el-form-item label="内容" prop="text">
           <el-input v-model="form.text" type="textarea" :rows="4" maxlength="300" show-word-limit />
         </el-form-item>

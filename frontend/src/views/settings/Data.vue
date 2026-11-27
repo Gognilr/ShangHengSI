@@ -2,7 +2,7 @@
 import SiBadge from '@/components/ui/SiBadge.vue'
 import SiNotice from '@/components/ui/SiNotice.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   adminDataApi,
   adminUsersApi,
@@ -11,6 +11,7 @@ import {
   type OutboundRow,
   type SystemStatus,
   type RetentionSettings,
+  type RetentionForecast,
   type AuditRow,
   type UserRow,
 } from '@/api/admin'
@@ -20,6 +21,9 @@ import EmptyState from '@/components/EmptyState.vue'
 import TableSkeleton from '@/components/TableSkeleton.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import SaveState from '@/components/SaveState.vue'
+import SiStack, { type StackSeg } from '@/components/ui/SiStack.vue'
+import SiSpark from '@/components/ui/SiSpark.vue'
+import { DatabaseBackup } from '@lucide/vue'
 import { useAutoSave } from '@/utils/autosave'
 import { useTableMaxHeight } from '@/utils/tableHeight'
 import {
@@ -283,6 +287,25 @@ function searchAudit() {
   void loadAudit()
 }
 
+// ---- 主图（二版 6.28）：存储构成分段条、未来 30 天到期时间轴、备份状态一行 ----
+const forecast = ref<RetentionForecast | null>(null)
+async function loadForecast() { try { forecast.value = await adminDataApi.retentionForecast() } catch { forecast.value = null } }
+const storageSegs = computed<StackSeg[]>(() => status.value ? [
+  { key: 'files', label: '原件', value: status.value.files_bytes ?? 0, color: 'var(--si-m-review)' },
+  { key: 'db', label: '数据库', value: status.value.db_bytes ?? 0, color: 'var(--si-m-trans)' },
+  { key: 'backup', label: '备份', value: status.value.backup_dir_bytes ?? 0, color: 'var(--si-ink-4)' },
+] : [])
+const storageTotal = computed(() => storageSegs.value.reduce((n, s) => n + s.value, 0))
+const sparkDays = computed(() => (forecast.value?.counts ?? []).map((v, i) => {
+  const d = new Date(`${forecast.value!.start}T00:00:00`)
+  d.setDate(d.getDate() + i)
+  const date = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')}`
+  return { date, label: date, value: v, weekend: [0, 6].includes(d.getDay()) }
+}))
+// 备份卷剩余空间不足三次备份（V351-C-01）
+const backupLow = computed(() => !!status.value && status.value.backup_free_bytes != null && !!status.value.latest_backup_bytes && status.value.backup_free_bytes < status.value.latest_backup_bytes * 3)
+const backupCopies = computed(() => status.value?.backup_free_bytes != null && status.value.latest_backup_bytes ? Math.floor(status.value.backup_free_bytes / status.value.latest_backup_bytes) : 0)
+
 onMounted(async () => {
   // 分区按权限点显示（V31-U5F-07）：法规同步开关与数据维护可分给不同角色
   if (!auth.can('sys.data')) return
@@ -290,6 +313,7 @@ onMounted(async () => {
   void loadRetention()
   void loadLogs()
   void loadStatus()
+  void loadForecast()
   void loadAudit()
   if (!auth.can('sys.accounts')) return
   try {
@@ -305,6 +329,19 @@ onBeforeUnmount(stopPolling)
 <template>
   <div class="settings-page">
     <div class="panel setting-panel">
+      <template v-if="auth.can('sys.data')">
+        <section class="card hero"><div class="hrow"><b>存储构成</b><span class="num tot">共 {{ formatBytes(storageTotal) }}</span></div>
+          <SiStack v-if="status && storageTotal" :segments="storageSegs" :pickable="false" />
+          <p v-else class="hint">{{ statusLoading ? '正在统计存储用量' : '暂无存储用量数据' }}</p></section>
+        <section class="card hero"><div class="hrow"><b>未来 30 天到期</b><span class="hint tot">只计件数 · 共 <b class="num">{{ forecast?.total ?? 0 }}</b> 件</span></div>
+          <SiSpark v-if="forecast" :days="sparkDays" color="var(--si-m-review)" :height="60" aria-label="未来 30 天每天到期的任务件数" class="ret" />
+          <div v-if="forecast" class="retax"><span>今天</span><span>{{ sparkDays[7]?.date }}</span><span>{{ sparkDays[14]?.date }}</span><span>{{ sparkDays[21]?.date }}</span><span>{{ sparkDays[29]?.date }}</span></div></section>
+        <section class="card hero bk"><span class="si-mod-icon" style="--mc: var(--si-ok); --mc-soft: var(--si-ok-soft)"><DatabaseBackup :size="20" :stroke-width="1.75" /></span>
+          <div class="grow"><b>最近一次备份 · {{ records?.latest ? formatDateTime(records.latest.finished_at ?? records.latest.started_at) : '尚无记录' }}</b>
+            <div v-if="records?.latest" class="hint">{{ backupStatusLabel(records.latest.status) }}<template v-if="records.latest.size_bytes != null"> · {{ formatBytes(records.latest.size_bytes) }}</template><template v-if="records.free_bytes != null"> · 备份卷剩余 {{ formatBytes(records.free_bytes) }}</template></div></div>
+          <el-button size="small" :loading="backupStarting || polling" @click="runBackup">{{ polling ? '备份进行中……' : '立即备份' }}</el-button></section>
+        <SiNotice v-if="backupLow" type="warning" :closable="false" title="备份卷剩余空间不足三次备份" :description="`按最近一次备份大小估算只够再存 ${backupCopies} 份。请清理旧备份或扩容备份卷。`" class="gap" />
+      </template>
       <SettingSection v-if="auth.can('sys.data')" title="备份" description="每天定时备份数据，超出份数的最旧备份自动删除。">
       <SiNotice v-if="backupError" type="error" :closable="false" :title="backupError" />
       <div v-loading="backupLoading">
@@ -555,4 +592,15 @@ h3.first {
 .status-filter { width: 140px; }
 .filters { flex-wrap: wrap; }
 .actions { padding-top: 20px; border-top: 1px solid var(--el-border-color-lighter); }
+.card { background: var(--si-surface-1); border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); box-shadow: var(--si-shadow-1); }
+.hero { margin-bottom: 16px; padding: 18px 22px; }
+.hrow { display: flex; align-items: center; margin-bottom: 12px; }
+.hrow b { color: var(--si-ink-1); font: var(--si-font-h4); }
+.hrow .tot { margin-left: auto; color: var(--si-ink-2); }
+.hrow .tot b { font: 600 14px var(--si-font-mono); }
+.ret { display: flex; width: 100%; }
+.retax { display: flex; justify-content: space-between; margin-top: 6px; color: var(--si-ink-4); font: 11.5px var(--si-font-mono); }
+.bk { display: flex; align-items: center; gap: 16px; padding: 16px 20px; }
+.bk b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
+.grow { flex: 1; min-width: 0; }
 </style>

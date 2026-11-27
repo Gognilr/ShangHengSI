@@ -298,6 +298,8 @@ export interface SystemStatus {
   storage_measured_at: string
 }
 
+export interface RetentionForecast { start: string; counts: number[]; total: number }
+
 export interface RetentionSettings {
   original_days: number
   result_days: number
@@ -312,6 +314,7 @@ export const adminDataApi = {
   runBackup: () => http.post<{ queued: boolean }>('/admin/backup/run'),
   backupRecords: () => http.get<BackupRecords>('/admin/backup/records'),
   getRetention: () => http.get<RetentionSettings>('/admin/settings/retention'),
+  retentionForecast: () => http.get<RetentionForecast>('/admin/retention/forecast'),
   saveRetention: (values: RetentionSettings) => http.put<RetentionSettings>('/admin/settings/retention', values),
   outboundLogs: (q: OutboundQuery) =>
     http.get<{ items: OutboundRow[]; total: number; page: number; page_size: number }>('/admin/outbound-logs', { ...q }),

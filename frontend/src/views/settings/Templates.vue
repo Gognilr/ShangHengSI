@@ -6,6 +6,8 @@ import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
 import SettingSection from '@/components/SettingSection.vue'
 import SharedContent from '@/components/settings/SharedContent.vue'
+import PaperThumb from '@/components/settings/PaperThumb.vue'
+import SiBadge from '@/components/ui/SiBadge.vue'
 import SiSegmented from '@/components/ui/SiSegmented.vue'
 import { ApiError } from '@/api/http'
 import { templatesApi, type TemplateRow, type TemplateDetail, type TemplateClause } from '@/api/templates'
@@ -111,6 +113,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
               <RowMore><el-dropdown-item :disabled="saving" @click="detail(row)">查看条款</el-dropdown-item><el-dropdown-item :disabled="saving" @click="open(row)">编辑</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving" @click="remove(row)">删除</el-dropdown-item></RowMore></span>
           </PaperThumb>
         </div>
+        </div>
       </SettingSection>
     </div>
     <el-dialog v-model="dialog" :title="editing ? '编辑范本设置' : '上传公司范本'" width="640px" :close-on-click-modal="!saving">
@@ -146,4 +149,8 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer) })
 <style scoped>
 h2 { font: var(--si-font-h2); margin: 0 0 16px; overflow-wrap: anywhere; }
 .plain { font: var(--si-font-body); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--el-fill-color-light); padding: 12px; border-left: 3px solid var(--el-border-color); }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; margin-top: 12px; }
+.sk { display: block; aspect-ratio: 1 / 1.25; border-radius: 6px; background: var(--si-hover-bg); }
+.scope { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctl { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 </style>

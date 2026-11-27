@@ -5,15 +5,14 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadUserFile } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
 import RowMore from '@/components/RowMore.vue'
-import TableSkeleton from '@/components/TableSkeleton.vue'
+import PaperThumb from '@/components/settings/PaperThumb.vue'
 import SettingSection from '@/components/SettingSection.vue'
-import { useTableMaxHeight } from '@/utils/tableHeight'
 import { kbApi, type KbDoc, type KbChunk } from '@/api/kb'
 import { ApiError } from '@/api/http'
 import { KB_STATUS, KB_STATUS_TAG } from '@/utils/labels'
 import { formatDateTime } from '@/utils/time'
 
-const tableMax = useTableMaxHeight(320), loaded = ref(false)
+const loaded = ref(false)
 const rows = ref<KbDoc[]>([]), enabled = ref(false), loading = ref(false), saving = ref(false), error = ref('')
 const uploading = ref(false), uploadOpen = ref(false), formError = ref(''), files = ref<UploadUserFile[]>([])
 const retryTarget = ref<KbDoc | null>(null)
@@ -99,17 +98,20 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
       </SettingSection>
       <SiNotice v-if="error" :title="error" type="error" :closable="false" class="gap" />
       <SettingSection title="资料列表" description="只有启用且解析完成的文档参与检索。" stacked><template #actions><el-button type="primary" :disabled="saving || uploading" @click="openUpload()">上传文档</el-button></template>
-        <TableSkeleton v-if="!loaded" :columns="['1fr', '90px', '80px', '80px', '1fr', '170px', '160px']" />
-      <el-table v-else :data="rows" :max-height="tableMax">
-        <template #empty><EmptyState compact title="尚无知识库文档" description="点击右上角“上传文档”，可上传公司制度、流程与产品资料。" /></template>
-        <el-table-column label="名称" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.name }}<p v-if="row.error_message" class="error">{{ row.error_message }}</p></template></el-table-column>
-        <el-table-column label="状态" width="90"><template #default="{ row }"><SiBadge :tone="KB_STATUS_TAG[row.status]">{{ KB_STATUS[row.status] }}</SiBadge></template></el-table-column>
-        <el-table-column prop="chunk_count" label="片段数" width="80" class-name="num" />
-        <el-table-column label="启用" width="80"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="saving || uploading" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" /></template></el-table-column>
-        <el-table-column prop="uploaded_by" label="上传人" min-width="90" />
-        <el-table-column label="时间" width="160" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button v-if="row.status === 'failed'" link type="primary" :disabled="saving || uploading" @click="openUpload(row)">重新上传</el-button><el-button v-else link type="primary" :disabled="saving" @click="preview(row)">预览片段</el-button><RowMore><el-dropdown-item :disabled="saving" @click="rename(row)">改名</el-dropdown-item><el-dropdown-item :disabled="saving || uploading" @click="toggle(row, !row.enabled)">{{ row.enabled ? '停用' : '启用' }}</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving || uploading" @click="remove(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
-      </el-table>
+        <div v-if="!loaded" class="thumbs" aria-busy="true"><i v-for="n in 5" :key="n" class="sk" /></div>
+        <EmptyState v-else-if="!rows.length" compact title="尚无知识库文档" description="点击右上角“上传文档”，可上传公司制度、流程与产品资料。" />
+        <div v-else class="thumbs">
+          <PaperThumb v-for="row in rows" :key="row.id" :name="row.name" :count="row.status === 'ready' ? `片段 ${row.chunk_count}` : undefined" :fail="row.status === 'failed'" :lines="6" :off="!row.enabled" @open="row.status === 'failed' ? openUpload(row) : preview(row)">
+            <SiBadge :tone="KB_STATUS_TAG[row.status]">{{ KB_STATUS[row.status] }}</SiBadge>
+            <span class="who" :title="`${row.uploaded_by} · ${formatDateTime(row.created_at)}`">{{ row.uploaded_by }} · {{ formatDateTime(row.created_at).slice(5, 10) }}</span>
+            <span class="ctl">
+              <el-button v-if="row.status === 'failed'" size="small" text type="primary" :disabled="saving || uploading" @click="openUpload(row)">重新上传</el-button>
+              <el-switch v-else size="small" :model-value="row.enabled" :disabled="saving || uploading" :aria-label="`启用${row.name}`" @change="(value: string | number | boolean) => toggle(row, value)" />
+              <RowMore><el-dropdown-item :disabled="saving" @click="preview(row)">预览片段</el-dropdown-item><el-dropdown-item :disabled="saving" @click="rename(row)">改名</el-dropdown-item><el-dropdown-item class="danger-item" :disabled="saving || uploading" @click="remove(row)">删除</el-dropdown-item></RowMore>
+            </span>
+            <span v-if="row.error_message" class="err">{{ row.error_message }}</span>
+          </PaperThumb>
+        </div>
       </SettingSection>
     </div>
     <el-dialog v-model="uploadOpen" :title="retryTarget ? '重新上传知识库文档' : '上传知识库文档'" width="640px" :close-on-click-modal="!uploading" :close-on-press-escape="!uploading" :show-close="!uploading">
@@ -131,4 +133,9 @@ onBeforeUnmount(() => { active = false; ++previewVersion; clearTimeout(timer) })
 pre { font: var(--si-font-reading); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .switch-line { display: flex; align-items: center; gap: 12px; }
 .error { color: var(--el-color-danger); font: var(--si-font-meta); }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+.sk { display: block; aspect-ratio: 1 / 1.25; border-radius: 6px; background: var(--si-hover-bg); }
+.who { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctl { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.err { flex-basis: 100%; color: var(--si-danger-ink); }
 </style>

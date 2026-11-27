@@ -215,7 +215,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
     </div>
 
     <el-dialog :model-value="dialog !== ''" :title="dialogTitle" width="480px" :close-on-click-modal="false" @close="dialog = ''">
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" @submit.prevent="submit">
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="140px" @submit.prevent="submit">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" :disabled="dialog === 'edit'" maxlength="50" autocomplete="off" />
         </el-form-item>
@@ -240,7 +240,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
     </el-dialog>
 
     <el-dialog :model-value="resetTarget !== null" title="重置密码" width="480px" :close-on-click-modal="false" @close="resetTarget = null">
-      <el-form ref="resetRef" :model="resetForm" :rules="{ password: rules.password }" label-width="110px" @submit.prevent="submitReset">
+      <el-form ref="resetRef" :model="resetForm" :rules="{ password: rules.password }" label-width="140px" @submit.prevent="submitReset">
         <el-form-item label="账号">{{ resetTarget?.username }}（{{ resetTarget?.display_name }}）</el-form-item>
         <el-form-item label="新密码" prop="password">
           <el-input v-model="resetForm.password" type="password" show-password autocomplete="new-password" placeholder="至少 8 位，含字母和数字" />

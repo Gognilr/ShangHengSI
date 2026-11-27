@@ -210,6 +210,22 @@ async function removeOurParty(row: TermRow) {
   finally { ourRemoving.value = '' }
 }
 
+// ---- 七类胶囊墙（二版 6.27）：单位卡 = 我方主体，其他卡 = 自定义敏感词，其余类别靠规则识别 ----
+const KINDS = [
+  { key: 'org', name: '单位' }, { key: 'person', name: '人名' }, { key: 'contact', name: '联系方式' }, { key: 'id', name: '证件' },
+  { key: 'addr', name: '地址' }, { key: 'amount', name: '金额' }, { key: 'other', name: '其他' },
+] as const
+const kindWords = (key: string): TermRow[] => key === 'org' ? ourParties.value : key === 'other' ? custom.value : []
+const addKey = ref<string | null>(null), draftWord = ref(''), addingBusy = ref(false)
+function startAdd(key: string) { addKey.value = key; draftWord.value = '' }
+async function commitAdd(key: string) {
+  addingBusy.value = true
+  try {
+    if (key === 'org') { ourName.value = draftWord.value; await addOurParty(); if (!ourError.value) addKey.value = null }
+    else { newTerm.value = draftWord.value; await addTerm(); if (!newTerm.value) addKey.value = null }
+  } finally { addingBusy.value = false }
+}
+
 onMounted(() => {
   if (auth.can('redaction.words')) { void loadMask(); void loadCustom() }
   if (auth.can('redaction.names')) void loadLearned()
@@ -224,49 +240,27 @@ onMounted(() => {
         <SiNotice v-if="maskError" type="error" :closable="false" :title="maskError" />
         <div class="switch-row"><div><h3>数量脱敏</h3><p class="hint">开启后数量也会替换为代号，只影响之后解析的文件。</p></div><el-switch :model-value="maskQuantity" :loading="maskLoading" aria-label="数量脱敏" @change="toggleMask" /></div><div class="switch-row"><div><h3>日期整体平移</h3><p class="hint">发给模型的日期整体平移同一天数，回来后在本机换回；只影响之后重新计算的任务</p></div><el-switch :model-value="dateShift" :loading="maskLoading" aria-label="日期整体平移" @change="toggleExtra('date_shift', $event)" /></div>
       </SettingSection>
-      <SettingSection v-if="auth.can('redaction.parties')" title="我方主体" description="管理员预置的公司名称对所有人有效；审核时选择的我方只为选择者本人记住。" stacked>
-        <div class="filters">
-        <el-input v-model="ourName" maxlength="100" class="term-input" placeholder="输入我方完整公司名称" aria-label="我方主体名称" :disabled="ourAdding" @keyup.enter="addOurParty" />
-        <el-button type="primary" :loading="ourAdding" @click="addOurParty">添加我方主体</el-button>
-      </div>
-      <SiNotice v-if="ourError" type="error" :closable="false" :title="ourError" class="gap" />
-      <TableSkeleton v-if="!loadedOnce.our" :columns="['1fr', '120px', '170px', '70px']" />
-      <el-table v-else v-loading="ourLoading" :data="ourParties" size="small" :max-height="tableMax">
-        <template #empty><EmptyState compact title="尚未预置我方主体" description="在上方输入我方完整公司名称后添加。" /></template>
-        <el-table-column prop="term" label="名称" min-width="180" show-overflow-tooltip />
-        <el-table-column label="记录人" width="120"><template #default="{ row }">{{ row.created_by_name ?? '—' }}</template></el-table-column>
-        <el-table-column label="记录时间" width="160" class-name="num"><template #default="{ row }">{{ formatDateTime(row.created_at) }}</template></el-table-column>
-        <el-table-column label="操作" width="70" fixed="right"><template #default="{ row }"><RowMore :disabled="!!ourRemoving"><el-dropdown-item class="danger-item" @click="removeOurParty(row)">删除</el-dropdown-item></RowMore></template></el-table-column>
-      </el-table>
-      </SettingSection>
-      <SettingSection v-if="auth.can('redaction.words')" title="自定义敏感词" description="需要替换的公司内部词汇；新增、停用、删除只影响之后解析的文件。" stacked>
-        <div class="filters">
-        <el-input v-model="newTerm" maxlength="100" placeholder="输入需要替换的敏感词（2–100 个字符）" class="term-input" @keyup.enter="addTerm" />
-        <el-button type="primary" :loading="adding" @click="addTerm">添加</el-button>
-      </div>
-      <div class="hint tip">新增、停用、删除只影响之后解析的文件；已解析的任务不会自动重算。</div>
-      <SiNotice v-if="customError" type="error" :closable="false" :title="customError" />
-      <TableSkeleton v-if="!loadedOnce.custom" :columns="['1fr', '120px', '80px', '170px', '90px']" />
-      <el-table v-else v-loading="customLoading" :data="custom" size="small" :max-height="tableMax">
-        <template #empty><EmptyState compact title="尚未添加自定义敏感词" description="在上方输入后点击“添加”。" /></template>
-        <el-table-column prop="term" label="敏感词" min-width="180" show-overflow-tooltip />
-        <el-table-column label="记录人" width="120">
-          <template #default="{ row }">{{ row.created_by_name ?? '—' }}</template>
-        </el-table-column>
-        <el-table-column label="启用" width="80">
-          <template #default="{ row }">
-            <el-switch :model-value="row.enabled" @change="(v: string | number | boolean) => toggleTerm(row, v)" />
-          </template>
-        </el-table-column>
-        <el-table-column label="添加时间" width="160" class-name="num">
-          <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="70" fixed="right">
-          <template #default="{ row }">
-            <RowMore><el-dropdown-item class="danger-item" @click="removeTerm(row, loadCustom)">删除</el-dropdown-item></RowMore>
-          </template>
-        </el-table-column>
-      </el-table>
+      <SettingSection v-if="auth.can('redaction.words', 'redaction.parties')" title="七类名称" description="颜色与确认页一致。单位卡放我方主体（对所有人有效），其他卡放自定义敏感词；新增、停用、删除只影响之后解析的文件。">
+        <SiNotice v-if="ourError || customError" type="error" :closable="false" :title="ourError || customError" class="gap" />
+        <div class="kwall">
+          <div v-for="k in KINDS" :key="k.key" class="kcard" :class="`k-${k.key}`">
+            <div class="kh"><i class="kdot" /><b>{{ k.name }}</b><span class="num">{{ kindWords(k.key).length ? `${kindWords(k.key).length} 个词` : '自动识别' }}</span></div>
+            <div class="kw">
+              <span v-for="w in kindWords(k.key)" :key="w.id" class="chip" :class="{ off: !w.enabled }">
+                <button v-if="k.key === 'other'" type="button" class="cw" :aria-pressed="w.enabled" :title="w.enabled ? '点击停用' : '点击启用'" @click="toggleTerm(w, !w.enabled)">{{ w.term }}</button><template v-else>{{ w.term }}</template>
+                <button type="button" class="x" :aria-label="`删除 ${w.term}`" @click="k.key === 'other' ? removeTerm(w, loadCustom) : removeOurParty(w)">×</button>
+              </span>
+              <template v-if="k.key === 'org' || k.key === 'other'">
+                <form v-if="addKey === k.key" class="addf" @submit.prevent="commitAdd(k.key)">
+                  <input v-model="draftWord" class="addi" maxlength="100" :placeholder="k.key === 'org' ? '我方完整公司名称' : '2–100 个字符'" :aria-label="`添加${k.name}`" @keyup.esc="addKey = null">
+                  <button type="submit" class="addb" :disabled="ourAdding || addingBusy">添加</button>
+                </form>
+                <button v-else-if="k.key === 'other' ? auth.can('redaction.words') : auth.can('redaction.parties')" type="button" class="chip add" @click="startAdd(k.key)">+ 添加</button>
+              </template>
+              <span v-if="!kindWords(k.key).length && k.key !== 'org' && k.key !== 'other'" class="none">{{ k.key === 'person' ? '人名在确认时记住，见下方“已记住的名称”' : '按规则自动识别，无需词表' }}</span>
+            </div>
+          </div>
+        </div>
       </SettingSection>
       <SettingSection v-if="auth.can('redaction.names')" title="已记住的名称" description="确认脱敏时记住的公司和人名。" stacked>
         <div class="filters">
@@ -337,4 +331,25 @@ h3 {
 .term-input { width: 360px; }
 .learned-query { width: 240px; }
 .filters { flex-wrap: wrap; }
+.kwall { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.kcard { padding: 14px 14px 12px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-card); background: var(--si-surface-1); box-shadow: inset 0 3px 0 var(--kc), var(--si-shadow-1); }
+.k-org { --kc: var(--si-k-org); --kb: var(--si-k-org-bg); --ki: var(--si-k-org-ink); } .k-person { --kc: var(--si-k-person); --kb: var(--si-k-person-bg); --ki: var(--si-k-person-ink); }
+.k-contact { --kc: var(--si-k-contact); --kb: var(--si-k-contact-bg); --ki: var(--si-k-contact-ink); } .k-id { --kc: var(--si-k-id); --kb: var(--si-k-id-bg); --ki: var(--si-k-id-ink); }
+.k-addr { --kc: var(--si-k-addr); --kb: var(--si-k-addr-bg); --ki: var(--si-k-addr-ink); } .k-amount { --kc: var(--si-k-amount); --kb: var(--si-k-amount-bg); --ki: var(--si-k-amount-ink); }
+.k-other { --kc: var(--si-k-other); --kb: var(--si-k-other-bg); --ki: var(--si-k-other-ink); }
+.kh { display: flex; align-items: center; gap: 8px; }
+.kdot { width: 8px; height: 8px; border-radius: 50%; background: var(--kc); }
+.kh b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
+.kh .num { margin-left: auto; color: var(--si-ink-3); font-size: 12px; }
+.kw { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 2px; height: 24px; padding: 0 4px 0 8px; border: 0; border-radius: 6px; background: var(--kb); color: var(--ki); font: var(--si-font-meta); }
+.chip.off { opacity: .5; text-decoration: line-through; }
+.chip .cw, .chip .x { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.chip .x { width: 18px; height: 18px; border-radius: 4px; line-height: 1; }
+.chip .x:hover { background: color-mix(in srgb, var(--ki) 18%, transparent); }
+.chip.add { padding: 0 8px; background: transparent; border: 1px dashed var(--si-hair-strong); color: var(--si-ink-3); cursor: pointer; }
+.addf { display: inline-flex; gap: 4px; }
+.addi { width: 150px; height: 24px; padding: 0 8px; border: 1px solid var(--si-hair-strong); border-radius: 6px; background: var(--si-surface-1); color: var(--si-ink-1); font: var(--si-font-meta); }
+.addb { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--si-brand-2); color: #fff; font: var(--si-font-meta); cursor: pointer; }
+.none { color: var(--si-ink-3); font: var(--si-font-caption); }
 </style>

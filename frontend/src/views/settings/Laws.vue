@@ -185,7 +185,7 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
     <div class="panel setting-panel">
       <SettingSection v-if="canSync" title="自动更新" description="定期从国家法律法规数据库拉取公开法规；变更经业务管理员确认后才生效。默认关闭。">
         <SiNotice v-if="syncError" :title="syncError" type="error" :closable="false" class="gap" />
-        <el-form label-width="110px" @submit.prevent>
+        <el-form label-width="140px" @submit.prevent>
           <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!sync || syncRunning" aria-label="法规库自动更新" @change="changeSyncEnabled" /></el-form-item>
           <el-form-item label="更新频率"><el-select v-model="syncForm.interval" :disabled="!sync || syncRunning" aria-label="法规更新频率" @change="syncSave.schedule(0)"><el-option v-for="(label, value) in LAWSYNC_INTERVAL" :key="value" :value="value" :label="label" /></el-select><SaveState :status="syncSave.status.value" :message="syncSave.message.value" @retry="syncSave.retry()" /></el-form-item>
           <el-form-item label="上次运行">{{ formatDateTime(sync?.last_run_at) }}</el-form-item>
