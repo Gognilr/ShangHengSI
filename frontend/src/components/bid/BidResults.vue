@@ -106,7 +106,7 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
 
 <style scoped>
 .results { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.md { display: grid; grid-template-columns: 440px minmax(0, 1fr); gap: 16px; align-items: start; }
+.md { display: grid; grid-template-columns: 440px minmax(0, 1fr); gap: 16px; align-items: stretch; }
 .md-list { padding: 8px 8px 12px; }
 .md-h { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px 6px; }
 .md-h b { display: flex; align-items: center; gap: 8px; font: var(--si-font-h2); color: var(--si-ink-1); }
@@ -137,7 +137,7 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
 .nb { flex: none; display: none; }
 .iss.on .nb, .iss:focus-within .nb, .nb.shown { display: inline-flex; }
 .none { margin: 4px 12px 8px; font: var(--si-font-meta); color: var(--si-ink-4); }
-.ev-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 48px 24px; text-align: center; }
+.ev-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 48px 24px; text-align: center; }
 .ring { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 6px; border-radius: 50%; background: var(--si-blue-tint); color: var(--si-brand-2); }
 .ev-empty b { font: var(--si-font-h3); color: var(--si-ink-1); }
 .ev-empty p { margin: 0; max-width: 420px; }
