@@ -12,7 +12,7 @@ from PIL import Image, ImageOps
 
 from app.parsing import ocr, ocr_table
 from app.parsing.docx import manual_clause_no
-from app.parsing.model import LOW_OCR_CONF, ParsedFile, ParsedNode, ParseError
+from app.parsing.model import LOW_OCR_CONF, ParsedFile, ParsedNode, ParseError, is_app_watermark
 
 PARSER_VERSION = "image-1"
 MAX_OCR_SIDE = 4000  # 长边超过时先等比缩小再识别
@@ -53,7 +53,7 @@ def ocr_nodes(img: Image.Image, prefix: str, page: int | None) -> tuple[list[Par
             ln.bbox = [round(v / ratio, 2) for v in ln.bbox]
     rest = ocr.clean_lines([ln for i, ln in enumerate(lines) if i not in used], LOW_OCR_CONF)
     items = [(t.top, "table", t) for t in tables]
-    items += [(b[1][1], "block", b) for b in map(ocr.block_of, ocr.merge_lines(rest))]
+    items += [(b[1][1], "block", b) for b in map(ocr.block_of, ocr.merge_lines(rest)) if not is_app_watermark(b[0])]
     items.sort(key=lambda it: it[0])
 
     nodes: list[ParsedNode] = []

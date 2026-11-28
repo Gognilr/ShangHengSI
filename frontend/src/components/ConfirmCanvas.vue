@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// 非正文区域的中文标签（界面不显示 header / footer 等内部名）
+const PART_LABELS: Record<string, string> = { header: '页眉', footer: '页脚', textbox: '文本框', comment: '批注', hidden_sheet: '隐藏工作表' }
 import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, h, nextTick, onBeforeUnmount, reactive, ref, watch, type FunctionalComponent, type VNode } from 'vue'
 import { ApiError } from '@/api/http'
@@ -878,7 +880,7 @@ defineExpose({ locate, switchFile, toggleView, cancel, showDiff, reloadActive })
             <button v-if="b.nv.tags" type="button" class="ann-tag" :data-fid="b.nv.tags[0]!.id">{{ tagText(b.nv.tags) }}</button>
             <span v-if="b.nv.diff && (b.nv.diff.untracked || diffTag(b.nv.diff))" class="d-tag" :class="{ 'd-tag-u': b.nv.diff.untracked && b.nv.diff.type !== 'format' }">{{ b.nv.diff.untracked && b.nv.diff.type !== 'format' ? (b.nv.diff.mixed ? '部分未留痕' : '未留痕') : diffTag(b.nv.diff) }}</span>
             <div v-if="b.nv.node.loc === 'NOTE'" class="side-label">本次补充说明</div>
-            <span v-else-if="b.nv.node.part !== 'body'" class="side-label">{{ b.nv.node.part }}</span>
+            <span v-else-if="b.nv.node.part !== 'body'" class="side-label">{{ PART_LABELS[b.nv.node.part] ?? b.nv.node.part }}</span>
             <span v-if="b.nv.node.clause_no && b.nv.node.part === 'body' && !(b.nv.node.text ?? '').trimStart().startsWith(b.nv.node.clause_no)" class="clause">{{ b.nv.node.clause_no }}</span>
             <DiffText v-if="b.nv.diff" :c="b.nv.diff" />
             <NodeText v-else :nv="b.nv" :ai="view === 'ai'" :sel-id="selectedSuspectId" :sel-ph="selectedPlaceholder" :sel-fid="selectedFindingId" :layer="lyr(layer)" :kf="kindFilter" />

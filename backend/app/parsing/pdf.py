@@ -20,7 +20,7 @@ from pdfminer.pdfdocument import PDFPasswordIncorrect
 
 from app.parsing import ocr, ocr_table
 from app.parsing.docx import manual_clause_no
-from app.parsing.model import LOW_OCR_CONF, MAX_PDF_PAGES, ParsedFile, ParsedNode, ParseError
+from app.parsing.model import LOW_OCR_CONF, MAX_PDF_PAGES, ParsedFile, ParsedNode, ParseError, is_app_watermark
 from app.redaction import tables as table_tools
 
 PARSER_VERSION = "pdf-1"
@@ -237,7 +237,8 @@ def _parse_text_page(page, page_no: int, file_seq: int, nodes: list[ParsedNode])
     table_boxes = [t.bbox for t in tables]
     lines = [ln for ln in page.extract_text_lines() if ln["text"].strip() and not any(_in_bbox(ln, b) for b in table_boxes)]
     for text, bbox in _merge_blocks(lines):
-        items.append((bbox[1], "block", (text, bbox)))
+        if not is_app_watermark(text):
+            items.append((bbox[1], "block", (text, bbox)))
 
     items.sort(key=lambda it: it[0])
     block_no = table_no = 0
@@ -364,7 +365,7 @@ def _parse_scanned_page(pdfium_doc, page_no: int, file_seq: int, nodes: list[Par
     items = [(t.top, "table", t) for t in tables]
     for block in ocr.merge_lines(rest):
         text, bbox, conf = ocr.block_of(block)
-        if not overlaps(bbox):
+        if not overlaps(bbox) and not is_app_watermark(text):
             items.append((bbox[1], "block", (text, bbox, conf)))
     items.sort(key=lambda it: it[0])
     confs: list[float] = []

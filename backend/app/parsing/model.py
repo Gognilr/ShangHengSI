@@ -3,6 +3,7 @@
 各格式的解析器（DOCX、XLSX、PDF、图片）都输出 ParsedFile；pipeline 把节点写入 doc_nodes。
 节点 text 是原文（入库时加密）；自动编号产生的编号只放在 clause_no，不放进 text。
 """
+import re
 from dataclasses import dataclass, field
 
 
@@ -84,3 +85,14 @@ def with_clause_no(text: str, clause_no: str | None) -> str:
     if not clause_no or text.startswith(clause_no):
         return text
     return f"{clause_no} {text}"
+
+
+# 扫描 App 水印（扫描全能王每页叠的“3亿人都在用的扫描App”“由扫描全能王扫描创建”等）：不是文件内容，解析时整块丢掉，
+# 不进脱敏确认页、不外发、不参与比对。只丢整块都是水印的文字，正文里提到这些字样的句子不受影响。
+_APP_WATERMARK = re.compile(r"(?:CS|由|扫描全能王|全能扫描王|扫描创建|CamScanner|\d*亿人都在用的扫描App)+", re.I)
+_MARK_STRIP = re.compile(r"[\s\W_]+")
+
+
+def is_app_watermark(text: str) -> bool:
+    key = _MARK_STRIP.sub("", text or "")
+    return bool(key) and _APP_WATERMARK.fullmatch(key) is not None

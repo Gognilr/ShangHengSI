@@ -476,3 +476,10 @@ def test_scanner_app_watermark_not_image_clue():
              "b": [(2, "F2-PG1", 1, "CamScanner", "paragraph")]}
     assert _scanner_marks(rows, files, nodes) == {(1, "logo"), (2, "logo")}
     assert _scanner_marks(rows, files, {}) == set()  # 没有扫描 App 标记：每页重复的抬头标识仍比对
+
+
+def test_app_watermark_text_dropped_at_parse():
+    """扫描 App 水印整块丢掉；正文里提到 App 名称的句子保留。"""
+    from app.parsing.model import is_app_watermark
+    assert all(map(is_app_watermark, ["3亿人都在用的扫描App", "CS 扫描全能王", "由 扫描全能王 扫描创建"]))
+    assert not is_app_watermark("本合同扫描件由扫描全能王生成，以原件为准。")
