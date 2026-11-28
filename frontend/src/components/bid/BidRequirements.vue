@@ -17,7 +17,7 @@ import BidInvitees from './BidInvitees.vue'
 
 /** 招标文件与条款抽屉（V35-F-05）：受邀单位、条款清单与完整性计数（V35-E-01：关键参数撤下，★ / 否决条款上带比对参数）。快捷键：J / K 上下、X 停用、E 改文字。 */
 const props = defineProps<{ projectId: string; policy: 'ai' | 'local_only'; disabled: boolean; tenderKey: string }>()
-const emit = defineEmits<{ changed: [] }>()
+const emit = defineEmits<{ changed: []; confirmed: [] }>()
 
 const data = ref<BidRequirements>(), error = ref(''), saving = ref(false)
 const sharing = ref<string | null>(null)
@@ -118,7 +118,7 @@ async function assist(action: 'start' | 'confirm' | 'cancel') {
   if (await act(() => bidApi.assist(props.projectId, action)) && action === 'confirm') view.value = 'original'
 }
 async function saveInvitees(names: string[]) { await act(() => bidApi.invitees(props.projectId, names)) }
-async function confirmList() { await act(() => bidApi.confirm(props.projectId)) }
+async function confirmList() { if (await act(() => bidApi.confirm(props.projectId))) emit('confirmed') }
 
 function locate(item: BidRequirement) { current.value = item.id; focus.value = item.locs[0] ?? null }
 function onKey(event: KeyboardEvent) {

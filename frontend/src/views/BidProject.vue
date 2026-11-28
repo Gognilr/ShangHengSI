@@ -2,7 +2,7 @@
 import SiNotice from '@/components/ui/SiNotice.vue'
 // 标书初审 · 项目页（澄明 8.5 ②）：页头（面包屑、项目名、信息徽标、操作）→ 招标文件卡 → 一行进度（只在这一处）→ 投标人卡片网格
 // → 检查中只显示进度、不出结论 → 结果出来后主从两栏（问题清单 + 证据）。条款与各家文件在右侧抽屉里看和改。
-import { computed, onBeforeUnmount, provide, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { BookOpen, Calendar, ChevronLeft, ChevronRight, Download, FolderOpen, ListChecks, Lock, Play, Plus, RefreshCw, Tags, UploadCloud, Users } from '@lucide/vue'
@@ -206,7 +206,20 @@ const startBlock = computed(() => {
   return p.bidders.length < 2 ? '只有 1 家时只做符合性检查' : ''
 })
 const canStart = computed(() => !!project.value && project.value.stage === 'ready' && !pending.value && (!startBlock.value || startBlock.value.startsWith('只有')))
-async function startCheck() { await mutate(() => bidApi.startCheck(id.value)); selected.value = '' }
+async function startCheck() { startGlow.value = false; await mutate(() => bidApi.startCheck(id.value)); selected.value = '' }
+// 条款清单确认后关掉抽屉，“开始检查”按钮亮几下光晕，提示下一步（还不能开始时由按钮旁的说明提示缺什么）
+const startGlow = ref(false)
+let glowTimer = 0
+async function termsConfirmed() {
+  tenderOpen.value = false
+  await load(false)
+  await nextTick()
+  if (!canStart.value) return
+  window.clearTimeout(glowTimer)
+  startGlow.value = true
+  glowTimer = window.setTimeout(() => { startGlow.value = false }, 3600)
+}
+onBeforeUnmount(() => window.clearTimeout(glowTimer))
 async function refreshCheck() { await mutate(() => bidApi.refreshCheck(id.value), true) }
 const reopenBlock = computed(() => ['preparing', 'running'].includes(project.value?.model.state ?? ''))
 // 重新检查：退回待开标后立即再检查一遍；“不是问题”保留，模型补查结果清掉
@@ -375,7 +388,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         <h1 :title="project.title">{{ project.title }}</h1>
         <div class="acts">
           <span v-if="startBlock && phase === 'materials'" class="why">{{ startBlock }}</span>
-          <el-button v-if="phase === 'materials'" type="primary" :disabled="!canStart" @click="startCheck"><Play :size="16" :stroke-width="1.75" />开始检查</el-button>
+          <el-button v-if="phase === 'materials'" type="primary" :class="{ 'start-glow': startGlow }" :disabled="!canStart" @click="startCheck"><Play :size="16" :stroke-width="1.75" />开始检查</el-button>
           <template v-else-if="phase === 'results'">
             <el-button :disabled="pending || reopenBlock" @click="recheck"><RefreshCw :size="16" :stroke-width="1.75" />重新检查</el-button>
             <el-button type="primary" :loading="exporting" :disabled="!auth.can('use.export')" :title="auth.can('use.export') ? '' : '当前账号没有导出权限'" @click="exportReport"><Download :size="16" :stroke-width="1.75" />导出问题清单</el-button>
@@ -467,7 +480,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
           <UploadCloud :size="18" :stroke-width="1.75" /><p class="si-drop-title">{{ tenderFiles.length ? '加入答疑、补遗或澄清文件' : '拖入招标文件，或点击选择' }}</p>
         </div>
       </section>
-      <BidRequirements v-if="tenderKey" :project-id="id" :policy="project.policy" :disabled="blocked" :tender-key="tenderKey" @changed="load(false)" />
+      <BidRequirements v-if="tenderKey" :project-id="id" :policy="project.policy" :disabled="blocked" :tender-key="tenderKey" @changed="load(false)" @confirmed="termsConfirmed" />
       <p v-else class="hint d-wait">{{ project.busy ? '正在读取招标文件…读取完后自动列出 ★、否决与“必须 / 不得”条款。' : '加入招标文件后，系统自动列出 ★、否决与“必须 / 不得”条款，由你核对确认。' }}</p>
     </el-drawer>
 
@@ -518,6 +531,10 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
 </template>
 
 <style scoped>
+/* 条款确认后“开始检查”的光晕：向外扩散三次；特效关闭时只显示静态描边 */
+.start-glow { animation: start-glow 1.2s var(--si-ease-out) 3; }
+@keyframes start-glow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--si-brand) 50%, transparent); } 100% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--si-brand) 0%, transparent); } }
+:global(html[data-fx="off"]) .start-glow { animation: none; box-shadow: var(--si-ring); }
 /* 工作区：内容宽 1200，1440 宽时投标人每行 4 张 */
 .bidp { max-width: 1280px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; }
 .crumb { display: flex; align-items: center; gap: 4px; font: var(--si-font-meta); color: var(--si-ink-3); }
