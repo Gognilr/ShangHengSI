@@ -158,11 +158,16 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKey); window.c
 const aiEl = ref<HTMLElement>()
 // 切换轮次时回到顶部
 watch(() => props.run?.id, () => { if (aiEl.value) aiEl.value.scrollTop = 0; reqOpen.value = false })
-// 画布点了标注：问题栏滚到该卡片
+// 选中（画布点标注、采纳 / 忽略后跳下一条、↑↓）：展开的卡片顶部对齐问题栏顶部。
+// 展开后的卡片常比可视区高，按“最近”滚动会停在半截，位置不可预期
 watch(() => props.selectedId, async (id) => {
-  if (!id) return
+  const zone = aiEl.value
+  if (!id || !zone) return
   await nextTick()
-  aiEl.value?.querySelector<HTMLElement>(`[data-finding="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest', behavior: fx.value === 'off' ? 'auto' : 'smooth' })
+  const card = zone.querySelector<HTMLElement>(`[data-finding="${CSS.escape(id)}"]`)
+  if (!card) return
+  const top = card.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - parseFloat(getComputedStyle(zone).paddingTop)
+  zone.scrollTo({ top: Math.max(0, top), behavior: fx.value === 'off' ? 'auto' : 'smooth' })
 })
 </script>
 
