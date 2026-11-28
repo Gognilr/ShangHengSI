@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>商衡SI 说明书插图</title>
+<style>
+/* 说明书插图源文件（离线资产，配色取衡线规范）。用 Edge 打开后按 id 截图：fig-deploy、fig-flow、fig-egress */
+:root{--ink:#0E1726;--ink2:#334155;--ink3:#5E6B7E;--ink4:#94A0B2;--hair:#C9D2DD;--canvas:#F6F8FB;
+--brand:#078A76;--brand2:#10A58C;--tint:#E6F7F2;--bline:#A6EAD9;--ai:#6D5BF6;--ai-soft:#F1EEFF;--ai-line:#CFC7FF;
+--warn:#8F4F00;--warn-soft:#FFF5DD;--danger:#B4232F;--danger-soft:#FFEEEF;--grey:#EEF2F6}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#fff;font-family:"Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;color:var(--ink);padding:20px}
+.fig{position:relative;background:var(--canvas);border-radius:18px;margin-bottom:40px;overflow:hidden}
+.b{position:absolute;border-radius:14px;background:#fff;border:2px solid var(--hair);padding:12px 16px;font-size:20px;line-height:1.45;box-shadow:0 4px 14px rgba(14,23,38,.06)}
+.b h4{font-size:22px;margin-bottom:2px}.b small{display:block;font-size:16px;color:var(--ink3)}
+.b.l{border-color:var(--bline)}.b.l h4{color:var(--brand)}
+.b.m{border-color:var(--ai-line);background:var(--ai-soft)}.b.m h4{color:var(--ai)}
+.b.g{border-style:dashed;background:#fff}
+.b.r{border-color:#FFC9CC;background:var(--danger-soft)}.b.r h4{color:var(--danger)}
+.zone{position:absolute;border-radius:18px;border:2px dashed var(--ink4)}
+.zone>span{position:absolute;left:18px;top:-15px;background:var(--canvas);padding:0 10px;font-size:18px;font-weight:700;color:var(--ink2)}
+.pill{position:absolute;font-size:15px;font-weight:700;padding:3px 10px;border-radius:12px;white-space:nowrap}
+.pill.m{background:var(--ai);color:#fff}.pill.l{background:var(--brand2);color:#fff}.pill.w{background:#fff;border:1.5px solid var(--hair);color:var(--ink2)}
+.lab{position:absolute;font-size:16px;color:var(--ink3);white-space:nowrap;background:var(--canvas);padding:0 6px}
+svg.ov{position:absolute;inset:0;pointer-events:none}
+.title{position:absolute;left:28px;top:20px;font-size:22px;font-weight:700;color:var(--ink2)}
+.n{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--brand2);color:#fff;font-size:16px;font-weight:700;margin-right:8px;vertical-align:2px}
+.n.m{background:var(--ai)}
+</style>
+</head>
+<body>
+
+<!-- 图 1 部署拓扑 1600×900 -->
+<div class="fig" id="fig-deploy" style="width:1600px;height:900px">
+  <div class="zone" style="left:290px;top:60px;width:930px;height:800px;border-color:var(--brand2)"><span style="color:var(--brand)">公司内网 · PVE 虚拟机（Ubuntu Server 26.04）</span></div>
+  <div class="b" style="left:30px;top:385px;width:200px"><h4>员工电脑</h4><small>Edge 浏览器<br>局域网 · HTTPS</small></div>
+  <div class="b l" style="left:330px;top:385px;width:190px"><h4>web</h4><small>Caddy · 界面与 HTTPS<br>唯一对外端口 80/443</small></div>
+  <div class="b l" style="left:590px;top:130px;width:250px"><h4>app</h4><small>FastAPI · 全部接口<br>追问与助手回复</small></div>
+  <div class="b l" style="left:590px;top:430px;width:250px"><h4>worker</h4><small>解析 · 文字识别 · 本地校验<br>脱敏 · 审核 · 备份 · 清理</small></div>
+  <span class="pill m" style="left:742px;top:118px">模型网关</span>
+  <span class="pill m" style="left:742px;top:418px">模型网关</span>
+  <div class="b l" style="left:590px;top:280px;width:250px;padding:8px 16px"><h4>db</h4><small>PostgreSQL 16 + pgvector<br>数据 · 任务队列 · 向量</small></div>
+  <div class="b" style="left:910px;top:500px;width:280px"><h4>原件卷</h4><small>原件、录音（AES-256-GCM 加密）</small></div>
+  <div class="b" style="left:910px;top:620px;width:280px"><h4>备份目录</h4><small>每日加密备份，默认留 7 份</small></div>
+  <div class="zone" style="left:320px;top:690px;width:540px;height:140px;border-color:#E5484D"><span style="color:var(--danger)">断网容器 · 不接任何网络</span></div>
+  <div class="b g" style="left:340px;top:718px;width:160px"><h4 style="font-size:19px">converter</h4><small>旧格式转换<br>录音解码</small></div>
+  <div class="b g" style="left:515px;top:718px;width:160px"><h4 style="font-size:19px">transcriber</h4><small>录音转写<br>（可选）</small></div>
+  <div class="b g" style="left:690px;top:718px;width:160px"><h4 style="font-size:19px">translator</h4><small>本地翻译<br>（可选）</small></div>
+  <div class="b m" style="left:1290px;top:110px;width:280px"><h4>云端大模型</h4><small>OpenAI 兼容接口<br>只收到脱敏后的文本</small></div>
+  <div class="b g" style="left:1290px;top:330px;width:280px"><h4>国家法律法规数据库</h4><small>法规同步 · 默认关闭<br>只下载公开法规</small></div>
+  <div class="b g" style="left:1290px;top:620px;width:280px"><h4>异地备份</h4><small>运维定时拉取（必做）</small></div>
+  <svg class="ov" viewBox="0 0 1600 900"><defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5E6B7E"/></marker>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6D5BF6"/></marker></defs>
+    <g stroke="#5E6B7E" stroke-width="2.5" fill="none" marker-end="url(#a1)">
+      <path d="M232 440H326"/><path d="M522 420 C556 420 556 180 586 180"/><path d="M715 244V276"/><path d="M715 428V392"/>
+      <path d="M842 500 C876 500 876 540 906 540"/><path d="M842 520 C870 520 870 660 906 660"/><path d="M715 545V686"/></g>
+    <g stroke="#6D5BF6" stroke-width="3" fill="none" marker-end="url(#a2)"><path d="M842 170H1286"/><path d="M842 455 C1060 455 1080 215 1286 205"/></g>
+    <g stroke="#94A0B2" stroke-width="2.5" stroke-dasharray="8 6" fill="none" marker-end="url(#a1)"><path d="M842 480 C1080 480 1100 380 1286 380"/><path d="M1192 660H1286"/></g>
+  </svg>
+  <span class="lab" style="left:238px;top:412px">HTTPS</span>
+  <span class="lab" style="left:520px;top:290px">/api</span>
+  <span class="lab" style="left:726px;top:610px">内存盘 /spool</span>
+  <span class="lab" style="left:1000px;top:140px;color:var(--ai);font-weight:700">只经模型网关</span>
+</div>
+
+<!-- 图 2 文件审核处理流程 1600×640 -->
+<div class="fig" id="fig-flow" style="width:1600px;height:640px">
+  <div class="b l" style="left:40px;top:70px;width:250px"><h4><span class="n">1</span>上传</h4><small>校验格式，原件加密保存</small></div>
+  <div class="b l" style="left:350px;top:70px;width:250px"><h4><span class="n">2</span>解析</h4><small>文档节点 + 位置编号<br>扫描件本机文字识别</small></div>
+  <div class="b l" style="left:660px;top:70px;width:250px"><h4><span class="n">3</span>本地校验</h4><small>金额、合计、大小写<br>日期、跨文件一致</small></div>
+  <div class="b l" style="left:970px;top:70px;width:250px"><h4><span class="n">4</span>脱敏</h4><small>规则 + 词典 + 本机模型<br>生成外发文本</small></div>
+  <div class="b l" style="left:1280px;top:70px;width:280px"><h4><span class="n">5</span>用户确认</h4><small>对照原文与模型将看到的<br>选定我方，处理不确定项</small></div>
+  <div class="b l" style="left:40px;top:380px;width:280px"><h4><span class="n">6</span>出口复检</h4><small>模型网关统一检查<br>命中即拦截、不发送</small></div>
+  <div class="b m" style="left:410px;top:380px;width:300px"><h4><span class="n m">7</span>云端审核</h4><small>四组并发 · 五个维度<br>问题边审边出、校验引用</small></div>
+  <div class="b l" style="left:800px;top:380px;width:280px"><h4><span class="n">8</span>本机还原</h4><small>代号换回真实名称<br>未能还原的原样标出</small></div>
+  <div class="b l" style="left:1170px;top:380px;width:390px"><h4><span class="n">9</span>处理与导出</h4><small>采纳 · 忽略 · 追问 · 讨论<br>报告 · 问题清单 · 批注版</small></div>
+  <div class="b" style="left:600px;top:206px;width:370px;border-style:dashed;padding:8px 16px"><h4 style="font-size:19px">外发策略为“不外发”</h4><small>只看本地校验结果，绝不调用模型</small></div>
+  <svg class="ov" viewBox="0 0 1600 640"><defs><marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5E6B7E"/></marker>
+    <marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6D5BF6"/></marker></defs>
+    <g stroke="#5E6B7E" stroke-width="2.5" fill="none" marker-end="url(#b1)">
+      <path d="M292 120H346"/><path d="M602 120H656"/><path d="M912 120H966"/><path d="M1222 120H1276"/>
+      <path d="M1420 182V330H180V376"/><path d="M1082 430H1166"/></g>
+    <g stroke="#6D5BF6" stroke-width="3" fill="none" marker-end="url(#b2)"><path d="M322 430H406"/><path d="M712 430H796"/></g>
+    <g stroke="#94A0B2" stroke-width="2.5" stroke-dasharray="8 6" fill="none" marker-end="url(#b1)"><path d="M785 180V202"/><path d="M180 490V570H1580V125H1566"/></g>
+  </svg>
+  <span class="lab" style="left:620px;top:558px;color:var(--danger)">复检命中：回到确认页处理后再提交</span>
+  <span class="pill m" style="left:330px;top:398px">只含代号</span>
+  <span class="pill l" style="left:716px;top:398px">本机</span>
+</div>
+
+<!-- 图 3 外发链路 1600×760 -->
+<div class="fig" id="fig-egress" style="width:1600px;height:760px">
+  <div class="zone" style="left:30px;top:50px;width:1060px;height:670px;border-color:var(--brand2)"><span style="color:var(--brand)">本机 · 公司内网</span></div>
+  <div class="b l" style="left:60px;top:90px;width:360px"><h4>可以发出（全部先脱敏）</h4><small>· 正文文本、用户消息<br>· 本地检索的公开法条原文<br>· 公司范本条款、知识库片段<br>· 本地校验摘要（不含金额）</small></div>
+  <div class="b r" style="left:60px;top:420px;width:360px"><h4>永不发出</h4><small>· 原文件、图片、录音、声纹<br>· 文件名、会话标题<br>· 对照表、真实名称与金额<br>· 本机计算结果、导出文件</small></div>
+  <div class="b m" style="left:520px;top:90px;width:520px;background:#fff"><h4>模型网关（唯一出口）</h4>
+    <small style="font-size:18px;line-height:2;color:var(--ink2)"><span class="n">1</span>调用上限检查（每模型每月、每人每日）<br><span class="n">2</span>出口复检：对照表 / 名称词条 / 格式与金额 / 人名地址<br><span class="n m">3</span>发送（HTTPS）<br><span class="n">4</span>记录外发记录（脱敏全文，可审计）</small></div>
+  <div class="b l" style="left:520px;top:540px;width:520px"><h4>本机还原</h4><small>回复中的代号按对照表换回真实名称；未能还原的原样标出<br>【算式】在本机计算，结果不发送给模型</small></div>
+  <div class="b m" style="left:1180px;top:140px;width:380px"><h4>云端大模型</h4><small>只看到代号，如 [[ORG_1]]、[[AMT_5]]<br>无工具权限、不联网</small></div>
+  <div class="b r" style="left:520px;top:390px;width:520px;background:#fff;padding:8px 16px"><h4>拦截</h4><small>命中即不发送；只记类别与位置<br>用户在确认页处理后再提交</small></div>
+  <svg class="ov" viewBox="0 0 1600 760"><defs><marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#5E6B7E"/></marker>
+    <marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6D5BF6"/></marker>
+    <marker id="c3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#E5484D"/></marker></defs>
+    <path d="M422 180H516" stroke="#5E6B7E" stroke-width="2.5" fill="none" marker-end="url(#c1)"/>
+    <path d="M1042 200H1176" stroke="#6D5BF6" stroke-width="3" fill="none" marker-end="url(#c2)"/>
+    <path d="M1370 262V590H1046" stroke="#6D5BF6" stroke-width="3" fill="none" marker-end="url(#c2)"/>
+    <path d="M780 338V386" stroke="#E5484D" stroke-width="2.5" stroke-dasharray="8 6" fill="none" marker-end="url(#c3)"/>
+    
+  </svg>
+  <span class="lab" style="left:1060px;top:166px;color:var(--ai);font-weight:700">只含代号</span>
+  <span class="lab" style="left:1380px;top:420px;color:var(--ai)">回复（代号）</span>
+  <span class="lab" style="left:796px;top:348px;color:var(--danger)">复检命中</span>
+  <span class="lab" style="left:530px;top:676px;font-size:17px">界面显示真实名称：问题清单 · 建议条文 · 追问回复 · 导出报告</span>
+</div>
+
+</body>
+</html>
