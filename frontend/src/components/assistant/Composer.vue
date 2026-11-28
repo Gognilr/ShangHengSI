@@ -191,6 +191,11 @@ const reason = computed(() => {
   if (!text.value.trim() && (!props.template || props.template === 'reply' && !fileIds.value.length)) return '请输入问题或粘贴来函'
   return ''
 })
+// 文件处理中：有提问（或模板）才能先提交排队，读完确认后自动续发；空输入时按钮不可用
+const sendBlocked = computed(() => processing.value ? !text.value.trim() && !props.template : !!reason.value)
+const sendTitle = computed(() => processing.value && sendBlocked.value
+  ? (props.session?.status === 'awaiting_confirm' ? '请先确认脱敏；也可以先输入问题，确认后自动发送' : '文件正在本机读取；可以先输入问题，读完并确认后自动发送')
+  : reason.value || '发送（Enter）')
 const modelName = computed(() => modelItems.value.find(m => m.id === modelId.value)?.display_name ?? (modelLoading.value ? '加载模型…' : '选择模型'))
 const modelLocked = computed(() => allowedModels.value.length <= 1 || sending.value || busy.value || props.generating !== null)
 function onModelMenu(visible: boolean) { if (visible) void loadModels(modelId.value) }
@@ -322,7 +327,7 @@ defineExpose({ pick, attach, cancelWaiting })
           </el-dropdown>
           <button v-if="session?.kb_enabled" type="button" class="cp-btn tog" :class="{ on: useKb }" :aria-pressed="useKb" @click="useKb = !useKb"><i class="sw" />知识库</button>
           <button v-if="generating !== null" type="button" class="send stop" aria-label="停止生成" title="停止生成" @click="emit('stop', generating)"><Square :size="12" :stroke-width="2" fill="currentColor" /></button>
-          <button v-else type="button" class="send" :class="{ dim: !!reason && !processing }" aria-label="发送" :title="reason || '发送（Enter）'" :disabled="(!!reason && !processing) || busy || sending" @click="submit"><Loader2 v-if="busy || sending" :size="18" :stroke-width="2" class="spin" /><ArrowUp v-else :size="18" :stroke-width="2.25" /></button>
+          <button v-else type="button" class="send" :class="{ dim: sendBlocked }" aria-label="发送" :title="sendTitle" :disabled="sendBlocked || busy || sending" @click="submit"><Loader2 v-if="busy || sending" :size="18" :stroke-width="2" class="spin" /><ArrowUp v-else :size="18" :stroke-width="2.25" /></button>
         </div>
       </div>
       <p v-if="!waitingText && reason && (text.trim() || template)" class="hint status">{{ reason }}</p>
