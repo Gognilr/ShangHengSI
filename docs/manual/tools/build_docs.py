@@ -192,7 +192,7 @@ def build(name):
                 meta.append(lines[i])
             i += 1
     else:
-        meta = ["| 项目 | 内容 |", "| 适用版本 | V3.6.0 |"]
+        meta = ["| 项目 | 内容 |", "| 适用版本 | V3.6.2 |"]
     for _ in range(6):
         doc.add_paragraph()
     mark = SRC / "manual" / "img" / "brand-mark.png"
