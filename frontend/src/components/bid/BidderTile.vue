@@ -42,6 +42,15 @@ const priceText = computed(() => {
   const unit = p.total.endsWith('%') ? '' : !p.currency || p.currency === 'CNY' ? ' 元' : ` ${p.currency}`
   return `${p.total}${unit}`
 })
+// 含税口径与税率：只显示投标文件中写明的（成对的不含税价、税率、含税价），没写不猜
+const taxText = computed(() => {
+  const p = props.price
+  if (!p?.total || !p.tax_pairs?.length) return ''
+  const pair = p.tax_pairs.find(x => x.gross === p.total || x.net === p.total) ?? (p.tax_pairs.length === 1 ? p.tax_pairs[0] : undefined)
+  if (!pair) return ''
+  const other = pair.gross === p.total ? `不含税 ${pair.net}` : pair.net === p.total ? `含税 ${pair.gross}` : ''
+  return [`税率 ${pair.rate}`, other].filter(Boolean).join(' · ')
+})
 function activate() { if (props.phase === 'results') emit('select'); else emit('open') }
 function drop(event: DragEvent) { over.value = false; if (!props.disabled) emit('drop', event) }
 </script>
@@ -53,7 +62,8 @@ function drop(event: DragEvent) { over.value = false; if (!props.disabled) emit(
       <span class="code" aria-hidden="true">{{ code }}</span>
       <b :title="bidder.name">{{ bidder.short || bidder.name }}</b>
     </div>
-    <span v-if="phase === 'results' && severe !== undefined" class="price" :class="{ none: !price?.total }"><span class="price-k">{{ price?.manual_total ? '唱标价' : '报价' }}</span><b class="num" :title="priceText">{{ priceText }}</b></span>
+    <span v-if="phase === 'results' && severe !== undefined" class="price" :class="{ none: !price?.total }"><span class="price-k">{{ price?.manual_total ? '唱标价' : '报价' }}</span><b class="num" :title="priceText">{{ priceText }}</b><em v-if="price?.tax_basis" class="tax-tag">{{ price.tax_basis }}</em></span>
+    <span v-if="phase === 'results' && severe !== undefined && taxText" class="tax num" :title="taxText">{{ taxText }}</span>
     <span v-else class="lines" aria-hidden="true"><i /><i /><i /></span>
     <span class="meta num">{{ files.length }} 个文件<template v-if="pages"> · {{ pages }} 页</template></span>
     <span v-if="phase === 'results'" class="bc-st">
@@ -88,6 +98,8 @@ html[data-fx="off"] .bc.on, html[data-fx="off"] .bc:hover { transform: none; }
 .price { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin: 2px 0; }
 .price-k { flex: none; color: var(--si-ink-3); font: var(--si-font-caption); }
 .price b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-h4); text-overflow: ellipsis; white-space: nowrap; }
+.tax-tag { flex: none; padding: 0 6px; border-radius: var(--si-radius-badge); background: var(--si-surface-2); color: var(--si-ink-2); font: var(--si-font-badge); font-style: normal; }
+.tax { overflow: hidden; margin-top: -4px; color: var(--si-ink-3); font: var(--si-font-caption); text-overflow: ellipsis; white-space: nowrap; }
 .price.none b { color: var(--si-ink-3); font: var(--si-font-caption); }
 .lines { display: flex; flex-direction: column; gap: 5px; margin: 2px 0; }
 .lines i { display: block; height: 5px; border-radius: 3px; background: var(--si-hair); }
