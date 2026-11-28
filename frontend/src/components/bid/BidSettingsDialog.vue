@@ -39,7 +39,6 @@ function submit() {
   <el-dialog v-model="open" :title="title" width="560px" :close-on-click-modal="!busy" append-to-body>
     <el-form label-position="left" label-width="140px" @submit.prevent="submit">
       <el-form-item label="项目名称"><el-input v-model="form.title" maxlength="255" placeholder="例如：2026 年空压机采购" :disabled="locked" @keyup.enter="submit" /></el-form-item>
-      <div class="pair">
         <el-form-item label="分类" required>
           <el-select v-model="form.category_id" placeholder="选择分类" class="full">
             <el-option v-for="c in choices" :key="c.id" :label="c.enabled ? c.name : `${c.name}（已停用）`" :value="c.id" :disabled="!c.enabled" />
@@ -48,7 +47,6 @@ function submit() {
         <el-form-item label="文件夹">
           <el-tree-select v-model="form.folder_id" :data="folderTree" check-strictly default-expand-all :render-after-expand="false" clearable placeholder="未归档" class="full" />
         </el-form-item>
-      </div>
       <p v-if="listError" class="error">{{ listError }}</p>
       <el-form-item label="开标日期"><el-date-picker v-model="form.opening_date" value-format="YYYY-MM-DD" :clearable="false" :disabled="locked" class="date" /><span class="hint date-note">用于判断有效期、证书是否过期</span></el-form-item>
       <el-form-item label="外发策略">
@@ -70,7 +68,6 @@ function submit() {
 
 <style scoped>
 .date { width: 200px; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .full { width: 100%; }
 .policy:disabled { cursor: not-allowed; opacity: .6; }
 .date-note { margin-left: 12px; }

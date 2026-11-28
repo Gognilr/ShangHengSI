@@ -103,8 +103,11 @@ function badge(m: Menu) { const n = m.key === 'history' || m.key === 'compare' |
 const BADGE_TIP: Record<string, string> = { workbench: '等你确认遮住的会话', review: '等你确认遮住的文件', bid: '等你确认后发送的标书项目', meeting: '等你确认遮住的会议', translate: '等你确认遮住的译稿' }
 let waitTimer: number | undefined
 watch(() => route.path, () => void refreshWaiting())
-onMounted(() => { waitTimer = window.setInterval(() => { if (!document.hidden) void refreshWaiting() }, 60000) })
-onBeforeUnmount(() => window.clearInterval(waitTimer))
+// 近期会话：别处（另一台电脑）的增删改靠这里同步——每分钟看一次，切回本页时立即看一次
+function syncSessions() { if (!document.hidden && auth.can('use.assistant', 'use.review')) void sessions.refresh() }
+function onVisible() { if (!document.hidden) { syncSessions(); void refreshWaiting() } }
+onMounted(() => { waitTimer = window.setInterval(() => { if (!document.hidden) { void refreshWaiting(); syncSessions() } }, 60000); document.addEventListener('visibilitychange', onVisible); window.addEventListener('focus', onVisible) })
+onBeforeUnmount(() => { window.clearInterval(waitTimer); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible) })
 
 // 全局搜索：侧栏按钮或 Ctrl+K（Mac 为 ⌘K）打开
 const searchOpen = ref(false)
