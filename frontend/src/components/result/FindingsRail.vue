@@ -159,15 +159,17 @@ const aiEl = ref<HTMLElement>()
 // 切换轮次时回到顶部
 watch(() => props.run?.id, () => { if (aiEl.value) aiEl.value.scrollTop = 0; reqOpen.value = false })
 // 选中（画布点标注、采纳 / 忽略后跳下一条、↑↓）：展开的卡片顶部对齐问题栏顶部。
-// 展开后的卡片常比可视区高，按“最近”滚动会停在半截，位置不可预期
+// 展开后的卡片常比可视区高，按“最近”滚动会停在半截。
+// 位置按排版（offsetTop）算：上一条收起时卡片列表的移动动画会把后面的卡片暂时平移回旧位置，按屏幕位置算会滚过头
 watch(() => props.selectedId, async (id) => {
   const zone = aiEl.value
   if (!id || !zone) return
   await nextTick()
   const card = zone.querySelector<HTMLElement>(`[data-finding="${CSS.escape(id)}"]`)
   if (!card) return
-  const top = card.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop - parseFloat(getComputedStyle(zone).paddingTop)
-  zone.scrollTo({ top: Math.max(0, top), behavior: fx.value === 'off' ? 'auto' : 'smooth' })
+  let top = 0
+  for (let el: HTMLElement | null = card; el && el !== zone; el = el.offsetParent as HTMLElement | null) top += el.offsetTop
+  zone.scrollTo({ top: Math.max(0, top - parseFloat(getComputedStyle(zone).paddingTop)), behavior: fx.value === 'off' ? 'auto' : 'smooth' })
 })
 </script>
 
@@ -256,7 +258,7 @@ watch(() => props.selectedId, async (id) => {
 .ai-tag svg { color: var(--si-ai); }
 .alert { flex: none; margin: 12px 16px 0; width: auto; }
 .loading { padding: 16px; }
-.zone { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.zone { position: relative; flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
 .zone > .si-zone + .si-zone { margin-top: 0; }
 .sev-switch :deep(.si-segmented) { display: flex; width: 100%; }
 .sev-switch :deep(.si-segmented button) { flex: 1; }
