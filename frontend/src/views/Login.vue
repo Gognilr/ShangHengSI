@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules, InputInstance } from 'element-plus'
-import { Check, EyeOff, HardDrive, Lock, ShieldCheck, Sparkle, Undo2, User } from '@lucide/vue'
+import { BookOpen, Check, EyeOff, HardDrive, Lock, ShieldCheck, Sparkle, Undo2, User } from '@lucide/vue'
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/http'
@@ -202,8 +202,10 @@ const tripAria = STOPS.map((s, i) => `第 ${i + 1} 站 ${s.title}`).join('，')
                 <div class="remember-row"><el-checkbox v-model="remember">记住账号</el-checkbox><span class="hint">密码由浏览器保存</span></div>
                 <el-button type="primary" native-type="submit" :loading="submitting" class="submit">登录</el-button>
               </el-form>
-              <p class="account-help">账号由管理员统一分发，忘记密码请联系管理员重置</p>
-              <a class="cert-link" :href="certUrl" target="_blank" rel="noopener"><ShieldCheck :size="16" :stroke-width="1.75" /><span>下载根证书</span><span class="hint">浏览器提示“不安全”时安装</span></a>
+              <div class="cert-link">
+                <a :href="certUrl" target="_blank" rel="noopener"><ShieldCheck :size="16" :stroke-width="1.75" /><span>下载根证书</span></a>
+                <a href="/manual.pdf" download="系统使用说明书.pdf"><BookOpen :size="16" :stroke-width="1.75" /><span>下载使用说明</span></a>
+              </div>
             </div>
             <div v-else key="s2" class="step">
               <ol class="steps" aria-label="步骤">
@@ -278,10 +280,9 @@ h1 { font: var(--si-font-title-lg); margin: 0 0 6px; }
 .login-form :deep(.el-form-item) { margin-bottom: 22px; }
 .remember-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 8px; margin: -4px 0 20px; }
 .submit { width: 100%; height: 44px; }
-.account-help { font: var(--si-font-meta); color: var(--si-ink-3); margin: 20px 0 0; }
-.cert-link { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--si-hair); color: var(--si-blue-ink); font: var(--si-font-label); text-decoration: none; }
-.cert-link:hover > span:first-of-type { text-decoration: underline; }
-.cert-link .hint { font: var(--si-font-caption); color: var(--si-ink-3); }
+.cert-link { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--si-hair); }
+.cert-link a { display: inline-flex; align-items: center; gap: 6px; color: var(--si-blue-ink); font: var(--si-font-label); text-decoration: none; }
+.cert-link a:hover > span { text-decoration: underline; }
 
 /* 第二步 */
 .steps { display: flex; align-items: center; gap: 0; margin: 0 0 20px; padding: 0; list-style: none; font: var(--si-font-label-sm); color: var(--si-ink-3); }
