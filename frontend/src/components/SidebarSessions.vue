@@ -9,6 +9,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useAuthStore } from '@/stores/auth'
 import SiTrip from '@/components/ui/SiTrip.vue'
 import { rowTrip } from '@/utils/trip'
+import { confirmRemoveSession } from '@/utils/removeSession'
 
 const store = useSessionsStore(), auth = useAuthStore()
 const route = useRoute(), router = useRouter()
@@ -25,10 +26,8 @@ async function rename(item: SessionItem) {
 }
 
 async function remove(item: SessionItem) {
-  try { await ElMessageBox.confirm(`将删除“${item.title}”及其文件、消息与对照表，无法恢复。`, '删除会话', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }) }
-  catch { return }
   try {
-    await assistantApi.remove(item.id)
+    if (!await confirmRemoveSession(item)) return
     if (item.id === current.value) await router.push(auth.can('use.assistant') ? '/assistant' : '/review')
     await store.refresh()
   } catch (e) { fail(e) }

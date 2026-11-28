@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { Ellipsis, PanelRight, Sparkle } from '@lucide/vue'
 import { assistantApi, isReviewSession, type Session, type SessionItem, type Message, type MessageSource, type Template } from '@/api/assistant'
+import { confirmRemoveSession } from '@/utils/removeSession'
 import { ApiError } from '@/api/http'
 import NotFound from '@/views/NotFound.vue'
 import type { Finding } from '@/api/runs'
@@ -205,9 +206,7 @@ function openFile(file: { id: string; media: unknown; confirmed_at: string | nul
 }
 function addFiles(files: File[]) { void filePanel.value?.addList(files) }
 async function remove(item: SessionItem) {
-  try { await ElMessageBox.confirm(`将删除“${item.title}”及其文件、消息与对照表，无法恢复。`, '删除会话', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }) }
-  catch { return }
-  try { await assistantApi.remove(item.id); if (item.id === id.value) await router.push('/assistant'); void sessions.refresh() }
+  try { if (!await confirmRemoveSession(item)) return; if (item.id === id.value) await router.push('/assistant'); void sessions.refresh() }
   catch (e) { error.value = failure(e) }
 }
 async function rename() {
