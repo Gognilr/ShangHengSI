@@ -31,7 +31,6 @@ import RequirementsDrawer from '@/components/RequirementsDrawer.vue'
 import SplitHandle, { readStoredWidth } from '@/components/SplitHandle.vue'
 import SiCount from '@/components/ui/SiCount.vue'
 import SiIsland from '@/components/ui/SiIsland.vue'
-import SiSegmented from '@/components/ui/SiSegmented.vue'
 import SiStack, { type StackSeg } from '@/components/ui/SiStack.vue'
 import { usePendingDeletes } from '@/composables/usePendingDeletes'
 import { useTaskPoll } from '@/composables/useTaskPoll'
@@ -456,7 +455,6 @@ const failedFiles = computed(() => visibleFiles.value.some(f => f.parse_state ==
 
 // ---- 签约方 ----
 const ourCount = computed(() => parties.value.filter(p => p.is_our_party).length)
-const ourId = computed(() => parties.value.find(p => p.is_our_party)?.id ?? '')
 watch(() => { const p = parties.value.find(x => x.is_our_party); return p ? `${p.id}:${p.role_label}` : '' }, () => emit('our', parties.value.find(p => p.is_our_party) ?? null), { immediate: true })
 // session-review：立场或所选文件变化后重取审核外发预览，与实际发送一致
 watch(() => [props.stance, (props.fileIds ?? []).join(','), props.scope, props.mainId].join('|'), () => {
@@ -625,7 +623,9 @@ function onAdjust(item: RedactionItemPos, start: number, end: number, category?:
 // ---- 签约方卡片：名称和简称可改、可删（问题 15）：改过的写法登记为同一代号的变体 ----
 const partyName = (p: Party) => p.surfaces?.[0] ?? p.name
 const partyShorts = (p: Party) => (p.surfaces ?? []).slice(1)
-const partyMark = (p: Party) => Array.from(p.role_label || p.code.replace(/[[\]]/g, ''))[0] ?? '方'
+// 角色是“其他”时没有区分度，改取名称首字
+const roleShown = (p: Party) => (p.role_label && p.role_label !== '其他' ? p.role_label : '')
+const partyMark = (p: Party) => (p.is_our_party ? '我' : Array.from(roleShown(p) || partyName(p) || '方')[0].toUpperCase())
 const nameDraft = ref('')
 const shortDraft = ref('')
 function editParty(p: Party) {
@@ -671,11 +671,14 @@ async function removePartyCard(p: Party) {
   parties.value = parties.value.filter(x => x.id !== p.id)
   void partyChange(() => redactionApi.removeParty(props.task.id, p.id))
 }
-const ourOptions = computed(() => {
-  const labels = parties.value.map(p => p.role_label || p.code)
-  if (parties.value.length > 3 || new Set(labels).size !== labels.length) return null
-  return [...parties.value.map(p => ({ value: p.id, label: p.role_label || p.code })), ...(assistant.value && !props.requireOurParty ? [{ value: '', label: '都不是' }] : [])]
-})
+// 直接在签约方行上点“设为我方”；可不设我方的场景再点一次取消
+const canClearOur = computed(() => assistant.value && !props.requireOurParty)
+function toggleOur(p: Party) {
+  if (!p.is_our_party) setOur(p.id)
+  else if (canClearOur.value) setOur('')
+}
+// 拿不准的：分别数遮住与保留，回执如实反映用户的选择
+const suspectsKept = computed(() => suspects.value.filter(isKept).length)
 
 // ---- 外发回执 ----
 const replacedTotal = computed(() => Object.values(summary.value).reduce((sum, n) => sum + n, 0))
@@ -828,8 +831,9 @@ defineExpose({ focusConfirm })
               <span class="party-code" :class="{ me: p.is_our_party }">{{ partyMark(p) }}</span>
               <div class="party-main">
                 <b :title="partyName(p)">{{ partyName(p) }}</b>
-                <span>{{ p.role_label }} · <span class="code-chip">{{ p.code }}</span><template v-if="partyShorts(p).length"> · 简称：{{ partyShorts(p).join('、') }}</template><em v-if="p.is_our_party"> · 我方</em></span>
+                <span><template v-if="roleShown(p)">{{ roleShown(p) }} · </template><span class="code-chip">{{ p.code }}</span><template v-if="partyShorts(p).length"> · 简称：{{ partyShorts(p).join('、') }}</template></span>
               </div>
+              <button type="button" class="our-btn" :class="{ on: p.is_our_party }" :aria-pressed="p.is_our_party" :disabled="waiting || (p.is_our_party && !canClearOur)" :title="p.is_our_party ? (canClearOur ? '再点一次取消我方' : '') : '把这一方设为我方'" @click="toggleOur(p)"><Check v-if="p.is_our_party" :size="13" :stroke-width="2.25" aria-hidden="true" />{{ p.is_our_party ? '我方' : '设为我方' }}</button>
               <button type="button" class="ibtn" :aria-label="`编辑 ${partyName(p)}`" :aria-expanded="editingParty === p.id" :disabled="waiting" @click="editParty(p)"><Pencil :size="15" :stroke-width="1.75" /></button>
             </div>
             <div v-if="editingParty === p.id" class="party-edit">
@@ -846,16 +850,11 @@ defineExpose({ focusConfirm })
                 <el-select :model-value="p.org_type ?? '类型未知'" filterable allow-create default-first-option size="small" :disabled="waiting" aria-label="类型" @change="(v: string) => setField(p.id, 'org_type', v)"><el-option v-for="t in ORG_TYPES" :key="t" :label="t" :value="t" /></el-select>
               </div>
               <div class="pe-foot">
-                <el-button v-if="!ourOptions && !p.is_our_party" size="small" :disabled="waiting" @click="setOur(p.id)">设为我方</el-button>
                 <el-button size="small" text type="danger" :disabled="locked" @click="removePartyCard(p)"><Trash2 :size="14" :stroke-width="1.75" />删掉这一方</el-button>
               </div>
             </div>
           </div>
-          <div v-if="parties.length" class="our-row" :class="{ 'si-required-empty': ourMissing }">
-            <span class="hint">我方是</span>
-            <SiSegmented v-if="ourOptions" :model-value="ourId" :options="ourOptions" size="small" ariaLabel="我方是" @update:model-value="setOur(String($event))" />
-            <span v-else class="hint">{{ ourCount ? parties.find(p => p.is_our_party)?.role_label : '点签约方的编辑按钮设为我方' }}</span>
-          </div>
+          <p v-if="parties.length && ourMissing" class="hint our-tip">在我方那一行点“设为我方”</p>
         </section>
 
         <!-- ② 需要你看一眼的 -->
@@ -968,7 +967,7 @@ defineExpose({ focusConfirm })
           <li v-if="assistant && !requireOurParty" class="ok"><CircleCheck :size="15" :stroke-width="1.75" />{{ ourCount ? '已选一方为我方' : '不设我方也可以确认' }}</li>
           <li v-else :class="ourCount === 1 ? 'ok' : 'todo'"><component :is="ourCount === 1 ? CircleCheck : CircleDot" :size="15" :stroke-width="1.75" /><template v-if="ourCount === 1">已选我方</template><template v-else-if="!parties.length">没有识别到签约方，暂时不能交给模型</template><button v-else type="button" class="cond-link" @click="nudgeField(partiesSec)">还没选哪一方是我方</button></li>
           <li v-if="parties.length" class="ok"><CircleCheck :size="15" :stroke-width="1.75" />签约方已列出，可在上方核对</li>
-          <li v-if="suspects.length" class="info"><CircleDot :size="15" :stroke-width="1.75" />{{ suspects.length }} 处拿不准的已默认遮住</li>
+          <li v-if="suspects.length" class="info"><CircleDot :size="15" :stroke-width="1.75" /><template v-if="suspectsKept">{{ suspects.length }} 处拿不准的：遮住 {{ suspects.length - suspectsKept }} 处，保留原文 {{ suspectsKept }} 处</template><template v-else>{{ suspects.length }} 处拿不准的已默认遮住</template></li>
           <li v-if="sessionReview && blocker" class="todo"><CircleDot :size="15" :stroke-width="1.75" /><button v-if="blockerChoice" type="button" class="cond-link" @click="emit('nudge')">{{ blocker }}</button><template v-else>{{ blocker }}</template></li>
           <li v-if="leaksShown && leaksPending" class="todo"><CircleDot :size="15" :stroke-width="1.75" /><button type="button" class="cond-link" @click="nudgeField(leakBox)">还有 {{ leaksPending }} 处拦截未处理</button></li>
           <li v-if="waiting || parsingFiles" class="todo"><CircleDot :size="15" :stroke-width="1.75" />文件正在读取，请稍候</li>
@@ -1056,7 +1055,13 @@ defineExpose({ focusConfirm })
 .short-input { flex: 1 1 96px !important; min-width: 96px; }
 .pe-foot { display: flex; justify-content: space-between; gap: 8px; }
 .pe-foot :deep(.el-button + .el-button) { margin-left: 0; }
-.our-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--si-hair-faint); border-radius: 0; }
+.our-tip { margin: 10px 0 0; }
+.our-btn { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 10px; border: 1px solid var(--si-hair); border-radius: var(--si-radius-tag); background: var(--si-surface-1); color: var(--si-ink-2); font: var(--si-font-caption); cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out), color var(--si-d2) var(--si-ease-out); }
+.our-btn:hover:not(:disabled) { border-color: var(--si-brand); color: var(--si-brand); }
+.our-btn.on { border-color: var(--si-brand); background: var(--si-brand); color: var(--si-white); font-weight: 600; }
+.our-btn:disabled { cursor: default; }
+.our-btn.on:disabled { opacity: 1; }
+.our-btn:focus-visible { outline: 2px solid var(--si-focus); outline-offset: 1px; }
 /* 需要你看一眼的 */
 .unsure-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
 .unsure { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--si-radius-control); cursor: pointer; transition: background-color var(--si-d2) var(--si-ease-out); }
