@@ -183,7 +183,7 @@ const tripAria = STOPS.map((s, i) => `第 ${i + 1} 站 ${s.title}`).join('，')
             </div>
           </div>
         </div>
-        <footer><span>商衡SI V3.6.1</span><span>仅限公司内网使用</span></footer>
+        <footer><span>商衡SI V3.6.2</span><span>仅限公司内网使用</span></footer>
       </section>
       <div class="login-pane">
         <SiLogo class="pane-logo" size="greet" />
