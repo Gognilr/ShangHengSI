@@ -219,7 +219,7 @@ def test_t47_8_remove_confirmed_or_unconfirmed(files_dir, session_client, db_ses
         key = db.get(TaskFile, uuid.UUID(remove["id"])).storage_key
         db.commit()
     r = c.delete(f"{BASE}/{tid}/files/{remove['id']}", headers=h)
-    assert r.status_code == 200 and r.json()["status"] == "active"
+    assert r.status_code == 200 and r.json()["status"] == "active" and r.json()["title"] == "保留.docx"
     with pytest.raises(FileNotFoundError):
         storage.load_original(key)
     # V31-U5F-04：已确认的文件也能移除，对照表保留，历史回复仍能还原
@@ -227,7 +227,8 @@ def test_t47_8_remove_confirmed_or_unconfirmed(files_dir, session_client, db_ses
     with db_sessionmaker() as db:
         before = load_redaction_map(db, uuid.UUID(tid))
     r = c.delete(f"{BASE}/{tid}/files/{keep['id']}", headers=h)
-    assert r.status_code == 200 and r.json()["files"] == []
+    # 删光文件、没有问答：回到空白会话，历史记录不再列它
+    assert r.status_code == 200 and r.json()["files"] == [] and r.json()["title"] == "新会话"
     with db_sessionmaker() as db:
         assert load_redaction_map(db, uuid.UUID(tid)).items() >= before.items()
 

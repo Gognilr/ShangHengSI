@@ -975,6 +975,10 @@ def remove_file(db: Session, task: Task, file: TaskFile) -> SessionDetail:
     from app.tasks.pipeline import session_checks
     session_checks(db, task)
     remaining = _files(db, task)
+    # 删光文件且没有问答、没有审核：会话回到空白，标题还原为“新会话”，历史记录与近期会话不再列它；再上传时按新文件命名
+    if not remaining and not db.scalar(select(exists().where(AssistantMessage.task_id == task.id))) \
+            and not db.scalar(select(exists().where(ReviewRun.task_id == task.id))):
+        task.title = "新会话"
     if not any(f.confirmed_at is None for f in remaining):
         task.status, task.error_message = "active", None
     elif all(f.parser_version for f in remaining if f.confirmed_at is None):
