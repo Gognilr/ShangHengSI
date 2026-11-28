@@ -178,7 +178,8 @@ def get(task: Task = Depends(owned), db: Session = Depends(get_db)):
 
 @router.patch("/{id}")
 def update(body: ProjectInput, user: User = Depends(require("use.bid")), task: Task = Depends(owned), db: Session = Depends(get_db)):
-    """名称、开标日期、外发策略只在开始初审前可改；分类与文件夹任何阶段都可改（只改请求中给出的项）。"""
+    """名称、开标日期、外发策略只在开始初审前可改；分类与文件夹任何阶段都可改（只改请求中给出的项）。
+    例外：本地检查完成后可由“只在本机处理”改为“可选模型补查”，不必退回修改材料；补查仍须逐段确认后才发送。"""
     from app.bid import extract, model, requirements
 
     task = _lock_owned(db, task)
@@ -187,7 +188,8 @@ def update(body: ProjectInput, user: User = Depends(require("use.bid")), task: T
     if policy_changed:
         extract.require_idle(project)
         model.require_idle(project)
-    if policy_changed or (body.title, body.opening_date) != (task.title, project.opening_date):
+    meta_changed = (body.title, body.opening_date) != (task.title, project.opening_date)
+    if meta_changed or (policy_changed and body.policy != "ai"):
         service.require_editable(project)
         task.title, project.opening_date = body.title, body.opening_date
     if policy_changed:
@@ -195,6 +197,12 @@ def update(body: ProjectInput, user: User = Depends(require("use.bid")), task: T
             raise AppError(409, "MODEL_JOBS_PENDING", "旧模型作业尚未收尾，请稍后再启用模型")
         task.policy = body.policy
         service.clear_model_work(db, project)
+        if body.policy == "ai":
+            # 只在本机处理时，本该交模型的 ★ / 否决条款记成了人工核对；改为可补查后恢复，补查卡才能列出它们
+            for row in db.scalars(select(BidRequirement).where(BidRequirement.task_id == task.id, BidRequirement.source != "manual",
+                                                               BidRequirement.method == "manual")):
+                if requirements.default_method(row.group, crypto.decrypt_text(row.text_enc), "ai") == "model":
+                    row.method = "model"
     if "category_id" in body.model_fields_set:
         category_id = folders.choose_category(db, body.category_id, project.category_id)
         if project.category_id != category_id:

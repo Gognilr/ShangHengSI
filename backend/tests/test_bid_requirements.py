@@ -221,6 +221,10 @@ def test_switch_to_local_invalidates_receipt_and_normalizes_requirements(owner, 
     assert next(i for i in patched.json()["items"] if i["id"] == row["id"])["method"] == "manual"
 
     assert c.patch(base, headers=h, json={**BODY, "policy": "ai"}).status_code == 200
+    # 改回可补查：系统列出的 ★ / 否决条款恢复交模型，手工行仍人工核对
+    items = c.get(base + "/requirements").json()["items"]
+    assert any(i["method"] == "model" for i in items if i["source"] != "manual")
+    assert next(i for i in items if i["id"] == row["id"])["method"] == "manual"
     assert c.post(base + "/assist/confirm", headers=h).json()["code"] == "EXTRACT_STATE"
     assert not sent
 

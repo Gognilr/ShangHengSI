@@ -5,7 +5,7 @@ import SiNotice from '@/components/ui/SiNotice.vue'
 import { computed, nextTick, onBeforeUnmount, provide, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { BookOpen, Calendar, ChevronLeft, ChevronRight, Download, FolderOpen, ListChecks, Lock, Play, Plus, RefreshCw, Tags, UploadCloud, Users } from '@lucide/vue'
+import { BookOpen, Calendar, ChevronLeft, ChevronRight, Download, FolderOpen, ListChecks, Lock, Play, Plus, RefreshCw, Sparkle, Tags, UploadCloud, Users } from '@lucide/vue'
 import { ApiError } from '@/api/http'
 import { reportApi } from '@/api/report'
 import { useAuthStore } from '@/stores/auth'
@@ -188,6 +188,17 @@ function openSettings() { settingsError.value = ''; settingsDialog.value = true 
 async function saveSettings(body: BidSettings) {
   await mutate(() => bidApi.update(id.value, body), true)  // 开始检查后仍可改分类与文件夹
   if (error.value) { settingsError.value = error.value; error.value = '' } else settingsDialog.value = false
+}
+// 只在本机处理的项目检查完后改为可选模型补查：不退回修改材料；补查卡随后出现在问题清单，发送前仍逐段确认
+async function enableModel() {
+  const p = project.value
+  if (!p || pending.value) return
+  try { await ElMessageBox.confirm('改为“本机检查，可选模型补查”后，★ 与否决条款中本机未找到的，可以交给模型补查。发送前会逐段列出遮住后的片段，由你确认才发送；不确认就不会发送任何内容。', '开启模型补查', { confirmButtonText: '开启', cancelButtonText: '取消' }) }
+  catch { return }
+  await mutate(() => bidApi.update(id.value, { title: p.title, opening_date: p.opening_date, policy: 'ai', category_id: p.category_id, folder_id: p.folder_id }), true)
+  if (error.value) return
+  await loadCheck()
+  ElMessage.success(check.value?.conclusion?.lookup ? '已开启，问题清单底部可交模型补查' : '已开启。本机已找到全部 ★ 与否决条款，暂时没有需要模型补查的')
 }
 async function removeFile(fid: string) { delete rowErrors[fid]; await mutate(() => bidApi.removeFile(id.value, fid)) }
 async function setPassword(fid: string, password: string) {
@@ -390,6 +401,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
           <span v-if="startBlock && phase === 'materials'" class="why">{{ startBlock }}</span>
           <el-button v-if="phase === 'materials'" type="primary" :class="{ 'start-glow': startGlow }" :disabled="!canStart" @click="startCheck"><Play :size="16" :stroke-width="1.75" />开始检查</el-button>
           <template v-else-if="phase === 'results'">
+            <el-button v-if="project.policy === 'local_only'" class="ai-on" :disabled="pending" @click="enableModel"><Sparkle :size="16" :stroke-width="1.75" />开启模型补查</el-button>
             <el-button :disabled="pending || reopenBlock" @click="recheck"><RefreshCw :size="16" :stroke-width="1.75" />重新检查</el-button>
             <el-button type="primary" :loading="exporting" :disabled="!auth.can('use.export')" :title="auth.can('use.export') ? '' : '当前账号没有导出权限'" @click="exportReport"><Download :size="16" :stroke-width="1.75" />导出问题清单</el-button>
           </template>
@@ -531,6 +543,8 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
 </template>
 
 <style scoped>
+.ai-on { color: var(--si-ai-ink); }
+.ai-on svg { color: var(--si-ai); }
 /* 条款确认后“开始检查”的光晕：向外扩散三次；特效关闭时只显示静态描边 */
 .start-glow { animation: start-glow 1.2s var(--si-ease-out) 3; }
 @keyframes start-glow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--si-brand) 50%, transparent); } 100% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--si-brand) 0%, transparent); } }
