@@ -4,7 +4,7 @@
 
 An AI-assisted first-pass reviewer for business documents (contracts, quotations, orders, inquiries and letters), designed to run inside a company LAN.
 
-**Source version: V3.6.0** · [Stage review](docs/v36/reports/V36-Z.md).
+**Source version: V3.6.1** · [Stage review](docs/v36/reports/V36-Z.md).
 
 Sensitive information never leaves the internal network: documents are parsed, checked and **redacted locally**. Only the redacted text is sent to a cloud LLM, and the results are restored to real names locally before they are shown.
 
