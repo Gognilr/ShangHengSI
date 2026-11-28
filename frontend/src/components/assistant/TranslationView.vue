@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
 // 译稿（澄明 8.7）：原文与译文放在同一张纸面上按段成行，天然对齐、一起滚动；
-// 悬停的段落整行高亮；正在生成的段落末尾有光标，未生成的显示骨架
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+// 悬停的段落整行高亮；译文按段整段到达：正在译的一段原文上有高亮循环划过（扫读），
+// 译文侧只留光标和本段已用秒数；排队的段落静态显示“待译”；到达的译文淡入
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { assistantApi, type Message } from '@/api/assistant'
 import type { PreviewNode } from '@/api/preview'
 import { ApiError } from '@/api/http'
+import { useAppearanceStore } from '@/stores/appearance'
 const props = defineProps<{ message: Message; sessionId: string }>()
 const originals = ref<PreviewNode[]>([]), error = ref(''), loading = ref(true)
 // 没有对照行可显示时退回纯译文；译文视图不显示行首的分段标记 ⟦F1-P1⟧（只用于对齐，V321-Z）
@@ -22,6 +24,25 @@ const cloud = computed(() => props.message.params.engine === 'cloud')
 const rowState = (loc: string, i: number) => props.message.translation?.[loc] ? 'tk-done' : pending.value && i === firstMissing.value ? 'tk-live' : 'tk-todo'
 const unaligned = computed(() => props.message.extras.translation_unaligned?.length ?? 0)
 const firstMissing = computed(() => pending.value ? originals.value.findIndex(n => !props.message.translation?.[n.loc]) : -1)
+// 扫读只在完整动效下运行；减弱或关闭动效时整段原文静态铺底，计时每秒走一次
+const appearance = useAppearanceStore()
+const sweep = computed(() => appearance.fxResolved === 'full')
+const SWEEP = 6
+const scan = ref(0), now = ref(Date.now())
+let liveSince = Date.now()
+watch(firstMissing, () => { liveSince = Date.now(); now.value = liveSince; scan.value = 0 })
+watchEffect(onCleanup => {
+  if (firstMissing.value < 0) return
+  const moving = sweep.value
+  const id = window.setInterval(() => { now.value = Date.now(); if (moving) scan.value++ }, moving ? 80 : 1000)
+  onCleanup(() => window.clearInterval(id))
+})
+const elapsed = computed(() => Math.max(0, Math.floor((now.value - liveSince) / 1000)))
+const liveParts = computed(() => {
+  const chars = Array.from(originals.value[firstMissing.value]?.text ?? '')
+  const end = scan.value % (chars.length + SWEEP), start = Math.max(0, end - SWEEP), stop = Math.min(end, chars.length)
+  return [chars.slice(0, start).join(''), chars.slice(start, stop).join(''), chars.slice(stop).join('')]
+})
 let active = true
 onBeforeUnmount(() => { active = false })
 onMounted(async () => {
@@ -42,9 +63,11 @@ onMounted(async () => {
     <div v-if="originals.length" class="paper">
       <div class="cols" aria-hidden="true"><span>原文</span><span>译文</span></div>
       <div v-for="(node, i) in originals" :key="node.loc" class="row" :class="[{ live: i === firstMissing }, rowState(node.loc, i)]" :style="{ '--rc': cloud ? 'var(--si-trip-m)' : 'var(--si-trip-l)' }">
-        <p>{{ node.text ?? '原文已按保留期限删除' }}</p>
-        <p v-if="message.translation?.[node.loc]">{{ message.translation[node.loc] }}<i v-if="pending && i === firstMissing - 1" class="cursor" aria-hidden="true" /></p>
-        <p v-else-if="pending" class="skel" aria-hidden="true"><i /><i /><i class="short" /><i v-if="i === firstMissing" class="cursor" /></p>
+        <p v-if="i === firstMissing && sweep">{{ liveParts[0] }}<span class="scan">{{ liveParts[1] }}</span>{{ liveParts[2] }}</p>
+        <p v-else :class="{ still: i === firstMissing }">{{ node.text ?? '原文已按保留期限删除' }}</p>
+        <p v-if="message.translation?.[node.loc]" :class="{ arrive: pending }">{{ message.translation[node.loc] }}</p>
+        <p v-else-if="i === firstMissing" class="wait"><i class="cursor" aria-hidden="true" /><span class="num">正在译 · {{ elapsed }} 秒</span></p>
+        <p v-else-if="pending" class="todo">待译</p>
         <p v-else class="miss">未完成翻译</p>
       </div>
     </div>
@@ -62,18 +85,21 @@ onMounted(async () => {
 .row:last-child { border-bottom: 0; }
 .row::before { content: ''; position: absolute; left: 7px; top: 8px; bottom: 8px; width: 4px; border-radius: 2px; background: var(--si-hair); }
 .row.tk-done::before { background: var(--rc); }
-.row.tk-live::before { background: var(--rc); animation: tv-blink 1s steps(2) infinite; }
+.row.tk-live::before { background: color-mix(in srgb, var(--rc) 45%, transparent); }
 .row:hover { background: var(--si-blue-tint); }
 .row p { margin: 0; padding: 12px 20px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--si-paper-ink-2); font: var(--si-font-reading); }
 .row p + p { border-left: 1px solid var(--si-hair-faint); }
 .miss { color: var(--si-ink-4) !important; }
-.skel { display: flex; flex-direction: column; gap: 8px; }
-.skel i:not(.cursor) { display: block; height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--si-surface-2) 25%, var(--si-hair-faint) 50%, var(--si-surface-2) 75%) 0 0 / 200% 100%; animation: tv-shim 1.4s linear infinite; }
-.skel i.short { width: 55%; }
-@keyframes tv-shim { to { background-position: -200% 0; } }
-html:is([data-fx="lite"], [data-fx="off"]) :is(.skel i, .row.tk-live::before) { animation: none; }
-.cursor { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--si-ai); animation: tv-blink 1s steps(2) infinite; }
+.scan { color: var(--rc); background: color-mix(in srgb, var(--rc) 14%, transparent); border-radius: 2px; }
+.still { background: color-mix(in srgb, var(--rc) 7%, transparent); }
+.wait { display: flex; align-items: center; gap: 8px; }
+.wait span { color: var(--si-ink-3); font: var(--si-font-caption); }
+.todo { color: var(--si-ink-4) !important; font: var(--si-font-caption) !important; }
+.arrive { animation: tv-in var(--si-d2) var(--si-ease-out); }
+@keyframes tv-in { from { opacity: 0; transform: translateY(3px); } }
+.cursor { display: inline-block; flex: none; width: 2px; height: 1.1em; background: var(--rc); animation: tv-blink 1s steps(2) infinite; }
 @keyframes tv-blink { 50% { opacity: 0; } }
+html:is([data-fx="lite"], [data-fx="off"]) :is(.arrive, .cursor) { animation: none; }
 .plain { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--si-font-reading); }
 @media (max-width: 900px) { .cols, .row { grid-template-columns: 1fr; } .row p + p { border-left: 0; } .cols span:last-child { display: none; } }
 </style>

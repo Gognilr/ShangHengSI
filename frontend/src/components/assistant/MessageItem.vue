@@ -43,9 +43,11 @@ const streaming = computed(() => props.message.status === 'streaming' && !!props
 const slow = useStale(() => props.message.content.length === 0 && pending.value, 10000)
 const reading = computed(() => !!props.reading)
 // 等待（澄明 8.3）：本机读取附件用青色文字、不出动点；等模型首字用紫色动点“模型正在思考”；首字到达后由正文末尾光标接手
+// 译稿由对照行自己显示“正在译 · n 秒”，不再另出动点
 const waiting = computed(() => {
   if (!pending.value || streaming.value) return ''
-  return reading.value ? '正在本机读取附件' : '模型正在思考'
+  if (reading.value) return '正在本机读取附件'
+  return props.message.template === 'translate' ? '' : '模型正在思考'
 })
 const waitingTail = computed(() => (waiting.value && slow.value && !reading.value ? '，响应较慢，可以先做别的' : ''))
 // 本机给出的回复（单证核对、本地翻译等没有调用云端模型的）用青色徽标；其余为灵紫“模型 · 只见遮住后的文字”
