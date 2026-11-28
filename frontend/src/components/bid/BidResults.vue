@@ -4,13 +4,14 @@ import { ChevronRight, ListChecks } from '@lucide/vue'
 import type { BidConclusionEntry, BidProject } from '@/api/bid'
 import BidEvidence from './BidEvidence.vue'
 import BidModelCheck from './BidModelCheck.vue'
-import { bidResultsKey, placeText } from './results'
+import ClueArcs, { type ArcEdge, type ArcGroup } from './charts/ClueArcs.vue'
+import { bidResultsKey, bidTypeLabel, placeText } from './results'
 import './charts/charts.css'
 
 // 初审结果（澄明 8.5）：主从两栏。左栏问题清单——先列严重，再列“提示 n 条”（默认折叠），每行一句话、下面一行出处，
 // 唯一的操作是“不是问题”（可撤销）；右栏是选中事项的证据。bidder 为只看这一家（点投标人卡片切换）。
 const props = defineProps<{ project: BidProject; bidder: string; modelKey: string }>()
-const emit = defineEmits<{ changed: []; clear: []; refresh: [] }>()
+const emit = defineEmits<{ changed: []; clear: []; refresh: []; bidder: [id: string] }>()
 const ctx = inject(bidResultsKey)!
 const c = computed(() => ctx.data.value?.conclusion)
 const mine = (list: BidConclusionEntry[] = []) => props.bidder ? list.filter(e => e.bidder_ids.includes(props.bidder)) : list
@@ -39,11 +40,63 @@ async function toggle(e: BidConclusionEntry, value: boolean) {
   busy.value = e.id
   try { await ctx.dismiss(e.id, value) } finally { busy.value = '' }
 }
+// 串标关系图（3 家及以上、有串标线索时显示）：一对投标人一条弧，归并这一对之间所有未排除的线索
+const graph = computed(() => {
+  const data = ctx.data.value, conc = c.value
+  if (!data || !conc || props.project.bidders.length < 3) return null
+  const items = Object.fromEntries(data.items.map(i => [i.id, i]))
+  const pairs = new Map<string, { a: string; b: string; severe: boolean; strong: boolean; entry: string; entrySevere: boolean; items: Set<string> }>()
+  const rank = Object.fromEntries(props.project.bidders.map((b, i) => [b.id, i]))
+  const add = (ids: string[], itemId: string, e: BidConclusionEntry) => {
+    const list = ids.filter(id => id in rank).sort((p, q) => rank[p]! - rank[q]!)
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const k = list[i] + '|' + list[j]
+      const p = pairs.get(k) ?? { a: list[i]!, b: list[j]!, severe: false, strong: false, entry: e.id, entrySevere: false, items: new Set<string>() }
+      const sev = e.level === 'severe'
+      if (sev && !p.entrySevere) { p.entry = e.id; p.entrySevere = true }
+      p.severe ||= sev
+      p.strong ||= ['strong', 'medium'].includes(items[itemId]?.level ?? '')
+      p.items.add(itemId)
+      pairs.set(k, p)
+    }
+  }
+  const groups: ArcGroup[] = []
+  for (const e of [...conc.severe, ...conc.hint]) {
+    if (e.category !== '串通' && e.category !== '串标线索') continue
+    const kase = e.case_id ? conc.cases.find(k => k.id === e.case_id) : undefined
+    if (kase) {
+      if (e.level === 'severe') groups.push({ ids: kase.bidder_ids, severe: true })
+      for (const ev of kase.evidence) add(ev.bidder_ids.length >= 2 ? ev.bidder_ids : items[ev.item_id]?.bidder_ids ?? [], ev.item_id, e)
+    } else if (e.item_id) add(e.bidder_ids, e.item_id, e)
+  }
+  if (!pairs.size) return null
+  const edges: ArcEdge[] = [...pairs.values()].map(p => {
+    const kinds = new Map<string, number>()
+    for (const id of p.items) { const t = bidTypeLabel[items[id]?.type ?? ''] ?? '其他'; kinds.set(t, (kinds.get(t) ?? 0) + 1) }
+    return { a: p.a, b: p.b, tone: p.severe ? 'severe' : p.strong ? 'medium' : 'weak', count: p.items.size, entry: p.entry,
+      kinds: [...kinds].map(([t, n]) => n > 1 ? `${t} ${n} 处` : t) }
+  })
+  // 其余连在一起的几家也排在一起（只用于排序，不画色带）
+  for (const e of edges) {
+    const g = groups.find(x => x.ids.includes(e.a) || x.ids.includes(e.b))
+    if (g) { for (const id of [e.a, e.b]) if (!g.ids.includes(id)) g.ids = [...g.ids, id] } else groups.push({ ids: [e.a, e.b], severe: false })
+  }
+  const nodes = props.project.bidders.map(b => ({ id: b.id, code: ctx.codes.value[b.id] ?? '', short: ctx.shorts.value[b.id] ?? b.name, name: b.name }))
+  return { nodes, edges, groups }
+})
+function openEntry(id: string) {
+  if (hint.value.some(e => e.id === id)) showHint.value = true
+  selected.value = id
+}
 const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出的事项，不等于投标文件没有问题。', '系统只指出问题并定位原件，不作否决或串通投标的认定。'])
 </script>
 
 <template>
   <div class="results">
+    <section v-if="graph" class="graph-card si-card" aria-label="串标关系图">
+      <h3 class="graph-h">串标关系</h3>
+      <ClueArcs :nodes="graph.nodes" :edges="graph.edges" :groups="graph.groups" :focus="bidder" :active="selected" @open="openEntry" @bidder="emit('bidder', $event)" />
+    </section>
     <div class="md">
       <section class="md-list si-card" aria-label="问题清单">
         <div class="md-h">
@@ -109,6 +162,8 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
 </template>
 
 <style scoped>
+.graph-card { padding: 16px 20px 14px; }
+.graph-h { margin: 0 0 4px; font: var(--si-font-label-sm); color: var(--si-ink-3); }
 .results { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .md { display: grid; grid-template-columns: 440px minmax(0, 1fr); gap: 16px; align-items: stretch; }
 .md-list { padding: 8px 8px 12px; }

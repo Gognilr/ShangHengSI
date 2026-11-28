@@ -474,7 +474,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         <ListChecks :size="24" :stroke-width="1.75" />
         <div><b>检查完成后在这里列出问题</b><p>可以离开页面；严重问题排在提示前面。</p></div>
       </div>
-      <BidResults v-else-if="phase === 'results'" class="results" :project="project" :bidder="selected" :model-key="modelKey" @changed="load(false)" @refresh="refreshCheck" @clear="selected = ''" />
+      <BidResults v-else-if="phase === 'results'" class="results" :project="project" :bidder="selected" :model-key="modelKey" @changed="load(false)" @refresh="refreshCheck" @clear="selected = ''" @bidder="selectBidder" />
       <footer v-if="phase === 'materials'" class="page-foot"><p class="hint">系统只指出问题并定位原件，不作否决或串通投标的认定。</p></footer>
     </template>
 
