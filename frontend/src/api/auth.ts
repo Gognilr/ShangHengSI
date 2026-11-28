@@ -38,6 +38,7 @@ export interface LoginResult {
 
 export interface MeResult extends LoginResult {
   alerts: AdminAlert[]
+  version: string
 }
 
 export const authApi = {

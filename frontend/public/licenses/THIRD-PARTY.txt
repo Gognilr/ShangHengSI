@@ -1,0 +1,29 @@
+﻿商衡SI · 第三方组件与模型许可
+
+本系统源码按 FSL-1.1-ALv2 公开（见仓库根目录 LICENSE），以下第三方组件与模型按各自许可使用。
+
+本地模型（均在服务器 CPU 上离线运行）
+  实体识别   urchade/gliner_multi-v2.1                 Apache-2.0
+  向量检索   BAAI/bge-m3                               MIT
+  文字识别   RapidOCR                                  Apache-2.0
+  语音分段   FireRedTeam/FireRedVAD                    Apache-2.0
+  语音转写   FireRedASR2-AED（sherpa-onnx 导出）        Apache-2.0
+  标点恢复   FireRedTeam/FireRedPunc                   Apache-2.0
+  说话人分段 pyannote segmentation-3.0                 MIT
+  声纹       3D-Speaker CAM++                          Apache-2.0
+  翻译       tencent/Hy-MT2-7B（GGUF）                  Apache-2.0
+
+运行组件
+  onnxruntime                                          MIT
+  sherpa-onnx                                          Apache-2.0
+  llama.cpp                                            MIT
+  LibreOffice（旧格式转换）                             MPL-2.0
+  FFmpeg（录音解码）                                    LGPL-2.1+
+  PostgreSQL / pgvector                                PostgreSQL License
+  FastAPI                                              MIT
+  Vue / Element Plus                                   MIT
+  Lucide 图标                                           ISC
+
+字体
+  思源黑体（Source Han Sans）                           SIL OFL 1.1  见 OFL-SI-Sans.txt
+  JetBrains Mono                                       SIL OFL 1.1  见 OFL-SI-Mono.txt

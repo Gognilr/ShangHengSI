@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ClockFading, FileSearch, FileStack, GitCompareArrows, House, KeyRound, Languages, LogOut, Mic, Moon, Palette, PanelLeftClose, PanelLeftOpen, Plus, ReceiptText, Search, Settings, Sun } from '@lucide/vue'
+import { ClockFading, FileSearch, FileStack, GitCompareArrows, House, Info, KeyRound, Languages, LogOut, Mic, Moon, Palette, PanelLeftClose, PanelLeftOpen, Plus, ReceiptText, Search, Settings, Sun } from '@lucide/vue'
+import AboutDialog from '@/components/AboutDialog.vue'
 import AlertList from '@/components/AlertList.vue'
 import AppearanceDialog from '@/components/AppearanceDialog.vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
@@ -29,6 +30,7 @@ const router = useRouter()
 
 const appearanceOpen = ref(false)
 const pwdOpen = ref(false)
+const aboutOpen = ref(false)
 
 // 侧栏宽度与收起状态只存本浏览器（V3-A 〇.2）；澄明 8.0：默认 248，收起为 68，窗口窄于 1280 时自动收起
 const SIDEBAR_MIN = 220, SIDEBAR_MAX = 320, SIDEBAR_DEFAULT = 248, SIDEBAR_FOLDED = 68
@@ -139,6 +141,8 @@ async function onCommand(cmd: string) {
     await router.push('/settings')
   } else if (cmd === 'appearance') {
     appearanceOpen.value = true
+  } else if (cmd === 'about') {
+    aboutOpen.value = true
   } else if (cmd === 'password') {
     pwdOpen.value = true
   } else if (cmd === 'logout') {
@@ -188,7 +192,7 @@ async function onCommand(cmd: string) {
       </div>
 
       <div class="account">
-        <!-- 账号菜单（澄明 8.0）：设置、外观、修改密码、退出；管理员提醒收在菜单顶部，头像上的琥珀色圆点表示有提醒（SPEC 6.7） -->
+        <!-- 账号菜单（澄明 8.0）：设置、外观、关于、修改密码、退出；管理员提醒收在菜单顶部，头像上的琥珀色圆点表示有提醒（SPEC 6.7） -->
         <el-popover v-model:visible="accountOpen" trigger="click" placement="top-start" :width="300" :show-arrow="false" :offset="8" popper-class="account-pop">
           <template #reference>
             <button type="button" class="user" :class="{ selected: inSettings }" :aria-label="`${displayName}，账号菜单${hasAlerts ? `，${auth.visibleAlerts.length} 条管理提醒` : ''}`" :aria-expanded="accountOpen">
@@ -200,6 +204,7 @@ async function onCommand(cmd: string) {
             <AlertList v-if="hasAlerts" class="alerts" @navigate="accountOpen = false" />
             <button type="button" class="menu-item" @click="onCommand('settings')"><Settings :size="16" :stroke-width="1.75" />设置</button>
             <button type="button" class="menu-item" @click="onCommand('appearance')"><Palette :size="16" :stroke-width="1.75" />外观</button>
+            <button type="button" class="menu-item" @click="onCommand('about')"><Info :size="16" :stroke-width="1.75" />关于</button>
             <button type="button" class="menu-item" @click="onCommand('password')"><KeyRound :size="16" :stroke-width="1.75" />修改密码</button>
             <div class="menu-rule" role="separator" />
             <button type="button" class="menu-item" @click="onCommand('logout')"><LogOut :size="16" :stroke-width="1.75" />退出</button>
@@ -230,6 +235,7 @@ async function onCommand(cmd: string) {
     <GlobalSearch v-model="searchOpen" @new-session="createSession" />
     <AppearanceDialog v-model="appearanceOpen" />
     <ChangePasswordDialog v-model="pwdOpen" />
+    <AboutDialog v-model="aboutOpen" />
   </div>
 </template>
 

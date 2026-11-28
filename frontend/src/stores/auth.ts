@@ -8,6 +8,7 @@ import type { Perm } from '@/utils/permissions'
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const alerts = ref<AdminAlert[]>([])
+  const version = ref('')
   const dismissedAlerts = ref(new Set<string>())
   const alertKey = (alert: AdminAlert) => JSON.stringify([alert.code ?? '', alert.message])
   const visibleAlerts = computed(() => alerts.value.filter(alert => !dismissedAlerts.value.has(alertKey(alert))))
@@ -37,6 +38,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (user.value?.id !== me.user.id) dismissedAlerts.value.clear()
       user.value = me.user
       alerts.value = me.alerts
+      version.value = me.version
       setCsrfToken(me.csrf_token)
     } catch (e) {
       if (!(e instanceof ApiError && e.status === 401)) throw e
@@ -98,6 +100,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     user,
     alerts,
+    version,
     visibleAlerts,
     dismissAlert,
     loaded,

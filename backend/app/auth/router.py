@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.admin.alerts import admin_alerts
 from app.audit import service as audit
+from app.config import get_settings
 from app.auth.schemas import DeviceOut, LoginIn, LoginOut, MeOut, NoticeOut, PasswordChangeIn, UserOut
 from app.auth.service import authenticate, change_password
 from app.db.models import Session as UserSession
@@ -61,7 +62,7 @@ def me(ctx: AuthContext = Depends(auth_context), db: DbSession = Depends(get_db)
     # 提醒按权限点给，且须已改密（须改密时先去改密，不查询系统状态）
     perms = user_permissions(db, ctx.user.id)
     alerts = admin_alerts(db, perms) if not ctx.user.must_change_password else []
-    return MeOut(user=UserOut.of(db, ctx.user), csrf_token=ctx.session.csrf_token, alerts=alerts)
+    return MeOut(user=UserOut.of(db, ctx.user), csrf_token=ctx.session.csrf_token, alerts=alerts, version=get_settings().app_version)
 
 
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)

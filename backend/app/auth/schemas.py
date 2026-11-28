@@ -75,3 +75,5 @@ class MeOut(BaseModel):
     csrf_token: str
     # 管理员提醒（SPEC 6.7）；普通用户始终为空
     alerts: list[AlertOut] = []
+    # 系统版本（发布包构建时的 APP_VERSION），账号菜单“关于”显示
+    version: str = ""
