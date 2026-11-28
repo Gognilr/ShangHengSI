@@ -21,7 +21,7 @@ def _hdr(csrf):
 def test_t43_lawsync_settings_and_manual_run(admin, db_sessionmaker):
     from app.db.models import LawImport
     c, csrf = admin
-    assert c.get(A+'/settings/lawsync').json() == dict(enabled=False, interval='monthly',last_run_at=None,last_status=None)
+    assert c.get(A+'/settings/lawsync').json() == dict(enabled=False, interval='monthly',last_run_at=None,last_status=None,running=False)
     assert c.post(A+'/lawsync/run',headers=_hdr(csrf)).status_code==409
     result=c.put(A+'/settings/lawsync',json=dict(enabled=True,interval='weekly'),headers=_hdr(csrf))
     assert result.status_code==200 and result.json()['interval']=='weekly'
@@ -32,6 +32,7 @@ def test_t43_lawsync_settings_and_manual_run(admin, db_sessionmaker):
     with db_sessionmaker() as db:
         db.query(LawImport).delete(); db.commit()
     assert c.post(A+'/lawsync/run',headers=_hdr(csrf)).status_code==202
+    assert c.get(A+'/settings/lawsync').json()['running'] is True
     assert c.post(A+'/lawsync/run',headers=_hdr(csrf)).status_code==409
     with db_sessionmaker() as db:
         assert db.scalar(select(AuditLog).where(AuditLog.action=='lawsync_settings'))

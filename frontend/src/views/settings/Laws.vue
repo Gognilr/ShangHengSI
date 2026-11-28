@@ -137,22 +137,44 @@ const syncForm = reactive({ enabled: false, interval: 'monthly' as 'monthly' | '
 const syncError = ref('')
 const syncRunning = ref(false)
 let syncTimer: ReturnType<typeof setInterval> | null = null
-let syncBaseline: string | null = null
-const pendingSync = computed(() => records.value.find(r => r.kind === 'sync' && r.status === 'pending') ?? null)
+// 同一时间只有一个未完成的导入（解析中或待确认），任何来源都会挡住“立即同步”，须给出直达入口
+const openImport = computed(() => records.value.find(r => ['parsing', 'pending'].includes(r.status)) ?? null)
+const SYNC_FAIL: Record<string, string> = {
+  BLOCKED: '官方网站拒绝访问，请稍后再试或改用手动导入',
+  NETWORK: '无法连接国家法律法规数据库，请检查网络出口是否放行这两个域名',
+  BAD_RESPONSE: '官方网站返回的内容无法识别，可改用手动导入',
+  INTERNAL: '系统内部错误，可改用手动导入',
+}
+const syncResult = computed(() => {
+  if (syncRunning.value) return '正在同步：从国家法律法规数据库拉取目录与全文，通常需要几分钟，可离开本页'
+  const s = sync.value?.last_status
+  if (!s) return '尚未运行'
+  if (!s.ok) return `同步失败：${SYNC_FAIL[s.reason ?? ''] ?? SYNC_FAIL.INTERNAL}`
+  return openImport.value?.kind === 'sync' ? '已生成更新，等待确认' : '同步成功'
+})
+// 以后端的 running 为准：定时检查触发的同步也能在页面上看到进行中，并在结束时自动刷新
+function watchSync() {
+  if (!syncTimer) syncTimer = setInterval(() => { void loadSync(true) }, 3000)
+}
 async function loadSync(silent = false) {
   try {
     const result = await lawsyncApi.get()
-    sync.value = result
+    const wasRunning = syncRunning.value
+    sync.value = result; syncRunning.value = result.running
     if (!silent) { Object.assign(syncForm, { enabled: result.enabled, interval: result.interval }); syncError.value = '' }
-    if (syncRunning.value && result.last_run_at !== syncBaseline) {
-      if (syncTimer) clearInterval(syncTimer)
-      syncTimer = null; syncRunning.value = false; await auth.refresh(); void load(true)
+    if (result.running) { watchSync(); return }
+    if (syncTimer) { clearInterval(syncTimer); syncTimer = null }
+    if (wasRunning) {
+      await auth.refresh(); await load(true)
+      // 同步成功直接打开差异，免得到下方时间线里找
+      if (result.last_status?.ok && openImport.value?.kind === 'sync' && canLaws.value) void loadDetail(openImport.value.id)
     }
   } catch (e) { if (!silent) syncError.value = `加载自动更新设置失败：${err(e)}。请刷新页面后重试。` }
 }
 async function saveSync() {
   if (!sync.value || (syncForm.enabled === sync.value.enabled && syncForm.interval === sync.value.interval)) return
   sync.value = await lawsyncApi.save(syncForm.enabled, syncForm.interval)
+  syncRunning.value = sync.value.running; if (syncRunning.value) watchSync()
   await auth.refresh()
 }
 const syncSave = useAutoSave(saveSync)
@@ -166,11 +188,17 @@ async function changeSyncEnabled(value: string | number | boolean) {
   syncSave.schedule(0)
 }
 async function runSync() {
-  syncRunning.value = true; syncError.value = ''; syncBaseline = sync.value?.last_run_at ?? null
+  syncRunning.value = true; syncError.value = ''
   try {
-    await lawsyncApi.run(); ElMessage.success('同步已入队，完成后在下方确认变更')
-    syncTimer = setInterval(() => { void loadSync(true) }, 3000)
-  } catch (e) { syncRunning.value = false; syncError.value = err(e) }
+    await lawsyncApi.run(); ElMessage.success('已开始同步，完成后会自动打开差异供确认')
+    watchSync()
+  } catch (e) {
+    syncRunning.value = false
+    if (e instanceof ApiError && e.code === 'LAWSYNC_RUNNING') { syncRunning.value = true; watchSync(); return }
+    // 已有未处理的更新：刷新记录让“待处理”入口出现，不再只给一句提示
+    if (e instanceof ApiError && e.code === 'LAW_IMPORT_PENDING' && canLaws.value) { await load(true); if (openImport.value) void loadDetail(openImport.value.id) }
+    else syncError.value = err(e)
+  }
 }
 onMounted(() => {
   void load()
@@ -185,15 +213,22 @@ onBeforeUnmount(() => { active = false; if (timer) clearInterval(timer); if (syn
     <div class="panel setting-panel">
       <SettingSection v-if="canSync" title="自动更新" description="定期从国家法律法规数据库拉取公开法规；变更经业务管理员确认后才生效。默认关闭。">
         <SiNotice v-if="syncError" :title="syncError" type="error" :closable="false" class="gap" />
-        <el-form label-width="140px" @submit.prevent>
+        <el-form label-position="left" label-width="140px" @submit.prevent>
           <el-form-item label="自动更新"><el-switch v-model="syncForm.enabled" :disabled="!sync || syncRunning" aria-label="法规库自动更新" @change="changeSyncEnabled" /></el-form-item>
           <el-form-item label="更新频率"><el-select v-model="syncForm.interval" :disabled="!sync || syncRunning" aria-label="法规更新频率" @change="syncSave.schedule(0)"><el-option v-for="(label, value) in LAWSYNC_INTERVAL" :key="value" :value="value" :label="label" /></el-select><SaveState :status="syncSave.status.value" :message="syncSave.message.value" @retry="syncSave.retry()" /></el-form-item>
           <el-form-item label="上次运行">{{ formatDateTime(sync?.last_run_at) }}</el-form-item>
-          <el-form-item label="运行结果">{{ syncRunning ? '已入队，等待同步结果' : !sync?.last_status ? '尚未运行' : sync.last_status.ok ? '已生成待确认更新' : '同步失败，可改用手动导入' }}</el-form-item>
-          <el-form-item v-if="canLaws && pendingSync" label="待确认"><el-button type="primary" @click="loadDetail(pendingSync.id)">查看并确认变更</el-button></el-form-item>
+          <el-form-item label="运行结果"><span :class="{ bad: sync?.last_status && !sync.last_status.ok && !syncRunning }">{{ syncResult }}</span></el-form-item>
+          <el-form-item v-if="canLaws && openImport" label="待处理">
+            <span class="pend-line">{{ formatDateTime(openImport.created_at) }} · {{ LAW_IMPORT_KIND[openImport.kind] }} · {{ LAW_IMPORT_STATUS[openImport.status] }}</span>
+            <el-button type="primary" @click="loadDetail(openImport.id)">{{ openImport.status === 'pending' ? '查看并确认' : '查看进度' }}</el-button>
+          </el-form-item>
+          <el-form-item label=" ">
+            <el-button :disabled="!sync?.enabled || syncSave.status.value === 'saving' || (canLaws && !!openImport)" :loading="syncRunning" @click="runSync">{{ syncRunning ? '同步中' : '立即同步' }}</el-button>
+            <p v-if="!sync?.enabled" class="hint">先开启自动更新才能同步。</p>
+            <p v-else-if="canLaws && openImport && !syncRunning" class="hint">上面的更新确认生效或放弃后才能再次同步。</p>
+            <p v-if="!canLaws" class="hint">变更需由有“法规库内容”权限的管理员确认。</p>
+          </el-form-item>
         </el-form>
-        <p v-if="!canLaws" class="hint">变更需由有“法规库内容”权限的管理员确认。</p>
-        <el-button :disabled="!sync?.enabled || syncSave.status.value === 'saving'" :loading="syncRunning" @click="runSync">立即同步</el-button>
       </SettingSection>
       <SettingSection v-if="canLaws" title="审核时附带相关法条" description="审核时把检索到的法条原文一并发给模型。">
         <el-switch :model-value="enabled" :disabled="saving || loading || !settingsLoaded" aria-label="审核时附带相关法条" @change="saveSetting" />
@@ -304,4 +339,6 @@ p { overflow-wrap: anywhere; white-space: pre-wrap; }
 .lmain > b { color: var(--si-ink-1); font: var(--si-font-label); font-weight: 600; }
 .cnt3 { display: flex; gap: 14px; margin-top: 4px; color: var(--si-ink-3); font: var(--si-font-meta); }
 .cnt3 b { margin-left: 3px; color: var(--si-ink-1); }
+.bad { color: var(--si-danger); }
+.pend-line { margin-right: 12px; color: var(--si-ink-2); }
 </style>

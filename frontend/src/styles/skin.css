@@ -134,6 +134,8 @@ html[data-shell="night"] .el-button--primary {
 .el-input.is-disabled .el-input__wrapper, .el-textarea.is-disabled .el-textarea__inner, .el-select__wrapper.is-disabled { background-color: var(--si-surface-2); box-shadow: 0 0 0 1px var(--si-hair) inset; }
 .el-form-item.is-error .el-input__wrapper, .el-form-item.is-error .el-select__wrapper, .el-form-item.is-error .el-textarea__inner { box-shadow: 0 0 0 1px var(--si-danger) inset, 0 0 0 3px var(--si-danger-soft); }
 .el-form-item__label { font: var(--si-font-label); color: var(--si-ink-2); }
+/* font 简写会把行高改成 22px，标签就比 32px 高的文字内容靠上；统一回控件高度 */
+.el-form--label-right .el-form-item__label { line-height: var(--el-component-size); }
 /* 左标签表单（二版第四节）：标签宽 140（label-width 给出）、控件宽 360，说明（.hint）放在控件下方 13px；登录页仍为上标签 */
 .el-form--label-left .el-form-item { margin-bottom: 18px; }
 .el-form--label-left .el-form-item__label { justify-content: flex-start; height: auto; min-height: var(--el-component-size); padding-right: 20px; line-height: var(--el-component-size); }

@@ -5,6 +5,7 @@ import type { Perm } from '@/utils/permissions'
 export interface LawsyncSettings {
   enabled: boolean; interval: 'monthly' | 'weekly'; last_run_at: string | null
   last_status: { ok: boolean; at: string; reason?: string } | null
+  running: boolean
 }
 export const lawsyncApi = {
   get: () => http.get<LawsyncSettings>('/admin/settings/lawsync'),

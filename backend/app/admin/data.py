@@ -47,8 +47,12 @@ class LawsyncSettingsIn(BaseModel):
 
 @router.get('/settings/lawsync', dependencies=[Depends(_sync)])
 def get_lawsync(db: DbSession = Depends(get_db)):
-    return {name: get_setting(db, 'lawsync.'+name) for name in
-            ('enabled', 'interval', 'last_run_at', 'last_status')}
+    result = {name: get_setting(db, 'lawsync.'+name) for name in
+              ('enabled', 'interval', 'last_run_at', 'last_status')}
+    # 定时检查或他人触发的同步也要在页面上看得到“正在同步”
+    result['running'] = db.scalar(select(Job.id).where(
+        Job.type == 'law_sync', Job.status.in_(['queued', 'running'])).limit(1)) is not None
+    return result
 
 
 @router.put('/settings/lawsync', dependencies=[Depends(_sync)])
