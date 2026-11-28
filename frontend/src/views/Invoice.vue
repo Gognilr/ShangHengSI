@@ -291,7 +291,7 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
           <table class="tbl">
             <thead><tr>
               <th class="c-seq">序号</th><th class="c-kind">票种</th><th class="c-no">发票号码</th><th class="c-date">开票日期</th>
-              <th>销售方</th><th class="c-amt">价税合计</th><th class="c-amt c-tax">税额</th><th class="c-hint">核对提示</th>
+              <th>销售方</th><th class="c-amt">价税合计</th><th class="c-rate">税率</th><th class="c-amt c-tax">税额</th><th class="c-hint">核对提示</th>
             </tr></thead>
             <SiStagger v-if="finished" tag="tbody">
               <tr v-for="(r, i) in shownRows" :key="r.seq" :data-i="i" :class="{ hint: r.hints.length }">
@@ -301,6 +301,7 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
                 <td class="c-date num">{{ r.date || '—' }}</td>
                 <td class="c-seller" :title="r.seller_name">{{ r.seller_name || '—' }}</td>
                 <td class="c-amt"><MoneyRoll :value="r.total" :roll="rolled" :delay="Math.min(i, 7) * 45" /></td>
+                <td class="c-rate num" :title="r.rates">{{ r.rates || '—' }}</td>
                 <td class="c-amt c-tax"><MoneyRoll :value="r.tax" :roll="rolled" :delay="Math.min(i, 7) * 45" /></td>
                 <td class="c-hint">
                   <el-tooltip v-if="r.hints.length" placement="top-end" :show-after="200">
@@ -314,7 +315,7 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
             <SiStagger v-else tag="tbody">
               <tr v-for="p in pending" :key="p.i" :data-i="0" class="ph" :class="{ cur: p.cur }">
                 <td class="c-seq num">{{ p.i + 1 }}</td>
-                <td colspan="6" class="ph-c"><span v-if="p.cur" class="scan" aria-hidden="true" /><span class="ph-t">{{ p.cur ? `正在识别第 ${p.i + 1} 个文件` : `第 ${p.i + 1} 个文件已识别` }}</span><span class="ph-bars" aria-hidden="true"><i /><i /><i /></span></td>
+                <td colspan="7" class="ph-c"><span v-if="p.cur" class="scan" aria-hidden="true" /><span class="ph-t">{{ p.cur ? `正在识别第 ${p.i + 1} 个文件` : `第 ${p.i + 1} 个文件已识别` }}</span><span class="ph-bars" aria-hidden="true"><i /><i /><i /></span></td>
                 <td class="c-hint"><span class="ok">—</span></td>
               </tr>
             </SiStagger>
@@ -394,7 +395,7 @@ function again() { reset(); void nextTick(() => folder.value?.focus()) }
 .tbl tbody tr:last-child td { border-bottom: 0; }
 .tbl tbody tr:hover td { background: var(--si-hover-bg); }
 .c-seq { width: 64px; } .c-kind { width: 112px; } .c-no { width: 204px; } .c-date { width: 116px; }
-.c-amt { width: 128px; text-align: right !important; } .c-tax { width: 112px; } .c-hint { width: 232px; }
+.c-amt { width: 128px; text-align: right !important; } .c-tax { width: 112px; } .c-rate { width: 80px; white-space: nowrap; } .c-hint { width: 232px; }
 td.c-seller, td.c-amt { color: var(--si-ink-1); }
 .mono { font-family: var(--si-font-mono); font-variant-numeric: tabular-nums; }
 .num { font-variant-numeric: tabular-nums; }
@@ -433,5 +434,5 @@ html:is([data-fx="lite"], [data-fx="off"]) .scan { display: none; }
 .keep { margin-top: 14px; color: var(--si-ink-3); font: var(--si-font-caption); }
 
 /* 1366：号码不截断，让核对提示列窄一些（全文在悬停里） */
-@media (max-width: 1400px) { .c-seq { width: 52px; } .c-kind { width: 96px; } .c-no { width: 206px; } .c-date { width: 106px; } .c-amt { width: 112px; } .c-tax { width: 96px; } .c-hint { width: 172px; } }
+@media (max-width: 1400px) { .c-seq { width: 52px; } .c-kind { width: 96px; } .c-no { width: 206px; } .c-date { width: 106px; } .c-amt { width: 112px; } .c-tax { width: 96px; } .c-rate { width: 68px; } .c-hint { width: 172px; } }
 </style>
