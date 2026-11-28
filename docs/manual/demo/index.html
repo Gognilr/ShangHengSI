@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商衡SI · 核心功能演示</title>
+<style>
+/* 演示页自带配色（与 frontend/src/styles/theme.css 的衡线取值一致；本文件是离线演示资产，不属于前端代码） */
+:root{
+  --ink:#0E1726;--ink2:#334155;--ink3:#5E6B7E;--ink4:#94A0B2;--hair:#E1E6ED;--canvas:#F3F6F9;--card:#FFFFFF;
+  --brand:#078A76;--brand2:#10A58C;--brand-tint:#E6F7F2;--brand-line:#A6EAD9;--brand-inv:#33C0A6;
+  --ai:#6D5BF6;--ai2:#8B7CFF;--ai-soft:#F1EEFF;--ai-line:#CFC7FF;--ai-ink:#4F3DD8;
+  --danger:#E5484D;--danger-soft:#FFEEEF;--warn:#F2A20C;--warn-soft:#FFF5DD;--ok:#1FA05A;
+  --m-review:#10A58C;--m-bid:#EE7A1E;--m-meet:#E14E86;--m-trans:#1E95E0;--m-inv:#9A5B3C;
+  --night:#0B1220;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--night);overflow:hidden}
+body{font-family:"SI Sans","Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+.mono{font-family:"JetBrains Mono","Cascadia Mono",Consolas,monospace}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden;background:var(--canvas)}
+.scene{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .6s ease,visibility 0s linear .6s}
+.scene.on{opacity:1;visibility:visible;transition:opacity .6s ease}
+.pad{position:absolute;inset:0;padding:96px 120px}
+.kicker{font-size:26px;font-weight:600;color:var(--brand);letter-spacing:.08em}
+.kicker.ai{color:var(--ai)}
+h1{font-size:76px;line-height:1.15;font-weight:700;letter-spacing:.01em}
+h2{font-size:60px;line-height:1.2;font-weight:700;margin-top:14px}
+.lead{font-size:32px;line-height:1.6;color:var(--ink2);margin-top:22px}
+.chip{display:inline-block;padding:2px 12px;border-radius:10px;font-weight:600;white-space:nowrap}
+.c-org{background:#E7EEFF;color:#2F5BD8}.c-per{background:#F1EAFE;color:#7A3FD6}.c-tel{background:#E2F5F8;color:#0B7F95}
+.c-amt{background:var(--warn-soft);color:#A35C00}.c-acc{background:#FFEDE3;color:#C2531A}
+.code{font-family:"JetBrains Mono","Cascadia Mono",Consolas,monospace;font-size:.86em}
+.foot{position:absolute;left:120px;right:120px;bottom:44px;display:flex;justify-content:space-between;font-size:20px;color:var(--ink4)}
+
+/* 进入动画：场景激活时子元素依次出现 */
+.in{opacity:0;transform:translateY(24px)}
+.scene.on .in{animation:rise .7s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:calc(var(--d,0) * 1s)}
+@keyframes rise{to{opacity:1;transform:none}}
+
+/* 1 封面 */
+#s1{background:radial-gradient(1200px 700px at 78% 20%,rgba(109,91,246,.28),transparent 60%),radial-gradient(1100px 800px at 10% 90%,rgba(16,165,140,.30),transparent 60%),var(--night);color:#EDF1F6}
+#s1 .logo{width:220px;height:220px;position:absolute;left:120px;top:190px}
+#s1 .frame{stroke-dasharray:60;stroke-dashoffset:60}
+#s1.on .frame{animation:draw .9s ease forwards}
+#s1 .bar{transform-box:fill-box;transform-origin:center;transform:scaleX(0)}
+#s1.on .bar{animation:bar .7s cubic-bezier(.2,.8,.2,1) .5s forwards}
+#s1 .star{transform-box:fill-box;transform-origin:center;transform:scale(0) rotate(-30deg)}
+#s1.on .star{animation:star .5s cubic-bezier(.3,1.6,.5,1) 1.1s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}@keyframes bar{to{transform:scaleX(1)}}@keyframes star{to{transform:none}}
+#s1 .t{position:absolute;left:120px;top:470px}
+#s1 h1{font-size:120px;color:#fff}#s1 h1 b{color:var(--brand-inv);font-weight:700}
+#s1 .sub{font-size:40px;color:#C9D3E0;margin-top:18px}
+#s1 .tag{margin-top:64px;font-size:38px;color:#fff;display:flex;align-items:center;gap:24px}
+#s1 .tag i{display:block;width:120px;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--brand-inv),var(--ai2),var(--brand-inv))}
+#s1 .ver{position:absolute;right:120px;bottom:60px;font-size:22px;color:#8391A6}
+
+/* 2 问题 */
+#s2 .cols{display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:80px}
+.panel{background:var(--card);border-radius:28px;padding:56px 60px;box-shadow:0 20px 60px rgba(14,23,38,.08)}
+.panel h3{font-size:40px;margin-bottom:34px;display:flex;align-items:center;gap:14px}
+.dot{width:16px;height:16px;border-radius:50%;display:inline-block}
+.doc{font-size:34px;line-height:2.1;color:var(--ink2)}
+.bad .hl{background:var(--danger-soft);color:var(--danger);border-radius:8px;padding:0 8px;font-weight:600}
+.panel .verdict{margin-top:40px;font-size:32px;font-weight:600;padding:18px 24px;border-radius:16px}
+.bad .verdict{background:var(--danger-soft);color:#B4232F}
+.good .verdict{background:var(--brand-tint);color:#05695B}
+
+/* 3 往返线 */
+#s3 .bands{position:absolute;left:0;right:0;top:300px;height:700px;display:grid;grid-template-columns:960px 480px 480px}
+#s3 .band{position:relative}
+#s3 .band span{position:absolute;bottom:24px;left:40px;font-size:24px;font-weight:700;letter-spacing:.06em}
+#s3 .b1{background:linear-gradient(180deg,rgba(16,165,140,.10),rgba(16,165,140,.03))}#s3 .b1 span{color:var(--brand)}
+#s3 .b2{background:linear-gradient(180deg,rgba(109,91,246,.13),rgba(109,91,246,.04))}#s3 .b2 span{color:var(--ai)}
+#s3 .b3{background:linear-gradient(180deg,rgba(16,165,140,.10),rgba(16,165,140,.03))}#s3 .b3 span{color:var(--brand)}
+#s3 .track{position:absolute;left:240px;right:240px;top:420px;height:8px;border-radius:4px;background:var(--hair)}
+#s3 .fill{position:absolute;inset:0;border-radius:4px;background:linear-gradient(90deg,var(--brand2) 0 52%,var(--ai) 70%,var(--brand2) 92%);transform-origin:left;transform:scaleX(0)}
+#s3.on .fill{animation:fill 9s linear .6s forwards}
+@keyframes fill{0%{transform:scaleX(0)}100%{transform:scaleX(1)}}
+#s3 .runner{position:absolute;top:-14px;left:0;width:36px;height:36px;border-radius:50%;background:var(--brand2);box-shadow:0 0 0 10px rgba(16,165,140,.18);transform:translateX(-18px)}
+#s3.on .runner{animation:run 9s linear .6s forwards}
+@keyframes run{0%{left:0;background:var(--brand2)}33%{left:33.3%;background:var(--brand2)}55%{background:var(--ai);box-shadow:0 0 0 10px rgba(109,91,246,.2)}66.6%{left:66.6%;background:var(--ai)}88%{background:var(--brand2);box-shadow:0 0 0 10px rgba(16,165,140,.18)}100%{left:100%;background:var(--brand2)}}
+#s3 .st{position:absolute;top:384px;width:80px;height:80px;margin-left:-40px;border-radius:50%;background:#fff;border:6px solid var(--hair);display:grid;place-items:center;font-size:30px;font-weight:700;color:var(--ink3);transition:all .4s}
+#s3 .st.l{border-color:var(--brand2);color:var(--brand)}#s3 .st.m{border-color:var(--ai);color:var(--ai)}
+#s3 .card{position:absolute;top:500px;width:420px;margin-left:-210px;min-height:380px;background:#fff;border-radius:22px;padding:28px 30px;box-shadow:0 18px 50px rgba(14,23,38,.10)}
+#s3 .card h4{font-size:32px;margin-bottom:8px}#s3 .card p{font-size:22px;color:var(--ink3);line-height:1.5;min-height:66px}
+#s3 .card .doc{font-size:24px;line-height:2;margin-top:16px;padding-top:16px;border-top:1px dashed var(--hair);color:var(--ink2)}
+#s3 .note{position:absolute;top:340px;font-size:21px;font-weight:600;color:var(--ai);background:#fff;border:2px solid var(--ai-line);border-radius:30px;padding:6px 18px;white-space:nowrap;translate:-50% 0}
+
+/* 屏幕截图场景 */
+.shot{position:absolute;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 30px 80px rgba(14,23,38,.18),0 0 0 1px rgba(14,23,38,.06)}
+.shot img{display:block;width:100%;height:auto}
+.shot .bar{height:40px;background:#EEF2F6;display:flex;align-items:center;gap:10px;padding:0 18px}
+.shot .bar i{width:13px;height:13px;border-radius:50%;background:#CBD3DD;display:block}
+.side{position:absolute;right:110px;top:150px;width:520px}
+.side h2{font-size:54px}
+.pts{margin-top:40px;display:flex;flex-direction:column;gap:30px}
+.pt{display:flex;gap:20px;font-size:28px;line-height:1.5;color:var(--ink2)}
+.pt b{color:var(--ink)}
+.pt .n{flex:none;width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:22px;font-weight:700;color:#fff;background:var(--brand2)}
+.pt .n.ai{background:var(--ai)}
+.callout{position:absolute;background:var(--ink);color:#fff;font-size:24px;font-weight:600;padding:12px 22px;border-radius:14px;box-shadow:0 12px 30px rgba(14,23,38,.25);white-space:nowrap}
+.callout:after{content:"";position:absolute;width:16px;height:16px;background:var(--ink);transform:rotate(45deg)}
+.callout.dn:after{left:28px;bottom:-7px}.callout.up:after{left:28px;top:-7px}.callout.lf:after{left:-7px;top:50%;margin-top:-8px}
+.pulse{position:absolute;border:4px solid var(--ai);border-radius:16px}
+.scene.on .pulse{animation:rise .7s cubic-bezier(.2,.8,.2,1) forwards,pulse 2s ease-in-out 1.2s infinite;animation-delay:calc(var(--d,0) * 1s),1.2s}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(109,91,246,.45)}50%{box-shadow:0 0 0 14px rgba(109,91,246,0)}}
+
+/* 6 还原对照 */
+#s6 .pair{position:absolute;top:300px;left:120px;right:120px;display:grid;grid-template-columns:1fr 120px 1fr;align-items:stretch}
+#s6 .arrow{align-self:center}
+#s6 .pane{background:#fff;border-radius:26px;padding:34px 40px;box-shadow:0 20px 60px rgba(14,23,38,.10)}
+#s6 .pane .lab{font-size:24px;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:12px}
+#s6 .pane .txt{font-size:31px;line-height:1.85;color:var(--ink2)}
+#s6 .arrow{text-align:center;font-size:64px;color:var(--brand2)}
+#s6 .model{border:3px solid var(--ai-line)}#s6 .model .lab{color:var(--ai)}
+#s6 .local{border:3px solid var(--brand-line)}#s6 .local .lab{color:var(--brand)}
+#s6 .local mark{background:var(--brand-tint);color:#05695B;border-radius:8px;padding:0 6px;font-weight:600}
+#s6 .outs{position:absolute;left:120px;right:120px;top:780px;display:grid;grid-template-columns:repeat(4,1fr);gap:28px}
+.out{background:#fff;border-radius:22px;padding:28px 30px;box-shadow:0 14px 40px rgba(14,23,38,.07)}
+.out h4{font-size:32px;margin-bottom:10px}.out p{font-size:23px;color:var(--ink3);line-height:1.5}
+
+/* 7 功能 */
+#s7 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:54px}
+.fc{background:#fff;border-radius:26px;padding:40px 40px;box-shadow:0 16px 46px rgba(14,23,38,.07);position:relative;overflow:hidden;min-height:300px}
+.fc:before{content:"";position:absolute;left:0;top:0;bottom:0;width:8px;background:var(--c)}
+.fc h4{font-size:40px;display:flex;align-items:center;gap:14px}
+.fc p{font-size:27px;line-height:1.6;color:var(--ink2);margin-top:18px}
+.fc .tg{position:absolute;right:28px;top:34px;font-size:19px;font-weight:700;padding:5px 14px;border-radius:20px}
+.tg.local{background:var(--brand-tint);color:#05695B}.tg.cloud{background:var(--ai-soft);color:var(--ai-ink)}.tg.mix{background:#F1F4F8;color:var(--ink2)}
+
+/* 8 安全 */
+#s8{background:radial-gradient(1100px 700px at 85% 10%,rgba(109,91,246,.22),transparent 60%),radial-gradient(1000px 700px at 5% 95%,rgba(16,165,140,.25),transparent 60%),var(--night);color:#EDF1F6}
+#s8 .kicker{color:var(--brand-inv)}#s8 h2{color:#fff}
+#s8 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:30px;margin-top:60px}
+#s8 .pr{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:26px;padding:42px 42px;min-height:300px}
+#s8 .pr .ic{width:60px;height:60px;border-radius:18px;display:grid;place-items:center;background:rgba(51,192,166,.16);margin-bottom:22px}
+#s8 .pr h4{font-size:36px;color:#fff}#s8 .pr p{font-size:26px;line-height:1.55;color:#AEB9C8;margin-top:12px}
+
+/* 9 开始 */
+#s9 .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:36px;margin-top:90px}
+.step{background:#fff;border-radius:28px;padding:56px 52px 60px;min-height:420px;box-shadow:0 18px 50px rgba(14,23,38,.08)}
+.step .n{font-size:84px;font-weight:700;line-height:1;background:linear-gradient(120deg,var(--brand2),var(--ai));-webkit-background-clip:text;background-clip:text;color:transparent}
+.step h4{font-size:42px;margin-top:24px}.step p{font-size:29px;line-height:1.6;color:var(--ink2);margin-top:12px}
+.fill-in{display:inline-block;min-width:300px;border-bottom:3px dashed var(--ink4);color:var(--ink3);padding:0 8px}
+#s9 .end{margin-top:110px;display:flex;align-items:center;gap:26px;font-size:36px;font-weight:600}
+#s9 .end i{display:block;width:140px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--brand2),var(--ai),var(--brand2))}
+
+/* 控制条 */
+#nav{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:10px;z-index:9;opacity:.0;transition:opacity .4s}
+body:hover #nav,#nav.show{opacity:1}
+#nav button{width:12px;height:12px;border-radius:6px;border:0;background:rgba(148,160,178,.55);cursor:pointer;transition:all .3s}
+#nav button.cur{width:36px;background:#33C0A6}
+#hint{position:fixed;right:18px;bottom:12px;font:13px/1.4 sans-serif;color:#94A0B2;z-index:9;opacity:.8;transition:opacity 1s}
+#auto{position:fixed;left:18px;bottom:12px;font:13px/1.4 sans-serif;color:#33C0A6;z-index:9;display:none}
+</style>
+</head>
+<body>
+<div id="stage">
+
+<!-- 1 封面 -->
+<section class="scene" id="s1">
+  <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+    <path class="frame" d="M12.5 2.5H8.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V10" stroke="#33C0A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M9.5 6.5h2M9.5 17.5h5" stroke="#1F5E55" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <rect class="bar" x="3" y="10" width="18" height="4" rx="2" fill="#33C0A6"/>
+    <path class="star" d="M17.5 1.5c.3 1.9.9 2.6 3 3-2.1.4-2.7 1.1-3 3-.3-1.9-.9-2.6-3-3 2.1-.4 2.7-1.1 3-3z" fill="#8B7CFF" stroke="#8B7CFF" stroke-width=".8" stroke-linejoin="round"/>
+  </svg>
+  <div class="t">
+    <h1 class="in" style="--d:.9">商衡 <b>SI</b></h1>
+    <div class="sub in" style="--d:1.1">企业安全脱敏与智能审查平台 · 商务文件的安全初审助手</div>
+    <div class="tag in" style="--d:1.5"><i></i>名称和金额留在本机，云端只看代号</div>
+  </div>
+  <div class="ver">V3.6 · 核心功能演示</div>
+</section>
+
+<!-- 2 为什么 -->
+<section class="scene" id="s2"><div class="pad">
+  <div class="kicker in">为什么需要它</div>
+  <h2 class="in" style="--d:.15">同一份合同，交给云端 AI 的两种方式</h2>
+  <div class="cols">
+    <div class="panel bad in" style="--d:.4">
+      <h3><span class="dot" style="background:var(--danger)"></span>直接上传给公网 AI</h3>
+      <div class="doc">
+        买方：<span class="hl">北辰示例贸易有限公司</span><br>
+        联系人：<span class="hl">周明</span>　电话：<span class="hl">13800001234</span><br>
+        合同总价：人民币 <span class="hl">1,552,000.00</span> 元<br>
+        账号：<span class="hl">6222 0000 1111 2222 333</span>
+      </div>
+      <div class="verdict">客户、金额、账号、电话，原样出了公司的门</div>
+    </div>
+    <div class="panel good in" style="--d:.7">
+      <h3><span class="dot" style="background:var(--brand2)"></span>经商衡SI 发出</h3>
+      <div class="doc">
+        买方：<span class="chip c-org code">[[ORG_1]]</span><br>
+        联系人：<span class="chip c-per code">[[PER_1]]</span>　电话：<span class="chip c-tel code">[[TEL_1]]</span><br>
+        合同总价：人民币 <span class="chip c-amt code">[[AMT_5]]</span> 元<br>
+        账号：<span class="chip c-acc code">[[ACCT_1]]</span>
+      </div>
+      <div class="verdict">条款原样留下，敏感信息只剩代号</div>
+    </div>
+  </div>
+</div></section>
+
+<!-- 3 往返线 -->
+<section class="scene" id="s3"><div class="pad">
+  <div class="kicker in">核心原理</div>
+  <h2 class="in" style="--d:.15">一条往返线：出门前遮住，回来后还原</h2>
+</div>
+  <div class="bands">
+    <div class="band b1"><span>本机 · 公司内网</span></div>
+    <div class="band b2"><span>云端模型</span></div>
+    <div class="band b3"><span>回到本机</span></div>
+  </div>
+  <div class="track"><div class="fill"></div><div class="runner"></div></div>
+  <div class="note in" style="left:960px;top:352px;--d:3.8">只含代号 · 发前复检 · 加密传输</div>
+  <div class="st l in" style="left:240px;--d:.5">1</div>
+  <div class="st l in" style="left:720px;--d:3.4">2</div>
+  <div class="st m in" style="left:1200px;--d:6.4">3</div>
+  <div class="st l in" style="left:1680px;--d:9.4">4</div>
+  <div class="card in" style="left:240px;--d:.7">
+    <h4>上传文件</h4><p>合同、报价单、函件；Word、PDF、扫描件、Excel</p>
+    <div class="doc">买方：北辰示例贸易有限公司<br>合同总价：1,552,000.00 元<br>联系人：周明 13800001234</div>
+  </div>
+  <div class="card in" style="left:720px;--d:3.6">
+    <h4>本机脱敏</h4><p>名称、金额、账号、电话换成代号，你确认后才发送</p>
+    <div class="doc">买方：<span class="chip c-org code">[[ORG_1]]</span><br>合同总价：<span class="chip c-amt code">[[AMT_5]]</span> 元<br>联系人：<span class="chip c-per code">[[PER_1]]</span> <span class="chip c-tel code">[[TEL_1]]</span></div>
+  </div>
+  <div class="card in" style="left:1200px;--d:6.6;border:3px solid var(--ai-line)">
+    <h4 style="color:var(--ai)">云端初审</h4><p>表述、逻辑、法律、合规与制裁、商务，逐条审</p>
+    <div class="doc"><span class="chip c-org code">[[ORG_1]]</span> 的尾款没有付款期限，建议约定 30 日内付清。</div>
+  </div>
+  <div class="card in" style="left:1680px;--d:9.6;border:3px solid var(--brand-line)">
+    <h4 style="color:var(--brand)">本机还原</h4><p>换回真实名称，可追问、可导出 Word</p>
+    <div class="doc"><b style="color:var(--brand)">北辰示例贸易有限公司</b>的尾款没有付款期限，建议约定 30 日内付清。</div>
+  </div>
+</section>
+
+<!-- 4 确认脱敏 -->
+<section class="scene" id="s4">
+  <div class="shot in" style="left:90px;top:120px;width:1160px;--d:.2"><div class="bar"><i></i><i></i><i></i></div><img src="img/confirm.png" alt="确认脱敏页"></div>
+  <div class="pulse in" style="left:466px;top:272px;width:26px;height:720px;border-radius:13px;--d:.2"></div>
+  <div class="callout dn in" style="left:452px;top:62px;--d:1">拖动紫线：左边原文，右边是模型将看到的</div>
+  <div class="side">
+    <div class="kicker in">第一步 · 确认脱敏</div>
+    <h2 class="in" style="--d:.15">你看着它遮住，<br>再决定发不发</h2>
+    <div class="pts">
+      <div class="pt in" style="--d:.5"><span class="n">1</span><span><b>自动识别</b>单位、人名、电话、账号、地址、金额，在本机换成代号</span></div>
+      <div class="pt in" style="--d:.7"><span class="n">2</span><span><b>拿不准的默认遮住</b>，一键保留或补遮</span></div>
+      <div class="pt in" style="--d:.9"><span class="n">3</span><span><b>选定我方</b>，模型按你的立场审</span></div>
+      <div class="pt in" style="--d:1.1"><span class="n ai">4</span><span>发出前本机<b>再复检一遍</b>，漏一处就拦下</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 审核结果 -->
+<section class="scene" id="s5">
+  <div class="shot in" style="left:90px;top:120px;width:1160px;--d:.2"><div class="bar"><i></i><i></i><i></i></div><img src="img/finding-full.png" alt="审核结果页"></div>
+  <div class="callout dn in" style="left:560px;top:62px;--d:1.1">点一条意见，左边原文跟着定位</div>
+  <div class="side">
+    <div class="kicker ai in">第二步 · 审核结果</div>
+    <h2 class="in" style="--d:.15">问题逐条列出，<br>原文一点即到</h2>
+    <div class="pts">
+      <div class="pt in" style="--d:.5"><span class="n ai">1</span><span>按<b>高 · 中 · 低</b>排序，每条有说明、影响、依据与建议条文</span></div>
+      <div class="pt in" style="--d:.7"><span class="n">2</span><span><b>本机计算</b>核对单价×数量、合计、大小写金额，结果确定</span></div>
+      <div class="pt in" style="--d:.9"><span class="n ai">3</span><span>审核边做边出，<b>常规合同几分钟</b>完成</span></div>
+      <div class="pt in" style="--d:1.1"><span class="n">4</span><span>采纳、忽略、加备注，处理完一键导出</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 还原 -->
+<section class="scene" id="s6"><div class="pad">
+  <div class="kicker in">第三步 · 本机还原</div>
+  <h2 class="in" style="--d:.15">模型只见过代号，你看到的是真名</h2>
+</div>
+  <div class="pair">
+    <div class="pane model in" style="--d:.5">
+      <div class="lab">✦ 模型写回的建议条文</div>
+      <div class="txt"><span class="chip c-org code">[[ORG_1]]</span>应于货物验收合格之日起 30 日内一次性支付剩余货款；逾期付款的，每逾期一日按应付未付金额的万分之五向<span class="chip c-org code">[[ORG_2]]</span>支付违约金。</div>
+    </div>
+    <div class="arrow in" style="--d:1.1">➜</div>
+    <div class="pane local in" style="--d:1.4">
+      <div class="lab">◆ 你在本机看到的</div>
+      <div class="txt"><mark>北辰示例贸易有限公司</mark>应于货物验收合格之日起 30 日内一次性支付剩余货款；逾期付款的，每逾期一日按应付未付金额的万分之五向<mark>江南示例新材料有限公司</mark>支付违约金。</div>
+    </div>
+  </div>
+  <div class="outs">
+    <div class="out in" style="--d:1.8"><h4>追问</h4><p>就某条意见继续讨论，同样先脱敏再发</p></div>
+    <div class="out in" style="--d:1.95"><h4>审核报告</h4><p>Word 报告：结论、问题清单、逐条结论</p></div>
+    <div class="out in" style="--d:2.1"><h4>批注版</h4><p>意见挂成 Word 批注，原文一字不改</p></div>
+    <div class="out in" style="--d:2.25"><h4>传新一稿</h4><p>对方改稿后只审变化，看哪些问题已解决</p></div>
+  </div>
+</section>
+
+<!-- 7 功能 -->
+<section class="scene" id="s7"><div class="pad">
+  <div class="kicker in">不止合同审核</div>
+  <h2 class="in" style="--d:.15">一个入口，日常商务文件都能交给它</h2>
+  <div class="grid">
+    <div class="fc in" style="--c:var(--m-review);--d:.4"><span class="tg mix">脱敏后外发</span><h4>工作台</h4><p>直接提问；摘要、起草回函、核对单证、比较几份报价</p></div>
+    <div class="fc in" style="--c:var(--m-review);--d:.5"><span class="tg mix">脱敏后外发</span><h4>文件审核</h4><p>合同、报价单、订单、询价函、函件，五个方面逐条初审</p></div>
+    <div class="fc in" style="--c:var(--brand);--d:.6"><span class="tg local">全程本机</span><h4>合同对比</h4><p>两稿逐处比对，标出改动与修订留痕，导出变化对照表</p></div>
+    <div class="fc in" style="--c:var(--m-bid);--d:.7"><span class="tg local">本机为主</span><h4>标书初审</h4><p>开标前查★条款与否决项、串标线索、报价复算，只找严重问题</p></div>
+    <div class="fc in" style="--c:var(--m-meet);--d:.8"><span class="tg mix">录音不外发</span><h4>会议纪要</h4><p>录音在本机转写成逐字稿，校对后生成议题、决议与待办</p></div>
+    <div class="fc in" style="--c:var(--m-trans);--d:.9"><span class="tg mix">可选本地</span><h4>翻译 · 发票管家</h4><p>本地翻译不外发，或脱敏后云端翻译；发票本机识别，导出 Excel</p></div>
+  </div>
+</div></section>
+
+<!-- 8 安全 -->
+<section class="scene" id="s8"><div class="pad">
+  <div class="kicker in">安全承诺</div>
+  <h2 class="in" style="--d:.15">放心交给它的六条理由</h2>
+  <div class="grid">
+    <div class="pr in" style="--d:.4"><div class="ic"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#33C0A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></div><h4>原件不出内网</h4><p>原文件加密存在公司服务器，永不修改；导出都是新生成的文件</p></div>
+    <div class="pr in" style="--d:.55"><div class="ic"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#33C0A6" stroke-width="2" stroke-linecap="round"><rect x="3" y="10" width="18" height="4" rx="2"/><path d="M7 6h4M7 18h8"/></svg></div><h4>只发脱敏文字</h4><p>不发原文件、图片、录音和文件名；“仅本地”任务一字不发</p></div>
+    <div class="pr in" style="--d:.7"><div class="ic"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#33C0A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div><h4>发前再复检</h4><p>每次外发前统一检查，发现真实名称或号码就拦截，不发送</p></div>
+    <div class="pr in" style="--d:.85"><div class="ic"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#33C0A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div><h4>只有本人能看</h4><p>任务只对本人可见，管理员也打不开别人的文件和结果</p></div>
+    <div class="pr in" style="--d:1.0"><div class="ic"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#33C0A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg></div><h4>本地模型离线运行</h4><p>识别、转写、本地翻译在服务器 CPU 上完成，不连外网</p></div>
+    <div class="pr in" style="--d:1.15"><div class="ic"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#33C0A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><h4>外发全程留痕</h4><p>每次发给模型的文字都有记录，可按人、按日期查阅审计</p></div>
+  </div>
+</div></section>
+
+<!-- 9 开始使用 -->
+<section class="scene" id="s9"><div class="pad">
+  <div class="kicker in">现在就可以用</div>
+  <h2 class="in" style="--d:.15">三步开始</h2>
+  <div class="steps">
+    <div class="step in" style="--d:.4"><div class="n">01</div><h4>打开浏览器</h4><p>用 Edge 访问<br><span class="fill-in">https://</span></p></div>
+    <div class="step in" style="--d:.6"><div class="n">02</div><h4>安装证书</h4><p>首次使用按登录页“下载根证书”的说明导入，只需一次</p></div>
+    <div class="step in" style="--d:.8"><div class="n">03</div><h4>登录使用</h4><p>账号由管理员统一开通<br>联系人：<span class="fill-in" style="min-width:200px">&nbsp;</span></p></div>
+  </div>
+  <div class="end in" style="--d:1.2"><i></i>商衡SI · 名称和金额留在本机，云端只看代号</div>
+</div></section>
+
+</div>
+<div id="nav"></div>
+<div id="auto">自动播放</div>
+<div id="hint">← → 翻页 · A 自动播放 · F 全屏</div>
+<script>
+(function(){
+  const stage=document.getElementById('stage');
+  const scenes=[...document.querySelectorAll('.scene')];
+  const nav=document.getElementById('nav'), hint=document.getElementById('hint'), autoEl=document.getElementById('auto');
+  const DUR=[7,9,14,10,10,10,9,9,10];   // 自动播放时每页停留秒数
+  let cur=-1, timer=null, auto=false;
+  function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);stage.style.transform=`scale(${s}) translate(-50%,-50%)`;stage.style.transformOrigin='0 0';stage.style.left='50%';stage.style.top='50%';stage.style.transform=`translate(-50%,-50%) scale(${s})`;stage.style.transformOrigin='center center'}
+  scenes.forEach((_,i)=>{const b=document.createElement('button');b.title='第 '+(i+1)+' 页';b.onclick=()=>go(i);nav.appendChild(b)});
+  function go(i){
+    i=Math.max(0,Math.min(scenes.length-1,i)); if(i===cur)return;
+    if(cur>=0)scenes[cur].classList.remove('on');
+    const s=scenes[i]; s.classList.remove('on'); void s.offsetWidth; s.classList.add('on'); cur=i;
+    [...nav.children].forEach((b,k)=>b.classList.toggle('cur',k===i));
+    nav.classList.add('show'); clearTimeout(go.t); go.t=setTimeout(()=>nav.classList.remove('show'),1800);
+    location.hash=String(i+1); schedule();
+  }
+  function schedule(){clearTimeout(timer); if(auto)timer=setTimeout(()=>go(cur===scenes.length-1?0:cur+1),DUR[cur]*1000)}
+  function toggleAuto(){auto=!auto;autoEl.style.display=auto?'block':'none'; if(auto&&cur===scenes.length-1){cur=-1;go(0)}else schedule()}
+  addEventListener('keydown',e=>{
+    if(['ArrowRight','PageDown',' ','Enter'].includes(e.key)){e.preventDefault();go(cur+1)}
+    else if(['ArrowLeft','PageUp','Backspace'].includes(e.key)){e.preventDefault();go(cur-1)}
+    else if(e.key==='Home')go(0); else if(e.key==='End')go(scenes.length-1);
+    else if(e.key==='a'||e.key==='A')toggleAuto();
+    else if(e.key==='f'||e.key==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}
+  });
+  addEventListener('click',e=>{if(e.target.closest('#nav'))return; e.clientX>innerWidth/3?go(cur+1):go(cur-1)});
+  addEventListener('resize',fit); fit();
+  addEventListener('hashchange',()=>go((parseInt(location.hash.slice(1))||1)-1));
+  setTimeout(()=>hint.style.opacity=0,6000);
+  const start=parseInt(location.hash.slice(1))||1; if(/auto/.test(location.search))toggleAuto(); go(start-1);
+})();
+</script>
+</body>
+</html>
