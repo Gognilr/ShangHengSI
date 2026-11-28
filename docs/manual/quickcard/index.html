@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>商衡SI 使用速查卡</title>
+<style>
+/* A4 单页速查卡（离线打印资产，配色取衡线规范） */
+@page{size:A4;margin:0}
+:root{--ink:#0E1726;--ink2:#334155;--ink3:#5E6B7E;--hair:#E1E6ED;--brand:#078A76;--brand2:#10A58C;--tint:#E6F7F2;--ai:#6D5BF6;--ai-soft:#F1EEFF;--warn-soft:#FFF5DD;--warn:#8F4F00}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:210mm;height:297mm}
+body{font-family:"Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;color:var(--ink);font-size:10pt;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{width:210mm;height:297mm;padding:11mm 13mm 9mm;display:flex;flex-direction:column;gap:3.6mm}
+header{display:flex;align-items:center;gap:4mm;padding-bottom:3mm;border-bottom:1.2pt solid var(--brand2)}
+header svg{width:15mm;height:15mm;flex:none}
+header h1{font-size:21pt;line-height:1.1}header h1 b{color:var(--brand)}
+header .sub{font-size:10pt;color:var(--ink3);margin-top:1mm}
+header .fill{margin-left:auto;font-size:9.5pt;color:var(--ink2);line-height:2}
+header .fill span{display:inline-block;width:42mm;border-bottom:.8pt solid var(--ink3)}
+.motto{display:flex;align-items:center;gap:3mm;font-size:12.5pt;font-weight:700}
+.motto i{display:block;width:16mm;height:2.2mm;border-radius:2mm;background:linear-gradient(90deg,var(--brand2),var(--ai),var(--brand2))}
+h2{font-size:11.5pt;margin-bottom:1.6mm;display:flex;align-items:center;gap:2mm}
+h2:before{content:"";width:1.6mm;height:4.2mm;border-radius:1mm;background:var(--brand2)}
+.row{display:grid;gap:4mm}
+.card{border:.8pt solid var(--hair);border-radius:3mm;padding:2.4mm 3mm}
+.steps{grid-template-columns:repeat(3,1fr)}
+.steps .card b{display:block;font-size:11pt;margin-bottom:.8mm}
+.steps .card em{font-style:normal;color:var(--brand);font-weight:700;margin-right:1.5mm}
+.flow{grid-template-columns:repeat(4,1fr)}
+.flow .card{position:relative}
+.flow .card.ai{background:var(--ai-soft);border-color:#CFC7FF}
+.flow .card b{display:block;font-size:11pt}
+.flow .card.ai b{color:var(--ai)}
+.flow .card:not(:last-child):after{content:"→";position:absolute;right:-3.6mm;top:40%;color:var(--ink3);font-weight:700}
+.small{font-size:9.3pt;color:var(--ink2)}
+table{width:100%;border-collapse:collapse;font-size:9.8pt}
+td,th{border-bottom:.6pt solid var(--hair);padding:1mm 1.5mm;text-align:left;vertical-align:top}
+th{font-size:9pt;color:var(--ink3);font-weight:600}
+td:first-child{width:46%}
+.tag{display:inline-block;font-size:8pt;font-weight:700;padding:.2mm 1.6mm;border-radius:2mm;margin-left:1mm;vertical-align:1px}
+.tag.l{background:var(--tint);color:#05695B}.tag.m{background:var(--ai-soft);color:#4F3DD8}
+.two{grid-template-columns:1fr 1fr}
+ul{padding-left:4.5mm}li{margin-bottom:.6mm}
+kbd{font-family:Consolas,monospace;font-size:8.5pt;border:.6pt solid #C9D2DD;border-bottom-width:1.2pt;border-radius:1mm;padding:0 1.2mm;background:#F8FAFC}
+.warn{background:var(--warn-soft);border-color:#FBDB95}
+footer{margin-top:auto;font-size:8.5pt;color:var(--ink3);display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <svg viewBox="0 0 24 24"><path d="M12.5 2.5H8.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V10" stroke="#078A76" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M9.5 6.5h2M9.5 17.5h5" stroke="#A6EAD9" stroke-width="2" stroke-linecap="round" fill="none"/><rect x="3" y="10" width="18" height="4" rx="2" fill="#078A76"/><path d="M17.5 1.5c.3 1.9.9 2.6 3 3-2.1.4-2.7 1.1-3 3-.3-1.9-.9-2.6-3-3 2.1-.4 2.7-1.1 3-3z" fill="#6D5BF6" stroke="#6D5BF6" stroke-width=".8" stroke-linejoin="round"/></svg>
+    <div><h1>商衡 <b>SI</b> 使用速查卡</h1><div class="sub">企业安全脱敏与智能审查平台 · V3.6</div></div>
+    <div class="fill">访问地址：<span>&nbsp;https://</span><br>管理员：<span></span></div>
+  </header>
+
+  <div class="motto"><i></i>名称和金额留在本机，云端只看代号</div>
+
+  <section>
+    <h2>第一次使用</h2>
+    <div class="row steps">
+      <div class="card"><b><em>01</em>打开浏览器</b><span class="small">用最新版 Edge 访问上方地址，窗口宽度不小于 1280 像素</span></div>
+      <div class="card"><b><em>02</em>安装证书</b><span class="small">打开 http://地址/cert/，按页面核对指纹并导入根证书，只需一次</span></div>
+      <div class="card"><b><em>03</em>登录改密</b><span class="small">账号由管理员开通；首次登录设置新密码（8 位以上，含字母和数字）</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>文件审核四步</h2>
+    <div class="row flow">
+      <div class="card"><b>① 上传</b><span class="small">拖入或 Ctrl+V 粘贴；合同、报价、函件，最多 10 份</span></div>
+      <div class="card"><b>② 确认脱敏</b><span class="small">选“我方是”；看一眼“需要你看一眼的”；拖紫线对照模型将看到的</span></div>
+      <div class="card ai"><b>③ 云端审核</b><span class="small">只发遮住后的文字；发前本机再复检，可离开页面</span></div>
+      <div class="card"><b>④ 处理与导出</b><span class="small">点意见定位原文；采纳、忽略、追问；导出报告或批注版</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>我想……用哪个功能</h2>
+    <table>
+      <tr><th>我想</th><th>用</th></tr>
+      <tr><td>审一份合同、报价单、订单、询价函或函件</td><td>文件审核<span class="tag m">脱敏后外发</span>；不想外发选“不外发，仅本地校验”</td></tr>
+      <tr><td>看对方把合同改了哪些地方</td><td>合同对比<span class="tag l">全程本机</span></td></tr>
+      <tr><td>问问题、起草回函、核对单证、比较几份报价</td><td>工作台<span class="tag m">脱敏后外发</span></td></tr>
+      <tr><td>开标时查否决项和串标线索</td><td>标书初审<span class="tag l">本机为主</span></td></tr>
+      <tr><td>把会议录音整理成纪要</td><td>会议纪要<span class="tag l">录音不外发</span></td></tr>
+      <tr><td>翻译一份文件</td><td>翻译：本机翻译<span class="tag l">不外发</span>，或云端翻译<span class="tag m">脱敏后外发</span></td></tr>
+      <tr><td>把一批发票整理成 Excel</td><td>发票管家<span class="tag l">全程本机</span></td></tr>
+      <tr><td>找回以前做过的审核或对话</td><td>历史记录，或按 <kbd>Ctrl</kbd>+<kbd>K</kbd> 搜索</td></tr>
+    </table>
+  </section>
+
+  <div class="row two">
+    <section class="card">
+      <h2>常用快捷键</h2>
+      <ul class="small">
+        <li><kbd>Ctrl</kbd>+<kbd>K</kbd> 全局搜索 · <kbd>Enter</kbd> 发送 · <kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</li>
+        <li>确认页：<kbd>V</kbd> 切换原文 / 模型视野，<kbd>J</kbd> <kbd>K</kbd> 下一个 / 上一个拿不准的项，<kbd>B</kbd> 保留，<kbd>T</kbd> 遮住，<kbd>?</kbd> 全部快捷键</li>
+        <li>结果页：<kbd>↑</kbd> <kbd>↓</kbd> 切换问题，<kbd>A</kbd> 采纳，<kbd>I</kbd> 忽略</li>
+      </ul>
+    </section>
+    <section class="card warn">
+      <h2>请记住</h2>
+      <ul class="small">
+        <li>工作文件只交给本系统，不要上传到公网 AI</li>
+        <li>确认页的客户简称、项目代号、型号请看一眼再发</li>
+        <li>批注版含内部意见，不要直接发给对方</li>
+        <li>AI 意见仅供参考；重大事项请法务、合规确认</li>
+      </ul>
+    </section>
+  </div>
+
+  <section>
+    <h2>遇到问题</h2>
+    <table>
+      <tr><td>浏览器提示“不安全”</td><td>按“第一次使用 02”安装根证书</td></tr>
+      <tr><td>发送时提示被拦截</td><td>系统发现了没遮住的真实信息，按右栏清单逐条处理后再提交</td></tr>
+      <tr><td>结果中有标黄文字</td><td>模型写了文件中没有的代号，请对照原文核实</td></tr>
+      <tr><td>忘记密码、看不到某个菜单、调用次数用完</td><td>联系管理员</td></tr>
+    </table>
+  </section>
+
+  <footer><span>原件加密保存在公司服务器，只有你本人能看到你的任务</span><span>详见《系统使用说明书》</span></footer>
+</div>
+</body>
+</html>
