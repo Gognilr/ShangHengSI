@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ChevronDown, ChevronRight, Download, GitCompareArrows } from '@lucide/vue'
 import { assistantApi, type DiffChange, type DiffResult } from '@/api/assistant'
@@ -38,6 +38,15 @@ const typeLabel = (c: DiffChange) => c.detail_type === 'numbering' ? '编号变�
   : c.detail_type === 'visibility' ? '隐藏文字'
   : c.type === 'move' && c.segs.some(s => s.t !== 'eq') ? '位置与文字改动' : DIFF_TYPE[c.type]
 
+// 比对是服务器在本机现算：等待时说明在做什么并计秒，不用灰条（澄明 8.10）
+const seconds = ref(0)
+let tick = 0
+watch(() => props.loading, on => {
+  window.clearInterval(tick); seconds.value = 0
+  if (on) tick = window.setInterval(() => { seconds.value++ }, 1000)
+}, { immediate: true })
+onBeforeUnmount(() => window.clearInterval(tick))
+
 const exporting = ref(false)
 async function exportTable() {
   if (!props.diff || exporting.value) return
@@ -58,7 +67,7 @@ async function exportTable() {
       <button v-if="askTab" type="button" class="tab" @click="emit('askTab')">追问</button>
       <el-button v-if="diff && main.length" class="export" link type="primary" size="small" :disabled="exporting" @click="exportTable"><Download :size="14" :stroke-width="1.75" />{{ exporting ? '正在生成…' : '导出对照表' }}</el-button>
     </div>
-    <div v-if="loading" class="loading"><el-skeleton :rows="6" animated /></div>
+    <p v-if="loading" class="loading si-wait" role="status"><GitCompareArrows :size="15" :stroke-width="1.75" /><span>正在本机比对两稿</span><span class="num">· {{ seconds }} 秒</span></p>
     <SiNotice v-else-if="error" type="error" :closable="false" :title="error" class="alert" />
     <div v-else-if="diff" class="zone">
       <div class="sum">
@@ -73,7 +82,7 @@ async function exportTable() {
       <p v-if="diff.ocr" class="note">扫描件识字可能有误差，单字差异请对照原件。</p>
       <p v-if="diff.omitted?.length" class="note">稿件含{{ diff.omitted.join('、') }}，未对比。</p>
       <div v-if="main.length" class="filters"><SiSegmented v-model="filter" :options="options" size="small" ariaLabel="按变化类型筛选" /></div>
-      <ul v-if="shown.length" class="list">
+      <ul v-if="shown.length" class="list si-stagger">
         <li v-for="c in shown" :key="c.id">
           <button type="button" class="row" :class="{ on: c.id === selectedId, u: c.untracked }" @click="emit('pick', c)">
             <span class="row-h">
@@ -117,7 +126,10 @@ async function exportTable() {
 .tab-n { padding: 0 6px; border-radius: var(--si-radius-badge); background: var(--si-surface-2); color: var(--si-ink-3); font: var(--si-font-label-sm); }
 .export { margin-left: auto; }
 .export :deep(> span) { gap: 4px; }
-.loading { padding: 16px; }
+.loading { display: flex; align-items: center; gap: 6px; margin: 0; padding: 16px; color: var(--si-brand-2); font: var(--si-font-label); }
+.loading .num { color: var(--si-ink-3); }
+.loading > :first-child { flex: none; animation: si-breath 1.6s var(--si-ease-io) infinite; }
+html:is([data-fx="lite"], [data-fx="off"]) .loading > :first-child { animation: none; }
 .alert { margin: 12px 16px 0; width: auto; }
 .zone { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
 .sum { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--si-hair-faint); border-radius: var(--si-radius-md); background: var(--si-card-2); }

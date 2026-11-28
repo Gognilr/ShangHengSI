@@ -363,7 +363,7 @@ const stepState = (i: number) => form.failed === i ? 'no' : i < form.step ? 'ok'
         </div>
       </div>
     </template>
-    <div v-else-if="loading" class="card skel" aria-busy="true">正在读取模型…</div>
+    <div v-else-if="loading" class="card skel si-wait" aria-busy="true">正在读取模型…</div>
     <ModelEditDrawer v-model="drawer" :model="editing" @saved="load" />
   </div>
 </template>

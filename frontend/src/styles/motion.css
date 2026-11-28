@@ -68,6 +68,12 @@ html[data-fx="full"] .si-stagger > :nth-child(6) { animation-delay: 225ms; }
 html[data-fx="full"] .si-stagger > :nth-child(7) { animation-delay: 270ms; }
 html[data-fx="full"] .si-stagger > :nth-child(n + 8) { animation-delay: 315ms; }
 
+/* 模糊淡入（借 Magic UI BlurFade）：页图等整块内容到达时由模糊变清晰；精简档只淡入，关闭档直接出现 */
+@keyframes si-blur-in { from { opacity: 0; filter: blur(6px); } to { opacity: 1; filter: none; } }
+@keyframes si-fade-in { from { opacity: 0; } }
+html[data-fx="full"] .si-blur-in { animation: si-blur-in var(--si-d4) var(--si-ease-out) backwards; }
+html[data-fx="lite"] .si-blur-in { animation: si-fade-in var(--si-d3) var(--si-ease-out) backwards; }
+
 /* 可点卡片悬停：上移 3px、阴影加深；卡内 .si-lift-icon 在完整档轻转（精简档不转） */
 .si-lift { transition: transform var(--si-d3) var(--si-ease-out), box-shadow var(--si-d3) var(--si-ease-out), border-color var(--si-d2) var(--si-ease-out); }
 .si-lift:hover { transform: translateY(-3px); box-shadow: var(--si-shadow-2); border-color: var(--si-hair-strong); }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
+import SiCardSkeleton from '@/components/ui/SiCardSkeleton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -318,7 +319,7 @@ onMounted(() => {
     </template>
     <div v-else-if="loading" class="split">
       <div class="canvas-col"><div class="blank-paper si-paper" /></div>
-      <div class="rail-col skeleton"><el-skeleton :rows="8" animated /></div>
+      <div class="rail-col skeleton"><SiCardSkeleton :count="5" /></div>
     </div>
   </div>
 </template>

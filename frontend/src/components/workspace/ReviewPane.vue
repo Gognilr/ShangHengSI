@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
+import SiCardSkeleton from '@/components/ui/SiCardSkeleton.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -383,7 +384,7 @@ watch(progress, p => emit('progress', p), { immediate: true, deep: true })
 
 <template>
   <div class="review-pane">
-    <div v-if="stage === 'loading'" class="center"><el-skeleton :rows="4" animated /></div>
+    <div v-if="stage === 'loading'" class="center"><SiCardSkeleton :count="3" /></div>
 
     <!-- 审核中 -->
     <section v-else-if="stage === 'running'" class="panel running">

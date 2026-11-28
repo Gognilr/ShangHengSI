@@ -239,7 +239,7 @@ onMounted(load)
 
     <SiNotice v-if="error" type="error" :closable="false" :title="error" class="gap" />
 
-    <div v-if="loading && initialLoad && !items.length" class="tl-skel" aria-busy="true"><i v-for="n in 5" :key="n" /></div>
+    <div v-if="loading && initialLoad && !items.length" class="tl-skel si-wait" aria-busy="true"><i v-for="n in 5" :key="n" /></div>
     <EmptyState v-else-if="!items.length && !loading" :icon="FileSearch" title="没有历史记录" description="使用已开通的功能后，记录会出现在这里。"><el-button @click="router.push(emptyAction[1]!)">{{ emptyAction[0] }}</el-button></EmptyState>
     <div v-else v-loading="loading" class="tl-wrap">
       <TripTimeline :items="rows" @open="it => open(it.row)">

@@ -325,7 +325,7 @@ onMounted(() => {
         <span v-else class="hint version">已有 {{ items.length }} / {{ MAX_ITEMS }} 条 · 拖动卡片调整顺序，键盘用上移、下移</span>
       </div>
       <SiNotice v-if="listError" type="error" :closable="false" :title="listError" />
-      <div v-if="!listLoaded" class="req-skel" aria-busy="true"><i v-for="n in 3" :key="n" /></div>
+      <div v-if="!listLoaded" class="req-skel si-wait" aria-busy="true"><i v-for="n in 3" :key="n" /></div>
       <EmptyState v-else-if="!items.length" compact title="尚未添加公司补充要求" description="点击上方“新增要求”，补充的要求会并入每次审核。" />
       <div v-else v-loading="listLoading" class="reqcols">
         <div v-for="col in columns" :key="col.key" class="reqcol">

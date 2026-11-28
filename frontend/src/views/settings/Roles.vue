@@ -120,7 +120,7 @@ async function remove(row: RoleRow) {
       <el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新建角色</el-button>
     </div>
     <SiNotice v-if="error" type="error" :closable="false" :title="error" class="gap" />
-    <div v-if="!loaded" class="skel" aria-busy="true" />
+    <div v-if="!loaded" class="skel si-wait" aria-busy="true" />
     <div v-else v-loading="loading" class="card mx-wrap">
       <table class="matrix">
         <thead>

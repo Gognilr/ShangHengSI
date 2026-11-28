@@ -192,7 +192,7 @@ const dialogTitle = computed(() => (dialog.value === 'create' ? '新增账号' :
       <el-button type="primary" @click="openCreate"><template #icon><Plus :size="16" :stroke-width="1.75" /></template>新增账号</el-button>
     </div>
     <SiNotice v-if="error" type="error" :closable="false" :title="error" class="gap" />
-    <div v-if="!loaded" class="skel" aria-busy="true"><i v-for="n in 4" :key="n" /></div>
+    <div v-if="!loaded" class="skel si-wait" aria-busy="true"><i v-for="n in 4" :key="n" /></div>
     <EmptyState v-else-if="!items.length" compact title="暂无账号" description="点击右上角“新增账号”添加。" />
     <div v-else v-loading="loading" class="rows">
       <SiRowCard v-for="row in items" :key="row.id" class="urow" :class="{ off: row.status !== 'active' }">

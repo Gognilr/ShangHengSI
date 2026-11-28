@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SiNotice from '@/components/ui/SiNotice.vue'
+import SiCardSkeleton from '@/components/ui/SiCardSkeleton.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ChevronDown, ChevronRight, ListChecks, Sparkle } from '@lucide/vue'
@@ -186,7 +187,7 @@ watch(() => props.selectedId, async (id) => {
       <SiNotice v-if="run.status === 'failed'" type="error" :closable="false" :title="run.error_message || '审核失败'" class="alert" />
       <SiNotice v-else-if="run.status === 'partial' && run.error_message" type="warning" :closable="false" :title="run.error_message" class="alert" />
     </template>
-    <div v-if="runLoading" class="loading"><el-skeleton :rows="6" animated /></div>
+    <div v-if="runLoading" class="loading"><SiCardSkeleton /></div>
     <div v-else ref="aiEl" class="zone">
       <RailSummary :run="run" :local-only="localOnly" @ai-notice="emit('aiNotice')" />
 
