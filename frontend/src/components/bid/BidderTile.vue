@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { CircleCheck, FolderOpen, Hourglass, KeyRound, ScanText, Upload } from '@lucide/vue'
-import type { BidFile, Bidder } from '@/api/bid'
+import type { BidFile, Bidder, BidPricing } from '@/api/bid'
 
 // 投标人卡（澄明 8.5、第九节）：代号方块加字号（悬停显示全称）、文件数与页数、这一家的状态；
 // 有严重问题时顶部一条 3px 红线、边框偏红；选中时青色光圈。整张卡可拖入文件。
 const props = defineProps<{
   bidder: Bidder; files: BidFile[]; busy: boolean; phase: 'materials' | 'checking' | 'results'
   severe?: number; hint?: number; preliminary?: boolean; selected?: boolean; disabled?: boolean
+  price?: BidPricing['bidders'][string]
 }>()
 const emit = defineEmits<{ open: []; select: []; drop: [event: DragEvent] }>()
 const over = ref(false)
@@ -34,6 +35,13 @@ const statusLabel = computed(() => {
   const label = props.severe ? `严重 ${props.severe}` : props.preliminary ? '初步，未列出严重问题' : '没有严重问题'
   return `${label}${props.hint ? `，提示 ${props.hint}` : ''}`
 })
+// 本机检查提取的报价（唱标价更正后以唱标价为准）：费率、下浮率自带 %，金额按币种标单位
+const priceText = computed(() => {
+  const p = props.price
+  if (!p?.total) return p && p.totals_found.length > 1 ? `找到 ${p.totals_found.length} 个不同报价，请核对` : '未识别到报价'
+  const unit = p.total.endsWith('%') ? '' : !p.currency || p.currency === 'CNY' ? ' 元' : ` ${p.currency}`
+  return `${p.total}${unit}`
+})
 function activate() { if (props.phase === 'results') emit('select'); else emit('open') }
 function drop(event: DragEvent) { over.value = false; if (!props.disabled) emit('drop', event) }
 </script>
@@ -45,7 +53,8 @@ function drop(event: DragEvent) { over.value = false; if (!props.disabled) emit(
       <span class="code" aria-hidden="true">{{ code }}</span>
       <b :title="bidder.name">{{ bidder.short || bidder.name }}</b>
     </div>
-    <span class="lines" aria-hidden="true"><i /><i /><i /></span>
+    <span v-if="phase === 'results' && severe !== undefined" class="price" :class="{ none: !price?.total }"><span class="price-k">{{ price?.manual_total ? '唱标价' : '报价' }}</span><b class="num" :title="priceText">{{ priceText }}</b></span>
+    <span v-else class="lines" aria-hidden="true"><i /><i /><i /></span>
     <span class="meta num">{{ files.length }} 个文件<template v-if="pages"> · {{ pages }} 页</template></span>
     <span v-if="phase === 'results'" class="bc-st">
       <span v-if="severe === undefined" class="hint">正在读取结果…</span>
@@ -76,6 +85,10 @@ function drop(event: DragEvent) { over.value = false; if (!props.disabled) emit(
 .bc.on { transform: translateY(-8px); box-shadow: 0 0 0 2px var(--si-m-bid), var(--si-shadow-2); border-color: var(--si-m-bid); }
 html[data-fx="off"] .bc.on, html[data-fx="off"] .bc:hover { transform: none; }
 /* 纸面上的几行字，像桌上摊开的一份标书 */
+.price { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin: 2px 0; }
+.price-k { flex: none; color: var(--si-ink-3); font: var(--si-font-caption); }
+.price b { overflow: hidden; color: var(--si-ink-1); font: var(--si-font-h4); text-overflow: ellipsis; white-space: nowrap; }
+.price.none b { color: var(--si-ink-3); font: var(--si-font-caption); }
 .lines { display: flex; flex-direction: column; gap: 5px; margin: 2px 0; }
 .lines i { display: block; height: 5px; border-radius: 3px; background: var(--si-hair); }
 .lines i:nth-child(2) { width: 70%; }

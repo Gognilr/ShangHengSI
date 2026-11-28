@@ -452,7 +452,7 @@ const drawerSigning = computed(() => (check.value?.signing ?? []).filter(s => s.
         </header>
         <div class="bidders si-stagger" :class="{ lone: !project.bidders.length && !waiting.length, dim: !!selected }">
           <BidderTile v-for="b in project.bidders" :key="b.id" :bidder="b" :files="filesOf(b.id)" :busy="project.busy" :phase="phase" :disabled="blocked"
-            :severe="conclusion ? counts[b.id]?.severe : undefined" :hint="conclusion ? counts[b.id]?.hint : undefined" :preliminary="preliminary" :selected="selected === b.id"
+            :severe="conclusion ? counts[b.id]?.severe : undefined" :hint="conclusion ? counts[b.id]?.hint : undefined" :preliminary="preliminary" :selected="selected === b.id" :price="check?.pricing?.bidders[b.id]"
             @open="bidderOpen = b.id" @select="selectBidder(b.id)" @drop="e => drop(e, b.id)" />
           <div v-for="name in waiting" :key="name" class="bc-wait" :class="{ over: overWaiting === name }" role="button" tabindex="0" :aria-disabled="blocked" :aria-label="`为 ${name} 加入投标文件`"
             @click="choose(undefined, name)" @keydown.enter="choose(undefined, name)" @dragover.prevent="overWaiting = name" @dragleave.self="overWaiting = null" @drop.prevent.stop="drop($event, undefined, false, name)">
