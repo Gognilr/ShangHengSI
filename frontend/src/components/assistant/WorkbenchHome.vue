@@ -177,7 +177,7 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
 </template>
 
 <style scoped>
-.hub { position: relative; min-height: 100%; }
+.hub { position: relative; min-height: 100%; display: flex; flex-direction: column; }
 /* 氛围光：顶部约 420px，底部渐隐到画布 */
 .aura { bottom: auto; height: 440px; }
 /* 光斑尺寸与位置照设计稿（preview-pages.css .aura）：首屏上方可见的三团光 */
@@ -185,7 +185,7 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
 .aura > i:nth-child(2) { left: auto; right: 6%; top: -220px; width: 640px; height: 480px; aspect-ratio: auto; }
 .aura > i:nth-child(3) { left: 40%; top: -120px; width: 520px; height: 360px; aspect-ratio: auto; }
 .aura::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 160px; background: linear-gradient(transparent, var(--si-bg-canvas)); }
-.hub-in { position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; padding: 10vh 40px 48px; display: flex; flex-direction: column; align-items: center; }
+.hub-in { position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; flex: 1 0 auto; width: 100%; box-sizing: border-box; padding: 10vh 40px 28px; display: flex; flex-direction: column; align-items: center; }
 .greet { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .greet-mark { margin-bottom: 18px; }
 .greet-title { margin: 0; font: var(--si-font-greeting); letter-spacing: -.02em; color: var(--si-ink-1); overflow-wrap: anywhere; }
@@ -231,7 +231,7 @@ const todos = computed<Todo[]>(() => history.value.flatMap<Todo>(r => {
 .td :deep(.el-button) { margin-left: 0; }
 
 /* 页脚信任条：迷你出口线 + 三组数字 */
-.trust { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px; margin: 32px 0 0; font: var(--si-font-meta); color: var(--si-ink-3); }
+.trust { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px; margin: auto 0 0; padding-top: 32px; font: var(--si-font-meta); color: var(--si-ink-3); }
 .trust > span { display: inline-flex; align-items: baseline; }
 .trust b { margin: 0 4px; font: var(--si-font-label); font-weight: 600; color: var(--si-ink-1); }
 .trust > i { width: 1px; height: 14px; background: var(--si-hair-strong); }
