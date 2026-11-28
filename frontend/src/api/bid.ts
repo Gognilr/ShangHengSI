@@ -156,7 +156,7 @@ export interface BidCase {
   normal: string[]; baseline: { sentences?: number; images?: number }
 }
 export interface BidConclusionData {
-  lede: string; sub: string | null; lookup?: number; severe: BidConclusionEntry[]; hint: BidConclusionEntry[]; dismissed: BidConclusionEntry[]
+  lede: string; sub: string | null; collusion?: { state: 'skipped' | 'running' | 'found' | 'none'; text: string }; lookup?: number; severe: BidConclusionEntry[]; hint: BidConclusionEntry[]; dismissed: BidConclusionEntry[]
   cases: BidCase[]
   bidders: { id: string; name: string; short: string; severe: number; hint: number; total: string | null; manual_total: boolean }[]
 }

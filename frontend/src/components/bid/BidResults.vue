@@ -53,6 +53,7 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
             <button v-if="result.state === 'failed'" type="button" class="clear" @click="emit('refresh')">重试更新</button>
           </span>
         </div>
+        <p v-if="c?.collusion" class="clue-line" :class="`is-${c.collusion.state}`" role="status"><i class="d" aria-hidden="true" />{{ c.collusion.text }}</p>
         <template v-if="c">
           <div class="mi-g">严重 <span class="num">{{ severe.length }}</span></div>
           <TransitionGroup tag="div" name="si-list" class="rows">
@@ -116,6 +117,12 @@ const notes = computed(() => [...(ctx.data.value?.coverage ?? []), '没有列出
 .pre { height: 22px; }
 .scope { font: var(--si-font-caption); color: var(--si-ink-3); }
 .clear { margin-left: 8px; padding: 0; border: 0; background: none; font: inherit; color: var(--si-blue-ink); cursor: pointer; }
+/* 串标比对一句话：有没有结果都显示，“没比对”和“比对过没发现”分得清 */
+.clue-line { display: flex; align-items: baseline; gap: 8px; margin: 4px 12px 2px; padding: 8px 12px; border-radius: var(--si-radius-md); background: var(--si-surface-2); font: var(--si-font-meta); color: var(--si-ink-2); }
+.clue-line .d { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--si-ink-5); transform: translateY(-1px); }
+.clue-line.is-none .d { background: var(--si-ok); }
+.clue-line.is-found { background: var(--si-danger-soft); color: var(--si-danger-ink); }
+.clue-line.is-found .d { background: var(--si-danger); }
 .pre-note { font: var(--si-font-caption); color: var(--si-info-ink); }
 .mi-g { display: flex; align-items: center; gap: 6px; padding: 12px 12px 6px; font: var(--si-font-label-sm); color: var(--si-ink-3); }
 .mi-g.fold { width: 100%; border: 0; background: none; cursor: pointer; text-align: left; }

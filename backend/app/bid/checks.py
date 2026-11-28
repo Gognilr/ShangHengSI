@@ -649,7 +649,7 @@ def _run_once(db, task, *, progressive=True):
     project = db.get(BidProject, task.id)
     from app.bid.results import signing_pages
     summary = {"steps": [], "elapsed": {}, "notes": {}, "signing": signing_pages(active, nodes), "baseline": {},
-               "ocr": {"done": done, "total": total}}
+               "ocr": {"done": done, "total": total}, "compared": len(active)}
     count = 0
     if progressive and project.check_state == "running":
         # 新一轮检查先清掉上一轮的步骤记录，进度从 0 / 3 开始（V35-F-05）

@@ -47,6 +47,7 @@ def test_local_check_clues_and_baseline(owner, db_sessionmaker):
     assert by[("mixed", (x, a))]["level"] == "strong" and by[("mixed", (x, a))]["article"] == "（五）"
     assert {i["type"] for i in result["items"]} == {"contact", "props", "image", "mixed"}
     assert result["coverage"]
+    assert result["conclusion"]["collusion"]["state"] == "found"  # 串标比对一句话总显示
     assert c.post(base + "/bidders", headers=h, json={"name": "虚构丁"}).status_code == 409  # 开始初审后材料锁定
     with db_sessionmaker() as db:
         assert db.scalar(select(func.count()).select_from(LlmCall)) == 0

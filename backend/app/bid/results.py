@@ -305,7 +305,7 @@ def check_view(db, task):
     marks = project.signing or {}
     status = ocr_result(project, _ocr(files.values()), any(f.original_deleted_at is not None for f in files.values()), summary=summary)
     view = {"state": project.check_state, "error": project.check_error, "coverage": summary.get("coverage", []),
-            "steps": summary.get("steps", []), "elapsed": summary.get("elapsed", {}), "ocr_result": status,
+            "steps": summary.get("steps", []), "compared": summary.get("compared"), "elapsed": summary.get("elapsed", {}), "ocr_result": status,
             "pricing": json.loads(crypto.decrypt_text(project.pricing_enc)) if project.pricing_enc else None,
             "requirements": [{"id": r.id, "group": r.group, "text": crypto.decrypt_text(r.text_enc), "method": r.method, "seq": r.seq}
                              for r in reqs],

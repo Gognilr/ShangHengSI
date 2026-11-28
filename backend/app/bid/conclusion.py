@@ -163,6 +163,27 @@ def _unique(places, limit=24):
     return out[:limit]
 
 
+CLUE_SCOPE = "混装、联系方式、文件属性、图片、相似段落、报价形态"
+
+
+def _collusion(view, total, out):
+    """串标比对一句话（有没有结果都显示）：{state: skipped / running / found / none, text}。"""
+    compared = view.get("compared")
+    compared = total if compared is None else compared  # 旧检查结果没记家数
+    if compared < 2 and (view.get("state") == "done" or "clues" in view.get("steps", [])):
+        return {"state": "skipped", "text": "串标比对：已解析的投标人不足 2 家，未比对。"}
+    if not {"clues", "pricing", "similar"} <= set(view.get("steps", [])):
+        return {"state": "running", "text": "串标比对：正在比对，结果随后补上。"}
+    severe = sum(e["category"] == "串通" for e in out["severe"])
+    hint = sum(e["category"] in ("串通", "串标线索") for e in out["hint"])
+    off = sum(e["category"] in ("串通", "串标线索") for e in out["dismissed"])
+    tail = f"（另有 {off} 条已标为不是问题）" if off else ""
+    if severe or hint:
+        found = "、".join(x for x in (f"{severe} 组疑似串通投标" if severe else "", f"{hint} 条提示线索" if hint else "") if x)
+        return {"state": "found", "text": f"串标比对：已比对 {compared} 家，发现 {found}{tail}。"}
+    return {"state": "none", "text": f"串标比对：已比对 {compared} 家（{CLUE_SCOPE}），未发现线索{tail}。"}
+
+
 def build(view, bidders, *, local_only=False, model_state=None, dismissed=(), baseline=None):
     dismissed = set(dismissed)
     order = {bid: i for i, bid in enumerate(bidders)}
@@ -276,4 +297,4 @@ def build(view, bidders, *, local_only=False, model_state=None, dismissed=(), ba
     sub = ("本项目只做本地检查，★ 与否决条款中本机未找到的不交模型补查。" if local_only else
            "模型补查进行中，结果出来后自动更新。" if model_state in ("preparing", "awaiting", "running") else
            f"★ 与否决条款中本机未找到的 {lookup} 处，可交模型补查。" if lookup and model_state != "done" else None)
-    return {"lede": lede + "。", "sub": sub, "lookup": 0 if local_only else lookup, "bidders": rows, "cases": cases, **out}
+    return {"lede": lede + "。", "sub": sub, "collusion": _collusion(view, len(rows), out), "lookup": 0 if local_only else lookup, "bidders": rows, "cases": cases, **out}
