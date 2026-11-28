@@ -461,3 +461,18 @@ def test_similar_skips_boilerplate_fixed_names_and_own_repeats():
              b: [("f3", "F3-P1", None, own, "paragraph")]}
     items, stats = similar.find([a, b], nodes, [])
     assert stats["sentences"] == 2 and items == []  # 单句 40 余字，不足 80 字的长段，也不够 5 处相同句
+
+
+def test_scanner_app_watermark_not_image_clue():
+    """扫描全能王等 App 每页叠的 logo / 二维码不算相同图片；同一文件只在一页出现的图片照常比对。"""
+    from types import SimpleNamespace as NS
+
+    from app.bid.checks import _scanner_marks
+    files = {1: NS(id=1, bidder_id="a", page_count=4, parser_version=1, meta_enc=None),
+             2: NS(id=2, bidder_id="b", page_count=4, parser_version=1, meta_enc=None)}
+    rows = [NS(file_id=f, page=p, sha256="logo") for f in (1, 2) for p in range(1, 5)]
+    rows += [NS(file_id=f, page=2, sha256="seal") for f in (1, 2)]
+    nodes = {"a": [(1, "F1-PG1", 1, "3亿人都在用的扫描App", "paragraph")],
+             "b": [(2, "F2-PG1", 1, "CamScanner", "paragraph")]}
+    assert _scanner_marks(rows, files, nodes) == {(1, "logo"), (2, "logo")}
+    assert _scanner_marks(rows, files, {}) == set()  # 没有扫描 App 标记：每页重复的抬头标识仍比对

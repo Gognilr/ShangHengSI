@@ -7,6 +7,7 @@
 """
 import json
 import logging
+import math
 import re
 import time
 from collections import defaultdict
@@ -16,6 +17,7 @@ from itertools import combinations
 from sqlalchemy import delete, select
 
 from app.bid.compliance import LOW_OCR_CONF, TERM_LABELS
+from app.bid.similar import SCANNER_APP
 from app.db.base import utcnow
 from app.db.models import BidBidder, BidCell, BidImage, BidItem, BidProject, BidRequirement, DocNode, TaskFile
 from app.redaction import detect
@@ -416,9 +418,29 @@ def check_props(bidders, files, history=()):
     return items
 
 
-def check_images(db, bidders, files, history=(), stats=None):
+def _scanner_marks(rows, files, nodes):
+    """扫描 App 水印：用扫描全能王等 App 生成的文件，每页都叠同一张 logo / 二维码，各家用同一 App 就字节相同，
+    不是串标线索。文件属性或文字带 App 标记时，在该文件至少 3 页且八成页上重复的图片按水印剔除。返回 {(file_id, sha256)}。"""
+    marked = {f.id for f, props in (p for group in _props(files).values() for p in group)
+              if SCANNER_APP.search(" ".join(str(props.get(k) or "") for k in ("producer", "creator", "application")))}
+    for found in (nodes or {}).values():
+        marked.update(n[0] for n in found if SCANNER_APP.search(n[3]))
+    pages = defaultdict(lambda: defaultdict(set))
+    for r in rows:
+        if r.file_id in marked and r.page is not None:
+            pages[r.file_id][r.sha256].add(r.page)
+    out = set()
+    for file_id, by_hash in pages.items():
+        total = files[file_id].page_count or max(p for s in by_hash.values() for p in s)
+        out.update((file_id, h) for h, s in by_hash.items() if len(s) >= max(3, math.ceil(total * 0.8)))
+    return out
+
+
+def check_images(db, bidders, files, history=(), stats=None, nodes=None):
     rows = db.execute(select(BidImage.file_id, BidImage.page, BidImage.sha256, BidImage.width, BidImage.height, BidImage.category)
                       .where(BidImage.file_id.in_(list(files)))).all()
+    marks = _scanner_marks(rows, files, nodes)
+    rows = [r for r in rows if (r.file_id, r.sha256) not in marks]
     baseline = {r.sha256 for r in rows if files[r.file_id].bidder_id is None}
     if history:
         baseline.update(db.scalars(select(BidImage.sha256).where(BidImage.file_id.in_([f.id for f in history]))))
@@ -659,7 +681,7 @@ def _run_once(db, task, *, progressive=True):
         from app.bid.requirements import load_state
         clues = (check_mixed(active, nodes) + check_external_names(active, nodes, invitee_names(load_state(project)), task.title)
                  + check_contacts(active, nodes) + check_props(active, files)
-                 + check_images(db, active, files, stats=summary["baseline"]))
+                 + check_images(db, active, files, stats=summary["baseline"], nodes=nodes))
     save("clues", started, clues)
     started = time.monotonic()
     items, notes = _pricing_step(db, task, [b for b in bidders if nodes.get(b.id) or b.opening_price_enc], nodes, files)

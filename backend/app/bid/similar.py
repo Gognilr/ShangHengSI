@@ -30,6 +30,8 @@ _COMMON = re.compile(r"注册会计师|审计准则|审计证据|审计意见|�
                      r"|专利权|专利登记|专利法|实用新型|知识产权局|专利证书"
                      r"|依法须经批准的项目|国家企业信用信息公示系统|gsxt\.gov\.cn"
                      r"|^\s*(?:GB|HG|SH|JB|NB|API|ISO|IEC)\s*/?\s*T?\s*\d")
+# 扫描 App 的水印文字与生成程序标记（扫描全能王页脚“亿人都在用的扫描App”等）：各家用同一 App 扫描就相同
+SCANNER_APP = re.compile(r"扫描全能王|全能扫描王|CamScanner|intsig|亿人都在用的扫描", re.I)
 # 招标人、代理机构与项目名称（问题 2、10）：各家文件里都会照填，比对前从句子中去掉，免得只因同填项目名而相似
 _OWNER_NAME = re.compile(r"(?:招标人|采购人|招标单位|采购单位|建设单位|项目业主|业主单位|业主|招标代理机构|采购代理机构|代理机构)"
                          r"(?:名称)?\s*[:：]\s*([^\s，,。；;：:（(]{4,60})")
@@ -104,7 +106,7 @@ def sentences(owner, nodes, start=0, strip=()):
                 continue
             grams = frozenset(norm[i:i + 2] for i in range(len(norm) - 1))
             out.append(Sent(owner, index, file_id, loc, page, piece, norm, grams, section,
-                            common=bool(_COMMON.search(piece)), ocr=bool(extra and extra[0] is not None)))
+                            common=bool(_COMMON.search(piece) or SCANNER_APP.search(piece)), ocr=bool(extra and extra[0] is not None)))
             index += 1
     return out
 
