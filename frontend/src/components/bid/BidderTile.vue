@@ -42,10 +42,11 @@ const priceText = computed(() => {
   const unit = p.total.endsWith('%') ? '' : !p.currency || p.currency === 'CNY' ? ' 元' : ` ${p.currency}`
   return `${p.total}${unit}`
 })
-// 含税口径与税率：只显示投标文件中写明的（成对的不含税价、税率、含税价），没写不猜
+// 含税口径与税率：只显示投标文件中写明的（成对的不含税价、税率、含税价，或总价旁单独写的口径与税率），没写不猜
 const taxText = computed(() => {
   const p = props.price
-  if (!p?.total || !p.tax_pairs?.length) return ''
+  if (!p?.total) return ''
+  if (!p.tax_pairs?.length) return p.tax_rate ? `税率 ${p.tax_rate}` : ''
   const pair = p.tax_pairs.find(x => x.gross === p.total || x.net === p.total) ?? (p.tax_pairs.length === 1 ? p.tax_pairs[0] : undefined)
   if (!pair) return ''
   const other = pair.gross === p.total ? `不含税 ${pair.net}` : pair.net === p.total ? `含税 ${pair.gross}` : ''

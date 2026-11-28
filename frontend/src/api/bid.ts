@@ -130,6 +130,8 @@ export interface BidPricing {
     /** 唱标价（人工录入，已格式化）与文件中识别的总价 */
     opening?: { amount: string; upper: string | null; note: string | null } | null; file_total?: string | null
     tax_basis?: string
+    /** 总价旁单独写明的税率（没有成对的不含税价与含税价时） */
+    tax_rate?: string
     tax_pairs?: { net: string; rate: string; gross: string; expected: string; ok: boolean }[] }>
   compare?: { n: number; highest: string; lowest: string; mean: string; spread_pct: string | null } | null
   /** 三家及以上总价等差 / 等比（ids 按金额从低到高） */

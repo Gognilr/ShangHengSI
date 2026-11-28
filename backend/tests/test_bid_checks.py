@@ -320,6 +320,9 @@ def test_total_labels_fixture():
             _, findings = pricing.quote_tables(nodes)
             assert [r.locs[0] for r in findings if r.code == 'L-01'] == case['row_errors']
             assert nodes[5].text == '12000'  # 临时计算副本不改原始单价
+        if 'tax' in case:  # 总价旁单独写明的含税口径与税率
+            row = pricing.analyze([0], {0: nodes})[0]['bidders']['0']
+            assert [row.get('tax_basis'), row.get('tax_rate')] == case['tax'], case['name']
         if case.get('separate_scopes'):
             from datetime import date
             from app.bid.compliance import evaluate

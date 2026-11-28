@@ -293,7 +293,7 @@ def labelled_totals(nodes):
             found = amount(value_text[:100], label, bare=True)
             target = n
             cell = table_cell(n.loc)
-            if found is None and cell and not _CURRENCY_TOKEN.sub("", value_text).strip(' :()万元人民币含税小写'):
+            if found is None and cell and not _CURRENCY_TOKEN.sub("", value_text).strip(' :()万元人民币含增值税小写'):
                 table, col, row = cell
                 # 单独标签格优先同行右侧；列标题则取下一行同列。
                 current_col = _column_index(col)
@@ -634,6 +634,35 @@ def _source(nodes, totals, distinct, main, *, rate=False):
     return {"label": label, "file_id": str(file_id) if file_id else None, "page": page}
 
 
+_NOTE_NET = re.compile(r"不含(?:增值)?税")
+_NOTE_GROSS = re.compile(r"(?<!不)含(?:\d{1,2}(?:\.\d+)?%(?:的)?)?(?:增值)?税(?!率)|(?<!不含)税费|价税合计")
+_NOTE_RATE = re.compile(r"(?:增值)?税率\s*[:：为]?\s*(\d{1,2}(?:\.\d+)?)\s*%|(\d{1,2}(?:\.\d+)?)\s*%\s*(?:的)?增值税")
+
+
+def tax_note(nodes, totals, total):
+    """总价旁单独写明的含税口径与税率（如“投标总价：113万元（含税，税率13%）”），只看写有该总价的节点及其前一个标签节点。
+    返回 (口径, 税率)；各处说法不一致时不报。"""
+    index = {id(n): i for i, n in enumerate(nodes)}
+    bases, rates = set(), set()
+    for value, _currency, node in totals:
+        if rounded(value) != total:
+            continue
+        texts = [node.text]
+        i = index.get(id(node))
+        if i and nodes[i - 1].file_seq == node.file_seq and getattr(nodes[i - 1], "page", None) == getattr(node, "page", None)                 and len(nodes[i - 1].text) < 60:
+            texts.append(nodes[i - 1].text)
+        for raw in texts:
+            text = unicodedata.normalize("NFKC", raw)
+            if _NOTE_NET.search(text):
+                bases.add("不含税")
+            if _NOTE_GROSS.search(text):
+                bases.add("含税")
+            for m in _NOTE_RATE.finditer(text):
+                rates.add(Decimal(m[1] or m[2]))
+    return (next(iter(bases)) if len(bases) == 1 else None,
+            rate_text(next(iter(rates))) if len(rates) == 1 else None)
+
+
 def _tax_totals(totals, pairs, tax_included, table_total):
     """只替换能够唯一对应的两种税价；独立报价仍进入多个总价检查。"""
     replacements = {}
@@ -720,6 +749,12 @@ def analyze(bidders, per_bidder_nodes, ceiling=None, currency=None, place=None, 
                 total == rounded((net if tax_included is False else gross)[0]) for net, _, gross, _ in tax_totals
             ):
                 row["tax_basis"] = "不含税" if tax_included is False else "含税"
+        if not rate and entered is None and total is not None and "tax_basis" not in row:
+            basis, tax_rate = tax_note(nodes, totals, total)
+            if basis:
+                row["tax_basis"] = basis
+            if tax_rate:
+                row["tax_rate"] = tax_rate
         if rate and distinct and rate_limit is not None:
             bound = min(distinct) if mode == "discount" else max(distinct)
             delta = rate_limit - bound if mode == "discount" else bound - rate_limit
