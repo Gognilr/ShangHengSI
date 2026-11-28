@@ -235,7 +235,7 @@ async function retryMessage(mid: number) { if (session.value) { await assistantA
         <span v-else-if="step === 'parsing'" class="hint">正在本机读取文件 · 可以离开页面</span>
       </div>
       <p v-if="step === 'failed'" class="fail">{{ session.error_message || '文件读取失败，请删除后重新上传' }}</p>
-      <SiNotice v-if="engine === 'local' && (running || step === 'ready')" type="warning" title="本机翻译较慢，可以先离开" description="关闭页面不影响翻译，稍后从“最近的翻译”回来查看。" :closable="false" class="local-note" />
+      <SiNotice v-if="engine === 'local' && (running || (step === 'ready' && !results.length))" type="warning" title="本机翻译较慢，可以先离开" description="关闭页面不影响翻译，稍后从“最近的翻译”回来查看。" :closable="false" class="local-note" />
       <div class="reading">
         <p v-if="!results.length && step === 'ready'" class="hint ready-hint"><Languages :size="16" :stroke-width="1.75" />选择目标语言后点“开始翻译”。</p>
         <MessageItem v-for="m in [...results].reverse()" :key="m.id" :message="m" :session-id="session.id" :last="true" @stop="stopMessage" @retry="retryMessage" />
