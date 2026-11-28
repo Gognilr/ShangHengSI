@@ -26,6 +26,8 @@ class SessionFile(TaskFileOut):
     # 稿次（V35-D-02）：上一稿与第几稿；不在链上时为空
     prev_file_id: uuid.UUID | None = None
     draft_no: int | None = None
+    # 已被审核轮次引用：不能移除（界面不显示移除按钮）
+    in_review: bool = False
 
 
 class SessionItem(BaseModel):

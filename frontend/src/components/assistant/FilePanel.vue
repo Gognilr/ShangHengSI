@@ -58,23 +58,28 @@ const pending = computed(() => props.session.files.filter(file => !file.confirme
 const canUpload = computed(() => !busy.value && props.session.status === 'active' && !props.session.generating && !props.session.review_running && !props.session.original_deleted && props.session.files.length < 10)
 const canStance = computed(() => props.session.status === 'active' && !props.session.files.some(file => file.confirmed_at) && !props.session.original_deleted)
 const task = computed(() => confirmationTask(props.session))
+// 这些操作大多从输入框、审核页直接调用，抽屉没开时错误写在抽屉里看不到，同时弹出提示
+function fail(message: string) {
+  error.value = message
+  if (!props.open) ElMessage.error(message)
+}
 async function perform(action: () => Promise<unknown>) {
   if (busy.value) return
   busy.value = true; error.value = ''
   try { await action(); emit('refresh') }
-  catch (e) { error.value = e instanceof ApiError ? e.message : '处理失败，请重试' }
+  catch (e) { fail(e instanceof ApiError ? e.message : '处理失败，请重试') }
   finally { busy.value = false }
 }
 async function addList(files: File[]) {
-  if (files.length > 5 || files.length + props.session.files.length > 10) { error.value = '每次最多加入 5 个文件，会话合计最多 10 个文件'; return }
+  if (files.length > 5 || files.length + props.session.files.length > 10) { fail('每次最多加入 5 个文件，会话合计最多 10 个文件'); return }
   for (const file of files) {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
-    if (audioExts.includes(ext) && props.session.purpose !== 'meeting') { error.value = '录音请到“会议纪要”中处理'; return }
-    if (!accept.value.split(',').includes('.' + ext)) { error.value = '不支持该文件格式'; return }
-    if (audioExts.includes(ext) && !props.session.asr_enabled) { error.value = '录音转写未启用，请联系管理员'; return }
-    if (file.size > (audioExts.includes(ext) ? 500 : 30) * 1024 * 1024) { error.value = audioExts.includes(ext) ? '录音单个不能超过 500 MB' : '文档单个不能超过 30 MB'; return }
+    if (audioExts.includes(ext) && props.session.purpose !== 'meeting') { fail('录音请到“会议纪要”中处理'); return }
+    if (!accept.value.split(',').includes('.' + ext)) { fail('不支持该文件格式'); return }
+    if (audioExts.includes(ext) && !props.session.asr_enabled) { fail('录音转写未启用，请联系管理员'); return }
+    if (file.size > (audioExts.includes(ext) ? 500 : 30) * 1024 * 1024) { fail(audioExts.includes(ext) ? '录音单个不能超过 500 MB' : '文档单个不能超过 30 MB'); return }
   }
-  if (files.filter(f => audioExts.includes(f.name.split('.').pop()?.toLowerCase() ?? '')).length > 1) { error.value = '一次最多加入 1 个录音'; return }
+  if (files.filter(f => audioExts.includes(f.name.split('.').pop()?.toLowerCase() ?? '')).length > 1) { fail('一次最多加入 1 个录音'); return }
   if (files.length && canUpload.value) {
     uploadProgress.value = 0
     try { await perform(() => assistantApi.addFiles(props.session.id, files, (loaded,total) => { uploadProgress.value = Math.round(loaded / total * 100) })); if (!error.value && !props.reviewMode) guided.value = true }  // 审核视图里确认页内嵌在页面中，不弹全屏（V321-E-06）
@@ -178,7 +183,7 @@ defineExpose({ pick, openConfirm, openTranscript, remove, addList, uploadProgres
     <SiNotice v-if="session.error_message" :title="session.error_message" type="error" :closable="false" />
     <div v-for="file in session.files" :key="file.id" class="file-row">
       <span class="file-badge">{{ file.media ? '音频' : file.ext.toUpperCase() }}</span><div class="file-info"><div class="file-name">{{ file.original_name }}</div><MediaRow v-if="file.media" :file="file" :busy="busy" @transcript="transcriptFile = file" @retry="retryMedia(file)" @download="downloadTranscript(file)" /><SiBadge v-else :tone="statusTag(file.confirmed_at ? 'confirmed' : session.status).type" :plain="statusTag(file.confirmed_at ? 'confirmed' : session.status).effect === 'plain'">{{ file.confirmed_at ? '已确认' : assistantStatusLabel(session.status) }}</SiBadge><p v-for="warning in file.warnings" :key="warning" class="warning">{{ warning }}</p></div>
-      <el-button v-if="session.status !== 'parsing' && !session.generating && !session.review_running" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
+      <el-button v-if="!file.in_review && session.status !== 'parsing' && !session.generating && !session.review_running" link type="danger" :disabled="busy" @click="remove(file)">移除</el-button>
     </div>
     <EmptyState v-if="!session.files.length" compact :icon="FileText" title="还没有文件" description="加入文件后，在本机解析与脱敏。" />
     <el-button v-if="session.status === 'awaiting_confirm'" type="primary" @click="openConfirm">确认脱敏（{{ pending.length }} 个文件）</el-button>

@@ -195,6 +195,7 @@ def detail(db: Session, task: Task) -> SessionDetail:
                        AssistantMessage.role == 'assistant', AssistantMessage.status.in_(('queued', 'streaming'))))))
     run_count, reviewing = _run_stats(db, [task.id]).get(task.id, (0, False)) if task.purpose == 'chat' else (0, False)
     translation_reply = _translation_states(db, [task]).get(task.id)
+    runs = _review_file_ids(db, task) if task.purpose == 'chat' else []
     return SessionDetail(**_item(task, files, generating=generating, reviewing=reviewing, run_count=run_count,
                                  translation_reply=translation_reply).model_dump(),
                          stance=task.stance, source=task.source,
@@ -202,7 +203,8 @@ def detail(db: Session, task: Task) -> SessionDetail:
                          files=[SessionFile(**f.model_dump(), confirmed_at=confirmed[f.id], media=media[f.id],
                                             speakers=unpack(rows[f.id].speakers_enc, {}) if media[f.id] is not None else None,
                                             prev_file_id=rows[f.id].prev_file_id if f.id in chains else None,
-                                            draft_no=chains[f.id][0] if f.id in chains else None) for f in preview.files],
+                                            draft_no=chains[f.id][0] if f.id in chains else None,
+                                            in_review=_file_in_use(db, task, f, runs)) for f in preview.files],
                          can_send=reason is None, send_reason=reason,
                          code_count=len(engine.load_redaction_map(db, task.id)), kb_enabled=bool(get_setting(db, 'assistant.kb_enabled')),
                          participants=unpack(task.participants_enc, []), asr_enabled=asr_enabled(), mt_enabled=mt_enabled(),
@@ -944,10 +946,14 @@ def add_files(db: Session, task: Task, raw: list, marks: list[int] | None = None
         raise
 
 
-def _file_in_use(db: Session, task: Task, file: TaskFile) -> bool:
-    """被任一审核轮次引用；file_ids 为空的旧轮次视为引用全部文件。"""
+def _review_file_ids(db: Session, task: Task) -> list:
     from app.db.models import ReviewRun
-    runs = db.scalars(select(ReviewRun.file_ids).where(ReviewRun.task_id == task.id)).all()
+    return db.scalars(select(ReviewRun.file_ids).where(ReviewRun.task_id == task.id)).all()
+
+
+def _file_in_use(db: Session, task: Task, file: TaskFile, runs: list | None = None) -> bool:
+    """被任一审核轮次引用；file_ids 为空的旧轮次视为引用全部文件。"""
+    runs = _review_file_ids(db, task) if runs is None else runs
     return any(not ids or str(file.id) in ids for ids in runs)
 
 

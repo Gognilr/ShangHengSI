@@ -18,7 +18,7 @@ export interface Media {
   /** 现场录音时的打点（毫秒偏移），转写后在逐字稿对应位置显示“标记” */
   marks?: number[]
 }
-export interface SessionFile extends TaskFile { confirmed_at: string | null; media: Media | null; speakers: Record<string, string | null> | null }
+export interface SessionFile extends TaskFile { confirmed_at: string | null; media: Media | null; speakers: Record<string, string | null> | null; in_review?: boolean }
 export interface Suggestion { loc: string; start: number; end: number; from: string; to: string }
 export const ASSISTANT_ERROR_MESSAGES: Record<string, string> = { ASR_DISABLED: '录音转写未启用，请联系管理员' }
 /** 历史记录行（V32-B-01）：工作台会话与旧审核任务合并列出 */

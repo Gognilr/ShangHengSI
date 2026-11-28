@@ -91,12 +91,17 @@ watch(id, () => {
   void load(true)
 }, { immediate: true })
 onBeforeUnmount(() => { generation++; resetTimer() })
-async function mutate(action: () => Promise<BidProject>, whenLocked = false) {
+async function mutate(action: () => Promise<BidProject>, whenLocked = false, inline = false) {
   if (pending.value || (locked.value && !whenLocked)) return
   pending.value = true; error.value = ''; resetTimer(); edits++
   const current = generation
   try { const data = await action(); if (current === generation) accept(data) }
-  catch (e) { if (current === generation) error.value = e instanceof ApiError ? e.message : '操作失败，请重试' }
+  catch (e) {
+    if (current !== generation) return
+    error.value = e instanceof ApiError ? e.message : '操作失败，请重试'
+    // 投标人抽屉盖住了页面顶部的错误条，抽屉里的操作失败时另弹提示（行内显示错误的除外）
+    if (drawerBidder.value && !inline) ElMessage.error(error.value)
+  }
   finally { pending.value = false }
 }
 
@@ -203,7 +208,7 @@ async function enableModel() {
 async function removeFile(fid: string) { delete rowErrors[fid]; await mutate(() => bidApi.removeFile(id.value, fid)) }
 async function setPassword(fid: string, password: string) {
   delete rowErrors[fid]
-  await mutate(() => bidApi.password(id.value, fid, password))
+  await mutate(() => bidApi.password(id.value, fid, password), false, true)
   if (error.value) { rowErrors[fid] = error.value; error.value = '' }
 }
 // 开始检查：条款清单确认、文件读取完、至少一家有投标文件
@@ -301,7 +306,11 @@ async function addBidder() {
 function choose(bidder?: string, name?: string) { if (!blocked.value) { target.value = bidder; targetName.value = name; picker.value?.click() } }
 async function upload(files: File[], bidder?: string, groups?: string[]) {
   if (!files.length || !project.value) return
-  if (files.some(f => f.size > project.value!.limits.file_mb * 1024 * 1024)) { error.value = `单个文件不能超过 ${project.value.limits.file_mb} MB`; return }
+  if (files.some(f => f.size > project.value!.limits.file_mb * 1024 * 1024)) {
+    error.value = `单个文件不能超过 ${project.value.limits.file_mb} MB`
+    if (drawerBidder.value) ElMessage.error(error.value)
+    return
+  }
   percent.value = 0
   await mutate(() => bidApi.upload(id.value, files, bidder, groups, (loaded, total) => { percent.value = Math.round(loaded / total * 100) }))
   percent.value = null

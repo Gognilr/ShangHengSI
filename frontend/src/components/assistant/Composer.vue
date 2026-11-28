@@ -123,7 +123,8 @@ function tag(file: SessionFile): { text: string; tone: string; progress: number 
   return { text: '已确认', tone: 'ok', progress: null }
 }
 const failures = computed(() => (props.session?.files ?? []).filter(f => f.parse_error || f.media?.stage === 'failed'))
-const removable = (_file: SessionFile) => props.session?.status !== 'parsing' && !props.session?.generating && !props.session?.review_running
+// 已用于审核的文件后端不让移除，不给按钮（可在发送时不选它）
+const removable = (file: SessionFile) => !file.in_review && props.session?.status !== 'parsing' && !props.session?.generating && !props.session?.review_running
 
 // ---- 模板 ----
 const target = ref('英文'), focus = ref('全部'), tone = ref('正式'), language = ref('同来函'), fileIds = ref<string[]>([])
